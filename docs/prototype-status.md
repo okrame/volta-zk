@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 GEMMA-31B STACKED STATIC BLOCKED — LOCAL DEEP TESTS COMPLETE / NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 GEMMA-31B STACKED STATIC BLOCKED — QSPEC/DAG/WEIGHTS/ROWFOLD GO; LOCAL INGEST NO-GO; POD BLOCKED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -27,9 +27,37 @@ append-only history.
   layouts, concrete GKR cohorts, scheduler/PCS/Fp3/ROM refinements, ROWFOLD,
   maximal certificate and compiler-owned H100 inventory are absent. Static KV
   capacity is 3,690,987,520 B; live use is 135,168,000 B. No pod is authorized.
-- **Authorization.** All three local GO tranches are complete. Resume needs an
-  owner-approved Gemma-only arithmetic specification and pinned local weight
-  bodies, plus the missing ROWFOLD relation. Hardware remains a separate GO.
+- **Authorization.** Owner GO on 2026-09-05 authorizes Gemma-only QSPEC/DAG,
+  use of both pinned weight bodies and a new ROWFOLD design. The VM cannot hold
+  source plus packed output safely, so local weight ingest is `NO-GO`.
+  Lightweight design/tests remain local. Provider contact, pod creation and
+  hardware execution still require the separate literal `GO-RUNPOD`.
+
+- **2026-09-05 — QSPEC/DAG, pinned weights and ROWFOLD design receive owner
+  GO; local full-weight ingest is NO-GO; provider remains BLOCKED.** The owner
+  authorizes all three previously requested continuation items. This permits a
+  new Gemma-only arithmetic specification and operator DAG, use of the two
+  pinned private shard bodies, and a ROWFOLD relation/algorithm designed from
+  scratch. It does not authorize importing arithmetic or implementations from
+  a historical model profile.
+
+  The clean workstation at `4fdf1b77565d9e5262e380b1aaa4b784f4788eb8`
+  has about 66 GB filesystem headroom and 10 GiB available RAM. The two source
+  shards occupy exactly 62,546,338,248 bytes; retaining their required
+  61,394,690,560-byte packed i16 result would require 123,941,028,808 bytes
+  before build caches, LUTs, goldens or temporary output. Downloading or
+  packing the complete model here would therefore violate the owner's
+  no-saturation condition and is `NO-GO`. `/tmp` is a 5.9-GB tmpfs and is not
+  an alternative artifact store.
+
+  Local work is limited to specifications, compilers over checked-in metadata,
+  tiny fixtures and narrow builds. Large shard bodies, packed weights, golden
+  traces and H100 execution must be pod-local on at least 400 GB usable
+  storage, with an H100 80 GB, at least 256 GiB host RAM until streaming is
+  proved, and a provider-side deadline. The owner's phrase “in case, move to
+  RunPod” records intent but is not substituted for the separate literal
+  provider GO required by the active hard stop. No provider was contacted and
+  no pod was created at this boundary.
 
 - **2026-09-04 — all three Gemma-31B local GO tranches complete; static
   frontend and formal GKR envelope land, realized D126 stays BLOCKED.** No pod,

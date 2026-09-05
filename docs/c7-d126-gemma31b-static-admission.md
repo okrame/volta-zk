@@ -416,6 +416,28 @@ fixed-point 16-bit H100 kernel rate.
 
 ## 8. Authorization and deterministic resume
 
+The owner GO of 2026-09-05 authorizes three implementation scopes:
+
+1. define a new Gemma-only `GemmaQuantV1` arithmetic specification and compile
+   the complete text-model operator DAG;
+2. use the two pinned private weight bodies after their complete SHA-256
+   verification; and
+3. design the ROWFOLD relation and two-pass algorithm from first principles.
+
+This GO does not permit importing historical model arithmetic or treating an
+old transform as ROWFOLD. It also does not override the separate provider and
+hardware hard stop.
+
+The workstation has about 66 GB free. The two source shards consume
+62,546,338,248 bytes and the packed i16 output consumes 61,394,690,560 bytes,
+or 123,941,028,808 bytes together before any build, LUT, golden or temporary
+artifact. Therefore complete local shard acquisition/packing is `NO-GO` under
+the owner's no-saturation rule. Specifications, metadata-only compilers and
+tiny fixtures stay local. A future pod must have an H100 80 GB, at least 400
+GB usable storage, at least 256 GiB host RAM until the exporter is proved
+streaming, and a provider-side stop/termination deadline. Contacting the
+provider still requires the literal `GO-RUNPOD`.
+
 Completed under the current local authorization, without hardware or
 complete private model bodies:
 
@@ -432,15 +454,17 @@ complete private model bodies:
 
 Still blocked:
 
-1. a complete owner-approved Gemma-only arithmetic specification, separately
-   authorized pinned private shard bodies, LUTs and bit-exact goldens;
+1. completion and review of the now-authorized Gemma-only arithmetic
+   specification, followed by execution against the authorized pinned shard
+   bodies, LUTs and bit-exact goldens;
 2. runtime binding of those values to the 472 relations, the 50 decode IDs,
    real B/KV roots/layouts and concrete base-GKR cohorts;
 3. scheduler common-point, PCS, Fp3 and global-ROM refinements;
 4. ROWFOLD implementation until its exact report, relation and two-pass
    algorithm are present;
 5. any full-chain security, proof-size, two-sweep, complexity or H100 PASS;
-6. GPU/H100 measurement, production work and every pod action.
+6. provider contact, every pod action, GPU/H100 measurement and production
+   work until the separate `GO-RUNPOD` is recorded.
 
 The next admission run must, in order:
 
@@ -484,4 +508,6 @@ The next admission run must, in order:
 | `EXACT_WIRE_CENSUS` | `BLOCKED` |
 | `FULL_CERTIFICATE` | `BLOCKED` |
 | `H100_STATIC_FIT` | `BLOCKED` |
+| local full-weight ingest | `NO-GO`, insufficient safe disk headroom |
+| RunPod/provider execution | `BLOCKED`, requires literal `GO-RUNPOD` |
 | `D126` | `BLOCKED` |

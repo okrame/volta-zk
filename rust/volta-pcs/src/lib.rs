@@ -66,6 +66,7 @@ pub mod c6_wrapper_persisted;
 pub mod layer_layout;
 pub mod ligero;
 pub mod gemma31b_terminal_manifest;
+pub mod gemma31b_qspec_dag;
 pub mod merkle;
 pub mod ntt;
 pub mod x4;

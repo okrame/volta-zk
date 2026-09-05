@@ -1,9 +1,9 @@
 # C7 D126 Gemma-31B stacked static admission
 
 **Status:** active design; the terminal declaration, pinned metadata/workload,
-public scalar values, isolated static frontend, ragged-norm algebra and
-conditional heterogeneous-GKR envelope are implemented and checked; full
-admission remains `BLOCKED`.
+public scalar values, row-complete weight-use algebra, high-level operator
+invocation DAG, source-once reference ingest and conditional heterogeneous-GKR
+envelope are implemented and checked; full admission remains `BLOCKED`.
 
 This document is the only active D126 path.  Historical designs and ledger
 entries remain append-only evidence, not active parameter sources.
@@ -43,23 +43,43 @@ embedding and final-norm stacking laws.  Its older six-role norm statement has
 one uniform coordinate type `D`; that is not an exact Gemma instantiation and
 is no longer presented as one.
 
-`lean/VoltaZk/C7GemmaTerminalManifest.lean` adds the required Gemma-specific
-ragged statement.  Together the two files prove:
+`lean/VoltaZk/C7GemmaTerminalManifest.lean` adds the Gemma-specific ragged
+coordinate statement. `lean/VoltaZk/C7GemmaQuantAccumulator.lean` then adds
+the workload-row refinement that the older phase-indexed statement lacked.
+Together these files prove:
 
-1. right multiplication by one physical matrix commutes with stacking prompt
-   and response rows;
+1. right multiplication by one physical matrix commutes with stacking all 100
+   prompt rows and all 50 response rows;
 2. one sigma-indexed direct sum for the six differently sized norm roles is
-   equivalent to the twelve phase/role equations and has no cross-role terms;
-3. tied lookup and logits keep their two matrix orientations;
-4. the final norm is shared across the two phases; and
-5. the exact local/global norm cardinalities are respectively
-   `4*5376+2*256=22,016` and `4*5376+2*512=22,528`.
+   equivalent to every role/head/coordinate equation on all 150 token rows:
+   Q uses 32 heads, while K uses 16 local or 4 global heads;
+3. tied lookup over 150 rows and logits over 50 rows keep their two matrix
+   orientations while sharing one physical embedding;
+4. the unpruned final norm covers its 100 prefill rows plus 49 decode rows,
+   while `last_row_select` leaves exactly 50 LM-head/logit rows;
+5. the physical local/global norm-weight cardinalities remain respectively
+   `4*5376+2*256=22,016` and `4*5376+2*512=22,528`; and
+6. the logical norm equations are 33,792 per token/local layer and 39,936 per
+   token/global layer, hence exactly 313,344,000 for 150 tokens over 50 local
+   and 10 global layers.
 
-The exact ragged equivalence is
-`VoltaZk.c7_gemma_ragged_norm_bundle_iff_per_use`; local and global
-specializations and the no-cross-term theorem are kernel-checked.  The generic
-combined theorem `VoltaZk.c7_stacked_weight_use_compiler_complete` remains
-useful algebra, but its uniform norm type is not the Gemma runtime refinement.
+The phase-level ragged helper remains
+`VoltaZk.c7_gemma_ragged_norm_bundle_iff_per_use`. The row-complete statements
+are `c7_gemma_matrix_100_prompt_50_response_rows`,
+`c7_gemma_local_norm_all_150_rows_and_heads`,
+`c7_gemma_global_norm_all_150_rows_and_heads`,
+`c7_gemma_tied_embedding_150_lookup_selected_50_logits` and
+`c7_gemma_final_norm_all_149_active_rows`. They use explicit row and dependent
+head-use indices, not an unchecked random linear combination, so they
+introduce no additional RLC error term. They are algebraic statements:
+equality between the Rust-emitted runtime rows and these Lean inputs is still
+a separate blocked refinement. The logits theorem uses an explicit selector:
+decision zero reads prefill row 99, and decisions one through 49 read the 49
+singleton decode rows; it does not accept an unrelated hidden matrix.
+The generic combined theorem
+`VoltaZk.c7_stacked_weight_use_compiler_complete` remains useful algebra, but
+its uniform norm type and two phase representatives are not that runtime
+refinement.
 
 The frozen target census is:
 
@@ -108,6 +128,26 @@ zero B/KV layout rows and zero base-GKR cohort rows rather than filling missing
 values with synthetic defaults. Thus the static frontend census passes while
 checkpoint-value-to-relation refinement remains `BLOCKED`.
 
+The new Gemma-only QSPEC manifest and Python/Rust compilers expand the frozen
+51-execution schedule into exactly 79,963 high-level operator-invocation
+records and 101,322 tensor-output dependency edges. They count 20,910 learned
+matrix invocations inside layers and 20,960 including the 50 one-row LM-head
+applications. An explicit `last_row_select` and
+`logits_to_keep_per_decision=1` prevent charging a full prompt logit matrix.
+The 472 compiled W owner names equal the canonical terminal-manifest owner set,
+and the prompt IDs, positions, attention masks, embedding scale and 60 layer
+scalars are named public inputs. No output-pruned implementation or theorem is
+claimed.
+
+This artifact is deliberately classified as a declared high-level operator
+invocation DAG. Nodes do not yet carry exact tensor shapes, dtype, active view,
+padding or integer-lowering rows; the pinned runtime dependency closure is also
+partial. Therefore it is not the full semantic DAG, exact wire census or a
+base-GKR circuit and receives no GKR, certificate, performance or hardware
+credit. In particular, one Q/K-norm invocation node contains all its heads; it
+must not be confused with one vector equation. The separate Lean census keeps
+those head uses explicit.
+
 ## 3. Proved fixed-prefix numerator; concrete Q64 bridge open
 
 For `T=480`, the existing scalar ProductClosure theorem has two bad branches:
@@ -134,9 +174,10 @@ epsilon_stacked_product
 Lean proves the abstract `480+2=482` root bound and normalizes this rational
 budget expression.  It does not yet prove that concrete C7 Fp3 has the required
 cardinality and field bridge, that the concrete verifier refines
-`prodBatch_sound_scalar`, that the C7 transcript fixes the message before `chi`
-while keeping it independent of `Delta`, or that one classical-ROM Q64 factor
-covers all sessions and attempts.  Therefore the 119.087-bit value is
+`prodBatch_sound_scalar`, that the C7 transcript fixes the claims/triples
+before `chi` while allowing the response message to depend on `chi` but never
+on secret `Delta`, or that one classical-ROM Q64 factor covers all sessions
+and attempts. Therefore the 119.087-bit value is
 conditional and its C7/Q64 instantiation remains `BLOCKED`.
 
 This is not the base GKR of the transformer.  Base-GKR rounds, degrees, common
@@ -173,6 +214,16 @@ next root fails. Spending that diagnostic headroom would leave about
 `1.01e-16` of the 78-bit error budget and is not the active allocation. No
 current artifact supplies Gemma values for `K`, `d`, `n`, common points or
 final links, so none of these ceilings is a concrete GKR term.
+
+The new Lean theorem `c7_gemma_i16_dot_accumulator_bound` proves from explicit
+hypotheses that any signed-i16 dot product of width at most 21,504 has absolute
+value at most 23,088,334,918,656. A companion theorem proves this is strictly
+below half the Goldilocks modulus, so no centered-field wrap occurs for such a
+dot product. This closes one arithmetic lemma only. The QSPEC compiler has not
+yet proved that every runtime operand, requantization point and non-dot
+operation satisfies the hypotheses, and the operator DAG has not been lowered
+to base-GKR rows. Consequently there is still no concrete new Gemma GKR error
+term to add or credit.
 
 ## 4. 78-bit admission contract
 
@@ -271,19 +322,35 @@ tests/test_c7_d126_gemma_metadata.py
 tests/test_c7_d126_gemma_workload.py
 scripts/c7_d126_gemma_quant_contract.py
 tests/test_c7_d126_gemma_quant_contract.py
+manifests/c7-d126-gemma31b-qspec-dag-v1.json
+scripts/c7_d126_gemma_qspec_dag.py
+tests/test_c7_d126_gemma_qspec_dag.py
+scripts/c7_d126_gemma_weight_ingest.py
+tests/test_c7_d126_gemma_weight_ingest.py
+docs/c7-d126-rowfold-two-pass-disposition.md
+scripts/c7_d126_rowfold_two_pass.py
+tests/test_c7_d126_rowfold_two_pass.py
 scripts/budget_c7_d126_gemma_static.py
 tests/test_budget_c7_d126_gemma_static.py
 scripts/c7_d126_gemma_h100_liveness.py
 tests/test_c7_d126_gemma_h100_liveness.py
 rust/volta-pcs/src/c7_gemma_frontend.rs
 rust/volta-pcs/tests/gemma31b_frontend.rs
+rust/volta-pcs/src/gemma31b_qspec_dag.rs
+rust/volta-pcs/tests/gemma31b_qspec_dag.rs
 lean/VoltaZk/C7GemmaGKR.lean
+lean/VoltaZk/C7GemmaQuantAccumulator.lean
 ```
 
 They fail closed on any model revision, context, q vector, terminal count or
 reducer count that differs from the frozen Gemma profile.  They check:
 
-- the 472/480/0 census and 481 known Fp3 correlations;
+- the exact static 472 W / 480 total / zero-reducer declaration and 481 known
+  Fp3 correlations; runtime emission of all 480 remains unproved;
+- the 79,963 high-level operator invocation and 101,322 tensor-edge census,
+  including one-row logits and all named public inputs;
+- source-layout, terminal-order, BF16 RNE, minimum-exponent, source-once hash
+  and fail-closed publication behavior on tiny weight fixtures;
 - q357 W query, leaf, symbol, sibling, hash and byte counts;
 - the abstract 482-root ProductClosure numerator, symbolic heterogeneous GKR
   numerator, conditional Q64 budgets and 78-bit allocation;
@@ -396,9 +463,15 @@ C(N,q,h) = c_source*N + P(q,h),
 ```
 
 with `c_source` independent of `N` and `q`, exactly two packed-W HBM sweeps,
-and no hidden complete transform or output-pruned claim without code.  The
-repository does not yet contain the ROWFOLD relation/compiler, so both this
-bound and the two-sweep gate remain `BLOCKED`.
+and no hidden complete transform or output-pruned claim without code. The
+owner-named ROWFOLD carrier remains `BLOCKED` at intake because no versioned
+report, hash, relation or full algorithm is present. The checked-in intake
+screen freezes the required offline order `C0 -> rho0 -> C1 -> rho1 -> C2`.
+Under separately named standard-WHIR controls, a materialized `2^32`-cell
+post-first-fold state would occupy 34,359,738,368 bytes and exceed the one
+6,442,450,944-byte arena by 27,917,287,424 bytes. That is a conditional
+rejection control, not a derivation or universal impossibility result for the
+missing carrier. Both the complexity and two-sweep gates remain `BLOCKED`.
 
 For a warm resident Gemma-31B model, current low-confidence planning is:
 
@@ -450,27 +523,47 @@ complete private model bodies:
    emitting zero unearned B/KV or GKR rows;
 5. shape-only heterogeneous-GKR numerator and one-axis union lemmas;
 6. a B/KV/event schema exercised only on tiny synthetic fixtures; and
-7. an internal-consistency checker for a caller-supplied static H100 map.
+7. an internal-consistency checker for a caller-supplied static H100 map;
+8. a Gemma-only high-level operator-invocation DAG with exact declared counts,
+   canonical W-owner equality and no base-GKR credit;
+9. row/head-complete Lean norm batching, 149-row final-norm algebra and the
+   conditional signed-i16 dot accumulator bound; and
+10. a tiny-fixture source-once reference weight packer and a fail-closed
+    ROWFOLD intake/conditional standard-WHIR screen.
 
 Still blocked:
 
-1. completion and review of the now-authorized Gemma-only arithmetic
-   specification, followed by execution against the authorized pinned shard
-   bodies, LUTs and bit-exact goldens;
+1. instantiation of every open GemmaQuantV1 exponent, requantization, finite
+   mask and nonlinear-table field, followed by execution against the pinned
+   shard bodies, LUTs and bit-exact goldens;
 2. runtime binding of those values to the 472 relations, the 50 decode IDs,
    real B/KV roots/layouts and concrete base-GKR cohorts;
 3. scheduler common-point, PCS, Fp3 and global-ROM refinements;
-4. ROWFOLD implementation until its exact report, relation and two-pass
-   algorithm are present;
+4. ROWFOLD implementation until an exact versioned report, relation and
+   two-pass algorithm are present, or a new/revised PCS is proved;
 5. any full-chain security, proof-size, two-sweep, complexity or H100 PASS;
 6. provider contact, every pod action, GPU/H100 measurement and production
    work until the separate `GO-RUNPOD` is recorded.
 
+The reference packer accepts exactly one canonical packed filename inside the
+pinned shard directory:
+`gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16`. It acquires
+that path's exclusive lock before creating a large temporary and blocks if it
+finds a crash orphan. Thus two compliant jobs cannot choose different output
+names and create parallel 61.4-GB copies.
+It assumes this directory is controlled by the operator and is not writable by
+an untrusted same-host process. After a crash, the deterministic recovery is:
+verify that no pack process owns the recorded PID; confirm that no final output
+was published; record the exact lock and unique partial path/size; remove only
+those inspected paths; rerun preflight. No automatic orphan deletion is
+allowed.
+
 The next admission run must, in order:
 
-1. approve a Gemma-only arithmetic specification containing every currently
-   null `GemmaQuantV1` field;
-2. separately authorize or supply the two pinned private shard bodies;
+1. obtain the exact ROWFOLD source and derive its relation, or approve a
+   new/revised PCS design satisfying the frozen transcript and resource gates;
+2. record the separate literal `GO-RUNPOD`, then acquire both pinned private
+   shard bodies on an eligible bounded-lifetime pod;
 3. instantiate quantization, LUTs, goldens and Rust/Python bit equality;
 4. bind runtime values and the 50 decode IDs to the 472 relations and compile
    the complete operator DAG;
@@ -486,19 +579,27 @@ The next admission run must, in order:
 
 | Gate | Status |
 | --- | --- |
-| matrix/tied/final stacking algebra | `PASS` |
+| 100+50 matrix and 150-row lookup algebra | `PASS`, algebra only |
+| norm head/use census: 313,344,000 logical equations | `PASS`, algebra only |
+| 149-row final norm and 50-row logits algebra | `PASS`, algebra only |
 | exact ragged six-norm algebra | `PASS` |
 | exact static 480-terminal declaration/census | `PASS` |
 | pinned metadata and 60 scalar values | `PASS`, static only |
 | frozen 100+50 workload | prompt `PASS`; decode/runtime `BLOCKED` |
 | isolated 472-W descriptor frontend | `PASS`, static only |
+| declared high-level operator-invocation DAG census | `PASS`, static only |
+| full semantic/operator-shape DAG | `BLOCKED` |
+| signed-i16 dot accumulator bound | `PASS` from explicit hypotheses; runtime refinement `BLOCKED` |
 | `GemmaQuantV1` | `BLOCKED`, 13 fields missing |
+| source-once reference weight packer | `PASS` on tiny fixtures; full bodies and throughput uncredited |
 | runtime checkpoint-to-472-relations refinement | `BLOCKED` |
 | synthetic B/KV/event compiler structure | `PASS`, no protocol credit |
 | real B/KV layout/events | `BLOCKED` |
 | fixed-prefix ProductClosure numerator | `PASS` for abstract `T+2=482` |
 | generic base-GKR shape formula | `PASS`; runtime common-point and Gemma rows `BLOCKED` |
 | concrete Fp3/transcript/Q64 ProductClosure bridge | `BLOCKED` |
+| owner-named ROWFOLD carrier | `BLOCKED`, identified source/relation absent |
+| standard-WHIR `2^32` retained-state control | conditional `NO-GO` under named assumptions |
 | `SECURITY_78` | conditional arithmetic `PASS`; realized security `BLOCKED` |
 | `SECURITY_84` at q357 | `NO-GO` |
 | `FS_Q64` | `BLOCKED` |

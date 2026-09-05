@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 GEMMA-31B STACKED STATIC BLOCKED — QSPEC/DAG/WEIGHTS/ROWFOLD GO; LOCAL INGEST NO-GO; POD BLOCKED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C7 D126 GEMMA-31B STACKED STATIC BLOCKED — LOCAL QSPEC/ROW/INGEST INTAKE COMPLETE; REAL GKR/ROWFOLD/POD BLOCKED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,27 +11,85 @@ record; no external plan is authoritative.
 Read `c7-d126-gemma31b-static-admission.md`; older designs are supporting
 append-only history.
 
-- **Status.** D126 remains **BLOCKED** for pinned text-only Gemma-31B, context
-  capacity 4,096, 150 live tokens, `q=357`, global offline
-  `Q_FS<=2^64`, 472 W / 480 total terminals and zero use reducers. Realized
-  78-bit security is not yet proved.
-- **Completed evidence.** Pinned metadata covers 1,188 tensors; the 60 public
-  scalar values and 100-token prompt are bound. A new isolated Rust frontend
-  compiles 472 static W descriptors from 772 private tensors and emits zero
-  invented B/KV or GKR rows. Lean binds the scalar CSV and proves the
-  heterogeneous-cohort numerator `K+sum(d)+n+2` plus a one-factor Q64 union
-  bound. The conditional total is 79.481814 bits. The existing `2^-86` GKR
-  reserve holds 4,398,046,508,032 roots; 722,784,653,514,375 more are the exact
-  absolute headroom before 78 bits, not credited capacity.
-- **Hard stops.** `GemmaQuantV1`, full value binding, 50 decode IDs, real B/KV
-  layouts, concrete GKR cohorts, scheduler/PCS/Fp3/ROM refinements, ROWFOLD,
-  maximal certificate and compiler-owned H100 inventory are absent. Static KV
-  capacity is 3,690,987,520 B; live use is 135,168,000 B. No pod is authorized.
-- **Authorization.** Owner GO on 2026-09-05 authorizes Gemma-only QSPEC/DAG,
-  use of both pinned weight bodies and a new ROWFOLD design. The VM cannot hold
-  source plus packed output safely, so local weight ingest is `NO-GO`.
-  Lightweight design/tests remain local. Provider contact, pod creation and
-  hardware execution still require the separate literal `GO-RUNPOD`.
+- **Status.** D126 is **BLOCKED** for pinned text-only Gemma-31B: context 4,096,
+  150 live tokens, `q=357`, offline `Q_FS_global<=2^64`, 472 W / 480 total
+  terminals and zero weight reducers.
+- **Completed evidence.** The Gemma-only compiler fixes 79,963 high-level
+  invocations, 101,322 dependency edges, 313,344,000 norm equations and
+  801,024 final-norm equations. Lean proves row/head-complete weight sharing,
+  the exact final-row selector and the conditional i16 accumulator bound. Tiny
+  fixtures prove source-once weight packing and fail-closed publication. Checks:
+  66 focused Python tests, focused Gemma Rust tests, Lean build, and the Rust
+  workspace excluding one unchanged historical C6 guard pass.
+- **Security.** Conditional arithmetic is 79.481814 bits; realized
+  `SECURITY_78` remains **BLOCKED**, and `SECURITY_84` at q357 is **NO-GO**.
+- **Hard stops.** Exact integer lowering, full shapes/wires, concrete GKR,
+  real B/KV/masks, PCS/ROM, ROWFOLD relation/implementation, certificate and
+  complete H100 inventory are absent. Full local weight ingest is **NO-GO**:
+  source plus packed output needs 123,941,028,808 bytes.
+- **Resume.** Supply the exact ROWFOLD report or authorize `GO-PCS-REDESIGN`.
+  Provider contact, shards and GPU work require literal `GO-RUNPOD`; then run
+  quantization/goldens, semantic lowering, events, certificate and memory map.
+
+- **2026-09-05 — three local Gemma GO scopes complete at static/intake level;
+  exact GKR, ROWFOLD carrier and pod remain BLOCKED.** No provider was
+  contacted, no model body was downloaded and no large artifact was created.
+  All new active artifacts are Gemma-only and do not import parameters from a
+  historical model profile.
+
+  The QSPEC manifest and independent Python/Rust compilers expand the frozen
+  51-execution workload to 79,963 high-level operator invocations and 101,322
+  tensor-output dependency edges. They bind the prompt and other public
+  inputs, cover exactly the 472 canonical W owners and keep the final logits
+  to one selected row per decision without claiming an output-pruned
+  algorithm. The head-aware static census is 313,344,000 norm weighted-element
+  equations. The unpruned final norm has 801,024 equations over 149 rows.
+  Nodes still lack exact shapes, dtype, padding, integer lowering and runtime
+  dependency closure, so this is not an exact wire census or base-GKR circuit.
+
+  `C7GemmaQuantAccumulator.lean` proves that one physical norm bundle covers
+  every token, role, head and coordinate. Local head-use counts are
+  `[1,1,1,1,16,32]`; global counts are `[1,1,1,1,4,32]`. It also proves the
+  exact selector from prefill row 99 plus 49 singleton decode rows to the 50
+  LM-head rows, and proves an i16 dot-product bound of
+  23,088,334,918,656 for width at most 21,504, below half the Goldilocks
+  modulus. Theorems use only the reported standard Mathlib axioms. Runtime
+  refinement of all hypotheses remains blocked.
+
+  The reference ingest validates complete safetensors layout and digest while
+  feeding BF16-to-i16 conversion from the same single sequential source pass.
+  It enforces the minimum per-tensor exponent, canonical 772-tensor order, an
+  exclusive output lock, crash-orphan refusal, fsync and atomic no-overwrite
+  publication. The CLI permits one canonical packed path inside the shard
+  directory, preventing parallel differently named copies. Thirteen
+  tiny-fixture tests pass. The scalar Python path has no
+  production-throughput credit. Full local ingest is `NO-GO`: the two pinned
+  shards need 62,546,338,248 bytes and the packed result 61,394,690,560 bytes.
+
+  The ROWFOLD intake freezes `C0 -> rho0 -> C1 -> rho1 -> C2`, but no named
+  versioned report, digest, relation, pseudocode or implementation is present.
+  Therefore the carrier, `C(N,q,h)=c_source*N+P(q,h)` and two-HBM-sweep gates
+  remain `BLOCKED`. Under separately named standard-WHIR assumptions only, a
+  retained `2^32`-cell state needs 34,359,738,368 bytes and exceeds the
+  6,442,450,944-byte arena by 27,917,287,424 bytes; this is a conditional
+  rejection screen, not a ROWFOLD impossibility proof.
+
+  No exact Gemma GKR term is claimed: the compiler does not yet emit `K`,
+  `d[]`, `n`, common points, final links or PCS rows. The conditional complete
+  allocation remains 79.481814299560 bits and exceeds 78 by 1.481814300 bits,
+  but realized security is `BLOCKED`; 84 bits at q357 is `NO-GO`. The known
+  H100 subtotal is 71,784,140,544 bytes, while `v`, B, chains, GKR,
+  activations, CUDA/runtime, allocator and workspaces remain missing.
+
+  Checks at this boundary: 66 focused Python tests pass; the focused Gemma
+  Rust suites and seven B/KV event tests pass; the full Rust workspace stops
+  only at the unchanged historical C6 source guard, and passes when only that
+  named guard is excluded; the full 3,278-job `lake build VoltaZk` passes.
+  Planning remains unmeasured: 45--50 s prover, about 30 MB complete
+  proof and 6.4--8.2 s verifier on four cores. The 19.186 s storage load is
+  one-time model onboarding, not per response. Rust and Lean build caches were
+  removed; the VM finishes with about 66 GB filesystem headroom and 9.8 GiB
+  available RAM.
 
 - **2026-09-05 — QSPEC/DAG, pinned weights and ROWFOLD design receive owner
   GO; local full-weight ingest is NO-GO; provider remains BLOCKED.** The owner

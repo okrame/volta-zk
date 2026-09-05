@@ -27,9 +27,56 @@ append-only history.
   real B/KV/masks, PCS/ROM, ROWFOLD relation/implementation, certificate and
   complete H100 inventory are absent. Full local weight ingest is **NO-GO**:
   source plus packed output needs 123,941,028,808 bytes.
-- **Resume.** Supply the exact ROWFOLD report or authorize `GO-PCS-REDESIGN`.
-  Provider contact, shards and GPU work require literal `GO-RUNPOD`; then run
-  quantization/goldens, semantic lowering, events, certificate and memory map.
+- **Resume.** The owner GO recorded at `ba9d4c5` already authorizes a new
+  Gemma-only ROWFOLD carrier and its PCS links while the frozen field,
+  transcript, trust and resource bounds stay unchanged; do not request a
+  duplicate ROWFOLD-design GO. Before
+  `GO-RUNPOD`, close locally the source closure, shapes, integer lowering,
+  wires, GKR cohorts/common points, PCS links, B/KV geometry, security,
+  certificate and static memory plan. Provider contact, shards and GPU work
+  still require literal `GO-RUNPOD`; only weight-derived values and hardware
+  measurements may remain open at that boundary.
+
+- **2026-09-05 — owner requires a pre-pod-complete implementation; paid H100
+  is measurement, not protocol discovery.** This corrects the prior resume
+  order without changing the frozen Gemma profile or granting provider access.
+  No provider was contacted and no large artifact was created.
+
+  The checked-in metadata already fixes all 1,188 source-tensor shapes and
+  offsets. The model configuration and the 51-execution workload are enough
+  to compile every logical activation shape, active view, alias, KV-old/new
+  length and attention-mask cell without the private weight bodies. Exact
+  wires and the GKR values `K`, `d[]`, `sum_d` and `n` are outputs of the
+  integer lowering and cohort compiler; common points, `hfin` and PCS links
+  are scheduler/protocol obligations. They are not H100 measurements and must
+  be emitted and checked locally before a pod is requested.
+
+  The existing owner GO at `ba9d4c5` already covers designing ROWFOLD from
+  first principles under the frozen field, offline transcript order, two
+  source sweeps, one 6,442,450,944-byte arena and unchanged trust model. A new
+  owner decision is needed only if that work would change one of those
+  boundaries. The former `GO-PCS-REDESIGN` label was too broad: no new GO is
+  requested for the authorized ROWFOLD carrier, but replacing the underlying
+  PCS, transcript or trust model would require a separate owner decision. None
+  of these decisions is a fallback after a failed RunPod.
+
+  The pre-pod gate now requires: the pinned public runtime-source closure; a
+  shape-stable integer lowering and exact wire census; concrete GKR cohorts,
+  common-point proofs and final PCS links; real B/KV geometry and mask/event
+  scopes; the complete 78-bit calculation; exact certificate framing; the
+  static H100 allocation timeline; a CPU reference prover/verifier on small
+  fixtures; and a native, source-once weight scanner/packer tested bit for bit
+  against the scalar reference. The two-sweep implementation must reject a
+  third source read, and the runbook must fail before paid work on every unmet
+  prerequisite.
+
+  Only values that depend on the full private bodies may remain for a
+  storage-rich remote stage: 772 weight exponents, packed digest, calibrated
+  activation values, full goldens and runtime value binding. Only real CUDA
+  workspace/allocator behavior, HBM traffic, kernel rate and end-to-end time
+  require the H100. The future literal `GO-RUNPOD` will be requested only
+  after the local gate is green; a retry or expanded billed scope requires a
+  new explicit owner GO after the failure is diagnosed.
 
 - **2026-09-05 — three local Gemma GO scopes complete at static/intake level;
   exact GKR, ROWFOLD carrier and pod remain BLOCKED.** No provider was

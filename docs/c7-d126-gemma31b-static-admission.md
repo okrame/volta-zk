@@ -558,22 +558,47 @@ was published; record the exact lock and unique partial path/size; remove only
 those inspected paths; rerun preflight. No automatic orphan deletion is
 allowed.
 
-The next admission run must, in order:
+The owner GO recorded at `ba9d4c5` already authorizes a Gemma-only ROWFOLD
+relation and two-pass algorithm designed from first principles. No duplicate
+ROWFOLD-design GO is required while the frozen field, offline transcript
+order, two source sweeps, one 6,442,450,944-byte arena, underlying PCS and
+trust model remain unchanged. Replacing the underlying PCS or changing any of
+those boundaries requires a new owner decision.
 
-1. obtain the exact ROWFOLD source and derive its relation, or approve a
-   new/revised PCS design satisfying the frozen transcript and resource gates;
-2. record the separate literal `GO-RUNPOD`, then acquire both pinned private
-   shard bodies on an eligible bounded-lifetime pod;
-3. instantiate quantization, LUTs, goldens and Rust/Python bit equality;
-4. bind runtime values and the 50 decode IDs to the 472 relations and compile
+Before requesting `GO-RUNPOD`, local work must, in order:
+
+1. close and pin the small public runtime-source dependency closure;
+2. attach exact shapes, dtype, active views, aliasing, padding and liveness to
    the complete operator DAG;
-5. emit real B/KV `q,U,S,H`, physical roots and lifetime mask loads;
-6. emit every GKR `K,d[],sum_d,n,common-point,hfin,PCS,transcript` row and the
-   complete security-event registry, then close the Fp3/ROM refinements;
-7. serialize the maximal certificate and compiler-owned H100 allocation
-   timeline, including CUDA fences and allocator trace, and close every static
-   gate; and
-8. only then request a separate hardware-measurement authorization.
+3. freeze a shape-stable integer lowering, emit every primitive row and derive
+   the exact wire census without using checkpoint values as topology;
+4. emit real B/KV geometry and every GKR
+   `K,d[],sum_d,n,common-point,hfin,PCS,transcript` row;
+5. prove the common-point scheduler, final authenticated PCS link, Fp3/global
+   Q64 composition, two-sweep property and
+   `C(N,q,h)=c_source*N+P(q,h)` bound;
+6. implement and test the prover/verifier, codec and source-read guard on small
+   fixtures, including rejection of any third packed-W sweep;
+7. serialize the maximal synthetic certificate, recompute every security and
+   mask event, and compile the complete static H100 allocation timeline; and
+8. provide a fail-fast runbook plus a native source-once exponent scanner and
+   packer whose small-fixture output equals the scalar Python reference bit for
+   bit.
+
+Only after all applicable local gates are green may the owner be asked for the
+literal `GO-RUNPOD`. That future bounded run may then:
+
+1. acquire and verify the two private shard bodies on eligible storage;
+2. derive the 772 weight exponents, packed digest, activation calibration,
+   full goldens and Rust/Python runtime-value equality;
+3. bind those values and the 50 decode IDs to the already compiled relations;
+4. confirm CUDA liveness and allocator fences; and
+5. measure HBM traffic, kernel throughput, peak allocation, prover time,
+   serialized proof bytes and verifier time.
+
+A second billed-run authorization is needed only for a retry or a materially
+expanded scope after a failed run; it is not part of the normal successful
+path. No provider contact or pod action is authorized yet.
 
 ## 9. Gate status
 

@@ -8,8 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c7-d126-gemma31b-static-admission.md`; older designs are supporting
-append-only history.
+Read `c7-d126-gemma31b-static-admission.md`; older designs are append-only history.
 
 - **Status.** D126 is **BLOCKED** for pinned text-only Gemma-31B: context 4,096,
   150 live tokens, `q=357`, offline `Q_FS_global<=2^64`, 472 W / 480 total
@@ -17,15 +16,19 @@ append-only history.
 - **Completed evidence.** Logical shapes cover 79,963 operations, 83,023
   output ports and all 772 private tensors. Native BF16 tensor packing passes
   exhaustive arithmetic and Python byte-equality checks. Prior Lean weight-use
-  algebra is unchanged. Current checks: 74 focused Python tests and 12 focused
-  Rust tests pass. These are component/static checks, not a full Gemma run.
+  algebra is unchanged. Current checks: 76 focused non-native Python tests
+  pass; prior native/Rust checks remain component evidence. W subcodec counts
+  are recompiled from Gemma geometry. No full Gemma run exists.
+- **Targets, not predictions.** 30 MB and 45--50 s are unsubstantiated until
+  the carrier/codec is complete. The 25.482-MB proxy already includes
+  hypothetical B/KV and GKR, not just known records.
 - **Security.** Conditional arithmetic is 79.481814 bits; realized
   `SECURITY_78` remains **BLOCKED**, and `SECURITY_84` at q357 is **NO-GO**.
 - **Hard stops.** Exact integer lowering/wires, concrete GKR,
   real B/KV/masks, PCS/ROM, ROWFOLD relation/implementation, certificate and
   complete H100 inventory are absent. Full local weight ingest is **NO-GO**:
   source plus packed output needs 123,941,028,808 bytes.
-- **Resume.** The owner GO recorded at `ba9d4c5` already authorizes a new
+- **Resume.** The owner GO at `ba9d4c5` authorizes a new
   Gemma-only ROWFOLD carrier and its PCS links while the frozen field,
   transcript, trust and resource bounds stay unchanged; do not request a
   duplicate ROWFOLD-design GO. Before `GO-RUNPOD`, close source closure, lowering,
@@ -33,6 +36,61 @@ append-only history.
   certificate and static memory plan. Provider contact, shards and GPU work
   still require literal `GO-RUNPOD`; only weight-derived values and hardware
   measurements may remain open at that boundary.
+
+- **2026-09-05 — proof-size provenance corrected; dense-fold and early-query
+  shortcuts rejected locally; no complete carrier constructed.** The owner
+  asks to complete the missing proof bytes and obtain an actual two-pass,
+  source-linear, no-spill carrier within one 6,442,450,944-byte arena before
+  paid hardware work. The deterministic record count can and must be closed
+  locally, but the construction needed to produce those records is absent.
+
+  The active budget now recomputes every W round's oracle and leaf counts,
+  payload, salts, exact compact-tree frontier and framing directly from the
+  frozen Gemma dimensions/q vector. It imports no historical implementation.
+  The frontier algorithm is independently checked against every opened-leaf
+  subset for compact trees with 1--13 leaves. It reproduces the 4,965,096-byte
+  W opening subcodec and 4,977,268-byte partial reservation including fixed
+  W/all-plane/container allowances. These are reserved subcodec counts, not
+  a complete serializer or jointly attained maxima in a real FS transcript.
+
+  The 25,482,394-byte heuristic includes 11,050,776 bytes of unselected D31
+  B/KV substitutes, 9,379,670 bytes of illustrative compute/base-GKR and
+  75,248 bytes of illustrative MAC/framing. It is neither a lower nor an
+  upper bound. Its apparent 4,517,606-byte headroom to 30 MB is not certified.
+  With the current 4,977,268-byte partial reservation retained, the unfilled
+  target budget is 25,022,732 bytes, including every missing record exactly
+  once; additional W records also have their separate 1,566,985-byte limit.
+  Full certificate size and full-growth reference remain `None`. The
+  45--50-second and four-core verifier ranges remain owner targets, not
+  predictions grounded in a complete execution path. Kernel optimization
+  alone does not establish feasibility.
+
+  Actual selected geometry gives a dense first-fold message of `2^31`
+  Fp3 coefficients, or 51,539,607,552 bytes: eight times the arena. The next
+  materialized encoded oracle would require 824,633,720,832 bytes. This
+  rejects dense materialization only; it is not a general impossibility
+  theorem. A new Goldilocks adversarial fixture constructs a degree-357
+  polynomial that agrees with zero at all 357 early sample points but has
+  value one at the claim point. It rejects equality checks whose samples are
+  revealed before the folded-word commitment, without requiring a hash
+  collision. It does not attack or replace the frozen correctly ordered PCS.
+
+  Primary-source research of Hobbit, ePrint 2025/1214, Construction 4 and
+  Theorem 2, identifies one commitment pass plus two opening passes. That
+  direct schedule is `NO-GO` under the current total two-pass order.
+  Precommitting in setup would be a distinct, unselected relation/schedule
+  needing mask, distance, Q64, retained-state and complete-codec analysis;
+  it receives no transferred security or performance credit. The <1-MB
+  PDF/AnyDoc archive, hashes and exact counterexample are documented in
+  `c7-d126-rowfold-two-pass-disposition.md`. No external code was adopted.
+
+  Verification: 76 focused non-native Python tests pass; no Rust or Lean
+  source changed and neither build was opened. No target cache, large tensor,
+  source shard, provider contact or benchmark run of record was created.
+  Realized SECURITY_78, full certificate, two sweeps, source-linear PCS
+  complexity and complete memory fit remain `BLOCKED`. The authorized local
+  construction task is not achieved by these rejection checks; pod GO
+  remains unavailable until the full pre-pod gates close.
 
 - **2026-09-05 — Gemma logical-shape compiler and native tensor packing
   pass; performance targets and optional-ACK flow are explicit.** The owner

@@ -1,6 +1,8 @@
 # C7 D126 two-pass ROWFOLD intake and screen
 
-**Status:** the owner-named `ROWFOLD` carrier is `BLOCKED` at intake. No
+**Status:** the owner-named `ROWFOLD` carrier is `BLOCKED` at intake. The local
+design GO is already present; this is a construction gap, not a missing GO
+or an H100 measurement. No
 versioned report, digest, relation, pseudocode or compiler with that name is
 present in the repository, its Git refs, or the materials supplied by the
 owner. The numerical standard-WHIR analysis below is an analytic
@@ -115,3 +117,119 @@ oracle length/rate and retained state from that source; prove the candidate
 list exhaustive or add the missing algorithms; implement the checker/compiler;
 then rerun this screen. Changing the setup, transcript, trust model, field, or
 interactive relation is a new protocol decision and receives no credit here.
+
+## 2026-09-05: concrete construction checks
+
+### Selected q357 dense-fold control
+
+The new W reservation compiler also derives a rejection control from the
+actual selected profile, rather than the older favorable eight-byte screen.
+There are 30,697,345,280 packed scalars; power-of-two padding gives `2^35`
+message cells. After the first four-variable fold, the straightforward dense
+message has `2^31` Fp3 coefficients:
+
+```text
+dense first-fold message: 2^31 * 24 = 51,539,607,552 bytes
+one total arena:                       6,442,450,944 bytes
+```
+
+This materialization alone is eight times the arena, before simultaneous
+input or scratch. Materializing the selected next encoded oracle would be
+still larger: `2^(31+4)*24 = 824,633,720,832` bytes. Both figures are computed
+symbolically; neither allocation was attempted. They reject the concrete
+**dense materialization** strategy, not every compressed/streaming algorithm.
+
+### Primary-source candidate: Hobbit
+
+Christodoulos Pappas and Dimitrios Papadopoulos, *Hobbit: Space-Efficient
+zkSNARK with Optimal Prover Time*, ePrint 2025/1214, approved 2025-07-07,
+[full paper](https://eprint.iacr.org/2025/1214). The PDF and AnyDoc Markdown
+are archived as `2025-1214-hobbit.{pdf,md}` under the owner's research archive.
+PDF SHA-256 is
+`1fad6172a3299c31c4bc589e0bb3ce03751dbe6ec07dc2f1d97eb19ebfec4972`;
+Markdown SHA-256 is
+`f5754080284f8a5311a195954f9e4f973add4d27663e596460258febfa66870e`.
+No external implementation was executed or adopted.
+
+Construction 4 and Theorem 2 explicitly require:
+
+1. one source pass for `Commit`, retaining column hashes;
+2. one source pass for the two aggregate rows, then their commitment;
+3. only after that commitment, sample column indices and make another source
+   pass to recover the selected encoded columns.
+
+This is **three passes for commitment plus opening**, not two. The sumcheck
+in its Theorem 1 does use two passes, but is not the complete PCS. Applying
+Construction 4 directly to the current two-pass commitment/opening order is
+`NO-GO`.
+
+Precommitting the original oracle in offline setup would leave two *opening*
+passes per attempt. This is a distinct candidate, not a proof that the paper
+is globally unusable. It changes the current carrier relation/setup schedule
+and requires new accounting: the retained column hashes and refresh work,
+tensor-code distance and Q64 query count, all inner PCS/GKR proofs, masked
+authenticated openings and the lifetime leakage theorem. Its original clear
+column disclosures cannot simply replace VOLE-authenticated openings. It is
+`BLOCKED_NOT_SELECTED`, with no transfer of q357 or 79.481814-bit arithmetic.
+
+Writing `b` for the paper's chunk length (not our B plane), its actual
+expressions include `q*N/b` disclosed field elements and `b*log(b)` inner
+PCS work. These terms must be bounded explicitly when selecting `b` as a
+function of the source length and arena budget. The paper's `O(N)` with a
+fixed security parameter does not by itself establish our stronger
+`c_source*N + P(q,h)` condition. No claim about output-pruned repository
+code or an exact 6.44-GB peak follows from the paper's `O(b)` space statement.
+
+### Constructive rejection of the early-query shortcut
+
+There is a simple exact counterexample to a proposed way to avoid the last
+read: sample the comparison points **before** committing the folded word,
+then check source-to-fold equality only at those points. Let the true folded
+polynomial be zero, let the distinct early samples be `x_1,...,x_q`, and let
+`z` be a different claim point. If the allowed message dimension is at least
+`q+1`, set
+
+```text
+h(X) = product_j (X-x_j) / product_j (z-x_j).
+```
+
+All denominators are nonzero in the field. This is a valid polynomial of
+degree q with `h(x_j)=0` for every checked point, but `h(z)=1`, whereas the
+true value is zero. The malicious prover can commit to the actual encoding
+of h; even a perfect low-degree test and valid original-word Merkle paths do
+not repair the missing equality. No hash collision is needed.
+
+The executable fixture uses the **unchanged Goldilocks field**, samples
+`1..357`, and `z=358`. It constructs all 358 coefficients and checks the
+equalities with an independent polynomial evaluator. This refutes the
+restricted early-query equality test, not the correctly ordered frozen
+PCS: any independent authenticated source-evaluation check would have to be
+analysed separately. Consequently we do not move queries early to claim two
+passes, and we do not count this rejection test as a new PCS implementation.
+
+### Why a small folded summary is not automatically enough
+
+A useful conditional lower bound is elementary. Assume an injective encoding
+of arbitrary N packed i16 values, and a retained state from which **every**
+original-oracle coordinate can be recovered exactly, with no further source
+reads or external source-dependent storage. Fix the encoder's randomness.
+If two distinct sources produced the same retained state, the answering
+algorithm would return the same full codeword for both, contradicting
+injectivity. Thus the state needs at least `16*N` bits. Include every retained
+source-dependent root, transcript and auxiliary value in that state.
+
+For the current private-weight length this is 61,394,690,560 bytes, not
+6,442,450,944. This rules out that **universal exact-recovery summary** claim.
+It is not a universal impossibility proof: a protocol might avoid arbitrary
+coordinate recovery, use a different relation, or exploit source restrictions
+that invalidate the premise. We do not transfer this conditional bound to
+all offline Fiat--Shamir algorithms or to a single hard-coded checkpoint.
+
+### Result
+
+No complete permitted two-pass carrier was constructed by these checks.
+`COMPLEXITY_BOUND`, `TWO_HBM_SWEEPS` and the full certificate remain
+`BLOCKED`. The explicit standard-WHIR memory choice, direct three-pass
+Hobbit schedule and early-query shortcut each receive only their scoped
+`NO-GO`. Complete cryptographic construction remains a pre-pod task; an H100
+run cannot supply its missing relation or soundness proof.

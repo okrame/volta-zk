@@ -92,6 +92,54 @@ def evaluate_candidate(name: str, profile: dict = PROFILE) -> dict:
         raise RowfoldDispositionError(f"unknown disposition: {name}") from error
 
 
+def early_query_counterexample(queries: int = 357) -> dict:
+    """Reject early-query equality testing; NOT an attack on the frozen PCS.
+
+    Honest polynomial is zero. Once sample points are known, a degree-q
+    polynomial can agree at all q samples yet claim value one elsewhere.
+    The bound below limits only this small executable fixture, not an attacker.
+    """
+    if type(queries) is not int or not 1 <= queries <= 512:
+        raise RowfoldDispositionError("fixture needs 1..512 sample points")
+    prime = (1 << 64) - (1 << 32) + 1
+    coefficients = [1]
+    for point in range(1, queries + 1):
+        product = [0] * (len(coefficients) + 1)
+        for degree, value in enumerate(coefficients):
+            product[degree] = (product[degree] - point * value) % prime
+            product[degree + 1] = (product[degree + 1] + value) % prime
+        coefficients = product
+
+    def evaluate(point: int) -> int:
+        result = 0
+        for coefficient in reversed(coefficients):
+            result = (result * point + coefficient) % prime
+        return result
+
+    target = queries + 1
+    scale = pow(evaluate(target), -1, prime)
+    coefficients = [coefficient * scale % prime for coefficient in coefficients]
+    sample_values = [evaluate(point) for point in range(1, queries + 1)]
+    assert not any(sample_values) and evaluate(target) == 1
+    return {
+        "classification": "restricted-early-query-counterexample",
+        "base_field_modulus": prime, "queries": queries,
+        "honest_polynomial": [0], "forged_polynomial": coefficients,
+        "forged_degree": queries, "minimum_message_dimension": queries + 1,
+        "sample_points": list(range(1, queries + 1)),
+        "sample_values": sample_values, "claim_point": target,
+        "true_claim": 0, "forged_claim": evaluate(target),
+        "conditional_on": [
+            "sample points are known before the folded-word commitment",
+            "degree allowance includes q and the claim point is not sampled",
+            "source-to-fold equality is checked only at these sample points",
+        ],
+        "hash_collision_required": False,
+        "attack_on_frozen_correct_order_claimed": False,
+        "verdict": "NO-GO_IF_ASSUMPTIONS_HOLD",
+    }
+
+
 def build_report(profile: dict = PROFILE) -> dict:
     validate_profile(profile)
     candidates = [
@@ -125,6 +173,17 @@ def build_report(profile: dict = PROFILE) -> dict:
             "controls_are_exhaustive": False,
             "verdict": "NO-GO_IF_ASSUMPTIONS_HOLD",
             "candidates": candidates,
+        },
+        "early_query_local_equality_control": early_query_counterexample(),
+        "hobbit_construction_4_control": {
+            "source": "https://eprint.iacr.org/2025/1214",
+            "pdf_sha256": "1fad6172a3299c31c4bc589e0bb3ce03751dbe6ec07dc2f1d97eb19ebfec4972",
+            "commit_source_passes": 1,
+            "open_source_passes": 2,
+            "commit_plus_open_source_passes": 3,
+            "current_two_pass_order_verdict": "NO-GO",
+            "setup_precommitted_variant": "BLOCKED_NOT_SELECTED",
+            "scope": "published schedule, not a Gemma implementation or a universal lower bound",
         },
         "global_gates": {
             "COMPLEXITY_BOUND": "BLOCKED",

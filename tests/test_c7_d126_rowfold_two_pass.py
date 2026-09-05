@@ -65,3 +65,30 @@ def test_profile_drift_and_unknown_dispositions_fail_closed() -> None:
         except module.RowfoldDispositionError:
             continue
         raise AssertionError("invalid ROWFOLD input was accepted")
+
+
+def test_early_queries_allow_a_different_valid_low_degree_polynomial() -> None:
+    module = load_module()
+    for queries in (1, 2, 16, 357):
+        row = module.early_query_counterexample(queries)
+        prime = row["base_field_modulus"]
+        coefficients = row["forged_polynomial"]
+        # Independent evaluation, not the producer's Horner implementation.
+        def evaluate(point):
+            return sum(value * pow(point, degree, prime)
+                       for degree, value in enumerate(coefficients)) % prime
+
+        assert len(coefficients) == queries + 1
+        assert coefficients[-1] != 0
+        assert all(evaluate(point) == 0 for point in row["sample_points"])
+        assert evaluate(row["claim_point"]) == 1 != row["true_claim"]
+        assert evaluate(0) != 0  # A later independent check can reject it.
+        assert row["hash_collision_required"] is False
+        assert row["attack_on_frozen_correct_order_claimed"] is False
+
+
+def test_hobbit_commit_pass_is_not_hidden_in_two_open_passes() -> None:
+    control = load_module().build_report()["hobbit_construction_4_control"]
+    assert control["commit_source_passes"] + control["open_source_passes"] == 3
+    assert control["current_two_pass_order_verdict"] == "NO-GO"
+    assert control["setup_precommitted_variant"] == "BLOCKED_NOT_SELECTED"

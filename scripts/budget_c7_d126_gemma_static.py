@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import heapq
+import itertools
 import json
 import math
 from collections.abc import Mapping
@@ -387,6 +389,97 @@ def validate_profile(profile: Mapping[str, object]) -> None:
             )
 
 
+def compact_merkle_max_siblings(leaves: int, opened: int) -> int:
+    """Exact reserved frontier for largest-power-of-two-left compact trees.
+
+    Maximizing siblings is equivalent to maximizing visited internal nodes:
+    H = I + 1 - opened. Child optima have decreasing marginal gains; merge
+    those gains and add the root once. Only `opened` gains are retained, not
+    the tree. This counts authentication, not an output-pruned encoder.
+    """
+    if (type(leaves) is not int or type(opened) is not int
+            or not 1 <= opened <= leaves):
+        raise ValueError("invalid compact-tree reservation")
+
+    def gains(count: int) -> list[int]:
+        height = count.bit_length() - 1
+        if count == 1 << height:
+            return [height - (i - 1).bit_length()
+                    for i in range(1, min(count, opened) + 1)]
+        left = 1 << height
+        merged = list(itertools.islice(
+            heapq.merge(gains(left), gains(count - left), reverse=True), opened
+        ))
+        merged[0] += 1
+        return merged
+
+    return sum(gains(leaves)) + 1 - opened
+
+
+def w_opening_reservation(profile: Mapping[str, object]) -> dict[str, object]:
+    """Recompile only the frozen W subcodec, never the missing PCS proof.
+
+    Separate leaf/frontier caps are reservations, not a claim that all maxima
+    occur in one FS transcript. No historical budget/code is imported.
+    """
+    validate_profile(profile)
+    remaining = (PACKED_W_BYTES // I16_BYTES - 1).bit_length()
+    rows = []
+    for index, (fold, rate, queries) in enumerate(zip(
+        GEMMA_FOLD_WIDTHS, GEMMA_INVERSE_RATE_EXPONENTS,
+        profile["q_by_round"], strict=True,
+    )):
+        limbs = 1 if index == 0 else 3
+        oracle_limbs = (1 << (remaining + rate)) * limbs
+        leaves = (oracle_limbs + 140) // 141
+        block_limbs = (1 << fold) * limbs
+        opened = min(leaves, queries * ((block_limbs + 280) // 141))
+        visible = 141 * opened
+        siblings = compact_merkle_max_siblings(leaves, opened)
+        rows.append({
+            "round": index, "queries": queries, "fold_width": fold,
+            "oracle_fp_limbs": oracle_limbs, "logical_leaves": leaves,
+            "full_oracle_payload_bytes": oracle_limbs * BASE_CORRECTION_BYTES,
+            "dense_folded_message_fp3_bytes": (1 << (remaining - fold)) * FP3_VALUE_BYTES,
+            "unstacked_fp_atoms": queries * block_limbs,
+            "opened_leaves": opened, "visible_fp": visible,
+            "merkle_siblings": siblings,
+            "payload_bytes": BASE_CORRECTION_BYTES * visible,
+            "salt_bytes": 32 * opened,
+            "multiproof_bytes": 4 + 32 * siblings,
+            "opening_frame_bytes": 16,
+            "rederived_fold_challenge_bytes": 16 + FP3_VALUE_BYTES * fold,
+        })
+        remaining -= fold
+    totals = {key: sum(row[key] for row in rows) for key in (
+        "queries", "unstacked_fp_atoms", "opened_leaves", "visible_fp",
+        "merkle_siblings", "payload_bytes", "salt_bytes", "multiproof_bytes",
+        "opening_frame_bytes", "rederived_fold_challenge_bytes",
+    )}
+    fixed_records = {
+        "codec_header": 16,
+        "auxiliary_roots_and_frames": (len(rows) - 1) * (16 + 32),
+        "tail_and_frame": 16 + (1 << remaining) * FP3_VALUE_BYTES,
+        "terminal_adapter_and_frame": 16 + FP3_VALUE_BYTES,
+    }
+    prover_bytes = sum(fixed_records.values()) + sum(totals[key] for key in (
+        "payload_bytes", "salt_bytes", "multiproof_bytes", "opening_frame_bytes",
+    ))
+    internal = totals["merkle_siblings"] + totals["opened_leaves"] - len(rows)
+    return {
+        "classification": "exact-subcodec-reservation-not-full-certificate",
+        "rows": rows, "totals": totals, "fixed_records": fixed_records,
+        "p_to_v_bytes": prover_bytes,
+        "rederived_v_to_p_bytes": totals["rederived_fold_challenge_bytes"]
+        + 16 + 4 * totals["queries"],
+        "verifier_internal_hashes": internal,
+        "verifier_hashes_including_opened_leaves": internal + totals["opened_leaves"],
+        "complete_serializer_present": False,
+        "joint_attainability_of_reservation_caps_claimed": False,
+        "protocol_credit": False,
+    }
+
+
 def build_report(profile: Mapping[str, object] | None = None) -> dict[str, object]:
     selected = expected_profile() if profile is None else dict(profile)
     validate_profile(selected)
@@ -422,8 +515,10 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
         == int(selected["checkpoint_tensor_count"])
     )
 
-    w_stream_p_to_v = 4_965_096
-    w_stream_v_to_p = 6_508
+    w_reservation = w_opening_reservation(selected)
+    w_totals = w_reservation["totals"]
+    w_stream_p_to_v = w_reservation["p_to_v_bytes"]
+    w_stream_v_to_p = w_reservation["rederived_v_to_p_bytes"]
     amended_fixed_w_p_to_v = 11_604
     amended_fixed_w_v_to_p = 120
     offline_fs_w_floor = w_stream_p_to_v + amended_fixed_w_p_to_v
@@ -436,14 +531,16 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
     w_record_target_105 = 5_496_695
     w_record_cap = 6_543_685
     w_record_cap_150 = 7_852_422
-    four_plane_proxy = (
-        offline_fs_w_floor
-        + 3 * 3_683_592
-        + 9_379_670
-        + 75_248
-    )
+    # Historical heuristic components are exposed, never filled in as records.
+    proxy_components = {
+        "W_subcodec_and_fixed_records": offline_fs_w_floor,
+        "three_unselected_D31_B_KV_streams": 3 * 3_683_592,
+        "illustrative_compute_base_GKR": 9_379_670,
+        "illustrative_MAC_and_framing": 75_248,
+    }
+    four_plane_proxy = sum(proxy_components.values())
 
-    visible_fp_per_attempt = 399_594
+    visible_fp_per_attempt = w_totals["visible_fp"]
     response_attempt_reservations_per_root = 4_096
     lifecycle_load_reserve_equivalent_per_root = 512
     root_epochs = 256
@@ -525,13 +622,16 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
             "non_gemma_or_legacy_profiles_reject": True,
         },
         "wire": {
-            "q_open": 1_417,
-            "unstacked_fp_atoms": 45_456,
-            "opened_leaves": 2_834,
+            "w_subcodec_reservation": w_reservation,
+            "q_open": w_totals["queries"],
+            "unstacked_fp_atoms": w_totals["unstacked_fp_atoms"],
+            "opened_leaves": w_totals["opened_leaves"],
             "visible_fp": visible_fp_per_attempt,
-            "merkle_siblings": 52_361,
-            "verifier_internal_hashes": 55_187,
-            "verifier_hashes_including_opened_leaves": 58_021,
+            "merkle_siblings": w_totals["merkle_siblings"],
+            "verifier_internal_hashes": w_reservation["verifier_internal_hashes"],
+            "verifier_hashes_including_opened_leaves": w_reservation[
+                "verifier_hashes_including_opened_leaves"
+            ],
             "q357_w_stream_p_to_v_bytes": w_stream_p_to_v,
             "q357_w_stream_v_to_p_bytes": w_stream_v_to_p,
             "fixed_outer_p_to_v_bytes": 11_796,
@@ -561,6 +661,15 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
             "partial_slice_within_growth": partial_certificate
             <= 3 * frozen_small_reference,
             "four_plane_planning_proxy_bytes": four_plane_proxy,
+            "proxy_components_bytes": proxy_components,
+            "proxy_is_lower_or_upper_bound": False,
+            "proxy_unknown_remainder_bytes": None,
+            "full_certificate_30MB_target_bytes": 30_000_000,
+            "conditional_30MB_allowance_after_partial_reservation_bytes": (
+                30_000_000 - partial_certificate
+            ),
+            "full_growth_reference_bytes": None,
+            "full_growth_ratio": None,
             "full_certificate_bytes": None,
             "missing": [
                 "compiled B/KV streams",
@@ -646,6 +755,12 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
             "complexity_required": "C(N,q,h)=c_source*N+P(q,h)",
             "compiled_c_source": None,
             "compiled_P": None,
+            "selected_dense_first_fold_control": {
+                "retained_bytes": w_reservation["rows"][0]["dense_folded_message_fp3_bytes"],
+                "arena_cap_bytes": ROWFOLD_TOTAL_ARENA_CAP_BYTES,
+                "conditional_on": "retain every coefficient of the padded first-folded message as Fp3",
+                "verdict": NO_GO,
+            },
             "c_source_independent_of_q_and_N": None,
             "forbidden_terms": ["qN", "N log q", "N log N"],
             "rowfold_report_present": False,
@@ -656,6 +771,9 @@ def build_report(profile: Mapping[str, object] | None = None) -> dict[str, objec
             "credit": False,
         },
         "planning_estimates": {
+            "classification": "owner-targets-not-predictions",
+            "complete_cryptographic_path_present": False,
+            "kernel_optimization_alone_suffices": False,
             "warm_resident_model": True,
             "prover_seconds_low": 45.0,
             "prover_seconds_high": 50.0,

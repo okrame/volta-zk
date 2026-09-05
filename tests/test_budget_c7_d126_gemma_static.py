@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import itertools
 import sys
 from fractions import Fraction
 from pathlib import Path
@@ -168,6 +169,68 @@ def test_gemma_census_and_q357_wire_slice_are_exact_but_not_complete() -> None:
     assert wire["full_certificate_bytes"] is None
     assert wire["status"] == "BLOCKED"
     assert wire["credit"] is False
+
+
+def test_compact_frontier_matches_every_small_tree_opening() -> None:
+    budget = load_budget_module()
+
+    def frontier(start, leaves, selected):
+        if not any(start <= index < start + leaves for index in selected):
+            return 1
+        if leaves == 1:
+            return 0
+        left = 1 << ((leaves - 1).bit_length() - 1)
+        return (frontier(start, left, selected)
+                + frontier(start + left, leaves - left, selected))
+
+    for leaves in range(1, 14):
+        for opened in range(1, leaves + 1):
+            expected = max(frontier(0, leaves, selected) for selected in
+                           itertools.combinations(range(leaves), opened))
+            assert budget.compact_merkle_max_siblings(leaves, opened) == expected
+    for leaves, opened in ((0, 0), (1, 0), (1, 2), (True, 1), (4, 1.0)):
+        with pytest.raises(ValueError):
+            budget.compact_merkle_max_siblings(leaves, opened)
+
+
+def test_w_reservation_is_recompiled_and_proxy_never_becomes_a_full_size() -> None:
+    budget = load_budget_module()
+    wire = budget.build_report()["wire"]
+    reservation = wire["w_subcodec_reservation"]
+    rows = reservation["rows"]
+    assert [row["logical_leaves"] for row in rows] == [
+        487_372_176, 731_058_264, 365_529_132, 182_764_566,
+        91_382_283, 45_691_142, 22_845_571, 11_422_786,
+    ]
+    assert reservation["totals"]["payload_bytes"] == 3_196_752
+    assert reservation["totals"]["salt_bytes"] == 90_688
+    assert reservation["totals"]["multiproof_bytes"] == 1_675_584
+    assert reservation["p_to_v_bytes"] == sum(
+        row[key] for row in rows for key in (
+            "payload_bytes", "salt_bytes", "multiproof_bytes", "opening_frame_bytes"
+        )
+    ) + sum(reservation["fixed_records"].values()) == 4_965_096
+    assert reservation["complete_serializer_present"] is False
+    assert reservation["joint_attainability_of_reservation_caps_claimed"] is False
+    assert reservation["protocol_credit"] is False
+    assert rows[0]["dense_folded_message_fp3_bytes"] == 51_539_607_552
+    assert rows[1]["full_oracle_payload_bytes"] == 824_633_720_832
+    dense = budget.build_report()["source_work"]["selected_dense_first_fold_control"]
+    assert dense["retained_bytes"] > dense["arena_cap_bytes"]
+    assert dense["verdict"] == "NO-GO"
+    assert sum(wire["proxy_components_bytes"].values()) == 25_482_394
+    assert wire["proxy_components_bytes"]["illustrative_compute_base_GKR"] == 9_379_670
+    assert wire["proxy_components_bytes"]["three_unselected_D31_B_KV_streams"] == 11_050_776
+    assert wire["conditional_30MB_allowance_after_partial_reservation_bytes"] == 25_022_732
+    assert wire["proxy_is_lower_or_upper_bound"] is False
+    assert wire["proxy_unknown_remainder_bytes"] is None
+    assert wire["full_growth_reference_bytes"] is None
+    assert wire["full_growth_ratio"] is None
+    assert wire["full_certificate_bytes"] is None
+    planning = budget.build_report()["planning_estimates"]
+    assert planning["classification"] == "owner-targets-not-predictions"
+    assert planning["complete_cryptographic_path_present"] is False
+    assert planning["kernel_optimization_alone_suffices"] is False
 
 
 def test_q357_alternative_one_mask_geometry_is_exact_but_w_only() -> None:

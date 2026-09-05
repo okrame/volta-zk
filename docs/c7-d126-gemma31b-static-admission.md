@@ -439,12 +439,51 @@ W 150% outer band / margin           7,852,422 / 2,875,722 B
 four-plane planning proxy           25,482,394 B
 ```
 
-The known slice fits the 100 MB Gemma ceiling and the frozen 3x growth gate.
+This is a **subcodec reservation**, not a complete serialized certificate.
+The report now derives each round's oracle/leaf count, opened-leaf reservation,
+masked payload, salts, exact compact-tree frontier and framing from the active
+Gemma geometry. It imports no historical budget implementation. Independent
+exhaustive small-tree tests check the frontier formula. Separate reservation
+maxima need not be jointly attainable in a single Fiat--Shamir transcript.
+
+The partial slice fits the 100 MB ceiling and its **partial-slice** growth
+comparison. Full-certificate growth cannot use the 3,466,188-byte partial
+historical slice as its denominator: the complete reference is still missing.
 The 125% W cap is the only preregistered cap; 150% is diagnostic only and is
 not an automatic fallback.
 The full certificate remains `BLOCKED` because B/KV, base-GKR, PCS and final
-receipt records do not exist.  The planning value remains about 30 MB; it is
-not certificate credit.
+receipt records do not exist. The 30 MB value is an **owner target, not a
+prediction or a proved bound**.
+
+The 25,482,394-byte proxy is not a known partial certificate awaiting only
+additional positive records. It already contains uncompiled substitutes:
+
+| Proxy component | Bytes | Evidence |
+| --- | ---: | --- |
+| W subcodec plus fixed W records | 4,976,700 | partial reservation only |
+| three hypothetical D31 B/KV streams | 11,050,776 | layouts not selected |
+| illustrative compute/base-GKR | 9,379,670 | no Gemma record compiler |
+| illustrative MAC/framing | 75,248 | not a complete final codec |
+| **Proxy** | **25,482,394** | **neither lower nor upper bound** |
+
+In particular, `30,000,000 - 25,482,394 = 4,517,606` bytes is **not** certified
+remaining headroom. If the present W reservation and 568 bytes of known
+all-plane/container allowance are retained without overlap, the correct
+unfilled *target budget* is `30,000,000 - 4,977,268 = 25,022,732` bytes. It
+must cover all additional W PCS records, all B/KV streams, complete GKR,
+mask/base-case messages, output/receipts and remaining framing exactly once.
+The missing W portion must also fit its separate 1,566,985-byte allowance.
+Neither allowance asserts that the missing construction will fit.
+
+**Pre-pod completion procedure.** Lower the integer DAG and compile GKR
+cohorts/rounds first; select B/KV oracle and mask layouts; construct the actual
+PCS relations and their ordered messages; assign every serialized record to
+one owner (no duplicate framing); derive lengths and padding from those
+records; then serialize bounded synthetic witnesses and compare actual
+lengths with the compiled reservation, including rejection tests. An H100 is
+not needed to establish these deterministic byte counts. The current blocker
+is absent protocol/codec construction, not absent GPU measurements. Missing
+records stay `None`, never zero or historical estimates.
 
 ### Masks
 
@@ -548,9 +587,9 @@ post-first-fold state would occupy 34,359,738,368 bytes and exceed the one
 rejection control, not a derivation or universal impossibility result for the
 missing carrier. Both the complexity and two-sweep gates remain `BLOCKED`.
 
-For a warm resident Gemma-31B model, current low-confidence planning is:
+For a warm resident Gemma-31B model, the owner's targets remain:
 
-| Quantity | Realistic planning estimate |
+| Quantity | Target, not a supported prediction |
 | --- | ---: |
 | prover time | 45--50 s |
 | complete proof size | about 30 MB |
@@ -558,9 +597,13 @@ For a warm resident Gemma-31B model, current low-confidence planning is:
 
 The 19.186-second storage acquisition is charged once to model onboarding,
 not to each response.  The static report freezes these bands and fails if they
-drift, but cannot validate runtime performance.  These estimates receive no
-measurement credit.  The prover estimate is controlled mainly by the real
-fixed-point 16-bit H100 kernel rate.
+drift, but cannot validate runtime performance. There is no complete
+cryptographic execution path from which to estimate its arithmetic, HBM
+traffic or critical path. The previous description as mainly a kernel-rate
+problem was too strong: **both the cryptographic construction and kernel
+engineering remain open**. No confidence interval or 50-second upper bound
+is supported. The four-core verifier estimate is likewise not derived from
+a complete Gemma verifier workload.
 
 The report now records the timing boundaries explicitly. Prover time starts
 at warm request admission and includes inference, response-local correlation

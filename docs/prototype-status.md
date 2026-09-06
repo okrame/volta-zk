@@ -8,34 +8,66 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c7.1-gemma31b-design.md`. C7.1 is the active design; D126 and earlier
-milestones remain historical evidence, not competing authority.
+Read `c7.1-gemma31b-design.md`, the active authority. Earlier designs are
+historical evidence.
 
 - **Objective.** Stateful private-weight Gemma-31B with session VOLE-MAC
   boundaries and committed-weight evaluations: 45–50 s warm prover,
   6.4–8.2 s CPU-only four-core verifier, preferred 30 MB, maximum 35 MB.
   Targets are not measurements.
-- **Owner authorization.** Up to four packed-W proof reads are admitted;
-  inference and proving use the same H100. Total temporary arena remains
-  6,442,450,944 bytes, total GPU peak below 80 billion bytes, no spill/copy.
+- **Owner authorization.** Up to four packed-W proof reads; inference/proving
+  on the same H100. Temporary arena 6,442,450,944 bytes, GPU peak below
+  80 billion bytes, no spill/second weight copy/full codeword.
   Soundness and malicious-verifier privacy must each exceed 78 bits lifetime.
 - **Preserved.** Pinned checkpoint, context 4,096, first workload 100+50,
   Goldilocks/Fp3, offline classical ROM, global Q64 and 2^20 attempts.
-- **Service.** ModelSetup is Delta-independent and model/version-scoped;
-  resident loading, connection, finite capacity, root preparation and attempts
-  have separate frequencies. Multi-pair operation reuses neither slots nor
-  correlations. ACK is optional; context never truncates implicitly.
-- **Evidence.** 86 focused Python tests pass: eight new accounting/arithmetic
-  checks plus 78 regressions. Exact i16 limb and six-product Fp3 diagnostics
-  are not CUDA kernels. No full certificate, security, memory or timing result;
-  Rust/Lean unchanged. Reference VM exposes four Apple ARM64 vCPUs.
+- **Service.** Delta-independent ModelSetup; residency, connection, finite
+  capacity, roots and attempts have separate costs. No slot/correlation reuse;
+  optional ACK, no implicit context truncation.
+- **Evidence.** Existing 86 Python checks cover accounting/arithmetic and
+  regressions, not CUDA kernels or full certificate/security/memory/timing.
+  September 6 documentation checks add no cryptographic evidence; Rust/Lean
+  unchanged.
+- **Flexibility.** Internal budgets, carrier, codec and kernels remain choices.
+  Setup 2.10x means persistent model bytes/packed W; old W 125% is historical
+  comparison, not a C7.1 family cap.
 - **Work boundary.** Local research/small tests only; no provider contact,
   paid GPU, weights or heavy local build. No structural decision is pending.
-- **Continuation.** Close four-pass carrier and blind MAC/PCS composition;
-  compile all records, masks and security events; map allocations and work;
-  validate CPU-only verification and sequential pairs. GPU diagnostics need
-  disposable fixtures and bounded captures. Paid hardware requires explicit
-  spending authorization after local preparation.
+- **Continuation.** Close carrier/blind MAC/PCS and runtime-to-Lean links;
+  compile records, masks, security events, allocations and work. Prepare
+  finite-PCG composition checks before large measurements. Every E2E/heavy
+  run needs authorized hardware; GPU captures stay bounded and disposable.
+  Paid hardware requires explicit spending authorization after local preparation.
+
+- **2026-09-06 — owner-approved design refinements; implementation choices
+  remain open.** C7.1 now names the executable-to-Lean links, concrete offline
+  challenge order, raw-private-MAC disclosure prohibition, honest-party
+  ownership of lifetime counters, and single-cache recovery/retransmission
+  requirements. Durable honest storage excludes arbitrary snapshot rollback;
+  no external allocator, database, codec or kernel is selected by this edit.
+  A conditional lemma remains conditional until its runtime premises are
+  discharged; the 480 declaration is not a compiler-completeness theorem.
+
+  Accounting scopes are explicit: persistent model setup includes packed W
+  and retained model artifacts under 2.10x, or 128,928,850,176 bytes. Setup
+  time, client traffic, transient storage and GPU residency remain separate.
+  D126's 6,543,685-byte W subcodec/125% ceiling is historical comparison
+  evidence, not a second cap on C7.1's redistributable W family budget.
+  The complete 35,000,000-byte ceiling includes response-dependent renewal
+  records and applies to declared continuations, not only genesis. The
+  total temporary arena counts all implementation-controlled transient
+  buffers; reserved capacity and GPU completion govern actual reuse.
+
+  The work plan adds finite-real-PCG composition checks, intermediate
+  CPU/CUDA differentials, complete phase traffic/work and retained-memory
+  checks after accept/reject/refresh. Local work stays small; every E2E and
+  heavy benchmark remains on explicitly authorized hardware, beginning with
+  a small complete case before large assets. No new hardware authorization,
+  protocol implementation, theorem or measured performance is claimed.
+  Verification: `git diff --check` is clean; five local links/fragments,
+  Markdown fences and the exact setup-cap arithmetic check successfully.
+  The active capsule has 241 words. No builds, protocol tests or benchmark
+  artifacts were produced; historical evidence remains unchanged.
 
 - **2026-09-05 — four proof reads admitted; model/connection/capacity costs
   separated; ARM64 verifier and kernel diagnostics specified.** The owner

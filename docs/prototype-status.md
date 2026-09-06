@@ -23,21 +23,46 @@ historical evidence.
   Goldilocks/Fp3, offline classical ROM, global Q64 and 2^20 attempts.
 - **Service.** Delta-independent ModelSetup; residency, connection, finite
   capacity, roots and attempts have separate costs. No slot/correlation reuse;
-  optional ACK, no implicit context truncation.
+  optional ACK, no implicit truncation. Initial service: one sequential user;
+  preserve live KV, reuse only justified inactive memory.
 - **Evidence.** Existing 86 Python checks cover accounting/arithmetic and
   regressions, not CUDA kernels or full certificate/security/memory/timing.
-  September 6 documentation checks add no cryptographic evidence; Rust/Lean
-  unchanged.
+  Documentation checks add no cryptographic evidence; Rust/Lean unchanged.
 - **Flexibility.** Internal budgets, carrier, codec and kernels remain choices.
   Setup 2.10x means persistent model bytes/packed W; old W 125% is historical
   comparison, not a C7.1 family cap.
-- **Work boundary.** Local research/small tests only; no provider contact,
-  paid GPU, weights or heavy local build. No structural decision is pending.
+- **Work boundary.** Small local checks only; no provider, paid GPU, weights
+  or heavy build. No structural decision pending.
 - **Continuation.** Close carrier/blind MAC/PCS and runtime-to-Lean links;
   compile records, masks, security events, allocations and work. Prepare
-  finite-PCG composition checks before large measurements. Every E2E/heavy
-  run needs authorized hardware; GPU captures stay bounded and disposable.
+  finite-PCG composition checks, then real Gemma 100+50 through 4,096 total
+  tokens. Every E2E/heavy run needs authorized hardware; captures stay bounded.
   Paid hardware requires explicit spending authorization after local preparation.
+
+- **2026-09-06 — sequential service memory reuse and initial real E2E
+  context scope clarified.** The owner confirms first real Gemma-31B E2E
+  tests within 4,096 total tokens, counting accepted history, new prompt and
+  generated output. The plan starts at 100+50, exercises continuations and
+  reaches the actual capacity boundary with an appropriately sized workload;
+  intermediate steps remain implementation choices. Full-context latency is
+  measured separately from the original short-workload targets. Complete
+  certificate, memory, soundness and privacy requirements are unchanged.
+
+  One initial user permits sequential inference/proving on the same H100.
+  Proof preparation may accompany inference; weights, live KV and still-used
+  witness data remain available. No blanket release, CPU/disk spill or
+  reduction of the global adversary model follows. The current i16 layout
+  has 901,120 KV bytes/token: 150 tokens use 135,168,000 bytes, leaving
+  3,555,819,520 bytes of capacity unused; at 4,050 tokens only 41,451,520
+  bytes remain unused, and at 4,096 none remain. Progressive allocation or
+  temporary borrowing is optional, subject to view/padding, lifetime and
+  physical-allocation evidence. Borrowed temporary bytes still count toward
+  the existing arena cap. No recovered-memory or hardware result is claimed.
+
+  This is a documentation-only checkpoint, with exact cache arithmetic,
+  Markdown/local-link and capsule-length checks. No protocol test, build,
+  weight download, provider contact or benchmark execution is part of it;
+  future real E2E still requires explicit hardware spending authorization.
 
 - **2026-09-06 — owner-approved design refinements; implementation choices
   remain open.** C7.1 now names the executable-to-Lean links, concrete offline

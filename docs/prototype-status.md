@@ -8,8 +8,7 @@ record; no external plan is authoritative.
 
 ## Active authority — read first
 
-Read `c7.1-gemma31b-design.md`, the active authority. Earlier designs are
-historical evidence.
+Active design: `c7.1-gemma31b-design.md`. Earlier designs are historical.
 
 - **Objective.** Stateful private-weight Gemma-31B with session VOLE-MAC
   boundaries and committed-weight evaluations: 45–50 s warm prover,
@@ -21,23 +20,58 @@ historical evidence.
   Soundness and malicious-verifier privacy must each exceed 78 bits lifetime.
 - **Preserved.** Pinned checkpoint, context 4,096, first workload 100+50,
   Goldilocks/Fp3, offline classical ROM, global Q64 and 2^20 attempts.
+  Complete E2E requires instantiated FS.
 - **Service.** Delta-independent ModelSetup; residency, connection, finite
   capacity, roots and attempts have separate costs. No slot/correlation reuse;
-  optional ACK, no implicit truncation. Initial service: one sequential user;
-  preserve live KV, reuse only justified inactive memory.
+  optional ACK, no implicit truncation. First activation may have distinct
+  semantics/cost; it does not reduce Q64. One sequential user, live KV preserved.
 - **Evidence.** Existing 86 Python checks cover accounting/arithmetic and
-  regressions, not CUDA kernels or full certificate/security/memory/timing.
-  Documentation checks add no cryptographic evidence; Rust/Lean unchanged.
-- **Flexibility.** Internal budgets, carrier, codec and kernels remain choices.
-  Setup 2.10x means persistent model bytes/packed W; old W 125% is historical
-  comparison, not a C7.1 family cap.
+  regressions, not complete cryptography or hardware.
+  FS lifetime theorem unproved; Rust/Lean unchanged.
+- **Flexibility.** Budgets, carrier, codec and kernels remain choices.
+  Setup 2.10x means persistent model bytes/packed W; old W 125% is comparison only.
 - **Work boundary.** Small local checks only; no provider, paid GPU, weights
   or heavy build. No structural decision pending.
-- **Continuation.** Close carrier/blind MAC/PCS and runtime-to-Lean links;
-  compile records, masks, security events, allocations and work. Prepare
-  finite-PCG composition checks, then real Gemma 100+50 through 4,096 total
-  tokens. Every E2E/heavy run needs authorized hardware; captures stay bounded.
-  Paid hardware requires explicit spending authorization after local preparation.
+- **Continuation.** Close carrier/blind MAC/PCS, runtime-to-Lean and adaptive
+  ROM links; compile records, masks, lifetime queries/events, allocations and
+  work. ROWFOLD's interactive proofs do not transfer automatically. Prepare
+  finite-PCG/FS checks, then real Gemma 100+50 through 4,096 tokens.
+  Every E2E/heavy run requires authorized hardware and explicit spending
+  authorization after local preparation.
+
+- **2026-09-06 — concrete FS requirement, lifetime theorem obligation and
+  first-activation semantics documented.** Complete C7.1 tests must derive
+  challenges from the concrete transcript hash. `C71FS-v1` specifies a
+  BLAKE3-XOF reference, canonical typed prefixes, Fp/Fp3/index sampling and
+  fail-closed finite extraction; the complete codec and sampler bounds remain
+  to be compiled. This is a documentation requirement, not a new executable
+  FS implementation or a standard-model guarantee for BLAKE3.
+
+  `C71FsLifetimeSound` names the required conditional theorem, with an
+  adaptive prefix-escape obligation and explicit lifetime auxiliary events.
+  The conservative oracle census includes all adversarial Q64 queries plus
+  additional honest queries, including verification of unqueried proof
+  prefixes. A tighter Q+1 transfer is not assumed. Existing Lean finite-set
+  bounds and logical composition lemmas are identified with their remaining
+  premises; no frozen Lean source is changed and no complete >78-bit claim
+  is established. Malicious-verifier privacy needs its own FS simulator.
+
+  The owner permits distinct first-ever activation semantics and cost.
+  Initialization, new chat, continuation and renewal remain distinct, with
+  authenticated genesis/predecessor and no reset of shared consumptions.
+  This permits no online proof challenges, new trust assumption or exclusion
+  of response-dependent bytes. Failed setup before slot allocation must also
+  have a justified lifetime census.
+
+  The external ROWFOLD source matches the existing immutable archive. Its
+  interactive schedule is adaptable in principle, but the existing relation,
+  mask-rank, N-log-q and total-arena counterexamples remain relevant; its
+  conditional security and W-only census are not complete C7.1 results.
+  Verification is limited to source digest, the two existing small algebraic
+  counterexample checks and documentation consistency checks; all succeed.
+  Eleven local links, four Lean theorem references, unchanged historical
+  entries and the 249-word active capsule were checked. No build,
+  provider, weight download, E2E or hardware measurement is part of this edit.
 
 - **2026-09-06 — sequential service memory reuse and initial real E2E
   context scope clarified.** The owner confirms first real Gemma-31B E2E

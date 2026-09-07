@@ -57,12 +57,25 @@ feasibility proofs before prover implementation and measurements.
   no new trace PCS. At `b_P=2^24`, 357 study queries, the outer hash/anchor
   payload is 11,200,376 bytes before framing and other components. This is
   component accounting, not complete-certificate or hash-security credit.
+- [A3: bounded RS and private recursion](c7.1-recursive-rs-opening.md)
+  specifies the previously missing encoder and inner opening down to 32
+  private E cells. A fixed algorithmic block cap proves at most 52 source
+  FFT butterflies per padded cell; it is a new carrier, not unchanged Hobbit.
+  Its component payload is 13,960,568 bytes, including the A2 hash/anchor.
+  Known proof arrays total 6,070,425,696 bytes in a conservative union;
+  uncompiled staging and the Gemma witness are not included. The interactive
+  fixed-oracle argument binds a unique decoded message, not exact codeword
+  well-formedness. Compiling arbitrary private roots into the required
+  oracles, the precise model relation and adaptive FS remain open; no honest
+  setup assumption or complete feasibility credit is introduced.
 - The [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) and
   [focused tests](../tests/test_c7_1_gemma_plan.py) check paired-fold
   arithmetic, service accounting, candidate integer/Fp3 decompositions,
   the two-proof masking counterexample, exact carrier/bit-codec counts,
   the product-check identity and simulator with the C7.1 MAC sign, and A2's
   degree-8/9 round reduction, single input endpoint and resource counts.
+  A3 adds small FFT/form/recursion identities and a malformed-codeword
+  counterexample distinguishing proximity from exact well-formedness.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -81,14 +94,14 @@ feasibility proofs before prover implementation and measurements.
 ## Next work
 
 Follow [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture):
-continue G2 with A2: instantiate the encoder and inner PCS, including their
-blind codec and scratch, and compose the binding argument with the concrete
-hash/PCS assumptions and FS. The hash checker adds no W reads once queried
-columns and paths exist; that does not supply the missing Gemma witness.
-A2 retains a static model anchor by keeping PCS openings private, not by
-reusing G1's public split mask. Setup hash work is substantial and counted;
-the uninstantiated encoder still has to fit the 1,073,741,824-byte residual
-arena during grouped commitment preparation. Alongside it, close witness and form
+continue G2 with A3: prove the private-root/oracle compilation and precise
+commitment–W relation, then compose the binding argument with the concrete
+hash/PCS assumptions and FS. A3's finite inner recursion and hash checker
+add no W reads after queried source columns exist; they do not supply the
+missing Gemma witness. The static model anchor keeps PCS openings private,
+without reusing G1's public split mask. Setup hash work remains substantial;
+the bounded encoder and known grouped-commitment arrays occupy 5,637,144,576
+bytes, before uncompiled runtime staging. Alongside it, close witness and form
 availability within the four W reads. Complete the relation, both lifetime
 proofs and full certificate/resource accounting before admitting prover
 implementation. Then prepare the small checks and, after hardware/spending

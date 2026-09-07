@@ -282,6 +282,109 @@ def dot(a, b):
     return sum(x * y for x, y in zip(a, b)) % P
 
 
+def small_goldilocks_fft(values):
+    """Forward FFT algebra diagnostic, deliberately limited to 256 cells."""
+    size = len(values)
+    if not size or size > 256 or size & (size - 1):
+        raise ValueError("small FFT requires a power-of-two length <= 256")
+    if any(type(v) is not int or not 0 <= v < P for v in values):
+        raise ValueError("FFT inputs must be canonical Fp values")
+    result = list(values)
+    j = 0
+    for i in range(1, size):
+        bit = size >> 1
+        while j & bit:
+            j ^= bit
+            bit >>= 1
+        j ^= bit
+        if i < j:
+            result[i], result[j] = result[j], result[i]
+    width = 2
+    while width <= size:
+        root = pow(7, (P-1)//width, P)
+        for start in range(0, size, width):
+            twiddle = 1
+            for i in range(start, start + width//2):
+                a, b = result[i], result[i + width//2]*twiddle % P
+                result[i], result[i + width//2] = (a+b) % P, (a-b) % P
+                twiddle = twiddle*root % P
+        width *= 2
+    return result
+
+
+def rs_generator_mle(t, point):
+    """MLE of (1,t,...,t^(2^len(point)-1)), little-endian Boolean indices."""
+    result = 1
+    for v in point:
+        result = result*(1-v+v*t) % P
+        t = t*t % P
+    return result
+
+
+def recursive_rs_opening_screen(n, block, queries):
+    """A3: bounded RS, double outer fold, single-fold resident recursion.
+
+    Only accounting and ideal-oracle error terms. No PCS/MAC/ROM security
+    credit, framing, PCG staging or Gemma witness liveness is inferred.
+    The cap is a fixed algorithm constant, NEVER selected as a function of n.
+    """
+    outer = private_hobbit_arithmetic_hash_screen(n, block, queries)
+    if block > 1 << 24 or queries > block or n // block >= P:
+        raise ValueError("A3 requires block <= 2^24, queries <= block, rows < p")
+    levels = []
+    size, calls, inputs, rounds, trees = 2*block, 0, 0, 0, 0
+    while size > 512:
+        width = size // 32
+        domain, words = 4*width, 3*32
+        q = min(queries, domain)
+        depth, groups = domain.bit_length()-1, (words+5)//6
+        level_calls = q*(groups+depth)
+        level_inputs = q*(words+4*groups+8*depth)+4
+        levels.append({"resident_cells": size, "block_cells": width,
+                       "queries": q, "domain": domain,
+                       "hash_calls": level_calls, "base_corrections": level_inputs})
+        calls += level_calls
+        inputs += level_inputs
+        rounds += 5
+        trees += 32*(2*domain-1)
+        size = width
+    groups = (3*size+5)//6
+    calls += outer["private_hash_calls_without_inner_pcs_or_anchor"] + groups
+    inputs += outer["base_input_corrections"] + 3*size+4*groups+4
+    padded = 1 << (calls-1).bit_length()
+    variables = padded.bit_length()-1+4
+    extension = 292*variables+150+3*rounds
+    anchor = outer["anchor_base_corrections_upper"]
+    # Conservative union of proof arrays: compact source, scratch copy and
+    # public form; one FFT slot; twiddles; all inner trees; authenticated
+    # boundaries; and the hash trace, even though it can run after freeing X.
+    known_arrays = (3*24*2*block + 24*4*block + 16*block + trees
+                    + 32*(inputs+anchor) + 48*extension
+                    + 16*padded*(31*8+4*24))
+    return {
+        "credit": False,
+        "fixed_algorithm_block_cap": 1 << 24,
+        "levels": levels,
+        "terminal_private_extension_cells": size,
+        "private_hash_calls_including_recursion": calls,
+        "padded_permutation_instances": padded,
+        "base_corrections_including_anchor_upper": inputs+anchor,
+        "extension_corrections_including_partial_sumchecks": extension,
+        "fresh_extension_correlations_including_product_mask": extension+1,
+        "component_payload_before_framing_and_other_components": (
+            8*(inputs+anchor)+24*extension+72),
+        "model_setup_known_arrays_bytes": 336*block,
+        "proof_known_arrays_conservative_union_bytes": known_arrays,
+        "all_inner_trees_bytes": trees,
+        "outer_source_fft_butterflies": 2*n*(block.bit_length()+1),
+        "outer_source_fft_uniform_butterfly_coefficient": 52,
+        "ideal_oracle_error_bound": (
+            "sum_i ((1-d_i/(3D_i))^q_i + d_i*log2(rows_i)/(3*|E|))"
+            " + (1-d_0/(2D_0))^q_0 + (2q_0 + sum_i>0 q_i + 2*sumcheck_rounds)/|E|;"
+            " query terms are zero when q_i=D_i; NOT a FS bound"),
+    }
+
+
 def combine(a, b, r):
     if len(a) != len(b):
         raise ValueError("different vector lengths")
@@ -451,6 +554,7 @@ def report():
             private_hobbit_arithmetic_hash_screen(n, 1 << bits, 357)
             for bits in (23, 24)
         ],
+        "recursive_rs_opening_screen": recursive_rs_opening_screen(n, 1 << 24, 357),
         "complete_certificate_bytes": None,
         "complete_h100_peak_bytes": None,
         "complete_security_bits": None,

@@ -362,3 +362,120 @@ def test_gemma_report_keeps_requirements_separate_from_complete_results():
     for key in ("complete_certificate_bytes", "complete_h100_peak_bytes",
                 "complete_security_bits", "warm_prover_seconds", "four_core_verifier_seconds"):
         assert report[key] is None
+
+
+def test_bounded_rs_fft_generator_forms_and_transpose_use_same_order():
+    p = plan.P
+    for bits in range(1, 27):
+        domain = 1 << bits
+        root = pow(7, (p-1)//domain, p)
+        assert pow(root, domain, p) == 1
+        assert pow(root, domain//2, p) == p-1
+    for width in (1, 2, 4, 8, 16, 32, 64):
+        domain = 4*width
+        root = pow(7, (p-1)//domain, p)
+        values = [(13*j*j+7) % p for j in range(width)]
+        actual = plan.small_goldilocks_fft(values + [0]*(domain-width))
+        expected = [sum(x*pow(root, j*k, p) for j, x in enumerate(values)) % p
+                    for k in range(domain)]
+        assert actual == expected
+        point = list(range(2, width.bit_length()+1))
+        for k in (0, 1, domain-1):
+            t = pow(root, k, p)
+            assert plan.rs_generator_mle(t, point) == plan.mle(
+                [pow(t, j, p) for j in range(width)], point)
+        # Forward FFT, not inverse; repetitions in an auxiliary linear form
+        # ADD coefficients even though actual query sets have distinct indices.
+        indices, coefficients = [0, 1, 1, domain-1], [2, 3, 5, 7]
+        sparse = [0]*domain
+        for k, a in zip(indices, coefficients):
+            sparse[k] += a
+        form = plan.small_goldilocks_fft(sparse)[:width]
+        assert plan.dot(values, form) == sum(a*actual[k] for k, a in zip(indices, coefficients)) % p
+        assert plan.small_goldilocks_fft(actual) == [domain*values[0] % p] + [
+            domain*(values[domain-j] if j > domain-width else 0) % p
+            for j in range(1, domain)]
+    for values in ([], [0]*3, [0]*512, [True], [-1], [p]):
+        with pytest.raises(ValueError):
+            plan.small_goldilocks_fft(values)
+
+
+def test_recursive_rs_batched_forms_keep_both_outer_folds_then_one_inner_fold():
+    p, width, rows = plan.P, 4, 4
+    source = [[11+i*i+3*j for j in range(width)] for i in range(rows)]
+    row_point, random_point, column_point = [2, 5], [7, 11], [13, 17]
+    target = [plan.mle([int(i == j) for j in range(width)], column_point)
+              for i in range(width)]
+    first = [plan.mle([row[j] for row in source], row_point) for j in range(width)]
+    second = [plan.mle([row[j] for row in source], random_point) for j in range(width)]
+    root = pow(7, (p-1)//(4*width), p)
+    indices, sigma = [1, 6, 11], 19
+    g_code, observed = [0]*width, 0
+    for k, index in enumerate(indices):
+        form = [pow(root, index*j, p) for j in range(width)]
+        column = [plan.dot(row, form) for row in source]
+        a = pow(sigma, 2*k+1, p)
+        g_code = plan.combine(g_code, form, a)
+        observed += a*plan.mle(column, row_point) + a*sigma*plan.mle(column, random_point)
+    public_form = plan.combine(target, g_code, 1) + [sigma*x % p for x in g_code]
+    claim = (plan.dot(first, target)+observed) % p
+    assert plan.dot(first+second, public_form) == claim
+    assert plan.dot(second+first, public_form) != claim  # lane order matters
+    for selector in (0, 1, 23):
+        v = [29, 31]
+        compact_form = ((1-selector)*plan.mle(target, v)
+                        +(1-selector+sigma*selector)*plan.mle(g_code, v)) % p
+        assert plan.mle(public_form, v+[selector]) == compact_form
+    # The resident recursion folds BOTH X and g in its row coordinate.
+    # This is a partial-sumcheck endpoint identity, not a full PCS test.
+    folded_x = [(a+37*(b-a)) % p for a, b in zip(first, second)]
+    folded_g = [(a+37*(b-a)) % p for a, b in zip(public_form[:width], public_form[width:])]
+    assert plan.dot(folded_x, folded_g) == sum(
+        plan.mle([first[j], second[j]], [37])*plan.mle(
+            [public_form[j], public_form[width+j]], [37]) for j in range(width)) % p
+    altered = list(folded_x)
+    altered[0] = (altered[0]+1) % p
+    assert plan.dot(altered, folded_g) != plan.dot(folded_x, folded_g)
+
+
+def test_rs_proximity_is_not_exact_root_well_formedness():
+    # Exact tiny RS code, not a hash/PCS execution. A one-symbol corruption
+    # has the SAME unique nearest message, but is not its exact encoding.
+    p, domain, width = 17, 8, 2
+    root = pow(3, (p-1)//domain, p)
+    code = [[sum(c*pow(root, i*j, p) for j, c in enumerate(coefficients)) % p
+             for i in range(domain)] for coefficients in product(range(p), repeat=width)]
+    assert min(sum(v != 0 for v in word) for word in code[1:]) == 7
+    original = code[37]
+    corrupted = list(original)
+    corrupted[0] = (corrupted[0]+1) % p
+    distances = [sum(a != b for a, b in zip(word, corrupted)) for word in code]
+    assert min(distances) == 1 and distances.count(1) == 1
+    assert corrupted not in code
+    subsets = list(combinations(range(domain), 3))
+    accepts = sum(all(corrupted[i] == original[i] for i in subset) for subset in subsets)
+    assert Fraction(accepts, len(subsets)) == Fraction(5, 8)
+
+
+def test_recursive_rs_component_counts_and_fixed_cap_are_not_complete_credit():
+    s = plan.recursive_rs_opening_screen(1 << 35, 1 << 24, 357)
+    assert s["credit"] is False
+    assert [level["resident_cells"] for level in s["levels"]] == [2**25, 2**20, 2**15, 2**10]
+    assert [level["queries"] for level in s["levels"]] == [357, 357, 357, 128]
+    assert s["terminal_private_extension_cells"] == 32
+    assert s["private_hash_calls_including_recursion"] == 169_679
+    assert s["padded_permutation_instances"] == 2**18
+    assert s["base_corrections_including_anchor_upper"] == 1_725_160
+    assert s["extension_corrections_including_partial_sumchecks"] == 6634
+    assert s["fresh_extension_correlations_including_product_mask"] == 6635
+    assert s["component_payload_before_framing_and_other_components"] == 13_960_568
+    assert s["model_setup_known_arrays_bytes"] == 5_637_144_576
+    assert s["proof_known_arrays_conservative_union_bytes"] == 6_070_425_696
+    assert s["all_inner_trees_bytes"] == 277_094_272
+    assert s["outer_source_fft_butterflies"] == 1_786_706_395_136
+    for n in (1 << 35, 1 << 55, 1 << 75):
+        fixed = plan.recursive_rs_opening_screen(n, 1 << 24, 357)
+        assert fixed["outer_source_fft_butterflies"] == 52*n
+    for args in ((1 << 35, 1 << 25, 357), (64, 8, 9), (1 << 89, 1 << 24, 357)):
+        with pytest.raises(ValueError):
+            plan.recursive_rs_opening_screen(*args)

@@ -35,9 +35,23 @@ Active design: `c7.1-gemma31b-design.md`. Earlier designs are historical.
 - **Continuation.** Close carrier/blind MAC/PCS, runtime-to-Lean and adaptive
   ROM links; compile records, masks, lifetime queries/events, allocations and
   work. ROWFOLD's interactive proofs do not transfer automatically. Prepare
-  finite-PCG/FS checks, then real Gemma 100+50 through 4,096 tokens.
+  finite-PCG/FS/chunk-parity checks, then real Gemma 100+50 through 4,096 tokens.
   Every E2E/heavy run requires authorized hardware and explicit spending
   authorization after local preparation.
+
+- **2026-09-07 — three scoped C4.1 implementation lessons retained.** The
+  external `c4.1-seed-streaming-fiat-shamir.md` was read in full; source
+  SHA-256 `6874e412976005f99fc76a3846e017f651db7414f79ee200cb86c83e4b5679fe`.
+  C7.1 records only private hiding randomness versus public FS challenges,
+  verifier-recomputed canonical content digests, and optional bounded-block
+  expansion with small-reference/chunk-size/one-versus-four-worker parity.
+  Expansion and FS replay remain included in complete verification time.
+  These are requirements for future tests, not new passing protocol tests.
+  No C41FS1 codec, typed/XOR4-MAJ7 construction, numerical security claim,
+  RAM cap or client-side weight setup is imported. Existing canonical-order
+  and one-time-state requirements are not duplicated. This documentation-only
+  clarification adds no theorem, implementation, performance or hardware
+  credit; small document/link/history checks only, with no builds or provider.
 
 - **2026-09-06 — concrete FS requirement, lifetime theorem obligation and
   first-activation semantics documented.** Complete C7.1 tests must derive

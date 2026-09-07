@@ -929,3 +929,135 @@ def test_embedding_lookup_is_one_linear_claim_with_duplicates_and_last_token():
     changed = [list(row) for row in embedding]
     changed[2][0] += 1
     assert sum(a*plan.mle(changed[token], rh) for token, a in aggregate.items()) % plan.P != claim
+
+
+def test_input_routes_preserve_stages_heads_and_decision_selection():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           "manifests/c7-d126-gemma31b-source-metadata-v1.json").read_bytes())
+    tensors = [t for t in metadata["tensors"] if t["disposition"] == "private_text"]
+    cohorts = plan.gemma_weight_cohorts(tensors)
+    routes = plan.gemma_input_routes(cohorts)
+    by_op = {(c["layer"], c["operation"]): r for c, r in zip(cohorts[1:], routes)}
+    assert {r["cohort_ordinal"] for r in routes} == set(range(1, 773))
+    assert all(r["same_i16_stage"] for r in routes)
+    qnorm = by_op[5, "q_norm"]
+    assert qnorm["source_shape"] == (150, 32*512)
+    assert (qnorm["column_point_bits"], qnorm["row_point_bits"]) == (14, 8)
+    assert qnorm["source_producer"] == {"layer": 5, "operation": "q_proj"}
+    final = by_op[None, "final_rms"]
+    assert (final["source_shape"], final["selected_rows"], final["row_offset"]) == ((150, 5376), 149, 0)
+    head = by_op[None, "lm_head"]
+    assert head["logical_producer"] == {"layer": None, "operation": "last_row_select"}
+    assert head["source_producer"] == {"layer": None, "operation": "final_rms"}
+    assert (head["source_shape"], head["selected_rows"], head["row_offset"]) == ((149, 5376), 50, 99)
+    small = plan.gemma_input_routes(plan.gemma_weight_cohorts(tensors, 1, 1))[-1]
+    assert (small["selected_rows"], small["row_offset"], small["row_point_bits"]) == (1, 0, 0)
+    qn = next(i for i, c in enumerate(cohorts) if c["operation"] == "q_norm")
+    for change in ({"columns": 255}, {"input_stage": "raw_accumulator"}):
+        altered = [dict(c) for c in cohorts]
+        altered[qn].update(change)
+        with pytest.raises(ValueError):
+            plan.gemma_input_routes(altered)
+    s = plan.input_link_screen(cohorts)
+    assert s["input_route_manifest_sha256"] == "e6cf76a59b2fb69540a8de2a2086a9051680385517ecca093d222065d79f1c1b"
+    assert s["distinct_producer_point_obligations"] == 602
+    assert s["producer_operations"]["final_rms"] == 1
+    assert "last_row_select" not in s["producer_operations"]
+    assert s["producer_seed_fanout_histogram"] == {1: 482, 2: 70, 3: 50}
+    assert s["direct_point_aliases"] == 480 and s["seed_form_sumchecks"] == 122
+    assert s["sumcheck_rounds"] == 2562 and s["extension_corrections"] == 7808
+    assert s["message_bytes_before_framing_and_shared_closures"] == 187392
+    assert s["extension_challenges"] == 2682
+    assert s["fixed_replay_interactive_error_numerator"] == 5294
+    assert s["single_reducer_two_extension_vectors_bytes"] == 100_663_296
+    assert s["additional_weight_reads"] == s["additional_private_product_equations"] == 0
+    assert s["full_gamma_record_or_workspace_counts"] is None
+    assert not s["credit"] and not s["producer_values_proved_as_replay"]
+
+
+def test_shifted_eq_digit_dp_matches_every_small_interval():
+    def basis(point, index):
+        return math.prod(r if (index >> i) & 1 else 1-r for i, r in enumerate(point)) % plan.P
+    for source_bits in range(5):
+        for input_bits in range(source_bits+1):
+            for tape in ([2, 3, 5, 7], [0, 1, -1, 17]):
+                ip, sp = tape[:input_bits], list(reversed(tape))[:source_bits]
+                for count in range((1 << input_bits)+1):
+                    for offset in range((1 << source_bits)-count+1):
+                        expected = sum(basis(ip, d)*basis(sp, offset+d) for d in range(count)) % plan.P
+                        assert plan.shifted_eq_form(ip, sp, offset, count) == expected
+    for args in (([], [], 0, 2), ([2], [], 0, 1), ([2], [3], 2, 1),
+                 ([2], [3], -1, 1), ([2], [3], 0, True)):
+        with pytest.raises(ValueError):
+            plan.shifted_eq_form(*args)
+
+
+def test_input_selector_forms_bind_prefix_gather_and_head_reshape():
+    # Each table is a canonical producer, with independently padded axes.
+    cases = [
+        # Final RMS must omit the still-live terminal-absorb row.
+        ((4, 3), 3, 0, [2, 3, 5, 7]),
+        # Two decision rows select producer tokens 2 and 3, not 0 and 1.
+        ((4, 3), 2, 2, [2, 3, 5]),
+        # q_norm: (3 tokens * 2 heads, 4 lanes) -> (3 tokens, 8 columns).
+        ((3, 8), 3, 0, [2, 3, 5, 7, 11]),
+    ]
+    for (rows, width), count, offset, ip in cases:
+        cb, rb = (width-1).bit_length(), (count-1).bit_length()
+        stride, row_domain = 1 << cb, 1 << (rows-1).bit_length()
+        table = [[(t+1)*(k*k+3)-2 for k in range(width)]+[0]*(stride-width) for t in range(rows)]
+        table += [[0]*stride for _ in range(row_domain-rows)]
+        selected = table[offset:offset+count]+[[0]*stride for _ in range((1 << rb)-count)]
+        route = {"source_shape": (rows, width), "selected_rows": count, "row_offset": offset,
+                 "column_point_bits": cb, "row_point_bits": rb}
+        n = cb+(rows-1).bit_length()
+        weights = [plan.input_route_form(route, ip, [(index >> i) & 1 for i in range(n)])
+                   for index in range(1 << n)]
+        claim = plan.mle(sum(selected, []), ip)
+        assert sum(a*x for a, x in zip(weights, sum(table, []))) % plan.P == claim
+        probe = [13, 17, 19, 23, 29][:n]
+        assert plan.input_route_form(route, ip, probe) == plan.mle(weights, probe)
+        if count < rows and offset == 0:
+            assert claim != plan.mle(sum(table, []), ip)  # naive same-point alias is false
+        if offset:
+            assert claim != plan.mle(sum(table[:count], []), ip)
+        if width == 8:
+            heads = [table[t][4*h:4*h+4] for t in range(rows) for h in range(2)]
+            heads += [[0]*4 for _ in range(8-len(heads))]
+            assert claim == plan.mle(sum(heads, []), ip)  # no bit permutation
+        with pytest.raises(ValueError):
+            plan.input_route_form(route, ip+[0], probe)
+
+
+def test_seed_fanout_reduction_transfers_to_same_producer_endpoint():
+    values = [2, 7, -3, 11, 5, 13, 17, 19]
+    points, beta, coins = [[2, 3, 5], [7, 11, 13], [17, 19, 23]], 29, [31, 37, 41]
+    claims = [plan.mle(values, r) for r in points]
+    def eq(a, b):
+        return math.prod((1-u)*(1-v)+u*v for u, v in zip(a, b)) % plan.P
+    def form(s):
+        return sum(pow(beta, j, plan.P)*eq(r, s) for j, r in enumerate(points)) % plan.P
+    def partial(prefix):
+        return sum(form(prefix+list(t))*plan.mle(values, prefix+list(t))
+                   for t in product((0, 1), repeat=3-len(prefix))) % plan.P
+    claim = sum(pow(beta, j, plan.P)*v for j, v in enumerate(claims)) % plan.P
+    assert claim == partial([])
+    for i, coin in enumerate(coins):
+        prefix = coins[:i]
+        assert claim == (partial(prefix+[0])+partial(prefix+[1])) % plan.P
+        samples = [partial(prefix+[t]) for t in range(4)]
+        for _ in range(3):
+            samples = [(b-a) % plan.P for a, b in zip(samples, samples[1:])]
+        assert samples == [0]  # degree two, not dependent on fanout
+        claim = partial(prefix+[coin])
+    endpoint = plan.mle(values, coins)
+    assert claim == form(coins)*endpoint % plan.P
+    assert claim != form(coins)*(endpoint+1) % plan.P
+    # With fixed claims, a nonzero 3-term error has at most two roots in F7.
+    for errors in product(range(7), repeat=3):
+        if any(errors):
+            assert sum(sum(e*pow(b, j, 7) for j, e in enumerate(errors)) % 7 == 0
+                       for b in range(7)) <= 2
+    # Knowing beta before choosing claims would permit deterministic cancellation.
+    late_errors = [1, -pow(beta, -1, plan.P), 0]
+    assert sum(pow(beta, j, plan.P)*e for j, e in enumerate(late_errors)) % plan.P == 0

@@ -102,6 +102,14 @@ authorization.
   lemma does not prove the 772 input-evaluation links to W-free Replay,
   C/B openings or integer ranges. The known B/tree/P0 union is 5,714,441,824
   bytes, before uncompiled Replay workspace and runtime.
+- [P0 input routing](c7.1-cut-witness.md#7-dai-772-input-p0-ai-produttori-w-free-forme-e-riduzione)
+  now derives exact head/prefix/decision selectors and reduces the 772
+  initial input demands to 602 producer-point obligations in the same MAC.
+  A four-state carry/borrow evaluator handles shifted rows in logarithmic
+  verifier work. This seed prelude adds 122 degree-2 sumchecks and 187,392
+  payload bytes, with no W reads or new private products. Its transfer lemma
+  does not prove the producers: integer requantization, nonlinear kernels,
+  later Gamma consumers, B/KV and ranges remain open.
 - [A4: paired RS opening](c7.1-paired-rs-opening.md) fuses the paired
   reduction and RS opening into **two W reads together**. It checks the
   existing arbitrary row fold instead of converting it to a new W point;
@@ -119,12 +127,14 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 35 focused checks also cover finite query sampling, exact ideal
+  The 39 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
   cohort coverage/offsets/producers, malformed model inventories, cubic
   broadcast norms and tied lookup with duplicates and terminal absorption.
+  Input-route tests cover shifted/prefix selectors, head reshape, bounded
+  fanout reduction and cancellation if its batch challenge is sent too early.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -156,8 +166,9 @@ without reusing G1's public split mask. Setup hash work remains substantial;
 the bounded encoder and known grouped-commitment arrays occupy 5,637,144,576
 bytes, before uncompiled runtime staging. Alongside it, use the W-cut theorem
 to complete the GKR/form schedule against A4's two-read interface. P0 covers
-the W-dependent cohorts; construct the W-free circuit for its 772 input
-links, bind cuts and KV, discharge late B consumers, and include W range/padding
+the W-dependent cohorts; its 772 input demands now route to 602 producer
+points. Construct the W-free kernels proving those outputs (starting with
+raw-B requantization), bind cuts and KV, discharge late B consumers, and include W range/padding
 without exceeding four W reads. The A4 fusion no longer requires a new
 common MLE point for all W terminals; its public-form conditions must hold.
 Complete the relation, both lifetime

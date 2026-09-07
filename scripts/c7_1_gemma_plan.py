@@ -680,6 +680,129 @@ def weight_cohort_screen(cohorts):
     }
 
 
+def gemma_input_routes(cohorts):
+    """P0 input claims -> canonical W-free producer tensors, not free roots.
+
+    Head-first norm flattening changes the split of a point, not its bit
+    order. The final norm and decision head need actual row selectors.
+    """
+    by_op = {(c["layer"], c["operation"]): c for c in cohorts}
+    if len(by_op) != len(cohorts):
+        raise ValueError("duplicate cohort operator")
+    tokens = by_op[None, "embedding_lookup"]["rows"]
+    generated = by_op[None, "lm_head"]["rows"]
+    routes = []
+    for c in cohorts:
+        if c["kind"] == "lookup":
+            continue
+        if c["input_stage"] != "replay_i16_output":
+            raise ValueError("P0 route requires the exact replay i16 stage")
+        if c["kind"] == "norm" and (c["heads"] & (c["heads"]-1)
+                or c["rows"] % c["heads"]
+                or c["heads"] > 1 and c["columns"] & (c["columns"]-1)):
+            raise ValueError("head reshape requires aligned power-of-two heads/lanes")
+        width = c["inner"] if c["kind"] == "matrix" else c["columns"]*c["heads"]
+        count = c["rows"] if c["kind"] == "matrix" else c["rows"]//c["heads"]
+        source, source_rows, offset = dict(c["input_producer"]), tokens, 0
+        if c["operation"] == "lm_head":
+            source = {"layer": None, "operation": "final_rms"}
+            source_rows, offset = tokens-1, tokens-generated-1
+        if not 0 <= offset < offset+count <= source_rows:
+            raise ValueError("input selection exceeds its producer")
+        column_bits, row_bits = (width-1).bit_length(), (count-1).bit_length()
+        p0_bits = ((c["inner"] if c["kind"] == "matrix" else c["columns"])-1).bit_length()
+        p0_bits += (c["rows"]-1).bit_length()
+        if column_bits+row_bits != p0_bits:
+            raise ValueError("head reshape does not preserve the padded domain")
+        routes.append({"cohort_ordinal": c["ordinal"],
+                       "logical_producer": c["input_producer"], "source_producer": source,
+                       "source_shape": (source_rows, width),
+                       "selected_rows": count, "row_offset": offset,
+                       "column_point_bits": column_bits, "row_point_bits": row_bits,
+                       "same_i16_stage": c["input_stage"] == "replay_i16_output"})
+    return routes
+
+
+def shifted_eq_form(input_point, source_point, offset, count):
+    """Fp diagnostic of sum_{d<count} EQ(input_point,d)*EQ(source_point,offset+d).
+
+    Four-state carry/borrow digit DP; O(bits), no row-sized verifier table.
+    Algebra uses only +/*, so the derivation also holds over E. This is not
+    the FS codec or a production field implementation.
+    """
+    source_bits, input_bits = len(source_point), len(input_point)
+    natural(count, "selected rows", 0, 1 << input_bits)
+    natural(offset, "row offset", 0, 1 << source_bits)
+    if input_bits > source_bits or offset+count > 1 << source_bits:
+        raise ValueError("selector outside padded producer")
+    states = {(0, 0): 1}  # carry of offset+d, borrow of d-count
+    for i in range(source_bits+1):  # extra high bit handles count = full domain
+        nxt = {}
+        for (carry, borrow), value in states.items():
+            for bit in ((0, 1) if i < input_bits else (0,)):
+                added = bit+((offset >> i) & 1)+carry
+                source_bit = added & 1
+                state = (added >> 1, int(bit-((count >> i) & 1)-borrow < 0))
+                a = (input_point[i] if bit else 1-input_point[i]) if i < input_bits else 1
+                b = ((source_point[i] if source_bit else 1-source_point[i])
+                     if i < source_bits else int(source_bit == 0))
+                nxt[state] = (nxt.get(state, 0)+value*a*b) % P
+        states = nxt
+    return states.get((0, 1), 0)  # no overflow, d < count
+
+
+def input_route_form(route, input_point, source_point):
+    """Evaluate a route's public coefficient MLE at a producer point."""
+    rows, width = route["source_shape"]
+    cb, rb = route["column_point_bits"], route["row_point_bits"]
+    if len(input_point) != cb+rb or len(source_point) != cb+(rows-1).bit_length():
+        raise ValueError("route point has the wrong axes")
+    columns = shifted_eq_form(input_point[:cb], source_point[:cb], 0, width)
+    selected = shifted_eq_form(input_point[cb:], source_point[cb:],
+                               route["row_offset"], route["selected_rows"])
+    return columns*selected % P
+
+
+def input_link_screen(cohorts):
+    """Cost of normalizing P0's seed demands ONLY; Gamma may add consumers."""
+    routes, groups = gemma_input_routes(cohorts), {}
+    for r in routes:
+        key = (r["source_producer"]["layer"], r["source_producer"]["operation"])
+        group = groups.setdefault(key, [])
+        if group and group[0]["source_shape"] != r["source_shape"]:
+            raise ValueError("producer shapes disagree")
+        group.append(r)
+    reducers = [group for group in groups.values()
+                if len(group) > 1 or group[0]["row_offset"] != 0
+                or group[0]["selected_rows"] != group[0]["source_shape"][0]]
+    bits = [sum((d-1).bit_length() for d in group[0]["source_shape"]) for group in reducers]
+    rounds, batching_degree = sum(bits), sum(len(group)-1 for group in groups.values())
+    corrections = 3*rounds+len(reducers)  # same input MACs; only SC and final X
+    return {
+        "credit": False,
+        "input_route_manifest_sha256": hashlib.sha256(json.dumps(
+            routes, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "p0_input_demands": len(routes),
+        "distinct_producer_point_obligations": len(groups),
+        "producer_operations": dict(Counter(key[1] for key in groups)),
+        "producer_seed_fanout_histogram": dict(Counter(len(g) for g in groups.values())),
+        "direct_point_aliases": len(groups)-len(reducers),
+        "seed_form_sumchecks": len(reducers),
+        "sumcheck_rounds": rounds,
+        "extension_corrections": corrections,
+        "message_bytes_before_framing_and_shared_closures": 24*corrections,
+        "additional_private_product_equations": 0,
+        "additional_zero_residual_equations": rounds+len(reducers),
+        "extension_challenges": rounds+sum(len(g) > 1 for g in groups.values()),
+        "fixed_replay_interactive_error_numerator": 2*rounds+batching_degree,
+        "single_reducer_two_extension_vectors_bytes": 48*(1 << max(bits, default=0)),
+        "total_padded_producer_cells_for_seed_reducers": sum(1 << n for n in bits),
+        "additional_weight_reads": 0,
+        "full_gamma_record_or_workspace_counts": None,
+        "producer_values_proved_as_replay": False,
+    }
+
+
 def a3_query_indices(domain, count, words):
     """Small reference for A3's bounded PUBLIC sampler, not a PCS prover.
 
@@ -914,6 +1037,7 @@ def report():
         "a3_challenge_screen": a3_challenge_screen(),
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),
         "weight_cohort_screen": weight_cohort_screen(cohorts),
+        "input_link_screen": input_link_screen(cohorts),
         "dyadic_weight_layout_screen": {
             "credit": False,
             "tiles": len(tiles),

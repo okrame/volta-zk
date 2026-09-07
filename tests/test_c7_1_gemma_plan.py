@@ -1180,3 +1180,229 @@ def test_byte_lift_literal_exclusion_and_four_row_repair_are_only_screens():
     for group in (0, 7, True):
         with pytest.raises(ValueError):
             plan.private_hobbit_arithmetic_hash_screen(1 << 33, 1 << 22, 357, group)
+
+
+def small_byte_cut_case():
+    cohorts, raw, physical = [], [], 0
+    for i, (kind, width, rows, cols) in enumerate((('matrix', 6, 3, 5), ('norm', 4, 2, 3), ('lookup', 2, 3, 2))):
+        cohorts.append({'ordinal': i, 'kind': kind, 'cut_scalar_bytes': width,
+                        'cut_byte_offset': physical, 'rows': rows, 'columns': cols})
+        values = [(-1)**j*(17+23*j) for j in range(rows*cols)]
+        values[0], values[-1] = -(1 << (8*width-1)), (1 << (8*width-1))-1
+        raw.append(values)
+        physical += rows*cols*width
+    byte_tiles, rq_tiles = plan.cut_byte_layout(cohorts)
+    source, mapping = [0]*(1 << (physical-1).bit_length()), {}
+    for i, row, col, height, width, first, count, offset in byte_tiles:
+        c = cohorts[i]
+        for r, s, lane in product(range(height), range(width), range(count)):
+            cell = (row+r)*c['columns']+col+s
+            index = offset+count*(r*width+s)+lane
+            assert index not in mapping
+            mapping[index] = i, cell, first+lane
+            biased = raw[i][cell]+(1 << (8*c['cut_scalar_bytes']-1))
+            source[index] = (biased >> (8*(first+lane))) & 255
+    matrices = sum(t[3]*t[4] for t in rq_tiles)
+    planes = [[0]*(1 << (matrices-1).bit_length()) for _ in range(6)]
+    for i, row, col, height, width, offset in rq_tiles:
+        for r, s in product(range(height), range(width)):
+            biased = raw[i][(row+r)*cohorts[i]['columns']+col+s]+(1 << 47)
+            for lane in range(6):
+                planes[lane][offset+r*width+s] = (biased >> (8*lane)) & 255
+    return cohorts, raw, source, planes, mapping
+
+
+def test_virtual_byte_cubes_cover_every_physical_byte_once_and_preserve_bias():
+    cs, raw, source, _, mapping = small_byte_cut_case()
+    byte_tiles, rq_tiles = plan.cut_byte_layout(cs)
+    live = sum(len(values)*c['cut_scalar_bytes'] for c, values in zip(cs, raw))
+    assert sorted(mapping) == list(range(live))
+    assert len(set(mapping.values())) == live
+    offset = 0
+    for tile in byte_tiles:
+        size = tile[3]*tile[4]*tile[6]
+        assert tile[-1] == offset and offset % size == 0 and size & (size-1) == 0
+        offset += size
+    assert offset == live
+    inverse = {key: source[index] for index, key in mapping.items()}
+    for i, values in enumerate(raw):
+        width = cs[i]['cut_scalar_bytes']
+        for cell, a in enumerate(values):
+            assert sum((1 << (8*j))*inverse[i, cell, j] for j in range(width))-(1 << (8*width-1)) == a
+    assert sum(t[3]*t[4] for t in rq_tiles) == len(raw[0])
+    assert all(t[5] % (t[3]*t[4]) == 0 for t in rq_tiles)
+    for bad in ([{**cs[0], 'cut_scalar_bytes': 4}, *cs[1:]],
+                [cs[0], {**cs[1], 'cut_byte_offset': 1}, cs[2]]):
+        with pytest.raises(ValueError):
+            plan.cut_byte_layout(bad)
+
+
+def test_known_byte_opening_forms_match_all_macs_biases_and_padding():
+    cs, raw, source, planes, mapping = small_byte_cut_case()
+    rng = random.Random(20260907)
+    point = lambda bits: [rng.randrange(plan.P) for _ in range(bits)]
+    cuts = [(point((c['rows']-1).bit_length()), point((c['columns']-1).bit_length())) for c in cs]
+    rq, byte, pad = point((len(planes[0])-1).bit_length()), point(7), point(7)
+    coin = 17
+    terms, biases = plan.cut_byte_opening_forms(cs, cuts, rq, byte, pad, coin)
+    def eq(r, index):
+        return math.prod(x if (index >> j) & 1 else 1-x for j, x in enumerate(r)) % plan.P
+    y = [sum(a*eq(r, cell//c['columns'])*eq(s, cell % c['columns']) for cell, a in enumerate(values)) % plan.P
+         for c, values, (r, s) in zip(cs, raw, cuts)]
+    known_values = [(a+b) % plan.P for a, b in zip(y, biases)]+[plan.mle(v, rq) for v in planes]+[plan.mle(source, byte), 0]
+    claim = sum(pow(coin, j, plan.P)*a for j, a in enumerate(known_values)) % plan.P
+    for other_coin in (0, 1, plan.P-1):
+        other_terms, other_biases = plan.cut_byte_opening_forms(cs, cuts, rq, byte, pad, other_coin)
+        assert other_biases == biases
+        want = sum(pow(other_coin, j, plan.P)*a for j, a in enumerate(known_values)) % plan.P
+        assert sum(c*plan.mle(source[o:o+(1 << len(q))], q) for o, q, c in other_terms) % plan.P == want
+    table = [sum(c*eq(q, index-offset) for offset, q, c in terms if offset <= index < offset+(1 << len(q))) % plan.P
+             for index in range(len(source))]
+    assert plan.dot(source, table) == claim
+    # Independent scalar pullback checks the coefficient of each physical byte.
+    rq_indices = {}
+    for i, row, col, height, width, offset in plan.cut_byte_layout(cs)[1]:
+        for r, s in product(range(height), range(width)):
+            rq_indices[i, (row+r)*cs[i]['columns']+col+s] = offset+r*width+s
+    for index, actual in enumerate(table):
+        expected = pow(coin, len(cs)+6, plan.P)*eq(byte, index)
+        if index in mapping:
+            i, cell, lane = mapping[index]
+            r, s = cuts[i]
+            expected += pow(coin, i, plan.P)*pow(256, lane, plan.P)*eq(r, cell//cs[i]['columns'])*eq(s, cell % cs[i]['columns'])
+            if cs[i]['kind'] == 'matrix':
+                expected += pow(coin, len(cs)+lane, plan.P)*eq(rq, rq_indices[i, cell])
+        else:
+            expected += pow(coin, len(cs)+7, plan.P)*eq(pad, index)
+        assert actual == expected % plan.P
+    for target in ([0]*7, [1]*7, point(7)):
+        assert plan.mle(table, target) == sum(c*plan.folded_cube_form(o, q, [1], target) for o, q, c in terms) % plan.P
+    for block_bits in range(8):
+        block = 1 << block_bits
+        alpha, inner = point(len(source)//block), point(block_bits)
+        folded = [sum(a*table[i*block+j] for i, a in enumerate(alpha)) % plan.P for j in range(block)]
+        assert plan.mle(folded, inner) == sum(c*plan.folded_cube_form(o, q, alpha, inner) for o, q, c in terms) % plan.P
+    assert (claim+pow(coin, len(cs), plan.P)-plan.dot(source, table)) % plan.P != 0  # altered RNE endpoint
+    # Byte range still passes when a dummy is changed from zero to one.
+    bad = list(source)
+    bad[len(mapping)] = 1
+    revised_claim = (claim+pow(coin, len(cs)+6, plan.P)*(plan.mle(bad, byte)-known_values[-2])) % plan.P
+    assert (plan.dot(bad, table)-revised_claim) % plan.P == pow(coin, len(cs)+7, plan.P)*eq(pad, len(mapping)) % plan.P != 0
+    for args in ((cs, cuts[:-1], rq, byte, pad, coin), (cs, cuts, rq[:-1], byte, pad, coin),
+                 (cs, cuts, rq, byte, pad, True), (cs, cuts, rq, byte, [True]*7, coin)):
+        with pytest.raises(ValueError):
+            plan.cut_byte_opening_forms(*args)
+
+
+def test_byte_form_sumcheck_transfers_to_one_same_source_endpoint():
+    cs, _, source, planes, _ = small_byte_cut_case()
+    cuts = [([3]*(c['rows']-1).bit_length(), [5]*(c['columns']-1).bit_length()) for c in cs]
+    terms, _ = plan.cut_byte_opening_forms(cs, cuts, [7]*(len(planes[0])-1).bit_length(), [11]*7, [13]*7, 17)
+    f = [sum(c*math.prod(v if ((i-o) >> j) & 1 else 1-v for j, v in enumerate(q))
+             for o, q, c in terms if o <= i < o+(1 << len(q))) % plan.P for i in range(len(source))]
+    u, claim, challenges = list(source), plan.dot(source, f), []
+    for round_index in range(7):
+        c0 = c2 = at1 = 0
+        for a, b, x, y in zip(u[::2], u[1::2], f[::2], f[1::2]):
+            c0 += a*x
+            c2 += (b-a)*(y-x)
+            at1 += b*y
+        coefficients = [c0 % plan.P, (at1-c0-c2) % plan.P, c2 % plan.P]
+        assert (coefficients[0]+sum(coefficients)) % plan.P == claim
+        challenge = 19+23*round_index  # chosen after coefficients in the protocol
+        challenges.append(challenge)
+        claim = sum(c*pow(challenge, j, plan.P) for j, c in enumerate(coefficients)) % plan.P
+        u = [(a+challenge*(b-a)) % plan.P for a, b in zip(u[::2], u[1::2])]
+        f = [(a+challenge*(b-a)) % plan.P for a, b in zip(f[::2], f[1::2])]
+    public_endpoint = sum(c*plan.folded_cube_form(o, q, [1], challenges) for o, q, c in terms) % plan.P
+    assert u[0] == plan.mle(source, challenges) and f[0] == public_endpoint
+    assert claim == u[0]*public_endpoint % plan.P
+    assert (claim-(u[0]+1)*public_endpoint) % plan.P != 0
+    # The selected B opening reuses A4's arbitrary fold, not an extra U-MLE.
+    block, alpha = 16, [1, 7, 11, 13, 17, 19, 23, 29]
+    source_rows = [source[i:i+block] for i in range(0, len(source), block)]
+    original_form = [sum(c*math.prod(v if ((i-o) >> j) & 1 else 1-v for j, v in enumerate(q))
+                         for o, q, c in terms if o <= i < o+(1 << len(q))) % plan.P for i in range(len(source))]
+    form_rows = [original_form[i:i+block] for i in range(0, len(source), block)]
+    folded_source, folded_form, row_claims, _, folded_claim = plan.paired_fold(source_rows, form_rows, alpha[1:])
+    assert sum(row_claims) % plan.P == plan.dot(source, original_form)
+    assert folded_claim == plan.dot(folded_source, folded_form)
+    inner = [31, 37, 41, 43]
+    assert plan.mle(folded_form, inner) == sum(c*plan.folded_cube_form(o, q, alpha, inner) for o, q, c in terms) % plan.P
+    assert plan.mle(folded_source, inner) == sum(a*plan.mle(row, inner) for a, row in zip(alpha, source_rows)) % plan.P
+
+
+def test_known_byte_barrier_counts_do_not_close_gamma_or_full_resources():
+    s = plan.report()['cut_byte_opening_screen']
+    assert s['byte_tiles'] == 10510 and s['matrix_cell_tiles'] == 3563
+    assert s['byte_and_rq_descriptor_bytes'] == 843664
+    assert s['layout_diagnostic_sha256'] == 'a439e692bf3e0587c5445b37e5f38b7a9bb233d07cea25dd83735572143bbf16'
+    assert s['known_claims_including_padding'] == 781
+    assert s['public_cube_terms_for_known_claims'] == 31899
+    r = s['simple_sumcheck_reference']
+    assert r['extension_corrections'] == 100 and r['payload_before_framing_and_shared_closures'] == 2400
+    assert r['interactive_transfer_error_numerator_including_padding_probe'] == 879
+    assert r['extension_challenges_including_padding_probe'] == 67
+    assert r['zero_residual_equations'] == 34 and r['additional_private_products'] == 0
+    assert r['two_cached_tail_vectors_bytes'] == 402653184
+    assert r['extension_mul_upper_before_form_generation_and_mac'] == 214765142011
+    assert r['known_barrier_extension_mul_upper_before_metadata_and_mac'] == 592722264059
+    a = s['selected_paired_opening']
+    assert a['additional_extension_corrections_over_A3'] == 4162
+    assert a['added_payload_before_framing_and_shared_closures'] == 99888
+    assert a['component_payload_with_byte_pcs_before_framing'] == 15607136
+    assert a['additional_extension_challenges_including_padding_and_batch'] == 2103
+    assert a['interactive_transfer_error_numerator_before_A3_and_mac'] == 4951
+    assert a['source_traversals_after_commit'] == 2 and not a['x1_regeneration_required']
+    assert a['retained_alpha_bytes'] == 49152
+    assert a['first_pass_f_f2_g_and_decoded_block_bytes'] == 335544320
+    assert a['retained_outer_internal_nodes_bytes'] == 536870880
+    assert a['queried_and_sibling_columns_upper'] == 714
+    assert a['postcommit_outer_column_hash_calls_upper'] == 365568
+    assert a['known_message_descriptor_alpha_union_bytes'] == 67779792
+    assert a['commit_preparation_with_b_and_descriptors_bytes'] == 6284738448
+    assert a['staged_tree_build_with_b_and_descriptors_bytes'] == 6217629552
+    assert a['first_pass_known_union_bytes'] == 6083239088
+    assert a['compact_commit_and_sumcheck_known_union_bytes'] == 6307699792
+    assert a['queried_columns_known_union_bytes'] == 6219665104
+    assert s['gather_requested_packed_bytes_upper_per_byte_source_traversal'] == 9027895296
+    assert s['known_claim_forms_compiled'] and not s['complete_gamma_consumers_or_liveness_compiled']
+    assert not s['credit'] and not s['physical_b_copy_created'] and s['additional_weight_reads'] == 0
+    assert plan.report()['requantization_screen']['sparse_rne_public_coefficient_tail_bytes_upper'] == 50502624
+
+
+def test_internal_only_tree_cache_reconstructs_paths_from_queried_sibling_columns():
+    # Cache equivalence with a deterministic hash, NOT an A2/Poseidon2 KAT.
+    import hashlib
+    block, rows = 4, [[(i*19+j*31) % 256 for j in range(4)] for i in range(8)]
+    code = [plan.small_goldilocks_fft(row+[0]*(3*block)) for row in rows]
+    domain = 4*block
+    def leaf(j):
+        return hashlib.sha256(b'L'+j.to_bytes(4,'little')+b''.join(row[j].to_bytes(8,'little') for row in code)).digest()
+    def node(i, left, right):
+        return hashlib.sha256(b'N'+i.to_bytes(4,'little')+left+right).digest()
+    tree = [b'']*(2*domain)
+    tree[domain:] = [leaf(j) for j in range(domain)]
+    for i in range(domain-1, 0, -1):
+        tree[i] = node(i, tree[2*i], tree[2*i+1])
+    internal = {i: tree[i] for i in range(1, domain)}
+    for queries in ([0], [0, 1, 7, 14], list(range(domain))):
+        needed = set(queries) | {j ^ 1 for j in queries}
+        assert len(needed) <= 2*len(queries)
+        rebuilt = {domain+j: leaf(j) for j in needed}
+        for j in queries:
+            i, digest = domain+j, rebuilt[domain+j]
+            path = []
+            while i > 1:
+                sibling = rebuilt[i ^ 1] if i >= domain else internal[i ^ 1]
+                path.append(sibling)
+                digest = node(i//2, sibling, digest) if i & 1 else node(i//2, digest, sibling)
+                i //= 2
+            assert digest == internal[1]
+            # Tamper with the reconstructed leaf sibling; the same root rejects.
+            path[0] = bytes([path[0][0] ^ 1])+path[0][1:]
+            i, digest = domain+j, rebuilt[domain+j]
+            for sibling in path:
+                digest = node(i//2, sibling, digest) if i & 1 else node(i//2, digest, sibling)
+                i //= 2
+            assert digest != internal[1]

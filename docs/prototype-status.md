@@ -116,9 +116,14 @@ authorization.
   disproves relying on scalar reconstruction alone. R1 changes the B
   commitment source to its existing biased bytes, without a second B copy.
   The literal six-row/full-tree byte PCS is excluded by size/arena;
-  four-row groups and regeneration of the tree and compact fold remove
-  that specific exclusion using more B scans, no new W scans. Byte-source
-  forms/reducer, padding, concrete shifts and complete liveness remain
+  four-row groups and a staged internal-node-only tree cache remove that
+  specific exclusion. A dyadic virtual byte layout now gives explicit
+  forms for the 781 known P0/RNE/range/padding claims. Reusing A4 opens
+  them together in two B visits after commitment, with no X1 regeneration
+  or new W reads; it adds 99,888 payload bytes over A3 and a conditional
+  4951/|E| bound before A3/MAC/FS. The physical B stays unchanged;
+  gather traffic and prefix-recomputation work are counted separately.
+  Concrete shifts, later Gamma consumers and complete liveness remain
   uncompiled. The high-degree direct algorithm has explicit large work
   constants; no complete size, memory or timing admission is inferred.
 - [A4: paired RS opening](c7.1-paired-rs-opening.md) fuses the paired
@@ -138,7 +143,7 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 44 focused checks also cover finite query sampling, exact ideal
+  The 49 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
@@ -148,7 +153,11 @@ authorization.
   fanout reduction and cancellation if its batch challenge is sent too early.
   R1 adds exact Fraction comparisons, all shift classes/ties/overflow,
   Lagrange roots and non-Boolean degree checks, a malformed byte and
-  scoped resource exclusions.
+  scoped resource exclusions. Byte-opening checks cover unique physical
+  coverage, live-support bias, public forms, the same SC/PCS endpoint and
+  a nonzero padding byte that passes the alphabet test but fails its link.
+  Arbitrary-fold forms and reconstructed paths check the A4 reuse and
+  internal-tree cache; this is not a Poseidon2 security test or KAT.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -181,8 +190,9 @@ the bounded encoder and known grouped-commitment arrays occupy 5,637,144,576
 bytes, before uncompiled runtime staging. Alongside it, use the W-cut theorem
 to complete the GKR/form schedule against A4's two-read interface. P0 covers
 the W-dependent cohorts; its 772 input demands now route to 602 producer
-points. R1 specifies a conditional raw-B requantization kernel; compile
-its byte-source forms/reducer and exact shifts, and reduce its explicit
+points. R1 specifies a conditional raw-B requantization kernel and the
+byte-source forms/reducer for the known claims. Complete Gamma's consumers
+and their single final B barrier, fix exact shifts, and reduce the explicit
 work cost before treating it as feasible. Construct the remaining W-free
 kernels, bind cuts and KV, discharge late B consumers, and include W range/padding
 without exceeding four W reads. The A4 fusion no longer requires a new

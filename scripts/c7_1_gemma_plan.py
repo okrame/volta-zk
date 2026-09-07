@@ -608,12 +608,12 @@ def folded_cube_form(offset, point, row_weights, inner_point):
             * kernel(point, inner_point[:len(point)])) % P
 
 
-def paired_rs_opening_screen(n, block, queries):
+def paired_rs_opening_screen(n, block, queries, outer_group_size=6):
     """A4 fused reduction/PCS accounting, conditional on fixed ideal oracles.
 
     No GKR caller, framing, concrete-hash compilation or full-prover credit.
     """
-    pcs = recursive_rs_opening_screen(n, block, queries)
+    pcs = recursive_rs_opening_screen(n, block, queries, outer_group_size)
     rows, bits = n//block, block.bit_length()-1
     extra = 2*rows-1 + 3*bits + 1  # s/t, product SC coefficients, same endpoint
     return {
@@ -771,6 +771,170 @@ def weight_cohort_screen(cohorts):
     }
 
 
+def cut_byte_layout(cohorts):
+    """R1 virtual byte/column/row cubes; physical packed B is unchanged.
+
+    Byte records: cohort, row, col, rows, cols, first_byte, byte_count, offset.
+    RQ records use the existing six-word 2D layout on matrix cells only.
+    """
+    physical = 0
+    for i, c in enumerate(cohorts):
+        width = {"matrix": 6, "norm": 4, "lookup": 2}.get(c["kind"])
+        if (width is None or c["cut_scalar_bytes"] != width
+                or c["ordinal"] != i or c["cut_byte_offset"] != physical):
+            raise ValueError("cut byte geometry is not canonical")
+        physical += width*c["rows"]*c["columns"]
+    scalar_tiles = dyadic_weight_layout([(c["rows"], c["columns"]) for c in cohorts])
+    byte_tiles, rq_tiles, rq_offset = [], [], 0
+    for i, row, col, height, width, _ in scalar_tiles:
+        for first, count in dyadic_intervals(cohorts[i]["cut_scalar_bytes"]):
+            byte_tiles.append((i, row, col, height, width, first, count))
+        if cohorts[i]["kind"] == "matrix":
+            assert rq_offset % (height*width) == 0
+            rq_tiles.append((i, row, col, height, width, rq_offset))
+            rq_offset += height*width
+    byte_tiles.sort(key=lambda t: (-t[3]*t[4]*t[6], *t[:3], t[5]))
+    offset, result = 0, []
+    for tile in byte_tiles:
+        size = tile[3]*tile[4]*tile[6]
+        assert offset % size == 0
+        result.append((*tile, offset))
+        offset += size
+    assert offset == physical
+    return result, rq_tiles
+
+
+def cut_byte_opening_forms(cohorts, cut_points, rq_point, range_point, pad_point, coin):
+    """Known P0/R1 barrier only: aligned (offset, point, coefficient) terms.
+
+    Returns terms and the PUBLIC biases to add to the existing P0 MACs.
+    Six RNE endpoints share rq_point. Late Gamma claims must join BEFORE
+    batching; this diagnostic does not silently discard those consumers.
+    """
+    byte_tiles, rq_tiles = cut_byte_layout(cohorts)
+    live = sum(c["rows"]*c["columns"]*c["cut_scalar_bytes"] for c in cohorts)
+    matrices = sum(t[3]*t[4] for t in rq_tiles)
+    byte_bits, rq_bits = (live-1).bit_length(), (matrices-1).bit_length()
+    if (not matrices or len(cut_points) != len(cohorts) or len(rq_point) != rq_bits
+            or len(range_point) != byte_bits or len(pad_point) != byte_bits):
+        raise ValueError("byte-opening points do not match the cut domains")
+    natural(coin, "byte-opening batch coin", 0, P-1)
+    for c, (r, s) in zip(cohorts, cut_points):
+        if len(r) != (c["rows"]-1).bit_length() or len(s) != (c["columns"]-1).bit_length():
+            raise ValueError("P0 cut point has the wrong axes")
+    for point in [rq_point, range_point, pad_point, *(q for pair in cut_points for q in pair)]:
+        for value in point:
+            natural(value, "canonical diagnostic point coordinate", 0, P-1)
+    def eq(point, index):
+        return math.prod(x if (index >> j) & 1 else 1-x for j, x in enumerate(point)) % P
+    def prefix_weight(point, count):
+        return sum(eq(point[width.bit_length()-1:], offset//width)
+                   for offset, width in dyadic_intervals(count)) % P
+    biases = [(1 << (8*c["cut_scalar_bytes"]-1))*prefix_weight(r, c["rows"])
+              * prefix_weight(s, c["columns"]) % P for c, (r, s) in zip(cohorts, cut_points)]
+    powers = [pow(coin, j, P) for j in range(len(cohorts)+8)]
+    rq_offsets = {t[:5]: t[5] for t in rq_tiles}
+    terms = []
+    for i, row, col, height, width, first, count, offset in byte_tiles:
+        rb, cb, bb = height.bit_length()-1, width.bit_length()-1, count.bit_length()-1
+        r, s = cut_points[i]
+        coefficient = powers[i]*eq(r[rb:], row//height)*eq(s[cb:], col//width) % P
+        byte_values = [pow(256, 1 << j, P) for j in range(bb)]
+        byte_point = [v*pow(1+v, -1, P) % P for v in byte_values]  # public 257/65537
+        byte_scale = pow(256, first, P)*math.prod(1+v for v in byte_values) % P
+        terms.append((offset, byte_point+list(s[:cb])+list(r[:rb]), coefficient*byte_scale % P))
+        if cohorts[i]["kind"] == "matrix":
+            rq_offset = rq_offsets[i, row, col, height, width]
+            high = eq(rq_point[rb+cb:], rq_offset >> (rb+cb))
+            for lane in range(first, first+count):
+                local_point = [((lane-first) >> j) & 1 for j in range(bb)]+list(rq_point[:rb+cb])
+                terms.append((offset, local_point, powers[len(cohorts)+lane]*high % P))
+    terms.append((0, list(range_point), powers[-2]))
+    # Padding form = full EQ minus its live-prefix restrictions, not a free claim.
+    terms.append((0, list(pad_point), powers[-1]))
+    for offset, width in dyadic_intervals(live):
+        bits = width.bit_length()-1
+        terms.append((offset, list(pad_point[:bits]), -powers[-1]*eq(pad_point[bits:], offset//width) % P))
+    return terms, biases
+
+
+def cut_byte_opening_screen(cohorts):
+    """R1's known P0+RNE+range+padding claims; not the final Gamma barrier."""
+    byte_tiles, rq_tiles = cut_byte_layout(cohorts)
+    live = sum(c["rows"]*c["columns"]*c["cut_scalar_bytes"] for c in cohorts)
+    bits, claims = (live-1).bit_length(), len(cohorts)+8
+    corrections = 3*bits+1
+    padded, tail, visits = 1 << bits, 1 << max(0,bits-10), min(10,bits)+1
+    descriptor_bytes = 64*len(byte_tiles)+48*len(rq_tiles)
+    paired = paired_rs_opening_screen(padded, 1 << 22, 357, 4)
+    pcs = recursive_rs_opening_screen(padded, 1 << 22, 357, 4)
+    baseline = requantization_screen(cohorts)
+    block, queries, rows = 1 << 22, 357, padded >> 22
+    internal_tree = 32*(4*block-1)
+    caller_e = (weight_cohort_screen(cohorts)["extension_corrections_before_other_circuits"]
+                +input_link_screen(cohorts)["extension_corrections"]
+                +baseline["requantization_extension_corrections_upper"]+baseline["byte_range_extension_corrections"])
+    records = (32*pcs["base_corrections_including_anchor_upper"]
+               +48*(caller_e+pcs["extension_corrections_including_partial_sumchecks"]+paired["additional_extension_corrections"])
+               +descriptor_bytes+24*rows)
+    return {
+        "credit": False,
+        "byte_tiles": len(byte_tiles),
+        "matrix_cell_tiles": len(rq_tiles),
+        "byte_and_rq_descriptor_bytes": descriptor_bytes,
+        "layout_diagnostic_sha256": hashlib.sha256(json.dumps(
+            [byte_tiles, rq_tiles], separators=(",", ":")).encode()).hexdigest(),
+        "known_claims_including_padding": claims,
+        "public_cube_terms_for_known_claims": len(byte_tiles)+6*len(rq_tiles)+2+live.bit_count(),
+        "selected_paired_opening": {
+            "additional_extension_corrections_over_A3": paired["additional_extension_corrections"],
+            "added_payload_before_framing_and_shared_closures": 24*paired["additional_extension_corrections"],
+            "component_payload_with_byte_pcs_before_framing": paired["component_payload_before_framing_and_caller"],
+            "additional_extension_challenges_including_padding_and_batch": bits+1+paired["additional_extension_challenges"],
+            "interactive_transfer_error_numerator_before_A3_and_mac": bits+claims-1+paired["paired_reduction_interactive_error_numerator"],
+            "additional_zero_residuals_over_A3": 24,
+            "additional_private_products": 0,
+            "source_traversals_after_commit": 2,
+            "x1_regeneration_required": False,
+            "retained_alpha_bytes": 24*rows,
+            "retained_outer_internal_nodes_bytes": internal_tree,
+            "queried_and_sibling_columns_upper": 2*queries,
+            "postcommit_outer_column_hash_calls_upper": 2*queries*((rows+3)//4),
+            "known_message_descriptor_alpha_union_bytes": records,
+            "first_pass_f_f2_g_and_decoded_block_bytes": paired["first_pass_f_f2_g_and_decoded_source_block_bytes"],
+            "first_pass_extension_products_before_public_forms_and_compact_proofs": paired["first_pass_products_before_forms_and_compact_proofs"],
+            "known_first_pass_products_with_two_public_form_generations": paired["first_pass_products_before_forms_and_compact_proofs"]+8*padded,
+            "commit_preparation_with_b_and_descriptors_bytes": live+272*block+descriptor_bytes,
+            "staged_tree_build_with_b_and_descriptors_bytes": live+32*4*block+internal_tree+descriptor_bytes,
+            "first_pass_known_union_bytes": live+internal_tree+80*block+records,
+            "compact_commit_and_sumcheck_known_union_bytes": live+internal_tree+96*block
+                +pcs["all_inner_trees_bytes"]+336*(block//16)+records,
+            "queried_columns_known_union_bytes": live+internal_tree+96*block
+                +pcs["all_inner_trees_bytes"]+128*queries+records,
+        },
+        "simple_sumcheck_reference": {
+            "extension_corrections": corrections,
+            "payload_before_framing_and_shared_closures": 24*corrections,
+            "zero_residual_equations": bits+1,
+            "additional_private_products": 0,
+            "extension_challenges_including_padding_probe": 2*bits+1,
+            "interactive_transfer_error_numerator_including_padding_probe": claims-1+3*bits,
+            "two_cached_tail_vectors_bytes": 48*tail,
+            "source_traversals_before_cached_tail": visits,
+            "extension_mul_upper_before_form_generation_and_mac": 2*visits*padded+3*(padded-1)+2*(tail-1),
+            "known_barrier_extension_mul_upper_before_metadata_and_mac": 6*visits*padded+3*(padded-1)+2*(tail-1),
+        },
+        "gather_requested_packed_bytes_upper_per_byte_source_traversal": sum(
+            c["rows"]*c["columns"]*c["cut_scalar_bytes"]*(2 if c["kind"] == "matrix" else 1)
+            for c in cohorts),
+        "known_claim_forms_compiled": True,
+        "changes_byte_and_rq_virtual_layouts": True,
+        "physical_b_copy_created": False,
+        "complete_gamma_consumers_or_liveness_compiled": False,
+        "additional_weight_reads": 0,
+    }
+
+
 def gemma_input_routes(cohorts):
     """P0 input claims -> canonical W-free producer tensors, not free roots.
 
@@ -917,6 +1081,7 @@ def requantization_screen(cohorts):
     p0_corrections = weight_cohort_screen(cohorts)["extension_corrections_before_other_circuits"]
     seed_corrections = input_link_screen(cohorts)["extension_corrections"]
     preparation = raw_bytes+repaired["model_setup_known_arrays_bytes"]
+    _, rq_tiles = cut_byte_layout(cohorts)
     return {
         "credit": False,
         "matrix_raw_cells": matrix_cells,
@@ -933,6 +1098,7 @@ def requantization_screen(cohorts):
         "fixed_prefix_rounds_before_materialization": 10,
         "source_scans_per_sumcheck_before_cached_tail_upper": 11,
         "six_byte_plane_cached_tail_bytes": 6*24*(1 << max(0,rq_bits-10)),
+        "sparse_rne_public_coefficient_tail_bytes_upper": 48*((1 << max(0,rq_bits-10))+len(rq_tiles)-1),
         "byte_range_cached_tail_bytes": 24*(1 << max(0,byte_bits-10)),
         "literal_six_row_byte_pcs_screens": literal,
         "four_row_no_outer_tree_pcs_payload_before_framing": repaired["component_payload_before_framing_and_other_components"],
@@ -1186,6 +1352,7 @@ def report():
         "weight_cohort_screen": weight_cohort_screen(cohorts),
         "input_link_screen": input_link_screen(cohorts),
         "requantization_screen": requantization_screen(cohorts),
+        "cut_byte_opening_screen": cut_byte_opening_screen(cohorts),
         "dyadic_weight_layout_screen": {
             "credit": False,
             "tiles": len(tiles),

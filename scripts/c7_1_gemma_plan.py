@@ -154,6 +154,40 @@ def streaming_work(n, block):
     }
 
 
+def hobbit_carrier_screen(n, block, queries):
+    """Literal Construction 4 + split masks from §4.3.3; NOT a blind PCS.
+
+    n is the padded source size; block is the PCS block, independently of
+    the reduction block. Each proof opens queries DISTINCT columns per half
+    of (Enc(W)+rho, rho), disjoint within that proof. Query pairs in two
+    attempts are independent and uniform; the SAME rho is reused here.
+    No FS grinding, masks from other schemes, or complete-size credit.
+    """
+    if (type(n) is not int or type(block) is not int or block < 1 or n < block
+            or n & (n - 1) or block & (block - 1)):
+        raise ValueError("n and block must be powers of two, with block <= n")
+    natural(queries, "distinct queries per half", 1, 2*block)
+    rows, domain = n // block, 4*block
+    h = n.bit_length() - 1
+    return {
+        "credit": False,
+        "carrier_block_cells": block,
+        "rows": rows,
+        "queries_per_half_not_a_security_derivation": queries,
+        "unmasked_column_payload_fp_bytes": 8*queries*rows,
+        "split_mask_column_payload_fp_bytes": 16*queries*rows,
+        "split_mask_column_payload_fp3_bytes": 48*queries*rows,
+        "compact_b_log2_b_work_units_not_complete_work": block*(block.bit_length()-1),
+        "queried_column_cells_per_half": queries*rows,
+        "linear_screen_conditions_not_physical_fit": (
+            h > 0 and block*block >= n and block*h <= n and queries <= block),
+        # Fixed coordinate j appears in the first masked half and second
+        # mask-only half with probability (queries/domain)^2, exactly.
+        "reused_mask_fixed_coordinate_exposure_probability": {
+            "numerator": queries**2, "denominator": domain**2},
+    }
+
+
 def dot(a, b):
     if len(a) != len(b):
         raise ValueError("different vector lengths")
@@ -318,6 +352,9 @@ def report():
             for (r, k), count in sorted(matrix_shapes.items())
         ],
         "candidates": candidates,
+        "hobbit_direct_carrier_screens": [
+            hobbit_carrier_screen(n, 1 << bits, 357) for bits in (23, 24, 25)
+        ],
         "complete_certificate_bytes": None,
         "complete_h100_peak_bytes": None,
         "complete_security_bits": None,

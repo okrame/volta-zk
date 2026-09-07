@@ -3,6 +3,8 @@
 import importlib.util
 import math
 import random
+from fractions import Fraction
+from itertools import combinations
 from pathlib import Path
 
 import pytest
@@ -129,6 +131,45 @@ def test_six_product_fp3_matches_independent_polynomial_multiplication():
     for value in ((1, 2), (1, 2, plan.P), (True, 0, 0)):
         with pytest.raises(ValueError):
             plan.fp3_mul_six(value, (0, 0, 0))
+
+
+def test_hobbit_carrier_screen_is_only_a_conditional_payload_and_work_count():
+    screen = plan.hobbit_carrier_screen(1 << 35, 1 << 24, 357)
+    assert screen["credit"] is False
+    assert screen["split_mask_column_payload_fp_bytes"] == 11_698_176
+    assert screen["split_mask_column_payload_fp3_bytes"] == 35_094_528 > 35_000_000
+    assert screen["linear_screen_conditions_not_physical_fit"] is True
+    assert screen["compact_b_log2_b_work_units_not_complete_work"] <= 1 << 35
+    assert screen["queried_column_cells_per_half"] <= 1 << 35
+    probability = screen["reused_mask_fixed_coordinate_exposure_probability"]
+    assert Fraction(probability["numerator"], 2*probability["denominator"]) > Fraction(1, 2**78)
+    assert not plan.hobbit_carrier_screen(1, 1, 1)["linear_screen_conditions_not_physical_fit"]
+    assert not plan.hobbit_carrier_screen(64, 4, 1)["linear_screen_conditions_not_physical_fit"]
+    assert not plan.hobbit_carrier_screen(64, 32, 1)["linear_screen_conditions_not_physical_fit"]
+    assert not plan.hobbit_carrier_screen(64, 8, 9)["linear_screen_conditions_not_physical_fit"]
+    for arguments in ((0, 1, 1), (3, 1, 1), (4, 3, 1), (2, 4, 1),
+                      (True, 1, 1), (4, 2, 0), (4, 2, 5), (4, 2, True)):
+        with pytest.raises(ValueError):
+            plan.hobbit_carrier_screen(*arguments)
+
+
+def test_split_mask_root_reuse_leaks_despite_disjoint_queries_within_each_proof():
+    # Enumerate actual legal query pairs, not a simulation or chosen FS tape.
+    for domain, q in ((4, 1), (4, 2), (6, 2)):
+        subsets = list(map(frozenset, combinations(range(domain), q)))
+        pairs = [(a, b) for a in subsets for b in subsets if a.isdisjoint(b)]
+        exposed = sum(0 in a1 and 0 in b2
+                      for a1, _ in pairs for _, b2 in pairs)
+        assert Fraction(exposed, len(pairs)**2) == Fraction(q, domain)**2
+    # One nonzero code-coordinate functional w over F7. Individually uniform;
+    # joint views recover w for EVERY mask. Fresh masks remove this attack.
+    for w in (0, 1):
+        masked = [(w + rho) % 7 for rho in range(7)]
+        assert sorted(masked) == list(range(7))
+        assert {(a - rho) % 7 for a, rho in zip(masked, range(7))} == {w}
+        renewed_views = {((w + rho1) % 7, rho2)
+                         for rho1 in range(7) for rho2 in range(7)}
+        assert renewed_views == {(a, b) for a in range(7) for b in range(7)}
 
 
 def test_gemma_report_keeps_requirements_separate_from_complete_results():

@@ -10,6 +10,7 @@ it is not another status ledger.
 |---|---|
 | [Status](prototype-status.md) | Active work, evidence, open obligations, authorization and next steps |
 | [C7.1 design](c7.1-gemma31b-design.md) | Model/relation, protocol requirements, security and resource accounting |
+| [G1 feasibility](c7.1-feasibility.md) | Analytic admission criteria, carrier derivations and counterexamples, next constructive obligation |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |
 | [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [tests](../tests/test_c7_1_gemma_plan.py) | Small executable accounting/algebra checks |

@@ -32,12 +32,23 @@ No owner decision is pending. No provider contact, paid GPU, weight download,
 heavy build or E2E is authorized now. Every E2E/heavy run requires authorized
 hardware and explicit spending authorization after local preparation. See
 [build procedures](procedures/build-and-test.md) and [RunPod procedures](procedures/runpod.md).
+The owner's 2026-09-07 request prioritizes a complete algorithm with analytic
+feasibility proofs before prover implementation and measurements.
 
 ## Evidence and open obligations
 
+- The [G1 feasibility analysis](c7.1-feasibility.md) is concluded; admission
+  of a complete algorithm is **not passed**. It defines six testable criteria,
+  gives a conditional linear-work screen for the clear Hobbit carrier, and
+  rejects two specific direct instantiations: reused split masks without
+  cross-proof restrictions, and the fixed-width Fp3 column codec at
+  `b_P=2^24`, 357 queries per half (35,094,528 bytes for columns alone).
+  Neither result proves C7.1 impossible; base-field and different masking
+  constructions remain open. See the dossier for premises and scope.
 - The [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) and
-  [eight focused tests](../tests/test_c7_1_gemma_plan.py) check paired-fold
-  arithmetic, service accounting and candidate integer/Fp3 decompositions.
+  [ten focused tests](../tests/test_c7_1_gemma_plan.py) check paired-fold
+  arithmetic, service accounting, candidate integer/Fp3 decompositions,
+  and the new two-proof masking counterexample and exact carrier counts.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -53,12 +64,16 @@ hardware and explicit spending authorization after local preparation. See
 ## Next work
 
 Follow [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture):
-close carrier/blind MAC/PCS and runtime-to-Lean links; compile the concrete FS
-codec, masks, correlations, lifetime events, certificate bytes, allocations and
-work. Prepare finite-real-PCG, FS and chunk-parity checks. After hardware and
-spending authorization, run the small complete composition case, then real
-Gemma 100+50 and continuations to 4,096 tokens. Layouts, codecs and kernels
-remain implementation choices within the design's requirements.
+first specify and prove a private opening into the session MAC, with mask-root
+refresh bound to the same Delta-independent model commitment. Study justified
+Fp leaves/code with Fp3 challenges/MAC and fresh masks per attempt; this is not
+yet an adopted carrier or a free refresh. Alongside it, close witness and form
+availability within the four W reads. Complete the relation, both lifetime
+proofs and full certificate/resource accounting before admitting prover
+implementation. Then prepare the small checks and, after hardware/spending
+authorization, the complete composition case and real Gemma workloads.
+The [next constructive obligation](c7.1-feasibility.md#6-prossimo-obbligo-costruttivo)
+specifies the required mathematical deliverable; no new owner decision is pending.
 
 ## Documentation decision
 

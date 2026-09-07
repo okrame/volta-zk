@@ -485,6 +485,110 @@ def test_recursive_rs_component_counts_and_fixed_cap_are_not_complete_credit():
             plan.recursive_rs_opening_screen(*args)
 
 
+def test_public_parameter_tape_is_finite_canonical_and_has_no_nonce_retry():
+    def block(*words):
+        return b''.join(x.to_bytes(8, 'little') for x in words)
+    p = plan.P
+    tapes = [block(p, (1 << 64)-1, p+1, i) for i in range(287)]
+    assert plan.wide_hash_public_parameters(tapes) == tuple(range(287))
+    # First accepted proposal wins; later bytes cannot choose a different key.
+    tapes[0] = block(p-1, 1, 2, 3)
+    assert plan.wide_hash_public_parameters(tapes)[0] == p-1
+    tapes[-1] = block(p, p, p, p)
+    assert plan.wide_hash_public_parameters(tapes) is None
+    for malformed in (tapes[:-1], tapes+[bytes(32)], [bytes(31)]+tapes[1:],
+                      [bytearray(32)]+tapes[1:], iter(tapes)):
+        with pytest.raises(ValueError):
+            plan.wide_hash_public_parameters(malformed)
+    descriptor = b'fixed pre-profile, not root/salt/session/nonce'
+    addresses = [b'C71A5K01'+len(descriptor).to_bytes(8, 'little')+descriptor+i.to_bytes(4, 'little')
+                 for i in range(287)]
+    assert len(set(addresses)) == 287
+    assert all(len(x) == 20+len(descriptor) for x in addresses)
+    s = plan.wide_hash_parameter_screen()
+    assert s['canonical_constant_vector_bytes'] == 2296
+    assert s['public_parameter_rom_output_bytes'] == 9184
+    assert s['maximum_u64_proposals'] == 1148
+    exhaustion = Fraction(s['setup_exhaustion_union_bound_numerator'],
+                          s['setup_exhaustion_union_bound_denominator'])
+    assert 0 < exhaustion < Fraction(287, 1 << 128) < Fraction(1, 1 << 119)
+    denominator = s['comparison_gen_bit_density_ratio_denominator_per_coordinate']
+    low = Fraction(s['comparison_gen_bit_min_density_ratio_numerator_per_coordinate'], denominator)
+    high = Fraction(s['comparison_gen_bit_max_density_ratio_numerator_per_coordinate'], denominator)
+    assert 1 < (high/low)**287 < 1+Fraction(1, 1 << 86)
+    assert not s['credit'] and s['complete_security_bits'] is None
+
+
+def test_random_parameter_embedding_couples_the_whole_public_tape_not_just_the_key():
+    # Two coordinates, two proposals, small field p=3 in four possible words.
+    # Exact finite version of A5-P's reduction, NOT a hash-security test.
+    p, space, coordinates, tries = 3, 4, 2, 2
+    tapes = list(product(range(space), repeat=coordinates*tries))
+    keys = list(product(range(p), repeat=coordinates))
+
+    def decode(tape):
+        result, positions = [], []
+        for i in range(coordinates):
+            offset = i*tries
+            accepted = next((j for j in range(tries) if tape[offset+j] < p), None)
+            if accepted is None:
+                return None
+            result.append(tape[offset+accepted])
+            positions.append(offset+accepted)
+        return tuple(result), positions
+
+    real, embedded = Counter(), Counter()
+    for tape in tapes:
+        decoded = decode(tape)
+        real[None if decoded is None else (decoded[0], tape)] += 1
+        for independent_key in keys:
+            if decoded is None:
+                embedded[None] += 1
+            else:
+                programmed = list(tape)
+                for pos, value in zip(decoded[1], independent_key):
+                    programmed[pos] = value
+                assert decode(programmed)[0] == independent_key
+                embedded[independent_key, tuple(programmed)] += 1
+    assert embedded == Counter({record: len(keys)*mass for record, mass in real.items()})
+    assert Fraction(real[None], len(tapes)) == Fraction(31, 256)
+    assert Counter({key: sum(mass for record, mass in real.items()
+                             if record is not None and record[0] == key) for key in keys}) == Counter({key:25 for key in keys})
+    # Taking the first proposal modulo p would not have this distribution.
+    assert Counter(x % p for x in range(space)) == Counter({0:2, 1:1, 2:1})
+    # A strictly finite comparison key generator (NOT the actual decoder):
+    # each coordinate uses its first proposal mod p only if all proposals
+    # fail. Its distribution dominates s times the independent uniform key.
+    bit_keys = Counter()
+    for tape in tapes:
+        key = tuple(next((x for x in tape[i*tries:(i+1)*tries] if x < p), tape[i*tries] % p)
+                    for i in range(coordinates))
+        bit_keys[key] += 1
+    assert min(bit_keys.values()) == 25 and max(bit_keys.values()) == 36
+    bit_embedded = Counter()
+    for key, mass in bit_keys.items():
+        for tape in tapes:
+            decoded = decode(tape)
+            if decoded is not None:
+                programmed = list(tape)
+                for pos, value in zip(decoded[1], key):
+                    programmed[pos] = value
+                bit_embedded[key, tuple(programmed)] += mass
+    # Denominators are 256^2 vs 256: R_success >= (225/256)*real_success
+    # for EVERY success predicate on valid records, not just one chosen test.
+    assert all(bit_embedded[record] >= 225*mass for record, mass in real.items() if record is not None)
+    # Free oracle-dependent advice can store a collision after learning a
+    # fixed-address parameter. Charging only later ROM queries misses it.
+    families = list(product(range(2), repeat=3))
+    advice = [next((i,j) for i,j in combinations(range(3), 2) if h[i] == h[j]) for h in families]
+    assert all(h[i] == h[j] for h, (i,j) in zip(families, advice))
+    assert sum(h[0] == h[1] for h in families) == len(families)//2
+    # A free descriptor/nonce changes the distribution through key grinding.
+    assert Fraction(sum(0 in pair for pair in product(range(3), repeat=2)), 9) == Fraction(5, 9) > Fraction(1, 3)
+    # Nor does output-only salting turn a fixed weak function into a CR family.
+    assert all((0 % 3 + key) % 3 == (3 % 3 + key) % 3 for key in range(3))
+
+
 def test_wide_hash_recounts_anchor_recursion_and_known_memory_without_security_credit():
     report = plan.report()
     w = report['wide_hash_rs_screen']

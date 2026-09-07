@@ -100,6 +100,20 @@ authorization.
   repeated native FFT work; warm A4 still uses two source visits.
   Parameters/matrices/KAT, profile grammar, binding/hiding, IBCS/FS and
   complete liveness remain open. This is not an admitted hash upgrade.
+- [A5-P: sampled public parameters](c7.1-wide-hash-opening.md#21-a5-p-parametri-pubblici-dal-rom-con-coupling-finito)
+  now gives a finite ordinary-ROM publication and exact joint-tape embedding
+  into independently sampled arithmetic-hash keys. A fixed pre-profile,
+  no selectable nonce and four u64 proposals at each of 287 fixed addresses
+  yield 2,296 bytes of constants from 9,184 derived public bytes. Exhaustion
+  aborts, with probability below 2^-119 for that single parameter set;
+  revisiting the same addresses is not resampling. A bounded-bit comparison
+  generator has explicit density ratios, not an implicit unbounded sampler.
+  The result requires initial advice independent of RO and charges every
+  post-parameter computation, including preprocessing. Free RO-dependent
+  advice can precompute a collision; Q_FS alone does not price that search.
+  This repairs only the sampled-parameter interface in the stated model:
+  the exact pre-profile/matrices, CR/hiding of the sampled family, reduction
+  simulation costs, IBCS/FS and complete witness/liveness remain unproved.
 - [Ideal MAC/FS simulation](c7.1-committed-mac-opening.md#31-simulatore-ideale-fs-nessuna-programmazione-delloracolo)
   now has a straight-line coupling proof for the actual public correction
   prefixes, including aborts and adaptive attempts. It needs no oracle
@@ -232,7 +246,7 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 75 focused checks also cover finite query sampling, exact ideal
+  The 77 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
@@ -263,6 +277,9 @@ authorization.
   A5 adds the 32-lane algebra instance, fresh wide accounting, and symbolic
   tiled/pruned-tree checks with absolute indices; no Poseidon2 KAT or
   security test is claimed.
+  A5-P adds exact joint distributions of embedded keys/public rejection
+  tapes, finite comparison-generator domination, fail-closed boundaries,
+  descriptor grinding and the excluded free oracle-dependent advice case.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -295,8 +312,11 @@ adaptation to the actual public-coin/MAC/FS transcript. A5 now supplies a
 structural wide hash/anchor codec, checker and resource recount, not an
 admitted hash profile. Complete its parameters/matrices/KAT and public
 profile grammar, justify the concrete binding/hiding assumptions and
-compile the actual reduction. A p^8 output space and a round calculator
-alone do not discharge those obligations. Its C_Σ margin is narrow;
+compile the actual reduction. A5-P now supplies a finite sampled-parameter
+embedding in ordinary ROM: instantiate its fixed pre-profile/matrices and
+the sampled family's actual assumptions, then price RO simulation and
+rewinding, including preprocessing. Neither that coupling nor a p^8 output
+space supplies collision/hiding bits. Its C_Σ margin is narrow;
 the full reader/Gamma workspace must be included before claiming a fit.
 The A3 opening stages add no W reads after queried source columns exist;
 they do not supply the missing Gemma witness. The static model anchor keeps PCS openings private,

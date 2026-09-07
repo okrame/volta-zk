@@ -728,6 +728,56 @@ def combine(a, b, r):
     return [(x + r * y) % P for x, y in zip(a, b)]
 
 
+def wide_hash_public_parameters(blocks):
+    """A5-P finite public-tape decoder, NOT parameter generation or a hash.
+
+    One 32-byte ROM output per active round-constant position. Each has
+    four u64 proposals; exhaustion aborts the ENTIRE parameter publication.
+    """
+    if (not isinstance(blocks, (list, tuple)) or len(blocks) != 287
+            or any(type(b) is not bytes or len(b) != 32 for b in blocks)):
+        raise ValueError('287 complete 32-byte public parameter blocks required')
+    result = []
+    for block in blocks:
+        for start in range(0, 32, 8):
+            value = int.from_bytes(block[start:start+8], 'little')
+            if value < P:
+                result.append(value)
+                break
+        else:
+            return None  # no new descriptor/nonce, modulo reduction or fallback
+    return tuple(result)
+
+
+def wide_hash_parameter_screen():
+    """A5-P distribution/cost screen; no concrete CR, AI-ROM or FS credit."""
+    space, rejected = 1 << 64, (1 << 64)-P
+    return {
+        'credit': False,
+        'public_round_constant_coordinates': 8*32+31,
+        'public_parameter_rom_output_blocks': 287,
+        'public_parameter_rom_output_bytes': 287*32,
+        'canonical_constant_vector_bytes': 287*8,
+        'maximum_u64_proposals': 287*4,
+        'parameter_input_bytes_per_coordinate': '20 + len(fixed_preprofile)',
+        'setup_exhaustion_union_bound_numerator': 287*((1 << 64)-P)**4,
+        'setup_exhaustion_union_bound_denominator': 1 << 256,
+        # Only the comparison Gen_bit game uses modulo on exhaustion;
+        # the actual public-tape decoder above ALWAYS aborts instead.
+        'comparison_gen_bit_min_density_ratio_numerator_per_coordinate': space**4-rejected**4,
+        'comparison_gen_bit_max_density_ratio_numerator_per_coordinate': space**4-rejected**4+P*rejected**3,
+        'comparison_gen_bit_density_ratio_denominator_per_coordinate': space**4,
+        'setup_exhaustion_is_rejection_not_false_acceptance': True,
+        'independent_key_embedding_extra_uniform_tape_bytes': 287*32,
+        'changes_private_gkr_round_or_correction_counts': False,
+        'public_parameters_model_setup_delta_independent': True,
+        'requires_fixed_descriptor_before_oracle_and_oracle_independent_advice': True,
+        'post_parameter_computation_including_preprocessing_must_be_charged': True,
+        'concrete_family_collision_hiding_and_fs_bounds_instantiated': False,
+        'complete_security_bits': None,
+    }
+
+
 def wide_hash_rs_screen(n, block, queries):
     """A5 STRUCTURAL candidate, not a generated/justified Poseidon2 profile.
 
@@ -2122,6 +2172,7 @@ def report():
         "ibcs_rewinding_screens": [ibcs_rewinding_screen(bits, time_bits)
                                    for bits, time_bits in ((256, 0), (256, 64), (512, 64))],
         "wide_hash_rs_screen": wide_hash_rs_screen(n, 1 << 24, 357),
+        "wide_hash_parameter_screen": wide_hash_parameter_screen(),
         "wide_hash_witness_screens": [wide_hash_witness_screen(cohorts, old)
                                      for old in (0, 3946)],
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),

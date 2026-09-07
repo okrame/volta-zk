@@ -12,7 +12,7 @@ it is not another status ledger.
 | [C7.1 design](c7.1-gemma31b-design.md) | Model/relation, protocol requirements, security and resource accounting |
 | [G1 feasibility](c7.1-feasibility.md) | Analytic admission criteria, carrier derivations and counterexamples, next constructive obligation |
 | [G2 committed MAC opening](c7.1-committed-mac-opening.md) | Private-verifier bridge, ideal MAC/FS simulation, grouped hash/GKR, exclusions and remaining obligations |
-| [A3 recursive RS opening](c7.1-recursive-rs-opening.md) | Fixed-cap encoder, private recursion, bounded sampling, ideal-oracle binding, accounting and concrete-hash compilation gap |
+| [A3 recursive RS opening](c7.1-recursive-rs-opening.md) | Fixed-cap encoder/recursion, ideal-oracle binding, IBCS rewinding audit and scoped 256-bit bound exclusion, remaining hash/FS repairs |
 | [A4 paired RS opening](c7.1-paired-rs-opening.md) | Fused two-read reduction/opening, arbitrary-fold binding, dyadic tensor forms and conditional GKR composition |
 | [W-cut witness](c7.1-cut-witness.md) | Conditional W-free replay, P0 cohorts, exact input selectors/fanout reduction and remaining producer/KV obligations |
 | [R1 requantization](c7.1-requantization.md) | Exact RNE, cubic range GKR with source availability, dyadic byte forms, two-visit A4 opening/cache and remaining Gamma/costs |

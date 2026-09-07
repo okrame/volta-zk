@@ -483,6 +483,63 @@ def test_recursive_rs_component_counts_and_fixed_cap_are_not_complete_credit():
             plan.recursive_rs_opening_screen(*args)
 
 
+def test_ibcs_template_cube_root_loss_excludes_only_the_256bit_bound():
+    first, large, wider = plan.report()['ibcs_rewinding_screens']
+    for s in (first, large, wider):
+        assert not s['credit'] and s['complete_security_bits'] is None
+        assert not s['full_compiler_constants_relation_hash_assumptions_and_fs_instantiated']
+        assert s['sampler_runs_at_selected_tolerance'] == 1 << 126
+    assert first['template_minimum_integer_output_bits_to_beat_tolerance'] == 355
+    assert large['template_minimum_integer_output_bits_to_beat_tolerance'] == 483
+    assert first['optimistic_rewinder_circuit_size_bits'] == 126
+    assert large['optimistic_rewinder_circuit_size_bits'] == 190
+    assert not first['best_template_interactive_error_below_2_neg_78']
+    assert not large['best_template_interactive_error_below_2_neg_78']
+    assert wider['best_template_interactive_error_below_2_neg_78']  # NOT protocol credit
+    # Exact rational certificate of the GLOBAL minimum, no floating-point gate.
+    for k in (Fraction(1,1 << 204),Fraction(1,1 << 76),Fraction(1,7),Fraction(3)):
+        for e in (Fraction(1,1 << 100),Fraction(1,7),Fraction(1,2),Fraction(2)):
+            f = e+k/e**2
+            assert (4*f**3-27*k)*e**6 == (e**3-2*k)**2*(4*e**3+k) >= 0
+    k = Fraction(1,1 << 204)  # L=2^26, unit t, output space 2^256
+    assert 27*k > 4*Fraction(1,1 << 78)**3
+    # A 512-bit ENVELOPE could clear this screen, not the missing hash/FS proofs.
+    k = Fraction(1,1 << 332)  # L=2^26, t=2^64
+    e = Fraction(1,1 << 101)
+    assert e+k/e**2 < Fraction(1,1 << 100)
+    # Expected work cannot replace strict work inside a birthday square.
+    # With probability 1/16, make 16 queries to a random map into 256 values.
+    probability_run = Fraction(1,16)
+    collision = 1-math.prod(Fraction(256-j,256) for j in range(16))
+    mean_queries = probability_run*16
+    assert mean_queries == 1
+    assert probability_run*collision > mean_queries**2/256
+    for args in ((0,0),(256,-1),(256,True),(256,0,0)):
+        with pytest.raises(ValueError):
+            plan.ibcs_rewinding_screen(*args)
+
+
+def test_ibcs_missing_valid_positions_match_exact_resampling_probability():
+    # Four equally likely continuations: invalid, {0}, {1}, {0,1}.
+    # Invalid openings contribute NO position, even if they name one.
+    outcomes = (set(), {0}, {1}, {0,1})
+    for n in range(1,5):
+        misses, single = 0, 0
+        for draws in product(range(4),repeat=n+1):
+            seen = set().union(*(outcomes[i] for i in draws[:-1]))
+            current = outcomes[draws[-1]]
+            misses += bool(current-seen)
+            single += 0 in current and 0 not in seen
+        exact_single = Fraction(single,4**(n+1))
+        assert exact_single == Fraction(1,2)*Fraction(1,2)**n
+        assert Fraction(misses,4**(n+1)) <= 2*exact_single <= Fraction(2,n)
+    # The union bound does not silently condition on future acceptance.
+    for n in range(1,12):
+        for j in range(8):
+            delta = Fraction(j,7)
+            assert delta*(1-delta)**n <= Fraction(1,n)
+
+
 def test_a3_public_query_sampler_is_distinct_uniform_and_fails_closed():
     # Enumerate each pair of accepted residues. Partial Fisher-Yates gives
     # each ordered pair of distinct indices exactly once, not a multiset.

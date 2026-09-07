@@ -581,6 +581,38 @@ def private_hobbit_arithmetic_hash_screen(n, block, queries, group_size=6):
     }
 
 
+def ibcs_rewinding_screen(hash_output_bits, adversary_size_bits=0, tolerance_bits=100):
+    """FAVORABLE bound-template screen for CDGS24, not a C7.1 security bound.
+
+    One outer oracle of 2^26 column symbols, one round, unit hidden constant;
+    ideal birthday envelope at the INFLATED adversary size. Actual circuit
+    costs, other rounds/oracles, IOP errors and FS are deliberately omitted.
+    """
+    natural(hash_output_bits, 'hypothetical uniform hash output bits', 1, 1024)
+    natural(adversary_size_bits, 'hypothetical log2 circuit size', 0, 256)
+    natural(tolerance_bits, 'rewinding error tolerance bits', 1, 256)
+    log_a = 26+adversary_size_bits  # A=L*t; NOT Q_FS
+    # f(e)=e+K/e^2, K=A^2/2^lambda. min f=(27K/4)^(1/3).
+    best_bits = max(0.0, (hash_output_bits-2*log_a-math.log2(27/4))/3)
+    required_bits = 3*tolerance_bits+2*log_a+math.log2(27/4)
+    return {
+        'credit': False,
+        'hypothetical_uniform_hash_output_bits': hash_output_bits,
+        'hypothetical_adversary_size_bits_not_q_fs': adversary_size_bits,
+        'optimistic_oracle_length_columns': 1 << 26,
+        'optimistic_oracle_rounds_and_hidden_constant': 1,
+        'tolerance_bits': tolerance_bits,
+        'sampler_runs_at_selected_tolerance': 1 << (26+tolerance_bits),
+        'optimistic_rewinder_circuit_size_bits': log_a+tolerance_bits,
+        'selected_birthday_envelope_log2_before_clipping': 2*(log_a+tolerance_bits)-hash_output_bits,
+        'best_template_interactive_error_bits': best_bits,
+        'template_minimum_integer_output_bits_to_beat_tolerance': math.floor(required_bits)+1,
+        'best_template_interactive_error_below_2_neg_78': best_bits > 78,
+        'full_compiler_constants_relation_hash_assumptions_and_fs_instantiated': False,
+        'complete_security_bits': None,
+    }
+
+
 def dot(a, b):
     if len(a) != len(b):
         raise ValueError("different vector lengths")
@@ -1951,6 +1983,8 @@ def report():
         ],
         "recursive_rs_opening_screen": recursive_rs_opening_screen(n, 1 << 24, 357),
         "a3_challenge_screen": a3_challenge_screen(),
+        "ibcs_rewinding_screens": [ibcs_rewinding_screen(bits, time_bits)
+                                   for bits, time_bits in ((256, 0), (256, 64), (512, 64))],
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),
         "weight_cohort_screen": weight_cohort_screen(cohorts),
         "input_link_screen": input_link_screen(cohorts),

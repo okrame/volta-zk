@@ -73,6 +73,19 @@ authorization.
   well-formedness. Compiling arbitrary private roots into the required
   oracles, the precise model relation and adaptive FS remain open; no honest
   setup assumption or complete feasibility credit is introduced.
+- [A3 standard-model compilation audit](c7.1-recursive-rs-opening.md#42-compilazione-ibcs-standard-model-fonte-applicabile-e-limite-concreto)
+  now identifies the IBCS theorem of Chiesa et al. (2023/1737, revised
+  2024-09-14): position binding can replace a query-observable commitment
+  RO for an interactive public-coin IOP, through rewinding. Its sampler
+  uses ceil(L/epsilon) continuations, with reduction size O(kL/epsilon)
+  times the adversary size. The literal birthday-envelope justification
+  at 256 bits cannot meet the target: even a single 2^26-column oracle,
+  unit cost and unit hidden constant give a best template bound of only
+  67.0817 bits before FS/lifetime. This excludes that admission argument,
+  not the protocol or every possible reduction. Stronger hash/VC profiles
+  or tighter reductions remain repairs to study. Sampled-parameter and
+  adversary/preprocessing assumptions must match the actual fixed hash;
+  Q_FS is not its work budget. No root-to-oracle/FS credit is granted.
 - [Ideal MAC/FS simulation](c7.1-committed-mac-opening.md#31-simulatore-ideale-fs-nessuna-programmazione-delloracolo)
   now has a straight-line coupling proof for the actual public correction
   prefixes, including aborts and adaptive attempts. It needs no oracle
@@ -205,7 +218,7 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 70 focused checks also cover finite query sampling, exact ideal
+  The 72 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
@@ -230,6 +243,9 @@ authorization.
   R3 adds common-source coverage and all six RQ pullbacks, masked overflow,
   the necessity of a pre-probe source, identical striped RS codewords and
   reconstructed lower subtrees with staged digest buffers.
+  The IBCS audit checks valid-position resampling by finite enumeration
+  and the cube-root-loss identity with exact fractions; it tests a bound
+  template, not an extractor or hash-security claim.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -254,7 +270,12 @@ continue G2 with A3: prove the private-root/oracle compilation and precise
 commitment–W relation, then compose the binding argument with the concrete
 hash/PCS assumptions and FS. A3's finite inner recursion and hash checker
 must not import BCS's extraction from an oracle that the concrete checker
-does not access. Quantify a suitable concrete-hash compilation or repair it.
+does not access. The new IBCS audit supplies a standard-model theorem but
+excludes the literal 256-bit birthday-envelope bound even under favorable
+costs. Seek a tighter concrete reduction or a stronger hash/VC profile;
+compile its parameter/adversary assumptions, complete reduction costs and
+adaptation to the actual public-coin/MAC/FS transcript. A 512-bit output-space
+screen alone is not an implemented or security-justified repair.
 The A3 opening stages add no W reads after queried source columns exist;
 they do not supply the missing Gemma witness. The static model anchor keeps PCS openings private,
 without reusing G1's public split mask. Setup hash work remains substantial;

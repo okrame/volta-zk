@@ -1407,6 +1407,167 @@ def test_attention_component_counts_and_local_arrays_do_not_close_integer_gamma(
         plan.attention_product_screen(3947)
 
 
+def test_auxiliary_layout_raw_probes_and_rne_use_one_byte_source():
+    sources = [
+        {'shape': (1, 3, 2), 'word_bytes': 6, 'rne': True, 'token_offset': 0},
+        {'shape': (2, 2, 2), 'word_bytes': 6, 'rne': True, 'token_offset': 0},
+        {'shape': (2, 1, 3), 'word_bytes': 6, 'rne': True, 'token_offset': 2},
+        {'shape': (2, 3, 2), 'word_bytes': 6, 'rne': True, 'token_offset': 0},
+        {'shape': (1, 2, 1), 'word_bytes': 2, 'rne': False, 'token_offset': 0},
+    ]
+    byte_tiles, rq_tiles = plan.auxiliary_word_layout(sources)
+    live = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources)
+    u, seen = [0]*(1 << (live-1).bit_length()), set()
+    def raw(i, h, r, c):
+        return 11*i-5*h+3*r*r+2*c-17
+    for i, r, c, heads, height, width, j, count, offset in byte_tiles:
+        size = heads*height*width*count
+        assert offset % size == 0
+        for h, a, b, l in product(range(heads), range(height), range(width), range(count)):
+            key = i, h, r+a, c+b, j+l
+            assert key not in seen
+            seen.add(key)
+            word = raw(i, h, r+a, c+b)+(1 << (8*sources[i]['word_bytes']-1))
+            u[offset+count*(b+width*(a+height*h))+l] = (word >> (8*(j+l))) & 255
+    assert len(seen) == live and all(0 <= x < 256 for x in u)
+    points = {0: ([], [2, 3], [5], 7), 1: ([11], [13, 17], [19, 23], 29),
+              2: ([11], [13, 17], [19, 23], 29), 3: ([31], [37, 41], [43], 47),
+              4: ([], [53], [], 59)}
+    terms, bias = plan.auxiliary_probe_terms(byte_tiles, sources, points)
+    def eq(point, index):
+        return math.prod(x if (index >> j) & 1 else 1-x for j, x in enumerate(point)) % plan.P
+    expected = 0
+    for i, s in enumerate(sources):
+        hp, rp, cp, scale = points[i]
+        expected += sum(scale*eq(hp,h)*eq(rp,s['token_offset']+r)*eq(cp,c)*raw(i,h,r,c)
+                        for h,r,c in product(*(range(d) for d in s['shape'])))
+    actual = sum(coef*plan.mle(u[offset:offset+(1 << len(point))], point)
+                 for offset,point,coef in terms) % plan.P
+    assert (actual-bias) % plan.P == expected % plan.P
+    # Non-power-of-two support makes the bias different from one bias per source.
+    assert bias != sum(v[3]*(1 << (8*sources[i]['word_bytes']-1)) for i,v in points.items()) % plan.P
+    rq_live = sum(t[3]*t[4]*t[5] for t in rq_tiles)
+    rq_planes = [[0]*(1 << (rq_live-1).bit_length()) for _ in range(6)]
+    for i,r,c,heads,height,width,offset in rq_tiles:
+        assert offset % (heads*height*width) == 0
+        assert sources[i]['rne']
+        for h,a,b in product(range(heads), range(height), range(width)):
+            value = raw(i,h,r+a,c+b)
+            digits = [((value+(1 << 47)) >> (8*j)) & 255 for j in range(6)]
+            for j in range(6):
+                rq_planes[j][offset+b+width*(a+height*h)] = digits[j]
+            y, valid = plan.rne48_byte_polynomials(digits, 2)
+            assert valid == 1 and y == plan.rne_i48_to_i16(value,2) % plan.P
+    rq_point = list(range(2,2+(rq_live-1).bit_length()))
+    for j, plane in enumerate(rq_planes):
+        terms = plan.auxiliary_rq_terms(byte_tiles, rq_tiles, rq_point, j)
+        actual = sum(coef*plan.mle(u[o:o+(1 << len(q))],q) for o,q,coef in terms) % plan.P
+        assert actual == plan.mle(plane,rq_point)
+    for point,j in ((rq_point[:-1],0),(rq_point,6),(rq_point,-1)):
+        with pytest.raises(ValueError):
+            plan.auxiliary_rq_terms(byte_tiles,rq_tiles,point,j)
+    bad = [dict(sources[0], shape=(3,3,2))]
+    with pytest.raises(ValueError):
+        plan.auxiliary_word_layout(bad)
+    with pytest.raises(ValueError):
+        plan.auxiliary_probe_terms(byte_tiles, sources, {1: ([11],[],[19,23],1)})
+
+
+def test_masked_raw_overflow_cannot_be_removed_by_attention_pruning():
+    # Two prompt rows, scale shift=0: only the FUTURE prompt score overflows.
+    q, k = [[2,0], [0,0]], [[1,0], [32767,0]]
+    raw = [[sum(a*b for a,b in zip(x,y)) for y in k] for x in q]
+    assert raw == [[2,65534], [0,0]]
+    assert all(plan.rne_i48_to_i16(raw[i][j],0) in (0,2) for i in range(2) for j in range(i+1))
+    with pytest.raises(ValueError):
+        plan.rne_i48_to_i16(raw[0][1],0)
+    # Even byte-valid words need to be fixed BEFORE the raw-equality probe.
+    # Tiny-field necessity example, not an attack claimed against Goldilocks.
+    for coin in range(7):
+        late_words = [coin, (coin-1) % 7]
+        assert any(late_words) and ((1-coin)*late_words[0]+coin*late_words[1]) % 7 == 0
+    assert sum((1-r) % 7 == 0 for r in range(7)) == 1  # fixed error [1,0]
+
+
+def test_striped_rs_is_the_identical_codeword_not_a_different_pcs():
+    rng = random.Random(713)
+    for block in (1,2,4,8,16,32,64):
+        values = [rng.randrange(plan.P) for _ in range(block)]
+        expected = plan.small_goldilocks_fft(values+[0]*(3*block))
+        for bits in range(block.bit_length()):
+            assert plan.small_striped_rs(values, 1 << bits) == expected
+    for args in (([],1), ([0]*3,1), ([0]*4,3), ([0]*128,4), ([plan.P],1)):
+        with pytest.raises(ValueError):
+            plan.small_striped_rs(*args)
+
+
+def test_three_level_query_subtrees_and_segmented_digest_build_are_exact():
+    # Prover cache scheduling only; SHA256 here is NOT a Poseidon2/A2 KAT.
+    def parent(a,b):
+        return plan.hashlib.sha256(a+b).digest()
+    leaves = [plan.hashlib.sha256(bytes([i])).digest() for i in range(64)]
+    levels = [leaves]
+    while len(levels[-1]) > 1:
+        levels.append([parent(a,b) for a,b in zip(levels[-1][::2],levels[-1][1::2])])
+    segments = [leaves[i:i+16] for i in range(0,64,16)]
+    for level in (1,2):
+        folded = [parent(a,b) for a,b in zip(sum(segments,[])[::2],sum(segments,[])[1::2])]
+        segments = [folded[i:i+16] for i in range(0,len(folded),16)]
+        assert folded == levels[level] and len(segments) == 4 >> level
+    assert sum(len(level) for level in levels[3:]) == 64//4-1
+    queries = [0,1,7,8,23,24,63]
+    expanded = sorted({8*(q//8)+j for q in queries for j in range(8)})
+    assert len(expanded) <= 8*len(queries)
+    for q in queries:
+        subtree = [leaves[j] for j in range(8*(q//8),8*(q//8)+8)]
+        x, index = leaves[q], q
+        for h in range(3):
+            sibling = subtree[(index % len(subtree)) ^ 1]
+            x = parent(sibling,x) if index & 1 else parent(x,sibling)
+            subtree = [parent(a,b) for a,b in zip(subtree[::2],subtree[1::2])]
+            index //= 2
+        assert x == levels[3][q//8]
+        for h in range(3,len(levels)-1):
+            sibling = levels[h][index ^ 1]
+            x = parent(sibling,x) if index & 1 else parent(x,sibling)
+            index //= 2
+        assert x == levels[-1][0]
+
+
+def test_auxiliary_bridge_exclusions_repairs_and_pending_composition_are_explicit():
+    first, last = plan.report()['auxiliary_witness_screens']
+    assert (first['source_byte_cells'],last['source_byte_cells']) == (5846628096,12665316096)
+    assert (first['rq_live_cells'],last['rq_live_cells']) == (764739200,1901187200)
+    assert (first['byte_cubes'],last['byte_cubes']) == (36070,69310)
+    assert (first['rq_cubes'],last['rq_cubes']) == (16343,32963)
+    assert (first['unified_pcs_payload_before_framing_shared_closures'],last['unified_pcs_payload_before_framing_shared_closures']) == (9810600,15708840)
+    assert first['raw_probe_extension_challenges_and_error_numerator_before_t1_mac_pcs_fs'] == 2530
+    assert last['raw_probe_extension_challenges_and_error_numerator_before_t1_mac_pcs_fs'] == 2770
+    assert first['layout_sha256'] == 'adafad225aae2eaa2bb915cc9e5af063671b746665e6cfc9fc88cd5cffc3cac7'
+    assert last['layout_sha256'] == 'f4d83e2da5ffb7faa17760d31de63d25fe9e6a8fe303d93ca9dea9ab7aee734b'
+    assert last['literal_full_source_retention_bytes'] > 6442450944
+    for s in (first,last):
+        assert s['source_templates'] == 3893 and s['raw_probe_payload_bytes'] == 2880
+        assert s['literal_four_row_commit_with_b_bytes'] > 6442450944
+        assert s['commit_source_traversals'] == 64 and s['opening_source_traversals_after_commit'] == 2
+        assert s['commit_padded_source_element_visits'] == 64*s['source_padded_byte_cells']
+        assert s['cached_outer_tree_bytes'] == 268435424
+        assert s['compact_c1_internal_tree_cache_bytes'] == 67108832
+        assert s['query_reconstructed_columns_upper'] == 2856
+        assert s['rne_indicator_screen']['top_fixed_cell_prefix'] == 18
+        assert s['rne_indicator_screen']['link_fixed_cell_prefix'] == 11
+        for key,value in s.items():
+            if 'known_union_before_replay_runtime' in key:
+                assert value < 6442450944, (key,value)  # NOT a full-liveness assertion
+        assert not s['credit'] and not s['full_auxiliary_source_retained']
+        assert not s['source_reader_all_gamma_forms_and_full_liveness_compiled']
+        assert s['additional_weight_reads_given_w_free_source_reader'] == 0
+        assert s['complete_certificate_bytes'] is None
+    for args in ((30,0,11),(30,18,0),(30,True,11)):
+        with pytest.raises(ValueError):
+            plan.rne_indicator_screen(*args)
+
+
 def test_i48_requantization_matches_exact_fraction_and_rejects_overflow():
     for shift in range(-2, 13):
         for value in range(-512, 513):

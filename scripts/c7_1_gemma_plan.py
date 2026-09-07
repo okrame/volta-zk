@@ -312,11 +312,13 @@ def byte_lagrange_tree(value, weights):
     return products, sums
 
 
-def rne_indicator_screen(cell_bits):
+def rne_indicator_screen(cell_bits, top_prefix_bits=17, link_prefix_bits=10):
     """R2: degree-7 RNE and one public-function P/S GKR, not full Gamma."""
     natural(cell_bits, "RQ source log domain", 1, 32)
+    natural(top_prefix_bits, "RNE top prefix", 1, 32)
+    natural(link_prefix_bits, "RNE link prefix", 1, 32)
     cells, layers = 1 << cell_bits, 8
-    top_prefix, link_prefix = min(17, cell_bits), min(10, cell_bits)
+    top_prefix, link_prefix = min(top_prefix_bits, cell_bits), min(link_prefix_bits, cell_bits)
     top_tail, link_tail = cells >> top_prefix, cells >> link_prefix
     source, bits = 8*cells, cell_bits+3
     rounds = sum(bits+d for d in range(layers))
@@ -1419,6 +1421,228 @@ def input_link_screen(cohorts):
     }
 
 
+def auxiliary_word_sources(cohorts, old_tokens=0, prompt_tokens=100, generated_tokens=50):
+    """R3 candidate source schema: physical B plus unretained full-rectangle raws."""
+    views = kv_view_schedule(old_tokens, prompt_tokens, generated_tokens)
+    # Validate B's existing geometry without claiming new W cohorts.
+    cut_byte_layout(cohorts)
+    config = pinned_model_config()
+    if cohorts[0]['rows'] != prompt_tokens+generated_tokens:
+        raise ValueError("B and auxiliary workload disagree")
+    sources = [{'source': 'B', 'source_id': c['ordinal'], 'layer': c['layer'],
+                'operation': c['operation'], 'execution': None, 'token_offset': 0,
+                'shape': (1, c['rows'], c['columns']), 'word_bytes': c['cut_scalar_bytes'],
+                'rne': c['kind'] == 'matrix', 'physical_b_offset': c['cut_byte_offset']}
+               for c in cohorts]
+    for layer in range(config['layers']):
+        for v in views:
+            sources.append({'source': 'Replay', 'source_id': layer, 'layer': layer,
+                            'operation': 'qk_raw', 'execution': v['execution'],
+                            'token_offset': v['first_new_row'],
+                            'shape': (config['query_heads'], v['query_rows'], v['kv_view_rows']),
+                            'word_bytes': 6, 'rne': True, 'physical_b_offset': None})
+        kind = 'global' if layer % 6 == 5 else 'local'
+        sources.append({'source': 'Replay', 'source_id': layer, 'layer': layer,
+                        'operation': 'pv_raw', 'execution': None, 'token_offset': 0,
+                        'shape': (config['query_heads'], prompt_tokens+generated_tokens, config[kind+'_head_dim']),
+                        'word_bytes': 6, 'rne': True, 'physical_b_offset': None})
+    return sources
+
+
+def auxiliary_word_layout(sources):
+    """R3 cubes: byte/column/row/head, head axis whole and power-of-two aligned.
+
+    Byte records: source,row,col,heads,rows,cols,byte0,bytes,offset (9 u64).
+    RQ records: source,row,col,heads,rows,cols,offset (7 u64). No values stored.
+    """
+    byte_tiles, word_tiles = [], []
+    for i, source in enumerate(sources):
+        heads, rows, cols = source['shape']
+        natural(heads, 'whole head axis', 1, 32)
+        if heads & (heads-1) or source['word_bytes'] not in (2, 4, 6):
+            raise ValueError('invalid auxiliary word geometry')
+        if source['rne'] and source['word_bytes'] != 6:
+            raise ValueError('R3 RNE source must be exact i48')
+        for r, height in dyadic_intervals(rows):
+            for c, width in dyadic_intervals(cols):
+                tile = (i, r, c, heads, height, width)
+                if source['rne']:
+                    word_tiles.append(tile)
+                for j, count in dyadic_intervals(source['word_bytes']):
+                    byte_tiles.append((*tile, j, count))
+    result = []
+    for tiles, byte_axis in ((byte_tiles, True), (word_tiles, False)):
+        tiles.sort(key=lambda t: (-math.prod(t[3:6])*(t[7] if byte_axis else 1), *t[:3],
+                                  t[6] if byte_axis else 0))
+        offset, placed = 0, []
+        for tile in tiles:
+            size = math.prod(tile[3:6])*(tile[7] if byte_axis else 1)
+            assert offset % size == 0
+            placed.append((*tile, offset))
+            offset += size
+        result.append(placed)
+    return tuple(result)
+
+
+def auxiliary_probe_terms(byte_tiles, sources, source_points):
+    """Pull back raw point claims: source -> (head,row,column points, coefficient).
+
+    row is a GLOBAL-token point for attention; each execution's token offset
+    must align with its dyadic row cube. Returns EQ cube terms and signed bias.
+    """
+    terms, bias = [], 0
+    for i, r, c, heads, height, width, j, count, offset in byte_tiles:
+        if i not in source_points:
+            continue
+        hp, rp, cp, scale = source_points[i]
+        source = sources[i]
+        hb, rb, cb, jb = (heads-1).bit_length(), (height-1).bit_length(), (width-1).bit_length(), (count-1).bit_length()
+        row = source['token_offset']+r
+        if (len(hp) != hb or len(rp) < rb or len(cp) < cb or row % height
+                or row+height > 1 << len(rp) or c+width > 1 << len(cp)):
+            raise ValueError('raw probe axes or row offset do not match the cube')
+        high = (math.prod(x if (row//height >> k) & 1 else 1-x for k, x in enumerate(rp[rb:]))
+                *math.prod(x if (c//width >> k) & 1 else 1-x for k, x in enumerate(cp[cb:]))) % P
+        weights = [pow(256, 1 << k, P) for k in range(jb)]
+        bp = [w*pow(1+w, -1, P) % P for w in weights]
+        coefficient = scale*high*pow(256, j, P)*math.prod(1+w for w in weights) % P
+        terms.append((offset, bp+list(cp[:cb])+list(rp[:rb])+list(hp), coefficient))
+        if j == 0:  # exactly once per word cube, not once per byte group
+            bias = (bias+scale*high*(1 << (8*source['word_bytes']-1))) % P
+    return terms, bias
+
+
+def auxiliary_rq_terms(byte_tiles, rq_tiles, point, byte):
+    """One R2 endpoint on the unified RQ layout, including public zero padding."""
+    natural(byte, 'RNE byte plane', 0, 5)
+    live = sum(heads*height*width for _, _, _, heads, height, width, _ in rq_tiles)
+    if not live or len(point) != (live-1).bit_length():
+        raise ValueError('RNE point does not match the unified RQ domain')
+    positions = {t[:6]: t[6] for t in rq_tiles}
+    terms = []
+    for i, r, c, heads, height, width, j, count, offset in byte_tiles:
+        key = (i, r, c, heads, height, width)
+        if key not in positions or not j <= byte < j+count:
+            continue
+        size, jb = heads*height*width, (count-1).bit_length()
+        bits = (size-1).bit_length()
+        high = math.prod(x if (positions[key]//size >> k) & 1 else 1-x
+                         for k, x in enumerate(point[bits:])) % P
+        local = [(byte-j >> k) & 1 for k in range(jb)]+list(point[:bits])
+        terms.append((offset, local, high))
+    return terms
+
+
+def small_striped_rs(values, stripe_cells):
+    """Small honest R3 encoder check (<=64 source cells), NOT a PCS or GPU path."""
+    block = len(values)
+    natural(stripe_cells, 'stripe cells', 1, block)
+    if block > 64 or block & (block-1) or stripe_cells & (stripe_cells-1):
+        raise ValueError('small striped RS needs power-of-two sizes <=64')
+    if any(type(v) is not int or not 0 <= v < P for v in values):
+        raise ValueError('RS inputs must be canonical Fp')
+    domain, stride = 4*block, 4*block//stripe_cells
+    root, result = pow(7, (P-1)//domain, P), [0]*domain
+    for residue in range(stride):
+        folded, power, step = [0]*stripe_cells, 1, pow(root, residue, P)
+        for k, value in enumerate(values):
+            folded[k % stripe_cells] = (folded[k % stripe_cells]+value*power) % P
+            if k+1 < block:
+                power = power*step % P
+        for j, value in enumerate(small_goldilocks_fft(folded)):
+            result[residue+stride*j] = value
+    return result
+
+
+def auxiliary_witness_screen(cohorts, old_tokens=0):
+    """R3 candidate: unified witness source, not adopted final Gamma/PCS/liveness."""
+    sources = auxiliary_word_sources(cohorts, old_tokens)
+    byte_tiles, rq_tiles = auxiliary_word_layout(sources)
+    live = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources)
+    rq_live = sum(math.prod(s['shape']) for s in sources if s['rne'])
+    bits, rq_bits = (live-1).bit_length(), (rq_live-1).bit_length()
+    n, block, stripe, queries, drop = 1 << bits, 1 << 23, 1 << 19, 357, 3
+    rows, domain = n//block, 4*block
+    pcs = recursive_rs_opening_screen(n, block, queries, 4)
+    paired = paired_rs_opening_screen(n, block, queries, 4)
+    rne, alphabet = rne_indicator_screen(rq_bits, 18, 11), byte_range_tree_screen(bits)
+    descriptors = 96*len(sources)+72*len(byte_tiles)+56*len(rq_tiles)
+    p0, seed, k1 = weight_cohort_screen(cohorts), input_link_screen(cohorts), kv_transition_screen(old_tokens)
+    attention = attention_product_screen(old_tokens)
+    raw_probe_bits = sum(5+(150-1).bit_length()+(old_tokens+150-1).bit_length()
+                         +5+(150-1).bit_length()+(511 if layer % 6 == 5 else 255).bit_length()
+                         for layer in range(60))
+    caller_e = (p0['extension_corrections_before_other_circuits']+seed['extension_corrections']
+                +k1['extension_corrections']+attention['extension_corrections']
+                +attention['kv_router_with_k1_and_one_call_each']['extension_corrections']
+                +rne['extension_corrections']+alphabet['extension_corrections']+120)
+    records = (32*pcs['base_corrections_including_anchor_upper']
+               +48*(caller_e+pcs['extension_corrections_including_partial_sumchecks']
+                    +paired['additional_extension_corrections'])+descriptors+24*rows)
+    b_bytes = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources if s['source'] == 'B')
+    cache = 32*((2*domain >> drop)-1)
+    head_arrays = 8*150*(old_tokens+150+512)  # one head's raw/Q/PI/PV known arrays, not full Replay
+    source_control = descriptors+head_arrays+65536
+    root_peak = b_bytes+32*domain+48*stripe+source_control  # four row stripes, twiddles
+    common = b_bytes+cache+records+head_arrays+65536
+    subgroup_columns = min(domain, queries*(1 << drop))
+    rne_link_arrays = sum(rne[k] for k in ('link_six_lane_four_function_tail_bytes',
+        'link_public_p_s_tree_bytes', 'link_public_four_function_tables_bytes',
+        'link_prefix_weights_bytes', 'link_control_and_terminal_scratch_bytes_upper'))
+    range_arrays = sum(alphabet[k] for k in ('public_node_table_bytes',
+        'cell_phase_two_public_functions_bytes', 'cell_prefix_eq_weights_bytes',
+        'two_cached_cell_tail_vectors_bytes', 'control_points_and_round_scratch_bytes_upper'))
+    compact_block = block//16
+    compact_cache = 32*(4*compact_block-1)
+    top_arrays = (rne['top_indicator_tail_bytes']+rne['top_prefix_weights_bytes']
+                  +rne['top_two_local_histograms_bytes']+rne['top_control_and_evaluation_scratch_bytes_upper']
+                  +48*((1 << rq_bits)//(1 << min(18, rq_bits))+len(rq_tiles)-1))
+    return {
+        'credit': False, 'old_tokens': old_tokens, 'source_templates': len(sources),
+        'source_byte_cells': live, 'source_padded_byte_cells': n,
+        'auxiliary_i48_cells': (live-b_bytes)//6, 'rq_live_cells': rq_live,
+        'rq_padded_cells': 1 << rq_bits, 'byte_cubes': len(byte_tiles), 'rq_cubes': len(rq_tiles),
+        'source_descriptors_bytes': descriptors,
+        'layout_sha256': hashlib.sha256(json.dumps([sources, byte_tiles, rq_tiles], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+        'raw_probe_extension_corrections': 120, 'raw_probe_payload_bytes': 2880,
+        'raw_probe_extension_challenges_and_error_numerator_before_t1_mac_pcs_fs': raw_probe_bits,
+        'unified_pcs_payload_before_framing_shared_closures': paired['component_payload_before_framing_and_caller'],
+        'literal_full_source_retention_bytes': live,
+        'literal_four_row_commit_with_b_bytes': b_bytes+pcs['model_setup_known_arrays_bytes']+descriptors,
+        'fixed_carrier_block_cells': block, 'fixed_encoder_stripe_cells': stripe,
+        'commit_source_traversals': domain//stripe,
+        'commit_padded_source_element_visits': n*(domain//stripe),
+        'commit_coefficient_scaling_base_products_upper_before_fft_hash_replay': rows*(domain//stripe)*(2*block-1),
+        'commit_stripe_fft_butterflies': rows*(domain//stripe)*(stripe//2)*(stripe.bit_length()-1),
+        'commit_outer_hash_calls': domain*((rows+3)//4)+domain-1,
+        'commit_known_union_before_replay_runtime': root_peak,
+        'cached_outer_tree_first_height': drop, 'cached_outer_tree_bytes': cache,
+        'segmented_leaf_digest_buffers_bytes': [8*domain]*4,
+        'query_reconstructed_columns_upper': subgroup_columns,
+        'query_extra_stripe_and_digest_bytes': 64*subgroup_columns,
+        'postcommit_outer_hash_calls_upper': subgroup_columns*((rows+3)//4)+queries*((1 << drop)-1),
+        'opening_source_traversals_after_commit': 2,
+        'opening_first_pass_known_union_before_replay_runtime': common+80*block,
+        'compact_c1_internal_tree_cache_bytes': compact_cache,
+        'compact_c1_commit_known_union_before_replay_runtime': common+72*block+336*compact_block,
+        'compact_c1_sumcheck_known_union_before_replay_runtime': common+96*block+compact_cache,
+        'opening_query_known_union_before_replay_runtime': common+96*block+compact_cache+64*subgroup_columns,
+        'compact_c1_extra_query_leaf_columns_upper': 2*queries,
+        'compact_c1_query_leaf_hash_calls_upper': 2*queries*16,
+        'known_message_descriptor_alpha_union_bytes': records,
+        'rne_indicator_screen': rne, 'byte_range_screen': alphabet,
+        'rne_link_known_union_before_replay_runtime': common+rne_link_arrays,
+        'rne_top_known_union_before_replay_runtime': common+top_arrays,
+        'range_known_union_before_replay_runtime': common+range_arrays,
+        'post_b_release_pcs_known_arrays_bytes': pcs['proof_known_arrays_conservative_union_bytes'],
+        'additional_weight_reads_given_w_free_source_reader': 0,
+        'full_auxiliary_source_retained': False,
+        'requires_new_common_witness_profile_and_all_form_rerouting': True,
+        'source_reader_all_gamma_forms_and_full_liveness_compiled': False,
+        'complete_certificate_bytes': None,
+    }
+
+
 def requantization_screen(cohorts):
     """R1 byte-lift candidate, not adopted B PCS or complete Gemma feasibility."""
     matrix_cells = sum(c["rows"]*c["columns"] for c in cohorts if c["kind"] == "matrix")
@@ -1732,6 +1956,7 @@ def report():
         "input_link_screen": input_link_screen(cohorts),
         "kv_transition_screens": [kv_transition_screen(old) for old in (0, 3900, 3946)],
         "attention_product_screens": [attention_product_screen(old) for old in (0, 3946)],
+        "auxiliary_witness_screens": [auxiliary_witness_screen(cohorts, old) for old in (0, 3946)],
         "requantization_screen": requantization_screen(cohorts),
         "cut_byte_opening_screen": cut_byte_opening_screen(cohorts),
         "dyadic_weight_layout_screen": {

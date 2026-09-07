@@ -171,6 +171,23 @@ authorization.
   query×key×lane expansion. Output normalization, raw↔i16 links,
   Q/softmax generation, KV PCS and complete liveness remain uncompiled;
   these component bounds do not admit the whole algorithm or its timing.
+- [R3: auxiliary witness bridge](c7.1-auxiliary-witness.md) specifies a
+  candidate common byte source C_Σ for B and all raw QK/PV rectangles,
+  with 120 fresh post-root probes and exact raw/six-lane RNE pullbacks.
+  Pruning masked raw scores can hide overflow; keeping the complete source
+  in memory would require 12,665,316,096 bytes at capacity. The candidate
+  retains only physical B and regenerates auxiliary values from W-free
+  Replay, conditional on the complete reader/lowering still to be compiled.
+  A striped execution of the identical RS encoder costs 64 source visits
+  to commit; a height-3 outer cache and staged internal C1 cache retain
+  A4's two postcommit visits. The largest listed phase is 6,362,991,432
+  bytes before remaining Replay/Gamma/runtime, not a full memory bound.
+  RNE uses prefixes 18/11 and 122 RQ visits; byte range uses 95 visits.
+  The C_Σ PCS component is 9,810,600/15,708,840 bytes at N=150/4096.
+  This requires a new common profile/layout and rerouting every consumer;
+  previous C_B subtotals are reference screens, not R3 totals. Output
+  normalizers/shifts, all Gamma forms, honest source generation, KV PCS,
+  full liveness/costs and root-to-oracle/FS remain open; G2 stays active.
 - [A4: paired RS opening](c7.1-paired-rs-opening.md) fuses the paired
   reduction and RS opening into **two W reads together**. It checks the
   existing arbitrary row fold instead of converting it to a new W point;
@@ -188,7 +205,7 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 65 focused checks also cover finite query sampling, exact ideal
+  The 70 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
@@ -210,6 +227,9 @@ authorization.
   R2 adds P/S linearity, lifted degree seven, complete small eight-layer
   reductions to six source planes, dummy-lane pruning and dense replay
   comparisons. The direct RNE/overflow regressions still use the same formulas.
+  R3 adds common-source coverage and all six RQ pullbacks, masked overflow,
+  the necessity of a pre-probe source, identical striped RS codewords and
+  reconstructed lower subtrees with staged digest buffers.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -251,8 +271,11 @@ the remaining Gamma consumers and reduce the explicit computation cost.
 K1 now supplies the temporal view and append/prefix reduction, with
 explicit first-state aliases and bounded-memory read routing. Instantiate
 its joint KV PCS and k_rope/v_norm producers. T1 now supplies raw QK/PV
-and their same-state endpoints; connect their output normalizers and
-integer/range/requantization kernels, and prove the softmax input to PV.
+and their same-state endpoints. R3 now supplies the common-source raw/byte
+bridge and RNE pullbacks: compile output normalizers/shifts and every
+consumer in that new layout, the actual W-free reader with its costs and
+workspace, and the softmax input to PV. Recompute the complete payload
+and phase schedule; the old C_B subtotals do not describe C_Σ.
 Generating Q/probabilities and the remaining W-free kernels is not closed
 by either local transfer lemma.
 Bind cuts and KV, discharge late B consumers, and include W range/padding

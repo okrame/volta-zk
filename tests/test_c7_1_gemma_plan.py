@@ -673,3 +673,136 @@ def test_stacked_matrix_fold_requires_only_one_weight_scan_for_fixed_output_poin
     # The final inner point is an input to this link, not a future coin
     # that a preceding reduction/PCS scan can silently know.
     assert plan.mle(w_bar, rk) != plan.mle(w_bar, [rk[0]+1, *rk[1:]])
+
+
+def test_dyadic_layout_covers_non_power_of_two_weights_exactly_once():
+    for rows in range(1, 14):
+        for cols in range(1, 14):
+            tiles = plan.dyadic_weight_layout([(rows, cols), (5,)])
+            owners, physical = {}, set()
+            for tensor, row, col, height, width, offset in tiles:
+                assert row % height == col % width == offset % (height*width) == 0
+                for i in range(height):
+                    for j in range(width):
+                        key = (tensor, row+i, col+j)
+                        address = offset+i*width+j
+                        assert key not in physical and address not in owners
+                        physical.add(key)
+                        owners[address] = key
+            assert set(owners) == set(range(rows*cols+5))
+            assert physical == ({(0, i, j) for i in range(rows) for j in range(cols)}
+                                | {(1, 0, j) for j in range(5)})
+    s = plan.report()["dyadic_weight_layout_screen"]
+    assert s["tiles"] == 3156
+    assert s["live_cells_without_per_axis_padding"] == 30_697_345_280
+    assert s["virtual_padded_domain_cells"] == 1 << 35
+    assert s["counterfactual_fully_axis_padded_cells"] == 63_386_332_160
+    assert not s["credit"] and s["changes_model_commitment_layout_and_profile_digest"]
+    for shapes in ([(0,)], [(True, 2)], [(2, 3, 4)], [()]):
+        with pytest.raises(ValueError):
+            plan.dyadic_weight_layout(shapes)
+
+
+def test_arbitrary_row_fold_form_evaluator_matches_dense_table():
+    rng = random.Random(7105)
+    for block in (1, 2, 4, 8, 16):
+        for rows in (1, 2, 4, 8):
+            n = rows*block
+            alpha = [rng.randrange(plan.P) for _ in range(rows)]
+            u = [rng.randrange(plan.P) for _ in range(block.bit_length()-1)]
+            for bits in range(n.bit_length()):
+                size = 1 << bits
+                point = [rng.randrange(plan.P) for _ in range(bits)]
+                for offset in range(0, n, size):
+                    form = [0]*n
+                    for index in range(size):
+                        form[offset+index] = math.prod(
+                            r if (index >> i) & 1 else 1-r for i, r in enumerate(point)) % plan.P
+                    dense_fold = [sum(alpha[i]*form[i*block+j] for i in range(rows)) % plan.P
+                                  for j in range(block)]
+                    assert plan.folded_cube_form(offset, point, alpha, u) == plan.mle(dense_fold, u)
+    for args in ((1, [2], [3, 4], [5]), (4, [], [3, 4], [5]), (-1, [], [3], [])):
+        with pytest.raises(ValueError):
+            plan.folded_cube_form(*args)
+    # Compose physical tensor MLEs with the virtual tile map, including
+    # unequal non-power-of-two axes and a vector. No padded weight copy.
+    tiles = plan.dyadic_weight_layout([(5, 3), (7,)])
+    points = [([2, 3, 5], [7, 11]), ([], [13, 17, 19])]
+    alpha, u, dense, actual = [23+i for i in range(8)], [31, 37], [0]*32, 0
+    def basis(index, point):
+        return math.prod(r if (index >> i) & 1 else 1-r for i, r in enumerate(point)) % plan.P
+    for tensor, row, col, height, width, offset in tiles:
+        rj, rk = points[tensor]
+        hj, hk = height.bit_length()-1, width.bit_length()-1
+        coefficient = basis(row >> hj, rj[hj:])*basis(col >> hk, rk[hk:]) % plan.P
+        actual += coefficient*plan.folded_cube_form(offset, rk[:hk]+rj[:hj], alpha, u)
+        for i in range(height):
+            for j in range(width):
+                dense[offset+i*width+j] = basis(row+i, rj)*basis(col+j, rk) % plan.P
+    expected = plan.mle([sum(alpha[i]*dense[4*i+j] for i in range(8)) % plan.P
+                         for j in range(4)], u)
+    assert actual % plan.P == expected
+
+
+def test_fused_paired_fold_checks_the_same_fold_without_a_new_weight_evaluation():
+    rows = [[(i+2)*(j+3) % plan.P for j in range(8)] for i in range(4)]
+    forms = [[(i*i+1)*(j+5) % plan.P for j in range(8)] for i in range(4)]
+    # Arbitrary/adaptive-form alpha is NOT replaced by an EQ vector.
+    coins = [0, 7, 19]
+    f, g, sums, _, claim = plan.paired_fold(rows, forms, coins)
+    alpha = [1, *coins]
+    a = [11, 13]
+    rho = [math.prod(r if (i >> k) & 1 else 1-r for k, r in enumerate(a)) % plan.P
+           for i in range(4)]
+    f2 = [sum(rho[i]*rows[i][j] for i in range(4)) % plan.P for j in range(8)]
+    assert sum(sums) % plan.P == sum(plan.dot(x, y) for x, y in zip(rows, forms)) % plan.P
+    assert claim == plan.dot(f, g)
+    encoded = [plan.small_goldilocks_fft(row + [0]*24) for row in rows]
+    enc_f = plan.small_goldilocks_fft(f+[0]*24)
+    enc_f2 = plan.small_goldilocks_fft(f2+[0]*24)
+    indices = [2, 7, 21]
+    y1 = [plan.dot(alpha, [row[k] for row in encoded]) for k in indices]
+    y2 = [plan.dot(rho, [row[k] for row in encoded]) for k in indices]
+    assert y1 == [enc_f[k] for k in indices] and y2 == [enc_f2[k] for k in indices]
+    u, sigma = [17, 23, 29], 31
+    eq_u = [math.prod(r if (j >> i) & 1 else 1-r for i, r in enumerate(u)) % plan.P
+            for j in range(8)]
+    roots = [pow(7, ((plan.P-1)//32)*k, plan.P) for k in indices]
+    code_form = [sum(pow(sigma, 2*k+1, plan.P)*pow(t, j, plan.P)
+                     for k, t in enumerate(roots)) % plan.P for j in range(8)]
+    public_form = [(x+y) % plan.P for x, y in zip(eq_u, code_form)] + [sigma*x % plan.P for x in code_form]
+    endpoint = plan.mle(f, u)
+    z = (endpoint + sum(pow(sigma, 2*k+1, plan.P)*v1 + pow(sigma, 2*k+2, plan.P)*v2
+                        for k, (v1, v2) in enumerate(zip(y1, y2)))) % plan.P
+    assert z == plan.dot(f+f2, public_form)
+    assert (z+1) % plan.P != plan.dot(f+f2, public_form)  # forged same-wire endpoint
+    s = plan.paired_rs_opening_screen(1 << 35, 1 << 24, 357)
+    assert s["weight_source_reads_for_fused_opening_only"] == 2
+    assert s["additional_extension_corrections"] == 4168
+    assert s["additional_extension_challenges"] == 2071
+    assert s["component_payload_before_framing_and_caller"] == 14_060_600
+    assert s["extension_correlations_including_shared_product_mask"] == 10_803
+    assert s["paired_reduction_interactive_error_numerator"] == 4142
+    assert not s["credit"] and s["complete_prover_weight_reads"] is None
+
+
+def test_arbitrary_fold_does_not_deterministically_establish_proximity():
+    p = 17
+    def enc(message):
+        return [(message[0]+message[1]*t) % p for t in range(8)]
+    w = [(2, 3), (5, 7)]
+    oracle = [enc(row) for row in w]
+    oracle[0][0] = (oracle[0][0]+1) % p  # one corrupt column, d=7
+    for alpha in ((0, 0), (1, 0), (0, 1), (4, 9)):
+        honest = tuple(sum(alpha[i]*w[i][j] for i in range(2)) % p for j in range(2))
+        folded_oracle = [sum(alpha[i]*oracle[i][k] for i in range(2)) % p for k in range(8)]
+        for bad in product(range(p), repeat=2):
+            if bad != honest:
+                assert sum(x != y for x, y in zip(enc(bad), folded_oracle)) >= 7-1
+    # alpha=(1,0) respects A4's fixed alpha[0]=1 but hides an arbitrary
+    # second row. This excludes a deterministic proximity inference, not
+    # a new probabilistic argument exploiting the distribution of beta.
+    malformed = [(i*i) % p for i in range(8)]
+    assert min(sum(x != y for x, y in zip(enc(m), malformed))
+               for m in product(range(p), repeat=2)) >= 6
+    assert [(1*0+0*x) % p for x in malformed] == enc((0, 0))

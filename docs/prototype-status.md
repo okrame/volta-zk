@@ -88,7 +88,16 @@ feasibility proofs before prover implementation and measurements.
   A3's literal first W-recursion sumcheck exceeds the arena; a conditional
   B-opening array schedule identifies where B could instead be released.
   GKR weight folding still needs source access: adding its matrix scan to
-  the four generic reduction/PCS passes does not fit the read limit.
+  the four unfused generic reduction/PCS passes does not fit the read limit.
+- [A4: paired RS opening](c7.1-paired-rs-opening.md) fuses the paired
+  reduction and RS opening into **two W reads together**. It checks the
+  existing arbitrary row fold instead of converting it to a new W point;
+  this proof retains a separate fresh proximity fold. The local fixed-oracle
+  proof adds 4142/|E| and the component payload is 14,060,600 bytes.
+  A 3,156-tile virtual layout supports tensor/lookup forms without per-axis
+  padding or a second W copy. One preceding GKR scan would give three reads
+  for that subsystem, but the complete caller, W range/padding and B/KV
+  schedule are not instantiated; the A3 concrete-hash/FS gap remains open.
 - The [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) and
   [focused tests](../tests/test_c7_1_gemma_plan.py) check paired-fold
   arithmetic, service accounting, candidate integer/Fp3 decompositions,
@@ -97,9 +106,10 @@ feasibility proofs before prover implementation and measurements.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 27 focused checks also cover finite query sampling, exact ideal
+  The 31 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
-  counts/replay/mutations and finite-field matrix-fold identities.
+  counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
+  distance/encoding identities and dyadic layout/form evaluation.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -130,8 +140,10 @@ they do not supply the missing Gemma witness. The static model anchor keeps PCS 
 without reusing G1's public split mask. Setup hash work remains substantial;
 the bounded encoder and known grouped-commitment arrays occupy 5,637,144,576
 bytes, before uncompiled runtime staging. Alongside it, use the W-cut theorem
-to build the GKR/form schedule: bind the cuts and KV, discharge late B
-consumers, and fuse or remove the extra weight scan within four W reads.
+to build the GKR/form schedule against A4's two-read interface: bind the
+cuts and KV, discharge late B consumers, and include W range/padding
+without exceeding four W reads. The A4 fusion no longer requires a new
+common MLE point for all W terminals; its public-form conditions must hold.
 Complete the relation, both lifetime
 proofs and full certificate/resource accounting before admitting prover
 implementation. Then prepare the small checks and, after hardware/spending

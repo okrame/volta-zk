@@ -454,6 +454,92 @@ def combine(a, b, r):
     return [(x + r * y) % P for x, y in zip(a, b)]
 
 
+def dyadic_intervals(length):
+    """Disjoint aligned power-of-two intervals covering [0,length)."""
+    natural(length, "axis length", 1, P-1)
+    start, result = 0, []
+    while length:
+        width = 1 << (length.bit_length()-1)
+        result.append((start, width))
+        start, length = start+width, length-width
+    return result
+
+
+def dyadic_weight_layout(shapes):
+    """Metadata-only virtual layout, never a second packed weight array.
+
+    Tuples are (tensor, source_row, source_col, rows, cols, virtual_offset).
+    Each 1D/2D source is partitioned, then tiles are sorted largest first.
+    No per-axis padding is stored or committed inside the live prefix.
+    """
+    tiles = []
+    for index, shape in enumerate(shapes):
+        if len(shape) not in (1, 2):
+            raise ValueError("only vector or matrix weight shapes are admitted")
+        rows, cols = (1, shape[0]) if len(shape) == 1 else shape
+        for row, height in dyadic_intervals(rows):
+            for col, width in dyadic_intervals(cols):
+                tiles.append((index, row, col, height, width))
+    tiles.sort(key=lambda tile: (-tile[3]*tile[4], *tile[:3]))
+    offset, result = 0, []
+    for tile in tiles:
+        size = tile[3]*tile[4]
+        assert offset % size == 0
+        result.append((*tile, offset))
+        offset += size
+    return result
+
+
+def folded_cube_form(offset, point, row_weights, inner_point):
+    """Evaluate an aligned EQ-supported form after arbitrary public row fold.
+
+    Diagnostic over Fp; no source vector, N-cell table or protocol messages.
+    The caller multiplies this result by its public term coefficient.
+    """
+    size, block = 1 << len(point), 1 << len(inner_point)
+    natural(offset, "cube offset", 0, P-1)
+    if offset % size or offset+size > len(row_weights)*block:
+        raise ValueError("cube must be aligned and within the source domain")
+    def kernel(a, b):
+        return math.prod((1-x)*(1-y)+x*y for x, y in zip(a, b)) % P
+    if size >= block:
+        start, count = offset//block, size//block
+        return (mle(row_weights[start:start+count], point[len(inner_point):])
+                * kernel(point[:len(inner_point)], inner_point)) % P
+    prefix = (offset % block)//size
+    prefix_weight = math.prod(r if (prefix >> i) & 1 else 1-r
+                              for i, r in enumerate(inner_point[len(point):])) % P
+    return (row_weights[offset//block] * prefix_weight
+            * kernel(point, inner_point[:len(point)])) % P
+
+
+def paired_rs_opening_screen(n, block, queries):
+    """A4 fused reduction/PCS accounting, conditional on fixed ideal oracles.
+
+    No GKR caller, framing, concrete-hash compilation or full-prover credit.
+    """
+    pcs = recursive_rs_opening_screen(n, block, queries)
+    rows, bits = n//block, block.bit_length()-1
+    extra = 2*rows-1 + 3*bits + 1  # s/t, product SC coefficients, same endpoint
+    return {
+        "credit": False,
+        "weight_source_reads_for_fused_opening_only": 2,
+        "additional_extension_corrections": extra,
+        "additional_extension_challenges": rows-1+bits,
+        "component_payload_before_framing_and_caller": (
+            pcs["component_payload_before_framing_and_other_components"]+24*extra),
+        "extension_correlations_including_shared_product_mask": (
+            pcs["fresh_extension_correlations_including_product_mask"]+extra),
+        "paired_reduction_interactive_error_numerator": 2*(rows-1)+2*bits,
+        "first_pass_products_before_forms_and_compact_proofs": 6*n-4*block,
+        "first_pass_f_f2_g_and_decoded_source_block_bytes": 80*block,
+        "known_array_union_with_added_message_plaintexts_and_tags_bytes": (
+            pcs["proof_known_arrays_conservative_union_bytes"]+48*extra),
+        "requires_succinct_public_folded_form": True,
+        "complete_prover_weight_reads": None,
+    }
+
+
 def a3_query_indices(domain, count, words):
     """Small reference for A3's bounded PUBLIC sampler, not a PCS prover.
 
@@ -598,6 +684,7 @@ def report():
     tensors = [t for t in metadata["tensors"] if t["disposition"] == "private_text"]
     live = sum(math.prod(t["shape"]) for t in tensors)
     assert len(tensors) == 772 and live == 30_697_345_280
+    tiles = dyadic_weight_layout([t["shape"] for t in tensors])
     n = 1 << (live - 1).bit_length()
     h = n.bit_length() - 1
     matrix_shapes = Counter(tuple(t["shape"]) for t in tensors if len(t["shape"]) == 2)
@@ -684,6 +771,17 @@ def report():
         ],
         "recursive_rs_opening_screen": recursive_rs_opening_screen(n, 1 << 24, 357),
         "a3_challenge_screen": a3_challenge_screen(),
+        "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),
+        "dyadic_weight_layout_screen": {
+            "credit": False,
+            "tiles": len(tiles),
+            "live_cells_without_per_axis_padding": sum(t[3]*t[4] for t in tiles),
+            "virtual_padded_domain_cells": n,
+            "counterfactual_fully_axis_padded_cells": sum(
+                math.prod(1 << (d-1).bit_length() for d in t["shape"]) for t in tensors),
+            "changes_model_commitment_layout_and_profile_digest": True,
+            "packed_weight_copy_created": False,
+        },
         "cut_witness_screens": [cut_witness_screen(old) for old in (0, 3900, 3946)],
         "candidate_cut_opening_arrays": {
             "credit": False,

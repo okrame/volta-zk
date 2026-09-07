@@ -13,6 +13,7 @@ it is not another status ledger.
 | [G1 feasibility](c7.1-feasibility.md) | Analytic admission criteria, carrier derivations and counterexamples, next constructive obligation |
 | [G2 committed MAC opening](c7.1-committed-mac-opening.md) | Private-verifier bridge, ideal MAC/FS simulation, grouped hash/GKR, exclusions and remaining obligations |
 | [A3 recursive RS opening](c7.1-recursive-rs-opening.md) | Fixed-cap encoder, private recursion, bounded sampling, ideal-oracle binding, accounting and concrete-hash compilation gap |
+| [A4 paired RS opening](c7.1-paired-rs-opening.md) | Fused two-read reduction/opening, arbitrary-fold binding, dyadic tensor forms and conditional GKR composition |
 | [W-cut witness](c7.1-cut-witness.md) | Conditional W-free replay theorem, checkpoint storage, KV obligations and remaining GKR/PCS read dependencies |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |

@@ -188,6 +188,35 @@ def hobbit_carrier_screen(n, block, queries):
     }
 
 
+def private_hobbit_bit_screen(n, live, block, queries):
+    """Necessary bounds for one LITERAL private-verifier codec, not all PCS.
+
+    Each 64-bit Fp leaf word gets 64 separate 8-byte subfield corrections;
+    two dense Fp3 folding vectors coexist. Grant free omission of the last
+    partial live row and all padding to obtain a favorable certificate floor.
+    No gates, tags, paths, inner PCS, staging or other components are charged.
+    """
+    if (type(n) is not int or type(block) is not int or block < 1 or n < block
+            or n & (n - 1) or block & (block - 1)):
+        raise ValueError("n and block must be powers of two, with block <= n")
+    natural(live, "live cells", 1, n)
+    natural(queries, "distinct unmasked columns", 1, 4*block)
+    floor = 64*8*queries*(live // block)
+    buffers = 2*24*block
+    return {
+        "credit": False,
+        "carrier_block_cells": block,
+        "queries_not_a_security_derivation": queries,
+        "full_live_rows": live // block,
+        "dense_leaf_bit_correction_bytes": 64*8*queries*(n // block),
+        "full_live_rows_only_bit_correction_bytes": floor,
+        "two_dense_fp3_fold_buffers_bytes": buffers,
+        "retained_full_column_tree_bytes_if_used": (8*block - 1)*32,
+        "passes_only_necessary_certificate_and_arena_bounds": (
+            floor <= 35_000_000 and buffers <= 6_442_450_944),
+    }
+
+
 def dot(a, b):
     if len(a) != len(b):
         raise ValueError("different vector lengths")
@@ -354,6 +383,10 @@ def report():
         "candidates": candidates,
         "hobbit_direct_carrier_screens": [
             hobbit_carrier_screen(n, 1 << bits, 357) for bits in (23, 24, 25)
+        ],
+        "hobbit_private_bit_codec_screens": [
+            private_hobbit_bit_screen(n, live, 1 << bits, 357)
+            for bits in (24, 26, 27, 28)
         ],
         "complete_certificate_bytes": None,
         "complete_h100_peak_bytes": None,

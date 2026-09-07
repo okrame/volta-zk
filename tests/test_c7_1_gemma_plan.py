@@ -172,6 +172,64 @@ def test_split_mask_root_reuse_leaks_despite_disjoint_queries_within_each_proof(
         assert renewed_views == {(a, b) for a in range(7) for b in range(7)}
 
 
+def test_private_bit_codec_has_no_power_of_two_block_fitting_both_caps():
+    n, live, q = 1 << 35, 30_697_345_280, 357
+    screens = [plan.private_hobbit_bit_screen(n, live, 1 << bits, q)
+               for bits in range(35 + 1) if q <= 4*(1 << bits)]
+    assert all(s["credit"] is False for s in screens)
+    assert not any(s["passes_only_necessary_certificate_and_arena_bounds"]
+                   for s in screens)
+    at_limit = plan.private_hobbit_bit_screen(n, live, 1 << 27, q)
+    assert at_limit["two_dense_fp3_fold_buffers_bytes"] == 6_442_450_944
+    assert at_limit["dense_leaf_bit_correction_bytes"] == 46_792_704
+    assert at_limit["full_live_rows_only_bit_correction_bytes"] == 41_674_752
+    first_small = next(s for s in screens
+                       if s["full_live_rows_only_bit_correction_bytes"] <= 35_000_000)
+    assert first_small["carrier_block_cells"] == 1 << 28
+    assert first_small["two_dense_fp3_fold_buffers_bytes"] == 12_884_901_888
+    assert first_small["retained_full_column_tree_bytes_if_used"] + 2*live == 130_114_167_264
+    assert 130_114_167_264 > 128_928_850_176
+    # It is a scoped exclusion, not an always-false placeholder.
+    assert plan.private_hobbit_bit_screen(8, 7, 2, 1)[
+        "passes_only_necessary_certificate_and_arena_bounds"]
+    for args in ((0, 1, 1, 1), (3, 2, 1, 1), (4, 4, 3, 1),
+                 (4, 4, 8, 1), (4, 0, 2, 1), (4, 5, 2, 1),
+                 (4, True, 2, 1), (4, 4, 2, True), (4, 4, 2, 9)):
+        with pytest.raises(ValueError):
+            plan.private_hobbit_bit_screen(*args)
+
+
+def test_private_verifier_mac_identity_simulator_and_altered_product():
+    # Exhaustive F7 algebra, C7.1 sign convention m = k + Delta*x.
+    # Not a test of hash/PCS soundness, FS, or the real correlation generator.
+    p = 7
+    for a in range(p):
+        for b in range(p):
+            for c in range(p):
+                ma, mb, mc, kr = 2, 3, 4, 5
+                a0, a1 = ma*mb % p, (a*mb + b*ma - mc) % p
+                roots = 0
+                for delta in range(p):
+                    ka, kb, kc = ((m - delta*x) % p
+                                  for m, x in ((ma, a), (mb, b), (mc, c)))
+                    residual = (ka*kb + delta*kc - a0 + delta*a1) % p
+                    assert residual == delta*delta*(a*b-c) % p
+                    roots += residual == 0
+                    if c != a*b % p:
+                        continue
+                    real = set()
+                    for r in range(p):
+                        mr = (kr + delta*r) % p
+                        msg = ((a0 + mr) % p, (a1 + r) % p)
+                        assert (ka*kb + delta*kc + kr - msg[0] + delta*msg[1]) % p == 0
+                        real.add(msg)
+                    simulated = {((ka*kb + delta*kc + kr + delta*s) % p, s)
+                                 for s in range(p)}
+                    assert real == simulated
+                if c != a*b % p:
+                    assert roots == 1  # Delta=0; not a lifetime soundness bound
+
+
 def test_gemma_report_keeps_requirements_separate_from_complete_results():
     report = plan.report()
     assert report["four_packed_proof_source_reads_bytes"] == 245_578_762_240

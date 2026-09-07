@@ -45,15 +45,27 @@ feasibility proofs before prover implementation and measurements.
   `b_P=2^24`, 357 queries per half (35,094,528 bytes for columns alone).
   Neither result proves C7.1 impossible; base-field and different masking
   constructions remain open. See the dossier for premises and scope.
+- [G2: committed MAC opening](c7.1-committed-mac-opening.md) is **active,
+  not closed**. A private PCS-verifier circuit derives a local binding-into-MAC
+  guarantee from circuit soundness, anchor binding and ordinary PCS soundness;
+  it does not assume `BindsIntoMac` as its own conclusion. The literal codec
+  using one 8-byte correction per leaf bit is excluded at 357 queries for
+  every power-of-two block: even the arena-maximal block needs 41,674,752
+  bytes for those corrections alone. A public t-query-ZK encoding is a
+  studied repair, not an instantiated alternative or a proved MAC bridge.
 - The [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) and
-  [ten focused tests](../tests/test_c7_1_gemma_plan.py) check paired-fold
+  [focused tests](../tests/test_c7_1_gemma_plan.py) check paired-fold
   arithmetic, service accounting, candidate integer/Fp3 decompositions,
-  and the new two-proof masking counterexample and exact carrier counts.
+  the two-proof masking counterexample, exact carrier/bit-codec counts,
+  and the product-check identity and simulator with the C7.1 MAC sign.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
   schedule remain unproved. GKR and witness regeneration must fit the same
   source-read and memory accounting; output-bound FS constrains folding order.
+  The literal generic Hobbit wrapper with trace replay requires at least
+  seven source-recomputing traversals. The historical operator census omits
+  scalar shapes/dtypes and cannot certify the missing witness liveness.
 - `C71FsLifetimeSound`, adaptive ROM transfer and malicious-verifier privacy
   still need their runtime premises and complete lifetime event/query census.
   Existing conditional Lean lemmas do not discharge these obligations.
@@ -64,15 +76,18 @@ feasibility proofs before prover implementation and measurements.
 ## Next work
 
 Follow [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture):
-first specify and prove a private opening into the session MAC, with mask-root
-refresh bound to the same Delta-independent model commitment. Study justified
-Fp leaves/code with Fp3 challenges/MAC and fresh masks per attempt; this is not
-yet an adopted carrier or a free refresh. Alongside it, close witness and form
+continue G2 by repairing the PCS–MAC boundary: concretize a public t-query-ZK
+encoding with a joint encoded-mask/MAC relation, or a private-verifier codec
+that avoids the excluded per-bit cost and counts all gates/correlations.
+The latter can keep a static model anchor only while every PCS opening stays
+private; it does not rehabilitate G1's reused public split mask. For an
+encoded-mask carrier, refresh must still bind the same Delta-independent W.
+Alongside it, close witness and form
 availability within the four W reads. Complete the relation, both lifetime
 proofs and full certificate/resource accounting before admitting prover
 implementation. Then prepare the small checks and, after hardware/spending
 authorization, the complete composition case and real Gemma workloads.
-The [next constructive obligation](c7.1-feasibility.md#6-prossimo-obbligo-costruttivo)
+The [remaining G2 obligation](c7.1-committed-mac-opening.md#7-prossimo-obbligo-e-controlli)
 specifies the required mathematical deliverable; no new owner decision is pending.
 
 ## Documentation decision

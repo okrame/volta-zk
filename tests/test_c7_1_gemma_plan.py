@@ -235,7 +235,7 @@ def test_private_verifier_mac_identity_simulator_and_altered_product():
 def test_grouped_arithmetic_hash_screen_counts_states_paths_and_gkr():
     s = plan.private_hobbit_arithmetic_hash_screen(1 << 35, 1 << 24, 357)
     assert s["credit"] is False
-    assert s["chain_groups_of_six"] == 342  # final group has two live row slots
+    assert s["chain_groups"] == 342  # final group has two live row slots
     assert s["private_hash_calls_without_inner_pcs_or_anchor"] == 131_376
     assert s["padded_permutation_instances"] == 1 << 18  # not 2^17
     assert s["base_input_corrections"] == 1_293_772
@@ -247,7 +247,7 @@ def test_grouped_arithmetic_hash_screen_counts_states_paths_and_gkr():
     assert s["hash_and_anchor_payload_bytes_before_framing_and_other_components"] == 11_200_376
     assert s["hash_trace_and_four_fold_tables_bytes"] == 1_442_840_576
     assert s["boundary_plaintexts_and_tags_bytes"] == 41_400_704
-    assert s["setup_six_code_rows_and_chain_digests_bytes"] == 5_368_709_120
+    assert s["setup_code_rows_and_chain_digests_bytes"] == 5_368_709_120
     assert s["retained_full_column_tree_bytes"] == 4_294_967_264
     assert s["setup_hash_permutations_before_anchor"] == 23_018_340_351
     assert s["queried_hash_sbox_multiplications_before_gkr"] == 78_825_600
@@ -1061,3 +1061,122 @@ def test_seed_fanout_reduction_transfers_to_same_producer_endpoint():
     # Knowing beta before choosing claims would permit deterministic cancellation.
     late_errors = [1, -pow(beta, -1, plan.P), 0]
     assert sum(pow(beta, j, plan.P)*e for j, e in enumerate(late_errors)) % plan.P == 0
+
+
+def test_i48_requantization_matches_exact_fraction_and_rejects_overflow():
+    for shift in range(-2, 13):
+        for value in range(-512, 513):
+            want = round(Fraction(value, 1 << shift)) if shift >= 0 else value*(1 << -shift)
+            if -32767 <= want <= 32767:
+                assert plan.rne_i48_to_i16(value, shift) == want
+            else:
+                with pytest.raises(ValueError):
+                    plan.rne_i48_to_i16(value, shift)
+    for shift in (-14, 0, 1, 15, 31, 32, 33, 47, 48):
+        for value in (-(1 << 47), -(1 << 47)+1, -23088334918656, 0, 23088334918656, (1 << 47)-1):
+            want = round(Fraction(value, 1 << shift)) if shift >= 0 else value*(1 << -shift)
+            if -32767 <= want <= 32767:
+                assert plan.rne_i48_to_i16(value, shift) == want
+            else:
+                with pytest.raises(ValueError):
+                    plan.rne_i48_to_i16(value, shift)
+    assert [plan.rne_i48_to_i16(x, 1) for x in (-3, -1, 1, 3)] == [-2, 0, 0, 2]
+    assert plan.rne_i48_to_i16(-(1 << 47), 10**9) == 0
+    assert plan.rne_i48_to_i16(0, -10**9) == 0
+    for args in ((1, -10**9), (1 << 47, 48), (-(1 << 47)-1, 48), (True, 0), (0, False)):
+        with pytest.raises(ValueError):
+            plan.rne_i48_to_i16(*args)
+
+
+def test_byte_basis_has_no_private_denominator_or_exception_at_roots():
+    for point in range(256):
+        assert plan.byte_lagrange_basis(point) == [int(point == j) for j in range(256)]
+    for point in (256, 1234567, plan.P-1):
+        basis = plan.byte_lagrange_basis(point)
+        for degree in (0, 1, 2, 17, 255):
+            assert sum(pow(j, degree, plan.P)*x for j, x in enumerate(basis)) % plan.P == pow(point, degree, plan.P)
+    for value in (-1, plan.P, True):
+        with pytest.raises(ValueError):
+            plan.byte_lagrange_basis(value)
+
+
+def test_biased_byte_rounding_polynomials_cover_all_shift_classes_and_ties():
+    cases = {(0, -10**6), (1, -10**6), (-(1 << 47), 10**6)}
+    for shift in range(-15, 49):
+        cases.update((a, shift) for a in (0, 17, -17))
+        if -14 <= shift <= 0:
+            bound = 32767 >> -shift
+            cases.update((a, shift) for a in (bound, bound+1, -bound, -bound-1))
+        if 1 <= shift <= 47:
+            half = 1 << (shift-1)
+            cases.update((a, shift) for a in (-3*half, -half, half, 3*half) if -(1 << 47) <= a < 1 << 47)
+        if 1 <= shift <= 32:
+            bound = 65535*(1 << (shift-1))-1
+            cases.update((a, shift) for a in (bound, bound+1, -bound, -bound-1))
+    for value, shift in sorted(cases):
+        digits = list((value+(1 << 47)).to_bytes(6, 'little'))
+        y, valid = plan.rne48_byte_polynomials(digits, shift)
+        if abs(shift) > 100:
+            expected_valid = int(shift > 0 or value == 0)
+            expected = 0
+        else:
+            expected = round(Fraction(value, 1 << shift)) if shift >= 0 else value*(1 << -shift)
+            expected_valid = int(-32767 <= expected <= 32767)
+        assert valid == expected_valid, (value, shift)
+        if valid:
+            assert y == expected % plan.P, (value, shift)
+    # Reconstruction ALONE is insufficient: the first "byte" is not a byte.
+    bad, good = [256, 0, 0, 0, 0, 128], [0, 1, 0, 0, 0, 128]
+    decode = lambda ds: sum((1 << (8*j))*v for j, v in enumerate(ds))-(1 << 47)
+    assert decode(bad) == decode(good) == 256
+    bad_y, bad_valid = plan.rne48_byte_polynomials(bad, 8)
+    assert bad_valid == 1 and bad_y != 1
+    assert plan.rne48_byte_polynomials(good, 8) == (1, 1)
+    assert math.prod(256-j for j in range(256)) % plan.P != 0  # byte-range proof rejects
+
+
+def test_byte_polynomial_sumcheck_round_degrees_on_a_nonboolean_line():
+    values = []
+    for t in range(1534):
+        digits = [(19+j+(3+2*j)*t) % plan.P for j in range(6)]
+        y, valid = plan.rne48_byte_polynomials(digits, 15)
+        values.append(((3+7*t)*y+(5+11*t)*(1-valid)) % plan.P)
+    assert len(set(values)) > 1
+    for _ in range(1532):
+        values = [(b-a) % plan.P for a, b in zip(values, values[1:])]
+    assert values == [0, 0]  # round degree <=1531, including public MLE factor
+    values = [(3+7*t)*math.prod(19+5*t-j for j in range(256)) % plan.P
+              for t in range(260)]
+    for _ in range(258):
+        values = [(b-a) % plan.P for a, b in zip(values, values[1:])]
+    assert values == [0, 0]  # byte range round degree <=257, not 256
+
+
+def test_byte_lift_literal_exclusion_and_four_row_repair_are_only_screens():
+    s = plan.report()['requantization_screen']
+    assert s['matrix_raw_cells'] == 647475200 and s['matrix_padded_cells'] == 1 << 30
+    assert s['b_biased_byte_live_cells'] == 5143044096
+    assert s['requantization_extension_corrections_upper'] == 51133
+    assert s['requantization_payload_upper_before_framing_and_shared_closures'] == 1227192
+    assert s['byte_range_extension_corrections'] == 8770
+    assert s['byte_range_payload_before_framing_and_shared_closures'] == 210480
+    literal = {row['block_bits']: row for row in s['literal_six_row_byte_pcs_screens']}
+    assert literal[21]['w_plus_b_base_corrections_only_bytes_no_anchors'] == 35470976 > 35000000
+    assert literal[22]['b_preparation_with_full_tree_bytes'] == 7626072032 > 6442450944
+    assert s['four_row_no_outer_tree_pcs_payload_before_framing'] == 15507248
+    assert s['four_row_no_outer_tree_preparation_with_b_bytes'] == 6283894784
+    assert s['queried_tree_rebuild_known_union_without_x1_bytes'] == 6350581984
+    assert s['fixed_prefix_rounds_before_materialization'] == 10
+    assert s['source_scans_per_sumcheck_before_cached_tail_upper'] == 11
+    assert s['additional_w_reads_for_these_byte_algorithms'] == 0
+    assert s['requires_new_b_byte_commitment_profile']
+    assert not s['credit'] and not s['byte_pcs_forms_and_complete_liveness_compiled']
+    assert s['complete_gamma_or_certificate_bytes'] is None
+    normal = plan.private_hobbit_arithmetic_hash_screen(1 << 33, 1 << 22, 357)
+    changed = plan.private_hobbit_arithmetic_hash_screen(1 << 33, 1 << 22, 357, 4)
+    assert normal['source_words_per_hash_group'] == 6 and changed['source_words_per_hash_group'] == 4
+    assert normal['chain_groups'] == 342 and changed['chain_groups'] == 512
+    assert changed['setup_code_rows_and_chain_digests_bytes'] == 256*(1 << 22)
+    for group in (0, 7, True):
+        with pytest.raises(ValueError):
+            plan.private_hobbit_arithmetic_hash_screen(1 << 33, 1 << 22, 357, group)

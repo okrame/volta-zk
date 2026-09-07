@@ -15,6 +15,7 @@ it is not another status ledger.
 | [A3 recursive RS opening](c7.1-recursive-rs-opening.md) | Fixed-cap encoder, private recursion, bounded sampling, ideal-oracle binding, accounting and concrete-hash compilation gap |
 | [A4 paired RS opening](c7.1-paired-rs-opening.md) | Fused two-read reduction/opening, arbitrary-fold binding, dyadic tensor forms and conditional GKR composition |
 | [W-cut witness](c7.1-cut-witness.md) | Conditional W-free replay, P0 cohorts, exact input selectors/fanout reduction and remaining producer/KV obligations |
+| [R1 requantization](c7.1-requantization.md) | Exact byte-bound RNE, conditional sumcheck, byte-PCS exclusion/repair and outstanding forms/costs |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |
 | [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [tests](../tests/test_c7_1_gemma_plan.py) | Small executable accounting/algebra checks |

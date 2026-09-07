@@ -201,6 +201,95 @@ def fp3_mul_six(a, b):
     return ((v0 + v12 + v12) % P, (v01 + v2 + v2) % P, (v02 + v1) % P)
 
 
+def rne_i48_to_i16(value, shift):
+    """Exact RNE(value / 2**shift), symmetric i16 or reject; no floating point."""
+    natural(value, "signed i48", -(1 << 47), (1 << 47)-1)
+    if type(shift) is not int:
+        raise ValueError("shift must be an integer")
+    if shift >= 48:
+        result = 0
+    elif shift <= -15:
+        if value:
+            raise ValueError("requantization overflows symmetric i16")
+        result = 0
+    elif shift <= 0:
+        result = value << -shift
+    else:
+        divisor = 1 << shift
+        result, remainder = divmod(value, divisor)  # floor quotient, also for negatives
+        result += int(2*remainder > divisor or (2*remainder == divisor and result & 1))
+    return natural(result, "requantized symmetric i16", -32767, 32767)
+
+
+def byte_lagrange_basis(value):
+    """Degree-255 basis on 0..255, including at roots; only public inverses.
+
+    Prefix/suffix products realize at most 762 private products at a MAC
+    endpoint. This clear Fp diagnostic is not the private circuit backend.
+    """
+    natural(value, "canonical Fp byte-polynomial point", 0, P-1)
+    prefix, suffix = [1]*257, [1]*257
+    for j in range(255):
+        prefix[j+1] = prefix[j]*(value-j) % P
+    for j in reversed(range(1, 256)):
+        suffix[j] = suffix[j+1]*(value-j) % P
+    inverse_factorial = pow(math.factorial(255), -1, P)
+    return [prefix[j]*suffix[j+1]*(-1 if (255-j) & 1 else 1)
+            * math.comb(255, j)*inverse_factorial % P for j in range(256)]
+
+
+def rne48_byte_polynomials(values, shift):
+    """(rounded-value polynomial, validity polynomial) on six BIASED bytes.
+
+    The integer is sum(256**j * values[j]) - 2**47. Correct rounding/range
+    semantics REQUIRE each digit in 0..255 and a binding byte source.
+    No auxiliary private digits are authenticated or presumed available.
+    """
+    if len(values) != 6 or type(shift) is not int:
+        raise ValueError("six biased bytes and an integer shift required")
+    basis = [byte_lagrange_basis(x) for x in values]
+    def table(lane, fn):
+        return sum(fn(j)*a for j, a in enumerate(basis[lane])) % P
+    def less_than(bound):
+        if bound <= 0:
+            return 0
+        if bound >= 1 << 48:
+            return 1
+        result = 0
+        for lane in range(6):  # low digit first: a higher unequal digit overrides it
+            digit = (bound >> (8*lane)) & 255
+            result = (table(lane, lambda j: int(j < digit))+basis[lane][digit]*result) % P
+        return result
+
+    raw = (sum((1 << (8*j))*x for j, x in enumerate(values))-(1 << 47)) % P
+    if shift >= 48:
+        return 0, 1
+    if shift <= -15:
+        valid = math.prod(basis[j][128 if j == 5 else 0] for j in range(6)) % P
+        return 0, valid  # every nonzero raw value would overflow
+    if shift <= 0:
+        rounded, bound = raw*(1 << -shift) % P, 32767 >> -shift
+    else:
+        lane, bit = divmod(shift, 8)
+        quotient = (table(lane, lambda j: j >> bit)
+                    + sum((1 << (8*j-shift))*values[j] for j in range(lane+1, 6))
+                    - (1 << (47-shift))) % P
+        half_lane, half_bit = divmod(shift-1, 8)
+        half = table(half_lane, lambda j: (j >> half_bit) & 1)
+        low_zero = math.prod(basis[j][0] for j in range(half_lane)) % P
+        if half_bit < 7:
+            # At shift 47 the bias subtraction is odd and flips quotient parity.
+            suppress = table(half_lane, lambda j: ((j >> half_bit) & 1)
+                             * int(j % (1 << half_bit) == 0)
+                             * (1-(((j >> (half_bit+1)) & 1) ^ int(shift == 47))))
+        else:
+            suppress = basis[half_lane][128]*(1-table(half_lane+1, lambda j: j & 1)) % P
+        rounded = (quotient+half-suppress*low_zero) % P
+        bound = 65535*(1 << (shift-1))-1  # strict threshold: endpoint rounds to +/-32768
+    valid = (less_than((1 << 47)+bound+1)-less_than((1 << 47)-bound)) % P
+    return rounded, valid
+
+
 def streaming_work(n, block):
     """Exact abstract multiplication counts for the stated generic schedule.
 
@@ -284,10 +373,10 @@ def private_hobbit_bit_screen(n, live, block, queries):
     }
 
 
-def private_hobbit_arithmetic_hash_screen(n, block, queries):
+def private_hobbit_arithmetic_hash_screen(n, block, queries, group_size=6):
     """Grouped width-16/rate-12 arithmetic hash + power-layer GKR screen.
 
-    Six code rows per chain compression; paths are NOT deduplicated. Uses
+    Up to six code rows per chain compression; paths are NOT deduplicated. Uses
     the locked permutation's 8 full/22 partial degree-7 rounds, not a new
     hash implementation or a security claim. Excludes the encoder scratch,
     inner PCS and all non-hash parts of the prover. The separate anchor
@@ -297,8 +386,9 @@ def private_hobbit_arithmetic_hash_screen(n, block, queries):
             or n & (n - 1) or block & (block - 1)):
         raise ValueError("n and block must be powers of two, with block <= n")
     natural(queries, "distinct unmasked columns", 1, 4*block)
+    natural(group_size, "source words per hash group", 1, 6)
     rows, domain = n // block, 4*block
-    groups, depth = (rows + 5) // 6, domain.bit_length() - 1
+    groups, depth = (rows + group_size-1) // group_size, domain.bit_length() - 1
     calls = queries*(groups + depth)
     padded_calls = 1 << (calls - 1).bit_length()
     variables = padded_calls.bit_length() - 1 + 4
@@ -315,7 +405,8 @@ def private_hobbit_arithmetic_hash_screen(n, block, queries):
         "credit": False,
         "carrier_block_cells": block,
         "queries_not_a_security_derivation": queries,
-        "chain_groups_of_six": groups,
+        "chain_groups": groups,
+        "source_words_per_hash_group": group_size,
         "private_hash_calls_without_inner_pcs_or_anchor": calls,
         "padded_permutation_instances": padded_calls,
         "base_input_corrections": inputs,
@@ -329,7 +420,7 @@ def private_hobbit_arithmetic_hash_screen(n, block, queries):
             8*(inputs + anchor_corrections) + 24*extension_corrections + 72),
         "hash_trace_and_four_fold_tables_bytes": 16*padded_calls*(31*8 + 4*24),
         "boundary_plaintexts_and_tags_bytes": 32*inputs,
-        "setup_six_code_rows_and_chain_digests_bytes": domain*(6*8 + 4*8),
+        "setup_code_rows_and_chain_digests_bytes": domain*(group_size*8 + 4*8),
         "retained_full_column_tree_bytes": (2*domain - 1)*32,
         "setup_hash_permutations_before_anchor": domain*groups + domain - 1,
         "queried_hash_sbox_multiplications_before_gkr": calls*(8*16 + 22)*4,
@@ -388,14 +479,14 @@ def rs_generator_mle(t, point):
     return result
 
 
-def recursive_rs_opening_screen(n, block, queries):
+def recursive_rs_opening_screen(n, block, queries, outer_group_size=6):
     """A3: bounded RS, double outer fold, single-fold resident recursion.
 
     Only accounting and ideal-oracle error terms. No PCS/MAC/ROM security
     credit, framing, PCG staging or Gemma witness liveness is inferred.
     The cap is a fixed algorithm constant, NEVER selected as a function of n.
     """
-    outer = private_hobbit_arithmetic_hash_screen(n, block, queries)
+    outer = private_hobbit_arithmetic_hash_screen(n, block, queries, outer_group_size)
     if block > 1 << 24 or queries > block or n // block >= P:
         raise ValueError("A3 requires block <= 2^24, queries <= block, rows < p")
     levels = []
@@ -440,7 +531,7 @@ def recursive_rs_opening_screen(n, block, queries):
         "fresh_extension_correlations_including_product_mask": extension+1,
         "component_payload_before_framing_and_other_components": (
             8*(inputs+anchor)+24*extension+72),
-        "model_setup_known_arrays_bytes": 336*block,
+        "model_setup_known_arrays_bytes": (16+32*(outer_group_size+4))*block,
         "proof_known_arrays_conservative_union_bytes": known_arrays,
         "all_inner_trees_bytes": trees,
         "outer_source_fft_butterflies": 2*n*(block.bit_length()+1),
@@ -803,6 +894,62 @@ def input_link_screen(cohorts):
     }
 
 
+def requantization_screen(cohorts):
+    """R1 byte-lift candidate, not adopted B PCS or complete Gemma feasibility."""
+    matrix_cells = sum(c["rows"]*c["columns"] for c in cohorts if c["kind"] == "matrix")
+    raw_bytes = sum(c["rows"]*c["columns"]*c["cut_scalar_bytes"] for c in cohorts)
+    rq_bits, byte_bits = (matrix_cells-1).bit_length(), (raw_bytes-1).bit_length()
+    anchor = private_hobbit_arithmetic_hash_screen(1 << 35, 1 << 24, 357)["anchor_base_corrections_upper"]
+    w_pcs = recursive_rs_opening_screen(1 << 35, 1 << 24, 357)
+    literal = []
+    for bits in (20, 21, 22):
+        block = 1 << bits
+        b_pcs = recursive_rs_opening_screen(1 << byte_bits, block, 357)
+        literal.append({"block_bits": bits,
+                        "b_preparation_with_full_tree_bytes": raw_bytes+336*block+32*(8*block-1),
+                        "w_plus_b_base_corrections_only_bytes_no_anchors": 8*(
+                            w_pcs["base_corrections_including_anchor_upper"]
+                            +b_pcs["base_corrections_including_anchor_upper"]-2*anchor)})
+    repaired = recursive_rs_opening_screen(1 << byte_bits, 1 << 22, 357, 4)
+    endpoint_products = 6*3*(256-2) + 47*10 + sum(s//8 for s in range(1,48)) + 5
+    rq_corrections = 1532*rq_bits+6+endpoint_products
+    byte_corrections = 258*byte_bits+1+255
+    p0_corrections = weight_cohort_screen(cohorts)["extension_corrections_before_other_circuits"]
+    seed_corrections = input_link_screen(cohorts)["extension_corrections"]
+    preparation = raw_bytes+repaired["model_setup_known_arrays_bytes"]
+    return {
+        "credit": False,
+        "matrix_raw_cells": matrix_cells,
+        "matrix_padded_cells": 1 << rq_bits,
+        "b_biased_byte_live_cells": raw_bytes,
+        "b_biased_byte_padded_cells": 1 << byte_bits,
+        "requantization_polynomial_total_degree_upper": 1530,
+        "requantization_sumcheck_round_degree_upper": 1531,
+        "all_64_shift_classes_endpoint_products_upper": endpoint_products,
+        "requantization_extension_corrections_upper": rq_corrections,
+        "requantization_payload_upper_before_framing_and_shared_closures": 24*rq_corrections,
+        "byte_range_extension_corrections": byte_corrections,
+        "byte_range_payload_before_framing_and_shared_closures": 24*byte_corrections,
+        "fixed_prefix_rounds_before_materialization": 10,
+        "source_scans_per_sumcheck_before_cached_tail_upper": 11,
+        "six_byte_plane_cached_tail_bytes": 6*24*(1 << max(0,rq_bits-10)),
+        "byte_range_cached_tail_bytes": 24*(1 << max(0,byte_bits-10)),
+        "literal_six_row_byte_pcs_screens": literal,
+        "four_row_no_outer_tree_pcs_payload_before_framing": repaired["component_payload_before_framing_and_other_components"],
+        "four_row_no_outer_tree_preparation_with_b_bytes": preparation,
+        "queried_tree_rebuild_known_union_without_x1_bytes": (
+            preparation+32*repaired["base_corrections_including_anchor_upper"]
+            +48*(p0_corrections+seed_corrections+rq_corrections+byte_corrections
+                  +repaired["extension_corrections_including_partial_sumchecks"])),
+        "repaired_pcs_source_scans_after_commit_including_x1_regeneration": 3,
+        "requires_new_b_byte_commitment_profile": True,
+        "additional_w_reads_for_these_byte_algorithms": 0,
+        "all_matrix_shifts_instantiated": False,
+        "byte_pcs_forms_and_complete_liveness_compiled": False,
+        "complete_gamma_or_certificate_bytes": None,
+    }
+
+
 def a3_query_indices(domain, count, words):
     """Small reference for A3's bounded PUBLIC sampler, not a PCS prover.
 
@@ -1038,6 +1185,7 @@ def report():
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),
         "weight_cohort_screen": weight_cohort_screen(cohorts),
         "input_link_screen": input_link_screen(cohorts),
+        "requantization_screen": requantization_screen(cohorts),
         "dyadic_weight_layout_screen": {
             "credit": False,
             "tiles": len(tiles),

@@ -1010,7 +1010,15 @@ def test_private_projection_counts_include_base_commitment_but_not_direct_messag
         assert not s['changes_real_record_order_or_correlation_reuse_rules']
         assert not s['full_root_oracle_fs_and_model_relation_instantiated']
         assert not s['credit'] and s['complete_security_bits'] is None
-    for args in ((plan.P, 1 << 24, 357), (1 << 35, 1 << 25, 357), (64, 8, 9)):
+        assert s['static_source_lifetime']['total_symbol_slots'] == length
+    life = plan.private_projection_compilation_screen(1 << 35, 1 << 24, 357, 1 << 20)['static_source_lifetime']
+    assert life['source_symbols_sampled_at_one_boundary'] == 1 << 26
+    assert life['recursive_symbol_slots'] == 4329601*(1 << 20)
+    assert life['recursive_sampling_boundaries'] == 5*(1 << 20)
+    assert life['total_symbol_slots'] == (1 << 26)+4329601*(1 << 20)
+    assert life['maximum_attempts_in_each_source_continuation'] == life['attempts'] == 1 << 20
+    for args in ((plan.P, 1 << 24, 357), (1 << 35, 1 << 25, 357), (64, 8, 9),
+                 (64, 8, 1, 0), (64, 8, 1, (1 << 20)+1), (64, 8, 1, True)):
         with pytest.raises(ValueError):
             plan.private_projection_compilation_screen(*args)
 
@@ -1128,6 +1136,77 @@ def test_ibcs_missing_valid_positions_match_exact_resampling_probability():
         for j in range(8):
             delta = Fraction(j,7)
             assert delta*(1-delta)**n <= Fraction(1,n)
+
+
+def test_static_source_sampler_covers_adaptive_lifetimes_and_late_aborts():
+    # Two attempts, independent F3 masks, request 2 depends on public correction 1.
+    # An exact toy VC checks against this fixed source; no hash/MAC security claim.
+    source, outcomes, first_only = (2, 0, 1), [], []
+    for coins in product(range(2), repeat=2):
+        for masks in product(range(3), repeat=2):
+            records, previous_correction = [], 0
+            for slot in range(2):
+                query = coins[0] if slot == 0 else (coins[1]+previous_correction) % 3
+                value = source[query]
+                if slot == 1 and coins[1] == 1 and masks[1] == 2:
+                    value = (value+1) % 3  # invalid complete opening contributes nothing
+                correction = (value-masks[slot]) % 3
+                decoded = (correction+masks[slot]) % 3
+                valid = decoded == source[query]
+                late_abort = slot == 0 and coins[0] == 0
+                records.append((slot, query, decoded, valid, late_abort))
+                previous_correction = correction
+            assert [r[0] for r in records] == [0, 1]  # abort does not refund a slot
+            # Already received valid openings survive a LATER abort in that attempt.
+            known = {r[1]: r[2] for r in records if r[3]}
+            assert all(source[j] == value for j, value in known.items())
+            assert all(r[1] in known for r in records if r[3] and r[4])
+            outcomes.append(set(known))
+            first_only.append({r[1] for r in records[:1] if r[3]})
+    assert len(outcomes) == 36 and all(2 not in seen for seen in first_only)
+    assert any(2 in seen for seen in outcomes)  # first-attempt-only sampling misses this position
+    for samples in (1, 2):
+        missing, missing_any = [0]*3, 0
+        for draws in product(range(len(outcomes)), repeat=samples+1):
+            seen = set().union(*(outcomes[i] for i in draws[:-1]))
+            absent = outcomes[draws[-1]]-seen
+            missing_any += bool(absent)
+            for j in absent:
+                missing[j] += 1
+        denominator = len(outcomes)**(samples+1)
+        for j in range(3):
+            delta = Fraction(sum(j in seen for seen in outcomes), len(outcomes))
+            assert Fraction(missing[j], denominator) == delta*(1-delta)**samples
+        assert Fraction(missing_any, denominator) <= sum(Fraction(x, denominator) for x in missing)
+        assert sum(Fraction(x, denominator) for x in missing) <= Fraction(3, samples)
+
+
+def test_decoded_static_source_uses_joint_column_distance_not_independent_row_balls():
+    # Degree<2 RS on four distinct F7 points: distance 3, joint radius <3/2.
+    p, domain = 7, range(4)
+    code = {c: tuple((c[0]+c[1]*x) % p for x in domain)
+            for c in product(range(p), repeat=2)}
+    assert min(sum(a != b for a, b in zip(x, y))
+               for x, y in product(code.values(), repeat=2) if x != y) == 3
+
+    def decode(rows):
+        candidates = [[c for c, word in code.items()
+                       if 2*sum(a != b for a, b in zip(row, word)) < 3] for row in rows]
+        assert all(len(c) <= 1 for c in candidates)
+        if any(not c for c in candidates):
+            return None
+        coefficients = tuple(c[0] for c in candidates)
+        bad_columns = sum(any(row[j] != code[c][j] for row, c in zip(rows, coefficients)) for j in domain)
+        return coefficients if 2*bad_columns < 3 else None
+
+    weights = ((1, 2), (3, 1))
+    rows = [list(code[c]) for c in weights]
+    assert decode(rows) == weights
+    rows[0][0] = (rows[0][0]+1) % p
+    assert decode(rows) == weights  # malformed oracle can still have the SAME unique decode
+    rows[1][1] = (rows[1][1]+1) % p
+    assert all(sum(a != b for a, b in zip(row, code[c])) == 1 for row, c in zip(rows, weights))
+    assert decode(rows) is None  # row-wise decoding alone would incorrectly accept
 
 
 def test_a3_public_query_sampler_is_distinct_uniform_and_fails_closed():

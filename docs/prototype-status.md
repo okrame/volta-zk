@@ -51,9 +51,10 @@ authorization.
   Neither result proves C7.1 impossible; base-field and different masking
   constructions remain open. See the dossier for premises and scope.
 - [G2: committed MAC opening](c7.1-committed-mac-opening.md) is **active,
-  not closed**. The [interactive prefix coupling](c7.1-committed-mac-opening.md#32-proiezione-di-strategie-e-campionamento-interattivo)
-  now specifies projection, VC sampling and its scope; commitment–W across
-  requests and FS remain open. It does not assume `BindsIntoMac`. The literal codec
+  not closed**. The [shared-source interactive coupling](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)
+  fixes one source before requests in the stated closed game; the model
+  relation, concrete caller/costs and FS remain open. It does not assume
+  `BindsIntoMac`. The literal codec
   using one 8-byte correction per leaf bit is excluded at 357 queries for
   every power-of-two block: even the arena-maximal block needs 41,674,752
   bytes for those corrections alone. The A2 repair now specifies a grouped
@@ -327,9 +328,9 @@ authorization.
 ## Next work
 
 Follow [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture):
-continue from [G2 §3.2](c7.1-committed-mac-opening.md#32-proiezione-di-strategie-e-campionamento-interattivo):
-move source extraction before caller claims and prove the precise
-commitment–W relation across requests, then compose the binding argument with the concrete
+continue from [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva):
+connect decoded-source consistency to the model relation and instantiate
+the closed lifetime/caller game, then compose the binding argument with the concrete
 hash/PCS assumptions and FS. A3's finite inner recursion and hash checker
 must not import BCS's extraction from an oracle that the concrete checker
 does not access. The new IBCS audit supplies a standard-model theorem but

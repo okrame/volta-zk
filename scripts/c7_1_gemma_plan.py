@@ -859,14 +859,17 @@ def wide_hash_fixed_trail_screen():
     }
 
 
-def private_projection_compilation_screen(n, block, queries):
+def private_projection_compilation_screen(n, block, queries, attempts=1):
     """G2 §3.2: A4/A5 ideal-interactive projection, NOT an executed extractor.
 
     Reuse A3/A4's same oracle layout. The whole terminal vector is ONE
     committed symbol, not a free direct message at its later opening.
     Include A4 paired records/coins; exclude caller and private hash tail.
+    Multiple attempts here share ONE static source anchor; C_Sigma uses
+    attempts=1 because a new response has a new auxiliary-source anchor.
     """
     natural(n, 'canonical anchored source length', 1, P-1)
+    natural(attempts, 'attempts sharing one source anchor', 1)
     rs = recursive_rs_opening_screen(n, block, queries)
     oracles = [{'symbols': 4*block, 'symbol_fp_words': n//block, 'queries': queries}]
     oracles += [{'symbols': level['domain'], 'symbol_fp_words': 96, 'queries': level['queries']}
@@ -882,6 +885,7 @@ def private_projection_compilation_screen(n, block, queries):
         o['queries']*((o['symbol_fp_words']+9)//10+o['symbols'].bit_length()-1)
         + int(i == 0)  # only the source commitment has a salted public anchor
         for i, o in enumerate(oracles)]
+    recursive_symbols = sum(o['symbols'] for o in oracles[1:])
     return {
         'credit': False,
         'committed_oracles': oracles,
@@ -898,6 +902,14 @@ def private_projection_compilation_screen(n, block, queries):
         'direct_plaintext_bytes_in_projection_only': 24*direct_values,
         'clear_vc_hash_calls_per_sample_by_boundary': clear_hash_calls,
         'public_challenge_u64_upper_before_private_hash': 4*(3*field_challenges+random_indices),
+        'static_source_lifetime': {
+            'attempts': attempts,
+            'source_symbols_sampled_at_one_boundary': 4*block,
+            'recursive_symbol_slots': attempts*recursive_symbols,
+            'recursive_sampling_boundaries': attempts*(len(oracles)-1),
+            'total_symbol_slots': 4*block+attempts*recursive_symbols,
+            'maximum_attempts_in_each_source_continuation': attempts,
+        },
         'main_execution_wrapper_error_multiplied_by_rewinds': False,
         'sampler_filters_by_direct_clear_vc_check_not_wrapper_acceptance': True,
         'rewind_clones_entire_dealer_and_prover_state': True,
@@ -2304,8 +2316,9 @@ def report():
         "wide_hash_parameter_screen": wide_hash_parameter_screen(),
         "wide_hash_fixed_trail_screen": wide_hash_fixed_trail_screen(),
         "private_projection_compilation_screens": [
-            private_projection_compilation_screen(size, block, 357)
-            for size, block in ((n, 1 << 24), (1 << 33, 1 << 23), (1 << 34, 1 << 23))],
+            private_projection_compilation_screen(size, block, 357, attempts)
+            for size, block, attempts in ((n, 1 << 24, LIFETIME_ATTEMPTS),
+                                         (1 << 33, 1 << 23, 1), (1 << 34, 1 << 23, 1))],
         "wide_hash_witness_screens": [wide_hash_witness_screen(cohorts, old)
                                      for old in (0, 3946)],
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),

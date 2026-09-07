@@ -86,6 +86,20 @@ authorization.
   or tighter reductions remain repairs to study. Sampled-parameter and
   adversary/preprocessing assumptions must match the actual fixed hash;
   Q_FS is not its work budget. No root-to-oracle/FS credit is granted.
+- [A5: wide hash/anchor candidate](c7.1-wide-hash-opening.md) now specifies
+  eight-Fp digests, ten-word groups, a 32-lane checker and an arithmetic
+  salted anchor in the same MAC. The pinned parameter calculator nominates
+  8 full/31 partial rounds, but does not provide a supported Goldilocks-32
+  profile or concrete security. W paired payload is 16,164,144 bytes;
+  C_Σ paired is 10,402,496/15,706,688 at N=150/4096, before public anchors,
+  framing and other components. Literal enlarged arrays fail; staged hash
+  execution, tiled native encoding and pruned caches repair those specific
+  schedules. The largest known C_Σ phase is 6,404,645,880 bytes, leaving
+  only 37,805,064 before uncompiled Replay/Gamma/runtime. The tiled commit
+  charges 32 ModelSetup W visits or 16 C_Σ source visits, including all
+  repeated native FFT work; warm A4 still uses two source visits.
+  Parameters/matrices/KAT, profile grammar, binding/hiding, IBCS/FS and
+  complete liveness remain open. This is not an admitted hash upgrade.
 - [Ideal MAC/FS simulation](c7.1-committed-mac-opening.md#31-simulatore-ideale-fs-nessuna-programmazione-delloracolo)
   now has a straight-line coupling proof for the actual public correction
   prefixes, including aborts and adaptive attempts. It needs no oracle
@@ -218,7 +232,7 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 72 focused checks also cover finite query sampling, exact ideal
+  The 75 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
@@ -246,6 +260,9 @@ authorization.
   The IBCS audit checks valid-position resampling by finite enumeration
   and the cube-root-loss identity with exact fractions; it tests a bound
   template, not an extractor or hash-security claim.
+  A5 adds the 32-lane algebra instance, fresh wide accounting, and symbolic
+  tiled/pruned-tree checks with absolute indices; no Poseidon2 KAT or
+  security test is claimed.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -274,8 +291,13 @@ does not access. The new IBCS audit supplies a standard-model theorem but
 excludes the literal 256-bit birthday-envelope bound even under favorable
 costs. Seek a tighter concrete reduction or a stronger hash/VC profile;
 compile its parameter/adversary assumptions, complete reduction costs and
-adaptation to the actual public-coin/MAC/FS transcript. A 512-bit output-space
-screen alone is not an implemented or security-justified repair.
+adaptation to the actual public-coin/MAC/FS transcript. A5 now supplies a
+structural wide hash/anchor codec, checker and resource recount, not an
+admitted hash profile. Complete its parameters/matrices/KAT and public
+profile grammar, justify the concrete binding/hiding assumptions and
+compile the actual reduction. A p^8 output space and a round calculator
+alone do not discharge those obligations. Its C_Σ margin is narrow;
+the full reader/Gamma workspace must be included before claiming a fit.
 The A3 opening stages add no W reads after queried source columns exist;
 they do not supply the missing Gemma witness. The static model anchor keeps PCS openings private,
 without reusing G1's public split mask. Setup hash work remains substantial;

@@ -728,6 +728,77 @@ def combine(a, b, r):
     return [(x + r * y) % P for x, y in zip(a, b)]
 
 
+def wide_hash_rs_screen(n, block, queries):
+    """A5 STRUCTURAL candidate, not a generated/justified Poseidon2 profile.
+
+    Reuse A3 geometry only; recompute every hash boundary for width 32,
+    eight-word digests, ten-word groups, nominated RF=8/RP=31 and one
+    arithmetic salted anchor. The old BLAKE3 anchor is NOT retained.
+    """
+    natural(n, 'canonical wide-anchor source length', 1, P-1)
+    narrow = recursive_rs_opening_screen(n, block, queries)
+    levels = []
+    calls, inputs = 1, 4  # anchor permutation; fresh Fp salt coordinates
+    for rows, domain, q in [(n//block, 4*block, queries)]+[
+            (96, level['domain'], level['queries']) for level in narrow['levels']]:
+        groups, depth = (rows+9)//10, domain.bit_length()-1
+        h, i = q*(groups+depth), q*(rows+8*groups+16*depth)+8
+        levels.append({'rows': rows, 'domain': domain, 'queries': q,
+                       'chain_groups': groups, 'hash_calls': h, 'base_corrections': i})
+        calls, inputs = calls+h, inputs+i
+    terminal = narrow['terminal_private_extension_cells']
+    groups = (3*terminal+9)//10
+    calls, inputs = calls+groups, inputs+3*terminal+8*groups+8
+    padded = 1 << (calls-1).bit_length()
+    variables = padded.bit_length()-1+5
+    hash_e = (8*9+31*10)*variables+5*39
+    extension = hash_e+15*len(narrow['levels'])
+    trees = sum(64*(2*level['domain']-1) for level in narrow['levels'])
+    records = 32*inputs+48*extension
+    tile = min(1 << 21, 4*block)
+    return {
+        'credit': False, 'fixed_algorithm_block_cap': 1 << 24,
+        'nominated_width_full_partial_rounds': [32, 8, 31],
+        'digest_field_words': 8, 'source_words_per_group': 10,
+        'digest_space_cardinality': P**8,
+        'salt_space_cardinality': P**4,
+        'levels': levels, 'terminal_private_extension_cells': terminal,
+        'private_hash_calls_including_anchor_and_recursion': calls,
+        'padded_permutation_instances': padded,
+        'base_corrections_including_salt': inputs,
+        'power_gkr_extension_corrections': hash_e,
+        'extension_corrections_including_partial_sumchecks': extension,
+        'fresh_extension_correlations_including_product_mask': extension+1,
+        'private_component_payload_before_framing_and_caller': 8*inputs+24*extension+72,
+        'public_anchor_bytes_each_time_sent_not_in_private_payload': 64,
+        'hash_trace_and_four_fold_tables_bytes': 13312*padded,
+        'known_boundary_and_extension_record_bytes': records,
+        'clear_hash_reduction_error_numerator_not_fs_or_mac': 343*variables+variables-2,
+        'queried_sbox_base_multiplications_before_gkr': 4*(8*32+31)*calls,
+        'hash_sumcheck_fp3_mul_upper_before_public_forms_and_mac': (
+            39*104*(32*padded-1)+39*100*variables),
+        'literal_full_row_group_encoder_bytes': 592*block,
+        'tiled_commit_output_columns': tile,
+        'tiled_commit_scratch_before_source_and_retained_cache_bytes': 48*block+144*tile,
+        'tiled_commit_source_traversals': 4*block//tile,
+        'tiled_commit_native_fft_butterflies': 4*block//tile*2*n*(block.bit_length()+1),
+        'commit_outer_hash_calls_before_anchor_and_public_profile': (
+            4*block*((n//block+9)//10)+4*block-1),
+        'full_outer_tree_bytes': 64*(8*block-1),
+        'outer_internal_only_tree_bytes': 64*(4*block-1),
+        'query_missing_leaf_buffers_bytes': 144*min(4*block, 2*queries),
+        'all_inner_full_trees_bytes': trees,
+        # A3 conservative prehash bound, staged before hash trace allocation.
+        # Its 96b FFT slot also covers the largest 592*(b/16) encoder.
+        'prehash_known_arrays_union_bytes': (
+            256*block+trees+records+144*min(4*block, 2*queries)),
+        'post_source_and_tree_release_hash_known_union_bytes': 13312*padded+records,
+        'outer_source_fft_butterflies_per_native_encode': 2*n*(block.bit_length()+1),
+        'matrix_constants_hash_security_and_full_profile_instantiated': False,
+        'complete_certificate_bytes': None, 'complete_security_bits': None,
+    }
+
+
 def dyadic_intervals(length):
     """Disjoint aligned power-of-two intervals covering [0,length)."""
     natural(length, "axis length", 1, P-1)
@@ -1675,6 +1746,71 @@ def auxiliary_witness_screen(cohorts, old_tokens=0):
     }
 
 
+def wide_hash_witness_screen(cohorts, old_tokens=0):
+    """A5 re-accounting of R3's SAME source and caller, not complete liveness.
+
+    Contiguous query tiles replay the native encoder, with all repeated
+    source/FFT work charged. Does not replace R3's existing narrow screen.
+    """
+    old = auxiliary_witness_screen(cohorts, old_tokens)
+    n, block, q, tile, drop = old['source_padded_byte_cells'], 1 << 23, 357, 1 << 21, 4
+    narrow = recursive_rs_opening_screen(n, block, q, 4)
+    wide = wide_hash_rs_screen(n, block, q)
+    b_bytes = old['source_byte_cells']-6*old['auxiliary_i48_cells']
+    domain, c1_block = 4*block, block//16
+    cache, c1_cache = 64*((2*domain >> drop)-1), 64*(2*c1_block-1)
+    record_delta = (32*(wide['base_corrections_including_salt']
+                       -narrow['base_corrections_including_anchor_upper'])
+                    +48*(wide['extension_corrections_including_partial_sumchecks']
+                         -narrow['extension_corrections_including_partial_sumchecks']))
+    common_delta = cache-old['cached_outer_tree_bytes']+record_delta
+    head_arrays = 8*150*(old_tokens+150+512)
+    root_peak = (b_bytes+cache+48*block+144*tile
+                 +old['source_descriptors_bytes']+head_arrays+65536)
+    return {
+        'credit': False, 'old_tokens': old_tokens, 'wide_pcs': wide,
+        'same_source_layout_sha256': old['layout_sha256'],
+        'private_paired_pcs_payload_before_public_anchor_framing_and_caller': (
+            old['unified_pcs_payload_before_framing_shared_closures']
+            -narrow['component_payload_before_framing_and_other_components']
+            +wide['private_component_payload_before_framing_and_caller']),
+        'public_anchor_bytes_each_time_sent': 64,
+        'fixed_output_tile_columns': tile,
+        'commit_source_traversals': domain//tile,
+        'commit_source_element_visits': n*(domain//tile),
+        'commit_native_fft_butterflies': domain//tile*2*n*(block.bit_length()+1),
+        'commit_hash_calls_before_anchor': domain*((n//block+9)//10)+domain-1,
+        'commit_known_union_before_full_replay_runtime': root_peak,
+        'cached_outer_tree_first_height': drop, 'cached_outer_tree_bytes': cache,
+        'query_reconstructed_columns_upper': min(domain, q*(1 << drop)),
+        'query_extra_group_and_digest_bytes': 144*min(domain, q*(1 << drop)),
+        'compact_c1_cache_first_height': 2, 'compact_c1_cache_bytes': c1_cache,
+        'compact_c1_query_reconstructed_columns_upper': 4*q,
+        'opening_first_pass_known_union_before_full_replay_runtime': (
+            old['opening_first_pass_known_union_before_replay_runtime']+common_delta),
+        'compact_c1_commit_known_union_before_full_replay_runtime': (
+            old['compact_c1_commit_known_union_before_replay_runtime']+common_delta
+            +(592-336)*c1_block),
+        'compact_c1_sumcheck_known_union_before_full_replay_runtime': (
+            old['compact_c1_sumcheck_known_union_before_replay_runtime']+common_delta
+            +c1_cache-old['compact_c1_internal_tree_cache_bytes']),
+        'opening_query_known_union_before_full_replay_runtime': (
+            old['opening_query_known_union_before_replay_runtime']+common_delta
+            +c1_cache-old['compact_c1_internal_tree_cache_bytes']
+            +144*min(domain, q*(1 << drop))-old['query_extra_stripe_and_digest_bytes']),
+        'rne_link_known_union_before_full_replay_runtime': (
+            old['rne_link_known_union_before_replay_runtime']+common_delta),
+        'rne_top_known_union_before_full_replay_runtime': (
+            old['rne_top_known_union_before_replay_runtime']+common_delta),
+        'range_known_union_before_full_replay_runtime': (
+            old['range_known_union_before_replay_runtime']+common_delta),
+        'additional_weight_reads_given_w_free_reader': 0,
+        'opening_source_traversals_after_commit': 2,
+        'source_reader_all_gamma_forms_and_full_liveness_compiled': False,
+        'complete_certificate_bytes': None,
+    }
+
+
 def requantization_screen(cohorts):
     """R1 byte-lift candidate, not adopted B PCS or complete Gemma feasibility."""
     matrix_cells = sum(c["rows"]*c["columns"] for c in cohorts if c["kind"] == "matrix")
@@ -1985,6 +2121,9 @@ def report():
         "a3_challenge_screen": a3_challenge_screen(),
         "ibcs_rewinding_screens": [ibcs_rewinding_screen(bits, time_bits)
                                    for bits, time_bits in ((256, 0), (256, 64), (512, 64))],
+        "wide_hash_rs_screen": wide_hash_rs_screen(n, 1 << 24, 357),
+        "wide_hash_witness_screens": [wide_hash_witness_screen(cohorts, old)
+                                     for old in (0, 3946)],
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),
         "weight_cohort_screen": weight_cohort_screen(cohorts),
         "input_link_screen": input_link_screen(cohorts),

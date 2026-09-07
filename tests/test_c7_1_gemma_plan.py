@@ -266,15 +266,17 @@ def test_grouped_arithmetic_hash_screen_counts_states_paths_and_gkr():
             plan.private_hobbit_arithmetic_hash_screen(*args)
 
 
-def test_power_round_adjoint_sumcheck_and_single_input_endpoint():
-    # Two independent four-lane permutations, not a Poseidon implementation.
+@pytest.mark.parametrize('width', (4, 32))
+def test_power_round_adjoint_sumcheck_and_single_input_endpoint(width):
+    # Two independent permutations, not a Poseidon implementation/KAT.
     # The proof identity must work for ANY public linear layer and constants.
     rng = random.Random(7127)
-    p, width, size = plan.P, 4, 8
+    p, size = plan.P, 2*width
+    bits = size.bit_length()-1
     matrix = [[rng.randrange(p) for _ in range(width)] for _ in range(width)]
     constants = [rng.randrange(p) for _ in range(width)]
     x = [rng.randrange(p) for _ in range(size)]
-    output_point, coins = [2, 3, 5], [7, 11, 13]
+    output_point, coins = list(range(2, bits+2)), list(range(11, bits+11))
     weights = [plan.mle([int(i == j) for i in range(size)], output_point)
                for j in range(size)]
     for partial in (False, True):
@@ -296,13 +298,13 @@ def test_power_round_adjoint_sumcheck_and_single_input_endpoint():
 
         def partial_sum(prefix):
             return sum(integrand(prefix + list(tail))
-                       for tail in product((0, 1), repeat=3-len(prefix))) % p
+                       for tail in product((0, 1), repeat=bits-len(prefix))) % p
 
         claim = plan.mle(y, output_point)
         assert claim == partial_sum([])
         assert (claim + 1) % p != partial_sum([])  # altered output claim
         degree = 9 if partial else 8
-        for i in range(3):
+        for i in range(bits):
             prefix = coins[:i]
             assert claim == (partial_sum(prefix + [0]) + partial_sum(prefix + [1])) % p
             samples = [partial_sum(prefix + [t]) for t in range(degree+2)]
@@ -481,6 +483,121 @@ def test_recursive_rs_component_counts_and_fixed_cap_are_not_complete_credit():
     for args in ((1 << 35, 1 << 25, 357), (64, 8, 9), (1 << 89, 1 << 24, 357)):
         with pytest.raises(ValueError):
             plan.recursive_rs_opening_screen(*args)
+
+
+def test_wide_hash_recounts_anchor_recursion_and_known_memory_without_security_credit():
+    report = plan.report()
+    w = report['wide_hash_rs_screen']
+    assert w['nominated_width_full_partial_rounds'] == [32, 8, 31]
+    assert w['digest_space_cardinality'] == plan.P**8 < 2**512
+    assert w['salt_space_cardinality'] == plan.P**4 < 2**256
+    assert w['private_hash_calls_including_anchor_and_recursion'] == 113571
+    assert w['base_corrections_including_salt'] == 1982028
+    assert w['power_gkr_extension_corrections'] == 8599
+    assert w['extension_corrections_including_partial_sumchecks'] == 8659
+    assert w['private_component_payload_before_framing_and_caller'] == 16064112
+    assert w['public_anchor_bytes_each_time_sent_not_in_private_payload'] == 64
+    assert w['hash_trace_and_four_fold_tables_bytes'] == 1744830464
+    assert w['tiled_commit_source_traversals'] == 32  # ModelSetup, not warm proof
+    assert w['tiled_commit_native_fft_butterflies'] == 1664*(1 << 35)
+    assert w['tiled_commit_scratch_before_source_and_retained_cache_bytes'] == 1107296256
+    wide_paired_w = (w['private_component_payload_before_framing_and_caller']
+                    +report['paired_rs_opening_screen']['component_payload_before_framing_and_caller']
+                    -report['recursive_rs_opening_screen']['component_payload_before_framing_and_other_components'])
+    assert wide_paired_w == 16164144
+    # The two high lane bits select exactly the first eight of 32 outputs.
+    outputs = [i*i+3*i for i in range(64)]
+    assert plan.mle(outputs, [2, 3, 5, 0, 0, 7]) == plan.mle(outputs[:8]+outputs[32:40], [2, 3, 5, 7])
+    arena = 6442450944
+    assert w['literal_full_row_group_encoder_bytes'] == 9932111872 > arena
+    resident = report['packed_weight_bytes']+report['kv_capacity_i16_bytes']+arena
+    assert resident+w['full_outer_tree_bytes'] == 80118063552 > 80000000000
+    assert resident+w['outer_internal_only_tree_bytes'] < 80000000000
+    assert w['prehash_known_arrays_union_bytes'] == 4913099184 < arena
+    assert w['post_source_and_tree_release_hash_known_union_bytes'] == 1808670992 < arena
+    # A2 remains unchanged; a wide candidate is not a parameter-only upgrade.
+    assert report['recursive_rs_opening_screen']['component_payload_before_framing_and_other_components'] == 13960568
+    for old, wide, payload, peak in zip(report['auxiliary_witness_screens'],
+            report['wide_hash_witness_screens'], (10402496, 15706688), (6374913144, 6404645880)):
+        assert wide['same_source_layout_sha256'] == old['layout_sha256']
+        assert wide['private_paired_pcs_payload_before_public_anchor_framing_and_caller'] == payload
+        assert wide['commit_source_traversals'] == 16
+        assert wide['commit_native_fft_butterflies'] == 800*old['source_padded_byte_cells']
+        assert wide['query_reconstructed_columns_upper'] == 5712
+        assert wide['query_extra_group_and_digest_bytes'] == 822528
+        assert wide['compact_c1_cache_bytes'] == 67108800
+        phases = [value for key, value in wide.items() if key.endswith('_union_before_full_replay_runtime')]
+        assert max(phases) == peak < arena
+        assert not wide['source_reader_all_gamma_forms_and_full_liveness_compiled']
+        assert wide['complete_certificate_bytes'] is None and not wide['credit']
+    assert not w['matrix_constants_hash_security_and_full_profile_instantiated']
+    assert w['complete_security_bits'] is None
+    for args in ((3, 1, 1), (1 << 26, 1 << 25, 357), (16, 4, 5),
+                 (True, 1, 1), (1 << 64, 1 << 24, 357)):
+        with pytest.raises(ValueError):
+            plan.wide_hash_rs_screen(*args)
+
+
+def test_output_tiled_encoder_and_pruned_tree_keep_the_same_positions():
+    # Symbolic node tuples, NOT a cryptographic hash. No field security/KAT.
+    block, rows, tile = 8, 13, 8
+    domain, group = 4*block, 10
+    source = [[17*i+3*j for j in range(block)] for i in range(rows)]
+    native = [plan.small_goldilocks_fft(row+[0]*(3*block)) for row in source]
+
+    def leaf(j, column):
+        digest = ('zero',)*8
+        for start in range(0, rows, group):
+            words = column[start:start+group]
+            frame = (*digest, *words, *([0]*(group-len(words))),
+                     start//group, len(words), 0x43373501, j, rows, block, *([0]*8))
+            assert len(frame) == 32 and frame[-8:] == (0,)*8
+            digest = tuple(('output', lane, frame) for lane in range(8))
+        return digest
+
+    def parent(left, right, height, index):
+        return (height, index, left, right)
+
+    leaves = [leaf(j, [row[j] for row in native]) for j in range(domain)]
+    full, level = [leaves], leaves
+    while len(level) > 1:
+        level = [parent(level[2*j], level[2*j+1], len(full), j) for j in range(len(level)//2)]
+        full.append(level)
+    for drop in (1, 2, 4):
+        # Tiles must include whole retained-bottom subtrees.
+        local_tile = max(tile, 1 << drop)
+        cache, visits = {}, 0
+        for first in range(0, domain, local_tile):
+            columns = [[] for _ in range(local_tile)]
+            for row in source:
+                encoded = plan.small_goldilocks_fft(row+[0]*(3*block))
+                for j in range(local_tile):
+                    columns[j].append(encoded[first+j])
+            visits += 1  # one full source traversal, not rows separate visits
+            current = [leaf(first+j, column) for j, column in enumerate(columns)]
+            for height in range(1, local_tile.bit_length()):
+                current = [parent(current[2*j], current[2*j+1], height, (first >> height)+j)
+                           for j in range(len(current)//2)]
+                if height >= drop:
+                    cache.update({(height, (first >> height)+j): value for j, value in enumerate(current)})
+        height = local_tile.bit_length()-1
+        current = [cache[height, j] for j in range(domain//local_tile)]
+        while len(current) > 1:
+            height += 1
+            current = [parent(current[2*j], current[2*j+1], height, j) for j in range(len(current)//2)]
+            cache.update({(height, j): value for j, value in enumerate(current)})
+        assert visits == domain//local_tile
+        assert len(cache) == (2*domain >> drop)-1
+        assert all(value == full[h][j] for (h, j), value in cache.items())
+        for j in range(domain):
+            first = (j >> drop) << drop
+            selected = [leaf(k, [row[k] for row in native]) for k in range(first, first+(1 << drop))]
+            for h in range(1, drop+1):
+                selected = [parent(selected[2*k], selected[2*k+1], h, (first >> h)+k)
+                            for k in range(len(selected)//2)]
+            assert selected[0] == cache[drop, j >> drop]
+    # Index/domain tags are part of the relation, not free MAC inputs.
+    assert leaf(0, [row[0] for row in native]) != leaf(1, [row[0] for row in native])
 
 
 def test_ibcs_template_cube_root_loss_excludes_only_the_256bit_bound():

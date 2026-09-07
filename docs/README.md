@@ -14,6 +14,7 @@ it is not another status ledger.
 | [G2 committed MAC opening](c7.1-committed-mac-opening.md) | Private-verifier bridge, ideal MAC/FS simulation, grouped hash/GKR, exclusions and remaining obligations |
 | [A3 recursive RS opening](c7.1-recursive-rs-opening.md) | Fixed-cap encoder/recursion, ideal-oracle binding, IBCS rewinding audit and scoped 256-bit bound exclusion, remaining hash/FS repairs |
 | [A4 paired RS opening](c7.1-paired-rs-opening.md) | Fused two-read reduction/opening, arbitrary-fold binding, dyadic tensor forms and conditional GKR composition |
+| [A5 wide hash opening](c7.1-wide-hash-opening.md) | Structural eight-Fp hash/anchor repair, 32-lane checker, tiled/pruned-cache resource recount; parameters and concrete security still open |
 | [W-cut witness](c7.1-cut-witness.md) | Conditional W-free replay, P0 cohorts, exact input selectors/fanout reduction and remaining producer/KV obligations |
 | [R1 requantization](c7.1-requantization.md) | Exact RNE, cubic range GKR with source availability, dyadic byte forms, two-visit A4 opening/cache and remaining Gamma/costs |
 | [R2 RNE indicators](c7.1-rne-indicators.md) | Degree-7 RNE, one public-function P/S tree, same six B endpoints and explicit replay/arena exclusions |

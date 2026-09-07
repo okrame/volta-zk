@@ -136,11 +136,24 @@ authorization.
   returns six endpoints to the same B opening, with no trace PCS. It costs
   86,424 payload bytes and has conditional error (t+1143)/|E| for t output
   claims, before range/B/MAC/FS. Explicit replay uses 113 matrix-cut visits,
-  no W reads, and a 6,353,297,296-byte known local union. Caching eight lane
+  no W reads, and a 6,353,297,296-byte local union before K1/Gamma. Caching eight lane
   tails exceeds the arena; the two dummy lanes are instead public constants.
-  The known partial payload is 30,833,200 bytes. Large work constants,
+  The known partial payload before K1 is 30,833,200 bytes. Large work constants,
   concrete shifts, remaining Gamma consumers and complete liveness stay open;
   no full-certificate, memory or timing admission follows from these screens.
+- [K1: KV transition](c7.1-kv-transition.md) now gives exact temporal
+  views and a conditional concatenation/prefix reduction in the same MAC.
+  It transfers 120 new-tail claims to q_rope/v_norm; those producers and
+  the joint predecessor/candidate KV openings are still unproved. The
+  first state needs only same-wire aliases (2,880 payload bytes); the
+  continuation core adds 120 quadratic sumchecks (180,000 bytes), before
+  read routers/PCS/framing/shared closures. It uses one fused KV visit
+  and no W reads. Full-array view routing exceeds the arena with B/cache;
+  one streaming prefix bit halves those arrays with two KV visits. The
+  known subtotal including the first-state core is 30,836,080 bytes,
+  still without KV PCS, remaining Gamma or full liveness. Small tamper
+  checks cover prefix/append/terminal/padding, future-slot reads and
+  choosing a root after the state probe. This is not full state proof credit.
 - [A4: paired RS opening](c7.1-paired-rs-opening.md) fuses the paired
   reduction and RS opening into **two W reads together**. It checks the
   existing arbitrary row fold instead of converting it to a new W point;
@@ -158,7 +171,7 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 57 focused checks also cover finite query sampling, exact ideal
+  The 61 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
@@ -218,8 +231,11 @@ and their single final B barrier, fix exact shifts, and reduce the explicit
 work cost before treating it as feasible. R2 now gives the source-bound
 RNE Lagrange reduction and its replay schedule; include its endpoints in
 the remaining Gamma consumers and reduce the explicit computation cost.
-Construct the remaining W-free
-kernels, bind cuts and KV, discharge late B consumers, and include W range/padding
+K1 now supplies the temporal view and append/prefix reduction, with
+explicit first-state aliases and bounded-memory read routing. Instantiate
+its joint KV PCS, q_rope/v_norm producers and QK/PV consumers; their costs
+and remaining W-free kernels are not closed by the local transfer lemma.
+Bind cuts and KV, discharge late B consumers, and include W range/padding
 without exceeding four W reads. The A4 fusion no longer requires a new
 common MLE point for all W terminals; its public-form conditions must hold.
 Complete the relation, both lifetime

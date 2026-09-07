@@ -1063,6 +1063,145 @@ def test_seed_fanout_reduction_transfers_to_same_producer_endpoint():
     assert sum(pow(beta, j, plan.P)*e for j, e in enumerate(late_errors)) % plan.P == 0
 
 
+def test_kv_views_are_logical_rectangles_with_complete_terminal_absorption():
+    for old in (0, 3900, 3946):
+        views = plan.kv_view_schedule(old)
+        assert len(views) == 51 and sum(v['emits_decision'] for v in views) == 50
+        appended = [t for v in views for t in range(v['first_new_row'], v['first_new_row']+v['query_rows'])]
+        assert appended == list(range(150))
+        assert views[0]['kv_view_rows'] == old+100
+        assert views[-1] == {'execution': 50, 'first_new_row': 149, 'query_rows': 1,
+                             'kv_view_rows': old+150, 'emits_decision': False}
+        assert all(v['kv_view_rows'] == old+v['first_new_row']+v['query_rows'] for v in views)
+    # Prefill's rectangle includes future prompt keys; causal/local masks are separate.
+    assert plan.kv_view_schedule(2, 3, 2)[0]['kv_view_rows'] == 5 > 2+1
+    assert plan.kv_view_schedule(4094, 1, 1)[-1]['kv_view_rows'] == 4096
+    for args in ((3947, 100, 50), (-1, 1, 1), (0, 0, 1), (0, 1, 0), (True, 1, 1)):
+        with pytest.raises(ValueError):
+            plan.kv_view_schedule(*args)
+
+
+def test_kv_append_form_and_old_prefix_alias_match_dense_concatenation():
+    def padded(values, width):
+        return values+[0]*(width*(1 << (len(values)//width-1).bit_length())-len(values))
+    for old in range(6):
+        for count in range(1, 6):
+            width, rows = 2, old+count
+            before, tail = list(range(11, 11+2*old)), list(range(37, 37+2*count))
+            new = padded(before+tail, width)
+            nb, tb = 1+(rows-1).bit_length(), 1+(count-1).bit_length()
+            for tape in ([2, 3, 5, 7, 11], [0, 1, 0, 1, 0], [1, 0, 1, 0, 1]):
+                r, s = tape[:nb], list(reversed(tape))[:tb]
+                weights = [plan.kv_append_form(r, [(i >> j) & 1 for j in range(tb)], width, old, count)
+                           for i in range(1 << tb)]
+                append = plan.dot(weights, padded(tail, width))
+                assert plan.kv_append_form(r, s, width, old, count) == plan.mle(weights, s)
+                prior = 0
+                if old:
+                    ob = 1+(old-1).bit_length()
+                    prior = math.prod(1-x for x in r[ob:])*plan.mle(padded(before, width), r[:ob]) % plan.P
+                assert plan.mle(new, r) == (prior+append) % plan.P
+    for args in (([2], [], 3, 0, 1), ([2], [], 2, 0, 0), ([2], [], 2, 4096, 1),
+                 ([2], [], 2, True, 1), ([2], [], 2, 0, 1)):
+        with pytest.raises(ValueError):
+            plan.kv_append_form(*args)
+
+
+def test_kv_transition_quadratic_sumcheck_and_view_tampering():
+    # O=3,T=3, width=2. Old padding overlaps the physical new tail: read it as ZERO.
+    width, old, count = 2, 3, 3
+    before, tail = [11, 13, 17, 19, 23, 29], [31, 37, 41, 43, 47, 53]
+    new, tail_pad, old_pad = before+tail+[0]*4, tail+[0]*2, before+[0]*2
+    r, coins = [2, 3, 5, 7], [11, 13, 17]
+    previous = (1-r[3])*plan.mle(old_pad, r[:3]) % plan.P
+    assert previous != (1-r[3])*plan.mle(new[:8], r[:3]) % plan.P
+    def form(point):
+        return plan.kv_append_form(r, point, width, old, count)
+    def partial(prefix):
+        return sum(form(prefix+list(t))*plan.mle(tail_pad, prefix+list(t))
+                   for t in product((0, 1), repeat=3-len(prefix))) % plan.P
+    claim = (plan.mle(new, r)-previous) % plan.P
+    assert claim == partial([])
+    for i, coin in enumerate(coins):
+        prefix = coins[:i]
+        assert claim == (partial(prefix+[0])+partial(prefix+[1])) % plan.P
+        samples = [partial(prefix+[t]) for t in range(4)]
+        for _ in range(3):
+            samples = [(b-a) % plan.P for a, b in zip(samples, samples[1:])]
+        assert samples == [0]
+        claim = partial(prefix+[coin])
+    assert claim == form(coins)*plan.mle(tail_pad, coins) % plan.P
+    assert claim != form(coins)*(plan.mle(tail_pad, coins)+1) % plan.P
+    for index in (0, 6, 10, 12):  # old prefix, first append, terminal absorb, virtual padding
+        tampered = new.copy()
+        tampered[index] += 1
+        assert (plan.mle(tampered, r)-previous) % plan.P != partial([])
+    # A read of three rows excludes all later rows, even within its padded power of two.
+    route = {'source_shape': (6, 2), 'selected_rows': 3, 'row_offset': 0,
+             'column_point_bits': 1, 'row_point_bits': 2}
+    point = r[:3]
+    weights = [plan.input_route_form(route, point, [(i >> j) & 1 for j in range(4)]) for i in range(16)]
+    altered = new.copy()
+    altered[6] += 101
+    assert plan.dot(weights, new) == plan.dot(weights, altered) == plan.mle(old_pad, point)
+    assert plan.mle(new[:8], point) != plan.mle(altered[:8], point)  # naive alias leaks a future slot
+    # Read-router prefix repair: coefficients precede coin, then a second source visit.
+    first_round = []
+    for x in range(3):
+        first_round.append(sum((f0+x*(f1-f0))*(v0+x*(v1-v0))
+                               for f0, f1, v0, v1 in zip(weights[::2], weights[1::2], new[::2], new[1::2])) % plan.P)
+    assert (first_round[0]+first_round[1]) % plan.P == plan.dot(weights, new)
+    coin = 19
+    f_tail = [(a+coin*(b-a)) % plan.P for a, b in zip(weights[::2], weights[1::2])]
+    v_tail = [(a+coin*(b-a)) % plan.P for a, b in zip(new[::2], new[1::2])]
+    c2 = (first_round[2]-2*first_round[1]+first_round[0])*pow(2, -1, plan.P) % plan.P
+    c1 = (first_round[1]-first_round[0]-c2) % plan.P
+    assert plan.dot(f_tail, v_tail) == (first_round[0]+coin*c1+coin*coin*c2) % plan.P
+    assert plan.mle(v_tail, r[1:]) == plan.mle(new, [coin]+r[1:])
+    # Fixing the random state probe before committing lets two errors cancel.
+    eq0, eq1 = math.prod(1-x for x in r) % plan.P, r[0]*math.prod(1-x for x in r[1:]) % plan.P
+    late = new.copy()
+    late[0] += 1
+    late[1] -= eq0*pow(eq1, -1, plan.P) % plan.P
+    assert late != new and plan.mle(late, r) == plan.mle(new, r)
+
+
+def test_kv_transition_counts_are_not_free_pcs_or_complete_gamma():
+    report = plan.report()
+    first, last = report['kv_transition_screens'][0], report['kv_transition_screens'][-1]
+    assert first['state_planes'] == first['tail_producer_obligations'] == 120
+    assert first['predecessor_opening_claims'] == 0 and last['predecessor_opening_claims'] == 120
+    assert first['sumcheck_rounds'] == 0 and last['sumcheck_rounds'] == 2380
+    assert first['tail_direct_point_aliases'] == 120 and last['tail_direct_point_aliases'] == 0
+    assert first['extension_corrections'] == 120 and last['extension_corrections'] == 7500
+    assert first['payload_before_read_routes_pcs_framing_and_shared_closures'] == 2880
+    assert last['payload_before_read_routes_pcs_framing_and_shared_closures'] == 180000
+    assert first['extension_challenges'] == 2380 and last['extension_challenges'] == 5240
+    assert first['fixed_state_interactive_error_numerator_before_mac_pcs_fs'] == 2380
+    assert last['fixed_state_interactive_error_numerator_before_mac_pcs_fs'] == 7620
+    assert first['single_plane_two_extension_vectors_bytes'] == 0
+    assert last['single_plane_two_extension_vectors_bytes'] == 50331648
+    assert first['core_requested_packed_kv_bytes_one_fused_visit'] == 135168000
+    assert last['core_requested_packed_kv_bytes_one_fused_visit'] == 3690987520
+    assert last['read_route_literal_two_full_extension_vectors_bytes_at_capacity'] == 805306368
+    assert last['read_route_one_bit_prefix_two_tail_vectors_bytes_at_capacity'] == 402653184
+    assert last['read_route_source_visits_with_one_prefix_bit'] == 2
+    b = report['cut_byte_opening_screen']['selected_paired_opening']
+    base = (report['cut_witness_screens'][0]['checkpoint_storage_bytes']
+            +b['retained_outer_internal_nodes_bytes']+b['known_message_descriptor_alpha_union_bytes'])
+    assert base == 5745049488
+    assert base+last['read_route_literal_two_full_extension_vectors_bytes_at_capacity'] == 6550355856 > 6442450944
+    assert base+last['read_route_one_bit_prefix_two_tail_vectors_bytes_at_capacity'] == 6147702672 < 6442450944
+    assert first['prover_extension_products_upper_before_mac_metadata_and_replay'] == 136442880
+    assert last['prover_extension_products_upper_before_mac_metadata_and_replay'] == 8057420080
+    assert first['zero_residuals'] == 0 and last['zero_residuals'] == 2500
+    for screen in (first, last):
+        assert screen['private_products'] == 0
+        assert screen['additional_weight_reads'] == screen['per_token_commitments'] == 0
+        assert not screen['credit'] and not screen['kv_pcs_read_consumers_and_full_liveness_compiled']
+        assert screen['complete_certificate_bytes'] is None
+
+
 def test_i48_requantization_matches_exact_fraction_and_rejects_overflow():
     for shift in range(-2, 13):
         for value in range(-512, 513):
@@ -1548,6 +1687,8 @@ def test_range_product_tree_counts_and_resource_limits_remain_conditional():
                            +report['requantization_screen']['requantization_extension_corrections_upper']
                            +s['extension_corrections']))
     assert known_payload == 30833200 and report['complete_certificate_bytes'] is None
+    assert known_payload+report['kv_transition_screens'][0][
+        'payload_before_read_routes_pcs_framing_and_shared_closures'] == 30836080
     assert not s['credit'] and not s['full_gamma_liveness_or_feasibility'] and not s['proves_zero_padding']
     for bits in range(1, 11):
         tiny = plan.byte_range_tree_screen(bits)

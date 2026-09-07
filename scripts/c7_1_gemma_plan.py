@@ -1179,6 +1179,92 @@ def input_route_form(route, input_point, source_point):
     return columns*selected % P
 
 
+def kv_view_schedule(old_tokens=0, prompt_tokens=100, generated_tokens=50):
+    """Logical append/read lengths, including absorption; NOT attention masks.
+
+    Prefill reads its entire rectangle, including later prompt keys before
+    causal masking. Subsequent executions append/read one token each.
+    """
+    natural(old_tokens, "old KV tokens", 0, CONTEXT_CAP)
+    natural(prompt_tokens, "prompt tokens", 1, CONTEXT_CAP)
+    natural(generated_tokens, "generated tokens", 1, CONTEXT_CAP)
+    if old_tokens+prompt_tokens+generated_tokens > CONTEXT_CAP:
+        raise ValueError("conversation exceeds 4096; no eviction")
+    return [{"execution": e, "first_new_row": 0 if e == 0 else prompt_tokens+e-1,
+             "query_rows": prompt_tokens if e == 0 else 1,
+             "kv_view_rows": old_tokens+prompt_tokens+e,
+             "emits_decision": e < generated_tokens}
+            for e in range(generated_tokens+1)]
+
+
+def kv_append_form(target_point, tail_point, width, old_rows, tail_rows):
+    """MLE of EQ(target, (old+t, column)) as a form on the new-tail producer.
+
+    Reversing ShiftEQ's point arguments is essential: it shifts the target
+    row, not the tail row. Algebraic routing only, not a KV PCS opening.
+    """
+    natural(width, "KV plane width", 1, CONTEXT_CAP)
+    if width & (width-1):
+        raise ValueError("KV head/lane flattening must be power-of-two aligned")
+    natural(old_rows, "old KV rows", 0, CONTEXT_CAP)
+    natural(tail_rows, "new KV rows", 1, CONTEXT_CAP)
+    rows = old_rows+tail_rows
+    if rows > CONTEXT_CAP:
+        raise ValueError("KV append exceeds capacity")
+    cb, tb, nb = width.bit_length()-1, (tail_rows-1).bit_length(), (rows-1).bit_length()
+    if len(target_point) != cb+nb or len(tail_point) != cb+tb:
+        raise ValueError("KV append points have the wrong axes")
+    return (shifted_eq_form(target_point[:cb], tail_point[:cb], 0, width)
+            *shifted_eq_form(tail_point[cb:], target_point[cb:], old_rows, tail_rows)) % P
+
+
+def kv_transition_screen(old_tokens=0, prompt_tokens=100, generated_tokens=50):
+    """K1 concatenation core ONLY; KV PCS, read consumers and Replay remain open."""
+    views = kv_view_schedule(old_tokens, prompt_tokens, generated_tokens)
+    rows, tail = views[-1]["kv_view_rows"], prompt_tokens+generated_tokens
+    config = pinned_model_config()
+    widths = [config[kind+"_kv_heads"]*config[kind+"_head_dim"]
+              for kind in ("local", "global") for _ in range(2*config[kind+"_layers"])]
+    tail_pad, new_pad = 1 << (tail-1).bit_length(), 1 << (rows-1).bit_length()
+    old_pad = 1 << (old_tokens-1).bit_length() if old_tokens else 0
+    tail_bits = [w.bit_length()-1+(tail-1).bit_length() for w in widths]
+    new_bits = [w.bit_length()-1+(rows-1).bit_length() for w in widths]
+    rounds, probes, planes = sum(tail_bits) if old_tokens else 0, sum(new_bits), len(widths)
+    corrections = 3*rounds+(3 if old_tokens else 1)*planes
+    return {
+        "credit": False,
+        "old_tokens": old_tokens, "new_tokens": rows,
+        "logical_executions": len(views), "state_planes": planes,
+        "tail_producer_obligations": planes,
+        "tail_direct_point_aliases": 0 if old_tokens else planes,
+        "append_sumchecks": planes if old_tokens else 0,
+        "new_state_opening_claims": planes,
+        "predecessor_opening_claims": planes if old_tokens else 0,
+        "sumcheck_round_degree": 2, "sumcheck_rounds": rounds,
+        "extension_corrections": corrections,
+        "payload_before_read_routes_pcs_framing_and_shared_closures": 24*corrections,
+        "private_products": 0, "zero_residuals": rounds+(planes if old_tokens else 0),
+        "extension_challenges": probes+rounds,
+        "field_sampling_u64_words_upper": 12*(probes+rounds),
+        "fixed_state_interactive_error_numerator_before_mac_pcs_fs": probes+2*rounds,
+        "single_plane_two_extension_vectors_bytes": 48*max(widths)*tail_pad if old_tokens else 0,
+        "single_plane_public_eq_tables_bytes_upper": 24*(max(widths)+new_pad+old_pad),
+        "core_plaintext_and_mac_record_bytes": 48*corrections,
+        "core_requested_packed_kv_bytes_one_fused_visit": 2*sum(widths)*rows,
+        "read_route_literal_two_full_extension_vectors_bytes_at_capacity": 48*max(widths)*CONTEXT_CAP,
+        "read_route_one_bit_prefix_two_tail_vectors_bytes_at_capacity": 24*max(widths)*CONTEXT_CAP,
+        "read_route_source_visits_with_one_prefix_bit": 2,
+        "prover_extension_products_upper_before_mac_metadata_and_replay": sum(
+            (7*w*tail_pad-6 if old_tokens else 0)+2*w*(rows+old_tokens)+2*(w+new_pad+old_pad)
+            +64*(2*(w.bit_length()-1)+(rows-1).bit_length()+(tail-1).bit_length()+1)
+            for w in widths),
+        "additional_weight_reads": 0,
+        "per_token_commitments": 0,
+        "kv_pcs_read_consumers_and_full_liveness_compiled": False,
+        "complete_certificate_bytes": None,
+    }
+
+
 def input_link_screen(cohorts):
     """Cost of normalizing P0's seed demands ONLY; Gamma may add consumers."""
     routes, groups = gemma_input_routes(cohorts), {}
@@ -1530,6 +1616,7 @@ def report():
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),
         "weight_cohort_screen": weight_cohort_screen(cohorts),
         "input_link_screen": input_link_screen(cohorts),
+        "kv_transition_screens": [kv_transition_screen(old) for old in (0, 3900, 3946)],
         "requantization_screen": requantization_screen(cohorts),
         "cut_byte_opening_screen": cut_byte_opening_screen(cohorts),
         "dyadic_weight_layout_screen": {

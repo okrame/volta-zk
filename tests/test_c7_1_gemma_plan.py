@@ -2081,6 +2081,142 @@ def test_gamma_validity_includes_dead_outputs_and_rms_requires_original_input():
     assert squared[0] != squared[1]
 
 
+def test_rms_statistics_cover_all_norms_and_preserve_producer_domains():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           "manifests/c7-d126-gemma31b-source-metadata-v1.json").read_bytes())
+    tensors = [t for t in metadata["tensors"] if t["disposition"] == "private_text"]
+    cohorts = plan.gemma_weight_cohorts(tensors)
+    stats = plan.rms_statistic_cohorts(cohorts)
+    gamma = plan.gamma_barrier_plan(cohorts)["cohorts"]
+    by_op = {(r["layer"], r["operation"]): r for r in stats}
+    assert set(by_op) == {(r["layer"], r["operation"]) for r in gamma
+                         if r["kind"] == "weighted_rms" or r["operation"] == "v_norm"}
+    for r in gamma:
+        if (r["layer"], r["operation"]) in by_op:
+            s = by_op[r["layer"], r["operation"]]
+            assert s["statistic_rows"] == r["query_rows"]*s["heads"]
+            predecessor = gamma[r["dependencies"][0]]
+            if predecessor["operation"] == "v_source" and predecessor["dependencies"]:
+                predecessor = gamma[predecessor["dependencies"][0]]  # global public alias
+            assert s["source_producer"] == {"layer": predecessor["layer"], "operation": predecessor["operation"]}
+    for layer in range(60):
+        heads, lanes = (4, 512) if layer % 6 == 5 else (16, 256)
+        v = by_op[layer, "v_norm"]
+        assert (v["heads"], v["columns"], v["source_shape"]) == (heads, lanes, (150, heads*lanes))
+        assert v["statistic_rows"] == v["source_rows"] == 150*heads
+        assert by_op[layer, "q_norm"]["statistic_rows"] == 150*32
+    final = by_op[None, "final_rms"]
+    assert (final["statistic_rows"], final["source_rows"], final["columns"]) == (149, 150, 5376)
+    small = plan.rms_statistic_cohorts(plan.gemma_weight_cohorts(tensors, 1, 1))[-1]
+    assert (small["statistic_rows"], small["source_rows"]) == (1, 2)
+    s = plan.rms_statistic_screen(cohorts)
+    assert (s["normalization_cohorts"], s["weighted_cohorts"], s["statistic_rows"]) == (421, 361, 576149)
+    assert (s["statistic_input_cells"], s["source_live_cells_read"], s["source_padded_cells_processed"]) == (
+        347937024, 347942400, 767557632)
+    assert s["max_integer_statistic_given_i16_ranges"] == 5376*32767**2 < 2**43 < plan.P//2
+    assert (s["sumcheck_rounds"], s["extension_corrections"], s["private_square_equations"]) == (8711, 35686, 421)
+    assert s["zero_residual_equations"] == 9132
+    assert s["message_bytes_before_incoming_claims_framing_and_shared_closures"] == 856464
+    assert s["new_plaintext_and_tag_array_bytes"] == 1712928
+    assert s["single_cohort_X_and_selector_array_bytes"] == 100872192
+    assert s["one_point_per_cohort_prover_E_products_before_replay_and_mac_upper"] == 7681579976
+    assert s["X_array_logical_read_write_bytes_before_selectors_replay_and_mac"] == 110528248488
+    assert s["fixed_input_error_numerator_before_claim_batching"] == 26133
+    assert s["additional_weight_reads_given_w_free_reader"] == s["new_statistic_pcs_instances"] == 0
+    assert s["actual_statistic_claim_count"] is s["complete_gamma_memory_or_work"] is None
+    assert not s["credit"] and not s["complete_rms_normalizer_and_validity"]
+
+
+def test_rms_statistic_cubic_sumcheck_folds_full_input_to_the_same_gamma_endpoint():
+    p = plan.P
+    def eq(point, index):
+        return math.prod(v if index >> i & 1 else 1-v for i, v in enumerate(point)) % p
+    for source_rows, selected, width in ((2, 1, 2), (3, 3, 5), (5, 4, 3), (6, 6, 2)):
+        rb, sb, cb = (source_rows-1).bit_length(), (selected-1).bit_length(), (width-1).bit_length()
+        rows, cols = 1 << rb, 1 << cb
+        x = [[(3*r-2)*(j+1)+1 if r < source_rows and j < width else 0
+              for j in range(cols)] for r in range(rows)]
+        native = sum(x, [])  # lane || head || token
+        statistics = [sum(v*v for v in x[r]) if r < selected else 0 for r in range(1 << sb)]
+        points = [[2+i for i in range(sb)], [5+2*i for i in range(sb)]]
+        weights = [1, 11]  # powers of a challenge AFTER both incoming wires
+        phi = [sum(w*eq(q, r) for q, w in zip(points, weights)) % p if r < selected else 0
+               for r in range(rows)]
+        chi = [int(j < width) for j in range(cols)]
+        claim = sum(w*plan.mle(statistics, q) for q, w in zip(points, weights)) % p
+        coins = [7+2*i for i in range(rb+cb)]
+        def integrand(point):
+            row, col = point[:rb], point[rb:]
+            return plan.mle(phi, row)*plan.mle(chi, col)*plan.mle(native, col+row)**2 % p
+        def partial(prefix):
+            return sum(integrand(prefix+list(tail)) for tail in
+                       product((0, 1), repeat=rb+cb-len(prefix))) % p
+        assert claim == partial([]) and (claim+1) % p != partial([])
+        # Fill one X array row-fast, then fold in place; no second X table
+        # in the mathematical prover. Dense copies here are a tiny oracle.
+        buf = [x[r][j] for j in range(cols) for r in range(rows)]
+        row_form, col_form = phi[:], chi[:]
+        pair_count = 0
+        for i, coin in enumerate(coins):
+            coefficients = [0]*4
+            row_round = i < rb
+            form = row_form if row_round else col_form
+            for offset in range(0, len(buf), 2):
+                index = offset % len(form) if row_round else offset
+                pair = plan.rms_square_pair_coefficients(buf[offset], buf[offset+1], form[index], form[index+1])
+                include = col_form[offset//len(form)] if row_round else 1
+                assert include in (0, 1)
+                if include:
+                    coefficients = [(a+b) % p for a, b in zip(coefficients, pair)]
+                pair_count += 1
+            if not row_round:
+                coefficients = [a*row_form[0] % p for a in coefficients]
+            def polynomial(t):
+                return sum(a*pow(t, j, p) for j, a in enumerate(coefficients)) % p
+            assert claim == (polynomial(0)+polynomial(1)) % p
+            for t in (0, 1, 2, 3, coin):
+                assert polynomial(t) == partial(coins[:i]+[t])
+            claim = polynomial(coin)
+            for j in range(len(buf)//2):
+                buf[j] = (buf[2*j]+coin*(buf[2*j+1]-buf[2*j])) % p
+            del buf[len(buf)//2:]
+            for j in range(len(form)//2):
+                form[j] = (form[2*j]+coin*(form[2*j+1]-form[2*j])) % p
+            del form[len(form)//2:]
+        assert pair_count == rows*cols-1
+        rr, cc = coins[:rb], coins[rb:]
+        public_row = sum(w*plan.shifted_eq_form(q, rr, 0, selected)
+                         for q, w in zip(points, weights)) % p
+        public_col = cols*plan.shifted_eq_form([(p+1)//2]*cb, cc, 0, width) % p
+        assert (public_row, public_col) == (row_form[0], col_form[0])
+        endpoint = plan.mle(native, cc+rr)
+        assert buf == [endpoint]
+        factor = public_row*public_col % p
+        square = endpoint*endpoint % p
+        assert factor and claim == factor*square % p
+        assert (square+1) % p != endpoint*endpoint % p  # ProdBatch
+        assert claim != factor*(square+1) % p  # final ZeroBatch
+        assert (endpoint+1)**2 % p != square  # replacing just the X wire fails its product
+        assert endpoint != plan.mle(native, rr+cc)  # row-fast folding is not the native point order
+
+    # Prefix selection is a coefficient form, not permission to change X.
+    assert plan.mle([1, 7], [2]) == 13 != plan.mle([1, 0], [2])
+    assert plan.mle([2, 11], [2]) == 20 != plan.mle([2, 0], [2])
+    q, r = [2, 3], [5, 7]
+    correct = plan.shifted_eq_form(q, r, 0, 3)
+    wrong = plan.mle([1, 1, 1, 0], r)*sum(eq(q, j)*eq(r, j) for j in range(4)) % p
+    assert correct != wrong  # MLE of pointwise product is NOT product of MLEs
+    values = [(1-t)**3 for t in range(4)]
+    for _ in range(3):
+        values = [b-a for a, b in zip(values, values[1:])]
+    assert values == [-6]  # cubic is necessary, even for a public prefix
+    # Exact toy with epsilon=0: folding inverse roots differs from taking
+    # the inverse root of a folded statistic. Not a Gemma normalizer.
+    folded_s = (1-2)*1+2*4
+    folded_inverse_root = (1-2)*1+2*Fraction(1, 2)
+    assert folded_s*folded_inverse_root**2 != 1
+
+
 def test_shifted_eq_digit_dp_matches_every_small_interval():
     def basis(point, index):
         return math.prod(r if (index >> i) & 1 else 1-r for i, r in enumerate(point)) % plan.P

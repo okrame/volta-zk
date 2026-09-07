@@ -1634,6 +1634,90 @@ def input_route_form(route, input_point, source_point):
     return columns*selected % P
 
 
+def rms_statistic_cohorts(cohorts):
+    """Sum-of-squares consumers from validated P0 metadata, not RMS lowering.
+
+    Keep the full producer row domain, including the final norm's unused
+    terminal row. V has the K head geometry, but its own local projection;
+    the global V projection is an exact alias of pre-norm K.
+    """
+    routes = {r["cohort_ordinal"]: r for r in gemma_input_routes(cohorts)}
+    by_op = {(c["layer"], c["operation"]): c for c in cohorts}
+    records = []
+    for c in cohorts:
+        if c["kind"] != "norm":
+            continue
+        route = routes[c["ordinal"]]
+        r = {"layer": c["layer"], "operation": c["operation"], "weighted": True,
+             "statistic_rows": c["rows"], "source_rows": route["source_shape"][0]*c["heads"],
+             "columns": c["columns"], "heads": c["heads"],
+             "source_producer": route["source_producer"], "source_shape": route["source_shape"]}
+        records.append(r)
+        if c["operation"] == "k_norm":
+            v_op = "v_source" if (c["layer"], "v_source") in by_op else "k_proj"
+            records.append({**r, "operation": "v_norm", "weighted": False,
+                            "source_producer": {"layer": c["layer"], "operation": v_op}})
+    return records
+
+
+def rms_square_pair_coefficients(x0, x1, f0, f1):
+    """Fp diagnostic of (f0 + (f1-f0)t)*(x0 + (x1-x0)t)^2.
+
+    Nine field products; doubling is addition. The subsequent X fold costs
+    one more product. Same identity over E, not a production MAC prover.
+    """
+    dx, df = (x1-x0) % P, (f1-f0) % P
+    a, b, c = x0*x0 % P, x0*dx % P, dx*dx % P
+    return [v % P for v in (f0*a, 2*(f0*b)+df*a, f0*c+2*(df*b), df*c)]
+
+
+def rms_statistic_screen(cohorts):
+    """One grouped cubic SC per RMS consumer; incoming S claims not counted.
+
+    Statistics are internal demands of the future normalizer, not a new
+    committed trace. Work assumes one incoming point per consumer only;
+    payload/round counts also hold for multiple points batched beforehand.
+    """
+    records = rms_statistic_cohorts(cohorts)
+    rounds = padded = work = additions = max_arrays = 0
+    for r in records:
+        rb, cb = (r["source_rows"]-1).bit_length(), (r["columns"]-1).bit_length()
+        rows, cols = 1 << rb, 1 << cb
+        cells = rows*cols
+        rounds += rb+cb
+        padded += cells
+        # X pairs, selectors, four column scalings, Horner claim updates,
+        # terminal factors and one EQ point table. No MAC arithmetic here.
+        work += 10*(cells-1)+rows+cols+4*cb+3*(rb+cb)+4+3*rows+1
+        additions += 12*(cells-1)+2*(rows+cols)+8*(rb+cb)+5+2*rows+1
+        max_arrays = max(max_arrays, 24*(cells+rows+cols))
+    count = len(records)
+    corrections = 4*rounds+2*count  # four round coefficients, X endpoint, square
+    return {"credit": False, "normalization_cohorts": count,
+            "weighted_cohorts": sum(r["weighted"] for r in records),
+            "statistic_rows": sum(r["statistic_rows"] for r in records),
+            "statistic_input_cells": sum(r["statistic_rows"]*r["columns"] for r in records),
+            "source_live_cells_read": sum(r["source_rows"]*r["columns"] for r in records),
+            "source_padded_cells_processed": padded,
+            # Per X pair: two reads for coefficients, then two reads and
+            # one write AFTER the challenge. Plus initial array writes.
+            "X_array_logical_read_write_bytes_before_selectors_replay_and_mac": 144*padded-120*count,
+            "max_integer_statistic_given_i16_ranges": max(r["columns"] for r in records)*32767**2,
+            "sumcheck_rounds": rounds, "extension_corrections": corrections,
+            "private_square_equations": count, "zero_residual_equations": rounds+count,
+            "message_bytes_before_incoming_claims_framing_and_shared_closures": 24*corrections,
+            "new_plaintext_and_tag_array_bytes": 48*corrections,
+            "fixed_input_error_numerator_before_claim_batching": 3*rounds,
+            "single_cohort_X_and_selector_array_bytes": max_arrays,
+            "one_point_per_cohort_prover_E_products_before_replay_and_mac_upper": work,
+            "one_point_per_cohort_prover_E_additions_before_replay_and_mac_upper": additions,
+            "additional_weight_reads_given_w_free_reader": 0,
+            "new_statistic_pcs_instances": 0,
+            "actual_statistic_claim_count": None,
+            "complete_rms_normalizer_and_validity": False,
+            "complete_gamma_memory_or_work": None}
+
+
 def kv_view_schedule(old_tokens=0, prompt_tokens=100, generated_tokens=50):
     """Logical append/read lengths, including absorption; NOT attention masks.
 
@@ -2680,6 +2764,7 @@ def report():
         "weight_cohort_screen": weight_cohort_screen(cohorts),
         "input_link_screen": input_link_screen(cohorts),
         "gamma_barrier_screen": gamma_barrier_plan(cohorts)["summary"],
+        "rms_statistic_screen": rms_statistic_screen(cohorts),
         "kv_transition_screens": [kv_transition_screen(old) for old in (0, 3900, 3946)],
         "attention_product_screens": [attention_product_screen(old) for old in (0, 3946)],
         "auxiliary_witness_screens": [auxiliary_witness_screen(cohorts, old) for old in (0, 3946)],

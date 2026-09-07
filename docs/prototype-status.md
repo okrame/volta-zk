@@ -148,33 +148,15 @@ authorization.
   Primary BCS/AROM sources expose why replacing the commitment hash by an
   independent RO while retaining its concrete private checker is invalid.
   The classical ROM requirement remains unchanged.
-- The [W-cut witness analysis](c7.1-cut-witness.md) proves a conditional
-  replay equivalence: checkpoint raw private-matrix accumulators, weighted
-  norm products and embedding lookups; regenerate the rest without W.
-  For 100+50 these packed checkpoints occupy 5,143,044,096 bytes, independent
-  of old KV length. This requires the declared integer lowering and proofs
-  of every cut/KV equality, not trusted checkpoints. Holding all of B through
-  A3's literal first W-recursion sumcheck exceeds the arena; a conditional
-  B-opening array schedule identifies where B could instead be released.
-  GKR weight folding still needs source access: adding its matrix scan to
-  the four unfused generic reduction/PCS passes does not fit the read limit.
-- [W-cut P0](c7.1-cut-witness.md#6-p0-tutte-le-uguaglianze-verso-w-non-il-gkr-intero)
-  now emits all 773 W-dependent cohorts, physical cut offsets and input
-  producers. Matrix, cubic broadcast-norm and aggregate embedding protocols
-  use one W read and 300,646,400 bytes of compact operands; their payload is
-  863,040 bytes before framing/shared closures. The [P0–G2 corollary](c7.1-cut-witness.md#composizione-con-la-sorgente-statica-g2)
-  now composes the W endpoints with the static-source coupling, conditional
-  on the other boundaries. It does not prove the 772 input-evaluation links to W-free Replay,
-  C/B openings or integer ranges. The known B/tree/P0 union is 5,714,441,824
-  bytes, before uncompiled Replay workspace and runtime.
-- [P0 input routing](c7.1-cut-witness.md#7-dai-772-input-p0-ai-produttori-w-free-forme-e-riduzione)
-  now derives exact head/prefix/decision selectors and reduces the 772
-  initial input demands to 602 producer-point obligations in the same MAC.
-  A four-state carry/borrow evaluator handles shifted rows in logarithmic
-  verifier work. This seed prelude adds 122 degree-2 sumchecks and 187,392
-  payload bytes, with no W reads or new private products. Its transfer lemma
-  does not prove the producers: integer requantization, nonlinear kernels,
-  later Gamma consumers, B/KV and ranges remain open.
+- [W-cut](c7.1-cut-witness.md) provides conditional W-free replay, P0 and
+  input routing. The [P0–G2 corollary](c7.1-cut-witness.md#composizione-con-la-sorgente-statica-g2)
+  covers the W leg under its other boundary premises, not full Gamma.
+  The [RMS statistic kernel](c7.1-cut-witness.md#statistiche-rms-vincolate-allo-stesso-input)
+  now transfers all norms' sum-of-squares claims to the same input wires,
+  preserving per-head geometry and the final RMS's larger producer domain.
+  Inverse root, output RNE/validity and the actual incoming-claim census
+  remain open. Component work/record counts are in that section; they are
+  not complete memory, certificate or timing results.
 - [R1: byte-bound requantization](c7.1-requantization.md) gives exact
   ties-to-even/overflow polynomials and a conditional MAC sumcheck for
   i48→symmetric-i16, plus a separate byte-range proof. A tamper case

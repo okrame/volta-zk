@@ -1170,6 +1170,15 @@ def test_kv_transition_counts_are_not_free_pcs_or_complete_gamma():
     report = plan.report()
     first, last = report['kv_transition_screens'][0], report['kv_transition_screens'][-1]
     assert first['state_planes'] == first['tail_producer_obligations'] == 120
+    manifest = Path(__file__).resolve().parents[1] / 'manifests/c7-d126-gemma31b-qspec-dag-v1.json'
+    raw = manifest.read_bytes()
+    assert plan.hashlib.sha256(raw).hexdigest() == plan.QSPEC_SHA256
+    layer = {row[0]: row[2] for row in json.loads(raw)['compact_program']['layer']}
+    sources = layer['kv_cache_append'].split('[')[0].split('+')
+    assert first['tail_producer_operations'] == {s: 60 for s in sources} == {'k_rope': 60, 'v_norm': 60}
+    assert layer['qk_matmul'].split('+')[0] == 'q_rope' not in sources
+    config = plan.pinned_model_config()
+    assert all(config[k+'_kv_heads'] != config['query_heads'] for k in ('local', 'global'))
     assert first['predecessor_opening_claims'] == 0 and last['predecessor_opening_claims'] == 120
     assert first['sumcheck_rounds'] == 0 and last['sumcheck_rounds'] == 2380
     assert first['tail_direct_point_aliases'] == 120 and last['tail_direct_point_aliases'] == 0
@@ -1200,6 +1209,202 @@ def test_kv_transition_counts_are_not_free_pcs_or_complete_gamma():
         assert screen['additional_weight_reads'] == screen['per_token_commitments'] == 0
         assert not screen['credit'] and not screen['kv_pcs_read_consumers_and_full_liveness_compiled']
         assert screen['complete_certificate_bytes'] is None
+
+
+def test_attention_rectangle_dp_matches_dense_views_and_not_causal_pruning():
+    def eq(point, i):
+        return math.prod(x if (i >> j) & 1 else 1-x for j, x in enumerate(point)) % plan.P
+    for old, prompt, generated in product(range(5), range(1, 5), range(1, 4)):
+        t, s = prompt+generated, old+prompt+generated
+        nt, ns = (t-1).bit_length(), (s-1).bit_length()
+        for tape in ([2, 3, 5, 7], [0, 1, 0, 1], [1, 0, 1, 0]):
+            rt, rs, ut, us = tape[:nt], tape[:ns], tape[::-1][:nt], tape[::-1][:ns]
+            expected = sum(eq(rt, i)*eq(ut, i)*eq(rs, j)*eq(us, j)
+                           for i in range(t) for j in range(old+prompt if i < prompt else old+i+1)) % plan.P
+            assert plan.attention_rectangle_form(rt, rs, ut, us, old, prompt, generated) == expected
+    for row, key, expected in ((0, 4045, 1), (0, 4046, 0), (149, 4095, 1), (149, 0, 1)):
+        rt, rs = [(row >> j) & 1 for j in range(8)], [(key >> j) & 1 for j in range(12)]
+        assert plan.attention_rectangle_form(rt, rs, rt, rs, 3946) == expected
+    # Input axes/workload validation also applies before the DP.
+    for args in (([], [], [], [], 0, 1, 1), ([0], [0], [0], [0], -1, 1, 1),
+                 ([0], [0], [0], [0], 0, 0, 1), ([0], [0], [0], [0], 4095, 1, 1)):
+        with pytest.raises(ValueError):
+            plan.attention_rectangle_form(*args)
+
+
+def test_attention_raw_qk_pv_sumchecks_return_exact_gqa_and_kv_endpoints():
+    # Synthetic arithmetic only: these P values are NOT claimed to be a softmax.
+    old, prompt, generated, t, tp, sp, groups, repeats, lanes = 1, 2, 1, 3, 4, 4, 2, 2, 2
+    heads = groups*repeats
+    def eq(point, i):
+        return math.prod(x if (i >> j) & 1 else 1-x for j, x in enumerate(point)) % plan.P
+    def eq_point(a, b):
+        return plan.shifted_eq_form(a, b, 0, 1 << len(a))
+    def valid(i, j):
+        return i < t and j < (old+prompt if i < prompt else old+i+1)
+    q = [3*i+5*h+d*d+1 if i < t else 0 for i in range(tp) for h in range(heads) for d in range(lanes)]
+    k = [2*j*j+7*b+3*d+2 for j in range(sp) for b in range(groups) for d in range(lanes)]
+    v = [5*j+3*b*b+7*d+1 for j in range(sp) for b in range(groups) for d in range(lanes)]
+    prob = [7*(h+1)+3*i*i+5*j*(h+1) if valid(i, j) else 0
+            for h in range(heads) for i in range(tp) for j in range(sp)]
+    def Q(i, h, d):
+        return q[d+lanes*(h+heads*i)]
+    def K(j, b, d):
+        return k[d+lanes*(b+groups*j)]
+    def V(j, b, d):
+        return v[d+lanes*(b+groups*j)]
+    def Prob(i, h, j):
+        return prob[j+sp*(i+tp*h)]  # scores are head,token,key, NOT token,head,key
+    raw_qk = [int(valid(i, j))*sum(Q(i, h, d)*K(j, h//repeats, d) for d in range(lanes))
+              for h in range(heads) for i in range(tp) for j in range(sp)]
+    raw_pv = [sum(Prob(i, h, j)*V(j, h//repeats, d) for j in range(sp) if valid(i, j))
+              for i in range(tp) for h in range(heads) for d in range(lanes)]
+    rt, rs, re, rb, rd = [5, 7], [2, 3], [11], [13], [17]
+    def rectangle(a, b, x, y):
+        return plan.attention_rectangle_form(a, b, x, y, old, prompt, generated)
+    def reduce_poly(fn, coins, degrees, initial):
+        def partial(prefix):
+            return sum(fn(prefix+list(bits)) for bits in product((0, 1), repeat=len(coins)-len(prefix))) % plan.P
+        claim = initial
+        assert claim == partial([])
+        for i, (coin, degree) in enumerate(zip(coins, degrees)):
+            prefix = coins[:i]
+            assert claim == (partial(prefix+[0])+partial(prefix+[1])) % plan.P
+            samples = [partial(prefix+[x]) for x in range(degree+2)]
+            for _ in range(degree+1):
+                samples = [(b-a) % plan.P for a, b in zip(samples, samples[1:])]
+            assert samples == [0]
+            claim = partial(prefix+[coin])
+        return claim
+
+    # QK: eliminate token/key/group/lane in that order; only group is cubic.
+    def qk_poly(x):
+        ut, us, ub, ud = x[:2], x[2:4], x[4:5], x[5:]
+        return rectangle(rt, rs, ut, us)*eq_point(rb, ub)*plan.mle(q, ud+re+ub+ut)*plan.mle(k, ud+ub+us) % plan.P
+    q_coins = [19, 23, 29, 31, 37, 41]
+    q_claim = plan.mle(raw_qk, rs+rt+re+rb)
+    q_last = reduce_poly(qk_poly, q_coins, [2, 2, 2, 2, 3, 2], q_claim)
+    ut, us, ub, ud = q_coins[:2], q_coins[2:4], q_coins[4:5], q_coins[5:]
+    scalar = rectangle(rt, rs, ut, us)*eq_point(rb, ub) % plan.P
+    q_end, k_end = plan.mle(q, ud+re+ub+ut), plan.mle(k, ud+ub+us)
+    assert q_last == scalar*q_end*k_end % plan.P
+    assert q_last != scalar*(q_end+1)*k_end % plan.P
+
+    # Honest QK availability: prefix K, snapshot at logical lengths; never a t*s*d table.
+    c = groups*lanes
+    prefix, h_table = [0]*c, [[0]*c for _ in range(tp)]
+    for j in range(sp):
+        prefix = [(a+eq(rs, j)*K(j, b, d)) % plan.P for b in range(groups)
+                  for d, a in enumerate(prefix[b*lanes:(b+1)*lanes])]
+        for i in range(t):
+            if j+1 == (old+prompt if i < prompt else old+i+1):
+                h_table[i] = [eq(rt, i)*eq(rb, b)*prefix[b*lanes+d] % plan.P
+                              for b in range(groups) for d in range(lanes)]
+    qbar = [[sum(eq(re, e)*Q(i, b*repeats+e, d) for e in range(repeats)) % plan.P
+             for b in range(groups) for d in range(lanes)] for i in range(tp)]
+    assert sum(plan.dot(a, b) for a, b in zip(qbar, h_table)) % plan.P == q_claim
+    fstar = [sum(eq(ut, i)*eq(rt, i)*eq(rs, j) for i in range(t) if valid(i, j)) % plan.P for j in range(sp)]
+    for b, d in product(range(groups), range(lanes)):
+        assert plan.mle([h_table[i][b*lanes+d] for i in range(tp)], ut) == (
+            eq(rb, b)*sum(fstar[j]*K(j, b, d) for j in range(sp))) % plan.P
+    assert plan.mle(fstar, us) == rectangle(rt, rs, ut, us)
+
+    # PV contracts to M(group,key), then explicitly proves M back to the same P tensor.
+    m = [sum(eq(rt, i)*eq(re, e)*Prob(i, b*repeats+e, j)
+             for i in range(t) for e in range(repeats) if valid(i, j)) % plan.P
+         for j in range(sp) for b in range(groups)]
+    vbar = [sum(eq(rd, d)*V(j, b, d) for d in range(lanes)) % plan.P
+            for j in range(sp) for b in range(groups)]
+    def pv_outer(x):
+        return eq_point(rb, x[:1])*plan.mle(m, x)*plan.mle(vbar, x) % plan.P
+    pv_coins = [43, 47, 53]
+    pv_claim = plan.mle(raw_pv, rd+re+rb+rt)
+    pv_last = reduce_poly(pv_outer, pv_coins, [3, 2, 2], pv_claim)
+    vb, vs = pv_coins[:1], pv_coins[1:]
+    m_end, v_end = plan.mle(m, pv_coins), plan.mle(v, rd+vb+vs)
+    assert v_end == plan.mle(vbar, pv_coins)
+    assert pv_last == eq_point(rb, vb)*m_end*v_end % plan.P
+    def m_link(x):
+        return rectangle(rt, vs, x[:2], x[2:])*plan.mle(prob, x[2:]+x[:2]+re+vb) % plan.P
+    link_coins = [59, 61, 67, 71]
+    m_last = reduce_poly(m_link, link_coins, [2]*4, m_end)
+    p_end = plan.mle(prob, link_coins[2:]+link_coins[:2]+re+vb)
+    factor = rectangle(rt, vs, link_coins[:2], link_coins[2:])
+    assert m_last == factor*p_end % plan.P and m_last != factor*(p_end+1) % plan.P
+    altered_m = m.copy()
+    altered_m[0] += 1
+    assert plan.mle(altered_m, pv_coins) != m_end  # a free contraction cannot pass the link
+    # Both tempting shortcuts change the off-Boolean polynomial.
+    assert plan.mle([2, 15], [7]) != plan.mle([1, 3], [7])*plan.mle([2, 5], [7]) % plan.P
+    assert plan.mle([0, 2], [3]) != plan.mle([0, 1], [3])*plan.mle([1, 2], [3]) % plan.P
+    # QK retains future prompt keys before masking, but not keys outside the view.
+    assert raw_qk[2] != 0 and raw_qk[3] == 0
+    # Wrong GQA group mapping or score-axis order does not preserve the claimed output.
+    wrong_group = [int(valid(i, j))*sum(Q(i, h, d)*K(j, h % groups, d) for d in range(lanes))
+                   for h in range(heads) for i in range(tp) for j in range(sp)]
+    assert plan.mle(wrong_group, rs+rt+re+rb) != q_claim
+    assert plan.mle(raw_qk, rs+re+rb+rt) != q_claim
+
+
+def test_attention_contracted_replay_does_not_fold_a_masked_product_as_linear():
+    # Minimal PV contraction counterexample: M(s)=L(s)*P(s) on Boolean cells.
+    # A linear M oracle is legal only with its own source link; L~(s)P~(s) is quadratic.
+    mask, prob, value = [0, 1], [1, 2], [3, 5]
+    m = [a*b for a, b in zip(mask, prob)]
+    r = 7
+    assert plan.mle(m, [r]) != plan.mle(mask, [r])*plan.mle(prob, [r]) % plan.P
+    # Link at r: sum_s EQ(r,s)*L(s)*P(s), encoded as public form times P~.
+    form = [(1-r)*mask[0] % plan.P, r*mask[1] % plan.P]
+    assert plan.dot(form, prob) == plan.mle(m, [r])
+    samples = [plan.mle(mask, [x])*plan.mle(prob, [x])*plan.mle(value, [x]) % plan.P for x in range(4)]
+    for _ in range(3):
+        samples = [(b-a) % plan.P for a, b in zip(samples, samples[1:])]
+    assert samples[0] != 0  # the unlinked three-factor source polynomial needs degree three
+
+
+def test_attention_component_counts_and_local_arrays_do_not_close_integer_gamma():
+    report = plan.report()
+    first, last = report['attention_product_screens']
+    assert first['extension_corrections'] == 10850 and last['extension_corrections'] == 13010
+    assert first['sumcheck_rounds_and_extension_challenges'] == 3330
+    assert last['sumcheck_rounds_and_extension_challenges'] == 4050
+    assert first['interactive_error_numerator_before_input_links_mac_fs'] == 7100
+    assert last['interactive_error_numerator_before_input_links_mac_fs'] == 8540
+    assert first['payload_before_output_normalizers_integer_links_kv_pcs_framing_shared_closures'] == 260400
+    assert last['payload_before_output_normalizers_integer_links_kv_pcs_framing_shared_closures'] == 312240
+    assert first['kv_router_with_k1_and_one_call_each']['payload_before_kv_pcs_framing_shared_closures'] == 174240
+    assert last['kv_router_with_k1_and_one_call_each']['payload_before_kv_pcs_framing_shared_closures'] == 208800
+    assert first['rectangular_score_cells_per_layer'] == 520800
+    assert last['rectangular_score_cells_per_layer'] == 19461600
+    assert first['cases'][0]['qk_literal_dense_product_extension_table_bytes'] == 12884901888 > 6442450944
+    assert last['cases'][0]['qk_key_phase_arrays_bytes'] == 403222960
+    assert max(c['pv_probability_link_arrays_bytes'] for c in last['cases']) == 117623072
+    for screen, expected in ((first, (736460080, 128043440, 1069790)),
+                             (last, (3384636720, 3743905200, 1319150))):
+        assert tuple(sum(c['layers']*c[field] for c in screen['cases']) for field in (
+            'qk_prover_extension_products_before_replay_mac_metadata_upper',
+            'pv_prover_extension_products_before_replay_mac_metadata_upper',
+            'verifier_extension_products_before_inputs_fs_shared_closures_upper')) == expected
+    b = report['cut_byte_opening_screen']['selected_paired_opening']
+    base = (report['cut_witness_screens'][0]['checkpoint_storage_bytes']
+            +b['retained_outer_internal_nodes_bytes']+b['known_message_descriptor_alpha_union_bytes'])
+    for screen, k1, expected in ((first, report['kv_transition_screens'][0], 5800633184),
+                                 (last, report['kv_transition_screens'][-1], 6149674528)):
+        records = k1['core_plaintext_and_mac_record_bytes']+48*(screen['extension_corrections']
+                    +screen['kv_router_with_k1_and_one_call_each']['extension_corrections'])
+        arrays = max(c[field] for c in screen['cases'] for field in (
+            'qk_query_phase_arrays_bytes', 'qk_key_phase_arrays_bytes',
+            'pv_group_phase_arrays_bytes', 'pv_probability_link_arrays_bytes'))
+        assert base+records+arrays == expected < 6442450944  # still excludes KV PCS/Replay/runtime
+    for screen in (first, last):
+        assert screen['private_products'] == screen['new_kv_point_demands'] == 120
+        assert screen['additional_weight_reads'] == screen['new_trace_commitments'] == 0
+        assert not screen['credit'] and not screen['integer_lowering_output_normalizers_kv_pcs_and_full_liveness_compiled']
+        assert screen['complete_certificate_bytes'] is report['complete_certificate_bytes'] is None
+        for c in screen['cases']:
+            assert c['qk_error_numerator_before_input_links_mac_fs'] <= 3*c['qk_rounds']
+    with pytest.raises(ValueError):
+        plan.attention_product_screen(3947)
 
 
 def test_i48_requantization_matches_exact_fraction_and_rejects_overflow():

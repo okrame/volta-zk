@@ -143,17 +143,34 @@ authorization.
   no full-certificate, memory or timing admission follows from these screens.
 - [K1: KV transition](c7.1-kv-transition.md) now gives exact temporal
   views and a conditional concatenation/prefix reduction in the same MAC.
-  It transfers 120 new-tail claims to q_rope/v_norm; those producers and
+  It transfers 120 new-tail claims to k_rope/v_norm; those producers and
   the joint predecessor/candidate KV openings are still unproved. The
   first state needs only same-wire aliases (2,880 payload bytes); the
   continuation core adds 120 quadratic sumchecks (180,000 bytes), before
   read routers/PCS/framing/shared closures. It uses one fused KV visit
   and no W reads. Full-array view routing exceeds the arena with B/cache;
   one streaming prefix bit halves those arrays with two KV visits. The
-  known subtotal including the first-state core is 30,836,080 bytes,
+  known subtotal including the first-state core, before T1, is 30,836,080 bytes,
   still without KV PCS, remaining Gamma or full liveness. Small tamper
   checks cover prefix/append/terminal/padding, future-slot reads and
   choosing a root after the state probe. This is not full state proof credit.
+  The earlier q_rope source name was incorrect: the pinned append consumes
+  k_rope, with G KV heads, not the 32-head query tensor. K1 records the
+  correction and its source-provenance regression; the generic algebra
+  and storage counts did not establish that erroneous producer link.
+- [T1: attention products](c7.1-attention-products.md) specifies raw QK/PV
+  reductions over whole-request cohorts, with exact rectangular views and
+  GQA grouping. An eight-state public selector handles prefill/decode;
+  shared groups have cubic rounds. QK uses weighted key prefixes and two
+  K visits; PV uses one V visit and two visits of one layer's i16 probability
+  cache. Its private contraction is explicitly linked back to softmax,
+  without a new trace PCS. For one normalized raw output point per kernel
+  and layer, payload is 260,400/312,240 bytes at N=150/4096; T1 supplies
+  120 KV endpoints and makes the K1 two-point routers concrete in that
+  case (174,240/208,800 additional bytes). Local arrays avoid the excluded
+  query×key×lane expansion. Output normalization, raw↔i16 links,
+  Q/softmax generation, KV PCS and complete liveness remain uncompiled;
+  these component bounds do not admit the whole algorithm or its timing.
 - [A4: paired RS opening](c7.1-paired-rs-opening.md) fuses the paired
   reduction and RS opening into **two W reads together**. It checks the
   existing arbitrary row fold instead of converting it to a new W point;
@@ -171,7 +188,7 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 61 focused checks also cover finite query sampling, exact ideal
+  The 65 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
@@ -233,8 +250,11 @@ RNE Lagrange reduction and its replay schedule; include its endpoints in
 the remaining Gamma consumers and reduce the explicit computation cost.
 K1 now supplies the temporal view and append/prefix reduction, with
 explicit first-state aliases and bounded-memory read routing. Instantiate
-its joint KV PCS, q_rope/v_norm producers and QK/PV consumers; their costs
-and remaining W-free kernels are not closed by the local transfer lemma.
+its joint KV PCS and k_rope/v_norm producers. T1 now supplies raw QK/PV
+and their same-state endpoints; connect their output normalizers and
+integer/range/requantization kernels, and prove the softmax input to PV.
+Generating Q/probabilities and the remaining W-free kernels is not closed
+by either local transfer lemma.
 Bind cuts and KV, discharge late B consumers, and include W range/padding
 without exceeding four W reads. The A4 fusion no longer requires a new
 common MLE point for all W terminals; its public-form conditions must hold.

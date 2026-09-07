@@ -1236,6 +1236,7 @@ def kv_transition_screen(old_tokens=0, prompt_tokens=100, generated_tokens=50):
         "old_tokens": old_tokens, "new_tokens": rows,
         "logical_executions": len(views), "state_planes": planes,
         "tail_producer_obligations": planes,
+        "tail_producer_operations": {"k_rope": config["layers"], "v_norm": config["layers"]},
         "tail_direct_point_aliases": 0 if old_tokens else planes,
         "append_sumchecks": planes if old_tokens else 0,
         "new_state_opening_claims": planes,
@@ -1262,6 +1263,119 @@ def kv_transition_screen(old_tokens=0, prompt_tokens=100, generated_tokens=50):
         "per_token_commitments": 0,
         "kv_pcs_read_consumers_and_full_liveness_compiled": False,
         "complete_certificate_bytes": None,
+    }
+
+
+def attention_rectangle_form(row_claim, key_claim, row_point, key_point,
+                             old_tokens=0, prompt_tokens=100, generated_tokens=50):
+    """MLE of EQ(row_claim,t)*EQ(key_claim,s)*logical_view(t,s), not causal mask.
+
+    Eight-state carry/borrow DP for each of two staircases; no private
+    divisions or query-by-key table on the verifier. Fp diagnostic of E algebra.
+    """
+    natural(old_tokens, "old KV tokens", 0, CONTEXT_CAP)
+    natural(prompt_tokens, "prompt tokens", 1, CONTEXT_CAP)
+    natural(generated_tokens, "generated tokens", 1, CONTEXT_CAP)
+    rows = prompt_tokens+generated_tokens
+    keys = natural(old_tokens+rows, "new KV tokens", 1, CONTEXT_CAP)
+    tb, sb = (rows-1).bit_length(), (keys-1).bit_length()
+    if any(len(p) != n for p, n in ((row_claim, tb), (row_point, tb), (key_claim, sb), (key_point, sb))):
+        raise ValueError("attention rectangle points have the wrong axes")
+
+    def staircase(count):
+        states = {(0, 0, 0): 1}  # carry of O+1+t; borrows s-(O+1+t), t-count
+        for i in range(max(tb, sb)+1):
+            nxt = {}
+            tw = [(row_claim[i] if bit else 1-row_claim[i])
+                  *(row_point[i] if bit else 1-row_point[i]) % P for bit in (0, 1)] if i < tb else [1]
+            sw = [(key_claim[i] if bit else 1-key_claim[i])
+                  *(key_point[i] if bit else 1-key_point[i]) % P for bit in (0, 1)] if i < sb else [1]
+            for (carry, key_borrow, row_borrow), weight in states.items():
+                for t, a in enumerate(tw):
+                    added = t+(((old_tokens+1) >> i) & 1)+carry
+                    for s, b in enumerate(sw):
+                        state = (added >> 1, int(s-(added & 1)-key_borrow < 0),
+                                 int(t-((count >> i) & 1)-row_borrow < 0))
+                        nxt[state] = (nxt.get(state, 0)+weight*a*b) % P
+            states = nxt
+        return states.get((0, 1, 1), 0)
+
+    prefill = (shifted_eq_form(row_claim, row_point, 0, prompt_tokens)
+               *shifted_eq_form(key_claim, key_point, 0, old_tokens+prompt_tokens))
+    return (prefill+staircase(rows)-staircase(prompt_tokens)) % P
+
+
+def attention_product_screen(old_tokens=0, prompt_tokens=100, generated_tokens=50):
+    """T1 raw QK/PV, ONE normalized output point per kernel/layer; not i16 proof."""
+    views = kv_view_schedule(old_tokens, prompt_tokens, generated_tokens)
+    t, s = prompt_tokens+generated_tokens, views[-1]['kv_view_rows']
+    nt, ns = (t-1).bit_length(), (s-1).bit_length()
+    tp, sp, config = 1 << nt, 1 << ns, pinned_model_config()
+    heads = config['query_heads']
+    rectangle = sum(v['query_rows']*v['kv_view_rows'] for v in views)
+    cases = []
+    for kind in ('local', 'global'):
+        groups, lanes = config[kind+'_kv_heads'], config[kind+'_head_dim']
+        repeats, c = heads//groups, groups*lanes
+        ng, nd = groups.bit_length()-1, lanes.bit_length()-1
+        q_rounds, v_rounds = nt+ns+ng+nd, nt+ng+2*ns
+        q_fields, v_fields = 3*q_rounds+ng+3, 3*v_rounds+ng+4
+        control = 16*(tp+sp+heads+lanes)+512*(nt+ns+ng+nd+1)
+        eq_bytes = 24*(tp+sp+groups+repeats+lanes)
+        cases.append({
+            'kind': kind, 'layers': config[kind+'_layers'],
+            'qk_rounds': q_rounds, 'pv_rounds_including_probability_link': v_rounds,
+            'qk_extension_corrections': q_fields, 'pv_extension_corrections': v_fields,
+            'qk_error_numerator_before_input_links_mac_fs': 2*q_rounds+ng,
+            'pv_error_numerator_before_input_links_mac_fs': 2*v_rounds+ng,
+            'qk_query_phase_arrays_bytes': 2*tp*heads*lanes+48*tp*c+24*c+eq_bytes+65536,
+            'qk_key_phase_arrays_bytes': 24*sp*c+48*c+48*sp+eq_bytes+65536,
+            'pv_group_phase_arrays_bytes': 2*heads*tp*sp+48*groups*sp+eq_bytes+65536,
+            'pv_probability_link_arrays_bytes': 2*heads*tp*sp+48*tp*sp+eq_bytes+65536,
+            'qk_literal_dense_product_extension_table_bytes': 24*tp*sp*heads*lanes,
+            'qk_prover_extension_products_before_replay_mac_metadata_upper': (
+                heads*tp*lanes+2*s*c+2*tp*c+6*(tp-1)*c+c+(sp-1)*c
+                +6*(sp-1)+12*(groups-1)*lanes+6*(lanes-1)+control),
+            'pv_prover_extension_products_before_replay_mac_metadata_upper': (
+                s*c+2*heads*rectangle+tp*repeats+heads+tp*sp
+                +12*(groups-1)*sp+6*(sp-1)+6*(tp*sp-1)+control),
+            'verifier_extension_products_before_inputs_fs_shared_closures_upper': (
+                q_fields+v_fields+2*(q_rounds+v_rounds)+2*ng
+                +1024*(nt+ns+1)+16*ng+64),
+            'qk_requested_packed_k_bytes_two_visits': 4*s*c,
+            'qk_requested_query_i16_bytes_one_visit': 2*t*heads*lanes,
+            'pv_requested_packed_v_bytes_one_visit': 2*s*c,
+            'pv_requested_probability_i16_bytes_two_live_visits': 4*heads*rectangle,
+            'pv_padded_probability_cache_write_bytes': 2*heads*tp*sp,
+        })
+    rounds = sum(c['layers']*(c['qk_rounds']+c['pv_rounds_including_probability_link']) for c in cases)
+    fields = sum(c['layers']*(c['qk_extension_corrections']+c['pv_extension_corrections']) for c in cases)
+    errors = sum(c['layers']*(c['qk_error_numerator_before_input_links_mac_fs']
+                            +c['pv_error_numerator_before_input_links_mac_fs']) for c in cases)
+    kv_rounds = sum(2*c['layers']*(ns+config[c['kind']+'_kv_heads'].bit_length()-1
+                                 +config[c['kind']+'_head_dim'].bit_length()-1) for c in cases)
+    kernels = 2*config['layers']
+    return {
+        'credit': False, 'one_normalized_raw_output_claim_per_layer_and_kernel_required': True,
+        'old_tokens': old_tokens, 'new_tokens': s, 'raw_kernels': kernels,
+        'rectangular_score_cells_per_layer': heads*rectangle, 'cases': cases,
+        'sumcheck_rounds_and_extension_challenges': rounds, 'extension_corrections': fields,
+        'payload_before_output_normalizers_integer_links_kv_pcs_framing_shared_closures': 24*fields,
+        'field_sampling_u64_words_upper': 12*rounds,
+        'private_products': kernels, 'zero_residuals': rounds+3*config['layers'],
+        'interactive_error_numerator_before_input_links_mac_fs': errors,
+        'new_kv_point_demands': kernels, 'q_rope_point_demands': config['layers'],
+        'softmax_point_demands': config['layers'], 'additional_weight_reads': 0,
+        'new_trace_commitments': 0,
+        'kv_router_with_k1_and_one_call_each': {
+            'planes_with_two_point_claims': kernels, 'rounds': kv_rounds,
+            'extension_corrections': 3*kv_rounds+kernels,
+            'payload_before_kv_pcs_framing_shared_closures': 24*(3*kv_rounds+kernels),
+            'extension_challenges': kv_rounds+kernels, 'zero_residuals': kv_rounds+kernels,
+            'private_products': 0, 'conditional_interactive_error_numerator': 2*kv_rounds+kernels,
+        },
+        'integer_lowering_output_normalizers_kv_pcs_and_full_liveness_compiled': False,
+        'complete_certificate_bytes': None,
     }
 
 
@@ -1617,6 +1731,7 @@ def report():
         "weight_cohort_screen": weight_cohort_screen(cohorts),
         "input_link_screen": input_link_screen(cohorts),
         "kv_transition_screens": [kv_transition_screen(old) for old in (0, 3900, 3946)],
+        "attention_product_screens": [attention_product_screen(old) for old in (0, 3946)],
         "requantization_screen": requantization_screen(cohorts),
         "cut_byte_opening_screen": cut_byte_opening_screen(cohorts),
         "dyadic_weight_layout_screen": {

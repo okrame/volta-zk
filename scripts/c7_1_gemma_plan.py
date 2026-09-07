@@ -728,6 +728,57 @@ def combine(a, b, r):
     return [(x + r * y) % P for x, y in zip(a, b)]
 
 
+# A5-M candidate 20 of the pinned Grain stream; NOT adopted hash parameters.
+# Matrix is diag(d) + J, so these are mu_i - 1, not its diagonal entries.
+WIDE_HASH_INTERNAL_D = (
+    15870349679768633380, 12798166135728573579, 3886447241503719881, 1162182268630581482,
+    524547603630994057, 15049643593856059386, 16968805873296166965, 18056188151758929346,
+    10534745617492959487, 2896675392312657074, 5966915426746805143, 4650275556274513670,
+    16409025568887257071, 4961735845571844251, 8548187506920504860, 6209465213246826809,
+    3498973453296848971, 11276291241872541492, 14404225929935954716, 13055306006344603938,
+    18161729332800714500, 11215101012128210805, 10795869152246778728, 13739806737866978719,
+    12478697326842823454, 5152228144467302696, 17647949517546001827, 3303522624437253160,
+    8714553998730285052, 8851120390247512282, 10130318170785118639, 17336090747027405475,
+)
+
+
+def wide_hash_external_layer(state):
+    """Clear A5-M matrix diagnostic: (I_8 + J_8) tensor M4."""
+    if (not isinstance(state, (list, tuple)) or len(state) != 32
+            or any(type(x) is not int or not 0 <= x < P for x in state)):
+        raise ValueError('32 canonical Fp words required')
+    m4 = ((5, 7, 1, 3), (4, 6, 1, 1), (1, 3, 5, 7), (1, 1, 4, 6))
+    blocks = [[sum(a*x for a, x in zip(row, state[i:i+4])) % P for row in m4]
+              for i in range(0, 32, 4)]
+    total = [sum(block[j] for block in blocks) % P for j in range(4)]
+    return [(block[j]+total[j]) % P for block in blocks for j in range(4)]
+
+
+def wide_hash_permutation(state, constants):
+    """CLEAR scalar A5-M diagnostic, not a production hash/prover or ROM sampler.
+
+    Explicit constants only: 128 initial, 31 partial, 128 final. In particular,
+    synthetic KAT constants must never become an implicit protocol default.
+    """
+    if (not isinstance(constants, (list, tuple)) or len(constants) != 287
+            or any(type(x) is not int or not 0 <= x < P for x in constants)):
+        raise ValueError('287 canonical Fp round constants required')
+    state = wide_hash_external_layer(state)  # includes input validation/copy
+    offset = 0
+    for round_index in range(39):
+        if 4 <= round_index < 35:
+            state[0] = pow((state[0]+constants[offset]) % P, 7, P)
+            offset += 1
+            total = sum(state) % P
+            state = [(total+d*x) % P for d, x in zip(WIDE_HASH_INTERNAL_D, state)]
+        else:
+            state = wide_hash_external_layer([
+                pow((x+c) % P, 7, P) for x, c in zip(state, constants[offset:offset+32])])
+            offset += 32
+    assert offset == 287
+    return state
+
+
 def wide_hash_public_parameters(blocks):
     """A5-P finite public-tape decoder, NOT parameter generation or a hash.
 
@@ -758,6 +809,11 @@ def wide_hash_parameter_screen():
         'public_parameter_rom_output_blocks': 287,
         'public_parameter_rom_output_bytes': 287*32,
         'canonical_constant_vector_bytes': 287*8,
+        'nominated_internal_matrix_grain_candidate': 20,
+        'internal_matrix_checked_minimal_polynomial_powers': 64,
+        'external_matrix_branch_number_at_width_32': 10,
+        'matrix_check_is_not_security_of_the_hash_family': True,
+        'public_linear_and_round_parameter_bytes_if_materialized_as_u64': 8*(32+16+287),
         'maximum_u64_proposals': 287*4,
         'parameter_input_bytes_per_coordinate': '20 + len(fixed_preprofile)',
         'setup_exhaustion_union_bound_numerator': 287*((1 << 64)-P)**4,

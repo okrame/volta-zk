@@ -95,10 +95,11 @@ authorization.
   framing and other components. Literal enlarged arrays fail; staged hash
   execution, tiled native encoding and pruned caches repair those specific
   schedules. The largest known C_Σ phase is 6,404,645,880 bytes, leaving
-  only 37,805,064 before uncompiled Replay/Gamma/runtime. The tiled commit
+  only 37,805,064 before uncompiled Replay/Gamma/runtime and materialized
+  public parameters (2,680 bytes per copy in A5-M). The tiled commit
   charges 32 ModelSetup W visits or 16 C_Σ source visits, including all
   repeated native FFT work; warm A4 still uses two source visits.
-  Parameters/matrices/KAT, profile grammar, binding/hiding, IBCS/FS and
+  ROM constants/final KAT, profile grammar, binding/hiding, IBCS/FS and
   complete liveness remain open. This is not an admitted hash upgrade.
 - [A5-P: sampled public parameters](c7.1-wide-hash-opening.md#21-a5-p-parametri-pubblici-dal-rom-con-coupling-finito)
   now gives a finite ordinary-ROM publication and exact joint-tape embedding
@@ -112,8 +113,19 @@ authorization.
   post-parameter computation, including preprocessing. Free RO-dependent
   advice can precompute a collision; Q_FS alone does not price that search.
   This repairs only the sampled-parameter interface in the stated model:
-  the exact pre-profile/matrices, CR/hiding of the sampled family, reduction
+  the exact pre-profile, CR/hiding of the sampled family, reduction
   simulation costs, IBCS/FS and complete witness/liveness remain unproved.
+- [A5-M: explicit matrix candidate](c7.1-wide-hash-opening.md#22-a5-m-matrici-nominate-garanzie-finite-e-limite-della-larghezza)
+  now fixes the twentieth pinned Grain diagonal, proves permutation
+  invertibility for every constant vector, and checks degree-32 irreducible
+  minimal polynomials for powers 1–64. The primary subspace-trail theorem
+  excludes infinite trails of period at most 64, not all periods. A synthetic
+  KAT agrees with the pinned reference; actual ROM-profile KAT remains open.
+  Crucially, the external matrix at width 32 has branch number exactly 10:
+  two opposite blocks disprove extrapolating the published formula to 12.
+  Poseidon2's stated range stops at width 24. This excludes that numerical
+  extrapolation, not the complete hash; its cryptanalysis must be rebuilt.
+  No production implementation, hash-security bits or G2 admission follow.
 - [Ideal MAC/FS simulation](c7.1-committed-mac-opening.md#31-simulatore-ideale-fs-nessuna-programmazione-delloracolo)
   now has a straight-line coupling proof for the actual public correction
   prefixes, including aborts and adaptive attempts. It needs no oracle
@@ -246,7 +258,7 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 77 focused checks also cover finite query sampling, exact ideal
+  The 79 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
@@ -275,8 +287,10 @@ authorization.
   and the cube-root-loss identity with exact fractions; it tests a bound
   template, not an extractor or hash-security claim.
   A5 adds the 32-lane algebra instance, fresh wide accounting, and symbolic
-  tiled/pruned-tree checks with absolute indices; no Poseidon2 KAT or
-  security test is claimed.
+  tiled/pruned-tree checks with absolute indices. A5-M adds matrix
+  irreducibility/finite-period checks, a synthetic permutation KAT and dense
+  comparison, canonical/tamper cases, the branch-12 counterexample and a
+  31-round passive difference. No concrete hash-security test is claimed.
   A5-P adds exact joint distributions of embedded keys/public rejection
   tapes, finite comparison-generator domination, fail-closed boundaries,
   descriptor grinding and the excluded free oracle-dependent advice case.
@@ -310,11 +324,13 @@ costs. Seek a tighter concrete reduction or a stronger hash/VC profile;
 compile its parameter/adversary assumptions, complete reduction costs and
 adaptation to the actual public-coin/MAC/FS transcript. A5 now supplies a
 structural wide hash/anchor codec, checker and resource recount, not an
-admitted hash profile. Complete its parameters/matrices/KAT and public
-profile grammar, justify the concrete binding/hiding assumptions and
+admitted hash profile. A5-M now supplies explicit matrices and a synthetic
+KAT; its width-32 branch number is 10, not the extrapolated 12. Complete
+the actual ROM constants/KAT and public profile grammar, justify the
+concrete binding/hiding assumptions and
 compile the actual reduction. A5-P now supplies a finite sampled-parameter
-embedding in ordinary ROM: instantiate its fixed pre-profile/matrices and
-the sampled family's actual assumptions, then price RO simulation and
+embedding in ordinary ROM: instantiate its fixed pre-profile with those
+matrices and the sampled family's actual assumptions, then price RO simulation and
 rewinding, including preprocessing. Neither that coupling nor a p^8 output
 space supplies collision/hiding bits. Its C_Σ margin is narrow;
 the full reader/Gamma workspace must be included before claiming a fit.

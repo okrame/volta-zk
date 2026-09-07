@@ -6,7 +6,7 @@ import math
 import random
 from collections import Counter
 from fractions import Fraction
-from itertools import combinations, product
+from itertools import combinations, permutations, product
 from pathlib import Path
 
 import pytest
@@ -587,6 +587,174 @@ def test_random_parameter_embedding_couples_the_whole_public_tape_not_just_the_k
     assert Fraction(sum(0 in pair for pair in product(range(3), repeat=2)), 9) == Fraction(5, 9) > Fraction(1, 3)
     # Nor does output-only salting turn a fixed weak function into a CR family.
     assert all((0 % 3 + key) % 3 == (3 % 3 + key) % 3 for key in range(3))
+
+
+def test_wide_hash_matrix_candidate_irreducibility_period_limit_and_branch_counterexample():
+    # Independent exact field checks, no dependency on a local Cargo checkout.
+    p, d = plan.P, plan.WIDE_HASH_INTERNAL_D
+    assert len(d) == len(set(d)) == 32 and all(0 < x < p-1 for x in d)
+    screen = plan.wide_hash_parameter_screen()
+    assert screen['nominated_internal_matrix_grain_candidate'] == 20
+    assert screen['internal_matrix_checked_minimal_polynomial_powers'] == 64
+    assert screen['external_matrix_branch_number_at_width_32'] == 10
+    assert screen['public_linear_and_round_parameter_bytes_if_materialized_as_u64'] == 2680
+    assert screen['matrix_check_is_not_security_of_the_hash_family']
+    assert screen['complete_security_bits'] is None and not screen['credit']
+
+    def trim(a):
+        a = [x % p for x in a]
+        while a and a[-1] == 0:
+            a.pop()
+        return a
+
+    def remainder(a, b):
+        a = trim(a)
+        while len(a) >= len(b):
+            scale, offset = a[-1]*pow(b[-1], -1, p) % p, len(a)-len(b)
+            for j, x in enumerate(b):
+                a[offset+j] = (a[offset+j]-scale*x) % p
+            a = trim(a)
+        return a
+
+    def mul(a, b):
+        c = [0]*(len(a)+len(b)-1)
+        for i, x in enumerate(a):
+            for j, y in enumerate(b):
+                c[i+j] += x*y
+        return trim(c)
+
+    def power(a, n, f):
+        result = [1]
+        while n:
+            if n & 1:
+                result = remainder(mul(result, a), f)
+            a = remainder(mul(a, a), f)
+            n //= 2
+        return result
+
+    def characteristic(diagonal):
+        g = [1]
+        for x in diagonal:
+            g = mul(g, [-x, 1])
+        return [(g[i]-(i+1)*g[i+1]) % p for i in range(32)]+[1]  # g - g'
+
+    f = characteristic(d)
+    assert f[0] == 14437940495880588463 and f[31] == 7786252787259156851
+    x, frobenius = [0, 1], [0, 1]
+    for i in range(1, 33):
+        frobenius = power(frobenius, p, f)
+        if i == 16:
+            xp16 = frobenius
+    assert frobenius == x
+    # Rabin: 2 is the ONLY prime divisor of degree 32.
+    difference = xp16[:]
+    difference[1] = (difference[1]-1) % p
+    a, b = f, trim(difference)
+    while b:
+        a, b = b, remainder(a, b)
+    assert len(a) == 1  # gcd = a nonzero constant
+    # F_{p^16} contains every proper subfield of F_{p^32}.
+    a, b = [1], [1]
+    for j in range(1, 65):
+        a, b = remainder(mul(a, x), f), remainder(mul(b, xp16), f)
+        assert a != b  # minpoly(M_I^j) remains irreducible of degree 32
+    bad = list(d)
+    bad[1] = bad[0]
+    assert remainder(characteristic(bad), [-bad[0] % p, 1]) == []
+    # No claim for all powers: every invertible finite-field matrix has finite order.
+
+    m4 = ((5, 7, 1, 3), (4, 6, 1, 1), (1, 3, 5, 7), (1, 1, 4, 6))
+
+    def small_det(matrix):
+        n = len(matrix)
+        return sum((-1)**sum(pi[i] > pi[j] for i in range(n) for j in range(i+1, n))
+                   * math.prod(matrix[i][pi[i]] for i in range(n))
+                   for pi in permutations(range(n))) % p
+
+    for size in range(1, 5):
+        for rows in combinations(range(4), size):
+            for cols in combinations(range(4), size):
+                assert small_det([[m4[i][j] for j in cols] for i in rows]) != 0
+    assert small_det(m4) == p-64
+    delta = [1, 0, 0, 0, p-1]+[0]*27
+    image = plan.wide_hash_external_layer(delta)
+    assert sum(x != 0 for x in delta)+sum(x != 0 for x in image) == 10
+    assert image[:4] == [5, 4, 1, 1] and image[4:8] == [p-5, p-4, p-1, p-1]
+    assert image[8:] == [0]*24  # extrapolating t/4 + 4 = 12 is FALSE
+
+    # Solve K*delta=e_31. K has rows e_0^T M_I^j: first 31 observations vanish.
+    def internal(v):
+        return [(sum(v)+a*b) % p for a, b in zip(d, v)]
+
+    rows, row = [], [1]+[0]*31
+    for i in range(32):
+        rows.append(row+[int(i == 31)])
+        row = internal(row)  # M_I is symmetric
+    for col in range(32):
+        pivot = next(i for i in range(col, 32) if rows[i][col])
+        rows[col], rows[pivot] = rows[pivot], rows[col]
+        inv = pow(rows[col][col], -1, p)
+        rows[col] = [x*inv % p for x in rows[col]]
+        for i in range(32):
+            if i != col:
+                scale = rows[i][col]
+                rows[i] = [(a-scale*b) % p for a, b in zip(rows[i], rows[col])]
+    delta = [row[-1] for row in rows]
+    left = list(range(32))
+    right = [(x+y) % p for x, y in zip(left, delta)]
+    for c in range(31):
+        assert left[0] == right[0]
+        left[0], right[0] = pow((left[0]+c) % p, 7, p), pow((right[0]+c) % p, 7, p)
+        left, right, delta = internal(left), internal(right), internal(delta)
+        assert [(y-x) % p for x, y in zip(left, right)] == delta
+    assert (right[0]-left[0]) % p == 1  # 32nd observation activates the S-box
+
+
+def test_wide_hash_synthetic_kat_dense_reference_and_canonical_boundaries():
+    # Generated by pinned Plonky3 reference with kappa_i=i, NOT the A5-P ROM key.
+    p, state, constants = plan.P, list(range(32)), list(range(287))
+    expected = [
+        2665971768509308906, 6842097402474080602, 5470101337659384119, 2205913928992772001,
+        5484641930518151673, 3003498818228073874, 763028910431323474, 4716417881938479838,
+        7746404534393955240, 8721651053263051862, 12171701283354057907, 11430837445711909102,
+        8185038382918746106, 2409673755423059383, 14639823799181174848, 14546259947285653708,
+        13021138035883737359, 14439965376961823857, 7932940684373949274, 9477509535063134328,
+        10202911114514439456, 7256095367710001545, 15455058043354457906, 8927775922309459168,
+        12282831415944952094, 2189809614173084429, 11726017790252760537, 4776001327380632967,
+        16332459765949663076, 9591128959984053757, 12560354539468325398, 16264724296215543856,
+    ]
+    assert plan.wide_hash_permutation(state, constants) == expected
+    m4 = ((5, 7, 1, 3), (4, 6, 1, 1), (1, 3, 5, 7), (1, 1, 4, 6))
+    external = [[(1+int(i//4 == j//4))*m4[i % 4][j % 4] for j in range(32)] for i in range(32)]
+    internal = [[1+(plan.WIDE_HASH_INTERNAL_D[i] if i == j else 0) for j in range(32)]
+                for i in range(32)]
+
+    def dense(matrix, v):
+        return [sum(a*b for a, b in zip(row, v)) % p for row in matrix]
+
+    rng = random.Random(7132)
+    for v in (state, [0]*32, [p-1]*32, [rng.randrange(p) for _ in range(32)]):
+        rcs = constants if v == state else [rng.randrange(p) for _ in range(287)]
+        u = dense(external, v)
+        for offset in range(0, 128, 32):
+            u = dense(external, [pow((x+c) % p, 7, p) for x, c in zip(u, rcs[offset:offset+32])])
+        for c in rcs[128:159]:
+            u = dense(internal, [pow((u[0]+c) % p, 7, p)]+u[1:])
+        for offset in range(159, 287, 32):
+            u = dense(external, [pow((x+c) % p, 7, p) for x, c in zip(u, rcs[offset:offset+32])])
+        assert plan.wide_hash_permutation(v, rcs) == u
+    assert math.gcd(7, p-1) == 1 and pow(7, -1, p-1) == 10540996611094048183
+    for index in (0, 128, 159, 286):
+        altered = constants[:]
+        altered[index] += 1
+        assert plan.wide_hash_permutation(state, altered) != expected
+    for bad in (state[:-1], [True]+state[1:], [-1]+state[1:], [p]+state[1:], iter(state)):
+        with pytest.raises(ValueError):
+            plan.wide_hash_permutation(bad, constants)
+    for bad in (constants[:-1], [True]+constants[1:], [-1]+constants[1:], [p]+constants[1:], None):
+        with pytest.raises(ValueError):
+            plan.wide_hash_permutation(state, bad)
+    assert state == list(range(32)) and constants == list(range(287))
 
 
 def test_wide_hash_recounts_anchor_recursion_and_known_memory_without_security_credit():

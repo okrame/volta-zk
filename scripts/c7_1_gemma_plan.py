@@ -238,6 +238,61 @@ def byte_lagrange_basis(value):
             * math.comb(255, j)*inverse_factorial % P for j in range(256)]
 
 
+def byte_product_tree(value):
+    """Clear Fp reference for R1's range circuit, including NON-byte inputs.
+
+    Heap node 1 is P256(value), leaves 256+j are value-j; index 0 is unused.
+    Honest precomputation on 256 bytes is an optimization, not a premise.
+    """
+    natural(value, "canonical Fp range-circuit input", 0, P-1)
+    tree = [0]*256+[(value-j) % P for j in range(256)]
+    for node in range(255, 0, -1):
+        tree[node] = tree[2*node]*tree[2*node+1] % P
+    return tree
+
+
+def byte_range_tree_screen(byte_bits):
+    """Eight degree-3 GKR layers, one SAME-B endpoint; no FS/hardware credit."""
+    natural(byte_bits, "byte source log domain", 1, 35)
+    n, depth = 1 << byte_bits, 8
+    rounds = sum(byte_bits+d for d in range(depth))
+    prefix = min(10, byte_bits)
+    tail, visits = n >> prefix, depth*(prefix+1)+depth-1
+    per_layer_work = (2*(prefix+1)*n+7*(n-1)+2*(tail-1)
+                      +(1 << (prefix+1))+16*(byte_bits+depth))
+    return {
+        "credit": False,
+        "layers": depth,
+        "sumcheck_round_degree": 3,
+        "sumcheck_rounds": rounds,
+        "extension_corrections": 4*rounds+3*depth,
+        "payload_before_framing_and_shared_closures": 24*(4*rounds+3*depth),
+        "private_products": depth,
+        "zero_residuals": rounds+depth,
+        "extension_challenges": byte_bits+rounds+depth,
+        "interactive_error_numerator_before_b_mac_and_fs": byte_bits+3*rounds+depth,
+        "source_endpoints": 1,
+        "extra_endpoint_corrections": 0,
+        "extra_trace_commitments": 0,
+        "fixed_cell_prefix_rounds": prefix,
+        "source_visits_including_gate_histograms": visits,
+        "public_node_table_bytes": 511*256*8,
+        "public_node_table_base_products": 255*256,
+        "gate_phase_public_folded_tables_bytes_upper": 256*256*24,
+        "gate_histogram_bytes": 256*24,
+        "cell_phase_two_public_functions_bytes": 2*256*24,
+        "cell_prefix_eq_weights_bytes": 24*(1 << prefix),
+        "two_cached_cell_tail_vectors_bytes": 48*tail,
+        "control_points_and_round_scratch_bytes_upper": 8192,
+        "extension_products_upper_before_mac_and_metadata": depth*per_layer_work
+            +(depth-1)*(n-1)+64*256*((1 << depth)-1),
+        "verifier_extension_products_before_fs_b_and_shared_closures_upper": 9*rounds+5*depth+9,
+        "additional_w_reads": 0,
+        "proves_zero_padding": False,
+        "full_gamma_liveness_or_feasibility": False,
+    }
+
+
 def rne48_byte_polynomials(values, shift):
     """(rounded-value polynomial, validity polynomial) on six BIASED bytes.
 
@@ -877,6 +932,9 @@ def cut_byte_opening_screen(cohorts):
     records = (32*pcs["base_corrections_including_anchor_upper"]
                +48*(caller_e+pcs["extension_corrections_including_partial_sumchecks"]+paired["additional_extension_corrections"])
                +descriptor_bytes+24*rows)
+    byte_tree = baseline["byte_range_product_tree"]
+    gather_bytes = sum(c["rows"]*c["columns"]*c["cut_scalar_bytes"]
+                       *(2 if c["kind"] == "matrix" else 1) for c in cohorts)
     return {
         "credit": False,
         "byte_tiles": len(byte_tiles),
@@ -886,6 +944,10 @@ def cut_byte_opening_screen(cohorts):
             [byte_tiles, rq_tiles], separators=(",", ":")).encode()).hexdigest(),
         "known_claims_including_padding": claims,
         "public_cube_terms_for_known_claims": len(byte_tiles)+6*len(rq_tiles)+2+live.bit_count(),
+        "byte_range_tree_known_union_bytes": live+internal_tree+records+sum(byte_tree[key] for key in (
+            "public_node_table_bytes", "cell_phase_two_public_functions_bytes", "cell_prefix_eq_weights_bytes",
+            "two_cached_cell_tail_vectors_bytes", "control_points_and_round_scratch_bytes_upper")),
+        "byte_range_requested_packed_bytes_upper": gather_bytes*byte_tree["source_visits_including_gate_histograms"],
         "selected_paired_opening": {
             "additional_extension_corrections_over_A3": paired["additional_extension_corrections"],
             "added_payload_before_framing_and_shared_closures": 24*paired["additional_extension_corrections"],
@@ -924,9 +986,7 @@ def cut_byte_opening_screen(cohorts):
             "extension_mul_upper_before_form_generation_and_mac": 2*visits*padded+3*(padded-1)+2*(tail-1),
             "known_barrier_extension_mul_upper_before_metadata_and_mac": 6*visits*padded+3*(padded-1)+2*(tail-1),
         },
-        "gather_requested_packed_bytes_upper_per_byte_source_traversal": sum(
-            c["rows"]*c["columns"]*c["cut_scalar_bytes"]*(2 if c["kind"] == "matrix" else 1)
-            for c in cohorts),
+        "gather_requested_packed_bytes_upper_per_byte_source_traversal": gather_bytes,
         "known_claim_forms_compiled": True,
         "changes_byte_and_rq_virtual_layouts": True,
         "physical_b_copy_created": False,
@@ -1077,7 +1137,9 @@ def requantization_screen(cohorts):
     repaired = recursive_rs_opening_screen(1 << byte_bits, 1 << 22, 357, 4)
     endpoint_products = 6*3*(256-2) + 47*10 + sum(s//8 for s in range(1,48)) + 5
     rq_corrections = 1532*rq_bits+6+endpoint_products
-    byte_corrections = 258*byte_bits+1+255
+    direct_byte_corrections = 258*byte_bits+1+255
+    byte_tree = byte_range_tree_screen(byte_bits)
+    byte_corrections = byte_tree["extension_corrections"]
     p0_corrections = weight_cohort_screen(cohorts)["extension_corrections_before_other_circuits"]
     seed_corrections = input_link_screen(cohorts)["extension_corrections"]
     preparation = raw_bytes+repaired["model_setup_known_arrays_bytes"]
@@ -1095,11 +1157,16 @@ def requantization_screen(cohorts):
         "requantization_payload_upper_before_framing_and_shared_closures": 24*rq_corrections,
         "byte_range_extension_corrections": byte_corrections,
         "byte_range_payload_before_framing_and_shared_closures": 24*byte_corrections,
+        "byte_range_product_tree": byte_tree,
+        "byte_range_direct_reference": {
+            "extension_corrections": direct_byte_corrections,
+            "payload_before_framing_and_shared_closures": 24*direct_byte_corrections,
+            "cached_tail_bytes": 24*(1 << max(0,byte_bits-10)),
+        },
         "fixed_prefix_rounds_before_materialization": 10,
         "source_scans_per_sumcheck_before_cached_tail_upper": 11,
         "six_byte_plane_cached_tail_bytes": 6*24*(1 << max(0,rq_bits-10)),
         "sparse_rne_public_coefficient_tail_bytes_upper": 48*((1 << max(0,rq_bits-10))+len(rq_tiles)-1),
-        "byte_range_cached_tail_bytes": 24*(1 << max(0,byte_bits-10)),
         "literal_six_row_byte_pcs_screens": literal,
         "four_row_no_outer_tree_pcs_payload_before_framing": repaired["component_payload_before_framing_and_other_components"],
         "four_row_no_outer_tree_preparation_with_b_bytes": preparation,

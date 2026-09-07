@@ -1158,14 +1158,16 @@ def test_byte_lift_literal_exclusion_and_four_row_repair_are_only_screens():
     assert s['b_biased_byte_live_cells'] == 5143044096
     assert s['requantization_extension_corrections_upper'] == 51133
     assert s['requantization_payload_upper_before_framing_and_shared_closures'] == 1227192
-    assert s['byte_range_extension_corrections'] == 8770
-    assert s['byte_range_payload_before_framing_and_shared_closures'] == 210480
+    assert s['byte_range_extension_corrections'] == 1192
+    assert s['byte_range_payload_before_framing_and_shared_closures'] == 28608
+    assert s['byte_range_direct_reference']['extension_corrections'] == 8770
+    assert s['byte_range_direct_reference']['payload_before_framing_and_shared_closures'] == 210480
     literal = {row['block_bits']: row for row in s['literal_six_row_byte_pcs_screens']}
     assert literal[21]['w_plus_b_base_corrections_only_bytes_no_anchors'] == 35470976 > 35000000
     assert literal[22]['b_preparation_with_full_tree_bytes'] == 7626072032 > 6442450944
     assert s['four_row_no_outer_tree_pcs_payload_before_framing'] == 15507248
     assert s['four_row_no_outer_tree_preparation_with_b_bytes'] == 6283894784
-    assert s['queried_tree_rebuild_known_union_without_x1_bytes'] == 6350581984
+    assert s['queried_tree_rebuild_known_union_without_x1_bytes'] == 6350218240
     assert s['fixed_prefix_rounds_before_materialization'] == 10
     assert s['source_scans_per_sumcheck_before_cached_tail_upper'] == 11
     assert s['additional_w_reads_for_these_byte_algorithms'] == 0
@@ -1359,12 +1361,12 @@ def test_known_byte_barrier_counts_do_not_close_gamma_or_full_resources():
     assert a['retained_outer_internal_nodes_bytes'] == 536870880
     assert a['queried_and_sibling_columns_upper'] == 714
     assert a['postcommit_outer_column_hash_calls_upper'] == 365568
-    assert a['known_message_descriptor_alpha_union_bytes'] == 67779792
+    assert a['known_message_descriptor_alpha_union_bytes'] == 67416048
     assert a['commit_preparation_with_b_and_descriptors_bytes'] == 6284738448
     assert a['staged_tree_build_with_b_and_descriptors_bytes'] == 6217629552
-    assert a['first_pass_known_union_bytes'] == 6083239088
-    assert a['compact_commit_and_sumcheck_known_union_bytes'] == 6307699792
-    assert a['queried_columns_known_union_bytes'] == 6219665104
+    assert a['first_pass_known_union_bytes'] == 6082875344
+    assert a['compact_commit_and_sumcheck_known_union_bytes'] == 6307336048
+    assert a['queried_columns_known_union_bytes'] == 6219301360
     assert s['gather_requested_packed_bytes_upper_per_byte_source_traversal'] == 9027895296
     assert s['known_claim_forms_compiled'] and not s['complete_gamma_consumers_or_liveness_compiled']
     assert not s['credit'] and not s['physical_b_copy_created'] and s['additional_weight_reads'] == 0
@@ -1406,3 +1408,149 @@ def test_internal_only_tree_cache_reconstructs_paths_from_queried_sibling_column
                 digest = node(i//2, sibling, digest) if i & 1 else node(i//2, digest, sibling)
                 i //= 2
             assert digest != internal[1]
+
+
+def test_byte_range_product_tree_and_cubic_gkr_end_at_same_source():
+    p, rng = plan.P, random.Random(20260908)
+    def eq(point, index):
+        return math.prod(x if (index >> j) & 1 else 1-x for j, x in enumerate(point)) % p
+    for x in [*range(256), 256, 257, p-1, rng.randrange(256, p)]:
+        tree = plan.byte_product_tree(x)
+        assert tree[1] == math.prod(x-j for j in range(256)) % p
+        assert (tree[1] == 0) == (x < 256)
+    for bad in (-1, p, True, 1.5):
+        with pytest.raises(ValueError):
+            plan.byte_product_tree(bad)
+    for values in ([0, 1, 127, 128, 255, 7, 7, 42], [256, 1, p-1, 42]):
+        trees = [plan.byte_product_tree(x) for x in values]
+        qnode, qcell = [], [rng.randrange(p) for _ in range((len(values)-1).bit_length())]
+        claim = plan.mle([t[1] for t in trees], qcell)
+        assert (claim == 0) == all(x < 256 for x in values)  # fixed test probe, not a universal claim
+        for depth in range(8):
+            left = [t[2*((1 << depth)+j)] for t in trees for j in range(1 << depth)]
+            right = [t[2*((1 << depth)+j)+1] for t in trees for j in range(1 << depth)]
+            weights = [eq(qnode+qcell, j) for j in range(len(left))]
+            assert claim == sum(a*b*c for a, b, c in zip(left, right, weights)) % p
+            challenges = []
+            for round_index in range(depth+len(qcell)):
+                coefficients = [0]*4
+                for i in range(0, len(left), 2):
+                    term = [1]
+                    for vector in (left, right, weights):
+                        a, delta = vector[i], (vector[i+1]-vector[i]) % p
+                        out = [0]*(len(term)+1)
+                        for j, c in enumerate(term):
+                            out[j] += a*c
+                            out[j+1] += delta*c
+                        term = [x % p for x in out]
+                    coefficients = [(a+b) % p for a, b in zip(coefficients, term)]
+                assert (coefficients[0]+sum(coefficients)) % p == claim
+                # The seven-products-per-pair work bound uses this EQ factorization.
+                point = qnode+qcell
+                gamma = math.prod((1-q)*(1-r)+q*r for q, r in zip(point, challenges)) % p
+                quadratic = [0, 0, 0]
+                for h, (a, b, c, d) in enumerate(zip(left[::2], left[1::2], right[::2], right[1::2])):
+                    p0, p2 = a*c, (b-a)*(d-c)
+                    weight = gamma*eq(point[round_index+1:], h) % p
+                    for j, value in enumerate((p0, b*d-p0-p2, p2)):
+                        quadratic[j] = (quadratic[j]+weight*value) % p
+                a, b = 1-point[round_index], 2*point[round_index]-1
+                q0, q1, q2 = quadratic
+                assert coefficients == [v % p for v in (a*q0, a*q1+b*q0, a*q2+b*q1, b*q2)]
+                # Independent non-Boolean evaluations check all degree-3 coefficients.
+                for z in (0, 1, 2, 17):
+                    folded = [[(a+z*(b-a)) % p for a, b in zip(v[::2], v[1::2])]
+                              for v in (left, right, weights)]
+                    assert sum(c*pow(z, j, p) for j, c in enumerate(coefficients)) % p == sum(
+                        a*b*c for a, b, c in zip(*folded)) % p
+                challenge = rng.randrange(p)  # after the four coefficient wires
+                challenges.append(challenge)
+                claim = sum(c*pow(challenge, j, p) for j, c in enumerate(coefficients)) % p
+                left, right, weights = [[(a+challenge*(b-a)) % p for a, b in zip(v[::2], v[1::2])]
+                                        for v in (left, right, weights)]
+            product_wire = left[0]*right[0] % p
+            assert claim == weights[0]*product_wire % p
+            assert (claim-weights[0]*(product_wire+1)) % p != 0
+            eta = (0, 1, p-1, 7, 11, 13, 17, 19)[depth]  # after L, R and their product
+            claim = ((1-eta)*left[0]+eta*right[0]) % p
+            qnode, qcell = [eta]+challenges[:depth], challenges[depth:]
+            frontier = [t[(1 << (depth+1))+j] for t in trees for j in range(1 << (depth+1))]
+            assert claim == plan.mle(frontier, qnode+qcell)
+        alias = (claim+sum((1 << j)*x for j, x in enumerate(qnode))) % p
+        assert alias == plan.mle(values, qcell)
+        # Early eta would invalidate the false-frontier transfer lemma.
+        for eta in (0, 1, p-1, 17):
+            errors = eta, (eta-1) % p
+            assert any(errors) and ((1-eta)*errors[0]+eta*errors[1]) % p == 0
+    assert plan.byte_product_tree(1)[1] == 0  # a nonzero dummy still needs the separate padding link
+
+
+def test_range_gate_histogram_and_fixed_cell_prefix_match_dense_folds():
+    p, rng = plan.P, random.Random(20260909)
+    values = [rng.randrange(256) for _ in range(32)]
+    trees = [plan.byte_product_tree(x) for x in values]
+    public = [plan.byte_product_tree(x) for x in range(256)]
+    qcell = [rng.randrange(p) for _ in range(5)]
+    def eq(point, index):
+        return math.prod(x if (index >> j) & 1 else 1-x for j, x in enumerate(point)) % p
+    hist = [sum(eq(qcell, i) for i, x in enumerate(values) if x == byte) % p for byte in range(256)]
+    assert sum(hist) % p == 1
+    for depth in range(8):
+        qnode = [rng.randrange(p) for _ in range(depth)]
+        for prefix_bits in range(depth+1):
+            gate_prefix = [rng.randrange(p) for _ in range(prefix_bits)]
+            def gate_value(tree, child, suffix):
+                return sum(eq(gate_prefix, j)*tree[2*((1 << depth)+(suffix << prefix_bits)+j)+child]
+                           for j in range(1 << prefix_bits)) % p
+            for suffix in range(1 << (depth-prefix_bits)):
+                dense = sum(eq(qcell, i)*gate_value(t, 0, suffix)*gate_value(t, 1, suffix) for i, t in enumerate(trees)) % p
+                histogram = sum(h*gate_value(t, 0, suffix)*gate_value(t, 1, suffix) for h, t in zip(hist, public)) % p
+                assert dense == histogram
+        functions = [[sum(eq(qnode, j)*t[2*((1 << depth)+j)+child] for j in range(1 << depth)) % p
+                      for t in public] for child in (0, 1)]
+        source_tables = [[f[x] for x in values] for f in functions]
+        prefix = [rng.randrange(p) for _ in range(5)]
+        for k in range(6):
+            for dense, function in zip(source_tables, functions):
+                cached = [sum(eq(prefix[:k], low)*function[values[(high << k)+low]] for low in range(1 << k)) % p
+                          for high in range(len(values) >> k)]
+                expected = list(dense)
+                for r in prefix[:k]:
+                    expected = [(a+r*(b-a)) % p for a, b in zip(expected[::2], expected[1::2])]
+                assert cached == expected
+    # Byte lookups cannot replace polynomial evaluation at a folded non-byte input.
+    assert plan.byte_product_tree(plan.mle([0, 1], [257]))[1] != plan.mle([0, 0], [257])
+
+
+def test_range_product_tree_counts_and_resource_limits_remain_conditional():
+    report = plan.report()
+    s = report['requantization_screen']['byte_range_product_tree']
+    assert s['layers'] == 8 and s['sumcheck_round_degree'] == 3 and s['sumcheck_rounds'] == 292
+    assert s['extension_corrections'] == 1192 and s['payload_before_framing_and_shared_closures'] == 28608
+    assert s['private_products'] == 8 and s['zero_residuals'] == 300 and s['extension_challenges'] == 333
+    assert s['interactive_error_numerator_before_b_mac_and_fs'] == 917
+    assert s['source_endpoints'] == 1 and s['extra_endpoint_corrections'] == s['extra_trace_commitments'] == 0
+    assert s['source_visits_including_gate_histograms'] == 95 and s['additional_w_reads'] == 0
+    assert s['public_node_table_bytes'] == 1046528 and s['public_node_table_base_products'] == 65280
+    assert s['gate_phase_public_folded_tables_bytes_upper'] == 1572864
+    assert s['two_cached_cell_tail_vectors_bytes'] == 402653184
+    assert s['extension_products_upper_before_mac_and_metadata'] == 2053132784689
+    assert s['verifier_extension_products_before_fs_b_and_shared_closures_upper'] == 2677
+    b = report['cut_byte_opening_screen']
+    assert b['byte_range_tree_known_union_bytes'] == 6151075792 < 6442450944
+    assert b['byte_range_requested_packed_bytes_upper'] == 857650053120
+    known_payload = (report['paired_rs_opening_screen']['component_payload_before_framing_and_caller']
+                     +b['selected_paired_opening']['component_payload_with_byte_pcs_before_framing']
+                     +24*(report['weight_cohort_screen']['extension_corrections_before_other_circuits']
+                           +report['input_link_screen']['extension_corrections']
+                           +report['requantization_screen']['requantization_extension_corrections_upper']
+                           +s['extension_corrections']))
+    assert known_payload == 31973968 and report['complete_certificate_bytes'] is None
+    assert not s['credit'] and not s['full_gamma_liveness_or_feasibility'] and not s['proves_zero_padding']
+    for bits in range(1, 11):
+        tiny = plan.byte_range_tree_screen(bits)
+        assert tiny['source_visits_including_gate_histograms'] == 8*(bits+1)+7
+        assert tiny['two_cached_cell_tail_vectors_bytes'] == 48
+    for bad in (0, 36, True):
+        with pytest.raises(ValueError):
+            plan.byte_range_tree_screen(bad)

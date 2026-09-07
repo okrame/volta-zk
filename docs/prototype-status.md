@@ -124,8 +124,13 @@ authorization.
   4951/|E| bound before A3/MAC/FS. The physical B stays unchanged;
   gather traffic and prefix-recomputation work are counted separately.
   Concrete shifts, later Gamma consumers and complete liveness remain
-  uncompiled. The high-degree direct algorithm has explicit large work
-  constants; no complete size, memory or timing admission is inferred.
+  uncompiled. The byte-range path now uses eight degree-3 GKR layers,
+  with one affine endpoint alias into that same B opening, no trace PCS,
+  28,608 payload bytes and a conditional 917/|E| transfer bound. Its honest
+  public tables/weighted histograms give an explicit 95-B-visit schedule,
+  zero new W reads and a 6,151,075,792-byte known local union. The work
+  bound is still large; direct RNE remains high-degree. The known partial
+  payload is 31,973,968 bytes, not a complete certificate or feasibility result.
 - [A4: paired RS opening](c7.1-paired-rs-opening.md) fuses the paired
   reduction and RS opening into **two W reads together**. It checks the
   existing arbitrary row fold instead of converting it to a new W point;
@@ -143,7 +148,7 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 49 focused checks also cover finite query sampling, exact ideal
+  The 52 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
@@ -158,6 +163,10 @@ authorization.
   a nonzero padding byte that passes the alphabet test but fails its link.
   Arbitrary-fold forms and reconstructed paths check the A4 reuse and
   internal-tree cache; this is not a Poseidon2 security test or KAT.
+  The range product tree adds complete small eight-layer reductions,
+  cubic coefficients, the affine source alias, non-byte Fp inputs,
+  altered products, early-challenge cancellation and histogram/prefix
+  equivalence without assuming that folded values remain bytes.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -193,7 +202,10 @@ the W-dependent cohorts; its 772 input demands now route to 602 producer
 points. R1 specifies a conditional raw-B requantization kernel and the
 byte-source forms/reducer for the known claims. Complete Gamma's consumers
 and their single final B barrier, fix exact shifts, and reduce the explicit
-work cost before treating it as feasible. Construct the remaining W-free
+work cost before treating it as feasible. The range product-tree reduction
+is specified; next compare a similarly source-bound construction for the
+RNE Lagrange functions, including availability rather than free indicator
+tables. Construct the remaining W-free
 kernels, bind cuts and KV, discharge late B consumers, and include W range/padding
 without exceeding four W reads. The A4 fusion no longer requires a new
 common MLE point for all W terminals; its public-form conditions must hold.

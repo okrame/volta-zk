@@ -128,9 +128,19 @@ authorization.
   with one affine endpoint alias into that same B opening, no trace PCS,
   28,608 payload bytes and a conditional 917/|E| transfer bound. Its honest
   public tables/weighted histograms give an explicit 95-B-visit schedule,
-  zero new W reads and a 6,151,075,792-byte known local union. The work
-  bound is still large; direct RNE remains high-degree. The known partial
-  payload is 31,973,968 bytes, not a complete certificate or feasibility result.
+  zero new W reads and a 6,148,794,256-byte known local union. The direct
+  high-degree RNE remains a comparison; the current RNE uses R2 below.
+- [R2: source-bound RNE indicators](c7.1-rne-indicators.md) replaces the
+  degree-1531 RNE sumcheck with degree 7 and a degree-3 P/S tree. Linearity
+  in the public function removes the 256-function axis from GKR. The proof
+  returns six endpoints to the same B opening, with no trace PCS. It costs
+  86,424 payload bytes and has conditional error (t+1143)/|E| for t output
+  claims, before range/B/MAC/FS. Explicit replay uses 113 matrix-cut visits,
+  no W reads, and a 6,353,297,296-byte known local union. Caching eight lane
+  tails exceeds the arena; the two dummy lanes are instead public constants.
+  The known partial payload is 30,833,200 bytes. Large work constants,
+  concrete shifts, remaining Gamma consumers and complete liveness stay open;
+  no full-certificate, memory or timing admission follows from these screens.
 - [A4: paired RS opening](c7.1-paired-rs-opening.md) fuses the paired
   reduction and RS opening into **two W reads together**. It checks the
   existing arbitrary row fold instead of converting it to a new W point;
@@ -148,7 +158,7 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 52 focused checks also cover finite query sampling, exact ideal
+  The 57 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
@@ -167,6 +177,9 @@ authorization.
   cubic coefficients, the affine source alias, non-byte Fp inputs,
   altered products, early-challenge cancellation and histogram/prefix
   equivalence without assuming that folded values remain bytes.
+  R2 adds P/S linearity, lifted degree seven, complete small eight-layer
+  reductions to six source planes, dummy-lane pruning and dense replay
+  comparisons. The direct RNE/overflow regressions still use the same formulas.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -202,10 +215,10 @@ the W-dependent cohorts; its 772 input demands now route to 602 producer
 points. R1 specifies a conditional raw-B requantization kernel and the
 byte-source forms/reducer for the known claims. Complete Gamma's consumers
 and their single final B barrier, fix exact shifts, and reduce the explicit
-work cost before treating it as feasible. The range product-tree reduction
-is specified; next compare a similarly source-bound construction for the
-RNE Lagrange functions, including availability rather than free indicator
-tables. Construct the remaining W-free
+work cost before treating it as feasible. R2 now gives the source-bound
+RNE Lagrange reduction and its replay schedule; include its endpoints in
+the remaining Gamma consumers and reduce the explicit computation cost.
+Construct the remaining W-free
 kernels, bind cuts and KV, discharge late B consumers, and include W range/padding
 without exceeding four W reads. The A4 fusion no longer requires a new
 common MLE point for all W terminals; its public-form conditions must hold.

@@ -1156,8 +1156,10 @@ def test_byte_lift_literal_exclusion_and_four_row_repair_are_only_screens():
     s = plan.report()['requantization_screen']
     assert s['matrix_raw_cells'] == 647475200 and s['matrix_padded_cells'] == 1 << 30
     assert s['b_biased_byte_live_cells'] == 5143044096
-    assert s['requantization_extension_corrections_upper'] == 51133
-    assert s['requantization_payload_upper_before_framing_and_shared_closures'] == 1227192
+    assert s['requantization_extension_corrections_upper'] == 3601
+    assert s['requantization_payload_upper_before_framing_and_shared_closures'] == 86424
+    assert s['rne_direct_reference']['extension_corrections'] == 51133
+    assert s['rne_direct_reference']['payload_before_framing_and_shared_closures'] == 1227192
     assert s['byte_range_extension_corrections'] == 1192
     assert s['byte_range_payload_before_framing_and_shared_closures'] == 28608
     assert s['byte_range_direct_reference']['extension_corrections'] == 8770
@@ -1167,9 +1169,9 @@ def test_byte_lift_literal_exclusion_and_four_row_repair_are_only_screens():
     assert literal[22]['b_preparation_with_full_tree_bytes'] == 7626072032 > 6442450944
     assert s['four_row_no_outer_tree_pcs_payload_before_framing'] == 15507248
     assert s['four_row_no_outer_tree_preparation_with_b_bytes'] == 6283894784
-    assert s['queried_tree_rebuild_known_union_without_x1_bytes'] == 6350218240
-    assert s['fixed_prefix_rounds_before_materialization'] == 10
-    assert s['source_scans_per_sumcheck_before_cached_tail_upper'] == 11
+    assert s['queried_tree_rebuild_known_union_without_x1_bytes'] == 6347936704
+    assert s['fixed_prefix_rounds_before_materialization'] == 17
+    assert s['source_scans_per_sumcheck_before_cached_tail_upper'] == 18
     assert s['additional_w_reads_for_these_byte_algorithms'] == 0
     assert s['requires_new_b_byte_commitment_profile']
     assert not s['credit'] and not s['byte_pcs_forms_and_complete_liveness_compiled']
@@ -1361,16 +1363,16 @@ def test_known_byte_barrier_counts_do_not_close_gamma_or_full_resources():
     assert a['retained_outer_internal_nodes_bytes'] == 536870880
     assert a['queried_and_sibling_columns_upper'] == 714
     assert a['postcommit_outer_column_hash_calls_upper'] == 365568
-    assert a['known_message_descriptor_alpha_union_bytes'] == 67416048
+    assert a['known_message_descriptor_alpha_union_bytes'] == 65134512
     assert a['commit_preparation_with_b_and_descriptors_bytes'] == 6284738448
     assert a['staged_tree_build_with_b_and_descriptors_bytes'] == 6217629552
-    assert a['first_pass_known_union_bytes'] == 6082875344
-    assert a['compact_commit_and_sumcheck_known_union_bytes'] == 6307336048
-    assert a['queried_columns_known_union_bytes'] == 6219301360
+    assert a['first_pass_known_union_bytes'] == 6080593808
+    assert a['compact_commit_and_sumcheck_known_union_bytes'] == 6305054512
+    assert a['queried_columns_known_union_bytes'] == 6217019824
     assert s['gather_requested_packed_bytes_upper_per_byte_source_traversal'] == 9027895296
     assert s['known_claim_forms_compiled'] and not s['complete_gamma_consumers_or_liveness_compiled']
     assert not s['credit'] and not s['physical_b_copy_created'] and s['additional_weight_reads'] == 0
-    assert plan.report()['requantization_screen']['sparse_rne_public_coefficient_tail_bytes_upper'] == 50502624
+    assert plan.report()['requantization_screen']['sparse_rne_public_coefficient_tail_bytes_upper'] == 564192
 
 
 def test_internal_only_tree_cache_reconstructs_paths_from_queried_sibling_columns():
@@ -1537,7 +1539,7 @@ def test_range_product_tree_counts_and_resource_limits_remain_conditional():
     assert s['extension_products_upper_before_mac_and_metadata'] == 2053132784689
     assert s['verifier_extension_products_before_fs_b_and_shared_closures_upper'] == 2677
     b = report['cut_byte_opening_screen']
-    assert b['byte_range_tree_known_union_bytes'] == 6151075792 < 6442450944
+    assert b['byte_range_tree_known_union_bytes'] == 6148794256 < 6442450944
     assert b['byte_range_requested_packed_bytes_upper'] == 857650053120
     known_payload = (report['paired_rs_opening_screen']['component_payload_before_framing_and_caller']
                      +b['selected_paired_opening']['component_payload_with_byte_pcs_before_framing']
@@ -1545,7 +1547,7 @@ def test_range_product_tree_counts_and_resource_limits_remain_conditional():
                            +report['input_link_screen']['extension_corrections']
                            +report['requantization_screen']['requantization_extension_corrections_upper']
                            +s['extension_corrections']))
-    assert known_payload == 31973968 and report['complete_certificate_bytes'] is None
+    assert known_payload == 30833200 and report['complete_certificate_bytes'] is None
     assert not s['credit'] and not s['full_gamma_liveness_or_feasibility'] and not s['proves_zero_padding']
     for bits in range(1, 11):
         tiny = plan.byte_range_tree_screen(bits)
@@ -1554,3 +1556,212 @@ def test_range_product_tree_counts_and_resource_limits_remain_conditional():
     for bad in (0, 36, True):
         with pytest.raises(ValueError):
             plan.byte_range_tree_screen(bad)
+
+
+def test_lagrange_sum_tree_is_linear_in_public_function_and_valid_off_alphabet():
+    p, rng = plan.P, random.Random(20260910)
+    weights = [rng.randrange(p) for _ in range(256)]
+    for x in [*range(256), 256, 257, p-1, rng.randrange(p)]:
+        products, sums = plan.byte_lagrange_tree(x, weights)
+        assert products == plan.byte_product_tree(x)
+        expected = weights[x] if x < 256 else plan.dot(weights, plan.byte_lagrange_basis(x))
+        assert sums[1] == expected
+        assert all(sums[j] == (sums[2*j]*products[2*j+1]+products[2*j]*sums[2*j+1]) % p
+                   for j in range(1, 256))
+    other, coin = [rng.randrange(p) for _ in range(256)], 17
+    combined = [(a+coin*b) % p for a, b in zip(weights, other)]
+    for x in (0, 128, 256, p-1):
+        _, a = plan.byte_lagrange_tree(x, weights)
+        _, b = plan.byte_lagrange_tree(x, other)
+        _, c = plan.byte_lagrange_tree(x, combined)
+        assert c == [(u+coin*v) % p for u, v in zip(a, b)]
+    for bad_weights in (weights[:-1], [True]+weights[1:], [p]+weights[1:]):
+        with pytest.raises(ValueError):
+            plan.byte_lagrange_tree(0, bad_weights)
+
+
+def test_lifted_indicator_rne_has_degree_six_and_needs_its_own_source_link():
+    p = plan.P
+    source_bytes = [0, 0, 0, 0, 0, 128]
+    basis = [[int(j == x) for j in range(256)] for x in source_bytes]
+    for shift in range(-15, 49):
+        assert plan.rne48_indicator_polynomials(basis, shift) == plan.rne48_byte_polynomials(source_bytes, shift)
+    line, unlinked = [], []
+    for z in range(9):
+        lifted = [[((1-z)*int(j == x)+z*int(j == x+1)) % p for j in range(256)] for x in source_bytes]
+        _, valid = plan.rne48_indicator_polynomials(lifted, -15)
+        assert valid == pow(1-z, 6, p)
+        line.append((3+5*z)*(1-valid) % p)
+        unlinked.append(plan.rne48_byte_polynomials([(x+z) % p for x in source_bytes], -15)[1])
+    assert unlinked[2] != pow(-1, 6, p)  # delta(MLE(U)) is not MLE(delta(U))
+    for degree in range(8):
+        line = [(b-a) % p for a, b in zip(line, line[1:])]
+        if degree == 6:
+            assert line[0] != 0  # public EQ/selector adds the seventh degree
+    assert line == [0]
+    for bad in (basis[:-1], [basis[0][:-1]]+basis[1:], [[True]+basis[0][1:]]+basis[1:]):
+        with pytest.raises(ValueError):
+            plan.rne48_indicator_polynomials(bad, 8)
+
+
+def test_indicator_ps_gkr_binds_six_source_planes_with_public_dummy_lanes():
+    p, rng = plan.P, random.Random(20260911)
+    def eq(point, index):
+        return math.prod(x if (index >> j) & 1 else 1-x for j, x in enumerate(point)) % p
+    def fold(vector, r):
+        return [(a+r*(b-a)) % p for a, b in zip(vector[::2], vector[1::2])]
+    rho_f, rho_lane = [3, 5, 7, 11, 13, 17, 19, 23], [29, 31, 37]
+    omega = [eq(rho_f, j) for j in range(256)]
+    for last_selector in (0, 1, 19):
+        planes = [[(17*l+3) % 256, (31*l+1) % 256] for l in range(6)]
+        if last_selector == 19:
+            planes[2][0] = 256  # the link still holds without presuming valid byte inputs
+        point = [41]
+        bases = [[plan.byte_lagrange_basis(x) for x in row] for row in planes]
+        indicator_claims = [[plan.mle([basis[j] for basis in row], point) for j in range(256)] for row in bases]
+        dummy = (eq(rho_lane, 6)+eq(rho_lane, 7))*omega[0] % p
+        claim = (sum(eq(rho_lane, l)*plan.dot(omega, row) for l, row in enumerate(indicator_claims))+dummy) % p
+        trees = [plan.byte_lagrange_tree(x, omega) for row in planes+[[0, 0], [0, 0]] for x in row]
+        assert claim == plan.mle([s[1] for _, s in trees], point+rho_lane)
+        assert dummy != 0  # omitting the public lanes would change even the honest claim
+        selector, node_point, cell_point, lane_point = 1, [], point, rho_lane
+        retained = None
+        for depth in range(8):
+            arrays = [[tree[which][2*((1 << depth)+j)+child] for tree in trees for j in range(1 << depth)]
+                      for which, child in ((0, 0), (0, 1), (1, 0), (1, 1))]
+            weights = [eq(node_point+cell_point+lane_point, j) for j in range(len(arrays[0]))]
+            assert claim == sum(w*((1-selector)*pl*pr+selector*(sl*pr+pl*sr))
+                                for w, pl, pr, sl, sr in zip(weights, *arrays)) % p
+            challenges = []
+            for round_index in range(depth+4):  # one cell bit, then three lane bits
+                coefficients = [0]*4
+                for i in range(0, len(weights), 2):
+                    quadratic = [0, 0, 0]
+                    for lhs, rhs, scale in ((0, 1, 1-selector), (2, 1, selector), (0, 3, selector)):
+                        a, b = arrays[lhs][i:i+2]
+                        c, d = arrays[rhs][i:i+2]
+                        q0, q2 = a*c, (b-a)*(d-c)
+                        quadratic = [(u+scale*v) % p for u, v in zip(quadratic, (q0, b*d-q0-q2, q2))]
+                    for j, q in enumerate(quadratic):
+                        coefficients[j] = (coefficients[j]+weights[i]*q) % p
+                        coefficients[j+1] = (coefficients[j+1]+(weights[i+1]-weights[i])*q) % p
+                assert (coefficients[0]+sum(coefficients)) % p == claim
+                for z in (0, 1, 2, 17):
+                    folded = [fold(v, z) for v in arrays]
+                    expected = sum(w*((1-selector)*pl*pr+selector*(sl*pr+pl*sr))
+                                   for w, pl, pr, sl, sr in zip(fold(weights, z), *folded)) % p
+                    assert sum(c*pow(z, j, p) for j, c in enumerate(coefficients)) % p == expected
+                r = rng.randrange(p)  # after all four coefficient records
+                challenges.append(r)
+                claim = sum(c*pow(r, j, p) for j, c in enumerate(coefficients)) % p
+                arrays, weights = [fold(v, r) for v in arrays], fold(weights, r)
+                if depth == 7 and round_index == depth:
+                    constant = 2*sum((1 << j)*x for j, x in enumerate(challenges[:depth])) % p
+                    retained = [(x+constant) % p for x in arrays[0][:6]]
+                    assert retained == [plan.mle(row, challenges[depth:]) for row in planes]
+            pl, pr, sl, sr = [v[0] for v in arrays]
+            products = pl*pr % p, sl*pr % p, pl*sr % p
+            assert claim == weights[0]*((1-selector)*products[0]+selector*(products[1]+products[2])) % p
+            # All three products remain obligations even when their public coefficient is zero.
+            assert (products[0]+1-pl*pr) % p != 0
+            selector = last_selector if depth == 7 else (0, 1, 7, 11, 13, 17, 23)[depth]
+            child = (0, 1, 29, 31, 37, 41, 43, 47)[depth]  # both coins AFTER the seven terminal records
+            claim = ((1-selector)*((1-child)*pl+child*pr)+selector*((1-child)*sl+child*sr)) % p
+            node_point, cell_point, lane_point = [child]+challenges[:depth], challenges[depth:depth+1], challenges[depth+1:]
+            next_layer = [((1-selector)*pt[(1 << (depth+1))+j]+selector*st[(1 << (depth+1))+j]) % p
+                          for pt, st in trees for j in range(1 << (depth+1))]
+            assert claim == plan.mle(next_layer, node_point+cell_point+lane_point)
+        assert retained == [plan.mle(row, cell_point) for row in planes]
+        leaf_constant = sum((1 << j)*r for j, r in enumerate(node_point)) % p
+        psi = plan.mle(trees[0][1][256:], node_point)  # same public w_j for every source cell
+        mixed = sum(eq(lane_point, l)*x for l, x in enumerate(retained)) % p
+        assert claim == ((1-selector)*(mixed-leaf_constant)+selector*psi) % p
+        if selector != 1:
+            assert (claim-((1-selector)*(mixed+eq(lane_point, 0)-leaf_constant)+selector*psi)) % p != 0
+        # If the function challenge preceded the claims, these actual altered wires would disappear.
+        changed = [list(row) for row in indicator_claims]
+        changed[0][0] = (changed[0][0]+omega[1]) % p
+        changed[0][1] = (changed[0][1]-omega[0]) % p
+        assert changed != indicator_claims
+        assert sum(eq(rho_lane, l)*plan.dot(omega, row) for l, row in enumerate(changed)) % p == sum(
+            eq(rho_lane, l)*plan.dot(omega, row) for l, row in enumerate(indicator_claims)) % p
+
+
+def test_rne_histograms_and_six_lane_ps_replay_equal_full_dense_tables():
+    p, rng = plan.P, random.Random(20260912)
+    planes = [[rng.randrange(256) for _ in range(15)]+[0] for _ in range(6)]
+    cell_point, lane_point = [3, 5, 7, 11], [13, 17, 19]
+    def eq(point, index):
+        return math.prod(x if (index >> j) & 1 else 1-x for j, x in enumerate(point)) % p
+    # These weighted bins ARE the folded indicator tables, not delta_j of a folded byte.
+    for prefix in range(5):
+        block = 1 << prefix
+        for row in planes:
+            for start in range(0, len(row), block):
+                hist = [0]*256
+                for low, x in enumerate(row[start:start+block]):
+                    hist[x] = (hist[x]+eq(cell_point[:prefix], low)) % p
+                assert hist == [plan.mle([int(x == j) for x in row[start:start+block]], cell_point[:prefix])
+                                for j in range(256)]
+    omega = [eq([23, 29, 31, 37, 41, 43, 47, 53], j) for j in range(256)]
+    public = [plan.byte_lagrange_tree(x, omega) for x in range(256)]
+    hist = [0]*256
+    for lane, row in enumerate(planes):
+        for i, x in enumerate(row):
+            hist[x] = (hist[x]+eq(lane_point, lane)*eq(cell_point, i)) % p
+    hist[0] = (hist[0]+eq(lane_point, 6)+eq(lane_point, 7)) % p
+    for depth in (0, 3, 7):
+        node_point = [rng.randrange(p) for _ in range(depth)]
+        functions = [[sum(eq(node_point, j)*tree[which][2*((1 << depth)+j)+child] for j in range(1 << depth)) % p
+                      for tree in public] for which, child in ((0, 0), (0, 1), (1, 0), (1, 1))]
+        dense = [[f[x] for row in planes+[[0]*16, [0]*16] for x in row] for f in functions]
+        for a, b in ((0, 1), (2, 1), (0, 3)):
+            assert sum(h*functions[a][x]*functions[b][x] for x, h in enumerate(hist)) % p == sum(
+                eq(cell_point+lane_point, i)*u*v for i, (u, v) in enumerate(zip(dense[a], dense[b]))) % p
+        for prefix in range(5):
+            block = 1 << prefix
+            for f, table in zip(functions, dense):
+                six_lanes = [[sum(eq(cell_point[:prefix], low)*f[row[start+low]] for low in range(block)) % p
+                              for start in range(0, len(row), block)] for row in planes]
+                full = list(table)
+                for r in cell_point[:prefix]:
+                    full = [(a+r*(b-a)) % p for a, b in zip(full[::2], full[1::2])]
+                pruned = [x for lane in six_lanes for x in lane]+[f[0]]*(2*(16 >> prefix))
+                assert pruned == full
+                if prefix == 4:
+                    assert plan.mle(pruned, lane_point) == plan.mle(table, cell_point+lane_point)
+
+
+def test_rne_indicator_counts_do_not_claim_complete_prover_feasibility():
+    s = plan.rne_indicator_screen(30)
+    assert s['top_round_degree'] == 7 and s['top_extension_corrections'] == 2371
+    assert s['link_round_degree'] == 3 and s['link_rounds'] == 292 and s['link_extension_corrections'] == 1230
+    assert s['extension_corrections'] == 3601 and s['payload_before_framing_and_shared_closures'] == 86424
+    assert s['private_products'] == 619 and s['zero_residuals'] == 332 and s['extension_challenges'] == 381
+    assert s['link_interactive_error_numerator_before_b_mac_and_fs'] == 903
+    assert s['rne_error_numerator_before_output_batch_size_range_b_mac_fs']+240 == 1383
+    assert s['source_endpoints'] == 6 and s['extra_trace_commitments'] == s['function_axis_sumcheck_rounds'] == 0
+    assert s['top_fixed_cell_prefix'] == 17 and s['top_indicator_tail_bytes'] == 301989888
+    assert s['link_fixed_cell_prefix'] == 10 and s['link_six_lane_four_function_tail_bytes'] == 603979776
+    assert s['link_counterfactual_eight_lane_tail_bytes'] == 805306368
+    assert s['top_rq_visits'] == 18 and s['link_rq_visits'] == 95 and s['source_rq_visits'] == 113
+    assert s['link_public_p_s_tree_bytes'] == 4186112 and s['link_public_child_fold_tables_bytes_upper'] == 3145728
+    assert s['top_extension_products_upper_before_public_forms_mac_metadata'] == 140737501088000
+    assert s['link_extension_products_upper_before_mac_metadata'] == 4389733525568
+    assert s['link_public_base_products_upper'] == 66174
+    assert s['verifier_extension_products_before_forms_fs_b_shared_closures_upper'] == 24292
+    report = plan.report()
+    b = report['cut_byte_opening_screen']
+    assert report['requantization_screen']['rne_indicator_opening'] == s
+    assert b['rne_top_known_union_bytes'] == 6051085168
+    assert b['rne_ps_link_known_union_bytes'] == 6353297296 < 6442450944
+    assert b['rne_ps_counterfactual_eight_lane_known_union_bytes'] == 6554623888 > 6442450944
+    assert b['rne_requested_matrix_packed_bytes_upper'] == 438988185600
+    assert not s['credit'] and not s['all_shifts_gamma_liveness_or_feasibility_compiled'] and s['additional_w_reads'] == 0
+    for bits in (1, 10, 17, 32):
+        tiny = plan.rne_indicator_screen(bits)
+        assert tiny['top_fixed_cell_prefix'] == min(17, bits)
+        assert tiny['link_fixed_cell_prefix'] == min(10, bits)
+    for bad in (0, 33, True):
+        with pytest.raises(ValueError):
+            plan.rne_indicator_screen(bad)

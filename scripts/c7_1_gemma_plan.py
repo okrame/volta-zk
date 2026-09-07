@@ -293,6 +293,82 @@ def byte_range_tree_screen(byte_bits):
     }
 
 
+def byte_lagrange_tree(value, weights):
+    """P/S tree for ONE public linear combination of all byte indicators.
+
+    No function-index axis is needed in GKR: every merge is linear in S.
+    This clear Fp reference also accepts values outside the byte alphabet.
+    """
+    if len(weights) != 256:
+        raise ValueError("256 public Lagrange weights required")
+    for weight in weights:
+        natural(weight, "canonical public Lagrange weight", 0, P-1)
+    products = byte_product_tree(value)
+    inverse_factorial = pow(math.factorial(255), -1, P)
+    sums = [0]*256+[w*(-1 if (255-j) & 1 else 1)*math.comb(255, j)*inverse_factorial % P
+                    for j, w in enumerate(weights)]
+    for node in range(255, 0, -1):
+        sums[node] = (sums[2*node]*products[2*node+1]+products[2*node]*sums[2*node+1]) % P
+    return products, sums
+
+
+def rne_indicator_screen(cell_bits):
+    """R2: degree-7 RNE and one public-function P/S GKR, not full Gamma."""
+    natural(cell_bits, "RQ source log domain", 1, 32)
+    cells, layers = 1 << cell_bits, 8
+    top_prefix, link_prefix = min(17, cell_bits), min(10, cell_bits)
+    top_tail, link_tail = cells >> top_prefix, cells >> link_prefix
+    source, bits = 8*cells, cell_bits+3
+    rounds = sum(bits+d for d in range(layers))
+    top_corrections, link_corrections = 8*cell_bits+1536+595, 4*rounds+7*layers+6
+    link_work = (4*(link_prefix+1)*source+19*(source-1)+4*(8*link_tail-1)
+                 +(1 << (link_prefix+1))+32*(bits+layers))
+    return {
+        "credit": False,
+        "top_round_degree": 7,
+        "top_extension_corrections": top_corrections,
+        "link_round_degree": 3,
+        "link_rounds": rounds,
+        "link_extension_corrections": link_corrections,
+        "extension_corrections": top_corrections+link_corrections,
+        "payload_before_framing_and_shared_closures": 24*(top_corrections+link_corrections),
+        "private_products": 595+3*layers,
+        "zero_residuals": cell_bits+1+rounds+layers+1,
+        "extension_challenges": 2*cell_bits+2+11+rounds+2*layers,
+        "link_interactive_error_numerator_before_b_mac_and_fs": 11+3*rounds+2*layers,
+        "rne_error_numerator_before_output_batch_size_range_b_mac_fs": 8*cell_bits+11+3*rounds+2*layers,
+        "source_endpoints": 6,
+        "function_axis_sumcheck_rounds": 0,
+        "extra_trace_commitments": 0,
+        "top_fixed_cell_prefix": top_prefix,
+        "top_indicator_tail_bytes": 1536*24*top_tail,
+        "top_prefix_weights_bytes": 24*(1 << top_prefix),
+        "top_two_local_histograms_bytes": 2*1536*24,
+        "top_control_and_evaluation_scratch_bytes_upper": 1 << 18,
+        "top_rq_visits": top_prefix+1,
+        "link_fixed_cell_prefix": link_prefix,
+        "link_six_lane_four_function_tail_bytes": 4*6*24*link_tail,
+        "link_counterfactual_eight_lane_tail_bytes": 4*8*24*link_tail,
+        "link_public_p_s_tree_bytes": 511*256*(8+24),
+        "link_public_child_fold_tables_bytes_upper": 2*256*256*24,
+        "link_public_four_function_tables_bytes": 4*256*24,
+        "link_prefix_weights_bytes": 24*(1 << link_prefix),
+        "link_control_and_terminal_scratch_bytes_upper": 32768,
+        "link_retained_source_endpoint_bytes": 6*24,
+        "link_rq_visits": layers*(link_prefix+1)+layers-1,
+        "source_rq_visits": top_prefix+1+layers*(link_prefix+1)+layers-1,
+        "top_extension_products_upper_before_public_forms_mac_metadata": 8*(1 << 14)*(cells-1)
+            +1536*(top_tail-1)+(1 << (top_prefix+1))+128*cell_bits+(1 << 14),
+        "link_extension_products_upper_before_mac_metadata": layers*link_work
+            +(layers-1)*(source-1)+128*256*((1 << layers)-1)+2*255*256+511,
+        "link_public_base_products_upper": 255*256+894,
+        "verifier_extension_products_before_forms_fs_b_shared_closures_upper": top_corrections+link_corrections
+            +7*cell_bits+(1 << 14)+2062+5*rounds+5*layers+535,
+        "additional_w_reads": 0,
+        "all_shifts_gamma_liveness_or_feasibility_compiled": False,
+    }
+
+
 def rne48_byte_polynomials(values, shift):
     """(rounded-value polynomial, validity polynomial) on six BIASED bytes.
 
@@ -302,7 +378,21 @@ def rne48_byte_polynomials(values, shift):
     """
     if len(values) != 6 or type(shift) is not int:
         raise ValueError("six biased bytes and an integer shift required")
-    basis = [byte_lagrange_basis(x) for x in values]
+    return rne48_indicator_polynomials([byte_lagrange_basis(x) for x in values], shift)
+
+
+def rne48_indicator_polynomials(basis, shift):
+    """Degree-six lifted RNE formula, NOT free/unproved indicator wires.
+
+    For the real RNE relation, basis[lane][j] must be the MLE of delta_j
+    on that byte plane, linked by the P/S tree to the same B source.
+    """
+    if len(basis) != 6 or any(len(row) != 256 for row in basis) or type(shift) is not int:
+        raise ValueError("six 256-entry indicator rows and an integer shift required")
+    for row in basis:
+        for value in row:
+            natural(value, "canonical diagnostic indicator value", 0, P-1)
+    values = [sum(j*a for j, a in enumerate(row)) % P for row in basis]
     def table(lane, fn):
         return sum(fn(j)*a for j, a in enumerate(basis[lane])) % P
     def less_than(bound):
@@ -933,8 +1023,12 @@ def cut_byte_opening_screen(cohorts):
                +48*(caller_e+pcs["extension_corrections_including_partial_sumchecks"]+paired["additional_extension_corrections"])
                +descriptor_bytes+24*rows)
     byte_tree = baseline["byte_range_product_tree"]
+    rne = baseline["rne_indicator_opening"]
     gather_bytes = sum(c["rows"]*c["columns"]*c["cut_scalar_bytes"]
                        *(2 if c["kind"] == "matrix" else 1) for c in cohorts)
+    rne_link_union = live+internal_tree+records+sum(rne[key] for key in (
+        "link_six_lane_four_function_tail_bytes", "link_public_p_s_tree_bytes",
+        "link_public_four_function_tables_bytes", "link_prefix_weights_bytes", "link_control_and_terminal_scratch_bytes_upper"))
     return {
         "credit": False,
         "byte_tiles": len(byte_tiles),
@@ -948,6 +1042,13 @@ def cut_byte_opening_screen(cohorts):
             "public_node_table_bytes", "cell_phase_two_public_functions_bytes", "cell_prefix_eq_weights_bytes",
             "two_cached_cell_tail_vectors_bytes", "control_points_and_round_scratch_bytes_upper")),
         "byte_range_requested_packed_bytes_upper": gather_bytes*byte_tree["source_visits_including_gate_histograms"],
+        "rne_top_known_union_bytes": live+internal_tree+records+baseline["sparse_rne_public_coefficient_tail_bytes_upper"]
+            +sum(rne[key] for key in ("top_indicator_tail_bytes", "top_prefix_weights_bytes",
+                                     "top_two_local_histograms_bytes", "top_control_and_evaluation_scratch_bytes_upper")),
+        "rne_ps_link_known_union_bytes": rne_link_union,
+        "rne_ps_counterfactual_eight_lane_known_union_bytes": rne_link_union
+            +rne["link_counterfactual_eight_lane_tail_bytes"]-rne["link_six_lane_four_function_tail_bytes"],
+        "rne_requested_matrix_packed_bytes_upper": 6*baseline["matrix_raw_cells"]*rne["source_rq_visits"],
         "selected_paired_opening": {
             "additional_extension_corrections_over_A3": paired["additional_extension_corrections"],
             "added_payload_before_framing_and_shared_closures": 24*paired["additional_extension_corrections"],
@@ -1136,7 +1237,9 @@ def requantization_screen(cohorts):
                             +b_pcs["base_corrections_including_anchor_upper"]-2*anchor)})
     repaired = recursive_rs_opening_screen(1 << byte_bits, 1 << 22, 357, 4)
     endpoint_products = 6*3*(256-2) + 47*10 + sum(s//8 for s in range(1,48)) + 5
-    rq_corrections = 1532*rq_bits+6+endpoint_products
+    direct_rq_corrections = 1532*rq_bits+6+endpoint_products
+    rne = rne_indicator_screen(rq_bits)
+    rq_corrections = rne["extension_corrections"]
     direct_byte_corrections = 258*byte_bits+1+255
     byte_tree = byte_range_tree_screen(byte_bits)
     byte_corrections = byte_tree["extension_corrections"]
@@ -1150,11 +1253,21 @@ def requantization_screen(cohorts):
         "matrix_padded_cells": 1 << rq_bits,
         "b_biased_byte_live_cells": raw_bytes,
         "b_biased_byte_padded_cells": 1 << byte_bits,
-        "requantization_polynomial_total_degree_upper": 1530,
-        "requantization_sumcheck_round_degree_upper": 1531,
-        "all_64_shift_classes_endpoint_products_upper": endpoint_products,
+        "requantization_polynomial_total_degree_upper": 6,
+        "requantization_sumcheck_round_degree_upper": 7,
+        "all_64_shift_classes_endpoint_products_upper": 595,
         "requantization_extension_corrections_upper": rq_corrections,
         "requantization_payload_upper_before_framing_and_shared_closures": 24*rq_corrections,
+        "rne_indicator_opening": rne,
+        "rne_direct_reference": {
+            "polynomial_degree_upper": 1530,
+            "round_degree_upper": 1531,
+            "endpoint_products_upper": endpoint_products,
+            "extension_corrections": direct_rq_corrections,
+            "payload_before_framing_and_shared_closures": 24*direct_rq_corrections,
+            "six_byte_plane_cached_tail_bytes": 6*24*(1 << max(0,rq_bits-10)),
+            "sparse_public_coefficient_tail_bytes_upper": 48*((1 << max(0,rq_bits-10))+len(rq_tiles)-1),
+        },
         "byte_range_extension_corrections": byte_corrections,
         "byte_range_payload_before_framing_and_shared_closures": 24*byte_corrections,
         "byte_range_product_tree": byte_tree,
@@ -1163,10 +1276,9 @@ def requantization_screen(cohorts):
             "payload_before_framing_and_shared_closures": 24*direct_byte_corrections,
             "cached_tail_bytes": 24*(1 << max(0,byte_bits-10)),
         },
-        "fixed_prefix_rounds_before_materialization": 10,
-        "source_scans_per_sumcheck_before_cached_tail_upper": 11,
-        "six_byte_plane_cached_tail_bytes": 6*24*(1 << max(0,rq_bits-10)),
-        "sparse_rne_public_coefficient_tail_bytes_upper": 48*((1 << max(0,rq_bits-10))+len(rq_tiles)-1),
+        "fixed_prefix_rounds_before_materialization": rne["top_fixed_cell_prefix"],
+        "source_scans_per_sumcheck_before_cached_tail_upper": rne["top_rq_visits"],
+        "sparse_rne_public_coefficient_tail_bytes_upper": 48*((1 << max(0,rq_bits-17))+len(rq_tiles)-1),
         "literal_six_row_byte_pcs_screens": literal,
         "four_row_no_outer_tree_pcs_payload_before_framing": repaired["component_payload_before_framing_and_other_components"],
         "four_row_no_outer_tree_preparation_with_b_bytes": preparation,

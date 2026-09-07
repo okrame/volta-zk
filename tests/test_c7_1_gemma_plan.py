@@ -3,6 +3,7 @@
 import importlib.util
 import math
 import random
+from collections import Counter
 from fractions import Fraction
 from itertools import combinations, product
 from pathlib import Path
@@ -479,3 +480,97 @@ def test_recursive_rs_component_counts_and_fixed_cap_are_not_complete_credit():
     for args in ((1 << 35, 1 << 25, 357), (64, 8, 9), (1 << 89, 1 << 24, 357)):
         with pytest.raises(ValueError):
             plan.recursive_rs_opening_screen(*args)
+
+
+def test_a3_public_query_sampler_is_distinct_uniform_and_fails_closed():
+    # Enumerate each pair of accepted residues. Partial Fisher-Yates gives
+    # each ordered pair of distinct indices exactly once, not a multiset.
+    outcomes = Counter(tuple(plan.a3_query_indices(4, 2, [a, b]))
+                       for a in range(4) for b in range(3))
+    assert outcomes == Counter({(a, b): 1 for a in range(4) for b in range(4) if a != b})
+    assert plan.a3_query_indices(4, 4, iter(())) == [0, 1, 2, 3]
+    assert plan.a3_query_indices(1, 1, iter(())) == [0]
+    maximal = (1 << 64)-1
+    assert plan.a3_query_indices(3, 1, [maximal]*3+[1]) == [1]
+    with pytest.raises(ValueError, match="rejection limit"):
+        plan.a3_query_indices(3, 1, [maximal]*4+[1])
+    with pytest.raises(ValueError, match="truncated"):
+        plan.a3_query_indices(4, 2, [0])
+    for word in (-1, 1 << 64, True):
+        with pytest.raises(ValueError):
+            plan.a3_query_indices(4, 1, [word])
+    for args in ((0, 1), (4, 5), (1 << 27, 1), (512, 358), (True, 1)):
+        with pytest.raises(ValueError):
+            plan.a3_query_indices(*args, [])
+    for remaining in (3, 127, 4093, (1 << 26)-1):
+        cutoff = (1 << 64) - (1 << 64) % remaining
+        assert cutoff % remaining == 0
+        assert 0 <= (1 << 64)-cutoff < remaining
+    s = plan.a3_challenge_screen()
+    assert s["extension_challenge_elements"] == 718
+    assert s["base_challenge_coordinates"] == 2154
+    assert s["random_query_indices"] == 1428
+    assert s["max_u64_draws_per_attempt"] == 14_328
+    assert s["max_u64_draws_for_response_slots_only"] == 15_023_996_928
+    assert Fraction(s["honest_exhaustion_bound_numerator"],
+                    s["honest_exhaustion_bound_denominator"]) < Fraction(1, 2**96)
+    assert s["exhaustion_is_rejection_not_false_acceptance"]
+    assert not s["credit"] and not s["complete_honest_fs_query_census"]
+
+
+def test_ideal_mac_simulation_uses_actual_prefix_challenges_without_programming():
+    # A tiny message-distribution test, NOT an E2E or cryptographic hash.
+    # A fixed oracle may already be fully known to V*. Privacy does not
+    # require its challenges to be uniform (soundness certainly does).
+    p, k0, kc0, kt0, kr = 5, 1, 2, 3, 4
+    tapes = list(product(range(p), repeat=4))
+    for oracle in (lambda prefix: 0,
+                   lambda prefix: sum((i+1)*(v+1)**2 for i, v in enumerate(prefix)) % p):
+        for delta in range(p):
+            def public_keys(d0, dc, dt):
+                a = oracle((42, d0))
+                return a, (k0-delta*(d0+a)) % p, (kc0-delta*dc) % p, (kt0-delta*dt) % p
+
+            simulated = Counter()
+            for d0, dc, dt, m1 in tapes:
+                a, kx, kc, kt = public_keys(d0, dc, dt)
+                chi = oracle((43, d0, dc, dt))
+                m0 = (chi*(kx*kx+delta*kc)+kr+delta*m1) % p
+                eta = oracle((44, d0, dc, dt, m0, m1))
+                mz = eta*(kt-kc) % p
+                simulated[(d0, a, dc, dt, chi, m0, m1, eta, mz)] += 1
+            for witness in range(p):
+                real = Counter()
+                for u0, uc, ut, mask in tapes:
+                    d0 = (witness-u0) % p
+                    a = oracle((42, d0))
+                    x = (witness+a) % p  # depends on an earlier FS response
+                    c = x*x % p
+                    dc, dt = (c-uc) % p, (c-ut) % p
+                    mx, mc, mt = (k0+delta*u0) % p, (kc0+delta*uc) % p, (kt0+delta*ut) % p
+                    chi = oracle((43, d0, dc, dt))
+                    m0 = (chi*mx*mx+kr+delta*mask) % p
+                    m1 = (chi*(2*x*mx-mc)+mask) % p
+                    eta = oracle((44, d0, dc, dt, m0, m1))
+                    mz = eta*(mt-mc) % p  # duplicate c wire, true zero residual
+                    real[(d0, a, dc, dt, chi, m0, m1, eta, mz)] += 1
+                assert real == simulated
+                # Aborting on a public prefix cannot distinguish the views.
+                for length in (1, 4, 7):
+                    def project(distribution):
+                        result = Counter()
+                        for view, mass in distribution.items():
+                            result[view[:length]] += mass
+                        return result
+                    assert project(real) == project(simulated)
+    # NoPeek is necessary: x=w*u is invalid for the uniform-correction
+    # argument. It distinguishes w=1 from w=0 despite a uniform fresh u.
+    assert Counter((0*u-u) % p for u in range(p)) != Counter((1*u-u) % p for u in range(p))
+
+
+def test_fixed_hash_circuit_is_not_an_independent_random_oracle():
+    # Excludes a proposed HYBRID, not the actual hash or A3 construction.
+    fixed = (2, 4)
+    oracles = list(product(range(7), repeat=2))
+    assert Fraction(sum(h[0] == fixed[0] for h in oracles), len(oracles)) == Fraction(1, 7)
+    assert Fraction(sum(h == fixed for h in oracles), len(oracles)) == Fraction(1, 49)

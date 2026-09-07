@@ -391,6 +391,64 @@ def combine(a, b, r):
     return [(x + r * y) % P for x, y in zip(a, b)]
 
 
+def a3_query_indices(domain, count, words):
+    """Small reference for A3's bounded PUBLIC sampler, not a PCS prover.
+
+    Four trials per selected index; no fallback on exhaustion. Exhaustive
+    sets use natural order and consume no randomness. Input words are a
+    supplied diagnostic tape, NOT a production random generator.
+    """
+    natural(domain, "query domain", 1, 1 << 26)
+    natural(count, "query count", 1, min(357, domain))
+    if count == domain:
+        return list(range(domain))
+    tape, swaps, indices = iter(words), {}, []
+    for i in range(count):
+        remaining = domain-i
+        cutoff = (1 << 64) - (1 << 64) % remaining
+        for _ in range(4):
+            try:
+                word = next(tape)
+            except StopIteration:
+                raise ValueError("truncated query randomness") from None
+            natural(word, "random word", 0, (1 << 64)-1)
+            if word < cutoff:
+                j = word % remaining
+                break
+        else:
+            raise ValueError("query rejection limit exhausted")
+        indices.append(swaps.get(j, j))
+        last = remaining-1
+        swaps[j] = swaps.get(last, last)
+        swaps.pop(last, None)
+    return indices
+
+
+def a3_challenge_screen():
+    """Finite honest A3 schedule ONLY: excludes caller, setup and Gemma GKR."""
+    # Outer proximity point/batch, inner partial SC/batches, hash initial
+    # point/30 sumchecks, and common product/zero closing challenges.
+    extension = 11 + 1 + 4*5 + 4 + 20 + 30*22 + 2
+    base_coordinates, indices = 3*extension, 4*357
+    return {
+        "credit": False,
+        "extension_challenge_elements": extension,
+        "base_challenge_coordinates": base_coordinates,
+        "random_query_indices": indices,
+        "exhaustive_indices_without_draws": 128,
+        "max_trials_per_coordinate_or_index": 4,
+        "max_u64_draws_per_attempt": 4*(base_coordinates+indices),
+        "max_u64_draws_for_response_slots_only": (
+            LIFETIME_ATTEMPTS*4*(base_coordinates+indices)),
+        "honest_exhaustion_bound_numerator": (
+            LIFETIME_ATTEMPTS*(base_coordinates*(1 << 24)+indices)),
+        "honest_exhaustion_bound_denominator": 1 << 152,
+        "exhaustion_bound_assumes_unbiased_honest_tapes": True,
+        "exhaustion_is_rejection_not_false_acceptance": True,
+        "complete_honest_fs_query_census": False,
+    }
+
+
 def mle(values, point):
     """Little-endian Boolean-index multilinear evaluation, diagnostic only."""
     if len(values) != 1 << len(point):
@@ -555,6 +613,7 @@ def report():
             for bits in (23, 24)
         ],
         "recursive_rs_opening_screen": recursive_rs_opening_screen(n, 1 << 24, 357),
+        "a3_challenge_screen": a3_challenge_screen(),
         "complete_certificate_bytes": None,
         "complete_h100_peak_bytes": None,
         "complete_security_bits": None,

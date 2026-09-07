@@ -68,6 +68,17 @@ feasibility proofs before prover implementation and measurements.
   well-formedness. Compiling arbitrary private roots into the required
   oracles, the precise model relation and adaptive FS remain open; no honest
   setup assumption or complete feasibility credit is introduced.
+- [Ideal MAC/FS simulation](c7.1-committed-mac-opening.md#31-simulatore-ideale-fs-nessuna-programmazione-delloracolo)
+  now has a straight-line coupling proof for the actual public correction
+  prefixes, including aborts and adaptive attempts. It needs no oracle
+  programming and no added FS simulation error, conditional on fresh ideal
+  correlations, NoPeek, public schedules and honest valid products/residuals.
+  Anchor hiding, real malicious-secure PCG and implementation refinement
+  remain open. A3 also fixes bounded query/field sampling and counts its
+  718 E challenges; this is not the complete lifetime query census.
+  Primary BCS/AROM sources expose why replacing the commitment hash by an
+  independent RO while retaining its concrete private checker is invalid.
+  The classical ROM requirement remains unchanged.
 - The [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) and
   [focused tests](../tests/test_c7_1_gemma_plan.py) check paired-fold
   arithmetic, service accounting, candidate integer/Fp3 decompositions,
@@ -76,6 +87,8 @@ feasibility proofs before prover implementation and measurements.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
+  The 23 focused checks also cover finite query sampling, exact ideal
+  simulation distributions and the excluded independent-RO hybrid.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -84,8 +97,9 @@ feasibility proofs before prover implementation and measurements.
   The literal generic Hobbit wrapper with trace replay requires at least
   seven source-recomputing traversals. The historical operator census omits
   scalar shapes/dtypes and cannot certify the missing witness liveness.
-- `C71FsLifetimeSound`, adaptive ROM transfer and malicious-verifier privacy
-  still need their runtime premises and complete lifetime event/query census.
+- `C71FsLifetimeSound`, adaptive soundness transfer and complete
+  malicious-verifier privacy still need their runtime premises and complete
+  lifetime event/query census; the ideal online simulation step is proved above.
   Existing conditional Lean lemmas do not discharge these obligations.
 - Complete certificate compilation, the physical live-memory schedule and
   full Gemma prover/verifier measurements remain outstanding. No C7.1 E2E,
@@ -97,8 +111,10 @@ Follow [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizz
 continue G2 with A3: prove the private-root/oracle compilation and precise
 commitment–W relation, then compose the binding argument with the concrete
 hash/PCS assumptions and FS. A3's finite inner recursion and hash checker
-add no W reads after queried source columns exist; they do not supply the
-missing Gemma witness. The static model anchor keeps PCS openings private,
+must not import BCS's extraction from an oracle that the concrete checker
+does not access. Quantify a suitable concrete-hash compilation or repair it.
+The A3 opening stages add no W reads after queried source columns exist;
+they do not supply the missing Gemma witness. The static model anchor keeps PCS openings private,
 without reusing G1's public split mask. Setup hash work remains substantial;
 the bounded encoder and known grouped-commitment arrays occupy 5,637,144,576
 bytes, before uncompiled runtime staging. Alongside it, close witness and form

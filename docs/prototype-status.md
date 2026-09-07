@@ -25,19 +25,50 @@ Active design: `c7.1-gemma31b-design.md`. Earlier designs are historical.
   capacity, roots and attempts have separate costs. No slot/correlation reuse;
   optional ACK, no implicit truncation. First activation may have distinct
   semantics/cost; it does not reduce Q64. One sequential user, live KV preserved.
-- **Evidence.** Existing 86 Python checks cover accounting/arithmetic and
+- **Evidence.** 86 Python checks cover accounting/arithmetic and
   regressions, not complete cryptography or hardware.
-  FS lifetime theorem unproved; Rust/Lean unchanged.
+  FS theorem and complete four-read schedule unproved; Rust/Lean unchanged.
 - **Flexibility.** Budgets, carrier, codec and kernels remain choices.
   Setup 2.10x means persistent model bytes/packed W; old W 125% is comparison only.
 - **Work boundary.** Small local checks only; no provider, paid GPU, weights
-  or heavy build. No structural decision pending.
+  or heavy build. No owner decision pending.
 - **Continuation.** Close carrier/blind MAC/PCS, runtime-to-Lean and adaptive
   ROM links; compile records, masks, lifetime queries/events, allocations and
-  work. ROWFOLD's interactive proofs do not transfer automatically. Prepare
+  work. Historical interactive proofs do not transfer. Prepare
   finite-PCG/FS/chunk-parity checks, then real Gemma 100+50 through 4,096 tokens.
   Every E2E/heavy run requires authorized hardware and explicit spending
   authorization after local preparation.
+
+- **2026-09-07 — full-document consistency review and feasibility scopes
+  clarified.** All C7.1 sections were reread against the current small
+  diagnostic and relevant archived sources. The four-pass diagram covers
+  reduction plus PCS, not a demonstrated full-prover schedule: GKR and
+  proof-only witness regeneration cannot add uncounted W reads. Output-bound
+  FS also prevents challenge-dependent folding before output is fixed.
+  The whole witness live set and retained model artifacts still need a
+  physical memory schedule; the 2.10x persistent setup cap is not HBM credit.
+
+  The document now defines N/q/h and the uniform polynomial remainder,
+  exposes the candidate PCS's block-log-block work and qN/block column
+  traffic, requires common block geometry and fixes evaluation claims before
+  their batching challenge. Initial token counts include special tokens;
+  current KV tables assume the last emitted token has also been processed,
+  with completion work charged. A pending-token alternative must revise
+  the relation and accounting explicitly.
+
+  Idealized capacity/root counts are separated from actual failed and
+  prefetched events and from the different W/B/KV root families. Mask rank
+  uses the field of independent randomness; Fp3 outputs/corrections expand
+  into three Fp coordinates, not one. Finite parsing bounds per-call work,
+  not lifetime invocations; non-FS primitives need their own adversary
+  resource bounds. H100 variant and actual available memory are recorded.
+  Requirements remain unchanged; no complete >78-bit, certificate, memory
+  or timing claim follows. Eight focused C7.1 Python checks succeed; the
+  documentation arithmetic/links/history are checked without Rust/Lean
+  builds, model tensors, E2E, provider contact or hardware measurement.
+  Twelve local links, balanced fences, the 250-word capsule, preserved
+  history and exact planning arithmetic check successfully; `git diff --check`
+  is clean. Layouts and kernels remain implementation choices.
 
 - **2026-09-07 — three scoped C4.1 implementation lessons retained.** The
   external `c4.1-seed-streaming-fiat-shamir.md` was read in full; source

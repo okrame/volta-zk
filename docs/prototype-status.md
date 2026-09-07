@@ -1,6 +1,6 @@
 # Current status — C7.1 Gemma-31B
 
-Updated 2026-09-07. This is an editable working summary; Git retains previous
+Updated 2026-09-08. This is an editable working summary; Git retains previous
 versions. [Documentation index](README.md) · [Design](c7.1-gemma31b-design.md)
 · [Historical ledger](prototype-status-history-2026-09-07.md).
 
@@ -105,8 +105,11 @@ authorization.
   The [joint W/KV candidate](c7.1-wide-hash-opening.md#aperture-congiunte-wkv-e-path-deduplicati)
   excludes four separate literal PCS instances and derives shared recursion
   with separate anchors and deduplicated paths. Its known payload fits;
-  the remaining Gamma records and new state-cache liveness do not inherit
-  completion or the earlier memory bounds.
+  the [state-cache timeline](c7.1-wide-hash-opening.md#timeline-delle-cache-e-barriera-b)
+  now charges both state trees inside the arena and recounts the known
+  phases, including a dyadic-metadata envelope over all context lengths.
+  Its final-B-consumer barrier, full reader/Gamma workspace and
+  remaining records are still unproved; it is not complete liveness.
 - [A5-P: sampled public parameters](c7.1-wide-hash-opening.md#21-a5-p-parametri-pubblici-dal-rom-con-coupling-finito)
   now gives a finite ordinary-ROM publication and exact joint-tape embedding
   into independently sampled arithmetic-hash keys. A fixed pre-profile,

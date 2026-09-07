@@ -2017,7 +2017,7 @@ def wide_hash_witness_screen(cohorts, old_tokens=0):
                      +sigma['private_component_payload_before_framing_and_caller']-72
                      +24*old['known_caller_extension_corrections']
                      +joint['public_anchor_bytes_if_all_resent']+64)
-    return {
+    result = {
         'credit': False, 'old_tokens': old_tokens, 'wide_pcs': wide,
         'same_source_layout_sha256': old['layout_sha256'],
         'private_paired_pcs_payload_before_public_anchor_framing_and_caller': (
@@ -2066,6 +2066,96 @@ def wide_hash_witness_screen(cohorts, old_tokens=0):
         'source_reader_all_gamma_forms_and_full_liveness_compiled': False,
         'complete_certificate_bytes': None,
     }
+    # State trees are charged INSIDE the arena, including the accepted one.
+    # W/KV fold/query records come later; early state roots are charged below.
+    states, w_block, kv_drop, sigma_drop = len(kv_cells), 1 << 24, 8, 5
+    kv_cache = 64*((8*w_block >> kv_drop)-1)
+    sigma_cache = 64*((8*block >> sigma_drop)-1)
+    descriptors, params = 7680*states+144, 2680
+    early_roots = 384*states  # one R/salt plaintext+tag set per state
+    extra = states*kv_cache+descriptors+params+early_roots
+    paired_e = paired_rs_opening_screen(n, block, q)['additional_extension_corrections']
+    record_delta = (32*(sigma['base_corrections_including_salts']
+                       -wide['base_corrections_including_salt'])
+                    +48*(sigma['extension_corrections_including_paired_sumchecks']
+                         -wide['extension_corrections_including_partial_sumchecks']-paired_e))
+    change = sigma_cache-cache+record_delta+extra
+    phases = {key.removesuffix('_known_union_before_full_replay_runtime'): value+change
+              for key, value in result.items()
+              if key.endswith('_known_union_before_full_replay_runtime') and key != 'commit_known_union_before_full_replay_runtime'}
+    phases['opening_query'] += 144*q*((1 << sigma_drop)-(1 << drop))
+    phases['commit_sigma'] = root_peak+sigma_cache-cache+extra
+    # Commit the new state BEFORE allocating Sigma's tree; do not rebuild old.
+    phases['commit_new_kv'] = (b_bytes+48*w_block+144*tile+extra
+                              +old['source_descriptors_bytes']+head_arrays+65536)
+    core = phases['opening_first_pass']-80*block
+    p0, seed, k1 = weight_cohort_screen(cohorts), input_link_screen(cohorts), kv_transition_screen(old_tokens)
+    phases['p0_compact_operands'] = core+p0['compact_operand_vectors_bytes']+p0['norm_sumcheck_scratch_upper_bytes']
+    phases['seed_reducer'] = core+seed['single_reducer_two_extension_vectors_bytes']
+    phases['k1_append'] = core+k1['single_plane_two_extension_vectors_bytes']+k1['single_plane_public_eq_tables_bytes_upper']+65536
+    phases['k1_view_router'] = core+k1['read_route_one_bit_prefix_two_tail_vectors_bytes_at_capacity']+k1['single_plane_public_eq_tables_bytes_upper']+65536
+    phases['t1_one_layer'] = core+max(value for case in attention_product_screen(old_tokens)['cases']
+                                    for key, value in case.items() if key.endswith('_arrays_bytes'))
+    records = (32*(joint['base_corrections_including_salts']+sigma['base_corrections_including_salts'])
+               +48*(joint['extension_corrections_including_paired_sumchecks']
+                    +sigma['extension_corrections_including_paired_sumchecks']
+                    +old['known_caller_extension_corrections']+1))
+    post = (records+states*kv_cache+descriptors+params+old['source_descriptors_bytes']
+            +24*(joint['joint_rows']+sigma['joint_rows'])+65536)
+    w_arrays = wide_hash_rs_screen(1 << 35, w_block, q)
+    phases['sigma_tail_after_b_release'] = 256*block+wide['all_inner_full_trees_bytes']+post+144*q*(1 << sigma_drop)
+    phases['joint_w_kv_after_sigma_release'] = (256*w_block+w_arrays['all_inner_full_trees_bytes']
+                                             +post+144*q*(1 << kv_drop))
+    hash_calls = max(joint['private_hash_calls_including_anchors_and_one_recursion'],
+                     sigma['private_hash_calls_including_anchors_and_one_recursion'])
+    phases['hash_after_compact_release'] = 13312*(1 << (hash_calls-1).bit_length())+post
+    arena = 6442450944
+    result['joint_w_kv_candidate']['known_state_cache_schedule'] = {
+        'credit': False, 'kv_cached_first_height': kv_drop,
+        'kv_cache_bytes_each': kv_cache, 'state_cache_count': states,
+        'sigma_cached_first_height': sigma_drop, 'sigma_cache_bytes': sigma_cache,
+        'state_and_joint_descriptor_bytes': descriptors,
+        'early_state_root_record_bytes': early_roots, 'public_parameter_bytes_one_copy': params,
+        'sigma_record_delta_from_nondeduplicated_baseline': record_delta,
+        'literal_sigma_c1_with_height4_and_state_caches_bytes': phases['compact_c1_commit']+cache-sigma_cache,
+        'known_authenticated_record_bytes_after_b_release': records,
+        'arena_phases_bytes_before_uncompiled_reader_gamma_runtime': phases,
+        'known_phase_max_bytes': max(phases.values()),
+        'arena_remaining_before_uncompiled_reader_gamma_runtime': arena-max(phases.values()),
+        'new_state_commit_source_visits': 32,
+        'new_state_commit_native_fft_butterflies': 32*52*kv_cells[-1],
+        'accepted_state_rebuild_visits_if_cache_missing': 32 if old_tokens else 0,
+        'query_expanded_kv_columns_each_upper': q*(1 << kv_drop),
+        'query_expanded_sigma_columns_upper': q*(1 << sigma_drop),
+        'query_kv_group_digest_buffer_bytes_one_at_a_time': 144*q*(1 << kv_drop),
+        'query_local_kv_hash_calls_each_upper': [q*(1 << kv_drop)*((cells//w_block+9)//10)
+                                               +q*((1 << kv_drop)-1) for cells in kv_cells],
+        'query_local_sigma_hash_calls_upper': q*(1 << sigma_drop)*((n//block+9)//10)+q*((1 << sigma_drop)-1),
+        'requires_last_b_consumer_before_joint_opening': True,
+        'complete_gamma_liveness': None,
+    }
+    if old_tokens == CONTEXT_CAP-150:
+        # Only dyadic metadata is nonmonotone in O among these known arrays.
+        # All padded domains, live head arrays, records and other scratch are
+        # upper-bounded by the capacity case; no Gamma/reader bound is inferred.
+        tilings = [3*(o+100).bit_count()+sum((o+i).bit_count() for i in range(101, 151))
+                   for o in range(CONTEXT_CAP-150+1)]
+        maximum = max(tilings)
+        excess = maximum-tilings[-1]
+        descriptor_delta, rq_top_delta = 12000*excess, 48*60*excess
+        envelope = {key: value+descriptor_delta+(rq_top_delta if key == 'rne_top' else 0)
+                    for key, value in phases.items()}
+        result['joint_w_kv_candidate']['known_state_cache_schedule']['all_context_known_array_envelope'] = {
+            'credit': False, 'old_lengths_checked': len(tilings),
+            'max_qk_dyadic_rectangles_per_layer': maximum,
+            'maximizing_old_lengths': [o for o, value in enumerate(tilings) if value == maximum],
+            'descriptor_delta_above_capacity_bytes': descriptor_delta,
+            'rne_top_additional_rq_form_bytes': rq_top_delta,
+            'arena_phase_upper_bytes': envelope,
+            'known_phase_max_upper_bytes': max(envelope.values()),
+            'arena_remaining_before_uncompiled_reader_gamma_runtime': arena-max(envelope.values()),
+        }
+    return result
 
 
 def requantization_screen(cohorts):

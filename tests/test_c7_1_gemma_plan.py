@@ -935,6 +935,109 @@ def test_joint_w_kv_recount_excludes_separate_codec_but_not_complete_feasibility
         plan.wide_hash_rs_screen(16, 4, 3, 1)
 
 
+def test_joint_state_cache_schedule_accounts_for_b_barrier_and_reconstruction():
+    report = plan.report()
+    required_phases = {'commit_new_kv', 'commit_sigma', 'p0_compact_operands',
+        'seed_reducer', 'k1_append', 'k1_view_router', 't1_one_layer', 'rne_link',
+        'rne_top', 'range', 'opening_first_pass', 'compact_c1_commit',
+        'compact_c1_sumcheck', 'opening_query', 'sigma_tail_after_b_release',
+        'joint_w_kv_after_sigma_release', 'hash_after_compact_release'}
+    for screen, expected in zip(report['wide_hash_witness_screens'],
+            ((1, 6288651520, 6268344096, 4999717632, 99762080),
+             (2, 6330273152, 6331657600, 5066691712, 129825536))):
+        s = screen['joint_w_kv_candidate']['known_state_cache_schedule']
+        states, commit_kv, commit_c1, joint, records = expected
+        phases = s['arena_phases_bytes_before_uncompiled_reader_gamma_runtime']
+        assert set(phases) == required_phases
+        assert s['state_cache_count'] == states
+        assert s['kv_cache_bytes_each'] == 64*((8*(1 << 24) >> 8)-1) == 33554368
+        assert s['sigma_cache_bytes'] == 64*((8*(1 << 23) >> 5)-1) == 134217664
+        assert phases['commit_new_kv'] == commit_kv
+        assert phases['compact_c1_commit'] == commit_c1
+        assert phases['joint_w_kv_after_sigma_release'] == joint
+        assert s['known_authenticated_record_bytes_after_b_release'] == records
+        assert s['known_phase_max_bytes'] == max(phases.values()) == max(commit_kv, commit_c1)
+        assert s['arena_remaining_before_uncompiled_reader_gamma_runtime'] == 6442450944-max(phases.values()) > 0
+        assert s['state_and_joint_descriptor_bytes'] == 7680*states+144
+        assert s['early_state_root_record_bytes'] == 384*states
+        assert s['new_state_commit_source_visits'] == 32
+        state_cells = screen['joint_w_kv_candidate']['weight_and_state_opening']['source_cells'][-1]
+        assert s['new_state_commit_native_fft_butterflies'] == 32*52*state_cells
+        assert s['accepted_state_rebuild_visits_if_cache_missing'] == (32 if states == 2 else 0)
+        assert s['query_expanded_kv_columns_each_upper'] == 256*357 == 91392
+        assert s['query_expanded_sigma_columns_upper'] == 32*357 == 11424
+        assert s['query_kv_group_digest_buffer_bytes_one_at_a_time'] == 144*91392 == 13160448
+        assert s['query_local_kv_hash_calls_each_upper'] == ([182427] if states == 1 else [1279131]*2)
+        assert s['requires_last_b_consumer_before_joint_opening']
+        assert s['complete_gamma_liveness'] is None and not s['credit']
+        # Neither a second scratch nor the full W/KV opening can coexist with B.
+        assert joint+report['cut_witness_screens'][0]['checkpoint_storage_bytes'] > 6442450944
+        assert not screen['joint_w_kv_candidate']['inherits_previous_memory_peaks']
+    last = report['wide_hash_witness_screens'][-1]['joint_w_kv_candidate']['known_state_cache_schedule']
+    assert last['literal_sigma_c1_with_height4_and_state_caches_bytes'] == 6465875328 > 6442450944
+    assert last['arena_remaining_before_uncompiled_reader_gamma_runtime'] == 110793344
+    envelope = last['all_context_known_array_envelope']
+    assert envelope['old_lengths_checked'] == 3947
+    assert envelope['max_qk_dyadic_rectangles_per_layer'] == 494
+    assert envelope['maximizing_old_lengths'] == [3945]
+    assert envelope['descriptor_delta_above_capacity_bytes'] == 96000
+    assert envelope['rne_top_additional_rq_form_bytes'] == 23040
+    assert envelope['known_phase_max_upper_bytes'] == 6331753600
+    assert envelope['arena_remaining_before_uncompiled_reader_gamma_runtime'] == 110697344
+    assert not envelope['credit']
+    # Verify the nonmonotone corner with the actual layout, not bit counts alone.
+    path = Path(__file__).resolve().parents[1]/'manifests/c7-d126-gemma31b-source-metadata-v1.json'
+    metadata = json.loads(path.read_text())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition'] == 'private_text'])
+    almost = plan.wide_hash_witness_screen(cohorts, 3945)['joint_w_kv_candidate']['known_state_cache_schedule']
+    assert almost['known_phase_max_bytes'] == 6331752400 > last['known_phase_max_bytes']
+    assert all(value <= envelope['arena_phase_upper_bytes'][phase]
+               for phase, value in almost['arena_phases_bytes_before_uncompiled_reader_gamma_runtime'].items())
+    assert report['packed_weight_bytes']+report['kv_capacity_i16_bytes']+report['wide_hash_rs_screen'][
+        'outer_internal_only_tree_bytes']+6442450944 == 75823096256
+
+
+def test_accepted_kv_tree_reconstruction_ignores_physical_tail_but_not_prefix_tampering():
+    # Two padded planes of different width share the SAME backing row arrays.
+    backing = [[[100*plane+10*row+col for col in range(width)] for row in range(5)]
+               for plane, width in enumerate((4, 2))]
+    def source(length, leak_tail=False):
+        padded = 1 << (length-1).bit_length()
+        values = []
+        for plane in backing:  # decreasing cube volume, aligned offsets
+            width = len(plane[0])
+            assert len(values) % (width*padded) == 0
+            values.extend(x for row in range(padded) for x in (
+                plane[row] if row < length or leak_tail and row < min(padded, len(plane)) else [0]*width))
+        return values+[0]*((1 << (len(values)-1).bit_length())-len(values))
+    def tree(values):
+        rows = [plan.small_goldilocks_fft(values[i:i+4]+[0]*12) for i in range(0, len(values), 4)]
+        levels = [[('leaf', j, tuple(row[j] for row in rows)) for j in range(16)]]
+        while len(levels[-1]) > 1:
+            a, h = levels[-1], len(levels)
+            levels.append([('node', h, j, a[2*j], a[2*j+1]) for j in range(len(a)//2)])
+        return levels
+    accepted_source, accepted_tree = source(3), tree(source(3))
+    accepted_cache = {(h, j): value for h in range(2, 5) for j, value in enumerate(accepted_tree[h])}
+    assert len(accepted_source) == 32 and len(source(5)) == 64
+    # A speculative append changes the candidate but never accepted padding.
+    candidate_before = tree(source(5))[-1][0]
+    backing[0][3][0] += 1
+    assert source(3) == accepted_source and tree(source(3))[-1] == accepted_tree[-1]
+    assert tree(source(5))[-1][0] != candidate_before
+    assert tree(source(3, leak_tail=True))[-1] != accepted_tree[-1]
+    for query in range(16):
+        start = (query >> 2) << 2
+        lower = tree(source(3))[0][start:start+4]
+        for h in (1, 2):
+            lower = [('node', h, (start >> h)+j, lower[2*j], lower[2*j+1])
+                     for j in range(len(lower)//2)]
+        assert lower[0] == accepted_cache[2, query >> 2]
+    # Reusing that cache after overwriting an accepted prefix is invalid.
+    backing[0][0][0] += 1
+    assert tree(source(3))[2][0] != accepted_cache[2, 0]
+
+
 def test_deduplicated_merkle_frontier_matches_all_paths_and_tight_node_bound():
     # Collision-free symbolic nodes test wiring/counts, not A5 hash security.
     for d in range(1, 4):
@@ -1043,7 +1146,7 @@ def test_output_tiled_encoder_and_pruned_tree_keep_the_same_positions():
     while len(level) > 1:
         level = [parent(level[2*j], level[2*j+1], len(full), j) for j in range(len(level)//2)]
         full.append(level)
-    for drop in (1, 2, 4):
+    for drop in range(1, domain.bit_length()):
         # Tiles must include whole retained-bottom subtrees.
         local_tile = max(tile, 1 << drop)
         cache, visits = {}, 0

@@ -13,6 +13,7 @@ it is not another status ledger.
 | [G1 feasibility](c7.1-feasibility.md) | Analytic admission criteria, carrier derivations and counterexamples, next constructive obligation |
 | [G2 committed MAC opening](c7.1-committed-mac-opening.md) | Private-verifier bridge, ideal MAC/FS simulation, grouped hash/GKR, exclusions and remaining obligations |
 | [A3 recursive RS opening](c7.1-recursive-rs-opening.md) | Fixed-cap encoder, private recursion, bounded sampling, ideal-oracle binding, accounting and concrete-hash compilation gap |
+| [W-cut witness](c7.1-cut-witness.md) | Conditional W-free replay theorem, checkpoint storage, KV obligations and remaining GKR/PCS read dependencies |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |
 | [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [tests](../tests/test_c7_1_gemma_plan.py) | Small executable accounting/algebra checks |

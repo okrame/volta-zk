@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """C7.1: exact, small algebra checks and planning arithmetic; NOT a prover.
 
-No old protocol implementation is imported. The only historical input is the
-digest-pinned model metadata. No weights, network, build or output file needed.
+No old protocol implementation is imported. Historical inputs are only the
+digest-pinned model metadata and logical config. No weights, network or build.
 The cleartext diagnostic below MUST NOT be used to prove private weights.
 """
 
@@ -16,6 +16,7 @@ from pathlib import Path
 P = (1 << 64) - (1 << 32) + 1
 REVISION = "5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89"
 METADATA_SHA256 = "1ddce0cc399d636488728f663fb756804a07e6b3ad14d43f527c7ad746e27ce2"
+QSPEC_SHA256 = "1af05e2b8d617e261ee20988618a0d05fe1ea5f9f217f04b28c391815e050687"
 LIFETIME_ATTEMPTS = 1 << 20
 CONTEXT_CAP = 4096
 
@@ -107,6 +108,68 @@ def split_i16(value):
     natural(value, "i16", -(1 << 15), (1 << 15) - 1)
     high, low = divmod(value, 256)
     return low, high  # unsigned low byte, signed high byte; never float
+
+
+def cut_witness_screen(old_tokens=0, prompt_tokens=100, generated_tokens=50):
+    """Conditional W-cut storage, NOT a scalar lowering or proof schedule.
+
+    Raw i16 dot accumulators use signed 48-bit STORAGE (i64 arithmetic).
+    Weighted RMS uses exact x*w before W-free scaling/rounding; this choice
+    must be respected by the still-uninstantiated integer lowering.
+    Counts cover terminal absorption and raw global K/V aliasing.
+    """
+    natural(old_tokens, "old KV tokens", 0, CONTEXT_CAP)
+    natural(prompt_tokens, "prompt tokens", 1, CONTEXT_CAP)
+    natural(generated_tokens, "generated tokens", 1, CONTEXT_CAP)
+    tokens = prompt_tokens + generated_tokens
+    if old_tokens + tokens > CONTEXT_CAP:
+        raise ValueError("conversation exceeds 4096; no eviction")
+    path = Path(__file__).resolve().parents[1] / "manifests/c7-d126-gemma31b-qspec-dag-v1.json"
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != QSPEC_SHA256:
+        raise ValueError("logical model config changed")
+    config = json.loads(raw)["model_config"]
+    hidden, ffw = config["hidden_size"], config["intermediate_size"]
+    matrix_per_token = norm_per_token = 0
+    for kind in ("local", "global"):
+        layers = config[kind + "_layers"]
+        query = config["query_heads"]*config[kind + "_head_dim"]
+        kv = config[kind + "_kv_heads"]*config[kind + "_head_dim"]
+        # Global v_source aliases RAW K, not normalized K; v_norm is unweighted.
+        value = 0 if kind == "global" else kv
+        matrix_per_token += layers*(query + kv + value + 2*hidden + 2*ffw)
+        norm_per_token += layers*(4*hidden + query + kv)
+    matrix = tokens*matrix_per_token + generated_tokens*config["vocab_size"]
+    norm = tokens*norm_per_token + (tokens-1)*hidden
+    embedding = tokens*hidden
+    storage = 6*matrix + 4*norm + 2*embedding
+    # Rectangular eager scores, including masked entries. One prefill plus
+    # generated_tokens single-row executions, the last with no decision head.
+    pairs = (prompt_tokens*(old_tokens+prompt_tokens)
+             + generated_tokens*(old_tokens+prompt_tokens)
+             + generated_tokens*(generated_tokens+1)//2)
+    score_cells = config["layers"]*config["query_heads"]*pairs
+    arena = 6_442_450_944
+    return {
+        "credit": False,
+        "old_kv_tokens": old_tokens,
+        "new_processed_tokens_including_terminal_absorb": tokens,
+        "matrix_accumulator_cells": matrix,
+        "weighted_norm_product_cells": norm,
+        "embedding_cells": embedding,
+        "checkpoint_scalar_cells": matrix+norm+embedding,
+        "checkpoint_storage_bytes": storage,
+        "arena_bytes_after_checkpoint_only": arena-storage,
+        "checkpoint_only_fits_arena": storage <= arena,
+        "all_i64_matrix_storage_bytes_with_same_other_cuts": 8*matrix+4*norm+2*embedding,
+        "max_i16_dot_abs_bound": ffw*32768**2,
+        "rectangular_attention_cells_per_plane": score_cells,
+        "three_retained_i16_attention_planes_only_bytes": 6*score_cells,
+        "three_attention_planes_alone_exceed_arena": 6*score_cells > arena,
+        "w_free_replay_requires_declared_lowering_and_kv_consistency": True,
+        "complete_proof_w_passes": None,
+        "complete_live_memory_bytes": None,
+    }
 
 
 def limb_dot(a, b):
@@ -540,6 +603,13 @@ def report():
     matrix_shapes = Counter(tuple(t["shape"]) for t in tensors if len(t["shape"]) == 2)
     max_dot = max(columns for _, columns in matrix_shapes)
     assert max_dot == 21_504
+    cut = cut_witness_screen()
+    # Candidate B-role cap is fixed at 2^20, not chosen as a function of N/q.
+    # These reuse A3 ARRAY formulas only, not an instantiated B/KV protocol.
+    b_opening = recursive_rs_opening_screen(1 << 30, 1 << 20, 357)
+    b_tree = 32*(8*(1 << 20)-1)
+    b_known = b_opening["proof_known_arrays_conservative_union_bytes"]
+    b_hash = 5504*b_opening["padded_permutation_instances"]
     candidates = []
     for block_bits in (20, 22, 24, 26):
         block = 1 << block_bits
@@ -614,6 +684,16 @@ def report():
         ],
         "recursive_rs_opening_screen": recursive_rs_opening_screen(n, 1 << 24, 357),
         "a3_challenge_screen": a3_challenge_screen(),
+        "cut_witness_screens": [cut_witness_screen(old) for old in (0, 3900, 3946)],
+        "candidate_cut_opening_arrays": {
+            "credit": False,
+            "ephemeral_outer_b_tree_bytes": b_tree,
+            "b_plus_prehash_known_arrays_and_outer_tree_bytes": (
+                cut["checkpoint_storage_bytes"] + b_known - b_hash + b_tree),
+            "post_release_known_arrays_and_outer_tree_bytes": b_known+b_tree,
+            "requires_b_final_consumer_before_release": True,
+            "excludes_caller_kv_pcg_and_runtime": True,
+        },
         "complete_certificate_bytes": None,
         "complete_h100_peak_bytes": None,
         "complete_security_bits": None,

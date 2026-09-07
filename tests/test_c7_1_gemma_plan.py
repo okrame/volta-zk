@@ -574,3 +574,102 @@ def test_fixed_hash_circuit_is_not_an_independent_random_oracle():
     oracles = list(product(range(7), repeat=2))
     assert Fraction(sum(h[0] == fixed[0] for h in oracles), len(oracles)) == Fraction(1, 7)
     assert Fraction(sum(h == fixed for h in oracles), len(oracles)) == Fraction(1, 49)
+
+
+def test_w_cut_counts_include_aliases_terminal_absorption_and_old_context():
+    initial = plan.cut_witness_screen()
+    assert initial["matrix_accumulator_cells"] == 647_475_200
+    assert initial["weighted_norm_product_cells"] == 314_145_024
+    assert initial["embedding_cells"] == 806_400
+    assert initial["checkpoint_scalar_cells"] == 962_426_624
+    assert initial["checkpoint_storage_bytes"] == 5_143_044_096
+    assert initial["arena_bytes_after_checkpoint_only"] == 1_299_406_848
+    assert initial["all_i64_matrix_storage_bytes_with_same_other_cuts"] == 6_437_994_496
+    assert initial["rectangular_attention_cells_per_plane"] == 31_248_000
+    for old in (150, 3900, 3946):
+        screen = plan.cut_witness_screen(old)
+        assert screen["checkpoint_storage_bytes"] == initial["checkpoint_storage_bytes"]
+        assert screen["rectangular_attention_cells_per_plane"] == 31_248_000 + 288_000*old
+    assert plan.cut_witness_screen(3900)["three_attention_planes_alone_exceed_arena"]
+    assert plan.cut_witness_screen(3946)["three_retained_i16_attention_planes_only_bytes"] == 7_006_176_000
+    assert not plan.cut_witness_screen(0, 4095, 1)["checkpoint_only_fits_arena"]
+    assert not initial["credit"] and initial["complete_proof_w_passes"] is None
+    for args in ((True,), (-1,), (3947,), (0, 0, 50), (0, 100, 0), (4096, 1, 1)):
+        with pytest.raises(ValueError):
+            plan.cut_witness_screen(*args)
+    arrays = plan.report()["candidate_cut_opening_arrays"]
+    assert arrays["ephemeral_outer_b_tree_bytes"] == 268_435_424
+    assert arrays["b_plus_prehash_known_arrays_and_outer_tree_bytes"] == 5_730_163_408
+    assert arrays["post_release_known_arrays_and_outer_tree_bytes"] == 1_308_539_600
+    assert not arrays["credit"] and arrays["excludes_caller_kv_pcg_and_runtime"]
+    # This simultaneous subset is already too large, unlike an upper-bound
+    # union that merely fails to establish a feasible physical schedule.
+    assert initial["checkpoint_storage_bytes"] + 2*24*(1 << 25) == 6_753_656_832
+
+
+def test_i48_storage_preserves_exact_accumulators_not_a_field_codec():
+    bound = 21_504*32768**2
+    assert bound < 1 << 45 and 2*bound < plan.P
+    assert plan.cut_witness_screen()["max_i16_dot_abs_bound"] == bound
+    for value in (-bound, -32768**2, -1, 0, 1, 32768**2, bound):
+        packed = value.to_bytes(6, "little", signed=True)
+        assert int.from_bytes(packed, "little", signed=True) == value
+        residue = value % plan.P
+        assert (residue if residue <= plan.P//2 else residue-plan.P) == value
+    for value in (-(1 << 47)-1, 1 << 47):
+        with pytest.raises(OverflowError):
+            value.to_bytes(6, "little", signed=True)
+
+
+def test_cut_replay_never_reads_weights_and_mutations_violate_cut_equalities():
+    # Synthetic DAG identity only: neither a Gemma implementation nor E2E.
+    # Lambdas accessing weights=None would fail if replay touched W.
+    weights = ((2, -3), (4, 5), (-2, 3), (7, -1))
+
+    def execute(w, supplied=None):
+        recorded, residuals = {}, []
+
+        def cut(key, expression):
+            value = expression() if supplied is None else supplied[key]
+            recorded[key] = value
+            if w is not None:
+                residuals.append(value-expression())
+            return value
+
+        x = [cut(("embed", i), lambda i=i: w[0][i]) for i in range(2)]
+        raw_k = cut(("dot", 0), lambda: sum(x[i]*w[1][i] for i in range(2)))
+        raw_v = raw_k  # alias BEFORE weighted K normalization
+        statistic = 1 + sum(v*v for v in x)  # W-free nonlinear input
+        weighted = [cut(("norm", i), lambda i=i: x[i]*w[2][i]) for i in range(2)]
+        norm = [round(Fraction(v, statistic)) for v in weighted]
+        append = (raw_k + norm[0], raw_v*raw_v + norm[1])
+        kv = (11, -13, *append)  # no overwritten/evicted prefix
+        free_value = sum(kv) + sum(v*v for v in norm)
+        raw_out = cut(("out", 0), lambda: free_value*w[3][0] + norm[0]*w[3][1])
+        return (round(Fraction(raw_out, 8)), kv), recorded, residuals
+
+    output, checkpoint, residuals = execute(weights)
+    assert not any(residuals)
+    replay, same, _ = execute(None, checkpoint)
+    assert replay == output and same == checkpoint
+    for key in checkpoint:
+        bad = {**checkpoint, key: checkpoint[key]+1}
+        assert any(execute(weights, bad)[2])  # even if rounding hides output change
+    # Ties-to-even is retained at the declared point, never moved across W.
+    assert [round(Fraction(v, 2)) for v in (-3, -1, 1, 3)] == [-2, 0, 0, 2]
+
+
+def test_stacked_matrix_fold_requires_only_one_weight_scan_for_fixed_output_point():
+    x = [[3*t + k*k - 5 for k in range(8)] for t in range(2)]
+    w = [[7*j - k + j*k for k in range(8)] for j in range(4)]
+    c = [[plan.dot(row, weight) for weight in w] for row in x]
+    rt, rj, rk = [11], [13, 17], [19, 23, 29]
+    # One pass over W builds W_bar; no query-dependent W forms are scanned.
+    x_bar = [plan.mle([row[k] for row in x], rt) for k in range(8)]
+    w_bar = [plan.mle([row[k] for row in w], rj) for k in range(8)]
+    assert plan.mle(sum(c, []), rj+rt) == plan.dot(x_bar, w_bar)
+    assert plan.mle(w_bar, rk) == plan.mle(sum(w, []), rk+rj)
+    assert plan.mle(x_bar, rk) == plan.mle(sum(x, []), rk+rt)
+    # The final inner point is an input to this link, not a future coin
+    # that a preceding reduction/PCS scan can silently know.
+    assert plan.mle(w_bar, rk) != plan.mle(w_bar, [rk[0]+1, *rk[1:]])

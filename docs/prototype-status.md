@@ -79,6 +79,16 @@ feasibility proofs before prover implementation and measurements.
   Primary BCS/AROM sources expose why replacing the commitment hash by an
   independent RO while retaining its concrete private checker is invalid.
   The classical ROM requirement remains unchanged.
+- The [W-cut witness analysis](c7.1-cut-witness.md) proves a conditional
+  replay equivalence: checkpoint raw private-matrix accumulators, weighted
+  norm products and embedding lookups; regenerate the rest without W.
+  For 100+50 these packed checkpoints occupy 5,143,044,096 bytes, independent
+  of old KV length. This requires the declared integer lowering and proofs
+  of every cut/KV equality, not trusted checkpoints. Holding all of B through
+  A3's literal first W-recursion sumcheck exceeds the arena; a conditional
+  B-opening array schedule identifies where B could instead be released.
+  GKR weight folding still needs source access: adding its matrix scan to
+  the four generic reduction/PCS passes does not fit the read limit.
 - The [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) and
   [focused tests](../tests/test_c7_1_gemma_plan.py) check paired-fold
   arithmetic, service accounting, candidate integer/Fp3 decompositions,
@@ -87,16 +97,18 @@ feasibility proofs before prover implementation and measurements.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 23 focused checks also cover finite query sampling, exact ideal
-  simulation distributions and the excluded independent-RO hybrid.
+  The 27 focused checks also cover finite query sampling, exact ideal
+  simulation distributions, the excluded independent-RO hybrid, W-cut
+  counts/replay/mutations and finite-field matrix-fold identities.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
   schedule remain unproved. GKR and witness regeneration must fit the same
   source-read and memory accounting; output-bound FS constrains folding order.
   The literal generic Hobbit wrapper with trace replay requires at least
-  seven source-recomputing traversals. The historical operator census omits
-  scalar shapes/dtypes and cannot certify the missing witness liveness.
+  seven source-recomputing traversals. The new W-cut removes replay's W
+  dependence under its lowering premises, but does not prove a complete
+  physical schedule or remove GKR's weight-evaluation scan.
 - `C71FsLifetimeSound`, adaptive soundness transfer and complete
   malicious-verifier privacy still need their runtime premises and complete
   lifetime event/query census; the ideal online simulation step is proved above.
@@ -117,8 +129,10 @@ The A3 opening stages add no W reads after queried source columns exist;
 they do not supply the missing Gemma witness. The static model anchor keeps PCS openings private,
 without reusing G1's public split mask. Setup hash work remains substantial;
 the bounded encoder and known grouped-commitment arrays occupy 5,637,144,576
-bytes, before uncompiled runtime staging. Alongside it, close witness and form
-availability within the four W reads. Complete the relation, both lifetime
+bytes, before uncompiled runtime staging. Alongside it, use the W-cut theorem
+to build the GKR/form schedule: bind the cuts and KV, discharge late B
+consumers, and fuse or remove the extra weight scan within four W reads.
+Complete the relation, both lifetime
 proofs and full certificate/resource accounting before admitting prover
 implementation. Then prepare the small checks and, after hardware/spending
 authorization, the complete composition case and real Gemma workloads.

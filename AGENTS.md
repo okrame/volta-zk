@@ -43,10 +43,20 @@ below it is supporting history, not competing authority.
   retry is allowed unless separately authorized.
 - On every new pod, synchronize repository files and small tracked evidence
   only with `git push`/`git pull` against a GitHub HTTPS remote.  Do not use
-  `gh`, Git-over-SSH, SCP/rsync, repository archives or exported credentials.
+  `gh`, Git-over-SSH, SCP/rsync, repository archives or credentials copied or
+  exported from the workstation.
   Verify the clean SHA after every pull; generated weights, setup and large
   run artifacts stay pod-local unless the active design explicitly says
   otherwise.
+- For a future pod run that has received every required owner GO, use
+  `scripts/runpod_harness.sh`. Run `git-preflight` before compilation or asset
+  generation. Fetch/clone public source anonymously; authenticate HTTPS pushes
+  only with a repository-scoped, expiring fine-grained token supplied as the
+  RunPod Secret `VOLTA_GITHUB_TOKEN`. Never place the token in a remote URL,
+  Git config, shell history, command argument or tracked/untracked file.
+  `pause POD_ID` stops GPU billing but retains billable volume storage;
+  `delete POD_ID --confirm POD_ID` permanently terminates the pod. Create paid
+  pods with provider-side `--stop-after` or `--terminate-after` deadlines.
 
 ## Build, test and generated artifacts
 

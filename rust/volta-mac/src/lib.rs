@@ -10,6 +10,7 @@ pub mod auth;
 pub mod authed;
 pub mod c6_native_target_profile;
 pub mod c6_trace;
+pub mod c7_fp3;
 pub mod corr;
 pub mod open;
 pub mod transcript;
@@ -49,6 +50,10 @@ pub use c6_trace::{
     C6RuntimeInstanceCaptureGuard, C6RuntimeInstanceValues, C6TraceError, C6TraceNode,
     C6TraceProductClosure, C6TraceSourceManifest, C6TraceTargetCohort, C6TraceTargetProfile,
     C6TraceToken, C6VerifierTraceSnapshot, C6_OPERATION_PLAN_VERSION,
+};
+pub use c7_fp3::{
+    c7_fp3_transfer_prover, c7_fp3_transfer_verifier, C7Fp3ProverAuthed, C7Fp3TransferCorrection,
+    C7Fp3VerifierKey,
 };
 pub use corr::{
     C6FullfieldWitnessAudit, C6FullfieldWitnessDraw, C6SubfieldWitnessAudit, C6SubfieldWitnessDraw,

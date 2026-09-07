@@ -9,6 +9,15 @@
 //!   → `ligero::open_zk` / `verify_open` (claim bound to the public C_W).
 
 pub mod batch;
+pub mod c7_gemma_bkv_events;
+pub mod c7_gemma_frontend;
+#[cfg(test)]
+pub mod c7_phase_a;
+pub mod c7_policy2_reference;
+#[cfg(feature = "c7-policy3-reference")]
+pub mod c7_ra_batch_open_screen;
+#[cfg(feature = "c7-policy3-reference")]
+pub mod c7_policy3_leaf;
 pub mod c61_authenticated_whir;
 #[cfg(feature = "c61-p3-authenticated-reference")]
 pub mod c61_authenticated_whir_p3;
@@ -64,6 +73,9 @@ pub mod c6_wrapper_pcs;
 pub mod c6_wrapper_persisted;
 pub mod layer_layout;
 pub mod ligero;
+pub mod gemma31b_terminal_manifest;
+pub mod gemma31b_qspec_dag;
+pub mod gemma31b_bf16;
 pub mod merkle;
 pub mod ntt;
 pub mod x4;

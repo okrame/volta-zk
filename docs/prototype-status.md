@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — HISTORICAL LOCAL BASELINE / NO POD; C6.1 RESPONSE-LOCAL PUBLIC COMPRESSION — HISTORICAL BINDING OBSTRUCTION; C6.2 CLOSED — 17 A100 FAILURES / CACHE PRECOMMIT DIAGNOSED; C6.3 CLOSED — REAL-PCG UNDERFLOW / ZERO CERTIFICATES; C6.4 CLOSED — A100 COMPILER NO-GO / ZERO CERTIFICATES; C4.1 REAL E2E COMPLETE — FUNCTIONAL PASS / PROVER GATE FAIL)
+# Prototype Status Ledger — C7.1 Gemma-31B
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -7,6 +7,2501 @@ task-specific design named by its latest entry are the repo-local plan of
 record; no external plan is authoritative.
 
 ## Active authority — read first
+
+Active design: `c7.1-gemma31b-design.md`. Earlier designs are historical.
+
+- **Objective.** Stateful private-weight Gemma-31B with session VOLE-MAC
+  boundaries and committed-weight evaluations: 45–50 s warm prover,
+  6.4–8.2 s CPU-only four-core verifier, preferred 30 MB, maximum 35 MB.
+  Targets are not measurements.
+- **Owner authorization.** Up to four packed-W proof reads; inference/proving
+  on the same H100. Temporary arena 6,442,450,944 bytes, GPU peak below
+  80 billion bytes, no spill/second weight copy/full codeword.
+  Soundness and malicious-verifier privacy must each exceed 78 bits lifetime.
+- **Preserved.** Pinned checkpoint, context 4,096, first workload 100+50,
+  Goldilocks/Fp3, offline classical ROM, global Q64 and 2^20 attempts.
+  Complete E2E requires instantiated FS.
+- **Service.** Delta-independent ModelSetup; residency, connection, finite
+  capacity, roots and attempts have separate costs. No slot/correlation reuse;
+  optional ACK, no implicit truncation. First activation may have distinct
+  semantics/cost; it does not reduce Q64. One sequential user, live KV preserved.
+- **Evidence.** 86 Python checks cover accounting/arithmetic and
+  regressions, not complete cryptography or hardware.
+  FS theorem and complete four-read schedule unproved; Rust/Lean unchanged.
+- **Flexibility.** Budgets, carrier, codec and kernels remain choices.
+  Setup 2.10x means persistent model bytes/packed W; old W 125% is comparison only.
+- **Work boundary.** Small local checks only; no provider, paid GPU, weights
+  or heavy build. No owner decision pending.
+- **Continuation.** Close carrier/blind MAC/PCS, runtime-to-Lean and adaptive
+  ROM links; compile records, masks, lifetime queries/events, allocations and
+  work. Historical interactive proofs do not transfer. Prepare
+  finite-PCG/FS/chunk-parity checks, then real Gemma 100+50 through 4,096 tokens.
+  Every E2E/heavy run requires authorized hardware and explicit spending
+  authorization after local preparation.
+
+- **2026-09-07 — C7 branch integrated into main before documentation reorganization.**
+  Owner requests merging `agent/c7-logvole` at `f56b559` into main at
+  `58d9350`, preserving research sources and closing the C7 worktree before
+  introducing the minimal C7.1 wiki. Both historical ledger streams are
+  retained; C7.1 remains current. All historical paragraphs and raw benchmark
+  files from both parents were checked unchanged. The 86 focused non-native
+  Python tests pass. Shared WHIR code is identical to main; module/import
+  additions merge automatically. Rust/Lean builds and E2E were not run under
+  the current local-work boundary. No new protocol or hardware credit.
+
+- **2026-09-07 — full-document consistency review and feasibility scopes
+  clarified.** All C7.1 sections were reread against the current small
+  diagnostic and relevant archived sources. The four-pass diagram covers
+  reduction plus PCS, not a demonstrated full-prover schedule: GKR and
+  proof-only witness regeneration cannot add uncounted W reads. Output-bound
+  FS also prevents challenge-dependent folding before output is fixed.
+  The whole witness live set and retained model artifacts still need a
+  physical memory schedule; the 2.10x persistent setup cap is not HBM credit.
+
+  The document now defines N/q/h and the uniform polynomial remainder,
+  exposes the candidate PCS's block-log-block work and qN/block column
+  traffic, requires common block geometry and fixes evaluation claims before
+  their batching challenge. Initial token counts include special tokens;
+  current KV tables assume the last emitted token has also been processed,
+  with completion work charged. A pending-token alternative must revise
+  the relation and accounting explicitly.
+
+  Idealized capacity/root counts are separated from actual failed and
+  prefetched events and from the different W/B/KV root families. Mask rank
+  uses the field of independent randomness; Fp3 outputs/corrections expand
+  into three Fp coordinates, not one. Finite parsing bounds per-call work,
+  not lifetime invocations; non-FS primitives need their own adversary
+  resource bounds. H100 variant and actual available memory are recorded.
+  Requirements remain unchanged; no complete >78-bit, certificate, memory
+  or timing claim follows. Eight focused C7.1 Python checks succeed; the
+  documentation arithmetic/links/history are checked without Rust/Lean
+  builds, model tensors, E2E, provider contact or hardware measurement.
+  Twelve local links, balanced fences, the 250-word capsule, preserved
+  history and exact planning arithmetic check successfully; `git diff --check`
+  is clean. Layouts and kernels remain implementation choices.
+
+- **2026-09-07 — three scoped C4.1 implementation lessons retained.** The
+  external `c4.1-seed-streaming-fiat-shamir.md` was read in full; source
+  SHA-256 `6874e412976005f99fc76a3846e017f651db7414f79ee200cb86c83e4b5679fe`.
+  C7.1 records only private hiding randomness versus public FS challenges,
+  verifier-recomputed canonical content digests, and optional bounded-block
+  expansion with small-reference/chunk-size/one-versus-four-worker parity.
+  Expansion and FS replay remain included in complete verification time.
+  These are requirements for future tests, not new passing protocol tests.
+  No C41FS1 codec, typed/XOR4-MAJ7 construction, numerical security claim,
+  RAM cap or client-side weight setup is imported. Existing canonical-order
+  and one-time-state requirements are not duplicated. This documentation-only
+  clarification adds no theorem, implementation, performance or hardware
+  credit; small document/link/history checks only, with no builds or provider.
+
+- **2026-09-06 — concrete FS requirement, lifetime theorem obligation and
+  first-activation semantics documented.** Complete C7.1 tests must derive
+  challenges from the concrete transcript hash. `C71FS-v1` specifies a
+  BLAKE3-XOF reference, canonical typed prefixes, Fp/Fp3/index sampling and
+  fail-closed finite extraction; the complete codec and sampler bounds remain
+  to be compiled. This is a documentation requirement, not a new executable
+  FS implementation or a standard-model guarantee for BLAKE3.
+
+  `C71FsLifetimeSound` names the required conditional theorem, with an
+  adaptive prefix-escape obligation and explicit lifetime auxiliary events.
+  The conservative oracle census includes all adversarial Q64 queries plus
+  additional honest queries, including verification of unqueried proof
+  prefixes. A tighter Q+1 transfer is not assumed. Existing Lean finite-set
+  bounds and logical composition lemmas are identified with their remaining
+  premises; no frozen Lean source is changed and no complete >78-bit claim
+  is established. Malicious-verifier privacy needs its own FS simulator.
+
+  The owner permits distinct first-ever activation semantics and cost.
+  Initialization, new chat, continuation and renewal remain distinct, with
+  authenticated genesis/predecessor and no reset of shared consumptions.
+  This permits no online proof challenges, new trust assumption or exclusion
+  of response-dependent bytes. Failed setup before slot allocation must also
+  have a justified lifetime census.
+
+  The external ROWFOLD source matches the existing immutable archive. Its
+  interactive schedule is adaptable in principle, but the existing relation,
+  mask-rank, N-log-q and total-arena counterexamples remain relevant; its
+  conditional security and W-only census are not complete C7.1 results.
+  Verification is limited to source digest, the two existing small algebraic
+  counterexample checks and documentation consistency checks; all succeed.
+  Eleven local links, four Lean theorem references, unchanged historical
+  entries and the 249-word active capsule were checked. No build,
+  provider, weight download, E2E or hardware measurement is part of this edit.
+
+- **2026-09-06 — sequential service memory reuse and initial real E2E
+  context scope clarified.** The owner confirms first real Gemma-31B E2E
+  tests within 4,096 total tokens, counting accepted history, new prompt and
+  generated output. The plan starts at 100+50, exercises continuations and
+  reaches the actual capacity boundary with an appropriately sized workload;
+  intermediate steps remain implementation choices. Full-context latency is
+  measured separately from the original short-workload targets. Complete
+  certificate, memory, soundness and privacy requirements are unchanged.
+
+  One initial user permits sequential inference/proving on the same H100.
+  Proof preparation may accompany inference; weights, live KV and still-used
+  witness data remain available. No blanket release, CPU/disk spill or
+  reduction of the global adversary model follows. The current i16 layout
+  has 901,120 KV bytes/token: 150 tokens use 135,168,000 bytes, leaving
+  3,555,819,520 bytes of capacity unused; at 4,050 tokens only 41,451,520
+  bytes remain unused, and at 4,096 none remain. Progressive allocation or
+  temporary borrowing is optional, subject to view/padding, lifetime and
+  physical-allocation evidence. Borrowed temporary bytes still count toward
+  the existing arena cap. No recovered-memory or hardware result is claimed.
+
+  This is a documentation-only checkpoint, with exact cache arithmetic,
+  Markdown/local-link and capsule-length checks. No protocol test, build,
+  weight download, provider contact or benchmark execution is part of it;
+  future real E2E still requires explicit hardware spending authorization.
+
+- **2026-09-06 — owner-approved design refinements; implementation choices
+  remain open.** C7.1 now names the executable-to-Lean links, concrete offline
+  challenge order, raw-private-MAC disclosure prohibition, honest-party
+  ownership of lifetime counters, and single-cache recovery/retransmission
+  requirements. Durable honest storage excludes arbitrary snapshot rollback;
+  no external allocator, database, codec or kernel is selected by this edit.
+  A conditional lemma remains conditional until its runtime premises are
+  discharged; the 480 declaration is not a compiler-completeness theorem.
+
+  Accounting scopes are explicit: persistent model setup includes packed W
+  and retained model artifacts under 2.10x, or 128,928,850,176 bytes. Setup
+  time, client traffic, transient storage and GPU residency remain separate.
+  D126's 6,543,685-byte W subcodec/125% ceiling is historical comparison
+  evidence, not a second cap on C7.1's redistributable W family budget.
+  The complete 35,000,000-byte ceiling includes response-dependent renewal
+  records and applies to declared continuations, not only genesis. The
+  total temporary arena counts all implementation-controlled transient
+  buffers; reserved capacity and GPU completion govern actual reuse.
+
+  The work plan adds finite-real-PCG composition checks, intermediate
+  CPU/CUDA differentials, complete phase traffic/work and retained-memory
+  checks after accept/reject/refresh. Local work stays small; every E2E and
+  heavy benchmark remains on explicitly authorized hardware, beginning with
+  a small complete case before large assets. No new hardware authorization,
+  protocol implementation, theorem or measured performance is claimed.
+  Verification: `git diff --check` is clean; five local links/fragments,
+  Markdown fences and the exact setup-cap arithmetic check successfully.
+  The active capsule has 241 words. No builds, protocol tests or benchmark
+  artifacts were produced; historical evidence remains unchanged.
+
+- **2026-09-05 — four proof reads admitted; model/connection/capacity costs
+  separated; ARM64 verifier and kernel diagnostics specified.** The owner
+  explicitly permits up to four resident packed-W reads for proving under
+  unchanged 45–50 s prover, 6.4–8.2 s verifier, 35,000,000-byte certificate,
+  total-arena and H100-memory limits. The updated requirement is strictly
+  greater than 78 bits for the complete applicable soundness/privacy games,
+  not rounded 78 bits or only a dominant term. Offline classical ROM, global
+  Q64 and the attempt lifetime remain unchanged. This is algorithm authority,
+  not permission to contact a provider or buy GPU time.
+
+  The active design now requires Delta-independent ModelSetup, one resident
+  model shared by successive prompts, connection-scoped keys, finite
+  capacity, and one-time slots/correlations. Initial and refreshed mask roots
+  are charged separately without resetting their global privacy consumption
+  on reconnect. The one-user accounting model distinguishes prepared versus
+  used capacity/roots, counts reserved aborts, clips the final capacity at
+  2^20 slots, and propagates unknown unit costs. It does not implement a
+  durable session allocator or prove ModelSetup noninterference. At 100 new
+  prompt plus 50 output tokens per pair, 27 pairs use 4,050 context positions;
+  pair 28 is not silently truncated. Larger lifetime examples span explicitly
+  separate conversations while retaining connection/capacity state.
+
+  Local `lscpu --json` exposes four Apple aarch64 vCPUs, one thread per
+  core, CPU set 0–3, AES/ASIMD/PMULL, but no exact CPU model. Guest RAM is
+  12,526,514,176 bytes. The full verifier target now explicitly applies to
+  this class of CPU without GPU or remote assistance; no x86 timing transfer
+  is assumed. The existing ARM AES path was inspected, not imported or timed.
+
+  The static compiler derives nine private matrix shapes and inner width
+  at most 21,504 from digest-pinned metadata. New diagnostics check all
+  65,536 i16 decompositions, 256 edge products, eight dot lengths and 900
+  Fp3 product pairs. The i16 candidate uses four s8/u8 products and i64
+  reconstruction; the Fp3 candidate uses six base products with the unchanged
+  u^3=2 relation. They are algebraic optimization candidates, not implemented
+  CUDA or changed Rust backends. Full-i16 robustness tests do not widen the
+  frozen symmetric quantization domain. P7's Fp2 roofline and GPT-2-fixed
+  inference kernel were inspected and not reused as Gemma evidence.
+
+  Four W reads charge 245,578,762,240 source bytes. The generic paired
+  reduction at b=2^24 separately charges 240,451,055,616 abstract Fp3
+  multiplications before sumchecks, forms, masks and PCS; this is a schedule
+  subtotal, not a universal lower bound or hardware prediction. Detailed
+  future diagnostics distinguish integer/SIMT, tensor decomposition, Fp3,
+  memory traffic, scheduler stalls, allocations, PCG and host/GPU timeline.
+  NVIDIA's replay behavior was checked in primary documentation; profiling
+  must not clone the full resident model or reuse production one-time state.
+
+  Verification: 86 focused non-native Python tests pass (2.53 s), including
+  eight new tests. A separate small algebra/report check used 18,388 KiB
+  peak RSS and approximately 0.004 s; this describes the local diagnostic,
+  not Gemma prover/verifier performance or a benchmark run of record. No
+  Cargo/Lean build, kernel launch, weights, paid provider, new dependency or
+  build cache. The active design and capsule record the authorization and
+  exact continuation; complete certificate/security/timing remain unmeasured.
+
+- **2026-09-05 — C7.1 opened from first principles, with a constructive
+  paired-fold diagnostic and an explicit source-pass decision.** The owner
+  requests a new design oriented toward Gemma-31B performance rather than
+  another disposition table. `docs/c7.1-gemma31b-design.md` is now the active
+  design. The required stateful designated-verifier architecture, private
+  weights and session-VOLE authenticated boundaries/evaluations are retained.
+  The preferred certificate target is 30,000,000 bytes and its ceiling is
+  35,000,000 bytes; prover and verifier targets remain 45–50 s and 6.4–8.2 s.
+  Old internal query/terminal choices are documented starting points, not
+  automatically instantiated parts of a new relation. No security, privacy,
+  field, offline interface, two-pass or total-arena relaxation is inferred.
+
+  Research used the existing AnyDoc Markdown copies of Hobbit, LogVOLE,
+  OpenLLM and DeepProve and checked their primary ePrint pages. The design
+  distinguishes DV-specific savings from optimizations already used by public
+  systems. It introduces a correct bilinear paired-fold identity and the
+  second-pass MLE reduction, with explicit conditional interactive error and
+  separate obligations for zero knowledge, ROM and the original commitment.
+  The direct composition with Hobbit Construction 4 takes four source passes
+  because the final opening point follows the reduction's second pass. It is
+  a candidate reference, not a two-pass construction or complete C7.1 proof.
+  Studying it as an admitted alternative requires the stated owner decision;
+  no universal four-pass lower bound is claimed.
+
+  `scripts/c7_1_gemma_plan.py` reads digest-pinned model metadata only and
+  imports no historical protocol code. Its self-check covers 16 block shapes,
+  independent dense MLE links, unequal EQ forms, every nonzero quadratic over
+  F7 and malformed lengths. It derives 61,394,690,560 packed-W bytes,
+  3,690,987,520 KV-capacity bytes, and 14,914,321,920 bytes remaining before
+  all other allocations. For b=2^24 and a flat unmasked 2^35-cell source,
+  the four-buffer/three-row-vector subtotal is 1,610,760,192 bytes and the
+  clear algebraic payload is 100,896 bytes. Neither is a complete GPU peak
+  or private certificate. Complete security, certificate and timing outputs
+  deliberately remain unknown, not zero.
+
+  Verification: the new standalone self-check completes; all 78 focused
+  non-native Python regression tests pass (2.53 s). These are component tests,
+  not a Gemma benchmark. `git diff --check` is clean. Local checks ran without
+  weights, provider contact, Cargo/Lean builds or new dependencies. This worktree
+  has no `.venv`; the project environment at
+  `/home/okrame/projects/volta-zk/.venv` is used for the final check. No build
+  caches or benchmark record were created. The old D126 source, audit and
+  frozen results remain intact. The active capsule is updated with this
+  design boundary; C7.1 uses progress/evidence language, not old verdict labels.
+
+- **2026-09-05 — owner identifies the actual ROWFOLD report; absence claim
+  corrected, v2 rejected as written after direct source review.** The file
+  `/home/okrame/.claude/jobs/6ce710fb/tmp/D126-ROWFOLD-report.md` was read in
+  full and archived byte-for-byte as `docs/c7-d126-rowfold-v2-source-20260904.md`,
+  SHA-256 `1be8cf1d94ddefe83c86f79751411a26b12c4eeda5cb3e956f5e9604e9d290e4`.
+  It does contain a proposed relation and two-pass pseudocode. The previous
+  “report absent” diagnosis was incomplete and is withdrawn. Its initial
+  commitment is in setup; standard-WHIR dense-state and Hobbit three-pass
+  controls are not derivations of this carrier. The earlier 51.54-GB dense
+  control must not be assigned to v2's 6.44-GB row combination. The existing
+  local design GO already covers reviewing/repairing this candidate; no
+  duplicate GO or provider access is needed for that work.
+
+  The controlling findings are in `docs/c7-d126-rowfold-v2-review.md`.
+  Section 6 explicitly charges `N*ceil(log2(2q))` and then freezes q to call
+  the coefficient independent: this violates the active complexity rule.
+  Section 5.3 retains 6,442,450,944 bytes of v plus a 4,294,967,296-byte NTT
+  buffer, already 10,737,418,240 bytes against the total arena. The suggested
+  existing NTT is full-output and additionally stores 2,147,483,648 bytes of
+  twiddles; no output-pruned implementation or compatible allocation schedule
+  exists. Full certificate and H100 coexistence were already BLOCKED in the
+  source itself. Its q266/root8192/interactive security row cannot replace
+  the active q357/root4096/offline-Q64 profile.
+
+  An exact EQ-form test refutes the generic shared-fold EvalLink identity:
+  for selector point `(3/4,2/3)`, row weights `(2,3)` and i16 row differences
+  `(3,0),(-2,0)`, the combined vector difference is zero but the claimed
+  functional difference is minus one; the all-c sum is one. A separate tiny
+  Goldilocks test isolates a row from two pairs of fresh-chain openings under
+  chosen nonzero interactive challenges and recovers its live/mask
+  coefficients. For the source's own mask geometry, 965 such pairs (1,930
+  attempts) expose 8,214,080 independent row evaluations against 8,208,384
+  mask cells. This rejects its arbitrary-challenge interactive privacy
+  argument, not the unconstructed offline-FS variant. A new rank proof is
+  required rather than transferring that lemma.
+
+  Status reports now distinguish source identification from admission and
+  reject source-digest drift. V2 is NO-GO as written; repaired carrier,
+  realized SECURITY_78 and overall D126 remain BLOCKED. No active field,
+  trust, query/mask profile, protocol code or frozen Lean statement changed.
+  Verification: 78 focused non-native Python tests pass. No Cargo/Lean build,
+  large allocation, weight download, provider contact or benchmark run of
+  record occurred. Only the 30,788-byte report was archived with the review
+  and small diagnostic/status changes; no build caches were created.
+
+- **2026-09-05 — proof-size provenance corrected; dense-fold and early-query
+  shortcuts rejected locally; no complete carrier constructed.** The owner
+  asks to complete the missing proof bytes and obtain an actual two-pass,
+  source-linear, no-spill carrier within one 6,442,450,944-byte arena before
+  paid hardware work. The deterministic record count can and must be closed
+  locally, but the construction needed to produce those records is absent.
+
+  The active budget now recomputes every W round's oracle and leaf counts,
+  payload, salts, exact compact-tree frontier and framing directly from the
+  frozen Gemma dimensions/q vector. It imports no historical implementation.
+  The frontier algorithm is independently checked against every opened-leaf
+  subset for compact trees with 1--13 leaves. It reproduces the 4,965,096-byte
+  W opening subcodec and 4,977,268-byte partial reservation including fixed
+  W/all-plane/container allowances. These are reserved subcodec counts, not
+  a complete serializer or jointly attained maxima in a real FS transcript.
+
+  The 25,482,394-byte heuristic includes 11,050,776 bytes of unselected D31
+  B/KV substitutes, 9,379,670 bytes of illustrative compute/base-GKR and
+  75,248 bytes of illustrative MAC/framing. It is neither a lower nor an
+  upper bound. Its apparent 4,517,606-byte headroom to 30 MB is not certified.
+  With the current 4,977,268-byte partial reservation retained, the unfilled
+  target budget is 25,022,732 bytes, including every missing record exactly
+  once; additional W records also have their separate 1,566,985-byte limit.
+  Full certificate size and full-growth reference remain `None`. The
+  45--50-second and four-core verifier ranges remain owner targets, not
+  predictions grounded in a complete execution path. Kernel optimization
+  alone does not establish feasibility.
+
+  Actual selected geometry gives a dense first-fold message of `2^31`
+  Fp3 coefficients, or 51,539,607,552 bytes: eight times the arena. The next
+  materialized encoded oracle would require 824,633,720,832 bytes. This
+  rejects dense materialization only; it is not a general impossibility
+  theorem. A new Goldilocks adversarial fixture constructs a degree-357
+  polynomial that agrees with zero at all 357 early sample points but has
+  value one at the claim point. It rejects equality checks whose samples are
+  revealed before the folded-word commitment, without requiring a hash
+  collision. It does not attack or replace the frozen correctly ordered PCS.
+
+  Primary-source research of Hobbit, ePrint 2025/1214, Construction 4 and
+  Theorem 2, identifies one commitment pass plus two opening passes. That
+  direct schedule is `NO-GO` under the current total two-pass order.
+  Precommitting in setup would be a distinct, unselected relation/schedule
+  needing mask, distance, Q64, retained-state and complete-codec analysis;
+  it receives no transferred security or performance credit. The <1-MB
+  PDF/AnyDoc archive, hashes and exact counterexample are documented in
+  `c7-d126-rowfold-two-pass-disposition.md`. No external code was adopted.
+
+  Verification: 76 focused non-native Python tests pass; no Rust or Lean
+  source changed and neither build was opened. No target cache, large tensor,
+  source shard, provider contact or benchmark run of record was created.
+  Realized SECURITY_78, full certificate, two sweeps, source-linear PCS
+  complexity and complete memory fit remain `BLOCKED`. The authorized local
+  construction task is not achieved by these rejection checks; pod GO
+  remains unavailable until the full pre-pod gates close.
+
+- **2026-09-05 — Gemma logical-shape compiler and native tensor packing
+  pass; performance targets and optional-ACK flow are explicit.** The owner
+  reiterates 45--50 s warm prover, about 30 MB complete certificate, 6.4--8.2 s
+  verifier on four cores and a separate 19.186 s one-time storage load. These
+  remain low-confidence, unmeasured targets. The budget now includes
+  response-local correlation preparation in both prover/verifier timing and
+  complete framing in proof bytes. Setup, quantization, network transfer and
+  root refresh have separate cost boundaries.
+
+  The Gemma-only logical-shape compiler refines every existing DAG node to
+  exact logical ports, shapes, input links, private source keys and contraction
+  widths. It derives 83,023 output ports, 104,322 input-port edges, 610 aliases
+  and 6,120 cache views while covering all and only 772 private tensor keys.
+  Its canonical record stream has SHA-256
+  `35c6716f0b8ca5ffc1e089c592af647dcf3c094ed692d7398bff8fbb5561e7d3`.
+  Matrix shapes independently recover the previous dense/QK/PV MAC census.
+  It rejects same-sized DAG rewiring and preserves the raw global K-to-V alias,
+  indexed GQA, selected final row and predecessor K/V ports. Attention counts
+  all 31,248,000 rectangular cells: 21,744,000 allowed and 9,504,000 masked.
+  Concrete dtypes, integer primitives, GKR-domain padding, CUDA lane padding,
+  proof-retention lifetimes and runtime-source closure remain absent. Logical
+  shape PASS is not an exact integer-wire or H100 PASS.
+
+  The 1,841,924,224 owned real output elements would require 3,683,848,448
+  bytes if all could be stored in i16. Retaining them simultaneously with the
+  known conditional H100 subtotal gives 75,467,988,992 bytes and leaves
+  4,532,011,008 bytes before B, masks, chains, GKR scratch, integer temporaries,
+  CUDA/runtime and allocator reserve. Storing those same outputs in Fp or Fp3
+  instead gives conditional totals 86,519,534,336 or 115,990,321,920 bytes:
+  `NO-GO_IF_SIMULTANEOUS` under the named retention assumption. No representation
+  or physical-memory credit is claimed.
+
+  The new Rust tensor component computes the exact minimum BF16-to-i16
+  exponent and converts with integer RNE. Its caller supplies one bounded
+  tensor buffer, reused for scanning/conversion after one source read. The
+  largest private tensor needs 2,818,572,288 host bytes; it was not allocated
+  here. Exhaustive tests compare 17,301,504 value/exponent pairs against an
+  independent dyadic reference, establish exponent minimality for every
+  positive finite BF16 magnitude, and exercise invalid/truncated/budget
+  rejection. The <=1-MiB fixture driver matches Python packed bytes. Complete
+  native shard hashing/placement/atomic publication and production throughput
+  remain blocked; this does not replace the scalar integrated ingester yet.
+
+  The owner-confirmed service flow requires local secret-key verification to
+  finish before any optional ACK. A next prompt binds the accepted predecessor;
+  missing ACK does not recycle attempts or correlations. Connection/capacity
+  setup is finite, and the current 256 root epochs/255 refreshes remain counted.
+  Session-state/transcript refinements are still required for protocol credit.
+
+  Verification: 74 focused Python tests and 12 focused Cargo tests pass;
+  standalone native tests also pass. Only narrow single-job Cargo compilation
+  was used; host free space was not independently established for a broad
+  workspace/Lean rebuild. Lean is unchanged. No provider contact, full weights,
+  H100 measurement or benchmark run of record occurred. Build caches are
+  removed at this checkpoint. Realized SECURITY_78, full certificate, two
+  sweeps, source-linear PCS complexity and complete memory fit remain BLOCKED.
+
+- **2026-09-05 — owner requires a pre-pod-complete implementation; paid H100
+  is measurement, not protocol discovery.** This corrects the prior resume
+  order without changing the frozen Gemma profile or granting provider access.
+  No provider was contacted and no large artifact was created.
+
+  The checked-in metadata already fixes all 1,188 source-tensor shapes and
+  offsets. The model configuration and the 51-execution workload are enough
+  to compile every logical activation shape, active view, alias, KV-old/new
+  length and attention-mask cell without the private weight bodies. Exact
+  wires and the GKR values `K`, `d[]`, `sum_d` and `n` are outputs of the
+  integer lowering and cohort compiler; common points, `hfin` and PCS links
+  are scheduler/protocol obligations. They are not H100 measurements and must
+  be emitted and checked locally before a pod is requested.
+
+  The existing owner GO at `ba9d4c5` already covers designing ROWFOLD from
+  first principles under the frozen field, offline transcript order, two
+  source sweeps, one 6,442,450,944-byte arena and unchanged trust model. A new
+  owner decision is needed only if that work would change one of those
+  boundaries. The former `GO-PCS-REDESIGN` label was too broad: no new GO is
+  requested for the authorized ROWFOLD carrier, but replacing the underlying
+  PCS, transcript or trust model would require a separate owner decision. None
+  of these decisions is a fallback after a failed RunPod.
+
+  The pre-pod gate now requires: the pinned public runtime-source closure; a
+  shape-stable integer lowering and exact wire census; concrete GKR cohorts,
+  common-point proofs and final PCS links; real B/KV geometry and mask/event
+  scopes; the complete 78-bit calculation; exact certificate framing; the
+  static H100 allocation timeline; a CPU reference prover/verifier on small
+  fixtures; and a native, source-once weight scanner/packer tested bit for bit
+  against the scalar reference. The two-sweep implementation must reject a
+  third source read, and the runbook must fail before paid work on every unmet
+  prerequisite.
+
+  Only values that depend on the full private bodies may remain for a
+  storage-rich remote stage: 772 weight exponents, packed digest, calibrated
+  activation values, full goldens and runtime value binding. Only real CUDA
+  workspace/allocator behavior, HBM traffic, kernel rate and end-to-end time
+  require the H100. The future literal `GO-RUNPOD` will be requested only
+  after the local gate is green; a retry or expanded billed scope requires a
+  new explicit owner GO after the failure is diagnosed.
+
+- **2026-09-05 — three local Gemma GO scopes complete at static/intake level;
+  exact GKR, ROWFOLD carrier and pod remain BLOCKED.** No provider was
+  contacted, no model body was downloaded and no large artifact was created.
+  All new active artifacts are Gemma-only and do not import parameters from a
+  historical model profile.
+
+  The QSPEC manifest and independent Python/Rust compilers expand the frozen
+  51-execution workload to 79,963 high-level operator invocations and 101,322
+  tensor-output dependency edges. They bind the prompt and other public
+  inputs, cover exactly the 472 canonical W owners and keep the final logits
+  to one selected row per decision without claiming an output-pruned
+  algorithm. The head-aware static census is 313,344,000 norm weighted-element
+  equations. The unpruned final norm has 801,024 equations over 149 rows.
+  Nodes still lack exact shapes, dtype, padding, integer lowering and runtime
+  dependency closure, so this is not an exact wire census or base-GKR circuit.
+
+  `C7GemmaQuantAccumulator.lean` proves that one physical norm bundle covers
+  every token, role, head and coordinate. Local head-use counts are
+  `[1,1,1,1,16,32]`; global counts are `[1,1,1,1,4,32]`. It also proves the
+  exact selector from prefill row 99 plus 49 singleton decode rows to the 50
+  LM-head rows, and proves an i16 dot-product bound of
+  23,088,334,918,656 for width at most 21,504, below half the Goldilocks
+  modulus. Theorems use only the reported standard Mathlib axioms. Runtime
+  refinement of all hypotheses remains blocked.
+
+  The reference ingest validates complete safetensors layout and digest while
+  feeding BF16-to-i16 conversion from the same single sequential source pass.
+  It enforces the minimum per-tensor exponent, canonical 772-tensor order, an
+  exclusive output lock, crash-orphan refusal, fsync and atomic no-overwrite
+  publication. The CLI permits one canonical packed path inside the shard
+  directory, preventing parallel differently named copies. Thirteen
+  tiny-fixture tests pass. The scalar Python path has no
+  production-throughput credit. Full local ingest is `NO-GO`: the two pinned
+  shards need 62,546,338,248 bytes and the packed result 61,394,690,560 bytes.
+
+  The ROWFOLD intake freezes `C0 -> rho0 -> C1 -> rho1 -> C2`, but no named
+  versioned report, digest, relation, pseudocode or implementation is present.
+  Therefore the carrier, `C(N,q,h)=c_source*N+P(q,h)` and two-HBM-sweep gates
+  remain `BLOCKED`. Under separately named standard-WHIR assumptions only, a
+  retained `2^32`-cell state needs 34,359,738,368 bytes and exceeds the
+  6,442,450,944-byte arena by 27,917,287,424 bytes; this is a conditional
+  rejection screen, not a ROWFOLD impossibility proof.
+
+  No exact Gemma GKR term is claimed: the compiler does not yet emit `K`,
+  `d[]`, `n`, common points, final links or PCS rows. The conditional complete
+  allocation remains 79.481814299560 bits and exceeds 78 by 1.481814300 bits,
+  but realized security is `BLOCKED`; 84 bits at q357 is `NO-GO`. The known
+  H100 subtotal is 71,784,140,544 bytes, while `v`, B, chains, GKR,
+  activations, CUDA/runtime, allocator and workspaces remain missing.
+
+  Checks at this boundary: 66 focused Python tests pass; the focused Gemma
+  Rust suites and seven B/KV event tests pass; the full Rust workspace stops
+  only at the unchanged historical C6 source guard, and passes when only that
+  named guard is excluded; the full 3,278-job `lake build VoltaZk` passes.
+  Planning remains unmeasured: 45--50 s prover, about 30 MB complete
+  proof and 6.4--8.2 s verifier on four cores. The 19.186 s storage load is
+  one-time model onboarding, not per response. Rust and Lean build caches were
+  removed; the VM finishes with about 66 GB filesystem headroom and 9.8 GiB
+  available RAM.
+
+- **2026-09-05 — QSPEC/DAG, pinned weights and ROWFOLD design receive owner
+  GO; local full-weight ingest is NO-GO; provider remains BLOCKED.** The owner
+  authorizes all three previously requested continuation items. This permits a
+  new Gemma-only arithmetic specification and operator DAG, use of the two
+  pinned private shard bodies, and a ROWFOLD relation/algorithm designed from
+  scratch. It does not authorize importing arithmetic or implementations from
+  a historical model profile.
+
+  The clean workstation at `4fdf1b77565d9e5262e380b1aaa4b784f4788eb8`
+  has about 66 GB filesystem headroom and 10 GiB available RAM. The two source
+  shards occupy exactly 62,546,338,248 bytes; retaining their required
+  61,394,690,560-byte packed i16 result would require 123,941,028,808 bytes
+  before build caches, LUTs, goldens or temporary output. Downloading or
+  packing the complete model here would therefore violate the owner's
+  no-saturation condition and is `NO-GO`. `/tmp` is a 5.9-GB tmpfs and is not
+  an alternative artifact store.
+
+  Local work is limited to specifications, compilers over checked-in metadata,
+  tiny fixtures and narrow builds. Large shard bodies, packed weights, golden
+  traces and H100 execution must be pod-local on at least 400 GB usable
+  storage, with an H100 80 GB, at least 256 GiB host RAM until streaming is
+  proved, and a provider-side deadline. The owner's phrase “in case, move to
+  RunPod” records intent but is not substituted for the separate literal
+  provider GO required by the active hard stop. No provider was contacted and
+  no pod was created at this boundary.
+
+- **2026-09-04 — all three Gemma-31B local GO tranches complete; static
+  frontend and formal GKR envelope land, realized D126 stays BLOCKED.** No pod,
+  full checkpoint body or hardware measurement was used. The work is isolated
+  from historical model compilers and introduces no active legacy parameter
+  source.
+
+  The pinned source acquisition read only 160,616 bytes from the two
+  safetensors files: both headers and the 120 bytes holding the 60 public
+  `layer_scalar` values. The canonical metadata inventory contains 1,188
+  physical tensors: 772 private text tensors, 60 public layer scalars and 356
+  forbidden vision/bridge tensors. It proves exact shapes, half-open shard
+  offsets and byte coverage without claiming that private weight bodies were
+  fetched. The 60 BF16 patterns are non-uniform and are bound in order by both
+  Rust and a Lean build-time guard.
+
+  The frozen workload is batch one, 100 prompt tokens and exactly 50 greedy
+  decode steps: 150 live tokens inside a 4,096-token context/KV capacity. The
+  prompt text, tokenizer revision/digest, first 100 token IDs, lowest-ID tie
+  rule and no-early-stop rule are fixed. The 50 output IDs and bit-exact
+  witness remain blocked. Persistent source, certificate and transcript
+  padding are zero; temporary device-lane padding must be emitted and counted.
+
+  `GemmaQuantV1` is deliberately an uninstantiated requirements contract. It
+  freezes BF16 input, little-endian i16 output, zero point, Fp3, 772 private
+  tensors and exactly 61,394,690,560 packed bytes. Thirteen required values,
+  including exponents, rounding, saturation, accumulator bounds, LUTs,
+  goldens and cross-language equality, remain null. It cannot return credit.
+
+  The isolated Rust frontend validates every pinned digest and compiles 472 W
+  relation descriptors: 410 matrices, 60 ragged norm bundles, tied embedding
+  and final norm. They contain 772 source descriptors and the 60 real public
+  scalars. Runtime weight values are explicitly unbound. B/KV and base-GKR
+  contracts contain required field lists but emit zero rows and zero credit;
+  no synthetic row is promoted to protocol evidence.
+
+  `C7GemmaGKR.lean` imports the exact scalar CSV, proves its census/order, and
+  provides a conditional runtime-manifest refinement. For each heterogeneous
+  cohort shape it specializes the existing malicious-prover theorem to the
+  exact numerator `K + sum(d) + n + 2`. This shape theorem does not claim that
+  runtime member histories share a point. A separate finite union lemma puts
+  supplied bad sets under exactly one `2^64+1` axis. Common-point,
+  scheduler/transcript and ROM refinements for all local queries, sessions,
+  aborts and retries remain missing.
+
+  The exact conditional budget remains 79.481814 bits and already contains a
+  `2^-86` operator/compute reserve. That reserve admits at most
+  4,398,046,508,032 GKR roots without consuming the 64.196173% remaining
+  78-bit error budget. If all that remaining budget were reassigned, the exact
+  additional ceiling would be 722,784,653,514,375 roots; the next root fails
+  the strict 78-bit inequality. This extra ceiling is diagnostic, not the
+  design allocation. The real compiler numerator is absent, so
+  `SECURITY_78` remains `BLOCKED`.
+
+  The H100 checker now binds the workload digest and distinguishes
+  135,168,000 live KV bytes from the 3,690,987,520-byte capacity allocation.
+  It requires every allocation to declare temporary device-lane padding and
+  includes physical allocated bytes in the peak. The complete inventory and
+  allocator trace are still missing, so the static fit receives no credit.
+
+  Verification at this boundary: 48 focused Python tests, 16 focused Gemma
+  Rust tests and the full 3,277-job `lake build VoltaZk` pass. The complete
+  Rust workspace stops only at the unchanged historical
+  `c6_t1_owner::native_persistence_source_guard_bypasses_hidden_u_owner` source
+  guard; skipping exactly that named guard makes every remaining workspace
+  test pass. Full Python gives 104 passes and six failures outside this diff:
+  three stale historical expectations and three missing generated/local
+  artifacts. The new Rust files pass `rustfmt --check`; `git diff --check`
+  passes. Build caches are removed after the scoped checkpoint. Planning
+  remains 45--50 s prover, about 30 MB proof and 6.4--8.2 s four-core verifier,
+  all unmeasured; 19.186 s of storage acquisition is model onboarding only.
+
+- **2026-09-04 — D126 Gemma-31B local static tranche completes; exact
+  declaration PASS, realized admission remains BLOCKED.** The owner-authorized
+  Lean/Rust/Python, 480-terminal compiler, synthetic B/KV/event and static-H100
+  work is complete. No pod, generated model body or hardware run was used.
+  New Gemma modules do not take active geometry or security parameters from a
+  historical model path.
+
+  `manifests/c7-d126-gemma31b-terminals-v1.csv` is the single canonical
+  declaration, bound by BLAKE3
+  `c90c41afaaac0c8da4a3c6e4781cd95dab026477999d6e20f565580db82bda25`.
+  Its 480 records are exactly `472 W + 4 B + 2 KV-old + 2 KV-new`, in ordinal
+  order, with every use axis equal to one. Rust rejects any header, owner,
+  order, source-key or digest drift. An independent comparison with the pinned
+  checkpoint index covers all and only 832 language keys: 772 private learned
+  tensors and 60 public `layer_scalar` keys; 356 vision/bridge keys are
+  forbidden. The private packed census is 30,697,345,280 scalars and
+  61,394,690,560 i16 bytes. The scalar values and their runtime use are not
+  bound.
+
+  `C7GemmaTerminalManifest.lean` checks the shared CSV at build time and proves
+  the declaration/profile censuses. It repairs a discovered overclaim in the
+  earlier uniform-`D` norm statement: the exact Gemma theorem uses a dependent
+  sigma index, proves bundle/per-use equivalence and no cross-role term, and
+  derives local `4*5376+2*256=22,016` and global
+  `4*5376+2*512=22,528` cardinalities. Matrix, tied-embedding and final-norm
+  stacking remain proven generic algebra. No theorem says that a runtime
+  compiler emitted or value-bound all 472 relations.
+
+  `c7_gemma_bkv_events.rs` is a fail-closed synthetic compiler, not a protocol
+  layout. It retains every query pair and tree size, derives `q/U/S/H`, binds
+  terminal ordinals and the shared manifest digest, and requires event scope
+  to cover local queries, concurrent sessions, aborts and retries. It applies
+  `Q_FS_global+1` once across the complete lifetime rather than multiplying by
+  `2^20` again. With one explicitly synthetic root per B/KV plane, the stress
+  fixture derives 256 epochs, 255 refreshes and 471,380,262,912 provisioned
+  lifetime mask loads per root. Real semantics, physical root counts, query
+  geometry, setup and leakage remain `BLOCKED`. Event IDs are caller-owned and
+  rows do not yet distinguish per-root from already-aggregated numerators, so
+  real multi-root union bounds cannot be inferred from this fixture.
+
+  `c7_d126_gemma_h100_liveness.py` checks internal consistency of a
+  caller-supplied inventory spanning packed W, KV, `v`, staging, ROWFOLD, B,
+  masks, constants, chains, ProductClosure, base GKR, activations, workspaces,
+  CUDA/runtime and allocator reserve. It enforces declared lifetimes, aliases,
+  forbidden classes, two W sweeps, batch one, one concurrent GPU response and
+  a 4,096-token prompt/decode split. Adversarial tests closed early-free and
+  early-production counterexamples. It cannot detect an allocation omitted
+  from both the self-declared inventory and rows, or prove realistic minimum
+  sizes. The synthetic 16-allocation KAT has peak 71,986,689,600 B and headroom
+  8,013,310,400 B, but top-level status and `H100_STATIC_FIT` stay `BLOCKED`.
+  The real known subtotal is 71,784,140,544 B with 8,215,859,456 B uncensused;
+  only a compiler-owned inventory plus allocator trace can earn memory credit.
+
+  The base-GKR audit found no safe Gemma instantiation. The existing generic
+  theorem supplies only
+  `R_c=K_c+sum(d_c)+n_c+2` and
+  `epsilon<=(2^64+1)*sum(R_c)/p^3`. Exact admission ceilings are 262,143 roots
+  for one `2^-110` slot or 4,398,046,508,032 roots if the entire
+  `operator_compute` class were used. Missing Gemma cohorts, degrees, common
+  points, final PCS links, Fp3 refinement and ROM lift prevent a concrete term.
+  The current Rust model proof is GPT-specific/Fp2 and its head-shape invariant
+  is false for Gemma, so literal reuse is `NO-GO`. Conditional total arithmetic
+  remains 79.481814 bits; `SECURITY_78` realized remains `BLOCKED`.
+
+  Verification: targeted Lean build passes; 4 terminal-manifest and 7 B/KV
+  Rust tests pass; 38 Python static/adversarial tests pass; new Rust files pass
+  `rustfmt --check`; `git diff --check` passes. The first complete Rust
+  workspace run exposes one unchanged historical source-string guard failure
+  in `c6_t1_owner`; the offending lines are identical at `HEAD`. Rerunning the
+  complete workspace while skipping only that named guard passes all remaining
+  tests. The generated Lean cache was removed after checking.
+
+  Resume needs a new owner GO for pinned header/scalar acquisition and an
+  isolated Gemma-only frontend after `GemmaQuantV1`, workload and padding are
+  frozen. That frontend must emit runtime value bindings, real B/KV roots and
+  rows `{K,n,d[],sum_d,common_point,hfin,PCS links,transcript order}`. Only
+  after the event registry, maximal certificate and compiler-owned H100 map
+  close may a separate hardware GO be requested. Planning stays 45--50 s
+  prover, about 30 MB and 6.4--8.2 s four-core verifier, all low-confidence and
+  unmeasured; the 19.186-s storage acquisition remains model onboarding only.
+
+- **2026-09-04 — D126 switches active authority to Gemma-31B stacked static
+  admission; local deep static work is GO while full admission stays
+  BLOCKED.** The active design is now
+  `c7-d126-gemma31b-static-admission.md`. Supporting history remains
+  append-only but supplies no active parameters. The only accepted active
+  profile is pinned Gemma with context 4,096, q vector
+  `[357,163,152,149,149,149,149,149]`, 472 W terminals, eight B/KV terminals,
+  480 total ProductClosure triples and zero use reducers.
+
+  `C7StackedWeightUse.lean` proves prompt/response `X*W` stacking, the tagged
+  phase-by-six norm bundle without cross terms, both tied-embedding
+  orientations, final-norm stacking and active-versus-padding coverage. Its
+  frozen profile has 472/480 terminals and an explicit 480-entry length-one
+  axis vector, from which zero reducers and zero `UseEta` events are derived.
+  The compiler-to-vector refinement remains open. It specializes the existing scalar product soundness
+  theorem at `T=480`: under its abstract fixed-prefix hypotheses, 480 possible
+  `chi` roots plus two `Delta` roots give exactly 482. Lean also normalizes the
+  selected Q64 budget expression `(2^64+1)*482/p^3`, about 119.087 bits. The
+  concrete C7 Fp3 field/verifier refinement, message-before-`chi` and
+  Delta-independence transcript refinement, and global classical-ROM lift are
+  open. Thus only the numerator passes; its C7/Q64 instantiation and the
+  transformer's base GKR remain blocked.
+
+  The conditional q357 contract assigns each of W/B/KV-old/KV-new at most
+  `2^-81`, retains the 64-slot response allocation and the named hash, PCG,
+  state/replay and codec caps, and is machine-proved below `2^-78`. The exact
+  W-envelope planning row gives 79.481814 bits, uses 35.803827% of the 78-bit
+  error budget and leaves 64.196173%; the weaker dyadic Lean cap still gives
+  78.955606 bits. Neither is achieved security: B/KV schedules, base-GKR
+  degrees/common points/final links, the global ROM composition and every
+  computational reduction remain unproved, so `SECURITY_78=BLOCKED`.
+
+  A Rust helper test rejects tuples other than `4096/472/480/0` field by field
+  and checks that a synthetic 480-one-use vector has no reducer depth; neither
+  is wired into the runtime compiler. The focused Python static suite computes
+  the exact q357 query/gap/mask/rejection fractions, conditional 482-root budget, cumulative security
+  margin, W wire and 105/125/150% caps, Alternative-1 mask geometry, partial
+  H100 map, planning bands and fail-closed full-chain gates. Its seven tests pass. The known W
+  floor is 4,976,700 B; the partial framed slice is 4,977,268 B and the
+  four-plane planning proxy is 25,482,394 B. The H100 subtotal is conditionally
+  71,784,140,544 B only if the selected arena caps hold; major omissions,
+  including the exact `v` allocation and liveness, are named and receive no
+  static-fit credit.
+
+  Verification: the focused Rust Gemma test passes; all seven focused Python
+  tests pass; the narrow and full Lean builds pass with no `sorry` or `admit`.
+  The raw Rust workspace run reaches one unrelated historical C6 source-string
+  guard failure whose offending text is already identical at `HEAD`; rerunning
+  the workspace while skipping exactly that known guard passes every remaining
+  test. Repository-wide `cargo fmt --check` also reports pre-existing format
+  drift outside the changed Rust file; the changed file and `git diff --check`
+  pass. Neither pre-existing issue is modified or hidden by this checkpoint.
+
+  Local full Lean/Rust/Python checking, the exact 480-terminal compiler and
+  refinement, tiny-fixture B/KV/event work and the static H100 liveness map are
+  authorized. Generated Gemma bodies, ROWFOLD implementation without its
+  missing report, full-chain claims, hardware timing, provider/production work
+  and every pod action remain blocked. Planning remains 45--50 s prover,
+  about 30 MB and 6.4--8.2 s verifier for a warm resident model; the 19.186-s
+  storage acquisition is model onboarding only and none of these times has
+  measurement credit.
+
+- **2026-09-04 — owner replaces historical per-phase W uses with one stacked
+  terminal per physical segment; all admission gates remain BLOCKED.** The
+  analytic profile now rejects the old GPT/Gemma W/all/reducer values
+  `102/110/51` and `1,546/1,554/653`, and expects `50/58/0` and `472/480/0`.
+  Prompt and response activation rows, in the repository's `X*W` convention,
+  must be compiled into one operator relation per matrix. Each Gemma layer's
+  six normalization tensors across both phases use one tagged direct sum,
+  while tied embedding and final norm retain explicit distinct roles.
+  AuthBind and the 58/480 ProductClosure triples remain; only `UseEta`, reducer
+  protocol records and their corrections disappear.
+
+  This removes exactly 1,306 Gemma Fp3 reducer masks. Known correlations fall
+  from 1,787 to 481, three-basis slots from 5,361 to 1,443, and the known
+  pre-base-GKR challenge count from 686 to 32. RootMask q357 consumption,
+  attempts/root, setup and refresh do not change. The fixed Gemma outer slice
+  falls 59,132->11,916 B; offline FS saves only the 31,424-B P-to-V part.
+  q357 W floors are now 3,465,620/4,976,700 B, partial certificates including
+  framing are 3,466,188/4,977,268 B, and growth is 1.435949x. The complete
+  certificate remains unknown; its planning point stays about 30 MB.
+
+  The claimed `5 events per raw use` is not the repository formula: the old
+  Gemma control is the mixed `3,387/|Fp3|`. Its summands are not mapped to
+  named bad events, so no new GKR numerator or complete security margin is
+  credited. There is also no existing Lean theorem for prompt/decode GEMM
+  stacking. The required future file is
+  `lean/VoltaZk/C7StackedWeightUse.lean`, with theorem
+  `VoltaZk.c7_stacked_weight_use_compiler_complete`; until its
+  compiler, degrees and event registry exist, the new profile is
+  `credit:false/BLOCKED`.
+
+  Low-confidence warm-resident planning becomes 45--50 s prover, about 30 MB
+  and 6.380--8.134 s weak verifier. The first later measurement remains the
+  real fixed-point H100 kernel: 3,131,129,218,560 logical inference bytes need
+  about 2.087/3.131 TB/s for 1.5/1.0 s. Optional speculative decoding is
+  preregistered only after bit-for-bit full-witness equality, with one
+  all-inclusive 2,000,000,000-B incremental H100 cap; conservatively it leaves
+  less than 6,215,859,456 B in the current partial map. The 19.186-s storage
+  load remains one `ModelOnboarding` occurrence. No code, Lean, test,
+  benchmark, hardware, provider or pod action occurred.
+
+- **2026-09-04 — owner selects Branch A/q357 and ROWFOLD two-pass, but the
+  carrier is BLOCKED at document intake.** The working path now fixes offline
+  classical-ROM Fiat--Shamir with one lifetime-global `Q_FS<=2^64`, first
+  `q=357`, mask Alternative 1 with 256/4,096 service attempts and 4,096/256
+  epochs per GPT/Gemma physical root, one Gemma KV arena, and exact 125% W
+  record caps 3,896,053/6,543,685 B. The 32/512 lifecycle reserve is charged
+  per physical root. Concurrent sessions stay inside the theorem, while one
+  H100 serializes response jobs so KV and proof arenas are not multiplied.
+  The 61,394,690,560-B storage load and its 19.186-s control are one
+  `ModelOnboarding` occurrence, not per-response prover time.
+
+  The selected ROWFOLD candidate must use exactly two 61,394,690,560-B packed-W
+  HBM reads and prove
+  `C=(c_pass1+c_pass2)N+P(q,h)` with both coefficients independent of q and N.
+  Pass 1 fixes the canonical prefix, offline challenges follow, and pass 2
+  emits openings/terminals; a per-round reread, `qN`, `N log q`, `N log N`,
+  full codeword or output-pruned claim without code is NO-GO. No file,
+  relation, pseudocode, hash or compiler named ROWFOLD exists in the checkout
+  or any Git ref, so selection gives no carrier/two-sweep/complexity credit.
+
+  The 6.4-GB decision is conditional GO for one **total temporary arena** capped
+  at 6,442,450,944 B, covering input and output together, with zero spill,
+  persistence or second copy. W+KV+arena is 71,528,129,024 B and leaves
+  strictly less than 8,471,870,976 B; adding historical 256,000,000-B staging
+  and 11,520-B terminal v leaves less than 8,215,859,456 B for every chain,
+  B/GKR/reducer allocation, activation, CUDA/runtime/allocator and workspace.
+  A separate D27 Fp3 output would add 3,221,225,472 B and violates the arena
+  contract; an in-place race-free fold or smaller tile is required. The old
+  C62 block with the same byte count is an Fp2/full-transform cache and grants
+  no ROWFOLD credit. `H100_STATIC_FIT` remains BLOCKED.
+
+  Static inspection also found that Phase-A Rust serializes
+  `header|digest|L|A|Q` under `manifest-container/v1`, while the authoritative
+  design requires `header|L|A|Q|digest` under
+  `manifest/container/v1`. The design grammar wins; test bytes cannot be
+  promoted before correction. B/KV `RoundCap`, exact tokens/artifacts, all
+  ROWFOLD/GKR/security events and complete liveness remain missing. No code,
+  artifact, benchmark, hardware, provider or pod action occurred.
+
+- **2026-09-04 — D126 global-Q64 query-amplification/tight-FS audit keeps the
+  joint result BLOCKED and closes tight FS on the current transcript.** The
+  active design is `c7-d126-q64-query-fs-audit.md`. The owner replaces the old
+  challenge/context assumptions: Gemma's operational
+  cap is 4,096 tokens; `Q_FS_global<=2^64` includes local invisible queries,
+  concurrent sessions, aborts, retries and all `2^20` attempts; 76 bits is the
+  accepted minimum, 78 preferred and 84 optimistic. Classical ROM, offline
+  challenges, one storage acquisition, two packed-source HBM sweeps, one
+  80,000,000,000-B H100 and all no-spill/no-copy/no-`qN` rules remain fixed.
+
+  The non-uniform W recompilation uses first-round controls 347/350/357/362.
+  After exact round union, the W gap and the conditional linear-BLAKE mask
+  term, GPT-2/Gemma have 77.87447/77.54655, 78.90096/78.56346,
+  81.91738/81.54619 and 83.66370/83.27656 bits. Thus q357 is the first
+  requested W control with useful room for 78; q350 is the 76 fallback. The
+  exact W-only byte minima use first q341/q342, q346/q347 and q362/q362 for
+  76/78/84. The q362 minima reach only 84.000484/84.002279 bits, leaving no
+  useful room for positive B/KV/GKR terms. Those terms and every remaining
+  named event are absent, so no complete security row passes. The authoritative weight caps
+  are 3,272,685/5,496,695 B at 105% and 3,896,053/6,543,685 B at 125%. GPT's
+  offline-FS W floor is already 3,374,236 B at q347 and even the minimum
+  W-only 76-bit row is 3,331,836 B and exceeds 105% by 59,151 B; 105% is
+  NO-GO and 125--150%
+  remains an unselected preregistration band. Earlier contradictory synthetic
+  cap/margin values are stale; the new audit records the authoritative values
+  without rewriting history.
+
+  All three W-mask paths are explicit. Halving attempts/root to 256/4,096
+  doubles epochs to 4,096/256 and keeps lifetime exposure unchanged. Enlarging
+  the domain makes GPT's setup 737,057,920 B, exceeding 2.10x by 214,920,372
+  B. Gemma's exact 76/78 W minima still fit `2^35`, while the q357 planning
+  point and exact 84 minimum need a v1-forbidden `2^36` domain. Keeping
+  current geometry instead needs an unproved adaptive multi-session rank
+  reduction of about 25.54% at q357. B/KV consumption is still unknown, so
+  `MASK_LIFETIME` is BLOCKED.
+
+  Tight Q-independent Fiat--Shamir is NO-GO for the current relation.
+  Canonical bytes do not imply one eligible prefix: before `rho`, a malicious
+  prover can vary a correction polynomial while preserving the pre-challenge
+  identity and its value at a chosen `rho`, hash many distinct prefixes
+  locally and transmit only the winner. Commitments, salts, roots, openings
+  and randomness have the same fixed-object-versus-unique-object gap; nonce
+  and collision resistance do not repair it. Enforcing prefix uniqueness
+  would change the relation, transcript, setup or trust model.
+
+  The repository has only direct `qN` or complete-transform/codeword paths,
+  so the current DirectG141 realization is NO-GO for complexity and two-sweep
+  gates; a successor is BLOCKED. At context 4,096, packed Gemma W plus one
+  shared KV arena is exactly 65,085,678,080 B, leaving less than
+  14,914,321,920 B for every other allocation. B, chains, GKR, reducer,
+  activations, CUDA/runtime/allocator and workspaces are uncensused; H100 fit,
+  full wire and certificate remain BLOCKED. For planning only, the historical
+  100+50-token q357 Gemma heuristic is about 50-s prover, 30-MB certificate
+  and 20-s verifier; the only numeric sensitivities are a non-bounding
+  6--86-s historical arithmetic control, 25--39-MB conditional placeholder
+  and 10--30-s unmeasured verifier heuristic;
+  none receives credit. Tight FS has no admissible cost triple because it is
+  NO-GO; trusted-token figures are redesign overhead only. D126 stays BLOCKED.
+  This is an analytic/documentation checkpoint only: no implementation, Lean,
+  test, benchmark, hardware, provider or pod action occurred.
+
+- **2026-09-02 — D126 Phase-A KATs pass; the concrete true-WHIR carrier screen
+  is NO-GO.** The owner GO was consumed exactly as scoped.  The test-only
+  native-Fp3 inverse/codec and nine `c7_phase_a` KATs pass: 9 passed, 0 failed,
+  0 ignored, 0 measured and 255 filtered.  They cover the same-handle
+  AuthBind/all-c flow, exact BroadcastTag coverage, both static model censuses,
+  masked reducer, canonical containers, Genesis/KV/journal attack matrix and
+  typed C4.1 occurrences.  Record `C7_PHASE_A_KAT_PASS=true`; none of these
+  results is benchmark, proof-size, setup, memory, CPU-reference or hardware
+  credit.
+
+  `C7-DIRECT-G141-WHIR-v0` is the selected concrete relation screen.  WHIR
+  supplies a real randomized-RS Encode, local Fold, successor re-encoding
+  Extend, OOD/STIR/sumcheck CheckExtend and constrained EvalLink; the local C6.1
+  claimless fork shows only the desired affine terminal shape.  The literal
+  strict-UD realization is NO-GO: its persisted codeword+tree is
+  4,786,653,504/642,600,433,216 B (19.301x/10.423x), its online materialization
+  is 4.295/549.756 GB without a registered one-scan bounded opener, and its
+  interactive per-round check order cannot preserve all four commitment chains
+  before every QueryTape.  Published HVZK and the Fp2 fork do not prove
+  adaptive stateful malicious-DV privacy.  Missing Fp3 sumcheck/OOD/mask/base-
+  case frames and generated B/KV schedules keep every complete byte/security
+  row unknown.  This candidate is NO-GO, not a universal impossibility; D126
+  stays BLOCKED, with no CPU seam, Lean, benchmark, FS, hardware, provider or
+  pod authorization.
+
+- **2026-09-02 — Future RunPod control and Git transport are fail-fast without
+  opening C7 execution.** The repo now has one control-plane harness. `pause`
+  maps to `runpodctl pod stop` and preserves billable volume storage; `delete`
+  maps to permanent `runpodctl pod delete` and requires the exact pod id twice.
+  Every future paid creation must carry provider-side `--stop-after` or
+  `--terminate-after`. Codex rules preauthorize only list/get/stop and the
+  non-mutating Git push dry-run; permanent deletion still prompts.
+
+  Repository source remains GitHub HTTPS only. Public clone/fetch is
+  anonymous. Before compilation or generated assets, `git-preflight` requires
+  a clean exact SHA and verifies both remote read and push authorization. Push
+  authentication uses an expiring, repository-scoped fine-grained token
+  supplied as the RunPod Secret `VOLTA_GITHUB_TOKEN`; it never enters a remote
+  URL, Git config, argv, shell history or checkout. This replaces the
+  historical `gh` login failure and the now-forbidden SCP helper without
+  transferring weights, setup or large artifacts through Git. The harness
+  self-test and `git diff --check` pass. No protocol/test/hardware/provider/pod
+  action occurred; D126 remains BLOCKED and all owner-GO conditions are
+  unchanged.
+
+- **2026-09-02 — D126 Phase-A state/codec closure makes the first tests
+  finite without changing the joint verdict.** Logical KV-old/KV-new now map
+  to one stable physical KV-state family; a LIVE 524-B root record carries
+  bounded payload/tree material and becomes a provenance-preserving TOMBSTONE
+  at the terminal CAS. The pre-Authorization Genesis exchange is canonical:
+  `0x1001/0x1002`, a 484-B durable state, 460-B verifier-facing setup request,
+  authenticated receipt wrapper and exact 1,049,308/1,049,356-B
+  response-frame/cache-object caps.
+  BUILDING restarts from leaf zero with the same private seed and increasing
+  generation; COMPLETE precedes every response byte; the matching first A0
+  alone consumes it. Typed ingress-failure parents and four replay kinds make
+  every C4.1 occurrence reconstructible without counting syscalls as records.
+
+  Capacity grants are retry-only for one L/current predecessor. Accepted
+  burns their unassigned correlation suffix and a continuation obtains a new
+  profile while retaining the connection MacDomain/high-waters. KV role
+  charge/mask identity, old-root Q and SERVICE remainder, and owner-scoped
+  B/KV epoch capacity are checked before setup; shared W SERVICE remains an
+  atomic per-reservation condition, not a connection-local promise. The unit fixture now has
+  matching `[3,2,2,2]` charges and four epochs, so N=3 accept-at-zero followed
+  by N=2 is internally realizable. The nine named Phase-A KATs cover these
+  transitions, malicious mutations, codec boundaries and the complete gate
+  registry. They are still unexecuted and `credit:false`. The current g141
+  object still lacks `Encode/Fold/Extend/CheckExtend/EvalLink`, so promotion
+  to a PCS remains NO-GO and carrier selection remains BLOCKED. No Rust,
+  Lean, test, benchmark, FS, hardware, provider or pod action occurred; a
+  fresh owner GO is still required.
+
+- **2026-09-01 — D126 final pre-implementation audit closes finite state/tree
+  ambiguity and retracts the direct-g141 over-claim.** Initial and auxiliary
+  g141 contexts are now acyclic and verifier-derived; the commitment tree is
+  the exact unpadded largest-power-of-two-left tree, with canonical Fp3
+  scalarization and compact-frontier consumption. This makes structural KATs
+  finite but exposes that the current RoundOpening carries neither successor/
+  extension evidence nor an EvalLink. Under the frozen recurrence a width-
+  `2^k` fold determines `N/2^k` symbols while the next root commits `N/2`, so
+  the omitted extension factor is `2^(k-1)`. The existing strict-UD prover is
+  forbidden; therefore current bytes cannot construct `PCSConsumedSet`.
+  Phase A must return `TestOnlyPcsChecked`; literal promotion is NO-GO and a
+  selected/censused carrier remains BLOCKED.
+
+  The durable oracle now has canonical receipt/correlation suites, stable
+  candidate-epoch versus seed-attempt ids, owner-scoped root budgets,
+  pending-root SERVICE transitions, recoverable same-W receipts, exact replay
+  blobs and deterministic post-CAS ACK recovery. Multi-connection MAC domains,
+  capacity grants, K/V keys and accepted-head registry feed an acyclic
+  allocator→head→ActiveRoot→ServiceRoot CAS. Restore origin, historical root
+  views and checked scan/record/generation overflow close the one-slot crash
+  graph without changing the 640-B journal. Authorization is 252 B; ActiveRoot
+  and its pointer are 364/116 B. These are unexecuted design oracles, so first
+  structural/stateful tests are ready only after a fresh GO; D126 stays
+  BLOCKED and no prohibited execution occurred.
+
+- **2026-09-01 — D126 pre-test closure audit removes the remaining finite
+  Phase-A ambiguities without executing it.** `BroadcastTag` is total over the
+  global SegmentLive/RootMask/PublicZero partition without assigning a handle
+  to mask/padding coordinates. Each of the four g141 headers now has an affine
+  prepare/seal receipt before its first fold challenge; all commitment chains
+  precede the ordered query tapes/openings, and `D<10` cannot create an
+  ambiguous zero-round stream. The eight L digests have one byte order,
+  non-genesis workload fields have zero sentinels, and the 16-cell coverage
+  object is explicitly a helper oracle rather than an admissible L.
+
+  Root lifecycle accounting now keeps separately receipted
+  INIT/ROTATE_IN/ROTATE_OUT/LOAD debits behind one canonical set digest. A
+  nonrefundable LOAD debit precedes destructive one-slot overwrite;
+  install-root plus CandidateComplete and both final cutover choices are
+  atomic. The unchanged 640-B journal binds exact build descriptors, real
+  96-B seed bundles, monotone slot generations, the debit set, tree/footer and
+  receipt. A 572-B AcceptedHead and canonical allocator/state-plane snapshot
+  bind Burned-only high-water changes as well as accepted heads. C4.1 rows now
+  count durable canonical record occurrences—coalesced envelope and
+  ReservationStart remain two rows—while partial transport completion and
+  syscalls are separate counters; Error has an exact pre-envelope/in-flight
+  reject context.
+
+  The post-QueryTape W g141 maxima are 2,605,756/3,729,740 B; known W
+  subledgers are 2,611,144/3,788,680 B with 662,442/1,706,105-B margins, all
+  still `credit:false`. The selected-model compiler must return the exact
+  ordered missing-input list: GPT-2 lacks lifecycle split, workload tokens and
+  packed artifacts/roots; Gemma additionally lacks quant profile and verified
+  source bodies. Phase A tests those typed blockers and a generic lifecycle
+  unit profile but cannot emit production L. Therefore
+  `C7_FIRST_IMPLEMENTATION_TESTS_READY=true` while D126 remains **BLOCKED**,
+  never `ANALYTIC PASS`; no Rust, Lean, test, benchmark, FS, hardware,
+  provider or pod action occurred, and a fresh owner GO is required.
+
+- **2026-09-01 — D126 readiness audit closes the remaining Phase-A schema
+  gaps without running it.** `QueryClose` now serializes canonical Q before
+  `ScheduleClose`; certificate decode recovers A0/A1/Q and requires its
+  `composite_manifest_digest` to equal reconstructed M. A canonical 540-B
+  accepted head fixes predecessor root/epoch/high-water lookup. Per-plane
+  `Charge(L,p)` is the sum of RoundCap visible-symbol caps, equals every slot
+  debit, and is byte-bound with service/lifecycle/epoch/horizon fields in the
+  RootMask profile. The W profiles remain 512+64 charges over 2,048 epochs and
+  8,192+1,024 over 128, both with a failure-free `2^20` horizon.
+
+  C4.1 Transfer rows now use typed scopes, including durable malformed-ingress
+  scopes; physical rebuild scans are child rows under one candidate outcome.
+  `StopRebuildOneSlot` has a finite restart-from-zero journal graph, preserves
+  terminal heads during Quiescing and validates a 128-B generation footer.
+  Updated one-slot+journal floors are 493,371,840/92,587,558,592 B; dual-tree
+  GPT exceeds 2.10x by 213,872,052 B. Including Beta/Gamma corrects the fixed
+  outer slices to 5,580/59,132 B and W subledgers to
+  2,611,128/3,788,664 B; they still fit 105% only as `credit:false`.
+
+  Gemma cannot literally inherit GPT-2 P5: calibration, exponents and LUT
+  domains are product/generated inputs. Phase A therefore stops its source
+  compiler at typed `MissingQuantProfile` and needs no weight-body download;
+  full quant selection, shard ingest/export, roots and admissible L are a
+  later separately authorized batch. The Phase-A field/typestate, tiny
+  coverage, GPT/static Gemma census, reducer/barrier, codec, journal and C4.1
+  tests now have finite fail-closed oracles, so
+  `C7_FIRST_IMPLEMENTATION_TESTS_READY=true`. D126 remains BLOCKED; no Rust,
+  Lean, test, benchmark, FS, hardware, provider or pod action occurred.
+
+- **2026-09-01 — D126 implementation-readiness freeze closes the static
+  choices, remains `BLOCKED`, and stops before tests.** Section 5.25 records
+  the owner's acceptance of the staged barrier scope and selects the base
+  text-only checkpoint
+  `google/gemma-4-31B@5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89`.
+  Its physical checkpoint census is 1,188 tensors and 31,273,088,876 BF16
+  scalars. The C7 text partition keeps 772 learned tensors private
+  (`N_W=30,697,345,280`, 61,394,690,560 packed i16 bytes), makes only 60
+  constant layer scalars public, and forbids 356 vision/bridge tensors. Sixty
+  norm bundles preserve learned-norm privacy while giving
+  `J_W/J_all=472/480<=512`. The exact K/V state is 450,560 i16 values per
+  token: global K/V shares one projection weight, but its post-norm K and V
+  cache cells are distinct. Removing 2,364 stored buffers and adding the tied,
+  unmaterialized output reconciles 32,682,372,656 logical parameters; shard
+  framing is 160,496 B.
+
+  A field bridge is rejected: the complete authenticated query-producing
+  subgraph is natively Fp3. One post-use-list `eta_use`, masked
+  round-synchronous reducer corrections, one AuthBind correction per segment
+  and one response-wide ProductClosure give a non-circular same-object
+  reduction. GPT-2 compiles to 50 W segments, 102 W/110 all-raw uses and 51
+  reducer instances; Gemma has 472 W segments, 1,546/1,554 uses and 653
+  instances. Prefix typestates prevent early rho/chi/beta/gamma.
+  The staged DAG has no challenge-to-earlier-correction cycle; the literal Fp2
+  path and any barrier over internal dependency corrections remain scoped
+  NO-GO. Exact-coverage `BroadcastTag` follows from the compiler's global
+  SegmentLive/RootMask/PublicZero partition; mask coordinates have zero
+  segment selectors but are not public padding.
+
+  The checkpoint freezes split `L/A0/A1/Q` manifest bytes, a 256-B attempt
+  envelope, 16-B outer headers, four ordered plane streams, transcript chaining
+  and a `376+record_bytes` accepted-certificate container. The selected outer slice
+  is 5,500/59,052 B for GPT-2/Gemma; the conservative known W subledgers are
+  2,611,048/3,788,584 B and fit their corrected 105-percent controls without
+  earning full-codec credit. One-slot journal-inclusive peaks are
+  493,371,712/92,587,558,464 B and pass 2.00x for GPT-2/Gemma. The rejected
+  dual-tree GPT floor exceeds 2.10x by 213,871,796 B. The D095 test profile
+  retains 512/8,192 service charges plus a 1/8 lifecycle reserve, requiring
+  exactly 2,048/128 failure-free epochs; its privacy proof remains BLOCKED.
+
+  The exact mutation/compiler/reducer/codec/journal/C4.1 test order is now
+  implementation-ready, so `C7_FIRST_IMPLEMENTATION_TESTS_READY=true`.
+  Required test/generated or measured values still include both packed
+  artifacts and roots, concrete direct-g141 extraction, native real/AES Fp3
+  pools, complete B/KV/GKR/receipt/certificate bytes, the full lifetime union,
+  one-scan counters, setup/refresh and CPU/H100 walls/peaks. Every unknown is
+  still BLOCKED, so `ANALYTIC PASS` is forbidden. No Rust, Lean, test,
+  benchmark, FS, hardware, provider or pod action occurred. A new explicit GO
+  is required to execute the first tests.
+
+- **2026-09-01 — D126 six-item continuation derives all currently traceable
+  static cells and remains `BLOCKED`.** The exact GPT-2 artifact partition is
+  124,318,464
+  private i16 values in 50 physical tensors, 383,488 public/LUT values and
+  124,701,952 total values. Its current padded W layouts contain 269,484,032
+  cells, of which 145,165,568 are structural zeros. Current proof lineage has
+  102 claim uses; the historical illustrative `J_W=98` matches neither 50 nor
+  102, but no segment compiler proves an exact terminal count; 98 is BLOCKED,
+  not a proved violation. A 50-terminal physical reducer is only a target. The
+  31B tuple remains an unnamed synthetic envelope and violates
+  the current model-schema equality (`32*128=4096!=4608`), so literal reuse is
+  separately NO-GO. Exact logical KV bytes are recorded, but 31B tensor/DAG/
+  codec data remain unknown.
+
+  Section 5.24 now fixes the deterministic manifest input/output and exact-
+  coverage checks, verifier ownership semantics for `BroadcastTag`, the
+  linear same-handle AuthBind state/API and theorem obligation, the minimum
+  malicious/stateful rejection matrix, durable reserve/burn/CAS contract,
+  message order, fail-closed codec formula and per-occurrence C4.1 schema.
+  Static tracing proves a cycle in the current single GKR transcript: an early
+  correction/ProductClosure precedes challenges needed to derive later
+  queries, which the global barrier would require first. That reuse is NO-GO.
+  A staged pending-terminal schedule is algebraically possible only when the
+  barrier covers every AuthBind `d_s` and consuming ProductClosure; its
+  deferred-closure and malicious-DV theorem is unknown and therefore BLOCKED.
+
+  The latest g141 subcodec controls remain 2,605,740/3,729,724 B and the four
+  1.30 query axes pass only as `credit:false` screens. Complete B/KV codecs,
+  certificate bytes, correlations, production PCG/state composition, setup/
+  refresh bytes and walls, one-scan backend, VM/H100 peaks/walls and the full
+  lifetime event registry remain unknown. Thus no complete conjunctive
+  GPT-2/31B row passes and `ANALYTIC PASS` is forbidden; the two scoped NO-GO
+  branches do not establish a global impossibility, so D126 remains BLOCKED.
+  Resume first requires an owner-selected exact 31B target and acceptance of
+  the staged barrier scope. No CPU seam, Rust, Lean, benchmark, FS, hardware,
+  provider or pod action occurred or is authorized.
+
+- **2026-09-01 — D126 `C7-DIRECT-FP3-AUTHBIND-v0` opens read-only and returns
+  `BLOCKED`.** Static tracing finds only a carrier-independent Fp3 transfer
+  seam and a policy-2 reference leaf codec that expressly is not a PCS,
+  durable allocator or malicious-DV theorem. No existing relation consumes
+  the identical scaled `BroadcastTag` handle through GKR ProductClosure and a
+  direct-Fp3/g141 opening against immutable `C_W`. Exact disjoint live-range
+  coverage, zero padding and verifier-only tag reconstruction therefore lack
+  a manifest/compiler relation; without it, the complete `c_s` set and an
+  `O(J log N)`-or-better pre-correction barrier cannot be derived.
+
+  Correction, retag, label-kernel, range-overlap, zero-sum, reuse, replay,
+  crash, fork and rollback cases retain their fail-closed requirements, but
+  the missing AuthBind, coverage and durable-state compositions prevent a
+  malicious/stateful theorem. The exact GPT-2 and 31B compiler/codec census is
+  also absent, leaving certificate framing, setup/refresh, correlation usage,
+  one-scan work, memory/I/O, H100 wall and weak-verifier wall unknown. Because
+  an unknown is `BLOCKED` and no derived gate violation is established, D126
+  is neither `ANALYTIC PASS` nor `NO-GO`. The charter, six-family inventory,
+  C4.1 terminology/frequencies, `<=30 s` verifier target, strict `<35 s`
+  ceiling, single-H100/31B-first conjunctive GPT-2 priority, interactive
+  `Q_FS=0`, separate essential direct-Fp3 FS profile, `>=78`-bit soundness and
+  unrelaxed privacy remain unchanged. No Rust, Lean, benchmark, hardware,
+  provider or pod action occurred.
+
+- **2026-09-01 — D125 freezes the C7 operational profile and recommends, but
+  does not open, the direct-Fp3 carrier-closure session.**  The architecture
+  charter remains response-wide and stateful: one causal response, one
+  logical batched multi-commitment PCS/ALFC invocation into the session
+  VOLE-MAC, and one append-only authenticated K/V transition, with neither
+  per-token proof instances nor deferred prefix settlement.  D124 conforms to
+  that charter but is not a complete malicious-DV or E2E guarantee.
+
+  Relative only to primary literature screened so far, the conservative
+  internal inventory counts six apparently original families: the causal
+  response/KV relation; policy-2 reserve/burn/CAS lifecycle; hidden multi-plane
+  one-terminal ALFC; SPBT algebra; CommittedFold prefix factorization; and the
+  single D122--D124 same-`W` bridge family.  It counts zero complete C7 systems
+  validated E2E and is not a patentability or exhaustive prior-art opinion.
+
+  Global C4.1 roles are now `P/R` provider-prover/VOLE receiver and `V/S`
+  user-DV/VOLE sender.  Costs are separated as `ModelOnboarding`,
+  `DVConnectionSetup`, connection-`Delta`-dependent
+  `CapacitySetup(N_attempts)`, every `ResponseAttempt` including aborts,
+  `RootRefresh/Rotation`, and each directional transfer message.  Capacity
+  VOLE follows connection setup; no response-local scan, fold or lot may be
+  moved into setup.
+
+  `C7-V-WEAK-DEBIAN-v1` is Debian 13.5, kernel
+  `6.12.94+deb13-arm64`, AArch64, four online vCPUs/threads,
+  12,526,514,176 B RAM and no verifier GPU; ASIMD/NEON, AES, PMULL and SHA are
+  allowed.  Timed runs must report peak RSS/VmHWM and have zero swap-I/O delta;
+  another host needs a paired remeasurement.  For 31B,
+  `T_V_attempt=T_lot_prepare+T_proof_read_to_verdict` retains the original
+  `<=30 s` C7 target and strict `<35 s` product ceiling.  The old 60-s
+  LogVOLE cap remains historical diagnostic evidence and cannot admit a
+  successor.
+
+  `C7-P-H100-SXM80-v1` permits exactly one H100 SXM with
+  80,000,000,000 B nominal HBM for inference plus proof.  The fully resident
+  control places the 61,652,800,000-B packed i16 31B envelope in HBM and leaves
+  18,347,200,000 B before runtime, activations, K/V and proof state; this is
+  not an established peak.  Host RAM/disk is allowed only as
+  bounded counted setup/staging and cannot hide a second packed scan, a full
+  Fp3 wrapper/codeword, response-local model-linear spill or another GPU.
+  Every HBM/host peak, disk byte, H2D/D2H/D2D transfer, synchronization and
+  critical response wall is charged.  The 31B envelope is optimized and
+  killed first; GPT-2 small remains the minimum literature/regression and
+  growth baseline, and both gates remain conjunctive.  A real Gemma 31B run
+  still needs an exact variant and artifact manifest.
+
+  The carrier stays multi-round interactive with `Q_FS=0`; the all-`c_s`
+  check must occur after canonical queries/handles are fixed and before any
+  correction.  Soundness remains at least 78 lifetime bits; the current
+  79.4-bit conditional privacy control is retained and the permitted 70-bit
+  floor is unselected.  A separate post-carrier `C7-FS-CLASSICAL-v0` may later
+  use direct Fp3 with global `Q_FS<=2^64`; its 119-bit fixed-prefix screen is
+  `credit:false`, paired FS is unselected, and no deniability claim is made.
+  It still needs an explicit owner GO, a multi-round/adaptive ROM theorem and
+  complete state/byte/work accounting.
+
+  The recommended next session is prospective D126
+  `C7-DIRECT-FP3-AUTHBIND-v0`: analytically trace same-handle ProductClosure to
+  PCS, specify direct-Fp3/g141 AuthBind with `Delta_code=-Delta_sem`, prove
+  verifier-reconstructed exact-coverage `BroadcastTag`, derive an
+  `O(J log N)`-or-better all-`c_s` barrier, close the malicious/stateful attack
+  matrix and compile the exact compiler/codec plus every original-gate C4.1
+  row for both models.  An unknown is `BLOCKED`, not PASS.  It returns
+  `ANALYTIC PASS`, `NO-GO` or `BLOCKED` before code.  This request nominates
+  that session but is not its owner GO.  No Rust, Lean, benchmark, H100,
+  provider or pod action occurred; `C7_CPU_REFERENCE_PASS=false` and
+  `C7_POD_READY=false`.
+
+- **2026-09-01 — `C7-BROADCAST-EXACT-ENDPOINT-v0` passes exact algebra,
+  ideal-carrier privacy and resource shape, but complete C7 remains
+  fail-closed at the concrete carrier.**  For every physical terminal,
+  reserve before `q` an independent direct-Fp3 correlation
+  `w_s=r_s+Delta*u_s`.  The only permitted
+  label source is typed `BroadcastTag(h_s,range_s)`, so `m_(s,i)=w_s` and the
+  mathematical verifier keys are `k_(s,i)=w_s-Delta W_(s,i)`.  With
+  `c_s=sum_i q_(s,i)!=0` and `z_s=<q_s,W_s>`, P sends
+  `d_s=z_s-c_su_s` and V derives
+  `K_s=c_sr_s-Delta d_s=c_sw_s-Delta z_s=<q_s,k_s>`.
+
+  The resulting authenticated `z_s` claim has tag `c_sw_s`.  It must be the
+  identical handle consumed by GKR ProductClosure and handed to the policy-2
+  PCS opening against immutable `C_W`; a retag, a second correction or a
+  matching descriptor is not equivalent.  This exact lineage makes a forged
+  correction choose the same value the PCS must bind, while the typed
+  broadcast removes the `<q,e>=0` label kernel.  It therefore eliminates
+  `C_m`, hidden `Eval_m` and CAOLE without materializing labels, keys or
+  prefixes.  The Rust sign refinement is `Delta_code=-Delta_sem` under the
+  one existing Fp3 key.
+
+  For nonzero `c_s`, `d_s` and the V-only endpoint are weight-independent in
+  the ideal fresh-sVOLE carrier; the real malicious-DV claim remains open.
+  The illustrative honest zero-sum availability screen
+  `R_max*378*35/|Fp3|` is below `2^-158.3` and `credit:false`; a malicious
+  zero-sum challenge burns before any correction.  Reuse is forbidden because
+  `d_s/c_s-d_t/c_t` reveals an exact evaluation relation.  The registered
+  128/112-bit allocations still leave 95.4/79.4 lifetime bits; the privacy
+  relaxation is not used.
+
+  At illustrative `J_W=98/370`, charging `24J_W` additively gives
+  2,352/8,880 B.  With the known g141 subcodec, the conservative subtotal is
+  2,608,092/3,738,604 B, leaving 664,593/1,758,091 B below the 105% weight
+  targets.  This is payload-only `credit:false`; unknown framing must fit the
+  same residuals.  No second root, label vector, extra packed scan, codeword,
+  Fp3 wrapper or model-linear scratch is introduced.  Mac'n'Cheese, C-VOLE,
+  Reef, publicly auditable MPC and Dory provide adjacent chosen-input,
+  commitment-consistency, hidden-input and streaming-random-VOLE precedents,
+  not a drop-in.  Newly screened GSFC has hidden group-scalar output but a
+  power-string lower bound of `(2N-1)G1+2NG2`, about 35.712 GB/8.878 TB before
+  inputs, plus fresh-query linear verifier work, and fails
+  groups/SRS/direct-Fp3/setup.
+
+  The current Fp2 code demonstrates same-claim GKR-to-PCS lineage, but the
+  active C7 policy-2/g141 carrier has no direct-Fp3 authenticated-opening
+  refinement, verifier-enforced exact-coverage `BroadcastTag` relation or
+  compatible all-`c_s` phase barrier.
+  Complete codec, setup/refresh, one monotone scan, H100, 30/60-s VM, durable
+  state, real/AES PCG and multi-user rows remain false.  No calculator, code,
+  Lean theorem, benchmark, provider or pod action occurred.
+
+- **2026-09-01 — Owner opens the next C7 step under every original gate.**
+  The resource successor may minimize D122 and use new primary literature or
+  explicitly labelled inductive constructions.  It may not spend soundness,
+  certificate bytes, setup, an extra packed scan, model-linear scratch or a
+  provider exception.  Direct one-`Delta` Fp3, interactive `Q_FS=0`, at least
+  78 lifetime bits, one terminal per segment, complete 30/100-MB and 3x
+  targets (or preregistered 35/115-MB and 3.5x envelope), setup walls,
+  single-H100 fit, 30/60-s 31B VM attempt and full reserve/burn/anti-rollback
+  remain conjunctive.  This is analytic authority only; no implementation,
+  hardware, provider or pod work precedes a complete pass.
+
+- **2026-08-31 — `C7-CWBRIDGE-ENDPOINT-v0` closes the structural same-`W`
+  defect without materializing prefix or verifier-key vectors.**  The accepted
+  relation fixes a hiding, extractably binding label commitment `C_m` and the
+  complete canonical operator registry before `q`.  Its response-wide
+  `SameWOpBind` proof extracts one `W,m` such that `W` opens immutable `C_W`,
+  `m` opens `C_m`, and every indexed operator weight/label/correction/handle
+  read is exactly from those vectors.  Checking only `<q,m>` is explicitly
+  insufficient: an operator could otherwise consume `m+d` for any nonzero
+  `<q,d>=0`.
+
+  Hidden committed evaluations bind `z_s=<q_s,W_s>` and
+  `M_s=<q_s,m_s>`.  After every descriptor is fixed, the ordinary `beta`
+  combines them to hidden `z,M`.  One fresh direct-Fp3 scalar VOLE gives P
+  `(u,w)`, V `(Delta,r)`, `w=r+Delta*u`; P sends proved corrections
+  `d=z-u`, `e=M-w`, and V alone derives
+  `K=e+r-Delta*d=M-Delta*z`.  Given only `K`, its view is simulated by uniform
+  `d` and `e=K-r+Delta*d`.  Define virtual
+  `k_i=m_i-Delta W_i` and canonical
+  `X_0=0`, `X_(i+1)=X_i+q_iW_i`: every per-cell MAC, prefix recurrence and
+  beta-folded endpoint now follows exactly, while no `k`, prefix, evaluation,
+  tag or endpoint is serialized.  Zero `q_i` are allowed.
+
+  The construction is a new composition. Mystique supplies a linear
+  static-malicious full-vector reference; its optimized theorem covers its own
+  NICom, not `C_W`. zk-vSQL supplies the hidden committed-output pattern,
+  C-VOLE the committed-input pattern, and LPZK/malicious-HSS useful malicious
+  compilers; none is credited as a C7 drop-in. A generic authenticated-circuit
+  proof of `VerifyOpen(C_W,W)` plus identical operator handles is retained as
+  the self-contained but linear reference. With 128-bit soundness components,
+  pessimistic `R_max*16J` leaves 95.4 bits for 31B; Fp3 algebra leaves over
+  163 bits. With 112-bit privacy components the same overcount leaves 79.4
+  bits; a later 104-bit option leaves 71.4 and is not selected. This is a
+  dimension-independent structural PASS and all rows remain `credit:false`.
+  The owner-ordered 115-MB/77.2-B phase is deferred. No code, benchmark,
+  hardware, provider or pod action occurred.
+
+- **2026-08-31 — Owner opens only the security theorem for
+  `C7-CWBRIDGE-ENDPOINT-v0`.**  The successor may replace physical prefix HSS
+  with functional authentication, but must jointly prove the immutable
+  `C_W` opening, every operator label/correction/handle and a V-only endpoint
+  under the one connection Fp3 `Delta`, with interactive `Q_FS=0` and the
+  complete fail-closed state machine. Soundness may never fall below 78
+  lifetime bits. Weight privacy may fall to 70 lifetime bits only if later
+  exact resource evidence requires it. The owner explicitly orders the
+  structural defect closed before the 115-MB certificate/77.2-B control; this
+  entry authorizes no calculator, Lean, Rust, prototype, H100, provider or pod.
+
+- **2026-08-31 — `C7-COMMITTEDFOLD-CI-VOLE-v0` closes NO-GO despite an exact
+  endpoint factorization.**  For each segment with nonzero `q_i`, define
+  `X_0=0` and `X_(i+1)=X_i+q_i W_i`.  If a half-chosen bilinear HSS gives the
+  prover shares `A_i` and the verifier virtual shares `B_i` satisfying
+  `A_i-B_i=Delta X_i`, then
+  `m_i=(A_(i+1)-A_i)/q_i` and
+  `k_i=(B_(i+1)-B_i)/q_i` satisfy exactly
+  `m_i=k_i+Delta W_i`; the folded verifier share telescopes to `B_N-B_0`.
+  This is a genuine new algebraic PASS and removes LogVOLE's denoising
+  obstruction. It is not a malicious committed-input protocol.
+
+  The HSS digest/prefix is formed after `q`. A malicious prover can select any
+  nonzero `e` in the kernel of `q`, run the endpoint protocol on `W+e` and
+  retain the same plaintext fold as `W` while authenticating different cells.
+  HSS digests/shares may differ; the verifier has no commitment-derived
+  expected endpoint. Binding only `<q,W>` cannot repair this adaptive same-`W`
+  attack. The missing
+  statement must knowledge-bind the opening of `C_W`, every prefix recurrence
+  and the operator handles while revealing no terminal value. Published
+  Succinct HSS is semi-honest and has no direct exact Goldilocks-Fp3,
+  stateful/adaptive or concrete endpoint-only malicious compiler. Its
+  Power-DDH vector control is 190,694,272 B at the optimistic 128-B
+  group-element codec, above the 31B cap; literal prefix HSS retains
+  `Theta(N)` heavy prover evaluations without a
+  single-H100 row. Published committed VOLE is malicious but linear-size; a
+  materialized direct-Fp3 logical vector would be
+  2,976,000,000/739,833,600,000 B. A conditional rank-one PCG
+  endpoint adapter has only `J` root corrections, but its post-challenge
+  matrix theorem and the same `C_W` bridge are absent. All rows are
+  `credit:false`; no implementation or hardware action follows.
+
+- **2026-08-31 — Owner opens only the named
+  `C7-COMMITTEDFOLD-CI-VOLE-v0` analytic screen.**  The permitted target is an
+  exact construction that gives the prover streamed labels
+  `m_i=k_i+Delta W_i` without the verifier seed or endpoint masks, lets the
+  verifier derive only folded endpoints, and maliciously/statefully binds the
+  input to immutable `C_W` under the existing GPT-2 and Gemma-class 31B gates.
+  New inductive adaptations may be screened when the literature has no
+  complete composition. This is analytic authority only: all setup, proof
+  bytes, VM/H100 work, one-scan memory, direct one-`Delta` Fp3, `Q_FS=0`,
+  78-bit lifetime and allocator/burn gates remain unchanged. No Rust, Lean,
+  CPU prototype, H100/prover, provider or pod action is authorized before the
+  complete row passes.
+
+- **2026-08-31 — `C7-LOGVOLE-FRONTIER-v1` closes NO-GO on the exact
+  root-fold/sublinear-sender gate.**  Reconstructing the published sender path
+  shows that each raw LHE decryption is affine in its parent key and fresh
+  correction only before coordinatewise scale-and-round.  `Denoise` is not
+  additive; the paper's Lemmas 17--18 instead prove that the full cleanup is a
+  regular surjection with programmable fibers.  A direct affine push-through
+  must account for the weighted rounding residual, and the paper supplies no
+  compact factorization that does so.
+
+  More generally, once the malicious-interactive response fixes
+  `seed=H_seed(id,sk'_rt)`, condition on no correctness bad event and a fixed
+  internal path. Every domain-separated leaf `H_ct` answer is then fresh and
+  independently determines one clean sender mask block. For a nonzero
+  dense-fold block, two random oracles may agree on every queried point and
+  differ only at one unqueried leaf while changing `k_q`.  Exact black-box
+  evaluation thus needs every active leaf.  For generic dense `q_tau`, the
+  paper's explicit API incurs `Omega(N/n)` ring-word output and `Omega(N)`
+  coefficient work.  Sampling `tau`
+  privately or caching only `k_q` moves this work into the one-shot
+  `T_lot_prepare`; it does not turn it into reusable setup.
+
+  The optimistic 31B three-base-label control has 92,479,200,000 labels and
+  takes 7,168.930 s at the paper's 12.9-Mlabel/s semi-honest 16-core AVX512
+  rate; reaching 60/30 s would require 119.5x/239.0x that rate before
+  malicious and proof-verdict work.  This is `credit:false`, not a VM measure
+  or hardware lower bound.  Frontier pebbling retains its prover-memory shape,
+  but same-`W`, direct one-`Delta` Fp3, malicious `Q_FS=0`, exact resources,
+  codec/wire, H100 and stateful privacy remain independently open.  The result
+  is scoped to the published correction-label realization, not general
+  CI-VOLE/RLWE/HSS.  A successor needs either an exact root factorization
+  passing the complete 30/60-s lot gate or a named structured exact sublinear
+  fold, plus a new owner decision.  No implementation, provider or pod action
+  follows.
+
+- **2026-08-31 — Owner opens `C7-LOGVOLE-FRONTIER-v1` with bounded durable
+  concessions and a non-hideable 31B verifier gate.**  The screen may replace
+  v0's full recursive state with an ordered provider-private digest frontier,
+  a small upper tree and blockwise checkpoint/pebbling. Model initialization
+  and rotation may use fully counted multiple packed-`W` passes and
+  model-linear temporaries, destroyed before admission. Only this candidate
+  receives a private frontier-sidecar cap of 8,000,000,000 B outside the
+  relative `A_setup` ratio, response proof scratch up to 8,000,000,000 B and
+  complete device peak up to 76,000,000,000 B. The sidecar remains counted in
+  persistent disk, RSS, setup/refresh/invalidation and response H2D. Online
+  packed `W` remains one monotone scan; setup/refresh wall, wire, direct Fp3,
+  shared `Delta`, `Q_FS=0`, 78-bit and stateful-security gates do not change.
+
+  A verifier-private pre-folded lot is permitted only as reserved one-shot
+  response inventory and burns on every terminal outcome. Its preparation is
+  per attempted response, not setup. For the Gemma-class 31B envelope on this
+  four-core AArch64 VM, define
+  `T_V_attempt=T_lot_prepare+T_proof_read_to_verdict`: target <=30 s, hard cap
+  <=60 s. Therefore an exact compact root-to-`k_q` factorization with all
+  lot-specific work inside the cap, or a genuinely sublinear sender fold, is
+  a first kill gate; hours moved before proof receipt fail. Same-`W`, direct
+  Fp3, malicious setup, exact resource/codec and complete privacy rows remain
+  open. All evidence is `credit:false`; no Rust, Lean, CPU prototype, H100,
+  provider or pod action is authorized before the analytic row passes.
+
+- **2026-08-31 — C7 R0.8h LogVOLE challenge-order screen is NO-GO.**  With
+  the CPU verifier as LogVOLE sender holding `Delta` and the eventual H100
+  prover as receiver holding `W`, the relation gives compact chosen-input
+  communication and can place fresh `tau` after a randomized input digest.
+  This is a concrete computational escape from R0.8f's deliberately scoped
+  `tau`-independent affine-correction lower bound.
+
+  The complete row still fails.  Pre-`tau` full-share enrollment retains at
+  least 2,976,000,000/739,833,600,000 B per Fp3 share and makes both parties
+  fold linearly per response.  The stronger cached-root order sends `tau`
+  with the interactive response and streams the final fold, but published
+  `OnlineRec` first shrinks bottom-up, recurses, then expands top-down.  It
+  therefore rereads packed `W` or retains model-linear intermediate state.
+  At the paper's `n=8192`, 220-bit ring modulus and the C7 padded dimensions,
+  its first recursive vector alone is 1,845,493,760/472,446,402,560 B per
+  scalar-field instance.  A straightforward three-limb control is
+  5,536,481,280/1,417,339,207,680 B before other levels.
+
+  The paper's 38-MB setup, 451-KB interactive query and 12.9M-label/s CPU
+  results are optimized semi-honest 55-bit/AVX512 controls, not C7 proof,
+  VM-verifier or H100-prover credit.  Its reusable malicious route disables
+  golden-seed grinding and lacks C7's canonical `C_W` same-input bridge,
+  direct Goldilocks-Fp3 shared-`Delta` wrapper, interactive `Q_FS=0` setup
+  certification, exact six-component codec and stateful malicious-DV
+  composition.  No gate tolerance changes and no lower bound on general
+  CI-VOLE/RLWE is claimed.  All evidence is `credit:false`;
+  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.  No Rust, Lean, CPU
+  prototype, H100/prover, provider or pod action is authorized.
+
+- **2026-08-31 — Owner reopens C7 only for the named LogVOLE challenge-order
+  analytic screen.**  Use C4.1 party-separated terminology and cost
+  frequencies: reusable setup/model initialization is separate; a response
+  lot is one-time and burns on abort; prover time is inference-plus-proof on
+  one eventual H100; verifier time is proof-read-to-verdict on this CPU VM;
+  transfer is separate.  No Rust, Lean or H100/pod work is authorized unless
+  the analytic candidate first passes every existing gate.  This decision
+  supersedes D114 only for this named screen, not for generic research,
+  implementation or relaxation.
+
+- **2026-08-29 — Owner closes the C7 tournament and blocks generic R0.8h.**
+  R0.8g is the terminal active screen under the current gates. No generic
+  research continuation, prototype or further relaxation is authorized.
+  `C7_CPU_REFERENCE_PASS=false` and `C7_POD_READY=false`. C7 may resume only
+  after a named, concrete, transparent and no-trusted-setup candidate receives
+  a new owner decision and preliminarily supplies its malicious-secure
+  relation, same-W-to-MAC bridge, sublinear wire, setup within every gate, one
+  packed scan, bounded memory and stateful privacy. A non-affine
+  `tau`-dependent line has the same named-candidate/owner-decision condition.
+  This entry authorizes only a scoped C7 commit and branch push; it authorizes
+  no protocol implementation, SIMT, refresh, provider contact or pod work.
+
+- **2026-08-29 — C7 R0.8g rejects direct Bolt-min without repeating C6 and
+  closes the bounded tournament.** The sole D111 candidate is
+  `C7-BOLT-MIN-G141-v0`: `alpha=1/8`, rate-1/2 RS, degree 16, `t=128` inside
+  g141, Goldilocks Fp3 and interactive `Q_FS=0`. It applies the systematic
+  sketched code directly to the immutable packed weight plane, not inside
+  C6.3's eight Hiding-WHIR bodies or C6.4's six-body residual suffix. Its
+  `HX`/short-RS source term is linear and independent of `q`. The conservative
+  persistent control is 642,264,576/162,584,531,456 B (2.590x/2.637x), below
+  the exploratory 3x caps, but it is a complete persistent sketch codeword and
+  setup wall remains unmeasured.
+
+  The complete row is NO-GO. Row-major one-pass setup needs
+  134,217,728/34,359,738,368 B of syndrome state. Column-major setup lowers
+  live state but reserves up to 768,061,440 B of systematic leaf frames before
+  paths; persisting a transpose gives 3.672x/3.752x setup. Per response, the
+  fresh Fp3 `RS(Xr)` word is 50,331,648/12,884,901,888 B, before the encoded
+  syndrome combination. The published `GF(2^32)` `gamma=0.096` does not
+  transfer. With no row padding, even that row's dense-g141 cap is 736,686 Fp
+  occurrences (3.144x/2.476x). Goldilocks `gamma=0.049` is only a diagnostic
+  for these dimensions; its 627,072 requested-symbol lower bound becomes a
+  1,381,056-symbol dense cap (5.893x/4.642x). Both exceed 150%. Published Bolt supplies no hiding, same-W
+  shared-Delta MAC bridge or stateful malicious-DV theorem; non-amortized
+  Mulperm was estimated rather than implemented.
+
+  C6.3's 17,179,869,184-B inherited encoded weight oracle, 2,092.76-s
+  17-profile setup and recorder/finite-PCG late failures remain attributed to
+  that composed path; they are not restated as a Bolt lower bound and no C6
+  credit transfers. Budget v29's two invocations, `py_compile` and diff check
+  pass. The owner retains the complete-codeword ban: the sub-3x static control
+  grants no exception. Reconsideration requires a concrete candidate that
+  first removes the per-response codeword and supplies the complete one-scan,
+  bounded-memory, wire, setup and security row. No Rust/Lean protocol, CPU
+  prototype, SIMT, refresh, provider or pod is authorized. The one-candidate
+  tournament is exhausted; further carrier or non-affine work requires a new
+  owner decision. All evidence is
+  `credit:false`; `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.
+
+- **2026-08-29 — C7 R0.8f closes native `StreamOpenIntoMac` and reopens the
+  carrier tournament.** The ideal primitive keeps `tau` and the terminal
+  evaluation hidden and returns only shares satisfying
+  `k_v=m_v+Delta*<x,q_tau>`, with input-independent setup, one packed scan,
+  bounded memory and sublinear wire. For `tau`-independent affine VOLE corrections
+  `c=A(x-r)`, exact answers for all degree-`<M` secret-point power queries
+  imply `span{q_tau} subseteq row(A)`. The `M` distinct-point Vandermonde rows
+  have rank `M`, so at least `M` field corrections are needed. Even the
+  optimistic base-Fp online floors are 992,000,000/246,611,200,000 B for
+  GPT-2/31B; moving them into persistence is 5x packed before tags/tree, while
+  Fp3 corrections give
+  at least 13x. Silent VOLE does not compress fresh-input derandomization;
+  published OLE/NIIP and Horner/full MPC stay linear. Group/SRS paths trigger
+  the explicit kill gate, HE/PIR lacks the complete native same-`W` malicious
+  bridge, and two-server PIR changes trust. This scoped affine-VOLE result is
+  not a universal PCS/2PC lower bound. Budget v28's two checks pass; no
+  protocol code or prototype was added. SPBT algebra remains reusable, but its
+  carrier line is closed and the tournament has no entrant. All is
+  `credit:false`; this is not a lower bound for `tau`-dependent general secure
+  computation. No CPU prover, SIMT, refresh, provider or pod is authorized.
+  The owner selects exactly one concrete code-switch/shared-circuit candidate
+  with a source-linear term independent of `q` for the next bounded screen.
+  It must face every gate immediately. Non-affine `tau`-dependent research
+  remains closed absent an already concrete construction with a clear advantage.
+
+- **2026-08-29 — C7 R0.8e derives an independent-challenge butterfly
+  reduction and closes its current delayed-opening realizations.**
+  `C7-SPBT-v0` uses `Y=(1-r)E+rO` and `Z=E-O`; the pair determinant is `-1`.
+  Recursion is a bijection from each padded segment to its complements plus
+  `y=MLE(W,r)`, with exactly `M` coefficients and one degree-`<M` univariate
+  identity.  It preserves ordinary independent public GKR challenges.  Fresh
+  `tau` follows the transform root; its query vectors are fixed before later
+  beta RLC.  This conditionally leaves 144/137 lifetime bits for the GPT-2/31B
+  controls.  A binary carry stack uses one monotone `2N`-byte
+  source scan, fewer than `2N-J` butterflies and logarithmic frontier state.
+
+  The transform-only pass is not a PCS pass.  Revealing `tau` before its root
+  lets a prover adapt a coefficient.  Retaining the typed dense transform is
+  `16*M_total` bytes, at least 9x packed including source; discarding then
+  recomputing needs a second scan; hidden-`tau` streaming still requires a
+  sublinear malicious OPE/inner product into MAC.  Raw Merkle sampling has no
+  distance, a rate-1/2 wrapper restores the rejected codeword, and two-party
+  orbit preprocessing is at least 25x packed.  Budget v27 checks the identity,
+  inverse, conditional security, traffic and query-miss controls; both
+  registered invocations, the focused C7 seam and its standalone rustfmt check
+  pass; `git diff --check` passes. The full workspace has one pre-existing
+  out-of-scope failure: committed `volta-bench` source guard
+  `native_persistence_source_guard_bypasses_hidden_u_owner` matches the later
+  helper signature's `session_digest`; neither failing file is modified.
+  All is `credit:false`; no new R0.8e Lean/Rust/prover, SIMT, refresh, provider
+  or pod action is authorized.
+
+- **2026-08-29 — C7 R0.8d closes the packed-`eq` algebra and rejects its
+  current public-GKR composition.** For
+  `r_k(t)=t^(2^k)/(1+t^(2^k))`, the exact identity
+  `eq(r(t),j)=t^j/product_k(1+t^(2^k))` makes every raw packed segment a
+  univariate coefficient vector. Conditional source work is
+  `N+O(J log N_max)` in one reverse `2N`-byte scan, with no Möbius transform,
+  materialized functional, expanded wrapper or second source read. The
+  illustrative 106/378 all-plane points fit the 512 screen cap but are not a
+  compiled manifest.
+
+  This scalarization cannot reuse the current public sequential blind-GKR
+  theorem. Low-to-high reveals the scalar and all future challenges;
+  high-to-low yields adjacent two-point square-root fibers. The monic
+  quadratic through those points has `P(0)+P(1)=1`, so a malicious prover can
+  carry then erase an arbitrary false degree-two sumcheck gap. Any coordinate
+  order reaches a deterministic ascent or adjacent descending pair.
+  Independent challenges lose scalarization; projective basis preserves the
+  correlation; full univariate skip has linear degree/wire; bounded skips stay
+  multivariate; opaque challenges need a new secure operator protocol. The
+  composed curve/current-GKR row is NO-GO, while the secret-point primitive
+  remains quarantined. Budget v26 checks pass; no Lean/Rust/prover/SIMT,
+  refresh, provider or pod action is authorized.
+
+- **2026-08-28 — C7 R0.8c opens a novel secret-point quotient research line
+  without relaxing any gate.** The owner permits co-design beyond published
+  constructions. `C7-DV-SPQ-v0` enrolls only secret shares of `F(tau)` and
+  seeks to settle `F(tau)-v=(tau-r)Q(tau)` directly under the Fp3 MAC. The
+  conditional degree/attempt screen leaves 155/144 bits for the proposed
+  GPT-2/31B root profiles and 135 bits after four roots across `R_max=2^20`.
+  This is algebraic evidence only: the current packed `eq` functional is not a
+  univariate power vector, enrollment must bind the same packed `F`, and no
+  sublinear-wire malicious `OpenQuotientIntoMac` or stateful privacy theorem
+  exists.
+
+  Published algebraic-PRF authentication needs at least one group element per
+  coefficient (optimistically 17x including packed weights); silent OLE/NIIP
+  remains linear wire; quotient Merkle commits need a second scan or linear
+  scratch; public powers restore forbidden setup/MSM; finite hidden credential
+  pools lack near-linear private enrollment; and structured cosets retain the
+  recorded commit-order/`tN` failure. The separate Brakedown, FRI-Binius,
+  Blaze, binary-GKR and polynomial-preprocessing controls retain their
+  square-root, full-oracle/field bridge, conjectural rate/setup, encoded-matrix
+  and evaluation-binding-only rejection reasons. An eventual online process
+  is isolated/read-only and burn-on-abort, but no code, prover, SIMT, refresh,
+  provider or pod is authorized.
+
+- **2026-08-28 — C7 R0.8b prepares the first local test without promoting a
+  carrier.** The owner requests maximum construction progress toward a tiny
+  local case. A new isolated C7 policy-2 reference fixes the frozen keyed
+  BLAKE3-XOF stream and six-draw rejection addresses, public salted BLAKE3
+  leaf/tree, canonical `1296+32h` one-leaf frame, fixed nonrefundable root
+  reservation with distinct actual-response census, shared-`Delta` Fp3
+  terminal, and in-memory accepted-KV CAS. Its tiny two-leaf test covers KAT,
+  codec round-trip/mutation, abort burn, accept, exhaustion, terminal equation,
+  replay and fork rejection. Budget v24 records all evidence `credit:false`.
+
+  The co-designed tournament remains empty. A structured `X^B-c` coset block
+  has one-scan `N+B log B` evaluation but only one worst-case query hit;
+  independent amplification costs `tN`. Persisting rate-1/2 field parity is
+  at least 5x packed before the tree. A bounded-tail causal encoder cannot
+  give constant relative distance because the last input affects only its
+  tail. These are bounded rejections, not a general circuit lower bound. No
+  PCS/`BatchOpenBlocks` prototype, SIMT, prover, refresh, provider or pod is
+  authorized.
+
+- **2026-08-28 — C7 R0.8a fixes the dual-track tournament and authorizes a
+  scoped checkpoint.** Published constructions are baseline/control rows and
+  may enter only with exact, independently verifiable costs. The main research
+  line is a new C7 co-designed shared circuit. It earns no credit from its
+  design: before any tiny CPU prototype it must provide (1) a complete
+  algebraic relation and codec, (2) exact query/byte/memory/setup/work counts,
+  (3) a soundness/privacy bridge to the MAC, KV cache and malicious verifier,
+  and (4) a one-packed-scan `O(N+poly(q,log N))` proof. The checkpoint remains
+  design/seam-only and authorizes no prover, SIMT, refresh, provider or pod.
+  Both registered budget invocations and diff check pass; Rust passes
+  9 field, 37 MAC unit and 5 MAC integration tests; the focused Lean C7 build
+  completes all 3,247 jobs with no `sorryAx`. All protocol credit remains
+  false.
+
+- **2026-08-28 — C7 R0.8 opens the new-carrier tournament and lands only the
+  carrier-independent Fp3 seam.** The owner selects 1.A/2.A/3.B: preserve all
+  gates and search only for a genuinely new shared code-switch/circuit; retain
+  strict-UD RS solely as an algebraic/security control and never implement its
+  prover; implement only the canonical Fp3 codec/KAT and shared-`Delta` MAC
+  adapter independent of any carrier. Budget v23 records an empty, fail-closed
+  tournament with exact admission predicates and the existing exclusions plus
+  their reasons; it does not repeat pure-fold or bounded code-switch screens.
+
+  Rust now encodes `Fp[u]/(u^3-2)` as three canonical little-endian Fp limbs,
+  rejects wrong lengths and limbs `>=p`, and tests the multiplication KAT
+  `(1,2,3)*(4,5,6)=(58,49,28)`. The terminal seam tests two commitments and an
+  RLC under one shared `Delta`, exact 24-byte corrections and mutations in all
+  three limbs. `volta-field` passes 9 tests; the focused `volta-mac c7_fp3`
+  test passes. This is not a PCG/VOLE/PCS refinement and grants no prover,
+  SIMT, refresh, provider or pod authorization; all protocol credit remains
+  false.
+
+- **2026-08-28 — C7 R0.8 closes the root/codec fixed point and records the
+  selected-RS online NO-GO.** The owner freezes the 64-KiB
+  `C7-RM-KMACXOF256-v1` descriptor, approves the six-`2^-110` plus
+  two-`2^-120` privacy allocation with exact codec refinement, and reconfirms
+  BLAKE3-XOF as the performance/parallelism-primary root-mask candidate while
+  KMAC remains an unpromoted high-margin control. The current protocol stays
+  interactive with `Q_FS=0`. A future FS selection is deliberately separate:
+  KMAC is preferred when conserving security margin dominates; BLAKE3 is
+  preferred for throughput only under a tightly preregistered `Q_FS` and a
+  complete ROM/multi-target/byte budget.
+
+  Budget v22 corrects a non-fungible geometry inconsistency. GPT-2's selected
+  `Q_root=134,980,992` raises the RS coefficient dimension from `2^27` to
+  `2^28`, so its rate-1/2 oracle is `2^29` Fp symbols and its final schedule is
+  `[4,5,3,3,3,4]`; Gemma remains `2^35`. GPT-2 `(q,Z,U,S)` becomes
+  `(831,29192,1662,234342)`, known opening bytes 2,605,740 and selected setup
+  491,686,208 B. Gemma remains `(1055,33848,2110,297510)`, 3,729,724 B and
+  92,844,619,328 B. All four query-growth axes stay within 1.30.
+
+  The bounded online screen then closes every registered standard-RS
+  realization: direct opening is a qN control; persisting the complete
+  codeword totals 4,786,653,504/642,600,433,216 B, or 19.301x/10.423x packed;
+  online materialization is model-sized; and no pruned/shared schedule with a
+  q-independent source-linear term, one scan and bounded memory is present.
+  Seeded BLAKE3/KMAC removes mask storage but does not evaluate the dense RS
+  map. This is a NO-GO for the current realization, not a universal lower
+  bound. Budget invocations and diff check pass; all evidence is
+  `credit:false`. No prover, SIMT, refresh, provider or pod action occurred.
+
+- **2026-08-28 — C7 R0.8 confirms the global horizon and compiles the KMAC
+  alternative.** The owner confirms that the fallback's `2^20` attempts are
+  one irrevocable model-wide aggregate across every connection, failure,
+  retry and selective abort. It is not reset by a new connection. This fixes
+  GPT-2/31B `K_model=2048/128` and total seed attempts 4096/256 for the
+  authorized fallback profiles.
+
+  Budget v21 adds `C7-RM-KMACXOF256-v1`, an unpromoted mainline alternative.
+  Independent 64-KiB chunks use a 104-byte root descriptor plus `le64(chunk)`,
+  preserve one ordered CPU/SIMT coefficient stream and bound per-worker memory
+  at 65,848 B. Two-seed root setup controls are
+  12,958,175,232/263,217,807,360 generated bytes and
+  95,699,420/1,943,930,342 Keccak-f[1600] permutations; required target rates
+  are 14.398/48.744 MB/s. No generated mask/codeword is persisted; the online
+  one-scan mask-contribution schedule remains unknown and separately gated.
+
+  Under a named, unselected `2^64` adversarial-permutation screen, the generic
+  ideal-permutation arithmetic reaches 152.992/152.647 bits and conditionally
+  passes 110. The complete target allocations are 86.406856/86.062533 bits for
+  BLAKE3 and 107.414568 bits for conditional KMAC, so both pass 78 as budgets.
+  They earn no security/setup credit: the adaptive multi-key
+  KMAC-to-fixed-Keccak reduction, numeric fixed-permutation advantage and
+  achieved RS/PRF/hash/PCG/VOLE/MAC/state/abort/codec terms plus measured setup
+  wall and online schedule are missing. Both registered budget invocations pass;
+  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`. No implementation,
+  refresh, prover, SIMT, provider or pod action occurred.
+
+- **2026-08-28 — C7 R0.8 authorizes a full-78 BLAKE3 fallback while retaining
+  mainline 110.** The owner authorizes the numeric 512/8,192 root profiles only
+  as a computational variant. Mainline root-mask PRG remains `<=2^-110`.
+  Fallback admission requires the exact sum of every privacy term to remain
+  `<=2^-78`; failure promotes KMACXOF256 or reduces the load per root.
+
+  The fallback caps all model-variant attempts across connections at `2^20`.
+  Therefore GPT-2/31B have `K_model=2048/128`, total setup seed attempts
+  4096/256 and model-wide `Q_mask_words` maxima
+  3,317,292,859,392/4,211,484,917,760. No primary source located by the bounded
+  audit gives a quantitative BLAKE3 multi-root theorem. Under the expressly
+  named, unproved `Q/2^128` control, BLAKE3 plus six-draw rejection reaches
+  86.407/86.063 bits: it fails mainline 110 but passes the fallback mask-only
+  78-bit subcheck.
+
+  The full fallback is still false: adaptive RS-view, salt/hash, PCG/VOLE, MAC,
+  allocator/state, replay/fork, abort/timing and codec/transcript terms remain
+  nonnumeric. Budget v20 checks pass; all is `credit:false`. No implementation,
+  refresh, prover, SIMT, provider or pod action occurred.
+
+- **2026-08-28 — C7 R0.8 compiles concrete maximum root-profile proposals.**
+  The owner confirms that security uses a preregistered maximum, never an
+  observed average or post-hoc refund, and that every failure is included.
+  The proposed GPT-2/31B profiles use `R_root=512/8192`; these counters include
+  accepted responses, failed attempts, retries and selective aborts. A separate
+  1/8 attempt-equivalent reserve covers future typed lifecycle/load charges,
+  and at most two setup seeds are allowed and fully charged.
+
+  Proposed scalar `Q_root` is 134,980,992/2,741,852,160. Worst-case six-draw
+  `Q_mask_words` across both seed attempts is
+  1,619,771,904/32,902,225,920. Both fit target-2.00x RS capacity with
+  9,454,464/791,486,208 coefficients unused. A linear `Q/2^128` BLAKE3 control
+  certifies only 97.406/93.063 bits and therefore fails 110.
+
+  The profiles remain owner-unselected and `credit:false`: exact plane/lifecycle
+  refinement and a tighter primitive-specific BLAKE3 theorem are missing.
+  Budget v19 checks pass. No implementation, refresh, prover, SIMT, provider or
+  pod action occurred.
+
+- **2026-08-28 — C7 R0.8 selects computational per-root seeded masks.** The
+  owner selects one fresh private 256-bit seed per disclosed candidate root,
+  explicitly declares policy-2 weight-root privacy computational and requires
+  the root-mask PRG/PCG advantage inside the 78-bit model-lifetime budget.
+  Persisted uniform Fp coefficients remain the information-theoretic baseline,
+  not the main line. Setup occurs once per root epoch and serves its bounded
+  interaction horizon; refresh is intended to be rare but remains untested and
+  is not a security assumption.
+
+  Budget schema v18 fixes addressed derivation by model/epoch/layout/field/
+  rate/k0/coefficient/draw index and selects six canonical 64-bit Goldilocks
+  rejection draws. At the largest geometry-only GPT-2/31B capacities, setup
+  failure is bounded by 2^-163.379/2^-156.859 per seed attempt. The required
+  model-lifetime component is
+  `Adv_RootMaskPRG_multi(K_model,{Q_mask_words}) +
+  K_seed_attempts*epsilon_rejection <= 2^-110`; it is distinct from salt PRF
+  and VOLE PCG and is included once in the 78-bit privacy sum.
+
+  The concrete generator suite, multi-key work-factor theorem,
+  `K_seed_attempts` and numeric word bounds remain unset, so privacy/setup stay
+  fail-closed. Mock `FpStream`/ChaCha8 is rejected; the existing AES-128-MMO
+  and BLAKE3 GGM paths remain quarantined outside their registered 16-byte
+  WYKW node role because they provide no C7 multi-root mask bound. The seed
+  adds 32 persistent bytes: current floors become
+  369,843,136/92,844,619,328 B. Both registered v18 invocations pass; all is
+  `credit:false`. No refresh, prover, SIMT, provider or pod action occurred.
+
+- **2026-08-28 — C7 R0.8 selects BLAKE3-XOF first, without spending the
+  security target.** Keyed BLAKE3-XOF is the primary root-mask candidate for
+  speed, seekable addressed output and parallelism. KMACXOF256 is the fallback;
+  if necessary, attempts per root may be reduced and the RS/setup row
+  recomputed. The 78-bit connection target cannot be lowered to admit a PRG.
+
+  The official BLAKE3 specification targets 128-bit security and treats its
+  256-bit key as extra defense, not as 256 security bits. Consequently only 18
+  bits (`2^18` factor) of total multi-root/query loss fit before C7's `2^-110`
+  PRG reserve. `Q_mask_words` counts all addressed generator words consumed by
+  candidate-root setup, including rejection and failed seeds; visible PCS
+  queries cannot replace it without a tighter reduction. The exploratory 31B
+  first-draw floor is already 37,893,076,736 words and the six-draw cap is
+  227,358,460,416. A linear-loss control permits only 262,144 words: the
+  conservative one-attempt charges are 234,342/297,510, so 31B fails that proof
+  form before lifecycle reserve. This is not terminal because the exact
+  charge-to-theorem mapping remains open. No inspected source supplies the
+  exact C7 multi-root bound.
+
+  BLAKE3 and KMAC therefore remain `credit:false`; primitive promotion awaits
+  the exact root horizon, quantitative theorem and setup-wall row. Budget v18
+  checks pass. No implementation, refresh, prover, SIMT, provider or pod action
+  occurred.
+
+- **2026-08-28 — C7 R0.8 bounds RS mask capacity and rejects one root for the
+  connection horizon.** Proposition 3.19 of 2026/391 requires randomness
+  length `t` for perfect t-query RS privacy: retaining `W` message coefficients
+  requires `ell>=W+t`, and rate 1/2 commits `2*ell` symbols. Conservatively
+  charging the compiled visible-Fp reservations 234,342/297,510 per attempt
+  leaves only 10,217,728/3,533,338,368 random coefficients in the current
+  power-of-two trees, or 43/11,876 full attempts before lifecycle reserve or
+  privacy margin.
+
+  Geometry-only root ceilings within 2.00/2.10/3.00x setup are
+  616/616/1,761 attempts for GPT-2 and 11,876/127,367/127,367 for 31B.
+  These omit mask persistence. Explicitly retaining every uniform coefficient
+  lowers them to 43/43/134 and 11,876/11,876/25,596. A short seed instead needs
+  a separately charged computational PCG/PRG hybrid and random-access one-scan
+  refinement. The all-round control is 1007.188x/9.095x but still awaits the
+  cross-round load theorem. Independently, the initial 16-lane oracle alone
+  reserves 75,012 Fp positions per attempt; `16*max load>=sum load` forces at
+  least 78,655,782,912 random coefficients over `R_max`. Its geometry is
+  125,015,276,960/186,420,076,960 B, or 504.094x/3.023708x. Thus one root for
+  `R_max` is NO-GO even if all later-round leakage is free.
+
+  This is not an admitted `Q_root/R_root`: paper queries are interleaved
+  alphabet locations, so the g141 load map, adaptive stateful refinement,
+  lifecycle reserve and positive margin remain required. Rotation is
+  necessary, but refresh remains expressly untested/uncredited. Budget schema
+  v15 default and 64-MB/1.6-GB/s invocations pass; all remains `credit:false`.
+  No prover, SIMT, provider or pod action is authorized.
+
+- **2026-08-28 — C7 R0.8 selects Fp3 and compiles the bounded opening
+  subcodec.** The owner selects direct Goldilocks Fp3, keeps the 78-bit
+  connection target and fixes setup target/hard caps at 900/990 s for GPT-2
+  and 5,400/5,940 s for 31B. Refresh uses separate counters and the same
+  initial numeric pairs, with no budget transfer; it is explicitly not tested
+  or credited in R0.8.
+
+  Budget schema v14 gives exact inherited Fp3 all-fold bounds of
+  161.017/153.173 response bits and 141.017/133.173 after `R_max=2^20`. This
+  passes only the algebraic-gap 110/78 axis. Fp3 is fixed as
+  `Fp[u]/(u^3-2)` with canonical three-limb encoding; the exact non-cube
+  witness is `2^((p-1)/3) mod p = 2^32-1`. The focused C7 Lean build passes
+  after generalizing the shared-Delta coordinate consequence to `Fin d`,
+  covering all three limbs without independent base-field MACs. The
+  conservative g141 opening
+  census is `q_open=831/1055`, `Z_atom=26528/33848`, `U_leaf=1662/2110` and
+  `S_visible_Fp=234342/297510`; all four GPT-2-to-31B ratios pass 1.30. Exact
+  compact-tree sibling caps are 19,335/39,843 and known serialized opening
+  bytes are 2,552,532/3,729,724 B. Pre-mask-capacity setup floors are
+  369,843,104/92,844,619,296 B, inside 2x persistent storage; t-query ZK
+  randomness capacity and associated bytes remain unknown.
+
+  All evidence remains `credit:false`. Non-oracle strict-UD/OOD messages,
+  reservation/assignment receipts, root-hiding metadata, the Rust Fp3 codec
+  and shared-Delta adapter refinement, malicious-DV privacy, numeric root
+  horizons and the ordered one-scan bounded-memory generator remain missing.
+  Setup time is unmeasured; refresh is out of scope. No CPU prover, SIMT,
+  provider or pod is authorized; `C7_CPU_REFERENCE_PASS=false` and
+  `C7_POD_READY=false`.
+
+- **2026-08-28 — C7 R0.8 opens the codec/security/resource pass and stops on
+  the strict Fp2 decision.** The owner authorizes design-only R0.8 and retains
+  RS t-query ZK plus strict-UD WHIR/Ligerito, rate 1/2, `k0=4`, one packed
+  weight root, logical `g=141` and fresh interactive challenges with `Q_FS=0`.
+  The required output is the canonical codec, security-event registry,
+  complete serialized bytes and setup/refresh/online resource row; no backend
+  tournament, prover, SIMT, provider or pod is reopened.
+
+  Budget schema v12 applies the inherited algebraic-gap bound round-by-round
+  to the selected schedules `[4,5,3,3,3,3]` and
+  `[4,4,3,3,3,4,4,4]`. GPT-2/31B certify 97.017/89.087 all-fold response bits
+  and 77.017/69.087 after `R_max=2^20`. Thus 31B misses 110 by 20.913 bits and
+  78 by 8.913 before all other terms. A modest 104- or 98-bit response target
+  cannot pass. Omitting all other errors, 78 bits permit only 2,175 attempts;
+  84 bits permit 33. This is a proved upper-bound audit, not a tight attack.
+
+  Setup-wall targets are 900 s for GPT-2 and 5,400 s for 31B. The owner also
+  requires tolerance, but its numeric hard caps and the separate refresh
+  targets/caps remain unset and cannot be selected after measurement. The 3x
+  disk ceiling and all traffic/memory/invalidation gates remain conjunctive.
+  R0.8 now requires the owner security and time-tolerance decisions before
+  fixing the codec field or completing its byte/resource row. All evidence is
+  `credit:false`; `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`.
+
+- **2026-08-27 — C7 R0.7 resource-envelope amendment and owner checkpoint
+  GO.** The owner keeps proof-wire 105% as a target rather than an immediate
+  hard stop. A candidate may preregister one exact exploratory hard cap in
+  125--150%, but only if the complete compiled proof simultaneously remains
+  <=35 MB for GPT-2, <=115 MB for the 31B envelope and <=3.5x growth. The v11
+  harness reports weight allocations 3,116,843/5,234,948 B; 105% targets
+  3,272,685/5,496,695 B; 125% floors 3,896,053/6,543,685 B; and 150% maxima
+  4,675,264/7,852,422 B. No exact exploratory percentage is selected before
+  an R0.8 codec exists, so the compiled gate remains false.
+
+  Setup retains 2.00 as target and 2.10 as baseline tolerance, while adding
+  an exploratory `A_setup<=3.00`. For the fixed workloads the absolute
+  persistent-disk caps are 744,000,000 B and 184,958,400,000 B. Every
+  candidate must also preregister absolute setup-wall and refresh-wall seconds
+  before measurement. Those time caps are intentionally unset because R0.8
+  is not authorized and no candidate/SLA exists; therefore the exploratory
+  setup gate is false. Temporary disk, preprocessing/refresh traffic, peak
+  RSS/VRAM and invalidation remain separately counted, and X4d-scale expansion
+  or unbounded scratch cannot hide inside the ratio.
+
+  These relaxations do not transfer to the four query-growth counts, one-scan
+  rule, privacy, soundness or 110/78-bit security. Budget schema v11 default
+  and 64-MB/1.6-GB/s invocations plus `git diff --check` pass; all evidence
+  remains `credit:false`, and no CPU prover, SIMT, provider or pod action is
+  authorized. The owner approves the scoped R0.7 checkpoint, commit and push
+  on `agent/c7-stateful-alfc`; R0.8 remains undecided.
+
+- **2026-08-27 — C7 R0.7 closes both bounded 1.05 alternatives and activates
+  the owner-only 1.30 query fallback.** The existing pure-fold frontier was
+  not reopened. The first bounded screen tested shared cross-round paths with
+  actual adjacent-symbol derivation, not merely shared indices. On the fixed
+  Fp2 controls, canonical openings remain 831/1,054 (1.268351x): each
+  round/root fiber is still a distinct authenticated oracle opening. Maximum
+  legitimate adjacent derivation saves 1,130/1,576 unstacked positions and
+  leaves 17,974/22,552 (1.254701x), still outside 1.05. Roots do not share
+  Merkle paths. Admission would additionally require every root fixed before
+  the joint paths, a new delayed strict-UD/RBR extractor, the adaptive privacy
+  image condition `im(A_T G_W) subseteq im(A_T G_R)` for every abort prefix,
+  a derivation-aware g141 codec and a one-scan schedule. Fixed-set RS t-query
+  ZK proves none of that. The joint sampler is therefore NO-GO.
+
+  The distinct code-switch screen also found no complete row. The strongest
+  exact control, ERA-to-BaseFold, gives q 2,370/3,602 (1.519831x) and
+  unstacked Fp 68,612/71,076 (1.035912x): the axes are non-fungible and q
+  fails even 1.30. Its optimistic static setup floor is 2.466667x, above the
+  2.10 hard gate, and a materialized 25-stack alone is 6.25x packed bytes.
+  SwitchFold/QAFold/BrakeFold retain auxiliary/carry roots, full encodings,
+  large memory and no hiding/terminal theorem; 2026/391's `35/27` alphabet
+  asymptotic has no exact C7 constants/codec and is HVZK rather than stateful
+  malicious-DV privacy; LigeSIS retains full-RS/secondary-PCS setup; ITC3 is
+  univariate. These reasons remain in design D077. The selected carrier is
+  NO-GO under the original 1.05 gate; this is not a universal lower bound.
+
+  Exercising the owner's explicit fallback, R0.7 now registers 1.30 as a
+  separate hard growth ceiling for each of `q_open`, `Z_atom`, `U_leaf` and
+  `S_visible_Fp`. The existing Fp2 Pareto controls pass only the two known
+  axes: 1,054/831=1.268351x with 26 draws of integer headroom, and
+  24,128/19,104=1.262982x with 707 positions. The latter is an unstacked
+  Fp-position formula control, not compiled `S_visible_Fp`; exact
+  `Z_atom/U_leaf/S_visible_Fp`, paths and serialized bytes remain unknown, so
+  the four-axis gate remains false. Fp3 may close only algebraic security and
+  must pass the same census. The 105% weight-wire ceiling, 30/100-MB and 3x
+  proof gates, setup 2.00/2.10, one scan/bounded memory and 110/78-bit security
+  gates are unchanged; there is no tolerance transfer or GPT-2 padding.
+
+  Budget schema v10 records both NO-GO screens and the conditional fallback;
+  both registered default/64-MB invocations and `git diff --check` pass. No
+  Lean lemma is warranted before a concrete codec statement. No prover, SIMT,
+  provider or pod action occurred, and `/tmp/volta-zk-c64` was untouched.
+  `C7_CPU_REFERENCE_PASS=false`, `C7_POD_READY=false`, all evidence remains
+  `credit:false`, and lifetime caps remain unset. The proposed next checkpoint
+  decision is design-only compilation of the retained pair into the exact
+  four-axis g141 codec, paths, proof bytes and security/resource row; failure
+  of any active or unchanged gate records carrier NO-GO before CPU work.
+
+- **2026-08-26 — C7 R0.7 fixes the theorem carrier, allocator authority and
+  Pareto-before-caps order.** The owner confirms RS t-query ZK plus strict-UD
+  WHIR/Ligerito with public salted BLAKE3 as theorem carrier, ERA `r=4` only as
+  byte/prover control, and the model owner/provider as the one global
+  allocator. Privacy is conditional on honest linearizable durable `AllocOK`;
+  receipt EUF remains a separate dishonest-proof-worker soundness premise.
+  Numeric `Q_root`, `R_root`, `K_model` and `D_model` are forbidden until one
+  coherent field/domain/codec/security-amplifier row has a complete
+  provenance-tagged Pareto vector. Unknown cells fail closed; there is no
+  scalar score or tolerance transfer.
+
+  Root accounting now covers lifecycle leakage as well as responses. Every
+  epoch has typed `q_init/q_rotate_in/q_rotate_out` and
+  `u_init/u_rotate_in/u_rotate_out`; componentwise
+  `u_init+sum u_W+sum u_rotate_in+sum u_rotate_out<=Q_root`. Old and candidate
+  epochs reserve before the first W-dependent bridge/root byte. Abort/retry
+  burns both sides, seals the candidate and consumes its `K_model` index; every
+  disclosed candidate enters the lifetime hybrid even if never activated. A
+  zero lifecycle charge requires an authenticated-only zero-visible-query
+  theorem, not generic headroom.
+
+  `D_model` now covers the union of VOLE/MAC key-tape domains instantiated by
+  W-dependent init, response and inbound/outbound rotation phases, including
+  failed/aborted attempts. Each `J_d` includes reserved/consumed correlations
+  and burned suffixes. A lifecycle phase contributes zero domains only with a
+  concrete zero-VOLE/MAC codec theorem; its PCS leakage remains charged.
+
+  The canonical census now separates logical draws, distinct Fp positions,
+  unique g141 leaves, all 141 visible Fp occurrences per opened leaf and exact
+  Merkle siblings. The wire identity charges payload, 256-bit salt, exact
+  multiproof, indices/framing, every interactive Fp/Fp2 challenge, round root,
+  non-oracle message, terminal adapter and authenticated epoch/profile receipt
+  exactly once. Fp2 and interleaved alphabets are unstacked before the four
+  independent 1.05 growth gates.
+
+  The security audit narrows the missing privacy bridge to
+  `C7-OnlineMDVViewRefine`: every adaptive malicious-DV byte-prefix/abort view
+  must factor through bounded adaptive RS queries plus the authenticated-only
+  terminal simulator. 2026/391 Proposition 3.19 gives zero-error fixed-set RS
+  t-query ZK, but its composition class is non-adaptive and interleaving widens
+  answers by `2^k`; paper `t` is therefore not yet the visible-Fp capacity.
+  The model-lifetime bound separately sums W/B/KV root views, multi-user VOLE,
+  PCG, terminal/timing, rotation and branch/state closure. BLAKE3 collision
+  work `Q_CR` and receipt EUF stay in the dishonest-prover soundness bound,
+  not the privacy counter.
+
+  Executable budget schema v9 enumerates starting rates 1/2 and 1/4 with
+  constant folds `k=1..8` at 110 per-phase strict-UD query bits, before round
+  union and algebraic terms. Representative
+  GPT-2/31B controls grow 1.267–1.307x in logical samples and 1.318–1.346x in
+  unstacked Fp positions, so they fail the 1.05 gates; this is not an
+  impossibility proof. A rate-1/2 initial oracle contains `2^28`/`2^36`
+  scalar positions. The retained interleaved implementation first groups
+  `2^k0` positions per row and requires only
+  `D+log2(1/rate)-k0<=32`; the 31B controls are therefore field-valid at
+  `k0>=4` for rate 1/2 and `k0>=5` for rate 1/4. This corrects the rejected
+  single-smooth-domain reading. The published Goldilocks WHIR benchmarks
+  explicitly omit the initial-exponent-above-32 rows, and the retained
+  representation still has no admitted C7 codec/theorem bridge. C7 keeps a
+  dense g141 scalar stream: interleaved rows may straddle leaves and every
+  touched leaf is charged; persistent row-alignment padding is rejected.
+
+  A separate security cell is terminal for every current row. The 110-bit
+  input controls only the proximity-query miss probability. The inherited
+  strict-UD analysis uses the exact `2^(D+r)/p^2` error bound and certifies
+  99.9999999993/91.9999999993 bits for the first GPT-2/31B Fp2 challenge, not
+  a security upper bound. Unioning all
+  24/32 folds of the rate-1/2 `k0=4` controls certifies only 97.023/89.006 bits
+  and 77.023/69.006 after `R_max=2^20`, before other terms. Current evidence
+  therefore cannot establish the registered targets; no tight attack is
+  claimed. Admission requires a tighter proof, fully charged independent
+  repetition or a larger extension. Interactive PoW has no statistical
+  amplification under `Q_FS=0` without a new computational theorem.
+
+  Conditional controls make the tradeoff explicit. Two independent complete
+  Fp2 experiments would certify 178.011 all-fold and 158.011 post-horizon bits,
+  but conservatively double to 58,944 Fp / 471,552 payload bytes and need a new
+  repetition/privacy/one-scan theorem.
+  Goldilocks Fp3 certifies 153.006 all-fold and 133.006 post-horizon bits with
+  42,080 Fp / 336,640 payload bytes (+42.8%), but changes the terminal/MAC
+  bridge. Interactive PoW would require a new computational model; the
+  conditional control is 16,711,680 hash trials and 32 serial synchronizations.
+  All omit paths/salts/roots/framing and remain `credit:false`.
+
+  Exact DP over every integer tail-fold width after rate 1/2/first-`k0=4`
+  finds no Pareto pair within both 1.05 gates. The best GPT-2/31B pair is
+  `(q,Fp)=(831,19,104)/(1,054,24,128)`, or 1.268x/1.263x, so fold tuning alone
+  is rejected.  Its non-fungible large-model gap vector is
+  17.215%/16.863%; 17.215% is only the uniform common factor that would make
+  both axes pass. Fp3 is also ineligible at 1.270x/1.276x, with a
+  17.294%/17.707% gap vector. Dummy or
+  dominated GPT-2 work is forbidden denominator padding. Index/path sharing
+  alone cannot reduce both controls; a live row needs proved cross-round joint
+  sampling plus visible-symbol sharing or a different code-switch. This is a
+  registered-family result, not a universal WHIR lower bound.
+
+  Zero-randomness, digest-only static floors
+  are 1.4913x/1.5059x; holding old/new trees for rotation is
+  1.9826x/2.0119x before metadata. Rate-1/4 dual-root rotation is about
+  2.9652x/3.0237x and is rejected. Stock FFT/matrix implementations still do
+  not supply the ordered one-scan bounded-memory opener.
+
+  Both registered budget invocations pass. No Lean file changed: existing Nat
+  lemmas already cover fixed reservation/conservative weighting, while a new
+  wrapper before the codec would be tautological and risk double-counting
+  g141/Fp2. All rows remain `credit:false`; `C7_CPU_REFERENCE_PASS=false` and
+  `C7_POD_READY=false`. No prover, SIMT, provider contact or pod action
+  occurred. The owner now selects one bounded tighter-bound audit, followed
+  automatically at the analytic level by Goldilocks Fp3 with a direct
+  three-Fp-limb terminal/MAC if no explicit all-fold bound clears the 110-bit
+  response-event allocation. Two Fp2 repetitions are fallback and interactive
+  PoW remains quarantined. The compiler envelope fixes rate 1/2, first
+  `k0=4`, one flat packed weight root and dense g141. Every pure variable-fold
+  tail is rejected by the exact Pareto screen; joint query/Fp sharing or a
+  different code-switch remains unselected. Segmentation, another base field
+  and persistent row padding neither waive nor inherently repair that gate.
+
+- **2026-08-26 — C7 R0.6 activates policy 2 and separates root privacy from
+  proof/setup/work accounting.** The owner selects bounded masked PCS
+  responses with an authenticated-only terminal and retains interactive
+  post-prefix challenges (`Q_FS=0`). Policy 3 remains terminally rejected;
+  its Poseidon2/private-checker, one-stage RA distance and ordered-root setup
+  failures stay in the append-only decision register.
+
+  The authoritative attempt census is
+  `(unique opened leaves, visible masked Fp occurrences, exact Merkle sibling
+  digests, attempts)`. Fp2 costs two Fp occurrences and a full logical
+  `g=141` leaf costs 141 before any grouped-query comparison. `q_attempt` is
+  the public reserved maximum; `q_response` is an accepted response's actual
+  vector; `Q_root` is the theorem-backed root-life privacy capacity; and
+  `R_root<=floor(Q_root/u_W)` for the weight-plane charge. These are not one minimum:
+  proof bytes, privacy, setup/rotation and online work retain separate gates.
+  The composed game across all roots/connections/colluding verifiers must
+  satisfy `Adv_priv_model_lifetime<=2^-78`; the conditional 83-bit connection
+  arithmetic does not discharge it.
+
+  A model-owner/provider global linearizable allocator must durably burn the complete reservation
+  before the first attempt-local provider response dependent on `W`/root on
+  every accept, abort, timeout, crash or retry, across identities,
+  connections, replicas and colluding verifiers.  The public root is a
+  baseline view element whose replacement is charged to root hiding.
+  Rate limits/quotas mitigate DoS only. Exhaustion seals the root; rotation
+  uses a complete ordered weight-oracle epoch and transcript-bound receipt,
+  stops admission, resolves all outstanding attempts, then privately proves
+  same-`W` and atomically cuts over. `D_model`, `K_model`, multi-user
+  VOLE/MAC composition and distinct `Q_CR/Q_hide/Q_PRF` remain unset/unproved.
+  The operational paired-history game requires equal public
+  prompt/output/abort leakage and charges branch-root replacement to hiding.
+  The equality predicate covers only the witness-independent base frame;
+  roots, root-derived IDs, authenticated receipts, predecessor digests and
+  transcript/journal heads form a challenger-generated branch closure whose
+  indistinguishability remains a named obligation. A receipt binds the full
+  connection/nonce/MAC-domain session and must follow
+  receipt-free request binding; before emitting receipt/seed commitment it
+  passes `Reserved -> InFlight` and caches the first reply. Exact duplicate
+  messages receive only cached byte-identical replies, while divergent
+  challenges reject before new witness-dependent bytes. `Q_root` pays only
+  for the weight epoch; per-attempt `Q_B` and per-created-root `Q_KV` horizons
+  remain unset. Every proposed successor is charged, then sealed on abort or
+  retains the same counter after acceptance. The profile/receipt binds fixed
+  `(u_W,u_B,u_KV_old,u_KV_new)` charges: existing maps debit immediately;
+  new-root slots burn before the first reply and a no-extension assignment CAS
+  creates their durable maps before disclosure. Privacy assumes allocator
+  integrity; soundness separately requires
+  receipt unforgeability and local-plus-multi-user MAC composition.
+  `InitKVState(s0)` must create/charge the first predecessor before disclosure;
+  state-plane maps live outside `omega` and survive weight rotation
+  byte-identically, so only the weight counter is refreshed. The executable
+  census separates per-plane `(U,S,H)`, `A_attempt`, logical PCS samples and
+  ZK-alphabet atoms; all numeric entries remain fail-closed.
+
+  Policy 2 makes salted public BLAKE3 the preferred leaf/tree candidate:
+  opened masked payloads and salts allow public path verification, removing
+  the private Poseidon2 circuit. Collision resistance still does not prove
+  adaptive root hiding or t-query privacy. Active analysis is narrowed to
+  RS t-query ZK + strict-UD WHIR/Ligerito as theorem carrier and ERA `r=4` as
+  byte/prover control. Neither has joint stateful malicious-DV privacy,
+  ordered root setup under 2.10x and a one-scan bounded opener. After
+  unstacking, logical samples, ZK atoms, leaf and visible-symbol caps must each
+  stay within 1.05 from GPT-2 to 31B; path growth is allowed only inside exact
+  byte gates.
+
+  Budget schema v8 passes both registered invocations. The focused additive
+  Lean target passes and adds only fixed-reservation lifetime and conservative
+  worst-class-charge arithmetic; it proves no allocator, leakage or PCS
+  theorem. All results are `credit:false`, `C7_CPU_REFERENCE_PASS=false` and
+  `C7_POD_READY=false`. No prover, SIMT, provider or pod action occurred.
+
+- **2026-08-26 — C7 R0.5 implements the dense exception and closes policy 3
+  with a terminal NO-GO.** The one-stage RA CPU screen is real: a 64-level
+  successor trie opens canonical `g=141` blocks with one monotone logical `2N` packed
+  scan, `rN` permutation/diagonal/Fp operations, `64rN` successor steps,
+  `141U` query-prefix additions and `O(64*141U)` memory. It writes no codeword,
+  model-sized scratch or expanded weights. Three tests match a full tiny
+  encoder including final padding and fail closed on malformed queries,
+  source/counter mutation and attempted gate promotion. It is explicitly not
+  a PCS: the affine/diagonal fixture has no admitted Goldilocks distance/KS
+  theorem, and a random interleaver cannot produce the complete committed
+  accumulator oracle in order without forbidden reorder/random I/O. The
+  borrowed-slice counters are not physical disk/RSS evidence.
+
+  A concrete Poseidon2/Goldilocks width-16/rate-12 salted leaf now absorbs 141
+  Fp symbols, 256-bit salt, layout-derived root context and exact total/leaf
+  geometry into 32 bytes; internal partial/empty leaves reject. It uses 14
+  permutations, 8,400 secret multiplications and a 1,192-B private input floor
+  per opened leaf; KAT, canonical codec, mutations and cost checks pass. At
+  `r=4`, packed/tree/minimum-root storage is
+  473,134,816/117,621,299,360 B, within 2x, but setup requires
+  at least 29,548,940,400/7,345,865,536,800 S-box
+  multiplication-equivalents, before salt PRFs/tree hashes, and still has no
+  ordered streaming root. A shared Poseidon trace zerocheck could avoid 8,400
+  direct corrections per leaf, but its checker, trace PCS and exact proof-byte
+  census do not exist.
+
+  Consequently the soundness bridge, concrete codec-to-Lean privacy and
+  stateful malicious-DV theorem are not claimed. Their named missing premises
+  are tree/leaf/trace binding, authenticated zerocheck, code KS/unique decoding,
+  typed no-clear codec refinement, real PRF/PCG/VOLE and atomic state
+  composition. The ideal Lean theorem fixes `Delta` and the whole key function
+  upfront; only challenges are adaptive. C7 therefore binds the key-tape
+  seed/domain at connection start, reserves each exact attempt interval before
+  witness-dependent bytes, expands it lazily and burns every unused suffix.
+
+  Interactive `T/|Fp2|` at analytic `T=512` is about 119 bits. Direct FS with
+  `Q_FS=2^64` is about 55 bits; two independent FS challenges screen at about
+  174 bits via `Q_FS*T^2/|Fp2|^2`, but their added responses, paths, MACs, work
+  and scans are uncompiled. Additive Lean lemmas prove only the product and
+  connection counting numerators; RO security remains a hypothesis.
+  Interactive `Q_FS=0` stays selected.
+
+  Transcript review repairs a noncausal sampling diagram without revealing
+  the provider seed: client entropy commitment precedes provider seed
+  commitment, then the client opens; only afterward may the provider derive
+  coins, execute decode and commit output roots/messages. The relation proves
+  the private provider-seed opening and coin use. Two public commitments plus
+  the client opening contribute 96 payload bytes to future `B_framing` before
+  unknown headers. Hash binding, client-entropy hiding until the provider
+  commit, and provider-seed hiding from the verifier remain separate named
+  hypotheses; no wire/privacy credit is inferred.
+
+  The design records terminal reasons for published clear-query PCS/HVZK,
+  one-stage RA, RAA/ERA, full dense root-and-dot proving,
+  Poseidon2/BLAKE3/LigeSIS/linear/group leaf lines and preprocessing-only
+  binding. This is credible-candidate exhaustion under the
+  registered gates, not a universal lower bound. Budget schema v6 passes both
+  registered profiles. The feature-gated command
+  `cd rust && cargo test -p volta-pcs --features c7-policy3-reference c7_`
+  passes 7/7; the default feature set does not compile these screens and is
+  not evidence. `cd lean && lake build +VoltaZk.C7StatefulAlfc:olean` passes
+  without `sorryAx` in the C7 lemmas. All results remain `credit:false`,
+  `C7_CPU_REFERENCE_PASS=false`, and `C7_POD_READY=false`. No SIMT, provider or
+  pod action occurred. Policy 2 now awaits explicit owner activation plus an
+  exact root-wide query horizon and challenge-mode decision.
+
+- **2026-08-26 — C7 R0.4 selects the interactive/g141/CPU-first path and
+  rejects sparse-output regeneration.** The owner selects fresh honest-DV
+  `rho_i`, `beta` and `gamma` after their exact committed prefixes; all are
+  serialized and the selected protocol has `Q_FS=0`. Fiat--Shamir stays
+  quarantined because its historical grinding loss and changed wire bytes
+  cannot be hidden behind a transform. Logical leaf width is fixed at
+  `g=141`; `g=256` is allowed only after a concrete power-of-two codec
+  necessity and new private-query census. The registered 5% setup and
+  weight-wire tolerances remain hard ceilings, not transferable reserves.
+
+  At the illustrative 4.4x geometry, packed plus the g141 digest tree is
+  495,648,224 / 123,218,149,216 B for GPT-2/31B, leaving 351,776 / 87,450,784
+  B below the 2.00x targets before metadata; these remain floor screens with
+  no setup credit. The large tree has 961,958,582 leaves. With 256-bit salts
+  and analytic `Q_leaf<=2^64`, the salt-hit term has about 161.16 bits versus
+  about 97.16 for rejected 192-bit salts. This does not instantiate adaptive
+  `LeafCom` hiding or its private checker.
+
+  The former “sparse-row code” escape is removed. For
+  `G in F^(k*n)`, `Enc(m)=mG`, distance `d`, every row is a nonzero basis
+  codeword, so `nnz(G)>=kd`. With `B=ceil(n/141)`, uniform `U` queried leaves
+  require expected direct updates at least `Ukd/B`, and the U heaviest leaves
+  require at least `ceil(Ukd/B)`. Constant relative distance therefore makes
+  direct accumulation `Omega(U*N)`. Bias toward sparse columns may lower the
+  distributional detection distance; whenever it does, the independent
+  sampler needs more queries/proof bytes. This is explicitly not a lower
+  bound on structured linear circuits; only a pruned,
+  shared DAG remains a tiny research candidate.
+
+  A candidate earns `C7_CPU_REFERENCE_PASS` only with both a code-derived
+  `C(N,q)=c_source*N+poly(q,log N)` (`c_source` independent of `q`) and exact
+  counter reconciliation: one source open/pass, monotonically increasing
+  offsets, exactly `2N` packed bytes, bounded configurable memory, zero full
+  codeword/expanded weights/model-sized scratch or spill. Reports separate
+  source/query operations, Fp/Fp2, hashes, AES/VOLE/MAC, leaf/reduction work,
+  disk I/O, RSS/`VmHWM`, outputs and certificate/transcript bytes. Timing
+  sweeps alone cannot pass. No placeholder reference or kernel was created.
+
+  Optimized SIMT is blocked until that checkpoint. Afterwards it may cover
+  only streaming setup, LeafCom/Merkle, PCG/VOLE, MAC, Fp/Fp2, leaf checks and
+  reductions. Logical g141 is immutable; wider device tiles are measured
+  temporary zero padding excluded from LeafCom, root, certificate and
+  transcript. CPU/SIMT must be byte-identical across leaves, multiproof,
+  provider-internal salts and finite-fixture PCG/VOLE values/consumption,
+  handles, correlation schedule, every transcript frame/challenge, Fp2 limbs,
+  certificate, CPU verifier and journal. Disk, H2D/D2H/explicit-D2D,
+  generated/zeroed bytes, RSS/VRAM/pinned peaks, launches and sync reasons are
+  mandatory. A second scan, `qN`, full codeword, N-scratch, unassigned byte or
+  transcript difference fails.
+
+  Budget schema v5 passes default and alternate-chunk self-checks and remains
+  wholly `credit:false`. Existing ideal shared-Delta malicious-DV ZK and the
+  conditional 83-bit connection arithmetic remain the proved boundary;
+  concrete LeafCom/checker soundness, codec-to-window privacy and real
+  PCG/VOLE composition are still hard stops. Only tiny CPU search/reference is
+  authorized. No large prover/E2E, provider contact or pod occurred; complete
+  GPT-2 remains pod-only after `C7_POD_READY` and a later run-specific GO.
+
+- **2026-08-26 — C7 R0.3 fixes the tolerated setup/query envelopes, repairs
+  the cryptographic games and stops at an owner decision.** The owner
+  registers a 2.00x packed setup target and 2.10x hard ceiling, and places all
+  weight-oracle query bytes inside `B_weight_ALFC` with a 105% hard ceiling.
+  Integer hard limits are 520,800,000/129,470,880,000 B for GPT-2/31B setup
+  and 3,272,685/5,496,695 B for the weight certificate component. The latter
+  leave only 155,842/261,747 B above target; all six complete components and
+  Tier-A/3x gates still apply.
+
+  For the 4.4x digest geometry, `A_setup~=1+140.8/g`: `g=128` has only 32 B
+  of metadata headroom at the hard cap, `g=141` is the first integer target
+  screen, and `g=256` is the first power-of-two target screen. Larger leaves
+  directly enlarge private payload and Merkle bytes. No retained code closes
+  the other half of the trade-off: Ligero/RS direct restriction is
+  `Theta(qN)`; BaseFold/X4 materializes full transforms; WHIR persists full
+  matrices/tree levels; ERA needs N-scale permutation/accumulator
+  intermediates or `Theta(qN)` restriction. Thus no candidate passes setup,
+  one sequential scan without N-scale scratch, and private query bytes
+  together. Policy 3 is not declared exhausted; the remaining shape is
+  research-only and has no prover/pod authority.
+
+  The privacy game now compares equal witness-independent `Leak_base` while
+  constructing hiding roots independently per branch. Requiring equal
+  binding `C_W`/K/V roots had made privacy essentially vacuous. The theorem
+  separates adversarial leaf-oracle work `Q_leaf` from Fiat--Shamir work
+  `Q_FS`; a static large-model tree has fewer than `2^30` leaves, so 256-bit
+  salts with the analytic `Q_leaf<=2^64` screen give a `<2^-161` salt-hit
+  term, while 192-bit salts give only about 97 bits and are rejected. No
+  concrete arithmetizable leaf commitment is selected. Opaque handles plus
+  verifier `(Delta,k)` cannot extract a clear PCS transcript, while exposing
+  the prover tag would reveal plaintext. Soundness therefore needs a direct
+  authenticated-checker theorem or committed-input PoK/extractor.
+
+  Existing Lean malicious-verifier perfect ZK and shared-Delta sequential
+  composition already cover ideal zero-residual windows, so R0.3 adds no
+  duplicate lemma. The missing step is a concrete private-checker/codec to
+  those windows. A roughly 128-bit Fp2 Fiat--Shamir challenge with
+  `Q_FS=2^64` gives only a roughly 64-bit grinding screen; challenge mode is
+  now an owner gate, with fresh honest-DV post-prefix randomness recommended.
+  Budget schema v4 passes its self-check and remains entirely `credit:false`.
+  The create-new `c7-r03-prover-pod-handoff.md` records every readiness gate
+  and future run order; no placeholder runner, prover execution, provider or
+  pod contact occurred.
+
+- **2026-08-26 — C7 R0.2 selects policy 3 and installs independent setup and
+  post-Fiat--Shamir byte hard stops.** The owner selects literal no-clear
+  policy 3 as the sole active static-weight line. Policy 2 remains a dormant
+  fallback, not an automatic recovery branch: it may be activated only by a
+  later explicit owner decision after every credible policy-3 construction
+  has an append-only terminal disposition across privacy/soundness,
+  setup/storage/refresh, online time/memory/I/O and serialized proof bytes.
+  One candidate failing one gate is insufficient, and each rejection retains
+  its evidence and reason in `C7-D011`--`C7-D016`.
+
+  The anti-X4d gate records the historical topology accurately. X4d's setup
+  did not independently receive a FAIL—X4d.1 failed flatness and X4d.2 stopped
+  on a CUDA mismatch—but its 249,403,904-B packed source expanded to a
+  9,618,587,808-B durable Fp2 tier, a 76,948,701,184-B rebuilt oracle and a
+  37,094,424,416-B cache. Accelerated rebuild reached 133,544,189,952 B host
+  RSS and 43,486,546,048 B device; selected onboarding took 452.468691324 s.
+  C7 now rejects persistent expanded field/code/tag planes, P1/P2/multiplier
+  arrays, model-sized temporaries and root/mask pools. Therefore the existing
+  7.142-GB/1.776-TB ERA screen also fails structurally despite being smaller.
+  Even packed plus only the illustrative 64-symbol digest tree is
+  793,599,968 B / 197,288,959,968 B, about 3.2x packed. This remains a floor
+  screen. A numeric setup-amplification ceiling is owner-unset and fail-closed.
+
+  Query count is now both a security/privacy parameter and a proof-byte gate.
+  `B_query_FS` counts post-Fiat--Shamir answers/private handles, exact
+  authentication or multiproof nodes, commitments, round messages and codec
+  framing, then assigns every byte exactly once into the six certificate
+  components. X4's 128-draw ideal shared-chain lower bound spent 4,021,594 B
+  on query frames; its later 111-draw profile still spent 2,615,414 B. These
+  are historical motivation, not C7 credit. The complete GPT-2/31B
+  certificates must still pass 30/100 MB and at most 3x growth. Spot checks,
+  unique leaves, secret symbols and adversarial random-oracle queries are now
+  separate counters; ERA's 72,418 field elements and 53,011 hashes cannot be
+  imported unchanged as a policy-3 byte estimate.
+
+  The policy-3 research funnel now retains one unselected shape: a digest-only
+  salted leaf commitment whose payload/salt and PCS predicate are checked
+  under fresh attempt-local VOLE, while the digest/path stays public. It still
+  needs a one-scan `BatchOpenBlocks` algorithm and adaptive hiding/extraction
+  theorem. `budget_c7_stateful_alfc.py` schema v3 fails closed on missing setup
+  manifest, numeric ceiling, query schedule, post-FS bytes and compiled Tier-A
+  result. No Lean statement or implementation changed, and no pod/provider
+  was contacted. Next owner decisions are the numeric setup ceiling and
+  `B_query_FS` sub-budget placement before this sole candidate's theorem/census
+  screen.
+
+- **2026-08-26 — C7 R0.1 rejects the terminal-adapter privacy shortcut and
+  reaches an owner decision gate.** The local SOTA audit establishes that the
+  published Merkle/BCS instantiations do not implement literal policy 3:
+  Ligerito transmits requested rows and its terminal matrix, ERA transmits
+  requested columns plus authentication paths, and WHIR queries return leaf
+  evaluations/payloads. 2026/391 makes a bounded set of randomized encoding
+  symbols simulatable under query-bounded non-adaptive HVZK, but those symbols
+  remain clear oracle outputs. Unique decoding changes soundness assumptions,
+  not leakage. Backend A as composed is therefore rejected under policy 3;
+  WHIR remains only a public/synthetic tiny/scaled code control.
+
+  The additive C7 Lean seam now authenticates the terminal in the actual
+  extension field under one shared `Delta`, then projects the equality to both
+  serialized limbs; the previous two-independent-base-MAC interpretation is
+  removed. The RLC theorem now takes one fixed serialized prefix and explicit
+  residual/accept implications. The wire claim contains only an opaque handle.
+  A new conditional hybrid recurrence proves
+  `Adv(R) <= epsilon_fixed + R*epsilon_attempt`, and exact rational arithmetic
+  proves the registered allocation below `2^-78`. None supplies the missing
+  concrete per-attempt malicious-DV simulator, transcript binding, codec
+  privacy or backend knowledge soundness. Focused and full Lean checks pass
+  without `sorryAx`; the budget self-check passes.
+
+  The executable calculator now labels 106/378 segments, 512 handles, 64 bad
+  events, 12,385,563/19,212,300 certificate bytes and
+  7,142,399,968/1,775,600,639,968 artifact bytes as illustrative caps or
+  sensitivity only. It emits `compiled_certificate_bytes_counted:false` and
+  an incomplete security registry. The active design adds an append-only
+  decision/rejection table retaining the evidence and reason for every
+  demotion.
+
+  No pod/provider was contacted. “Starts locally” is fixed to tiny/scaled
+  integration preflight only. A complete GPT-2 E2E remains pod-only and needs
+  both a prior `C7_POD_READY` ledger state and a new explicit owner GO;
+  readiness alone is not authorization. Resume requires the owner to choose
+  policy 3 with a new authenticated-oracle compiler, or policy 2 with an exact
+  total query/root horizon and adaptive stateful privacy theorem.
+
+- **2026-08-26 — C7 R0 fixes the incremental stateful ALFC statement and
+  stops before implementation.** The owner-opened branch
+  `agent/c7-stateful-alfc` adds
+  `docs/c7-stateful-authenticated-lfc-design.md`. One certificate now proves
+  the real 50-step fixed-point `DecodeStep_q` recurrence from an accepted
+  100-token hidden predecessor to its append-only 150-token K/V successor.
+  Weight, fresh response trace, predecessor K/V and successor K/V remain
+  separate commitment planes inside one transcript-bound ALFC call and one
+  terminal MAC settlement; per-token PCS/folding and cross-response debt are
+  forbidden. The canonical schedule fixes all roots, queries and
+  authenticated values before `beta` and admits exactly one terminal point
+  per physical segment. The packed identity is linear-time only under that
+  invariant; any retained `K_i>1` point multiplicity restores
+  `sum_i K_i*N_i` and is a hard stop.
+
+  Backend A (packed Ligerito/ERA-style code, 2026/391 constrained-code masking
+  and a new VOLE-MAC adapter) is the architectural candidate but receives an
+  R1 NO-GO: the papers do not compose malicious-DV stateful privacy, a
+  no-clear two-limb terminal or one-pass bounded memory. SwitchFold/QAFold
+  remains an analytic challenger only. Strict unique-decoding WHIR is GO as a
+  tiny local control on the C7 packed relation, never C6.3's eight-body
+  topology and never as E2E credit.
+
+  `scripts/budget_c7_stateful_alfc.py` registers the same 100+50 workload for
+  GPT-2 and a declared 30,826,400,000-weight screening envelope. Its complete
+  target allocations are `12,385,563 B` and `19,212,300 B` (`1.551185x`), all
+  `credit:false`. The target weight terminal reads exactly
+  `248,000,000/61,652,800,000 B` in one pass and materializes no `L` or Fp/Fp2
+  wrapper; the 3.2-GB/s floors are `0.0775/19.2665 s`, not prover timings.
+  The explicit ERA-style setup screen is `7,142,399,968 B` versus
+  `1,775,600,639,968 B`, which reinforces the NO-GO. For `R=248.6`, the 3x
+  exponent ceiling is `0.1991738805`; the optional 6x ceiling is
+  `0.3248386079` and has no authorization.
+
+  Static-weight privacy selects authenticated-only policy 3, conditional on
+  a new adaptive malicious-DV theorem for at most `2^20` attempts and 512
+  terminal handles per attempt. No PCS symbol, evaluation or raw MAC tag may
+  be clear. The exact connection screen is
+  `2^-84 + 2^-120 + 3*2^-128`, effectively 83.99999999998 bits; root reuse
+  across connections is outside R0. `lean/VoltaZk/C7StatefulAlfc.lean` proves
+  the nine requested algebra/state seams without `sorry` or crypto axioms;
+  direct checking and the full 3,274-job `lake build` pass. These component
+  seams do not prove the concrete backend or full C7 relation. No pod,
+  production run, fixed-point change or frozen M1--M12 edit occurred.
+
+## Historical main branch context — C4.1 and C6.4
+
+Preserved from main at `58d9350`; the former authority below applies only
+to that historical line. C7.1 above remains the active authority.
 
 Read `c4.1-seed-streaming-fiat-shamir.md` next.
 

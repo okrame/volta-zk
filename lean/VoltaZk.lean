@@ -42,3 +42,8 @@ import VoltaZk.C62ScoreClampRelation
 import VoltaZk.C62FiatShamirComposition
 import VoltaZk.C41FiatShamirComposition
 import VoltaZk.C63CorrectionPrivacy
+import VoltaZk.C7StatefulAlfc
+import VoltaZk.C7StackedWeightUse
+import VoltaZk.C7GemmaTerminalManifest
+import VoltaZk.C7GemmaGKR
+import VoltaZk.C7GemmaQuantAccumulator

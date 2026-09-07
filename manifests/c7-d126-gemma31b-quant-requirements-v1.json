@@ -1,0 +1,71 @@
+{
+  "schema": "volta-c7-d126-gemma31b-quant-requirements-v1",
+  "profile": {
+    "name": "GemmaQuantV1",
+    "status": "BLOCKED",
+    "instantiated": false,
+    "admission_credit": false
+  },
+  "checkpoint": {
+    "model": "google/gemma-4-31B",
+    "revision": "5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89",
+    "source_dtype": "BF16",
+    "source_metadata_file": "manifests/c7-d126-gemma31b-source-metadata-v1.json",
+    "source_metadata_sha256": "1ddce0cc399d636488728f663fb756804a07e6b3ad14d43f527c7ad746e27ce2",
+    "private_tensor_count": 772,
+    "private_scalar_count": 30697345280
+  },
+  "packed_output": {
+    "scalar_dtype": "i16",
+    "byte_order": "little",
+    "zero_point": 0,
+    "bytes": 61394690560,
+    "sha256": null
+  },
+  "active_field": {
+    "base": "Goldilocks",
+    "base_modulus": 18446744069414584321,
+    "extension": "Fp3=Fp[u]/(u^3-2)",
+    "extension_degree": 3,
+    "encoded_bytes": 24
+  },
+  "workload": {
+    "file": "manifests/c7-d126-gemma31b-workload-v1.json",
+    "sha256": "70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b"
+  },
+  "public_layer_scalars": {
+    "file": "manifests/c7-d126-gemma31b-layer-scalars-v1.csv",
+    "sha256": "52c10c73dad7a8a81f937d4954d3b38b6cf38216393793e23571b3c6017d67af",
+    "count": 60,
+    "ordered_raw_sha256": "4d4ddd2f27faee67f141f83903c02bc93864a92402fd2cb9896da2628e6dbb70"
+  },
+  "required_uninstantiated": {
+    "weight_exponents_by_tensor": null,
+    "activation_exponents_by_operation": null,
+    "rounding_rule": null,
+    "saturation_rule": null,
+    "accumulator_bounds_by_operation": null,
+    "lut_table_schema": null,
+    "lut_table_sha256": null,
+    "calibration_schema": null,
+    "calibration_manifest_sha256": null,
+    "golden_schema": null,
+    "golden_manifest_sha256": null,
+    "rust_python_bit_equality_report_sha256": null
+  },
+  "acquisition_constraints": {
+    "pod_authorized": false,
+    "full_weight_shard_download_authorized": false,
+    "historical_quantization_imports_allowed": false,
+    "allowed_current_inputs": "pinned headers, 120 public-scalar bytes, config, index, tokenizer and workload"
+  },
+  "deterministic_unblock_procedure": [
+    "Verify the pinned metadata, workload and ordered public-scalar digests already present in the repository.",
+    "Obtain an owner-approved Gemma-only arithmetic specification containing every weight and activation exponent, the exact rounding and saturation rules, and a proved accumulator bound for every operation kind.",
+    "Obtain the LUT generator and schema; regenerate every table deterministically and record both the schema digest and the concatenated table digest.",
+    "After a separate authorization, use only an owner-provided local checkpoint whose two pinned LFS SHA-256 values verify; do not download weight bodies or use a pod under this tranche.",
+    "Stream the 772 BF16 private tensors in canonical terminal order into little-endian i16 with zero point 0, reject overflow according to the frozen rule, require exactly 61394690560 bytes, and hash the packed stream.",
+    "Run the frozen workload through independent Gemma-only Python and Rust implementations, compare every emitted witness value and output token bit for bit, and hash and register the canonical comparison report plus golden manifest.",
+    "Create a new instantiated profile artifact for review; never change this requirements artifact to PASS."
+  ]
+}

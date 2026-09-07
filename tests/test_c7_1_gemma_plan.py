@@ -994,6 +994,15 @@ def test_joint_state_cache_schedule_accounts_for_b_barrier_and_reconstruction():
     assert almost['known_phase_max_bytes'] == 6331752400 > last['known_phase_max_bytes']
     assert all(value <= envelope['arena_phase_upper_bytes'][phase]
                for phase, value in almost['arena_phases_bytes_before_uncompiled_reader_gamma_runtime'].items())
+    form_peak = plan.auxiliary_witness_screen(cohorts, 3945)['rne_public_form_screen']
+    form_at_capacity = report['auxiliary_witness_screens'][-1]['rne_public_form_screen']
+    # The same metadata envelope bounds the direct public evaluator: all
+    # point/domain bit counts are at most the capacity counts, 25 and 31.
+    max_cubes = 3803+60*envelope['max_qk_dyadic_rectangles_per_layer']
+    assert form_peak['output_terms_if_one_point_per_cohort'] == max_cubes == 33443
+    extra_cubes = max_cubes-form_at_capacity['output_terms_if_one_point_per_cohort']
+    field = 'verifier_extension_products_at_one_rq_point_upper_if_one_point_per_cohort'
+    assert form_peak[field] == form_at_capacity[field]+extra_cubes*(25+5*31+8) == 6275623
     assert report['packed_weight_bytes']+report['kv_capacity_i16_bytes']+report['wide_hash_rs_screen'][
         'outer_internal_only_tree_bytes']+6442450944 == 75823096256
 
@@ -2570,6 +2579,139 @@ def test_auxiliary_layout_raw_probes_and_rne_use_one_byte_source():
         plan.auxiliary_probe_terms(byte_tiles, sources, {1: ([11],[],[19,23],1)})
 
 
+def test_rne_output_and_validity_forms_match_dense_rq_with_multiple_claims():
+    sources = [
+        {'shape': (1, 3, 3), 'word_bytes': 6, 'rne': True, 'token_offset': 0},
+        {'shape': (2, 2, 3), 'word_bytes': 6, 'rne': True, 'token_offset': 0},
+        {'shape': (2, 1, 4), 'word_bytes': 6, 'rne': True, 'token_offset': 2},
+        {'shape': (2, 3, 2), 'word_bytes': 6, 'rne': True, 'token_offset': 0},
+        {'shape': (1, 1, 2), 'word_bytes': 6, 'rne': True, 'token_offset': 0},
+        {'shape': (1, 2, 1), 'word_bytes': 4, 'rne': False, 'token_offset': 0},
+    ]
+    _, rq = plan.auxiliary_word_layout(sources)
+    shifts = {0: -1, 1: 1, 2: 1, 3: 3, 4: 0}
+    qk = ([2], [3, 5], [7, 11], 13)
+    # Native PV point is lane || head || token; RQ is lane || token || head.
+    pv_native = [17, 19, 23, 29]
+    pv = (pv_native[1:2], pv_native[2:], pv_native[:1], 31)
+    claims = {0: [([], [2, 7], [3, 5], 11), ([], [13, 17], [19, 23], 29)],
+              1: [qk], 2: [qk], 3: [pv]}  # source 4 intentionally has no output demand
+    n = (sum(math.prod(s['shape']) for s in sources if s['rne'])-1).bit_length()
+    r, u = list(range(2, 2+n)), list(range(11, 11+n))
+    forms = plan.auxiliary_rne_forms(rq, sources, claims, shifts, r)
+    dense = {s: {'output': [0]*(1 << n), 'validity': [0]*(1 << n)} for s in forms}
+    values, cells = [0]*(1 << n), []
+    def eq(point, index):
+        return math.prod(x if (index >> j) & 1 else 1-x for j, x in enumerate(point)) % plan.P
+    for i, row, col, heads, height, width, offset in rq:
+        for h, a, b in product(range(heads), range(height), range(width)):
+            index = offset+b+width*(a+height*h)
+            rr, cc = row+a, col+b
+            raw = -30+9*i+5*h+3*rr+cc
+            values[index] = plan.rne_i48_to_i16(raw, shifts[i]) % plan.P
+            cells.append((i, index, raw))
+            dense[shifts[i]]['output'][index] = sum(
+                scale*eq(hp,h)*eq(rp,sources[i]['token_offset']+rr)*eq(cp,cc)
+                for hp,rp,cp,scale in claims.get(i, ())) % plan.P
+            dense[shifts[i]]['validity'][index] = eq(r,index)
+    for s, group in forms.items():
+        for role, terms in group.items():
+            actual = sum(scale*plan.folded_cube_form(o, q, [1], u) for o,q,scale in terms) % plan.P
+            assert actual == plan.mle(dense[s][role], u)
+            assert all(x == 0 for x in dense[s][role][len(cells):])
+    assert forms[0]['output'] == [] and forms[0]['validity']
+    assert sum(len(f['validity']) for f in forms.values()) == len(rq)
+    # The lifted R2 equation agrees with the demanded rounded outputs.
+    expected = sum(sum(x*y for x,y in zip(f['output'], values)) for f in dense.values()) % plan.P
+    rhs = 0
+    for i, index, raw in cells:
+        digits = [((raw+(1 << 47)) >> (8*j)) & 255 for j in range(6)]
+        y, valid = plan.rne48_byte_polynomials(digits, shifts[i])
+        assert valid == 1 and y == values[index]
+        rhs += dense[shifts[i]]['output'][index]*y + 7*dense[shifts[i]]['validity'][index]*(1-valid)
+    assert rhs % plan.P == expected
+    # A rejected value in an unobserved source leaves outputs unchanged but
+    # gives a nonzero validity residual; padding never receives such a probe.
+    _, bad_index, _ = next(cell for cell in cells if cell[0] == 4)
+    digits = [((32768+(1 << 47)) >> (8*j)) & 255 for j in range(6)]
+    _, valid = plan.rne48_byte_polynomials(digits, 0)
+    assert valid == 0 and (7*dense[0]['validity'][bad_index]) % plan.P != 0
+    native_values = [0]*16
+    for t,h,c in product(range(3), range(2), range(2)):
+        native_values[c+2*(h+2*t)] = plan.rne_i48_to_i16(-3+5*h+3*t+c,3) % plan.P
+    pv_dense = sum(eq(pv[0],h)*eq(pv[1],t)*eq(pv[2],c)
+                   *native_values[c+2*(h+2*t)] for t,h,c in product(range(3),range(2),range(2))) % plan.P
+    assert pv_dense == plan.mle(native_values, pv_native)
+    assert pv_dense != plan.mle(native_values, pv_native[:1]+pv_native[2:]+pv_native[1:2])
+    for points, scale_map, vp in ((claims, {k:v for k,v in shifts.items() if k != 4}, r),
+                                 ({**claims, 5: [qk]}, shifts, r),
+                                 (claims, {**shifts, 0: True}, r),
+                                 (claims, shifts, r[:-1])):
+        with pytest.raises(ValueError):
+            plan.auxiliary_rne_forms(rq, sources, points, scale_map, vp)
+
+
+def test_gemma_rne_shift_rules_use_actual_owners_and_distinct_q_k_exponents():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_bytes())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition'] == 'private_text'])
+    logical = runpy.run_path(str(Path(__file__).resolve().parents[1] / 'scripts/c7_d126_gemma_qspec_dag.py'))
+    manifest = plan.pinned_gemma_manifest()
+    nodes = logical['expand_dag'](manifest, logical['_expand_schedule'](manifest['workload_schedule']))
+    owners = {n.activation_scale_owner for n in nodes if n.activation_scale_owner is not None}
+    assert len(owners) == 1434
+    # Synthetic exponents only: no modification of the uninstantiated profile.
+    activation = {key: i % 11-5 for i,key in enumerate(sorted(owners))}
+    weights = {c['weight_key']: i % 9-6 for i,c in enumerate(cohorts)}
+    activation.update({'layer/5/q_rope': -7, 'layer/5/k_rope': -2, 'layer/5/qk_matmul': 1,
+                       'layer/5/softmax': -5, 'layer/5/v_norm': -3, 'layer/5/pv_matmul': 0,
+                       'model/final_rms': 3, 'model/lm_head': 0})
+    weights[cohorts[-1]['weight_key']] = -2
+    shifts = plan.gemma_rne_shift_classes(cohorts, weights, activation)
+    gamma = plan.gamma_barrier_plan(cohorts)
+    assert set(shifts) == {(r['layer'],r['operation']) for r in gamma['cohorts'] if r['kind'] == 'rne48'}
+    assert len(shifts) == 531 and shifts[5,'qk_matmul'] == 10
+    assert shifts[5,'pv_matmul'] == 8 and shifts[None,'lm_head'] == -1
+    assert 'model/last_row_select' not in activation
+    for old in (0, 3946):
+        sources = plan.auxiliary_word_sources(cohorts, old)
+        _, rq = plan.auxiliary_word_layout(sources)
+        source_shifts, source_points, cohort_points = {}, {}, {}
+        for i, source in enumerate(sources):
+            if not source['rne']:
+                continue
+            operation = {'qk_raw': 'qk_matmul', 'pv_raw': 'pv_matmul'}.get(source['operation'], source['operation'])
+            key = (source['layer'], operation)
+            source_shifts[i] = shifts[key]
+            heads, rows, cols = source['shape']
+            if operation == 'qk_matmul':
+                rows, cols = 150, old+150
+            point = tuple(list(range(2, 2+(d-1).bit_length())) for d in (heads, rows, cols))
+            claim = (*point, 7)
+            assert cohort_points.setdefault(key, claim) == claim  # all QK executions use one point/class
+            source_points[i] = [claim]
+        assert len(cohort_points) == 531 and len(source_shifts) == 3531
+        n = (sum(h*r*c for _,_,_,h,r,c,_ in rq)-1).bit_length()
+        forms = plan.auxiliary_rne_forms(rq, sources, source_points, source_shifts, [3]*n)
+        assert sum(len(g['output']) for g in forms.values()) == len(rq)
+        assert sum(len(g['validity']) for g in forms.values()) == len(rq)
+    for exponent, expected in ((-1000, -15), (1000, 48)):
+        assert plan.gemma_rne_shift_classes(cohorts, weights, {**activation, 'layer/5/qk_matmul': exponent})[5,'qk_matmul'] == expected
+    for actual_shift in range(-50, 71):
+        clipped = max(-15, min(48, actual_shift))
+        for value in (-(1 << 47), -32768, -1, 0, 1, 32767, (1 << 47)-1):
+            def outcome(s):
+                try:
+                    return plan.rne_i48_to_i16(value, s)
+                except ValueError:
+                    return 'reject'
+            assert outcome(actual_shift) == outcome(clipped)
+    for ws, acts in (({}, activation), (weights, {}), (weights, {**activation, 'layer/5/k_rope': None}),
+                     (weights, {**activation, 'layer/5/k_rope': True})):
+        with pytest.raises(ValueError):
+            plan.gemma_rne_shift_classes(cohorts, ws, acts)
+
+
 def test_masked_raw_overflow_cannot_be_removed_by_attention_pruning():
     # Two prompt rows, scale shift=0: only the FUTURE prompt score overflows.
     q, k = [[2,0], [0,0]], [[1,0], [32767,0]]
@@ -2643,6 +2785,8 @@ def test_auxiliary_bridge_exclusions_repairs_and_pending_composition_are_explici
     assert first['layout_sha256'] == 'adafad225aae2eaa2bb915cc9e5af063671b746665e6cfc9fc88cd5cffc3cac7'
     assert last['layout_sha256'] == 'f4d83e2da5ffb7faa17760d31de63d25fe9e6a8fe303d93ca9dea9ab7aee734b'
     assert last['literal_full_source_retention_bytes'] > 6442450944
+    assert [s['rne_public_form_screen']['verifier_extension_products_at_one_rq_point_upper_if_one_point_per_cohort']
+            for s in (first, last)] == [2928948, 6185383]
     for s in (first,last):
         assert s['source_templates'] == 3893 and s['raw_probe_payload_bytes'] == 2880
         assert s['literal_four_row_commit_with_b_bytes'] > 6442450944
@@ -2660,6 +2804,11 @@ def test_auxiliary_bridge_exclusions_repairs_and_pending_composition_are_explici
         assert not s['source_reader_all_gamma_forms_and_full_liveness_compiled']
         assert s['additional_weight_reads_given_w_free_source_reader'] == 0
         assert s['complete_certificate_bytes'] is None
+        forms = s['rne_public_form_screen']
+        assert forms['output_cohorts'] == 531
+        assert forms['output_terms_if_one_point_per_cohort'] == forms['whole_live_domain_validity_terms'] == s['rq_cubes']
+        assert forms['additional_mac_corrections_for_public_pullback'] == 0
+        assert not forms['credit'] and not forms['actual_gamma_claim_count_and_public_shifts_instantiated']
     for args in ((30,0,11),(30,18,0),(30,True,11)):
         with pytest.raises(ValueError):
             plan.rne_indicator_screen(*args)

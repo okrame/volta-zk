@@ -100,8 +100,8 @@ authorization.
   The [reverse Gamma order](c7.1-cut-witness.md#ordine-inverso-di-γ-e-ultima-rne)
   now places all raw RNE demands last on the pinned DAG, retaining RMS
   input statistics and whole-domain validity, including dead outputs.
-  Kernel contracts, output forms/shifts, full reader/workspace and retained
-  records remain uncompiled; this is not the physical B-release proof.
+  Kernel contracts, full Gamma form census/concrete exponents, reader/workspace
+  and retained records remain uncompiled; this is not the physical B-release proof.
 - [A5-P: sampled public parameters](c7.1-wide-hash-opening.md#21-a5-p-parametri-pubblici-dal-rom-con-coupling-finito)
   now gives a finite ordinary-ROM publication and exact joint-tape embedding
   into independently sampled arithmetic-hash keys. A fixed pre-profile,
@@ -239,20 +239,14 @@ authorization.
 - [R3: auxiliary witness bridge](c7.1-auxiliary-witness.md) specifies a
   candidate common byte source C_Σ for B and all raw QK/PV rectangles,
   with 120 fresh post-root probes and exact raw/six-lane RNE pullbacks.
-  Pruning masked raw scores can hide overflow; keeping the complete source
-  in memory would require 12,665,316,096 bytes at capacity. The candidate
-  retains only physical B and regenerates auxiliary values from W-free
-  Replay, conditional on the complete reader/lowering still to be compiled.
-  A striped execution of the identical RS encoder costs 64 source visits
-  to commit; a height-3 outer cache and staged internal C1 cache retain
-  A4's two postcommit visits. The largest listed phase is 6,362,991,432
-  bytes before remaining Replay/Gamma/runtime, not a full memory bound.
-  RNE uses prefixes 18/11 and 122 RQ visits; byte range uses 95 visits.
-  The C_Σ PCS component is 9,810,600/15,708,840 bytes at N=150/4096.
-  This requires a new common profile/layout and rerouting every consumer;
-  previous C_B subtotals are reference screens, not R3 totals. Output
-  normalizers/shifts, all Gamma forms, honest source generation, KV PCS,
-  full liveness/costs and root-to-oracle/FS remain open; G2 stays active.
+  Its [output/validity forms and exponent rules](c7.1-auxiliary-witness.md#forme-outputrq-validità-e-shift-pubblici)
+  now cover point claims for all raw cohorts, including multiple demands,
+  PV axis permutation and validity without an output consumer. This is
+  parametric, with a public-evaluator work bound, not calibrated Gemma
+  exponents or the complete Gamma caller. Honest source generation,
+  remaining kernels, KV PCS, full liveness/costs and root-to-oracle/FS
+  remain open. Use the A5 timeline for the current candidate's accounting;
+  earlier C_B/R3 schedule subtotals are reference screens, not its totals.
 - [A4: paired RS opening](c7.1-paired-rs-opening.md) fuses the paired
   reduction and RS opening into **two W reads together**. It checks the
   existing arbitrary row fold instead of converting it to a new W point;
@@ -370,8 +364,8 @@ explicit first-state aliases and bounded-memory read routing. Compose
 the linked W/KV PCS candidate, including state-cache liveness, and prove
 the k_rope/v_norm producers. T1 now supplies raw QK/PV
 and their same-state endpoints. R3 now supplies the common-source raw/byte
-bridge and RNE pullbacks: compile output normalizers/shifts and every
-consumer in that new layout, the actual W-free reader with its costs and
+bridge, RNE pullbacks and parametric output/validity forms: instantiate every
+consumer and the exponent profile, the actual W-free reader with its costs and
 workspace, and the softmax input to PV. Recompute the complete payload
 and phase schedule; the old C_B subtotals do not describe C_Σ.
 Generating Q/probabilities and the remaining W-free kernels is not closed

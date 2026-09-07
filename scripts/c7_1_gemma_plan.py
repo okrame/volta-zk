@@ -1937,6 +1937,19 @@ def auxiliary_word_layout(sources):
     return tuple(result)
 
 
+def auxiliary_point_restriction(source, row, column, heads, height, width, claim):
+    """Restrict a public head/global-token/column point to one word cube."""
+    hp, rp, cp, scale = claim
+    hb, rb, cb = (heads-1).bit_length(), (height-1).bit_length(), (width-1).bit_length()
+    row += source['token_offset']
+    if (len(hp) != hb or len(rp) < rb or len(cp) < cb or row % height
+            or row+height > 1 << len(rp) or column+width > 1 << len(cp)):
+        raise ValueError('point axes or row offset do not match the cube')
+    high = (math.prod(x if (row//height >> k) & 1 else 1-x for k, x in enumerate(rp[rb:]))
+            *math.prod(x if (column//width >> k) & 1 else 1-x for k, x in enumerate(cp[cb:]))) % P
+    return list(cp[:cb])+list(rp[:rb])+list(hp), scale*high % P
+
+
 def auxiliary_probe_terms(byte_tiles, sources, source_points):
     """Pull back raw point claims: source -> (head,row,column points, coefficient).
 
@@ -1947,22 +1960,78 @@ def auxiliary_probe_terms(byte_tiles, sources, source_points):
     for i, r, c, heads, height, width, j, count, offset in byte_tiles:
         if i not in source_points:
             continue
-        hp, rp, cp, scale = source_points[i]
         source = sources[i]
-        hb, rb, cb, jb = (heads-1).bit_length(), (height-1).bit_length(), (width-1).bit_length(), (count-1).bit_length()
-        row = source['token_offset']+r
-        if (len(hp) != hb or len(rp) < rb or len(cp) < cb or row % height
-                or row+height > 1 << len(rp) or c+width > 1 << len(cp)):
-            raise ValueError('raw probe axes or row offset do not match the cube')
-        high = (math.prod(x if (row//height >> k) & 1 else 1-x for k, x in enumerate(rp[rb:]))
-                *math.prod(x if (c//width >> k) & 1 else 1-x for k, x in enumerate(cp[cb:]))) % P
+        local, coefficient = auxiliary_point_restriction(source, r, c, heads, height, width, source_points[i])
+        jb = (count-1).bit_length()
         weights = [pow(256, 1 << k, P) for k in range(jb)]
         bp = [w*pow(1+w, -1, P) % P for w in weights]
-        coefficient = scale*high*pow(256, j, P)*math.prod(1+w for w in weights) % P
-        terms.append((offset, bp+list(cp[:cb])+list(rp[:rb])+list(hp), coefficient))
+        terms.append((offset, bp+local, coefficient*pow(256, j, P)*math.prod(1+w for w in weights) % P))
         if j == 0:  # exactly once per word cube, not once per byte group
-            bias = (bias+scale*high*(1 << (8*source['word_bytes']-1))) % P
+            bias = (bias+coefficient*(1 << (8*source['word_bytes']-1))) % P
     return terms, bias
+
+
+def gemma_rne_shift_classes(cohorts, weight_exponents, activation_exponents):
+    """531 raw-output shift classes, PARAMETRIC in a frozen public profile.
+
+    No calibration values are supplied here. This validates the exponents
+    read by these rules, not the complete nonlinear/profile grammar.
+    Classes -15 and 48 also represent all smaller/larger shifts, respectively.
+    """
+    if set(weight_exponents) != {c['weight_key'] for c in cohorts}:
+        raise ValueError('the public W exponent map must cover the P0 inventory exactly')
+    if any(type(v) is not int for values in (weight_exponents, activation_exponents) for v in values.values()):
+        raise ValueError('public exponents must be fixed integers')
+    routes = {r['cohort_ordinal']: r for r in gemma_input_routes(cohorts)}
+    def exponent(layer, operation):
+        key = f'model/{operation}' if layer is None else f'layer/{layer}/{operation}'
+        if key not in activation_exponents:
+            raise ValueError(f'missing public activation exponent: {key}')
+        return activation_exponents[key]
+    def shift(a, b, c):
+        return max(-15, min(48, a-b-c))
+    result = {}
+    for c in cohorts:
+        if c['kind'] != 'matrix':
+            continue
+        source = routes[c['ordinal']]['source_producer']
+        result[c['layer'], c['operation']] = shift(
+            exponent(c['layer'], c['operation']),
+            exponent(source['layer'], source['operation']), weight_exponents[c['weight_key']])
+    for layer in range(pinned_model_config()['layers']):
+        for op, left, right in (('qk_matmul', 'q_rope', 'k_rope'),
+                                ('pv_matmul', 'softmax', 'v_norm')):
+            result[layer, op] = shift(exponent(layer, op), exponent(layer, left), exponent(layer, right))
+    return result
+
+
+def auxiliary_rne_forms(rq_tiles, sources, source_points, source_shifts, validity_point):
+    """Public f_s/g_s EQ terms for R2 on R3, no new claim wires or byte bias.
+
+    source_points maps a source to a LIST of (head,row,column,coefficient)
+    claims, already weighted by their global output-batch powers. QK's
+    execution slices receive the same global-token claim. Even sources
+    with no output claim retain whole-live-domain validity.
+    """
+    rne_sources = {i for i, source in enumerate(sources) if source['rne']}
+    if set(source_shifts) != rne_sources or not set(source_points) <= rne_sources:
+        raise ValueError('RNE shifts/points must name exactly the appropriate sources')
+    for shift in source_shifts.values():
+        natural(shift, 'public RNE shift class', -15, 48)
+    live = sum(h*r*c for _, _, _, h, r, c, _ in rq_tiles)
+    if not live or len(validity_point) != (live-1).bit_length():
+        raise ValueError('validity point does not match the unified RQ domain')
+    forms = {s: {'output': [], 'validity': []} for s in sorted(set(source_shifts.values()))}
+    for i, r, c, heads, height, width, offset in rq_tiles:
+        group = forms[source_shifts[i]]
+        for claim in source_points.get(i, ()):
+            local, coefficient = auxiliary_point_restriction(sources[i], r, c, heads, height, width, claim)
+            group['output'].append((offset, local, coefficient))
+        size, bits = heads*height*width, (heads*height*width-1).bit_length()
+        high = math.prod(x if (offset//size >> j) & 1 else 1-x
+                         for j, x in enumerate(validity_point[bits:])) % P
+        group['validity'].append((offset, list(validity_point[:bits]), high))
+    return forms
 
 
 def auxiliary_rq_terms(byte_tiles, rq_tiles, point, byte):
@@ -2050,12 +2119,32 @@ def auxiliary_witness_screen(cohorts, old_tokens=0):
     top_arrays = (rne['top_indicator_tail_bytes']+rne['top_prefix_weights_bytes']
                   +rne['top_two_local_histograms_bytes']+rne['top_control_and_evaluation_scratch_bytes_upper']
                   +48*((1 << rq_bits)//(1 << min(18, rq_bits))+len(rq_tiles)-1))
+    # Conditional public evaluator count: one output point per raw cohort.
+    # Later Gamma fanout changes the multiplicities, not these form identities.
+    output_form_work = 0
+    for i, _, _, _, _, _, _ in rq_tiles:
+        source = sources[i]
+        heads, source_rows, columns = source['shape']
+        if source['operation'] == 'qk_raw':
+            source_rows, columns = 150, old_tokens+150
+        output_bits = sum((d-1).bit_length() for d in (heads, source_rows, columns))
+        output_form_work += output_bits+2*rq_bits+4
+    output_cohorts = len({(s['layer'], s['operation']) for s in sources if s['rne']})
     return {
         'credit': False, 'old_tokens': old_tokens, 'source_templates': len(sources),
         'source_byte_cells': live, 'source_padded_byte_cells': n,
         'auxiliary_i48_cells': (live-b_bytes)//6, 'rq_live_cells': rq_live,
         'rq_padded_cells': 1 << rq_bits, 'byte_cubes': len(byte_tiles), 'rq_cubes': len(rq_tiles),
         'source_descriptors_bytes': descriptors,
+        'rne_public_form_screen': {
+            'credit': False,
+            'output_cohorts': output_cohorts,
+            'output_terms_if_one_point_per_cohort': len(rq_tiles),
+            'whole_live_domain_validity_terms': len(rq_tiles),
+            'verifier_extension_products_at_one_rq_point_upper_if_one_point_per_cohort': (
+                2*output_cohorts+output_form_work+(3*rq_bits+4)*len(rq_tiles)),
+            'additional_mac_corrections_for_public_pullback': 0,
+            'actual_gamma_claim_count_and_public_shifts_instantiated': False},
         'layout_sha256': hashlib.sha256(json.dumps([sources, byte_tiles, rq_tiles], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
         'raw_probe_extension_corrections': 120, 'raw_probe_payload_bytes': 2880,
         'raw_probe_extension_challenges_and_error_numerator_before_t1_mac_pcs_fs': raw_probe_bits,

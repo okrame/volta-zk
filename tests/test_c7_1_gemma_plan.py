@@ -980,6 +980,135 @@ def test_ibcs_template_cube_root_loss_excludes_only_the_256bit_bound():
             plan.ibcs_rewinding_screen(*args)
 
 
+def test_private_projection_counts_include_base_commitment_but_not_direct_message_sampling():
+    cases = ((1 << 35, 1 << 24, 71438465, 6, 44, 16384, 1102836761344, 30996),
+             (1 << 33, 1 << 23, 35719169, 5, 38, 12288, 276540436480, 18612),
+             (1 << 34, 1 << 23, 35719169, 5, 38, 16384, 551418343424, 30912))
+    for n, block, length, roots, direct, symbol_bytes, dense, words in cases:
+        s = plan.private_projection_compilation_screen(n, block, 357)
+        assert s['total_committed_symbols'] == length
+        assert s['commitment_boundaries_requiring_sampling'] == roots
+        assert s['maximum_committed_symbols'] == 4*block
+        assert s['maximum_symbol_bytes'] == symbol_bytes
+        assert s['dense_extracted_oracles_bytes_not_honest_prover_storage'] == dense
+        assert s['direct_sumcheck_messages'] == direct
+        assert s['direct_sumcheck_extension_coefficients'] == 3*direct
+        assert s['direct_paired_extension_values'] == 2*(n//block)-1
+        assert s['direct_final_evaluation_extension_values'] == 1
+        assert s['direct_extension_values'] == 2*(n//block)+3*direct
+        assert s['direct_plaintext_bytes_in_projection_only'] == 24*(2*(n//block)+3*direct)
+        wide = plan.wide_hash_rs_screen(n, block, 357)
+        assert s['clear_vc_hash_calls_per_sample_by_boundary'] == [
+            l['hash_calls']+int(i == 0) for i, l in enumerate(wide['levels'])]+[
+                (3*wide['terminal_private_extension_cells']+9)//10]
+        assert sum(s['clear_vc_hash_calls_per_sample_by_boundary']) == wide['private_hash_calls_including_anchor_and_recursion']
+        assert s['public_challenge_u64_upper_before_private_hash'] == words
+        assert s['committed_oracles'][-1]['symbols'] == s['committed_oracles'][-1]['queries'] == 1
+        assert s['sampler_filters_by_direct_clear_vc_check_not_wrapper_acceptance']
+        assert s['rewind_clones_entire_dealer_and_prover_state']
+        assert not s['main_execution_wrapper_error_multiplied_by_rewinds']
+        assert not s['changes_real_record_order_or_correlation_reuse_rules']
+        assert not s['full_root_oracle_fs_and_model_relation_instantiated']
+        assert not s['credit'] and s['complete_security_bits'] is None
+    for args in ((plan.P, 1 << 24, 357), (1 << 35, 1 << 25, 357), (64, 8, 9)):
+        with pytest.raises(ValueError):
+            plan.private_projection_compilation_screen(*args)
+
+
+def test_ideal_projection_clones_masks_and_filters_clear_openings_not_wrapper_acceptance():
+    # Tiny ideal-dealer model, not a test/assumption that a real MAC is forgeable.
+    p, delta, mask, tag = 5, 2, 1, 4
+    committed = ((mask+1) % p, 3)  # prefix may depend on a FUTURE preprocessed mask
+    key = (tag-delta*mask) % p
+    snapshot = (committed, mask, tag, key, 0)
+
+    def resume(state, coin):
+        values, u, mu, ku, consumed = state
+        assert consumed == 0  # one slot in each individual branch
+        if coin == 2:
+            return None, (*state[:4], 1)  # abort remains a sample, not resampled away
+        value = (values[coin]+int(coin == 1)) % p
+        correction = (value-u) % p
+        decoded = (correction+u) % p
+        assert mu == (ku-delta*correction+delta*decoded) % p
+        return (coin, correction, decoded, decoded == values[coin]), (*state[:4], 1)
+
+    records = [resume(snapshot, c)[0] for c in range(3)]
+    assert records[0][-1] and not records[1][-1] and records[2] is None
+    assert snapshot == (committed, mask, tag, key, 0)  # forks did not advance the main branch
+    with pytest.raises(AssertionError):
+        resume(resume(snapshot, 0)[1], 0)  # NOT a legal runtime retry with the same slot
+    # Rerandomizing an unconsumed dealer mask while retaining the prover state is wrong.
+    q, correction, decoded, valid = records[1]
+    assert not valid and decoded != committed[q]
+    assert (correction+0) % p == committed[q]  # wrong mask would falsely validate this answer
+    assert sum((correction+u) % p == decoded for u in range(p)) == 1
+    # A REAL new attempt gives the prover the fresh mask too, preserving the same value.
+    assert all(((committed[0]-u) % p+u) % p == committed[0] for u in range(p))
+
+    bad_main = missing = bad_or_missing = 0
+    for main, first, second in product(range(3), repeat=3):
+        record = records[main]
+        # Deliberately give the toy wrapper an error on coin 1; only MAIN error is charged.
+        wrapper_accepts = record is not None
+        sampled = [records[c] for c in (first, second)]
+        known = {r[0]: r[2] for r in sampled if r is not None and r[3]}
+        main_error = wrapper_accepts and not record[3]
+        miss = wrapper_accepts and record[3] and record[0] not in known
+        bad_main += main_error
+        missing += miss
+        bad_or_missing += main_error or miss
+        assert 1 not in known  # invalid clear openings NEVER enter the extracted oracle
+    assert Fraction(bad_main, 27) == Fraction(1, 3)
+    assert Fraction(missing, 27) == Fraction(1, 3)*Fraction(2, 3)**2
+    assert Fraction(bad_or_missing, 27) == Fraction(13, 27)
+    # No global conditioning on valid MAC/checker executions across all sampled branches.
+    assert bad_or_missing == bad_main+missing
+
+
+def test_salted_root_vc_disagreement_lifts_to_a_concrete_hash_collision():
+    # Weak six-word toy hash so every collision-lifting branch is reachable.
+    # This tests the REDUCTION, not collision resistance or A5's numerical security.
+    p = 7
+
+    def opening(column, sibling, salt):
+        trace = []
+
+        def call(frame):
+            output = sum((i+1)*x for i, x in enumerate(frame)) % p
+            trace.append((frame, output))
+            return output
+
+        prev = 0
+        for group, value in enumerate(column):
+            prev = call((1, 0, group, prev, value, 0))
+        root = call((2, 0, 0, prev, sibling, 0))
+        anchor = call((3, root, salt, 4, 0, 0))
+        return column, sibling, salt, root, anchor, trace
+
+    first = opening((0, 0), 0, 0)
+    variants = [opening(column, sibling, salt)
+                for column in product(range(p), repeat=2)
+                for sibling, salt in product(range(p), repeat=2)]
+    # Same commitment/position, different column; divergences in anchor, node or leaf chain.
+    eligible = [v for v in variants if v[0] != first[0] and v[4] == first[4]]
+    selected = [next(v for v in eligible if v[3] != first[3]),
+                next(v for v in eligible if v[2:4] == first[2:4] and v[1] != first[1]),
+                next(v for v in eligible if v[1:4] == first[1:4])]
+    for second, expected_tag in zip(selected, (3, 2, 1)):
+        assert first[4] == second[4] and first[0] != second[0]
+        for (left, a), (right, b) in zip(reversed(first[-1]), reversed(second[-1])):
+            assert a == b  # equality propagates backwards while the complete frame agrees
+            if left != right:
+                assert left[0] == right[0] == expected_tag
+                assert sum((i+1)*x for i, x in enumerate(left)) % p == sum((i+1)*x for i, x in enumerate(right)) % p
+                break
+        else:
+            pytest.fail('different column with valid same-anchor openings must expose a hash collision')
+    # Malformed openings are not sampler evidence: altered salt fails the public anchor.
+    assert opening(first[0], first[1], 1)[4] != first[4]
+
+
 def test_ibcs_missing_valid_positions_match_exact_resampling_probability():
     # Four equally likely continuations: invalid, {0}, {1}, {0,1}.
     # Invalid openings contribute NO position, even if they name one.

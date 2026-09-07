@@ -859,6 +859,54 @@ def wide_hash_fixed_trail_screen():
     }
 
 
+def private_projection_compilation_screen(n, block, queries):
+    """G2 §3.2: A4/A5 ideal-interactive projection, NOT an executed extractor.
+
+    Reuse A3/A4's same oracle layout. The whole terminal vector is ONE
+    committed symbol, not a free direct message at its later opening.
+    Include A4 paired records/coins; exclude caller and private hash tail.
+    """
+    natural(n, 'canonical anchored source length', 1, P-1)
+    rs = recursive_rs_opening_screen(n, block, queries)
+    oracles = [{'symbols': 4*block, 'symbol_fp_words': n//block, 'queries': queries}]
+    oracles += [{'symbols': level['domain'], 'symbol_fp_words': 96, 'queries': level['queries']}
+                for level in rs['levels']]
+    oracles += [{'symbols': 1, 'symbol_fp_words': 3*rs['terminal_private_extension_cells'], 'queries': 1}]
+    rows, log_block = n//block, block.bit_length()-1
+    direct_rounds = log_block+5*len(rs['levels'])
+    pair_values = 2*rows-1
+    direct_values = pair_values+3*direct_rounds+1  # same f closes the outer SC
+    field_challenges = n.bit_length()-1+rows+6*len(rs['levels'])
+    random_indices = sum(o['queries'] for o in oracles if o['queries'] < o['symbols'])
+    clear_hash_calls = [
+        o['queries']*((o['symbol_fp_words']+9)//10+o['symbols'].bit_length()-1)
+        + int(i == 0)  # only the source commitment has a salted public anchor
+        for i, o in enumerate(oracles)]
+    return {
+        'credit': False,
+        'committed_oracles': oracles,
+        'commitment_boundaries_requiring_sampling': len(oracles),
+        'total_committed_symbols': sum(o['symbols'] for o in oracles),
+        'maximum_committed_symbols': max(o['symbols'] for o in oracles),
+        'maximum_symbol_bytes': 8*max(o['symbol_fp_words'] for o in oracles),
+        'dense_extracted_oracles_bytes_not_honest_prover_storage': 8*sum(o['symbols']*o['symbol_fp_words'] for o in oracles),
+        'direct_sumcheck_messages': direct_rounds,
+        'direct_sumcheck_extension_coefficients': 3*direct_rounds,
+        'direct_paired_extension_values': pair_values,
+        'direct_final_evaluation_extension_values': 1,
+        'direct_extension_values': direct_values,
+        'direct_plaintext_bytes_in_projection_only': 24*direct_values,
+        'clear_vc_hash_calls_per_sample_by_boundary': clear_hash_calls,
+        'public_challenge_u64_upper_before_private_hash': 4*(3*field_challenges+random_indices),
+        'main_execution_wrapper_error_multiplied_by_rewinds': False,
+        'sampler_filters_by_direct_clear_vc_check_not_wrapper_acceptance': True,
+        'rewind_clones_entire_dealer_and_prover_state': True,
+        'changes_real_record_order_or_correlation_reuse_rules': False,
+        'full_root_oracle_fs_and_model_relation_instantiated': False,
+        'complete_security_bits': None,
+    }
+
+
 def wide_hash_rs_screen(n, block, queries):
     """A5 STRUCTURAL candidate, not a generated/justified Poseidon2 profile.
 
@@ -2255,6 +2303,9 @@ def report():
         "wide_hash_rs_screen": wide_hash_rs_screen(n, 1 << 24, 357),
         "wide_hash_parameter_screen": wide_hash_parameter_screen(),
         "wide_hash_fixed_trail_screen": wide_hash_fixed_trail_screen(),
+        "private_projection_compilation_screens": [
+            private_projection_compilation_screen(size, block, 357)
+            for size, block in ((n, 1 << 24), (1 << 33, 1 << 23), (1 << 34, 1 << 23))],
         "wide_hash_witness_screens": [wide_hash_witness_screen(cohorts, old)
                                      for old in (0, 3946)],
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),

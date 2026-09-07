@@ -4,7 +4,7 @@ import importlib.util
 import math
 import random
 from fractions import Fraction
-from itertools import combinations
+from itertools import combinations, product
 from pathlib import Path
 
 import pytest
@@ -228,6 +228,123 @@ def test_private_verifier_mac_identity_simulator_and_altered_product():
                     assert real == simulated
                 if c != a*b % p:
                     assert roots == 1  # Delta=0; not a lifetime soundness bound
+
+
+def test_grouped_arithmetic_hash_screen_counts_states_paths_and_gkr():
+    s = plan.private_hobbit_arithmetic_hash_screen(1 << 35, 1 << 24, 357)
+    assert s["credit"] is False
+    assert s["chain_groups_of_six"] == 342  # final group has two live row slots
+    assert s["private_hash_calls_without_inner_pcs_or_anchor"] == 131_376
+    assert s["padded_permutation_instances"] == 1 << 18  # not 2^17
+    assert s["base_input_corrections"] == 1_293_772
+    assert s["base_input_correction_bytes"] == 10_350_176
+    assert s["power_gkr_extension_corrections"] == 6574
+    assert s["hash_payload_bytes_before_framing_and_other_components"] == 10_508_024
+    assert s["anchor_base_corrections_upper"] == 86_544
+    assert s["anchor_correction_bytes_upper"] == 692_352
+    assert s["hash_and_anchor_payload_bytes_before_framing_and_other_components"] == 11_200_376
+    assert s["hash_trace_and_four_fold_tables_bytes"] == 1_442_840_576
+    assert s["boundary_plaintexts_and_tags_bytes"] == 41_400_704
+    assert s["setup_six_code_rows_and_chain_digests_bytes"] == 5_368_709_120
+    assert s["retained_full_column_tree_bytes"] == 4_294_967_264
+    assert s["setup_hash_permutations_before_anchor"] == 23_018_340_351
+    assert s["queried_hash_sbox_multiplications_before_gkr"] == 78_825_600
+    assert s["hash_sumcheck_fp3_mul_upper_before_public_forms_and_mac"] == 13_086_291_360
+    assert s["clear_hash_reduction_error_numerator_not_fs_or_mac"] == 5784
+    for n in (1, 2, 4, 8, 16, 32):
+        for block in (1 << bits for bits in range(n.bit_length())):
+            small = plan.private_hobbit_arithmetic_hash_screen(n, block, 1)
+            groups = list(range(0, n // block, 6))
+            depth = (4*block).bit_length() - 1
+            assert small["private_hash_calls_without_inner_pcs_or_anchor"] == len(groups) + depth
+            assert small["base_input_corrections"] == n//block + 4*len(groups) + 8*depth + 4
+    for args in ((0, 1, 1), (3, 1, 1), (4, 3, 1), (2, 4, 1),
+                 (True, 1, 1), (4, 2, 0), (4, 2, 9), (4, 2, True)):
+        with pytest.raises(ValueError):
+            plan.private_hobbit_arithmetic_hash_screen(*args)
+
+
+def test_power_round_adjoint_sumcheck_and_single_input_endpoint():
+    # Two independent four-lane permutations, not a Poseidon implementation.
+    # The proof identity must work for ANY public linear layer and constants.
+    rng = random.Random(7127)
+    p, width, size = plan.P, 4, 8
+    matrix = [[rng.randrange(p) for _ in range(width)] for _ in range(width)]
+    constants = [rng.randrange(p) for _ in range(width)]
+    x = [rng.randrange(p) for _ in range(size)]
+    output_point, coins = [2, 3, 5], [7, 11, 13]
+    weights = [plan.mle([int(i == j) for i in range(size)], output_point)
+               for j in range(size)]
+    for partial in (False, True):
+        c = [constants[i % width] if not partial or i % width == 0 else 0
+             for i in range(size)]
+        selector = [int(not partial or i % width == 0) for i in range(size)]
+        nonlinear = [(v + s*(pow(v, 7, p)-v)) % p
+                     for v, s in zip(((v+k) % p for v, k in zip(x, c)), selector)]
+        y = [sum(matrix[k][j]*nonlinear[base+j] for j in range(width)) % p
+             for base in range(0, size, width) for k in range(width)]
+        adjoint = [sum(weights[base+k]*matrix[k][j] for k in range(width)) % p
+                   for base in range(0, size, width) for j in range(width)]
+
+        def integrand(point):
+            a, xx, cc, s = [plan.mle(table, point)
+                            for table in (adjoint, x, c, selector)]
+            z = (xx + cc) % p
+            return a*(z + s*(pow(z, 7, p)-z)) % p
+
+        def partial_sum(prefix):
+            return sum(integrand(prefix + list(tail))
+                       for tail in product((0, 1), repeat=3-len(prefix))) % p
+
+        claim = plan.mle(y, output_point)
+        assert claim == partial_sum([])
+        assert (claim + 1) % p != partial_sum([])  # altered output claim
+        degree = 9 if partial else 8
+        for i in range(3):
+            prefix = coins[:i]
+            assert claim == (partial_sum(prefix + [0]) + partial_sum(prefix + [1])) % p
+            samples = [partial_sum(prefix + [t]) for t in range(degree+2)]
+            for _ in range(degree+1):
+                samples = [(b-a) % p for a, b in zip(samples, samples[1:])]
+            assert samples == [0]
+            claim = partial_sum(prefix + [coins[i]])
+        assert claim == integrand(coins)  # exactly ONE X(coins), no new PCS
+
+
+def test_partial_power_round_really_needs_degree_nine():
+    # A(t)=X(t)=S(t)=t, C(t)=0 gives t^9-t^3+t^2. An eight-degree
+    # schema would be unsound as a claimed upper bound, not an optimization.
+    p = plan.P
+    samples = [(t**9 - t**3 + t**2) % p for t in range(11)]
+    for _ in range(9):
+        samples = [(b-a) % p for a, b in zip(samples, samples[1:])]
+    assert samples == [math.factorial(9) % p]*2
+    assert (samples[1]-samples[0]) % p == 0
+
+
+def test_anchor_ripple_adder_gate_identity_and_canonical_word_boundary():
+    for a, b, carry in product((0, 1), repeat=3):
+        g = a*b
+        t = a+b-2*g
+        h = t*carry
+        low, high = t+carry-2*h, g+h
+        assert low in (0, 1) and high in (0, 1)
+        assert low + 2*high == a+b+carry
+    # One product at the low bit, two for each remaining bit. No claimed
+    # BLAKE3 KAT: only its arithmetic gate-count construction is checked.
+    assert 1 + 2*31 == 63
+    for value in (0, 1, plan.P-1, plan.P, (1 << 64)-1):
+        bits = [(value >> i) & 1 for i in range(64)]
+        equal, less = 1, 0
+        for i in reversed(range(64)):
+            term = equal*(1-bits[i])  # one product per bit
+            if (plan.P >> i) & 1:
+                less += term
+                equal -= term
+            else:
+                equal = term
+        assert less == int(value < plan.P)
+        assert equal == int(value == plan.P)
 
 
 def test_gemma_report_keeps_requirements_separate_from_complete_results():

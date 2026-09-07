@@ -217,6 +217,65 @@ def private_hobbit_bit_screen(n, live, block, queries):
     }
 
 
+def private_hobbit_arithmetic_hash_screen(n, block, queries):
+    """Grouped width-16/rate-12 arithmetic hash + power-layer GKR screen.
+
+    Six code rows per chain compression; paths are NOT deduplicated. Uses
+    the locked permutation's 8 full/22 partial degree-7 rounds, not a new
+    hash implementation or a security claim. Excludes the encoder scratch,
+    inner PCS and all non-hash parts of the prover. The separate anchor
+    upper count fixes a 136-byte BLAKE3 message, no salt PRF or extra blocks.
+    """
+    if (type(n) is not int or type(block) is not int or block < 1 or n < block
+            or n & (n - 1) or block & (block - 1)):
+        raise ValueError("n and block must be powers of two, with block <= n")
+    natural(queries, "distinct unmasked columns", 1, 4*block)
+    rows, domain = n // block, 4*block
+    groups, depth = (rows + 5) // 6, domain.bit_length() - 1
+    calls = queries*(groups + depth)
+    padded_calls = 1 << (calls - 1).bit_length()
+    variables = padded_calls.bit_length() - 1 + 4
+    # Leaf words; chain outputs; path siblings AND outputs; shared root.
+    inputs = queries*(rows + 4*groups + 8*depth) + 4
+    coefficients = (8*9 + 22*10)*variables
+    # One input evaluation and four products for x^7 per permutation round.
+    extension_corrections = coefficients + 30 + 4*30
+    # 32-bit ripple add: 63 products; XOR: 32. Seven rounds, eight Gs,
+    # six adds/four XORs per G, then eight output-word XORs.
+    blake_products = 3*(7*8*(6*63 + 4*32) + 8*32)
+    anchor_corrections = 512 + blake_products + 4*64
+    return {
+        "credit": False,
+        "carrier_block_cells": block,
+        "queries_not_a_security_derivation": queries,
+        "chain_groups_of_six": groups,
+        "private_hash_calls_without_inner_pcs_or_anchor": calls,
+        "padded_permutation_instances": padded_calls,
+        "base_input_corrections": inputs,
+        "base_input_correction_bytes": 8*inputs,
+        "power_gkr_extension_corrections": extension_corrections,
+        "anchor_base_corrections_upper": anchor_corrections,
+        "anchor_correction_bytes_upper": 8*anchor_corrections,
+        "hash_payload_bytes_before_framing_and_other_components": (
+            8*inputs + 24*extension_corrections + 72),
+        "hash_and_anchor_payload_bytes_before_framing_and_other_components": (
+            8*(inputs + anchor_corrections) + 24*extension_corrections + 72),
+        "hash_trace_and_four_fold_tables_bytes": 16*padded_calls*(31*8 + 4*24),
+        "boundary_plaintexts_and_tags_bytes": 32*inputs,
+        "setup_six_code_rows_and_chain_digests_bytes": domain*(6*8 + 4*8),
+        "retained_full_column_tree_bytes": (2*domain - 1)*32,
+        "setup_hash_permutations_before_anchor": domain*groups + domain - 1,
+        "queried_hash_sbox_multiplications_before_gkr": calls*(8*16 + 22)*4,
+        # Evaluate degree <=9 at <=10 points: <=10 E multiplications per
+        # pair/point; fold four tables; interpolate with <=100 products.
+        # Excludes construction of public tables and MAC operations.
+        "hash_sumcheck_fp3_mul_upper_before_public_forms_and_mac": (
+            30*104*(16*padded_calls - 1) + 30*100*variables),
+        "clear_hash_reduction_error_numerator_not_fs_or_mac": (
+            (8*8 + 22*9)*variables + variables - 2),
+    }
+
+
 def dot(a, b):
     if len(a) != len(b):
         raise ValueError("different vector lengths")
@@ -387,6 +446,10 @@ def report():
         "hobbit_private_bit_codec_screens": [
             private_hobbit_bit_screen(n, live, 1 << bits, 357)
             for bits in (24, 26, 27, 28)
+        ],
+        "hobbit_arithmetic_hash_screens": [
+            private_hobbit_arithmetic_hash_screen(n, 1 << bits, 357)
+            for bits in (23, 24)
         ],
         "complete_certificate_bytes": None,
         "complete_h100_peak_bytes": None,

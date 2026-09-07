@@ -51,13 +51,18 @@ feasibility proofs before prover implementation and measurements.
   it does not assume `BindsIntoMac` as its own conclusion. The literal codec
   using one 8-byte correction per leaf bit is excluded at 357 queries for
   every power-of-two block: even the arena-maximal block needs 41,674,752
-  bytes for those corrections alone. A public t-query-ZK encoding is a
-  studied repair, not an instantiated alternative or a proved MAC bridge.
+  bytes for those corrections alone. The A2 repair now specifies a grouped
+  Goldilocks arithmetic hash and a private 30-round power-layer GKR: its
+  endpoint is a linear combination of the same authenticated inputs, with
+  no new trace PCS. At `b_P=2^24`, 357 study queries, the outer hash/anchor
+  payload is 11,200,376 bytes before framing and other components. This is
+  component accounting, not complete-certificate or hash-security credit.
 - The [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) and
   [focused tests](../tests/test_c7_1_gemma_plan.py) check paired-fold
   arithmetic, service accounting, candidate integer/Fp3 decompositions,
   the two-proof masking counterexample, exact carrier/bit-codec counts,
-  and the product-check identity and simulator with the C7.1 MAC sign.
+  the product-check identity and simulator with the C7.1 MAC sign, and A2's
+  degree-8/9 round reduction, single input endpoint and resource counts.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -76,13 +81,14 @@ feasibility proofs before prover implementation and measurements.
 ## Next work
 
 Follow [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture):
-continue G2 by repairing the PCS–MAC boundary: concretize a public t-query-ZK
-encoding with a joint encoded-mask/MAC relation, or a private-verifier codec
-that avoids the excluded per-bit cost and counts all gates/correlations.
-The latter can keep a static model anchor only while every PCS opening stays
-private; it does not rehabilitate G1's reused public split mask. For an
-encoded-mask carrier, refresh must still bind the same Delta-independent W.
-Alongside it, close witness and form
+continue G2 with A2: instantiate the encoder and inner PCS, including their
+blind codec and scratch, and compose the binding argument with the concrete
+hash/PCS assumptions and FS. The hash checker adds no W reads once queried
+columns and paths exist; that does not supply the missing Gemma witness.
+A2 retains a static model anchor by keeping PCS openings private, not by
+reusing G1's public split mask. Setup hash work is substantial and counted;
+the uninstantiated encoder still has to fit the 1,073,741,824-byte residual
+arena during grouped commitment preparation. Alongside it, close witness and form
 availability within the four W reads. Complete the relation, both lifetime
 proofs and full certificate/resource accounting before admitting prover
 implementation. Then prepare the small checks and, after hardware/spending

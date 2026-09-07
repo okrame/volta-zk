@@ -34,6 +34,11 @@ hardware and explicit spending authorization after local preparation. See
 [build procedures](procedures/build-and-test.md) and [RunPod procedures](procedures/runpod.md).
 The owner's 2026-09-07 request prioritizes a complete algorithm with analytic
 feasibility proofs before prover implementation and measurements.
+The owner's [revision notes in design §1](c7.1-gemma31b-design.md#1-risultato-da-costruire)
+allow future complete measurements to motivate five reads within 45–50 s,
+or organized host spill after comparing write/read transfers and avoided
+computation. These are not current waivers of four reads/no spill or spending
+authorization.
 
 ## Evidence and open obligations
 
@@ -89,15 +94,23 @@ feasibility proofs before prover implementation and measurements.
   B-opening array schedule identifies where B could instead be released.
   GKR weight folding still needs source access: adding its matrix scan to
   the four unfused generic reduction/PCS passes does not fit the read limit.
+- [W-cut P0](c7.1-cut-witness.md#6-p0-tutte-le-uguaglianze-verso-w-non-il-gkr-intero)
+  now emits all 773 W-dependent cohorts, physical cut offsets and input
+  producers. Matrix, cubic broadcast-norm and aggregate embedding protocols
+  use one W read and 300,646,400 bytes of compact operands; their payload is
+  863,040 bytes before framing/shared closures. The conditional fixed-boundary
+  lemma does not prove the 772 input-evaluation links to W-free Replay,
+  C/B openings or integer ranges. The known B/tree/P0 union is 5,714,441,824
+  bytes, before uncompiled Replay workspace and runtime.
 - [A4: paired RS opening](c7.1-paired-rs-opening.md) fuses the paired
   reduction and RS opening into **two W reads together**. It checks the
   existing arbitrary row fold instead of converting it to a new W point;
   this proof retains a separate fresh proximity fold. The local fixed-oracle
   proof adds 4142/|E| and the component payload is 14,060,600 bytes.
   A 3,156-tile virtual layout supports tensor/lookup forms without per-axis
-  padding or a second W copy. One preceding GKR scan would give three reads
-  for that subsystem, but the complete caller, W range/padding and B/KV
-  schedule are not instantiated; the A3 concrete-hash/FS gap remains open.
+  padding or a second W copy. With P0, three reads are specified
+  for the W-dependent subsystem, but the complete caller, W range/padding
+  and B/KV schedule are not instantiated; the A3 concrete-hash/FS gap remains open.
 - The [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) and
   [focused tests](../tests/test_c7_1_gemma_plan.py) check paired-fold
   arithmetic, service accounting, candidate integer/Fp3 decompositions,
@@ -106,10 +119,12 @@ feasibility proofs before prover implementation and measurements.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 31 focused checks also cover finite query sampling, exact ideal
+  The 35 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
-  distance/encoding identities and dyadic layout/form evaluation.
+  distance/encoding identities and dyadic layout/form evaluation. P0 adds
+  cohort coverage/offsets/producers, malformed model inventories, cubic
+  broadcast norms and tied lookup with duplicates and terminal absorption.
   The broader 86 non-native Python checks passed during the main integration
   (`bce620f`). They do not prove full cryptography or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
@@ -140,8 +155,9 @@ they do not supply the missing Gemma witness. The static model anchor keeps PCS 
 without reusing G1's public split mask. Setup hash work remains substantial;
 the bounded encoder and known grouped-commitment arrays occupy 5,637,144,576
 bytes, before uncompiled runtime staging. Alongside it, use the W-cut theorem
-to build the GKR/form schedule against A4's two-read interface: bind the
-cuts and KV, discharge late B consumers, and include W range/padding
+to complete the GKR/form schedule against A4's two-read interface. P0 covers
+the W-dependent cohorts; construct the W-free circuit for its 772 input
+links, bind cuts and KV, discharge late B consumers, and include W range/padding
 without exceeding four W reads. The A4 fusion no longer requires a new
 common MLE point for all W terminals; its public-form conditions must hold.
 Complete the relation, both lifetime

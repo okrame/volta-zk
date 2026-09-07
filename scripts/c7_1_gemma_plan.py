@@ -110,6 +110,14 @@ def split_i16(value):
     return low, high  # unsigned low byte, signed high byte; never float
 
 
+def pinned_model_config():
+    path = Path(__file__).resolve().parents[1] / "manifests/c7-d126-gemma31b-qspec-dag-v1.json"
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != QSPEC_SHA256:
+        raise ValueError("logical model config changed")
+    return json.loads(raw)["model_config"]
+
+
 def cut_witness_screen(old_tokens=0, prompt_tokens=100, generated_tokens=50):
     """Conditional W-cut storage, NOT a scalar lowering or proof schedule.
 
@@ -124,11 +132,7 @@ def cut_witness_screen(old_tokens=0, prompt_tokens=100, generated_tokens=50):
     tokens = prompt_tokens + generated_tokens
     if old_tokens + tokens > CONTEXT_CAP:
         raise ValueError("conversation exceeds 4096; no eviction")
-    path = Path(__file__).resolve().parents[1] / "manifests/c7-d126-gemma31b-qspec-dag-v1.json"
-    raw = path.read_bytes()
-    if hashlib.sha256(raw).hexdigest() != QSPEC_SHA256:
-        raise ValueError("logical model config changed")
-    config = json.loads(raw)["model_config"]
+    config = pinned_model_config()
     hidden, ffw = config["hidden_size"], config["intermediate_size"]
     matrix_per_token = norm_per_token = 0
     for kind in ("local", "global"):
@@ -540,6 +544,142 @@ def paired_rs_opening_screen(n, block, queries):
     }
 
 
+def gemma_weight_cohorts(tensors, prompt_tokens=100, generated_tokens=50):
+    """Emit P0's W-dependent relations and physical cut offsets, metadata only.
+
+    Validates all named private weights; does NOT compile non-W Replay or
+    its input-evaluation links. Norm rows flatten token/head, head fastest.
+    """
+    natural(prompt_tokens, "prompt tokens", 1, CONTEXT_CAP)
+    natural(generated_tokens, "generated tokens", 1, CONTEXT_CAP)
+    tokens = natural(prompt_tokens+generated_tokens, "new context", 2, CONTEXT_CAP)
+    cfg = pinned_model_config()
+    hidden, ffw, vocab = cfg["hidden_size"], cfg["intermediate_size"], cfg["vocab_size"]
+    records, expected = [], {}
+    cell_offset = byte_offset = 0
+    producers = {
+        "embedding_lookup": "token_input", "q_proj": "input_rms", "q_norm": "q_proj",
+        "k_proj": "input_rms", "k_norm": "k_proj", "v_source": "input_rms",
+        "o_proj": "pv_matmul", "post_attention_rms": "o_proj",
+        "pre_ffw_rms": "attention_residual_add", "gate_proj": "pre_ffw_rms",
+        "up_proj": "pre_ffw_rms", "down_proj": "gate_up_mul",
+        "post_ffw_rms": "down_proj", "lm_head": "last_row_select",
+    }
+
+    def add(kind, layer, op, key, rows, cols, inner=0, heads=1):
+        nonlocal cell_offset, byte_offset
+        shape = (cols, inner) if kind == "matrix" else (cols,) if kind == "norm" else (vocab, cols)
+        if expected.setdefault(key, shape) != shape:
+            raise ValueError("inconsistent tied weight geometry")
+        width = {"matrix": 6, "norm": 4, "lookup": 2}[kind]
+        producer_layer = layer
+        if op == "input_rms":
+            producer = "layer_scalar_mul" if layer else "embedding_scale"
+            producer_layer = layer-1 if layer else None
+        elif op == "final_rms":
+            producer, producer_layer = "layer_scalar_mul", cfg["layers"]-1
+        else:
+            producer = producers[op]
+        records.append({"ordinal": len(records), "kind": kind, "layer": layer,
+                        "operation": op, "weight_key": key, "weight_shape": shape,
+                        "rows": rows, "columns": cols, "inner": inner, "heads": heads,
+                        "row_schedule": ("decisions" if op == "lm_head" else
+                                         "except_terminal_absorb" if op == "final_rms" else "all_new_tokens"),
+                        "input_producer": {"layer": producer_layer, "operation": producer},
+                        "input_stage": "public_token_id" if kind == "lookup" else "replay_i16_output",
+                        "cut_cell_offset": cell_offset, "cut_byte_offset": byte_offset,
+                        "cut_scalar_bytes": width})
+        cell_offset += rows*cols
+        byte_offset += rows*cols*width
+
+    base = "model.language_model."
+    embedding = base+"embed_tokens.weight"
+    add("lookup", None, "embedding_lookup", embedding, tokens, hidden)
+    for layer in range(cfg["layers"]):
+        kind = "global" if layer % 6 == 5 else "local"
+        hd, kh, qh = cfg[kind+"_head_dim"], cfg[kind+"_kv_heads"], cfg["query_heads"]
+        prefix = base+f"layers.{layer}."
+        add("norm", layer, "input_rms", prefix+"input_layernorm.weight", tokens, hidden)
+        add("matrix", layer, "q_proj", prefix+"self_attn.q_proj.weight", tokens, qh*hd, hidden)
+        add("norm", layer, "q_norm", prefix+"self_attn.q_norm.weight", tokens*qh, hd, heads=qh)
+        add("matrix", layer, "k_proj", prefix+"self_attn.k_proj.weight", tokens, kh*hd, hidden)
+        add("norm", layer, "k_norm", prefix+"self_attn.k_norm.weight", tokens*kh, hd, heads=kh)
+        if kind == "local":
+            add("matrix", layer, "v_source", prefix+"self_attn.v_proj.weight", tokens, kh*hd, hidden)
+        add("matrix", layer, "o_proj", prefix+"self_attn.o_proj.weight", tokens, hidden, qh*hd)
+        add("norm", layer, "post_attention_rms", prefix+"post_attention_layernorm.weight", tokens, hidden)
+        add("norm", layer, "pre_ffw_rms", prefix+"pre_feedforward_layernorm.weight", tokens, hidden)
+        for op in ("gate_proj", "up_proj"):
+            add("matrix", layer, op, prefix+f"mlp.{op}.weight", tokens, ffw, hidden)
+        add("matrix", layer, "down_proj", prefix+"mlp.down_proj.weight", tokens, hidden, ffw)
+        add("norm", layer, "post_ffw_rms", prefix+"post_feedforward_layernorm.weight", tokens, hidden)
+    add("norm", None, "final_rms", base+"norm.weight", tokens-1, hidden)
+    add("matrix", None, "lm_head", embedding, generated_tokens, vocab, hidden)
+    actual = {t["name"]: tuple(t["shape"]) for t in tensors}
+    if len(actual) != len(tensors) or actual != expected:
+        raise ValueError("private source names/shapes do not match P0 exactly")
+    return records
+
+
+def weight_cohort_screen(cohorts):
+    """P0 exact schema counts, conditional on all C/X/W endpoint links."""
+    counts, coefficients, rounds, out_bits, products = Counter(), 0, 0, 0, 0
+    matrix_widths = norm_widths = compact_input_cells = 0
+    for c in cohorts:
+        kind, rows, cols = c["kind"], c["rows"], c["columns"]
+        counts[kind] += 1
+        out_bits += (rows-1).bit_length()+(cols-1).bit_length()
+        if kind == "lookup":
+            continue
+        bits = ((c["inner"] if kind == "matrix" else cols)-1).bit_length()
+        degree = 2 if kind == "matrix" else 3
+        rounds += bits
+        coefficients += (degree+1)*bits
+        products += 1
+        compact_input_cells += rows*(c["inner"] if kind == "matrix" else cols)
+        if kind == "matrix":
+            matrix_widths += 1 << bits
+        else:
+            norm_widths += 1 << bits
+    corrections = len(cohorts)+coefficients+3*products  # C, SC coefficients, X/W/product
+    vectors = 48*matrix_widths + 32*norm_widths  # matrix X/W in E; norm X in E, W in Fp
+    cut_bytes = sum(c["rows"]*c["columns"]*c["cut_scalar_bytes"] for c in cohorts)
+    b_tree = 32*(8*(1 << 20)-1)
+    scratch = 3*24*max(1 << (c["columns"]-1).bit_length()
+                       for c in cohorts if c["kind"] == "norm")
+    return {
+        "credit": False,
+        "cohorts_by_kind": dict(counts),
+        "cohort_manifest_sha256": hashlib.sha256(json.dumps(
+            cohorts, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "cut_dyadic_tiles": len(dyadic_weight_layout([(c["rows"], c["columns"]) for c in cohorts])),
+        "sumcheck_rounds": rounds,
+        "sumcheck_extension_coefficients": coefficients,
+        "output_point_extension_coordinates": out_bits,
+        "extension_challenges_before_A4_and_link_batches": out_bits+rounds,
+        "private_product_equations": products,
+        "zero_residual_equations": rounds+products,
+        "extension_corrections_before_other_circuits": corrections,
+        "message_bytes_before_framing_and_shared_closures": 24*corrections,
+        "fixed_oracle_interactive_error_numerator": out_bits+coefficients-rounds,
+        "single_weight_batch_extension_challenges": 1,
+        "weight_batch_interactive_error_numerator": len(cohorts),
+        "cut_output_evaluation_obligations": len(cohorts),
+        "w_free_input_evaluation_obligations": products,
+        "weight_claims_for_one_A4_batch_including_lookup": len(cohorts),
+        "matrix_padded_inner_cells": matrix_widths,
+        "norm_padded_width_cells": norm_widths,
+        "compact_operand_vectors_bytes": vectors,
+        "norm_sumcheck_scratch_upper_bytes": scratch,
+        "input_cells_folded_during_one_w_free_replay": compact_input_cells,
+        "known_b_tree_vectors_scratch_and_messages_union_bytes": (
+            cut_bytes+b_tree+vectors+scratch+48*corrections),
+        "w_dependent_subsystem_source_reads_with_A4": 3,
+        "complete_prover_weight_reads": None,
+        "non_w_input_links_or_range_proofs_compiled": False,
+    }
+
+
 def a3_query_indices(domain, count, words):
     """Small reference for A3's bounded PUBLIC sampler, not a PCS prover.
 
@@ -685,6 +825,7 @@ def report():
     live = sum(math.prod(t["shape"]) for t in tensors)
     assert len(tensors) == 772 and live == 30_697_345_280
     tiles = dyadic_weight_layout([t["shape"] for t in tensors])
+    cohorts = gemma_weight_cohorts(tensors)
     n = 1 << (live - 1).bit_length()
     h = n.bit_length() - 1
     matrix_shapes = Counter(tuple(t["shape"]) for t in tensors if len(t["shape"]) == 2)
@@ -772,6 +913,7 @@ def report():
         "recursive_rs_opening_screen": recursive_rs_opening_screen(n, 1 << 24, 357),
         "a3_challenge_screen": a3_challenge_screen(),
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),
+        "weight_cohort_screen": weight_cohort_screen(cohorts),
         "dyadic_weight_layout_screen": {
             "credit": False,
             "tiles": len(tiles),

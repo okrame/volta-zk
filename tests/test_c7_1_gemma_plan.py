@@ -1,6 +1,7 @@
 """Small C7.1 accounting/algebra checks; no weights, compiler or GPU."""
 
 import importlib.util
+import json
 import math
 import random
 from collections import Counter
@@ -806,3 +807,125 @@ def test_arbitrary_fold_does_not_deterministically_establish_proximity():
     assert min(sum(x != y for x, y in zip(enc(m), malformed))
                for m in product(range(p), repeat=2)) >= 6
     assert [(1*0+0*x) % p for x in malformed] == enc((0, 0))
+
+
+def test_p0_covers_named_weights_cut_offsets_and_terminal_absorption():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           "manifests/c7-d126-gemma31b-source-metadata-v1.json").read_bytes())
+    tensors = [t for t in metadata["tensors"] if t["disposition"] == "private_text"]
+    cohorts = plan.gemma_weight_cohorts(tensors)
+    assert len(cohorts) == 773
+    assert len({c["weight_key"] for c in cohorts}) == 772
+    assert Counter(c["kind"] for c in cohorts) == {"matrix": 411, "norm": 361, "lookup": 1}
+    cells = size = 0
+    for i, c in enumerate(cohorts):
+        assert (c["ordinal"], c["cut_cell_offset"], c["cut_byte_offset"]) == (i, cells, size)
+        cells += c["rows"]*c["columns"]
+        size += c["rows"]*c["columns"]*c["cut_scalar_bytes"]
+    assert cells == 962_426_624 and size == 5_143_044_096
+    by_op = {(c["layer"], c["operation"]): c for c in cohorts}
+    assert (5, "v_source") not in by_op and (0, "v_source") in by_op
+    assert by_op[5, "q_norm"]["rows"] == 150*32
+    assert by_op[5, "k_norm"]["rows"] == 150*4
+    assert by_op[0, "k_norm"]["rows"] == 150*16
+    assert by_op[5, "q_norm"]["input_stage"] == "replay_i16_output"
+    assert by_op[0, "input_rms"]["input_producer"] == {"layer": None, "operation": "embedding_scale"}
+    assert by_op[5, "input_rms"]["input_producer"] == {"layer": 4, "operation": "layer_scalar_mul"}
+    assert by_op[None, "final_rms"]["rows"] == 149
+    assert by_op[None, "final_rms"]["row_schedule"] == "except_terminal_absorb"
+    assert by_op[None, "lm_head"]["rows"] == 50
+    assert by_op[None, "lm_head"]["row_schedule"] == "decisions"
+    assert by_op[None, "embedding_lookup"]["rows"] == 150
+    assert by_op[None, "lm_head"]["weight_key"] == by_op[None, "embedding_lookup"]["weight_key"]
+    # A missing tensor, duplicate, extra global V or wrong dimension cannot
+    # quietly shrink or rewire the proof statement.
+    extra_v = {"name": "model.language_model.layers.5.self_attn.v_proj.weight", "shape": [2048, 5376]}
+    for bad in (tensors[:-1], tensors+[tensors[0]], tensors+[extra_v],
+                [{**tensors[0], "shape": [262144, 5375]}, *tensors[1:]]):
+        with pytest.raises(ValueError):
+            plan.gemma_weight_cohorts(bad)
+    for args in ((0, 50), (100, False), (4096, 1)):
+        with pytest.raises(ValueError):
+            plan.gemma_weight_cohorts(tensors, *args)
+
+
+def test_p0_accounting_never_treats_missing_input_links_as_completed():
+    s = plan.report()["weight_cohort_screen"]
+    assert s["cohort_manifest_sha256"] == "43d880822ed615cdab694ed08a8faef7119c704d58e230cc0c2875f1d694cba6"
+    assert s["cut_dyadic_tiles"] == 6947
+    assert s["sumcheck_rounds"] == 9586
+    assert s["sumcheck_extension_coefficients"] == 32871
+    assert s["extension_corrections_before_other_circuits"] == 35960
+    assert s["message_bytes_before_framing_and_shared_closures"] == 863040
+    assert s["extension_challenges_before_A4_and_link_batches"] == 25892
+    assert s["fixed_oracle_interactive_error_numerator"] == 39591
+    assert s["weight_batch_interactive_error_numerator"] == 773
+    assert s["compact_operand_vectors_bytes"] == 300_646_400
+    assert s["known_b_tree_vectors_scratch_and_messages_union_bytes"] == 5_714_441_824
+    assert s["private_product_equations"] == s["w_free_input_evaluation_obligations"] == 772
+    assert s["cut_output_evaluation_obligations"] == 773
+    assert s["w_dependent_subsystem_source_reads_with_A4"] == 3
+    assert s["complete_prover_weight_reads"] is None
+    assert not s["credit"] and not s["non_w_input_links_or_range_proofs_compiled"]
+
+
+def test_broadcast_norm_reduction_has_degree_three_and_same_input_endpoint():
+    # Three tokens, two heads: flatten token/head with head fastest. The
+    # physical scale vector is shared, not replicated six times in W.
+    p, rows, width, domain = plan.P, 6, 5, 8
+    x = [[(r+2)*(d+1)-7 for d in range(width)]+[0]*3 for r in range(rows)]
+    x += [[0]*domain for _ in range(2)]
+    w = [2, -3, 5, -7, 11, 0, 0, 0]
+    c = [[v*w[d] % p for d, v in enumerate(row)] for row in x]
+    rr, rd, coins = [2, 3, 5], [7, 11, 13], [17, 19, 23]
+    xbar = [plan.mle([row[d] for row in x], rr) for d in range(domain)]
+    def kernel(a, b):
+        return math.prod((1-u)*(1-v)+u*v for u, v in zip(a, b)) % p
+    def integrand(point):
+        return kernel(rd, point)*plan.mle(xbar, point)*plan.mle(w, point) % p
+    def partial_sum(prefix):
+        return sum(integrand(prefix+list(tail))
+                   for tail in product((0, 1), repeat=3-len(prefix))) % p
+    claim = plan.mle(sum(c, []), rd+rr)
+    assert claim == partial_sum([])
+    assert (claim+1) % p != partial_sum([])
+    for i, coin in enumerate(coins):
+        prefix = coins[:i]
+        assert claim == (partial_sum(prefix+[0])+partial_sum(prefix+[1])) % p
+        samples = [partial_sum(prefix+[t]) for t in range(5)]
+        for _ in range(4):
+            samples = [(b-a) % p for a, b in zip(samples, samples[1:])]
+        assert samples == [0]
+        claim = partial_sum(prefix+[coin])
+    xe, we = plan.mle(sum(x, []), coins+rr), plan.mle(w, coins)
+    assert xe == plan.mle(xbar, coins)
+    assert claim == kernel(rd, coins)*xe*we % p
+    assert we != plan.mle(w, rd)  # output point is not the final W point
+    # One-bit X=W=z and output coordinate 2 gives (3z-1)z^2.
+    samples = [(3*t-1)*t*t % p for t in range(4)]
+    for _ in range(3):
+        samples = [(b-a) % p for a, b in zip(samples, samples[1:])]
+    assert samples == [18]  # a degree-two schema cannot represent it
+
+
+def test_embedding_lookup_is_one_linear_claim_with_duplicates_and_last_token():
+    vocab, hidden, tokens = 8, 4, [2, 5, 2]
+    embedding = [[(j+2)*(k*k+1)-3 for k in range(hidden)] for j in range(vocab)]
+    rt, rh = [7, 11], [13, 17]
+    weights = [math.prod(r if (t >> i) & 1 else 1-r for i, r in enumerate(rt)) % plan.P
+               for t in range(4)]
+    rows = [embedding[t] for t in tokens]+[[0]*hidden]
+    claim = plan.mle(sum(rows, []), rh+rt)
+    aggregate = Counter()
+    for t, token in enumerate(tokens):
+        aggregate[token] += weights[t]
+    assert len(aggregate) == 2
+    expected = sum(a*plan.mle(embedding[token], rh) for token, a in aggregate.items()) % plan.P
+    assert claim == expected
+    skipped_terminal = sum(weights[t]*plan.mle(embedding[token], rh)
+                           for t, token in enumerate(tokens[:-1])) % plan.P
+    assert skipped_terminal != claim
+    # Rebinding to a different matrix changes the required A4 functional.
+    changed = [list(row) for row in embedding]
+    changed[2][0] += 1
+    assert sum(a*plan.mle(changed[token], rh) for token, a in aggregate.items()) % plan.P != claim

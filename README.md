@@ -1,5 +1,24 @@
 # VOLTA-ZK
 
+Research prototype for designated-verifier proofs of fixed-point transformer
+inference using VOLE-MAC blind GKR. Current work is **C7.1 Gemma-31B**;
+the complete construction and its performance/security claims remain open.
+
+- [Current status](docs/prototype-status.md): evidence, open work and authorization.
+- [C7.1 design](docs/c7.1-gemma31b-design.md): current technical requirements.
+- [Documentation index](docs/README.md): procedures, reusable sources and history.
+- [Build and test procedures](docs/procedures/build-and-test.md) and
+  [RunPod procedures](docs/procedures/runpod.md): consult before execution.
+
+The working wiki is editable; raw evidence and historical snapshots are
+immutable. Git preserves changes to the current summaries.
+
+## Historical GPT-2 / P7 artifact documentation
+
+The remainder describes the earlier artifact, including its then-current
+implementation limitations and commands. It supplies no C7.1 execution
+authorization or current status; use the documents above for active work.
+
 VOLTA is a research prototype for designated-verifier proofs of quantized
 transformer inference. The implemented workload is GPT-2 small with a
 VOLE-MAC blind-GKR/LogUp prover and a field-native Ligero-style PCS for
@@ -13,7 +32,7 @@ two-party implementation. See [the status ledger](docs/prototype-status.md)
 for the current claims, raw-run provenance, deviations and open security
 assumptions.
 
-## Repository map
+### Repository map
 
 - `rust/`: fixed-point GPT-2, authenticated protocol, prover/verifier, PCS,
   accelerator seam and benchmark binaries.
@@ -25,7 +44,7 @@ assumptions.
 - `docs/`: protocol, quantization, benchmark plan, P7 handoff and cloud
   runbook.
 
-## Quick validation
+### Quick validation
 
 Rust is installed through rustup and is not assumed to be on the default
 `PATH`:
@@ -55,7 +74,7 @@ The full CPU commands of record are `scripts/run_prefill.sh` and
 `scripts/run_decode.sh`. They are intentionally expensive and write a new,
 never-overwritten JSON under `benchmarks/results/`.
 
-## Frozen weights and golden outputs
+### Frozen weights and golden outputs
 
 `gpt2s-q.bin` and the upstream `model.safetensors` are generated/local
 artifacts and are not committed. Starting from the public GPT-2
@@ -71,7 +90,7 @@ Quantization semantics are frozen in
 [`docs/quantization-spec.md`](docs/quantization-spec.md). The Rust forward is
 the witness generator and the NumPy golden checks are load-bearing gates.
 
-## CUDA validation
+### CUDA validation
 
 The P7 resident A100 run is complete. Correctness, verifier, flat-cost and
 communication gates pass, while the preregistered performance targets fail:
@@ -95,7 +114,7 @@ Lean audit are in [the P7 artifact guide](docs/p7-artifact.md). The pinned
 hardware/software fingerprint and raw-result checksums are in
 [`artifact/p7/hardware-a100.json`](artifact/p7/hardware-a100.json).
 
-## Reports and provenance
+### Reports and provenance
 
 Regenerate the aggregate report without mutating protocol parameters:
 
@@ -115,7 +134,7 @@ Generated paper tables, rho/attribution SVGs and synthetic shape CSV live
 under `artifact/p7/generated/`. Llama-class and gpt-oss rows validate only
 analytic shape/memory scaling; GPT-2 remains the sole end-to-end model.
 
-## Security boundary
+### Security boundary
 
 Transcript/proof format, verifier logic and quantization are shared by CPU
 and CUDA paths. CUDA keeps challenges and transcript orchestration in Rust

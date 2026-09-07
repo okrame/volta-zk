@@ -1586,6 +1586,7 @@ def test_p0_accounting_never_treats_missing_input_links_as_completed():
     assert s["extension_challenges_before_A4_and_link_batches"] == 25892
     assert s["fixed_oracle_interactive_error_numerator"] == 39591
     assert s["weight_batch_interactive_error_numerator"] == 773
+    assert s["fixed_oracle_interactive_error_numerator"]+s["weight_batch_interactive_error_numerator"] == 40364
     assert s["compact_operand_vectors_bytes"] == 300_646_400
     assert s["known_b_tree_vectors_scratch_and_messages_union_bytes"] == 5_714_441_824
     assert s["private_product_equations"] == s["w_free_input_evaluation_obligations"] == 772
@@ -1593,6 +1594,48 @@ def test_p0_accounting_never_treats_missing_input_links_as_completed():
     assert s["w_dependent_subsystem_source_reads_with_A4"] == 3
     assert s["complete_prover_weight_reads"] is None
     assert not s["credit"] and not s["non_w_input_links_or_range_proofs_compiled"]
+
+
+def test_p0_shared_source_glue_needs_prebatch_weights_and_same_mac_wires():
+    p = 7
+    for count in (1, 2, 3):
+        for errors in product(range(p), repeat=count):
+            if any(errors):
+                roots = sum(sum(pow(coin, j+1, p)*e for j, e in enumerate(errors)) % p == 0
+                            for coin in range(p))
+                assert roots <= count  # includes coin=0; do not silently sample nonzero coins
+
+    weights, forms = (2, 3), ((1, 0), (0, 1), (1, 1))
+    claims = tuple(sum(a*b for a, b in zip(weights, form)) % p for form in forms)
+    tags = (1, 3, 5)
+    for delta in range(p):
+        keys = tuple((tag-delta*value) % p for tag, value in zip(tags, claims))
+        for coin in range(p):
+            coefficients = tuple(pow(coin, j+1, p) for j in range(3))
+            combined = tuple(sum(a*form[k] for a, form in zip(coefficients, forms)) % p for k in range(2))
+            value = sum(a*x for a, x in zip(coefficients, claims)) % p
+            tag = sum(a*m for a, m in zip(coefficients, tags)) % p
+            key = sum(a*k for a, k in zip(coefficients, keys)) % p
+            assert value == sum(a*b for a, b in zip(weights, combined)) % p
+            assert tag == (key+delta*value) % p  # linear alias, no new authentication of S
+
+    # If W is chosen after lambda, even perfect aggregate openings cannot bind old claims.
+    for coin in range(p):
+        late_weights = ((1+coin) % p, 0)
+        assert late_weights != (1, 1)  # at least one of the two unit-form claims is false
+        assert (coin+coin*coin) % p == (coin*late_weights[0]+coin*coin*late_weights[1]) % p
+
+    # Both MACs can be valid while a detached weight wire accepts a false product relation.
+    for delta in range(p):
+        original, detached = (2, 4), (1, 3)  # (plaintext, tag)
+        for value, tag in (original, detached):
+            key = (tag-delta*value) % p
+            assert tag == (key+delta*value) % p
+        source_weight, input_value, claimed_output = 1, 1, 2
+        assert claimed_output == input_value*original[0]  # P0 product check passes
+        assert detached[0] == source_weight  # detached PCS check passes too
+        assert claimed_output != input_value*source_weight
+        assert original[0] != detached[0]  # same-wire rule (or a checked equality) is necessary
 
 
 def test_broadcast_norm_reduction_has_degree_three_and_same_input_endpoint():

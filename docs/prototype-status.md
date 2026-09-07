@@ -162,8 +162,9 @@ authorization.
   now emits all 773 W-dependent cohorts, physical cut offsets and input
   producers. Matrix, cubic broadcast-norm and aggregate embedding protocols
   use one W read and 300,646,400 bytes of compact operands; their payload is
-  863,040 bytes before framing/shared closures. The conditional fixed-boundary
-  lemma does not prove the 772 input-evaluation links to W-free Replay,
+  863,040 bytes before framing/shared closures. The [P0–G2 corollary](c7.1-cut-witness.md#composizione-con-la-sorgente-statica-g2)
+  now composes the W endpoints with the static-source coupling, conditional
+  on the other boundaries. It does not prove the 772 input-evaluation links to W-free Replay,
   C/B openings or integer ranges. The known B/tree/P0 union is 5,714,441,824
   bytes, before uncompiled Replay workspace and runtime.
 - [P0 input routing](c7.1-cut-witness.md#7-dai-772-input-p0-ai-produttori-w-free-forme-e-riduzione)

@@ -1,9 +1,10 @@
-"""Small C7.1 accounting/algebra checks; no weights, compiler or GPU."""
+"""Small C7.1 accounting/algebra/DAG checks; no weights, native build or GPU."""
 
 import importlib.util
 import json
 import math
 import random
+import runpy
 from collections import Counter
 from fractions import Fraction
 from itertools import combinations, permutations, product
@@ -1981,6 +1982,94 @@ def test_input_routes_preserve_stages_heads_and_decision_selection():
     assert s["additional_weight_reads"] == s["additional_private_product_equations"] == 0
     assert s["full_gamma_record_or_workspace_counts"] is None
     assert not s["credit"] and not s["producer_values_proved_as_replay"]
+
+
+def test_gamma_barrier_routes_the_pinned_dag_with_rne_last_and_no_late_edges():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           "manifests/c7-d126-gemma31b-source-metadata-v1.json").read_bytes())
+    tensors = [t for t in metadata["tensors"] if t["disposition"] == "private_text"]
+    cohorts = plan.gemma_weight_cohorts(tensors)
+    g = plan.gamma_barrier_plan(cohorts)
+    records, order, s = g["cohorts"], g["reverse_order"], g["summary"]
+    by_op = {(r["layer"], r["operation"]): r for r in records}
+    assert (s["pinned_tensor_nodes"], s["tensor_edges"]) == (79963, 101322)
+    assert s["delegated_tensor_edges"] == {
+        "P0": 21011, "T1": 12240, "K1": 9120, "public_decisions": 50}
+    assert (s["cohorts"], s["retained_cohort_edges"]) == (1568, 1155)
+    assert (s["ordinary_kernel_cohorts"], s["final_rne_cohorts"], s["source_boundary_cohorts"]) == (975, 531, 62)
+    assert s["seed_cohorts_by_role"] == {
+        "P0": 602, "T1": 120, "K1": 120, "public_decisions": 1, "validity": 1506}
+    assert s["plan_sha256"] == "8f34456c6e3a715ed1fa4e80640eefaed80d18fcf909a0d86907f4c8fd231a0f"
+    assert not s["credit"] and s["complete_gamma_forms_and_workspace"] is None
+    assert sum(r["executions"] for r in records) == 79963
+    assert sorted(order) == list(range(1568))
+    assert all(records[i]["kind"] == "rne48" for i in order[975:1506])
+    assert all(not records[i]["dependencies"] for i in order[975:])
+
+    def late_edges(sequence):
+        closed, late = set(), []
+        for i in sequence:
+            # Any reducer may emit new authenticated claims on each input.
+            late.extend((i, d) for d in records[i]["dependencies"] if d in closed)
+            closed.add(i)
+        return late
+
+    assert not late_edges(order)
+    q = by_op[5, "q_proj"]["ordinal"]
+    assert late_edges([q] + [i for i in order if i != q])  # closing P0 seeds alone is premature
+    for layer in range(60):
+        for norm, operand in (("q_norm", "q_proj"), ("k_norm", "k_proj"),
+                              ("post_attention_rms", "o_proj"), ("post_ffw_rms", "down_proj")):
+            r = by_op[layer, norm]
+            assert r["kind"] == "weighted_rms" and r["byte_source"] == "B"
+            assert r["dependencies"] == [by_op[layer, operand]["ordinal"]]
+        v = by_op[layer, "v_source"]
+        assert v["dependencies"] == ([by_op[layer, "k_proj"]["ordinal"]] if layer % 6 == 5 else [])
+        for role, ops in (("K1", ("k_rope", "v_norm")), ("T1", ("q_rope", "softmax"))):
+            assert all(role in by_op[layer, op]["seeds"] for op in ops)
+    assert by_op[None, "final_rms"]["query_rows"] == 149
+    assert by_op[59, "post_ffw_rms"]["query_rows"] == 150
+    assert by_op[None, "argmax"]["executions"] == 50
+    assert by_op[None, "token_input"]["executions"] == 51
+    for altered in (cohorts[:-1], cohorts + [cohorts[0]],
+                    [{**c, "kind": "matrix"} if c["kind"] == "norm" else c for c in cohorts],
+                    plan.gemma_weight_cohorts(tensors, 1, 1)):
+        with pytest.raises(ValueError):
+            plan.gamma_barrier_plan(altered)
+
+
+def test_gamma_validity_includes_dead_outputs_and_rms_requires_original_input():
+    logical = runpy.run_path(str(Path(__file__).resolve().parents[1] /
+                                "scripts/c7_d126_gemma_qspec_dag.py"))
+    manifest = plan.pinned_gemma_manifest()
+    executions = logical["_expand_schedule"](manifest["workload_schedule"])
+    nodes = logical["expand_dag"](manifest, executions)
+    # Even ancestors of public decisions, all KV states and P0/T1 operands
+    # miss an executed norm at the end of terminal absorption.
+    needed = {n.id for n in nodes if n.operation in {"argmax", "kv_cache_append"}}
+    needed.update(d for n in nodes if n.weight_terminal is not None
+                  or n.operation in {"qk_matmul", "pv_matmul"} for d in n.dependencies)
+    todo = list(needed)
+    while todo:
+        for d in nodes[todo.pop()].dependencies:
+            if d not in needed:
+                needed.add(d)
+                todo.append(d)
+    dead = next(n for n in nodes if (n.execution, n.layer, n.operation) == (50, 59, "post_ffw_rms"))
+    assert dead.id not in needed
+    # Equal demanded outputs do not imply equal whole-program validity.
+    good, bad = [7, 3], [7, 32768]
+    assert plan.rne_i48_to_i16(good[0], 0) == plan.rne_i48_to_i16(bad[0], 0)
+    assert [plan.rne_i48_to_i16(x, 0) for x in good] == good
+    with pytest.raises(ValueError):
+        [plan.rne_i48_to_i16(x, 0) for x in bad]
+    # Same fixed W and identical B products, but different RMS statistics.
+    w, x, other_x = [1, 0], [2, 1], [2, 2]
+    assert [a*b for a, b in zip(w, x)] == [a*b for a, b in zip(w, other_x)] == [2, 0]
+    eps = Fraction(1, 1_000_000)
+    squared = [Fraction(4)/(eps + Fraction(sum(a*a for a in values), 2))
+               for values in (x, other_x)]
+    assert squared[0] != squared[1]
 
 
 def test_shifted_eq_digit_dp_matches_every_small_interval():

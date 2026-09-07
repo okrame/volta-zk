@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """C7.1: exact, small algebra checks and planning arithmetic; NOT a prover.
 
-No old protocol implementation is imported. Historical inputs are only the
-digest-pinned model metadata and logical config. No weights, network or build.
+No old protocol implementation is imported. Historical reuse is limited to
+digest-pinned metadata/config and the logical tensor-DAG expander, not its
+budget or admission status. No weights, network or build.
 The cleartext diagnostic below MUST NOT be used to prove private weights.
 """
 
 import hashlib
 import json
 import math
+import runpy
 from collections import Counter
+from graphlib import TopologicalSorter
 from pathlib import Path
 
 
@@ -110,12 +113,16 @@ def split_i16(value):
     return low, high  # unsigned low byte, signed high byte; never float
 
 
-def pinned_model_config():
+def pinned_gemma_manifest():
     path = Path(__file__).resolve().parents[1] / "manifests/c7-d126-gemma31b-qspec-dag-v1.json"
     raw = path.read_bytes()
     if hashlib.sha256(raw).hexdigest() != QSPEC_SHA256:
         raise ValueError("logical model config changed")
-    return json.loads(raw)["model_config"]
+    return json.loads(raw)
+
+
+def pinned_model_config():
+    return pinned_gemma_manifest()["model_config"]
 
 
 def cut_witness_screen(old_tokens=0, prompt_tokens=100, generated_tokens=50):
@@ -1484,6 +1491,109 @@ def gemma_input_routes(cohorts):
     return routes
 
 
+def gamma_barrier_plan(cohorts):
+    """Logical reverse schedule for the pinned 100+50 DAG, NOT kernel lowering.
+
+    Cut raw W/QK/PV products, not weighted RMS statistics. All executed
+    kernels retain a validity obligation, including unconsumed outputs.
+    The old expander supplies tensor dependencies only; no old gate or
+    protocol is imported. This does not bound forms, records or workspace.
+    """
+    manifest = pinned_gemma_manifest()
+    logical = runpy.run_path(str(Path(__file__).with_name("c7_d126_gemma_qspec_dag.py")))
+    executions = logical["_expand_schedule"](manifest["workload_schedule"])
+    nodes = logical["expand_dag"](manifest, executions)
+    by_cut = {(c["layer"], c["operation"]): c for c in cohorts}
+    expected = {}
+    for node in nodes:
+        if node.weight_terminal is not None:
+            expected[node.layer, node.operation] = (
+                "lookup" if node.operation == "embedding_lookup" else
+                "norm" if node.weight_terminal.endswith(("norm_bundle", "final_norm"))
+                else "matrix")
+    if len(by_cut) != len(cohorts) or {k: c["kind"] for k, c in by_cut.items()} != expected:
+        raise ValueError("Gamma cuts disagree with the pinned weighted operators")
+    if by_cut[None, "embedding_lookup"]["rows"] != 150 or by_cut[None, "lm_head"]["rows"] != 50:
+        raise ValueError("Gamma dependency plan covers only the pinned 100+50 workload")
+
+    records, indices, node_cohorts = [], {}, []
+    for node in nodes:
+        key = (node.layer, node.operation)
+        if key not in indices:
+            cut = expected.get(key)
+            kind = ({"lookup": "B_lookup", "norm": "weighted_rms", "matrix": "rne48"}.get(cut)
+                    or {"qk_matmul": "rne48", "pv_matmul": "rne48",
+                        "kv_cache_append": "KV_boundary", "token_input": "public_tokens"}.get(node.operation)
+                    or "kernel")
+            source = ("B" if cut is not None else
+                      "raw_attention" if kind == "rne48" else None)
+            indices[key] = len(records)
+            records.append({"ordinal": len(records), "layer": node.layer,
+                            "operation": node.operation, "kind": kind, "byte_source": source,
+                            "dependencies": set(), "seeds": set(),
+                            "executions": 0, "query_rows": 0})
+        ordinal = indices[key]
+        node_cohorts.append(ordinal)
+        r = records[ordinal]
+        r["executions"] += 1
+        r["query_rows"] += (1 if node.operation in {
+            "last_row_select", "lm_head", "final_tanh_softcap", "argmax"}
+            else executions[node.execution]["query_tokens"])
+
+    delegated = Counter()
+    for node in nodes:
+        r = records[node_cohorts[node.id]]
+        # These incoming edges are proved separately, not silently pruned.
+        owner = ("P0" if expected.get((node.layer, node.operation)) in {"matrix", "lookup"}
+                 else "T1" if node.operation in {"qk_matmul", "pv_matmul"}
+                 else "K1" if node.operation == "kv_cache_append"
+                 else "public_decisions" if node.operation == "token_input" else None)
+        if owner:
+            delegated[owner] += len(node.dependencies)
+        else:
+            r["dependencies"].update(node_cohorts[d] for d in node.dependencies)
+
+    boundary_kinds = {"B_lookup", "KV_boundary", "public_tokens"}
+    for r in records:
+        if r["kind"] not in boundary_kinds:
+            r["seeds"].add("validity")  # whole live domain, not only demanded rows
+    for route in gemma_input_routes(cohorts):
+        p = route["source_producer"]
+        records[indices[p["layer"], p["operation"]]]["seeds"].add("P0")
+    for layer in range(manifest["model_config"]["layers"]):
+        for role, operations in (("K1", ("k_rope", "v_norm")),
+                                 ("T1", ("q_rope", "softmax"))):
+            for operation in operations:
+                records[indices[layer, operation]]["seeds"].add(role)
+    records[indices[None, "argmax"]]["seeds"].add("public_decisions")
+
+    for r in records:
+        r["dependencies"] = sorted(r["dependencies"])
+        r["seeds"] = sorted(r["seeds"])
+    reverse = list(reversed(tuple(TopologicalSorter({
+        r["ordinal"]: r["dependencies"] for r in records}).static_order())))
+    ordinary = [i for i in reverse if records[i]["kind"] not in boundary_kinds | {"rne48"}]
+    rne = [i for i in reverse if records[i]["kind"] == "rne48"]
+    boundaries = [i for i in reverse if records[i]["kind"] in boundary_kinds]
+    order = ordinary + rne + boundaries
+    rank = {ordinal: i for i, ordinal in enumerate(order)}
+    if any(records[i]["dependencies"] for i in rne + boundaries) or any(
+            rank[r["ordinal"]] >= rank[d] for r in records for d in r["dependencies"]):
+        raise ValueError("a source/RNE leaf has a late dependency")
+    return {"cohorts": records, "reverse_order": order,
+            "summary": {"credit": False, "pinned_tensor_nodes": len(nodes),
+                        "tensor_edges": sum(len(n.dependencies) for n in nodes),
+                        "delegated_tensor_edges": dict(delegated),
+                        "cohorts": len(records), "retained_cohort_edges": sum(len(r["dependencies"]) for r in records),
+                        "ordinary_kernel_cohorts": len(ordinary), "final_rne_cohorts": len(rne),
+                        "source_boundary_cohorts": len(boundaries),
+                        "seed_cohorts_by_role": dict(Counter(s for r in records for s in r["seeds"])),
+                        "plan_sha256": hashlib.sha256(json.dumps(
+                            [records, order], sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+                        "structural_rne_last_order_verified": True,
+                        "complete_gamma_forms_and_workspace": None}}
+
+
 def shifted_eq_form(input_point, source_point, offset, count):
     """Fp diagnostic of sum_{d<count} EQ(input_point,d)*EQ(source_point,offset+d).
 
@@ -2480,6 +2590,7 @@ def report():
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),
         "weight_cohort_screen": weight_cohort_screen(cohorts),
         "input_link_screen": input_link_screen(cohorts),
+        "gamma_barrier_screen": gamma_barrier_plan(cohorts)["summary"],
         "kv_transition_screens": [kv_transition_screen(old) for old in (0, 3900, 3946)],
         "attention_product_screens": [attention_product_screen(old) for old in (0, 3946)],
         "auxiliary_witness_screens": [auxiliary_witness_screen(cohorts, old) for old in (0, 3946)],

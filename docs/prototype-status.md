@@ -87,29 +87,21 @@ authorization.
   or tighter reductions remain repairs to study. Sampled-parameter and
   adversary/preprocessing assumptions must match the actual fixed hash;
   Q_FS is not its work budget. No root-to-oracle/FS credit is granted.
-- [A5: wide hash/anchor candidate](c7.1-wide-hash-opening.md) now specifies
-  eight-Fp digests, ten-word groups, a 32-lane checker and an arithmetic
-  salted anchor in the same MAC. The pinned parameter calculator nominates
-  8 full/31 partial rounds, but does not provide a supported Goldilocks-32
-  profile or concrete security. W paired payload is 16,164,144 bytes;
-  C_Σ paired is 10,402,496/15,706,688 at N=150/4096, before public anchors,
-  framing and other components. Literal enlarged arrays fail; staged hash
-  execution, tiled native encoding and pruned caches repair those specific
-  schedules. The largest known C_Σ phase is 6,404,645,880 bytes, leaving
-  only 37,805,064 before uncompiled Replay/Gamma/runtime and materialized
-  public parameters (2,680 bytes per copy in A5-M). The tiled commit
-  charges 32 ModelSetup W visits or 16 C_Σ source visits, including all
-  repeated native FFT work; warm A4 still uses two source visits.
-  ROM constants/final KAT, profile grammar, binding/hiding, IBCS/FS and
-  complete liveness remain open. This is not an admitted hash upgrade.
+- [A5: wide hash/anchor candidate](c7.1-wide-hash-opening.md) specifies
+  eight-Fp digests/anchors and a 32-lane checker, not admitted concrete
+  hash security. ROM constants/final KAT, profile grammar, binding/hiding,
+  IBCS/FS and complete liveness remain open.
   The [joint W/KV candidate](c7.1-wide-hash-opening.md#aperture-congiunte-wkv-e-path-deduplicati)
   excludes four separate literal PCS instances and derives shared recursion
   with separate anchors and deduplicated paths. Its known payload fits;
   the [state-cache timeline](c7.1-wide-hash-opening.md#timeline-delle-cache-e-barriera-b)
   now charges both state trees inside the arena and recounts the known
   phases, including a dyadic-metadata envelope over all context lengths.
-  Its final-B-consumer barrier, full reader/Gamma workspace and
-  remaining records are still unproved; it is not complete liveness.
+  The [reverse Gamma order](c7.1-cut-witness.md#ordine-inverso-di-γ-e-ultima-rne)
+  now places all raw RNE demands last on the pinned DAG, retaining RMS
+  input statistics and whole-domain validity, including dead outputs.
+  Kernel contracts, output forms/shifts, full reader/workspace and retained
+  records remain uncompiled; this is not the physical B-release proof.
 - [A5-P: sampled public parameters](c7.1-wide-hash-opening.md#21-a5-p-parametri-pubblici-dal-rom-con-coupling-finito)
   now gives a finite ordinary-ROM publication and exact joint-tape embedding
   into independently sampled arithmetic-hash keys. A fixed pre-profile,

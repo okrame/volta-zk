@@ -126,6 +126,16 @@ authorization.
   Poseidon2's stated range stops at width 24. This excludes that numerical
   extrapolation, not the complete hash; its cryptanalysis must be rebuilt.
   No production implementation, hash-security bits or G2 admission follow.
+- [A5-D: fixed-characteristic screen](c7.1-wide-hash-opening.md#23-a5-d-caratteristica-prefissata-e-limite-del-trasferimento)
+  repairs the active-S-box count at branch 10: four disjoint pairs of actual
+  full rounds give at least 40 active boxes. For one input pair and complete
+  differential characteristic fixed before the uniform round constants,
+  the exact Markov law gives probability below 2^-2456. These are not hash
+  security bits. Exhaustive toy checks separate this law from collision
+  hulls, post-parameter input choice and repeated use of the same key.
+  Even honest chained hash inputs can depend on the constants. The screen
+  does not require increasing the nominated rounds; it does not justify
+  reducing them or supply the missing adaptive CR/hiding/IBCS/FS bound.
 - [Ideal MAC/FS simulation](c7.1-committed-mac-opening.md#31-simulatore-ideale-fs-nessuna-programmazione-delloracolo)
   now has a straight-line coupling proof for the actual public correction
   prefixes, including aborts and adaptive attempts. It needs no oracle
@@ -258,7 +268,7 @@ authorization.
   degree-8/9 round reduction, single input endpoint and resource counts.
   A3 adds small FFT/form/recursion identities and a malformed-codeword
   counterexample distinguishing proximity from exact well-formedness.
-  The 79 focused checks also cover finite query sampling, exact ideal
+  The 80 focused checks also cover finite query sampling, exact ideal
   simulation distributions, the excluded independent-RO hybrid, W-cut
   counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
   distance/encoding identities and dyadic layout/form evaluation. P0 adds
@@ -291,6 +301,9 @@ authorization.
   irreducibility/finite-period checks, a synthetic permutation KAT and dense
   comparison, canonical/tamper cases, the branch-12 counterexample and a
   31-round passive difference. No concrete hash-security test is claimed.
+  A5-D exhausts all 14,641 keys of a two-lane/two-round F11 toy, checks
+  the complete characteristic distribution and demonstrates the separate
+  collision-hull/adaptive-input/key-reuse obligations.
   A5-P adds exact joint distributions of embedded keys/public rejection
   tapes, finite comparison-generator domination, fail-closed boundaries,
   descriptor grinding and the excluded free oracle-dependent advice case.
@@ -325,7 +338,9 @@ compile its parameter/adversary assumptions, complete reduction costs and
 adaptation to the actual public-coin/MAC/FS transcript. A5 now supplies a
 structural wide hash/anchor codec, checker and resource recount, not an
 admitted hash profile. A5-M now supplies explicit matrices and a synthetic
-KAT; its width-32 branch number is 10, not the extrapolated 12. Complete
+KAT; its width-32 branch number is 10, not the extrapolated 12. A5-D fixes
+the single pre-parameter characteristic screen, not the collision-hull or
+post-parameter input-search bound. Complete
 the actual ROM constants/KAT and public profile grammar, justify the
 concrete binding/hiding assumptions and
 compile the actual reduction. A5-P now supplies a finite sampled-parameter

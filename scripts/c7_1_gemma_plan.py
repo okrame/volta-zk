@@ -834,6 +834,31 @@ def wide_hash_parameter_screen():
     }
 
 
+def wide_hash_fixed_trail_screen():
+    """A5-D: ONE pre-key input pair and full differential characteristic.
+
+    Probability is over independent uniform round constants, conditional on
+    successful A5-P publication. NOT an adaptive collision/hull/FS bound.
+    """
+    pairs, branch = 2*(4//2), 10  # four full rounds on EACH side of the partial segment
+    active = pairs*branch
+    return {
+        'credit': False,
+        'disjoint_consecutive_full_round_pairs': pairs,
+        'active_full_sboxes_lower_bound': active,
+        'fixed_trail_probability_bound_numerator': 6**active,
+        'fixed_trail_probability_bound_denominator': P**active,
+        'fixed_trail_negative_log2_bound_floor': (P**active//6**active).bit_length()-1,
+        'removing_one_full_round_per_half_leaves_pairs': 2*(3//2),
+        'requires_input_pair_and_characteristic_fixed_before_public_parameters': True,
+        'requires_independent_uniform_constants_at_distinct_round_positions': True,
+        'repeated_hash_evaluations_have_independent_keys': False,
+        'bounds_collision_hulls_or_post_parameter_input_search': False,
+        'changes_nominated_rounds_or_component_resource_counts': False,
+        'complete_security_bits': None,
+    }
+
+
 def wide_hash_rs_screen(n, block, queries):
     """A5 STRUCTURAL candidate, not a generated/justified Poseidon2 profile.
 
@@ -2229,6 +2254,7 @@ def report():
                                    for bits, time_bits in ((256, 0), (256, 64), (512, 64))],
         "wide_hash_rs_screen": wide_hash_rs_screen(n, 1 << 24, 357),
         "wide_hash_parameter_screen": wide_hash_parameter_screen(),
+        "wide_hash_fixed_trail_screen": wide_hash_fixed_trail_screen(),
         "wide_hash_witness_screens": [wide_hash_witness_screen(cohorts, old)
                                      for old in (0, 3946)],
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),

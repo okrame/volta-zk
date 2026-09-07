@@ -757,6 +757,78 @@ def test_wide_hash_synthetic_kat_dense_reference_and_canonical_boundaries():
     assert state == list(range(32)) and constants == list(range(287))
 
 
+def test_sampled_round_fixed_trails_are_markov_but_not_collision_or_adaptive_bounds():
+    # Exhaust all 11^4 keys of a two-lane/two-full-round toy, not the A5 hash.
+    p, exponent = 11, 3
+    vectors = list(product(range(p), repeat=2))
+
+    def linear(v):
+        return ((v[0]+v[1]) % p, (v[0]+2*v[1]) % p)
+
+    def inverse_linear(v):
+        return ((2*v[0]-v[1]) % p, (-v[0]+v[1]) % p)
+
+    def round_fn(v, key):
+        return linear(tuple(pow((x+c) % p, exponent, p) for x, c in zip(v, key)))
+
+    def difference(left, right):
+        return tuple((y-x) % p for x, y in zip(left, right))
+
+    ddt = {(a, b): sum((pow(x+a, exponent, p)-pow(x, exponent, p)) % p == b
+                       for x in range(p)) for a in range(p) for b in range(p)}
+    assert max(ddt[a, b] for a in range(1, p) for b in range(p)) == exponent-1
+    assert all(ddt[0, b] == (p if b == 0 else 0) for b in range(p))
+    histogram = Counter()
+    for first_key in vectors:
+        left, right = round_fn((0, 0), first_key), round_fn((1, 0), first_key)
+        d1 = difference(left, right)
+        for second_key in vectors:
+            d2 = difference(round_fn(left, second_key), round_fn(right, second_key))
+            histogram[d1, d2] += 1
+
+    # The complete joint law equals the product of per-round DDT counts.
+    expected = Counter()
+    for d1, d2 in product(vectors, repeat=2):
+        eta1, eta2 = inverse_linear(d1), inverse_linear(d2)
+        count = ddt[1, eta1[0]]*ddt[0, eta1[1]]*ddt[d1[0], eta2[0]]*ddt[d1[1], eta2[1]]
+        if count:
+            expected[d1, d2] = count
+            assert 1+sum(x != 0 for x in d1) >= 3  # two-round branch number
+    assert histogram == expected and sum(histogram.values()) == p**4
+    assert len(histogram) == 216
+    fixed_trail_max = Fraction(max(histogram.values()), p**4)
+    assert fixed_trail_max == Fraction(2, p)**3 == Fraction(8, 1331)
+    # Truncate to one lane: summing different paths is NOT a single path.
+    collision = Fraction(sum(count for (_, out), count in histogram.items() if out[0] == 0), p**4)
+    assert collision == Fraction(12, 121) > fixed_trail_max
+    # The SAME public key is reused; repeating an event does not square its probability.
+    repeated = Fraction(sum(count for (_, out), count in histogram.items()
+                            if out[0] == 0 and out[0] == 0), p**4)
+    assert repeated == collision > collision**2
+    # After seeing a one-round toy key, invert two chosen outputs sharing lane 0.
+    # This exploits the toy's unrestricted inputs, NOT A5's framed/capacity-zero inputs.
+    inverse_exponent = pow(exponent, -1, p-1)
+    for key in vectors:
+        inputs = [tuple((pow(z, inverse_exponent, p)-c) % p
+                        for z, c in zip(inverse_linear(out), key)) for out in ((0, 0), (0, 1))]
+        assert inputs[0] != inputs[1]
+        assert [round_fn(v, key) for v in inputs] == [(0, 0), (0, 1)]
+    s = plan.wide_hash_fixed_trail_screen()
+    assert s['disjoint_consecutive_full_round_pairs'] == 4
+    assert s['active_full_sboxes_lower_bound'] == 40
+    assert s['removing_one_full_round_per_half_leaves_pairs'] == 2
+    bound = Fraction(s['fixed_trail_probability_bound_numerator'], s['fixed_trail_probability_bound_denominator'])
+    assert bound == Fraction(6, plan.P)**40 < Fraction(1, 1 << 2456)
+    assert s['fixed_trail_negative_log2_bound_floor'] == 2456
+    assert Fraction(6, plan.P)**20 < Fraction(1, 1 << 1228)
+    assert s['requires_input_pair_and_characteristic_fixed_before_public_parameters']
+    assert s['requires_independent_uniform_constants_at_distinct_round_positions']
+    assert not s['repeated_hash_evaluations_have_independent_keys']
+    assert not s['bounds_collision_hulls_or_post_parameter_input_search']
+    assert not s['changes_nominated_rounds_or_component_resource_counts']
+    assert not s['credit'] and s['complete_security_bits'] is None
+
+
 def test_wide_hash_recounts_anchor_recursion_and_known_memory_without_security_credit():
     report = plan.report()
     w = report['wide_hash_rs_screen']

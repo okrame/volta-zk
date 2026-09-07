@@ -882,6 +882,142 @@ def test_wide_hash_recounts_anchor_recursion_and_known_memory_without_security_c
             plan.wide_hash_rs_screen(*args)
 
 
+def test_joint_w_kv_recount_excludes_separate_codec_but_not_complete_feasibility():
+    report = plan.report()
+    w = report['wide_hash_rs_screen']['private_component_payload_before_framing_and_caller']
+    w += 24*report['paired_rs_opening_screen']['additional_extension_corrections']
+    # Most favorable KV block in the entire admitted power-of-two range.
+    choices = []
+    for bits in range(9, 25):
+        s = plan.wide_hash_rs_screen(1 << 31, 1 << bits, 357)
+        a = plan.paired_rs_opening_screen(1 << 31, 1 << bits, 357)
+        choices.append((s['private_component_payload_before_framing_and_caller']
+                        +24*a['additional_extension_corrections'], bits))
+    assert min(choices) == (6192480, 24)
+    # Remove three duplicate closures even before charging any caller/anchor.
+    assert w+15706688+2*min(choices)[0]-3*72 == 44255576 > 35000000
+    assert 44255576-24*(2*8599+2*8217) == 43448408 > 35000000
+    for screen, counts in zip(report['wide_hash_witness_screens'],
+            ((108932, 1892544, 15546576, 8918768, 66911, 26071328),
+             (124438, 2154924, 17645616, 14232128, 77963, 33749040))):
+        joint = screen['joint_w_kv_candidate']
+        a, b = joint['weight_and_state_opening'], joint['auxiliary_opening']
+        calls, inputs, wa, sigma, caller, total = counts
+        assert a['private_hash_calls_including_anchors_and_one_recursion'] == calls
+        assert a['base_corrections_including_salts'] == inputs
+        assert a['extension_corrections_including_paired_sumchecks'] == 16923
+        assert a['fresh_extension_correlations_including_product_mask'] == 16924
+        assert a['joint_rows'] == 4096
+        assert a['paired_reduction_interactive_error_numerator'] == 8238
+        assert a['private_component_payload_before_framing_and_caller'] == wa
+        assert b['private_component_payload_before_framing_and_caller'] == sigma
+        assert joint['known_caller_extension_corrections'] == caller
+        assert (a['fresh_extension_correlations_including_product_mask']
+                +b['fresh_extension_correlations_including_product_mask']+caller-1
+                == (94214 if screen['old_tokens'] == 0 else 107696))
+        assert wa+sigma-72+24*caller+a['public_anchor_bytes_if_all_resent']+64 == total
+        assert joint['known_partial_payload_with_all_anchors_and_one_shared_closure'] == total
+        assert joint['remaining_bytes_before_uncompiled_gamma_framing_refresh'] == 35000000-total
+        assert not joint['inherits_previous_memory_peaks']
+        assert not a['full_root_compilation_caller_and_liveness_proved'] and not a['credit']
+        assert screen['complete_certificate_bytes'] is None
+    # A singleton reproduces exactly the deduplicated A5+A4 count.
+    s = plan.wide_hash_rs_screen(1 << 31, 1 << 24, 357, True)
+    a = plan.paired_rs_opening_screen(1 << 31, 1 << 24, 357)
+    assert plan.wide_hash_joint_opening_screen([1 << 31], 1 << 24, 357)[
+        'private_component_payload_before_framing_and_caller'] == (
+            s['private_component_payload_before_framing_and_caller']
+            +24*a['additional_extension_corrections']) == 4611360
+    for sources in ([], [8]*4, [True], [12], [2], [1 << 64]):
+        with pytest.raises(ValueError):
+            plan.wide_hash_joint_opening_screen(sources, 4, 3)
+    with pytest.raises(ValueError):
+        plan.wide_hash_rs_screen(16, 4, 3, 1)
+
+
+def test_deduplicated_merkle_frontier_matches_all_paths_and_tight_node_bound():
+    # Collision-free symbolic nodes test wiring/counts, not A5 hash security.
+    for d in range(1, 4):
+        domain = 1 << d
+        tree = {(0, j): ('leaf', j) for j in range(domain)}
+        for h in range(1, d+1):
+            for j in range(domain >> h):
+                tree[h, j] = ('node', h, j, tree[h-1, 2*j], tree[h-1, 2*j+1])
+        for q in range(1, domain+1):
+            largest = 0
+            for selected in combinations(range(domain), q):
+                parents = {(h, j >> h) for j in selected for h in range(1, d+1)}
+                leaves = {(0, j) for j in selected}
+                frontier = {(h-1, 2*j+c) for h, j in parents for c in (0, 1)}-parents-leaves
+                assert len(frontier) == len(parents)+1-q
+                largest = max(largest, len(parents))
+                wires = {key: tree[key] for key in parents | leaves | frontier}
+                def check(values):
+                    return (values[d, 0] == tree[d, 0] and all(values[h, j] == (
+                        'node', h, j, values[h-1, 2*j], values[h-1, 2*j+1]) for h, j in parents))
+                assert check(wires)
+                # Every path edge is present through the same node handle.
+                for leaf in selected:
+                    assert all((h, (leaf >> h)^1) in wires for h in range(d))
+                for keys in (parents, leaves, frontier):
+                    if keys:
+                        bad = dict(wires)
+                        bad[min(keys)] = ('tamper',)
+                        assert not check(bad)
+            assert largest == sum(min(q, domain >> h) for h in range(1, d+1))
+    # Bit-reversed prefixes attain every height bound simultaneously.
+    for q in (1, 2, 3, 7, 17, 357, 512):
+        selected = [int(f'{i:09b}'[::-1], 2) for i in range(q)]
+        parents = {(h, j >> h) for j in selected for h in range(1, 10)}
+        assert len(parents) == sum(min(q, 512 >> h) for h in range(1, 10))
+
+
+def test_stacked_sources_share_folds_but_keep_source_roles_and_padding():
+    rng, block = random.Random(20260917), 4
+    sources = [[rng.randrange(plan.P) for _ in range(n)] for n in (16, 4, 8)]
+    screen = plan.wide_hash_joint_opening_screen([len(s) for s in sources], block, 3)
+    assert screen['source_order'] == [0, 2, 1]
+    assert screen['source_offsets'] == [0, 24, 16]
+    n = screen['joint_padded_source_cells']
+    joined, form = [0]*n, [0]*n
+    points = [[rng.randrange(plan.P) for _ in range(len(s).bit_length()-1)] for s in sources]
+    weights = [2, 3, 5]
+    claims = [plan.mle(s, r) for s, r in zip(sources, points)]
+    for source, r, coefficient, offset in zip(sources, points, weights, screen['source_offsets']):
+        joined[offset:offset+len(source)] = source
+        form[offset:offset+len(source)] = [coefficient*math.prod(
+            x if j >> i & 1 else 1-x for i, x in enumerate(r)) % plan.P for j in range(len(source))]
+    assert plan.dot(joined, form) == plan.dot(claims, weights)
+    rows = [joined[i:i+block] for i in range(0, n, block)]
+    forms = [form[i:i+block] for i in range(0, n, block)]
+    coins = [rng.randrange(plan.P) for _ in rows[1:]]
+    f, g, sums, _, folded_claim = plan.paired_fold(rows, forms, coins)
+    assert sum(sums) % plan.P == plan.dot(claims, weights)
+    u, alpha = [7, 11], [1, *coins]
+    assert plan.mle(g, u) == sum(coefficient*plan.folded_cube_form(offset, r, alpha, u)
+        for coefficient, offset, r in zip(weights, screen['source_offsets'], points)) % plan.P
+    assert folded_claim == plan.dot(f, g)
+    rho = [math.prod(x if j >> i & 1 else 1-x for i, x in enumerate([13, 17, 19])) % plan.P
+           for j in range(len(rows))]
+    # The same selected column contains each separately anchored row segment.
+    encoded = [plan.small_goldilocks_fft(row+[0]*(3*block)) for row in rows]
+    for coefficients in (alpha, rho):
+        folded = [sum(c*row[i] for c, row in zip(coefficients, rows)) % plan.P for i in range(block)]
+        target = plan.small_goldilocks_fft(folded+[0]*(3*block))
+        assert all(target[j] == sum(c*row[j] for c, row in zip(coefficients, encoded)) % plan.P
+                   for j in range(4*block))
+    # Dropping the old segment or swapping roles is not an opening of the tuple.
+    anchors = [tuple(plan.small_goldilocks_fft(s[i:i+block]+[0]*(3*block)))
+               for s in sources for i in range(0, len(s), block)]
+    assert len(anchors) == 7 and len(set(anchors)) == 7
+    old_offset = screen['source_offsets'][1]
+    bad = joined.copy()
+    bad[old_offset] = (bad[old_offset]+1) % plan.P
+    assert plan.dot(bad, form) != plan.dot(joined, form)
+    assert plan.small_goldilocks_fft(bad[old_offset:old_offset+block]+[0]*(3*block)) != list(anchors[4])
+    assert joined[28:] == [0]*4  # public virtual rows, not unconstrained input
+
+
 def test_output_tiled_encoder_and_pruned_tree_keep_the_same_positions():
     # Symbolic node tuples, NOT a cryptographic hash. No field security/KAT.
     block, rows, tile = 8, 13, 8

@@ -919,13 +919,15 @@ def private_projection_compilation_screen(n, block, queries, attempts=1):
     }
 
 
-def wide_hash_rs_screen(n, block, queries):
+def wide_hash_rs_screen(n, block, queries, deduplicate_paths=False):
     """A5 STRUCTURAL candidate, not a generated/justified Poseidon2 profile.
 
     Reuse A3 geometry only; recompute every hash boundary for width 32,
     eight-word digests, ten-word groups, nominated RF=8/RP=31 and one
     arithmetic salted anchor. The old BLAKE3 anchor is NOT retained.
     """
+    if type(deduplicate_paths) is not bool:
+        raise ValueError('deduplicate_paths must be Boolean')
     natural(n, 'canonical wide-anchor source length', 1, P-1)
     narrow = recursive_rs_opening_screen(n, block, queries)
     levels = []
@@ -933,9 +935,13 @@ def wide_hash_rs_screen(n, block, queries):
     for rows, domain, q in [(n//block, 4*block, queries)]+[
             (96, level['domain'], level['queries']) for level in narrow['levels']]:
         groups, depth = (rows+9)//10, domain.bit_length()-1
-        h, i = q*(groups+depth), q*(rows+8*groups+16*depth)+8
+        parents = (sum(min(q, domain >> height) for height in range(1, depth+1))
+                   if deduplicate_paths else q*depth)
+        siblings = parents+1-q if deduplicate_paths else q*depth
+        h, i = q*groups+parents, q*(rows+8*groups)+8*(parents+siblings)+8
         levels.append({'rows': rows, 'domain': domain, 'queries': q,
-                       'chain_groups': groups, 'hash_calls': h, 'base_corrections': i})
+                       'chain_groups': groups, 'hash_calls': h, 'base_corrections': i,
+                       'tree_parent_instances': parents, 'tree_sibling_inputs': siblings})
         calls, inputs = calls+h, inputs+i
     terminal = narrow['terminal_private_extension_cells']
     groups = (3*terminal+9)//10
@@ -949,6 +955,7 @@ def wide_hash_rs_screen(n, block, queries):
     tile = min(1 << 21, 4*block)
     return {
         'credit': False, 'fixed_algorithm_block_cap': 1 << 24,
+        'paths_deduplicated_worst_case': deduplicate_paths,
         'nominated_width_full_partial_rounds': [32, 8, 31],
         'digest_field_words': 8, 'source_words_per_group': 10,
         'digest_space_cardinality': P**8,
@@ -987,6 +994,48 @@ def wide_hash_rs_screen(n, block, queries):
         'outer_source_fft_butterflies_per_native_encode': 2*n*(block.bit_length()+1),
         'matrix_constants_hash_security_and_full_profile_instantiated': False,
         'complete_certificate_bytes': None, 'complete_security_bits': None,
+    }
+
+
+def wide_hash_joint_opening_screen(source_cells, block, queries):
+    """Virtual A4 row stacking with separate anchors, one inner recursion.
+
+    All sources use the SAME block/code domain and common outer query set.
+    Canonical role order is the input order, with larger sources placed first.
+    This counts the deduplicated candidate, not its full caller or liveness.
+    """
+    natural(len(source_cells), 'joint source count', 1, 3)
+    sources = [wide_hash_rs_screen(n, block, queries, True) for n in source_cells]
+    first = sources[0]
+    calls = first['private_hash_calls_including_anchor_and_recursion']
+    inputs = first['base_corrections_including_salt']
+    for source in sources[1:]:
+        calls += source['levels'][0]['hash_calls']+1  # separate anchor
+        inputs += source['levels'][0]['base_corrections']+4  # separate salt
+    n = 1 << (sum(source_cells)-1).bit_length()
+    natural(n, 'joint padded source length', 1, P-1)
+    order = sorted(range(len(source_cells)), key=lambda i: (-source_cells[i], i))
+    offsets, cursor = [0]*len(source_cells), 0
+    for i in order:
+        offsets[i], cursor = cursor, cursor+source_cells[i]
+    paired = paired_rs_opening_screen(n, block, queries)
+    hash_e = 382*((calls-1).bit_length()+5)+195
+    extension = (first['extension_corrections_including_partial_sumchecks']
+                 -first['power_gkr_extension_corrections']+hash_e
+                 +paired['additional_extension_corrections'])
+    return {
+        'credit': False, 'source_cells': list(source_cells),
+        'source_order': order, 'source_offsets': offsets,
+        'joint_padded_source_cells': n, 'joint_rows': n//block,
+        'private_hash_calls_including_anchors_and_one_recursion': calls,
+        'base_corrections_including_salts': inputs,
+        'extension_corrections_including_paired_sumchecks': extension,
+        'fresh_extension_correlations_including_product_mask': extension+1,
+        'private_component_payload_before_framing_and_caller': 8*inputs+24*extension+72,
+        'public_anchor_bytes_if_all_resent': 64*len(sources),
+        'paired_reduction_interactive_error_numerator': paired['paired_reduction_interactive_error_numerator'],
+        'source_visits_each_after_commit': 2,
+        'full_root_compilation_caller_and_liveness_proved': False,
     }
 
 
@@ -1924,6 +1973,7 @@ def auxiliary_witness_screen(cohorts, old_tokens=0):
         'compact_c1_extra_query_leaf_columns_upper': 2*queries,
         'compact_c1_query_leaf_hash_calls_upper': 2*queries*16,
         'known_message_descriptor_alpha_union_bytes': records,
+        'known_caller_extension_corrections': caller_e,
         'rne_indicator_screen': rne, 'byte_range_screen': alphabet,
         'rne_link_known_union_before_replay_runtime': common+rne_link_arrays,
         'rne_top_known_union_before_replay_runtime': common+top_arrays,
@@ -1958,6 +2008,15 @@ def wide_hash_witness_screen(cohorts, old_tokens=0):
     head_arrays = 8*150*(old_tokens+150+512)
     root_peak = (b_bytes+cache+48*block+144*tile
                  +old['source_descriptors_bytes']+head_arrays+65536)
+    kv_width = kv_transition_screen(old_tokens)['core_requested_packed_kv_bytes_one_fused_visit']//(2*(old_tokens+150))
+    kv_cells = [max(1 << 24, 1 << (kv_width*(1 << (rows-1).bit_length())-1).bit_length())
+                for rows in (old_tokens, old_tokens+150) if rows]
+    joint = wide_hash_joint_opening_screen([1 << 35, *kv_cells], 1 << 24, q)
+    sigma = wide_hash_joint_opening_screen([n], block, q)
+    joint_payload = (joint['private_component_payload_before_framing_and_caller']
+                     +sigma['private_component_payload_before_framing_and_caller']-72
+                     +24*old['known_caller_extension_corrections']
+                     +joint['public_anchor_bytes_if_all_resent']+64)
     return {
         'credit': False, 'old_tokens': old_tokens, 'wide_pcs': wide,
         'same_source_layout_sha256': old['layout_sha256'],
@@ -1997,6 +2056,13 @@ def wide_hash_witness_screen(cohorts, old_tokens=0):
             old['range_known_union_before_replay_runtime']+common_delta),
         'additional_weight_reads_given_w_free_reader': 0,
         'opening_source_traversals_after_commit': 2,
+        'joint_w_kv_candidate': {
+            'weight_and_state_opening': joint, 'auxiliary_opening': sigma,
+            'known_caller_extension_corrections': old['known_caller_extension_corrections'],
+            'known_partial_payload_with_all_anchors_and_one_shared_closure': joint_payload,
+            'remaining_bytes_before_uncompiled_gamma_framing_refresh': 35_000_000-joint_payload,
+            'inherits_previous_memory_peaks': False,
+        },
         'source_reader_all_gamma_forms_and_full_liveness_compiled': False,
         'complete_certificate_bytes': None,
     }

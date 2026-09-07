@@ -102,6 +102,11 @@ authorization.
   repeated native FFT work; warm A4 still uses two source visits.
   ROM constants/final KAT, profile grammar, binding/hiding, IBCS/FS and
   complete liveness remain open. This is not an admitted hash upgrade.
+  The [joint W/KV candidate](c7.1-wide-hash-opening.md#aperture-congiunte-wkv-e-path-deduplicati)
+  excludes four separate literal PCS instances and derives shared recursion
+  with separate anchors and deduplicated paths. Its known payload fits;
+  the remaining Gamma records and new state-cache liveness do not inherit
+  completion or the earlier memory bounds.
 - [A5-P: sampled public parameters](c7.1-wide-hash-opening.md#21-a5-p-parametri-pubblici-dal-rom-con-coupling-finito)
   now gives a finite ordinary-ROM publication and exact joint-tape embedding
   into independently sampled arithmetic-hash keys. A fixed pre-profile,
@@ -366,8 +371,9 @@ work cost before treating it as feasible. R2 now gives the source-bound
 RNE Lagrange reduction and its replay schedule; include its endpoints in
 the remaining Gamma consumers and reduce the explicit computation cost.
 K1 now supplies the temporal view and append/prefix reduction, with
-explicit first-state aliases and bounded-memory read routing. Instantiate
-its joint KV PCS and k_rope/v_norm producers. T1 now supplies raw QK/PV
+explicit first-state aliases and bounded-memory read routing. Compose
+the linked W/KV PCS candidate, including state-cache liveness, and prove
+the k_rope/v_norm producers. T1 now supplies raw QK/PV
 and their same-state endpoints. R3 now supplies the common-source raw/byte
 bridge and RNE pullbacks: compile output normalizers/shifts and every
 consumer in that new layout, the actual W-free reader with its costs and

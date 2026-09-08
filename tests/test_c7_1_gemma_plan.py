@@ -1131,6 +1131,60 @@ def test_stacked_sources_share_folds_but_keep_source_roles_and_padding():
     assert joined[28:] == [0]*4  # public virtual rows, not unconstrained input
 
 
+def test_public_zero_rs_rows_omit_inputs_but_not_hashes_or_partial_rows():
+    for dedup in (False, True):
+        old = plan.wide_hash_rs_screen(16, 4, 3, dedup)
+        for zero in (0, 1, 2, 4):
+            new = plan.wide_hash_rs_screen(16, 4, 3, dedup, zero)
+            assert old['base_corrections_including_salt']-new['base_corrections_including_salt'] == 3*zero
+            assert old['private_component_payload_before_framing_and_caller']-new[
+                'private_component_payload_before_framing_and_caller'] == 24*zero
+            assert old['known_boundary_and_extension_record_bytes']-new[
+                'known_boundary_and_extension_record_bytes'] == 96*zero
+            for key in ('private_hash_calls_including_anchor_and_recursion', 'padded_permutation_instances',
+                        'power_gkr_extension_corrections', 'tiled_commit_source_traversals',
+                        'tiled_commit_native_fft_butterflies', 'full_outer_tree_bytes'):
+                assert new[key] == old[key]
+            assert new['levels'][1:] == old['levels'][1:]  # no recursive zero-row credit
+    old = plan.wide_hash_joint_opening_screen([16, 8], 4, 3)
+    new = plan.wide_hash_joint_opening_screen([16, 8], 4, 3, [2, 1])
+    assert old['private_component_payload_before_framing_and_caller']-new[
+        'private_component_payload_before_framing_and_caller'] == 72
+    assert new['source_offsets'] == old['source_offsets'] == [0, 16]
+    assert new['joint_rows'] == old['joint_rows'] == 8  # two virtual zeros already omitted
+    for counts in ([2], [2, 1, 0], [-1, 0], [5, 0], [0, True], [0, 1.0]):
+        with pytest.raises(ValueError):
+            plan.wide_hash_joint_opening_screen([16, 8], 4, 3, counts)
+
+    # A perfect symbolic VC tests the clear relation, NOT hash/MAC security.
+    block, live, n = 4, 5, 16
+    first_zero = (live+block-1)//block
+    source = list(range(1, live+1))+[0]*(n-live)
+    encoded = [plan.small_goldilocks_fft(source[i:i+block]+[0]*(3*block))
+               for i in range(0, n, block)]
+    root = tuple(zip(*encoded))  # fixed complete column oracle
+    def check(anchor, query, received, start=first_zero):
+        if len(received) != start:
+            return False
+        return tuple(received)+(0,)*(n//block-start) == anchor[query]
+    assert all(check(root, j, col[:first_zero]) for j, col in enumerate(root))
+    assert not check(root, 0, root[0])  # extra private slots cannot redefine public zeros
+    assert all(not check(root, j, col[:live//block], live//block) for j, col in enumerate(root))
+    # An entirely nonzero encoded padding row cannot be opened by this codec.
+    bad = tuple(col[:first_zero]+(1, 0) for col in root)
+    assert all(not check(bad, j, col[:first_zero]) for j, col in enumerate(bad))
+    # A malformed root may pass queries elsewhere: no exact-codeword claim.
+    sparse = list(root)
+    sparse[0] = bad[0]
+    assert sum(check(sparse, j, col[:first_zero]) for j, col in enumerate(sparse)) == 15
+    # With a fixed zero-row oracle, a nonzero decoded degree<2 row is not
+    # close: exhaustive tiny-field RS distance, independent of honest roots.
+    distances = [sum((a+b*x) % 17 != 0 for x in range(8))
+                 for a, b in product(range(17), repeat=2) if a or b]
+    assert min(distances) == 8-2+1
+    assert all(distance > (8-2+1)/2 for distance in distances)
+
+
 def test_output_tiled_encoder_and_pruned_tree_keep_the_same_positions():
     # Symbolic node tuples, NOT a cryptographic hash. No field security/KAT.
     block, rows, tile = 8, 13, 8
@@ -2370,8 +2424,30 @@ def test_rms_byte_extension_preserves_rq_and_recounts_padding_records_and_arrays
     assert screen['additional_array_reservation_bytes'] == sum(arrays.values()) == 5887232
     assert screen['known_bulk_statistic_reads_before_replay_and_normalizer'] == 114
     assert screen['known_bulk_statistic_read_and_initial_write_bytes'] == 397542810
-    assert [c['known_partial_payload_before_rms_circuit_gamma_and_framing'] for c in screen['cases']] == [26937896, 34615608]
-    assert [c['remaining_payload_bytes_before_missing_components'] for c in screen['cases']] == [8062104, 384392]
+    assert [c['public_zero_rows_joint_w_kv'] for c in screen['cases']] == [[218, 1], [218, 18, 18]]
+    assert [c['public_zero_rows_sigma'] for c in screen['cases']] == [326, 537]
+    assert [c['omitted_outer_base_corrections'] for c in screen['cases']] == [194565, 282387]
+    assert [c['known_partial_payload_before_rms_circuit_gamma_and_framing'] for c in screen['cases']] == [25381376, 32356512]
+    assert [c['remaining_payload_bytes_before_missing_components'] for c in screen['cases']] == [9618624, 2643488]
+    assert screen['array_reservation_includes_omitted_records']
+    # The pinned aligned KV cubes are each <= one RS row at every length.
+    # Every cube has a live cell, so only the global padded tail contains
+    # wholly zero rows. Packed live KV is NOT the prefix used by the codec.
+    cfg = plan.pinned_model_config()
+    widths = sorted([cfg[k+'_kv_heads']*cfg[k+'_head_dim'] for k in ('local', 'global')
+                     for _ in range(2*cfg[k+'_layers'])], reverse=True)
+    assert sum(widths) == 450560
+    for length in range(1, 4097):
+        padded, block, cursor = 1 << (length-1).bit_length(), 1 << 24, 0
+        live_rows = set()
+        for width in widths:
+            size = width*padded
+            assert size <= block and cursor % size == 0
+            live_rows.add(cursor//block)
+            cursor += size
+        assert live_rows == set(range((cursor+block-1)//block))
+    wrong_prefix = 450560*150
+    assert (wrong_prefix+(1 << 24)-1)//(1 << 24) == 5  # true padded prefix needs seven rows
     upper = screen['all_context_arena_phase_upper_bytes']
     assert max(upper.values()) == screen['all_context_known_phase_max_upper_bytes'] == 6337640832
     assert upper['rms_statistic'] == 5524154752

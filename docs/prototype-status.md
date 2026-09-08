@@ -158,8 +158,11 @@ authorization.
   replaces inverse-root approximation with integer midpoint comparisons.
   The [S-byte extension](c7.1-auxiliary-witness.md#statistiche-rms-nella-stessa-sorgente-byte)
   commits statistics in the same Sigma and checks them in a pre-Gamma
-  prelude. Use its recounted margins, not the earlier no-S totals: known
-  payload leaves only 384,392 bytes at capacity before missing components.
+  prelude. Its current totals apply the [public-zero RS row codec](c7.1-wide-hash-opening.md#righe-rs-pubbliche-zero-senza-correzioni-private):
+  structural zeros replace private inputs, with the same hash checks and
+  a conditional decoded-padding argument for malicious roots. Use that
+  recount, not earlier no-S or uncompressed totals; GPU reservations remain
+  conservative, and missing components are still unpriced.
   Bit lift, the RMS MAC circuit, exponents and later byte claims remain open;
   no complete memory, certificate or timing result is claimed.
 - [R1: byte-bound requantization](c7.1-requantization.md) gives exact

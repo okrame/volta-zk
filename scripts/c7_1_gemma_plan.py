@@ -978,26 +978,31 @@ def private_projection_compilation_screen(n, block, queries, attempts=1):
     }
 
 
-def wide_hash_rs_screen(n, block, queries, deduplicate_paths=False):
+def wide_hash_rs_screen(n, block, queries, deduplicate_paths=False, outer_public_zero_rows=0):
     """A5 STRUCTURAL candidate, not a generated/justified Poseidon2 profile.
 
     Reuse A3 geometry only; recompute every hash boundary for width 32,
     eight-word digests, ten-word groups, nominated RF=8/RP=31 and one
     arithmetic salted anchor. The old BLAKE3 anchor is NOT retained.
+    Public-zero rows omit only outer payload inputs, never hash calls.
+    This count does not prove that the caller's row mask is public/valid.
     """
     if type(deduplicate_paths) is not bool:
         raise ValueError('deduplicate_paths must be Boolean')
     natural(n, 'canonical wide-anchor source length', 1, P-1)
     narrow = recursive_rs_opening_screen(n, block, queries)
+    natural(outer_public_zero_rows, 'outer public-zero rows', 0, n//block)
     levels = []
     calls, inputs = 1, 4  # anchor permutation; fresh Fp salt coordinates
-    for rows, domain, q in [(n//block, 4*block, queries)]+[
-            (96, level['domain'], level['queries']) for level in narrow['levels']]:
+    for level_index, (rows, domain, q) in enumerate([(n//block, 4*block, queries)]+[
+            (96, level['domain'], level['queries']) for level in narrow['levels']]):
         groups, depth = (rows+9)//10, domain.bit_length()-1
         parents = (sum(min(q, domain >> height) for height in range(1, depth+1))
                    if deduplicate_paths else q*depth)
         siblings = parents+1-q if deduplicate_paths else q*depth
         h, i = q*groups+parents, q*(rows+8*groups)+8*(parents+siblings)+8
+        if level_index == 0:
+            i -= q*outer_public_zero_rows
         levels.append({'rows': rows, 'domain': domain, 'queries': q,
                        'chain_groups': groups, 'hash_calls': h, 'base_corrections': i,
                        'tree_parent_instances': parents, 'tree_sibling_inputs': siblings})
@@ -1014,6 +1019,7 @@ def wide_hash_rs_screen(n, block, queries, deduplicate_paths=False):
     tile = min(1 << 21, 4*block)
     return {
         'credit': False, 'fixed_algorithm_block_cap': 1 << 24,
+        'outer_public_zero_rows': outer_public_zero_rows,
         'paths_deduplicated_worst_case': deduplicate_paths,
         'nominated_width_full_partial_rounds': [32, 8, 31],
         'digest_field_words': 8, 'source_words_per_group': 10,
@@ -1056,7 +1062,7 @@ def wide_hash_rs_screen(n, block, queries, deduplicate_paths=False):
     }
 
 
-def wide_hash_joint_opening_screen(source_cells, block, queries):
+def wide_hash_joint_opening_screen(source_cells, block, queries, public_zero_rows=None):
     """Virtual A4 row stacking with separate anchors, one inner recursion.
 
     All sources use the SAME block/code domain and common outer query set.
@@ -1064,7 +1070,11 @@ def wide_hash_joint_opening_screen(source_cells, block, queries):
     This counts the deduplicated candidate, not its full caller or liveness.
     """
     natural(len(source_cells), 'joint source count', 1, 3)
-    sources = [wide_hash_rs_screen(n, block, queries, True) for n in source_cells]
+    public_zero_rows = [0]*len(source_cells) if public_zero_rows is None else list(public_zero_rows)
+    if len(public_zero_rows) != len(source_cells):
+        raise ValueError('one public-zero row count is required per anchored source')
+    sources = [wide_hash_rs_screen(n, block, queries, True, zero)
+               for n, zero in zip(source_cells, public_zero_rows)]
     first = sources[0]
     calls = first['private_hash_calls_including_anchor_and_recursion']
     inputs = first['base_corrections_including_salt']
@@ -1084,6 +1094,7 @@ def wide_hash_joint_opening_screen(source_cells, block, queries):
                  +paired['additional_extension_corrections'])
     return {
         'credit': False, 'source_cells': list(source_cells),
+        'public_zero_rows_per_anchored_source': public_zero_rows,
         'source_order': order, 'source_offsets': offsets,
         'joint_padded_source_cells': n, 'joint_rows': n//block,
         'private_hash_calls_including_anchors_and_one_recursion': calls,
@@ -2536,6 +2547,8 @@ def rms_byte_bridge_screen(cohorts):
     Recount the two endpoints and bound all fixed-100+50 contexts from the
     capacity envelope. The old narrower screens remain explicit comparisons;
     their small-domain counts cannot be reused at the earlier padding jump.
+    Use public-zero outer rows for payload; retain the older, larger array
+    reservations as conservative bounds, without claiming saved GPU memory.
     """
     if cohorts[0]['rows'] != 150 or cohorts[-1]['rows'] != 50:
         raise ValueError('RMS byte bridge accounting covers pinned 100+50 only')
@@ -2553,6 +2566,11 @@ def rms_byte_bridge_screen(cohorts):
                   'statistic_kernel_descriptors': 96*count, 'kernel_control_reserve': 65536}
     arrays = {k: 256*((v+255)//256) for k, v in raw_arrays.items()}
     extra_bytes, cases, final_envelope = sum(arrays.values()), [], None
+    config = pinned_model_config()
+    weight_live = sum(math.prod(shape) for shape in
+                      {c['weight_key']: c['weight_shape'] for c in cohorts}.values())
+    kv_width = sum(2*config[k+'_layers']*config[k+'_kv_heads']*config[k+'_head_dim']
+                   for k in ('local', 'global'))
     for old_tokens in (0, CONTEXT_CAP-150):
         original = auxiliary_word_sources(cohorts, old_tokens)
         old_tiles, rq = auxiliary_word_layout(original)
@@ -2567,12 +2585,26 @@ def rms_byte_bridge_screen(cohorts):
         phases = {k: v+extra_bytes for k, v in
                   schedule['arena_phases_bytes_before_uncompiled_reader_gamma_runtime'].items()}
         phases['rms_statistic'] = phases['opening_first_pass']-80*(1 << 23)+stats['single_cohort_X_and_selector_array_bytes']
-        payload = base['known_partial_payload_with_all_anchors_and_one_shared_closure']+24*corrections
+        # KV prefix includes each plane's token padding, not packed live KV.
+        prefixes = [weight_live]+[kv_width*(1 << (length-1).bit_length())
+                                  for length in (old_tokens, old_tokens+150) if length]
+        joint_cells = base['weight_and_state_opening']['source_cells']
+        zero_rows = [n//(1 << 24)-(prefix+(1 << 24)-1)//(1 << 24)
+                     for n, prefix in zip(joint_cells, prefixes)]
+        sigma_zero = (1 << (live-1).bit_length())//(1 << 23)-(live+(1 << 23)-1)//(1 << 23)
+        joint = wide_hash_joint_opening_screen(joint_cells, 1 << 24, 357, zero_rows)
+        sigma = wide_hash_joint_opening_screen([1 << (live-1).bit_length()], 1 << 23, 357, [sigma_zero])
+        payload = (joint['private_component_payload_before_framing_and_caller']
+                   +sigma['private_component_payload_before_framing_and_caller']-72
+                   +24*(base['known_caller_extension_corrections']+corrections)
+                   +joint['public_anchor_bytes_if_all_resent']+64)
         cases.append({'old_tokens': old_tokens, 'source_templates': len(sources),
                       'source_byte_cells': live, 'source_padded_byte_cells': 1 << (live-1).bit_length(),
                       'byte_cubes': len(byte_tiles), 'rq_cubes': len(rq),
                       'layout_sha256': hashlib.sha256(json.dumps(
                           [sources, byte_tiles, rq], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+                      'public_zero_rows_joint_w_kv': zero_rows, 'public_zero_rows_sigma': sigma_zero,
+                      'omitted_outer_base_corrections': 357*(sum(zero_rows)+sigma_zero),
                       'known_partial_payload_before_rms_circuit_gamma_and_framing': payload,
                       'remaining_payload_bytes_before_missing_components': 35_000_000-payload,
                       'arena_phase_upper_bytes': phases, 'known_phase_max_upper_bytes': max(phases.values())})
@@ -2582,7 +2614,6 @@ def rms_byte_bridge_screen(cohorts):
             final_envelope['rms_statistic'] = (final_envelope['opening_first_pass']-80*(1 << 23)
                                              +stats['single_cohort_X_and_selector_array_bytes'])
     first_live = cases[0]['source_byte_cells']-packed
-    config = pinned_model_config()
     stride = 6*config['layers']*config['query_heads']*150
     changed = [o for o in range(CONTEXT_CAP-150+1) if
                (first_live+stride*o-1).bit_length() != (first_live+stride*o+packed-1).bit_length()]
@@ -2605,6 +2636,7 @@ def rms_byte_bridge_screen(cohorts):
             'all_context_arena_phase_upper_bytes': final_envelope,
             'all_context_known_phase_max_upper_bytes': max(final_envelope.values()),
             'remaining_arena_bytes_before_missing_components': 6442450944-max(final_envelope.values()),
+            'array_reservation_includes_omitted_records': True,
             'same_rq_layout': True, 'requires_rebuilding_all_sigma_byte_forms': True,
             'additional_weight_reads_given_w_free_reader': 0, 'additional_pcs_instances': 0,
             'complete_rms_integer_circuit': None, 'complete_gamma_liveness': None,

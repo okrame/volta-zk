@@ -266,10 +266,11 @@ authorization.
 
 ## Next work
 
-Next: compose the [GELU Sigma/RNE adapter's](c7.1-auxiliary-witness.md#gelu-output-istogrammi-e-input-rne-nella-stessa-sorgente)
-reader/evaluator costs and retained storage with all Sigma visits and
-remaining Gamma forms. The local algorithms now use the
-[certified table recipe](c7.1-cut-witness.md#gelu-tabella-rne-certificata).
+Next: compile the remaining Gamma forms and their reader/work costs,
+starting with gate_up_mul's claims on the same GELU/up_proj sources.
+The [GELU Sigma/RNE adapter](c7.1-auxiliary-witness.md#gelu-output-istogrammi-e-input-rne-nella-stessa-sorgente)
+now counts the known Sigma replay and retained arrays with RMS-J/RoPE;
+the complete form census, field work and physical liveness remain open.
 The source extensions are not yet adopted; actual Gemma profiles and native
 refinement remain open. Component evidence and distinct S/S+Y comparison
 counts stay in R3, not copied here.

@@ -3818,6 +3818,25 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     assert combined['known_rms_input_logical_reads_with_row_reuse_before_gamma'] == 3686816467920
     assert combined['known_raw_rne_calls_before_gamma'] == lifetime['known_raw_rne_calls_before_gamma']
     assert combined['known_source_and_rms_joint_payload_before_remaining_gamma_framing'] == 33480168
+    gelu = plan.gelu_byte_bridge_screen(cohorts,rope)
+    extended_gelu = plan.rms_joint_lifetime_screen(joint,field,coefficients,extended,statistic_inputs,rope,gelu)
+    gelu_arrays = sum(gelu['additional_known_retained_arrays_256_byte_aligned'].values())
+    assert extended_gelu['includes_gelu_reader'] and not combined['includes_gelu_reader']
+    assert extended_gelu['retained_reservation_bytes'] == combined['retained_reservation_bytes']
+    for k,v in combined['all_context_arena_phase_upper_bytes'].items():
+        assert extended_gelu['all_context_arena_phase_upper_bytes'][k] == v+gelu_arrays+(57600 if k == 'rne_top' else 0)
+    for k in ('gelu_histogram_prepare','gelu_fraction_core','gelu_final_forms_and_public_table'):
+        assert extended_gelu['all_context_arena_phase_upper_bytes'][k] == (
+            gelu['source_and_gelu_arena_phase_upper_bytes_before_rms_joint_gamma_runtime'][k]+10542592)
+    assert extended_gelu['known_y_generations_before_gamma_without_cross_visit_reuse'] == combined['known_y_generations_before_gamma_without_cross_visit_reuse']
+    assert extended_gelu['known_source_and_rms_joint_payload_before_remaining_gamma_framing'] == 33658392
+    assert extended_gelu['known_phase_max_upper_bytes'] == max(extended_gelu['all_context_arena_phase_upper_bytes'].values()) == 6383100288
+    assert extended_gelu['remaining_arena_before_uncompiled_components'] == 59350656
+    assert extended_gelu['complete_gamma_liveness_pcg_and_runtime'] is None and not extended_gelu['credit']
+    for bad_rope,bad_gelu in ((None,gelu),(rope,dict(gelu,extends_source='S+Y')),
+                             (rope,dict(gelu,base_rope_source_layout_sha256=['wrong']))):
+        with pytest.raises(ValueError):
+            plan.rms_joint_lifetime_screen(joint,field,coefficients,extended,statistic_inputs,bad_rope,bad_gelu)
     for bad in ({**rope,'extends_source':'S'}, {**rope,'base_rms_output_layout_sha256':['wrong']}):
         with pytest.raises(ValueError):
             plan.rms_joint_lifetime_screen(joint,field,coefficients,extended,statistic_inputs,bad)
@@ -5624,6 +5643,53 @@ def test_gelu_public_fp3_evaluator_matches_dense_mle_without_boolean_division():
         plan.gelu_public_table_value({2:table[:-1]},[(2,0,1,[],one)])
 
 
+def test_gelu_sigma_word_replay_matches_biased_byte_cubes():
+    producer = dict(ordinal=0,layer=0,kind='matrix',operation='gate_proj',
+                    rows=3,columns=192,cut_scalar_bytes=6,cut_byte_offset=13)
+    source = dict(source='GELU_outputs',source_id=0,layer=0,operation='gelu_tanh',
+                  shape=(1,3,192),word_bytes=2,rne=False,token_offset=0,input_source_id=0,
+                  execution=None,physical_b_offset=None)
+    hist_source = dict(source='GELU_histogram',source_id=0,layer=0,operation='gelu_multiplicity',
+                       shape=(1,1,65535),word_bytes=4,rne=False,token_offset=0,
+                       execution=None,physical_b_offset=None)
+    raw = [(i*31) % 2001-1000 for i in range(576)]
+    packed = b'\x55'*13+b''.join(x.to_bytes(6,'little',signed=True) for x in raw)
+    table = plan.gelu_i16_table(0,0)
+    histogram = plan.gelu_prepare_histogram(source,producer,packed,2,table)
+    expected_y = []
+    for value in raw:
+        x = round(Fraction(value,4))
+        y = int.from_bytes(table[2*(x+32767):2*(x+32767)+2],'little',signed=True)
+        expected_y.extend((y+(1 << 15)).to_bytes(2,'little'))
+    sources = [source,hist_source]
+    tiles,rq = plan.auxiliary_word_layout(sources)
+    assert rq == []
+    total = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources)
+    actual,expected = bytearray(total),bytearray(total)
+    dense = [bytes(expected_y),histogram]
+    pairs_read = calls = 0
+    for si,row,col,heads,rows,cols,byte,lanes,offset in tiles:
+        assert heads == 1
+        word_bytes = sources[si]['word_bytes']
+        oracle = bytes(dense[si][word_bytes*((row+r)*sources[si]['shape'][2]+col+c)+byte+j]
+                       for r in range(rows) for c in range(cols) for j in range(lanes))
+        expected[offset:offset+len(oracle)] = oracle
+        if si == 1:
+            assert byte == 0 and lanes == 4 and row == 0 and rows == 1
+            actual[offset:offset+4*cols] = histogram[4*col:4*(col+cols)]
+            continue
+        assert cols % 64 == col % 64 == 0 and offset % 128 == 0 and (byte,lanes) == (0,2)
+        for r in range(rows):
+            for c in range(0,cols,64):
+                pairs = plan.gelu_read_word(source,producer,(row+r)*192+col+c,64,packed,2,table)
+                block = b''.join((y+(1 << 15)).to_bytes(2,'little') for x,y in pairs)
+                actual[offset+2*(r*cols+c):offset+2*(r*cols+c+64)] = block
+                pairs_read += len(pairs)
+                calls += 1
+    assert actual == expected and pairs_read == 576 and calls == 9
+    assert (1 << 23) % 128 == 0  # the actual Sigma RS row cannot split a getter word
+
+
 def test_gelu_lookup_layout_gamma_and_all_context_payload_recount():
     metadata = json.loads((Path(__file__).resolve().parents[1] /
                            'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_text())
@@ -5682,6 +5748,29 @@ def test_gelu_lookup_layout_gamma_and_all_context_payload_recount():
     assert s['remaining_payload_before_missing_components'] == 1751384
     assert s['same_rq_layout'] and s['additional_input_copies'] == s['additional_pcs_instances'] == 0
     assert not s['credit'] and s['complete_tables_reader_work_and_physical_liveness'] is None
+    replay = s['word_reader_work_including_known_sigma_paths']
+    assert replay['known_bulk_sigma_visits'] == rope['known_bulk_sigma_visits'] == 231
+    assert replay['sigma_y_generations_per_live_word_per_visit'] == 1
+    assert replay['sigma_y_generations'] == 231*n
+    assert replay['sigma_raw_B_read_bytes'] == 6*231*n and replay['sigma_public_table_read_bytes'] == 2*231*n
+    assert replay['sigma_histogram_read_bytes'] == 4*231*m
+    assert replay['total_rne_calls_preparation_sigma_and_lookup'] == (1+231+58)*n+60
+    assert replay['total_raw_B_read_bytes_preparation_sigma_and_lookup'] == 6*((1+231+58)*n+60)
+    assert not replay['credit'] and replay['complete_other_gamma_forms_transactions_and_runtime'] is None
+    arrays = s['additional_known_retained_arrays_256_byte_aligned']
+    assert arrays == {'private_histograms':15728640,'public_tables':7864320,
+                     'source_and_byte_cube_descriptors':132608,'fraction_word_cube_descriptors':94208,
+                     'reader_profile_descriptors':2048,'endpoint_form_descriptors_points_weights':81664,
+                     'lookup_plaintexts_and_tags':82432,'lookup_points_and_control':8192,'reader_word_and_control':4096}
+    assert s['additional_rne_top_form_bytes'] == 57600
+    assert s['additional_known_sigma_claims'] == 2 and s['additional_known_rq_claims'] == 1
+    phases = s['source_and_gelu_arena_phase_upper_bytes_before_rms_joint_gamma_runtime']
+    for k,v in rope['source_and_rope_arena_phase_upper_bytes_before_rms_joint_reader_gamma_runtime'].items():
+        assert phases[k] == v+sum(arrays.values())+(57600 if k == 'rne_top' else 0)
+    common = phases['opening_first_pass']-80*(1 << 23)
+    assert phases['gelu_histogram_prepare'] == common
+    assert phases['gelu_fraction_core'] == common+s['lookup_phase_local_array_bytes']
+    assert phases['gelu_final_forms_and_public_table'] == common+786432
     def source_count(live):
         n = (live-1).bit_length()
         zeros = (1 << n)//(1 << 23)-(live+(1 << 23)-1)//(1 << 23)
@@ -5701,6 +5790,15 @@ def test_gelu_lookup_layout_gamma_and_all_context_payload_recount():
         old_bytes,old_rq = plan.auxiliary_word_layout(base)
         all_bytes,rq = plan.auxiliary_word_layout(base+extra)
         assert rq == old_rq and len(all_bytes) == len(old_bytes)+1680
+        gate_ids = {g['input_source_id'] for g in extra[:60]}
+        intersections = 0
+        for tile in rq:
+            if base[tile[0]]['source'] != 'B' or base[tile[0]]['source_id'] not in gate_ids:
+                continue
+            start,volume = tile[-1],math.prod(tile[3:6])
+            assert start % volume == 0
+            intersections += (start+volume-1)//(1 << 18)-start//(1 << 18)+1
+        assert intersections == 1200 and 48*intersections == s['additional_rne_top_form_bytes']
         assert case['source_byte_cells'] == 7667607438+1728000*old
         assert case['source_templates'] == 4975
         f = plan.gelu_lookup_leaf_forms(extra,base+extra,all_bytes,rq,list(range(2,30)))

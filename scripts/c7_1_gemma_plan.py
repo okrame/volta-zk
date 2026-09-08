@@ -1337,7 +1337,7 @@ def rms_gkr_aligned_word_screen(joint, field):
             'complete_getter_mac_fs_runtime_and_liveness': None}
 
 
-def rms_joint_lifetime_screen(joint, field, coefficients, bridge, statistic_inputs, rope=None):
+def rms_joint_lifetime_screen(joint, field, coefficients, bridge, statistic_inputs, rope=None, gelu=None):
     """RMS-J phase on R3's common B/S/kappa base, not a full-Gamma timeline.
 
     Screens must describe the SAME compiled profiles and virtual-Y source.
@@ -1364,6 +1364,9 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge, statistic_inpu
                 [c['layout_sha256'] for c in bridge['cases']]):
             raise ValueError('RoPE lifetime must extend the same S+Y source layout')
         raw['rope_reader_word_buffers'] = rope['word_reader_work']['retained_word_buffer_bytes']
+    if gelu is not None and (rope is None or gelu['extends_source'] != 'S+Y+RoPE' or
+            gelu['base_rope_source_layout_sha256'] != [c['layout_sha256'] for c in rope['cases']]):
+        raise ValueError('GELU lifetime must extend the same S+Y+RoPE source layout')
     retained = {k: 256*((v+255)//256) for k,v in raw.items()}
     shared = sum(retained.values())
     packed = joint['bitpacked_replay']
@@ -1372,6 +1375,8 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge, statistic_inpu
               sum(packed[k] for k in ('input_and_two_word_vectors_bytes','field_block_bytes','public_fold_table_reservation_bytes')))
     source_phases = (bridge['all_context_arena_phase_upper_bytes'] if rope is None else
                      rope['source_and_rope_arena_phase_upper_bytes_before_rms_joint_reader_gamma_runtime'])
+    if gelu is not None:
+        source_phases = gelu['source_and_gelu_arena_phase_upper_bytes_before_rms_joint_gamma_runtime']
     phases = {k:v+shared for k,v in source_phases.items()}
     phases['rms_statistic_prepare'] = phases['opening_first_pass']-80*(1 << 23)
     phases['rms_joint_and_input_split'] = phases['opening_first_pass']-80*(1 << 23)+kernel
@@ -1408,8 +1413,9 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge, statistic_inpu
             'known_y_generation_mul64_wide_upper': y_cells*
                 max(g['lane_generation_mul64_wide_upper_with_denominator'] for g in getters),
             'includes_rope_reader':rope is not None,
+            'includes_gelu_reader':gelu is not None,
             'known_source_and_rms_joint_payload_before_remaining_gamma_framing': (
-                rope['maximum_known_partial_payload_before_rms_joint_gamma_and_framing']
+                (gelu if gelu is not None else rope)['maximum_known_partial_payload_before_rms_joint_gamma_and_framing']
                 +joint['payload_before_incoming_input_adapters_and_shared_closures'] if rope is not None else None),
             'extra_input_split_rne_getter_words': bridge['rms_input_split_honest_screen']['rne_output_cells'],
             'complete_gamma_liveness_pcg_and_runtime': None}
@@ -1908,6 +1914,49 @@ def gelu_byte_bridge_screen(cohorts, rope=None):
                       'layout_sha256':hashlib.sha256(json.dumps(
                           [sources,byte_tiles,rq],sort_keys=True,separators=(',',':')).encode()).hexdigest(),
                       'known_partial_payload_before_rms_joint_gamma_and_framing':totals[old]})
+    reader = gelu_reader_screen(cohorts)
+    y_tiles = [t for t in extra_bytes if extra[t[0]]['source'] == 'GELU_outputs']
+    if not all(t[2] % 64 == t[5] % 64 == 0 and t[6:8] == (0,2) and t[-1] % 128 == 0 for t in y_tiles):
+        raise ValueError('GELU Sigma replay requires whole aligned 64-cell words')
+    # Maximum Sigma/RQ domains are unchanged; retain ALL previous unomitted
+    # record reservations, rather than adding a payload delta as memory.
+    raw_arrays = {'private_histograms':reader['retained_histogram_bytes_256_aligned_per_profile'],
+                  'public_tables':reader['resident_public_table_bytes_256_aligned_per_profile'],
+                  'source_and_byte_cube_descriptors':96*len(extra)+72*len(extra_bytes),
+                  'fraction_word_cube_descriptors':56*len(fractions),
+                  'reader_profile_descriptors':32*reader['profiles'],
+                  'endpoint_form_descriptors_points_weights':3*64+48*len(fractions)+24*core['layers'],
+                  'lookup_plaintexts_and_tags':core['local_arrays_256_byte_aligned']['core_plaintexts_and_tags'],
+                  'lookup_points_and_control':core['local_arrays_256_byte_aligned']['control_and_points'],
+                  'reader_word_and_control':4096}
+    arrays = {k:256*((v+255)//256) for k,v in raw_arrays.items()}
+    # X overlaps existing RQ forms: charge its own two coefficient values per
+    # cube/block intersection after the common 18-bit prefix, not just a term
+    # per cube. Its matching RQ cube is aligned to the same dyadic volume.
+    rne_extra = 48*sum(max(1,math.prod(t[3:6])//(1 << 18)) for t in fractions
+                       if extra[t[0]]['source'] == 'GELU_outputs')
+    phases = {k:v+sum(arrays.values())+(rne_extra if k == 'rne_top' else 0) for k,v in
+              rope['source_and_rope_arena_phase_upper_bytes_before_rms_joint_reader_gamma_runtime'].items()}
+    common = phases['opening_first_pass']-80*(1 << 23)
+    scratch = sum(core['local_arrays_256_byte_aligned'][k]
+                  for k in ('four_node_tails','prefix_eq_weights','subtree_stack_upper'))
+    phases['gelu_histogram_prepare'] = common
+    phases['gelu_fraction_core'] = common+scratch
+    phases['gelu_final_forms_and_public_table'] = common+reader['public_evaluator_after_adapter_per_party']['native_tag_buffer_bytes']
+    sigma_visits = rope['known_bulk_sigma_visits']
+    extra_queries = sigma_visits*query_cells
+    total_queries = (reader['preparation']['rne_calls']+
+                     reader['post_alpha_core_and_endpoint']['rne_calls']+extra_queries)
+    replay = {'credit':False, 'known_bulk_sigma_visits':sigma_visits,
+              'sigma_y_generations_per_live_word_per_visit':1,
+              'sigma_y_generations':extra_queries,
+              'sigma_raw_B_read_bytes':6*extra_queries,
+              'sigma_public_table_read_bytes':2*extra_queries,
+              'sigma_histogram_read_bytes':4*sigma_visits*table_cells,
+              'total_rne_calls_preparation_sigma_and_lookup':total_queries,
+              'total_raw_B_read_bytes_preparation_sigma_and_lookup':6*total_queries,
+              'total_query_table_read_bytes_preparation_sigma_and_lookup':2*total_queries,
+              'complete_other_gamma_forms_transactions_and_runtime':None}
     return {'credit':False, 'extends_source':'S+Y+RoPE', 'cases':cases,
             'output_sources':len(extra)//2, 'histogram_sources':len(extra)//2,
             'extra_virtual_source_bytes':added, 'extra_byte_cubes':len(extra_bytes),
@@ -1918,6 +1967,14 @@ def gelu_byte_bridge_screen(cohorts, rope=None):
             'maximum_known_partial_payload_before_rms_joint_gamma_and_framing':max(totals),
             'remaining_payload_before_missing_components':35_000_000-max(totals),
             'core':core, 'histogram_live_bytes_before_alignment':4*table_cells,
+            'base_rope_source_layout_sha256':[c['layout_sha256'] for c in rope['cases']],
+            'word_reader_work_including_known_sigma_paths':replay,
+            'additional_known_retained_arrays_256_byte_aligned':arrays,
+            'additional_rne_top_form_bytes':rne_extra,
+            'lookup_phase_local_array_bytes':scratch,
+            'source_and_gelu_arena_phase_upper_bytes_before_rms_joint_gamma_runtime':phases,
+            'known_phase_max_upper_bytes_before_rms_joint_gamma_runtime':max(phases.values()),
+            'additional_known_sigma_claims':2, 'additional_known_rq_claims':1,
             'additional_pcs_instances':0, 'additional_input_copies':0,
             'complete_tables_reader_work_and_physical_liveness':None}
 

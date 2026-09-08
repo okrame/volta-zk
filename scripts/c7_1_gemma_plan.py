@@ -7,12 +7,14 @@ budget or admission status. No weights, network or build.
 The cleartext diagnostic below MUST NOT be used to prove private weights.
 """
 
+import decimal
 import hashlib
 import json
 import math
 import runpy
 from collections import Counter
 from functools import lru_cache
+from fractions import Fraction
 from graphlib import TopologicalSorter
 from pathlib import Path
 
@@ -1510,6 +1512,112 @@ def lookup_fraction_screen(lookup_cells, table_cells, tail_bits=20):
             'additional_w_reads_given_same_source_w_free_reader':0,
             'complete_field_work_reader_and_global_liveness':None,
             'concrete_table_semantics_and_common_source_adapters':None}
+
+
+@lru_cache(maxsize=1)
+def gelu_coefficient_bounds():
+    """Rational enclosure of sqrt(2/pi), not a substituted GELU coefficient.
+
+    Machin's identity, finite alternating sums and two integer square roots.
+    One public constant enclosure is shared by all table profiles.
+    """
+    def atan_bounds(base, terms):
+        low = sum((Fraction((-1)**k,(2*k+1)*base**(2*k+1)) for k in range(terms)),Fraction(0))
+        return low,low+Fraction(1,(2*terms+1)*base**(2*terms+1))
+    a,b = atan_bounds(5,128),atan_bounds(239,32)
+    pi_low,pi_high = 16*a[0]-4*b[1],16*a[1]-4*b[0]
+    unit = 1 << 512
+    low = math.isqrt((2*unit*unit*pi_high.denominator)//pi_high.numerator)
+    high = math.isqrt((2*unit*unit*pi_low.denominator)//pi_low.numerator)+1
+    return Fraction(low,unit),Fraction(high,unit)
+
+
+def gelu_i16_pair(magnitude, input_exponent, output_exponent):
+    """Certified real tanh-GELU RNE for +/- magnitude; PUBLIC setup only.
+
+    -32768 is an overflow marker, never an accepted output. An unresolved
+    interval raises ArithmeticError; no approximation or precision retry.
+    Exponent bounds define this finite candidate, not calibrated Gemma data.
+    """
+    natural(magnitude,'symmetric i16 magnitude',0,32767)
+    for exponent in (input_exponent,output_exponent):
+        natural(exponent,'GELU table dyadic exponent',-128,128)
+    if magnitude == 0:
+        return 0,0
+    x = magnitude*Fraction(2)**input_exponent
+    units = magnitude*Fraction(2)**(input_exponent-output_exponent)
+    if x >= 16:
+        # Strictly below the positive dyadic value, even at a halfway case.
+        integer,remainder = divmod(units.numerator,units.denominator)
+        rounded = integer+int(2*remainder > units.denominator)
+        return (rounded if rounded <= 32767 else -32768),0
+    factor = 2*(x+Fraction(44715,1_000_000)*x*x*x)
+    low,high = (factor*c for c in gelu_coefficient_bounds())
+    q = []
+    for exponent,rounding in ((-high,decimal.ROUND_FLOOR),(-low,decimal.ROUND_CEILING)):
+        context = decimal.Context(prec=128,rounding=rounding,Emin=-1000,Emax=1000,
+                                  traps=[decimal.InvalidOperation,decimal.DivisionByZero,
+                                         decimal.Overflow,decimal.Underflow])
+        argument = context.divide(decimal.Decimal(exponent.numerator),decimal.Decimal(exponent.denominator))
+        nearest = context.exp(argument)  # correctly rounded, independently of rounding mode
+        bound = context.next_minus(nearest) if rounding == decimal.ROUND_FLOOR else context.next_plus(nearest)
+        q.append(Fraction(bound))
+    if not 0 < q[0] <= q[1] <= 1:
+        raise ArithmeticError('invalid exponential enclosure')
+
+    def certify(lower,upper):
+        left,right = round(lower),round(upper)
+        if left > 32767 or right < -32767:
+            return -32768
+        if left != right:
+            raise ArithmeticError('GELU rounding interval straddles a decision boundary')
+        return left
+    positive = certify(units/(1+q[1]),units/(1+q[0]))
+    negative = certify(-units*q[1]/(1+q[1]),-units*q[0]/(1+q[0]))
+    return positive,negative
+
+
+def gelu_i16_table(input_exponent, output_exponent):
+    """C71-GELU-RNE-v1, 65535 signed-i16-LE entries, or setup failure.
+
+    Index is input+32767. No output is silently saturated; -32768 rejects.
+    Returning bytes keeps one public table at 131070 bytes, not Python ints.
+    """
+    gelu_i16_pair(0,input_exponent,output_exponent)  # validate before allocation
+    table = bytearray(2*65535)
+    for magnitude in range(1,32768):
+        positive,negative = gelu_i16_pair(magnitude,input_exponent,output_exponent)
+        for value,output in ((magnitude,positive),(-magnitude,negative)):
+            offset = 2*(value+32767)
+            table[offset:offset+2] = output.to_bytes(2,'little',signed=True)
+    return bytes(table)
+
+
+def gelu_lookup_tag(layer, value, output):
+    """Fp3 public table tag. Overflow rows cannot match any query profile."""
+    natural(layer,'GELU layer profile',0,59)
+    natural(value,'GELU table input',-32767,32767)
+    natural(output,'GELU table output or overflow marker',-32768,32767)
+    return value % P,output % P,layer+60*int(output == -32768)
+
+
+def gelu_table_setup_screen(input_exponent, output_exponent):
+    """Finite public preparation counts, not chosen Gemma scales or timings."""
+    gelu_i16_pair(0,input_exponent,output_exponent)
+    interior = (0 if input_exponent >= 4 else
+                32767 if input_exponent <= -11 else (1 << (4-input_exponent))-1)
+    return {'credit':False, 'profile':'C71-GELU-RNE-v1',
+            'input_exponent':input_exponent, 'output_exponent':output_exponent,
+            'signed_i16_entries':65535, 'table_bytes':131070,
+            'table_copy_peak_bytes_before_scalar_workspace':262140,
+            'absolute_input_pairs':32767, 'interior_pairs':interior,
+            'analytic_tail_pairs':32767-interior,
+            'decimal_precision_digits':128, 'decimal_exponential_calls':2*interior,
+            'directed_argument_divisions':2*interior, 'outward_neighbor_steps':2*interior,
+            'shared_coefficient_arctangent_terms':160, 'shared_coefficient_integer_square_roots':2,
+            'rejects_ambiguous_setup':True, 'overflow_output_marker':-32768,
+            'public_invalid_row_profile_offset':60,
+            'actual_gemma_exponents_and_complete_setup_work':None}
 
 
 def gelu_lookup_sources(cohorts):
@@ -4953,6 +5061,8 @@ def report():
         "gelu_lookup_fraction_core_screen": lookup_fraction_screen(
             pinned_model_config()['layers']*150*pinned_model_config()['intermediate_size'],
             pinned_model_config()['layers']*((1 << 16)-1)),
+        "gelu_public_table_setup_screens": [gelu_table_setup_screen(a,b)
+                                            for a,b in ((0,0),(-8,-8),(-8,-12))],
         "rope_byte_bridge_screen":rope_bridge,
         "gelu_byte_bridge_screen":gelu_byte_bridge_screen(cohorts,rope_bridge),
         "gamma_rope_source_barrier_screen":gamma_barrier_plan(cohorts,True,True)['summary'],

@@ -266,18 +266,13 @@ authorization.
 
 ## Next work
 
-The [S+Y+RoPE bridge](c7.1-auxiliary-witness.md#raw-rope-nella-sorgente-comune)
-now includes bounded raw reads, RoPE form fill/public evaluation, and
-work/lifetimes with the synthetic RMS-J profiles. These are not
-full-certificate or physical-liveness results. The conditional
-[public lookup core](c7.1-cut-witness.md#lookup-pubbliche-nucleo-frazionario-nella-stessa-sorgente)
-now has a [GELU Sigma/RNE adapter](c7.1-auxiliary-witness.md#gelu-output-istogrammi-e-input-rne-nella-stessa-sorgente)
-with pinned input routing and an all-context source-path recount.
-Next: instantiate its public nonlinear tables and W-free reader/work,
-then compose retained storage and the remaining Gamma forms before adopting
-the source extensions. Actual
-profiles, native refinement and global cryptographic obligations remain open.
-Counts and distinct S/S+Y comparison scopes stay in R3, not copied here.
+Next: complete the W-free reader and public evaluator for the
+[GELU Sigma/RNE adapter](c7.1-auxiliary-witness.md#gelu-output-istogrammi-e-input-rne-nella-stessa-sorgente),
+using the [certified table recipe](c7.1-cut-witness.md#gelu-tabella-rne-certificata),
+then compose their work, retained storage and remaining Gamma forms.
+The source extensions are not yet adopted; actual Gemma profiles and native
+refinement remain open. Component evidence and distinct S/S+Y comparison
+counts stay in R3, not copied here.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
 In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)

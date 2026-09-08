@@ -5416,6 +5416,98 @@ def test_internal_only_tree_cache_reconstructs_paths_from_queried_sibling_column
             assert digest != internal[1]
 
 
+def test_gelu_real_rne_coefficient_bounds_tails_and_fail_closed_intervals():
+    def atan_bounds(base,terms):
+        low = sum((Fraction((-1)**k,(2*k+1)*base**(2*k+1)) for k in range(terms)),Fraction(0))
+        return low,low+Fraction(1,(2*terms+1)*base**(2*terms+1))
+    a,b = atan_bounds(5,200),atan_bounds(239,70)
+    pi_low,pi_high = 16*a[0]-4*b[1],16*a[1]-4*b[0]
+    low,high = plan.gelu_coefficient_bounds()
+    assert Fraction(79,100) < low < high < Fraction(4,5)
+    assert low*low < 2/pi_high < 2/pi_low < high*high
+    assert high-low <= Fraction(2,1 << 512)
+    # Machin's angle: tan(4*atan(1/5))=120/119; subtract atan(1/239).
+    assert (Fraction(120,119)-Fraction(1,239))/(1+Fraction(120,119*239)) == 1
+    assert 2*Fraction(79,100)*(16+Fraction(11,250)*16**3) > 310
+    assert Fraction(8,3)**5 > 2**7  # e>8/3 => e^-310<2^-434
+    assert Fraction(1,1 << 302) < Fraction(1,1 << 256)  # tail error vs dyadic distance
+    assert plan.gelu_i16_pair(3,4,5) == (1,0)
+    assert round(Fraction(3,2)) == 2  # ReLU's exact tie is NOT GELU's limit from below
+    for magnitude in (1,2,3,17,32766,32767):
+        assert plan.gelu_i16_pair(magnitude,-128,-128) == ((magnitude+1)//2,-(magnitude//2))
+    assert plan.gelu_i16_pair(32767,0,-1) == (-32768,0)
+    assert plan.gelu_i16_pair(1,0,-128) == (-32768,-32768)
+    for args in ((-1,0,0),(32768,0,0),(True,0,0),(1,-129,0),(1,0,129),(1,0,False)):
+        with pytest.raises(ValueError):
+            plan.gelu_i16_pair(*args)
+    # Corroboration with independent, tighter Machin sums and 240 digits.
+    # This is not substituted for the outward-interval proof.
+    with localcontext() as context:
+        context.prec = 240
+        pi = (pi_low+pi_high)/2
+        coefficient = (Decimal(2)/(Decimal(pi.numerator)/Decimal(pi.denominator))).sqrt()
+        for ei,eo in ((-128,-128),(-12,-12),(-8,-8),(-8,-12),(-3,-2),(0,0),(0,1)):
+            for magnitude in (1,2,3,17,127,257,1023,2047,4095,4096,32767):
+                x = magnitude*Fraction(2)**ei
+                if x >= 16:
+                    continue
+                exact_factor = 2*(x+Fraction(44715,1_000_000)*x*x*x)
+                exponent = -coefficient*Decimal(exact_factor.numerator)/Decimal(exact_factor.denominator)
+                q = Fraction(exponent.exp())
+                units = magnitude*Fraction(2)**(ei-eo)
+                reference = [round(units/(1+q)),round(-units*q/(1+q))]
+                reference = tuple(v if -32767 <= v <= 32767 else -32768 for v in reference)
+                assert plan.gelu_i16_pair(magnitude,ei,eo) == reference
+    # Caller precision/traps cannot influence the fixed public recipe.
+    import decimal
+    with localcontext() as context:
+        context.prec = 3
+        context.rounding = decimal.ROUND_UP
+        context.traps[decimal.Inexact] = True
+        assert plan.gelu_i16_pair(3,4,5) == (1,0)
+        assert plan.gelu_i16_pair(257,-8,-8) == (216,-41)
+    original = plan.gelu_coefficient_bounds
+    try:
+        plan.gelu_coefficient_bounds = lambda: (Fraction(1,100),Fraction(1))
+        with pytest.raises(ArithmeticError,match='straddles'):
+            plan.gelu_i16_table(0,0)  # cannot return a partially certified table
+    finally:
+        plan.gelu_coefficient_bounds = original
+
+
+def test_gelu_full_public_tables_setup_counts_and_overflow_profile_tags():
+    expected = {
+        (0,0):('4a5f44e00ef28e6e2624d781e3da70e179c75d7236a7a7be1bfa63a2b4d9cc8e',0,15),
+        (-8,-8):('5ccb59d9324924d758b31237584217b0c07e5d464d4b3f5039178ddd7999daa0',0,4095),
+        (-8,-12):('d749065eb382101fa611734e61fc4f560f2c00c6347ff471872c6db2d3d4b593',30720,4095)}
+    for (ei,eo),(digest,rejects,interior) in expected.items():
+        table = plan.gelu_i16_table(ei,eo)
+        assert len(table) == 131070 and plan.hashlib.sha256(table).hexdigest() == digest
+        values = [int.from_bytes(table[i:i+2],'little',signed=True) for i in range(0,len(table),2)]
+        assert values[32767] == 0 and values.count(-32768) == rejects
+        for magnitude in (0,1,3,17,127,4095,32767):
+            positive,negative = plan.gelu_i16_pair(magnitude,ei,eo)
+            assert (values[32767+magnitude],values[32767-magnitude]) == (positive,negative)
+        s = plan.gelu_table_setup_screen(ei,eo)
+        assert s['profile'] == 'C71-GELU-RNE-v1' and not s['credit']
+        assert s['interior_pairs'] == interior
+        assert s['decimal_exponential_calls'] == s['directed_argument_divisions'] == 2*interior
+        assert s['table_copy_peak_bytes_before_scalar_workspace'] == 262140
+        assert s['rejects_ambiguous_setup'] and s['actual_gemma_exponents_and_complete_setup_work'] is None
+    assert plan.gelu_table_setup_screen(-128,128)['interior_pairs'] == 32767
+    assert plan.gelu_table_setup_screen(4,0)['decimal_exponential_calls'] == 0
+    for layer,value in product(range(60),(-32767,0,32767)):
+        bad = plan.gelu_lookup_tag(layer,value,-32768)
+        assert bad == (value % plan.P,(-32768) % plan.P,layer+60)
+        assert all(bad != (value % plan.P,(-32768) % plan.P,h) for h in range(60))
+        assert plan.gelu_lookup_tag(layer,value,123) == (value % plan.P,123,layer)
+    # Without the public invalid-profile offset a malicious Y=-32768 matches.
+    assert (0,(-32768) % plan.P,0) != plan.gelu_lookup_tag(0,0,-32768)
+    for args in ((60,0,0),(-1,0,0),(True,0,0),(0,-32768,0),(0,0,32768)):
+        with pytest.raises(ValueError):
+            plan.gelu_lookup_tag(*args)
+
+
 def test_gelu_lookup_layout_gamma_and_all_context_payload_recount():
     metadata = json.loads((Path(__file__).resolve().parents[1] /
                            'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_text())
@@ -5517,6 +5609,7 @@ def test_gelu_lookup_leaf_cubes_match_sigma_rne_and_public_table_forms():
     n = (live-1).bit_length()
     flat = {k:[0]*(1 << n) for k in ('X','Y','M','L','H','K','T0','T1','T2')}
     tables = {i:[j*3+i-7 for j in range(5+i)] for i in range(2)}
+    tables[0][2] = -32768  # a public overflow row, not an allowed query output
     for local_i,row,col,heads,rows,cols,offset in fractions:
         s = lookup[local_i]
         global_i = local_i+len(raw)
@@ -5530,7 +5623,8 @@ def test_gelu_lookup_leaf_cubes_match_sigma_rne_and_public_table_forms():
             else:
                 flat['M'][index],flat['H'][index] = values[global_i][original] % p,1
                 flat['T0'][index] = col+c-32767
-                flat['T1'][index],flat['T2'][index] = tables[s['layer']][col+c],s['layer']
+                output = tables[s['layer']][col+c]
+                flat['T1'][index],flat['T2'][index] = output,s['layer']+60*int(output == -32768)
     def evaluate(data,terms):
         return sum(coefficient*plan.mle(data[offset:offset+(1 << len(point))],point)
                    for offset,point,coefficient in terms) % p
@@ -5547,8 +5641,8 @@ def test_gelu_lookup_leaf_cubes_match_sigma_rne_and_public_table_forms():
         for component in range(3):
             actual = 0
             for layer,col,width,q,coefficient in f['public_table_terms']:
-                values_t = ([j-32767 for j in range(col,col+width)] if component == 0 else
-                            tables[layer][col:col+width] if component == 1 else [layer]*width)
+                values_t = [plan.gelu_lookup_tag(layer,j-32767,tables[layer][j])[component]
+                            for j in range(col,col+width)]
                 actual += coefficient*plan.mle(values_t,q)
             assert actual % p == plan.mle(flat[f'T{component}'],point)
     assert f['y_bias'] != 0 and f['histogram_bias'] != 0  # unsigned decoding proves another value

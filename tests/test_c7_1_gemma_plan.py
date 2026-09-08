@@ -3093,6 +3093,31 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     assert extended['additional_arrays_reserved_256_byte_aligned']['rms_row_multiplier_cache'] == 3457024
     assert extended['known_bulk_output_reads_before_gamma_and_rms_replay'] == 231
     split = extended['rms_input_split_honest_screen']
+    readers = plan.rms_cut_reader_plan(cohorts)
+    norms = plan.rms_statistic_cohorts(cohorts)
+    stat_offset = 0
+    for reader,norm in zip(readers,norms):
+        source = cohorts[reader['product_source_id']]
+        assert len(reader) == 7 and reader['statistic_byte_offset'] == stat_offset
+        assert reader['product_byte_offset'] == source['cut_byte_offset']
+        assert reader['rows']*reader['columns'] == source['rows']*source['columns']
+        assert reader['product_byte_offset']+reader['product_word_bytes']*reader['rows']*reader['columns'] <= 5143044096
+        if not norm['weighted']:
+            assert source['operation'] == ('k_proj' if norm['layer'] % 6 == 5 else 'v_source')
+            assert reader['rows'] == source['rows']*norm['heads']
+        else:
+            assert source['operation'] == norm['operation']
+        stat_offset += 6*reader['rows']
+    assert len(readers) == 421 and stat_offset == 3456894
+    reader_screen = extended['rms_cut_reader_screen']
+    assert reader_screen['descriptor_bytes'] == 23576
+    assert reader_screen['product_B_bytes_per_full_visit'] == 1459332096
+    assert reader_screen['live_64_lane_words_per_full_visit'] == 5436516
+    assert reader_screen['statistic_and_multiplier_bytes_per_full_visit'] == 65238192
+    assert reader_screen['logical_input_read_bytes_per_full_visit'] == 1524570288
+    assert reader_screen['raw_rne_calls_per_full_visit'] == 33792000
+    assert reader_screen['producer_replays_after_S_and_multiplier_preparation'] == 0
+    assert reader_screen['weight_reads_after_S_and_multiplier_preparation'] == 0
     assert extended['rms_output_cell_cubes'] == 3612
     assert split['rne_output_cells'] == 33792000 and split['rne_cubes'] == 240
     assert split['raw_B_logical_bytes'] == 202752000
@@ -3109,18 +3134,20 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     assert lifetime['retained_reservations_256_byte_aligned'] == {
         'public_gate_triples': 9576960, 'public_layer_offsets_and_lengths': 7936,
         'public_profile_descriptors': 512, 'public_norm_profile_map': 3584,
-        'plaintext_and_tag_records': 819712, 'integer_getter_wave': 65536}
-    assert lifetime['retained_reservation_bytes'] == 10474240 and lifetime['rms_kernel_phase_local_bytes'] == 57346304
+        'plaintext_and_tag_records': 819712, 'integer_getter_wave': 65536,
+        'rms_cut_reader_descriptors': 23808}
+    assert lifetime['retained_reservation_bytes'] == 10498048 and lifetime['rms_kernel_phase_local_bytes'] == 57346304
     phases = lifetime['all_context_arena_phase_upper_bytes']
-    assert len(phases) == 21 and phases['rms_joint_and_input_split'] == 5495002496
+    assert len(phases) == 21 and phases['rms_joint_and_input_split'] == 5495026304
     for phase,value in extended['all_context_arena_phase_upper_bytes'].items():
         assert phases[phase] == value+lifetime['retained_reservation_bytes']
-    assert lifetime['known_phase_max_upper_bytes'] == max(phases.values()) == 6352014464
-    assert lifetime['remaining_arena_before_uncompiled_components'] == 90436480
+    assert lifetime['known_phase_max_upper_bytes'] == max(phases.values()) == 6352038272
+    assert lifetime['remaining_arena_before_uncompiled_components'] == 90412672
     assert lifetime['known_y_generations_before_gamma_without_cross_visit_reuse'] == 701093103360
     assert lifetime['row_preparation_mul64_wide_upper'] == 492607395
     assert lifetime['known_y_generation_mul64_wide_upper'] == 37859027581440
     assert lifetime['extra_input_split_rne_getter_words'] == split['rne_output_cells']
+    assert lifetime['known_rms_input_logical_reads_with_row_reuse_before_gamma'] == 2015*1524570288+202752000
     assert not lifetime['credit'] and lifetime['complete_gamma_liveness_pcg_and_runtime'] is None
     for j,f,cs,b in ((joint,field,coefficients,bridge), (joint,field,coefficients[:-1],extended),
                      (joint,{**field,'profile_interval_count':1},coefficients,extended)):
@@ -3192,6 +3219,30 @@ def test_rms_joint_input_views_bind_p_s_y_and_rne_bits_with_head_and_padding_rul
     ys = [[[plan.rms_rne_i16(v, statistics[i][r][0], norms[i]['columns'], 0, 0, 0)
             for v in row] for r, row in enumerate(values)] for i, values in enumerate(products)]
     values = [ps, raw, *statistics, *ys]
+    b_bytes = b''.join(v.to_bytes(size,'little',signed=True) for table,size in ((ps,4),(raw,6)) for row in table for v in row)
+    s_bytes = b''.join((s+(1 << 47)).to_bytes(6,'little') for table in statistics for row in table for s in row)
+    coefficients = [plan.rms_integer_coefficients(n['columns'],0,0,0) for n in norms]
+    k_bytes = b''.join(plan.rms_row_multiplier(a,b+c*row[0]).to_bytes(6,'little')
+                       for (a,b,c),table in zip(coefficients,statistics) for row in table)
+    readers = [{'norm_source_id': i, 'product_source_id': i, 'product_byte_offset': bo,
+                'statistic_byte_offset': so, 'rows': n['statistic_rows'], 'columns': n['columns'],
+                'product_word_bytes': 4 if n['weighted'] else 6}
+               for i,(n,bo,so) in enumerate(zip(norms,(0,36),(0,18)))]
+    for i,reader in enumerate(readers):
+        for row in range(reader['rows']):
+            word = plan.rms_read_input_word(reader,row*reader['columns'],reader['columns'],
+                                            (b_bytes,s_bytes,k_bytes),coefficients[i],None if i == 0 else 1)
+            assert word == [(products[i][row][col],statistics[i][row][0],ys[i][row][col]) for col in range(reader['columns'])]
+    buffers = (b_bytes,s_bytes,k_bytes)
+    for first,count,bufs,shift in ((0,65,buffers,None), (2,2,buffers,None), (-1,1,buffers,None),
+                                   (9,1,buffers,None), (0,1,(b'',s_bytes,k_bytes),None),
+                                   (0,1,(b_bytes,s_bytes,b''),None), (0,1,buffers,1)):
+        with pytest.raises(ValueError):
+            plan.rms_read_input_word(readers[0],first,count,bufs,coefficients[0],shift)
+    with pytest.raises(ValueError):
+        plan.rms_read_input_word(readers[1],0,1,buffers,coefficients[1])
+    with pytest.raises(ValueError):
+        plan.rms_read_input_word(readers[0],0,1,(b_bytes,bytes(6),k_bytes),coefficients[0])  # negative decoded S
     byte_tiles, _ = plan.auxiliary_word_layout(sources)
     live = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources)
     packed = [0]*(1 << (live-1).bit_length())

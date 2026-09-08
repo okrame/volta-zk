@@ -267,15 +267,16 @@ authorization.
 ## Next work
 
 The [S+Y comparison](c7.1-auxiliary-witness.md#output-rms-e-port-di-ingresso-nella-stessa-sorgente)
-now includes RMS-J program/record/getter reservations and the missing honest
-bottom split: one extra W-free read of the v_norm raw subset after the final
-point is known. Kernel arrays survive that read; MAC records survive to the
-shared closure. This is a conditional known-phase envelope on synthetic
-profiles, not the full physical schedule or Y admission. The next obligation
-is the complete source/form reader with explicit profiles and Gamma consumers:
-addressing, raw RNE generation, control/traffic, workspace and PCG/MAC costs.
-The large replay constants remain unpaid in runtime; no timing follows from
-these arithmetic bounds. Keep derivations and counts in the linked dossier.
+now has a direct packed RMS reader from B/S/kappa after their preparation:
+exact producer addresses, signed/biased decoding, raw RNE and shared row data,
+with no predecessor replay or W read per Y generation. The bottom split and
+retained program/record/reader reservations are included in the known-phase
+envelope, still conditional on fixed profiles and correct cache preparation.
+The next obligation is source availability beyond RMS: initial input/S
+preparation and the raw-attention/form readers with actual Gamma consumers,
+explicit profiles, control/traffic, workspace and PCG/MAC costs. These are
+not full physical liveness, Y admission or runtime bounds. Keep the numerical
+derivations in the linked dossier.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
 In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)

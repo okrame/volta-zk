@@ -918,6 +918,7 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge):
            'public_layer_offsets_and_lengths': 16*joint['profiles']*(joint['depth']+1),
            'public_profile_descriptors': 96*joint['profiles'],
            'public_norm_profile_map': 8*bridge['rms_output_sources'],
+           'rms_cut_reader_descriptors': bridge['rms_cut_reader_screen']['descriptor_bytes'],
            'plaintext_and_tag_records': joint['plaintext_and_tag_records_bytes'],
            'integer_getter_wave': max(g['one_64_lane_wave_scratch_bytes'] for g in getters)}
     retained = {k: 256*((v+255)//256) for k,v in raw.items()}
@@ -936,6 +937,9 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge):
             'known_phase_max_upper_bytes': max(phases.values()),
             'remaining_arena_before_uncompiled_components': 6442450944-max(phases.values()),
             'known_y_generations_before_gamma_without_cross_visit_reuse': y_cells,
+            'known_rms_input_logical_reads_with_row_reuse_before_gamma':
+                y_visits*bridge['rms_cut_reader_screen']['logical_input_read_bytes_per_full_visit']+
+                bridge['rms_input_split_honest_screen']['raw_B_logical_bytes'],
             'row_preparation_mul64_wide_upper': bridge['rms_row_multiplier_preparations']*
                 max(g['row_preparation_mul64_wide_upper'] for g in getters),
             'known_y_generation_mul64_wide_upper': y_cells*
@@ -2553,6 +2557,70 @@ def rms_output_byte_sources(cohorts):
             for i,r in enumerate(rms_statistic_cohorts(cohorts))]
 
 
+def rms_cut_reader_plan(cohorts):
+    """Seven-u64 descriptors for RMS reads from retained B/S/kappa only.
+
+    Public profile/shift lookup uses the existing norm and product identities.
+    Flattened token/head/lane order is physically identical for weighted P
+    and the unweighted projection raw; no producer replay or W access.
+    """
+    cut_byte_layout(cohorts)
+    by_op = {(c['layer'],c['operation']): c for c in cohorts}
+    if len(by_op) != len(cohorts):
+        raise ValueError('duplicate physical B producer')
+    readers, statistic_offset = [], 0
+    for i,norm in enumerate(rms_statistic_cohorts(cohorts)):
+        producer = norm if norm['weighted'] else norm['source_producer']
+        source = by_op[producer['layer'],producer['operation']]
+        rows, columns, heads = norm['statistic_rows'], norm['columns'], norm['heads']
+        expected = (rows,columns,4) if norm['weighted'] else (rows//heads,heads*columns,6)
+        if rows % heads or (source['rows'],source['columns'],source['cut_scalar_bytes']) != expected:
+            raise ValueError('RMS input must use the exact physical B producer')
+        readers.append({'norm_source_id': i, 'product_source_id': source['ordinal'],
+                        'product_byte_offset': source['cut_byte_offset'],
+                        'statistic_byte_offset': statistic_offset, 'rows': rows,
+                        'columns': columns, 'product_word_bytes': expected[2]})
+        statistic_offset += 6*rows
+    return readers
+
+
+def rms_read_input_word(reader, first, count, buffers, coefficients, raw_shift=None):
+    """Up to 64 live cells in ONE row: signed B, biased S, unsigned kappa.
+
+    Descriptor/profile validated before reading; kappa must be prepared from
+    the SAME attempt/A/D (not an authenticated hint). No full Y array. This
+    getter is not a verifier and does not establish the S/P source relations.
+    """
+    natural(count, 'RMS live word lanes', 1, 64)
+    natural(first, 'live RMS input index', 0, reader['rows']*reader['columns']-count)
+    row = first//reader['columns']
+    if row != (first+count-1)//reader['columns']:
+        raise ValueError('RMS word cannot cross a statistic row')
+    width = reader['product_word_bytes']
+    if width not in (4,6) or (width == 4 and raw_shift is not None) or (width == 6 and type(raw_shift) is not int):
+        raise ValueError('RMS raw shift must match its weighted/unweighted source')
+    if len(buffers) != 3 or any(not isinstance(b,(bytes,bytearray,memoryview)) for b in buffers):
+        raise ValueError('RMS reader needs exactly B, S and kappa byte buffers')
+    rms_getter_integer_screen(coefficients)  # Native profile validation is hoisted out of the cell loop.
+    views = [memoryview(buffer).cast('B') for buffer in buffers]
+    spos = reader['statistic_byte_offset']+6*row
+    def read(view, offset, size, signed=False):
+        if offset < 0 or offset+size > len(view):
+            raise ValueError('truncated or out-of-bounds RMS source read')
+        return int.from_bytes(view[offset:offset+size],'little',signed=signed)
+    statistic = natural(read(views[1],spos,6)-(1 << 47), 'honest RMS statistic', 0, (1 << 47)-1)
+    multiplier = read(views[2],spos,6)
+    a,b,c = coefficients
+    denominator, result = b+c*statistic, []
+    for index in range(first,first+count):
+        product = read(views[0],reader['product_byte_offset']+width*index,width,True)
+        if width == 6:
+            product = rne_i48_to_i16(product,raw_shift)
+        output = rms_rne_from_multiplier(product,a,denominator,multiplier)
+        result.append((product,statistic,output))
+    return result
+
+
 def rms_output_source_point(norm, point, coefficient=1):
     """Native lane||head||token -> Y's column||flattened-row point."""
     heads, columns, rows = norm['heads'], norm['columns'], norm['statistic_rows']
@@ -3503,7 +3571,7 @@ def rms_byte_bridge_screen(cohorts, include_rms_outputs=False):
                   'new_plaintext_and_tags': 48*corrections,
                   'probe_and_input_points': 24*(probe_bits+stats['sumcheck_rounds']),
                   'statistic_kernel_descriptors': 96*count, 'kernel_control_reserve': 65536}
-    output_tiles, split = [], None
+    output_tiles, split, reader_screen = [], None, None
     if include_rms_outputs:
         # Two split MAC values, one 29-coordinate cell point and 128 port weights.
         # No Y array or actual-profile RMS-J gates/records are reserved here.
@@ -3514,6 +3582,20 @@ def rms_byte_bridge_screen(cohorts, include_rms_outputs=False):
         rne_tiles = [t for t in output_tiles if not norms[t[0]]['weighted']]
         volumes = [math.prod(t[3:6]) for t in rne_tiles]
         n = (output_bytes//2-1).bit_length()
+        readers = rms_cut_reader_plan(cohorts)
+        if any(t[5] % 64 for t in output_tiles):
+            raise ValueError('RMS word reader screen requires 64-lane-aligned column cubes')
+        product_bytes = sum(r['product_word_bytes']*r['rows']*r['columns'] for r in readers)
+        words = sum(r['rows']*r['columns']//64 for r in readers)
+        reader_screen = {'credit': False, 'descriptor_bytes': 56*len(readers),
+                         'product_B_bytes_per_full_visit': product_bytes,
+                         'live_64_lane_words_per_full_visit': words,
+                         'statistic_and_multiplier_bytes_per_full_visit': 12*words,
+                         'logical_input_read_bytes_per_full_visit': product_bytes+12*words,
+                         'raw_rne_calls_per_full_visit': sum(volumes),
+                         'producer_replays_after_S_and_multiplier_preparation': 0,
+                         'weight_reads_after_S_and_multiplier_preparation': 0,
+                         'complete_all_sigma_reader_and_gamma': None}
         split = {'credit': False, 'rne_output_cells': sum(volumes), 'rne_cubes': len(rne_tiles),
                  'raw_B_logical_bytes': 6*sum(volumes),
                  'field_products_upper': 19*sum(volumes)+sum(n-(v.bit_length()-1)-1 for v in volumes)+n*len(output_tiles)+1,
@@ -3620,6 +3702,7 @@ def rms_byte_bridge_screen(cohorts, include_rms_outputs=False):
             'includes_rms_outputs': include_rms_outputs, 'rms_output_sources': len(output_sources),
             'rms_output_live_bytes': output_bytes, 'rms_output_retained_array_bytes': 0,
             'rms_output_cell_cubes': len(output_tiles), 'rms_input_split_honest_screen': split,
+            'rms_cut_reader_screen': reader_screen,
             'requires_output_regeneration_or_new_cache_schedule': include_rms_outputs,
             'rms_input_split_corrections': 2*int(include_rms_outputs),
             'rms_output_all_context_comparison': output_comparison,

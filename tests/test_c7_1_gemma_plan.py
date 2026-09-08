@@ -3021,6 +3021,34 @@ def test_rms_row_multiplier_getter_matches_exact_rounding_and_prices_shared_cach
             plan.rms_rne_from_multiplier(value,a,d,multiplier)
 
 
+def test_rms_native_getter_bounds_cover_preparation_and_lane_temporaries():
+    rng = random.Random(7173)
+    profiles = [(1,1,1), ((1 << 128)-1,)*3]
+    profiles += [plan.rms_integer_coefficients(d,0,0,0) for d in (256,512,5376)]
+    for coefficients in profiles:
+        a,b,c = coefficients
+        screen = plan.rms_getter_integer_screen(coefficients)
+        for s in (0,(1 << 47)-1,rng.randrange(1 << 47)):
+            denominator = b+c*s
+            multiplier = plan.rms_row_multiplier(a,denominator)
+            for value in (0,1,-1,32767**2,-32767**2):
+                temporaries = [c*s,denominator,denominator << 30,a << 64,
+                               denominator*((1 << 47)-1)**2,abs(value)*multiplier,
+                               value**2,65535**2,4*a*value**2,denominator*65535**2]
+                assert max(v.bit_length() for v in temporaries) <= screen['maximum_intermediate_bits']
+        assert screen['one_64_lane_wave_scratch_bytes'] == 64*screen['scalar_scratch_bytes']
+        assert screen['row_preparation_mul64_wide_upper'] == 95*screen['u64_limbs']**2
+        assert screen['lane_generation_mul64_wide_upper_with_denominator'] == 6*screen['u64_limbs']**2
+        assert not screen['credit'] and screen['complete_reader_control_traffic_and_runtime'] is None
+    neutral = plan.rms_getter_integer_screen(profiles[-1])
+    assert neutral['maximum_intermediate_bits'] == 155 and neutral['u64_limbs'] == 3
+    assert neutral['one_64_lane_wave_scratch_bytes'] == 65536
+    assert ((1 << 64)-1)**2+2*((1 << 64)-1) == (1 << 128)-1  # schoolbook accumulator fits u128
+    for coefficients in ([], [1,1], [True,1,1], [1,0,1], [1,1,1 << 128]):
+        with pytest.raises(ValueError):
+            plan.rms_getter_integer_screen(coefficients)
+
+
 def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     metadata = json.loads((Path(__file__).resolve().parents[1] /
                            'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_bytes())
@@ -3064,6 +3092,40 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     assert extended['rms_lane_exact_comparisons_upper'] == 1
     assert extended['additional_arrays_reserved_256_byte_aligned']['rms_row_multiplier_cache'] == 3457024
     assert extended['known_bulk_output_reads_before_gamma_and_rms_replay'] == 231
+    split = extended['rms_input_split_honest_screen']
+    assert extended['rms_output_cell_cubes'] == 3612
+    assert split['rne_output_cells'] == 33792000 and split['rne_cubes'] == 240
+    assert split['raw_B_logical_bytes'] == 202752000
+    assert split['field_products_upper'] == 642155789 and split['field_additions_upper'] == 574579562
+    assert split['additional_sigma_source_scans'] == split['additional_weight_reads_given_raw_B'] == 0
+    assert split['requires_final_cell_point_and_port_mix_before_read']
+    assert not split['credit'] and split['complete_reader_and_framing'] is None
+    programs = [plan.rms_boolean_circuit(d,0,0,0,w,True) for w,d in
+                ((True,256),(True,512),(True,5376),(False,256),(False,512))]
+    joint = plan.rms_joint_gkr_screen([plan.rms_layered_circuit(c)['summary']['level_widths'] for c in programs],29)
+    field = plan.rms_gkr_field_work_screen(joint,3612)
+    coefficients = [c['summary']['coefficients'] for c in programs]
+    lifetime = plan.rms_joint_lifetime_screen(joint,field,coefficients,extended)
+    assert lifetime['retained_reservations_256_byte_aligned'] == {
+        'public_gate_triples': 9576960, 'public_layer_offsets_and_lengths': 7936,
+        'public_profile_descriptors': 512, 'public_norm_profile_map': 3584,
+        'plaintext_and_tag_records': 819712, 'integer_getter_wave': 65536}
+    assert lifetime['retained_reservation_bytes'] == 10474240 and lifetime['rms_kernel_phase_local_bytes'] == 57346304
+    phases = lifetime['all_context_arena_phase_upper_bytes']
+    assert len(phases) == 21 and phases['rms_joint_and_input_split'] == 5495002496
+    for phase,value in extended['all_context_arena_phase_upper_bytes'].items():
+        assert phases[phase] == value+lifetime['retained_reservation_bytes']
+    assert lifetime['known_phase_max_upper_bytes'] == max(phases.values()) == 6352014464
+    assert lifetime['remaining_arena_before_uncompiled_components'] == 90436480
+    assert lifetime['known_y_generations_before_gamma_without_cross_visit_reuse'] == 701093103360
+    assert lifetime['row_preparation_mul64_wide_upper'] == 492607395
+    assert lifetime['known_y_generation_mul64_wide_upper'] == 37859027581440
+    assert lifetime['extra_input_split_rne_getter_words'] == split['rne_output_cells']
+    assert not lifetime['credit'] and lifetime['complete_gamma_liveness_pcg_and_runtime'] is None
+    for j,f,cs,b in ((joint,field,coefficients,bridge), (joint,field,coefficients[:-1],extended),
+                     (joint,{**field,'profile_interval_count':1},coefficients,extended)):
+        with pytest.raises(ValueError):
+            plan.rms_joint_lifetime_screen(j,f,cs,b)
     for before, after, total in zip(bridge['cases'], extended['cases'], (25668776,32644752)):
         assert after['known_partial_payload_before_rms_circuit_gamma_and_framing'] == total
         assert total-before['known_partial_payload_before_rms_circuit_gamma_and_framing'] == 237096
@@ -3091,6 +3153,7 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     forms = plan.rms_joint_input_pullback(stats, sources, byte_tiles, list(range(2,31)))
     assert forms['summary']['compact_sigma_byte_views'] == 42384
     assert forms['summary']['compact_rne_output_views'] == 240
+    assert forms['summary']['honest_split_rne_output_cells'] == split['rne_output_cells']
     assert forms['summary']['input_split_extension_corrections'] == 2
     assert forms['summary']['complete_gamma_callers_and_reader'] is None
     assert not forms['summary']['credit']
@@ -3160,10 +3223,38 @@ def test_rms_joint_input_views_bind_p_s_y_and_rne_bits_with_head_and_padding_rul
         from_rne = sum(claim[3]*sum(weights[port+k]*plan.mle(rne_planes[k],claim[2]+claim[1]) for k in range(16))
                        for port,i,claim in pulled['rne_output_views']) % p
         assert expected == (weights[1]*pulled['public_one']+sigma+from_rne) % p
+        # Fresh subset read after u/lambda are known. Visit every v_norm raw
+        # once; reconstruct the Sigma component from a0, not another read.
+        fresh, seen = 0, set()
+        for i,r,c,_,height,width,_,_,offset in y_tiles:
+            if norms[i]['weighted']:
+                continue
+            for row in range(height):
+                for col in range(width):
+                    rr,cc = r+row,c+col
+                    address = rr//2,2*(rr%2)+cc
+                    assert address not in seen
+                    seen.add(address)
+                    value = plan.rms_rne_bit_linear_value(raw[address[0]][address[1]],1,weights[2:18])
+                    fresh = (fresh+eq(point,offset//2+col+width*row)*value) % p
+        assert len(seen) == pulled['summary']['honest_split_rne_output_cells'] == 12
+        assert fresh == from_rne
+        reconstructed_sigma = (expected-weights[1]*pulled['public_one']-fresh) % p
+        assert reconstructed_sigma == sigma
+        # Preserving the split equation with compensating errors does NOT
+        # bind either branch; the same R3/R2 source checks are still required.
+        assert (reconstructed_sigma-1+fresh+1) % p == (sigma+from_rne) % p
+        assert (fresh+1) % p != from_rne and (reconstructed_sigma-1) % p != sigma
         if point == [1]*5:
             assert expected == pulled['public_one'] == 0  # no biased-zero bit on nonexistent RMS cells
         else:
             assert pulled['public_one'] == sum(eq(point,i) for i in range(21)) % p
+    half = pow(2,-1,p)
+    assert plan.mle([1,0],[half]) == plan.mle([0,1],[half])  # same folded shared port
+    assert plan.mle([0,0],[half]) != plan.mle([0,1],[half])  # different v_norm component
+    for raw_value,shift,ws in ((0,1,[0]*15), (0,1,[True]*16), (1 << 47,1,[0]*16), (1,-15,[0]*16)):
+        with pytest.raises(ValueError):
+            plan.rms_rne_bit_linear_value(raw_value,shift,ws)
     # Native point consumers see this SAME Y, with bias only on live words.
     for i,norm in enumerate(norms):
         rows, heads, cols = norm['statistic_rows']//norm['heads'], norm['heads'], norm['columns']

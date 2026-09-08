@@ -320,6 +320,29 @@ def rms_rne_from_multiplier(product, numerator, denominator, multiplier):
     return -magnitude if product < 0 else magnitude
 
 
+def rms_getter_integer_screen(coefficients):
+    """Native storage/work contract for the division-free row/lane getter.
+
+    Public A,B,C occupy at most u128 each in this LOCAL profile. The bound
+    covers every 0<=S<2^47 and the getter's validated |P|<=32767^2.
+    Sixteen 2L-limb banks + 256 control bytes per lane; 64 lanes per wave.
+    """
+    if len(coefficients) != 3:
+        raise ValueError('RMS getter needs A, B and C')
+    for v in coefficients:
+        natural(v, 'RMS native public coefficient', 1, (1 << 128)-1)
+    a,b,c = coefficients
+    denominator = b+c*((1 << 47)-1)
+    bits = max(a.bit_length()+64, (denominator*((1 << 47)-1)**2).bit_length())
+    limbs = (bits+63)//64
+    return {'credit': False, 'maximum_intermediate_bits': bits, 'u64_limbs': limbs,
+            'scalar_scratch_bytes': 16*2*limbs*8+256,
+            'one_64_lane_wave_scratch_bytes': 64*(16*2*limbs*8+256),
+            'row_preparation_mul64_wide_upper': 95*limbs*limbs,
+            'lane_generation_mul64_wide_upper_with_denominator': 6*limbs*limbs,
+            'complete_reader_control_traffic_and_runtime': None}
+
+
 def rms_boolean_circuit(columns, input_exponent, scale_exponent, output_exponent,
                         weighted=True, verify_output=False):
     """Small explicit AND/XOR DAG for exact RMS, NOT a GKR/MAC prover.
@@ -876,6 +899,49 @@ def rms_gkr_aligned_word_screen(joint, field):
             'additional_scratch_bytes': 0,
             'reference_input_tuple_visits': joint['reference_input_tuple_visits'],
             'complete_getter_mac_fs_runtime_and_liveness': None}
+
+
+def rms_joint_lifetime_screen(joint, field, coefficients, bridge):
+    """RMS-J phase on R3's common B/S/kappa base, not a full-Gamma timeline.
+
+    Screens must describe the SAME compiled profiles and virtual-Y source.
+    Keep program/getter/records throughout the known phases conservatively;
+    only the RMS kernel arrays are phase-local. No new proof/storage codec.
+    """
+    if (not bridge['includes_rms_outputs'] or bridge['rms_output_retained_array_bytes'] or
+            joint['cell_bits'] != (bridge['rms_output_live_bytes']//2-1).bit_length() or
+            len(coefficients) != joint['profiles'] or field['profile_interval_count'] != bridge['rms_output_cell_cubes']):
+        raise ValueError('RMS lifetime screens must use the same virtual Y/profile domain')
+    getters = [rms_getter_integer_screen(c) for c in coefficients]
+    rows = sum(joint['joint_level_rows_across_profiles'][1:])
+    raw = {'public_gate_triples': 24*rows,
+           'public_layer_offsets_and_lengths': 16*joint['profiles']*(joint['depth']+1),
+           'public_profile_descriptors': 96*joint['profiles'],
+           'public_norm_profile_map': 8*bridge['rms_output_sources'],
+           'plaintext_and_tag_records': joint['plaintext_and_tag_records_bytes'],
+           'integer_getter_wave': max(g['one_64_lane_wave_scratch_bytes'] for g in getters)}
+    retained = {k: 256*((v+255)//256) for k,v in raw.items()}
+    shared = sum(retained.values())
+    packed = joint['bitpacked_replay']
+    kernel = (joint['reference_folded_array_bytes']+joint['reference_two_gate_vectors_bytes']+
+              field['additional_public_sweep_and_gate_form_bytes']+
+              sum(packed[k] for k in ('input_and_two_word_vectors_bytes','field_block_bytes','public_fold_table_reservation_bytes')))
+    phases = {k:v+shared for k,v in bridge['all_context_arena_phase_upper_bytes'].items()}
+    phases['rms_joint_and_input_split'] = phases['opening_first_pass']-80*(1 << 23)+kernel
+    y_visits = bridge['known_bulk_output_reads_before_gamma_and_rms_replay']+joint['reference_input_tuple_visits']
+    y_cells = y_visits*(bridge['rms_output_live_bytes']//2)
+    return {'credit': False, 'retained_reservations_256_byte_aligned': retained,
+            'retained_reservation_bytes': shared, 'rms_kernel_phase_local_bytes': kernel,
+            'all_context_arena_phase_upper_bytes': phases,
+            'known_phase_max_upper_bytes': max(phases.values()),
+            'remaining_arena_before_uncompiled_components': 6442450944-max(phases.values()),
+            'known_y_generations_before_gamma_without_cross_visit_reuse': y_cells,
+            'row_preparation_mul64_wide_upper': bridge['rms_row_multiplier_preparations']*
+                max(g['row_preparation_mul64_wide_upper'] for g in getters),
+            'known_y_generation_mul64_wide_upper': y_cells*
+                max(g['lane_generation_mul64_wide_upper_with_denominator'] for g in getters),
+            'extra_input_split_rne_getter_words': bridge['rms_input_split_honest_screen']['rne_output_cells'],
+            'complete_gamma_liveness_pcg_and_runtime': None}
 
 
 def rms_boolean_cohort_screen(cohorts):
@@ -2501,6 +2567,20 @@ def rms_output_source_point(norm, point, coefficient=1):
     return ([], list(point[cb:cb+hb])+list(point[cb+hb:]), list(point[:cb]), coefficient)
 
 
+def rms_rne_bit_linear_value(raw, shift, weights):
+    """Honest split getter: linear form on bits of biased RNE(raw), NOT raw.
+
+    The actual raw B address and public shift come from the existing v_norm
+    input view. This scalar helper does not authenticate or bind that source.
+    """
+    if len(weights) != 16:
+        raise ValueError('RMS RNE split needs sixteen port weights')
+    for v in weights:
+        natural(v, 'RMS RNE port weight', 0, P-1)
+    word = rne_i48_to_i16(raw,shift)+(1 << 15)
+    return sum(w*(word >> j & 1) for j,w in enumerate(weights)) % P
+
+
 def rms_joint_input_pullback(norms, sources, byte_tiles, cell_point):
     """Public bottom adapter: compact byte views and RNE-output views.
 
@@ -2598,6 +2678,7 @@ def rms_joint_input_pullback(norms, sources, byte_tiles, cell_point):
     return {'public_one': public_one, 'sigma_byte_views': byte_views, 'rne_output_views': rne_views,
             'summary': {'credit': False, 'rms_cells': cells, 'rms_cell_cubes': len(y_tiles),
                         'compact_sigma_byte_views': len(byte_views), 'compact_rne_output_views': len(rne_views),
+                        'honest_split_rne_output_cells': sum(n['statistic_rows']*n['columns'] for n in norms if not n['weighted']),
                         'input_split_extension_corrections': 2, 'input_split_zero_residuals': 1,
                         'complete_gamma_callers_and_reader': None}}
 
@@ -3422,11 +3503,24 @@ def rms_byte_bridge_screen(cohorts, include_rms_outputs=False):
                   'new_plaintext_and_tags': 48*corrections,
                   'probe_and_input_points': 24*(probe_bits+stats['sumcheck_rounds']),
                   'statistic_kernel_descriptors': 96*count, 'kernel_control_reserve': 65536}
+    output_tiles, split = [], None
     if include_rms_outputs:
         # Two split MAC values, one 29-coordinate cell point and 128 port weights.
         # No Y array or actual-profile RMS-J gates/records are reserved here.
         raw_arrays['rms_input_boundary_records_and_forms'] = 2*48+24*(29+128)
         raw_arrays['rms_row_multiplier_cache'] = packed  # Same six-byte row count as S; NOT in Sigma.
+        norms = rms_statistic_cohorts(cohorts)
+        output_tiles, _ = auxiliary_word_layout(output_sources)
+        rne_tiles = [t for t in output_tiles if not norms[t[0]]['weighted']]
+        volumes = [math.prod(t[3:6]) for t in rne_tiles]
+        n = (output_bytes//2-1).bit_length()
+        split = {'credit': False, 'rne_output_cells': sum(volumes), 'rne_cubes': len(rne_tiles),
+                 'raw_B_logical_bytes': 6*sum(volumes),
+                 'field_products_upper': 19*sum(volumes)+sum(n-(v.bit_length()-1)-1 for v in volumes)+n*len(output_tiles)+1,
+                 'field_additions_upper': 17*sum(volumes)+(n+1)*(len(rne_tiles)+len(output_tiles))+2,
+                 'additional_sigma_source_scans': 0, 'additional_weight_reads_given_raw_B': 0,
+                 'requires_final_cell_point_and_port_mix_before_read': True,
+                 'complete_reader_and_framing': None}
     arrays = {k: 256*((v+255)//256) for k, v in raw_arrays.items()}
     extra_bytes, cases, final_envelope = sum(arrays.values()), [], None
     config = pinned_model_config()
@@ -3525,6 +3619,7 @@ def rms_byte_bridge_screen(cohorts, include_rms_outputs=False):
     return {'credit': False, 'statistic_sources': count, 'packed_statistic_bytes': packed,
             'includes_rms_outputs': include_rms_outputs, 'rms_output_sources': len(output_sources),
             'rms_output_live_bytes': output_bytes, 'rms_output_retained_array_bytes': 0,
+            'rms_output_cell_cubes': len(output_tiles), 'rms_input_split_honest_screen': split,
             'requires_output_regeneration_or_new_cache_schedule': include_rms_outputs,
             'rms_input_split_corrections': 2*int(include_rms_outputs),
             'rms_output_all_context_comparison': output_comparison,

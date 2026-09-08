@@ -266,17 +266,16 @@ authorization.
 
 ## Next work
 
-The [Boolean first round and homogeneous-profile pruning](c7.1-cut-witness.md#primo-round-booleano-e-profili-omogenei)
-reduce the RMS-J clear-field bound without changing messages or source visits.
-The result requires public 64-cell homogeneous blocks and still has very large
-work constants; actual exponents are uncompiled. The immediate deliverable is
-the physical lifetime schedule and getter/control/PCG costs
-with actual profiles and Gamma consumers; the arithmetic bound is not timing
-or full-prover feasibility. Compose the
-[joint core](c7.1-cut-witness.md#riduzione-gkr-rms-con-asse-delle-celle-condiviso)
-with the [S+Y source comparison](c7.1-auxiliary-witness.md#output-rms-e-port-di-ingresso-nella-stessa-sorgente)
-before adopting Y: its input bindings are specified, its complete cost is not.
-A lower-payload deterministic-output circuit remains an alternative.
+The [S+Y comparison](c7.1-auxiliary-witness.md#output-rms-e-port-di-ingresso-nella-stessa-sorgente)
+now includes RMS-J program/record/getter reservations and the missing honest
+bottom split: one extra W-free read of the v_norm raw subset after the final
+point is known. Kernel arrays survive that read; MAC records survive to the
+shared closure. This is a conditional known-phase envelope on synthetic
+profiles, not the full physical schedule or Y admission. The next obligation
+is the complete source/form reader with explicit profiles and Gamma consumers:
+addressing, raw RNE generation, control/traffic, workspace and PCG/MAC costs.
+The large replay constants remain unpaid in runtime; no timing follows from
+these arithmetic bounds. Keep derivations and counts in the linked dossier.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
 In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)

@@ -1436,6 +1436,82 @@ def rms_boolean_cohort_screen(cohorts):
             'complete_rms_mac_feasibility': None}
 
 
+def lookup_fraction_node(leaves, first=0, count=None):
+    """Small Fp reference: (denominator, numerator), streamed subtree root.
+
+    The caller owns the small input; recursion retains O(log count) pairs.
+    Uses R2's P/S merge, now over lookup/table rows, not over byte values.
+    Zero denominators remain representable: the protocol MUST reject them.
+    """
+    natural(len(leaves), 'diagnostic fraction leaves', 1, 4096)
+    count = len(leaves) if count is None else count
+    natural(count, 'subtree cells', 1, len(leaves))
+    natural(first, 'subtree start', 0, len(leaves)-count)
+    if count & (count-1):
+        raise ValueError('fraction subtree must have power-of-two size')
+
+    def node(start, size):
+        if size == 1:
+            denominator, numerator = leaves[start]
+            return (natural(denominator, 'Fp denominator', 0, P-1),
+                    natural(numerator, 'Fp numerator', 0, P-1))
+        lp, ls = node(start, size//2)
+        rp, rs = node(start+size//2, size//2)
+        return lp*rp % P, (ls*rp+lp*rs) % P
+    return node(first, count)
+
+
+def lookup_fraction_screen(lookup_cells, table_cells, tail_bits=20):
+    """Conditional common-source LogUp-GKR core, not an admitted GELU LUT.
+
+    Three leaf forms: input (possibly R2), output, histogram. Source PCS,
+    their concrete pullbacks/readers, incoming Gamma and framing excluded.
+    """
+    natural(lookup_cells, 'lookup cells below characteristic', 1, P-1)
+    natural(table_cells, 'distinct public table rows', 1, P-1)
+    live = natural(lookup_cells+table_cells, 'fraction live rows', 2, 1 << 35)
+    natural(tail_bits, 'cached node suffix bits', 0, 20)
+    n = (live-1).bit_length()
+    padded, rounds = 1 << n, n*(n-1)//2
+    prefixes = [max(0, d-tail_bits) for d in range(n)]
+    generations = 1+sum(k+1 for k in prefixes)  # root, then each GKR layer
+    merges = padded-1+sum((k+1)*(padded-(1 << (d+1)))
+                          for d, k in enumerate(prefixes))
+    corrections = 3+4*rounds+7*n+3
+    arrays = {'four_node_tails':96*(1 << min(tail_bits,n-1)),
+              'prefix_eq_weights':24*(1 << max(prefixes)),
+              'subtree_stack_upper':96*(n+1),
+              'core_plaintexts_and_tags':48*corrections,
+              'control_and_points':8192}
+    arrays = {k:256*((v+255)//256) for k,v in arrays.items()}
+    return {'credit':False, 'lookup_cells':lookup_cells, 'table_cells':table_cells,
+            'fraction_live_rows':live, 'fraction_padded_rows':padded,
+            'layers':n, 'rounds':rounds, 'round_degree':3,
+            'extension_corrections':corrections,
+            'payload_before_source_adapters_framing_and_shared_closures':24*corrections,
+            'private_products':3*n+1, 'zero_residuals':rounds+n+2,
+            'extension_challenges':rounds+2*n+2,
+            'conditional_interactive_error_numerator_before_source_mac_fs':live+3*rounds+2*n,
+            'honest_pole_abort_numerator_upper':live,
+            'source_leaf_forms':3, 'extra_trace_pcs_instances':0,
+            'full_tree_two_field_arrays_bytes':48*(2*padded-1),
+            'cached_node_suffix_bits':tail_bits, 'prefix_rounds_by_layer':prefixes,
+            'post_alpha_tree_generations':generations,
+            'final_source_endpoint_visits':1,
+            'post_alpha_source_visits':generations+1,
+            'post_alpha_query_row_reads':(generations+1)*lookup_cells,
+            'post_alpha_histogram_row_reads':(generations+1)*table_cells,
+            'tree_generation_padded_leaf_visits':generations*padded,
+            'tree_rebuild_field_products':3*merges,
+            'tree_rebuild_field_additions':merges,
+            'histogram_preparation_query_reads':lookup_cells,
+            'local_arrays_256_byte_aligned':arrays,
+            'local_arrays_bytes':sum(arrays.values()),
+            'additional_w_reads_given_same_source_w_free_reader':0,
+            'complete_field_work_reader_and_global_liveness':None,
+            'concrete_table_semantics_and_common_source_adapters':None}
+
+
 def byte_lagrange_basis(value):
     """Degree-255 basis on 0..255, including at roots; only public inverses.
 
@@ -4688,6 +4764,9 @@ def report():
         "gamma_barrier_screen": gamma["summary"],
         "gamma_rms_source_barrier_screen": gamma_barrier_plan(cohorts,True)['summary'],
         "rope_linear_screen": gemma_rope_plan(cohorts)['summary'],
+        "gelu_lookup_fraction_core_screen": lookup_fraction_screen(
+            pinned_model_config()['layers']*150*pinned_model_config()['intermediate_size'],
+            pinned_model_config()['layers']*((1 << 16)-1)),
         "rope_byte_bridge_screen":rope_byte_bridge_screen(cohorts),
         "gamma_rope_source_barrier_screen":gamma_barrier_plan(cohorts,True,True)['summary'],
         "rms_statistic_dependency_screen": rms_statistic_dependency_plan(cohorts,gamma)["summary"],

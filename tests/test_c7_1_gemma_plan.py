@@ -5416,6 +5416,193 @@ def test_internal_only_tree_cache_reconstructs_paths_from_queried_sibling_column
             assert digest != internal[1]
 
 
+def test_lookup_fraction_identity_poles_adaptive_histogram_and_characteristic():
+    p = plan.P
+    table, query, counts = [2, 5, 9], [9, 2, 9], [1, 0, 2]
+    for alpha in (3, 4, 7, 11, p-1):
+        leaves = [((alpha-x) % p, 1) for x in query]
+        leaves += [((alpha-t) % p, -m % p) for t,m in zip(table,counts)]
+        leaves += [(1,0)]*2
+        denominator, numerator = plan.lookup_fraction_node(leaves)
+        assert denominator != 0 and numerator == 0
+        altered = leaves.copy()
+        altered[0] = ((alpha-4) % p, 1)  # unsupported query, same fixed histogram
+        dp, sp = plan.lookup_fraction_node(altered)
+        assert dp == 0 or sp != 0
+        assert numerator == denominator*sum(s*pow(d,-1,p) for d,s in leaves) % p
+    assert plan.lookup_fraction_node([(0,1),(0,1)]) == (0,0)
+    # S=0 alone accepts a repeated private pole. P*I=1 cannot hold there.
+    assert all((0*inverse-1) % p for inverse in (0,1,p-1))
+    for args in (([],), ([(1,0)]*3,), ([(p,0)],), ([(1,True)],), ([(1,0)],1,1)):
+        with pytest.raises(ValueError):
+            plan.lookup_fraction_node(*args)
+
+    # Independent exhaustive F7 diagnostic, not a concrete Fp3/FS attack.
+    def root(leaves):
+        return (math.prod(d for d,s in leaves) % 7,
+                sum(s*math.prod(d for j,(d,_) in enumerate(leaves) if j != i)
+                    for i,(_,s) in enumerate(leaves)) % 7)
+    for values in product(range(3), repeat=2):
+        if 2 not in values:
+            continue
+        for hist in product(range(7), repeat=2):
+            passing = 0
+            for alpha in range(7):
+                dp, sp = root([(alpha-v,1) for v in values]
+                              +[(alpha-t,-m) for t,m in enumerate(hist)])
+                passing += dp != 0 and sp == 0
+            assert passing <= len(values)+len(hist)-1
+    for alpha in (1,3,4,5,6):
+        adaptive_m = alpha*pow(alpha-2,-1,7) % 7
+        dp, sp = root([(alpha-2,1),(alpha,-adaptive_m)])
+        assert dp != 0 and sp == 0  # outsider 2, table {0}; m chosen too late
+    for alpha in (1,3,4,5,6):
+        dp, sp = root([(alpha-2,1)]*7+[(alpha,0)])
+        assert dp != 0 and sp == 0  # N=characteristic breaks residue argument
+    # Fp3 leaf adapter at a genuinely extension-field point. Final X/Y/M
+    # must be evaluated from the original source after this point is known.
+    zero, one, omega, omega2 = (0,0,0), (1,0,0), (0,1,0), (0,0,1)
+    def add(a,b):
+        return tuple((x+y) % p for x,y in zip(a,b))
+    def neg(a):
+        return tuple(-x % p for x in a)
+    def scale(a,c):
+        return tuple(x*c % p for x in a)
+    mul = plan.fp3_mul_six
+    def mle3(values,point):
+        for r in point:
+            values = [add(a,mul(r,add(b,neg(a)))) for a,b in zip(values[::2],values[1::2])]
+        return values[0]
+    tags = [(2,3,0),(2,4,1),(5,6,1)]
+    queries = [tags[2],tags[0],tags[2]]
+    hist, alpha, point = [1,0,2], (11,19,23), [(7,1,3),(2,4,1),(9,5,2)]
+    denominators = [add(alpha,neg(v)) for v in queries+tags]+[one]*2
+    numerators = [one]*3+[scale(one,-m) for m in hist]+[zero]*2
+    products3, sums3 = denominators.copy(),numerators.copy()
+    while len(products3) > 1:
+        sums3 = [add(mul(s0,p1),mul(p0,s1)) for p0,p1,s0,s1 in
+                 zip(products3[::2],products3[1::2],sums3[::2],sums3[1::2])]
+        products3 = [mul(a,b) for a,b in zip(products3[::2],products3[1::2])]
+    assert products3[0] != zero and sums3[0] == zero
+    weights = [mle3([one if i == j else zero for i in range(8)],point) for j in range(8)]
+    def total(terms):
+        answer = zero
+        for term in terms:
+            answer = add(answer,term)
+        return answer
+    l,h,z = [total(weights[start:stop]) for start,stop in ((0,3),(3,6),(6,8))]
+    x,y,k = [total(scale(weights[i],row[c]) for i,row in enumerate(queries)) for c in range(3)]
+    mr = total(scale(weights[3+j],m) for j,m in enumerate(hist))
+    t = total(mul(weights[3+j],tag) for j,tag in enumerate(tags))
+    public = add(add(mul(alpha,add(l,h)),z),neg(add(mul(omega2,k),t)))
+    expected_p = add(public,neg(add(x,mul(omega,y))))
+    expected_s = add(l,neg(mr))
+    assert expected_p == mle3(denominators,point)
+    assert expected_s == mle3(numerators,point)
+    # P/S do not determine X and Y separately: this forged pair leaves P
+    # unchanged. Only their same-source/R2 opening rules out the substitution.
+    forged_x, forged_y = add(x,omega),add(y,neg(one))
+    assert forged_x != x and forged_y != y
+    assert add(forged_x,mul(omega,forged_y)) == add(x,mul(omega,y))
+
+
+def test_lookup_fraction_cubic_gkr_and_streamed_subtrees_match_same_leaves():
+    p, rng = plan.P, random.Random(202609081284)
+    def eq(point, index):
+        return math.prod(x if (index >> j) & 1 else 1-x for j,x in enumerate(point)) % p
+    for n in range(1,6):
+        leaves = [(rng.randrange(p), rng.randrange(p)) for _ in range(1 << n)]
+        # Independent bottom-up materialization exists only in this tiny check.
+        tree = [(0,0)]*(1 << n)+leaves
+        for i in range((1 << n)-1,0,-1):
+            lp,ls = tree[2*i]
+            rp,rs = tree[2*i+1]
+            tree[i] = lp*rp % p, (ls*rp+lp*rs) % p
+        assert plan.lookup_fraction_node(leaves) == tree[1]
+        a, point = 17, []
+        claim = ((1-a)*tree[1][0]+a*tree[1][1]) % p
+        for depth in range(n):
+            width, span = 1 << depth, 1 << (n-depth-1)
+            children = [plan.lookup_fraction_node(leaves,j*span,span) for j in range(2*width)]
+            assert children == tree[2*width:4*width]
+            vectors = [[row[k] for row in children[side::2]] for k,side in ((0,0),(0,1),(1,0),(1,1))]
+            original = [v.copy() for v in vectors]
+            weights = [eq(point,j) for j in range(width)]
+            challenges = []
+            for round_index in range(depth):
+                coefficients = [0]*4
+                for i in range(0,len(weights),2):
+                    for scale,left,right in ((1-a,0,1),(a,2,1),(a,0,3)):
+                        polynomial = [scale]
+                        for v in (weights,vectors[left],vectors[right]):
+                            linear = [v[i],(v[i+1]-v[i]) % p]
+                            out = [0]*(len(polynomial)+1)
+                            for j,c in enumerate(polynomial):
+                                out[j] += c*linear[0]
+                                out[j+1] += c*linear[1]
+                            polynomial = [c % p for c in out]
+                        coefficients = [(x+y) % p for x,y in zip(coefficients,polynomial)]
+                assert (coefficients[0]+sum(coefficients)) % p == claim
+                r = rng.randrange(p)  # after the four coefficient records
+                claim = sum(c*pow(r,j,p) for j,c in enumerate(coefficients)) % p
+                challenges.append(r)
+                vectors = [[(x+r*(y-x)) % p for x,y in zip(v[::2],v[1::2])] for v in vectors]
+                weights = [(x+r*(y-x)) % p for x,y in zip(weights[::2],weights[1::2])]
+                # Stream a low-bit prefix, retaining just four partial sums.
+                prefix = 1 << len(challenges)
+                for v,raw in zip(vectors,original):
+                    assert v == [sum(eq(challenges,j)*raw[i*prefix+j] for j in range(prefix)) % p
+                                 for i in range(len(v))]
+            lp,rp,ls,rs = [v[0] for v in vectors]
+            products = [lp*rp % p,ls*rp % p,lp*rs % p]
+            assert claim == weights[0]*((1-a)*products[0]+a*(products[1]+products[2])) % p
+            assert all((actual-(actual+1)) % p for actual in products)
+            # Both selector coins follow all four endpoints and three products.
+            a, child = rng.randrange(p), rng.randrange(p)
+            claim = ((1-a)*((1-child)*lp+child*rp)+a*((1-child)*ls+child*rs)) % p
+            point = [child]+challenges
+            assert claim == plan.mle([((1-a)*dp+a*sp) % p for dp,sp in children],point)
+        assert claim == ((1-a)*plan.mle([d for d,s in leaves],point)
+                         +a*plan.mle([s for d,s in leaves],point)) % p
+
+
+def test_lookup_fraction_core_accounts_replay_without_admitting_gelu():
+    config = plan.pinned_model_config()
+    lookups = config['layers']*150*config['intermediate_size']
+    table = config['layers']*((1 << 16)-1)  # symmetric i16, excludes -32768
+    s = plan.lookup_fraction_screen(lookups,table)
+    assert (lookups,table) == (193536000,3932100)
+    assert s['layers'] == 28 and s['rounds'] == 378
+    assert s['extension_corrections'] == 1714 and s['private_products'] == 85
+    assert s['payload_before_source_adapters_framing_and_shared_closures'] == 41136
+    assert s['zero_residuals'] == 408 and s['extension_challenges'] == 436
+    assert s['conditional_interactive_error_numerator_before_source_mac_fs'] == 197469290
+    assert s['full_tree_two_field_arrays_bytes'] == 25769803728 > 6442450944
+    assert s['post_alpha_tree_generations'] == 57
+    assert s['final_source_endpoint_visits'] == 1
+    assert s['post_alpha_source_visits'] == 58
+    assert s['post_alpha_query_row_reads'] == 58*lookups
+    assert s['post_alpha_histogram_row_reads'] == 58*table
+    assert s['local_arrays_256_byte_aligned']['four_node_tails'] == 100663296
+    assert s['extra_trace_pcs_instances'] == 0 and not s['credit']
+    assert s['complete_field_work_reader_and_global_liveness'] is None
+    assert s['concrete_table_semantics_and_common_source_adapters'] is None
+    for n in range(1,7):
+        for cap in range(n):
+            small = plan.lookup_fraction_screen((1 << n)-1,1,cap)
+            generations, merges = 1,(1 << n)-1
+            for depth in range(n):
+                for _ in range(max(0,depth-cap)+1):
+                    generations += 1
+                    # Generate every child subtree, each of size 2^(n-d-1).
+                    merges += sum((1 << (n-depth-1))-1 for _ in range(1 << (depth+1)))
+            assert small['post_alpha_tree_generations'] == generations
+            assert small['tree_rebuild_field_products'] == 3*merges
+    for args in ((0,1), (plan.P,1), (1,0), (1,1,21), (1 << 35,1), (True,1)):
+        with pytest.raises(ValueError):
+            plan.lookup_fraction_screen(*args)
+
+
 def test_byte_range_product_tree_and_cubic_gkr_end_at_same_source():
     p, rng = plan.P, random.Random(20260908)
     def eq(point, index):

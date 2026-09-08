@@ -269,9 +269,12 @@ authorization.
 The [S+Y+RoPE bridge](c7.1-auxiliary-witness.md#raw-rope-nella-sorgente-comune)
 now includes bounded raw reads, RoPE form fill/public evaluation, and
 work/lifetimes with the synthetic RMS-J profiles. These are not
-full-certificate or physical-liveness results. Next: complete the common
-Sigma/RNE form census and remaining W-free kernels/readers in the shared
-source schedule before adopting the extension. Actual
+full-certificate or physical-liveness results. The conditional
+[public lookup core](c7.1-cut-witness.md#lookup-pubbliche-nucleo-frazionario-nella-stessa-sorgente)
+now reduces membership to three same-source forms, without a reciprocal PCS.
+Next: instantiate its public nonlinear tables, Sigma/RNE adapters and W-free
+reader/work, alongside the remaining Gamma form census, before adopting
+either extension. Actual
 profiles, native refinement and global cryptographic obligations remain open.
 Counts and distinct S/S+Y comparison scopes stay in R3, not copied here.
 

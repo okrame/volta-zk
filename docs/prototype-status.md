@@ -271,10 +271,11 @@ now includes bounded raw reads, RoPE form fill/public evaluation, and
 work/lifetimes with the synthetic RMS-J profiles. These are not
 full-certificate or physical-liveness results. The conditional
 [public lookup core](c7.1-cut-witness.md#lookup-pubbliche-nucleo-frazionario-nella-stessa-sorgente)
-now reduces membership to three same-source forms, without a reciprocal PCS.
-Next: instantiate its public nonlinear tables, Sigma/RNE adapters and W-free
-reader/work, alongside the remaining Gamma form census, before adopting
-either extension. Actual
+now has a [GELU Sigma/RNE adapter](c7.1-auxiliary-witness.md#gelu-output-istogrammi-e-input-rne-nella-stessa-sorgente)
+with pinned input routing and an all-context source-path recount.
+Next: instantiate its public nonlinear tables and W-free reader/work,
+then compose retained storage and the remaining Gamma forms before adopting
+the source extensions. Actual
 profiles, native refinement and global cryptographic obligations remain open.
 Counts and distinct S/S+Y comparison scopes stay in R3, not copied here.
 

@@ -5416,6 +5416,152 @@ def test_internal_only_tree_cache_reconstructs_paths_from_queried_sibling_column
             assert digest != internal[1]
 
 
+def test_gelu_lookup_layout_gamma_and_all_context_payload_recount():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_text())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition']=='private_text'])
+    extra = plan.gelu_lookup_sources(cohorts)
+    assert len(extra) == 120
+    byte,words = plan.auxiliary_word_layout(extra,all_word_cubes=True)
+    assert plan.auxiliary_word_layout(extra) == (byte,[])
+    assert len(words) == len(byte) == 1680
+    assert Counter(extra[t[0]]['source'] for t in words) == {'GELU_outputs':720,'GELU_histogram':960}
+    for s in extra[:60]:
+        gate = cohorts[s['input_source_id']]
+        assert (gate['layer'],gate['operation'],s['shape']) == (s['layer'],'gate_proj',(1,150,21504))
+    before = plan.gamma_barrier_plan(cohorts,True,True)
+    gamma = plan.gamma_barrier_plan(cohorts,True,True,True)
+    by_op = {(r['layer'],r['operation']):r for r in gamma['cohorts']}
+    for layer,producer in gamma['gelu_input_demands']:
+        gate,gelu,multiply = [by_op[layer,op] for op in ('gate_proj','gelu_tanh','gate_up_mul')]
+        assert producer == gate['ordinal'] and gate['kind'] == 'rne48'
+        assert 'GELU_lookup_input' in gate['seeds'] and gate['dependencies'] == []
+        assert gelu['kind'] == 'gelu_output_boundary' and gelu['dependencies'] == []
+        assert gelu['query_rows'] == 150 and 'GELU_lookup_validity' in gelu['seeds']
+        assert multiply['kind'] == 'kernel' and set(multiply['dependencies']) == {
+            gelu['ordinal'],by_op[layer,'up_proj']['ordinal']}
+    summary = gamma['summary']
+    assert (summary['ordinary_kernel_cohorts'],summary['final_rne_cohorts'],summary['source_boundary_cohorts']) == (374,651,543)
+    assert summary['retained_cohort_edges'] == before['summary']['retained_cohort_edges']-60 == 554
+    assert summary['delegated_tensor_edges']['GELU_lookup'] == 60*51
+    assert summary['plan_sha256'] == '2b32ad7157b2eb5f0a1f5ceb1ef3c0f82b1e4a6d540cebda46ee28472da1f9f4'
+    assert before['summary']['plan_sha256'] == 'a598a635062c1c1db0fb4628a24d80714122a38967f66e055c7d1c2ed4517811'
+    rope = plan.rope_byte_bridge_screen(cohorts)
+    s = plan.gelu_byte_bridge_screen(cohorts,rope)
+    assert s['extra_virtual_source_bytes'] == 402800400
+    assert s['histogram_live_bytes_before_alignment'] == 15728400
+    assert s['fraction_layout_sha256'] == '77be1bb30fd8e1c073ce958345a61a9ca6a8c6aae536414c343301522a190b67'
+    assert s['changed_sigma_padding_contexts'] == list(range(534,767))
+    assert s['maximum_known_partial_payload_before_rms_joint_gamma_and_framing'] == 33248616
+    assert s['remaining_payload_before_missing_components'] == 1751384
+    assert s['same_rq_layout'] and s['additional_input_copies'] == s['additional_pcs_instances'] == 0
+    assert not s['credit'] and s['complete_tables_reader_work_and_physical_liveness'] is None
+    def source_count(live):
+        n = (live-1).bit_length()
+        zeros = (1 << n)//(1 << 23)-(live+(1 << 23)-1)//(1 << 23)
+        b,e = {33:(1083700,12903),34:(1740580,15400)}[n]
+        return b-357*zeros,e
+    for old,delta in enumerate(s['source_path_correction_deltas_by_old_tokens']):
+        live = 7264807038+1728000*old
+        b0,e0 = source_count(live)
+        b1,e1 = source_count(live+402800400)
+        assert delta == (b1-b0,e1-e0+1714)
+        assert s['known_partial_payload_by_old_tokens'][old] == (
+            rope['known_partial_payload_by_old_tokens'][old]+8*delta[0]+24*delta[1])
+    for case in s['cases']:
+        old = case['old_tokens']
+        base = (plan.auxiliary_word_sources(cohorts,old)+plan.rms_statistic_byte_sources(cohorts)
+                +plan.rms_output_byte_sources(cohorts)+plan.rope_raw_byte_sources(cohorts))
+        old_bytes,old_rq = plan.auxiliary_word_layout(base)
+        all_bytes,rq = plan.auxiliary_word_layout(base+extra)
+        assert rq == old_rq and len(all_bytes) == len(old_bytes)+1680
+        assert case['source_byte_cells'] == 7667607438+1728000*old
+        assert case['source_templates'] == 4975
+        f = plan.gelu_lookup_leaf_forms(extra,base+extra,all_bytes,rq,list(range(2,30)))
+        assert sum(map(len,f['x_rq_terms_by_source'].values())) == len(f['y_byte_terms']) == 720
+        assert len(f['histogram_byte_terms']) == len(f['public_table_terms']) == 960
+        assert f['additional_mac_corrections'] == 0
+    with pytest.raises(ValueError):
+        plan.gamma_barrier_plan(cohorts,True,True,1)
+    with pytest.raises(ValueError):
+        plan.auxiliary_word_layout(extra,all_word_cubes=1)
+
+
+def test_gelu_lookup_leaf_cubes_match_sigma_rne_and_public_table_forms():
+    p = plan.P
+    def source(role,layer,shape,word,operation,rne=False):
+        return {'source':role,'source_id':layer,'layer':layer,'shape':shape,
+                'word_bytes':word,'operation':operation,'rne':rne,'token_offset':0}
+    raw = [source('B',i,(1,3,5),6,'gate_proj',True) for i in range(2)]
+    # An unrelated RQ source changes the common positions; it is not a LUT leaf.
+    raw.append(source('Replay',0,(1,2,3),6,'qk_raw',True))
+    outputs = [dict(source('GELU_outputs',i,(1,3,5),2,'gelu_tanh'),input_source_id=i) for i in range(2)]
+    hist = [source('GELU_histogram',i,(1,1,5+i),4,'gelu_multiplicity') for i in range(2)]
+    lookup, sources = outputs+hist,raw+outputs+hist
+    byte,rq = plan.auxiliary_word_layout(sources)
+    _,fractions = plan.auxiliary_word_layout(lookup,all_word_cubes=True)
+    values = [[(j*17+i*11)%79-39 for j in range(math.prod(s['shape']))] for i,s in enumerate(sources)]
+    shifts = {0:1,1:2,2:0}
+    sigma = [0]*(1 << (sum(s['word_bytes']*math.prod(s['shape']) for s in sources)-1).bit_length())
+    rne = [0]*(1 << (sum(math.prod(t[3:6]) for t in rq)-1).bit_length())
+    for i,row,col,heads,rows,cols,byte0,count,offset in byte:
+        s = sources[i]
+        for r,c,j in product(range(rows),range(cols),range(count)):
+            value = values[i][(row+r)*s['shape'][2]+col+c]+(1 << (8*s['word_bytes']-1))
+            sigma[offset+j+count*(c+cols*r)] = value >> (8*(byte0+j)) & 255
+    for i,row,col,heads,rows,cols,offset in rq:
+        for r,c in product(range(rows),range(cols)):
+            value = values[i][(row+r)*sources[i]['shape'][2]+col+c]
+            rne[offset+c+cols*r] = plan.rne_i48_to_i16(value,shifts[i]) % p
+    live = sum(math.prod(s['shape']) for s in lookup)
+    n = (live-1).bit_length()
+    flat = {k:[0]*(1 << n) for k in ('X','Y','M','L','H','K','T0','T1','T2')}
+    tables = {i:[j*3+i-7 for j in range(5+i)] for i in range(2)}
+    for local_i,row,col,heads,rows,cols,offset in fractions:
+        s = lookup[local_i]
+        global_i = local_i+len(raw)
+        for r,c in product(range(rows),range(cols)):
+            index,original = offset+c+cols*r,(row+r)*s['shape'][2]+col+c
+            if s['source'] == 'GELU_outputs':
+                raw_i = s['input_source_id']
+                flat['X'][index] = plan.rne_i48_to_i16(values[raw_i][original],shifts[raw_i]) % p
+                flat['Y'][index] = values[global_i][original] % p
+                flat['L'][index],flat['K'][index] = 1,s['layer']
+            else:
+                flat['M'][index],flat['H'][index] = values[global_i][original] % p,1
+                flat['T0'][index] = col+c-32767
+                flat['T1'][index],flat['T2'][index] = tables[s['layer']][col+c],s['layer']
+    def evaluate(data,terms):
+        return sum(coefficient*plan.mle(data[offset:offset+(1 << len(point))],point)
+                   for offset,point,coefficient in terms) % p
+    for point in [list(bits) for bits in product((0,1),repeat=n)]+[list(range(2,n+2))]:
+        f = plan.gelu_lookup_leaf_forms(lookup,sources,byte,rq,point)
+        xterms = [t for terms in f['x_rq_terms_by_source'].values() for t in terms]
+        assert evaluate(rne,xterms) == plan.mle(flat['X'],point)
+        assert (evaluate(sigma,f['y_byte_terms'])-f['y_bias']) % p == plan.mle(flat['Y'],point)
+        assert (evaluate(sigma,f['histogram_byte_terms'])-f['histogram_bias']) % p == plan.mle(flat['M'],point)
+        assert f['query_mass'] == plan.mle(flat['L'],point)
+        assert f['histogram_mass'] == plan.mle(flat['H'],point)
+        assert f['profile_moment'] == plan.mle(flat['K'],point)
+        assert f['dummy_mass'] == (1-plan.mle(flat['L'],point)-plan.mle(flat['H'],point)) % p
+        for component in range(3):
+            actual = 0
+            for layer,col,width,q,coefficient in f['public_table_terms']:
+                values_t = ([j-32767 for j in range(col,col+width)] if component == 0 else
+                            tables[layer][col:col+width] if component == 1 else [layer]*width)
+                actual += coefficient*plan.mle(values_t,q)
+            assert actual % p == plan.mle(flat[f'T{component}'],point)
+    assert f['y_bias'] != 0 and f['histogram_bias'] != 0  # unsigned decoding proves another value
+    altered_sigma = sigma.copy()
+    altered_sigma[f['y_byte_terms'][0][0]] += 1
+    assert evaluate(altered_sigma,f['y_byte_terms']) != evaluate(sigma,f['y_byte_terms'])
+    wrong_raw = [dict(s) for s in sources]
+    wrong_raw[0]['operation'] = 'up_proj'
+    for bad_sources,bad_rq,bad_point in ((wrong_raw,rq,point),(sources,[],point),(sources,rq,point[:-1])):
+        with pytest.raises(ValueError):
+            plan.gelu_lookup_leaf_forms(lookup,bad_sources,byte,bad_rq,bad_point)
+
+
 def test_lookup_fraction_identity_poles_adaptive_histogram_and_characteristic():
     p = plan.P
     table, query, counts = [2, 5, 9], [9, 2, 9], [1, 0, 2]

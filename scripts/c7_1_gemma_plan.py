@@ -343,7 +343,7 @@ def rms_boolean_circuit(columns, input_exponent, scale_exponent, output_exponent
     if width > 128:
         raise ValueError('RMS circuit exceeds the local 128-bit DAG limit')
     inputs = pw+48+(16 if verify_output else 0)
-    gates, depths = [], [0]*(2+inputs)
+    gates, depths, shared = [], [0]*(2+inputs), {}
     def gate(op, x, y):
         if x == y:
             return x if op == 'and' else 0
@@ -354,7 +354,11 @@ def rms_boolean_circuit(columns, input_exponent, scale_exponent, output_exponent
                 return y if x == 1 else x
         elif x == 0 or y == 0:
             return y if x == 0 else x
+        key = (op,min(x,y),max(x,y))  # Public commutative gate identity, never witness values.
+        if key in shared:
+            return shared[key]
         result = len(depths)
+        shared[key] = result
         gates.append((op, x, y))
         depths.append(1+max(depths[x], depths[y]))
         return result
@@ -408,7 +412,13 @@ def rms_boolean_circuit(columns, input_exponent, scale_exponent, output_exponent
     def multiply(x, y, n):
         if len(y) > len(x):
             x,y = y,x
-        rows = [[0]*i+[both(u,v) for u in x[:n-i]] for i,v in enumerate(y[:n]) if v != 0]
+        if x == y:
+            # x_i^2=x_i; each off-diagonal pair contributes once at bit i+j+1.
+            rows = [[x[i//2] if i % 2 == 0 and i//2 < len(x) else 0 for i in range(n)]]
+            rows += [[0]*(2*i+2)+[both(u,v) for v in x[i+1:n-i-1]]
+                     for i,u in enumerate(x) if u != 0 and 2*i+2 < n]
+        else:
+            rows = [[0]*i+[both(u,v) for u in x[:n-i]] for i,v in enumerate(y[:n]) if v != 0]
         return sum_words(rows,n)
     def compare(x, y, n):
         x,y = pad(x,n),pad(y,n)

@@ -158,7 +158,9 @@ authorization.
   is justified by conditional integer lifting from P0/statistics and W/X ranges;
   the [joint GKR core](c7.1-cut-witness.md#riduzione-gkr-rms-con-asse-delle-celle-condiviso)
   gives explicit copies/wiring and an interactive transfer to the same
-  inputs. The [R3/R2 input adapter and same-source Y](c7.1-auxiliary-witness.md#output-rms-e-port-di-ingresso-nella-stessa-sorgente)
+  inputs; shared gates and specialized squares now reduce the public DAG
+  and its synthetic replay counts, without changing the RMS relation.
+  The [R3/R2 input adapter and same-source Y](c7.1-auxiliary-witness.md#output-rms-e-port-di-ingresso-nella-stessa-sorgente)
   now specify the predicate/consumer binding and source-path deltas for every
   context. Actual exponents, Gamma caller census and replay/cache costs remain
   open; Y is not admitted. Current accounting stays in [R3 with S](c7.1-auxiliary-witness.md#statistiche-rms-nella-stessa-sorgente-byte).

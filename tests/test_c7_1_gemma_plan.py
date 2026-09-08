@@ -2377,8 +2377,8 @@ def test_rms_scalar_exact_output_preserves_epsilon_exponents_sign_and_integer_or
 
 
 @pytest.mark.parametrize('columns,ex,ew,ey,weighted,counts', [
-    (5376, 0, 0, 0, True, (167365, 1036, 52651, 99)),
-    (256, 0, 0, 0, False, (152975, 977, 43404, 97)),
+    (5376, 0, 0, 0, True, (151903, 962, 46712, 98)),
+    (256, 0, 0, 0, False, (139419, 904, 39971, 97)),
     (256, 0, 0, 4, True, None),
     (512, -2, 0, -1, False, None),
 ])
@@ -2392,6 +2392,7 @@ def test_rms_boolean_dags_match_exact_scalar_and_reject_altered_outputs(columns,
         assert summary['requires_copy_wires_or_general_dag_reduction']
         assert summary['requires_separately_bound_candidate_y'] == summary['verify_output']
         assert sum(summary['binary_gates_by_op'].values()) == len(circuit['gates'])
+        assert len({(op,min(x,y),max(x,y)) for op,x,y in circuit['gates']}) == len(circuit['gates'])
         for wire, (op, x, y) in enumerate(circuit['gates'], 2+circuit['input_bits']):
             assert op in ('and', 'xor') and 0 <= x < wire and 0 <= y < wire
     if counts:
@@ -2450,6 +2451,18 @@ def test_rms_boolean_dags_match_exact_scalar_and_reject_altered_outputs(columns,
 
 
 def test_rms_boolean_scope_caps_and_literal_cohort_certificate_exclusion():
+    # Square's diagonal + shifted upper triangle, including truncated products.
+    # This independent integer identity also covers constant/zero input bits.
+    for word in range(256):
+        diagonal = sum((word >> i & 1) << (2*i) for i in range(8))
+        triangle = sum(((word >> i & 1)*(word >> j & 1)) << (i+j+1)
+                       for i in range(8) for j in range(i+1,8))
+        assert diagonal+triangle == word*word
+        for bits in range(1,17):
+            grouped = [sum((word >> i & 1) << (2*i) for i in range(8) if 2*i < bits)]
+            grouped += [sum(((word >> i & 1)*(word >> j & 1)) << (i+j+1)
+                            for j in range(i+1,min(8,bits-i-1))) for i in range(8) if 2*i+2 < bits]
+            assert sum(grouped) % (1 << bits) == word*word % (1 << bits)
     for args in ((256, 0, 0, 0, 1), (256, 0, 0, 0, True, 1),
                  (256, 0, 1, 0, False), (0, 0, 0, 0), (256, True, 0, 0)):
         with pytest.raises(ValueError):
@@ -2499,8 +2512,8 @@ def test_rms_boolean_scope_caps_and_literal_cohort_certificate_exclusion():
 def test_rms_live_wire_layering_preserves_outputs_and_counts_joint_profiles():
     def evaluate(op, x, y):
         return x & y if op == 'and' else x ^ y if op == 'xor' else x
-    expected = {False: (1036, 10316, 50676, 182072, 4444320, 132432),
-                True: (99, 920, 4711, 17004, 415224, 12392)}
+    expected = {False: (962, 9433, 46764, 168190, 4105824, 122388),
+                True: (98, 902, 4646, 16780, 409776, 12232)}
     for verify in (False, True):
         profiles = []
         for weighted, columns in ((True, 256), (True, 512), (True, 5376), (False, 256), (False, 512)):
@@ -2537,7 +2550,7 @@ def test_rms_live_wire_layering_preserves_outputs_and_counts_joint_profiles():
         assert screen['endpoint_batch_challenges'] == screen['depth']
         assert screen['reference_folded_array_bytes'] == 24*(1 << 21)
         assert screen['reference_two_gate_vectors_bytes'] == (196608 if verify else 98304)
-        assert screen['reference_input_tuple_visits'] == (1811 if verify else 19640)
+        assert screen['reference_input_tuple_visits'] == (1784 if verify else 18091)
         assert screen['plaintext_and_tag_records_bytes'] == 2*screen['payload_before_incoming_input_adapters_and_shared_closures']
         assert screen['complete_input_forms_and_source_bindings'] is screen['complete_witness_schedule_memory_and_work'] is None
         assert not screen['credit']
@@ -2756,7 +2769,7 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     changed = [o for o in range(3947) if (old_initial+1728000*o-1).bit_length() !=
                (old_initial+s['rms_output_packed_bytes_if_retained']+1728000*o-1).bit_length()]
     assert changed == list(range(1183, 1586))  # endpoint domains alone do NOT cover all contexts
-    assert 1811*s['rms_output_live_cells'] == 630113950464
+    assert 1784*s['rms_output_live_cells'] == 620719650816
 
     extended = plan.rms_byte_bridge_screen(cohorts, True)
     assert extended['includes_rms_outputs'] and extended['rms_output_sources'] == 421

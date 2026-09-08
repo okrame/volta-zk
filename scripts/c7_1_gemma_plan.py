@@ -280,6 +280,46 @@ def rms_rne_i16(product, statistic, columns, input_exponent, scale_exponent, out
     return -magnitude if product < 0 else magnitude
 
 
+def rms_row_multiplier(numerator, denominator):
+    """Six-byte honest cache floor(2^32*sqrt(A/D)), capped at 2^47.
+
+    A is public; D=B+C*S uses the existing row statistic. This cache is
+    neither a new authenticated source nor a substitute for the RMS predicate.
+    """
+    natural(numerator, 'RMS row numerator', 1, (1 << 4096)-1)
+    natural(denominator, 'RMS row denominator', 1, (1 << 4096)-1)
+    if numerator >= denominator << 30:
+        return 1 << 47  # Every nonzero integer P overflows.
+    return math.isqrt((numerator << 64)//denominator)
+
+
+def rms_rne_from_multiplier(product, numerator, denominator, multiplier):
+    """Honest getter from rms_row_multiplier's SAME A,D and validated P.
+
+    Requires the prepared multiplier, not an arbitrary prover-supplied hint.
+    The unchanged predicate independently checks Y; this is not a verifier.
+    One small fixed-point rounding and at most one exact wide comparison.
+    """
+    natural(product, 'RMS integer product', -32767**2, 32767**2)
+    natural(numerator, 'RMS row numerator', 1, (1 << 4096)-1)
+    natural(denominator, 'RMS row denominator', 1, (1 << 4096)-1)
+    natural(multiplier, 'RMS row multiplier', 0, 1 << 47)
+    if product == 0:
+        return 0
+    if multiplier == 1 << 47:
+        raise ValueError('RMS output overflows symmetric i16')
+    scaled = abs(product)*multiplier
+    floor, remainder = scaled >> 32, scaled & ((1 << 32)-1)
+    magnitude = floor+int(remainder > 1 << 31 or remainder == 1 << 31 and floor & 1)
+    if magnitude > 32767:
+        raise ValueError('RMS output overflows symmetric i16')
+    middle = 4*numerator*product**2-denominator*(2*magnitude+1)**2
+    magnitude += int(middle > 0 or middle == 0 and magnitude & 1)
+    if magnitude > 32767:
+        raise ValueError('RMS output overflows symmetric i16')
+    return -magnitude if product < 0 else magnitude
+
+
 def rms_boolean_circuit(columns, input_exponent, scale_exponent, output_exponent,
                         weighted=True, verify_output=False):
     """Small explicit AND/XOR DAG for exact RMS, NOT a GKR/MAC prover.
@@ -3089,6 +3129,7 @@ def rms_byte_bridge_screen(cohorts, include_rms_outputs=False):
         # Two split MAC values, one 29-coordinate cell point and 128 port weights.
         # No Y array or actual-profile RMS-J gates/records are reserved here.
         raw_arrays['rms_input_boundary_records_and_forms'] = 2*48+24*(29+128)
+        raw_arrays['rms_row_multiplier_cache'] = packed  # Same six-byte row count as S; NOT in Sigma.
     arrays = {k: 256*((v+255)//256) for k, v in raw_arrays.items()}
     extra_bytes, cases, final_envelope = sum(arrays.values()), [], None
     config = pinned_model_config()
@@ -3191,6 +3232,9 @@ def rms_byte_bridge_screen(cohorts, include_rms_outputs=False):
             'rms_input_split_corrections': 2*int(include_rms_outputs),
             'rms_output_all_context_comparison': output_comparison,
             'known_bulk_output_reads_before_gamma_and_rms_replay': (16+95+2+bit_max['source_visits'] if include_rms_outputs else 0),
+            'rms_row_multiplier_preparations': stats['statistic_rows']*int(include_rms_outputs),
+            'rms_row_multiplier_preparation_binary_rounds_upper': 47*stats['statistic_rows']*int(include_rms_outputs),
+            'rms_lane_exact_comparisons_upper': int(include_rms_outputs),
             'initial_statistic_i16_squares': stats['statistic_input_cells'],
             'initial_statistic_integer_additions': stats['statistic_input_cells']-stats['statistic_rows'],
             'extra_byte_cubes': len(extra_tiles), 'extra_descriptor_bytes': descriptors,

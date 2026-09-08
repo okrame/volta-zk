@@ -2659,6 +2659,75 @@ def test_joint_rms_gkr_shares_cells_carries_wires_and_transfers_to_the_same_inpu
     assert by_intervals == correct
 
 
+def test_rms_row_multiplier_getter_matches_exact_rounding_and_prices_shared_cache():
+    # The reference does division/isqrt PER OUTPUT; the cache does it once
+    # per row, then one exact midpoint correction, never a float comparison.
+    ratios = [(a,d) for a in range(1,13) for d in range(1,17)]
+    ratios += [(1,36), (1, 1 << 80), (1 << 30, 1), ((1 << 94)-1, 1 << 64),
+               (1 << 94, (1 << 64)+1), ((1 << 300)+1, (1 << 300)-1)]
+    rng = random.Random(7132)
+    ratios += [(rng.randrange(1, 1 << 80), rng.randrange(1, 1 << 96)) for _ in range(100)]
+    products = list(range(-31,32))+[32767, -32767, 196605, -196605, 32767**2, -32767**2]
+    corrections = 0
+    for a, denominator in ratios:
+        multiplier = plan.rms_row_multiplier(a, denominator)
+        assert 0 <= multiplier <= 1 << 47 and multiplier < 1 << 48
+        # Independent 47-step preparation, after the clipping comparison.
+        binary = 1 << 47 if a >= denominator << 30 else 0
+        if not binary:
+            for bit in reversed(range(47)):
+                trial = binary+(1 << bit)
+                if denominator*trial**2 <= a << 64:
+                    binary = trial
+        assert multiplier == binary
+        for value in products:
+            try:
+                expected = plan.rne_sqrt_ratio(a*value**2, denominator)
+            except ValueError:
+                with pytest.raises(ValueError, match='overflows'):
+                    plan.rms_rne_from_multiplier(value, a, denominator, multiplier)
+                continue
+            actual = plan.rms_rne_from_multiplier(value, a, denominator, multiplier)
+            assert actual == (-expected if value < 0 else expected)
+            if multiplier < 1 << 47:
+                scaled = abs(value)*multiplier
+                q, remainder = divmod(scaled, 1 << 32)
+                estimate = q+int(remainder > 1 << 31 or remainder == 1 << 31 and q & 1)
+                assert 0 <= expected-estimate <= 1
+                corrections += expected-estimate
+    assert corrections > 0
+    multiplier = plan.rms_row_multiplier(1,36)
+    assert plan.rne_i48_to_i16(9*multiplier,32) == 1  # exact magnitude is 1.5 -> even 2
+    assert plan.rms_rne_from_multiplier(9,1,36,multiplier) == 2
+    assert plan.rms_rne_from_multiplier(15,1,36,multiplier) == 2  # 2.5 -> even 2
+    assert plan.rne_i48_to_i16(196605*multiplier,32) == 32767  # correction MUST reject overflow
+    with pytest.raises(ValueError, match='overflows'):
+        plan.rms_rne_from_multiplier(196605,1,36,multiplier)
+    # Binding Y to a root does not make an altered or stale cache correct.
+    assert plan.rms_rne_from_multiplier(9,1,36,0) == 1 != plan.rne_sqrt_ratio(81,36)
+    for width in (1,3,256,512,5376):
+        for ex,ew,ey in ((0,0,0), (-10,-14,-8), (1000,-1000,0), (-1000,1000,0)):
+            statistic = width*17**2
+            a,b,c = plan.rms_integer_coefficients(width,ex,ew,ey)
+            denominator = b+c*statistic
+            multiplier = plan.rms_row_multiplier(a,denominator)
+            for value in (0,-17,17*257,32767**2):
+                try:
+                    expected = plan.rms_rne_i16(value,statistic,width,ex,ew,ey)
+                except ValueError:
+                    with pytest.raises(ValueError, match='overflows'):
+                        plan.rms_rne_from_multiplier(value,a,denominator,multiplier)
+                else:
+                    assert plan.rms_rne_from_multiplier(value,a,denominator,multiplier) == expected
+    for a,d in ((0,1), (1,0), (True,1), (1,False), (1 << 4096,1)):
+        with pytest.raises(ValueError):
+            plan.rms_row_multiplier(a,d)
+    for value,a,d,multiplier in ((True,1,1,0), (32767**2+1,1,1,0), (0,1,1,True),
+                                 (0,1,1,-1), (0,1,1,(1 << 47)+1), (0,0,1,0)):
+        with pytest.raises(ValueError):
+            plan.rms_rne_from_multiplier(value,a,d,multiplier)
+
+
 def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     metadata = json.loads((Path(__file__).resolve().parents[1] /
                            'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_bytes())
@@ -2694,8 +2763,12 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     assert extended['rms_output_live_bytes'] == 695874048 and extended['rms_output_retained_array_bytes'] == 0
     assert extended['requires_output_regeneration_or_new_cache_schedule']
     assert extended['rms_input_split_corrections'] == 2
-    assert extended['all_context_known_phase_max_upper_bytes'] == 6338083200
-    assert extended['remaining_arena_bytes_before_missing_components'] == 104367744
+    assert extended['all_context_known_phase_max_upper_bytes'] == 6341540224
+    assert extended['remaining_arena_bytes_before_missing_components'] == 100910720
+    assert extended['rms_row_multiplier_preparations'] == 576149
+    assert extended['rms_row_multiplier_preparation_binary_rounds_upper'] == 27079003
+    assert extended['rms_lane_exact_comparisons_upper'] == 1
+    assert extended['additional_arrays_reserved_256_byte_aligned']['rms_row_multiplier_cache'] == 3457024
     assert extended['known_bulk_output_reads_before_gamma_and_rms_replay'] == 231
     for before, after, total in zip(bridge['cases'], extended['cases'], (25668776,32644752)):
         assert after['known_partial_payload_before_rms_circuit_gamma_and_framing'] == total

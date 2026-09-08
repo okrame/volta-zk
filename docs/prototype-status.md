@@ -156,9 +156,11 @@ authorization.
   including invalid inputs. A lower bound excludes the nominated separate
   cubic GKR per cohort when added to the current candidate. Input-guard reuse
   is justified by conditional integer lifting from P0/statistics and W/X ranges;
-  joint reduction remains open, and the predicate needs y bound to every
-  consumer. MAC/GKR compilation, incoming forms and actual exponents
-  are not supplied by the scalar checks. Source links and derivations live
+  the [joint GKR core](c7.1-cut-witness.md#riduzione-gkr-rms-con-asse-delle-celle-condiviso)
+  now gives explicit copies/wiring and an interactive transfer to the same
+  inputs. The predicate still needs y bound to every consumer; its preliminary
+  source and replay costs do not admit that cut or the runtime. Input adapters,
+  incoming forms and actual exponents remain uncompiled. Derivations live
   in that dossier; current resource totals live in [R3 with S](c7.1-auxiliary-witness.md#statistiche-rms-nella-stessa-sorgente-byte).
 - [R1: byte-bound requantization](c7.1-requantization.md) gives exact
   ties-to-even/overflow polynomials and a conditional MAC sumcheck for
@@ -307,12 +309,12 @@ authorization.
 
 ## Next work
 
-The immediate witness deliverable is a [joint RMS reduction with conditional guard reuse](c7.1-cut-witness.md#dag-booleani-rms-totali-e-limite-del-gkr-separato),
-with public wiring/copies, all incoming R3/R2 forms, whole-domain validity
-and explicit wire availability. Compare deterministic output generation
-with the predicate only after pricing its same-output binding; no free Y
-source is adopted. Charge records, masks, work and live arrays against the
-current R3 candidate, not earlier standalone screens.
+The immediate witness deliverable is the [predicate's same-source Y binding and R3/R2 input adapters](c7.1-cut-witness.md#riduzione-gkr-rms-con-asse-delle-celle-condiviso),
+with whole-domain validity and a recount over every context length. The
+joint core is specified, but literal replay is costly and adding every Y
+to the existing reservations exceeds the arena. Compile replay/cache costs
+before adopting Y; the current R3 totals still exclude it. A lower-payload
+deterministic-output circuit remains an alternative, not a parallel implementation.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
 In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)

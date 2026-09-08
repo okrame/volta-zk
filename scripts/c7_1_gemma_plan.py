@@ -439,6 +439,108 @@ def rms_boolean_circuit(columns, input_exponent, scale_exponent, output_exponent
                         'complete_mac_records_memory_and_feasibility': None}}
 
 
+def rms_layered_circuit(circuit):
+    """Public RMS DAG lowering: prune dead gates, explicitly carry live wires.
+
+    No cell replicas are allocated. Rows are (AND/XOR/copy, left, right)
+    in the preceding layer; input ports keep constants 0/1 then biased bits.
+    """
+    base = 2+natural(circuit['input_bits'], 'local circuit input bits', 0, 128)
+    gates, depths = circuit['gates'], [0]*base
+    for op, x, y in gates:
+        if op not in ('and', 'xor') or any(type(w) is not int or not 0 <= w < len(depths) for w in (x,y)):
+            raise ValueError('invalid topological Boolean gate')
+        depths.append(1+max(depths[x],depths[y]))
+    roots = [circuit['valid_wire']]+([] if circuit['summary']['verify_output'] else circuit['output_wires'])
+    if any(type(w) is not int or not 0 <= w < len(depths) for w in roots):
+        raise ValueError('invalid Boolean output wire')
+    height = natural(max(depths[w] for w in roots), 'local layered depth', 0, 4096)
+    needed, stack = set(), roots[:]
+    while stack:
+        wire = stack.pop()
+        if wire in needed:
+            continue
+        needed.add(wire)
+        if wire >= base:
+            stack.extend(gates[wire-base][1:])
+    last = {w: 0 for w in range(base)} | {w: 0 for w in needed}
+    for w in roots:
+        last[w] = height+1
+    for w in needed:
+        if w >= base:
+            for parent in gates[w-base][1:]:
+                last[parent] = max(last[parent],depths[w])
+    births, expires = [[] for _ in range(height+2)], [[] for _ in range(height+2)]
+    for w, end in last.items():
+        if w >= base:
+            births[depths[w]].append(w)
+        expires[max(1,end)].append(w)
+    # ponytail: materialize only a small public scalar blueprint, never Gemma's replicated trace.
+    expanded = sum(max(0,end-max(1,depths[w])) for w,end in last.items())
+    if expanded > 2_000_000:
+        raise ValueError('local layered circuit exceeds two million rows')
+    active, previous = set(range(base)), {w:w for w in range(base)}
+    levels, widths, copies = [], [base], 0
+    for depth in range(1,height+1):
+        active.difference_update(expires[depth])
+        active.update(births[depth])
+        wires = sorted(active)
+        layer = []
+        for w in wires:
+            if depths[w] == depth:
+                op,x,y = gates[w-base]
+                layer.append((op,previous[x],previous[y]))
+            else:
+                layer.append(('copy',previous[w],previous[w]))
+                copies += 1
+        levels.append(layer)
+        widths.append(len(layer))
+        previous = {w:i for i,w in enumerate(wires)}
+    return {'input_ports': base, 'levels': levels,
+            'output_positions': [previous[w] for w in roots],
+            'summary': {'credit': False, 'depth': height, 'level_widths': widths,
+                        'reachable_binary_gates': len(needed-set(range(base))),
+                        'copy_gates': copies, 'expanded_layer_rows': expanded,
+                        'complete_replicated_trace_memory_or_work': None}}
+
+
+def rms_joint_gkr_screen(profile_widths, cell_bits):
+    """Shared cell axis; shorter profiles carry their final table unchanged.
+
+    Four E coefficients per cell round, three per gate-index round;
+    two endpoints and one product per layer. Input adapters not included.
+    """
+    natural(cell_bits, 'RMS joint cell bits', 1, 32)
+    if not profile_widths or any(not widths for widths in profile_widths):
+        raise ValueError('missing public layer widths')
+    for widths in profile_widths:
+        for width in widths:
+            natural(width, 'local layer width', 1, 2_000_000)
+    depth = natural(max(map(len,profile_widths))-1, 'local joint depth', 0, 4096)
+    widths = [max(profile[min(d,len(profile)-1)] for profile in profile_widths) for d in range(depth+1)]
+    bits = [(w-1).bit_length() for w in widths]
+    gate_bits = sum(bits[:-1])
+    rounds = depth*cell_bits+2*gate_bits
+    coefficients = 4*depth*cell_bits+6*gate_bits
+    # ponytail: reference replay, not a fast prover; cache/fuse only with a new liveness/work proof.
+    prefixes = [max(0,cell_bits+s-21) for s in bits[:-1]]
+    return {'credit': False, 'profiles': len(profile_widths), 'depth': depth,
+            'joint_level_widths': widths, 'gate_index_bits_sum': gate_bits,
+            'sumcheck_rounds': rounds, 'sumcheck_coefficients': coefficients,
+            'endpoint_corrections': 2*depth, 'private_product_equations': depth,
+            'zero_residual_equations_before_input_adapters': rounds+depth,
+            'endpoint_batch_challenges': depth,
+            'interactive_transfer_numerator_before_input_adapters': 3*depth*cell_bits+4*gate_bits+depth,
+            'payload_before_incoming_input_adapters_and_shared_closures': 24*(coefficients+3*depth),
+            'reference_input_tuple_visits': sum(k+1 for k in prefixes),
+            'reference_cell_prefix_bits': prefixes,
+            'reference_folded_array_bytes': max([24*(1 << (cell_bits-k+s)) for k,s in zip(prefixes,bits[:-1])] or [0]),
+            'reference_two_gate_vectors_bytes': 48*max([1 << s for s in bits[:-1]] or [0]),
+            'plaintext_and_tag_records_bytes': 48*(coefficients+3*depth),
+            'complete_input_forms_and_source_bindings': None,
+            'complete_witness_schedule_memory_and_work': None}
+
+
 def rms_boolean_cohort_screen(cohorts):
     """Excludes literal separate cubic-layer GKRs, not all RMS protocols.
 
@@ -450,7 +552,10 @@ def rms_boolean_cohort_screen(cohorts):
     assert all(r['columns'] % 2 == 0 and 0 < r['columns']*32767**2 < (1 << 47)-1 for r in norms)
     flat = sum((r['statistic_rows']*r['columns']-1).bit_length() for r in norms)
     native = sum((r['statistic_rows']-1).bit_length()+(r['columns']-1).bit_length() for r in norms)
+    cells = sum(r['statistic_rows']*r['columns'] for r in norms)
     return {'credit': False, 'norm_cohorts': len(norms), 'minimum_cell_bits_sum': flat,
+            'rms_output_live_cells': cells, 'rms_output_packed_bytes_if_retained': 2*cells,
+            'joint_cell_bits': (cells-1).bit_length(),
             'native_cell_bits_sum': native, 'minimum_binary_depth_from_input_guard': 6,
             'literal_cubic_coefficients_per_cell_bit_per_layer': 4,
             'coefficient_payload_lower_bound': 24*4*6*flat,

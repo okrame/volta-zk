@@ -2496,6 +2496,200 @@ def test_rms_boolean_scope_caps_and_literal_cohort_certificate_exclusion():
     assert current['known_partial_payload_before_rms_circuit_gamma_and_framing']+s['coefficient_payload_lower_bound'] == 37286376 > 35000000
 
 
+def test_rms_live_wire_layering_preserves_outputs_and_counts_joint_profiles():
+    def evaluate(op, x, y):
+        return x & y if op == 'and' else x ^ y if op == 'xor' else x
+    expected = {False: (1036, 10316, 50676, 182072, 4444320, 132432),
+                True: (99, 920, 4711, 17004, 415224, 12392)}
+    for verify in (False, True):
+        profiles = []
+        for weighted, columns in ((True, 256), (True, 512), (True, 5376), (False, 256), (False, 512)):
+            circuit = plan.rms_boolean_circuit(columns, 0, 0, 0, weighted, verify)
+            layered = plan.rms_layered_circuit(circuit)
+            summary = layered['summary']
+            profiles.append(summary['level_widths'])
+            assert not summary['credit'] and summary['complete_replicated_trace_memory_or_work'] is None
+            assert summary['expanded_layer_rows'] == sum(map(len,layered['levels']))
+            assert summary['expanded_layer_rows'] == summary['copy_gates']+summary['reachable_binary_gates']
+            assert summary['reachable_binary_gates'] < len(circuit['gates'])  # dead public-folding work removed
+            previous_width = layered['input_ports']
+            for layer in layered['levels']:
+                assert all(op in ('and', 'xor', 'copy') and 0 <= a < previous_width and 0 <= b < previous_width
+                           for op, a, b in layer)
+                previous_width = len(layer)
+            for p_value, s_value, y in ((0, 0, 0), (-1, 0, -1000), (3, 1, -32768)):
+                words = [(p_value, circuit['product_bits']), (s_value, 48)]+([(y, 16)] if verify else [])
+                inputs = [0, 1]+[(value+(1 << (bits-1))) >> i & 1 for value, bits in words for i in range(bits)]
+                original = inputs[:]
+                for op, a, b in circuit['gates']:
+                    original.append(evaluate(op, original[a], original[b]))
+                current = inputs
+                for layer in layered['levels']:
+                    current = [evaluate(op, current[a], current[b]) for op, a, b in layer]
+                roots = [circuit['valid_wire']]+([] if verify else circuit['output_wires'])
+                assert [current[i] for i in layered['output_positions']] == [original[w] for w in roots]
+        screen = plan.rms_joint_gkr_screen(profiles, 29)
+        assert tuple(screen[k] for k in ('depth', 'gate_index_bits_sum', 'sumcheck_rounds',
+                     'sumcheck_coefficients', 'payload_before_incoming_input_adapters_and_shared_closures',
+                     'interactive_transfer_numerator_before_input_adapters')) == expected[verify]
+        assert screen['endpoint_corrections'] == 2*screen['private_product_equations'] == 2*screen['depth']
+        assert screen['zero_residual_equations_before_input_adapters'] == screen['sumcheck_rounds']+screen['depth']
+        assert screen['endpoint_batch_challenges'] == screen['depth']
+        assert screen['reference_folded_array_bytes'] == 24*(1 << 21)
+        assert screen['reference_two_gate_vectors_bytes'] == (196608 if verify else 98304)
+        assert screen['reference_input_tuple_visits'] == (1811 if verify else 19640)
+        assert screen['plaintext_and_tag_records_bytes'] == 2*screen['payload_before_incoming_input_adapters_and_shared_closures']
+        assert screen['complete_input_forms_and_source_bindings'] is screen['complete_witness_schedule_memory_and_work'] is None
+        assert not screen['credit']
+    for widths, bits in (([], 2), ([[]], 2), ([[0]], 2), ([[True]], 2), ([[1]], 0)):
+        with pytest.raises(ValueError):
+            plan.rms_joint_gkr_screen(widths, bits)
+    malformed = {'input_bits': 1, 'gates': [('and', 2, 3)], 'valid_wire': 3,
+                 'output_wires': [], 'summary': {'verify_output': True}}
+    with pytest.raises(ValueError, match='topological'):
+        plan.rms_layered_circuit(malformed)
+
+
+def test_joint_rms_gkr_shares_cells_carries_wires_and_transfers_to_the_same_inputs():
+    p = plan.P
+    def eq(point, index):
+        return math.prod(v if index >> i & 1 else 1-v for i, v in enumerate(point)) % p
+    def poly(samples):
+        coefficients = [0]*len(samples)
+        for j, value in enumerate(samples):
+            basis, denominator = [1], 1
+            for k in range(len(samples)):
+                if j == k:
+                    continue
+                basis = [(a-k*b) % p for a, b in zip([0]+basis, basis+[0])]
+                denominator = denominator*(j-k) % p
+            scale = value*pow(denominator, -1, p) % p
+            coefficients = [(a+scale*b) % p for a, b in zip(coefficients, basis)]
+        return coefficients
+    circuits = [
+        {'input_bits': 3, 'gates': [('and', 2, 3), ('xor', 5, 4), ('and', 6, 2), ('xor', 2, 3)],
+         'valid_wire': 7, 'output_wires': [], 'summary': {'verify_output': True}},
+        {'input_bits': 3, 'gates': [('xor', 2, 3), ('and', 5, 4)],
+         'valid_wire': 6, 'output_wires': [], 'summary': {'verify_output': True}},
+    ]
+    lowered = [plan.rms_layered_circuit(c) for c in circuits]
+    screen = plan.rms_joint_gkr_screen([c['summary']['level_widths'] for c in lowered], 2)
+    widths = [1 << (w-1).bit_length() for w in screen['joint_level_widths']]
+    programs = []
+    for c in lowered:
+        layers = c['levels'][:]
+        while len(layers) < screen['depth']:
+            layers.append([('copy', i, i) for i in range(len(layers[-1]))])
+        programs.append(layers)
+    assignments = [0, 1, 0, None]  # two noncontiguous cohorts of profile 0, plus public padding
+    cells = [[0, 1, 1, 1, 0], [0, 1, 1, 0, 1], [0, 1, 0, 1, 1], [0]*5]
+    tables = [[row+[0]*(widths[0]-len(row)) for row in cells]]
+    for level in range(screen['depth']):
+        following = []
+        for row, program in zip(tables[-1], assignments):
+            layer = [] if program is None else programs[program][level]
+            values = [(row[a]*row[b] if op == 'and' else row[a]+row[b]-2*row[a]*row[b]
+                       if op == 'xor' else row[a]) % p for op, a, b in layer]
+            following.append(values+[0]*(widths[level+1]-len(values)))
+        tables.append(following)
+    assert tables[-1] == [[1], [1], [0], [0]]
+    point, gate_form = [2, 5], [1]
+    claim = plan.mle(sum(tables[-1], []), point)
+    assert claim != plan.mle([1, 1, 1, 0], point)  # one invalid live cell cannot be omitted
+    coefficients_sent = rounds = 0
+    for level in reversed(range(1, screen['depth']+1)):
+        s = (widths[level-1]-1).bit_length()
+        source = sum(tables[level-1], [])  # gate || cell
+        profile_forms = [[eq(point, cell) if program == t else 0 for cell, program in enumerate(assignments)]
+                         for t in range(len(programs))]
+        def kernels(c, a, b):
+            result = [0, 0, 0]
+            for t, layers in enumerate(programs):
+                weight = plan.mle(profile_forms[t], c)
+                for gate, (op, left, right) in enumerate(layers[level-1]):
+                    factor = weight*gate_form[gate]*eq(a, left)*eq(b, right) % p
+                    terms = (0, 0, 1) if op == 'and' else (1, 1, -2) if op == 'xor' else (1, 0, 0)
+                    result = [(v+factor*k) % p for v, k in zip(result, terms)]
+            return result
+        def integrand(q):
+            c, a, b = q[:2], q[2:2+s], q[2+s:]
+            ka, kb, kc = kernels(c, a, b)
+            left, right = plan.mle(source, a+c), plan.mle(source, b+c)
+            return (ka*left+kb*right+kc*left*right) % p
+        def partial(prefix):
+            return sum(integrand(prefix+list(tail)) for tail in product((0, 1), repeat=2+2*s-len(prefix))) % p
+        assert claim == partial([]) and (claim+1) % p != partial([])
+        coins = [7+3*i+level for i in range(2+2*s)]
+        for i, coin in enumerate(coins):
+            degree = 3 if i < 2 else 2
+            samples = [partial(coins[:i]+[t]) for t in range(degree+1)]
+            coefficients = poly(samples)
+            def value(t):
+                return sum(v*pow(t, j, p) for j, v in enumerate(coefficients)) % p
+            assert claim == (value(0)+value(1)) % p
+            assert value(coin) == partial(coins[:i+1])
+            assert value(degree+1) == partial(coins[:i]+[degree+1])
+            claim = value(coin)
+            coefficients_sent += degree+1
+            rounds += 1
+        c, a, b = coins[:2], coins[2:2+s], coins[2+s:]
+        left, right = plan.mle(source, a+c), plan.mle(source, b+c)
+        ka, kb, kc = kernels(c, a, b)
+        product_value = left*right % p
+        assert claim == (ka*left+kb*right+kc*product_value) % p
+        assert (product_value+1) % p != left*right % p
+        beta = 13+level  # after BOTH endpoint records and the product record
+        claim = (left+beta*right) % p
+        point, gate_form = c, [(eq(a, j)+beta*eq(b, j)) % p for j in range(widths[level-1])]
+        assert claim == sum(eq(point, i)*gate_form[j]*row[j]
+                            for i, row in enumerate(tables[level-1]) for j in range(widths[level-1])) % p
+        # If beta is known early, wrong endpoints can preserve their mixed claim.
+        assert (left+1+beta*(right-pow(beta,-1,p))) % p == claim
+    assert rounds == screen['sumcheck_rounds'] and coefficients_sent == screen['sumcheck_coefficients']
+    assert claim == sum(eq(point, i)*gate_form[j]*row[j] for i, row in enumerate(tables[0])
+                        for j in range(widths[0])) % p  # SAME input table, not a trace PCS
+    assert sum((1+3*beta) % 7 == 0 for beta in range(7)) == 1
+    # Profile selection must be inside the MLE, not multiplied after folding.
+    selector, r, u = [1, 0, 1, 0], [2, 3], [5, 7]
+    correct = plan.mle([selector[i]*eq(r, i) % p for i in range(4)], u)
+    wrong = plan.mle(selector, u)*sum(eq(r, i)*eq(u, i) for i in range(4)) % p
+    assert correct != wrong
+    by_intervals = sum(plan.shifted_eq_form(r, u, 0, i+1)-plan.shifted_eq_form(r, u, 0, i)
+                       for i in (0, 2)) % p
+    assert by_intervals == correct
+
+
+def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_bytes())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition'] == 'private_text'])
+    stats = plan.rms_statistic_cohorts(cohorts)
+    outputs = [{'shape': (1,r['statistic_rows'],r['columns']), 'word_bytes': 2, 'rne': False} for r in stats]
+    tiles, rq = plan.auxiliary_word_layout(outputs)
+    s = plan.rms_boolean_cohort_screen(cohorts)
+    assert s['rms_output_live_cells'] == 347937024 and s['joint_cell_bits'] == 29
+    assert s['rms_output_packed_bytes_if_retained'] == 695874048
+    assert len(outputs) == 421 and len(tiles) == 3612 and not rq
+    assert 96*len(outputs)+72*len(tiles) == 300480
+    bridge = plan.rms_byte_bridge_screen(cohorts)
+    assert bridge['all_context_known_phase_max_upper_bytes']+s['rms_output_packed_bytes_if_retained'] == 7033652864 > 6442450944
+    for case, total in zip(bridge['cases'], (6545959038, 13364647038)):
+        sources = plan.auxiliary_word_sources(cohorts, case['old_tokens'])+plan.rms_statistic_byte_sources(cohorts)
+        before, rq_before = plan.auxiliary_word_layout(sources)
+        after, rq_after = plan.auxiliary_word_layout(sources+outputs)
+        assert rq_before == rq_after and len(after) == len(before)+3612
+        assert case['source_byte_cells']+s['rms_output_packed_bytes_if_retained'] == total
+        assert (total-1).bit_length() == (case['source_byte_cells']-1).bit_length()
+        block = 1 << 23
+        extra_rows = (total+block-1)//block-(case['source_byte_cells']+block-1)//block
+        assert extra_rows == 83 and 8*357*extra_rows == 237048
+    old_initial = bridge['cases'][0]['source_byte_cells']
+    changed = [o for o in range(3947) if (old_initial+1728000*o-1).bit_length() !=
+               (old_initial+s['rms_output_packed_bytes_if_retained']+1728000*o-1).bit_length()]
+    assert changed == list(range(1183, 1586))  # endpoint domains alone do NOT cover all contexts
+    assert 1811*s['rms_output_live_cells'] == 630113950464
+
+
 def test_rms_byte_extension_preserves_rq_and_recounts_padding_records_and_arrays():
     metadata = json.loads((Path(__file__).resolve().parents[1] /
                            "manifests/c7-d126-gemma31b-source-metadata-v1.json").read_bytes())

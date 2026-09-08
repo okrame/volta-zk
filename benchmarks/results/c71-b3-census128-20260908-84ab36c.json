@@ -1,0 +1,2136 @@
+{
+  "milestone": "c71-b3-matrix-census",
+  "git_commit": "84ab36c2e8e0a2505a69127f469c75cea40d4000",
+  "git_dirty": false,
+  "run_of_record": true,
+  "credit": false,
+  "build_profile": "dev unoptimized, debug symbols disabled, native CPU",
+  "binary_sha256": "9cd36aa7132b3c71f50ab8d82913ca9c42a8df6b8d8270bbd2d4f53c4a29bbad",
+  "rustflags": "-C target-cpu=native -C instrument-coverage -C llvm-args=-instrprof-atomic-counter-update-all",
+  "rustc_version": "rustc 1.96.1 (31fca3adb 2026-06-26)\nbinary: rustc\ncommit-hash: 31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd\ncommit-date: 2026-06-26\nhost: aarch64-unknown-linux-gnu\nrelease: 1.96.1\nLLVM version: 22.1.2\n",
+  "host": [
+    "Linux",
+    "mydebian",
+    "6.12.94+deb13-arm64",
+    "#1 SMP Debian 6.12.94-1 (2026-06-20)",
+    "aarch64"
+  ],
+  "build_command": [
+    "/home/okrame/.cargo/bin/cargo",
+    "build",
+    "--offline",
+    "--locked",
+    "-j",
+    "2",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-work-census",
+    "--example",
+    "c71_matrix"
+  ],
+  "runtime_limits": {
+    "wall_seconds": 60,
+    "address_space_and_RSS_bytes": 2147483648,
+    "process_threads": 2,
+    "rayon_workers": 1
+  },
+  "started_at_utc": "2026-09-08T19:12:45.933481+00:00",
+  "preflight_process": {
+    "returncode": 0,
+    "failure": null,
+    "wall_seconds": 0.021345712011680007,
+    "sampled_peak_RSS_bytes": 811008,
+    "sampled_peak_process_threads": 1,
+    "stderr": ""
+  },
+  "preflight": {
+    "alignment_bytes_per_full_fp3": 48,
+    "certificate_cap_bytes": 8388608,
+    "complete_fp3_multiplications": null,
+    "complete_fp_multiplications": null,
+    "complete_work_admission_bound": "infinity",
+    "credit": false,
+    "fs_request_limit": 1875498,
+    "full_fp3_per_attempt": 23,
+    "gamma_bytes_hex": "4337312d6d61747269782d76313b636f646563313b4670332d75332d323b50332d76332d762d313b424c414b45332d584f463b4a6f686e736f6e3132383b506f57303b4145533132382d4d4d4f3b4c504e36342c3531322c382c343b736574757031362c3132382c343b636865636b73323b706f6f6c333b6c6966743973564f4c4534383b6e6f2d73656375726974793b736c6f7473333b64726177383b64697374696e63743235363b636170384d694201000000ffffffff100000000000000001000000000000000e0000000000000004000000000000004300000000000000050000000000000034010000000000002a9e1c000000000005000000000000000100000000000000020000000000000002000000000000000200000000000000020000000000000005000000000000007e030000000000002a010000000000008a000000000000005a000000000000004300000000000000000000000000000000000000000000002a0100000000000001000000000000000d00000000000000010000000000000001000000000000000080000000000000e2a1bb109309eee0000000000000000000000000000000002a0100000000000001000000000000000b00000000000000020000000000000002000000000000000040000000000000b6fc9d959951c3f2000000000000000000000000000000008a0000000000000001000000000000000900000000000000020000000000000003000000000000000020000000000000cfc8a11d80b45306000000000000000000000000000000005a000000000000000100000000000000070000000000000002000000000000000400000000000000001000000000000072d9fe8bd72a8f9d000000000000000000000000000000004300000000000000000000000000000005000000000000000200000000000000040000000000000000080000000000004e1f415c2ad005190900000000000000010000000000000010000000000000003401000000000000000400000000000001000000000000007f0300000000000034010000000000000010000000000000020000000000000010000000000000003401000000000000000400000000000001000000000000002b0100000000000034010000000000000008000000000000020000000000000010000000000000003401000000000000000400000000000001000000000000008b0000000000000034010000000000000004000000000000020000000000000010000000000000003401000000000000000400000000000001000000000000005b000000000000003401000000000000000400000000000002000000000000001000000000000000340100000000000000040000000000007a0f66cc3e27ad8f675de8dbc06d2ef1cae866cd20457c28d542b61a414b229d9fdf6d7c5bafe3e0c29beed71c8f4c9401000000000000000000000000000000010000005555555500000000000000001643719557d71c95578f188f22cb96ab0000000000000000dde800b02547f8b91f2ce3cb005bfa35",
+    "gamma_digest": "e96896ada45f227b313dc5f2008c2cb38d2fbc19283e4b179c8eb20d0c70e55d",
+    "mask_domain_cells_sum": 17408,
+    "memory_allowance_bytes": 385875968,
+    "memory_allowance_kind": "analytic diagnostic allowance, not a proved peak",
+    "missing_work": [
+      "native PCS arithmetic including encoding, folding and verifier",
+      "PCG arithmetic",
+      "basis conversion and codec arithmetic"
+    ],
+    "n": 128,
+    "oracle_domain_cells_sum": 63488,
+    "padded_side": 128,
+    "required_limits": {
+      "process_threads": 2,
+      "rss_and_address_space_bytes": 2147483648,
+      "wall_seconds": 60
+    },
+    "root_attempts": 3,
+    "svole_per_full_fp3": 9
+  },
+  "counter_check_process": {
+    "returncode": 0,
+    "failure": null,
+    "wall_seconds": 0.021613174118101597,
+    "sampled_peak_RSS_bytes": 745472,
+    "sampled_peak_process_threads": 1,
+    "stderr": ""
+  },
+  "counter_check": {
+    "kind": "native LLVM atomic entry counters; diagnostic Goldilocks arithmetic",
+    "credit": false,
+    "phases": [
+      {
+        "index": 0,
+        "name": "initialization",
+        "base_products_inclusive": 244,
+        "fp3_products_including_squares": 7,
+        "categories": {
+          "p3_dot": 62,
+          "p3_fp3": 3,
+          "p3_fp3_base": 1,
+          "p3_fp3_square": 3,
+          "p3_packed_fp": 8,
+          "p3_packed_fp3_base": 2,
+          "p3_packed_fp_square": 2,
+          "p3_scalar_fp": 8,
+          "volta_fp": 164,
+          "volta_fp2": 1,
+          "volta_fp2_base": 1,
+          "volta_fp3": 1,
+          "volta_fp3_base": 1
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 37,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 176,
+            "symbol": "_RNvMs4_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp23mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "<volta_field::Fp2>::mul",
+            "category": "volta_fp2",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 184,
+            "symbol": "_RNvMs4_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp28mul_baseCskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "<volta_field::Fp2>::mul_base",
+            "category": "volta_fp2_base",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 280,
+            "symbol": "_RNvMsb_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp33mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "<volta_field::Fp3>::mul",
+            "category": "volta_fp3",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 290,
+            "symbol": "_RNvMsb_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp38mul_baseCskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "<volta_field::Fp3>::mul_base",
+            "category": "volta_fp3_base",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulB2_",
+            "calls": 127,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj0_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<0>",
+            "category": "p3_dot",
+            "products_per_call": 0
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj1_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<1>",
+            "category": "p3_dot",
+            "products_per_call": 0
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj2_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 10,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<2>",
+            "category": "p3_dot",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj3_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 14,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<3>",
+            "category": "p3_dot",
+            "products_per_call": 3
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 5,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB7_",
+            "calls": 3,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/aarch64_neon/packing.rs",
+            "line": 91,
+            "symbol": "_RNvXs3_NtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packingNtB5_20PackedGoldilocksNeonNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 4,
+            "name": "<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon as core::ops::arith::Mul>::mul",
+            "category": "p3_packed_fp",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/aarch64_neon/packing.rs",
+            "line": 130,
+            "symbol": "_RNvXs4_NtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packingNtB5_20PackedGoldilocksNeonNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing6squareCskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon as p3_field::field::PrimeCharacteristicRing>::square",
+            "category": "p3_packed_fp_square",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 533,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension12cubic_squareNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksECskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "p3_field::extension::cubic_extension::cubic_square::<p3_goldilocks::goldilocks::Goldilocks>",
+            "category": "p3_fp3_square",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 533,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension12cubic_squareNtNtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packing20PackedGoldilocksNeonECskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "p3_field::extension::cubic_extension::cubic_square::<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon>",
+            "category": "p3_fp3_square",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 523,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension19trinomial_cubic_mulNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksECskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "p3_field::extension::cubic_extension::trinomial_cubic_mul::<p3_goldilocks::goldilocks::Goldilocks>",
+            "category": "p3_fp3",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 523,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension19trinomial_cubic_mulNtNtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packing20PackedGoldilocksNeonECskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "p3_field::extension::cubic_extension::trinomial_cubic_mul::<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon>",
+            "category": "p3_fp3",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 447,
+            "symbol": "_RNvXsi_NtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extensionINtB7_8ExtFieldNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksKj3_NtB7_14CubicTrinomialEINtNtNtCshTXYa4fmOZs_4core3ops5arith3MulB1c_E3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "<p3_field::extension::ExtField<p3_goldilocks::goldilocks::Goldilocks, 3, p3_field::extension::CubicTrinomial> as core::ops::arith::Mul<p3_goldilocks::goldilocks::Goldilocks>>::mul",
+            "category": "p3_fp3_base",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/packed_cubic_extension.rs",
+            "line": 408,
+            "symbol": "_RNvXsn_NtNtCs7B6KuBTXnSt_8p3_field9extension22packed_cubic_extensionINtB7_14PackedExtFieldNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksNtNtNtB1u_12aarch64_neon7packing20PackedGoldilocksNeonKj3_NtB7_14CubicTrinomialEINtNtNtCshTXYa4fmOZs_4core3ops5arith3MulB2l_E3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "<p3_field::extension::PackedExtField<p3_goldilocks::goldilocks::Goldilocks, p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon, 3, p3_field::extension::CubicTrinomial> as core::ops::arith::Mul<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon>>::mul",
+            "category": "p3_packed_fp3_base",
+            "products_per_call": 2
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "name": "parallel_counter_check",
+        "base_products_inclusive": 2048,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 2048,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 2048,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          }
+        ]
+      }
+    ],
+    "total": {
+      "base_products_inclusive": 2292,
+      "fp3_products_including_squares": 7
+    },
+    "upstream_revision": "66e290615de1858f2f2f6a804158064c406cda1c",
+    "arithmetic_source_sha256": {
+      "field/src/array.rs": "fd84eab3769c2cc2dde86bc549a368d0adeca838c482bc29b765b67998b462a1",
+      "field/src/batch_inverse.rs": "57cf77e6b65880c0a68ae34bb900dc4caa817217d299a2f726e9a269a78c35c8",
+      "field/src/coset.rs": "45ea66155550b5d1313161c5e9acec9a4f3257a3f11b13cfc7b6e2e82256c17f",
+      "field/src/dup.rs": "866a17cc58ff96affe9cd88afc02dbc608d7636e679dcb4a0efd169db4baa070",
+      "field/src/exponentiation.rs": "2449631f8b995abb62b66c0b8442629b739921dd0b522bf5b04502608693db43",
+      "field/src/extension/binomial_extension.rs": "ec35f20f70c82237ebc86e0608b04d3ed6cacdd1d68b57a96ad2c08a2feaefd0",
+      "field/src/extension/complex.rs": "f643cea72a852223a34541a7539fd4790325455a135f96c994e100a1f012e9b6",
+      "field/src/extension/cubic_extension.rs": "41aeb040074c619247b05a9b12d5500dca5f1643a3c8483ee9aa02cde9878c28",
+      "field/src/extension/mod.rs": "aac05a6fdcc6f309792680d356c00ee491b4ad79790f746a04119523fe68ec38",
+      "field/src/extension/packed_binomial_extension.rs": "06ccacdb848df900f2cb1f23dc00fe34337472c1367be88e1b7d4b4792c50d38",
+      "field/src/extension/packed_cubic_extension.rs": "e115727bcbf2d22264bfce7d85bafe109128e394544307621eede738f6c1bab2",
+      "field/src/extension/packed_quintic_extension.rs": "520027ac0078ab5ded2a822709e25f04c3eaed5d0c34223423eb754b9c294686",
+      "field/src/extension/quintic_extension.rs": "47dda94a12d861afd41e85658e30cb0c132b83dc77455f32dddf721ac220e889",
+      "field/src/field.rs": "f6e171c13cb81daaaed085032ab1bed3f8f8f92f690a8834c08a08d036b49542",
+      "field/src/helpers.rs": "ea4b415e09ec71654a70568c9261fd0ad6c493c167a4eb07032dbd1b9e60f09f",
+      "field/src/integers.rs": "052cb3b093c72b22c1ccee95a07d9543cf2e5e11b1ea97ed99268cd7e7d4ff95",
+      "field/src/lib.rs": "b4df0b4b3bc0fa78b6666cbb7ce59e1c33a4329ee8dff4d5f0bb2c7cdf0d4cfd",
+      "field/src/op_assign_macros.rs": "3a1fb5eeef1b8a414dd0f9712e5ef9d877ce966407bcb8553b5edf9d1b07965f",
+      "field/src/packed/aarch64_neon.rs": "de0660bdf76ce67f88b5b2c285e6dbc2f8bec87293f44ff0cbb88dac5c86d1bd",
+      "field/src/packed/interleaves.rs": "4f0af347a2cd4add88f15f5ca4ed1fd3095d33a64399accdbd0cd556ead16578",
+      "field/src/packed/mod.rs": "101493582dde370a4dcfd141fda49dfe1be94a8bfc3ac4b966b14cd80c0c370d",
+      "field/src/packed/no_packing.rs": "9a43309de14da4ddb751426032bb91c2e2f68e4cef02f3554fc1231f5cbabfde",
+      "field/src/packed/packed_traits.rs": "3e9ff675b00b79330f0467ecfd036dd305f4e711a14740e82a07ebacc1012ca5",
+      "field/src/packed/tests_packed_mod.rs": "bae8ff80c291a3d7970585466cdce36f279424f12193fa81b612d8b45d251be0",
+      "field/src/packed/x86_64_avx.rs": "d1b6d17cad16e3b7b6a613b89dd6743a019e2fbd9cc348c81078acd2b3320100",
+      "field/src/sqrt.rs": "fa5b5a118b374de433734e68f2e27e95345dd5252e50aa5d4b442824d571b1b1",
+      "goldilocks/src/aarch64_neon/mds.rs": "53e0726be8d09ce3ea922ee39f868f038caa2f169dae9b73772af8f3a458e496",
+      "goldilocks/src/aarch64_neon/mod.rs": "d31ccd27d20cee84bab97619b428bb95a1189a7615fa318015b2ed0241b192d2",
+      "goldilocks/src/aarch64_neon/packing.rs": "580b153370fe7b5410a25c296731b8392cb7f9ef9a0951128eff6e81a2baab7c",
+      "goldilocks/src/aarch64_neon/poseidon1.rs": "681fee28840a6d1ab12e60dfc54572a41e6a332d6ff67741ef072e633f83aab1",
+      "goldilocks/src/aarch64_neon/poseidon1_asm.rs": "805ed8a4d3477914c0efa1d53816d05c489fab4e0f3214e077d80c3ee36f7131",
+      "goldilocks/src/aarch64_neon/poseidon2.rs": "97f4a68624fb0c7a4d571570c4ff528f0eef484d4975e347d9d7c5901c8e0118",
+      "goldilocks/src/aarch64_neon/poseidon2_asm.rs": "1bdbcfb287657d34b8f33ed4aa0a32913ccf87738ea9a19ddfcce57370696a34",
+      "goldilocks/src/aarch64_neon/utils.rs": "b9ceefa0a89ec670a38ce3f749c303bfa89e3983159b287f2a2e1f0fe986b7e9",
+      "goldilocks/src/bin/wasm_bench.rs": "17c9adb8f904ca8dbc42ca0ee0ca837f038a921adce6c4e1a479beb0a673d716",
+      "goldilocks/src/bin/wasm_smoke.rs": "8eeada1302314429597a41db9ec943629f927d944278ace0e5bc755ff15df5cb",
+      "goldilocks/src/extension.rs": "a22b3caad017169569b5689ed71f2a4608a23a839d4e5ce13c6ca5e145262689",
+      "goldilocks/src/goldilocks.rs": "c8c4f401a86024ed84d3b3d67ce1a1052afba20f124cce66d23adb92e9266ecb",
+      "goldilocks/src/lib.rs": "76d17f55d07b4a2aa174fcbfd7c612347e8f384cb63c7dd661374d2155c04f34",
+      "goldilocks/src/mds.rs": "07f347d8876d89244ff8c056e6b840d6830391073bf3833a2ea5aea3957eef26",
+      "goldilocks/src/poseidon1.rs": "91ace89967bd482649681bc5d0073dc18bed4cb0a80d81a34979dce39ec87285",
+      "goldilocks/src/poseidon2.rs": "c757d004dc0aed7ae5ea58eab3c39767fdd0a2c88e5105d272100e43844543dd",
+      "goldilocks/src/wasm32_simd128/mod.rs": "533b302757f75e6a32b51a970e3a600fd3679bc83c36af11d07ba63317d1f907",
+      "goldilocks/src/wasm32_simd128/packing.rs": "6963c239688857cb42dce0fb2a3e22087296812670d669406192f634568d0904",
+      "goldilocks/src/x86_64_avx2/mds.rs": "c1c74cec189d38f9bd988e040f29a2108b91c2efff1f4aa390644176329a0dcc",
+      "goldilocks/src/x86_64_avx2/mod.rs": "b0db43c3e70acd9c61f014ae404a8d565942248b4f9999d3fa515e47eb5ba37b",
+      "goldilocks/src/x86_64_avx2/packing.rs": "452d56e1c10469c15b3ce80acfe22415d5f4cacc63330a7fb5b2c21ac6c1ee3d",
+      "goldilocks/src/x86_64_avx2/poseidon2.rs": "e9487110661616bcd896fd4f89ba1c1a109e244e0c5869cf9cb2f95f84567cf3",
+      "goldilocks/src/x86_64_avx512/mds.rs": "59788a5a59ff74a3d747a2aa649259260e6c06eb39edd413eb0dba1a6c19e758",
+      "goldilocks/src/x86_64_avx512/mod.rs": "b0db43c3e70acd9c61f014ae404a8d565942248b4f9999d3fa515e47eb5ba37b",
+      "goldilocks/src/x86_64_avx512/packing.rs": "1a49e38f4aa9dfdd0520cf06282ae17fd893d5ada254452de40aeef1d4863759",
+      "goldilocks/src/x86_64_avx512/poseidon2.rs": "a0457a8534fff354eebdd9f8e64c307228c757ccdcea6026b2cc9b36c893b885",
+      "volta-field/src/lib.rs": "a23aa2ca9006e42c107427384514f103f00e6368f478ca2e2e637da8dfa13e7f"
+    },
+    "base_product_semantics": "includes extension internals and delayed-reduction products; do not add Fp3 totals",
+    "other_work": "AES, curve25519 OT, hashing, integer operations and allocation are included in phase time, not Goldilocks product counts",
+    "timing_kind": "coverage instrumented; use the separate run without coverage for timing"
+  },
+  "execution_process": {
+    "returncode": 0,
+    "failure": null,
+    "wall_seconds": 6.1146340512204915,
+    "sampled_peak_RSS_bytes": 14721024,
+    "sampled_peak_process_threads": 2,
+    "stderr": ""
+  },
+  "execution": {
+    "aes_setup_wire_bytes": 145590,
+    "alignment_corrections_bytes": 3312,
+    "alignment_header_bytes": 76,
+    "alignment_wire_bytes": 3388,
+    "attempts": [
+      {
+        "decode_and_verify_seconds": 1.2367278449999999,
+        "decode_seconds": 0.009376463,
+        "encode_seconds": 0.004196974,
+        "forward_seconds": 0.000154877,
+        "integer_forward_multiplications": 16384,
+        "matrix_reduction_only_fp3_products_prover": 17564,
+        "matrix_reduction_only_fp3_products_verifier": 554,
+        "packed_weight_bytes_read": 98304,
+        "packed_weight_full_scans": {
+          "commit_rematerialization": 1,
+          "integer_forward": 1,
+          "row_reduction": 1
+        },
+        "prove_including_commit_rematerialization_seconds": 1.333972548,
+        "reserved_full_fp3": 23,
+        "slot": 0,
+        "status": "accepted",
+        "transcript_digest": "b2a3814d63225fa6be1443d2e359710415836661c4b80ef5811006448348527e",
+        "wire_bytes": 784926
+      },
+      {
+        "abort_seconds": 7.746e-05,
+        "reserved_full_fp3": 23,
+        "slot": 1,
+        "status": "aborted",
+        "wire_bytes": 0
+      },
+      {
+        "decode_and_verify_seconds": 1.21482541,
+        "decode_seconds": 0.005047444,
+        "encode_seconds": 0.003815969,
+        "forward_seconds": 0.000160002,
+        "integer_forward_multiplications": 16384,
+        "matrix_reduction_only_fp3_products_prover": 17564,
+        "matrix_reduction_only_fp3_products_verifier": 554,
+        "packed_weight_bytes_read": 98304,
+        "packed_weight_full_scans": {
+          "commit_rematerialization": 1,
+          "integer_forward": 1,
+          "row_reduction": 1
+        },
+        "prove_including_commit_rematerialization_seconds": 1.335197507,
+        "reserved_full_fp3": 23,
+        "slot": 2,
+        "status": "accepted",
+        "transcript_digest": "7789b219ac7110c0b9ef0624984f6eae290ad40c83cd36b97b35a79a24f5e6ea",
+        "wire_bytes": 787742
+      }
+    ],
+    "certificates_wire_bytes": 1572668,
+    "connection_and_lift_seconds": 0.868268588,
+    "credit": false,
+    "fourth_attempt_rejected": true,
+    "full_fp3_consumed_or_burned": 69,
+    "model_publication_bytes": 32,
+    "model_root": [
+      108,
+      211,
+      12,
+      83,
+      37,
+      76,
+      89,
+      156,
+      71,
+      98,
+      252,
+      96,
+      117,
+      161,
+      6,
+      119,
+      138,
+      122,
+      11,
+      201,
+      198,
+      57,
+      97,
+      17,
+      223,
+      163,
+      44,
+      228,
+      54,
+      234,
+      1,
+      120
+    ],
+    "model_setup_packed_weight_scans": 1,
+    "model_setup_seconds": 0.098458487,
+    "pcg_diagnostic_params": {
+      "base_vole_len": 74,
+      "code_fanout": 4,
+      "consistency_reps": 2,
+      "extend_lpn_estimated_security_bits": 0.0,
+      "extend_lpn_security_margin_bits": 0.0,
+      "full_field_combiner": "x=x0+phi*x1, m=m0+phi*m1, k=k0+phi*k1",
+      "ggm_block_size": 64,
+      "ggm_depth": 6,
+      "lpn_k": 64,
+      "lpn_n": 512,
+      "lpn_noise_weight": 8,
+      "noise_structure": "test regular noise: one uniform nonzero per disjoint block",
+      "output_sub_equiv": 207,
+      "parameter_source": "test parameters",
+      "profile": "p7-wykw-goldilocks-regular-lpn-hardened-v3-test",
+      "security_bits": 0,
+      "setup_ggm_block_size": 32,
+      "setup_ggm_depth": 5,
+      "setup_lpn_estimated_security_bits": 0.0,
+      "setup_lpn_k": 16,
+      "setup_lpn_n": 128,
+      "setup_lpn_noise_weight": 4,
+      "setup_lpn_security_margin_bits": 0.0
+    },
+    "pcg_security_credit_bits": null,
+    "preflight": {
+      "alignment_bytes_per_full_fp3": 48,
+      "certificate_cap_bytes": 8388608,
+      "complete_fp3_multiplications": null,
+      "complete_fp_multiplications": null,
+      "complete_work_admission_bound": "infinity",
+      "credit": false,
+      "fs_request_limit": 1875498,
+      "full_fp3_per_attempt": 23,
+      "gamma_bytes_hex": "4337312d6d61747269782d76313b636f646563313b4670332d75332d323b50332d76332d762d313b424c414b45332d584f463b4a6f686e736f6e3132383b506f57303b4145533132382d4d4d4f3b4c504e36342c3531322c382c343b736574757031362c3132382c343b636865636b73323b706f6f6c333b6c6966743973564f4c4534383b6e6f2d73656375726974793b736c6f7473333b64726177383b64697374696e63743235363b636170384d694201000000ffffffff100000000000000001000000000000000e0000000000000004000000000000004300000000000000050000000000000034010000000000002a9e1c000000000005000000000000000100000000000000020000000000000002000000000000000200000000000000020000000000000005000000000000007e030000000000002a010000000000008a000000000000005a000000000000004300000000000000000000000000000000000000000000002a0100000000000001000000000000000d00000000000000010000000000000001000000000000000080000000000000e2a1bb109309eee0000000000000000000000000000000002a0100000000000001000000000000000b00000000000000020000000000000002000000000000000040000000000000b6fc9d959951c3f2000000000000000000000000000000008a0000000000000001000000000000000900000000000000020000000000000003000000000000000020000000000000cfc8a11d80b45306000000000000000000000000000000005a000000000000000100000000000000070000000000000002000000000000000400000000000000001000000000000072d9fe8bd72a8f9d000000000000000000000000000000004300000000000000000000000000000005000000000000000200000000000000040000000000000000080000000000004e1f415c2ad005190900000000000000010000000000000010000000000000003401000000000000000400000000000001000000000000007f0300000000000034010000000000000010000000000000020000000000000010000000000000003401000000000000000400000000000001000000000000002b0100000000000034010000000000000008000000000000020000000000000010000000000000003401000000000000000400000000000001000000000000008b0000000000000034010000000000000004000000000000020000000000000010000000000000003401000000000000000400000000000001000000000000005b000000000000003401000000000000000400000000000002000000000000001000000000000000340100000000000000040000000000007a0f66cc3e27ad8f675de8dbc06d2ef1cae866cd20457c28d542b61a414b229d9fdf6d7c5bafe3e0c29beed71c8f4c9401000000000000000000000000000000010000005555555500000000000000001643719557d71c95578f188f22cb96ab0000000000000000dde800b02547f8b91f2ce3cb005bfa35",
+      "gamma_digest": "e96896ada45f227b313dc5f2008c2cb38d2fbc19283e4b179c8eb20d0c70e55d",
+      "mask_domain_cells_sum": 17408,
+      "memory_allowance_bytes": 385875968,
+      "memory_allowance_kind": "analytic diagnostic allowance, not a proved peak",
+      "missing_work": [
+        "native PCS arithmetic including encoding, folding and verifier",
+        "PCG arithmetic",
+        "basis conversion and codec arithmetic"
+      ],
+      "n": 128,
+      "oracle_domain_cells_sum": 63488,
+      "padded_side": 128,
+      "required_limits": {
+        "process_threads": 2,
+        "rss_and_address_space_bytes": 2147483648,
+        "wall_seconds": 60
+      },
+      "root_attempts": 3,
+      "svole_per_full_fp3": 9
+    },
+    "raw_svole_consumed": 621,
+    "resources": {
+      "coverage_instrumented": true,
+      "expanded_array_DRAM_read_bytes": null,
+      "expanded_array_DRAM_write_bytes": null,
+      "heap_kind": "requested allocator layouts including reallocations; not memory-access traffic",
+      "phases": [
+        {
+          "heap_allocated_bytes": 0,
+          "heap_freed_bytes": 0,
+          "heap_live_end_bytes": 18338,
+          "heap_live_start_bytes": 18338,
+          "heap_peak_requested_bytes": 18338,
+          "index": 0,
+          "name": "initialization",
+          "rss_end_bytes": 7241728,
+          "rss_peak_bytes": 7241728,
+          "seconds": 7.08e-07
+        },
+        {
+          "heap_allocated_bytes": 1822664,
+          "heap_freed_bytes": 1789864,
+          "heap_live_end_bytes": 52056,
+          "heap_live_start_bytes": 19256,
+          "heap_peak_requested_bytes": 1774080,
+          "index": 1,
+          "name": "model_setup",
+          "rss_end_bytes": 8343552,
+          "rss_peak_bytes": 9461760,
+          "seconds": 0.098459237
+        },
+        {
+          "heap_allocated_bytes": 1459816,
+          "heap_freed_bytes": 1415242,
+          "heap_live_end_bytes": 97417,
+          "heap_live_start_bytes": 52843,
+          "heap_peak_requested_bytes": 148564,
+          "index": 2,
+          "name": "connection_pcg",
+          "rss_end_bytes": 8613888,
+          "rss_peak_bytes": 8613888,
+          "seconds": 0.866659441
+        },
+        {
+          "heap_allocated_bytes": 74128,
+          "heap_freed_bytes": 74775,
+          "heap_live_end_bytes": 97560,
+          "heap_live_start_bytes": 98207,
+          "heap_peak_requested_bytes": 127951,
+          "index": 3,
+          "name": "connection_lift",
+          "rss_end_bytes": 8613888,
+          "rss_peak_bytes": 8613888,
+          "seconds": 0.000297129
+        },
+        {
+          "heap_allocated_bytes": 3185,
+          "heap_freed_bytes": 801,
+          "heap_live_end_bytes": 100735,
+          "heap_live_start_bytes": 98351,
+          "heap_peak_requested_bytes": 101139,
+          "index": 4,
+          "name": "integer_forward",
+          "rss_end_bytes": 8613888,
+          "rss_peak_bytes": 8613888,
+          "seconds": 0.000191086
+        },
+        {
+          "heap_allocated_bytes": 31192,
+          "heap_freed_bytes": 17192,
+          "heap_live_end_bytes": 115654,
+          "heap_live_start_bytes": 101654,
+          "heap_peak_requested_bytes": 115662,
+          "index": 5,
+          "name": "prover_reduction",
+          "rss_end_bytes": 8613888,
+          "rss_peak_bytes": 8613888,
+          "seconds": 0.002440159
+        },
+        {
+          "heap_allocated_bytes": 1787184,
+          "heap_freed_bytes": 67744,
+          "heap_live_end_bytes": 1835886,
+          "heap_live_start_bytes": 116446,
+          "heap_peak_requested_bytes": 1835918,
+          "index": 6,
+          "name": "prover_commit_rematerialization",
+          "rss_end_bytes": 10006528,
+          "rss_peak_bytes": 10006528,
+          "seconds": 0.098792574
+        },
+        {
+          "heap_allocated_bytes": 18460040,
+          "heap_freed_bytes": 19137576,
+          "heap_live_end_bytes": 1159157,
+          "heap_live_start_bytes": 1836693,
+          "heap_peak_requested_bytes": 5543485,
+          "index": 7,
+          "name": "prover_pcs",
+          "rss_end_bytes": 13848576,
+          "rss_peak_bytes": 13848576,
+          "seconds": 1.230498117
+        },
+        {
+          "heap_allocated_bytes": 1706704,
+          "heap_freed_bytes": 1919936,
+          "heap_live_end_bytes": 946711,
+          "heap_live_start_bytes": 1159943,
+          "heap_peak_requested_bytes": 2004495,
+          "index": 8,
+          "name": "encode",
+          "rss_end_bytes": 14635008,
+          "rss_peak_bytes": 14635008,
+          "seconds": 0.004445644
+        },
+        {
+          "heap_allocated_bytes": 1974503,
+          "heap_freed_bytes": 497919,
+          "heap_live_end_bytes": 2424333,
+          "heap_live_start_bytes": 947749,
+          "heap_peak_requested_bytes": 2426757,
+          "index": 9,
+          "name": "decode",
+          "rss_end_bytes": 14663680,
+          "rss_peak_bytes": 14663680,
+          "seconds": 0.009421005
+        },
+        {
+          "heap_allocated_bytes": 26328,
+          "heap_freed_bytes": 16808,
+          "heap_live_end_bytes": 2434635,
+          "heap_live_start_bytes": 2425115,
+          "heap_peak_requested_bytes": 2434731,
+          "index": 10,
+          "name": "verifier_reduction",
+          "rss_end_bytes": 14663680,
+          "rss_peak_bytes": 14663680,
+          "seconds": 0.000356214
+        },
+        {
+          "heap_allocated_bytes": 7391849,
+          "heap_freed_bytes": 9719800,
+          "heap_live_end_bytes": 107478,
+          "heap_live_start_bytes": 2435429,
+          "heap_peak_requested_bytes": 3050565,
+          "index": 11,
+          "name": "verifier_pcs",
+          "rss_end_bytes": 13877248,
+          "rss_peak_bytes": 14401536,
+          "seconds": 1.223189866
+        },
+        {
+          "heap_allocated_bytes": 3961,
+          "heap_freed_bytes": 3272,
+          "heap_live_end_bytes": 108955,
+          "heap_live_start_bytes": 108266,
+          "heap_peak_requested_bytes": 109774,
+          "index": 12,
+          "name": "abort",
+          "rss_end_bytes": 13877248,
+          "rss_peak_bytes": 13877248,
+          "seconds": 7.896e-05
+        },
+        {
+          "heap_allocated_bytes": 3185,
+          "heap_freed_bytes": 801,
+          "heap_live_end_bytes": 112120,
+          "heap_live_start_bytes": 109736,
+          "heap_peak_requested_bytes": 112524,
+          "index": 13,
+          "name": "integer_forward",
+          "rss_end_bytes": 13877248,
+          "rss_peak_bytes": 13877248,
+          "seconds": 0.000193669
+        },
+        {
+          "heap_allocated_bytes": 31192,
+          "heap_freed_bytes": 17192,
+          "heap_live_end_bytes": 126911,
+          "heap_live_start_bytes": 112911,
+          "heap_peak_requested_bytes": 126919,
+          "index": 14,
+          "name": "prover_reduction",
+          "rss_end_bytes": 13877248,
+          "rss_peak_bytes": 13877248,
+          "seconds": 0.002425408
+        },
+        {
+          "heap_allocated_bytes": 1787184,
+          "heap_freed_bytes": 67744,
+          "heap_live_end_bytes": 1847143,
+          "heap_live_start_bytes": 127703,
+          "heap_peak_requested_bytes": 1847175,
+          "index": 15,
+          "name": "prover_commit_rematerialization",
+          "rss_end_bytes": 13893632,
+          "rss_peak_bytes": 13893632,
+          "seconds": 0.098655858
+        },
+        {
+          "heap_allocated_bytes": 18460544,
+          "heap_freed_bytes": 19138080,
+          "heap_live_end_bytes": 1170414,
+          "heap_live_start_bytes": 1847950,
+          "heap_peak_requested_bytes": 5554742,
+          "index": 16,
+          "name": "prover_pcs",
+          "rss_end_bytes": 14462976,
+          "rss_peak_bytes": 14462976,
+          "seconds": 1.231144324
+        },
+        {
+          "heap_allocated_bytes": 1706704,
+          "heap_freed_bytes": 1919936,
+          "heap_live_end_bytes": 958480,
+          "heap_live_start_bytes": 1171712,
+          "heap_peak_requested_bytes": 2016264,
+          "index": 17,
+          "name": "encode",
+          "rss_end_bytes": 14721024,
+          "rss_peak_bytes": 14721024,
+          "seconds": 0.004009847
+        },
+        {
+          "heap_allocated_bytes": 1977319,
+          "heap_freed_bytes": 497919,
+          "heap_live_end_bytes": 2438662,
+          "heap_live_start_bytes": 959262,
+          "heap_peak_requested_bytes": 2441086,
+          "index": 18,
+          "name": "decode",
+          "rss_end_bytes": 14721024,
+          "rss_peak_bytes": 14721024,
+          "seconds": 0.005093695
+        },
+        {
+          "heap_allocated_bytes": 26328,
+          "heap_freed_bytes": 16808,
+          "heap_live_end_bytes": 2448964,
+          "heap_live_start_bytes": 2439444,
+          "heap_peak_requested_bytes": 2449060,
+          "index": 19,
+          "name": "verifier_reduction",
+          "rss_end_bytes": 14721024,
+          "rss_peak_bytes": 14721024,
+          "seconds": 0.000300421
+        },
+        {
+          "heap_allocated_bytes": 7392225,
+          "heap_freed_bytes": 9723120,
+          "heap_live_end_bytes": 118863,
+          "heap_live_start_bytes": 2449758,
+          "heap_peak_requested_bytes": 3064894,
+          "index": 20,
+          "name": "verifier_pcs",
+          "rss_end_bytes": 14721024,
+          "rss_peak_bytes": 14721024,
+          "seconds": 1.207592185
+        },
+        {
+          "heap_allocated_bytes": 70,
+          "heap_freed_bytes": 70,
+          "heap_live_end_bytes": 119651,
+          "heap_live_start_bytes": 119651,
+          "heap_peak_requested_bytes": 119686,
+          "index": 21,
+          "name": "finalization",
+          "rss_end_bytes": 14721024,
+          "rss_peak_bytes": 14721024,
+          "seconds": 2.333e-06
+        }
+      ],
+      "physical_traffic_admission_bound": "infinity",
+      "rss_kind": "Linux VmHWM reset each phase; same process contains both roles"
+    },
+    "root_lease_reopen_rejected": true,
+    "scope": "complete reduced matrix byte path; physical traffic and security not admitted",
+    "setup_lanes": [
+      {
+        "comm": {
+          "base_ot_bytes": 16411,
+          "consistency_bytes": 2824,
+          "ggm_bytes": 324,
+          "ot_extension_bytes": 28971,
+          "prover_to_verifier_bytes": 41548,
+          "total_bytes": 48530,
+          "verifier_to_prover_bytes": 6982
+        },
+        "credit": false,
+        "params": {
+          "base_ot_count": 128,
+          "extended_ot_count": 68,
+          "ggm_aes_backend": "armv8-ce",
+          "ggm_path_depth": 6,
+          "ggm_prg": "aes128-mmo",
+          "logical_cpu_count": 2,
+          "lpn_parameter_source": "test parameters",
+          "malicious_check": "WYKW batched single-point-sVOLE consistency check",
+          "malicious_check_paper_section": "Wolverine ePrint 2020/925 Section 5.1, Figure 7 steps 4-6, optimization 3",
+          "parity_candidate": true,
+          "production_ready": true,
+          "profile": "p7-phase-b-wykw-two-party-v2",
+          "setup_ggm_path_depth": 5,
+          "setup_security_bits": 128
+        },
+        "timings": {
+          "t_base_ot_s": 0.248563106,
+          "t_base_vole_from_setup_s": 0.010194724,
+          "t_consistency_check_s": 0.012191709,
+          "t_full_combine_s": 4.209e-06,
+          "t_ggm_pprf_s": 0.016935693,
+          "t_lpn_expand_s": 0.00015667,
+          "t_ot_extension_s": 0.012232794,
+          "t_total_setup_and_expansion_s": 0.290201891
+        }
+      },
+      {
+        "comm": {
+          "base_ot_bytes": 16411,
+          "consistency_bytes": 2824,
+          "ggm_bytes": 324,
+          "ot_extension_bytes": 28971,
+          "prover_to_verifier_bytes": 41548,
+          "total_bytes": 48530,
+          "verifier_to_prover_bytes": 6982
+        },
+        "credit": false,
+        "params": {
+          "base_ot_count": 128,
+          "extended_ot_count": 68,
+          "ggm_aes_backend": "armv8-ce",
+          "ggm_path_depth": 6,
+          "ggm_prg": "aes128-mmo",
+          "logical_cpu_count": 2,
+          "lpn_parameter_source": "test parameters",
+          "malicious_check": "WYKW batched single-point-sVOLE consistency check",
+          "malicious_check_paper_section": "Wolverine ePrint 2020/925 Section 5.1, Figure 7 steps 4-6, optimization 3",
+          "parity_candidate": true,
+          "production_ready": true,
+          "profile": "p7-phase-b-wykw-two-party-v2",
+          "setup_ggm_path_depth": 5,
+          "setup_security_bits": 128
+        },
+        "timings": {
+          "t_base_ot_s": 0.246350406,
+          "t_base_vole_from_setup_s": 0.01011089,
+          "t_consistency_check_s": 0.012154209,
+          "t_full_combine_s": 3.958e-06,
+          "t_ggm_pprf_s": 0.016876441,
+          "t_lpn_expand_s": 0.000155377,
+          "t_ot_extension_s": 0.012208294,
+          "t_total_setup_and_expansion_s": 0.287852938
+        }
+      },
+      {
+        "comm": {
+          "base_ot_bytes": 16411,
+          "consistency_bytes": 2824,
+          "ggm_bytes": 324,
+          "ot_extension_bytes": 28971,
+          "prover_to_verifier_bytes": 41548,
+          "total_bytes": 48530,
+          "verifier_to_prover_bytes": 6982
+        },
+        "credit": false,
+        "params": {
+          "base_ot_count": 128,
+          "extended_ot_count": 68,
+          "ggm_aes_backend": "armv8-ce",
+          "ggm_path_depth": 6,
+          "ggm_prg": "aes128-mmo",
+          "logical_cpu_count": 2,
+          "lpn_parameter_source": "test parameters",
+          "malicious_check": "WYKW batched single-point-sVOLE consistency check",
+          "malicious_check_paper_section": "Wolverine ePrint 2020/925 Section 5.1, Figure 7 steps 4-6, optimization 3",
+          "parity_candidate": true,
+          "production_ready": true,
+          "profile": "p7-phase-b-wykw-two-party-v2",
+          "setup_ggm_path_depth": 5,
+          "setup_security_bits": 128
+        },
+        "timings": {
+          "t_base_ot_s": 0.246216778,
+          "t_base_vole_from_setup_s": 0.010063431,
+          "t_consistency_check_s": 0.012410131,
+          "t_full_combine_s": 4.625e-06,
+          "t_ggm_pprf_s": 0.017080695,
+          "t_lpn_expand_s": 0.000165586,
+          "t_ot_extension_s": 0.012136001,
+          "t_total_setup_and_expansion_s": 0.288115982
+        }
+      }
+    ],
+    "status": "C71_MATRIX_BYTE_REPLAY_PASS",
+    "total_protocol_wire_bytes": 1721678,
+    "total_seconds": 6.109444771,
+    "wire_scope": "model root, framed real PCG setup, framed lift and self-contained certificates; no network transport used"
+  },
+  "work_census": {
+    "kind": "native LLVM atomic entry counters; diagnostic Goldilocks arithmetic",
+    "credit": false,
+    "phases": [
+      {
+        "index": 0,
+        "name": "initialization",
+        "base_products_inclusive": 0,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 0,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": []
+      },
+      {
+        "index": 1,
+        "name": "model_setup",
+        "base_products_inclusive": 208916,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 208896,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 20,
+          "volta_fp": 0,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB7_",
+            "calls": 20,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/aarch64_neon/packing.rs",
+            "line": 91,
+            "symbol": "_RNvXs3_NtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packingNtB5_20PackedGoldilocksNeonNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB9_",
+            "calls": 104448,
+            "name": "<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon as core::ops::arith::Mul>::mul",
+            "category": "p3_packed_fp",
+            "products_per_call": 2
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "name": "connection_pcg",
+        "base_products_inclusive": 192780,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 192780,
+          "volta_fp2": 0,
+          "volta_fp2_base": 16695,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCs8pZAGg5ybyX_9volta_pcg",
+            "calls": 51192,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 184,
+            "symbol": "_RNvMs4_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp28mul_baseCs8pZAGg5ybyX_9volta_pcg",
+            "calls": 16695,
+            "name": "<volta_field::Fp2>::mul_base",
+            "category": "volta_fp2_base",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulB2_",
+            "calls": 141588,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "name": "connection_lift",
+        "base_products_inclusive": 7245,
+        "fp3_products_including_squares": 621,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 7245,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 621,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCsgSlmjvCzZrW_9volta_mac",
+            "calls": 7245,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 280,
+            "symbol": "_RNvMsb_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp33mulCsgSlmjvCzZrW_9volta_mac",
+            "calls": 621,
+            "name": "<volta_field::Fp3>::mul",
+            "category": "volta_fp3",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "name": "integer_forward",
+        "base_products_inclusive": 0,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 0,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": []
+      },
+      {
+        "index": 5,
+        "name": "prover_reduction",
+        "base_products_inclusive": 193204,
+        "fp3_products_including_squares": 17564,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 193204,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 17564,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 193204,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 280,
+            "symbol": "_RNvMsb_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp33mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 17564,
+            "name": "<volta_field::Fp3>::mul",
+            "category": "volta_fp3",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 6,
+        "name": "prover_commit_rematerialization",
+        "base_products_inclusive": 208916,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 208896,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 20,
+          "volta_fp": 0,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB7_",
+            "calls": 20,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/aarch64_neon/packing.rs",
+            "line": 91,
+            "symbol": "_RNvXs3_NtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packingNtB5_20PackedGoldilocksNeonNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB9_",
+            "calls": 104448,
+            "name": "<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon as core::ops::arith::Mul>::mul",
+            "category": "p3_packed_fp",
+            "products_per_call": 2
+          }
+        ]
+      },
+      {
+        "index": 7,
+        "name": "prover_pcs",
+        "base_products_inclusive": 19958705,
+        "fp3_products_including_squares": 757786,
+        "categories": {
+          "p3_dot": 6789920,
+          "p3_fp3": 747730,
+          "p3_fp3_base": 2096,
+          "p3_fp3_square": 10055,
+          "p3_packed_fp": 13022912,
+          "p3_packed_fp3_base": 3133696,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 93269,
+          "volta_fp": 52604,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 1,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 52604,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 280,
+            "symbol": "_RNvMsb_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp33mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "<volta_field::Fp3>::mul",
+            "category": "volta_fp3",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj2_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 30175,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<2>",
+            "category": "p3_dot",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj3_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 2243190,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<3>",
+            "category": "p3_dot",
+            "products_per_call": 3
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 78514,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB7_",
+            "calls": 14755,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/aarch64_neon/packing.rs",
+            "line": 91,
+            "symbol": "_RNvXs3_NtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packingNtB5_20PackedGoldilocksNeonNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 6282336,
+            "name": "<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon as core::ops::arith::Mul>::mul",
+            "category": "p3_packed_fp",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/aarch64_neon/packing.rs",
+            "line": 91,
+            "symbol": "_RNvXs3_NtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packingNtB5_20PackedGoldilocksNeonNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB9_",
+            "calls": 229120,
+            "name": "<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon as core::ops::arith::Mul>::mul",
+            "category": "p3_packed_fp",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 533,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension12cubic_squareNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksECskQBVbHokJtb_9volta_pcs",
+            "calls": 10055,
+            "name": "p3_field::extension::cubic_extension::cubic_square::<p3_goldilocks::goldilocks::Goldilocks>",
+            "category": "p3_fp3_square",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 523,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension19trinomial_cubic_mulNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksECskQBVbHokJtb_9volta_pcs",
+            "calls": 611284,
+            "name": "p3_field::extension::cubic_extension::trinomial_cubic_mul::<p3_goldilocks::goldilocks::Goldilocks>",
+            "category": "p3_fp3",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 523,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension19trinomial_cubic_mulNtNtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packing20PackedGoldilocksNeonECskQBVbHokJtb_9volta_pcs",
+            "calls": 68223,
+            "name": "p3_field::extension::cubic_extension::trinomial_cubic_mul::<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon>",
+            "category": "p3_fp3",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 447,
+            "symbol": "_RNvXsi_NtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extensionINtB7_8ExtFieldNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksKj3_NtB7_14CubicTrinomialEINtNtNtCshTXYa4fmOZs_4core3ops5arith3MulB1c_E3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 2096,
+            "name": "<p3_field::extension::ExtField<p3_goldilocks::goldilocks::Goldilocks, 3, p3_field::extension::CubicTrinomial> as core::ops::arith::Mul<p3_goldilocks::goldilocks::Goldilocks>>::mul",
+            "category": "p3_fp3_base",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/packed_cubic_extension.rs",
+            "line": 408,
+            "symbol": "_RNvXsn_NtNtCs7B6KuBTXnSt_8p3_field9extension22packed_cubic_extensionINtB7_14PackedExtFieldNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksNtNtNtB1u_12aarch64_neon7packing20PackedGoldilocksNeonKj3_NtB7_14CubicTrinomialEINtNtNtCshTXYa4fmOZs_4core3ops5arith3MulB2l_E3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 1566848,
+            "name": "<p3_field::extension::PackedExtField<p3_goldilocks::goldilocks::Goldilocks, p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon, 3, p3_field::extension::CubicTrinomial> as core::ops::arith::Mul<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon>>::mul",
+            "category": "p3_packed_fp3_base",
+            "products_per_call": 2
+          }
+        ]
+      },
+      {
+        "index": 8,
+        "name": "encode",
+        "base_products_inclusive": 52344,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 52344,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 52344,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 9,
+        "name": "decode",
+        "base_products_inclusive": 34896,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 34896,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 34896,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 10,
+        "name": "verifier_reduction",
+        "base_products_inclusive": 6094,
+        "fp3_products_including_squares": 554,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 6094,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 554,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 6094,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 280,
+            "symbol": "_RNvMsb_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp33mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 554,
+            "name": "<volta_field::Fp3>::mul",
+            "category": "volta_fp3",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 11,
+        "name": "verifier_pcs",
+        "base_products_inclusive": 20173918,
+        "fp3_products_including_squares": 2255732,
+        "categories": {
+          "p3_dot": 20084395,
+          "p3_fp3": 2183339,
+          "p3_fp3_base": 7003,
+          "p3_fp3_square": 72389,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 36871,
+          "volta_fp": 52652,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 4,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 52652,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 280,
+            "symbol": "_RNvMsb_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp33mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 4,
+            "name": "<volta_field::Fp3>::mul",
+            "category": "volta_fp3",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj2_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 217172,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<2>",
+            "category": "p3_dot",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj3_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 6550017,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<3>",
+            "category": "p3_dot",
+            "products_per_call": 3
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 21074,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB7_",
+            "calls": 15797,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 533,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension12cubic_squareNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksECskQBVbHokJtb_9volta_pcs",
+            "calls": 72389,
+            "name": "p3_field::extension::cubic_extension::cubic_square::<p3_goldilocks::goldilocks::Goldilocks>",
+            "category": "p3_fp3_square",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 523,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension19trinomial_cubic_mulNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksECskQBVbHokJtb_9volta_pcs",
+            "calls": 2183339,
+            "name": "p3_field::extension::cubic_extension::trinomial_cubic_mul::<p3_goldilocks::goldilocks::Goldilocks>",
+            "category": "p3_fp3",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 447,
+            "symbol": "_RNvXsi_NtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extensionINtB7_8ExtFieldNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksKj3_NtB7_14CubicTrinomialEINtNtNtCshTXYa4fmOZs_4core3ops5arith3MulB1c_E3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 7003,
+            "name": "<p3_field::extension::ExtField<p3_goldilocks::goldilocks::Goldilocks, 3, p3_field::extension::CubicTrinomial> as core::ops::arith::Mul<p3_goldilocks::goldilocks::Goldilocks>>::mul",
+            "category": "p3_fp3_base",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 12,
+        "name": "abort",
+        "base_products_inclusive": 0,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 0,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": []
+      },
+      {
+        "index": 13,
+        "name": "integer_forward",
+        "base_products_inclusive": 0,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 0,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": []
+      },
+      {
+        "index": 14,
+        "name": "prover_reduction",
+        "base_products_inclusive": 193204,
+        "fp3_products_including_squares": 17564,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 193204,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 17564,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 193204,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 280,
+            "symbol": "_RNvMsb_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp33mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 17564,
+            "name": "<volta_field::Fp3>::mul",
+            "category": "volta_fp3",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 15,
+        "name": "prover_commit_rematerialization",
+        "base_products_inclusive": 208916,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 208896,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 20,
+          "volta_fp": 0,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB7_",
+            "calls": 20,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/aarch64_neon/packing.rs",
+            "line": 91,
+            "symbol": "_RNvXs3_NtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packingNtB5_20PackedGoldilocksNeonNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB9_",
+            "calls": 104448,
+            "name": "<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon as core::ops::arith::Mul>::mul",
+            "category": "p3_packed_fp",
+            "products_per_call": 2
+          }
+        ]
+      },
+      {
+        "index": 16,
+        "name": "prover_pcs",
+        "base_products_inclusive": 19958691,
+        "fp3_products_including_squares": 757786,
+        "categories": {
+          "p3_dot": 6789920,
+          "p3_fp3": 747730,
+          "p3_fp3_base": 2096,
+          "p3_fp3_square": 10055,
+          "p3_packed_fp": 13022912,
+          "p3_packed_fp3_base": 3133696,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 93255,
+          "volta_fp": 52604,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 1,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 52604,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 280,
+            "symbol": "_RNvMsb_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp33mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 1,
+            "name": "<volta_field::Fp3>::mul",
+            "category": "volta_fp3",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj2_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 30175,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<2>",
+            "category": "p3_dot",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj3_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 2243190,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<3>",
+            "category": "p3_dot",
+            "products_per_call": 3
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 78514,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB7_",
+            "calls": 14741,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/aarch64_neon/packing.rs",
+            "line": 91,
+            "symbol": "_RNvXs3_NtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packingNtB5_20PackedGoldilocksNeonNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 6282336,
+            "name": "<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon as core::ops::arith::Mul>::mul",
+            "category": "p3_packed_fp",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/aarch64_neon/packing.rs",
+            "line": 91,
+            "symbol": "_RNvXs3_NtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packingNtB5_20PackedGoldilocksNeonNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB9_",
+            "calls": 229120,
+            "name": "<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon as core::ops::arith::Mul>::mul",
+            "category": "p3_packed_fp",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 533,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension12cubic_squareNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksECskQBVbHokJtb_9volta_pcs",
+            "calls": 10055,
+            "name": "p3_field::extension::cubic_extension::cubic_square::<p3_goldilocks::goldilocks::Goldilocks>",
+            "category": "p3_fp3_square",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 523,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension19trinomial_cubic_mulNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksECskQBVbHokJtb_9volta_pcs",
+            "calls": 611284,
+            "name": "p3_field::extension::cubic_extension::trinomial_cubic_mul::<p3_goldilocks::goldilocks::Goldilocks>",
+            "category": "p3_fp3",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 523,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension19trinomial_cubic_mulNtNtNtCsjlAZzxrOheO_13p3_goldilocks12aarch64_neon7packing20PackedGoldilocksNeonECskQBVbHokJtb_9volta_pcs",
+            "calls": 68223,
+            "name": "p3_field::extension::cubic_extension::trinomial_cubic_mul::<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon>",
+            "category": "p3_fp3",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 447,
+            "symbol": "_RNvXsi_NtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extensionINtB7_8ExtFieldNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksKj3_NtB7_14CubicTrinomialEINtNtNtCshTXYa4fmOZs_4core3ops5arith3MulB1c_E3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 2096,
+            "name": "<p3_field::extension::ExtField<p3_goldilocks::goldilocks::Goldilocks, 3, p3_field::extension::CubicTrinomial> as core::ops::arith::Mul<p3_goldilocks::goldilocks::Goldilocks>>::mul",
+            "category": "p3_fp3_base",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/packed_cubic_extension.rs",
+            "line": 408,
+            "symbol": "_RNvXsn_NtNtCs7B6KuBTXnSt_8p3_field9extension22packed_cubic_extensionINtB7_14PackedExtFieldNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksNtNtNtB1u_12aarch64_neon7packing20PackedGoldilocksNeonKj3_NtB7_14CubicTrinomialEINtNtNtCshTXYa4fmOZs_4core3ops5arith3MulB2l_E3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 1566848,
+            "name": "<p3_field::extension::PackedExtField<p3_goldilocks::goldilocks::Goldilocks, p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon, 3, p3_field::extension::CubicTrinomial> as core::ops::arith::Mul<p3_goldilocks::aarch64_neon::packing::PackedGoldilocksNeon>>::mul",
+            "category": "p3_packed_fp3_base",
+            "products_per_call": 2
+          }
+        ]
+      },
+      {
+        "index": 17,
+        "name": "encode",
+        "base_products_inclusive": 52344,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 52344,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 52344,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 18,
+        "name": "decode",
+        "base_products_inclusive": 34896,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 34896,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 34896,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 19,
+        "name": "verifier_reduction",
+        "base_products_inclusive": 6094,
+        "fp3_products_including_squares": 554,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 6094,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 554,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 6094,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 280,
+            "symbol": "_RNvMsb_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp33mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 554,
+            "name": "<volta_field::Fp3>::mul",
+            "category": "volta_fp3",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 20,
+        "name": "verifier_pcs",
+        "base_products_inclusive": 20174477,
+        "fp3_products_including_squares": 2255841,
+        "categories": {
+          "p3_dot": 20084980,
+          "p3_fp3": 2183316,
+          "p3_fp3_base": 7003,
+          "p3_fp3_square": 72521,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 36845,
+          "volta_fp": 52652,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 4,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": [
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 66,
+            "symbol": "_RNvMCs165jGqXvb6b_11volta_fieldNtB2_2Fp3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 52652,
+            "name": "<volta_field::Fp>::mul",
+            "category": "volta_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/tmp/volta-c71-b3-record/rust/volta-field/src/lib.rs",
+            "line": 280,
+            "symbol": "_RNvMsb_Cs165jGqXvb6b_11volta_fieldNtB5_3Fp33mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 4,
+            "name": "<volta_field::Fp3>::mul",
+            "category": "volta_fp3",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj2_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 217568,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<2>",
+            "category": "p3_dot",
+            "products_per_call": 2
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 313,
+            "symbol": "_RINvXsb_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB6_10GoldilocksNtNtCs7B6KuBTXnSt_8p3_field5field23PrimeCharacteristicRing11dot_productKj3_ECskQBVbHokJtb_9volta_pcs",
+            "calls": 6549948,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as p3_field::field::PrimeCharacteristicRing>::dot_product::<3>",
+            "category": "p3_dot",
+            "products_per_call": 3
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 21074,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/goldilocks/src/goldilocks.rs",
+            "line": 638,
+            "symbol": "_RNvXso_NtCsjlAZzxrOheO_13p3_goldilocks10goldilocksNtB5_10GoldilocksNtNtNtCshTXYa4fmOZs_4core3ops5arith3Mul3mulB7_",
+            "calls": 15771,
+            "name": "<p3_goldilocks::goldilocks::Goldilocks as core::ops::arith::Mul>::mul",
+            "category": "p3_scalar_fp",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 533,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension12cubic_squareNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksECskQBVbHokJtb_9volta_pcs",
+            "calls": 72521,
+            "name": "p3_field::extension::cubic_extension::cubic_square::<p3_goldilocks::goldilocks::Goldilocks>",
+            "category": "p3_fp3_square",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 523,
+            "symbol": "_RINvNtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extension19trinomial_cubic_mulNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksECskQBVbHokJtb_9volta_pcs",
+            "calls": 2183316,
+            "name": "p3_field::extension::cubic_extension::trinomial_cubic_mul::<p3_goldilocks::goldilocks::Goldilocks>",
+            "category": "p3_fp3",
+            "products_per_call": 1
+          },
+          {
+            "source": "/home/okrame/.cargo/git/checkouts/plonky3-7d8a3b21a665a86f/66e2906/field/src/extension/cubic_extension.rs",
+            "line": 447,
+            "symbol": "_RNvXsi_NtNtCs7B6KuBTXnSt_8p3_field9extension15cubic_extensionINtB7_8ExtFieldNtNtCsjlAZzxrOheO_13p3_goldilocks10goldilocks10GoldilocksKj3_NtB7_14CubicTrinomialEINtNtNtCshTXYa4fmOZs_4core3ops5arith3MulB1c_E3mulCskQBVbHokJtb_9volta_pcs",
+            "calls": 7003,
+            "name": "<p3_field::extension::ExtField<p3_goldilocks::goldilocks::Goldilocks, 3, p3_field::extension::CubicTrinomial> as core::ops::arith::Mul<p3_goldilocks::goldilocks::Goldilocks>>::mul",
+            "category": "p3_fp3_base",
+            "products_per_call": 1
+          }
+        ]
+      },
+      {
+        "index": 21,
+        "name": "finalization",
+        "base_products_inclusive": 0,
+        "fp3_products_including_squares": 0,
+        "categories": {
+          "p3_dot": 0,
+          "p3_fp3": 0,
+          "p3_fp3_base": 0,
+          "p3_fp3_square": 0,
+          "p3_packed_fp": 0,
+          "p3_packed_fp3_base": 0,
+          "p3_packed_fp_square": 0,
+          "p3_scalar_fp": 0,
+          "volta_fp": 0,
+          "volta_fp2": 0,
+          "volta_fp2_base": 0,
+          "volta_fp3": 0,
+          "volta_fp3_base": 0
+        },
+        "native_entry_counters": []
+      }
+    ],
+    "total": {
+      "base_products_inclusive": 81665640,
+      "fp3_products_including_squares": 6064002
+    },
+    "upstream_revision": "66e290615de1858f2f2f6a804158064c406cda1c",
+    "arithmetic_source_sha256": {
+      "field/src/array.rs": "fd84eab3769c2cc2dde86bc549a368d0adeca838c482bc29b765b67998b462a1",
+      "field/src/batch_inverse.rs": "57cf77e6b65880c0a68ae34bb900dc4caa817217d299a2f726e9a269a78c35c8",
+      "field/src/coset.rs": "45ea66155550b5d1313161c5e9acec9a4f3257a3f11b13cfc7b6e2e82256c17f",
+      "field/src/dup.rs": "866a17cc58ff96affe9cd88afc02dbc608d7636e679dcb4a0efd169db4baa070",
+      "field/src/exponentiation.rs": "2449631f8b995abb62b66c0b8442629b739921dd0b522bf5b04502608693db43",
+      "field/src/extension/binomial_extension.rs": "ec35f20f70c82237ebc86e0608b04d3ed6cacdd1d68b57a96ad2c08a2feaefd0",
+      "field/src/extension/complex.rs": "f643cea72a852223a34541a7539fd4790325455a135f96c994e100a1f012e9b6",
+      "field/src/extension/cubic_extension.rs": "41aeb040074c619247b05a9b12d5500dca5f1643a3c8483ee9aa02cde9878c28",
+      "field/src/extension/mod.rs": "aac05a6fdcc6f309792680d356c00ee491b4ad79790f746a04119523fe68ec38",
+      "field/src/extension/packed_binomial_extension.rs": "06ccacdb848df900f2cb1f23dc00fe34337472c1367be88e1b7d4b4792c50d38",
+      "field/src/extension/packed_cubic_extension.rs": "e115727bcbf2d22264bfce7d85bafe109128e394544307621eede738f6c1bab2",
+      "field/src/extension/packed_quintic_extension.rs": "520027ac0078ab5ded2a822709e25f04c3eaed5d0c34223423eb754b9c294686",
+      "field/src/extension/quintic_extension.rs": "47dda94a12d861afd41e85658e30cb0c132b83dc77455f32dddf721ac220e889",
+      "field/src/field.rs": "f6e171c13cb81daaaed085032ab1bed3f8f8f92f690a8834c08a08d036b49542",
+      "field/src/helpers.rs": "ea4b415e09ec71654a70568c9261fd0ad6c493c167a4eb07032dbd1b9e60f09f",
+      "field/src/integers.rs": "052cb3b093c72b22c1ccee95a07d9543cf2e5e11b1ea97ed99268cd7e7d4ff95",
+      "field/src/lib.rs": "b4df0b4b3bc0fa78b6666cbb7ce59e1c33a4329ee8dff4d5f0bb2c7cdf0d4cfd",
+      "field/src/op_assign_macros.rs": "3a1fb5eeef1b8a414dd0f9712e5ef9d877ce966407bcb8553b5edf9d1b07965f",
+      "field/src/packed/aarch64_neon.rs": "de0660bdf76ce67f88b5b2c285e6dbc2f8bec87293f44ff0cbb88dac5c86d1bd",
+      "field/src/packed/interleaves.rs": "4f0af347a2cd4add88f15f5ca4ed1fd3095d33a64399accdbd0cd556ead16578",
+      "field/src/packed/mod.rs": "101493582dde370a4dcfd141fda49dfe1be94a8bfc3ac4b966b14cd80c0c370d",
+      "field/src/packed/no_packing.rs": "9a43309de14da4ddb751426032bb91c2e2f68e4cef02f3554fc1231f5cbabfde",
+      "field/src/packed/packed_traits.rs": "3e9ff675b00b79330f0467ecfd036dd305f4e711a14740e82a07ebacc1012ca5",
+      "field/src/packed/tests_packed_mod.rs": "bae8ff80c291a3d7970585466cdce36f279424f12193fa81b612d8b45d251be0",
+      "field/src/packed/x86_64_avx.rs": "d1b6d17cad16e3b7b6a613b89dd6743a019e2fbd9cc348c81078acd2b3320100",
+      "field/src/sqrt.rs": "fa5b5a118b374de433734e68f2e27e95345dd5252e50aa5d4b442824d571b1b1",
+      "goldilocks/src/aarch64_neon/mds.rs": "53e0726be8d09ce3ea922ee39f868f038caa2f169dae9b73772af8f3a458e496",
+      "goldilocks/src/aarch64_neon/mod.rs": "d31ccd27d20cee84bab97619b428bb95a1189a7615fa318015b2ed0241b192d2",
+      "goldilocks/src/aarch64_neon/packing.rs": "580b153370fe7b5410a25c296731b8392cb7f9ef9a0951128eff6e81a2baab7c",
+      "goldilocks/src/aarch64_neon/poseidon1.rs": "681fee28840a6d1ab12e60dfc54572a41e6a332d6ff67741ef072e633f83aab1",
+      "goldilocks/src/aarch64_neon/poseidon1_asm.rs": "805ed8a4d3477914c0efa1d53816d05c489fab4e0f3214e077d80c3ee36f7131",
+      "goldilocks/src/aarch64_neon/poseidon2.rs": "97f4a68624fb0c7a4d571570c4ff528f0eef484d4975e347d9d7c5901c8e0118",
+      "goldilocks/src/aarch64_neon/poseidon2_asm.rs": "1bdbcfb287657d34b8f33ed4aa0a32913ccf87738ea9a19ddfcce57370696a34",
+      "goldilocks/src/aarch64_neon/utils.rs": "b9ceefa0a89ec670a38ce3f749c303bfa89e3983159b287f2a2e1f0fe986b7e9",
+      "goldilocks/src/bin/wasm_bench.rs": "17c9adb8f904ca8dbc42ca0ee0ca837f038a921adce6c4e1a479beb0a673d716",
+      "goldilocks/src/bin/wasm_smoke.rs": "8eeada1302314429597a41db9ec943629f927d944278ace0e5bc755ff15df5cb",
+      "goldilocks/src/extension.rs": "a22b3caad017169569b5689ed71f2a4608a23a839d4e5ce13c6ca5e145262689",
+      "goldilocks/src/goldilocks.rs": "c8c4f401a86024ed84d3b3d67ce1a1052afba20f124cce66d23adb92e9266ecb",
+      "goldilocks/src/lib.rs": "76d17f55d07b4a2aa174fcbfd7c612347e8f384cb63c7dd661374d2155c04f34",
+      "goldilocks/src/mds.rs": "07f347d8876d89244ff8c056e6b840d6830391073bf3833a2ea5aea3957eef26",
+      "goldilocks/src/poseidon1.rs": "91ace89967bd482649681bc5d0073dc18bed4cb0a80d81a34979dce39ec87285",
+      "goldilocks/src/poseidon2.rs": "c757d004dc0aed7ae5ea58eab3c39767fdd0a2c88e5105d272100e43844543dd",
+      "goldilocks/src/wasm32_simd128/mod.rs": "533b302757f75e6a32b51a970e3a600fd3679bc83c36af11d07ba63317d1f907",
+      "goldilocks/src/wasm32_simd128/packing.rs": "6963c239688857cb42dce0fb2a3e22087296812670d669406192f634568d0904",
+      "goldilocks/src/x86_64_avx2/mds.rs": "c1c74cec189d38f9bd988e040f29a2108b91c2efff1f4aa390644176329a0dcc",
+      "goldilocks/src/x86_64_avx2/mod.rs": "b0db43c3e70acd9c61f014ae404a8d565942248b4f9999d3fa515e47eb5ba37b",
+      "goldilocks/src/x86_64_avx2/packing.rs": "452d56e1c10469c15b3ce80acfe22415d5f4cacc63330a7fb5b2c21ac6c1ee3d",
+      "goldilocks/src/x86_64_avx2/poseidon2.rs": "e9487110661616bcd896fd4f89ba1c1a109e244e0c5869cf9cb2f95f84567cf3",
+      "goldilocks/src/x86_64_avx512/mds.rs": "59788a5a59ff74a3d747a2aa649259260e6c06eb39edd413eb0dba1a6c19e758",
+      "goldilocks/src/x86_64_avx512/mod.rs": "b0db43c3e70acd9c61f014ae404a8d565942248b4f9999d3fa515e47eb5ba37b",
+      "goldilocks/src/x86_64_avx512/packing.rs": "1a49e38f4aa9dfdd0520cf06282ae17fd893d5ada254452de40aeef1d4863759",
+      "goldilocks/src/x86_64_avx512/poseidon2.rs": "a0457a8534fff354eebdd9f8e64c307228c757ccdcea6026b2cc9b36c893b885",
+      "volta-field/src/lib.rs": "a23aa2ca9006e42c107427384514f103f00e6368f478ca2e2e637da8dfa13e7f"
+    },
+    "base_product_semantics": "includes extension internals and delayed-reduction products; do not add Fp3 totals",
+    "other_work": "AES, curve25519 OT, hashing, integer operations and allocation are included in phase time, not Goldilocks product counts",
+    "timing_kind": "coverage instrumented; use the separate run without coverage for timing"
+  },
+  "physical_traffic_probe": {
+    "linux_event_sources": [
+      "breakpoint",
+      "kprobe",
+      "software",
+      "tracepoint",
+      "uprobe"
+    ],
+    "perf_event_paranoid": "3",
+    "DRAM_traffic_measured": false,
+    "reason": "no reviewed DRAM counter collector on this local runner"
+  },
+  "status": "pass",
+  "source_changed_during_run": false
+}

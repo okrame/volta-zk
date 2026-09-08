@@ -96,8 +96,29 @@ def test_b1_rejection_preserves_failed_preflight_and_unknown_complete_costs():
         assert case["process"]["sampled_peak_RSS_bytes"] <= 2 << 30
         assert case["process"]["wall_seconds"] <= 60
     assert port["complete_work_admission_bound"] == "infinity"
-    assert "complete_native_Fp_and_Fp3_work_census" in port["remaining_measurement_contract"]
+    assert "complete_native_Fp_and_Fp3_work_census" in port["remaining_measurement_contract_at_B2"]
     assert "--n 128 --run" in port["runner_command"]
     for cost in reuse["complete_costs"].values():
         assert cost["total"] is None and cost["admission_bound"] == "infinity"
         assert cost["missing"] == ["unimplemented_complete_matrix_path"]
+
+
+def test_b3_census_closes_native_counts_but_not_physical_or_security_admission():
+    result = plan.baseline_budget()
+    census = result["B3_resource_census"]
+    assert not census["credit"] and not census["security_admitted"]
+    assert not census["complete_measurement_contract"]
+    assert census["remaining_measurement_contract"] == ["expanded_array_physical_traffic"]
+    assert census["complete_work_admission_bound"] == "infinity"
+    assert [case["n"] for case in census["measured_reduced_cases"]] == [48, 128]
+    for case in census["measured_reduced_cases"]:
+        for key in ("base_products_inclusive", "fp3_products_including_squares"):
+            assert case["total"][key] == sum(p[key] for p in case["phase_work"])
+        assert len(case["phase_work"]) == len(case["phase_resources"]) == 22
+        reduction = sum(p["base_products_inclusive"] for p in case["phase_work"]
+                        if p["name"] == "prover_reduction")
+        pcs = sum(p["base_products_inclusive"] for p in case["phase_work"]
+                  if p["name"] == "prover_pcs")
+        assert pcs > reduction
+        assert not case["physical_traffic_probe"]["DRAM_traffic_measured"]
+    assert "B4" in census["next_goal"]

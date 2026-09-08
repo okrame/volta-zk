@@ -9,8 +9,10 @@ Updated 2026-09-08. Editable working summary; Git preserves revisions.
 **B3: native work and memory census on the B2 runner**, authorized by the
 owner's next-goal request of 2026-09-08. Arithmetic counters now cover the
 actual Goldilocks/Fp3 PCS, PCG, basis changes and codec, with separate phase
-RSS and allocator accounts. Clean-source records are the remaining B3 check.
-B2 remains the completed CPU/Fp3 functional port. G2 stays suspended.
+RSS and allocator accounts. These B3 obligations now have clean-source
+records; physical expanded-array traffic remains open for the concrete
+VM limitation below. B2 remains the completed CPU/Fp3 functional port.
+G2 stays suspended.
 
 **Connection to C7.1:** this census decides where further work belongs.
 The matrix reduction is a small fraction of the reduced path; PCS dominates.
@@ -152,12 +154,24 @@ products, then 2,048 parallel base products. Matrix reduction counts must
 match their independent source derivation; both PCS roles and PCG must
 contribute, and every phase's allocator balance must reconcile.
 
-The [first census diagnostic](../benchmarks/results/c71-b3-census128-diagnostic-20260908-bb64f0e.json)
-is retained with dirty provenance. It counts approximately 81.7 million
-base products and 6.06 million cubic products over setup, two accepted
-responses and one abort. These are two views: base counts include extension
-internals and cannot be added to the cubic count. The separate run without
-coverage is needed for timings; neither run predicts Gemma/H100 costs.
+The clean records at `84ab36c` pass:
+[48 census](../benchmarks/results/c71-b3-census48-20260908-84ab36c.json),
+[128 census](../benchmarks/results/c71-b3-census128-20260908-84ab36c.json) and
+[128 without coverage](../benchmarks/results/c71-b3-timing128-20260908-84ab36c.json).
+The 128 census counts **81,665,640 base products and 6,064,002 cubic products**
+over setup, two accepted responses and one abort. These are two views:
+base counts include extension internals and cannot be added to cubic counts.
+The separate timing run uses **5.586 s, 11,366,400 bytes sampled peak RSS**,
+5,554,742 bytes peak requested heap, two threads and 1,724,078 protocol bytes.
+Its two prover reductions take about 2.1 ms each; the PCS about 1.16 s each.
+This supports prioritizing PCS/security, not optimizing that reduction.
+The first dirty diagnostics are retained separately, without promotion.
+
+The [single comparison budget](../scripts/c7_1_gemma_plan.py) now includes
+`B3_resource_census`, phase work/resources and the separate timing record.
+Five focused Rust checks, native scalar/SIMD/parallel fixtures and six
+launcher/budget checks pass; the fork audit is unchanged and passing.
+The broad workspace was not built. No Gemma/H100 or security credit follows.
 
 **Physical traffic remains unmeasured:** this VM exposes only software,
 tracepoint, breakpoint and probe event sources, with `perf_event_paranoid=3`.
@@ -180,5 +194,5 @@ scheduling, full certificate and 78-bit lifetime proofs remain C7.1 obligations.
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 without
+A fresh conversation can start from this page and design §10 (B3 result and B4 decision) without
 importing the full G2 transcript or reopening its suspended obligations.

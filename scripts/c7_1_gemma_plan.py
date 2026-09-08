@@ -5674,6 +5674,23 @@ def baseline_budget():
             "certificate_bytes": [a["wire_bytes"] for a in run["attempts"] if a["status"] == "accepted"],
             "full_fp3_consumed_or_burned": run["full_fp3_consumed_or_burned"],
             "process": record["execution_process"]})
+    census_cases = []
+    for side in (48, 128):
+        source = f"benchmarks/results/c71-b3-census{side}-20260908-84ab36c.json"
+        record = json.loads((Path(__file__).resolve().parents[1] / source).read_text())
+        if record["git_dirty"] or not record["run_of_record"] or record["status"] != "pass":
+            raise ValueError("C71 B3 census must retain its clean passing provenance")
+        census_cases.append({"n": side, "source": source, "credit": False,
+            "kind": "measured native Goldilocks arithmetic; coverage-instrumented times",
+            "total": record["work_census"]["total"],
+            "phase_work": [{k: phase[k] for k in ("index", "name", "base_products_inclusive",
+                            "fp3_products_including_squares")} for phase in record["work_census"]["phases"]],
+            "phase_resources": record["execution"]["resources"]["phases"],
+            "physical_traffic_probe": record["physical_traffic_probe"]})
+    timing_source = "benchmarks/results/c71-b3-timing128-20260908-84ab36c.json"
+    timing = json.loads((Path(__file__).resolve().parents[1] / timing_source).read_text())
+    if timing["git_dirty"] or not timing["run_of_record"] or timing["status"] != "pass":
+        raise ValueError("C71 B3 timing must retain its clean passing provenance")
     return {
         "schema": "c71-baseline-budget-v1", "credit": False,
         "reference": "A5 + joint W/KV + Sigma(B, raw QK/PV, S); research only",
@@ -5698,11 +5715,23 @@ def baseline_budget():
                           "real_AES_nine_sVOLE_lift", "same_W_matrix_byte_replay",
                           "full_certificate_codec_and_session_context", "concrete_Gamma_and_FS_vectors",
                           "enforced_three_slot_lifecycle", "local_resource_preflight"],
-            "remaining_measurement_contract": ["complete_native_Fp_and_Fp3_work_census",
+            "remaining_measurement_contract_at_B2": ["complete_native_Fp_and_Fp3_work_census",
                           "expanded_array_physical_traffic", "per_phase_RSS"],
             "complete_work_admission_bound": "infinity",
             "security_admitted": False,
             "runner_command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_c71_matrix.py --n 128 --run"},
+        "B3_resource_census": {
+            "status": "native_field_and_phase_memory_complete_physical_traffic_open",
+            "credit": False, "measured_reduced_cases": census_cases,
+            "base_products_include_extension_internals_do_not_add_fp3_totals": True,
+            "timing_without_coverage": {"n": 128, "source": timing_source,
+                "process": timing["execution_process"],
+                "phase_resources": timing["execution"]["resources"]["phases"]},
+            "remaining_measurement_contract": ["expanded_array_physical_traffic"],
+            "complete_measurement_contract": False, "complete_work_admission_bound": "infinity",
+            "next_goal": "B4: security/parameter admission of this exact PCS/lift before optimization or scaling",
+            "security_admitted": False,
+            "runner_command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_c71_matrix.py --n 128 --run --census"},
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

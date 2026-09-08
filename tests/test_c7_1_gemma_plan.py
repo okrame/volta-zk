@@ -5508,6 +5508,122 @@ def test_gelu_full_public_tables_setup_counts_and_overflow_profile_tags():
             plan.gelu_lookup_tag(*args)
 
 
+def test_gelu_retained_cut_reader_and_pre_root_histogram_use_same_values():
+    producer = dict(ordinal=7,layer=2,kind='matrix',operation='gate_proj',
+                    rows=3,columns=4,cut_scalar_bytes=6,cut_byte_offset=11)
+    source = dict(source='GELU_outputs',source_id=2,layer=2,operation='gelu_tanh',
+                  shape=(1,3,4),word_bytes=2,rne=False,token_offset=0,input_source_id=7)
+    raw_values = [-7,-5,-3,-1,0,1,3,5,7,512,512,32767]
+    packed = b'\x55'*11+b''.join(x.to_bytes(6,'little',signed=True) for x in raw_values)+b'\x66'*6
+    table = plan.gelu_i16_table(0,0)
+    inputs = [round(Fraction(x,2)) for x in raw_values]
+    expected = [(x,plan.gelu_i16_pair(abs(x),0,0)[x < 0]) for x in inputs]
+    actual = []
+    for row in range(3):
+        actual.extend(plan.gelu_read_word(source,producer,4*row,4,memoryview(packed),1,table))
+    assert actual == expected and packed[:11] == b'\x55'*11
+    # A byte-source consumer emits biased Y, not the public table's signed codec.
+    encoded = b''.join((y+(1 << 15)).to_bytes(2,'little') for _,y in actual)
+    assert [int.from_bytes(encoded[i:i+2],'little')-(1 << 15)
+            for i in range(0,len(encoded),2)] == [y for _,y in expected]
+    histogram = plan.gelu_prepare_histogram(source,producer,packed,1,table)
+    counts = Counter(inputs)
+    assert isinstance(histogram,bytearray) and len(histogram) == 262140
+    assert all(int.from_bytes(histogram[4*j:4*j+4],'little')-(1 << 31) == counts[j-32767]
+               for j in range(65535))
+    assert sum(counts.values()) == 12 and counts[256] == 2
+    assert int.from_bytes(histogram[:4],'little') == 1 << 31  # zero is biased too
+    long_raw = (raw_values*11)[:130]
+    long_producer = dict(producer,rows=1,columns=130)
+    long_source = dict(source,shape=(1,1,130))
+    long_b = packed[:11]+b''.join(x.to_bytes(6,'little',signed=True) for x in long_raw)
+    long_pairs = [pair for first,count in ((0,64),(64,64),(128,2))
+                  for pair in plan.gelu_read_word(long_source,long_producer,first,count,long_b,1,table)]
+    assert [x for x,y in long_pairs] == [round(Fraction(v,2)) for v in long_raw]
+    long_hist = plan.gelu_prepare_histogram(long_source,long_producer,long_b,1,table)
+    for x,count in Counter(x for x,y in long_pairs).items():
+        j = 4*(x+32767)
+        assert int.from_bytes(long_hist[j:j+4],'little')-(1 << 31) == count
+    for bad_source,bad_producer in ((dict(source,input_source_id=8),producer),
+            (source,dict(producer,operation='up_proj')), (source,dict(producer,layer=3)),
+            (dict(source,word_bytes=4),producer), (source,dict(producer,cut_byte_offset=-1)),
+            (dict(source,source_id=3),producer),(dict(source,input_source_id=True),producer)):
+        with pytest.raises(ValueError):
+            plan.gelu_read_word(bad_source,bad_producer,0,1,packed,1,table)
+    for first,count,buffer,shift,lut in ((-1,1,packed,1,table),(0,0,packed,1,table),
+            (3,2,packed,1,table),(12,1,packed,1,table),(0,1,packed[:16],1,table),
+            (0,1,packed,False,table),(0,1,packed,1,table[:-1]),(0,1,[],1,table),
+            (0,65,packed,1,table)):
+        with pytest.raises(ValueError):
+            plan.gelu_read_word(source,producer,first,count,buffer,shift,lut)
+    overflow_raw = packed[:11]+(65536).to_bytes(6,'little',signed=True)+packed[17:]
+    with pytest.raises(ValueError,match='symmetric i16'):
+        plan.gelu_read_word(source,producer,0,1,overflow_raw,1,table)
+    overflow_table = bytearray(table)
+    index = 2*(inputs[0]+32767)
+    overflow_table[index:index+2] = (-32768).to_bytes(2,'little',signed=True)
+    with pytest.raises(ValueError,match='table row overflows'):
+        plan.gelu_prepare_histogram(source,producer,packed,1,overflow_table)
+
+
+def test_gelu_public_fp3_evaluator_matches_dense_mle_without_boolean_division():
+    p,zero,one = plan.P,(0,0,0),(1,0,0)
+    def add(a,b):
+        return tuple((x+y) % p for x,y in zip(a,b))
+    def sub(a,b):
+        return tuple((x-y) % p for x,y in zip(a,b))
+    mul = plan.fp3_mul_six
+    def mle3(values,point):
+        for r in point:
+            values = [add(a,mul(r,sub(b,a))) for a,b in zip(values[::2],values[1::2])]
+        return values[0]
+    table = bytearray(plan.gelu_i16_table(0,0))
+    table[2*32762:2*32762+2] = (-32768).to_bytes(2,'little',signed=True)
+    tables = {2:table,59:table}
+    def tag(layer,j):
+        y = int.from_bytes(table[2*j:2*j+2],'little',signed=True)
+        return (j-32767) % p,y % p,layer+60*(y == -32768)
+    for point in product((0,1),repeat=3):
+        q = [(x,0,0) for x in point]
+        terms = [(2,32760,8,q,(3,7,9)),(59,32768,4,q[:2],(5,1,2)),(2,65534,1,[],one)]
+        expected = zero
+        for layer,col,width,r,w in terms:
+            expected = add(expected,mul(w,mle3([tag(layer,j) for j in range(col,col+width)],r)))
+        assert plan.gelu_public_table_value(tables,terms) == expected
+    # One COMPLETE 65535-row public profile, independently padded by a zero tag.
+    point = [(i+2,3*i+1,7*i+4) for i in range(16)]
+    terms = []
+    for col,width in plan.dyadic_intervals(65535):
+        bits = width.bit_length()-1
+        weight = one
+        for j,r in enumerate(point[bits:],bits):
+            weight = mul(weight,r if col >> j & 1 else sub(one,r))
+        terms.append((2,col,width,point[:bits],weight))
+    expected = mle3([tag(2,j) for j in range(65535)]+[zero],point)
+    products = 0
+    def counted_mul(a,b):
+        nonlocal products
+        products += 1
+        return mul(a,b)
+    try:
+        plan.fp3_mul_six = counted_mul
+        assert plan.gelu_public_table_value(tables,terms) == expected
+    finally:
+        plan.fp3_mul_six = mul
+    assert products == 65535
+    bad_table = bytearray(table)
+    bad_table[2*32762:2*32762+2] = (0).to_bytes(2,'little',signed=True)
+    assert plan.gelu_public_table_value({2:bad_table},terms) != expected
+    for bad in ((2,0,3,[one],one),(2,1,2,[one],one),(2,65535,1,[],one),
+                (2,0,2,[],one),(2,0,1,[],(p,0,0)),(2,0,1,[],(0,0)),(60,0,1,[],one)):
+        with pytest.raises(ValueError):
+            plan.gelu_public_table_value(tables,[bad])
+    with pytest.raises(ValueError):
+        plan.gelu_public_table_value({},[(2,0,1,[],one)])
+    with pytest.raises(ValueError):
+        plan.gelu_public_table_value({2:table[:-1]},[(2,0,1,[],one)])
+
+
 def test_gelu_lookup_layout_gamma_and_all_context_payload_recount():
     metadata = json.loads((Path(__file__).resolve().parents[1] /
                            'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_text())
@@ -5518,6 +5634,24 @@ def test_gelu_lookup_layout_gamma_and_all_context_payload_recount():
     assert plan.auxiliary_word_layout(extra) == (byte,[])
     assert len(words) == len(byte) == 1680
     assert Counter(extra[t[0]]['source'] for t in words) == {'GELU_outputs':720,'GELU_histogram':960}
+    reader = plan.gelu_reader_screen(cohorts)
+    n,m = 60*150*21504,60*65535
+    assert reader['additional_w_reads_from_retained_b'] == reader['retained_output_array_bytes'] == 0
+    assert reader['preparation'] == dict(raw_b_bytes=6*(n+60),public_table_bytes=2*(n+60),
+            rne_calls=n+60,validation_probe_rows=60,histogram_zero_fill_bytes=4*m,
+            histogram_counter_read_write_bytes=8*n,histogram_bias_read_write_bytes=2*m)
+    post = reader['post_alpha_core_and_endpoint']
+    assert post == dict(query_visits=58,raw_b_bytes=6*58*n,query_table_bytes=2*58*n,
+            rne_calls=58*n,histogram_read_bytes=4*58*m,tree_public_table_bytes=2*57*m)
+    public = reader['public_evaluator_after_adapter_per_party']
+    assert public['extension_products'] == m
+    assert public['extension_additions_or_subtractions'] == 2*m-960
+    assert public['table_read_bytes'] == 2*m and public['no_eq_array_or_inverses']
+    assert public['native_tag_buffer_bytes'] == 786432
+    assert reader['retained_histogram_bytes_256_aligned_per_profile'] == 15728640
+    assert reader['resident_public_table_bytes_256_aligned_per_profile'] == 7864320
+    assert reader['reader_native_pair_buffer_bytes'] == 256
+    assert not reader['credit'] and reader['complete_sigma_gamma_work_and_native_liveness'] is None
     for s in extra[:60]:
         gate = cohorts[s['input_source_id']]
         assert (gate['layer'],gate['operation'],s['shape']) == (s['layer'],'gate_proj',(1,150,21504))

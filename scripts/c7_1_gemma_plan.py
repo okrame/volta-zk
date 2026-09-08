@@ -1648,6 +1648,150 @@ def gelu_lookup_sources(cohorts):
     return result
 
 
+def gelu_read_word(source, producer, first, count, packed_b, shift, table):
+    """Honest <=64-cell (input, output) getter; only retained signed-i48 B.
+
+    Source descriptors and the certified table/profile are fixed by the
+    caller. This does not verify the table identity or authenticate B/Y.
+    """
+    rows = natural(producer['rows'], 'GELU rows', 1, 150)
+    columns = natural(producer['columns'], 'GELU columns', 1, 21504)
+    natural(producer['cut_byte_offset'], 'GELU physical B offset', 0)
+    natural(producer['ordinal'], 'GELU producer identity', 0)
+    natural(producer['layer'], 'GELU producer layer', 0, 59)
+    natural(source['input_source_id'], 'GELU input identity', 0)
+    natural(source['source_id'], 'GELU source identity', 0, 59)
+    natural(source['layer'], 'GELU source layer', 0, 59)
+    if (source['source'],source['operation'],source['input_source_id'],source['layer'],source['source_id'],
+            source['shape'],source['word_bytes'],source['rne'],source['token_offset']) != (
+            'GELU_outputs','gelu_tanh',producer['ordinal'],producer['layer'],producer['layer'],
+            (1,rows,columns),2,False,0) or (producer['kind'],producer['operation'],
+            producer['cut_scalar_bytes']) != ('matrix','gate_proj',6):
+        raise ValueError('GELU must read its own gate_proj cut')
+    natural(count, 'GELU live word cells', 1, 64)
+    natural(first, 'GELU live word index', 0, rows*columns-count)
+    if first//columns != (first+count-1)//columns:
+        raise ValueError('GELU word cannot cross a row')
+    rne_i48_to_i16(0,shift)  # reject malformed public shifts before reading
+    if any(not isinstance(b,(bytes,bytearray,memoryview)) for b in (packed_b,table)):
+        raise ValueError('GELU requires packed B and public table bytes')
+    raw, lut = (memoryview(b).cast('B') for b in (packed_b,table))
+    begin = producer['cut_byte_offset']+6*first
+    if len(lut) != 131070 or begin+6*count > len(raw):
+        raise ValueError('truncated GELU B or public table')
+    result = []
+    for offset in range(begin,begin+6*count,6):
+        x = rne_i48_to_i16(int.from_bytes(raw[offset:offset+6],'little',signed=True),shift)
+        j = 2*(x+32767)
+        y = int.from_bytes(lut[j:j+2],'little',signed=True)
+        if y == -32768:
+            raise ValueError('GELU table row overflows symmetric i16')
+        result.append((x,y))
+    return result
+
+
+def gelu_prepare_histogram(source, producer, packed_b, shift, table):
+    """One pre-root visit, then retain SAME biased-i32 bytes until Sigma closes.
+
+    No stored Y and no full input array. Returned storage is caller-owned;
+    freezing the source means no subsequent mutation, not a second bytes copy.
+    """
+    gelu_read_word(source,producer,0,1,packed_b,shift,table)  # validate before allocation
+    histogram = bytearray(4*65535)
+    for row in range(producer['rows']):
+        for col in range(0,producer['columns'],64):
+            pairs = gelu_read_word(source,producer,row*producer['columns']+col,
+                                  min(64,producer['columns']-col),packed_b,shift,table)
+            for x,_ in pairs:
+                offset = 4*(x+32767)
+                count = int.from_bytes(histogram[offset:offset+4],'little')+1
+                histogram[offset:offset+4] = count.to_bytes(4,'little')
+            del pairs  # the next getter wave reuses the same bounded word budget
+    for offset in range(3,len(histogram),4):
+        histogram[offset] ^= 128  # count<2^31: exact biased-i32 codec, in place
+    return histogram
+
+
+def gelu_public_table_value(tables, terms):
+    """Public Fp3 T from existing (layer,col,width,local_point,weight) terms.
+
+    One <=32768-tag cube is folded in place; no inverses or EQ array.
+    Points/weights are canonical THREE-limb tuples, also at Boolean points.
+    Tables are already certified public inputs.
+    """
+    def add(a,b):
+        return tuple((x+y) % P for x,y in zip(a,b))
+    def sub(a,b):
+        return tuple((x-y) % P for x,y in zip(a,b))
+    result = (0,0,0)
+    for layer,col,width,point,weight in terms:
+        natural(layer, 'GELU public table layer', 0, 59)
+        natural(width, 'GELU public table cube width', 1, 32768)
+        natural(col, 'GELU public table cube start', 0, 65535-width)
+        if width & (width-1) or col % width or len(point) != width.bit_length()-1:
+            raise ValueError('GELU public table term is not its dyadic cube')
+        for value in (*point,weight):
+            if not isinstance(value,(tuple,list)) or len(value) != 3:
+                raise ValueError('GELU public evaluator requires Fp3 points and weights')
+            for x in value:
+                natural(x, 'canonical GELU Fp3 limb', 0, P-1)
+        if layer not in tables or not isinstance(tables[layer],(bytes,bytearray,memoryview)):
+            raise ValueError('missing public GELU profile table')
+        table = memoryview(tables[layer]).cast('B')
+        if len(table) != 131070:
+            raise ValueError('truncated public GELU profile table')
+        values = [gelu_lookup_tag(layer,j-32767,
+                    int.from_bytes(table[2*j:2*j+2],'little',signed=True))
+                  for j in range(col,col+width)]
+        active = width
+        for r in point:
+            for j in range(active//2):
+                a,b = values[2*j],values[2*j+1]
+                values[j] = add(a,fp3_mul_six(r,sub(b,a)))
+            active //= 2
+        result = add(result,fp3_mul_six(weight,values[0]))
+        del values  # release this cube before allocating the next, possibly equally large one
+    return result
+
+
+def gelu_reader_screen(cohorts):
+    """Logical byte/work census for the GELU reader, not a global HBM/time bound."""
+    sources = gelu_lookup_sources(cohorts)
+    _,cubes = auxiliary_word_layout(sources,all_word_cubes=True)
+    queries = sum(math.prod(s['shape']) for s in sources if s['source'] == 'GELU_outputs')
+    rows = sum(math.prod(s['shape']) for s in sources if s['source'] == 'GELU_histogram')
+    table_cubes = sum(sources[c[0]]['source'] == 'GELU_histogram' for c in cubes)
+    profiles = len(sources)//2
+    core = lookup_fraction_screen(queries,rows)
+    visits = core['post_alpha_source_visits']
+    return {'credit':False, 'additional_w_reads_from_retained_b':0,
+            'retained_output_array_bytes':0, 'profiles':profiles,
+            'query_cells':queries, 'histogram_rows':rows,
+            'per_pair_or_single_virtual_y_byte':{'raw_b_bytes':6, 'public_table_bytes':2, 'rne_calls':1},
+            'preparation':{'raw_b_bytes':6*(queries+profiles),
+                           'public_table_bytes':2*(queries+profiles),
+                           'rne_calls':queries+profiles,
+                           'validation_probe_rows':profiles,
+                           'histogram_zero_fill_bytes':4*rows,
+                           'histogram_counter_read_write_bytes':8*queries,
+                           'histogram_bias_read_write_bytes':2*rows},
+            'post_alpha_core_and_endpoint':{'query_visits':visits,
+                                            'raw_b_bytes':6*visits*queries,
+                                            'query_table_bytes':2*visits*queries,
+                                            'rne_calls':visits*queries,
+                                            'histogram_read_bytes':4*visits*rows,
+                                            'tree_public_table_bytes':2*(visits-1)*rows},
+            'public_evaluator_after_adapter_per_party':{'table_rows':rows, 'cube_terms':table_cubes,
+                         'table_read_bytes':2*rows, 'extension_products':rows,
+                         'extension_additions_or_subtractions':2*rows-table_cubes,
+                         'native_tag_buffer_bytes':24*32768, 'no_eq_array_or_inverses':True},
+            'retained_histogram_bytes_256_aligned_per_profile':profiles*262144,
+            'resident_public_table_bytes_256_aligned_per_profile':profiles*131072,
+            'reader_native_pair_buffer_bytes':256,
+            'retained_until':'last common Sigma source visit; B also retained for Y replay',
+            'complete_sigma_gamma_work_and_native_liveness':None}
+
+
 def gelu_lookup_leaf_forms(lookup_sources, sources, byte_tiles, rq_tiles, point):
     """Fp diagnostic: LogUp's three wires -> exact common Sigma/RQ cube forms.
 
@@ -5063,6 +5207,7 @@ def report():
             pinned_model_config()['layers']*((1 << 16)-1)),
         "gelu_public_table_setup_screens": [gelu_table_setup_screen(a,b)
                                             for a,b in ((0,0),(-8,-8),(-8,-12))],
+        "gelu_reader_screen":gelu_reader_screen(cohorts),
         "rope_byte_bridge_screen":rope_bridge,
         "gelu_byte_bridge_screen":gelu_byte_bridge_screen(cohorts,rope_bridge),
         "gamma_rope_source_barrier_screen":gamma_barrier_plan(cohorts,True,True)['summary'],

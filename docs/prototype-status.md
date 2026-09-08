@@ -266,10 +266,10 @@ authorization.
 
 ## Next work
 
-Next: complete the W-free reader and public evaluator for the
-[GELU Sigma/RNE adapter](c7.1-auxiliary-witness.md#gelu-output-istogrammi-e-input-rne-nella-stessa-sorgente),
-using the [certified table recipe](c7.1-cut-witness.md#gelu-tabella-rne-certificata),
-then compose their work, retained storage and remaining Gamma forms.
+Next: compose the [GELU Sigma/RNE adapter's](c7.1-auxiliary-witness.md#gelu-output-istogrammi-e-input-rne-nella-stessa-sorgente)
+reader/evaluator costs and retained storage with all Sigma visits and
+remaining Gamma forms. The local algorithms now use the
+[certified table recipe](c7.1-cut-witness.md#gelu-tabella-rne-certificata).
 The source extensions are not yet adopted; actual Gemma profiles and native
 refinement remain open. Component evidence and distinct S/S+Y comparison
 counts stay in R3, not copied here.

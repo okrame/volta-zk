@@ -12,6 +12,7 @@ import json
 import math
 import runpy
 from collections import Counter
+from functools import lru_cache
 from graphlib import TopologicalSorter
 from pathlib import Path
 
@@ -20,6 +21,7 @@ P = (1 << 64) - (1 << 32) + 1
 REVISION = "5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89"
 METADATA_SHA256 = "1ddce0cc399d636488728f663fb756804a07e6b3ad14d43f527c7ad746e27ce2"
 QSPEC_SHA256 = "1af05e2b8d617e261ee20988618a0d05fe1ea5f9f217f04b28c391815e050687"
+ROPE_Q30_TABLE_SHA256 = "67503dd31c4504bed77f836ac1389d64692cef2a721ad74381d6297071d90951"
 LIFETIME_ATTEMPTS = 1 << 20
 CONTEXT_CAP = 4096
 
@@ -263,12 +265,62 @@ def rne_dyadic_add_i16(a, b, exponents):
     return natural(result, 'rounded dyadic sum', -32767, 32767)
 
 
+@lru_cache(maxsize=2)
+def rope_inverse_frequencies_q96(family):
+    """Exact floor(2^96 * inv[j]) for the pinned active RoPE pairs only.
+
+    Powers of ten reduce the local/global root degrees to 32/128.
+    Repeated integer square roots preserve the exact floor. Public setup,
+    not per-cell witness work; at most two immutable frequency vectors.
+    """
+    if family not in ('local','global'):
+        raise ValueError('RoPE family must be local or global')
+    depth, exponent, count = (5,1,128) if family == 'local' else (7,3,64)
+    result = []
+    for j in range(count):
+        v = (1 << (96*(1 << depth))) // 10**(exponent*j)
+        for _ in range(depth):
+            v = math.isqrt(v)
+        result.append(v)
+    return tuple(result)
+
+
+def gemma_rope_q30_coefficients(family, position):
+    """C71-RoPE-Q30-v1: a finite integer coefficient recipe, NOT libm.
+
+    The recipe itself defines the quantized model's coefficients. It does
+    not claim exact real-output RNE or BF16 equivalence. Q96 Taylor plus
+    14 double-angle steps has pre-Q30 component error < 2^-59.
+    """
+    natural(position, 'absolute RoPE position', 0, CONTEXT_CAP-1)
+    frequencies = rope_inverse_frequencies_q96(family)
+    q, result = 1 << 96, []
+    def rne(n,d):
+        a,r = divmod(n,d)
+        return a+int(2*r > d or (2*r == d and a & 1))
+    for frequency in frequencies:
+        x = rne(position*frequency,1 << 14)
+        square = rne(x*x,q)
+        cosine, sine, tc, ts = q,x,q,x
+        for k in range(1,11):
+            tc = rne(-tc*square,q*(2*k-1)*(2*k))
+            ts = rne(-ts*square,q*(2*k)*(2*k+1))
+            cosine, sine = cosine+tc,sine+ts
+        for _ in range(14):
+            cosine, sine = rne(cosine*cosine-sine*sine,q),rne(2*cosine*sine,q)
+        pair = tuple(rne(v,1 << 66) for v in (cosine,sine))
+        for v in pair:
+            natural(v, 'canonical signed Q30 coefficient', -(1 << 30), 1 << 30)
+        result.append(pair)
+    return tuple(result)
+
+
 def rope_raw_row(values, coefficients):
-    """Candidate Q30 coefficient lowering, before ONE output RNE.
+    """Q30 coefficient lowering, before ONE output RNE.
 
     Pair the two full half-heads. Omitted coefficient pairs are exactly
-    (1,0), not a shorter rotate_half. No canonical sine/cosine table is
-    instantiated here and no BF16/exact-real equivalence is claimed.
+    (1,0), not a shorter rotate_half. Callers must supply the canonical
+    public coefficient window; this scalar helper does not authenticate it.
     """
     width = natural(len(values), 'RoPE head width', 2, 512)
     if width & (width-1) or len(coefficients) > width//2:
@@ -322,7 +374,7 @@ def rope_linear_input_form(coefficients, output_point, input_point):
 
 
 def gemma_rope_plan(cohorts, old_tokens=0):
-    """Pinned pairing/positions and conditional raw-linear reductions only."""
+    """Quantized RoPE profile and conditional raw-linear accounting only."""
     cfg, norms = pinned_model_config(), rms_statistic_cohorts(cohorts)
     tokens = cohorts[0]['rows']
     natural(old_tokens, 'RoPE predecessor tokens', 0, CONTEXT_CAP-tokens)
@@ -359,7 +411,15 @@ def gemma_rope_plan(cohorts, old_tokens=0):
         'raw_identity_error_numerator_before_source_mac_fs':3*rounds,
         'new_private_products_for_raw_linear_reductions':0,
         'canonical_Q30_substitution_preserves_exact_real_rne':False,
-        'canonical_coefficients_and_exact_model_refinement':None,
+        'coefficient_profile':'C71-RoPE-Q30-v1',
+        'canonical_coefficient_recipe_specified':True,
+        'canonical_coefficient_table_sha256':ROPE_Q30_TABLE_SHA256,
+        'public_setup_root_isqrt_calls':128*5+64*7,
+        'public_setup_max_root_operand_bits':96*128+1,
+        'public_setup_trig_signed_bits':256,
+        'public_setup_main_integer_products':64*CONTEXT_CAP*(128+64),
+        'public_setup_rne_divisions':52*CONTEXT_CAP*(128+64),
+        'complete_gemma_quantization_and_runtime_refinement':None,
         'raw_rope_added_to_common_sigma_and_rq':False, 'complete_rope_mac_kernel_and_liveness':None}}
 
 

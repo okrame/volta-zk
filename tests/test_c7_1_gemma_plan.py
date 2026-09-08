@@ -6,6 +6,7 @@ import math
 import random
 import runpy
 from collections import Counter
+from decimal import Decimal, localcontext
 from fractions import Fraction
 from itertools import combinations, permutations, product
 from pathlib import Path
@@ -2361,6 +2362,12 @@ def test_rope_pinned_pairs_positions_integer_bounds_and_q30_refinement_counterex
     assert screen['linear_sumcheck_field_products_before_fill_reader_mac'] == 1226833200
     assert screen['raw_identity_error_numerator_before_source_mac_fs'] == 7380
     assert screen['new_private_products_for_raw_linear_reductions'] == 0
+    assert screen['coefficient_profile'] == 'C71-RoPE-Q30-v1' and screen['canonical_coefficient_recipe_specified']
+    assert (screen['public_setup_root_isqrt_calls'],screen['public_setup_max_root_operand_bits'],
+            screen['public_setup_trig_signed_bits']) == (1088,12289,256)
+    assert (screen['public_setup_main_integer_products'],screen['public_setup_rne_divisions']) == (50331648,40894464)
+    assert screen['canonical_coefficient_table_sha256'] == '67503dd31c4504bed77f836ac1389d64692cef2a721ad74381d6297071d90951'
+    assert screen['complete_gemma_quantization_and_runtime_refinement'] is None
     assert not screen['credit'] and not screen['raw_rope_added_to_common_sigma_and_rq']
     assert screen['complete_rope_mac_kernel_and_liveness'] is None
     for old in (-1,3947,True):
@@ -2407,6 +2414,58 @@ def test_rope_pinned_pairs_positions_integer_bounds_and_q30_refinement_counterex
     assert round(lo) == round(hi) == -4423
     assert plan.rne_i48_to_i16(plan.rope_raw_row([a,b],[(580145183,903522590)])[0],30) == -4422
     assert not screen['canonical_Q30_substitution_preserves_exact_real_rne']
+
+
+def test_rope_canonical_q30_recipe_has_fixed_precision_and_quantized_semantics():
+    q = 1 << 96
+    error = 12
+    assert Fraction(1,4**22*math.factorial(22)) < Fraction(1,q)
+    assert Fraction(1,4**23*math.factorial(23)) < Fraction(1,q)
+    for _ in range(14):
+        assert Fraction(error,q) < Fraction(1,2)
+        error = 5*error+1
+    assert error == 74768066406 < 1 << 37
+    for family,degree,power,count in (('local',32,1,128),('global',128,3,64)):
+        frequencies = plan.rope_inverse_frequencies_q96(family)
+        assert len(frequencies) == count and frequencies[0] == q
+        assert all(a > b for a,b in zip(frequencies,frequencies[1:]))
+        for j,f in enumerate(frequencies):
+            assert f**degree*10**(power*j) <= q**degree < (f+1)**degree*10**(power*j)
+        assert plan.gemma_rope_q30_coefficients(family,0) == ((1 << 30,0),)*count
+        assert plan.gemma_rope_q30_coefficients(family,1)[0] == (580145183,903522590)
+        for position in (1,1023,3946,4095):
+            coefficients = plan.gemma_rope_q30_coefficients(family,position)
+            assert len(coefficients) == count
+            for j in (0,1,count//2,count-1):
+                # Independent exact-rational RNE checks every rounded operation;
+                # no libm and no integer helper shared with the recipe.
+                def rnd(n,d):
+                    assert abs(n).bit_length() < 256 and d.bit_length() < 256
+                    return round(Fraction(n,d))
+                x = rnd(position*frequencies[j],1 << 14)
+                square = rnd(x*x,q)
+                cs,ss,tc,ts = q,x,q,x
+                for k in range(1,11):
+                    tc,ts = rnd(-tc*square,q*(2*k-1)*(2*k)),rnd(-ts*square,q*(2*k)*(2*k+1))
+                    cs,ss = cs+tc,ss+ts
+                for _ in range(14):
+                    cs,ss = rnd(cs*cs-ss*ss,q),rnd(2*cs*ss,q)
+                assert coefficients[j] == (rnd(cs,1 << 66),rnd(ss,1 << 66))
+                # Higher-degree/high-precision reference at the exact dyadic
+                # frequency; the exact root inequality above bounds its input error.
+                with localcontext() as context:
+                    context.prec = 100
+                    z = Decimal(position)*Decimal(frequencies[j])/Decimal(q*(1 << 14))
+                    cr = sum((-1)**k*z**(2*k)/Decimal(math.factorial(2*k)) for k in range(30))
+                    sr = sum((-1)**k*z**(2*k+1)/Decimal(math.factorial(2*k+1)) for k in range(30))
+                    for _ in range(14):
+                        cr,sr = cr*cr-sr*sr,2*cr*sr
+                    assert max(abs(Decimal(cs)/q-cr),abs(Decimal(ss)/q-sr)) < Decimal(2)**-59
+                    assert max(abs(Decimal(coefficients[j][0])/(1 << 30)-cr),
+                               abs(Decimal(coefficients[j][1])/(1 << 30)-sr)) < Decimal(2)**-31+Decimal(2)**-59
+    for family,position in (('other',0),('local',-1),('global',4096),('local',True)):
+        with pytest.raises(ValueError):
+            plan.gemma_rope_q30_coefficients(family,position)
 
 
 def test_rope_adjoint_quadratic_sumcheck_and_same_rms_source_point():

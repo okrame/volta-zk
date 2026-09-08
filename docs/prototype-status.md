@@ -266,12 +266,12 @@ authorization.
 
 ## Next work
 
-The [RoPE analysis](c7.1-cut-witness.md#rope-geometria-adjoint-e-limite-q30)
-specifies pinned pairing/positions and a conditional linear reduction to
-the same RMS source. A certified counterexample excludes treating rounded
-Q30 coefficients as an exact substitute for real RoPE followed by RNE.
-Next: resolve that numerical contract before adding raw RoPE to common
-C_Σ/RQ, then compile its T1/K1 consumers and the remaining kernels in the
+The [RoPE profile](c7.1-cut-witness.md#rope-geometria-adjoint-e-limite-q30)
+now defines the quantized coefficients by a finite integer recipe, with
+an analytic error bound and reproducible full-table checksum. This specifies
+the declared integer relation; it does not claim real/BF16 output equivalence.
+Next: add raw RoPE to common C_Σ/RQ and compile its T1/K1 consumers and
+public shifts, then the remaining kernels in the
 [Gamma order](c7.1-cut-witness.md#ordine-inverso-di-γ-e-ultima-rne).
 Actual RMS profiles, complete source/reader costs and liveness remain open.
 Current R3 totals do not include raw RoPE; derivations/counts stay in the dossiers.

@@ -2664,7 +2664,7 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
                            'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_bytes())
     cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition'] == 'private_text'])
     stats = plan.rms_statistic_cohorts(cohorts)
-    outputs = [{'shape': (1,r['statistic_rows'],r['columns']), 'word_bytes': 2, 'rne': False} for r in stats]
+    outputs = plan.rms_output_byte_sources(cohorts)
     tiles, rq = plan.auxiliary_word_layout(outputs)
     s = plan.rms_boolean_cohort_screen(cohorts)
     assert s['rms_output_live_cells'] == 347937024 and s['joint_cell_bits'] == 29
@@ -2688,6 +2688,151 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
                (old_initial+s['rms_output_packed_bytes_if_retained']+1728000*o-1).bit_length()]
     assert changed == list(range(1183, 1586))  # endpoint domains alone do NOT cover all contexts
     assert 1811*s['rms_output_live_cells'] == 630113950464
+
+    extended = plan.rms_byte_bridge_screen(cohorts, True)
+    assert extended['includes_rms_outputs'] and extended['rms_output_sources'] == 421
+    assert extended['rms_output_live_bytes'] == 695874048 and extended['rms_output_retained_array_bytes'] == 0
+    assert extended['requires_output_regeneration_or_new_cache_schedule']
+    assert extended['rms_input_split_corrections'] == 2
+    assert extended['all_context_known_phase_max_upper_bytes'] == 6338083200
+    assert extended['remaining_arena_bytes_before_missing_components'] == 104367744
+    assert extended['known_bulk_output_reads_before_gamma_and_rms_replay'] == 231
+    for before, after, total in zip(bridge['cases'], extended['cases'], (25668776,32644752)):
+        assert after['known_partial_payload_before_rms_circuit_gamma_and_framing'] == total
+        assert total-before['known_partial_payload_before_rms_circuit_gamma_and_framing'] == 237096
+        assert after['rq_cubes'] == before['rq_cubes'] and after['byte_cubes']-before['byte_cubes'] == 3612
+    comparison = extended['rms_output_all_context_comparison']
+    assert comparison['contexts_checked'] == 3947
+    assert comparison['old_lengths_with_changed_padding_from_s'] == changed
+    assert comparison['maximum_source_path_payload_delta'] == 2627520
+    assert comparison['complete_all_context_total_payload'] is None and not comparison['credit']
+    deltas = comparison['source_path_payload_deltas_including_input_split']
+    # Independent full component calls at every domain boundary, not an
+    # extrapolation of the two end-context sizes or the cached delta formula.
+    for old in (0, 1182, 1183, 1585, 1586, 1587, 1588, 3946):
+        costs = []
+        for live in (old_initial+1728000*old, old_initial+1728000*old+695874048):
+            n = (live-1).bit_length()
+            zero = (1 << n)//(1 << 23)-(live+(1 << 23)-1)//(1 << 23)
+            cost = plan.wide_hash_joint_opening_screen([1 << n], 1 << 23, 357, [zero])
+            costs.append(cost['private_component_payload_before_framing_and_caller']+
+                         plan.byte_range_tree_screen(n)['payload_before_framing_and_shared_closures']+
+                         plan.byte_bit_lift_screen(n)['payload_before_incoming_claims_framing_and_shared_closures'])
+        assert deltas[old] == costs[1]-costs[0]+48
+    sources = plan.auxiliary_word_sources(cohorts)+plan.rms_statistic_byte_sources(cohorts)+outputs
+    byte_tiles, _ = plan.auxiliary_word_layout(sources)
+    forms = plan.rms_joint_input_pullback(stats, sources, byte_tiles, list(range(2,31)))
+    assert forms['summary']['compact_sigma_byte_views'] == 42384
+    assert forms['summary']['compact_rne_output_views'] == 240
+    assert forms['summary']['input_split_extension_corrections'] == 2
+    assert forms['summary']['complete_gamma_callers_and_reader'] is None
+    assert not forms['summary']['credit']
+    for _, source, claim in forms['rne_output_views']:
+        raw = sources[source]
+        assert raw['operation'] == ('k_proj' if raw['layer'] % 6 == 5 else 'v_source')
+        assert len(claim[1]) == 8 and len(claim[2]) == (11 if raw['layer'] % 6 == 5 else 12)
+    with pytest.raises(ValueError):
+        plan.rms_byte_bridge_screen(cohorts, 1)
+
+
+def test_rms_joint_input_views_bind_p_s_y_and_rne_bits_with_head_and_padding_rules():
+    p = plan.P
+    def eq(point, i):
+        return math.prod(v if i >> k & 1 else 1-v for k,v in enumerate(point)) % p
+    def source(role, i, layer, operation, rows, cols, size, rne=False):
+        return {'source': role, 'source_id': i, 'layer': layer, 'operation': operation,
+                'shape': (1,rows,cols), 'word_bytes': size, 'rne': rne, 'token_offset': 0}
+    norms = [{'weighted': True, 'layer': 0, 'operation': 'input_rms', 'heads': 1,
+              'statistic_rows': 3, 'columns': 3},
+             {'weighted': False, 'layer': 1, 'operation': 'v_norm', 'heads': 2,
+              'statistic_rows': 6, 'columns': 2,
+              'source_producer': {'layer': 1, 'operation': 'v_source'}}]
+    sources = [source('B',0,0,'input_rms',3,3,4), source('B',1,1,'v_source',3,4,6,True),
+               source('RMS_statistics',0,0,'input_rms',3,1,6), source('RMS_statistics',1,1,'v_norm',6,1,6),
+               source('RMS_outputs',0,0,'input_rms',3,3,2), source('RMS_outputs',1,1,'v_norm',6,2,2)]
+    raw = [[4*r+c-5 for c in range(4)] for r in range(3)]
+    def rne(raw):
+        q, remainder = divmod(raw, 2)
+        return q+int(remainder == 1 and q & 1)
+    x1 = [[rne(v) for v in row] for row in raw]
+    ps = [[3*(r-c) for c in range(3)] for r in range(3)]
+    statistics = [[[sum((r-c)**2 for c in range(3))] for r in range(3)],
+                  [[sum(x1[r//2][2*(r%2)+c]**2 for c in range(2))] for r in range(6)]]
+    products = [ps, [[x1[r//2][2*(r%2)+c] for c in range(2)] for r in range(6)]]
+    ys = [[[plan.rms_rne_i16(v, statistics[i][r][0], norms[i]['columns'], 0, 0, 0)
+            for v in row] for r, row in enumerate(values)] for i, values in enumerate(products)]
+    values = [ps, raw, *statistics, *ys]
+    byte_tiles, _ = plan.auxiliary_word_layout(sources)
+    live = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources)
+    packed = [0]*(1 << (live-1).bit_length())
+    for i,r,c,a,h,d,j,count,offset in byte_tiles:
+        for row in range(h):
+            for col in range(d):
+                word = values[i][r+row][c+col]+(1 << (8*sources[i]['word_bytes']-1))
+                for k in range(count):
+                    packed[offset+k+count*(col+d*row)] = word >> (8*(j+k)) & 255
+    beta_planes = [[byte >> k & 1 for byte in packed] for k in range(8)]
+    y_tiles, _ = plan.auxiliary_word_layout(sources[4:])
+    input_table = [[0]*128 for _ in range(32)]
+    for i,r,c,a,h,d,j,count,offset in y_tiles:
+        for row in range(h):
+            for col in range(d):
+                rr, cc = r+row, c+col
+                words = [(products[i][rr][cc],32 if i == 0 else 16), (statistics[i][rr][0],48), (ys[i][rr][cc],16)]
+                bits = [0,1]+[(v+(1 << (w-1))) >> k & 1 for v,w in words for k in range(w)]
+                input_table[offset//2+col+d*row] = bits+[0]*(128-len(bits))
+    a, b, mix = list(range(2,9)), list(range(11,18)), 7
+    weights = [(eq(a,j)+mix*eq(b,j)) % p for j in range(128)]
+    rne_planes = [[((x1[r][c]+32768) >> k & 1) if r < 3 else 0 for r in range(4) for c in range(4)]
+                  for k in range(16)]
+    for point in ([2,3,5,7,11], [0]*5, [1]*5):
+        pulled = plan.rms_joint_input_pullback(norms, sources, byte_tiles, point)
+        expected = sum(eq(point,i)*sum(w*v for w,v in zip(weights,row)) for i,row in enumerate(input_table)) % p
+        sigma = sum(scale*sum(weights[port+k]*plan.mle(beta_planes[k][offset:offset+(1 << len(q))],q)
+                              for k in range(8)) for port,offset,q,scale in pulled['sigma_byte_views']) % p
+        from_rne = sum(claim[3]*sum(weights[port+k]*plan.mle(rne_planes[k],claim[2]+claim[1]) for k in range(16))
+                       for port,i,claim in pulled['rne_output_views']) % p
+        assert expected == (weights[1]*pulled['public_one']+sigma+from_rne) % p
+        if point == [1]*5:
+            assert expected == pulled['public_one'] == 0  # no biased-zero bit on nonexistent RMS cells
+        else:
+            assert pulled['public_one'] == sum(eq(point,i) for i in range(21)) % p
+    # Native point consumers see this SAME Y, with bias only on live words.
+    for i,norm in enumerate(norms):
+        rows, heads, cols = norm['statistic_rows']//norm['heads'], norm['heads'], norm['columns']
+        cb, rb = (heads*cols-1).bit_length(), (rows-1).bit_length()
+        point = list(range(2,2+cb+rb))
+        native = [ys[i][r*heads+c//cols][c%cols] if r < rows and c < heads*cols else 0
+                  for r in range(1 << rb) for c in range(1 << cb)]
+        claim = plan.rms_output_source_point(norm, point)
+        terms, bias = plan.auxiliary_probe_terms(byte_tiles, sources, {4+i: claim})
+        reconstructed = (sum(scale*plan.mle(packed[offset:offset+(1 << len(q))],q) for offset,q,scale in terms)-bias) % p
+        assert reconstructed == plan.mle(native,point)
+    # One altered Y byte changes both the source input and consumer, but no
+    # longer satisfies the uniquely determined RMS output. Binding is not correctness.
+    address = next(t[-1] for t in byte_tiles if t[0] == 4 and t[1] == t[2] == t[6] == 0)
+    cell = next(t[-1]//2 for t in y_tiles if t[0] == t[1] == t[2] == 0)
+    point = [2,3,5,7,11]
+    pulled = plan.rms_joint_input_pullback(norms, sources, byte_tiles, point)
+    change = 1-2*beta_planes[0][address]
+    delta = sum(scale*weights[port]*eq(q,address-offset)*change for port,offset,q,scale in pulled['sigma_byte_views']
+                if offset <= address < offset+(1 << len(q))) % p
+    assert delta == weights[82]*eq(point,cell)*change % p != 0
+    changed_bytes = packed[:]
+    changed_bytes[address] ^= 1
+    native_point = [2,3,5,7]
+    terms,bias = plan.auxiliary_probe_terms(byte_tiles,sources,{4: plan.rms_output_source_point(norms[0],native_point)})
+    consumer_delta = sum(scale*(plan.mle(changed_bytes[offset:offset+(1 << len(q))],q)
+                                -plan.mle(packed[offset:offset+(1 << len(q))],q)) for offset,q,scale in terms) % p
+    assert consumer_delta == eq(native_point,0)*change % p != 0
+    assert ys[0][0][0]+change != plan.rms_rne_i16(ps[0][0], statistics[0][0][0], 3, 0, 0, 0)
+    for mutated in ([*sources, dict(sources[4])],
+                    [*sources[:4], {**sources[4], 'token_offset': 1}, sources[5]],
+                    [sources[0], {**sources[1], 'rne': False}, *sources[2:]]):
+        with pytest.raises(ValueError):
+            plan.rms_joint_input_pullback(norms, mutated, byte_tiles, [2]*5)
+    with pytest.raises(ValueError):
+        plan.rms_output_source_point({**norms[1], 'heads': 3}, [2]*4)
 
 
 def test_rms_byte_extension_preserves_rq_and_recounts_padding_records_and_arrays():

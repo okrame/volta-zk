@@ -2141,6 +2141,130 @@ def rms_statistic_byte_sources(cohorts):
     return sources
 
 
+def rms_output_byte_sources(cohorts):
+    """Candidate Y in the SAME Sigma, not retained storage or an admitted cut."""
+    return [{'source': 'RMS_outputs', 'source_id': i, 'layer': r['layer'],
+             'operation': r['operation'], 'execution': None, 'token_offset': 0,
+             'shape': (1,r['statistic_rows'],r['columns']), 'word_bytes': 2,
+             'rne': False, 'physical_b_offset': None}
+            for i,r in enumerate(rms_statistic_cohorts(cohorts))]
+
+
+def rms_output_source_point(norm, point, coefficient=1):
+    """Native lane||head||token -> Y's column||flattened-row point."""
+    heads, columns, rows = norm['heads'], norm['columns'], norm['statistic_rows']
+    natural(heads, 'RMS heads', 1, 32)
+    natural(columns, 'RMS columns', 1, 5376)
+    natural(rows, 'RMS rows', 1)
+    if heads & (heads-1) or rows % heads or heads > 1 and columns & (columns-1):
+        raise ValueError('RMS head reshape is not the pinned geometry')
+    cb, hb, rb = (columns-1).bit_length(), (heads-1).bit_length(), (rows//heads-1).bit_length()
+    if len(point) != cb+hb+rb:
+        raise ValueError('RMS output point has the wrong native axes')
+    return ([], list(point[cb:cb+hb])+list(point[cb+hb:]), list(point[:cb]), coefficient)
+
+
+def rms_joint_input_pullback(norms, sources, byte_tiles, cell_point):
+    """Public bottom adapter: compact byte views and RNE-output views.
+
+    A byte view (port,offset,point,scale) contributes
+    scale*sum_k lambda[port+k]*MLE(bit_k(Sigma)[cube],point).
+    The RNE views use the same lambda with 16 output bits. No new private
+    wire per view. Requires auxiliary_word_layout's canonical public tiles.
+    Lists here are a small diagnostic; a caller can stream
+    one Y cube at a time from the existing source/cube descriptors.
+    """
+    def source_map(role, key):
+        result = {}
+        for i,s in enumerate(sources):
+            if s['source'] == role:
+                value = key(s)
+                if value in result:
+                    raise ValueError('duplicate RMS source identity')
+                result[value] = i
+        return result
+    by_y = source_map('RMS_outputs', lambda s: s['source_id'])
+    by_s = source_map('RMS_statistics', lambda s: s['source_id'])
+    by_b = source_map('B', lambda s: (s['layer'],s['operation']))
+    if set(by_y) != set(range(len(norms))) or set(by_s) != set(by_y):
+        raise ValueError('RMS sources must cover the norm inventory exactly')
+    output_sources = [sources[by_y[i]] for i in range(len(norms))]
+    y_tiles, _ = auxiliary_word_layout(output_sources)
+    cells = sum(math.prod(s['shape']) for s in output_sources)
+    if not cells or len(cell_point) != (cells-1).bit_length():
+        raise ValueError('RMS cell point has the wrong domain')
+    for value in cell_point:
+        natural(value, 'public RMS cell coordinate', 0, P-1)
+    products = []
+    for i,norm in enumerate(norms):
+        rows = natural(norm['statistic_rows'], 'RMS rows', 1)
+        columns = natural(norm['columns'], 'RMS columns', 1, 5376)
+        rms_output_source_point(norm, [0]*((norm['columns']-1).bit_length()+
+                                          (norm['statistic_rows']-1).bit_length()))
+        if type(norm['weighted']) is not bool:
+            raise ValueError('RMS weighted mode must be Boolean')
+        heads = norm['heads']
+        for index, shape, size in ((by_y[i],(1,rows,columns),2), (by_s[i],(1,rows,1),6)):
+            source = sources[index]
+            if (tuple(source['shape']) != shape or source['word_bytes'] != size or source['rne'] or source['token_offset']
+                    or (source['layer'],source['operation']) != (norm['layer'],norm['operation'])):
+                raise ValueError('RMS cut shape or identity mismatch')
+        producer = norm if norm['weighted'] else norm['source_producer']
+        key = (producer['layer'],producer['operation'])
+        if key not in by_b:
+            raise ValueError('missing RMS product producer')
+        index = by_b[key]
+        source = sources[index]
+        shape = (1,rows,columns) if norm['weighted'] else (1,rows//heads,heads*columns)
+        if (tuple(source['shape']) != shape or source['word_bytes'] != (4 if norm['weighted'] else 6) or source['token_offset']
+                or source['rne'] != (not norm['weighted'])):
+            raise ValueError('RMS product must use the exact B or pre-norm RNE source')
+        products.append(index)
+    positions = {}
+    for i,r,c,a,h,d,j,count,offset in byte_tiles:
+        positions.setdefault((i,r,c,a,h,d), []).append((j,count,offset))
+    byte_views, rne_views, public_one = [], [], 0
+    def emit(source, row, col, height, width, local, scale, port):
+        groups = positions.get((source,row,col,1,height,width), ())
+        if sorted(j+k for j,count,_ in groups for k in range(count)) != list(range(sources[source]['word_bytes'])):
+            raise ValueError('RMS byte cube coverage mismatch')
+        for first,count,offset in groups:
+            jb = (count-1).bit_length()
+            for byte in range(first,first+count):
+                point = [(byte-first >> k) & 1 for k in range(jb)]+local
+                byte_views.append((port+8*byte,offset,point,scale))
+    for i,row,col,_,height,width,first,count,offset in y_tiles:
+        assert first == 0 and count == 2
+        cb, rb = (width-1).bit_length(), (height-1).bit_length()
+        cell_offset, size = offset//2, height*width
+        high = math.prod(v if (cell_offset//size >> k) & 1 else 1-v
+                         for k,v in enumerate(cell_point[cb+rb:])) % P
+        local = list(cell_point[:cb+rb])
+        public_one = (public_one+high) % P
+        norm, product = norms[i], products[i]
+        pw = 32 if norm['weighted'] else 16
+        emit(by_y[i],row,col,height,width,local,high,2+pw+48)
+        # Sum of EQ over this complete local column cube is one, not width.
+        emit(by_s[i],row,0,height,1,local[cb:],high,2+pw)
+        if norm['weighted']:
+            emit(product,row,col,height,width,local,high,2)
+        else:
+            hb = (norm['heads']-1).bit_length()
+            if col or width != norm['columns'] or height < norm['heads']:
+                raise ValueError('RMS unweighted cube cannot use the native head reshape')
+            token_height, token_row = height//norm['heads'], row//norm['heads']
+            low = (token_height-1).bit_length()
+            total = (sources[product]['shape'][1]-1).bit_length()
+            row_point = local[cb+hb:]+[(token_row//token_height >> k) & 1 for k in range(total-low)]
+            claim = ([],row_point,local[:cb+hb],high)
+            rne_views.append((2,product,claim))
+    return {'public_one': public_one, 'sigma_byte_views': byte_views, 'rne_output_views': rne_views,
+            'summary': {'credit': False, 'rms_cells': cells, 'rms_cell_cubes': len(y_tiles),
+                        'compact_sigma_byte_views': len(byte_views), 'compact_rne_output_views': len(rne_views),
+                        'input_split_extension_corrections': 2, 'input_split_zero_residuals': 1,
+                        'complete_gamma_callers_and_reader': None}}
+
+
 def rms_statistic_screen(cohorts):
     """One grouped cubic SC per RMS consumer; incoming S claims not counted.
 
@@ -2932,8 +3056,8 @@ def wide_hash_witness_screen(cohorts, old_tokens=0):
     return result
 
 
-def rms_byte_bridge_screen(cohorts):
-    """S-byte extension of the known R3/A5 candidate, NOT complete Gamma.
+def rms_byte_bridge_screen(cohorts, include_rms_outputs=False):
+    """S-byte candidate and optional, unadmitted virtual-Y extension.
 
     Recount the two endpoints and bound all fixed-100+50 contexts from the
     capacity envelope. The old narrower screens remain explicit comparisons;
@@ -2941,20 +3065,30 @@ def rms_byte_bridge_screen(cohorts):
     Use public-zero outer rows for payload; retain the older, larger array
     reservations as conservative bounds, without claiming saved GPU memory.
     """
+    if type(include_rms_outputs) is not bool:
+        raise ValueError('RMS output extension mode must be Boolean')
     if cohorts[0]['rows'] != 150 or cohorts[-1]['rows'] != 50:
         raise ValueError('RMS byte bridge accounting covers pinned 100+50 only')
     stats = rms_statistic_screen(cohorts)
-    extra_sources = rms_statistic_byte_sources(cohorts)
+    statistic_sources = rms_statistic_byte_sources(cohorts)
+    output_sources = rms_output_byte_sources(cohorts) if include_rms_outputs else []
+    extra_sources = statistic_sources+output_sources
     extra_tiles, no_rq = auxiliary_word_layout(extra_sources)
     assert not no_rq
-    count, packed = len(extra_sources), sum(6*s['shape'][1] for s in extra_sources)
-    probe_bits = sum((s['shape'][1]-1).bit_length() for s in extra_sources)
+    count, packed = len(statistic_sources), sum(6*s['shape'][1] for s in statistic_sources)
+    output_bytes = sum(2*math.prod(s['shape']) for s in output_sources)
+    added_source_bytes = packed+output_bytes
+    probe_bits = sum((s['shape'][1]-1).bit_length() for s in statistic_sources)
     corrections = stats['extension_corrections']+count
-    descriptors = 96*count+72*len(extra_tiles)
+    descriptors = 96*len(extra_sources)+72*len(extra_tiles)
     raw_arrays = {'packed_statistics': packed, 'source_and_cube_descriptors': descriptors,
                   'new_plaintext_and_tags': 48*corrections,
                   'probe_and_input_points': 24*(probe_bits+stats['sumcheck_rounds']),
                   'statistic_kernel_descriptors': 96*count, 'kernel_control_reserve': 65536}
+    if include_rms_outputs:
+        # Two split MAC values, one 29-coordinate cell point and 128 port weights.
+        # No Y array or actual-profile RMS-J gates/records are reserved here.
+        raw_arrays['rms_input_boundary_records_and_forms'] = 2*48+24*(29+128)
     arrays = {k: 256*((v+255)//256) for k, v in raw_arrays.items()}
     extra_bytes, cases, final_envelope = sum(arrays.values()), [], None
     config = pinned_model_config()
@@ -2974,7 +3108,7 @@ def rms_byte_bridge_screen(cohorts):
         byte_tiles, new_rq = auxiliary_word_layout(sources)
         assert rq == new_rq and len(byte_tiles)-len(old_tiles) == len(extra_tiles)
         live = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources)
-        original_live = live-packed
+        original_live = live-added_source_bytes
         assert (live-1).bit_length() == (original_live-1).bit_length()  # ONLY the endpoints
         bit_lift = byte_bit_lift_screen((live-1).bit_length())
         rne_bits = rne_output_bit_screen((sum(h*r*c for _, _, _, h, r, c, _ in rq)-1).bit_length())
@@ -3001,6 +3135,7 @@ def rms_byte_bridge_screen(cohorts):
                    +joint['public_anchor_bytes_if_all_resent']+64
                    +bit_lift['payload_before_incoming_claims_framing_and_shared_closures']
                    +rne_bits['additional_payload_before_incoming_claims_and_framing'])
+        payload += 48*int(include_rms_outputs)
         cases.append({'old_tokens': old_tokens, 'source_templates': len(sources),
                       'source_byte_cells': live, 'source_padded_byte_cells': 1 << (live-1).bit_length(),
                       'byte_cubes': len(byte_tiles), 'rq_cubes': len(rq),
@@ -3020,17 +3155,48 @@ def rms_byte_bridge_screen(cohorts):
             final_envelope['rms_statistic'] = common+stats['single_cohort_X_and_selector_array_bytes']
             final_envelope['byte_bit_top'] = common+bit_max['top_array_bytes']
             final_envelope['byte_bit_link'] = common+bit_max['link_array_bytes']
-    first_live = cases[0]['source_byte_cells']-packed
+    first_live = cases[0]['source_byte_cells']-added_source_bytes
     stride = 6*config['layers']*config['query_heads']*150
     changed = [o for o in range(CONTEXT_CAP-150+1) if
-               (first_live+stride*o-1).bit_length() != (first_live+stride*o+packed-1).bit_length()]
+               (first_live+stride*o-1).bit_length() != (first_live+stride*o+added_source_bytes-1).bit_length()]
+    output_comparison = None
+    if include_rms_outputs:
+        # Only the Sigma/range/bit-lift paths change with Y's earlier domain
+        # jump; evaluate their exact delta at EVERY O without rebuilding 3947 layouts.
+        sigma = {n: wide_hash_joint_opening_screen([1 << n], 1 << 23, 357, [0])
+                 ['private_component_payload_before_framing_and_caller'] for n in (33,34)}
+        alphabet = {n: 24*byte_range_tree_screen(n)['extension_corrections'] for n in (33,34)}
+        bits = {n: byte_bit_lift_screen(n)['payload_before_incoming_claims_framing_and_shared_closures']
+                for n in (33,34)}
+        def source_payload(live):
+            n = (live-1).bit_length()
+            zero_rows = (1 << n)//(1 << 23)-(live+(1 << 23)-1)//(1 << 23)
+            return sigma[n]-8*357*zero_rows+alphabet[n]+bits[n]
+        deltas, changed_from_s = [], []
+        for old in range(CONTEXT_CAP-150+1):
+            before = first_live+packed+stride*old
+            after = before+output_bytes
+            deltas.append(source_payload(after)-source_payload(before)+48)
+            if (before-1).bit_length() != (after-1).bit_length():
+                changed_from_s.append(old)
+        output_comparison = {'credit': False, 'contexts_checked': len(deltas),
+                             'source_path_payload_deltas_including_input_split': deltas,
+                             'maximum_source_path_payload_delta': max(deltas),
+                             'old_lengths_with_changed_padding_from_s': changed_from_s,
+                             'complete_all_context_total_payload': None}
     return {'credit': False, 'statistic_sources': count, 'packed_statistic_bytes': packed,
+            'includes_rms_outputs': include_rms_outputs, 'rms_output_sources': len(output_sources),
+            'rms_output_live_bytes': output_bytes, 'rms_output_retained_array_bytes': 0,
+            'requires_output_regeneration_or_new_cache_schedule': include_rms_outputs,
+            'rms_input_split_corrections': 2*int(include_rms_outputs),
+            'rms_output_all_context_comparison': output_comparison,
+            'known_bulk_output_reads_before_gamma_and_rms_replay': (16+95+2+bit_max['source_visits'] if include_rms_outputs else 0),
             'initial_statistic_i16_squares': stats['statistic_input_cells'],
             'initial_statistic_integer_additions': stats['statistic_input_cells']-stats['statistic_rows'],
             'extra_byte_cubes': len(extra_tiles), 'extra_descriptor_bytes': descriptors,
             'statistic_probe_extension_coordinates': probe_bits,
             'statistic_probe_and_sumcheck_extension_corrections': corrections,
-            'additional_payload_before_rms_circuit_gamma_and_framing': 24*corrections,
+            'additional_payload_before_rms_circuit_gamma_and_framing': 24*corrections+48*int(include_rms_outputs),
             'additional_known_sigma_claims': count+1,
             'known_sigma_claims_before_future_gamma': len(cohorts)+8+2*config['layers']+count+1,
             'fixed_input_probe_and_sumcheck_error_numerator': probe_bits+stats['fixed_input_error_numerator_before_claim_batching'],
@@ -3377,6 +3543,7 @@ def report():
         "gamma_barrier_screen": gamma_barrier_plan(cohorts)["summary"],
         "rms_statistic_screen": rms_statistic_screen(cohorts),
         "rms_byte_bridge_screen": rms_byte_bridge_screen(cohorts),
+        "rms_output_byte_bridge_screen": rms_byte_bridge_screen(cohorts, True),
         "rms_boolean_cohort_screen": rms_boolean_cohort_screen(cohorts),
         "kv_transition_screens": [kv_transition_screen(old) for old in (0, 3900, 3946)],
         "attention_product_screens": [attention_product_screen(old) for old in (0, 3946)],

@@ -157,11 +157,11 @@ authorization.
   cubic GKR per cohort when added to the current candidate. Input-guard reuse
   is justified by conditional integer lifting from P0/statistics and W/X ranges;
   the [joint GKR core](c7.1-cut-witness.md#riduzione-gkr-rms-con-asse-delle-celle-condiviso)
-  now gives explicit copies/wiring and an interactive transfer to the same
-  inputs. The predicate still needs y bound to every consumer; its preliminary
-  source and replay costs do not admit that cut or the runtime. Input adapters,
-  incoming forms and actual exponents remain uncompiled. Derivations live
-  in that dossier; current resource totals live in [R3 with S](c7.1-auxiliary-witness.md#statistiche-rms-nella-stessa-sorgente-byte).
+  gives explicit copies/wiring and an interactive transfer to the same
+  inputs. The [R3/R2 input adapter and same-source Y](c7.1-auxiliary-witness.md#output-rms-e-port-di-ingresso-nella-stessa-sorgente)
+  now specify the predicate/consumer binding and source-path deltas for every
+  context. Actual exponents, Gamma caller census and replay/cache costs remain
+  open; Y is not admitted. Current accounting stays in [R3 with S](c7.1-auxiliary-witness.md#statistiche-rms-nella-stessa-sorgente-byte).
 - [R1: byte-bound requantization](c7.1-requantization.md) gives exact
   ties-to-even/overflow polynomials and a conditional MAC sumcheck for
   i48→symmetric-i16, plus a separate byte-range proof. A tamper case
@@ -243,55 +243,10 @@ authorization.
   padding or a second W copy. With P0, three reads are specified
   for the W-dependent subsystem, but the complete caller, W range/padding
   and B/KV schedule are not instantiated; the A3 concrete-hash/FS gap remains open.
-- The [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) and
-  [focused tests](../tests/test_c7_1_gemma_plan.py) check paired-fold
-  arithmetic, service accounting, candidate integer/Fp3 decompositions,
-  the two-proof masking counterexample, exact carrier/bit-codec counts,
-  the product-check identity and simulator with the C7.1 MAC sign, and A2's
-  degree-8/9 round reduction, single input endpoint and resource counts.
-  A3 adds small FFT/form/recursion identities and a malformed-codeword
-  counterexample distinguishing proximity from exact well-formedness.
-  The focused checks also cover finite query sampling, exact ideal
-  simulation distributions, the excluded independent-RO hybrid, W-cut
-  counts/replay/mutations, finite-field matrix folds, A4's arbitrary-fold
-  distance/encoding identities and dyadic layout/form evaluation. P0 adds
-  cohort coverage/offsets/producers, malformed model inventories, cubic
-  broadcast norms and tied lookup with duplicates and terminal absorption.
-  Input-route tests cover shifted/prefix selectors, head reshape, bounded
-  fanout reduction and cancellation if its batch challenge is sent too early.
-  R1 adds exact Fraction comparisons, all shift classes/ties/overflow,
-  Lagrange roots and non-Boolean degree checks, a malformed byte and
-  scoped resource exclusions. Byte-opening checks cover unique physical
-  coverage, live-support bias, public forms, the same SC/PCS endpoint and
-  a nonzero padding byte that passes the alphabet test but fails its link.
-  Arbitrary-fold forms and reconstructed paths check the A4 reuse and
-  internal-tree cache; this is not a Poseidon2 security test or KAT.
-  The range product tree adds complete small eight-layer reductions,
-  cubic coefficients, the affine source alias, non-byte Fp inputs,
-  altered products, early-challenge cancellation and histogram/prefix
-  equivalence without assuming that folded values remain bytes.
-  R2 adds P/S linearity, lifted degree seven, complete small eight-layer
-  reductions to six source planes, dummy-lane pruning and dense replay
-  comparisons. The direct RNE/overflow regressions still use the same formulas.
-  R3 adds common-source coverage and all six RQ pullbacks, masked overflow,
-  the necessity of a pre-probe source, identical striped RS codewords and
-  reconstructed lower subtrees with staged digest buffers.
-  The IBCS audit checks valid-position resampling by finite enumeration
-  and the cube-root-loss identity with exact fractions; it tests a bound
-  template, not an extractor or hash-security claim.
-  A5 adds the 32-lane algebra instance, fresh wide accounting, and symbolic
-  tiled/pruned-tree checks with absolute indices. A5-M adds matrix
-  irreducibility/finite-period checks, a synthetic permutation KAT and dense
-  comparison, canonical/tamper cases, the branch-12 counterexample and a
-  31-round passive difference. No concrete hash-security test is claimed.
-  A5-D exhausts all 14,641 keys of a two-lane/two-round F11 toy, checks
-  the complete characteristic distribution and demonstrates the separate
-  collision-hull/adaptive-input/key-reuse obligations.
-  A5-P adds exact joint distributions of embedded keys/public rejection
-  tapes, finite comparison-generator domination, fail-closed boundaries,
-  descriptor grinding and the excluded free oracle-dependent advice case.
-  The broader 86 non-native Python checks passed during the main integration
-  (`bce620f`). They do not prove full cryptography or hardware feasibility.
+- The [diagnostic](../scripts/c7_1_gemma_plan.py) and
+  [focused tests](../tests/test_c7_1_gemma_plan.py) provide small algebra,
+  layout, tamper and accounting checks. Their scope and assumptions live
+  with the relevant derivations; passing them does not admit G2 or hardware feasibility.
 - The complete carrier/blind MAC/PCS composition and four-read full-prover
   schedule remain unproved. GKR and witness regeneration must fit the same
   source-read and memory accounting; output-bound FS constrains folding order.
@@ -309,12 +264,12 @@ authorization.
 
 ## Next work
 
-The immediate witness deliverable is the [predicate's same-source Y binding and R3/R2 input adapters](c7.1-cut-witness.md#riduzione-gkr-rms-con-asse-delle-celle-condiviso),
-with whole-domain validity and a recount over every context length. The
-joint core is specified, but literal replay is costly and adding every Y
-to the existing reservations exceeds the arena. Compile replay/cache costs
-before adopting Y; the current R3 totals still exclude it. A lower-payload
-deterministic-output circuit remains an alternative, not a parallel implementation.
+The immediate witness deliverable is a priced, bounded-memory RMS reader/replay
+schedule with actual profiles and Gamma consumers. Compose the
+[joint core](c7.1-cut-witness.md#riduzione-gkr-rms-con-asse-delle-celle-condiviso)
+with the [S+Y source comparison](c7.1-auxiliary-witness.md#output-rms-e-port-di-ingresso-nella-stessa-sorgente)
+before adopting Y: its input bindings are specified, its complete cost is not.
+A lower-payload deterministic-output circuit remains an alternative.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
 In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)

@@ -1723,6 +1723,22 @@ def rms_square_pair_coefficients(x0, x1, f0, f1):
     return [v % P for v in (f0*a, 2*(f0*b)+df*a, f0*c+2*(df*b), df*c)]
 
 
+def rms_statistic_byte_sources(cohorts):
+    """Candidate retained S cuts in the SAME Sigma, using biased i48 bytes.
+
+    Same 12-u64 source descriptor schema, with a role-specific physical
+    offset. Does not add S to raw-RNE's RQ domain or change physical B.
+    """
+    sources, offset = [], 0
+    for i, r in enumerate(rms_statistic_cohorts(cohorts)):
+        sources.append({'source': 'RMS_statistics', 'source_id': i, 'layer': r['layer'],
+                        'operation': r['operation'], 'execution': None, 'token_offset': 0,
+                        'shape': (1, r['statistic_rows'], 1), 'word_bytes': 6, 'rne': False,
+                        'physical_statistic_offset': offset})
+        offset += 6*r['statistic_rows']
+    return sources
+
+
 def rms_statistic_screen(cohorts):
     """One grouped cubic SC per RMS consumer; incoming S claims not counted.
 
@@ -2105,6 +2121,27 @@ def auxiliary_probe_terms(byte_tiles, sources, source_points):
         if j == 0:  # exactly once per word cube, not once per byte group
             bias = (bias+coefficient*(1 << (8*source['word_bytes']-1))) % P
     return terms, bias
+
+
+def auxiliary_byte_terms(byte_tiles, sources, source_points, byte):
+    """Pull back one byte plane at source points; no radix weights or bias.
+
+    These are byte MLE claims, NOT bit extraction from a folded scalar.
+    Repeated demands can concatenate calls with their public batch weights.
+    """
+    natural(byte, 'byte plane', 0, 5)
+    for i in source_points:
+        natural(i, 'byte source index', 0, len(sources)-1)
+        natural(byte, 'source byte plane', 0, sources[i]['word_bytes']-1)
+    terms = []
+    for i, r, c, heads, height, width, j, count, offset in byte_tiles:
+        if i not in source_points or not j <= byte < j+count:
+            continue
+        local, coefficient = auxiliary_point_restriction(
+            sources[i], r, c, heads, height, width, source_points[i])
+        point = [(byte-j >> k) & 1 for k in range((count-1).bit_length())]+local
+        terms.append((offset, point, coefficient))
+    return terms
 
 
 def gemma_rne_shift_classes(cohorts, weight_exponents, activation_exponents):
@@ -2493,6 +2530,87 @@ def wide_hash_witness_screen(cohorts, old_tokens=0):
     return result
 
 
+def rms_byte_bridge_screen(cohorts):
+    """S-byte extension of the known R3/A5 candidate, NOT complete Gamma.
+
+    Recount the two endpoints and bound all fixed-100+50 contexts from the
+    capacity envelope. The old narrower screens remain explicit comparisons;
+    their small-domain counts cannot be reused at the earlier padding jump.
+    """
+    if cohorts[0]['rows'] != 150 or cohorts[-1]['rows'] != 50:
+        raise ValueError('RMS byte bridge accounting covers pinned 100+50 only')
+    stats = rms_statistic_screen(cohorts)
+    extra_sources = rms_statistic_byte_sources(cohorts)
+    extra_tiles, no_rq = auxiliary_word_layout(extra_sources)
+    assert not no_rq
+    count, packed = len(extra_sources), sum(6*s['shape'][1] for s in extra_sources)
+    probe_bits = sum((s['shape'][1]-1).bit_length() for s in extra_sources)
+    corrections = stats['extension_corrections']+count
+    descriptors = 96*count+72*len(extra_tiles)
+    raw_arrays = {'packed_statistics': packed, 'source_and_cube_descriptors': descriptors,
+                  'new_plaintext_and_tags': 48*corrections,
+                  'probe_and_input_points': 24*(probe_bits+stats['sumcheck_rounds']),
+                  'statistic_kernel_descriptors': 96*count, 'kernel_control_reserve': 65536}
+    arrays = {k: 256*((v+255)//256) for k, v in raw_arrays.items()}
+    extra_bytes, cases, final_envelope = sum(arrays.values()), [], None
+    for old_tokens in (0, CONTEXT_CAP-150):
+        original = auxiliary_word_sources(cohorts, old_tokens)
+        old_tiles, rq = auxiliary_word_layout(original)
+        sources = original+extra_sources
+        byte_tiles, new_rq = auxiliary_word_layout(sources)
+        assert rq == new_rq and len(byte_tiles)-len(old_tiles) == len(extra_tiles)
+        live = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources)
+        original_live = live-packed
+        assert (live-1).bit_length() == (original_live-1).bit_length()  # ONLY the endpoints
+        base = wide_hash_witness_screen(cohorts, old_tokens)['joint_w_kv_candidate']
+        schedule = base['known_state_cache_schedule']
+        phases = {k: v+extra_bytes for k, v in
+                  schedule['arena_phases_bytes_before_uncompiled_reader_gamma_runtime'].items()}
+        phases['rms_statistic'] = phases['opening_first_pass']-80*(1 << 23)+stats['single_cohort_X_and_selector_array_bytes']
+        payload = base['known_partial_payload_with_all_anchors_and_one_shared_closure']+24*corrections
+        cases.append({'old_tokens': old_tokens, 'source_templates': len(sources),
+                      'source_byte_cells': live, 'source_padded_byte_cells': 1 << (live-1).bit_length(),
+                      'byte_cubes': len(byte_tiles), 'rq_cubes': len(rq),
+                      'layout_sha256': hashlib.sha256(json.dumps(
+                          [sources, byte_tiles, rq], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+                      'known_partial_payload_before_rms_circuit_gamma_and_framing': payload,
+                      'remaining_payload_bytes_before_missing_components': 35_000_000-payload,
+                      'arena_phase_upper_bytes': phases, 'known_phase_max_upper_bytes': max(phases.values())})
+        if old_tokens:
+            envelope = schedule['all_context_known_array_envelope']['arena_phase_upper_bytes']
+            final_envelope = {k: v+extra_bytes for k, v in envelope.items()}
+            final_envelope['rms_statistic'] = (final_envelope['opening_first_pass']-80*(1 << 23)
+                                             +stats['single_cohort_X_and_selector_array_bytes'])
+    first_live = cases[0]['source_byte_cells']-packed
+    config = pinned_model_config()
+    stride = 6*config['layers']*config['query_heads']*150
+    changed = [o for o in range(CONTEXT_CAP-150+1) if
+               (first_live+stride*o-1).bit_length() != (first_live+stride*o+packed-1).bit_length()]
+    return {'credit': False, 'statistic_sources': count, 'packed_statistic_bytes': packed,
+            'initial_statistic_i16_squares': stats['statistic_input_cells'],
+            'initial_statistic_integer_additions': stats['statistic_input_cells']-stats['statistic_rows'],
+            'extra_byte_cubes': len(extra_tiles), 'extra_descriptor_bytes': descriptors,
+            'statistic_probe_extension_coordinates': probe_bits,
+            'statistic_probe_and_sumcheck_extension_corrections': corrections,
+            'additional_payload_before_rms_circuit_gamma_and_framing': 24*corrections,
+            'additional_known_sigma_claims': count,
+            'known_sigma_claims_before_future_gamma': len(cohorts)+8+2*config['layers']+count,
+            'fixed_input_probe_and_sumcheck_error_numerator': probe_bits+stats['fixed_input_error_numerator_before_claim_batching'],
+            'additional_common_sigma_batch_error_numerator': count,
+            'additional_arrays_reserved_256_byte_aligned': arrays,
+            'additional_array_reservation_bytes': extra_bytes,
+            'known_bulk_statistic_reads_before_replay_and_normalizer': 16+95+2+1,
+            'known_bulk_statistic_read_and_initial_write_bytes': (16+95+2+1+1)*packed,
+            'cases': cases, 'old_lengths_with_changed_byte_padding': changed,
+            'all_context_arena_phase_upper_bytes': final_envelope,
+            'all_context_known_phase_max_upper_bytes': max(final_envelope.values()),
+            'remaining_arena_bytes_before_missing_components': 6442450944-max(final_envelope.values()),
+            'same_rq_layout': True, 'requires_rebuilding_all_sigma_byte_forms': True,
+            'additional_weight_reads_given_w_free_reader': 0, 'additional_pcs_instances': 0,
+            'complete_rms_integer_circuit': None, 'complete_gamma_liveness': None,
+            'complete_certificate_bytes': None}
+
+
 def requantization_screen(cohorts):
     """R1 byte-lift candidate, not adopted B PCS or complete Gemma feasibility."""
     matrix_cells = sum(c["rows"]*c["columns"] for c in cohorts if c["kind"] == "matrix")
@@ -2817,6 +2935,7 @@ def report():
         "input_link_screen": input_link_screen(cohorts),
         "gamma_barrier_screen": gamma_barrier_plan(cohorts)["summary"],
         "rms_statistic_screen": rms_statistic_screen(cohorts),
+        "rms_byte_bridge_screen": rms_byte_bridge_screen(cohorts),
         "kv_transition_screens": [kv_transition_screen(old) for old in (0, 3900, 3946)],
         "attention_product_screens": [attention_product_screen(old) for old in (0, 3946)],
         "auxiliary_witness_screens": [auxiliary_witness_screen(cohorts, old) for old in (0, 3946)],

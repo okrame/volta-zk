@@ -156,9 +156,12 @@ authorization.
   preserving per-head geometry and the final RMS's larger producer domain.
   The [exact-output scalar candidate](c7.1-cut-witness.md#lowering-rms-esatto-mediante-confronti-interi)
   replaces inverse-root approximation with integer midpoint comparisons.
-  Its MAC circuit, source-bound bits/limbs, actual exponent profile and
-  incoming-claim census remain open. Component counts are not complete
-  memory, certificate or timing results.
+  The [S-byte extension](c7.1-auxiliary-witness.md#statistiche-rms-nella-stessa-sorgente-byte)
+  commits statistics in the same Sigma and checks them in a pre-Gamma
+  prelude. Use its recounted margins, not the earlier no-S totals: known
+  payload leaves only 384,392 bytes at capacity before missing components.
+  Bit lift, the RMS MAC circuit, exponents and later byte claims remain open;
+  no complete memory, certificate or timing result is claimed.
 - [R1: byte-bound requantization](c7.1-requantization.md) gives exact
   ties-to-even/overflow polynomials and a conditional MAC sumcheck for
   i48→symmetric-i16, plus a separate byte-range proof. A tamper case

@@ -2322,6 +2322,134 @@ def test_rms_scalar_exact_output_preserves_epsilon_exponents_sign_and_integer_or
         plan.rms_rne_i16(0, 0, 256, 0, 10**100, 0)
 
 
+def test_rms_byte_extension_preserves_rq_and_recounts_padding_records_and_arrays():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           "manifests/c7-d126-gemma31b-source-metadata-v1.json").read_bytes())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition'] == 'private_text'])
+    stat_sources = plan.rms_statistic_byte_sources(cohorts)
+    offset = 0
+    for i, (s, r) in enumerate(zip(stat_sources, plan.rms_statistic_cohorts(cohorts))):
+        assert (s['source_id'], s['physical_statistic_offset']) == (i, offset)
+        assert s['source'] == 'RMS_statistics' and not s['rne'] and s['word_bytes'] == 6
+        assert (s['layer'], s['operation'], s['shape']) == (r['layer'], r['operation'], (1, r['statistic_rows'], 1))
+        offset += 6*r['statistic_rows']
+    assert len(stat_sources) == 421 and offset == 3456894
+    screen = plan.rms_byte_bridge_screen(cohorts)
+    for old in (0, 1585, 1586, 1587, 1588, 3945, 3946):
+        before = plan.auxiliary_word_sources(cohorts, old)
+        old_tiles, old_rq = plan.auxiliary_word_layout(before)
+        after = before+stat_sources
+        tiles, rq = plan.auxiliary_word_layout(after)
+        assert rq == old_rq and len(tiles)-len(old_tiles) == 3368
+        assert sum(t[3]*t[4]*t[5]*t[7] for t in tiles if t[0] >= len(before)) == offset
+        assert {t[:8] for t in tiles if t[0] < len(before)} == {t[:8] for t in old_tiles}
+        assert {t[:8]: t[8] for t in tiles if t[0] < len(before)} != {t[:8]: t[8] for t in old_tiles}
+        old_live = sum(math.prod(s['shape'])*s['word_bytes'] for s in before)
+        live = sum(math.prod(s['shape'])*s['word_bytes'] for s in after)
+        assert old_live == 5846628096+1728000*old and live == old_live+offset
+        assert ((old_live-1).bit_length() != (live-1).bit_length()) == (old in (1586, 1587))
+        if old in (0, 3946):
+            case = screen['cases'][int(old != 0)]
+            assert case['source_templates'] == len(after) == 4314
+            assert case['byte_cubes'] == len(tiles) and case['source_byte_cells'] == live
+            assert case['layout_sha256'] == plan.hashlib.sha256(json.dumps(
+                [after, tiles, rq], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    assert screen['old_lengths_with_changed_byte_padding'] == [1586, 1587]
+    assert screen['statistic_probe_extension_coordinates'] == 4108
+    assert screen['statistic_probe_and_sumcheck_extension_corrections'] == 36107
+    assert screen['additional_payload_before_rms_circuit_gamma_and_framing'] == 866568
+    assert screen['initial_statistic_i16_squares'] == 347937024
+    assert screen['initial_statistic_integer_additions'] == 347360875
+    assert screen['known_sigma_claims_before_future_gamma'] == 1322
+    assert screen['fixed_input_probe_and_sumcheck_error_numerator'] == 30241
+    assert screen['additional_common_sigma_batch_error_numerator'] == 421
+    arrays = screen['additional_arrays_reserved_256_byte_aligned']
+    assert arrays == {'packed_statistics': 3457024, 'source_and_cube_descriptors': 283136,
+                      'new_plaintext_and_tags': 1733376, 'probe_and_input_points': 307712,
+                      'statistic_kernel_descriptors': 40448, 'kernel_control_reserve': 65536}
+    assert screen['additional_array_reservation_bytes'] == sum(arrays.values()) == 5887232
+    assert screen['known_bulk_statistic_reads_before_replay_and_normalizer'] == 114
+    assert screen['known_bulk_statistic_read_and_initial_write_bytes'] == 397542810
+    assert [c['known_partial_payload_before_rms_circuit_gamma_and_framing'] for c in screen['cases']] == [26937896, 34615608]
+    assert [c['remaining_payload_bytes_before_missing_components'] for c in screen['cases']] == [8062104, 384392]
+    upper = screen['all_context_arena_phase_upper_bytes']
+    assert max(upper.values()) == screen['all_context_known_phase_max_upper_bytes'] == 6337640832
+    assert upper['rms_statistic'] == 5524154752
+    assert all(v <= upper[k] for c in screen['cases'] for k, v in c['arena_phase_upper_bytes'].items())
+    assert screen['remaining_arena_bytes_before_missing_components'] == 104810112
+    assert not screen['credit'] and screen['complete_rms_integer_circuit'] is None
+    assert screen['complete_gamma_liveness'] is screen['complete_certificate_bytes'] is None
+    assert screen['additional_weight_reads_given_w_free_reader'] == screen['additional_pcs_instances'] == 0
+    with pytest.raises(ValueError, match=r'100\+50'):
+        plan.rms_byte_bridge_screen(plan.gemma_weight_cohorts(
+            [t for t in metadata['tensors'] if t['disposition'] == 'private_text'], 1, 1))
+
+
+def test_rms_statistic_and_byte_plane_pullbacks_share_one_fixed_source():
+    # A tiny existing RNE source plus three S rows. X has a fourth REAL
+    # producer row which must not contribute to the final norm's statistic.
+    x = [[1, 2, 3, 4, 5], [32767]*5, [-9, 8, -7, 6, -5], [11, 12, 13, 14, 15]]
+    statistics = [sum(v*v for v in row) for row in x[:3]]
+    sources = [{'shape': (1, 1, 2), 'word_bytes': 6, 'rne': True, 'token_offset': 0},
+               {'shape': (1, 3, 1), 'word_bytes': 6, 'rne': False, 'token_offset': 0},
+               {'shape': (1, 1, 1), 'word_bytes': 4, 'rne': False, 'token_offset': 0},
+               {'shape': (1, 1, 1), 'word_bytes': 2, 'rne': False, 'token_offset': 0}]
+    words = [[-5, 257], statistics, [-32767**2], [-32767]]
+    tiles, rq = plan.auxiliary_word_layout(sources)
+    assert rq == plan.auxiliary_word_layout(sources[:1])[1]
+    live = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources)
+    u, indices = [0]*(1 << (live-1).bit_length()), {}
+    for i, r, c, heads, height, width, j, count, offset in tiles:
+        for row, col, byte in product(range(height), range(width), range(count)):
+            value = words[i][(r+row)*sources[i]['shape'][2]+c+col]+(1 << (8*sources[i]['word_bytes']-1))
+            index = offset+count*(col+width*row)+byte
+            u[index] = value >> (8*(j+byte)) & 255
+            indices[i, r+row, c+col, j+byte] = index
+    assert len(indices) == live == 36 and all(v == 0 for v in u[live:])
+    def evaluate(terms, values):
+        return sum(coef*plan.mle(values[start:start+(1 << len(point))], point)
+                   for start, point, coef in terms) % plan.P
+    q = [2, 3]
+    point = {1: ([], q, [], 1)}
+    terms, bias = plan.auxiliary_probe_terms(tiles, sources, point)
+    initial_statistic_wire = (evaluate(terms, u)-bias) % plan.P
+    assert initial_statistic_wire == plan.mle(statistics+[0], q)
+    assert initial_statistic_wire != plan.mle(statistics+[sum(v*v for v in x[3])], q)
+    assert bias != 1 << 47  # support is not the whole padded row cube
+    for row, byte in product(range(3), range(6)):
+        altered = u.copy()
+        altered[indices[1, row, 0, byte]] ^= 1  # still byte-valid
+        assert (evaluate(terms, altered)-bias) % plan.P != initial_statistic_wire
+    for byte in range(6):
+        byte_terms = plan.auxiliary_byte_terms(tiles, sources, point, byte)
+        plane = [((s+(1 << 47)) >> (8*byte)) & 255 for s in statistics]+[0]
+        assert evaluate(byte_terms, u) == plan.mle(plane, q)
+        # Broadcast S over five live lanes, not over all eight padded lanes.
+        lane_point = [5, 7, 11]
+        support = plan.mle([1]*5+[0]*3, lane_point)
+        broadcast_terms = plan.auxiliary_byte_terms(tiles, sources, {1: ([], q, [], support)}, byte)
+        dense = [v if lane < 5 else 0 for v in plane for lane in range(8)]
+        assert evaluate(broadcast_terms, u) == plan.mle(dense, lane_point+q)
+    for byte in (-1, 6, True):
+        with pytest.raises(ValueError):
+            plan.auxiliary_byte_terms(tiles, sources, point, byte)
+    for source, width in ((2, 4), (3, 2)):
+        for byte in range(width):
+            plane_terms = plan.auxiliary_byte_terms(tiles, sources, {source: ([], [], [], 1)}, byte)
+            expected = (words[source][0]+(1 << (8*width-1))) >> (8*byte) & 255
+            assert evaluate(plane_terms, u) == expected
+        with pytest.raises(ValueError):
+            plan.auxiliary_byte_terms(tiles, sources, {source: ([], [], [], 1)}, width)
+    with pytest.raises(ValueError):
+        plan.auxiliary_byte_terms(tiles, sources, {4: ([], q, [], 1)}, 0)
+    with pytest.raises(ValueError):
+        plan.auxiliary_byte_terms(tiles, sources, {1: ([], [], [], 1)}, 0)
+    # Even a source-bound byte MLE is not a source-bound bit MLE.
+    folded_byte = plan.mle([0, 1], [2])
+    lsb_at_folded_byte = sum((j & 1)*v for j, v in enumerate(plan.byte_lagrange_basis(folded_byte))) % plan.P
+    assert lsb_at_folded_byte == 0 != plan.mle([0, 1], [2])
+
+
 def test_shifted_eq_digit_dp_matches_every_small_interval():
     def basis(point, index):
         return math.prod(r if (index >> i) & 1 else 1-r for i, r in enumerate(point)) % plan.P

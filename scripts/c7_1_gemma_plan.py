@@ -228,6 +228,58 @@ def rne_i48_to_i16(value, shift):
     return natural(result, "requantized symmetric i16", -32767, 32767)
 
 
+def rms_integer_coefficients(columns, input_exponent, scale_exponent, output_exponent):
+    """Public A,B,C with squared output magnitude A*P^2/(B+C*S).
+
+    P=x*w (or x with scale_exponent=0); S=sum(x^2). This nominates one
+    exact-output RNE, not a calibrated Gemma table or a MAC circuit.
+    The 4096-bit guard bounds this LOCAL diagnostic, not the design profile.
+    """
+    natural(columns, "RMS width", 1, 5376)
+    if any(type(e) is not int for e in (input_exponent, scale_exponent, output_exponent)):
+        raise ValueError("RMS exponents must be public integers")
+    exponent = input_exponent+scale_exponent-output_exponent
+    shift = max(0, -2*exponent, -2*input_exponent)
+    a_shift, c_shift = 2*exponent+shift, 2*input_exponent+shift
+    # Bound intermediates BEFORE allocating shifts, independently of P/S.
+    top_bits = (4*1_000_000*columns*32767**4).bit_length()+a_shift
+    bottom_bits = max(columns.bit_length()+shift,
+                      (1_000_000*columns*32767**2).bit_length()+c_shift)+33
+    # ponytail: local 4096-bit ceiling; compile the real profile's widths before lifting it.
+    if max(top_bits, bottom_bits) > 4096:
+        raise ValueError("RMS profile exceeds the local 4096-bit diagnostic limit")
+    coefficients = (1_000_000*columns << a_shift, columns << shift, 1_000_000 << c_shift)
+    common = math.gcd(*coefficients)
+    return tuple(v//common for v in coefficients)
+
+
+def rne_sqrt_ratio(numerator, denominator):
+    """Exact RNE(sqrt(N/D)) in 0..32767, or reject. No floating point.
+
+    Scalar diagnostic only: division/isqrt are NOT authenticated primitives.
+    """
+    natural(numerator, "squared numerator", 0, (1 << 4096)-1)
+    natural(denominator, "squared denominator", 1, (1 << 4096)-1)
+    if 4*numerator >= 65535**2*denominator:
+        raise ValueError("RMS output overflows symmetric i16")
+    floor = math.isqrt(numerator//denominator)
+    midpoint = 4*numerator-denominator*(2*floor+1)**2
+    return floor+int(midpoint > 0 or midpoint == 0 and floor & 1)
+
+
+def rms_rne_i16(product, statistic, columns, input_exponent, scale_exponent, output_exponent):
+    """Candidate scalar RMS lowering from already source-bound P and S.
+
+    Validating ranges here does not prove P=x*w or S=sum(x^2), nor bind
+    bit decompositions in Gamma. Unweighted callers use P=x and e_w=0.
+    """
+    a, b, c = rms_integer_coefficients(columns, input_exponent, scale_exponent, output_exponent)
+    natural(product, "RMS integer product", -32767**2, 32767**2)
+    natural(statistic, "RMS integer statistic", 0, columns*32767**2)
+    magnitude = rne_sqrt_ratio(a*product**2, b+c*statistic)
+    return -magnitude if product < 0 else magnitude
+
+
 def byte_lagrange_basis(value):
     """Degree-255 basis on 0..255, including at roots; only public inverses.
 

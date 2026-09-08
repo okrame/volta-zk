@@ -2217,6 +2217,111 @@ def test_rms_statistic_cubic_sumcheck_folds_full_input_to_the_same_gamma_endpoin
     assert folded_s*folded_inverse_root**2 != 1
 
 
+def test_rms_squared_midpoint_predicate_is_unique_with_exact_ties_and_overflow():
+    def matches(numerator, denominator, magnitude):
+        if not 0 <= magnitude <= 32767:
+            return False
+        if magnitude == 0:
+            return 4*numerator <= denominator
+        lo, hi = denominator*(2*magnitude-1)**2, denominator*(2*magnitude+1)**2
+        return (lo <= 4*numerator <= hi if magnitude % 2 == 0
+                else lo < 4*numerator < hi)
+
+    # Exhaust the interval predicate independently of division/isqrt.
+    for denominator in range(1, 24):
+        for numerator in range(128):
+            choices = [m for m in range(16) if matches(numerator, denominator, m)]
+            assert choices == [plan.rne_sqrt_ratio(numerator, denominator)]
+    for lower in (*range(32), 32766, 32767):
+        for scale in (1, 3, 17):
+            denominator = 4*scale
+            for side in (-1, 0, 1):
+                numerator = scale*(2*lower+1)**2+side
+                expected = lower+int(side > 0 or side == 0 and lower & 1)
+                assert matches(numerator, denominator, expected) == (expected <= 32767)
+                if expected > 32767:
+                    with pytest.raises(ValueError, match="overflows"):
+                        plan.rne_sqrt_ratio(numerator, denominator)
+                else:
+                    assert plan.rne_sqrt_ratio(numerator, denominator) == expected
+                    assert not matches(numerator, denominator, expected-1)
+                    assert not matches(numerator, denominator, expected+1)
+    for args in ((-1, 1), (0, 0), (1, -1), (True, 1), (1, False), (1.0, 1), (1 << 4096, 1)):
+        with pytest.raises(ValueError):
+            plan.rne_sqrt_ratio(*args)
+
+
+def test_rms_scalar_exact_output_preserves_epsilon_exponents_sign_and_integer_order():
+    # Independent honest algorithm: 15 fixed binary decisions, one midpoint
+    # comparison. No isqrt, division or floating-point reference.
+    def binary_reference(ratio):
+        numerator, denominator = ratio.numerator, ratio.denominator
+        if 4*numerator >= 65535**2*denominator:
+            return None
+        lower = 0
+        for bit in reversed(range(15)):
+            trial = lower+(1 << bit)
+            if trial*trial*denominator <= numerator:
+                lower = trial
+        middle = denominator*(2*lower+1)**2
+        return lower+int(4*numerator > middle or 4*numerator == middle and lower & 1)
+
+    cases = []
+    for width in (1, 2, 3, 256, 512, 5376):
+        for x, w in ((0, 0), (1, 1), (-1, 257), (32767, 32767), (-32767, 32767)):
+            for exponents in ((0, 0, 0), (-10, -14, -8), (-12, 0, -10), (10, -5, 7)):
+                cases.append((x*w, width*x*x, width, *exponents))
+    rng = random.Random(714)
+    for _ in range(250):
+        row = [rng.randrange(-12, 13) for _ in range(rng.randrange(1, 8))]
+        w = rng.randrange(-17, 18)
+        cases.append((row[0]*w, sum(x*x for x in row), len(row), *(rng.randrange(-12, 9) for _ in range(3))))
+    cases += [(1, 1, 256, 1000, -1000, 0), (1, 1, 512, -1000, 1000, 0)]
+    for product_value, statistic, width, ex, ew, ey in cases:
+        a, b, c = plan.rms_integer_coefficients(width, ex, ew, ey)
+        ratio = (Fraction(product_value**2)*Fraction(2)**(2*(ex+ew-ey)) /
+                 (Fraction(1, 1_000_000)+Fraction(statistic, width)*Fraction(2)**(2*ex)))
+        assert ratio == Fraction(a*product_value**2, b+c*statistic)
+        assert math.gcd(a, b, c) == 1 and min(a, b, c) > 0
+        expected = binary_reference(ratio)
+        if expected is None:
+            with pytest.raises(ValueError, match="overflows"):
+                plan.rms_rne_i16(product_value, statistic, width, ex, ew, ey)
+        else:
+            actual = plan.rms_rne_i16(product_value, statistic, width, ex, ew, ey)
+            assert actual == (-expected if product_value < 0 else expected)
+            assert plan.rms_rne_i16(-product_value, statistic, width, ex, ew, ey) == -actual
+    # One nonzero input in a 256-lane head. Rounding the mean to an integer
+    # or rounding the inverse root first changes the pinned real expression.
+    assert plan.rms_rne_i16(1, 1, 256, 0, 0, 0) == 16
+    assert plan.rms_rne_i16(1, 0, 256, 0, 0, 0) == 1000  # false S is not fixed by range checks
+    assert plan.rms_rne_i16(257, 1, 256, 0, 0, 0) == 4111 != 257*16
+    assert plan.rms_rne_i16(0, 1, 256, 0, 0, 0) == plan.rms_rne_i16(0, 2, 256, 0, 0, 0)
+
+    # Goldilocks has 2^192 == 1. At e_w=96, reducing the integer
+    # comparisons modulo p accepts magnitude 16 although true RNE overflows.
+    a, b, c = plan.rms_integer_coefficients(256, 0, 96, 0)
+    numerator, denominator = a, b+c
+    assert pow(2, 192, plan.P) == 1
+    lo, hi = denominator*31**2, denominator*33**2
+    assert lo % plan.P <= 4*numerator % plan.P <= hi % plan.P
+    assert 4*numerator > hi
+    with pytest.raises(ValueError, match="overflows"):
+        plan.rms_rne_i16(1, 1, 256, 0, 96, 0)
+    a, b, c = plan.rms_integer_coefficients(5376, 0, 0, 0)
+    assert max((4*a*32767**4).bit_length(), ((b+c*5376*32767**2)*65535**2).bit_length()) == 89
+    # Public parameter validation precedes any secret-dependent shortcut.
+    for args in ((0, 0, 0, 0), (5377, 0, 0, 0), (256, True, 0, 0),
+                 (256, 0, None, 0), (256, 0, 0, 10**100)):
+        with pytest.raises(ValueError):
+            plan.rms_integer_coefficients(*args)
+    for product_value, statistic in ((32767**2+1, 0), (0, -1), (0, 256*32767**2+1), (True, 0)):
+        with pytest.raises(ValueError):
+            plan.rms_rne_i16(product_value, statistic, 256, 0, 0, 0)
+    with pytest.raises(ValueError, match="local 4096-bit"):
+        plan.rms_rne_i16(0, 0, 256, 0, 10**100, 0)
+
+
 def test_shifted_eq_digit_dp_matches_every_small_interval():
     def basis(point, index):
         return math.prod(r if (index >> i) & 1 else 1-r for i, r in enumerate(point)) % plan.P

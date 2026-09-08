@@ -154,9 +154,11 @@ authorization.
   The [RMS statistic kernel](c7.1-cut-witness.md#statistiche-rms-vincolate-allo-stesso-input)
   now transfers all norms' sum-of-squares claims to the same input wires,
   preserving per-head geometry and the final RMS's larger producer domain.
-  Inverse root, output RNE/validity and the actual incoming-claim census
-  remain open. Component work/record counts are in that section; they are
-  not complete memory, certificate or timing results.
+  The [exact-output scalar candidate](c7.1-cut-witness.md#lowering-rms-esatto-mediante-confronti-interi)
+  replaces inverse-root approximation with integer midpoint comparisons.
+  Its MAC circuit, source-bound bits/limbs, actual exponent profile and
+  incoming-claim census remain open. Component counts are not complete
+  memory, certificate or timing results.
 - [R1: byte-bound requantization](c7.1-requantization.md) gives exact
   ties-to-even/overflow polynomials and a conditional MAC sumcheck for
   i48→symmetric-i16, plus a separate byte-range proof. A tamper case

@@ -3048,6 +3048,56 @@ def private_projection_compilation_screen(n, block, queries, attempts=1):
     }
 
 
+def private_targeted_lifetime_screen():
+    """G2 §3.4: one hidden target, but one source sampled BEFORE all requests.
+
+    Exact reduction counts for the W-only interactive lemma, not a full
+    C7.1/FS compiler. A replay block includes the WHOLE remaining lifetime,
+    cloning, direct checks, storage and comparison, not one honest opening.
+    """
+    profile = wide_hash_security_assumption_screen()
+    attempts = profile['attempt_cap']
+    layout = private_projection_compilation_screen(1 << 35,1 << 24,357,attempts)
+    source, *recursive = [o['symbols'] for o in layout['committed_oracles']]
+    source_epsilon = recursive_epsilon = Fraction(1,1 << 83)
+    shares = [Fraction(1,1 << min(i+1,len(recursive)-1)) for i in range(len(recursive))]
+    source_samples = math.ceil(source/source_epsilon)
+    recursive_samples = [math.ceil(attempts*length/(recursive_epsilon*share))
+                         for length,share in zip(recursive,shares)]
+    source_error = Fraction(source,source_samples)
+    recursive_error = attempts*sum(Fraction(length,count)
+                                  for length,count in zip(recursive,recursive_samples))
+    bind = attempts*Fraction(*profile['assumed_binding_advantage'])
+    blocks = 1+source_samples+sum(recursive_samples)
+    block_work = 1 << 73  # sufficient caller ceiling; NOT an established runtime bound
+    work_cap = profile['binding_reduction_strict_u64_work_cap']
+    naive_samples = math.ceil(attempts*sum(recursive)/recursive_epsilon)
+    fractions = {'source_missing_reservation':source_error,
+                 'recursive_missing_lifetime_reservation':recursive_error,
+                 'sampling_lifetime_reservation':source_error+recursive_error,
+                 'assumed_binding_lifetime_contribution':bind}
+    return {'credit':False,'assumption_profile':profile['profile'],
+            'scope':'one static W, ideal interactive closed lifetime; NOT joint W/KV or FS',
+            'attempt_slots_including_aborts':attempts,'hidden_target_count':1,
+            'source_symbols':source,'recursive_symbols':recursive,
+            'source_samples_before_requests':source_samples,
+            'recursive_samples_at_target_boundaries':recursive_samples,
+            'maximum_attempts_per_source_sample':attempts,
+            'binding_reduction_loss':attempts,
+            'fits_named_binding_loss_ceiling':attempts <= profile['binding_total_reduction_loss_ceiling'],
+            **{name:[x.numerator,x.denominator] for name,x in fractions.items()},
+            'replay_blocks_including_initial_main_and_final_work':blocks,
+            'sufficient_strict_u64_work_ceiling_per_block':block_work,
+            'maximum_uniform_block_work_within_a5_cap':work_cap//blocks,
+            'conditional_total_reduction_u64_work':blocks*block_work,
+            'conditional_work_strictly_below_a5_cap':blocks*block_work < work_cap,
+            'old_uniform_all_boundary_replay_blocks':1+source_samples+attempts*len(recursive)*naive_samples,
+            'source_missing_and_main_wrapper_errors_multiplied_by_target_loss':False,
+            'caller_block_work_ceiling_verified':False,
+            'full_joint_source_hash_fs_loss_composition_verified':False,
+            'honest_protocol_changed':False,'complete_security_bits':None}
+
+
 def wide_hash_rs_screen(n, block, queries, deduplicate_paths=False, outer_public_zero_rows=0):
     """A5 STRUCTURAL candidate, not a generated/justified Poseidon2 profile.
 
@@ -5543,6 +5593,7 @@ def report():
             private_projection_compilation_screen(size, block, 357, attempts)
             for size, block, attempts in ((n, 1 << 24, LIFETIME_ATTEMPTS),
                                          (1 << 33, 1 << 23, 1), (1 << 34, 1 << 23, 1))],
+        "private_targeted_lifetime_screen":private_targeted_lifetime_screen(),
         "wide_hash_witness_screens": [wide_hash_witness_screen(cohorts, old)
                                      for old in (0, 3946)],
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),

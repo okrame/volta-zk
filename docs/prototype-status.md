@@ -273,8 +273,13 @@ real correlations, lifetime accounting or complete algorithm/resources.
 
 ## Next work
 
-Next: instantiate the A5-dependent reductions against the named work/loss
-budgets and the complete lifetime game, without prioritizing A5 cryptanalysis.
+Next: bound the actual emulation work and compose the losses of the
+[hidden-target reduction](c7.1-committed-mac-opening.md#34-un-bersaglio-nascosto-perdita-lifetime-e-lavoro-a5-separati)
+with joint W/KV/C_Σ and FS. Its interactive W theorem now keeps the source
+before requests while sampling only one attempt's recursive roots, with an
+explicit loss and a sufficient caller-work ceiling under A5-B; the ceiling
+is not yet verified for the complete caller. Full A5 cryptanalysis remains
+non-priority, and the same-model relation and remaining lifetime terms stay open.
 Continue the independent pointwise Gamma kernels/forms, beginning with
 residual additions and public scaling, and their complete reader/field costs.
 The [gate_up_mul candidate](c7.1-auxiliary-witness.md#gate_up_mul-prodotto-raw-rne-e-sorgenti-identiche)

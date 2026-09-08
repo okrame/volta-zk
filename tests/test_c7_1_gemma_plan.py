@@ -1514,6 +1514,110 @@ def test_static_source_sampler_covers_adaptive_lifetimes_and_late_aborts():
         assert sum(Fraction(x, denominator) for x in missing) <= Fraction(3, samples)
 
 
+def test_targeted_lifetime_reduction_prices_full_replays_and_uses_a5_loss_once():
+    s = plan.private_targeted_lifetime_screen()
+    profile = plan.wide_hash_security_assumption_screen()
+    assert s['attempt_slots_including_aborts'] == s['binding_reduction_loss'] == 1 << 20
+    assert s['hidden_target_count'] == 1 and s['fits_named_binding_loss_ceiling']
+    assert s['source_symbols'] == 1 << 26
+    assert s['recursive_symbols'] == [1 << k for k in (22,17,12,7,0)]
+    assert s['source_samples_before_requests'] == 1 << 109
+    samples = s['recursive_samples_at_target_boundaries']
+    assert samples == [1 << k for k in (126,122,118,114,107)]
+    assert s['maximum_attempts_per_source_sample'] == 1 << 20  # not one cheap opening
+    source = Fraction(s['source_symbols'],s['source_samples_before_requests'])
+    rec = (1 << 20)*sum(Fraction(n,m) for n,m in zip(s['recursive_symbols'],samples))
+    assert source == Fraction(*s['source_missing_reservation']) == Fraction(1,1 << 83)
+    assert rec == Fraction(*s['recursive_missing_lifetime_reservation']) == source
+    assert source+rec == Fraction(*s['sampling_lifetime_reservation']) == Fraction(1,1 << 82)
+    assert Fraction(*s['assumed_binding_lifetime_contribution']) == Fraction(1,1 << 90)
+    blocks = 1+(1 << 109)+sum(samples)
+    cap = profile['binding_reduction_strict_u64_work_cap']
+    assert s['replay_blocks_including_initial_main_and_final_work'] == blocks
+    assert s['sufficient_strict_u64_work_ceiling_per_block'] == 1 << 73
+    assert s['conditional_total_reduction_u64_work'] == blocks*(1 << 73) < cap
+    largest = s['maximum_uniform_block_work_within_a5_cap']
+    assert blocks*largest <= cap < blocks*(largest+1)
+    assert blocks*(1 << 74) > cap  # doubling an unverified block cap loses this admission
+    old = 1+(1 << 109)+5*(1 << 20)*sum(s['recursive_symbols'])*(1 << 103)
+    assert s['old_uniform_all_boundary_replay_blocks'] == old > (1 << 21)*blocks
+    assert old*(1 << 73) > cap  # failure of this upper-bound screen, not a lower bound
+    assert not s['source_missing_and_main_wrapper_errors_multiplied_by_target_loss']
+    assert s['conditional_work_strictly_below_a5_cap']
+    assert not s['caller_block_work_ceiling_verified']
+    assert not s['full_joint_source_hash_fs_loss_composition_verified']
+    assert not s['honest_protocol_changed'] and not s['credit']
+    assert s['complete_security_bits'] is None
+
+
+def test_hidden_target_keeps_static_source_and_matches_full_sampler_marginal():
+    # Deliberately weak VC: an even word opens digest zero. This exercises
+    # collision finding, NOT A5 security. Two adaptive attempts, one inner root each.
+    def inner(prefix,coin):
+        word = 2*((coin+prefix) % 3)+int(coin == 2)
+        return word if word % 2 == 0 else None
+
+    def life(coins):
+        result, prefix = [], 0
+        for slot,coin in enumerate(coins):
+            query = (coin+prefix) % 3
+            value = 2*query+6*int(slot == 1 and coin == 1)+int(coin == 2)
+            # Tuple: query, value, clear validity, frozen prefix, inner opening, late abort.
+            result.append((query,value,value % 2 == 0,prefix,inner(prefix,coin),slot == 0 and coin == 0))
+            prefix = (value-(slot+1)) % 7  # next request depends on the public correction
+        return tuple(result)
+
+    tapes = list(product(range(3),repeat=2))
+    lives = [life(tape) for tape in tapes]
+    covered = Counter()
+    for first,second in product(lives,repeat=2):
+        known = {}
+        for q,value,valid,_,_,late_abort in first+second:
+            if valid:
+                known.setdefault(q,value)  # includes valid openings preceding a late abort
+                covered['late_abort_in_sample'] += late_abort
+        source_before_requests = tuple(known.get(q,0) for q in range(3))
+        for main,replay_coins in product(lives,tapes):
+            all_inner = [inner(record[3],coin) for record,coin in zip(main,replay_coins)]
+            for target in range(2):
+                # Only this inner sampler is run; the other attempts remain ordinary prefixes.
+                selected_inner = inner(main[target][3],replay_coins[target])
+                assert selected_inner == all_inner[target]
+                assert source_before_requests == tuple(known.get(q,0) for q in range(3))
+                q,value,valid,_,raw_inner,_ = main[target]
+                if not valid or raw_inner is None:
+                    continue  # invalid clear openings are not collision witnesses
+                source_missing = q not in known
+                rec_missing = selected_inner is None
+                source_collision = not source_missing and known[q] != value
+                rec_collision = not rec_missing and selected_inner != raw_inner
+                for name,event in (('source_missing',source_missing),('recursive_missing',rec_missing),
+                                   ('source_collision',source_collision),('recursive_collision',rec_collision)):
+                    covered[name] += event
+                if source_collision:
+                    assert known[q] != value and known[q] % 2 == value % 2 == 0
+                if rec_collision:
+                    assert selected_inner != raw_inner and selected_inner % 2 == raw_inner % 2 == 0
+                if not (source_missing or rec_missing or source_collision or rec_collision):
+                    assert value == source_before_requests[q] and raw_inner == selected_inner
+                    covered['coupled'] += 1
+    assert all(covered[name] for name in ('late_abort_in_sample','source_missing','recursive_missing',
+                                        'source_collision','recursive_collision','coupled'))
+    # A hidden uniform target pays exactly T in the worst case, even with padded/aborted slots.
+    for bad_slots in product((False,True),repeat=2):
+        assert int(any(bad_slots)) <= 2*Fraction(sum(bad_slots),2)
+    assert Fraction(sum((False,True)),2) == Fraction(1,2)  # choosing slot zero deterministically fails
+    visible_target_bad = ((False,True),(True,False))
+    assert all(any(bad) and not bad[target] for target,bad in enumerate(visible_target_bad))
+    # Revealing J lets the adversary choose a bad OTHER slot: the preceding inequality no longer applies.
+    # Sampling ONLY the target's source responses would instead make W depend on that target.
+    different = next(records for records in lives if records[0][0] != records[1][0]
+                     and records[0][2] and records[1][2])
+    assert {different[0][0]:different[0][1]} != {different[1][0]:different[1][1]}
+    assert tuple(different[0][1] if q == different[0][0] else 0 for q in range(3)) != tuple(
+        different[1][1] if q == different[1][0] else 0 for q in range(3))
+
+
 def test_decoded_static_source_uses_joint_column_distance_not_independent_row_balls():
     # Degree<2 RS on four distinct F7 points: distance 3, joint radius <3/2.
     p, domain = 7, range(4)

@@ -266,15 +266,15 @@ authorization.
 
 ## Next work
 
-The [Gamma boundary with Y](c7.1-cut-witness.md#ordine-inverso-di-γ-e-ultima-rne)
-now routes RMS to its common source while preserving joint validity and the
-existing P0/T1/K1 consumers. The common plan also explicitly includes the
-S-prelude's statistic-input demands in both modes. It leaves a concrete
-inventory of ordinary kernels, not their implemented reductions.
-Next: instantiate the integer RoPE relation and its input/output forms,
-then the remaining attention/MLP/output kernels. Actual RMS profiles and
-full reader/native costs remain open. Counts stay in the dossiers; no full
-liveness, Y or runtime admission follows. MAC/PCS/FS obligations are unchanged.
+The [RoPE analysis](c7.1-cut-witness.md#rope-geometria-adjoint-e-limite-q30)
+specifies pinned pairing/positions and a conditional linear reduction to
+the same RMS source. A certified counterexample excludes treating rounded
+Q30 coefficients as an exact substitute for real RoPE followed by RNE.
+Next: resolve that numerical contract before adding raw RoPE to common
+C_Σ/RQ, then compile its T1/K1 consumers and the remaining kernels in the
+[Gamma order](c7.1-cut-witness.md#ordine-inverso-di-γ-e-ultima-rne).
+Actual RMS profiles, complete source/reader costs and liveness remain open.
+Current R3 totals do not include raw RoPE; derivations/counts stay in the dossiers.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
 In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)

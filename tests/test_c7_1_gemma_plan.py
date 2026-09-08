@@ -2333,6 +2333,154 @@ def test_rms_statistics_cover_all_norms_and_preserve_producer_domains():
     assert not s["credit"] and not s["complete_rms_normalizer_and_validity"]
 
 
+def test_rope_pinned_pairs_positions_integer_bounds_and_q30_refinement_counterexample():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_bytes())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition'] == 'private_text'])
+    norms, gamma = plan.rms_statistic_cohorts(cohorts), plan.gamma_barrier_plan(cohorts,True)
+    by_op = {(r['layer'],r['operation']): r for r in gamma['cohorts']}
+    first, last = plan.gemma_rope_plan(cohorts), plan.gemma_rope_plan(cohorts,3946)
+    assert first['summary'] == last['summary']
+    for r, end in zip(first['cohorts'],last['cohorts']):
+        assert r['position_start'] == 0 and end['position_start']+end['rows']-1 == 4095
+        n = norms[r['rms_source_id']]
+        producer = by_op[r['layer'],n['operation']]
+        assert by_op[r['layer'],r['operation']]['dependencies'] == [producer['ordinal']]
+        assert producer['rms_source_id'] == r['rms_source_id']
+        assert n['operation'] == r['operation'][0]+'_norm'
+        assert n['statistic_rows'] == 150*r['heads']
+        assert r['rotating_pairs'] == (64 if r['columns'] == 512 else 128)
+    screen = first['summary']
+    assert (screen['rope_cohorts'],screen['live_output_cells']) == (120,119808000)
+    assert screen['raw_absolute_bound_given_Q30_coefficients'] == 70366596694016 < 1 << 46
+    assert screen['public_active_Q30_table_bytes_at_capacity'] == 6291456
+    assert screen['raw_virtual_bytes_if_added_to_sigma'] == 718848000
+    assert screen['raw_linear_sumcheck_rounds'] == 2460
+    assert screen['raw_probe_and_linear_payload_before_rne_pcs_framing'] == 182880
+    assert screen['maximum_two_field_arrays_without_reader'] == 201326592
+    assert screen['linear_sumcheck_field_products_before_fill_reader_mac'] == 1226833200
+    assert screen['raw_identity_error_numerator_before_source_mac_fs'] == 7380
+    assert screen['new_private_products_for_raw_linear_reductions'] == 0
+    assert not screen['credit'] and not screen['raw_rope_added_to_common_sigma_and_rq']
+    assert screen['complete_rope_mac_kernel_and_liveness'] is None
+    for old in (-1,3947,True):
+        with pytest.raises(ValueError):
+            plan.gemma_rope_plan(cohorts,old)
+
+    q = 1 << 30
+    values = list(range(1,513))
+    raw = plan.rope_raw_row(values,[(0,q)]*64)
+    assert raw[:64] == [-q*v for v in values[256:320]]
+    assert raw[256:320] == [q*v for v in values[:64]]
+    assert raw[64:256] == [q*v for v in values[64:256]]
+    assert raw[320:] == [q*v for v in values[320:]]
+    assert raw[0] != -q*values[64]  # Rotating a contiguous 128-lane prefix is wrong.
+    assert plan.rne_i48_to_i16(raw[64],31) == 32 != values[64]  # Inactive is not free rescaling.
+    assert plan.rne_i48_to_i16(plan.rope_raw_row([1,1],[(q//2,q//2)])[1],30) == 1
+    assert 2*plan.rne_i48_to_i16(q//2,30) == 0  # Do not round each product separately.
+    for (a,b),(c,s) in product(product((-32767,-1,0,1,32767),repeat=2),product((-q,0,q//2,q),repeat=2)):
+        for value in plan.rope_raw_row([a,b],[(c,s)]):
+            assert abs(value) <= screen['raw_absolute_bound_given_Q30_coefficients']
+            for shift in (0,29,30,31,48):
+                expected = round(Fraction(value,1 << shift))
+                if abs(expected) <= 32767:
+                    assert plan.rne_i48_to_i16(value,shift) == expected
+                else:
+                    with pytest.raises(ValueError):
+                        plan.rne_i48_to_i16(value,shift)
+    assert max(map(abs,plan.rope_raw_row([32767,32767],[(q,q)]))) == screen['raw_absolute_bound_given_Q30_coefficients']
+    for values, coeff in (([1,2,3],[]),([32768,0],[]),([1,2],[(q+1,0)]),([1,2],[(1,0)]*2)):
+        with pytest.raises(ValueError):
+            plan.rope_raw_row(values,coeff)
+
+    # Pinned position=1, j=0 gives theta=1 in BOTH families. Rational
+    # alternating Taylor bounds certify the discrepancy, without libm.
+    cosine = sum((Fraction((-1)**k,math.factorial(2*k)) for k in range(13)),Fraction(0))
+    sine = sum((Fraction((-1)**k,math.factorial(2*k+1)) for k in range(13)),Fraction(0))
+    cb = (cosine-Fraction(1,math.factorial(26)),cosine)
+    sb = (sine-Fraction(1,math.factorial(27)),sine)
+    assert [round(v*q) for v in cb] == [580145183]*2
+    assert [round(v*q) for v in sb] == [903522590]*2
+    a,b = -12194,-2574
+    lo,hi = min(a*v for v in cb)-max(b*v for v in sb),max(a*v for v in cb)-min(b*v for v in sb)
+    assert Fraction(-4422500003,1000000) < lo <= hi < Fraction(-4422500002,1000000)
+    assert round(lo) == round(hi) == -4423
+    assert plan.rne_i48_to_i16(plan.rope_raw_row([a,b],[(580145183,903522590)])[0],30) == -4422
+    assert not screen['canonical_Q30_substitution_preserves_exact_real_rne']
+
+
+def test_rope_adjoint_quadratic_sumcheck_and_same_rms_source_point():
+    p,q = plan.P,1 << 30
+    # Three tokens (one padded), two heads, four lanes; one active pair.
+    coefficients = [[(q,0)],[(580145183,903522590)],[(-q//2,q//2)]]
+    y = [((5*t+3*h+1)*(j+1)-17) if t < 3 else 0
+         for t,h,j in product(range(4),range(2),range(4))]
+    raw = sum((plan.rope_raw_row(y[8*t+4*h:8*t+4*h+4],coefficients[t]) if t < 3 else [0]*4
+               for t,h in product(range(4),range(2))),[])
+    r = ([2,3],[5],[7,11])
+    def eq(point,index):
+        return math.prod(v if index >> k & 1 else 1-v for k,v in enumerate(point)) % p
+    dense = []
+    for t,h,c in product(range(4),range(2),range(4)):
+        C,S = coefficients[t][c % 2] if t < 3 and c % 2 == 0 else (q,0)
+        value = eq(r[1],h)*eq(r[2],t)*(eq(r[0],c)*C+eq(r[0],c ^ 2)*(1-2*(c//2))*S)
+        dense.append(value % p if t < 3 else 0)
+    coins = [13,17,19,23,29]
+    for point in [list(v) for v in product((0,1),repeat=5)]+[coins]:
+        assert plan.rope_linear_input_form(coefficients,r,(point[:2],point[2:3],point[3:])) == plan.mle(dense,point)
+    claim = plan.mle(raw,sum((list(a) for a in r),[]))
+    assert claim == sum(a*b for a,b in zip(dense,y)) % p
+    assert claim != (sum(a*b for a,b in zip(dense,y))+dense[0]) % p  # Tampered input, fixed raw.
+    f,x = dense[:],y[:]
+    pair_count = 0
+    for k,coin in enumerate(coins):
+        g = [0,0,0]
+        for i in range(0,len(x),2):
+            df,dx = f[i+1]-f[i],x[i+1]-x[i]
+            g = [(a+b) % p for a,b in zip(g,(f[i]*x[i],f[i]*dx+df*x[i],df*dx))]
+            pair_count += 1
+        polynomial = lambda t: sum(a*pow(t,j,p) for j,a in enumerate(g)) % p
+        assert claim == (polynomial(0)+polynomial(1)) % p
+        for t in (0,1,2,coin):
+            assert polynomial(t) == sum(plan.mle(dense,coins[:k]+[t]+list(tail))*
+                                        plan.mle(y,coins[:k]+[t]+list(tail))
+                                        for tail in product((0,1),repeat=4-k)) % p
+        claim = polynomial(coin)
+        f,x = ([(a+coin*(b-a)) % p for a,b in zip(v[::2],v[1::2])] for v in (f,x))
+    public = plan.rope_linear_input_form(coefficients,r,(coins[:2],coins[2:3],coins[3:]))
+    endpoint = plan.mle(y,coins)
+    assert pair_count == 31 and f == [public] and x == [endpoint]
+    assert public and claim == public*endpoint % p != public*(endpoint+1) % p
+    # Existing Y adapter: head is the FAST part of token*head, not a new PCS.
+    norm = {'heads':2,'columns':4,'statistic_rows':6}
+    hp,rp,cp,scale = plan.rms_output_source_point(norm,coins)
+    assert (hp,rp,cp,scale) == ([],coins[2:],coins[:2],1)
+    assert plan.mle(y,cp+rp) == endpoint != plan.mle(y,rp+cp)
+    sources = [{'shape':(2,3,4),'word_bytes':6,'rne':True,'token_offset':0},
+               {'shape':(1,6,4),'word_bytes':2,'rne':False,'token_offset':0}]
+    byte_tiles,rq_tiles = plan.auxiliary_word_layout(sources)
+    assert sum(h*t*d for _,_,_,h,t,d,_ in rq_tiles) == 24  # Y is not raw RQ.
+    size = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources)
+    sigma = [0]*(1 << (size-1).bit_length())
+    for i,t,c,heads,height,width,j,count,offset in byte_tiles:
+        for h,a,b,l in product(range(heads),range(height),range(width),range(count)):
+            value = raw[8*(t+a)+4*h+c+b] if i == 0 else y[4*(t+a)+c+b]
+            word = value+(1 << (8*sources[i]['word_bytes']-1))
+            sigma[offset+count*(b+width*(a+height*h))+l] = (word >> (8*(j+l))) & 255
+    # Raw's head/token/column storage and Y's flattened row share ONE byte source.
+    terms,bias = plan.auxiliary_probe_terms(byte_tiles,sources,
+                    {0:(r[1],r[2],r[0],1),1:(hp,rp,cp,31)})
+    actual = (sum(w*plan.mle(sigma[o:o+(1 << len(point))],point) for o,point,w in terms)-bias) % p
+    assert actual == (plan.mle(raw,sum((list(a) for a in r),[]))+31*endpoint) % p
+    # A product of MLEs is not the MLE of the Boolean sign/partner selector.
+    rh,uh = 3,17
+    assert (rh-uh) % p != (1-2*uh)*(rh*(1-uh)+(1-rh)*uh) % p
+    swapped = [coefficients[1],coefficients[0],coefficients[2]]
+    assert plan.rope_linear_input_form(swapped,r,(coins[:2],coins[2:3],coins[3:])) != public
+    with pytest.raises(ValueError):
+        plan.rope_linear_input_form(coefficients,r,(coins[:1],coins[2:3],coins[3:]))
+
+
 def test_rms_statistic_cubic_sumcheck_folds_full_input_to_the_same_gamma_endpoint():
     p = plan.P
     def eq(point, index):

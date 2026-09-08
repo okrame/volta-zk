@@ -263,6 +263,106 @@ def rne_dyadic_add_i16(a, b, exponents):
     return natural(result, 'rounded dyadic sum', -32767, 32767)
 
 
+def rope_raw_row(values, coefficients):
+    """Candidate Q30 coefficient lowering, before ONE output RNE.
+
+    Pair the two full half-heads. Omitted coefficient pairs are exactly
+    (1,0), not a shorter rotate_half. No canonical sine/cosine table is
+    instantiated here and no BF16/exact-real equivalence is claimed.
+    """
+    width = natural(len(values), 'RoPE head width', 2, 512)
+    if width & (width-1) or len(coefficients) > width//2:
+        raise ValueError('RoPE needs power-of-two heads and at most half-head coefficients')
+    for value in values:
+        natural(value, 'RoPE symmetric i16 input', -32767, 32767)
+    half, result = width//2, [0]*width
+    for j in range(half):
+        c,s = coefficients[j] if j < len(coefficients) else (1 << 30,0)
+        for v in (c,s):
+            natural(v, 'RoPE signed Q30 coefficient', -(1 << 30), 1 << 30)
+        a,b = values[j],values[j+half]
+        result[j],result[j+half] = c*a-s*b,s*a+c*b
+    return result
+
+
+def rope_linear_input_form(coefficients, output_point, input_point):
+    """Fp diagnostic of the adjoint's MLE; points are (lane,head,token).
+
+    Rows are the PUBLIC coefficient window at absolute positions O+t.
+    Multiply EQ and coefficients on Boolean vertices, not after MLE.
+    """
+    rc,rh,rt = output_point
+    uc,uh,ut = input_point
+    rows = natural(len(coefficients), 'RoPE coefficient rows', 1, CONTEXT_CAP)
+    natural(len(rc), 'RoPE lane bits', 1, 9)
+    if (len(rh) > 5 or len(rt) != (rows-1).bit_length() or
+            any(len(a) != len(b) for a,b in zip(output_point,input_point))):
+        raise ValueError('RoPE form points have incompatible axes')
+    half = 1 << (len(rc)-1)
+    if len({len(row) for row in coefficients}) != 1 or len(coefficients[0]) > half:
+        raise ValueError('RoPE coefficient window has inconsistent pair counts')
+    for point in (*output_point,*input_point):
+        for v in point:
+            natural(v, 'RoPE diagnostic point', 0, P-1)
+    def eq(point,index):
+        return math.prod(v if index >> k & 1 else 1-v for k,v in enumerate(point)) % P
+    tw = [eq(rt,t)*eq(ut,t) % P for t in range(rows)]
+    jw = [eq(rc[:-1],j)*eq(uc[:-1],j) % P for j in range(half)]
+    cosine, sine = 0,0
+    for t,row in enumerate(coefficients):
+        for j in range(half):
+            c,s = row[j] if j < len(row) else (1 << 30,0)
+            for v in (c,s):
+                natural(v, 'RoPE signed Q30 coefficient', -(1 << 30), 1 << 30)
+            weight = tw[t]*jw[j] % P
+            cosine, sine = (cosine+weight*c) % P,(sine+weight*s) % P
+    head = math.prod((1-a)*(1-b)+a*b for a,b in zip(rh,uh)) % P
+    same = (1-rc[-1])*(1-uc[-1])+rc[-1]*uc[-1]
+    return head*(same*cosine+(rc[-1]-uc[-1])*sine) % P
+
+
+def gemma_rope_plan(cohorts, old_tokens=0):
+    """Pinned pairing/positions and conditional raw-linear reductions only."""
+    cfg, norms = pinned_model_config(), rms_statistic_cohorts(cohorts)
+    tokens = cohorts[0]['rows']
+    natural(old_tokens, 'RoPE predecessor tokens', 0, CONTEXT_CAP-tokens)
+    records = []
+    for i,norm in enumerate(norms):
+        if norm['operation'] not in ('q_norm','k_norm'):
+            continue
+        family = 'global' if norm['layer'] % 6 == 5 else 'local'
+        width = cfg[family+'_head_dim']
+        heads = cfg['query_heads'] if norm['operation'] == 'q_norm' else cfg[family+'_kv_heads']
+        if norm['columns'] != width or norm['heads'] != heads or norm['statistic_rows'] != tokens*heads:
+            raise ValueError('RoPE producer geometry disagrees with the pinned model')
+        records.append({'layer':norm['layer'], 'operation':norm['operation'][0]+'_rope',
+                        'rms_source_id':i, 'heads':heads, 'columns':width, 'rows':tokens,
+                        'position_start':old_tokens, 'coefficient_family':family,
+                        'rotating_pairs':64 if family == 'global' else width//2})
+    if (len(records) != 2*cfg['layers'] or
+            {(r['layer'],r['operation']) for r in records} !=
+            {(l,op) for l in range(cfg['layers']) for op in ('q_rope','k_rope')}):
+        raise ValueError('RoPE needs every pinned Q/K producer exactly once')
+    rounds = sum((r['rows']-1).bit_length()+(r['heads']-1).bit_length()+(r['columns']-1).bit_length() for r in records)
+    cells = [r['rows']*r['heads']*r['columns'] for r in records]
+    padded = [(1 << (r['rows']-1).bit_length())*r['heads']*r['columns'] for r in records]
+    return {'cohorts':records, 'summary':{
+        'credit':False, 'rope_cohorts':len(records), 'live_output_cells':sum(cells),
+        'raw_absolute_bound_given_Q30_coefficients':32767*(1 << 31),
+        'public_active_Q30_table_bytes_at_capacity':8*CONTEXT_CAP*(128+64),
+        'raw_virtual_bytes_if_added_to_sigma':6*sum(cells),
+        'one_probe_per_raw_cohort_corrections':len(records), 'raw_linear_sumcheck_rounds':rounds,
+        'raw_linear_sumcheck_corrections':3*rounds+len(records),
+        'raw_probe_and_linear_payload_before_rne_pcs_framing':24*(3*rounds+2*len(records)),
+        'linear_sumcheck_padded_cells':sum(padded), 'maximum_two_field_arrays_without_reader':48*max(padded),
+        'linear_sumcheck_field_products_before_fill_reader_mac':6*(sum(padded)-len(records)),
+        'raw_identity_error_numerator_before_source_mac_fs':3*rounds,
+        'new_private_products_for_raw_linear_reductions':0,
+        'canonical_Q30_substitution_preserves_exact_real_rne':False,
+        'canonical_coefficients_and_exact_model_refinement':None,
+        'raw_rope_added_to_common_sigma_and_rq':False, 'complete_rope_mac_kernel_and_liveness':None}}
+
+
 def rms_integer_coefficients(columns, input_exponent, scale_exponent, output_exponent):
     """Public A,B,C with squared output magnitude A*P^2/(B+C*S).
 
@@ -4240,6 +4340,7 @@ def report():
         "input_link_screen": input_link_screen(cohorts),
         "gamma_barrier_screen": gamma["summary"],
         "gamma_rms_source_barrier_screen": gamma_barrier_plan(cohorts,True)['summary'],
+        "rope_linear_screen": gemma_rope_plan(cohorts)['summary'],
         "rms_statistic_dependency_screen": rms_statistic_dependency_plan(cohorts,gamma)["summary"],
         "rms_statistic_screen": rms_statistic_screen(cohorts),
         "rms_byte_bridge_screen": rms_byte_bridge_screen(cohorts),

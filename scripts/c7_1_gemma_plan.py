@@ -5627,6 +5627,99 @@ def budget_sum(parts, alarm_at=None):
                       "unresolved" if missing else "within" if alarm_at is not None else "none")}
 
 
+def b4_security_admission():
+    """Audit the frozen B2 Gamma, not a new parameter compiler or security proof."""
+    def geometry(message, randomness, domain, queries):
+        dimension = message + randomness
+        assert 0 < dimension <= domain and 0 < queries <= domain
+        # Johnson radius with the upstream eta=sqrt(rate)/20. Round the
+        # agreement count UP using integers, then price distinct queries.
+        squared = 441 * dimension * domain
+        agreement = math.isqrt(squared // 400)
+        agreement += 400 * agreement**2 < squared
+        agreement = min(domain, agreement)
+        probability = Fraction(math.comb(agreement, queries), math.comb(domain, queries))
+        assert probability > 0  # All frozen B2 geometries have this property.
+        return {
+            "message_rows": message, "randomness_rows": randomness,
+            "RS_dimension": dimension, "domain_rows": domain, "queries": queries,
+            "effective_rate": str(Fraction(dimension, domain)),
+            "agreement_rows_upper": agreement,
+            "distinct_query_term_bits": math.log2(probability.denominator)
+                                        - math.log2(probability.numerator),
+            "query_term_at_most_2_to_minus_128": probability <= Fraction(1, 1 << 128),
+        }
+
+    cases = []
+    for n in (48, 128):
+        source = f"benchmarks/results/c71-b2-matrix{n}-20260908-de73f60.json"
+        record = json.loads((Path(__file__).resolve().parents[1] / source).read_text())
+        if record["git_dirty"] or not record["run_of_record"] or record["status"] != "pass":
+            raise ValueError("B4 requires the immutable clean B2 Gamma")
+        encoded = bytes.fromhex(record["preflight"]["gamma_bytes_hex"])
+        # The fixed ASCII descriptor precedes the first u64 (the modulus).
+        prefix, modulus, tail = encoded.partition(P.to_bytes(8, "little"))
+        assert prefix.endswith(b"cap8MiB") and modulus and len(tail) % 8 == 0
+        words = iter(int.from_bytes(tail[i:i+8], "little") for i in range(0, len(tail), 8))
+        ell, mask_rate, variables, rounds, final_q, final_sc, mask_q, requests = (
+            next(words) for _ in range(8))
+        assert ell == 16 and mask_rate == 1 and variables in (12, 14) and final_sc == 5
+        folds = [next(words) for _ in range(next(words))]
+        randomness = [next(words) for _ in range(next(words))]
+        assert len(folds) == len(randomness) == rounds + 1
+        oracles = []
+        for i in range(rounds + 1):
+            pow_bits, folding_pow, q, ood, remaining, fold, log_rate, domain, generator = (
+                next(words) for _ in range(9))
+            assert pow_bits == folding_pow == 0 and folds[i] == fold
+            oracles.append(geometry(1 << remaining, randomness[i], domain >> fold, q))
+        assert oracles[-1]["queries"] == final_q
+        masks = []
+        for _ in range(next(words)):
+            width, message, noise, domain = (next(words) for _ in range(4))
+            assert noise == mask_q
+            masks.append({"width": width, **geometry(message, noise, domain, mask_q)})
+        assert len(list(words)) == 15  # Two isomorphism vectors and a 3x3 inverse.
+        cases.append({"n": n, "source": source, "gamma_digest": record["preflight"]["gamma_digest"],
+                      "oracles": oracles, "mask_groups": masks,
+                      "root_query_capacity": randomness[0],
+                      "three_attempt_root_queries_upper": 3 * oracles[0]["queries"],
+                      "FS_request_limit_per_attempt": requests})
+    return {
+        "status": "reject_unchanged_B2_security_reuse", "credit": False,
+        "security_admitted": False, "concrete_secure_profile": None,
+        "decision_source": "docs/c7.1-gemma31b-design.md#esito-b4-ammissione-di-sicurezza",
+        "proximity": {
+            "kind": "single query-term screen for actual enlarged RS codes, not complete soundness",
+            "premise": "Johnson agreement <= 21/20*sqrt((message+randomness)/domain); ideal distinct draws",
+            "formula": "C(ceil(21/20*sqrt(RS_dimension*domain)), queries) / C(domain, queries)",
+            "missing": ["MCA and list-size terms for all interleaved enlarged codes",
+                        "private OOD/zero-evader and code-switch terms", "MAC/FS lifetime composition"],
+            "cases": cases},
+        "lift": {
+            "honest_output_identity": "K=M+Delta*x",
+            "coordinated_alignment_change": "d[j,1]+=s[j]; d[j,2]+=s[j]",
+            "key_change": "(Delta-delta0)*s",
+            "transfer": "c=-x-s; alleged zero tag=M-a*s; residual=(a-delta0)*s",
+            "residual_rank_over_Fp": 1,
+            "guess_probability_ideal_nonzero_uniform_Delta": {
+                "numerator": P**2, "denominator": P**3 - 1,
+                "premise": "fixed s!=0 and fixed a!=0; uniform Delta in Fp3 minus zero",
+                "bits": math.log2(P**3 - 1) - math.log2(P**2)},
+            "scope": "refutes full-Fp3 residual/black-box MAC argument; not a complete matrix-certificate forgery",
+            "native_check": "c7_fp3::tests::coordinated_alignment_leaves_only_one_secret_coordinate"},
+        "FS_lifetime": {
+            "global_adversary_queries": 1 << 64, "attempts": LIFETIME_ATTEMPTS,
+            "required_bits": 78, "soundness_bits": None, "malicious_verifier_ZK_bits": None,
+            "remaining": ["round-by-round extraction for the actual claimless same-W MAC relation",
+                          "joint simulation of setup, reused root, proof masks and abort",
+                          "concrete ROM compiler bound with global Q and honest requests counted once",
+                          "real PCG/LPN, hash and sampling error terms"],
+            "HVZK_to_FS_is_not_ruled_out": True},
+        "next_goal": "repair or rule out the active nine-sVOLE alignment seam before PCS tuning; preserve same-W/Fp3/DV/FS/lifetime requirements",
+    }
+
+
 def baseline_budget():
     """One frozen S reference; alternatives are NOT additive components.
 
@@ -5732,6 +5825,7 @@ def baseline_budget():
             "next_goal": "B4: security/parameter admission of this exact PCS/lift before optimization or scaling",
             "security_admitted": False,
             "runner_command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_c71_matrix.py --n 128 --run --census"},
+        "B4_security_admission": b4_security_admission(),
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

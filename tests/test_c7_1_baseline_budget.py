@@ -2,6 +2,8 @@
 
 import importlib.util
 import json
+import math
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -122,3 +124,36 @@ def test_b3_census_closes_native_counts_but_not_physical_or_security_admission()
         assert pcs > reduction
         assert not case["physical_traffic_probe"]["DRAM_traffic_measured"]
     assert "B4" in census["next_goal"]
+
+
+def test_b4_rejects_nominal_security_using_actual_masked_geometry_and_rank_one_residual():
+    result = plan.baseline_budget()
+    b4 = result["B4_security_admission"]
+    assert b4["status"] == "reject_unchanged_B2_security_reuse"
+    assert not b4["credit"] and not b4["security_admitted"]
+    assert b4["concrete_secure_profile"] is None
+    small, large = b4["proximity"]["cases"]
+    assert [small["n"], large["n"]] == [48, 128]
+    assert [(o["message_rows"], o["randomness_rows"], o["domain_rows"], o["queries"])
+            for o in small["oracles"]] == [
+                (2048, 894, 4096, 298), (512, 298, 1024, 298),
+                (128, 138, 512, 138), (32, 90, 256, 90)]
+    last = large["oracles"][-1]
+    assert (last["RS_dimension"], last["domain_rows"], last["queries"]) == (99, 512, 67)
+    # 237 is a conservative integer Johnson agreement cap at rate 99/512.
+    assert 400 * 236**2 < 441 * 99 * 512 <= 400 * 237**2
+    probability = Fraction(math.comb(237, 67), math.comb(512, 67))
+    assert Fraction(1, 1 << 83) < probability < Fraction(1, 1 << 82)
+    assert 82 < last["distinct_query_term_bits"] < 83
+    for case in (small, large):
+        assert case["root_query_capacity"] == case["three_attempt_root_queries_upper"] == 894
+        assert all(not o["query_term_at_most_2_to_minus_128"] for o in case["oracles"])
+        assert all(m["query_term_at_most_2_to_minus_128"] for m in case["mask_groups"])
+    lift = b4["lift"]
+    assert lift["residual_rank_over_Fp"] == 1
+    guess = lift["guess_probability_ideal_nonzero_uniform_Delta"]
+    assert Fraction(guess["numerator"], guess["denominator"]) > Fraction(1, 1 << 64)
+    fs = b4["FS_lifetime"]
+    assert fs["global_adversary_queries"] == 1 << 64 and fs["attempts"] == 1 << 20
+    assert fs["soundness_bits"] is fs["malicious_verifier_ZK_bits"] is None
+    assert result["complete_baseline_selected"] is None and not result["security_admitted"]

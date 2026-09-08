@@ -13,6 +13,9 @@ const BASIS: [Fp3; 3] =
 /// Rows select the plaintext limb, columns select the Delta coordinate.
 /// The caller must burn all nine entries before sending the six base-field
 /// alignment corrections (48 bytes). This function provisions no randomness.
+/// B4: coordinated malicious corrections can leave a rank-one base-field
+/// residual. Honest correctness is not full-Fp3 active authentication security;
+/// see `coordinated_alignment_leaves_only_one_secret_coordinate` below.
 pub fn c7_fp3_lift_prover(rows: [[SubVole; 3]; 3]) -> ([Fp; 6], C7Fp3ProverAuthed) {
     let mut corrections = [Fp::ZERO; 6];
     let mut result = C7Fp3ProverAuthed::ZERO;
@@ -233,6 +236,47 @@ mod tests {
         }
         let (correction, transferred) = c7_fp3_transfer_prover(auth, fp3(43, 47, 53));
         assert!(valid(delta, transferred, c7_fp3_transfer_verifier(key, delta, correction)));
+    }
+
+    #[test]
+    fn coordinated_alignment_leaves_only_one_secret_coordinate() {
+        // A primitive counterexample, not an end-to-end matrix forgery. The
+        // prover chooses s and guess without reading any verifier secret.
+        let s = fp3(43, 47, 53);
+        let guess = Fp::new(17);
+        let rows = std::array::from_fn(|j| {
+            std::array::from_fn(|i| SubVole {
+                r: Fp::new((100 * j + 7 * i + 1) as u64),
+                m: Fp2::new(Fp::new((13 * j + i + 5) as u64), Fp::new(41)),
+            })
+        });
+        let (mut wire, auth) = c7_fp3_lift_prover(rows);
+        for (j, limb) in [s.c0, s.c1, s.c2].into_iter().enumerate() {
+            wire[2 * j] += limb;
+            wire[2 * j + 1] += limb;
+        }
+        // Transfer the nonzero anchor-defined value -s, then claim its MAC
+        // authenticates zero. All six altered corrections remain canonical.
+        let (transfer, nonzero) = c7_fp3_transfer_prover(auth, -s);
+        assert_ne!(nonzero.x, Fp3::ZERO);
+        let claimed_zero_tag = auth.m - Fp3::from_base(guess) * s;
+        for a in [0, 17, 18] {
+            for (b, c) in [(0, 1), (23, 31), (101, 103)] {
+                let deltas = [
+                    Fp2::new(Fp::new(a), Fp::new(19)),
+                    Fp2::new(Fp::new(b), Fp::new(29)),
+                    Fp2::new(Fp::new(c), Fp::new(37)),
+                ];
+                let delta = Fp3::new(deltas[0].c0, deltas[1].c0, deltas[2].c0);
+                let keys = std::array::from_fn(|j| {
+                    std::array::from_fn(|i| rows[j][i].m + deltas[i].mul_base(rows[j][i].r))
+                });
+                let lifted = c7_fp3_lift_verifier(keys, delta, wire);
+                let checked = c7_fp3_transfer_verifier(lifted, delta, transfer);
+                assert_eq!(checked.k - claimed_zero_tag, Fp3::from_base(guess - deltas[0].c0) * s);
+                assert_eq!(checked.k == claimed_zero_tag, a == 17);
+            }
+        }
     }
 
     #[test]

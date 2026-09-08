@@ -6,19 +6,21 @@ Updated 2026-09-08. Editable working summary; Git preserves revisions.
 
 ## Active authority — read first
 
-**B3: native work and memory census on the B2 runner**, authorized by the
-owner's next-goal request of 2026-09-08. Arithmetic counters now cover the
-actual Goldilocks/Fp3 PCS, PCG, basis changes and codec, with separate phase
-RSS and allocator accounts. These B3 obligations now have clean-source
-records; physical expanded-array traffic remains open for the concrete
-VM limitation below. B2 remains the completed CPU/Fp3 functional port.
+**B4 completed: reject unchanged B2 security reuse**, authorized by the
+owner's «ok prosegui» after B3. A native counterexample shows coordinated
+lift corrections leaving a residual dependent on one Goldilocks coordinate
+of Delta. The actual masked RS codes also differ from the geometry used
+to choose the nominal 128-bit query counts. The exact scope and evidence
+are in [design §10](c7.1-gemma31b-design.md#esito-b4-ammissione-di-sicurezza).
+B2 remains a completed functional port; B3 supplies its native field/memory
+census. Physical traffic and complete lifetime security remain open.
 G2 stays suspended.
 
-**Connection to C7.1:** this census decides where further work belongs.
-The matrix reduction is a small fraction of the reduced path; PCS dominates.
-Before optimizing kernels or scaling, the next goal must assess the modified
-PCS/lift's complete security and concrete parameters. Its nominal 128-bit
-setting and tiny AES/LPN setup do not satisfy the lifetime requirement.
+**Connection to C7.1:** B3 showed PCS dominates the reduced path; B4 now
+identifies why that path cannot yet be admitted for security. The next
+bounded goal is to repair or rule out the active alignment seam before
+PCS parameter tuning, optimization or scaling. Its costs must feed the
+complete comparison, with the same lifetime and trust requirements.
 
 **B1 concluded with a negative reuse decision and its prescribed stop.**
 The [assessment in design §10](c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto)
@@ -47,7 +49,7 @@ No RunPod/provider contact, H100/GPU calls, paid resources, weight downloads,
 heavy builds or full Gemma E2E. A tiny CPU diagnostic is not evidence about
 H100 performance. Follow the [build procedure](procedures/build-and-test.md)
 with its explicit local-E2E exception. No spending authorization is pending
-because no provider work is part of B3.
+because no provider work is part of B4.
 
 ## Evidence and open obligations
 
@@ -69,7 +71,7 @@ This summary no longer repeats their successive subtotals.
   complete four-read schedule. Later S+Y/operator/checkpoint variants
   remain research alternatives, not additions to the frozen S reference.
 - The [index](README.md) locates RNE, RMS, KV, attention and other evidence.
-  No need to reload all dossiers to inspect B1. Exact quantization/runtime
+  No need to reload all dossiers to inspect B4. Exact quantization/runtime
   correspondence and real-correlation premises remain required when reused.
 
 Three critical-path obligations remain: same-W authenticated opening with
@@ -181,18 +183,49 @@ infinity. Closing that observation requires a suitable authorized measurement
 environment and collector, not another analytic multiplier. This does not
 block the independent local security assessment or authorize hardware.
 
-**Next B4, tied to admission:** assess proximity with the enlarged initial
-mask, the nine-sVOLE projection and the applicability of malicious-verifier
-FS/lifetime composition to this exact same-W path. Deliver either justified
-concrete parameters with a recomputed budget, or a precise negative reuse
-decision. Do not optimize the insecure diagnostic, open another PCS line,
-or revive G2 to avoid that decision. Gemma semantics/GKR, physical four-read
-scheduling, full certificate and 78-bit lifetime proofs remain C7.1 obligations.
+## B4 security decision and next goal
+
+The [single budget](../scripts/c7_1_gemma_plan.py) now includes
+`B4_security_admission`. It decodes the frozen B2 Gamma, counts the enlarged
+RS dimension `M+r`, and applies the Johnson query screen with distinct
+positions. The final n=128 oracle has `(M,r,H,t)=(32,67,512,67)`;
+the query-term bound gives 82.87 bits, before the other terms and FS.
+This is a partial bound, not an attack probability or complete security.
+None of the main oracle query terms certifies the nominal 128 bits under
+this calculation; mask groups are separately included and pass that screen.
+
+The new [native lift check](../rust/volta-mac/src/c7_fp3.rs) changes both
+alignment corrections in each row by a chosen cubic value s. After a
+transfer, a purported zero-MAC check has residual `(a-delta0)*s`. For
+ideal uniform nonzero Delta and fixed nonzero guess a, it vanishes with
+probability `p²/(p³-1)`, about `2^-64`. This refutes an automatic `1/p³`
+residual argument for the lift. **It is not an end-to-end matrix forgery**;
+the additional PCS/FS constraints still need their own analysis.
+The Lean MAC linearity lemma assumes valid inputs and does not prove
+active security of these alignment messages.
+
+HVZK-to-FS compilation remains possible in principle. Its application to
+the exact claimless same-W relation, joint setup/root-reuse/abort simulation,
+MCA/OOD/code-switch terms and concrete lifetime errors is undischarged.
+The three-slot lease bounds direct root queries; it is not a lifetime
+simulation or renewal procedure. No concrete secure profile is selected.
+Four focused Rust tests, including the counterexample and existing AES
+check, and five Python budget tests pass; no protocol behavior or frozen
+evidence changes, and no broad build, Lean proof or new E2E is claimed.
+
+**Next B5, tied to admission:** repair or rule out active security of the
+existing nine-sVOLE alignment seam. A useful result needs a justified
+residual/error bound, adversarial checks and setup/capacity/attempt costs
+in the complete budget, or a precise rejection. Then PCS parameters must
+be compiled using the actual masked code rates. Do not start another PCS,
+revive G2, optimize the diagnostic or use hardware to bypass this decision.
+Gemma semantics/GKR, physical four-read scheduling, full certificate and
+78-bit lifetime proofs remain C7.1 obligations.
 
 ## Documentation decision
 
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 (B3 result and B4 decision) without
+A fresh conversation can start from this page and design §10 (B4 decision and B5 scope) without
 importing the full G2 transcript or reopening its suspended obligations.

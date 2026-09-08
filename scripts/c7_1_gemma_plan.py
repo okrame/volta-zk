@@ -7,6 +7,7 @@ budget or admission status. No weights, network or build.
 The cleartext diagnostic below MUST NOT be used to prove private weights.
 """
 
+import argparse
 import decimal
 import hashlib
 import json
@@ -5592,7 +5593,7 @@ def self_check():
         raise AssertionError("malformed diagnostic input accepted")
 
 
-def report():
+def pinned_private_tensors():
     path = Path(__file__).resolve().parents[1] / "manifests/c7-d126-gemma31b-source-metadata-v1.json"
     raw = path.read_bytes()
     if hashlib.sha256(raw).hexdigest() != METADATA_SHA256:
@@ -5603,6 +5604,98 @@ def report():
     tensors = [t for t in metadata["tensors"] if t["disposition"] == "private_text"]
     live = sum(math.prod(t["shape"]) for t in tensors)
     assert len(tensors) == 772 and live == 30_697_345_280
+    return tensors
+
+
+def budget_sum(parts, alarm_at=None):
+    """Disjoint costs only. Unknown is unbounded for admission, not zero cost."""
+    if not parts:
+        raise ValueError("an empty census is not a complete budget")
+    for value in [*parts.values(), alarm_at]:
+        if value is not None and (type(value) not in (int, float)
+                                  or not math.isfinite(value) or value < 0):
+            raise ValueError("costs and thresholds must be finite and nonnegative")
+    missing = [key for key, value in parts.items() if value is None]
+    known = sum(value for value in parts.values() if value is not None)
+    if not math.isfinite(known):
+        raise ValueError("cost sum must remain finite")
+    return {"parts": parts, "known_subtotal": known, "missing": missing,
+            "total": None if missing else known,
+            "admission_bound": "infinity" if missing else known,
+            "alarm_at": alarm_at,
+            "alarm": ("exceeded" if alarm_at is not None and known > alarm_at else
+                      "unresolved" if missing else "within" if alarm_at is not None else "none")}
+
+
+def baseline_budget():
+    """One frozen S reference; alternatives are NOT additive components.
+
+    No security or complete-prover credit. This is the comparison entry point;
+    report() retains the older research screens without selecting them.
+    """
+    tensors = pinned_private_tensors()
+    live = sum(math.prod(t["shape"]) for t in tensors)
+    packed, padded = 2*live, 1 << (live-1).bit_length()
+    bridge = rms_byte_bridge_screen(gemma_weight_cohorts(tensors))
+    cases = []
+    for case in bridge["cases"]:
+        cases.append({"old_tokens": case["old_tokens"], "layout_sha256": case["layout_sha256"],
+                      "certificate_bytes": budget_sum({
+                          "S_composed_payload_once": case[
+                              "known_partial_payload_before_rms_circuit_gamma_and_framing"],
+                          "remaining_Gamma_and_RMS": None,
+                          "remaining_protocol_framing_and_correlations": None}, 35_000_000)})
+    phases = bridge["all_context_arena_phase_upper_bytes"]
+    return {
+        "schema": "c71-baseline-budget-v1", "credit": False,
+        "reference": "A5 + joint W/KV + Sigma(B, raw QK/PV, S); research only",
+        "source": "rms_byte_bridge_screen(include_rms_outputs=False)",
+        "excluded_extensions": ["Y", "RoPE", "GELU", "gate_up_mul", "public-scale checkpoints"],
+        "required_lifetime_security_bits_at_least": 78,
+        "malicious_prover_soundness_bits": None, "malicious_verifier_zk_bits": None,
+        "security_admitted": False, "complete_baseline_selected": None,
+        "measurement_reuse_priority": "existing authenticated WHIR/BLAKE3, not yet a C7.1 baseline",
+        "packed_weight_bytes": packed, "endpoint_cases_not_all_context_certificate_bound": cases,
+        "complete_weight_reads": budget_sum({"P0": 1, "A4_fused_opening": 2,
+                                             "remaining_caller_range_padding": None}, 4),
+        "complete_fp_multiplications": budget_sum({"whole_prover_census": None}),
+        "complete_fp3_multiplications": budget_sum({"whole_prover_census": None}),
+        "warm_complete_prover_seconds": budget_sum({"inference_witness_proof_pcg_serialization": None}, 50),
+        "complete_verifier_seconds_four_cores": budget_sum({"whole_verifier": None}, 8.2),
+        "arena": {
+            "known_phase_upper_bytes": phases, "known_peak_upper_bytes": max(phases.values()),
+            "missing": ["physical reader/Gamma/PCG/runtime liveness"],
+            "complete_peak_upper_bound": "infinity", "alarm_at": 6_442_450_944,
+            # A known-array upper bound is NOT a lower bound on physical memory.
+            "alarm": "unresolved"},
+        "complete_gpu_peak_bytes": budget_sum({"whole_physical_timeline": None}, 79_999_999_999),
+        "persistent_model_setup_bytes": budget_sum({"packed_W": packed,
+                                                     "roots_masks_indices_and_other_artifacts": None},
+                                                    packed*210//100),
+        "unchanged_dense_reference_screens": {
+            "scope": "materializing all live Gemma W cells as Fp; no tiled/streaming refactor",
+            "whir_input_or_ligero_encoded_matrix_lower_bound_bytes": 8*live,
+            "padded_whir_input_alone_bytes": 8*padded,
+            "below_reference_gpu_capacity": 8*live < 80_000_000_000,
+            "decision": "reject unchanged monolithic reuse at 31B, not the PCS families",
+            "sources": ["rust/volta-pcs/src/c61_whir_reference.rs",
+                        "rust/volta-pcs/src/ligero.rs"]},
+        "traffic_comparisons_not_latency_predictions": {
+            "four_packed_W_reads_bytes": 4*packed, "five_packed_W_reads_bytes": 5*packed,
+            "fifth_read_increment_bytes": packed,
+            "two_avoided_W_reads_bytes": 2*packed,
+            "20GB_host_spill_write_and_one_reread_bytes": 2*20_000_000_000,
+            "missing": ["effective bandwidth", "avoided recomputation", "staging and overlap"]},
+        "local_experiment": {"synthetic_weight_cells": 1 << 14, "packed_i16_bytes": 2*(1 << 14),
+                             "complete_C71_runner_ready": False,
+                             "contract": "docs/c7.1-gemma31b-design.md#10-goal-di-confronto-e-stop"},
+    }
+
+
+def report():
+    """Historical research inventory, not the current composed budget."""
+    tensors = pinned_private_tensors()
+    live = sum(math.prod(t["shape"]) for t in tensors)
     tiles = dyadic_weight_layout([t["shape"] for t in tensors])
     cohorts = gemma_weight_cohorts(tensors)
     gamma = gamma_barrier_plan(cohorts)
@@ -5764,5 +5857,9 @@ def report():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--research-screens", action="store_true",
+                        help="emit the historical, non-additive component inventory")
+    args = parser.parse_args()
     self_check()
-    print(json.dumps(report(), indent=2))
+    print(json.dumps(report() if args.research_screens else baseline_budget(), indent=2, allow_nan=False))

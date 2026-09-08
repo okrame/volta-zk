@@ -9,7 +9,8 @@ Start with the narrowest relevant check. For C7.1 arithmetic/accounting:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 pytest -q -p no:cacheprovider tests/test_c7_1_gemma_plan.py
-.venv/bin/python scripts/c7_1_gemma_plan.py
+PYTHONDONTWRITEBYTECODE=1 pytest -q -p no:cacheprovider tests/test_c7_1_baseline_budget.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/c7_1_gemma_plan.py
 ```
 
 Python scripts use the repository `.venv`; `pytest` is the global uv tool.
@@ -35,8 +36,11 @@ This is the broad workspace command, not the default check for every task.
 Before a broad local build, check guest space and confirm at least 60 GiB free
 on the host; guest `df` alone does not establish host capacity. Run the full
 workspace before a protocol milestone checkpoint when authorized resources
-permit; otherwise state the validation gap. Heavy benchmarks and every E2E
-belong on the authorized pod, never on the local VM.
+permit; otherwise state the validation gap. Heavy benchmarks and full-model
+E2E belong on authorized hardware, not the local VM. The owner's 2026-09-08
+exception allows a small synthetic CPU E2E on this VM, within the
+[active experiment contract](../c7.1-gemma31b-design.md#esperimento-ridotto-contratto-non-runner-già-pronto).
+It does not authorize a broad build, GPU/provider access or paid resources.
 
 Do not create per-crate, top-level or experimental Cargo targets. Remove the
 canonical target and ignored nested Cargo targets after a milestone checkpoint

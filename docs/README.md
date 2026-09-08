@@ -11,7 +11,7 @@ it is not another status ledger.
 | [Status](prototype-status.md) | Active work, evidence, open obligations, authorization and next steps |
 | [C7.1 design](c7.1-gemma31b-design.md) | Model/relation, protocol requirements, security and resource accounting |
 | [G1 feasibility](c7.1-feasibility.md) | Analytic admission criteria, carrier derivations and counterexamples, next constructive obligation |
-| [G2 committed MAC opening](c7.1-committed-mac-opening.md) | Private-verifier bridge, ideal MAC/FS simulation, grouped hash/GKR, exclusions and remaining obligations |
+| [G2 committed MAC opening](c7.1-committed-mac-opening.md) | Suspended research evidence: private-verifier bridge, ideal MAC/FS simulation, grouped hash/GKR and exclusions; not the current work queue |
 | [A3 recursive RS opening](c7.1-recursive-rs-opening.md) | Fixed-cap encoder/recursion, ideal-oracle binding, IBCS rewinding audit and scoped 256-bit bound exclusion, remaining hash/FS repairs |
 | [A4 paired RS opening](c7.1-paired-rs-opening.md) | Fused two-read reduction/opening, arbitrary-fold binding, dyadic tensor forms and conditional GKR composition |
 | [A5 wide hash opening](c7.1-wide-hash-opening.md) | Eight-Fp hash/anchor, 32-lane checker, staged costs, finite ROM embedding and explicit matrices; corrected fixed-trail screen, adaptive family security/FS open |
@@ -23,7 +23,7 @@ it is not another status ledger.
 | [R3 auxiliary witness](c7.1-auxiliary-witness.md) | Unified B/raw-attention byte source, fresh raw probes/RNE pullbacks, identical striped RS encoder and staged tree-cache repairs; incomplete Gamma/liveness |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |
-| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [tests](../tests/test_c7_1_gemma_plan.py) | Small executable accounting/algebra checks |
+| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget; `--research-screens`: preserved, non-additive research inventory |
 
 Status and design are editable; replace obsolete statements and use Git for
 history. Record important decisions with reasons and source links. Add a page

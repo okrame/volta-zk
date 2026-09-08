@@ -1628,6 +1628,71 @@ def test_expected_work_uses_a_paid_strict_cutoff_not_a_birthday_square():
     # These ceilings include metering, ROM and output costs; no caller bound is proved here.
 
 
+def test_modal_source_guard_prices_rare_openings_and_one_collision_finder():
+    # Finite partial-map law. Odd words fail the deliberately weak VC;
+    # repeated valid positions alias, while a valid disagreement is a collision.
+    def collect(records):
+        values = {}
+        for j,value in records:
+            if value % 2:
+                continue
+            if j in values and values[j] != value:
+                return values, True
+            values.setdefault(j,value)
+        return values, False
+
+    records = ((),((0,0),),((0,2),(1,0)),((0,2),(1,2)),
+               ((1,2),(0,1)),((2,4),(2,4)),((3,0),),((3,2),))
+    maps = [collect(record)[0] for record in records]
+    assert not any(collect(record)[1] for record in records)
+    assert collect(((0,0),(0,2)))[1]
+    assert collect(((0,1),(0,2))) == ({0:2},False)
+    domain, mass = 5, Fraction(1,len(maps))
+    counts = [Counter(v[j] for v in maps if j in v) for j in range(domain)]
+    modes = [min(c,key=lambda a:(-c[a],a)) if c else 0 for c in counts]
+    assert modes == [2,2,4,0,0]  # canonical tie at j=3; j=4 is never opened
+    first, collision = collect(((0,modes[0]),(0,0)))
+    assert first[0] == modes[0] and collision  # a later nonmodal alias cannot hide behind the first value
+
+    for k in range(1,5):
+        escape, replay_mean = Fraction(0), Fraction(0)
+        for main in maps:
+            survival, branches = Fraction(1), Fraction(0)
+            for j,value in sorted(main.items()):
+                delta = mass*sum(counts[j].values())
+                same = mass*counts[j][value]
+                # Solve the missing-answer self-loop exactly, not with a
+                # finite replay cap: δ P_s = p_same P_(s-1),
+                # δ E_s = 1 + p_same E_(s-1).
+                passed, expected = Fraction(1), Fraction(0)
+                for _ in range(k):
+                    passed, expected = same*passed/delta, (1+same*expected)/delta
+                assert passed == (same/delta)**k
+                assert expected <= k/delta
+                if value != modes[j]:
+                    assert same/delta <= Fraction(1,2) and passed <= Fraction(1,1 << k)
+                if j == 2:  # extremely sparse consistent opening: rarity cancels only AFTER averaging
+                    assert expected == k*len(maps) and mass*expected == k
+                branches += survival*expected  # stop the ONE finder at its first collision
+                survival *= passed
+            replay_mean += mass*branches
+            if any(value != modes[j] for j,value in main.items()):
+                escape += mass*survival
+        assert 0 < escape <= Fraction(domain,1 << k)
+        assert replay_mean <= k*sum(bool(c) for c in counts) <= k*domain
+
+    profile = plan.wide_hash_security_assumption_screen()
+    domain, confirmations, block_work = 1 << 26, 110, 1 << 68
+    mean_ceiling = (2+confirmations*domain)*block_work  # charged prefix plus main/replays
+    assert Fraction(domain,1 << confirmations) == Fraction(1,1 << 84)
+    assert mean_ceiling < 1 << 101
+    tail = Fraction(mean_ceiling,profile['binding_reduction_strict_u64_work_cap'])
+    assert tail < Fraction(1,1 << 99)
+    assert (Fraction(domain,1 << confirmations)+tail+
+            Fraction(*profile['assumed_binding_advantage'])) < Fraction(1,1 << 83)
+    # Local clear-opening game only: no lifetime, private-wrapper, FS or model-relation credit.
+
+
 def test_hidden_target_keeps_static_source_and_matches_full_sampler_marginal():
     # Deliberately weak VC: an even word opens digest zero. This exercises
     # collision finding, NOT A5 security. Two adaptive attempts, one inner root each.

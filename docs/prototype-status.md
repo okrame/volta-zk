@@ -64,8 +64,9 @@ real correlations, lifetime accounting or complete algorithm/resources.
   MACs. The model relation, actual codecs/caller costs and FS remain open.
   The [first-query audit](c7.1-committed-mac-opening.md#35-prima-query-fs-limite-del-coupling-e-riparazione-da-comporre)
   separates interactive causality from FS and identifies the candidate-prefix
-  accounting gap; a strict A5-B cutoff can bound an expected-time reduction's
-  tail, but that alternative reduction is not yet instantiated.
+  accounting gap. A causal modal source and single collision finder now have
+  an explicit local expected-work/cutoff bound, including rare valid openings;
+  the candidate-boundary lifetime composition is not yet instantiated.
   It does not assume
   `BindsIntoMac`. The literal codec
   using one 8-byte correction per leaf bit is excluded at 357 queries for
@@ -280,11 +281,11 @@ real correlations, lifetime accounting or complete algorithm/resources.
 
 ## Next work
 
-Next: bound the actual emulation work, instantiate source-identity codecs
-and transfer the joint
-[hidden-target reduction](c7.1-committed-mac-opening.md#34-un-bersaglio-nascosto-perdita-lifetime-e-lavoro-a5-separati)
-to FS. Its stronger joint work ceiling remains conditional, not verified
-for the complete caller. Full A5 cryptanalysis stays non-priority; the
+Next: compose the [first-query modal guards](c7.1-committed-mac-opening.md#35-prima-query-fs-limite-del-coupling-e-riparazione-da-comporre)
+across actual source identities, aliases and candidate prefixes, counting
+their joint emulation work and loss. The interactive hidden-target bound
+remains a separate baseline; neither caller costs nor the FS transfer are
+verified. Full A5 cryptanalysis stays non-priority; the
 exact model relation, Gamma and remaining lifetime terms stay open.
 Continue the independent pointwise Gamma kernels/forms, beginning with
 residual additions and public scaling, and their complete reader/field costs.

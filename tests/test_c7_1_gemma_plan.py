@@ -2581,6 +2581,17 @@ def test_rms_live_wire_layering_preserves_outputs_and_counts_joint_profiles():
             assert field['combined_clear_replay_and_sumcheck_additions_upper'] == 3942483663846463
             assert field['additional_public_sweep_and_gate_form_bytes'] == 394496
             assert not field['credit'] and field['complete_getter_mac_fs_runtime_and_liveness'] is None
+            aligned = plan.rms_gkr_aligned_word_screen(screen,field)
+            assert aligned['first_round_word_gate_terms_upper'] == 725262270464
+            assert aligned['rounds_1_to_5_gate_pair_terms_upper'] == 22483130384384
+            assert aligned['remaining_cell_gate_pair_terms_upper'] == 3347372960066
+            assert aligned['combined_clear_replay_and_sumcheck_products_upper'] == 326494949181128
+            assert aligned['combined_clear_replay_and_sumcheck_additions_upper'] == 570840702874249
+            assert aligned['fold_table_lookups_upper'] == 143655381762048
+            assert aligned['additional_split_and_gate_word_steps_upper'] == 26861555941376
+            assert aligned['additional_scratch_bytes'] == 0 and aligned['reference_input_tuple_visits'] == 1784
+            assert not aligned['credit'] and aligned['requires_64_cell_aligned_homogeneous_profiles']
+            assert aligned['complete_getter_mac_fs_runtime_and_liveness'] is None
     for widths, bits in (([], 2), ([[]], 2), ([[0]], 2), ([[True]], 2), ([[1]], 0)):
         with pytest.raises(ValueError):
             plan.rms_joint_gkr_screen(widths, bits)
@@ -2849,6 +2860,96 @@ def test_bitpacked_replay_and_public_word_fold_preserve_all_low_prefixes():
     for word,tables in ((True,table), (-1,table), (1 << 64,table), (0,[]), (0,[[0,1]]*2)):
         with pytest.raises(ValueError):
             plan.fold_boolean_word(word,tables)
+    for width in (1,2,4,8,16,32,64):
+        word = rng.getrandbits(width)
+        for h in range(width.bit_length()):
+            point = [2,3,5,7,11,13][:h]
+            got = plan.fold_boolean_word(word,plan.boolean_word_fold_tables(point),width)
+            assert got == [plan.mle([word >> (i+j) & 1 for j in range(1 << h)],point)
+                           for i in range(0,width,1 << h)]
+    for width,word,tables in ((True,0,table), (3,0,table), (32,1 << 32,table), (32,0,plan.boolean_word_fold_tables([2]*6))):
+        with pytest.raises(ValueError):
+            plan.fold_boolean_word(word,tables,width)
+
+
+def test_rms_first_word_moments_and_profile_pruning_preserve_cell_rounds():
+    rng, p = random.Random(7172), plan.P
+    def eq(point,index):
+        return math.prod(v if index >> i & 1 else 1-v for i,v in enumerate(point)) % p
+    full = (1 << 64)-1
+    words = [0,full]+[1 << i for i in range(64)]+[rng.getrandbits(64) for _ in range(12)]
+    for word in words:
+        assert plan.split_boolean_word(word) == tuple(sum((word >> (2*i+b) & 1) << i for i in range(32)) for b in (0,1))
+    for op in ('and','xor','copy'):
+        for point in ([2,3,5,7,11,13], [0]*6, [1]*6, [0,1,2,3,0,1]):
+            x,y = rng.getrandbits(64), rng.getrandbits(64)
+            tables, expected = plan.boolean_word_fold_tables(point[1:]), [0]*4
+            for c in range(32):
+                edge = plan.rms_gkr_cell_pair_coefficients(op,x >> (2*c) & 1,x >> (2*c+1) & 1,
+                    y >> (2*c) & 1,y >> (2*c+1) & 1,eq(point,2*c),eq(point,2*c+1),17)
+                expected = [(a+b) % p for a,b in zip(expected,edge)]
+            assert plan.rms_gkr_first_word_coefficients(op,plan.split_boolean_word(x),plan.split_boolean_word(y),tables,point[0],17,full) == expected
+    # One shared-cell layer: two 64-cell profiles followed by two dummy words.
+    point, coins, ops = [2,3,5,7,11,13,17,19], [23,29,31,37,41,43,47,53], ['and','xor']
+    roles = [0]*64+[1]*64+[None]*128
+    values = [[rng.randrange(2) if c < 128 else 0 for c in range(256)] for _ in range(2)]
+    forms = [[eq(point,c) if role == t else 0 for c,role in enumerate(roles)] for t in range(2)]
+    claim = sum(eq(point,c)*17*(values[0][c]*values[1][c] if role == 0 else values[0][c]^values[1][c])
+                for c,role in enumerate(roles) if role is not None) % p
+    for h in range(8):
+        general, pruned = [0]*4, [0]*4
+        for pair in range(1 << (7-h)):
+            endpoints = [coins[:h]+[b]+[pair >> i & 1 for i in range(7-h)] for b in (0,1)]
+            x,y = [[plan.mle(row,q) for q in endpoints] for row in values]
+            active = roles[pair << (h+1)]
+            for t,op in enumerate(ops):
+                psi = [plan.mle(forms[t],q) for q in endpoints]
+                edge = plan.rms_gkr_cell_pair_coefficients(op,*x,*y,*psi,17)
+                general = [(a+b) % p for a,b in zip(general,edge)]
+                if t == active:
+                    pruned = [(a+b) % p for a,b in zip(pruned,edge)]
+                elif h < 6:
+                    assert psi == [0,0]
+        if h == 0:
+            fast = [0]*4
+            tables = plan.boolean_word_fold_tables(point[1:6])
+            for block in range(4):
+                x,y = [plan.split_boolean_word(sum(row[64*block+j] << j for j in range(64))) for row in values]
+                role = roles[64*block]
+                edge = plan.rms_gkr_first_word_coefficients(ops[role or 0],x,y,tables,point[0],
+                                                          17*eq(point[6:],block) % p,0 if role is None else full)
+                fast = [(a+b) % p for a,b in zip(fast,edge)]
+            assert fast == general
+        elif h < 6:
+            assert pruned == general
+        elif h == 6:
+            assert pruned != general  # the next pair can cross a profile boundary
+        polynomial = lambda t: sum(c*pow(t,i,p) for i,c in enumerate(general)) % p
+        assert (polynomial(0)+polynomial(1)) % p == claim
+        claim = polynomial(coins[h])
+    x,y = [plan.mle(row,coins) for row in values]
+    psi0,psi1 = [plan.mle(form,coins) for form in forms]
+    assert claim == 17*(psi0*x*y+psi1*(x+y-2*x*y)) % p
+    tables = plan.boolean_word_fold_tables([2]*5)
+    for bad in (-1,1 << 64,True):
+        with pytest.raises(ValueError):
+            plan.split_boolean_word(bad)
+    for mask in (1,full-1,True,-1):
+        with pytest.raises(ValueError):
+            plan.rms_gkr_first_word_coefficients('and',(0,0),(0,0),tables,2,3,mask)
+    for op,x,r,table in (('bad',(0,0),2,tables), ('and',(0,),2,tables), ('and',(0,1 << 32),2,tables),
+                         ('and',(0,0),True,tables), ('and',(0,0),2,[])):
+        with pytest.raises(ValueError):
+            plan.rms_gkr_first_word_coefficients(op,x,(0,0),table,r,3,full)
+    tiny = plan.rms_joint_gkr_screen([[2,1]],22)
+    field = plan.rms_gkr_field_work_screen(tiny,1)
+    small = plan.rms_gkr_aligned_word_screen(tiny,field)
+    assert small['first_round_word_gate_terms_upper'] == 65536
+    assert small['cell_coefficient_products_upper'] == 25755636
+    assert small['reference_input_tuple_visits'] == tiny['reference_input_tuple_visits']
+    for joint in (plan.rms_joint_gkr_screen([[2]],29), plan.rms_joint_gkr_screen([[2,1]],1), plan.rms_joint_gkr_screen([[2,1]],6)):
+        with pytest.raises(ValueError):
+            plan.rms_gkr_aligned_word_screen(joint,plan.rms_gkr_field_work_screen(joint,1))
 
 
 def test_rms_row_multiplier_getter_matches_exact_rounding_and_prices_shared_cache():

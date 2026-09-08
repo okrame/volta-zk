@@ -609,21 +609,66 @@ def boolean_word_fold_tables(point):
     return [[scale*v % P for v in subsets] for scale in scales]
 
 
-def fold_boolean_word(word, tables):
-    """Fold a 64-cell bit word using boolean_word_fold_tables's public tables.
+def fold_boolean_word(word, tables, word_bits=64):
+    """Fold a bit word using boolean_word_fold_tables's public tables.
 
-    Returns 64/2^h field values. Applying gates to these folded values as
+    Returns word_bits/2^h field values. Applying gates to these folded values as
     though they were bits is invalid; gate replay must precede this step.
     """
-    natural(word, 'Boolean cell word', 0, (1 << 64)-1)
+    natural(word_bits, 'Boolean word width', 1, 64)
+    if word_bits & (word_bits-1):
+        raise ValueError('Boolean word width must be a power of two')
+    natural(word, 'Boolean cell word', 0, (1 << word_bits)-1)
     if not tables or len(tables) not in (1,2,4,8) or len(tables[0]) not in (2,4,16,256):
         raise ValueError('invalid Boolean fold table shape')
     chunk = (len(tables[0])-1).bit_length()
     if any(len(t) != 1 << chunk for t in tables) or chunk < 8 and len(tables) != 1:
         raise ValueError('noncanonical Boolean fold chunks')
     width = chunk*len(tables)
+    if width > word_bits:
+        raise ValueError('Boolean fold exceeds the word width')
     return [sum(t[(word >> (offset+chunk*j)) & ((1 << chunk)-1)] for j,t in enumerate(tables)) % P
-            for offset in range(0,64,width)]
+            for offset in range(0,word_bits,width)]
+
+
+def split_boolean_word(word):
+    """Even/odd cell planes as two u32; 33 word shifts/OR/AND in total."""
+    natural(word, 'Boolean cell word', 0, (1 << 64)-1)
+    def compact(value):
+        value &= 0x5555555555555555
+        for shift,mask in ((1,0x3333333333333333), (2,0x0F0F0F0F0F0F0F0F),
+                           (4,0x00FF00FF00FF00FF), (8,0x0000FFFF0000FFFF), (16,0xFFFFFFFF)):
+            value = (value | (value >> shift)) & mask
+        return value
+    return compact(word), compact(word >> 1)
+
+
+def rms_gkr_first_word_coefficients(op, x, y, tables, r0, weight, profile_mask):
+    """First cell round on one aligned 64-cell block; same four coefficients.
+
+    x/y are split_boolean_word's planes; tables use r[1:6], weight is
+    lambda_g*EQ(r[6:],global_word_index). Only constant public profile masks
+    are supported: a mixed mask requires the general field-pair path.
+    """
+    if op not in ('and','xor','copy') or len(x) != 2 or len(y) != 2:
+        raise ValueError('invalid first-round Boolean gate')
+    for word in (*x,*y):
+        natural(word, 'first-round u32 plane', 0, (1 << 32)-1)
+    for value in (r0,weight):
+        natural(value, 'first-round field value', 0, P-1)
+    natural(profile_mask, 'first-round profile mask', 0, (1 << 64)-1)
+    if profile_mask not in (0,(1 << 64)-1):
+        raise ValueError('mixed profile block requires the general cell-round path')
+    if len(tables) != 4 or any(len(t) != 256 for t in tables):
+        raise ValueError('first round requires the five-coordinate public tables')
+    if not profile_mask:
+        return [0]*4
+    moments = [fold_boolean_word(a & b if op == 'and' else a ^ b if op == 'xor' else a,
+                                tables,32)[0] for a in x for b in y]
+    m00,m01,m10,m11 = moments
+    a, b, c = m00, (m01+m10-2*m00) % P, (m11-m01-m10+m00) % P
+    f0, df = weight*(1-r0) % P, weight*(2*r0-1) % P
+    return [f0*a % P, (f0*b+df*a) % P, (f0*c+df*b) % P, df*c % P]
 
 
 def rms_gkr_cell_pair_coefficients(op, x0, x1, y0, y1, psi0, psi1, weight):
@@ -794,6 +839,42 @@ def rms_gkr_field_work_screen(joint, interval_count):
                 packed['fold_chunk_additions_upper']+packed['fold_high_prefix_accumulations_upper']+
                 packed['fold_table_preparation_additions_upper'],
             'additional_public_sweep_and_gate_form_bytes': 256*((public_bytes+255)//256),
+            'complete_getter_mac_fs_runtime_and_liveness': None}
+
+
+def rms_gkr_aligned_word_screen(joint, field):
+    """Conditional first-round moments + absent-profile pruning through h=5.
+
+    Uses the validated general screen and homogeneous, aligned 64-cell cubes.
+    First source visit must stream (k>0); otherwise it also materializes the
+    array, and its input-conversion work cannot be subtracted here.
+    """
+    n, depth = joint['cell_bits'], joint['depth']
+    if n < 6 or not depth or min(joint['reference_cell_prefix_bits']) < 1:
+        raise ValueError('aligned-word screen requires a streamed first cell round')
+    blocks, early_pairs = 1 << (n-6), sum(1 << (n-h-1) for h in range(1,6))
+    inputs = sum(joint['joint_level_widths'][:-1])
+    outputs = sum(joint['joint_level_widths'][1:])
+    edges = sum(joint['joint_level_rows_across_profiles'][1:])
+    word_terms, early_terms, tail_terms = blocks*outputs, early_pairs*outputs, (blocks-1)*edges
+    products = 9*word_terms+12*(early_terms+tail_terms)
+    additions = 27*word_terms+18*(early_terms+tail_terms)
+    packed = joint['bitpacked_replay']
+    return {'credit': False, 'requires_64_cell_aligned_homogeneous_profiles': True,
+            'first_round_word_gate_terms_upper': word_terms,
+            'rounds_1_to_5_gate_pair_terms_upper': early_terms,
+            'remaining_cell_gate_pair_terms_upper': tail_terms,
+            'cell_coefficient_products_upper': products, 'cell_coefficient_additions_upper': additions,
+            'combined_clear_replay_and_sumcheck_products_upper':
+                field['combined_clear_replay_and_sumcheck_products_upper']-
+                field['products_upper_by_stage']['cell_coefficients']+products+depth*(1054+2*(blocks-1)),
+            'combined_clear_replay_and_sumcheck_additions_upper':
+                field['combined_clear_replay_and_sumcheck_additions_upper']-
+                field['additions_upper_by_stage']['cell_coefficients']+additions+depth*(286+n-6),
+            'fold_table_lookups_upper': packed['fold_table_lookups_upper']-64*blocks*inputs+16*word_terms,
+            'additional_split_and_gate_word_steps_upper': 33*blocks*inputs+4*word_terms,
+            'additional_scratch_bytes': 0,
+            'reference_input_tuple_visits': joint['reference_input_tuple_visits'],
             'complete_getter_mac_fs_runtime_and_liveness': None}
 
 

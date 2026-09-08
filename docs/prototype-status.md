@@ -266,10 +266,11 @@ authorization.
 
 ## Next work
 
-The [sparse sumcheck messages and public profile sweep](c7.1-cut-witness.md#messaggi-sparsi-e-costo-del-sumcheck-rms-j)
-now give a full clear-field arithmetic upper bound for the nominated RMS-J
-replay, still with very large constants and synthetic exponents. The immediate
-deliverable is its physical lifetime schedule and getter/control/PCG costs
+The [Boolean first round and homogeneous-profile pruning](c7.1-cut-witness.md#primo-round-booleano-e-profili-omogenei)
+reduce the RMS-J clear-field bound without changing messages or source visits.
+The result requires public 64-cell homogeneous blocks and still has very large
+work constants; actual exponents are uncompiled. The immediate deliverable is
+the physical lifetime schedule and getter/control/PCG costs
 with actual profiles and Gamma consumers; the arithmetic bound is not timing
 or full-prover feasibility. Compose the
 [joint core](c7.1-cut-witness.md#riduzione-gkr-rms-con-asse-delle-celle-condiviso)

@@ -1979,6 +1979,230 @@ def gelu_byte_bridge_screen(cohorts, rope=None):
             'complete_tables_reader_work_and_physical_liveness':None}
 
 
+def gate_up_raw_sources(cohorts):
+    """Unretained i48 Hadamard cuts; output RNE stays in the common R2."""
+    gelu = gelu_lookup_sources(cohorts)[:60]
+    by_op = {(c['layer'],c['operation']):c for c in cohorts}
+    result = []
+    for g in gelu:
+        up = by_op.get((g['layer'],'up_proj'))
+        if up is None or (up['kind'],up['cut_scalar_bytes'],up['rows'],up['columns']) != (
+                'matrix',6,g['shape'][1],g['shape'][2]):
+            raise ValueError('gate product requires its same-layer up_proj geometry')
+        result.append(dict(source='Gate_up_raw',source_id=g['layer'],layer=g['layer'],
+                           operation='gate_up_raw',shape=g['shape'],word_bytes=6,rne=True,
+                           execution=None,token_offset=0,physical_b_offset=None,
+                           gelu_source_id=g['source_id'],gate_source_id=g['input_source_id'],
+                           up_source_id=up['ordinal']))
+    return result
+
+
+def gate_up_read_word(source, gelu, gate, up, first, count, packed_b, gate_shift, up_shift, table):
+    """Honest (GELU i16, up RNE i16, exact i32 product) words, without W.
+
+    Reuses GELU's guarded getter. The six virtual source bytes encode the
+    product with bias 2^47, NOT its four-byte native signed representation.
+    """
+    for key in ('source_id','layer','gelu_source_id','gate_source_id','up_source_id'):
+        natural(source[key],'gate product identity',0)
+    if (source['source'],source['operation'],source['source_id'],source['layer'],
+            source['shape'],source['word_bytes'],source['rne'],source['token_offset'],
+            source['gelu_source_id'],source['gate_source_id'],source['up_source_id']) != (
+            'Gate_up_raw','gate_up_raw',gelu['layer'],gelu['layer'],gelu['shape'],6,True,0,
+            gelu['source_id'],gate['ordinal'],up['ordinal']) or (
+            up['layer'],up['operation'],up['kind'],up['rows'],up['columns'],up['cut_scalar_bytes']) != (
+            gelu['layer'],'up_proj','matrix',gelu['shape'][1],gelu['shape'][2],6):
+        raise ValueError('gate product must use its own GELU and up_proj')
+    natural(up['ordinal'],'up producer identity',0)
+    natural(up['cut_byte_offset'],'up physical B offset',0)
+    rne_i48_to_i16(0,up_shift)
+    pairs = gelu_read_word(gelu,gate,first,count,packed_b,gate_shift,table)
+    raw = memoryview(packed_b).cast('B')
+    begin = up['cut_byte_offset']+6*first
+    if begin+6*count > len(raw):
+        raise ValueError('truncated up_proj B')
+    result = []
+    for j,(_,y) in enumerate(pairs):
+        offset = begin+6*j
+        u = rne_i48_to_i16(int.from_bytes(raw[offset:offset+6],'little',signed=True),up_shift)
+        result.append((y,u,y*u))
+    return result
+
+
+def gate_up_product_forms(products, sources, byte_tiles, rq_tiles, point):
+    """Packed raw probe / two product endpoints -> SAME Sigma and RQ.
+
+    Fp diagnostic of the public linear forms, not authenticated values.
+    The raw probe uses its own point; G/U use the final sumcheck point.
+    Calling this at either point constructs the relevant forms without
+    treating MLE(G*U) as MLE(G)*MLE(U).
+    """
+    _,cubes = auxiliary_word_layout(products)
+    live = sum(math.prod(s['shape']) for s in products)
+    if not live or len(point) != (live-1).bit_length():
+        raise ValueError('point does not match packed product domain')
+    for v in point:
+        natural(v,'canonical product coordinate',0,P-1)
+    roles = {'B','GELU_outputs','Gate_up_raw'}
+    indices = {(s['source'],s['source_id']):i for i,s in enumerate(sources) if s['source'] in roles}
+    if len(indices) != sum(s['source'] in roles for s in sources):
+        raise ValueError('duplicate product source identity')
+    byte_by_word = {}
+    for t in byte_tiles:
+        byte_by_word.setdefault(t[:6],[]).append(t)
+    rq_by_word = {t[:6]:t[-1] for t in rq_tiles}
+    result = dict(raw_byte_terms=[],raw_bias=0,gelu_byte_terms=[],gelu_bias=0,
+                  up_rq_terms_by_source={},additional_mac_corrections=0)
+    for si,row,col,heads,rows,cols,offset in cubes:
+        s = products[si]
+        if (s['source'],s['operation'],s['word_bytes'],s['rne'],heads,s['token_offset']) != (
+                'Gate_up_raw','gate_up_raw',6,True,1,0):
+            raise ValueError('unexpected product cube source')
+        keys = [('Gate_up_raw',s['source_id']),('GELU_outputs',s['gelu_source_id']),('B',s['up_source_id'])]
+        if any(k not in indices for k in keys):
+            raise ValueError('missing product input in common source')
+        ri,gi,ui = [indices[k] for k in keys]
+        g,u = sources[gi],sources[ui]
+        if sources[ri] != s or (g['layer'],g['operation'],g['shape'],g['word_bytes'],g['rne'],
+                g['input_source_id'],g['token_offset']) != (
+                s['layer'],'gelu_tanh',s['shape'],2,False,s['gate_source_id'],0) or (
+                u['layer'],u['operation'],u['shape'],u['word_bytes'],u['rne'],u['token_offset']) != (
+                s['layer'],'up_proj',s['shape'],6,True,0):
+            raise ValueError('product inputs must use the identical pinned sources')
+        b,cb,rb = (heads*rows*cols-1).bit_length(),(cols-1).bit_length(),(rows-1).bit_length()
+        w = math.prod(x if (offset//(1 << b) >> j) & 1 else 1-x for j,x in enumerate(point[b:])) % P
+        cp = list(point[:cb])+[(col >> j) & 1 for j in range(cb,(s['shape'][2]-1).bit_length())]
+        rp = list(point[cb:cb+rb])+[(row >> j) & 1 for j in range(rb,(s['shape'][1]-1).bit_length())]
+        claim = ([],rp,cp,w)
+        for i,role in ((ri,'raw'),(gi,'gelu')):
+            key = (i,row,col,heads,rows,cols)
+            tiles = byte_by_word.get(key,[])
+            if sorted((t[6],t[7]) for t in tiles) != ([(0,4),(4,2)] if role == 'raw' else [(0,2)]):
+                raise ValueError('missing product byte cube')
+            terms,bias = auxiliary_probe_terms(tiles,sources,{i:claim})
+            result[role+'_byte_terms'].extend(terms)
+            result[role+'_bias'] = (result[role+'_bias']+bias) % P
+        key = (ui,row,col,heads,rows,cols)
+        if key not in rq_by_word:
+            raise ValueError('missing up_proj cube in common RQ')
+        local,weight = auxiliary_point_restriction(u,row,col,heads,rows,cols,claim)
+        result['up_rq_terms_by_source'].setdefault(ui,[]).append((rq_by_word[key],local,weight))
+    return result
+
+
+def gate_up_product_screen(cohorts, gelu=None):
+    """Conditional shared Hadamard cut; no complete Gamma/PCG/runtime credit."""
+    gelu = gelu_byte_bridge_screen(cohorts) if gelu is None else gelu
+    extra = gate_up_raw_sources(cohorts)
+    byte,cubes = auxiliary_word_layout(extra)
+    assert all(t[2] % 64 == t[5] % 64 == 0 and t[-1] % (64*t[7]) == 0 for t in byte)
+    live = sum(math.prod(s['shape']) for s in extra)
+    n = (live-1).bit_length()
+    padded,prefix = 1 << n,min(5,n)
+    corrections = 4*n+4  # raw probe, cubic coefficients, G/U and their product
+    sigma = {n:wide_hash_joint_opening_screen([1 << n],1 << 23,357) for n in (33,34)}
+    rne = {n:rne_indicator_screen(n,max(18,n-13),max(11,n-20)) for n in (30,31,32)}
+    sigma_e = {n:sigma[n]['extension_corrections_including_paired_sumchecks']+
+               byte_range_tree_screen(n)['extension_corrections']+
+               byte_bit_lift_screen(n)['extension_corrections_excluding_incoming_claims'] for n in sigma}
+    def counts(b,r):
+        n,t = (b-1).bit_length(),(r-1).bit_length()
+        zeros = (1 << n)//(1 << 23)-(b+(1 << 23)-1)//(1 << 23)
+        return (sigma[n]['base_corrections_including_salts']-357*zeros,
+                sigma_e[n]+rne[t]['extension_corrections'])
+    first = (auxiliary_word_sources(cohorts)+rms_statistic_byte_sources(cohorts)+
+             rms_output_byte_sources(cohorts)+rope_raw_byte_sources(cohorts)+gelu_lookup_sources(cohorts))
+    first_b = sum(math.prod(s['shape'])*s['word_bytes'] for s in first)
+    first_r = sum(math.prod(s['shape']) for s in first if s['rne'])
+    stride = 60*32*150
+    totals,deltas,changes = [],[],dict(sigma=[],rq=[])
+    for old,payload in enumerate(gelu['known_partial_payload_by_old_tokens']):
+        b,r = first_b+6*stride*old,first_r+stride*old
+        b0,e0 = counts(b,r)
+        b1,e1 = counts(b+6*live,r+live)
+        deltas.append((b1-b0,e1-e0+corrections))
+        totals.append(payload+8*deltas[-1][0]+24*deltas[-1][1])
+        for name,a,d in (('sigma',b,6*live),('rq',r,live)):
+            if (a-1).bit_length() != (a+d-1).bit_length():
+                changes[name].append(old)
+    cases = []
+    for old in (0,CONTEXT_CAP-150):
+        sources = (auxiliary_word_sources(cohorts,old)+rms_statistic_byte_sources(cohorts)+
+                   rms_output_byte_sources(cohorts)+rope_raw_byte_sources(cohorts)+gelu_lookup_sources(cohorts)+extra)
+        before = sources[:-len(extra)]
+        before_byte,before_rq = auxiliary_word_layout(before)
+        previous_sha = hashlib.sha256(json.dumps(
+            [before,before_byte,before_rq],sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        if previous_sha != gelu['cases'][int(bool(old))]['layout_sha256']:
+            raise ValueError('product screen must extend the same GELU layout')
+        bt,rq = auxiliary_word_layout(sources)
+        b,r = first_b+6*stride*old+6*live,first_r+stride*old+live
+        cases.append(dict(old_tokens=old,source_templates=len(sources),source_byte_cells=b,
+                          source_padded_byte_cells=1 << (b-1).bit_length(),rq_live_cells=r,
+                          rq_padded_cells=1 << (r-1).bit_length(),byte_cubes=len(bt),rq_cubes=len(rq),
+                          layout_sha256=hashlib.sha256(json.dumps(
+                              [sources,bt,rq],sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+                          known_partial_payload_before_rms_joint_gamma_and_framing=totals[old]))
+    # Keep previous unomitted Sigma reservations; its maximal domain is unchanged.
+    # R2 gains 40 E records at capacity. Existing GELU X tail reserve at K=18
+    # also bounds K=19; the new up form pays its own intersections at K=19.
+    rne_delta = rne[32]['extension_corrections']-rne[31]['extension_corrections']
+    raw_arrays = dict(source_and_cube_descriptors=96*len(extra)+72*len(byte)+56*len(cubes),
+                      product_records=48*corrections,product_points_forms=48*n+96*len(cubes)+3*64,
+                      rne_record_delta=48*rne_delta,
+                      rne_challenge_delta=24*(rne[32]['extension_challenges']-rne[31]['extension_challenges']),
+                      reader_and_control=8192)
+    arrays = {k:256*((v+255)//256) for k,v in raw_arrays.items()}
+    up_tail = 48*sum(max(1,math.prod(t[3:6])//(1 << 19)) for t in cubes)
+    top_delta = rne[32]['top_prefix_weights_bytes']-rne[31]['top_prefix_weights_bytes']+48*len(cubes)+up_tail
+    link_delta = rne[32]['link_prefix_weights_bytes']-rne[31]['link_prefix_weights_bytes']
+    phases = {k:v+sum(arrays.values())+({'rne_top':top_delta,'rne_link':link_delta}.get(k,0))
+              for k,v in gelu['source_and_gelu_arena_phase_upper_bytes_before_rms_joint_gamma_runtime'].items()}
+    scratch = 48*(padded >> prefix)+24*(1 << prefix)
+    common = phases['opening_first_pass']-80*(1 << 23)
+    phases['gate_up_product'] = common+scratch
+    sigma_visits,rq_visits = 231,rne[32]['source_rq_visits']
+    generations = (2*sigma_visits+rq_visits+prefix+1)*live
+    return dict(credit=False,extends_source='S+Y+RoPE+GELU',cases=cases,
+                raw_sources=len(extra),raw_cells=live,extra_virtual_source_bytes=6*live,
+                extra_byte_cubes=len(byte),extra_rq_cubes=len(cubes),same_rq_layout=False,
+                requires_rebuilding_all_sigma_and_rq_forms=True,
+                product_word_layout_sha256=hashlib.sha256(json.dumps(cubes,separators=(',',':')).encode()).hexdigest(),
+                changed_padding_contexts=changes,source_path_correction_deltas_by_old_tokens=deltas,
+                known_partial_payload_by_old_tokens=totals,
+                maximum_known_partial_payload_before_rms_joint_gamma_and_framing=max(totals),
+                remaining_payload_before_missing_components=35_000_000-max(totals),
+                product_core=dict(cell_bits=n,extension_corrections=corrections,private_products=1,
+                    zero_residuals=n+1,extension_challenges=2*n,conditional_interactive_error_numerator=4*n,
+                    fixed_prefix_bits=prefix,source_visits=prefix+1,phase_local_array_bytes=scratch,
+                    literal_two_full_E_arrays_bytes=48*padded,
+                    prefix_fold_E_products_upper=2*(prefix+1)*padded,
+                    cubic_pair_E_products_upper=12*(padded-1),
+                    cached_fold_E_products=2*((padded >> prefix)-1),
+                    public_eq_products_upper=2*sum((1 << h)-1 for h in range(prefix+1))+
+                        2*(padded-1-n)+(padded-1)+3*n,
+                    prefix_fold_E_additions_upper=2*(prefix+1)*padded,
+                    cubic_pair_E_additions_upper=18*(padded-1),
+                    cached_fold_E_additions=4*((padded >> prefix)-1),
+                    public_eq_additions_upper=prefix*(prefix+1)//2+n*(n-1)//2+3*n,
+                    endpoint_and_probe_E_products=2,endpoint_and_probe_E_additions_upper=5),
+                rne_maximum_domain_repair=rne[32],
+                unchanged_prefix_rne32_link_tail_bytes=rne_indicator_screen(32,18,11)['link_six_lane_four_function_tail_bytes'],
+                additional_known_retained_arrays_256_byte_aligned=arrays,
+                rne_top_phase_delta_bytes=top_delta,rne_link_phase_delta_bytes=link_delta,
+                source_and_product_arena_phase_upper_bytes_before_rms_joint_gamma_runtime=phases,
+                known_phase_max_upper_bytes_before_rms_joint_gamma_runtime=max(phases.values()),
+                reader_work=dict(raw_generations_including_core=generations,
+                    raw_B_logical_read_bytes=12*generations,public_gelu_table_read_bytes=2*generations,
+                    rne_calls=2*generations,integer_products=generations,
+                    additional_existing_rq_visits_at_capacity=rq_visits-122,
+                    additional_existing_rq_raw_byte_requests=6*(rq_visits-122)*(first_r+stride*(CONTEXT_CAP-150)),
+                    additional_rope_rms_Y_generations=2*(rq_visits-122)*119808000),
+                additional_sigma_claims=2,additional_rq_claims=1,additional_pcs_instances=0,
+                additional_w_reads_given_retained_b=0,retained_raw_array_bytes=0,
+                complete_gamma_reader_field_work_pcg_and_physical_liveness=None)
+
+
 def byte_lagrange_basis(value):
     """Degree-255 basis on 0..255, including at roots; only public inverses.
 
@@ -3360,7 +3584,8 @@ def gemma_input_routes(cohorts):
     return routes
 
 
-def gamma_barrier_plan(cohorts, include_rms_outputs=False, include_rope=False, include_gelu=False):
+def gamma_barrier_plan(cohorts, include_rms_outputs=False, include_rope=False, include_gelu=False,
+                       include_gate_up=False):
     """Logical reverse schedule for the pinned 100+50 DAG, NOT kernel lowering.
 
     Cut raw W/QK/PV products, not weighted RMS statistics. All executed
@@ -3373,7 +3598,8 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False, include_rope=False, i
     Optional raw RoPE needs the same Y boundary and delegates its linear
     input proof before Gamma; the output RNE is postponed with all others.
     Optional GELU delegates membership to LogUp and its input to gate RNE;
-    it does not cut the gate_up_mul producer or prove a concrete GELU table.
+    It does not prove a concrete GELU table. The optional gate product raw
+    cut delegates multiplication to its common-source prelude and retains RNE.
     """
     if type(include_rms_outputs) is not bool:
         raise ValueError('Gamma RMS source mode must be Boolean')
@@ -3381,6 +3607,8 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False, include_rope=False, i
         raise ValueError('this raw RoPE construction requires the same RMS Y source')
     if type(include_gelu) is not bool:
         raise ValueError('Gamma GELU source mode must be Boolean')
+    if type(include_gate_up) is not bool or include_gate_up and not include_gelu:
+        raise ValueError('gate product source mode requires the GELU boundary')
     manifest = pinned_gemma_manifest()
     logical = runpy.run_path(str(Path(__file__).with_name("c7_d126_gemma_qspec_dag.py")))
     executions = logical["_expand_schedule"](manifest["workload_schedule"])
@@ -3403,6 +3631,7 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False, include_rope=False, i
                enumerate(gemma_rope_plan(cohorts)['cohorts'])} if include_rope else {}
     by_gelu = {(s['layer'],s['operation']):s for s in gelu_lookup_sources(cohorts)
                if s['source'] == 'GELU_outputs'} if include_gelu else {}
+    by_product = {(s['layer'],'gate_up_mul'):s for s in gate_up_raw_sources(cohorts)} if include_gate_up else {}
 
     records, indices, node_cohorts = [], {}, []
     for node in nodes:
@@ -3421,6 +3650,8 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False, include_rope=False, i
                 kind, source = 'rne48','RoPE_raw'
             if key in by_gelu:
                 kind, source = 'gelu_output_boundary','GELU_outputs'
+            if key in by_product:
+                kind, source = 'rne48','Gate_up_raw'
             indices[key] = len(records)
             records.append({"ordinal": len(records), "layer": node.layer,
                             "operation": node.operation, "kind": kind, "byte_source": source,
@@ -3462,6 +3693,11 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False, include_rope=False, i
             if (source.layer,source.operation) != (node.layer,'gate_proj'):
                 raise ValueError('GELU lookup input disagrees with the pinned DAG')
             owner = 'GELU_lookup'
+        if (node.layer,node.operation) in by_product:
+            if len(node.dependencies) != 2 or {(nodes[d].layer,nodes[d].operation) for d in node.dependencies} != {
+                    (node.layer,'gelu_tanh'),(node.layer,'up_proj')}:
+                raise ValueError('gate product disagrees with pinned GELU/up_proj inputs')
+            owner = 'Gate_up_product'
         if (node.layer,node.operation) in by_rms:
             if include_rms_outputs:
                 owner = 'RMS_joint_P0_statistics'
@@ -3519,6 +3755,12 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False, include_rope=False, i
         producer = indices[layer,'gate_proj']
         records[producer]['seeds'].add('GELU_lookup_input')
         gelu_demands.append((layer,producer))  # Pieces of ONE aggregate X wire.
+    product_demands = []
+    for layer,_ in by_product:
+        g,u = indices[layer,'gelu_tanh'],indices[layer,'up_proj']
+        records[g]['seeds'].add('Gate_up_product')
+        records[u]['seeds'].add('Gate_up_product')
+        product_demands.append((layer,g,u))  # Pieces of the two global G/U wires.
 
     for r in records:
         r["dependencies"] = sorted(r["dependencies"])
@@ -3535,6 +3777,7 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False, include_rope=False, i
         raise ValueError("a source/RNE leaf has a late dependency")
     return {"cohorts": records, "reverse_order": order, 'rms_statistic_demands': statistic_demands,
             'rope_input_demands':rope_demands, 'gelu_input_demands':gelu_demands,
+            'gate_up_input_demands':product_demands,
             "summary": {"credit": False, "pinned_tensor_nodes": len(nodes),
                         "tensor_edges": sum(len(n.dependencies) for n in nodes),
                         "delegated_tensor_edges": dict(delegated),
@@ -3545,6 +3788,7 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False, include_rope=False, i
                         'includes_rms_outputs': include_rms_outputs,
                         'includes_raw_rope':include_rope, 'rope_input_demands':len(rope_demands),
                         'includes_gelu_outputs':include_gelu, 'gelu_input_demands':len(gelu_demands),
+                        'includes_gate_up_raw':include_gate_up, 'gate_up_input_demands':len(product_demands),
                         'rms_statistic_input_demands': len(statistic_demands),
                         'distinct_statistic_input_producers': len({p for _,p in statistic_demands}),
                         "seed_cohorts_by_role": dict(Counter(s for r in records for s in r["seeds"])),
@@ -4346,8 +4590,9 @@ def auxiliary_byte_terms(byte_tiles, sources, source_points, byte):
     return terms
 
 
-def gemma_rne_shift_classes(cohorts, weight_exponents, activation_exponents, include_rope=False):
-    """531 base rules, or 651 with RoPE, PARAMETRIC in a frozen public profile.
+def gemma_rne_shift_classes(cohorts, weight_exponents, activation_exponents, include_rope=False,
+                            include_gate_up=False):
+    """531 rules, +120 RoPE/+60 gate products, in a frozen public profile.
 
     No calibration values are supplied here. This validates the exponents
     read by these rules, not the complete nonlinear/profile grammar.
@@ -4355,6 +4600,8 @@ def gemma_rne_shift_classes(cohorts, weight_exponents, activation_exponents, inc
     """
     if type(include_rope) is not bool:
         raise ValueError('RoPE shift extension mode must be Boolean')
+    if type(include_gate_up) is not bool:
+        raise ValueError('gate product shift extension mode must be Boolean')
     if set(weight_exponents) != {c['weight_key'] for c in cohorts}:
         raise ValueError('the public W exponent map must cover the P0 inventory exactly')
     if any(type(v) is not int for values in (weight_exponents, activation_exponents) for v in values.values()):
@@ -4382,6 +4629,9 @@ def gemma_rne_shift_classes(cohorts, weight_exponents, activation_exponents, inc
         if include_rope:
             for op,norm in (('q_rope','q_norm'),('k_rope','k_norm')):
                 result[layer,op] = shift(exponent(layer,op),exponent(layer,norm),-30)
+        if include_gate_up:
+            result[layer,'gate_up_mul'] = shift(exponent(layer,'gate_up_mul'),
+                                              exponent(layer,'gelu_tanh'),exponent(layer,'up_proj'))
     return result
 
 
@@ -5162,6 +5412,7 @@ def report():
     assert max_dot == 21_504
     cut = cut_witness_screen()
     rope_bridge = rope_byte_bridge_screen(cohorts)
+    gelu_bridge = gelu_byte_bridge_screen(cohorts,rope_bridge)
     # Candidate B-role cap is fixed at 2^20, not chosen as a function of N/q.
     # These reuse A3 ARRAY formulas only, not an instantiated B/KV protocol.
     b_opening = recursive_rs_opening_screen(1 << 30, 1 << 20, 357)
@@ -5266,9 +5517,11 @@ def report():
                                             for a,b in ((0,0),(-8,-8),(-8,-12))],
         "gelu_reader_screen":gelu_reader_screen(cohorts),
         "rope_byte_bridge_screen":rope_bridge,
-        "gelu_byte_bridge_screen":gelu_byte_bridge_screen(cohorts,rope_bridge),
+        "gelu_byte_bridge_screen":gelu_bridge,
+        "gate_up_product_screen":gate_up_product_screen(cohorts,gelu_bridge),
         "gamma_rope_source_barrier_screen":gamma_barrier_plan(cohorts,True,True)['summary'],
         "gamma_gelu_source_barrier_screen":gamma_barrier_plan(cohorts,True,True,True)['summary'],
+        "gamma_gate_product_source_barrier_screen":gamma_barrier_plan(cohorts,True,True,True,True)['summary'],
         "rms_statistic_dependency_screen": rms_statistic_dependency_plan(cohorts,gamma)["summary"],
         "rms_statistic_screen": rms_statistic_screen(cohorts),
         "rms_byte_bridge_screen": rms_byte_bridge_screen(cohorts),

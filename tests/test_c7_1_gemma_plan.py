@@ -4895,6 +4895,19 @@ def test_gemma_rne_shift_rules_use_actual_owners_and_distinct_q_k_exponents():
     extended_gamma = plan.gamma_barrier_plan(cohorts,True,True)
     assert set(with_rope) == {(r['layer'],r['operation']) for r in extended_gamma['cohorts'] if r['kind'] == 'rne48'}
     assert len(with_rope) == 651 and (with_rope[5,'q_rope'],with_rope[5,'k_rope']) == (26,24)
+    with_product = plan.gemma_rne_shift_classes(cohorts,weights,activation,True,True)
+    product_gamma = plan.gamma_barrier_plan(cohorts,True,True,True,True)
+    assert len(with_product) == 711
+    assert set(with_product) == {(r['layer'],r['operation']) for r in product_gamma['cohorts'] if r['kind'] == 'rne48'}
+    for layer in range(60):
+        assert with_product[layer,'gate_up_mul'] == max(-15,min(48,
+            activation[f'layer/{layer}/gate_up_mul']-activation[f'layer/{layer}/gelu_tanh']-activation[f'layer/{layer}/up_proj']))
+    for value,expected in ((-10**9,-15),(10**9,48)):
+        assert plan.gemma_rne_shift_classes(cohorts,weights,{**activation,'layer/5/gate_up_mul':value},True,True)[5,'gate_up_mul'] == expected
+    with pytest.raises(ValueError):
+        plan.gemma_rne_shift_classes(cohorts,weights,{k:v for k,v in activation.items() if k != 'layer/5/gelu_tanh'},True,True)
+    with pytest.raises(ValueError):
+        plan.gamma_barrier_plan(cohorts,True,True,False,True)
     for value,expected in ((-10**9,-15),(10**9,48)):
         assert plan.gemma_rne_shift_classes(cohorts,weights,{**activation,'layer/5/q_rope':value},True)[5,'q_rope'] == expected
     with pytest.raises(ValueError):
@@ -5886,6 +5899,219 @@ def test_gelu_lookup_leaf_cubes_match_sigma_rne_and_public_table_forms():
     for bad_sources,bad_rq,bad_point in ((wrong_raw,rq,point),(sources,[],point),(sources,rq,point[:-1])):
         with pytest.raises(ValueError):
             plan.gelu_lookup_leaf_forms(lookup,bad_sources,byte,bad_rq,bad_point)
+
+
+def test_gate_up_raw_reader_rounding_and_byte_replay():
+    gate = dict(ordinal=0,layer=0,kind='matrix',operation='gate_proj',rows=2,columns=128,
+                cut_scalar_bytes=6,cut_byte_offset=13)
+    up = dict(gate,ordinal=1,operation='up_proj',cut_byte_offset=13+6*256)
+    gelu = dict(source='GELU_outputs',source_id=0,layer=0,operation='gelu_tanh',shape=(1,2,128),
+                word_bytes=2,rne=False,token_offset=0,input_source_id=0)
+    source = dict(source='Gate_up_raw',source_id=0,layer=0,operation='gate_up_raw',shape=gelu['shape'],
+                  word_bytes=6,rne=True,token_offset=0,gelu_source_id=0,gate_source_id=0,up_source_id=1)
+    g,u = [(i*29)%501-250 for i in range(256)],[(i*31)%801-400 for i in range(256)]
+    packed = b'\x55'*13+b''.join(x.to_bytes(6,'little',signed=True) for x in g+u)
+    table = plan.gelu_i16_table(0,0)
+    expected = []
+    for a,b in zip(g,u):
+        x,v = round(Fraction(a,4)),round(Fraction(b,8))
+        y = int.from_bytes(table[2*(x+32767):2*(x+32767)+2],'little',signed=True)
+        expected.append((y,v,y*v))
+    for start in (0,64,128,192):
+        assert plan.gate_up_read_word(source,gelu,gate,up,start,64,packed,2,3,table) == expected[start:start+64]
+    for y,v,raw in expected:
+        for shift in (-2,0,1,4,16,32):
+            wanted = round(Fraction(raw,1 << shift)) if shift >= 0 else raw << -shift
+            if abs(wanted) <= 32767:
+                assert plan.rne_i48_to_i16(raw,shift) == wanted
+            else:
+                with pytest.raises(ValueError):
+                    plan.rne_i48_to_i16(raw,shift)
+    # The 4-byte and 2-byte Sigma cubes are separate visits to each cell.
+    byte,_ = plan.auxiliary_word_layout([source])
+    dense = b''.join((x[2]+(1 << 47)).to_bytes(6,'little') for x in expected)
+    actual,oracle = bytearray(len(dense)),bytearray(len(dense))
+    cells = 0
+    for _,row,col,_,rows,cols,j,lanes,offset in byte:
+        oracle[offset:offset+rows*cols*lanes] = bytes(dense[6*((row+r)*128+col+c)+j+k]
+            for r in range(rows) for c in range(cols) for k in range(lanes))
+        for r in range(rows):
+            for c in range(0,cols,64):
+                word = plan.gate_up_read_word(source,gelu,gate,up,(row+r)*128+col+c,64,packed,2,3,table)
+                block = b''.join((v+(1 << 47)).to_bytes(6,'little')[j:j+lanes] for _,_,v in word)
+                begin = offset+lanes*(r*cols+c)
+                actual[begin:begin+len(block)] = block
+                cells += len(word)
+    assert actual == oracle and cells == 2*256
+    for bad,bu,first,count,data,shift in ((dict(source,source_id=True),up,0,1,packed,3),
+            (dict(source,up_source_id=0),up,0,1,packed,3),(source,dict(up,layer=1),0,1,packed,3),
+            (source,up,127,2,packed,3),(source,up,0,65,packed,3),(source,up,255,1,packed[:-1],3),
+            (source,up,0,1,packed,True)):
+        with pytest.raises(ValueError):
+            plan.gate_up_read_word(bad,gelu,gate,bu,first,count,data,2,shift,table)
+    overflow = bytearray(packed)
+    overflow[up['cut_byte_offset']:up['cut_byte_offset']+6] = (1 << 40).to_bytes(6,'little')
+    with pytest.raises(ValueError):
+        plan.gate_up_read_word(source,gelu,gate,up,0,1,overflow,2,0,table)
+
+
+def test_gate_up_product_packed_forms_and_cubic_replay():
+    p = plan.P
+    def src(role,i,op,word,rne=False):
+        return dict(source=role,source_id=i,layer=i,operation=op,word_bytes=word,rne=rne,
+                    shape=(1,3,5),token_offset=0)
+    ups = [src('B',i,'up_proj',6,True) for i in range(2)]
+    gs = [dict(src('GELU_outputs',i,'gelu_tanh',2),input_source_id=i+2) for i in range(2)]
+    raws = [dict(src('Gate_up_raw',i,'gate_up_raw',6,True),gelu_source_id=i,gate_source_id=i+2,up_source_id=i) for i in range(2)]
+    unrelated = dict(src('Replay',0,'qk_raw',6,True),shape=(1,2,3))
+    sources = ups+gs+[unrelated]+raws
+    values = [[(i*17+j*11)%61-30 for j in range(math.prod(s['shape']))] for i,s in enumerate(sources)]
+    shifts = {0:1,1:2,4:0,5:3,6:4}
+    for layer in range(2):
+        values[5+layer] = [y*round(Fraction(u,1 << shifts[layer])) for y,u in zip(values[2+layer],values[layer])]
+    byte,rq = plan.auxiliary_word_layout(sources)
+    _,cubes = plan.auxiliary_word_layout(raws)
+    sigma = [0]*(1 << (sum(s['word_bytes']*math.prod(s['shape']) for s in sources)-1).bit_length())
+    rne = [0]*(1 << (sum(math.prod(t[3:6]) for t in rq)-1).bit_length())
+    for i,row,col,_,rows,cols,j,lanes,offset in byte:
+        for r,c,k in product(range(rows),range(cols),range(lanes)):
+            v = values[i][(row+r)*sources[i]['shape'][2]+col+c]+(1 << (8*sources[i]['word_bytes']-1))
+            sigma[offset+k+lanes*(c+cols*r)] = v >> (8*(j+k)) & 255
+    for i,row,col,_,rows,cols,offset in rq:
+        for r,c in product(range(rows),range(cols)):
+            rne[offset+c+cols*r] = plan.rne_i48_to_i16(values[i][(row+r)*sources[i]['shape'][2]+col+c],shifts[i]) % p
+    g,u,raw = [[0]*32 for _ in range(3)]
+    for layer,row,col,_,rows,cols,offset in cubes:
+        for r,c in product(range(rows),range(cols)):
+            j,k = offset+c+cols*r,(row+r)*5+col+c
+            g[j],u[j],raw[j] = values[layer+2][k] % p,round(Fraction(values[layer][k],1 << shifts[layer])) % p,values[layer+5][k] % p
+    def evaluate(data,terms):
+        return sum(w*plan.mle(data[o:o+(1 << len(q))],q) for o,q,w in terms) % p
+    for point in [list(bits) for bits in product((0,1),repeat=5)]+[[2,3,4,5,6]]:
+        f = plan.gate_up_product_forms(raws,sources,byte,rq,point)
+        assert (evaluate(sigma,f['raw_byte_terms'])-f['raw_bias']) % p == plan.mle(raw,point)
+        assert (evaluate(sigma,f['gelu_byte_terms'])-f['gelu_bias']) % p == plan.mle(g,point)
+        assert evaluate(rne,[t for terms in f['up_rq_terms_by_source'].values() for t in terms]) == plan.mle(u,point)
+        assert f['additional_mac_corrections'] == 0
+    assert plan.mle(raw,point) != plan.mle(g,point)*plan.mle(u,point) % p
+    changed = sigma.copy()
+    changed[f['raw_byte_terms'][0][0]] += 1
+    assert evaluate(changed,f['raw_byte_terms']) != evaluate(sigma,f['raw_byte_terms'])
+    missing = next(t for t in byte if t[0] == 5)
+    for ss,bb,rr,q in ((sources,byte,[],point),(sources,[t for t in byte if t != missing],rq,point),(sources,byte,rq,point[:-1]),
+                        ([dict(s,operation='gate_proj') if i==0 else s for i,s in enumerate(sources)],byte,rq,point)):
+        with pytest.raises(ValueError):
+            plan.gate_up_product_forms(raws,ss,bb,rr,q)
+    # Ordinary field multiplication already exists as the GKR 'and' formula.
+    # Repeat to cross the 5-bit streaming/cached boundary; no Boolean gates on folds.
+    g,u = g*4,u*4
+    n = 7
+    for r,z in (([2,3,0,1,7,8,9],[3,0,1,4,5,6,7]),([1]*n,[0]*n)):
+        raw = [a*b % p for a,b in zip(g,u)]
+        claim = plan.mle(raw,r)
+        fg,fu = g[:],u[:]
+        for h in range(n):
+            if h <= 5:
+                # Independent source replay at every prefix, then in-place tail folds.
+                fg = [plan.mle(g[j:j+(1 << h)],z[:h]) for j in range(0,len(g),1 << h)]
+                fu = [plan.mle(u[j:j+(1 << h)],z[:h]) for j in range(0,len(u),1 << h)]
+            coeff = [0]*4
+            prefix = math.prod((1-a)*(1-b)+a*b for a,b in zip(r[:h],z[:h])) % p
+            for j in range(len(fg)//2):
+                w = prefix*math.prod(a if j >> k & 1 else 1-a for k,a in enumerate(r[h+1:])) % p
+                term = plan.rms_gkr_cell_pair_coefficients('and',fg[2*j],fg[2*j+1],fu[2*j],fu[2*j+1],(1-r[h])%p,r[h],w)
+                coeff = [(a+b)%p for a,b in zip(coeff,term)]
+            assert (coeff[0]+sum(coeff)) % p == claim
+            claim = sum(a*pow(z[h],i,p) for i,a in enumerate(coeff)) % p
+            fg = [(a+z[h]*(b-a))%p for a,b in zip(fg[::2],fg[1::2])]
+            fu = [(a+z[h]*(b-a))%p for a,b in zip(fu[::2],fu[1::2])]
+        eq = math.prod((1-a)*(1-b)+a*b for a,b in zip(r,z)) % p
+        assert claim == eq*fg[0]*fu[0] % p
+        if eq:
+            assert claim != eq*(fg[0]*fu[0]+1) % p
+    # A post-probe source would invalidate the fixed-source bound: two errors can cancel.
+    r = [2,3,4,5,6,7,8]
+    e0,e1 = math.prod(1-x for x in r)%p,r[0]*math.prod(1-x for x in r[1:])%p
+    errors = [1,-e0*pow(e1,-1,p)%p]+[0]*126
+    assert plan.mle(errors,r) == 0 and any(errors)
+
+
+def test_gate_up_product_sources_domain_repair_and_all_context_counts():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_text())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition']=='private_text'])
+    gelu = plan.gelu_byte_bridge_screen(cohorts)
+    s = plan.gate_up_product_screen(cohorts,gelu)
+    assert s['product_word_layout_sha256'] == 'b09721fdc056d292132111dac7cf8e8d44f63dadb2467113ae00659526768143'
+    assert s['raw_cells'] == 193536000 and s['extra_virtual_source_bytes'] == 1161216000
+    assert (s['extra_byte_cubes'],s['extra_rq_cubes']) == (1440,720)
+    assert s['changed_padding_contexts'] == dict(sigma=list(range(534)),rq=list(range(657))+list(range(3714,3947)))
+    assert not s['same_rq_layout'] and s['requires_rebuilding_all_sigma_and_rq_forms']
+    core = s['product_core']
+    assert (core['cell_bits'],core['extension_corrections'],core['private_products'],core['zero_residuals'],core['extension_challenges']) == (28,116,1,29,56)
+    assert core['conditional_interactive_error_numerator'] == 112
+    assert core['literal_two_full_E_arrays_bytes'] == 12884901888 > 6442450944
+    assert core['phase_local_array_bytes'] == 402653952 and core['source_visits'] == 6
+    repair = s['rne_maximum_domain_repair']
+    assert (repair['top_fixed_cell_prefix'],repair['link_fixed_cell_prefix'],repair['source_rq_visits']) == (19,12,131)
+    assert repair['top_indicator_tail_bytes'] == 301989888 and repair['link_six_lane_four_function_tail_bytes'] == 603979776
+    for old,(b,e) in enumerate(s['source_path_correction_deltas_by_old_tokens']):
+        bs,rs = 7667607438+1728000*old,884547200+288000*old
+        def counts(b,r):
+            n,t = (b-1).bit_length(),(r-1).bit_length()
+            zeros = (1 << n)//(1 << 23)-(b+(1 << 23)-1)//(1 << 23)
+            base,ext = {33:(1083700,12903),34:(1740580,15400)}[n]
+            return base-357*zeros,ext+{30:3601,31:3641,32:3681}[t]
+        b0,e0 = counts(bs,rs)
+        b1,e1 = counts(bs+1161216000,rs+193536000)
+        assert (b,e) == (b1-b0,e1-e0+116)
+        assert s['known_partial_payload_by_old_tokens'][old] == gelu['known_partial_payload_by_old_tokens'][old]+8*b+24*e
+    assert s['maximum_known_partial_payload_before_rms_joint_gamma_and_framing'] == 33649344
+    extra = plan.gate_up_raw_sources(cohorts)
+    for case,expected_b,expected_r,expected_sha in zip(s['cases'],(8828823438,15647511438),(1078083200,2214531200),
+            ('df6d990cff04d17aca66c2ff3d1a070253d350901007c469fa2913765b7c64ed',
+             'dd6e7d85dd2a2ac2804b2093545c45209efdaad2d0cc384a5ce9de538c63cf9d')):
+        assert (case['source_byte_cells'],case['rq_live_cells'],case['layout_sha256']) == (expected_b,expected_r,expected_sha)
+        sources = (plan.auxiliary_word_sources(cohorts,case['old_tokens'])+plan.rms_statistic_byte_sources(cohorts)+
+                   plan.rms_output_byte_sources(cohorts)+plan.rope_raw_byte_sources(cohorts)+plan.gelu_lookup_sources(cohorts)+extra)
+        bt,rq = plan.auxiliary_word_layout(sources)
+        f = plan.gate_up_product_forms(extra,sources,bt,rq,list(range(2,30)))
+        assert len(f['raw_byte_terms']) == 1440 and len(f['gelu_byte_terms']) == 720
+        assert sum(map(len,f['up_rq_terms_by_source'].values())) == 720
+        # Existing P0 output wires route directly to the new raw's RNE; no new wires.
+        output_claims = {i:[([],list(range(2,10)),list(range(2,17)),1)]
+                         for i,x in enumerate(sources) if x['source']=='Gate_up_raw'}
+        shifts = {i:0 for i,x in enumerate(sources) if x['rne']}
+        forms = plan.auxiliary_rne_forms(rq,sources,output_claims,shifts,list(range(2,(expected_r-1).bit_length()+2)))
+        assert len(forms[0]['output']) == 720 and len(forms[0]['validity']) == len(rq)
+    arrays = s['additional_known_retained_arrays_256_byte_aligned']
+    assert sum(arrays.values()) == 236544
+    phases = s['source_and_product_arena_phase_upper_bytes_before_rms_joint_gamma_runtime']
+    for k,v in gelu['source_and_gelu_arena_phase_upper_bytes_before_rms_joint_gamma_runtime'].items():
+        assert phases[k] == v+236544+{'rne_top':6369216,'rne_link':49152}.get(k,0)
+    common = phases['opening_first_pass']-80*(1 << 23)
+    assert common+s['unchanged_prefix_rne32_link_tail_bytes'] > 6442450944
+    assert phases['gate_up_product'] == common+core['phase_local_array_bytes']
+    assert max(phases.values()) == 6372794240
+    assert max(phases.values())+10542592 == 6383336832  # same five synthetic RMS profiles ONLY
+    work = s['reader_work']
+    assert work['raw_generations_including_core'] == (2*231+131+6)*193536000 == 115928064000
+    assert work['rne_calls'] == 2*work['raw_generations_including_core']
+    assert work['raw_B_logical_read_bytes'] == 12*work['raw_generations_including_core']
+    assert work['additional_existing_rq_visits_at_capacity'] == 9
+    assert work['additional_rope_rms_Y_generations'] == 2156544000
+    gamma = plan.gamma_barrier_plan(cohorts,True,True,True,True)
+    assert gamma['summary']['plan_sha256'] == '3879afc11a96d52fc65852c4cd24a954a716abc28201b53e05232ac265eb4e57'
+    assert gamma['summary']['retained_cohort_edges'] == 434
+    assert (gamma['summary']['ordinary_kernel_cohorts'],gamma['summary']['final_rne_cohorts']) == (314,711)
+    assert gamma['summary']['delegated_tensor_edges']['Gate_up_product'] == 6120
+    for layer,g,u in gamma['gate_up_input_demands']:
+        assert gamma['cohorts'][g]['operation'] == 'gelu_tanh' and gamma['cohorts'][u]['operation'] == 'up_proj'
+        assert all('Gate_up_product' in gamma['cohorts'][i]['seeds'] for i in (g,u))
+    assert not s['credit'] and s['complete_gamma_reader_field_work_pcg_and_physical_liveness'] is None
+    assert s['additional_w_reads_given_retained_b'] == s['additional_pcs_instances'] == s['retained_raw_array_bytes'] == 0
+    with pytest.raises(ValueError):
+        plan.gate_up_product_screen(cohorts,dict(gelu,cases=[dict(c,layout_sha256='wrong') for c in gelu['cases']]))
 
 
 def test_lookup_fraction_identity_poles_adaptive_histogram_and_characteristic():

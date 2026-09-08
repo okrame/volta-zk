@@ -266,11 +266,13 @@ authorization.
 
 ## Next work
 
-Next: compile the remaining Gamma forms and their reader/work costs,
-starting with gate_up_mul's claims on the same GELU/up_proj sources.
-The [GELU Sigma/RNE adapter](c7.1-auxiliary-witness.md#gelu-output-istogrammi-e-input-rne-nella-stessa-sorgente)
-now counts the known Sigma replay and retained arrays with RMS-J/RoPE;
-the complete form census, field work and physical liveness remain open.
+Next: compile the remaining pointwise Gamma kernels/forms, beginning with
+residual additions and public scaling, and their complete reader/field costs.
+The [gate_up_mul candidate](c7.1-auxiliary-witness.md#gate_up_mul-prodotto-raw-rne-e-sorgenti-identiche)
+now specifies the shared-source product/RNE reduction and reader; its larger
+RQ domain requires longer prefixes and nine additional RQ visits at capacity.
+Known source-array composition is counted; full field work and physical
+liveness remain open.
 The source extensions are not yet adopted; actual Gemma profiles and native
 refinement remain open. Component evidence and distinct S/S+Y comparison
 counts stay in R3, not copied here.

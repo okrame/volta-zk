@@ -280,6 +280,185 @@ def rms_rne_i16(product, statistic, columns, input_exponent, scale_exponent, out
     return -magnitude if product < 0 else magnitude
 
 
+def rms_boolean_circuit(columns, input_exponent, scale_exponent, output_exponent,
+                        weighted=True, verify_output=False):
+    """Small explicit AND/XOR DAG for exact RMS, NOT a GKR/MAC prover.
+
+    Inputs are little-endian biased P (32/16 bits), S (48), and optionally
+    candidate y (16). Constants have wire IDs 0/1, followed by inputs.
+    Public constant folding never inspects input values. The 128-bit cap
+    limits this local graph diagnostic, not the Gemma exponent profile.
+    """
+    if type(weighted) is not bool or type(verify_output) is not bool:
+        raise ValueError('RMS circuit modes must be Boolean')
+    if not weighted and scale_exponent != 0:
+        raise ValueError('unweighted RMS requires scale exponent zero')
+    a, b, c = rms_integer_coefficients(columns, input_exponent, scale_exponent, output_exponent)
+    pw = 32 if weighted else 16
+    limit = 32767**2 if weighted else 32767
+    denominator_max = b+c*((1 << 47)-1)
+    width = max((4*a*(1 << (pw-1))**2).bit_length(),
+                (denominator_max*((1 << 17)-1)**2).bit_length())
+    # ponytail: cap local DAG construction; real-profile widths and GKR lowering are separate obligations.
+    if width > 128:
+        raise ValueError('RMS circuit exceeds the local 128-bit DAG limit')
+    inputs = pw+48+(16 if verify_output else 0)
+    gates, depths = [], [0]*(2+inputs)
+    def gate(op, x, y):
+        if x == y:
+            return x if op == 'and' else 0
+        if op == 'and':
+            if x == 0 or y == 0:
+                return 0
+            if x == 1 or y == 1:
+                return y if x == 1 else x
+        elif x == 0 or y == 0:
+            return y if x == 0 else x
+        result = len(depths)
+        gates.append((op, x, y))
+        depths.append(1+max(depths[x], depths[y]))
+        return result
+    def both(x, y):
+        return gate('and', x, y)
+    def xor(x, y):
+        return gate('xor', x, y)
+    def inv(x):
+        return xor(x, 1)
+    def either(x, y):
+        return xor(xor(x,y), both(x,y))
+    def mux(bit, yes, no):
+        return xor(no, both(bit, xor(yes,no)))
+    def constant(value, n):
+        return [(value >> i) & 1 for i in range(n)]
+    def pad(word, n):
+        return (word+[0]*n)[:n]
+    def all_bits(word):
+        word = list(word)
+        while len(word) > 1:
+            word = [both(word[i], word[i+1]) if i+1 < len(word) else word[i]
+                    for i in range(0,len(word),2)]
+        return word[0] if word else 1
+    def prefix(g, p):
+        # Compose (generate,propagate) blocks: high block takes precedence.
+        distance = 1
+        while distance < len(g):
+            old_g, old_p = g, p
+            g = [xor(old_g[i],both(old_p[i],old_g[i-distance])) if i >= distance else old_g[i]
+                 for i in range(len(g))]
+            p = [both(old_p[i],old_p[i-distance]) if i >= distance else old_p[i]
+                 for i in range(len(p))]
+            distance *= 2
+        return g, p
+    def add(x, y, n):
+        x, y = pad(x,n), pad(y,n)
+        initial = [xor(u,v) for u,v in zip(x,y)]
+        generate, _ = prefix([both(u,v) for u,v in zip(x,y)], initial)
+        return [xor(v,generate[i-1]) if i else v for i,v in enumerate(initial)]
+    def sum_words(rows, n):
+        rows = [pad(row,n) for row in rows if any(row)] or [[0]*n]
+        while len(rows) > 2:
+            merged = []
+            for i in range(0,len(rows)-2,3):
+                x,y,z = rows[i:i+3]
+                t = [xor(u,v) for u,v in zip(x,y)]
+                merged.append([xor(u,v) for u,v in zip(t,z)])
+                merged.append([0]+[xor(both(x[j],y[j]),both(t[j],z[j])) for j in range(n-1)])
+            rows = merged+rows[len(rows)//3*3:]
+        return rows[0] if len(rows) == 1 else add(*rows,n)
+    def multiply(x, y, n):
+        if len(y) > len(x):
+            x,y = y,x
+        rows = [[0]*i+[both(u,v) for u in x[:n-i]] for i,v in enumerate(y[:n]) if v != 0]
+        return sum_words(rows,n)
+    def compare(x, y, n):
+        x,y = pad(x,n),pad(y,n)
+        lt,eq = prefix([both(inv(u),v) for u,v in zip(x,y)], [inv(xor(u,v)) for u,v in zip(x,y)])
+        return lt[-1],eq[-1]
+    def le(x, y, n):
+        lt,eq = compare(x,y,n)
+        return xor(lt,eq)  # disjoint flags, not a general OR shortcut
+    def magnitude(word):
+        negative = inv(word[-1])
+        twos = word[:-1]+[negative]
+        return add([xor(x,negative) for x in twos], [negative], len(word)),negative
+
+    product = list(range(2,2+pw))
+    statistic = list(range(2+pw,2+pw+48))
+    pmag,pneg = magnitude(product)
+    # All arithmetic is total: on invalid negative S, use its low 47 bits
+    # but keep the sign/range guard FALSE. Never assume D>0 from an unproved S.
+    surrogate = statistic[:47]
+    pg = le(pmag,constant(limit,pw),pw)
+    sg = both(statistic[47],le(surrogate,constant(columns*32767**2,47),47))
+    square = multiply(pmag,pmag,2*pw)
+    numerator4 = multiply(square,constant(4*a,width),width)
+    denominator = add(multiply(surrogate,constant(c,width),width),constant(b,width),width)
+    def threshold(odd):
+        return multiply(denominator,multiply(odd,odd,2*len(odd)),width)
+    if verify_output:
+        output = list(range(2+pw+48,2+inputs))
+        m,negative = magnitude(output)
+        zero = all_bits([inv(v) for v in m])
+        yg = inv(all_bits([inv(v) for v in output]))  # excludes exactly -32768
+        sign = either(zero,inv(xor(pneg,negative)))
+        lower = threshold(add([0]+m,constant((1 << 17)-1,17),17))
+        upper = threshold(add([0]+m,[1],17))
+        lo,lo_eq = compare(lower,numerator4,width)
+        hi,hi_eq = compare(numerator4,upper,width)
+        even = inv(m[0])
+        between = both(xor(lo,both(lo_eq,even)),xor(hi,both(hi_eq,even)))
+        bound = mux(zero,le(numerator4,denominator,width),between)
+        valid = all_bits([pg,sg,yg,sign,bound])
+    else:
+        q = [0]*15
+        for i in range(14,-1,-1):
+            trial = list(q)
+            trial[i] = 1
+            trial_cost = threshold(trial)
+            q[i] = le([0,0]+trial_cost,numerator4,width)
+        odd = add([0]+q,[1],16)
+        lt,eq = compare(numerator4,threshold(odd),width)
+        up = xor(inv(xor(lt,eq)),both(eq,q[0]))
+        m = add(q,[up],16)
+        safe,_ = compare(numerator4,threshold(constant(65535,16)),width)
+        valid = all_bits([pg,sg,safe])
+        signed = add([xor(v,pneg) for v in m],[pneg],16)
+        biased = signed[:-1]+[inv(signed[-1])]
+        output = [mux(valid,v,int(i == 15)) for i,v in enumerate(biased)]
+    return {'gates': gates, 'input_bits': inputs, 'product_bits': pw,
+            'output_wires': output, 'valid_wire': valid,
+            'summary': {'credit': False, 'weighted': weighted, 'verify_output': verify_output,
+                        'coefficients': [a,b,c], 'total_arithmetic_bits': width,
+                        'binary_gates_by_op': dict(Counter(op for op,_,_ in gates)),
+                        'binary_gate_count': len(gates), 'generated_dag_depth': max(depths),
+                        'input_guard_depth': max(depths[pg],depths[sg]),
+                        'output_dependency_depth': max(depths[i] for i in [valid,*output]),
+                        'largest_unpadded_level': max(Counter(depths[2+inputs:]).values()),
+                        'requires_copy_wires_or_general_dag_reduction': True,
+                        'requires_separately_bound_candidate_y': verify_output,
+                        'complete_mac_records_memory_and_feasibility': None}}
+
+
+def rms_boolean_cohort_screen(cohorts):
+    """Excludes literal separate cubic-layer GKRs, not all RMS protocols.
+
+    At P=0 (and candidate y=0), validity is exactly S's 48-bit signed
+    range guard. For these even positive bounds every S bit is essential;
+    binary fan-in requires depth>=6, independently of the public exponents.
+    """
+    norms = rms_statistic_cohorts(cohorts)
+    assert all(r['columns'] % 2 == 0 and 0 < r['columns']*32767**2 < (1 << 47)-1 for r in norms)
+    flat = sum((r['statistic_rows']*r['columns']-1).bit_length() for r in norms)
+    native = sum((r['statistic_rows']-1).bit_length()+(r['columns']-1).bit_length() for r in norms)
+    return {'credit': False, 'norm_cohorts': len(norms), 'minimum_cell_bits_sum': flat,
+            'native_cell_bits_sum': native, 'minimum_binary_depth_from_input_guard': 6,
+            'literal_cubic_coefficients_per_cell_bit_per_layer': 4,
+            'coefficient_payload_lower_bound': 24*4*6*flat,
+            'excludes_gate_axes_terminal_messages_and_incoming_claims': True,
+            'excludes_joint_reductions_or_guard_reuse': False,
+            'complete_rms_mac_feasibility': None}
+
+
 def byte_lagrange_basis(value):
     """Degree-255 basis on 0..255, including at roots; only public inverses.
 
@@ -3093,6 +3272,7 @@ def report():
         "gamma_barrier_screen": gamma_barrier_plan(cohorts)["summary"],
         "rms_statistic_screen": rms_statistic_screen(cohorts),
         "rms_byte_bridge_screen": rms_byte_bridge_screen(cohorts),
+        "rms_boolean_cohort_screen": rms_boolean_cohort_screen(cohorts),
         "kv_transition_screens": [kv_transition_screen(old) for old in (0, 3900, 3946)],
         "attention_product_screens": [attention_product_screen(old) for old in (0, 3946)],
         "auxiliary_witness_screens": [auxiliary_witness_screen(cohorts, old) for old in (0, 3946)],

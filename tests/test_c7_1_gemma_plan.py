@@ -2376,6 +2376,126 @@ def test_rms_scalar_exact_output_preserves_epsilon_exponents_sign_and_integer_or
         plan.rms_rne_i16(0, 0, 256, 0, 10**100, 0)
 
 
+@pytest.mark.parametrize('columns,ex,ew,ey,weighted,counts', [
+    (5376, 0, 0, 0, True, (167365, 1036, 52651, 99)),
+    (256, 0, 0, 0, False, (152975, 977, 43404, 97)),
+    (256, 0, 0, 4, True, None),
+    (512, -2, 0, -1, False, None),
+])
+def test_rms_boolean_dags_match_exact_scalar_and_reject_altered_outputs(columns, ex, ew, ey, weighted, counts):
+    # Compile ONLY from public parameters; evaluate the same DAG on all inputs.
+    computed, checked = [plan.rms_boolean_circuit(columns, ex, ew, ey, weighted, verify)
+                         for verify in (False, True)]
+    for circuit in (computed, checked):
+        summary = circuit['summary']
+        assert not summary['credit'] and summary['complete_mac_records_memory_and_feasibility'] is None
+        assert summary['requires_copy_wires_or_general_dag_reduction']
+        assert summary['requires_separately_bound_candidate_y'] == summary['verify_output']
+        assert sum(summary['binary_gates_by_op'].values()) == len(circuit['gates'])
+        for wire, (op, x, y) in enumerate(circuit['gates'], 2+circuit['input_bits']):
+            assert op in ('and', 'xor') and 0 <= x < wire and 0 <= y < wire
+    if counts:
+        assert tuple(c['summary'][key] for c in (computed, checked)
+                     for key in ('binary_gate_count', 'generated_dag_depth')) == counts
+        assert computed['summary']['total_arithmetic_bits'] == checked['summary']['total_arithmetic_bits'] == 95
+
+    def evaluate(circuit, p_value, s_value, candidate=None):
+        words = [(p_value, circuit['product_bits']), (s_value, 48)]
+        if candidate is not None:
+            words.append((candidate, 16))
+        values = [0, 1]
+        for value, bits in words:
+            assert -(1 << (bits-1)) <= value < 1 << (bits-1)
+            biased = value+(1 << (bits-1))
+            values.extend((biased >> i) & 1 for i in range(bits))
+        assert len(values) == circuit['input_bits']+2
+        for op, x, y in circuit['gates']:
+            values.append(values[x] & values[y] if op == 'and' else values[x] ^ values[y])
+        output = sum(values[wire] << i for i, wire in enumerate(circuit['output_wires']))-32768
+        return values[circuit['valid_wire']], output
+
+    pw = computed['product_bits']
+    limit = 32767**2 if weighted else 32767
+    smax = columns*32767**2
+    cases = [(0, 0), (1, 0), (3, 0), (-1, 0), (-3, 0), (1, 1), (257, 1), (-257, 1),
+             (limit, smax), (-limit, smax), (32767, 0), (0, -1), (0, smax+1),
+             (0, -(1 << 47)), (0, (1 << 47)-1), (-limit-1, 0),
+             (-(1 << (pw-1)), 0), ((1 << (pw-1))-1, (1 << 47)-1)]
+    if weighted:
+        cases.append((limit+1, 0))
+    rng = random.Random(715)
+    cases += [(rng.randrange(-limit, limit+1), rng.randrange(smax+1)) for _ in range(8)]
+    for p_value, s_value in cases:
+        expected = None
+        if -limit <= p_value <= limit and 0 <= s_value <= smax:
+            try:
+                expected = plan.rms_rne_i16(p_value, s_value, columns, ex, ew, ey)
+            except ValueError as error:
+                assert 'overflows' in str(error)
+        assert evaluate(computed, p_value, s_value) == (int(expected is not None), expected or 0)
+        candidates = {-32768, -1, 0, 1, 32767}
+        if expected is not None:
+            candidates.update((expected, -expected, expected-1, expected+1))
+        for candidate in candidates:
+            if -32768 <= candidate <= 32767:
+                valid, alias = evaluate(checked, p_value, s_value, candidate)
+                assert alias == candidate  # predicate input alias, not a new Y source
+                assert valid == int(candidate == expected)
+    if (ex, ew, ey) == (0, 0, 4):
+        # Arithmetic stress cases: S=0/P!=0 need not be a valid model witness.
+        assert evaluate(computed, 1, 0) == (1, 62)  # 62.5 -> even below
+        assert evaluate(computed, 3, 0) == (1, 188)  # 187.5 -> even above
+        assert evaluate(computed, -1, 0) == (1, -62)
+        assert evaluate(computed, -3, 0) == (1, -188)
+
+
+def test_rms_boolean_scope_caps_and_literal_cohort_certificate_exclusion():
+    for args in ((256, 0, 0, 0, 1), (256, 0, 0, 0, True, 1),
+                 (256, 0, 1, 0, False), (0, 0, 0, 0), (256, True, 0, 0)):
+        with pytest.raises(ValueError):
+            plan.rms_boolean_circuit(*args)
+    with pytest.raises(ValueError, match='local 128-bit'):
+        plan.rms_boolean_circuit(256, 0, 96, 0)
+    with pytest.raises(ValueError, match='local 4096-bit'):
+        plan.rms_boolean_circuit(256, 0, 10**100, 0)
+
+    # At P=y=0 both total circuits' validity equals this range guard.
+    # Exhibit a pair differing in each of its 48 input bits: binary depth>=6.
+    for columns in (256, 512, 5376):
+        bound = columns*32767**2
+        # Repair: signed storage ranges plus source-equality and W/X range
+        # premises suffice for integer lifting; SG is not a premise here.
+        assert (1 << 47)+bound < (1 << 48) < plan.P
+        assert (1 << 31)+32767**2 < (1 << 32) < plan.P
+        for x, w in product((-32767, 0, 32767), repeat=2):
+            exact_p, exact_s = x*w, columns*x*x
+            for stored in (-(1 << 31), -1, 0, exact_p, exact_p+1, (1 << 31)-1):
+                assert ((stored-exact_p) % plan.P == 0) == (stored == exact_p)
+            for stored in (-(1 << 47), -1, 0, exact_s, exact_s+1, (1 << 47)-1):
+                assert ((stored-exact_s) % plan.P == 0) == (stored == exact_s)
+            assert 0 <= exact_s <= bound and abs(exact_p) <= 32767**2
+        def guard(biased):
+            return bool(biased >> 47) and (biased & ((1 << 47)-1)) <= bound
+        for bit in range(47):
+            low, high = ((bound+1-(1 << bit), bound+1) if bound >> bit & 1
+                         else (bound, bound+(1 << bit)))
+            assert 0 <= low < high < 1 << 47 and low ^ high == 1 << bit
+            assert guard(low+(1 << 47)) and not guard(high+(1 << 47))
+        assert guard((1 << 47)+bound) and not guard(bound)
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_bytes())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition'] == 'private_text'])
+    s = plan.rms_boolean_cohort_screen(cohorts)
+    assert (s['norm_cohorts'], s['minimum_cell_bits_sum'], s['native_cell_bits_sum']) == (421, 8470, 8711)
+    assert s['minimum_binary_depth_from_input_guard'] == (48-1).bit_length() == 6
+    assert s['coefficient_payload_lower_bound'] == 4878720
+    assert s['excludes_gate_axes_terminal_messages_and_incoming_claims']
+    assert not s['excludes_joint_reductions_or_guard_reuse']
+    assert s['complete_rms_mac_feasibility'] is None and not s['credit']
+    current = plan.rms_byte_bridge_screen(cohorts)['cases'][-1]
+    assert current['known_partial_payload_before_rms_circuit_gamma_and_framing']+s['coefficient_payload_lower_bound'] == 37286376 > 35000000
+
+
 def test_rms_byte_extension_preserves_rq_and_recounts_padding_records_and_arrays():
     metadata = json.loads((Path(__file__).resolve().parents[1] /
                            "manifests/c7-d126-gemma31b-source-metadata-v1.json").read_bytes())

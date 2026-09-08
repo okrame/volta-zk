@@ -151,25 +151,15 @@ authorization.
 - [W-cut](c7.1-cut-witness.md) provides conditional W-free replay, P0 and
   input routing. The [P0–G2 corollary](c7.1-cut-witness.md#composizione-con-la-sorgente-statica-g2)
   covers the W leg under its other boundary premises, not full Gamma.
-  The [RMS statistic kernel](c7.1-cut-witness.md#statistiche-rms-vincolate-allo-stesso-input)
-  now transfers all norms' sum-of-squares claims to the same input wires,
-  preserving per-head geometry and the final RMS's larger producer domain.
-  The [exact-output scalar candidate](c7.1-cut-witness.md#lowering-rms-esatto-mediante-confronti-interi)
-  replaces inverse-root approximation with integer midpoint comparisons.
-  The [S-byte extension](c7.1-auxiliary-witness.md#statistiche-rms-nella-stessa-sorgente-byte)
-  commits statistics in the same Sigma and checks them in a pre-Gamma
-  prelude. Its current totals apply the [public-zero RS row codec](c7.1-wide-hash-opening.md#righe-rs-pubbliche-zero-senza-correzioni-private):
-  structural zeros replace private inputs, with the same hash checks and
-  a conditional decoded-padding argument for malicious roots. Use that
-  recount, not earlier no-S or uncompressed totals; GPU reservations remain
-  conservative, and missing components are still unpriced.
-  The [shared byte-to-bit reduction](c7.1-auxiliary-witness.md#bit-lift-comune-verso-la-stessa-c_σ)
-  now uses one quadratic sumcheck and R2 P/S to the same Sigma endpoint,
-  with explicit conditional soundness and source visits. [RNE-output bit functions](c7.1-rne-indicators.md#bit-delloutput-rne-negli-stessi-indicatori)
-  now reuse the same indicators and P/S, preserving degree seven and
-  whole-domain overflow checks. Incoming forms, the integer RMS circuit
-  and exponents remain uncompiled;
-  no complete memory, certificate or timing result is claimed.
+  The [total Boolean RMS algorithms](c7.1-cut-witness.md#dag-booleani-rms-totali-e-limite-del-gkr-separato)
+  now specify exact scalar computation and an equivalent output predicate,
+  including invalid inputs. A lower bound excludes the nominated separate
+  cubic GKR per cohort when added to the current candidate. Input-guard reuse
+  is justified by conditional integer lifting from P0/statistics and W/X ranges;
+  joint reduction remains open, and the predicate needs y bound to every
+  consumer. MAC/GKR compilation, incoming forms and actual exponents
+  are not supplied by the scalar checks. Source links and derivations live
+  in that dossier; current resource totals live in [R3 with S](c7.1-auxiliary-witness.md#statistiche-rms-nella-stessa-sorgente-byte).
 - [R1: byte-bound requantization](c7.1-requantization.md) gives exact
   ties-to-even/overflow polynomials and a conditional MAC sumcheck for
   i48→symmetric-i16, plus a separate byte-range proof. A tamper case
@@ -240,7 +230,7 @@ authorization.
   parametric, with a public-evaluator work bound, not calibrated Gemma
   exponents or the complete Gamma caller. Honest source generation,
   remaining kernels, KV PCS, full liveness/costs and root-to-oracle/FS
-  remain open. Use the A5 timeline for the current candidate's accounting;
+  remain open. Use the [S-extended recount](c7.1-auxiliary-witness.md#statistiche-rms-nella-stessa-sorgente-byte) for current accounting;
   earlier C_B/R3 schedule subtotals are reference screens, not its totals.
 - [A4: paired RS opening](c7.1-paired-rs-opening.md) fuses the paired
   reduction and RS opening into **two W reads together**. It checks the
@@ -317,63 +307,19 @@ authorization.
 
 ## Next work
 
-Follow [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture):
-continue from [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva):
-connect decoded-source consistency to the model relation and instantiate
-the closed lifetime/caller game, then compose the binding argument with the concrete
-hash/PCS assumptions and FS. A3's finite inner recursion and hash checker
-must not import BCS's extraction from an oracle that the concrete checker
-does not access. The new IBCS audit supplies a standard-model theorem but
-excludes the literal 256-bit birthday-envelope bound even under favorable
-costs. Seek a tighter concrete reduction or a stronger hash/VC profile;
-compile its parameter/adversary assumptions, complete reduction costs and
-adaptation to the actual public-coin/MAC/FS transcript. A5 now supplies a
-structural wide hash/anchor codec, checker and resource recount, not an
-admitted hash profile. A5-M now supplies explicit matrices and a synthetic
-KAT; its width-32 branch number is 10, not the extrapolated 12. A5-D fixes
-the single pre-parameter characteristic screen, not the collision-hull or
-post-parameter input-search bound. Complete
-the actual ROM constants/KAT and public profile grammar, justify the
-concrete binding/hiding assumptions and
-compile the actual reduction. A5-P now supplies a finite sampled-parameter
-embedding in ordinary ROM: instantiate its fixed pre-profile with those
-matrices and the sampled family's actual assumptions, then price RO simulation and
-rewinding, including preprocessing. Neither that coupling nor a p^8 output
-space supplies collision/hiding bits. Its C_Σ margin is narrow;
-the full reader/Gamma workspace must be included before claiming a fit.
-The A3 opening stages add no W reads after queried source columns exist;
-they do not supply the missing Gemma witness. The static model anchor keeps PCS openings private,
-without reusing G1's public split mask. Setup hash work remains substantial;
-the bounded encoder and known grouped-commitment arrays occupy 5,637,144,576
-bytes, before uncompiled runtime staging. Alongside it, use the W-cut theorem
-to complete the GKR/form schedule against A4's two-read interface. P0 covers
-the W-dependent cohorts; its 772 input demands now route to 602 producer
-points. R1 specifies a conditional raw-B requantization kernel and the
-byte-source forms/reducer for the known claims. Complete Gamma's consumers
-and their single final B barrier, fix exact shifts, and reduce the explicit
-work cost before treating it as feasible. R2 now gives the source-bound
-RNE Lagrange reduction and its replay schedule; include its endpoints in
-the remaining Gamma consumers and reduce the explicit computation cost.
-K1 now supplies the temporal view and append/prefix reduction, with
-explicit first-state aliases and bounded-memory read routing. Compose
-the linked W/KV PCS candidate, including state-cache liveness, and prove
-the k_rope/v_norm producers. T1 now supplies raw QK/PV
-and their same-state endpoints. R3 now supplies the common-source raw/byte
-bridge, RNE pullbacks and parametric output/validity forms: instantiate every
-consumer and the exponent profile, the actual W-free reader with its costs and
-workspace, and the softmax input to PV. Recompute the complete payload
-and phase schedule; the old C_B subtotals do not describe C_Σ.
-Generating Q/probabilities and the remaining W-free kernels is not closed
-by either local transfer lemma.
-Bind cuts and KV, discharge late B consumers, and include W range/padding
-without exceeding four W reads. The A4 fusion no longer requires a new
-common MLE point for all W terminals; its public-form conditions must hold.
-Complete the relation, both lifetime
-proofs and full certificate/resource accounting before admitting prover
-implementation. Then prepare the small checks and, after hardware/spending
-authorization, the complete composition case and real Gemma workloads.
-The [remaining G2 obligation](c7.1-committed-mac-opening.md#7-prossimo-obbligo-e-controlli)
-specifies the required mathematical deliverable; no new owner decision is pending.
+The immediate witness deliverable is a [joint RMS reduction with conditional guard reuse](c7.1-cut-witness.md#dag-booleani-rms-totali-e-limite-del-gkr-separato),
+with public wiring/copies, all incoming R3/R2 forms, whole-domain validity
+and explicit wire availability. Compare deterministic output generation
+with the predicate only after pricing its same-output binding; no free Y
+source is adopted. Charge records, masks, work and live arrays against the
+current R3 candidate, not earlier standalone screens.
+
+The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
+In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)
+still needs decoded-source consistency connected to the exact model relation
+and the concrete hash/PCS/FS lifetime game. The [G2 closing obligation](c7.1-committed-mac-opening.md#7-prossimo-obbligo-e-controlli)
+is not reduced to the RMS subtask. No new owner decision is pending; complete
+analytic admission still precedes production implementation and measurements.
 
 ## Documentation decision
 

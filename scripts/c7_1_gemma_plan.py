@@ -444,7 +444,11 @@ def rope_output_source_point(source, point, coefficient=1):
 
 
 def rope_byte_bridge_screen(cohorts):
-    """Source/RQ delta from S+Y to S+Y+RoPE only, NOT a payload/arena recount."""
+    """S+Y+RoPE source-path recount; excludes RMS-J, full Gamma and runtime.
+
+    Sweep live lengths without constructing 3947 layouts. Public-zero rows
+    reduce transmitted corrections, NOT the conservative array reservation.
+    """
     if cohorts[0]['rows'] != 150 or cohorts[-1]['rows'] != 50:
         raise ValueError('RoPE bridge accounting covers pinned 100+50 only')
     extra = rope_raw_byte_sources(cohorts)
@@ -473,6 +477,74 @@ def rope_byte_bridge_screen(cohorts):
     for name,first,step,delta in (('sigma',base_live,6*stride,6*added_cells),('rq',base_rq,stride,added_cells)):
         changes[name] = [o for o in range(CONTEXT_CAP-150+1)
                          if (first+step*o-1).bit_length() != (first+step*o+delta-1).bit_length()]
+    rope = gemma_rope_plan(cohorts)['summary']
+    linear_e = rope['one_probe_per_raw_cohort_corrections']+rope['raw_linear_sumcheck_corrections']
+    sigma = {n:wide_hash_joint_opening_screen([1 << n],1 << 23,357) for n in (33,34)}
+    sigma_e = {n:sigma[n]['extension_corrections_including_paired_sumchecks']
+               +byte_range_tree_screen(n)['extension_corrections']
+               +byte_bit_lift_screen(n)['extension_corrections_excluding_incoming_claims'] for n in sigma}
+    rq_e = {n:rne_indicator_screen(n,18,11)['extension_corrections']
+            +rne_output_bit_screen(n)['additional_extension_corrections'] for n in (30,31)}
+    def source_counts(live, rq_live):
+        n,t = (live-1).bit_length(),(rq_live-1).bit_length()
+        zeros = (1 << n)//(1 << 23)-(live+(1 << 23)-1)//(1 << 23)
+        return sigma[n]['base_corrections_including_salts']-357*zeros,sigma_e[n]+rq_e[t]
+
+    config = pinned_model_config()
+    kv_width = sum(2*config[k+'_layers']*config[k+'_kv_heads']*config[k+'_head_dim']
+                   for k in ('local','global'))
+    weight_live = sum(math.prod(s) for s in {c['weight_key']:c['weight_shape'] for c in cohorts}.values())
+    stats = rms_statistic_screen(cohorts)
+    fixed_e = (weight_cohort_screen(cohorts)['extension_corrections_before_other_circuits']
+               +input_link_screen(cohorts)['extension_corrections']+stats['extension_corrections']
+               +len(rms_statistic_byte_sources(cohorts))+120+2+linear_e)
+    k1_e = [kv_transition_screen(o)['extension_corrections'] for o in (0,1)]
+    # T1 and its two-point KV router depend on the padded token domain.
+    attention = {n:attention_product_screen((1 << n)-150) for n in range(8,13)}
+    joint_by_shape, totals, deltas = {}, [], []
+    for old in range(CONTEXT_CAP-150+1):
+        live,rq_live = base_live+6*stride*old,base_rq+stride*old
+        before_b,before_e = source_counts(live,rq_live)
+        b,e = source_counts(live+6*added_cells,rq_live+added_cells)
+        deltas.append((b-before_b,e-before_e+linear_e))
+        prefixes = [weight_live]+[kv_width*(1 << (length-1).bit_length())
+                                  for length in (old,old+150) if length]
+        shape = (1 << 35,)+tuple(max(1 << 24,1 << (v-1).bit_length()) for v in prefixes[1:])
+        if shape not in joint_by_shape:
+            joint_by_shape[shape] = wide_hash_joint_opening_screen(shape,1 << 24,357)
+        joint = joint_by_shape[shape]
+        zeros = sum(n//(1 << 24)-(v+(1 << 24)-1)//(1 << 24) for n,v in zip(shape,prefixes))
+        a = attention[(old+149).bit_length()]
+        b += joint['base_corrections_including_salts']-357*zeros
+        e += (joint['extension_corrections_including_paired_sumchecks']+fixed_e+k1_e[bool(old)]
+              +a['extension_corrections']+a['kv_router_with_k1_and_one_call_each']['extension_corrections'])
+        # One common closure and every W/KV/Sigma anchor. RMS input split's
+        # two E corrections are in fixed_e; incoming T1/K1 wires cost no copy.
+        totals.append(8*b+24*e+72+64*(len(shape)+1))
+        if old in (0,CONTEXT_CAP-150):
+            case = cases[int(bool(old))]
+            case['known_partial_payload_before_rms_joint_gamma_and_framing'] = totals[-1]
+            case['known_authenticated_record_bytes_before_rms_joint_gamma'] = 32*b+48*(e+1)
+
+    # The capacity domains already bound the extension for EVERY old length.
+    # Keep all old (unomitted) reservations: adding the actual record delta at
+    # an endpoint instead would mix a payload saving with an allocation bound.
+    bridge = rms_byte_bridge_screen(cohorts,True)
+    rounds = rope['raw_linear_sumcheck_rounds']
+    arrays = {'source_and_cube_descriptors':96*len(extra)+72*len(extra_byte)+56*len(extra_rq),
+              'linear_plaintexts_and_tags':48*linear_e,
+              'raw_probe_and_y_endpoint_points':48*rounds,
+              'incoming_t1_k1_points_and_weights':24*(rounds+len(extra)),
+              'linear_cohort_descriptors':72*len(extra),
+              'public_q30_coefficients':rope['public_active_Q30_table_bytes_at_capacity'],
+              'linear_control':65536}
+    arrays = {k:256*((v+255)//256) for k,v in arrays.items()}
+    phases = {k:v+sum(arrays.values())+(48*len(extra_rq) if k == 'rne_top' else 0)
+              for k,v in bridge['all_context_arena_phase_upper_bytes'].items()}
+    phases['rope_linear'] = (phases['opening_first_pass']-80*(1 << 23)
+                             +rope['maximum_two_field_arrays_without_reader'])
+    sigma_visits = 16+byte_range_tree_screen(34)['source_visits_including_gate_histograms']+2+byte_bit_lift_screen(34)['source_visits']
+    rq_visits = rne_indicator_screen(31,18,11)['source_rq_visits']
     return {'credit':False, 'extends_source':'S+Y', 'raw_rope_sources':len(extra),
             'raw_rope_cells':added_cells, 'extra_virtual_source_bytes':6*added_cells,
             'extra_byte_cubes':len(extra_byte), 'extra_rq_cubes':len(extra_rq),
@@ -480,6 +552,18 @@ def rope_byte_bridge_screen(cohorts):
             'additional_direct_sigma_claim_wires':2*len(extra),
             'known_t1_k1_rope_output_demands':len(extra),
             'contexts_checked':CONTEXT_CAP-150+1, 'changed_padding_contexts':changes,
+            'source_path_correction_deltas_by_old_tokens':deltas,
+            'source_path_payload_delta_distribution':dict(sorted(Counter(8*b+24*e for b,e in deltas).items())),
+            'maximum_source_path_record_delta_bytes':max(32*b+48*e for b,e in deltas),
+            'known_partial_payload_by_old_tokens':totals,
+            'maximum_known_partial_payload_before_rms_joint_gamma_and_framing':max(totals),
+            'remaining_payload_bytes_before_missing_components':35_000_000-max(totals),
+            'additional_known_retained_arrays_256_byte_aligned':arrays,
+            'source_and_rope_arena_phase_upper_bytes_before_rms_joint_reader_gamma_runtime':phases,
+            'known_phase_max_upper_bytes_before_rms_joint_reader_gamma_runtime':max(phases.values()),
+            'known_bulk_sigma_visits':sigma_visits, 'known_bulk_rq_visits':rq_visits,
+            'raw_byte_requests_in_known_bulk_paths':6*(sigma_visits+rq_visits)*added_cells,
+            'raw_linear_field_products_before_fill_reader_mac':rope['linear_sumcheck_field_products_before_fill_reader_mac'],
             'cases':cases, 'same_rq_layout':False, 'additional_pcs_instances':0,
             'additional_weight_reads_given_w_free_reader':0,
             'complete_extended_payload_and_liveness':None}

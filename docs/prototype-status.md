@@ -267,14 +267,13 @@ authorization.
 ## Next work
 
 The [S+Y+RoPE bridge](c7.1-auxiliary-witness.md#raw-rope-nella-sorgente-comune)
-now specifies the common raw source, T1/K1 output routing, public shifts and
-extended Gamma order. Its layout recount finds earlier padding jumps in
-both Sigma and RQ; old component totals cannot be carried over unchanged.
-Next: recount its complete source-path payload, retained records and reader
-work/liveness before adopting the extension, then continue the remaining
-kernels. Actual RMS profiles and native refinement remain open.
-Active S-only and comparison S+Y totals do not include raw RoPE; their
-derivations and the extended layout counts stay in R3.
+now recounts the known source-path payload at every context, correction
+deltas and conservative source/linear-proof array reservations. These are
+not full-certificate or physical-liveness results. Next: specify the raw
+reader/form workspace and compose its work/lifetimes with RMS-J and the
+remaining Gamma kernels before adopting the extension. Actual profiles,
+native refinement and global cryptographic obligations remain open.
+Counts and distinct S/S+Y comparison scopes stay in R3, not copied here.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
 In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)

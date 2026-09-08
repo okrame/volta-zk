@@ -2431,7 +2431,12 @@ def test_rope_byte_extension_and_gamma_keep_one_source_and_all_rne_validity():
     assert bridge['changed_padding_contexts'] == {'sigma':list(range(767,1183)),'rq':list(range(657,1073))}
     assert not bridge['same_rq_layout'] and bridge['additional_pcs_instances'] == 0
     assert bridge['complete_extended_payload_and_liveness'] is None
-    for old in (0,656,657,766,767,1072,1073,1182,1183,3945,3946):
+    rms = plan.rms_statistic_screen(cohorts)
+    rms_e = rms['extension_corrections']+len(plan.rms_statistic_byte_sources(cohorts))
+    weight_live = sum(math.prod(s) for s in {c['weight_key']:c['weight_shape'] for c in cohorts}.values())
+    for old in (0,1,32,33,64,65,106,107,128,129,256,257,362,363,512,513,
+                656,657,766,767,874,875,1024,1025,1072,1073,1182,1183,
+                1898,1899,2048,2049,3945,3946):
         base = plan.auxiliary_word_sources(cohorts,old)+plan.rms_statistic_byte_sources(cohorts)+plan.rms_output_byte_sources(cohorts)
         before,rq_before = plan.auxiliary_word_layout(base)
         after,rq_after = plan.auxiliary_word_layout(base+raw)
@@ -2440,10 +2445,72 @@ def test_rope_byte_extension_and_gamma_keep_one_source_and_all_rne_validity():
         for name,sources,delta in (('sigma',base,718848000),('rq',[s for s in base if s['rne']],119808000)):
             live = sum(math.prod(s['shape'])*(s['word_bytes'] if name == 'sigma' else 1) for s in sources)
             assert ((live-1).bit_length() != (live+delta-1).bit_length()) == (old in bridge['changed_padding_contexts'][name])
+        # Rebuild the known caller/layout at each threshold, not the screen's
+        # finite-domain cache. Public-zero omission goes through the PCS API.
+        old_source = plan.auxiliary_witness_screen(cohorts,old)
+        original = plan.wide_hash_witness_screen(cohorts,old)['joint_w_kv_candidate']
+        live = sum(math.prod(s['shape'])*s['word_bytes'] for s in base+raw)
+        rq_live = sum(math.prod(s['shape']) for s in base+raw if s['rne'])
+        n,t = (live-1).bit_length(),(rq_live-1).bit_length()
+        zero = (1 << n)//(1 << 23)-(live+(1 << 23)-1)//(1 << 23)
+        sigma = plan.wide_hash_joint_opening_screen([1 << n],1 << 23,357,[zero])
+        width = plan.kv_transition_screen(old)['core_requested_packed_kv_bytes_one_fused_visit']//(2*(old+150))
+        prefixes = [weight_live]+[width*(1 << (length-1).bit_length()) for length in (old,old+150) if length]
+        joint_cells = original['weight_and_state_opening']['source_cells']
+        zeros = [v//(1 << 24)-(s+(1 << 24)-1)//(1 << 24) for v,s in zip(joint_cells,prefixes)]
+        joint = plan.wide_hash_joint_opening_screen(joint_cells,1 << 24,357,zeros)
+        caller = (original['known_caller_extension_corrections']
+                  -old_source['rne_indicator_screen']['extension_corrections']
+                  -old_source['byte_range_screen']['extension_corrections']
+                  +plan.rne_indicator_screen(t,18,11)['extension_corrections']
+                  +plan.byte_range_tree_screen(n)['extension_corrections']+rms_e+2+7620
+                  +plan.byte_bit_lift_screen(n)['extension_corrections_excluding_incoming_claims']
+                  +plan.rne_output_bit_screen(t)['additional_extension_corrections'])
+        payload = (joint['private_component_payload_before_framing_and_caller']
+                   +sigma['private_component_payload_before_framing_and_caller']-72+24*caller
+                   +joint['public_anchor_bytes_if_all_resent']+64)
+        assert bridge['known_partial_payload_by_old_tokens'][old] == payload
     first,last = bridge['cases']
     assert (first['source_byte_cells'],last['source_byte_cells']) == (7264807038,14083495038)
     assert (first['rq_live_cells'],last['rq_live_cells']) == (884547200,2020995200)
     assert (first['rq_cubes'],last['rq_cubes']) == (16823,33443)
+    assert [c['known_partial_payload_before_rms_joint_gamma_and_framing'] for c in (first,last)] == [26097272,33070392]
+    assert [c['known_authenticated_record_bytes_before_rms_joint_gamma'] for c in (first,last)] == [97666256,124909664]
+    assert bridge['source_path_payload_delta_distribution'] == {
+        425640:1050,426600:36,428496:2371,429456:74,
+        2816064:31,2817024:93,2818920:79,2819880:213}
+    def source_record_reference(live,rq_live):
+        n,t = (live-1).bit_length(),(rq_live-1).bit_length()
+        zeros = (1 << n)//(1 << 23)-(live+(1 << 23)-1)//(1 << 23)
+        # Independent closed counts: PCS + (32n+136) range + (35n+177)
+        # bit lift + (40t+2401) RNE + 768 output-bit products.
+        return ({33:1083700,34:1740580}[n]-357*zeros,
+                {33:10379,34:12809}[n]+67*n+40*t+3482)
+    for old,(b,e) in enumerate(bridge['source_path_correction_deltas_by_old_tokens']):
+        before = source_record_reference(6545959038+1728000*old,764739200+288000*old)
+        after = source_record_reference(7264807038+1728000*old,884547200+288000*old)
+        assert (b,e) == (after[0]-before[0],after[1]-before[1]+7620)
+    assert bridge['maximum_source_path_record_delta_bytes'] == 10791984
+    assert len(bridge['known_partial_payload_by_old_tokens']) == 3947
+    assert bridge['maximum_known_partial_payload_before_rms_joint_gamma_and_framing'] == 33070392
+    assert bridge['remaining_payload_bytes_before_missing_components'] == 1929608
+    previous = plan.rms_byte_bridge_screen(cohorts,True)
+    for case in previous['cases']:
+        o = case['old_tokens']
+        b,e = bridge['source_path_correction_deltas_by_old_tokens'][o]
+        assert (case['known_partial_payload_before_rms_circuit_gamma_and_framing']+8*b+24*e
+                == bridge['known_partial_payload_by_old_tokens'][o])
+    arrays = bridge['additional_known_retained_arrays_256_byte_aligned']
+    assert all(v % 256 == 0 for v in arrays.values()) and sum(arrays.values()) == 7019264
+    assert arrays['linear_plaintexts_and_tags'] == 365824  # Not 240 new endpoint copies.
+    phases = bridge['source_and_rope_arena_phase_upper_bytes_before_rms_joint_reader_gamma_runtime']
+    for k,v in previous['all_context_arena_phase_upper_bytes'].items():
+        assert phases[k] == v+7019264+(23040 if k == 'rne_top' else 0)
+    assert phases['rope_linear'] == phases['opening_first_pass']-80*(1 << 23)+201326592 == 5635527808
+    assert bridge['known_phase_max_upper_bytes_before_rms_joint_reader_gamma_runtime'] == max(phases.values()) == 6348559488
+    assert (bridge['known_bulk_sigma_visits'],bridge['known_bulk_rq_visits']) == (231,122)
+    assert bridge['raw_byte_requests_in_known_bulk_paths'] == 253753344000
+    assert bridge['raw_linear_field_products_before_fill_reader_mac'] == 1226833200
     gamma = plan.gamma_barrier_plan(cohorts,True,True)
     summary = gamma['summary']
     assert (summary['ordinary_kernel_cohorts'],summary['final_rne_cohorts'],summary['source_boundary_cohorts'],

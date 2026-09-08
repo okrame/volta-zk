@@ -5720,6 +5720,86 @@ def b4_security_admission():
     }
 
 
+def b5_alignment_admission():
+    """Exact affine-residual exclusion of the unchecked lift, not PCS soundness."""
+    single = Fraction(P**2, P**3 - 1)
+    # Ideal uniform Fp2 seeds, followed by the runtime's zero -> one map,
+    # projection of c0, and rejection of the all-zero cubic Delta.
+    projected = Fraction((P + 1) * P**4, P**6 - (P - 1)**3)
+    cases = []
+    for n in (48, 128):
+        source = f"benchmarks/results/c71-b2-matrix{n}-20260908-de73f60.json"
+        record = json.loads((Path(__file__).resolve().parents[1] / source).read_text())
+        if record["git_dirty"] or not record["run_of_record"] or record["status"] != "pass":
+            raise ValueError("B5 requires the immutable clean B2 capacity census")
+        preflight, run = record["preflight"], record["execution"]
+        slots, per_attempt = preflight["root_attempts"], preflight["full_fp3_per_attempt"]
+        count = slots * per_attempt
+        assert slots == 3 and count == run["full_fp3_consumed_or_burned"]
+        assert run["raw_svole_consumed"] == 9 * count
+        assert run["alignment_wire_bytes"] == 76 + 48 * count
+        cases.append({"n": n, "source": source, "credit": False,
+            "kind": "costs of the rejected diagnostic; no secure-converter estimate",
+            "capacity_slots_including_abort": slots,
+            "per_attempt_reserved_fp3": per_attempt,
+            "per_attempt_reserved_raw_svole": 9 * per_attempt,
+            "per_attempt_alignment_payload_prepaid_at_capacity": 48 * per_attempt,
+            "capacity_fp3": count, "capacity_raw_svole": 9 * count,
+            "capacity_alignment_wire_bytes": 76 + 48 * count,
+            "connection_AES_pool_pairs": len(run["setup_lanes"]),
+            "connection_AES_setup_wire_bytes": run["aes_setup_wire_bytes"],
+            "connection_AES_and_alignment_wire_bytes": run["aes_setup_wire_bytes"] + 76 + 48 * count,
+            "aborted_slots_refunded": False,
+            "lifetime_capacity_and_root_renewal_implemented": False})
+    return {
+        "status": "reject_unchecked_nine_sVOLE_as_active_Fp3_converter",
+        "credit": False, "security_admitted": False, "repair_selected": None,
+        "decision_source": "docs/c7.1-gemma31b-design.md#esito-b5-esclusione-del-convertitore-non-verificato",
+        "scope": "this interface and validity-preserving linear postprocessing; not every nine-sVOLE repair or an E2E matrix forgery",
+        "affine_residual": {
+            "definitions": "X=x+c-z; e_i=sum_j altered_alignment[j,i]*u^j; b=M-t",
+            "formula": "R=b+delta0*X+delta1*u*(X+e1)+delta2*u^2*(X+e2)",
+            "arbitrary_columns": "X=A0; e1=u^-1*A1-X; e2=u^-2*A2-X",
+            "reachable_base_linear_maps_dimension": 9,
+            "nontrivial_map_minimum_rank": 1,
+            "consistent_rank_r_solutions_nonzero_Delta": "p^(3-r) - indicator(b=0)",
+            "premise": "fixed affine coefficients independent of ideal uniform nonzero Delta; consistent affine system and rank r>=1",
+            "tight_single_check_error": {"numerator": single.numerator, "denominator": single.denominator,
+                "bits": math.log2(single.denominator) - math.log2(single.numerator)},
+            "native_check": "c7_fp3::tests::malicious_lift_realizes_every_base_linear_residual_map"},
+        "runtime_sampling_idealization": {
+            "premise": "independent uniform raw Fp2 values before zero-to-one remap; not a PRG/LPN security claim",
+            "projected_c0_masses": {"zero": "(p-1)/p^2", "one": "(p+1)/p^2", "other": "1/p"},
+            "guess_one_given_nonzero_cubic_Delta": {
+                "numerator": projected.numerator, "denominator": projected.denominator}},
+        "same_Delta_rechecks": {
+            "common_residual": "(a-delta0)*s_i",
+            "batched_residual": "(a-delta0)*sum_i beta_i*s_i",
+            "independent_security_repetitions": False,
+            "repairs_excluded": ["canonical encoding or transcript hash alone",
+                "invertible public basis change", "rejecting zero coordinates",
+                "larger LPN parameters alone", "repeating or batching these residuals under the same Delta"]},
+        "attempts": {
+            "premise": "distinct nonzero guesses against one ideal persistent Delta, one false primitive zero check per attempt",
+            "single_attempt_meets_78_bits": single <= Fraction(1, 1 << 78),
+            "local_three_slot_success": str(3 * single),
+            "hypothetical_2_to_20_attempt_success": str(LIFETIME_ATTEMPTS * single),
+            "hypothetical_lifetime_bits": math.log2(single.denominator)
+                - math.log2(LIFETIME_ATTEMPTS * single.numerator),
+            "renewal_not_implemented": True, "is_complete_FS_lifetime_bound": False,
+            "global_FS_queries": 1 << 64,
+            "FS_multiplier_applied": False},
+        "costs": {"rejected_path": cases,
+            "replacement_complete_setup_bytes": budget_sum({"active_converter_and_real_PCG": None}),
+            "replacement_complete_capacity_bytes": budget_sum({"active_checks_and_sacrificed_correlations": None}),
+            "replacement_complete_attempt_bytes": budget_sum({"converter_in_composed_certificate": None}),
+            "replacement_complete_work": budget_sum({"active_converter_and_lifetime_renewals": None})},
+        "remaining": ["active conversion or direct composition theorem for this affine error interface",
+            "malicious-verifier joint simulation", "real PCG and FS lifetime terms"],
+        "next_goal": "B6: bounded assessment of checked alignment versus native Fp3 sVOLE, with security premises and complete costs, before choosing a port or tuning PCS",
+    }
+
+
 def baseline_budget():
     """One frozen S reference; alternatives are NOT additive components.
 
@@ -5826,6 +5906,7 @@ def baseline_budget():
             "security_admitted": False,
             "runner_command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_c71_matrix.py --n 128 --run --census"},
         "B4_security_admission": b4_security_admission(),
+        "B5_alignment_admission": b5_alignment_admission(),
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

@@ -6,21 +6,26 @@ Updated 2026-09-08. Editable working summary; Git preserves revisions.
 
 ## Active authority — read first
 
-**B4 completed: reject unchanged B2 security reuse**, authorized by the
-owner's «ok prosegui» after B3. A native counterexample shows coordinated
-lift corrections leaving a residual dependent on one Goldilocks coordinate
-of Delta. The actual masked RS codes also differ from the geometry used
-to choose the nominal 128-bit query counts. The exact scope and evidence
-are in [design §10](c7.1-gemma31b-design.md#esito-b4-ammissione-di-sicurezza).
+**B5 completed: reject the unchecked nine-sVOLE interface as an actively
+secure full-Fp3 converter**, requested by the owner's «raggiungi il prossimo
+goal per c7.1». Its corrections realize every base-linear 3×3 residual
+map, with tight single-check ideal error `p²/(p³-1)`, about `2^-64`.
+Repeating linear checks under the same Delta cannot amplify that bound.
+This is a precise primitive/interface exclusion, not an E2E matrix forgery
+or an impossibility result for checked conversion. Scope, derivation,
+adversarial checks and capacity costs are in
+[design §10](c7.1-gemma31b-design.md#esito-b5-esclusione-del-convertitore-non-verificato).
+B4's actual masked-RS geometry and negative security decision remain valid.
 B2 remains a completed functional port; B3 supplies its native field/memory
 census. Physical traffic and complete lifetime security remain open.
 G2 stays suspended.
 
 **Connection to C7.1:** B3 showed PCS dominates the reduced path; B4 now
-identifies why that path cannot yet be admitted for security. The next
-bounded goal is to repair or rule out the active alignment seam before
-PCS parameter tuning, optimization or scaling. Its costs must feed the
-complete comparison, with the same lifetime and trust requirements.
+identifies why that path cannot yet be admitted for security. B5 excludes
+the unchecked converter and its inexpensive linear fixes. Next B6 is a
+bounded comparison of checked alignment against native Fp3 sVOLE, with
+security premises and complete costs before selecting a port or tuning
+PCS. The lifetime and trust requirements remain unchanged.
 
 **B1 concluded with a negative reuse decision and its prescribed stop.**
 The [assessment in design §10](c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto)
@@ -49,7 +54,7 @@ No RunPod/provider contact, H100/GPU calls, paid resources, weight downloads,
 heavy builds or full Gemma E2E. A tiny CPU diagnostic is not evidence about
 H100 performance. Follow the [build procedure](procedures/build-and-test.md)
 with its explicit local-E2E exception. No spending authorization is pending
-because no provider work is part of B4.
+because no provider work is part of this goal.
 
 ## Evidence and open obligations
 
@@ -71,7 +76,7 @@ This summary no longer repeats their successive subtotals.
   complete four-read schedule. Later S+Y/operator/checkpoint variants
   remain research alternatives, not additions to the frozen S reference.
 - The [index](README.md) locates RNE, RMS, KV, attention and other evidence.
-  No need to reload all dossiers to inspect B4. Exact quantization/runtime
+  No need to reload all dossiers to inspect B5. Exact quantization/runtime
   correspondence and real-correlation premises remain required when reused.
 
 Three critical-path obligations remain: same-W authenticated opening with
@@ -183,7 +188,7 @@ infinity. Closing that observation requires a suitable authorized measurement
 environment and collector, not another analytic multiplier. This does not
 block the independent local security assessment or authorize hardware.
 
-## B4 security decision and next goal
+## B4 security decision
 
 The [single budget](../scripts/c7_1_gemma_plan.py) now includes
 `B4_security_admission`. It decodes the frozen B2 Gamma, counts the enlarged
@@ -213,19 +218,46 @@ Four focused Rust tests, including the counterexample and existing AES
 check, and five Python budget tests pass; no protocol behavior or frozen
 evidence changes, and no broad build, Lean proof or new E2E is claimed.
 
-**Next B5, tied to admission:** repair or rule out active security of the
-existing nine-sVOLE alignment seam. A useful result needs a justified
-residual/error bound, adversarial checks and setup/capacity/attempt costs
-in the complete budget, or a precise rejection. Then PCS parameters must
-be compiled using the actual masked code rates. Do not start another PCS,
-revive G2, optimize the diagnostic or use hardware to bypass this decision.
-Gemma semantics/GKR, physical four-read scheduling, full certificate and
-78-bit lifetime proofs remain C7.1 obligations.
+## B5 converter decision and next goal
+
+The [single budget](../scripts/c7_1_gemma_plan.py) now includes
+`B5_alignment_admission`. The general residual is
+`b+delta0*X+delta1*u*(X+e1)+delta2*u²*(X+e2)`; arbitrary alignment errors
+and a transfer realize any 3×3 base-linear map. Its rank can be one,
+so full-Fp3 arithmetic alone cannot justify a `1/p³` check error.
+The exact affine-fiber count and the runtime's idealized zero-to-one
+sampling correction both retain the approximately 64-bit primitive limit.
+Canonical bytes, hashing, invertible basis changes, excluding zero
+coordinates, stronger LPN alone and repetition of these linear residuals
+under the same Delta do not repair it. Additional active checks remain
+possible and require their own proof, including malicious-verifier privacy.
+
+The native check covers all nine elementary matrices, rank 1/2/3
+acceptance/rejection families and shared-Delta batching. Five focused Rust
+checks and six Python budget checks pass. This is an explicit derivation
+and native component evidence, without new Lean or E2E claims.
+Three distinct guesses under one ideal Delta give `3*p²/(p³-1)` primitive
+success; extending conditionally to `2^20` gives about 44 bits. That renewal
+is unimplemented, and neither number is a complete matrix/FS bound.
+
+The rejected path reserves 20/23 Fp3 correlations per n=48/128 attempt,
+including aborts, and 540/621 raw sVOLE per three-slot capacity. Its
+alignment costs 2,956/3,388 bytes including one header; the existing tiny
+OT/AES setup costs 145,590 bytes per connection. These are reconciled B2
+costs, not secure replacement estimates. Replacement setup, capacity,
+certificate and work remain unknown in the complete budget.
+
+**Next B6:** assess checked alignment of the existing pools versus native
+Fp3 sVOLE, with concrete security premises and costs, then select or reject
+a port. No PCS tuning can confer security on the rejected interface.
+Do not start another PCS, revive G2, optimize the diagnostic or use hardware
+to bypass this decision. Gemma semantics/GKR, physical four-read scheduling,
+full certificate and 78-bit lifetime proofs remain C7.1 obligations.
 
 ## Documentation decision
 
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 (B4 decision and B5 scope) without
+A fresh conversation can start from this page and design §10 (B5 decision and B6 scope) without
 importing the full G2 transcript or reopening its suspended obligations.

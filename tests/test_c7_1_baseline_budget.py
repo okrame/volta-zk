@@ -157,3 +157,40 @@ def test_b4_rejects_nominal_security_using_actual_masked_geometry_and_rank_one_r
     assert fs["global_adversary_queries"] == 1 << 64 and fs["attempts"] == 1 << 20
     assert fs["soundness_bits"] is fs["malicious_verifier_ZK_bits"] is None
     assert result["complete_baseline_selected"] is None and not result["security_admitted"]
+
+
+def test_b5_exact_rejection_counts_attempts_and_prepaid_capacity_without_security_credit():
+    b5 = plan.baseline_budget()["B5_alignment_admission"]
+    assert b5["status"] == "reject_unchecked_nine_sVOLE_as_active_Fp3_converter"
+    assert b5["repair_selected"] is None and not b5["security_admitted"] and not b5["credit"]
+    error = b5["affine_residual"]["tight_single_check_error"]
+    probability = Fraction(error["numerator"], error["denominator"])
+    assert probability == Fraction(plan.P**2, plan.P**3 - 1)
+    assert probability > Fraction(1, 1 << 64)
+    attempts = b5["attempts"]
+    assert Fraction(attempts["local_three_slot_success"]) == 3 * probability
+    assert Fraction(attempts["hypothetical_2_to_20_attempt_success"]) == (1 << 20) * probability
+    assert 43 < attempts["hypothetical_lifetime_bits"] < 44
+    assert not attempts["single_attempt_meets_78_bits"]
+    assert not attempts["is_complete_FS_lifetime_bound"] and not attempts["FS_multiplier_applied"]
+    assert not b5["same_Delta_rechecks"]["independent_security_repetitions"]
+    # Derive the remap distribution independently of the report formula.
+    q0 = Fraction(plan.P - 1, plan.P**2)
+    q1 = Fraction(plan.P + 1, plan.P**2)
+    assert q0 + q1 + (plan.P - 2) * Fraction(1, plan.P) == 1
+    guessed = b5["runtime_sampling_idealization"]["guess_one_given_nonzero_cubic_Delta"]
+    assert Fraction(guessed["numerator"], guessed["denominator"]) == q1 / (1 - q0**3)
+    for case, per_attempt in zip(b5["costs"]["rejected_path"], (20, 23)):
+        assert case["per_attempt_reserved_fp3"] == per_attempt
+        assert case["per_attempt_reserved_raw_svole"] == 9 * per_attempt
+        assert case["per_attempt_alignment_payload_prepaid_at_capacity"] == 48 * per_attempt
+        assert case["capacity_raw_svole"] == 27 * per_attempt
+        assert case["capacity_alignment_wire_bytes"] == 76 + 144 * per_attempt
+        assert case["connection_AES_pool_pairs"] == 3
+        assert case["connection_AES_and_alignment_wire_bytes"] == (
+            case["connection_AES_setup_wire_bytes"] + case["capacity_alignment_wire_bytes"])
+        assert not case["aborted_slots_refunded"]
+        assert not case["lifetime_capacity_and_root_renewal_implemented"]
+    for name, cost in b5["costs"].items():
+        if name.startswith("replacement_"):
+            assert cost["total"] is None and cost["admission_bound"] == "infinity"

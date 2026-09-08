@@ -16,6 +16,10 @@ const BASIS: [Fp3; 3] =
 /// B4: coordinated malicious corrections can leave a rank-one base-field
 /// residual. Honest correctness is not full-Fp3 active authentication security;
 /// see `coordinated_alignment_leaves_only_one_secret_coordinate` below.
+/// B5 classifies the general affine residual and rejects this unchecked
+/// interface as an actively secure full-Fp3 correlation converter. Hashing,
+/// changing basis or repeating linear checks under the same Delta is no repair.
+/// See docs/c7.1-gemma31b-design.md, "Esito B5"; diagnostic use only.
 pub fn c7_fp3_lift_prover(rows: [[SubVole; 3]; 3]) -> ([Fp; 6], C7Fp3ProverAuthed) {
     let mut corrections = [Fp::ZERO; 6];
     let mut result = C7Fp3ProverAuthed::ZERO;
@@ -276,6 +280,88 @@ mod tests {
                 assert_eq!(checked.k - claimed_zero_tag, Fp3::from_base(guess - deltas[0].c0) * s);
                 assert_eq!(checked.k == claimed_zero_tag, a == 17);
             }
+        }
+    }
+
+    #[test]
+    fn malicious_lift_realizes_every_base_linear_residual_map() {
+        let rows = std::array::from_fn(|j| {
+            std::array::from_fn(|i| SubVole {
+                r: Fp::new((100 * j + 7 * i + 1) as u64),
+                m: Fp2::new(Fp::new((13 * j + i + 5) as u64), Fp::new(41)),
+            })
+        });
+        let (honest_wire, auth) = c7_fp3_lift_prover(rows);
+        // The prover picks columns and offset before Delta. This realizes
+        // b + A*Delta against a claimed zero, using the actual lift/transfer.
+        let residual = |columns: [Fp3; 3], offset: Fp3, delta: Fp3| {
+            let x = columns[0];
+            let e1 = BASIS[1].inv() * columns[1] - x;
+            let e2 = BASIS[2].inv() * columns[2] - x;
+            let mut wire = honest_wire;
+            for (j, (a, b)) in [e1.c0, e1.c1, e1.c2]
+                .into_iter()
+                .zip([e2.c0, e2.c1, e2.c2])
+                .enumerate()
+            {
+                wire[2 * j] += a;
+                wire[2 * j + 1] += b;
+            }
+            let deltas = [delta.c0, delta.c1, delta.c2];
+            let keys = std::array::from_fn(|j| {
+                std::array::from_fn(|i| {
+                    rows[j][i].m + Fp2::new(deltas[i], Fp::new(29)).mul_base(rows[j][i].r)
+                })
+            });
+            let (transfer, _) = c7_fp3_transfer_prover(auth, x);
+            let key = c7_fp3_transfer_verifier(
+                c7_fp3_lift_verifier(keys, delta, wire), delta, transfer,
+            );
+            key.k - (auth.m - offset)
+        };
+        // All nine elementary matrices: not just the coordinated B4 family.
+        for row in 0..3 {
+            for col in 0..3 {
+                let mut columns = [Fp3::ZERO; 3];
+                columns[col] = BASIS[row];
+                for (i, delta) in BASIS.into_iter().enumerate() {
+                    assert_eq!(residual(columns, Fp3::ZERO, delta),
+                        if i == col { BASIS[row] } else { Fp3::ZERO });
+                }
+            }
+        }
+        // Rank 1, 2 and 3 fibers, including zero/nonzero coordinates and
+        // both passing and failing guesses. Every anchor target is 1 != 0.
+        for rank in 1..=3 {
+            let columns = std::array::from_fn(|i| if i < rank { BASIS[i] } else { Fp3::ZERO });
+            for a in [0, 1, 17, 18] {
+                for b in [0, 1, 17, 18] {
+                    for c in [0, 1, 17, 18] {
+                        let value = residual(columns, -fp3(17, 0, 0), fp3(a, b, c));
+                        assert_eq!(value, fp3(a, if rank > 1 { b } else { 0 },
+                            if rank > 2 { c } else { 0 }) - fp3(17, 0, 0));
+                        assert_eq!(value == Fp3::ZERO,
+                            a == 17 && (rank < 2 || b == 0) && (rank < 3 || c == 0));
+                    }
+                }
+            }
+        }
+        // Existing add/scale checks preserve the common secret factor.
+        // They do not turn three checks into three independent key guesses.
+        for a in [17, 18] {
+            let delta = fp3(a, 23, 31);
+            let mut batch = C7Fp3VerifierKey::ZERO;
+            let mut weighted_shift = Fp3::ZERO;
+            for (i, s) in BASIS.into_iter().enumerate() {
+                let r = residual([-s, Fp3::ZERO, Fp3::ZERO], s * Fp3::from_base(Fp::new(17)), delta);
+                let coefficient = fp3(i as u64 + 1, 7, 11);
+                batch = batch.add(C7Fp3VerifierKey::new(r).scale(coefficient));
+                weighted_shift += coefficient * s;
+                assert_eq!(r == Fp3::ZERO, a == 17);
+            }
+            assert_ne!(weighted_shift, Fp3::ZERO);
+            assert_eq!(batch.k, Fp3::from_base(Fp::new(17) - delta.c0) * weighted_shift);
+            assert_eq!(batch.k == Fp3::ZERO, a == 17);
         }
     }
 

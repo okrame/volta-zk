@@ -6,6 +6,7 @@ license.workspace = true
 
 [features]
 default = []
+c71-work-census = ["c71-cpu-matrix-reference"]
 c71-cpu-matrix-reference = [
     "c61-p3-reference",
     "dep:p3-sumcheck-c61",

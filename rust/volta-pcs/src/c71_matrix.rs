@@ -1,8 +1,11 @@
 //! Bounded C7.1 CPU matrix composition. No complete security or Gemma credit.
 
 mod codec;
+mod census;
 mod diagnostic;
 pub use diagnostic::{preflight, run};
+#[cfg(feature = "c71-work-census")]
+pub use census::self_check;
 
 use crate::c61_whir_reference::C61Commitment;
 use crate::c61_whir_reference::{c61_reference_mmcs, C61Mmcs};
@@ -574,6 +577,7 @@ fn matrix_prove(
     attempt: AttemptContext,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(MatrixProof, blake3::Hash), String> {
+    census::mark("prover_reduction")?;
     let config = matrix_config(model.n)?;
     let h = config.num_variables / 2;
     let required = 3 * h + 2;
@@ -641,6 +645,7 @@ fn matrix_prove(
     let mmcs = ObservedMmcs(fs.clone());
     let dft = Radix2DFTSmallBatch::default();
     let prover = HidingWhirProver::new(&config, &dft, &mmcs);
+    census::mark("prover_commit_rematerialization")?;
     // Re-materialization is charged to this attempt. Only the initial model
     // mask seed repeats, within the three-slot root capacity; proof masks do not.
     let (root, data) =
@@ -648,6 +653,7 @@ fn matrix_prove(
     if root != model.root {
         return Err("C71 prover changed the installed model root".into());
     }
+    census::mark("prover_pcs")?;
     let point = Point::new(row_point.into_iter().chain(col_point).map(to_p3).collect());
     let mut seed = [0; 32];
     rand::rngs::OsRng.try_fill_bytes(&mut seed).map_err(|e| e.to_string())?;
@@ -676,6 +682,7 @@ fn matrix_verify(
     delta: Fp3,
     correlations: &mut std::vec::IntoIter<Key>,
 ) -> Result<blake3::Hash, String> {
+    census::mark("verifier_reduction")?;
     let config = matrix_config(n)?;
     let h = config.num_variables / 2;
     let required = 3 * h + 2;
@@ -728,6 +735,7 @@ fn matrix_verify(
     record_values(&mut fs, 0x11, &proof.terminal);
     let mask = reserved.next().unwrap();
     fs.set_phase(0x200);
+    census::mark("verifier_pcs")?;
     fs.observe(root.clone());
     let point = Point::new(row_point.into_iter().chain(col_point).map(to_p3).collect());
     let mmcs = ObservedMmcs(fs.clone());

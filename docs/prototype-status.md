@@ -6,12 +6,17 @@ Updated 2026-09-08. Editable working summary; Git preserves revisions.
 
 ## Active authority — read first
 
-**B2 completed: bounded local CPU/Fp3 matrix port**, authorized by the owner's
-2026-09-08 request. Fork provenance, same-W reduction, AES/FS/codec and
-three-slot lifecycle now run at 48×48 and 128×128 from clean source.
-This closes the functional port and preflight, with no security credit.
-The next bounded goal is the complete work/resource census on this runner;
-G2 stays suspended.
+**B3: native work and memory census on the B2 runner**, authorized by the
+owner's next-goal request of 2026-09-08. Arithmetic counters now cover the
+actual Goldilocks/Fp3 PCS, PCG, basis changes and codec, with separate phase
+RSS and allocator accounts. Clean-source records are the remaining B3 check.
+B2 remains the completed CPU/Fp3 functional port. G2 stays suspended.
+
+**Connection to C7.1:** this census decides where further work belongs.
+The matrix reduction is a small fraction of the reduced path; PCS dominates.
+Before optimizing kernels or scaling, the next goal must assess the modified
+PCS/lift's complete security and concrete parameters. Its nominal 128-bit
+setting and tiny AES/LPN setup do not satisfy the lifetime requirement.
 
 **B1 concluded with a negative reuse decision and its prescribed stop.**
 The [assessment in design §10](c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto)
@@ -40,7 +45,7 @@ No RunPod/provider contact, H100/GPU calls, paid resources, weight downloads,
 heavy builds or full Gemma E2E. A tiny CPU diagnostic is not evidence about
 H100 performance. Follow the [build procedure](procedures/build-and-test.md)
 with its explicit local-E2E exception. No spending authorization is pending
-because no provider work is part of B1.
+because no provider work is part of B3.
 
 ## Evidence and open obligations
 
@@ -128,16 +133,47 @@ The clean-source records at `de73f60` pass:
 with two accepted byte proofs and an abort. The 128 case used 5.75 s wall,
 11,288,576 bytes sampled peak RSS and 1,719,534 total protocol bytes,
 including setup and both certificates. These are local dev diagnostics
-with tiny, insecure LPN tuples. Complete native PCS/PCG
-Fp/Fp3 arithmetic, physical expanded-array traffic and per-phase RSS are
-not censused; their admission totals remain unknown/infinity. The full
-measurement contract and lifetime security are not declared complete.
-The next bounded work is that census on the existing reduced path; no
-new PCS, G2 restart or hardware campaign follows automatically.
+with tiny, insecure LPN tuples. Those B2 records did not census native arithmetic or phase resources.
+B3 adds those observations below; the full measurement contract and lifetime
+security remain distinct from the functional port.
 
 No native build or cryptographic E2E ran for B1. The pre-existing
 uncommitted additions in `tests/test_c7_1_gemma_plan.py` belong to the
 interrupted G2 work and are preserved separately from this change.
+
+
+## B3 census and decision
+
+The existing [launcher](../scripts/run_c71_matrix.py) now has `--census`.
+[LLVM accounting](../scripts/c71_work_census.py) reads atomic native entry
+counters from unchanged source, including SIMD lanes and delayed-reduction
+products. A separate executable fixture checks 244 base products/7 cubic
+products, then 2,048 parallel base products. Matrix reduction counts must
+match their independent source derivation; both PCS roles and PCG must
+contribute, and every phase's allocator balance must reconcile.
+
+The [first census diagnostic](../benchmarks/results/c71-b3-census128-diagnostic-20260908-bb64f0e.json)
+is retained with dirty provenance. It counts approximately 81.7 million
+base products and 6.06 million cubic products over setup, two accepted
+responses and one abort. These are two views: base counts include extension
+internals and cannot be added to the cubic count. The separate run without
+coverage is needed for timings; neither run predicts Gemma/H100 costs.
+
+**Physical traffic remains unmeasured:** this VM exposes only software,
+tracepoint, breakpoint and probe event sources, with `perf_event_paranoid=3`.
+Allocator bytes are allocation requests, not DRAM transfers. No complete
+expanded-array read/write total is claimed; its admission bound remains
+infinity. Closing that observation requires a suitable authorized measurement
+environment and collector, not another analytic multiplier. This does not
+block the independent local security assessment or authorize hardware.
+
+**Next B4, tied to admission:** assess proximity with the enlarged initial
+mask, the nine-sVOLE projection and the applicability of malicious-verifier
+FS/lifetime composition to this exact same-W path. Deliver either justified
+concrete parameters with a recomputed budget, or a precise negative reuse
+decision. Do not optimize the insecure diagnostic, open another PCS line,
+or revive G2 to avoid that decision. Gemma semantics/GKR, physical four-read
+scheduling, full certificate and 78-bit lifetime proofs remain C7.1 obligations.
 
 ## Documentation decision
 

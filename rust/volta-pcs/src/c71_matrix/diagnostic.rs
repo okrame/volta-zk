@@ -190,11 +190,14 @@ pub fn run(n: usize, directory: &Path) -> Result<Value, String> {
     if rayon::current_num_threads() != 1 {
         return Err("C71 runner needs RAYON_NUM_THREADS=1 (main plus one worker)".into());
     }
+    census::start()?;
     let start = Instant::now();
+    census::mark("model_setup")?;
     let model_start = Instant::now();
     let weights = (0..n * n).map(|i| ((i * 31 % 65536) as i32 - 32768) as i16).collect();
     let model = Model::new(n, weights)?;
     let model_seconds = model_start.elapsed().as_secs_f64();
+    census::mark("connection_pcg")?;
     let setup_start = Instant::now();
     let root = model.root.clone(); // verifier receives only this public model anchor
     let session = random_id()?;
@@ -241,6 +244,7 @@ pub fn run(n: usize, directory: &Path) -> Result<Value, String> {
             "params": pair.setup.params, "credit": false}));
         pools.push(pair);
     }
+    census::mark("connection_lift")?;
     let delta = Fp3::new(
         pools[0].verifier_delta.c0,
         pools[1].verifier_delta.c0,
@@ -286,6 +290,7 @@ pub fn run(n: usize, directory: &Path) -> Result<Value, String> {
     let mut certificates = 0;
     for slot in 0..3 {
         if slot == 1 {
+            census::mark("abort")?;
             let abort_start = Instant::now();
             // Expose no data, but burn both complete reservations. Predecessor stays accepted.
             provider.attempt(|_, _| Ok(((), None)))?;
@@ -295,6 +300,7 @@ pub fn run(n: usize, directory: &Path) -> Result<Value, String> {
                 "wire_bytes": 0, "abort_seconds": abort_start.elapsed().as_secs_f64()}));
             continue;
         }
+        census::mark("integer_forward")?;
         let input: Vec<i16> = (0..n).map(|j| if slot == 0 { 0 } else { j as i16 - 64 }).collect();
         let forward_start = Instant::now();
         let output: Vec<i64> = model
@@ -307,11 +313,13 @@ pub fn run(n: usize, directory: &Path) -> Result<Value, String> {
         let (wire, prove_seconds, encode_seconds, digest) = provider.attempt(|context, pool| {
             let (proof, digest) = matrix_prove(&model, &input, &output, context, pool)?;
             let prove_seconds = prove_start.elapsed().as_secs_f64();
+            census::mark("encode")?;
             let encode_start = Instant::now();
             let wire = codec::encode(n, &root, &input, &output, context, &proof)
                 .map_err(|e| e.to_string())?;
             Ok(((wire, prove_seconds, encode_start.elapsed().as_secs_f64(), digest), Some(digest)))
         })?;
+        census::mark("decode")?;
         let verify_start = Instant::now();
         let (checked, decode_seconds) = client.attempt(|context, pool| {
             let decode_start = Instant::now();
@@ -336,6 +344,7 @@ pub fn run(n: usize, directory: &Path) -> Result<Value, String> {
             "matrix_reduction_only_fp3_products_prover": n*n + n + 8*((1usize<<h)-1) + 5*h + 1,
             "matrix_reduction_only_fp3_products_verifier": n + 3*((1usize<<h)-1) + 6*h + 3}));
     }
+    census::mark("finalization")?;
     let exhaustion = provider.attempt(|_, _| Ok(((), None))).is_err()
         && client.attempt(|_, _| Ok(((), None))).is_err()
         && provider.pool.len() == 0
@@ -343,8 +352,9 @@ pub fn run(n: usize, directory: &Path) -> Result<Value, String> {
     if !exhaustion {
         return Err("C71 extra attempt or pool residue".into());
     }
-    Ok(json!({"status": "C71_MATRIX_BYTE_REPLAY_PASS", "credit": false,
-        "scope": "complete reduced matrix byte path; incomplete work census and no security admission",
+    let resources = census::finish()?;
+    Ok(json!({"status": "C71_MATRIX_BYTE_REPLAY_PASS", "resources": resources, "credit": false,
+        "scope": "complete reduced matrix byte path; physical traffic and security not admitted",
         "preflight": screen, "model_root": root.roots()[0], "model_setup_seconds": model_seconds,
         "connection_and_lift_seconds": setup_seconds, "setup_lanes": setup_records,
         "pcg_diagnostic_params": params, "pcg_security_credit_bits": null,

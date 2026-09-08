@@ -66,8 +66,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--n", type=int, default=128)
     parser.add_argument("--run", action="store_true")
+    parser.add_argument("--census", action="store_true", help="LLVM native arithmetic census (instrumented times)")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.census and not args.run:
+        parser.error("--census requires --run")
     if args.n not in (48, 128):
         parser.error("registered diagnostic cases are 48 (padding) and 128")
     head = git("rev-parse", "HEAD")
@@ -76,17 +79,25 @@ def main():
     target = common.parent / "rust" / "target"
     env = dict(os.environ, CARGO_TARGET_DIR=str(target), CARGO_INCREMENTAL="0",
                CARGO_PROFILE_DEV_DEBUG="0", RAYON_NUM_THREADS="1")
+    if args.census:
+        env["RUSTFLAGS"] = "-C target-cpu=native -C instrument-coverage -C llvm-args=-instrprof-atomic-counter-update-all"
+        env["LLVM_PROFILE_FILE"] = "/dev/null"
+        from c71_work_census import sources
+        sources()  # reject unreviewed cached field sources before execution
     cargo = shutil.which("cargo") or str(Path.home() / ".cargo" / "bin" / "cargo")
     command = [cargo, "build", "--offline", "--locked", "-j", "2", "-p", "volta-pcs",
-               "--features", "c71-cpu-matrix-reference", "--example", "c71_matrix"]
+               "--features", "c71-work-census" if args.census else "c71-cpu-matrix-reference",
+               "--example", "c71_matrix"]
     build = subprocess.run(command, cwd=ROOT / "rust", env=env, capture_output=True, text=True)
     if build.returncode:
         raise SystemExit(build.stderr)
     binary = target / "debug" / "examples" / "c71_matrix"
-    report = {"milestone": "c71-b2-matrix-diagnostic", "git_commit": head,
+    report = {"milestone": "c71-b3-matrix-census" if args.census else "c71-b3-matrix-diagnostic", "git_commit": head,
               "git_dirty": dirty, "run_of_record": not dirty, "credit": False,
               "build_profile": "dev unoptimized, debug symbols disabled, native CPU",
               "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+              "rustflags": env.get("RUSTFLAGS", "repository .cargo/config.toml"),
+              "rustc_version": subprocess.check_output(["rustc", "-vV"], text=True),
               "host": os.uname()._asdict() if hasattr(os.uname(), "_asdict") else list(os.uname()),
               "build_command": command, "runtime_limits": {"wall_seconds": 60,
               "address_space_and_RSS_bytes": LIMIT, "process_threads": 2, "rayon_workers": 1}}
@@ -97,10 +108,40 @@ def main():
         report["preflight"] = json.loads(screen.pop("stdout"))
     if args.run and screen["returncode"] == 0:
         with tempfile.TemporaryDirectory(prefix="volta-c71-disposable-state-") as state:
-            run = bounded([str(binary), "run", str(args.n), state], env)
-        report["execution_process"] = run
-        if run["returncode"] == 0:
-            report["execution"] = json.loads(run.pop("stdout"))
+            if args.census:
+                from c71_work_census import collect, validate_self_check, validate_matrix_census
+                check_dir = Path(state) / "coverage-check"
+                check_dir.mkdir()
+                env["C71_COVERAGE_DIR"] = str(check_dir)
+                check = bounded([str(binary), "census-check", str(args.n)], env)
+                report["counter_check_process"] = check
+                if check["returncode"] == 0 and check["failure"] is None:
+                    try:
+                        report["counter_check"] = collect(binary, check_dir, json.loads(check.pop("stdout")))
+                        validate_self_check(report["counter_check"])
+                    except Exception as error:
+                        check["failure"] = str(error)
+                coverage_dir = Path(state) / "coverage"
+                coverage_dir.mkdir()
+                env["C71_COVERAGE_DIR"] = str(coverage_dir)
+            if args.census and (check["returncode"] != 0 or check["failure"] is not None):
+                run = {"returncode": 1, "failure": "native counter self-check rejected; matrix not executed"}
+            else:
+                run = bounded([str(binary), "run", str(args.n), state], env)
+            report["execution_process"] = run
+            if run["returncode"] == 0:
+                report["execution"] = json.loads(run.pop("stdout"))
+                if args.census:
+                    try:
+                        report["work_census"] = collect(binary, coverage_dir, report["execution"])
+                        validate_matrix_census(report["work_census"], report["execution"])
+                    except Exception as error:
+                        run["failure"] = f"work census rejected: {error}"
+    report["physical_traffic_probe"] = {
+        "linux_event_sources": sorted(p.name for p in Path("/sys/bus/event_source/devices").iterdir()),
+        "perf_event_paranoid": Path("/proc/sys/kernel/perf_event_paranoid").read_text().strip(),
+        "DRAM_traffic_measured": False,
+        "reason": "no reviewed DRAM counter collector on this local runner"}
     success = screen["returncode"] == 0 and screen["failure"] is None and (
         not args.run or (report.get("execution_process", {}).get("returncode") == 0
                         and report["execution_process"]["failure"] is None))
@@ -109,7 +150,7 @@ def main():
     report["source_changed_during_run"] = git("rev-parse", "HEAD") != head
     report["run_of_record"] = not report["git_dirty"] and not report["source_changed_during_run"]
     date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    output = args.output or ROOT / "benchmarks" / "results" / f"c71-b2-matrix-{date}-{head[:10]}.json"
+    output = args.output or ROOT / "benchmarks" / "results" / f"c71-b3-matrix-{date}-{head[:10]}.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("x") as stream:
         json.dump(report, stream, indent=2, allow_nan=False)

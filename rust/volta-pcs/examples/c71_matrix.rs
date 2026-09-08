@@ -7,6 +7,8 @@ fn main() {
             .parse()
             .map_err(|_| "invalid matrix dimension")?;
         match args[0].as_str() {
+            #[cfg(feature = "c71-work-census")]
+            "census-check" => volta_pcs::c71_matrix::self_check(),
             "preflight" => volta_pcs::c71_matrix::preflight(n),
             "run" => volta_pcs::c71_matrix::run(
                 n,

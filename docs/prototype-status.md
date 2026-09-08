@@ -66,7 +66,10 @@ real correlations, lifetime accounting or complete algorithm/resources.
   separates interactive causality from FS and identifies the candidate-prefix
   accounting gap. A causal modal source and single collision finder now have
   an explicit local expected-work/cutoff bound, including rare valid openings;
-  the candidate-boundary lifetime composition is not yet instantiated.
+  the [conditional global guard](c7.1-committed-mac-opening.md#36-composizione-modale-lifetime-un-finder-lavoro-non-gratuito)
+  pays A5-B once for the clear-opening lifetime game. Its uniform Markov
+  cost screen misses the target even after optimizing confirmations;
+  actual joint costs and the private codec/FS transfer remain open.
   It does not assume
   `BindsIntoMac`. The literal codec
   using one 8-byte correction per leaf bit is excluded at 357 queries for
@@ -281,11 +284,11 @@ real correlations, lifetime accounting or complete algorithm/resources.
 
 ## Next work
 
-Next: compose the [first-query modal guards](c7.1-committed-mac-opening.md#35-prima-query-fs-limite-del-coupling-e-riparazione-da-comporre)
-across actual source identities, aliases and candidate prefixes, counting
-their joint emulation work and loss. The interactive hidden-target bound
-remains a separate baseline; neither caller costs nor the FS transfer are
-verified. Full A5 cryptanalysis stays non-priority; the
+Next: repair the [global guard cost bound](c7.1-committed-mac-opening.md#36-composizione-modale-lifetime-un-finder-lavoro-non-gratuito)
+using actual candidate identities/aliases and joint replay work, or a
+different tail/reduction analysis; tuning confirmation counts alone cannot
+repair the excluded uniform screen. The private codec and FS prefix transfer
+remain unverified. Full A5 cryptanalysis stays non-priority; the
 exact model relation, Gamma and remaining lifetime terms stay open.
 Continue the independent pointwise Gamma kernels/forms, beginning with
 residual additions and public scaling, and their complete reader/field costs.

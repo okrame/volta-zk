@@ -1761,6 +1761,27 @@ def test_hidden_target_keeps_static_source_and_matches_full_sampler_marginal():
         different[1][1] if q == different[1][0] else 0 for q in range(3))
 
 
+def test_modal_uniform_lifetime_template_counts_birth_work_with_one_binding_loss():
+    profile = plan.wide_hash_security_assumption_screen()
+    cap = profile['binding_reduction_strict_u64_work_cap']
+    bind = Fraction(*profile['assumed_binding_advantage'])
+    births, domain, work = 1 << 64, 1 << 26, 1 << 64
+    for opened, opt in ((1,45),(births*domain,135)):
+        def screen(k):
+            return Fraction(opened,1 << k)+Fraction((1+births+k*births*domain)*work,cap)+bind
+
+        for k in range(1,200):
+            step = Fraction(births*domain*work,cap)-Fraction(opened,1 << (k+1))
+            assert screen(k+1)-screen(k) == step
+            assert (step < 0 if k < opt else step == 0 if k == opt else step > 0)
+        assert screen(opt) == screen(opt+1) > Fraction(1,1 << 78)
+        assert screen(opt-1) > screen(opt) < screen(opt+2)
+        if opened == 1:
+            assert screen(opt) == Fraction(47,1 << 46)+Fraction(1+births,1 << 136)+bind
+    # A sufficient replacement budget, not a proved lifetime caller cost.
+    assert Fraction(1,1 << 83)+Fraction(1 << 117,cap) == Fraction(1,1 << 82)
+
+
 def test_deferred_birth_sampler_keeps_adaptively_selected_predecessor_and_aliases():
     # Three attempts with late aborts and a possible republication. Weak even-word VC.
     # This checks the deferred/eager identity pointwise, not A5 or runtime security.
@@ -1827,6 +1848,50 @@ def test_deferred_birth_sampler_keeps_adaptively_selected_predecessor_and_aliase
             assert main[t+1][0][1] == (main[t][1] if main[t][3] else main[t][0][1])
     assert all(cases[name] for name in ('earlier_predecessor','old_new_alias','invalid',
                                       'collision','wrong_use_boundary')), cases
+
+    # Reuse this same adaptive tree for the global modal finder. Guard tapes
+    # are independent, but births, predecessor choice and main positions are not.
+    for confirmations in (2,5):
+        escape, mean_replays, mode_cap, work_cap = (Fraction(0) for _ in range(4))
+        for main_coins in tapes:
+            main,births = resume((0,None,0),main_coins)
+            actual, internal_collision = {}, False
+            for _,_,_,_,records in main:
+                for key,j,value,valid in records:
+                    if valid:
+                        pair = (key,j)
+                        internal_collision |= pair in actual and actual[pair] != value
+                        actual.setdefault(pair,value)
+            mass = Fraction(1,len(tapes))
+            mode_cap += mass*Fraction(len(actual),1 << confirmations)
+            work_cap += mass*confirmations*2*len(births)
+            if internal_collision:
+                continue  # already a collision, including a changed late alias
+            survival, branches, nonmodal = Fraction(1), Fraction(0), False
+            for key,state in births.items():
+                suffixes = tuple(product(range(2),repeat=3-state[0]))
+                maps = [extract(key,state,coins) for coins in suffixes]
+                for j in range(2):
+                    if (key,j) not in actual:
+                        continue
+                    counts = Counter(v[j] for v in maps if j in v)
+                    value = actual[key,j]
+                    mode = min(counts,key=lambda a:(-counts[a],a))
+                    nonmodal |= value != mode
+                    delta = Fraction(sum(counts.values()),len(maps))
+                    same = Fraction(counts[value],len(maps))
+                    passed, expected = Fraction(1), Fraction(0)
+                    for _ in range(confirmations):
+                        passed, expected = same*passed/delta, (1+same*expected)/delta
+                    branches += survival*expected
+                    survival *= passed
+            # Ignoring additional within-replay collisions only overestimates
+            # both survival and replay work. No conditioning on final acceptance.
+            escape += mass*int(nonmodal)*survival
+            mean_replays += mass*branches
+        assert 0 < escape <= mode_cap
+        assert 0 < mean_replays <= work_cap
+
     # Requiring the observed predecessor in every sample biases the original birth law.
     initial_values, filtered_values = [], []
     first_id = ('kv',0,'layout2')

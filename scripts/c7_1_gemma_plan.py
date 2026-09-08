@@ -2532,6 +2532,70 @@ def rms_square_pair_coefficients(x0, x1, f0, f1):
     return [v % P for v in (f0*a, 2*(f0*b)+df*a, f0*c+2*(df*b), df*c)]
 
 
+def rms_statistic_dependency_plan(cohorts, gamma):
+    """Input cones with RMS Y as a cut, and S dependencies needed to build Y.
+
+    Uses the validated Gamma DAG; does not invent forward dependencies from
+    a list of operator names. Only B leaves and pointwise residual/scaling
+    kernels are admitted in this statistic-reader construction.
+    """
+    norms = rms_statistic_cohorts(cohorts)
+    nodes = gamma['cohorts']
+    by_key = {(r['layer'],r['operation']): r['ordinal'] for r in nodes}
+    y_sources = {by_key[n['layer'],n['operation']]: i for i,n in enumerate(norms)}
+    kernels = {'embedding_scale','attention_residual_add','ffw_residual_add','layer_scalar_mul'}
+    dependencies, roots, union = {}, [], set()
+    for i,norm in enumerate(norms):
+        source = norm['source_producer']
+        root = by_key[source['layer'],source['operation']]
+        roots.append(root)
+        todo, seen, required_s = [root], set(), set()
+        while todo:
+            ordinal = todo.pop()
+            if ordinal in seen:
+                continue
+            seen.add(ordinal)
+            r = nodes[ordinal]
+            if ordinal in y_sources:
+                required_s.add(y_sources[ordinal])
+            elif r['kind'] in ('rne48','B_lookup'):
+                if r['byte_source'] != 'B' or r['dependencies']:
+                    raise ValueError('statistic input requires a non-B raw reader')
+            elif r['operation'] in kernels:
+                todo.extend(r['dependencies'])
+            else:
+                raise ValueError('uncompiled kernel in RMS statistic input cone')
+        # Gamma is validated, but also fail closed on a malformed ordinary cone.
+        tuple(TopologicalSorter({j: [d for d in nodes[j]['dependencies'] if d in seen]
+                                 if j not in y_sources else [] for j in seen}).static_order())
+        dependencies[i] = sorted(required_s)
+        union.update(seen)
+    order = list(TopologicalSorter(dependencies).static_order())
+    direct = [i for i,root in enumerate(roots) if nodes[root]['kind'] == 'rne48']
+    residual = [i for i,root in enumerate(roots) if nodes[root]['operation'] in
+                ('attention_residual_add','layer_scalar_mul')]
+    raw_cells = sum(norms[i]['statistic_rows']*norms[i]['columns'] for i in direct)
+    y = union.intersection(y_sources)
+    y_cells = sum(norms[y_sources[j]]['statistic_rows']*norms[y_sources[j]]['columns'] for j in y)
+    pointwise = Counter(nodes[j]['operation'] for j in union if j not in y_sources and nodes[j]['operation'] in kernels)
+    cfg, tokens = pinned_model_config(), cohorts[0]['rows']
+    return {'input_roots': roots, 'statistic_dependencies': dependencies, 'preparation_order': order,
+            'summary': {'credit': False, 'input_cone_cohorts': len(union),
+                        'direct_raw_statistic_sources': len(direct), 'residual_statistic_sources': len(residual),
+                        'distinct_raw_B_leaves': sum(nodes[j]['kind'] == 'rne48' for j in union),
+                        'rms_Y_leaves': len(y), 'pointwise_kernel_cohorts': dict(pointwise),
+                        'statistic_dependency_edges': sum(map(len,dependencies.values())),
+                        'all_Y_dependencies_have_B_only_statistics': all(not dependencies[y_sources[j]] for j in y),
+                        'initial_raw_rne_calls_without_K_V_deduplication': raw_cells,
+                        'initial_post_norm_Y_generations': y_cells,
+                        'initial_pointwise_roundings': (1+3*cfg['layers'])*tokens*cfg['hidden_size'],
+                        'initial_B_S_kappa_logical_read_bytes': 6*raw_cells+4*y_cells+
+                            2*tokens*cfg['hidden_size']+12*(y_cells//64),
+                        'initial_S_kappa_write_bytes': 12*sum(n['statistic_rows'] for n in norms),
+                        'single_token_residual_vector_bytes': 2*cfg['hidden_size'],
+                        'complete_native_statistic_reader_and_liveness': None}}
+
+
 def rms_statistic_byte_sources(cohorts):
     """Candidate retained S cuts in the SAME Sigma, using biased i48 bytes.
 
@@ -3959,6 +4023,7 @@ def report():
     assert len(tensors) == 772 and live == 30_697_345_280
     tiles = dyadic_weight_layout([t["shape"] for t in tensors])
     cohorts = gemma_weight_cohorts(tensors)
+    gamma = gamma_barrier_plan(cohorts)
     n = 1 << (live - 1).bit_length()
     h = n.bit_length() - 1
     matrix_shapes = Counter(tuple(t["shape"]) for t in tensors if len(t["shape"]) == 2)
@@ -4059,7 +4124,8 @@ def report():
         "paired_rs_opening_screen": paired_rs_opening_screen(n, 1 << 24, 357),
         "weight_cohort_screen": weight_cohort_screen(cohorts),
         "input_link_screen": input_link_screen(cohorts),
-        "gamma_barrier_screen": gamma_barrier_plan(cohorts)["summary"],
+        "gamma_barrier_screen": gamma["summary"],
+        "rms_statistic_dependency_screen": rms_statistic_dependency_plan(cohorts,gamma)["summary"],
         "rms_statistic_screen": rms_statistic_screen(cohorts),
         "rms_byte_bridge_screen": rms_byte_bridge_screen(cohorts),
         "rms_output_byte_bridge_screen": rms_byte_bridge_screen(cohorts, True),

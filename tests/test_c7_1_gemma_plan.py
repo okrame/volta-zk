@@ -2101,6 +2101,83 @@ def test_gamma_barrier_routes_the_pinned_dag_with_rne_last_and_no_late_edges():
             plan.gamma_barrier_plan(altered)
 
 
+def test_rms_statistic_input_cones_and_two_stage_preparation_are_acyclic():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_bytes())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition'] == 'private_text'])
+    gamma = plan.gamma_barrier_plan(cohorts)
+    result = plan.rms_statistic_dependency_plan(cohorts,gamma)
+    s = result['summary']
+    assert s['input_cone_cohorts'] == 592 and s['distinct_raw_B_leaves'] == 290 and s['rms_Y_leaves'] == 120
+    assert s['direct_raw_statistic_sources'] == 300 and s['residual_statistic_sources'] == 120
+    assert s['pointwise_kernel_cohorts'] == {'embedding_scale':1, 'attention_residual_add':60,
+                                           'ffw_residual_add':60, 'layer_scalar_mul':60}
+    assert s['statistic_dependency_edges'] == 7260 and s['all_Y_dependencies_have_B_only_statistics']
+    assert s['initial_raw_rne_calls_without_K_V_deduplication'] == 250368000
+    assert s['initial_post_norm_Y_generations'] == 96768000
+    assert s['initial_pointwise_roundings'] == 145958400
+    assert s['initial_B_S_kappa_logical_read_bytes'] == 1909036800
+    assert s['initial_S_kappa_write_bytes'] == 6913788
+    assert s['single_token_residual_vector_bytes'] == 10752
+    assert not s['credit'] and s['complete_native_statistic_reader_and_liveness'] is None
+    norms = plan.rms_statistic_cohorts(cohorts)
+    by_key = {(n['layer'],n['operation']): i for i,n in enumerate(norms)}
+    rank = {i:r for r,i in enumerate(result['preparation_order'])}
+    for i,norm in enumerate(norms):
+        layer,op = norm['layer'],norm['operation']
+        expected = []
+        if op in ('input_rms','pre_ffw_rms','final_rms'):
+            expected = [by_key[l,name] for l in range(60 if op == 'final_rms' else layer)
+                        for name in ('post_attention_rms','post_ffw_rms')]
+            if op == 'pre_ffw_rms':
+                expected.append(by_key[layer,'post_attention_rms'])
+        assert result['statistic_dependencies'][i] == sorted(expected)
+        assert all(rank[j] < rank[i] and not result['statistic_dependencies'][j] for j in expected)
+    nodes = gamma['cohorts']
+    by_op = {(r['layer'],r['operation']):r['ordinal'] for r in nodes}
+    for ordinal,changes in ((by_op[0,'q_proj'], {'byte_source':'raw_attention'}),
+                            (by_op[0,'attention_residual_add'], {'dependencies':[by_op[0,'softmax']]}),
+                            (by_op[0,'attention_residual_add'], {'dependencies':[by_op[0,'attention_residual_add']]})):
+        altered = [dict(r) for r in nodes]
+        altered[ordinal].update(changes)
+        with pytest.raises(ValueError):
+            plan.rms_statistic_dependency_plan(cohorts,{'cohorts':altered})
+    cyclic = [{**c,'input_producer':{'layer':0,'operation':'post_ffw_rms'}}
+              if (c['layer'],c['operation']) == (0,'post_ffw_rms') else c for c in cohorts]
+    with pytest.raises(ValueError):
+        plan.rms_statistic_dependency_plan(cyclic,gamma)
+    # Pointwise does not mean that successive rounded operators can be fused.
+    sequential = plan.rne_i48_to_i16(plan.rne_i48_to_i16(1,1)+1,1)
+    assert sequential == 0 and plan.rne_i48_to_i16(3,2) == 1
+    # A small residual subsystem: capture raw/P first, then prepare S/Y
+    # from those cuts, without calling the upstream private matrices again.
+    raw = [[1,2,-3], [-2,1,3], [3,-1,2], [-1,-2,1]]  # two post-norms per layer
+    products = [[x*w for x,w in zip(row,(1,-2,3))] for row in raw]
+    direct_s = [sum(x*x for x in row) for row in raw]
+    reference_y = [[plan.rms_rne_i16(p,statistic,3,0,0,0) for p in row]
+                   for row,statistic in zip(products,direct_s)]
+    a,b,c = plan.rms_integer_coefficients(3,0,0,0)
+    staged_y = []
+    for row,statistic in zip(products,direct_s):
+        denominator = b+c*statistic
+        kappa = plan.rms_row_multiplier(a,denominator)
+        staged_y.append([plan.rms_rne_from_multiplier(p,a,denominator,kappa) for p in row])
+    def residual_statistics(outputs):
+        state = [round(Fraction(147*x,2)) for x in (0,1,-1)]
+        statistics = []
+        for layer in range(2):
+            statistics.append(sum(x*x for x in state))
+            after_attention = [x+y for x,y in zip(state,outputs[2*layer])]
+            statistics.append(sum(x*x for x in after_attention))
+            state = [round(Fraction(x+y,2)) for x,y in zip(after_attention,outputs[2*layer+1])]
+        return statistics+[sum(x*x for x in state)], state
+    assert staged_y == reference_y
+    assert residual_statistics(staged_y) == residual_statistics(reference_y)
+    altered_y = [row[:] for row in staged_y]
+    altered_y[0][0] += 1
+    assert residual_statistics(altered_y) != residual_statistics(reference_y)
+
+
 def test_gamma_validity_includes_dead_outputs_and_rms_requires_original_input():
     logical = runpy.run_path(str(Path(__file__).resolve().parents[1] /
                                 "scripts/c7_d126_gemma_qspec_dag.py"))

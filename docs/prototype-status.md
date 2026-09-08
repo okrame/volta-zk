@@ -266,12 +266,12 @@ authorization.
 
 ## Next work
 
-The [row-multiplier getter](c7.1-cut-witness.md#getter-rms-con-moltiplicatore-di-riga)
-shares preparation across RMS lanes with exact rounding. The
-[bit-parallel replay and exact field fold](c7.1-cut-witness.md#replay-bit-parallelo-e-fold-delle-celle)
-preserve the same GKR tables, with explicit partial work/scratch counts.
-The immediate deliverable is the remaining sumcheck field-work count and
-full lifetime schedule with actual profiles and Gamma consumers. Compose the
+The [sparse sumcheck messages and public profile sweep](c7.1-cut-witness.md#messaggi-sparsi-e-costo-del-sumcheck-rms-j)
+now give a full clear-field arithmetic upper bound for the nominated RMS-J
+replay, still with very large constants and synthetic exponents. The immediate
+deliverable is its physical lifetime schedule and getter/control/PCG costs
+with actual profiles and Gamma consumers; the arithmetic bound is not timing
+or full-prover feasibility. Compose the
 [joint core](c7.1-cut-witness.md#riduzione-gkr-rms-con-asse-delle-celle-condiviso)
 with the [S+Y source comparison](c7.1-auxiliary-witness.md#output-rms-e-port-di-ingresso-nella-stessa-sorgente)
 before adopting Y: its input bindings are specified, its complete cost is not.

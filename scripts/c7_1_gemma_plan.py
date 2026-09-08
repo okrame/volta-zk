@@ -626,6 +626,59 @@ def fold_boolean_word(word, tables):
             for offset in range(0,64,width)]
 
 
+def rms_gkr_cell_pair_coefficients(op, x0, x1, y0, y1, psi0, psi1, weight):
+    """Four Fp coefficients of weight*psi(T)*op(X(T),Y(T)).
+
+    Inputs are FIELD folds, not bits. With a constant X or Y and psi(T)
+    equal to T or 1-T, this also supplies the quadratic index-round edge.
+    At most 12 products and 14 additions, before four accumulator additions.
+    """
+    for v in (x0,x1,y0,y1,psi0,psi1,weight):
+        natural(v, 'RMS GKR field value', 0, P-1)
+    dx, dy = (x1-x0) % P, (y1-y0) % P
+    f0, f1 = weight*psi0 % P, weight*psi1 % P
+    df = (f1-f0) % P
+    if op == 'copy':
+        return [f0*x0 % P, (f0*dx+df*x0) % P, df*dx % P, 0]
+    if op not in ('and', 'xor'):
+        raise ValueError('invalid RMS GKR gate')
+    a, b, c = x0*y0 % P, (x0*dy+dx*y0) % P, dx*dy % P
+    if op == 'xor':
+        a, b, c = (x0+y0-2*a) % P, (dx+dy-2*b) % P, -2*c % P
+    return [f0*a % P, (f0*b+df*a) % P, (f0*c+df*b) % P, df*c % P]
+
+
+def rms_gkr_profile_events(intervals, point, prefix):
+    """Public sweep for MLE(mu_t*EQ(point,.)) after fixing low prefix bits.
+
+    Sorted, disjoint dyadic intervals are (start, log2_size, profile).
+    At suffix z, apply events <=z, then multiply each profile accumulator
+    by EQ(point[h:],z). No private table or inverse; at most two events/cube.
+    """
+    n, h = len(point), len(prefix)
+    natural(n, 'RMS cell dimensions', 1, 32)
+    natural(h, 'RMS cell prefix length', 0, n)
+    for v in (*point,*prefix):
+        natural(v, 'RMS public field coordinate', 0, P-1)
+    events, end = [], 0
+    for start,d,profile in intervals:
+        natural(start, 'RMS cube start', 0, (1 << n)-1)
+        natural(d, 'RMS cube dimension', 0, n)
+        natural(profile, 'RMS profile index', 0, 2_000_000)
+        size = 1 << d
+        if start % size or start < end or start+size > 1 << n:
+            raise ValueError('RMS cubes must be aligned, sorted and disjoint')
+        end = start+size
+        gamma = 1
+        for i,(r,a) in enumerate(zip(point,prefix)):
+            factor = ((1-r)*(1-a)+r*a if i < d else
+                      (r if start >> i & 1 else 1-r)*(a if start >> i & 1 else 1-a))
+            gamma = gamma*factor % P
+        events.extend([(start >> h,profile,gamma), (((end-1) >> h)+1,profile,-gamma % P)])
+    events.sort()
+    return events
+
+
 def rms_joint_gkr_screen(profile_widths, cell_bits):
     """Shared cell axis; shorter profiles carry their final table unchanged.
 
@@ -665,8 +718,10 @@ def rms_joint_gkr_screen(profile_widths, cell_bits):
             eq_work = low*cells+(h-low)*chunks
             table_products += eq_work+chunks*(1 << cells)
             table_additions += eq_work+(1 << cells)-1
-    return {'credit': False, 'profiles': len(profile_widths), 'depth': depth,
+    return {'credit': False, 'profiles': len(profile_widths), 'depth': depth, 'cell_bits': cell_bits,
             'joint_level_widths': widths, 'gate_index_bits_sum': gate_bits,
+            'joint_level_rows_across_profiles': [sum(p[min(d,len(p)-1)] for p in profile_widths)
+                                                for d in range(depth+1)],
             'sumcheck_rounds': rounds, 'sumcheck_coefficients': coefficients,
             'endpoint_corrections': 2*depth, 'private_product_equations': depth,
             'zero_residual_equations_before_input_adapters': rounds+depth,
@@ -693,6 +748,53 @@ def rms_joint_gkr_screen(profile_widths, cell_bits):
                 'complete_sumcheck_field_work_and_runtime': None},
             'complete_input_forms_and_source_bindings': None,
             'complete_witness_schedule_memory_and_work': None}
+
+
+def rms_gkr_field_work_screen(joint, interval_count):
+    """Conservative clear arithmetic schedule for the validated joint screen.
+
+    One output-flag claim; two public sweep events per dyadic profile cube.
+    Includes all cell/index coefficients, folds, kernels and endpoint mix.
+    No source adapters/getter/PCG/MAC/FS, integer/control work or timing credit.
+    Profiles/exponents must match the caller; widths alone do not establish it.
+    """
+    natural(interval_count, 'RMS public profile cubes', 0, 2_000_000)
+    depth, profiles = joint['depth'], joint['profiles']
+    n = joint['cell_bits']
+    size = 1 << n
+    bits = [(w-1).bit_length() for w in joint['joint_level_widths']]
+    edges = joint['joint_level_rows_across_profiles'][1:]
+    prefixes = joint['reference_cell_prefix_bits']
+    terms = (size-1)*sum(edges)
+    products = {'cell_coefficients': 12*terms,
+                'index_coefficients': sum(e*(2*s*s+28*s) for e,s in zip(edges,bits)),
+                'profile_event_preparation': depth*3*interval_count*n*(n+1)//2,
+                'profile_sweep': depth*(4*size-4-2*n+profiles*(2*size-1)),
+                'validity_target': interval_count*n}
+    additions = {'cell_coefficients': 18*terms,
+                 'index_coefficients': sum(e*(2*s*s+35*s) for e,s in zip(edges,bits)),
+                 'profile_event_preparation': products['profile_event_preparation']+3*interval_count*(n+1)*depth,
+                 'profile_sweep': n*depth, 'validity_target': interval_count*(n+1)}
+    folds = sum((1 << s)*((size >> k)-1)+2*((1 << s)-1) for s,k in zip(bits,prefixes))
+    products['array_folds'], additions['array_folds'] = folds, 2*folds
+    products['high_prefix_weights'] = sum(2*((size >> 6)-(size >> h)) for k in prefixes for h in range(7,k+1))
+    additions['high_prefix_weights'] = sum(h-6 for k in prefixes for h in range(7,k+1))
+    products['terminal_and_claim_update'] = sum(e*(2*s+3)+(2*s+1)*(1 << s)+5+3*n+4*s
+                                               for e,s in zip(edges,bits))
+    additions['terminal_and_claim_update'] = sum(e*(2*s+5)+(2*s+1)*(1 << s)+3+3*n+4*s
+                                                for e,s in zip(edges,bits))
+    packed = joint['bitpacked_replay']
+    public_bytes = 80*interval_count+24*(1 << max(bits))+72*profiles+24*(6*(n+max(bits))+32)
+    return {'credit': False, 'profile_interval_count': interval_count,
+            'cell_pair_gate_terms': terms, 'products_upper_by_stage': products,
+            'additions_upper_by_stage': additions,
+            'combined_clear_replay_and_sumcheck_products_upper': sum(products.values())+
+                packed['fold_high_prefix_products_upper']+packed['fold_table_preparation_products_upper'],
+            'combined_clear_replay_and_sumcheck_additions_upper': sum(additions.values())+
+                packed['fold_chunk_additions_upper']+packed['fold_high_prefix_accumulations_upper']+
+                packed['fold_table_preparation_additions_upper'],
+            'additional_public_sweep_and_gate_form_bytes': 256*((public_bytes+255)//256),
+            'complete_getter_mac_fs_runtime_and_liveness': None}
 
 
 def rms_boolean_cohort_screen(cohorts):

@@ -2569,6 +2569,18 @@ def test_rms_live_wire_layering_preserves_outputs_and_counts_joint_profiles():
             assert packed['input_and_two_word_vectors_bytes'] == 66560
             assert packed['field_block_bytes'] == 6291456
             assert packed['public_fold_table_reservation_bytes'] == 65536
+            # 3,612 public Y cubes are independently checked against pinned metadata below.
+            field = plan.rms_gkr_field_work_screen(screen,3612)
+            assert sum(screen['joint_level_rows_across_profiles'][1:]) == 399038
+            assert field['cell_pair_gate_terms'] == 214231894583618
+            assert field['products_upper_by_stage']['cell_coefficients'] == 2570782735003416
+            assert field['products_upper_by_stage']['profile_sweep'] == 736586884698
+            assert field['products_upper_by_stage']['array_folds'] == 205641450
+            assert field['products_upper_by_stage']['high_prefix_weights'] == 16785264640
+            assert field['combined_clear_replay_and_sumcheck_products_upper'] == 2580782639346704
+            assert field['combined_clear_replay_and_sumcheck_additions_upper'] == 3942483663846463
+            assert field['additional_public_sweep_and_gate_form_bytes'] == 394496
+            assert not field['credit'] and field['complete_getter_mac_fs_runtime_and_liveness'] is None
     for widths, bits in (([], 2), ([[]], 2), ([[0]], 2), ([[True]], 2), ([[1]], 0)):
         with pytest.raises(ValueError):
             plan.rms_joint_gkr_screen(widths, bits)
@@ -2666,6 +2678,46 @@ def test_joint_rms_gkr_shares_cells_carries_wires_and_transfers_to_the_same_inpu
             degree = 3 if i < 2 else 2
             samples = [partial(coins[:i]+[t]) for t in range(degree+1)]
             coefficients = poly(samples)
+            # Sparse honest coefficients, using the same source/psi as F.
+            h = min(i,2)
+            events = iter(plan.rms_gkr_profile_events([(0,0,0),(1,0,1),(2,0,0)],point,coins[:h]))
+            event, active, psi = next(events,None), [0]*len(programs), []
+            for z in range(1 << (2-h)):
+                while event is not None and event[0] <= z:
+                    active[event[1]] = (active[event[1]]+event[2]) % p
+                    event = next(events,None)
+                psi.append([eq(point[h:],z)*v % p for v in active])
+                c = coins[:h]+[z >> j & 1 for j in range(2-h)]
+                assert psi[-1] == [plan.mle(form,c) for form in profile_forms]
+            sparse = [0]*4
+            if i < 2:
+                for z in range(1 << (1-i)):
+                    pair = [[plan.mle([row[j] for row in tables[level-1]],
+                             coins[:i]+[b]+[z >> k & 1 for k in range(1-i)])
+                             for j in range(widths[level-1])] for b in (0,1)]
+                    for t,layers in enumerate(programs):
+                        for g,(op,j,k) in enumerate(layers[level-1]):
+                            edge = plan.rms_gkr_cell_pair_coefficients(op,pair[0][j],pair[1][j],
+                                pair[0][k],pair[1][k],psi[2*z][t],psi[2*z+1][t],gate_form[g])
+                            sparse = [(a+b) % p for a,b in zip(sparse,edge)]
+            else:
+                f = [plan.mle([row[j] for row in tables[level-1]],coins[:2]) for j in range(widths[level-1])]
+                right_axis = i >= 2+s
+                h = i-2-(s if right_axis else 0)
+                a, b = coins[2:2+s], coins[2+s:]
+                for t,layers in enumerate(programs):
+                    for g,(op,j,k) in enumerate(layers[level-1]):
+                        index, prefix = (k,b[:h]) if right_axis else (j,a[:h])
+                        values = [plan.mle(f,prefix+[v]+[index >> q & 1 for q in range(h+1,s)]) for v in (0,1)]
+                        x0,x1,y0,y1 = ((plan.mle(f,a),)*2+tuple(values) if right_axis else (*values,f[k],f[k]))
+                        factor = psi[0][t]*gate_form[g]*eq(prefix,index) % p
+                        if right_axis:
+                            factor = factor*eq(a,j) % p
+                        bit = index >> h & 1
+                        edge = plan.rms_gkr_cell_pair_coefficients(op,x0,x1,y0,y1,1-bit,bit,factor)
+                        assert edge[3] == 0
+                        sparse = [(a+b) % p for a,b in zip(sparse,edge)]
+            assert sparse[:degree+1] == coefficients
             def value(t):
                 return sum(v*pow(t, j, p) for j, v in enumerate(coefficients)) % p
             assert claim == (value(0)+value(1)) % p
@@ -2699,6 +2751,58 @@ def test_joint_rms_gkr_shares_cells_carries_wires_and_transfers_to_the_same_inpu
     by_intervals = sum(plan.shifted_eq_form(r, u, 0, i+1)-plan.shifted_eq_form(r, u, 0, i)
                        for i in (0, 2)) % p
     assert by_intervals == correct
+
+
+def test_rms_public_profile_sweep_and_clear_field_accounting():
+    rng = random.Random(7171)
+    for op in ('and','xor','copy'):
+        for _ in range(12):
+            x0,x1,y0,y1,f0,f1,w = [rng.randrange(plan.P) for _ in range(7)]
+            coeff = plan.rms_gkr_cell_pair_coefficients(op,x0,x1,y0,y1,f0,f1,w)
+            for t in (0,1,2,3,5):
+                x,y,f = x0+t*(x1-x0), y0+t*(y1-y0), f0+t*(f1-f0)
+                gate = x*y if op == 'and' else x+y-2*x*y if op == 'xor' else x
+                assert sum(c*pow(t,j,plan.P) for j,c in enumerate(coeff)) % plan.P == w*f*gate % plan.P
+    intervals = [(0,2,0),(4,1,1),(6,0,0),(8,3,1)]  # cell 7 is padding
+    for r,a in (([2,3,5,7],[11,13,17,19]), ([0,1,0,1],[1,0,1,0])):
+        dense = [[0]*16 for _ in range(2)]
+        for start,d,t in intervals:
+            for c in range(start,start+(1 << d)):
+                dense[t][c] = math.prod(v if c >> i & 1 else 1-v for i,v in enumerate(r)) % plan.P
+        for h in range(5):
+            events = plan.rms_gkr_profile_events(intervals,r,a[:h])
+            assert len(events) == 2*len(intervals)
+            weights, cursor = [0,0], 0
+            for c in range(1 << (4-h)):
+                while cursor < len(events) and events[cursor][0] <= c:
+                    _,t,v = events[cursor]
+                    weights[t] = (weights[t]+v) % plan.P
+                    cursor += 1
+                eq = math.prod(v if c >> i & 1 else 1-v for i,v in enumerate(r[h:])) % plan.P
+                point = a[:h]+[c >> i & 1 for i in range(4-h)]
+                assert [eq*v % plan.P for v in weights] == [plan.mle(row,point) for row in dense]
+    for bad in ([(1,1,0)], [(0,2,0),(2,0,1)], [(4,0,0),(0,0,0)], [(16,0,0)], [(0,5,0)], [(0,0,True)]):
+        with pytest.raises(ValueError):
+            plan.rms_gkr_profile_events(bad,[2]*4,[3])
+    for r,a in (([],[]), ([2],[3,5]), ([True],[]), ([2],[-1])):
+        with pytest.raises(ValueError):
+            plan.rms_gkr_profile_events([],r,a)
+    with pytest.raises(ValueError):
+        plan.rms_gkr_cell_pair_coefficients('bad',0,1,0,1,0,1,1)
+    for bad in (-1,plan.P,True):
+        with pytest.raises(ValueError):
+            plan.rms_gkr_cell_pair_coefficients('and',bad,1,0,1,0,1,1)
+    # One edge, two cells, one gate-index bit: hand count, not the large profile constants.
+    small = plan.rms_gkr_field_work_screen(plan.rms_joint_gkr_screen([[2,1]],1),1)
+    assert small['cell_pair_gate_terms'] == 1
+    assert small['products_upper_by_stage']['index_coefficients'] == 30
+    assert sum(small['products_upper_by_stage'].values()) == 78
+    assert sum(small['additions_upper_by_stage'].values()) == 98
+    assert small['combined_clear_replay_and_sumcheck_products_upper'] == 80
+    assert small['combined_clear_replay_and_sumcheck_additions_upper'] == 99
+    for bad in (-1,True):
+        with pytest.raises(ValueError):
+            plan.rms_gkr_field_work_screen(plan.rms_joint_gkr_screen([[2,1]],1),bad)
 
 
 def test_bitpacked_replay_and_public_word_fold_preserve_all_low_prefixes():

@@ -443,6 +443,45 @@ def rope_output_source_point(source, point, coefficient=1):
     return (list(point[cb:cb+hb]),list(point[cb+hb:]),list(point[:cb]),coefficient)
 
 
+def rope_read_raw_word(record, reader, first, count, buffers, coefficients, public_row):
+    """Honest <=64-lane raw getter in native token/head/lane order.
+
+    public_row is (absolute_position, canonical_Q30_pairs), prepared before
+    roots. As with rope_raw_row, this is not a verifier of that public table.
+    Two sequential RMS words share one getter wave; no W or full Y/raw array.
+    """
+    width = natural(record['columns'], 'RoPE reader width', 2, 512)
+    heads = natural(record['heads'], 'RoPE reader heads', 1, 32)
+    rows = natural(record['rows'], 'RoPE reader tokens', 1, 150)
+    start = natural(record['position_start'], 'RoPE absolute start', 0, CONTEXT_CAP-rows)
+    natural(count, 'RoPE reader word lanes', 1, 64)
+    natural(first, 'RoPE native input index', 0, rows*heads*width-count)
+    if (width & (width-1) or heads & (heads-1) or
+            record['operation'] not in ('q_rope','k_rope') or
+            (reader['norm_source_id'],reader['columns'],reader['rows'],reader['product_word_bytes']) !=
+            (record['rms_source_id'],width,rows*heads,4)):
+        raise ValueError('RoPE must read its own weighted q_norm/k_norm source')
+    half, lane = width//2, first % width
+    if lane//half != (lane+count-1)//half:
+        raise ValueError('RoPE word cannot cross a half-head or row')
+    natural(record['rotating_pairs'], 'RoPE active pairs', 0, half)
+    position,pairs = public_row
+    if type(position) is not int or position != start+first//(heads*width) or len(pairs) != record['rotating_pairs']:
+        raise ValueError('RoPE public row must use the exact absolute position and active pairs')
+    natural(len(pairs), 'RoPE active pairs', 0, half)
+    for c,s in pairs:
+        natural(c, 'RoPE public cosine', -(1 << 30), 1 << 30)
+        natural(s, 'RoPE public sine', -(1 << 30), 1 << 30)
+    left = first-lane+lane % half
+    a = [v[2] for v in rms_read_input_word(reader,left,count,buffers,coefficients)]
+    b = [v[2] for v in rms_read_input_word(reader,left+half,count,buffers,coefficients)]
+    result = []
+    for j,(x,y) in enumerate(zip(a,b),lane % half):
+        c,s = pairs[j] if j < len(pairs) else (1 << 30,0)
+        result.append(c*x-s*y if lane < half else s*x+c*y)
+    return result
+
+
 def rope_byte_bridge_screen(cohorts):
     """S+Y+RoPE source-path recount; excludes RMS-J, full Gamma and runtime.
 
@@ -545,6 +584,28 @@ def rope_byte_bridge_screen(cohorts):
                              +rope['maximum_two_field_arrays_without_reader'])
     sigma_visits = 16+byte_range_tree_screen(34)['source_visits_including_gate_histograms']+2+byte_bit_lift_screen(34)['source_visits']
     rq_visits = rne_indicator_screen(31,18,11)['source_rq_visits']
+    readers = rms_cut_reader_plan(cohorts)
+    for r in gemma_rope_plan(cohorts)['cohorts']:
+        assert readers[r['rms_source_id']]['product_word_bytes'] == 4
+    assert all(t[2] % 64 == 0 and t[5] % 64 == 0 and t[-1] % (64*t[7]) == 0 for t in extra_byte)
+    assert all(t[7] in (2,4) for t in extra_byte)
+    sigma_raw_cells = sum(math.prod(t[3:6]) for t in extra_byte)
+    rq_raw_cells = sum(math.prod(t[3:6]) for t in extra_rq)
+    assert sigma_raw_cells == 2*added_cells and rq_raw_cells == added_cells
+    raw_generations = sigma_visits*sigma_raw_cells+rq_visits*rq_raw_cells
+    y_generations = 2*raw_generations+added_cells  # one Y fill also computes each honest raw probe
+    reader_work = {'credit':False, 'raw_word_lanes':64, 'retained_word_buffer_bytes':1024,
+                   'public_profile_validation_hoisted_before_replay':True,
+                   'sigma_raw_generations_per_live_cell_per_visit':2,
+                   'rq_raw_generations_per_live_cell_per_visit':1,
+                   'bulk_raw_generations':raw_generations,
+                   'y_generations_including_linear_fill':y_generations,
+                   'B_S_kappa_logical_read_bytes':4*y_generations+12*(y_generations//64),
+                   'public_q30_logical_read_bytes_upper':8*(raw_generations+added_cells),
+                   'raw_signed_i64_products_upper':2*raw_generations,
+                   'raw_signed_i64_additions_upper':raw_generations,
+                   'extra_input_raw_rne_calls':0,
+                   'complete_all_gamma_reader_work_and_runtime':None}
     return {'credit':False, 'extends_source':'S+Y', 'raw_rope_sources':len(extra),
             'raw_rope_cells':added_cells, 'extra_virtual_source_bytes':6*added_cells,
             'extra_byte_cubes':len(extra_byte), 'extra_rq_cubes':len(extra_rq),
@@ -562,6 +623,8 @@ def rope_byte_bridge_screen(cohorts):
             'source_and_rope_arena_phase_upper_bytes_before_rms_joint_reader_gamma_runtime':phases,
             'known_phase_max_upper_bytes_before_rms_joint_reader_gamma_runtime':max(phases.values()),
             'known_bulk_sigma_visits':sigma_visits, 'known_bulk_rq_visits':rq_visits,
+            'base_rms_output_layout_sha256':[c['layout_sha256'] for c in bridge['cases']],
+            'word_reader_work':reader_work,
             'raw_byte_requests_in_known_bulk_paths':6*(sigma_visits+rq_visits)*added_cells,
             'raw_linear_field_products_before_fill_reader_mac':rope['linear_sumcheck_field_products_before_fill_reader_mac'],
             'cases':cases, 'same_rq_layout':False, 'additional_pcs_instances':0,
@@ -1242,7 +1305,7 @@ def rms_gkr_aligned_word_screen(joint, field):
             'complete_getter_mac_fs_runtime_and_liveness': None}
 
 
-def rms_joint_lifetime_screen(joint, field, coefficients, bridge, statistic_inputs):
+def rms_joint_lifetime_screen(joint, field, coefficients, bridge, statistic_inputs, rope=None):
     """RMS-J phase on R3's common B/S/kappa base, not a full-Gamma timeline.
 
     Screens must describe the SAME compiled profiles and virtual-Y source.
@@ -1264,18 +1327,29 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge, statistic_inpu
            'plaintext_and_tag_records': joint['plaintext_and_tag_records_bytes'],
            'integer_getter_wave': max(g['one_64_lane_wave_scratch_bytes'] for g in getters)}
     raw.update(statistic_inputs['reader_raw_reservation_bytes'])
+    if rope is not None:
+        if (rope['extends_source'] != 'S+Y' or rope['base_rms_output_layout_sha256'] !=
+                [c['layout_sha256'] for c in bridge['cases']]):
+            raise ValueError('RoPE lifetime must extend the same S+Y source layout')
+        raw['rope_reader_word_buffers'] = rope['word_reader_work']['retained_word_buffer_bytes']
     retained = {k: 256*((v+255)//256) for k,v in raw.items()}
     shared = sum(retained.values())
     packed = joint['bitpacked_replay']
     kernel = (joint['reference_folded_array_bytes']+joint['reference_two_gate_vectors_bytes']+
               field['additional_public_sweep_and_gate_form_bytes']+
               sum(packed[k] for k in ('input_and_two_word_vectors_bytes','field_block_bytes','public_fold_table_reservation_bytes')))
-    phases = {k:v+shared for k,v in bridge['all_context_arena_phase_upper_bytes'].items()}
+    source_phases = (bridge['all_context_arena_phase_upper_bytes'] if rope is None else
+                     rope['source_and_rope_arena_phase_upper_bytes_before_rms_joint_reader_gamma_runtime'])
+    phases = {k:v+shared for k,v in source_phases.items()}
     phases['rms_statistic_prepare'] = phases['opening_first_pass']-80*(1 << 23)
     phases['rms_joint_and_input_split'] = phases['opening_first_pass']-80*(1 << 23)+kernel
     y_visits = bridge['known_bulk_output_reads_before_gamma_and_rms_replay']+joint['reference_input_tuple_visits']
     y_cells = (y_visits*(bridge['rms_output_live_bytes']//2)+statistic_inputs['initial_post_norm_Y_generations']+
                statistic_inputs['sumcheck_input_Y_generations'])
+    extra_reads = 0
+    if rope is not None:
+        y_cells += rope['word_reader_work']['y_generations_including_linear_fill']
+        extra_reads = rope['word_reader_work']['B_S_kappa_logical_read_bytes']
     raw_calls = (y_visits*bridge['rms_cut_reader_screen']['raw_rne_calls_per_full_visit']+
                  bridge['rms_input_split_honest_screen']['rne_output_cells']+
                  statistic_inputs['initial_raw_rne_calls_without_K_V_deduplication']+
@@ -1291,7 +1365,7 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge, statistic_inpu
                 y_visits*bridge['rms_cut_reader_screen']['logical_input_read_bytes_per_full_visit']+
                 bridge['rms_input_split_honest_screen']['raw_B_logical_bytes']+
                 statistic_inputs['initial_B_S_kappa_logical_read_bytes']+
-                statistic_inputs['sumcheck_input_B_S_kappa_logical_read_bytes'],
+                statistic_inputs['sumcheck_input_B_S_kappa_logical_read_bytes']+extra_reads,
             'known_raw_rne_calls_before_gamma': raw_calls,
             'known_pointwise_roundings_before_gamma': point_calls,
             'raw_rne_word_arithmetic_logic_comparisons_upper': 32*raw_calls,
@@ -1301,6 +1375,10 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge, statistic_inpu
                 max(g['row_preparation_mul64_wide_upper'] for g in getters),
             'known_y_generation_mul64_wide_upper': y_cells*
                 max(g['lane_generation_mul64_wide_upper_with_denominator'] for g in getters),
+            'includes_rope_reader':rope is not None,
+            'known_source_and_rms_joint_payload_before_remaining_gamma_framing': (
+                rope['maximum_known_partial_payload_before_rms_joint_gamma_and_framing']
+                +joint['payload_before_incoming_input_adapters_and_shared_closures'] if rope is not None else None),
             'extra_input_split_rne_getter_words': bridge['rms_input_split_honest_screen']['rne_output_cells'],
             'complete_gamma_liveness_pcg_and_runtime': None}
 

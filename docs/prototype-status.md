@@ -267,12 +267,12 @@ authorization.
 ## Next work
 
 The [S+Y+RoPE bridge](c7.1-auxiliary-witness.md#raw-rope-nella-sorgente-comune)
-now recounts the known source-path payload at every context, correction
-deltas and conservative source/linear-proof array reservations. These are
-not full-certificate or physical-liveness results. Next: specify the raw
-reader/form workspace and compose its work/lifetimes with RMS-J and the
-remaining Gamma kernels before adopting the extension. Actual profiles,
-native refinement and global cryptographic obligations remain open.
+now specifies a bounded raw reader from the same RMS inputs, intra-word
+byte reuse and its work/lifetimes with the synthetic RMS-J profiles.
+These are not full-certificate or physical-liveness results. Next: finish
+public form workspace/evaluation and the remaining W-free kernels/readers
+in the shared source schedule before adopting the extension. Actual
+profiles, native refinement and global cryptographic obligations remain open.
 Counts and distinct S/S+Y comparison scopes stay in R3, not copied here.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).

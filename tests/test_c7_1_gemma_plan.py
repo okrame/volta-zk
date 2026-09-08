@@ -2511,6 +2511,16 @@ def test_rope_byte_extension_and_gamma_keep_one_source_and_all_rne_validity():
     assert (bridge['known_bulk_sigma_visits'],bridge['known_bulk_rq_visits']) == (231,122)
     assert bridge['raw_byte_requests_in_known_bulk_paths'] == 253753344000
     assert bridge['raw_linear_field_products_before_fill_reader_mac'] == 1226833200
+    reader = bridge['word_reader_work']
+    assert (reader['raw_word_lanes'],reader['retained_word_buffer_bytes']) == (64,1024)
+    assert reader['bulk_raw_generations'] == 69967872000
+    assert reader['y_generations_including_linear_fill'] == 140055552000
+    assert reader['extra_input_raw_rne_calls'] == 0
+    assert reader['B_S_kappa_logical_read_bytes'] == 4*140055552000+12*(140055552000//64)
+    assert reader['public_q30_logical_read_bytes_upper'] == 8*(69967872000+119808000)
+    assert reader['raw_signed_i64_products_upper'] == 2*69967872000
+    assert reader['raw_signed_i64_additions_upper'] == 69967872000
+    assert reader['complete_all_gamma_reader_work_and_runtime'] is None
     gamma = plan.gamma_barrier_plan(cohorts,True,True)
     summary = gamma['summary']
     assert (summary['ordinary_kernel_cohorts'],summary['final_rne_cohorts'],summary['source_boundary_cohorts'],
@@ -2542,6 +2552,77 @@ def test_rope_byte_extension_and_gamma_keep_one_source_and_all_rne_validity():
     for args in ((False,True),(True,1)):
         with pytest.raises(ValueError):
             plan.gamma_barrier_plan(cohorts,*args)
+
+
+def test_rope_word_reader_uses_its_rms_source_pair_and_absolute_position(monkeypatch):
+    calls = []
+    read = plan.rms_read_input_word
+    def counted(reader, first, count, *args):
+        calls.append((first,count))
+        return read(reader,first,count,*args)
+    monkeypatch.setattr(plan,'rms_read_input_word',counted)
+    for family,width,pairs in (('local',256,128),('global',512,64)):
+        coefficients = plan.rms_integer_coefficients(width,0,5,-3)
+        a,b,c = coefficients
+        rows = [[(17*r+11*j)%101-50 for j in range(width)] for r in range(4)]
+        statistics = [sum(x*x for x in row) for row in rows]
+        buffers = (bytes(8)+b''.join(x.to_bytes(4,'little',signed=True) for row in rows for x in row),
+                   bytes(6)+b''.join((s+(1 << 47)).to_bytes(6,'little') for s in statistics),
+                   bytes(6)+b''.join(plan.rms_row_multiplier(a,b+c*s).to_bytes(6,'little') for s in statistics))
+        reader = {'norm_source_id':7, 'product_source_id':4, 'product_byte_offset':8,
+                  'statistic_byte_offset':6, 'rows':4, 'columns':width, 'product_word_bytes':4}
+        record = {'operation':'q_rope', 'rms_source_id':7, 'heads':2, 'rows':2,
+                  'columns':width, 'rotating_pairs':pairs, 'position_start':4094}
+        public = [(pos,plan.gemma_rope_q30_coefficients(family,pos)) for pos in (4094,4095)]
+        for row in range(4):
+            y = [plan.rms_rne_i16(v,statistics[row],width,0,5,-3) for v in rows[row]]
+            expected = plan.rope_raw_row(y,public[row//2][1])
+            for lane in range(0,width,64):
+                calls.clear()
+                raw = plan.rope_read_raw_word(record,reader,row*width+lane,64,buffers,coefficients,public[row//2])
+                assert raw == expected[lane:lane+64]
+                first = row*width+lane % (width//2)
+                assert calls == [(first,64),(first+width//2,64)]
+                biased = [v+(1 << 47) for v in raw]
+                # The two Sigma groups emit exactly the same six bytes as RQ.
+                grouped = [[(v >> (8*j)) & 255 for j0,n in ((0,4),(4,2)) for j in range(j0,j0+n)] for v in biased]
+                assert [sum(x << (8*j) for j,x in enumerate(d))-(1 << 47) for d in grouped] == raw
+        # Sigma's cube order is byte/lane/token/head, not native lane/head/token.
+        tiles,_ = plan.auxiliary_word_layout([{'shape':(2,2,width),'word_bytes':6,'rne':True}])
+        calls.clear()
+        for _,row0,col0,heads,height,cols,j0,n,offset in tiles:
+            assert offset % (64*n) == 0 and (1 << 23) % (64*n) == 0
+            emitted = []
+            for h in range(heads):
+                for t in range(row0,row0+height):
+                    for lane in range(col0,col0+cols,64):
+                        raw = plan.rope_read_raw_word(record,reader,(t*heads+h)*width+lane,64,
+                                                     buffers,coefficients,public[t])
+                        emitted.extend(((v+(1 << 47)) >> (8*j)) & 255 for v in raw for j in range(j0,j0+n))
+            dense = []
+            for h in range(heads):
+                for t in range(row0,row0+height):
+                    row = t*heads+h
+                    y = [plan.rms_rne_i16(v,statistics[row],width,0,5,-3) for v in rows[row]]
+                    raw = plan.rope_raw_row(y,public[t][1])
+                    dense.extend(((v+(1 << 47)) >> (8*j)) & 255 for v in raw[col0:col0+cols] for j in range(j0,j0+n))
+            assert emitted == dense
+        assert sum(n for _,n in calls) == 4*4*width  # 2 byte groups, 2 Y inputs, 4 native rows.
+        for r,rr,first,count,bufs,pub in (
+                ({**record,'rms_source_id':8},reader,0,1,buffers,public[0]),
+                (record,{**reader,'product_word_bytes':6},0,1,buffers,public[0]),
+                (record,reader,-1,1,buffers,public[0]),
+                (record,reader,4*width,1,buffers,public[0]),
+                (record,reader,0,65,buffers,public[0]),
+                (record,reader,width//2-1,2,buffers,public[0]),
+                (record,reader,width-1,2,buffers,public[0]),
+                (record,reader,0,1,buffers,public[1]),
+                (record,reader,0,1,buffers,(4094,public[0][1][:-1])),
+                (record,reader,0,1,buffers,(4094,((1 << 31,0),)+public[0][1][1:])),
+                (record,reader,0,1,(b'',*buffers[1:]),public[0]),
+                (record,reader,0,1,(buffers[0],b'',buffers[2]),public[0])):
+            with pytest.raises(ValueError):
+                plan.rope_read_raw_word(r,rr,first,count,bufs,coefficients,pub)
 
 
 def test_rope_canonical_q30_recipe_has_fixed_precision_and_quantized_semantics():
@@ -3667,6 +3748,24 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     assert lifetime['pointwise_word_arithmetic_logic_comparisons_upper'] == 576066355200
     assert lifetime['scalar_profile_logical_read_bytes_if_once_per_64_lane_word'] == 13078694400
     assert not lifetime['credit'] and lifetime['complete_gamma_liveness_pcg_and_runtime'] is None
+    rope = plan.rope_byte_bridge_screen(cohorts)
+    combined = plan.rms_joint_lifetime_screen(joint,field,coefficients,extended,statistic_inputs,rope)
+    assert combined['includes_rope_reader'] and not lifetime['includes_rope_reader']
+    assert combined['retained_reservations_256_byte_aligned']['rope_reader_word_buffers'] == 1024
+    assert combined['retained_reservation_bytes'] == 10542592
+    for k,v in lifetime['all_context_arena_phase_upper_bytes'].items():
+        assert combined['all_context_arena_phase_upper_bytes'][k] == v+7020288+(23040 if k == 'rne_top' else 0)
+    assert combined['all_context_arena_phase_upper_bytes']['rope_linear'] == 5646070400
+    assert combined['known_phase_max_upper_bytes'] == 6359102080
+    assert combined['remaining_arena_before_uncompiled_components'] == 83348864
+    assert combined['known_y_generations_before_gamma_without_cross_visit_reuse'] == 847099887360
+    assert combined['known_y_generation_mul64_wide_upper'] == 45743393917440
+    assert combined['known_rms_input_logical_reads_with_row_reuse_before_gamma'] == 3686816467920
+    assert combined['known_raw_rne_calls_before_gamma'] == lifetime['known_raw_rne_calls_before_gamma']
+    assert combined['known_source_and_rms_joint_payload_before_remaining_gamma_framing'] == 33480168
+    for bad in ({**rope,'extends_source':'S'}, {**rope,'base_rms_output_layout_sha256':['wrong']}):
+        with pytest.raises(ValueError):
+            plan.rms_joint_lifetime_screen(joint,field,coefficients,extended,statistic_inputs,bad)
     for j,f,cs,b,si in ((joint,field,coefficients,bridge,statistic_inputs),
                         (joint,field,coefficients[:-1],extended,statistic_inputs),
                         (joint,{**field,'profile_interval_count':1},coefficients,extended,statistic_inputs),

@@ -39,7 +39,7 @@ workspace before a protocol milestone checkpoint when authorized resources
 permit; otherwise state the validation gap. Heavy benchmarks and full-model
 E2E belong on authorized hardware, not the local VM. The owner's 2026-09-08
 exception allows a small synthetic CPU E2E on this VM, within the
-[active experiment contract](../c7.1-gemma31b-design.md#esperimento-ridotto-contratto-non-runner-già-pronto).
+[active experiment contract](../c7.1-gemma31b-design.md#esperimento-ridotto-contratto-e-ambito-del-runner).
 It does not authorize a broad build, GPU/provider access or paid resources.
 
 Do not create per-crate, top-level or experimental Cargo targets. Remove the

@@ -1,5 +1,9 @@
 //! Bounded C7.1 CPU matrix composition. No complete security or Gemma credit.
 
+mod codec;
+mod diagnostic;
+pub use diagnostic::{preflight, run};
+
 use crate::c61_whir_reference::C61Commitment;
 use crate::c61_whir_reference::{c61_reference_mmcs, C61Mmcs};
 use p3_challenger::{
@@ -106,9 +110,11 @@ impl Fs {
     fn digest(&self) -> blake3::Hash {
         self.0.lock().unwrap().hash.finalize()
     }
+    #[cfg(test)]
     fn requests(&self) -> usize {
         self.0.lock().unwrap().requests
     }
+    #[cfg(test)]
     fn fork(&self) -> Self {
         Self(std::sync::Arc::new(std::sync::Mutex::new(self.0.lock().unwrap().clone())))
     }
@@ -454,25 +460,50 @@ struct MatrixProof {
     close_tag: Fp3,
 }
 
+#[derive(Clone, Copy)]
+struct AttemptContext {
+    session: [u8; 32],
+    capacity: [u8; 32],
+    slot: u8,
+    predecessor: [u8; 32],
+    nonce: [u8; 32],
+}
+
+impl AttemptContext {
+    fn valid(self) -> bool {
+        self.slot < 3
+            && self.session != [0; 32]
+            && self.capacity != [0; 32]
+            && self.nonce != [0; 32]
+    }
+    fn encode(self) -> Vec<u8> {
+        let mut bytes = vec![u8::from(self.predecessor != [0; 32]), self.slot];
+        bytes.extend_from_slice(&self.session);
+        bytes.extend_from_slice(&self.capacity);
+        bytes.extend_from_slice(&self.predecessor);
+        bytes.extend_from_slice(&self.nonce);
+        bytes
+    }
+}
+
 fn matrix_statement(
     n: usize,
     root: &C61Commitment,
     input: &[i16],
     output: &[i64],
-    attempt: [u8; 32],
+    attempt: AttemptContext,
     config: &ZkWhirConfig<E, Goldilocks, Fs>,
 ) -> Result<Fs, String> {
-    if input.len() != n || output.len() != n || attempt == [0; 32] || root.num_roots() != 1 {
+    if input.len() != n || output.len() != n || !attempt.valid() || root.num_roots() != 1 {
         return Err("C71 matrix statement shape or attempt mismatch".into());
     }
     if output.iter().any(|x| x.unsigned_abs() > n as u64 * 32768 * 32768) {
         return Err("C71 integer output exceeds the no-wrap relation range".into());
     }
-    let mut statement =
-        b"C71-matrix-component-v1;Fp3-u3-2;Johnson128;fold1,2;ell16;rate2;slots3".to_vec();
+    let mut statement = gamma(config);
     statement.extend_from_slice(&(n as u32).to_le_bytes());
     statement.extend_from_slice(&root.roots()[0]);
-    statement.extend_from_slice(&attempt);
+    statement.extend_from_slice(&attempt.encode());
     for x in input {
         statement.extend_from_slice(&x.to_le_bytes());
     }
@@ -480,6 +511,56 @@ fn matrix_statement(
         statement.extend_from_slice(&y.to_le_bytes());
     }
     Ok(Fs::new(&statement, request_limit(config)))
+}
+
+// Explicit derived geometry makes the profile independent of Debug formatting.
+// Variable lists have their counts; every integer is a little-endian u64.
+fn gamma(c: &ZkWhirConfig<E, Goldilocks, Fs>) -> Vec<u8> {
+    let mut bytes = b"C71-matrix-v1;codec1;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;Johnson128;PoW0;AES128-MMO;LPN64,512,8,4;setup16,128,4;checks2;pool3;lift9sVOLE48;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
+    let mut words = vec![
+        volta_field::P,
+        16,
+        1,
+        c.num_variables as u64,
+        c.n_rounds() as u64,
+        c.final_queries as u64,
+        c.final_sumcheck_rounds as u64,
+        c.mask_queries as u64,
+        request_limit(c) as u64,
+    ];
+    for list in [&c.folding_schedule, &c.oracle_randomness] {
+        words.push(list.len() as u64);
+        words.extend(list.iter().map(|&x| x as u64));
+    }
+    for r in c.round_parameters.iter().chain(std::iter::once(&c.final_round_config())) {
+        words.extend(
+            [
+                r.pow_bits,
+                r.folding_pow_bits,
+                r.num_queries,
+                r.ood_samples,
+                r.num_variables,
+                r.folding_factor,
+                r.log_inv_rate,
+                r.domain_size,
+            ]
+            .map(|x| x as u64),
+        );
+        words.push(r.folded_domain_gen.as_canonical_u64());
+    }
+    let groups = c.mask_groups();
+    words.push(groups.len() as u64);
+    for g in groups {
+        words.extend(
+            [g.width, g.shape.message_len, g.shape.randomness_len, g.shape.domain_size]
+                .map(|x| x as u64),
+        );
+    }
+    words.extend(U);
+    words.extend(U2);
+    words.extend(FROM_P3.into_iter().flatten());
+    bytes.extend(words.into_iter().flat_map(u64::to_le_bytes));
+    bytes
 }
 
 fn record_values(fs: &mut Fs, kind: u16, values: &[Fp3]) {
@@ -490,7 +571,7 @@ fn matrix_prove(
     model: &Model,
     input: &[i16],
     output: &[i64],
-    attempt: [u8; 32],
+    attempt: AttemptContext,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(MatrixProof, blake3::Hash), String> {
     let config = matrix_config(model.n)?;
@@ -590,7 +671,7 @@ fn matrix_verify(
     root: &C61Commitment,
     input: &[i16],
     output: &[i64],
-    attempt: [u8; 32],
+    attempt: AttemptContext,
     proof: &MatrixProof,
     delta: Fp3,
     correlations: &mut std::vec::IntoIter<Key>,
@@ -669,6 +750,77 @@ fn matrix_verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fs_bytes_match_independent_flat_reference() {
+        // Reference rebuilds the complete byte string; it does not call any
+        // Fs framing/request helper or depend on its incremental hash state.
+        fn frame(bytes: &mut Vec<u8>, seq: u64, phase: u16, kind: u16, body: &[u8]) {
+            bytes.extend(seq.to_le_bytes());
+            bytes.extend(phase.to_le_bytes());
+            bytes.extend(kind.to_le_bytes());
+            bytes.extend((body.len() as u64).to_le_bytes());
+            bytes.extend(body);
+        }
+        let mut bytes = b"volta-zk/c7.1/fs/v1".to_vec();
+        frame(&mut bytes, 0, 0, 0, b"C71-public-KAT-v1");
+        frame(&mut bytes, 1, 0, 2, &[0x71; 32]);
+        let request = [
+            0u64.to_le_bytes().as_slice(),
+            &1u16.to_le_bytes(),
+            &3u32.to_le_bytes(),
+            &8u32.to_le_bytes(),
+        ]
+        .concat();
+        frame(&mut bytes, 2, 1, 0xff00, &request);
+        let mut expected = [0; 24];
+        let mut hash = blake3::Hasher::new();
+        hash.update(&bytes);
+        hash.finalize_xof().fill(&mut expected);
+        let expected = Fp3::from_bytes(&expected).unwrap(); // this fixed vector has no rejection
+        frame(&mut bytes, 3, 1, 0xff01, &expected.to_bytes());
+        frame(&mut bytes, 4, 1, 1, &7u64.to_le_bytes());
+        let request = [
+            1u64.to_le_bytes().as_slice(),
+            &2u16.to_le_bytes(),
+            &11u32.to_le_bytes(),
+            &8u32.to_le_bytes(),
+        ]
+        .concat();
+        frame(&mut bytes, 5, 1, 0xff00, &request);
+        let mut word = [0; 8];
+        let mut hash = blake3::Hasher::new();
+        hash.update(&bytes);
+        hash.finalize_xof().fill(&mut word);
+        let index = u64::from_le_bytes(word) & 2047;
+        frame(&mut bytes, 6, 1, 0xff01, &index.to_le_bytes());
+        let mut fs = Fs::new(b"C71-public-KAT-v1", 2);
+        fs.observe(C61Commitment::new(vec![[0x71; 32]]));
+        fs.set_phase(1);
+        assert_eq!(fs.fp3(), expected);
+        fs.observe(Goldilocks::new(7));
+        assert_eq!(fs.sample_bits(11), index as usize);
+        assert_eq!(fs.digest(), blake3::hash(&bytes));
+        assert_eq!(
+            expected,
+            Fp3::new(
+                Fp::new(12407007333001977886),
+                Fp::new(18119134539298759906),
+                Fp::new(17958922495321283941)
+            )
+        );
+        assert_eq!(index, 1319);
+        assert_eq!(
+            fs.digest().to_hex().as_str(),
+            "2eafb615a0bdaf51cf300a197c97d491a225f2ecbb3c64689c2773bfffa2fab4"
+        );
+        for (n, digest) in [
+            (48, "913f74d7b4317b71d098c55c79e2ffddc1a906859ff1e65912592448bd0e77ba"),
+            (128, "e96896ada45f227b313dc5f2008c2cb38d2fbc19283e4b179c8eb20d0c70e55d"),
+        ] {
+            assert_eq!(blake3::hash(&gamma(&matrix_config(n).unwrap())).to_hex().as_str(), digest);
+        }
+    }
 
     #[test]
     fn cubic_basis_map_preserves_the_c71_field_and_codec() {
@@ -810,9 +962,16 @@ mod tests {
         assert!(pools.iter().all(|p| p.prover.subs.is_empty() && p.verifier.sub_keys.is_empty()));
         let mut prover_pool = auths.into_iter();
         let mut verifier_pool = keys.into_iter();
+        let mut predecessor = [0; 32];
         for slot in 0..3 {
-            let attempt = [0xa0 + slot; 32];
-            let binding = SessionBinding::new([0x71; 32], [0x72; 32], attempt).unwrap();
+            let attempt = AttemptContext {
+                session: [0x71; 32],
+                capacity: [0x73; 32],
+                slot,
+                predecessor,
+                nonce: [0xa0 + slot; 32],
+            };
+            let binding = SessionBinding::new([0x71; 32], [0x72; 32], attempt.nonce).unwrap();
             store.reserve(&binding).unwrap();
             assert!(store.reserve(&binding).is_err());
             if slot == 1 {
@@ -827,8 +986,28 @@ mod tests {
                 .map(|row| row.iter().zip(&input).map(|(&w, &x)| i64::from(w) * i64::from(x)).sum())
                 .collect();
             let fixture_keys = verifier_pool.clone();
-            let (mut proof, prover_digest) =
+            let fixture_auths = prover_pool.clone();
+            let (proof, prover_digest) =
                 matrix_prove(&model, &input, &output, attempt, &mut prover_pool).unwrap();
+            let encoded = codec::encode(n, &model.root, &input, &output, attempt, &proof).unwrap();
+            let mut proof =
+                codec::decode(n, &model.root, &input, &output, attempt, &encoded).unwrap();
+            assert_eq!(
+                codec::encode(n, &model.root, &input, &output, attempt, &proof).unwrap(),
+                encoded
+            );
+            for end in [0, 75, encoded.len() / 2, encoded.len() - 1] {
+                assert!(codec::decode(n, &model.root, &input, &output, attempt, &encoded[..end])
+                    .is_err());
+            }
+            let mut bad = encoded.clone();
+            bad.push(0);
+            assert!(codec::decode(n, &model.root, &input, &output, attempt, &bad).is_err());
+            bad = encoded.clone();
+            bad[codec::header(n, &model.root, &input, &output, attempt).unwrap().bytes.len()
+                ..codec::header(n, &model.root, &input, &output, attempt).unwrap().bytes.len() + 8]
+                .copy_from_slice(&volta_field::P.to_le_bytes());
+            assert!(codec::decode(n, &model.root, &input, &output, attempt, &bad).is_err());
             let verifier_digest = matrix_verify(
                 n,
                 &model.root,
@@ -841,6 +1020,58 @@ mod tests {
             )
             .unwrap();
             assert_eq!(prover_digest, verifier_digest);
+            predecessor = *verifier_digest.as_bytes();
+            if slot == 0 {
+                let mut wrong_w = model.clone();
+                wrong_w.weights[0] += 1;
+                assert!(matrix_prove(
+                    &wrong_w,
+                    &input,
+                    &output,
+                    attempt,
+                    &mut fixture_auths.clone()
+                )
+                .err()
+                .unwrap()
+                .contains("installed model root"));
+                let mut wrong_input = input.clone();
+                wrong_input[0] += 1;
+                assert!(matrix_verify(
+                    n,
+                    &model.root,
+                    &wrong_input,
+                    &output,
+                    attempt,
+                    &proof,
+                    delta,
+                    &mut fixture_keys.clone()
+                )
+                .is_err());
+                // Each altered context also changes the derived row/column points;
+                // a valid proof cannot supply or override those challenge points.
+                for changed in [
+                    AttemptContext { session: [9; 32], ..attempt },
+                    AttemptContext { capacity: [9; 32], ..attempt },
+                    AttemptContext { slot: 2, ..attempt },
+                    AttemptContext { predecessor: [9; 32], ..attempt },
+                    AttemptContext { nonce: [9; 32], ..attempt },
+                ] {
+                    assert!(
+                        codec::decode(n, &model.root, &input, &output, changed, &encoded).is_err()
+                    );
+                    assert!(matrix_verify(
+                        n,
+                        &model.root,
+                        &input,
+                        &output,
+                        changed,
+                        &proof,
+                        delta,
+                        &mut fixture_keys.clone()
+                    )
+                    .is_err());
+                }
+            }
             proof.rounds[0][3] += Fp3::ONE;
             assert!(matrix_verify(
                 n,

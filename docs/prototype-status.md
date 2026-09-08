@@ -92,7 +92,7 @@ registered and unregistered sources, census drift and loss of claimless
 binding. This is provenance/textual evidence, not native or security admission.
 B1's failed census is retained separately in the comparison budget.
 
-The CPU diagnostic uses an interactive transcript, mock correlations and
+The pre-existing C61 CPU diagnostic uses an interactive transcript, mock correlations and
 Fp2 (75 nominal component bits in the authenticated adapter; 74 in the clear
 reference). Its target key is constructed from the witness evaluation, so it
 does not prove the requested matrix/output relation. The FS wrapper requires
@@ -112,12 +112,21 @@ matrix-output reduction. Three real OT/AES pool pairs feed the
 that have no security credit. Merkle opening payloads enter FS before later
 draws; the independent matrix replay matches the complete transcript digest.
 
-These are private component APIs and focused tests, not the complete local
-runner. The strict certificate codec, complete session/context binding,
-enforced three-slot lifecycle, complete work census and measured preflight
-remain to be composed. The current root's three-attempt mask reservation
-is a caller premise, not yet an enforced service API. All missing complete
-totals remain unbounded for admission; no C7.1 security or hardware credit.
+The strict certificate and lift codecs, concrete Gamma/FS vectors and
+three-slot lifecycle now connect this path. Both roles burn the entire
+reservation before execution, including codec errors, panic and abort;
+a durable model-root lease rejects reset through a new session or reopened
+store. Two byte-serialized matrix responses replay independently at n=48
+(padding to 64) and n=128. The launcher enforces 2 GiB address space/RSS,
+60 s and at most two process threads (one Rayon worker plus main).
+
+The functional B2 port is ready for a clean-source evidence run. This is
+still a diagnostic with tiny, insecure LPN tuples. Complete native PCS/PCG
+Fp/Fp3 arithmetic, physical expanded-array traffic and per-phase RSS are
+not censused; their admission totals remain unknown/infinity. The full
+measurement contract and lifetime security are not declared complete.
+The next bounded work is that census on the existing reduced path; no
+new PCS, G2 restart or hardware campaign follows automatically.
 
 No native build or cryptographic E2E ran for B1. The pre-existing
 uncommitted additions in `tests/test_c7_1_gemma_plan.py` belong to the

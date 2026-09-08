@@ -1,0 +1,334 @@
+{
+  "milestone": "c71-b2-matrix-diagnostic",
+  "git_commit": "a8243d552bc2b50ede5b8590601bcac9057943cd",
+  "git_dirty": true,
+  "run_of_record": false,
+  "credit": false,
+  "build_profile": "dev unoptimized, debug symbols disabled, native CPU",
+  "binary_sha256": "65c9eea96cd4f4b4ed26597eb4cd7fc1017d3070f1bb58ee7989601fdf1e927b",
+  "host": [
+    "Linux",
+    "mydebian",
+    "6.12.94+deb13-arm64",
+    "#1 SMP Debian 6.12.94-1 (2026-06-20)",
+    "aarch64"
+  ],
+  "build_command": [
+    "/home/okrame/.cargo/bin/cargo",
+    "build",
+    "--offline",
+    "--locked",
+    "-j",
+    "2",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-cpu-matrix-reference",
+    "--example",
+    "c71_matrix"
+  ],
+  "runtime_limits": {
+    "wall_seconds": 60,
+    "address_space_and_RSS_bytes": 2147483648,
+    "process_threads": 2,
+    "rayon_workers": 1
+  },
+  "preflight_process": {
+    "returncode": 0,
+    "failure": null,
+    "wall_seconds": 0.02175565413199365,
+    "sampled_peak_RSS_bytes": 733184,
+    "sampled_peak_process_threads": 1,
+    "stderr": ""
+  },
+  "preflight": {
+    "alignment_bytes_per_full_fp3": 48,
+    "certificate_cap_bytes": 8388608,
+    "complete_fp3_multiplications": null,
+    "complete_fp_multiplications": null,
+    "complete_work_admission_bound": "infinity",
+    "credit": false,
+    "fs_request_limit": 1515042,
+    "full_fp3_per_attempt": 20,
+    "gamma_bytes_hex": "4337312d6d61747269782d76313b636f646563313b4670332d75332d323b50332d76332d762d313b424c414b45332d584f463b4a6f686e736f6e3132383b506f57303b4145533132382d4d4d4f3b4c504e36342c3531322c382c343b736574757031362c3132382c343b636865636b73323b706f6f6c333b6c6966743973564f4c4534383b6e6f2d73656375726974793b736c6f7473333b64726177383b64697374696e63743235363b636170384d694201000000ffffffff100000000000000001000000000000000c0000000000000003000000000000005a0000000000000005000000000000003101000000000000221e1700000000000400000000000000010000000000000002000000000000000200000000000000020000000000000004000000000000007e030000000000002a010000000000008a000000000000005a00000000000000000000000000000000000000000000002a0100000000000001000000000000000b00000000000000010000000000000001000000000000000020000000000000b6fc9d959951c3f2000000000000000000000000000000002a010000000000000100000000000000090000000000000002000000000000000200000000000000001000000000000072d9fe8bd72a8f9d000000000000000000000000000000008a00000000000000010000000000000007000000000000000200000000000000030000000000000000080000000000004e1f415c2ad00519000000000000000000000000000000005a000000000000000000000000000000050000000000000002000000000000000300000000000000000400000000000066a90ce63c1479bf0700000000000000010000000000000010000000000000003101000000000000000400000000000001000000000000007f0300000000000031010000000000000010000000000000020000000000000010000000000000003101000000000000000400000000000001000000000000002b0100000000000031010000000000000008000000000000020000000000000010000000000000003101000000000000000400000000000001000000000000008b000000000000003101000000000000000400000000000002000000000000001000000000000000310100000000000000040000000000007a0f66cc3e27ad8f675de8dbc06d2ef1cae866cd20457c28d542b61a414b229d9fdf6d7c5bafe3e0c29beed71c8f4c9401000000000000000000000000000000010000005555555500000000000000001643719557d71c95578f188f22cb96ab0000000000000000dde800b02547f8b91f2ce3cb005bfa35",
+    "gamma_digest": "913f74d7b4317b71d098c55c79e2ffddc1a906859ff1e65912592448bd0e77ba",
+    "mask_domain_cells_sum": 14336,
+    "memory_allowance_bytes": 219152384,
+    "memory_allowance_kind": "analytic diagnostic allowance, not a proved peak",
+    "missing_work": [
+      "native PCS arithmetic including encoding, folding and verifier",
+      "PCG arithmetic",
+      "basis conversion and codec arithmetic"
+    ],
+    "n": 48,
+    "oracle_domain_cells_sum": 15360,
+    "padded_side": 64,
+    "required_limits": {
+      "process_threads": 2,
+      "rss_and_address_space_bytes": 2147483648,
+      "wall_seconds": 60
+    },
+    "root_attempts": 3,
+    "svole_per_full_fp3": 9
+  },
+  "execution_process": {
+    "returncode": 0,
+    "failure": null,
+    "wall_seconds": 3.9054873678833246,
+    "sampled_peak_RSS_bytes": 9445376,
+    "sampled_peak_process_threads": 2,
+    "stderr": ""
+  },
+  "execution": {
+    "aes_setup_wire_bytes": 145590,
+    "alignment_corrections_bytes": 2880,
+    "alignment_header_bytes": 76,
+    "alignment_wire_bytes": 2956,
+    "attempts": [
+      {
+        "decode_and_verify_seconds": 0.94099318,
+        "decode_seconds": 0.003781909,
+        "encode_seconds": 0.003214696,
+        "forward_seconds": 2.3459e-05,
+        "integer_forward_multiplications": 2304,
+        "matrix_reduction_only_fp3_products_prover": 2887,
+        "matrix_reduction_only_fp3_products_verifier": 276,
+        "packed_weight_bytes_read": 13824,
+        "packed_weight_full_scans": {
+          "commit_rematerialization": 1,
+          "integer_forward": 1,
+          "row_reduction": 1
+        },
+        "prove_including_commit_rematerialization_seconds": 0.642162784,
+        "reserved_full_fp3": 20,
+        "slot": 0,
+        "status": "accepted",
+        "transcript_digest": "422b9299bca4d2685b27a8b8abf8a2eb37b8ab7e6e88fde873f03a03c871d971",
+        "wire_bytes": 599010
+      },
+      {
+        "reserved_full_fp3": 20,
+        "slot": 1,
+        "status": "aborted",
+        "wire_bytes": 0
+      },
+      {
+        "decode_and_verify_seconds": 0.960498433,
+        "decode_seconds": 0.003807493,
+        "encode_seconds": 0.00316932,
+        "forward_seconds": 2.2792e-05,
+        "integer_forward_multiplications": 2304,
+        "matrix_reduction_only_fp3_products_prover": 2887,
+        "matrix_reduction_only_fp3_products_verifier": 276,
+        "packed_weight_bytes_read": 13824,
+        "packed_weight_full_scans": {
+          "commit_rematerialization": 1,
+          "integer_forward": 1,
+          "row_reduction": 1
+        },
+        "prove_including_commit_rematerialization_seconds": 0.641787942,
+        "reserved_full_fp3": 20,
+        "slot": 2,
+        "status": "accepted",
+        "transcript_digest": "c3a4ef78b0a147e57305afb45352a07bebd9c23e8fa3dcf64ccf6e2c49b88bb7",
+        "wire_bytes": 600898
+      }
+    ],
+    "certificates_wire_bytes": 1199908,
+    "connection_and_lift_seconds": 0.686356809,
+    "credit": false,
+    "fourth_attempt_rejected": true,
+    "full_fp3_consumed_or_burned": 60,
+    "model_publication_bytes": 32,
+    "model_root": [
+      236,
+      42,
+      234,
+      169,
+      31,
+      160,
+      142,
+      109,
+      176,
+      113,
+      171,
+      131,
+      103,
+      90,
+      45,
+      122,
+      177,
+      190,
+      184,
+      203,
+      214,
+      101,
+      145,
+      116,
+      42,
+      147,
+      240,
+      114,
+      35,
+      123,
+      188,
+      7
+    ],
+    "model_setup_packed_weight_scans": 1,
+    "model_setup_seconds": 0.023190334,
+    "preflight": {
+      "alignment_bytes_per_full_fp3": 48,
+      "certificate_cap_bytes": 8388608,
+      "complete_fp3_multiplications": null,
+      "complete_fp_multiplications": null,
+      "complete_work_admission_bound": "infinity",
+      "credit": false,
+      "fs_request_limit": 1515042,
+      "full_fp3_per_attempt": 20,
+      "gamma_bytes_hex": "4337312d6d61747269782d76313b636f646563313b4670332d75332d323b50332d76332d762d313b424c414b45332d584f463b4a6f686e736f6e3132383b506f57303b4145533132382d4d4d4f3b4c504e36342c3531322c382c343b736574757031362c3132382c343b636865636b73323b706f6f6c333b6c6966743973564f4c4534383b6e6f2d73656375726974793b736c6f7473333b64726177383b64697374696e63743235363b636170384d694201000000ffffffff100000000000000001000000000000000c0000000000000003000000000000005a0000000000000005000000000000003101000000000000221e1700000000000400000000000000010000000000000002000000000000000200000000000000020000000000000004000000000000007e030000000000002a010000000000008a000000000000005a00000000000000000000000000000000000000000000002a0100000000000001000000000000000b00000000000000010000000000000001000000000000000020000000000000b6fc9d959951c3f2000000000000000000000000000000002a010000000000000100000000000000090000000000000002000000000000000200000000000000001000000000000072d9fe8bd72a8f9d000000000000000000000000000000008a00000000000000010000000000000007000000000000000200000000000000030000000000000000080000000000004e1f415c2ad00519000000000000000000000000000000005a000000000000000000000000000000050000000000000002000000000000000300000000000000000400000000000066a90ce63c1479bf0700000000000000010000000000000010000000000000003101000000000000000400000000000001000000000000007f0300000000000031010000000000000010000000000000020000000000000010000000000000003101000000000000000400000000000001000000000000002b0100000000000031010000000000000008000000000000020000000000000010000000000000003101000000000000000400000000000001000000000000008b000000000000003101000000000000000400000000000002000000000000001000000000000000310100000000000000040000000000007a0f66cc3e27ad8f675de8dbc06d2ef1cae866cd20457c28d542b61a414b229d9fdf6d7c5bafe3e0c29beed71c8f4c9401000000000000000000000000000000010000005555555500000000000000001643719557d71c95578f188f22cb96ab0000000000000000dde800b02547f8b91f2ce3cb005bfa35",
+      "gamma_digest": "913f74d7b4317b71d098c55c79e2ffddc1a906859ff1e65912592448bd0e77ba",
+      "mask_domain_cells_sum": 14336,
+      "memory_allowance_bytes": 219152384,
+      "memory_allowance_kind": "analytic diagnostic allowance, not a proved peak",
+      "missing_work": [
+        "native PCS arithmetic including encoding, folding and verifier",
+        "PCG arithmetic",
+        "basis conversion and codec arithmetic"
+      ],
+      "n": 48,
+      "oracle_domain_cells_sum": 15360,
+      "padded_side": 64,
+      "required_limits": {
+        "process_threads": 2,
+        "rss_and_address_space_bytes": 2147483648,
+        "wall_seconds": 60
+      },
+      "root_attempts": 3,
+      "svole_per_full_fp3": 9
+    },
+    "raw_svole_consumed": 540,
+    "root_lease_reopen_rejected": true,
+    "scope": "complete reduced matrix byte path; incomplete work census and no security admission",
+    "setup_lanes": [
+      {
+        "comm": {
+          "base_ot_bytes": 16411,
+          "consistency_bytes": 2824,
+          "ggm_bytes": 324,
+          "ot_extension_bytes": 28971,
+          "prover_to_verifier_bytes": 41548,
+          "total_bytes": 48530,
+          "verifier_to_prover_bytes": 6982
+        },
+        "credit": false,
+        "params": {
+          "base_ot_count": 128,
+          "extended_ot_count": 68,
+          "ggm_aes_backend": "armv8-ce",
+          "ggm_path_depth": 6,
+          "ggm_prg": "aes128-mmo",
+          "logical_cpu_count": 2,
+          "lpn_parameter_source": "test parameters",
+          "malicious_check": "WYKW batched single-point-sVOLE consistency check",
+          "malicious_check_paper_section": "Wolverine ePrint 2020/925 Section 5.1, Figure 7 steps 4-6, optimization 3",
+          "parity_candidate": true,
+          "production_ready": true,
+          "profile": "p7-phase-b-wykw-two-party-v2",
+          "setup_ggm_path_depth": 5,
+          "setup_security_bits": 128
+        },
+        "timings": {
+          "t_base_ot_s": 0.190593092,
+          "t_base_vole_from_setup_s": 0.008658703,
+          "t_consistency_check_s": 0.011521187,
+          "t_full_combine_s": 4.042e-06,
+          "t_ggm_pprf_s": 0.016033729,
+          "t_lpn_expand_s": 0.000131418,
+          "t_ot_extension_s": 0.010491094,
+          "t_total_setup_and_expansion_s": 0.228896687
+        }
+      },
+      {
+        "comm": {
+          "base_ot_bytes": 16411,
+          "consistency_bytes": 2824,
+          "ggm_bytes": 324,
+          "ot_extension_bytes": 28971,
+          "prover_to_verifier_bytes": 41548,
+          "total_bytes": 48530,
+          "verifier_to_prover_bytes": 6982
+        },
+        "credit": false,
+        "params": {
+          "base_ot_count": 128,
+          "extended_ot_count": 68,
+          "ggm_aes_backend": "armv8-ce",
+          "ggm_path_depth": 6,
+          "ggm_prg": "aes128-mmo",
+          "logical_cpu_count": 2,
+          "lpn_parameter_source": "test parameters",
+          "malicious_check": "WYKW batched single-point-sVOLE consistency check",
+          "malicious_check_paper_section": "Wolverine ePrint 2020/925 Section 5.1, Figure 7 steps 4-6, optimization 3",
+          "parity_candidate": true,
+          "production_ready": true,
+          "profile": "p7-phase-b-wykw-two-party-v2",
+          "setup_ggm_path_depth": 5,
+          "setup_security_bits": 128
+        },
+        "timings": {
+          "t_base_ot_s": 0.190410716,
+          "t_base_vole_from_setup_s": 0.008642745,
+          "t_consistency_check_s": 0.011593272,
+          "t_full_combine_s": 3.916e-06,
+          "t_ggm_pprf_s": 0.015855852,
+          "t_lpn_expand_s": 0.000143876,
+          "t_ot_extension_s": 0.010487927,
+          "t_total_setup_and_expansion_s": 0.228587143
+        }
+      },
+      {
+        "comm": {
+          "base_ot_bytes": 16411,
+          "consistency_bytes": 2824,
+          "ggm_bytes": 324,
+          "ot_extension_bytes": 28971,
+          "prover_to_verifier_bytes": 41548,
+          "total_bytes": 48530,
+          "verifier_to_prover_bytes": 6982
+        },
+        "credit": false,
+        "params": {
+          "base_ot_count": 128,
+          "extended_ot_count": 68,
+          "ggm_aes_backend": "armv8-ce",
+          "ggm_path_depth": 6,
+          "ggm_prg": "aes128-mmo",
+          "logical_cpu_count": 2,
+          "lpn_parameter_source": "test parameters",
+          "malicious_check": "WYKW batched single-point-sVOLE consistency check",
+          "malicious_check_paper_section": "Wolverine ePrint 2020/925 Section 5.1, Figure 7 steps 4-6, optimization 3",
+          "parity_candidate": true,
+          "production_ready": true,
+          "profile": "p7-phase-b-wykw-two-party-v2",
+          "setup_ggm_path_depth": 5,
+          "setup_security_bits": 128
+        },
+        "timings": {
+          "t_base_ot_s": 0.190354215,
+          "t_base_vole_from_setup_s": 0.008589202,
+          "t_consistency_check_s": 0.01149427,
+          "t_full_combine_s": 3.917e-06,
+          "t_ggm_pprf_s": 0.015808517,
+          "t_lpn_expand_s": 0.000132668,
+          "t_ot_extension_s": 0.010402094,
+          "t_total_setup_and_expansion_s": 0.228284474
+        }
+      }
+    ],
+    "status": "C71_MATRIX_BYTE_REPLAY_PASS",
+    "total_protocol_wire_bytes": 1348486,
+    "total_seconds": 3.902011962,
+    "wire_scope": "model root, framed real PCG setup, framed lift and self-contained certificates; no network transport used"
+  },
+  "status": "pass"
+}

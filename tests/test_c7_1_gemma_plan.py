@@ -2119,6 +2119,12 @@ def test_rms_statistic_input_cones_and_two_stage_preparation_are_acyclic():
     assert s['initial_B_S_kappa_logical_read_bytes'] == 1909036800
     assert s['initial_S_kappa_write_bytes'] == 6913788
     assert s['single_token_residual_vector_bytes'] == 10752
+    assert s['sumcheck_input_live_cells'] == plan.rms_statistic_screen(cohorts)['source_live_cells_read'] == 347942400
+    assert s['sumcheck_input_raw_rne_calls'] == 250368000
+    assert s['sumcheck_input_Y_generations'] == 5854464000
+    assert s['sumcheck_input_pointwise_roundings'] == 8855078400
+    assert s['sumcheck_input_lookup_cells'] == 97574400
+    assert s['sumcheck_input_B_S_kappa_logical_read_bytes'] == 26212924800
     assert not s['credit'] and s['complete_native_statistic_reader_and_liveness'] is None
     norms = plan.rms_statistic_cohorts(cohorts)
     by_key = {(n['layer'],n['operation']): i for i,n in enumerate(norms)}
@@ -2133,6 +2139,14 @@ def test_rms_statistic_input_cones_and_two_stage_preparation_are_acyclic():
                 expected.append(by_key[layer,'post_attention_rms'])
         assert result['statistic_dependencies'][i] == sorted(expected)
         assert all(rank[j] < rank[i] and not result['statistic_dependencies'][j] for j in expected)
+        replay = result['input_replay_counts'][i]
+        if op in ('input_rms','pre_ffw_rms','final_rms'):
+            layers = 60 if op == 'final_rms' else layer
+            half = int(op == 'pre_ffw_rms')
+            assert replay == {'Y': (2*layers+half)*150*5376, 'raw_rne': 0,
+                              'lookup': 150*5376, 'pointwise': (1+3*layers+half)*150*5376}
+        else:
+            assert replay == {'Y': 0, 'raw_rne': math.prod(norm['source_shape']), 'lookup': 0, 'pointwise': 0}
     nodes = gamma['cohorts']
     by_op = {(r['layer'],r['operation']):r['ordinal'] for r in nodes}
     for ordinal,changes in ((by_op[0,'q_proj'], {'byte_source':'raw_attention'}),
@@ -2146,6 +2160,10 @@ def test_rms_statistic_input_cones_and_two_stage_preparation_are_acyclic():
               if (c['layer'],c['operation']) == (0,'post_ffw_rms') else c for c in cohorts]
     with pytest.raises(ValueError):
         plan.rms_statistic_dependency_plan(cyclic,gamma)
+    truncated = [{**c,'rows':149} if (c['layer'],c['operation']) == (0,'post_attention_rms') else c
+                 for c in cohorts]
+    with pytest.raises(ValueError):
+        plan.rms_statistic_dependency_plan(truncated,gamma)
     # Pointwise does not mean that successive rounded operators can be fused.
     sequential = plan.rne_i48_to_i16(plan.rne_i48_to_i16(1,1)+1,1)
     assert sequential == 0 and plan.rne_i48_to_i16(3,2) == 1
@@ -4440,6 +4458,45 @@ def test_i48_requantization_matches_exact_fraction_and_rejects_overflow():
     for args in ((1, -10**9), (1 << 47, 48), (-(1 << 47)-1, 48), (True, 0), (0, False)):
         with pytest.raises(ValueError):
             plan.rne_i48_to_i16(*args)
+
+
+def test_public_dyadic_addition_and_wide_rne_match_exact_fraction():
+    def check(call, want):
+        if -32767 <= want <= 32767:
+            assert call() == want
+        else:
+            with pytest.raises(ValueError):
+                call()
+    for bits in (1,2,17,48,65,129,4096):
+        for value in (-(1 << (bits-1)), -(1 << (bits-1))+1, 0, (1 << (bits-1))-1):
+            for shift in (-15,0,1,bits-1,bits,bits+1):
+                want = round(Fraction(value,1 << shift)) if shift >= 0 else value*(1 << -shift)
+                check(lambda: plan.rne_signed_to_i16(value,shift,bits), want)
+    for a in range(-5,6):
+        for b in range(-5,6):
+            for ea,eb,eo in product((-3,0,2,7),(-3,0,2,7),(-4,1,6)):
+                want = round((a*Fraction(2)**ea+b*Fraction(2)**eb)/Fraction(2)**eo)
+                check(lambda: plan.rne_dyadic_add_i16(a,b,(ea,eb,eo)), want)
+    for a,b,exponents in ((32767,32767,(0,0,1)), (-32767,-32767,(0,0,1)),
+                           (32767,-32767,(100,100,100)), (1,-1,(4079,0,4079)),
+                           (1,1,(0,1,0)), (32767,1,(0,0,0)), (-32767,-1,(0,0,0))):
+        ea,eb,eo = exponents
+        check(lambda: plan.rne_dyadic_add_i16(a,b,exponents),
+              round((a*Fraction(2)**ea+b*Fraction(2)**eb)/Fraction(2)**eo))
+    assert plan.rne_dyadic_add_i16(1,-1,(0,0,-10**9)) == 0
+    assert plan.rne_dyadic_add_i16(32767,-32767,(0,1,10**9)) == 0
+    assert plan.rne_signed_to_i16(-(1 << 4095),10**9,4096) == 0
+    for args in ((True,0,17), (0,False,17), (0,0,True), (0,0,0), (0,0,4097), (1 << 16,0,17)):
+        with pytest.raises(ValueError):
+            plan.rne_signed_to_i16(*args)
+    for args in ((True,0,(0,0,0)), (-32768,0,(0,0,0)), (0,32768,(0,0,0)),
+                 (0,0,(0,0)), (0,0,(0,False,0)), (0,0,(0,10**9,0)), (1,0,(0,0,-10**9))):
+        with pytest.raises(ValueError):
+            plan.rne_dyadic_add_i16(*args)
+    # Every BF16 mantissa product fits the unchanged i48 raw contract.
+    for a,m,shift in product((-32767,-1,0,1,32767),(-255,-147,-1,0,1,147,255),(-1,0,1,8,24)):
+        want = round(Fraction(a*m,1 << shift)) if shift >= 0 else a*m*(1 << -shift)
+        check(lambda: plan.rne_i48_to_i16(a*m,shift), want)
 
 
 def test_byte_basis_has_no_private_denominator_or_exception_at_roots():

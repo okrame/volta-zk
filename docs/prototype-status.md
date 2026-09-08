@@ -266,16 +266,13 @@ authorization.
 
 ## Next work
 
-The [RMS statistic input cones and preparation](c7.1-cut-witness.md#dipendenze-degli-input-e-preparazione-di-s)
-are now explicit: S can be prepared from B in two acyclic stages, using
-post-norm outputs and pointwise residual/scaling operations, without W/KV
-or attention kernels. This complements the direct packed Y reader in R3;
-it does not make the sumcheck input X free. The next obligation is its
-replay/cost schedule for all statistic reductions, with fixed exponents and
-bounded pointwise arithmetic/workspace, then the other source/form readers
-and Gamma consumers. Current envelopes do not admit full liveness, Y or
-runtime; MAC/PCS/FS obligations are unchanged. Keep derivations and numerical
-counts in the linked dossiers.
+The [RMS statistic reader](c7.1-cut-witness.md#dipendenze-degli-input-e-preparazione-di-s)
+now has acyclic S preparation and a counted per-cohort X replay, with exact
+unequal-exponent rounding and a local pointwise workspace contract.
+Next: compile native reader costs and compose its workspace with proof
+arrays under actual public profiles, then complete the other source/form
+readers and Gamma consumers. Counts stay in the dossier; no full liveness,
+Y or runtime admission follows. MAC/PCS/FS obligations are unchanged.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
 In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)

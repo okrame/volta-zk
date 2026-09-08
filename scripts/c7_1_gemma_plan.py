@@ -208,12 +208,14 @@ def fp3_mul_six(a, b):
     return ((v0 + v12 + v12) % P, (v01 + v2 + v2) % P, (v02 + v1) % P)
 
 
-def rne_i48_to_i16(value, shift):
+def rne_signed_to_i16(value, shift, source_bits):
     """Exact RNE(value / 2**shift), symmetric i16 or reject; no floating point."""
-    natural(value, "signed i48", -(1 << 47), (1 << 47)-1)
+    # ponytail: 4096-bit local diagnostic ceiling; derive native widths from the fixed profile.
+    natural(source_bits, "signed source width", 1, 4096)
+    natural(value, "signed source", -(1 << (source_bits-1)), (1 << (source_bits-1))-1)
     if type(shift) is not int:
         raise ValueError("shift must be an integer")
-    if shift >= 48:
+    if shift >= source_bits:
         result = 0
     elif shift <= -15:
         if value:
@@ -226,6 +228,24 @@ def rne_i48_to_i16(value, shift):
         result, remainder = divmod(value, divisor)  # floor quotient, also for negatives
         result += int(2*remainder > divisor or (2*remainder == divisor and result & 1))
     return natural(result, "requantized symmetric i16", -32767, 32767)
+
+
+def rne_i48_to_i16(value, shift):
+    """The raw-cut i48 contract, unchanged by wider pointwise arithmetic."""
+    return rne_signed_to_i16(value, shift, 48)
+
+
+def rne_dyadic_add_i16(a, b, exponents):
+    """One rounded sum at public (e_a,e_b,e_out); not a Gamma/MAC kernel."""
+    natural(a, "left symmetric i16", -32767, 32767)
+    natural(b, "right symmetric i16", -32767, 32767)
+    if len(exponents) != 3 or any(type(e) is not int for e in exponents):
+        raise ValueError("dyadic addition needs three public integer exponents")
+    ea, eb, eo = exponents
+    width = natural(17+abs(ea-eb), "dyadic signed source width", 17, 4096)
+    base = min(ea, eb)
+    raw = (a << (ea-base))+(b << (eb-base))
+    return rne_signed_to_i16(raw, eo-base, width)
 
 
 def rms_integer_coefficients(columns, input_exponent, scale_exponent, output_exponent):
@@ -2544,7 +2564,8 @@ def rms_statistic_dependency_plan(cohorts, gamma):
     by_key = {(r['layer'],r['operation']): r['ordinal'] for r in nodes}
     y_sources = {by_key[n['layer'],n['operation']]: i for i,n in enumerate(norms)}
     kernels = {'embedding_scale','attention_residual_add','ffw_residual_add','layer_scalar_mul'}
-    dependencies, roots, union = {}, [], set()
+    dependencies, roots, union, replays = {}, [], set(), []
+    cfg, tokens = pinned_model_config(), cohorts[0]['rows']
     for i,norm in enumerate(norms):
         source = norm['source_producer']
         root = by_key[source['layer'],source['operation']]
@@ -2570,6 +2591,15 @@ def rms_statistic_dependency_plan(cohorts, gamma):
                                  if j not in y_sources else [] for j in seen}).static_order())
         dependencies[i] = sorted(required_s)
         union.update(seen)
+        cells = math.prod(norm['source_shape'])  # Includes the final producer's terminal row.
+        if required_s or any(nodes[j]['operation'] in kernels for j in seen):
+            if tuple(norm['source_shape']) != (tokens,cfg['hidden_size']) or any(
+                    norms[j]['statistic_rows']*norms[j]['columns'] != cells or norms[j]['columns'] % 64
+                    for j in required_s):
+                raise ValueError('residual replay requires equal full hidden tensors and 64-lane Y words')
+        counts = Counter('Y' if j in y_sources else 'raw_rne' if nodes[j]['kind'] == 'rne48'
+                         else 'lookup' if nodes[j]['kind'] == 'B_lookup' else 'pointwise' for j in seen)
+        replays.append({key: cells*counts[key] for key in ('Y','raw_rne','lookup','pointwise')})
     order = list(TopologicalSorter(dependencies).static_order())
     direct = [i for i,root in enumerate(roots) if nodes[root]['kind'] == 'rne48']
     residual = [i for i,root in enumerate(roots) if nodes[root]['operation'] in
@@ -2578,8 +2608,9 @@ def rms_statistic_dependency_plan(cohorts, gamma):
     y = union.intersection(y_sources)
     y_cells = sum(norms[y_sources[j]]['statistic_rows']*norms[y_sources[j]]['columns'] for j in y)
     pointwise = Counter(nodes[j]['operation'] for j in union if j not in y_sources and nodes[j]['operation'] in kernels)
-    cfg, tokens = pinned_model_config(), cohorts[0]['rows']
+    replay = {key: sum(r[key] for r in replays) for key in ('Y','raw_rne','lookup','pointwise')}
     return {'input_roots': roots, 'statistic_dependencies': dependencies, 'preparation_order': order,
+            'input_replay_counts': replays,
             'summary': {'credit': False, 'input_cone_cohorts': len(union),
                         'direct_raw_statistic_sources': len(direct), 'residual_statistic_sources': len(residual),
                         'distinct_raw_B_leaves': sum(nodes[j]['kind'] == 'rne48' for j in union),
@@ -2593,6 +2624,13 @@ def rms_statistic_dependency_plan(cohorts, gamma):
                             2*tokens*cfg['hidden_size']+12*(y_cells//64),
                         'initial_S_kappa_write_bytes': 12*sum(n['statistic_rows'] for n in norms),
                         'single_token_residual_vector_bytes': 2*cfg['hidden_size'],
+                        'sumcheck_input_live_cells': sum(math.prod(n['source_shape']) for n in norms),
+                        'sumcheck_input_raw_rne_calls': replay['raw_rne'],
+                        'sumcheck_input_Y_generations': replay['Y'],
+                        'sumcheck_input_pointwise_roundings': replay['pointwise'],
+                        'sumcheck_input_lookup_cells': replay['lookup'],
+                        'sumcheck_input_B_S_kappa_logical_read_bytes':
+                            6*replay['raw_rne']+4*replay['Y']+12*(replay['Y']//64)+2*replay['lookup'],
                         'complete_native_statistic_reader_and_liveness': None}}
 
 

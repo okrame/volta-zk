@@ -831,6 +831,35 @@ def test_sampled_round_fixed_trails_are_markov_but_not_collision_or_adaptive_bou
     assert not s['credit'] and s['complete_security_bits'] is None
 
 
+def test_a5_explicit_assumption_budget_is_conditional_and_counts_loss_once():
+    s = plan.wide_hash_security_assumption_screen()
+    assert s['profile'] == 'C71-A5-Assumption-v1'
+    assert s['protocol_adversary_u64_work_cap'] == s['protocol_global_fs_queries_cap'] == 1 << 64
+    assert s['binding_reduction_strict_u64_work_cap'] == 1 << 200
+    assert s['hiding_reduction_strict_u64_work_cap'] == 1 << 128 and s['hiding_fresh_anchor_cap'] == 1 << 24
+    bind,hide = Fraction(*s['assumed_binding_advantage']),Fraction(*s['assumed_multi_anchor_hiding_advantage'])
+    assert bind == Fraction(1,1 << 110) and hide == Fraction(1,1 << 100)
+    lifetime = bind*s['binding_total_reduction_loss_ceiling']
+    assert lifetime == Fraction(*s['binding_lifetime_reservation']) == Fraction(1,1 << 90)
+    assert hide == Fraction(*s['hiding_lifetime_reservation'])  # already a multi-anchor game
+    reserve = Fraction(*s['per_family_lifetime_reservation'])
+    assert lifetime < reserve and hide < reserve
+    for name,hash_term in (('soundness',lifetime),('privacy',hide)):
+        assert Fraction(*s[f'conditional_{name}_budget_sum']) == 7*reserve+hash_term < Fraction(1,1 << 79)
+    assert s['conditional_budget_sums_strictly_below_2_neg_79']
+    comparison = s['ideal_search_comparison_only']
+    assert Fraction(*comparison['birthday_expression']) == Fraction(1 << 400,plan.P**8) < bind
+    assert Fraction(*comparison['multi_target_salt_expression']) == Fraction(1 << 152,plan.P**4) < hide
+    assert comparison['both_below_assumed_advantages'] and not comparison['proves_a5_security']
+    assert bind*(1 << 29) > reserve  # a larger compiler loss cannot retain the admission
+    assert lifetime*(1 << 64) > Fraction(1,1 << 78)  # Q_FS is not an uncharged final multiplier
+    assert hide*s['hiding_fresh_anchor_cap'] > reserve  # do not multiply a multi-anchor bound twice
+    assert s['initial_advice_independent_of_rom'] and s['post_parameter_preprocessing_is_charged']
+    assert not s['reduction_work_losses_and_anchor_census_verified']
+    assert not s['hash_binding_or_hiding_proved'] and not s['credit']
+    assert s['complete_lifetime_security_bits'] is None
+
+
 def test_wide_hash_recounts_anchor_recursion_and_known_memory_without_security_credit():
     report = plan.report()
     w = report['wide_hash_rs_screen']

@@ -40,6 +40,12 @@ or organized host spill after comparing write/read transfers and avoided
 computation. These are not current waivers of four reads/no spill or spending
 authorization.
 
+The owner's 2026-09-08 instruction permits closing G2 as **conditional
+feasibility** under the explicit [A5 binding/hiding assumptions](c7.1-wide-hash-opening.md#24-a5-a-profilo-di-sicurezza-condizionale).
+Full A5 cryptanalysis is not a priority or a prerequisite of that conditional
+route. The assumptions do not discharge the compiler, same-W/MAC relation,
+real correlations, lifetime accounting or complete algorithm/resources.
+
 ## Evidence and open obligations
 
 - The [G1 feasibility analysis](c7.1-feasibility.md) is concluded; admission
@@ -125,7 +131,8 @@ authorization.
   Crucially, the external matrix at width 32 has branch number exactly 10:
   two opposite blocks disprove extrapolating the published formula to 12.
   Poseidon2's stated range stops at width 24. This excludes that numerical
-  extrapolation, not the complete hash; its cryptanalysis must be rebuilt.
+  extrapolation, not the complete hash; a derived security analysis must
+  account for it. The conditional route may instead use A5-A above.
   No production implementation, hash-security bits or G2 admission follow.
 - [A5-D: fixed-characteristic screen](c7.1-wide-hash-opening.md#23-a5-d-caratteristica-prefissata-e-limite-del-trasferimento)
   repairs the active-S-box count at branch 10: four disjoint pairs of actual
@@ -266,7 +273,9 @@ authorization.
 
 ## Next work
 
-Next: compile the remaining pointwise Gamma kernels/forms, beginning with
+Next: instantiate the A5-dependent reductions against the named work/loss
+budgets and the complete lifetime game, without prioritizing A5 cryptanalysis.
+Continue the independent pointwise Gamma kernels/forms, beginning with
 residual additions and public scaling, and their complete reader/field costs.
 The [gate_up_mul candidate](c7.1-auxiliary-witness.md#gate_up_mul-prodotto-raw-rne-e-sorgenti-identiche)
 now specifies the shared-source product/RNE reduction and reader; its larger

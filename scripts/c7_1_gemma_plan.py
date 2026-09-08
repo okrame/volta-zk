@@ -2948,6 +2948,46 @@ def wide_hash_fixed_trail_screen():
     }
 
 
+def wide_hash_security_assumption_screen():
+    """Owner-authorized A5 assumptions, NOT derived concrete hash security.
+
+    The loss/work ceilings are obligations on a future full reduction;
+    counting attempts or Q_FS does not establish them. Other seven budget
+    families below are reservations, not zeros or completed proofs.
+    """
+    bind = Fraction(1 << 20,1 << 110)
+    hide = Fraction(1,1 << 100)
+    others = 7*Fraction(1,1 << 82)
+    birthday = Fraction(1 << 400,P**8)
+    salt_search = Fraction(1 << 152,P**4)
+    def ratio(x):
+        return [x.numerator,x.denominator]
+    return {'credit':False,'profile':'C71-A5-Assumption-v1',
+            'security_basis':'explicit quantitative assumptions, not cryptanalysis',
+            'protocol_adversary_u64_work_cap':1 << 64,
+            'protocol_global_fs_queries_cap':1 << 64,'attempt_cap':1 << 20,
+            'initial_advice_independent_of_rom':True,'post_parameter_preprocessing_is_charged':True,
+            'binding_reduction_strict_u64_work_cap':1 << 200,
+            'assumed_binding_advantage':ratio(Fraction(1,1 << 110)),
+            'binding_total_reduction_loss_ceiling':1 << 20,
+            'hiding_reduction_strict_u64_work_cap':1 << 128,
+            'hiding_fresh_anchor_cap':1 << 24,
+            'assumed_multi_anchor_hiding_advantage':ratio(hide),
+            'hiding_total_reduction_loss_ceiling':1,
+            'binding_lifetime_reservation':ratio(bind),'hiding_lifetime_reservation':ratio(hide),
+            'per_family_lifetime_reservation':ratio(Fraction(1,1 << 82)),
+            'other_families_reserved_per_security_game':7,
+            'conditional_soundness_budget_sum':ratio(bind+others),
+            'conditional_privacy_budget_sum':ratio(hide+others),
+            'conditional_budget_sums_strictly_below_2_neg_79':max(bind+others,hide+others) < Fraction(1,1 << 79),
+            'ideal_search_comparison_only':{'birthday_expression':ratio(birthday),
+                'multi_target_salt_expression':ratio(salt_search),
+                'both_below_assumed_advantages':birthday < Fraction(1,1 << 110) and salt_search < hide,
+                'proves_a5_security':False},
+            'reduction_work_losses_and_anchor_census_verified':False,
+            'hash_binding_or_hiding_proved':False,'complete_lifetime_security_bits':None}
+
+
 def private_projection_compilation_screen(n, block, queries, attempts=1):
     """G2 §3.2: A4/A5 ideal-interactive projection, NOT an executed extractor.
 
@@ -5498,6 +5538,7 @@ def report():
         "wide_hash_rs_screen": wide_hash_rs_screen(n, 1 << 24, 357),
         "wide_hash_parameter_screen": wide_hash_parameter_screen(),
         "wide_hash_fixed_trail_screen": wide_hash_fixed_trail_screen(),
+        "wide_hash_security_assumption_screen":wide_hash_security_assumption_screen(),
         "private_projection_compilation_screens": [
             private_projection_compilation_screen(size, block, 357, attempts)
             for size, block, attempts in ((n, 1 << 24, LIFETIME_ATTEMPTS),

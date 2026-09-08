@@ -2061,8 +2061,8 @@ def test_gamma_barrier_routes_the_pinned_dag_with_rne_last_and_no_late_edges():
     assert (s["cohorts"], s["retained_cohort_edges"]) == (1568, 1155)
     assert (s["ordinary_kernel_cohorts"], s["final_rne_cohorts"], s["source_boundary_cohorts"]) == (975, 531, 62)
     assert s["seed_cohorts_by_role"] == {
-        "P0": 602, "T1": 120, "K1": 120, "public_decisions": 1, "validity": 1506}
-    assert s["plan_sha256"] == "8f34456c6e3a715ed1fa4e80640eefaed80d18fcf909a0d86907f4c8fd231a0f"
+        "P0": 602, "T1": 120, "K1": 120, "public_decisions": 1, "validity": 1506, 'RMS_statistic':411}
+    assert s["plan_sha256"] == "2e4bef32b7749f5b49178971167e81dd60c31d26bc8f7d22ac087a55a6edf468"
     assert not s["credit"] and s["complete_gamma_forms_and_workspace"] is None
     assert sum(r["executions"] for r in records) == 79963
     assert sorted(order) == list(range(1568))
@@ -2099,6 +2099,60 @@ def test_gamma_barrier_routes_the_pinned_dag_with_rne_last_and_no_late_edges():
                     plan.gemma_weight_cohorts(tensors, 1, 1)):
         with pytest.raises(ValueError):
             plan.gamma_barrier_plan(altered)
+
+
+def test_gamma_rms_source_boundary_preserves_statistics_validity_and_input_identity():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_bytes())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition'] == 'private_text'])
+    before, after = plan.gamma_barrier_plan(cohorts), plan.gamma_barrier_plan(cohorts,True)
+    s, records, order = after['summary'], after['cohorts'], after['reverse_order']
+    assert s['includes_rms_outputs'] and not before['summary']['includes_rms_outputs']
+    assert before['rms_statistic_demands'] == after['rms_statistic_demands']
+    assert (s['ordinary_kernel_cohorts'],s['final_rne_cohorts'],s['source_boundary_cohorts']) == (554,531,483)
+    assert s['retained_cohort_edges'] == 734 and s['delegated_tensor_edges']['RMS_joint_P0_statistics'] == 21470
+    assert s['seed_cohorts_by_role'] == {'P0':602,'T1':120,'K1':120,'public_decisions':1,
+                                        'validity':1085,'RMS_joint_validity':421,'RMS_statistic':411}
+    assert s['ordinary_kernel_operations'] == {**{op:60 for op in (
+        'q_rope','k_rope','attention_mask_add','softmax','gelu_tanh','gate_up_mul',
+        'attention_residual_add','ffw_residual_add','layer_scalar_mul')},
+        'embedding_scale':1,'v_source':10,'last_row_select':1,'final_tanh_softcap':1,'argmax':1}
+    assert s['plan_sha256'] == 'a9bdd7ac209b02e3205c3eb4adae8780ccb7abb2779028d66cea84cd6fd0269d'
+    rank = {i:r for r,i in enumerate(order)}
+    by_op = {(r['layer'],r['operation']):r['ordinal'] for r in records}
+    norms, sources = plan.rms_statistic_cohorts(cohorts), plan.rms_output_byte_sources(cohorts)
+    for i,norm in enumerate(norms):
+        r = records[by_op[norm['layer'],norm['operation']]]
+        p = norm['source_producer']
+        assert after['rms_statistic_demands'][i] == (i,by_op[p['layer'],p['operation']])
+        assert sources[r['rms_source_id']]['source_id'] == i
+        assert sources[i]['shape'] == (1,norm['statistic_rows'],norm['columns'])
+        assert r['byte_source'] == 'RMS_outputs' and r['kind'] == 'rms_output_boundary' and not r['dependencies']
+        assert 'RMS_joint_validity' in r['seeds']
+    multiplicities = Counter(p for _,p in after['rms_statistic_demands'])
+    assert len(after['rms_statistic_demands']) == 421 and Counter(multiplicities.values()) == {1:401,2:10}
+    for old,new in zip(before['cohorts'],records):
+        assert (old['ordinal'],old['query_rows'],old['executions']) == (new['ordinal'],new['query_rows'],new['executions'])
+        assert all(rank[new['ordinal']] < rank[d] for d in new['dependencies'])
+        assert set(old['seeds'])-{'validity'} <= set(new['seeds'])
+        if new['kind'] != 'rms_output_boundary':
+            assert old['kind'] == new['kind'] and old['dependencies'] == new['dependencies']
+            assert ('validity' in old['seeds']) == ('validity' in new['seeds'])
+    assert all(records[i]['kind'] == 'rne48' for i in order[554:1085])
+    assert all(not records[i]['dependencies'] for i in order[554:])
+    assert records[by_op[None,'final_rms']]['query_rows'] == 149
+    assert records[by_op[59,'post_ffw_rms']]['query_rows'] == 150
+    assert plan.rms_statistic_dependency_plan(cohorts,before) == plan.rms_statistic_dependency_plan(cohorts,after)
+    for target,changes in (((0,'q_norm'),{'input_producer':{'layer':0,'operation':'k_rope'}}),
+                            ((None,'final_rms'),{'rows':148})):
+        altered = [{**c,**changes} if (c['layer'],c['operation']) == target else c for c in cohorts]
+        for mode in (False,True):
+            with pytest.raises(ValueError):
+                plan.gamma_barrier_plan(altered,mode)
+    for mode in (1,None,'Y'):
+        with pytest.raises(ValueError):
+            plan.gamma_barrier_plan(cohorts,mode)
+    assert not s['credit'] and s['complete_gamma_forms_and_workspace'] is None
 
 
 def test_rms_statistic_input_cones_and_two_stage_preparation_are_acyclic():

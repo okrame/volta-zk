@@ -2403,14 +2403,19 @@ def gemma_input_routes(cohorts):
     return routes
 
 
-def gamma_barrier_plan(cohorts):
+def gamma_barrier_plan(cohorts, include_rms_outputs=False):
     """Logical reverse schedule for the pinned 100+50 DAG, NOT kernel lowering.
 
     Cut raw W/QK/PV products, not weighted RMS statistics. All executed
     kernels retain a validity obligation, including unconsumed outputs.
     The old expander supplies tensor dependencies only; no old gate or
     protocol is imported. This does not bound forms, records or workspace.
+    The optional virtual-Y boundary delegates RMS to the existing joint
+    predicate/P0/statistic proofs; it does not make RMS an unchecked cut.
+    Both modes include the S-source prelude's input demands before Gamma.
     """
+    if type(include_rms_outputs) is not bool:
+        raise ValueError('Gamma RMS source mode must be Boolean')
     manifest = pinned_gemma_manifest()
     logical = runpy.run_path(str(Path(__file__).with_name("c7_d126_gemma_qspec_dag.py")))
     executions = logical["_expand_schedule"](manifest["workload_schedule"])
@@ -2427,6 +2432,8 @@ def gamma_barrier_plan(cohorts):
         raise ValueError("Gamma cuts disagree with the pinned weighted operators")
     if by_cut[None, "embedding_lookup"]["rows"] != 150 or by_cut[None, "lm_head"]["rows"] != 50:
         raise ValueError("Gamma dependency plan covers only the pinned 100+50 workload")
+    norms = rms_statistic_cohorts(cohorts)
+    by_rms = {(n['layer'],n['operation']): (i,n) for i,n in enumerate(norms)}
 
     records, indices, node_cohorts = [], {}, []
     for node in nodes:
@@ -2439,11 +2446,15 @@ def gamma_barrier_plan(cohorts):
                     or "kernel")
             source = ("B" if cut is not None else
                       "raw_attention" if kind == "rne48" else None)
+            if include_rms_outputs and key in by_rms:
+                kind, source = 'rms_output_boundary', 'RMS_outputs'
             indices[key] = len(records)
             records.append({"ordinal": len(records), "layer": node.layer,
                             "operation": node.operation, "kind": kind, "byte_source": source,
                             "dependencies": set(), "seeds": set(),
                             "executions": 0, "query_rows": 0})
+            if include_rms_outputs and key in by_rms:
+                records[-1]['rms_source_id'] = by_rms[key][0]
         ordinal = indices[key]
         node_cohorts.append(ordinal)
         r = records[ordinal]
@@ -2460,15 +2471,31 @@ def gamma_barrier_plan(cohorts):
                  else "T1" if node.operation in {"qk_matmul", "pv_matmul"}
                  else "K1" if node.operation == "kv_cache_append"
                  else "public_decisions" if node.operation == "token_input" else None)
+        if (node.layer,node.operation) in by_rms:
+            if include_rms_outputs:
+                owner = 'RMS_joint_P0_statistics'
+            if len(node.dependencies) != 1:
+                raise ValueError('RMS source must have the pinned single input')
+            producer = nodes[node.dependencies[0]]
+            if node.operation == 'v_norm' and (producer.layer,producer.operation) not in by_cut:
+                # Global V is the public alias of pre-norm K, not k_norm/k_rope.
+                if producer.operation != 'v_source' or len(producer.dependencies) != 1:
+                    raise ValueError('RMS V source has an unexpected alias')
+                producer = nodes[producer.dependencies[0]]
+            source = by_rms[node.layer,node.operation][1]['source_producer']
+            if (producer.layer,producer.operation) != (source['layer'],source['operation']):
+                raise ValueError('RMS statistic routing disagrees with the pinned input')
         if owner:
             delegated[owner] += len(node.dependencies)
         else:
             r["dependencies"].update(node_cohorts[d] for d in node.dependencies)
 
-    boundary_kinds = {"B_lookup", "KV_boundary", "public_tokens"}
+    boundary_kinds = {"B_lookup", "KV_boundary", "public_tokens", 'rms_output_boundary'}
     for r in records:
         if r["kind"] not in boundary_kinds:
             r["seeds"].add("validity")  # whole live domain, not only demanded rows
+        elif r['kind'] == 'rms_output_boundary':
+            r['seeds'].add('RMS_joint_validity')
     for route in gemma_input_routes(cohorts):
         p = route["source_producer"]
         records[indices[p["layer"], p["operation"]]]["seeds"].add("P0")
@@ -2478,6 +2505,15 @@ def gamma_barrier_plan(cohorts):
             for operation in operations:
                 records[indices[layer, operation]]["seeds"].add(role)
     records[indices[None, "argmax"]]["seeds"].add("public_decisions")
+    statistic_demands = []
+    for i,norm in enumerate(norms):
+        output = records[indices[norm['layer'],norm['operation']]]
+        if output['query_rows']*norm['heads'] != norm['statistic_rows']:
+            raise ValueError('RMS source omits or adds executed output rows')
+        source = norm['source_producer']
+        producer = indices[source['layer'],source['operation']]
+        records[producer]['seeds'].add('RMS_statistic')
+        statistic_demands.append((i,producer))  # Keep separate wires, including the ten K/V aliases.
 
     for r in records:
         r["dependencies"] = sorted(r["dependencies"])
@@ -2492,13 +2528,17 @@ def gamma_barrier_plan(cohorts):
     if any(records[i]["dependencies"] for i in rne + boundaries) or any(
             rank[r["ordinal"]] >= rank[d] for r in records for d in r["dependencies"]):
         raise ValueError("a source/RNE leaf has a late dependency")
-    return {"cohorts": records, "reverse_order": order,
+    return {"cohorts": records, "reverse_order": order, 'rms_statistic_demands': statistic_demands,
             "summary": {"credit": False, "pinned_tensor_nodes": len(nodes),
                         "tensor_edges": sum(len(n.dependencies) for n in nodes),
                         "delegated_tensor_edges": dict(delegated),
                         "cohorts": len(records), "retained_cohort_edges": sum(len(r["dependencies"]) for r in records),
                         "ordinary_kernel_cohorts": len(ordinary), "final_rne_cohorts": len(rne),
+                        'ordinary_kernel_operations': dict(Counter(records[i]['operation'] for i in ordinary)),
                         "source_boundary_cohorts": len(boundaries),
+                        'includes_rms_outputs': include_rms_outputs,
+                        'rms_statistic_input_demands': len(statistic_demands),
+                        'distinct_statistic_input_producers': len({p for _,p in statistic_demands}),
                         "seed_cohorts_by_role": dict(Counter(s for r in records for s in r["seeds"])),
                         "plan_sha256": hashlib.sha256(json.dumps(
                             [records, order], sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
@@ -4199,6 +4239,7 @@ def report():
         "weight_cohort_screen": weight_cohort_screen(cohorts),
         "input_link_screen": input_link_screen(cohorts),
         "gamma_barrier_screen": gamma["summary"],
+        "gamma_rms_source_barrier_screen": gamma_barrier_plan(cohorts,True)['summary'],
         "rms_statistic_dependency_screen": rms_statistic_dependency_plan(cohorts,gamma)["summary"],
         "rms_statistic_screen": rms_statistic_screen(cohorts),
         "rms_byte_bridge_screen": rms_byte_bridge_screen(cohorts),

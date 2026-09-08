@@ -266,14 +266,15 @@ authorization.
 
 ## Next work
 
-The [RMS statistic reader](c7.1-cut-witness.md#dipendenze-degli-input-e-preparazione-di-s)
-now has acyclic S preparation and a counted per-cohort X replay, with exact
-unequal-exponent rounding using bounded words without a gap cap. R3 composes
-its workspace with preparation and proof arrays in the known phases.
-Next: complete the other source/form readers and Gamma consumers, instantiate
-actual RMS profiles and refine the word/getter bounds into full native costs
-and traffic. Counts stay in the dossiers; no full liveness, Y or runtime
-admission follows. MAC/PCS/FS obligations are unchanged.
+The [Gamma boundary with Y](c7.1-cut-witness.md#ordine-inverso-di-γ-e-ultima-rne)
+now routes RMS to its common source while preserving joint validity and the
+existing P0/T1/K1 consumers. The common plan also explicitly includes the
+S-prelude's statistic-input demands in both modes. It leaves a concrete
+inventory of ordinary kernels, not their implemented reductions.
+Next: instantiate the integer RoPE relation and its input/output forms,
+then the remaining attention/MLP/output kernels. Actual RMS profiles and
+full reader/native costs remain open. Counts stay in the dossiers; no full
+liveness, Y or runtime admission follows. MAC/PCS/FS obligations are unchanged.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
 In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)

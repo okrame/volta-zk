@@ -8,7 +8,7 @@ This fork is a feature-gated CPU reference for the claimless affine target
 construction.  The immutable `c61-p3-reference` continues to use the original
 git dependency, so historical C6WIR1 bytes and equations cannot change.
 
-Exactly ten source files differ from that revision:
+The initial C6.1 import modified ten source files:
 
 - `src/lib.rs` and `src/pcs/zk/mod.rs`: claimless API exports and removal of
   the old target-revealing adapter from this fork's public surface;
@@ -28,3 +28,10 @@ Exactly ten source files differ from that revision:
 fork has no standalone `Cargo.lock` or crate-local `target/`; the VOLTA
 workspace lock and target are binding.
 No fork code is a production fallback.
+
+The cumulative C7.1 B2 provenance review now pins seventeen modified WHIR
+sources, including later C6.2 executor/cache and C6.3/C6.4 projection APIs.
+See the [active review](../../../docs/c7.1-gemma31b-design.md#b2--port-locale-cpufp3-autorizzato)
+for origins and scope. The auditor checks exact reviewed content, and also
+includes the Merkle fork selected by Cargo. A passing source audit grants no
+protocol security or native-execution credit.

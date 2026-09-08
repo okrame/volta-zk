@@ -6,12 +6,17 @@ Updated 2026-09-08. Editable working summary; Git preserves revisions.
 
 ## Active authority — read first
 
+**Active goal B2: bounded local CPU/Fp3 matrix port**, opened by the owner's
+2026-09-08 request to reach the next C7.1 goal. Start with fork provenance
+and same-W relation, then AES/FS/codec/lifecycle and a justified local
+preflight. Initial diagnostics have no security credit. G2 stays suspended.
+
 **B1 concluded with a negative reuse decision and its prescribed stop.**
 The [assessment in design §10](c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto)
 rejects the existing authenticated WHIR path for the complete local contract;
 it does not reject WHIR as a PCS family. One focused commit after the reset
 records the assessment, budget and checks, within the two-commit limit.
-G2 remains incomplete and suspended; no research goal is automatically resumed.
+That completed assessment is preserved; B2 is the separately authorized port.
 
 **Fundamental requirements:** lifetime soundness and zero knowledge of at
 least 78 bits against malicious prover and malicious verifier. Keep private
@@ -79,10 +84,13 @@ reuse of resident WHIR/Ligero. The bounded WHIR/BLAKE3 reuse check is now
 finished. A5 remains unselected research evidence; no custom-hash
 cryptanalysis is scheduled. No complete baseline is admitted.
 
-The fork audit still fails: **24 modified sources, 14 registered, 10
-unregistered**, plus an obsolete claimless-call source guard. The first delta
-comes from tracked C6.2 commit `501cef4`; its origin is resolved, but the full
-fork is not re-audited or admitted. The audit and upstream manifest are intact.
+The B2 [source audit](../scripts/audit_c61_p3_fork.py) now passes:
+**96 sources, 25 modified and pinned by content**, including the nine-source
+Merkle fork selected by Cargo. The original 87-source manifest is unchanged.
+The [mutation check](../tests/test_audit_c61_p3_fork.py) rejects changes to
+registered and unregistered sources, census drift and loss of claimless
+binding. This is provenance/textual evidence, not native or security admission.
+B1's failed census is retained separately in the comparison budget.
 
 The CPU diagnostic uses an interactive transcript, mock correlations and
 Fp2 (75 nominal component bits in the authenticated adapter; 74 in the clear
@@ -95,12 +103,11 @@ The Fp3 transfer component and AES setup exist separately, without this
 complete composition. Lifetime soundness and malicious-verifier simulation
 remain undischarged, distinct from standard hash/PCG assumptions.
 
-**Stop:** no complete local runner or run is claimed; all missing WHIR totals
-remain unbounded for admission in the same budget. The concrete next choice
-for the owner is a separately bounded implementation goal for the CPU/Fp3
-matrix path (fork audit, same-W relation, AES/FS/codec/lifecycle and resource
-preflight, initially without security credit), or retaining the pause.
-That broader port is proposed, not started; G2 is not the fallback.
+No complete local runner or run is claimed; all missing WHIR totals remain
+unbounded for admission. B2 continues with the same-W matrix relation and
+Fp3 composition. The pinned Plonky3 cubic uses `v^3-v-1`, while C7.1 uses
+`u^3-2`: copying coordinates is invalid; an explicit checked basis conversion
+is needed. Existing AES pools use Fp2 and are not already Fp3 correlations.
 
 No native build or cryptographic E2E ran for B1. The pre-existing
 uncommitted additions in `tests/test_c7_1_gemma_plan.py` belong to the

@@ -5646,7 +5646,7 @@ def baseline_budget():
                           "remaining_Gamma_and_RMS": None,
                           "remaining_protocol_framing_and_correlations": None}, 35_000_000)})
     phases = bridge["all_context_arena_phase_upper_bytes"]
-    # Reuse the read-only provenance auditor; never relax its historical guards.
+    # Live provenance is distinct from the preserved negative B1 assessment.
     audit = runpy.run_path(str(Path(__file__).with_name("audit_c61_p3_fork.py")))
     upstream = audit["load_manifest"]()
     changed = sorted(path for path, digest in upstream.items()
@@ -5672,6 +5672,17 @@ def baseline_budget():
         "measurement_reuse_priority": None,
         "B1_decision": "reject_existing_whir_reuse_and_stop",
         "B1_decision_scope": "bounded reuse assessment; not an impossibility result for WHIR or C7.1",
+        "B1_provenance_at_stop": {
+            "runtime_commit": "3eccefd8045eeae43f962a245ccb7305d05a89bb",
+            "upstream_source_files": 87, "modified_source_files": 24,
+            "registered_deltas": 14, "unregistered_delta_count": 10,
+            "audit_error": "unregistered vendored source delta: sumcheck/src/strategy.rs",
+            "source_guard_error": "claimless prover must use exactly two claimless sumcheck batches"},
+        "B2_CPU_Fp3_port": {
+            "status": "in_progress", "credit": False,
+            "completed": ["pinned_fork_source_provenance"],
+            "remaining": ["same_W_matrix_relation", "Fp3_field_and_MAC_composition",
+                          "AES_FS_codec_lifecycle", "local_resource_preflight_and_E2E"]},
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",
@@ -5691,6 +5702,7 @@ def baseline_budget():
                 "single_term_bits_needed_before_FS": 78 + (LIFETIME_ATTEMPTS.bit_length()-1),
                 "is_C71_security_bound": False},
             "provenance": {
+                "scope": "live C7.1 source provenance; not native or security admission",
                 "upstream_source_files": len(upstream), "modified_source_files": len(changed),
                 "registered_deltas": len(audit["ALLOWED_DELTAS"]),
                 "unregistered_deltas": sorted(set(changed)-audit["ALLOWED_DELTAS"]),

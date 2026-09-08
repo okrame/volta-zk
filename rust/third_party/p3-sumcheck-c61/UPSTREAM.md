@@ -8,7 +8,7 @@ The fork exists only to add a typed claimless affine replay used by the
 interactive designated-verifier C6.1 reference.  It is not a replacement for
 the immutable `c61-p3-reference` dependency and is not a production fallback.
 
-Exactly four source files differ from that revision:
+The initial C6.1 import modified four source files:
 
 - `src/zk/data.rs`: typed affine claim and verifier handoff;
 - `src/zk/mod.rs`: exports those types;
@@ -21,3 +21,10 @@ Exactly four source files differ from that revision:
 `../../../scripts/audit_c61_p3_fork.py` rejects any unregistered delta.  The
 fork has no standalone `Cargo.lock` or crate-local `target/`; the VOLTA
 workspace lock and target are binding.
+
+The cumulative C7.1 B2 review now pins seven modified sumcheck sources.
+Commit `501cef4` added the external residual-state trait, generic handoff,
+exports and marker plumbing. Challenger and clear-binding policy remain
+inside the ZK wrapper. See the
+[active review](../../../docs/c7.1-gemma31b-design.md#b2--port-locale-cpufp3-autorizzato)
+for the precise provenance-only scope; source hashes are checked by the auditor.

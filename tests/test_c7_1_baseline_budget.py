@@ -62,13 +62,15 @@ def test_b1_rejection_preserves_failed_preflight_and_unknown_complete_costs():
     assert result["measurement_reuse_priority"] is None
     reuse = result["whir_reuse_assessment"]
     provenance = reuse["provenance"]
-    assert provenance["upstream_source_files"] == 87
-    assert provenance["modified_source_files"] == 24
-    assert provenance["registered_deltas"] == 14
-    assert len(provenance["unregistered_deltas"]) == 10
-    assert provenance["audit_error"] == (
+    assert provenance["upstream_source_files"] == 96
+    assert provenance["modified_source_files"] == provenance["registered_deltas"] == 25
+    assert provenance["unregistered_deltas"] == []
+    assert provenance["audit_error"] is None and provenance["source_guard_error"] is None
+    stopped = result["B1_provenance_at_stop"]
+    assert stopped["upstream_source_files"] == 87 and stopped["unregistered_delta_count"] == 10
+    assert stopped["audit_error"] == (
         "unregistered vendored source delta: sumcheck/src/strategy.rs")
-    assert provenance["source_guard_error"] == (
+    assert stopped["source_guard_error"] == (
         "claimless prover must use exactly two claimless sumcheck batches")
     screen = reuse["lifetime_union_screen"]
     assert screen["attempts"] == 1 << 20

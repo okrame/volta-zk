@@ -163,7 +163,10 @@ authorization.
   a conditional decoded-padding argument for malicious roots. Use that
   recount, not earlier no-S or uncompressed totals; GPU reservations remain
   conservative, and missing components are still unpriced.
-  Bit lift, the RMS MAC circuit, exponents and later byte claims remain open;
+  The [shared byte-to-bit reduction](c7.1-auxiliary-witness.md#bit-lift-comune-verso-la-stessa-c_σ)
+  now uses one quadratic sumcheck and R2 P/S to the same Sigma endpoint,
+  with explicit conditional soundness and source visits. Incoming forms,
+  the integer RMS circuit, RNE-output bits and exponents remain uncompiled;
   no complete memory, certificate or timing result is claimed.
 - [R1: byte-bound requantization](c7.1-requantization.md) gives exact
   ties-to-even/overflow polynomials and a conditional MAC sumcheck for

@@ -2414,21 +2414,37 @@ def test_rms_byte_extension_preserves_rq_and_recounts_padding_records_and_arrays
     assert screen['additional_payload_before_rms_circuit_gamma_and_framing'] == 866568
     assert screen['initial_statistic_i16_squares'] == 347937024
     assert screen['initial_statistic_integer_additions'] == 347360875
-    assert screen['known_sigma_claims_before_future_gamma'] == 1322
+    assert screen['known_sigma_claims_before_future_gamma'] == 1323
     assert screen['fixed_input_probe_and_sumcheck_error_numerator'] == 30241
-    assert screen['additional_common_sigma_batch_error_numerator'] == 421
     arrays = screen['additional_arrays_reserved_256_byte_aligned']
     assert arrays == {'packed_statistics': 3457024, 'source_and_cube_descriptors': 283136,
                       'new_plaintext_and_tags': 1733376, 'probe_and_input_points': 307712,
                       'statistic_kernel_descriptors': 40448, 'kernel_control_reserve': 65536}
     assert screen['additional_array_reservation_bytes'] == sum(arrays.values()) == 5887232
-    assert screen['known_bulk_statistic_reads_before_replay_and_normalizer'] == 114
-    assert screen['known_bulk_statistic_read_and_initial_write_bytes'] == 397542810
+    assert screen['known_bulk_statistic_reads_before_replay_and_normalizer'] == 232
+    assert screen['known_bulk_statistic_read_and_initial_write_bytes'] == 233*3456894
     assert [c['public_zero_rows_joint_w_kv'] for c in screen['cases']] == [[218, 1], [218, 18, 18]]
     assert [c['public_zero_rows_sigma'] for c in screen['cases']] == [326, 537]
     assert [c['omitted_outer_base_corrections'] for c in screen['cases']] == [194565, 282387]
-    assert [c['known_partial_payload_before_rms_circuit_gamma_and_framing'] for c in screen['cases']] == [25381376, 32356512]
-    assert [c['remaining_payload_bytes_before_missing_components'] for c in screen['cases']] == [9618624, 2643488]
+    assert [c['known_partial_payload_before_rms_circuit_gamma_and_framing'] for c in screen['cases']] == [25413344, 32389320]
+    assert [c['remaining_payload_bytes_before_missing_components'] for c in screen['cases']] == [9586656, 2610680]
+    assert screen['additional_common_sigma_batch_error_numerator'] == screen['additional_known_sigma_claims'] == 422
+    assert screen['bit_lift_record_reservation_bytes'] == 74496
+    for c in screen['cases']:
+        b = c['byte_bit_lift']
+        n = (c['source_padded_byte_cells']-1).bit_length()
+        assert b == plan.byte_bit_lift_screen(n)
+        assert b['extension_corrections_excluding_incoming_claims'] == 35*n+177
+        assert b['payload_before_incoming_claims_framing_and_shared_closures'] == 24*(35*n+177)
+        assert b['private_products'] == 24 and b['zero_residuals'] == 9*n+38
+        assert b['extension_challenges'] == 9*n+48
+        assert b['interactive_error_numerator_excluding_incoming_batch'] == 26*n+103
+        assert b['source_endpoints'] == 1 and b['extra_trace_commitments'] == 0
+        assert b['source_visits'] == 118 and not b['credit']
+        assert b['incoming_claims_and_form_metadata'] is b['complete_rms_circuit'] is None
+        assert b['top_array_bytes'] == sum(b['top_arrays_256_byte_aligned'].values())
+        assert b['link_array_bytes'] == sum(b['link_arrays_256_byte_aligned'].values())
+    assert screen['cases'][-1]['byte_bit_lift']['link_array_bytes'] == 812751104
     assert screen['array_reservation_includes_omitted_records']
     # The pinned aligned KV cubes are each <= one RS row at every length.
     # Every cube has a live cell, so only the global padded tail contains
@@ -2449,16 +2465,20 @@ def test_rms_byte_extension_preserves_rq_and_recounts_padding_records_and_arrays
     wrong_prefix = 450560*150
     assert (wrong_prefix+(1 << 24)-1)//(1 << 24) == 5  # true padded prefix needs seven rows
     upper = screen['all_context_arena_phase_upper_bytes']
-    assert max(upper.values()) == screen['all_context_known_phase_max_upper_bytes'] == 6337640832
-    assert upper['rms_statistic'] == 5524154752
+    assert max(upper.values()) == screen['all_context_known_phase_max_upper_bytes'] == 6337715328
+    assert len(upper) == 20 and upper['rms_statistic'] == 5524229248
+    assert upper['byte_bit_top'] == 5826436992 and upper['byte_bit_link'] == 6236108160
     assert all(v <= upper[k] for c in screen['cases'] for k, v in c['arena_phase_upper_bytes'].items())
-    assert screen['remaining_arena_bytes_before_missing_components'] == 104810112
+    assert screen['remaining_arena_bytes_before_missing_components'] == 104735616
     assert not screen['credit'] and screen['complete_rms_integer_circuit'] is None
     assert screen['complete_gamma_liveness'] is screen['complete_certificate_bytes'] is None
     assert screen['additional_weight_reads_given_w_free_reader'] == screen['additional_pcs_instances'] == 0
     with pytest.raises(ValueError, match=r'100\+50'):
         plan.rms_byte_bridge_screen(plan.gemma_weight_cohorts(
             [t for t in metadata['tensors'] if t['disposition'] == 'private_text'], 1, 1))
+    for bad in (0, 36, True):
+        with pytest.raises(ValueError):
+            plan.byte_bit_lift_screen(bad)
 
 
 def test_rms_statistic_and_byte_plane_pullbacks_share_one_fixed_source():
@@ -2524,6 +2544,71 @@ def test_rms_statistic_and_byte_plane_pullbacks_share_one_fixed_source():
     folded_byte = plan.mle([0, 1], [2])
     lsb_at_folded_byte = sum((j & 1)*v for j, v in enumerate(plan.byte_lagrange_basis(folded_byte))) % plan.P
     assert lsb_at_folded_byte == 0 != plan.mle([0, 1], [2])
+
+
+def test_shared_byte_bit_pullback_and_quadratic_reduction_use_one_source():
+    p = plan.P
+    def eq(point, index):
+        return math.prod(x if index >> j & 1 else 1-x for j, x in enumerate(point)) % p
+    def fold(values, point):
+        return [(a+point*(b-a)) % p for a, b in zip(values[::2], values[1::2])]
+    sources = [{'shape': (1, 3, 1), 'word_bytes': width, 'rne': False, 'token_offset': 0}
+               for width in (2, 4, 6)]
+    words = [[-32767, 0, 32767], [-32767**2, 257, -7], [1, 1 << 40, 5772083729664]]
+    tiles, _ = plan.auxiliary_word_layout(sources)
+    u = [0]*64
+    for i, r, c, heads, height, width, j, count, offset in tiles:
+        for row, byte in product(range(height), range(count)):
+            value = words[i][r+row]+(1 << (8*sources[i]['word_bytes']-1))
+            u[offset+count*row+byte] = value >> (8*(j+byte)) & 255
+    assert u[36:] == [0]*28
+    bits = [[x >> k & 1 for x in u] for k in range(8)]
+    phi, terms, claims = [[0]*64 for _ in range(8)], [[] for _ in range(8)], []
+    for a, source in enumerate(sources):
+        rp, bp = [2+a, 7+a], [3, 5, 11, 13, 17, 19][:(8*source['word_bytes']-1).bit_length()]
+        incoming = sum(eq(rp, row)*eq(bp, bit)*((value+(1 << (8*source['word_bytes']-1))) >> bit & 1)
+                       for row, value in enumerate(words[a]) for bit in range(8*source['word_bytes'])) % p
+        claims.append(incoming)
+        for byte, k in product(range(source['word_bytes']), range(8)):
+            scale = pow(23, a, p)*eq(bp[:3], k)*eq(bp[3:], byte) % p
+            for offset, point, coefficient in plan.auxiliary_byte_terms(tiles, sources, {a: ([], rp, [], scale)}, byte):
+                terms[k].append((offset, point, coefficient))
+                for j in range(1 << len(point)):
+                    phi[k][offset+j] = (phi[k][offset+j]+coefficient*eq(point, j)) % p
+    claim = sum(pow(23, a, p)*v for a, v in enumerate(claims)) % p
+    original = claim
+    assert claim == sum(plan.dot(f, b) for f, b in zip(phi, bits)) % p
+    # Every live-byte LSB tamper changes the same incoming batch.
+    for i in range(36):
+        bad = [list(b) for b in bits]
+        bad[0][i] ^= 1
+        assert original != sum(plan.dot(f, b) for f, b in zip(phi, bad)) % p
+    point = [29, 31, 37, 41, 43, 47]
+    for k in range(8):
+        rows = [eq(point[3:], j) for j in range(8)]
+        assert plan.mle(phi[k], point) == sum(c*plan.folded_cube_form(o, r, rows, point[:3])
+                                             for o, r, c in terms[k]) % p
+    for r in point:
+        coefficients = [0, 0, 0]
+        for f, b in zip(phi, bits):
+            for i in range(0, len(f), 2):
+                c0, c2 = f[i]*b[i], (f[i+1]-f[i])*(b[i+1]-b[i])
+                for j, value in enumerate((c0, f[i+1]*b[i+1]-c0-c2, c2)):
+                    coefficients[j] = (coefficients[j]+value) % p
+        assert claim == (coefficients[0]+sum(coefficients)) % p
+        for z in (0, 1, 2, r):
+            assert sum(c*pow(z, j, p) for j, c in enumerate(coefficients)) % p == (
+                sum(plan.dot(fold(f, z), fold(b, z)) for f, b in zip(phi, bits)) % p)
+        claim = sum(c*pow(r, j, p) for j, c in enumerate(coefficients)) % p
+        phi, bits = [fold(f, r) for f in phi], [fold(b, r) for b in bits]
+    endpoints = [b[0] for b in bits]
+    assert claim == sum(f[0]*v for f, v in zip(phi, endpoints)) % p
+    assert all(f[0] != 0 for f in phi)  # altering any terminal changes this residual
+    rho = [53, 59, 61]  # AFTER eight terminal bit claims, never before them
+    omega = [sum(eq(rho, k)*(j >> k & 1) for k in range(8)) % p for j in range(256)]
+    trees = [plan.byte_lagrange_tree(x, omega) for x in u]
+    assert sum(eq(rho, k)*v for k, v in enumerate(endpoints)) % p == plan.mle([s[1] for _, s in trees], point)
+    assert plan.byte_lagrange_tree(256, omega)[1][1] != 0  # not eight low bits of an out-of-range integer
 
 
 def test_shifted_eq_digit_dp_matches_every_small_interval():
@@ -3802,7 +3887,8 @@ def test_lifted_indicator_rne_has_degree_six_and_needs_its_own_source_link():
             plan.rne48_indicator_polynomials(bad, 8)
 
 
-def test_indicator_ps_gkr_binds_six_source_planes_with_public_dummy_lanes():
+@pytest.mark.parametrize('mode', ('indicators', 'bits'))
+def test_ps_gkr_binds_source_functions_with_optional_public_dummy_lanes(mode):
     p, rng = plan.P, random.Random(20260911)
     def eq(point, index):
         return math.prod(x if (index >> j) & 1 else 1-x for j, x in enumerate(point)) % p
@@ -3810,18 +3896,26 @@ def test_indicator_ps_gkr_binds_six_source_planes_with_public_dummy_lanes():
         return [(a+r*(b-a)) % p for a, b in zip(vector[::2], vector[1::2])]
     rho_f, rho_lane = [3, 5, 7, 11, 13, 17, 19, 23], [29, 31, 37]
     omega = [eq(rho_f, j) for j in range(256)]
+    if mode == 'bits':
+        rho_lane = []
+        omega = [sum(eq(rho_f[:3], k)*((j >> k) & 1) for k in range(8)) % p for j in range(256)]
     for last_selector in (0, 1, 19):
-        planes = [[(17*l+3) % 256, (31*l+1) % 256] for l in range(6)]
+        planes = [[(17*l+3) % 256, (31*l+1) % 256] for l in range(6 if mode == 'indicators' else 1)]
         if last_selector == 19:
-            planes[2][0] = 256  # the link still holds without presuming valid byte inputs
+            planes[-1][0] = 256  # the link still holds without presuming valid byte inputs
         point = [41]
         bases = [[plan.byte_lagrange_basis(x) for x in row] for row in planes]
         indicator_claims = [[plan.mle([basis[j] for basis in row], point) for j in range(256)] for row in bases]
-        dummy = (eq(rho_lane, 6)+eq(rho_lane, 7))*omega[0] % p
+        dummy_planes = [[0, 0], [0, 0]] if mode == 'indicators' else []
+        dummy = (eq(rho_lane, 6)+eq(rho_lane, 7))*omega[0] % p if dummy_planes else 0
         claim = (sum(eq(rho_lane, l)*plan.dot(omega, row) for l, row in enumerate(indicator_claims))+dummy) % p
-        trees = [plan.byte_lagrange_tree(x, omega) for row in planes+[[0, 0], [0, 0]] for x in row]
+        trees = [plan.byte_lagrange_tree(x, omega) for row in planes+dummy_planes for x in row]
         assert claim == plan.mle([s[1] for _, s in trees], point+rho_lane)
-        assert dummy != 0  # omitting the public lanes would change even the honest claim
+        if mode == 'indicators':
+            assert dummy != 0  # omitting the public lanes would change even the honest claim
+        else:
+            bit_claims = [sum(((j >> k) & 1)*v for j, v in enumerate(indicator_claims[0])) % p for k in range(8)]
+            assert claim == sum(eq(rho_f[:3], k)*v for k, v in enumerate(bit_claims)) % p
         selector, node_point, cell_point, lane_point = 1, [], point, rho_lane
         retained = None
         for depth in range(8):
@@ -3831,7 +3925,7 @@ def test_indicator_ps_gkr_binds_six_source_planes_with_public_dummy_lanes():
             assert claim == sum(w*((1-selector)*pl*pr+selector*(sl*pr+pl*sr))
                                 for w, pl, pr, sl, sr in zip(weights, *arrays)) % p
             challenges = []
-            for round_index in range(depth+4):  # one cell bit, then three lane bits
+            for round_index in range(depth+1+len(rho_lane)):
                 coefficients = [0]*4
                 for i in range(0, len(weights), 2):
                     quadratic = [0, 0, 0]
@@ -3855,7 +3949,7 @@ def test_indicator_ps_gkr_binds_six_source_planes_with_public_dummy_lanes():
                 arrays, weights = [fold(v, r) for v in arrays], fold(weights, r)
                 if depth == 7 and round_index == depth:
                     constant = 2*sum((1 << j)*x for j, x in enumerate(challenges[:depth])) % p
-                    retained = [(x+constant) % p for x in arrays[0][:6]]
+                    retained = [(x+constant) % p for x in arrays[0][:len(planes)]]
                     assert retained == [plan.mle(row, challenges[depth:]) for row in planes]
             pl, pr, sl, sr = [v[0] for v in arrays]
             products = pl*pr % p, sl*pr % p, pl*sr % p
@@ -3883,6 +3977,13 @@ def test_indicator_ps_gkr_binds_six_source_planes_with_public_dummy_lanes():
         assert changed != indicator_claims
         assert sum(eq(rho_lane, l)*plan.dot(omega, row) for l, row in enumerate(changed)) % p == sum(
             eq(rho_lane, l)*plan.dot(omega, row) for l, row in enumerate(indicator_claims)) % p
+        if mode == 'bits':
+            changed_bits = bit_claims.copy()
+            changed_bits[0] = (changed_bits[0]+eq(rho_f[:3], 1)) % p
+            changed_bits[1] = (changed_bits[1]-eq(rho_f[:3], 0)) % p
+            assert changed_bits != bit_claims
+            assert (sum(eq(rho_f[:3], k)*v for k, v in enumerate(changed_bits))
+                    -sum(eq(rho_f[:3], k)*v for k, v in enumerate(bit_claims))) % p == 0
 
 
 def test_rne_histograms_and_six_lane_ps_replay_equal_full_dense_tables():

@@ -371,6 +371,53 @@ def byte_lagrange_tree(value, weights):
     return products, sums
 
 
+def byte_bit_lift_screen(byte_bits):
+    """One shared bit-function reduction into C_Sigma, not a bit/RMS prover.
+
+    Incoming Gamma bit claims/forms are not yet counted. Reuse R2's P/S
+    tree without its lane axis; all eight bit functions share one tree.
+    """
+    natural(byte_bits, 'byte source log domain', 1, 35)
+    cells = 1 << byte_bits
+    top_prefix, link_prefix = min(14, byte_bits), min(11, byte_bits)
+    top_tail, link_tail = cells >> top_prefix, cells >> link_prefix
+    rounds = 8*byte_bits+28
+    corrections = 3*byte_bits+8+4*rounds+7*8+1
+    top_arrays = {'bit_and_form_tails': 16*24*top_tail,
+                  'prefix_weights': 24*(1 << top_prefix), 'pair_values': 32*24,
+                  'control': 32768}
+    link_arrays = {'four_function_tails': 4*24*link_tail,
+                   'public_p_s_tree': 511*256*(8+24),
+                   'public_child_fold_tables': 2*256*256*24,
+                   'four_byte_functions': 4*256*24, 'histogram': 256*24,
+                   'prefix_weights': 24*(1 << link_prefix),
+                   'control': 32768, 'retained_source_endpoint': 24}
+    top_arrays = {k: 256*((v+255)//256) for k, v in top_arrays.items()}
+    link_arrays = {k: 256*((v+255)//256) for k, v in link_arrays.items()}
+    visits = top_prefix+1+8*(link_prefix+1)+7
+    link_work = (4*(link_prefix+1)*cells+19*(cells-1)+4*(link_tail-1)
+                 +(1 << (link_prefix+1))+32*(byte_bits+8))
+    return {'credit': False, 'byte_bits': byte_bits, 'top_round_degree': 2,
+            'top_rounds': byte_bits, 'link_round_degree': 3, 'link_rounds': rounds,
+            'extension_corrections_excluding_incoming_claims': corrections,
+            'payload_before_incoming_claims_framing_and_shared_closures': 24*corrections,
+            'private_products': 24, 'zero_residuals': 9*byte_bits+38,
+            'extension_challenges': 9*byte_bits+48,
+            'interactive_error_numerator_excluding_incoming_batch': 26*byte_bits+103,
+            'source_endpoints': 1, 'extra_trace_commitments': 0,
+            'top_prefix_rounds': top_prefix, 'link_prefix_rounds': link_prefix,
+            'top_arrays_256_byte_aligned': top_arrays, 'link_arrays_256_byte_aligned': link_arrays,
+            'top_array_bytes': sum(top_arrays.values()), 'link_array_bytes': sum(link_arrays.values()),
+            'source_visits': visits, 'padded_source_cells_visited': visits*cells,
+            'top_byte_bit_extractions_upper': 8*(top_prefix+1)*cells,
+            'top_extension_products_before_public_forms_mac_and_metadata': (
+                24*(cells-1)+16*(top_tail-1)+(1 << (top_prefix+1))),
+            'link_extension_products_upper_before_mac_and_metadata': (
+                8*link_work+7*(cells-1)+128*256*255+2*255*256+511),
+            'incoming_claims_and_form_metadata': None, 'complete_rms_circuit': None,
+            'additional_weight_reads_given_w_free_reader': 0}
+
+
 def rne_indicator_screen(cell_bits, top_prefix_bits=17, link_prefix_bits=10):
     """R2: degree-7 RNE and one public-function P/S GKR, not full Gamma."""
     natural(cell_bits, "RQ source log domain", 1, 32)
@@ -2571,6 +2618,9 @@ def rms_byte_bridge_screen(cohorts):
                       {c['weight_key']: c['weight_shape'] for c in cohorts}.values())
     kv_width = sum(2*config[k+'_layers']*config[k+'_kv_heads']*config[k+'_head_dim']
                    for k in ('local', 'global'))
+    bit_max = byte_bit_lift_screen(34)
+    bit_records = 256*((48*bit_max['extension_corrections_excluding_incoming_claims']+255)//256)
+    bit_records += 256*((24*bit_max['extension_challenges']+255)//256)
     for old_tokens in (0, CONTEXT_CAP-150):
         original = auxiliary_word_sources(cohorts, old_tokens)
         old_tiles, rq = auxiliary_word_layout(original)
@@ -2580,11 +2630,15 @@ def rms_byte_bridge_screen(cohorts):
         live = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources)
         original_live = live-packed
         assert (live-1).bit_length() == (original_live-1).bit_length()  # ONLY the endpoints
+        bit_lift = byte_bit_lift_screen((live-1).bit_length())
         base = wide_hash_witness_screen(cohorts, old_tokens)['joint_w_kv_candidate']
         schedule = base['known_state_cache_schedule']
-        phases = {k: v+extra_bytes for k, v in
+        phases = {k: v+extra_bytes+bit_records for k, v in
                   schedule['arena_phases_bytes_before_uncompiled_reader_gamma_runtime'].items()}
-        phases['rms_statistic'] = phases['opening_first_pass']-80*(1 << 23)+stats['single_cohort_X_and_selector_array_bytes']
+        common = phases['opening_first_pass']-80*(1 << 23)
+        phases['rms_statistic'] = common+stats['single_cohort_X_and_selector_array_bytes']
+        phases['byte_bit_top'] = common+bit_lift['top_array_bytes']
+        phases['byte_bit_link'] = common+bit_lift['link_array_bytes']
         # KV prefix includes each plane's token padding, not packed live KV.
         prefixes = [weight_live]+[kv_width*(1 << (length-1).bit_length())
                                   for length in (old_tokens, old_tokens+150) if length]
@@ -2597,7 +2651,8 @@ def rms_byte_bridge_screen(cohorts):
         payload = (joint['private_component_payload_before_framing_and_caller']
                    +sigma['private_component_payload_before_framing_and_caller']-72
                    +24*(base['known_caller_extension_corrections']+corrections)
-                   +joint['public_anchor_bytes_if_all_resent']+64)
+                   +joint['public_anchor_bytes_if_all_resent']+64
+                   +bit_lift['payload_before_incoming_claims_framing_and_shared_closures'])
         cases.append({'old_tokens': old_tokens, 'source_templates': len(sources),
                       'source_byte_cells': live, 'source_padded_byte_cells': 1 << (live-1).bit_length(),
                       'byte_cubes': len(byte_tiles), 'rq_cubes': len(rq),
@@ -2605,14 +2660,17 @@ def rms_byte_bridge_screen(cohorts):
                           [sources, byte_tiles, rq], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
                       'public_zero_rows_joint_w_kv': zero_rows, 'public_zero_rows_sigma': sigma_zero,
                       'omitted_outer_base_corrections': 357*(sum(zero_rows)+sigma_zero),
+                      'byte_bit_lift': bit_lift,
                       'known_partial_payload_before_rms_circuit_gamma_and_framing': payload,
                       'remaining_payload_bytes_before_missing_components': 35_000_000-payload,
                       'arena_phase_upper_bytes': phases, 'known_phase_max_upper_bytes': max(phases.values())})
         if old_tokens:
             envelope = schedule['all_context_known_array_envelope']['arena_phase_upper_bytes']
-            final_envelope = {k: v+extra_bytes for k, v in envelope.items()}
-            final_envelope['rms_statistic'] = (final_envelope['opening_first_pass']-80*(1 << 23)
-                                             +stats['single_cohort_X_and_selector_array_bytes'])
+            final_envelope = {k: v+extra_bytes+bit_records for k, v in envelope.items()}
+            common = final_envelope['opening_first_pass']-80*(1 << 23)
+            final_envelope['rms_statistic'] = common+stats['single_cohort_X_and_selector_array_bytes']
+            final_envelope['byte_bit_top'] = common+bit_max['top_array_bytes']
+            final_envelope['byte_bit_link'] = common+bit_max['link_array_bytes']
     first_live = cases[0]['source_byte_cells']-packed
     stride = 6*config['layers']*config['query_heads']*150
     changed = [o for o in range(CONTEXT_CAP-150+1) if
@@ -2624,14 +2682,15 @@ def rms_byte_bridge_screen(cohorts):
             'statistic_probe_extension_coordinates': probe_bits,
             'statistic_probe_and_sumcheck_extension_corrections': corrections,
             'additional_payload_before_rms_circuit_gamma_and_framing': 24*corrections,
-            'additional_known_sigma_claims': count,
-            'known_sigma_claims_before_future_gamma': len(cohorts)+8+2*config['layers']+count,
+            'additional_known_sigma_claims': count+1,
+            'known_sigma_claims_before_future_gamma': len(cohorts)+8+2*config['layers']+count+1,
             'fixed_input_probe_and_sumcheck_error_numerator': probe_bits+stats['fixed_input_error_numerator_before_claim_batching'],
-            'additional_common_sigma_batch_error_numerator': count,
+            'additional_common_sigma_batch_error_numerator': count+1,
+            'bit_lift_record_reservation_bytes': bit_records,
             'additional_arrays_reserved_256_byte_aligned': arrays,
             'additional_array_reservation_bytes': extra_bytes,
-            'known_bulk_statistic_reads_before_replay_and_normalizer': 16+95+2+1,
-            'known_bulk_statistic_read_and_initial_write_bytes': (16+95+2+1+1)*packed,
+            'known_bulk_statistic_reads_before_replay_and_normalizer': 16+95+2+1+bit_max['source_visits'],
+            'known_bulk_statistic_read_and_initial_write_bytes': (16+95+2+1+bit_max['source_visits']+1)*packed,
             'cases': cases, 'old_lengths_with_changed_byte_padding': changed,
             'all_context_arena_phase_upper_bytes': final_envelope,
             'all_context_known_phase_max_upper_bytes': max(final_envelope.values()),

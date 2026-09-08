@@ -267,11 +267,11 @@ authorization.
 ## Next work
 
 The [S+Y+RoPE bridge](c7.1-auxiliary-witness.md#raw-rope-nella-sorgente-comune)
-now specifies a bounded raw reader from the same RMS inputs, intra-word
-byte reuse and its work/lifetimes with the synthetic RMS-J profiles.
-These are not full-certificate or physical-liveness results. Next: finish
-public form workspace/evaluation and the remaining W-free kernels/readers
-in the shared source schedule before adopting the extension. Actual
+now includes bounded raw reads, RoPE form fill/public evaluation, and
+work/lifetimes with the synthetic RMS-J profiles. These are not
+full-certificate or physical-liveness results. Next: complete the common
+Sigma/RNE form census and remaining W-free kernels/readers in the shared
+source schedule before adopting the extension. Actual
 profiles, native refinement and global cryptographic obligations remain open.
 Counts and distinct S/S+Y comparison scopes stay in R3, not copied here.
 

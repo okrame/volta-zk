@@ -398,6 +398,32 @@ def gemma_rope_plan(cohorts, old_tokens=0):
     rounds = sum((r['rows']-1).bit_length()+(r['heads']-1).bit_length()+(r['columns']-1).bit_length() for r in records)
     cells = [r['rows']*r['heads']*r['columns'] for r in records]
     padded = [(1 << (r['rows']-1).bit_length())*r['heads']*r['columns'] for r in records]
+    # F fill: in-place EQ expansion (one product/subtraction per parent),
+    # seven products/two sums per token/pair, then one product/output lane.
+    axes = [(r['rows'],1 << (r['rows']-1).bit_length(),r['heads'],r['columns']//2) for r in records]
+    eq_steps = sum(tp+h+j-3 for t,tp,h,j in axes)
+    token_pairs = sum(t*j for t,tp,h,j in axes)
+    fill_products = eq_steps+7*token_pairs+sum(cells)
+    fill_additions = eq_steps+2*token_pairs+len(records)  # also 1-r_b
+    verifier_products = sum((2*((t-1).bit_length())+1)*t+(2*(j.bit_length()-1)+1)*j
+                            +3*t*j+3*(h.bit_length()-1)+5 for t,tp,h,j in axes)
+    verifier_additions = sum(2*((t-1).bit_length())*t+2*(j.bit_length()-1)*j
+                             +2*t*j+3*(h.bit_length()-1)+5 for t,tp,h,j in axes)
+    forms = {'credit':False, 'eq_table_expansion_steps':eq_steps, 'live_token_pairs':token_pairs,
+             'fill_extension_products_upper':fill_products, 'fill_extension_additions_upper':fill_additions,
+             'probe_extension_products_and_additions_each':sum(cells),
+             'initial_F_Y_logical_store_bytes':48*sum(padded),
+             'maximum_fill_eq_and_row_array_bytes':max(24*(tp+h+3*j) for t,tp,h,j in axes),
+             'maximum_verifier_weight_arrays_and_control_bytes':max(24*(t+j)+1024 for t,tp,h,j in axes),
+             'fill_public_q30_read_bytes_upper':8*token_pairs,
+             'verifier_public_q30_read_bytes_upper':8*token_pairs,
+             'verifier_form_extension_products_upper':verifier_products,
+             'verifier_form_extension_additions_upper':verifier_additions,
+             'verifier_form_and_clear_sumcheck_products_upper':verifier_products+2*rounds+len(records),
+             'verifier_form_and_clear_sumcheck_additions_upper':verifier_additions+6*rounds+len(records),
+             'prover_fill_probe_and_sumcheck_products_upper':fill_products+sum(cells)+6*(sum(padded)-len(records)),
+             'prover_fill_probe_and_sumcheck_additions_upper':fill_additions+sum(cells)+8*(sum(padded)-len(records)),
+             'complete_mac_fs_byte_pullback_or_hardware_work':None}
     return {'cohorts':records, 'summary':{
         'credit':False, 'rope_cohorts':len(records), 'live_output_cells':sum(cells),
         'raw_absolute_bound_given_Q30_coefficients':32767*(1 << 31),
@@ -408,6 +434,7 @@ def gemma_rope_plan(cohorts, old_tokens=0):
         'raw_probe_and_linear_payload_before_rne_pcs_framing':24*(3*rounds+2*len(records)),
         'linear_sumcheck_padded_cells':sum(padded), 'maximum_two_field_arrays_without_reader':48*max(padded),
         'linear_sumcheck_field_products_before_fill_reader_mac':6*(sum(padded)-len(records)),
+        'public_form_and_linear_field_work':forms,
         'raw_identity_error_numerator_before_source_mac_fs':3*rounds,
         'new_private_products_for_raw_linear_reductions':0,
         'canonical_Q30_substitution_preserves_exact_real_rne':False,
@@ -578,6 +605,9 @@ def rope_byte_bridge_screen(cohorts):
               'public_q30_coefficients':rope['public_active_Q30_table_bytes_at_capacity'],
               'linear_control':65536}
     arrays = {k:256*((v+255)//256) for k,v in arrays.items()}
+    forms = rope['public_form_and_linear_field_work']
+    assert max(forms['maximum_fill_eq_and_row_array_bytes']+1024,
+               forms['maximum_verifier_weight_arrays_and_control_bytes']) <= arrays['linear_control']
     phases = {k:v+sum(arrays.values())+(48*len(extra_rq) if k == 'rne_top' else 0)
               for k,v in bridge['all_context_arena_phase_upper_bytes'].items()}
     phases['rope_linear'] = (phases['opening_first_pass']-80*(1 << 23)
@@ -601,7 +631,7 @@ def rope_byte_bridge_screen(cohorts):
                    'bulk_raw_generations':raw_generations,
                    'y_generations_including_linear_fill':y_generations,
                    'B_S_kappa_logical_read_bytes':4*y_generations+12*(y_generations//64),
-                   'public_q30_logical_read_bytes_upper':8*(raw_generations+added_cells),
+                   'public_q30_logical_read_bytes_upper':8*raw_generations+forms['fill_public_q30_read_bytes_upper'],
                    'raw_signed_i64_products_upper':2*raw_generations,
                    'raw_signed_i64_additions_upper':raw_generations,
                    'extra_input_raw_rne_calls':0,

@@ -2360,6 +2360,20 @@ def test_rope_pinned_pairs_positions_integer_bounds_and_q30_refinement_counterex
     assert screen['raw_probe_and_linear_payload_before_rne_pcs_framing'] == 182880
     assert screen['maximum_two_field_arrays_without_reader'] == 201326592
     assert screen['linear_sumcheck_field_products_before_fill_reader_mac'] == 1226833200
+    forms = screen['public_form_and_linear_field_work']
+    assert (forms['eq_table_expansion_steps'],forms['live_token_pairs']) == (51040,2688000)
+    assert (forms['fill_extension_products_upper'],forms['fill_extension_additions_upper']) == (138675040,5427160)
+    assert forms['probe_extension_products_and_additions_each'] == 119808000
+    assert forms['initial_F_Y_logical_store_bytes'] == 9814671360
+    assert forms['maximum_fill_eq_and_row_array_bytes'] == 25344 < 65536
+    assert forms['maximum_verifier_weight_arrays_and_control_bytes'] == 10768 < 65536
+    assert forms['fill_public_q30_read_bytes_upper'] == 21504000
+    assert forms['verifier_public_q30_read_bytes_upper'] == 21504000
+    assert (forms['verifier_form_extension_products_upper'],forms['verifier_form_extension_additions_upper']) == (8651200,5927280)
+    assert (forms['verifier_form_and_clear_sumcheck_products_upper'],forms['verifier_form_and_clear_sumcheck_additions_upper']) == (8656240,5942160)
+    assert forms['prover_fill_probe_and_sumcheck_products_upper'] == 1485316240
+    assert forms['prover_fill_probe_and_sumcheck_additions_upper'] == 1761012760
+    assert not forms['credit'] and forms['complete_mac_fs_byte_pullback_or_hardware_work'] is None
     assert screen['raw_identity_error_numerator_before_source_mac_fs'] == 7380
     assert screen['new_private_products_for_raw_linear_reductions'] == 0
     assert screen['coefficient_profile'] == 'C71-RoPE-Q30-v1' and screen['canonical_coefficient_recipe_specified']
@@ -2517,7 +2531,7 @@ def test_rope_byte_extension_and_gamma_keep_one_source_and_all_rne_validity():
     assert reader['y_generations_including_linear_fill'] == 140055552000
     assert reader['extra_input_raw_rne_calls'] == 0
     assert reader['B_S_kappa_logical_read_bytes'] == 4*140055552000+12*(140055552000//64)
-    assert reader['public_q30_logical_read_bytes_upper'] == 8*(69967872000+119808000)
+    assert reader['public_q30_logical_read_bytes_upper'] == 8*69967872000+21504000 == 559764480000
     assert reader['raw_signed_i64_products_upper'] == 2*69967872000
     assert reader['raw_signed_i64_additions_upper'] == 69967872000
     assert reader['complete_all_gamma_reader_work_and_runtime'] is None
@@ -2693,6 +2707,47 @@ def test_rope_adjoint_quadratic_sumcheck_and_same_rms_source_point():
         C,S = coefficients[t][c % 2] if t < 3 and c % 2 == 0 else (q,0)
         value = eq(r[1],h)*eq(r[2],t)*(eq(r[0],c)*C+eq(r[0],c ^ 2)*(1-2*(c//2))*S)
         dense.append(value % p if t < 3 else 0)
+    # Execute the stated in-place EQ/row fill independently of the verifier's
+    # direct MLE formula. Count actual field operations, including 1-r_b.
+    counts = [0,0]
+    def mul(a,b):
+        counts[0] += 1
+        return a*b % p
+    def add(a,b):
+        counts[1] += 1
+        return (a+b) % p
+    def sub(a,b):
+        counts[1] += 1
+        return (a-b) % p
+    def weights(point):
+        table = [1]+[0]*((1 << len(point))-1)
+        for k,v in enumerate(point):
+            for i in range(1 << k):
+                table[i+(1 << k)] = mul(table[i],v)
+                table[i] = sub(table[i],table[i+(1 << k)])
+        return table
+    jw,hw,tw = weights(r[0][:-1]),weights(r[1]),weights(r[2])
+    b0,b1 = sub(1,r[0][-1]),r[0][-1]
+    filled = [None]*len(dense)
+    for t in range(3):
+        row0,row1 = [],[]
+        for j in range(2):
+            C,S = coefficients[t][j] if j < len(coefficients[t]) else (q,0)
+            weight = mul(tw[t],jw[j])
+            row0.append(mul(weight,add(mul(b0,C),mul(b1,S))))
+            row1.append(mul(weight,sub(mul(b1,C),mul(b0,S))))
+        for h in range(2):
+            for lane,v in enumerate(row0+row1):
+                filled[8*t+4*h+lane] = mul(hw[h],v)
+    filled[24:] = [0]*8
+    eq_steps,token_pairs,live = (4-1)+(2-1)+(2-1),3*2,3*2*4
+    assert counts == [eq_steps+7*token_pairs+live,eq_steps+2*token_pairs+1]
+    assert filled == dense
+    probe = 0
+    for f,v in zip(filled[:24],y[:24]):
+        probe = add(probe,mul(f,v))
+    assert probe == plan.mle(raw,sum((list(a) for a in r),[]))
+    assert counts == [eq_steps+7*token_pairs+2*live,eq_steps+2*token_pairs+1+live]
     coins = [13,17,19,23,29]
     for point in [list(v) for v in product((0,1),repeat=5)]+[coins]:
         assert plan.rope_linear_input_form(coefficients,r,(point[:2],point[2:3],point[3:])) == plan.mle(dense,point)

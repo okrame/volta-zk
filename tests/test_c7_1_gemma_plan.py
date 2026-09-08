@@ -2368,7 +2368,8 @@ def test_rope_pinned_pairs_positions_integer_bounds_and_q30_refinement_counterex
     assert (screen['public_setup_main_integer_products'],screen['public_setup_rne_divisions']) == (50331648,40894464)
     assert screen['canonical_coefficient_table_sha256'] == '67503dd31c4504bed77f836ac1389d64692cef2a721ad74381d6297071d90951'
     assert screen['complete_gemma_quantization_and_runtime_refinement'] is None
-    assert not screen['credit'] and not screen['raw_rope_added_to_common_sigma_and_rq']
+    assert not screen['credit'] and not screen['raw_rope_adopted_in_active_source_totals']
+    assert screen['raw_rope_common_source_layout_specified']
     assert screen['complete_rope_mac_kernel_and_liveness'] is None
     for old in (-1,3947,True):
         with pytest.raises(ValueError):
@@ -2414,6 +2415,66 @@ def test_rope_pinned_pairs_positions_integer_bounds_and_q30_refinement_counterex
     assert round(lo) == round(hi) == -4423
     assert plan.rne_i48_to_i16(plan.rope_raw_row([a,b],[(580145183,903522590)])[0],30) == -4422
     assert not screen['canonical_Q30_substitution_preserves_exact_real_rne']
+
+
+def test_rope_byte_extension_and_gamma_keep_one_source_and_all_rne_validity():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_bytes())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition'] == 'private_text'])
+    raw = plan.rope_raw_byte_sources(cohorts)
+    bridge = plan.rope_byte_bridge_screen(cohorts)
+    assert len(raw) == bridge['raw_rope_sources'] == 120
+    assert (bridge['extra_byte_cubes'],bridge['extra_rq_cubes'],bridge['extra_source_and_cube_descriptor_bytes']) == (960,480,107520)
+    assert bridge['extra_virtual_source_bytes'] == 718848000
+    assert bridge['additional_direct_sigma_claim_wires'] == 240
+    assert bridge['known_t1_k1_rope_output_demands'] == 120
+    assert bridge['changed_padding_contexts'] == {'sigma':list(range(767,1183)),'rq':list(range(657,1073))}
+    assert not bridge['same_rq_layout'] and bridge['additional_pcs_instances'] == 0
+    assert bridge['complete_extended_payload_and_liveness'] is None
+    for old in (0,656,657,766,767,1072,1073,1182,1183,3945,3946):
+        base = plan.auxiliary_word_sources(cohorts,old)+plan.rms_statistic_byte_sources(cohorts)+plan.rms_output_byte_sources(cohorts)
+        before,rq_before = plan.auxiliary_word_layout(base)
+        after,rq_after = plan.auxiliary_word_layout(base+raw)
+        assert len(after)-len(before) == 960 and len(rq_after)-len(rq_before) == 480
+        assert rq_before != rq_after  # Existing raw/RNE offsets must be rebuilt too.
+        for name,sources,delta in (('sigma',base,718848000),('rq',[s for s in base if s['rne']],119808000)):
+            live = sum(math.prod(s['shape'])*(s['word_bytes'] if name == 'sigma' else 1) for s in sources)
+            assert ((live-1).bit_length() != (live+delta-1).bit_length()) == (old in bridge['changed_padding_contexts'][name])
+    first,last = bridge['cases']
+    assert (first['source_byte_cells'],last['source_byte_cells']) == (7264807038,14083495038)
+    assert (first['rq_live_cells'],last['rq_live_cells']) == (884547200,2020995200)
+    assert (first['rq_cubes'],last['rq_cubes']) == (16823,33443)
+    gamma = plan.gamma_barrier_plan(cohorts,True,True)
+    summary = gamma['summary']
+    assert (summary['ordinary_kernel_cohorts'],summary['final_rne_cohorts'],summary['source_boundary_cohorts'],
+            summary['retained_cohort_edges']) == (434,651,483,614)
+    assert summary['delegated_tensor_edges']['RoPE_linear'] == 6120
+    assert summary['seed_cohorts_by_role']['validity'] == 1085
+    assert summary['seed_cohorts_by_role']['RMS_joint_validity'] == 421
+    assert summary['plan_sha256'] == 'a598a635062c1c1db0fb4628a24d80714122a38967f66e055c7d1c2ed4517811'
+    before = plan.gamma_barrier_plan(cohorts,True)
+    assert gamma['rms_statistic_demands'] == before['rms_statistic_demands']
+    assert plan.rms_statistic_dependency_plan(cohorts,gamma) == plan.rms_statistic_dependency_plan(cohorts,before)
+    by_rope = {r['rope_source_id']:r for r in gamma['cohorts'] if r['byte_source'] == 'RoPE_raw'}
+    norms = plan.rms_statistic_cohorts(cohorts)
+    for i,producer in gamma['rope_input_demands']:
+        r,n = by_rope[i],gamma['cohorts'][producer]
+        assert r['kind'] == 'rne48' and not r['dependencies'] and 'validity' in r['seeds']
+        assert r['layer'] == n['layer'] and r['operation'][0]+'_norm' == n['operation']
+        assert n['kind'] == 'rms_output_boundary' and 'RoPE_linear' in n['seeds']
+        assert (raw[i]['layer'],raw[i]['operation']) == (r['layer'],r['operation'])
+        assert raw[i]['shape'] == (norms[n['rms_source_id']]['heads'],150,norms[n['rms_source_id']]['columns'])
+        assert ('T1' if r['operation'] == 'q_rope' else 'K1') in r['seeds']
+        head,rows,cols = raw[i]['shape']
+        cb,hb,tb = ((d-1).bit_length() for d in (cols,head,rows))
+        point = list(range(2,2+cb+hb+tb))
+        hp,tp,cp,weight = plan.rope_output_source_point(raw[i],point,7)
+        assert cp+hp+tp == point and weight == 7
+        _,rp,ycp,_ = plan.rms_output_source_point(norms[n['rms_source_id']],point)
+        assert (rp,ycp) == (hp+tp,cp)
+    for args in ((False,True),(True,1)):
+        with pytest.raises(ValueError):
+            plan.gamma_barrier_plan(cohorts,*args)
 
 
 def test_rope_canonical_q30_recipe_has_fixed_precision_and_quantized_semantics():
@@ -2515,7 +2576,7 @@ def test_rope_adjoint_quadratic_sumcheck_and_same_rms_source_point():
     hp,rp,cp,scale = plan.rms_output_source_point(norm,coins)
     assert (hp,rp,cp,scale) == ([],coins[2:],coins[:2],1)
     assert plan.mle(y,cp+rp) == endpoint != plan.mle(y,rp+cp)
-    sources = [{'shape':(2,3,4),'word_bytes':6,'rne':True,'token_offset':0},
+    sources = [{'source':'RoPE_raw','operation':'q_rope','shape':(2,3,4),'word_bytes':6,'rne':True,'token_offset':0},
                {'shape':(1,6,4),'word_bytes':2,'rne':False,'token_offset':0}]
     byte_tiles,rq_tiles = plan.auxiliary_word_layout(sources)
     assert sum(h*t*d for _,_,_,h,t,d,_ in rq_tiles) == 24  # Y is not raw RQ.
@@ -2531,6 +2592,28 @@ def test_rope_adjoint_quadratic_sumcheck_and_same_rms_source_point():
                     {0:(r[1],r[2],r[0],1),1:(hp,rp,cp,31)})
     actual = (sum(w*plan.mle(sigma[o:o+(1 << len(point))],point) for o,point,w in terms)-bias) % p
     assert actual == (plan.mle(raw,sum((list(a) for a in r),[]))+31*endpoint) % p
+    # The existing T1/K1 wire is the rounded output, not the raw probe above.
+    point = sum((list(a) for a in r),[])
+    demand = plan.rope_output_source_point(sources[0],point)
+    assert demand == (r[1],r[2],r[0],1)
+    forms = plan.auxiliary_rne_forms(rq_tiles,sources,{0:[demand]},{0:30},coins)
+    output_rq = [0]*32
+    for _,t,c,heads,height,width,offset in rq_tiles:
+        for h,a,b in product(range(heads),range(height),range(width)):
+            output_rq[offset+b+width*(a+height*h)] = plan.rne_i48_to_i16(raw[8*(t+a)+4*h+c+b],30)
+    incoming = plan.mle([plan.rne_i48_to_i16(v,30) for v in raw],point)
+    transferred = 0
+    for index,value in enumerate(output_rq):
+        vertex = [(index >> k) & 1 for k in range(5)]
+        weight = sum(w*plan.folded_cube_form(o,local,[1],vertex) for o,local,w in forms[30]['output']) % p
+        valid = sum(w*plan.folded_cube_form(o,local,[1],vertex) for o,local,w in forms[30]['validity']) % p
+        assert valid == (eq(coins,index) if index < 24 else 0)
+        transferred += weight*value
+    assert transferred % p == incoming != (transferred+1) % p
+    for source,badpoint in ((sources[0],point[:-1]),(dict(sources[0],token_offset=7),point),
+                            (dict(sources[0],operation='v_norm'),point)):
+        with pytest.raises(ValueError):
+            plan.rope_output_source_point(source,badpoint)
     # A product of MLEs is not the MLE of the Boolean sign/partner selector.
     rh,uh = 3,17
     assert (rh-uh) % p != (1-2*uh)*(rh*(1-uh)+(1-rh)*uh) % p
@@ -4567,6 +4650,15 @@ def test_gemma_rne_shift_rules_use_actual_owners_and_distinct_q_k_exponents():
     gamma = plan.gamma_barrier_plan(cohorts)
     assert set(shifts) == {(r['layer'],r['operation']) for r in gamma['cohorts'] if r['kind'] == 'rne48'}
     assert len(shifts) == 531 and shifts[5,'qk_matmul'] == 10
+    activation.update({'layer/5/q_norm':-3,'layer/5/k_norm':4})
+    with_rope = plan.gemma_rne_shift_classes(cohorts,weights,activation,True)
+    extended_gamma = plan.gamma_barrier_plan(cohorts,True,True)
+    assert set(with_rope) == {(r['layer'],r['operation']) for r in extended_gamma['cohorts'] if r['kind'] == 'rne48'}
+    assert len(with_rope) == 651 and (with_rope[5,'q_rope'],with_rope[5,'k_rope']) == (26,24)
+    for value,expected in ((-10**9,-15),(10**9,48)):
+        assert plan.gemma_rne_shift_classes(cohorts,weights,{**activation,'layer/5/q_rope':value},True)[5,'q_rope'] == expected
+    with pytest.raises(ValueError):
+        plan.gemma_rne_shift_classes(cohorts,weights,{k:v for k,v in activation.items() if k != 'layer/5/q_norm'},True)
     assert shifts[5,'pv_matmul'] == 8 and shifts[None,'lm_head'] == -1
     assert 'model/last_row_select' not in activation
     for old in (0, 3946):

@@ -266,15 +266,15 @@ authorization.
 
 ## Next work
 
-The [RoPE profile](c7.1-cut-witness.md#rope-geometria-adjoint-e-limite-q30)
-now defines the quantized coefficients by a finite integer recipe, with
-an analytic error bound and reproducible full-table checksum. This specifies
-the declared integer relation; it does not claim real/BF16 output equivalence.
-Next: add raw RoPE to common C_Σ/RQ and compile its T1/K1 consumers and
-public shifts, then the remaining kernels in the
-[Gamma order](c7.1-cut-witness.md#ordine-inverso-di-γ-e-ultima-rne).
-Actual RMS profiles, complete source/reader costs and liveness remain open.
-Current R3 totals do not include raw RoPE; derivations/counts stay in the dossiers.
+The [S+Y+RoPE bridge](c7.1-auxiliary-witness.md#raw-rope-nella-sorgente-comune)
+now specifies the common raw source, T1/K1 output routing, public shifts and
+extended Gamma order. Its layout recount finds earlier padding jumps in
+both Sigma and RQ; old component totals cannot be carried over unchanged.
+Next: recount its complete source-path payload, retained records and reader
+work/liveness before adopting the extension, then continue the remaining
+kernels. Actual RMS profiles and native refinement remain open.
+Active S-only and comparison S+Y totals do not include raw RoPE; their
+derivations and the extended layout counts stay in R3.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
 In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)

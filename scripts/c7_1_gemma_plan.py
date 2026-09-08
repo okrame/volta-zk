@@ -420,7 +420,69 @@ def gemma_rope_plan(cohorts, old_tokens=0):
         'public_setup_main_integer_products':64*CONTEXT_CAP*(128+64),
         'public_setup_rne_divisions':52*CONTEXT_CAP*(128+64),
         'complete_gemma_quantization_and_runtime_refinement':None,
-        'raw_rope_added_to_common_sigma_and_rq':False, 'complete_rope_mac_kernel_and_liveness':None}}
+        'raw_rope_common_source_layout_specified':True,
+        'raw_rope_adopted_in_active_source_totals':False, 'complete_rope_mac_kernel_and_liveness':None}}
+
+
+def rope_raw_byte_sources(cohorts):
+    """Virtual i48 RoPE cuts for the SAME Sigma/RQ; no retained raw array."""
+    return [{'source':'RoPE_raw', 'source_id':i, 'layer':r['layer'], 'operation':r['operation'],
+             'execution':None, 'token_offset':0, 'shape':(r['heads'],r['rows'],r['columns']),
+             'word_bytes':6, 'rne':True, 'physical_b_offset':None}
+            for i,r in enumerate(gemma_rope_plan(cohorts)['cohorts'])]
+
+
+def rope_output_source_point(source, point, coefficient=1):
+    """T1/K1 native lane||head||NEW-token -> one raw RoPE RNE output claim."""
+    heads,rows,columns = source['shape']
+    if source['source'] != 'RoPE_raw' or source['operation'] not in ('q_rope','k_rope'):
+        raise ValueError('RoPE output demand must name its own raw source')
+    cb,hb,tb = ((d-1).bit_length() for d in (columns,heads,rows))
+    if len(point) != cb+hb+tb or source['token_offset'] != 0:
+        raise ValueError('RoPE output point must use the new-token native domain')
+    return (list(point[cb:cb+hb]),list(point[cb+hb:]),list(point[:cb]),coefficient)
+
+
+def rope_byte_bridge_screen(cohorts):
+    """Source/RQ delta from S+Y to S+Y+RoPE only, NOT a payload/arena recount."""
+    if cohorts[0]['rows'] != 150 or cohorts[-1]['rows'] != 50:
+        raise ValueError('RoPE bridge accounting covers pinned 100+50 only')
+    extra = rope_raw_byte_sources(cohorts)
+    extra_byte,extra_rq = auxiliary_word_layout(extra)
+    added_cells = sum(math.prod(s['shape']) for s in extra)
+    cases = []
+    for old in (0,CONTEXT_CAP-150):
+        base = auxiliary_word_sources(cohorts,old)+rms_statistic_byte_sources(cohorts)+rms_output_byte_sources(cohorts)
+        old_bytes,old_rq = auxiliary_word_layout(base)
+        sources = base+extra
+        byte_tiles,rq_tiles = auxiliary_word_layout(sources)
+        live = sum(math.prod(s['shape'])*s['word_bytes'] for s in sources)
+        rq_live = sum(math.prod(s['shape']) for s in sources if s['rne'])
+        cases.append({'old_tokens':old, 'source_templates':len(sources),
+                      'source_byte_cells':live, 'source_padded_byte_cells':1 << (live-1).bit_length(),
+                      'rq_live_cells':rq_live, 'rq_padded_cells':1 << (rq_live-1).bit_length(),
+                      'byte_cubes':len(byte_tiles), 'rq_cubes':len(rq_tiles),
+                      'layout_sha256':hashlib.sha256(json.dumps(
+                          [sources,byte_tiles,rq_tiles],sort_keys=True,separators=(',',':')).encode()).hexdigest()})
+        assert len(byte_tiles)-len(old_bytes) == len(extra_byte)
+        assert len(rq_tiles)-len(old_rq) == len(extra_rq)
+    base_live = cases[0]['source_byte_cells']-6*added_cells
+    base_rq = cases[0]['rq_live_cells']-added_cells
+    stride = pinned_model_config()['layers']*pinned_model_config()['query_heads']*150
+    changes = {}
+    for name,first,step,delta in (('sigma',base_live,6*stride,6*added_cells),('rq',base_rq,stride,added_cells)):
+        changes[name] = [o for o in range(CONTEXT_CAP-150+1)
+                         if (first+step*o-1).bit_length() != (first+step*o+delta-1).bit_length()]
+    return {'credit':False, 'extends_source':'S+Y', 'raw_rope_sources':len(extra),
+            'raw_rope_cells':added_cells, 'extra_virtual_source_bytes':6*added_cells,
+            'extra_byte_cubes':len(extra_byte), 'extra_rq_cubes':len(extra_rq),
+            'extra_source_and_cube_descriptor_bytes':96*len(extra)+72*len(extra_byte)+56*len(extra_rq),
+            'additional_direct_sigma_claim_wires':2*len(extra),
+            'known_t1_k1_rope_output_demands':len(extra),
+            'contexts_checked':CONTEXT_CAP-150+1, 'changed_padding_contexts':changes,
+            'cases':cases, 'same_rq_layout':False, 'additional_pcs_instances':0,
+            'additional_weight_reads_given_w_free_reader':0,
+            'complete_extended_payload_and_liveness':None}
 
 
 def rms_integer_coefficients(columns, input_exponent, scale_exponent, output_exponent):
@@ -2563,7 +2625,7 @@ def gemma_input_routes(cohorts):
     return routes
 
 
-def gamma_barrier_plan(cohorts, include_rms_outputs=False):
+def gamma_barrier_plan(cohorts, include_rms_outputs=False, include_rope=False):
     """Logical reverse schedule for the pinned 100+50 DAG, NOT kernel lowering.
 
     Cut raw W/QK/PV products, not weighted RMS statistics. All executed
@@ -2573,9 +2635,13 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False):
     The optional virtual-Y boundary delegates RMS to the existing joint
     predicate/P0/statistic proofs; it does not make RMS an unchecked cut.
     Both modes include the S-source prelude's input demands before Gamma.
+    Optional raw RoPE needs the same Y boundary and delegates its linear
+    input proof before Gamma; the output RNE is postponed with all others.
     """
     if type(include_rms_outputs) is not bool:
         raise ValueError('Gamma RMS source mode must be Boolean')
+    if type(include_rope) is not bool or include_rope and not include_rms_outputs:
+        raise ValueError('this raw RoPE construction requires the same RMS Y source')
     manifest = pinned_gemma_manifest()
     logical = runpy.run_path(str(Path(__file__).with_name("c7_d126_gemma_qspec_dag.py")))
     executions = logical["_expand_schedule"](manifest["workload_schedule"])
@@ -2594,6 +2660,8 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False):
         raise ValueError("Gamma dependency plan covers only the pinned 100+50 workload")
     norms = rms_statistic_cohorts(cohorts)
     by_rms = {(n['layer'],n['operation']): (i,n) for i,n in enumerate(norms)}
+    by_rope = {(r['layer'],r['operation']): (i,r) for i,r in
+               enumerate(gemma_rope_plan(cohorts)['cohorts'])} if include_rope else {}
 
     records, indices, node_cohorts = [], {}, []
     for node in nodes:
@@ -2608,6 +2676,8 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False):
                       "raw_attention" if kind == "rne48" else None)
             if include_rms_outputs and key in by_rms:
                 kind, source = 'rms_output_boundary', 'RMS_outputs'
+            if key in by_rope:
+                kind, source = 'rne48','RoPE_raw'
             indices[key] = len(records)
             records.append({"ordinal": len(records), "layer": node.layer,
                             "operation": node.operation, "kind": kind, "byte_source": source,
@@ -2615,6 +2685,8 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False):
                             "executions": 0, "query_rows": 0})
             if include_rms_outputs and key in by_rms:
                 records[-1]['rms_source_id'] = by_rms[key][0]
+            if key in by_rope:
+                records[-1]['rope_source_id'] = by_rope[key][0]
         ordinal = indices[key]
         node_cohorts.append(ordinal)
         r = records[ordinal]
@@ -2631,6 +2703,15 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False):
                  else "T1" if node.operation in {"qk_matmul", "pv_matmul"}
                  else "K1" if node.operation == "kv_cache_append"
                  else "public_decisions" if node.operation == "token_input" else None)
+        if (node.layer,node.operation) in by_rope:
+            rplan = by_rope[node.layer,node.operation][1]
+            if len(node.dependencies) != 1:
+                raise ValueError('RoPE must have one pinned normalized input')
+            source = nodes[node.dependencies[0]]
+            norm = norms[rplan['rms_source_id']]
+            if (source.layer,source.operation) != (norm['layer'],norm['operation']):
+                raise ValueError('RoPE source disagrees with the pinned normalized input')
+            owner = 'RoPE_linear'
         if (node.layer,node.operation) in by_rms:
             if include_rms_outputs:
                 owner = 'RMS_joint_P0_statistics'
@@ -2675,6 +2756,13 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False):
         records[producer]['seeds'].add('RMS_statistic')
         statistic_demands.append((i,producer))  # Keep separate wires, including the ten K/V aliases.
 
+    rope_demands = []
+    for i,rplan in by_rope.values():
+        norm = norms[rplan['rms_source_id']]
+        producer = indices[norm['layer'],norm['operation']]
+        records[producer]['seeds'].add('RoPE_linear')
+        rope_demands.append((i,producer))  # Existing linear endpoint wire, not another correction.
+
     for r in records:
         r["dependencies"] = sorted(r["dependencies"])
         r["seeds"] = sorted(r["seeds"])
@@ -2689,6 +2777,7 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False):
             rank[r["ordinal"]] >= rank[d] for r in records for d in r["dependencies"]):
         raise ValueError("a source/RNE leaf has a late dependency")
     return {"cohorts": records, "reverse_order": order, 'rms_statistic_demands': statistic_demands,
+            'rope_input_demands':rope_demands,
             "summary": {"credit": False, "pinned_tensor_nodes": len(nodes),
                         "tensor_edges": sum(len(n.dependencies) for n in nodes),
                         "delegated_tensor_edges": dict(delegated),
@@ -2697,6 +2786,7 @@ def gamma_barrier_plan(cohorts, include_rms_outputs=False):
                         'ordinary_kernel_operations': dict(Counter(records[i]['operation'] for i in ordinary)),
                         "source_boundary_cohorts": len(boundaries),
                         'includes_rms_outputs': include_rms_outputs,
+                        'includes_raw_rope':include_rope, 'rope_input_demands':len(rope_demands),
                         'rms_statistic_input_demands': len(statistic_demands),
                         'distinct_statistic_input_producers': len({p for _,p in statistic_demands}),
                         "seed_cohorts_by_role": dict(Counter(s for r in records for s in r["seeds"])),
@@ -3494,13 +3584,15 @@ def auxiliary_byte_terms(byte_tiles, sources, source_points, byte):
     return terms
 
 
-def gemma_rne_shift_classes(cohorts, weight_exponents, activation_exponents):
-    """531 raw-output shift classes, PARAMETRIC in a frozen public profile.
+def gemma_rne_shift_classes(cohorts, weight_exponents, activation_exponents, include_rope=False):
+    """531 base rules, or 651 with RoPE, PARAMETRIC in a frozen public profile.
 
     No calibration values are supplied here. This validates the exponents
     read by these rules, not the complete nonlinear/profile grammar.
     Classes -15 and 48 also represent all smaller/larger shifts, respectively.
     """
+    if type(include_rope) is not bool:
+        raise ValueError('RoPE shift extension mode must be Boolean')
     if set(weight_exponents) != {c['weight_key'] for c in cohorts}:
         raise ValueError('the public W exponent map must cover the P0 inventory exactly')
     if any(type(v) is not int for values in (weight_exponents, activation_exponents) for v in values.values()):
@@ -3525,6 +3617,9 @@ def gemma_rne_shift_classes(cohorts, weight_exponents, activation_exponents):
         for op, left, right in (('qk_matmul', 'q_rope', 'k_rope'),
                                 ('pv_matmul', 'softmax', 'v_norm')):
             result[layer, op] = shift(exponent(layer, op), exponent(layer, left), exponent(layer, right))
+        if include_rope:
+            for op,norm in (('q_rope','q_norm'),('k_rope','k_norm')):
+                result[layer,op] = shift(exponent(layer,op),exponent(layer,norm),-30)
     return result
 
 
@@ -4401,6 +4496,8 @@ def report():
         "gamma_barrier_screen": gamma["summary"],
         "gamma_rms_source_barrier_screen": gamma_barrier_plan(cohorts,True)['summary'],
         "rope_linear_screen": gemma_rope_plan(cohorts)['summary'],
+        "rope_byte_bridge_screen":rope_byte_bridge_screen(cohorts),
+        "gamma_rope_source_barrier_screen":gamma_barrier_plan(cohorts,True,True)['summary'],
         "rms_statistic_dependency_screen": rms_statistic_dependency_plan(cohorts,gamma)["summary"],
         "rms_statistic_screen": rms_statistic_screen(cohorts),
         "rms_byte_bridge_screen": rms_byte_bridge_screen(cohorts),

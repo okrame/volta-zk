@@ -1563,6 +1563,71 @@ def test_targeted_lifetime_reduction_prices_full_replays_and_uses_a5_loss_once()
     assert s['complete_security_bits'] is None
 
 
+def test_interactive_source_causality_does_not_imply_first_query_fs_causality():
+    # Logical counterexample, no hash commitment: MLE((h,h-1),r) = h-r.
+    def mle(source,r):
+        return ((1-r)*source[0]+r*source[1]) % 7
+
+    for h in range(7):
+        source = (h,(h-1) % 7)
+        assert any(source)
+        assert sum(mle(source,r) == 0 for r in range(7)) == 1
+        assert mle(source,h) == 0  # full-H extraction can see the future FS answer
+
+    joint = Counter()
+    for main_answer,fork_answer in product(range(7),repeat=2):
+        observed = {'known':3}
+        main, fork = observed.copy(), observed.copy()
+        h = fork.setdefault('fresh',fork_answer)
+        r = main.setdefault('fresh',main_answer)
+        assert main.setdefault('known',r) == fork.setdefault('known',h) == 3
+        assert main.setdefault('fresh',(r+1) % 7) == r
+        assert fork.setdefault('fresh',(h+1) % 7) == h
+        assert observed == {'known':3}  # independent conditional completions
+        joint[h,r] += 1
+    assert set(joint.values()) == {1} and len(joint) == 49
+    assert sum(count for (h,r),count in joint.items() if mle((h,(h-1) % 7),r) == 0) == 7
+
+    # One emitted reference need not be its first RO query, or cap candidates.
+    candidates = {'prefix-a':4,'prefix-b':0,'prefix-c':6}
+    emitted = min(candidates,key=candidates.get)
+    assert len({emitted}) == 1 < len(candidates) and emitted in candidates
+    profile = plan.wide_hash_security_assumption_screen()
+    candidate_cap, symbols, reserve = 1 << 64, 1 << 26, Fraction(1,1 << 82)
+    samples = candidate_cap*symbols/reserve
+    assert samples == 1 << 172
+    cap = profile['binding_reduction_strict_u64_work_cap']
+    assert samples*(1 << 64) == 1 << 236 > cap
+    assert cap/samples == 1 << 28  # ceiling for this single conservative term, not a lower bound
+    assert candidate_cap*Fraction(*profile['assumed_binding_advantage']) == Fraction(1,1 << 46)
+
+
+def test_expected_work_uses_a_paid_strict_cutoff_not_a_birthday_square():
+    # Enumerate finite work/success distributions: untruncated success is
+    # bounded by success before cutoff plus the Markov tail, even when correlated.
+    for work in product((0,1,3,8),repeat=3):
+        mean = Fraction(sum(work),len(work))
+        for budget in (1,2,4):
+            tail = Fraction(sum(x > budget for x in work),len(work))
+            assert tail <= mean/budget
+            for success in product((False,True),repeat=3):
+                full = Fraction(sum(success),len(work))
+                stopped = Fraction(sum(ok and x <= budget for ok,x in zip(success,work)),len(work))
+                assert full <= stopped+tail <= stopped+mean/budget
+
+    profile = plan.wide_hash_security_assumption_screen()
+    cap = profile['binding_reduction_strict_u64_work_cap']
+    loss = profile['binding_total_reduction_loss_ceiling']
+    assert loss*Fraction(*profile['assumed_binding_advantage']) == Fraction(1,1 << 90)
+    for reserve_bits,mean_bits in ((84,96),(82,98)):
+        reserve = Fraction(1,1 << reserve_bits)
+        ceiling = cap*reserve/loss
+        assert ceiling == 1 << mean_bits
+        assert loss*ceiling/cap == reserve
+        assert loss*(ceiling+1)/cap > reserve
+    # These ceilings include metering, ROM and output costs; no caller bound is proved here.
+
+
 def test_hidden_target_keeps_static_source_and_matches_full_sampler_marginal():
     # Deliberately weak VC: an even word opens digest zero. This exercises
     # collision finding, NOT A5 security. Two adaptive attempts, one inner root each.

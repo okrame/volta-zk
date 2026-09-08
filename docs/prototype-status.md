@@ -62,6 +62,10 @@ real correlations, lifetime accounting or complete algorithm/resources.
   even when an adaptive predecessor is extracted later from its original
   snapshot. Reused identities keep one extracted source and fresh per-attempt
   MACs. The model relation, actual codecs/caller costs and FS remain open.
+  The [first-query audit](c7.1-committed-mac-opening.md#35-prima-query-fs-limite-del-coupling-e-riparazione-da-comporre)
+  separates interactive causality from FS and identifies the candidate-prefix
+  accounting gap; a strict A5-B cutoff can bound an expected-time reduction's
+  tail, but that alternative reduction is not yet instantiated.
   It does not assume
   `BindsIntoMac`. The literal codec
   using one 8-byte correction per leaf bit is excluded at 357 queries for

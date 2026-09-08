@@ -103,11 +103,21 @@ The Fp3 transfer component and AES setup exist separately, without this
 complete composition. Lifetime soundness and malicious-verifier simulation
 remain undischarged, distinct from standard hash/PCG assumptions.
 
-No complete local runner or run is claimed; all missing WHIR totals remain
-unbounded for admission. B2 continues with the same-W matrix relation and
-Fp3 composition. The pinned Plonky3 cubic uses `v^3-v-1`, while C7.1 uses
-`u^3-2`: copying coordinates is invalid; an explicit checked basis conversion
-is needed. Existing AES pools use Fp2 and are not already Fp3 correlations.
+The [B2 native component](../rust/volta-pcs/src/c71_matrix.rs) now checks the
+explicit cubic-basis isomorphism, a CPU D14/Fp3 WHIR replay, and a 48×48
+padded matrix relation with two responses under one installed root and an
+aborted reserved slot. The verifier derives its PCS target key from the
+matrix-output reduction. Three real OT/AES pool pairs feed the
+[nine-sVOLE lift](../rust/volta-mac/src/c7_fp3.rs), with tiny LPN tuples
+that have no security credit. Merkle opening payloads enter FS before later
+draws; the independent matrix replay matches the complete transcript digest.
+
+These are private component APIs and focused tests, not the complete local
+runner. The strict certificate codec, complete session/context binding,
+enforced three-slot lifecycle, complete work census and measured preflight
+remain to be composed. The current root's three-attempt mask reservation
+is a caller premise, not yet an enforced service API. All missing complete
+totals remain unbounded for admission; no C7.1 security or hardware credit.
 
 No native build or cryptographic E2E ran for B1. The pre-existing
 uncommitted additions in `tests/test_c7_1_gemma_plan.py` belong to the

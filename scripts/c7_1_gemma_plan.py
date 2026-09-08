@@ -5680,9 +5680,11 @@ def baseline_budget():
             "source_guard_error": "claimless prover must use exactly two claimless sumcheck batches"},
         "B2_CPU_Fp3_port": {
             "status": "in_progress", "credit": False,
-            "completed": ["pinned_fork_source_provenance"],
-            "remaining": ["same_W_matrix_relation", "Fp3_field_and_MAC_composition",
-                          "AES_FS_codec_lifecycle", "local_resource_preflight_and_E2E"]},
+            "completed": ["pinned_fork_source_provenance", "checked_cubic_basis_isomorphism",
+                          "real_AES_nine_sVOLE_lift_component", "same_W_matrix_component_replay"],
+            "remaining": ["full_certificate_codec_and_session_context",
+                          "enforced_three_slot_lifecycle", "complete_work_census",
+                          "local_resource_preflight_and_complete_E2E"]},
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

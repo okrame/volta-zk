@@ -3,7 +3,54 @@
 //! This is the smallest executable seam for the Lean equation
 //! `k = m + Delta*x`. It does not instantiate PCG/VOLE or a PCS prover.
 
-use volta_field::{Fp3, Fp3DecodeError};
+use volta_field::{Fp, Fp2, Fp3, Fp3DecodeError};
+use volta_pcg::SubVole;
+
+const BASIS: [Fp3; 3] =
+    [Fp3::ONE, Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO), Fp3::new(Fp::ZERO, Fp::ZERO, Fp::ONE)];
+
+/// Algebraic lift of nine distinct sVOLEs from three independent Fp2 pools.
+/// Rows select the plaintext limb, columns select the Delta coordinate.
+/// The caller must burn all nine entries before sending the six base-field
+/// alignment corrections (48 bytes). This function provisions no randomness.
+pub fn c7_fp3_lift_prover(rows: [[SubVole; 3]; 3]) -> ([Fp; 6], C7Fp3ProverAuthed) {
+    let mut corrections = [Fp::ZERO; 6];
+    let mut result = C7Fp3ProverAuthed::ZERO;
+    for (j, row) in rows.iter().enumerate() {
+        corrections[2 * j] = row[0].r - row[1].r;
+        corrections[2 * j + 1] = row[0].r - row[2].r;
+        result = result.add(
+            C7Fp3ProverAuthed::new(
+                Fp3::from_base(row[0].r),
+                Fp3::new(row[0].m.c0, row[1].m.c0, row[2].m.c0),
+            )
+            .scale(BASIS[j]),
+        );
+    }
+    (corrections, result)
+}
+
+/// Verifier half under Delta=(Delta_0.c0, Delta_1.c0, Delta_2.c0).
+/// The Fp2 second tag coordinates are not reinterpreted as cubic coordinates.
+/// This identity does not prove security of the multi-pool composition.
+pub fn c7_fp3_lift_verifier(
+    rows: [[Fp2; 3]; 3],
+    delta: Fp3,
+    corrections: [Fp; 6],
+) -> C7Fp3VerifierKey {
+    let mut result = C7Fp3VerifierKey::ZERO;
+    for (j, row) in rows.iter().enumerate() {
+        result = result.add(
+            C7Fp3VerifierKey::new(Fp3::new(
+                row[0].c0,
+                row[1].c0 + delta.c1 * corrections[2 * j],
+                row[2].c0 + delta.c2 * corrections[2 * j + 1],
+            ))
+            .scale(BASIS[j]),
+        );
+    }
+    result
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C7Fp3ProverAuthed {
@@ -156,5 +203,87 @@ mod tests {
                 c7_fp3_transfer_verifier(key0, delta, C7Fp3TransferCorrection::new(mutated));
             assert!(!valid(delta, auth0, wrong));
         }
+    }
+
+    #[test]
+    fn nine_svoles_lift_to_one_cubic_delta_and_detect_alignment_mutations() {
+        let deltas = [
+            Fp2::new(Fp::new(17), Fp::new(19)),
+            Fp2::new(Fp::new(23), Fp::new(29)),
+            Fp2::new(Fp::new(31), Fp::new(37)),
+        ];
+        let delta = Fp3::new(deltas[0].c0, deltas[1].c0, deltas[2].c0);
+        let rows = std::array::from_fn(|j| {
+            std::array::from_fn(|i| SubVole {
+                r: Fp::new((100 * j + 7 * i + 1) as u64),
+                m: Fp2::new(Fp::new((13 * j + i + 5) as u64), Fp::new(41)),
+            })
+        });
+        let keys = std::array::from_fn(|j| {
+            std::array::from_fn(|i| rows[j][i].m + deltas[i].mul_base(rows[j][i].r))
+        });
+        let (wire, auth) = c7_fp3_lift_prover(rows);
+        let key = c7_fp3_lift_verifier(keys, delta, wire);
+        assert!(valid(delta, auth, key));
+        assert_eq!(auth.x, fp3(1, 101, 201));
+        for i in 0..6 {
+            let mut bad = wire;
+            bad[i] += Fp::ONE;
+            assert!(!valid(delta, auth, c7_fp3_lift_verifier(keys, delta, bad)));
+        }
+        let (correction, transferred) = c7_fp3_transfer_prover(auth, fp3(43, 47, 53));
+        assert!(valid(delta, transferred, c7_fp3_transfer_verifier(key, delta, correction)));
+    }
+
+    #[test]
+    fn cubic_lift_consumes_three_real_aes_pool_pairs() {
+        use volta_pcg::{
+            expand_phase_b_production, GgmPrg, PhaseAParams, ResponseAuthorizationStore,
+            SessionBinding,
+        };
+        let root = std::env::temp_dir().join(format!(
+            "volta-c71-lift-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        let store = ResponseAuthorizationStore::new(&root).unwrap();
+        // These are real OT/AES state machines with deliberately tiny LPN
+        // tuples. This checks the algebra and plumbing, not PCG security.
+        let mut pools: Vec<_> = (0..3)
+            .map(|lane| {
+                let binding = SessionBinding::new([0x71; 32], [0x72; 32], [lane + 1; 32]).unwrap();
+                let setup = expand_phase_b_production(
+                    &store,
+                    binding,
+                    6,
+                    0,
+                    PhaseAParams::tiny_for_test(6),
+                )
+                .unwrap();
+                assert!(setup.expansion.consistency.ok);
+                assert_eq!(setup.expansion.setup.params.ggm_prg, GgmPrg::Aes128Mmo);
+                assert!(store.reserve(&binding).is_err());
+                setup.expansion
+            })
+            .collect();
+        let delta = Fp3::new(
+            pools[0].verifier_delta.c0,
+            pools[1].verifier_delta.c0,
+            pools[2].verifier_delta.c0,
+        );
+        for _ in 0..2 {
+            let rows = std::array::from_fn(|_| {
+                std::array::from_fn(|lane| pools[lane].prover.subs.pop().unwrap())
+            });
+            let keys = std::array::from_fn(|_| {
+                std::array::from_fn(|lane| pools[lane].verifier.sub_keys.pop().unwrap())
+            });
+            let (wire, auth) = c7_fp3_lift_prover(rows);
+            assert!(valid(delta, auth, c7_fp3_lift_verifier(keys, delta, wire)));
+        }
+        assert!(pools
+            .iter()
+            .all(|pool| pool.prover.subs.is_empty() && pool.verifier.sub_keys.is_empty()));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

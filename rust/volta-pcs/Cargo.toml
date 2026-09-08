@@ -6,6 +6,11 @@ license.workspace = true
 
 [features]
 default = []
+c71-cpu-matrix-reference = [
+    "c61-p3-reference",
+    "dep:p3-sumcheck-c61",
+    "dep:p3-whir-c61",
+]
 cuda = ["volta-accel/cuda", "volta-proto/cuda"]
 c6-trace = ["volta-proto/c6-trace", "volta-mac/c6-trace"]
 c7-policy3-reference = [

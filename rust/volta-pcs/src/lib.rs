@@ -9,6 +9,8 @@
 //!   → `ligero::open_zk` / `verify_open` (claim bound to the public C_W).
 
 pub mod batch;
+#[cfg(feature = "c71-cpu-matrix-reference")]
+pub mod c71_matrix;
 pub mod c7_gemma_bkv_events;
 pub mod c7_gemma_frontend;
 #[cfg(test)]

@@ -1519,32 +1519,45 @@ def test_targeted_lifetime_reduction_prices_full_replays_and_uses_a5_loss_once()
     profile = plan.wide_hash_security_assumption_screen()
     assert s['attempt_slots_including_aborts'] == s['binding_reduction_loss'] == 1 << 20
     assert s['hidden_target_count'] == 1 and s['fits_named_binding_loss_ceiling']
-    assert s['source_symbols'] == 1 << 26
-    assert s['recursive_symbols'] == [1 << k for k in (22,17,12,7,0)]
-    assert s['source_samples_before_requests'] == 1 << 109
+    assert s['source_symbols_by_class'] == {'w':1 << 26,'kv':1 << 26,'sigma':1 << 25}
+    assert s['source_birth_caps'] == {'w':1,'kv':1 << 20,'sigma':1 << 20}
+    assert s['maximum_source_identities_at_target'] == {'w':1,'kv':2,'sigma':1}
+    assert s['source_samples_from_original_birth'] == {'w':1 << 110,'kv':1 << 130,'sigma':1 << 129}
+    lengths = s['recursive_symbols_by_component']
+    assert lengths == {'w_kv':[1 << k for k in (22,17,12,7,0)],
+                       'sigma':[1 << k for k in (21,16,11,0)]}
     samples = s['recursive_samples_at_target_boundaries']
-    assert samples == [1 << k for k in (126,122,118,114,107)]
+    assert samples == {'w_kv':[1 << k for k in (128,124,120,116,109)],
+                       'sigma':[1 << k for k in (127,123,119,108)]}
     assert s['maximum_attempts_per_source_sample'] == 1 << 20  # not one cheap opening
-    source = Fraction(s['source_symbols'],s['source_samples_before_requests'])
-    rec = (1 << 20)*sum(Fraction(n,m) for n,m in zip(s['recursive_symbols'],samples))
-    assert source == Fraction(*s['source_missing_reservation']) == Fraction(1,1 << 83)
-    assert rec == Fraction(*s['recursive_missing_lifetime_reservation']) == source
+    source = 0
+    for name,n in s['source_symbols_by_class'].items():
+        term = Fraction(s['source_birth_caps'][name]*n,s['source_samples_from_original_birth'][name])
+        assert term == Fraction(*s['source_missing_lifetime_reservations'][name]) == Fraction(1,1 << 84)
+        source += term
+    rec = (1 << 20)*sum(Fraction(n,m) for name,ns in lengths.items() for n,m in zip(ns,samples[name]))
+    assert rec == Fraction(*s['recursive_missing_lifetime_reservation']) == Fraction(1,1 << 84)
     assert source+rec == Fraction(*s['sampling_lifetime_reservation']) == Fraction(1,1 << 82)
     assert Fraction(*s['assumed_binding_lifetime_contribution']) == Fraction(1,1 << 90)
-    blocks = 1+(1 << 109)+sum(samples)
+    assert s['one_time_snapshot_table_and_main_blocks'] == 2*(1 << 20)+32
+    assert s['source_replay_blocks'] == (1 << 110)+2*(1 << 130)+(1 << 129)
+    assert s['recursive_replay_blocks'] == sum(sum(ms) for ms in samples.values())
+    blocks = sum(s[name] for name in ('one_time_snapshot_table_and_main_blocks',
+                                     'source_replay_blocks','recursive_replay_blocks'))
     cap = profile['binding_reduction_strict_u64_work_cap']
     assert s['replay_blocks_including_initial_main_and_final_work'] == blocks
-    assert s['sufficient_strict_u64_work_ceiling_per_block'] == 1 << 73
-    assert s['conditional_total_reduction_u64_work'] == blocks*(1 << 73) < cap
+    assert s['sufficient_strict_u64_work_ceiling_per_block'] == 1 << 68
+    assert s['conditional_total_reduction_u64_work'] == blocks*(1 << 68) < cap
     largest = s['maximum_uniform_block_work_within_a5_cap']
     assert blocks*largest <= cap < blocks*(largest+1)
-    assert blocks*(1 << 74) > cap  # doubling an unverified block cap loses this admission
-    old = 1+(1 << 109)+5*(1 << 20)*sum(s['recursive_symbols'])*(1 << 103)
-    assert s['old_uniform_all_boundary_replay_blocks'] == old > (1 << 21)*blocks
-    assert old*(1 << 73) > cap  # failure of this upper-bound screen, not a lower bound
+    assert blocks*(1 << 69) > cap  # doubling the unverified block cap loses this admission
+    assert blocks*(1 << 73) > cap  # cannot inherit the former W-only ceiling
     assert not s['source_missing_and_main_wrapper_errors_multiplied_by_target_loss']
+    assert not s['source_sampling_conditions_on_future_acceptance_or_predecessor']
+    assert s['same_identity_reuses_first_birth_and_one_extracted_table']
     assert s['conditional_work_strictly_below_a5_cap']
     assert not s['caller_block_work_ceiling_verified']
+    assert not s['runtime_source_identity_checks_verified']
     assert not s['full_joint_source_hash_fs_loss_composition_verified']
     assert not s['honest_protocol_changed'] and not s['credit']
     assert s['complete_security_bits'] is None
@@ -1616,6 +1629,86 @@ def test_hidden_target_keeps_static_source_and_matches_full_sampler_marginal():
     assert {different[0][0]:different[0][1]} != {different[1][0]:different[1][1]}
     assert tuple(different[0][1] if q == different[0][0] else 0 for q in range(3)) != tuple(
         different[1][1] if q == different[1][0] else 0 for q in range(3))
+
+
+def test_deferred_birth_sampler_keeps_adaptively_selected_predecessor_and_aliases():
+    # Three attempts with late aborts and a possible republication. Weak even-word VC.
+    # This checks the deferred/eager identity pointwise, not A5 or runtime security.
+    def resume(snapshot,coins):
+        start,accepted,history = snapshot
+        trace, births = [], {}
+        for slot,coin in zip(range(start,3),coins):
+            state = (slot,accepted,history)
+            new = ('kv',0 if slot == 2 and history % 2 == 0 else slot,'layout2')
+            sigma = ('sigma',slot,'layout2')
+            births.setdefault(new,state)
+            births.setdefault(sigma,state)
+            query = (coin+history) % 2
+            records = []
+            for identity in ((accepted,) if accepted is not None else ())+ (new,sigma):
+                value = 2*(slot+query+coin)
+                if identity == sigma and slot == 2 and coin == 0:
+                    value += 1  # invalid clear opening never enters the sample
+                records.append((identity,query,value,value % 2 == 0))
+            trace.append((state,new,sigma,coin == 1,tuple(records)))
+            if coin == 1:
+                accepted = new
+            history = (2*(slot+query+coin)-(slot+1)) % 7  # public correction, fixed mask
+        return tuple(trace),births
+
+    def extract(identity,snapshot,coins):
+        known = {}
+        for _,_,_,_,records in resume(snapshot,coins)[0]:
+            for key,query,value,valid in records:
+                if key == identity and valid:
+                    known.setdefault(query,value)
+        return known
+
+    tapes = tuple(product(range(2),repeat=3))
+    cases = Counter()
+    for main_coins in tapes:
+        main,births = resume((0,None,0),main_coins)
+        # Several fixed banks cover all future tapes at each birth; the equality
+        # below is pointwise for ANY bank, including independent per-birth banks.
+        for bank in range(len(tapes)):
+            coins = {key:tapes[(bank+2*key[1]+int(key[0] == 'sigma')) % len(tapes)] for key in births}
+            eager = {key:extract(key,state,coins[key]) for key,state in births.items()}
+            for target,(snapshot,new,sigma,_,records) in enumerate(main):
+                old = snapshot[1]
+                selected = set((new,sigma)+((old,) if old is not None else ()))
+                # No conditioning of sampled suffixes on reaching this target/old state.
+                deferred = {key:extract(key,births[key],coins[key]) for key in selected}
+                assert deferred == {key:eager[key] for key in selected}
+                for key in selected:
+                    assert births[key][0] <= target
+                    cases['earlier_predecessor'] += key == old and births[key][0] < target-1
+                cases['old_new_alias'] += old == new
+                for key,query,value,valid in records:
+                    if not valid:
+                        cases['invalid'] += 1
+                        continue
+                    if query in deferred[key] and value != deferred[key][query]:
+                        assert value % 2 == deferred[key][query] % 2 == 0
+                        cases['collision'] += 1
+                if old is not None and extract(old,snapshot,coins[old]) != deferred[old]:
+                    cases['wrong_use_boundary'] += 1
+        # Abort retains the accepted predecessor and still consumes this slot.
+        for t in range(2):
+            assert main[t+1][0][1] == (main[t][1] if main[t][3] else main[t][0][1])
+    assert all(cases[name] for name in ('earlier_predecessor','old_new_alias','invalid',
+                                      'collision','wrong_use_boundary')), cases
+    # Requiring the observed predecessor in every sample biases the original birth law.
+    initial_values, filtered_values = [], []
+    first_id = ('kv',0,'layout2')
+    for tape in tapes:
+        trace,_ = resume((0,None,0),tape)
+        value = next(value for key,_,value,_ in trace[0][-1] if key == first_id)
+        initial_values.append(value)
+        if trace[2][0][1] == first_id:
+            filtered_values.append(value)
+    assert set(initial_values) == {0,4} and set(filtered_values) == {4}
+    # old/new are use labels, not new anchor identities; class/profile remain immutable.
+    assert first_id != ('sigma',0,'layout2') and first_id != ('kv',0,'layout4')
 
 
 def test_decoded_static_source_uses_joint_column_distance_not_independent_row_balls():

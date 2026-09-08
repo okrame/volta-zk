@@ -57,9 +57,12 @@ real correlations, lifetime accounting or complete algorithm/resources.
   Neither result proves C7.1 impossible; base-field and different masking
   constructions remain open. See the dossier for premises and scope.
 - [G2: committed MAC opening](c7.1-committed-mac-opening.md) is **active,
-  not closed**. The [shared-source interactive coupling](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)
-  fixes one source before requests in the stated closed game; the model
-  relation, concrete caller/costs and FS remain open. It does not assume
+  not closed**. The [shared-source interactive coupling](c7.1-committed-mac-opening.md#34-un-bersaglio-nascosto-perdita-lifetime-e-lavoro-a5-separati)
+  now fixes W/KV/C_Σ at their first publications in the stated closed game,
+  even when an adaptive predecessor is extracted later from its original
+  snapshot. Reused identities keep one extracted source and fresh per-attempt
+  MACs. The model relation, actual codecs/caller costs and FS remain open.
+  It does not assume
   `BindsIntoMac`. The literal codec
   using one 8-byte correction per leaf bit is excluded at 357 queries for
   every power-of-two block: even the arena-maximal block needs 41,674,752
@@ -273,13 +276,12 @@ real correlations, lifetime accounting or complete algorithm/resources.
 
 ## Next work
 
-Next: bound the actual emulation work and compose the losses of the
+Next: bound the actual emulation work, instantiate source-identity codecs
+and transfer the joint
 [hidden-target reduction](c7.1-committed-mac-opening.md#34-un-bersaglio-nascosto-perdita-lifetime-e-lavoro-a5-separati)
-with joint W/KV/C_Σ and FS. Its interactive W theorem now keeps the source
-before requests while sampling only one attempt's recursive roots, with an
-explicit loss and a sufficient caller-work ceiling under A5-B; the ceiling
-is not yet verified for the complete caller. Full A5 cryptanalysis remains
-non-priority, and the same-model relation and remaining lifetime terms stay open.
+to FS. Its stronger joint work ceiling remains conditional, not verified
+for the complete caller. Full A5 cryptanalysis stays non-priority; the
+exact model relation, Gamma and remaining lifetime terms stay open.
 Continue the independent pointwise Gamma kernels/forms, beginning with
 residual additions and public scaling, and their complete reader/field costs.
 The [gate_up_mul candidate](c7.1-auxiliary-witness.md#gate_up_mul-prodotto-raw-rne-e-sorgenti-identiche)

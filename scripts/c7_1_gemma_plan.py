@@ -3049,51 +3049,72 @@ def private_projection_compilation_screen(n, block, queries, attempts=1):
 
 
 def private_targeted_lifetime_screen():
-    """G2 §3.4: one hidden target, but one source sampled BEFORE all requests.
+    """G2 §3.4: deferred birth samplers for joint W/KV and C_Sigma.
 
-    Exact reduction counts for the W-only interactive lemma, not a full
-    C7.1/FS compiler. A replay block includes the WHOLE remaining lifetime,
-    cloning, direct checks, storage and comparison, not one honest opening.
+    One hidden target selects at most four source identities and both
+    recursions. Every source sampler starts at its ORIGINAL publication,
+    not at the selected use, and collects all later valid reopenings.
+    Work ceilings remain obligations, not measured or established costs.
     """
     profile = wide_hash_security_assumption_screen()
     attempts = profile['attempt_cap']
-    layout = private_projection_compilation_screen(1 << 35,1 << 24,357,attempts)
-    source, *recursive = [o['symbols'] for o in layout['committed_oracles']]
-    source_epsilon = recursive_epsilon = Fraction(1,1 << 83)
-    shares = [Fraction(1,1 << min(i+1,len(recursive)-1)) for i in range(len(recursive))]
-    source_samples = math.ceil(source/source_epsilon)
-    recursive_samples = [math.ceil(attempts*length/(recursive_epsilon*share))
-                         for length,share in zip(recursive,shares)]
-    source_error = Fraction(source,source_samples)
-    recursive_error = attempts*sum(Fraction(length,count)
-                                  for length,count in zip(recursive,recursive_samples))
+    layouts = {name:private_projection_compilation_screen(n,block,357)
+               for name,n,block in (('w_kv',1 << 36,1 << 24),('sigma',1 << 34,1 << 23))}
+    recursive = {name:[o['symbols'] for o in layout['committed_oracles'][1:]]
+                 for name,layout in layouts.items()}
+    source_symbols = {'w':1 << 26,'kv':1 << 26,'sigma':1 << 25}
+    source_births = {'w':1,'kv':attempts,'sigma':attempts}
+    target_sources = {'w':1,'kv':2,'sigma':1}  # old/new may refer to one identity; upper bound only
+    quarter = Fraction(1,1 << 84)
+    source_samples = {name:math.ceil(source_births[name]*length/quarter)
+                      for name,length in source_symbols.items()}
+    source_errors = {name:Fraction(source_births[name]*length,source_samples[name])
+                     for name,length in source_symbols.items()}
+    recursive_samples = {}
+    for name,lengths in recursive.items():
+        shares = [Fraction(1,1 << min(i+1,len(lengths)-1)) for i in range(len(lengths))]
+        recursive_samples[name] = [math.ceil(attempts*length/(quarter*share/2))
+                                  for length,share in zip(lengths,shares)]
+    recursive_error = attempts*sum(Fraction(length,count) for name,lengths in recursive.items()
+                                  for length,count in zip(lengths,recursive_samples[name]))
     bind = attempts*Fraction(*profile['assumed_binding_advantage'])
-    blocks = 1+source_samples+sum(recursive_samples)
-    block_work = 1 << 73  # sufficient caller ceiling; NOT an established runtime bound
+    # 2T+1 source snapshots, nine recursive snapshots, <=13 tables, and
+    # init/main/find/selection bookkeeping: at most 2T+32 one-time blocks.
+    fixed_blocks = 2*attempts+32
+    source_blocks = sum(target_sources[name]*count for name,count in source_samples.items())
+    recursive_blocks = sum(sum(counts) for counts in recursive_samples.values())
+    blocks = fixed_blocks+source_blocks+recursive_blocks
+    block_work = 1 << 68  # sufficient strict caller ceiling; NOT verified from T_adv
     work_cap = profile['binding_reduction_strict_u64_work_cap']
-    naive_samples = math.ceil(attempts*sum(recursive)/recursive_epsilon)
-    fractions = {'source_missing_reservation':source_error,
-                 'recursive_missing_lifetime_reservation':recursive_error,
-                 'sampling_lifetime_reservation':source_error+recursive_error,
+    fractions = {'recursive_missing_lifetime_reservation':recursive_error,
+                 'sampling_lifetime_reservation':sum(source_errors.values())+recursive_error,
                  'assumed_binding_lifetime_contribution':bind}
     return {'credit':False,'assumption_profile':profile['profile'],
-            'scope':'one static W, ideal interactive closed lifetime; NOT joint W/KV or FS',
+            'scope':'joint W/KV and C_Sigma, ideal interactive closed lifetime; NOT full model relation or FS',
             'attempt_slots_including_aborts':attempts,'hidden_target_count':1,
-            'source_symbols':source,'recursive_symbols':recursive,
-            'source_samples_before_requests':source_samples,
+            'source_symbols_by_class':source_symbols,'source_birth_caps':source_births,
+            'maximum_source_identities_at_target':target_sources,
+            'source_samples_from_original_birth':source_samples,
+            'source_missing_lifetime_reservations':{name:[x.numerator,x.denominator]
+                                                    for name,x in source_errors.items()},
+            'recursive_symbols_by_component':recursive,
             'recursive_samples_at_target_boundaries':recursive_samples,
             'maximum_attempts_per_source_sample':attempts,
             'binding_reduction_loss':attempts,
             'fits_named_binding_loss_ceiling':attempts <= profile['binding_total_reduction_loss_ceiling'],
             **{name:[x.numerator,x.denominator] for name,x in fractions.items()},
+            'one_time_snapshot_table_and_main_blocks':fixed_blocks,
+            'source_replay_blocks':source_blocks,'recursive_replay_blocks':recursive_blocks,
             'replay_blocks_including_initial_main_and_final_work':blocks,
             'sufficient_strict_u64_work_ceiling_per_block':block_work,
             'maximum_uniform_block_work_within_a5_cap':work_cap//blocks,
             'conditional_total_reduction_u64_work':blocks*block_work,
             'conditional_work_strictly_below_a5_cap':blocks*block_work < work_cap,
-            'old_uniform_all_boundary_replay_blocks':1+source_samples+attempts*len(recursive)*naive_samples,
             'source_missing_and_main_wrapper_errors_multiplied_by_target_loss':False,
+            'source_sampling_conditions_on_future_acceptance_or_predecessor':False,
+            'same_identity_reuses_first_birth_and_one_extracted_table':True,
             'caller_block_work_ceiling_verified':False,
+            'runtime_source_identity_checks_verified':False,
             'full_joint_source_hash_fs_loss_composition_verified':False,
             'honest_protocol_changed':False,'complete_security_bits':None}
 

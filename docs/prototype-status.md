@@ -267,9 +267,11 @@ authorization.
 ## Next work
 
 The [row-multiplier getter](c7.1-cut-witness.md#getter-rms-con-moltiplicatore-di-riga)
-now shares preparation across RMS lanes with exact rounding; it does not
-reduce GKR replay. The immediate deliverable is a priced, bounded-memory
-RMS-J replay schedule with actual profiles and Gamma consumers. Compose the
+shares preparation across RMS lanes with exact rounding. The
+[bit-parallel replay and exact field fold](c7.1-cut-witness.md#replay-bit-parallelo-e-fold-delle-celle)
+preserve the same GKR tables, with explicit partial work/scratch counts.
+The immediate deliverable is the remaining sumcheck field-work count and
+full lifetime schedule with actual profiles and Gamma consumers. Compose the
 [joint core](c7.1-cut-witness.md#riduzione-gkr-rms-con-asse-delle-celle-condiviso)
 with the [S+Y source comparison](c7.1-auxiliary-witness.md#output-rms-e-port-di-ingresso-nella-stessa-sorgente)
 before adopting Y: its input bindings are specified, its complete cost is not.

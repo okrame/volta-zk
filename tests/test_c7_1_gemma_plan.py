@@ -2554,6 +2554,21 @@ def test_rms_live_wire_layering_preserves_outputs_and_counts_joint_profiles():
         assert screen['plaintext_and_tag_records_bytes'] == 2*screen['payload_before_incoming_input_adapters_and_shared_closures']
         assert screen['complete_input_forms_and_source_bindings'] is screen['complete_witness_schedule_memory_and_work'] is None
         assert not screen['credit']
+        packed = screen['bitpacked_replay']
+        assert not packed['credit'] and packed['requires_64_cell_aligned_profile_blocks']
+        assert packed['complete_sumcheck_field_work_and_runtime'] is None
+        if verify:
+            assert packed['word_gate_or_copy_steps_upper'] == 717119708725248
+            assert packed['input_bit_transpositions_upper'] == 91946659872768
+            assert packed['fold_table_lookups_upper'] == 178520047222784
+            assert packed['fold_high_prefix_products_upper'] == 9245638524928
+            assert packed['fold_chunk_additions_upper'] == 77062761086976
+            assert packed['fold_high_prefix_accumulations_upper'] == packed['fold_high_prefix_products_upper']
+            assert packed['fold_table_preparation_products_upper'] == 392196
+            assert packed['fold_table_preparation_additions_upper'] == 115542
+            assert packed['input_and_two_word_vectors_bytes'] == 66560
+            assert packed['field_block_bytes'] == 6291456
+            assert packed['public_fold_table_reservation_bytes'] == 65536
     for widths, bits in (([], 2), ([[]], 2), ([[0]], 2), ([[True]], 2), ([[1]], 0)):
         with pytest.raises(ValueError):
             plan.rms_joint_gkr_screen(widths, bits)
@@ -2605,6 +2620,20 @@ def test_joint_rms_gkr_shares_cells_carries_wires_and_transfers_to_the_same_inpu
                        if op == 'xor' else row[a]) % p for op, a, b in layer]
             following.append(values+[0]*(widths[level+1]-len(values)))
         tables.append(following)
+    # Packed replay + field fold produces the SAME tables used in every
+    # cubic/quadratic sumcheck below, including mixed profiles and padding.
+    for level, table in enumerate(tables):
+        packed = [0]*widths[level]
+        for t, circuit in enumerate(lowered):
+            mask = sum(1 << i for i,role in enumerate(assignments) if role == t)
+            planes = [sum(row[j] << i for i,row in enumerate(cells) if assignments[i] == t)
+                      for j in range(circuit['input_ports'])]
+            values = plan.rms_bitpacked_replay(circuit,planes,min(level,len(circuit['levels'])),mask)
+            for j,word in enumerate(values):
+                packed[j] |= word  # disjoint public profile masks
+        assert [[word >> i & 1 for word in packed] for i in range(len(cells))] == table
+        for j,word in enumerate(packed):
+            assert plan.fold_boolean_word(word,plan.boolean_word_fold_tables([2,5]))[0] == plan.mle([r[j] for r in table],[2,5])
     assert tables[-1] == [[1], [1], [0], [0]]
     point, gate_form = [2, 5], [1]
     claim = plan.mle(sum(tables[-1], []), point)
@@ -2670,6 +2699,52 @@ def test_joint_rms_gkr_shares_cells_carries_wires_and_transfers_to_the_same_inpu
     by_intervals = sum(plan.shifted_eq_form(r, u, 0, i+1)-plan.shifted_eq_form(r, u, 0, i)
                        for i in (0, 2)) % p
     assert by_intervals == correct
+
+
+def test_bitpacked_replay_and_public_word_fold_preserve_all_low_prefixes():
+    rng = random.Random(7164)
+    words = [0, (1 << 64)-1, 1, 1 << 63, 0x0123456789ABCDEF]+[rng.getrandbits(64) for _ in range(20)]
+    for point in ([2,3,5,7,11,13], [0]*6, [1]*6, [0,1,0,1,2,3]):
+        for h in range(7):
+            tables = plan.boolean_word_fold_tables(point[:h])
+            assert sum(map(len,tables)) <= 2048
+            for word in words:
+                bits = [word >> j & 1 for j in range(64)]
+                expected = [plan.mle(bits[j:j+(1 << h)],point[:h]) for j in range(0,64,1 << h)]
+                assert plan.fold_boolean_word(word,tables) == expected
+    # Four aligned words, followed by the remaining two prefix coordinates.
+    point = [2,3,5,7,11,13,17,19]
+    tables = plan.boolean_word_fold_tables(point[:6])
+    folded = [plan.fold_boolean_word(word,tables)[0] for word in words[:4]]
+    assert plan.mle(folded,point[6:]) == plan.mle([word >> j & 1 for word in words[:4] for j in range(64)],point)
+    # Real RMS predicate, with unused physical bits ZERO, not biased-zero words.
+    circuit = plan.rms_layered_circuit(plan.rms_boolean_circuit(256,0,0,0,False,True))
+    cases = [(0,0,0), (1,0,1000), (-1,0,-1000), (1,1,16), (1,1,17), (-32768,0,0), (0,-1,0)]
+    rows = [[0,1]+[(v+(1 << (size-1))) >> j & 1 for v,size in zip(row,(16,48,16)) for j in range(size)] for row in cases]
+    planes = [sum(row[j] << i for i,row in enumerate(rows)) for j in range(circuit['input_ports'])]
+    live = (1 << len(cases))-1
+    packed = plan.rms_bitpacked_replay(circuit,planes,len(circuit['levels']),live)
+    assert packed == [15]
+    assert plan.rms_bitpacked_replay(circuit,planes,0,live) == planes
+    for bad in ([*planes[:2], 1 << 63, *planes[3:]], [0,(1 << 64)-1,*planes[2:]], [0,live,True,*planes[3:]], planes[:-1]):
+        with pytest.raises(ValueError):
+            plan.rms_bitpacked_replay(circuit,bad,1,live)
+    with pytest.raises(ValueError):
+        plan.rms_bitpacked_replay(circuit,planes,len(circuit['levels'])+1,live)
+    # Gate evaluation AFTER folding is wrong even for AND on two equal bit planes.
+    tiny = {'input_ports': 4, 'levels': [[('and',2,3)]]}
+    result = plan.rms_bitpacked_replay(tiny,[0,3,2,2],1,3)[0]
+    table = plan.boolean_word_fold_tables([2])
+    assert plan.fold_boolean_word(result,table)[0] == 2 != 2*2
+    for op,a,b in (('invalid',2,3), ('copy',2,3), ('and',-1,3)):
+        with pytest.raises(ValueError):
+            plan.rms_bitpacked_replay({**tiny,'levels':[[(op,a,b)]]},[0,3,2,2],1,3)
+    for point in ([2]*7, [True], [-1], [plan.P]):
+        with pytest.raises(ValueError):
+            plan.boolean_word_fold_tables(point)
+    for word,tables in ((True,table), (-1,table), (1 << 64,table), (0,[]), (0,[[0,1]]*2)):
+        with pytest.raises(ValueError):
+            plan.fold_boolean_word(word,tables)
 
 
 def test_rms_row_multiplier_getter_matches_exact_rounding_and_prices_shared_cache():
@@ -2748,6 +2823,7 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     stats = plan.rms_statistic_cohorts(cohorts)
     outputs = plan.rms_output_byte_sources(cohorts)
     tiles, rq = plan.auxiliary_word_layout(outputs)
+    assert all(t[-1]//2 % 64 == 0 and math.prod(t[3:6]) % 64 == 0 for t in tiles)
     s = plan.rms_boolean_cohort_screen(cohorts)
     assert s['rms_output_live_cells'] == 347937024 and s['joint_cell_bits'] == 29
     assert s['rms_output_packed_bytes_if_retained'] == 695874048

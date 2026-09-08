@@ -554,6 +554,78 @@ def rms_layered_circuit(circuit):
                         'complete_replicated_trace_memory_or_work': None}}
 
 
+def rms_bitpacked_replay(layered, input_planes, depth, live_mask=(1 << 64)-1):
+    """Replay up to 64 Boolean cells of ONE public profile, before E folding.
+
+    Uses rms_layered_circuit's validated program. Bit j of every word is
+    cell j, not bit j of an integer arithmetic value. No production prover.
+    """
+    natural(depth, 'Boolean replay depth', 0, len(layered['levels']))
+    natural(live_mask, 'Boolean live-cell mask', 0, (1 << 64)-1)
+    if len(input_planes) != layered['input_ports'] or len(input_planes) < 2:
+        raise ValueError('Boolean replay input shape mismatch')
+    for word in input_planes:
+        natural(word, 'Boolean bit plane', 0, (1 << 64)-1)
+        if word & ~live_mask:
+            raise ValueError('nonzero Boolean cell padding')
+    if input_planes[0] != 0 or input_planes[1] != live_mask:
+        raise ValueError('Boolean constants must respect live-cell support')
+    values = input_planes
+    for layer in layered['levels'][:depth]:
+        following = []
+        for op,a,b in layer:
+            if any(type(i) is not int or not 0 <= i < len(values) for i in (a,b)):
+                raise ValueError('invalid Boolean replay parent')
+            if op == 'and':
+                following.append(values[a] & values[b])
+            elif op == 'xor':
+                following.append(values[a] ^ values[b])
+            elif op == 'copy' and a == b:
+                following.append(values[a])
+            else:
+                raise ValueError('invalid Boolean replay gate')
+        values = following
+    return values
+
+
+def boolean_word_fold_tables(point):
+    """Public subset tables for at most six low cell coordinates (Fp toy).
+
+    At most eight tables of 256 values; bit projections/folds extend to E.
+    These are functions of public challenges, not new witness oracles.
+    """
+    natural(len(point), 'Boolean word fold coordinates', 0, 6)
+    for value in point:
+        natural(value, 'Boolean fold coordinate', 0, P-1)
+    low = min(3,len(point))
+    weights = [math.prod(v if j >> k & 1 else 1-v for k,v in enumerate(point[:low])) % P
+               for j in range(1 << low)]
+    subsets = [0]*(1 << (1 << low))
+    for mask in range(1,len(subsets)):
+        bit = mask & -mask
+        subsets[mask] = (subsets[mask ^ bit]+weights[bit.bit_length()-1]) % P
+    scales = [math.prod(v if j >> k & 1 else 1-v for k,v in enumerate(point[low:])) % P
+              for j in range(1 << (len(point)-low))]
+    return [[scale*v % P for v in subsets] for scale in scales]
+
+
+def fold_boolean_word(word, tables):
+    """Fold a 64-cell bit word using boolean_word_fold_tables's public tables.
+
+    Returns 64/2^h field values. Applying gates to these folded values as
+    though they were bits is invalid; gate replay must precede this step.
+    """
+    natural(word, 'Boolean cell word', 0, (1 << 64)-1)
+    if not tables or len(tables) not in (1,2,4,8) or len(tables[0]) not in (2,4,16,256):
+        raise ValueError('invalid Boolean fold table shape')
+    chunk = (len(tables[0])-1).bit_length()
+    if any(len(t) != 1 << chunk for t in tables) or chunk < 8 and len(tables) != 1:
+        raise ValueError('noncanonical Boolean fold chunks')
+    width = chunk*len(tables)
+    return [sum(t[(word >> (offset+chunk*j)) & ((1 << chunk)-1)] for j,t in enumerate(tables)) % P
+            for offset in range(0,64,width)]
+
+
 def rms_joint_gkr_screen(profile_widths, cell_bits):
     """Shared cell axis; shorter profiles carry their final table unchanged.
 
@@ -574,6 +646,25 @@ def rms_joint_gkr_screen(profile_widths, cell_bits):
     coefficients = 4*depth*cell_bits+6*gate_bits
     # ponytail: reference replay, not a fast prover; cache/fuse only with a new liveness/work proof.
     prefixes = [max(0,cell_bits+s-21) for s in bits[:-1]]
+    # An aligned 64-cell word executes one public Boolean profile. This counts
+    # a conservative padded-domain replay, NOT the SC's remaining field work.
+    blocks = ((1 << cell_bits)+63)//64
+    cumulative = 0
+    word_steps = lookups = chunk_additions = tail_products = table_products = table_additions = 0
+    for level,k in enumerate(prefixes):
+        if level:
+            cumulative += widths[level]
+        word_steps += blocks*(k+1)*cumulative
+        for h in range(k+1):
+            lookups += blocks*widths[level]*(64//min(1 << h,8))
+            chunk_additions += blocks*widths[level]*(64//min(1 << h,8)-64//(1 << min(h,6)))
+            tail_products += blocks*widths[level]*int(h > 6)
+        for h in range(min(k,6)+1):  # Later prefixes reuse the same six-coordinate tables.
+            low = min(h,3)
+            cells, chunks = 1 << low, 1 << (h-low)
+            eq_work = low*cells+(h-low)*chunks
+            table_products += eq_work+chunks*(1 << cells)
+            table_additions += eq_work+(1 << cells)-1
     return {'credit': False, 'profiles': len(profile_widths), 'depth': depth,
             'joint_level_widths': widths, 'gate_index_bits_sum': gate_bits,
             'sumcheck_rounds': rounds, 'sumcheck_coefficients': coefficients,
@@ -587,6 +678,19 @@ def rms_joint_gkr_screen(profile_widths, cell_bits):
             'reference_folded_array_bytes': max([24*(1 << (cell_bits-k+s)) for k,s in zip(prefixes,bits[:-1])] or [0]),
             'reference_two_gate_vectors_bytes': 48*max([1 << s for s in bits[:-1]] or [0]),
             'plaintext_and_tag_records_bytes': 48*(coefficients+3*depth),
+            'bitpacked_replay': {
+                'credit': False, 'requires_64_cell_aligned_profile_blocks': True,
+                'word_gate_or_copy_steps_upper': word_steps,
+                'input_bit_transpositions_upper': (1 << cell_bits)*max(0,widths[0]-2)*sum(k+1 for k in prefixes),
+                'fold_table_lookups_upper': lookups, 'fold_high_prefix_products_upper': tail_products,
+                'fold_chunk_additions_upper': chunk_additions,
+                'fold_high_prefix_accumulations_upper': tail_products,
+                'fold_table_preparation_products_upper': table_products,
+                'fold_table_preparation_additions_upper': table_additions,
+                'input_and_two_word_vectors_bytes': 256*((8*((1 << bits[0])+2*(1 << max(bits)))+255)//256),
+                'field_block_bytes': 64*24*(1 << max(bits)),
+                'public_fold_table_reservation_bytes': 65536,
+                'complete_sumcheck_field_work_and_runtime': None},
             'complete_input_forms_and_source_bindings': None,
             'complete_witness_schedule_memory_and_work': None}
 

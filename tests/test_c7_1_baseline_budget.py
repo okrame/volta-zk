@@ -54,3 +54,35 @@ def test_one_reference_without_inherited_margins_or_security_credit():
     assert traffic["fifth_read_increment_bytes"] == result["packed_weight_bytes"] == 61_394_690_560
     assert traffic["20GB_host_spill_write_and_one_reread_bytes"] == 40_000_000_000
     assert not result["local_experiment"]["complete_C71_runner_ready"]
+
+
+def test_b1_rejection_preserves_failed_preflight_and_unknown_complete_costs():
+    result = plan.baseline_budget()
+    assert result["B1_decision"] == "reject_existing_whir_reuse_and_stop"
+    assert result["measurement_reuse_priority"] is None
+    reuse = result["whir_reuse_assessment"]
+    provenance = reuse["provenance"]
+    assert provenance["upstream_source_files"] == 87
+    assert provenance["modified_source_files"] == 24
+    assert provenance["registered_deltas"] == 14
+    assert len(provenance["unregistered_deltas"]) == 10
+    assert provenance["audit_error"] == (
+        "unregistered vendored source delta: sumcheck/src/strategy.rs")
+    assert provenance["source_guard_error"] == (
+        "claimless prover must use exactly two claimless sumcheck batches")
+    screen = reuse["lifetime_union_screen"]
+    assert screen["attempts"] == 1 << 20
+    assert screen["bound_bits"] == 55 and screen["single_term_bits_needed_before_FS"] == 98
+    assert not screen["is_C71_security_bound"]
+    assert reuse["clear_reference_nominal_component_bits"] == 74
+    assert reuse["authenticated_reference_nominal_component_bits"] == 75
+    fs = reuse["existing_FS_entry"]
+    experiment = result["local_experiment"]
+    assert not fs["D14_CPU_admitted"] and fs["requires_cuda"]
+    assert fs["input_Fp_bytes_by_domain"]["28"] == experiment["execution_limits"]["RSS_bytes"]
+    assert fs["available_host_admission_floor_bytes"] > experiment["execution_limits"]["RSS_bytes"]
+    assert experiment["input_Fp_bytes_lower_bound"] == 131_072
+    assert experiment["complete_runner_command"] is None
+    for cost in reuse["complete_costs"].values():
+        assert cost["total"] is None and cost["admission_bound"] == "infinity"
+        assert cost["missing"] == ["unimplemented_complete_matrix_path"]

@@ -5646,6 +5646,21 @@ def baseline_budget():
                           "remaining_Gamma_and_RMS": None,
                           "remaining_protocol_framing_and_correlations": None}, 35_000_000)})
     phases = bridge["all_context_arena_phase_upper_bytes"]
+    # Reuse the read-only provenance auditor; never relax its historical guards.
+    audit = runpy.run_path(str(Path(__file__).with_name("audit_c61_p3_fork.py")))
+    upstream = audit["load_manifest"]()
+    changed = sorted(path for path, digest in upstream.items()
+                     if audit["digest"](audit["vendored_path"](path)) != digest)
+    try:
+        audit["build_report"]()
+        provenance_error = None
+    except SystemExit as error:
+        provenance_error = str(error)
+    try:
+        audit["require_source_guards"]()
+        source_guard_error = None
+    except SystemExit as error:
+        source_guard_error = str(error)
     return {
         "schema": "c71-baseline-budget-v1", "credit": False,
         "reference": "A5 + joint W/KV + Sigma(B, raw QK/PV, S); research only",
@@ -5654,7 +5669,52 @@ def baseline_budget():
         "required_lifetime_security_bits_at_least": 78,
         "malicious_prover_soundness_bits": None, "malicious_verifier_zk_bits": None,
         "security_admitted": False, "complete_baseline_selected": None,
-        "measurement_reuse_priority": "existing authenticated WHIR/BLAKE3, not yet a C7.1 baseline",
+        "measurement_reuse_priority": None,
+        "B1_decision": "reject_existing_whir_reuse_and_stop",
+        "B1_decision_scope": "bounded reuse assessment; not an impossibility result for WHIR or C7.1",
+        "evidence_classes": {
+            "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
+            "arena": "conditional upper bounds for named arrays; not measured RSS",
+            "dense_inputs": "lower bounds before encoding, masks and runtime",
+            "reuse_preflight": "source inspection and exact census; no native execution",
+            "lifetime_union_screen": "hypothetical single-term bound before FS; no security credit",
+            "unknown_totals": "not measured or derived; admission bound infinity"},
+        "whir_reuse_assessment": {
+            "reviewed_runtime_commit": "3eccefd8045eeae43f962a245ccb7305d05a89bb",
+            "field": "Goldilocks/Fp2", "hash": "BLAKE3-256",
+            "clear_reference_nominal_component_bits": 74,
+            "authenticated_reference_nominal_component_bits": 75,
+            "lifetime_union_screen": {
+                "premise": "hypothetical one error <= 2^-75 per attempt, before FS and other events",
+                "attempts": LIFETIME_ATTEMPTS,
+                "bound_bits": 75 - (LIFETIME_ATTEMPTS.bit_length()-1),
+                "single_term_bits_needed_before_FS": 78 + (LIFETIME_ATTEMPTS.bit_length()-1),
+                "is_C71_security_bound": False},
+            "provenance": {
+                "upstream_source_files": len(upstream), "modified_source_files": len(changed),
+                "registered_deltas": len(audit["ALLOWED_DELTAS"]),
+                "unregistered_deltas": sorted(set(changed)-audit["ALLOWED_DELTAS"]),
+                "audit_error": provenance_error, "source_guard_error": source_guard_error},
+            "existing_FS_entry": {
+                "allowed_domain_log2": [27, 28], "requires_cuda": True,
+                "input_Fp_bytes_by_domain": {str(h): 8*(1 << h) for h in (27, 28)},
+                "available_host_admission_floor_bytes": 64*(1 << 30),
+                "available_spill_admission_floor_bytes": 128*(1 << 30),
+                "D14_CPU_admitted": False},
+            "missing_contract_paths": [
+                "D14 CPU FS profile/codec with a C7.1 field/MAC instantiation",
+                "blind matrix relation to installed same W across responses and abort",
+                "real AES pools and independent verifier replay through that relation",
+                "complete lifecycle/mutation tests and work/resource census"],
+            "missing_security_derivations": [
+                "claimless WHIR/MAC composition and root-to-same-W binding",
+                "malicious-verifier simulation for setup, FS, reuse and abort",
+                "lifetime ROM bound for global Q64 and 2^20 attempts, including real PCG"],
+            "complete_costs": {name: budget_sum({"unimplemented_complete_matrix_path": None})
+                               for name in ("certificate_bytes", "weight_reads", "fp_products",
+                                            "fp3_products", "peak_RSS_bytes", "setup_bytes",
+                                            "setup_seconds", "prover_seconds", "verifier_seconds")},
+            "decision_source": "docs/c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto"},
         "packed_weight_bytes": packed, "endpoint_cases_not_all_context_certificate_bound": cases,
         "complete_weight_reads": budget_sum({"P0": 1, "A4_fused_opening": 2,
                                              "remaining_caller_range_padding": None}, 4),
@@ -5688,6 +5748,10 @@ def baseline_budget():
             "missing": ["effective bandwidth", "avoided recomputation", "staging and overlap"]},
         "local_experiment": {"synthetic_weight_cells": 1 << 14, "packed_i16_bytes": 2*(1 << 14),
                              "complete_C71_runner_ready": False,
+                             "complete_runner_command": None,
+                             "execution_limits": {"threads": 2, "RSS_bytes": 2*(1 << 30),
+                                                  "seconds_per_case": 60},
+                             "input_Fp_bytes_lower_bound": 8*(1 << 14),
                              "contract": "docs/c7.1-gemma31b-design.md#10-goal-di-confronto-e-stop"},
     }
 

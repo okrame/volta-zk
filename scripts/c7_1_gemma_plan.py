@@ -489,17 +489,21 @@ def rne48_byte_polynomials(values, shift):
     return rne48_indicator_polynomials([byte_lagrange_basis(x) for x in values], shift)
 
 
+def _check_rne_indicators(basis, shift):
+    if len(basis) != 6 or any(len(row) != 256 for row in basis) or type(shift) is not int:
+        raise ValueError("six 256-entry indicator rows and an integer shift required")
+    for row in basis:
+        for value in row:
+            natural(value, "canonical diagnostic indicator value", 0, P-1)
+
+
 def rne48_indicator_polynomials(basis, shift):
     """Degree-six lifted RNE formula, NOT free/unproved indicator wires.
 
     For the real RNE relation, basis[lane][j] must be the MLE of delta_j
     on that byte plane, linked by the P/S tree to the same B source.
     """
-    if len(basis) != 6 or any(len(row) != 256 for row in basis) or type(shift) is not int:
-        raise ValueError("six 256-entry indicator rows and an integer shift required")
-    for row in basis:
-        for value in row:
-            natural(value, "canonical diagnostic indicator value", 0, P-1)
+    _check_rne_indicators(basis, shift)
     values = [sum(j*a for j, a in enumerate(row)) % P for row in basis]
     def table(lane, fn):
         return sum(fn(j)*a for j, a in enumerate(basis[lane])) % P
@@ -541,6 +545,62 @@ def rne48_indicator_polynomials(basis, shift):
         bound = 65535*(1 << (shift-1))-1  # strict threshold: endpoint rounds to +/-32768
     valid = (less_than((1 << 47)+bound+1)-less_than((1 << 47)-bound)) % P
     return rounded, valid
+
+
+def rne48_output_bit_polynomials(basis, shift):
+    """Six-lane degree<=6 formulas for the BIASED i16 output bits.
+
+    Validity remains rne48_indicator_polynomials's separate obligation.
+    Invalid outputs may wrap, except the public shift<=-15 dummy branch.
+    Never apply this to bits of an already folded output scalar.
+    """
+    _check_rne_indicators(basis, shift)
+    if shift <= -15 or shift >= 48:
+        return [0]*15+[1]  # chosen signed-zero output, even on the invalid branch
+    def pattern(ones, zeros=0):
+        # Sign extension aliases ALL positions >=47 to the one sign bit.
+        low, sign = (1 << 47)-1, 1 << 47
+        ones = (ones & low) | (sign if ones >> 47 else 0)
+        zeros = (zeros & low) | (sign if zeros >> 47 else 0)
+        if ones & zeros:
+            return 0
+        # The biased encoding flips exactly that sign bit.
+        on, off = (ones & low) | (zeros & sign), (zeros & low) | (ones & sign)
+        factors = []
+        for lane in range(6):
+            wanted, mask = (on >> (8*lane)) & 255, ((on | off) >> (8*lane)) & 255
+            if mask:
+                factors.append(sum(v for j, v in enumerate(basis[lane]) if j & mask == wanted))
+        return math.prod(factors) % P
+    if shift <= 0:
+        bits = [0 if k+shift < 0 else pattern(1 << (k+shift)) for k in range(16)]
+    else:
+        # C_k: half bit and the k low quotient bits are all one; k=1..16.
+        carries = [pattern(((1 << (k+1))-1) << (shift-1)) for k in range(1, 17)]
+        tie_even = pattern(1 << (shift-1), ((1 << (shift-1))-1) | (1 << shift))
+        bits = [pattern(1 << shift)+pattern(1 << (shift-1))-2*carries[0]-tie_even]
+        bits += [pattern(1 << (shift+k))+carries[k-1]-2*carries[k] for k in range(1, 16)]
+    bits[15] = 1-bits[15]
+    return [b % P for b in bits]
+
+
+def rne_output_bit_screen(cell_bits):
+    """Increment over R2: all 16 bits/all 64 classes, not incoming Gamma."""
+    natural(cell_bits, 'RQ source log domain', 1, 32)
+    per_class = [s//8+sum(min(s+k-1, 47)//8-(s-1)//8 for k in range(1, 17))
+                 for s in range(1, 48)]
+    products = sum(per_class)
+    arrays = {'product_plaintexts_and_tags': 256*((48*products+255)//256),
+              'public_bit_form_accumulators': 16*64*24, 'mask_and_value_scratch': 2048}
+    return {'credit': False, 'additional_products_by_positive_shift': per_class,
+            'additional_private_products': products, 'additional_extension_corrections': products,
+            'additional_payload_before_incoming_claims_and_framing': 24*products,
+            'additional_arrays_256_byte_aligned': arrays, 'additional_array_reservation_bytes': sum(arrays.values()),
+            'additional_top_extension_products_upper_before_public_forms_and_mac':
+                8*(products+16*64)*((1 << cell_bits)-1),
+            'additional_sumcheck_rounds': 0, 'additional_source_visits': 0,
+            'additional_pcs_instances': 0, 'additional_sigma_claims': 0,
+            'incoming_bit_claims_and_public_form_work': None, 'complete_rms_circuit': None}
 
 
 def streaming_work(n, block):
@@ -2621,6 +2681,8 @@ def rms_byte_bridge_screen(cohorts):
     bit_max = byte_bit_lift_screen(34)
     bit_records = 256*((48*bit_max['extension_corrections_excluding_incoming_claims']+255)//256)
     bit_records += 256*((24*bit_max['extension_challenges']+255)//256)
+    rne_bits_max = rne_output_bit_screen(31)
+    rne_bit_reserve = rne_bits_max['additional_array_reservation_bytes']
     for old_tokens in (0, CONTEXT_CAP-150):
         original = auxiliary_word_sources(cohorts, old_tokens)
         old_tiles, rq = auxiliary_word_layout(original)
@@ -2631,9 +2693,10 @@ def rms_byte_bridge_screen(cohorts):
         original_live = live-packed
         assert (live-1).bit_length() == (original_live-1).bit_length()  # ONLY the endpoints
         bit_lift = byte_bit_lift_screen((live-1).bit_length())
+        rne_bits = rne_output_bit_screen((sum(h*r*c for _, _, _, h, r, c, _ in rq)-1).bit_length())
         base = wide_hash_witness_screen(cohorts, old_tokens)['joint_w_kv_candidate']
         schedule = base['known_state_cache_schedule']
-        phases = {k: v+extra_bytes+bit_records for k, v in
+        phases = {k: v+extra_bytes+bit_records+rne_bit_reserve for k, v in
                   schedule['arena_phases_bytes_before_uncompiled_reader_gamma_runtime'].items()}
         common = phases['opening_first_pass']-80*(1 << 23)
         phases['rms_statistic'] = common+stats['single_cohort_X_and_selector_array_bytes']
@@ -2652,7 +2715,8 @@ def rms_byte_bridge_screen(cohorts):
                    +sigma['private_component_payload_before_framing_and_caller']-72
                    +24*(base['known_caller_extension_corrections']+corrections)
                    +joint['public_anchor_bytes_if_all_resent']+64
-                   +bit_lift['payload_before_incoming_claims_framing_and_shared_closures'])
+                   +bit_lift['payload_before_incoming_claims_framing_and_shared_closures']
+                   +rne_bits['additional_payload_before_incoming_claims_and_framing'])
         cases.append({'old_tokens': old_tokens, 'source_templates': len(sources),
                       'source_byte_cells': live, 'source_padded_byte_cells': 1 << (live-1).bit_length(),
                       'byte_cubes': len(byte_tiles), 'rq_cubes': len(rq),
@@ -2661,12 +2725,13 @@ def rms_byte_bridge_screen(cohorts):
                       'public_zero_rows_joint_w_kv': zero_rows, 'public_zero_rows_sigma': sigma_zero,
                       'omitted_outer_base_corrections': 357*(sum(zero_rows)+sigma_zero),
                       'byte_bit_lift': bit_lift,
+                      'rne_output_bits': rne_bits,
                       'known_partial_payload_before_rms_circuit_gamma_and_framing': payload,
                       'remaining_payload_bytes_before_missing_components': 35_000_000-payload,
                       'arena_phase_upper_bytes': phases, 'known_phase_max_upper_bytes': max(phases.values())})
         if old_tokens:
             envelope = schedule['all_context_known_array_envelope']['arena_phase_upper_bytes']
-            final_envelope = {k: v+extra_bytes+bit_records for k, v in envelope.items()}
+            final_envelope = {k: v+extra_bytes+bit_records+rne_bit_reserve for k, v in envelope.items()}
             common = final_envelope['opening_first_pass']-80*(1 << 23)
             final_envelope['rms_statistic'] = common+stats['single_cohort_X_and_selector_array_bytes']
             final_envelope['byte_bit_top'] = common+bit_max['top_array_bytes']
@@ -2687,6 +2752,7 @@ def rms_byte_bridge_screen(cohorts):
             'fixed_input_probe_and_sumcheck_error_numerator': probe_bits+stats['fixed_input_error_numerator_before_claim_batching'],
             'additional_common_sigma_batch_error_numerator': count+1,
             'bit_lift_record_reservation_bytes': bit_records,
+            'rne_output_bit_reservation_bytes': rne_bit_reserve,
             'additional_arrays_reserved_256_byte_aligned': arrays,
             'additional_array_reservation_bytes': extra_bytes,
             'known_bulk_statistic_reads_before_replay_and_normalizer': 16+95+2+1+bit_max['source_visits'],

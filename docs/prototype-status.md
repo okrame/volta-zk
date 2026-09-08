@@ -165,8 +165,10 @@ authorization.
   conservative, and missing components are still unpriced.
   The [shared byte-to-bit reduction](c7.1-auxiliary-witness.md#bit-lift-comune-verso-la-stessa-c_σ)
   now uses one quadratic sumcheck and R2 P/S to the same Sigma endpoint,
-  with explicit conditional soundness and source visits. Incoming forms,
-  the integer RMS circuit, RNE-output bits and exponents remain uncompiled;
+  with explicit conditional soundness and source visits. [RNE-output bit functions](c7.1-rne-indicators.md#bit-delloutput-rne-negli-stessi-indicatori)
+  now reuse the same indicators and P/S, preserving degree seven and
+  whole-domain overflow checks. Incoming forms, the integer RMS circuit
+  and exponents remain uncompiled;
   no complete memory, certificate or timing result is claimed.
 - [R1: byte-bound requantization](c7.1-requantization.md) gives exact
   ties-to-even/overflow polynomials and a conditional MAC sumcheck for

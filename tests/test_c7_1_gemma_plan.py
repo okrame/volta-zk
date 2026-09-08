@@ -2426,10 +2426,11 @@ def test_rms_byte_extension_preserves_rq_and_recounts_padding_records_and_arrays
     assert [c['public_zero_rows_joint_w_kv'] for c in screen['cases']] == [[218, 1], [218, 18, 18]]
     assert [c['public_zero_rows_sigma'] for c in screen['cases']] == [326, 537]
     assert [c['omitted_outer_base_corrections'] for c in screen['cases']] == [194565, 282387]
-    assert [c['known_partial_payload_before_rms_circuit_gamma_and_framing'] for c in screen['cases']] == [25413344, 32389320]
-    assert [c['remaining_payload_bytes_before_missing_components'] for c in screen['cases']] == [9586656, 2610680]
+    assert [c['known_partial_payload_before_rms_circuit_gamma_and_framing'] for c in screen['cases']] == [25431680, 32407656]
+    assert [c['remaining_payload_bytes_before_missing_components'] for c in screen['cases']] == [9568320, 2592344]
     assert screen['additional_common_sigma_batch_error_numerator'] == screen['additional_known_sigma_claims'] == 422
     assert screen['bit_lift_record_reservation_bytes'] == 74496
+    assert screen['rne_output_bit_reservation_bytes'] == 63488
     for c in screen['cases']:
         b = c['byte_bit_lift']
         n = (c['source_padded_byte_cells']-1).bit_length()
@@ -2444,6 +2445,14 @@ def test_rms_byte_extension_preserves_rq_and_recounts_padding_records_and_arrays
         assert b['incoming_claims_and_form_metadata'] is b['complete_rms_circuit'] is None
         assert b['top_array_bytes'] == sum(b['top_arrays_256_byte_aligned'].values())
         assert b['link_array_bytes'] == sum(b['link_arrays_256_byte_aligned'].values())
+        rb = c['rne_output_bits']
+        assert rb['additional_private_products'] == rb['additional_extension_corrections'] == 764
+        assert sum(rb['additional_products_by_positive_shift']) == 764
+        assert rb['additional_payload_before_incoming_claims_and_framing'] == 18336
+        assert rb['additional_array_reservation_bytes'] == sum(rb['additional_arrays_256_byte_aligned'].values()) == 63488
+        assert rb['additional_sumcheck_rounds'] == rb['additional_source_visits'] == 0
+        assert rb['additional_sigma_claims'] == rb['additional_pcs_instances'] == 0
+        assert rb['incoming_bit_claims_and_public_form_work'] is rb['complete_rms_circuit'] is None
     assert screen['cases'][-1]['byte_bit_lift']['link_array_bytes'] == 812751104
     assert screen['array_reservation_includes_omitted_records']
     # The pinned aligned KV cubes are each <= one RS row at every length.
@@ -2465,11 +2474,11 @@ def test_rms_byte_extension_preserves_rq_and_recounts_padding_records_and_arrays
     wrong_prefix = 450560*150
     assert (wrong_prefix+(1 << 24)-1)//(1 << 24) == 5  # true padded prefix needs seven rows
     upper = screen['all_context_arena_phase_upper_bytes']
-    assert max(upper.values()) == screen['all_context_known_phase_max_upper_bytes'] == 6337715328
-    assert len(upper) == 20 and upper['rms_statistic'] == 5524229248
-    assert upper['byte_bit_top'] == 5826436992 and upper['byte_bit_link'] == 6236108160
+    assert max(upper.values()) == screen['all_context_known_phase_max_upper_bytes'] == 6337778816
+    assert len(upper) == 20 and upper['rms_statistic'] == 5524292736
+    assert upper['byte_bit_top'] == 5826500480 and upper['byte_bit_link'] == 6236171648
     assert all(v <= upper[k] for c in screen['cases'] for k, v in c['arena_phase_upper_bytes'].items())
-    assert screen['remaining_arena_bytes_before_missing_components'] == 104735616
+    assert screen['remaining_arena_bytes_before_missing_components'] == 104672128
     assert not screen['credit'] and screen['complete_rms_integer_circuit'] is None
     assert screen['complete_gamma_liveness'] is screen['complete_certificate_bytes'] is None
     assert screen['additional_weight_reads_given_w_free_reader'] == screen['additional_pcs_instances'] == 0
@@ -3160,6 +3169,25 @@ def test_rne_output_and_validity_forms_match_dense_rq_with_multiple_claims():
         assert valid == 1 and y == values[index]
         rhs += dense[shifts[i]]['output'][index]*y + 7*dense[shifts[i]]['validity'][index]*(1-valid)
     assert rhs % plan.P == expected
+    # Bit-point demands use the SAME tensor pullback; validity is kept once.
+    bit_point, bit_rhs = [3, 5, 7, 11], 0
+    bit_values = {index: plan.rne48_output_bit_polynomials(
+        [[int(j == ((raw+(1 << 47)) >> (8*l) & 255)) for j in range(256)] for l in range(6)], shifts[i])
+        for i, index, raw in cells}
+    for k in range(16):
+        scaled = {i: [(hp, rp, cp, scale*eq(bit_point, k) % plan.P) for hp,rp,cp,scale in cs]
+                  for i, cs in claims.items()}
+        bit_forms = plan.auxiliary_rne_forms(rq, sources, scaled, shifts, r)
+        for s in forms:
+            assert bit_forms[s]['validity'] == forms[s]['validity']
+            for offset, point, coefficient in bit_forms[s]['output']:
+                assert offset+(1 << len(point)) <= len(cells)  # no biased-zero bit in dummy rows
+            assert sum(scale*plan.folded_cube_form(o,q,[1],u) for o,q,scale in bit_forms[s]['output']) % plan.P == (
+                eq(bit_point,k)*plan.mle(dense[s]['output'],u)) % plan.P
+        bit_rhs += sum(eq(bit_point,k)*dense[shifts[i]]['output'][index]*bit_values[index][k] for i,index,_ in cells)
+    expected_bits = sum(dense[shifts[i]]['output'][index]*sum(eq(bit_point,k)*((values[index]+32768) % plan.P >> k & 1)
+                        for k in range(16)) for i,index,_ in cells) % plan.P
+    assert bit_rhs % plan.P == expected_bits
     # A rejected value in an unobserved source leaves outputs unchanged but
     # gives a nonzero validity residual; padding never receives such a probe.
     _, bad_index, _ = next(cell for cell in cells if cell[0] == 4)
@@ -3861,6 +3889,97 @@ def test_lagrange_sum_tree_is_linear_in_public_function_and_valid_off_alphabet()
     for bad_weights in (weights[:-1], [True]+weights[1:], [p]+weights[1:]):
         with pytest.raises(ValueError):
             plan.byte_lagrange_tree(0, bad_weights)
+
+
+def test_rne_output_bits_preserve_signed_ties_overflow_and_degree_six():
+    rng, p = random.Random(20260920), plan.P
+    def indicators(value):
+        return [[int(j == ((value+(1 << 47)) >> (8*l) & 255)) for j in range(256)] for l in range(6)]
+    for shift in range(-15, 49):
+        values = {-(1 << 47), (1 << 47)-1, -32768, -32767, -1, 0, 1, 32767, 32768}
+        values.update(rng.randrange(-(1 << 47), 1 << 47) for _ in range(3))
+        if shift > 0:
+            values.update(q*(1 << shift)+(1 << (shift-1))+delta
+                          for q in (-32768,-32767,-3,-2,-1,0,1,2,32766,32767) for delta in (-1,0,1))
+        else:
+            edge = 32767 >> -shift
+            values.update(sign*(edge+delta) for sign in (-1,1) for delta in (-1,0,1))
+        for value in sorted(v for v in values if -(1 << 47) <= v < 1 << 47):
+            basis = indicators(value)
+            bits = plan.rne48_output_bit_polynomials(basis, shift)
+            assert all(b in (0,1) for b in bits)
+            if shift <= -15:
+                rounded = 0  # public invalid-output dummy agrees with the existing F_s
+            elif shift <= 0:
+                rounded = value << -shift
+            else:
+                quotient, remainder = divmod(abs(value), 1 << shift)
+                rounded = quotient+int(2*remainder > 1 << shift or (2*remainder == 1 << shift and quotient & 1))
+                rounded *= -1 if value < 0 else 1
+            assert bits == [((rounded+32768) >> k) & 1 for k in range(16)]
+            _, valid = plan.rne48_indicator_polynomials(basis, shift)
+            if valid:
+                assert sum(b << k for k,b in enumerate(bits)) == plan.rne_i48_to_i16(value,shift)+32768
+            else:
+                with pytest.raises(ValueError):
+                    plan.rne_i48_to_i16(value,shift)
+    # Wrapping bits cannot replace the existing, whole-domain overflow proof.
+    assert plan.rne48_output_bit_polynomials(indicators(1),0) == plan.rne48_output_bit_polynomials(indicators(65537),0)
+    assert plan.rne48_indicator_polynomials(indicators(1),0)[1] == 1
+    assert plan.rne48_indicator_polynomials(indicators(65537),0)[1] == 0
+    # Bias/sign extension at high shifts are part of the polynomial, not a
+    # late conversion of the field residue or an unsigned raw-bit lookup.
+    for value in (-1, 0):
+        assert plan.rne48_output_bit_polynomials(indicators(value),0)[15] == int(value >= 0)
+    assert plan.rne48_output_bit_polynomials(indicators(-(1 << 47)),47) == [1]*15+[0]
+    line = []
+    for z in range(9):
+        low = [0,0,0,0,128,0]
+        basis = [[((1-z)*int(j==x)+z*int(j==x+1)) % p for j in range(256)] for x in low]
+        bits = plan.rne48_output_bit_polynomials(basis,40)
+        assert bits[0] == (1-z-pow(1-z,6,p)) % p
+        line.append((3+5*z)*bits[0] % p)
+    for _ in range(7):
+        line = [(b-a) % p for a,b in zip(line,line[1:])]
+    assert line[0] != 0 and (line[1]-line[0]) % p == 0  # top degree seven, not eight
+    # A complete two-round top check starts from actual rounded output bits
+    # and ends at the SAME source-derived indicator claims, not folded raw.
+    raw = [-(1 << 47)+(1 << 39)+d for d in (-1,0,1)]+[(1 << 47)-1]
+    tables, query = [indicators(a) for a in raw], [2,3]
+    def poly(point):
+        basis = [[plan.mle([t[l][j] for t in tables],point) for j in range(256)] for l in range(6)]
+        weight = math.prod((1-x)*(1-y)+x*y for x,y in zip(query,point)) % p
+        return weight*plan.rne48_output_bit_polynomials(basis,40)[0] % p
+    claim = plan.mle([(plan.rne_i48_to_i16(a,40)+32768)&1 for a in raw],query)
+    prefix = []
+    for coin in (17,19):
+        def partial(x):
+            return sum(poly(prefix+[x]+list(t)) for t in product((0,1),repeat=1-len(prefix))) % p
+        assert claim == (partial(0)+partial(1)) % p
+        samples = [partial(x) for x in range(9)]  # fixed before the challenge
+        for _ in range(8):
+            samples = [(b-a) % p for a,b in zip(samples,samples[1:])]
+        assert samples == [0]
+        claim = partial(coin)
+        prefix.append(coin)
+    assert claim == poly(prefix)
+    for value, shift in ((0,-10**6),(0,10**6)):
+        assert plan.rne48_output_bit_polynomials(indicators(value),shift) == [0]*15+[1]
+    good = indicators(0)
+    for bad, shift in ((good[:-1],0),([good[0][:-1]]+good[1:],0),([[True]+good[0][1:]]+good[1:],48),(good,True)):
+        with pytest.raises(ValueError):
+            plan.rne48_output_bit_polynomials(bad,shift)
+    # Independent constrained-byte count for the exact nominated carry graph.
+    per_class = []
+    for s in range(1,48):
+        masks = [set(range(s+1))]
+        masks += [{min(j,47) for j in range(s-1,s+k)} for k in range(1,17)]
+        per_class.append(sum(len({j//8 for j in mask})-1 for mask in masks))
+    assert per_class == plan.rne_output_bit_screen(31)['additional_products_by_positive_shift']
+    assert sum(per_class) == 764
+    for bad in (0,33,True):
+        with pytest.raises(ValueError):
+            plan.rne_output_bit_screen(bad)
 
 
 def test_lifted_indicator_rne_has_degree_six_and_needs_its_own_source_link():

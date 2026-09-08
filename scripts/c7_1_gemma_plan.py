@@ -208,14 +208,12 @@ def fp3_mul_six(a, b):
     return ((v0 + v12 + v12) % P, (v01 + v2 + v2) % P, (v02 + v1) % P)
 
 
-def rne_signed_to_i16(value, shift, source_bits):
+def rne_i48_to_i16(value, shift):
     """Exact RNE(value / 2**shift), symmetric i16 or reject; no floating point."""
-    # ponytail: 4096-bit local diagnostic ceiling; derive native widths from the fixed profile.
-    natural(source_bits, "signed source width", 1, 4096)
-    natural(value, "signed source", -(1 << (source_bits-1)), (1 << (source_bits-1))-1)
+    natural(value, "signed i48", -(1 << 47), (1 << 47)-1)
     if type(shift) is not int:
         raise ValueError("shift must be an integer")
-    if shift >= source_bits:
+    if shift >= 48:
         result = 0
     elif shift <= -15:
         if value:
@@ -230,22 +228,39 @@ def rne_signed_to_i16(value, shift, source_bits):
     return natural(result, "requantized symmetric i16", -32767, 32767)
 
 
-def rne_i48_to_i16(value, shift):
-    """The raw-cut i48 contract, unchanged by wider pointwise arithmetic."""
-    return rne_signed_to_i16(value, shift, 48)
-
-
 def rne_dyadic_add_i16(a, b, exponents):
-    """One rounded sum at public (e_a,e_b,e_out); not a Gamma/MAC kernel."""
+    """Exact rounded sum with bounded integer words, for ANY public exponent gap.
+
+    Close exponents use the i48 helper; distant operands can change the
+    high operand's rounded quotient only at a tie when the output is coarser.
+    This is an honest getter, not a Gamma/MAC kernel or a calibrated profile.
+    """
     natural(a, "left symmetric i16", -32767, 32767)
     natural(b, "right symmetric i16", -32767, 32767)
     if len(exponents) != 3 or any(type(e) is not int for e in exponents):
         raise ValueError("dyadic addition needs three public integer exponents")
     ea, eb, eo = exponents
-    width = natural(17+abs(ea-eb), "dyadic signed source width", 17, 4096)
-    base = min(ea, eb)
-    raw = (a << (ea-base))+(b << (eb-base))
-    return rne_signed_to_i16(raw, eo-base, width)
+    if ea < eb:
+        a,b,ea,eb = b,a,eb,ea
+    gap, shift = ea-eb, eo-ea
+    if gap <= 15:
+        return rne_i48_to_i16((a << gap)+b,eo-eb)
+    if a == 0:
+        return rne_i48_to_i16(b,eo-eb)
+    if shift >= 16:
+        return 0
+    if shift <= -16:
+        raise ValueError('dyadic addition overflows symmetric i16')
+    if shift <= 0:
+        # For negative shifts the high integer is even; at shift zero
+        # the low contribution has magnitude <1/2 and cannot be a tie.
+        result = (a << -shift)+rne_i48_to_i16(b,eo-eb)
+    else:
+        divisor = 1 << shift
+        result, remainder = a >> shift, a & (divisor-1)
+        result += int(2*remainder > divisor or 2*remainder == divisor and
+                      (b > 0 or b == 0 and result & 1))
+    return natural(result, 'rounded dyadic sum', -32767, 32767)
 
 
 def rms_integer_coefficients(columns, input_exponent, scale_exponent, output_exponent):
@@ -921,7 +936,7 @@ def rms_gkr_aligned_word_screen(joint, field):
             'complete_getter_mac_fs_runtime_and_liveness': None}
 
 
-def rms_joint_lifetime_screen(joint, field, coefficients, bridge):
+def rms_joint_lifetime_screen(joint, field, coefficients, bridge, statistic_inputs):
     """RMS-J phase on R3's common B/S/kappa base, not a full-Gamma timeline.
 
     Screens must describe the SAME compiled profiles and virtual-Y source.
@@ -930,7 +945,8 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge):
     """
     if (not bridge['includes_rms_outputs'] or bridge['rms_output_retained_array_bytes'] or
             joint['cell_bits'] != (bridge['rms_output_live_bytes']//2-1).bit_length() or
-            len(coefficients) != joint['profiles'] or field['profile_interval_count'] != bridge['rms_output_cell_cubes']):
+            len(coefficients) != joint['profiles'] or field['profile_interval_count'] != bridge['rms_output_cell_cubes'] or
+            statistic_inputs['initial_S_kappa_write_bytes'] != 12*bridge['rms_row_multiplier_preparations']):
         raise ValueError('RMS lifetime screens must use the same virtual Y/profile domain')
     getters = [rms_getter_integer_screen(c) for c in coefficients]
     rows = sum(joint['joint_level_rows_across_profiles'][1:])
@@ -941,6 +957,7 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge):
            'rms_cut_reader_descriptors': bridge['rms_cut_reader_screen']['descriptor_bytes'],
            'plaintext_and_tag_records': joint['plaintext_and_tag_records_bytes'],
            'integer_getter_wave': max(g['one_64_lane_wave_scratch_bytes'] for g in getters)}
+    raw.update(statistic_inputs['reader_raw_reservation_bytes'])
     retained = {k: 256*((v+255)//256) for k,v in raw.items()}
     shared = sum(retained.values())
     packed = joint['bitpacked_replay']
@@ -948,9 +965,16 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge):
               field['additional_public_sweep_and_gate_form_bytes']+
               sum(packed[k] for k in ('input_and_two_word_vectors_bytes','field_block_bytes','public_fold_table_reservation_bytes')))
     phases = {k:v+shared for k,v in bridge['all_context_arena_phase_upper_bytes'].items()}
+    phases['rms_statistic_prepare'] = phases['opening_first_pass']-80*(1 << 23)
     phases['rms_joint_and_input_split'] = phases['opening_first_pass']-80*(1 << 23)+kernel
     y_visits = bridge['known_bulk_output_reads_before_gamma_and_rms_replay']+joint['reference_input_tuple_visits']
-    y_cells = y_visits*(bridge['rms_output_live_bytes']//2)
+    y_cells = (y_visits*(bridge['rms_output_live_bytes']//2)+statistic_inputs['initial_post_norm_Y_generations']+
+               statistic_inputs['sumcheck_input_Y_generations'])
+    raw_calls = (y_visits*bridge['rms_cut_reader_screen']['raw_rne_calls_per_full_visit']+
+                 bridge['rms_input_split_honest_screen']['rne_output_cells']+
+                 statistic_inputs['initial_raw_rne_calls_without_K_V_deduplication']+
+                 statistic_inputs['sumcheck_input_raw_rne_calls'])
+    point_calls = statistic_inputs['initial_pointwise_roundings']+statistic_inputs['sumcheck_input_pointwise_roundings']
     return {'credit': False, 'retained_reservations_256_byte_aligned': retained,
             'retained_reservation_bytes': shared, 'rms_kernel_phase_local_bytes': kernel,
             'all_context_arena_phase_upper_bytes': phases,
@@ -959,7 +983,14 @@ def rms_joint_lifetime_screen(joint, field, coefficients, bridge):
             'known_y_generations_before_gamma_without_cross_visit_reuse': y_cells,
             'known_rms_input_logical_reads_with_row_reuse_before_gamma':
                 y_visits*bridge['rms_cut_reader_screen']['logical_input_read_bytes_per_full_visit']+
-                bridge['rms_input_split_honest_screen']['raw_B_logical_bytes'],
+                bridge['rms_input_split_honest_screen']['raw_B_logical_bytes']+
+                statistic_inputs['initial_B_S_kappa_logical_read_bytes']+
+                statistic_inputs['sumcheck_input_B_S_kappa_logical_read_bytes'],
+            'known_raw_rne_calls_before_gamma': raw_calls,
+            'known_pointwise_roundings_before_gamma': point_calls,
+            'raw_rne_word_arithmetic_logic_comparisons_upper': 32*raw_calls,
+            'pointwise_word_arithmetic_logic_comparisons_upper': 64*point_calls,
+            'scalar_profile_logical_read_bytes_if_once_per_64_lane_word': 8*(raw_calls//64)+32*(point_calls//64),
             'row_preparation_mul64_wide_upper': bridge['rms_row_multiplier_preparations']*
                 max(g['row_preparation_mul64_wide_upper'] for g in getters),
             'known_y_generation_mul64_wide_upper': y_cells*
@@ -2624,6 +2655,11 @@ def rms_statistic_dependency_plan(cohorts, gamma):
                             2*tokens*cfg['hidden_size']+12*(y_cells//64),
                         'initial_S_kappa_write_bytes': 12*sum(n['statistic_rows'] for n in norms),
                         'single_token_residual_vector_bytes': 2*cfg['hidden_size'],
+                        'reader_raw_reservation_bytes': {
+                            'pointwise_profile_descriptors': 32*sum(pointwise.values()),
+                            'raw_shift_by_B_cohort': 8*len(cohorts),
+                            'statistic_reader_token_vector': 2*cfg['hidden_size'],
+                            'pointwise_integer_wave': 64*(8*8+256)},
                         'sumcheck_input_live_cells': sum(math.prod(n['source_shape']) for n in norms),
                         'sumcheck_input_raw_rne_calls': replay['raw_rne'],
                         'sumcheck_input_Y_generations': replay['Y'],

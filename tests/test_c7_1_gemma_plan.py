@@ -2119,6 +2119,9 @@ def test_rms_statistic_input_cones_and_two_stage_preparation_are_acyclic():
     assert s['initial_B_S_kappa_logical_read_bytes'] == 1909036800
     assert s['initial_S_kappa_write_bytes'] == 6913788
     assert s['single_token_residual_vector_bytes'] == 10752
+    assert s['reader_raw_reservation_bytes'] == {
+        'pointwise_profile_descriptors': 5792, 'raw_shift_by_B_cohort': 6184,
+        'statistic_reader_token_vector': 10752, 'pointwise_integer_wave': 20480}
     assert s['sumcheck_input_live_cells'] == plan.rms_statistic_screen(cohorts)['source_live_cells_read'] == 347942400
     assert s['sumcheck_input_raw_rne_calls'] == 250368000
     assert s['sumcheck_input_Y_generations'] == 5854464000
@@ -3225,29 +3228,40 @@ def test_rms_output_source_screen_counts_bytes_without_adopting_a_free_y_cut():
     joint = plan.rms_joint_gkr_screen([plan.rms_layered_circuit(c)['summary']['level_widths'] for c in programs],29)
     field = plan.rms_gkr_field_work_screen(joint,3612)
     coefficients = [c['summary']['coefficients'] for c in programs]
-    lifetime = plan.rms_joint_lifetime_screen(joint,field,coefficients,extended)
+    statistic_inputs = plan.rms_statistic_dependency_plan(cohorts,plan.gamma_barrier_plan(cohorts))['summary']
+    lifetime = plan.rms_joint_lifetime_screen(joint,field,coefficients,extended,statistic_inputs)
     assert lifetime['retained_reservations_256_byte_aligned'] == {
         'public_gate_triples': 9576960, 'public_layer_offsets_and_lengths': 7936,
         'public_profile_descriptors': 512, 'public_norm_profile_map': 3584,
         'plaintext_and_tag_records': 819712, 'integer_getter_wave': 65536,
-        'rms_cut_reader_descriptors': 23808}
-    assert lifetime['retained_reservation_bytes'] == 10498048 and lifetime['rms_kernel_phase_local_bytes'] == 57346304
+        'rms_cut_reader_descriptors': 23808, 'pointwise_profile_descriptors': 5888,
+        'raw_shift_by_B_cohort': 6400, 'statistic_reader_token_vector': 10752, 'pointwise_integer_wave': 20480}
+    assert lifetime['retained_reservation_bytes'] == 10541568 and lifetime['rms_kernel_phase_local_bytes'] == 57346304
     phases = lifetime['all_context_arena_phase_upper_bytes']
-    assert len(phases) == 21 and phases['rms_joint_and_input_split'] == 5495026304
+    assert len(phases) == 22 and phases['rms_joint_and_input_split'] == 5495069824
+    assert phases['rms_statistic_prepare'] == phases['opening_first_pass']-80*(1 << 23) == 5437723520
+    assert phases['rms_statistic'] == phases['rms_statistic_prepare']+100872192
     for phase,value in extended['all_context_arena_phase_upper_bytes'].items():
         assert phases[phase] == value+lifetime['retained_reservation_bytes']
-    assert lifetime['known_phase_max_upper_bytes'] == max(phases.values()) == 6352038272
-    assert lifetime['remaining_arena_before_uncompiled_components'] == 90412672
-    assert lifetime['known_y_generations_before_gamma_without_cross_visit_reuse'] == 701093103360
+    assert lifetime['known_phase_max_upper_bytes'] == max(phases.values()) == 6352081792
+    assert lifetime['remaining_arena_before_uncompiled_components'] == 90369152
+    assert lifetime['known_y_generations_before_gamma_without_cross_visit_reuse'] == 707044335360
     assert lifetime['row_preparation_mul64_wide_upper'] == 492607395
-    assert lifetime['known_y_generation_mul64_wide_upper'] == 37859027581440
+    assert lifetime['known_y_generation_mul64_wide_upper'] == 38180394109440
     assert lifetime['extra_input_split_rne_getter_words'] == split['rne_output_cells']
-    assert lifetime['known_rms_input_logical_reads_with_row_reuse_before_gamma'] == 2015*1524570288+202752000
+    assert lifetime['known_rms_input_logical_reads_with_row_reuse_before_gamma'] == 3100333843920
+    assert lifetime['known_raw_rne_calls_before_gamma'] == 68625408000
+    assert lifetime['known_pointwise_roundings_before_gamma'] == 9001036800
+    assert lifetime['raw_rne_word_arithmetic_logic_comparisons_upper'] == 2196013056000
+    assert lifetime['pointwise_word_arithmetic_logic_comparisons_upper'] == 576066355200
+    assert lifetime['scalar_profile_logical_read_bytes_if_once_per_64_lane_word'] == 13078694400
     assert not lifetime['credit'] and lifetime['complete_gamma_liveness_pcg_and_runtime'] is None
-    for j,f,cs,b in ((joint,field,coefficients,bridge), (joint,field,coefficients[:-1],extended),
-                     (joint,{**field,'profile_interval_count':1},coefficients,extended)):
+    for j,f,cs,b,si in ((joint,field,coefficients,bridge,statistic_inputs),
+                        (joint,field,coefficients[:-1],extended,statistic_inputs),
+                        (joint,{**field,'profile_interval_count':1},coefficients,extended,statistic_inputs),
+                        (joint,field,coefficients,extended,{**statistic_inputs,'initial_S_kappa_write_bytes':12})):
         with pytest.raises(ValueError):
-            plan.rms_joint_lifetime_screen(j,f,cs,b)
+            plan.rms_joint_lifetime_screen(j,f,cs,b,si)
     for before, after, total in zip(bridge['cases'], extended['cases'], (25668776,32644752)):
         assert after['known_partial_payload_before_rms_circuit_gamma_and_framing'] == total
         assert total-before['known_partial_payload_before_rms_circuit_gamma_and_framing'] == 237096
@@ -4460,18 +4474,18 @@ def test_i48_requantization_matches_exact_fraction_and_rejects_overflow():
             plan.rne_i48_to_i16(*args)
 
 
-def test_public_dyadic_addition_and_wide_rne_match_exact_fraction():
+def test_public_dyadic_addition_uses_bounded_words_for_arbitrary_exponent_gaps():
     def check(call, want):
         if -32767 <= want <= 32767:
             assert call() == want
         else:
             with pytest.raises(ValueError):
                 call()
-    for bits in (1,2,17,48,65,129,4096):
-        for value in (-(1 << (bits-1)), -(1 << (bits-1))+1, 0, (1 << (bits-1))-1):
-            for shift in (-15,0,1,bits-1,bits,bits+1):
-                want = round(Fraction(value,1 << shift)) if shift >= 0 else value*(1 << -shift)
-                check(lambda: plan.rne_signed_to_i16(value,shift,bits), want)
+    for a,b in product((-32767,-5,-3,-1,0,1,3,5,32767),repeat=2):
+        for gap,shift in product((0,1,15,16,17,48,129),range(-17,18)):
+            want = round((a*Fraction(2)**gap+b)/Fraction(2)**(gap+shift))
+            check(lambda: plan.rne_dyadic_add_i16(a,b,(gap,0,gap+shift)), want)
+            check(lambda: plan.rne_dyadic_add_i16(b,a,(0,gap,gap+shift)), want)
     for a in range(-5,6):
         for b in range(-5,6):
             for ea,eb,eo in product((-3,0,2,7),(-3,0,2,7),(-4,1,6)):
@@ -4485,12 +4499,17 @@ def test_public_dyadic_addition_and_wide_rne_match_exact_fraction():
               round((a*Fraction(2)**ea+b*Fraction(2)**eb)/Fraction(2)**eo))
     assert plan.rne_dyadic_add_i16(1,-1,(0,0,-10**9)) == 0
     assert plan.rne_dyadic_add_i16(32767,-32767,(0,1,10**9)) == 0
-    assert plan.rne_signed_to_i16(-(1 << 4095),10**9,4096) == 0
-    for args in ((True,0,17), (0,False,17), (0,0,True), (0,0,0), (0,0,4097), (1 << 16,0,17)):
-        with pytest.raises(ValueError):
-            plan.rne_signed_to_i16(*args)
+    assert plan.rne_dyadic_add_i16(0,32767,(10**9,0,0)) == 32767
+    assert plan.rne_dyadic_add_i16(0,0,(0,10**9,0)) == 0
+    for a,b in product((-3,-1,1,3),(-1,0,1)):
+        expected = a//2+(int(b > 0) if b else (a//2)&1)
+        assert plan.rne_dyadic_add_i16(a,b,(10**9,0,10**9+1)) == expected
+    # A distant negative operand CAN repair high-term overflow at shift -15.
+    assert plan.rne_dyadic_add_i16(1,-2,(16,0,1)) == 32767
+    assert plan.rne_dyadic_add_i16(1,-3,(16,0,1)) == 32766
     for args in ((True,0,(0,0,0)), (-32768,0,(0,0,0)), (0,32768,(0,0,0)),
-                 (0,0,(0,0)), (0,0,(0,False,0)), (0,0,(0,10**9,0)), (1,0,(0,0,-10**9))):
+                 (0,0,(0,0)), (0,0,(0,False,0)), (1,0,(0,0,-10**9)),
+                 (1,-1,(16,0,1)), (1,-32767,(16,0,0)), (1,1,(10**9,0,0))):
         with pytest.raises(ValueError):
             plan.rne_dyadic_add_i16(*args)
     # Every BF16 mantissa product fits the unchanged i48 raw contract.

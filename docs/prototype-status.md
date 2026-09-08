@@ -268,11 +268,12 @@ authorization.
 
 The [RMS statistic reader](c7.1-cut-witness.md#dipendenze-degli-input-e-preparazione-di-s)
 now has acyclic S preparation and a counted per-cohort X replay, with exact
-unequal-exponent rounding and a local pointwise workspace contract.
-Next: compile native reader costs and compose its workspace with proof
-arrays under actual public profiles, then complete the other source/form
-readers and Gamma consumers. Counts stay in the dossier; no full liveness,
-Y or runtime admission follows. MAC/PCS/FS obligations are unchanged.
+unequal-exponent rounding using bounded words without a gap cap. R3 composes
+its workspace with preparation and proof arrays in the known phases.
+Next: complete the other source/form readers and Gamma consumers, instantiate
+actual RMS profiles and refine the word/getter bounds into full native costs
+and traffic. Counts stay in the dossiers; no full liveness, Y or runtime
+admission follows. MAC/PCS/FS obligations are unchanged.
 
 The full scope and subsequent ordering remain in [design §10](c7.1-gemma31b-design.md#10-ordine-del-lavoro-dopo-lautorizzazione-a-quattro-letture).
 In particular, [G2 §3.3](c7.1-committed-mac-opening.md#33-una-sorgente-prima-delle-richieste-consistenza-interattiva-adattiva)

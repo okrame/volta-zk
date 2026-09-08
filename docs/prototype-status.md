@@ -290,8 +290,13 @@ different tail/reduction analysis; tuning confirmation counts alone cannot
 repair the excluded uniform screen. The private codec and FS prefix transfer
 remain unverified. Full A5 cryptanalysis stays non-priority; the
 exact model relation, Gamma and remaining lifetime terms stay open.
-Continue the independent pointwise Gamma kernels/forms, beginning with
-residual additions and public scaling, and their complete reader/field costs.
+Continue the independent pointwise Gamma kernels/forms: residual additions
+and the complete reader/field-cost composition remain open. The
+[public-scale candidate](c7.1-auxiliary-witness.md#scale-pubbliche-raw-lineari-e-checkpoint-del-residual-stream)
+now gives a conditional linear raw/RNE link for all 61 stages, explicit
+point claims to their exact Gamma inputs, and an honest checkpoint reader
+preserving every rounding. Its retained cache and earlier RQ-domain
+transition require a new full recount; previous margins are not inherited.
 The [gate_up_mul candidate](c7.1-auxiliary-witness.md#gate_up_mul-prodotto-raw-rne-e-sorgenti-identiche)
 now specifies the shared-source product/RNE reduction and reader; its larger
 RQ domain requires longer prefixes and nine additional RQ visits at capacity.

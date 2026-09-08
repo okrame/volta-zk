@@ -2090,6 +2090,96 @@ def gate_up_product_forms(products, sources, byte_tiles, rq_tiles, point):
     return result
 
 
+def public_scale_raw_sources(cohorts):
+    """Unadopted i48 cuts for the 61 public scales; no residual-sum cut.
+
+    Mantissas/exponents belong to the frozen public profile, not these
+    virtual source values. The 60 layer inputs remain Gamma obligations.
+    """
+    gemma_input_routes(cohorts)
+    by_op = {(c['layer'],c['operation']):c for c in cohorts}
+    lookup = by_op[None,'embedding_lookup']
+    cfg = pinned_model_config()
+    if (lookup['kind'],lookup['rows'],lookup['columns']) != ('lookup',150,cfg['hidden_size']):
+        raise ValueError('public scale cuts require the pinned full hidden workload')
+    for layer in range(cfg['layers']):
+        norm = by_op.get((layer,'post_ffw_rms'))
+        if norm is None or (norm['kind'],norm['rows'],norm['columns']) != (
+                'norm',lookup['rows'],lookup['columns']):
+            raise ValueError('public layer scale requires its full residual producer')
+    return [dict(source='Public_scale_raw',source_id=i,layer=layer,
+                 operation=operation,shape=(1,lookup['rows'],lookup['columns']),
+                 word_bytes=6,rne=True,execution=None,token_offset=0,physical_b_offset=None,
+                 input_producer={'layer':layer,'operation':producer})
+            for i,(layer,operation,producer) in enumerate(
+                [(None,'embedding_scale','embedding_lookup')]+
+                [(layer,'layer_scalar_mul','ffw_residual_add') for layer in range(cfg['layers'])])]
+
+
+def public_scale_raw_forms(scales, sources, byte_tiles, point, mantissas):
+    """One raw probe -> same Sigma and explicit Gamma input point claims.
+
+    Fp diagnostic only; all forms also use +/* over E. No dedicated
+    sumcheck: the public mantissa is constant on each producer cohort.
+    Does not authenticate the Gamma inputs or adopt the extra sources.
+    """
+    for s in scales:
+        natural(s['source_id'],'public scale identity',0,60)
+        natural(s['token_offset'],'public scale token offset',0,0)
+        if s['layer'] is not None:
+            natural(s['layer'],'public scale layer',0,59)
+        expected = ('embedding_scale','embedding_lookup') if s['layer'] is None else (
+            'layer_scalar_mul','ffw_residual_add')
+        if (s['source'],s['operation'],s['word_bytes'],s['shape'][0],s['input_producer']) != (
+                'Public_scale_raw',expected[0],6,1,{'layer':s['layer'],'operation':expected[1]}) or (
+                s['rne'] is not True or s['execution'] is not None or s['physical_b_offset'] is not None
+                or s['source_id'] != (0 if s['layer'] is None else s['layer']+1)):
+            raise ValueError('public scale must name the identical virtual residual/lookup stage')
+    _,cubes = auxiliary_word_layout(scales)
+    live = sum(math.prod(s['shape']) for s in scales)
+    if not live or len(point) != (live-1).bit_length():
+        raise ValueError('public scale probe domain mismatch')
+    for x in point:
+        natural(x,'canonical public scale probe coordinate',0,P-1)
+    ids = [s['source_id'] for s in scales]
+    if len(set(ids)) != len(ids) or set(mantissas) != set(ids):
+        raise ValueError('public scale mantissas must cover distinct source identities')
+    for identity,m in mantissas.items():
+        natural(identity,'public mantissa identity',0,60)
+        natural(m,'signed public eight-bit mantissa',-255,255)
+    if 0 in mantissas and mantissas[0] != 147:
+        raise ValueError('embedding scale must retain the pinned mantissa 147')
+    indices = {s['source_id']:i for i,s in enumerate(sources) if s['source'] == 'Public_scale_raw'}
+    if len(indices) != sum(s['source'] == 'Public_scale_raw' for s in sources):
+        raise ValueError('duplicate public scale source in Sigma')
+    if byte_tiles != auxiliary_word_layout(sources)[0]:
+        raise ValueError('public scale requires the canonical shared byte layout')
+    by_word = {}
+    for t in byte_tiles:
+        by_word.setdefault(t[:6],[]).append(t)
+    result = dict(raw_byte_terms=[],raw_bias=0,input_point_claims=[])
+    for si,row,col,heads,rows,cols,offset in cubes:
+        s = scales[si]
+        index = indices.get(s['source_id'])
+        if index is None or sources[index] != s:
+            raise ValueError('missing or changed public scale source in Sigma')
+        tiles = by_word.get((index,row,col,heads,rows,cols),[])
+        if sorted((t[6],t[7]) for t in tiles) != [(0,4),(4,2)]:
+            raise ValueError('public scale raw byte cube coverage mismatch')
+        cb,rb = (cols-1).bit_length(),(rows-1).bit_length()
+        b = cb+rb
+        weight = math.prod(x if (offset//(1 << b) >> j) & 1 else 1-x
+                           for j,x in enumerate(point[b:])) % P
+        cp = list(point[:cb])+[(col >> j) & 1 for j in range(cb,(s['shape'][2]-1).bit_length())]
+        rp = list(point[cb:b])+[(row >> j) & 1 for j in range(rb,(s['shape'][1]-1).bit_length())]
+        terms,bias = auxiliary_probe_terms(tiles,sources,{index:([],rp,cp,weight)})
+        result['raw_byte_terms'].extend(terms)
+        result['raw_bias'] = (result['raw_bias']+bias) % P
+        result['input_point_claims'].append((s['source_id'],s['input_producer'],cp+rp,
+                                            weight*mantissas[s['source_id']] % P))
+    return result
+
+
 def gate_up_product_screen(cohorts, gelu=None):
     """Conditional shared Hadamard cut; no complete Gamma/PCG/runtime credit."""
     gelu = gelu_byte_bridge_screen(cohorts) if gelu is None else gelu

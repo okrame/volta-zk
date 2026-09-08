@@ -6457,6 +6457,146 @@ def test_gate_up_product_packed_forms_and_cubic_replay():
     assert plan.mle(errors,r) == 0 and any(errors)
 
 
+def test_public_scale_raw_probe_returns_to_exact_gamma_inputs_and_same_bytes():
+    metadata = json.loads((Path(__file__).resolve().parents[1] /
+                           'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_text())
+    cohorts = plan.gemma_weight_cohorts([t for t in metadata['tensors'] if t['disposition'] == 'private_text'])
+    scales = plan.public_scale_raw_sources(cohorts)
+    byte,cubes = plan.auxiliary_word_layout(scales)
+    live = sum(math.prod(s['shape']) for s in scales)
+    assert len(scales) == 61 and live == 49_190_400 and 6*live == 295_142_400
+    assert len(byte) == 1464 and len(cubes) == 732 and (live-1).bit_length() == 26
+    assert 24*(1+len(cubes)) == 17_592  # point-only core, no free Gamma fanout batching
+    gamma = plan.gamma_barrier_plan(cohorts)
+    by_op = {(c['layer'],c['operation']):c for c in gamma['cohorts']}
+    for s in scales:
+        node = by_op[s['layer'],s['operation']]
+        assert len(node['dependencies']) == 1 and node['query_rows'] == 150
+        dep = gamma['cohorts'][next(iter(node['dependencies']))]
+        assert s['input_producer'] == {'layer':dep['layer'],'operation':dep['operation']}
+    f = plan.public_scale_raw_forms(scales,scales,byte,list(range(2,28)),
+                                    {s['source_id']:147 if s['layer'] is None else 128 for s in scales})
+    assert len(f['raw_byte_terms']) == 1464 and len(f['input_point_claims']) == 732
+    assert all(len(q) == 21 for _,_,q,_ in f['input_point_claims'])
+
+    small = [dict(s,shape=(1,rows,cols)) for s,(rows,cols) in
+             zip(scales,((3,5),(2,4),(1,3)))]
+    mantissas = {0:147,1:-255,2:0}
+    inputs = {s['source_id']:[[2*r+3*c-4 for c in range(s['shape'][2])]
+                             for r in range(s['shape'][1])] for s in small}
+    sources = [dict(source='B',source_id=0,shape=(1,1,1),word_bytes=2,rne=False,token_offset=0)]+small
+    bt,_ = plan.auxiliary_word_layout(sources)
+    _,wc = plan.auxiliary_word_layout(small)
+    raw = [0]*32
+    for si,row,col,_,height,width,offset in wc:
+        identity = small[si]['source_id']
+        for r,c in product(range(height),range(width)):
+            raw[offset+c+width*r] = mantissas[identity]*inputs[identity][row+r][col+c]
+    dense = [0]*256
+    for si,row,col,_,height,width,first,count,offset in bt:
+        if not si:
+            continue
+        identity = sources[si]['source_id']
+        for r,c in product(range(height),range(width)):
+            word = mantissas[identity]*inputs[identity][row+r][col+c]+(1 << 47)
+            for j in range(count):
+                dense[offset+j+count*(c+width*r)] = word >> (8*(first+j)) & 255
+    padded = {}
+    for identity,rows in inputs.items():
+        cols = 1 << (len(rows[0])-1).bit_length()
+        padded[identity] = [0]*(cols*(1 << (len(rows)-1).bit_length()))
+        for r,row in enumerate(rows):
+            padded[identity][r*cols:r*cols+len(row)] = row
+    def evaluate(terms,values):
+        return sum(w*plan.mle(values[o:o+(1 << len(q))],q) for o,q,w in terms) % plan.P
+    for point in list(product((0,1),repeat=5))+[(2,3,4,5,6)]:
+        forms = plan.public_scale_raw_forms(small,sources,bt,point,mantissas)
+        left = (evaluate(forms['raw_byte_terms'],dense)-forms['raw_bias']) % plan.P
+        right = sum(w*plan.mle(padded[i],q) for i,_,q,w in forms['input_point_claims']) % plan.P
+        assert left == right == plan.mle(raw,point)
+    altered = dense.copy()
+    offset = next(t[-1] for t in bt if t[0] and t[6] == 0 and dense[t[-1]] < 255)
+    altered[offset] += 1
+    assert (evaluate(forms['raw_byte_terms'],altered)-forms['raw_bias']) % plan.P != right
+    wrong = plan.public_scale_raw_forms(small,sources,bt,point,{**mantissas,1:-254})
+    assert sum(w*plan.mle(padded[i],q) for i,_,q,w in wrong['input_point_claims']) % plan.P != left
+    bad_stage = [dict(small[0],input_producer={'layer':None,'operation':'embedding_scale'})]+small[1:]
+    for args in ((small,sources,bt,point,{**mantissas,0:148}),
+                 (small,sources,bt,point,{**mantissas,1:True}),
+                 (small,sources,bt,point,{**mantissas,1:256}),
+                 (small,sources,bt,point,{}),(small,sources,bt,point[:-1],mantissas),
+                 (small,sources+small[:1],bt,point,mantissas),
+                 (small,sources,bt[:-1],point,mantissas),
+                 (small,sources,[(*bt[0][:-1],bt[0][-1]+1)]+bt[1:],point,mantissas),
+                 (bad_stage,sources,bt,point,mantissas)):
+        with pytest.raises(ValueError):
+            plan.public_scale_raw_forms(*args)
+    for change in ({'rne':False},{'rne':1},{'physical_b_offset':0},{'execution':0},
+                   {'token_offset':False},{'layer':False},{'source_id':False}):
+        mutated = [dict(small[0],**change)]+small[1:]
+        combined = sources[:1]+mutated
+        layout,_ = plan.auxiliary_word_layout(combined)
+        with pytest.raises(ValueError):
+            plan.public_scale_raw_forms(mutated,combined,layout,point,mantissas)
+    assert 32767*255 == 8_355_585 < 1 << 23
+    assert (1 << 47)+32767*255 < plan.P  # field equality lifts to the integer raw relation
+    # This new candidate preserves maximal domain exponents, but advances
+    # the RQ 2^32 transition. Old-context reader counts cannot be inherited.
+    retained = (plan.rms_statistic_byte_sources(cohorts)+plan.rms_output_byte_sources(cohorts)+
+                plan.rope_raw_byte_sources(cohorts)+plan.gelu_lookup_sources(cohorts)+
+                plan.gate_up_raw_sources(cohorts))
+    for old in (0,3542,3543,3946):
+        combined = plan.auxiliary_word_sources(cohorts,old)+retained+scales
+        nbytes = sum(math.prod(s['shape'])*s['word_bytes'] for s in combined)
+        nrq = sum(math.prod(s['shape']) for s in combined if s['rne'])
+        assert nbytes == 9_123_965_838+1_728_000*old
+        assert nrq == 1_127_273_600+288_000*old
+        assert (nbytes-1).bit_length() == 34
+        assert (nrq-1).bit_length() == (31 if old <= 3542 else 32)
+
+
+def test_public_scale_two_layer_checkpoints_preserve_every_rounding():
+    # Synthetic valid post-norm Y inputs; does not certify RMS itself.
+    lookup = [-2,0,2]
+    ya = [[(layer+lane) % 5-2 for lane in range(3)] for layer in range(60)]
+    yf = [[(2*layer+lane) % 5-2 for lane in range(3)] for layer in range(60)]
+    mu = [127+layer % 3 for layer in range(60)]
+    def embedding():
+        return [plan.rne_i48_to_i16(147*x,1) for x in lookup]
+    def sums(u,layer):
+        a = [plan.rne_dyadic_add_i16(x,y,(0,-1,0)) for x,y in zip(u,ya[layer])]
+        return [plan.rne_dyadic_add_i16(x,y,(0,-1,0)) for x,y in zip(a,yf[layer])]
+    u, checkpoint, full = embedding(), {}, []
+    for layer in range(60):
+        if layer and layer % 2 == 0:
+            checkpoint[layer] = u.copy()  # U_2, U_4, ..., U_58, before any proof challenge
+        f = sums(u,layer)
+        full.append([mu[layer]*x for x in f])
+        u = [plan.rne_i48_to_i16(mu[layer]*x,7) for x in f]
+    assert len(checkpoint) == 29
+    y_reads, rounded, cache_reads, lookup_reads = 0,0,0,1  # the embedding raw also reads lookup
+    for layer in range(60):
+        start = layer-layer % 2
+        u = checkpoint[start].copy() if start else embedding()
+        cache_reads += int(start != 0)
+        lookup_reads += int(start == 0)
+        rounded += int(start == 0)
+        for j in range(start,layer+1):
+            f = sums(u,j)
+            y_reads += 2
+            rounded += 2
+            if j < layer:
+                u = [plan.rne_i48_to_i16(mu[j]*x,7) for x in f]
+                rounded += 1
+        assert [mu[layer]*x for x in f] == full[layer]
+    assert (y_reads,rounded,cache_reads,lookup_reads) == (180,212,58,3)
+    cells = 150*5376
+    assert 29*2*cells == 46_771_200  # retained, not free or a second weight copy
+    assert y_reads*cells == 145_152_000 and rounded*cells == 170_956_800
+    assert 4*y_reads*cells+12*(y_reads*cells//64)+2*(cache_reads+lookup_reads)*cells == 706_204_800
+    # A checkpoint is only an honest-reader cache: Gamma must still prove its producer relations.
+
+
 def test_gate_up_product_sources_domain_repair_and_all_context_counts():
     metadata = json.loads((Path(__file__).resolve().parents[1] /
                            'manifests/c7-d126-gemma31b-source-metadata-v1.json').read_text())

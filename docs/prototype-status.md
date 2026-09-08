@@ -6,10 +6,12 @@ Updated 2026-09-08. Editable working summary; Git preserves revisions.
 
 ## Active authority — read first
 
-**Active goal B2: bounded local CPU/Fp3 matrix port**, opened by the owner's
-2026-09-08 request to reach the next C7.1 goal. Start with fork provenance
-and same-W relation, then AES/FS/codec/lifecycle and a justified local
-preflight. Initial diagnostics have no security credit. G2 stays suspended.
+**B2 completed: bounded local CPU/Fp3 matrix port**, authorized by the owner's
+2026-09-08 request. Fork provenance, same-W reduction, AES/FS/codec and
+three-slot lifecycle now run at 48×48 and 128×128 from clean source.
+This closes the functional port and preflight, with no security credit.
+The next bounded goal is the complete work/resource census on this runner;
+G2 stays suspended.
 
 **B1 concluded with a negative reuse decision and its prescribed stop.**
 The [assessment in design §10](c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto)
@@ -68,7 +70,7 @@ the required security; a complete physical schedule; a complete certificate
 and work census. No new off-path kernel is authorized by this work plan.
 There is still **no complete C7.1 security, size, timing or memory credit**.
 
-## B1 outcome and next decision
+## B1 disposition and B2 result
 
 The existing [diagnostic](../scripts/c7_1_gemma_plan.py) now defaults to one
 compact comparison budget. Unknown totals have admission bound
@@ -120,8 +122,13 @@ store. Two byte-serialized matrix responses replay independently at n=48
 (padding to 64) and n=128. The launcher enforces 2 GiB address space/RSS,
 60 s and at most two process threads (one Rayon worker plus main).
 
-The functional B2 port is ready for a clean-source evidence run. This is
-still a diagnostic with tiny, insecure LPN tuples. Complete native PCS/PCG
+The clean-source records at `de73f60` pass:
+[48×48](../benchmarks/results/c71-b2-matrix48-20260908-de73f60.json) and
+[128×128](../benchmarks/results/c71-b2-matrix128-20260908-de73f60.json), each
+with two accepted byte proofs and an abort. The 128 case used 5.75 s wall,
+11,288,576 bytes sampled peak RSS and 1,719,534 total protocol bytes,
+including setup and both certificates. These are local dev diagnostics
+with tiny, insecure LPN tuples. Complete native PCS/PCG
 Fp/Fp3 arithmetic, physical expanded-array traffic and per-phase RSS are
 not censused; their admission totals remain unknown/infinity. The full
 measurement contract and lifetime security are not declared complete.

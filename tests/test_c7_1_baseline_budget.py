@@ -86,7 +86,15 @@ def test_b1_rejection_preserves_failed_preflight_and_unknown_complete_costs():
     assert experiment["input_Fp_bytes_lower_bound"] == 131_072
     assert experiment["complete_runner_command"] is None
     port = result["B2_CPU_Fp3_port"]
+    assert port["status"] == "functional_port_complete"
     assert not port["credit"] and not port["security_admitted"]
+    assert [case["n"] for case in port["measured_reduced_cases"]] == [48, 128]
+    for case in port["measured_reduced_cases"]:
+        assert not case["credit"]
+        assert case["total_protocol_wire_bytes"] > sum(case["certificate_bytes"])
+        assert case["process"]["sampled_peak_process_threads"] <= 2
+        assert case["process"]["sampled_peak_RSS_bytes"] <= 2 << 30
+        assert case["process"]["wall_seconds"] <= 60
     assert port["complete_work_admission_bound"] == "infinity"
     assert "complete_native_Fp_and_Fp3_work_census" in port["remaining_measurement_contract"]
     assert "--n 128 --run" in port["runner_command"]

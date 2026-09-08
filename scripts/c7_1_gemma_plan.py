@@ -5661,6 +5661,19 @@ def baseline_budget():
         source_guard_error = None
     except SystemExit as error:
         source_guard_error = str(error)
+    reduced_cases = []
+    for side in (48, 128):
+        source = f"benchmarks/results/c71-b2-matrix{side}-20260908-de73f60.json"
+        record = json.loads((Path(__file__).resolve().parents[1] / source).read_text())
+        if record["git_dirty"] or not record["run_of_record"] or record["status"] != "pass":
+            raise ValueError("C71 B2 evidence must retain its clean passing provenance")
+        run = record["execution"]
+        reduced_cases.append({"n": side, "source": source, "credit": False,
+            "kind": "measured local dev matrix diagnostic, not Gemma or secure-PCG performance",
+            "total_protocol_wire_bytes": run["total_protocol_wire_bytes"],
+            "certificate_bytes": [a["wire_bytes"] for a in run["attempts"] if a["status"] == "accepted"],
+            "full_fp3_consumed_or_burned": run["full_fp3_consumed_or_burned"],
+            "process": record["execution_process"]})
     return {
         "schema": "c71-baseline-budget-v1", "credit": False,
         "reference": "A5 + joint W/KV + Sigma(B, raw QK/PV, S); research only",
@@ -5679,7 +5692,8 @@ def baseline_budget():
             "audit_error": "unregistered vendored source delta: sumcheck/src/strategy.rs",
             "source_guard_error": "claimless prover must use exactly two claimless sumcheck batches"},
         "B2_CPU_Fp3_port": {
-            "status": "functional_port_ready_for_clean_evidence", "credit": False,
+            "status": "functional_port_complete", "credit": False,
+            "measured_reduced_cases": reduced_cases,
             "completed": ["pinned_fork_source_provenance", "checked_cubic_basis_isomorphism",
                           "real_AES_nine_sVOLE_lift", "same_W_matrix_byte_replay",
                           "full_certificate_codec_and_session_context", "concrete_Gamma_and_FS_vectors",

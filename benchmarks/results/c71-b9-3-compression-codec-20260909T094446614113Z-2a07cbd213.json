@@ -1,0 +1,85 @@
+{
+  "milestone": "c71-b9-bootstrap",
+  "git_commit": "2a07cbd2132845ed8d73f21f8df8d07c232f8fa9",
+  "git_dirty": true,
+  "credit": false,
+  "run_of_record": false,
+  "rows": 3,
+  "fault": "compression-codec",
+  "started_at_utc": "2026-09-09T09:44:46.614113+00:00",
+  "build_command": [
+    "/home/okrame/.cargo/bin/cargo",
+    "build",
+    "--offline",
+    "--locked",
+    "-j",
+    "2",
+    "-p",
+    "volta-pcg",
+    "--features",
+    "c71-bootstrap",
+    "--example",
+    "c71_bootstrap"
+  ],
+  "build_profile": "dev opt-level=2, debug=0, native CPU; operation counters enabled",
+  "runtime_limits": {
+    "wall_seconds": 60,
+    "address_space_and_RSS_bytes": 2147483648,
+    "threads": 2
+  },
+  "host": [
+    "Linux",
+    "mydebian",
+    "6.12.94+deb13-arm64",
+    "#1 SMP Debian 6.12.94-1 (2026-06-20)",
+    "aarch64"
+  ],
+  "rustc_version": "rustc 1.96.1 (31fca3adb 2026-06-26)\nbinary: rustc\ncommit-hash: 31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd\ncommit-date: 2026-06-26\nhost: aarch64-unknown-linux-gnu\nrelease: 1.96.1\nLLVM version: 22.1.2\n",
+  "build": {
+    "returncode": 0,
+    "stderr": "    Finished `dev` profile [optimized] target(s) in 0.05s\n"
+  },
+  "binary_sha256": "630369fa40ea505d938c101de77391b70e8c3d8a2a6593372e39e28c02bc45f1",
+  "execution_process": {
+    "returncode": 0,
+    "failure": null,
+    "wall_seconds": 3.2008368091192096,
+    "sampled_peak_RSS_bytes": 2961408,
+    "sampled_peak_process_threads": 2,
+    "stderr": ""
+  },
+  "execution": {
+    "accepted": false,
+    "credit": false,
+    "details": null,
+    "fault": "compression-codec",
+    "heap": {
+      "allocated_bytes": 2696500,
+      "freed_bytes": 2696480,
+      "live_end_bytes": 753,
+      "live_start_bytes": 733,
+      "peak_requested_bytes": 1023409
+    },
+    "inclusive_native_base_arithmetic_measured": false,
+    "physical_DRAM_traffic_measured": false,
+    "production_lifecycle_admitted": false,
+    "prover_error": "noncanonical Fp limb",
+    "rows": 3,
+    "schema": "c71-b9-native-v1",
+    "security_admitted": false,
+    "verifier_error": null
+  },
+  "status": "pass",
+  "source_changed_during_run": false,
+  "physical_traffic_probe": {
+    "event_sources": [
+      "breakpoint",
+      "kprobe",
+      "software",
+      "tracepoint",
+      "uprobe"
+    ],
+    "perf_event_paranoid": "3",
+    "DRAM_traffic_measured": false
+  }
+}

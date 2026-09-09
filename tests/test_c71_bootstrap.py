@@ -223,7 +223,7 @@ def test_B8_source_selection_costs_and_conditional_security_are_separate():
     assert not b8["security_admitted"] and not r["security_admitted"]
     assert r["B7_bootstrap_admission"]["baseline_stopped"]
     assert r["active_baseline_status"] == "stopped_after_failed_B7"
-    assert r["next_authorized_goal"] is None and "B9" in r["next_proposed_goal"]
+    assert r["next_authorized_goal"] is None and "B10" in r["next_proposed_goal"]
     security = b8["conditional_security"]
     terms = {k: Fraction(v) for k, v in security["terms_at_required_primitive_advantages"].items()}
     assert sum(terms.values()) == Fraction(security["sum_at_required_primitive_advantages"])
@@ -243,3 +243,60 @@ def test_B8_source_selection_costs_and_conditional_security_are_separate():
         assert case["wire_parts"]["check_challenges"] == 72*n
         assert 3*case["full_fp3_after_packing"] + case["unpacked_base_rows"] == n
         assert case["complete_connection_bytes"]["admission_bound"] == "infinity"
+
+
+def test_B9_native_boundary_counts_and_preserved_history():
+    r = plan.baseline_budget()
+    b9 = r["B9_bootstrap_component"]
+    assert b9["native_bootstrap_implemented"]
+    assert not any(b9[k] for k in ("security_admitted", "pool_PCS_integration_admitted", "production_runtime_admitted"))
+    assert r["B7_bootstrap_admission"]["baseline_stopped"]
+    assert r["active_baseline_status"] == "stopped_after_failed_B7"
+    assert r["replacement_bootstrap_status"] == "B9_native_component_checked_not_security_admitted"
+    assert r["next_authorized_goal"] is None and "B10" in r["next_proposed_goal"]
+    assert b9["native_OT_call_counts_both_roles"] == {
+        "fixed_base_scalar_multiplications": 2304, "variable_base_scalar_multiplications": 2304,
+        "hash_to_group": 2304, "KDF": 2304, "point_additions": 1728, "scalar_candidates": 18432}
+    assert b9["complete_connection_and_PCG_bytes"]["admission_bound"] == "infinity"
+    for case in b9["measured_cases"]:
+        heap = case["heap"]
+        assert heap["live_start_bytes"] + heap["allocated_bytes"] - heap["freed_bytes"] == heap["live_end_bytes"]
+        assert case["process"]["sampled_peak_process_threads"] <= 2
+        if not case["accepted"]:
+            assert case["prover_error"] or case["verifier_error"]
+            continue
+        n, detail = case["rows"], case["details"]
+        assert detail["protocol_wire_bytes"] == 191232 + 576*(n+9)*8 + 72*n + 601
+        assert detail["all_base_rows_checked"] == n
+        a, b = (detail[role]["work"] for role in ("prover", "verifier"))
+        assert a["group_candidates"] == b["group_candidates"]
+        assert a["prf_field_outputs"] + b["prf_field_outputs"] == 3*576*(n+9)
+        assert a["field_candidates"] + b["field_candidates"] == 8*(3*576*(n+9)+10*n+27)
+        assert a["check_fp9_products"] + b["check_fp9_products"] == 2*n+19
+        assert a["compression_fp3_products"] + b["compression_fp3_products"] == 3*(2*n+1)
+
+
+def test_B9_native_hash_vectors_against_independent_python_curve():
+    ctx, index, branch = b"native-source-vector", 17, 1
+    suffix = ctx + index.to_bytes(4, "little") + bytes([branch]) + encode(G)
+    for trial in range(512):
+        raw = hashlib.shake_256(b"C71B9/group/receiver/" + suffix + trial.to_bytes(2, "little")).digest(66)
+        candidate = int.from_bytes(raw, "big") & ((1 << 522) - 1)
+        x, sign = candidate >> 1, candidate & 1
+        if x == Q:
+            if sign == 0:
+                point = None
+                break
+            continue
+        try:
+            point = decode(bytes([2 + sign]) + x.to_bytes(66, "big"))
+            break
+        except ValueError:
+            pass
+    else:
+        raise AssertionError("native vector group sampler exhausted")
+    assert encode(point).hex() == (
+        "0201d6ff4beab451430d54a88b7601ba34efe9d84d0406e74704e7bd367c54ede0f00"
+        "d51a1f864a7f317c4dbdee5355f0513aabfd12fa97ecbebcc64815a6b559e915e")
+    assert hashlib.shake_256(b"C71B9/seed/sender/" + suffix).hexdigest(32) == (
+        "06893ac0862d2f3bc2241c8222de51d9f45b65d70e73ac762081df0a2c0d1347")

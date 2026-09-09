@@ -12,6 +12,10 @@ mod fase_d;
 mod phase_b;
 mod production;
 
+/// B9 component only: no production pool or PCS admission.
+#[cfg(feature = "c71-bootstrap")]
+pub mod c71_bootstrap;
+
 pub use fase_d::{
     BatchLiftReport, CanonicalBatchLift, FaseDCapacityReport, FaseDError, FaseDParams,
     FaseDStagePlan, ProverBufferAccount, RefillLedger, RegularNoiseTuple, Stage3Batch,

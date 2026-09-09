@@ -6084,6 +6084,61 @@ def b8_bootstrap_selection():
         "next_goal": "B9: bounded native bootstrap component and adversarial/source correspondence checks before any pool/PCS integration"}
 
 
+
+def b9_bootstrap_component():
+    """B9 native checks; protocol/production admission remains separate."""
+    # Filled only after a committed, clean-source execution. Dirty diagnostics
+    # and the sandbox socketpair failure remain immutable separate records.
+    source_commit = None
+    cases = []
+    if source_commit is not None:
+        for rows, fault in [(3, "none"), (32, "none")] + [(3, fault) for fault in (
+                "prover-context", "verifier-context", "receiver-point", "sender-point",
+                "seed-ciphertext", "cope-error", "check-response", "challenge-codec",
+                "compression-codec", "frame-order")]:
+            source = f"benchmarks/results/c71-b9-{rows}-{fault}-20260909-{source_commit[:7]}.json"
+            record = json.loads((Path(__file__).resolve().parents[1] / source).read_text())
+            if (record["git_dirty"] or not record["run_of_record"] or record["status"] != "pass"
+                    or record["git_commit"] != source_commit or record["source_changed_during_run"]):
+                raise ValueError("B9 evidence must retain its clean passing provenance")
+            execution = record["execution"]
+            if execution["rows"] != rows or execution["fault"] != fault or execution["accepted"] != (fault == "none"):
+                raise ValueError("B9 evidence case or adversarial disposition mismatch")
+            cases.append({"source": source, "credit": False, "rows": rows, "fault": fault,
+                "accepted": execution["accepted"], "process": record["execution_process"],
+                "heap": execution["heap"], "wire_io": execution["wire_io"],
+                "details": execution["details"], "prover_error": execution["prover_error"],
+                "verifier_error": execution["verifier_error"]})
+    return {"status": "native_component_checked_not_security_admitted", "credit": False,
+        "owner_authorization": "2026-09-09: reach the next C7.1 goal consistently with completed goals",
+        "native_bootstrap_implemented": True, "security_admitted": False,
+        "pool_PCS_integration_admitted": False, "production_runtime_admitted": False,
+        "source": "rust/volta-pcg/src/c71_bootstrap.rs",
+        "runner": "scripts/run_c71_bootstrap.py", "record_source_commit": source_commit,
+        "measured_cases": cases, "native_unit_checks": 5,
+        "construction": "B8 MR19 receiver-first + chosen seeds + Wolverine COPEe/Fp9 check/compression",
+        "native_OT_call_counts_both_roles": {"fixed_base_scalar_multiplications": 2304,
+            "variable_base_scalar_multiplications": 2304, "hash_to_group": 2304,
+            "KDF": 2304, "point_additions": 1728, "scalar_candidates": 18432},
+        "wire_sizes_unchanged_from_B8": True,
+        "implementation_choices": ["existing Fp/Fp3; RustCrypto P-521/SHAKE256; existing keyed BLAKE3",
+            "both sender branches decoded and processed; receiver evaluates both final public group-RO inputs",
+            "eight scalar/Fp candidates consumed with first-valid conditional selection",
+            "strict bounded frames; OS entropy; full check before fresh compression; zero key aborts",
+            "secret buffers erased on drop; outputs quarantined, no production pool adapter"],
+        "resource_limits": {"rows_executed": [3, 32], "seconds_per_case": 60,
+            "address_space_and_RSS_bytes": 2 << 30, "process_threads": 2},
+        "remaining": ["concrete DDH/PRF advantages at the actual reduction/output resources and ROM realization",
+            "generated-code side-channel review and complete secret-copy erasure; not supplied by algebra tests",
+            "durable setup burn/nonce and abort lifecycle; authenticated transport; AES PCG composition",
+            "inclusive native arithmetic, per-phase allocator/RSS and physical DRAM traffic",
+            "B4 masked-RS, same-W/FS lifetime, full physical schedule/certificate"],
+        "complete_connection_and_PCG_bytes": budget_sum({"bootstrap_32_base_rows": 383_065,
+            "authenticated_transport_lifecycle_PCG": None}),
+        "complete_work_memory_and_physical_traffic": budget_sum({"remaining_native_census": None}),
+        "next_goal": "B10: bounded admission of concrete primitive/resources and native side-channel premises, plus lifecycle/AES-PCG composition contract, before pool/PCS integration"}
+
+
 def baseline_budget():
     """One frozen S reference; alternatives are NOT additive components.
 
@@ -6157,8 +6212,8 @@ def baseline_budget():
         "malicious_prover_soundness_bits": None, "malicious_verifier_zk_bits": None,
         "security_admitted": False, "complete_baseline_selected": None,
         "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": None,
-        "replacement_bootstrap_status": "B8_construction_selected_not_native_admitted",
-        "next_proposed_goal": b8_bootstrap_selection()["next_goal"],
+        "replacement_bootstrap_status": "B9_native_component_checked_not_security_admitted",
+        "next_proposed_goal": b9_bootstrap_component()["next_goal"],
         "measurement_reuse_priority": None,
         "B1_decision": "reject_existing_whir_reuse_and_stop",
         "B1_decision_scope": "bounded reuse assessment; not an impossibility result for WHIR or C7.1",
@@ -6197,6 +6252,7 @@ def baseline_budget():
         "B6_converter_comparison": b6_converter_comparison(),
         "B7_bootstrap_admission": b7_bootstrap_admission(),
         "B8_bootstrap_selection": b8_bootstrap_selection(),
+        "B9_bootstrap_component": b9_bootstrap_component(),
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

@@ -1,4 +1,4 @@
-# Current status — C7.1 Gemma-31B, B8 bootstrap construction selected
+# Current status — C7.1 Gemma-31B, B9 native bootstrap checked
 
 Updated 2026-09-09. Editable working summary; Git preserves revisions.
 [Design](c7.1-gemma31b-design.md) · [Documentation index](README.md) ·
@@ -6,7 +6,16 @@ Updated 2026-09-09. Editable working summary; Git preserves revisions.
 
 ## Active authority — read first
 
-**B8 concludes with a composable construction selected.** The owner's
+**B9 implements and checks the selected native component.** The owner's
+2026-09-09 instruction to reach the next goal authorizes the bounded B9
+port. Independent prover/verifier roles execute real MR19/P-521 OT, chosen
+seeds, keyed-BLAKE3 COPE, the full Fp9 check and Fp3 compression. Native
+checks and ten adversarial byte cases pass; clean-source resource records
+are the final checkpoint step. [Design §10, B9](c7.1-gemma31b-design.md#b9-componente-nativo-e-confine-di-ammissione)
+records the exact source mapping and remaining admission obligations.
+Production/security admission and pool/PCS integration remain false.
+
+**B8 concluded with a composable construction selected.** The owner's
 2026-09-09 instruction opens replacement-bootstrap work and requires an
 ad hoc construction only if reuse cannot supply one. Receiver-first
 Masny–Rindal OT, its sender-chosen-message compiler and Wolverine's
@@ -57,15 +66,13 @@ budgets and the pinned 100+50 workload. The comparison may price explicit
 alternatives, including a fifth read or organized host spill; it must not
 claim they meet the reference. Scope and remaining thresholds are in design §1.
 
-**Authorization after B8:** the requested bootstrap selection is complete.
-The next proposed goal is a bounded native component and adversarial/source
-correspondence checks, before pool/PCS integration. B8's Python reference
-is variable-time with fixed coins and is not a native secret-bearing runtime.
-No RunPod/provider contact, H100/GPU,
-paid resources, weight downloads, heavy builds or full Gemma E2E. The B7
-check used only a small local CPU test under the
-[build procedure](procedures/build-and-test.md); it supplies no H100 claim.
-There is no pending spending approval. No complete C7.1 runner is admitted.
+**Authorization for B9:** bounded local native implementation, adversarial
+checks and resource counts. The old B7 baseline stays stopped; G2 remains
+suspended. No RunPod/provider contact, H100/GPU, paid resources, downloads,
+heavy builds or matrix/Gemma E2E. There is no pending spending approval.
+The next proposed B10 is a bounded assessment of concrete primitive and
+implementation premises plus the lifecycle/AES-PCG composition contract,
+before integration. No complete C7.1 runner is admitted.
 
 ## Evidence and open obligations
 
@@ -382,16 +389,45 @@ algebra and mask coverage, conditional arithmetic and preserved B7 stop.
 No native build, new Lean theorem, benchmark record, matrix/Gemma proof
 or hardware measurement is claimed. The unrelated G2 test edits remain intact.
 
-The next proposed B9 is the bounded native bootstrap component, with
-both-party adversarial tests, codec/source correspondence and resource
-counts. Concrete primitive accounting and lifecycle/PCG composition must
-precede integration. B4 masked-RS, same-W/FS lifetime and the complete
+B9 below supplies the bounded native component and checks. Concrete
+primitive accounting and lifecycle/PCG composition still precede integration. B4 masked-RS, same-W/FS lifetime and the complete
 physical schedule/certificate remain independent unresolved obligations.
+
+
+## B9 native component and disposition
+
+The opt-in [`c71-bootstrap`](../rust/volta-pcg/src/c71_bootstrap.rs) feature
+has independent roles and no production pool adapter. The
+[bounded runner](../scripts/run_c71_bootstrap.py) uses disposable OS-random
+secrets and two local Unix endpoints, within 60 s / 2 GiB / two threads.
+It checks every base row and native Fp3 packing; the five focused Rust
+checks include both OT choices, independent Python curve/hash vectors,
+all mask coordinates, malicious point branches and zero-key abort before
+the compression frame. Ten endpoint mutations reject at the expected
+boundary. Earlier dirty diagnostics and the sandbox socketpair failure
+are preserved separately; clean-source records are pending the source commit.
+
+The successful wire remains **247,345 bytes for 3 base rows** and
+**383,065 for 32**, with all nine frames. B9 processes both receiver DH/KDF
+branches and balances both final public group-hash inputs: native calls
+are 2,304 each for fixed/variable scalar multiplication, group hash and
+KDF, versus the narrower B8 algebra count. Scalar/Fp samplers consume all
+eight candidates. The runner checks actual call counters, both wire views,
+allocator balance, RSS and phase elapsed times including waits.
+
+These are component results. Algebra/source checks do not establish the
+concrete DDH/PRF advantages, generated-code side-channel behavior, complete
+secret-copy erasure, durable burns, authenticated transport or AES expansion
+composition. Complete work/physical traffic and connection costs retain
+unknown admission bounds. Existing Lean MAC linearity assumes valid inputs;
+no new Lean theorem or complete C7.1 security/performance credit follows.
+The single budget includes `B9_bootstrap_component` and proposes B10 before
+any integration, retaining the previous negative decisions and evidence.
 
 ## Documentation decision
 
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 (B8 selection and preserved B7 failure) without
+A fresh conversation can start from this page and design §10 (B9 component and preserved B7 failure) without
 importing the full G2 transcript or reopening its suspended obligations.

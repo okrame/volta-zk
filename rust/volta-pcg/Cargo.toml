@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+c71-bootstrap = ["dep:p521", "dep:sha3", "dep:zeroize"]
+
 [dependencies]
 volta-field = { workspace = true }
 blake3 = { workspace = true }
@@ -11,3 +14,13 @@ curve25519-dalek = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
+p521 = { version = "=0.13.3", default-features = false, features = ["arithmetic"], optional = true }
+sha3 = { version = "=0.10.8", optional = true }
+zeroize = { version = "1", optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[[example]]
+name = "c71_bootstrap"
+required-features = ["c71-bootstrap"]

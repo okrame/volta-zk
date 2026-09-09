@@ -10,6 +10,7 @@ Start with the narrowest relevant check. For C7.1 arithmetic/accounting:
 ```bash
 PYTHONDONTWRITEBYTECODE=1 pytest -q -p no:cacheprovider tests/test_c7_1_gemma_plan.py
 PYTHONDONTWRITEBYTECODE=1 pytest -q -p no:cacheprovider tests/test_c7_1_baseline_budget.py
+PYTHONDONTWRITEBYTECODE=1 pytest -q -p no:cacheprovider tests/test_c71_bootstrap.py
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/c7_1_gemma_plan.py
 ```
 
@@ -33,6 +34,23 @@ cargo test --workspace
 ```
 
 This is the broad workspace command, not the default check for every task.
+For the authorized B9 component, run from `rust` with the same absolute
+target and `CARGO_INCREMENTAL=0`:
+
+```bash
+CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2 cargo test --offline --locked -j 2 -p volta-pcg --features c71-bootstrap c71_b9 -- --test-threads=1
+```
+
+From the repository root, `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python
+scripts/run_c71_bootstrap.py --n 3` runs one OS-random two-role component
+case; `--n 32` is the other registered size and `--fault` selects a bounded
+adversarial case. It reuses the existing 60 s / 2 GiB / two-thread launcher,
+uses only local Unix socketpairs and preserves failures. The script builds
+only the `volta-pcg` example at opt-level 2, with no separate Cargo target.
+This is not the stopped B7 matrix runner or a full Gemma E2E. The source
+tree must be clean for a run of record; a detached temporary worktree can
+preserve unrelated edits while sharing the canonical target.
+
 Before a broad local build, check guest space and confirm at least 60 GiB free
 on the host; guest `df` alone does not establish host capacity. Run the full
 workspace before a protocol milestone checkpoint when authorized resources

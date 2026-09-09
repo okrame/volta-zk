@@ -5,8 +5,8 @@ of the [C7.1 Gemma-31B design](c7.1-gemma31b-design.md). This index is a map;
 it is not another status ledger.
 
 The evaluated baseline remains stopped after B7. The owner's subsequent
-decision opened B8, which selects a replacement bootstrap construction;
-native/security admission and integration remain open in design §10.
+decisions opened B8/B9: a replacement construction and a checked native
+component. Security/production admission and integration remain open in design §10.
 
 ## Current documents
 
@@ -25,10 +25,11 @@ native/security admission and integration remain open in design §10.
 | [K1 KV transition](c7.1-kv-transition.md) | Exact temporal views, concatenation/prefix MAC reduction, first-state alias, bounded-memory routing and remaining KV PCS/producer obligations |
 | [T1 attention products](c7.1-attention-products.md) | Aggregated raw QK/PV, rectangular-view DP, GQA endpoints, source-bound probability contraction and per-layer witness schedule |
 | [R3 auxiliary witness](c7.1-auxiliary-witness.md) | Unified B/raw-attention byte source, fresh raw probes/RNE pullbacks, identical striped RS encoder and staged tree-cache repairs; incomplete Gamma/liveness |
+| [B9 native bootstrap](../rust/volta-pcg/src/c71_bootstrap.rs) · [bounded runner](../scripts/run_c71_bootstrap.py) | Independent MR19/P-521 and COPE/Fp9 roles, adversarial byte checks and local resources; no production/security admission |
 | [B3 native census](../scripts/c71_work_census.py) · [bounded runner](../scripts/run_c71_matrix.py) | Actual Goldilocks arithmetic and phase memory of the reduced B2 matrix path; physical traffic/security remain open in design §10 |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |
-| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [B8 checks](../tests/test_c71_bootstrap.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget, including B4–B7 decisions and B8's composable bootstrap selection without native/security credit; `--research-screens`: preserved, non-additive research inventory |
+| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [B8/B9 checks](../tests/test_c71_bootstrap.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget, including B4–B7 decisions, B8 construction and B9 native component without security credit; `--research-screens`: preserved, non-additive research inventory |
 
 Status and design are editable; replace obsolete statements and use Git for
 history. Record important decisions with reasons and source links. Add a page

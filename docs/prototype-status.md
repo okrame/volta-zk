@@ -159,11 +159,18 @@ PCS: wrong output fails GKR, while changed S preserving Y fails against
 the committed bytes. Canonical P=X*W, S=sum X² and Y consumer routes,
 actual Gemma profiles and their composition remain open; the partial
 P0/RNE security bound above has not acquired full RMS or Gemma credit.
+The [statistic kernel](../rust/volta-pcs/src/c71_matrix/rms/statistic.rs)
+now reuses cubic P0 for S=sum X². A 7,761-row ideal weighted RMS case
+closes P=X*W, S and the exact predicate through the same ranged W/A PCS,
+with one S word broadcast per row. Altered S preserving Y fails the
+statistic; changing the weight getter and consistently updating P/Y
+fails the installed W PCS. This completes that small RMS relation;
+the 421 canonical Gemma routes and complete composition remain open.
 
-Twenty-six B12 algebra/accounting checks include the scalar invariant,
+Twenty-seven B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 207; the 17
-narrow bootstrap/pool checks and twenty-five B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 208; the 17
+narrow bootstrap/pool checks and twenty-six B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

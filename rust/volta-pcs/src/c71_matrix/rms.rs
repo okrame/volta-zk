@@ -4,6 +4,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 pub(super) mod gkr;
+pub(super) mod statistic;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) enum Op {

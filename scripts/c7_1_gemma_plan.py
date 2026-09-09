@@ -6676,6 +6676,36 @@ def b12_byte_function_profile(cell_bits, lane_bits, summed=False):
     }
 
 
+def b12_rms_statistic_profile(row_bits, column_bits):
+    """Original committed S probe and cubic P0(X,X), before shared closures.
+
+    The selected X view has zero padding, even if its producer has other
+    real rows. Both original X endpoints still open that SAME source view.
+    The product triple goes to the caller's existing common batch.
+    """
+    natural(row_bits, 'RMS statistic row bits', 0, 35)
+    natural(column_bits, 'RMS statistic column bits', 0, 13)
+    rounds = row_bits+column_bits
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/rms/statistic.rs',
+        'row_bits': row_bits, 'column_bits': column_bits,
+        'Fp3_correlations_before_common_product_batch_and_shared_PCS': 4*rounds+4,
+        'FS_draw_requests_before_common_product_batch': row_bits+rounds,
+        'field_payload_bytes_before_context_and_shared_closures': 24*(5*rounds+5),
+        'MAC_degree_sum_before_common_product_batch_and_PCS': rounds+1,
+        'sum_of_all_FS_error_degrees_before_common_product_batch_and_PCS': row_bits+3*rounds,
+        'authenticated_products_for_common_batch': 1,
+        'original_S_claims_and_original_X_claims': [1,2],
+        'extra_PCS_or_private_bit_commitments': 0,
+        'native_total_cell_bits_cap': 15,
+        'selected_X_view_zero_outside_live_rows_and_columns': True,
+        'integer_max_for_full_signed_i16_and_5376_columns': 5376*32768**2,
+        'tiny_same_W_weighted_RMS_Fp3_rows_with_two_ranged_PCS': 7761,
+        'full_Gemma_source_routes_compiled': False,
+        'complete_security_or_physical_credit': False,
+    }
+
+
 def b12_rms_joint_profile(profile_widths, cell_bits):
     """Native RMS-J arithmetic with one ORIGINAL sum claim through byte P/S.
 

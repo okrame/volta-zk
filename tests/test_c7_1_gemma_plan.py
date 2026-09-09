@@ -249,6 +249,24 @@ def test_B12_RNE_counts_range_validity_and_both_original_MAC_endpoints():
     assert tiny['tiny_P0_RNE_original_consumer_MAC_rows_with_two_ranged_PCS'] == 24+488+269+510+64
 
 
+def test_B12_RMS_statistic_keeps_original_S_and_X_and_shared_product_obligations():
+    for r,c in [(0,0),(1,2),(7,8),(13,8),(8,13)]:
+        b = plan.b12_rms_statistic_profile(r,c)
+        assert b['Fp3_correlations_before_common_product_batch_and_shared_PCS'] == 1+4*(r+c)+3
+        assert b['FS_draw_requests_before_common_product_batch'] == 2*r+c
+        assert b['field_payload_bytes_before_context_and_shared_closures'] == 24*(1+5*(r+c)+4)
+        assert b['MAC_degree_sum_before_common_product_batch_and_PCS'] == r+c+1
+        assert b['sum_of_all_FS_error_degrees_before_common_product_batch_and_PCS'] == r+3*(r+c)
+        assert b['authenticated_products_for_common_batch'] == 1
+        assert b['original_S_claims_and_original_X_claims'] == [1,2]
+        assert b['integer_max_for_full_signed_i16_and_5376_columns'] < 1 << 43
+        assert (1 << 47)+b['integer_max_for_full_signed_i16_and_5376_columns'] < plan.P
+        assert not b['extra_PCS_or_private_bit_commitments']
+        assert not b['full_Gemma_source_routes_compiled']
+        assert not b['complete_security_or_physical_credit']
+    assert plan.b12_rms_statistic_profile(1,2)['tiny_same_W_weighted_RMS_Fp3_rows_with_two_ranged_PCS'] == 12+16+1+6889+269+510+64
+
+
 def test_B12_joint_RMS_counts_original_bit_sum_products_and_global_FS_losses():
     profiles = [plan.rms_layered_circuit(plan.rms_boolean_circuit(d, 0, 0, 0, weighted, True))
                 for d, weighted in [(3, True), (256, False)]]

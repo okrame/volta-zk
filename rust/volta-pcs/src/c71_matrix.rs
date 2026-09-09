@@ -3,12 +3,25 @@
 mod codec;
 mod census;
 mod diagnostic;
+#[cfg(feature = "c71-b12-pcs")]
+mod b12;
 pub use diagnostic::{preflight, run};
 #[cfg(feature = "c71-work-census")]
 pub use census::self_check;
 
 use crate::c61_whir_reference::C61Commitment;
+#[cfg(not(feature = "c71-b12-pcs"))]
 use crate::c61_whir_reference::{c61_reference_mmcs, C61Mmcs};
+#[cfg(feature = "c71-b12-pcs")]
+use b12::{mmcs as matrix_mmcs, HidingMmcs as MatrixMmcs};
+#[cfg(not(feature = "c71-b12-pcs"))]
+type MatrixMmcs = C61Mmcs;
+type MatrixMultiProof = <MatrixMmcs as p3_commit::Mmcs<Goldilocks>>::MultiProof;
+
+#[cfg(not(feature = "c71-b12-pcs"))]
+fn matrix_mmcs(_seed: [u8; 32]) -> MatrixMmcs {
+    c61_reference_mmcs()
+}
 use p3_challenger::{
     CanObserve, CanSample, CanSampleBits, CanSampleUniformBits, FieldChallenger,
     GrindingChallenger, ResamplingError,
@@ -260,14 +273,21 @@ fn config(h: usize) -> Result<ZkWhirConfig<E, Goldilocks, Fs>, String> {
 /// retain their algorithms and bytes. Extension leaf preimages are base-field
 /// words in P3's v basis, exactly as consumed by the Merkle hash.
 #[derive(Clone)]
-struct ObservedMmcs(Fs);
+struct ObservedMmcs {
+    fs: Fs,
+    inner: MatrixMmcs,
+}
 
 impl ObservedMmcs {
+    fn new(fs: Fs, seed: [u8; 32]) -> Self {
+        Self { fs, inner: matrix_mmcs(seed) }
+    }
+
     fn bind<R: AsRef<[Goldilocks]>>(
         &self,
         indices: &[usize],
         rows: &[Vec<R>],
-        proof: &crate::c61_whir_reference::C61MultiProof,
+        proof: &MatrixMultiProof,
     ) {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&(indices.len() as u32).to_le_bytes());
@@ -281,31 +301,36 @@ impl ObservedMmcs {
                 }
             }
         }
+        #[cfg(feature = "c71-b12-pcs")]
+        let proof = {
+            b12::bind_salts(&mut bytes, &proof.0);
+            &proof.1
+        };
         bytes.extend_from_slice(&(proof.sibling_hashes.len() as u32).to_le_bytes());
         for hash in &proof.sibling_hashes {
             bytes.extend_from_slice(hash);
         }
-        self.0.clone().record(0x2100, &bytes);
+        self.fs.clone().record(0x2100, &bytes);
     }
 }
 
 impl p3_commit::Mmcs<Goldilocks> for ObservedMmcs {
-    type ProverData<M> = <C61Mmcs as p3_commit::Mmcs<Goldilocks>>::ProverData<M>;
+    type ProverData<M> = <MatrixMmcs as p3_commit::Mmcs<Goldilocks>>::ProverData<M>;
     type Commitment = C61Commitment;
-    type Proof = <C61Mmcs as p3_commit::Mmcs<Goldilocks>>::Proof;
-    type MultiProof = crate::c61_whir_reference::C61MultiProof;
-    type Error = <C61Mmcs as p3_commit::Mmcs<Goldilocks>>::Error;
+    type Proof = <MatrixMmcs as p3_commit::Mmcs<Goldilocks>>::Proof;
+    type MultiProof = MatrixMultiProof;
+    type Error = <MatrixMmcs as p3_commit::Mmcs<Goldilocks>>::Error;
     fn commit<M: p3_matrix::Matrix<Goldilocks>>(
         &self,
         inputs: Vec<M>,
     ) -> (Self::Commitment, Self::ProverData<M>) {
-        c61_reference_mmcs().commit(inputs)
+        self.inner.commit(inputs)
     }
     fn get_matrices<'a, M: p3_matrix::Matrix<Goldilocks>>(
         &self,
         data: &'a Self::ProverData<M>,
     ) -> Vec<&'a M> {
-        c61_reference_mmcs().get_matrices(data)
+        self.inner.get_matrices(data)
     }
     fn open_batch<M: p3_matrix::Matrix<Goldilocks>>(
         &self,
@@ -328,7 +353,7 @@ impl p3_commit::Mmcs<Goldilocks> for ObservedMmcs {
         indices: &[usize],
         data: &Self::ProverData<M>,
     ) -> (Vec<Vec<Vec<Goldilocks>>>, Self::MultiProof) {
-        let (rows, proof) = c61_reference_mmcs().open_multi_batch(indices, data);
+        let (rows, proof) = self.inner.open_multi_batch(indices, data);
         self.bind(indices, &rows, &proof);
         (rows, proof)
     }
@@ -340,7 +365,7 @@ impl p3_commit::Mmcs<Goldilocks> for ObservedMmcs {
         rows: &[Vec<R>],
         proof: &Self::MultiProof,
     ) -> Result<(), Self::Error> {
-        c61_reference_mmcs().verify_multi_batch(commit, dimensions, indices, rows, proof)?;
+        self.inner.verify_multi_batch(commit, dimensions, indices, rows, proof)?;
         self.bind(indices, rows, proof);
         Ok(())
     }
@@ -401,6 +426,7 @@ struct Model {
     n: usize,
     weights: Vec<i16>,
     seed: [u8; 32],
+    salt_seed: [u8; 32],
     root: C61Commitment,
 }
 
@@ -434,8 +460,10 @@ impl Model {
         }
         let mut seed = [0; 32];
         rand::rngs::OsRng.try_fill_bytes(&mut seed).map_err(|e| e.to_string())?;
-        let mut model = Self { n, weights, seed, root: C61Commitment::new(vec![[0; 32]]) };
-        let mmcs = c61_reference_mmcs();
+        let mut salt_seed = [0; 32];
+        rand::rngs::OsRng.try_fill_bytes(&mut salt_seed).map_err(|e| e.to_string())?;
+        let mut model = Self { n, weights, seed, salt_seed, root: C61Commitment::new(vec![[0; 32]]) };
+        let mmcs = matrix_mmcs(salt_seed);
         let dft = Radix2DFTSmallBatch::default();
         let prover = HidingWhirProver::new(&config, &dft, &mmcs);
         let mut fs = Fs::new(b"C71 model setup, Delta independent", 0);
@@ -519,7 +547,10 @@ fn matrix_statement(
 // Explicit derived geometry makes the profile independent of Debug formatting.
 // Variable lists have their counts; every integer is a little-endian u64.
 fn gamma(c: &ZkWhirConfig<E, Goldilocks, Fs>) -> Vec<u8> {
+    #[cfg(not(feature = "c71-b12-pcs"))]
     let mut bytes = b"C71-matrix-v1;codec1;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;Johnson128;PoW0;AES128-MMO;LPN64,512,8,4;setup16,128,4;checks2;pool3;lift9sVOLE48;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
+    #[cfg(feature = "c71-b12-pcs")]
+    let mut bytes = b"C71-matrix-B12-salted-v1;codec2;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;B2-IOP-Johnson128;PoW0;B11-AES256-finite;rows3;salts4Fp;StdRng-0.10.2;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
     let mut words = vec![
         volta_field::P,
         16,
@@ -642,7 +673,7 @@ fn matrix_prove(
     record_values(&mut fs, 0x11, &terminal_wire);
     let mask = reserved.next().unwrap();
     fs.set_phase(0x200);
-    let mmcs = ObservedMmcs(fs.clone());
+    let mmcs = ObservedMmcs::new(fs.clone(), model.salt_seed);
     let dft = Radix2DFTSmallBatch::default();
     let prover = HidingWhirProver::new(&config, &dft, &mmcs);
     census::mark("prover_commit_rematerialization")?;
@@ -657,6 +688,12 @@ fn matrix_prove(
     let point = Point::new(row_point.into_iter().chain(col_point).map(to_p3).collect());
     let mut seed = [0; 32];
     rand::rngs::OsRng.try_fill_bytes(&mut seed).map_err(|e| e.to_string())?;
+    // A new MMCS instance is essential: rematerializing the fixed root must
+    // not restart the salt stream used for the fresh proof commitments.
+    let mut proof_salt_seed = [0; 32];
+    rand::rngs::OsRng.try_fill_bytes(&mut proof_salt_seed).map_err(|e| e.to_string())?;
+    let proof_mmcs = ObservedMmcs::new(fs.clone(), proof_salt_seed);
+    let prover = HidingWhirProver::new(&config, &dft, &proof_mmcs);
     let proved = prover.prove_claimless(
         data,
         &[(point, to_p3(terminal.x))],
@@ -738,7 +775,8 @@ fn matrix_verify(
     census::mark("verifier_pcs")?;
     fs.observe(root.clone());
     let point = Point::new(row_point.into_iter().chain(col_point).map(to_p3).collect());
-    let mmcs = ObservedMmcs(fs.clone());
+    // Verification never commits or uses this dummy salt RNG.
+    let mmcs = ObservedMmcs::new(fs.clone(), [0; 32]);
     let verifier = HidingWhirVerifier::new(&config, &mmcs);
     let checked = verifier
         .verify_claimless(&proof.pcs, root, &[point], &mut fs)
@@ -822,6 +860,7 @@ mod tests {
             fs.digest().to_hex().as_str(),
             "2eafb615a0bdaf51cf300a197c97d491a225f2ecbb3c64689c2773bfffa2fab4"
         );
+        #[cfg(not(feature = "c71-b12-pcs"))]
         for (n, digest) in [
             (48, "913f74d7b4317b71d098c55c79e2ffddc1a906859ff1e65912592448bd0e77ba"),
             (128, "e96896ada45f227b313dc5f2008c2cb38d2fbc19283e4b179c8eb20d0c70e55d"),
@@ -913,6 +952,7 @@ mod tests {
         assert!(super::config(27).is_err());
     }
 
+    #[cfg(not(feature = "c71-b12-pcs"))]
     #[test]
     fn matrix_outputs_reach_the_same_root_with_real_aes_mac_targets() {
         use volta_mac::c7_fp3::{c7_fp3_lift_prover, c7_fp3_lift_verifier};

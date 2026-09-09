@@ -36,8 +36,12 @@ also pin the affine PCS/MAC closing equation and reproduce candidate-W
 reconstruction after mask exhaustion in an **unsalted** Merkle commitment.
 Under three independent uniform query sets, the B2 n=128 exhaustion event
 has probability about `2^-24.0445`; this is a source-level privacy finding,
-not a measured native FS attack. The existing salted MMCS is the repair to
-instantiate; root/key labels cannot repair this leakage.
+not a measured native FS attack. The opt-in `c71-b12-pcs` now reuses the
+salted MMCS with separate hash domains, fresh proof salt streams and codec v2.
+Two native B12 tests cover salting and a real B11 durable consumer: two valid
+matrix proofs of one root, then a rejected salt alteration whose burn survives
+reopen. This still uses B2 IOP geometry, with its security gaps; no full
+hash/FS/ZK bound or root renewal follows from the component check.
 
 PCS hash/FS compilation into the GKR's exact authenticated endpoint, root
 renewal, both-role lifetime composition and the complete resource reduction

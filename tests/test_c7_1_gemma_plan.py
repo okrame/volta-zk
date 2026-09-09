@@ -111,7 +111,16 @@ def test_B12_unique_radius_budget_includes_mask_degree_and_keeps_compilation_ope
         m, q = case['domain_rows'], case['queries_per_attempt']
         probability = Fraction(math.comb(m-q, q), math.comb(m, q))*Fraction(math.comb(m-2*q, q), math.comb(m, q))
         assert probability == Fraction(case['three_disjoint_sets_probability'])
-    assert not b['old_unsalted_root']['salted_MMCS_integrated_in_C71']
+    assert b['old_unsalted_root']['salted_MMCS_integrated_in_C71']
+    native = b['native_salted_component']
+    assert native['feature'] == 'c71-b12-pcs'
+    assert native['fresh_proof_salt_stream_separate_from_model_rematerialization']
+    assert native['merkle_salt_bytes_per_opened_row'] == 4*8
+    assert [(c['n'], c['salt_field_payload_bytes_per_proof'],
+             c['salt_field_array_bytes_created_per_warm_proof'])
+            for c in native['salting_costs_on_preserved_B2_geometry']] == [
+                (48, 165888, 917504), (128, 208064, 1638400)]
+    assert not native['security_admitted'] and not native['root_renewal']
 
 
 def test_B12_claimless_affinity_and_one_secret_key_root():

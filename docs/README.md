@@ -11,8 +11,9 @@ not admitted. B11 selects the owner-authorized intermediate finite AES profile u
 explicit primitive/resource hypotheses. B12 is active: a conditional bootstrap
 resource extension to T80 and a durable finite-pool component are available.
 The PCS analysis adds a proven unique-radius MCA bound and identifies
-unsalted-root privacy loss at mask exhaustion; its ideal profile is not
-native admission. Same-W PCS/GKR, renewed roots and complete lifetime bounds remain open in
+unsalted-root privacy loss at mask exhaustion. An opt-in salted matrix
+consumer now reaches the durable B11 pool; its IOP geometry still lacks
+admission. Same-W PCS/GKR, renewed roots and complete lifetime bounds remain open in
 design §10. Full security and production integration remain unadmitted.
 
 ## Current documents
@@ -33,7 +34,7 @@ design §10. Full security and production integration remain unadmitted.
 | [T1 attention products](c7.1-attention-products.md) | Aggregated raw QK/PV, rectangular-view DP, GQA endpoints, source-bound probability contraction and per-layer witness schedule |
 | [R3 auxiliary witness](c7.1-auxiliary-witness.md) | Unified B/raw-attention byte source, fresh raw probes/RNE pullbacks, identical striped RS encoder and staged tree-cache repairs; incomplete Gamma/liveness |
 | [B9 native bootstrap](../rust/volta-pcg/src/c71_bootstrap.rs) · [bounded runner](../scripts/run_c71_bootstrap.py) | Independent MR19/P-521 and COPE/Fp9 roles, adversarial byte checks and local resources; no production/security admission |
-| [B12 durable finite pool](../rust/volta-pcg/src/c71_lifetime.rs) | Both B11 roles, joint durable burns, accepted-head persistence and crash checks; fixed root only, no complete PCS/GKR admission |
+| [B12 durable finite pool](../rust/volta-pcg/src/c71_lifetime.rs) · [salted PCS consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) | Both B11 roles, joint durable burns, accepted-head persistence and crash checks; salted matrix endpoint with a fixed root, no complete PCS/GKR admission |
 | [B3 native census](../scripts/c71_work_census.py) · [bounded runner](../scripts/run_c71_matrix.py) | Actual Goldilocks arithmetic and phase memory of the reduced B2 matrix path; physical traffic/security remain open in design §10 |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |

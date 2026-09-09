@@ -160,6 +160,9 @@ fn decode_lift(
 
 /// Analytic geometry and explicit unknowns, without allocating a witness.
 pub fn preflight(n: usize) -> Result<Value, String> {
+    if cfg!(feature = "c71-b12-pcs") {
+        return Err("B12 PCS component uses B11; the stopped B7 matrix runner is unavailable".into());
+    }
     let c = matrix_config(n)?;
     let rows: usize = c.round_parameters.iter().map(|r| r.domain_size).sum::<usize>()
         + c.final_round_config().domain_size;

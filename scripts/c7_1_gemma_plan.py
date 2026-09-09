@@ -6396,7 +6396,7 @@ def b12_pcs_binding_assessment():
             "memory_is_not_a_streaming_schedule": True,
             "native_profile_selected": False})
 
-    exhaustion = []
+    exhaustion, salting_costs = [], []
     for case in b4_security_admission()["proximity"]["cases"]:
         o = case["oracles"][0]
         h, t, r = o["domain_rows"], o["queries"], o["randomness_rows"]
@@ -6407,7 +6407,16 @@ def b12_pcs_binding_assessment():
             "three_disjoint_sets_probability": str(probability),
             "event_bits": math.log2(probability.denominator)-math.log2(probability.numerator),
             "scope": "ideal independent uniform distinct query sets; candidate-W reconstruction when the mask budget is exhausted, not a measured native attack"})
-    return {"status": "unique_radius_lemma_and_salted_compilation_required",
+        oracles, masks = case["oracles"], case["mask_groups"]
+        opened = sum(o["queries"] for o in oracles) + oracles[-1]["queries"] + 2*sum(m["queries"] for m in masks)
+        committed = sum(o["domain_rows"] for o in oracles) + oracles[-1]["domain_rows"] + 2*sum(m["domain_rows"] for m in masks)
+        salting_costs.append({"n": case["n"], "opened_salt_rows_per_proof": opened,
+            "salt_field_payload_bytes_per_proof": 32*opened,
+            "salt_field_array_bytes_created_per_warm_proof": 32*committed,
+            "salt_field_array_bytes_created_at_model_setup": 32*oracles[0]["domain_rows"],
+            "not_peak_memory_or_full_hash_work": True,
+            "Merkle_frontier_may_change_with_the_new_FS_transcript": True})
+    return {"status": "unique_radius_lemma_and_native_salted_consumer_component",
         "credit": False, "security_admitted": False,
         "source": "docs/c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata",
         "affine_MCA": {"premise": "linear code over a field-vector alphabet; 3*radius_rows < minimum_distance",
@@ -6422,7 +6431,19 @@ def b12_pcs_binding_assessment():
             "exhaustion_cases": exhaustion,
             "repair": "reuse existing MerkleTreeHidingMmcs with four fresh Fp salts, separate leaf/node domains and bound the salt generator",
             "salted_MMCS_exists": "rust/third_party/p3-merkle-tree-c61/src/hiding_mmcs.rs",
-            "salted_MMCS_integrated_in_C71": False},
+            "salted_MMCS_integrated_in_C71": True},
+        "native_salted_component": {
+            "feature": "c71-b12-pcs",
+            "source": "rust/volta-pcs/src/c71_matrix/b12.rs",
+            "IOP_geometry": "unchanged B2; not the ideal unique-radius profile",
+            "bootstrap": "real B11 AES roles, three base rows per Fp3 and Delta_native=-Delta_B11",
+            "durable_consumer": "two valid matrix proofs of one root; altered salt rejected on a burned third attempt; accepted head and exhaustion survive reopen",
+            "merkle_salt_bytes_per_opened_row": 32,
+            "salting_costs_on_preserved_B2_geometry": salting_costs,
+            "additional_model_secret_seed_bytes": 32,
+            "fresh_proof_salt_stream_separate_from_model_rematerialization": True,
+            "salt_generator": "OS-seeded StdRng from locked rand 0.10.2; concrete advantage not discharged",
+            "root_renewal": False, "security_admitted": False},
         "same_W_consequence": "one decoded message per fixed oracle before opening challenges; root links compare both endpoints under the current MAC",
         "remaining": ["claimless affine/runtime correspondence", "salted Merkle and complete FS/ZK compilation",
             "root-renewal protocol and both-role lifecycle", "full GKR/quantization relation and adequate correlation capacity",
@@ -6479,6 +6500,7 @@ def b12_lifetime_admission():
         "same_W": {"quantifier": "exists one W fixed at installation, for all accepted proofs in all sessions/key epochs/roots",
             "bootstrap_reads_W": False, "MAC_validity_implies_model_binding": False,
             "root_renewal_fails_closed": True,
+            "matrix_relation_component_checked": True,
             "instantiated_authenticated_PCS_GKR_relation": False,
             "conditional_induction": "design B12; anchor uniqueness + root link + same authenticated endpoint + GKR relation"},
         "PCS_binding_assessment": b12_pcs_binding_assessment(),

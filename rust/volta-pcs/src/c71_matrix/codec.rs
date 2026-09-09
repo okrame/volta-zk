@@ -2,14 +2,17 @@
 
 use super::*;
 use crate::c61_whir_reference::{
-    c61_max_pruned_binary_siblings, C61MultiProof, C61Reader, C61WhirReferenceError, C61Writer,
+    c61_max_pruned_binary_siblings, C61Reader, C61WhirReferenceError, C61Writer,
     ReferenceResult,
 };
 use p3_whir_c61::pcs::proof::{QueryOpenings, SharedProofOpening};
 use p3_whir_c61::pcs::zk::{BaseCaseZkProof, BlindedMask, MaskOpeningPair, ZkRoundProof};
 use p3_whir_c61::ClaimlessZkSumcheckData;
 
+#[cfg(not(feature = "c71-b12-pcs"))]
 const MAGIC: &[u8; 8] = b"C71MX1\0\0";
+#[cfg(feature = "c71-b12-pcs")]
+const MAGIC: &[u8; 8] = b"C71MX2\0\0";
 pub(super) const MAX_BYTES: usize = 8 << 20;
 
 fn require(ok: bool, message: &str) -> ReferenceResult<()> {
@@ -40,7 +43,7 @@ fn get_leaf_e(r: &mut C61Reader<'_>) -> ReferenceResult<E> {
 
 fn put_open<V: Copy>(
     w: &mut C61Writer,
-    opening: &SharedProofOpening<V, C61MultiProof>,
+    opening: &SharedProofOpening<V, MatrixMultiProof>,
     domain: usize,
     requested: usize,
     width: usize,
@@ -56,7 +59,20 @@ fn put_open<V: Copy>(
             scalar(w, value);
         }
     }
-    w.multiproof(&opening.proof, c61_max_pruned_binary_siblings(domain, q))
+    #[cfg(feature = "c71-b12-pcs")]
+    let proof = {
+        require(opening.proof.0.len() == q, "C71 salt query count mismatch")?;
+        for matrices in &opening.proof.0 {
+            require(matrices.len() == 1 && matrices[0].len() == 4, "C71 salt shape mismatch")?;
+            for &salt in &matrices[0] {
+                w.fp(salt);
+            }
+        }
+        &opening.proof.1
+    };
+    #[cfg(not(feature = "c71-b12-pcs"))]
+    let proof = &opening.proof;
+    w.multiproof(proof, c61_max_pruned_binary_siblings(domain, q))
 }
 fn get_open<V>(
     r: &mut C61Reader<'_>,
@@ -64,11 +80,17 @@ fn get_open<V>(
     requested: usize,
     width: usize,
     scalar: fn(&mut C61Reader<'_>) -> ReferenceResult<V>,
-) -> ReferenceResult<SharedProofOpening<V, C61MultiProof>> {
+) -> ReferenceResult<SharedProofOpening<V, MatrixMultiProof>> {
     let q = domain.min(requested);
     let rows =
         (0..q).map(|_| (0..width).map(|_| scalar(r)).collect()).collect::<ReferenceResult<_>>()?;
+    #[cfg(feature = "c71-b12-pcs")]
+    let salts = (0..q).map(|_| {
+        (0..4).map(|_| r.fp()).collect::<ReferenceResult<Vec<_>>>().map(|row| vec![row])
+    }).collect::<ReferenceResult<Vec<_>>>()?;
     let proof = r.multiproof(c61_max_pruned_binary_siblings(domain, q))?;
+    #[cfg(feature = "c71-b12-pcs")]
+    let proof = (salts, proof);
     Ok(SharedProofOpening { rows, proof })
 }
 
@@ -84,7 +106,7 @@ pub(super) fn header(
         .map_err(C61WhirReferenceError::new)?;
     let mut w = C61Writer::default();
     w.bytes.extend_from_slice(MAGIC);
-    w.u16(1);
+    w.u16(if cfg!(feature = "c71-b12-pcs") { 2 } else { 1 });
     w.u16(n as u16);
     w.bytes.extend_from_slice(blake3::hash(&gamma(&config)).as_bytes());
     w.commitment(root)?;

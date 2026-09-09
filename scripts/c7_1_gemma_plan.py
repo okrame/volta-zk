@@ -6575,7 +6575,7 @@ def b12_p0_native_caller():
             'live_byte_cells': 6525586944, 'root_log_cells': 33,
             'P0_original_target_forms': 1545, 'P0_original_target_cubes': 18472,
             'targets_with_byte_range_and_padding': 1547,
-            'native_bridge_cube_cap': 32768,
+            'native_bridge_cube_cap': 65536,
             'public_bias_changes_value_and_key_but_not_original_tag': True,
             'physical_twos_complement_top_byte_xor': 128,
             'source_encoding_bound_before_P0_output_points': True,
@@ -6702,6 +6702,62 @@ def b12_rms_statistic_profile(row_bits, column_bits):
         'integer_max_for_full_signed_i16_and_5376_columns': 5376*32768**2,
         'tiny_same_W_weighted_RMS_Fp3_rows_with_two_ranged_PCS': 7761,
         'full_Gemma_source_routes_compiled': False,
+        'complete_security_or_physical_credit': False,
+    }
+
+
+def b12_rms_source_profile():
+    """Canonical P0+RMS A-source extension, before calibrated execution.
+
+    Reuse the P0 producer identities: existing norm consumers share Y;
+    global V shares the pre-normalization K input. S is one word per row.
+    Counts describe public forms, not a full source allocation or PCS run.
+    """
+    cohorts = gemma_weight_cohorts(pinned_private_tensors())
+    norms = rms_statistic_cohorts(cohorts)
+    producers = {}
+    for r in gemma_input_routes(cohorts):
+        key = (r['source_producer']['layer'], r['source_producer']['operation'])
+        shape = tuple(r['source_shape'])
+        if producers.setdefault(key, shape) != shape:
+            raise ValueError('RMS original producer changes shape')
+    original_count = len(producers)
+    new_inputs = new_outputs = 0
+    for n in norms:
+        for key, shape, output in [
+            ((n['source_producer']['layer'],n['source_producer']['operation']),tuple(n['source_shape']),False),
+            ((n['layer'],n['operation']),(n['statistic_rows']//n['heads'],n['columns']*n['heads']),True),
+        ]:
+            if key not in producers:
+                new_outputs += int(output)
+                new_inputs += int(not output)
+            if producers.setdefault(key,shape) != shape:
+                raise ValueError('RMS shared input/output changes shape')
+    cells = sum(n['statistic_rows']*n['columns'] for n in norms)
+    s_rows = sum(n['statistic_rows'] for n in norms)
+    source_bytes = (sum(c['rows']*c['columns']*c['cut_scalar_bytes'] for c in cohorts)
+                    +2*sum(math.prod(shape) for shape in producers.values())+6*s_rows)
+    input_cubes = sum(n['statistic_rows'].bit_count()*n['columns'].bit_count() for n in norms)
+    statistic_cubes = 2*sum(n['statistic_rows'].bit_count() for n in norms)
+    joint_cubes = sum((4 if n['weighted'] else 5)*n['statistic_rows'].bit_count()*n['columns'].bit_count() for n in norms)
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/rms.rs',
+        'normalization_cohorts': len(norms), 'weighted_cohorts': sum(n['weighted'] for n in norms),
+        'original_P0_input_sources': original_count,
+        'new_i16_input_sources': new_inputs, 'new_i16_output_sources': new_outputs,
+        'S_word_sources': len(norms), 'S_words': s_rows,
+        'auxiliary_sources': len(cohorts)+len(producers)+len(norms),
+        'auxiliary_live_bytes': source_bytes, 'auxiliary_root_log_cells': (source_bytes-1).bit_length(),
+        'joint_RMS_cells': cells, 'joint_RMS_byte_cubes': joint_cubes,
+        'single_original_X_form_cubes_across_norms': input_cubes,
+        'original_S_form_cubes_across_norms': statistic_cubes,
+        'known_A_cubes_with_P0_direct_RNE_RMS_statistics_and_range_upper': 18472+3840+joint_cubes+2*input_cubes+statistic_cubes+34,
+        'known_A_targets_with_P0_direct_RNE_RMS_statistics_and_range': 1547+240+3*len(norms)+1,
+        'public_cube_cap': 65536, 'public_target_cap': 4096,
+        'local_V_new_quantized_sources': new_inputs, 'global_V_aliases_pre_norm_K': 10,
+        'new_PCS_or_private_rng_streams_for_D33': 0,
+        'dense_auxiliary_body_exceeds_reference_arena': source_bytes > 6*1024**3,
+        'full_calibrated_RMS_dispatch_or_source_RNE_proofs': False,
         'complete_security_or_physical_credit': False,
     }
 
@@ -7337,7 +7393,7 @@ def b12_pcs_binding_assessment():
             "same_original_caller_MACs": True, "aggregate_is_reauthenticated": False,
             "PCS_chains_per_batch": 1, "public_form_verifier_work": "O(D * cube_count), no W",
             "native_root_log_cells_max": 14, "native_targets_max": 4096,
-            "native_cube_terms_max": 32768, "extra_FS_draw_requests": 1,
+            "native_cube_terms_max": 65536, "extra_FS_draw_requests": 1,
             "fresh_Fp3_correlations_after_caller": "3*D+2",
             "conditional_ideal_errors": {"batch": "(m-1)/q", "product_sumcheck": "2*D/q",
                 "adaptive_MAC": "(D+2)/(q-1)", "PCS": "same installed-root claimless endpoint"},

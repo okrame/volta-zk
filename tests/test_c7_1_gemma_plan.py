@@ -202,7 +202,7 @@ def test_B12_native_P0_census_keeps_input_cut_and_shared_product_obligations():
     byte = b['byte_affine_source_bridge']
     assert byte['scalar_widths'] == [48, 32, 16] and byte['canonical_alphabet'] == [0, 255]
     assert byte['live_byte_cells'] == 6525586944 and byte['root_log_cells'] == 33
-    assert byte['P0_original_target_cubes'] == 18472 < byte['native_bridge_cube_cap'] == 32768
+    assert byte['P0_original_target_cubes'] == 18472 < byte['native_bridge_cube_cap'] == 65536
     assert byte['targets_with_byte_range_and_padding'] == 1547
     assert byte['tiny_byte_range_and_original_scalar_MAC_check_Fp3_rows'] == 9+510+32
     assert not byte['full_RNE_or_Gemma_integer_producers_proven']
@@ -265,6 +265,28 @@ def test_B12_RMS_statistic_keeps_original_S_and_X_and_shared_product_obligations
         assert not b['full_Gemma_source_routes_compiled']
         assert not b['complete_security_or_physical_credit']
     assert plan.b12_rms_statistic_profile(1,2)['tiny_same_W_weighted_RMS_Fp3_rows_with_two_ranged_PCS'] == 12+16+1+6889+269+510+64
+
+
+def test_B12_RMS_source_extension_counts_shared_Y_KV_and_all_original_byte_forms():
+    b = plan.b12_rms_source_profile()
+    assert (b['normalization_cohorts'],b['weighted_cohorts']) == (421,361)
+    assert b['original_P0_input_sources'] == 602
+    assert b['new_i16_input_sources'] == 50 and b['new_i16_output_sources'] == 300
+    assert b['S_word_sources'] == 421 and b['S_words'] == 576149
+    assert b['auxiliary_sources'] == 1375+50+300+421 == 2146
+    assert b['auxiliary_live_bytes'] == 7091219838
+    assert b['auxiliary_root_log_cells'] == 33
+    assert b['joint_RMS_cells'] == 347937024
+    assert b['joint_RMS_byte_cubes'] == 14688
+    assert b['single_original_X_form_cubes_across_norms'] == 3612
+    assert b['original_S_form_cubes_across_norms'] == 3368
+    assert b['known_A_cubes_with_P0_direct_RNE_RMS_statistics_and_range_upper'] == 47626 < b['public_cube_cap']
+    assert b['known_A_targets_with_P0_direct_RNE_RMS_statistics_and_range'] == 3051 < b['public_target_cap']
+    assert b['local_V_new_quantized_sources'] == 50 and b['global_V_aliases_pre_norm_K'] == 10
+    assert not b['new_PCS_or_private_rng_streams_for_D33']
+    assert b['dense_auxiliary_body_exceeds_reference_arena']
+    assert not b['full_calibrated_RMS_dispatch_or_source_RNE_proofs']
+    assert not b['complete_security_or_physical_credit']
 
 
 def test_B12_joint_RMS_counts_original_bit_sum_products_and_global_FS_losses():

@@ -60,7 +60,7 @@ pub(in crate::c71_matrix) struct PendingP0<T> {
 pub(in crate::c71_matrix) struct Auxiliary {
     pub layout: Plan,
     pub(super) weight_layout: [u8; 32],
-    input_sources: Vec<usize>, // non-lookup cohort order; same producer shares one source
+    pub(super) input_sources: Vec<usize>, // non-lookup cohort order; same producer shares one source
 }
 
 impl Auxiliary {

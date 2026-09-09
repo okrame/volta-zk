@@ -51,6 +51,19 @@ impl Plan {
                 }
             })
             .collect();
+        Bytes::new(scalar, widths)
+    }
+}
+
+impl Bytes {
+    // Reuse the same canonical byte packing for extensions of A. Every
+    // source width and the extended scalar identity enter the byte digest.
+    pub(super) fn new(scalar: Auxiliary, widths: Vec<usize>) -> Result<Self, String> {
+        if widths.len() != scalar.layout.sources.len()
+            || widths.iter().any(|w| ![2, 4, 6].contains(w))
+        {
+            return Err("P0 byte source widths differ".into());
+        }
         let mut packed_offsets = Vec::new();
         let mut live = 0;
         for (source, &bytes) in scalar.layout.sources.iter().zip(&widths) {
@@ -185,24 +198,53 @@ impl Bytes {
         if point.len() != rb + cb + 3 {
             return Err("RNE source point axes differ".into());
         }
-        let lane = &point[rb + cb..];
+        self.view_form(cohort, &point[..rb], &point[rb..rb + cb], &point[rb + cb..], 0, Fp3::ONE)
+    }
+
+    /// A word's bytes in a public lane interval. Splitting respects BOTH
+    /// the source-byte tile and view-lane alignment (e.g. S48 at lane 2).
+    /// Unused lanes have no source term; this never authenticates a value.
+    pub fn view_form(
+        &self,
+        source: usize,
+        row: &[Fp3],
+        column: &[Fp3],
+        lane: &[Fp3],
+        first_lane: usize,
+        coefficient: Fp3,
+    ) -> Result<Vec<Cube>, String> {
+        let width = *self.widths.get(source).ok_or("Byte view source missing")?;
+        if lane.len() > 4 || first_lane.checked_add(width).is_none_or(|n| n > 1 << lane.len()) {
+            return Err("Byte view lane interval differs".into());
+        }
         let mut result = Vec::new();
-        for cube in
-            self.scalar.layout.project(cohort, &point[..rb], &point[rb..rb + cb], Fp3::ONE)?
-        {
+        for cube in self.scalar.layout.project(source, row, column, coefficient)? {
             let index =
                 self.scalar.layout.tiles.binary_search_by_key(&cube.offset, |t| t.offset).unwrap();
             for &b in &self.by_scalar[index] {
                 let tile = &self.tiles[b];
-                let low = bits(tile.width);
-                let coefficient =
-                    cube.coefficient * eq_index(&lane[..3 - low], tile.first / tile.width);
-                if coefficient == Fp3::ZERO {
-                    continue;
+                let mut start = 0;
+                while start < tile.width {
+                    let mut size = (tile.width - start).next_power_of_two();
+                    while start % size != 0 || (first_lane + tile.first + start) % size != 0 {
+                        size /= 2;
+                    }
+                    let low = bits(size);
+                    let coefficient = cube.coefficient
+                        * eq_index(
+                            &lane[..lane.len() - low],
+                            (first_lane + tile.first + start) / size,
+                        );
+                    if coefficient != Fp3::ZERO {
+                        let mut point = cube.point.clone();
+                        for bit in (low..bits(tile.width)).rev() {
+                            point.push(if start >> bit & 1 == 1 { Fp3::ONE } else { Fp3::ZERO });
+                        }
+                        point.extend(&lane[lane.len() - low..]);
+                        result.push(Cube { offset: tile.offset, point, coefficient });
+                    }
+                    start += size;
                 }
-                let mut point = cube.point.clone();
-                point.extend(&lane[3 - low..]);
-                result.push(Cube { offset: tile.offset, point, coefficient });
             }
         }
         Ok(result)
@@ -251,40 +293,55 @@ impl Bytes {
         let mut forms = Vec::new();
         let mut shifts = Vec::new();
         for scalar_form in scalar_forms {
-            let mut form = Vec::new();
-            let mut shift = Fp3::ZERO;
-            for cube in scalar_form {
-                let index = self
-                    .scalar
-                    .layout
-                    .tiles
-                    .binary_search_by_key(&cube.offset, |t| t.offset)
-                    .map_err(|_| "P0 scalar cube does not start at a source tile")?;
-                let scalar = &self.scalar.layout.tiles[index];
-                if 1usize << cube.point.len() != scalar.rows * scalar.cols {
-                    return Err("P0 scalar cube changes its source tile domain".into());
-                }
-                // Each scalar tile is entirely live; sum EQ over its local
-                // Boolean domain is one, including fixed/degenerate coordinates.
-                shift += cube.coefficient
-                    * super::super::signed(1i64 << (8 * self.widths[scalar.tensor] - 1));
-                for &b in &self.by_scalar[index] {
-                    let tile = &self.tiles[b];
-                    let mut point = cube.point.clone();
-                    let mut coefficient =
-                        cube.coefficient * super::super::signed(1i64 << (8 * tile.first));
-                    for bit in (0..bits(tile.width)).rev() {
-                        let beta = super::super::signed(1i64 << (8 * (1 << bit)));
-                        coefficient = coefficient * (Fp3::ONE + beta);
-                        point.push(beta * (Fp3::ONE + beta).inv());
-                    }
-                    form.push(Cube { offset: tile.offset, point, coefficient });
-                }
-            }
+            let (form, shift) = self.pullback(scalar_form)?;
             forms.push(form);
             shifts.push(shift);
         }
         Ok((forms, shifts))
+    }
+
+    pub fn word_form(
+        &self,
+        source: usize,
+        row: &[Fp3],
+        column: &[Fp3],
+        coefficient: Fp3,
+    ) -> Result<(Vec<Cube>, Fp3), String> {
+        self.pullback(self.scalar.layout.project(source, row, column, coefficient)?)
+    }
+
+    fn pullback(&self, scalar_form: Vec<Cube>) -> Result<(Vec<Cube>, Fp3), String> {
+        let mut form = Vec::new();
+        let mut shift = Fp3::ZERO;
+        for cube in scalar_form {
+            let index = self
+                .scalar
+                .layout
+                .tiles
+                .binary_search_by_key(&cube.offset, |t| t.offset)
+                .map_err(|_| "P0 scalar cube does not start at a source tile")?;
+            let scalar = &self.scalar.layout.tiles[index];
+            if 1usize << cube.point.len() != scalar.rows * scalar.cols {
+                return Err("P0 scalar cube changes its source tile domain".into());
+            }
+            // Each scalar tile is entirely live; sum EQ over its local
+            // Boolean domain is one, including fixed/degenerate coordinates.
+            shift += cube.coefficient
+                * super::super::signed(1i64 << (8 * self.widths[scalar.tensor] - 1));
+            for &b in &self.by_scalar[index] {
+                let tile = &self.tiles[b];
+                let mut point = cube.point.clone();
+                let mut coefficient =
+                    cube.coefficient * super::super::signed(1i64 << (8 * tile.first));
+                for bit in (0..bits(tile.width)).rev() {
+                    let beta = super::super::signed(1i64 << (8 * (1 << bit)));
+                    coefficient = coefficient * (Fp3::ONE + beta);
+                    point.push(beta * (Fp3::ONE + beta).inv());
+                }
+                form.push(Cube { offset: tile.offset, point, coefficient });
+            }
+        }
+        Ok((form, shift))
     }
 }
 

@@ -165,12 +165,22 @@ closes P=X*W, S and the exact predicate through the same ranged W/A PCS,
 with one S word broadcast per row. Altered S preserving Y fails the
 statistic; changing the weight getter and consistently updating P/Y
 fails the installed W PCS. This completes that small RMS relation;
-the 421 canonical Gemma routes and complete composition remain open.
+the full Gemma dispatcher and complete composition remain open.
+The [canonical RMS source compiler](../rust/volta-pcs/src/c71_matrix/gemma/rms.rs)
+now maps all 421 norms into the same A, reusing existing Y consumers and
+the ten global pre-norm K/V aliases. It adds 50 local V inputs, 300 Y
+sources and 421 S sources: 2,146 total sources, 7,091,219,838 bytes, still
+D33. Literal small-view checks cover head reshaping, S broadcast and
+selected final rows. The known P0/direct-RNE/RMS/statistic/range batch
+needs at most 47,626 public cubes and 3,051 targets; the cube guard is
+now 65,536. This compiles forms only; calibrated dispatch, 50 local V
+RNE demands and recomposition remain open. Full A materialization still
+exceeds the reference arena.
 
-Twenty-seven B12 algebra/accounting checks include the scalar invariant,
+Twenty-eight B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 208; the 17
-narrow bootstrap/pool checks and twenty-six B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 209; the 17
+narrow bootstrap/pool checks and twenty-seven B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

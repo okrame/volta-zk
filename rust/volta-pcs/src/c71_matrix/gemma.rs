@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 
 pub(super) mod bytes;
 pub(super) mod caller;
+pub(super) mod rms;
 
 #[derive(Clone, Debug)]
 pub(super) struct Source {

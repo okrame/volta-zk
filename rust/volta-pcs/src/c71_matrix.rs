@@ -11,6 +11,9 @@ mod linear;
 #[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // Internal same-W range caller, no full Gemma runner.
 mod range;
+#[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // P0 caller; input/output openings remain explicit.
+mod p0;
 pub use diagnostic::{preflight, run};
 #[cfg(feature = "c71-work-census")]
 pub use census::self_check;

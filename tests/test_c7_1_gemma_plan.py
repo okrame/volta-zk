@@ -163,6 +163,26 @@ def test_B12_range_same_PCS_capacity_and_error_census():
     assert not b['full_Gemma_quantization_or_runtime'] and b['full_Gemma_security_totals'] is None
 
 
+def test_B12_native_P0_census_keeps_input_cut_and_shared_product_obligations():
+    b = plan.b12_pcs_binding_assessment()['native_P0_original_MAC_caller']
+    assert b['cohorts_by_kind'] == {'lookup': 1, 'matrix': 411, 'norm': 361}
+    assert b['private_tensors'] == 772 and b['cohorts'] == 773
+    assert b['all_pinned_compact_inner_domains_within_cap']
+    assert b['sumcheck_rounds'] == 9586 and b['native_point_and_sumcheck_requests'] == 25892
+    assert b['original_C_X_W_and_coefficient_transfers'] == 35960
+    assert b['original_C_X_source_opening_targets'] == 1545
+    assert b['original_W_source_opening_targets'] == 773
+    assert b['private_product_triples'] == 772 and b['MAC_zero_tags_in_native_P0'] == 10358
+    assert b['fresh_common_P0_product_masks'] == 1
+    r = plan.b12_weight_range_profile(35)
+    assert b['P0_range_and_W_bridge_base_rows_before_auxiliary_openings'] == r['P0_plus_range_plus_one_bridge_base_rows']+3
+    tiny = b['tiny_checked_case']
+    assert tiny['Fp3_correlations_including_range_and_both_PCS_bridges'] == 269+23+1+32+32
+    assert tiny['PCS_chains_for_W'] == tiny['PCS_chains_for_auxiliary_source'] == 1
+    assert b['two_source_PCS_error_and_ZK_composition'] is None
+    assert b['complete_source_opening_capacity'] is None and not b['actual_full_Gemma_GKR_compiler']
+
+
 def test_B12_unsalted_commitment_tests_W_after_mask_exhaustion():
     import hashlib
     # A tiny instance of the native coefficient layout, with a deterministic

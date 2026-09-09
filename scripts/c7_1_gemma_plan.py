@@ -6499,6 +6499,45 @@ def b12_fixed_run_bootstrap():
         'complete_Gemma_correlation_census': None, 'complete_fixed_run_security': None}
 
 
+def b12_p0_native_caller():
+    """Actual compact Fp3 schema, with source-opening obligations retained."""
+    cohorts = gemma_weight_cohorts(pinned_private_tensors())
+    prior = weight_cohort_screen(cohorts)
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/p0.rs',
+        'kind': 'bounded native original-MAC caller; pinned full-size geometry only',
+        'private_tensors': len(pinned_private_tensors()),
+        'cohorts': len(cohorts), 'cohorts_by_kind': prior['cohorts_by_kind'],
+        'compact_inner_domain_cap': 1 << 15,
+        'all_pinned_compact_inner_domains_within_cap': all(
+            (c['inner'] if c['kind'] == 'matrix' else c['columns']) <= 1 << 15
+            for c in cohorts if c['kind'] != 'lookup'),
+        'sumcheck_rounds': prior['sumcheck_rounds'],
+        'original_C_X_W_and_coefficient_transfers': prior['extension_corrections_before_other_circuits'],
+        'original_C_X_source_opening_targets': len(cohorts)+prior['private_product_equations'],
+        'original_W_source_opening_targets': len(cohorts),
+        'private_product_triples': prior['private_product_equations'],
+        'fresh_common_P0_product_masks': 1,
+        'additional_base_rows_for_that_closure': 3,
+        'P0_range_and_W_bridge_base_rows_before_auxiliary_openings': 3*(
+            prior['extension_corrections_before_other_circuits']+1
+            +b12_weight_range_profile(35)['range_Fp3_correlations_before_shared_bridge']+3*35+2),
+        'MAC_zero_tags_in_native_P0': prior['zero_residual_equations'],
+        'native_point_and_sumcheck_requests': prior['extension_challenges_before_A4_and_link_batches'],
+        'tiny_checked_case': {'D': 10, 'range_limit': 7,
+            'rooted_sources': ['W: matrix/norm/embedding', 'A: private raw X/C'],
+            'PCS_chains_for_W': 1, 'PCS_chains_for_auxiliary_source': 1,
+            'Fp3_correlations_including_range_and_both_PCS_bridges': 357,
+            'real_bootstrap_in_this_check': False,
+            'wrong_committed_C_and_detached_X_MAC_rejected': True},
+        'actual_full_Gemma_GKR_compiler': False,
+        'full_Gemma_non_W_relations_and_quantization': False,
+        'two_source_PCS_error_and_ZK_composition': None,
+        'complete_source_opening_capacity': None,
+        'complete_security_or_physical_credit': False,
+    }
+
+
 def b12_weight_range_profile(bits, limit=32767):
     """Native Fp3 fraction-tree caller census; D35 is geometry, not a schedule.
 
@@ -6943,6 +6982,7 @@ def b12_pcs_binding_assessment():
             'cases': range_cases,
             'full_Gemma_quantization_or_runtime': False,
             'full_Gemma_security_totals': None, 'security_admitted': False},
+        'native_P0_original_MAC_caller': b12_p0_native_caller(),
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",

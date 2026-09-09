@@ -85,7 +85,7 @@ fn suffix(live: usize, point: &[Fp3]) -> Vec<Cube> {
     result
 }
 
-fn authenticate<const N: usize>(
+pub(super) fn authenticate<const N: usize>(
     values: [Fp3; N],
     rows: &mut std::vec::IntoIter<Auth>,
 ) -> ([Fp3; N], [Auth; N]) {
@@ -98,7 +98,7 @@ fn authenticate<const N: usize>(
     (wire, auth)
 }
 
-fn correct<const N: usize>(
+pub(super) fn correct<const N: usize>(
     wire: [Fp3; N],
     delta: Fp3,
     rows: &mut std::vec::IntoIter<Key>,
@@ -110,7 +110,7 @@ fn correct<const N: usize>(
 
 // One fresh mask for the ENTIRE ordered product batch, after every triple is
 // fixed in the transcript. k=m+Delta*x. No division by lambda or Delta.
-fn prove_products(triples: &[[Auth; 3]], mask: Auth, fs: &mut Fs) -> [Fp3; 2] {
+pub(super) fn prove_products(triples: &[[Auth; 3]], mask: Auth, fs: &mut Fs) -> [Fp3; 2] {
     fs.set_phase(0x600);
     let lambda = fs.fp3();
     let (mut a, mut b, mut power) = (mask.x, mask.m, Fp3::ONE);
@@ -123,7 +123,7 @@ fn prove_products(triples: &[[Auth; 3]], mask: Auth, fs: &mut Fs) -> [Fp3; 2] {
     [a, b]
 }
 
-fn verify_products(
+pub(super) fn verify_products(
     triples: &[[Key; 3]],
     mask: Key,
     wire: [Fp3; 2],

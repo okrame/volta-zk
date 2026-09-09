@@ -75,13 +75,23 @@ has a NoPeek/QuickSilver simulator. At D12/D14 its composed conditional
 soundness/ZK remain about 91 bits. D35 gives 82.9944 soundness bits within
 T121/M93, as an analytic geometry only: its private-sampler ZK extension
 and physical schedule are not admitted. P0 + range + one bridge needs
-312,693 base rows; the complete Gemma census remains open.
+312,693 base rows before P0's shared product mask; the complete Gemma census remains open.
 [Proof and exact counts](c7.1-gemma31b-design.md#b12-range-simmetrico-e-padding-nello-stesso-mac-della-root).
 
-Twenty B12 algebra/accounting checks include the scalar invariant,
+The [native P0 caller](../rust/volta-pcs/src/c71_matrix/p0.rs) now runs the
+quadratic matrix and cubic weighted-product reductions, returning original
+C/X/W MAC obligations. A small check executes matrix, weighted norm product
+and lookup, closes one ranged W PCS and one private auxiliary C/X PCS,
+and rejects a false committed cut or detached input MAC. The auxiliary
+root is an additional source with its own costs; the one-PCS security bound
+does not yet compose it. Adding P0's product mask brings the known subtotal
+to 312,696 base rows before auxiliary openings and other Gemma operators.
+[Caller contract and limits](c7.1-gemma31b-design.md#b12-p0-nativo-e-aperture-originali-dei-tagli).
+
+Twenty-one B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities. The relevant Python checks total 201; the 17
-narrow bootstrap/pool checks and twelve B12 PCS/caller checks pass.
+range/product identities. The relevant Python checks total 202; the 17
+narrow bootstrap/pool checks and thirteen B12 PCS/caller checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -102,7 +112,7 @@ NoPeek, relation and resource composition.
 
 **Remaining work:** full Gemma malicious-verifier ZK, the complete quantized
 Gemma GKR relation using the range-checked W, full correlation census and
-both-role resource composition for the fixed run. The known 312,693 rows
+both-role resource composition for the fixed run. The known 312,696 rows
 fit the initial capacity; other circuits are not yet counted completely.
 The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
 soundness bound also included failed setups/key changes; that broader

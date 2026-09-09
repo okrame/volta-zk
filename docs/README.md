@@ -9,8 +9,10 @@ decisions opened B8/B9: a replacement construction and a checked native
 component. B10 concludes the premise/lifecycle assessment with integration
 not admitted. B11 selects the owner-authorized intermediate finite AES profile under
 explicit primitive/resource hypotheses. B12 is active: a conditional bootstrap
-resource extension to T80 and a durable finite-pool component are available;
-same-W PCS/GKR, renewed roots and complete lifetime bounds remain open in
+resource extension to T80 and a durable finite-pool component are available.
+The PCS analysis adds a proven unique-radius MCA bound and identifies
+unsalted-root privacy loss at mask exhaustion; its ideal profile is not
+native admission. Same-W PCS/GKR, renewed roots and complete lifetime bounds remain open in
 design §10. Full security and production integration remain unadmitted.
 
 ## Current documents
@@ -35,7 +37,7 @@ design §10. Full security and production integration remain unadmitted.
 | [B3 native census](../scripts/c71_work_census.py) · [bounded runner](../scripts/run_c71_matrix.py) | Actual Goldilocks arithmetic and phase memory of the reduced B2 matrix path; physical traffic/security remain open in design §10 |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |
-| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [B8–B12 checks](../tests/test_c71_bootstrap.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget, including B4–B7 decisions, B8/B9 construction/component, B10/B11 assessments and B12 conditional resource extension with complete security totals still unknown; `--research-screens`: preserved, non-additive research inventory |
+| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [B8–B12 checks](../tests/test_c71_bootstrap.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget, including B4–B7 decisions, B8/B9 construction/component, B10/B11 assessments and B12 resource/PCS analysis with complete security totals still unknown; `--research-screens`: preserved, non-additive research inventory |
 
 Status and design are editable; replace obsolete statements and use Git for
 history. Record important decisions with reasons and source links. Add a page

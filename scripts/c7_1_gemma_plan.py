@@ -6341,6 +6341,94 @@ def b11_intermediate_selection():
         "next_goal": "B12: durable finite-pool integration and same-W admission boundary; keep the >2^78 adversary-resource upgrade open"}
 
 
+def b12_pcs_binding_assessment():
+    """Unique-decoding route for the published IOPP; source/hash compilation stays explicit."""
+    q = P**3
+    query_count, mask_message, mask_queries = 512, 2048, 512
+
+    def oracle(message, randomness, width):
+        dimension = message + randomness
+        domain = 1 << (8*dimension-1).bit_length()
+        radius = domain//4
+        distance = domain-dimension+1
+        assert 3*radius < distance and domain <= 1 << 32
+        return {"message_rows": message, "randomness_rows": randomness,
+            "width": width, "domain_rows": domain, "minimum_distance": distance,
+            "radius_rows": radius, "list_size_upper": 1,
+            # Applies directly to the vector alphabet, not K independent
+            # guesses; see the two-codeword interpolation argument in B12.
+            "affine_MCA_error_upper": str(Fraction(radius+1, q-2)),
+            "encoded_base_field_cells": domain*width}
+
+    mask = oracle(mask_message, mask_queries, 1)
+    profiles = []
+    for log_size in (14, 35):
+        remaining, oracles, folds = log_size, [], []
+        while True:
+            folding = (1 if log_size == 14 else 7) if not oracles else min(4, remaining-5)
+            folds.append(folding)
+            oracles.append(oracle(1 << (remaining-folding),
+                (3 if not oracles else 1)*query_count, 1 << folding))
+            remaining -= folding
+            if folding == 0:
+                break
+        errors = []
+        for o, folding in zip(oracles[:-1], folds[:-1]):
+            # Theorem 10.2, all enlarged/interleaved code lists have size <=1.
+            # Using q-2 also covers exclusion of 0,1 for a sumcheck draw.
+            errors.append(Fraction(1, q-2))
+            errors.extend([Fraction(o["radius_rows"]+1+mask_message, q-2)]*folding)
+            degree = o["message_rows"]+mask_message-1
+            # Two distinct E\Fp points: Vandermonde privacy from two free
+            # mask coefficients; both points are fixed before their answers.
+            errors.append(2*Fraction(degree*degree, (q-P)*(q-P-1)))
+            errors.append(Fraction(3, 4)**query_count)
+            errors.append(Fraction(2+query_count*o["width"], q-2))
+        errors.extend((Fraction(oracles[-1]["radius_rows"]+mask["radius_rows"]+3, q-2),
+                       Fraction(3, 4)**min(query_count, mask_queries)))
+        maximum = max(errors)
+        profiles.append({"log_message_cells": log_size, "folds": folds,
+            "oracles": oracles, "round_error_vector": [str(x) for x in errors],
+            "max_round_error": str(maximum),
+            "conditional_Qstar_2_to_74_prefix_term": str((1 << 74)*maximum),
+            "conditional_prefix_bits": math.log2(maximum.denominator)-math.log2(maximum.numerator)-74,
+            "initial_encoded_base_field_bytes": 8*oracles[0]["encoded_base_field_cells"],
+            "memory_is_not_a_streaming_schedule": True,
+            "native_profile_selected": False})
+
+    exhaustion = []
+    for case in b4_security_admission()["proximity"]["cases"]:
+        o = case["oracles"][0]
+        h, t, r = o["domain_rows"], o["queries"], o["randomness_rows"]
+        assert r == 3*t
+        probability = Fraction(math.comb(h-t, t)*math.comb(h-2*t, t), math.comb(h, t)**2)
+        exhaustion.append({"n": case["n"], "source": case["source"],
+            "domain_rows": h, "queries_per_attempt": t, "randomness_rows": r,
+            "three_disjoint_sets_probability": str(probability),
+            "event_bits": math.log2(probability.denominator)-math.log2(probability.numerator),
+            "scope": "ideal independent uniform distinct query sets; candidate-W reconstruction when the mask budget is exhausted, not a measured native attack"})
+    return {"status": "unique_radius_lemma_and_salted_compilation_required",
+        "credit": False, "security_admitted": False,
+        "source": "docs/c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata",
+        "affine_MCA": {"premise": "linear code over a field-vector alphabet; 3*radius_rows < minimum_distance",
+            "uniform_field_error": "(radius_rows+1)/field_order",
+            "applies_to_same_agreement_set_not_only_proximity": True,
+            "interleaving_factor_multiplier_needed": False,
+            "proof_kind": "mathematical interpolation/counting proof with exhaustive finite checks, not a new Lean theorem"},
+        "ideal_oracle_profiles": profiles, "shared_mask_code": mask,
+        "private_ood_points": 2, "query_count_each_oracle": query_count,
+        "root_exposure_slots": 3,
+        "old_unsalted_root": {"B2_uses_hiding_Merkle_MMCS": False,
+            "exhaustion_cases": exhaustion,
+            "repair": "reuse existing MerkleTreeHidingMmcs with four fresh Fp salts, separate leaf/node domains and bound the salt generator",
+            "salted_MMCS_exists": "rust/third_party/p3-merkle-tree-c61/src/hiding_mmcs.rs",
+            "salted_MMCS_integrated_in_C71": False},
+        "same_W_consequence": "one decoded message per fixed oracle before opening challenges; root links compare both endpoints under the current MAC",
+        "remaining": ["claimless affine/runtime correspondence", "salted Merkle and complete FS/ZK compilation",
+            "root-renewal protocol and both-role lifecycle", "full GKR/quantization relation and adequate correlation capacity",
+            "complete physical schedule and extractor/simulator resource census"]}
+
+
 def b12_lifetime_admission():
     """B12 resource lift and durable component; never fill missing PCS/FS errors with zero."""
     b11 = b11_intermediate_selection()
@@ -6393,6 +6481,7 @@ def b12_lifetime_admission():
             "root_renewal_fails_closed": True,
             "instantiated_authenticated_PCS_GKR_relation": False,
             "conditional_induction": "design B12; anchor uniqueness + root link + same authenticated endpoint + GKR relation"},
+        "PCS_binding_assessment": b12_pcs_binding_assessment(),
         "composition": {
             "target": str(target), "known_bootstrap_subtotal": str(component),
             "remaining_error_allowance": str(target-component),

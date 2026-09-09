@@ -20,6 +20,124 @@ plan = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plan)
 
 
+def test_B12_affine_MCA_on_the_same_agreement_set_and_strict_radius():
+    # Exhaust every affine pencil in F3^4 for the repetition code. MCA asks
+    # about the SAME S, not just existence of a nearby codeword for each input.
+    p, length, radius = 3, 4, 1
+    words = list(product(range(p), repeat=length))
+    subsets = [s for k in range(length-radius, length+1)
+               for s in combinations(range(length), k)]
+    agrees = {w: {s for s in subsets if len({w[i] for i in s}) == 1} for w in words}
+    maximum = 0
+    for left, right in product(words, repeat=2):
+        common = agrees[left] & agrees[right]
+        bad = sum(bool(agrees[tuple(((1-a)*x+a*y) % p for x, y in zip(left, right))] - common)
+                  for a in range(p))
+        assert bad <= radius+1
+        maximum = max(maximum, bad)
+    assert maximum == radius+1 and 3*radius < length
+    # At 3*t = d the bound is FALSE, even though t < d/2 still gives uniqueness.
+    left, right = (0, 0, 1), (0, 1, 0)
+    bad = 0
+    for a in range(p):
+        folded = tuple(((1-a)*x+a*y) % p for x, y in zip(left, right))
+        bad += any(len({folded[i] for i in s}) == 1
+                   and (len({left[i] for i in s}) != 1 or len({right[i] for i in s}) != 1)
+                   for s in combinations(range(3), 2))
+    assert bad == 3 > radius+1
+
+
+def test_B12_unsalted_commitment_tests_W_after_mask_exhaustion():
+    import hashlib
+    # A tiny instance of the native coefficient layout, with a deterministic
+    # hash substituted for BLAKE3. This is not a native B2 attack execution.
+    p, domain, positions = 17, [pow(2, j, 17) for j in range(8)], (1, 3)
+    candidates = (((0, 0), (0, 0)), ((1, 0), (0, 0)))
+    masks = ((5, 7), (9, 11))
+
+    def encode(message, randomness):
+        return [tuple((w[0]+w[1]*x+r[0]*x*x+r[1]*x*x*x) % p
+                      for w, r in zip(message, randomness)) for x in domain]
+
+    def root(rows):
+        nodes = [hashlib.sha256(b''.join(v.to_bytes(8, 'little') for v in row)).digest()
+                 for row in rows]
+        while len(nodes) > 1:
+            nodes = [hashlib.sha256(nodes[i]+nodes[i+1]).digest() for i in range(0, len(nodes), 2)]
+        return nodes[0]
+
+    for selected in range(2):
+        actual = encode(candidates[selected], masks)
+        accepted = []
+        for guess, message in enumerate(candidates):
+            recovered = []
+            for column, w in enumerate(message):
+                x, y = (domain[i] for i in positions)
+                a, b = ((actual[i][column]-w[0]-w[1]*domain[i])*pow(domain[i]**2, -1, p) % p
+                        for i in positions)
+                slope = (b-a)*pow(y-x, -1, p) % p
+                recovered.append(((a-slope*x) % p, slope))
+            predicted = encode(message, recovered)
+            assert all(predicted[i] == actual[i] for i in positions)  # oracle views alone hide W
+            if root(predicted) == root(actual):
+                accepted.append(guess)
+        assert accepted == [selected]  # the unsalted commitment removes that ambiguity
+
+
+def test_B12_unique_radius_budget_includes_mask_degree_and_keeps_compilation_open():
+    b = plan.b12_pcs_binding_assessment()
+    assert not b['credit'] and not b['security_admitted']
+    assert b['affine_MCA']['applies_to_same_agreement_set_not_only_proximity']
+    for profile in b['ideal_oracle_profiles']:
+        errors = list(map(Fraction, profile['round_error_vector']))
+        assert len(errors) == sum(profile['folds']) + 4*(len(profile['oracles'])-1)+2
+        assert max(errors) == Fraction(profile['max_round_error'])
+        assert (1 << 74)*max(errors) == Fraction(profile['conditional_Qstar_2_to_74_prefix_term'])
+        assert (1 << 74)*max(errors) < Fraction(1, 1 << 82)
+        assert not profile['native_profile_selected']
+        for oracle in profile['oracles']+[b['shared_mask_code']]:
+            m, d, t = oracle['domain_rows'], oracle['minimum_distance'], oracle['radius_rows']
+            assert d == m-oracle['message_rows']-oracle['randomness_rows']+1
+            assert 3*t < d and 2*t < d and oracle['list_size_upper'] == 1
+            assert m <= 1 << 32 and oracle['randomness_rows'] >= b['query_count_each_oracle']
+        assert profile['oracles'][0]['randomness_rows'] == 3*b['query_count_each_oracle']
+    # A small ideal IOP error does not admit the monolithic Gemma allocation.
+    large = b['ideal_oracle_profiles'][1]
+    assert large['initial_encoded_base_field_bytes'] == 4 << 40
+    cases = b['old_unsalted_root']['exhaustion_cases']
+    assert 24 < cases[1]['event_bits'] < 25
+    assert 104 < cases[0]['event_bits'] < 105
+    for case in cases:
+        m, q = case['domain_rows'], case['queries_per_attempt']
+        probability = Fraction(math.comb(m-q, q), math.comb(m, q))*Fraction(math.comb(m-2*q, q), math.comb(m, q))
+        assert probability == Fraction(case['three_disjoint_sets_probability'])
+    assert not b['old_unsalted_root']['salted_MMCS_integrated_in_C71']
+
+
+def test_B12_claimless_affinity_and_one_secret_key_root():
+    # Independent polynomial evaluation for the exact AffineClaim replay and
+    # C71 closing-key equation; valid MACs alone do not fix the PCS target.
+    p = 5
+    for a, b, z, c0, c2, gamma in product(range(p), repeat=6):
+        claim = (a*z+b) % p
+        c1 = (claim-2*c0-c2) % p
+        direct = (c0+c1*gamma+c2*gamma**2) % p
+        carried = (gamma*a*z+c0+gamma*(b-2*c0-c2)+c2*gamma**2) % p
+        assert direct == carried
+    eta, value, mask_tag, value_tag = 2, 3, 1, 4
+    for a, b, gamma, combined, shifted, sent in product(range(p), repeat=6):
+        residual = (eta+combined-shifted-gamma*(a*value+b)) % p
+        passes = []
+        for delta in range(1, p):
+            mask_key = (mask_tag+delta*eta) % p
+            value_key = (value_tag+delta*value) % p
+            key = (mask_key+delta*(combined-shifted)-gamma*(a*value_key+delta*b)) % p
+            assert key == (mask_tag-gamma*a*value_tag+delta*residual) % p
+            passes.append(key == sent)
+        if residual:
+            assert sum(passes) <= 1
+
+
 def test_existing_paired_fold_diagnostic():
     plan.self_check()
 

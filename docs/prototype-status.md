@@ -26,9 +26,22 @@ same-W proof exists.** Five native B12 checks pass, including process exit,
 partial records and a real two-role bootstrap-to-MAC transfer; the combined
 bootstrap/budget Python checks total 28 passing tests.
 
-PCS binding into the GKR's exact authenticated endpoint, root renewal,
-both-role FS/lifetime composition and the complete resource reduction remain
-open. The budget keeps both complete security errors unknown; six proposed
+The [B12 PCS analysis](c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata)
+now proves same-set MCA for a linear code with `3*radius < distance`, hence
+unique message decoding. A published ideal IOPP profile retains about 88
+conditional bits after a proposed Q* prefix charge at `2^35` cells, but its
+monolithic initial codeword alone costs 4 TiB and remains physically excluded.
+This profile is not the native B2 fork. Four small algebra/accounting checks
+also pin the affine PCS/MAC closing equation and reproduce candidate-W
+reconstruction after mask exhaustion in an **unsalted** Merkle commitment.
+Under three independent uniform query sets, the B2 n=128 exhaustion event
+has probability about `2^-24.0445`; this is a source-level privacy finding,
+not a measured native FS attack. The existing salted MMCS is the repair to
+instantiate; root/key labels cannot repair this leakage.
+
+PCS hash/FS compilation into the GKR's exact authenticated endpoint, root
+renewal, both-role lifetime composition and the complete resource reduction
+remain open. The budget keeps both complete security errors unknown; six proposed
 error allocations fitting the remaining margin are targets, not proved bounds.
 All proofs must bind to **one private W**; durable public identifiers alone
 do not establish that relation. No complete 78-bit or production credit.

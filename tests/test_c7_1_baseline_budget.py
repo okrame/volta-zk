@@ -309,3 +309,54 @@ def test_b6_native_combination_and_bootstrap_challenge_gap():
     # A nonzero residual vector in any extension still vanishes for one Fp
     # coefficient with probability 1/p, regardless of the number of tag limbs.
     assert sum(all(c * e % 7 == 0 for e in (1, 2, 3)) for c in range(7)) == 1
+
+
+def test_b7_failed_real_premise_stops_baseline_even_when_hybrid_arithmetic_passes():
+    report = plan.baseline_budget()
+    b7 = report["B7_bootstrap_admission"]
+    assert b7["status"] == "failed_OT_premise_baseline_stopped"
+    assert b7["baseline_stopped"] and not b7["security_admitted"] and not b7["credit"]
+    assert not b7["native_bootstrap_implemented"] and not b7["integration_selected"]
+    assert b7["next_goal"] is report["next_authorized_goal"] is None
+    assert report["active_baseline_status"] == "stopped_after_failed_B7"
+    assert report["B2_CPU_Fp3_port"]["status"] == "functional_port_complete"
+    assert report["B5_alignment_admission"]["repair_selected"] is None
+    # Irreducibility of w^3-u over Fp3: u is not a cube; this is an algebraic
+    # screen only, not an implementation of the nine-limb bootstrap.
+    def power(a, exponent):
+        result = (1, 0, 0)
+        while exponent:
+            if exponent & 1:
+                result = plan.fp3_mul_six(result, a)
+            a = plan.fp3_mul_six(a, a)
+            exponent //= 2
+        return result
+    assert power((0, 1, 0), (plan.P**3 - 1) // 3) == (4294967295, 0, 0)
+    assert plan.P**(3 * (3 - 1)) >= 1 << (2 * 128)
+    candidate = b7["leakage_free_candidate_screen"]
+    probability = Fraction(candidate["conditional_hybrid_error_upper"])
+    assert probability == Fraction(192**2, plan.P**3) + Fraction(1, 1 << 128)
+    lifetime = Fraction(candidate["conditional_2_to_20_setup_error_upper"])
+    assert lifetime == (1 << 20) * probability < Fraction(1, 1 << 107)
+    assert not candidate["is_runtime_or_complete_lifetime_bound"]
+    failed = b7["failed_obligation"]
+    assert not failed["point_KDF_binds_session_channel_or_A_B"]
+    assert not failed["robustness_definition_2_satisfied"]
+    assert failed["timely_decryption_or_direct_composition_proof"] is None
+    native = b7["native_counterexample"]
+    assert native["wire_bytes_all_tested_instances"] == (
+        native["tested_choices"] * 2 * native["wire_bytes_per_channel"]) == 620
+    assert not native["is_E2E_attack_or_attack_on_fixed_C71_role_topology"]
+    assert not native["relay_uses_honest_seeds_scalars_or_choice"]
+    small, large = b7["costs"]["unimplemented_candidate"]
+    assert [case["COPE_corrections_payload_bytes"] for case in (small, large)] == [188_928, 126_812_160]
+    for case in (small, large):
+        assert case["complete_connection_bytes"]["admission_bound"] == "infinity"
+    for key, value in b7["costs"].items():
+        if key.startswith("complete_"):
+            assert value["admission_bound"] == "infinity"
+    source = (Path(__file__).resolve().parents[1] / "rust/volta-pcg/src/phase_b.rs").read_text()
+    point_kdf = source.split("fn point_key(", 1)[1].split("\nfn xor32(", 1)[0]
+    assert "binding" not in point_kdf and "transcript" not in point_kdf
+    assert "point.compress()" in point_kdf and "branch as u8" in point_kdf
+    assert "fn c71_b7_base_ot_related_seed_relay()" in source

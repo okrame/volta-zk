@@ -15,6 +15,11 @@
 //! published Section 6.1 Table-2 main tuple and the preregistered hardened
 //! setup tuple; its serialized metadata records the exact estimator commits
 //! and margins.
+//!
+//! C7.1 B7: these references do not establish a composable ideal-OT
+//! bootstrap for C7.1. The native `c71_b7_base_ot_related_seed_relay` test
+//! records a cross-session related-seed relay through the current unbound
+//! point KDF and XOR ciphertexts. See the active design's B7 disposition.
 
 #[path = "ggm.rs"]
 mod ggm;
@@ -3773,6 +3778,131 @@ mod tests {
 
     const PROVER_SEED: [u8; 32] = [0x31; 32];
     const VERIFIER_SEED: [u8; 32] = [0xA6; 32];
+
+    #[test]
+    fn c71_b7_base_ot_related_seed_relay() {
+        // Two separately bound channels; the relay is a legitimate endpoint
+        // on each. It forwards A and B and XOR-shifts both ciphertexts, using
+        // neither honest party's seed, scalar, choice nor plaintext messages.
+        // This exercises the actual OT arithmetic/KDF/codec, not full VOLE.
+        fn frame(
+            channel: &mut SerializedChannel,
+            sender: &mut RoleTranscript,
+            receiver: &mut RoleTranscript,
+            direction: Direction,
+            kind: MessageKind,
+            payload: Vec<u8>,
+        ) -> Vec<u8> {
+            channel.send(direction, CommPhase::BaseOt, kind, payload, sender).unwrap();
+            channel.receive(direction, kind, receiver).unwrap()
+        }
+        fn shift_both_ciphertexts(mut wire: Vec<u8>, difference: [u8; 32]) -> Vec<u8> {
+            assert_eq!(wire.len(), 64);
+            for chunk in wire.chunks_exact_mut(32) {
+                for (byte, change) in chunk.iter_mut().zip(difference) {
+                    *byte ^= change;
+                }
+            }
+            wire
+        }
+        let left = SessionBinding::new([1; 32], [2; 32], [3; 32]).unwrap();
+        let right = SessionBinding::new([4; 32], [5; 32], [6; 32]).unwrap();
+        assert_ne!(binding_digest(&left), binding_digest(&right));
+        let difference = [0x5a; 32];
+        let mut total_wire_bytes = 0;
+        for choice in [false, true] {
+            let mut lc = SerializedChannel::new(true, &left);
+            let mut rc = SerializedChannel::new(true, &right);
+            let mut lp = RoleTranscript::new(&left);
+            let mut lv = RoleTranscript::new(&left);
+            let mut rp = RoleTranscript::new(&right);
+            let mut rv = RoleTranscript::new(&right);
+            let a = scalar_from_seed(PROVER_SEED, b"b7/left/a", u64::from(choice));
+            let b = scalar_from_seed(VERIFIER_SEED, b"b7/right/b", u64::from(choice));
+            let a_point = a * RISTRETTO_BASEPOINT_POINT;
+            let a_wire = frame(
+                &mut lc,
+                &mut lp,
+                &mut lv,
+                Direction::ProverToVerifier,
+                MessageKind::BaseOtA,
+                a_point.compress().as_bytes().to_vec(),
+            );
+            let a_wire = frame(
+                &mut rc,
+                &mut rp,
+                &mut rv,
+                Direction::ProverToVerifier,
+                MessageKind::BaseOtA,
+                a_wire,
+            );
+            let received_a = decode_point(&a_wire).unwrap();
+            let mut b_point = b * RISTRETTO_BASEPOINT_POINT;
+            if choice {
+                b_point += received_a;
+            }
+            let b_wire = frame(
+                &mut rc,
+                &mut rv,
+                &mut rp,
+                Direction::VerifierToProver,
+                MessageKind::BaseOtB,
+                b_point.compress().as_bytes().to_vec(),
+            );
+            let b_wire = frame(
+                &mut lc,
+                &mut lv,
+                &mut lp,
+                Direction::VerifierToProver,
+                MessageKind::BaseOtB,
+                b_wire,
+            );
+            let received_b = decode_point(&b_wire).unwrap();
+            let messages =
+                [derive_seed(PROVER_SEED, b"b7/m0", 0), derive_seed(PROVER_SEED, b"b7/m1", 0)];
+            let pads = [
+                point_key(a * received_b, 0, false),
+                point_key(a * (received_b - a_point), 0, true),
+            ];
+            assert_ne!(pads[0], pads[1]);
+            // XOR has no invalid-ciphertext outcome under either key: it
+            // does not meet Definition 2 (robustness) of the cited OT source.
+            let arbitrary_ciphertext = [0x17; 32];
+            assert_ne!(xor32(arbitrary_ciphertext, pads[0]), xor32(arbitrary_ciphertext, pads[1]));
+            let ciphertexts = [xor32(messages[0], pads[0]), xor32(messages[1], pads[1])].concat();
+            let wire = frame(
+                &mut lc,
+                &mut lp,
+                &mut lv,
+                Direction::ProverToVerifier,
+                MessageKind::BaseOtCiphertexts,
+                ciphertexts,
+            );
+            let wire = shift_both_ciphertexts(wire, difference);
+            let wire = frame(
+                &mut rc,
+                &mut rp,
+                &mut rv,
+                Direction::ProverToVerifier,
+                MessageKind::BaseOtCiphertexts,
+                wire,
+            );
+            let selected: [u8; 32] = wire[usize::from(choice) * 32..][..32].try_into().unwrap();
+            let output = xor32(selected, point_key(b * received_a, 0, choice));
+            assert_eq!(output, xor32(messages[usize::from(choice)], difference));
+            assert_ne!(output, messages[usize::from(choice)]);
+            assert_eq!(lp.digest(), lv.digest());
+            assert_eq!(rp.digest(), rv.digest());
+            assert_ne!(lp.digest(), rp.digest());
+            for channel in [lc, rc] {
+                let audit = channel.finish().unwrap();
+                assert_eq!(audit.total_bytes, 32 + 32 + 64 + 3 * 9);
+                total_wire_bytes += audit.total_bytes;
+            }
+        }
+        assert_eq!(total_wire_bytes, 620);
+        println!("B7 OT boundary rejection: two choices, four channel instances, 620 wire bytes; no VOLE/matrix attack claim");
+    }
 
     fn params() -> PhaseAParams {
         PhaseAParams::tiny_for_test(48 + 2 * 5)

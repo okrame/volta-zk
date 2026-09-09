@@ -1,4 +1,4 @@
-# Current status — C7.1 Gemma-31B
+# Current status — C7.1 Gemma-31B, baseline stopped after B7
 
 Updated 2026-09-09. Editable working summary; Git preserves revisions.
 [Design](c7.1-gemma31b-design.md) · [Documentation index](README.md) ·
@@ -6,26 +6,24 @@ Updated 2026-09-09. Editable working summary; Git preserves revisions.
 
 ## Active authority — read first
 
-**B6 completed: compare checked alignment with native Fp3 sVOLE and reject
-both immediate ports**, requested by the owner's «raggiungi il prossimo
-goal per c7.1, in modo coerente con gli altri goal finora raggiunti».
-The checked converter has an explicit masked-check argument with ideal
-valid pools; native packing needs three sVOLEs instead of nine. The current
-real bootstrap does not establish the needed premise: its base sacrifice
-uses Fp challenges and one mask, unlike the extension-field check in its
-reference, and its selective-failure treatment has no applicable complete
-C7.1 argument. This is a scoped source/interface finding, not an E2E attack.
-The [B6 decision in design §10](c7.1-gemma31b-design.md#esito-b6-confronto-dei-convertitori-e-confine-del-bootstrap)
-contains both-party ideal arguments, costs, source correspondence and gaps.
-B5's unchecked-converter exclusion and B4's masked-RS decision remain valid;
-B2/B3 remain functional and resource evidence. G2 stays suspended.
+**B7 concluded with failed admission; this baseline is stopped.** The owner
+authorized one bounded B7 and required stopping the baseline on failure.
+The leakage-free base-sVOLE candidate has a conditional ideal-model path,
+but the real OT prerequisite is not established. A native check reproduces
+a related-seed relay through the current point KDF and XOR ciphertexts
+across two distinct channel bindings, with consistent local transcripts.
+The updated Simplest OT source withdraws the old UC claim; its robustness
+and composition premises do not follow from this implementation.
+Scope, source correspondence, the conditional Fp9 screen and costs are in
+[design §10, B7](c7.1-gemma31b-design.md#esito-b7-fallimento-del-prerequisito-ot-e-stop-della-baseline).
+This is a failed reusable OT/bootstrap premise, not an E2E matrix attack
+or an impossibility result for C7.1, native Fp3 or WHIR.
 
-**Connection to C7.1:** B3 showed PCS dominates the reduced path; B4/B5
-prevent security admission of the current path. B6 locates the prerequisite
-below either converter, in base-sVOLE. Next B7 is a bounded native Fp3
-bootstrap contract/component with explicit leakage treatment, adversarial
-checks and costs before pool/PCS integration. Native is the next candidate,
-not an admitted port or measured speedup. Lifetime and trust stay unchanged.
+**Active hard stop:** no further port, pool/PCS integration, tuning or
+matrix/Gemma E2E of this baseline. No B8 or replacement OT/PCS line is
+opened automatically. A new line requires a new owner decision. B2/B3's
+functional/resource results and B4–B6's scoped security decisions remain
+valid; G2 stays suspended. Security and trust requirements are unchanged.
 
 **B1 concluded with a negative reuse decision and its prescribed stop.**
 The [assessment in design §10](c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto)
@@ -49,12 +47,13 @@ budgets and the pinned 100+50 workload. The comparison may price explicit
 alternatives, including a fifth read or organized host spill; it must not
 claim they meet the reference. Scope and remaining thresholds are in design §1.
 
-**Authorization:** small local checks and a reduced synthetic E2E on this VM.
-No RunPod/provider contact, H100/GPU calls, paid resources, weight downloads,
-heavy builds or full Gemma E2E. A tiny CPU diagnostic is not evidence about
-H100 performance. Follow the [build procedure](procedures/build-and-test.md)
-with its explicit local-E2E exception. No spending authorization is pending
-because no provider work is part of this goal.
+**Authorization after B7:** preserve/check the rejection evidence and close
+the local work. The owner's new stop supersedes the earlier permission to
+continue reduced E2E on this baseline. No RunPod/provider contact, H100/GPU,
+paid resources, weight downloads, heavy builds or full Gemma E2E. The B7
+check used only a small local CPU test under the
+[build procedure](procedures/build-and-test.md); it supplies no H100 claim.
+There is no pending spending approval or next authorized baseline goal.
 
 ## Evidence and open obligations
 
@@ -76,7 +75,7 @@ This summary no longer repeats their successive subtotals.
   complete four-read schedule. Later S+Y/operator/checkpoint variants
   remain research alternatives, not additions to the frozen S reference.
 - The [index](README.md) locates RNE, RMS, KV, attention and other evidence.
-  No need to reload all dossiers to inspect B6. Exact quantization/runtime
+  No need to reload all dossiers to inspect B7. Exact quantization/runtime
   correspondence and real-correlation premises remain required when reused.
 
 Three critical-path obligations remain: same-W authenticated opening with
@@ -251,7 +250,7 @@ The B6 assessment below completes that comparison. No PCS tuning can confer
 security on the rejected interface. Gemma semantics/GKR, physical four-read
 scheduling, full certificate and 78-bit lifetime proofs remain obligations.
 
-## B6 comparison and next goal
+## B6 comparison
 
 The [single budget](../scripts/c7_1_gemma_plan.py) now includes
 `B6_converter_comparison`. With three ideal valid Fp2 pools, two independent
@@ -288,17 +287,61 @@ The complete default budget emits valid JSON. No Rust/Lean build, native
 cryptographic E2E, new benchmark record or runtime change is claimed.
 Existing B2/B3 evidence and the unrelated G2 test changes are preserved.
 
-**Next B7:** specify and check the native Fp3 base-sVOLE bootstrap component,
+**B7 mandate, now concluded below:** specify and check the native Fp3 base-sVOLE bootstrap component,
 including the exact selective-failure or leakage-free functionality,
 challenge/mask dimensions, OT/codec, both-party adversarial checks and local
 costs. Select or reject integration only after those premises are assessed;
 failure stops the affected integration. The scope remains small local work,
 without another PCS, G2, diagnostic tuning, provider contact or hardware.
 
+## B7 failure and baseline disposition
+
+The [single budget](../scripts/c7_1_gemma_plan.py) now includes
+`B7_bootstrap_admission`, sets the active baseline to
+`stopped_after_failed_B7` and leaves no next authorized goal. The owner
+explicitly required a single bounded attempt and stopping on failure.
+
+The ideal leakage-free candidate would use Fp9 internally, nine fresh base
+masks, 576 COPE choice OTs and a subsequent compression into Fp3. Its
+conditional theorem term is compatible with the statistical target;
+its real OT premise fails admission. This distinction prevents a positive
+field/arithmetic screen from certifying the implemented correlations.
+The candidate was not implemented or integrated after that failed premise.
+
+The preserved [updated Simplest OT source](../sota/2015-0267-simplest-ot.md)
+explains the withdrawn UC claim and composition issue. The runtime KDF
+does not bind session/channel or the OT A/B messages; XOR decryption never
+rejects and fails the source's robustness definition. The
+[native adversarial check](../rust/volta-pcg/src/phase_b.rs) relays A/B
+between two distinct bindings and shifts both ciphertexts by the same
+nonzero string, obtaining the shifted selected seed for either choice.
+It uses no honest seed/scalar/choice and preserves each channel's transcript
+agreement. The test covers 620 OT wire bytes across four channel instances.
+It is not the full OT executor, an AES/LPN run or a proof of an attack on
+the fixed C7.1 service topology; a direct composition proof is still absent.
+
+The targeted Rust test passes by reproducing the rejection evidence;
+**the security admission fails**. Ten Python budget/algebra checks also
+pass, including explicit stop enforcement and preservation of earlier
+results. The default report remains valid JSON. No broad build, new Lean
+theorem, benchmark record, matrix proof or hardware claim follows. Native
+build artifacts are removed; the unrelated G2 test edits are preserved.
+
+Both B6's smaller base-L subtotal and B7's larger leakage-free payload are
+conditional estimates. B7's COPE payload alone is 188,928 bytes for 32
+outputs, or 126,812,160 for the 27,511-output k0/t0 screen, before real OT,
+checks, framing and lifecycle. Complete setup, capacity, certificate, work,
+memory and physical traffic retain admission bound infinity. The existing
+MAC/transfer lemmas require valid inputs and do not discharge this bootstrap.
+
+The baseline is closed with this negative result. No integration or
+replacement-protocol work is queued; C7.1's broader objective and the
+immutable evidence remain available for a future owner-directed decision.
+
 ## Documentation decision
 
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 (B6 decision and B7 scope) without
+A fresh conversation can start from this page and design §10 (B7 failure and baseline stop) without
 importing the full G2 transcript or reopening its suspended obligations.

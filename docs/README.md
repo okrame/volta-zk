@@ -4,6 +4,9 @@ Start with [current status](prototype-status.md), then read the relevant part
 of the [C7.1 Gemma-31B design](c7.1-gemma31b-design.md). This index is a map;
 it is not another status ledger.
 
+The evaluated baseline is stopped after B7's failed bootstrap admission;
+the current status and design §10 define the owner's stop and its scope.
+
 ## Current documents
 
 | Document | Purpose |
@@ -24,7 +27,7 @@ it is not another status ledger.
 | [B3 native census](../scripts/c71_work_census.py) · [bounded runner](../scripts/run_c71_matrix.py) | Actual Goldilocks arithmetic and phase memory of the reduced B2 matrix path; physical traffic/security remain open in design §10 |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |
-| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget, including B4 masked RS geometry, B5 unchecked-converter exclusion and B6 checked/native sVOLE comparison with bootstrap prerequisites and costs; `--research-screens`: preserved, non-additive research inventory |
+| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget, including B4–B6 security decisions and B7's failed OT/bootstrap admission with explicit baseline stop; `--research-screens`: preserved, non-additive research inventory |
 
 Status and design are editable; replace obsolete statements and use Git for
 history. Record important decisions with reasons and source links. Add a page

@@ -5911,6 +5911,71 @@ def b6_converter_comparison():
     }
 
 
+def b7_bootstrap_admission():
+    """One bounded B7, failed at the real OT premise; owner stops the baseline."""
+    # Wolverine Theorem 2's conservative target-degree bound, ONLY in its
+    # COPEe hybrid. The full leakage-removal candidate has internal degree 9.
+    hybrid_error = Fraction(192**2, P**3) + Fraction(1, 1 << 128)
+    candidate_costs = []
+    for wanted in (32, 25_000 + 2_508 + 3):
+        candidate_costs.append({"wanted_base_svole": wanted, "credit": False,
+            "kind": "unimplemented leakage-free candidate; analytic payload only",
+            "internal_degree": 9, "sacrificed_COPE_rows": 9,
+            "COPE_key_choice_OTs": 576,
+            "COPE_corrections_payload_bytes": 576 * 8 * (wanted + 9),
+            "complete_connection_bytes": budget_sum({
+                "COPE_correction_payload": 576 * 8 * (wanted + 9),
+                "composable_OT_masks_challenges_projection_framing_and_lifecycle": None})})
+    return {
+        "status": "failed_OT_premise_baseline_stopped",
+        "credit": False, "security_admitted": False, "baseline_stopped": True,
+        "native_bootstrap_implemented": False, "integration_selected": False,
+        "owner_stop": "one bounded B7; on failure stop this baseline, with no automatic replacement goal",
+        "next_goal": None,
+        "decision_source": "docs/c7.1-gemma31b-design.md#esito-b7-fallimento-del-prerequisito-ot-e-stop-della-baseline",
+        "reviewed_runtime_commit": "d4c5f91",
+        "leakage_free_candidate_screen": {
+            "target_field": "Fp3", "internal_field": "Fp9 = Fp[w]/(w^9-2), u=w^3",
+            "compression_lanes": 3, "statistical_parameter_bits": 128,
+            "noncube_certificate": "u^((p^3-1)/3)=4294967295 != 1 in Fp3",
+            "compression": "sum_t alpha_t*(a_t+u*a_(t+3)+u^2*a_(t+6)), alpha_t in Fp3 after the base check",
+            "challenge_field": "Fp9", "fresh_base_masks": 9,
+            "conditional_hybrid_error_upper": str(hybrid_error),
+            "conditional_2_to_20_setup_error_upper": str(LIFETIME_ATTEMPTS * hybrid_error),
+            "premise": "Wolverine full base-sVOLE theorem in a valid COPEe hybrid; named OT/PRF assumptions must be realized, not presumed from successful runs",
+            "is_runtime_or_complete_lifetime_bound": False},
+        "failed_obligation": {
+            "name": "composable_OT_required_by_COPEe_and_base_sVOLE_hybrid",
+            "runtime_source": "rust/volta-pcg/src/phase_b.rs:run_base_ot, point_key, xor32",
+            "point_KDF_inputs": ["shared_point", "OT_index", "branch"],
+            "point_KDF_binds_session_channel_or_A_B": False,
+            "ciphertext_rejects_under_wrong_key": False,
+            "robustness_definition_2_satisfied": False,
+            "source_UC_claim_withdrawn": True,
+            "timely_decryption_or_direct_composition_proof": None,
+            "paper_source": "sota/2015-0267-simplest-ot.md, sections 1.1 and 2",
+            "does_not_prove_all_native_sVOLE_impossible": True},
+        "native_counterexample": {
+            "test": "phase_b::tests::c71_b7_base_ot_related_seed_relay",
+            "scope": "actual Ristretto arithmetic, point KDF, XOR and framed channels; not the full base-OT executor, PCG or matrix proof",
+            "relay": "forward A and B across distinct bindings; C'_0=C_0 xor eta and C'_1=C_1 xor eta",
+            "result": "receiver output = original_seed_choice xor eta for either choice",
+            "relay_uses_honest_seeds_scalars_or_choice": False,
+            "local_transcripts_match": True, "cross_channel_bindings_differ": True,
+            "tested_choices": 2, "channel_instances": 4,
+            "wire_bytes_per_channel": 32 + 32 + 64 + 3 * 9,
+            "wire_bytes_all_tested_instances": 620,
+            "authenticated_transport_or_full_session_cost_included": False,
+            "is_E2E_attack_or_attack_on_fixed_C71_role_topology": False},
+        "costs": {"unimplemented_candidate": candidate_costs,
+            "complete_capacity_bytes": budget_sum({"admitted_bootstrap_and_expansion": None}),
+            "complete_certificate_bytes": budget_sum({"admitted_setup_binding_and_FS_composition": None}),
+            "complete_work_memory_and_physical_traffic": budget_sum({"admitted_real_bootstrap_and_PCG": None})},
+        "stopped_work": ["native bootstrap port", "pool/PCS integration", "PCS tuning",
+            "new matrix or Gemma E2E", "provider or GPU work", "automatic B8 or replacement OT research"],
+    }
+
+
 def baseline_budget():
     """One frozen S reference; alternatives are NOT additive components.
 
@@ -5983,6 +6048,7 @@ def baseline_budget():
         "required_lifetime_security_bits_at_least": 78,
         "malicious_prover_soundness_bits": None, "malicious_verifier_zk_bits": None,
         "security_admitted": False, "complete_baseline_selected": None,
+        "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": None,
         "measurement_reuse_priority": None,
         "B1_decision": "reject_existing_whir_reuse_and_stop",
         "B1_decision_scope": "bounded reuse assessment; not an impossibility result for WHIR or C7.1",
@@ -6019,6 +6085,7 @@ def baseline_budget():
         "B4_security_admission": b4_security_admission(),
         "B5_alignment_admission": b5_alignment_admission(),
         "B6_converter_comparison": b6_converter_comparison(),
+        "B7_bootstrap_admission": b7_bootstrap_admission(),
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

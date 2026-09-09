@@ -141,8 +141,15 @@ pub(super) struct Statement<'a> {
     pub view: [u8; 32],
     pub attempt: AttemptContext,
     pub output_point: &'a [Fp3],
-    pub live_cells: usize,
+    pub shape: [usize; 2], // live rows/columns; each axis padded independently
     pub shift: i32,
+}
+
+impl Statement<'_> {
+    fn live(&self, i: usize) -> bool {
+        let columns = self.shape[1].next_power_of_two();
+        i / columns < self.shape[0] && i % columns < self.shape[1]
+    }
 }
 
 pub(super) struct Proof {
@@ -164,8 +171,9 @@ pub(super) fn required(cell_bits: usize, shift: i32) -> usize {
 
 fn bind(s: &Statement<'_>, fs: &mut Fs) -> Result<(Vec<Fp3>, Fp3), String> {
     if s.output_point.len() > 7
-        || s.live_cells == 0
-        || s.live_cells > 1usize << s.output_point.len()
+        || s.shape.iter().any(|&n| n == 0 || n > 128)
+        || s.shape.iter().map(|&n| n.next_power_of_two().ilog2() as usize).sum::<usize>()
+            != s.output_point.len()
         || s.root.num_roots() != 1
         || s.profile.is_empty()
         || s.view == [0; 32]
@@ -173,14 +181,17 @@ fn bind(s: &Statement<'_>, fs: &mut Fs) -> Result<(Vec<Fp3>, Fp3), String> {
     {
         return Err("B12 RNE statement mismatch".into());
     }
-    let mut bytes = b"C71-RNE-B12-v1;i48-to-symmetric-i16;R2-degree7;original-output-MAC".to_vec();
+    let mut bytes =
+        b"C71-RNE-B12-v2;i48-to-symmetric-i16;row-col-MSB;R2-degree7;original-output-MAC".to_vec();
     bytes.extend(s.root.roots()[0]);
     bytes.extend((s.profile.len() as u64).to_le_bytes());
     bytes.extend(s.profile);
     bytes.extend(s.view);
     bytes.extend(s.attempt.encode());
     bytes.extend((s.output_point.len() as u32).to_le_bytes());
-    bytes.extend((s.live_cells as u64).to_le_bytes());
+    for &n in &s.shape {
+        bytes.extend((n as u64).to_le_bytes());
+    }
     bytes.extend(s.shift.to_le_bytes());
     for &r in s.output_point {
         bytes.extend(r.to_bytes());
@@ -214,7 +225,7 @@ fn function_tables(recipe: &Recipe, beta: Fp3) -> (Vec<[Fp3; 256]>, Vec<Fp3>) {
 
 // Output correction is already bound by the caller. The byte view has eight
 // lanes: the six biased i48 bytes followed by two public zeros, and all-zero
-// bytes on dummy cells. The returned byte obligation still needs the SAME PCS.
+// bytes on dummy cells on either axis. The returned byte obligation still needs the SAME PCS.
 pub(super) fn prove(
     s: &Statement<'_>,
     mut target: Auth,
@@ -232,7 +243,7 @@ pub(super) fn prove(
     let mut f = eq(s.output_point);
     let mut g = eq(&rho);
     for i in 0..f.len() {
-        if i >= s.live_cells {
+        if !s.live(i) {
             f[i] = Fp3::ZERO;
             g[i] = Fp3::ZERO;
         }
@@ -246,8 +257,7 @@ pub(super) fn prove(
         .map(|function| {
             (0..f.len())
                 .map(|i| {
-                    function.table
-                        [if i < s.live_cells { get_bytes(i)[function.lane] as usize } else { 0 }]
+                    function.table[if s.live(i) { get_bytes(i)[function.lane] as usize } else { 0 }]
                 })
                 .collect()
         })
@@ -328,7 +338,7 @@ pub(super) fn prove(
         &statement,
         &aggregate,
         |i| {
-            if i / 8 < s.live_cells && i % 8 < 6 {
+            if s.live(i / 8) && i % 8 < 6 {
                 get_bytes(i / 8)[i % 8]
             } else {
                 0
@@ -393,10 +403,16 @@ pub(super) fn verify(
     let f = eq(s.output_point)
         .iter()
         .zip(&e)
-        .take(s.live_cells)
-        .fold(Fp3::ZERO, |v, (&a, &b)| v + a * b);
-    let g =
-        tau * eq(&rho).iter().zip(&e).take(s.live_cells).fold(Fp3::ZERO, |v, (&a, &b)| v + a * b);
+        .enumerate()
+        .filter(|(i, _)| s.live(*i))
+        .fold(Fp3::ZERO, |v, (_, (&a, &b))| v + a * b);
+    let g = tau
+        * eq(&rho)
+            .iter()
+            .zip(&e)
+            .enumerate()
+            .filter(|(i, _)| s.live(*i))
+            .fold(Fp3::ZERO, |v, (_, (&a, &b))| v + a * b);
     let expected =
         evaluated[0].scale(f).add(Key::new(delta).add(evaluated[1].scale(-Fp3::ONE)).scale(g));
     if expected.k - target.k != proof.tag {
@@ -599,7 +615,7 @@ mod tests {
                 view: [21; 32],
                 attempt,
                 output_point: &point,
-                live_cells: 3,
+                shape: [3, 1],
                 shift: 2,
             };
             let start = || Fs::new(b"original RNE input and output source", 100_000);

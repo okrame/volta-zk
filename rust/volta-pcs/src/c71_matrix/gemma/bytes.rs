@@ -94,6 +94,55 @@ impl Plan {
 }
 
 impl Bytes {
+    /// Canonical padded row/column/six-byte view of a raw matrix P0 cut.
+    /// The 8-lane RNE view adds two public zero lanes, never source cells.
+    pub fn rne_view(&self, plan: &Plan, cohort: usize) -> Result<([u8; 32], [usize; 2]), String> {
+        let c = plan.cohorts.get(cohort).ok_or("RNE cohort missing")?;
+        if self.scalar.weight_layout != plan.layout_digest || c.kind != Kind::Matrix {
+            return Err("RNE view is not a raw matrix cut of this W layout".into());
+        }
+        let source = &self.scalar.layout.sources[cohort];
+        let mut digest = blake3::Hasher::new();
+        digest.update(b"C71-RNE-view-v1;raw-C;row-col-byte-MSB;6-of-8-lanes\0");
+        digest.update(&self.layout_digest);
+        digest.update(&(cohort as u64).to_le_bytes());
+        for word in [source.rows, source.cols] {
+            digest.update(&(word as u64).to_le_bytes());
+        }
+        Ok((*digest.finalize().as_bytes(), [source.rows, source.cols]))
+    }
+
+    /// Pull the ORIGINAL P/S byte MAC into the same A root. No affine bias:
+    /// the endpoint is already a biased byte, including the explicit zero lanes.
+    pub fn rne_form(&self, plan: &Plan, cohort: usize, point: &[Fp3]) -> Result<Vec<Cube>, String> {
+        let (_, shape) = self.rne_view(plan, cohort)?;
+        let (rb, cb) = (bits(shape[0]), bits(shape[1]));
+        if point.len() != rb + cb + 3 {
+            return Err("RNE source point axes differ".into());
+        }
+        let lane = &point[rb + cb..];
+        let mut result = Vec::new();
+        for cube in
+            self.scalar.layout.project(cohort, &point[..rb], &point[rb..rb + cb], Fp3::ONE)?
+        {
+            let index =
+                self.scalar.layout.tiles.binary_search_by_key(&cube.offset, |t| t.offset).unwrap();
+            for &b in &self.by_scalar[index] {
+                let tile = &self.tiles[b];
+                let low = bits(tile.width);
+                let coefficient =
+                    cube.coefficient * eq_index(&lane[..3 - low], tile.first / tile.width);
+                if coefficient == Fp3::ZERO {
+                    continue;
+                }
+                let mut point = cube.point.clone();
+                point.extend(&lane[3 - low..]);
+                result.push(Cube { offset: tile.offset, point, coefficient });
+            }
+        }
+        Ok(result)
+    }
+
     /// Extra source encoding identity to bind alongside the actual PCS Gamma
     /// before P0's output points. The scalar source identities also remain bound.
     pub fn profile(&self, gamma: &[u8]) -> Vec<u8> {
@@ -183,6 +232,374 @@ mod tests {
         Fs, Key, MatrixRng, Model, E,
     };
     use rand_010::{RngExt, SeedableRng};
+
+    #[test]
+    fn c71_b12_gemma_p0_rne_uses_same_ragged_raw_cut_and_quantized_input_macs() {
+        use super::super::caller::{Compact, P0Statement};
+        use crate::c71_matrix::{eq, rne};
+        let sources = vec![
+            Source { name: "embedding".into(), rows: 4, cols: 3, packed_offset: 0 },
+            Source { name: "projection".into(), rows: 3, cols: 3, packed_offset: 12 },
+            Source { name: "norm".into(), rows: 1, cols: 3, packed_offset: 21 },
+        ];
+        let (tiles, live) = super::super::tiles(&sources);
+        let cohort = |operation: &str, tensor, kind, inner, producer: &str| Cohort {
+            layer: None,
+            operation: operation.into(),
+            tensor,
+            kind,
+            rows: 3,
+            columns: 3,
+            inner,
+            heads: 1,
+            producer: (None, producer.into()),
+            members: Vec::new(),
+            cut_byte_offset: 0,
+        };
+        let plan = Plan {
+            sources,
+            tiles,
+            live,
+            layout_digest: [22; 32],
+            cohorts: vec![
+                cohort("embedding_lookup", 0, Kind::Lookup, 0, "token_input"),
+                cohort("q_proj", 1, Kind::Matrix, 3, "embedding_lookup"),
+                cohort("q_norm", 2, Kind::Norm, 0, "q_proj"),
+            ],
+        };
+        let bytes = plan.auxiliary_bytes().unwrap();
+        assert_eq!(bytes.live, 144);
+        let (view, shape) = bytes.rne_view(&plan, 1).unwrap();
+        assert_eq!(shape, [3, 3]);
+        assert!(bytes.rne_view(&plan, 0).is_err());
+        assert!(bytes.rne_view(&plan, 2).is_err());
+        assert!(bytes.rne_form(&plan, 1, &[]).is_err());
+        let packed =
+            [1i64, -2, 3, 2, 1, -1, -2, 3, 1, 1, 1, 1, 2, -1, 1, -1, 2, 1, 1, 1, -2, 2, -1, 3];
+        let lookup = packed[..9].to_vec();
+        let mut raw = vec![0i64; 9];
+        for row in 0..3 {
+            for col in 0..3 {
+                raw[3 * row + col] =
+                    (0..3).map(|k| lookup[3 * row + k] * packed[12 + 3 * col + k]).sum();
+            }
+        }
+        let rounded = |v: i64| {
+            let (q, r) = (v.div_euclid(4), v.rem_euclid(4));
+            q + i64::from(r > 2 || (r == 2 && q & 1 == 1))
+        };
+        let biased =
+            |value: i64| -> [u8; 6] { (value + (1 << 47)).to_le_bytes()[..6].try_into().unwrap() };
+        let mut w_values = vec![0i16; 1024];
+        for (i, v) in w_values.iter_mut().enumerate().take(plan.live) {
+            *v = packed[plan.virtual_to_packed(i).unwrap().unwrap()] as i16;
+        }
+        let w_model = Model::new(32, w_values).unwrap();
+        let gamma = gamma(&matrix_config(32).unwrap());
+        let profile = bytes.profile(&gamma);
+        let attempt = AttemptContext {
+            session: [1; 32],
+            capacity: [2; 32],
+            slot: 0,
+            predecessor: [0; 32],
+            nonce: [3; 32],
+        };
+        let delta = signed(31);
+        let count = plan.p0_required()
+            + rne::required(4, 2)
+            + range::required(10, 7)
+            + range::required(10, range::Alphabet::Byte)
+            + 64;
+        assert_eq!(count, 1355);
+        let mut rng = MatrixRng::from_seed([128; 32]);
+        let rows: Vec<_> = (0..count)
+            .map(|_| Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>())))
+            .collect();
+        let keys: Vec<_> = rows.iter().map(|a| Key::new(a.m + delta * a.x)).collect();
+        for fault in 0..3 {
+            let mut quant: Vec<_> = raw.iter().map(|&v| rounded(v)).collect();
+            if fault == 1 {
+                quant[0] += 1;
+            }
+            let cuts = [
+                lookup.clone(),
+                raw.clone(),
+                quant.iter().enumerate().map(|(i, &v)| v * packed[21 + i % 3]).collect(),
+            ];
+            let inputs = [&lookup, &quant];
+            let values = [&cuts[0], &cuts[1], &cuts[2], &lookup, &quant];
+            let mut physical = Vec::<u8>::new();
+            for ((source, &width), values) in
+                bytes.scalar.layout.sources.iter().zip(&bytes.widths).zip(values)
+            {
+                assert_eq!(source.rows * source.cols, values.len());
+                for &v in values {
+                    physical.extend(&v.to_le_bytes()[..width]);
+                }
+            }
+            let mut a_values = vec![0i16; 1024];
+            for (i, v) in a_values.iter_mut().enumerate().take(bytes.live) {
+                let (address, xor) = bytes.virtual_to_packed(i).unwrap().unwrap();
+                *v = i16::from(physical[address] ^ xor);
+            }
+            let a_model = Model::new(32, a_values).unwrap();
+            let statement = P0Statement {
+                weights: &w_model.root,
+                auxiliary: &a_model.root,
+                weight_gamma: &gamma,
+                auxiliary_gamma: &profile,
+                auxiliary_layout: &bytes.scalar,
+                quantization: [23; 32],
+                attempt,
+                tokens: &[0, 1, 2],
+            };
+            let start = || Fs::new(b"canonical same-W P0 and RNE ragged sources", 100_000);
+            let mut fs = start();
+            let mut prows = rows.clone().into_iter();
+            let (p0, pending) = plan
+                .prove_p0(
+                    &statement,
+                    |points| {
+                        Ok(plan
+                            .cohorts
+                            .iter()
+                            .enumerate()
+                            .map(|(ordinal, c)| {
+                                let (r, s) = points[ordinal].split_at(2);
+                                let output = cuts[ordinal].iter().enumerate().fold(
+                                    Fp3::ZERO,
+                                    |v, (i, &x)| {
+                                        v + eq_index(r, i / 3) * eq_index(s, i % 3) * signed(x)
+                                    },
+                                );
+                                if c.kind == Kind::Lookup {
+                                    return Compact { output, x: Vec::new(), w: Vec::new() };
+                                }
+                                let mut x = vec![Fp3::ZERO; 4];
+                                let mut w = x.clone();
+                                for k in 0..3 {
+                                    for row in 0..3 {
+                                        x[k] += eq_index(r, row)
+                                            * signed(inputs[ordinal - 1][3 * row + k]);
+                                    }
+                                    let source = &plan.sources[c.tensor];
+                                    for j in 0..source.rows {
+                                        let coefficient = if c.kind == Kind::Norm {
+                                            Fp3::ONE
+                                        } else {
+                                            eq_index(s, j)
+                                        };
+                                        w[k] += coefficient
+                                            * signed(packed[source.packed_offset + 3 * j + k]);
+                                    }
+                                }
+                                Compact { output, x, w }
+                            })
+                            .collect::<Vec<_>>())
+                    },
+                    &mut fs,
+                    &mut prows,
+                )
+                .unwrap();
+            let output = &pending.inputs[1];
+            assert_eq!(output.cohort, 2);
+            let rq = rne::Statement {
+                root: &a_model.root,
+                profile: &profile,
+                view,
+                attempt,
+                output_point: &output.point,
+                shape,
+                shift: 2,
+            };
+            let mut used = raw.clone();
+            if fault == 2 {
+                used[0] = [raw[0] - 1, raw[0] + 1]
+                    .into_iter()
+                    .find(|&v| rounded(v) == rounded(raw[0]))
+                    .unwrap();
+            }
+            let (rne, byte_point, byte) = rne::prove(
+                &rq,
+                output.original,
+                |i| biased(used[(i / 4) * 3 + i % 4]),
+                &mut fs,
+                &mut prows,
+            )
+            .unwrap();
+            let byte_form = bytes.rne_form(&plan, 1, &byte_point).unwrap();
+            if fault == 0 {
+                let expected = (0..3).flat_map(|row| (0..3).map(move |col| (row, col))).fold(
+                    Fp3::ZERO,
+                    |v, (row, col)| {
+                        v + eq_index(&byte_point[..2], row)
+                            * eq_index(&byte_point[2..4], col)
+                            * biased(raw[3 * row + col]).iter().enumerate().fold(
+                                Fp3::ZERO,
+                                |v, (lane, &b)| {
+                                    v + eq_index(&byte_point[4..], lane) * signed(i64::from(b))
+                                },
+                            )
+                    },
+                );
+                assert_eq!(byte.x, expected);
+                let opened = byte_form.iter().fold(Fp3::ZERO, |v, cube| {
+                    v + cube.coefficient
+                        * eq(&cube.point).iter().enumerate().fold(Fp3::ZERO, |v, (i, &r)| {
+                            v + r * signed(i64::from(a_model.weights[cube.offset + i]))
+                        })
+                });
+                assert_eq!(opened, expected);
+            }
+            let (wr, wf, wt) = range::prove(
+                &w_model,
+                attempt,
+                plan.layout_digest,
+                plan.live,
+                7,
+                &mut fs,
+                &mut prows,
+            )
+            .unwrap();
+            let (ar, af, at) = range::prove(
+                &a_model,
+                attempt,
+                bytes.layout_digest,
+                bytes.live,
+                range::Alphabet::Byte,
+                &mut fs,
+                &mut prows,
+            )
+            .unwrap();
+            let mut weight_forms = pending.weight_forms.clone();
+            weight_forms.extend(wf);
+            let mut weight_targets = pending.weights.clone();
+            weight_targets.extend(wt);
+            let (mut aux_forms, shifts) = bytes.forms(&plan, &pending).unwrap();
+            aux_forms.extend(af);
+            aux_forms.push(byte_form);
+            let mut aux_targets: Vec<_> = pending
+                .cuts
+                .iter()
+                .map(|c| c.original)
+                .chain(pending.inputs.iter().map(|c| c.original))
+                .zip(&shifts)
+                .map(|(a, &bias)| Auth::new(a.x + bias, a.m))
+                .collect();
+            aux_targets.extend(at);
+            aux_targets.push(byte);
+            let (wp, _) = linear::prove(
+                &w_model,
+                attempt,
+                plan.layout_digest,
+                &weight_forms,
+                &weight_targets,
+                &mut fs,
+                &mut prows,
+            )
+            .unwrap();
+            let (ap, digest) = linear::prove(
+                &a_model,
+                attempt,
+                bytes.layout_digest,
+                &aux_forms,
+                &aux_targets,
+                &mut fs,
+                &mut prows,
+            )
+            .unwrap();
+            assert!(prows.next().is_none());
+            let check = || -> Result<blake3::Hash, String> {
+                let mut fs = start();
+                let mut vrows = keys.clone().into_iter();
+                let pending = plan.verify_p0(&statement, &p0, delta, &mut fs, &mut vrows)?;
+                let output = &pending.inputs[1];
+                let rq = rne::Statement {
+                    root: &a_model.root,
+                    profile: &profile,
+                    view,
+                    attempt,
+                    output_point: &output.point,
+                    shape,
+                    shift: 2,
+                };
+                let (point, byte) =
+                    rne::verify(&rq, output.original, &rne, delta, &mut fs, &mut vrows)?;
+                let (wf, wt) = range::verify(
+                    32,
+                    &w_model.root,
+                    attempt,
+                    plan.layout_digest,
+                    plan.live,
+                    7,
+                    &wr,
+                    delta,
+                    &mut fs,
+                    &mut vrows,
+                )?;
+                let (af, at) = range::verify(
+                    32,
+                    &a_model.root,
+                    attempt,
+                    bytes.layout_digest,
+                    bytes.live,
+                    range::Alphabet::Byte,
+                    &ar,
+                    delta,
+                    &mut fs,
+                    &mut vrows,
+                )?;
+                let mut weight_forms = pending.weight_forms.clone();
+                weight_forms.extend(wf);
+                let mut weight_targets = pending.weights.clone();
+                weight_targets.extend(wt);
+                let (mut aux_forms, shifts) = bytes.forms(&plan, &pending)?;
+                aux_forms.extend(af);
+                aux_forms.push(bytes.rne_form(&plan, 1, &point)?);
+                let mut aux_targets: Vec<_> = pending
+                    .cuts
+                    .iter()
+                    .map(|c| c.original)
+                    .chain(pending.inputs.iter().map(|c| c.original))
+                    .zip(shifts)
+                    .map(|(a, bias)| Key::new(a.k + delta * bias))
+                    .collect();
+                aux_targets.extend(at);
+                aux_targets.push(byte);
+                linear::verify(
+                    32,
+                    &w_model.root,
+                    attempt,
+                    plan.layout_digest,
+                    &weight_forms,
+                    &weight_targets,
+                    &wp,
+                    delta,
+                    &mut fs,
+                    &mut vrows,
+                )?;
+                let checked = linear::verify(
+                    32,
+                    &a_model.root,
+                    attempt,
+                    bytes.layout_digest,
+                    &aux_forms,
+                    &aux_targets,
+                    &ap,
+                    delta,
+                    &mut fs,
+                    &mut vrows,
+                )?;
+                assert!(vrows.next().is_none());
+                Ok(checked)
+            };
+            match fault {
+                0 => assert_eq!(check().unwrap(), digest),
+                1 => assert_eq!(check().unwrap_err(), "B12 RNE sumcheck MAC rejected"),
+                _ => assert_eq!(check().unwrap_err(), "C71 matrix sumcheck MAC rejected"),
+            }
+        }
+    }
 
     #[test]
     fn c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs() {

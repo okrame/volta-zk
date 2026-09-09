@@ -6625,7 +6625,12 @@ def b12_rne_profile(cell_bits):
         'extra_PCS_or_private_bit_commitments': 0,
         'tiny_shift': 2, 'tiny_exact_RNE_Fp3_correlations': 408,
         'tiny_exact_rows_with_original_output_byte_range_and_PCS': 951,
-        'full_DAG_shift_batch_or_canonical_byte_routes': False,
+        'canonical_matrix_raw_byte_views': 411,
+        'canonical_matrix_raw_byte_cubes': 7126,
+        'largest_canonical_matrix_cell_bits': 24,
+        'independently_padded_row_and_column_axes': True,
+        'tiny_P0_RNE_original_consumer_MAC_rows_with_two_ranged_PCS': 1355,
+        'full_DAG_shift_batch_and_all_consumer_claim_routes': False,
         'complete_security_or_physical_credit': False,
     }
 

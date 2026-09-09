@@ -59,7 +59,7 @@ pub(in crate::c71_matrix) struct PendingP0<T> {
 /// these sources is NOT the selected four-read/6-GiB physical schedule.
 pub(in crate::c71_matrix) struct Auxiliary {
     pub layout: Plan,
-    weight_layout: [u8; 32],
+    pub(super) weight_layout: [u8; 32],
     input_sources: Vec<usize>, // non-lookup cohort order; same producer shares one source
 }
 
@@ -566,6 +566,24 @@ mod tests {
         let (byte_forms, shifts) = bytes.forms(&plan, &checked).unwrap();
         assert_eq!((byte_forms.len(), shifts.len()), (1545, 1545));
         assert_eq!(byte_forms.iter().map(Vec::len).sum::<usize>(), 18472);
+        let mut rne_views = 0;
+        let mut rne_cubes = 0;
+        let mut largest = 0;
+        for (ordinal, c) in plan.cohorts.iter().enumerate() {
+            if c.kind != Kind::Matrix {
+                continue;
+            }
+            let (_, shape) = bytes.rne_view(&plan, ordinal).unwrap();
+            assert_eq!(shape, [c.rows, c.columns]);
+            let b = bits(c.rows) + bits(c.columns);
+            largest = largest.max(b);
+            let point = vec![signed(2); b + 3];
+            rne_cubes += bytes.rne_form(&plan, ordinal, &point).unwrap().len();
+            rne_views += 1;
+        }
+        assert_eq!(rne_views, 411);
+        assert_eq!((rne_cubes, largest), (7126, 24));
+        assert!(18472 + rne_cubes + 34 < 32768);
         let mut producers = std::collections::BTreeSet::new();
         for (p, v) in claims.inputs.iter().zip(&checked.inputs) {
             assert_eq!(p.cohort, v.cohort);

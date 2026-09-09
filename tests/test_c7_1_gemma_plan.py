@@ -238,10 +238,15 @@ def test_B12_RNE_counts_range_validity_and_both_original_MAC_endpoints():
         assert b['MAC_degree_sum_upper_before_shared_PCS'] == 9*bits+66
         assert b['max_FS_block_degree_upper'] == 41
         assert not b['extra_PCS_or_private_bit_commitments']
-        assert not b['full_DAG_shift_batch_or_canonical_byte_routes']
+        assert not b['full_DAG_shift_batch_and_all_consumer_claim_routes']
         assert not b['complete_security_or_physical_credit']
     tiny = plan.b12_rne_profile(2)
     assert tiny['tiny_exact_rows_with_original_output_byte_range_and_PCS'] == 1+408+510+32
+    matrix = [c for c in plan.gemma_weight_cohorts(plan.pinned_private_tensors()) if c['kind'] == 'matrix']
+    assert tiny['canonical_matrix_raw_byte_views'] == len(matrix) == 411
+    assert tiny['canonical_matrix_raw_byte_cubes'] == 2*sum(c['rows'].bit_count()*c['columns'].bit_count() for c in matrix) == 7126
+    assert tiny['largest_canonical_matrix_cell_bits'] == max((c['rows']-1).bit_length()+(c['columns']-1).bit_length() for c in matrix) == 24
+    assert tiny['tiny_P0_RNE_original_consumer_MAC_rows_with_two_ranged_PCS'] == 24+488+269+510+64
 
 
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():

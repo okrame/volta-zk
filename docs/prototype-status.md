@@ -134,13 +134,18 @@ output MAC, including symmetric-i16 overflow rejection. Its degree-seven
 recipe reuses R2 and sends its byte functions to the same P/S/PCS.
 The 951-row ideal check rejects wrong output, both ±32768 overflows and
 changed raw bytes that preserve the rounded output. All 64 shift recipes
-and their degree are checked. Canonical DAG byte views, multiple incoming
-claims, calibrated shifts and the remaining operators are still required.
+and their degree are checked. A complete batch of incoming claims,
+calibrated shifts and the remaining operators are still required.
+The 411 canonical matrix-byte views now compile to 7,126 cubes. A new
+1,355-row ideal graph ties a norm P0's original input MAC directly to RNE
+of the preceding matrix's original cut, with the same ranged W and byte A.
+It covers ragged row/column padding and rejects inconsistent quantization
+or a changed raw getter. It does not prove the norm's RMS denominator.
 
 Twenty-four B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
 range/product identities and the joint two-source bounds. The relevant Python checks total 205; the 17
-narrow bootstrap/pool checks and twenty-two B12 PCS/caller/layout checks pass.
+narrow bootstrap/pool checks and twenty-three B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

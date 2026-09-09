@@ -427,10 +427,10 @@ impl Circuit {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
 
-    fn expected(
+    pub(in crate::c71_matrix) fn expected(
         p: i64,
         s: i64,
         columns: usize,

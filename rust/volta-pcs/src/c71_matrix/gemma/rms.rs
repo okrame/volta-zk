@@ -3,6 +3,8 @@
 
 use super::{bytes::Bytes, *};
 
+pub(super) mod caller;
+
 pub(in crate::c71_matrix) struct Norm {
     pub cohort: Option<usize>, // None for the parameter-free v_norm
     pub layer: Option<u64>,
@@ -341,8 +343,7 @@ mod tests {
         (0..bytes).map(|b| (biased >> (8 * b)) as u8).collect()
     }
 
-    #[test]
-    fn c71_b12_gemma_rms_views_share_canonical_sources_and_preserve_selected_rows_and_head_axes() {
+    pub(in crate::c71_matrix::gemma) fn toy_plan(tokens: usize, head_rows: usize) -> Plan {
         let sources = vec![
             Source { name: "embedding".into(), rows: 4, cols: 4, packed_offset: 0 },
             Source { name: "projection".into(), rows: 4, cols: 4, packed_offset: 16 },
@@ -370,22 +371,54 @@ mod tests {
             members: Vec::new(),
             cut_byte_offset: 0,
         };
-        let plan = Plan {
+        Plan {
             sources,
             tiles,
             live,
             layout_digest: [61; 32],
             cohorts: vec![
-                cohort(None, "embedding_lookup", 0, Kind::Lookup, 4, 4, 1, (None, "token_input")),
-                cohort(None, "q_proj", 1, Kind::Matrix, 4, 4, 1, (None, "embedding_lookup")),
-                cohort(None, "q_norm", 2, Kind::Norm, 8, 2, 2, (None, "q_proj")),
-                cohort(None, "final_rms", 3, Kind::Norm, 3, 4, 1, (None, "q_norm")),
-                cohort(None, "lm_head", 0, Kind::Matrix, 2, 4, 1, (None, "final_rms")),
-                cohort(Some(0), "k_proj", 1, Kind::Matrix, 4, 4, 1, (None, "embedding_lookup")),
-                cohort(Some(0), "v_source", 1, Kind::Matrix, 4, 4, 1, (None, "embedding_lookup")),
-                cohort(Some(0), "k_norm", 2, Kind::Norm, 8, 2, 2, (Some(0), "k_proj")),
+                cohort(
+                    None,
+                    "embedding_lookup",
+                    0,
+                    Kind::Lookup,
+                    tokens,
+                    4,
+                    1,
+                    (None, "token_input"),
+                ),
+                cohort(None, "q_proj", 1, Kind::Matrix, tokens, 4, 1, (None, "embedding_lookup")),
+                cohort(None, "q_norm", 2, Kind::Norm, 2 * tokens, 2, 2, (None, "q_proj")),
+                cohort(None, "final_rms", 3, Kind::Norm, tokens - 1, 4, 1, (None, "q_norm")),
+                cohort(None, "lm_head", 0, Kind::Matrix, head_rows, 4, 1, (None, "final_rms")),
+                cohort(
+                    Some(0),
+                    "k_proj",
+                    1,
+                    Kind::Matrix,
+                    tokens,
+                    4,
+                    1,
+                    (None, "embedding_lookup"),
+                ),
+                cohort(
+                    Some(0),
+                    "v_source",
+                    1,
+                    Kind::Matrix,
+                    tokens,
+                    4,
+                    1,
+                    (None, "embedding_lookup"),
+                ),
+                cohort(Some(0), "k_norm", 2, Kind::Norm, 2 * tokens, 2, 2, (Some(0), "k_proj")),
             ],
-        };
+        }
+    }
+
+    #[test]
+    fn c71_b12_gemma_rms_views_share_canonical_sources_and_preserve_selected_rows_and_head_axes() {
+        let plan = toy_plan(4, 2);
         let rms = plan.rms_sources().unwrap();
         assert_eq!((rms.norms.len(), rms.cells, rms.bytes.live), (4, 60, 954));
         assert_eq!(rms.norms[0].output, rms.norms[1].input);
@@ -496,6 +529,38 @@ mod tests {
         assert_eq!((forms.len(), input_forms, stat_forms), (14688, 3612, 3368));
         assert_eq!(18472 + 3840 + forms.len() + 2 * input_forms + stat_forms + 34, 47626);
         assert!(47626 <= crate::c71_matrix::linear::MAX_CUBES);
+        // Public original-claim routing only: the D29 dispatcher is NOT
+        // executed by this metadata check. Local V preserves its S-kernel X.
+        let statistics = rms
+            .norms
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                let input_point: Vec<_> =
+                    (0..bits(n.rows) + bits(n.columns)).map(|b| signed((b + 3) as i64)).collect();
+                crate::c71_matrix::rms::statistic::Pending {
+                    statistic_point: input_point[..bits(n.rows)].to_vec(),
+                    statistic: i,
+                    input_point,
+                    inputs: [3 * i, 3 * i + 1, 3 * i + 2],
+                }
+            })
+            .collect();
+        let pending = caller::Pending { statistics, byte_point: point, byte: usize::MAX };
+        let requests = rms.local_v_rne_requests(&plan, &pending).unwrap();
+        assert_eq!(requests.len(), 50);
+        let mut extra_cubes = 0;
+        for r in requests {
+            assert_eq!(r.original, pending.statistics[r.norm].inputs[0]);
+            assert_eq!(r.point, pending.statistics[r.norm].input_point);
+            assert_eq!(plan.cohorts[r.source].operation, "v_source");
+            assert_eq!(r.shape, [150, 4096]);
+            assert_eq!((r.view, r.shape), rms.bytes.rne_view(&plan, r.source).unwrap());
+            let p: Vec<_> = (0..23).map(|i| signed((i + 7) as i64)).collect();
+            extra_cubes += rms.bytes.rne_form(&plan, r.source, &p).unwrap().len();
+        }
+        assert_eq!(extra_cubes, 400);
+        assert!(47626 + extra_cubes <= crate::c71_matrix::linear::MAX_CUBES);
         assert!(rms.bytes.live <= 1usize << 33);
     }
 }

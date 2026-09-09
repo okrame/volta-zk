@@ -1,6 +1,6 @@
 # Current status — C7.1 Gemma-31B, B12 fixed-run goal active
 
-Updated 2026-09-09. Editable working summary; Git preserves revisions.
+Updated 2026-09-10. Editable working summary; Git preserves revisions.
 [Design](c7.1-gemma31b-design.md) · [Documentation index](README.md) ·
 [Historical ledger](prototype-status-history-2026-09-07.md).
 
@@ -149,38 +149,37 @@ T121/M93. The known upper is 1,165,368 base rows per attempt, 3,496,104
 for three, before other operators. This requires the fixed public shifts
 and prescribed dispatch; full calibrated-profile/native execution is open.
 
-The [native joint RMS kernel](../rust/volta-pcs/src/c71_matrix/rms/gkr.rs)
-now proves the exact integer P/S/Y predicate through original byte MACs.
-Its public compiler matches the existing Boolean reference, including
-nonzero exponents; mixed weighted/unweighted profiles share one GKR.
-The final input-bit sum goes directly through byte P/S, with no fresh
-bit authentication. A 7,299-row ideal check includes byte range and one
-PCS: wrong output fails GKR, while changed S preserving Y fails against
-the committed bytes. Canonical P=X*W, S=sum X² and Y consumer routes,
-actual Gemma profiles and their composition remain open; the partial
-P0/RNE security bound above has not acquired full RMS or Gemma credit.
-The [statistic kernel](../rust/volta-pcs/src/c71_matrix/rms/statistic.rs)
-now reuses cubic P0 for S=sum X². A 7,761-row ideal weighted RMS case
-closes P=X*W, S and the exact predicate through the same ranged W/A PCS,
-with one S word broadcast per row. Altered S preserving Y fails the
-statistic; changing the weight getter and consistently updating P/Y
-fails the installed W PCS. This completes that small RMS relation;
-the full Gemma dispatcher and complete composition remain open.
-The [canonical RMS source compiler](../rust/volta-pcs/src/c71_matrix/gemma/rms.rs)
-now maps all 421 norms into the same A, reusing existing Y consumers and
-the ten global pre-norm K/V aliases. It adds 50 local V inputs, 300 Y
-sources and 421 S sources: 2,146 total sources, 7,091,219,838 bytes, still
-D33. Literal small-view checks cover head reshaping, S broadcast and
-selected final rows. The known P0/direct-RNE/RMS/statistic/range batch
-needs at most 47,626 public cubes and 3,051 targets; the cube guard is
-now 65,536. This compiles forms only; calibrated dispatch, 50 local V
-RNE demands and recomposition remain open. Full A materialization still
-exceeds the reference arena.
+The [RMS kernels](../rust/volta-pcs/src/c71_matrix/rms/gkr.rs) and
+[canonical dispatcher](../rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs)
+now connect P=X*W, S=sum X² and exact integer RMS to the original W/A
+MACs. The [source compiler](../rust/volta-pcs/src/c71_matrix/gemma/rms.rs)
+maps all 421 norms, reusing consumer Y and ten global pre-norm K/V aliases.
+It adds 50 local V inputs, 300 Y and 421 S sources: 2,146 total sources,
+7,091,219,838 bytes, still D33. All 50 local V RNE requests retain the
+statistic's original X MAC and point; the known A batch has 3,101 targets
+and at most 48,026 cubes, below the 65,536 guard.
+A 10,003-row ideal graph closes canonical P0/RMS and three RNE through
+the same two ranged PCS. It also binds original embedding-input MACs
+directly to W. Altered V with consistent S/Y fails RNE; altered weights
+with consistent P/Y fail the installed W PCS. Full metadata checks cover
+all source routes without allocating weight bodies or the large circuits.
 
-Twenty-eight B12 algebra/accounting checks include the scalar invariant,
+The [conditional P0/RNE/RMS composition](c7.1-gemma31b-design.md#b12-composizione-raw-p0-a-due-sorgenti)
+now covers 290 original matrix-to-i16 RNE tables and all 421 exact norms,
+under an explicit public compiler envelope: 128-bit arithmetic, H≤128,
+width≤2^14 and ≤2,000,000 public rows per profile. It retains about
+**82.99442 soundness / 91.02272 ZK bits** within T121/M93, with the same
+primitive hypotheses and global Q*. The known upper is **1,527,909 base
+rows per attempt, 4,583,727 for three**, before other Gemma operators.
+This is parametric in valid public profiles; actual calibrated parameters,
+full-domain execution and the remaining producer relations are still open.
+The enormous dense-trace resource upper grants no physical schedule credit;
+full A materialization also still exceeds the reference arena.
+
+Thirty B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 209; the 17
-narrow bootstrap/pool checks and twenty-seven B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 211; the 17
+narrow bootstrap/pool checks and twenty-eight B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -201,8 +200,8 @@ NoPeek, relation and resource composition.
 
 **Remaining work:** full Gemma malicious-verifier ZK, the complete quantized
 Gemma GKR relation using the range-checked W, full correlation census and
-both-role resource composition for the fixed run. The known 3,496,104-row upper
-for three byte-backed P0/direct-RNE attempts fits the initial capacity; other circuits remain uncounted.
+both-role resource composition for the fixed run. The known 4,583,727-row upper
+for three byte-backed P0/RNE/RMS attempts fits the initial capacity; other circuits remain uncounted.
 The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
 soundness bound also included failed setups/key changes; that broader
 evidence remains valid without making renewal/recovery new gates. Neither

@@ -377,24 +377,31 @@ impl Plan {
                 forms.push(self.project(c.tensor, r, s, Fp3::ONE)?);
                 continue;
             }
-            if r.len() != bits(tokens.len()) {
-                return Err("Gemma lookup token axis differs".into());
-            }
-            let source = &self.sources[c.tensor];
-            let mut form = Vec::new();
-            for (i, &token) in tokens.iter().enumerate() {
-                if token as usize >= source.rows {
-                    return Err("Gemma public token is outside vocabulary".into());
-                }
-                let point: Vec<_> = (0..bits(source.rows))
-                    .rev()
-                    .map(|j| if token as usize >> j & 1 == 1 { Fp3::ONE } else { Fp3::ZERO })
-                    .collect();
-                form.extend(self.project(c.tensor, &point, s, eq_index(r, i))?);
-            }
-            forms.push(form);
+            forms.push(self.lookup_form(r, s, tokens)?);
         }
         Ok(forms)
+    }
+
+    /// Original claims on the declared lookup output, including downstream
+    /// consumers. All token rows remain ONE linear target on the shared W.
+    pub fn lookup_form(&self, r: &[Fp3], s: &[Fp3], tokens: &[u32]) -> Result<Vec<Cube>, String> {
+        let c = self.cohorts.first().ok_or("Gemma lookup cohort missing")?;
+        if c.kind != Kind::Lookup || c.rows != tokens.len() || r.len() != bits(tokens.len()) {
+            return Err("Gemma lookup token axis differs".into());
+        }
+        let source = &self.sources[c.tensor];
+        let mut form = Vec::new();
+        for (i, &token) in tokens.iter().enumerate() {
+            if token as usize >= source.rows {
+                return Err("Gemma public token is outside vocabulary".into());
+            }
+            let point: Vec<_> = (0..bits(source.rows))
+                .rev()
+                .map(|j| if token as usize >> j & 1 == 1 { Fp3::ONE } else { Fp3::ZERO })
+                .collect();
+            form.extend(self.project(c.tensor, &point, s, eq_index(r, i))?);
+        }
+        Ok(form)
     }
 }
 

@@ -283,10 +283,34 @@ def test_B12_RMS_source_extension_counts_shared_Y_KV_and_all_original_byte_forms
     assert b['known_A_cubes_with_P0_direct_RNE_RMS_statistics_and_range_upper'] == 47626 < b['public_cube_cap']
     assert b['known_A_targets_with_P0_direct_RNE_RMS_statistics_and_range'] == 3051 < b['public_target_cap']
     assert b['local_V_new_quantized_sources'] == 50 and b['global_V_aliases_pre_norm_K'] == 10
+    assert b['compiled_local_V_RNE_requests'] == 50 and b['additional_local_V_RNE_cubes'] == 400
+    assert b['A_cubes_including_local_V_RNE_upper'] == 48026 < b['public_cube_cap']
+    assert b['A_targets_including_local_V_RNE'] == 3101 < b['public_target_cap']
     assert not b['new_PCS_or_private_rng_streams_for_D33']
     assert b['dense_auxiliary_body_exceeds_reference_arena']
     assert not b['full_calibrated_RMS_dispatch_or_source_RNE_proofs']
     assert not b['complete_security_or_physical_credit']
+
+
+def test_B12_canonical_RMS_dispatcher_counts_shared_statistics_and_original_demands():
+    profiles = [plan.rms_layered_circuit(plan.rms_boolean_circuit(d,0,0,0,w,True))
+                for d,w in [(2,True),(4,True),(2,False)]]
+    widths = [p['summary']['level_widths'] for p in profiles]
+    b = plan.b12_rms_dispatch_profile(widths,[(4,2),(1,4),(4,2),(4,2)],5)
+    assert (b['norms'],b['cells']) == (4,28)
+    assert b['joint']['height'] == 93 and b['joint']['gate_index_bits_sum'] == 848
+    assert b['Fp3_correlations_before_P0_RNE_range_and_shared_PCS'] == 7746
+    assert 70+7746+3*448+269+510+64 == 10003
+    assert b['FS_draw_requests'] == 2395
+    assert b['field_payload_bytes_before_context_and_framing'] == 243048
+    assert b['MAC_degree_sum_before_shared_PCS'] == 2384
+    assert b['sum_of_all_FS_error_degrees_before_shared_PCS'] == 5358
+    assert b['original_auxiliary_targets'] == 13
+    assert not b['new_source_PCS_or_private_rng_streams']
+    assert not b['full_calibrated_Gemma_execution']
+    assert not b['complete_security_or_physical_credit']
+    with pytest.raises(ValueError):
+        plan.b12_rms_dispatch_profile(widths,[(4,2),(1,4),(4,2),(4,2)],4)
 
 
 def test_B12_joint_RMS_counts_original_bit_sum_products_and_global_FS_losses():
@@ -344,6 +368,47 @@ def test_B12_direct_RNE_consumers_recompose_errors_without_extra_roots_or_MACs()
     assert not b['all_Gemma_integer_producers_proven']
     assert not b['native_full_request_execution_or_calibrated_shift_profile']
     assert b['full_Gemma_security_totals'] is None
+
+
+def test_B12_RMS_composition_counts_every_original_source_and_preserves_global_budget():
+    assessment = plan.b12_pcs_binding_assessment()
+    base = assessment['direct_P0_RNE_composition']
+    b = assessment['P0_RNE_RMS_composition']
+    d = b['dispatcher_upper']
+    assert (d['joint']['height'],d['joint']['gate_index_bits_sum']) == (128,7+127*14)
+    assert d['joint']['Fp3_correlations_before_source_range_and_shared_PCS'] == 27168
+    norms = plan.rms_statistic_cohorts(plan.gemma_weight_cohorts(plan.pinned_private_tensors()))
+    rows = sum((n['statistic_rows']-1).bit_length() for n in norms)
+    dimensions = rows+sum((n['columns']-1).bit_length() for n in norms)
+    assert (rows,dimensions) == (4108,8711)
+    assert d['Fp3_correlations_before_P0_RNE_range_and_shared_PCS'] == 27168+4*dimensions+4*421+1 == 63697
+    assert b['additional_local_V_RNE_requests'] == 50
+    assert b['additional_local_V_RNE_cell_bits_sum'] == 50*(8+12) == 1000
+    assert b['additional_Fp3_correlations_upper_per_attempt'] == 63697+50*(40*20+343) == 120847
+    assert b['additional_MAC_degree_sum_upper_per_attempt'] == 7715+dimensions+421+2+50*(9*20+66) == 29149
+    degree = 19475+rows+3*dimensions+420+50*(33*20+274)
+    assert b['sum_of_all_added_FS_error_degrees_upper'] == degree == 96836
+    assert Fraction(b['additional_global_FS_error']) == Fraction((1 << 74)*degree,plan.P**3)
+    assert Fraction(b['conditional_soundness_sum']) == Fraction(base['conditional_soundness_sum'])+Fraction(b['additional_global_FS_error'])+Fraction(3*29149,plan.P**3-1)
+    assert b['conditional_ZK_sum'] == base['conditional_ZK_sum']
+    assert b['additional_FS_draw_requests'] == 34319
+    assert b['additional_field_payload_bytes_upper_before_context_and_framing'] == 3597432
+    assert b['initial_base_capacity_upper_three_attempts_before_other_operators'] == 4583727 < b['initial_base_capacity_limit']
+    assert b['base_rows_upper_per_attempt_before_other_operators'] == 1527909
+    assert b['sources']['A_targets_including_local_V_RNE'] == 3101 < 4096
+    assert b['sources']['A_cubes_including_local_V_RNE_upper'] == 48026 < 65536
+    # Structural analytic reserves, including programs of different profiles;
+    # these bounds intentionally grant NO dense-trace arena/schedule credit.
+    e = b['public_program_envelope']
+    assert (1 << 29)*e['max_profiles']*e['max_layer_rows_per_profile']*128*(1 << 12) < b['additional_honest_work_u64_upper']
+    assert 4*129*(1 << 29)*e['max_layer_width']*3 < b['additional_honest_memory_words_upper']
+    assert b['both_below_2_to_minus_78'] and b['both_resource_caps_hold']
+    assert b['full_RO_queries_upper'] < 1 << 74
+    assert not b['new_PCS_or_private_rng_streams']
+    assert b['native_tiny_P0_RMS_local_V_RNE_two_ranged_PCS_Fp3_rows'] == 10003
+    assert not b['actual_Gemma_quantization_profiles_compiled']
+    assert not b['native_full_domain_execution'] and not b['all_Gemma_integer_producers_proven']
+    assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
 
 
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():

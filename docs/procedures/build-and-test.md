@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its twenty-seven tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its twenty-eight tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -95,7 +95,7 @@ from the earlier PCS checks to keep each invocation below 60 seconds.
 The `c71_b12_p0` filter executes a small raw matrix/norm/lookup caller
 with 357 ideal Fp3 correlations, one ranged W PCS and a separate C/X PCS.
 It checks committed false cuts and detached input MACs; no socket is needed.
-The seven `c71_b12_gemma` checks cover native metadata/DAG layout and
+The eight `c71_b12_gemma` checks cover native metadata/DAG layout and
 physical/virtual addresses, including ragged tensor MLEs. The caller check
 executes all 773 compact reductions with zero vectors and compiles the
 original auxiliary forms; its placeholder roots grant no PCS acceptance.
@@ -143,11 +143,17 @@ fails the original W PCS. Full 421-cohort Gemma execution remains open.
 The `c71_b12_gemma_rms` check compiles all 421 canonical RMS source
 routes, including ten global pre-norm K/V aliases. A literal small byte
 view checks head reshape, S broadcast, reused Y and the final selected
-rows. It also counts the D33 extension and its 47,626-cube known batch;
+rows. It also counts the D33 extension and its 48,026-cube known batch including 50 local V RNE;
 no full source body or RMS trace is allocated. The 65,536 public-cube
 guard does not change the native D14 source cap. After the shared byte
 form refactor, rerun the full `c71_b12_gemma` filter for the existing
 P0/byte/RNE cases; actual full-domain dispatch remains open.
+The `c71_b12_gemma_rms_dispatch` case executes a canonical small graph
+with 10,003 ideal Fp3 rows: P0, all its RMS/statistics, direct q/k RNE,
+local V RNE and both ranged PCS. Original embedding-input MACs also
+open the same W. V altered with consistent S/Y fails RNE; norm weights
+altered with consistent P/Y fail the installed W PCS. The dispatcher
+has a 64-cell/eight-profile cap; this is no calibrated full-model run.
 After byte-function changes, rerun `c71_b12_byte_functions` and
 `c71_b12_rne` separately; ordinary lane-mode transcripts are preserved.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner

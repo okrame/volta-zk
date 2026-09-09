@@ -6706,6 +6706,46 @@ def b12_rms_statistic_profile(row_bits, column_bits):
     }
 
 
+def b12_rms_dispatch_profile(profile_widths, statistic_shapes, cell_bits):
+    """Statistics, one common product mask and joint RMS/P-S; no source PCS.
+
+    Compiled programs and parameters must precede statistic challenges.
+    The shape/width envelope is public; this does not calibrate Gemma.
+    """
+    if not statistic_shapes:
+        raise ValueError('RMS dispatcher needs statistic shapes')
+    cells = 0
+    statistics = []
+    for rows, columns in statistic_shapes:
+        natural(rows, 'RMS statistic selected rows', 1, 8192)
+        natural(columns, 'RMS statistic columns', 1, 5376)
+        cells += rows*columns
+        statistics.append(b12_rms_statistic_profile((rows-1).bit_length(), (columns-1).bit_length()))
+    if (cells-1).bit_length() != cell_bits:
+        raise ValueError('RMS joint cells disagree with statistic shapes')
+    joint = b12_rms_joint_profile(profile_widths, cell_bits)
+    correlations = 1+joint['Fp3_correlations_before_source_range_and_shared_PCS']+sum(
+        s['Fp3_correlations_before_common_product_batch_and_shared_PCS'] for s in statistics)
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs',
+        'joint': joint, 'norms': len(statistics), 'cells': cells,
+        'Fp3_correlations_before_P0_RNE_range_and_shared_PCS': correlations,
+        'field_payload_bytes_before_context_and_framing': 48+joint['field_payload_bytes_before_context_and_framing']+sum(
+            s['field_payload_bytes_before_context_and_shared_closures'] for s in statistics),
+        'FS_draw_requests': 1+joint['FS_draw_requests']+sum(s['FS_draw_requests_before_common_product_batch'] for s in statistics),
+        'MAC_degree_sum_before_shared_PCS': 2+joint['MAC_degree_sum_before_shared_PCS']+sum(
+            s['MAC_degree_sum_before_common_product_batch_and_PCS'] for s in statistics),
+        'sum_of_all_FS_error_degrees_before_shared_PCS': len(statistics)-1+joint['sum_of_all_FS_error_degrees_upper_before_shared_PCS']+sum(
+            s['sum_of_all_FS_error_degrees_before_common_product_batch_and_PCS'] for s in statistics),
+        'original_auxiliary_targets': 3*len(statistics)+1,
+        'fixed_public_parameters_before_all_statistic_probes': True,
+        'new_source_PCS_or_private_rng_streams': 0,
+        'native_cell_bits_cap': 6, 'native_public_profile_count_cap': 8,
+        'full_calibrated_Gemma_execution': False,
+        'complete_security_or_physical_credit': False,
+    }
+
+
 def b12_rms_source_profile():
     """Canonical P0+RMS A-source extension, before calibrated execution.
 
@@ -6755,6 +6795,10 @@ def b12_rms_source_profile():
         'known_A_targets_with_P0_direct_RNE_RMS_statistics_and_range': 1547+240+3*len(norms)+1,
         'public_cube_cap': 65536, 'public_target_cap': 4096,
         'local_V_new_quantized_sources': new_inputs, 'global_V_aliases_pre_norm_K': 10,
+        'compiled_local_V_RNE_requests': new_inputs,
+        'additional_local_V_RNE_cubes': 400,
+        'A_cubes_including_local_V_RNE_upper': 18472+3840+joint_cubes+2*input_cubes+statistic_cubes+34+400,
+        'A_targets_including_local_V_RNE': 1547+240+3*len(norms)+1+new_inputs,
         'new_PCS_or_private_rng_streams_for_D33': 0,
         'dense_auxiliary_body_exceeds_reference_arena': source_bytes > 6*1024**3,
         'full_calibrated_RMS_dispatch_or_source_RNE_proofs': False,
@@ -7098,6 +7142,79 @@ def b12_direct_P0_RNE_composition(raw_composition):
     }
 
 
+def b12_RMS_composition(direct):
+    """Conditional P0/RNE/RMS relation under a public program envelope.
+
+    This joint width upper is NOT a calibrated program: each of at most
+    421 actual public programs must separately pass the compiler limits.
+    No extra W/A root, private sampler, or output reauthentication is used.
+    Other Gemma producers and the physical full-domain caller remain open.
+    """
+    cohorts = gemma_weight_cohorts(pinned_private_tensors())
+    norms = rms_statistic_cohorts(cohorts)
+    sources = b12_rms_source_profile()
+    # At most 128 layers, including final flag; the first layer has <=98
+    # original input ports. Joint maxima may come from different programs.
+    widths = [98]+[1 << 14]*127+[1]
+    dispatcher = b12_rms_dispatch_profile([widths],
+        [(n['statistic_rows'],n['columns']) for n in norms],
+        (sources['joint_RMS_cells']-1).bit_length())
+    local_v = [c for c in cohorts if c['operation'] == 'v_source']
+    dimensions = [(c['rows']-1).bit_length()+(c['columns']-1).bit_length() for c in local_v]
+    rne = [b12_rne_profile(c) for c in dimensions]
+    extra_rows = dispatcher['Fp3_correlations_before_P0_RNE_range_and_shared_PCS']+sum(
+        p['Fp3_correlations_upper_before_incoming_claims_and_shared_PCS'] for p in rne)
+    degree = dispatcher['sum_of_all_FS_error_degrees_before_shared_PCS']+sum(33*c+274 for c in dimensions)
+    mac_degree = dispatcher['MAC_degree_sum_before_shared_PCS']+sum(
+        p['MAC_degree_sum_upper_before_shared_PCS'] for p in rne)
+    # Include each original statistic-X selection loss in the RNE term,
+    # then sum ALL rounds/probes before the SAME global Q*, not per norm.
+    extra_fs = Fraction((1 << 74)*degree, P**3)
+    extra_mac = Fraction(3*mac_degree, P**3-1)
+    sound = Fraction(direct['conditional_soundness_sum'])+extra_fs+extra_mac
+    privacy = Fraction(direct['conditional_ZK_sum'])
+    work, memory, ro = 1 << 80, 1 << 56, 1 << 40
+    total_work = direct['reduction_work_upper']+work
+    total_memory = direct['reduction_memory_words_upper']+memory
+    total_rows = direct['Fp3_correlations_upper_per_attempt_before_other_operators']+extra_rows
+    return {
+        'relation': 'raw P0, 290 original matrix-to-i16 RNE tables, and all 421 exact RMS/statistic predicates',
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs',
+        'public_program_envelope': {'max_profiles': len(norms), 'max_arithmetic_bits': 128,
+            'max_layer_rows_per_profile': 2_000_000, 'max_height': 128,
+            'max_layer_width': 1 << 14, 'joint_width_upper_not_a_calibrated_program': widths},
+        'dispatcher_upper': dispatcher, 'sources': sources,
+        'additional_local_V_RNE_requests': len(local_v),
+        'additional_local_V_RNE_cell_bits_sum': sum(dimensions),
+        'additional_Fp3_correlations_upper_per_attempt': extra_rows,
+        'additional_FS_draw_requests': dispatcher['FS_draw_requests']+sum(p['FS_draw_requests'] for p in rne),
+        'additional_field_payload_bytes_upper_before_context_and_framing': dispatcher['field_payload_bytes_before_context_and_framing']+sum(
+            p['field_payload_bytes_upper_before_context_and_framing'] for p in rne),
+        'additional_MAC_degree_sum_upper_per_attempt': mac_degree,
+        'sum_of_all_added_FS_error_degrees_upper': degree,
+        'additional_global_FS_error': str(extra_fs), 'additional_fixed_run_MAC_error': str(extra_mac),
+        'Fp3_correlations_upper_per_attempt_before_other_operators': total_rows,
+        'base_rows_upper_per_attempt_before_other_operators': 3*total_rows,
+        'initial_base_capacity_upper_three_attempts_before_other_operators': 9*total_rows,
+        'initial_base_capacity_limit': direct['initial_base_capacity_limit'],
+        'new_PCS_or_private_rng_streams': 0,
+        'additional_honest_work_u64_upper': work, 'additional_honest_memory_words_upper': memory,
+        'additional_honest_RO_events_upper': ro,
+        'full_RO_queries_upper': direct['full_RO_queries_upper']+ro,
+        'reduction_work_upper': total_work, 'reduction_memory_words_upper': total_memory,
+        'both_resource_caps_hold': total_work < 1 << 121 and total_memory < 1 << 93,
+        'conditional_soundness_sum': str(sound), 'conditional_ZK_sum': str(privacy),
+        'soundness_bits': math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits': math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78': max(sound,privacy) < Fraction(1,1 << 78),
+        'native_tiny_P0_RMS_local_V_RNE_two_ranged_PCS_Fp3_rows': 10003,
+        'public_profiles_must_pass_compiler_and_canonical_dispatch': True,
+        'actual_Gemma_quantization_profiles_compiled': False,
+        'native_full_domain_execution': False, 'all_Gemma_integer_producers_proven': False,
+        'full_Gemma_security_totals': None, 'physical_schedule_admitted': False,
+    }
+
+
 def b12_pcs_binding_assessment():
     """Unique-decoding route for the published IOPP; source/hash compilation stays explicit."""
     q = P**3
@@ -7330,6 +7447,7 @@ def b12_pcs_binding_assessment():
     p0_composition = b12_raw_p0_composition(profiles, auxiliary_profile, byte_profile, mask,
         fixed_boot, merkle_collision+merkle_deferred, bootstrap_work, bootstrap_memory,
         tape_words)
+    direct_composition = b12_direct_P0_RNE_composition(p0_composition)
     for row, joint in zip(range_cases, p0_composition['cases']):
         row['large_domain_private_sampler_and_simulator_bound_derived'] = True
         if row['conditional_ZK_sum'] is None:
@@ -7514,7 +7632,8 @@ def b12_pcs_binding_assessment():
             'full_Gemma_security_totals': None, 'security_admitted': False},
         'native_P0_original_MAC_caller': b12_p0_native_caller(),
         'raw_P0_two_source_composition': p0_composition,
-        'direct_P0_RNE_composition': b12_direct_P0_RNE_composition(p0_composition),
+        'direct_P0_RNE_composition': direct_composition,
+        'P0_RNE_RMS_composition': b12_RMS_composition(direct_composition),
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",

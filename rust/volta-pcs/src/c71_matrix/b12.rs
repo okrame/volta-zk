@@ -5,6 +5,48 @@ use super::*;
 use p3_merkle_tree::MerkleTreeHidingMmcs;
 use p3_symmetric::{CompressionFunctionFromHasher, CryptographicHasher, SerializingHasher};
 
+/// Private coins in the same classical XOF-ROM as C71FS, under a separate
+/// domain. No Clone: an MMCS clone draws a new secret seed. Recreating a
+/// fixed model intentionally repeats its coins, within the root's slots.
+pub(super) struct PrivateRng {
+    reader: blake3::OutputReader,
+    remaining: u64,
+}
+
+impl SeedableRng for PrivateRng {
+    type Seed = [u8; 32];
+    fn from_seed(seed: Self::Seed) -> Self {
+        let mut hash = blake3::Hasher::new();
+        hash.update(b"volta-zk/c71/b12/private-coins/v1\0");
+        hash.update(&seed);
+        Self { reader: hash.finalize_xof(), remaining: 1 << 40 }
+    }
+}
+
+impl rand_010::TryRng for PrivateRng {
+    type Error = std::convert::Infallible;
+    fn try_fill_bytes(&mut self, bytes: &mut [u8]) -> Result<(), Self::Error> {
+        self.remaining = self
+            .remaining
+            .checked_sub(bytes.len() as u64)
+            .expect("B12 private coin stream exhausted; burn the attempt");
+        self.reader.fill(bytes);
+        Ok(())
+    }
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        let mut bytes = [0; 4];
+        self.try_fill_bytes(&mut bytes)?;
+        Ok(u32::from_le_bytes(bytes))
+    }
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        let mut bytes = [0; 8];
+        self.try_fill_bytes(&mut bytes)?;
+        Ok(u64::from_le_bytes(bytes))
+    }
+}
+
+impl rand_010::TryCryptoRng for PrivateRng {}
+
 #[derive(Clone, Debug)]
 pub(super) struct DomainHash(&'static [u8]);
 
@@ -19,7 +61,7 @@ pub(super) type HidingMmcs = MerkleTreeHidingMmcs<
     u8,
     SerializingHasher<DomainHash>,
     CompressionFunctionFromHasher<DomainHash, 2, 32>,
-    StdRng,
+    PrivateRng,
     2,
     32,
     4,
@@ -30,7 +72,7 @@ pub(super) fn mmcs(seed: [u8; 32]) -> HidingMmcs {
         SerializingHasher::new(DomainHash(b"volta-zk/c71/b12/merkle/leaf/v1\0")),
         CompressionFunctionFromHasher::new(DomainHash(b"volta-zk/c71/b12/merkle/node/v1\0")),
         0,
-        StdRng::from_seed(seed),
+        PrivateRng::from_seed(seed),
     )
 }
 
@@ -52,6 +94,31 @@ mod tests {
     use super::*;
     use p3_commit::Mmcs;
     use p3_matrix::{dense::RowMajorMatrix, Dimensions};
+
+    #[test]
+    fn c71_b12_private_coins_replay_stream_and_fail_closed() {
+        use rand_010::Rng;
+        let seed = [3; 32];
+        let mut rng = PrivateRng::from_seed(seed);
+        let mut whole = [0; 257];
+        rng.fill_bytes(&mut whole);
+        let mut expected = [0; 257];
+        let mut hash = blake3::Hasher::new();
+        hash.update(b"volta-zk/c71/b12/private-coins/v1\0");
+        hash.update(&seed);
+        hash.finalize_xof().fill(&mut expected);
+        assert_eq!(whole, expected);
+        let mut split = PrivateRng::from_seed(seed);
+        assert_eq!(split.next_u32().to_le_bytes(), whole[..4]);
+        assert_eq!(split.next_u64().to_le_bytes(), whole[4..12]);
+        split.fill_bytes(&mut expected[12..]);
+        assert_eq!(expected[12..], whole[12..]);
+        assert_eq!(split.remaining, (1 << 40) - 257);
+        split.remaining = 0;
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| split.next_u64())).is_err()
+        );
+    }
 
     #[test]
     fn c71_b12_salted_merkle_replays_and_rejects_salt_changes() {

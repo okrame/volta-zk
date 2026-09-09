@@ -38,10 +38,13 @@ Under three independent uniform query sets, the B2 n=128 exhaustion event
 has probability about `2^-24.0445`; this is a source-level privacy finding,
 not a measured native FS attack. The opt-in `c71-b12-pcs` now reuses the
 salted MMCS with separate hash domains, fresh proof salt streams and codec v2.
-Two native B12 tests cover salting and a real B11 durable consumer: two valid
+Three native B12 tests cover private coins, salting and a real B11 durable consumer: two valid
 matrix proofs of one root, then a rejected salt alteration whose burn survives
 reopen. This still uses B2 IOP geometry, with its security gaps; no full
 hash/FS/ZK bound or root renewal follows from the component check.
+Salt and mask coins now use secret-seed XOF expansion in the existing ROM;
+the fixed-root replacement lemma is below `2^-178` for Q*=2^74, eliminating
+the unquantified ChaCha12 premise from this component.
 
 PCS hash/FS compilation into the GKR's exact authenticated endpoint, root
 renewal, both-role lifetime composition and the complete resource reduction

@@ -6344,6 +6344,8 @@ def b11_intermediate_selection():
 def b12_pcs_binding_assessment():
     """Unique-decoding route for the published IOPP; source/hash compilation stays explicit."""
     q = P**3
+    coin_queries, secret_streams = 1 << 74, 12
+    coin_error = Fraction(coin_queries*secret_streams, (1 << 256)-coin_queries-secret_streams) + Fraction(secret_streams*(secret_streams-1), 1 << 257)
     query_count, mask_message, mask_queries = 512, 2048, 512
 
     def oracle(message, randomness, width):
@@ -6442,7 +6444,15 @@ def b12_pcs_binding_assessment():
             "salting_costs_on_preserved_B2_geometry": salting_costs,
             "additional_model_secret_seed_bytes": 32,
             "fresh_proof_salt_stream_separate_from_model_rematerialization": True,
-            "salt_generator": "OS-seeded StdRng from locked rand 0.10.2; concrete advantage not discharged",
+            "salt_generator": "domain-separated secret-seed BLAKE3 XOF in the existing classical ROM; same generator for private mask coins",
+            "private_coin_replacement": {
+                "global_RO_queries_assumed_including_simulator": coin_queries,
+                "unique_secret_streams_in_fixed_root_three_attempt_component": secret_streams,
+                "max_output_bytes_per_stream": 1 << 40,
+                "conditional_component_error_upper": str(coin_error),
+                "bits": math.log2(coin_error.denominator)-math.log2(coin_error.numerator),
+                "model_rematerialization_repeats_are_not_fresh_coins": True,
+                "scope": "fixed-root private coin replacement only; not Merkle hiding, FS ZK or a renewed-root stream census"},
             "root_renewal": False, "security_admitted": False},
         "same_W_consequence": "one decoded message per fixed oracle before opening challenges; root links compare both endpoints under the current MAC",
         "remaining": ["claimless affine/runtime correspondence", "salted Merkle and complete FS/ZK compilation",

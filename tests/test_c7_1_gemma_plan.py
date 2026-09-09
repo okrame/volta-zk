@@ -121,6 +121,11 @@ def test_B12_unique_radius_budget_includes_mask_degree_and_keeps_compilation_ope
             for c in native['salting_costs_on_preserved_B2_geometry']] == [
                 (48, 165888, 917504), (128, 208064, 1638400)]
     assert not native['security_admitted'] and not native['root_renewal']
+    coins = native['private_coin_replacement']
+    qs, streams = coins['global_RO_queries_assumed_including_simulator'], coins['unique_secret_streams_in_fixed_root_three_attempt_component']
+    bound = Fraction(qs*streams, (1 << 256)-qs-streams) + Fraction(streams*(streams-1), 1 << 257)
+    assert Fraction(coins['conditional_component_error_upper']) == bound < Fraction(1, 1 << 178)
+    assert streams == 3+3*3 and coins['model_rematerialization_repeats_are_not_fresh_coins']
 
 
 def test_B12_claimless_affinity_and_one_secret_key_root():

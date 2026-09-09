@@ -13,9 +13,11 @@ use crate::c61_whir_reference::C61Commitment;
 #[cfg(not(feature = "c71-b12-pcs"))]
 use crate::c61_whir_reference::{c61_reference_mmcs, C61Mmcs};
 #[cfg(feature = "c71-b12-pcs")]
-use b12::{mmcs as matrix_mmcs, HidingMmcs as MatrixMmcs};
+use b12::{mmcs as matrix_mmcs, HidingMmcs as MatrixMmcs, PrivateRng as MatrixRng};
 #[cfg(not(feature = "c71-b12-pcs"))]
 type MatrixMmcs = C61Mmcs;
+#[cfg(not(feature = "c71-b12-pcs"))]
+type MatrixRng = StdRng;
 type MatrixMultiProof = <MatrixMmcs as p3_commit::Mmcs<Goldilocks>>::MultiProof;
 
 #[cfg(not(feature = "c71-b12-pcs"))]
@@ -35,7 +37,9 @@ use p3_whir_c61::pcs::zk::{HidingWhirProver, HidingWhirVerifier, MaskCodeShape, 
 use p3_whir_c61::pcs::zk::{ZkParameters, ZkWhirConfig};
 use p3_whir_c61::{FoldingFactor, ProtocolParameters, SecurityAssumption};
 use rand::RngCore;
-use rand_010::{rngs::StdRng, SeedableRng};
+use rand_010::SeedableRng;
+#[cfg(not(feature = "c71-b12-pcs"))]
+use rand_010::rngs::StdRng;
 use volta_field::{Fp, Fp3};
 use volta_mac::c7_fp3::{
     c7_fp3_transfer_prover, c7_fp3_transfer_verifier, C7Fp3ProverAuthed as Auth,
@@ -467,7 +471,7 @@ impl Model {
         let dft = Radix2DFTSmallBatch::default();
         let prover = HidingWhirProver::new(&config, &dft, &mmcs);
         let mut fs = Fs::new(b"C71 model setup, Delta independent", 0);
-        model.root = prover.commit(model.polynomial(), &mut fs, &mut StdRng::from_seed(seed)).0;
+        model.root = prover.commit(model.polynomial(), &mut fs, &mut MatrixRng::from_seed(seed)).0;
         Ok(model)
     }
 
@@ -550,7 +554,7 @@ fn gamma(c: &ZkWhirConfig<E, Goldilocks, Fs>) -> Vec<u8> {
     #[cfg(not(feature = "c71-b12-pcs"))]
     let mut bytes = b"C71-matrix-v1;codec1;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;Johnson128;PoW0;AES128-MMO;LPN64,512,8,4;setup16,128,4;checks2;pool3;lift9sVOLE48;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
     #[cfg(feature = "c71-b12-pcs")]
-    let mut bytes = b"C71-matrix-B12-salted-v1;codec2;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;B2-IOP-Johnson128;PoW0;B11-AES256-finite;rows3;salts4Fp;StdRng-0.10.2;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
+    let mut bytes = b"C71-matrix-B12-salted-v1;codec2;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;B2-IOP-Johnson128;PoW0;B11-AES256-finite;rows3;salts4Fp;private-coins-v1-cap2^40;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
     let mut words = vec![
         volta_field::P,
         16,
@@ -680,7 +684,7 @@ fn matrix_prove(
     // Re-materialization is charged to this attempt. Only the initial model
     // mask seed repeats, within the three-slot root capacity; proof masks do not.
     let (root, data) =
-        prover.commit(model.polynomial(), &mut fs, &mut StdRng::from_seed(model.seed));
+        prover.commit(model.polynomial(), &mut fs, &mut MatrixRng::from_seed(model.seed));
     if root != model.root {
         return Err("C71 prover changed the installed model root".into());
     }
@@ -699,7 +703,7 @@ fn matrix_prove(
         &[(point, to_p3(terminal.x))],
         to_p3(mask.x),
         &mut fs,
-        &mut StdRng::from_seed(seed),
+        &mut MatrixRng::from_seed(seed),
     );
     let close_tag =
         mask.m - from_p3(proved.base_case.gamma * proved.target.coefficient) * terminal.m;

@@ -71,8 +71,8 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its two tests cover salted
-Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its three tests cover private
+coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal; it needs only local Unix socketpairs.
 The existing field/FS checks use `c71_matrix::tests::` with that feature.
 The old B7 matrix runner rejects this feature before setup. This is an

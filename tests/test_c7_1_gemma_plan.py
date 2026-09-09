@@ -284,6 +284,124 @@ def test_B12_coin_blocks_sum_merged_rounds_and_charge_split_query_groups():
     assert old+c['extra_tape_memory_words_upper'] < 1 << 93
 
 
+def test_B12_scalar_relation_survives_the_native_covector_updates():
+    p, k = 7, 2
+    message, weights = [1, 3, 2, 5, 0, 6, 4, 2], [4, 0, 3, 6, 1, 2, 2, 5]
+    masks = [[1, 5, 2, 3], [4, 1, 6, 2]]
+
+    def evaluate(coeffs, x):
+        return sum(a*pow(x, j, p) for j, a in enumerate(coeffs)) % p
+
+    def dot(a, b):
+        return sum(x*y for x, y in zip(a, b)) % p
+
+    def fold(a, x):
+        half = len(a)//2
+        return [((1-x)*a[i]+x*a[i+half]) % p for i in range(half)]
+
+    # All coins and carried-mask totals over F7. The reference evaluates
+    # actual product polynomials, independently of the affine wire recurrence.
+    for eps, aux, g1, g2 in product(range(p), repeat=4):
+        a, w, past = message, weights, 0
+        mu_tilde = 2*sum(evaluate(s, 0)+evaluate(s, 1) for s in masks) % p
+        target = (eps*(dot(a, w)+aux)+mu_tilde) % p
+        for j, gamma in enumerate((g1, g2), 1):
+            future = sum(evaluate(s, 0)+evaluate(s, 1) for s in masks[j:])
+
+            def true_round(x):
+                return (eps*(dot(fold(a, x), fold(w, x))+aux*pow(pow(2, j, p), -1, p))
+                        + pow(2, k-j, p)*(past+evaluate(masks[j-1], x))
+                        + (pow(2, k-j-1, p)*future if j < k else 0)) % p
+
+            assert (true_round(0)+true_round(1)) % p == target
+            target = true_round(gamma)
+            a, w = fold(a, gamma), fold(w, gamma)
+            past += evaluate(masks[j-1], gamma)
+        assert target == (eps*dot(a, w)+eps*pow(4, -1, p)*aux+past) % p
+    # Code switch: old randomness occupies only the beginning of its mask;
+    # OOD reaches the pad too. A wrong inherited scalar gives a nonzero
+    # constant in the batching polynomial, irrespective of the OOD answer.
+    g, s, u, aux = [3, 1], [2, 6, 4, 5], [1, 4], 2
+    for rho in range(p):
+        y = (evaluate(g, rho)+rho**2*evaluate(s, rho)) % p
+        values = [(evaluate(g, x)+x*x*evaluate(s[:2], x)) % p for x in (1, 2)]
+        for offset in range(p):
+            roots = 0
+            for nu in range(p):
+                source = [(u[j]+nu*rho**j+sum(nu**(i+2)*x**j for i, x in enumerate((1, 2)))) % p
+                          for j in range(len(g))]
+                mask = [(nu*rho**(2+j)+(sum(nu**(i+2)*x**(2+j) for i, x in enumerate((1, 2)))
+                         if j < 2 else 0)) % p for j in range(len(s))]
+                true = (dot(g, source)+aux+dot(s, mask)) % p
+                carried = (dot(g, u)+aux+nu*y+nu**2*values[0]+nu**3*values[1]) % p
+                assert true == carried
+                # Also alter the OOD answer; the nonzero constant cannot cancel identically.
+                roots += (carried+offset+nu-true) % p == 0
+            if offset:
+                assert roots <= 3
+
+
+def test_B12_unique_decoder_and_fixed_root_component_resources():
+    # Complete decoder check on all F5^4 words, including inconsistent
+    # systems and the rank-deficient/no-error case. This is a reduction
+    # witness algorithm, never a decoder in the private runtime verifier.
+    p, xs, dimension, radius = 5, (1, 2, 3, 4), 1, 1
+
+    def decode(values):
+        variables = dimension+2*radius
+        rows = [[pow(x, j, p) for j in range(dimension+radius)]
+                + [(-y*pow(x, j, p)) % p for j in range(radius)]
+                + [y*pow(x, radius, p) % p] for x, y in zip(xs, values)]
+        pivots = []
+        for col in range(variables):
+            pivot = next((r for r in range(len(pivots), len(rows)) if rows[r][col]), None)
+            if pivot is None:
+                continue
+            rank = len(pivots)
+            rows[rank], rows[pivot] = rows[pivot], rows[rank]
+            inverse = pow(rows[rank][col], -1, p)
+            rows[rank] = [x*inverse % p for x in rows[rank]]
+            for r in range(len(rows)):
+                if r != rank:
+                    scale = rows[r][col]
+                    rows[r] = [(x-scale*y) % p for x, y in zip(rows[r], rows[rank])]
+            pivots.append(col)
+        if any(not any(row[:-1]) and row[-1] for row in rows):
+            return None
+        solution = [0]*variables
+        for row, pivot in zip(rows, pivots):
+            solution[pivot] = row[-1]
+        numerator = solution[:dimension+radius]
+        locator = solution[dimension+radius:]+[1]
+        quotient = [0]*dimension
+        for j in reversed(range(dimension)):
+            quotient[j] = numerator[j+radius]
+            for i, coefficient in enumerate(locator):
+                numerator[j+i] = (numerator[j+i]-quotient[j]*coefficient) % p
+        if any(numerator) or sum(y != quotient[0] for y in values) > radius:
+            return None
+        return quotient[0]
+
+    for word in product(range(p), repeat=len(xs)):
+        nearby = [c for c in range(p) if sum(y != c for y in word) <= radius]
+        assert len(nearby) <= 1
+        assert decode(word) == (nearby[0] if nearby else None)
+    b = plan.b12_pcs_binding_assessment()['fixed_root_field_matrix_soundness']
+    assert b['decoder_invocations'] == 1 and not b['decoder_in_runtime_verifier']
+    assert b['full_component_RO_queries_upper'] < 1 << 74
+    assert b['reduction_work_upper'] < b['primitive_work_cap'] == 1 << 121
+    assert b['reduction_memory_words_upper'] < b['primitive_memory_words_cap'] == 1 << 93
+    for case in b['cases']:
+        total = sum(map(Fraction, case['terms'].values()))
+        assert total == Fraction(case['conditional_soundness_sum']) < Fraction(1, 1 << 78)
+        assert case['attempts_including_failures'] == 3
+    assert b['native_scalar_IOP_relation_proven'] and b['native_prefix_projection_proven_for_this_consumer']
+    assert not any(b[key] for key in ('root_renewal', 'malicious_verifier_ZK_proven',
+        'quantized_weight_range_proven', 'full_Gemma_GKR_proven', 'security_admitted'))
+    admission = plan.b12_lifetime_admission()
+    assert not admission['B12_complete'] and not admission['security_admitted']
+
+
 def test_existing_paired_fold_diagnostic():
     plan.self_check()
 

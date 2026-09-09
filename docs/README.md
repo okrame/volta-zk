@@ -17,8 +17,9 @@ consumer now reaches the durable B11 pool with the unique-radius IOP
 geometry and an adaptive MAC-feedback bound. Merkle binding now fixes an
 oracle at its commitment prefix. Native FS coin blocks now retain that fixed
 opening payload; their merged errors and tape-completion memory are counted.
-Hiding and complete FS compilation still lack admission. Same-W PCS/GKR,
-renewed roots and complete lifetime bounds remain open in
+The fixed-root field matrix now has a direct conditional soundness argument
+(86.8347 bits), including its decoder and caller within T121/M93.
+Malicious-verifier ZK, quantized Gemma GKR, renewed roots and complete lifetime bounds remain open in
 design §10. Full security and production integration remain unadmitted.
 
 ## Current documents

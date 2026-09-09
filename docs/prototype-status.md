@@ -10,70 +10,57 @@ Updated 2026-09-09. Editable working summary; Git preserves revisions.
 requires adversary resources beyond `2^78`, durable single use, one private W
 across bootstrap/MAC/PCS/GKR, and a complete lifetime error at most `2^-78`.
 [Design §10, B12](c7.1-gemma31b-design.md#b12-risorse-lifetime-e-vincolo-same-w)
-extends the **conditional bootstrap** argument to `2^80` adversary work and
-memory/advice words with Q64 unchanged. Reduction work stays below `2^121`;
-its memory bound rises to `2^93` words. The AES/DDH hypotheses must hold at
-that larger memory envelope; they are not proved by B11. The bootstrap
-subtotal remains 86.835 conditional bits. This is not yet the full C7.1
-reduction, including PCS/GKR and their lifetime simulator resources.
+now gives a **conditional soundness bound for the fixed-root field matrix**:
+about 86.8347 bits at n=48 or 128, with three total attempts. The argument
+connects the native matrix sumcheck, PCS and MAC to one extracted W, and
+includes the decoder, verifier, RO tapes and journal replay. At adversary
+work/memory 2^80 and global Q64, the reduction stays below T121/M93.
+AES/DDH advantages at that strengthened envelope remain explicit hypotheses;
+the result does not prove them or the complete C7.1 goal.
 
-The new opt-in [finite-pool component](../rust/volta-pcg/src/c71_lifetime.rs)
-wraps both real B11 roles with a locked durable journal. Setup and joint
-root-slot/row burns precede use; reopen preserves counters and accepted head
-while losing unused secret capacity. It pins one installed model/semantics/root
-and rejects different roots. **Root renewal remains unavailable until its
-same-W proof exists.** Six native B12 checks cover seal framing, process exit,
-partial records and a real two-role bootstrap-to-MAC transfer; the combined
-bootstrap/budget Python checks total 28 passing tests.
-A new 40-byte B12 setup seal assigns the public FS capacity identifier
-only after B11 has fixed the rows. Prior-query hits, collisions and zero
-have a conditional bound below 2^-152 at T80/S20. This closes the temporal
-assignment premise. The virtual claimless messages are fixed before their
-challenges. Native B12 now uses one XOF tape between free prover messages,
-retaining it through commitment-determined openings. Merged-round errors
-are summed and independent mask-query groups receive their own bound.
-Completing adversarial FS tapes fits beside bootstrap memory below 2^93;
-the full prefix-state correspondence and extractor/caller costs remain open.
+The [finite-pool component](../rust/volta-pcg/src/c71_lifetime.rs) wraps both
+real B11 roles with one locked durable journal. Setup and joint root-slot/row
+burns precede use; reopen preserves counters and accepted head while losing
+unused secret capacity. A fresh 40-byte post-bootstrap seal fixes row assignment
+before usable FS prefixes. **Root renewal remains unavailable until its
+same-W proof exists.** Six native pool checks cover seals, crashes, partial
+records and a real bootstrap-to-MAC transfer.
 
-The [B12 PCS analysis](c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata)
-now proves same-set MCA for a linear code with `3*radius < distance`, hence
-unique message decoding. A published ideal IOPP profile retains about 88
-conditional bits after a proposed Q* prefix charge at `2^35` cells, but its
-monolithic initial codeword alone costs 4 TiB and remains physically excluded.
-The opt-in native profile now uses these codes and common private masks,
-composing CFW Theorems 9.10 and 8.1. One uniform OOD point contributes an
-explicit 1/q ordinary-IOP privacy error per switch. Eight algebra/accounting checks
-also pin the affine PCS/MAC closing equation and reproduce candidate-W
-reconstruction after mask exhaustion in an **unsalted** Merkle commitment.
-Under three independent uniform query sets, the B2 n=128 exhaustion event
-has probability about `2^-24.0445`; this is a source-level privacy finding,
-not a measured native FS attack. The opt-in `c71-b12-pcs` now reuses the
-salted MMCS with separate hash domains, fresh proof salt streams and codec v2.
-Five native B12 tests cover coin-block replay, geometry, private coins, salting and a real B11
-durable consumer: two valid matrix proofs of one root, then a rejected salt alteration whose burn survives
-reopen. The native CPU cap remains D14/n<=128; D35 is checked as a small
-configuration only. No full hash/FS/ZK bound or root renewal follows from
-the component check.
-Salt and mask coins now use secret-seed XOF expansion in the existing ROM;
-the fixed-root replacement lemma is below `2^-178` for Q*=2^74, eliminating
-the unquantified ChaCha12 premise from this component.
-An affine-feedback coupling now covers the matrix verifier's adaptive MAC
-checks across aborts/key epochs: at most 27/(p^3-1), below 2^-187 for its
-three attempts, without a RO-query multiplier. Honest transfer plaintexts
-satisfy NoPeek; the PCS blind's simulation and general callbacks remain open.
+The [PCS analysis](c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata)
+proves same-set MCA when 3*radius < distance and fixes the Merkle oracle at
+its commitment prefix, charging collisions and deferred preimages. Native
+B12 uses one XOF tape between free prover messages, retained across openings
+already determined by commitments. Merged-round errors are summed; independent
+mask-query groups have a separate bound. A direct scalar-relation proof now
+covers the actual native covectors and claimless endpoint. The soundness
+tester decodes the installed root once, then checks every accepted public
+output against that same padded field matrix. W remains private in the runtime.
 
-A ROM Merkle-binding lemma now fixes the oracle at its commitment prefix;
-it charges both collisions and later completion of a previously named digest.
-The conditional component bound is below 2^-98 at T80/Q*=2^74. Combined
-with unique decoding it fixes a field-valued W when a nearby codeword exists;
-PCS/GKR acceptance, quantized range and extractor resources remain open.
+The opt-in [salted consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) uses
+common-mask unique-radius codes and fresh private salt streams. Five native
+checks cover FS blocks, geometry, private coins, salting and real B11 roles:
+two valid proofs, then a rejected salt alteration whose burn survives reopen.
+Ten B12 algebra/accounting checks now include the scalar invariant and a
+finite exhaustive decoder check. The complete relevant Python checks total
+190; native legacy replay and fork provenance also pass. These are component
+checks and mathematical arguments, not new Lean or generated-code proofs.
+The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
+PCS-only bits, but its 4 TiB initial codeword remains physically excluded.
 
-PCS hiding/FS compilation into the GKR's exact authenticated endpoint, root
-renewal, both-role lifetime composition and the complete resource reduction
-remain open. The budget keeps both complete security errors unknown; six proposed
-error allocations fitting the remaining margin are targets, not proved bounds.
-All proofs must bind to **one private W**; durable public identifiers alone
-do not establish that relation. No complete 78-bit or production credit.
+Privacy remains separate. Unsalted B2 roots permit candidate-W reconstruction
+after mask exhaustion; its ideal n=128 event is about 2^-24.0445, not a
+measured native FS attack. B12 salting and the private-coin replacement bound
+below 2^-178 address components of that problem. They do not prove salted
+Merkle hiding or malicious-verifier FS/ZK. One uniform OOD point also carries
+an explicit 1/q ordinary-IOP privacy error per switch.
+
+**Remaining work:** malicious-verifier ZK, quantized weight range and the
+complete Gemma GKR relation, same-W root renewal, sufficient correlation
+capacity and both-role lifetime resource composition. The matrix bound is
+for three attempts of one field-valued root, including failed setups/key
+changes; it is not the requested lifetime over renewed roots. Both complete
+security totals stay unknown, and the six full-goal error allocations remain
+targets. No complete 78-bit or production credit.
 
 **B11 selected an intermediate finite AES construction under explicit primitive
 hypotheses.** The earlier 2026-09-09 authorization permitted the temporary

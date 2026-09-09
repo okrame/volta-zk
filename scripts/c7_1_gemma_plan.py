@@ -6454,7 +6454,31 @@ def b12_pcs_binding_assessment():
             "salt_field_array_bytes_created_at_model_setup": 32*oracles[0]["domain_rows"],
             "not_peak_memory_or_full_hash_work": True,
             "Merkle_frontier_may_change_with_the_new_FS_transcript": True})
-    return {"status": "unique_radius_lemma_and_native_salted_consumer_component",
+    # Full caller accounting here is scoped to ONE fixed-root field matrix,
+    # three attempts. The failure tester decodes only that installed root,
+    # not every candidate FS prefix; statistical bad states need no runtime.
+    qa, qa_work, setups, honest = 1 << 64, 1 << 80, 1 << 20, 1 << 50
+    tape_words = max(p['max_XOF_bytes_per_block_upper']//8 for p in profiles)
+    extra_work = (1 << 12)*(qa*tape_words+coin_queries)+(1 << 32)*qa_work+(1 << 72)
+    extra_memory = qa*tape_words+(1 << 12)*coin_queries+(1 << 40)
+    bootstrap_work = qa_work+(1 << 12)*qa_work+(1 << 46)*(coin_queries+honest)
+    bootstrap_memory = qa_work+(1 << 12)*qa_work+(1 << 14)*coin_queries+honest
+    seal_error = Fraction(setups*(8*qa_work+setups+1), 1 << 256)
+    boot_error = Fraction(b11_intermediate_selection()['conditional_lifetime']['sum'])
+    matrix_soundness = []
+    for (n, h), profile in zip(((48, 6), (128, 7)), profiles):
+        maximum = max(Fraction(profile['max_coin_block_error']), Fraction(h, q), Fraction(2, q))
+        terms = {'bootstrap_T80': boot_error, 'post_bootstrap_seal': seal_error,
+            'Merkle_binding': merkle_collision+merkle_deferred,
+            'adaptive_MAC': Fraction(3*(h+2), q-1),
+            'native_matrix_and_PCS_FS': coin_queries*maximum}
+        subtotal = sum(terms.values())
+        matrix_soundness.append({'n': n, 'attempts_including_failures': 3,
+            'terms': {name: str(value) for name, value in terms.items()},
+            'conditional_soundness_sum': str(subtotal),
+            'bits': math.log2(subtotal.denominator)-math.log2(subtotal.numerator),
+            'below_2_to_minus_78': subtotal <= Fraction(1, 1 << 78)})
+    return {"status": "conditional_fixed_root_field_matrix_soundness",
         "credit": False, "security_admitted": False,
         "source": "docs/c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata",
         "affine_MCA": {"premise": "linear code over a field-vector alphabet; 3*radius_rows < minimum_distance",
@@ -6526,15 +6550,39 @@ def b12_pcs_binding_assessment():
             "maximum_completed_tape_bytes": max(p['max_XOF_bytes_per_block_upper'] for p in profiles),
             "extra_tape_memory_words_upper": (1 << 64)*max(p['max_XOF_bytes_per_block_upper']//8 for p in profiles),
             "resource_scope": "RO tape completion only; decoder, full GKR and both-role simulator census remain separate"},
+        "fixed_root_field_matrix_soundness": {
+            "scope": "mathematical conditional soundness, one installed field-valued W, n=48 or 128, three attempts total and S20 setup attempts",
+            "native_scalar_IOP_relation_proven": True,
+            "native_prefix_projection_proven_for_this_consumer": True,
+            "decoder": "monic degree-tau error locator; solve N(x)-y*E_low(x)=y*x^tau, divide, check degree and joint distance",
+            "decoder_invocations": 1,
+            "decoder_in_runtime_verifier": False,
+            "failure_tester": "decode the installed root at termination and compare every accepted public output to the same padded field matrix",
+            "maximum_initial_domain_rows": 1 << 17,
+            "decoder_field_operations_upper": 6*(1 << 17)**3,
+            "caller_and_decoder_u64_work_upper": 1 << 72,
+            "reopen_and_rejected_wrapper_work_upper": (1 << 32)*qa_work,
+            "additional_honest_RO_events_upper": 1 << 22,
+            "additional_honest_FS_blocks_upper": 1 << 10,
+            "full_component_RO_queries_upper": 513*qa+honest+(1 << 22),
+            "reduction_work_upper": bootstrap_work+extra_work,
+            "reduction_memory_words_upper": bootstrap_memory+extra_memory,
+            "primitive_work_cap": 1 << 121, "primitive_memory_words_cap": 1 << 93,
+            "requires_same_strengthened_B12_primitive_hypotheses": True,
+            "cases": matrix_soundness,
+            "root_renewal": False, "malicious_verifier_ZK_proven": False,
+            "quantized_weight_range_proven": False, "full_Gemma_GKR_proven": False,
+            "new_Lean_or_generated_code_proof": False, "security_admitted": False},
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",
             "temporal_premise": "B12 seal before usable prefixes; fixed n and row interval per capacity/slot",
             "algebraic_terminal_correspondence": True,
             "native_coin_block_projection_implemented": True,
-            "next": "compose prefix-state extraction and complete decoder/caller resources with both-role lifetime bounds"},
+            "native_field_matrix_prefix_bound_proven": True,
+            "next": "hiding/malicious-verifier ZK, root renewal, full GKR/quantization and their complete lifetime resources"},
         "same_W_consequence": "one decoded message per fixed oracle before opening challenges; root links compare both endpoints under the current MAC",
-        "remaining": ["claimless RBR/prefix correspondence", "salted Merkle hiding and complete FS/ZK compilation",
+        "remaining": ["salted Merkle hiding and malicious-verifier FS/ZK compilation",
             "root-renewal protocol and both-role lifecycle", "full GKR/quantization relation and adequate correlation capacity",
             "complete physical schedule and extractor/simulator resource census"]}
 
@@ -6554,7 +6602,7 @@ def b12_lifetime_admission():
         "GKR_and_operator_links_FS_prefix", "MAC_and_cross_handle_equality",
         "remaining_samplers_and_transcript_binding", "state_runtime_refinement")}
     return {
-        "status": "resource_lift_conditional_durable_component_complete_full_admission_open",
+        "status": "conditional_fixed_root_soundness_and_durable_component_full_admission_open",
         "credit": False, "security_admitted": False, "B12_complete": False,
         "production_runtime_admitted": False, "pool_PCS_integration_admitted": False,
         "source": "docs/c7.1-gemma31b-design.md#b12-risorse-lifetime-e-vincolo-same-w",
@@ -6598,6 +6646,7 @@ def b12_lifetime_admission():
             "bootstrap_reads_W": False, "MAC_validity_implies_model_binding": False,
             "root_renewal_fails_closed": True,
             "matrix_relation_component_checked": True,
+            "field_matrix_conditional_soundness_instantiated": True,
             "instantiated_authenticated_PCS_GKR_relation": False,
             "conditional_induction": "design B12; anchor uniqueness + root link + same authenticated endpoint + GKR relation"},
         "PCS_binding_assessment": b12_pcs_binding_assessment(),
@@ -6612,7 +6661,7 @@ def b12_lifetime_admission():
             "complete_admission_bound": "infinity",
             "missing_ZK": ["hiding installed anchor and renewed roots", "same-W PCS/GKR joint simulator",
                 "NoPeek runtime correspondence", "full simulator primitive resources"]},
-        "next_goal": "instantiate same-W authenticated PCS/GKR and both-role lifetime FS bounds; root renewal remains unavailable until its link is proved"}
+        "next_goal": "malicious-verifier ZK and same-W root renewal, then full Gemma GKR/quantization and both-role lifetime resources"}
 
 
 def b11_wider_aes_contract():

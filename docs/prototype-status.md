@@ -33,7 +33,7 @@ conditional bits after a proposed Q* prefix charge at `2^35` cells, but its
 monolithic initial codeword alone costs 4 TiB and remains physically excluded.
 The opt-in native profile now uses these codes and common private masks,
 composing CFW Theorems 9.10 and 8.1. One uniform OOD point contributes an
-explicit 1/q ordinary-IOP privacy error per switch. Four algebra/accounting checks
+explicit 1/q ordinary-IOP privacy error per switch. Five algebra/accounting checks
 also pin the affine PCS/MAC closing equation and reproduce candidate-W
 reconstruction after mask exhaustion in an **unsalted** Merkle commitment.
 Under three independent uniform query sets, the B2 n=128 exhaustion event
@@ -49,6 +49,10 @@ the component check.
 Salt and mask coins now use secret-seed XOF expansion in the existing ROM;
 the fixed-root replacement lemma is below `2^-178` for Q*=2^74, eliminating
 the unquantified ChaCha12 premise from this component.
+An affine-feedback coupling now covers the matrix verifier's adaptive MAC
+checks across aborts/key epochs: at most 27/(p^3-1), below 2^-187 for its
+three attempts, without a RO-query multiplier. Honest transfer plaintexts
+satisfy NoPeek; the PCS blind's simulation and general callbacks remain open.
 
 PCS hash/FS compilation into the GKR's exact authenticated endpoint, root
 renewal, both-role lifetime composition and the complete resource reduction

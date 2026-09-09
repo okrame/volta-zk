@@ -13,7 +13,8 @@ resource extension to T80 and a durable finite-pool component are available.
 The PCS analysis adds a proven unique-radius MCA bound and identifies
 unsalted-root privacy loss at mask exhaustion. An opt-in salted matrix
 consumer now reaches the durable B11 pool with the unique-radius IOP
-geometry; complete hash/FS compilation still lacks admission. Same-W PCS/GKR, renewed roots and complete lifetime bounds remain open in
+geometry and an adaptive MAC-feedback bound. Complete hash/FS compilation
+still lacks admission. Same-W PCS/GKR, renewed roots and complete lifetime bounds remain open in
 design §10. Full security and production integration remain unadmitted.
 
 ## Current documents

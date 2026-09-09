@@ -153,6 +153,42 @@ def test_B12_claimless_affinity_and_one_secret_key_root():
             assert sum(passes) <= 1
 
 
+def test_B12_adaptive_affine_feedback_couples_across_key_epochs():
+    # Exhaust all two-query adaptive strategies over F5, including dependence
+    # of query two on acceptance AND rejection. Reference feedback ignores Delta.
+    p = 5
+    queries = list(product(range(p), repeat=2))
+    maxima = [0, 0]
+    for first, after_reject, after_accept in product(queries, repeat=3):
+        reference_first = first == (0, 0)
+        reference_second = (after_reject, after_accept)[reference_first]
+        reference = (reference_first, reference_second == (0, 0))
+        checks = int(first[0] != 0) + int(reference_second[0] != 0)
+        bad_same = bad_new = 0
+        for delta1, delta2 in product(range(1, p), repeat=2):
+            accepted = (first[0]*delta1+first[1]) % p == 0
+            second = (after_reject, after_accept)[accepted]
+            feedback = (accepted, (second[0]*delta2+second[1]) % p == 0)
+            differs = feedback != reference
+            bad_new += differs
+            if delta1 == delta2:
+                bad_same += differs
+        assert bad_same <= checks
+        assert bad_new <= checks*(p-1)
+        maxima[0] = max(maxima[0], bad_same)
+        maxima[1] = max(maxima[1], bad_new)
+    assert maxima == [2, 7]  # 2/4 for one key, 1-(3/4)^2 for two fresh keys
+    # Secret-dependent coefficients invalidate the premise: every key forges.
+    assert sum((delta-delta) % p == 0 for delta in range(1, p)) > 1
+    component = plan.b12_pcs_binding_assessment()['adaptive_MAC_component']
+    for case in component['fixed_root_cases']:
+        assert case['checks_upper'] == 3*case['checks_per_attempt']
+        assert Fraction(case['conditional_error_upper']) == Fraction(case['checks_upper'], plan.P**3-1)
+        assert Fraction(case['conditional_error_upper']) < Fraction(1, 1 << 187)
+    assert not component['arbitrary_callback_NoPeek_proven']
+    assert not component['full_GKR_check_census_or_PCS_soundness']
+
+
 def test_existing_paired_fold_diagnostic():
     plan.self_check()
 

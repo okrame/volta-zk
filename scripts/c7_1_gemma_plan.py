@@ -6461,8 +6461,20 @@ def b12_pcs_binding_assessment():
                 "model_rematerialization_repeats_are_not_fresh_coins": True,
                 "scope": "fixed-root private coin replacement only; not Merkle hiding, FS ZK or a renewed-root stream census"},
             "root_renewal": False, "security_admitted": False},
+        "adaptive_MAC_component": {
+            "ideal_game": "B11 ideal rows; prover view independent of uniform nonzero Delta in each key epoch",
+            "reference_verifier": "accept affine equality a*Delta+b=0 iff a=b=0; all other code and public feedback unchanged",
+            "coupling_bound": "number of executed affine checks / (p^3-1); no RO-query multiplier",
+            "fixed_root_cases": [{"n": n, "checks_per_attempt": h+2,
+                "attempts_including_failures": 3, "checks_upper": 3*(h+2),
+                "conditional_error_upper": str(Fraction(3*(h+2), q-1))}
+                for n, h in ((48, 6), (128, 7))],
+            "source_correspondence": "matrix_verify: h sumcheck equalities, one terminal equality, one PCS affine close; no secret key in FS",
+            "honest_transfer_plaintexts_do_not_read_unused_correlations": True,
+            "arbitrary_callback_NoPeek_proven": False,
+            "full_GKR_check_census_or_PCS_soundness": False},
         "same_W_consequence": "one decoded message per fixed oracle before opening challenges; root links compare both endpoints under the current MAC",
-        "remaining": ["claimless affine/runtime correspondence", "salted Merkle and complete FS/ZK compilation",
+        "remaining": ["claimless RBR/prefix correspondence", "salted Merkle and complete FS/ZK compilation",
             "root-renewal protocol and both-role lifecycle", "full GKR/quantization relation and adequate correlation capacity",
             "complete physical schedule and extractor/simulator resource census"]}
 

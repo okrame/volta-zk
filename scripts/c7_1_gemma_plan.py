@@ -5800,6 +5800,117 @@ def b5_alignment_admission():
     }
 
 
+def b6_converter_comparison():
+    """Bounded ideal-interface comparison; neither real-PCG port is admitted."""
+    repetitions = 2
+    # Independent uniform nonzero Fp2 keys, then reject the zero cubic projection.
+    # This is NOT the runtime's zero-to-one sampler or its real OT/AES pools.
+    nonzero_projection = 1 - Fraction(1, (P + 1)**3)
+    checked_error = (Fraction(1, P**repetitions)
+                     + Fraction(3 * repetitions, P**2 - 1)) / nonzero_projection
+    cases = []
+    for old in b5_alignment_admission()["costs"]["rejected_path"]:
+        count = old["capacity_fp3"]
+        checked_raw = 9 * count + 3 * repetitions
+        native_raw = 3 * count
+        # Proposed fixed-two-check capacity codec, not bytes from an execution:
+        # 76-byte context/count, data+mask differences, three 9-byte frames,
+        # nonce, two common Fp openings with three Fp2 tags each, transcript ack.
+        checked_wire = 76 + 48 * count + 16 * repetitions + 27 + 32 + 56 * repetitions + 32
+        cases.append({
+            "n": old["n"], "credit": False,
+            "kind": "derived interface payload/storage/work; no native execution or secure setup estimate",
+            "capacity_slots_including_abort": old["capacity_slots_including_abort"],
+            "capacity_fp3": count,
+            "per_attempt_reserved_fp3": old["per_attempt_reserved_fp3"],
+            "checked_alignment": {
+                "pool_pairs": 3, "capacity_raw_svole_including_sacrifice": checked_raw,
+                "capacity_sacrificed_svole": 3 * repetitions,
+                "per_attempt_data_svole": 9 * old["per_attempt_reserved_fp3"],
+                "proposed_capacity_wire_bytes_excluding_PCG": checked_wire,
+                "extra_wire_over_unchecked_lift": checked_wire - old["capacity_alignment_wire_bytes"],
+                "raw_prover_storage_bytes": 24 * checked_raw,
+                "raw_verifier_storage_bytes": 16 * checked_raw,
+                "scalar_Fp_products_excluding_PCG_and_packing": {
+                    "prover": 42 * count, "verifier": 48 * count + 20},
+                "complete_capacity_bytes": budget_sum({"specified_converter_messages": checked_wire,
+                    "real_PCG_expansion_and_renewal": None})},
+            "native_fp3": {
+                "pool_pairs": 1, "capacity_data_svole": native_raw,
+                "per_attempt_data_svole": 3 * old["per_attempt_reserved_fp3"],
+                "alignment_payload_bytes": 0,
+                "raw_prover_storage_bytes": 32 * native_raw,
+                "raw_verifier_storage_bytes": 24 * native_raw,
+                "packing_Fp_additions_including_doublings_per_role": 9 * count,
+                "complete_capacity_bytes": budget_sum({"alignment_payload": 0,
+                    "real_PCG_expansion_checks_and_capacity_framing": None})},
+            "both": {"retained_prover_storage_bytes": 48 * count,
+                "retained_verifier_storage_bytes": 24 * count,
+                "transfer_payload_bytes_per_full_correlation": 24,
+                "aborted_slots_refunded": False,
+                "storage_is_not_peak_RSS_or_physical_traffic": True}})
+    bootstrap = []
+    for name, degree, lanes in (("checked_alignment", 2, 3), ("native_fp3", 3, 1)):
+        # Published-form base-LsVOLE, NOT the full leakage-free construction.
+        # k0,t0 are the existing hardened tuple, not a new security estimate.
+        wanted = 25_000 + 2_508 + degree
+        bootstrap.append({"candidate": name, "tag_degree": degree, "pool_pairs": lanes,
+            "COPE_key_choice_OTs": lanes * 64 * degree,
+            "wanted_per_pool": wanted, "sacrificed_per_pool": degree,
+            "COPE_rows_per_pool_including_sacrifice": wanted + degree,
+            "COPE_corrections_payload_bytes": lanes * 64 * degree * 8 * (wanted + degree),
+            "base_OT_payload_bytes_at_existing_three_message_codec": lanes * 64 * degree * 128,
+            "base_OT_frame_bytes": lanes * 3 * 9,
+            "complete_connection_bytes": budget_sum({
+                "COPE_corrections": lanes * 64 * degree * 8 * (wanted + degree),
+                "base_OT_payload_and_frames": lanes * (64 * degree * 128 + 27),
+                "checks_IKNP_GGM_LPN_framing_and_leakage_treatment": None}),
+            "credit": False, "secure_parameter_estimate": False})
+    return {
+        "status": "reject_both_immediate_ports_pending_base_sVOLE_contract",
+        "credit": False, "security_admitted": False, "port_selected": None,
+        "next_candidate": "native_Fp3_base_sVOLE",
+        "decision_source": "docs/c7.1-gemma31b-design.md#esito-b6-confronto-dei-convertitori-e-confine-del-bootstrap",
+        "reviewed_runtime_commit": "1424517",
+        "paper": "sota/2020-0925-wolverine.md",
+        "checked_ideal_interface": {
+            "repetitions": repetitions,
+            "premise": "valid independent ideal nonzero-uniform Fp2 pools; all differences frozen before independent Fp challenge vectors; fresh sacrificed masks; one aggregate verdict",
+            "pre_cubic_rejection_error": "p^-2 + 6/(p^2-1)",
+            "conditional_error": str(checked_error),
+            "hypothetical_setup_count_at_most": LIFETIME_ATTEMPTS,
+            "hypothetical_lifetime_converter_error": str(LIFETIME_ATTEMPTS * checked_error),
+            "hypothetical_lifetime_converter_bits": math.log2(checked_error.denominator)
+                - math.log2(LIFETIME_ATTEMPTS * checked_error.numerator),
+            "malicious_verifier_simulation": "sample differences and fresh common masked openings; derive each response tag from verifier keys, corrections and its Delta; ideal pools only",
+            "challenge_scope": "interactive capacity setup before attempts; no online verifier challenge in the FS proof",
+            "FS_multiplier_applied": False, "complete_lifetime_bound": False},
+        "native_ideal_interface": {
+            "formula": "x=sum_j u^j*r_j; M=sum_j u^j*m_j; K=sum_j u^j*k_j=M+Delta*x",
+            "data_svole_per_full": 3, "alignment_messages": 0,
+            "premise": "three valid monouse Fp/Fp3 sVOLEs under one full cubic Delta; no coordinate projection",
+            "complete_lifetime_bound": False},
+        "shared_bootstrap_gap": {
+            "source": "rust/volta-pcg/src/phase_b.rs:run_cope_base_svole",
+            "runtime_challenge_field": "Fp", "runtime_sacrificed_rows": 1,
+            "paper_base_L_challenge_field": "Fp^r", "paper_base_L_sacrificed_rows": "r",
+            "fixed_nonzero_one_row_residual": "chi_i*E; zero with probability 1/p for uniform Fp chi_i",
+            "is_real_PCG_or_matrix_attack_probability": False,
+            "leakage_free_base_sVOLE_implemented": False,
+            "paper_optimization_requires": "justify whole-key guessing under selective failure; cannot inherit it through c0 projection",
+            "literal_Fp2_to_Fp3_type_substitution_admitted": False},
+        "costs": {"capacity_cases": cases, "base_L_connection_subtotals": bootstrap,
+            "complete_attempt_bytes": budget_sum({"certificate_setup_binding_and_composition": None}),
+            "complete_model_setup_and_root_renewal_bytes": budget_sum({"same_W_root_lifecycle": None}),
+            "complete_work_and_physical_traffic": budget_sum({"PCG_OT_hashes_memory_schedule_and_renewals": None})},
+        "remaining": ["concrete base-sVOLE realization including selective failures against both parties",
+            "native sparse checks, OT bit widths, canonical codecs and monouse lifecycle",
+            "regular-LPN with the required leakage, real AES/OT and joint lifetime error terms",
+            "B4 masked PCS geometry, same-W FS compilation and malicious-verifier lifetime simulation"],
+        "next_goal": "B7: bounded native Fp3 base-sVOLE contract and checked bootstrap component, with explicit leakage treatment, adversarial checks and complete local costs; stop before pool/PCS integration if its premises fail",
+    }
+
+
 def baseline_budget():
     """One frozen S reference; alternatives are NOT additive components.
 
@@ -5907,6 +6018,7 @@ def baseline_budget():
             "runner_command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/run_c71_matrix.py --n 128 --run --census"},
         "B4_security_admission": b4_security_admission(),
         "B5_alignment_admission": b5_alignment_admission(),
+        "B6_converter_comparison": b6_converter_comparison(),
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

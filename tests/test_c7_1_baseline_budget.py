@@ -4,6 +4,7 @@ import importlib.util
 import json
 import math
 from fractions import Fraction
+from itertools import product
 from pathlib import Path
 
 import pytest
@@ -194,3 +195,117 @@ def test_b5_exact_rejection_counts_attempts_and_prepaid_capacity_without_securit
     for name, cost in b5["costs"].items():
         if name.startswith("replacement_"):
             assert cost["total"] is None and cost["admission_bound"] == "infinity"
+
+
+def test_b6_comparison_prices_sacrifices_without_admitting_either_real_port():
+    b6 = plan.baseline_budget()["B6_converter_comparison"]
+    assert b6["status"] == "reject_both_immediate_ports_pending_base_sVOLE_contract"
+    assert b6["port_selected"] is None and not b6["credit"] and not b6["security_admitted"]
+    ideal = b6["checked_ideal_interface"]
+    probability = Fraction(ideal["conditional_error"])
+    assert probability == (Fraction(1, plan.P**2) + Fraction(6, plan.P**2 - 1)) / (
+        1 - Fraction(1, (plan.P + 1)**3))
+    assert Fraction(ideal["hypothetical_lifetime_converter_error"]) == (1 << 20) * probability
+    assert 105 < ideal["hypothetical_lifetime_converter_bits"] < 106
+    assert not ideal["complete_lifetime_bound"] and not ideal["FS_multiplier_applied"]
+    for case, count in zip(b6["costs"]["capacity_cases"], (60, 69)):
+        checked, native, both = case["checked_alignment"], case["native_fp3"], case["both"]
+        assert case["capacity_fp3"] == count
+        assert checked["capacity_raw_svole_including_sacrifice"] == 9 * count + 6
+        assert checked["capacity_sacrificed_svole"] == 6
+        # Data/mask differences, common openings, three tags per check,
+        # nonce+ack, one context header and three framed messages.
+        assert checked["proposed_capacity_wire_bytes_excluding_PCG"] == (
+            2 * (3 * count + 2) * 8 + 2 * (8 + 3 * 16) + 64 + 76 + 3 * 9)
+        assert checked["extra_wire_over_unchecked_lift"] == 235
+        assert native["capacity_data_svole"] == 3 * count
+        assert native["alignment_payload_bytes"] == 0
+        for option, rbytes, kbytes in ((checked, 24, 16), (native, 32, 24)):
+            rows = 9 * count + 6 if option is checked else 3 * count
+            assert option["raw_prover_storage_bytes"] == rbytes * rows
+            assert option["raw_verifier_storage_bytes"] == kbytes * rows
+            assert option["complete_capacity_bytes"]["admission_bound"] == "infinity"
+        assert both["retained_prover_storage_bytes"] == 48 * count
+        assert both["retained_verifier_storage_bytes"] == 24 * count
+        assert not both["aborted_slots_refunded"]
+    checked_base, native_base = b6["costs"]["base_L_connection_subtotals"]
+    assert [b["COPE_key_choice_OTs"] for b in (checked_base, native_base)] == [384, 192]
+    assert [b["COPE_corrections_payload_bytes"] for b in (checked_base, native_base)] == [
+        84_516_864, 42_261_504]
+    for base in (checked_base, native_base):
+        assert not base["credit"] and not base["secure_parameter_estimate"]
+        assert base["complete_connection_bytes"]["admission_bound"] == "infinity"
+    for key in ("complete_attempt_bytes", "complete_model_setup_and_root_renewal_bytes",
+                "complete_work_and_physical_traffic"):
+        assert b6["costs"][key]["admission_bound"] == "infinity"
+
+
+def test_b6_masked_alignment_equations_cancellation_and_privacy_in_ideal_pools():
+    # F7 plaintexts and two-coordinate tags: only base scaling is used here.
+    # This models the specified converter, not the real OT/AES implementation.
+    p = 7
+    add = lambda a, b: tuple((x + y) % p for x, y in zip(a, b))
+    scale = lambda a, s: tuple(x * s % p for x in a)
+    # Two data rows followed by two distinct sacrificed mask rows in each lane.
+    r = ((1, 3, 5, 6), (2, 4, 1, 0), (6, 2, 3, 4))
+    delta = ((1, 2), (3, 1), (0, 4))
+    tags = tuple(tuple(((i + j) % p, (2 * i + j) % p) for j in range(4))
+                 for i in range(3))
+    keys = tuple(tuple(add(tags[i][j], scale(delta[i], r[i][j])) for j in range(4))
+                 for i in range(3))
+    differences = tuple(tuple((r[0][j] - r[i][j]) % p for j in range(4))
+                        for i in range(3))
+    for chi in product(range(p), repeat=2):
+        for mask in (2, 3):
+            y = (r[0][mask] + sum(c * x for c, x in zip(chi, r[0]))) % p
+            for lane in range(3):
+                sent = tags[lane][mask]
+                key = add(keys[lane][mask], scale(delta[lane], differences[lane][mask]))
+                for j, coefficient in enumerate(chi):
+                    sent = add(sent, scale(tags[lane][j], coefficient))
+                    corrected = add(keys[lane][j], scale(delta[lane], differences[lane][j]))
+                    key = add(key, scale(corrected, coefficient))
+                assert key == add(sent, scale(delta[lane], y))
+                # The ideal malicious-verifier simulator needs only its keys,
+                # its own Delta, public differences and the masked opening y.
+                assert sent == add(key, scale(delta[lane], -y))
+
+    # Every nonzero two-row alignment error and arbitrary fixed mask errors:
+    # each challenge has p solutions, so two independent checks give p^-2.
+    vectors = tuple(product(range(p), repeat=2))
+    for error in vectors[1:]:
+        for mask_errors in vectors:
+            counts = [sum((mask_error + sum(c * e for c, e in zip(chi, error))) % p == 0
+                          for chi in vectors) for mask_error in mask_errors]
+            assert Fraction(math.prod(counts), len(vectors)**2) == Fraction(1, p**2)
+
+    # Independent masks hide both responses for every retained plaintext;
+    # reusing one mask would leave only p possible pairs and leak a difference.
+    for x in vectors:
+        offsets = (x[0], x[1])  # verifier may choose coordinate-selecting challenges
+        image = {tuple((m + a) % p for m, a in zip(masks, offsets)) for masks in vectors}
+        assert image == set(vectors)
+        reused = {((m + offsets[0]) % p, (m + offsets[1]) % p) for m in range(p)}
+        assert len(reused) == p
+
+
+def test_b6_native_combination_and_bootstrap_challenge_gap():
+    add = lambda a, b: tuple((x + y) % plan.P for x, y in zip(a, b))
+    basis = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+    plaintexts = (3, 5, 7)
+    tags = ((11, 13, 17), (19, 23, 29), (31, 37, 41))
+    for delta in (*basis, (43, 47, 53)):
+        combined_tag = combined_key = (0, 0, 0)
+        for r, tag, u in zip(plaintexts, tags, basis):
+            key = add(tag, plan.fp3_mul_six(delta, (r, 0, 0)))
+            combined_tag = add(combined_tag, plan.fp3_mul_six(u, tag))
+            combined_key = add(combined_key, plan.fp3_mul_six(u, key))
+        assert combined_key == add(combined_tag, plan.fp3_mul_six(delta, plaintexts))
+    source = (Path(__file__).resolve().parents[1] / "rust/volta-pcg/src/phase_b.rs").read_text()
+    base_check = source.split("fn run_cope_base_svole(", 1)[1].split("\nfn get_bit(", 1)[0]
+    assert "wanted.checked_add(1)" in base_check
+    assert 'field_xof(prover_challenge_seed, b"chi", wanted)' in base_check
+    assert "put_fp(&mut response, response_r)" in base_check
+    # A nonzero residual vector in any extension still vanishes for one Fp
+    # coefficient with probability 1/p, regardless of the number of tag limbs.
+    assert sum(all(c * e % 7 == 0 for e in (1, 2, 3)) for c in range(7)) == 1

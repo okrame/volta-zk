@@ -1,31 +1,31 @@
 # Current status — C7.1 Gemma-31B
 
-Updated 2026-09-08. Editable working summary; Git preserves revisions.
+Updated 2026-09-09. Editable working summary; Git preserves revisions.
 [Design](c7.1-gemma31b-design.md) · [Documentation index](README.md) ·
 [Historical ledger](prototype-status-history-2026-09-07.md).
 
 ## Active authority — read first
 
-**B5 completed: reject the unchecked nine-sVOLE interface as an actively
-secure full-Fp3 converter**, requested by the owner's «raggiungi il prossimo
-goal per c7.1». Its corrections realize every base-linear 3×3 residual
-map, with tight single-check ideal error `p²/(p³-1)`, about `2^-64`.
-Repeating linear checks under the same Delta cannot amplify that bound.
-This is a precise primitive/interface exclusion, not an E2E matrix forgery
-or an impossibility result for checked conversion. Scope, derivation,
-adversarial checks and capacity costs are in
-[design §10](c7.1-gemma31b-design.md#esito-b5-esclusione-del-convertitore-non-verificato).
-B4's actual masked-RS geometry and negative security decision remain valid.
-B2 remains a completed functional port; B3 supplies its native field/memory
-census. Physical traffic and complete lifetime security remain open.
-G2 stays suspended.
+**B6 completed: compare checked alignment with native Fp3 sVOLE and reject
+both immediate ports**, requested by the owner's «raggiungi il prossimo
+goal per c7.1, in modo coerente con gli altri goal finora raggiunti».
+The checked converter has an explicit masked-check argument with ideal
+valid pools; native packing needs three sVOLEs instead of nine. The current
+real bootstrap does not establish the needed premise: its base sacrifice
+uses Fp challenges and one mask, unlike the extension-field check in its
+reference, and its selective-failure treatment has no applicable complete
+C7.1 argument. This is a scoped source/interface finding, not an E2E attack.
+The [B6 decision in design §10](c7.1-gemma31b-design.md#esito-b6-confronto-dei-convertitori-e-confine-del-bootstrap)
+contains both-party ideal arguments, costs, source correspondence and gaps.
+B5's unchecked-converter exclusion and B4's masked-RS decision remain valid;
+B2/B3 remain functional and resource evidence. G2 stays suspended.
 
-**Connection to C7.1:** B3 showed PCS dominates the reduced path; B4 now
-identifies why that path cannot yet be admitted for security. B5 excludes
-the unchecked converter and its inexpensive linear fixes. Next B6 is a
-bounded comparison of checked alignment against native Fp3 sVOLE, with
-security premises and complete costs before selecting a port or tuning
-PCS. The lifetime and trust requirements remain unchanged.
+**Connection to C7.1:** B3 showed PCS dominates the reduced path; B4/B5
+prevent security admission of the current path. B6 locates the prerequisite
+below either converter, in base-sVOLE. Next B7 is a bounded native Fp3
+bootstrap contract/component with explicit leakage treatment, adversarial
+checks and costs before pool/PCS integration. Native is the next candidate,
+not an admitted port or measured speedup. Lifetime and trust stay unchanged.
 
 **B1 concluded with a negative reuse decision and its prescribed stop.**
 The [assessment in design §10](c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto)
@@ -76,7 +76,7 @@ This summary no longer repeats their successive subtotals.
   complete four-read schedule. Later S+Y/operator/checkpoint variants
   remain research alternatives, not additions to the frozen S reference.
 - The [index](README.md) locates RNE, RMS, KV, attention and other evidence.
-  No need to reload all dossiers to inspect B5. Exact quantization/runtime
+  No need to reload all dossiers to inspect B6. Exact quantization/runtime
   correspondence and real-correlation premises remain required when reused.
 
 Three critical-path obligations remain: same-W authenticated opening with
@@ -218,7 +218,7 @@ Four focused Rust tests, including the counterexample and existing AES
 check, and five Python budget tests pass; no protocol behavior or frozen
 evidence changes, and no broad build, Lean proof or new E2E is claimed.
 
-## B5 converter decision and next goal
+## B5 converter decision
 
 The [single budget](../scripts/c7_1_gemma_plan.py) now includes
 `B5_alignment_admission`. The general residual is
@@ -247,17 +247,58 @@ OT/AES setup costs 145,590 bytes per connection. These are reconciled B2
 costs, not secure replacement estimates. Replacement setup, capacity,
 certificate and work remain unknown in the complete budget.
 
-**Next B6:** assess checked alignment of the existing pools versus native
-Fp3 sVOLE, with concrete security premises and costs, then select or reject
-a port. No PCS tuning can confer security on the rejected interface.
-Do not start another PCS, revive G2, optimize the diagnostic or use hardware
-to bypass this decision. Gemma semantics/GKR, physical four-read scheduling,
-full certificate and 78-bit lifetime proofs remain C7.1 obligations.
+The B6 assessment below completes that comparison. No PCS tuning can confer
+security on the rejected interface. Gemma semantics/GKR, physical four-read
+scheduling, full certificate and 78-bit lifetime proofs remain obligations.
+
+## B6 comparison and next goal
+
+The [single budget](../scripts/c7_1_gemma_plan.py) now includes
+`B6_converter_comparison`. With three ideal valid Fp2 pools, two independent
+masked alignment checks sacrifice six correlations per capacity and add
+235 bytes to the unchecked lift. Their conditional error is
+`(p^-2+6/(p²-1))/(1-(p+1)^-3)` for independent nonzero-uniform Fp2 keys
+conditioned on nonzero cubic projection. At at most `2^20` setups this is
+about 105.19 bits for that ideal converter term alone, without real PCG,
+PRG/hash, FS or complete lifetime credit. Fresh masks also give an explicit
+ideal malicious-verifier simulation; mask reuse leaks a linear form.
+
+Native packing under one full cubic Delta needs 180/207 data sVOLEs per
+three-slot n=48/128 capacity, versus 546/627 including converter sacrifices
+for checked alignment. The comparison includes storage, algebraic work,
+framing, per-attempt data consumption and separate connection subtotals.
+At the existing hardened k0/t0, the paper-form base-L COPE correction
+payload alone is 42,261,504 bytes for one Fp3 pool versus 84,516,864 for
+three Fp2 pools. These are conditional partial costs, excluding the
+leakage treatment and other setup phases; no timing or secure-parameter
+credit follows. All incomplete totals retain admission bound infinity.
+
+[Wolverine](../sota/2020-0925-wolverine.md), converted with AnyDoc from the
+preserved [PDF](../sota/2020-0925-wolverine.pdf), distinguishes base-LsVOLE
+with selective failure from the full leakage-free base construction.
+The source audit finds neither the reference's full extension-field
+base check nor an applicable leakage argument in the current composition.
+A field-type substitution is therefore also rejected. B7 must resolve
+this boundary explicitly; stronger LPN tuples or another PCS do not do so.
+
+Nine focused Python checks pass, including the three new B6 checks for
+cost/error accounting, masked equations/privacy with exhaustive F7 error
+counts, native packing algebra and the source-level bootstrap discrepancy.
+The complete default budget emits valid JSON. No Rust/Lean build, native
+cryptographic E2E, new benchmark record or runtime change is claimed.
+Existing B2/B3 evidence and the unrelated G2 test changes are preserved.
+
+**Next B7:** specify and check the native Fp3 base-sVOLE bootstrap component,
+including the exact selective-failure or leakage-free functionality,
+challenge/mask dimensions, OT/codec, both-party adversarial checks and local
+costs. Select or reject integration only after those premises are assessed;
+failure stops the affected integration. The scope remains small local work,
+without another PCS, G2, diagnostic tuning, provider contact or hardware.
 
 ## Documentation decision
 
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 (B5 decision and B6 scope) without
+A fresh conversation can start from this page and design §10 (B6 decision and B7 scope) without
 importing the full G2 transcript or reopening its suspended obligations.

@@ -6136,6 +6136,103 @@ def b9_bootstrap_component():
         "next_goal": "B10: bounded admission of concrete primitive/resources and native side-channel premises, plus lifecycle/AES-PCG composition contract, before pool/PCS integration"}
 
 
+def b10_composition_admission():
+    """Bounded premise assessment; no new runtime or assumed security theorem."""
+    b8 = b8_bootstrap_selection()
+    security = b8["conditional_security"]
+    setups, ots, rows = security["setups_upper"], 576, 27_511 + 9
+    # B9 consumes a whole 64-byte XOF block for each first-valid Fp output.
+    # Selected streams are evaluated by both roles, but are not distinct keys.
+    per_key_bytes = rows * 8 * 8
+    evaluations = 3 * ots * rows
+    # For ANY deterministic G:{0,1}^s -> {0,1}^{2s}, enumerate q seeds
+    # and recognize their outputs. Real acceptance >= q/2^s, ideal <= q/2^(2s).
+    # This is a LOWER bound in the standalone PRG game, not a PCG/PCS attack.
+    guesses, seed_bits = 1 << 63, 128
+    prg_lower = Fraction(guesses, 1 << seed_bits) - Fraction(guesses, 1 << (2 * seed_bits))
+    return {
+        "status": "assessment_complete_integration_not_admitted", "credit": False,
+        "security_admitted": False, "production_runtime_admitted": False,
+        "pool_PCS_integration_admitted": False, "lifecycle_contract_specified": True,
+        "reviewed_runtime_commit": "f8e9a71",
+        "source": "docs/c7.1-gemma31b-design.md#b10-premesse-concrete-e-contratto-di-composizione",
+        "primitive_resources": {
+            "required_advantages_unchanged": security["required_primitive_advantages"],
+            "B8_sum_remains_conditional": security["sum_at_required_primitive_advantages"],
+            "primitive_advantages_established": False,
+            "adversary_environment_offline_work_bound": None,
+            "adversary_environment_memory_advice_bound": None,
+            "global_RO_queries": 1 << 64,
+            "reduction_query_allowance": security["queries_including_honest_and_simulator_allowance"],
+            "COPE_independent_keys_lifetime": 2 * ots * setups,
+            "COPE_messages_per_key_upper": rows,
+            "COPE_message_bytes": len(b"C71B9/COPE/sender/") + 184 + 4 + 1 + 8,
+            "COPE_XOF_bytes_per_message": 64,
+            "COPE_XOF_bytes_per_key_upper": per_key_bytes,
+            "COPE_distinct_key_message_pairs_per_setup": 2 * ots * rows,
+            "COPE_field_evaluations_both_roles_per_setup": evaluations,
+            "COPE_XOF_bytes_both_roles_per_setup": evaluations * 64,
+            "COPE_XOF_bytes_both_roles_lifetime": evaluations * 64 * setups,
+            "honest_SHAKE_calls_lifetime_upper": 4 * ots * setups * (512 + 1),
+            "honest_Fp_candidates_lifetime_upper":
+                8 * setups * (evaluations + 10 * (rows - 9) + 27),
+            "scope": "bounded honest native work; simulator/adversary work is additional; no timing projection"},
+        "legacy_AES_GGM_seed_search": {
+            "kind": "standalone_PRG_advantage_lower_bound_not_E2E_attack",
+            "source": "rust/volta-pcg/src/ggm.rs:GgmEngine::children",
+            "seed_bits": seed_bits, "output_bits": 2 * seed_bits,
+            "distinct_seed_guesses": guesses, "AES_public_permutation_calls": 2 * guesses,
+            "FS_queries_required": 0, "working_memory": "one seed and one candidate pair; sequential search",
+            "advantage_lower_bound": str(prg_lower),
+            "exceeds_complete_2_to_minus_78_target": prg_lower > Fraction(1, 1 << 78),
+            "unchanged_standalone_PRG_premise_admitted": False,
+            "scope": "128-bit seeds cannot supply a <=2^-78 PRG advantage at this work; public AES key, not secret-key search; no seed enumeration executed"},
+        "runtime_findings": [
+            {"source": "rust/volta-pcg/src/c71_bootstrap.rs:prf",
+             "finding": "keyed Hasher and OutputReader are not erased; only external seed buffers are Zeroizing",
+             "status": "explicit_secret_state_erasure_missing"},
+            {"source": "rust/volta-field/src/lib.rs:Fp and reduce128",
+             "finding": "secret-derived carry/borrow and reduction conditions; generated-code review absent",
+             "status": "constant_time_not_established_not_a_measured_timing_attack"},
+            {"source": "rust/volta-pcg/src/ggm.rs:sub_bytes",
+             "finding": "portable AES indexes SBOX with secret-derived state; hardware dispatch can select it",
+             "status": "portable_secret_address_trace_not_constant_time"},
+            {"source": "rust/volta-pcg/src/c71_bootstrap.rs:Context",
+             "finding": "caller labels carry no durable model registration, setup quota or authenticated transport capability",
+             "status": "component_only"}],
+        "AES_PCG_composition": {
+            "unchanged_phase_b_reuse_admitted": False,
+            "base_MAC": "T=K+Delta_B9*u; native consumer uses Delta_native=-Delta_B9",
+            "packing": "three disjoint base rows under one Delta; T=K+Delta_B9*X",
+            "fresh_capacity_key_rule": "B9 samples a fresh Delta; declare a key epoch, never mix pools under different keys",
+            "legacy_obligations": [
+                "run_base_ot and run_iknp_extension still share rejected B7 seeds; B9 returns no OT seeds",
+                "Fp2 pools, leaf map, consistency masks and CHECK_LIMBS=2 are not an Fp3 adapter",
+                "prove both-role extension/Feq/regular-LPN composition and lifetime errors at concrete resources",
+                "price seed width, GGM nodes, refills, sacrifices, retained child bases and discarded tails"],
+            "complete_connection_bytes": budget_sum({"bootstrap_max_rows": b8["costs"][1]["bootstrap_protocol_wire_bytes"],
+                "authenticated_transport_lifecycle_and_admitted_expansion": None})},
+        "same_W_lifecycle_contract": {
+            "quantifier": "one W for all accepted proofs under the installed model anchor, across sessions/key epochs/root renewals",
+            "model_setup_independent_of_Delta": True,
+            "bootstrap_alone_binds_W": False,
+            "opening_requirement": "the PCS value linked to the installed W is the same MAC handle consumed by GKR; otherwise prove authenticated equality",
+            "G2_lessons": ["valid MAC of an arbitrary value does not bind it to W",
+                "fresh masks plus NoPeek and a joint adaptive-prefix simulator",
+                "same sampled RS columns or a new root label do not prove same-W renewal"],
+            "ordered_boundaries": ["durable setup quota/burn before entropy and headers",
+                "checked bootstrap output in quarantine",
+                "durable base/OT/stage reservation before expansion",
+                "checked expansion before publishing finite capacity",
+                "durable model-mask slot and disjoint typed MAC ranges before proof emission",
+                "all checks before atomic accepted predecessor update"],
+            "failure_rule": "burn partial/aborted reservations; after restart discard volatile capacity; replay only identical cached proof bytes",
+            "separate_global_budgets": ["setup attempts including failures/preparation", "proof attempts", "shared model-mask exposure"],
+            "implemented_for_B9": False,
+            "complete_same_W_FS_theorem": False},
+        "next_goal": "B11: select a quantitatively admissible Fp3 expansion/OT-extension contract and explicit concrete adversary resources, preserving same-W; before any native integration"}
+
+
 def baseline_budget():
     """One frozen S reference; alternatives are NOT additive components.
 
@@ -6209,8 +6306,8 @@ def baseline_budget():
         "malicious_prover_soundness_bits": None, "malicious_verifier_zk_bits": None,
         "security_admitted": False, "complete_baseline_selected": None,
         "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": None,
-        "replacement_bootstrap_status": "B9_native_component_checked_not_security_admitted",
-        "next_proposed_goal": b9_bootstrap_component()["next_goal"],
+        "replacement_bootstrap_status": "B10_assessed_integration_not_admitted",
+        "next_proposed_goal": b10_composition_admission()["next_goal"],
         "measurement_reuse_priority": None,
         "G2_disposition": {"status": "archived_unselected_research",
             "pending_patch": "integrated_as_three_regression_checks",
@@ -6255,6 +6352,7 @@ def baseline_budget():
         "B7_bootstrap_admission": b7_bootstrap_admission(),
         "B8_bootstrap_selection": b8_bootstrap_selection(),
         "B9_bootstrap_component": b9_bootstrap_component(),
+        "B10_composition_admission": b10_composition_admission(),
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

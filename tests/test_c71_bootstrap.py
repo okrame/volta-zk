@@ -1,4 +1,4 @@
-"""B8 construction checks. Variable-time reference algebra; never a production OT.
+"""B8–B10 construction/premise checks; never a production OT or pool adapter.
 
 The small P-521 exchange checks real curve equations/bytes, not UC security.
 The Fp9 check uses explicitly ideal COPE correlations, not a real PCG.
@@ -223,7 +223,7 @@ def test_B8_source_selection_costs_and_conditional_security_are_separate():
     assert not b8["security_admitted"] and not r["security_admitted"]
     assert r["B7_bootstrap_admission"]["baseline_stopped"]
     assert r["active_baseline_status"] == "stopped_after_failed_B7"
-    assert r["next_authorized_goal"] is None and "B10" in r["next_proposed_goal"]
+    assert r["next_authorized_goal"] is None and "B11" in r["next_proposed_goal"]
     security = b8["conditional_security"]
     terms = {k: Fraction(v) for k, v in security["terms_at_required_primitive_advantages"].items()}
     assert sum(terms.values()) == Fraction(security["sum_at_required_primitive_advantages"])
@@ -252,8 +252,8 @@ def test_B9_native_boundary_counts_and_preserved_history():
     assert not any(b9[k] for k in ("security_admitted", "pool_PCS_integration_admitted", "production_runtime_admitted"))
     assert r["B7_bootstrap_admission"]["baseline_stopped"]
     assert r["active_baseline_status"] == "stopped_after_failed_B7"
-    assert r["replacement_bootstrap_status"] == "B9_native_component_checked_not_security_admitted"
-    assert r["next_authorized_goal"] is None and "B10" in r["next_proposed_goal"]
+    assert r["replacement_bootstrap_status"] == "B10_assessed_integration_not_admitted"
+    assert r["next_authorized_goal"] is None and "B11" in r["next_proposed_goal"]
     assert b9["native_OT_call_counts_both_roles"] == {
         "fixed_base_scalar_multiplications": 2304, "variable_base_scalar_multiplications": 2304,
         "hash_to_group": 2304, "KDF": 2304, "point_additions": 1728, "scalar_candidates": 18432}
@@ -276,6 +276,94 @@ def test_B9_native_boundary_counts_and_preserved_history():
         assert a["field_candidates"] + b["field_candidates"] == 8*(3*576*(n+9)+10*n+27)
         assert a["check_fp9_products"] + b["check_fp9_products"] == 2*n+19
         assert a["compression_fp3_products"] + b["compression_fp3_products"] == 3*(2*n+1)
+
+
+def test_B10_concrete_resources_do_not_turn_conditional_bounds_into_admission():
+    report = plan.baseline_budget()
+    b10 = report["B10_composition_admission"]
+    assert not any(b10[k] for k in ("credit", "security_admitted", "production_runtime_admitted",
+                                    "pool_PCS_integration_admitted"))
+    resource = b10["primitive_resources"]
+    assert resource["COPE_XOF_bytes_per_key_upper"] == 1_761_280
+    assert resource["COPE_message_bytes"] == 215
+    assert resource["COPE_field_evaluations_both_roles_per_setup"] == 47_554_560
+    assert resource["COPE_distinct_key_message_pairs_per_setup"] == 31_703_040
+    assert resource["COPE_XOF_bytes_both_roles_per_setup"] == 3_043_491_840
+    assert resource["COPE_XOF_bytes_both_roles_lifetime"] == 3_043_491_840 * (1 << 20)
+    # The actual B9 32-row count independently agrees with the maximum-row formula.
+    case = next(c for c in report["B9_bootstrap_component"]["measured_cases"] if c["rows"] == 32)
+    calls = sum(case["details"][role]["work"]["prf_field_outputs"] for role in ("prover", "verifier"))
+    assert Fraction(calls, 32 + 9) == Fraction(resource["COPE_field_evaluations_both_roles_per_setup"], 27_520)
+    assert resource["honest_SHAKE_calls_lifetime_upper"] < 1 << 64
+    assert resource["adversary_environment_offline_work_bound"] is None
+    assert not resource["primitive_advantages_established"]
+    search = b10["legacy_AES_GGM_seed_search"]
+    assert search["AES_public_permutation_calls"] == 1 << 64
+    assert search["FS_queries_required"] == 0
+    assert Fraction(search["advantage_lower_bound"]) == Fraction(1, 1 << 65) - Fraction(1, 1 << 193)
+    assert Fraction(search["advantage_lower_bound"]) > Fraction(1, 1 << 78)
+    assert b10["AES_PCG_composition"]["complete_connection_bytes"]["admission_bound"] == "infinity"
+    assert not b10["same_W_lifecycle_contract"]["bootstrap_alone_binds_W"]
+    assert report["G2_disposition"]["status"] == "archived_unselected_research"
+    assert report["B7_bootstrap_admission"]["baseline_stopped"]
+
+
+def test_B10_seed_enumeration_lower_bound_even_with_colliding_generator_outputs():
+    # Exhaust ALL maps from two seed bits to four output bits. This is a
+    # cardinality argument for any deterministic generator, not toy AES security.
+    seeds, outputs, guesses = 4, 16, 2
+    lower = Fraction(guesses, seeds) - Fraction(guesses, outputs)
+    for table in product(range(outputs), repeat=seeds):
+        recognized = set(table[:guesses])
+        real = Fraction(sum(x in recognized for x in table), seeds)
+        ideal = Fraction(len(recognized), outputs)
+        assert real - ideal >= lower
+
+
+def test_B10_valid_MAC_does_not_bind_weights_and_native_sign_is_opposite():
+    p = plan.P
+    add3 = lambda a, b: tuple((x + y) % p for x, y in zip(a, b))
+    neg3 = lambda a: tuple(-x % p for x in a)
+    mul3 = plan.fp3_mul_six
+    delta, mask, key = (2, 3, 5), (7, 11, 13), (17, 19, 23)
+    tag = add3(key, mul3(delta, mask))
+    # The wrong W evaluation can be validly authenticated without knowing Delta.
+    w, other_w, form = (2, 3, 5), (2, 4, 5), (7, 11, 13)
+    expected, substituted = plan.dot(w, form), plan.dot(other_w, form)
+    assert expected != substituted
+    # Alternative executions, not permission to emit twice with one mask.
+    for value in (expected, substituted):
+        target = (value, 0, 0)
+        correction = add3(target, neg3(mask))
+        transferred = add3(key, neg3(mul3(delta, correction)))
+        assert tag == add3(transferred, mul3(delta, target))
+        # Existing c7_fp3_transfer_verifier adds Delta_native * correction.
+        assert transferred == add3(key, mul3(neg3(delta), correction))
+        assert transferred != add3(key, mul3(delta, correction))
+    # If the PCS and GKR return separate handles, their equality is an obligation.
+    residual = ((substituted - expected) % p, 0, 0)
+    assert mul3(delta, residual) != (0, 0, 0)
+
+
+def test_B10_fresh_masks_NoPeek_and_disjoint_key_epochs_are_distinct_premises():
+    # G2's ideal correction simulator: every fixed x gives the same distribution,
+    # including a malicious verifier's Delta=0. Reuse and mask-dependent x fail.
+    p = 7
+    for delta, key, x in product(range(p), repeat=3):
+        real = sorted(((x-u) % p, (key-delta*(x-u)) % p) for u in range(p))
+        simulated = sorted((d, (key-delta*d) % p) for d in range(p))
+        assert real == simulated
+    x0, x1 = 2, 5
+    fresh = {((x0-u) % p, (x1-v) % p) for u, v in product(range(p), repeat=2)}
+    reused = {((x0-u) % p, (x1-u) % p) for u in range(p)}
+    assert len(fresh) == p*p and len(reused) == p
+    assert all((a-b) % p == (x0-x1) % p for a, b in reused)
+    assert {(u-u) % p for u in range(p)} == {0}  # x=u violates NoPeek
+    # A fresh B9 setup has another Delta: even ideal rows cannot be mixed.
+    deltas, values, keys = (2, 3), (4, 5), (1, 6)
+    tags = tuple((k+d*x) % p for d, x, k in zip(deltas, values, keys))
+    assert all(t == (k+d*x) % p for d, x, k, t in zip(deltas, values, keys, tags))
+    assert sum(tags) % p != (sum(keys) + deltas[0]*sum(values)) % p
 
 
 def test_B9_native_hash_vectors_against_independent_python_curve():

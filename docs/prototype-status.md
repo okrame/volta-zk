@@ -1,10 +1,22 @@
-# Current status — C7.1 Gemma-31B, B9 native bootstrap checked
+# Current status — C7.1 Gemma-31B, B10 assessment concluded
 
 Updated 2026-09-09. Editable working summary; Git preserves revisions.
 [Design](c7.1-gemma31b-design.md) · [Documentation index](README.md) ·
 [Historical ledger](prototype-status-history-2026-09-07.md).
 
 ## Active authority — read first
+
+**B10 concluded; integration is not admitted.** The owner's new 2026-09-09
+instruction authorizes the bounded premise/lifecycle assessment and explicitly
+requires all proofs to bind to the same private weights. The assessment
+quantifies B9's PRF resources, identifies runtime gaps and specifies the
+same-W lifecycle/AES-PCG contract. A seed-search lower bound excludes a
+`<=2^-78` standalone PRG advantage for the existing 128-bit GGM at `2^64`
+public AES evaluations; this is not a complete PCG or matrix attack.
+Concrete DDH/PRF resources and extension composition remain undischarged.
+[Design §10, B10](c7.1-gemma31b-design.md#b10-premesse-concrete-e-contratto-di-composizione)
+records the derivation and the precise disposition. B8/B9 remain valid
+construction/component evidence; no runtime is promoted by this assessment.
 
 **B9 implements and checks the selected native component.** The owner's
 2026-09-09 instruction to reach the next goal authorizes the bounded B9
@@ -67,14 +79,15 @@ budgets and the pinned 100+50 workload. The comparison may price explicit
 alternatives, including a fifth read or organized host spill; it must not
 claim they meet the reference. Scope and remaining thresholds are in design §1.
 
-**Authorization after B9:** the requested bounded native implementation,
-adversarial checks and resource counts are complete. The old B7 baseline
+**Authorization after B10:** the requested bounded assessment and composition
+contract are complete. The old B7 baseline
 stays stopped; G2 is archived as unselected research. No RunPod/provider
 contact, H100/GPU, paid resources, downloads,
 heavy builds or matrix/Gemma E2E. There is no pending spending approval.
-The next proposed B10 is a bounded assessment of concrete primitive and
-implementation premises plus the lifecycle/AES-PCG composition contract,
-before integration. No complete C7.1 runner is admitted.
+The next proposed B11 selects a quantitatively admissible Fp3 expansion/OT
+extension contract and specifies concrete adversary resources before any
+native integration. Restricting the adversary model needs an explicit owner
+decision; no such restriction is adopted. No complete C7.1 runner is admitted.
 
 ## Evidence and open obligations
 
@@ -428,8 +441,44 @@ secret-copy erasure, durable burns, authenticated transport or AES expansion
 composition. Complete work/physical traffic and connection costs retain
 unknown admission bounds. Existing Lean MAC linearity assumes valid inputs;
 no new Lean theorem or complete C7.1 security/performance credit follows.
-The single budget includes `B9_bootstrap_component` and proposes B10 before
-any integration, retaining the previous negative decisions and evidence.
+The single budget includes `B9_bootstrap_component`; B10 below concludes
+the following assessment, retaining the previous negative decisions and evidence.
+
+## B10 premise assessment and same-W contract
+
+The [single budget](../scripts/c7_1_gemma_plan.py) adds
+`B10_composition_admission`. At n=27,511, each COPE key serves 27,520
+messages and 1,761,280 XOF bytes. These are source counts, not wire, RSS,
+DRAM or measured timing. B8's sum remains conditional on primitive
+advantages at explicit reduction resources; Q64 alone supplies no
+offline-work or memory/advice bound.
+
+The design derives the GGM seed-search lower bound stated above and
+delimits its standalone PRG scope. A different construction or a
+protocol-specific game needs its own concrete argument; no large search
+or E2E attack was executed.
+
+The source audit also identifies un-erased keyed BLAKE3 state in B9 and
+secret-indexed S-box access in portable AES. Field conditions and complete
+generated-code behavior remain unaudited. The old expansion still uses
+B7 OT seeds for COPE/IKNP, Fp2 pools and the old consistency/equality path.
+B9 outputs alone do not replace these prerequisites. No native change or
+new build is claimed.
+
+The contract pins **one W across all proofs, sessions, key epochs and root
+renewals**, with the PCS endpoint and GKR consuming the same MAC value.
+It specifies the sign map `Delta_native=-Delta_B9`, disjoint base packing,
+fresh-key epochs, durable setup/stage/proof burns, separate global quotas,
+quarantine, accepted-state updates and conservative crash recovery. Existing
+stores/leases are reusable pieces, not an implemented joint B9 lifecycle.
+G2 contributes NoPeek/fresh-mask simulation and the distinction between a
+valid MAC and binding to W; its archived construction stays unselected.
+
+All twenty bootstrap/budget Python checks pass, including four new B10
+checks. They cover arithmetic and ideal-model counterexamples, without
+claiming a runtime lifecycle or complete same-W/FS theorem. Complete
+connection/PCG, work and physical resource costs stay unknown. B11 is the
+only proposed next goal; integration, PCS tuning, E2E and hardware remain closed.
 
 
 ## G2 residual changes: integrated evidence, archived research line
@@ -450,12 +499,13 @@ archiving does not prove them or assert impossibility. The
 [G2 dossier](c7.1-committed-mac-opening.md) retains conditional results with
 an explicit historical scope. There is no pending G2 patch, alternate
 runtime or second active goal. The single budget records this disposition;
-B9 is complete and B10 remains the only proposed next goal.
+B10 is complete and B11 is the only proposed next goal.
 
 ## Documentation decision
 
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 (B9 component and preserved B7 failure) without
+A fresh conversation can start from this page and design §10 (B10 assessment,
+B9 component and preserved B7 failure) without
 importing the full G2 transcript or treating archived research as active work.

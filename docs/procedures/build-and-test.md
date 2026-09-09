@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its twenty-eight tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its twenty-nine tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -154,6 +154,11 @@ local V RNE and both ranged PCS. Original embedding-input MACs also
 open the same W. V altered with consistent S/Y fails RNE; norm weights
 altered with consistent P/Y fail the installed W PCS. The dispatcher
 has a 64-cell/eight-profile cap; this is no calibrated full-model run.
+The `c71_b12_lookup` filter checks two restricted GELU tables against one
+fixed byte source with 600 ideal Fp3 rows, including range and shared PCS.
+It rejects wrong output, overflow, and an input/histogram pair changed
+coherently after commitment. The unchanged shared fraction-tree kernel
+needs no broad rerun. Canonical GELU routes and gate RNE remain open.
 After byte-function changes, rerun `c71_b12_byte_functions` and
 `c71_b12_rne` separately; ordinary lane-mode transcripts are preserved.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner

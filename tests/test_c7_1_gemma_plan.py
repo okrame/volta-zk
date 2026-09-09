@@ -411,6 +411,37 @@ def test_B12_RMS_composition_counts_every_original_source_and_preserves_global_b
     assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
 
 
+def test_B12_lookup_counts_fixed_histogram_original_endpoints_and_overflow_profiles():
+    for queries,table in [(4,6),(256,65535),(60*150*21504,60*65535)]:
+        b = plan.b12_lookup_profile(queries,table)
+        n = (queries+table-1).bit_length()
+        rounds = sum(range(n))
+        assert b['Fp3_correlations_before_range_and_shared_PCS'] == 2+4*rounds+7*n+3+1
+        assert b['field_payload_bytes_before_context_and_framing'] == 24*(2+5*rounds+8*n+5+2)
+        assert b['FS_draw_requests'] == 1+rounds+2*n+1
+        assert b['MAC_degree_sum_before_shared_PCS'] == rounds+n+2+2
+        degree = queries+table-1+3*rounds+n+n+3*n
+        assert b['sum_of_all_FS_error_degrees_before_shared_PCS'] == degree
+        assert Fraction(b['global_Qstar_prefix_term']) == Fraction((1 << 74)*degree,plan.P**3)
+        assert b['private_product_triples'] == 3*n+1
+        assert b['original_source_targets'] == ['X','Y','histogram']
+        assert b['histogram_fixed_with_queries_before_alpha'] and b['query_count_less_than_characteristic']
+        assert b['all_public_poles_rejected_independent_of_honest_witness']
+        assert not b['new_private_commitments_or_inverse_sources']
+        assert not b['calibrated_Gemma_table_and_canonical_source_dispatch']
+        assert b['full_Gemma_security_totals'] is None
+    assert plan.b12_lookup_profile(4,6)['tiny_two_GELU_profiles_with_range_and_PCS_Fp3_rows'] == 58+510+32
+    assert (b['fraction_domain_bits'],b['Fp3_correlations_before_range_and_shared_PCS']) == (28,1714)
+    assert b['field_payload_bytes_before_context_and_framing'] == 50952
+    # Independent certified scalar generator fixes the native test's public
+    # finite tables. The positive overflow row cannot accept query profile 1.
+    assert plan.gelu_i16_pair(1,0,0) == (1,0)
+    assert plan.gelu_i16_pair(1,0,-16) == (-32768,-10408)
+    overflow = plan.gelu_lookup_tag(1,1,-32768)
+    assert overflow == (1,plan.P-32768,61)
+    assert overflow != (1,plan.P-32768,1)
+
+
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():
     all_bounds = plan.b12_pcs_binding_assessment()
     b = all_bounds['raw_P0_two_source_composition']

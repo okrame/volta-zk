@@ -6852,6 +6852,44 @@ def b12_rms_joint_profile(profile_widths, cell_bits):
     }
 
 
+def b12_lookup_profile(query_cells, table_rows):
+    """Fixed X/Y/histogram lookup using the native shared fraction GKR.
+
+    All original X/Y/M targets still require the SAME ranged source PCS.
+    Tables, row profiles and domain precede alpha. In Fp3 the three base
+    coordinates give injective tags; overflow uses profile+60, never query h.
+    """
+    natural(query_cells, 'lookup query count', 1, (1 << 35))
+    natural(table_rows, 'lookup table rows', 1, 60*65535)
+    bits = (query_cells+table_rows-1).bit_length()
+    rounds = bits*(bits-1)//2
+    degree = query_cells+table_rows-1+3*rounds+5*bits
+    mac_degree = rounds+bits+4
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/lookup.rs',
+        'query_cells': query_cells, 'public_table_rows': table_rows,
+        'fraction_domain_bits': bits, 'cubic_sumcheck_rounds': rounds,
+        'Fp3_correlations_before_range_and_shared_PCS': 4*rounds+7*bits+6,
+        'field_payload_bytes_before_context_and_framing': 24*(5*rounds+8*bits+9),
+        'FS_draw_requests': rounds+2*bits+2,
+        'private_product_triples': 3*bits+1, 'fresh_product_masks': 1,
+        'original_source_targets': ['X','Y','histogram'],
+        'MAC_degree_sum_before_shared_PCS': mac_degree,
+        'sum_of_all_FS_error_degrees_before_shared_PCS': degree,
+        'global_Qstar_prefix_term': str(Fraction((1 << 74)*degree,P**3)),
+        'MAC_error_three_attempts_before_shared_PCS': str(Fraction(3*mac_degree,P**3-1)),
+        'histogram_fixed_with_queries_before_alpha': True,
+        'all_public_poles_rejected_independent_of_honest_witness': True,
+        'query_count_less_than_characteristic': query_cells < P,
+        'new_private_commitments_or_inverse_sources': 0,
+        'native_query_cap': 256, 'native_public_rows_cap': 65535,
+        'native_dense_domain_bits_cap': 17,
+        'tiny_two_GELU_profiles_with_range_and_PCS_Fp3_rows': 600,
+        'calibrated_Gemma_table_and_canonical_source_dispatch': False,
+        'full_Gemma_security_totals': None, 'complete_security_or_physical_credit': False,
+    }
+
+
 def b12_weight_range_profile(bits, limit=32767):
     """Native Fp3 fraction-tree caller census; D35 is geometry, not a schedule.
 
@@ -7634,6 +7672,7 @@ def b12_pcs_binding_assessment():
         'raw_P0_two_source_composition': p0_composition,
         'direct_P0_RNE_composition': direct_composition,
         'P0_RNE_RMS_composition': b12_RMS_composition(direct_composition),
+        'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",

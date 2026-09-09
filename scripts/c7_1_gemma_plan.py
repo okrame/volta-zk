@@ -6583,9 +6583,48 @@ def b12_p0_native_caller():
             'extra_private_RNE_bits_or_trace_commitments': 0,
             'full_RNE_or_Gemma_integer_producers_proven': False,
         },
+        'public_byte_function_caller': b12_byte_function_profile(2, 1),
         'full_Gemma_non_W_relations_and_quantization': False,
         'two_source_PCS_error_and_ZK_composition': 'raw_P0_two_source_composition; raw relation only',
         'complete_source_opening_capacity': None,
+        'complete_security_or_physical_credit': False,
+    }
+
+
+def b12_byte_function_profile(cell_bits, lane_bits):
+    """P/S caller only; incoming function claims and shared PCS are separate.
+
+    Public tables are fixed before the lane challenge. The original function
+    MACs share a cell point; the denominator leaf returns the original byte
+    MAC, with a public index shift. Large domains are arithmetic only.
+    """
+    natural(cell_bits, 'byte-function cell bits', 0, 35)
+    natural(lane_bits, 'byte-function lane bits', 0, 3)
+    bits = cell_bits+lane_bits
+    rounds = sum(bits+i for i in range(8))
+    correlations = 4*rounds+7*8+1
+    q = P**3
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/byte_function.rs',
+        'cell_bits': cell_bits, 'lane_bits': lane_bits,
+        'cubic_sumcheck_rounds': rounds, 'fraction_tree_layers': 8,
+        'Fp3_correlations_before_incoming_claims_and_shared_PCS': correlations,
+        'field_payload_bytes_before_context_and_framing': 24*(5*rounds+67),
+        'FS_draw_requests': lane_bits+rounds+17,
+        'authenticated_product_triples': 24, 'fresh_product_masks': 1,
+        'MAC_degree_sum_before_shared_PCS': rounds+11,
+        'max_FS_block_degree': max(lane_bits+1, 3, 2, 23),
+        'global_Qstar_prefix_term': str(Fraction((1 << 74)*23, q)),
+        'MAC_error_three_attempts_before_shared_PCS': str(Fraction(3*(rounds+11), q-1)),
+        'dense_fraction_tree_bytes': 24*2*511*(1 << bits),
+        'native_dense_view_bits_cap': 10,
+        'original_function_MACs_share_cell_point': True,
+        'dummy_function_outputs_zero_even_if_table_at_zero_nonzero': True,
+        'original_byte_MAC_from_denominator_leaf': True,
+        'extra_PCS_or_private_bit_commitments': 0,
+        'checked_tiny_Fp3_rows_with_incoming_claims_range_and_shared_PCS': 809,
+        'wrong_function_and_consistent_function_of_wrong_source_rejected': True,
+        'full_RNE_or_Gemma_integer_producers_proven': False,
         'complete_security_or_physical_credit': False,
     }
 

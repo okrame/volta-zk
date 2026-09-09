@@ -12,6 +12,9 @@ mod linear;
 #[allow(dead_code)] // Internal same-W range caller, no full Gemma runner.
 mod range;
 #[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // Public byte functions; returned original source MAC still needs the shared PCS.
+mod byte_function;
+#[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // P0 caller; input/output openings remain explicit.
 mod p0;
 #[cfg(feature = "c71-b12-pcs")]

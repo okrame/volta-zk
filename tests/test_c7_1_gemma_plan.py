@@ -208,6 +208,25 @@ def test_B12_native_P0_census_keeps_input_cut_and_shared_product_obligations():
     assert not byte['full_RNE_or_Gemma_integer_producers_proven']
 
 
+def test_B12_byte_function_tree_counts_original_endpoint_and_merged_FS_blocks():
+    for cells, lanes in [(0, 0), (2, 1), (7, 3), (30, 3), (35, 0)]:
+        b = plan.b12_byte_function_profile(cells, lanes)
+        rounds = sum(cells+lanes+i for i in range(8))
+        assert b['cubic_sumcheck_rounds'] == rounds
+        assert b['Fp3_correlations_before_incoming_claims_and_shared_PCS'] == 4*rounds+56+1
+        assert b['field_payload_bytes_before_context_and_framing'] == 24*(5*rounds+8*8+1+2)
+        assert b['FS_draw_requests'] == lanes+rounds+8+8+1
+        assert b['MAC_degree_sum_before_shared_PCS'] == rounds+8+1+2
+        assert b['max_FS_block_degree'] == 23
+        assert b['dense_fraction_tree_bytes'] == 24*sum(2*(1 << (cells+lanes+8-i)) for i in range(9))
+        assert not b['extra_PCS_or_private_bit_commitments']
+        assert not b['complete_security_or_physical_credit']
+    tiny = plan.b12_byte_function_profile(2, 1)
+    assert tiny['checked_tiny_Fp3_rows_with_incoming_claims_range_and_shared_PCS'] == (
+        2+tiny['Fp3_correlations_before_incoming_claims_and_shared_PCS']
+        +plan.b12_weight_range_profile(10, 'byte')['range_Fp3_correlations_before_shared_bridge']+32)
+
+
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():
     all_bounds = plan.b12_pcs_binding_assessment()
     b = all_bounds['raw_P0_two_source_composition']

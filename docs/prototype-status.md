@@ -121,10 +121,17 @@ checks reject −1/256 and incorrect bias, including signed extrema and
 ragged axes. The auxiliary codeword is 1 TiB and remains excluded.
 Byte validity does not prove RNE or the symmetric i16 output restriction.
 
-Twenty-two B12 algebra/accounting checks include the scalar invariant,
+The [public byte-function caller](../rust/volta-pcs/src/c71_matrix/byte_function.rs)
+reuses the range GKR kernel for R2's P/S interpolation. Original function
+MACs reduce to an original byte MAC for the same auxiliary PCS, without a
+bit or trace commitment. Its 809-row ideal check rejects a false function
+and a consistent function of bytes changed after commitment. The native
+view cap is D10; the RNE top and canonical full-DAG caller remain open.
+
+Twenty-three B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 203; the 17
-narrow bootstrap/pool checks and nineteen B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 204; the 17
+narrow bootstrap/pool checks and twenty B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

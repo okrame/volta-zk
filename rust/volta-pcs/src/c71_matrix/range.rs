@@ -253,64 +253,8 @@ pub(super) fn prove(
     record_values(fs, 0x42, &roots);
     let mut triples =
         vec![[h, root[1], root[0]], [root[1], root[2], Auth::new(Fp3::ONE, Fp3::ZERO)]];
-    let (mut claims, mut point, mut layers) = ([root[0], root[1]], Vec::new(), Vec::new());
-    for l in 0..bits {
-        let lambda = fs.fp3();
-        let mut target = claims[0].scale(lambda).add(claims[1]);
-        let level = &tree[bits - 1 - l];
-        let mut children: [Vec<Fp3>; 4] =
-            std::array::from_fn(|j| level.chunks_exact(2).map(|pair| pair[j / 2][j % 2]).collect());
-        let mut equality = eq(&point);
-        let (mut next_point, mut rounds) = (Vec::new(), Vec::new());
-        for round in 0..l {
-            fs.set_phase(0x500 + (32 * l + round) as u16);
-            let half = equality.len() / 2;
-            let mut c = [Fp3::ZERO; 4];
-            for i in 0..half {
-                let a: [Fp3; 4] = std::array::from_fn(|j| children[j][i]);
-                let d: [Fp3; 4] = std::array::from_fn(|j| children[j][i + half] - a[j]);
-                let mut v = [Fp3::ZERO; 3];
-                for (x, y, coefficient) in [(0, 3, lambda), (2, 1, lambda), (1, 3, Fp3::ONE)] {
-                    v[0] += coefficient * a[x] * a[y];
-                    v[1] += coefficient * (d[x] * a[y] + a[x] * d[y]);
-                    v[2] += coefficient * d[x] * d[y];
-                }
-                let de = equality[i + half] - equality[i];
-                for j in 0..3 {
-                    c[j] += equality[i] * v[j];
-                    c[j + 1] += de * v[j];
-                }
-            }
-            let (corrections, a) = authenticate(c, &mut rows);
-            let tag = a[0].m + a[0].m + a[1].m + a[2].m + a[3].m - target.m;
-            let wire = [corrections[0], corrections[1], corrections[2], corrections[3], tag];
-            record_values(fs, 0x43, &wire);
-            let r = fs.fp3();
-            target = a.iter().rev().fold(Auth::ZERO, |s, &x| s.scale(r).add(x));
-            for child in &mut children {
-                fold(child, r);
-            }
-            fold(&mut equality, r);
-            next_point.push(r);
-            rounds.push(wire);
-        }
-        let [p, q, r, s] = std::array::from_fn(|i| children[i][0]);
-        let (wire, a) = authenticate([p, q, r, s, p * s, r * q, q * s], &mut rows);
-        triples.extend([[a[0], a[3], a[4]], [a[2], a[1], a[5]], [a[1], a[3], a[6]]]);
-        let residual = a[4].add(a[5]).scale(lambda).add(a[6]).scale(equality[0]);
-        let split =
-            [wire[0], wire[1], wire[2], wire[3], wire[4], wire[5], wire[6], residual.m - target.m];
-        fs.set_phase(0x410 + l as u16);
-        record_values(fs, 0x44, &split);
-        let t = fs.fp3();
-        claims = [
-            a[0].scale(Fp3::ONE - t).add(a[2].scale(t)),
-            a[1].scale(Fp3::ONE - t).add(a[3].scale(t)),
-        ];
-        next_point.push(t);
-        point = next_point;
-        layers.push(Layer { rounds, split });
-    }
+    let (layers, point, claims) =
+        prove_tree(&tree, Vec::new(), [root[0], root[1]], fs, &mut rows, &mut triples);
     let leaf_tag = claims[0].m; // numerator is the constant one at every leaf
     record_values(fs, 0x46, &[leaf_tag]);
     let products = prove_products(&triples, rows.next().unwrap(), fs);
@@ -337,8 +281,7 @@ pub(super) fn verify(
     let bits = bind(n, root, attempt, layout, live, limit, fs)?;
     let count = required(bits, limit);
     if proof.histogram.len() != limit.len()
-        || proof.layers.len() != bits
-        || proof.layers.iter().enumerate().any(|(i, layer)| layer.rounds.len() != i)
+        || !tree_shape(&proof.layers, bits, 0)
         || correlations.len() < count
     {
         return Err("B12 range proof shape or capacity mismatch".into());
@@ -353,14 +296,120 @@ pub(super) fn verify(
     fs.set_phase(0x401);
     record_values(fs, 0x42, &proof.roots);
     let mut triples = vec![[h, root[1], root[0]], [root[1], root[2], Key::new(delta)]];
-    let (mut claims, mut point) = ([root[0], root[1]], Vec::<Fp3>::new());
-    for (l, layer) in proof.layers.iter().enumerate() {
+    let (point, claims) = verify_tree(
+        &proof.layers,
+        Vec::new(),
+        [root[0], root[1]],
+        delta,
+        fs,
+        &mut rows,
+        &mut triples,
+    )?;
+    if claims[0].k - delta != proof.leaf_tag {
+        return Err("B12 range leaf MAC rejected".into());
+    }
+    record_values(fs, 0x46, &[proof.leaf_tag]);
+    verify_products(&triples, rows.next().unwrap(), proof.products, delta, fs)?;
+    debug_assert!(rows.next().is_none());
+    let target = Key::new(delta * alpha - claims[1].k);
+    let forms = [vec![Cube { offset: 0, point, coefficient: Fp3::ONE }], suffix(live, &rho)];
+    Ok((forms, [target, Key::ZERO]))
+}
+
+// Shared fraction-tree kernel. The top may be a public multilinear point
+// over cells/lanes; each descent appends the next tree-index coordinate.
+// Callers validate dimensions and reserve every row before entering here.
+pub(super) fn prove_tree(
+    tree: &[Vec<[Fp3; 2]>],
+    mut point: Vec<Fp3>,
+    mut claims: [Auth; 2],
+    fs: &mut Fs,
+    rows: &mut std::vec::IntoIter<Auth>,
+    triples: &mut Vec<[Auth; 3]>,
+) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2]) {
+    let bits = tree.len() - 1;
+    let mut layers = Vec::new();
+    for l in 0..bits {
+        let lambda = fs.fp3();
+        let mut target = claims[0].scale(lambda).add(claims[1]);
+        let level = &tree[bits - 1 - l];
+        let mut children: [Vec<Fp3>; 4] =
+            std::array::from_fn(|j| level.chunks_exact(2).map(|pair| pair[j / 2][j % 2]).collect());
+        let mut equality = eq(&point);
+        let (mut next_point, mut rounds) = (Vec::new(), Vec::new());
+        for round in 0..point.len() {
+            fs.set_phase(0x500 + (32 * l + round) as u16);
+            let half = equality.len() / 2;
+            let mut c = [Fp3::ZERO; 4];
+            for i in 0..half {
+                let a: [Fp3; 4] = std::array::from_fn(|j| children[j][i]);
+                let d: [Fp3; 4] = std::array::from_fn(|j| children[j][i + half] - a[j]);
+                let mut v = [Fp3::ZERO; 3];
+                for (x, y, coefficient) in [(0, 3, lambda), (2, 1, lambda), (1, 3, Fp3::ONE)] {
+                    v[0] += coefficient * a[x] * a[y];
+                    v[1] += coefficient * (d[x] * a[y] + a[x] * d[y]);
+                    v[2] += coefficient * d[x] * d[y];
+                }
+                let de = equality[i + half] - equality[i];
+                for j in 0..3 {
+                    c[j] += equality[i] * v[j];
+                    c[j + 1] += de * v[j];
+                }
+            }
+            let (corrections, a) = authenticate(c, rows);
+            let tag = a[0].m + a[0].m + a[1].m + a[2].m + a[3].m - target.m;
+            let wire = [corrections[0], corrections[1], corrections[2], corrections[3], tag];
+            record_values(fs, 0x43, &wire);
+            let r = fs.fp3();
+            target = a.iter().rev().fold(Auth::ZERO, |s, &x| s.scale(r).add(x));
+            for child in &mut children {
+                fold(child, r);
+            }
+            fold(&mut equality, r);
+            next_point.push(r);
+            rounds.push(wire);
+        }
+        let [p, q, r, s] = std::array::from_fn(|i| children[i][0]);
+        let (wire, a) = authenticate([p, q, r, s, p * s, r * q, q * s], rows);
+        triples.extend([[a[0], a[3], a[4]], [a[2], a[1], a[5]], [a[1], a[3], a[6]]]);
+        let residual = a[4].add(a[5]).scale(lambda).add(a[6]).scale(equality[0]);
+        let split =
+            [wire[0], wire[1], wire[2], wire[3], wire[4], wire[5], wire[6], residual.m - target.m];
+        fs.set_phase(0x410 + l as u16);
+        record_values(fs, 0x44, &split);
+        let t = fs.fp3();
+        claims = [
+            a[0].scale(Fp3::ONE - t).add(a[2].scale(t)),
+            a[1].scale(Fp3::ONE - t).add(a[3].scale(t)),
+        ];
+        next_point.push(t);
+        point = next_point;
+        layers.push(Layer { rounds, split });
+    }
+    (layers, point, claims)
+}
+
+pub(super) fn tree_shape(layers: &[Layer], depth: usize, top_bits: usize) -> bool {
+    layers.len() == depth
+        && layers.iter().enumerate().all(|(i, layer)| layer.rounds.len() == top_bits + i)
+}
+
+pub(super) fn verify_tree(
+    layers: &[Layer],
+    mut point: Vec<Fp3>,
+    mut claims: [Key; 2],
+    delta: Fp3,
+    fs: &mut Fs,
+    rows: &mut std::vec::IntoIter<Key>,
+    triples: &mut Vec<[Key; 3]>,
+) -> Result<(Vec<Fp3>, [Key; 2]), String> {
+    for (l, layer) in layers.iter().enumerate() {
         let lambda = fs.fp3();
         let mut target = claims[0].scale(lambda).add(claims[1]);
         let (mut equality, mut next_point) = (Fp3::ONE, Vec::new());
         for (round, wire) in layer.rounds.iter().enumerate() {
             fs.set_phase(0x500 + (32 * l + round) as u16);
-            let a = correct([wire[0], wire[1], wire[2], wire[3]], delta, &mut rows);
+            let a = correct([wire[0], wire[1], wire[2], wire[3]], delta, rows);
             if a[0].k + a[0].k + a[1].k + a[2].k + a[3].k - target.k != wire[4] {
                 return Err("B12 range cubic MAC rejected".into());
             }
@@ -370,7 +419,7 @@ pub(super) fn verify(
             equality = equality * ((Fp3::ONE - point[round]) * (Fp3::ONE - r) + point[round] * r);
             next_point.push(r);
         }
-        let a = correct(std::array::from_fn::<_, 7, _>(|i| layer.split[i]), delta, &mut rows);
+        let a = correct(std::array::from_fn::<_, 7, _>(|i| layer.split[i]), delta, rows);
         triples.extend([[a[0], a[3], a[4]], [a[2], a[1], a[5]], [a[1], a[3], a[6]]]);
         let residual = a[4].add(a[5]).scale(lambda).add(a[6]).scale(equality);
         if residual.k - target.k != layer.split[7] {
@@ -386,15 +435,7 @@ pub(super) fn verify(
         next_point.push(t);
         point = next_point;
     }
-    if claims[0].k - delta != proof.leaf_tag {
-        return Err("B12 range leaf MAC rejected".into());
-    }
-    record_values(fs, 0x46, &[proof.leaf_tag]);
-    verify_products(&triples, rows.next().unwrap(), proof.products, delta, fs)?;
-    debug_assert!(rows.next().is_none());
-    let target = Key::new(delta * alpha - claims[1].k);
-    let forms = [vec![Cube { offset: 0, point, coefficient: Fp3::ONE }], suffix(live, &rho)];
-    Ok((forms, [target, Key::ZERO]))
+    Ok((point, claims))
 }
 
 #[cfg(test)]

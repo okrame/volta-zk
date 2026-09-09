@@ -11,6 +11,10 @@ use std::{
     time::Duration,
 };
 use volta_field::{Fp, Fp3, P};
+use volta_mac::{
+    c7_fp3_transfer_prover, c7_fp3_transfer_verifier, C7Fp3ProverAuthed, C7Fp3TransferCorrection,
+    C7Fp3VerifierKey,
+};
 use volta_pcg::c71_bootstrap::{self as bootstrap, Context};
 use zeroize::Zeroize;
 
@@ -140,8 +144,16 @@ fn field(a: [u64; 3]) -> Fp3 {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
     let n: usize = args.get(1).ok_or("expected row count")?.parse()?;
-    if ![3, 32].contains(&n) {
-        return Err("bounded diagnostic accepts 3 or 32 rows".into());
+    let suite = args.get(3).map(String::as_str).unwrap_or("b9");
+    if !["b9", "b11"].contains(&suite)
+        || !(if suite == "b11" { &[3, 180, 207][..] } else { &[3, 32][..] }).contains(&n)
+    {
+        return Err("unknown suite or unregistered bounded row count".into());
+    }
+    let aes = suite == "b11";
+    #[cfg(not(feature = "c71-b11"))]
+    if aes {
+        return Err("B11 AES feature unavailable".into());
     }
     let fault = args.get(2).map(String::as_str).unwrap_or("none");
     if ![
@@ -177,8 +189,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pv = channel(p, p_count.clone());
     let vv = channel(v, v_count.clone());
     // Exactly two process threads: main executes V, the child executes P.
-    let prover = std::thread::spawn(move || bootstrap::prover(pv, context(n)));
-    let verifier = bootstrap::verifier(vv, context(n));
+    let prover = std::thread::spawn(move || {
+        #[cfg(feature = "c71-b11")]
+        if aes {
+            return bootstrap::prover_aes(pv, context(n));
+        }
+        bootstrap::prover(pv, context(n))
+    });
+    let verifier = {
+        #[cfg(feature = "c71-b11")]
+        {
+            if aes {
+                bootstrap::verifier_aes(vv, context(n))
+            } else {
+                bootstrap::verifier(vv, context(n))
+            }
+        }
+        #[cfg(not(feature = "c71-b11"))]
+        bootstrap::verifier(vv, context(n))
+    };
     let prover = prover.join().map_err(|_| "prover panic")?;
     let accepted = prover.is_ok() && verifier.is_ok();
     let p_error = prover.as_ref().err().map(ToString::to_string);
@@ -201,6 +230,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let t = field(p.tags[i]) + u * field(p.tags[i + 1]) + u * u * field(p.tags[i + 2]);
             let k = field(v.keys[i]) + u * field(v.keys[i + 1]) + u * u * field(v.keys[i + 2]);
             assert_eq!(t, k + field(*v.delta) * x);
+            if aes {
+                // Diagnostic consumer integration, no PCS/root-binding claim.
+                // Consume each disjoint triple once, with the native sign.
+                let delta_native = -field(*v.delta);
+                let target = Fp3::new(Fp::new(17), Fp::new(19), Fp::new(23));
+                let (correction, authed) =
+                    c7_fp3_transfer_prover(C7Fp3ProverAuthed::new(x, t), target);
+                let decoded = C7Fp3TransferCorrection::from_bytes(&correction.to_bytes()).unwrap();
+                let key = c7_fp3_transfer_verifier(C7Fp3VerifierKey::new(k), delta_native, decoded);
+                assert_eq!(key.k, authed.m + delta_native * authed.x);
+                for basis in [Fp3::ONE, u, u * u] {
+                    assert_ne!(key.k, authed.m + delta_native * (authed.x + basis));
+                }
+            }
         }
         assert_eq!(p.audit.sent_frames, v.audit.received_frames);
         assert_eq!(v.audit.sent_frames, p.audit.received_frames);
@@ -218,6 +261,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(a.kdf + b.kdf, 2304);
         assert_eq!(a.point_add + b.point_add, 1728);
         assert_eq!(a.prf_field_outputs + b.prf_field_outputs, (3 * 576 * (n + 9)) as u64);
+        let outputs = a.prf_field_outputs + b.prf_field_outputs;
+        assert_eq!(a.aes_key_schedules + b.aes_key_schedules, if aes { 8 * outputs } else { 0 });
+        assert_eq!(
+            a.aes_block_encryptions + b.aes_block_encryptions,
+            if aes { 32 * outputs } else { 0 }
+        );
         assert_eq!(a.cope_gadget_products + b.cope_gadget_products, (2 * 576 * (n + 9)) as u64);
         assert_eq!(a.check_base_products + b.check_base_products, (9 * n) as u64);
         assert_eq!(a.check_fp9_products + b.check_fp9_products, (2 * n + 19) as u64);
@@ -231,7 +280,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             8 * (3 * 576 * (n + 9) + 10 * n + 27) as u64
         );
         details = json!({"prover":p.audit,"verifier":v.audit,"protocol_wire_bytes":bytes,
-            "all_base_rows_checked":n,"packed_fp3_rows_checked":n/3,"unpacked_rows":n%3});
+            "all_base_rows_checked":n,"packed_fp3_rows_checked":n/3,"unpacked_rows":n%3,
+            "native_MAC_transfers_checked":if aes { n/3 } else { 0 },
+            "MAC_transfer_scope":"diagnostic consumer calls; correction codec checked locally, not transmitted"});
     }
     drop(prover);
     drop(verifier);
@@ -239,7 +290,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let allocated = ALLOCATED.load(Relaxed) - allocated_start;
     let freed = FREED.load(Relaxed) - freed_start;
     assert_eq!(live_start + allocated - freed, live_end);
-    let report = json!({"schema":"c71-b9-native-v1","credit":false,"security_admitted":false,
+    let report = json!({"schema":if aes { "c71-b11-native-v1" } else { "c71-b9-native-v1" },
+        "suite":suite,"credit":false,"security_admitted":false,
         "rows":n,"fault":fault,"accepted":accepted,"prover_error":p_error,"verifier_error":v_error,
         "wire_io":{"prover_sent_bytes":p_count.sent.load(Relaxed),"prover_received_bytes":p_count.received.load(Relaxed),
             "verifier_sent_bytes":v_count.sent.load(Relaxed),"verifier_received_bytes":v_count.received.load(Relaxed)},

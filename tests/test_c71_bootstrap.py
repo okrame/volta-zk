@@ -223,7 +223,7 @@ def test_B8_source_selection_costs_and_conditional_security_are_separate():
     assert not b8["security_admitted"] and not r["security_admitted"]
     assert r["B7_bootstrap_admission"]["baseline_stopped"]
     assert r["active_baseline_status"] == "stopped_after_failed_B7"
-    assert r["next_authorized_goal"] is None and "B11" in r["next_proposed_goal"]
+    assert r["next_authorized_goal"] is None and "B12" in r["next_proposed_goal"]
     security = b8["conditional_security"]
     terms = {k: Fraction(v) for k, v in security["terms_at_required_primitive_advantages"].items()}
     assert sum(terms.values()) == Fraction(security["sum_at_required_primitive_advantages"])
@@ -252,8 +252,8 @@ def test_B9_native_boundary_counts_and_preserved_history():
     assert not any(b9[k] for k in ("security_admitted", "pool_PCS_integration_admitted", "production_runtime_admitted"))
     assert r["B7_bootstrap_admission"]["baseline_stopped"]
     assert r["active_baseline_status"] == "stopped_after_failed_B7"
-    assert r["replacement_bootstrap_status"] == "B11_local_repairs_rejected_selection_open"
-    assert r["next_authorized_goal"] is None and "B11" in r["next_proposed_goal"]
+    assert r["replacement_bootstrap_status"] == "B11_intermediate_finite_AES_selected_conditionally"
+    assert r["next_authorized_goal"] is None and "B12" in r["next_proposed_goal"]
     assert b9["native_OT_call_counts_both_roles"] == {
         "fixed_base_scalar_multiplications": 2304, "variable_base_scalar_multiplications": 2304,
         "hash_to_group": 2304, "KDF": 2304, "point_additions": 1728, "scalar_candidates": 18432}
@@ -364,6 +364,40 @@ def test_B10_fresh_masks_NoPeek_and_disjoint_key_epochs_are_distinct_premises():
     tags = tuple((k+d*x) % p for d, x, k in zip(deltas, values, keys))
     assert all(t == (k+d*x) % p for d, x, k, t in zip(deltas, values, keys, tags))
     assert sum(tags) % p != (sum(keys) + deltas[0]*sum(values)) % p
+
+
+def test_B11_intermediate_forest_lifetime_resources_and_capacity():
+    r = plan.baseline_budget()
+    b = r["B11_intermediate_selection"]
+    assert b["B11_intermediate_selection_complete"] and b["owner_authorized_resource_restriction"]
+    assert not any(b[k] for k in ("credit", "security_admitted", "production_runtime_admitted", "pool_PCS_integration_admitted"))
+    assert not b["future_upgrade"]["achieved"]
+    assert b["future_upgrade"]["adversary_work_must_exceed"] == 1 << 78
+    p, a, reduction = b["profile"], b["adversary"], b["reduction"]
+    assert p["max_PRF_rows"] == p["max_data_rows"]+9 == 216
+    assert a["global_u64_work_including_preprocessing"] == a["global_memory_and_advice_words"] == 1 << 64
+    assert reduction["work_upper_derived"] < reduction["primitive_work_cap"] == 1 << 112
+    assert reduction["memory_words_upper_derived"] < reduction["primitive_memory_words_cap"] == 1 << 80
+    life = b["conditional_lifetime"]
+    terms = {k: Fraction(v) for k, v in life["terms"].items()}
+    assert sum(terms.values()) == Fraction(life["sum"]) < Fraction(1, 1 << 82)
+    assert terms["four_block_permutation_switching"] == Fraction(6*1152*255*(1 << 20), 1 << 128)
+    assert terms["hidden_leaf_RO_queries"] == Fraction((1 << 65)*1152*256*(1 << 20), 1 << 256)
+    assert not b["primitive_hypotheses"]["proven_for_concrete_AES_or_P521"]
+    # All actual row paths fit the complete forest charged in the reduction.
+    prefixes = {(d, row >> (8-d)) for row in range(216) for d in range(8)}
+    assert len(prefixes) <= 255
+    for c in b["cases"]:
+        n = c["base_rows"]
+        assert 9*c["three_slot_capacity_each"] == 3*c["full_Fp3_capacity"] == n
+        assert c["protocol_wire_bytes"] == 233305+4680*n
+        assert c["AES_block_encryptions_both_roles"] == 32*3*576*(n+9)
+        # Nine masks are consumed once and never packed as data.
+        triples = [set(range(i, i+3)) for i in range(0, n, 3)]
+        assert sum(map(len, triples)) == len(set().union(*triples)) == n
+        assert set().union(*triples).isdisjoint(range(n, n+9))
+    # A larger lifetime cannot silently inherit the same switching allocation.
+    assert 64*terms["four_block_permutation_switching"] > Fraction(1, 1 << 82)
 
 
 def test_B11_public_domains_and_single_use_epochs_retain_seed_search_bound():

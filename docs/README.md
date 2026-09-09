@@ -7,8 +7,10 @@ it is not another status ledger.
 The evaluated baseline remains stopped after B7. The owner's subsequent
 decisions opened B8/B9: a replacement construction and a checked native
 component. B10 concludes the premise/lifecycle assessment with integration
-not admitted. B11 rejects local label/renewal repairs and specifies a wider
-AES/MR19 candidate; its quantitative admission remains open in design §10.
+not admitted. B11 selects the owner-authorized intermediate finite AES profile under
+explicit primitive/resource hypotheses; design §10 retains the same-W and
+future adversary-work upgrade beyond 2^78 obligations. Full security and
+production integration remain unadmitted.
 
 ## Current documents
 
@@ -31,7 +33,7 @@ AES/MR19 candidate; its quantitative admission remains open in design §10.
 | [B3 native census](../scripts/c71_work_census.py) · [bounded runner](../scripts/run_c71_matrix.py) | Actual Goldilocks arithmetic and phase memory of the reduced B2 matrix path; physical traffic/security remain open in design §10 |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |
-| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [B8–B11 checks](../tests/test_c71_bootstrap.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget, including B4–B7 decisions, B8/B9 construction/component, B10 primitive/lifecycle assessment and B11 local-repair decision without security credit; `--research-screens`: preserved, non-additive research inventory |
+| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [B8–B11 checks](../tests/test_c71_bootstrap.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget, including B4–B7 decisions, B8/B9 construction/component, B10 primitive/lifecycle assessment and B11 intermediate AES selection and local-repair exclusion without security credit; `--research-screens`: preserved, non-additive research inventory |
 
 Status and design are editable; replace obsolete statements and use Git for
 history. Record important decisions with reasons and source links. Add a page

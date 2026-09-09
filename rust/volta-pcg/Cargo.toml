@@ -6,6 +6,7 @@ license.workspace = true
 
 [features]
 c71-bootstrap = ["dep:p521", "dep:sha3", "dep:zeroize"]
+c71-b11 = ["c71-bootstrap", "dep:aes"]
 
 [dependencies]
 volta-field = { workspace = true }
@@ -17,9 +18,11 @@ serde = { workspace = true }
 p521 = { version = "=0.13.3", default-features = false, features = ["arithmetic"], optional = true }
 sha3 = { version = "=0.10.8", optional = true }
 zeroize = { version = "1", optional = true }
+aes = { version = "=0.8.4", features = ["zeroize"], optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+volta-mac = { workspace = true }
 
 [[example]]
 name = "c71_bootstrap"

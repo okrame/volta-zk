@@ -6233,6 +6233,78 @@ def b10_composition_admission():
         "next_goal": "B11: select a quantitatively admissible Fp3 expansion/OT-extension contract and explicit concrete adversary resources, preserving same-W; before any native integration"}
 
 
+def b11_intermediate_selection():
+    """Owner-authorized finite AES construction; conditional component theorem only."""
+    setups, m, n, depth = LIFETIME_ATTEMPTS, 576, 207, 8
+    q = 1 << 65
+    roots = 2*m*setups
+    nodes, leaves = roots*((1 << depth)-1), roots*(1 << depth)
+    b8 = b8_bootstrap_selection()
+    terms = {k: Fraction(v) for k, v in
+             b8["conditional_security"]["terms_at_required_primitive_advantages"].items()
+             if k != "PRF_at_required_advantage"}
+    terms.update({
+        "AES256_PRP_at_required_advantage": Fraction(nodes, 1 << 128),
+        "four_block_permutation_switching": Fraction(6*nodes, 1 << 128),
+        "hidden_leaf_RO_queries": Fraction(q*leaves, 1 << 256),
+        "forest_seed_collision_envelope": Fraction((nodes+leaves)**2, 1 << 257),
+        "bounded_Fp_sampling": setups*(3*m*(n+9)+10*n+27)*Fraction((1 << 64)-P, 1 << 64)**8})
+    total = sum(terms.values())
+    # One straight-line reduction, not a sum of the running times of all hybrids.
+    adversary_work, honest_events, event_work = 1 << 64, 1 << 50, 1 << 46
+    reduction_work = adversary_work + (1 << 12)*adversary_work + event_work*(q+honest_events)
+    reduction_memory = (1 << 12)*adversary_work + (1 << 14)*q + honest_events
+    cases = []
+    for rows in (180, 207):
+        outputs = 3*m*(rows+9)
+        cases.append({"base_rows": rows, "sacrificed_rows": 9,
+            "full_Fp3_capacity": rows//3, "three_slot_capacity_each": rows//9,
+            "protocol_wire_bytes": 233_305+4_680*rows,
+            "COPE_field_outputs_both_roles": outputs,
+            "AES_key_schedules_both_roles": depth*outputs,
+            "AES_block_encryptions_both_roles": 4*depth*outputs,
+            "scope": "component including framing; transport/lifecycle/PCS excluded"})
+    return {"status": "selected_intermediate_finite_AES_under_explicit_primitive_hypotheses",
+        "credit": False, "B11_intermediate_selection_complete": True,
+        "security_admitted": False, "production_runtime_admitted": False,
+        "pool_PCS_integration_admitted": False,
+        "owner_authorized_resource_restriction": True,
+        "scope": "finite linear-wire base-sVOLE with AES COPE PRF; no silent/LPN expansion",
+        "profile": {"suite": "C71B11v1/2", "max_data_rows": n, "max_PRF_rows": n+9,
+            "seed_bytes": 32, "tree_depth": depth, "OT_instances_per_setup": m,
+            "G": "four AES-256 secret-key encryptions of LE128(0..3); two 32-byte children",
+            "leaf": "SHAKE256(C71B11/COPE/leaf/ || full_context || i:u32 || j:u8 || row:u64 || seed32), 8 canonical-u64 candidates",
+            "native_feature": "c71-b11", "legacy_B9_unchanged_suite": True},
+        "adversary": {"global_u64_work_including_preprocessing": adversary_work,
+            "global_memory_and_advice_words": 1 << 64, "global_RO_queries": 1 << 64,
+            "setup_attempts_including_failures_preparation_and_renewals": setups,
+            "free_RO_dependent_advice": False},
+        "reduction": {"kind": "analytic straight-line simulator envelope, not native instruction measurement",
+            "global_queries_including_simulator": q, "honest_event_upper": honest_events,
+            "work_per_event_upper": event_work, "work_upper_derived": reduction_work,
+            "memory_words_upper_derived": reduction_memory,
+            "primitive_work_cap": 1 << 112, "primitive_memory_words_cap": 1 << 80,
+            "proof": "design §10 B11 intermediate: bounded curve loops and bit-trie RO table; no replay"},
+        "primitive_hypotheses": {"DDH_P521_advantage_upper": str(Fraction(1, 1 << 184)),
+            "AES256_PRP_four_challenge_blocks_advantage_upper": str(Fraction(1, 1 << 128)),
+            "at_full_reduction_resources": True,
+            "proven_for_concrete_AES_or_P521": False, "SHAKE256_model": "classical programmable ROM"},
+        "conditional_lifetime": {"forest_roots_upper": roots, "internal_nodes_upper": nodes,
+            "leaf_seeds_upper": leaves, "terms": {k: str(v) for k, v in terms.items()},
+            "sum": str(total), "bits": math.log2(total.denominator)-math.log2(total.numerator),
+            "below_2_to_minus_82": total < Fraction(1, 1 << 82),
+            "complete_C71_or_same_W_FS_bound": False},
+        "cases": cases,
+        "native_consumer_contract": "three disjoint same-key base rows; Delta_native=-Delta_B11; existing MAC transfer",
+        "same_W": "exists ONE private W for every accepted proof across roots/sessions/key epochs; renewed root linked before activation",
+        "unimplemented_production_obligations": ["joint durable reservation and global counters",
+            "full erasure/generated-code constant-time audit", "same-W authenticated PCS/GKR relation and FS composition"],
+        "future_upgrade": {"required": True, "adversary_work_must_exceed": 1 << 78,
+            "includes_preprocessing_and_lifetime": True, "achieved": False,
+            "requires": "new complete reduction and strengthened/replaced OT/PRG as needed; no inheritance from this cap"},
+        "next_goal": "B12: durable finite-pool integration and same-W admission boundary; keep the >2^78 adversary-resource upgrade open"}
+
+
 def b11_wider_aes_contract():
     """Unimplemented one-shot source contract; computational admission stays open."""
     # ponytail: one setup and one main stage; add refills after joint composition.
@@ -6284,7 +6356,7 @@ def b11_wider_aes_contract():
 
 
 def b11_local_repair_admission():
-    """Bounded rejection of local repairs; no replacement PRG or protocol port."""
+    """Negative comparisons before the owner's intermediate-profile authorization."""
     b8 = b8_bootstrap_selection()
     guesses = 1 << 63
     lower = Fraction(guesses, 1 << 128) - Fraction(guesses, 1 << 256)
@@ -6320,6 +6392,7 @@ def b11_local_repair_admission():
     puncture_ots = 2508 * 8 + 1319 * 13
     return {
         "status": "local_repair_assessment_complete_no_admissible_expansion_selected",
+        "scope": "preserved negative local-repair screen; active selection is B11_intermediate_selection",
         "credit": False, "security_admitted": False,
         "production_runtime_admitted": False, "pool_PCS_integration_admitted": False,
         "quantitatively_admissible_expansion_selected": None,
@@ -6373,7 +6446,7 @@ def b11_local_repair_admission():
             "PCS_GKR_requirement": "same authenticated endpoint or verified authenticated equality",
             "complete_theorem": False},
         "wider_AES_contract": b11_wider_aes_contract(),
-        "next_goal": "B11 positive selection remains open: resource-complete wider AES/OT contract or protocol-specific reduction; local 128-bit GGM repairs are closed, no native integration"}
+        "next_goal": "superseded by B11_intermediate_selection; local 128-bit GGM repairs remain closed"}
 
 
 def baseline_budget():
@@ -6449,8 +6522,8 @@ def baseline_budget():
         "malicious_prover_soundness_bits": None, "malicious_verifier_zk_bits": None,
         "security_admitted": False, "complete_baseline_selected": None,
         "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": None,
-        "replacement_bootstrap_status": "B11_local_repairs_rejected_selection_open",
-        "next_proposed_goal": b11_local_repair_admission()["next_goal"],
+        "replacement_bootstrap_status": "B11_intermediate_finite_AES_selected_conditionally",
+        "next_proposed_goal": b11_intermediate_selection()["next_goal"],
         "measurement_reuse_priority": None,
         "G2_disposition": {"status": "archived_unselected_research",
             "pending_patch": "integrated_as_three_regression_checks",
@@ -6497,6 +6570,7 @@ def baseline_budget():
         "B9_bootstrap_component": b9_bootstrap_component(),
         "B10_composition_admission": b10_composition_admission(),
         "B11_local_repair_admission": b11_local_repair_admission(),
+        "B11_intermediate_selection": b11_intermediate_selection(),
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

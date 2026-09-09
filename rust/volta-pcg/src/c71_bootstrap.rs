@@ -1,7 +1,8 @@
 //! C7.1 B9: isolated MR19 receiver-first / Wolverine base-sVOLE component.
 //!
 //! Source mapping and unresolved admission obligations: design §10, B9.
-//! This feature has no production pool adapter, durable lease, AES expansion,
+//! The opt-in B11 profile uses bounded AES-256 GGM expansion inside COPE.
+//! Neither profile has a production pool adapter, durable lease,
 //! or PCS integration. Callers must supply an authenticated, dedicated channel.
 //! OS randomness is mandatory in the public entry points. Errors consume the
 //! channel and discard secret buffers; in-memory ownership is not a durable burn.
@@ -31,6 +32,12 @@ const OTS: usize = 576;
 const POINT_BYTES: usize = 67;
 const MAX_ROWS: usize = 27_511;
 const MAGIC: &[u8; 8] = b"C71B9v01";
+#[derive(Clone, Copy)]
+enum Suite {
+    B9,
+    #[cfg(feature = "c71-b11")]
+    B11,
+}
 type Result<T> = io::Result<T>;
 
 fn invalid(message: &'static str) -> io::Error {
@@ -45,19 +52,28 @@ pub struct Context {
     pub rows: usize,
 }
 impl Context {
+    #[cfg(test)]
     fn common(&self) -> Result<Vec<u8>> {
-        if !(1..=MAX_ROWS).contains(&self.rows)
+        self.common_for(Suite::B9)
+    }
+    fn common_for(&self, suite: Suite) -> Result<Vec<u8>> {
+        let (magic, id, max_rows) = match suite {
+            Suite::B9 => (MAGIC, 1u32, MAX_ROWS),
+            #[cfg(feature = "c71-b11")]
+            Suite::B11 => (b"C71B11v1", 2u32, 207),
+        };
+        if !(1..=max_rows).contains(&self.rows)
             || [&self.session, &self.channel, &self.capacity].iter().any(|v| **v == [0; 32])
         {
             return Err(invalid("invalid bootstrap context or row capacity"));
         }
         let mut out = Vec::with_capacity(120);
-        out.extend(MAGIC);
+        out.extend(magic);
         out.extend(self.session);
         out.extend(self.channel);
         out.extend(self.capacity);
         out.extend((self.rows as u64).to_le_bytes());
-        out.extend(1u32.to_le_bytes()); // suite: P-521/SHAKE256/BLAKE3/Fp9
+        out.extend(id.to_le_bytes());
         out.extend(9u32.to_le_bytes());
         Ok(out)
     }
@@ -75,6 +91,8 @@ pub struct Work {
     pub scalar_candidates: u64,
     pub field_candidates: u64,
     pub prf_field_outputs: u64,
+    pub aes_key_schedules: u64,
+    pub aes_block_encryptions: u64,
     pub cope_gadget_products: u64,
     pub check_base_products: u64,
     pub check_fp9_products: u64,
@@ -318,8 +336,9 @@ fn handshake(
     prover: bool,
     rng: &mut (impl RngCore + CryptoRng),
     audit: &mut Audit,
+    suite: Suite,
 ) -> Result<Vec<u8>> {
-    let common = context.common()?;
+    let common = context.common_for(suite)?;
     let mut mine = common.clone();
     let mut nonce = [0u8; 32];
     random_bytes(rng, &mut nonce)?;
@@ -384,6 +403,10 @@ fn prf(
     work: &mut Work,
 ) -> Result<u64> {
     work.prf_field_outputs += 1;
+    #[cfg(feature = "c71-b11")]
+    if context.starts_with(b"C71B11v1") {
+        return aes_prf(seed, context, i, j, row, work);
+    }
     let mut h = blake3::Hasher::new_keyed(seed);
     h.update(b"C71B9/COPE/sender/");
     h.update(context);
@@ -394,6 +417,58 @@ fn prf(
     sample_fp(
         |bytes| {
             reader.fill(bytes);
+            Ok(())
+        },
+        work,
+    )
+}
+
+#[cfg(feature = "c71-b11")]
+fn aes_prf(
+    seed: &[u8; 32],
+    context: &[u8],
+    i: usize,
+    j: u8,
+    row: usize,
+    work: &mut Work,
+) -> Result<u64> {
+    use aes::{
+        cipher::{Block, BlockEncrypt, KeyInit},
+        Aes256,
+    };
+    if row >= 216 || i >= OTS || j > 1 {
+        return Err(invalid("B11 PRF domain exceeds admitted profile"));
+    }
+    // ponytail: recompute the depth-eight path; a cache needs its own erasure audit.
+    let mut leaf = Zeroizing::new(*seed);
+    for depth in (0..8).rev() {
+        let cipher = Aes256::new_from_slice(&*leaf).unwrap();
+        let mut blocks: [Block<Aes256>; 4] = Default::default();
+        for (index, block) in blocks.iter_mut().enumerate() {
+            block.copy_from_slice(&(index as u128).to_le_bytes());
+        }
+        cipher.encrypt_blocks(&mut blocks);
+        let child = 2 * ((row >> depth) & 1); // public row, never an OT choice
+        leaf[..16].copy_from_slice(&blocks[child]);
+        leaf[16..].copy_from_slice(&blocks[child + 1]);
+        for block in &mut blocks {
+            block[..].zeroize();
+        }
+        work.aes_key_schedules += 1;
+        work.aes_block_encryptions += 4;
+        // RustCrypto's zeroize feature erases the round-key schedule on drop.
+    }
+    let mut h = Shake256::default();
+    h.update(b"C71B11/COPE/leaf/");
+    h.update(context);
+    h.update(&(i as u32).to_le_bytes());
+    h.update(&[j]);
+    h.update(&(row as u64).to_le_bytes());
+    h.update(&*leaf);
+    let mut reader = h.finalize_xof();
+    sample_fp(
+        |bytes| {
+            XofReader::read(&mut reader, bytes);
             Ok(())
         },
         work,
@@ -479,16 +554,22 @@ fn ot_receiver(
 
 /// Real OT/PRF prover role. Run once on a dedicated authenticated channel.
 pub fn prover(channel: impl Read + Write, context: Context) -> Result<ProverOutput> {
-    prover_with_rng(channel, context, &mut OsRng)
+    prover_for(channel, context, &mut OsRng, Suite::B9)
 }
-fn prover_with_rng(
+/// B11 intermediate AES profile, at most 207 data rows; component use only.
+#[cfg(feature = "c71-b11")]
+pub fn prover_aes(channel: impl Read + Write, context: Context) -> Result<ProverOutput> {
+    prover_for(channel, context, &mut OsRng, Suite::B11)
+}
+fn prover_for(
     mut channel: impl Read + Write,
     context: Context,
     rng: &mut (impl RngCore + CryptoRng),
+    suite: Suite,
 ) -> Result<ProverOutput> {
     let mut audit = Audit::default();
     let start = Instant::now();
-    let full = handshake(&mut channel, &context, true, rng, &mut audit)?;
+    let full = handshake(&mut channel, &context, true, rng, &mut audit, suite)?;
     let seeds = ot_sender(&mut channel, &full, rng, &mut audit)?;
     audit.phase("headers_and_OT", start);
     let start = Instant::now();
@@ -538,16 +619,22 @@ fn prover_with_rng(
 }
 /// Real OT/PRF verifier role; compression is sent only after the full Fp9 check.
 pub fn verifier(channel: impl Read + Write, context: Context) -> Result<VerifierOutput> {
-    verifier_with_rng(channel, context, &mut OsRng)
+    verifier_for(channel, context, &mut OsRng, Suite::B9)
 }
-fn verifier_with_rng(
+/// B11 intermediate verifier; fresh key and full Fp9 check on every execution.
+#[cfg(feature = "c71-b11")]
+pub fn verifier_aes(channel: impl Read + Write, context: Context) -> Result<VerifierOutput> {
+    verifier_for(channel, context, &mut OsRng, Suite::B11)
+}
+fn verifier_for(
     mut channel: impl Read + Write,
     context: Context,
     rng: &mut (impl RngCore + CryptoRng),
+    suite: Suite,
 ) -> Result<VerifierOutput> {
     let mut audit = Audit::default();
     let start = Instant::now();
-    let full = handshake(&mut channel, &context, false, rng, &mut audit)?;
+    let full = handshake(&mut channel, &context, false, rng, &mut audit, suite)?;
     let delta = Zeroizing::new(random_f9(rng, &mut audit.work)?);
     let seeds = ot_receiver(&mut channel, &full, &delta, rng, &mut audit)?;
     audit.phase("headers_and_OT", start);
@@ -613,6 +700,38 @@ mod tests {
     use super::*;
     use rand::{rngs::StdRng, SeedableRng};
     use std::io::Cursor;
+
+    #[test]
+    #[cfg(feature = "c71-b11")]
+    fn c71_b11_aes_independent_vectors_and_profile_boundary() {
+        // Computed independently with OpenSSL aes-256-ecb and Python SHAKE256.
+        let seed = std::array::from_fn(|i| i as u8);
+        let mut work = Work::default();
+        for (row, expected) in
+            [(0, 27390695000489068), (1, 15138967911530661982), (215, 12348729350428255245)]
+        {
+            assert_eq!(aes_prf(&seed, b"C71B11v1-kat", 17, 1, row, &mut work).unwrap(), expected);
+        }
+        assert_eq!((work.aes_key_schedules, work.aes_block_encryptions), (24, 96));
+        assert!(aes_prf(&seed, b"C71B11v1-kat", 17, 1, 216, &mut work).is_err());
+        let mut c = context();
+        c.rows = 207;
+        assert_ne!(c.common().unwrap(), c.common_for(Suite::B11).unwrap());
+        c.rows = 208;
+        assert!(c.common_for(Suite::B11).is_err());
+        assert!(c.common().is_ok());
+        let mut header = context().common().unwrap();
+        header.extend([0; 32]);
+        assert!(handshake(
+            &mut tape(wire(1, &header)),
+            &context(),
+            false,
+            &mut ConstantRng(0),
+            &mut Audit::default(),
+            Suite::B11
+        )
+        .is_err());
+    }
 
     fn hex(raw: &[u8]) -> String {
         raw.iter().map(|x| format!("{x:02x}")).collect()
@@ -771,7 +890,8 @@ mod tests {
             &context(),
             false,
             &mut rng,
-            &mut Audit::default()
+            &mut Audit::default(),
+            Suite::B9
         )
         .is_err());
     }
@@ -885,12 +1005,22 @@ mod tests {
 
     #[test]
     fn c71_b9_zero_compressed_key_withholds_last_frame() {
+        check_zero_key(Suite::B9);
+    }
+
+    #[test]
+    #[cfg(feature = "c71-b11")]
+    fn c71_b11_zero_compressed_key_withholds_last_frame() {
+        check_zero_key(Suite::B11);
+    }
+
+    fn check_zero_key(suite: Suite) {
         // Drive the whole verifier with known test-only zero coins. Delta=0,
         // B0=B1=identity and zero ciphertexts make its selected PRF seed known.
         let c = context();
-        let mut header = c.common().unwrap();
+        let mut header = c.common_for(suite).unwrap();
         header.extend([7u8; 32]);
-        let mut full = c.common().unwrap();
+        let mut full = c.common_for(suite).unwrap();
         full.extend([7u8; 32]);
         full.extend([0u8; 32]);
         let mut w = Work::default();
@@ -911,7 +1041,7 @@ mod tests {
         input.extend(wire(6, &vec![0; OTS * (c.rows + 9) * 8]));
         input.extend(wire(8, &encode_fields(&[F9::default(), z])));
         let mut channel = tape(input);
-        let error = verifier_with_rng(&mut channel, c, &mut ConstantRng(0)).err().unwrap();
+        let error = verifier_for(&mut channel, c, &mut ConstantRng(0), suite).err().unwrap();
         assert_eq!(error.to_string(), "zero compressed key");
         let mut sent = &channel.output[..];
         let mut tags = Vec::new();

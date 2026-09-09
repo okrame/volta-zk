@@ -1,4 +1,4 @@
-# Current status — C7.1 Gemma-31B, B11 local repairs rejected; selection open
+# Current status — C7.1 Gemma-31B, B11 intermediate AES selected
 
 Updated 2026-09-09. Editable working summary; Git preserves revisions.
 [Design](c7.1-gemma31b-design.md) · [Documentation index](README.md) ·
@@ -6,20 +6,30 @@ Updated 2026-09-09. Editable working summary; Git preserves revisions.
 
 ## Active authority — read first
 
-**B11's local-repair assessment is complete; its positive selection is not.**
-The owner's latest 2026-09-09 instruction authorizes the next goal, keeps
-all proofs bound to the same private weights, and permits further B10 work
-only for a demonstrable local repair. Public domain separation and even
-fresh seeds after every use retain B10's single-sample PRG lower bound.
-That repair line is closed. The assessment prices direct MR19 puncture OT
-and finite direct-B9 capacity without selecting either as an admissible
-AES expansion. No adversary-resource restriction is adopted.
-[Design §10, B11](c7.1-gemma31b-design.md#b11-esito-del-test-di-riparazione-locale)
-records the exact thresholds, source correspondence, costs and same-W
-renewal counterexample. A one-shot wider-seed AES/MR19 candidate is now
-specified, with per-block checks and exact row consumption; its computational
-and composition bounds remain open. B11 still needs quantitative admission;
-no new runtime or automatic B12 is opened.
+**B11 selects an intermediate finite AES construction under explicit primitive
+hypotheses.** The owner's latest 2026-09-09 authorization permits the temporary
+global cap of `2^64` u64 work and `2^64` memory/advice words, including
+preprocessing, to close B11 and integrate the path. A later reduction must
+support adversary work **beyond `2^78`**, including preprocessing and lifetime;
+that upgrade is not achieved. Q64 remains global and `2^20` counts setup
+attempts, including preparation, failures and renewals.
+
+The selected path reuses MR19/P-521 and Wolverine Fp9→Fp3 base-sVOLE with
+an AES-256 GGM/SHAKE COPE PRF, capped at 207 data rows. It avoids puncture
+OT, IKNP, weak equality and LPN. The complete **conditional component**
+budget is below `2^-82` (86.835 bits), requiring explicit AES/DDH advantages
+at the full reductions' `2^112` work / `2^80` memory envelope. These are
+named computational hypotheses, not proven concrete-primitive bounds or
+78-bit security for C7.1. [Design §10, B11 intermediate](c7.1-gemma31b-design.md#b11-selezione-intermedia-aes-a-capacità-finita)
+defines the construction, proof, resources and limits. The opt-in native
+profile and existing MAC consumer are implemented; bounded OS-random runs
+are the remaining component validation before recording completion.
+
+Public labels and even single-use renewal do not repair B10's 128-bit
+standalone PRG lower bound. That line remains closed; the wider silent
+candidate remains unselected. All proofs must bind to **one private W**
+across sessions, key epochs and renewed roots. The new component does not
+supply the required PCS/GKR relation or reset the installed model anchor.
 
 **B10 concluded; integration is not admitted.** The owner's new 2026-09-09
 instruction authorizes the bounded premise/lifecycle assessment and explicitly
@@ -28,7 +38,8 @@ quantifies B9's PRF resources, identifies runtime gaps and specifies the
 same-W lifecycle/AES-PCG contract. A seed-search lower bound excludes a
 `<=2^-78` standalone PRG advantage for the existing 128-bit GGM at `2^64`
 public AES evaluations; this is not a complete PCG or matrix attack.
-Concrete DDH/PRF resources and extension composition remain undischarged.
+Its legacy DDH/PRF and extension obligations remain undischarged; B11
+selects a separate, explicitly conditional finite profile.
 [Design §10, B10](c7.1-gemma31b-design.md#b10-premesse-concrete-e-contratto-di-composizione)
 records the derivation and the precise disposition. B8/B9 remain valid
 construction/component evidence; no runtime is promoted by this assessment.
@@ -94,18 +105,14 @@ budgets and the pinned 100+50 workload. The comparison may price explicit
 alternatives, including a fifth read or organized host spill; it must not
 claim they meet the reference. Scope and remaining thresholds are in design §1.
 
-**Authorization after the B11 local-repair assessment:** the authorized
-local screen is complete and rejects further label/renewal-only B10 tuning.
-The positive B11 selection remains open. The old B7 baseline
-stays stopped; G2 is archived as unselected research. No RunPod/provider
-contact, H100/GPU, paid resources, downloads,
-heavy builds or matrix/Gemma E2E. There is no pending spending approval.
-B11 requires a quantitatively admissible Fp3 expansion/OT contract and
-explicit concrete adversary/reduction resources before any native integration.
-The assessment does not supply that contract. Restricting the adversary model
-needs an explicit owner decision; no such restriction is adopted. A new
-construction or protocol-specific reduction cannot inherit admission from
-these arithmetic screens. No complete C7.1 runner is admitted.
+**Current authorization:** the finite B11 component and diagnostic MAC
+integration are authorized locally, using the bounded B9 test procedure.
+No new approval is needed for these checks. Production pool/PCS integration,
+matrix/Gemma E2E, provider/GPU access and spending remain outside this
+component result. B12 is proposed for durable finite-pool integration and
+the same-W admission boundary; it is not automatically started. The final
+78-bit requirements remain open, and the temporary work restriction must
+be removed or raised beyond `2^78` through the later complete reduction.
 
 ## Evidence and open obligations
 
@@ -498,53 +505,42 @@ claiming a runtime lifecycle or complete same-W/FS theorem. Complete
 connection/PCG, work and physical resource costs stay unknown. B11 below
 assesses local repairs; integration, PCS tuning, E2E and hardware remain closed.
 
-## B11 local-repair decision
+## B11 intermediate selection and component boundary
 
-For each public context the seed-enumeration argument is unchanged. One
-recorded PRG sample and one target epoch suffice even with renewal after
-every use; no lifetime multiplier is needed. At `2^63` seed guesses,
-141/145 seed bits are necessary to avoid this specific exclusion for
-targets `2^-78`/`2^-82`. These are not sufficient security parameters.
-With 128-bit seeds, the corresponding search thresholds are only
-`2^51`/`2^47` public AES calls. The service cannot impose these offline-work
-limits through renewal. The result remains scoped to the standalone PRG
-premise, without a complete PCG/matrix attack.
+The local-repair rejection is preserved: domain separation and renewal
+cannot cure the 128-bit seed-space bound, even for a single observed output.
+The owner's subsequent authorization selects a finite construction with
+32-byte secret AES node keys inside COPE. Original B9 remains available
+under its original suite; cross-suite contexts fail before OT. The selected
+component needs no silent extension or LPN assumption.
 
-The published Wolverine extension explicitly requires G/G′ PRGs, malicious
-OT, weak equality and valid same-key sVOLE before regular LPN. Direct MR19
-would remove IKNP at 37,211 additional OT instances and 12,354,052 payload
-bytes for the historical setup plus one main stage, excluding frames/refills.
-Direct B9 would remove GGM/OT extension/LPN: the reduced three-slot capacities
-need 1,075,705/1,202,065 bootstrap bytes. Neither bypass resolves all the
-required premises or is selected; direct B9 does not implement AES expansion.
-These are analytic costs, not new runs, complete certificates or timing claims.
+The global adversary model and concrete reduction envelope are now explicit,
+including preprocessing, advice and simulators. A depth-eight forest has
+at most `1152*255*2^20` internal nodes. The conditional lifetime sum includes
+AES PRP, switching, leaf guesses/collisions, MR19/DDH, nonce collisions,
+sampler failures and the leakage-free base check/compression. It is below
+`2^-82`, with the concrete AES/P-521 hypotheses still assumptions. This
+selects the intermediate contract; full runtime/security admission remains
+false. The separately specified silent candidate is not selected.
 
-Five new bootstrap checks pass, **25 with the prior bootstrap/budget checks**.
-They cover public domains and single-use epochs, exact necessary thresholds,
-bypass accounting reconciled with both measured B9 sizes, and a same-W
-counterexample across fresh roots/keys; the fifth covers the wider AES
-candidate's switching term, trees, capacities and sampler. Two locally valid PCS/MAC endpoints
-can still refer to different W; root renewal must verify its relation to
-the installed W before activation. Existing evidence and runtime are unchanged.
-No Rust/Lean build, new benchmark, E2E or hardware credit follows.
+Native tests cover independent OpenSSL/SHAKE vectors, the row/suite boundary,
+zero-key rejection and the preserved B9/B7 checks. The diagnostic packs
+three disjoint rows per Fp3 and calls the existing native MAC transfer with
+`Delta_native=-Delta_B11`; altered values must fail in all three coordinates.
+The authorized OS-random cases are n=180/207 (60/69 Fp3) and ten adversarial
+byte cases at n=3. Their protocol wire targets are 1,075,705/1,202,065 bytes;
+no full-connection, PCS, physical-traffic or Gemma performance claim follows.
 
-The candidate uses secret 256-bit AES node keys, full-width SHAKE leaf seeds,
-direct MR19 and a separate Fp3 check for each single-point block. One setup
-and one main stage need 35,032 initial rows under one Delta, exceeding B9's
-27,511-row profile. Fresh B9 instances cannot fill the gap because their
-keys differ. The staged output would supply 3,405,162 Fp3 correlations;
-prefixes and tails are explicitly burned. Its AES switching term alone
-is between `2^-83` and `2^-82` over `2^20` setups. This is a partial bound,
-with concrete AES advantages, full tree/FEQ/static-leakage LPN composition
-and larger-bootstrap premises still undischarged. Simulator vector cells
-are separately counted; they are not honest runtime or live memory.
+Same-W remains a global quantifier over all accepted proofs. A renewed root
+must be linked to the installed W before activation; locally valid MACs
+under fresh keys do not prove that relation. B10's joint durable reservation,
+NoPeek and burn contract remains required for a pool adapter. SHAKE-state
+erasure and generated-code timing checks also remain open for production.
 
-**Open outcome:** positive B11 selection is not achieved. It requires
-resource-complete primitive/composition bounds for a wider AES construction
-or an applicable protocol-specific reduction. Q64 does not specify offline
-work, memory, preprocessing or advice; the current model is preserved.
-The local-repair line stops here under the owner's instruction.
-
+B12 proposed: durable finite-pool integration with the same-W/PCS admission
+boundary. The owner-required later reduction beyond `2^78` adversary work,
+with preprocessing and lifetime, is explicitly unachieved. B11 supplies no
+permission or security credit for the stopped B7/G2 lines or a full runner.
 
 ## G2 residual changes: integrated evidence, archived research line
 
@@ -564,13 +560,14 @@ archiving does not prove them or assert impossibility. The
 [G2 dossier](c7.1-committed-mac-opening.md) retains conditional results with
 an explicit historical scope. There is no pending G2 patch, alternate
 runtime or second active goal. The single budget records this disposition;
-B10 is complete and positive B11 selection is the only open next goal.
+B10 and the conditional intermediate B11 selection are complete; B12 is
+the proposed next goal after bounded component validation.
 
 ## Documentation decision
 
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 (B11 local
-decision, B10 assessment, B9 component and preserved B7 failure) without
+A fresh conversation can start from this page and design §10 (B11 intermediate
+selection, B10 assessment, B9 component and preserved B7 failure) without
 importing the full G2 transcript or treating archived research as active work.

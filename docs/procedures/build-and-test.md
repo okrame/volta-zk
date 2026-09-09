@@ -51,6 +51,15 @@ This is not the stopped B7 matrix runner or a full Gemma E2E. The source
 tree must be clean for a run of record; a detached temporary worktree can
 preserve unrelated edits while sharing the canonical target.
 
+For the owner-authorized B11 intermediate component, the same runner accepts
+`--suite b11 --n 180` or `--n 207`, and `--suite b11 --n 3 --fault ...` for
+the ten byte faults. It builds only the example with `c71-b11`, including
+the existing MAC consumer diagnostic. Limits remain 60 s / 2 GiB / two
+threads. Run the narrow native tests using the command above with
+`--features c71-b11 c71_b`; this also retains the B7 negative and B9 checks.
+The Python bootstrap/budget checks cover the conditional lifetime arithmetic.
+These are component checks, with no durable-pool or PCS/Gemma admission.
+
 Before a broad local build, check guest space and confirm at least 60 GiB free
 on the host; guest `df` alone does not establish host capacity. Run the full
 workspace before a protocol milestone checkpoint when authorized resources

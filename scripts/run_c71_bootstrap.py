@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one bounded B9 component case; preserve provenance and failed results."""
+"""Run one bounded B9/B11 component case; preserve provenance and failed results."""
 import argparse
 import datetime
 import hashlib
@@ -18,10 +18,13 @@ FAULTS = ("none", "prover-context", "verifier-context", "receiver-point", "sende
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--n", type=int, choices=(3, 32), default=3)
+    parser.add_argument("--suite", choices=("b9", "b11"), default="b9")
+    parser.add_argument("--n", type=int, choices=(3, 32, 180, 207), default=3)
     parser.add_argument("--fault", choices=FAULTS, default="none")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.n not in ((3, 180, 207) if args.suite == "b11" else (3, 32)):
+        parser.error("row count not registered for this suite")
     head = git("rev-parse", "HEAD")
     dirty = bool(git("status", "--porcelain", "--untracked-files=all"))
     common = Path(git("rev-parse", "--path-format=absolute", "--git-common-dir"))
@@ -30,9 +33,10 @@ def main():
                CARGO_PROFILE_DEV_DEBUG="0", CARGO_PROFILE_DEV_OPT_LEVEL="2", RAYON_NUM_THREADS="1")
     cargo = shutil.which("cargo") or str(Path.home()/".cargo/bin/cargo")
     command = [cargo, "build", "--offline", "--locked", "-j", "2", "-p", "volta-pcg",
-               "--features", "c71-bootstrap", "--example", "c71_bootstrap"]
+               "--features", "c71-b11" if args.suite == "b11" else "c71-bootstrap",
+               "--example", "c71_bootstrap"]
     start = datetime.datetime.now(datetime.timezone.utc)
-    report = {"milestone": "c71-b9-bootstrap", "git_commit": head, "git_dirty": dirty,
+    report = {"milestone": f"c71-{args.suite}-bootstrap", "git_commit": head, "git_dirty": dirty,
               "credit": False, "run_of_record": False, "rows": args.n, "fault": args.fault,
               "started_at_utc": start.isoformat(), "build_command": command,
               "build_profile": "dev opt-level=2, debug=0, native CPU; operation counters enabled",
@@ -45,13 +49,13 @@ def main():
     if build.returncode == 0:
         binary = target/"debug/examples/c71_bootstrap"
         report["binary_sha256"] = hashlib.sha256(binary.read_bytes()).hexdigest()
-        run = bounded([str(binary), str(args.n), args.fault], env)
+        run = bounded([str(binary), str(args.n), args.fault, args.suite], env)
         report["execution_process"] = run
         success = run["returncode"] == 0 and run["failure"] is None
         if success:
             try:
                 result = json.loads(run["stdout"])
-                assert result["schema"] == "c71-b9-native-v1"
+                assert result["schema"] == f"c71-{args.suite}-native-v1"
                 assert result["accepted"] == (args.fault == "none")
                 report["execution"] = result
                 del run["stdout"]
@@ -67,7 +71,7 @@ def main():
         "perf_event_paranoid": Path("/proc/sys/kernel/perf_event_paranoid").read_text().strip(),
         "DRAM_traffic_measured": False}
     date = start.strftime("%Y%m%dT%H%M%S%fZ")
-    output = args.output or ROOT/"benchmarks/results"/f"c71-b9-{args.n}-{args.fault}-{date}-{head[:10]}.json"
+    output = args.output or ROOT/"benchmarks/results"/f"c71-{args.suite}-{args.n}-{args.fault}-{date}-{head[:10]}.json"
     with output.open("x") as stream:
         json.dump(report, stream, indent=2, allow_nan=False)
         stream.write("\n")

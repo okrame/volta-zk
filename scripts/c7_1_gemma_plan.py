@@ -6569,6 +6569,20 @@ def b12_p0_native_caller():
             'full_private_weight_bodies_loaded': False,
             'full_Gemma_integer_forward_or_PCS_runtime': False,
         },
+        'byte_affine_source_bridge': {
+            'source': 'rust/volta-pcs/src/c71_matrix/gemma/bytes.rs',
+            'scalar_widths': [48, 32, 16], 'canonical_alphabet': [0, 255],
+            'live_byte_cells': 6525586944, 'root_log_cells': 33,
+            'P0_original_target_forms': 1545, 'P0_original_target_cubes': 18472,
+            'targets_with_byte_range_and_padding': 1547,
+            'native_bridge_cube_cap': 32768,
+            'public_bias_changes_value_and_key_but_not_original_tag': True,
+            'physical_twos_complement_top_byte_xor': 128,
+            'source_encoding_bound_before_P0_output_points': True,
+            'tiny_byte_range_and_original_scalar_MAC_check_Fp3_rows': 551,
+            'extra_private_RNE_bits_or_trace_commitments': 0,
+            'full_RNE_or_Gemma_integer_producers_proven': False,
+        },
         'full_Gemma_non_W_relations_and_quantization': False,
         'two_source_PCS_error_and_ZK_composition': 'raw_P0_two_source_composition; raw relation only',
         'complete_source_opening_capacity': None,
@@ -6584,14 +6598,19 @@ def b12_weight_range_profile(bits, limit=32767):
     soundness does not presume their range or that they are honest counts.
     """
     natural(bits, 'range root dimension', 10, 35)
-    natural(limit, 'symmetric range limit', 1, 32767)
-    cells, table, q = 1 << bits, 2*limit+1, P**3
+    if limit == 'byte':
+        lower, upper = 0, 255
+    else:
+        natural(limit, 'symmetric range limit', 1, 32767)
+        lower, upper = -limit, limit
+    cells, table, q = 1 << bits, upper-lower+1, P**3
     rounds = bits*(bits-1)//2
     correlations = table+4*rounds+7*bits+4
     numerator = cells+table-1+bits  # alpha and the padding point share a tape
     return {
         'root_log_cells': bits, 'root_cells': cells, 'table_entries': table,
-        'range': [-limit, limit], 'fraction_tree_layers': bits,
+        'range': [lower, upper], 'fraction_tree_layers': bits,
+        'alphabet': 'byte_0_255' if limit == 'byte' else 'symmetric_i16',
         'cubic_sumcheck_rounds': rounds, 'authenticated_product_triples': 3*bits+2,
         'range_Fp3_correlations_before_shared_bridge': correlations,
         'range_base_rows_before_shared_bridge': 3*correlations,
@@ -6619,7 +6638,7 @@ def b12_weight_range_profile(bits, limit=32767):
     }
 
 
-def b12_raw_p0_composition(profiles, auxiliary_profile, mask, bootstrap_error,
+def b12_raw_p0_composition(profiles, auxiliary_profile, byte_profile, mask, bootstrap_error,
                          merkle_binding, bootstrap_work, bootstrap_memory, tape_words):
     """Two-source RAW P0 relation, not the quantized Gemma producer graph.
 
@@ -6641,7 +6660,9 @@ def b12_raw_p0_composition(profiles, auxiliary_profile, mask, bootstrap_error,
     beta = Fraction((1 << 64)-P, 1 << 64)
     q, qa, work, query_cap = P**3, 1 << 64, 1 << 80, 1 << 74
     cases = []
-    for wp, ap in zip(profiles, [profiles[0], profiles[1], auxiliary_profile]):
+    geometries = [(wp, ap, False) for wp, ap in zip(profiles, [profiles[0], profiles[1], auxiliary_profile])]
+    geometries.append((profiles[-1], byte_profile, True))
+    for wp, ap, byte_encoded in geometries:
         d, a = wp['log_message_cells'], ap['log_message_cells']
         forests, output_counts, per_stream_counts = [], [], []
         for profile, installations in ((wp, 1), (ap, 3)):
@@ -6687,17 +6708,21 @@ def b12_raw_p0_composition(profiles, auxiliary_profile, mask, bootstrap_error,
             'all_private_coin_indices_once': coins,
         }
         range_profile = b12_weight_range_profile(d)
+        byte_range = b12_weight_range_profile(a, 'byte') if byte_encoded else None
         w_targets = len(cohorts)+2
         a_targets = len(cohorts)+census['private_product_equations']
+        a_total_targets = a_targets+(2 if byte_encoded else 0)
         output_degree = max((c['rows']-1).bit_length()+(c['columns']-1).bit_length() for c in cohorts)
         maximum = max(Fraction(wp['max_coin_block_error']), Fraction(ap['max_coin_block_error']),
             Fraction(range_profile['max_range_FS_block_error']), Fraction(output_degree, q),
             Fraction(3, q), Fraction(census['private_product_equations']-1, q),
-            Fraction(w_targets-1, q), Fraction(a_targets-1, q), Fraction(2*max(d, a), q))
+            Fraction(w_targets-1, q), Fraction(a_total_targets-1, q), Fraction(2*max(d, a), q),
+            Fraction(byte_range['max_range_FS_block_error']) if byte_range else Fraction(0))
         # Range already includes its shared W bridge; add the P0 affine tags,
         # quadratic product batch and the auxiliary bridge's affine checks.
         degree_sum = (range_profile['MAC_degree_sum_per_attempt_including_shared_bridge']
-                      +census['zero_residual_equations']+2+a+2)
+                      +census['zero_residual_equations']+2
+                      +(byte_range['MAC_degree_sum_per_attempt_including_shared_bridge'] if byte_range else a+2))
         sound_terms = {'bootstrap_T80': bootstrap_error,
             'post_bootstrap_seal': Fraction(8*work+2, 1 << 256),
             'global_Merkle_binding_once': merkle_binding,
@@ -6715,12 +6740,16 @@ def b12_raw_p0_composition(profiles, auxiliary_profile, mask, bootstrap_error,
                           +(1 << 32)*work+decoder_work+honest_work)
         reduction_memory = bootstrap_memory+qa*tape_words+(1 << 12)*query_cap+honest_memory
         correlations = (range_profile['range_Fp3_correlations_before_shared_bridge']
-                        +census['extension_corrections_before_other_circuits']+1+3*d+2+3*a+2)
+                        +census['extension_corrections_before_other_circuits']+1+3*d+2+3*a+2
+                        +(byte_range['range_Fp3_correlations_before_shared_bridge'] if byte_range else 0))
         cases.append({
             'W_log_cells': d, 'auxiliary_log_cells': a,
+            'auxiliary_encoding': 'biased_bytes_with_range' if byte_encoded else 'raw_field_cells',
+            'byte_range': byte_range,
             'W_installations': 1, 'auxiliary_installations': 3,
             'attempts_including_failure': 3, 'PCS_chains_per_attempt': 2,
             'original_W_targets_with_range': w_targets, 'original_C_X_targets': a_targets,
+            'auxiliary_targets_including_own_range': a_total_targets,
             'fixed_false_output_polynomial_degree_upper': output_degree,
             'P0_product_batch_degree': census['private_product_equations']-1,
             'MAC_degree_sum_per_attempt': degree_sum,
@@ -6808,7 +6837,7 @@ def b12_pcs_binding_assessment():
 
     mask = oracle(mask_message, mask_queries, 1)
     profiles = []
-    for log_size in (12, 14, 35, 31):
+    for log_size in (12, 14, 35, 31, 33):
         remaining, oracles, folds = log_size, [], []
         while True:
             folding = (1 if log_size <= 14 else 7) if not oracles else 2
@@ -6894,6 +6923,7 @@ def b12_pcs_binding_assessment():
                 'bits': math.log2(hiding_total.denominator)-math.log2(hiding_total.numerator),
                 'native_profile_selected': log_size <= 14},
             "native_profile_selected": log_size <= 14})
+    byte_profile = profiles.pop()
     auxiliary_profile = profiles.pop()  # P0 C/X geometry; keep the existing public profile list.
 
     exhaustion = []
@@ -7008,7 +7038,7 @@ def b12_pcs_binding_assessment():
             'large_domain_native_runtime_admitted': False,
             'native_geometry': profile['log_message_cells'] <= 14})
         range_cases.append(row)
-    p0_composition = b12_raw_p0_composition(profiles, auxiliary_profile, mask,
+    p0_composition = b12_raw_p0_composition(profiles, auxiliary_profile, byte_profile, mask,
         fixed_boot, merkle_collision+merkle_deferred, bootstrap_work, bootstrap_memory,
         tape_words)
     for row, joint in zip(range_cases, p0_composition['cases']):
@@ -7074,7 +7104,7 @@ def b12_pcs_binding_assessment():
             "same_original_caller_MACs": True, "aggregate_is_reauthenticated": False,
             "PCS_chains_per_batch": 1, "public_form_verifier_work": "O(D * cube_count), no W",
             "native_root_log_cells_max": 14, "native_targets_max": 4096,
-            "native_cube_terms_max": 16384, "extra_FS_draw_requests": 1,
+            "native_cube_terms_max": 32768, "extra_FS_draw_requests": 1,
             "fresh_Fp3_correlations_after_caller": "3*D+2",
             "conditional_ideal_errors": {"batch": "(m-1)/q", "product_sumcheck": "2*D/q",
                 "adaptive_MAC": "(D+2)/(q-1)", "PCS": "same installed-root claimless endpoint"},

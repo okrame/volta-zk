@@ -8,6 +8,7 @@ use crate::{
 };
 use std::collections::BTreeMap;
 
+pub(super) mod bytes;
 pub(super) mod caller;
 
 #[derive(Clone, Debug)]

@@ -5,6 +5,35 @@
 use super::*;
 use linear::Cube;
 
+#[derive(Clone, Copy)]
+pub(super) enum Alphabet {
+    Symmetric(i16),
+    Byte,
+}
+
+impl From<i16> for Alphabet {
+    fn from(limit: i16) -> Self {
+        Self::Symmetric(limit)
+    }
+}
+
+impl Alphabet {
+    fn len(self) -> usize {
+        match self {
+            Self::Symmetric(limit) if limit > 0 => 2 * limit as usize + 1,
+            Self::Symmetric(_) => 0,
+            Self::Byte => 256,
+        }
+    }
+
+    fn lower(self) -> i64 {
+        match self {
+            Self::Symmetric(limit) => -i64::from(limit),
+            Self::Byte => 0,
+        }
+    }
+}
+
 pub(super) struct Layer {
     rounds: Vec<[Fp3; 5]>,
     split: [Fp3; 8], // four children, three products, one zero-MAC tag
@@ -18,8 +47,8 @@ pub(super) struct Proof {
     products: [Fp3; 2],
 }
 
-pub(super) fn required(bits: usize, limit: i16) -> usize {
-    2 * limit as usize + 1 + 2 * bits * bits + 5 * bits + 4
+pub(super) fn required(bits: usize, limit: impl Into<Alphabet>) -> usize {
+    limit.into().len() + 2 * bits * bits + 5 * bits + 4
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -29,11 +58,12 @@ fn bind(
     attempt: AttemptContext,
     layout: [u8; 32],
     live: usize,
-    limit: i16,
+    limit: impl Into<Alphabet>,
     fs: &mut Fs,
 ) -> Result<usize, String> {
     let config = matrix_config(n)?;
-    if limit < 1
+    let limit = limit.into();
+    if limit.len() == 0
         || live == 0
         || live > 1usize << config.num_variables
         || root.num_roots() != 1
@@ -42,24 +72,37 @@ fn bind(
     {
         return Err("B12 range statement mismatch".into());
     }
-    let mut bytes = b"C71-range-B12-v1;MSB-first;symmetric;zero-suffix;original-MAC".to_vec();
+    let mut bytes = match limit {
+        Alphabet::Symmetric(_) => {
+            b"C71-range-B12-v1;MSB-first;symmetric;zero-suffix;original-MAC".to_vec()
+        }
+        Alphabet::Byte => {
+            b"C71-range-B12-v1;MSB-first;byte-0-255;zero-suffix;original-MAC".to_vec()
+        }
+    };
     bytes.extend(gamma(&config));
     bytes.extend((n as u32).to_le_bytes());
     bytes.extend(root.roots()[0]);
     bytes.extend(attempt.encode());
     bytes.extend(layout);
     bytes.extend((live as u64).to_le_bytes());
-    bytes.extend(limit.to_le_bytes());
+    if let Alphabet::Symmetric(limit) = limit {
+        bytes.extend(limit.to_le_bytes());
+    }
     fs.set_phase(0x400);
     fs.record(0x40, &bytes);
     Ok(config.num_variables)
 }
 
 // A public forbidden alpha is rejected independently of the private histogram.
-fn challenges(bits: usize, limit: i16, fs: &mut Fs) -> Result<(Fp3, Vec<Fp3>, Vec<Fp3>), String> {
+fn challenges(
+    bits: usize,
+    limit: Alphabet,
+    fs: &mut Fs,
+) -> Result<(Fp3, Vec<Fp3>, Vec<Fp3>), String> {
     let alpha = fs.fp3();
-    let mut denominators = Vec::with_capacity(2 * limit as usize + 1);
-    for t in -i64::from(limit)..=i64::from(limit) {
+    let mut denominators = Vec::with_capacity(limit.len());
+    for t in limit.lower()..limit.lower() + limit.len() as i64 {
         let d = alpha - signed(t);
         if d == Fp3::ZERO {
             return Err("B12 range public pole".into());
@@ -150,10 +193,11 @@ pub(super) fn prove(
     attempt: AttemptContext,
     layout: [u8; 32],
     live: usize,
-    limit: i16,
+    limit: impl Into<Alphabet>,
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
+    let limit = limit.into();
     let bits = bind(model.n, &model.root, attempt, layout, live, limit, fs)?;
     let count = required(bits, limit);
     if correlations.len() < count {
@@ -166,9 +210,9 @@ pub(super) fn prove(
         .iter()
         .map(|x| Fp3::from_base(Fp::new(x.as_canonical_u64())))
         .collect();
-    let mut histogram = vec![Fp3::ZERO; 2 * limit as usize + 1];
+    let mut histogram = vec![Fp3::ZERO; limit.len()];
     for &w in &weights {
-        let index = (w + signed(i64::from(limit))).c0.value();
+        let index = (w - signed(limit.lower())).c0.value();
         // A candidate with an out-of-range private witness is still provable
         // syntactically; the verifier's rational/product check must reject it.
         if index < histogram.len() as u64 {
@@ -283,15 +327,16 @@ pub(super) fn verify(
     attempt: AttemptContext,
     layout: [u8; 32],
     live: usize,
-    limit: i16,
+    limit: impl Into<Alphabet>,
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Key>,
 ) -> Result<([Vec<Cube>; 2], [Key; 2]), String> {
+    let limit = limit.into();
     let bits = bind(n, root, attempt, layout, live, limit, fs)?;
     let count = required(bits, limit);
-    if proof.histogram.len() != 2 * limit as usize + 1
+    if proof.histogram.len() != limit.len()
         || proof.layers.len() != bits
         || proof.layers.iter().enumerate().any(|(i, layer)| layer.rounds.len() != i)
         || correlations.len() < count
@@ -368,6 +413,82 @@ mod tests {
 
     fn transcript(n: usize) -> Fs {
         Fs::new(b"B12 same-root range component", request_limit(&matrix_config(n).unwrap()) + 256)
+    }
+
+    #[test]
+    fn c71_b12_range_bytes_are_unsigned_and_keep_the_original_root_mac() {
+        use rand_010::RngExt;
+        let delta = signed(19);
+        let mut rng = MatrixRng::from_seed([123; 32]);
+        for invalid in [None, Some(-1), Some(256)] {
+            let mut values = vec![0; 1024];
+            for (i, value) in values[..256].iter_mut().enumerate() {
+                *value = i as i16;
+            }
+            if let Some(value) = invalid {
+                values[0] = value;
+            }
+            let model = Model::new(32, values).unwrap();
+            let count = required(10, Alphabet::Byte) + 32;
+            assert_eq!(count, 542);
+            let rows: Vec<_> = (0..count)
+                .map(|_| Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>())))
+                .collect();
+            let keys: Vec<_> = rows.iter().map(|a| Key::new(a.m + delta * a.x)).collect();
+            let mut fs = transcript(32);
+            let mut rows = rows.into_iter();
+            let layout = [15; 32];
+            let (proof, forms, targets) =
+                prove(&model, context(), layout, 256, Alphabet::Byte, &mut fs, &mut rows).unwrap();
+            let (pcs, digest) =
+                linear::prove(&model, context(), layout, &forms, &targets, &mut fs, &mut rows)
+                    .unwrap();
+            assert!(rows.next().is_none());
+            let mut fs = transcript(32);
+            let mut rows = keys.into_iter();
+            let checked = verify(
+                32,
+                &model.root,
+                context(),
+                layout,
+                256,
+                Alphabet::Byte,
+                &proof,
+                delta,
+                &mut fs,
+                &mut rows,
+            );
+            if invalid.is_some() {
+                assert_eq!(checked.err().unwrap(), "B12 range product MAC rejected");
+            } else {
+                let (forms, targets) = checked.unwrap();
+                assert_eq!(
+                    linear::verify(
+                        32,
+                        &model.root,
+                        context(),
+                        layout,
+                        &forms,
+                        &targets,
+                        &pcs,
+                        delta,
+                        &mut fs,
+                        &mut rows
+                    )
+                    .unwrap(),
+                    digest
+                );
+                assert!(rows.next().is_none());
+            }
+        }
+        // The old symmetric transcript is preserved; bytes have a distinct
+        // public alphabet, not the invalid shortcut [-255,255].
+        let root = C61Commitment::new(vec![[1; 32]]);
+        let mut symmetric = transcript(32);
+        let mut bytes = transcript(32);
+        bind(32, &root, context(), [15; 32], 256, 255, &mut symmetric).unwrap();
+        bind(32, &root, context(), [15; 32], 256, Alphabet::Byte, &mut bytes).unwrap();
+        assert_ne!(symmetric.digest(), bytes.digest());
     }
 
     #[test]

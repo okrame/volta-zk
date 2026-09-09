@@ -199,6 +199,13 @@ def test_B12_native_P0_census_keeps_input_cut_and_shared_product_obligations():
     assert caller['head_selected_final_norm_rows'] == [99, 148]
     assert caller['returns_pending_C_X_W_openings_not_Gemma_acceptance']
     assert not caller['full_Gemma_forward_or_source_PCS_executed']
+    byte = b['byte_affine_source_bridge']
+    assert byte['scalar_widths'] == [48, 32, 16] and byte['canonical_alphabet'] == [0, 255]
+    assert byte['live_byte_cells'] == 6525586944 and byte['root_log_cells'] == 33
+    assert byte['P0_original_target_cubes'] == 18472 < byte['native_bridge_cube_cap'] == 32768
+    assert byte['targets_with_byte_range_and_padding'] == 1547
+    assert byte['tiny_byte_range_and_original_scalar_MAC_check_Fp3_rows'] == 9+510+32
+    assert not byte['full_RNE_or_Gemma_integer_producers_proven']
 
 
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():
@@ -236,8 +243,7 @@ def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():
         assert c['P0_product_batch_degree'] == 771
         assert c['initial_base_capacity_three_attempts_before_other_operators'] == 3*c['base_rows_per_attempt_before_other_operators']
         assert c['both_below_2_to_minus_78'] and not c['full_size_runtime_or_physical_admission']
-    big = b['cases'][-1]
-    assert (big['W_log_cells'], big['auxiliary_log_cells']) == (35, 31)
+    big = next(c for c in b['cases'] if (c['W_log_cells'], c['auxiliary_log_cells']) == (35, 31))
     assert big['base_rows_per_attempt_before_other_operators'] == 312981
     assert big['initial_base_capacity_three_attempts_before_other_operators'] == 938943
     assert big['private_Fp_outputs_over_all_roots'] == 38692659328
@@ -245,6 +251,16 @@ def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():
     assert big['forest_distinct_trees'] == 322
     assert big['dense_W_codeword_bytes'] == 1 << 42
     assert big['dense_auxiliary_codeword_bytes'] == 1 << 38
+    byte = b['cases'][-1]
+    assert (byte['W_log_cells'], byte['auxiliary_log_cells']) == (35, 33)
+    assert byte['auxiliary_encoding'] == 'biased_bytes_with_range'
+    assert byte['byte_range']['range'] == [0, 255]
+    assert byte['byte_range']['range_Fp3_correlations_before_shared_bridge'] == 2603
+    assert byte['byte_range']['range_field_payload_bytes_before_bridge_or_framing'] == 75984
+    assert byte['base_rows_per_attempt_before_other_operators'] == 320808
+    assert byte['initial_base_capacity_three_attempts_before_other_operators'] == 962424
+    assert byte['auxiliary_targets_including_own_range'] == 1547
+    assert byte['dense_auxiliary_codeword_bytes'] == 1 << 40
     assert b['full_Gemma_security_totals'] is None and not b['all_Gemma_integer_producers_proven']
     # Exact small analogue of the total-word rejection tail, not a huge run.
     rejection = Fraction(1, 8)

@@ -561,6 +561,11 @@ mod tests {
         let aux_forms = auxiliary.forms(&plan, &checked).unwrap();
         assert_eq!(aux_forms.len(), 1545);
         assert_eq!(aux_forms.iter().map(Vec::len).sum::<usize>(), 14909);
+        let bytes = plan.auxiliary_bytes().unwrap();
+        assert_eq!(bytes.live, 6_525_586_944);
+        let (byte_forms, shifts) = bytes.forms(&plan, &checked).unwrap();
+        assert_eq!((byte_forms.len(), shifts.len()), (1545, 1545));
+        assert_eq!(byte_forms.iter().map(Vec::len).sum::<usize>(), 18472);
         let mut producers = std::collections::BTreeSet::new();
         for (p, v) in claims.inputs.iter().zip(&checked.inputs) {
             assert_eq!(p.cohort, v.cohort);

@@ -50,7 +50,7 @@ fn bind(
         || forms.is_empty()
         || forms.len() > 4096
         || count != forms.len()
-        || forms.iter().map(Vec::len).sum::<usize>() > 16384
+        || forms.iter().map(Vec::len).sum::<usize>() > 32768
     {
         return Err("B12 linear batch shape, layout or attempt mismatch".into());
     }

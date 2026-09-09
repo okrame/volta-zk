@@ -34,7 +34,9 @@ native range/padding composition retains about 91 conditional bits; D35's
 82.9944-bit soundness geometry remains physically excluded. P0 + range +
 one bridge plus the P0 product mask fits at 312,696 base rows. The compact
 native P0 reductions now keep their original C/X/W MACs; a two-source
-small check closes ranged W and private C/X and rejects false cuts.
+small check closes ranged W and private C/X and rejects false cuts. The
+native layout compiler now preserves both packed and virtual W orders,
+maps all weighted DAG invocations and emits the same 3,606 public forms.
 Its auxiliary PCS and full two-role composition remain explicit. The complete
 correlation census and actual quantized Gemma GKR caller remain open.
 The owner now limits the goal to one uninterrupted fixed-root run: renewal,
@@ -63,7 +65,7 @@ remain unadmitted.
 | [B9 native bootstrap](../rust/volta-pcg/src/c71_bootstrap.rs) · [bounded runner](../scripts/run_c71_bootstrap.py) | Independent MR19/P-521 and COPE/Fp9 roles, adversarial byte checks and local resources; no production/security admission |
 | [B12 durable finite pool](../rust/volta-pcg/src/c71_lifetime.rs) · [salted PCS consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) | Single-setup larger AES capacity with fail-closed termination, joint burns and post-bootstrap seal; legacy persistence evidence; fixed-root PCS component |
 | [B12 original-MAC linear bridge](../rust/volta-pcs/src/c71_matrix/linear.rs) · [range caller](../rust/volta-pcs/src/c71_matrix/range.rs) | One batch/PCS on the installed root; private range histogram, fraction-tree GKR and zero padding keep the original W MAC; 773 P0 public-layout identities, full Gemma caller/census still open |
-| [B12 native P0 caller](../rust/volta-pcs/src/c71_matrix/p0.rs) | Quadratic matrix/cubic weighted-product sumchecks, original C/X/W endpoints; one ranged W PCS plus a separate private auxiliary PCS in the small check; full Gemma compiler/composition open |
+| [B12 native P0 caller](../rust/volta-pcs/src/c71_matrix/p0.rs) · [native layout](../rust/volta-pcs/src/c71_matrix/gemma.rs) | Original C/X/W sumcheck endpoints; 39,421 weighted DAG invocations, packed/virtual address mapping and native forms; full integer caller/composition open |
 | [B3 native census](../scripts/c71_work_census.py) · [bounded runner](../scripts/run_c71_matrix.py) | Actual Goldilocks arithmetic and phase memory of the reduced B2 matrix path; physical traffic/security remain open in design §10 |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |

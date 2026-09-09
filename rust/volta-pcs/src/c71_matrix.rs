@@ -14,6 +14,9 @@ mod range;
 #[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // P0 caller; input/output openings remain explicit.
 mod p0;
+#[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // Native pinned W layout and P0 routes; full Gemma runtime remains open.
+mod gemma;
 pub use diagnostic::{preflight, run};
 #[cfg(feature = "c71-work-census")]
 pub use census::self_check;

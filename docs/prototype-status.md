@@ -86,12 +86,17 @@ and rejects a false committed cut or detached input MAC. The auxiliary
 root is an additional source with its own costs; the one-PCS security bound
 does not yet compose it. Adding P0's product mask brings the known subtotal
 to 312,696 base rows before auxiliary openings and other Gemma operators.
+The [native layout compiler](../rust/volta-pcs/src/c71_matrix/gemma.rs)
+now maps the validated DAG's 39,421 weighted invocations into those 773
+cohorts and 3,156 W tiles. It preserves terminal-packed file offsets while
+using metadata order for the virtual root, and generates the 3,606 native
+forms. Full private tensor bodies and the integer forward remain absent.
 [Caller contract and limits](c7.1-gemma31b-design.md#b12-p0-nativo-e-aperture-originali-dei-tagli).
 
 Twenty-one B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
 range/product identities. The relevant Python checks total 202; the 17
-narrow bootstrap/pool checks and thirteen B12 PCS/caller checks pass.
+narrow bootstrap/pool checks and fifteen B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

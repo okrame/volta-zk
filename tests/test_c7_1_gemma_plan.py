@@ -181,6 +181,13 @@ def test_B12_native_P0_census_keeps_input_cut_and_shared_product_obligations():
     assert tiny['PCS_chains_for_W'] == tiny['PCS_chains_for_auxiliary_source'] == 1
     assert b['two_source_PCS_error_and_ZK_composition'] is None
     assert b['complete_source_opening_capacity'] is None and not b['actual_full_Gemma_GKR_compiler']
+    layout = b['native_pinned_DAG_to_P0_and_W_layout']
+    tensors = plan.pinned_private_tensors()
+    cohorts = plan.gemma_weight_cohorts(tensors)
+    assert layout['virtual_tiles'] == len(plan.dyadic_weight_layout([t['shape'] for t in tensors]))
+    assert layout['cut_bytes_from_compiled_rows'] == sum(c['rows']*c['columns']*c['cut_scalar_bytes'] for c in cohorts)
+    assert layout['existing_terminal_packed_order_preserved']
+    assert not layout['full_private_weight_bodies_loaded']
 
 
 def test_B12_unsalted_commitment_tests_W_after_mask_exhaustion():

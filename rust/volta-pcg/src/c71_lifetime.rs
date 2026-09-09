@@ -23,6 +23,29 @@ fn invalid(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
 
+/// A fresh public capacity identifier, emitted by V only after B11 returns.
+/// A usable FS prefix queried before its rows are fixed must guess this seal.
+/// B11's preparation context remains domain-separated by model/session/epoch.
+fn capacity_seal(channel: &mut (impl Read + Write), prover: bool) -> io::Result<Digest> {
+    use rand::RngCore;
+    let mut frame = [0u8; 40];
+    frame[..8].copy_from_slice(b"C71B12S1");
+    if prover {
+        channel.read_exact(&mut frame)?;
+    } else {
+        rand::rngs::OsRng.try_fill_bytes(&mut frame[8..]).map_err(io::Error::other)?;
+    }
+    let capacity: Digest = frame[8..].try_into().unwrap();
+    if &frame[..8] != b"C71B12S1" || capacity == [0; 32] {
+        return Err(invalid("invalid B12 completion seal"));
+    }
+    if !prover {
+        channel.write_all(&frame)?;
+        channel.flush()?;
+    }
+    Ok(capacity)
+}
+
 /// Public identity only: no W or Delta in model installation.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ModelBinding {
@@ -205,14 +228,14 @@ impl Lifetime {
 
     pub fn prover(
         &mut self,
-        channel: impl Read + Write,
+        mut channel: impl Read + Write,
         session: Digest,
         binding: Digest,
         rows: usize,
     ) -> io::Result<Pool<'_, [u64; 4]>> {
         let context = self.begin(session, binding, rows)?;
-        let capacity = context.capacity;
-        let output = c71_bootstrap::prover_aes(channel, context)?;
+        let output = c71_bootstrap::prover_aes(&mut channel, context)?;
+        let capacity = capacity_seal(&mut channel, true)?;
         let data = output
             .values
             .iter()
@@ -230,14 +253,14 @@ impl Lifetime {
 
     pub fn verifier(
         &mut self,
-        channel: impl Read + Write,
+        mut channel: impl Read + Write,
         session: Digest,
         binding: Digest,
         rows: usize,
     ) -> io::Result<Pool<'_, [u64; 3]>> {
         let context = self.begin(session, binding, rows)?;
-        let capacity = context.capacity;
-        let output = c71_bootstrap::verifier_aes(channel, context)?;
+        let output = c71_bootstrap::verifier_aes(&mut channel, context)?;
+        let capacity = capacity_seal(&mut channel, false)?;
         Ok(Pool {
             store: self,
             capacity,
@@ -314,6 +337,25 @@ impl<R: Zeroize + Copy> Pool<'_, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_b12_completion_seal_is_fresh_framed_and_fail_closed() {
+        use std::io::Cursor;
+        let mut wire = Cursor::new(Vec::new());
+        let capacity = capacity_seal(&mut wire, false).unwrap();
+        assert_eq!(wire.get_ref().len(), 40);
+        assert_eq!(&wire.get_ref()[..8], b"C71B12S1");
+        wire.set_position(0);
+        assert_eq!(capacity_seal(&mut wire, true).unwrap(), capacity);
+        let bytes = wire.into_inner();
+        assert!(capacity_seal(&mut Cursor::new(bytes[..39].to_vec()), true).is_err());
+        let mut altered = bytes.clone();
+        altered[0] ^= 1;
+        assert!(capacity_seal(&mut Cursor::new(altered), true).is_err());
+        let mut zero = bytes;
+        zero[8..].fill(0);
+        assert!(capacity_seal(&mut Cursor::new(zero), true).is_err());
+    }
 
     fn model() -> ModelBinding {
         ModelBinding { anchor: [1; 32], semantics: [2; 32], root: [3; 32] }

@@ -232,6 +232,29 @@ def test_B12_Merkle_commit_prefix_needs_deferred_preimage_event():
     assert Fraction(b['conditional_error_upper']) == collision+deferred < Fraction(1, 1 << 98)
 
 
+def test_B12_completion_seal_fixes_rows_before_usable_FS_prefixes():
+    # A public correction does not fix its hidden value if the assigned row
+    # can still be selected after seeing the challenge. This is a premise
+    # counterexample, not a claim of a concrete B11 matrix attack.
+    p, correction = 5, 0
+    for assigned in range(p):
+        assert sum((assigned+correction) % p == challenge for challenge in range(p)) == 1
+    assert sum((challenge+correction) % p == challenge for challenge in range(p)) == p
+    # Direct random seal: only previously guessed identifiers can have a
+    # queried prefix before the rows were fixed, regardless of prefix contents.
+    guessed = {0, 3, 6}
+    assert sum(seal in guessed for seal in range(8)) == len(guessed)
+    b = plan.b12_lifetime_admission()
+    seal = b['durable_component']['completion_seal']
+    s = b['durable_component']['setup_quota']
+    work = b['adversary']['global_u64_work_including_preprocessing']
+    assert Fraction(seal['conditional_prequery_collision_or_zero_error_upper']) == Fraction(s*(8*work+s+1), 1 << 256)
+    assert Fraction(seal['conditional_prequery_collision_or_zero_error_upper']) < Fraction(1, 1 << 152)
+    assert seal['sampled_after_B11_output_is_fixed'] and seal['direct_public_FS_capacity_field']
+    assert seal['wire_bytes_per_completed_setup'] == 8+32
+    assert not b['B12_complete'] and not b['security_admitted']
+
+
 def test_existing_paired_fold_diagnostic():
     plan.self_check()
 

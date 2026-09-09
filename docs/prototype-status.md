@@ -22,9 +22,15 @@ wraps both real B11 roles with a locked durable journal. Setup and joint
 root-slot/row burns precede use; reopen preserves counters and accepted head
 while losing unused secret capacity. It pins one installed model/semantics/root
 and rejects different roots. **Root renewal remains unavailable until its
-same-W proof exists.** Five native B12 checks pass, including process exit,
+same-W proof exists.** Six native B12 checks cover seal framing, process exit,
 partial records and a real two-role bootstrap-to-MAC transfer; the combined
 bootstrap/budget Python checks total 28 passing tests.
+A new 40-byte B12 setup seal assigns the public FS capacity identifier
+only after B11 has fixed the rows. Prior-query hits, collisions and zero
+have a conditional bound below 2^-152 at T80/S20. This closes the temporal
+assignment premise. The virtual claimless messages are fixed before their
+challenges, but native query batches still span multiple RO requests; the
+complete prefix reduction and its query-completion costs remain open.
 
 The [B12 PCS analysis](c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata)
 now proves same-set MCA for a linear code with `3*radius < distance`, hence
@@ -33,7 +39,7 @@ conditional bits after a proposed Q* prefix charge at `2^35` cells, but its
 monolithic initial codeword alone costs 4 TiB and remains physically excluded.
 The opt-in native profile now uses these codes and common private masks,
 composing CFW Theorems 9.10 and 8.1. One uniform OOD point contributes an
-explicit 1/q ordinary-IOP privacy error per switch. Six algebra/accounting checks
+explicit 1/q ordinary-IOP privacy error per switch. Seven algebra/accounting checks
 also pin the affine PCS/MAC closing equation and reproduce candidate-W
 reconstruction after mask exhaustion in an **unsalted** Merkle commitment.
 Under three independent uniform query sets, the B2 n=128 exhaustion event

@@ -62,7 +62,8 @@ These are component checks, with no durable-pool or PCS/Gemma admission.
 
 For the owner-authorized B12 finite-pool component, the same narrow Cargo
 command with `--features c71-b11 c71_b12 -- --test-threads=1` checks the
-durable journal, subprocess crash/reopen and one three-row real two-role MAC
+durable journal, completion-seal framing, subprocess crash/reopen and one
+three-row real two-role MAC
 transfer. The last check needs only a local Unix socketpair, as B9/B11 did;
 if the sandbox denies it, permit that local test without external access.
 No full workspace, matrix/Gemma runner or paid hardware is needed. These

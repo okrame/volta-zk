@@ -10,6 +10,7 @@ component. B10 concludes the premise/lifecycle assessment with integration
 not admitted. B11 selects the owner-authorized intermediate finite AES profile under
 explicit primitive/resource hypotheses. B12 is active: a conditional bootstrap
 resource extension to T80 and a durable finite-pool component are available.
+A fresh post-bootstrap seal fixes the row assignment before usable FS prefixes.
 The PCS analysis adds a proven unique-radius MCA bound and identifies
 unsalted-root privacy loss at mask exhaustion. An opt-in salted matrix
 consumer now reaches the durable B11 pool with the unique-radius IOP

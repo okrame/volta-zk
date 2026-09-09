@@ -6491,6 +6491,13 @@ def b12_pcs_binding_assessment():
             "honest_transfer_plaintexts_do_not_read_unused_correlations": True,
             "arbitrary_callback_NoPeek_proven": False,
             "full_GKR_check_census_or_PCS_soundness": False},
+        "claimless_projection": {
+            "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
+            "virtual_base_fresh_claim": "shifted_masked_claim-eta",
+            "temporal_premise": "B12 seal before usable prefixes; fixed n and row interval per capacity/slot",
+            "algebraic_terminal_correspondence": True,
+            "native_multi_request_query_batch_FS_compilation_proven": False,
+            "next": "bound prequeried subrequests and completion work, or use one XOF tape per uninterrupted verifier coin block"},
         "same_W_consequence": "one decoded message per fixed oracle before opening challenges; root links compare both endpoints under the current MAC",
         "remaining": ["claimless RBR/prefix correspondence", "salted Merkle hiding and complete FS/ZK compilation",
             "root-renewal protocol and both-role lifecycle", "full GKR/quantization relation and adequate correlation capacity",
@@ -6535,6 +6542,14 @@ def b12_lifetime_admission():
             "complete_C71_or_same_W_FS_bound": False},
         "durable_component": {
             "source": "rust/volta-pcg/src/c71_lifetime.rs", "implemented": True,
+            "completion_seal": {
+                "frame": "C71B12S1 || fresh_verifier_capacity32",
+                "wire_bytes_per_completed_setup": 40,
+                "sampled_after_B11_output_is_fixed": True,
+                "direct_public_FS_capacity_field": True,
+                "reopen_requires_new_bootstrap_and_seal": True,
+                "conditional_prequery_collision_or_zero_error_upper": str(Fraction(LIFETIME_ATTEMPTS*(8*work+LIFETIME_ATTEMPTS+1), 1 << 256)),
+                "scope": "fixes the ideal correlation assignment before usable FS prefixes; not the complete claimless RBR theorem"},
             "fixed_installed_root_slots": 3, "max_base_rows_per_setup": 207,
             "setup_quota": LIFETIME_ATTEMPTS, "proof_quota": LIFETIME_ATTEMPTS,
             "joint_burn_before_callback": True, "reopen_discards_volatile_pool": True,

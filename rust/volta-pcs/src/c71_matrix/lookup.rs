@@ -10,12 +10,24 @@ pub(super) struct Table<'a> {
     pub outputs: &'a [i16],
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Block {
+    Query { profile: u8, len: usize },
+    Table { index: usize, first: usize, len: usize },
+}
+
+#[derive(Clone, Copy)]
+enum Row {
+    Query(u8),
+    Table(usize),
+}
+
 pub(super) struct Statement<'a> {
     pub root: &'a C61Commitment,
     pub profile: &'a [u8],
     pub view: [u8; 32],
     pub attempt: AttemptContext,
-    pub query_profiles: &'a [u8],
+    pub blocks: &'a [Block],
     pub tables: &'a [Table<'a>],
 }
 
@@ -41,9 +53,9 @@ fn tag(x: i16, y: i16, profile: u8) -> Fp3 {
 }
 
 impl Statement<'_> {
-    fn public_tags(&self) -> Result<Vec<Fp3>, String> {
-        if self.query_profiles.is_empty()
-            || self.query_profiles.len() > 256
+    fn public(&self) -> Result<(Vec<Fp3>, Vec<Row>), String> {
+        if self.blocks.is_empty()
+            || self.blocks.len() > 65791
             || self.tables.is_empty()
             || self.tables.len() > 60
             || self.root.num_roots() != 1
@@ -68,10 +80,10 @@ impl Statement<'_> {
             seen[t.profile as usize] = true;
             rows += t.outputs.len();
         }
-        if rows > 65535 || self.query_profiles.iter().any(|&p| p >= 60 || !seen[p as usize]) {
-            return Err("B12 lookup public rows or query profiles differ".into());
+        if rows > 65535 {
+            return Err("B12 lookup public row cap differs".into());
         }
-        Ok(self
+        let tags = self
             .tables
             .iter()
             .flat_map(|t| {
@@ -83,29 +95,95 @@ impl Statement<'_> {
                     )
                 })
             })
-            .collect())
+            .collect();
+        let mut coverage = vec![Vec::new(); self.tables.len()];
+        let mut queries = 0usize;
+        let mut offsets = Vec::new();
+        let mut offset = 0;
+        for t in self.tables {
+            offsets.push(offset);
+            offset += t.outputs.len();
+        }
+        // Validate compact blocks BEFORE expanding this bounded native view.
+        for &block in self.blocks {
+            match block {
+                Block::Query { profile, len } => {
+                    if profile >= 60 || !seen[profile as usize] || len == 0 || len > 256 {
+                        return Err("B12 lookup query block differs".into());
+                    }
+                    queries += len;
+                    if queries > 256 {
+                        return Err("B12 lookup native query cap exceeded".into());
+                    }
+                }
+                Block::Table { index, first, len } => {
+                    let t = self.tables.get(index).ok_or("B12 lookup table block missing")?;
+                    if len == 0 || first > t.outputs.len() || len > t.outputs.len() - first {
+                        return Err("B12 lookup table interval differs".into());
+                    }
+                    coverage[index].push((first, len));
+                }
+            }
+        }
+        if queries == 0 {
+            return Err("B12 lookup has no query cells".into());
+        }
+        for (t, intervals) in self.tables.iter().zip(&mut coverage) {
+            intervals.sort_unstable();
+            let mut end = 0;
+            for &(first, len) in intervals.iter() {
+                if first != end {
+                    return Err("B12 lookup table coverage differs".into());
+                }
+                end += len;
+            }
+            if end != t.outputs.len() {
+                return Err("B12 lookup table coverage is incomplete".into());
+            }
+        }
+        let mut domain = Vec::with_capacity(rows + queries);
+        for &block in self.blocks {
+            match block {
+                Block::Query { profile, len } => {
+                    domain.extend(std::iter::repeat_n(Row::Query(profile), len))
+                }
+                Block::Table { index, first, len } => {
+                    domain.extend((first..first + len).map(|j| Row::Table(offsets[index] + j)))
+                }
+            }
+        }
+        Ok((tags, domain))
     }
 
     pub fn required(&self) -> Result<usize, String> {
-        Ok(required(
-            (self.query_profiles.len() + self.public_tags()?.len()).next_power_of_two().ilog2()
-                as usize,
-        ))
+        Ok(required(self.public()?.1.len().next_power_of_two().ilog2() as usize))
     }
 
-    fn bind(&self, fs: &mut Fs) -> Result<(Vec<Fp3>, usize, Fp3), String> {
-        let tags = self.public_tags()?;
-        let bits = (self.query_profiles.len() + tags.len()).next_power_of_two().ilog2() as usize;
+    fn bind(&self, fs: &mut Fs) -> Result<(Vec<Fp3>, Vec<Row>, Fp3), String> {
+        let (tags, domain) = self.public()?;
         let mut bytes =
-            b"C71-lookup-B12-v1;fixed-X-Y-M;query-table-dummy;overflow-profile-plus-60;original-A"
+            b"C71-lookup-B12-v2;fixed-X-Y-M;public-blocks;overflow-profile-plus-60;original-A"
                 .to_vec();
         bytes.extend(self.root.roots()[0]);
         bytes.extend((self.profile.len() as u64).to_le_bytes());
         bytes.extend(self.profile);
         bytes.extend(self.view);
         bytes.extend(self.attempt.encode());
-        bytes.extend((self.query_profiles.len() as u64).to_le_bytes());
-        bytes.extend(self.query_profiles);
+        bytes.extend((self.blocks.len() as u64).to_le_bytes());
+        for &block in self.blocks {
+            match block {
+                Block::Query { profile, len } => {
+                    bytes.extend([0, profile]);
+                    bytes.extend((len as u64).to_le_bytes());
+                }
+                Block::Table { index, first, len } => {
+                    bytes.push(1);
+                    for v in [index, first, len] {
+                        bytes.extend((v as u64).to_le_bytes());
+                    }
+                }
+            }
+        }
         bytes.extend((self.tables.len() as u64).to_le_bytes());
         for t in self.tables {
             bytes.push(t.profile);
@@ -123,24 +201,28 @@ impl Statement<'_> {
         if tags.contains(&alpha) {
             return Err("B12 lookup public pole".into());
         }
-        Ok((tags, bits, alpha))
+        Ok((tags, domain, alpha))
     }
 
-    fn leaf_constants(&self, tags: &[Fp3], point: &[Fp3], alpha: Fp3) -> (Fp3, Fp3) {
+    fn leaf_constants(
+        &self,
+        tags: &[Fp3],
+        domain: &[Row],
+        point: &[Fp3],
+        alpha: Fp3,
+    ) -> (Fp3, Fp3) {
         let weights = eq(point);
         let omega = Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO);
         let mut query = Fp3::ZERO;
         let mut denominator = Fp3::ZERO;
-        let n = self.query_profiles.len();
         for (i, &weight) in weights.iter().enumerate() {
-            if i < n {
-                query += weight;
-                denominator +=
-                    weight * (alpha - omega * omega * signed(i64::from(self.query_profiles[i])));
-            } else if let Some(&t) = tags.get(i - n) {
-                denominator += weight * (alpha - t);
-            } else {
-                denominator += weight;
+            match domain.get(i) {
+                Some(&Row::Query(profile)) => {
+                    query += weight;
+                    denominator += weight * (alpha - omega * omega * signed(i64::from(profile)));
+                }
+                Some(&Row::Table(j)) => denominator += weight * (alpha - tags[j]),
+                None => denominator += weight,
             }
         }
         (query, denominator)
@@ -159,17 +241,19 @@ pub(super) fn prove(
         return Err("B12 lookup prover capacity exhausted".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let (tags, bits, alpha) = s.bind(fs)?;
-    let n = s.query_profiles.len();
+    let (tags, domain, alpha) = s.bind(fs)?;
+    let bits = domain.len().next_power_of_two().ilog2() as usize;
     // ponytail: dense D<=17 component. Full Gemma needs the documented
     // subtree replay schedule and canonical source caller, not this array.
     let mut bottom = vec![[Fp3::ZERO, Fp3::ONE]; 1 << bits];
-    for i in 0..n {
-        let (x, y) = read_query(i);
-        bottom[i] = [Fp3::ONE, alpha - tag(x, y, s.query_profiles[i])];
-    }
-    for (j, &t) in tags.iter().enumerate() {
-        bottom[n + j] = [-signed(i64::from(read_histogram(j))), alpha - t];
+    for (i, &row) in domain.iter().enumerate() {
+        bottom[i] = match row {
+            Row::Query(profile) => {
+                let (x, y) = read_query(i);
+                [Fp3::ONE, alpha - tag(x, y, profile)]
+            }
+            Row::Table(j) => [-signed(i64::from(read_histogram(j))), alpha - tags[j]],
+        };
     }
     let mut tree = vec![bottom];
     while tree.last().unwrap().len() > 1 {
@@ -196,13 +280,15 @@ pub(super) fn prove(
         range::prove_tree(&tree, Vec::new(), [Auth::ZERO, root[0]], fs, &mut rows, &mut triples);
     let weights = eq(&point);
     let mut values = [Fp3::ZERO; 3];
-    for i in 0..n {
-        let (x, y) = read_query(i);
-        values[0] += weights[i] * signed(i64::from(x));
-        values[1] += weights[i] * signed(i64::from(y));
-    }
-    for j in 0..tags.len() {
-        values[2] += weights[n + j] * signed(i64::from(read_histogram(j)));
+    for (i, &row) in domain.iter().enumerate() {
+        match row {
+            Row::Query(_) => {
+                let (x, y) = read_query(i);
+                values[0] += weights[i] * signed(i64::from(x));
+                values[1] += weights[i] * signed(i64::from(y));
+            }
+            Row::Table(j) => values[2] += weights[i] * signed(i64::from(read_histogram(j))),
+        }
     }
     let (wire, original) = range::authenticate(values, &mut rows);
     let omega = Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO);
@@ -232,7 +318,8 @@ pub(super) fn verify(
         return Err("B12 lookup verifier capacity exhausted".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let (tags, bits, alpha) = s.bind(fs)?;
+    let (tags, domain, alpha) = s.bind(fs)?;
+    let bits = domain.len().next_power_of_two().ilog2() as usize;
     if !range::tree_shape(&proof.layers, bits, 0) {
         return Err("B12 lookup tree shape differs".into());
     }
@@ -251,7 +338,7 @@ pub(super) fn verify(
     )?;
     let original =
         range::correct([proof.leaves[0], proof.leaves[1], proof.leaves[2]], delta, &mut rows);
-    let (query, denominator) = s.leaf_constants(&tags, &point, alpha);
+    let (query, denominator) = s.leaf_constants(&tags, &domain, &point, alpha);
     let omega = Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO);
     if claims[0].k + original[2].k - delta * query != proof.leaves[3]
         || claims[1].k + original[0].k + omega * original[1].k - delta * denominator
@@ -291,14 +378,30 @@ mod tests {
         bytes
     }
 
-    fn forms(point: &[Fp3]) -> ([Vec<Cube>; 3], [Fp3; 3]) {
+    fn positions(s: &Statement<'_>) -> ([usize; 4], [usize; 6]) {
+        let (_, domain) = s.public().unwrap();
+        let (mut query, mut table, mut next) = ([0; 4], [0; 6], 0);
+        for (i, row) in domain.into_iter().enumerate() {
+            match row {
+                Row::Query(_) => {
+                    query[next] = i;
+                    next += 1;
+                }
+                Row::Table(j) => table[j] = i,
+            }
+        }
+        (query, table)
+    }
+
+    fn forms(s: &Statement<'_>, point: &[Fp3]) -> ([Vec<Cube>; 3], [Fp3; 3]) {
         let weights = eq(point);
+        let (query, table) = positions(s);
         let mut shifts = [Fp3::ZERO; 3];
         let forms = std::array::from_fn(|lane| {
-            let (offset, first, count, bytes) = [(0, 0, 4, 2), (8, 0, 4, 2), (16, 4, 6, 4)][lane];
+            let (offset, count, bytes) = [(0, 4, 2), (8, 4, 2), (16, 6, 4)][lane];
             let mut form = Vec::new();
             for i in 0..count {
-                let coefficient = weights[first + i];
+                let coefficient = weights[if lane < 2 { query[i] } else { table[i] }];
                 shifts[lane] += coefficient * signed(1 << (8 * bytes - 1));
                 for b in 0..bytes {
                     form.push(Cube {
@@ -321,6 +424,15 @@ mod tests {
         let tables = [
             Table { profile: 0, lower: -1, outputs: &[0, 0, 1] },
             Table { profile: 1, lower: -1, outputs: &[-10408, 0, i16::MIN] },
+        ];
+        let blocks = [
+            Block::Table { index: 1, first: 1, len: 2 },
+            Block::Query { profile: 0, len: 1 },
+            Block::Table { index: 0, first: 0, len: 3 },
+            Block::Query { profile: 1, len: 1 },
+            Block::Query { profile: 0, len: 1 },
+            Block::Table { index: 1, first: 0, len: 1 },
+            Block::Query { profile: 1, len: 1 },
         ];
         let honest = [(-1, 0), (-1, -10408), (1, 1), (0, 0)];
         let histogram = [1, 0, 1, 1, 1, 0];
@@ -360,10 +472,12 @@ mod tests {
                 profile: &profile,
                 view: layout,
                 attempt,
-                query_profiles: &[0, 1, 0, 1],
+                blocks: &blocks,
                 tables: &tables,
             };
             assert_eq!(s.required().unwrap(), 58);
+            let (query_positions, _) = positions(&s);
+            assert_eq!(query_positions, [2, 6, 7, 9]);
             let count = s.required().unwrap() + 510 + 32;
             assert_eq!(count, 600);
             let mut rng = MatrixRng::from_seed([149; 32]);
@@ -374,7 +488,14 @@ mod tests {
             let start = || Fs::new(b"lookup original query and histogram bytes", 100_000);
             let mut fs = start();
             let mut prows = rows.into_iter();
-            let (proof, p) = prove(&s, |i| used[i], |j| counts[j], &mut fs, &mut prows).unwrap();
+            let (proof, p) = prove(
+                &s,
+                |i| used[query_positions.iter().position(|&p| p == i).unwrap()],
+                |j| counts[j],
+                &mut fs,
+                &mut prows,
+            )
+            .unwrap();
             assert_eq!(fs.requests(), 16);
             let (range_proof, ranges, targets) = range::prove(
                 &model,
@@ -386,7 +507,7 @@ mod tests {
                 &mut prows,
             )
             .unwrap();
-            let (extra, shifts) = forms(&p.point);
+            let (extra, shifts) = forms(&s, &p.point);
             let all_forms: Vec<_> = ranges.into_iter().chain(extra).collect();
             let all_targets: Vec<_> = targets
                 .into_iter()
@@ -425,7 +546,7 @@ mod tests {
                 &mut vrows,
             )
             .unwrap();
-            let (extra, shifts) = forms(&p.point);
+            let (extra, shifts) = forms(&s, &p.point);
             let all_forms: Vec<_> = ranges.into_iter().chain(extra).collect();
             let all_targets: Vec<_> = targets
                 .into_iter()
@@ -456,7 +577,7 @@ mod tests {
             profile: &profile,
             view: layout,
             attempt,
-            query_profiles: &[0, 1, 0, 1],
+            blocks: &blocks,
             tables: &tables,
         };
         let mut exhausted = vec![Auth::ZERO; 57].into_iter();
@@ -469,9 +590,19 @@ mod tests {
         )
         .is_err());
         assert_eq!(exhausted.len(), 57);
-        let mut wrong = Statement { query_profiles: &[60], ..s };
+        let mut wrong = Statement { blocks: &[Block::Query { profile: 60, len: 1 }], ..s };
         assert!(wrong.required().is_err());
-        wrong.query_profiles = &[2];
+        wrong.blocks = &[Block::Query { profile: 2, len: 1 }];
+        assert!(wrong.required().is_err());
+        wrong.blocks =
+            &[Block::Query { profile: 0, len: 1 }, Block::Table { index: 0, first: 0, len: 3 }];
+        assert!(wrong.required().is_err());
+        wrong.blocks = &[
+            Block::Query { profile: 0, len: 1 },
+            Block::Table { index: 0, first: 0, len: 3 },
+            Block::Table { index: 0, first: 0, len: 3 },
+            Block::Table { index: 1, first: 0, len: 3 },
+        ];
         assert!(wrong.required().is_err());
         assert_ne!(tag(1, i16::MIN, 1), tag(1, i16::MIN, 61));
     }

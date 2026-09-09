@@ -181,14 +181,19 @@ reuses the fraction GKR with original X/Y/histogram MACs. Its 600-row
 ideal check uses two certified small GELU tables and one ranged A PCS:
 wrong output and overflow fail GKR; input and histogram changed together
 fail the original PCS. Histograms must be committed before alpha, and
-overflow tags cannot equal valid query tags. Full canonical GELU sources,
-gate RNE and their composition remain open; the P0/RNE/RMS bound above
-has not acquired GELU credit.
+overflow tags cannot equal valid query tags. Public query/table blocks
+may interleave; every table row must be covered exactly once.
+The [canonical GELU sources](../rust/volta-pcs/src/c71_matrix/gemma/gelu.rs)
+now add 60 X, 60 Y and 60 histograms while preserving all P0/RMS IDs.
+A has 2,326 sources / 7,881,092,238 bytes, still D33. The three original
+lookup forms use 720/720/960 cubes across 1,680 public word blocks.
+Literal and full metadata checks pass. Gate RNE, calibrated dispatch and
+composition remain open; the P0/RNE/RMS bound above has no GELU credit.
 
-Thirty-one B12 algebra/accounting checks include the scalar invariant,
+Thirty-two B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 212; the 17
-narrow bootstrap/pool checks and twenty-nine B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 213; the 17
+narrow bootstrap/pool checks and thirty B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

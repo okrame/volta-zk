@@ -442,6 +442,31 @@ def test_B12_lookup_counts_fixed_histogram_original_endpoints_and_overflow_profi
     assert overflow != (1,plan.P-32768,1)
 
 
+def test_B12_GELU_sources_count_untrusted_inputs_and_shared_original_forms():
+    b = plan.b12_gelu_source_profile()
+    base = plan.b12_rms_source_profile()
+    old = plan.gelu_lookup_sources(plan.gemma_weight_cohorts(plan.pinned_private_tensors()))
+    assert b['cohorts'] == b['new_i16_input_sources'] == b['new_i16_output_sources'] == b['new_i32_histogram_sources'] == 60
+    queries = sum(math.prod(s['shape']) for s in old if s['source']=='GELU_outputs')
+    table = sum(math.prod(s['shape']) for s in old if s['source']=='GELU_histogram')
+    assert b['lookup_queries'] == queries == 193536000
+    assert b['lookup_table_rows'] == table == 3932100
+    # Count the new X tables explicitly; the old RQ-only candidate has none.
+    assert b['additional_auxiliary_bytes'] == 4*queries+4*table == 789872400
+    assert b['auxiliary_live_bytes'] == base['auxiliary_live_bytes']+789872400 == 7881092238
+    assert b['auxiliary_sources'] == 2326 and b['auxiliary_root_log_cells'] == 33
+    assert b['fraction_live_cells'] == 197468100 and b['fraction_domain_bits'] == 28
+    assert b['public_query_blocks'] == 720 and b['public_table_blocks'] == 960
+    assert b['original_lookup_X_Y_M_byte_cubes'] == [720,720,960]
+    assert b['A_targets_including_original_lookup_before_gate_RNE'] == 3104
+    assert b['A_cubes_including_original_lookup_before_gate_RNE'] == 50426 < 65536
+    assert b['original_P0_and_RMS_source_ids_preserved'] and b['public_blocks_cover_each_table_row_once']
+    assert b['missing_gate_RNE_producer_tables'] == 60
+    assert not b['included_in_P0_RNE_RMS_security_subtotal']
+    assert not b['new_PCS_or_private_rng_streams_for_D33']
+    assert b['full_Gemma_security_totals'] is None
+
+
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():
     all_bounds = plan.b12_pcs_binding_assessment()
     b = all_bounds['raw_P0_two_source_composition']

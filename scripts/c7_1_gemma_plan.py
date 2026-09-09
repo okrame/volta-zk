@@ -6890,6 +6890,45 @@ def b12_lookup_profile(query_cells, table_rows):
     }
 
 
+def b12_gelu_source_profile():
+    """Canonical byte-source extension and compact fraction blocks only.
+
+    Unlike the earlier virtual-RQ candidate, this B12 extension explicitly
+    commits X/gate_proj as well as GELU Y and M. All 60 X producers still
+    need their RNE proofs; a new X source is never a trusted activation.
+    """
+    cohorts = gemma_weight_cohorts(pinned_private_tensors())
+    base = b12_rms_source_profile()
+    gates = [c for c in cohorts if c['operation']=='gate_proj']
+    query_cells = sum(c['rows']*c['columns'] for c in gates)
+    query_tiles = sum(c['rows'].bit_count()*c['columns'].bit_count() for c in gates)
+    histogram_tiles = 16*len(gates)
+    added = 4*query_cells+4*65535*len(gates)
+    live = base['auxiliary_live_bytes']+added
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/gelu.rs',
+        'cohorts': len(gates), 'new_i16_input_sources': len(gates),
+        'new_i16_output_sources': len(gates), 'new_i32_histogram_sources': len(gates),
+        'auxiliary_sources': base['auxiliary_sources']+3*len(gates),
+        'additional_auxiliary_bytes': added, 'auxiliary_live_bytes': live,
+        'auxiliary_root_log_cells': (live-1).bit_length(),
+        'lookup_queries': query_cells, 'lookup_table_rows': 65535*len(gates),
+        'fraction_live_cells': query_cells+65535*len(gates),
+        'fraction_domain_bits': (query_cells+65535*len(gates)-1).bit_length(),
+        'public_query_blocks': query_tiles, 'public_table_blocks': histogram_tiles,
+        'original_lookup_X_Y_M_byte_cubes': [query_tiles,query_tiles,histogram_tiles],
+        'A_targets_including_original_lookup_before_gate_RNE': base['A_targets_including_local_V_RNE']+3,
+        'A_cubes_including_original_lookup_before_gate_RNE': base['A_cubes_including_local_V_RNE_upper']+2*query_tiles+histogram_tiles,
+        'original_P0_and_RMS_source_ids_preserved': True,
+        'public_blocks_cover_each_table_row_once': True,
+        'new_PCS_or_private_rng_streams_for_D33': 0,
+        'missing_gate_RNE_producer_tables': len(gates),
+        'full_Gemma_calibration_or_source_execution': False,
+        'included_in_P0_RNE_RMS_security_subtotal': False,
+        'full_Gemma_security_totals': None, 'complete_security_or_physical_credit': False,
+    }
+
+
 def b12_weight_range_profile(bits, limit=32767):
     """Native Fp3 fraction-tree caller census; D35 is geometry, not a schedule.
 
@@ -7673,6 +7712,7 @@ def b12_pcs_binding_assessment():
         'direct_P0_RNE_composition': direct_composition,
         'P0_RNE_RMS_composition': b12_RMS_composition(direct_composition),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
+        'canonical_GELU_source_extension': b12_gelu_source_profile(),
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",

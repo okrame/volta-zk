@@ -207,7 +207,7 @@ impl Plan {
     }
 }
 
-fn prefix(first: usize, size: usize, total: usize, low: &[Fp3]) -> Vec<Fp3> {
+pub(super) fn prefix(first: usize, size: usize, total: usize, low: &[Fp3]) -> Vec<Fp3> {
     let mut result: Vec<_> = (bits(size)..bits(total))
         .rev()
         .map(|b| if first >> b & 1 == 1 { Fp3::ONE } else { Fp3::ZERO })
@@ -217,6 +217,19 @@ fn prefix(first: usize, size: usize, total: usize, low: &[Fp3]) -> Vec<Fp3> {
 }
 
 impl Sources {
+    pub(super) fn append(
+        mut self,
+        extra: Vec<(String, usize, usize, usize)>,
+    ) -> Result<Self, String> {
+        self.bytes = self.bytes.append(extra)?;
+        let mut digest = blake3::Hasher::new();
+        digest.update(b"C71-RMS-view-A-extension-v1\0");
+        digest.update(&self.view);
+        digest.update(&self.bytes.layout_digest);
+        self.view = *digest.finalize().as_bytes();
+        Ok(self)
+    }
+
     // Reinterpret token||head||lane without moving cells. A shorter selected
     // row domain gains only fixed leading zero bits in the full producer.
     fn coordinates(
@@ -321,7 +334,7 @@ impl Sources {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::c71_matrix::{eq, signed};
 

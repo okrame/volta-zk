@@ -56,6 +56,41 @@ impl Plan {
 }
 
 impl Bytes {
+    /// Extend the SAME source statement while retaining all original IDs.
+    /// Used before committing A; every packed offset and form is recompiled.
+    pub(super) fn append(self, extra: Vec<(String, usize, usize, usize)>) -> Result<Self, String> {
+        let Self { mut scalar, mut widths, .. } = self;
+        let mut names: std::collections::BTreeSet<_> =
+            scalar.layout.sources.iter().map(|s| s.name.clone()).collect();
+        let mut offset =
+            scalar.layout.sources.last().map_or(0, |s| s.packed_offset + s.rows * s.cols);
+        let mut digest = blake3::Hasher::new();
+        digest.update(b"C71-A-extension-v1;preserved-source-identities\0");
+        digest.update(&scalar.layout.layout_digest);
+        digest.update(&(extra.len() as u64).to_le_bytes());
+        for (name, rows, cols, width) in extra {
+            if rows == 0 || cols == 0 || ![2, 4, 6].contains(&width) || !names.insert(name.clone())
+            {
+                return Err("A extension repeats or changes a source".into());
+            }
+            let next = rows
+                .checked_mul(cols)
+                .and_then(|n| offset.checked_add(n))
+                .ok_or("A extension overflows")?;
+            digest.update(&(name.len() as u64).to_le_bytes());
+            digest.update(name.as_bytes());
+            for v in [rows, cols, width, offset] {
+                digest.update(&(v as u64).to_le_bytes());
+            }
+            scalar.layout.sources.push(Source { name, rows, cols, packed_offset: offset });
+            widths.push(width);
+            offset = next;
+        }
+        (scalar.layout.tiles, scalar.layout.live) = tiles(&scalar.layout.sources);
+        scalar.layout.layout_digest = *digest.finalize().as_bytes();
+        Self::new(scalar, widths)
+    }
+
     // Reuse the same canonical byte packing for extensions of A. Every
     // source width and the extended scalar identity enter the byte digest.
     pub(super) fn new(scalar: Auxiliary, widths: Vec<usize>) -> Result<Self, String> {

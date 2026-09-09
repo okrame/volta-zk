@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its twenty-nine tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its thirty tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -95,7 +95,7 @@ from the earlier PCS checks to keep each invocation below 60 seconds.
 The `c71_b12_p0` filter executes a small raw matrix/norm/lookup caller
 with 357 ideal Fp3 correlations, one ranged W PCS and a separate C/X PCS.
 It checks committed false cuts and detached input MACs; no socket is needed.
-The eight `c71_b12_gemma` checks cover native metadata/DAG layout and
+The nine `c71_b12_gemma` checks cover native metadata/DAG layout and
 physical/virtual addresses, including ragged tensor MLEs. The caller check
 executes all 773 compact reductions with zero vectors and compiles the
 original auxiliary forms; its placeholder roots grant no PCS acceptance.
@@ -157,8 +157,15 @@ has a 64-cell/eight-profile cap; this is no calibrated full-model run.
 The `c71_b12_lookup` filter checks two restricted GELU tables against one
 fixed byte source with 600 ideal Fp3 rows, including range and shared PCS.
 It rejects wrong output, overflow, and an input/histogram pair changed
-coherently after commitment. The unchanged shared fraction-tree kernel
-needs no broad rerun. Canonical GELU routes and gate RNE remain open.
+coherently after commitment. The v2 check interleaves query/table blocks
+and rejects incomplete/duplicate table coverage. The unchanged shared
+fraction-tree kernel needs no broad rerun.
+The `c71_b12_gemma_gelu_sources` case compares a small extended byte view
+and original X/Y/M forms, then counts every pinned GELU route and all
+1,680 compact blocks without full bodies. RMS/P0 source IDs are preserved.
+It does not execute a D19 or full D33 source PCS; gate RNE remains open.
+After changes to the shared byte extension, rerun the `c71_b12_gemma`
+filter for the existing P0/byte/RNE/RMS cases, within the same small limits.
 After byte-function changes, rerun `c71_b12_byte_functions` and
 `c71_b12_rne` separately; ordinary lane-mode transcripts are preserved.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner

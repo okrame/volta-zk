@@ -14,7 +14,7 @@ THIRD_PARTY = ROOT / "rust" / "third_party"
 MANIFEST = THIRD_PARTY / "C61_P3_UPSTREAM_SHA256SUMS"
 REVISION = "66e290615de1858f2f2f6a804158064c406cda1c"
 
-# C7.1 B2 source review at 2d949dc; origins and scope: active design §10.
+# Initial C7.1 B2 review at 2d949dc; B12 common-pad review: active design §10.
 # Pin content, not just filenames: a later edit requires another explicit review.
 REVIEWED_DELTAS = {
     "merkle-tree/src/merkle_tree.rs": "fbf4e1a5d2a35056ea7c791ed51c732f1157f8c760cd3b86d0f95752fb9ec10d",
@@ -39,9 +39,9 @@ REVIEWED_DELTAS = {
     "whir/src/pcs/zk/proof.rs": "313dd6bb3b67e0504dc0d546c41c258be12a79d88a8af90f82700b0feb17c0a1",
     "whir/src/pcs/zk/prover/data.rs": "91e2116a8d6d986e20cde36936e562755ee30951dd055388c1b11e2da62c11fa",
     "whir/src/pcs/zk/prover/masks.rs": "dae258f8cd5e717d864b824daee062473b545b0be317e5df12ea831ad98488ba",
-    "whir/src/pcs/zk/prover/mod.rs": "a960ccb48b941c9b8f55531c1d2fdbe29940f0324b1eddbbc57ced7e2a4fcab9",
+    "whir/src/pcs/zk/prover/mod.rs": "07b24111703e3c6af8a3bc6417f3f7b8e40fd27977d39bdfa52d45933c101b10",
     "whir/src/pcs/zk/verifier/masks.rs": "6e808029b7eee32ea9e51db75c441df5a89461ead6b827311ae227b9e5e4cb21",
-    "whir/src/pcs/zk/verifier/mod.rs": "37e3c0992fe209bb3c260b5cf473e19de7f8082fbdaa56a05e211842be484518",
+    "whir/src/pcs/zk/verifier/mod.rs": "8dcbab319ba34669d713cacd72b1a5e98cae49d89d627c46bd879b8229e792bd",
 }
 ALLOWED_DELTAS = frozenset(REVIEWED_DELTAS)
 
@@ -262,10 +262,11 @@ def build_report() -> dict[str, object]:
 
     require_source_guards()
     return {
-        "profile": "C7.1-p3-fork-provenance-v2",
+        "profile": "C7.1-p3-fork-provenance-v3",
         "credit": False,
         "scope": "pinned source provenance and textual guards; not protocol security or native execution",
-        "reviewed_runtime_commit": "2d949dc",
+        "initial_reviewed_runtime_commit": "2d949dc",
+        "subsequent_review": "B12 common switch-mask pad; design §10; exact hashes in REVIEWED_DELTAS",
         "historical_manifest_source_files": 87,
         "merkle_dependency_source_files": 9,
         "reviewed_delta_content_pinned": True,

@@ -35,3 +35,11 @@ See the [active review](../../../docs/c7.1-gemma31b-design.md#b2--port-locale-cp
 for origins and scope. The auditor checks exact reviewed content, and also
 includes the Merkle fork selected by Cargo. A passing source audit grants no
 protocol security or native-execution credit.
+
+B12 additionally reviews the same two prover/verifier files for common switch
+mask codes: fill every free pad coefficient and use that length in the public
+covector. Default `r+ood_samples` shapes keep the same draws and equations;
+the B12 feature selects the larger common code. The auditor pins these exact
+reviewed bytes. The immutable upstream hashes remain unchanged. Native B12
+and legacy PCS replay checks pass; full hash/FS security is still open in
+[design B12](../../../docs/c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata).

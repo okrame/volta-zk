@@ -256,19 +256,26 @@ fn config(h: usize) -> Result<ZkWhirConfig<E, Goldilocks, Fs>, String> {
     if !(10..=14).contains(&h) {
         return Err("C71 CPU domain must be D10..D14".into());
     }
-    ZkWhirConfig::new(
-        h,
-        ProtocolParameters {
-            security_level: 128, // nominal PCS parameter, no complete/lifetime security credit
-            pow_bits: 0,
-            round_log_inv_rates: Vec::new(),
-            folding_factor: FoldingFactor::ConstantFromSecondRound(1, 2),
-            soundness_type: SecurityAssumption::JohnsonBound,
-            starting_log_inv_rate: 1,
-        },
-        ZkParameters { ell_zk: 16, mask_log_inv_rate: 1 },
-    )
-    .map_err(|e| e.to_string())
+    #[cfg(feature = "c71-b12-pcs")]
+    {
+        b12::config(h)
+    }
+    #[cfg(not(feature = "c71-b12-pcs"))]
+    {
+        ZkWhirConfig::new(
+            h,
+            ProtocolParameters {
+                security_level: 128, // nominal PCS parameter, no complete/lifetime security credit
+                pow_bits: 0,
+                round_log_inv_rates: Vec::new(),
+                folding_factor: FoldingFactor::ConstantFromSecondRound(1, 2),
+                soundness_type: SecurityAssumption::JohnsonBound,
+                starting_log_inv_rate: 1,
+            },
+            ZkParameters { ell_zk: 16, mask_log_inv_rate: 1 },
+        )
+        .map_err(|e| e.to_string())
+    }
 }
 
 /// P3's ordinary challenger omits authenticated Merkle opening payloads.
@@ -439,21 +446,28 @@ fn matrix_config(n: usize) -> Result<ZkWhirConfig<E, Goldilocks, Fs>, String> {
         return Err("C71 matrix side must be 1..128".into());
     }
     let side = n.next_power_of_two().max(32);
-    let mut result = config(2 * side.ilog2() as usize)?;
-    // A model root is admitted for only three attempted openings. Its first
-    // oracle needs the aggregate query budget; every other mask is fresh.
-    // This capacity adjustment is not a multi-session ZK composition proof.
-    result.oracle_randomness[0] *= 3;
-    let rows = side * side >> result.round_folding_factor(0);
-    if result.oracle_randomness[0] > rows * ((1 << result.starting_log_inv_rate) - 1) {
-        return Err("C71 three-slot initial-mask capacity exceeds oracle slack".into());
+    #[cfg(feature = "c71-b12-pcs")]
+    {
+        config(2 * side.ilog2() as usize)
     }
-    result.switch_masks[0] = MaskCodeShape::new(
-        result.oracle_randomness[0] + result.round_parameters[0].ood_samples,
-        result.mask_queries,
-        result.zk.mask_log_inv_rate,
-    );
-    Ok(result)
+    #[cfg(not(feature = "c71-b12-pcs"))]
+    {
+        let mut result = config(2 * side.ilog2() as usize)?;
+        // A model root is admitted for only three attempted openings. Its first
+        // oracle needs the aggregate query budget; every other mask is fresh.
+        // This capacity adjustment is not a multi-session ZK composition proof.
+        result.oracle_randomness[0] *= 3;
+        let rows = side * side >> result.round_folding_factor(0);
+        if result.oracle_randomness[0] > rows * ((1 << result.starting_log_inv_rate) - 1) {
+            return Err("C71 three-slot initial-mask capacity exceeds oracle slack".into());
+        }
+        result.switch_masks[0] = MaskCodeShape::new(
+            result.oracle_randomness[0] + result.round_parameters[0].ood_samples,
+            result.mask_queries,
+            result.zk.mask_log_inv_rate,
+        );
+        Ok(result)
+    }
 }
 
 impl Model {
@@ -554,11 +568,11 @@ fn gamma(c: &ZkWhirConfig<E, Goldilocks, Fs>) -> Vec<u8> {
     #[cfg(not(feature = "c71-b12-pcs"))]
     let mut bytes = b"C71-matrix-v1;codec1;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;Johnson128;PoW0;AES128-MMO;LPN64,512,8,4;setup16,128,4;checks2;pool3;lift9sVOLE48;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
     #[cfg(feature = "c71-b12-pcs")]
-    let mut bytes = b"C71-matrix-B12-salted-v1;codec2;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;B2-IOP-Johnson128;PoW0;B11-AES256-finite;rows3;salts4Fp;private-coins-v1-cap2^40;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
+    let mut bytes = b"C71-matrix-B12-unique-v1;codec2;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;CFW9.10+8.1;radius1/4;queries512;ell2048;OOD1;PoW0;B11-AES256-finite;rows3;salts4Fp;private-coins-v1-cap2^40;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
     let mut words = vec![
         volta_field::P,
-        16,
-        1,
+        c.zk.ell_zk as u64,
+        c.zk.mask_log_inv_rate as u64,
         c.num_variables as u64,
         c.n_rounds() as u64,
         c.final_queries as u64,

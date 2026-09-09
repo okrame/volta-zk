@@ -1,9 +1,54 @@
-//! Opt-in B12 salting/consumer component. Keeps the B2 IOP geometry: it is
-//! not the ideal unique-radius profile or a complete FS/lifetime proof.
+//! Opt-in B12 unique-radius IOP and salted consumer. The hash/FS/lifetime
+//! compilation remains a separate obligation; this is not production admission.
 
 use super::*;
 use p3_merkle_tree::MerkleTreeHidingMmcs;
 use p3_symmetric::{CompressionFunctionFromHasher, CryptographicHasher, SerializingHasher};
+
+/// Theorem 9.10 code switches, terminated by Theorem 8.1's masked fold/base
+/// case. Only creates a small configuration; callers keep the D14 CPU cap.
+pub(super) fn config(h: usize) -> Result<ZkWhirConfig<E, Goldilocks, Fs>, String> {
+    if !(10..=35).contains(&h) {
+        return Err("B12 configuration domain must be D10..D35".into());
+    }
+    let strategy = FoldingFactor::ConstantFromSecondRound(if h <= 14 { 1 } else { 7 }, 2);
+    let folds = strategy.compute_folding_schedule(h).map_err(|e| e.to_string())?;
+    let (mut remaining, mut rates) = (h, Vec::new());
+    for (i, &folding) in folds.iter().enumerate() {
+        remaining -= folding;
+        let message = 1usize << remaining;
+        let randomness = if i == 0 { 1536 } else { 512 };
+        let domain = (8 * (message + randomness)).next_power_of_two();
+        if domain > 1usize << 32 {
+            return Err("B12 folded domain exceeds Goldilocks two-adicity".into());
+        }
+        rates.push(domain.ilog2() as usize - remaining);
+    }
+    let mut result = ZkWhirConfig::new(
+        h,
+        ProtocolParameters {
+            security_level: 128, // constructor only; the exact RBR bound is in the B12 design
+            pow_bits: 0,
+            starting_log_inv_rate: rates[0],
+            round_log_inv_rates: rates[1..].to_vec(),
+            folding_factor: strategy,
+            soundness_type: SecurityAssumption::JohnsonBound,
+        },
+        ZkParameters { ell_zk: 2048, mask_log_inv_rate: 3 },
+    )
+    .map_err(|e| e.to_string())?;
+    result.mask_queries = 512;
+    result.oracle_randomness.fill(512);
+    result.oracle_randomness[0] = 1536;
+    result.sumcheck_mask = MaskCodeShape::new(2048, 512, 3);
+    result.switch_masks.fill(result.sumcheck_mask);
+    for round in &mut result.inner.round_parameters {
+        round.num_queries = 512;
+        round.ood_samples = 1; // one nonzero point hides with one free pad coefficient
+    }
+    result.inner.final_queries = 512;
+    Ok(result)
+}
 
 /// Private coins in the same classical XOF-ROM as C71FS, under a separate
 /// domain. No Clone: an MMCS clone draws a new secret seed. Recreating a
@@ -94,6 +139,40 @@ mod tests {
     use super::*;
     use p3_commit::Mmcs;
     use p3_matrix::{dense::RowMajorMatrix, Dimensions};
+
+    #[test]
+    fn c71_b12_native_codes_have_unique_radius_and_common_private_masks() {
+        for h in [10, 12, 14, 35] {
+            let c = config(h).unwrap();
+            assert_eq!(c.max_pow_bits(), 0);
+            assert_eq!(c.final_sumcheck_rounds, if h == 35 { 6 } else { 5 });
+            assert_eq!(c.mask_queries, 512);
+            assert!(c.mask_groups().iter().all(|g| g.shape == c.sumcheck_mask));
+            assert_eq!(c.sumcheck_mask, MaskCodeShape::new(2048, 512, 3));
+            let mut previous_domain = usize::MAX;
+            for (i, r) in c
+                .round_parameters
+                .iter()
+                .chain(std::iter::once(&c.final_round_config()))
+                .enumerate()
+            {
+                let message = 1usize << r.num_variables;
+                let domain = r.domain_size >> r.folding_factor;
+                let dimension = message + c.oracle_randomness[i];
+                assert!(3 * (domain / 4) < domain - dimension + 1);
+                assert_eq!(domain, (8 * dimension).next_power_of_two());
+                assert!(domain <= 1usize << 32 && r.domain_size <= previous_domain);
+                assert_eq!(r.num_queries, 512);
+                assert!(c.zk.ell_zk > c.oracle_randomness[i]);
+                previous_domain = r.domain_size;
+            }
+            assert_eq!(c.oracle_randomness[0], 3 * 512);
+            if h == 35 {
+                assert_eq!(8 * c.starting_domain_size(), 4usize << 40);
+                assert!(super::super::config(h).is_err()); // never allocate this on the CPU path
+            }
+        }
+    }
 
     #[test]
     fn c71_b12_private_coins_replay_stream_and_fail_closed() {

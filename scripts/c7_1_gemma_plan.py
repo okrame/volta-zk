@@ -6364,28 +6364,31 @@ def b12_pcs_binding_assessment():
 
     mask = oracle(mask_message, mask_queries, 1)
     profiles = []
-    for log_size in (14, 35):
+    for log_size in (12, 14, 35):
         remaining, oracles, folds = log_size, [], []
         while True:
-            folding = (1 if log_size == 14 else 7) if not oracles else min(4, remaining-5)
+            folding = (1 if log_size <= 14 else 7) if not oracles else 2
             folds.append(folding)
             oracles.append(oracle(1 << (remaining-folding),
                 (3 if not oracles else 1)*query_count, 1 << folding))
             remaining -= folding
-            if folding == 0:
+            if remaining <= 6:
                 break
         errors = []
-        for o, folding in zip(oracles[:-1], folds[:-1]):
-            # Theorem 10.2, all enlarged/interleaved code lists have size <=1.
+        for i, (o, folding) in enumerate(zip(oracles, folds)):
+            # Theorem 9.10 switches followed by Theorem 8.1's final fold/base
+            # case. All enlarged/interleaved code lists have size <=1.
             # Using q-2 also covers exclusion of 0,1 for a sumcheck draw.
             errors.append(Fraction(1, q-2))
             errors.extend([Fraction(o["radius_rows"]+1+mask_message, q-2)]*folding)
+            if i == len(oracles)-1:
+                break
             degree = o["message_rows"]+mask_message-1
-            # Two distinct E\Fp points: Vandermonde privacy from two free
-            # mask coefficients; both points are fixed before their answers.
-            errors.append(2*Fraction(degree*degree, (q-P)*(q-P-1)))
+            # One uniform E point; one free pad coefficient hides its answer
+            # except at zero, an explicit 1/q HVZK bad event per switch.
+            errors.append(2*Fraction(degree, q-2))
             errors.append(Fraction(3, 4)**query_count)
-            errors.append(Fraction(2+query_count*o["width"], q-2))
+            errors.append(Fraction(1+query_count*o["width"], q-2))
         errors.extend((Fraction(oracles[-1]["radius_rows"]+mask["radius_rows"]+3, q-2),
                        Fraction(3, 4)**min(query_count, mask_queries)))
         maximum = max(errors)
@@ -6396,9 +6399,10 @@ def b12_pcs_binding_assessment():
             "conditional_prefix_bits": math.log2(maximum.denominator)-math.log2(maximum.numerator)-74,
             "initial_encoded_base_field_bytes": 8*oracles[0]["encoded_base_field_cells"],
             "memory_is_not_a_streaming_schedule": True,
-            "native_profile_selected": False})
+            "ordinary_IOP_HVZK_error_from_zero_OOD": str(Fraction(len(oracles)-1, q)),
+            "native_profile_selected": log_size <= 14})
 
-    exhaustion, salting_costs = [], []
+    exhaustion = []
     for case in b4_security_admission()["proximity"]["cases"]:
         o = case["oracles"][0]
         h, t, r = o["domain_rows"], o["queries"], o["randomness_rows"]
@@ -6409,10 +6413,13 @@ def b12_pcs_binding_assessment():
             "three_disjoint_sets_probability": str(probability),
             "event_bits": math.log2(probability.denominator)-math.log2(probability.numerator),
             "scope": "ideal independent uniform distinct query sets; candidate-W reconstruction when the mask budget is exhausted, not a measured native attack"})
-        oracles, masks = case["oracles"], case["mask_groups"]
-        opened = sum(o["queries"] for o in oracles) + oracles[-1]["queries"] + 2*sum(m["queries"] for m in masks)
-        committed = sum(o["domain_rows"] for o in oracles) + oracles[-1]["domain_rows"] + 2*sum(m["domain_rows"] for m in masks)
-        salting_costs.append({"n": case["n"], "opened_salt_rows_per_proof": opened,
+    salting_costs = []
+    for n, profile in zip((48, 128), profiles):
+        oracles = profile["oracles"]
+        groups = 2*len(oracles)-1
+        opened = (len(oracles)+1+2*groups)*query_count
+        committed = sum(o["domain_rows"] for o in oracles) + oracles[-1]["domain_rows"] + 2*groups*mask["domain_rows"]
+        salting_costs.append({"n": n, "opened_salt_rows_per_proof": opened,
             "salt_field_payload_bytes_per_proof": 32*opened,
             "salt_field_array_bytes_created_per_warm_proof": 32*committed,
             "salt_field_array_bytes_created_at_model_setup": 32*oracles[0]["domain_rows"],
@@ -6427,7 +6434,7 @@ def b12_pcs_binding_assessment():
             "interleaving_factor_multiplier_needed": False,
             "proof_kind": "mathematical interpolation/counting proof with exhaustive finite checks, not a new Lean theorem"},
         "ideal_oracle_profiles": profiles, "shared_mask_code": mask,
-        "private_ood_points": 2, "query_count_each_oracle": query_count,
+        "private_ood_points": 1, "query_count_each_oracle": query_count,
         "root_exposure_slots": 3,
         "old_unsalted_root": {"B2_uses_hiding_Merkle_MMCS": False,
             "exhaustion_cases": exhaustion,
@@ -6437,11 +6444,11 @@ def b12_pcs_binding_assessment():
         "native_salted_component": {
             "feature": "c71-b12-pcs",
             "source": "rust/volta-pcs/src/c71_matrix/b12.rs",
-            "IOP_geometry": "unchanged B2; not the ideal unique-radius profile",
+            "IOP_geometry": "CFW Theorem 9.10 switches and Theorem 8.1 final fold/base; common mask code and proved unique radius",
             "bootstrap": "real B11 AES roles, three base rows per Fp3 and Delta_native=-Delta_B11",
             "durable_consumer": "two valid matrix proofs of one root; altered salt rejected on a burned third attempt; accepted head and exhaustion survive reopen",
             "merkle_salt_bytes_per_opened_row": 32,
-            "salting_costs_on_preserved_B2_geometry": salting_costs,
+            "salting_costs_on_unique_radius_geometry": salting_costs,
             "additional_model_secret_seed_bytes": 32,
             "fresh_proof_salt_stream_separate_from_model_rematerialization": True,
             "salt_generator": "domain-separated secret-seed BLAKE3 XOF in the existing classical ROM; same generator for private mask coins",

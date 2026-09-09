@@ -405,7 +405,7 @@ where
             let mut mask_covector = switch_mask_covector(
                 1 << num_variables,
                 config.oracle_randomness[round],
-                round_params.ood_samples,
+                config.switch_masks[round].message_len - config.oracle_randomness[round],
                 &rho_points,
                 ood_coeffs,
                 &query_points,

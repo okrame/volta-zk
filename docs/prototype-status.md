@@ -31,17 +31,21 @@ now proves same-set MCA for a linear code with `3*radius < distance`, hence
 unique message decoding. A published ideal IOPP profile retains about 88
 conditional bits after a proposed Q* prefix charge at `2^35` cells, but its
 monolithic initial codeword alone costs 4 TiB and remains physically excluded.
-This profile is not the native B2 fork. Four small algebra/accounting checks
+The opt-in native profile now uses these codes and common private masks,
+composing CFW Theorems 9.10 and 8.1. One uniform OOD point contributes an
+explicit 1/q ordinary-IOP privacy error per switch. Four algebra/accounting checks
 also pin the affine PCS/MAC closing equation and reproduce candidate-W
 reconstruction after mask exhaustion in an **unsalted** Merkle commitment.
 Under three independent uniform query sets, the B2 n=128 exhaustion event
 has probability about `2^-24.0445`; this is a source-level privacy finding,
 not a measured native FS attack. The opt-in `c71-b12-pcs` now reuses the
 salted MMCS with separate hash domains, fresh proof salt streams and codec v2.
-Three native B12 tests cover private coins, salting and a real B11 durable consumer: two valid
+Four native B12 tests cover geometry, private coins, salting and a real B11
+durable consumer: two valid
 matrix proofs of one root, then a rejected salt alteration whose burn survives
-reopen. This still uses B2 IOP geometry, with its security gaps; no full
-hash/FS/ZK bound or root renewal follows from the component check.
+reopen. The native CPU cap remains D14/n<=128; D35 is checked as a small
+configuration only. No full hash/FS/ZK bound or root renewal follows from
+the component check.
 Salt and mask coins now use secret-seed XOF expansion in the existing ROM;
 the fixed-root replacement lemma is below `2^-178` for Q*=2^74, eliminating
 the unquantified ChaCha12 premise from this component.

@@ -717,7 +717,11 @@ where
             // Commit the code-switch mask (folded randomness || pad).
             let mask_shape = &config.switch_masks[round];
             let mask_encoding = mask_shape.encoding::<EF>();
-            let pad: Vec<EF> = (0..round_params.ood_samples).map(|_| rng.random()).collect();
+            // A common mask code may leave more free slots than OOD answers.
+            // Fill all of them: zero-padding would change the source's ZK distribution.
+            let pad_len = mask_shape.message_len - oracle_randomness.len();
+            assert!(pad_len >= round_params.ood_samples, "insufficient private OOD pad");
+            let pad: Vec<EF> = (0..pad_len).map(|_| rng.random()).collect();
             let mut mask_message = oracle_randomness.clone();
             mask_message.extend_from_slice(&pad);
             let mask_encoding_randomness: Vec<EF> =

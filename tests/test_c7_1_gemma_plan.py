@@ -90,11 +90,12 @@ def test_B12_unique_radius_budget_includes_mask_degree_and_keeps_compilation_ope
     assert b['affine_MCA']['applies_to_same_agreement_set_not_only_proximity']
     for profile in b['ideal_oracle_profiles']:
         errors = list(map(Fraction, profile['round_error_vector']))
-        assert len(errors) == sum(profile['folds']) + 4*(len(profile['oracles'])-1)+2
+        assert len(errors) == sum(profile['folds']) + 4*(len(profile['oracles'])-1)+3
         assert max(errors) == Fraction(profile['max_round_error'])
         assert (1 << 74)*max(errors) == Fraction(profile['conditional_Qstar_2_to_74_prefix_term'])
         assert (1 << 74)*max(errors) < Fraction(1, 1 << 82)
-        assert not profile['native_profile_selected']
+        assert profile['native_profile_selected'] == (profile['log_message_cells'] <= 14)
+        assert Fraction(profile['ordinary_IOP_HVZK_error_from_zero_OOD']) == Fraction(len(profile['oracles'])-1, plan.P**3)
         for oracle in profile['oracles']+[b['shared_mask_code']]:
             m, d, t = oracle['domain_rows'], oracle['minimum_distance'], oracle['radius_rows']
             assert d == m-oracle['message_rows']-oracle['randomness_rows']+1
@@ -102,7 +103,7 @@ def test_B12_unique_radius_budget_includes_mask_degree_and_keeps_compilation_ope
             assert m <= 1 << 32 and oracle['randomness_rows'] >= b['query_count_each_oracle']
         assert profile['oracles'][0]['randomness_rows'] == 3*b['query_count_each_oracle']
     # A small ideal IOP error does not admit the monolithic Gemma allocation.
-    large = b['ideal_oracle_profiles'][1]
+    large = b['ideal_oracle_profiles'][-1]
     assert large['initial_encoded_base_field_bytes'] == 4 << 40
     cases = b['old_unsalted_root']['exhaustion_cases']
     assert 24 < cases[1]['event_bits'] < 25
@@ -118,8 +119,8 @@ def test_B12_unique_radius_budget_includes_mask_degree_and_keeps_compilation_ope
     assert native['merkle_salt_bytes_per_opened_row'] == 4*8
     assert [(c['n'], c['salt_field_payload_bytes_per_proof'],
              c['salt_field_array_bytes_created_per_warm_proof'])
-            for c in native['salting_costs_on_preserved_B2_geometry']] == [
-                (48, 165888, 917504), (128, 208064, 1638400)]
+            for c in native['salting_costs_on_unique_radius_geometry']] == [
+                (48, 311296, 16777216), (128, 393216, 25165824)]
     assert not native['security_admitted'] and not native['root_renewal']
     coins = native['private_coin_replacement']
     qs, streams = coins['global_RO_queries_assumed_including_simulator'], coins['unique_secret_streams_in_fixed_root_three_attempt_component']

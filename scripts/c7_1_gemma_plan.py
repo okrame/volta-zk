@@ -5976,6 +5976,114 @@ def b7_bootstrap_admission():
     }
 
 
+def b8_bootstrap_selection():
+    """A composable construction, not a native implementation or security admission."""
+    ot_count, seed_bytes, point_bytes = 9 * 64, 32, 67
+    # RFC 5903 section 3.3. This is the auxiliary OT group, not the MAC field.
+    group_order = int(
+        "01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+        "FA51868783BF2F966B7FCC0148F709A5D03BB5C9B8899C47AEBB6FB71E91386409", 16)
+    # Hasse suffices below; retaining the exact order also checks the sampler.
+    assert group_order.bit_length() == 521
+    setups, queries = LIFETIME_ATTEMPTS, 1 << 65
+    instances = setups * ot_count
+    # These are REQUIRED primitive advantages at the reductions' resources,
+    # not an inference from a curve name or a nominal security parameter.
+    primitive_targets = {"DDH": Fraction(1, 1 << 184),
+                         "COPE_PRF_per_key": Fraction(1, 1 << 116)}
+    # MR19 E.1: Q times the multi-instance KA advantage. D.2, n=1,
+    # has a rank failure of 1/|G|. Allow extra source/programming/key queries.
+    terms = {
+        "DDH_at_required_advantage": instances * queries * primitive_targets["DDH"],
+        "PRF_at_required_advantage": 2 * instances * primitive_targets["COPE_PRF_per_key"],
+        "group_programming_rank_and_KDF_union_envelope":
+            Fraction(16 * instances * queries**2, group_order),
+        "honest_context_nonce_collisions": Fraction(setups**2, 1 << 256),
+        # Exact rejection tails are checked separately; do not emit 80k-digit
+        # rationals for these negligible tails in the comparison JSON.
+        "bounded_group_RO_sampler": Fraction(1, 1 << 440),
+        "bounded_scalar_sampler": Fraction(1, 1 << 2000),
+        "bounded_Fp_sampling": setups * (3 * ot_count * (27_511 + 9) + 10 * 27_511 + 27)
+            * Fraction((1 << 64) - P, 1 << 64)**8,
+        "Wolverine_hybrid_and_zero_key_abort": setups * (
+            Fraction(192**2 + 1, P**3) + Fraction(1, 1 << 128)),
+    }
+    cases = []
+    for wanted in (32, 27_511):
+        rows = wanted + 9
+        # The two consecutive sender OT messages are deliberately not fused.
+        # Header: magic8, session32, channel32, capacity32, n8, suite4,
+        # degree4, role nonce32. Nine frames, with the existing 9-byte framing.
+        payloads = {"context_headers": 2 * 152,
+            "OT_receiver_points": 2 * ot_count * point_bytes,
+            "OT_sender_points": 2 * ot_count * point_bytes,
+            "OT_chosen_seed_ciphertexts": 2 * ot_count * seed_bytes,
+            "COPE_corrections": ot_count * rows * 8,
+            "check_challenges": 72 * wanted,
+            "check_response_x_z": 2 * 72,
+            "compression_coefficients": 3 * 24,
+            "framing": 9 * 9}
+        cases.append({"wanted_base_svole": wanted, "credit": False,
+            "kind": "specified bootstrap wire and algebra, not an executed connection",
+            "wire_parts": payloads, "bootstrap_protocol_wire_bytes": sum(payloads.values()),
+            "full_fp3_after_packing": wanted // 3, "unpacked_base_rows": wanted % 3,
+            "retained_output_bytes": {"prover": 32 * wanted, "verifier": 24 * (wanted + 1)},
+            "logical_precheck_rows_bytes": {"prover": 80 * rows, "verifier": 72 * rows + 72},
+            "OT_seed_storage_bytes": {"prover": 64 * ot_count, "verifier": 32 * ot_count},
+            "source_work_counts_not_complete_native_census": {
+                "OT_fixed_base_scalar_multiplications": 4 * ot_count,
+                "OT_variable_base_scalar_multiplications": 3 * ot_count,
+                "OT_hash_to_group_calls": 3 * ot_count,
+                "OT_point_additions": 3 * ot_count,
+                "OT_KDF_calls": 3 * ot_count,
+                "COPE_PRF_field_outputs_both_roles": 3 * ot_count * rows,
+                "COPE_gadget_base_products_both_roles": 2 * ot_count * rows,
+                "check_base_scaling_products": 9 * wanted,
+                "check_schoolbook_Fp9_products": 2 * wanted + 19,
+                "compression_Fp3_products": 3 * (2 * wanted + 1)},
+            "complete_connection_bytes": budget_sum({
+                "bootstrap_protocol": sum(payloads.values()),
+                "authenticated_transport_and_durable_lifecycle": None}),
+            "complete_work_memory_time_and_physical_traffic": budget_sum({
+                "native_bootstrap_resources": None})})
+    return {"status": "select_MR19_receiver_first_with_WYKW20_leakage_free_base",
+        "credit": False, "security_admitted": False, "construction_selected": True,
+        "native_bootstrap_implemented": False, "pool_PCS_integration_admitted": False,
+        "owner_authorization": "find a suitable composable bootstrap; construct one if reuse fails",
+        "source_chain": ["MR19 Figure 8, Claim 4.2, Appendix E.1 and Lemma D.2",
+            "MR19 Figure 4 and Lemma 3.4: sender-chosen messages",
+            "WYKW20 Figure 15/Lemma 3: COPEe",
+            "WYKW20 Figure 5/Theorem 2 and Appendix B.2: leakage-free base-sVOLE"],
+        "model": "classical local programmable ROM; static malicious party, either role; abort allowed",
+        "no_new_trusted_setup_or_global_observable_oracle": True,
+        "profile": {"OT": "independent receiver-first MR19 instances; no shared sender exponent",
+            "auxiliary_group": "P-521", "group_order": group_order,
+            "group_RO": "SHAKE256 domain-separated rejection decoding of 522-bit candidates, cap 512",
+            "seed_KDF": "SHAKE256, 32-byte output, distinct domain and instance context",
+            "COPE_PRF": "independent keyed BLAKE3 streams; canonical Fp rejection, cap 8 per output",
+            "seed_bytes": seed_bytes, "point_bytes": point_bytes, "OT_count": ot_count,
+            "target_field": "Fp3", "internal_field": "Fp9", "fresh_base_masks": 9,
+            "check_challenges": "explicit Fp9 elements after all COPE corrections",
+            "compression": "three fresh Fp3 coefficients after the check",
+            "zero_compressed_key": "honest verifier aborts and burns setup; no retry of old material"},
+        "conditional_security": {"setups_upper": setups, "OT_instances_upper": instances,
+            "adversarial_global_RO_queries_upper": 1 << 64,
+            "queries_including_honest_and_simulator_allowance": queries,
+            "required_primitive_advantages": {k: str(v) for k, v in primitive_targets.items()},
+            "terms_at_required_primitive_advantages": {k: str(v) for k, v in terms.items()},
+            "sum_at_required_primitive_advantages": str(sum(terms.values())),
+            "below_bootstrap_allocation_2_to_minus_82_conditionally": sum(terms.values()) < Fraction(1, 1 << 82),
+            "primitive_advantages_established_for_runtime": False,
+            "complete_C71_lifetime_bound": False,
+            "reduction_resources": "DDH at adversary+environment+O(Q) group/hash work and O(Q) storage per hybrid; preprocessing/advice included, not bounded by Q_FS alone"},
+        "costs": cases,
+        "remaining": ["constant-time native implementation and exact source/codec correspondence",
+            "primitive advantage/resource justification and concrete hash realization",
+            "durable lifecycle and full PCG expansion composition",
+            "B4 masked-RS, same-W/FS lifetime and complete C71 physical/certificate census"],
+        "next_goal": "B9: bounded native bootstrap component and adversarial/source correspondence checks before any pool/PCS integration"}
+
+
 def baseline_budget():
     """One frozen S reference; alternatives are NOT additive components.
 
@@ -6049,6 +6157,8 @@ def baseline_budget():
         "malicious_prover_soundness_bits": None, "malicious_verifier_zk_bits": None,
         "security_admitted": False, "complete_baseline_selected": None,
         "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": None,
+        "replacement_bootstrap_status": "B8_construction_selected_not_native_admitted",
+        "next_proposed_goal": b8_bootstrap_selection()["next_goal"],
         "measurement_reuse_priority": None,
         "B1_decision": "reject_existing_whir_reuse_and_stop",
         "B1_decision_scope": "bounded reuse assessment; not an impossibility result for WHIR or C7.1",
@@ -6086,6 +6196,7 @@ def baseline_budget():
         "B5_alignment_admission": b5_alignment_admission(),
         "B6_converter_comparison": b6_converter_comparison(),
         "B7_bootstrap_admission": b7_bootstrap_admission(),
+        "B8_bootstrap_selection": b8_bootstrap_selection(),
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

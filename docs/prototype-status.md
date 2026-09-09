@@ -1,4 +1,4 @@
-# Current status — C7.1 Gemma-31B, baseline stopped after B7
+# Current status — C7.1 Gemma-31B, B8 bootstrap construction selected
 
 Updated 2026-09-09. Editable working summary; Git preserves revisions.
 [Design](c7.1-gemma31b-design.md) · [Documentation index](README.md) ·
@@ -6,7 +6,17 @@ Updated 2026-09-09. Editable working summary; Git preserves revisions.
 
 ## Active authority — read first
 
-**B7 concluded with failed admission; this baseline is stopped.** The owner
+**B8 concludes with a composable construction selected.** The owner's
+2026-09-09 instruction opens replacement-bootstrap work and requires an
+ad hoc construction only if reuse cannot supply one. Receiver-first
+Masny–Rindal OT, its sender-chosen-message compiler and Wolverine's
+leakage-free base-sVOLE supply a published route in the local classical
+ROM. The source correspondence, both-role simulators, proposed P-521/Fp9
+profile, conditional primitive budgets and wire counts are in
+[design §10, B8](c7.1-gemma31b-design.md#b8-bootstrap-componibile-selezionato).
+This selects a construction; native/security admission remains false.
+
+**B7 concluded with failed admission; that baseline remains stopped.** The owner
 authorized one bounded B7 and required stopping the baseline on failure.
 The leakage-free base-sVOLE candidate has a conditional ideal-model path,
 but the real OT prerequisite is not established. A native check reproduces
@@ -19,9 +29,9 @@ Scope, source correspondence, the conditional Fp9 screen and costs are in
 This is a failed reusable OT/bootstrap premise, not an E2E matrix attack
 or an impossibility result for C7.1, native Fp3 or WHIR.
 
-**Active hard stop:** no further port, pool/PCS integration, tuning or
-matrix/Gemma E2E of this baseline. No B8 or replacement OT/PCS line is
-opened automatically. A new line requires a new owner decision. B2/B3's
+**Scope after the new owner decision:** B8 supersedes the prohibition on
+replacement-bootstrap research. It does not validate the old OT or open
+pool/PCS integration, tuning or matrix/Gemma E2E. B2/B3's
 functional/resource results and B4–B6's scoped security decisions remain
 valid; G2 stays suspended. Security and trust requirements are unchanged.
 
@@ -47,13 +57,15 @@ budgets and the pinned 100+50 workload. The comparison may price explicit
 alternatives, including a fifth read or organized host spill; it must not
 claim they meet the reference. Scope and remaining thresholds are in design §1.
 
-**Authorization after B7:** preserve/check the rejection evidence and close
-the local work. The owner's new stop supersedes the earlier permission to
-continue reduced E2E on this baseline. No RunPod/provider contact, H100/GPU,
+**Authorization after B8:** the requested bootstrap selection is complete.
+The next proposed goal is a bounded native component and adversarial/source
+correspondence checks, before pool/PCS integration. B8's Python reference
+is variable-time with fixed coins and is not a native secret-bearing runtime.
+No RunPod/provider contact, H100/GPU,
 paid resources, weight downloads, heavy builds or full Gemma E2E. The B7
 check used only a small local CPU test under the
 [build procedure](procedures/build-and-test.md); it supplies no H100 claim.
-There is no pending spending approval or next authorized baseline goal.
+There is no pending spending approval. No complete C7.1 runner is admitted.
 
 ## Evidence and open obligations
 
@@ -296,9 +308,9 @@ without another PCS, G2, diagnostic tuning, provider contact or hardware.
 
 ## B7 failure and baseline disposition
 
-The [single budget](../scripts/c7_1_gemma_plan.py) now includes
+The [single budget](../scripts/c7_1_gemma_plan.py) includes
 `B7_bootstrap_admission`, sets the active baseline to
-`stopped_after_failed_B7` and leaves no next authorized goal. The owner
+`stopped_after_failed_B7`. At B7 there was no next authorized goal. The owner
 explicitly required a single bounded attempt and stopping on failure.
 
 The ideal leakage-free candidate would use Fp9 internally, nine fresh base
@@ -334,14 +346,52 @@ checks, framing and lifecycle. Complete setup, capacity, certificate, work,
 memory and physical traffic retain admission bound infinity. The existing
 MAC/transfer lemmas require valid inputs and do not discharge this bootstrap.
 
-The baseline is closed with this negative result. No integration or
-replacement-protocol work is queued; C7.1's broader objective and the
-immutable evidence remain available for a future owner-directed decision.
+The evaluated baseline is closed with this negative result. B8 is the
+separately owner-directed replacement line below, not a revision of B7's result.
+
+## B8 construction decision
+
+The [single budget](../scripts/c7_1_gemma_plan.py) now adds
+`B8_bootstrap_selection`. MR19 Figure 8 with receiver first uses Appendix
+E.1's UC simulator, not the stand-alone theorem or the one-round variant.
+Figure 4/Lemma 3.4 supplies sender-chosen seeds even when a malicious
+receiver biases its endemic OT pad. Wolverine Figure 15/Lemma 3 then
+realizes COPEe, followed by Figure 5/Theorem 2's Fp9 check and leakage
+removal into Fp3. No new OT primitive, trusted setup or observable global
+oracle is selected. Goldilocks and the Fp3 MAC remain the reference.
+
+The proposed auxiliary OT group is P-521, with 576 independent instances;
+the source's UC loss in adversarial queries is charged explicitly. The
+conditional bootstrap error is below `2^-82` only under the stated DDH/PRF
+advantage and reduction-resource premises. Those concrete primitive
+advantages are not established for a runtime: there is no numerical
+security credit, and the complete C7.1 lifetime theorem stays open.
+
+Successful bootstrap wire is **383,065 bytes for 32 base rows** and
+**128,984,785 bytes for the 27,511-row k0/t0 screen**, including OT,
+nine mask rows, explicit Fp9 challenges, compression, headers and frames.
+These are exact sizes of the specified construction, not measurements or
+secure LPN parameter selection. Authenticated transport, durable lifecycle,
+complete native work/memory/traffic and subsequent PCG remain unpriced.
+Connection setup is distinct from the response-certificate alarm.
+
+Four [B8 reference/algebra checks](../tests/test_c71_bootstrap.py) and the
+ten prior budget checks pass. They cover P-521 point/codec equations and
+both OT choices, exhaustive chosen-message simulation, ideal COPE/Fp9
+algebra and mask coverage, conditional arithmetic and preserved B7 stop.
+No native build, new Lean theorem, benchmark record, matrix/Gemma proof
+or hardware measurement is claimed. The unrelated G2 test edits remain intact.
+
+The next proposed B9 is the bounded native bootstrap component, with
+both-party adversarial tests, codec/source correspondence and resource
+counts. Concrete primitive accounting and lifecycle/PCG composition must
+precede integration. B4 masked-RS, same-W/FS lifetime and the complete
+physical schedule/certificate remain independent unresolved obligations.
 
 ## Documentation decision
 
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 (B7 failure and baseline stop) without
+A fresh conversation can start from this page and design §10 (B8 selection and preserved B7 failure) without
 importing the full G2 transcript or reopening its suspended obligations.

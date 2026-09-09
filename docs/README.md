@@ -19,6 +19,10 @@ oracle at its commitment prefix. Native FS coin blocks now retain that fixed
 opening payload; their merged errors and tape-completion memory are counted.
 The fixed-root field matrix now has a direct conditional soundness argument
 (86.8347 bits), including its decoder and caller within T121/M93.
+An internal B12 linear-form bridge now connects original caller MACs to one
+root/PCS; a real-B11 small case covers matrix, norm and tied embedding.
+Public forms cover all 773 P0 endpoints, but the actual Gemma GKR caller,
+weight range and sufficient initial capacity remain open.
 The owner now limits the goal to one uninterrupted fixed-root run: renewal,
 abort recovery and restart composition are deferred. Malicious-verifier ZK,
 the root's binding to all of quantized Gemma and the two complete fixed-run
@@ -44,6 +48,7 @@ remain unadmitted.
 | [R3 auxiliary witness](c7.1-auxiliary-witness.md) | Unified B/raw-attention byte source, fresh raw probes/RNE pullbacks, identical striped RS encoder and staged tree-cache repairs; incomplete Gamma/liveness |
 | [B9 native bootstrap](../rust/volta-pcg/src/c71_bootstrap.rs) · [bounded runner](../scripts/run_c71_bootstrap.py) | Independent MR19/P-521 and COPE/Fp9 roles, adversarial byte checks and local resources; no production/security admission |
 | [B12 durable finite pool](../rust/volta-pcg/src/c71_lifetime.rs) · [salted PCS consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) | Both B11 roles, joint durable burns, accepted-head persistence and crash checks; salted matrix endpoint with a fixed root, no complete PCS/GKR admission |
+| [B12 original-MAC linear bridge](../rust/volta-pcs/src/c71_matrix/linear.rs) | One batch/PCS on the installed root, shared matrix/norm/embedding component with real B11; 773 P0 public-layout identities, full Gemma caller/range/capacity still open |
 | [B3 native census](../scripts/c71_work_census.py) · [bounded runner](../scripts/run_c71_matrix.py) | Actual Goldilocks arithmetic and phase memory of the reduced B2 matrix path; physical traffic/security remain open in design §10 |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |

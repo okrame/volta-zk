@@ -43,12 +43,22 @@ tester decodes the installed root once, then checks every accepted public
 output against that same padded field matrix. W remains private in the runtime.
 
 The opt-in [salted consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) uses
-common-mask unique-radius codes and fresh private salt streams. Five native
+common-mask unique-radius codes and fresh private salt streams. Seven native
 checks cover FS blocks, geometry, private coins, salting and real B11 roles:
 two valid proofs, then a rejected salt alteration whose burn survives reopen.
-Ten B12 algebra/accounting checks now include the scalar invariant and a
+The new [linear-form bridge](../rust/volta-pcs/src/c71_matrix/linear.rs)
+combines the caller's original target MACs and closes one PCS against the
+installed root. A real-B11 small case covers matrix, ragged norm and shared
+embedding/logits, then rejects a freshly authenticated false norm target and
+terminates the run. It is an internal component without a standalone codec.
+The public-layout compiler maps all 773 P0 endpoints to the same 772 physical
+tensors (3,606 cubes), including all 150 lookup rows in one target. It does
+not yet connect the actual Gemma GKR execution or enforce weight range.
+[Design: bridge and capacity](c7.1-gemma31b-design.md#b12-ponte-nativo-dai-mac-originali-a-ununica-root-w).
+
+Twelve B12 algebra/accounting checks now include the scalar invariant and a
 finite exhaustive decoder check. The complete relevant Python checks total
-190; native legacy replay and fork provenance also pass. These are component
+192; native legacy replay and fork provenance also pass. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
 PCS-only bits, but its 4 TiB initial codeword remains physically excluded.
@@ -62,7 +72,9 @@ an explicit 1/q ordinary-IOP privacy error per switch.
 
 **Remaining work:** malicious-verifier ZK, quantized weight range and the
 complete Gemma GKR relation, sufficient capacity and both-role resource
-composition for the fixed run. The matrix bound is
+composition for the fixed run. P0 plus the new bridge alone would need
+108,201 base rows before other circuits, exceeding B11's 207; the D35 dense
+PCS remains excluded. The matrix bound is
 for three attempts of one field-valued root, including failed setups/key
 changes; that broader evidence is retained without making renewal/recovery
 new gates. It does **not** yet bind the root to all weights used by the

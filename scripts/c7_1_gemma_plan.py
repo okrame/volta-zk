@@ -3422,6 +3422,77 @@ def folded_cube_form(offset, point, row_weights, inner_point):
             * kernel(point, inner_point[:len(point)])) % P
 
 
+def weight_tensor_opening_forms(tensors, projections):
+    """Pull physical tensor MLEs back to ONE dyadic W table, without W reads.
+
+    Each target lists (key, row_point, column_point, coefficient) projections;
+    vectors use an empty row point. Repeated keys reuse the same tiles. Points
+    here are LSB-first; reverse each returned cube point for native B12.
+    This proves a layout identity, not the Gemma caller or weight range.
+    """
+    keys = [t['name'] for t in tensors]
+    if len(set(keys)) != len(keys):
+        raise ValueError('weight source keys must be unique')
+    tiles = dyadic_weight_layout([t['shape'] for t in tensors])
+    sources = {key: (t['shape'], []) for key, t in zip(keys, tensors)}
+    for index, row, col, height, width, offset in tiles:
+        sources[keys[index]][1].append((row, col, height, width, offset))
+    def eq(point, index):
+        return math.prod(x if (index >> j) & 1 else 1-x for j, x in enumerate(point)) % P
+    forms = []
+    for target in projections:
+        terms = []
+        for key, r, s, coefficient in target:
+            if key not in sources:
+                raise ValueError('opening references an unknown private weight')
+            shape, owned = sources[key]
+            rows, cols = (1, shape[0]) if len(shape) == 1 else shape
+            if len(r) != (rows-1).bit_length() or len(s) != (cols-1).bit_length():
+                raise ValueError('weight opening point has the wrong physical axes')
+            for value in [coefficient, *r, *s]:
+                natural(value, 'weight opening field element', 0, P-1)
+            for row, col, height, width, offset in owned:
+                rb, cb = height.bit_length()-1, width.bit_length()-1
+                scale = coefficient * eq(r[rb:], row//height) * eq(s[cb:], col//width) % P
+                if scale:
+                    terms.append((offset, list(s[:cb])+list(r[:rb]), scale))
+        forms.append(terms)
+    return forms
+
+
+def gemma_weight_opening_forms(tensors, points, token_ids, prompt_tokens=100, generated_tokens=50):
+    """P0's 773 existing W MACs -> 773 public forms on the same packed W.
+
+    Matrix points are (output, inner), norm points ([], channel), lookup
+    points (token, channel). All 150 embedding reads join ONE lookup target;
+    lm_head reuses its physical tensor. No per-token PCS or fresh W MAC.
+    """
+    cohorts = gemma_weight_cohorts(tensors, prompt_tokens, generated_tokens)
+    if [t['name'] for t in tensors] != sorted(t['name'] for t in tensors):
+        raise ValueError('Gemma W layout requires the pinned metadata private-key order')
+    if len(points) != len(cohorts) or len(token_ids) != prompt_tokens+generated_tokens:
+        raise ValueError('W endpoint/token count differs from the declared workload')
+    vocab = pinned_model_config()['vocab_size']
+    for token in token_ids:
+        natural(token, 'public token ID', 0, vocab-1)
+    projections = []
+    for c, (r, s) in zip(cohorts, points):
+        if c['kind'] != 'lookup':
+            projections.append([(c['weight_key'], r, s, 1)])
+            continue
+        if len(r) != (len(token_ids)-1).bit_length():
+            raise ValueError('lookup token point has the wrong axis')
+        for value in r:
+            natural(value, 'lookup point', 0, P-1)
+        target = []
+        for i, token in enumerate(token_ids):
+            coefficient = math.prod(x if (i >> j) & 1 else 1-x for j, x in enumerate(r)) % P
+            token_point = [(token >> j) & 1 for j in range((vocab-1).bit_length())]
+            target.append((c['weight_key'], token_point, s, coefficient))
+        projections.append(target)
+    return weight_tensor_opening_forms(tensors, projections)
+
+
 def paired_rs_opening_screen(n, block, queries, outer_group_size=6):
     """A4 fused reduction/PCS accounting, conditional on fixed ideal oracles.
 
@@ -6536,6 +6607,30 @@ def b12_pcs_binding_assessment():
                 "model_rematerialization_repeats_are_not_fresh_coins": True,
                 "scope": "fixed-root private coin replacement only; not Merkle hiding, FS ZK or a renewed-root stream census"},
             "root_renewal": False, "security_admitted": False},
+        "authenticated_linear_form_bridge": {
+            "source": "rust/volta-pcs/src/c71_matrix/linear.rs",
+            "kind": "native bounded component plus exact public-layout identity",
+            "same_original_caller_MACs": True, "aggregate_is_reauthenticated": False,
+            "PCS_chains_per_batch": 1, "public_form_verifier_work": "O(D * cube_count), no W",
+            "native_root_log_cells_max": 14, "native_targets_max": 4096,
+            "native_cube_terms_max": 16384, "extra_FS_draw_requests": 1,
+            "fresh_Fp3_correlations_after_caller": "3*D+2",
+            "conditional_ideal_errors": {"batch": "(m-1)/q", "product_sumcheck": "2*D/q",
+                "adaptive_MAC": "(D+2)/(q-1)", "PCS": "same installed-root claimless endpoint"},
+            "tiny_case": {"root_log_cells": 10, "original_targets": 4,
+                "roles": ["matrix", "ragged_norm", "embedding_lookup", "tied_lm_head"],
+                "base_rows_including_target_transfers": 108,
+                "false_norm_second_attempt_base_rows": 99,
+                "initial_base_row_capacity": 207, "terminates_after_rejected_second_attempt": True},
+            "Gemma_layout_identity": {"private_tensors": 772, "original_P0_targets": 773,
+                "cube_terms_for_nonzero_generic_points_100_plus_50": 3606,
+                "lookup_cube_terms_in_one_target": 450, "root_log_cells": 35,
+                "full_P0_plus_bridge_Fp3_corrections_before_other_circuits": 35960+3*35+2,
+                "base_rows_before_other_circuits": 3*(35960+3*35+2),
+                "B11_base_row_capacity": 207, "fits_current_capacity": False},
+            "malicious_verifier_ZK_proved": False, "quantized_range_and_padding_proved": False,
+            "actual_Gemma_GKR_caller_integrated": False, "standalone_wire_codec": False,
+            "complete_caller_reduction_and_78_bit_total": None, "security_admitted": False},
         "Merkle_binding_component": {
             "model": "classical unprogrammed domain-separated BLAKE3 ROM; canonical single-matrix geometry fixed before challenges",
             "global_hash_queries_including_verifier": coin_queries,

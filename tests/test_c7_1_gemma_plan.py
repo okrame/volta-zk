@@ -402,6 +402,100 @@ def test_B12_unique_decoder_and_fixed_root_component_resources():
     assert not admission['B12_complete'] and not admission['security_admitted']
 
 
+def test_B12_weight_forms_pull_back_ragged_tensors_and_shared_embedding():
+    tensors = [{'name': 'matrix', 'shape': [3, 5]}, {'name': 'norm', 'shape': [3]},
+               {'name': 'embedding', 'shape': [5, 3]}]
+    physical = [[(i+1)*(-1 if i % 2 else 1) % plan.P for i in range(math.prod(t['shape']))]
+                for t in tensors]
+    projections = [[('matrix', [2, 3], [5, 7, 11], 13)], [('norm', [], [17, 19], 23)],
+                   [('embedding', [0, 0, 1], [29, 31], 37),
+                    ('embedding', [1, 0, 0], [29, 31], 41)],
+                   [('embedding', [43, 47, 53], [59, 61], 67)],
+                   [('matrix', [1, 1], [2, 3, 5], 1)]]  # zero padded row
+    forms = plan.weight_tensor_opening_forms(tensors, projections)
+    live = sum(map(len, physical))
+    virtual = [0]*(1 << (live-1).bit_length())
+    owners = {}
+    for t, row, col, height, width, offset in plan.dyadic_weight_layout([t['shape'] for t in tensors]):
+        cols = tensors[t]['shape'][-1]
+        for i in range(height):
+            for j in range(width):
+                virtual[offset+i*width+j] = physical[t][(row+i)*cols+col+j]
+                owners[offset+i*width+j] = tensors[t]['name']
+    actual = [sum(c*plan.mle(virtual[o:o+(1 << len(p))], p) for o, p, c in f) % plan.P for f in forms]
+    expected = []
+    for target in projections:
+        value = 0
+        for key, r, s, coefficient in target:
+            t = next(i for i, t in enumerate(tensors) if t['name'] == key)
+            rows, cols = (1, tensors[t]['shape'][0]) if len(tensors[t]['shape']) == 1 else tensors[t]['shape']
+            padded = [0]*(1 << (len(r)+len(s)))
+            for i in range(rows):
+                for j in range(cols):
+                    padded[(i << len(s))+j] = physical[t][i*cols+j]
+            value += coefficient*plan.mle(padded, s+r)
+        expected.append(value % plan.P)
+    assert actual == expected and actual[-1] == 0
+    # Both embedding uses select the SAME virtual source; no tensor per use.
+    supports = [{i for o, p, _ in f for i in range(o, o+(1 << len(p)))} for f in forms]
+    assert supports[2] <= supports[3]
+    assert {owners[i] for i in supports[3]} == {'embedding'}
+    # Independent native/MSB kernel after reversing only the cube coordinates.
+    point = [71+i for i in range((len(virtual)-1).bit_length())]
+    for form in forms:
+        dense = [0]*len(virtual)
+        native = 0
+        for offset, p, coefficient in form:
+            for i in range(1 << len(p)):
+                dense[offset+i] += coefficient*math.prod(x if (i >> j) & 1 else 1-x for j, x in enumerate(p))
+            high = math.prod(x if ((offset >> len(p)) >> (len(point)-len(p)-1-i)) & 1 else 1-x
+                             for i, x in enumerate(point[:len(point)-len(p)]))
+            kernel = math.prod((1-x)*(1-y)+x*y for x, y in zip(reversed(p), point[len(point)-len(p):]))
+            native += coefficient*high*kernel
+        assert native % plan.P == plan.mle(dense, point[::-1])
+    for ts, ps in [(tensors+[tensors[0]], projections), (tensors, [[('absent', [], [], 1)]]),
+                   (tensors, [[('norm', [1], [2, 3], 1)]]),
+                   (tensors, [[('matrix', [2, 3], [5, 7, 11], -1)]])]:
+        with pytest.raises(ValueError):
+            plan.weight_tensor_opening_forms(ts, ps)
+
+
+def test_B12_all_Gemma_W_endpoints_share_one_layout_and_one_lookup_batch():
+    tensors = plan.pinned_private_tensors()
+    cohorts = plan.gemma_weight_cohorts(tensors)
+    points = []
+    for c in cohorts:
+        rows, cols = ((c['columns'], c['inner']) if c['kind'] == 'matrix' else
+                      (1, c['columns']) if c['kind'] == 'norm' else (c['rows'], c['columns']))
+        points.append(([2+i for i in range((rows-1).bit_length())],
+                       [3+i for i in range((cols-1).bit_length())]))
+    tokens = [0, 262143, *range(148)]
+    forms = plan.gemma_weight_opening_forms(tensors, points, tokens)
+    assert len(forms) == 773 and sum(map(len, forms)) == 3606
+    assert len(forms[0]) == 450 and len(forms[-1]) == 3
+    bridge = plan.b12_pcs_binding_assessment()['authenticated_linear_form_bridge']
+    full = bridge['Gemma_layout_identity']
+    p0 = plan.weight_cohort_screen(cohorts)
+    assert full['original_P0_targets'] == len(forms)
+    assert full['cube_terms_for_nonzero_generic_points_100_plus_50'] == sum(map(len, forms))
+    assert full['full_P0_plus_bridge_Fp3_corrections_before_other_circuits'] == (
+        p0['extension_corrections_before_other_circuits']+3*full['root_log_cells']+2) == 36067
+    assert full['base_rows_before_other_circuits'] == 108201 > full['B11_base_row_capacity']
+    assert not full['fits_current_capacity'] and not bridge['actual_Gemma_GKR_caller_integrated']
+    assert bridge['complete_caller_reduction_and_78_bit_total'] is None
+    with pytest.raises(ValueError):
+        plan.gemma_weight_opening_forms(tensors[::-1], points, tokens)
+    # Check supports as intervals, never allocate the D35 weight table.
+    embedding = [(o, o+(1 << len(p))) for o, p, _ in forms[-1]]
+    for offset, point, _ in forms[0]:
+        assert any(start <= offset and offset+(1 << len(point)) <= end for start, end in embedding)
+    for bad_points, bad_tokens in [(points[:-1], tokens), (points, tokens[:-1]),
+                                   (points, [262144, *tokens[1:]]),
+                                   ([([], points[0][1]), *points[1:]], tokens)]:
+        with pytest.raises(ValueError):
+            plan.gemma_weight_opening_forms(tensors, bad_points, bad_tokens)
+
+
 def test_existing_paired_fold_diagnostic():
     plan.self_check()
 

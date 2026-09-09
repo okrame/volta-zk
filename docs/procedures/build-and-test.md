@@ -72,9 +72,13 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its five tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its seven tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
-180-row B11 roles and durable journal; it needs only local Unix socketpairs.
+180-row B11 roles and durable journal. The linear-form checks cover aligned
+cubes and a 207-row real-B11 capacity: four original target MACs reach one
+root/PCS, then a fresh false norm target is rejected and the run ends.
+This internal bridge uses in-memory proof transport; it is not a Gemma runner
+or standalone wire codec. These checks need only local Unix socketpairs.
 The existing field/FS checks use `c71_matrix::tests::` with that feature.
 The old B7 matrix runner rejects this feature before setup. This is an
 opt-in component check, not a complete admitted PCS or Gemma execution.

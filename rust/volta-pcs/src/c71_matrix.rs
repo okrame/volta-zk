@@ -5,6 +5,9 @@ mod census;
 mod diagnostic;
 #[cfg(feature = "c71-b12-pcs")]
 mod b12;
+#[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // Internal component seam; no admitted Gemma runner yet.
+mod linear;
 pub use diagnostic::{preflight, run};
 #[cfg(feature = "c71-work-census")]
 pub use census::self_check;
@@ -645,6 +648,155 @@ fn record_values(fs: &mut Fs, kind: u16, values: &[Fp3]) {
     fs.record(kind, &values.iter().flat_map(|x| x.to_bytes()).collect::<Vec<_>>());
 }
 
+// Shared blind product sumcheck: matrix and arbitrary public linear forms
+// use the same transfers, zero-MAC checks and transcript order.
+fn prove_product(
+    mut a: Vec<Fp3>,
+    mut b: Vec<Fp3>,
+    mut target: Auth,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> (Vec<[Fp3; 4]>, Vec<Fp3>, Auth, Fp3, Fp3) {
+    assert_eq!(a.len(), b.len());
+    assert!(a.len().is_power_of_two());
+    let h = a.len().ilog2() as usize;
+    let mut point = Vec::new();
+    let mut rounds = Vec::new();
+    for round in 0..h {
+        fs.set_phase(1 + round as u16);
+        let half = a.len() / 2;
+        let mut coefficients = [Fp3::ZERO; 3];
+        for i in 0..half {
+            let da = a[i + half] - a[i];
+            let db = b[i + half] - b[i];
+            coefficients[0] += a[i] * b[i];
+            coefficients[1] += da * b[i] + a[i] * db;
+            coefficients[2] += da * db;
+        }
+        let mut authenticated = [Auth::ZERO; 3];
+        let mut wire = [Fp3::ZERO; 4];
+        for i in 0..3 {
+            let (correction, value) =
+                c7_fp3_transfer_prover(correlations.next().unwrap(), coefficients[i]);
+            wire[i] = correction.value();
+            authenticated[i] = value;
+        }
+        wire[3] = authenticated[0].m + authenticated[0].m + authenticated[1].m + authenticated[2].m
+            - target.m;
+        record_values(fs, 0x10, &wire);
+        let r = fs.fp3();
+        target = authenticated[0].add(authenticated[1].scale(r)).add(authenticated[2].scale(r * r));
+        fold(&mut a, r);
+        fold(&mut b, r);
+        point.push(r);
+        rounds.push(wire);
+    }
+    (rounds, point, target, a[0], b[0])
+}
+
+fn prove_pcs(
+    model: &Model,
+    config: &ZkWhirConfig<E, Goldilocks, Fs>,
+    point: Point<E>,
+    terminal: Auth,
+    mask: Auth,
+    fs: &mut Fs,
+) -> Result<(ZkWhirProof<Goldilocks, E, ObservedMmcs>, Fp3), String> {
+    fs.set_phase(0x200);
+    let mmcs = ObservedMmcs::new(fs.clone(), model.salt_seed);
+    let dft = Radix2DFTSmallBatch::default();
+    let prover = HidingWhirProver::new(config, &dft, &mmcs);
+    census::mark("prover_commit_rematerialization")?;
+    // Re-materialization is charged to this attempt. Only the initial model
+    // mask seed repeats, within the three-slot root capacity; proof masks do not.
+    let (root, data) =
+        prover.commit(model.polynomial(), fs, &mut MatrixRng::from_seed(model.seed));
+    if root != model.root {
+        return Err("C71 prover changed the installed model root".into());
+    }
+    census::mark("prover_pcs")?;
+    let mut seed = [0; 32];
+    rand::rngs::OsRng.try_fill_bytes(&mut seed).map_err(|e| e.to_string())?;
+    // A new MMCS instance is essential: rematerializing the fixed root must
+    // not restart the salt stream used for the fresh proof commitments.
+    let mut proof_salt_seed = [0; 32];
+    rand::rngs::OsRng.try_fill_bytes(&mut proof_salt_seed).map_err(|e| e.to_string())?;
+    let proof_mmcs = ObservedMmcs::new(fs.clone(), proof_salt_seed);
+    let prover = HidingWhirProver::new(config, &dft, &proof_mmcs);
+    let proved = prover.prove_claimless(
+        data,
+        &[(point, to_p3(terminal.x))],
+        to_p3(mask.x),
+        fs,
+        &mut MatrixRng::from_seed(seed),
+    );
+    let close_tag =
+        mask.m - from_p3(proved.base_case.gamma * proved.target.coefficient) * terminal.m;
+    record_values(fs, 0x12, &[close_tag]);
+    Ok((proved.proof, close_tag))
+}
+
+fn verify_product(
+    rounds: &[[Fp3; 4]],
+    mut target: Key,
+    delta: Fp3,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Key>,
+) -> Result<(Key, Vec<Fp3>), String> {
+    let mut point = Vec::new();
+    for (round, wire) in rounds.iter().enumerate() {
+        fs.set_phase(1 + round as u16);
+        let keys: [Key; 3] = std::array::from_fn(|i| {
+            c7_fp3_transfer_verifier(
+                correlations.next().unwrap(),
+                delta,
+                C7Fp3TransferCorrection::new(wire[i]),
+            )
+        });
+        if keys[0].k + keys[0].k + keys[1].k + keys[2].k - target.k != wire[3] {
+            return Err("C71 matrix sumcheck MAC rejected".into());
+        }
+        record_values(fs, 0x10, wire);
+        let r = fs.fp3();
+        target = keys[0].add(keys[1].scale(r)).add(keys[2].scale(r * r));
+        point.push(r);
+    }
+    Ok((target, point))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_pcs(
+    config: &ZkWhirConfig<E, Goldilocks, Fs>,
+    root: &C61Commitment,
+    point: Point<E>,
+    pcs: &ZkWhirProof<Goldilocks, E, ObservedMmcs>,
+    close_tag: Fp3,
+    terminal: Key,
+    mask: Key,
+    delta: Fp3,
+    fs: &mut Fs,
+) -> Result<(), String> {
+    fs.set_phase(0x200);
+    census::mark("verifier_pcs")?;
+    fs.observe(root.clone());
+    // Verification never commits or uses this dummy salt RNG.
+    let mmcs = ObservedMmcs::new(fs.clone(), [0; 32]);
+    let verifier = HidingWhirVerifier::new(config, &mmcs);
+    let checked = verifier
+        .verify_claimless(pcs, root, &[point], fs)
+        .map_err(|e| e.to_string())?;
+    let key = mask.k
+        + delta * from_p3(checked.base_case.combined - checked.base_case.shifted_masked_claim)
+        - from_p3(checked.base_case.gamma)
+            * (from_p3(checked.target.coefficient) * terminal.k
+                + delta * from_p3(checked.target.constant));
+    if key != close_tag {
+        return Err("C71 matrix PCS terminal MAC rejected".into());
+    }
+    record_values(fs, 0x12, &[close_tag]);
+    Ok(())
+}
+
 fn matrix_prove(
     model: &Model,
     input: &[i16],
@@ -671,7 +823,7 @@ fn matrix_prove(
     let row_weights = eq(&row_point);
     let public_sum =
         output.iter().zip(&row_weights).fold(Fp3::ZERO, |s, (&y, &r)| s + signed(y) * r);
-    let mut target = Auth::new(public_sum, Fp3::ZERO);
+    let target = Auth::new(public_sum, Fp3::ZERO);
     let mut a = vec![Fp3::ZERO; side];
     for i in 0..model.n {
         for j in 0..model.n {
@@ -680,75 +832,16 @@ fn matrix_prove(
     }
     let mut b: Vec<_> = input.iter().map(|&x| signed(x as i64)).collect();
     b.resize(side, Fp3::ZERO);
-    let mut col_point = Vec::new();
-    let mut rounds = Vec::new();
-    for round in 0..h {
-        fs.set_phase(1 + round as u16);
-        let half = a.len() / 2;
-        let mut coefficients = [Fp3::ZERO; 3];
-        for i in 0..half {
-            let da = a[i + half] - a[i];
-            let db = b[i + half] - b[i];
-            coefficients[0] += a[i] * b[i];
-            coefficients[1] += da * b[i] + a[i] * db;
-            coefficients[2] += da * db;
-        }
-        let mut authenticated = [Auth::ZERO; 3];
-        let mut wire = [Fp3::ZERO; 4];
-        for i in 0..3 {
-            let (correction, value) =
-                c7_fp3_transfer_prover(reserved.next().unwrap(), coefficients[i]);
-            wire[i] = correction.value();
-            authenticated[i] = value;
-        }
-        wire[3] = authenticated[0].m + authenticated[0].m + authenticated[1].m + authenticated[2].m
-            - target.m;
-        record_values(&mut fs, 0x10, &wire);
-        let r = fs.fp3();
-        target = authenticated[0].add(authenticated[1].scale(r)).add(authenticated[2].scale(r * r));
-        fold(&mut a, r);
-        fold(&mut b, r);
-        col_point.push(r);
-        rounds.push(wire);
-    }
+    let (rounds, col_point, target, a, b) =
+        prove_product(a, b, target, &mut fs, &mut reserved);
     fs.set_phase(0x100);
-    let (correction, terminal) = c7_fp3_transfer_prover(reserved.next().unwrap(), a[0]);
-    let terminal_wire = [correction.value(), target.m - b[0] * terminal.m];
+    let (correction, terminal) = c7_fp3_transfer_prover(reserved.next().unwrap(), a);
+    let terminal_wire = [correction.value(), target.m - b * terminal.m];
     record_values(&mut fs, 0x11, &terminal_wire);
     let mask = reserved.next().unwrap();
-    fs.set_phase(0x200);
-    let mmcs = ObservedMmcs::new(fs.clone(), model.salt_seed);
-    let dft = Radix2DFTSmallBatch::default();
-    let prover = HidingWhirProver::new(&config, &dft, &mmcs);
-    census::mark("prover_commit_rematerialization")?;
-    // Re-materialization is charged to this attempt. Only the initial model
-    // mask seed repeats, within the three-slot root capacity; proof masks do not.
-    let (root, data) =
-        prover.commit(model.polynomial(), &mut fs, &mut MatrixRng::from_seed(model.seed));
-    if root != model.root {
-        return Err("C71 prover changed the installed model root".into());
-    }
-    census::mark("prover_pcs")?;
     let point = Point::new(row_point.into_iter().chain(col_point).map(to_p3).collect());
-    let mut seed = [0; 32];
-    rand::rngs::OsRng.try_fill_bytes(&mut seed).map_err(|e| e.to_string())?;
-    // A new MMCS instance is essential: rematerializing the fixed root must
-    // not restart the salt stream used for the fresh proof commitments.
-    let mut proof_salt_seed = [0; 32];
-    rand::rngs::OsRng.try_fill_bytes(&mut proof_salt_seed).map_err(|e| e.to_string())?;
-    let proof_mmcs = ObservedMmcs::new(fs.clone(), proof_salt_seed);
-    let prover = HidingWhirProver::new(&config, &dft, &proof_mmcs);
-    let proved = prover.prove_claimless(
-        data,
-        &[(point, to_p3(terminal.x))],
-        to_p3(mask.x),
-        &mut fs,
-        &mut MatrixRng::from_seed(seed),
-    );
-    let close_tag =
-        mask.m - from_p3(proved.base_case.gamma * proved.target.coefficient) * terminal.m;
-    record_values(&mut fs, 0x12, &[close_tag]);
-    Ok((MatrixProof { rounds, terminal: terminal_wire, pcs: proved.proof, close_tag }, fs.digest()))
+    let (pcs, close_tag) = prove_pcs(model, &config, point, terminal, mask, &mut fs)?;
+    Ok((MatrixProof { rounds, terminal: terminal_wire, pcs, close_tag }, fs.digest()))
 }
 
 // The verifier receives only the installed root, public integers, fresh keys
@@ -782,27 +875,13 @@ fn matrix_verify(
     let row_weights = eq(&row_point);
     let public_sum =
         output.iter().zip(&row_weights).fold(Fp3::ZERO, |s, (&y, &r)| s + signed(y) * r);
-    let mut target = Key::new(delta * public_sum);
+    let target = Key::new(delta * public_sum);
     let mut b: Vec<_> = input.iter().map(|&x| signed(x as i64)).collect();
     b.resize(1 << h, Fp3::ZERO);
-    let mut col_point = Vec::new();
-    for (round, wire) in proof.rounds.iter().enumerate() {
-        fs.set_phase(1 + round as u16);
-        let keys: [Key; 3] = std::array::from_fn(|i| {
-            c7_fp3_transfer_verifier(
-                reserved.next().unwrap(),
-                delta,
-                C7Fp3TransferCorrection::new(wire[i]),
-            )
-        });
-        if keys[0].k + keys[0].k + keys[1].k + keys[2].k - target.k != wire[3] {
-            return Err("C71 matrix sumcheck MAC rejected".into());
-        }
-        record_values(&mut fs, 0x10, wire);
-        let r = fs.fp3();
-        target = keys[0].add(keys[1].scale(r)).add(keys[2].scale(r * r));
+    let (target, col_point) =
+        verify_product(&proof.rounds, target, delta, &mut fs, &mut reserved)?;
+    for &r in &col_point {
         fold(&mut b, r);
-        col_point.push(r);
     }
     fs.set_phase(0x100);
     let terminal = c7_fp3_transfer_verifier(
@@ -815,25 +894,8 @@ fn matrix_verify(
     }
     record_values(&mut fs, 0x11, &proof.terminal);
     let mask = reserved.next().unwrap();
-    fs.set_phase(0x200);
-    census::mark("verifier_pcs")?;
-    fs.observe(root.clone());
     let point = Point::new(row_point.into_iter().chain(col_point).map(to_p3).collect());
-    // Verification never commits or uses this dummy salt RNG.
-    let mmcs = ObservedMmcs::new(fs.clone(), [0; 32]);
-    let verifier = HidingWhirVerifier::new(&config, &mmcs);
-    let checked = verifier
-        .verify_claimless(&proof.pcs, root, &[point], &mut fs)
-        .map_err(|e| e.to_string())?;
-    let key = mask.k
-        + delta * from_p3(checked.base_case.combined - checked.base_case.shifted_masked_claim)
-        - from_p3(checked.base_case.gamma)
-            * (from_p3(checked.target.coefficient) * terminal.k
-                + delta * from_p3(checked.target.constant));
-    if key != proof.close_tag {
-        return Err("C71 matrix PCS terminal MAC rejected".into());
-    }
-    record_values(&mut fs, 0x12, &[proof.close_tag]);
+    verify_pcs(&config, root, point, &proof.pcs, proof.close_tag, terminal, mask, delta, &mut fs)?;
     Ok(fs.digest())
 }
 

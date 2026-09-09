@@ -6347,6 +6347,11 @@ def b12_pcs_binding_assessment():
     coin_queries, secret_streams = 1 << 74, 12
     coin_error = Fraction(coin_queries*secret_streams, (1 << 256)-coin_queries-secret_streams) + Fraction(secret_streams*(secret_streams-1), 1 << 257)
     query_count, mask_message, mask_queries = 512, 2048, 512
+    # Include every 32-byte window in adversarial input/wire bytes, every
+    # child of a Merkle node query, and the fixed component's honest roots.
+    merkle_targets = 8*(1 << 80) + 2*coin_queries + 512
+    merkle_collision = Fraction(coin_queries*(coin_queries-1), 1 << 257)
+    merkle_deferred = Fraction(coin_queries*merkle_targets, 1 << 256)
 
     def oracle(message, randomness, width):
         dimension = message + randomness
@@ -6461,6 +6466,19 @@ def b12_pcs_binding_assessment():
                 "model_rematerialization_repeats_are_not_fresh_coins": True,
                 "scope": "fixed-root private coin replacement only; not Merkle hiding, FS ZK or a renewed-root stream census"},
             "root_renewal": False, "security_admitted": False},
+        "Merkle_binding_component": {
+            "model": "classical unprogrammed domain-separated BLAKE3 ROM; canonical single-matrix geometry fixed before challenges",
+            "global_hash_queries_including_verifier": coin_queries,
+            "adversary_input_and_wire_u64_work_cap": 1 << 80,
+            "honest_root_announcements_upper_fixed_three_attempt_profile": 512,
+            "preannounced_digest_targets_upper": merkle_targets,
+            "hash_collision_error_upper": str(merkle_collision),
+            "deferred_preimage_error_upper": str(merkle_deferred),
+            "conditional_error_upper": str(merkle_collision+merkle_deferred),
+            "bits": math.log2((merkle_collision+merkle_deferred).denominator)-math.log2((merkle_collision+merkle_deferred).numerator),
+            "extract_at_commit_prefix": "follow unique earlier hash preimages at fixed height/width; fill unknown or malformed subtrees with zero rows",
+            "oracle_fixed_before_opening_challenges": True,
+            "scope": "fixed-oracle binding only, not hiding, complete FS soundness, native extractor or its resource admission"},
         "adaptive_MAC_component": {
             "ideal_game": "B11 ideal rows; prover view independent of uniform nonzero Delta in each key epoch",
             "reference_verifier": "accept affine equality a*Delta+b=0 iff a=b=0; all other code and public feedback unchanged",
@@ -6474,7 +6492,7 @@ def b12_pcs_binding_assessment():
             "arbitrary_callback_NoPeek_proven": False,
             "full_GKR_check_census_or_PCS_soundness": False},
         "same_W_consequence": "one decoded message per fixed oracle before opening challenges; root links compare both endpoints under the current MAC",
-        "remaining": ["claimless RBR/prefix correspondence", "salted Merkle and complete FS/ZK compilation",
+        "remaining": ["claimless RBR/prefix correspondence", "salted Merkle hiding and complete FS/ZK compilation",
             "root-renewal protocol and both-role lifecycle", "full GKR/quantization relation and adequate correlation capacity",
             "complete physical schedule and extractor/simulator resource census"]}
 

@@ -33,7 +33,7 @@ conditional bits after a proposed Q* prefix charge at `2^35` cells, but its
 monolithic initial codeword alone costs 4 TiB and remains physically excluded.
 The opt-in native profile now uses these codes and common private masks,
 composing CFW Theorems 9.10 and 8.1. One uniform OOD point contributes an
-explicit 1/q ordinary-IOP privacy error per switch. Five algebra/accounting checks
+explicit 1/q ordinary-IOP privacy error per switch. Six algebra/accounting checks
 also pin the affine PCS/MAC closing equation and reproduce candidate-W
 reconstruction after mask exhaustion in an **unsalted** Merkle commitment.
 Under three independent uniform query sets, the B2 n=128 exhaustion event
@@ -41,8 +41,7 @@ has probability about `2^-24.0445`; this is a source-level privacy finding,
 not a measured native FS attack. The opt-in `c71-b12-pcs` now reuses the
 salted MMCS with separate hash domains, fresh proof salt streams and codec v2.
 Four native B12 tests cover geometry, private coins, salting and a real B11
-durable consumer: two valid
-matrix proofs of one root, then a rejected salt alteration whose burn survives
+durable consumer: two valid matrix proofs of one root, then a rejected salt alteration whose burn survives
 reopen. The native CPU cap remains D14/n<=128; D35 is checked as a small
 configuration only. No full hash/FS/ZK bound or root renewal follows from
 the component check.
@@ -54,7 +53,13 @@ checks across aborts/key epochs: at most 27/(p^3-1), below 2^-187 for its
 three attempts, without a RO-query multiplier. Honest transfer plaintexts
 satisfy NoPeek; the PCS blind's simulation and general callbacks remain open.
 
-PCS hash/FS compilation into the GKR's exact authenticated endpoint, root
+A ROM Merkle-binding lemma now fixes the oracle at its commitment prefix;
+it charges both collisions and later completion of a previously named digest.
+The conditional component bound is below 2^-98 at T80/Q*=2^74. Combined
+with unique decoding it fixes a field-valued W when a nearby codeword exists;
+PCS/GKR acceptance, quantized range and extractor resources remain open.
+
+PCS hiding/FS compilation into the GKR's exact authenticated endpoint, root
 renewal, both-role lifetime composition and the complete resource reduction
 remain open. The budget keeps both complete security errors unknown; six proposed
 error allocations fitting the remaining margin are targets, not proved bounds.

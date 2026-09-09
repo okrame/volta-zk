@@ -189,6 +189,49 @@ def test_B12_adaptive_affine_feedback_couples_across_key_epochs():
     assert not component['full_GKR_check_census_or_PCS_soundness']
 
 
+def test_B12_Merkle_commit_prefix_needs_deferred_preimage_event():
+    # Tiny lazy-RO traces: a known parent commits to a child with no preimage
+    # yet. Completing that child later can change the extracted oracle without
+    # a hash collision, which is why B12 charges earlier digest targets too.
+    def trace(left_answer, parent_answer, right_answer, new_parent_answer):
+        table, targets = {}, set()
+        collision = deferred = False
+
+        def query(preimage, answer):
+            nonlocal collision, deferred
+            if preimage in table:
+                return table[preimage]
+            if preimage[0] == 'node':
+                targets.update(preimage[1:])  # named BEFORE the node's RO output
+            collision |= answer in table.values()
+            deferred |= answer in targets
+            table[preimage] = answer
+            return answer
+
+        left = query(('leaf', 0), left_answer)
+        root = query(('node', left, 5), parent_answer)
+        targets.add(root)  # installation fixes this digest now
+        extracted_right = 0 if left == 5 else None  # unknown subtree at this prefix
+        right = query(('leaf', 1), right_answer)
+        candidate_root = query(('node', left, right), new_parent_answer)
+        changed_opening = candidate_root == root and extracted_right != 1
+        return changed_opening, collision, deferred
+
+    for answers in product(range(8), repeat=4):
+        changed, collision, deferred = trace(*answers)
+        assert not changed or collision or deferred
+    assert trace(1, 2, 5, 0) == (True, False, True)
+    b = plan.b12_pcs_binding_assessment()['Merkle_binding_component']
+    queries = b['global_hash_queries_including_verifier']
+    targets = 8*b['adversary_input_and_wire_u64_work_cap'] + 2*queries + 512
+    collision = Fraction(queries*(queries-1), 1 << 257)
+    deferred = Fraction(queries*targets, 1 << 256)
+    assert targets == b['preannounced_digest_targets_upper'] < 1 << 84
+    assert Fraction(b['hash_collision_error_upper']) == collision
+    assert Fraction(b['deferred_preimage_error_upper']) == deferred
+    assert Fraction(b['conditional_error_upper']) == collision+deferred < Fraction(1, 1 << 98)
+
+
 def test_existing_paired_fold_diagnostic():
     plan.self_check()
 

@@ -13,14 +13,17 @@ resource extension to T80 and a durable finite-pool component are available.
 A fresh post-bootstrap seal fixes the row assignment before usable FS prefixes.
 The PCS analysis adds a proven unique-radius MCA bound and identifies
 unsalted-root privacy loss at mask exhaustion. Its salted replacement now
-has an adaptive, bounded-query Merkle hiding argument; this does not yet
-cover the correlated claimless PCS transcript. An opt-in salted matrix
+has an adaptive, bounded-query Merkle hiding argument. A joint mask
+translation now covers the claimless matrix transcript and its DV closure.
+An opt-in salted matrix
 consumer now reaches the durable B11 pool with the unique-radius IOP
 geometry and an adaptive MAC-feedback bound. Merkle binding now fixes an
 oracle at its commitment prefix. Native FS coin blocks now retain that fixed
 opening payload; their merged errors and tape-completion memory are counted.
-The fixed-root field matrix now has a direct conditional soundness argument
-(86.8347 bits), including its decoder and caller within T121/M93.
+The fixed-root field matrix has conditional soundness and ZK arguments
+for the single-setup profile (about 91 bits), including caller/simulator
+and RO tapes within T121/M93. The older 86.8347-bit soundness argument
+with broader lifecycle scope remains evidence.
 An internal B12 linear-form bridge now connects original caller MACs to one
 root/PCS; a real-B11 small case covers matrix, norm and tied embedding.
 Public forms cover all 773 P0 endpoints. A new single-setup AES profile
@@ -29,7 +32,7 @@ bootstrap bits and a streamed COPE frame. P0 plus the bridge fits; the
 complete correlation census, actual Gemma GKR caller and weight range
 remain open.
 The owner now limits the goal to one uninterrupted fixed-root run: renewal,
-abort recovery and restart composition are deferred. Malicious-verifier ZK,
+abort recovery and restart composition are deferred. Full Gemma malicious-verifier ZK,
 the root's binding to all of quantized Gemma and the two complete fixed-run
 bounds remain open in design §10. Full security and production integration
 remain unadmitted.

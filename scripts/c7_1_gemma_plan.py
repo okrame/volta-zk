@@ -6661,7 +6661,42 @@ def b12_pcs_binding_assessment():
             'conditional_soundness_sum': str(subtotal),
             'bits': math.log2(subtotal.denominator)-math.log2(subtotal.numerator),
             'below_2_to_minus_78': subtotal <= Fraction(1, 1 << 78)})
-    return {"status": "conditional_fixed_root_field_matrix_soundness",
+    fixed_boot = Fraction(b12_fixed_run_bootstrap()['conditional_component']['sum'])
+    private_field_cap = 1 << 26  # per stream, native D<=14 only
+    private_sampler = 12*private_field_cap*Fraction((1 << 64)-P, 1 << 64)**8
+    fixed_matrix_security = []
+    for profile, old in zip(profiles, matrix_soundness):
+        os = profile['oracles']
+        mask_scalar_rows = mask_message+mask_queries
+        folded = sum(profile['folds'])
+        private_E_per_proof = (
+            sum(o['width']*o['randomness_rows'] for o in os[1:])
+            + folded*mask_scalar_rows
+            + sum(mask_scalar_rows-o['randomness_rows'] for o in os[:-1])
+            + os[-1]['message_rows']+os[-1]['randomness_rows']
+            + (folded+len(os)-1)*mask_scalar_rows)
+        private_Fp_run = (os[0]['width']*os[0]['randomness_rows']+9*private_E_per_proof
+                          +4*profile['adaptive_Merkle_hiding']['distinct_salted_leaves'])
+        sound_terms = {k: Fraction(v) for k, v in old['terms'].items()}
+        sound_terms['bootstrap_T80'] = fixed_boot
+        sound_terms['post_bootstrap_seal'] = Fraction(8*qa_work+2, 1 << 256)
+        privacy_terms = {
+            'bootstrap_T80': fixed_boot,
+            'two_Merkle_and_private_coin_hybrids': 2*Fraction(
+                profile['adaptive_Merkle_hiding']['sum_including_private_coins_once']),
+            'global_first_draw_zero_OOD': Fraction(coin_queries, q),
+            'two_bounded_private_sampler_hybrids': 2*private_sampler,
+        }
+        sound, privacy = sum(sound_terms.values()), sum(privacy_terms.values())
+        fixed_matrix_security.append({'n': old['n'], 'setups': 1, 'root_attempts': 3,
+            'private_field_outputs_in_three_attempt_PCS': private_Fp_run,
+            'soundness_terms': {k: str(v) for k, v in sound_terms.items()},
+            'privacy_terms': {k: str(v) for k, v in privacy_terms.items()},
+            'conditional_soundness_sum': str(sound), 'conditional_ZK_sum': str(privacy),
+            'soundness_bits': math.log2(sound.denominator)-math.log2(sound.numerator),
+            'ZK_bits': math.log2(privacy.denominator)-math.log2(privacy.numerator),
+            'both_below_2_to_minus_78': max(sound, privacy) <= Fraction(1, 1 << 78)})
+    return {"status": "conditional_field_matrix_security_with_fixed_run_ZK",
         "credit": False, "security_admitted": False,
         "source": "docs/c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata",
         "affine_MCA": {"premise": "linear code over a field-vector alphabet; 3*radius_rows < minimum_distance",
@@ -6796,6 +6831,32 @@ def b12_pcs_binding_assessment():
             "root_renewal": False, "malicious_verifier_ZK_proven": False,
             "quantized_weight_range_proven": False, "full_Gemma_GKR_proven": False,
             "new_Lean_or_generated_code_proof": False, "security_admitted": False},
+        "fixed_run_field_matrix_security": {
+            'scope': 'fresh model installation and one initial AES capacity; up to three attempts; public matrix IO',
+            'ZK_game': 'honest model owner, malicious verifier; simulator receives ideal outputs and corrupt-role Delta/keys',
+            'hypotheses': 'same strengthened B12 AES256/P521 hypotheses at T121/M93; classical programmable ROM',
+            'simulator': 'one dummy zero model for the run; native PCS; uniform outer corrections and key-computed check tags',
+            'actual_inference_witness_given_to_simulator': False,
+            'arbitrary_externally_fixed_root_simulation_claimed': False,
+            'posthoc_translation_is_a_bijection_on_each_public_view': True,
+            'native_FS_oracle_programming_by_PCS_simulator': False,
+            'OOD_is_first_field_draw_after_new_mask_commitment': True,
+            'private_field_outputs_per_stream_upper': private_field_cap,
+            'private_field_sampling_candidates_per_output_for_bound': 8,
+            'private_stream_bytes_upper_on_good_sampling': 64*private_field_cap+(1 << 10),
+            'private_stream_byte_cap': 1 << 40,
+            'private_sampler_error_each_hybrid': str(private_sampler),
+            'simulator_honest_work_upper': 1 << 72,
+            'simulator_honest_memory_words_upper': 1 << 40,
+            'full_RO_queries_upper': 513*qa+honest+(1 << 26),
+            'reduction_work_upper': bootstrap_work+extra_work,
+            'reduction_memory_words_upper': bootstrap_memory+extra_memory,
+            'primitive_work_cap': 1 << 121, 'primitive_memory_words_cap': 1 << 93,
+            'cases': fixed_matrix_security,
+            'native_simulator_acceptance_checked': True,
+            'quantized_weight_range_proven': False, 'full_Gemma_GKR_proven': False,
+            'full_Gemma_ZK_proven': False, 'complete_C71_security': None,
+            'new_Lean_or_generated_code_proof': False, 'security_admitted': False},
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",
@@ -6803,9 +6864,9 @@ def b12_pcs_binding_assessment():
             "algebraic_terminal_correspondence": True,
             "native_coin_block_projection_implemented": True,
             "native_field_matrix_prefix_bound_proven": True,
-            "next": "claimless PCS/malicious-verifier FS ZK and full Gemma GKR/quantization within the fixed-run scope"},
+            "next": "full Gemma GKR/quantization, same-W caller and malicious-verifier ZK composition"},
         "same_W_consequence": "one decoded message per fixed oracle before opening challenges; root links compare both endpoints under the current MAC",
-        "remaining": ["claimless PCS and malicious-verifier FS/ZK compilation",
+        "remaining": ["full Gemma caller and malicious-verifier ZK composition",
             "full GKR/quantization relation and adequate fixed-run correlation capacity",
             "complete physical schedule and fixed-run extractor/simulator resource census"]}
 

@@ -238,11 +238,13 @@ mod tests {
         check_real_pool_linear_batch(false);
     }
 
+    #[cfg(unix)]
     #[test]
     fn c71_b12_fixed_run_linear_batch_accepts_then_stops_on_false_target() {
         check_real_pool_linear_batch(true);
     }
 
+    #[cfg(unix)]
     fn check_real_pool_linear_batch(fixed_run: bool) {
         use std::io;
         use std::sync::mpsc;

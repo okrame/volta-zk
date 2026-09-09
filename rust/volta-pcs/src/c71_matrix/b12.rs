@@ -141,6 +141,110 @@ mod tests {
     use p3_matrix::{dense::RowMajorMatrix, Dimensions};
 
     #[test]
+    fn c71_b12_designated_verifier_state_simulates_with_a_zero_weight_pcs() {
+        use rand_010::RngExt;
+        // Constructive ideal-MAC simulator: it receives Delta/keys and public
+        // IO, NEVER a private inference witness. These secrets are unavailable
+        // to a malicious prover; this is not a soundness attack or a bootstrap.
+        // Acceptance alone is not a distributional ZK test (see the design's
+        // mask-translation argument and Merkle/ROM error bounds).
+        let n = 32;
+        let model = Model::new(n, vec![0; n * n]).unwrap();
+        let config = matrix_config(n).unwrap();
+        let h = config.num_variables / 2;
+        let delta = Fp3::new(Fp::new(2), Fp::new(3), Fp::new(5));
+        let mut coins = PrivateRng::from_seed([91; 32]);
+        let mut draw = || from_p3(coins.random::<E>());
+        let keys: Vec<_> = (0..3 * h + 2).map(|_| Key::new(draw())).collect();
+        let mut rows = keys.clone().into_iter();
+        let input = vec![2; n];
+        let output = vec![7; n]; // deliberately inconsistent with zero W
+        let attempt = AttemptContext {
+            session: [1; 32],
+            capacity: [2; 32],
+            slot: 0,
+            predecessor: [0; 32],
+            nonce: [3; 32],
+        };
+        let mut fs = matrix_statement(n, &model.root, &input, &output, attempt, &config).unwrap();
+        let row_point: Vec<_> = (0..h).map(|_| fs.fp3()).collect();
+        let public_sum =
+            output.iter().zip(eq(&row_point)).fold(Fp3::ZERO, |s, (&y, r)| s + signed(y) * r);
+        let mut target = Key::new(delta * public_sum);
+        let mut public_input: Vec<_> = input.iter().map(|&x| signed(x as i64)).collect();
+        let mut rounds = Vec::new();
+        let mut point = row_point;
+        for round in 0..h {
+            fs.set_phase(1 + round as u16);
+            let mut wire = [draw(), draw(), draw(), Fp3::ZERO];
+            let next: [Key; 3] = std::array::from_fn(|i| {
+                c7_fp3_transfer_verifier(
+                    rows.next().unwrap(),
+                    delta,
+                    C7Fp3TransferCorrection::new(wire[i]),
+                )
+            });
+            wire[3] = next[0].k + next[0].k + next[1].k + next[2].k - target.k;
+            record_values(&mut fs, 0x10, &wire);
+            let r = fs.fp3();
+            target = next[0].add(next[1].scale(r)).add(next[2].scale(r * r));
+            fold(&mut public_input, r);
+            point.push(r);
+            rounds.push(wire);
+        }
+        fs.set_phase(0x100);
+        let correction = draw();
+        let terminal_key = c7_fp3_transfer_verifier(
+            rows.next().unwrap(),
+            delta,
+            C7Fp3TransferCorrection::new(correction),
+        );
+        let terminal = [correction, target.k - public_input[0] * terminal_key.k];
+        record_values(&mut fs, 0x11, &terminal);
+        let mask_key = rows.next().unwrap();
+        assert!(rows.next().is_none());
+        let point = Point::new(point.into_iter().map(to_p3).collect());
+        let mut replay = fs.fork();
+        let (pcs, _) = prove_pcs(
+            &model,
+            &config,
+            point.clone(),
+            Auth::ZERO,
+            Auth::new(draw(), Fp3::ZERO),
+            &mut fs,
+        )
+        .unwrap();
+        // The simulator replaces the final tag using the received DV state.
+        // There is no challenge after that tag, so the temporary dummy tag
+        // inside prove_pcs is neither emitted nor used by any oracle request.
+        replay.set_phase(0x200);
+        replay.observe(model.root.clone());
+        let mmcs = ObservedMmcs::new(replay.clone(), [0; 32]);
+        let checked = HidingWhirVerifier::new(&config, &mmcs)
+            .verify_claimless(&pcs, &model.root, &[point], &mut replay)
+            .unwrap();
+        let close_tag = mask_key.k
+            + delta * from_p3(checked.base_case.combined - checked.base_case.shifted_masked_claim)
+            - from_p3(checked.base_case.gamma)
+                * (from_p3(checked.target.coefficient) * terminal_key.k
+                    + delta * from_p3(checked.target.constant));
+        record_values(&mut replay, 0x12, &[close_tag]);
+        let proof = MatrixProof { rounds, terminal, pcs, close_tag };
+        let verified = matrix_verify(
+            n,
+            &model.root,
+            &input,
+            &output,
+            attempt,
+            &proof,
+            delta,
+            &mut keys.into_iter(),
+        )
+        .unwrap();
+        assert_eq!(verified, replay.digest());
+    }
+
+    #[test]
     fn c71_b12_fs_uses_one_tape_across_draws_and_fixed_openings() {
         // Independent flat transcript and one XOF response, including every
         // request/result frame; no calls to Fs's framing or request helpers.

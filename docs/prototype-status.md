@@ -15,14 +15,17 @@ finite capacity. Error, abort or exhaustion ends the run. Queries to discarded
 FS candidates still count, and views up to termination must remain private.
 Response count must fit the declared root/correlation capacity; there is no
 requirement to complete the old 2^20-attempt lifecycle.
-[Design §10, B12](c7.1-gemma31b-design.md#b12-risorse-lifetime-e-vincolo-same-w)
-now gives a **conditional soundness bound for the fixed-root field matrix**:
-about 86.8347 bits at n=48 or 128, with three total attempts. The argument
-connects the native matrix sumcheck, PCS and MAC to one extracted W, and
-includes the decoder, verifier, RO tapes and journal replay. At adversary
-work/memory 2^80 and global Q64, the reduction stays below T121/M93.
-AES/DDH advantages at that strengthened envelope remain explicit hypotheses;
-the result does not prove them or the complete C7.1 goal.
+[The fixed-run matrix composition](c7.1-gemma31b-design.md#b12-zk-del-consumer-claimless-nel-run-continuo)
+now gives **conditional soundness and malicious-verifier ZK**: about
+91.0166 and 91.0227 bits, respectively, at n=48/128 with three total
+attempts. Soundness connects the matrix sumcheck, PCS and MAC to one
+extracted W; ZK uses a dummy zero-model simulator with the corrupt role's
+Delta/keys and a joint mask-translation proof. Both reductions count the
+caller and RO tapes within T121/M93, for adversary work/memory 2^80 and
+global Q64. AES/DDH advantages at that envelope remain explicit hypotheses.
+This covers a field matrix from fresh model installation, not all of Gemma
+or simulation for an arbitrary externally fixed root. The earlier 86.8347-bit
+soundness argument with broader setup/reopen scope remains valid evidence.
 
 The [finite-pool component](../rust/volta-pcg/src/c71_lifetime.rs) now also
 supports one larger initial AES capacity: up to 16,777,206 base rows under
@@ -48,7 +51,7 @@ tester decodes the installed root once, then checks every accepted public
 output against that same padded field matrix. W remains private in the runtime.
 
 The opt-in [salted consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) uses
-common-mask unique-radius codes and fresh private salt streams. Eight native
+common-mask unique-radius codes and fresh private salt streams. Nine native
 checks cover FS blocks, geometry, private coins, salting and real B11 roles:
 two valid proofs, then a rejected salt alteration whose burn survives reopen.
 The new [linear-form bridge](../rust/volta-pcs/src/c71_matrix/linear.rs)
@@ -62,10 +65,10 @@ tensors (3,606 cubes), including all 150 lookup rows in one target. It does
 not yet connect the actual Gemma GKR execution or enforce weight range.
 [Design: bridge and capacity](c7.1-gemma31b-design.md#b12-ponte-nativo-dai-mac-originali-a-ununica-root-w).
 
-Fifteen B12 algebra/accounting checks include the scalar invariant, a
-finite exhaustive decoder check and adaptive Merkle/RS simulation. The
-relevant Python checks total 196; the 17 narrow bootstrap/pool checks and
-eight B12 PCS checks pass.
+Seventeen B12 algebra/accounting checks include the scalar invariant,
+decoder, adaptive Merkle/RS simulation and the claimless mask translation.
+The relevant Python checks total 198; the 17 narrow bootstrap/pool checks
+and nine B12 PCS checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -77,19 +80,21 @@ measured native FS attack. B12 now has a bounded-query adaptive hiding
 argument for salted Merkle roots and paths, including private coins:
 159.15/158.68 bits for the two native geometries and 146.68 for the
 excluded D35 geometry. The initial RS rows remain private at all 1,536
-permitted adaptive queries. This covers that projection of the view;
-the claimless PCS messages and malicious-verifier FS/ZK still need
-composition. One uniform OOD point also carries an explicit 1/q
-ordinary-IOP privacy error per switch.
+permitted adaptive queries. The matrix ZK argument now includes the
+correlated claimless messages, the final private shift, finite samplers
+and global zero-OOD event. Its simulator preserves the native FS; a check
+with DV secrets verifies the complete dummy-model certificate. Acceptance
+alone is not the ZK argument. The full Gemma caller still needs its own
+NoPeek, relation and resource composition.
 
-**Remaining work:** malicious-verifier ZK, quantized weight range and the
+**Remaining work:** full Gemma malicious-verifier ZK, quantized weight range and the
 complete Gemma GKR relation, full correlation census and both-role resource
 composition for the fixed run. P0 plus the bridge needs 108,201 base rows,
 now within the new initial capacity; other circuits are not yet counted
-completely, and the D35 dense PCS remains excluded. The matrix bound is
-for three attempts of one field-valued root, including failed setups/key
-changes; that broader evidence is retained without making renewal/recovery
-new gates. It does **not** yet bind the root to all weights used by the
+completely, and the D35 dense PCS remains excluded. The earlier 86.8347-bit
+soundness bound also included failed setups/key changes; that broader
+evidence remains valid without making renewal/recovery new gates. Neither
+matrix result yet binds the root to all weights used by the
 complete Gemma inference. Both complete security totals stay unknown, and
 the six prototype error allocations remain targets. No complete 78-bit or
 production credit.

@@ -452,6 +452,153 @@ def test_B12_scalar_relation_survives_the_native_covector_updates():
                 assert roots <= 3
 
 
+def test_B12_claimless_mask_translation_preserves_queries_reveals_and_DV_tag():
+    # Small exact analogue of the native coefficient formulas. This checks
+    # the translation used in the proof, not just simulator acceptance.
+    p, k, ell = 7, 2, 3
+    rng = random.Random(712)
+    message, weights = [1, 3, 2, 5, 0, 6, 4, 2], [4, 0, 3, 6, 1, 2, 2, 5]
+    dummy = [0]*8
+
+    def dot(a, b):
+        return sum(x*y for x, y in zip(a, b)) % p
+
+    def evaluate(a, x):
+        return dot(a, [pow(x, i, p) for i in range(len(a))])
+
+    def fold(a, x):
+        half = len(a)//2
+        return [((1-x)*a[i]+x*a[i+half]) % p for i in range(half)]
+
+    def solve(matrix, rhs):
+        # Canonical linear right inverse: free coordinates always zero.
+        rows = [[x % p for x in row]+[v % p] for row, v in zip(matrix, rhs)]
+        pivots, width = [], len(matrix[0])
+        for col in range(width):
+            pivot = next((r for r in range(len(pivots), len(rows)) if rows[r][col]), None)
+            if pivot is None:
+                continue
+            rank = len(pivots)
+            rows[rank], rows[pivot] = rows[pivot], rows[rank]
+            inverse = pow(rows[rank][col], -1, p)
+            rows[rank] = [x*inverse % p for x in rows[rank]]
+            for i in range(len(rows)):
+                if i != rank:
+                    factor = rows[i][col]
+                    rows[i] = [(a-factor*b) % p for a, b in zip(rows[i], rows[rank])]
+            pivots.append(col)
+        assert len(pivots) == len(matrix)
+        result = [0]*width
+        for row, pivot in zip(rows, pivots):
+            result[pivot] = row[-1]
+        return result
+
+    def transcript(a, masks, aux, eps, gammas):
+        w, past = weights, 0
+        visible = [2*sum(evaluate(s, 0)+evaluate(s, 1) for s in masks) % p]
+        for j, gamma in enumerate(gammas, 1):
+            future = sum(evaluate(s, 0)+evaluate(s, 1) for s in masks[j:])
+
+            def polynomial(x):
+                return (eps*(dot(fold(a, x), fold(w, x))+aux*pow(pow(2, j, p), -1, p))
+                        +pow(2, k-j, p)*(past+evaluate(masks[j-1], x))
+                        +(pow(2, k-j-1, p)*future if j < k else 0)) % p
+
+            c0 = polynomial(0)
+            c2 = (polynomial(1)+polynomial(-1)-2*c0)*pow(2, -1, p) % p
+            visible.extend((c0, c2))  # c1 is never sent
+            target = polynomial(gamma)
+            a, w = fold(a, gamma), fold(w, gamma)
+            past += evaluate(masks[j-1], gamma)
+        covector = [eps*x % p for x in w]+[eps*pow(4, -1, p) % p]
+        covector += [pow(g, i, p) for g in gammas for i in range(ell)]
+        secret = a+[aux]+sum(masks, [])
+        assert target == dot(secret, covector)
+        return visible, target, secret, covector
+
+    for eps, g1, g2 in product(range(p), repeat=3):
+        gammas = g1, g2  # includes 0 and 1; no inverse of a folding coin
+        masks = [[rng.randrange(p) for _ in range(ell)] for _ in range(k)]
+        old, target, secret, covector = transcript(message, masks, 3, eps, gammas)
+        new = transcript(dummy, masks, 0, eps, gammas)[0]
+        basis = []
+        for i in range(k*ell):
+            vector = [int(j == i) for j in range(k*ell)]
+            basis.append(transcript(dummy, [vector[:ell], vector[ell:]], 0, eps, gammas)[0])
+        matrix = list(map(list, zip(*basis)))
+        change = solve(matrix, [(x-y) % p for x, y in zip(old, new)])
+        shifted = [[(masks[j][i]+change[j*ell+i]) % p for i in range(ell)] for j in range(k)]
+        view2, target2, secret2, covector2 = transcript(dummy, shifted, 0, eps, gammas)
+        assert old == view2 and covector == covector2
+        dz, coefficient = -(dot(message, weights)+3) % p, eps*g1*g2 % p
+        assert (target2-target) % p == coefficient*dz % p
+        reverse_rhs = [(x-y) % p for x, y in zip(view2,
+                       transcript(message, shifted, 3, eps, gammas)[0])]
+        assert solve(matrix, reverse_rhs) == [-x % p for x in change]
+
+        positions = (1, 2+sum(old) % 5)  # adaptive from the preserved wire
+        for before, after in zip([message[:2]]+masks, [dummy[:2]]+shifted):
+            pads = [rng.randrange(p), rng.randrange(p)]
+            delta_message = [(b-a) % p for a, b in zip(before, after)]
+            delta_pads = solve([[pow(x, len(before)+i, p) for i in range(2)] for x in positions],
+                               [-evaluate(delta_message, x) % p for x in positions])
+            pads2 = [(a+b) % p for a, b in zip(pads, delta_pads)]
+            assert [evaluate(before+pads, x) for x in positions] == [
+                evaluate(after+pads2, x) for x in positions]
+            secret += pads
+            secret2 += pads2
+            covector += [0, 0]  # encoding randomness is revealed but not in the scalar claim
+
+        fresh = [rng.randrange(p) for _ in secret]
+        eta = rng.randrange(p)
+        masked = (dot(fresh, covector)+eta) % p
+        gamma = (sum(old)+masked+5) % p  # fixed, view-dependent challenge function
+        fresh2 = [(g-gamma*(b-a)) % p for g, a, b in zip(fresh, secret, secret2)]
+        eta2 = (eta+gamma*coefficient*dz) % p
+        assert (dot(fresh2, covector)+eta2) % p == masked
+        assert [(g+gamma*h) % p for g, h in zip(fresh, secret)] == [
+            (g+gamma*h) % p for g, h in zip(fresh2, secret2)]
+        for delta in range(p):  # even zero: privacy does not divide by Delta
+            key_eta, key_z, z = 2, 4, (dot(message, weights)+3) % p
+            tag = (key_eta-delta*eta-gamma*coefficient*(key_z-delta*z)) % p
+            tag2 = (key_eta-delta*eta2-gamma*coefficient*key_z) % p
+            assert tag == tag2
+    # Switch pad: one nonzero coefficient hides OOD. At rho=0 it cannot.
+    changed_message_and_randomness = [1, 3, 5, 2]
+    for rho in range(1, p):
+        pad = -evaluate(changed_message_and_randomness, rho)*pow(pow(rho, 4, p), -1, p) % p
+        assert evaluate(changed_message_and_randomness+[pad], rho) == 0
+    assert all(evaluate(changed_message_and_randomness+[pad], 0) == 1 for pad in range(p))
+
+
+def test_B12_fixed_run_matrix_ZK_counts_sampler_RO_and_simulator_resources():
+    b = plan.b12_pcs_binding_assessment()
+    c = b['fixed_run_field_matrix_security']
+    boot = Fraction(plan.b12_fixed_run_bootstrap()['conditional_component']['sum'])
+    sampler = 12*c['private_field_outputs_per_stream_upper']*Fraction((1 << 64)-plan.P, 1 << 64)**8
+    assert sampler == Fraction(c['private_sampler_error_each_hybrid']) < Fraction(1, 1 << 226)
+    assert c['private_stream_bytes_upper_on_good_sampling'] < c['private_stream_byte_cap'] == 1 << 40
+    assert c['full_RO_queries_upper'] < 1 << 74
+    assert c['reduction_work_upper'] < c['primitive_work_cap'] == 1 << 121
+    assert c['reduction_memory_words_upper'] < c['primitive_memory_words_cap'] == 1 << 93
+    assert not c['actual_inference_witness_given_to_simulator']
+    assert not c['arbitrary_externally_fixed_root_simulation_claimed']
+    assert not c['native_FS_oracle_programming_by_PCS_simulator']
+    for profile, case in zip(b['ideal_oracle_profiles'], c['cases']):
+        assert case['setups'] == 1 and case['root_attempts'] == 3
+        assert case['private_field_outputs_in_three_attempt_PCS'] < 1 << 24
+        terms = {k: Fraction(v) for k, v in case['privacy_terms'].items()}
+        assert terms['bootstrap_T80'] == boot
+        assert terms['two_Merkle_and_private_coin_hybrids'] == 2*Fraction(
+            profile['adaptive_Merkle_hiding']['sum_including_private_coins_once'])
+        assert terms['global_first_draw_zero_OOD'] == Fraction(1 << 74, plan.P**3)
+        assert sum(terms.values()) == Fraction(case['conditional_ZK_sum']) <= Fraction(1, 1 << 78)
+        assert sum(Fraction(v) for v in case['soundness_terms'].values()) == Fraction(case['conditional_soundness_sum'])
+        assert case['both_below_2_to_minus_78']
+    assert not any(c[k] for k in ('security_admitted', 'full_Gemma_GKR_proven', 'full_Gemma_ZK_proven'))
+    assert c['complete_C71_security'] is None
+
+
 def test_B12_unique_decoder_and_fixed_root_component_resources():
     # Complete decoder check on all F5^4 words, including inconsistent
     # systems and the rank-deficient/no-error case. This is a reduction

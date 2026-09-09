@@ -6202,7 +6202,7 @@ def baseline_budget():
         raise ValueError("C71 B3 timing must retain its clean passing provenance")
     return {
         "schema": "c71-baseline-budget-v1", "credit": False,
-        "reference": "A5 + joint W/KV + Sigma(B, raw QK/PV, S); research only",
+        "reference": "A5 + joint W/KV + Sigma(B, raw QK/PV, S); frozen accounting reference, not a selected runtime",
         "source": "rms_byte_bridge_screen(include_rms_outputs=False)",
         "excluded_extensions": ["Y", "RoPE", "GELU", "gate_up_mul", "public-scale checkpoints"],
         "required_lifetime_security_bits_at_least": 78,
@@ -6212,6 +6212,11 @@ def baseline_budget():
         "replacement_bootstrap_status": "B9_native_component_checked_not_security_admitted",
         "next_proposed_goal": b9_bootstrap_component()["next_goal"],
         "measurement_reuse_priority": None,
+        "G2_disposition": {"status": "archived_unselected_research",
+            "pending_patch": "integrated_as_three_regression_checks",
+            "runtime_selected": False, "next_goal": None,
+            "same_W_obligation_retained_in_active_design": True,
+            "scope": "RS sampling counterexample, exhaustive toy row fold and synthetic A5 root relation; no bootstrap, hash or PCS admission"},
         "B1_decision": "reject_existing_whir_reuse_and_stop",
         "B1_decision_scope": "bounded reuse assessment; not an impossibility result for WHIR or C7.1",
         "B1_provenance_at_stop": {

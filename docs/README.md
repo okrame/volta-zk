@@ -15,7 +15,7 @@ component. Security/production admission and integration remain open in design Â
 | [Status](prototype-status.md) | Active work, evidence, open obligations, authorization and next steps |
 | [C7.1 design](c7.1-gemma31b-design.md) | Model/relation, protocol requirements, security and resource accounting |
 | [G1 feasibility](c7.1-feasibility.md) | Analytic admission criteria, carrier derivations and counterexamples, next constructive obligation |
-| [G2 committed MAC opening](c7.1-committed-mac-opening.md) | Suspended research evidence: private-verifier bridge, ideal MAC/FS simulation, grouped hash/GKR and exclusions; not the current work queue |
+| [G2 committed MAC opening](c7.1-committed-mac-opening.md) | Archived, unselected research: private-verifier bridge, ideal MAC/FS simulation and hash/GKR analyses; residual tests integrated, no active goal |
 | [A3 recursive RS opening](c7.1-recursive-rs-opening.md) | Fixed-cap encoder/recursion, ideal-oracle binding, IBCS rewinding audit and scoped 256-bit bound exclusion, remaining hash/FS repairs |
 | [A4 paired RS opening](c7.1-paired-rs-opening.md) | Fused two-read reduction/opening, arbitrary-fold binding, dyadic tensor forms and conditional GKR composition |
 | [A5 wide hash opening](c7.1-wide-hash-opening.md) | Eight-Fp hash/anchor, 32-lane checker, staged costs, finite ROM embedding and explicit matrices; corrected fixed-trail screen, adaptive family security/FS open |

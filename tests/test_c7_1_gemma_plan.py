@@ -461,6 +461,95 @@ def test_rs_proximity_is_not_exact_root_well_formedness():
     subsets = list(combinations(range(domain), 3))
     accepts = sum(all(corrupted[i] == original[i] for i in subset) for subset in subsets)
     assert Fraction(accepts, len(subsets)) == Fraction(5, 8)
+    # A sampling-only repair cannot give negligible exact-encoding error:
+    # avoiding the corrupted column leaves every queried equality unchanged.
+    for queries in range(domain+1):
+        subsets = list(combinations(range(domain),queries))
+        avoids = sum(0 not in subset for subset in subsets)
+        assert Fraction(avoids,len(subsets)) == Fraction(domain-queries,domain)
+    # Archived G2/A5 literal layout, not the B9 bootstrap or a current PCS.
+    # 35 MB is an alarm; exceeding it does not reject the whole construction.
+    large_domain, block = 1 << 26, 1 << 24
+    assert Fraction(large_domain-357,large_domain) == Fraction(67_108_507,67_108_864)
+    assert Fraction(1,large_domain) > Fraction(1,1 << 78)  # even q=D-1 fails
+    private_rows = (30_697_345_280+block-1)//block  # omit wholly public padding rows
+    assert private_rows == 1830
+    assert 8*large_domain*private_rows == 982_473_768_960 > 35_000_000
+    assert 4*(1 << 35)*8 == 1_099_511_627_776  # literal full encoded Fp matrix
+    groups, variables = ((1 << 11)+9)//10, 26+5
+    assert groups == 205
+    # Serial reuse of A5's literal 382*v-coefficient checker exceeds the
+    # alarm even before interfaces. This is not a lower bound on every PCS.
+    assert groups*24*382*variables == 58_262_640 > 35_000_000
+
+
+def test_g2_toy_exhaustive_columns_check_the_row_fold_syndrome():
+    # Exhaustive F17 fixture with errors in one column; not an implemented
+    # full-domain checker, a general soundness proof, or a selected repair.
+    p, domain = 17, 8
+    def enc(message):
+        return [(message[0]+message[1]*j) % p for j in range(domain)]
+    weights = [(1,2),(3,5),(7,11),(13,16)]
+    for errors in ((0,0,0,1),(1,-1,1,-1),(1,1,1,1),(2,3,5,7)):
+        oracle = [enc(w) for w in weights]
+        for row,error in zip(oracle,errors):
+            row[2] = (row[2]+error) % p
+        passes = 0
+        for a,b in product(range(p),repeat=2):
+            rho = [(1-a)*(1-b),a*(1-b),(1-a)*b,a*b]
+            folded = [sum(r*row[j] for r,row in zip(rho,oracle)) % p for j in range(domain)]
+            # The prover may choose ANY message after rho: the first two
+            # positions determine its only possible degree<2 polynomial.
+            candidate = (folded[0],(folded[1]-folded[0]) % p)
+            accepts = folded == enc(candidate)
+            syndrome = (folded[0]-2*folded[1]+folded[2]) % p
+            assert accepts == (syndrome == 0)
+            assert syndrome == sum(r*e for r,e in zip(rho,errors)) % p
+            passes += accepts
+        assert Fraction(passes,p*p) <= Fraction(2,p)  # log2(rows)/p, not query avoidance
+        if errors == (0,0,0,1):
+            assert passes == 2*p-1
+
+
+def test_g2_a5_fixture_distinguishes_canonical_root_from_sampled_agreement():
+    # Archived A5 graph fixture: synthetic constants, no RootCheck/GKR,
+    # collision-security claim, admitted profile, or dependency on real OT.
+    constants, block, domain = list(range(287)), 2, 8
+    weights = [[2,3],[5,7]]
+    encoded = [plan.small_goldilocks_fft(row+[0]*6) for row in weights]
+    def root_of(matrix):
+        nodes = []
+        for column in range(domain):
+            payload = [row[column] for row in matrix]
+            frame = [0]*8+payload+[0]*(10-len(payload))+[
+                0,len(payload),0x43373501,column,len(matrix),block]+[0]*8
+            nodes.append(plan.wide_hash_permutation(frame,constants)[:8])
+        level = 0
+        while len(nodes) > 1:
+            nodes = [plan.wide_hash_permutation(nodes[2*i]+nodes[2*i+1]+[
+                level,i,domain,1,0x43373502,block,len(matrix),0]+[0]*8,constants)[:8]
+                     for i in range(len(nodes)//2)]
+            level += 1
+        return nodes[0]
+    canonical = root_of(encoded)
+    corrupted = [row[:] for row in encoded]
+    corrupted[0][0] = (corrupted[0][0]+1) % plan.P
+    bad_root = root_of(corrupted)
+    assert bad_root != canonical
+    # Sampled queries can all agree while the exact root-output predicate fails.
+    assert all(corrupted[i][j] == encoded[i][j] for i in range(2) for j in (1,3,7))
+    assert any(plan.mle(bad_root,r) != plan.mle(canonical,r)
+               for r in product((0,1),repeat=3))
+    different = [row[:] for row in weights]
+    different[0][0] += 1
+    changed_root = root_of([plan.small_goldilocks_fft(row+[0]*6) for row in different])
+    assert changed_root != canonical  # a second free W is not an input adapter
+    salt, profile = [11,13,17,19], list(range(8))
+    def anchor(root):
+        return plan.wide_hash_permutation(root+salt+profile+[
+            0x43373503,4,block,0]+[0]*8,constants)[:8]
+    assert anchor(canonical) != anchor(bad_root)
+    # No Delta or session values are read by either deterministic computation.
 
 
 def test_recursive_rs_component_counts_and_fixed_cap_are_not_complete_credit():

@@ -42,7 +42,8 @@ or an impossibility result for C7.1, native Fp3 or WHIR.
 replacement-bootstrap research. It does not validate the old OT or open
 pool/PCS integration, tuning or matrix/Gemma E2E. B2/B3's
 functional/resource results and B4–B6's scoped security decisions remain
-valid; G2 stays suspended. Security and trust requirements are unchanged.
+valid; G2 is archived as unselected research. Security and trust
+requirements are unchanged.
 
 **B1 concluded with a negative reuse decision and its prescribed stop.**
 The [assessment in design §10](c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto)
@@ -68,7 +69,8 @@ claim they meet the reference. Scope and remaining thresholds are in design §1.
 
 **Authorization after B9:** the requested bounded native implementation,
 adversarial checks and resource counts are complete. The old B7 baseline
-stays stopped; G2 remains suspended. No RunPod/provider contact, H100/GPU, paid resources, downloads,
+stays stopped; G2 is archived as unselected research. No RunPod/provider
+contact, H100/GPU, paid resources, downloads,
 heavy builds or matrix/Gemma E2E. There is no pending spending approval.
 The next proposed B10 is a bounded assessment of concrete primitive and
 implementation premises plus the lifecycle/AES-PCG composition contract,
@@ -164,9 +166,7 @@ with tiny, insecure LPN tuples. Those B2 records did not census native arithmeti
 B3 adds those observations below; the full measurement contract and lifetime
 security remain distinct from the functional port.
 
-No native build or cryptographic E2E ran for B1. The pre-existing
-uncommitted additions in `tests/test_c7_1_gemma_plan.py` belong to the
-interrupted G2 work and are preserved separately from this change.
+No native build or cryptographic E2E ran for B1.
 
 
 ## B3 census and decision
@@ -304,7 +304,7 @@ cost/error accounting, masked equations/privacy with exhaustive F7 error
 counts, native packing algebra and the source-level bootstrap discrepancy.
 The complete default budget emits valid JSON. No Rust/Lean build, native
 cryptographic E2E, new benchmark record or runtime change is claimed.
-Existing B2/B3 evidence and the unrelated G2 test changes are preserved.
+Existing B2/B3 evidence is preserved.
 
 **B7 mandate, now concluded below:** specify and check the native Fp3 base-sVOLE bootstrap component,
 including the exact selective-failure or leakage-free functionality,
@@ -344,7 +344,7 @@ The targeted Rust test passes by reproducing the rejection evidence;
 pass, including explicit stop enforcement and preservation of earlier
 results. The default report remains valid JSON. No broad build, new Lean
 theorem, benchmark record, matrix proof or hardware claim follows. Native
-build artifacts are removed; the unrelated G2 test edits are preserved.
+build artifacts are removed.
 
 Both B6's smaller base-L subtotal and B7's larger leakage-free payload are
 conditional estimates. B7's COPE payload alone is 188,928 bytes for 32
@@ -387,7 +387,7 @@ ten prior budget checks pass. They cover P-521 point/codec equations and
 both OT choices, exhaustive chosen-message simulation, ideal COPE/Fp9
 algebra and mask coverage, conditional arithmetic and preserved B7 stop.
 No native build, new Lean theorem, benchmark record, matrix/Gemma proof
-or hardware measurement is claimed. The unrelated G2 test edits remain intact.
+or hardware measurement is claimed.
 
 B9 below supplies the bounded native component and checks. Concrete
 primitive accounting and lifecycle/PCG composition still precede integration.
@@ -431,10 +431,31 @@ no new Lean theorem or complete C7.1 security/performance credit follows.
 The single budget includes `B9_bootstrap_component` and proposes B10 before
 any integration, retaining the previous negative decisions and evidence.
 
+
+## G2 residual changes: integrated evidence, archived research line
+
+The owner's follow-up asks to resolve the previously uncommitted G2 work.
+The patch adds three mathematical checks, with no runtime, OT or pool code:
+query sampling can miss a corrupted RS column; exhaustive columns detect
+the syndrome in a small row-fold fixture; a synthetic A5 root can differ
+while sampled columns agree. They remain valid after B7–B9 because none
+assumes the rejected OT or claims real hash/PCS security. They are now
+integrated in the existing [algebra tests](../tests/test_c7_1_gemma_plan.py).
+The literal A5 size arithmetic is explicitly historical, and 35 MB remains
+an alarm. The three focused checks pass.
+
+**G2 is archived as an unselected research line, not queued for completion.**
+Its unproved same-W/FS obligations remain requirements of the active design;
+archiving does not prove them or assert impossibility. The
+[G2 dossier](c7.1-committed-mac-opening.md) retains conditional results with
+an explicit historical scope. There is no pending G2 patch, alternate
+runtime or second active goal. The single budget records this disposition;
+B9 is complete and B10 remains the only proposed next goal.
+
 ## Documentation decision
 
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
 A fresh conversation can start from this page and design §10 (B9 component and preserved B7 failure) without
-importing the full G2 transcript or reopening its suspended obligations.
+importing the full G2 transcript or treating archived research as active work.

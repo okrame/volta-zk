@@ -92,7 +92,7 @@ def test_B12_unique_radius_budget_includes_mask_degree_and_keeps_compilation_ope
         errors = list(map(Fraction, profile['round_error_vector']))
         assert len(errors) == sum(profile['folds']) + 4*(len(profile['oracles'])-1)+3
         assert max(errors) == Fraction(profile['max_round_error'])
-        assert (1 << 74)*max(errors) == Fraction(profile['conditional_Qstar_2_to_74_prefix_term'])
+        assert (1 << 74)*max(map(Fraction, profile['coin_block_error_vector'])) == Fraction(profile['conditional_Qstar_2_to_74_prefix_term'])
         assert (1 << 74)*max(errors) < Fraction(1, 1 << 82)
         assert profile['native_profile_selected'] == (profile['log_message_cells'] <= 14)
         assert Fraction(profile['ordinary_IOP_HVZK_error_from_zero_OOD']) == Fraction(len(profile['oracles'])-1, plan.P**3)
@@ -253,6 +253,35 @@ def test_B12_completion_seal_fixes_rows_before_usable_FS_prefixes():
     assert seal['sampled_after_B11_output_is_fixed'] and seal['direct_public_FS_capacity_field']
     assert seal['wire_bytes_per_completed_setup'] == 8+32
     assert not b['B12_complete'] and not b['security_admitted']
+
+
+def test_B12_coin_blocks_sum_merged_rounds_and_charge_split_query_groups():
+    # Merging two challenge rounds costs a sum: 9/25 is greater than 1/5.
+    bad = sum(a == 0 or b == 0 for a, b in product(range(5), repeat=2))
+    assert Fraction(1, 5) < Fraction(bad, 25) <= Fraction(2, 5)
+    # Independent groups do not inherit the shared-set (3/4)^t bound.
+    # Disjoint supports, each two rows out of 16, with two queries per group.
+    actual = Fraction(math.comb(14, 2), math.comb(16, 2))**2
+    assert Fraction(3, 4)**2 < actual <= Fraction(7, 8)**4
+    b = plan.b12_pcs_binding_assessment()
+    for profile in b['ideal_oracle_profiles']:
+        n = len(profile['oracles'])
+        blocks = list(map(Fraction, profile['coin_block_error_vector']))
+        assert len(blocks) == sum(profile['folds'])+3*(n-1)+3
+        exact = profile['split_mask_query_exact']
+        assert Fraction(exact['base']) == Fraction(8*n-5, 8*n-4)
+        assert exact['exponent'] == (2*n-1)*512
+        assert Fraction(exact['base'])**exact['exponent'] < blocks[-1] == Fraction(1, 1 << 184)
+        assert max(blocks) == Fraction(profile['max_coin_block_error'])
+        assert (1 << 74)*max(blocks) < Fraction(1, 1 << 82)
+        assert profile['max_XOF_bytes_per_block_upper'] == 192*profile['draw_request_limit']
+    c = b['coin_block_compilation']
+    assert c['maximum_completed_tape_bytes'] == 1761628992
+    assert c['extra_tape_memory_words_upper'] == (1 << 64)*(1761628992//8)
+    # Tape completion fits alongside B12 bootstrap's existing memory envelope;
+    # it does not silently charge all 2^74 MR19/SHAKE contexts as FS tapes.
+    old = plan.b12_lifetime_admission()['reduction']['memory_words_upper_derived']
+    assert old+c['extra_tape_memory_words_upper'] < 1 << 93
 
 
 def test_existing_paired_fold_diagnostic():

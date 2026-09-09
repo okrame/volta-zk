@@ -80,7 +80,9 @@ fn from_p3(x: E) -> Fp3 {
 
 /// C71FS-v1 framing for the bounded matrix profile. `phase` names the
 /// component, and each request has its own ordered slot inside that phase.
-/// The slot is the native move index, including individual PCS query draws.
+/// The slot counts native draw requests. B12 uses one XOF tape for consecutive
+/// draws until a new prover choice. Authenticated openings are fixed by their
+/// roots and stay in the hash without restarting the tape.
 /// Exhaustion panics across P3's infallible challenger API; the outer runner
 /// must catch this and burn the attempt, never retry with a substitute value.
 #[derive(Clone)]
@@ -90,6 +92,8 @@ struct FsState {
     requests: usize,
     request_limit: usize,
     phase: u16,
+    #[cfg(feature = "c71-b12-pcs")]
+    coin_tape: Option<blake3::OutputReader>,
 }
 
 #[derive(Clone)]
@@ -114,6 +118,8 @@ impl Fs {
             requests: 0,
             request_limit,
             phase: 0,
+            #[cfg(feature = "c71-b12-pcs")]
+            coin_tape: None,
         };
         result.hash.update(b"volta-zk/c7.1/fs/v1");
         result.record(0, profile_and_statement);
@@ -121,7 +127,12 @@ impl Fs {
     }
 
     fn record(&mut self, kind: u16, bytes: &[u8]) {
-        self.0.lock().unwrap().record(kind, bytes);
+        let mut state = self.0.lock().unwrap();
+        #[cfg(feature = "c71-b12-pcs")]
+        if kind != 0x2100 {
+            state.coin_tape = None; // fresh prover message; verified openings are determined
+        }
+        state.record(kind, bytes);
     }
 
     fn set_phase(&mut self, phase: u16) {
@@ -149,7 +160,22 @@ impl Fs {
         request.extend_from_slice(&8u32.to_le_bytes());
         state.record(0xff00, &request);
         state.requests += 1;
+        #[cfg(feature = "c71-b12-pcs")]
+        if let Some(reader) = state.coin_tape.take() {
+            return reader;
+        }
         state.hash.finalize_xof()
+    }
+
+    fn finish_request(&mut self, reader: blake3::OutputReader, bytes: &[u8]) {
+        let mut state = self.0.lock().unwrap();
+        state.record(0xff01, bytes); // verifier's own draw, not a new prover message
+        #[cfg(feature = "c71-b12-pcs")]
+        {
+            state.coin_tape = Some(reader);
+        }
+        #[cfg(not(feature = "c71-b12-pcs"))]
+        let _ = reader;
     }
 
     fn fields(&mut self, count: usize) -> Vec<Fp> {
@@ -168,7 +194,7 @@ impl Fs {
             })
             .collect();
         let bytes: Vec<_> = result.iter().flat_map(|x| x.value().to_le_bytes()).collect();
-        self.record(0xff01, &bytes);
+        self.finish_request(reader, &bytes);
         result
     }
 
@@ -206,7 +232,7 @@ impl CanSampleBits<usize> for Fs {
         // All admitted index domains are powers of two, so every u64 is
         // below floor(2^64/D)*D. There is no biased modular reduction.
         let result = u64::from_le_bytes(bytes) & ((1u64 << bits) - 1);
-        self.record(0xff01, &result.to_le_bytes());
+        self.finish_request(reader, &result.to_le_bytes());
         result as usize
     }
 }
@@ -568,7 +594,7 @@ fn gamma(c: &ZkWhirConfig<E, Goldilocks, Fs>) -> Vec<u8> {
     #[cfg(not(feature = "c71-b12-pcs"))]
     let mut bytes = b"C71-matrix-v1;codec1;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;Johnson128;PoW0;AES128-MMO;LPN64,512,8,4;setup16,128,4;checks2;pool3;lift9sVOLE48;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
     #[cfg(feature = "c71-b12-pcs")]
-    let mut bytes = b"C71-matrix-B12-unique-v1;codec2;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;CFW9.10+8.1;radius1/4;queries512;ell2048;OOD1;PoW0;B11-AES256-finite;post-bootstrap-capacity32;rows3;salts4Fp;private-coins-v1-cap2^40;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
+    let mut bytes = b"C71-matrix-B12-unique-v1;codec2;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF-coin-block1-fixed-openings;CFW9.10+8.1;radius1/4;queries512;ell2048;OOD1;PoW0;B11-AES256-finite;post-bootstrap-capacity32;rows3;salts4Fp;private-coins-v1-cap2^40;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
     let mut words = vec![
         volta_field::P,
         c.zk.ell_zk as u64,

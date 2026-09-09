@@ -6379,27 +6379,51 @@ def b12_pcs_binding_assessment():
             remaining -= folding
             if remaining <= 6:
                 break
-        errors = []
+        errors, coin_blocks = [], []
         for i, (o, folding) in enumerate(zip(oracles, folds)):
             # Theorem 9.10 switches followed by Theorem 8.1's final fold/base
             # case. All enlarged/interleaved code lists have size <=1.
             # Using q-2 also covers exclusion of 0,1 for a sumcheck draw.
-            errors.append(Fraction(1, q-2))
-            errors.extend([Fraction(o["radius_rows"]+1+mask_message, q-2)]*folding)
+            prelude = Fraction(1, q-2)
+            fold_errors = [Fraction(o["radius_rows"]+1+mask_message, q-2)]*folding
+            errors.extend([prelude]+fold_errors)
+            coin_blocks.extend([prelude]+fold_errors)
             if i == len(oracles)-1:
                 break
             degree = o["message_rows"]+mask_message-1
             # One uniform E point; one free pad coefficient hides its answer
             # except at zero, an explicit 1/q HVZK bad event per switch.
-            errors.append(2*Fraction(degree, q-2))
-            errors.append(Fraction(3, 4)**query_count)
-            errors.append(Fraction(1+query_count*o["width"], q-2))
+            ood_error = 2*Fraction(degree, q-2)
+            query_error = Fraction(3, 4)**query_count
+            batch_error = Fraction(1+query_count*o["width"], q-2)
+            errors.extend([ood_error, query_error, batch_error])
+            # Authenticated openings are fixed; query and batching draws share
+            # one tape, so merge their errors by SUM, never by maximum.
+            coin_blocks.extend([ood_error, query_error+batch_error])
         errors.extend((Fraction(oracles[-1]["radius_rows"]+mask["radius_rows"]+3, q-2),
                        Fraction(3, 4)**min(query_count, mask_queries)))
-        maximum = max(errors)
+        groups = 2*len(oracles)-1
+        # Native mask groups use independent query sets. Their joint error
+        # support can exceed radius even when each separate support does not.
+        split_base, split_exponent = Fraction(4*groups-1, 4*groups), groups*query_count
+        # Keep the emitted budget small: (1-1/(4G))^(512G) <= e^-128
+        # < 2^-184. Check that rounding exactly for each selected geometry.
+        split_mask_query = Fraction(1, 1 << 184)
+        assert split_base**split_exponent < split_mask_query
+        coin_blocks.extend([errors[-2], split_mask_query])
+        maximum = max(coin_blocks)
+        rounds = len(oracles)-1
+        # Exact request_limit() census: all H/(H-t+1) ceilings here equal 2.
+        requests = 3+4*rounds+log_size+sum(folds)+(len(oracles)+groups)*query_count*512
         profiles.append({"log_message_cells": log_size, "folds": folds,
             "oracles": oracles, "round_error_vector": [str(x) for x in errors],
-            "max_round_error": str(maximum),
+            "max_round_error": str(max(errors)),
+            "coin_block_error_vector": [str(x) for x in coin_blocks],
+            "max_coin_block_error": str(maximum),
+            "split_mask_query_error": str(split_mask_query),
+            "split_mask_query_exact": {"base": str(split_base), "exponent": split_exponent},
+            "draw_request_limit": requests,
+            "max_XOF_bytes_per_block_upper": 192*requests,
             "conditional_Qstar_2_to_74_prefix_term": str((1 << 74)*maximum),
             "conditional_prefix_bits": math.log2(maximum.denominator)-math.log2(maximum.numerator)-74,
             "initial_encoded_base_field_bytes": 8*oracles[0]["encoded_base_field_cells"],
@@ -6491,13 +6515,24 @@ def b12_pcs_binding_assessment():
             "honest_transfer_plaintexts_do_not_read_unused_correlations": True,
             "arbitrary_callback_NoPeek_proven": False,
             "full_GKR_check_census_or_PCS_soundness": False},
+        "coin_block_compilation": {
+            "native_feature": "c71-b12-pcs",
+            "one_XOF_tape_between_fresh_prover_messages": True,
+            "verified_openings_remain_in_hash_without_restarting_tape": True,
+            "premise": "Merkle collision/deferred-preimage events excluded; canonical opening payload is determined by its root and indices",
+            "merged_round_errors_are_summed": True,
+            "independent_mask_query_groups_are_charged": True,
+            "adversarial_FS_input_prefixes_upper": 1 << 64,
+            "maximum_completed_tape_bytes": max(p['max_XOF_bytes_per_block_upper'] for p in profiles),
+            "extra_tape_memory_words_upper": (1 << 64)*max(p['max_XOF_bytes_per_block_upper']//8 for p in profiles),
+            "resource_scope": "RO tape completion only; decoder, full GKR and both-role simulator census remain separate"},
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",
             "temporal_premise": "B12 seal before usable prefixes; fixed n and row interval per capacity/slot",
             "algebraic_terminal_correspondence": True,
-            "native_multi_request_query_batch_FS_compilation_proven": False,
-            "next": "bound prequeried subrequests and completion work, or use one XOF tape per uninterrupted verifier coin block"},
+            "native_coin_block_projection_implemented": True,
+            "next": "compose prefix-state extraction and complete decoder/caller resources with both-role lifetime bounds"},
         "same_W_consequence": "one decoded message per fixed oracle before opening challenges; root links compare both endpoints under the current MAC",
         "remaining": ["claimless RBR/prefix correspondence", "salted Merkle hiding and complete FS/ZK compilation",
             "root-renewal protocol and both-role lifecycle", "full GKR/quantization relation and adequate correlation capacity",

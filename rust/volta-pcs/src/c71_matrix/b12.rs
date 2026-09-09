@@ -141,6 +141,79 @@ mod tests {
     use p3_matrix::{dense::RowMajorMatrix, Dimensions};
 
     #[test]
+    fn c71_b12_fs_uses_one_tape_across_draws_and_fixed_openings() {
+        // Independent flat transcript and one XOF response, including every
+        // request/result frame; no calls to Fs's framing or request helpers.
+        fn frame(bytes: &mut Vec<u8>, event: u64, kind: u16, body: &[u8]) {
+            bytes.extend(event.to_le_bytes());
+            bytes.extend(0u16.to_le_bytes());
+            bytes.extend(kind.to_le_bytes());
+            bytes.extend((body.len() as u64).to_le_bytes());
+            bytes.extend(body);
+        }
+        fn request(counter: u64, kind: u16, width: u32) -> Vec<u8> {
+            [
+                counter.to_le_bytes().as_slice(),
+                &kind.to_le_bytes(),
+                &width.to_le_bytes(),
+                &8u32.to_le_bytes(),
+            ]
+            .concat()
+        }
+        let statement = b"B12 coin-block XOF known answer";
+        let mut bytes = b"volta-zk/c7.1/fs/v1".to_vec();
+        frame(&mut bytes, 0, 0, statement);
+        frame(&mut bytes, 1, 0xff00, &request(0, 2, 11));
+        let mut tape = blake3::Hasher::new();
+        tape.update(&bytes);
+        let mut tape = tape.finalize_xof();
+        let mut fs = Fs::new(statement, 515);
+        for i in 0..512u64 {
+            if i != 0 {
+                frame(&mut bytes, 2 * i + 1, 0xff00, &request(i, 2, 11));
+            }
+            let mut word = [0; 8];
+            tape.fill(&mut word);
+            let index = u64::from_le_bytes(word) & 2047;
+            assert_eq!(fs.sample_bits(11), index as usize);
+            frame(&mut bytes, 2 * i + 2, 0xff01, &index.to_le_bytes());
+        }
+        assert_eq!(fs.digest(), blake3::hash(&bytes));
+        assert_eq!(fs.0.lock().unwrap().coin_tape.as_ref().unwrap().position(), 512 * 8);
+        // Authenticated openings are fixed by prior roots; retain this tape.
+        frame(&mut bytes, 1025, 0x2100, b"fixed opening");
+        frame(&mut bytes, 1026, 0xff00, &request(512, 2, 11));
+        let mut word = [0; 8];
+        tape.fill(&mut word);
+        let index = u64::from_le_bytes(word) & 2047;
+        fs.record(0x2100, b"fixed opening");
+        assert_eq!(fs.sample_bits(11), index as usize);
+        frame(&mut bytes, 1027, 0xff01, &index.to_le_bytes());
+        // A fresh prover message must close the tape and bind every prior frame.
+        frame(&mut bytes, 1028, 1, &7u64.to_le_bytes());
+        frame(&mut bytes, 1029, 0xff00, &request(513, 1, 3));
+        let mut next = blake3::Hasher::new();
+        next.update(&bytes);
+        let mut next = next.finalize_xof();
+        let mut raw = [0; 24];
+        next.fill(&mut raw);
+        let expected = Fp3::from_bytes(&raw).unwrap(); // this fixed tape has no rejection
+        fs.observe(Goldilocks::new(7));
+        assert_eq!(fs.fp3(), expected);
+        frame(&mut bytes, 1030, 0xff01, &raw);
+        let mut word = [0; 8];
+        next.fill(&mut word);
+        let index = u64::from_le_bytes(word) & 2047;
+        let mut replay = fs.fork();
+        assert_eq!(fs.sample_bits(11), index as usize);
+        assert_eq!(replay.sample_bits(11), index as usize);
+        frame(&mut bytes, 1031, 0xff00, &request(514, 2, 11));
+        frame(&mut bytes, 1032, 0xff01, &index.to_le_bytes());
+        assert_eq!(fs.digest(), blake3::hash(&bytes));
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fs.fp3())).is_err());
+    }
+
+    #[test]
     fn c71_b12_native_codes_have_unique_radius_and_common_private_masks() {
         for h in [10, 12, 14, 35] {
             let c = config(h).unwrap();
@@ -167,6 +240,12 @@ mod tests {
                 previous_domain = r.domain_size;
             }
             assert_eq!(c.oracle_randomness[0], 3 * 512);
+            if let Some(expected) = [(12, 2_883_618), (14, 3_670_058), (35, 9_175_151)]
+                .into_iter()
+                .find_map(|(dimension, cap)| (h == dimension).then_some(cap))
+            {
+                assert_eq!(request_limit(&c), expected);
+            }
             if h == 35 {
                 assert_eq!(8 * c.starting_domain_size(), 4usize << 40);
                 assert!(super::super::config(h).is_err()); // never allocate this on the CPU path

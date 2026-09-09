@@ -60,6 +60,14 @@ threads. Run the narrow native tests using the command above with
 The Python bootstrap/budget checks cover the conditional lifetime arithmetic.
 These are component checks, with no durable-pool or PCS/Gemma admission.
 
+For the owner-authorized B12 finite-pool component, the same narrow Cargo
+command with `--features c71-b11 c71_b12 -- --test-threads=1` checks the
+durable journal, subprocess crash/reopen and one three-row real two-role MAC
+transfer. The last check needs only a local Unix socketpair, as B9/B11 did;
+if the sandbox denies it, permit that local test without external access.
+No full workspace, matrix/Gemma runner or paid hardware is needed. These
+are component tests, not run-of-record benchmarks or complete security evidence.
+
 Before a broad local build, check guest space and confirm at least 60 GiB free
 on the host; guest `df` alone does not establish host capacity. Run the full
 workspace before a protocol milestone checkpoint when authorized resources

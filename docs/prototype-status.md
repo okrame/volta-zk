@@ -1,4 +1,4 @@
-# Current status — C7.1 Gemma-31B, B11 intermediate AES selected
+# Current status — C7.1 Gemma-31B, B12 lifetime work active
 
 Updated 2026-09-09. Editable working summary; Git preserves revisions.
 [Design](c7.1-gemma31b-design.md) · [Documentation index](README.md) ·
@@ -6,12 +6,40 @@ Updated 2026-09-09. Editable working summary; Git preserves revisions.
 
 ## Active authority — read first
 
-**B11 selects an intermediate finite AES construction under explicit primitive
-hypotheses.** The owner's latest 2026-09-09 authorization permits the temporary
+**B12 is authorized and remains open.** The owner's latest 2026-09-09 request
+requires adversary resources beyond `2^78`, durable single use, one private W
+across bootstrap/MAC/PCS/GKR, and a complete lifetime error at most `2^-78`.
+[Design §10, B12](c7.1-gemma31b-design.md#b12-risorse-lifetime-e-vincolo-same-w)
+extends the **conditional bootstrap** argument to `2^80` adversary work and
+memory/advice words with Q64 unchanged. Reduction work stays below `2^121`;
+its memory bound rises to `2^93` words. The AES/DDH hypotheses must hold at
+that larger memory envelope; they are not proved by B11. The bootstrap
+subtotal remains 86.835 conditional bits. This is not yet the full C7.1
+reduction, including PCS/GKR and their lifetime simulator resources.
+
+The new opt-in [finite-pool component](../rust/volta-pcg/src/c71_lifetime.rs)
+wraps both real B11 roles with a locked durable journal. Setup and joint
+root-slot/row burns precede use; reopen preserves counters and accepted head
+while losing unused secret capacity. It pins one installed model/semantics/root
+and rejects different roots. **Root renewal remains unavailable until its
+same-W proof exists.** Five native B12 checks pass, including process exit,
+partial records and a real two-role bootstrap-to-MAC transfer; the combined
+bootstrap/budget Python checks total 28 passing tests.
+
+PCS binding into the GKR's exact authenticated endpoint, root renewal,
+both-role FS/lifetime composition and the complete resource reduction remain
+open. The budget keeps both complete security errors unknown; six proposed
+error allocations fitting the remaining margin are targets, not proved bounds.
+All proofs must bind to **one private W**; durable public identifiers alone
+do not establish that relation. No complete 78-bit or production credit.
+
+**B11 selected an intermediate finite AES construction under explicit primitive
+hypotheses.** The earlier 2026-09-09 authorization permitted the temporary
 global cap of `2^64` u64 work and `2^64` memory/advice words, including
 preprocessing, to close B11 and integrate the path. A later reduction must
 support adversary work **beyond `2^78`**, including preprocessing and lifetime;
-that upgrade is not achieved. Q64 remains global and `2^20` counts setup
+B12's component extension above does not yet close the complete upgrade.
+Q64 remains global and `2^20` counts setup
 attempts, including preparation, failures and renewals.
 
 The selected path reuses MR19/P-521 and Wolverine Fp9→Fp3 base-sVOLE with
@@ -106,14 +134,12 @@ budgets and the pinned 100+50 workload. The comparison may price explicit
 alternatives, including a fifth read or organized host spill; it must not
 claim they meet the reference. Scope and remaining thresholds are in design §1.
 
-**Current authorization:** the finite B11 component and diagnostic MAC
-integration are authorized locally, using the bounded B9 test procedure.
-No new approval is needed for these checks. Production pool/PCS integration,
-matrix/Gemma E2E, provider/GPU access and spending remain outside this
-component result. B12 is proposed for durable finite-pool integration and
-the same-W admission boundary; it is not automatically started. The final
-78-bit requirements remain open, and the temporary work restriction must
-be removed or raised beyond `2^78` through the later complete reduction.
+**Current authorization:** B12's local reduction, durable finite-pool integration,
+same-W PCS/GKR research and error composition are authorized by the latest
+owner instruction, using narrow local checks. Production/security admission,
+matrix/Gemma E2E, provider/GPU access and spending do not follow from a
+component result. The final 78-bit requirements and complete adversary-resource
+upgrade remain open; no further approval is needed for the authorized local work.
 
 ## Evidence and open obligations
 
@@ -541,14 +567,14 @@ twelve B11 records; 26 Python and eight narrow Rust tests pass.
 
 Same-W remains a global quantifier over all accepted proofs. A renewed root
 must be linked to the installed W before activation; locally valid MACs
-under fresh keys do not prove that relation. B10's joint durable reservation,
-NoPeek and burn contract remains required for a pool adapter. SHAKE-state
+under fresh keys do not prove that relation. B12 implements B10's joint durable
+reservation for the fixed-root component; NoPeek and the full consumer remain
+obligations. SHAKE-state
 erasure and generated-code timing checks also remain open for production.
 
-B12 proposed: durable finite-pool integration with the same-W/PCS admission
-boundary. The owner-required later reduction beyond `2^78` adversary work,
-with preprocessing and lifetime, is explicitly unachieved. B11 supplies no
-permission or security credit for the stopped B7/G2 lines or a full runner.
+B12 is active under the latest owner request; its component results and
+remaining same-W/PCS/GKR obligations are recorded at the top of this page.
+B11 supplies no security credit for the stopped B7/G2 lines or a full runner.
 
 ## G2 residual changes: integrated evidence, archived research line
 
@@ -569,13 +595,13 @@ archiving does not prove them or assert impossibility. The
 an explicit historical scope. There is no pending G2 patch, alternate
 runtime or second active goal. The single budget records this disposition;
 B10 and the conditional intermediate B11 selection are complete; B12 is
-the proposed next goal; bounded B11 component validation is complete.
+the active goal; bounded B11 component validation remains complete.
 
 ## Documentation decision
 
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 (B11 intermediate
-selection, B10 assessment, B9 component and preserved B7 failure) without
+A fresh conversation can start from this page and design §10 (B12's remaining
+same-W/lifetime obligations, B11 selection and the preserved B7 failure) without
 importing the full G2 transcript or treating archived research as active work.

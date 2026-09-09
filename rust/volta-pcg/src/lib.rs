@@ -16,6 +16,10 @@ mod production;
 #[cfg(feature = "c71-bootstrap")]
 pub mod c71_bootstrap;
 
+/// B12 finite-pool lifecycle component; concrete same-W PCS/GKR admission is open.
+#[cfg(feature = "c71-b11")]
+pub mod c71_lifetime;
+
 pub use fase_d::{
     BatchLiftReport, CanonicalBatchLift, FaseDCapacityReport, FaseDError, FaseDParams,
     FaseDStagePlan, ProverBufferAccount, RefillLedger, RegularNoiseTuple, Stage3Batch,

@@ -6341,6 +6341,72 @@ def b11_intermediate_selection():
         "next_goal": "B12: durable finite-pool integration and same-W admission boundary; keep the >2^78 adversary-resource upgrade open"}
 
 
+def b12_lifetime_admission():
+    """B12 resource lift and durable component; never fill missing PCS/FS errors with zero."""
+    b11 = b11_intermediate_selection()
+    work = memory = 1 << 80
+    queries, q, honest = 1 << 64, 1 << 74, 1 << 50
+    reduction_work = work + (1 << 12)*work + (1 << 46)*(q+honest)
+    reduction_memory = memory + (1 << 12)*work + (1 << 14)*q + honest
+    component = Fraction(b11["conditional_lifetime"]["sum"])
+    target = Fraction(1, 1 << 78)
+    # Reservations are targets, not bounds proved by declaring a budget.
+    allocations = {name: Fraction(1, 1 << 82) for name in (
+        "anchor_and_same_W_root_links", "authenticated_PCS_openings",
+        "GKR_and_operator_links_FS_prefix", "MAC_and_cross_handle_equality",
+        "remaining_samplers_and_transcript_binding", "state_runtime_refinement")}
+    return {
+        "status": "resource_lift_conditional_durable_component_complete_full_admission_open",
+        "credit": False, "security_admitted": False, "B12_complete": False,
+        "production_runtime_admitted": False, "pool_PCS_integration_admitted": False,
+        "source": "docs/c7.1-gemma31b-design.md#b12-risorse-lifetime-e-vincolo-same-w",
+        "adversary": {"global_u64_work_including_preprocessing": work,
+            "global_memory_and_advice_words": memory, "global_RO_queries": queries,
+            "setup_attempts_including_failures_preparation_and_renewals": LIFETIME_ATTEMPTS,
+            "free_RO_dependent_advice": False},
+        "reduction": {"query_upper_derived": 513*queries+honest,
+            "global_queries_including_simulator": q,
+            "work_upper_derived": reduction_work, "primitive_work_cap": 1 << 121,
+            "memory_words_upper_derived": reduction_memory, "primitive_memory_words_cap": 1 << 93,
+            "includes_environment_preprocessing_advice_and_lifetime": True,
+            "scope": "one straight-line bootstrap hybrid, not a PCS/GKR extractor or full verifier simulator"},
+        "primitive_hypotheses": {**b11["primitive_hypotheses"],
+            "memory_envelope_strengthened_from_B11": True,
+            "inherited_from_B11_without_new_hypothesis": False},
+        "bootstrap_component": {"conditional_resource_upgrade_beyond_2_to_78": True,
+            "terms": b11["conditional_lifetime"]["terms"], "sum": str(component),
+            "bits": b11["conditional_lifetime"]["bits"],
+            "complete_C71_or_same_W_FS_bound": False},
+        "durable_component": {
+            "source": "rust/volta-pcg/src/c71_lifetime.rs", "implemented": True,
+            "fixed_installed_root_slots": 3, "max_base_rows_per_setup": 207,
+            "setup_quota": LIFETIME_ATTEMPTS, "proof_quota": LIFETIME_ATTEMPTS,
+            "joint_burn_before_callback": True, "reopen_discards_volatile_pool": True,
+            "accepted_head_persisted": True, "new_root_activation_implemented": False,
+            "premises": ["one honest-role store across sessions, no rollback/deletion/replacement",
+                "exclusive OS lock and successful durable file/directory sync",
+                "authenticated channel and NoPeek consumer",
+                "complete same-W PCS/GKR verifier before accepted-state promotion"],
+            "scope": "finite-pool component; three exposures are not a proved PCS privacy limit"},
+        "same_W": {"quantifier": "exists one W fixed at installation, for all accepted proofs in all sessions/key epochs/roots",
+            "bootstrap_reads_W": False, "MAC_validity_implies_model_binding": False,
+            "root_renewal_fails_closed": True,
+            "instantiated_authenticated_PCS_GKR_relation": False,
+            "conditional_induction": "design B12; anchor uniqueness + root link + same authenticated endpoint + GKR relation"},
+        "composition": {
+            "target": str(target), "known_bootstrap_subtotal": str(component),
+            "remaining_error_allowance": str(target-component),
+            "unproved_lifetime_allocations": {k: str(v) for k, v in allocations.items()},
+            "allocation_screen_sum": str(component+sum(allocations.values())),
+            "allocation_screen_below_target": component+sum(allocations.values()) < target,
+            "allocations_are_established_bounds": False,
+            "soundness_total": None, "malicious_verifier_ZK_total": None,
+            "complete_admission_bound": "infinity",
+            "missing_ZK": ["hiding installed anchor and renewed roots", "same-W PCS/GKR joint simulator",
+                "NoPeek runtime correspondence", "full simulator primitive resources"]},
+        "next_goal": "instantiate same-W authenticated PCS/GKR and both-role lifetime FS bounds; root renewal remains unavailable until its link is proved"}
+
+
 def b11_wider_aes_contract():
     """Unimplemented one-shot source contract; computational admission stays open."""
     # ponytail: one setup and one main stage; add refills after joint composition.
@@ -6557,9 +6623,9 @@ def baseline_budget():
         "required_lifetime_security_bits_at_least": 78,
         "malicious_prover_soundness_bits": None, "malicious_verifier_zk_bits": None,
         "security_admitted": False, "complete_baseline_selected": None,
-        "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": None,
+        "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": "B12: resources beyond 2^78, durable lifetime, same-W PCS/GKR and complete error composition",
         "replacement_bootstrap_status": "B11_intermediate_finite_AES_selected_conditionally",
-        "next_proposed_goal": b11_intermediate_selection()["next_goal"],
+        "next_proposed_goal": b12_lifetime_admission()["next_goal"],
         "measurement_reuse_priority": None,
         "G2_disposition": {"status": "archived_unselected_research",
             "pending_patch": "integrated_as_three_regression_checks",
@@ -6607,6 +6673,7 @@ def baseline_budget():
         "B10_composition_admission": b10_composition_admission(),
         "B11_local_repair_admission": b11_local_repair_admission(),
         "B11_intermediate_selection": b11_intermediate_selection(),
+        "B12_lifetime_admission": b12_lifetime_admission(),
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

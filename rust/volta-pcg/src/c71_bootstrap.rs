@@ -2,8 +2,9 @@
 //!
 //! Source mapping and unresolved admission obligations: design §10, B9.
 //! The opt-in B11 profile uses bounded AES-256 GGM expansion inside COPE.
-//! Neither profile has a production pool adapter, durable lease,
-//! or PCS integration. Callers must supply an authenticated, dedicated channel.
+//! Neither profile has production or PCS admission. The separate opt-in
+//! `c71_lifetime` module wraps B11 with a durable finite-pool component.
+//! Callers must supply an authenticated, dedicated channel.
 //! OS randomness is mandatory in the public entry points. Errors consume the
 //! channel and discard secret buffers; in-memory ownership is not a durable burn.
 

@@ -317,7 +317,8 @@ def test_b7_failed_real_premise_stops_baseline_even_when_hybrid_arithmetic_passe
     assert b7["status"] == "failed_OT_premise_baseline_stopped"
     assert b7["baseline_stopped"] and not b7["security_admitted"] and not b7["credit"]
     assert not b7["native_bootstrap_implemented"] and not b7["integration_selected"]
-    assert b7["next_goal"] is report["next_authorized_goal"] is None
+    assert b7["next_goal"] is None  # the failed construction is not reopened by B12
+    assert report["next_authorized_goal"].startswith("B12:")
     assert report["active_baseline_status"] == "stopped_after_failed_B7"
     assert report["B2_CPU_Fp3_port"]["status"] == "functional_port_complete"
     assert report["B5_alignment_admission"]["repair_selected"] is None

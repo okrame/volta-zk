@@ -8,9 +8,10 @@ The evaluated baseline remains stopped after B7. The owner's subsequent
 decisions opened B8/B9: a replacement construction and a checked native
 component. B10 concludes the premise/lifecycle assessment with integration
 not admitted. B11 selects the owner-authorized intermediate finite AES profile under
-explicit primitive/resource hypotheses; design §10 retains the same-W and
-future adversary-work upgrade beyond 2^78 obligations. Full security and
-production integration remain unadmitted.
+explicit primitive/resource hypotheses. B12 is active: a conditional bootstrap
+resource extension to T80 and a durable finite-pool component are available;
+same-W PCS/GKR, renewed roots and complete lifetime bounds remain open in
+design §10. Full security and production integration remain unadmitted.
 
 ## Current documents
 
@@ -30,10 +31,11 @@ production integration remain unadmitted.
 | [T1 attention products](c7.1-attention-products.md) | Aggregated raw QK/PV, rectangular-view DP, GQA endpoints, source-bound probability contraction and per-layer witness schedule |
 | [R3 auxiliary witness](c7.1-auxiliary-witness.md) | Unified B/raw-attention byte source, fresh raw probes/RNE pullbacks, identical striped RS encoder and staged tree-cache repairs; incomplete Gamma/liveness |
 | [B9 native bootstrap](../rust/volta-pcg/src/c71_bootstrap.rs) · [bounded runner](../scripts/run_c71_bootstrap.py) | Independent MR19/P-521 and COPE/Fp9 roles, adversarial byte checks and local resources; no production/security admission |
+| [B12 durable finite pool](../rust/volta-pcg/src/c71_lifetime.rs) | Both B11 roles, joint durable burns, accepted-head persistence and crash checks; fixed root only, no complete PCS/GKR admission |
 | [B3 native census](../scripts/c71_work_census.py) · [bounded runner](../scripts/run_c71_matrix.py) | Actual Goldilocks arithmetic and phase memory of the reduced B2 matrix path; physical traffic/security remain open in design §10 |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |
-| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [B8–B11 checks](../tests/test_c71_bootstrap.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget, including B4–B7 decisions, B8/B9 construction/component, B10 primitive/lifecycle assessment and B11 intermediate AES selection and local-repair exclusion without security credit; `--research-screens`: preserved, non-additive research inventory |
+| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [B8–B12 checks](../tests/test_c71_bootstrap.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget, including B4–B7 decisions, B8/B9 construction/component, B10/B11 assessments and B12 conditional resource extension with complete security totals still unknown; `--research-screens`: preserved, non-additive research inventory |
 
 Status and design are editable; replace obsolete statements and use Git for
 history. Record important decisions with reasons and source links. Add a page

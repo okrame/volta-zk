@@ -223,7 +223,7 @@ def test_B8_source_selection_costs_and_conditional_security_are_separate():
     assert not b8["security_admitted"] and not r["security_admitted"]
     assert r["B7_bootstrap_admission"]["baseline_stopped"]
     assert r["active_baseline_status"] == "stopped_after_failed_B7"
-    assert r["next_authorized_goal"] is None and "B12" in r["next_proposed_goal"]
+    assert r["next_authorized_goal"].startswith("B12:")
     security = b8["conditional_security"]
     terms = {k: Fraction(v) for k, v in security["terms_at_required_primitive_advantages"].items()}
     assert sum(terms.values()) == Fraction(security["sum_at_required_primitive_advantages"])
@@ -253,7 +253,7 @@ def test_B9_native_boundary_counts_and_preserved_history():
     assert r["B7_bootstrap_admission"]["baseline_stopped"]
     assert r["active_baseline_status"] == "stopped_after_failed_B7"
     assert r["replacement_bootstrap_status"] == "B11_intermediate_finite_AES_selected_conditionally"
-    assert r["next_authorized_goal"] is None and "B12" in r["next_proposed_goal"]
+    assert r["next_authorized_goal"].startswith("B12:")
     assert b9["native_OT_call_counts_both_roles"] == {
         "fixed_base_scalar_multiplications": 2304, "variable_base_scalar_multiplications": 2304,
         "hash_to_group": 2304, "KDF": 2304, "point_additions": 1728, "scalar_candidates": 18432}
@@ -419,6 +419,41 @@ def test_B11_intermediate_forest_lifetime_resources_and_capacity():
         assert d["native_MAC_transfers_checked"] == expected["full_Fp3_capacity"]
         assert d["prover"]["work"]["aes_block_encryptions"] + d["verifier"]["work"]["aes_block_encryptions"] == expected["AES_block_encryptions_both_roles"]
         assert c["wire_io"]["prover_sent_bytes"] + c["wire_io"]["verifier_sent_bytes"] == expected["protocol_wire_bytes"]
+
+
+def test_B12_resource_lift_counts_work_separately_from_global_RO_queries():
+    b = plan.b12_lifetime_admission()
+    a, r = b["adversary"], b["reduction"]
+    assert a["global_u64_work_including_preprocessing"] == a["global_memory_and_advice_words"] == 1 << 80
+    assert a["global_RO_queries"] == 1 << 64
+    assert r["query_upper_derived"] == 513*(1 << 64) + (1 << 50) < (1 << 74)
+    assert r["work_upper_derived"] == (1 << 80) + (1 << 92) + (1 << 46)*((1 << 74)+(1 << 50))
+    assert r["work_upper_derived"] < r["primitive_work_cap"] == 1 << 121
+    assert (1 << 89) < r["memory_words_upper_derived"] < r["primitive_memory_words_cap"] == 1 << 93
+    assert b["primitive_hypotheses"]["memory_envelope_strengthened_from_B11"]
+    assert not b["primitive_hypotheses"]["inherited_from_B11_without_new_hypothesis"]
+    assert not b["primitive_hypotheses"]["proven_for_concrete_AES_or_P521"]
+    assert b["bootstrap_component"]["terms"] == plan.b11_intermediate_selection()["conditional_lifetime"]["terms"]
+    # Raising Q along with work would invalidate the chosen query envelope.
+    assert 513*(1 << 80)+(1 << 50) > r["global_queries_including_simulator"]
+
+
+def test_B12_composition_does_not_promote_unproved_allocations_or_model_labels():
+    b = plan.baseline_budget()["B12_lifetime_admission"]
+    c = b["composition"]
+    known, target = Fraction(c["known_bootstrap_subtotal"]), Fraction(c["target"])
+    terms = {k: Fraction(v) for k, v in b["bootstrap_component"]["terms"].items()}
+    assert sum(terms.values()) == known < Fraction(1, 1 << 82) < target
+    assert known + Fraction(c["remaining_error_allowance"]) == target
+    allocations = [Fraction(v) for v in c["unproved_lifetime_allocations"].values()]
+    assert len(allocations) == 6 and known+sum(allocations) == Fraction(c["allocation_screen_sum"]) < target
+    assert not c["allocations_are_established_bounds"]
+    assert c["soundness_total"] is c["malicious_verifier_ZK_total"] is None
+    assert c["complete_admission_bound"] == "infinity"
+    assert not any(b[k] for k in ("credit", "security_admitted", "B12_complete", "pool_PCS_integration_admitted"))
+    assert b["same_W"]["root_renewal_fails_closed"]
+    assert not b["same_W"]["instantiated_authenticated_PCS_GKR_relation"]
+    assert not b["same_W"]["MAC_validity_implies_model_binding"]
 
 
 def test_B11_public_domains_and_single_use_epochs_retain_seed_search_bound():

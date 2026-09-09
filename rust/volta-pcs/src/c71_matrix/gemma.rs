@@ -8,12 +8,14 @@ use crate::{
 };
 use std::collections::BTreeMap;
 
+pub(super) mod caller;
+
 #[derive(Clone, Debug)]
 pub(super) struct Source {
     pub name: String,
     pub rows: usize,
     pub cols: usize,
-    pub packed_offset: usize, // i16 cells in the EXISTING terminal-order file
+    pub packed_offset: usize, // scalar cells; W uses i16 in the existing terminal-order file
 }
 
 #[derive(Clone, Debug)]
@@ -362,7 +364,9 @@ impl Plan {
         points: &[(Vec<Fp3>, Vec<Fp3>)],
         tokens: &[u32],
     ) -> Result<Vec<Vec<Cube>>, String> {
-        if points.len() != self.cohorts.len() || tokens.len() != 150 {
+        if points.len() != self.cohorts.len()
+            || self.cohorts.first().is_none_or(|c| c.kind != Kind::Lookup || c.rows != tokens.len())
+        {
             return Err("Gemma W endpoint/token count differs".into());
         }
         let mut forms = Vec::new();

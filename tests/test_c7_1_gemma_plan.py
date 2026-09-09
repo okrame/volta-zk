@@ -152,10 +152,9 @@ def test_B12_range_same_PCS_capacity_and_error_census():
         assert row['both_resource_caps_hold']
         assert row['reduction_work_upper'] < row['primitive_work_cap'] == 1 << 121
         assert row['reduction_memory_words_upper'] < row['primitive_memory_words_cap'] == 1 << 93
-        if row['native_geometry']:
-            assert Fraction(row['conditional_ZK_sum']) < Fraction(1, 1 << 78)
-        else:
-            assert row['conditional_ZK_sum'] is None
+        assert Fraction(row['conditional_ZK_sum']) < Fraction(1, 1 << 78)
+        assert row['large_domain_private_sampler_and_simulator_bound_derived']
+        assert not row['large_domain_native_runtime_admitted']
     big = b['cases'][-1]
     assert big['P0_plus_range_plus_one_bridge_base_rows'] == 312693
     assert 82 < big['conditional_soundness_bits'] < 83
@@ -179,7 +178,7 @@ def test_B12_native_P0_census_keeps_input_cut_and_shared_product_obligations():
     tiny = b['tiny_checked_case']
     assert tiny['Fp3_correlations_including_range_and_both_PCS_bridges'] == 269+23+1+32+32
     assert tiny['PCS_chains_for_W'] == tiny['PCS_chains_for_auxiliary_source'] == 1
-    assert b['two_source_PCS_error_and_ZK_composition'] is None
+    assert b['two_source_PCS_error_and_ZK_composition'].startswith('raw_P0_two_source_composition;')
     assert b['complete_source_opening_capacity'] is None and not b['actual_full_Gemma_GKR_compiler']
     layout = b['native_pinned_DAG_to_P0_and_W_layout']
     tensors = plan.pinned_private_tensors()
@@ -188,6 +187,79 @@ def test_B12_native_P0_census_keeps_input_cut_and_shared_product_obligations():
     assert layout['cut_bytes_from_compiled_rows'] == sum(c['rows']*c['columns']*c['cut_scalar_bytes'] for c in cohorts)
     assert layout['existing_terminal_packed_order_preserved']
     assert not layout['full_private_weight_bodies_loaded']
+    caller = b['native_DAG_caller']
+    assert caller['Fp3_correlations_with_shared_product_mask'] == 35961
+    assert caller['FS_requests_including_product_batch'] == 25893
+    assert caller['field_payload_bytes_before_context_and_framing'] == 1111680
+    assert caller['distinct_original_i16_producers'] == 602
+    assert caller['canonical_auxiliary_sources'] == 1375
+    assert caller['canonical_auxiliary_live_field_cells'] == 1653698048
+    assert caller['native_original_C_X_forms'] == 1545
+    assert caller['native_original_C_X_cubes'] == 14909 < 16384
+    assert caller['head_selected_final_norm_rows'] == [99, 148]
+    assert caller['returns_pending_C_X_W_openings_not_Gemma_acceptance']
+    assert not caller['full_Gemma_forward_or_source_PCS_executed']
+
+
+def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():
+    all_bounds = plan.b12_pcs_binding_assessment()
+    b = all_bounds['raw_P0_two_source_composition']
+    layout = b['source_layout']
+    assert layout['combined_field_cells'] == 962426624+691271424 == 1653698048
+    assert layout['required_log_cells'] == 31
+    assert layout['raw_cut_and_input_packed_bytes'] == 6525586944 > layout['reference_arena_bytes']
+    assert not layout['full_auxiliary_materialization_selected']
+    beta = Fraction((1 << 64)-plan.P, 1 << 64)
+    for c in b['cases']:
+        assert c['W_installations'] == 1 and c['auxiliary_installations'] == 3
+        assert c['private_streams'] == 3*(1+3+3+3) == 30
+        assert c['forest_distinct_nodes'] == 2*c['forest_distinct_leaves']-c['forest_distinct_trees']
+        assert c['forest_distinct_trees'] < 512
+        hiding = {k: Fraction(v) for k, v in c['joint_hiding_terms'].items()}
+        assert hiding['all_source_salt_collisions'] == Fraction(
+            c['forest_distinct_leaves']*(c['forest_distinct_leaves']-1), 2*plan.P**4)
+        privacy = {k: Fraction(v) for k, v in c['privacy_terms'].items()}
+        assert privacy['two_joint_forest_and_coin_hybrids'] == 2*sum(hiding.values())
+        assert sum(privacy.values()) == Fraction(c['conditional_ZK_sum'])
+        assert sum(map(Fraction, c['soundness_terms'].values())) == Fraction(c['conditional_soundness_sum'])
+        n = c['private_Fp_outputs_per_stream_cap']
+        assert c['largest_stream_Fp_outputs_upper'] <= n
+        assert 4*beta < Fraction(1, 1 << 29) and 29*n >= 256
+        assert Fraction(c['sampler_error_each_hybrid']) == 30*(n*beta**8+Fraction(1, 1 << 256))
+        assert c['private_stream_bytes_on_good_sampling'] == 16*n+1024 < c['private_stream_byte_cap']
+        assert c['full_RO_queries_upper'] < 1 << 74
+        assert c['decoder_invocations'] == 4 and c['both_resource_caps_hold']
+        assert c['reduction_work_upper'] < c['primitive_work_cap'] == 1 << 121
+        assert c['reduction_memory_words_upper'] < c['primitive_memory_words_cap'] == 1 << 93
+        assert c['original_W_targets_with_range'] == 775 and c['original_C_X_targets'] == 1545
+        assert c['fixed_false_output_polynomial_degree_upper'] == 24
+        assert c['P0_product_batch_degree'] == 771
+        assert c['initial_base_capacity_three_attempts_before_other_operators'] == 3*c['base_rows_per_attempt_before_other_operators']
+        assert c['both_below_2_to_minus_78'] and not c['full_size_runtime_or_physical_admission']
+    big = b['cases'][-1]
+    assert (big['W_log_cells'], big['auxiliary_log_cells']) == (35, 31)
+    assert big['base_rows_per_attempt_before_other_operators'] == 312981
+    assert big['initial_base_capacity_three_attempts_before_other_operators'] == 938943
+    assert big['private_Fp_outputs_over_all_roots'] == 38692659328
+    assert big['largest_stream_Fp_outputs_upper'] == 1 << 34
+    assert big['forest_distinct_trees'] == 322
+    assert big['dense_W_codeword_bytes'] == 1 << 42
+    assert big['dense_auxiliary_codeword_bytes'] == 1 << 38
+    assert b['full_Gemma_security_totals'] is None and not b['all_Gemma_integer_producers_proven']
+    # Exact small analogue of the total-word rejection tail, not a huge run.
+    rejection = Fraction(1, 8)
+    for n in range(1, 6):
+        tail = sum(math.comb(2*n, k)*rejection**k*(1-rejection)**(2*n-k) for k in range(n, 2*n+1))
+        assert tail <= (4*rejection)**n
+    # One original lookup MAC can occur in BOTH PCS targets. The two fresh
+    # shifts compensate the same dz; no second transfer for the lookup.
+    for delta, z, gamma1, gamma2 in product(range(7), repeat=4):
+        key_z, dz = 4, -z
+        for coefficient, gamma, key_eta, eta in ((2, gamma1, 3, 1), (5, gamma2, 6, 2)):
+            shifted_eta = (eta+gamma*coefficient*dz) % 7
+            before = key_eta-delta*eta-gamma*coefficient*(key_z-delta*z)
+            after = key_eta-delta*shifted_eta-gamma*coefficient*key_z
+            assert (before-after) % 7 == 0
 
 
 def test_B12_unsalted_commitment_tests_W_after_mask_exhaustion():

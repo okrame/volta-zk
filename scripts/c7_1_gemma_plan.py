@@ -6524,6 +6524,30 @@ def b12_p0_native_caller():
             +b12_weight_range_profile(35)['range_Fp3_correlations_before_shared_bridge']+3*35+2),
         'MAC_zero_tags_in_native_P0': prior['zero_residual_equations'],
         'native_point_and_sumcheck_requests': prior['extension_challenges_before_A4_and_link_batches'],
+        'native_DAG_caller': {
+            'source': 'rust/volta-pcs/src/c71_matrix/gemma/caller.rs',
+            'all_output_points_follow_fixed_roots_profiles_layouts_and_tokens': True,
+            'output_points_before_all_C_corrections': prior['output_point_extension_coordinates'],
+            'cohort_kind_and_W_forms_selected_by_verifier': True,
+            'Fp3_correlations_with_shared_product_mask': prior['extension_corrections_before_other_circuits']+1,
+            'FS_requests_including_product_batch': prior['extension_challenges_before_A4_and_link_batches']+1,
+            'field_payload_bytes_before_context_and_framing': 24*(
+                prior['extension_corrections_before_other_circuits']+prior['zero_residual_equations']+2),
+            'distinct_original_i16_producers': len({
+                tuple(r['source_producer'].values()) for r in gemma_input_routes(cohorts)}),
+            'canonical_auxiliary_sources': 1375,
+            'canonical_auxiliary_live_field_cells': 1653698048,
+            'native_original_C_X_forms': 1545,
+            'native_original_C_X_cubes': 14909,
+            'auxiliary_source_and_selector_rederived_from_DAG': True,
+            'head_selected_final_norm_rows': [99, 148],
+            'same_MAC_lookup_cut_and_W': True,
+            'returns_pending_C_X_W_openings_not_Gemma_acceptance': True,
+            'checked_all_773_compact_cohorts_with_zero_vectors': True,
+            'tiny_executed_DAG_Fp3_correlations_with_range_and_two_PCS': 365,
+            'tiny_wrong_head_row_selection_rejected_by_auxiliary_PCS': True,
+            'full_Gemma_forward_or_source_PCS_executed': False,
+        },
         'tiny_checked_case': {'D': 10, 'range_limit': 7,
             'rooted_sources': ['W: matrix/norm/embedding', 'A: private raw X/C'],
             'PCS_chains_for_W': 1, 'PCS_chains_for_auxiliary_source': 1,
@@ -6546,7 +6570,7 @@ def b12_p0_native_caller():
             'full_Gemma_integer_forward_or_PCS_runtime': False,
         },
         'full_Gemma_non_W_relations_and_quantization': False,
-        'two_source_PCS_error_and_ZK_composition': None,
+        'two_source_PCS_error_and_ZK_composition': 'raw_P0_two_source_composition; raw relation only',
         'complete_source_opening_capacity': None,
         'complete_security_or_physical_credit': False,
     }
@@ -6595,6 +6619,167 @@ def b12_weight_range_profile(bits, limit=32767):
     }
 
 
+def b12_raw_p0_composition(profiles, auxiliary_profile, mask, bootstrap_error,
+                         merkle_binding, bootstrap_work, bootstrap_memory, tape_words):
+    """Two-source RAW P0 relation, not the quantized Gemma producer graph.
+
+    W is installed once; one fresh auxiliary root fixes all C/X per attempt.
+    Full-size entries are mathematical profiles with excluded dense schedules.
+    """
+    cohorts = gemma_weight_cohorts(pinned_private_tensors())
+    census = weight_cohort_screen(cohorts)
+    routes = gemma_input_routes(cohorts)
+    producers = {}
+    for route in routes:
+        key = tuple(route['source_producer'].values())
+        shape = tuple(route['source_shape'])
+        if producers.setdefault(key, shape) != shape:
+            raise ValueError('P0 producer shapes differ')
+    cut_cells = sum(c['rows']*c['columns'] for c in cohorts)
+    cut_bytes = sum(c['rows']*c['columns']*c['cut_scalar_bytes'] for c in cohorts)
+    input_cells = sum(math.prod(shape) for shape in producers.values())
+    beta = Fraction((1 << 64)-P, 1 << 64)
+    q, qa, work, query_cap = P**3, 1 << 64, 1 << 80, 1 << 74
+    cases = []
+    for wp, ap in zip(profiles, [profiles[0], profiles[1], auxiliary_profile]):
+        d, a = wp['log_message_cells'], ap['log_message_cells']
+        forests, output_counts, per_stream_counts = [], [], []
+        for profile, installations in ((wp, 1), (ap, 3)):
+            os = profile['oracles']
+            first = os[0]
+            leaves = profile['adaptive_Merkle_hiding']['distinct_salted_leaves']
+            leaves += (installations-1)*first['domain_rows']
+            trees = profile['adaptive_Merkle_hiding']['distinct_trees']+installations-1
+            forests.append((leaves, trees))
+            scalar_rows = mask['message_rows']+mask['randomness_rows']
+            folded = sum(profile['folds'])
+            private_E = (sum(o['width']*o['randomness_rows'] for o in os[1:])
+                + folded*scalar_rows
+                + sum(scalar_rows-o['randomness_rows'] for o in os[:-1])
+                + os[-1]['message_rows']+os[-1]['randomness_rows']
+                + (folded+len(os)-1)*scalar_rows)
+            initial_fields = first['width']*first['randomness_rows']
+            warm_leaves = (profile['adaptive_Merkle_hiding']['distinct_salted_leaves']
+                           -first['domain_rows'])//3
+            per_stream_counts.extend((initial_fields, 4*first['domain_rows'],
+                                      3*private_E, 4*warm_leaves))
+            output_counts.append(installations*initial_fields+9*private_E+4*leaves)
+        leaves, trees = map(sum, zip(*forests))
+        nodes = 2*leaves-trees
+        streams = 3*(1+3+3+3)  # W setup/proofs; fresh A setups/proofs
+        field_cap = (1 << 26) if d <= 14 else (1 << 35)
+        assert max(per_stream_counts) <= field_cap
+        # At most N outputs. More than 2N candidate words implies at least
+        # N rejections in 2N Bernoulli trials. (4*beta)^N < 2^-256;
+        # never materialize that enormous rational power for D35.
+        assert 4*beta < Fraction(1, 1 << 29) and 29*field_cap >= 256
+        stream_tail = Fraction(1, 1 << 256)
+        sampler = streams*(field_cap*beta**8+stream_tail)
+        stream_bytes = 16*field_cap+(1 << 10)
+        assert stream_bytes < 1 << 40
+        coins = (Fraction(streams*query_cap, (1 << 256)-query_cap-streams)
+                 + Fraction(streams*(streams-1), 1 << 257))
+        hiding = {
+            'all_source_unrevealed_salt_queries': Fraction(leaves*query_cap, P**4-query_cap),
+            'all_source_salt_collisions': Fraction(leaves*(leaves-1), 2*P**4),
+            'all_source_hidden_digest_queries': Fraction(2*nodes*query_cap, (1 << 256)-query_cap-nodes),
+            'all_source_digest_collisions': Fraction(nodes*(nodes-1), 1 << 257),
+            'all_private_coin_indices_once': coins,
+        }
+        range_profile = b12_weight_range_profile(d)
+        w_targets = len(cohorts)+2
+        a_targets = len(cohorts)+census['private_product_equations']
+        output_degree = max((c['rows']-1).bit_length()+(c['columns']-1).bit_length() for c in cohorts)
+        maximum = max(Fraction(wp['max_coin_block_error']), Fraction(ap['max_coin_block_error']),
+            Fraction(range_profile['max_range_FS_block_error']), Fraction(output_degree, q),
+            Fraction(3, q), Fraction(census['private_product_equations']-1, q),
+            Fraction(w_targets-1, q), Fraction(a_targets-1, q), Fraction(2*max(d, a), q))
+        # Range already includes its shared W bridge; add the P0 affine tags,
+        # quadratic product batch and the auxiliary bridge's affine checks.
+        degree_sum = (range_profile['MAC_degree_sum_per_attempt_including_shared_bridge']
+                      +census['zero_residual_equations']+2+a+2)
+        sound_terms = {'bootstrap_T80': bootstrap_error,
+            'post_bootstrap_seal': Fraction(8*work+2, 1 << 256),
+            'global_Merkle_binding_once': merkle_binding,
+            'all_affine_and_quadratic_MAC_checks': Fraction(3*degree_sum, q-1),
+            'global_P0_range_and_both_PCS_FS': query_cap*maximum}
+        privacy_terms = {'bootstrap_T80': bootstrap_error,
+            'two_joint_forest_and_coin_hybrids': 2*sum(hiding.values()),
+            'global_first_draw_zero_OOD': Fraction(query_cap, q),
+            'two_finite_private_sampler_hybrids': 2*sampler}
+        sound, privacy = sum(sound_terms.values()), sum(privacy_terms.values())
+        decode = lambda p: 6*p['oracles'][0]['width']*p['oracles'][0]['domain_rows']**3*(1 << 12)
+        decoder_work = decode(wp)+3*decode(ap)
+        honest_work, honest_memory, honest_queries = 1 << 72, 1 << 66, 1 << 40
+        reduction_work = (bootstrap_work+(1 << 12)*(qa*tape_words+query_cap)
+                          +(1 << 32)*work+decoder_work+honest_work)
+        reduction_memory = bootstrap_memory+qa*tape_words+(1 << 12)*query_cap+honest_memory
+        correlations = (range_profile['range_Fp3_correlations_before_shared_bridge']
+                        +census['extension_corrections_before_other_circuits']+1+3*d+2+3*a+2)
+        cases.append({
+            'W_log_cells': d, 'auxiliary_log_cells': a,
+            'W_installations': 1, 'auxiliary_installations': 3,
+            'attempts_including_failure': 3, 'PCS_chains_per_attempt': 2,
+            'original_W_targets_with_range': w_targets, 'original_C_X_targets': a_targets,
+            'fixed_false_output_polynomial_degree_upper': output_degree,
+            'P0_product_batch_degree': census['private_product_equations']-1,
+            'MAC_degree_sum_per_attempt': degree_sum,
+            'Fp3_correlations_per_attempt_before_other_operators': correlations,
+            'base_rows_per_attempt_before_other_operators': 3*correlations,
+            'initial_base_capacity_three_attempts_before_other_operators': 9*correlations,
+            'soundness_terms': {k: str(v) for k, v in sound_terms.items()},
+            'privacy_terms': {k: str(v) for k, v in privacy_terms.items()},
+            'conditional_soundness_sum': str(sound), 'conditional_ZK_sum': str(privacy),
+            'soundness_bits': math.log2(sound.denominator)-math.log2(sound.numerator),
+            'ZK_bits': math.log2(privacy.denominator)-math.log2(privacy.numerator),
+            'both_below_2_to_minus_78': max(sound, privacy) < Fraction(1, 1 << 78),
+            'forest_distinct_leaves': leaves, 'forest_distinct_trees': trees,
+            'forest_distinct_nodes': nodes,
+            'joint_hiding_terms': {k: str(v) for k, v in hiding.items()},
+            'private_streams': streams, 'private_Fp_outputs_over_all_roots': sum(output_counts),
+            'largest_stream_Fp_outputs_upper': max(per_stream_counts),
+            'private_Fp_outputs_per_stream_cap': field_cap,
+            'private_stream_bytes_on_good_sampling': stream_bytes,
+            'private_stream_byte_cap': 1 << 40,
+            'candidate_word_tail_upper_per_stream': str(stream_tail),
+            'sampler_error_each_hybrid': str(sampler),
+            'decoder_invocations': 4, 'decoder_u64_work_upper': decoder_work,
+            'honest_caller_u64_work_upper': honest_work,
+            'honest_caller_memory_words_upper': honest_memory,
+            'honest_caller_RO_events_upper': honest_queries,
+            'full_RO_queries_upper': 513*qa+(1 << 50)+honest_queries,
+            'forced_FS_XOF_words_per_adversarial_query_upper': tape_words,
+            'reduction_work_upper': reduction_work,
+            'reduction_memory_words_upper': reduction_memory,
+            'primitive_work_cap': 1 << 121, 'primitive_memory_words_cap': 1 << 93,
+            'both_resource_caps_hold': reduction_work < 1 << 121 and reduction_memory < 1 << 93,
+            'native_geometry': d <= 14,
+            'dense_W_codeword_bytes': wp['initial_encoded_base_field_bytes'],
+            'dense_auxiliary_codeword_bytes': ap['initial_encoded_base_field_bytes'],
+            'full_size_runtime_or_physical_admission': False,
+        })
+    return {
+        'relation': 'all raw P0 products and lookup use the same ranged W; C/X are fixed private sources',
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/caller.rs',
+        'source_layout': {'raw_cut_cells': cut_cells, 'distinct_i16_producer_cells': input_cells,
+            'combined_field_cells': cut_cells+input_cells, 'required_log_cells': (cut_cells+input_cells-1).bit_length(),
+            'raw_cut_packed_bytes': cut_bytes,
+            'raw_cut_and_input_packed_bytes': cut_bytes+2*input_cells,
+            'reference_arena_bytes': 6442450944,
+            'full_auxiliary_materialization_selected': False},
+        'cases': cases,
+        'all_original_C_X_W_openings_required': True,
+        'same_lookup_MAC_in_both_source_batches': True,
+        'honest_compact_preparer_NoPeek_contract_required': True,
+        'fresh_installation_malicious_verifier_ZK': True,
+        'external_fixed_root_simulation_claimed': False,
+        'all_Gemma_integer_producers_proven': False,
+        'full_Gemma_security_totals': None,
+        'physical_schedule_admitted': False,
+        'new_Lean_or_generated_code_proof': False,
+    }
+
+
 def b12_pcs_binding_assessment():
     """Unique-decoding route for the published IOPP; source/hash compilation stays explicit."""
     q = P**3
@@ -6623,7 +6808,7 @@ def b12_pcs_binding_assessment():
 
     mask = oracle(mask_message, mask_queries, 1)
     profiles = []
-    for log_size in (12, 14, 35):
+    for log_size in (12, 14, 35, 31):
         remaining, oracles, folds = log_size, [], []
         while True:
             folding = (1 if log_size <= 14 else 7) if not oracles else 2
@@ -6709,6 +6894,7 @@ def b12_pcs_binding_assessment():
                 'bits': math.log2(hiding_total.denominator)-math.log2(hiding_total.numerator),
                 'native_profile_selected': log_size <= 14},
             "native_profile_selected": log_size <= 14})
+    auxiliary_profile = profiles.pop()  # P0 C/X geometry; keep the existing public profile list.
 
     exhaustion = []
     for case in b4_security_admission()["proximity"]["cases"]:
@@ -6819,9 +7005,20 @@ def b12_pcs_binding_assessment():
                                    if index < len(fixed_matrix_security) else None),
             'conditional_ZK_bits': (fixed_matrix_security[index]['ZK_bits']
                                     if index < len(fixed_matrix_security) else None),
-            'D35_private_sampler_and_full_size_simulator_admitted': False,
+            'large_domain_native_runtime_admitted': False,
             'native_geometry': profile['log_message_cells'] <= 14})
         range_cases.append(row)
+    p0_composition = b12_raw_p0_composition(profiles, auxiliary_profile, mask,
+        fixed_boot, merkle_collision+merkle_deferred, bootstrap_work, bootstrap_memory,
+        tape_words)
+    for row, joint in zip(range_cases, p0_composition['cases']):
+        row['large_domain_private_sampler_and_simulator_bound_derived'] = True
+        if row['conditional_ZK_sum'] is None:
+            # The joint lemma also holds for the single W forest; its larger
+            # counts are a conservative upper bound, without a native D35 run.
+            row['conditional_ZK_sum'] = joint['conditional_ZK_sum']
+            row['conditional_ZK_bits'] = joint['ZK_bits']
+            row['ZK_bound_source'] = 'raw_P0_two_source_composition; larger joint forest upper bound'
     return {"status": "conditional_field_matrix_security_with_fixed_run_ZK",
         "credit": False, "security_admitted": False,
         "source": "docs/c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata",
@@ -6997,6 +7194,7 @@ def b12_pcs_binding_assessment():
             'full_Gemma_quantization_or_runtime': False,
             'full_Gemma_security_totals': None, 'security_admitted': False},
         'native_P0_original_MAC_caller': b12_p0_native_caller(),
+        'raw_P0_two_source_composition': p0_composition,
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",

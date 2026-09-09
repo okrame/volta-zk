@@ -1,0 +1,65 @@
+{
+  "milestone": "c71-b9-bootstrap",
+  "git_commit": "8197f42b19b461269f5069184a7a8e893920804e",
+  "git_dirty": false,
+  "credit": false,
+  "run_of_record": true,
+  "rows": 3,
+  "fault": "none",
+  "started_at_utc": "2026-09-09T11:26:33.354529+00:00",
+  "build_command": [
+    "/home/okrame/.cargo/bin/cargo",
+    "build",
+    "--offline",
+    "--locked",
+    "-j",
+    "2",
+    "-p",
+    "volta-pcg",
+    "--features",
+    "c71-bootstrap",
+    "--example",
+    "c71_bootstrap"
+  ],
+  "build_profile": "dev opt-level=2, debug=0, native CPU; operation counters enabled",
+  "runtime_limits": {
+    "wall_seconds": 60,
+    "address_space_and_RSS_bytes": 2147483648,
+    "threads": 2
+  },
+  "host": [
+    "Linux",
+    "mydebian",
+    "6.12.94+deb13-arm64",
+    "#1 SMP Debian 6.12.94-1 (2026-06-20)",
+    "aarch64"
+  ],
+  "rustc_version": "rustc 1.96.1 (31fca3adb 2026-06-26)\nbinary: rustc\ncommit-hash: 31fca3adb283cc9dfd56b49cdee9a96eb9c96ffd\ncommit-date: 2026-06-26\nhost: aarch64-unknown-linux-gnu\nrelease: 1.96.1\nLLVM version: 22.1.2\n",
+  "build": {
+    "returncode": 0,
+    "stderr": "   Compiling volta-pcg v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-pcg)\n   Compiling volta-mac v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-mac)\n    Finished `dev` profile [optimized] target(s) in 5.47s\n"
+  },
+  "binary_sha256": "a9b40faeb7f35663824cb32cc6e70e1e609b7c235f9bbbbba1d238c9da61d552",
+  "execution_process": {
+    "returncode": 1,
+    "failure": null,
+    "wall_seconds": 0.022144726011902094,
+    "sampled_peak_RSS_bytes": 700416,
+    "sampled_peak_process_threads": 1,
+    "stdout": "",
+    "stderr": "Error: Os { code: 1, kind: PermissionDenied, message: \"Operation not permitted\" }\n"
+  },
+  "status": "failed",
+  "source_changed_during_run": false,
+  "physical_traffic_probe": {
+    "event_sources": [
+      "breakpoint",
+      "kprobe",
+      "software",
+      "tracepoint",
+      "uprobe"
+    ],
+    "perf_event_paranoid": "3",
+    "DRAM_traffic_measured": false
+  }
+}

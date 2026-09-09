@@ -6236,7 +6236,9 @@ def b10_composition_admission():
 def b11_intermediate_selection():
     """Owner-authorized finite AES construction; conditional component theorem only."""
     setups, m, n, depth = LIFETIME_ATTEMPTS, 576, 207, 8
-    q = 1 << 65
+    # A simulator may fill up to 512 underlying SHAKE candidates for an
+    # adversarial group-map context. Charge them too, rather than reusing Q64.
+    q = 1 << 74
     roots = 2*m*setups
     nodes, leaves = roots*((1 << depth)-1), roots*(1 << depth)
     b8 = b8_bootstrap_selection()
@@ -6244,6 +6246,9 @@ def b11_intermediate_selection():
              b8["conditional_security"]["terms_at_required_primitive_advantages"].items()
              if k != "PRF_at_required_advantage"}
     terms.update({
+        "DDH_at_required_advantage": Fraction(m*setups*q, 1 << 193),
+        "group_programming_rank_and_KDF_union_envelope": Fraction(16*m*setups*q*q, b8["profile"]["group_order"]),
+        "bounded_group_RO_sampler": Fraction(1, 1 << 430),
         "AES256_PRP_at_required_advantage": Fraction(nodes, 1 << 128),
         "four_block_permutation_switching": Fraction(6*nodes, 1 << 128),
         "hidden_leaf_RO_queries": Fraction(q*leaves, 1 << 256),
@@ -6264,6 +6269,34 @@ def b11_intermediate_selection():
             "AES_key_schedules_both_roles": depth*outputs,
             "AES_block_encryptions_both_roles": 4*depth*outputs,
             "scope": "component including framing; transport/lifecycle/PCS excluded"})
+    native_cases = []
+    source_commit = '8197f42b19b461269f5069184a7a8e893920804e'
+    for name in (
+            'c71-b11-180-none-20260909T112756147023Z-8197f42b19.json',
+            'c71-b11-207-none-20260909T112750200064Z-8197f42b19.json',
+            'c71-b11-3-challenge-codec-20260909T112815351945Z-8197f42b19.json',
+            'c71-b11-3-check-response-20260909T112812059624Z-8197f42b19.json',
+            'c71-b11-3-compression-codec-20260909T112818660136Z-8197f42b19.json',
+            'c71-b11-3-cope-error-20260909T112808763805Z-8197f42b19.json',
+            'c71-b11-3-frame-order-20260909T112821949901Z-8197f42b19.json',
+            'c71-b11-3-prover-context-20260909T112800964761Z-8197f42b19.json',
+            'c71-b11-3-receiver-point-20260909T112801990010Z-8197f42b19.json',
+            'c71-b11-3-seed-ciphertext-20260909T112805474092Z-8197f42b19.json',
+            'c71-b11-3-sender-point-20260909T112802894140Z-8197f42b19.json',
+            'c71-b11-3-verifier-context-20260909T112801071288Z-8197f42b19.json',
+    ):
+        source = "benchmarks/results/" + name
+        record = json.loads((Path(__file__).resolve().parents[1] / source).read_text())
+        if (record["git_dirty"] or not record["run_of_record"] or record["status"] != "pass"
+                or record["source_changed_during_run"] or record["git_commit"] != source_commit):
+            raise ValueError("B11 evidence must retain clean passing provenance")
+        e = record["execution"]
+        if e["schema"] != "c71-b11-native-v1" or e["accepted"] != (e["fault"] == "none"):
+            raise ValueError("B11 evidence suite or adversarial disposition mismatch")
+        native_cases.append({"source": source, "rows": e["rows"], "fault": e["fault"],
+            "accepted": e["accepted"], "details": e["details"], "heap": e["heap"],
+            "wire_io": e["wire_io"], "process": record["execution_process"],
+            "prover_error": e["prover_error"], "verifier_error": e["verifier_error"]})
     return {"status": "selected_intermediate_finite_AES_under_explicit_primitive_hypotheses",
         "credit": False, "B11_intermediate_selection_complete": True,
         "security_admitted": False, "production_runtime_admitted": False,
@@ -6281,11 +6314,12 @@ def b11_intermediate_selection():
             "free_RO_dependent_advice": False},
         "reduction": {"kind": "analytic straight-line simulator envelope, not native instruction measurement",
             "global_queries_including_simulator": q, "honest_event_upper": honest_events,
+            "query_upper_derived": (1+512)*adversary_work+honest_events,
             "work_per_event_upper": event_work, "work_upper_derived": reduction_work,
             "memory_words_upper_derived": reduction_memory,
-            "primitive_work_cap": 1 << 112, "primitive_memory_words_cap": 1 << 80,
+            "primitive_work_cap": 1 << 121, "primitive_memory_words_cap": 1 << 89,
             "proof": "design §10 B11 intermediate: bounded curve loops and bit-trie RO table; no replay"},
-        "primitive_hypotheses": {"DDH_P521_advantage_upper": str(Fraction(1, 1 << 184)),
+        "primitive_hypotheses": {"DDH_P521_advantage_upper": str(Fraction(1, 1 << 193)),
             "AES256_PRP_four_challenge_blocks_advantage_upper": str(Fraction(1, 1 << 128)),
             "at_full_reduction_resources": True,
             "proven_for_concrete_AES_or_P521": False, "SHAKE256_model": "classical programmable ROM"},
@@ -6295,6 +6329,8 @@ def b11_intermediate_selection():
             "below_2_to_minus_82": total < Fraction(1, 1 << 82),
             "complete_C71_or_same_W_FS_bound": False},
         "cases": cases,
+        "native_component": {"implemented_and_checked": True, "source_commit": source_commit,
+            "measured_cases": native_cases, "security_credit": False},
         "native_consumer_contract": "three disjoint same-key base rows; Delta_native=-Delta_B11; existing MAC transfer",
         "same_W": "exists ONE private W for every accepted proof across roots/sessions/key epochs; renewed root linked before activation",
         "unimplemented_production_obligations": ["joint durable reservation and global counters",

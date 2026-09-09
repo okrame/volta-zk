@@ -376,14 +376,18 @@ def test_B11_intermediate_forest_lifetime_resources_and_capacity():
     p, a, reduction = b["profile"], b["adversary"], b["reduction"]
     assert p["max_PRF_rows"] == p["max_data_rows"]+9 == 216
     assert a["global_u64_work_including_preprocessing"] == a["global_memory_and_advice_words"] == 1 << 64
-    assert reduction["work_upper_derived"] < reduction["primitive_work_cap"] == 1 << 112
-    assert reduction["memory_words_upper_derived"] < reduction["primitive_memory_words_cap"] == 1 << 80
+    assert reduction["work_upper_derived"] < reduction["primitive_work_cap"] == 1 << 121
+    assert reduction["memory_words_upper_derived"] < reduction["primitive_memory_words_cap"] == 1 << 89
+    assert reduction["query_upper_derived"] < reduction["global_queries_including_simulator"] == 1 << 74
     life = b["conditional_lifetime"]
     terms = {k: Fraction(v) for k, v in life["terms"].items()}
     assert sum(terms.values()) == Fraction(life["sum"]) < Fraction(1, 1 << 82)
     assert terms["four_block_permutation_switching"] == Fraction(6*1152*255*(1 << 20), 1 << 128)
-    assert terms["hidden_leaf_RO_queries"] == Fraction((1 << 65)*1152*256*(1 << 20), 1 << 256)
+    assert terms["hidden_leaf_RO_queries"] == Fraction((1 << 74)*1152*256*(1 << 20), 1 << 256)
     assert not b["primitive_hypotheses"]["proven_for_concrete_AES_or_P521"]
+    assert terms["DDH_at_required_advantage"] == Fraction(576*(1 << 20)*(1 << 74), 1 << 193)
+    order = plan.b8_bootstrap_selection()["profile"]["group_order"]
+    assert (1 << 74)*(1-Fraction(order, 1 << 522))**512 < terms["bounded_group_RO_sampler"]
     # All actual row paths fit the complete forest charged in the reduction.
     prefixes = {(d, row >> (8-d)) for row in range(216) for d in range(8)}
     assert len(prefixes) <= 255
@@ -398,6 +402,23 @@ def test_B11_intermediate_forest_lifetime_resources_and_capacity():
         assert set().union(*triples).isdisjoint(range(n, n+9))
     # A larger lifetime cannot silently inherit the same switching allocation.
     assert 64*terms["four_block_permutation_switching"] > Fraction(1, 1 << 82)
+    native = b["native_component"]
+    assert native["implemented_and_checked"] and not native["security_credit"]
+    assert len(native["measured_cases"]) == 12
+    assert {c["rows"] for c in native["measured_cases"] if c["accepted"]} == {180, 207}
+    for c in native["measured_cases"]:
+        assert c["process"]["sampled_peak_process_threads"] <= 2
+        assert c["process"]["wall_seconds"] < 60
+        assert c["process"]["sampled_peak_RSS_bytes"] < 2 << 30
+        if not c["accepted"]:
+            assert c["prover_error"] or c["verifier_error"]
+            continue
+        d = c["details"]
+        expected = next(case for case in b["cases"] if case["base_rows"] == c["rows"])
+        assert d["protocol_wire_bytes"] == expected["protocol_wire_bytes"]
+        assert d["native_MAC_transfers_checked"] == expected["full_Fp3_capacity"]
+        assert d["prover"]["work"]["aes_block_encryptions"] + d["verifier"]["work"]["aes_block_encryptions"] == expected["AES_block_encryptions_both_roles"]
+        assert c["wire_io"]["prover_sent_bytes"] + c["wire_io"]["verifier_sent_bytes"] == expected["protocol_wire_bytes"]
 
 
 def test_B11_public_domains_and_single_use_epochs_retain_seed_search_bound():

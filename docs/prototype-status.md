@@ -18,12 +18,13 @@ The selected path reuses MR19/P-521 and Wolverine Fp9→Fp3 base-sVOLE with
 an AES-256 GGM/SHAKE COPE PRF, capped at 207 data rows. It avoids puncture
 OT, IKNP, weak equality and LPN. The complete **conditional component**
 budget is below `2^-82` (86.835 bits), requiring explicit AES/DDH advantages
-at the full reductions' `2^112` work / `2^80` memory envelope. These are
+at the full reductions' `2^121` work / `2^89` memory envelope. These are
 named computational hypotheses, not proven concrete-primitive bounds or
 78-bit security for C7.1. [Design §10, B11 intermediate](c7.1-gemma31b-design.md#b11-selezione-intermedia-aes-a-capacità-finita)
 defines the construction, proof, resources and limits. The opt-in native
-profile and existing MAC consumer are implemented; bounded OS-random runs
-are the remaining component validation before recording completion.
+profile and existing MAC consumer pass the bounded validation: twelve
+clean-source B11 records at `8197f42`, including ten rejected byte faults.
+**B11 is complete as the authorized conditional intermediate milestone.**
 
 Public labels and even single-use renewal do not repair B10's 128-bit
 standalone PRG lower bound. That line remains closed; the wider silent
@@ -527,9 +528,16 @@ Native tests cover independent OpenSSL/SHAKE vectors, the row/suite boundary,
 zero-key rejection and the preserved B9/B7 checks. The diagnostic packs
 three disjoint rows per Fp3 and calls the existing native MAC transfer with
 `Delta_native=-Delta_B11`; altered values must fail in all three coordinates.
-The authorized OS-random cases are n=180/207 (60/69 Fp3) and ten adversarial
-byte cases at n=3. Their protocol wire targets are 1,075,705/1,202,065 bytes;
-no full-connection, PCS, physical-traffic or Gemma performance claim follows.
+All twelve OS-random B11 cases pass at clean source `8197f42`: n=180/207
+(60/69 Fp3) and ten rejected adversarial byte cases at n=3. The measured
+protocol wire is exactly 1,075,705/1,202,065 bytes. Complete two-role process
+times are 4.733/5.056 s on this local opt-level-2 diagnostic, with sampled
+peak RSS 5,447,680/5,857,280 bytes. These include diagnostic checks and are
+neither Gemma prover times nor full-connection/PCS or physical-traffic costs.
+The [B11 evidence in the design](c7.1-gemma31b-design.md#b11-selezione-intermedia-aes-a-capacità-finita)
+links the two capacities and preserves the initial socketpair-denied result
+alongside its successful B9 compatibility rerun. The single budget pins all
+twelve B11 records; 26 Python and eight narrow Rust tests pass.
 
 Same-W remains a global quantifier over all accepted proofs. A renewed root
 must be linked to the installed W before activation; locally valid MACs
@@ -561,7 +569,7 @@ archiving does not prove them or assert impossibility. The
 an explicit historical scope. There is no pending G2 patch, alternate
 runtime or second active goal. The single budget records this disposition;
 B10 and the conditional intermediate B11 selection are complete; B12 is
-the proposed next goal after bounded component validation.
+the proposed next goal; bounded B11 component validation is complete.
 
 ## Documentation decision
 

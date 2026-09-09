@@ -1,4 +1,4 @@
-# Current status — C7.1 Gemma-31B, B12 lifetime work active
+# Current status — C7.1 Gemma-31B, B12 fixed-run goal active
 
 Updated 2026-09-09. Editable working summary; Git preserves revisions.
 [Design](c7.1-gemma31b-design.md) · [Documentation index](README.md) ·
@@ -7,8 +7,14 @@ Updated 2026-09-09. Editable working summary; Git preserves revisions.
 ## Active authority — read first
 
 **B12 is authorized and remains open.** The owner's latest 2026-09-09 request
-requires adversary resources beyond `2^78`, durable single use, one private W
-across bootstrap/MAC/PCS/GKR, and a complete lifetime error at most `2^-78`.
+keeps adversary resources beyond `2^78`, one private W across the entire
+Gemma inference and both complete errors at most `2^-78`, while **deferring
+renewal, abort recovery and restart composition**. The prototype covers one
+uninterrupted sequential run with one model root, key epoch and initial
+finite capacity. Error, abort or exhaustion ends the run. Queries to discarded
+FS candidates still count, and views up to termination must remain private.
+Response count must fit the declared root/correlation capacity; there is no
+requirement to complete the old 2^20-attempt lifecycle.
 [Design §10, B12](c7.1-gemma31b-design.md#b12-risorse-lifetime-e-vincolo-same-w)
 now gives a **conditional soundness bound for the fixed-root field matrix**:
 about 86.8347 bits at n=48 or 128, with three total attempts. The argument
@@ -22,8 +28,8 @@ The [finite-pool component](../rust/volta-pcg/src/c71_lifetime.rs) wraps both
 real B11 roles with one locked durable journal. Setup and joint root-slot/row
 burns precede use; reopen preserves counters and accepted head while losing
 unused secret capacity. A fresh 40-byte post-bootstrap seal fixes row assignment
-before usable FS prefixes. **Root renewal remains unavailable until its
-same-W proof exists.** Six native pool checks cover seals, crashes, partial
+before usable FS prefixes. Root renewal remains unavailable and is now
+outside the goal. Six native pool checks cover seals, crashes, partial
 records and a real bootstrap-to-MAC transfer.
 
 The [PCS analysis](c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata)
@@ -55,12 +61,14 @@ Merkle hiding or malicious-verifier FS/ZK. One uniform OOD point also carries
 an explicit 1/q ordinary-IOP privacy error per switch.
 
 **Remaining work:** malicious-verifier ZK, quantized weight range and the
-complete Gemma GKR relation, same-W root renewal, sufficient correlation
-capacity and both-role lifetime resource composition. The matrix bound is
+complete Gemma GKR relation, sufficient capacity and both-role resource
+composition for the fixed run. The matrix bound is
 for three attempts of one field-valued root, including failed setups/key
-changes; it is not the requested lifetime over renewed roots. Both complete
-security totals stay unknown, and the six full-goal error allocations remain
-targets. No complete 78-bit or production credit.
+changes; that broader evidence is retained without making renewal/recovery
+new gates. It does **not** yet bind the root to all weights used by the
+complete Gemma inference. Both complete security totals stay unknown, and
+the six prototype error allocations remain targets. No complete 78-bit or
+production credit.
 
 **B11 selected an intermediate finite AES construction under explicit primitive
 hypotheses.** The earlier 2026-09-09 authorization permitted the temporary
@@ -148,10 +156,11 @@ it does not reject WHIR as a PCS family. One focused commit after the reset
 records the assessment, budget and checks, within the two-commit limit.
 That completed assessment is preserved; B2 is the separately authorized port.
 
-**Fundamental requirements:** lifetime soundness and zero knowledge of at
+**Fundamental requirements:** fixed-run soundness and zero knowledge of at
 least 78 bits against malicious prover and malicious verifier. Keep private
 weights, same-W/VOLE-MAC boundaries, noninteractive FS, classical ROM,
-global Q64 and 2^20 attempts. Do not replace complete security with a
+global Q64 and a finite declared response bound within the installed capacity.
+Renewal, abort recovery and restart composition are deferred. Do not replace complete security with a
 component parameter, honest-verifier privacy or an assumed conclusion.
 Goldilocks/DV remain the working choices; the owner wants them definitive
 if they deliver a real prover-time advantage, not merely a literature analogy.
@@ -163,8 +172,8 @@ budgets and the pinned 100+50 workload. The comparison may price explicit
 alternatives, including a fifth read or organized host spill; it must not
 claim they meet the reference. Scope and remaining thresholds are in design §1.
 
-**Current authorization:** B12's local reduction, durable finite-pool integration,
-same-W PCS/GKR research and error composition are authorized by the latest
+**Current authorization:** B12's local reduction, same-W full Gemma PCS/GKR,
+malicious-verifier ZK and fixed-run error composition are authorized by the latest
 owner instruction, using narrow local checks. Production/security admission,
 matrix/Gemma E2E, provider/GPU access and spending do not follow from a
 component result. The final 78-bit requirements and complete adversary-resource

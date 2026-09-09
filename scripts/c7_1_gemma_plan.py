@@ -25,8 +25,30 @@ REVISION = "5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89"
 METADATA_SHA256 = "1ddce0cc399d636488728f663fb756804a07e6b3ad14d43f527c7ad746e27ce2"
 QSPEC_SHA256 = "1af05e2b8d617e261ee20988618a0d05fe1ea5f9f217f04b28c391815e050687"
 ROPE_Q30_TABLE_SHA256 = "67503dd31c4504bed77f836ac1389d64692cef2a721ad74381d6297071d90951"
+# Preserved envelope for existing evidence/screens, not a required prototype
+# lifetime across renewals, abort recovery or process restarts.
 LIFETIME_ATTEMPTS = 1 << 20
 CONTEXT_CAP = 4096
+
+
+def prototype_security_scope():
+    """Owner's revised goal; the completed component bounds retain their scope."""
+    return {"version": "c71-fixed-run-2026-09-09",
+        "experiment": "one fresh uninterrupted sequential run",
+        "model_roots": 1, "key_epochs": 1, "capacity_setups": 1,
+        "response_bound": "declared finite profile within root-exposure and correlation capacity",
+        "terminate_on_error_abort_or_capacity_exhaustion": True,
+        "recovery_or_restart_is_not_continuation": True,
+        "excluded_goals": ["root_or_capacity_renewal", "recovery_after_abort",
+            "restart_or_reopen_composition", "cross_session_key_epoch_composition"],
+        "required_security_bits": 78, "global_adversary_RO_queries": 1 << 64,
+        "adversary_work_and_memory_words": 1 << 80,
+        "discarded_FS_candidates_and_preprocessing_still_count": True,
+        "same_private_W_for_every_Gemma_operator": True,
+        "malicious_verifier_ZK_including_view_until_termination": True,
+        "one_time_correlations_and_domain_separation": True,
+        "historical_S20_bounds_are_conservative_evidence_not_active_lifecycle_goals": True,
+        "complete_prototype_admitted": False}
 
 
 def natural(value, name, minimum=0, maximum=LIFETIME_ATTEMPTS):
@@ -6580,11 +6602,11 @@ def b12_pcs_binding_assessment():
             "algebraic_terminal_correspondence": True,
             "native_coin_block_projection_implemented": True,
             "native_field_matrix_prefix_bound_proven": True,
-            "next": "hiding/malicious-verifier ZK, root renewal, full GKR/quantization and their complete lifetime resources"},
+            "next": "hiding/malicious-verifier ZK and full Gemma GKR/quantization within the fixed-run scope"},
         "same_W_consequence": "one decoded message per fixed oracle before opening challenges; root links compare both endpoints under the current MAC",
         "remaining": ["salted Merkle hiding and malicious-verifier FS/ZK compilation",
-            "root-renewal protocol and both-role lifecycle", "full GKR/quantization relation and adequate correlation capacity",
-            "complete physical schedule and extractor/simulator resource census"]}
+            "full GKR/quantization relation and adequate fixed-run correlation capacity",
+            "complete physical schedule and fixed-run extractor/simulator resource census"]}
 
 
 def b12_lifetime_admission():
@@ -6598,12 +6620,13 @@ def b12_lifetime_admission():
     target = Fraction(1, 1 << 78)
     # Reservations are targets, not bounds proved by declaring a budget.
     allocations = {name: Fraction(1, 1 << 82) for name in (
-        "anchor_and_same_W_root_links", "authenticated_PCS_openings",
+        "anchor_and_same_W_operator_links", "authenticated_PCS_openings",
         "GKR_and_operator_links_FS_prefix", "MAC_and_cross_handle_equality",
-        "remaining_samplers_and_transcript_binding", "state_runtime_refinement")}
+        "remaining_samplers_and_transcript_binding", "accepted_in_run_state_relation")}
     return {
         "status": "conditional_fixed_root_soundness_and_durable_component_full_admission_open",
         "credit": False, "security_admitted": False, "B12_complete": False,
+        "active_goal_scope": prototype_security_scope(),
         "production_runtime_admitted": False, "pool_PCS_integration_admitted": False,
         "source": "docs/c7.1-gemma31b-design.md#b12-risorse-lifetime-e-vincolo-same-w",
         "adversary": {"global_u64_work_including_preprocessing": work,
@@ -6642,7 +6665,7 @@ def b12_lifetime_admission():
                 "authenticated channel and NoPeek consumer",
                 "complete same-W PCS/GKR verifier before accepted-state promotion"],
             "scope": "finite-pool component; three exposures are not a proved PCS privacy limit"},
-        "same_W": {"quantifier": "exists one W fixed at installation, for all accepted proofs in all sessions/key epochs/roots",
+        "same_W": {"quantifier": "exists one W fixed at installation for every operator and accepted proof of the uninterrupted fixed-root run",
             "bootstrap_reads_W": False, "MAC_validity_implies_model_binding": False,
             "root_renewal_fails_closed": True,
             "matrix_relation_component_checked": True,
@@ -6653,15 +6676,15 @@ def b12_lifetime_admission():
         "composition": {
             "target": str(target), "known_bootstrap_subtotal": str(component),
             "remaining_error_allowance": str(target-component),
-            "unproved_lifetime_allocations": {k: str(v) for k, v in allocations.items()},
+            "unproved_prototype_allocations": {k: str(v) for k, v in allocations.items()},
             "allocation_screen_sum": str(component+sum(allocations.values())),
             "allocation_screen_below_target": component+sum(allocations.values()) < target,
             "allocations_are_established_bounds": False,
             "soundness_total": None, "malicious_verifier_ZK_total": None,
             "complete_admission_bound": "infinity",
-            "missing_ZK": ["hiding installed anchor and renewed roots", "same-W PCS/GKR joint simulator",
-                "NoPeek runtime correspondence", "full simulator primitive resources"]},
-        "next_goal": "malicious-verifier ZK and same-W root renewal, then full Gemma GKR/quantization and both-role lifetime resources"}
+            "missing_ZK": ["hiding installed anchor", "same-W PCS/GKR joint simulator",
+                "NoPeek runtime correspondence", "fixed-run simulator primitive resources"]},
+        "next_goal": "bind the installed root to every Gemma operator and prove both 78-bit bounds for one fixed run; renewal, abort recovery and restart composition are deferred"}
 
 
 def b11_wider_aes_contract():
@@ -6877,10 +6900,11 @@ def baseline_budget():
         "reference": "A5 + joint W/KV + Sigma(B, raw QK/PV, S); frozen accounting reference, not a selected runtime",
         "source": "rms_byte_bridge_screen(include_rms_outputs=False)",
         "excluded_extensions": ["Y", "RoPE", "GELU", "gate_up_mul", "public-scale checkpoints"],
-        "required_lifetime_security_bits_at_least": 78,
+        "required_security_bits_at_least": 78,
+        "active_goal_scope": prototype_security_scope(),
         "malicious_prover_soundness_bits": None, "malicious_verifier_zk_bits": None,
         "security_admitted": False, "complete_baseline_selected": None,
-        "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": "B12: resources beyond 2^78, durable lifetime, same-W PCS/GKR and complete error composition",
+        "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": "B12: resources beyond 2^78, same private W throughout Gemma and both 78-bit bounds in one uninterrupted fixed-root run",
         "replacement_bootstrap_status": "B11_intermediate_finite_AES_selected_conditionally",
         "next_proposed_goal": b12_lifetime_admission()["next_goal"],
         "measurement_reuse_priority": None,

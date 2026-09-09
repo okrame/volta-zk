@@ -37,7 +37,16 @@ def test_one_reference_without_inherited_margins_or_security_credit():
     json.dumps(result, allow_nan=False)
     assert not result["credit"] and not result["security_admitted"]
     assert result["complete_baseline_selected"] is None
-    assert result["required_lifetime_security_bits_at_least"] == 78
+    assert result["required_security_bits_at_least"] == 78
+    scope = result['active_goal_scope']
+    assert scope == result['B12_lifetime_admission']['active_goal_scope']
+    assert scope['model_roots'] == scope['key_epochs'] == scope['capacity_setups'] == 1
+    assert scope['terminate_on_error_abort_or_capacity_exhaustion']
+    assert scope['discarded_FS_candidates_and_preprocessing_still_count']
+    assert scope['same_private_W_for_every_Gemma_operator']
+    assert scope['malicious_verifier_ZK_including_view_until_termination']
+    assert not scope['complete_prototype_admitted']
+    assert {'root_or_capacity_renewal', 'recovery_after_abort', 'restart_or_reopen_composition'} <= set(scope['excluded_goals'])
     cases = result["endpoint_cases_not_all_context_certificate_bound"]
     assert [c["old_tokens"] for c in cases] == [0, 3946]
     assert [c["certificate_bytes"]["known_subtotal"] for c in cases] == [25_431_680, 32_407_656]

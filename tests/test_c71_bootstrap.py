@@ -445,7 +445,7 @@ def test_B12_composition_does_not_promote_unproved_allocations_or_model_labels()
     terms = {k: Fraction(v) for k, v in b["bootstrap_component"]["terms"].items()}
     assert sum(terms.values()) == known < Fraction(1, 1 << 82) < target
     assert known + Fraction(c["remaining_error_allowance"]) == target
-    allocations = [Fraction(v) for v in c["unproved_lifetime_allocations"].values()]
+    allocations = [Fraction(v) for v in c["unproved_prototype_allocations"].values()]
     assert len(allocations) == 6 and known+sum(allocations) == Fraction(c["allocation_screen_sum"]) < target
     assert not c["allocations_are_established_bounds"]
     assert c["soundness_total"] is c["malicious_verifier_ZK_total"] is None

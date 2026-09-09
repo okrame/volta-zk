@@ -19,8 +19,11 @@ oracle at its commitment prefix. Native FS coin blocks now retain that fixed
 opening payload; their merged errors and tape-completion memory are counted.
 The fixed-root field matrix now has a direct conditional soundness argument
 (86.8347 bits), including its decoder and caller within T121/M93.
-Malicious-verifier ZK, quantized Gemma GKR, renewed roots and complete lifetime bounds remain open in
-design §10. Full security and production integration remain unadmitted.
+The owner now limits the goal to one uninterrupted fixed-root run: renewal,
+abort recovery and restart composition are deferred. Malicious-verifier ZK,
+the root's binding to all of quantized Gemma and the two complete fixed-run
+bounds remain open in design §10. Full security and production integration
+remain unadmitted.
 
 ## Current documents
 

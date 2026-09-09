@@ -481,7 +481,8 @@ def test_B12_all_Gemma_W_endpoints_share_one_layout_and_one_lookup_batch():
     assert full['full_P0_plus_bridge_Fp3_corrections_before_other_circuits'] == (
         p0['extension_corrections_before_other_circuits']+3*full['root_log_cells']+2) == 36067
     assert full['base_rows_before_other_circuits'] == 108201 > full['B11_base_row_capacity']
-    assert not full['fits_current_capacity'] and not bridge['actual_Gemma_GKR_caller_integrated']
+    assert not full['fits_B11_capacity'] and not bridge['actual_Gemma_GKR_caller_integrated']
+    assert full['known_P0_plus_bridge_fits_fixed_run_profile'] and not full['full_Gemma_census_complete']
     assert bridge['complete_caller_reduction_and_78_bit_total'] is None
     with pytest.raises(ValueError):
         plan.gemma_weight_opening_forms(tensors[::-1], points, tokens)

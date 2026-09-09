@@ -421,6 +421,39 @@ def test_B11_intermediate_forest_lifetime_resources_and_capacity():
         assert c["wire_io"]["prover_sent_bytes"] + c["wire_io"]["verifier_sent_bytes"] == expected["protocol_wire_bytes"]
 
 
+def test_B12_fixed_run_capacity_counts_full_forest_without_S20_reuse():
+    b = plan.b12_fixed_run_bootstrap()
+    p, r = b['profile'], b['reduction']
+    assert p['setups'] == 1 and p['max_data_rows']+9 == 1 << 24
+    assert p['roots_upper'] == 1152
+    assert p['internal_nodes_upper'] == 1152*((1 << 24)-1)
+    assert p['leaf_seeds_upper'] == 1152*(1 << 24)
+    assert p['max_pool_data_rows'] % 3 == 0
+    terms = {k: Fraction(v) for k, v in b['conditional_component']['terms'].items()}
+    assert sum(terms.values()) == Fraction(b['conditional_component']['sum']) < Fraction(1, 1 << 82)
+    assert terms['four_block_permutation_switching'] == Fraction(6*p['internal_nodes_upper'], 1 << 128)
+    assert terms['DDH_at_required_advantage'] == Fraction(576*(1 << 74), 1 << 193)
+    assert (1 << 20)*sum(terms.values()) > Fraction(1, 1 << 78)  # no renewed lifetime inheritance
+    assert 16*r['honest_AES_calls_upper'] < r['honest_events_upper'] == 1 << 50
+    assert r['work_upper'] < b['primitive_hypotheses']['work_cap'] == 1 << 121
+    assert r['memory_words_upper'] < b['primitive_hypotheses']['memory_words_cap'] == 1 << 93
+    assert r['query_upper'] < r['global_queries_including_simulator'] == 1 << 74
+    assert not r['includes_Gemma_PCS_GKR_caller']
+    assert b['known_P0_plus_bridge_fits'] and b['complete_Gemma_correlation_census'] is None
+    for c in b['cases']:
+        n, height = c['base_rows'], c['tree_depth']
+        assert 1 << (height-1) < n+9 <= 1 << height
+        assert c['wire_bytes_including_completion_seal'] == 233345+4680*n
+        assert c['COPE_correction_buffer_bytes_per_role'] == 4608
+        assert c['full_COPE_frame_bytes_still_transferred'] == 4608*(n+9)+9
+    # Enumerate small complete trees to check level/prefix counting. The
+    # large cap is arithmetic only; no full-capacity local bootstrap is run.
+    for n in (3, 207, 258):
+        h = (n+8).bit_length()
+        prefixes = {(depth, row >> (h-depth)) for row in range(n+9) for depth in range(h)}
+        assert len(prefixes) <= (1 << h)-1
+
+
 def test_B12_resource_lift_counts_work_separately_from_global_RO_queries():
     b = plan.b12_lifetime_admission()
     a, r = b["adversary"], b["reduction"]

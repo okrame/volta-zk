@@ -235,6 +235,15 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn c71_b12_real_pool_linear_batch_keeps_matrix_norm_and_tied_embedding_macs() {
+        check_real_pool_linear_batch(false);
+    }
+
+    #[test]
+    fn c71_b12_fixed_run_linear_batch_accepts_then_stops_on_false_target() {
+        check_real_pool_linear_batch(true);
+    }
+
+    fn check_real_pool_linear_batch(fixed_run: bool) {
         use std::io;
         use std::sync::mpsc;
         use volta_pcg::c71_lifetime::{Attempt, Lifetime, ModelBinding};
@@ -319,8 +328,13 @@ mod tests {
         let pforms = forms.clone();
         let prover = std::thread::spawn(move || {
             let mut store = Lifetime::install(&prover_path, binding).unwrap();
-            let mut pool =
-                store.prover(&mut pc, [4; 32], [5; 32], 3 * (required + bad_required)).unwrap();
+            let capacity = 3 * (required + bad_required);
+            let mut pool = if fixed_run {
+                store.prover_fixed_run(&mut pc, [4; 32], [5; 32], capacity)
+            } else {
+                store.prover(&mut pc, [4; 32], [5; 32], capacity)
+            }
+            .unwrap();
             for (slot, count) in [required, bad_required].into_iter().enumerate() {
                 pool.attempt(count, |attempt, rows, _| {
                     let mut rows = rows
@@ -367,8 +381,13 @@ mod tests {
             assert!(pool.attempt::<()>(1, |_, _, _| panic!("exhausted capacity reused")).is_err());
         });
         let mut store = Lifetime::install(&vpath, binding).unwrap();
-        let mut pool =
-            store.verifier(&mut vc, [4; 32], [5; 32], 3 * (required + bad_required)).unwrap();
+        let capacity = 3 * (required + bad_required);
+        let mut pool = if fixed_run {
+            store.verifier_fixed_run(&mut vc, [4; 32], [5; 32], capacity)
+        } else {
+            store.verifier(&mut vc, [4; 32], [5; 32], capacity)
+        }
+        .unwrap();
         for (slot, count) in [required, bad_required].into_iter().enumerate() {
             let head = pool
                 .attempt(count, |attempt, rows, delta| {
@@ -462,6 +481,9 @@ mod tests {
         drop(pool);
         drop(store);
         for path in [ppath, vpath] {
+            if fixed_run {
+                assert!(Lifetime::open(&path, binding).is_err());
+            }
             std::fs::remove_file(path).unwrap();
         }
         std::fs::remove_dir(directory).unwrap();

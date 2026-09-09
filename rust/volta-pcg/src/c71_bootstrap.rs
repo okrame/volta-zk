@@ -33,11 +33,16 @@ const OTS: usize = 576;
 const POINT_BYTES: usize = 67;
 const MAX_ROWS: usize = 27_511;
 const MAGIC: &[u8; 8] = b"C71B9v01";
+/// One initial B12 capacity. The nine check masks are never returned as data.
+#[cfg(feature = "c71-b11")]
+pub const MAX_FIXED_RUN_ROWS: usize = (1 << 24) - 9;
 #[derive(Clone, Copy)]
 enum Suite {
     B9,
     #[cfg(feature = "c71-b11")]
     B11,
+    #[cfg(feature = "c71-b11")]
+    B12FixedRun,
 }
 type Result<T> = io::Result<T>;
 
@@ -62,8 +67,11 @@ impl Context {
             Suite::B9 => (MAGIC, 1u32, MAX_ROWS),
             #[cfg(feature = "c71-b11")]
             Suite::B11 => (b"C71B11v1", 2u32, 207),
+            #[cfg(feature = "c71-b11")]
+            Suite::B12FixedRun => (b"C71B12F1", 3u32, MAX_FIXED_RUN_ROWS),
         };
         if !(1..=max_rows).contains(&self.rows)
+            || self.rows.checked_add(9).and_then(|n| n.checked_mul(OTS * 8)).is_none()
             || [&self.session, &self.channel, &self.capacity].iter().any(|v| **v == [0; 32])
         {
             return Err(invalid("invalid bootstrap context or row capacity"));
@@ -306,9 +314,12 @@ fn variable(p: &Point, s: &Scalar, w: &mut Work) -> Zeroizing<Point> {
     Zeroizing::new(p * s)
 }
 
-fn send(channel: &mut impl Write, tag: u8, data: &[u8], audit: &mut Audit) -> Result<()> {
+fn send_header(channel: &mut impl Write, tag: u8, size: usize) -> Result<()> {
     channel.write_all(&[tag])?;
-    channel.write_all(&(data.len() as u64).to_le_bytes())?;
+    channel.write_all(&(size as u64).to_le_bytes())
+}
+fn send(channel: &mut impl Write, tag: u8, data: &[u8], audit: &mut Audit) -> Result<()> {
+    send_header(channel, tag, data.len())?;
     channel.write_all(data)?;
     channel.flush()?;
     audit.sent_frames.push((tag, data.len() + 9));
@@ -320,16 +331,20 @@ fn recv(
     size: usize,
     audit: &mut Audit,
 ) -> Result<Zeroizing<Vec<u8>>> {
-    let mut header = [0u8; 9];
-    channel.read_exact(&mut header)?;
-    if header[0] != tag || u64::from_le_bytes(header[1..].try_into().unwrap()) != size as u64 {
-        return Err(invalid("frame order or exact length"));
-    }
+    recv_header(channel, tag, size)?;
     // Check the length before allocation; no attacker-controlled capacity.
     let mut data = Zeroizing::new(vec![0u8; size]);
     channel.read_exact(&mut data)?;
     audit.received_frames.push((tag, size + 9));
     Ok(data)
+}
+fn recv_header(channel: &mut impl Read, tag: u8, size: usize) -> Result<()> {
+    let mut header = [0u8; 9];
+    channel.read_exact(&mut header)?;
+    if header[0] != tag || u64::from_le_bytes(header[1..].try_into().unwrap()) != size as u64 {
+        return Err(invalid("frame order or exact length"));
+    }
+    Ok(())
 }
 fn handshake(
     channel: &mut (impl Read + Write),
@@ -405,7 +420,7 @@ fn prf(
 ) -> Result<u64> {
     work.prf_field_outputs += 1;
     #[cfg(feature = "c71-b11")]
-    if context.starts_with(b"C71B11v1") {
+    if context.starts_with(b"C71B11v1") || context.starts_with(b"C71B12F1") {
         return aes_prf(seed, context, i, j, row, work);
     }
     let mut h = blake3::Hasher::new_keyed(seed);
@@ -437,12 +452,25 @@ fn aes_prf(
         cipher::{Block, BlockEncrypt, KeyInit},
         Aes256,
     };
-    if row >= 216 || i >= OTS || j > 1 {
+    let (rows, height, domain) = if context.starts_with(b"C71B12F1") {
+        if context.len() != 184 {
+            return Err(invalid("B12 fixed-run PRF context length"));
+        }
+        let n = u64::from_le_bytes(context[104..112].try_into().unwrap());
+        if !(1..=MAX_FIXED_RUN_ROWS as u64).contains(&n) {
+            return Err(invalid("B12 fixed-run PRF capacity"));
+        }
+        let rows = n as usize + 9;
+        (rows, rows.next_power_of_two().ilog2(), b"C71B12/COPE/fixed-run/leaf/".as_slice())
+    } else {
+        (216, 8, b"C71B11/COPE/leaf/".as_slice())
+    };
+    if row >= rows || i >= OTS || j > 1 {
         return Err(invalid("B11 PRF domain exceeds admitted profile"));
     }
-    // ponytail: recompute the depth-eight path; a cache needs its own erasure audit.
+    // ponytail: recompute the bounded path; a cache needs its own erasure audit.
     let mut leaf = Zeroizing::new(*seed);
-    for depth in (0..8).rev() {
+    for depth in (0..height).rev() {
         let cipher = Aes256::new_from_slice(&*leaf).unwrap();
         let mut blocks: [Block<Aes256>; 4] = Default::default();
         for (index, block) in blocks.iter_mut().enumerate() {
@@ -460,7 +488,7 @@ fn aes_prf(
         // RustCrypto's zeroize feature erases the round-key schedule on drop.
     }
     let mut h = Shake256::default();
-    h.update(b"C71B11/COPE/leaf/");
+    h.update(domain);
     h.update(context);
     h.update(&(i as u32).to_le_bytes());
     h.update(&[j]);
@@ -562,6 +590,15 @@ pub fn prover(channel: impl Read + Write, context: Context) -> Result<ProverOutp
 pub fn prover_aes(channel: impl Read + Write, context: Context) -> Result<ProverOutput> {
     prover_for(channel, context, &mut OsRng, Suite::B11)
 }
+/// B12 larger finite AES capacity, for ONE setup in an uninterrupted run.
+/// Use through Lifetime::prover_fixed_run to enforce that scope and the seal.
+#[cfg(feature = "c71-b11")]
+pub(crate) fn prover_fixed_run(
+    channel: impl Read + Write,
+    context: Context,
+) -> Result<ProverOutput> {
+    prover_for(channel, context, &mut OsRng, Suite::B12FixedRun)
+}
 fn prover_for(
     mut channel: impl Read + Write,
     context: Context,
@@ -578,7 +615,10 @@ fn prover_for(
     let rows = n + 9;
     let mut values = Zeroizing::new(vec![0u64; rows]);
     let mut tags = Zeroizing::new(vec![F9::default(); rows]);
-    let mut corrections = Zeroizing::new(Vec::with_capacity(OTS * rows * 8));
+    // Same single frame and row order as B9/B11. Only its buffering changes:
+    // V sends no challenge until the WHOLE COPE frame has arrived.
+    send_header(&mut channel, 6, OTS * rows * 8)?;
+    let mut corrections = Zeroizing::new(Vec::with_capacity(OTS * 8));
     for row in 0..rows {
         values[row] = sample_fp(|v| random_bytes(rng, v), &mut audit.work)?;
         for i in 0..OTS {
@@ -589,9 +629,12 @@ fn prover_for(
             tags[row].0[i / 64] =
                 (Fp::new(tags[row].0[i / 64]) + Fp::new(1u64 << (i % 64)) * q0).value();
         }
+        channel.write_all(&corrections)?;
+        corrections.zeroize();
     }
     drop(seeds);
-    send(&mut channel, 6, &corrections, &mut audit)?;
+    channel.flush()?;
+    audit.sent_frames.push((6, OTS * rows * 8 + 9));
     drop(corrections);
     audit.phase("COPE", start);
     let start = Instant::now();
@@ -627,6 +670,13 @@ pub fn verifier(channel: impl Read + Write, context: Context) -> Result<Verifier
 pub fn verifier_aes(channel: impl Read + Write, context: Context) -> Result<VerifierOutput> {
     verifier_for(channel, context, &mut OsRng, Suite::B11)
 }
+#[cfg(feature = "c71-b11")]
+pub(crate) fn verifier_fixed_run(
+    channel: impl Read + Write,
+    context: Context,
+) -> Result<VerifierOutput> {
+    verifier_for(channel, context, &mut OsRng, Suite::B12FixedRun)
+}
 fn verifier_for(
     mut channel: impl Read + Write,
     context: Context,
@@ -642,11 +692,13 @@ fn verifier_for(
     let start = Instant::now();
     let n = context.rows;
     let rows = n + 9;
-    let raw = recv(&mut channel, 6, OTS * rows * 8, &mut audit)?;
+    recv_header(&mut channel, 6, OTS * rows * 8)?;
+    let mut raw = Zeroizing::new(vec![0; OTS * 8]);
     let mut keys = Zeroizing::new(vec![F9::default(); rows]);
     for row in 0..rows {
+        channel.read_exact(&mut raw)?;
         for i in 0..OTS {
-            let offset = (row * OTS + i) * 8;
+            let offset = i * 8;
             let d = u64::from_le_bytes(raw[offset..offset + 8].try_into().unwrap());
             if d >= P {
                 return Err(invalid("noncanonical COPE correction"));
@@ -661,6 +713,7 @@ fn verifier_for(
             .value();
         }
     }
+    audit.received_frames.push((6, OTS * rows * 8 + 9));
     drop(raw);
     drop(seeds);
     audit.phase("COPE", start);
@@ -732,6 +785,47 @@ mod tests {
             Suite::B11
         )
         .is_err());
+    }
+
+    #[test]
+    #[cfg(feature = "c71-b11")]
+    fn c71_b12_fixed_run_aes_paths_and_domain_boundary() {
+        // Independent OpenSSL AES-256-ECB + Python hashlib SHAKE256 vectors.
+        // Only four paths: the largest capacity is never materialized here.
+        let seed = std::array::from_fn(|i| i as u8);
+        let mut work = Work::default();
+        for (n, row, expected) in [
+            (258, 0, 4059061014208010961),
+            (258, 256, 6589163169525333170),
+            (108201, 108209, 3263907683622810295),
+            (MAX_FIXED_RUN_ROWS, (1 << 24) - 1, 3120825137042157991),
+        ] {
+            let mut c = context();
+            c.rows = n;
+            let mut full = c.common_for(Suite::B12FixedRun).unwrap();
+            full.extend([4; 32]);
+            full.extend([5; 32]);
+            assert_eq!(aes_prf(&seed, &full, 17, 1, row, &mut work).unwrap(), expected);
+            assert!(aes_prf(&seed, &full, 17, 1, n + 9, &mut work).is_err());
+            assert!(aes_prf(&seed, &full[..183], 17, 1, 0, &mut work).is_err());
+        }
+        assert_eq!(work.aes_key_schedules, 9 + 9 + 17 + 24);
+        assert_eq!(work.aes_block_encryptions, 4 * (9 + 9 + 17 + 24));
+        let mut c = context();
+        c.rows = MAX_FIXED_RUN_ROWS + 1;
+        assert!(c.common_for(Suite::B12FixedRun).is_err());
+        let mut header = context().common_for(Suite::B11).unwrap();
+        header.extend([0; 32]);
+        assert!(handshake(
+            &mut tape(wire(1, &header)),
+            &context(),
+            false,
+            &mut ConstantRng(0),
+            &mut Audit::default(),
+            Suite::B12FixedRun
+        )
+        .is_err());
+        check_zero_key(Suite::B12FixedRun);
     }
 
     fn hex(raw: &[u8]) -> String {

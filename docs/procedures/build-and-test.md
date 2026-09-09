@@ -62,9 +62,13 @@ These are component checks, with no durable-pool or PCS/Gemma admission.
 
 For the owner-authorized B12 finite-pool component, the same narrow Cargo
 command with `--features c71-b11 c71_b12 -- --test-threads=1` checks the
-durable journal, completion-seal framing, subprocess crash/reopen and one
-three-row real two-role MAC
-transfer. The last check needs only a local Unix socketpair, as B9/B11 did;
+durable journal, completion-seal framing, subprocess crash/reopen and real
+two-role MAC transfers. The new fixed-run profile is exercised at 258 base
+rows with small IO operations; four AES path vectors cover larger domains
+without allocating their capacities. Failure checks reject continuation,
+downgrade and reopen. Do not run the 108,201-row or maximum-capacity cases
+locally: their diagnostic entries are arithmetic only.
+The real role checks need only a local Unix socketpair, as B9/B11 did;
 if the sandbox denies it, permit that local test without external access.
 No full workspace, matrix/Gemma runner or paid hardware is needed. These
 are component tests, not run-of-record benchmarks or complete security evidence.
@@ -72,11 +76,13 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its seven tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its eight tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
 root/PCS, then a fresh false norm target is rejected and the run ends.
+The same check also exercises the new single-setup AES profile, including
+continuation after acceptance and termination after rejection.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner
 or standalone wire codec. These checks need only local Unix socketpairs.
 The existing field/FS checks use `c71_matrix::tests::` with that feature.

@@ -24,13 +24,18 @@ work/memory 2^80 and global Q64, the reduction stays below T121/M93.
 AES/DDH advantages at that strengthened envelope remain explicit hypotheses;
 the result does not prove them or the complete C7.1 goal.
 
-The [finite-pool component](../rust/volta-pcg/src/c71_lifetime.rs) wraps both
-real B11 roles with one locked durable journal. Setup and joint root-slot/row
-burns precede use; reopen preserves counters and accepted head while losing
-unused secret capacity. A fresh 40-byte post-bootstrap seal fixes row assignment
-before usable FS prefixes. Root renewal remains unavailable and is now
-outside the goal. Six native pool checks cover seals, crashes, partial
-records and a real bootstrap-to-MAC transfer.
+The [finite-pool component](../rust/volta-pcg/src/c71_lifetime.rs) now also
+supports one larger initial AES capacity: up to 16,777,206 base rows under
+one key, with a conditional bootstrap bound of 91.022717 bits at T121/M93.
+The fixed-run profile records its mode before setup and rejects renewal,
+continuation after failure and reopen. Setup and joint root-slot/row burns
+precede use; the fresh 40-byte post-bootstrap seal fixes row assignment
+before usable FS prefixes. COPE streams through a 4,608-byte buffer while
+retaining the full frame before the challenge. A 258-row real check crosses
+B11's old cap. [Capacity and exact costs](c7.1-gemma31b-design.md#b12-capacità-aes-iniziale-per-il-run-continuo)
+include 506.6 MB of setup wire for P0 plus the bridge; smaller buffering
+does not remove that cost. The existing crash/reopen evidence for the old
+profile remains intact, without creating recovery requirements.
 
 The [PCS analysis](c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata)
 proves same-set MCA when 3*radius < distance and fixes the Merkle oracle at
@@ -43,14 +48,15 @@ tester decodes the installed root once, then checks every accepted public
 output against that same padded field matrix. W remains private in the runtime.
 
 The opt-in [salted consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) uses
-common-mask unique-radius codes and fresh private salt streams. Seven native
+common-mask unique-radius codes and fresh private salt streams. Eight native
 checks cover FS blocks, geometry, private coins, salting and real B11 roles:
 two valid proofs, then a rejected salt alteration whose burn survives reopen.
 The new [linear-form bridge](../rust/volta-pcs/src/c71_matrix/linear.rs)
 combines the caller's original target MACs and closes one PCS against the
 installed root. A real-B11 small case covers matrix, ragged norm and shared
 embedding/logits, then rejects a freshly authenticated false norm target and
-terminates the run. It is an internal component without a standalone codec.
+terminates the run; the same check also passes with the new fixed-run AES
+profile. It is an internal component without a standalone codec.
 The public-layout compiler maps all 773 P0 endpoints to the same 772 physical
 tensors (3,606 cubes), including all 150 lookup rows in one target. It does
 not yet connect the actual Gemma GKR execution or enforce weight range.
@@ -58,7 +64,8 @@ not yet connect the actual Gemma GKR execution or enforce weight range.
 
 Twelve B12 algebra/accounting checks now include the scalar invariant and a
 finite exhaustive decoder check. The complete relevant Python checks total
-192; native legacy replay and fork provenance also pass. These are component
+193; the 17 narrow bootstrap/pool checks and eight B12 PCS checks pass.
+Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
 PCS-only bits, but its 4 TiB initial codeword remains physically excluded.
@@ -71,10 +78,10 @@ Merkle hiding or malicious-verifier FS/ZK. One uniform OOD point also carries
 an explicit 1/q ordinary-IOP privacy error per switch.
 
 **Remaining work:** malicious-verifier ZK, quantized weight range and the
-complete Gemma GKR relation, sufficient capacity and both-role resource
-composition for the fixed run. P0 plus the new bridge alone would need
-108,201 base rows before other circuits, exceeding B11's 207; the D35 dense
-PCS remains excluded. The matrix bound is
+complete Gemma GKR relation, full correlation census and both-role resource
+composition for the fixed run. P0 plus the bridge needs 108,201 base rows,
+now within the new initial capacity; other circuits are not yet counted
+completely, and the D35 dense PCS remains excluded. The matrix bound is
 for three attempts of one field-valued root, including failed setups/key
 changes; that broader evidence is retained without making renewal/recovery
 new gates. It does **not** yet bind the root to all weights used by the

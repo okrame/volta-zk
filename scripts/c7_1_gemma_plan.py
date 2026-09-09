@@ -6434,6 +6434,71 @@ def b11_intermediate_selection():
         "next_goal": "B12: durable finite-pool integration and same-W admission boundary; keep the >2^78 adversary-resource upgrade open"}
 
 
+def b12_fixed_run_bootstrap():
+    """B11's reduction for ONE setup and a larger, streamed finite AES tree.
+
+    This does not import the old S20 bit total or claim a complete Gemma census.
+    """
+    m, depth, setups, q = 576, 24, 1, 1 << 74
+    n = (1 << depth)-9
+    roots = 2*m*setups
+    nodes, leaves = roots*((1 << depth)-1), roots*(1 << depth)
+    order = b8_bootstrap_selection()['profile']['group_order']
+    terms = {
+        'DDH_at_required_advantage': Fraction(m*q, 1 << 193),
+        'group_programming_rank_and_KDF_union_envelope': Fraction(16*m*q*q, order),
+        'honest_context_nonce_collisions': Fraction(1, 1 << 256),
+        'bounded_group_RO_sampler': Fraction(1, 1 << 430),
+        'bounded_scalar_sampler': Fraction(1, 1 << 2000),
+        'AES256_PRP_at_required_advantage': Fraction(nodes, 1 << 128),
+        'four_block_permutation_switching': Fraction(6*nodes, 1 << 128),
+        'hidden_leaf_RO_queries': Fraction(q*leaves, 1 << 256),
+        'forest_seed_collision_envelope': Fraction((nodes+leaves)**2, 1 << 257),
+        'bounded_Fp_sampling': (3*m*(n+9)+10*n+27)*Fraction((1 << 64)-P, 1 << 64)**8,
+        'Wolverine_hybrid_and_zero_key_abort': Fraction(192**2+1, P**3)+Fraction(1, 1 << 128),
+    }
+    total = sum(terms.values())
+    adversary, honest = 1 << 80, 1 << 50
+    work = adversary+(1 << 12)*adversary+(1 << 46)*(q+honest)
+    memory = adversary+(1 << 12)*adversary+(1 << 14)*q+honest
+    cases = []
+    for rows in (258, 108201, n-n % 3):
+        height = (rows+8).bit_length()
+        outputs = 3*m*(rows+9)
+        cases.append({'base_rows': rows, 'full_Fp3_capacity': rows//3, 'tree_depth': height,
+            'wire_bytes_before_completion_seal': 233305+4680*rows,
+            'wire_bytes_including_completion_seal': 233345+4680*rows,
+            'AES_blocks_both_roles': 4*height*outputs,
+            'COPE_correction_buffer_bytes_per_role': 8*m,
+            'full_COPE_frame_bytes_still_transferred': 8*m*(rows+9)+9,
+            'role_array_bytes_upper_not_measured_RSS': 320*(rows+9)+(1 << 20),
+            'is_full_Gemma_capacity_census': False})
+    return {'status': 'conditional_single_setup_finite_AES_capacity', 'credit': False,
+        'scope': 'one fresh fixed-root uninterrupted run; stop on error, no renewal/reopen',
+        'source': 'rust/volta-pcg/src/c71_bootstrap.rs; rust/volta-pcg/src/c71_lifetime.rs',
+        'profile': {'magic': 'C71B12F1', 'suite': 3, 'setups': setups,
+            'max_data_rows': n, 'max_pool_data_rows': n-n % 3, 'max_tree_depth': depth,
+            'depth_rule': 'ceil(log2(n+9)); n is bound in the setup context',
+            'roots_upper': roots, 'internal_nodes_upper': nodes, 'leaf_seeds_upper': leaves,
+            'sacrificed_rows': 9, 'same_key_base_rows_per_Fp3': 3,
+            'full_COPE_precedes_any_check_challenge': True,
+            'COPE_wire_order_and_single_frame_preserved': True},
+        'primitive_hypotheses': {'AES256_four_block_PRP_advantage': str(Fraction(1, 1 << 128)),
+            'P521_DDH_advantage': str(Fraction(1, 1 << 193)),
+            'work_cap': 1 << 121, 'memory_words_cap': 1 << 93,
+            'model': 'classical programmable SHAKE ROM', 'proved_for_concrete_primitives': False},
+        'reduction': {'adversary_work_and_memory': adversary, 'adversary_queries': 1 << 64,
+            'global_queries_including_simulator': q, 'honest_events_upper': honest,
+            'honest_AES_calls_upper': 4*depth*3*m*(n+9),
+            'work_upper': work, 'memory_words_upper': memory,
+            'query_upper': 513*(1 << 64)+honest, 'includes_Gemma_PCS_GKR_caller': False},
+        'conditional_component': {'terms': {k: str(v) for k, v in terms.items()},
+            'sum': str(total), 'bits': math.log2(total.denominator)-math.log2(total.numerator),
+            'below_2_to_minus_82': total < Fraction(1, 1 << 82)},
+        'cases': cases, 'known_P0_plus_bridge_fits': 108201 <= n,
+        'complete_Gemma_correlation_census': None, 'complete_fixed_run_security': None}
+
+
 def b12_pcs_binding_assessment():
     """Unique-decoding route for the published IOPP; source/hash compilation stays explicit."""
     q = P**3
@@ -6627,7 +6692,10 @@ def b12_pcs_binding_assessment():
                 "lookup_cube_terms_in_one_target": 450, "root_log_cells": 35,
                 "full_P0_plus_bridge_Fp3_corrections_before_other_circuits": 35960+3*35+2,
                 "base_rows_before_other_circuits": 3*(35960+3*35+2),
-                "B11_base_row_capacity": 207, "fits_current_capacity": False},
+                "B11_base_row_capacity": 207, "fits_B11_capacity": False,
+                "fixed_run_profile_max_pool_rows": 3*(((1 << 24)-9)//3),
+                "known_P0_plus_bridge_fits_fixed_run_profile": True,
+                "full_Gemma_census_complete": False},
             "malicious_verifier_ZK_proved": False, "quantized_range_and_padding_proved": False,
             "actual_Gemma_GKR_caller_integrated": False, "standalone_wire_codec": False,
             "complete_caller_reduction_and_78_bit_total": None, "security_admitted": False},
@@ -7049,6 +7117,7 @@ def baseline_budget():
         "B10_composition_admission": b10_composition_admission(),
         "B11_local_repair_admission": b11_local_repair_admission(),
         "B11_intermediate_selection": b11_intermediate_selection(),
+        "B12_fixed_run_bootstrap": b12_fixed_run_bootstrap(),
         "B12_lifetime_admission": b12_lifetime_admission(),
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",

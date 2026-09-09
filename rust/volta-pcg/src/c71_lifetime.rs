@@ -65,6 +65,7 @@ impl ModelBinding {
 
 #[derive(Default, Clone, Copy)]
 struct State {
+    fixed_run: bool,
     setups: u64,
     attempts: u64,
     rows: u64,
@@ -79,7 +80,8 @@ impl State {
         let (setup, start, count) = (word(1), word(9), word(17));
         let digest: Digest = record[25..].try_into().unwrap();
         match record[0] {
-            1 if self.setups < LIMIT
+            1 if !self.fixed_run
+                && self.setups < LIMIT
                 && self.attempts < ROOT_SLOTS
                 && setup == self.setups + 1
                 && start == 0
@@ -91,6 +93,20 @@ impl State {
                 self.rows = count;
                 self.used = 0;
                 self.pending = false;
+            }
+            // New profile, never a renewal of an old B11 capacity. Persist
+            // the one-run choice before RNG so an aborted setup cannot retry.
+            4 if self.setups == 0
+                && self.attempts == 0
+                && setup == 1
+                && start == 0
+                && (3..=c71_bootstrap::MAX_FIXED_RUN_ROWS as u64).contains(&count)
+                && count % 3 == 0
+                && digest == [0; 32] =>
+            {
+                self.fixed_run = true;
+                self.setups = 1;
+                self.rows = count;
             }
             2 if setup == self.setups
                 && setup > 0
@@ -173,6 +189,9 @@ impl Lifetime {
             state.apply(&record)?;
         }
         file.sync_all()?;
+        if state.fixed_run {
+            return Err(invalid("fixed-run capacity cannot reopen or resume"));
+        }
         state.pending = false; // no pending acceptance or secret pool survives a restart
         Ok(Self { file, model, state, poisoned: false })
     }
@@ -211,12 +230,23 @@ impl Lifetime {
         self.state.head
     }
 
+    #[cfg(test)]
     fn begin(&mut self, session: Digest, channel: Digest, rows: usize) -> io::Result<Context> {
+        self.begin_for(session, channel, rows, false)
+    }
+
+    fn begin_for(
+        &mut self,
+        session: Digest,
+        channel: Digest,
+        rows: usize,
+        fixed_run: bool,
+    ) -> io::Result<Context> {
         if session == [0; 32] || channel == [0; 32] || self.state.attempts >= ROOT_SLOTS {
             return Err(invalid("invalid channel/session or exhausted installed root"));
         }
         let setup = self.state.setups + 1;
-        self.append(1, setup, 0, rows as u64, [0; 32])?; // before RNG/header/OT
+        self.append(if fixed_run { 4 } else { 1 }, setup, 0, rows as u64, [0; 32])?; // before RNG/header/OT
         let mut hash = blake3::Hasher::new();
         hash.update(b"C71B12/capacity/");
         hash.update(&self.model.bytes()?);
@@ -233,8 +263,34 @@ impl Lifetime {
         binding: Digest,
         rows: usize,
     ) -> io::Result<Pool<'_, [u64; 4]>> {
-        let context = self.begin(session, binding, rows)?;
-        let output = c71_bootstrap::prover_aes(&mut channel, context)?;
+        self.prover_for(&mut channel, session, binding, rows, false)
+    }
+
+    /// One initial AES capacity; any abort/error ends this run. No renewal.
+    pub fn prover_fixed_run(
+        &mut self,
+        mut channel: impl Read + Write,
+        session: Digest,
+        binding: Digest,
+        rows: usize,
+    ) -> io::Result<Pool<'_, [u64; 4]>> {
+        self.prover_for(&mut channel, session, binding, rows, true)
+    }
+
+    fn prover_for(
+        &mut self,
+        mut channel: impl Read + Write,
+        session: Digest,
+        binding: Digest,
+        rows: usize,
+        fixed_run: bool,
+    ) -> io::Result<Pool<'_, [u64; 4]>> {
+        let context = self.begin_for(session, binding, rows, fixed_run)?;
+        let output = if fixed_run {
+            c71_bootstrap::prover_fixed_run(&mut channel, context)
+        } else {
+            c71_bootstrap::prover_aes(&mut channel, context)
+        }?;
         let capacity = capacity_seal(&mut channel, true)?;
         let data = output
             .values
@@ -258,8 +314,33 @@ impl Lifetime {
         binding: Digest,
         rows: usize,
     ) -> io::Result<Pool<'_, [u64; 3]>> {
-        let context = self.begin(session, binding, rows)?;
-        let output = c71_bootstrap::verifier_aes(&mut channel, context)?;
+        self.verifier_for(&mut channel, session, binding, rows, false)
+    }
+
+    pub fn verifier_fixed_run(
+        &mut self,
+        mut channel: impl Read + Write,
+        session: Digest,
+        binding: Digest,
+        rows: usize,
+    ) -> io::Result<Pool<'_, [u64; 3]>> {
+        self.verifier_for(&mut channel, session, binding, rows, true)
+    }
+
+    fn verifier_for(
+        &mut self,
+        mut channel: impl Read + Write,
+        session: Digest,
+        binding: Digest,
+        rows: usize,
+        fixed_run: bool,
+    ) -> io::Result<Pool<'_, [u64; 3]>> {
+        let context = self.begin_for(session, binding, rows, fixed_run)?;
+        let output = if fixed_run {
+            c71_bootstrap::verifier_fixed_run(&mut channel, context)
+        } else {
+            c71_bootstrap::verifier_aes(&mut channel, context)
+        }?;
         let capacity = capacity_seal(&mut channel, false)?;
         Ok(Pool {
             store: self,
@@ -303,34 +384,42 @@ impl<R: Zeroize + Copy> Pool<'_, R> {
             Option<&[u64; 3]>,
         ) -> io::Result<(T, Option<Digest>)>,
     ) -> io::Result<T> {
-        let count = full_fp3.checked_mul(3).ok_or_else(|| invalid("row count overflow"))?;
-        let state = self.store.state;
-        self.store.append(2, state.setups, state.used, count as u64, state.head)?;
-        let range = state.used as usize..state.used as usize + count;
-        let reserved = Zeroizing::new(self.rows[range.clone()].to_vec());
-        for row in &mut self.rows[range] {
-            row.zeroize();
-        }
-        let attempt = Attempt {
-            capacity: self.capacity,
-            setup: state.setups,
-            ordinal: self.store.state.attempts,
-            predecessor: state.head,
-            first_base_row: state.used,
-        };
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            consumer(attempt, reserved, self.delta.as_deref())
-        }));
-        // Even a caught panic or an IO error must not leave a pending promotion.
-        self.store.state.pending = false;
-        let (value, accepted) = outcome.map_err(|_| invalid("attempt panicked; burned"))??;
-        if let Some(digest) = accepted {
-            self.store.state.pending = true;
-            let result = self.store.append(3, state.setups, self.store.state.attempts, 0, digest);
+        let prior_head = self.store.state.head;
+        let outcome = (|| {
+            let count = full_fp3.checked_mul(3).ok_or_else(|| invalid("row count overflow"))?;
+            let state = self.store.state;
+            self.store.append(2, state.setups, state.used, count as u64, state.head)?;
+            let range = state.used as usize..state.used as usize + count;
+            let reserved = Zeroizing::new(self.rows[range.clone()].to_vec());
+            for row in &mut self.rows[range] {
+                row.zeroize();
+            }
+            let attempt = Attempt {
+                capacity: self.capacity,
+                setup: state.setups,
+                ordinal: self.store.state.attempts,
+                predecessor: state.head,
+                first_base_row: state.used,
+            };
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                consumer(attempt, reserved, self.delta.as_deref())
+            }));
+            // Even a caught panic or an IO error must not leave a pending promotion.
             self.store.state.pending = false;
-            result?;
+            let (value, accepted) = outcome.map_err(|_| invalid("attempt panicked; burned"))??;
+            if let Some(digest) = accepted {
+                self.store.state.pending = true;
+                let result =
+                    self.store.append(3, state.setups, self.store.state.attempts, 0, digest);
+                self.store.state.pending = false;
+                result?;
+            }
+            Ok(value)
+        })();
+        if self.store.state.fixed_run && (outcome.is_err() || self.store.state.head == prior_head) {
+            self.store.poisoned = true;
         }
-        Ok(value)
+        outcome
     }
 }
 
@@ -455,6 +544,41 @@ mod tests {
     }
 
     #[test]
+    fn c71_b12_fixed_run_stops_after_setup_or_attempt_failure() {
+        for fault in 0..5 {
+            let path = path();
+            let mut store = Lifetime::install(&path, model()).unwrap();
+            if fault == 0 {
+                assert!(store.prover_fixed_run(FailedChannel, [4; 32], [5; 32], 258).is_err());
+            } else {
+                // Ownership diagnostic with ideal rows; no bootstrap credit.
+                let context = store.begin_for([4; 32], [5; 32], 9, true).unwrap();
+                let mut pool = Pool {
+                    store: &mut store,
+                    capacity: context.capacity,
+                    rows: Zeroizing::new(vec![[0u64; 4]; 9]),
+                    delta: None,
+                    audit: Audit::default(),
+                };
+                let result = pool.attempt(if fault == 4 { 0 } else { 1 }, |_, _, _| match fault {
+                    1 => Ok(((), None)),
+                    2 => Err(invalid("consumer error")),
+                    3 => panic!("consumer panic"),
+                    _ => panic!("invalid request reached consumer"),
+                });
+                assert_eq!(result.is_ok(), fault == 1);
+                assert!(pool.attempt::<()>(1, |_, _, _| panic!("failed run continued")).is_err());
+            }
+            assert!(store.prover_fixed_run(FailedChannel, [4; 32], [5; 32], 3).is_err());
+            assert!(store.prover(FailedChannel, [4; 32], [5; 32], 3).is_err());
+            assert_eq!(store.counters().0, 1);
+            drop(store);
+            assert!(Lifetime::open(&path, model()).is_err());
+            std::fs::remove_file(path).unwrap();
+        }
+    }
+
+    #[test]
     fn c71_b12_setup_failures_and_corrupt_tail_fail_closed() {
         let path = path();
         let mut store = Lifetime::install(&path, model()).unwrap();
@@ -517,6 +641,35 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn c71_b12_real_roles_reach_native_mac_after_durable_burn() {
+        check_real_pool(3, false);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn c71_b12_fixed_run_real_capacity_crosses_old_limit_with_small_io() {
+        check_real_pool(258, true);
+    }
+
+    #[cfg(unix)]
+    fn check_real_pool(n: usize, fixed_run: bool) {
+        // All non-COPE frames here are below 100k. The old whole-frame COPE
+        // buffer at n=258 would violate this boundary on both roles.
+        struct SmallIo(std::os::unix::net::UnixStream);
+        impl Read for SmallIo {
+            fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+                assert!(out.len() <= 100_000);
+                self.0.read(out)
+            }
+        }
+        impl Write for SmallIo {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                assert!(bytes.len() <= 100_000);
+                self.0.write(bytes)
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                self.0.flush()
+            }
+        }
         use volta_field::{Fp, Fp3};
         use volta_mac::c7_fp3::{
             c7_fp3_transfer_prover, c7_fp3_transfer_verifier, C7Fp3ProverAuthed,
@@ -527,43 +680,64 @@ mod tests {
         let target = field([17, 19, 23]); // diagnostic target, no PCS or W claim
         let ppath = path();
         let vpath = path();
-        let (mut pc, mut vc) = std::os::unix::net::UnixStream::pair().unwrap();
+        let (pc, vc) = std::os::unix::net::UnixStream::pair().unwrap();
         pc.set_read_timeout(Some(std::time::Duration::from_secs(20))).unwrap();
         vc.set_read_timeout(Some(std::time::Duration::from_secs(20))).unwrap();
+        let (mut pc, mut vc) = (SmallIo(pc), SmallIo(vc));
         let prover_path = ppath.clone();
         let prover = std::thread::spawn(move || {
             let mut store = Lifetime::install(&prover_path, model()).unwrap();
-            let mut pool = store.prover(&mut pc, [4; 32], [5; 32], 3).unwrap();
-            pool.attempt(1, |a, rows, _| {
+            let mut pool = if fixed_run {
+                store.prover_fixed_run(&mut pc, [4; 32], [5; 32], n)
+            } else {
+                store.prover(&mut pc, [4; 32], [5; 32], n)
+            }
+            .unwrap();
+            assert!(pool.audit.sent_frames.contains(&(6, 576 * (n + 9) * 8 + 9)));
+            pool.attempt(n / 3, |a, rows, _| {
                 assert_eq!(a.ordinal, 1);
-                let x = field([rows[0][0], rows[1][0], rows[2][0]]);
-                let tag = |r: [u64; 4]| field([r[1], r[2], r[3]]);
-                let t = tag(rows[0]) + u * tag(rows[1]) + u * u * tag(rows[2]);
-                let (correction, authed) =
-                    c7_fp3_transfer_prover(C7Fp3ProverAuthed::new(x, t), target);
-                pc.write_all(&correction.to_bytes())?;
-                pc.write_all(&authed.m.to_bytes())?;
+                assert_eq!(rows.len(), n);
+                for rows in rows.chunks_exact(3) {
+                    let x = field([rows[0][0], rows[1][0], rows[2][0]]);
+                    let tag = |r: [u64; 4]| field([r[1], r[2], r[3]]);
+                    let t = tag(rows[0]) + u * tag(rows[1]) + u * u * tag(rows[2]);
+                    let (correction, authed) =
+                        c7_fp3_transfer_prover(C7Fp3ProverAuthed::new(x, t), target);
+                    pc.write_all(&correction.to_bytes())?;
+                    pc.write_all(&authed.m.to_bytes())?;
+                }
                 Ok(((), None))
             })
             .unwrap();
         });
         {
             let mut store = Lifetime::install(&vpath, model()).unwrap();
-            let mut pool = store.verifier(&mut vc, [4; 32], [5; 32], 3).unwrap();
-            pool.attempt(1, |a, rows, delta| {
+            let mut pool = if fixed_run {
+                store.verifier_fixed_run(&mut vc, [4; 32], [5; 32], n)
+            } else {
+                store.verifier(&mut vc, [4; 32], [5; 32], n)
+            }
+            .unwrap();
+            pool.attempt(n / 3, |a, rows, delta| {
                 assert_eq!(a.ordinal, 1);
                 let native_delta = Fp3::ZERO - field(*delta.unwrap());
-                let k = field(rows[0]) + u * field(rows[1]) + u * u * field(rows[2]);
-                let mut bytes = [0; 24];
-                vc.read_exact(&mut bytes)?;
-                let correction = C7Fp3TransferCorrection::from_bytes(&bytes).unwrap();
-                let key =
-                    c7_fp3_transfer_verifier(C7Fp3VerifierKey::new(k), native_delta, correction);
-                vc.read_exact(&mut bytes)?;
-                let tag = Fp3::from_bytes(&bytes).unwrap();
-                assert_eq!(key.k, tag + native_delta * target);
-                for basis in [Fp3::ONE, u, u * u] {
-                    assert_ne!(key.k, tag + native_delta * (target + basis));
+                assert_eq!(rows.len(), n);
+                for rows in rows.chunks_exact(3) {
+                    let k = field(rows[0]) + u * field(rows[1]) + u * u * field(rows[2]);
+                    let mut bytes = [0; 24];
+                    vc.read_exact(&mut bytes)?;
+                    let correction = C7Fp3TransferCorrection::from_bytes(&bytes).unwrap();
+                    let key = c7_fp3_transfer_verifier(
+                        C7Fp3VerifierKey::new(k),
+                        native_delta,
+                        correction,
+                    );
+                    vc.read_exact(&mut bytes)?;
+                    let tag = Fp3::from_bytes(&bytes).unwrap();
+                    assert_eq!(key.k, tag + native_delta * target);
+                    for basis in [Fp3::ONE, u, u * u] {
+                        assert_ne!(key.k, tag + native_delta * (target + basis));
+                    }
                 }
                 Ok(((), None))
             })
@@ -571,6 +745,11 @@ mod tests {
         }
         prover.join().unwrap();
         for path in [ppath, vpath] {
+            if fixed_run {
+                assert!(Lifetime::open(&path, model()).is_err());
+                std::fs::remove_file(path).unwrap();
+                continue;
+            }
             let store = Lifetime::open(&path, model()).unwrap();
             assert_eq!(store.counters(), (1, 1));
             assert_eq!(store.accepted_head(), [0; 32]);

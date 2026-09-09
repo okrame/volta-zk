@@ -6084,31 +6084,28 @@ def b8_bootstrap_selection():
         "next_goal": "B9: bounded native bootstrap component and adversarial/source correspondence checks before any pool/PCS integration"}
 
 
-
 def b9_bootstrap_component():
     """B9 native checks; protocol/production admission remains separate."""
-    # Filled only after a committed, clean-source execution. Dirty diagnostics
-    # and the sandbox socketpair failure remain immutable separate records.
-    source_commit = None
+    # Dirty diagnostics and the sandbox socketpair failure remain separate.
+    source_commit = "fb6c7872f343198220c6eb4d73b109b9cad26239"
     cases = []
-    if source_commit is not None:
-        for rows, fault in [(3, "none"), (32, "none")] + [(3, fault) for fault in (
-                "prover-context", "verifier-context", "receiver-point", "sender-point",
-                "seed-ciphertext", "cope-error", "check-response", "challenge-codec",
-                "compression-codec", "frame-order")]:
-            source = f"benchmarks/results/c71-b9-{rows}-{fault}-20260909-{source_commit[:7]}.json"
-            record = json.loads((Path(__file__).resolve().parents[1] / source).read_text())
-            if (record["git_dirty"] or not record["run_of_record"] or record["status"] != "pass"
-                    or record["git_commit"] != source_commit or record["source_changed_during_run"]):
-                raise ValueError("B9 evidence must retain its clean passing provenance")
-            execution = record["execution"]
-            if execution["rows"] != rows or execution["fault"] != fault or execution["accepted"] != (fault == "none"):
-                raise ValueError("B9 evidence case or adversarial disposition mismatch")
-            cases.append({"source": source, "credit": False, "rows": rows, "fault": fault,
-                "accepted": execution["accepted"], "process": record["execution_process"],
-                "heap": execution["heap"], "wire_io": execution["wire_io"],
-                "details": execution["details"], "prover_error": execution["prover_error"],
-                "verifier_error": execution["verifier_error"]})
+    for rows, fault in [(3, "none"), (32, "none")] + [(3, fault) for fault in (
+            "prover-context", "verifier-context", "receiver-point", "sender-point",
+            "seed-ciphertext", "cope-error", "check-response", "challenge-codec",
+            "compression-codec", "frame-order")]:
+        source = f"benchmarks/results/c71-b9-{rows}-{fault}-20260909-{source_commit[:7]}.json"
+        record = json.loads((Path(__file__).resolve().parents[1] / source).read_text())
+        if (record["git_dirty"] or not record["run_of_record"] or record["status"] != "pass"
+                or record["git_commit"] != source_commit or record["source_changed_during_run"]):
+            raise ValueError("B9 evidence must retain its clean passing provenance")
+        execution = record["execution"]
+        if execution["rows"] != rows or execution["fault"] != fault or execution["accepted"] != (fault == "none"):
+            raise ValueError("B9 evidence case or adversarial disposition mismatch")
+        cases.append({"source": source, "credit": False, "rows": rows, "fault": fault,
+            "accepted": execution["accepted"], "process": record["execution_process"],
+            "heap": execution["heap"], "wire_io": execution["wire_io"],
+            "details": execution["details"], "prover_error": execution["prover_error"],
+            "verifier_error": execution["verifier_error"]})
     return {"status": "native_component_checked_not_security_admitted", "credit": False,
         "owner_authorization": "2026-09-09: reach the next C7.1 goal consistently with completed goals",
         "native_bootstrap_implemented": True, "security_admitted": False,

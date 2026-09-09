@@ -10,8 +10,8 @@ Updated 2026-09-09. Editable working summary; Git preserves revisions.
 2026-09-09 instruction to reach the next goal authorizes the bounded B9
 port. Independent prover/verifier roles execute real MR19/P-521 OT, chosen
 seeds, keyed-BLAKE3 COPE, the full Fp9 check and Fp3 compression. Native
-checks and ten adversarial byte cases pass; clean-source resource records
-are the final checkpoint step. [Design §10, B9](c7.1-gemma31b-design.md#b9-componente-nativo-e-confine-di-ammissione)
+checks and ten adversarial byte cases pass, including twelve clean-source
+records at `fb6c787`. B9 is concluded. [Design §10, B9](c7.1-gemma31b-design.md#b9-componente-nativo-e-confine-di-ammissione)
 records the exact source mapping and remaining admission obligations.
 Production/security admission and pool/PCS integration remain false.
 
@@ -66,9 +66,9 @@ budgets and the pinned 100+50 workload. The comparison may price explicit
 alternatives, including a fifth read or organized host spill; it must not
 claim they meet the reference. Scope and remaining thresholds are in design §1.
 
-**Authorization for B9:** bounded local native implementation, adversarial
-checks and resource counts. The old B7 baseline stays stopped; G2 remains
-suspended. No RunPod/provider contact, H100/GPU, paid resources, downloads,
+**Authorization after B9:** the requested bounded native implementation,
+adversarial checks and resource counts are complete. The old B7 baseline
+stays stopped; G2 remains suspended. No RunPod/provider contact, H100/GPU, paid resources, downloads,
 heavy builds or matrix/Gemma E2E. There is no pending spending approval.
 The next proposed B10 is a bounded assessment of concrete primitive and
 implementation premises plus the lifecycle/AES-PCG composition contract,
@@ -390,7 +390,8 @@ No native build, new Lean theorem, benchmark record, matrix/Gemma proof
 or hardware measurement is claimed. The unrelated G2 test edits remain intact.
 
 B9 below supplies the bounded native component and checks. Concrete
-primitive accounting and lifecycle/PCG composition still precede integration. B4 masked-RS, same-W/FS lifetime and the complete
+primitive accounting and lifecycle/PCG composition still precede integration.
+B4 masked-RS, same-W/FS lifetime and the complete
 physical schedule/certificate remain independent unresolved obligations.
 
 
@@ -405,7 +406,13 @@ checks include both OT choices, independent Python curve/hash vectors,
 all mask coordinates, malicious point branches and zero-key abort before
 the compression frame. Ten endpoint mutations reject at the expected
 boundary. Earlier dirty diagnostics and the sandbox socketpair failure
-are preserved separately; clean-source records are pending the source commit.
+are preserved separately. Clean-source records at `fb6c787` pass:
+[3 base rows](../benchmarks/results/c71-b9-3-none-20260909-fb6c787.json),
+[32 base rows](../benchmarks/results/c71-b9-32-none-20260909-fb6c787.json)
+and all ten adversarial cases listed by the single budget. The 32-row case
+uses **3.284 s wall**, **3,362,816 bytes sampled peak RSS** and
+**1,153,827 bytes peak requested heap**, including the diagnostic framing
+and checks. Five focused Rust and sixteen Python checks pass.
 
 The successful wire remains **247,345 bytes for 3 base rows** and
 **383,065 for 32**, with all nine frames. B9 processes both receiver DH/KDF

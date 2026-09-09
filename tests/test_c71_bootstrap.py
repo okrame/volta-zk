@@ -258,6 +258,8 @@ def test_B9_native_boundary_counts_and_preserved_history():
         "fixed_base_scalar_multiplications": 2304, "variable_base_scalar_multiplications": 2304,
         "hash_to_group": 2304, "KDF": 2304, "point_additions": 1728, "scalar_candidates": 18432}
     assert b9["complete_connection_and_PCG_bytes"]["admission_bound"] == "infinity"
+    assert len(b9["measured_cases"]) == 12
+    assert sum(case["accepted"] for case in b9["measured_cases"]) == 2
     for case in b9["measured_cases"]:
         heap = case["heap"]
         assert heap["live_start_bytes"] + heap["allocated_bytes"] - heap["freed_bytes"] == heap["live_end_bytes"]

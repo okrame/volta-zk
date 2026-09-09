@@ -23,6 +23,15 @@ pub(in crate::c71_matrix) struct Bytes {
     pub layout_digest: [u8; 32],
 }
 
+pub(in crate::c71_matrix) struct RneRequest<T> {
+    pub consumer: usize,
+    pub source: usize,
+    pub view: [u8; 32],
+    pub shape: [usize; 2],
+    pub point: Vec<Fp3>,
+    pub original: T,
+}
+
 impl Plan {
     pub fn auxiliary_bytes(&self) -> Result<Bytes, String> {
         let scalar = self.auxiliary_layout()?;
@@ -94,6 +103,62 @@ impl Plan {
 }
 
 impl Bytes {
+    /// Direct P0 consumers of raw matrix producers. Shift values still come
+    /// from the fixed PUBLIC quantization profile; these are original MAC
+    /// obligations, not new outputs or an inferred calibrated profile.
+    pub fn rne_requests<T: Copy>(
+        &self,
+        plan: &Plan,
+        pending: &PendingP0<T>,
+    ) -> Result<Vec<RneRequest<T>>, String> {
+        if self.scalar.weight_layout != plan.layout_digest
+            || pending.inputs.len() + 1 != plan.cohorts.len()
+        {
+            return Err("RNE input obligations differ from P0 layout".into());
+        }
+        let mut producers = BTreeMap::new();
+        for (i, c) in plan.cohorts.iter().enumerate() {
+            if producers.insert((c.layer, c.operation.as_str()), i).is_some() {
+                return Err("RNE producer identity repeated".into());
+            }
+        }
+        let mut result = Vec::new();
+        for (i, input) in pending.inputs.iter().enumerate() {
+            let consumer = i + 1;
+            let route = plan.input_route(consumer)?; // never trust a copied route/selector
+            if input.cohort != consumer
+                || input.point.len() != bits(route.selected_rows) + bits(route.columns)
+            {
+                return Err("RNE original consumer point differs".into());
+            }
+            let Some(&source) = producers.get(&(route.producer.0, route.producer.1.as_str()))
+            else {
+                continue;
+            };
+            if plan.cohorts[source].kind != Kind::Matrix {
+                continue;
+            }
+            let (view, shape) = self.rne_view(plan, source)?;
+            if route.row_offset != 0
+                || route.selected_rows != shape[0]
+                || [route.rows, route.columns] != shape
+            {
+                return Err("RNE matrix consumer needs an explicit selected-row form".into());
+            }
+            // A norm's token/head row bits followed by lane bits already
+            // equal the matrix's token row bits followed by full channels.
+            result.push(RneRequest {
+                consumer,
+                source,
+                view,
+                shape,
+                point: input.point.clone(),
+                original: input.original,
+            });
+        }
+        Ok(result)
+    }
+
     /// Canonical padded row/column/six-byte view of a raw matrix P0 cut.
     /// The 8-lane RNE view adds two public zero lanes, never source cells.
     pub fn rne_view(&self, plan: &Plan, cohort: usize) -> Result<([u8; 32], [usize; 2]), String> {
@@ -401,8 +466,11 @@ mod tests {
                     &mut prows,
                 )
                 .unwrap();
-            let output = &pending.inputs[1];
-            assert_eq!(output.cohort, 2);
+            let requests = bytes.rne_requests(&plan, &pending).unwrap();
+            assert_eq!(requests.len(), 1);
+            let output = &requests[0];
+            assert_eq!((output.consumer, output.source), (2, 1));
+            assert_eq!((output.view, output.shape), (view, shape));
             let rq = rne::Statement {
                 root: &a_model.root,
                 profile: &profile,
@@ -427,7 +495,7 @@ mod tests {
                 &mut prows,
             )
             .unwrap();
-            let byte_form = bytes.rne_form(&plan, 1, &byte_point).unwrap();
+            let byte_form = bytes.rne_form(&plan, output.source, &byte_point).unwrap();
             if fault == 0 {
                 let expected = (0..3).flat_map(|row| (0..3).map(move |col| (row, col))).fold(
                     Fp3::ZERO,
@@ -513,7 +581,8 @@ mod tests {
                 let mut fs = start();
                 let mut vrows = keys.clone().into_iter();
                 let pending = plan.verify_p0(&statement, &p0, delta, &mut fs, &mut vrows)?;
-                let output = &pending.inputs[1];
+                let requests = bytes.rne_requests(&plan, &pending)?;
+                let output = &requests[0];
                 let rq = rne::Statement {
                     root: &a_model.root,
                     profile: &profile,
@@ -555,7 +624,7 @@ mod tests {
                 weight_targets.extend(wt);
                 let (mut aux_forms, shifts) = bytes.forms(&plan, &pending)?;
                 aux_forms.extend(af);
-                aux_forms.push(bytes.rne_form(&plan, 1, &point)?);
+                aux_forms.push(bytes.rne_form(&plan, output.source, &point)?);
                 let mut aux_targets: Vec<_> = pending
                     .cuts
                     .iter()

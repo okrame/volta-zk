@@ -141,10 +141,17 @@ The 411 canonical matrix-byte views now compile to 7,126 cubes. A new
 of the preceding matrix's original cut, with the same ranged W and byte A.
 It covers ragged row/column padding and rejects inconsistent quantization
 or a changed raw getter. It does not prove the norm's RMS denominator.
+The native request compiler selects all 240 direct q/k/o/down-projection
+inputs of weighted P0 norms, retaining their original MACs and points.
+Their [conditional composition](c7.1-gemma31b-design.md#b12-composizione-raw-p0-a-due-sorgenti)
+with byte-P0/range/both PCS gives about 82.99443/91.02272 bits within
+T121/M93. The known upper is 1,165,368 base rows per attempt, 3,496,104
+for three, before other operators. This requires the fixed public shifts
+and prescribed dispatch; full calibrated-profile/native execution is open.
 
-Twenty-four B12 algebra/accounting checks include the scalar invariant,
+Twenty-five B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 205; the 17
+range/product identities and the joint two-source bounds. The relevant Python checks total 206; the 17
 narrow bootstrap/pool checks and twenty-three B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
@@ -166,8 +173,8 @@ NoPeek, relation and resource composition.
 
 **Remaining work:** full Gemma malicious-verifier ZK, the complete quantized
 Gemma GKR relation using the range-checked W, full correlation census and
-both-role resource composition for the fixed run. The known 962,424 rows
-for three byte-backed raw-P0 attempts fit the initial capacity; other circuits remain uncounted.
+both-role resource composition for the fixed run. The known 3,496,104-row upper
+for three byte-backed P0/direct-RNE attempts fits the initial capacity; other circuits remain uncounted.
 The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
 soundness bound also included failed setups/key changes; that broader
 evidence remains valid without making renewal/recovery new gates. Neither

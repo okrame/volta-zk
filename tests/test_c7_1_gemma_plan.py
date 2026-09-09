@@ -249,6 +249,34 @@ def test_B12_RNE_counts_range_validity_and_both_original_MAC_endpoints():
     assert tiny['tiny_P0_RNE_original_consumer_MAC_rows_with_two_ranged_PCS'] == 24+488+269+510+64
 
 
+def test_B12_direct_RNE_consumers_recompose_errors_without_extra_roots_or_MACs():
+    assessment = plan.b12_pcs_binding_assessment()
+    base = assessment['raw_P0_two_source_composition']['cases'][-1]
+    b = assessment['direct_P0_RNE_composition']
+    assert b['requests'] == 240
+    assert b['source_operations'] == dict.fromkeys(['q_proj','k_proj','o_proj','down_proj'],60)
+    assert b['summed_cell_bits'] == 4980 and b['original_byte_source_cubes'] == 3840
+    assert b['additional_Fp3_correlations_upper_per_attempt'] == 40*4980+343*240 == 281520
+    assert b['additional_FS_draw_requests'] == 10*4980+75*240 == 67800
+    assert b['additional_MAC_degree_sum_upper_per_attempt'] == 9*4980+66*240 == 60660
+    # P0 source-point selection, fresh validity/mix, degree-7 top, its
+    # products/function batch, and EVERY P/S mix/round/split/product batch.
+    degree = 4980+(4980+240)+7*4980+(38+37+3+8+8+23)*240+3*(8*(4980+3*240)+28*240)
+    assert b['sum_of_all_added_FS_error_degrees_upper'] == degree == 230100
+    assert Fraction(b['additional_global_FS_error']) == Fraction((1 << 74)*degree,plan.P**3)
+    assert Fraction(b['conditional_soundness_sum']) == Fraction(base['conditional_soundness_sum'])+Fraction(b['additional_global_FS_error'])+Fraction(b['additional_fixed_run_MAC_error'])
+    assert b['conditional_ZK_sum'] == base['conditional_ZK_sum']
+    assert b['base_rows_upper_per_attempt_before_other_operators'] == 1165368
+    assert b['initial_base_capacity_upper_three_attempts_before_other_operators'] == 3496104 < b['initial_base_capacity_limit']
+    assert b['auxiliary_targets_with_range_and_RNE'] == 1787
+    assert b['both_below_2_to_minus_78'] and b['both_resource_caps_hold']
+    assert b['full_RO_queries_upper'] < 1 << 74
+    assert not b['new_PCS_or_private_rng_streams']
+    assert not b['all_Gemma_integer_producers_proven']
+    assert not b['native_full_request_execution_or_calibrated_shift_profile']
+    assert b['full_Gemma_security_totals'] is None
+
+
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():
     all_bounds = plan.b12_pcs_binding_assessment()
     b = all_bounds['raw_P0_two_source_composition']

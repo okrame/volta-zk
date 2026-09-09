@@ -123,6 +123,10 @@ ranged PCS. It passes the norm P0's original X MAC to RNE of the preceding
 matrix cut, with canonical ragged byte forms; wrong quantization or a raw
 getter changed after commitment rejects. The norm remains a raw weighted
 product, with no RMS denominator or full Gemma credit.
+The full layout check also compiles all 240 direct P0-to-RNE requests
+(q/k/o/down projections), checks their original MAC/point identities and
+3,840 byte cubes. Only the tiny graph executes RNE; the full-domain
+composition and correlation upper remain analytic.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner
 or standalone wire codec. These checks need only local Unix socketpairs.
 The existing field/FS checks use `c71_matrix::tests::` with that feature.

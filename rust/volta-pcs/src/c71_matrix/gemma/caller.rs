@@ -584,6 +584,26 @@ mod tests {
         assert_eq!(rne_views, 411);
         assert_eq!((rne_cubes, largest), (7126, 24));
         assert!(18472 + rne_cubes + 34 < 32768);
+        let requests = bytes.rne_requests(&plan, &checked).unwrap();
+        assert_eq!(requests.len(), 240);
+        let mut requested_cubes = 0;
+        let mut requested_bits = 0;
+        let mut counts = BTreeMap::new();
+        for request in &requests {
+            let c = &plan.cohorts[request.source];
+            *counts.entry(c.operation.as_str()).or_insert(0) += 1;
+            assert_eq!(request.original, checked.inputs[request.consumer - 1].original);
+            assert_eq!(request.point, checked.inputs[request.consumer - 1].point);
+            let b = bits(c.rows) + bits(c.columns);
+            requested_bits += b;
+            requested_cubes +=
+                bytes.rne_form(&plan, request.source, &vec![signed(2); b + 3]).unwrap().len();
+        }
+        assert_eq!(
+            counts,
+            BTreeMap::from([("q_proj", 60), ("k_proj", 60), ("o_proj", 60), ("down_proj", 60)])
+        );
+        assert_eq!((requested_cubes, requested_bits), (3840, 4980));
         let mut producers = std::collections::BTreeSet::new();
         for (p, v) in claims.inputs.iter().zip(&checked.inputs) {
             assert_eq!(p.cohort, v.cohort);

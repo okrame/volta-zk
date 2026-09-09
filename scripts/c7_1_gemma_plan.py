@@ -6892,6 +6892,77 @@ def b12_raw_p0_composition(profiles, auxiliary_profile, byte_profile, mask, boot
     }
 
 
+def b12_direct_P0_RNE_composition(raw_composition):
+    """Conditional extension for the 240 direct matrix->P0 norm inputs.
+
+    Public shifts are fixed by the quantization statement. All returned
+    original byte claims join A's ONE PCS. This is not the remaining Gamma
+    relation, full calibrated-profile validation or a full-domain native run.
+    """
+    cohorts = gemma_weight_cohorts(pinned_private_tensors())
+    by_producer = {(c['layer'], c['operation']): c for c in cohorts}
+    selected = []
+    for route in gemma_input_routes(cohorts):
+        c = by_producer.get(tuple(route['source_producer'].values()))
+        if c is None or c['kind'] != 'matrix':
+            continue
+        assert route['row_offset'] == 0 and route['selected_rows'] == c['rows']
+        assert tuple(route['source_shape']) == (c['rows'], c['columns'])
+        selected.append(c)
+    dimensions = [(c['rows']-1).bit_length()+(c['columns']-1).bit_length() for c in selected]
+    profiles = [b12_rne_profile(c) for c in dimensions]
+    extra_rows = sum(p['Fp3_correlations_upper_before_incoming_claims_and_shared_PCS'] for p in profiles)
+    mac_degree = sum(p['MAC_degree_sum_upper_before_shared_PCS'] for p in profiles)
+    # Conservative SUM of every loss, including source-X point selection
+    # in P0 and every round, before applying the ONE global Q*. This avoids
+    # claiming an unimplemented merged-block optimization for the dispatcher.
+    degree = sum(33*c+274 for c in dimensions)
+    q = P**3
+    extra_fs = Fraction((1 << 74)*degree, q)
+    extra_mac = Fraction(3*mac_degree, q-1)
+    base = next(c for c in raw_composition['cases'] if c['W_log_cells'] == 35 and c['auxiliary_log_cells'] == 33)
+    sound = Fraction(base['conditional_soundness_sum'])+extra_fs+extra_mac
+    privacy = Fraction(base['conditional_ZK_sum'])
+    work, memory = 1 << 68, 1 << 41
+    total_work = base['reduction_work_upper']+work
+    total_memory = base['reduction_memory_words_upper']+memory
+    total_rows = base['Fp3_correlations_per_attempt_before_other_operators']+extra_rows
+    return {
+        'relation': 'raw P0 plus exact RNE for its 240 direct matrix-producer input tables',
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/bytes.rs',
+        'requests': len(selected), 'source_operations': {op: sum(c['operation'] == op for c in selected)
+            for op in sorted({c['operation'] for c in selected})},
+        'summed_cell_bits': sum(dimensions),
+        'original_byte_source_cubes': 2*sum(c['rows'].bit_count()*c['columns'].bit_count() for c in selected),
+        'additional_Fp3_correlations_upper_per_attempt': extra_rows,
+        'additional_field_payload_bytes_upper_before_context_and_framing': sum(p['field_payload_bytes_upper_before_context_and_framing'] for p in profiles),
+        'additional_FS_draw_requests': sum(p['FS_draw_requests'] for p in profiles),
+        'additional_MAC_degree_sum_upper_per_attempt': mac_degree,
+        'sum_of_all_added_FS_error_degrees_upper': degree,
+        'additional_global_FS_error': str(extra_fs), 'additional_fixed_run_MAC_error': str(extra_mac),
+        'Fp3_correlations_upper_per_attempt_before_other_operators': total_rows,
+        'base_rows_upper_per_attempt_before_other_operators': 3*total_rows,
+        'initial_base_capacity_upper_three_attempts_before_other_operators': 9*total_rows,
+        'initial_base_capacity_limit': 16777206,
+        'auxiliary_targets_with_range_and_RNE': base['auxiliary_targets_including_own_range']+len(selected),
+        'new_PCS_or_private_rng_streams': 0,
+        'additional_honest_work_u64_upper': work, 'additional_honest_memory_words_upper': memory,
+        'additional_honest_RO_events_upper': 1 << 30,
+        'full_RO_queries_upper': base['full_RO_queries_upper']+(1 << 30),
+        'reduction_work_upper': total_work, 'reduction_memory_words_upper': total_memory,
+        'both_resource_caps_hold': total_work < 1 << 121 and total_memory < 1 << 93,
+        'conditional_soundness_sum': str(sound), 'conditional_ZK_sum': str(privacy),
+        'soundness_bits': math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits': math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78': max(sound,privacy) < Fraction(1,1 << 78),
+        'public_shifts_and_canonical_request_dispatch_required': True,
+        'native_compiler_checked_all_request_identities': True,
+        'native_full_request_execution_or_calibrated_shift_profile': False,
+        'all_Gemma_integer_producers_proven': False,
+        'full_Gemma_security_totals': None, 'physical_schedule_admitted': False,
+    }
+
+
 def b12_pcs_binding_assessment():
     """Unique-decoding route for the published IOPP; source/hash compilation stays explicit."""
     q = P**3
@@ -7308,6 +7379,7 @@ def b12_pcs_binding_assessment():
             'full_Gemma_security_totals': None, 'security_admitted': False},
         'native_P0_original_MAC_caller': b12_p0_native_caller(),
         'raw_P0_two_source_composition': p0_composition,
+        'direct_P0_RNE_composition': b12_direct_P0_RNE_composition(p0_composition),
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",

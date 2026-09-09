@@ -12,7 +12,9 @@ explicit primitive/resource hypotheses. B12 is active: a conditional bootstrap
 resource extension to T80 and a durable finite-pool component are available.
 A fresh post-bootstrap seal fixes the row assignment before usable FS prefixes.
 The PCS analysis adds a proven unique-radius MCA bound and identifies
-unsalted-root privacy loss at mask exhaustion. An opt-in salted matrix
+unsalted-root privacy loss at mask exhaustion. Its salted replacement now
+has an adaptive, bounded-query Merkle hiding argument; this does not yet
+cover the correlated claimless PCS transcript. An opt-in salted matrix
 consumer now reaches the durable B11 pool with the unique-radius IOP
 geometry and an adaptive MAC-feedback bound. Merkle binding now fixes an
 oracle at its commitment prefix. Native FS coin blocks now retain that fixed

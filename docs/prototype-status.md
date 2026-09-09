@@ -62,9 +62,10 @@ tensors (3,606 cubes), including all 150 lookup rows in one target. It does
 not yet connect the actual Gemma GKR execution or enforce weight range.
 [Design: bridge and capacity](c7.1-gemma31b-design.md#b12-ponte-nativo-dai-mac-originali-a-ununica-root-w).
 
-Twelve B12 algebra/accounting checks now include the scalar invariant and a
-finite exhaustive decoder check. The complete relevant Python checks total
-193; the 17 narrow bootstrap/pool checks and eight B12 PCS checks pass.
+Fifteen B12 algebra/accounting checks include the scalar invariant, a
+finite exhaustive decoder check and adaptive Merkle/RS simulation. The
+relevant Python checks total 196; the 17 narrow bootstrap/pool checks and
+eight B12 PCS checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -72,10 +73,14 @@ PCS-only bits, but its 4 TiB initial codeword remains physically excluded.
 
 Privacy remains separate. Unsalted B2 roots permit candidate-W reconstruction
 after mask exhaustion; its ideal n=128 event is about 2^-24.0445, not a
-measured native FS attack. B12 salting and the private-coin replacement bound
-below 2^-178 address components of that problem. They do not prove salted
-Merkle hiding or malicious-verifier FS/ZK. One uniform OOD point also carries
-an explicit 1/q ordinary-IOP privacy error per switch.
+measured native FS attack. B12 now has a bounded-query adaptive hiding
+argument for salted Merkle roots and paths, including private coins:
+159.15/158.68 bits for the two native geometries and 146.68 for the
+excluded D35 geometry. The initial RS rows remain private at all 1,536
+permitted adaptive queries. This covers that projection of the view;
+the claimless PCS messages and malicious-verifier FS/ZK still need
+composition. One uniform OOD point also carries an explicit 1/q
+ordinary-IOP privacy error per switch.
 
 **Remaining work:** malicious-verifier ZK, quantized weight range and the
 complete Gemma GKR relation, full correlation census and both-role resource

@@ -129,6 +129,117 @@ def test_B12_unique_radius_budget_includes_mask_degree_and_keeps_compilation_ope
     assert streams == 3+3*3 and coins['model_rematerialization_repeats_are_not_fresh_coins']
 
 
+def test_B12_RS_root_queries_hide_W_at_adaptive_mask_exhaustion():
+    # Every two-query adaptive strategy below, all mask vectors, two W.
+    # Initial coefficients are W || r, exactly as in the native RS root.
+    p, domain = 5, (1, 2, 3, 4)
+    messages = ((0, 0), (1, 2))
+    for choices in product((1, 2, 3), repeat=p):
+        views = []
+        for w in messages:
+            counts = Counter()
+            for r in product(range(p), repeat=2):
+                values = [sum(c*pow(x, i, p) for i, c in enumerate(w+r)) % p for x in domain]
+                second = choices[values[0]]
+                # Repeated query returns the old answer and consumes no rank.
+                counts[(values[0], second, values[second], values[0])] += 1
+            views.append(counts)
+        assert views[0] == views[1]
+        assert all(count == 1 for count in views[0].values())
+    # A third DISTINCT query exceeds r=2 and can reveal W.
+    views = [Counter(tuple(sum(c*pow(x, i, p) for i, c in enumerate(w+r)) % p
+                           for x in domain[:3]) for r in product(range(p), repeat=2))
+             for w in messages]
+    assert views[0] != views[1]
+
+
+def test_B12_lazy_salted_Merkle_programs_only_unseen_inputs_and_reuses_paths():
+    # Executable lazy-RO simulation, not a replacement hash or runtime PCS.
+    # It receives values ONLY when a leaf is opened; it never commits zeros
+    # and later changes those already-queried preimages.
+    rng = random.Random(71)
+    table, nodes, salts, revealed = {}, {1: rng.randbytes(32)}, {}, {}
+    root = nodes[1]
+
+    def query(key):
+        if key not in table:
+            table[key] = rng.randbytes(32)
+        return table[key]
+
+    def program(key, value):
+        if key in table and table[key] != value:
+            raise ValueError('previously queried input cannot be reprogrammed')
+        table[key] = value
+
+    def open_leaf(index, value):
+        path, node = [], 1
+        for bit in (index >> 2, (index >> 1) & 1, index & 1):
+            if 2*node not in nodes:
+                nodes[2*node], nodes[2*node+1] = rng.randbytes(32), rng.randbytes(32)
+                program(b'node'+nodes[2*node]+nodes[2*node+1], nodes[node])
+            path.append(nodes[2*node+1-bit])
+            node = 2*node+bit
+        if index not in salts:
+            salts[index] = b''.join(rng.randrange(plan.P).to_bytes(8, 'little') for _ in range(4))
+            revealed[index] = value
+        assert revealed[index] == value
+        program(b'leaf'+value.to_bytes(8, 'little')+salts[index], nodes[node])
+        return salts[index], list(reversed(path))
+
+    def verify(index, value, opening):
+        salt, path = opening
+        current = query(b'leaf'+value.to_bytes(8, 'little')+salt)
+        for level, sibling in enumerate(path):
+            left, right = (sibling, current) if (index >> level) & 1 else (current, sibling)
+            current = query(b'node'+left+right)
+        return current == root
+
+    proofs, previous = [], root[0]
+    query(b'an unrelated preprocessing query')
+    for step in range(12):
+        index = (previous+3*step) % 8  # adaptive, with repeats
+        value = 17+index
+        opening = open_leaf(index, value)
+        proofs.append((index, value, opening))
+        assert verify(index, value, opening)
+        assert open_leaf(index, value) == opening
+        previous = value
+    assert len(revealed) < 8 and len(revealed) > 1
+    assert all(verify(*proof) for proof in proofs)  # later opens preserve old paths
+    index, value, opening = proofs[0]
+    assert not verify(index, value+1, opening)
+    existing = b'leaf'+value.to_bytes(8, 'little')+opening[0]
+    original = table[existing]
+    with pytest.raises(ValueError, match='cannot be reprogrammed'):
+        program(existing, bytes(x ^ 1 for x in original))
+    assert table[existing] == original
+
+
+def test_B12_Merkle_hiding_counts_all_trees_but_does_not_grant_PCS_ZK():
+    b = plan.b12_pcs_binding_assessment()
+    c = b['Merkle_hiding_component']
+    assert c['salt_space'] == plan.P**4 and c['global_queries_upper'] == 1 << 74
+    assert c['not_statistical_hiding_against_an_unbounded_RO_adversary']
+    assert c['initial_RS_adaptive_queries_max'] == 1536
+    assert not c['claimless_PCS_transcript_ZK_proved'] and not c['complete_Gemma_ZK_proved']
+    leaves = []
+    for p in b['ideal_oracle_profiles']:
+        o, h = p['oracles'], p['adaptive_Merkle_hiding']
+        groups = 2*len(o)-1
+        expected = o[0]['domain_rows']+3*(sum(x['domain_rows'] for x in o[1:])
+                     +o[-1]['domain_rows']+2*groups*b['shared_mask_code']['domain_rows'])
+        assert h['distinct_salted_leaves'] == expected
+        assert h['distinct_trees'] == 1+3*(5*len(o)-2)
+        assert h['distinct_nodes_including_leaves'] == 2*expected-h['distinct_trees']
+        total = sum(Fraction(x) for x in h['terms'].values())
+        assert total == Fraction(h['sum_including_private_coins_once']) < Fraction(1, 1 << 146)
+        assert h['lazy_labels_upper'] < c['simulator_extra_programmed_inputs_upper']
+        assert h['opened_rows_upper'] <= 90624
+        assert h['native_profile_selected'] == (p['log_message_cells'] <= 14)
+        leaves.append(expected)
+    assert leaves == [1507328, 2097152, 8594513920]
+
+
 def test_B12_claimless_affinity_and_one_secret_key_root():
     # Independent polynomial evaluation for the exact AffineClaim replay and
     # C71 closing-key equation; valid MACs alone do not fix the PCS target.

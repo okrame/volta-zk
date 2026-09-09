@@ -6573,6 +6573,23 @@ def b12_pcs_binding_assessment():
         rounds = len(oracles)-1
         # Exact request_limit() census: all H/(H-t+1) ceilings here equal 2.
         requests = 3+4*rounds+log_size+sum(folds)+(len(oracles)+groups)*query_count*512
+        # Distinct salted trees across one installation and three attempts.
+        # Re-materializing the initial root repeats its salt/mask stream.
+        forest_leaves = oracles[0]['domain_rows'] + 3*(
+            sum(o['domain_rows'] for o in oracles[1:]) + oracles[-1]['domain_rows']
+            + 2*groups*mask['domain_rows'])
+        forest_trees = 1+3*(5*len(oracles)-2)
+        forest_nodes = 2*forest_leaves-forest_trees
+        hiding_terms = {
+            'unrevealed_salt_queries': Fraction(forest_leaves*coin_queries, P**4-coin_queries),
+            'salt_collisions': Fraction(forest_leaves*(forest_leaves-1), 2*P**4),
+            'hidden_digest_queries_and_preexisting_labels': Fraction(
+                2*forest_nodes*coin_queries, (1 << 256)-coin_queries-forest_nodes),
+            'digest_collisions': Fraction(forest_nodes*(forest_nodes-1), 1 << 257),
+            'private_coin_replacement_once': coin_error,
+        }
+        hiding_total = sum(hiding_terms.values())
+        opened = 3*(len(oracles)+1+2*groups)*query_count
         profiles.append({"log_message_cells": log_size, "folds": folds,
             "oracles": oracles, "round_error_vector": [str(x) for x in errors],
             "max_round_error": str(max(errors)),
@@ -6587,6 +6604,14 @@ def b12_pcs_binding_assessment():
             "initial_encoded_base_field_bytes": 8*oracles[0]["encoded_base_field_cells"],
             "memory_is_not_a_streaming_schedule": True,
             "ordinary_IOP_HVZK_error_from_zero_OOD": str(Fraction(len(oracles)-1, q)),
+            "adaptive_Merkle_hiding": {
+                'distinct_trees': forest_trees, 'distinct_salted_leaves': forest_leaves,
+                'distinct_nodes_including_leaves': forest_nodes,
+                'opened_rows_upper': opened, 'lazy_labels_upper': forest_trees+2*32*opened,
+                'terms': {k: str(v) for k, v in hiding_terms.items()},
+                'sum_including_private_coins_once': str(hiding_total),
+                'bits': math.log2(hiding_total.denominator)-math.log2(hiding_total.numerator),
+                'native_profile_selected': log_size <= 14},
             "native_profile_selected": log_size <= 14})
 
     exhaustion = []
@@ -6670,8 +6695,21 @@ def b12_pcs_binding_assessment():
                 "conditional_component_error_upper": str(coin_error),
                 "bits": math.log2(coin_error.denominator)-math.log2(coin_error.numerator),
                 "model_rematerialization_repeats_are_not_fresh_coins": True,
-                "scope": "fixed-root private coin replacement only; not Merkle hiding, FS ZK or a renewed-root stream census"},
+                "scope": "fixed-root private coin replacement; counted once in adaptive Merkle hiding, not complete FS ZK"},
             "root_renewal": False, "security_admitted": False},
+        "Merkle_hiding_component": {
+            'kind': 'bounded-query programmable-ROM adaptive opening simulation',
+            'salt_space': P**4, 'digest_space': 1 << 256, 'global_queries_upper': coin_queries,
+            'root_and_openings_only': True, 'same_root_cache_across_three_attempts': True,
+            'initial_RS_adaptive_queries_max': 1536, 'initial_RS_statistical_query_error': '0',
+            'simulator_additional_work_u64_upper': 1 << 48,
+            'simulator_additional_memory_words_upper': 1 << 30,
+            'simulator_extra_programmed_inputs_upper': 1 << 24,
+            'includes_external_RO_table_cost': False,
+            'per_profile_bounds': 'ideal_oracle_profiles[].adaptive_Merkle_hiding',
+            'not_statistical_hiding_against_an_unbounded_RO_adversary': True,
+            'claimless_PCS_transcript_ZK_proved': False,
+            'complete_Gemma_ZK_proved': False},
         "authenticated_linear_form_bridge": {
             "source": "rust/volta-pcs/src/c71_matrix/linear.rs",
             "kind": "native bounded component plus exact public-layout identity",
@@ -6765,9 +6803,9 @@ def b12_pcs_binding_assessment():
             "algebraic_terminal_correspondence": True,
             "native_coin_block_projection_implemented": True,
             "native_field_matrix_prefix_bound_proven": True,
-            "next": "hiding/malicious-verifier ZK and full Gemma GKR/quantization within the fixed-run scope"},
+            "next": "claimless PCS/malicious-verifier FS ZK and full Gemma GKR/quantization within the fixed-run scope"},
         "same_W_consequence": "one decoded message per fixed oracle before opening challenges; root links compare both endpoints under the current MAC",
-        "remaining": ["salted Merkle hiding and malicious-verifier FS/ZK compilation",
+        "remaining": ["claimless PCS and malicious-verifier FS/ZK compilation",
             "full GKR/quantization relation and adequate fixed-run correlation capacity",
             "complete physical schedule and fixed-run extractor/simulator resource census"]}
 

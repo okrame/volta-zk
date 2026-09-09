@@ -126,12 +126,21 @@ reuses the range GKR kernel for R2's P/S interpolation. Original function
 MACs reduce to an original byte MAC for the same auxiliary PCS, without a
 bit or trace commitment. Its 809-row ideal check rejects a false function
 and a consistent function of bytes changed after commitment. The native
-view cap is D10; the RNE top and canonical full-DAG caller remain open.
+view cap is D10; the canonical full-DAG caller remains open.
 
-Twenty-three B12 algebra/accounting checks include the scalar invariant,
+The [native RNE top](../rust/volta-pcs/src/c71_matrix/rne.rs) now proves
+one public shift class from original biased-i48 byte MACs to an original
+output MAC, including symmetric-i16 overflow rejection. Its degree-seven
+recipe reuses R2 and sends its byte functions to the same P/S/PCS.
+The 951-row ideal check rejects wrong output, both ±32768 overflows and
+changed raw bytes that preserve the rounded output. All 64 shift recipes
+and their degree are checked. Canonical DAG byte views, multiple incoming
+claims, calibrated shifts and the remaining operators are still required.
+
+Twenty-four B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 204; the 17
-narrow bootstrap/pool checks and twenty B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 205; the 17
+narrow bootstrap/pool checks and twenty-two B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

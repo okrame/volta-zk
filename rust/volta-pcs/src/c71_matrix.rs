@@ -15,6 +15,9 @@ mod range;
 #[allow(dead_code)] // Public byte functions; returned original source MAC still needs the shared PCS.
 mod byte_function;
 #[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // RNE component; full Gemma producer and source routing remain explicit.
+mod rne;
+#[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // P0 caller; input/output openings remain explicit.
 mod p0;
 #[cfg(feature = "c71-b12-pcs")]

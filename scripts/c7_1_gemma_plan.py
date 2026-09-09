@@ -6584,9 +6584,48 @@ def b12_p0_native_caller():
             'full_RNE_or_Gemma_integer_producers_proven': False,
         },
         'public_byte_function_caller': b12_byte_function_profile(2, 1),
+        'single_shift_RNE_caller': b12_rne_profile(2),
         'full_Gemma_non_W_relations_and_quantization': False,
         'two_source_PCS_error_and_ZK_composition': 'raw_P0_two_source_composition; raw relation only',
         'complete_source_opening_capacity': None,
+        'complete_security_or_physical_credit': False,
+    }
+
+
+def b12_rne_profile(cell_bits):
+    """R2 native single-shift caller upper, before incoming MAC/shared PCS.
+
+    At most 24 comparison, 6 quotient, 1 half, 7 suppression byte functions;
+    two digit comparisons use 30 products and suppression at most nine.
+    The 64 native recipes verify these bounds. Full DAG batching is open.
+    """
+    natural(cell_bits, 'RNE cell bits', 0, 35)
+    functions, products = 38, 39
+    ps = b12_byte_function_profile(cell_bits, 3)
+    correlations = 8*cell_bits+functions+products+1+ps['Fp3_correlations_before_incoming_claims_and_shared_PCS']
+    degree = max(cell_bits+1, 7, products-1, functions-1+3+1, 23)
+    mac_degree = cell_bits+3+ps['MAC_degree_sum_before_shared_PCS']
+    q = P**3
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/rne.rs',
+        'cell_bits': cell_bits, 'public_shift_classes': 64,
+        'top_sumcheck_degree': 7, 'top_rounds': cell_bits,
+        'public_byte_function_count_upper': functions,
+        'terminal_private_products_upper': products,
+        'Fp3_correlations_upper_before_incoming_claims_and_shared_PCS': correlations,
+        'field_payload_bytes_upper_before_context_and_framing': 24*(9*cell_bits+functions+products+3)+ps['field_payload_bytes_before_context_and_framing'],
+        'FS_draw_requests': 10*cell_bits+75,
+        'MAC_degree_sum_upper_before_shared_PCS': mac_degree,
+        'max_FS_block_degree_upper': degree,
+        'global_Qstar_prefix_term_upper': str(Fraction((1 << 74)*degree, q)),
+        'MAC_error_three_attempts_upper_before_shared_PCS': str(Fraction(3*mac_degree, q-1)),
+        'native_cell_bits_cap': 7, 'native_byte_view_bits_cap': 10,
+        'biased_i48_input_to_symmetric_i16_with_overflow_rejection': True,
+        'original_output_MAC_and_original_input_byte_MAC': True,
+        'extra_PCS_or_private_bit_commitments': 0,
+        'tiny_shift': 2, 'tiny_exact_RNE_Fp3_correlations': 408,
+        'tiny_exact_rows_with_original_output_byte_range_and_PCS': 951,
+        'full_DAG_shift_batch_or_canonical_byte_routes': False,
         'complete_security_or_physical_credit': False,
     }
 

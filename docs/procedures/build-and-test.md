@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its twenty tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its twenty-two tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -113,6 +113,11 @@ byte functions, range and one shared PCS. It rejects an incorrect function
 at GKR and a consistent function of altered bytes at the original PCS.
 After changes to the shared fraction-tree kernel, also rerun the existing
 range byte/i16, product and P0/Gemma checks in separate bounded invocations.
+The `c71_b12_rne` filter checks all 64 RNE recipes, degree seven and an
+executed 951-row ideal case with one ranged auxiliary PCS. It rejects
+wrong output, ±32768 overflow and a different raw source with the same
+rounded output. This is a single public shift with c<=7 cell bits, not
+the full calibrated Gemma RNE caller or a new hardware measurement.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner
 or standalone wire codec. These checks need only local Unix socketpairs.
 The existing field/FS checks use `c71_matrix::tests::` with that feature.

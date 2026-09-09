@@ -227,6 +227,23 @@ def test_B12_byte_function_tree_counts_original_endpoint_and_merged_FS_blocks():
         +plan.b12_weight_range_profile(10, 'byte')['range_Fp3_correlations_before_shared_bridge']+32)
 
 
+def test_B12_RNE_counts_range_validity_and_both_original_MAC_endpoints():
+    for bits in [0, 2, 7, 30, 35]:
+        b = plan.b12_rne_profile(bits)
+        assert b['public_byte_function_count_upper'] == 24+6+1+7
+        assert b['terminal_private_products_upper'] == 2*sum(range(6))+9
+        assert b['Fp3_correlations_upper_before_incoming_claims_and_shared_PCS'] == 40*bits+343
+        assert b['field_payload_bytes_upper_before_context_and_framing'] == 24*(49*bits+407)
+        assert b['FS_draw_requests'] == 2*bits+3+plan.b12_byte_function_profile(bits, 3)['FS_draw_requests']
+        assert b['MAC_degree_sum_upper_before_shared_PCS'] == 9*bits+66
+        assert b['max_FS_block_degree_upper'] == 41
+        assert not b['extra_PCS_or_private_bit_commitments']
+        assert not b['full_DAG_shift_batch_or_canonical_byte_routes']
+        assert not b['complete_security_or_physical_credit']
+    tiny = plan.b12_rne_profile(2)
+    assert tiny['tiny_exact_rows_with_original_output_byte_range_and_PCS'] == 1+408+510+32
+
+
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():
     all_bounds = plan.b12_pcs_binding_assessment()
     b = all_bounds['raw_P0_two_source_composition']

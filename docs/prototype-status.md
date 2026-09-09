@@ -16,8 +16,10 @@ and finite direct-B9 capacity without selecting either as an admissible
 AES expansion. No adversary-resource restriction is adopted.
 [Design §10, B11](c7.1-gemma31b-design.md#b11-esito-del-test-di-riparazione-locale)
 records the exact thresholds, source correspondence, costs and same-W
-renewal counterexample. B11 still needs a quantitatively admissible
-expansion contract; no new runtime or automatic B12 is opened.
+renewal counterexample. A one-shot wider-seed AES/MR19 candidate is now
+specified, with per-block checks and exact row consumption; its computational
+and composition bounds remain open. B11 still needs quantitative admission;
+no new runtime or automatic B12 is opened.
 
 **B10 concluded; integration is not admitted.** The owner's new 2026-09-09
 instruction authorizes the bounded premise/lifecycle assessment and explicitly
@@ -517,13 +519,25 @@ need 1,075,705/1,202,065 bootstrap bytes. Neither bypass resolves all the
 required premises or is selected; direct B9 does not implement AES expansion.
 These are analytic costs, not new runs, complete certificates or timing claims.
 
-Four new bootstrap checks pass, **24 with the prior bootstrap/budget checks**.
+Five new bootstrap checks pass, **25 with the prior bootstrap/budget checks**.
 They cover public domains and single-use epochs, exact necessary thresholds,
 bypass accounting reconciled with both measured B9 sizes, and a same-W
-counterexample across fresh roots/keys. Two locally valid PCS/MAC endpoints
+counterexample across fresh roots/keys; the fifth covers the wider AES
+candidate's switching term, trees, capacities and sampler. Two locally valid PCS/MAC endpoints
 can still refer to different W; root renewal must verify its relation to
 the installed W before activation. Existing evidence and runtime are unchanged.
 No Rust/Lean build, new benchmark, E2E or hardware credit follows.
+
+The candidate uses secret 256-bit AES node keys, full-width SHAKE leaf seeds,
+direct MR19 and a separate Fp3 check for each single-point block. One setup
+and one main stage need 35,032 initial rows under one Delta, exceeding B9's
+27,511-row profile. Fresh B9 instances cannot fill the gap because their
+keys differ. The staged output would supply 3,405,162 Fp3 correlations;
+prefixes and tails are explicitly burned. Its AES switching term alone
+is between `2^-83` and `2^-82` over `2^20` setups. This is a partial bound,
+with concrete AES advantages, full tree/FEQ/static-leakage LPN composition
+and larger-bootstrap premises still undischarged. Simulator vector cells
+are separately counted; they are not honest runtime or live memory.
 
 **Open outcome:** positive B11 selection is not achieved. It requires
 resource-complete primitive/composition bounds for a wider AES construction

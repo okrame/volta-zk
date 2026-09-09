@@ -6233,6 +6233,56 @@ def b10_composition_admission():
         "next_goal": "B11: select a quantitatively admissible Fp3 expansion/OT-extension contract and explicit concrete adversary resources, preserving same-W; before any native integration"}
 
 
+def b11_wider_aes_contract():
+    """Unimplemented one-shot source contract; computational admission stays open."""
+    # ponytail: one setup and one main stage; add refills after joint composition.
+    stages = []
+    for name, k, n, t, h in (("setup", 25_000, 642_048, 2508, 8),
+                            ("main", 589_760, 10_805_248, 1319, 13)):
+        stages.append({"stage": name, "k": k, "n": n, "t": t, "depth": h,
+            "block_size": 1 << h, "base_rows_consumed": k + 4*t,
+            "beta_rows": t, "sacrificed_check_rows": 3*t,
+            "source_output_rows": n-k,
+            "verifier_G_calls": n//2-t, "verifier_Gprime_calls": n//2,
+            "hidden_path_G_nodes": t*(h-1), "direct_OT_instances": t*h,
+            "simulator_candidate_vector_cells": t*(1 << (2*h))})
+    setup, main = stages
+    calls = sum(s["verifier_G_calls"] for s in stages)
+    hidden = sum(s["hidden_path_G_nodes"] for s in stages)
+    # Single G call: four distinct inputs to a random 128-bit permutation.
+    # This is the switching term, NOT the advantage of concrete AES-256.
+    switching = Fraction(6*calls*LIFETIME_ATTEMPTS, 1 << 128)
+    return {"status": "specified_candidate_not_quantitatively_admitted",
+        "credit": False, "security_admitted": False, "native_implemented": False,
+        "source": "Wolverine Figures 7/8 without batched consistency optimization",
+        "node_PRG": "G(s)=AES-256_s(0)||AES-256_s(1)||AES-256_s(2)||AES-256_s(3); two 32-byte children",
+        "leaf_PRG": "Gprime(s): two Fp3 elements; six separate SHAKE256 domains, eight u64 candidates per coordinate, first canonical Fp or abort",
+        "OT": "independent MR19 sender-chosen OT; verifier sends, prover receives; 32-byte padded seed/field aggregates",
+        "checks": "one full-Fp3 check per single-point block, three disjoint base masks; fresh prover-generated challenges after OT and d",
+        "weak_equality": "Wolverine Appendix A FEQ; verifier commits before prover response and opens only on equality; concrete UC commitment remains required",
+        "stages": stages,
+        "required_B9_base_rows": setup["base_rows_consumed"],
+        "existing_B9_max_rows": 27_511, "existing_B9_profile_suffices": False,
+        "same_Delta_multiple_B9_setups_allowed": False,
+        "setup_prefix_and_tail_burned": setup["n"]-main["base_rows_consumed"],
+        "main_prefix_burned_no_refill": main["k"],
+        "full_Fp3_capacity": main["source_output_rows"]//3,
+        "main_unpacked_tail_burned": main["source_output_rows"] % 3,
+        "both_role_G_calls_source_upper": 2*calls-hidden,
+        "both_role_AES_calls_source_upper": 4*(2*calls-hidden),
+        "single_G_PRG_bound": "Adv_AES256_PRP_at_full_reduction_resources + 6/2^128",
+        "all_nodes_switching_screen_lifetime": str(switching),
+        "all_nodes_switching_screen_below_2_to_minus_82": switching < Fraction(1, 1 << 82),
+        "complete_tree_reduction_established": False,
+        "positive_admission_still_requires": [
+            "explicit adversary and full simulator/reduction resource model, concrete AES/DDH/COPE-PRF advantages",
+            "GGM/leaf RO composition for actual adaptive OT messages and both roles, including seed guesses/collisions",
+            "UC FEQ realization, per-block errors and regular-LPN with the source's static leakage for the specified matrix generator",
+            "B9 larger-row profile PRF/sampler bounds; no automatic native limit change",
+            "complete framing/work/memory/traffic and same-W lifecycle composition"],
+        "complete_connection_bytes": budget_sum({"wider_base_OT_PCG_transport_and_lifecycle": None})}
+
+
 def b11_local_repair_admission():
     """Bounded rejection of local repairs; no replacement PRG or protocol port."""
     b8 = b8_bootstrap_selection()
@@ -6322,6 +6372,7 @@ def b11_local_repair_admission():
             "renewal_requirement": "verify relation from the renewed root to the installed W before activation; keep all global burns",
             "PCS_GKR_requirement": "same authenticated endpoint or verified authenticated equality",
             "complete_theorem": False},
+        "wider_AES_contract": b11_wider_aes_contract(),
         "next_goal": "B11 positive selection remains open: resource-complete wider AES/OT contract or protocol-specific reduction; local 128-bit GGM repairs are closed, no native integration"}
 
 

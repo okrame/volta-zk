@@ -453,6 +453,47 @@ def test_B11_same_W_quantifier_survives_fresh_roots_and_key_epochs():
     assert roots["fresh_other_W"] != roots["installed"]
 
 
+def test_B11_wider_AES_switching_and_source_capacity_are_only_a_candidate():
+    candidate = plan.b11_wider_aes_contract()
+    assert not any(candidate[k] for k in ("credit", "security_admitted", "native_implemented",
+                                          "complete_tree_reduction_established", "existing_B9_profile_suffices"))
+    # Four outputs from a uniform permutation are uniform draws conditioned on
+    # being distinct. Exhaust the small random-function space to check its TV.
+    draws = tuple(product(range(8), repeat=4))
+    collision = Fraction(sum(len(set(x)) != 4 for x in draws), len(draws))
+    assert collision == 1 - Fraction(8*7*6*5, 8**4)
+    assert collision <= Fraction(6, 8)
+    # Reconstruct each revealed sibling subtree once; the target path is hidden.
+    for h in range(1, 7):
+        def expand_known(depth):
+            if depth == h-1:  # Gprime, not another AES G node
+                return 0
+            return 1 + 2*expand_known(depth+1)
+        verifier = expand_known(0)
+        prover = sum(expand_known(depth) for depth in range(1, h))
+        assert verifier - prover == h-1
+    setup, main = candidate["stages"]
+    for stage in (setup, main):
+        assert stage["n"] == stage["t"] * stage["block_size"]
+        assert stage["base_rows_consumed"] == stage["k"] + stage["beta_rows"] + stage["sacrificed_check_rows"]
+        assert stage["sacrificed_check_rows"] == 3*stage["t"]
+    assert candidate["required_B9_base_rows"] == 35_032 > candidate["existing_B9_max_rows"]
+    assert not candidate["same_Delta_multiple_B9_setups_allowed"]
+    assert main["base_rows_consumed"] == 595_036 <= setup["source_output_rows"]
+    assert candidate["setup_prefix_and_tail_burned"] + main["base_rows_consumed"] == setup["n"]
+    assert (candidate["main_prefix_burned_no_refill"] + 3*candidate["full_Fp3_capacity"]
+            + candidate["main_unpacked_tail_burned"]) == main["n"]
+    assert candidate["full_Fp3_capacity"] == 3_405_162
+    assert candidate["both_role_AES_calls_source_upper"] == 45_625_032
+    term = Fraction(candidate["all_nodes_switching_screen_lifetime"])
+    assert Fraction(1, 1 << 83) < term < Fraction(1, 1 << 82)
+    assert candidate["complete_connection_bytes"]["admission_bound"] == "infinity"
+    # First-valid bounded rejection is uniform CONDITIONAL on success.
+    outputs = [next((x for x in pair if x < 5), None) for pair in product(range(8), repeat=2)]
+    assert [outputs.count(x) for x in range(5)] == [11]*5
+    assert Fraction(outputs.count(None), len(outputs)) == Fraction(3, 8)**2
+
+
 def test_B9_native_hash_vectors_against_independent_python_curve():
     ctx, index, branch = b"native-source-vector", 17, 1
     suffix = ctx + index.to_bytes(4, "little") + bytes([branch]) + encode(G)

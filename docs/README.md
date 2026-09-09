@@ -7,8 +7,8 @@ it is not another status ledger.
 The evaluated baseline remains stopped after B7. The owner's subsequent
 decisions opened B8/B9: a replacement construction and a checked native
 component. B10 concludes the premise/lifecycle assessment with integration
-not admitted. B11 rejects local label/renewal repairs; its positive expansion
-selection remains open in design §10.
+not admitted. B11 rejects local label/renewal repairs and specifies a wider
+AES/MR19 candidate; its quantitative admission remains open in design §10.
 
 ## Current documents
 

@@ -1,4 +1,4 @@
-"""B8–B10 construction/premise checks; never a production OT or pool adapter.
+"""B8–B11 construction/premise checks; never a production OT or pool adapter.
 
 The small P-521 exchange checks real curve equations/bytes, not UC security.
 The Fp9 check uses explicitly ideal COPE correlations, not a real PCG.
@@ -252,7 +252,7 @@ def test_B9_native_boundary_counts_and_preserved_history():
     assert not any(b9[k] for k in ("security_admitted", "pool_PCS_integration_admitted", "production_runtime_admitted"))
     assert r["B7_bootstrap_admission"]["baseline_stopped"]
     assert r["active_baseline_status"] == "stopped_after_failed_B7"
-    assert r["replacement_bootstrap_status"] == "B10_assessed_integration_not_admitted"
+    assert r["replacement_bootstrap_status"] == "B11_local_repairs_rejected_selection_open"
     assert r["next_authorized_goal"] is None and "B11" in r["next_proposed_goal"]
     assert b9["native_OT_call_counts_both_roles"] == {
         "fixed_base_scalar_multiplications": 2304, "variable_base_scalar_multiplications": 2304,
@@ -364,6 +364,93 @@ def test_B10_fresh_masks_NoPeek_and_disjoint_key_epochs_are_distinct_premises():
     tags = tuple((k+d*x) % p for d, x, k in zip(deltas, values, keys))
     assert all(t == (k+d*x) % p for d, x, k, t in zip(deltas, values, keys, tags))
     assert sum(tags) % p != (sum(keys) + deltas[0]*sum(values)) % p
+
+
+def test_B11_public_domains_and_single_use_epochs_retain_seed_search_bound():
+    # Exhaust two independently labelled maps {0,1} -> {0,...,7}.
+    # Record one target output, then search its public map after any renewal.
+    # The other epoch is independent distraction, not a lifetime multiplier.
+    maps = tuple(product(range(8), repeat=2))
+    for domains in product(maps, repeat=2):
+        for target in range(2):
+            recognized = {domains[target][0]}  # one distinct seed guess
+            real = Fraction(sum(domains[target][s[target]] in recognized
+                                for s in product(range(2), repeat=2)), 4)
+            ideal = Fraction(len(recognized), 8)
+            assert real - ideal >= Fraction(1, 2) - Fraction(1, 8)
+
+
+def test_B11_necessary_seed_and_work_thresholds_do_not_admit_a_profile():
+    report = plan.baseline_budget()
+    b11 = report["B11_local_repair_admission"]
+    assert not any(b11[k] for k in ("credit", "security_admitted", "production_runtime_admitted",
+                                    "pool_PCS_integration_admitted", "B11_positive_selection_complete"))
+    assert b11["quantitatively_admissible_expansion_selected"] is None
+    search = b11["single_target_search"]
+    assert search["epochs_needed"] == search["samples_needed"] == 1
+    assert search["FS_queries"] == 0 and not search["lifetime_multiplier_applied"]
+    assert Fraction(search["advantage_lower_bound"]) > Fraction(1, 1 << 78)
+    for case, width, work_bits in zip(search["necessary_conditions_only"], (141, 145), (51, 47)):
+        assert case["minimum_seed_bits_not_excluded_at_fixed_guesses"] == width
+        assert case["legacy_AES_calls_at_that_guess_count"] == 1 << work_bits
+        target = Fraction(1, 1 << case["advantage_target_bits"])
+        for s, passes in ((width-1, False), (width, True)):
+            lower = Fraction((1 << (2*s)) - (1 << s), 1 << (3*s-63))
+            assert (lower <= target) == passes
+        q = case["maximum_128_bit_seed_guesses_not_excluded"]
+        unit = Fraction((1 << 128) - 1, 1 << 256)
+        assert q * unit <= target < (q+1) * unit
+        assert not case["sufficient_security_condition"]
+    assert not b11["resources"]["adversary_model_restricted"]
+    assert b11["resources"]["offline_work_memory_preprocessing_advice_caps"] is None
+    assert report["B7_bootstrap_admission"]["baseline_stopped"]
+    assert report["G2_disposition"]["status"] == "archived_unselected_research"
+    assert report["B10_composition_admission"]["status"] == "assessment_complete_integration_not_admitted"
+
+
+def test_B11_bypasses_price_removed_dependencies_without_security_credit():
+    report = plan.baseline_budget()
+    b11 = report["B11_local_repair_admission"]
+    direct = b11["direct_B9_bypass_screen"]
+    assert not direct["selected"] and not direct["implements_required_AES_expansion"]
+    # Reconcile the affine wire census with BOTH existing native measured sizes.
+    for measured in report["B9_bootstrap_component"]["measured_cases"]:
+        if measured["accepted"]:
+            assert measured["details"]["protocol_wire_bytes"] == (
+                direct["fixed_bootstrap_wire_bytes"] + measured["rows"] * direct["wire_bytes_per_base_row"])
+    for case, rows, wire in zip(direct["cases"], (180, 207), (1_075_705, 1_202_065)):
+        assert case["base_rows"] == rows == 3 * case["capacity_fp3"]
+        assert case["bootstrap_wire_bytes"] == wire
+        assert case["one_fresh_setup_per_slot_wire_bytes"] - wire == 466_610
+        assert case["complete_connection_bytes"]["admission_bound"] == "infinity"
+    ots = b11["direct_MR19_puncture_OT_screen"]
+    assert ots["additional_independent_OTs"] == 37_211
+    assert ots["additional_OT_payload_bytes_excluding_frames"] == 12_354_052
+    assert ots["OTs_per_setup_including_B9"] == 37_787
+    assert not ots["selected"] and not ots["secure_Fp3_parameters"]
+    assert b11["published_extension_boundary"]["complete_concrete_error_bound"] is None
+
+
+def test_B11_same_W_quantifier_survives_fresh_roots_and_key_epochs():
+    # Ideal binding roots for this algebra fixture; no concrete hash/PCS claim.
+    roots = {"installed": (1, 2), "fresh_same_W": (1, 2), "fresh_other_W": (3, 4)}
+    form, p = (1, 0), 7
+    openings = []
+    for root, delta, mask, key in (("installed", 2, 6, 3), ("fresh_other_W", 5, 1, 4)):
+        value = sum(a*b for a, b in zip(roots[root], form)) % p
+        tag = (key + delta*mask) % p
+        correction = (value-mask) % p
+        transferred_key = (key-delta*correction) % p
+        assert tag == (transferred_key + delta*value) % p
+        openings.append((form, value))  # locally valid PCS and same MAC endpoint
+    assert all(any(sum(a*b for a, b in zip(w, f)) % p == v
+                   for w in product(range(p), repeat=2)) for f, v in openings)
+    assert not any(all(sum(a*b for a, b in zip(w, f)) % p == v for f, v in openings)
+                   for w in product(range(p), repeat=2))
+    # Renewing randomness is compatible with same-W; activating an unrelated
+    # root requires rejecting its link, even though both local proofs above pass.
+    assert roots["fresh_same_W"] == roots["installed"]
+    assert roots["fresh_other_W"] != roots["installed"]
 
 
 def test_B9_native_hash_vectors_against_independent_python_curve():

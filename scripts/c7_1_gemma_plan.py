@@ -6233,6 +6233,98 @@ def b10_composition_admission():
         "next_goal": "B11: select a quantitatively admissible Fp3 expansion/OT-extension contract and explicit concrete adversary resources, preserving same-W; before any native integration"}
 
 
+def b11_local_repair_admission():
+    """Bounded rejection of local repairs; no replacement PRG or protocol port."""
+    b8 = b8_bootstrap_selection()
+    guesses = 1 << 63
+    lower = Fraction(guesses, 1 << 128) - Fraction(guesses, 1 << 256)
+    # Necessary conditions for THIS single-sample enumeration test only.
+    # Neither passing the screen nor splitting work over epochs proves security.
+    screens = []
+    for bits in (78, 82):
+        target = Fraction(1, 1 << bits)
+        seed_bits = next(s for s in range(64, 257)
+                         if Fraction(guesses, 1 << s) - Fraction(guesses, 1 << (2*s)) <= target)
+        max_guesses = target // (Fraction(1, 1 << 128) - Fraction(1, 1 << 256))
+        screens.append({"advantage_target_bits": bits,
+            "minimum_seed_bits_not_excluded_at_fixed_guesses": seed_bits,
+            "maximum_128_bit_seed_guesses_not_excluded": max_guesses,
+            "legacy_AES_calls_at_that_guess_count": 2 * max_guesses,
+            "sufficient_security_condition": False})
+    # Reuse the B8 frame census, changing only the number of data/check rows.
+    reference = b8["costs"][0]
+    per_row = 576 * 8 + 72
+    fixed_wire = reference["bootstrap_protocol_wire_bytes"] - per_row * reference["wanted_base_svole"]
+    direct = []
+    for case in b6_converter_comparison()["costs"]["capacity_cases"]:
+        capacity = case["capacity_fp3"]
+        rows = 3 * capacity
+        wire = fixed_wire + per_row * rows
+        direct.append({"capacity_fp3": capacity, "base_rows": rows,
+            "sacrificed_COPE_rows": 9, "bootstrap_wire_bytes": wire,
+            "one_fresh_setup_per_slot_wire_bytes": 3 * (fixed_wire + per_row * (rows // 3)),
+            "COPE_field_evaluations_both_roles": 3 * 576 * (rows + 9),
+            "complete_connection_bytes": budget_sum({"direct_B9_bootstrap": wire,
+                "transport_durable_lifecycle_and_PCS_binding": None})})
+    # Historical setup + one main stage, not secure Fp3 parameter selection.
+    puncture_ots = 2508 * 8 + 1319 * 13
+    return {
+        "status": "local_repair_assessment_complete_no_admissible_expansion_selected",
+        "credit": False, "security_admitted": False,
+        "production_runtime_admitted": False, "pool_PCS_integration_admitted": False,
+        "quantitatively_admissible_expansion_selected": None,
+        "B11_positive_selection_complete": False,
+        "source": "docs/c7.1-gemma31b-design.md#b11-esito-del-test-di-riparazione-locale",
+        "local_repairs": {
+            "public_domain_separation": "same cardinality bound for every public context fixed before fresh seed sampling",
+            "fresh_seed_every_use": "one recorded target epoch suffices; erasure does not erase the adversary's observation",
+            "fresh_Delta_or_root": "does not change the seed space; same-W and global quotas must survive renewal",
+            "public_AES256_key_with_128_bit_seed": "same seed space; AES block size remains 128 bits",
+            "larger_hidden_state_or_protocol_specific_game": "requires a new construction/composition argument; not an admitted local repair"},
+        "single_target_search": {
+            "kind": "standalone_PRG_lower_bound_not_PCG_or_matrix_attack",
+            "distinct_seed_guesses": guesses, "legacy_public_AES_calls": 2 * guesses,
+            "FS_queries": 0, "epochs_needed": 1, "samples_needed": 1,
+            "advantage_lower_bound": str(lower), "lifetime_multiplier_applied": False,
+            "necessary_conditions_only": screens},
+        "published_extension_boundary": {
+            "source": "sota/2020-0925-wolverine.md: section 5.1, Theorem 3, B.3; section 5.2, Theorem 4, B.4",
+            "G_and_Gprime_PRG_premises_required": True,
+            "hybrids": ["valid same-key base sVOLE", "malicious OT", "weak equality FEQ", "regular LPN"],
+            "legacy_IKNP_admitted_with_only_new_base_seeds": False,
+            "Fp3_masks_per_batched_check": 3,
+            "base_reservation_per_stage": "k+t+3, including fresh check masks; retained child bases are not output",
+            "complete_concrete_error_bound": None},
+        "direct_MR19_puncture_OT_screen": {
+            "selected": False, "secure_Fp3_parameters": False,
+            "scope": "historical setup and one main stage only; no stage3 or refills",
+            "source": "rust/volta-pcg/src/fase_d.rs:SETUP_TUPLE,MAIN_TUPLE",
+            "additional_independent_OTs": puncture_ots,
+            "padded_chosen_message_bytes": 32,
+            "additional_OT_payload_bytes_excluding_frames": puncture_ots * (4 * 67 + 2 * 32),
+            "OTs_per_setup_including_B9": 576 + puncture_ots,
+            "remaining": "wider AES G/Gprime, field sampler, FEQ/leakage, concrete PRG/DDH/LPN advantages and lifetime simulator work"},
+        "direct_B9_bypass_screen": {
+            "selected": False, "kind": "analytic finite capacity; not a new native run",
+            "removes": ["GGM", "puncture OT extension", "regular LPN"],
+            "implements_required_AES_expansion": False,
+            "fixed_bootstrap_wire_bytes": fixed_wire, "wire_bytes_per_base_row": per_row,
+            "cases": direct,
+            "remaining": "B8/B10 DDH/COPE-PRF resources, runtime, lifecycle and same-W/FS; no automatic production exception"},
+        "resources": {
+            "adversary_model_restricted": False,
+            "global_FS_queries": 1 << 64, "global_attempts": LIFETIME_ATTEMPTS,
+            "offline_work_memory_preprocessing_advice_caps": None,
+            "required_before_positive_selection": "explicit resource model and primitive bounds at the full reductions' work, including simulators; Q_FS is not an AES/DDH work cap"},
+        "same_W": {
+            "quantifier": "exists one W for every accepted proof across all roots, sessions and key epochs",
+            "per_epoch_exists_W_is_sufficient": False,
+            "renewal_requirement": "verify relation from the renewed root to the installed W before activation; keep all global burns",
+            "PCS_GKR_requirement": "same authenticated endpoint or verified authenticated equality",
+            "complete_theorem": False},
+        "next_goal": "B11 positive selection remains open: resource-complete wider AES/OT contract or protocol-specific reduction; local 128-bit GGM repairs are closed, no native integration"}
+
+
 def baseline_budget():
     """One frozen S reference; alternatives are NOT additive components.
 
@@ -6306,8 +6398,8 @@ def baseline_budget():
         "malicious_prover_soundness_bits": None, "malicious_verifier_zk_bits": None,
         "security_admitted": False, "complete_baseline_selected": None,
         "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": None,
-        "replacement_bootstrap_status": "B10_assessed_integration_not_admitted",
-        "next_proposed_goal": b10_composition_admission()["next_goal"],
+        "replacement_bootstrap_status": "B11_local_repairs_rejected_selection_open",
+        "next_proposed_goal": b11_local_repair_admission()["next_goal"],
         "measurement_reuse_priority": None,
         "G2_disposition": {"status": "archived_unselected_research",
             "pending_patch": "integrated_as_three_regression_checks",
@@ -6353,6 +6445,7 @@ def baseline_budget():
         "B8_bootstrap_selection": b8_bootstrap_selection(),
         "B9_bootstrap_component": b9_bootstrap_component(),
         "B10_composition_admission": b10_composition_admission(),
+        "B11_local_repair_admission": b11_local_repair_admission(),
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

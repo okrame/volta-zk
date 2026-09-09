@@ -1,10 +1,23 @@
-# Current status — C7.1 Gemma-31B, B10 assessment concluded
+# Current status — C7.1 Gemma-31B, B11 local repairs rejected; selection open
 
 Updated 2026-09-09. Editable working summary; Git preserves revisions.
 [Design](c7.1-gemma31b-design.md) · [Documentation index](README.md) ·
 [Historical ledger](prototype-status-history-2026-09-07.md).
 
 ## Active authority — read first
+
+**B11's local-repair assessment is complete; its positive selection is not.**
+The owner's latest 2026-09-09 instruction authorizes the next goal, keeps
+all proofs bound to the same private weights, and permits further B10 work
+only for a demonstrable local repair. Public domain separation and even
+fresh seeds after every use retain B10's single-sample PRG lower bound.
+That repair line is closed. The assessment prices direct MR19 puncture OT
+and finite direct-B9 capacity without selecting either as an admissible
+AES expansion. No adversary-resource restriction is adopted.
+[Design §10, B11](c7.1-gemma31b-design.md#b11-esito-del-test-di-riparazione-locale)
+records the exact thresholds, source correspondence, costs and same-W
+renewal counterexample. B11 still needs a quantitatively admissible
+expansion contract; no new runtime or automatic B12 is opened.
 
 **B10 concluded; integration is not admitted.** The owner's new 2026-09-09
 instruction authorizes the bounded premise/lifecycle assessment and explicitly
@@ -79,15 +92,18 @@ budgets and the pinned 100+50 workload. The comparison may price explicit
 alternatives, including a fifth read or organized host spill; it must not
 claim they meet the reference. Scope and remaining thresholds are in design §1.
 
-**Authorization after B10:** the requested bounded assessment and composition
-contract are complete. The old B7 baseline
+**Authorization after the B11 local-repair assessment:** the authorized
+local screen is complete and rejects further label/renewal-only B10 tuning.
+The positive B11 selection remains open. The old B7 baseline
 stays stopped; G2 is archived as unselected research. No RunPod/provider
 contact, H100/GPU, paid resources, downloads,
 heavy builds or matrix/Gemma E2E. There is no pending spending approval.
-The next proposed B11 selects a quantitatively admissible Fp3 expansion/OT
-extension contract and specifies concrete adversary resources before any
-native integration. Restricting the adversary model needs an explicit owner
-decision; no such restriction is adopted. No complete C7.1 runner is admitted.
+B11 requires a quantitatively admissible Fp3 expansion/OT contract and
+explicit concrete adversary/reduction resources before any native integration.
+The assessment does not supply that contract. Restricting the adversary model
+needs an explicit owner decision; no such restriction is adopted. A new
+construction or protocol-specific reduction cannot inherit admission from
+these arithmetic screens. No complete C7.1 runner is admitted.
 
 ## Evidence and open obligations
 
@@ -477,8 +493,43 @@ valid MAC and binding to W; its archived construction stays unselected.
 All twenty bootstrap/budget Python checks pass, including four new B10
 checks. They cover arithmetic and ideal-model counterexamples, without
 claiming a runtime lifecycle or complete same-W/FS theorem. Complete
-connection/PCG, work and physical resource costs stay unknown. B11 is the
-only proposed next goal; integration, PCS tuning, E2E and hardware remain closed.
+connection/PCG, work and physical resource costs stay unknown. B11 below
+assesses local repairs; integration, PCS tuning, E2E and hardware remain closed.
+
+## B11 local-repair decision
+
+For each public context the seed-enumeration argument is unchanged. One
+recorded PRG sample and one target epoch suffice even with renewal after
+every use; no lifetime multiplier is needed. At `2^63` seed guesses,
+141/145 seed bits are necessary to avoid this specific exclusion for
+targets `2^-78`/`2^-82`. These are not sufficient security parameters.
+With 128-bit seeds, the corresponding search thresholds are only
+`2^51`/`2^47` public AES calls. The service cannot impose these offline-work
+limits through renewal. The result remains scoped to the standalone PRG
+premise, without a complete PCG/matrix attack.
+
+The published Wolverine extension explicitly requires G/G′ PRGs, malicious
+OT, weak equality and valid same-key sVOLE before regular LPN. Direct MR19
+would remove IKNP at 37,211 additional OT instances and 12,354,052 payload
+bytes for the historical setup plus one main stage, excluding frames/refills.
+Direct B9 would remove GGM/OT extension/LPN: the reduced three-slot capacities
+need 1,075,705/1,202,065 bootstrap bytes. Neither bypass resolves all the
+required premises or is selected; direct B9 does not implement AES expansion.
+These are analytic costs, not new runs, complete certificates or timing claims.
+
+Four new bootstrap checks pass, **24 with the prior bootstrap/budget checks**.
+They cover public domains and single-use epochs, exact necessary thresholds,
+bypass accounting reconciled with both measured B9 sizes, and a same-W
+counterexample across fresh roots/keys. Two locally valid PCS/MAC endpoints
+can still refer to different W; root renewal must verify its relation to
+the installed W before activation. Existing evidence and runtime are unchanged.
+No Rust/Lean build, new benchmark, E2E or hardware credit follows.
+
+**Open outcome:** positive B11 selection is not achieved. It requires
+resource-complete primitive/composition bounds for a wider AES construction
+or an applicable protocol-specific reduction. Q64 does not specify offline
+work, memory, preprocessing or advice; the current model is preserved.
+The local-repair line stops here under the owner's instruction.
 
 
 ## G2 residual changes: integrated evidence, archived research line
@@ -499,13 +550,13 @@ archiving does not prove them or assert impossibility. The
 [G2 dossier](c7.1-committed-mac-opening.md) retains conditional results with
 an explicit historical scope. There is no pending G2 patch, alternate
 runtime or second active goal. The single budget records this disposition;
-B10 is complete and B11 is the only proposed next goal.
+B10 is complete and positive B11 selection is the only open next goal.
 
 ## Documentation decision
 
 Status and design are the only active summaries; the existing index routes
 to evidence. This reset removes duplicated progress prose, not source
 material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 (B10 assessment,
-B9 component and preserved B7 failure) without
+A fresh conversation can start from this page and design §10 (B11 local
+decision, B10 assessment, B9 component and preserved B7 failure) without
 importing the full G2 transcript or treating archived research as active work.

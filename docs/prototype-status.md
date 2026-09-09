@@ -51,7 +51,7 @@ tester decodes the installed root once, then checks every accepted public
 output against that same padded field matrix. W remains private in the runtime.
 
 The opt-in [salted consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) uses
-common-mask unique-radius codes and fresh private salt streams. Nine native
+common-mask unique-radius codes and fresh private salt streams. The earlier native
 checks cover FS blocks, geometry, private coins, salting and real B11 roles:
 two valid proofs, then a rejected salt alteration whose burn survives reopen.
 The new [linear-form bridge](../rust/volta-pcs/src/c71_matrix/linear.rs)
@@ -62,13 +62,26 @@ terminates the run; the same check also passes with the new fixed-run AES
 profile. It is an internal component without a standalone codec.
 The public-layout compiler maps all 773 P0 endpoints to the same 772 physical
 tensors (3,606 cubes), including all 150 lookup rows in one target. It does
-not yet connect the actual Gemma GKR execution or enforce weight range.
+not yet connect the actual Gemma GKR execution.
 [Design: bridge and capacity](c7.1-gemma31b-design.md#b12-ponte-nativo-dai-mac-originali-a-ununica-root-w).
 
-Seventeen B12 algebra/accounting checks include the scalar invariant,
-decoder, adaptive Merkle/RS simulation and the claimless mask translation.
-The relevant Python checks total 198; the 17 narrow bootstrap/pool checks
-and nine B12 PCS checks pass.
+The new [range caller](../rust/volta-pcs/src/c71_matrix/range.rs) authenticates
+a private histogram, proves a fraction tree and derives the original W(r)
+MAC from its denominator leaf. That target and a zero-padding form share
+one PCS. Native checks accept the symmetric i16 endpoints, reject -32768,
+nonzero padding and detached MACs; a 1,746-row real AES run rejects a false
+range on its second attempt and terminates. The mathematical caller also
+has a NoPeek/QuickSilver simulator. At D12/D14 its composed conditional
+soundness/ZK remain about 91 bits. D35 gives 82.9944 soundness bits within
+T121/M93, as an analytic geometry only: its private-sampler ZK extension
+and physical schedule are not admitted. P0 + range + one bridge needs
+312,693 base rows; the complete Gemma census remains open.
+[Proof and exact counts](c7.1-gemma31b-design.md#b12-range-simmetrico-e-padding-nello-stesso-mac-della-root).
+
+Twenty B12 algebra/accounting checks include the scalar invariant,
+decoder, adaptive Merkle/RS simulation, claimless mask translation and
+range/product identities. The relevant Python checks total 201; the 17
+narrow bootstrap/pool checks and twelve B12 PCS/caller checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -87,11 +100,11 @@ with DV secrets verifies the complete dummy-model certificate. Acceptance
 alone is not the ZK argument. The full Gemma caller still needs its own
 NoPeek, relation and resource composition.
 
-**Remaining work:** full Gemma malicious-verifier ZK, quantized weight range and the
-complete Gemma GKR relation, full correlation census and both-role resource
-composition for the fixed run. P0 plus the bridge needs 108,201 base rows,
-now within the new initial capacity; other circuits are not yet counted
-completely, and the D35 dense PCS remains excluded. The earlier 86.8347-bit
+**Remaining work:** full Gemma malicious-verifier ZK, the complete quantized
+Gemma GKR relation using the range-checked W, full correlation census and
+both-role resource composition for the fixed run. The known 312,693 rows
+fit the initial capacity; other circuits are not yet counted completely.
+The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
 soundness bound also included failed setups/key changes; that broader
 evidence remains valid without making renewal/recovery new gates. Neither
 matrix result yet binds the root to all weights used by the

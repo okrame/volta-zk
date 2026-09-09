@@ -6499,6 +6499,49 @@ def b12_fixed_run_bootstrap():
         'complete_Gemma_correlation_census': None, 'complete_fixed_run_security': None}
 
 
+def b12_weight_range_profile(bits, limit=32767):
+    """Native Fp3 fraction-tree caller census; D35 is geometry, not a schedule.
+
+    One histogram before alpha, original leaf MAC and a public zero-suffix
+    form join ONE PCS batch. Histogram entries are private field values;
+    soundness does not presume their range or that they are honest counts.
+    """
+    natural(bits, 'range root dimension', 10, 35)
+    natural(limit, 'symmetric range limit', 1, 32767)
+    cells, table, q = 1 << bits, 2*limit+1, P**3
+    rounds = bits*(bits-1)//2
+    correlations = table+4*rounds+7*bits+4
+    numerator = cells+table-1+bits  # alpha and the padding point share a tape
+    return {
+        'root_log_cells': bits, 'root_cells': cells, 'table_entries': table,
+        'range': [-limit, limit], 'fraction_tree_layers': bits,
+        'cubic_sumcheck_rounds': rounds, 'authenticated_product_triples': 3*bits+2,
+        'range_Fp3_correlations_before_shared_bridge': correlations,
+        'range_base_rows_before_shared_bridge': 3*correlations,
+        'range_FS_draw_requests': rounds+3*bits+2,
+        'range_field_payload_bytes_before_bridge_or_framing': 24*(table+5*rounds+8*bits+6),
+        'histogram_field_payload_bytes': 24*table,
+        'shared_bridge_Fp3_correlations': 3*bits+2,
+        'range_plus_bridge_base_rows': 3*(correlations+3*bits+2),
+        'P0_plus_range_plus_one_bridge_base_rows': 3*(35960+correlations+3*bits+2),
+        'max_range_FS_block_error': str(Fraction(numerator, q)),
+        'rational_numerator_degree_upper': cells+table-1,
+        'global_Qstar_prefix_term': str(Fraction((1 << 74)*numerator, q)),
+        'global_Qstar_prefix_bits': math.log2(q)-74-math.log2(numerator),
+        'product_batch_collapse_error': str(Fraction(3*bits+1, q)),
+        'affine_checks_including_shared_bridge': rounds+2*bits+3,
+        'MAC_degree_sum_per_attempt_including_shared_bridge': rounds+2*bits+5,
+        'MAC_error_three_attempts': str(Fraction(3*(rounds+2*bits+5), q-1)),
+        'dense_fraction_tree_field_cells': 4*cells-2,
+        'dense_fraction_tree_bytes': 24*(4*cells-2),
+        'native_root_log_cells_cap': 14, 'full_size_runtime': False,
+        'range_and_padding_original_MAC_endpoints': 2,
+        'PCS_chains_with_shared_bridge': 1, 'fresh_W_endpoint_authentication': False,
+        'characteristic_condition': cells < P, 'full_Gemma_relation': False,
+        'complete_security_or_physical_credit': False,
+    }
+
+
 def b12_pcs_binding_assessment():
     """Unique-decoding route for the published IOPP; source/hash compilation stays explicit."""
     q = P**3
@@ -6696,6 +6739,36 @@ def b12_pcs_binding_assessment():
             'soundness_bits': math.log2(sound.denominator)-math.log2(sound.numerator),
             'ZK_bits': math.log2(privacy.denominator)-math.log2(privacy.numerator),
             'both_below_2_to_minus_78': max(sound, privacy) <= Fraction(1, 1 << 78)})
+    range_cases = []
+    for index, profile in enumerate(profiles):
+        row = b12_weight_range_profile(profile['log_message_cells'])
+        maximum = max(Fraction(row['max_range_FS_block_error']),
+                      Fraction(profile['max_coin_block_error']))
+        sound_terms = {'bootstrap_T80': fixed_boot,
+            'post_bootstrap_seal': Fraction(8*qa_work+2, 1 << 256),
+            'Merkle_binding': merkle_collision+merkle_deferred,
+            'adaptive_affine_and_quadratic_MAC': Fraction(row['MAC_error_three_attempts']),
+            'range_padding_bridge_PCS_FS': coin_queries*maximum}
+        sound = sum(sound_terms.values())
+        initial = profile['oracles'][0]
+        decoder_work = 6*initial['width']*initial['domain_rows']**3*(1 << 12)
+        range_work = bootstrap_work+(1 << 12)*(qa*tape_words+coin_queries)+(1 << 32)*qa_work+decoder_work+(1 << 72)
+        range_memory = bootstrap_memory+qa*tape_words+(1 << 12)*coin_queries+(1 << 66)
+        row.update({'soundness_terms': {k: str(v) for k, v in sound_terms.items()},
+            'conditional_soundness_sum': str(sound),
+            'conditional_soundness_bits': math.log2(sound.denominator)-math.log2(sound.numerator),
+            'below_2_to_minus_78': sound <= Fraction(1, 1 << 78),
+            'decoder_u64_work_upper': decoder_work,
+            'reduction_work_upper': range_work, 'reduction_memory_words_upper': range_memory,
+            'primitive_work_cap': 1 << 121, 'primitive_memory_words_cap': 1 << 93,
+            'both_resource_caps_hold': range_work < 1 << 121 and range_memory < 1 << 93,
+            'conditional_ZK_sum': (fixed_matrix_security[index]['conditional_ZK_sum']
+                                   if index < len(fixed_matrix_security) else None),
+            'conditional_ZK_bits': (fixed_matrix_security[index]['ZK_bits']
+                                    if index < len(fixed_matrix_security) else None),
+            'D35_private_sampler_and_full_size_simulator_admitted': False,
+            'native_geometry': profile['log_message_cells'] <= 14})
+        range_cases.append(row)
     return {"status": "conditional_field_matrix_security_with_fixed_run_ZK",
         "credit": False, "security_admitted": False,
         "source": "docs/c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata",
@@ -6857,6 +6930,19 @@ def b12_pcs_binding_assessment():
             'quantized_weight_range_proven': False, 'full_Gemma_GKR_proven': False,
             'full_Gemma_ZK_proven': False, 'complete_C71_security': None,
             'new_Lean_or_generated_code_proof': False, 'security_admitted': False},
+        'root_bound_range_and_padding': {
+            'source': 'rust/volta-pcs/src/c71_matrix/range.rs',
+            'fraction_tree_source': 'sota/2023-1284-logup-gkr.md',
+            'relation': 'every extracted root cell lies in the symmetric range; the declared suffix is zero',
+            'histogram_is_private_and_fixed_before_alpha': True,
+            'same_original_leaf_MAC_goes_to_shared_PCS': True,
+            'histogram_counts_or_range_are_not_trusted': True,
+            'one_fresh_mask_for_ordered_QuickSilver_product_batch': True,
+            'NoPeek_ideal_MAC_caller_ZK': True,
+            'malicious_verifier_ZK_composition': 'same two Merkle/private-coin hybrids as the one-PCS matrix; no extra PCS exposure',
+            'cases': range_cases,
+            'full_Gemma_quantization_or_runtime': False,
+            'full_Gemma_security_totals': None, 'security_admitted': False},
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",

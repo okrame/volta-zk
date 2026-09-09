@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its nine tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its twelve tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -86,6 +86,12 @@ continuation after acceptance and termination after rejection.
 The ideal-MAC simulator check uses only DV keys, public IO and a dummy
 zero-weight PCS; it needs no socket or bootstrap and verifies the complete
 certificate. Its acceptance check complements the mathematical ZK argument.
+The range checks cover the full symmetric i16 table with ideal MACs, native
+QuickSilver signs and a real fixed pool of 1,746 base rows. The latter
+accepts [-3,3], rejects a false [-1,1] claim under the same root and ends
+the run. These are small D10 cases, not a full Gemma range execution.
+Run the `c71_b12_range` and `c71_b12_product_batch` filters separately
+from the earlier PCS checks to keep each invocation below 60 seconds.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner
 or standalone wire codec. These checks need only local Unix socketpairs.
 The existing field/FS checks use `c71_matrix::tests::` with that feature.

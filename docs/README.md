@@ -28,9 +28,12 @@ An internal B12 linear-form bridge now connects original caller MACs to one
 root/PCS; a real-B11 small case covers matrix, norm and tied embedding.
 Public forms cover all 773 P0 endpoints. A new single-setup AES profile
 provides up to 5,592,402 Fp3 correlations with 91.022717 conditional
-bootstrap bits and a streamed COPE frame. P0 plus the bridge fits; the
-complete correlation census, actual Gemma GKR caller and weight range
-remain open.
+bootstrap bits and a streamed COPE frame. A fraction-tree range caller now
+derives W(r)'s original MAC and shares its PCS with a padding check. The
+native range/padding composition retains about 91 conditional bits; D35's
+82.9944-bit soundness geometry remains physically excluded. P0 + range +
+one bridge fits the initial capacity at 312,693 base rows. The complete
+correlation census and actual quantized Gemma GKR caller remain open.
 The owner now limits the goal to one uninterrupted fixed-root run: renewal,
 abort recovery and restart composition are deferred. Full Gemma malicious-verifier ZK,
 the root's binding to all of quantized Gemma and the two complete fixed-run
@@ -56,7 +59,7 @@ remain unadmitted.
 | [R3 auxiliary witness](c7.1-auxiliary-witness.md) | Unified B/raw-attention byte source, fresh raw probes/RNE pullbacks, identical striped RS encoder and staged tree-cache repairs; incomplete Gamma/liveness |
 | [B9 native bootstrap](../rust/volta-pcg/src/c71_bootstrap.rs) · [bounded runner](../scripts/run_c71_bootstrap.py) | Independent MR19/P-521 and COPE/Fp9 roles, adversarial byte checks and local resources; no production/security admission |
 | [B12 durable finite pool](../rust/volta-pcg/src/c71_lifetime.rs) · [salted PCS consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) | Single-setup larger AES capacity with fail-closed termination, joint burns and post-bootstrap seal; legacy persistence evidence; fixed-root PCS component |
-| [B12 original-MAC linear bridge](../rust/volta-pcs/src/c71_matrix/linear.rs) | One batch/PCS on the installed root, shared matrix/norm/embedding with real AES roles; 773 P0 public-layout identities, full Gemma caller/range/census still open |
+| [B12 original-MAC linear bridge](../rust/volta-pcs/src/c71_matrix/linear.rs) · [range caller](../rust/volta-pcs/src/c71_matrix/range.rs) | One batch/PCS on the installed root; private range histogram, fraction-tree GKR and zero padding keep the original W MAC; 773 P0 public-layout identities, full Gemma caller/census still open |
 | [B3 native census](../scripts/c71_work_census.py) · [bounded runner](../scripts/run_c71_matrix.py) | Actual Goldilocks arithmetic and phase memory of the reduced B2 matrix path; physical traffic/security remain open in design §10 |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |

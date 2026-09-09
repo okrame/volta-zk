@@ -47,6 +47,122 @@ def test_B12_affine_MCA_on_the_same_agreement_set_and_strict_radius():
     assert bad == 3 > radius+1
 
 
+def test_B12_range_rational_identity_needs_no_trusted_histogram_and_N_below_characteristic():
+    # Independent polynomial calculation, including arbitrary field-valued
+    # histograms. A repeated out-of-table value has a NONZERO residue when N<p.
+    p, table = 7, (0, 1, 6)
+
+    def poly_mul(a, b):
+        c = [0]*(len(a)+len(b)-1)
+        for i, x in enumerate(a):
+            for j, y in enumerate(b):
+                c[i+j] = (c[i+j]+x*y) % p
+        return c
+
+    def denominator(values):
+        c = [1]
+        for value in values:
+            c = poly_mul(c, [-value, 1])
+        return c
+
+    def numerator(weights, multiplicities):
+        dw, dt = denominator(weights), denominator(table)
+        result = [0]*(len(weights)+len(table))
+        for i in range(len(weights)):
+            term = poly_mul(denominator(weights[:i]+weights[i+1:]), dt)
+            result = [(a+b) % p for a, b in zip(result, term)]
+        for i, count in enumerate(multiplicities):
+            term = poly_mul(dw, denominator(table[:i]+table[i+1:]))
+            result = [(a-count*b) % p for a, b in zip(result, term)]
+        return result
+
+    maximum = 0
+    for weights in product(range(p), repeat=2):
+        if set(weights) <= set(table):
+            counts = tuple(weights.count(t) for t in table)
+            assert not any(numerator(weights, counts))
+            continue
+        for counts in product(range(p), repeat=len(table)):
+            coefficients = numerator(weights, counts)
+            assert any(coefficients)
+            roots = sum(sum(c*pow(alpha, j, p) for j, c in enumerate(coefficients)) % p == 0
+                        for alpha in range(p))
+            assert roots <= len(weights)+len(table)-1
+            maximum = max(maximum, roots)
+    assert maximum == 4
+    # Exactly p copies of the same forbidden weight give zero residue.
+    assert not any(numerator((2,)*p, (0,)*len(table)))
+
+
+def test_B12_masked_product_batch_privacy_and_quadratic_feedback():
+    p = 7
+    keys = ((2, 3, 5), (1, 4, 6))
+    mask_key = 4
+    for delta, lam in product(range(p), repeat=2):
+        expected_views = None
+        for values in (((1, 2, 2), (3, 4, 5)), ((5, 6, 2), (2, 2, 4))):
+            tags = [tuple((k-delta*x) % p for k, x in zip(kk, vv))
+                    for kk, vv in zip(keys, values)]
+            a = sum(pow(lam, j, p)*(x*my+y*mx-mz)
+                    for j, ((x, y, z), (mx, my, mz)) in enumerate(zip(values, tags))) % p
+            b = sum(pow(lam, j, p)*mx*my for j, (mx, my, mz) in enumerate(tags)) % p
+            views = Counter(((a+r) % p, (b+mask_key-delta*r) % p) for r in range(p))
+            expected = (mask_key+sum(pow(lam, j, p)*(kx*ky-delta*kz)
+                                    for j, (kx, ky, kz) in enumerate(keys))) % p
+            simulated = Counter((s, (expected-delta*s) % p) for s in range(p))
+            assert views == simulated
+            if expected_views is not None:
+                assert views == expected_views
+            expected_views = views
+    # Fixed prover view and arbitrary forged messages: at most two Delta
+    # roots if the batched error is nonzero; do NOT multiply this by Q_RO.
+    triples = ((2, 3, 0, 1, 4, 5), (3, 4, 6, 2, 3, 1))
+    collapses = 0
+    for lam in range(p):
+        error = sum(pow(lam, j, p)*(x*y-z) for j, (x, y, z, *_) in enumerate(triples)) % p
+        if error == 0:
+            collapses += 1
+            continue
+        for a, b in product(range(p), repeat=2):
+            accepts = 0
+            for delta in range(p):
+                expected = (2+delta*3+sum(pow(lam, j, p)*(
+                    (mx+delta*x)*(my+delta*y)-delta*(mz+delta*z))
+                    for j, (x, y, z, mx, my, mz) in enumerate(triples))) % p
+                accepts += (b+delta*a) % p == expected
+            assert accepts <= 2
+    assert collapses <= len(triples)-1
+
+
+def test_B12_range_same_PCS_capacity_and_error_census():
+    b = plan.b12_pcs_binding_assessment()['root_bound_range_and_padding']
+    for row in b['cases']:
+        d, t = row['root_log_cells'], row['table_entries']
+        rounds = d*(d-1)//2
+        assert row['range_Fp3_correlations_before_shared_bridge'] == t+4*rounds+7*d+4
+        assert row['range_field_payload_bytes_before_bridge_or_framing'] == 24*(t+5*rounds+8*d+6)
+        assert row['range_FS_draw_requests'] == rounds+3*d+2
+        assert row['MAC_degree_sum_per_attempt_including_shared_bridge'] == rounds+2*d+5
+        assert row['P0_plus_range_plus_one_bridge_base_rows'] < (1 << 24)-9
+        assert row['characteristic_condition'] and row['PCS_chains_with_shared_bridge'] == 1
+        assert not row['fresh_W_endpoint_authentication']
+        assert Fraction(row['global_Qstar_prefix_term']) == Fraction((1 << 74)*((1 << d)+t-1+d), plan.P**3)
+        assert sum(map(Fraction, row['soundness_terms'].values())) == Fraction(row['conditional_soundness_sum'])
+        assert row['below_2_to_minus_78'] and not row['complete_security_or_physical_credit']
+        assert row['both_resource_caps_hold']
+        assert row['reduction_work_upper'] < row['primitive_work_cap'] == 1 << 121
+        assert row['reduction_memory_words_upper'] < row['primitive_memory_words_cap'] == 1 << 93
+        if row['native_geometry']:
+            assert Fraction(row['conditional_ZK_sum']) < Fraction(1, 1 << 78)
+        else:
+            assert row['conditional_ZK_sum'] is None
+    big = b['cases'][-1]
+    assert big['P0_plus_range_plus_one_bridge_base_rows'] == 312693
+    assert 82 < big['conditional_soundness_bits'] < 83
+    assert big['dense_fraction_tree_bytes'] == (3 << 40)-48
+    assert not b['full_Gemma_quantization_or_runtime'] and b['full_Gemma_security_totals'] is None
+
+
 def test_B12_unsalted_commitment_tests_W_after_mask_exhaustion():
     import hashlib
     # A tiny instance of the native coefficient layout, with a deterministic

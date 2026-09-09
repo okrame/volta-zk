@@ -8,6 +8,9 @@ mod b12;
 #[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // Internal component seam; no admitted Gemma runner yet.
 mod linear;
+#[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // Internal same-W range caller, no full Gemma runner.
+mod range;
 pub use diagnostic::{preflight, run};
 #[cfg(feature = "c71-work-census")]
 pub use census::self_check;

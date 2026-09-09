@@ -18,6 +18,9 @@ mod byte_function;
 #[allow(dead_code)] // RNE component; full Gemma producer and source routing remain explicit.
 mod rne;
 #[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // Exact RMS GKR component; canonical P/S/Y producer routes remain explicit.
+mod rms;
+#[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // P0 caller; input/output openings remain explicit.
 mod p0;
 #[cfg(feature = "c71-b12-pcs")]

@@ -20,14 +20,20 @@ pub(super) struct Proof {
     products: [Fp3; 2],
 }
 
+pub(super) enum Original<'a, T> {
+    Lanes(&'a [T]),
+    // One ORIGINAL sum claim; never split it using fresh correlations.
+    Sum(T),
+}
+
 pub(super) fn required(view_bits: usize) -> usize {
     32 * view_bits + 169
 }
 
-fn bind(s: &Statement<'_>, count: usize, fs: &mut Fs) -> Result<Vec<Fp3>, String> {
+fn bind(s: &Statement<'_>, count: usize, sum: bool, fs: &mut Fs) -> Result<Vec<Fp3>, String> {
     if !s.tables.len().is_power_of_two()
-        || s.tables.len() > 8
-        || count != s.tables.len()
+        || s.tables.len() > 16
+        || count != if sum { 1 } else { s.tables.len() }
         || s.cell_point.len() > 10
         || s.live_cells == 0
         || s.live_cells > 1usize << s.cell_point.len()
@@ -42,7 +48,11 @@ fn bind(s: &Statement<'_>, count: usize, fs: &mut Fs) -> Result<Vec<Fp3>, String
     if s.cell_point.len() + lane_bits > 10 {
         return Err("B12 byte-function dense view exceeds D10".into());
     }
-    let mut bytes = b"C71-byte-function-B12-v1;P-S;cell-lane-gate-MSB;original-MAC".to_vec();
+    let mut bytes = if sum {
+        b"C71-byte-function-B12-v2;P-S-SUM;fixed-half-lanes;original-MAC".to_vec()
+    } else {
+        b"C71-byte-function-B12-v1;P-S;cell-lane-gate-MSB;original-MAC".to_vec()
+    };
     bytes.extend(s.root.roots()[0]);
     bytes.extend((s.profile.len() as u64).to_le_bytes());
     bytes.extend(s.profile);
@@ -56,7 +66,11 @@ fn bind(s: &Statement<'_>, count: usize, fs: &mut Fs) -> Result<Vec<Fp3>, String
     }
     fs.set_phase(0x800);
     fs.record(0x60, &bytes);
-    Ok((0..lane_bits).map(|_| fs.fp3()).collect())
+    Ok(if sum {
+        vec![signed(2).inv(); lane_bits]
+    } else {
+        (0..lane_bits).map(|_| fs.fp3()).collect()
+    })
 }
 
 // Public Lagrange weights f(j)/product_{k!=j}(j-k); only public nonzero
@@ -118,20 +132,28 @@ fn leaf(s: &Statement<'_>, coefficients: &[[Fp3; 256]], point: &[Fp3]) -> (Fp3, 
 // in cell-major/lane-fastest order and must not inspect unused correlations.
 pub(super) fn prove(
     s: &Statement<'_>,
-    original: &[Auth],
+    original: Original<'_, Auth>,
     get_byte: impl Fn(usize) -> u8,
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
-    let lane_point = bind(s, original.len(), fs)?;
+    let (len, sum) = match &original {
+        Original::Lanes(v) => (v.len(), false),
+        Original::Sum(_) => (1, true),
+    };
+    let lane_point = bind(s, len, sum, fs)?;
     let point: Vec<_> = s.cell_point.iter().chain(&lane_point).copied().collect();
     let count = required(point.len());
     if correlations.len() < count {
         return Err("B12 byte-function prover capacity exhausted".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let root =
-        original.iter().zip(eq(&lane_point)).fold(Auth::ZERO, |v, (&a, r)| v.add(a.scale(r)));
+    let root = match original {
+        Original::Lanes(v) => {
+            v.iter().zip(eq(&lane_point)).fold(Auth::ZERO, |v, (&a, r)| v.add(a.scale(r)))
+        }
+        Original::Sum(a) => a.scale(signed(s.tables.len() as i64).inv()),
+    };
     let c = coefficients(s.tables);
     // ponytail: bounded dense view D<=10. Full Gemma uses the existing R2
     // public fold-table schedule; this component never allocates that trace.
@@ -173,20 +195,29 @@ pub(super) fn prove(
 
 pub(super) fn verify(
     s: &Statement<'_>,
-    original: &[Key],
+    original: Original<'_, Key>,
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Key>,
 ) -> Result<(Vec<Fp3>, Key), String> {
-    let lane_point = bind(s, original.len(), fs)?;
+    let (len, sum) = match &original {
+        Original::Lanes(v) => (v.len(), false),
+        Original::Sum(_) => (1, true),
+    };
+    let lane_point = bind(s, len, sum, fs)?;
     let point: Vec<_> = s.cell_point.iter().chain(&lane_point).copied().collect();
     let count = required(point.len());
     if !range::tree_shape(&proof.layers, 8, point.len()) || correlations.len() < count {
         return Err("B12 byte-function proof shape or capacity mismatch".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let root = original.iter().zip(eq(&lane_point)).fold(Key::ZERO, |v, (&a, r)| v.add(a.scale(r)));
+    let root = match original {
+        Original::Lanes(v) => {
+            v.iter().zip(eq(&lane_point)).fold(Key::ZERO, |v, (&a, r)| v.add(a.scale(r)))
+        }
+        Original::Sum(a) => a.scale(signed(s.tables.len() as i64).inv()),
+    };
     let mut triples = Vec::new();
     let (mut point, claims) = range::verify_tree(
         &proof.layers,
@@ -275,7 +306,8 @@ mod tests {
             let (wire, original) = range::authenticate(values, &mut prows);
             record_values(&mut fs, 0x62, &wire);
             let (proof, byte_point, byte) =
-                prove(&statement, &original, |i| used[i], &mut fs, &mut prows).unwrap();
+                prove(&statement, Original::Lanes(&original), |i| used[i], &mut fs, &mut prows)
+                    .unwrap();
             assert_eq!(fs.requests(), 70);
             let (range_proof, mut forms, targets) = range::prove(
                 &model,
@@ -299,7 +331,8 @@ mod tests {
             let mut vrows = keys.clone().into_iter();
             let original = range::correct(wire, delta, &mut vrows);
             record_values(&mut fs, 0x62, &wire);
-            let checked = verify(&statement, &original, &proof, delta, &mut fs, &mut vrows);
+            let checked =
+                verify(&statement, Original::Lanes(&original), &proof, delta, &mut fs, &mut vrows);
             if fault == 1 {
                 assert_eq!(checked.unwrap_err(), "B12 range cubic MAC rejected");
                 continue;

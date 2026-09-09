@@ -336,7 +336,7 @@ pub(super) fn prove(
     };
     let (functions, point, original) = byte_function::prove(
         &statement,
-        &aggregate,
+        byte_function::Original::Lanes(&aggregate),
         |i| {
             if s.live(i / 8) && i % 8 < 6 {
                 get_bytes(i / 8)[i % 8]
@@ -437,8 +437,14 @@ pub(super) fn verify(
         live_cells: 1 << point.len(),
         tables: &tables,
     };
-    let result =
-        byte_function::verify(&statement, &aggregate, &proof.functions, delta, fs, &mut rows)?;
+    let result = byte_function::verify(
+        &statement,
+        byte_function::Original::Lanes(&aggregate),
+        &proof.functions,
+        delta,
+        fs,
+        &mut rows,
+    )?;
     debug_assert!(rows.next().is_none());
     Ok(result)
 }

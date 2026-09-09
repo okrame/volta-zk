@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its twenty-three tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its twenty-five tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -127,6 +127,16 @@ The full layout check also compiles all 240 direct P0-to-RNE requests
 (q/k/o/down projections), checks their original MAC/point identities and
 3,840 byte cubes. Only the tiny graph executes RNE; the full-domain
 composition and correlation upper remain analytic.
+The `c71_b12_rms` filter checks the public exact integer compiler against
+five existing Boolean-reference profiles, plus joint authenticated GKR on
+weighted/unweighted cells and dummy padding. The 7,299-row ideal case
+reduces its ORIGINAL input-bit sum through byte P/S into one ranged PCS.
+It rejects wrong Y and changed S preserving the same Y. There is no bit
+reauthentication or trace PCS. This proves the RMS predicate on committed
+P/S/Y bytes, before the canonical P0/statistic/output source routes;
+full calibrated Gemma profiles and the complete composition remain open.
+After byte-function changes, rerun `c71_b12_byte_functions` and
+`c71_b12_rne` separately; ordinary lane-mode transcripts are preserved.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner
 or standalone wire codec. These checks need only local Unix socketpairs.
 The existing field/FS checks use `c71_matrix::tests::` with that feature.

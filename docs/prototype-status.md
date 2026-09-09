@@ -149,10 +149,21 @@ T121/M93. The known upper is 1,165,368 base rows per attempt, 3,496,104
 for three, before other operators. This requires the fixed public shifts
 and prescribed dispatch; full calibrated-profile/native execution is open.
 
-Twenty-five B12 algebra/accounting checks include the scalar invariant,
+The [native joint RMS kernel](../rust/volta-pcs/src/c71_matrix/rms/gkr.rs)
+now proves the exact integer P/S/Y predicate through original byte MACs.
+Its public compiler matches the existing Boolean reference, including
+nonzero exponents; mixed weighted/unweighted profiles share one GKR.
+The final input-bit sum goes directly through byte P/S, with no fresh
+bit authentication. A 7,299-row ideal check includes byte range and one
+PCS: wrong output fails GKR, while changed S preserving Y fails against
+the committed bytes. Canonical P=X*W, S=sum X² and Y consumer routes,
+actual Gemma profiles and their composition remain open; the partial
+P0/RNE security bound above has not acquired full RMS or Gemma credit.
+
+Twenty-six B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 206; the 17
-narrow bootstrap/pool checks and twenty-three B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 207; the 17
+narrow bootstrap/pool checks and twenty-five B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

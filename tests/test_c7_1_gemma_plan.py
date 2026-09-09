@@ -249,6 +249,35 @@ def test_B12_RNE_counts_range_validity_and_both_original_MAC_endpoints():
     assert tiny['tiny_P0_RNE_original_consumer_MAC_rows_with_two_ranged_PCS'] == 24+488+269+510+64
 
 
+def test_B12_joint_RMS_counts_original_bit_sum_products_and_global_FS_losses():
+    profiles = [plan.rms_layered_circuit(plan.rms_boolean_circuit(d, 0, 0, 0, weighted, True))
+                for d, weighted in [(3, True), (256, False)]]
+    widths = [p['summary']['level_widths'] for p in profiles]
+    b = plan.b12_rms_joint_profile(widths, 2)
+    assert (b['height'], b['gate_index_bits_sum']) == (97, 888)
+    assert b['Fp3_correlations_before_source_range_and_shared_PCS']+510+32 == 7299
+    assert b['FS_draw_requests'] == 2163
+    assert b['field_payload_bytes_before_context_and_framing'] == 213864
+    assert b['MAC_degree_sum_before_shared_PCS'] == 2156
+    assert b['sum_of_all_FS_error_degrees_upper_before_shared_PCS'] == 4596
+    assert Fraction(b['global_Qstar_prefix_term_upper']) == Fraction((1 << 74)*4596, plan.P**3)
+    assert b['authenticated_product_triples'] == 97+24 and b['fresh_product_masks'] == 2
+    assert not b['extra_input_bit_correlations_or_commitments']
+    assert not b['P0_product_statistic_output_source_routes_discharged']
+    assert b['full_Gemma_security_totals'] is None
+    assert not b['complete_security_or_physical_credit']
+    # The native sum mode has one incoming MAC and NO fresh lane challenge;
+    # both roles use 1/2 in each lane coordinate and scale that MAC by 1/16.
+    ordinary = plan.b12_byte_function_profile(2, 4)
+    summed = plan.b12_byte_function_profile(2, 4, summed=True)
+    assert summed['FS_draw_requests'] == ordinary['FS_draw_requests']-4 == 93
+    assert summed['Fp3_correlations_before_incoming_claims_and_shared_PCS'] == 361
+    assert summed['original_sum_claim_with_fixed_half_lane_point']
+    for invalid in [[], [[98]], [[98, 2]], [[98, 0, 1]]]:
+        with pytest.raises(ValueError):
+            plan.b12_rms_joint_profile(invalid, 2)
+
+
 def test_B12_direct_RNE_consumers_recompose_errors_without_extra_roots_or_MACs():
     assessment = plan.b12_pcs_binding_assessment()
     base = assessment['raw_P0_two_source_composition']['cases'][-1]

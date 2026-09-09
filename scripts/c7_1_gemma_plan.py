@@ -6635,7 +6635,7 @@ def b12_rne_profile(cell_bits):
     }
 
 
-def b12_byte_function_profile(cell_bits, lane_bits):
+def b12_byte_function_profile(cell_bits, lane_bits, summed=False):
     """P/S caller only; incoming function claims and shared PCS are separate.
 
     Public tables are fixed before the lane challenge. The original function
@@ -6643,7 +6643,9 @@ def b12_byte_function_profile(cell_bits, lane_bits):
     MAC, with a public index shift. Large domains are arithmetic only.
     """
     natural(cell_bits, 'byte-function cell bits', 0, 35)
-    natural(lane_bits, 'byte-function lane bits', 0, 3)
+    natural(lane_bits, 'byte-function lane bits', 0, 4)
+    if type(summed) is not bool:
+        raise ValueError('byte-function sum mode must be Boolean')
     bits = cell_bits+lane_bits
     rounds = sum(bits+i for i in range(8))
     correlations = 4*rounds+7*8+1
@@ -6654,7 +6656,8 @@ def b12_byte_function_profile(cell_bits, lane_bits):
         'cubic_sumcheck_rounds': rounds, 'fraction_tree_layers': 8,
         'Fp3_correlations_before_incoming_claims_and_shared_PCS': correlations,
         'field_payload_bytes_before_context_and_framing': 24*(5*rounds+67),
-        'FS_draw_requests': lane_bits+rounds+17,
+        'FS_draw_requests': (0 if summed else lane_bits)+rounds+17,
+        'original_sum_claim_with_fixed_half_lane_point': summed,
         'authenticated_product_triples': 24, 'fresh_product_masks': 1,
         'MAC_degree_sum_before_shared_PCS': rounds+11,
         'max_FS_block_degree': max(lane_bits+1, 3, 2, 23),
@@ -6669,6 +6672,52 @@ def b12_byte_function_profile(cell_bits, lane_bits):
         'checked_tiny_Fp3_rows_with_incoming_claims_range_and_shared_PCS': 809,
         'wrong_function_and_consistent_function_of_wrong_source_rejected': True,
         'full_RNE_or_Gemma_integer_producers_proven': False,
+        'complete_security_or_physical_credit': False,
+    }
+
+
+def b12_rms_joint_profile(profile_widths, cell_bits):
+    """Native RMS-J arithmetic with one ORIGINAL sum claim through byte P/S.
+
+    Widths describe public compiled predicates, including the input layer;
+    they do not prove the profiles' semantics or bind P/S/Y to Gemma sources.
+    All FS losses are summed before the ONE global Qstar, without per-call Q.
+    Large domains remain analytic, and source range/PCS are separate.
+    """
+    natural(cell_bits, 'RMS joint cell bits', 0, 35)
+    if not profile_widths or any(len(p) < 2 or p[-1] != 1 for p in profile_widths):
+        raise ValueError('RMS needs public predicate widths with one final flag')
+    for profile in profile_widths:
+        for width in profile:
+            natural(width, 'RMS public layer width', 1, 2_000_000)
+    height = max(map(len, profile_widths))-1
+    widths = [max(p[min(d, len(p)-1)] for p in profile_widths) for d in range(height+1)]
+    indices = sum((w-1).bit_length() for w in widths[:-1])
+    ps = b12_byte_function_profile(cell_bits, 4, summed=True)
+    rounds = height*cell_bits+2*indices
+    correlations = height*(4*cell_bits+3)+6*indices+1+ps['Fp3_correlations_before_incoming_claims_and_shared_PCS']
+    degrees = cell_bits+3*cell_bits*height+4*indices+height+(height-1)+3*ps['cubic_sumcheck_rounds']+8+8+23
+    mac = rounds+height+2+ps['MAC_degree_sum_before_shared_PCS']
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/rms/gkr.rs',
+        'profiles': len(profile_widths), 'cell_bits': cell_bits,
+        'height': height, 'gate_index_bits_sum': indices,
+        'GKR_sumcheck_rounds': rounds,
+        'Fp3_correlations_before_source_range_and_shared_PCS': correlations,
+        'FS_draw_requests': cell_bits+rounds+height+1+ps['FS_draw_requests'],
+        'field_payload_bytes_before_context_and_framing': 24*(height*(5*cell_bits+4)+8*indices+2)+ps['field_payload_bytes_before_context_and_framing'],
+        'sum_of_all_FS_error_degrees_upper_before_shared_PCS': degrees,
+        'global_Qstar_prefix_term_upper': str(Fraction((1 << 74)*degrees, P**3)),
+        'MAC_degree_sum_before_shared_PCS': mac,
+        'MAC_error_three_attempts_before_shared_PCS': str(Fraction(3*mac, P**3-1)),
+        'authenticated_product_triples': height+24, 'fresh_product_masks': 2,
+        'extra_input_bit_correlations_or_commitments': 0,
+        'original_bit_sum_to_original_byte_MAC': True,
+        'native_cell_bits_cap': 6, 'native_profiles_cap': 8,
+        'native_height_cap': 128, 'native_arithmetic_bits_cap': 128,
+        'P0_product_statistic_output_source_routes_discharged': False,
+        'actual_Gemma_quantization_profiles_compiled': False,
+        'full_Gemma_security_totals': None,
         'complete_security_or_physical_credit': False,
     }
 

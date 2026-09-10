@@ -7751,6 +7751,67 @@ def b12_ordinary_KV_composition(base, raw, auxiliary, mask):
     }
 
 
+def b12_output_composition(base):
+    lookup=b12_lookup_profile(50*262144,65535)
+    rne=b12_rne_profile(24)
+    argmax=b12_argmax_profile()
+    rows=lookup['Fp3_correlations_before_range_and_shared_PCS']+1+rne['Fp3_correlations_upper_before_incoming_claims_and_shared_PCS']
+    degree=lookup['sum_of_all_FS_error_degrees_before_shared_PCS']+33*24+274+24
+    mac=lookup['MAC_degree_sum_before_shared_PCS']+rne['MAC_degree_sum_upper_before_shared_PCS']
+    fe,me=Fraction((1 << 74)*degree,P**3),Fraction(3*mac,P**3-1)
+    sound,privacy=Fraction(base['conditional_soundness_sum'])+fe+me,Fraction(base['conditional_ZK_sum'])
+    added_bytes=3*50*262144*2+65535*4
+    added_cubes=3+3+16+3+6+56
+    cases=[]
+    for old in base['cases']:
+        case=dict(old)
+        case['auxiliary_live_bytes']+=added_bytes
+        case['auxiliary_sources']+=4
+        case['current_A_targets_upper']+=6
+        case['current_A_cubes_upper']+=added_cubes
+        case['Fp3_correlations_upper_before_other_operators']+=rows
+        case['base_rows_upper_before_other_operators']+=3*rows
+        assert (case['auxiliary_live_bytes']-1).bit_length()==34
+        cases.append(case)
+    work,memory,ro=1 << 68,1 << 41,1 << 30
+    tw,tm=base['reduction_work_upper']+work,base['reduction_memory_words_upper']+memory
+    return {
+        'source':'rust/volta-pcs/src/c71_matrix/gemma/output.rs',
+        'relation':'previous producers and KV plus original lm_head raw RNE, certified softcap and public lowest-ID argmax in same A',
+        'cases':cases,'lm_head_original_P0_cohort':772,'matrix_RNE_cohorts_now_included':411,
+        'new_sources':4,'additional_auxiliary_bytes':added_bytes,'original_lookup_byte_cubes':[3,3,16],
+        'original_head_RNE_probe_raw_byte_cubes':[3,6],'argmax_zero_form_cubes':56,
+        'lookup':lookup,'argmax':argmax,'token_decision_slice':[100,150],
+        'certified_table_recipe':'C71-SOFTCAP-RNE-v1','certified_table_bytes':131070,
+        'additional_Fp3_correlations_upper_per_attempt':rows,
+        'additional_FS_draw_requests':lookup['FS_draw_requests']+rne['FS_draw_requests']+48,
+        'additional_field_payload_bytes_upper_before_context_and_framing':lookup['field_payload_bytes_before_context_and_framing']+rne['field_payload_bytes_upper_before_context_and_framing']+24,
+        'sum_of_all_added_FS_error_degrees_upper':degree,
+        'additional_MAC_degree_sum_upper_per_attempt':mac,
+        'additional_global_FS_error':str(fe),'additional_fixed_run_MAC_error':str(me),
+        'initial_base_capacity_upper_three_attempts_before_other_operators':sum(c['base_rows_upper_before_other_operators'] for c in cases),
+        'initial_base_capacity_limit':base['initial_base_capacity_limit'],
+        'same_D34_forests_exposures_samplers_and_decoders':True,
+        'private_streams':base['private_streams'],'forest_distinct_trees':base['forest_distinct_trees'],
+        'additional_honest_work_u64_upper':work,'additional_honest_memory_words_upper':memory,
+        'additional_honest_RO_events_upper':ro,'full_RO_queries_upper':base['full_RO_queries_upper']+ro,
+        'reduction_work_upper':tw,'reduction_memory_words_upper':tm,
+        'both_resource_caps_hold':tw < 1 << 121 and tm < 1 << 93,
+        'conditional_soundness_sum':str(sound),'conditional_ZK_sum':str(privacy),
+        'soundness_bits':math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits':math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78':max(sound,privacy) < Fraction(1,1 << 78),
+        'native_output_RNE_lookup_argmax_range_PCS_Fp3_rows':1112,
+        'original_head_to_public_decision_chain_compiled':True,
+        'consistent_public_head_shift_and_certified_softcap_profile_required':True,
+        'numerical_profile_preparation_and_calibration_outside_this_subtotal':True,
+        'full_verifier_accepted_history_induction_required':True,
+        'softmax_and_mask_proven':False,'full_Gemma_simulation_for_arbitrary_public_outputs_proven':False,
+        'native_full_domain_execution':False,'all_Gemma_integer_producers_proven':False,
+        'full_Gemma_security_totals':None,'physical_schedule_admitted':False,
+    }
+
+
 def b12_rope_joint_profile(cells):
     """Joint public adjoint over aligned dyadic RoPE blocks; no source closures.
 
@@ -8253,6 +8314,7 @@ def b12_pcs_binding_assessment():
     rope_composition = b12_rope_composition(gate_up_composition)
     attention_composition = b12_attention_composition(rope_composition)
     residual_composition = b12_residual_composition(attention_composition)
+    kv_composition = b12_ordinary_KV_composition(residual_composition,gate_up_raw,gate_up_byte_profile,mask)
     for row, joint in zip(range_cases, p0_composition['cases']):
         row['large_domain_private_sampler_and_simulator_bound_derived'] = True
         if row['conditional_ZK_sum'] is None:
@@ -8444,8 +8506,8 @@ def b12_pcs_binding_assessment():
         'P0_RNE_RMS_GELU_gate_up_RoPE_composition': rope_composition,
         'P0_RNE_RMS_GELU_gate_up_RoPE_attention_composition': attention_composition,
         'P0_RNE_RMS_GELU_gate_up_RoPE_attention_residual_composition': residual_composition,
-        'ordinary_KV_original_A_tail_composition': b12_ordinary_KV_composition(
-            residual_composition, gate_up_raw, gate_up_byte_profile, mask),
+        'ordinary_KV_original_A_tail_composition': kv_composition,
+        'ordinary_KV_and_public_output_composition': b12_output_composition(kv_composition),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         'public_RoPE_joint_component': b12_rope_joint_profile(119808000),

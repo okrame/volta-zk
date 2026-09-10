@@ -288,15 +288,21 @@ now proves public decisions from the original final i16 table using
 unsigned byte slacks in the same A. Its 542-row ideal range/PCS case
 rejects wrong decisions, wrong tie ordering and wrapped negative slack.
 The [public softcap recipe](c7.1-gemma31b-design.md#b12-argmax-dai-byte-originali-e-ricetta-pubblica-del-softcap)
-certifies RNE of 30*tanh(x/30), reusing GELU's exp bounds. Neither is
-yet in the KV subtotal: the missing lm_head RNE and original softcap
-lookup must connect them to the weighted producer. Actual calibration,
-full output execution and complete Gemma simulation remain open.
+certifies RNE of 30*tanh(x/30), reusing GELU's exp bounds. The new
+[output caller](../rust/volta-pcs/src/c71_matrix/gemma/output.rs) now
+connects the original P0 lm_head raw through its RNE, softcap lookup
+and argmax to `tokens[100:150]`, in the same A. Its 1,112-row ideal
+chain closes a ranged PCS and rejects wrong raw, softcap and token.
+The conditional subtotal retains **82.94166 soundness / 91.02272 ZK
+bits**, using **11,276,730 base rows** for three attempts. A now has
+3,171 sources, at most 14,167,203,978 bytes, still D34; private
+streams/forests remain 39/526. Mask/softmax, full accepted-history
+verification, actual calibration and full Gemma simulation remain open.
 
-Forty-three B12 algebra/accounting checks include the scalar invariant,
+Forty-four B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint source bounds. The relevant Python checks total 225; the 17
-narrow bootstrap/pool checks and forty-three B12 PCS/caller/layout checks pass.
+range/product identities and the joint source bounds. The relevant Python checks total 226; the 17
+narrow bootstrap/pool checks and forty-four B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -317,9 +323,9 @@ NoPeek, relation and resource composition.
 
 **Remaining work:** full Gemma malicious-verifier ZK, the complete quantized
 Gemma GKR relation using the range-checked W, full correlation census and
-both-role resource composition for the fixed run. The known 11,253,492-row upper
-for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE/attention/residual attempts with ordinary KV source openings fits the initial capacity;
-mask/softmax, full accepted-state verification and public output remain open.
+both-role resource composition for the fixed run. The known 11,276,730-row upper
+for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE/attention/residual/output attempts with ordinary KV source openings fits the initial capacity;
+mask/softmax, full accepted-state verification and whole-Gemma simulation remain open.
 The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
 soundness bound also included failed setups/key changes; that broader
 evidence remains valid without making renewal/recovery new gates. Neither

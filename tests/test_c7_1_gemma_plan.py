@@ -801,6 +801,7 @@ def test_softcap_public_certified_RNE_reuses_exp_bounds_and_preserves_strict_tai
     assert plan.softcap_i16_pair(8,10,2)==(7,-7)
     assert plan.softcap_i16_pair(32767,128,2)==(7,-7)
     assert plan.softcap_i16_pair(1,0,-128)==(-32768,-32768)
+    assert [plan.softcap_i16_pair(abs(x),10,2)[x<0] for x in range(-3,4)]==[-7,-7,-7,0,7,7,7]
     table=plan.softcap_i16_table(10,0)
     assert len(table)==131070
     expected=b''.join((30 if x>0 else -30 if x<0 else 0).to_bytes(2,'little',signed=True)
@@ -817,6 +818,40 @@ def test_softcap_public_certified_RNE_reuses_exp_bounds_and_preserves_strict_tai
         plan.decimal_exp_bounds=original
     for args in [(32768,0,0),(1,-129,0),(1,0,129)]:
         with pytest.raises(ValueError):plan.softcap_i16_pair(*args)
+
+
+def test_B12_output_composes_original_lm_head_RNE_softcap_argmax_and_all_KV_roots():
+    report=plan.b12_pcs_binding_assessment()
+    base=report['ordinary_KV_original_A_tail_composition']
+    b=report['ordinary_KV_and_public_output_composition']
+    assert b['lm_head_original_P0_cohort']==772 and b['matrix_RNE_cohorts_now_included']==411
+    assert b['new_sources']==4 and b['additional_auxiliary_bytes']==78905340
+    assert b['original_lookup_byte_cubes']==[3,3,16]
+    assert b['original_head_RNE_probe_raw_byte_cubes']==[3,6] and b['argmax_zero_form_cubes']==56
+    assert b['lookup']['fraction_domain_bits']==24 and b['lookup']['query_cells']==13107200
+    assert b['token_decision_slice']==[100,150] and b['certified_table_bytes']==131070
+    assert b['additional_Fp3_correlations_upper_per_attempt']==1278+1303+1==2582
+    assert b['additional_FS_draw_requests']==326+315+48==689
+    assert b['additional_field_payload_bytes_upper_before_context_and_framing']==75960
+    assert b['sum_of_all_added_FS_error_degrees_upper']==13174772
+    assert b['additional_MAC_degree_sum_upper_per_attempt']==586
+    assert Fraction(b['conditional_soundness_sum'])==Fraction(base['conditional_soundness_sum'])+Fraction((1 << 74)*13174772,plan.P**3)+Fraction(3*586,plan.P**3-1)
+    assert b['conditional_ZK_sum']==base['conditional_ZK_sum']
+    assert b['same_D34_forests_exposures_samplers_and_decoders']
+    assert b['private_streams']==39 and b['forest_distinct_trees']==526
+    assert [c['auxiliary_live_bytes'] for c in b['cases']]==[12692643978,13429923978,14167203978]
+    assert all(c['auxiliary_sources']==3171 and c['auxiliary_log_cells']==34 for c in b['cases'])
+    assert [c['current_A_cubes_upper'] for c in b['cases']]==[79626,88146,83706]
+    assert all(c['current_A_targets_upper']==4439 for c in b['cases'])
+    assert b['initial_base_capacity_upper_three_attempts_before_other_operators']==11276730 < b['initial_base_capacity_limit']
+    assert b['native_output_RNE_lookup_argmax_range_PCS_Fp3_rows']==1112
+    assert b['original_head_to_public_decision_chain_compiled']
+    assert b['consistent_public_head_shift_and_certified_softcap_profile_required']
+    assert b['both_below_2_to_minus_78'] and b['both_resource_caps_hold'] and b['full_RO_queries_upper'] < 1 << 74
+    assert b['numerical_profile_preparation_and_calibration_outside_this_subtotal']
+    assert b['full_verifier_accepted_history_induction_required']
+    assert not b['softmax_and_mask_proven'] and not b['full_Gemma_simulation_for_arbitrary_public_outputs_proven']
+    assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
 
 
 def test_B12_RoPE_joint_adjoint_counts_original_endpoints_and_fixed_public_recipe():

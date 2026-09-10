@@ -22,7 +22,7 @@ pub(in crate::c71_matrix) struct Bytes {
     pub scalar: Auxiliary,
     tiles: Vec<ByteTile>,
     by_scalar: Vec<Vec<usize>>,
-    widths: Vec<usize>,
+    pub(super) widths: Vec<usize>,
     packed_offsets: Vec<usize>,
     pub live: usize,
     pub layout_digest: [u8; 32],

@@ -7858,6 +7858,61 @@ def b12_output_composition(base):
     }
 
 
+def b12_causal_mask_composition(base):
+    """Original Pi zero on forbidden vertices; before a softmax producer.
+
+    Rectangle counts are checked against every canonical Boolean query/key
+    pair by the native mask test; no dense Gemma source is allocated here.
+    """
+    cases=[]
+    for prior,rectangles in zip(base['cases'],(398,386,446)):
+        case=dict(prior)
+        old=case['old_tokens']
+        assert old in (0,150,300) and old+150 < 1024
+        case['mask_rectangles_per_layer']=rectangles
+        case['mask_forbidden_cells_per_head']=106*(old+150)+150*149//2
+        case['mask_original_Pi_byte_cubes']=60*rectangles
+        case['mask_FS_draw_requests']=6+5+8+(old+149).bit_length()
+        case['current_A_targets_upper']+=1
+        case['current_A_cubes_upper']+=60*rectangles
+        assert case['current_A_cubes_upper'] <= 131072
+        cases.append(case)
+    degree=max(c['mask_FS_draw_requests'] for c in cases)+1  # one extra bridge target
+    error=Fraction((1 << 74)*degree,P**3)
+    sound=Fraction(base['conditional_soundness_sum'])+error
+    privacy=Fraction(base['conditional_ZK_sum'])
+    work,memory,ro=1 << 54,1 << 41,1 << 30
+    tw,tm=base['reduction_work_upper']+work,base['reduction_memory_words_upper']+memory
+    return {
+        'source':'rust/volta-pcs/src/c71_matrix/gemma/bytes/mask.rs',
+        'base_composition':'ordinary_KV_and_public_output_composition',
+        'relation':'previous producers, KV and output plus original Pi zero on future keys and padded queries, in same A',
+        'cases':cases, 'new_sources':0, 'additional_auxiliary_bytes':0,
+        'additional_Fp3_correlations_per_attempt':0, 'additional_MAC_checks':0,
+        'new_PCS_or_private_streams':0, 'mask_applied_at_Boolean_vertices_before_MLE':True,
+        'local_window_contains_entire_selected_run':True,
+        'maximum_added_FS_error_degree':degree, 'additional_global_FS_error':str(error),
+        'initial_base_capacity_upper_three_attempts_before_other_operators':base['initial_base_capacity_upper_three_attempts_before_other_operators'],
+        'initial_base_capacity_limit':base['initial_base_capacity_limit'],
+        'private_streams':base['private_streams'],'forest_distinct_trees':base['forest_distinct_trees'],
+        'additional_honest_work_u64_upper':work,'additional_honest_memory_words_upper':memory,
+        'additional_honest_RO_events_upper':ro,'full_RO_queries_upper':base['full_RO_queries_upper']+ro,
+        'reduction_work_upper':tw,'reduction_memory_words_upper':tm,
+        'both_resource_caps_hold':tw < 1 << 121 and tm < 1 << 93,
+        'conditional_soundness_sum':str(sound),'conditional_ZK_sum':str(privacy),
+        'soundness_bits':math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits':math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78':max(sound,privacy) < Fraction(1,1 << 78),
+        'native_mask_range_PCS_Fp3_rows':542,
+        'causal_mask_and_query_padding_proven':True,'allowed_softmax_values_proven':False,
+        'full_verifier_accepted_history_induction_required':True,
+        'full_Gemma_simulation_for_arbitrary_public_outputs_proven':False,
+        'numerical_profile_preparation_and_calibration_outside_this_subtotal':True,
+        'native_full_domain_execution':False, 'full_Gemma_security_totals':None,
+        'physical_schedule_admitted':False,
+    }
+
+
 def b12_rope_joint_profile(cells):
     """Joint public adjoint over aligned dyadic RoPE blocks; no source closures.
 
@@ -8361,6 +8416,7 @@ def b12_pcs_binding_assessment():
     attention_composition = b12_attention_composition(rope_composition)
     residual_composition = b12_residual_composition(attention_composition)
     kv_composition = b12_ordinary_KV_composition(residual_composition,gate_up_raw,gate_up_byte_profile,mask)
+    output_composition = b12_output_composition(kv_composition)
     for row, joint in zip(range_cases, p0_composition['cases']):
         row['large_domain_private_sampler_and_simulator_bound_derived'] = True
         if row['conditional_ZK_sum'] is None:
@@ -8553,7 +8609,8 @@ def b12_pcs_binding_assessment():
         'P0_RNE_RMS_GELU_gate_up_RoPE_attention_composition': attention_composition,
         'P0_RNE_RMS_GELU_gate_up_RoPE_attention_residual_composition': residual_composition,
         'ordinary_KV_original_A_tail_composition': kv_composition,
-        'ordinary_KV_and_public_output_composition': b12_output_composition(kv_composition),
+        'ordinary_KV_and_public_output_composition': output_composition,
+        'ordinary_KV_output_and_causal_mask_composition': b12_causal_mask_composition(output_composition),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         'public_RoPE_joint_component': b12_rope_joint_profile(119808000),

@@ -318,10 +318,20 @@ retagging the original public argmax target under the same verifier key.
 That resolves this output constraint; the full-Gemma trace, NoPeek and
 termination composition remain open.
 
-Forty-four B12 algebra/accounting checks include the scalar invariant,
+The [causal mask compiler](c7.1-gemma31b-design.md#b12-maschera-causale-sulla-stessa-pi-originale)
+now proves zero at forbidden keys and padded queries in the same original
+Pi used by PV. Its 542-row ideal ranged-PCS check rejects either violation;
+full metadata checks every selected query/key and all 60 source routes.
+It adds no source, correlation or PCS. The subtotal with ordinary KV,
+output and this mask still uses 11,276,730 base rows and retains about
+82.94166/91.02272 conditional bits at T121/M93. The largest A batch has
+111,306 cubes under the 131,072 cap. Allowed softmax values and complete
+caller/simulation remain unproved; EXP30 is still unselected.
+
+Forty-five B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint source bounds. The relevant Python checks total 227; the 17
-narrow bootstrap/pool checks and forty-six B12 PCS/caller/layout checks pass.
+range/product identities and the joint source bounds. The relevant Python checks total 228; the 17
+narrow bootstrap/pool checks and forty-seven B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -344,7 +354,7 @@ NoPeek, relation and resource composition.
 Gemma GKR relation using the range-checked W, full correlation census and
 both-role resource composition for the fixed run. The known 11,276,730-row upper
 for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE/attention/residual/output attempts with ordinary KV source openings fits the initial capacity;
-mask/softmax, full accepted-state verification and whole-Gemma simulation remain open.
+allowed softmax values, full accepted-state verification and whole-Gemma simulation remain open.
 The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
 soundness bound also included failed setups/key changes; that broader
 evidence remains valid without making renewal/recovery new gates. Neither

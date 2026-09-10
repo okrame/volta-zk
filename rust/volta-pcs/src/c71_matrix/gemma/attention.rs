@@ -127,6 +127,20 @@ impl Plan {
 }
 
 impl Sources {
+    pub fn mask_zero_form(
+        &self,
+        plan: &Plan,
+        s: &P0Statement<'_>,
+        fs: &mut Fs,
+    ) -> Result<(Vec<Cube>, Fp3), String> {
+        if self.layers.len() != 60 || usize::from(s.attempt.slot) * 150 != self.rope.old {
+            return Err("canonical attention mask slot or layer census differs".into());
+        }
+        self.rope.gate_up.gelu.rms.bytes.causal_zero_form(
+            plan, s, &self.layers.iter().map(|l| l.pi).collect::<Vec<_>>(), 32, 150, self.rope.old, fs,
+        )
+    }
+
     pub(super) fn append(
         mut self,
         extra: Vec<(String, usize, usize, usize)>,
@@ -483,6 +497,11 @@ mod tests {
                     nonce: [3; 32],
                 },
             };
+            let mut mask_fs = Fs::new(b"canonical continued causal mask metadata only", 1000);
+            let (mask, _) = a.mask_zero_form(&plan, &context, &mut mask_fs).unwrap();
+            assert_eq!(mask.len(), 60 * [398, 386, 446][step]);
+            assert_eq!(mask_fs.requests(), 6 + 5 + 8 + key_bits);
+            assert!(mask.len() + [79626, 88146, 83706][step] <= crate::c71_matrix::linear::MAX_CUBES);
             let mut fs = Fs::new(b"canonical continued metadata only", 1000);
             for layer in 0..60 {
                 let st = a.statement(&context, layer, &mut fs).unwrap();

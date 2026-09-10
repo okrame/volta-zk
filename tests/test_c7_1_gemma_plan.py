@@ -879,6 +879,38 @@ def test_softmax_exp30_candidate_is_explicitly_different_from_real_RNE_and_unsel
         with pytest.raises(ValueError):plan.softmax_exp30_row(*args)
 
 
+def test_B12_causal_mask_recomposes_original_Pi_with_no_new_MACs_or_PCS():
+    report=plan.b12_pcs_binding_assessment()
+    base=report['ordinary_KV_and_public_output_composition']
+    b=report['ordinary_KV_output_and_causal_mask_composition']
+    assert b['new_sources']==b['additional_auxiliary_bytes']==0
+    assert b['additional_Fp3_correlations_per_attempt']==b['additional_MAC_checks']==b['new_PCS_or_private_streams']==0
+    assert b['mask_applied_at_Boolean_vertices_before_MLE']
+    assert b['local_window_contains_entire_selected_run']
+    assert [c['old_tokens'] for c in b['cases']]==[0,150,300]
+    assert [c['mask_rectangles_per_layer'] for c in b['cases']]==[398,386,446]
+    assert [c['mask_forbidden_cells_per_head'] for c in b['cases']]==[27075,42975,58875]
+    assert [c['mask_FS_draw_requests'] for c in b['cases']]==[27,28,28]
+    assert [c['current_A_cubes_upper'] for c in b['cases']]==[103506,111306,110466]
+    assert all(c['current_A_cubes_upper'] <= 131072 and c['current_A_targets_upper']==4440 for c in b['cases'])
+    assert [c['auxiliary_live_bytes'] for c in b['cases']]==[c['auxiliary_live_bytes'] for c in base['cases']]
+    assert b['maximum_added_FS_error_degree']==29
+    assert Fraction(b['conditional_soundness_sum'])==Fraction(base['conditional_soundness_sum'])+Fraction((1 << 74)*29,plan.P**3)
+    assert b['conditional_ZK_sum']==base['conditional_ZK_sum']
+    assert b['private_streams']==39 and b['forest_distinct_trees']==526
+    assert b['initial_base_capacity_upper_three_attempts_before_other_operators']==11276730 < b['initial_base_capacity_limit']
+    # Count full original source cubes even when some inner coordinates are
+    # Boolean constants. No sparse-support credit for the dense native loop.
+    cubes=max(c['mask_original_Pi_byte_cubes'] for c in b['cases'])
+    assert 3*(cubes*(1 << 23)+(1 << 34))*(1 << 12) < b['additional_honest_work_u64_upper']
+    assert b['both_resource_caps_hold'] and b['both_below_2_to_minus_78'] and b['full_RO_queries_upper'] < 1 << 74
+    assert b['native_mask_range_PCS_Fp3_rows']==542
+    assert b['causal_mask_and_query_padding_proven'] and not b['allowed_softmax_values_proven']
+    assert b['full_verifier_accepted_history_induction_required']
+    assert not b['full_Gemma_simulation_for_arbitrary_public_outputs_proven']
+    assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
+
+
 def test_B12_RoPE_joint_adjoint_counts_original_endpoints_and_fixed_public_recipe():
     cohorts = plan.gemma_weight_cohorts(plan.pinned_private_tensors())
     old = plan.gemma_rope_plan(cohorts)['summary']

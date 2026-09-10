@@ -105,7 +105,7 @@ registra questo risultato separato.
 
 Le 797.139 righe base del run composto non sono state espanse con AES:
 quel bootstrap supera i limiti dei casi locali descritti nelle procedure.
-Il port al pool reale e ai descrittori canonici resta esplicito nel
+La verifica positiva del port al pool reale e ai descrittori canonici resta esplicita nel
 [design](design.md#native-correspondence). Nessuna esecuzione GPU/provider,
 spesa, build Lean o build dell'intero workspace.
 
@@ -120,6 +120,39 @@ dalle procedure, mantenendo 60 s/2 GiB. Non è un fallimento crittografico.
 Il filtro Python combinato è `B12 or ideal_mac_simulation or bootstrap or
 budget` nei tre file di test indicati sotto; il controllo delle tabelle
 è stato ricontrollato dopo aver adeguato il reader alla formattazione Rust.
+
+## Native canonical and pool extension
+
+Il [compilatore causale](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs)
+e l'[adapter reale](../../rust/volta-pcs/src/c71_matrix/gemma/native/pool.rs)
+estendono il lavoro locale del 2026-09-10. Il goal resta aperto: questi
+controlli non eseguono il preparatore/prover canonico né un'inferenza
+composta positiva con AES. Nessun nuovo bound o credito hardware.
+
+| Filtro Rust | Ambito |
+|---|---|
+| `c71_b12_native_canonical` | Tutte le 3.471 sorgenti hanno un solo produttore; 2.328 produttori ordinati causalmente, 773 P0, 421 RMS, 892 RNE, dieci alias K/V globali, tre contesti; sorgenti omesse/duplicate e ciclo respinti |
+| `c71_b12_native_pool_packing` | Tre righe base→Fp3, negazione coerente di Delta, campo canonico e rifiuto di triple incomplete; mutazioni di W, semantica, sessione, seal, epoch, slot, predecessore e cursor |
+| `c71_b12_native_pool_real_shortage` | Due ruoli con setup AES reale di tre righe, contesto verifier-owned e capacità insufficiente: Stop prima di prova/promozione, pool inutilizzabile e reopen rifiutato |
+
+Il test con socketpair incontra nel sandbox il divieto di sistema ed è
+passato fuori sandbox con gli stessi limiti locali. È un vincolo
+dell'ambiente, non un fallimento di verifica crittografica. Non si è
+espansa la capacità da 797.139 righe base. I percorsi positivi dell'adapter
+sono compilati e condividono i kernel del wrapper ridotto, ma la sola
+regressione ideale non ne verifica la composizione AES/journal positiva.
+`native_canonical_producers` e i nuovi campi dell'adapter nel diagnostico
+espongono questi limiti; le ammissioni canoniche/produzione restano false.
+
+Validazione dell'estensione: **15 test Rust passati** (gli 11 filtri nativi,
+tre regressioni lifecycle e `c71_b12_real_durable_roles`) e **81 controlli
+Python passati** col filtro B12/NoPeek/bootstrap/budget già indicato.
+CLI/self-check e JSON rigoroso passano; verificati link locali, formattazione
+e diff. Passa anche `cargo check --lib` senza `cfg(test)`, quindi senza
+gli ingressi ideali del wrapper. Build mirate offline/locked, un job, opt-level 2, target canonico
+e configurazione `rust/.cargo`; ogni test è seriale entro 60 s/2 GiB.
+Sono controlli di sviluppo, non benchmark su albero pulito o test dell'intero
+workspace. Nessuna build Lean o esecuzione GPU.
 
 ## Measured historical records
 

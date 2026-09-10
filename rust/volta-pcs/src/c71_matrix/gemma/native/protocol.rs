@@ -3,6 +3,9 @@ use super::*;
 use kernel::wire::{self, Wire};
 use prepare::{Installed, Snapshot};
 
+#[path = "pool.rs"]
+mod pool;
+
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
@@ -787,18 +790,22 @@ struct Acceptance {
 }
 struct Verifier {
     state: State,
+    #[cfg(test)]
     delta: Fp3,
+    #[cfg(test)]
     keys: std::vec::IntoIter<Key>,
 }
 struct Prover {
     state: State,
     model: Installed,
+    #[cfg(test)]
     rows: std::vec::IntoIter<Auth>,
     accepted: Vec<Snapshot>,
     pending: Option<(Snapshot, [u8; 32])>,
 }
 
 impl Verifier {
+    #[cfg(test)]
     fn verify_response(&mut self, prompt: u32, response: &Response) -> Result<Acceptance, String> {
         if !self.state.live {
             return Err("Stop".into());
@@ -849,6 +856,7 @@ impl Verifier {
 }
 
 impl Prover {
+    #[cfg(test)]
     fn prepare_response(&mut self, prompt: u32, nonce: [u8; 32]) -> Result<Response, String> {
         if !self.state.live || self.pending.is_some() {
             return Err("Stop".into());
@@ -906,10 +914,9 @@ impl Prover {
         }));
         outcome.map_err(|_| "Stop".to_string())?.map_err(stop)
     }
-    fn promote(&mut self, accepted: Acceptance) -> Result<(), String> {
-        self.state.live = false;
-        let (snapshot, receipt) = self.pending.take().ok_or("Stop")?;
-        if receipt != accepted.receipt
+    fn check_acceptance(&self, accepted: &Acceptance) -> Result<(), String> {
+        let (snapshot, receipt) = self.pending.as_ref().ok_or("Stop")?;
+        if *receipt != accepted.receipt
             || snapshot.source.root != accepted.root
             || snapshot.tokens != accepted.tokens
             || accepted.session != self.state.session
@@ -918,6 +925,15 @@ impl Prover {
         {
             return Err("Stop".into());
         }
+        Ok(())
+    }
+    fn promote(&mut self, accepted: Acceptance) -> Result<(), String> {
+        self.state.live = false;
+        if let Err(error) = self.check_acceptance(&accepted) {
+            self.pending = None;
+            return Err(error);
+        }
+        let (snapshot, receipt) = self.pending.take().ok_or("Stop")?;
         self.state.promote(accepted.root, accepted.tokens, receipt);
         self.accepted.push(snapshot);
         Ok(())

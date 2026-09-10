@@ -50,6 +50,19 @@ il filtro Python `native_small_profile`; dopo modifiche al codec PCS
 conservare anche i test campo/FS e salted/codec preesistenti.
 Vedi [perimetro ed evidenza](../c7.1/evidence.md#native-bounded-composition).
 
+Il filtro `c71_b12_native_canonical` controlla il compilatore causale di
+tutte le sorgenti pinned a O=0/150/300, senza witness o domini densi.
+`c71_b12_native_pool_packing` controlla conversione Fp3 e identità del
+registro; `c71_b12_native_pool_real_shortage` usa una sola capacità AES
+da tre righe per verificare il rifiuto del wrapper prima di Prepare/decode.
+Quest'ultimo richiede soltanto una socketpair Unix locale; mantenere gli
+stessi limiti di 60 s/2 GiB e un worker Rayon. Non esegue il percorso
+AES composto positivo da 797.139 righe base, tuttora escluso sulla VM.
+Dopo modifiche al lifecycle compilare anche `volta-pcg --features c71-b11
+--lib c71_b12 --no-run`, con gli stessi env e un job; eseguire i filtri
+`c71_b12_fixed_run_stops`, `c71_b12_burns`, `c71_b12_fixed_run_real_capacity`
+separatamente. I test di regressione precedenti conservano i propri limiti.
+
 The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate
 D31/D33 source counts and partial target/cube totals describe those fixtures,

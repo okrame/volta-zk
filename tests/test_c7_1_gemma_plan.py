@@ -184,6 +184,13 @@ def test_B12_complete_fixed_run_preserves_exact_errors_and_counts_caller_resourc
     assert sum(native['base_row_reservations']) == 797139
     assert native['single_reconstructed_FS'] and native['atomic_verified_KV_promotion']
     assert not native['real_AES_composed_run'] and not native['canonical_Gemma_dispatch']
+    assert native['real_pool_adapter_implemented']
+    assert native['real_AES_shortage_checked_base_rows'] == 3
+    canonical = full['native_canonical_producers']
+    assert (canonical['sources_A'], canonical['producers']) == (3471, 2328)
+    assert canonical['old_tokens'] == [0, 150, 300]
+    assert not any(canonical[k] for k in ('canonical_prepare_executed',
+        'canonical_proof_dispatch_executed', 'full_model_security_or_hardware_credit'))
     for change in ({'recipe': 'unselected'}, {'allowed_softmax_values_proven': False},
                    {'cases': base['cases'][:2]}):
         with pytest.raises(ValueError):

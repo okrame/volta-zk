@@ -1,7 +1,7 @@
 use super::*;
 use rand_010::RngExt;
 
-fn weights(p: &Profile) -> Vec<i16> {
+pub(super) fn weights(p: &Profile) -> Vec<i16> {
     p.plan
         .sources
         .iter()

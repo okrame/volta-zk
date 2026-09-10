@@ -8080,9 +8080,20 @@ def b12_complete_fixed_run_composition(base):
             'immutable_prepare_before_FS': True, 'single_reconstructed_FS': True,
             'atomic_verified_KV_promotion': True, 'terminal_rejection': True,
             'complete_codec_checked': True, 'real_AES_composed_run': False,
+            'real_pool_adapter_implemented': True,
+            'real_AES_shortage_checked_base_rows': 3,
             'canonical_Gemma_dispatch': False, 'full_model_security_or_hardware_credit': False,
         },
-        'next_goal': 'extend the checked bounded path to canonical Gemma descriptors and the real pool; no dense local execution',
+        'native_canonical_producers': {
+            'source': 'rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs',
+            'test_filter': 'c71_b12_native_canonical',
+            'status': 'public_causal_schedule_checked_without_witness_execution',
+            'sources_A': 3471, 'producers': 2328, 'P0': 773, 'RMS': 421, 'RNE': 892,
+            'old_tokens': [0, 150, 300], 'global_pre_norm_KV_aliases': 10,
+            'canonical_prepare_executed': False, 'canonical_proof_dispatch_executed': False,
+            'full_model_security_or_hardware_credit': False,
+        },
+        'next_goal': 'execute canonical Prepare/proof dispatch from the causal descriptors; validate the complete AES adapter on authorized hardware; no dense local execution',
     }
 
 

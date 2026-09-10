@@ -49,18 +49,36 @@ Questo non trasferisce automaticamente gli 82,93/91,02 bit al programma
 Rust o al piccolo profilo. Restano distinti il teorema matematico completo,
 l'esecuzione nativa nel modello MAC ideale e il port canonico/AES.
 
+## Native port in progress
+
+Il [compilatore causale canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs)
+deriva 2.328 produttori per tutte le 3.471 sorgenti A, nei contesti
+O=0/150/300. Controlla dipendenze, unicità e i dieci alias K/V pre-norm
+globali; omissioni, duplicazioni e cicli sono respinti. È compilazione
+pubblica dei descrittori pinned, non ancora esecuzione numerica o dispatch
+delle prove sui 773 P0/421 RMS.
+
+Il [collegamento AES/journal](../../rust/volta-pcs/src/c71_matrix/gemma/native/pool.rs)
+ora alimenta il wrapper ridotto tramite riserve del pool reale, con segni
+MAC nativi, confronto del registro e promozione dopo il journal. Gli
+iteratori ideali sono confinati ai test. Il controllo reale a tre righe
+verifica l'arresto per capacità insufficiente, senza pubblicare A né
+promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
+
 ## Next goal
 
-**Estendere il percorso verificato ai descrittori canonici e al pool reale.**
-Il piccolo compilatore non è ancora il dispatcher dei 773 P0/421 RMS del
-profilo pinned. Il collegamento alla capacità AES/journal completa non è
-eseguito dal test composto: le sue 797.139 righe base superano il perimetro
-dei test bootstrap locali. Restano validi i controlli separati del pool.
+**Il goal di estensione resta aperto:** eseguire Prepare e la schedule di
+prova dai descrittori canonici, conservando gli originali e la compilazione
+numerica comune; verificare poi il percorso composto AES positivo.
+Le sue 797.139 righe base sul grafo ridotto superano il perimetro dei
+bootstrap locali e richiedono hardware autorizzato. La compilazione
+causale non fornisce lo schedule fisico per D34/D35.
 Non si ammettono per questo esito esecuzione Gemma completa, produzione,
 un nuovo bound Rust o materializzazioni D34/D35.
 
-L'harness conserva B12 e i campi di ammissione canonica; il nuovo campo
-`native_bounded_composition` distingue il risultato ridotto. Il riferimento
+L'harness conserva B12 e i campi di ammissione canonica;
+`native_bounded_composition` distingue il risultato ridotto e
+`native_canonical_producers` la compilazione senza witness. Il riferimento
 resta [security §§2–3](security.md#2-preparatore-e-macchina-di-accettazione),
 con i limiti del [design](design.md#native-correspondence).
 

@@ -300,6 +300,7 @@ impl Lifetime {
             .collect();
         Ok(Pool {
             store: self,
+            session,
             capacity,
             rows: Zeroizing::new(data),
             delta: None,
@@ -344,6 +345,7 @@ impl Lifetime {
         let capacity = capacity_seal(&mut channel, false)?;
         Ok(Pool {
             store: self,
+            session,
             capacity,
             rows: output.keys,
             delta: Some(output.delta),
@@ -356,6 +358,7 @@ impl Lifetime {
 /// pack one Fp3; the native consumer must use Delta_native = -Delta_B11.
 pub struct Pool<'a, R: Zeroize + Copy> {
     store: &'a mut Lifetime,
+    session: Digest,
     capacity: Digest,
     rows: Zeroizing<Vec<R>>,
     delta: Option<Zeroizing<[u64; 3]>>,
@@ -371,6 +374,41 @@ pub struct Attempt {
 }
 
 impl<R: Zeroize + Copy> Pool<'_, R> {
+    /// Public next-attempt identity, without access to unused correlations.
+    /// A composed fixed-run consumer must compare this with its own registry.
+    pub fn fixed_run_context(&self) -> io::Result<(ModelBinding, Digest, Attempt)> {
+        let s = self.store.state;
+        if self.store.poisoned || !s.fixed_run || s.setups != 1 || s.attempts >= ROOT_SLOTS {
+            return Err(invalid("no live fixed-run capacity"));
+        }
+        Ok((
+            self.store.model,
+            self.session,
+            Attempt {
+                capacity: self.capacity,
+                setup: s.setups,
+                ordinal: s.attempts + 1,
+                predecessor: s.head,
+                first_base_row: s.used,
+            },
+        ))
+    }
+
+    pub fn remaining_fp3(&self) -> usize {
+        if self.store.poisoned {
+            0
+        } else {
+            ((self.store.state.rows - self.store.state.used) / 3) as usize
+        }
+    }
+
+    /// Also terminate failures before reservation (profile, prompt, Prepare).
+    pub fn stop(&mut self) {
+        self.store.poisoned = true;
+        self.rows.zeroize();
+        self.delta.zeroize();
+    }
+
     /// Burn the root exposure slot and entire typed row interval together.
     /// The callback's plaintexts must obey NoPeek. Some(digest) is permitted
     /// only after the full verifier has accepted PCS/GKR/same-W/state checks;
@@ -463,6 +501,7 @@ mod tests {
         let context = store.begin([4; 32], [5; 32], rows).unwrap();
         Pool {
             store,
+            session: context.session,
             capacity: context.capacity,
             rows: Zeroizing::new((0..rows).map(|i| [i as u64; 4]).collect()),
             delta: None,
@@ -478,6 +517,7 @@ mod tests {
         assert!(Lifetime::open(&path, model()).is_err()); // live OS lock
         {
             let mut pool = fixture(&mut store, 9);
+            assert!(pool.fixed_run_context().is_err()); // legacy capacity is not fixed-run AES
             assert!(pool.attempt(0, |_, _, _| Ok(((), None))).is_err());
             assert!(pool.attempt(4, |_, _, _| Ok(((), None))).is_err());
             assert_eq!(pool.store.counters(), (1, 0));
@@ -545,7 +585,7 @@ mod tests {
 
     #[test]
     fn c71_b12_fixed_run_stops_after_setup_or_attempt_failure() {
-        for fault in 0..5 {
+        for fault in 0..6 {
             let path = path();
             let mut store = Lifetime::install(&path, model()).unwrap();
             if fault == 0 {
@@ -555,11 +595,20 @@ mod tests {
                 let context = store.begin_for([4; 32], [5; 32], 9, true).unwrap();
                 let mut pool = Pool {
                     store: &mut store,
+                    session: context.session,
                     capacity: context.capacity,
                     rows: Zeroizing::new(vec![[0u64; 4]; 9]),
                     delta: None,
                     audit: Audit::default(),
                 };
+                let (_, session, next) = pool.fixed_run_context().unwrap();
+                assert_eq!(session, [4; 32]);
+                assert_eq!((next.setup, next.ordinal, next.first_base_row), (1, 1, 0));
+                assert_eq!(pool.remaining_fp3(), 3);
+                if fault == 5 {
+                    pool.stop();
+                    assert!(pool.rows.is_empty());
+                }
                 let result = pool.attempt(if fault == 4 { 0 } else { 1 }, |_, _, _| match fault {
                     1 => Ok(((), None)),
                     2 => Err(invalid("consumer error")),
@@ -567,6 +616,8 @@ mod tests {
                     _ => panic!("invalid request reached consumer"),
                 });
                 assert_eq!(result.is_ok(), fault == 1);
+                assert!(pool.fixed_run_context().is_err());
+                assert_eq!(pool.remaining_fp3(), 0);
                 assert!(pool.attempt::<()>(1, |_, _, _| panic!("failed run continued")).is_err());
             }
             assert!(store.prover_fixed_run(FailedChannel, [4; 32], [5; 32], 3).is_err());

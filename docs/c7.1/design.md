@@ -210,10 +210,43 @@ Non esistono API di clone/import delle ricevute, rollback o reopen.
 composizione ridotta nel modello di correlazioni indipendenti ideali.
 I lemmi MAC/prefissi/KV sopra si applicano alle medesime equazioni e
 regole di stato, senza costituire una prova Lean del wrapper. Restano
-da collegare il dispatcher canonico e la capacità reale AES/journal;
+da eseguire il dispatcher canonico e la composizione positiva AES/journal;
 non sono provati un raffinamento generale Rust, i bound 82,93/91,02 per
 questa istanza ridotta o uno schedule fisico. Il runner di produzione
 non acquisisce un backend ideale o un fallback CPU da questo modulo interno.
+
+### Canonical producers and real-pool adapter
+
+Il [compilatore canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs)
+riusa `compile`, `softmax_sources_at` e `Recipes::compile`. La scala comune
+resta input pubblico del verifier; questa fase non certifica le tabelle
+né calibra il checkpoint. Compila 2.328 produttori e verifica un solo
+produttore per ognuna delle 3.471 sorgenti finali, comprese raw, statistiche,
+istogrammi e slack. L'ordinamento causale deriva dalle identità delle
+sorgenti, non soltanto dai conteggi. Conserva le forme dei descrittori,
+inclusi i dieci alias globali dell'input K/V prima della normalizzazione.
+Non esegue ancora quei produttori: selezione delle righe, maschere causali,
+letture delle code e assorbimento del token finale devono essere rispettati
+dal futuro preparatore canonico, senza materializzazione densa locale.
+
+Il [collegamento al pool](../../rust/volta-pcs/src/c71_matrix/gemma/native/pool.rs)
+usa esclusivamente `prover_fixed_run`/`verifier_fixed_run`: il contesto
+pubblico del pool confronta W/semantica/sessione, seal, setup, ordinale,
+primo indice base e predecessore col registro locale. Tre righe base
+consecutive diventano una Fp3 con `Delta_native=-Delta_B11`. Prepare
+precede l'accesso alle correlazioni; capacità insufficiente si controlla
+prima delle letture private. Il pool brucia l'intera riserva prima del
+callback, e scrive l'accettazione prima della promozione del registro.
+Un errore anche prima della riserva termina il pool e ne cancella le righe.
+Il prover richiede l'oggetto `Acceptance` creato dal verifier completo,
+non un digest ACK fornito dal peer. Il trasporto distribuito di questa
+capacità di accettazione resta da definire; l'adapter è interno.
+
+Gli ingressi basati su iteratori MAC ideali sono ora `cfg(test)`. La
+validazione dell'adapter comprende packing/segni/contesto e rifiuto reale
+con tre righe AES; non comprende ancora la composizione positiva da
+797.139 righe base, né il port dei produttori numerici al grafo canonico.
+I [limiti di esecuzione](../procedures/build-and-test.md) rimangono invariati.
 
 ## Resource and measurement contract
 

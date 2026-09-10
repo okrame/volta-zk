@@ -299,9 +299,17 @@ bits**, using **11,276,730 base rows** for three attempts. A now has
 streams/forests remain 39/526. Mask/softmax, full accepted-history
 verification, actual calibration and full Gemma simulation remain open.
 
+The [EXP30 softmax proposal](c7.1-gemma31b-design.md#softmax-exp30-proposta-numerica-da-decidere-non-selezionata)
+is a tested, **unselected** integer reference with a certified public
+30-bit exponential table and exact rational RNE normalization. It can
+differ from final RNE of the real softmax; the documented counterexample
+requires an owner decision on the quantized function. Its local numerical
+bound grants no cryptographic or full-model quality credit. Independent
+work on source binding, exact division and full simulation can continue.
+
 Forty-four B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint source bounds. The relevant Python checks total 226; the 17
+range/product identities and the joint source bounds. The relevant Python checks total 227; the 17
 narrow bootstrap/pool checks and forty-four B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.

@@ -854,6 +854,31 @@ def test_B12_output_composes_original_lm_head_RNE_softcap_argmax_and_all_KV_root
     assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
 
 
+def test_softmax_exp30_candidate_is_explicitly_different_from_real_RNE_and_unselected():
+    table=plan.softmax_exp30_table(0)
+    assert len(table)==262140
+    values=[int.from_bytes(table[i:i+4],'little',signed=True) for i in range(0,len(table),4)]
+    assert values[0]==1 << 30 and values[11]==17933 and values[32:]==[0]*(65535-32)
+    assert all(0<=y<=x<=1 << 30 for x,y in zip(values,values[1:]))
+    assert plan.softmax_exp30_value(1,-128)==1 << 30
+    assert plan.softmax_exp30_value(65534,128)==0
+    row=plan.softmax_exp30_row([0]+[-11]*97,[True]*98,0)
+    low,high=plan.decimal_exp_bounds(Fraction(-11),Fraction(-11))
+    real_low=Fraction(16384)/(1+97*high)
+    real_high=Fraction(16384)/(1+97*low)
+    assert round(real_low)==round(real_high)==16357
+    assert row['probabilities'][0]==16358
+    assert row['denominator']==(1 << 30)+97*17933
+    assert not row['selected_for_C71'] and not row['security_credit']
+    masked=plan.softmax_exp30_row([32767,0,-11],[False,True,True],0)
+    assert masked['maximum']==0 and masked['probabilities'][0]==0
+    assert masked['differences']==[0,0,11]
+    assert masked['denominator']==(1 << 30)+17933
+    assert Fraction(450,1 << 30) < Fraction(42,100000000)
+    for args in [([] ,[],0),([0],[False],0),([0],[1],0),([32768],[True],0),([0]*451,[True]*451,0)]:
+        with pytest.raises(ValueError):plan.softmax_exp30_row(*args)
+
+
 def test_B12_RoPE_joint_adjoint_counts_original_endpoints_and_fixed_public_recipe():
     cohorts = plan.gemma_weight_cohorts(plan.pinned_private_tensors())
     old = plan.gemma_rope_plan(cohorts)['summary']

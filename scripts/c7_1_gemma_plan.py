@@ -1626,6 +1626,52 @@ def softcap_i16_table(input_exponent, output_exponent):
     return bytes(table)
 
 
+def softmax_exp30_value(difference, score_exponent):
+    """UNSELECTED integer-softmax candidate: certified RNE(2^30 exp(-d*2^e))."""
+    natural(difference,'softmax nonnegative score difference',0,65534)
+    natural(score_exponent,'softmax score exponent',-128,128)
+    x=difference*Fraction(2)**score_exponent
+    if x <= Fraction(1,1 << 31):
+        return 1 << 30  # 0 <= 2^30*(1-exp(-x)) < 1/2
+    if x >= 32:
+        return 0  # e>2 implies 2^30*exp(-32)<1/2
+    low,high=decimal_exp_bounds(-x,-x)
+    left,right=round((1 << 30)*low),round((1 << 30)*high)
+    if left != right:
+        raise ArithmeticError('exp30 rounding interval straddles a decision boundary')
+    return natural(left,'certified exp30 output',0,1 << 30)
+
+
+def softmax_exp30_table(score_exponent):
+    """Public candidate table. Input is d-32767, so -32768 stays invalid."""
+    softmax_exp30_value(0,score_exponent)
+    return b''.join(softmax_exp30_value(d,score_exponent).to_bytes(4,'little',signed=True)
+                    for d in range(65535))
+
+
+def softmax_exp30_row(scores, allowed, score_exponent):
+    """UNSELECTED exact integer recipe, NOT RNE of exact real softmax.
+
+    This is a small plaintext reference for a reviewable model-definition
+    choice. It is not a proof, source compiler or selected security subtotal.
+    Every eager raw score must still be computed/proved by the full caller.
+    """
+    natural(len(scores),'softmax fixed-run row length',1,450)
+    if len(allowed)!=len(scores) or any(type(v) is not bool for v in allowed) or not any(allowed):
+        raise ValueError('softmax public mask must select a nonempty row')
+    for s in scores: natural(s,'softmax symmetric i16 score',-32767,32767)
+    maximum=max(s for s,ok in zip(scores,allowed) if ok)
+    differences=[maximum-s if ok else 0 for s,ok in zip(scores,allowed)]
+    exponentials=[softmax_exp30_value(d,score_exponent) for d in differences]
+    denominator=sum(e for e,ok in zip(exponentials,allowed) if ok)
+    probabilities=[round(Fraction((1 << 14)*e,denominator)) if ok else 0
+                   for e,ok in zip(exponentials,allowed)]
+    assert 1 << 30 <= denominator <= len(scores)*(1 << 30)
+    return {'maximum':maximum,'differences':differences,'exponentials':exponentials,
+            'denominator':denominator,'probabilities':probabilities,
+            'output_exponent':-14,'selected_for_C71':False,'security_credit':False}
+
+
 def gelu_i16_pair(magnitude, input_exponent, output_exponent):
     """Certified real tanh-GELU RNE for +/- magnitude; PUBLIC setup only.
 

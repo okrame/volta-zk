@@ -242,6 +242,9 @@ respective checks. Its metadata portion compiles all three canonical
 output layouts and original P0 raw IDs; no full D24 lookup/RNE runs.
 After extending output sources, rerun `c71_b12_gemma` within the same
 60 s/2 GiB limits. Calibrated full output and Gemma simulation remain open.
+The Python `softmax_exp30` filter checks an unselected numerical recipe,
+including its certified difference from RNE of the real softmax. Its
+passing test does not select the recipe or change the B12 security total.
 After byte-function changes, rerun `c71_b12_byte_functions` and
 `c71_b12_rne` separately; ordinary lane-mode transcripts are preserved.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner

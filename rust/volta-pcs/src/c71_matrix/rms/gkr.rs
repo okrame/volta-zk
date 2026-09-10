@@ -29,9 +29,9 @@ pub(in super::super) struct Proof {
 impl Statement<'_> {
     fn geometry(&self) -> Result<Vec<usize>, String> {
         if !self.assignments.len().is_power_of_two()
-            || self.assignments.len() > 64
+            || self.assignments.len() > 1 << 29
             || self.programs.is_empty()
-            || self.programs.len() > 8
+            || self.programs.len() > 421
             || self.assignments.iter().flatten().any(|&p| p >= self.programs.len())
             || self.assignments.iter().all(Option::is_none)
             || self.root.num_roots() != 1
@@ -85,8 +85,14 @@ impl Statement<'_> {
     }
 
     fn bind(&self, fs: &mut Fs) -> Vec<Fp3> {
-        let mut bytes =
-            b"C71-RMS-J-B12-v1;Boolean-XOR;cell-wire-MSB;P-S-Y-byte-view;original-MAC".to_vec();
+        // Keep the original framing when every profile fits below its 255
+        // padding sentinel. Canonical RMS may have 421 distinct programs.
+        let wide = self.programs.len() > 255;
+        let mut bytes = if wide {
+            b"C71-RMS-J-B12-v2;assignment-u16;Boolean-XOR;cell-wire-MSB;P-S-Y-byte-view;original-MAC".to_vec()
+        } else {
+            b"C71-RMS-J-B12-v1;Boolean-XOR;cell-wire-MSB;P-S-Y-byte-view;original-MAC".to_vec()
+        };
         bytes.extend(self.root.roots()[0]);
         bytes.extend((self.profile.len() as u64).to_le_bytes());
         bytes.extend(self.profile);
@@ -115,7 +121,13 @@ impl Statement<'_> {
             }
         }
         bytes.extend((self.assignments.len() as u32).to_le_bytes());
-        bytes.extend(self.assignments.iter().map(|p| p.map_or(255, |p| p as u8)));
+        for p in self.assignments {
+            if wide {
+                bytes.extend(p.map_or(u16::MAX, |p| p as u16).to_le_bytes());
+            } else {
+                bytes.push(p.map_or(255, |p| p as u8));
+            }
+        }
         fs.set_phase(0xa00);
         fs.record(0x80, &bytes);
         (0..self.assignments.len().ilog2()).map(|_| fs.fp3()).collect()
@@ -349,36 +361,40 @@ pub(in super::super) fn prove(
         .enumerate()
         .map(|(i, p)| if p.is_some() { get_frame(i) } else { [0; 12] })
         .collect();
-    // ponytail: <=64 cells in u64 planes, <=8 public profiles. A full caller
-    // must use the existing RMS-J block replay schedule, never this dense lift.
-    let traces: Vec<_> = s
-        .programs
-        .iter()
-        .enumerate()
-        .map(|(p, program)| {
+    // Boolean replay is local to each 64-cell word. All blocks then enter
+    // ONE cell-domain GKR and one original byte obligation; no block proof.
+    // ponytail: retain the Boolean traces and one dense field layer. A physical
+    // Gemma schedule needs bounded replay/folding; this is the analytic caller.
+    let mut traces = Vec::new();
+    for (block, assignments) in s.assignments.chunks(64).enumerate() {
+        for (p, program) in s.programs.iter().enumerate() {
+            if !assignments.contains(&Some(p)) {
+                continue;
+            }
             let mut planes = vec![0u64; program.ports];
-            for (cell, assignment) in s.assignments.iter().enumerate() {
+            for (cell, assignment) in assignments.iter().enumerate() {
                 if *assignment == Some(p) {
                     planes[1] |= 1 << cell;
                     for bit in 0..program.ports - 2 {
                         planes[2 + bit] |=
-                            u64::from((frames[cell][bit / 8] >> (bit % 8)) & 1) << cell;
+                            u64::from((frames[64 * block + cell][bit / 8] >> (bit % 8)) & 1)
+                                << cell;
                     }
                 }
             }
-            program.replay(&planes, planes[1])
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+            traces.push((64 * block, program.replay(&planes, planes[1])?));
+        }
+    }
     let (mut layers, mut triples) = (Vec::new(), Vec::new());
     for depth in (1..widths.len()).rev() {
         let width = widths[depth - 1];
         let mut previous = vec![Fp3::ZERO; s.assignments.len() * width];
-        for trace in &traces {
+        for (offset, trace) in &traces {
             let planes = &trace[(depth - 1).min(trace.len() - 1)];
             for (wire, &plane) in planes.iter().enumerate() {
-                for cell in 0..s.assignments.len() {
+                for cell in 0..64.min(s.assignments.len() - offset) {
                     if plane >> cell & 1 == 1 {
-                        previous[cell * width + wire] = Fp3::ONE;
+                        previous[(offset + cell) * width + wire] = Fp3::ONE;
                     }
                 }
             }
@@ -606,8 +622,59 @@ mod tests {
         wrong_output: [u8; 12],
         changed_input: [u8; 12],
     ) -> (usize, usize) {
-        let n = 32;
         let assignments = [Some(0), Some(1), None, Some(0)];
+        check_cells(programs, &assignments, &honest, (1, wrong_output), (0, changed_input))
+    }
+
+    #[test]
+    fn c71_b12_replay_crosses_u64_and_profile_byte_boundaries_in_one_ranged_pcs() {
+        // Small public parity programs isolate packing/dispatch from the
+        // separately checked RMS/ratio arithmetic. This is not an RMS profile.
+        let programs: Vec<_> = (0..421)
+            .map(|i| {
+                let product_bits = if i % 2 == 0 { 16 } else { 32 };
+                Circuit {
+                    ports: 2 + product_bits + 48 + 16,
+                    product_bits,
+                    levels: vec![
+                        vec![
+                            Gate { op: Op::Xor, x: 2, y: 2 + product_bits + 48 },
+                            Gate { op: Op::Copy, x: 1, y: 1 },
+                        ],
+                        vec![Gate { op: Op::Xor, x: 0, y: 1 }],
+                    ],
+                    valid: 0,
+                    coefficients: [0; 3],
+                    arithmetic_bits: 1,
+                    raw_gates: 3,
+                }
+            })
+            .collect();
+        let assignments: Vec<_> = (0..128)
+            .map(|i| [Some(0), Some(255), None, Some(256), Some(420), Some(1)][i % 6])
+            .collect();
+        let honest: Vec<_> =
+            assignments.iter().map(|p| p.map_or([0; 12], |p| frame(0, 0, 0, p % 2 == 1))).collect();
+        let (count, draws) = check_cells(
+            &programs,
+            &assignments,
+            &honest,
+            (65, frame(0, 0, 1, true)),
+            (64, frame(2, 0, 0, false)),
+        );
+        assert_eq!((count, draws), (1278, 173));
+    }
+
+    fn check_cells(
+        programs: &[Circuit],
+        assignments: &[Option<usize>],
+        honest: &[[u8; 12]],
+        wrong_output: (usize, [u8; 12]),
+        changed_input: (usize, [u8; 12]),
+    ) -> (usize, usize) {
+        let c = assignments.len().ilog2() as usize;
+        let n = 1usize << ((c + 4).div_ceil(2)).max(5);
+        let dimension = 2 * n.ilog2() as usize;
         let mut observed = (0, 0);
         let profile = gamma(&matrix_config(n).unwrap());
         let attempt = AttemptContext {
@@ -620,12 +687,12 @@ mod tests {
         let delta = Fp3::new(Fp::new(5), Fp::new(7), Fp::new(11));
         let layout = [41; 32];
         for fault in 0..3 {
-            let mut committed = honest;
+            let mut committed = honest.to_vec();
             if fault == 1 {
-                committed[1] = wrong_output;
+                committed[wrong_output.0] = wrong_output.1;
             }
             let mut values = vec![0; n * n];
-            for cell in 0..4 {
+            for cell in 0..honest.len() {
                 for lane in 0..12 {
                     values[16 * cell + lane] = i16::from(committed[cell][lane]);
                 }
@@ -637,25 +704,31 @@ mod tests {
                 view: [42; 32],
                 attempt,
                 programs,
-                assignments: &assignments,
+                assignments,
             };
             let mut used = committed;
             if fault == 2 {
-                used[0] = changed_input;
+                used[changed_input.0] = changed_input.1;
             }
             // Invalid dummy getter bytes are ignored; the public source view
             // and every circuit bitplane have exactly zero padding.
-            used[2] = [255; 12];
-            let count =
-                statement.required().unwrap() + range::required(10, range::Alphabet::Byte) + 32;
+            for (i, p) in assignments.iter().enumerate() {
+                if p.is_none() {
+                    used[i] = [255; 12];
+                }
+            }
+            let count = statement.required().unwrap()
+                + range::required(dimension, range::Alphabet::Byte)
+                + 3 * dimension
+                + 2;
             let widths = statement.geometry().unwrap();
-            let fs_count = 2
+            let fs_count = c
                 + widths[..widths.len() - 1]
                     .iter()
-                    .map(|w| 2 + 2 * w.ilog2() as usize + 1)
+                    .map(|w| c + 2 * w.ilog2() as usize + 1)
                     .sum::<usize>()
                 + 1
-                + 8 * 6
+                + 8 * (c + 4)
                 + 45;
             observed = (count, fs_count);
             let mut rng = MatrixRng::from_seed([127; 32]);
@@ -669,11 +742,22 @@ mod tests {
             let (proof, point, original) =
                 prove(&statement, |i| used[i], &mut fs, &mut prows).unwrap();
             assert_eq!(fs.requests(), fs_count);
+            if fault == 0 && programs.len() > 255 {
+                // Programs 0 and 256 have identical gates here. A u8-cast
+                // collision would therefore accept this changed assignment.
+                let mut changed = assignments.to_vec();
+                *changed.iter_mut().find(|p| **p == Some(256)).unwrap() = Some(0);
+                let altered = Statement { assignments: &changed, ..statement };
+                assert!(
+                    verify(&altered, &proof, delta, &mut start(), &mut keys.clone().into_iter())
+                        .is_err()
+                );
+            }
             let (range_proof, forms, targets) = range::prove(
                 &model,
                 attempt,
                 layout,
-                64,
+                16 * honest.len(),
                 range::Alphabet::Byte,
                 &mut fs,
                 &mut prows,
@@ -700,7 +784,7 @@ mod tests {
                 &model.root,
                 attempt,
                 layout,
-                64,
+                16 * honest.len(),
                 range::Alphabet::Byte,
                 &range_proof,
                 delta,

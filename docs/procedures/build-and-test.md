@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the narrow filters
 below with one test thread. After compilation, bound each test invocation
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its fifty tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its fifty-one tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -148,6 +148,13 @@ It rejects wrong Y and changed S preserving the same Y. There is no bit
 reauthentication or trace PCS. This proves the RMS predicate on committed
 P/S/Y bytes, before the canonical P0/statistic/output source routes;
 full calibrated Gemma profiles and the complete composition remain open.
+Run `c71_b12_replay` separately for the 128-cell joint GKR check. Its
+small parity circuits use 421 public profile indices and one ranged D12
+A PCS, with faults past cell 63 and a 256→0 index substitution. It uses
+1,278 ideal Fp3 rows and 173 kernel draws; no canonical dense domain is
+allocated. The shared GKR/P-S changes also require the existing
+`c71_b12_rms`, `c71_b12_ratio`, `c71_b12_byte_functions` and
+`c71_b12_softmax` filters in separate bounded invocations.
 The two `c71_b12_ratio` checks reuse the RMS builder for exact signed
 RNE(2^m*P/Z), m=0..14, including ties, overflow and positive-denominator
 guards. The 7,164-row ideal case closes the original numerator,

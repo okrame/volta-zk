@@ -34,7 +34,7 @@ fn bind(s: &Statement<'_>, count: usize, sum: bool, fs: &mut Fs) -> Result<Vec<F
     if !s.tables.len().is_power_of_two()
         || s.tables.len() > 16
         || count != if sum { 1 } else { s.tables.len() }
-        || s.cell_point.len() > 10
+        || s.cell_point.len() > 34
         || s.live_cells == 0
         || s.live_cells > 1usize << s.cell_point.len()
         || s.root.num_roots() != 1
@@ -45,8 +45,8 @@ fn bind(s: &Statement<'_>, count: usize, sum: bool, fs: &mut Fs) -> Result<Vec<F
         return Err("B12 byte-function statement mismatch".into());
     }
     let lane_bits = s.tables.len().ilog2() as usize;
-    if s.cell_point.len() + lane_bits > 10 {
-        return Err("B12 byte-function dense view exceeds D10".into());
+    if s.cell_point.len() + lane_bits > 34 {
+        return Err("B12 byte-function view exceeds D34".into());
     }
     let mut bytes = if sum {
         b"C71-byte-function-B12-v2;P-S-SUM;fixed-half-lanes;original-MAC".to_vec()
@@ -85,11 +85,7 @@ fn coefficients(tables: &[[Fp3; 256]]) -> Vec<[Fp3; 256]> {
         .map(|f| {
             std::array::from_fn(|j| {
                 let c = f[j] * (factorial[j] * factorial[255 - j]).inv();
-                if (255 - j) & 1 == 1 {
-                    -c
-                } else {
-                    c
-                }
+                if (255 - j) & 1 == 1 { -c } else { c }
             })
         })
         .collect()
@@ -155,8 +151,8 @@ pub(super) fn prove(
         Original::Sum(a) => a.scale(signed(s.tables.len() as i64).inv()),
     };
     let c = coefficients(s.tables);
-    // ponytail: bounded dense view D<=10. Full Gemma uses the existing R2
-    // public fold-table schedule; this component never allocates that trace.
+    // ponytail: dense P/S tree, within the analytic resource envelope. The
+    // admitted physical schedule must use the existing R2 public fold tables.
     let mut bottom = Vec::with_capacity(256 << point.len());
     for i in 0..1usize << point.len() {
         let byte = signed(i64::from(get_byte(i)));

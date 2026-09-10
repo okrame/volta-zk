@@ -126,7 +126,8 @@ reuses the range GKR kernel for R2's P/S interpolation. Original function
 MACs reduce to an original byte MAC for the same auxiliary PCS, without a
 bit or trace commitment. Its 809-row ideal check rejects a false function
 and a consistent function of bytes changed after commitment. The native
-view cap is D10; the canonical full-DAG caller remains open.
+P/S accepts views through D34 under the analytic dense-tree envelope;
+the canonical full-DAG caller remains open.
 
 The [native RNE top](../rust/volta-pcs/src/c71_matrix/rne.rs) now proves
 one public shift class from original biased-i48 byte MACs to an original
@@ -359,12 +360,22 @@ embedding lookup into unique producers. Its dispatch preserves the points
 and original MACs of 410 RNE demands and adds exactly 482 disjoint table
 probes, covering all 892 RNE and reconciling the existing 4,446-target A batch.
 
+The joint RMS/ratio GKR now replays consecutive 64-cell Boolean words
+into one shared cell-domain proof, admitting up to 2^29 cells and 421
+public programs. Wide profile indices use distinct u16 framing. A new
+128-cell parity check closes one ranged A PCS and rejects faults beyond
+the old word boundary and a 256→0 profile substitution. The existing
+RMS/ratio predicates remain separately checked; canonical wrapper guards
+and the complete caller still need integration. Dense execution remains
+an analytic implementation, without physical-schedule admission.
+
 Forty-six B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
 range/product identities and the joint source bounds. The relevant Python checks total 229; the 17
 narrow bootstrap/pool checks and prior forty-seven B12 PCS/caller/layout checks pass.
 Two new EXP30 checks cover the same-source producer and full route metadata.
 One common-profile check covers canonical scale derivation in all three contexts.
+One joint-replay check crosses the cell-word and profile-byte boundaries.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

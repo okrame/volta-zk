@@ -7298,6 +7298,103 @@ def b12_RMS_composition(direct):
     }
 
 
+def b12_gate_up_source_profile():
+    """Gate-up reuses GELU Y and down-P0 X; U and raw R extend the SAME A."""
+    base = b12_gelu_source_profile()
+    gates = [c for c in gemma_weight_cohorts(pinned_private_tensors()) if c['operation']=='gate_proj']
+    cells = sum(c['rows']*c['columns'] for c in gates)
+    cubes = sum(c['rows'].bit_count()*c['columns'].bit_count() for c in gates)
+    live = base['auxiliary_live_bytes']+8*cells
+    root_bits = (live-1).bit_length()
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/gate_up.rs',
+        'cohorts': len(gates), 'new_up_i16_sources': len(gates), 'new_raw_i48_sources': len(gates),
+        'GELU_Y_and_down_P0_X_reused': True,
+        'additional_auxiliary_bytes': 8*cells, 'auxiliary_live_bytes': live,
+        'auxiliary_sources': base['auxiliary_sources']+2*len(gates),
+        'auxiliary_root_log_cells': root_bits,
+        'product_cells': cells, 'product_cell_bits': (cells-1).bit_length(), 'product_word_tiles': cubes,
+        'product_original_R_G_U_byte_cubes': [2*cubes,cubes,cubes],
+        'up_RNE_probe_and_raw_byte_cubes': 3*cubes,
+        'product_RNE_raw_byte_cubes': 2*cubes,
+        'product_RNE_uses_original_down_P0_MACs_and_points': True,
+        'A_targets_with_product_and_both_RNE': base['A_targets_including_gate_RNE']+3+3*len(gates),
+        'A_cubes_with_product_and_both_RNE_upper': base['A_cubes_including_gate_RNE']+9*cubes+root_bits-base['auxiliary_root_log_cells'],
+        'D33_geometry_no_longer_sufficient': root_bits != base['auxiliary_root_log_cells'],
+        'native_product_and_both_RNE_with_range_and_PCS_Fp3_rows': 1372,
+        'native_full_domain_execution': False, 'actual_Gemma_shifts_calibrated': False,
+        'complete_security_or_physical_credit': False,
+    }
+
+
+def b12_gate_up_product_profile(cell_bits):
+    natural(cell_bits,'gate-up product bits',0,35)
+    return {
+        'Fp3_correlations_before_shared_PCS': 4*cell_bits+5,
+        'FS_draw_requests': 2*cell_bits+1,
+        'field_payload_bytes_before_context_and_framing': 24*(5*cell_bits+7),
+        'MAC_degree_sum_before_shared_PCS': cell_bits+3,
+        'sum_of_all_FS_error_degrees_before_shared_PCS': 4*cell_bits,
+        'original_R_G_U_targets': 3, 'fresh_product_masks': 1,
+        'integer_difference_bound': (1 << 47)+(1 << 30),
+        'integer_lifting_given_i48_raw_and_i16_inputs': (1 << 47)+(1 << 30) < P,
+        'native_cell_bits_cap': 15,
+    }
+
+
+def b12_gate_up_composition(gelu, old_raw, new_raw, geometry):
+    """Rebase the entire subtotal on D34, then add product/up/output RNE.
+
+    This is still given certified public profiles, excluding their numerical
+    preparation/calibration. Recompute the JOINT forest, not a per-source ZK sum.
+    """
+    sources = b12_gate_up_source_profile()
+    product = b12_gate_up_product_profile(sources['product_cell_bits'])
+    rne = b12_rne_profile(23)
+    groups = sources['cohorts']
+    rows = groups*(1+2*rne['Fp3_correlations_upper_before_incoming_claims_and_shared_PCS'])+product['Fp3_correlations_before_shared_PCS']
+    degree = 2*groups*(33*23+274)+product['sum_of_all_FS_error_degrees_before_shared_PCS']
+    mac_degree = 2*groups*rne['MAC_degree_sum_upper_before_shared_PCS']+product['MAC_degree_sum_before_shared_PCS']
+    fs_error, mac_error = Fraction((1 << 74)*degree,P**3), Fraction(3*mac_degree,P**3-1)
+    sound = Fraction(gelu['conditional_soundness_sum'])-Fraction(old_raw['conditional_soundness_sum'])+Fraction(new_raw['conditional_soundness_sum'])+fs_error+mac_error
+    privacy = Fraction(new_raw['conditional_ZK_sum'])
+    work,memory,ro = 1 << 68,1 << 41,1 << 30
+    total_work = gelu['reduction_work_upper']-old_raw['reduction_work_upper']+new_raw['reduction_work_upper']+work
+    total_memory = gelu['reduction_memory_words_upper']-old_raw['reduction_memory_words_upper']+new_raw['reduction_memory_words_upper']+memory
+    geometry_rows = new_raw['Fp3_correlations_per_attempt_before_other_operators']-old_raw['Fp3_correlations_per_attempt_before_other_operators']
+    total_rows = gelu['Fp3_correlations_upper_per_attempt_before_other_operators']+geometry_rows+rows
+    return {
+        'relation': 'raw P0, 410 matrix RNE, 421 RMS/statistics, 60 GELU, joint gate-up products and 60 product RNE to original down-P0 inputs',
+        'sources': sources, 'product': product,
+        'D34_PCS_geometry': geometry, 'D35_D34_raw_P0_rebase': new_raw,
+        'extra_range_and_bridge_Fp3_rows_from_D34': geometry_rows,
+        'additional_Fp3_correlations_upper_per_attempt': rows,
+        'additional_FS_draw_requests': groups*(23+2*rne['FS_draw_requests'])+product['FS_draw_requests'],
+        'additional_field_payload_bytes_upper_before_context_and_framing': groups*(24+2*rne['field_payload_bytes_upper_before_context_and_framing'])+product['field_payload_bytes_before_context_and_framing'],
+        'sum_of_all_added_FS_error_degrees_upper': degree,
+        'additional_MAC_degree_sum_upper_per_attempt': mac_degree,
+        'additional_global_FS_error': str(fs_error), 'additional_fixed_run_MAC_error': str(mac_error),
+        'Fp3_correlations_upper_per_attempt_before_other_operators': total_rows,
+        'base_rows_upper_per_attempt_before_other_operators': 3*total_rows,
+        'initial_base_capacity_upper_three_attempts_before_other_operators': 9*total_rows,
+        'initial_base_capacity_limit': gelu['initial_base_capacity_limit'],
+        'additional_honest_work_u64_upper': work, 'additional_honest_memory_words_upper': memory,
+        'additional_honest_RO_events_upper': ro,
+        'full_RO_queries_upper': gelu['full_RO_queries_upper']+ro,
+        'reduction_work_upper': total_work, 'reduction_memory_words_upper': total_memory,
+        'both_resource_caps_hold': total_work < 1 << 121 and total_memory < 1 << 93,
+        'conditional_soundness_sum': str(sound), 'conditional_ZK_sum': str(privacy),
+        'soundness_bits': math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits': math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78': max(sound,privacy) < Fraction(1,1 << 78),
+        'joint_D34_forest_and_sampler_recomputed': True,
+        'new_PCS_chains_or_private_rng_streams': 0,
+        'numerical_profile_preparation_and_calibration_outside_this_subtotal': True,
+        'native_full_domain_execution': False, 'all_Gemma_integer_producers_proven': False,
+        'full_Gemma_security_totals': None, 'physical_schedule_admitted': False,
+    }
+
+
 def b12_GELU_composition(rms):
     """Conditional extension given certified, fixed public GELU tables.
 
@@ -7386,7 +7483,7 @@ def b12_pcs_binding_assessment():
 
     mask = oracle(mask_message, mask_queries, 1)
     profiles = []
-    for log_size in (12, 14, 35, 31, 33):
+    for log_size in (12, 14, 35, 31, 33, 34):
         remaining, oracles, folds = log_size, [], []
         while True:
             folding = (1 if log_size <= 14 else 7) if not oracles else 2
@@ -7472,6 +7569,7 @@ def b12_pcs_binding_assessment():
                 'bits': math.log2(hiding_total.denominator)-math.log2(hiding_total.numerator),
                 'native_profile_selected': log_size <= 14},
             "native_profile_selected": log_size <= 14})
+    gate_up_byte_profile = profiles.pop()
     byte_profile = profiles.pop()
     auxiliary_profile = profiles.pop()  # P0 C/X geometry; keep the existing public profile list.
 
@@ -7592,6 +7690,11 @@ def b12_pcs_binding_assessment():
         tape_words)
     direct_composition = b12_direct_P0_RNE_composition(p0_composition)
     rms_composition = b12_RMS_composition(direct_composition)
+    gelu_composition = b12_GELU_composition(rms_composition)
+    gate_up_raw = b12_raw_p0_composition(profiles, auxiliary_profile, gate_up_byte_profile, mask,
+        fixed_boot, merkle_collision+merkle_deferred, bootstrap_work, bootstrap_memory,
+        tape_words)['cases'][-1]
+    assert gate_up_byte_profile['max_XOF_bytes_per_block_upper']//8 <= tape_words
     for row, joint in zip(range_cases, p0_composition['cases']):
         row['large_domain_private_sampler_and_simulator_bound_derived'] = True
         if row['conditional_ZK_sum'] is None:
@@ -7778,7 +7881,8 @@ def b12_pcs_binding_assessment():
         'raw_P0_two_source_composition': p0_composition,
         'direct_P0_RNE_composition': direct_composition,
         'P0_RNE_RMS_composition': rms_composition,
-        'P0_RNE_RMS_GELU_composition': b12_GELU_composition(rms_composition),
+        'P0_RNE_RMS_GELU_composition': gelu_composition,
+        'P0_RNE_RMS_GELU_gate_up_composition': b12_gate_up_composition(gelu_composition,p0_composition['cases'][-1],gate_up_raw,gate_up_byte_profile),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         "claimless_projection": {

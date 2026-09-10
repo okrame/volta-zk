@@ -117,6 +117,19 @@ impl Plan {
 }
 
 impl Sources {
+    pub(super) fn append(
+        mut self,
+        extra: Vec<(String, usize, usize, usize)>,
+    ) -> Result<Self, String> {
+        self.rms = self.rms.append(extra)?;
+        let mut digest = blake3::Hasher::new();
+        digest.update(b"C71-GELU-view-A-extension-v1\0");
+        digest.update(&self.view);
+        digest.update(&self.rms.bytes.layout_digest);
+        self.view = *digest.finalize().as_bytes();
+        Ok(self)
+    }
+
     fn bind_lookup_context(
         &self,
         s: &P0Statement<'_>,

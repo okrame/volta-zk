@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its thirty tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its thirty-three tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -95,7 +95,7 @@ from the earlier PCS checks to keep each invocation below 60 seconds.
 The `c71_b12_p0` filter executes a small raw matrix/norm/lookup caller
 with 357 ideal Fp3 correlations, one ranged W PCS and a separate C/X PCS.
 It checks committed false cuts and detached input MACs; no socket is needed.
-The nine `c71_b12_gemma` checks cover native metadata/DAG layout and
+The twelve `c71_b12_gemma` checks cover native metadata/DAG layout and
 physical/virtual addresses, including ragged tensor MLEs. The caller check
 executes all 773 compact reductions with zero vectors and compiles the
 original auxiliary forms; its placeholder roots grant no PCS acceptance.
@@ -173,6 +173,13 @@ PCS. It rejects wrong output, a changed raw that preserves rounding,
 invalid source codecs and insufficient capacity before witness reads/use.
 After changes to the shared byte extension, rerun the `c71_b12_gemma`
 filter for the existing P0/byte/RNE/RMS cases, within the same small limits.
+The `c71_b12_gemma_gate_up` filter executes product and both RNE with
+1,372 ideal Fp3 rows and one ranged A PCS. It rejects a wrong raw product
+and swapped G/U with a consistently changed up raw. Its separate canonical
+view check dispatches a 21-row product and compares forms with literal
+bytes, with placeholder roots and no PCS acceptance. Full pinned metadata
+checks the 60 original down-P0 demands and D34 counts without source bodies.
+Source RNE views accept only biased-i48; matrix view transcripts are preserved.
 After byte-function changes, rerun `c71_b12_byte_functions` and
 `c71_b12_rne` separately; ordinary lane-mode transcripts are preserved.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner

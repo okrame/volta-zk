@@ -503,6 +503,73 @@ def test_B12_GELU_and_gate_RNE_recompose_same_source_errors_and_finite_capacity(
     assert table == b''.join(max(x,0).to_bytes(2,'little',signed=True) for x in range(-32767,32768))
 
 
+def test_B12_gate_up_preserves_original_GELU_and_down_sources_and_counts_product_RNE():
+    b = plan.b12_gate_up_source_profile()
+    assert b['cohorts'] == b['new_up_i16_sources'] == b['new_raw_i48_sources'] == 60
+    assert b['GELU_Y_and_down_P0_X_reused']
+    assert b['additional_auxiliary_bytes'] == 8*193536000
+    assert b['auxiliary_live_bytes'] == 9429380238 and b['auxiliary_sources'] == 2446
+    assert b['auxiliary_root_log_cells'] == 34 and b['D33_geometry_no_longer_sufficient']
+    assert b['product_cell_bits'] == 28 and b['product_word_tiles'] == 720
+    assert b['product_original_R_G_U_byte_cubes'] == [1440,720,720]
+    assert b['up_RNE_probe_and_raw_byte_cubes'] == 2160
+    assert b['product_RNE_raw_byte_cubes'] == 1440
+    assert b['product_RNE_uses_original_down_P0_MACs_and_points']
+    assert b['A_targets_with_product_and_both_RNE'] == 3407 < 4096
+    assert b['A_cubes_with_product_and_both_RNE_upper'] == 59067 < 65536
+    assert b['native_product_and_both_RNE_with_range_and_PCS_Fp3_rows'] == 13+1+2*408+510+32 == 1372
+    assert not b['native_full_domain_execution'] and not b['actual_Gemma_shifts_calibrated']
+    p = plan.b12_gate_up_product_profile(28)
+    assert p['Fp3_correlations_before_shared_PCS'] == 117
+    assert p['FS_draw_requests'] == 57
+    assert p['field_payload_bytes_before_context_and_framing'] == 3528
+    assert p['MAC_degree_sum_before_shared_PCS'] == 31
+    assert p['sum_of_all_FS_error_degrees_before_shared_PCS'] == 112
+    assert p['integer_lifting_given_i48_raw_and_i16_inputs']
+    assert p['integer_difference_bound'] < plan.P
+    # Integer equality needs the raw bound too; congruence alone is not enough.
+    for g,u in product([-32767,-1,0,1,32767],repeat=2):
+        r = g*u
+        assert -(1 << 47) <= r < 1 << 47 and abs(r) <= 32767**2
+
+
+def test_B12_gate_up_rebases_all_joint_D34_privacy_resources_and_three_attempt_rows():
+    all_bounds = plan.b12_pcs_binding_assessment()
+    b = all_bounds['P0_RNE_RMS_GELU_gate_up_composition']
+    base = all_bounds['P0_RNE_RMS_GELU_composition']
+    old = all_bounds['raw_P0_two_source_composition']['cases'][-1]
+    raw = b['D35_D34_raw_P0_rebase']
+    geometry = b['D34_PCS_geometry']
+    assert geometry['log_message_cells'] == raw['auxiliary_log_cells'] == 34
+    assert geometry['oracles'][0]['domain_rows'] == 1 << 31
+    assert geometry['initial_encoded_base_field_bytes'] == raw['dense_auxiliary_codeword_bytes'] == 2*1024**4
+    assert raw['forest_distinct_leaves'] == 17189036032 > old['forest_distinct_leaves']
+    assert raw['forest_distinct_trees'] == 352 < 512
+    assert raw['private_Fp_outputs_over_all_roots'] == 68760912736
+    assert raw['largest_stream_Fp_outputs_upper'] == 1 << 34
+    assert raw['private_streams'] == old['private_streams'] == 30
+    assert b['conditional_ZK_sum'] == raw['conditional_ZK_sum']
+    assert Fraction(b['conditional_ZK_sum']) > Fraction(base['conditional_ZK_sum'])
+    assert b['additional_Fp3_correlations_upper_per_attempt'] == 151737
+    assert b['extra_range_and_bridge_Fp3_rows_from_D34'] == 142
+    assert b['additional_FS_draw_requests'] == 38037
+    assert b['additional_field_payload_bytes_upper_before_context_and_framing'] == 4422888
+    assert b['sum_of_all_added_FS_error_degrees_upper'] == 124072
+    assert b['additional_MAC_degree_sum_upper_per_attempt'] == 32791
+    expected = (Fraction(base['conditional_soundness_sum'])-Fraction(old['conditional_soundness_sum'])
+                +Fraction(raw['conditional_soundness_sum'])+Fraction((1 << 74)*124072,plan.P**3)
+                +Fraction(3*32791,plan.P**3-1))
+    assert Fraction(b['conditional_soundness_sum']) == expected
+    assert b['initial_base_capacity_upper_three_attempts_before_other_operators'] == 6648624 < b['initial_base_capacity_limit']
+    assert b['base_rows_upper_per_attempt_before_other_operators'] == 2216208
+    assert b['both_resource_caps_hold'] and b['both_below_2_to_minus_78']
+    assert b['full_RO_queries_upper'] < 1 << 74
+    assert b['joint_D34_forest_and_sampler_recomputed'] and not b['new_PCS_chains_or_private_rng_streams']
+    assert b['numerical_profile_preparation_and_calibration_outside_this_subtotal']
+    assert not b['native_full_domain_execution'] and not b['all_Gemma_integer_producers_proven']
+    assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
+
+
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():
     all_bounds = plan.b12_pcs_binding_assessment()
     b = all_bounds['raw_P0_two_source_composition']

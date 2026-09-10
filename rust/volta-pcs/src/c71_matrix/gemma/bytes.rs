@@ -216,11 +216,24 @@ impl Bytes {
         if self.scalar.weight_layout != plan.layout_digest || c.kind != Kind::Matrix {
             return Err("RNE view is not a raw matrix cut of this W layout".into());
         }
-        let source = &self.scalar.layout.sources[cohort];
+        self.raw_view(cohort, b"C71-RNE-view-v1;raw-C;row-col-byte-MSB;6-of-8-lanes\0")
+    }
+
+    /// Non-matrix raw sources retain the same six-byte codec. The caller
+    /// must derive their identity from the canonical producer graph.
+    pub fn source_rne_view(&self, source: usize) -> Result<([u8; 32], [usize; 2]), String> {
+        self.raw_view(source, b"C71-RNE-source-view-v1;raw-A;row-col-byte-MSB;6-of-8-lanes\0")
+    }
+
+    fn raw_view(&self, id: usize, domain: &[u8]) -> Result<([u8; 32], [usize; 2]), String> {
+        let source = self.scalar.layout.sources.get(id).ok_or("RNE raw source missing")?;
+        if self.widths[id] != 6 {
+            return Err("RNE raw source is not biased-i48".into());
+        }
         let mut digest = blake3::Hasher::new();
-        digest.update(b"C71-RNE-view-v1;raw-C;row-col-byte-MSB;6-of-8-lanes\0");
+        digest.update(domain);
         digest.update(&self.layout_digest);
-        digest.update(&(cohort as u64).to_le_bytes());
+        digest.update(&(id as u64).to_le_bytes());
         for word in [source.rows, source.cols] {
             digest.update(&(word as u64).to_le_bytes());
         }
@@ -230,12 +243,17 @@ impl Bytes {
     /// Pull the ORIGINAL P/S byte MAC into the same A root. No affine bias:
     /// the endpoint is already a biased byte, including the explicit zero lanes.
     pub fn rne_form(&self, plan: &Plan, cohort: usize, point: &[Fp3]) -> Result<Vec<Cube>, String> {
-        let (_, shape) = self.rne_view(plan, cohort)?;
+        self.rne_view(plan, cohort)?;
+        self.source_rne_form(cohort, point)
+    }
+
+    pub fn source_rne_form(&self, source: usize, point: &[Fp3]) -> Result<Vec<Cube>, String> {
+        let (_, shape) = self.source_rne_view(source)?;
         let (rb, cb) = (bits(shape[0]), bits(shape[1]));
         if point.len() != rb + cb + 3 {
             return Err("RNE source point axes differ".into());
         }
-        self.view_form(cohort, &point[..rb], &point[rb..rb + cb], &point[rb + cb..], 0, Fp3::ONE)
+        self.view_form(source, &point[..rb], &point[rb..rb + cb], &point[rb + cb..], 0, Fp3::ONE)
     }
 
     /// A word's bytes in a public lane interval. Splitting respects BOTH

@@ -315,8 +315,14 @@ changed numerator bytes preserving the output. It neither selects EXP30
 nor adds full softmax credit. The output-chain check also accepts a DV
 simulation with zero dummy values and arbitrary public decisions by
 retagging the original public argmax target under the same verifier key.
-That resolves this output constraint; the full-Gemma trace, NoPeek and
-termination composition remain open.
+That resolves this output constraint. The design derives a dummy trace
+for the whole DAG using one zero W: all hidden values and KV tails are
+zero, while allowed softmax probabilities are the exactly rounded uniform
+distribution. Original A includes their biased bytes and honest histograms.
+Arbitrary ideal output tokens use the same DV argmax retag above. This
+establishes the dummy witness's existence; the complete caller still must
+enforce NoPeek, pre-proof preparation, generic termination and accepted
+history induction.
 
 The [causal mask compiler](c7.1-gemma31b-design.md#b12-maschera-causale-sulla-stessa-pi-originale)
 now proves zero at forbidden keys and padded queries in the same original

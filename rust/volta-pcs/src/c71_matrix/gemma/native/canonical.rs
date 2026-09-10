@@ -7,6 +7,9 @@ use std::collections::{BTreeSet, VecDeque};
 mod state;
 #[path = "canonical_verify.rs"]
 mod verify;
+#[cfg(test)]
+#[path = "canonical_wire.rs"]
+mod wire_tests;
 
 enum Producer {
     Embedding,

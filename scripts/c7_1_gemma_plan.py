@@ -8125,6 +8125,8 @@ def b12_native_wire_body_envelope():
                 upper+(slot+2)*(8 << 20)+header_fixed})
     return {'credit': False, 'basis': 'current mandatory Wire schemas and native public shape guards',
         'cases': cases, 'full_native_serialization_checked': False,
+        'native_synthetic_component_codecs_checked': True,
+        'native_check_scope': 'all non-PCS component types separately; zero values and joint-GKR shape upper',
         'PCS_cap_sufficiency_proven': False, 'complete_certificate_bytes': None,
         'omitted_from_non_PCS_lower_bound': ['joint RMS GKR', 'EXP30 ratio GKR'],
         'omitted_from_body_interval': ['canonical header', 'all PCS payloads'],

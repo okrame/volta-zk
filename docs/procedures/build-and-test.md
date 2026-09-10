@@ -110,6 +110,12 @@ D34/D35 con byte e frontiere sintetici, senza witness, Merkle tree o pool.
 Usare la stessa build mirata e il limite seriale di 60 s/2 GiB. Il roundtrip
 strutturale non è verifica crittografica positiva; il test non esegue Gemma.
 
+`c71_b12_native_canonical_wire_body` fa roundtrip dei tipi `Wire` di tutte
+le famiglie non-PCS con descrittori canonici nei tre contesti e fixture
+nulle, entro gli stessi 60 s/2 GiB e un worker. I due GKR usano l'envelope
+di forma, non circuiti calibrati. Le componenti sono serializzate
+separatamente: non è un certificato completo accettato dal trasporto.
+
 The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate
 D31/D33 source counts and partial target/cube totals describe those fixtures,

@@ -89,8 +89,10 @@ anche omettendo tutti gli hash Merkle. Il lower totale è ora
 per ogni calibrazione. L'upper PCS da schema supera anche il cap individuale
 di 8 MiB. Il codec Rust riproduce ora il conteggio fisso e i limiti delle
 frontiere su fixture sintetiche D34/D35, inclusi lunghezza dei vettori
-di profilo e rifiuto oltre il cap. Restano il confronto di tutto il corpo e prove canoniche valide.
-Adeguamento del trasporto e verifica positiva restano aperti.
+di profilo e rifiuto oltre il cap. Anche tutte le famiglie non-PCS fanno
+ora roundtrip nei tipi Rust sui tre contesti, con valori nulli e GKR
+massimi di forma. È verifica del conteggio per componenti separate:
+adeguamento del trasporto, framing completo e prova valida restano aperti.
 
 Il [collegamento AES/journal](../../rust/volta-pcs/src/c71_matrix/gemma/native/pool.rs)
 ora alimenta il wrapper ridotto tramite riserve del pool reale, con segni
@@ -101,9 +103,8 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Il goal di estensione resta aperto:** verificare il conteggio completo
-del corpo contro la serializzazione nativa, poi correggere
-l'incompatibilità del codec e collegare Prepare/prover canonici
+**Il goal di estensione resta aperto:** adeguare i cap al conteggio
+verificato e controllare il framing completo, poi collegare Prepare/prover canonici
 al wrapper, conservando gli originali
 e la compilazione numerica comune; verificare poi il percorso composto AES positivo.
 Le sue 797.139 righe base sul grafo ridotto superano il perimetro dei

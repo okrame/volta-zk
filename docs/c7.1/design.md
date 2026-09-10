@@ -398,8 +398,19 @@ omette interamente i due GKR congiunti; l'upper li comprende entrambi.
 | 300 | 34.075.941 | 37.443.973 | 35.309.181 |
 
 L'header aggiunge `1321 + 720*slot + len(gamma_W) + len(gamma_A)` byte,
-deducibili dal registro con prompt100/token150. Il conteggio del corpo
-attende il confronto completo con la serializzazione nativa.
+deducibili dal registro con prompt100/token150.
+
+Il test `c71_b12_native_canonical_wire_body_geometry` confronta ora ogni
+famiglia non-PCS con il vero `Wire::read/write`, usando i descrittori
+canonici dei tre contesti. Verifica P0/statistiche, i vettori 410/482 RNE,
+lookup, prodotti, QK/PV, KV, EXP30 e range, senza allargare la visibilità
+dei campi privati. Le fixture usano valori nulli e, per i due GKR, il
+rettangolo massimo di forma; non sono prove valide o circuiti calibrati.
+Il corpo con RNE selezionate e GKR massimi conta
+36.913.833/37.028.767/37.028.797 byte; sostituendo le RNE con il loro
+upper si ritrovano gli upper della tabella. Framing e chiusura sono
+conteggiati, ma le componenti fanno roundtrip separatamente: nessun
+certificato completo viene accettato dal trasporto da 16 MiB.
 
 ### Canonical PCS wire accounting
 
@@ -449,8 +460,9 @@ GKR congiunti e fratelli Merkle. L'upper qui deriva dagli schemi, non
 dall'ipotesi che ciascuna PCS rientri nel cap di 8 MiB.
 Il rapporto `native_canonical_certificate_wire` conserva `credit:false`
 e assenza di misura completa. Il confronto nativo delle forme PCS è
-ora distinto dal confronto ancora aperto di tutto il corpo canonico.
-Quest'ultimo precede il dimensionamento del trasporto; nessun limite
+ora affiancato da quello di tutte le famiglie non-PCS. Restano
+l'adeguamento dei cap, il framing completo e una prova canonica valida;
+nessun limite
 runtime, profilo numerico o assunzione di sicurezza cambia per questi conti.
 
 ## Resource and measurement contract

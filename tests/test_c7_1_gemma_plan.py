@@ -184,6 +184,7 @@ def test_B12_native_wire_body_envelope_matches_field_censuses_without_PCS_credit
             upper+(slot+2)*(8 << 20)+1321+720*slot)
         assert case['scale_zero_fixture_body_lower_excluding_PCS_and_header'] > 35_000_000
     assert not report['credit'] and not report['full_native_serialization_checked']
+    assert report['native_synthetic_component_codecs_checked']
     assert not report['PCS_cap_sufficiency_proven']
     assert report['complete_certificate_bytes'] is None
 

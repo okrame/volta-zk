@@ -354,8 +354,7 @@ Il primo run ha fallito con `trailing bytes`: il conteggio Python usava
 il messaggio prima del fold finale. Corretto nel helper condiviso al
 messaggio finale da 32/64 celle, sottraendo 2.304/4.608 byte ad A/W.
 I totali correnti nel [design](design.md#canonical-pcs-wire-accounting)
-includono anche entrambi i gamma. Rimane il confronto nativo di tutto
-il corpo non-PCS; `native_synthetic_codec_checked` distingue questo
+includono anche entrambi i gamma. Il confronto non-PCS è descritto sotto; `native_synthetic_codec_checked` distingue questo
 controllo da `native_serialization_checked`, tuttora false per prove valide.
 
 Passano **1 test Rust** sui due domini (0,12 s entro 60 s/2 GiB,
@@ -363,6 +362,26 @@ un worker) e **3 test Python** (`canonical_PCS_wire or native_wire_body or
 complete_fixed_run`), self-check/CLI e parsing del nuovo rapporto in
 `/tmp`, formato Rust, 99 link locali e `git diff --check`. Build mirata
 con un job, nessuna esecuzione AES/GPU o prova canonica positiva.
+
+## Native non-PCS component wire geometry
+
+Il [test delle forme](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_wire.rs)
+usa i descrittori canonici per tutte le famiglie e fa roundtrip nei
+rispettivi tipi `Wire`, lasciando privati i campi delle prove. Controlla
+separatamente i censimenti, la partizione 410/482 RNE e la somma nei tre
+contesti. I GKR congiunti usano il limite di forma, non programmi calibrati.
+
+Il conteggio del corpo è confermato per componenti sintetiche separate;
+non vengono eseguiti Prepare, VerifyResponse, PCS, bootstrap o inferenza.
+`native_synthetic_component_codecs_checked` segnala tale perimetro,
+mentre `full_native_serialization_checked` resta false: il trasporto
+completo e un certificato valido sono ancora da verificare.
+
+Passano **1 test Rust** (tre contesti, 0,90 s entro 60 s/2 GiB e un
+worker) e **3 test Python** (`canonical_PCS_wire or native_wire_body or
+complete_fixed_run`), self-check/CLI e parsing del rapporto in `/tmp`,
+formato Rust, 100 link locali e `git diff --check`. La build usa un job;
+nessuna esecuzione AES/GPU o materializzazione dei domini canonici.
 
 ## Measured historical records
 

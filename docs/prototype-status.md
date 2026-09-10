@@ -283,10 +283,20 @@ bits** at T121/M93 and needs **11,253,492 base rows for the run**.
 The largest A is 14,088,298,638 bytes, still D34. Full-verifier accepted
 history, mask/softmax, output and complete Gemma simulation remain open.
 
-Forty-two B12 algebra/accounting checks include the scalar invariant,
+The [argmax zero-form component](../rust/volta-pcs/src/c71_matrix/gemma/bytes/argmax.rs)
+now proves public decisions from the original final i16 table using
+unsigned byte slacks in the same A. Its 542-row ideal range/PCS case
+rejects wrong decisions, wrong tie ordering and wrapped negative slack.
+The [public softcap recipe](c7.1-gemma31b-design.md#b12-argmax-dai-byte-originali-e-ricetta-pubblica-del-softcap)
+certifies RNE of 30*tanh(x/30), reusing GELU's exp bounds. Neither is
+yet in the KV subtotal: the missing lm_head RNE and original softcap
+lookup must connect them to the weighted producer. Actual calibration,
+full output execution and complete Gemma simulation remain open.
+
+Forty-three B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint source bounds. The relevant Python checks total 223; the 17
-narrow bootstrap/pool checks and forty-two B12 PCS/caller/layout checks pass.
+range/product identities and the joint source bounds. The relevant Python checks total 225; the 17
+narrow bootstrap/pool checks and forty-three B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

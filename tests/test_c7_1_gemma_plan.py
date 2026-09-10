@@ -756,6 +756,69 @@ def test_B12_ordinary_KV_recomposes_all_prior_A_openings_and_joint_private_fores
     assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
 
 
+def test_B12_argmax_unsigned_slacks_prove_original_output_and_lowest_ID_ties():
+    b=plan.b12_argmax_profile()
+    assert b['whole_table_cell_bits']==b['FS_draw_requests']==24
+    assert b['unsigned_u16_slack_bytes']==26214400
+    assert b['original_Y_and_slack_zero_form_cubes_upper']==56
+    assert b['sum_of_all_FS_error_degrees_before_PCS']==24
+    assert b['additional_private_MACs_products_sumchecks_or_PCS']==0
+    assert b['public_targets_in_existing_source_PCS']==1
+    assert b['native_range_and_PCS_Fp3_rows']==510+32==542
+    assert b['integer_difference_absolute_bound_exclusive']==1 << 17 < plan.P
+    assert b['public_decisions_are_slice_of_P0_tokens'] and b['ties_choose_lowest_token_ID']
+    for y in product([-32768,0,32767],repeat=4):
+        for token in range(4):
+            slacks=[y[token]-value-int(j<token) for j,value in enumerate(y)]
+            assert all(0<=z<=65535 for z in slacks)==(token==y.index(max(y)))
+            for z in slacks:
+                wrapped=z%65536
+                assert (wrapped-z)%plan.P==0 if z>=0 else (wrapped-z)%plan.P!=0
+    assert not b['final_softcap_producer_and_canonical_output_routes_proven']
+    assert not b['included_in_ordinary_KV_subtotal']
+    assert b['full_Gemma_security_totals'] is None and not b['complete_security_or_physical_credit']
+    for args in [(0,4),(51,4),(3,3),(3,1 << 19)]:
+        with pytest.raises(ValueError): plan.b12_argmax_profile(*args)
+
+
+def test_softcap_public_certified_RNE_reuses_exp_bounds_and_preserves_strict_tails():
+    from decimal import ROUND_HALF_EVEN
+    for ei,eo in [(-128,-128),(-8,-8),(0,0),(0,-10),(4,2),(10,0)]:
+        for magnitude in [0,1,2,7,31,257,32767]:
+            x=Fraction(magnitude)*Fraction(2)**ei
+            got=plan.softcap_i16_pair(magnitude,ei,eo)
+            if x < 8192:
+                with localcontext() as ctx:
+                    ctx.prec=256
+                    value=Decimal(x.numerator)/Decimal(x.denominator)
+                    q=(-value/15).exp()
+                    exact=Decimal(30)*(1-q)/(1+q)/(Decimal(2)**eo)
+                    rounded=int(exact.to_integral_value(rounding=ROUND_HALF_EVEN))
+                    expected=rounded if rounded<=32767 else -32768
+                assert got==(expected,-32768 if expected==-32768 else -expected)
+            assert got[0]==-32768 or got[1]==-got[0]
+    # Tail lies below 7.5, so rounding the saturation constant would be wrong.
+    assert plan.softcap_i16_pair(8,10,2)==(7,-7)
+    assert plan.softcap_i16_pair(32767,128,2)==(7,-7)
+    assert plan.softcap_i16_pair(1,0,-128)==(-32768,-32768)
+    table=plan.softcap_i16_table(10,0)
+    assert len(table)==131070
+    expected=b''.join((30 if x>0 else -30 if x<0 else 0).to_bytes(2,'little',signed=True)
+                      for x in range(-32767,32768))
+    assert table==expected
+    # Rounded softcap can create a tie: strict real monotonicity does NOT
+    # justify replacing this argmax with argmax of the unrounded logits.
+    assert plan.softcap_i16_pair(1,10,0)[0]==plan.softcap_i16_pair(2,10,0)[0]==30
+    original=plan.decimal_exp_bounds
+    try:
+        plan.decimal_exp_bounds=lambda low,high:(Fraction(0),Fraction(1))
+        with pytest.raises(ArithmeticError,match='straddles'):plan.softcap_i16_table(0,0)
+    finally:
+        plan.decimal_exp_bounds=original
+    for args in [(32768,0,0),(1,-129,0),(1,0,129)]:
+        with pytest.raises(ValueError):plan.softcap_i16_pair(*args)
+
+
 def test_B12_RoPE_joint_adjoint_counts_original_endpoints_and_fixed_public_recipe():
     cohorts = plan.gemma_weight_cohorts(plan.pinned_private_tensors())
     old = plan.gemma_rope_plan(cohorts)['summary']

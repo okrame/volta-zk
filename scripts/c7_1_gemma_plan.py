@@ -1561,6 +1561,71 @@ def gelu_coefficient_bounds():
     return Fraction(low,unit),Fraction(high,unit)
 
 
+def decimal_exp_bounds(low, high):
+    """Outward rational exp enclosure for a PUBLIC rational interval."""
+    q = []
+    for exponent,rounding in ((low,decimal.ROUND_FLOOR),(high,decimal.ROUND_CEILING)):
+        context = decimal.Context(prec=128,rounding=rounding,Emin=-1000,Emax=1000,
+                                  traps=[decimal.InvalidOperation,decimal.DivisionByZero,
+                                         decimal.Overflow,decimal.Underflow])
+        argument = context.divide(decimal.Decimal(exponent.numerator),decimal.Decimal(exponent.denominator))
+        nearest = context.exp(argument)  # correctly rounded, independently of rounding mode
+        bound = context.next_minus(nearest) if rounding == decimal.ROUND_FLOOR else context.next_plus(nearest)
+        q.append(Fraction(bound))
+    if not 0 < q[0] <= q[1]:
+        raise ArithmeticError('invalid exponential enclosure')
+    return q
+
+
+def certify_i16_rounding(lower, upper):
+    left,right = round(lower),round(upper)
+    if left > 32767 or right < -32767:
+        return -32768
+    if left != right:
+        raise ArithmeticError('rounding interval straddles a decision boundary')
+    return left
+
+
+def softcap_i16_pair(magnitude, input_exponent, output_exponent):
+    """Certified RNE(30*tanh(x/30)/2^eo), PUBLIC profile preparation only.
+
+    Same finite exponent/precision envelope as GELU. Failure rejects the
+    public table before roots/witnesses; it is not a private-input abort.
+    """
+    natural(magnitude,'softcap symmetric i16 magnitude',0,32767)
+    for exponent in (input_exponent,output_exponent):
+        natural(exponent,'softcap table dyadic exponent',-128,128)
+    if magnitude == 0:
+        return 0,0
+    x = magnitude*Fraction(2)**input_exponent
+    units = 30*Fraction(2)**-output_exponent
+    if x >= 8192:
+        # Value is STRICTLY below units. The missing tail is <2^-512
+        # output units, below every nonzero dyadic half-boundary gap.
+        integer,remainder = divmod(units.numerator,units.denominator)
+        positive = integer+int(2*remainder > units.denominator)
+        if positive > 32767:
+            positive = -32768
+    else:
+        low,high = decimal_exp_bounds(-x/15,-x/15)
+        if high > 1:
+            raise ArithmeticError('invalid softcap exponential enclosure')
+        positive = certify_i16_rounding(units*(1-high)/(1+high),units*(1-low)/(1+low))
+    return (positive, -32768 if positive == -32768 else -positive)
+
+
+def softcap_i16_table(input_exponent, output_exponent):
+    """C71-SOFTCAP-RNE-v1, signed-i16-LE entries; -32768 is rejection."""
+    softcap_i16_pair(0,input_exponent,output_exponent)
+    table = bytearray(2*65535)
+    for magnitude in range(1,32768):
+        positive,negative = softcap_i16_pair(magnitude,input_exponent,output_exponent)
+        for value,output in ((magnitude,positive),(-magnitude,negative)):
+            offset = 2*(value+32767)
+            table[offset:offset+2] = output.to_bytes(2,'little',signed=True)
+    return bytes(table)
+
+
 def gelu_i16_pair(magnitude, input_exponent, output_exponent):
     """Certified real tanh-GELU RNE for +/- magnitude; PUBLIC setup only.
 
@@ -1582,27 +1647,12 @@ def gelu_i16_pair(magnitude, input_exponent, output_exponent):
         return (rounded if rounded <= 32767 else -32768),0
     factor = 2*(x+Fraction(44715,1_000_000)*x*x*x)
     low,high = (factor*c for c in gelu_coefficient_bounds())
-    q = []
-    for exponent,rounding in ((-high,decimal.ROUND_FLOOR),(-low,decimal.ROUND_CEILING)):
-        context = decimal.Context(prec=128,rounding=rounding,Emin=-1000,Emax=1000,
-                                  traps=[decimal.InvalidOperation,decimal.DivisionByZero,
-                                         decimal.Overflow,decimal.Underflow])
-        argument = context.divide(decimal.Decimal(exponent.numerator),decimal.Decimal(exponent.denominator))
-        nearest = context.exp(argument)  # correctly rounded, independently of rounding mode
-        bound = context.next_minus(nearest) if rounding == decimal.ROUND_FLOOR else context.next_plus(nearest)
-        q.append(Fraction(bound))
+    q = decimal_exp_bounds(-high,-low)
     if not 0 < q[0] <= q[1] <= 1:
         raise ArithmeticError('invalid exponential enclosure')
 
-    def certify(lower,upper):
-        left,right = round(lower),round(upper)
-        if left > 32767 or right < -32767:
-            return -32768
-        if left != right:
-            raise ArithmeticError('GELU rounding interval straddles a decision boundary')
-        return left
-    positive = certify(units/(1+q[1]),units/(1+q[0]))
-    negative = certify(-units*q[1]/(1+q[1]),-units*q[0]/(1+q[0]))
+    positive = certify_i16_rounding(units/(1+q[1]),units/(1+q[0]))
+    negative = certify_i16_rounding(-units*q[1]/(1+q[1]),-units*q[0]/(1+q[0]))
     return positive,negative
 
 
@@ -7480,6 +7530,31 @@ def b12_kv_tail_split_profile(tails=(150,150,150), endpoints=120):
     }
 
 
+def b12_argmax_profile(rows=50, vocabulary=262144):
+    natural(rows,'argmax public decisions',1,50)
+    natural(vocabulary,'argmax vocabulary',1,1 << 18)
+    if vocabulary & (vocabulary-1):
+        raise ValueError('argmax vocabulary must be a power of two')
+    c=(rows-1).bit_length()+(vocabulary-1).bit_length()
+    return {
+        'source':'rust/volta-pcs/src/c71_matrix/gemma/bytes/argmax.rs',
+        'rows':rows,'vocabulary':vocabulary,'whole_table_cell_bits':c,
+        'unsigned_u16_slack_bytes':2*rows*vocabulary,
+        'original_Y_and_slack_zero_form_cubes_upper':2*rows.bit_count()+rows,
+        'FS_draw_requests':c,'sum_of_all_FS_error_degrees_before_PCS':c,
+        'additional_private_MACs_products_sumchecks_or_PCS':0,
+        'public_targets_in_existing_source_PCS':1,
+        'field_payload_bytes_before_public_forms_and_context':0,
+        'integer_difference_absolute_bound_exclusive':1 << 17,
+        'native_range_and_PCS_Fp3_rows':542,
+        'original_output_and_unsigned_slack_in_same_byte_root':True,
+        'public_decisions_are_slice_of_P0_tokens':True,'ties_choose_lowest_token_ID':True,
+        'final_softcap_producer_and_canonical_output_routes_proven':False,
+        'included_in_ordinary_KV_subtotal':False,
+        'full_Gemma_security_totals':None,'complete_security_or_physical_credit':False,
+    }
+
+
 def b12_residual_source_profile():
     base=b12_attention_source_profile()
     cells=150*5376
@@ -8376,6 +8451,7 @@ def b12_pcs_binding_assessment():
         'public_RoPE_joint_component': b12_rope_joint_profile(119808000),
         'raw_attention_QK_PV_component': b12_attention_product_profile(),
         'original_KV_A_tail_split_component': b12_kv_tail_split_profile(),
+        'original_final_table_argmax_component': b12_argmax_profile(),
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",

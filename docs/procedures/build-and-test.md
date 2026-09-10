@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its forty-one tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its forty-two tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -95,7 +95,7 @@ from the earlier PCS checks to keep each invocation below 60 seconds.
 The `c71_b12_p0` filter executes a small raw matrix/norm/lookup caller
 with 357 ideal Fp3 correlations, one ranged W PCS and a separate C/X PCS.
 It checks committed false cuts and detached input MACs; no socket is needed.
-The seventeen `c71_b12_gemma` checks cover native metadata/DAG layout and
+The eighteen `c71_b12_gemma` checks cover native metadata/DAG layout and
 physical/virtual addresses, including ragged tensor MLEs. The caller check
 executes all 773 compact reductions with zero vectors and compiles the
 original auxiliary forms; its placeholder roots grant no PCS acceptance.
@@ -222,7 +222,12 @@ all source PCS. Prior A0/A1 receive fresh current-attempt MACs and PCS;
 wrong incoming K or an altered old getter reject without receipt promotion.
 It also checks canonical 150-row segment forms at offsets 0/150/300 using
 metadata only. These receipts certify component byte/PCS checks, not full
-Gemma execution; canonical continuation and its joint resources remain open.
+Gemma execution. The `c71_b12_gemma_attention_continuations` metadata case
+checks O=0/150/300, absolute RoPE windows, all original K/V routes and
+the three A layouts. It rejects stale positions, a substituted current
+root and a fourth segment, without allocating full sources. The Python
+B12 checks recompose six A openings, 39 streams and 526 trees; full
+accepted Gemma state and calibrated execution remain open.
 After byte-function changes, rerun `c71_b12_byte_functions` and
 `c71_b12_rne` separately; ordinary lane-mode transcripts are preserved.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner

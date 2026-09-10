@@ -1,4 +1,4 @@
-//! Canonical fresh-run RoPE views: the exact RMS outputs, joint raw linear
+//! Canonical fixed-run RoPE views: the exact RMS outputs, joint raw linear
 //! relation and whole-table output RNE all close in the SAME byte source.
 
 use super::caller::P0Statement;
@@ -19,6 +19,7 @@ pub(in crate::c71_matrix) struct Rotation {
 }
 
 pub(in crate::c71_matrix) struct Sources {
+    pub old: usize,
     pub gate_up: gate_up::Sources,
     pub rotations: Vec<Rotation>,
     pub cells: usize,
@@ -29,6 +30,13 @@ pub(in crate::c71_matrix) struct Sources {
 
 impl Plan {
     pub fn rope_sources(&self) -> Result<Sources, String> {
+        self.rope_sources_at(0)
+    }
+
+    pub fn rope_sources_at(&self, old: usize) -> Result<Sources, String> {
+        if ![0, 150, 300].contains(&old) {
+            return Err("RoPE prefix exceeds the three-attempt fixed run".into());
+        }
         let gate_up = self.gate_up_sources()?;
         let mut rotations = Vec::new();
         let mut identities = std::collections::BTreeSet::new();
@@ -114,12 +122,13 @@ impl Plan {
                 rows: t.rows,
                 heads: r.heads,
                 width: r.width,
-                position: t.row,
+                position: old + t.row,
                 family: r.family,
             });
         }
         let mut digest = blake3::Hasher::new();
-        digest.update(b"C71-RoPE-source-v1;fresh-O0;150-tokens;Q30;original-RMS-Y;dyadic-MSB\0");
+        digest.update(b"C71-RoPE-source-v2;fixed-run;150-tokens;Q30;original-RMS-Y;dyadic-MSB\0");
+        digest.update(&(old as u64).to_le_bytes());
         digest.update(&gate_up.view);
         for r in &rotations {
             let n = &gate_up.gelu.rms.norms[r.norm];
@@ -144,6 +153,7 @@ impl Plan {
             }
         }
         Ok(Sources {
+            old,
             gate_up,
             rotations,
             cells,
@@ -225,7 +235,7 @@ impl Sources {
     ) -> Result<kernel::Statement<'a>, String> {
         if tables.len() != 2
             || tables.iter().enumerate().any(|(f, t)| {
-                t.position != 0
+                t.position != self.old
                     || t.rows.len() != 150
                     || t.rows.iter().any(|r| r.len() != if f == 0 { 128 } else { 64 })
             })
@@ -235,6 +245,7 @@ impl Sources {
             || s.auxiliary_gamma.is_empty()
             || s.quantization == [0; 32]
             || !s.attempt.valid()
+            || s.attempt.slot as usize != self.old / 150
             || s.tokens.len() != 150
             || s.auxiliary_layout.layout.layout_digest
                 != self.gate_up.gelu.rms.bytes.scalar.layout.layout_digest
@@ -242,7 +253,7 @@ impl Sources {
         {
             return Err("RoPE certified table window or fixed source context differs".into());
         }
-        let mut bytes = b"C71-canonical-RoPE-B12-v1;fresh-O0;Q30;original-RMS-Y\0".to_vec();
+        let mut bytes = b"C71-canonical-RoPE-B12-v2;fixed-run;Q30;original-RMS-Y\0".to_vec();
         bytes.extend(s.weights.roots()[0]);
         bytes.extend(s.auxiliary.roots()[0]);
         for g in [s.weight_gamma, s.auxiliary_gamma] {

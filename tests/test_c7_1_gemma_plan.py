@@ -711,6 +711,51 @@ def test_B12_KV_original_tail_split_counts_fresh_MACs_and_unaligned_source_forms
         with pytest.raises(ValueError):plan.b12_kv_tail_split_profile(tails)
 
 
+def test_B12_ordinary_KV_recomposes_all_prior_A_openings_and_joint_private_forests():
+    report=plan.b12_pcs_binding_assessment()
+    b=report['ordinary_KV_original_A_tail_composition']
+    base=report['P0_RNE_RMS_GELU_gate_up_RoPE_attention_residual_composition']
+    raw=report['P0_RNE_RMS_GELU_gate_up_composition']['D35_D34_raw_P0_rebase']
+    assert b['W_installations']==1 and b['A_installations']==3
+    assert b['W_openings']==3 and b['A_openings_per_root']==[3,2,1]
+    assert b['A_openings_total']==6 and b['new_KV_roots']==0
+    assert b['maximum_initial_root_exposure_queries']==1536
+    assert b['original_KV_MACs_preserved'] and b['canonical_absolute_RoPE_and_attention_routes_compiled']
+    cases=b['cases']
+    assert [c['old_tokens'] for c in cases]==[0,150,300]
+    assert [c['auxiliary_live_bytes'] for c in cases]==[12613738638,13351018638,14088298638]
+    assert all(c['auxiliary_log_cells']==34 and c['auxiliary_sources']==3167 for c in cases)
+    assert [c['current_A_cubes_upper'] for c in cases]==[79539,88059,83619]
+    assert all(c['current_A_targets_upper']==4433 for c in cases)
+    assert [c['previous_A_cube_counts'] for c in cases]==[[],[480],[480,9000]]
+    assert [c['source_PCS_chains_including_W'] for c in cases]==[2,3,4]
+    assert [c['Fp3_correlations_upper_before_other_operators'] for c in cases]==[1248243,1251408,1251513]
+    assert b['additional_continued_kernel_Fp3_rows_per_later_attempt']==660
+    assert b['additional_score_RNE_Fp3_rows_per_later_attempt']==2400
+    assert b['fresh_previous_A_aggregate_Fp3_rows_over_run']==3
+    assert b['additional_previous_A_bridge_Fp3_rows_over_run']==312
+    assert b['initial_base_capacity_upper_three_attempts_before_other_operators']==sum(c['base_rows_upper_before_other_operators'] for c in cases)==11253492 < b['initial_base_capacity_limit']
+    assert b['sum_of_extra_continued_kernel_FS_degrees_upper']==2520
+    assert b['additional_MAC_degree_sum_over_run']==1548
+    assert b['forest_distinct_leaves']==19341107200 > raw['forest_distinct_leaves']
+    assert b['forest_distinct_trees']==526 > 512
+    assert b['honest_root_announcements_upper']==1024 >= b['forest_distinct_trees']
+    assert b['forest_distinct_nodes']==2*b['forest_distinct_leaves']-b['forest_distinct_trees']
+    assert b['private_streams']==39 and b['private_Fp_outputs_over_all_roots']==77371188352
+    assert b['largest_stream_Fp_outputs_upper']<=b['private_Fp_outputs_per_stream_cap']==1 << 35
+    assert b['private_stream_byte_cap']==1 << 40
+    assert b['decoder_invocations']==4 and b['extra_decoders_for_previous_A_openings']==0
+    assert b['Merkle_target_words_upper']==8*(1 << 80)+2*(1 << 74)+1024 < 1 << 84
+    assert Fraction(b['additional_Merkle_deferred_preimage_error'])==Fraction((1 << 74)*512,1 << 256)
+    assert Fraction(b['conditional_soundness_sum'])==Fraction(base['conditional_soundness_sum'])+sum(Fraction(b[k]) for k in ['additional_global_FS_error','additional_MAC_error','additional_Merkle_deferred_preimage_error'])
+    assert Fraction(b['conditional_ZK_sum']) > Fraction(base['conditional_ZK_sum'])
+    assert b['both_below_2_to_minus_78'] and b['both_resource_caps_hold']
+    assert b['full_RO_queries_upper'] < 1 << 74
+    assert b['full_verifier_accepted_history_induction_required']
+    assert not b['complete_Gemma_accepted_state_proven'] and not b['softmax_mask_and_public_output_proven']
+    assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
+
+
 def test_B12_RoPE_joint_adjoint_counts_original_endpoints_and_fixed_public_recipe():
     cohorts = plan.gemma_weight_cohorts(plan.pinned_private_tensors())
     old = plan.gemma_rope_plan(cohorts)['summary']

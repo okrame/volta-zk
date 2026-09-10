@@ -274,13 +274,19 @@ check uses 544/577/610 rows with actual byte range and all required PCS;
 wrong incoming K and an altered old-source getter reject before promotion.
 The full-size tail forms use 4/75/38 aligned blocks at offsets 0/150/300.
 Prior roots/receipts still require the full verifier's accepted history.
-Canonical continued RoPE/attention, extra PCS forests/streams and complete
-state composition remain open; this kernel is outside the residual subtotal.
+The [canonical ordinary continuation](c7.1-gemma31b-design.md#b12-continuazione-ordinaria-route-canoniche-e-foresta-a-congiunta)
+now compiles O=0/150/300, absolute RoPE windows and the original K/V
+routes across those A roots. The new joint subtotal counts A openings
+3/2/1, 526 trees and 39 private streams, with 1,024 honest root
+announcements. It retains **82.94219 soundness / 91.02272 ZK conditional
+bits** at T121/M93 and needs **11,253,492 base rows for the run**.
+The largest A is 14,088,298,638 bytes, still D34. Full-verifier accepted
+history, mask/softmax, output and complete Gemma simulation remain open.
 
-Forty-one B12 algebra/accounting checks include the scalar invariant,
+Forty-two B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 222; the 17
-narrow bootstrap/pool checks and forty-one B12 PCS/caller/layout checks pass.
+range/product identities and the joint source bounds. The relevant Python checks total 223; the 17
+narrow bootstrap/pool checks and forty-two B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -301,9 +307,9 @@ NoPeek, relation and resource composition.
 
 **Remaining work:** full Gemma malicious-verifier ZK, the complete quantized
 Gemma GKR relation using the range-checked W, full correlation census and
-both-role resource composition for the fixed run. The known 11,234,187-row upper
-for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE/fresh-attention/residual attempts fits the initial capacity;
-mask/softmax, ordinary KV, public output and other circuits remain uncounted.
+both-role resource composition for the fixed run. The known 11,253,492-row upper
+for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE/attention/residual attempts with ordinary KV source openings fits the initial capacity;
+mask/softmax, full accepted-state verification and public output remain open.
 The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
 soundness bound also included failed setups/key changes; that broader
 evidence remains valid without making renewal/recovery new gates. Neither

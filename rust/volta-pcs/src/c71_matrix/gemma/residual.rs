@@ -27,7 +27,11 @@ fn scalar(bits: u16) -> Result<(i64, i32), String> {
 
 impl Plan {
     pub fn residual_sources(&self) -> Result<Sources, String> {
-        let attention = self.attention_sources()?;
+        self.residual_sources_at(0)
+    }
+
+    pub fn residual_sources_at(&self, old: usize) -> Result<Sources, String> {
+        let attention = self.attention_sources_at(old)?;
         let rms = &attention.rope.gate_up.gelu.rms;
         let base = rms.bytes.scalar.layout.sources.len();
         let get = |layer: Option<u64>, op: &str| {

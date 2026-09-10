@@ -7550,6 +7550,132 @@ def b12_residual_composition(base):
     }
 
 
+def b12_ordinary_KV_composition(base, raw, auxiliary, mask):
+    """Three accepted 150-token tails, with original MACs in 3/2/1 A openings.
+
+    Conditional on the full verifier's accepted-history induction and the
+    existing producer/profile premises. Does not certify softmax or output.
+    Recompute the joint hiding hybrid: previous A roots are NOT fresh roots.
+    """
+    q, queries = P**3, 1 << 74
+    fresh = b12_attention_product_profile()['both_products']
+    continued = b12_attention_product_profile(150)['both_products']
+    r0, r1 = b12_rne_profile(21), b12_rne_profile(22)
+    kernel_rows = continued['Fp3_correlations_before_source_range_and_PCS']-fresh['Fp3_correlations_before_source_range_and_PCS']
+    rne_rows = 60*(r1['Fp3_correlations_upper_before_incoming_claims_and_shared_PCS']-r0['Fp3_correlations_upper_before_incoming_claims_and_shared_PCS'])
+    extra_mac = (continued['MAC_degree_sum_before_shared_PCS']-fresh['MAC_degree_sum_before_shared_PCS']
+                 +60*(r1['MAC_degree_sum_upper_before_shared_PCS']-r0['MAC_degree_sum_upper_before_shared_PCS']))
+    degree = (continued['sum_of_all_FS_error_degrees_before_shared_PCS']-fresh['sum_of_all_FS_error_degrees_before_shared_PCS']+60*33)
+    d = auxiliary['log_message_cells']
+    assert d == 34 and raw['private_streams'] == 30
+    bridge = 3*d+2
+    rows = [base['Fp3_correlations_upper_per_attempt_before_other_operators']
+            +(kernel_rows+rne_rows if step else 0)+step*(1+bridge) for step in range(3)]
+    sources = b12_residual_source_profile()
+    source_cases = []
+    for step in range(3):
+        split = b12_kv_tail_split_profile((150,)*(step+1))
+        live = sources['auxiliary_live_bytes']+4915200*150*step
+        assert (live-1).bit_length() == d
+        source_cases.append({
+            'old_tokens':150*step, 'new_tokens':150, 'absolute_RoPE_window':[150*step,150*(step+1)],
+            'auxiliary_live_bytes':live, 'auxiliary_sources':sources['auxiliary_sources'],
+            'auxiliary_log_cells':d, 'score_shape':[8192,150*(step+1)],
+            'current_A_targets_upper':sources['A_targets_with_affine_and_all_RNE']-119,
+            'current_A_cubes_upper':sources['A_cubes_with_affine_and_all_RNE_upper']-480+split['byte_cubes_per_source_upper'][-1],
+            'previous_A_target_counts':[1]*step,
+            'previous_A_cube_counts':split['byte_cubes_per_source_upper'][:-1],
+            'source_PCS_chains_including_W':2+step,
+            'Fp3_correlations_upper_before_other_operators':rows[step],
+            'base_rows_upper_before_other_operators':3*rows[step],
+        })
+    os = auxiliary['oracles']
+    forest = auxiliary['adaptive_Merkle_hiding']
+    warm_leaves = (forest['distinct_salted_leaves']-os[0]['domain_rows'])//3
+    warm_trees = (forest['distinct_trees']-1)//3
+    leaves = raw['forest_distinct_leaves']+3*warm_leaves
+    trees = raw['forest_distinct_trees']+3*warm_trees
+    nodes = 2*leaves-trees
+    streams = raw['private_streams']+9
+    assert trees <= 1024 and trees > 512
+    scalar_rows = mask['message_rows']+mask['randomness_rows']
+    folded = sum(auxiliary['folds'])
+    private_E = (sum(o['width']*o['randomness_rows'] for o in os[1:])
+        +folded*scalar_rows+sum(scalar_rows-o['randomness_rows'] for o in os[:-1])
+        +os[-1]['message_rows']+os[-1]['randomness_rows']
+        +(folded+len(os)-1)*scalar_rows)
+    cap = raw['private_Fp_outputs_per_stream_cap']
+    assert max(3*private_E,4*warm_leaves) <= raw['largest_stream_Fp_outputs_upper'] <= cap
+    hiding = {
+        'all_source_unrevealed_salt_queries':Fraction(leaves*queries,P**4-queries),
+        'all_source_salt_collisions':Fraction(leaves*(leaves-1),2*P**4),
+        'all_source_hidden_digest_queries':Fraction(2*nodes*queries,(1 << 256)-queries-nodes),
+        'all_source_digest_collisions':Fraction(nodes*(nodes-1),1 << 257),
+        'all_private_coin_indices_once':Fraction(streams*queries,(1 << 256)-queries-streams)+Fraction(streams*(streams-1),1 << 257),
+    }
+    beta = Fraction((1 << 64)-P,1 << 64)
+    sampler = streams*(cap*beta**8+Fraction(1,1 << 256))
+    old_privacy = raw['privacy_terms']
+    privacy = (Fraction(base['conditional_ZK_sum'])
+        -Fraction(old_privacy['two_joint_forest_and_coin_hybrids'])
+        -Fraction(old_privacy['two_finite_private_sampler_hybrids'])
+        +2*sum(hiding.values())+2*sampler)
+    # Q* is global. Charge the maximum extra continued kernel degrees and
+    # up to two old-source PCS chains per candidate, not a new Q* per root.
+    fs_error = queries*(Fraction(degree+119+2*2*d,q)
+                        +2*Fraction(auxiliary['max_coin_block_error']))
+    mac_error = Fraction(2*extra_mac+3*(d+2),q-1)
+    # Old subtotal reserves 512 honest root announcements. The new joint
+    # forest requires 526; enlarge to 1024 in the deferred-preimage term.
+    merkle_extra = Fraction(queries*(1024-512),1 << 256)
+    sound = Fraction(base['conditional_soundness_sum'])+fs_error+mac_error+merkle_extra
+    # Extra three warm A chains, all shifted forms, accepted root metadata
+    # and wider attention/RNE. Dense polynomial work only; no hardware credit.
+    work,memory,ro = 1 << 73,1 << 67,1 << 41
+    tw,tm = base['reduction_work_upper']+work,base['reduction_memory_words_upper']+memory
+    return {
+        'relation':'previous producers plus ordinary KV endpoints in original accepted A tails, conditional on full-verifier history',
+        'cases':source_cases, 'W_installations':1, 'A_installations':3,
+        'W_openings':3, 'A_openings_per_root':[3,2,1], 'A_openings_total':6,
+        'new_KV_roots':0, 'maximum_initial_root_exposure_queries':3*512,
+        'original_KV_MACs_preserved':True, 'canonical_absolute_RoPE_and_attention_routes_compiled':True,
+        'fresh_previous_A_aggregate_Fp3_rows_over_run':3,
+        'additional_previous_A_bridge_Fp3_rows_over_run':3*bridge,
+        'additional_continued_kernel_Fp3_rows_per_later_attempt':kernel_rows,
+        'additional_score_RNE_Fp3_rows_per_later_attempt':rne_rows,
+        'sum_of_extra_continued_kernel_FS_degrees_upper':degree,
+        'additional_MAC_degree_sum_over_run':2*extra_mac+3*(d+2),
+        'additional_global_FS_error':str(fs_error), 'additional_MAC_error':str(mac_error),
+        'additional_Merkle_deferred_preimage_error':str(merkle_extra),
+        'honest_root_announcements_upper':1024,
+        'Merkle_target_words_upper':8*(1 << 80)+2*queries+1024,
+        'forest_distinct_leaves':leaves, 'forest_distinct_trees':trees, 'forest_distinct_nodes':nodes,
+        'private_streams':streams,
+        'private_Fp_outputs_over_all_roots':raw['private_Fp_outputs_over_all_roots']+9*private_E+12*warm_leaves,
+        'largest_stream_Fp_outputs_upper':raw['largest_stream_Fp_outputs_upper'],
+        'private_Fp_outputs_per_stream_cap':cap, 'private_stream_byte_cap':raw['private_stream_byte_cap'],
+        'joint_hiding_terms':{k:str(v) for k,v in hiding.items()},
+        'sampler_error_each_hybrid':str(sampler), 'decoder_invocations':4,
+        'extra_decoders_for_previous_A_openings':0,
+        'initial_base_capacity_upper_three_attempts_before_other_operators':3*sum(rows),
+        'initial_base_capacity_limit':base['initial_base_capacity_limit'],
+        'additional_honest_work_u64_upper':work, 'additional_honest_memory_words_upper':memory,
+        'additional_honest_RO_events_upper':ro, 'full_RO_queries_upper':base['full_RO_queries_upper']+ro,
+        'reduction_work_upper':tw, 'reduction_memory_words_upper':tm,
+        'both_resource_caps_hold':tw < 1 << 121 and tm < 1 << 93,
+        'conditional_soundness_sum':str(sound), 'conditional_ZK_sum':str(privacy),
+        'soundness_bits':math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits':math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78':max(sound,privacy) < Fraction(1,1 << 78),
+        'full_verifier_accepted_history_induction_required':True,
+        'complete_Gemma_accepted_state_proven':False,
+        'softmax_mask_and_public_output_proven':False,
+        'numerical_profile_preparation_and_calibration_outside_this_subtotal':True,
+        'native_full_domain_execution':False, 'all_Gemma_integer_producers_proven':False,
+        'full_Gemma_security_totals':None, 'physical_schedule_admitted':False,
+    }
+
+
 def b12_rope_joint_profile(cells):
     """Joint public adjoint over aligned dyadic RoPE blocks; no source closures.
 
@@ -8051,6 +8177,7 @@ def b12_pcs_binding_assessment():
     gate_up_composition = b12_gate_up_composition(gelu_composition,p0_composition['cases'][-1],gate_up_raw,gate_up_byte_profile)
     rope_composition = b12_rope_composition(gate_up_composition)
     attention_composition = b12_attention_composition(rope_composition)
+    residual_composition = b12_residual_composition(attention_composition)
     for row, joint in zip(range_cases, p0_composition['cases']):
         row['large_domain_private_sampler_and_simulator_bound_derived'] = True
         if row['conditional_ZK_sum'] is None:
@@ -8241,7 +8368,9 @@ def b12_pcs_binding_assessment():
         'P0_RNE_RMS_GELU_gate_up_composition': gate_up_composition,
         'P0_RNE_RMS_GELU_gate_up_RoPE_composition': rope_composition,
         'P0_RNE_RMS_GELU_gate_up_RoPE_attention_composition': attention_composition,
-        'P0_RNE_RMS_GELU_gate_up_RoPE_attention_residual_composition': b12_residual_composition(attention_composition),
+        'P0_RNE_RMS_GELU_gate_up_RoPE_attention_residual_composition': residual_composition,
+        'ordinary_KV_original_A_tail_composition': b12_ordinary_KV_composition(
+            residual_composition, gate_up_raw, gate_up_byte_profile, mask),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         'public_RoPE_joint_component': b12_rope_joint_profile(119808000),

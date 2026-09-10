@@ -316,15 +316,30 @@ Numeri e formule sono nel [design](design.md#analytic-envelope-of-the-complete-n
 
 Sono conti da descrittori e codice, non prove canoniche serializzate:
 `full_native_serialization_checked` e `PCS_cap_sufficiency_proven`
-restano false. L'allarme 35 MB è superato già dal lower della fixture
-scale zero/Pi=-14; il lower indipendente dalla calibrazione rimane sotto
-35 MB. Non viene alterato alcun codec, profilo o limite runtime.
+restano false. Il solo corpo supera 35 MB già per la fixture scale
+zero/Pi=-14; includendo le PCS sotto, il lower supera l'allarme per ogni
+calibrazione. Non viene alterato alcun codec, profilo o limite runtime.
 
 Passano **2 controlli Python** (`native_wire_body or complete_fixed_run`)
 e il self-check del diagnostico, con rapporto JSON completo generato in
 `/tmp`. Il controllo dell'header ha rilevato e corretto un atteso inferiore
 di due byte: il prefisso fisso è 1.321 byte. Verificati 97 link locali e
 `git diff --check`; nessuna build Rust/Lean o esecuzione GPU in questo passo.
+
+## Canonical PCS wire census
+
+Il controllo Python `canonical_PCS_wire` verifica i vettori claimless,
+le 40 maschere, le 59 aperture salate, i prefissi e la somma di W con
+tutte le A storiche/corrente nei tre contesti. Gli intervalli analitici
+sono nel [design](design.md#canonical-pcs-wire-accounting). Il limite
+superiore dei fratelli segue la ricorrenza del codec; non è una frontiera
+osservata su una prova. Nessuna PCS o inferenza D34/D35 è generata.
+
+Passano **3 controlli Python** (`canonical_PCS_wire or native_wire_body or
+complete_fixed_run`), self-check/CLI del diagnostico entro 60 s/2 GiB,
+parsing del rapporto JSON in `/tmp`, 98 link locali e `git diff --check`.
+Nessuna build Rust/Lean o esecuzione GPU. Non viene attribuito credito di serializzazione
+nativa o sufficienza del cap da 8 MiB, che cade dentro l'intervallo PCS.
 
 ## Measured historical records
 

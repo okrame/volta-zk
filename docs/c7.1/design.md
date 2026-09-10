@@ -364,8 +364,8 @@ RNE: `range::verify` impone 65.535 campi per l'alfabeto simmetrico 32767,
 quindi `4 + 24*65535 = 1.572.844` byte di wire. Sommato al minimo RNE,
 porta il limite inferiore a **30.944.292/31.014.852/31.014.852 byte**.
 L'encoding corrente non può quindi soddisfare la preferenza di 30 MB
-per nessuna calibrazione ammessa. Il conteggio esteso sotto supera l'allarme a 35 MB per la fixture con
-scale zero, non prova tale superamento per ogni calibrazione.
+per nessuna calibrazione ammessa. Includendo le PCS, il conteggio esteso
+sotto supera anche l'allarme a 35 MB per ogni calibrazione.
 
 Il reader totale da 16.777.216 byte è quindi incompatibile con qualsiasi
 prova canonica completa corrente, anche su H100. Occorre completare il
@@ -398,16 +398,48 @@ omette interamente i due GKR congiunti; l'upper li comprende entrambi.
 | 300 | 34.075.941 | 37.443.973 | 35.309.181 |
 
 L'header aggiunge `1321 + 720*slot + len(gamma_W) + len(gamma_A)` byte,
-deducibili dal registro con prompt100/token150. Se ogni PCS rientra nel
-cap attuale di 8 MiB, l'upper totale è rispettivamente
-54.107.546/62.611.808/71.001.166 byte **più i due vettori gamma**.
-È un envelope condizionato al decoder, non una prova che le PCS canoniche
-possano essere prodotte entro 8 MiB, né una misura del certificato.
+deducibili dal registro con prompt100/token150. Il conteggio del corpo
+attende il confronto completo con la serializzazione nativa.
 
-Questo conteggio analitico copre gli schemi del corpo ma attende il
-confronto completo con la serializzazione nativa e le dimensioni delle
-PCS D35/D34. Non ammette un nuovo cap runtime: `credit:false`, dimensione
-misurata completa assente, limiti di esecuzione e assunzioni invariati.
+### Canonical PCS wire accounting
+
+`b12_native_linear_pcs_wire` riusa le geometrie PCS selezionate e conta
+lo schema `codec::encode_linear`, senza il vecchio header matrix. Comprende
+trasferimenti MAC e chiusura, sumcheck claimless, commitment e OOD, claim
+base, messaggio/randomness aperti, tutte le maschere, valori interrogati,
+sali e prefissi dei multiproof. I 12 batch hanno 29 maschere di fold e 11
+di switch: 40 vettori da 2.560 campi, distribuiti in 23 gruppi. Le 59
+aperture interrogano ciascuna 512 righe con quattro sali Fp per riga.
+
+Il lower omette tutti gli hash dei fratelli Merkle: è un limite inferiore,
+non una dimensione necessariamente raggiungibile. L'upper applica a ogni
+apertura `c61_max_pruned_binary_siblings`, lo stesso limite del codec.
+
+| PCS | Byte fissi senza fratelli Merkle | Upper byte fratelli | Upper totale |
+|---|---:|---:|---:|
+| W/D35 | 6.933.788 | 7.012.352 | 13.946.140 |
+| A/D34 | 6.930.620 | 6.848.512 | 13.779.132 |
+
+Il cap di 8 MiB cade dentro entrambi gli intervalli. Quindi il formato
+non garantisce che basti; questo conteggio non dimostra che ogni prova
+lo superi. Non vengono generate PCS D34/D35 né misurate frontiere reali.
+
+Sommando una PCS W e `slot+1` PCS A, corpo e header, si ottiene:
+
+| O | Lower totale | Upper totale |
+|---:|---:|---:|
+| 0 | 47.843.538 | 65.055.602 |
+| 150 | 54.872.980 | 78.950.388 |
+| 300 | 61.804.350 | 92.730.270 |
+
+A entrambi gli estremi vanno aggiunti `len(gamma_W)+len(gamma_A)` byte.
+Il lower supera 35 MB per ogni calibrazione ammessa, anche omettendo
+GKR congiunti e fratelli Merkle. L'upper qui deriva dagli schemi, non
+dall'ipotesi che ciascuna PCS rientri nel cap di 8 MiB.
+Il rapporto `native_canonical_certificate_wire` conserva `credit:false`
+e assenza di misura completa. Occorre confrontare questi conteggi con
+l'encoding nativo prima di dimensionare il trasporto; nessun limite
+runtime, profilo numerico o assunzione di sicurezza cambia per questi conti.
 
 ## Resource and measurement contract
 

@@ -83,10 +83,12 @@ Con il solo istogramma W si supera già 30,94 MB, quindi la preferenza
 di 30 MB è incompatibile con l'encoding corrente. Sono limiti inferiori,
 non misure di un certificato completo. Il nuovo conteggio di tutti i
 frame non-PCS dà un intervallo analitico di 33,98–37,44 MB, ancora senza
-header e PCS. La fixture con scale zero supera già l'allarme a 35 MB;
-non segue lo stesso esito per ogni calibrazione.
-Dimensionamento completo, adeguamento del trasporto e verifica positiva
-restano aperti.
+header e PCS. Il conteggio delle PCS aggiunge almeno 6,93 MB per apertura,
+anche omettendo tutti gli hash Merkle. Il lower totale è ora
+**47,84/54,87/61,80 MB** a O=0/150/300: l'allarme di 35 MB è superato
+per ogni calibrazione. L'upper PCS da schema supera anche il cap individuale
+di 8 MiB; manca ancora il confronto con la serializzazione nativa.
+Adeguamento del trasporto e verifica positiva restano aperti.
 
 Il [collegamento AES/journal](../../rust/volta-pcs/src/c71_matrix/gemma/native/pool.rs)
 ora alimenta il wrapper ridotto tramite riserve del pool reale, con segni
@@ -98,7 +100,7 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 ## Next goal
 
 **Il goal di estensione resta aperto:** verificare il conteggio completo
-contro la serializzazione nativa e dimensionare le PCS, poi correggere
+contro la serializzazione nativa, comprese le PCS, poi correggere
 l'incompatibilità del codec e collegare Prepare/prover canonici
 al wrapper, conservando gli originali
 e la compilazione numerica comune; verificare poi il percorso composto AES positivo.

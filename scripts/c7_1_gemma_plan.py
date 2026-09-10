@@ -8009,6 +8009,49 @@ def b12_exp30_composition(base):
     }
 
 
+def b12_native_linear_pcs_wire(profile, mask):
+    """Analytic encode_linear census; no witness, frontier, or native proof generated."""
+    h, folds, oracles = profile['log_message_cells'], profile['folds'], profile['oracles']
+    batches = len(folds)
+    widths = [folds[0]]
+    for fold in folds[1:]:
+        widths.extend((1, fold))
+    # codec::encode_body has fixed geometry: no vector prefixes except multiproofs.
+    fields = {
+        'MAC_transfer_and_close': 24*(4*h+3),
+        'claimless_sumchecks': 24*(batches+2047*sum(folds)),
+        'OOD_answers': 24*(batches-1),
+        'base_claim_message_randomness': 24*(1+oracles[-1]['message_rows']*oracles[-1]['width']
+                                             +oracles[-1]['randomness_rows']),
+        'blinded_masks': 24*sum(widths)*(mask['message_rows']+mask['randomness_rows']),
+        'commitments': 32*(batches+2*(batches-1)+1+len(widths)),
+    }
+    openings = [(o['domain_rows'], o['width'], 8 if i == 0 else 24)
+                for i, o in enumerate(oracles)]
+    openings.append((oracles[-1]['domain_rows'], 1, 24))
+    openings.extend((mask['domain_rows'], width, 24) for width in widths for _ in range(2))
+    leaves = salts = siblings = 0
+    for domain, width, scalar_bytes in openings:
+        q = min(domain, 512)
+        leaves += q*width*scalar_bytes
+        salts += q*32
+        # c61_max_pruned_binary_siblings: each level has at most q present nodes.
+        nodes, present = domain, q
+        while nodes > 1:
+            siblings += min(present, nodes-present)
+            nodes //= 2
+            present = min(present, nodes)
+    fields.update(opened_values=leaves, opened_salts=salts, multiproof_counts=4*len(openings))
+    lower = sum(fields.values())  # omit hashes; not an attainable minimum claim
+    upper = lower+32*siblings
+    return {'credit': False, 'log_message_cells': h, 'fixed_wire_bytes': fields,
+        'multiproof_sibling_bytes_upper': 32*siblings, 'wire_interval': [lower, upper],
+        'decoder_cap_bytes': 8 << 20, 'upper_fits_decoder_cap': upper <= 8 << 20,
+        'native_serialization_checked': False,
+        'lower_omits': 'all Merkle sibling hashes',
+        'source': 'rust/volta-pcs/src/c71_matrix/codec.rs::encode_linear'}
+
+
 def b12_native_wire_body_envelope():
     """Current Wire schemas, metadata only; PCS feasibility is NOT inferred.
 
@@ -8576,6 +8619,17 @@ def b12_pcs_binding_assessment():
                 'bits': math.log2(hiding_total.denominator)-math.log2(hiding_total.numerator),
                 'native_profile_selected': log_size <= 14},
             "native_profile_selected": log_size <= 14})
+    linear_pcs_wire = [b12_native_linear_pcs_wire(p, mask) for p in profiles
+                       if p['log_message_cells'] in (34, 35)]
+    pcs_bounds = {p['log_message_cells']: p['wire_interval'] for p in linear_pcs_wire}
+    certificate_wire = b12_native_wire_body_envelope()
+    for slot, case in enumerate(certificate_wire['cases']):
+        case['total_wire_interval_excluding_PCS_profile_vectors'] = [
+            body + case['header_bytes_excluding_PCS_profile_vectors']
+            + pcs_bounds[35][end] + (slot+1)*pcs_bounds[34][end]
+            for end, body in enumerate(case['body_wire_interval_excluding_PCS_and_header'])]
+    certificate_wire['PCS_bounds_source'] = 'native_canonical_linear_PCS_wire'
+    certificate_wire['total_interval_additional_bytes'] = 'len(gamma_W) + len(gamma_A)'
     gate_up_byte_profile = profiles.pop()
     byte_profile = profiles.pop()
     auxiliary_profile = profiles.pop()  # P0 C/X geometry; keep the existing public profile list.
@@ -8726,6 +8780,8 @@ def b12_pcs_binding_assessment():
             "interleaving_factor_multiplier_needed": False,
             "proof_kind": "mathematical interpolation/counting proof with exhaustive finite checks, not a new Lean theorem"},
         "ideal_oracle_profiles": profiles, "shared_mask_code": mask,
+        "native_canonical_linear_PCS_wire": linear_pcs_wire,
+        "native_canonical_certificate_wire": certificate_wire,
         "private_ood_points": 1, "query_count_each_oracle": query_count,
         "root_exposure_slots": 3,
         "old_unsalted_root": {"B2_uses_hiding_Merkle_MMCS": False,

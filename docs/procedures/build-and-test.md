@@ -99,8 +99,9 @@ comprensivo del record finale. Il test di trasporto usa un buffer di
 componente realmente serializzata. Conservare `native_composed` e
 `native_certificate` dopo modifiche al writer.
 
-Il filtro Python `native_wire_body or complete_fixed_run` controlla il
-nuovo envelope del corpo canonico contro i censimenti field già presenti.
+Il filtro Python `canonical_PCS_wire or native_wire_body or complete_fixed_run`
+controlla il corpo canonico contro i censimenti field già presenti e
+il conteggio PCS di maschere, sali, frontiere e aperture storiche.
 Non compila Rust né misura certificati; preservare le etichette di lower,
 upper e condizione sul cap PCS quando si riusano questi numeri.
 

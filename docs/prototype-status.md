@@ -345,11 +345,22 @@ or private streams. The joint subtotal is **11,466,948 base rows**,
 allowed softmax values; complete caller, accepted-history induction
 and whole-run simulation remain open. No full Gemma execution is claimed.
 
+The [common numeric profile compiler](c7.1-gemma31b-design.md#b12-profilo-numerico-comune-ricette-derivate-dai-produttori)
+now derives all 411 matrix RNE, 421 RMS, GELU/gate-up, RoPE,
+score/EXP30/PV and residual/output recipes from one public scale map.
+It enforces the tied embedding/head W exponent and fixed Pi=-14,
+rejects missing/unused scales and checks every compiled RMS envelope.
+The recipe digest remains identical across all three KV contexts.
+A metadata check with synthetic scales verifies these constraints;
+it supplies neither actual calibration nor certified table contents.
+The complete verifier must own that expected profile and its tables.
+
 Forty-six B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
 range/product identities and the joint source bounds. The relevant Python checks total 229; the 17
 narrow bootstrap/pool checks and prior forty-seven B12 PCS/caller/layout checks pass.
 Two new EXP30 checks cover the same-source producer and full route metadata.
+One common-profile check covers canonical scale derivation in all three contexts.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

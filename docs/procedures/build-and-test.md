@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the narrow filters
 below with one test thread. After compilation, bound each test invocation
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its forty-nine tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its fifty tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -110,6 +110,10 @@ Its kernel uses 2,360 FS draws; total PCS draws vary with public sampler
 retries. Metadata cover all three canonical KV contexts and original source
 forms; no full Gemma body is allocated. The wide lookup preserves legacy
 i16 framing; rerun `c71_b12_lookup` and affected Gemma callers after edits.
+The separate `c71_b12_profile` check derives all canonical numeric recipes
+from one synthetic scale map across O=0/150/300. It checks missing/extra
+scales, tied W exponents, Pi=-14 and coupled score/EXP30 changes; no
+Gemma witness, calibrated table generation or physical execution is involved.
 The byte bridge checks biased i48/i32/i16 source forms, signed extrema,
 physical byte addresses and incorrect affine shifts with 551 ideal Fp3
 rows and one ranged byte PCS. The `c71_b12_range_bytes` filter separately

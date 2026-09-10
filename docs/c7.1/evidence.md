@@ -154,6 +154,34 @@ e configurazione `rust/.cargo`; ogni test è seriale entro 60 s/2 GiB.
 Sono controlli di sviluppo, non benchmark su albero pulito o test dell'intero
 workspace. Nessuna build Lean o esecuzione GPU.
 
+## Integer RMS preparation on canonical descriptors
+
+Il preparatore ridotto usa ora `Norm::prepare_row`, che calcola S/P/Y
+con `rms::Integer` e gli stessi coefficienti/limiti del compilatore
+booleano. È rimossa la formula privata fissata a due colonne; non cambia
+la relazione di verifica né il limite aritmetico u128 ammesso.
+
+`c71_b12_native_norm_rows` esercita una riga sintetica su ciascuna delle
+421 norme canoniche (361 pesate, 60 senza parametro), con magnitudini e
+segni differenti per testa. Controlla statistiche separate, pesi condivisi,
+prodotti originali e output contro il riferimento intero preesistente.
+Rifiuta input/weight fuori range, cardinalità e presenza dei pesi errate;
+controlla inoltre mezze soglie positive/negative, output zero e overflow.
+Non esegue il grafo 100+50, i getter canonici o uno snapshot D34/D35.
+
+`c71_b12_rms_public_circuit` confronta il nuovo rounding con il riferimento
+intero e con il replay booleano su cinque ricette, incluse scale non nulle,
+conservando gate/depth/row count. Il test ratio copre il limite di larghezza
+aritmetica condiviso. Il percorso composto ridotto conserva la propria
+verifica nel modello MAC ideale, senza credito AES o canonico completo.
+
+Validazione mirata: **5 test Rust passati** (i cinque filtri indicati nella
+[procedura](../procedures/build-and-test.md)) e **2 controlli Python passati**
+(`complete_fixed_run`/`native_small_profile`), con limiti seriali 60 s/2 GiB,
+un worker Rayon e build offline/locked a un job nel target canonico.
+Passa anche `cargo check --lib` senza `cfg(test)`; verificati formattazione,
+link locali e diff. Nessun bootstrap, benchmark o esecuzione GPU.
+
 ## Canonical verifier body and prefix
 
 Il [nuovo corpo](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)

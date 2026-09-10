@@ -8091,6 +8091,7 @@ def b12_complete_fixed_run_composition(base):
             'sources_A': 3471, 'producers': 2328, 'P0': 773, 'RMS': 421, 'RNE': 892,
             'old_tokens': [0, 150, 300], 'global_pre_norm_KV_aliases': 10,
             'canonical_prepare_executed': False, 'canonical_proof_dispatch_executed': False,
+            'canonical_norm_row_descriptors_checked': 421,
             'canonical_verifier_body_implemented': True,
             'canonical_verifier_prefix_checked': True,
             'canonical_registry_pool_wrapper_implemented': True,

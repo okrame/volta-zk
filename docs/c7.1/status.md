@@ -55,8 +55,15 @@ Il [compilatore causale canonico](../../rust/volta-pcs/src/c71_matrix/gemma/nati
 deriva 2.328 produttori per tutte le 3.471 sorgenti A, nei contesti
 O=0/150/300. Controlla dipendenze, unicità e i dieci alias K/V pre-norm
 globali; omissioni, duplicazioni e cicli sono respinti. È compilazione
-pubblica dei descrittori pinned, non ancora esecuzione numerica o verifica positiva
-delle prove sui 773 P0/421 RMS.
+pubblica dei descrittori pinned, non ancora esecuzione numerica del grafo
+completo o verifica positiva delle prove sui 773 P0/421 RMS.
+
+Il preparatore ridotto ora riusa la [valutazione RMS intera](../../rust/volta-pcs/src/c71_matrix/rms.rs)
+con coefficienti e limiti comuni al circuito booleano. La preparazione
+per teste è collegata ai descrittori canonici; restano da collegare gli
+altri produttori numerici e lo snapshot completo. Il relativo controllo
+locale passa su tutte le 421 norme con righe sintetiche, non un'inferenza
+canonica.
 
 Il [corpo del verifier canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
 ora implementa la schedule completa di security §3 con ricette comuni,

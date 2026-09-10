@@ -248,6 +248,24 @@ con tre righe AES; non comprende ancora la composizione positiva da
 797.139 righe base, né il port dei produttori numerici al grafo canonico.
 I [limiti di esecuzione](../procedures/build-and-test.md) rimangono invariati.
 
+### Shared integer RMS preparation
+
+`rms::Integer` deriva gli stessi coefficienti ridotti, epsilon 10^-6,
+range simmetrici e limite aritmetico u128 usati da `rms::compile`.
+Calcola RNE con confronti delle mezze soglie al quadrato, senza floating
+point; segno, parità, output zero e overflow seguono il circuito.
+`row` calcola S dalla somma dei quadrati degli input e P dai pesi effettivi:
+il caller non fornisce una statistica o un output di normalizzazione.
+
+`Norm::prepare_row` divide un token per teste usando colonne/teste del
+descrittore, ripete gli stessi pesi per testa e distingue le norme pesate
+dalle V senza parametro. Restituisce statistiche per testa e P/Y in ordine
+head-major. Il preparatore ridotto usa già questo percorso; il dispatch
+numerico canonico deve ancora collocare i risultati nei rispettivi raw,
+statistiche e output, con gli alias e le righe selezionate del DAG.
+Non vengono eseguiti snapshot completi o PCS D34/D35 da questi helper.
+Il limite u128 esistente resta un rifiuto pubblico, non viene ampliato.
+
 ### Canonical verifier body
 
 Il [corpo canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)

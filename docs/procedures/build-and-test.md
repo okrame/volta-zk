@@ -78,6 +78,13 @@ per riserva insufficiente. Compila solo descrittori pubblici e usa una
 socketpair con capacità AES di tre righe, con gli stessi limiti 60 s/2 GiB.
 Non esegue un certificato positivo né il bootstrap canonico completo.
 
+Per la preparazione RMS condivisa eseguire separatamente
+`c71_b12_native_norm_rows`, `c71_b12_rms_public_circuit`,
+`c71_b12_ratio_circuit`, `c71_b12_native_prepare` e
+`c71_b12_native_composed`, sempre entro 60 s/2 GiB e un worker Rayon.
+Il primo valuta righe sintetiche per le 421 norme canoniche, senza W/A
+completi; i due circuiti controllano semantica e geometria preesistenti.
+
 The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate
 D31/D33 source counts and partial target/cube totals describe those fixtures,

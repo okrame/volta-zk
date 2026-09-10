@@ -189,6 +189,7 @@ def test_B12_complete_fixed_run_preserves_exact_errors_and_counts_caller_resourc
     canonical = full['native_canonical_producers']
     assert (canonical['sources_A'], canonical['producers']) == (3471, 2328)
     assert canonical['old_tokens'] == [0, 150, 300]
+    assert canonical['canonical_norm_row_descriptors_checked'] == 421
     assert canonical['canonical_verifier_body_implemented']
     assert canonical['canonical_verifier_prefix_checked']
     assert canonical['canonical_registry_pool_wrapper_implemented']

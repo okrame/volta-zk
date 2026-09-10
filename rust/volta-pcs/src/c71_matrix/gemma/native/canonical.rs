@@ -190,6 +190,76 @@ mod tests {
     use super::*;
 
     #[test]
+    fn c71_b12_native_norm_rows_use_canonical_heads_and_common_integer_recipes() {
+        let plan = super::super::super::compile().unwrap();
+        let (s, o, sm) = plan.softmax_sources_at(0).unwrap();
+        let mut exponents: BTreeMap<_, _> =
+            profile::Recipes::exponent_sources(&s, &o, &sm).into_iter().map(|id| (id, 0)).collect();
+        for l in &sm.layers {
+            exponents.insert(l.pi, -14);
+        }
+        let p = Canonical::compile(0, &[0; 772], &exponents).unwrap();
+        let rms = &p.sources.attention.rope.gate_up.gelu.rms;
+        let mut checked = (0, 0);
+        for (i, n) in rms.norms.iter().enumerate() {
+            // A different magnitude/sign in every head catches accidental
+            // normalization across heads. No full token/model witness exists.
+            let mut input = vec![0; n.heads * n.columns];
+            for h in 0..n.heads {
+                input[h * n.columns + h % n.columns] =
+                    (h as i64 + 1) * if h % 2 == 0 { 1 } else { -1 };
+            }
+            let weights: Vec<i16> =
+                (0..n.columns).map(|c| if c % 2 == 0 { 2 } else { -1 }).collect();
+            let w = n.cohort.map(|_| weights.as_slice());
+            let (s, product, y) = n.prepare_row(p.recipes.rms[i], &input, w).unwrap();
+            assert_eq!((s.len(), product.len(), y.len()), (n.heads, input.len(), input.len()));
+            assert_eq!(p.recipes.rms[i], [0; 3]);
+            for h in 0..n.heads {
+                assert_eq!(s[h], (h as i64 + 1).pow(2));
+                for c in 0..n.columns {
+                    let index = h * n.columns + c;
+                    assert_eq!(product[index], input[index] * w.map_or(1, |w| i64::from(w[c])));
+                    assert_eq!(
+                        Some(y[index]),
+                        kernel::rms::tests::expected(
+                            product[index],
+                            s[h],
+                            n.columns,
+                            n.cohort.is_some(),
+                            [1_000_000 * n.columns as u128, n.columns as u128, 1_000_000],
+                        )
+                    );
+                }
+            }
+            assert!(n.prepare_row(p.recipes.rms[i], &input[..input.len() - 1], w).is_err());
+            let wrong = if n.cohort.is_some() { None } else { Some(weights.as_slice()) };
+            assert!(n.prepare_row(p.recipes.rms[i], &input, wrong).is_err());
+            input[0] = -32768;
+            assert!(n.prepare_row(p.recipes.rms[i], &input, w).is_err());
+            if n.cohort.is_some() {
+                checked.0 += 1;
+            } else {
+                checked.1 += 1;
+            }
+        }
+        assert_eq!(checked, (361, 60));
+        // Exact signed half ties use no floating point.
+        let integer = kernel::rms::Integer::new(2, 0, 0, 4, true).unwrap();
+        for (p, y) in [(1, 62), (3, 188), (-1, -62), (-3, -188), (0, 0)] {
+            assert_eq!(integer.round(p, 0).unwrap(), y);
+        }
+        let small = kernel::rms::Integer::new(2, 0, 0, 11, true).unwrap();
+        assert_eq!(small.round(1, 0).unwrap(), 0);
+        assert_eq!(small.round(-1, 0).unwrap(), 0);
+        assert!(integer.row(&[0, 0], Some(&[i16::MIN, 0])).is_err());
+        assert!(integer.row(&[0, 0], Some(&[1])).is_err());
+        assert!(integer.round(i64::MIN, 0).is_err());
+        assert!(integer.round(32767i64.pow(2), 0).is_err());
+        assert!(kernel::rms::Integer::new(5376, 128, 128, -128, true).is_err());
+    }
+
+    #[test]
     fn c71_b12_native_canonical_all_sources_have_causal_producers_across_three_contexts() {
         let plan = super::super::super::compile().unwrap();
         let (s, o, sm) = plan.softmax_sources_at(0).unwrap();

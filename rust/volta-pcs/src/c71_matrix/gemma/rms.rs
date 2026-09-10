@@ -18,6 +18,31 @@ pub(in crate::c71_matrix) struct Norm {
     pub output: usize,
 }
 
+impl Norm {
+    /// One private token, split into the SAME head-major rows as the verifier.
+    /// Weights are shared across heads; global V is unweighted pre-norm K.
+    pub fn prepare_row(
+        &self,
+        [x, w, y]: [i32; 3],
+        input: &[i64],
+        weight: Option<&[i16]>,
+    ) -> Result<(Vec<i64>, Vec<i64>, Vec<i64>), String> {
+        let integer =
+            crate::c71_matrix::rms::Integer::new(self.columns, x, w, y, self.cohort.is_some())?;
+        if self.heads == 0 || self.columns.checked_mul(self.heads) != Some(input.len()) {
+            return Err("RMS private token/head shape differs".into());
+        }
+        let (mut statistic, mut product, mut output) = (Vec::new(), Vec::new(), Vec::new());
+        for head in input.chunks_exact(self.columns) {
+            let (s, p, y) = integer.row(head, weight)?;
+            statistic.push(s);
+            product.extend(p);
+            output.extend(y);
+        }
+        Ok((statistic, product, output))
+    }
+}
+
 pub(in crate::c71_matrix) struct Sources {
     pub bytes: Bytes,
     pub norms: Vec<Norm>,

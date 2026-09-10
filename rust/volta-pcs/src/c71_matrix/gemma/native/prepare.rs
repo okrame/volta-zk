@@ -40,27 +40,6 @@ pub(super) fn rne(n: i128, d: i128) -> i64 {
     (q + i128::from(2 * r > d || (2 * r == d && q & 1 != 0))) as i64
 }
 
-fn rms_round(p: i64, s: i64) -> Result<i64, String> {
-    // The reduced profile has d=2 and ex=ew=ey=0. Exact squared half-boundaries.
-    let n = 1_000_000u128 * (p.unsigned_abs() as u128).pow(2);
-    let d = 1 + 500_000u128 * s as u128;
-    if 4 * n >= d * 65535u128.pow(2) {
-        return Err("private preparation Stop".into());
-    }
-    let (mut lo, mut hi) = (0u128, 32768u128);
-    while hi - lo > 1 {
-        let m = (hi + lo) / 2;
-        if d * m * m <= n {
-            lo = m;
-        } else {
-            hi = m;
-        }
-    }
-    let half = d * (2 * lo + 1).pow(2);
-    let y = lo + u128::from(4 * n > half || (4 * n == half && lo & 1 != 0));
-    Ok(if p < 0 { -(y as i64) } else { y as i64 })
-}
-
 impl Snapshot {
     #[cfg(test)]
     pub(super) fn corrupt_value(&mut self, p: &Profile, id: usize, row: usize, col: usize) {
@@ -146,26 +125,20 @@ impl Snapshot {
                     }
                     Step::Norm(i) => {
                         let n = &p.rms.norms[*i];
-                        let x = [get(&values, n.input, row, 0), get(&values, n.input, row, 1)];
-                        if x.iter().any(|x| !(-32767..=32767).contains(x)) {
-                            return Err(stop());
-                        }
-                        let s = x.iter().map(|x| x * x).sum();
-                        let products = (0..2)
-                            .map(|c| {
-                                x[c] * n
-                                    .cohort
-                                    .map_or(1, |i| w.weight(p, p.plan.cohorts[i].tensor, 0, c))
-                            })
-                            .collect::<Vec<_>>();
-                        let y = products
-                            .iter()
-                            .map(|&v| rms_round(v, s))
-                            .collect::<Result<Vec<_>, _>>()?;
+                        let x: Vec<_> = (0..n.columns * n.heads)
+                            .map(|c| get(&values, n.input, row, c))
+                            .collect();
+                        let weights: Option<Vec<_>> = n.cohort.map(|i| {
+                            (0..n.columns)
+                                .map(|c| w.weight(p, p.plan.cohorts[i].tensor, 0, c) as i16)
+                                .collect()
+                        });
+                        let (s, products, y) =
+                            n.prepare_row([0; 3], &x, weights.as_deref()).map_err(|_| stop())?;
                         if let Some(i) = n.cohort {
                             result.push((i, products));
                         }
-                        result.extend([(n.statistic, vec![s]), (n.output, y)]);
+                        result.extend([(n.statistic, s), (n.output, y)]);
                     }
                     Step::Rne(pair) => {
                         let y = (0..sources[pair.raw].cols)

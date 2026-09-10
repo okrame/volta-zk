@@ -307,6 +307,112 @@ fn constant(value: u128, n: usize) -> Vec<usize> {
     (0..n).map(|i| usize::from(i < 128 && value >> i & 1 == 1)).collect()
 }
 
+/// The producer and Boolean verifier share public coefficients and limits.
+/// Construction does not build a circuit or receive any protocol randomness.
+pub(super) struct Integer {
+    columns: usize,
+    weighted: bool,
+    coefficients: [u128; 3],
+}
+
+impl Integer {
+    pub fn new(
+        columns: usize,
+        input_exponent: i32,
+        scale_exponent: i32,
+        output_exponent: i32,
+        weighted: bool,
+    ) -> Result<Self, String> {
+        if columns == 0 || columns > 5376 || (!weighted && scale_exponent != 0) {
+            return Err("RMS public parameters differ".into());
+        }
+        let ex = i64::from(input_exponent) + i64::from(scale_exponent) - i64::from(output_exponent);
+        let shift = 0.max(-2 * ex).max(-2 * i64::from(input_exponent));
+        let shifted = |n: u128, s: i64| -> Result<u128, String> {
+            if !(0..128).contains(&s) {
+                return Err("RMS public coefficient exceeds u128".into());
+            }
+            n.checked_mul(1u128 << s).ok_or_else(|| "RMS public coefficient exceeds u128".into())
+        };
+        let mut coefficients = [
+            shifted(1_000_000 * columns as u128, 2 * ex + shift)?,
+            shifted(columns as u128, shift)?,
+            shifted(1_000_000, 2 * i64::from(input_exponent) + shift)?,
+        ];
+        let mut common = coefficients[0];
+        for mut v in coefficients[1..].iter().copied() {
+            while v != 0 {
+                (common, v) = (v, common % v);
+            }
+        }
+        for v in &mut coefficients {
+            *v /= common;
+        }
+        rounding_width(
+            coefficients,
+            if weighted { 32 } else { 16 },
+            columns as u128 * 32767u128.pow(2),
+            false,
+        )?;
+        Ok(Self { columns, weighted, coefficients })
+    }
+
+    /// Exact signed RNE of sqrt(a*P^2/(b+c*S)); overflow is rejection.
+    pub fn round(&self, product: i64, statistic: i64) -> Result<i64, String> {
+        let limit = if self.weighted { 32767u64.pow(2) } else { 32767 };
+        if product.unsigned_abs() > limit
+            || statistic < 0
+            || statistic as u128 > self.columns as u128 * 32767u128.pow(2)
+        {
+            return Err("RMS private product/statistic outside symmetric range".into());
+        }
+        // new() applies the circuit's full u128 envelope before private input.
+        let [a, b, c] = self.coefficients;
+        let numerator = a * u128::from(product.unsigned_abs()).pow(2);
+        let denominator = b + c * statistic as u128;
+        if 4 * numerator >= denominator * 65535u128.pow(2) {
+            return Err("RMS private output overflow".into());
+        }
+        let (mut lo, mut hi) = (0u128, 32768u128);
+        while hi - lo > 1 {
+            let mid = (lo + hi) / 2;
+            if denominator * mid * mid <= numerator {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        let half = denominator * (2 * lo + 1).pow(2);
+        let output =
+            lo + u128::from(4 * numerator > half || (4 * numerator == half && lo & 1 == 1));
+        Ok(if product < 0 { -(output as i64) } else { output as i64 })
+    }
+
+    /// One head: compute S and the original P before rounded Y. No surrogate S
+    /// or producer-supplied normalization output is accepted.
+    pub fn row(
+        &self,
+        input: &[i64],
+        weight: Option<&[i16]>,
+    ) -> Result<(i64, Vec<i64>, Vec<i64>), String> {
+        if input.len() != self.columns
+            || self.weighted != weight.is_some()
+            || input.iter().any(|x| !(-32767..=32767).contains(x))
+            || weight.is_some_and(|w| w.len() != self.columns || w.contains(&i16::MIN))
+        {
+            return Err("RMS private input/weight row differs".into());
+        }
+        let statistic = input.iter().map(|x| x * x).sum();
+        let product: Vec<_> = input
+            .iter()
+            .enumerate()
+            .map(|(j, x)| x * weight.map_or(1, |w| i64::from(w[j])))
+            .collect();
+        let output = product.iter().map(|&p| self.round(p, statistic)).collect::<Result<_, _>>()?;
+        Ok((statistic, product, output))
+    }
+}
+
 pub(super) fn compile(
     columns: usize,
     input_exponent: i32,
@@ -314,34 +420,10 @@ pub(super) fn compile(
     output_exponent: i32,
     weighted: bool,
 ) -> Result<Circuit, String> {
-    if columns == 0 || columns > 5376 || (!weighted && scale_exponent != 0) {
-        return Err("RMS public parameters differ".into());
-    }
-    let ex = i64::from(input_exponent) + i64::from(scale_exponent) - i64::from(output_exponent);
-    let shift = 0.max(-2 * ex).max(-2 * i64::from(input_exponent));
-    let shifted = |n: u128, s: i64| -> Result<u128, String> {
-        if !(0..128).contains(&s) {
-            return Err("RMS public coefficient exceeds u128".into());
-        }
-        n.checked_mul(1u128 << s).ok_or_else(|| "RMS public coefficient exceeds u128".into())
-    };
-    let mut coefficients = [
-        shifted(1_000_000 * columns as u128, 2 * ex + shift)?,
-        shifted(columns as u128, shift)?,
-        shifted(1_000_000, 2 * i64::from(input_exponent) + shift)?,
-    ];
-    let mut common = coefficients[0];
-    for mut v in coefficients[1..].iter().copied() {
-        while v != 0 {
-            (common, v) = (v, common % v);
-        }
-    }
-    for v in &mut coefficients {
-        *v /= common;
-    }
+    let p = Integer::new(columns, input_exponent, scale_exponent, output_exponent, weighted)?;
     let pw = if weighted { 32 } else { 16 };
     let limit = if weighted { 32767u128.pow(2) } else { 32767 };
-    rounding_circuit(coefficients, pw, limit, columns as u128 * 32767u128.pow(2), false)
+    rounding_circuit(p.coefficients, pw, limit, columns as u128 * 32767u128.pow(2), false)
 }
 
 /// Exact signed RNE(2^fractional_bits * numerator / denominator).
@@ -356,13 +438,12 @@ pub(super) fn compile_ratio(fractional_bits: u32) -> Result<Circuit, String> {
 // Reuse RMS's exact squared half-boundaries, sign and tie-even predicate.
 // The ratio variant squares its positive denominator inside the circuit;
 // it has no separately committed square or reciprocal.
-fn rounding_circuit(
+fn rounding_width(
     coefficients: [u128; 3],
     pw: usize,
-    limit: u128,
     statistic_limit: u128,
     square_statistic: bool,
-) -> Result<Circuit, String> {
+) -> Result<usize, String> {
     let [a, b, c] = coefficients;
     let top = a.checked_mul(4).and_then(|v| v.checked_mul(1u128 << (2 * (pw - 1))));
     let maximum_statistic = if square_statistic {
@@ -377,7 +458,18 @@ fn rounding_circuit(
         .and_then(|v| v.checked_add(b))
         .and_then(|v| v.checked_mul(((1u128 << 17) - 1).pow(2)));
     let (top, bottom) = top.zip(bottom).ok_or("RMS circuit exceeds local 128-bit limit")?;
-    let width = 128 - top.leading_zeros().min(bottom.leading_zeros()) as usize;
+    Ok(128 - top.leading_zeros().min(bottom.leading_zeros()) as usize)
+}
+
+fn rounding_circuit(
+    coefficients: [u128; 3],
+    pw: usize,
+    limit: u128,
+    statistic_limit: u128,
+    square_statistic: bool,
+) -> Result<Circuit, String> {
+    let width = rounding_width(coefficients, pw, statistic_limit, square_statistic)?;
+    let [a, b, c] = coefficients;
     let ports = 2 + pw + 48 + 16;
     let mut g =
         Builder { ports, gates: Vec::new(), depths: vec![0; ports], shared: HashMap::new() };
@@ -592,6 +684,8 @@ pub(super) mod tests {
             assert_eq!(circuit.valid, 0);
             assert_eq!(circuit.levels.last().unwrap().len(), 1);
             assert!(circuit.arithmetic_bits <= 128);
+            let integer = Integer::new(columns, ex, ew, ey, weighted).unwrap();
+            assert!(integer.round(i64::MIN, 0).is_err());
             let limit = if weighted { 32767i64.pow(2) } else { 32767 };
             let mut cases = Vec::new();
             for (p, s) in [
@@ -610,6 +704,7 @@ pub(super) mod tests {
                 (-(1i64 << (circuit.product_bits - 1)), 0),
             ] {
                 let e = expected(p, s, columns, weighted, circuit.coefficients);
+                assert_eq!(integer.round(p, s).ok(), e);
                 let y = e.unwrap_or(0);
                 cases.push((p, s, y, e.is_some()));
                 if y < 32767 {

@@ -241,13 +241,21 @@ Pi and V may have different key points. Their 571/572-row ideal checks
 close one ranged A PCS and reject changed operands with consistent raw
 outputs, wrong GQA/padding and a detached M. The arithmetic is 13,020 Fp3
 for 60 QK/PV pairs at O=0/T=150, before integer/source/KV closures.
-This component is not yet in the RoPE security subtotal. Ordinary accepted
-KV continuation remains required despite deferred recovery/restart composition.
+The [canonical fresh attention sources](../rust/volta-pcs/src/c71_matrix/gemma/attention.rs)
+now reuse RoPE Q/K, RMS V and the original o-P0 input. Score probes and
+both RNE routes keep the original MACs, bringing A to 2,926 sources /
+11,641,220,238 bytes, still D34. The known batch has 4,189 targets and
+65,067 cubes; the target guard is now 8,192 with the same cube/domain caps.
+The conditional subtotal including fresh QK/PV and both RNE retains
+**82.98617 soundness / 91.02272 ZK bits**, with **9,305,451 base rows for
+three attempts**. The fourteen Gemma checks cover the canonical routes;
+full-domain execution, mask/softmax and ordinary accepted KV continuation
+remain open. Deferred recovery/restart composition does not remove KV history.
 
-Thirty-eight B12 algebra/accounting checks include the scalar invariant,
+Thirty-nine B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 219; the 17
-narrow bootstrap/pool checks and thirty-seven B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 220; the 17
+narrow bootstrap/pool checks and thirty-eight B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -268,9 +276,9 @@ NoPeek, relation and resource composition.
 
 **Remaining work:** full Gemma malicious-verifier ZK, the complete quantized
 Gemma GKR relation using the range-checked W, full correlation census and
-both-role resource composition for the fixed run. The known 7,906,491-row upper
-for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE attempts fits the initial capacity;
-attention/KV, residual/scales, public output and other circuits remain uncounted.
+both-role resource composition for the fixed run. The known 9,305,451-row upper
+for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE/fresh-attention attempts fits the initial capacity;
+mask/softmax, ordinary KV, residual/scales, public output and other circuits remain uncounted.
 The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
 soundness bound also included failed setups/key changes; that broader
 evidence remains valid without making renewal/recovery new gates. Neither

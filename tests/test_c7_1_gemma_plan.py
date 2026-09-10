@@ -604,6 +604,41 @@ def test_B12_attention_actual_cubic_kernel_counts_include_original_probability_l
         with pytest.raises(ValueError): plan.b12_attention_product_profile(**args)
 
 
+def test_B12_attention_canonical_fresh_sources_and_RNE_compose_with_same_D34():
+    all_bounds = plan.b12_pcs_binding_assessment()
+    base = all_bounds['P0_RNE_RMS_GELU_gate_up_RoPE_composition']
+    b = all_bounds['P0_RNE_RMS_GELU_gate_up_RoPE_attention_composition']
+    s = b['sources']
+    assert s['score_source_shape'] == [8192,150]
+    assert s['additional_auxiliary_bytes'] == 60*8192*150*10+6*86016000 == 1253376000
+    assert s['auxiliary_live_bytes'] == 11641220238 and s['auxiliary_root_log_cells'] == 34
+    assert s['auxiliary_sources'] == 2926 and s['new_sources'] == 240
+    assert s['score_query_padding_is_explicit_zero_source_words']
+    assert s['Q_K_original_RoPE_V_original_RMS_and_PV_original_P0_reused']
+    assert s['original_QK_and_PV_byte_cubes'] == 1920
+    assert s['score_RNE_probe_raw_byte_cubes'] == 720 and s['PV_RNE_raw_byte_cubes'] == 480
+    assert s['A_targets_with_products_and_both_RNE'] == 4189 < 8192
+    assert s['A_cubes_with_products_and_both_RNE_upper'] == 65067 < 65536
+    assert s['score_RNE_cell_bits_sum'] == 1260 and s['PV_RNE_cell_bits_sum'] == 1270
+    assert s['PV_RNE_uses_original_o_P0_MACs_and_points']
+    assert b['additional_Fp3_correlations_upper_per_attempt'] == 13020+60+40*2530+343*120 == 155440
+    assert b['additional_FS_draw_requests'] == 5980+1260+10*2530+75*120 == 41540
+    assert b['additional_field_payload_bytes_upper_before_context_and_framing'] == 399600+24*(60+49*2530+407*120) == 4548480
+    assert b['sum_of_all_added_FS_error_degrees_upper'] == 11560+33*2530+274*120 == 127930
+    assert b['additional_MAC_degree_sum_upper_per_attempt'] == 3750+9*2530+66*120 == 34440
+    assert Fraction(b['conditional_soundness_sum']) == Fraction(base['conditional_soundness_sum'])+Fraction((1 << 74)*127930,plan.P**3)+Fraction(3*34440,plan.P**3-1)
+    assert b['conditional_ZK_sum'] == base['conditional_ZK_sum']
+    assert b['D34_geometry_and_joint_forest_unchanged'] and not b['new_PCS_chains_or_private_rng_streams']
+    assert b['Fp3_correlations_upper_per_attempt_before_other_operators'] == 1033939
+    assert b['initial_base_capacity_upper_three_attempts_before_other_operators'] == 9305451 < b['initial_base_capacity_limit']
+    assert b['both_resource_caps_hold'] and b['both_below_2_to_minus_78'] and b['full_RO_queries_upper'] < 1 << 74
+    assert b['all_original_fresh_Q_K_V_Pi_raw_and_RNE_MACs_in_same_A']
+    assert not b['ordinary_accepted_KV_history_proven'] and not b['softmax_and_mask_included']
+    assert not b['native_full_domain_execution'] and not b['all_Gemma_integer_producers_proven']
+    assert b['numerical_profile_preparation_and_calibration_outside_this_subtotal']
+    assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
+
+
 def test_B12_RoPE_joint_adjoint_counts_original_endpoints_and_fixed_public_recipe():
     cohorts = plan.gemma_weight_cohorts(plan.pinned_private_tensors())
     old = plan.gemma_rope_plan(cohorts)['summary']

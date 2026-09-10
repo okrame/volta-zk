@@ -5,6 +5,7 @@
 use super::*;
 
 pub(super) const MAX_CUBES: usize = 65536;
+pub(super) const MAX_TARGETS: usize = 8192;
 
 /// EQ-supported aligned cube in the root's Boolean table. Both this point
 /// and the PCS use most-significant-variable first (Python W-cut uses LSB).
@@ -50,7 +51,7 @@ fn bind(
         || !attempt.valid()
         || layout == [0; 32]
         || forms.is_empty()
-        || forms.len() > 4096
+        || forms.len() > MAX_TARGETS
         || count != forms.len()
         || forms.iter().map(Vec::len).sum::<usize>() > MAX_CUBES
     {

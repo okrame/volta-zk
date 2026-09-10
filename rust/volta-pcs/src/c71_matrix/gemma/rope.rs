@@ -155,6 +155,19 @@ impl Plan {
 }
 
 impl Sources {
+    pub(super) fn append(
+        mut self,
+        extra: Vec<(String, usize, usize, usize)>,
+    ) -> Result<Self, String> {
+        self.gate_up = self.gate_up.append(extra)?;
+        let mut digest = blake3::Hasher::new();
+        digest.update(b"C71-RoPE-view-A-extension-v1\0");
+        digest.update(&self.view);
+        digest.update(&self.gate_up.view);
+        self.view = *digest.finalize().as_bytes();
+        Ok(self)
+    }
+
     pub fn cell(&self, index: usize) -> Result<Option<(usize, usize, usize)>, String> {
         if index >= self.cells.next_power_of_two() {
             return Err("RoPE cell exceeds padded source domain".into());

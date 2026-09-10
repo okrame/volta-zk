@@ -7345,6 +7345,87 @@ def b12_attention_product_profile(old=0, prompt=100, tokens=150):
     }
 
 
+def b12_attention_source_profile():
+    base = b12_rope_source_profile()
+    # Keep existing 2-D word forms: head*256 query rows, 150 live keys.
+    # Query padding is explicit, hence the shape is larger than 32*150*150.
+    scores = 60*32*256*150
+    outputs = 150*32*(50*256+10*512)
+    added = 10*scores+6*outputs
+    live = base['auxiliary_live_bytes']+added
+    d = (live-1).bit_length()
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/attention.rs',
+        'fresh_old_tokens': 0, 'prompt_tokens': 100, 'new_tokens': 150,
+        'QK_PV_layer_pairs': 60, 'new_sources': 240,
+        'score_query_padding_is_explicit_zero_source_words': True,
+        'score_source_shape': [32*256,150], 'raw_output_cells': outputs,
+        'Q_K_original_RoPE_V_original_RMS_and_PV_original_P0_reused': True,
+        'additional_auxiliary_bytes': added, 'auxiliary_live_bytes': live,
+        'auxiliary_sources': base['auxiliary_sources']+240, 'auxiliary_root_log_cells': d,
+        'original_QK_and_PV_byte_cubes': 60*(8+4+4+8+4+4),
+        'score_RNE_probe_raw_byte_cubes': 60*(4+8),
+        'PV_RNE_raw_byte_cubes': 60*8,
+        'score_RNE_cell_bits_sum': 60*21, 'PV_RNE_cell_bits_sum': 50*21+10*22,
+        'PV_RNE_uses_original_o_P0_MACs_and_points': True,
+        'A_targets_with_products_and_both_RNE': base['A_targets_with_joint_RoPE_and_output_RNE']+360+120+60,
+        'A_cubes_with_products_and_both_RNE_upper': base['A_cubes_with_joint_RoPE_and_output_RNE_upper']+1920+720+480+d-base['auxiliary_root_log_cells'],
+        'canonical_fresh_source_routes_compiled': True,
+        'ordinary_accepted_KV_history_proven': False,
+        'softmax_and_mask_included': False, 'native_full_domain_execution': False,
+        'full_Gemma_security_totals': None, 'complete_security_or_physical_credit': False,
+    }
+
+
+def b12_attention_composition(base):
+    """Fresh attention and RNE in the same D34 A; Pi is still an input."""
+    sources = b12_attention_source_profile()
+    kernels = b12_attention_product_profile()['both_products']
+    dims = [21]*60+[21]*50+[22]*10
+    rne = [b12_rne_profile(c) for c in dims]
+    rows = kernels['Fp3_correlations_before_source_range_and_PCS']+60+sum(p['Fp3_correlations_upper_before_incoming_claims_and_shared_PCS'] for p in rne)
+    degree = kernels['sum_of_all_FS_error_degrees_before_shared_PCS']+sum(33*c+274 for c in dims)
+    mac = kernels['MAC_degree_sum_before_shared_PCS']+sum(p['MAC_degree_sum_upper_before_shared_PCS'] for p in rne)
+    fs_error,mac_error = Fraction((1 << 74)*degree,P**3),Fraction(3*mac,P**3-1)
+    sound = Fraction(base['conditional_soundness_sum'])+fs_error+mac_error
+    privacy = Fraction(base['conditional_ZK_sum'])
+    total = base['Fp3_correlations_upper_per_attempt_before_other_operators']+rows
+    # Three dense QK E arrays at D28 are below 2^32 words; explicit controls,
+    # sequential layer scans, public rectangles, 120 RNE and forms fit this
+    # already used RNE envelope. This is not physical schedule admission.
+    work,memory,ro = 1 << 68,1 << 41,1 << 30
+    tw = base['reduction_work_upper']+work
+    tm = base['reduction_memory_words_upper']+memory
+    return {
+        'relation': 'previous P0/RNE/RMS/GELU/gate-up/RoPE plus fresh raw QK/PV, score RNE and PV RNE to original o-P0 inputs; Pi softmax still open',
+        'sources': sources, 'raw_products': kernels,
+        'additional_Fp3_correlations_upper_per_attempt': rows,
+        'additional_FS_draw_requests': kernels['FS_draw_requests']+60*21+sum(p['FS_draw_requests'] for p in rne),
+        'additional_field_payload_bytes_upper_before_context_and_framing': kernels['field_payload_bytes_before_context_and_framing']+24*60+sum(p['field_payload_bytes_upper_before_context_and_framing'] for p in rne),
+        'sum_of_all_added_FS_error_degrees_upper': degree,
+        'additional_MAC_degree_sum_upper_per_attempt': mac,
+        'additional_global_FS_error': str(fs_error), 'additional_fixed_run_MAC_error': str(mac_error),
+        'Fp3_correlations_upper_per_attempt_before_other_operators': total,
+        'base_rows_upper_per_attempt_before_other_operators': 3*total,
+        'initial_base_capacity_upper_three_attempts_before_other_operators': 9*total,
+        'initial_base_capacity_limit': base['initial_base_capacity_limit'],
+        'additional_honest_work_u64_upper': work, 'additional_honest_memory_words_upper': memory,
+        'additional_honest_RO_events_upper': ro, 'full_RO_queries_upper': base['full_RO_queries_upper']+ro,
+        'reduction_work_upper': tw, 'reduction_memory_words_upper': tm,
+        'both_resource_caps_hold': tw < 1 << 121 and tm < 1 << 93,
+        'conditional_soundness_sum': str(sound), 'conditional_ZK_sum': str(privacy),
+        'soundness_bits': math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits': math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78': max(sound,privacy) < Fraction(1,1 << 78),
+        'D34_geometry_and_joint_forest_unchanged': True, 'new_PCS_chains_or_private_rng_streams': 0,
+        'all_original_fresh_Q_K_V_Pi_raw_and_RNE_MACs_in_same_A': True,
+        'numerical_profile_preparation_and_calibration_outside_this_subtotal': True,
+        'ordinary_accepted_KV_history_proven': False, 'softmax_and_mask_included': False,
+        'native_full_domain_execution': False, 'all_Gemma_integer_producers_proven': False,
+        'full_Gemma_security_totals': None, 'physical_schedule_admitted': False,
+    }
+
+
 def b12_rope_joint_profile(cells):
     """Joint public adjoint over aligned dyadic RoPE blocks; no source closures.
 
@@ -7844,6 +7925,7 @@ def b12_pcs_binding_assessment():
         tape_words)['cases'][-1]
     assert gate_up_byte_profile['max_XOF_bytes_per_block_upper']//8 <= tape_words
     gate_up_composition = b12_gate_up_composition(gelu_composition,p0_composition['cases'][-1],gate_up_raw,gate_up_byte_profile)
+    rope_composition = b12_rope_composition(gate_up_composition)
     for row, joint in zip(range_cases, p0_composition['cases']):
         row['large_domain_private_sampler_and_simulator_bound_derived'] = True
         if row['conditional_ZK_sum'] is None:
@@ -8032,7 +8114,8 @@ def b12_pcs_binding_assessment():
         'P0_RNE_RMS_composition': rms_composition,
         'P0_RNE_RMS_GELU_composition': gelu_composition,
         'P0_RNE_RMS_GELU_gate_up_composition': gate_up_composition,
-        'P0_RNE_RMS_GELU_gate_up_RoPE_composition': b12_rope_composition(gate_up_composition),
+        'P0_RNE_RMS_GELU_gate_up_RoPE_composition': rope_composition,
+        'P0_RNE_RMS_GELU_gate_up_RoPE_attention_composition': b12_attention_composition(rope_composition),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         'public_RoPE_joint_component': b12_rope_joint_profile(119808000),

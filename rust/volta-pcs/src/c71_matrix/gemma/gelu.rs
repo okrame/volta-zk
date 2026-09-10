@@ -1,9 +1,11 @@
 //! Canonical GELU inputs/outputs/histograms in the SAME P0/RMS byte source.
-//! Public metadata only: actual tables, RNE proofs and the driver are separate.
+//! Compact dispatch takes certified public tables; full execution is separate.
 
+use super::caller::P0Statement;
 use super::rms::prefix as point;
 use super::*;
 use crate::c71_matrix::lookup::Block;
+use crate::c71_matrix::{lookup, Auth, Fs, Key};
 
 pub(in crate::c71_matrix) struct Gelu {
     pub layer: u8,
@@ -115,6 +117,128 @@ impl Plan {
 }
 
 impl Sources {
+    fn bind_lookup_context(
+        &self,
+        s: &P0Statement<'_>,
+        tables: &[lookup::Table<'_>],
+        fs: &mut Fs,
+    ) -> Result<(), String> {
+        if tables.len() != self.gelu.len()
+            || tables
+                .iter()
+                .zip(&self.gelu)
+                .any(|(t, g)| t.profile != g.layer || t.lower != -32767 || t.outputs.len() != 65535)
+            || s.weights.num_roots() != 1
+            || s.auxiliary.num_roots() != 1
+            || s.quantization == [0; 32]
+            || !s.attempt.valid()
+            || s.weight_gamma.is_empty()
+            || s.auxiliary_gamma.is_empty()
+            || s.auxiliary_layout.weight_layout != self.rms.bytes.scalar.weight_layout
+            || s.auxiliary_layout.layout.layout_digest != self.rms.bytes.scalar.layout.layout_digest
+        {
+            return Err("GELU canonical table or fixed source context differs".into());
+        }
+        // Tables are the verifier's certified public profile. Shape and
+        // digest binding alone do not certify that an arbitrary table is GELU.
+        let mut bytes = b"C71-canonical-GELU-B12-v1;original-gate-X-Y-M\0".to_vec();
+        bytes.extend(s.weights.roots()[0]);
+        bytes.extend(s.auxiliary.roots()[0]);
+        for gamma in [s.weight_gamma, s.auxiliary_gamma] {
+            bytes.extend((gamma.len() as u64).to_le_bytes());
+            bytes.extend(gamma);
+        }
+        bytes.extend(s.quantization);
+        bytes.extend(s.attempt.encode());
+        bytes.extend(self.view);
+        fs.set_phase(0xf00);
+        fs.record(0xd0, &bytes);
+        Ok(())
+    }
+
+    pub fn prove_lookup(
+        &self,
+        s: &P0Statement<'_>,
+        tables: &[lookup::Table<'_>],
+        read: impl Fn(usize, usize, usize, usize) -> u8,
+        fs: &mut Fs,
+        rows: &mut std::vec::IntoIter<Auth>,
+    ) -> Result<(lookup::Proof, lookup::Pending<Auth>), String> {
+        self.bind_lookup_context(s, tables, fs)?;
+        let blocks = self.blocks();
+        let statement = lookup::Statement {
+            root: s.auxiliary,
+            profile: s.auxiliary_gamma,
+            view: self.view,
+            attempt: s.attempt,
+            blocks: &blocks,
+            tables,
+        };
+        lookup::prove(
+            &statement,
+            |i| {
+                let Some(Cell::Query { gelu, row, column }) = self.cell(i).unwrap() else {
+                    unreachable!("public lookup block is not a query")
+                };
+                let g = &self.gelu[gelu];
+                let word = |source| {
+                    (i32::from(u16::from_le_bytes([
+                        read(source, row, column, 0),
+                        read(source, row, column, 1),
+                    ])) - 32768) as i16
+                };
+                (word(g.input), word(g.output))
+            },
+            |j| {
+                let g = &self.gelu[j / 65535];
+                let biased =
+                    u32::from_le_bytes(std::array::from_fn(|b| read(g.histogram, 0, j % 65535, b)));
+                (i64::from(biased) - (1 << 31)) as i32
+            },
+            fs,
+            rows,
+        )
+    }
+
+    pub fn verify_lookup(
+        &self,
+        s: &P0Statement<'_>,
+        tables: &[lookup::Table<'_>],
+        proof: &lookup::Proof,
+        delta: Fp3,
+        fs: &mut Fs,
+        rows: &mut std::vec::IntoIter<Key>,
+    ) -> Result<lookup::Pending<Key>, String> {
+        self.bind_lookup_context(s, tables, fs)?;
+        let blocks = self.blocks();
+        lookup::verify(
+            &lookup::Statement {
+                root: s.auxiliary,
+                profile: s.auxiliary_gamma,
+                view: self.view,
+                attempt: s.attempt,
+                blocks: &blocks,
+                tables,
+            },
+            proof,
+            delta,
+            fs,
+            rows,
+        )
+    }
+
+    pub fn gate_rne_pairs(&self, shifts: &[i32]) -> Result<Vec<bytes::quantize::Pair>, String> {
+        if shifts.len() != self.gelu.len() {
+            return Err("GELU gate shift profile differs".into());
+        }
+        Ok(self
+            .gelu
+            .iter()
+            .zip(shifts)
+            .map(|(g, &shift)| bytes::quantize::Pair { raw: g.raw_gate, output: g.input, shift })
+            .collect())
+    }
+
     pub fn blocks(&self) -> Vec<Block> {
         self.tiles
             .iter()
@@ -195,6 +319,124 @@ impl Sources {
 mod tests {
     use super::*;
     use crate::c71_matrix::{eq, signed};
+    use crate::c71_matrix::{
+        from_p3, gamma, matrix_config, AttemptContext, C61Commitment, MatrixRng, E,
+    };
+    use rand_010::{RngExt, SeedableRng};
+
+    fn canonical_lookup_and_gate_rne(source: &Sources, plan: &Plan) {
+        // Full public GELU table for the SPECIAL integer profile (0,0).
+        // Equality with the certified generator is checked in Python. This
+        // identity does not replace GELU by ReLU for any other profile.
+        let outputs: Vec<i16> = (-32767i32..=32767).map(|x| x.max(0) as i16).collect();
+        let tables = [lookup::Table { profile: 0, lower: -32767, outputs: &outputs }];
+        let blocks = source.blocks();
+        let wroot = C61Commitment::new(vec![[65; 32]]);
+        let aroot = C61Commitment::new(vec![[66; 32]]);
+        let gamma = gamma(&matrix_config(32).unwrap());
+        let profile = source.rms.bytes.profile(&gamma);
+        let attempt = AttemptContext {
+            session: [1; 32],
+            capacity: [2; 32],
+            slot: 0,
+            predecessor: [0; 32],
+            nonce: [3; 32],
+        };
+        let context = P0Statement {
+            weights: &wroot,
+            auxiliary: &aroot,
+            weight_gamma: &gamma,
+            auxiliary_gamma: &profile,
+            auxiliary_layout: &source.rms.bytes.scalar,
+            quantization: [67; 32],
+            attempt,
+            tokens: &[0, 1, 2, 3],
+        };
+        let count = lookup::Statement {
+            root: &aroot,
+            profile: &profile,
+            view: source.view,
+            attempt,
+            blocks: &blocks,
+            tables: &tables,
+        }
+        .required()
+        .unwrap();
+        assert_eq!(count, 669);
+        let pairs = source.gate_rne_pairs(&[2]).unwrap();
+        let count = count + source.rms.bytes.table_rne_required(plan, &pairs).unwrap();
+        assert_eq!(count, 1158);
+        let delta = signed(37);
+        let mut rng = MatrixRng::from_seed([151; 32]);
+        let rows: Vec<_> = (0..count)
+            .map(|_| Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>())))
+            .collect();
+        let keys: Vec<_> = rows.iter().map(|a| Key::new(a.m + delta * a.x)).collect();
+        let g = &source.gelu[0];
+        let inputs = [-1i64, 1, 0, 2];
+        let read = |id: usize, row: usize, col: usize, b: usize| {
+            let (word, width) = if id == g.histogram {
+                assert_eq!(row, 0);
+                (if (32766..=32769).contains(&col) { 4i64 } else { 0 }, 4)
+            } else {
+                assert!(row < 4 && col < 4);
+                if id == g.raw_gate {
+                    (4 * inputs[col], 6)
+                } else if id == g.input {
+                    (inputs[col], 2)
+                } else {
+                    assert_eq!(id, g.output);
+                    (inputs[col].max(0), 2)
+                }
+            };
+            (((word + (1i64 << (8 * width - 1))) as u64) >> (8 * b)) as u8
+        };
+        let start =
+            || Fs::new(b"canonical full-table GELU and gate RNE; pending source closures", 100_000);
+        let mut fs = start();
+        let mut prows = rows.into_iter();
+        let (lookup, p) =
+            source.prove_lookup(&context, &tables, read, &mut fs, &mut prows).unwrap();
+        let (quantize, qp) = source
+            .rms
+            .bytes
+            .prove_table_rne(plan, &context, &pairs, read, &mut fs, &mut prows)
+            .unwrap();
+        assert!(prows.next().is_none());
+        let mut expected = [Fp3::ZERO; 3];
+        for (i, w) in eq(&p.point).into_iter().enumerate() {
+            match source.cell(i).unwrap() {
+                Some(Cell::Query { column, .. }) => {
+                    expected[0] += w * signed(inputs[column]);
+                    expected[1] += w * signed(inputs[column].max(0));
+                }
+                Some(Cell::Histogram { entry, .. }) if (32766..=32769).contains(&entry) => {
+                    expected[2] += w * signed(4)
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(p.originals.map(|a| a.x), expected);
+        let mut fs = start();
+        let mut vrows = keys.into_iter();
+        let v =
+            source.verify_lookup(&context, &tables, &lookup, delta, &mut fs, &mut vrows).unwrap();
+        let qv = source
+            .rms
+            .bytes
+            .verify_table_rne(plan, &context, &pairs, &quantize, delta, &mut fs, &mut vrows)
+            .unwrap();
+        assert!(vrows.next().is_none());
+        for (a, k) in p.originals.into_iter().zip(v.originals) {
+            assert_eq!(a.m + delta * a.x, k.k);
+        }
+        assert_eq!(qp[0].output.m + delta * qp[0].output.x, qv[0].output.k);
+        assert_eq!(qp[0].raw.m + delta * qp[0].raw.x, qv[0].raw.k);
+        assert_eq!(source.forms(&v.point).unwrap().0.len(), 3);
+        assert_eq!(source.rms.bytes.table_rne_forms(plan, &pairs, &qv).unwrap().0.len(), 2);
+        // Placeholder roots above grant NO PCS acceptance. The 600-row
+        // lookup and 1,356-row P0/probe checks separately close actual PCS.
+    }
 
     fn value(source: usize, row: usize, column: usize) -> i64 {
         17 * (source as i64 + 1) + 3 * row as i64 - (column % 17) as i64
@@ -210,6 +452,7 @@ mod tests {
         plan.cohorts.push(gate);
         let before = plan.rms_sources().unwrap();
         let source = plan.gelu_sources().unwrap();
+        canonical_lookup_and_gate_rne(&source, &plan);
         assert_eq!(source.queries, 16);
         assert_eq!(source.cells, 16 + 65535);
         assert_ne!(source.rms.view, before.view);
@@ -320,6 +563,23 @@ mod tests {
         let p: Vec<_> = (0..28).map(|i| signed((i + 5) as i64)).collect();
         let (forms, _) = source.forms(&p).unwrap();
         assert_eq!(forms.each_ref().map(Vec::len), [720, 720, 960]);
+        let pairs = source.gate_rne_pairs(&vec![0; 60]).unwrap();
+        assert!(source.gate_rne_pairs(&[]).is_err());
+        let pending: Vec<_> = (0..60)
+            .map(|i| bytes::quantize::Opening {
+                output_point: (0..23).map(|j| signed((j + 3) as i64)).collect(),
+                output: 2 * i,
+                raw_point: (0..26).map(|j| signed((j + 7) as i64)).collect(),
+                raw: 2 * i + 1,
+            })
+            .collect();
+        let (forms, _, originals) =
+            source.rms.bytes.table_rne_forms(&plan, &pairs, &pending).unwrap();
+        assert_eq!(forms.len(), 120);
+        assert_eq!(forms.iter().step_by(2).map(Vec::len).sum::<usize>(), 720);
+        assert_eq!(forms.iter().skip(1).step_by(2).map(Vec::len).sum::<usize>(), 1440);
+        assert_eq!(originals, (0..120).collect::<Vec<_>>());
+        assert!(source.rms.bytes.table_rne_required(&plan, &pairs).is_err()); // D23 remains analytic
         for g in &source.gelu {
             assert_eq!(plan.cohorts[g.raw_gate].operation, "gate_proj");
             assert_eq!(plan.cohorts[g.raw_gate].layer, Some(u64::from(g.layer)));

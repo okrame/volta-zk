@@ -163,7 +163,14 @@ fraction-tree kernel needs no broad rerun.
 The `c71_b12_gemma_gelu_sources` case compares a small extended byte view
 and original X/Y/M forms, then counts every pinned GELU route and all
 1,680 compact blocks without full bodies. RMS/P0 source IDs are preserved.
-It does not execute a D19 or full D33 source PCS; gate RNE remains open.
+It also dispatches the full certified integer (0,0) GELU table and one gate
+RNE using 1,158 ideal Fp3 rows. This source-view check uses placeholder roots
+and does not execute a D19 or full D33 source PCS. Python compares all
+65,535 entries with the exact existing public-table generator.
+The `c71_b12_gemma_table_rne` case extends the ragged P0/RNE graph to
+an original whole-table X probe with 1,356 ideal Fp3 rows and both ranged
+PCS. It rejects wrong output, a changed raw that preserves rounding,
+invalid source codecs and insufficient capacity before witness reads/use.
 After changes to the shared byte extension, rerun the `c71_b12_gemma`
 filter for the existing P0/byte/RNE/RMS cases, within the same small limits.
 After byte-function changes, rerun `c71_b12_byte_functions` and

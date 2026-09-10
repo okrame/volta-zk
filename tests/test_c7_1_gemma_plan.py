@@ -461,10 +461,46 @@ def test_B12_GELU_sources_count_untrusted_inputs_and_shared_original_forms():
     assert b['A_targets_including_original_lookup_before_gate_RNE'] == 3104
     assert b['A_cubes_including_original_lookup_before_gate_RNE'] == 50426 < 65536
     assert b['original_P0_and_RMS_source_ids_preserved'] and b['public_blocks_cover_each_table_row_once']
-    assert b['missing_gate_RNE_producer_tables'] == 60
+    assert b['compiled_gate_RNE_table_pairs'] == 60
+    assert b['additional_gate_X_probe_byte_cubes'] == 720
+    assert b['additional_gate_RNE_raw_byte_cubes'] == 1440
+    assert b['A_targets_including_gate_RNE'] == 3224
+    assert b['A_cubes_including_gate_RNE'] == 52586
+    assert b['native_canonical_lookup_and_gate_RNE_without_PCS_Fp3_rows'] == 669+489
+    assert b['native_P0_table_RNE_two_ranged_PCS_Fp3_rows'] == 1356
     assert not b['included_in_P0_RNE_RMS_security_subtotal']
     assert not b['new_PCS_or_private_rng_streams_for_D33']
     assert b['full_Gemma_security_totals'] is None
+
+
+def test_B12_GELU_and_gate_RNE_recompose_same_source_errors_and_finite_capacity():
+    assessment = plan.b12_pcs_binding_assessment()
+    base = assessment['P0_RNE_RMS_composition']
+    b = assessment['P0_RNE_RMS_GELU_composition']
+    assert b['additional_gate_RNE_tables'] == 60 and b['additional_gate_RNE_cell_bits_sum'] == 60*23
+    assert b['additional_Fp3_correlations_upper_per_attempt'] == 1714+60*(1+40*23+343) == 77554
+    assert b['additional_FS_draw_requests'] == 436+60*(23+10*23+75) == 20116
+    assert b['additional_field_payload_bytes_upper_before_context_and_framing'] == 50952+60*24*(1+49*23+407) == 2261352
+    assert b['additional_MAC_degree_sum_upper_per_attempt'] == 410+60*(9*23+66) == 16790
+    degree = 193536000+3932100-1+3*sum(range(28))+5*28+60*(33*23+274)
+    assert b['sum_of_all_added_FS_error_degrees_upper'] == degree == 197531353
+    assert Fraction(b['additional_global_FS_error']) == Fraction((1 << 74)*degree,plan.P**3)
+    assert Fraction(b['conditional_soundness_sum']) == Fraction(base['conditional_soundness_sum'])+Fraction(b['additional_global_FS_error'])+Fraction(3*16790,plan.P**3-1)
+    assert b['conditional_ZK_sum'] == base['conditional_ZK_sum']
+    assert b['initial_base_capacity_upper_three_attempts_before_other_operators'] == 5281713 < b['initial_base_capacity_limit']
+    assert b['base_rows_upper_per_attempt_before_other_operators'] == 1760571
+    assert b['both_below_2_to_minus_78'] and b['both_resource_caps_hold']
+    assert b['full_RO_queries_upper'] < 1 << 74
+    assert not b['new_PCS_or_private_rng_streams']
+    assert b['all_original_probe_lookup_and_raw_MACs_in_same_A']
+    assert b['numerical_profile_preparation_and_calibration_outside_this_subtotal']
+    assert not b['actual_full_Gemma_quantization_profile_validated']
+    assert not b['native_full_domain_execution'] and not b['all_Gemma_integer_producers_proven']
+    assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
+    # This identity is only for the integer (0,0) profile of the native
+    # full-table dispatcher check. Other exponent profiles keep exact GELU.
+    table = plan.gelu_i16_table(0,0)
+    assert table == b''.join(max(x,0).to_bytes(2,'little',signed=True) for x in range(-32767,32768))
 
 
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():

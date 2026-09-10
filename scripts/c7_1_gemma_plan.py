@@ -6922,7 +6922,13 @@ def b12_gelu_source_profile():
         'original_P0_and_RMS_source_ids_preserved': True,
         'public_blocks_cover_each_table_row_once': True,
         'new_PCS_or_private_rng_streams_for_D33': 0,
-        'missing_gate_RNE_producer_tables': len(gates),
+        'compiled_gate_RNE_table_pairs': len(gates),
+        'additional_gate_X_probe_byte_cubes': query_tiles,
+        'additional_gate_RNE_raw_byte_cubes': 2*query_tiles,
+        'A_targets_including_gate_RNE': base['A_targets_including_local_V_RNE']+3+2*len(gates),
+        'A_cubes_including_gate_RNE': base['A_cubes_including_local_V_RNE_upper']+5*query_tiles+histogram_tiles,
+        'native_canonical_lookup_and_gate_RNE_without_PCS_Fp3_rows': 1158,
+        'native_P0_table_RNE_two_ranged_PCS_Fp3_rows': 1356,
         'full_Gemma_calibration_or_source_execution': False,
         'included_in_P0_RNE_RMS_security_subtotal': False,
         'full_Gemma_security_totals': None, 'complete_security_or_physical_credit': False,
@@ -7292,6 +7298,66 @@ def b12_RMS_composition(direct):
     }
 
 
+def b12_GELU_composition(rms):
+    """Conditional extension given certified, fixed public GELU tables.
+
+    Canonical X tables are untrusted committed data: a whole-table original
+    probe and RNE close BOTH ends in the same A as the lookup's original X.
+    Numerical profile generation/calibration are outside this partial bound.
+    """
+    sources = b12_gelu_source_profile()
+    lookup = b12_lookup_profile(sources['lookup_queries'],sources['lookup_table_rows'])
+    gates = [c for c in gemma_weight_cohorts(pinned_private_tensors()) if c['operation']=='gate_proj']
+    dimensions = [(c['rows']-1).bit_length()+(c['columns']-1).bit_length() for c in gates]
+    rne = [b12_rne_profile(c) for c in dimensions]
+    extra_rows = lookup['Fp3_correlations_before_range_and_shared_PCS']+sum(
+        1+p['Fp3_correlations_upper_before_incoming_claims_and_shared_PCS'] for p in rne)
+    mac_degree = lookup['MAC_degree_sum_before_shared_PCS']+sum(
+        p['MAC_degree_sum_upper_before_shared_PCS'] for p in rne)
+    degree = lookup['sum_of_all_FS_error_degrees_before_shared_PCS']+sum(33*c+274 for c in dimensions)
+    extra_fs = Fraction((1 << 74)*degree,P**3)
+    extra_mac = Fraction(3*mac_degree,P**3-1)
+    sound = Fraction(rms['conditional_soundness_sum'])+extra_fs+extra_mac
+    privacy = Fraction(rms['conditional_ZK_sum'])
+    work,memory,ro = 1 << 68,1 << 41,1 << 30
+    total_work,total_memory = rms['reduction_work_upper']+work,rms['reduction_memory_words_upper']+memory
+    total_rows = rms['Fp3_correlations_upper_per_attempt_before_other_operators']+extra_rows
+    return {
+        'relation': 'raw P0, 350 matrix-to-i16 RNE tables, 421 RMS/statistics, and 60 certified public-table GELU relations',
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/gelu.rs',
+        'lookup': lookup, 'sources': sources,
+        'additional_gate_RNE_tables': len(gates), 'additional_gate_RNE_cell_bits_sum': sum(dimensions),
+        'additional_Fp3_correlations_upper_per_attempt': extra_rows,
+        'additional_FS_draw_requests': lookup['FS_draw_requests']+sum(dimensions)+sum(p['FS_draw_requests'] for p in rne),
+        'additional_field_payload_bytes_upper_before_context_and_framing': lookup['field_payload_bytes_before_context_and_framing']+24*len(gates)+sum(
+            p['field_payload_bytes_upper_before_context_and_framing'] for p in rne),
+        'additional_MAC_degree_sum_upper_per_attempt': mac_degree,
+        'sum_of_all_added_FS_error_degrees_upper': degree,
+        'additional_global_FS_error': str(extra_fs), 'additional_fixed_run_MAC_error': str(extra_mac),
+        'Fp3_correlations_upper_per_attempt_before_other_operators': total_rows,
+        'base_rows_upper_per_attempt_before_other_operators': 3*total_rows,
+        'initial_base_capacity_upper_three_attempts_before_other_operators': 9*total_rows,
+        'initial_base_capacity_limit': rms['initial_base_capacity_limit'],
+        'new_PCS_or_private_rng_streams': 0,
+        'additional_honest_work_u64_upper': work, 'additional_honest_memory_words_upper': memory,
+        'additional_honest_RO_events_upper': ro,
+        'full_RO_queries_upper': rms['full_RO_queries_upper']+ro,
+        'reduction_work_upper': total_work, 'reduction_memory_words_upper': total_memory,
+        'both_resource_caps_hold': total_work < 1 << 121 and total_memory < 1 << 93,
+        'conditional_soundness_sum': str(sound), 'conditional_ZK_sum': str(privacy),
+        'soundness_bits': math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits': math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78': max(sound,privacy) < Fraction(1,1 << 78),
+        'all_original_probe_lookup_and_raw_MACs_in_same_A': True,
+        'certified_public_tables_and_consistent_shifts_fixed_before_roots_required': True,
+        'public_table_reads_and_hashing_counted': True,
+        'numerical_profile_preparation_and_calibration_outside_this_subtotal': True,
+        'actual_full_Gemma_quantization_profile_validated': False,
+        'native_full_domain_execution': False, 'all_Gemma_integer_producers_proven': False,
+        'full_Gemma_security_totals': None, 'physical_schedule_admitted': False,
+    }
+
+
 def b12_pcs_binding_assessment():
     """Unique-decoding route for the published IOPP; source/hash compilation stays explicit."""
     q = P**3
@@ -7525,6 +7591,7 @@ def b12_pcs_binding_assessment():
         fixed_boot, merkle_collision+merkle_deferred, bootstrap_work, bootstrap_memory,
         tape_words)
     direct_composition = b12_direct_P0_RNE_composition(p0_composition)
+    rms_composition = b12_RMS_composition(direct_composition)
     for row, joint in zip(range_cases, p0_composition['cases']):
         row['large_domain_private_sampler_and_simulator_bound_derived'] = True
         if row['conditional_ZK_sum'] is None:
@@ -7710,7 +7777,8 @@ def b12_pcs_binding_assessment():
         'native_P0_original_MAC_caller': b12_p0_native_caller(),
         'raw_P0_two_source_composition': p0_composition,
         'direct_P0_RNE_composition': direct_composition,
-        'P0_RNE_RMS_composition': b12_RMS_composition(direct_composition),
+        'P0_RNE_RMS_composition': rms_composition,
+        'P0_RNE_RMS_GELU_composition': b12_GELU_composition(rms_composition),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         "claimless_projection": {

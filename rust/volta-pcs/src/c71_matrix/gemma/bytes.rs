@@ -6,6 +6,8 @@ use super::{
     *,
 };
 
+pub(super) mod quantize;
+
 struct ByteTile {
     scalar: usize,
     first: usize,
@@ -392,8 +394,21 @@ mod tests {
 
     #[test]
     fn c71_b12_gemma_p0_rne_uses_same_ragged_raw_cut_and_quantized_input_macs() {
+        p0_rne_graph(false);
+    }
+
+    #[test]
+    fn c71_b12_gemma_table_rne_probes_share_original_raw_and_consumer_sources() {
+        p0_rne_graph(true);
+    }
+
+    fn p0_rne_graph(table_probe: bool) {
         use super::super::caller::{Compact, P0Statement};
         use crate::c71_matrix::{eq, rne};
+        enum QuantizedProof {
+            Direct(rne::Proof),
+            Table(quantize::Proof),
+        }
         let sources = vec![
             Source { name: "embedding".into(), rows: 4, cols: 3, packed_offset: 0 },
             Source { name: "projection".into(), rows: 3, cols: 3, packed_offset: 12 },
@@ -466,8 +481,11 @@ mod tests {
             + rne::required(4, 2)
             + range::required(10, 7)
             + range::required(10, range::Alphabet::Byte)
-            + 64;
-        assert_eq!(count, 1355);
+            + 64
+            + usize::from(table_probe);
+        assert_eq!(count, 1355 + usize::from(table_probe));
+        let pairs = [quantize::Pair { raw: 1, output: bytes.scalar.input_sources[1], shift: 2 }];
+        assert_eq!(bytes.table_rne_required(&plan, &pairs).unwrap(), 1 + rne::required(4, 2));
         let mut rng = MatrixRng::from_seed([128; 32]);
         let rows: Vec<_> = (0..count)
             .map(|_| Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>())))
@@ -511,6 +529,30 @@ mod tests {
                 tokens: &[0, 1, 2],
             };
             let start = || Fs::new(b"canonical same-W P0 and RNE ragged sources", 100_000);
+            if table_probe && fault == 0 {
+                let needed = bytes.table_rne_required(&plan, &pairs).unwrap();
+                let mut exhausted = vec![Auth::ZERO; needed - 1].into_iter();
+                assert!(bytes
+                    .prove_table_rne(
+                        &plan,
+                        &statement,
+                        &pairs,
+                        |_, _, _, _| panic!("exhausted RNE read source"),
+                        &mut start(),
+                        &mut exhausted
+                    )
+                    .is_err());
+                assert_eq!(exhausted.len(), needed - 1);
+                assert!(bytes
+                    .table_rne_required(&plan, &[quantize::Pair { raw: 1, output: 1, shift: 2 }])
+                    .is_err());
+                assert!(bytes
+                    .table_rne_required(
+                        &plan,
+                        &[quantize::Pair { raw: 0, output: pairs[0].output, shift: 2 }]
+                    )
+                    .is_err());
+            }
             let mut fs = start();
             let mut prows = rows.clone().into_iter();
             let (p0, pending) = plan
@@ -579,15 +621,47 @@ mod tests {
                     .find(|&v| rounded(v) == rounded(raw[0]))
                     .unwrap();
             }
-            let (rne, byte_point, byte) = rne::prove(
-                &rq,
-                output.original,
-                |i| biased(used[(i / 4) * 3 + i % 4]),
-                &mut fs,
-                &mut prows,
-            )
-            .unwrap();
-            let byte_form = bytes.rne_form(&plan, output.source, &byte_point).unwrap();
+            let (quantized, byte_point, byte, quant_forms, quant_targets) = if table_probe {
+                let read = |source: usize, row: usize, col: usize, b: usize| {
+                    let columns = bytes.scalar.layout.sources[source].cols;
+                    let v = if source == 1 {
+                        used[row * columns + col]
+                    } else {
+                        values[source][row * columns + col]
+                    };
+                    let word = (v + (1i64 << (8 * bytes.widths[source] - 1))) as u64;
+                    (word >> (8 * b)) as u8
+                };
+                let (proof, pending) = bytes
+                    .prove_table_rne(&plan, &statement, &pairs, read, &mut fs, &mut prows)
+                    .unwrap();
+                let (forms, shifts, targets) =
+                    bytes.table_rne_forms(&plan, &pairs, &pending).unwrap();
+                let targets = targets
+                    .into_iter()
+                    .zip(shifts)
+                    .map(|(a, s)| Auth::new(a.x + s, a.m))
+                    .collect::<Vec<_>>();
+                (
+                    QuantizedProof::Table(proof),
+                    pending[0].raw_point.clone(),
+                    pending[0].raw,
+                    forms,
+                    targets,
+                )
+            } else {
+                let (proof, point, byte) = rne::prove(
+                    &rq,
+                    output.original,
+                    |i| biased(used[(i / 4) * 3 + i % 4]),
+                    &mut fs,
+                    &mut prows,
+                )
+                .unwrap();
+                let form = bytes.rne_form(&plan, output.source, &point).unwrap();
+                (QuantizedProof::Direct(proof), point, byte, vec![form], vec![byte])
+            };
+            let byte_form = quant_forms.last().unwrap();
             if fault == 0 {
                 let expected = (0..3).flat_map(|row| (0..3).map(move |col| (row, col))).fold(
                     Fp3::ZERO,
@@ -637,7 +711,7 @@ mod tests {
             weight_targets.extend(wt);
             let (mut aux_forms, shifts) = bytes.forms(&plan, &pending).unwrap();
             aux_forms.extend(af);
-            aux_forms.push(byte_form);
+            aux_forms.extend(quant_forms);
             let mut aux_targets: Vec<_> = pending
                 .cuts
                 .iter()
@@ -647,7 +721,7 @@ mod tests {
                 .map(|(a, &bias)| Auth::new(a.x + bias, a.m))
                 .collect();
             aux_targets.extend(at);
-            aux_targets.push(byte);
+            aux_targets.extend(quant_targets);
             let (wp, _) = linear::prove(
                 &w_model,
                 attempt,
@@ -684,8 +758,28 @@ mod tests {
                     shape,
                     shift: 2,
                 };
-                let (point, byte) =
-                    rne::verify(&rq, output.original, &rne, delta, &mut fs, &mut vrows)?;
+                let (quant_forms, quant_targets) = match &quantized {
+                    QuantizedProof::Direct(proof) => {
+                        let (point, byte) =
+                            rne::verify(&rq, output.original, proof, delta, &mut fs, &mut vrows)?;
+                        (vec![bytes.rne_form(&plan, output.source, &point)?], vec![byte])
+                    }
+                    QuantizedProof::Table(proof) => {
+                        let pending = bytes.verify_table_rne(
+                            &plan, &statement, &pairs, proof, delta, &mut fs, &mut vrows,
+                        )?;
+                        let (forms, shifts, targets) =
+                            bytes.table_rne_forms(&plan, &pairs, &pending)?;
+                        (
+                            forms,
+                            targets
+                                .into_iter()
+                                .zip(shifts)
+                                .map(|(k, s)| Key::new(k.k + delta * s))
+                                .collect(),
+                        )
+                    }
+                };
                 let (wf, wt) = range::verify(
                     32,
                     &w_model.root,
@@ -716,7 +810,7 @@ mod tests {
                 weight_targets.extend(wt);
                 let (mut aux_forms, shifts) = bytes.forms(&plan, &pending)?;
                 aux_forms.extend(af);
-                aux_forms.push(bytes.rne_form(&plan, output.source, &point)?);
+                aux_forms.extend(quant_forms);
                 let mut aux_targets: Vec<_> = pending
                     .cuts
                     .iter()
@@ -726,7 +820,7 @@ mod tests {
                     .map(|(a, bias)| Key::new(a.k + delta * bias))
                     .collect();
                 aux_targets.extend(at);
-                aux_targets.push(byte);
+                aux_targets.extend(quant_targets);
                 linear::verify(
                     32,
                     &w_model.root,

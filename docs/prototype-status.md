@@ -187,13 +187,27 @@ The [canonical GELU sources](../rust/volta-pcs/src/c71_matrix/gemma/gelu.rs)
 now add 60 X, 60 Y and 60 histograms while preserving all P0/RMS IDs.
 A has 2,326 sources / 7,881,092,238 bytes, still D33. The three original
 lookup forms use 720/720/960 cubes across 1,680 public word blocks.
-Literal and full metadata checks pass. Gate RNE, calibrated dispatch and
-composition remain open; the P0/RNE/RMS bound above has no GELU credit.
+The canonical dispatcher now binds full certified public tables and the
+60 gate RNE pairs before their probes. Both original X probes and raw-byte
+MACs close in the same A as lookup X/Y/M, for 3,224 known targets and
+52,586 cubes. A 1,356-row ideal P0/table-RNE graph closes both ranged PCS
+and rejects changed raw bytes even when the rounded output is unchanged.
+The small canonical GELU/one-gate-RNE dispatch uses 1,158 ideal rows;
+that larger source-view check has placeholder roots and grants no PCS acceptance.
 
-Thirty-two B12 algebra/accounting checks include the scalar invariant,
+The conditional `P0_RNE_RMS_GELU_composition` includes 350 matrix RNE
+tables, 421 RMS/statistics and all 60 GELU relations. Given certified
+public tables and consistent shifts fixed before roots, it retains
+**82.98619 soundness / 91.02272 ZK bits** within T121/M93. The known
+upper is **1,760,571 base rows per attempt, 5,281,713 for three**.
+Reads and hashing of supplied public tables are counted; numerical
+profile preparation/calibration remain outside this partial subtotal.
+Gate-up consumers, other operators and full-domain execution remain open.
+
+Thirty-three B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 213; the 17
-narrow bootstrap/pool checks and thirty B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 214; the 17
+narrow bootstrap/pool checks and thirty-one B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -214,8 +228,8 @@ NoPeek, relation and resource composition.
 
 **Remaining work:** full Gemma malicious-verifier ZK, the complete quantized
 Gemma GKR relation using the range-checked W, full correlation census and
-both-role resource composition for the fixed run. The known 4,583,727-row upper
-for three byte-backed P0/RNE/RMS attempts fits the initial capacity; other circuits remain uncounted.
+both-role resource composition for the fixed run. The known 5,281,713-row upper
+for three byte-backed P0/RNE/RMS/GELU attempts fits the initial capacity; other circuits remain uncounted.
 The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
 soundness bound also included failed setups/key changes; that broader
 evidence remains valid without making renewal/recovery new gates. Neither

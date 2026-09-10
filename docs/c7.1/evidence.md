@@ -305,6 +305,27 @@ canonico. Passano anche **2 controlli Python** (`complete_fixed_run` e
 `native_small_profile`), `cargo check --lib` senza `cfg(test)`, formato,
 link locali e diff. Sono controlli di sviluppo, non benchmark su albero pulito.
 
+## Complete non-PCS wire envelope
+
+Il nuovo controllo Python `native_wire_body_envelope` verifica il
+conteggio degli schemi contro i censimenti field preesistenti di P0,
+range, QK/PV e GKR congiunto, aggiungendo i prefissi dei vettori e
+conservando separati tutti i frame. Il rapporto espone lower/upper,
+fixture, header simbolico ed envelope condizionato ai cap PCS.
+Numeri e formule sono nel [design](design.md#analytic-envelope-of-the-complete-non-pcs-body).
+
+Sono conti da descrittori e codice, non prove canoniche serializzate:
+`full_native_serialization_checked` e `PCS_cap_sufficiency_proven`
+restano false. L'allarme 35 MB è superato già dal lower della fixture
+scale zero/Pi=-14; il lower indipendente dalla calibrazione rimane sotto
+35 MB. Non viene alterato alcun codec, profilo o limite runtime.
+
+Passano **2 controlli Python** (`native_wire_body or complete_fixed_run`)
+e il self-check del diagnostico, con rapporto JSON completo generato in
+`/tmp`. Il controllo dell'header ha rilevato e corretto un atteso inferiore
+di due byte: il prefisso fisso è 1.321 byte. Verificati 97 link locali e
+`git diff --check`; nessuna build Rust/Lean o esecuzione GPU in questo passo.
+
 ## Measured historical records
 
 I file sotto sono immutabili e identificano il codice effettivamente misurato.

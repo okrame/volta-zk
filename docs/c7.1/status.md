@@ -81,7 +81,10 @@ insufficiente:** le sole 892 RNE richiedono almeno 29.371.448 byte a O=0
 e 29.442.008 byte a O=150/300, prima di framing, altri operatori e PCS.
 Con il solo istogramma W si supera già 30,94 MB, quindi la preferenza
 di 30 MB è incompatibile con l'encoding corrente. Sono limiti inferiori,
-non misure di un certificato completo; l'allarme a 35 MB non è ancora valutato.
+non misure di un certificato completo. Il nuovo conteggio di tutti i
+frame non-PCS dà un intervallo analitico di 33,98–37,44 MB, ancora senza
+header e PCS. La fixture con scale zero supera già l'allarme a 35 MB;
+non segue lo stesso esito per ogni calibrazione.
 Dimensionamento completo, adeguamento del trasporto e verifica positiva
 restano aperti.
 
@@ -94,8 +97,9 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Il goal di estensione resta aperto:** dimensionare il certificato completo
-e correggere l'incompatibilità del codec, collegare Prepare/prover canonici
+**Il goal di estensione resta aperto:** verificare il conteggio completo
+contro la serializzazione nativa e dimensionare le PCS, poi correggere
+l'incompatibilità del codec e collegare Prepare/prover canonici
 al wrapper, conservando gli originali
 e la compilazione numerica comune; verificare poi il percorso composto AES positivo.
 Le sue 797.139 righe base sul grafo ridotto superano il perimetro dei

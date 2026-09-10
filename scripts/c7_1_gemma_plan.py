@@ -8009,6 +8009,84 @@ def b12_exp30_composition(base):
     }
 
 
+def b12_native_wire_body_envelope():
+    """Current Wire schemas, metadata only; PCS feasibility is NOT inferred.
+
+    Exact fixed records plus calibration-independent RNE/joint-GKR bounds.
+    The returned body includes all outer frames and completion, but no header
+    or PCS payload. An 8-MiB PCS allowance is only the existing decoder policy.
+    """
+    cohorts = gemma_weight_cohorts(pinned_private_tensors())
+    norms = rms_statistic_cohorts(cohorts)
+    bit = lambda n: (n-1).bit_length()
+    # p0::Proof = Vec<Vec<Fp3>> plus [Fp3;4]. Norm/public-weight rounds are cubic.
+    reduction = lambda c, norm: 4 + c*(4 + 24*(5 if norm else 4)) + 4*24
+    # range::Layer = Vec<[Fp3;5]> plus [Fp3;8].
+    tree = lambda depth, top: 4 + depth*(4+8*24) + 5*24*(depth*top+depth*(depth-1)//2)
+    lookup = lambda cells: tree(bit(cells), 0) + 9*24
+    ranged = lambda c, alphabet: 4+24*alphabet + tree(c, 0) + 6*24
+    p0 = 4 + 2*24 + sum(24+1 + (0 if c['kind']=='lookup' else
+        reduction(bit(c['columns'] if c['kind']=='norm' else c['inner']), c['kind']=='norm'))
+        for c in cohorts)
+    statistics = 4 + 2*24 + sum(24+reduction(bit(n['statistic_rows'])+bit(n['columns']), True)
+                                for n in norms)
+    # gkr::widths allows <=128 levels, <=2^14 wires, <=29 cell bits.
+    # Per layer: vector count, c cubic rounds, 2*b quadratic rounds, 4 terminals.
+    def joint_upper(c):
+        return 4 + 128*(4 + c*(4+5*24) + 28*(4+4*24) + 4*24) + 2*24 + (
+            4 + 8*(4+8*24) + 5*24*(8*(c+4)+28) + 3*24)
+    rms_cells = sum(n['statistic_rows']*n['columns'] for n in norms)
+    gate_cells = sum(c['rows']*c['columns'] for c in cohorts if c['operation']=='gate_proj')
+    rope_cells = b12_rope_source_profile()['live_cells']
+    cases = []
+    for slot, old in enumerate((0, 150, 300)):
+        t, k = bit(150), bit(old+150)
+        qk = pv = 0
+        for layer in range(60):
+            g, a = (2, 9) if layer % 6 == 5 else (4, 8)
+            qk += 3*24 + reduction(t+k+g+a, True)
+            pv += 3*24 + reduction(g+k, True) + 4 + 4*24*(t+k) + 2*24
+        fixed = {
+            'P0': p0,
+            'RMS_statistics_and_product_mask': statistics,
+            'RNE_outer_vectors_and_482_probes': 3*4 + 482*24,
+            'GELU_lookup': lookup(gate_cells+60*65535),
+            'gate_up': 3*24 + reduction(bit(gate_cells), True),
+            'RoPE': 4 + 24*(4*bit(rope_cells)+3),
+            'QK': qk, 'PV': pv,
+            'KV_split': 4+24*slot,
+            'softcap_lookup': lookup(50*262144+65535),
+            'EXP30_maximum': tree(k, 19)+3*24,
+            'EXP30_lookup': lookup(60*8192*(old+150)+60*65535),
+            'W_range': ranged(35, 65535), 'A_range': ranged(34, 256),
+            'outer_frames_and_completion': 6*(135+slot)+26,
+        }
+        rne_min = 892*7964 + 1176*(18935 if slot == 0 else 18995)
+        rne_max = rne_min + 24*892*(38+39)
+        joint = {'RMS': joint_upper(bit(rms_cells)), 'EXP30_ratio': joint_upper(19+k)}
+        lower = sum(fixed.values()) + rne_min
+        upper = sum(fixed.values()) + rne_max + sum(joint.values())
+        header_fixed = len(b'C71B12-Gemma-FixedRun-v1\0') + 1296 + 720*slot
+        cases.append({'old_tokens': old, 'fixed_wire_bytes': fixed,
+            'header_bytes_excluding_PCS_profile_vectors': header_fixed,
+            'RNE_wire_interval': [rne_min, rne_max], 'joint_GKR_wire_upper': joint,
+            'body_wire_interval_excluding_PCS_and_header': [lower, upper],
+            'scale_zero_fixture_body_lower_excluding_PCS_and_header':
+                lower + (30604688 if slot == 0 else 30675248) - rne_min,
+            'body_upper_with_existing_PCS_caps_excluding_header': upper+(slot+2)*(8 << 20),
+            'total_upper_with_existing_PCS_caps_excluding_profile_vectors':
+                upper+(slot+2)*(8 << 20)+header_fixed})
+    return {'credit': False, 'basis': 'current mandatory Wire schemas and native public shape guards',
+        'cases': cases, 'full_native_serialization_checked': False,
+        'PCS_cap_sufficiency_proven': False, 'complete_certificate_bytes': None,
+        'omitted_from_non_PCS_lower_bound': ['joint RMS GKR', 'EXP30 ratio GKR'],
+        'omitted_from_body_interval': ['canonical header', 'all PCS payloads'],
+        'total_upper_additional_bytes': 'len(gamma_W) + len(gamma_A)',
+        'sources': ['rust/volta-pcs/src/c71_matrix/p0.rs',
+            'rust/volta-pcs/src/c71_matrix/range.rs', 'rust/volta-pcs/src/c71_matrix/rms/gkr.rs',
+            'rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs']}
+
+
 def b12_complete_fixed_run_composition(base):
     """Accounting for the composed mathematical verifier, not native admission.
 
@@ -8102,6 +8180,7 @@ def b12_complete_fixed_run_composition(base):
             'canonical_verifier_body_positive_checked': False,
             'full_model_security_or_hardware_credit': False,
         },
+        'native_wire_body_envelope': b12_native_wire_body_envelope(),
         'native_canonical_transport': {
             'credit': False,
             'source': 'rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs',

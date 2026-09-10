@@ -99,6 +99,11 @@ comprensivo del record finale. Il test di trasporto usa un buffer di
 componente realmente serializzata. Conservare `native_composed` e
 `native_certificate` dopo modifiche al writer.
 
+Il filtro Python `native_wire_body or complete_fixed_run` controlla il
+nuovo envelope del corpo canonico contro i censimenti field già presenti.
+Non compila Rust né misura certificati; preservare le etichette di lower,
+upper e condizione sul cap PCS quando si riusano questi numeri.
+
 The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate
 D31/D33 source counts and partial target/cube totals describe those fixtures,

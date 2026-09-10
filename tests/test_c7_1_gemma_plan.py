@@ -150,6 +150,44 @@ def test_B12_masked_product_batch_privacy_and_quadratic_feedback():
     assert collapses <= len(triples)-1
 
 
+def test_B12_native_wire_body_envelope_matches_field_censuses_without_PCS_credit():
+    report = plan.b12_native_wire_body_envelope()
+    cohorts = plan.gemma_weight_cohorts(plan.pinned_private_tensors())
+    bit = lambda n: (n-1).bit_length()
+    rounds = sum(bit(c['columns'] if c['kind']=='norm' else c['inner'])
+                 for c in cohorts if c['kind'] != 'lookup')
+    p0_fields = plan.b12_p0_native_caller()['native_DAG_caller']['field_payload_bytes_before_context_and_framing']
+    for slot, case in enumerate(report['cases']):
+        fixed = case['fixed_wire_bytes']
+        assert fixed['P0'] == p0_fields + 4 + 773 + 4*772 + 4*rounds == 1153889
+        assert fixed['W_range'] == plan.b12_weight_range_profile(35)[
+            'range_field_payload_bytes_before_bridge_or_framing'] + 8 + 4*35 == 1651252
+        assert fixed['A_range'] == 80280
+        attention = plan.b12_attention_product_profile(150*slot)
+        k = bit(150*(slot+1))
+        qk_rounds = sum(8+k+(2+9 if layer%6==5 else 4+8) for layer in range(60))
+        pv_rounds = sum(k+(2 if layer%6==5 else 4) for layer in range(60))
+        assert fixed['QK'] == attention['QK']['field_payload_bytes_before_context_and_framing'] + 4*60 + 4*qk_rounds
+        assert fixed['PV'] == attention['PV_with_original_probability_link'][
+            'field_payload_bytes_before_context_and_framing'] + 8*60 + 4*pv_rounds
+        for name, c in [('RMS', 29), ('EXP30_ratio', 19+k)]:
+            public = plan.b12_rms_joint_profile([[1 << 14]*128+[1]], c)
+            prefixes = 4+4*128+4*128*(c+28)+4+8*4
+            assert case['joint_GKR_wire_upper'][name] == public['field_payload_bytes_before_context_and_framing'] + prefixes
+        lower, upper = case['body_wire_interval_excluding_PCS_and_header']
+        assert (lower, upper) == [(33977809, 37329009), (34075911, 37443943),
+                                  (34075941, 37443973)][slot]
+        assert upper == sum(fixed.values()) + case['RNE_wire_interval'][1] + sum(case['joint_GKR_wire_upper'].values())
+        assert case['body_upper_with_existing_PCS_caps_excluding_header'] == upper+(slot+2)*(8 << 20)
+        assert case['header_bytes_excluding_PCS_profile_vectors'] == 1321+720*slot
+        assert case['total_upper_with_existing_PCS_caps_excluding_profile_vectors'] == (
+            upper+(slot+2)*(8 << 20)+1321+720*slot)
+        assert case['scale_zero_fixture_body_lower_excluding_PCS_and_header'] > 35_000_000
+    assert not report['credit'] and not report['full_native_serialization_checked']
+    assert not report['PCS_cap_sufficiency_proven']
+    assert report['complete_certificate_bytes'] is None
+
+
 def test_B12_complete_fixed_run_preserves_exact_errors_and_counts_caller_resources():
     assessment = plan.b12_pcs_binding_assessment()
     base = assessment['ordinary_KV_output_and_EXP30_composition']
@@ -7120,7 +7158,7 @@ def test_attention_component_counts_and_local_arrays_do_not_close_integer_gamma(
     assert last['cases'][0]['qk_key_phase_arrays_bytes'] == 403222960
     assert max(c['pv_probability_link_arrays_bytes'] for c in last['cases']) == 117623072
     for screen, expected in ((first, (736460080, 128043440, 1069790)),
-                             (last, (3384636720, 3743905200, 1319150))):
+                             (last, (3384636720, 3743905200, 1321150))):
         assert tuple(sum(c['layers']*c[field] for c in screen['cases']) for field in (
             'qk_prover_extension_products_before_replay_mac_metadata_upper',
             'pv_prover_extension_products_before_replay_mac_metadata_upper',

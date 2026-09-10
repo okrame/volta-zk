@@ -364,8 +364,8 @@ RNE: `range::verify` impone 65.535 campi per l'alfabeto simmetrico 32767,
 quindi `4 + 24*65535 = 1.572.844` byte di wire. Sommato al minimo RNE,
 porta il limite inferiore a **30.944.292/31.014.852/31.014.852 byte**.
 L'encoding corrente non può quindi soddisfare la preferenza di 30 MB
-per nessuna calibrazione ammessa. Non è ancora dimostrato il superamento
-dell'allarme a 35 MB: mancano dal conteggio gli altri elementi obbligatori.
+per nessuna calibrazione ammessa. Il conteggio esteso sotto supera l'allarme a 35 MB per la fixture con
+scale zero, non prova tale superamento per ogni calibrazione.
 
 Il reader totale da 16.777.216 byte è quindi incompatibile con qualsiasi
 prova canonica completa corrente, anche su H100. Occorre completare il
@@ -374,6 +374,40 @@ soltanto il cap sulla base di questo sottototale non dimostra sufficienza.
 Il writer ridotto ora riserva anche i 26 byte di chiusura nel proprio
 limite totale, evitando di emettere un certificato oltre il cap del reader.
 Questo fix del confine non risolve il dimensionamento canonico.
+
+### Analytic envelope of the complete non-PCS body
+
+`b12_native_wire_body_envelope` nel [diagnostico](../../scripts/c7_1_gemma_plan.py)
+conta separatamente tutte le famiglie di frame della schedule nativa.
+I conteggi fissi sono derivati dai descrittori pinned e dagli schemi `Wire`:
+P0 e statistiche RMS, vettori/sonde RNE, GELU, gate-up, RoPE, QK/PV,
+KV, softcap, massimo/lookup EXP30, range W/A, framing e chiusura.
+Non somma i vecchi upper dei componenti con obblighi già condivisi.
+
+Per le RNE usa il minimo già verificato e l'upper di 38 funzioni +39 prodotti
+per record. Per i due GKR congiunti usa i guard nativi: al più 128 livelli,
+14 bit di indice e 29 bit di celle (27/28 per il ratio nei tre contesti).
+Un livello costa `100 + 124*c + 200*b` byte; si aggiungono i prefissi,
+il prodotto finale e la prova sulle funzioni byte a c+4 bit. Il lower
+omette interamente i due GKR congiunti; l'upper li comprende entrambi.
+
+| O | Lower corpo senza header/PCS | Upper corpo senza header/PCS | Lower della fixture scale zero/Pi=-14 |
+|---:|---:|---:|---:|
+| 0 | 33.977.809 | 37.329.009 | 35.211.049 |
+| 150 | 34.075.911 | 37.443.943 | 35.309.151 |
+| 300 | 34.075.941 | 37.443.973 | 35.309.181 |
+
+L'header aggiunge `1321 + 720*slot + len(gamma_W) + len(gamma_A)` byte,
+deducibili dal registro con prompt100/token150. Se ogni PCS rientra nel
+cap attuale di 8 MiB, l'upper totale è rispettivamente
+54.107.546/62.611.808/71.001.166 byte **più i due vettori gamma**.
+È un envelope condizionato al decoder, non una prova che le PCS canoniche
+possano essere prodotte entro 8 MiB, né una misura del certificato.
+
+Questo conteggio analitico copre gli schemi del corpo ma attende il
+confronto completo con la serializzazione nativa e le dimensioni delle
+PCS D35/D34. Non ammette un nuovo cap runtime: `credit:false`, dimensione
+misurata completa assente, limiti di esecuzione e assunzioni invariati.
 
 ## Resource and measurement contract
 

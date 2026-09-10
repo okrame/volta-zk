@@ -3,6 +3,8 @@
 use super::*;
 use std::collections::{BTreeSet, VecDeque};
 
+#[path = "canonical_state.rs"]
+mod state;
 #[path = "canonical_verify.rs"]
 mod verify;
 

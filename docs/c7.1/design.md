@@ -252,7 +252,7 @@ I [limiti di esecuzione](../procedures/build-and-test.md) rimangono invariati.
 
 Il [corpo canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
 esegue le chiamate di security §3 sui descrittori di `Canonical`, con un
-unico Fs passato dal futuro wrapper. Riusa `Reader` e `Batch` del percorso
+unico Fs costruito dal wrapper interno. Riusa `Reader` e `Batch` del percorso
 ridotto, senza modificare il suo transcript. Prima di espandere le forme
 pubbliche controlla identità delle ricette/layout/PCS e uguaglianza fra
 riserva fornita e `Recipes::required`. Ricostruisce il P0Statement interno
@@ -271,10 +271,41 @@ dimostrato sufficiente per il certificato completo.
 `verify_body` è un consumer interno, non `VerifyResponse`: non riserva
 correlazioni, non costruisce l'header dal registro, non certifica Γ e non
 promuove uno stato. Registro dei segmenti, Fs iniziale e riserva già bruciata
-sono obblighi del wrapper ancora da collegare. Il digest restituito non è
-l'oggetto `Acceptance` del percorso ridotto. La verifica positiva dell'intero
+sono obblighi ora implementati nel wrapper interno seguente. Il digest
+restituito non è l'oggetto `Acceptance` del percorso ridotto. La verifica positiva dell'intero
 corpo, Prepare/prover canonici e il codec completo restano da eseguire;
 i controlli del prefisso non trasferiscono i bound matematici al runtime.
+
+### Canonical registry and real pool
+
+Il [wrapper interno](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state.rs)
+compila i tre contesti da un'unica mappa di scale e conserva riferimenti
+immutabili alle tabelle attese del verifier. Il digest pubblico include
+ricette, layout, corpi completi GELU/EXP30/softcap, finestre RoPE con
+posizioni e riserve; le tabelle non posizionali devono coincidere nei tre
+slot. Questo digest alimenta `ModelBinding.semantics`, distinto dal digest
+di sole ricette usato dai kernel. La validità numerica di Γ resta una
+premessa non scaricata: il wrapper è interno, senza ammissione pubblica.
+
+L'installazione ammette solo un pool fixed-run fresco con W/Γ/sessione
+coerenti. `verify_response` rende immediatamente terminale lo stato,
+controlla prompt 100, token 150 nel vocabolario e freschezza di A, poi
+ricostruisce l'header `C71B12-Gemma-FixedRun-v1` dal registro ordinato.
+Il confronto del pool vincola seal, setup unico, slot, predecessore e
+cursor. `Pool::attempt` brucia la riserva prima del decoding; il wrapper
+compone le chiavi col segno nativo e passa al corpo soltanto segmenti
+ricostruiti dalle accettazioni locali più A corrente. Il successo del
+corpo genera `Acceptance`, aggiunta al registro solo dopo il journal.
+Errori e panic terminano stato e pool; il risultato esterno è solo `Stop`.
+Non esiste un ingresso per importare storia, chiavi o ricevute del peer.
+
+Il limite Fs interno è 2^42 richieste, ripreso come arresto operativo
+dall'envelope analitico di security §6, non come misura o dimostrazione
+del numero di draw del programma. Restano il cap di trasporto 16 MiB e
+i limiti PCS preesistenti: non si assume che ospitino il certificato
+canonico completo. I controlli del registro e del rifiuto AES a tre righe
+non percorrono la promozione positiva; la sua corrispondenza, il preparatore,
+il prover, la certificazione numerica e lo schedule fisico restano aperti.
 
 ## Resource and measurement contract
 

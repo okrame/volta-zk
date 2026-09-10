@@ -30,7 +30,7 @@ fn auths(rows: &[[u64; 4]]) -> Result<std::vec::IntoIter<Auth>, String> {
         .map(Vec::into_iter)
 }
 
-fn keys(
+pub(in crate::c71_matrix::gemma::native) fn keys(
     rows: &[[u64; 3]],
     delta: Option<&[u64; 3]>,
 ) -> Result<(Fp3, std::vec::IntoIter<Key>), String> {

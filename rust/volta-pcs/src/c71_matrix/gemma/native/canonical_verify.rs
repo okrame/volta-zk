@@ -26,11 +26,11 @@ impl Canonical {
         ])
     }
 
-    /// All inputs are owned by the eventual verifier wrapper, never certificate
+    /// All inputs are owned by the registry wrapper, never certificate
     /// metadata. `parts` must originate in its accepted registry, and `rows`
     /// must already be the one durably burned reservation. No Acceptance is
     /// constructed here, and a digest cannot promote the bounded wrapper.
-    fn verify_body(
+    pub(super) fn verify_body(
         &self,
         s: &caller::P0Statement<'_>,
         tables: &profile::Tables<'_>,

@@ -62,9 +62,13 @@ Il [corpo del verifier canonico](../../rust/volta-pcs/src/c71_matrix/gemma/nativ
 ora implementa la schedule completa di security §3 con ricette comuni,
 MAC originali e PCS W/vecchie A/A corrente. I controlli locali coprono
 riserva, contesto e prefisso pubblico fino al rifiuto di un P0 incompleto;
-non un certificato canonico positivo. Il corpo non possiede il registro,
-non crea `Acceptance` e non promuove KV. Il collegamento al wrapper
-canonico e il dimensionamento del codec completo restano aperti.
+non un certificato canonico positivo. Il [wrapper interno](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state.rs)
+collega ora registro posseduto dal verifier, header locale e pool reale:
+burn prima del decoding, promozione solo dopo verifica completa e journal.
+Il profilo lega i corpi delle tabelle, senza certificarne i valori numerici.
+Il controllo reale a tre righe copre il rifiuto per capacità insufficiente
+senza promozione o riuso. Il dimensionamento del codec completo e la
+verifica positiva restano aperti.
 
 Il [collegamento AES/journal](../../rust/volta-pcs/src/c71_matrix/gemma/native/pool.rs)
 ora alimenta il wrapper ridotto tramite riserve del pool reale, con segni
@@ -75,8 +79,8 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Il goal di estensione resta aperto:** collegare Prepare/prover canonici,
-registro e codec completo al corpo del verifier, conservando gli originali
+**Il goal di estensione resta aperto:** collegare Prepare/prover canonici
+e codec completo al wrapper, conservando gli originali
 e la compilazione numerica comune; verificare poi il percorso composto AES positivo.
 Le sue 797.139 righe base sul grafo ridotto superano il perimetro dei
 bootstrap locali e richiedono hardware autorizzato. La compilazione

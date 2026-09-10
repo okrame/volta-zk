@@ -191,6 +191,10 @@ def test_B12_complete_fixed_run_preserves_exact_errors_and_counts_caller_resourc
     assert canonical['old_tokens'] == [0, 150, 300]
     assert canonical['canonical_verifier_body_implemented']
     assert canonical['canonical_verifier_prefix_checked']
+    assert canonical['canonical_registry_pool_wrapper_implemented']
+    assert canonical['canonical_registry_real_shortage_checked_base_rows'] == 3
+    assert canonical['canonical_public_table_bodies_bound']
+    assert not canonical['canonical_public_tables_numerically_certified']
     assert not canonical['canonical_verifier_body_positive_checked']
     assert not any(canonical[k] for k in ('canonical_prepare_executed',
         'canonical_proof_dispatch_executed', 'full_model_security_or_hardware_credit'))

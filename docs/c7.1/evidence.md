@@ -158,8 +158,9 @@ workspace. Nessuna build Lean o esecuzione GPU.
 
 Il [nuovo corpo](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
 implementa tutte le chiamate della schedule con i descrittori canonici;
-riusa soltanto decoder e batch interni del percorso ridotto. Non è ancora
-il wrapper canonico con proprietà del registro, né un certificato positivo.
+riusa soltanto decoder e batch interni del percorso ridotto. Il controllo
+del prefisso è separato dal wrapper del registro descritto sotto e non
+verifica un certificato positivo.
 
 `c71_b12_native_dispatch` passa a O=0/150/300: riserva vuota e profilo
 alterato rifiutati senza modificare Fs; riserva ideale completa e frame
@@ -171,8 +172,8 @@ quelle sintetiche del preflight (EXP30 esatto a e_score=128, le altre solo
 di forma); nessun witness o codeword D34/D35 viene materializzato.
 
 Il decoder conserva il cap ridotto di 16 MiB: il suo dimensionamento e
-il framing dell'header derivato dal registro fanno parte del wrapper
-canonico ancora aperto. La presenza delle chiamate a RMS, RNE, lookup,
+la verifica positiva insieme all'header del registro restano aperti.
+La presenza delle chiamate a RMS, RNE, lookup,
 attenzione e PCS nel corpo compilato non costituisce loro esecuzione
 positiva congiunta. Il diagnostico distingue implementazione, prefisso
 controllato e verifica positiva assente.
@@ -182,6 +183,38 @@ Validazione mirata: **3 test Rust passati** (prefisso e regressioni
 `complete_fixed_run or native_small_profile`, e `cargo check --lib` passato.
 Stessi limiti locali e build mirata di cui sopra, senza nuove esecuzioni
 AES, Lean, provider o hardware. Le evidenze precedenti restano distinte.
+
+## Canonical registry and real shortage
+
+Il [wrapper canonico interno](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state.rs)
+collega il corpo al registro locale e a `Pool::attempt`, riusando il
+packing delle chiavi del percorso ridotto. `c71_b12_native_registry`
+passa con una sola capacità AES di **tre righe base** e due ruoli locali:
+il verifier rifiuta la riserva insufficiente, non avanza slot/cursor,
+non accetta radici e termina il pool. Un secondo tentativo e il reopen
+sono respinti; il journal conserva zero tentativi e testa accettata vuota.
+Il test usa socketpair fuori sandbox con i consueti limiti 60 s/2 GiB.
+
+Lo stesso test verifica il binding del modello e nove mutazioni del
+contesto, prompt, vocabolario, nonce e freschezza della root. Una storia
+sintetica controlla soltanto che ultimo token e ricevuta precedenti
+modifichino l'header; viene scartata prima di costruire il verifier reale.
+Una tabella softcap di uguale forma ma diverso contenuto cambia Γ senza
+cambiare riserva; tabelle non posizionali diverse fra slot sono respinte.
+Questi valori sono placeholder di forma e **non** tabelle certificate.
+
+Questo controllo non entra nel corpo dopo un burn completo, né percorre
+il journal di successo o una promozione canonica positiva. Il codice
+implementa tali collegamenti ma la verifica composta resta aperta, insieme
+al preparatore/prover e al codec completo. Non ci sono materializzazioni
+D34/D35, bootstrap completo, misure H100 o nuovo credito di sicurezza.
+
+Validazione mirata: **4 test Rust passati** (registro, prefisso canonico,
+tre tentativi ideali e codec ridotto) e **2 controlli Python passati**
+(`complete_fixed_run`/`native_small_profile`). Passa anche `cargo check --lib`
+senza `cfg(test)` con build offline/locked a un job, target canonico e
+opt-level 2. Formattazione, destinazioni locali dei link e diff verificati.
+Sono controlli di sviluppo, non un run di benchmark su albero pulito.
 
 ## Measured historical records
 

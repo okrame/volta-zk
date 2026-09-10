@@ -4,7 +4,7 @@ use kernel::wire::{self, Wire};
 use prepare::{Installed, Snapshot};
 
 #[path = "pool.rs"]
-mod pool;
+pub(super) mod pool;
 
 #[cfg(test)]
 #[path = "tests.rs"]

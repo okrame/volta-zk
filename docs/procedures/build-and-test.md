@@ -72,6 +72,12 @@ Il successo del test è il rifiuto al confine previsto; non è accettazione
 di un certificato canonico completo. Dopo modifiche ai helper condivisi,
 conservare `c71_b12_native_composed` e `c71_b12_native_certificate`.
 
+`c71_b12_native_registry` controlla il wrapper canonico: identità dei corpi
+delle tabelle, header dal registro, mutazioni del contesto e arresto reale
+per riserva insufficiente. Compila solo descrittori pubblici e usa una
+socketpair con capacità AES di tre righe, con gli stessi limiti 60 s/2 GiB.
+Non esegue un certificato positivo né il bootstrap canonico completo.
+
 The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate
 D31/D33 source counts and partial target/cube totals describe those fixtures,

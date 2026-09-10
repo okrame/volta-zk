@@ -1,6 +1,6 @@
 # Build, test and generated artifacts
 
-Read [current status](../prototype-status.md) first. This procedure explains
+Read [current status](../c7.1/status.md) first. This procedure explains
 how to run authorized work; it does not authorize a heavy build or E2E.
 
 ## Choose the check
@@ -29,6 +29,13 @@ They do not execute the full native verifier or Gemma. Mathematical/doc
 closure alone requires no Rust or Lean build; native refinement is separate.
 
 ## Rust and resource limits
+
+The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
+profile from the individual component fixtures catalogued below. Intermediate
+D31/D33 source counts and partial target/cube totals describe those fixtures,
+not the final D34 auxiliary source. Mathematical composition is complete;
+references below to unexecuted composition concern the native full-model path.
+No native tests were rerun for the documentation reorganization.
 
 Rust is installed through rustup. All Cargo commands, including standalone
 third-party manifests, share the absolute repository `rust/target`:
@@ -84,7 +91,8 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the narrow filters
 below with one test thread. After compilation, bound each test invocation
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its fifty-three tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its component tests cover
+FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -109,7 +117,7 @@ from the earlier PCS checks to keep each invocation below 60 seconds.
 The `c71_b12_p0` filter executes a small raw matrix/norm/lookup caller
 with 357 ideal Fp3 correlations, one ranged W PCS and a separate C/X PCS.
 It checks committed false cuts and detached input MACs; no socket is needed.
-The twenty-one `c71_b12_gemma` checks cover native metadata/DAG layout and
+The `c71_b12_gemma` checks cover native metadata/DAG layout and
 physical/virtual addresses, including ragged tensor MLEs. The caller check
 executes all 773 compact reductions with zero vectors and compiles the
 original auxiliary forms; its placeholder roots grant no PCS acceptance.
@@ -161,7 +169,7 @@ reduces its ORIGINAL input-bit sum through byte P/S into one ranged PCS.
 It rejects wrong Y and changed S preserving the same Y. There is no bit
 reauthentication or trace PCS. This proves the RMS predicate on committed
 P/S/Y bytes, before the canonical P0/statistic/output source routes;
-full calibrated Gemma profiles and the complete composition remain open.
+full calibrated Gemma profiles and native complete composition remain open.
 Run `c71_b12_replay` separately for the 128-cell joint GKR check. Its
 small parity circuits use 421 public profile indices and one ranged D12
 A PCS, with faults past cell 63 and a 256→0 index substitution. It uses
@@ -186,8 +194,10 @@ The `c71_b12_gemma_rms` check compiles all 421 canonical RMS source
 routes, including ten global pre-norm K/V aliases. A literal small byte
 view checks head reshape, S broadcast, reused Y and the final selected
 rows. It also counts the D33 extension and its 48,026-cube known batch including 50 local V RNE;
-no full source body or RMS trace is allocated. The 131,072 public-cube
-guard does not change the native D14 source cap. After the shared byte
+no full source body or RMS trace is allocated. The current linear bridge
+permits 524,288 public cubes; the public matrix
+runner remains D14, while internal Flat sources support D10–D35. These
+geometry checks do not execute a full source body. After the shared byte
 form refactor, rerun the full `c71_b12_gemma` filter for the existing
 P0/byte/RNE cases; actual full-domain dispatch remains open.
 The `c71_b12_gemma_rms_dispatch` case executes a canonical small graph
@@ -242,20 +252,22 @@ exact Q30 recipe. The `c71_b12_gemma_rope_sources` case compiles all 120
 canonical original RMS/raw/output routes and checks 480 blocks, both raw/Y
 forms and 120 RNE pairs, without the full source body. Its synthetic table
 bodies check shape/context only; they are not certified Q30 or execution
-evidence. It rejects the D27 native call at the existing D15 guard.
+evidence. The current check accepts the D27 public reservation without FS draws;
+the RoPE public geometry guard is now D29. No full-domain body is executed.
 After generic non-matrix raw RNE changes, rerun the entire small
 `c71_b12_gemma` filter to retain P0/GELU/gate-up behavior.
 The two `c71_b12_attention` cases use 571/572 ideal Fp3 rows and an actual
 ranged A PCS for QK/PV, including the original contracted-M-to-Pi link.
 They reject wrong raw/GQA/query padding, detached M and source operands
-changed consistently with the raw. The native dense QK cap is D15;
+changed consistently with the raw. The current public QK geometry guard is D31;
 no full attention, softmax, accepted-KV history or Gemma execution is implied.
 After changes to shared P0, rerun `c71_b12_p0`, `c71_b12_gemma` and
 `c71_b12_rms_statistic` in separate bounded invocations.
 The `c71_b12_gemma_attention` metadata check compiles the fresh O=0 routes
 from original RoPE/RMS/P0, all 120 RNE obligations and 4,189 known A targets.
 It checks D34/65,067 cubes without source bodies or full-domain attention.
-The linear target guard is 8,192; its cube/domain guards remain unchanged.
+The current linear target/cube guards are 8,192/524,288; public geometry
+admission does not authorize dense allocation.
 After the source extension, rerun all small `c71_b12_gemma` checks; the
 placeholder-root metadata case grants no source PCS acceptance.
 The `c71_b12_gemma_affine` case uses 991 ideal Fp3 rows for a public
@@ -265,8 +277,9 @@ A and wrong output. The form itself uses no private correlation.
 The `c71_b12_gemma_residual` metadata case checks all 181 canonical
 residual/scale routes, the exact verified public BF16 coefficients and
 181 RNE pairs, with a synthetic exponent map and no full witness.
-Its 79,539-cube known batch fits the 131,072 guard, with the same D14
-native source cap. Rerun the full small `c71_b12_gemma` filter after
+Its 79,539-cube partial batch fits the current 524,288-cube guard.
+This remains a metadata check; the public matrix runner stays D14. Rerun
+the full small `c71_b12_gemma` filter after
 source extension; full-domain RNE and calibrated profiles remain separate.
 The `c71_b12_gemma_kv` case uses three component attempts with 544/577/610
 ideal Fp3 rows, including incoming original K/V MACs, new-source range and
@@ -298,7 +311,8 @@ public target key using Delta; this is no malicious-prover capability.
 Acceptance supports the documented component simulation argument, not
 full-Gemma ZK by itself.
 After extending output sources, rerun `c71_b12_gemma` within the same
-60 s/2 GiB limits. Calibrated full output and Gemma simulation remain open.
+60 s/2 GiB limits. Calibrated full output and native complete Gemma
+simulation remain open.
 The Python `softmax_exp30` filter checks the owner-selected numerical recipe,
 including its certified difference from RNE of the real softmax. Its
 passing test does not by itself change the B12 security total.
@@ -324,7 +338,7 @@ workspace before a protocol milestone checkpoint when authorized resources
 permit; otherwise state the validation gap. Heavy benchmarks and full-model
 E2E belong on authorized hardware, not the local VM. The owner's 2026-09-08
 exception allows a small synthetic CPU E2E on this VM, within the
-[active experiment contract](../c7.1-gemma31b-design.md#esperimento-ridotto-contratto-e-ambito-del-runner).
+[bounded experiment contract](../c7.1-gemma31b-design.md#esperimento-ridotto-contratto-e-ambito-del-runner).
 It does not authorize a broad build, GPU/provider access or paid resources.
 
 Do not create per-crate, top-level or experimental Cargo targets. Remove the
@@ -347,7 +361,7 @@ only by the registered export/dump scripts and are not newly committed as model
 assets. Preserve existing tracked fixtures and evidence. The frozen GPT-2
 [quantization spec](../quantization-spec.md), `scripts/gpt2_fixed.py` and Rust
 forward must remain bit-identical when that baseline is touched. C7.1 requires
-its own Gemma semantic/runtime correspondence as specified in design §2.1;
+its own [Gemma semantic/runtime correspondence](../c7.1/design.md#native-correspondence);
 GPT-2 golden success does not validate Gemma.
 
 Raw runs are new files under `benchmarks/results/<milestone>-<date>-<gitsha>.json`.

@@ -5,9 +5,10 @@ inference using VOLE-MAC blind GKR.
 
 ## Start here
 
-Read [current status](docs/prototype-status.md), then the relevant sections of
-its active design. Use the [documentation index](docs/README.md) for procedures,
-reusable evidence and history. Load historical material only when the task
+Read [current status](docs/c7.1/status.md), then the relevant sections of
+the [active design](docs/c7.1/design.md) and its linked security proof. Use
+the [documentation index](docs/README.md) for procedures, reusable evidence
+and history. Load historical material only when the task
 needs it; earlier milestones and their runbooks are not current authority.
 
 The owner's current instructions take precedence. Status records the active

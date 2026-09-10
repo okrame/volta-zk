@@ -1,113 +1,54 @@
-# Documentation — C7.1 working wiki
+# Documentation — C7.1
 
-Start with [current status](prototype-status.md), then read the relevant part
-of the [C7.1 Gemma-31B design](c7.1-gemma31b-design.md). This index is a map;
-it is not another status ledger.
+Read [current status](c7.1/status.md), then the relevant part of the
+[current design](c7.1/design.md). These five files are the living C7.1 documents:
 
-The evaluated baseline remains stopped after B7. The owner's subsequent
-decisions opened B8/B9: a replacement construction and a checked native
-component. B10 concludes the premise/lifecycle assessment with integration
-not admitted. B11 selects the owner-authorized intermediate finite AES profile under
-explicit primitive/resource hypotheses. B12's conditional mathematical goal
-is now complete: the [fixed-run composition](c7.1-fixed-run-composition.md)
-defines the whole same-W verifier, accepted KV history and joint simulator,
-with 82.93261 soundness / 91.02272 ZK bits. Native correspondence remains open.
-A bootstrap resource extension to T80 and a durable finite-pool component are available.
-A fresh post-bootstrap seal fixes the row assignment before usable FS prefixes.
-The PCS analysis adds a proven unique-radius MCA bound and identifies
-unsalted-root privacy loss at mask exhaustion. Its salted replacement now
-has an adaptive, bounded-query Merkle hiding argument. A joint mask
-translation now covers the claimless matrix transcript and its DV closure.
-An opt-in salted matrix
-consumer now reaches the durable B11 pool with the unique-radius IOP
-geometry and an adaptive MAC-feedback bound. Merkle binding now fixes an
-oracle at its commitment prefix. Native FS coin blocks now retain that fixed
-opening payload; their merged errors and tape-completion memory are counted.
-The fixed-root field matrix has conditional soundness and ZK arguments
-for the single-setup profile (about 91 bits), including caller/simulator
-and RO tapes within T121/M93. The older 86.8347-bit soundness argument
-with broader lifecycle scope remains evidence.
-An internal B12 linear-form bridge now connects original caller MACs to one
-root/PCS; a real-B11 small case covers matrix, norm and tied embedding.
-Public forms cover all 773 P0 endpoints. A new single-setup AES profile
-provides up to 5,592,402 Fp3 correlations with 91.022717 conditional
-bootstrap bits and a streamed COPE frame. A fraction-tree range caller now
-derives W(r)'s original MAC and shares its PCS with a padding check. The
-native range/padding composition retains about 91 conditional bits; D35's
-82.9944-bit soundness geometry remains physically excluded. P0 + range +
-one bridge plus the P0 product mask fits at 312,696 base rows. The compact
-native P0 reductions now keep their original C/X/W MACs; a two-source
-small check closes ranged W and private C/X and rejects false cuts. The
-native layout compiler now preserves both packed and virtual W orders,
-maps all weighted DAG invocations and emits the same 3,606 public forms.
-The complete correlation census is 11,466,948 base rows for three attempts;
-the actual quantized Gemma wrapper/preparer/codec remains to be integrated.
-The owner now limits the goal to one uninterrupted fixed-root run: renewal,
-abort recovery and restart composition are deferred. The mathematical proof
-closes both fixed-run bounds for the selected integer semantics and a valid
-verifier-owned numeric profile. Native refinement, calibrated Gemma execution,
-physical feasibility and production integration remain unadmitted.
-
-## Current documents
-
-| Document | Purpose |
+| Document | Owns |
 |---|---|
-| [Status](prototype-status.md) | Active work, evidence, open obligations, authorization and next steps |
-| [C7.1 design](c7.1-gemma31b-design.md) | Model/relation, protocol requirements, security and resource accounting |
-| [B12 complete fixed-run composition](c7.1-fixed-run-composition.md) | Exact acceptance schedule, immutable same-W/KV induction, joint NoPeek simulator and complete conditional bounds; native implementation remains separate |
-| [G1 feasibility](c7.1-feasibility.md) | Analytic admission criteria, carrier derivations and counterexamples, next constructive obligation |
-| [G2 committed MAC opening](c7.1-committed-mac-opening.md) | Archived, unselected research: private-verifier bridge, ideal MAC/FS simulation and hash/GKR analyses; residual tests integrated, no active goal |
-| [A3 recursive RS opening](c7.1-recursive-rs-opening.md) | Fixed-cap encoder/recursion, ideal-oracle binding, IBCS rewinding audit and scoped 256-bit bound exclusion, remaining hash/FS repairs |
-| [A4 paired RS opening](c7.1-paired-rs-opening.md) | Fused two-read reduction/opening, arbitrary-fold binding, dyadic tensor forms and conditional GKR composition |
-| [A5 wide hash opening](c7.1-wide-hash-opening.md) | Eight-Fp hash/anchor, 32-lane checker, staged costs, finite ROM embedding and explicit matrices; corrected fixed-trail screen, adaptive family security/FS open |
-| [W-cut witness](c7.1-cut-witness.md) | Conditional W-free replay, P0 cohorts, exact input selectors/fanout reduction and remaining producer/KV obligations |
-| [R1 requantization](c7.1-requantization.md) | Exact RNE, cubic range GKR with source availability, dyadic byte forms, two-visit A4 opening/cache and remaining Gamma/costs |
-| [R2 RNE indicators](c7.1-rne-indicators.md) | Degree-7 RNE, one public-function P/S tree, same six B endpoints and explicit replay/arena exclusions |
-| [K1 KV transition](c7.1-kv-transition.md) | Exact temporal views, concatenation/prefix MAC reduction, first-state alias, bounded-memory routing and remaining KV PCS/producer obligations |
-| [T1 attention products](c7.1-attention-products.md) | Aggregated raw QK/PV, rectangular-view DP, GQA endpoints, source-bound probability contraction and per-layer witness schedule |
-| [R3 auxiliary witness](c7.1-auxiliary-witness.md) | Unified B/raw-attention byte source, fresh raw probes/RNE pullbacks, identical striped RS encoder and staged tree-cache repairs; incomplete Gamma/liveness |
-| [B9 native bootstrap](../rust/volta-pcg/src/c71_bootstrap.rs) · [bounded runner](../scripts/run_c71_bootstrap.py) | Independent MR19/P-521 and COPE/Fp9 roles, adversarial byte checks and local resources; no production/security admission |
-| [B12 durable finite pool](../rust/volta-pcg/src/c71_lifetime.rs) · [salted PCS consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) | Single-setup larger AES capacity with fail-closed termination, joint burns and post-bootstrap seal; legacy persistence evidence; fixed-root PCS component |
-| [B12 original-MAC linear bridge](../rust/volta-pcs/src/c71_matrix/linear.rs) · [range caller](../rust/volta-pcs/src/c71_matrix/range.rs) | One batch/PCS per source; private histogram, fraction-tree GKR and padding preserve the original range endpoint. Used in the complete mathematical composition above |
-| [B12 native P0 kernels](../rust/volta-pcs/src/c71_matrix/p0.rs) · [native layout](../rust/volta-pcs/src/c71_matrix/gemma.rs) · [DAG caller](../rust/volta-pcs/src/c71_matrix/gemma/caller.rs) · [byte bridge](../rust/volta-pcs/src/c71_matrix/gemma/bytes.rs) | Original C/X/W MACs and canonical selectors/biased bytes; native callers return obligations for the composed verifier |
-| [B12 public byte functions](../rust/volta-pcs/src/c71_matrix/byte_function.rs) · [RNE top](../rust/volta-pcs/src/c71_matrix/rne.rs) | Public P/S interpolation and exact RNE from original source bytes; used by the 410 original and 482 table-probe requests in the complete schedule |
-| [B12 exact RMS compiler](../rust/volta-pcs/src/c71_matrix/rms.rs) · [joint GKR](../rust/volta-pcs/src/c71_matrix/rms/gkr.rs) · [statistic](../rust/volta-pcs/src/c71_matrix/rms/statistic.rs) · [canonical sources](../rust/volta-pcs/src/c71_matrix/gemma/rms.rs) · [dispatcher](../rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs) | All 421 RMS/statistics and 50 local V RNE retain original MACs; bounded checks and full public preflight, without calibrated full-domain execution |
-| [B12 public lookup](../rust/volta-pcs/src/c71_matrix/lookup.rs) · [canonical GELU caller](../rust/volta-pcs/src/c71_matrix/gemma/gelu.rs) · [table RNE](../rust/volta-pcs/src/c71_matrix/gemma/bytes/quantize.rs) | Original X/Y/histogram and gate RNE in one A; full schedule uses verifier-owned certified tables |
-| [B12 gate-up](../rust/volta-pcs/src/c71_matrix/gemma/gate_up.rs) | Joint cubic product preserves GELU Y, up RNE and original down-P0 MACs. D34 A is explicitly recomposed: 82.98618/91.02272 conditional bits and 6,648,624 base rows for three attempts; no full Gemma or physical credit |
-| [B12 joint raw RoPE](../rust/volta-pcs/src/c71_matrix/rope.rs) · [canonical sources](../rust/volta-pcs/src/c71_matrix/gemma/rope.rs) | Original RMS Y and 120 raw/output RNE pairs in the same A, with absolute O=0/150/300 windows; full native execution remains open |
-| [B3 native census](../scripts/c71_work_census.py) · [bounded runner](../scripts/run_c71_matrix.py) | Actual Goldilocks arithmetic and phase memory of the reduced B2 matrix path; physical traffic/security remain open in design §10 |
-| [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
-| [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |
-| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [B8–B12 checks](../tests/test_c71_bootstrap.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: comparison budget with preserved B4–B11 decisions and complete conditional B12 mathematical bounds; runtime/physical admission stays open. `--research-screens`: preserved, non-additive research inventory |
+| [status.md](c7.1/status.md) | Goal status, authorization, next step and completion criteria |
+| [design.md](c7.1/design.md) | Selected construction, requirements, assumptions and resource contract |
+| [security.md](c7.1/security.md) | Exact mathematical protocol, same-W/KV soundness and joint ZK proof |
+| [evidence.md](c7.1/evidence.md) | Test scope, latest validation, reproducible commands and immutable run references |
+| [decisions.md](c7.1/decisions.md) | B1–B12 dispositions, exclusions, unselected/deferred choices and complete archive map |
 
-Status and design are editable; replace obsolete statements and use Git for
-history. Record important decisions with reasons and source links. Add a page
-only when there is a distinct topic to maintain; Markdown links and repository
-search are sufficient. No parallel JSON graph or per-operation diary is required.
+Update the file that owns a fact and link to it from the others. Replace
+obsolete current statements; do not append a second status ledger or add
+historical subtotals to the selected profile. Git preserves revisions.
+Goal identifiers, the step harness, scripts and tests are unchanged by
+this organization. The legacy status/design/composition paths still resolve.
 
-## Historical references and immutable evidence
+## Procedures and executable entry points
 
-All other milestone designs, handoffs, runbooks and reports are historical,
-including earlier C7/D126 work. Consult them for evidence or component reuse,
-not as competing current instructions. Frozen semantics and Lean theorems still
-constrain components that rely on them. A historical hard stop remains scoped
-to its construction and assumptions; reuse must address the relevant failure.
+- [Build and test](procedures/build-and-test.md): toolchains, bounded checks,
+  component filter catalog, artifacts and cleanup.
+- [RunPod](procedures/runpod.md): authorized provider work, spending and evidence.
+- [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py): existing goal harness and
+  comparison budget; `--research-screens` is the historical, non-additive inventory.
+- [Evidence](c7.1/evidence.md): links to current code, tests and run records.
 
-- [Pre-wiki ledger](prototype-status-history-2026-09-07.md): exact snapshot after merging C7 into main
-  and preserving its research sources, at `4f7edf0`. It contains both C7 and
-  main's C4.1/C6.4 chronology. Its embedded “active” sections and old resume
-  instructions are historical. SHA-256: `5dc3bfcf06edc66250741737fb9ac4d2a1b5b650cc607d2dce1ed21968343bb8`.
-- [Raw benchmark records](../benchmarks/results/): immutable measured records,
-  including failed runs; C7.1 does not inherit their full-result credit.
-- [Research sources](../sota/): preserved originals and same-stem Markdown.
-- [Reusable components and proof obligations](c7.1-gemma31b-design.md#2-identità-del-modello-e-pezzi-riutilizzabili):
-  entry point for the runtime → lemma → hypothesis → check mapping in §2.1.
+## Preserved derivations and history
+
+The [archive and migration map](c7.1/decisions.md#archive-and-migration-map)
+classifies every former C7.1 dossier. Their paths remain stable so scripts,
+sources and old citations keep working. They contain reusable derivations
+and stage-specific obligations, not competing current instructions. Only
+the dependencies explicitly selected by the active design transfer to B12.
+
+- [C7.1 derivation notebook](c7.1-gemma31b-design.md): body frozen at `9e57199`,
+  with a navigation notice; all prior profiles and B1–B12 derivations retained.
+- [2026-09-10 ledger snapshot](prototype-status-history-2026-09-10.md): exact
+  pre-reorganization status at `9e57199`; checksum in the migration map.
+- [2026-09-07 pre-wiki ledger](prototype-status-history-2026-09-07.md): exact
+  snapshot at `4f7edf0`, including C7 and C4.1/C6.4 chronology. SHA-256:
+  `5dc3bfcf06edc66250741737fb9ac4d2a1b5b650cc607d2dce1ed21968343bb8`.
+- [Raw benchmark records](../benchmarks/results/) and [research sources](../sota/):
+  immutable originals, including failures; no inherited full-result credit.
 - [ROWFOLD review](c7-d126-rowfold-v2-review.md) and
-  [two-pass disposition](c7-d126-rowfold-two-pass-disposition.md): historical
-  counterexamples and construction limits relevant to C7.1.
+  [two-pass disposition](c7-d126-rowfold-two-pass-disposition.md): preserved
+  counterexamples and limits, with reuse scoped by the current design.
 
-The snapshot stays beside the original docs so its relative paths keep their
-base. Old prose references to `prototype-status.md` describe this historical
-ledger; consult the snapshot, or `git show <commit>:docs/prototype-status.md`
-for revision-specific content/line numbers. Historical documents need not be
-rewritten just to change their old instructions or citations.
+All other milestone designs, handoffs, runbooks and reports are historical.
+Frozen semantics and Lean lemmas still constrain components that use them;
+an old hard stop stays scoped to the failed construction. Historical prose
+saying “active”, “next” or “open” refers to its own stage. Snapshots stay
+beside their original link base and are not rewritten as current instructions.

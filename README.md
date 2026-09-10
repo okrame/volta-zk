@@ -2,10 +2,10 @@
 
 Research prototype for designated-verifier proofs of fixed-point transformer
 inference using VOLE-MAC blind GKR. Current work is **C7.1 Gemma-31B**;
-the complete construction and its performance/security claims remain open.
+see the current status for acquired results, their scope and the next goal.
 
-- [Current status](docs/prototype-status.md): evidence, open work and authorization.
-- [C7.1 design](docs/c7.1-gemma31b-design.md): current technical requirements.
+- [Current status](docs/c7.1/status.md): evidence, open work and authorization.
+- [C7.1 design](docs/c7.1/design.md): current technical requirements.
 - [Documentation index](docs/README.md): procedures, reusable sources and history.
 - [Build and test procedures](docs/procedures/build-and-test.md) and
   [RunPod procedures](docs/procedures/runpod.md): consult before execution.

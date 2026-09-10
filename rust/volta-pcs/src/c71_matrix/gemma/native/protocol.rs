@@ -54,7 +54,9 @@ impl Writer {
         Self { bytes: header.to_vec(), count: 0 }
     }
     fn raw(&mut self, kind: u16, body: &[u8], fs: &mut Fs) -> Result<(), String> {
-        if kind != self.count || self.bytes.len() + body.len() + 6 > wire::MAX_BYTES {
+        if kind != self.count
+            || self.bytes.len() + body.len() + 6 + END.len() + 10 > wire::MAX_BYTES
+        {
             return Err("composed certificate size/order".into());
         }
         let start = self.bytes.len();

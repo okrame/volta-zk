@@ -8102,6 +8102,25 @@ def b12_complete_fixed_run_composition(base):
             'canonical_verifier_body_positive_checked': False,
             'full_model_security_or_hardware_credit': False,
         },
+        'native_canonical_transport': {
+            'credit': False,
+            'source': 'rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs',
+            'test_filter': 'c71_b12_native_wire',
+            'transport_cap_bytes': 16 << 20,
+            'mandatory_RNE_records': 892,
+            'old_tokens': [0, 150, 300],
+            'RNE_cell_bits_sum': [18935, 18995, 18995],
+            'RNE_wire_lower_bound_bytes': [892*7964 + 1176*c for c in (18935, 18995, 18995)],
+            'scale_zero_fixture_RNE_wire_bytes': [30604688, 30675248, 30675248],
+            'W_histogram_wire_bytes': 4 + 24*65535,
+            'RNE_and_W_histogram_lower_bound_bytes': [892*7964 + 1176*c + 4 + 24*65535
+                                                     for c in (18935, 18995, 18995)],
+            'preferred_certificate_bytes': 30_000_000,
+            'current_encoding_can_meet_preference': False,
+            'RNE_subtotal_includes_frames_other_operators_or_PCS': False,
+            'complete_certificate_bytes': None,
+            'current_total_codec_can_accept_canonical_proof': False,
+        },
         'next_goal': 'execute canonical Prepare/proof dispatch from the causal descriptors; validate the complete AES adapter on authorized hardware; no dense local execution',
     }
 

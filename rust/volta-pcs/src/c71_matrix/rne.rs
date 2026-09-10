@@ -194,6 +194,18 @@ pub(super) struct Proof {
     functions: byte_function::Proof,
 }
 
+/// Mandatory wire bytes even when a shift has no terminal function/product.
+/// This is a lower bound for every admitted shift, not a complete certificate.
+pub(super) fn wire_min_bytes(cell_bits: usize) -> usize {
+    4 + 9 * 24 * cell_bits + 4 + 3 * 24 + byte_function::wire_bytes(cell_bits + 3)
+}
+
+/// Exact current component encoding, excluding its outer frame and input MAC.
+pub(super) fn wire_bytes(cell_bits: usize, shift: i32) -> usize {
+    let recipe = Recipe::new(shift);
+    wire_min_bytes(cell_bits) + 24 * (recipe.functions.len() + recipe.products())
+}
+
 pub(super) fn required(cell_bits: usize, shift: i32) -> usize {
     let recipe = Recipe::new(shift);
     8 * cell_bits
@@ -697,6 +709,10 @@ mod tests {
             } // same correct rounded output, different committed bytes
             let (proof, byte_point, byte) =
                 prove(&statement, original[0], |i| bytes(raw[i]), &mut fs, &mut prows).unwrap();
+            let mut encoded = Vec::new();
+            crate::c71_matrix::wire::Wire::write(&proof, &mut encoded);
+            assert_eq!(encoded.len(), wire_bytes(statement.output_point.len(), statement.shift));
+            assert!(encoded.len() >= wire_min_bytes(statement.output_point.len()));
             assert_eq!(fs.requests(), 95);
             let (range_proof, forms, targets) = range::prove(
                 &model,

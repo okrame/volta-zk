@@ -32,6 +32,12 @@ pub(super) fn required(view_bits: usize) -> usize {
     32 * view_bits + 169
 }
 
+/// Exact current Wire size: eight mandatory fraction-tree layers, no PCS.
+pub(super) fn wire_bytes(view_bits: usize) -> usize {
+    let rounds: usize = (0..8).map(|i| view_bits + i).sum();
+    4 + 8 * (4 + 8 * 24) + 5 * 24 * rounds + 3 * 24
+}
+
 fn bind(s: &Statement<'_>, count: usize, sum: bool, fs: &mut Fs) -> Result<Vec<Fp3>, String> {
     if !s.tables.len().is_power_of_two()
         || s.tables.len() > 16
@@ -87,7 +93,11 @@ fn coefficients(tables: &[[Fp3; 256]]) -> Vec<[Fp3; 256]> {
         .map(|f| {
             std::array::from_fn(|j| {
                 let c = f[j] * (factorial[j] * factorial[255 - j]).inv();
-                if (255 - j) & 1 == 1 { -c } else { c }
+                if (255 - j) & 1 == 1 {
+                    -c
+                } else {
+                    c
+                }
             })
         })
         .collect()

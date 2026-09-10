@@ -299,8 +299,8 @@ L'ordine implementato comprende frame 0–7 per forme/P0/RMS/RNE/GELU/gate/RoPE,
 8–127 per le coppie QK/PV dei 60 layer, 128 per KV, 129–130 per softcap/EXP30,
 131–132 per range, 133 per W, quindi vecchie A e A corrente: 135/136/137
 frame complessivi. È un ordine del codice, non una misura di certificati
-canonici prodotti. Il cap di trasporto riusato resta 16 MiB e non è
-dimostrato sufficiente per il certificato completo.
+canonici prodotti. Il cap di trasporto riusato resta 16 MiB ed è
+inferiore al minimo necessario per le sole RNE (vedi analisi sotto).
 
 `verify_body` è un consumer interno, non `VerifyResponse`: non riserva
 correlazioni, non costruisce l'header dal registro, non certifica Γ e non
@@ -336,10 +336,44 @@ Non esiste un ingresso per importare storia, chiavi o ricevute del peer.
 Il limite Fs interno è 2^42 richieste, ripreso come arresto operativo
 dall'envelope analitico di security §6, non come misura o dimostrazione
 del numero di draw del programma. Restano il cap di trasporto 16 MiB e
-i limiti PCS preesistenti: non si assume che ospitino il certificato
-canonico completo. I controlli del registro e del rifiuto AES a tre righe
+il cap PCS di 8 MiB per apertura. Il cap totale è insufficiente;
+la compatibilità del cap PCS completo resta da determinare. I controlli del registro e del rifiuto AES a tre righe
 non percorrono la promozione positiva; la sua corrispondenza, il preparatore,
 il prover, la certificazione numerica e lo schedule fisico restano aperti.
+
+### Mandatory wire lower bound
+
+L'encoding corrente impone, per una RNE con c bit di celle,
+`7964 + 1176*c + 24*(funzioni + prodotti)` byte. I primi due termini
+includono i nove campi per round, i tag, i prefissi u32 dei vettori e
+l'intera prova P/S a otto livelli su c+3 bit. Le cardinalità sono imposte
+da `rne::verify` e `range::tree_shape`, non scelte dal witness. Eliminare
+l'ultimo termine dà un limite inferiore per **ogni** shift ammesso.
+
+Il [censimento canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs)
+conta 892 RNE e somme c=18.935/18.995/18.995 a O=0/150/300. Ne seguono
+29.371.448/29.442.008/29.442.008 byte minimi. Sono esclusi header,
+framing, sonde fresche, tutti gli altri operatori e ogni PCS. Il limite
+non dipende dalla calibrazione, purché si mantengano schedule e codec
+correnti. Per la sola fixture con esponenti zero (Pi=-14), il conteggio
+RNE esatto è 30.604.688/30.675.248/30.675.248 byte; non è una misura su
+checkpoint e non è il certificato completo.
+
+Anche il solo istogramma del range W è obbligatorio e disgiunto dalle
+RNE: `range::verify` impone 65.535 campi per l'alfabeto simmetrico 32767,
+quindi `4 + 24*65535 = 1.572.844` byte di wire. Sommato al minimo RNE,
+porta il limite inferiore a **30.944.292/31.014.852/31.014.852 byte**.
+L'encoding corrente non può quindi soddisfare la preferenza di 30 MB
+per nessuna calibrazione ammessa. Non è ancora dimostrato il superamento
+dell'allarme a 35 MB: mancano dal conteggio gli altri elementi obbligatori.
+
+Il reader totale da 16.777.216 byte è quindi incompatibile con qualsiasi
+prova canonica completa corrente, anche su H100. Occorre completare il
+conteggio di tutti i frame e PCS, poi adeguare i limiti/codec; innalzare
+soltanto il cap sulla base di questo sottototale non dimostra sufficienza.
+Il writer ridotto ora riserva anche i 26 byte di chiusura nel proprio
+limite totale, evitando di emettere un certificato oltre il cap del reader.
+Questo fix del confine non risolve il dimensionamento canonico.
 
 ## Resource and measurement contract
 

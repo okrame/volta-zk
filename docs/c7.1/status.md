@@ -76,8 +76,14 @@ collega ora registro posseduto dal verifier, header locale e pool reale:
 burn prima del decoding, promozione solo dopo verifica completa e journal.
 Il profilo lega i corpi delle tabelle, senza certificarne i valori numerici.
 Il controllo reale a tre righe copre il rifiuto per capacità insufficiente
-senza promozione o riuso. Il dimensionamento del codec completo e la
-verifica positiva restano aperti.
+senza promozione o riuso. **Il codec totale da 16 MiB è ora dimostrato
+insufficiente:** le sole 892 RNE richiedono almeno 29.371.448 byte a O=0
+e 29.442.008 byte a O=150/300, prima di framing, altri operatori e PCS.
+Con il solo istogramma W si supera già 30,94 MB, quindi la preferenza
+di 30 MB è incompatibile con l'encoding corrente. Sono limiti inferiori,
+non misure di un certificato completo; l'allarme a 35 MB non è ancora valutato.
+Dimensionamento completo, adeguamento del trasporto e verifica positiva
+restano aperti.
 
 Il [collegamento AES/journal](../../rust/volta-pcs/src/c71_matrix/gemma/native/pool.rs)
 ora alimenta il wrapper ridotto tramite riserve del pool reale, con segni
@@ -88,8 +94,9 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Il goal di estensione resta aperto:** collegare Prepare/prover canonici
-e codec completo al wrapper, conservando gli originali
+**Il goal di estensione resta aperto:** dimensionare il certificato completo
+e correggere l'incompatibilità del codec, collegare Prepare/prover canonici
+al wrapper, conservando gli originali
 e la compilazione numerica comune; verificare poi il percorso composto AES positivo.
 Le sue 797.139 righe base sul grafo ridotto superano il perimetro dei
 bootstrap locali e richiedono hardware autorizzato. La compilazione

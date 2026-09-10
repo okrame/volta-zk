@@ -186,6 +186,18 @@ def test_B12_complete_fixed_run_preserves_exact_errors_and_counts_caller_resourc
     assert not native['real_AES_composed_run'] and not native['canonical_Gemma_dispatch']
     assert native['real_pool_adapter_implemented']
     assert native['real_AES_shortage_checked_base_rows'] == 3
+    transport = full['native_canonical_transport']
+    assert transport['RNE_wire_lower_bound_bytes'] == [29371448, 29442008, 29442008]
+    assert all(size > transport['transport_cap_bytes'] for size in transport['RNE_wire_lower_bound_bytes'])
+    assert all(size >= lower for size, lower in zip(transport['scale_zero_fixture_RNE_wire_bytes'],
+                                                  transport['RNE_wire_lower_bound_bytes']))
+    assert transport['W_histogram_wire_bytes'] == 1572844
+    assert transport['RNE_and_W_histogram_lower_bound_bytes'] == [30944292, 31014852, 31014852]
+    assert all(size > transport['preferred_certificate_bytes']
+               for size in transport['RNE_and_W_histogram_lower_bound_bytes'])
+    assert not transport['current_encoding_can_meet_preference']
+    assert transport['complete_certificate_bytes'] is None
+    assert not transport['credit'] and not transport['current_total_codec_can_accept_canonical_proof']
     canonical = full['native_canonical_producers']
     assert (canonical['sources_A'], canonical['producers']) == (3471, 2328)
     assert canonical['old_tokens'] == [0, 150, 300]

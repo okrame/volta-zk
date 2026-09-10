@@ -91,6 +91,14 @@ Per la preparazione RNE condivisa eseguire separatamente
 Il primo controlla righe sintetiche delle 892 coppie nei tre contesti;
 il secondo le 64 classi di shift contro i polinomi byte del verifier.
 
+`c71_b12_native_wire` controlla il limite inferiore RNE sul codec canonico
+(solo metadati, `--nocapture` stampa il censimento) e il limite del writer
+comprensivo del record finale. Il test di trasporto usa un buffer di
+16 MiB, senza witness; mantenere 60 s/2 GiB e un worker Rayon.
+`c71_b12_rne_ties_overflow` confronta il conteggio wire con una prova
+componente realmente serializzata. Conservare `native_composed` e
+`native_certificate` dopo modifiche al writer.
+
 The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate
 D31/D33 source counts and partial target/cube totals describe those fixtures,

@@ -224,8 +224,9 @@ Il riordino del primo frame rifiuta prima delle sfide. Le tabelle restano
 quelle sintetiche del preflight (EXP30 esatto a e_score=128, le altre solo
 di forma); nessun witness o codeword D34/D35 viene materializzato.
 
-Il decoder conserva il cap ridotto di 16 MiB: il suo dimensionamento e
-la verifica positiva insieme all'header del registro restano aperti.
+Il decoder conserva il cap ridotto di 16 MiB, ora dimostrato insufficiente
+dal censimento RNE sotto. Il dimensionamento completo e la verifica
+positiva insieme all'header del registro restano aperti.
 La presenza delle chiamate a RMS, RNE, lookup,
 attenzione e PCS nel corpo compilato non costituisce loro esecuzione
 positiva congiunta. Il diagnostico distingue implementazione, prefisso
@@ -268,6 +269,41 @@ tre tentativi ideali e codec ridotto) e **2 controlli Python passati**
 senza `cfg(test)` con build offline/locked a un job, target canonico e
 opt-level 2. Formattazione, destinazioni locali dei link e diff verificati.
 Sono controlli di sviluppo, non un run di benchmark su albero pulito.
+
+## Mandatory canonical wire and transport boundary
+
+`c71_b12_native_wire_rne_alone` deriva il censimento wire RNE dai
+descrittori canonici posseduti a O=0/150/300. Le somme dei bit di celle
+sono 18.935/18.995/18.995. Anche omettendo funzioni e prodotti terminali,
+i record richiedono **29.371.448/29.442.008/29.442.008 byte**.
+Il cap totale di 16 MiB è quindi insufficiente indipendentemente dalla
+calibrazione. È un limite inferiore analitico: esclude altri operatori,
+PCS e framing; non è stato generato o misurato un certificato completo.
+Per la fixture con scale zero/Pi=-14, il sottototale RNE esatto è
+30.604.688/30.675.248/30.675.248 byte. Vedi
+[derivazione e lavoro residuo](design.md#mandatory-wire-lower-bound).
+
+`c71_b12_rne_ties_overflow` confronta la formula con `Wire::write` su
+una prova componente realmente generata, inclusa la sua prova P/S.
+`c71_b12_native_wire_limit` controlla un record di trasporto che termina
+esattamente a 16 MiB, con lo stesso digest finale del reader; un byte in
+più viene rifiutato senza cambiare writer o Fs. Il writer ometteva i
+26 byte del record finale dal controllo della capacità. La correzione
+preserva l'encoding e non ammette il certificato canonico. Nessuna
+allocazione full-model, PCG o esecuzione hardware.
+
+Il range W richiede 65.535 campi nell'istogramma (`range::verify`),
+ognuno di 24 byte più il prefisso u32 del vettore. Questi 1.572.844 byte
+sono disgiunti dal sottototale RNE: il limite inferiore congiunto è
+30.944.292/31.014.852/31.014.852 byte, già oltre la preferenza di 30 MB.
+È un'ulteriore deduzione dal codec; non una misura del range W D35.
+
+Validazione mirata: **5 test Rust passati** (i due `native_wire`,
+`rne_ties_overflow`, `native_composed`, `native_certificate`) nei limiti
+60 s/2 GiB e un worker Rayon. La build è offline/locked a un job nel target
+canonico. Passano anche **2 controlli Python** (`complete_fixed_run` e
+`native_small_profile`), `cargo check --lib` senza `cfg(test)`, formato,
+link locali e diff. Sono controlli di sviluppo, non benchmark su albero pulito.
 
 ## Measured historical records
 

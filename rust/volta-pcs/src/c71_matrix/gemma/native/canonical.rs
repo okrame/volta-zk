@@ -34,6 +34,23 @@ struct Canonical {
 }
 
 impl Canonical {
+    /// The 892 mandatory RNE records alone, without frames, fresh probes,
+    /// other operators, header, or any PCS. Metadata only; no witness/PCG.
+    fn rne_wire_bytes(&self) -> Result<(usize, usize, usize), String> {
+        let (mut bits_sum, mut minimum, mut selected) = (0, 0, 0);
+        for step in &self.steps {
+            let Producer::Rne(pair) = step else {
+                continue;
+            };
+            let (_, shape) = self.bytes().source_rne_view(pair.raw)?;
+            let c = bits(shape[0]) + bits(shape[1]);
+            bits_sum += c;
+            minimum += kernel::rne::wire_min_bytes(c);
+            selected += kernel::rne::wire_bytes(c, pair.shift);
+        }
+        Ok((bits_sum, minimum, selected))
+    }
+
     fn compile(
         slot: usize,
         weights: &[i32],
@@ -188,6 +205,33 @@ impl Canonical {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_b12_native_wire_rne_alone_exceeds_bounded_transport() {
+        let plan = super::super::super::compile().unwrap();
+        let (s, o, sm) = plan.softmax_sources_at(0).unwrap();
+        let mut exponents: BTreeMap<_, _> =
+            profile::Recipes::exponent_sources(&s, &o, &sm).into_iter().map(|id| (id, 0)).collect();
+        for l in &sm.layers {
+            exponents.insert(l.pi, -14);
+        }
+        for slot in 0..3 {
+            let p = Canonical::compile(slot, &[0; 772], &exponents).unwrap();
+            let (sum, minimum, selected) = p.rne_wire_bytes().unwrap();
+            assert_eq!(
+                (sum, minimum, selected),
+                [
+                    (18935, 29371448, 30604688),
+                    (18995, 29442008, 30675248),
+                    (18995, 29442008, 30675248),
+                ][slot]
+            );
+            assert_eq!(minimum, 892 * 7964 + 1176 * sum);
+            assert!(selected >= minimum);
+            assert!(minimum > kernel::wire::MAX_BYTES);
+            eprintln!("slot={slot} RNE cell_bits_sum={sum} universal_wire_lower={minimum} selected_component_wire={selected}");
+        }
+    }
 
     #[test]
     fn c71_b12_native_rne_rows_cover_all_canonical_pairs_and_contexts() {

@@ -576,14 +576,39 @@ mod tests {
 
     #[test]
     fn c71_b12_rms_joint_gkr_reaches_original_ranged_bytes_without_bit_reauthentication() {
-        let n = 32;
         let programs = [
             super::super::compile(3, 0, 0, 0, true).unwrap(),
             super::super::compile(256, 0, 0, 0, false).unwrap(),
         ];
-        let assignments = [Some(0), Some(1), None, Some(0)];
         let honest =
             [frame(6, 14, 3, true), frame(-3, 9, -16, false), [0; 12], frame(0, 0, 0, true)];
+        assert_eq!(
+            check(&programs, honest, frame(-3, 9, -15, false), frame(6, 15, 3, true)),
+            (7299, 2163)
+        );
+    }
+
+    #[test]
+    fn c71_b12_ratio_joint_gkr_keeps_original_numerator_denominator_and_output_bytes() {
+        let programs =
+            [super::super::compile_ratio(0).unwrap(), super::super::compile_ratio(14).unwrap()];
+        let honest =
+            [frame(3, 2, 2, true), frame(1, 32768, 0, true), [0; 12], frame(0, 1, 0, true)];
+        let (count, draws) =
+            check(&programs, honest, frame(1, 32768, 1, true), frame(4, 2, 2, true));
+        eprintln!("ratio ranged A and PCS: {count} Fp3, {draws} kernel FS draws");
+        assert!(count <= 12000 && draws <= 4000);
+    }
+
+    fn check(
+        programs: &[Circuit],
+        honest: [[u8; 12]; 4],
+        wrong_output: [u8; 12],
+        changed_input: [u8; 12],
+    ) -> (usize, usize) {
+        let n = 32;
+        let assignments = [Some(0), Some(1), None, Some(0)];
+        let mut observed = (0, 0);
         let profile = gamma(&matrix_config(n).unwrap());
         let attempt = AttemptContext {
             session: [1; 32],
@@ -597,7 +622,7 @@ mod tests {
         for fault in 0..3 {
             let mut committed = honest;
             if fault == 1 {
-                committed[1] = frame(-3, 9, -15, false);
+                committed[1] = wrong_output;
             }
             let mut values = vec![0; n * n];
             for cell in 0..4 {
@@ -611,19 +636,18 @@ mod tests {
                 profile: &profile,
                 view: [42; 32],
                 attempt,
-                programs: &programs,
+                programs,
                 assignments: &assignments,
             };
             let mut used = committed;
             if fault == 2 {
-                used[0] = frame(6, 15, 3, true);
+                used[0] = changed_input;
             }
             // Invalid dummy getter bytes are ignored; the public source view
             // and every circuit bitplane have exactly zero padding.
             used[2] = [255; 12];
             let count =
                 statement.required().unwrap() + range::required(10, range::Alphabet::Byte) + 32;
-            assert_eq!(count, 7299);
             let widths = statement.geometry().unwrap();
             let fs_count = 2
                 + widths[..widths.len() - 1]
@@ -633,6 +657,7 @@ mod tests {
                 + 1
                 + 8 * 6
                 + 45;
+            observed = (count, fs_count);
             let mut rng = MatrixRng::from_seed([127; 32]);
             let rows: Vec<_> = (0..count)
                 .map(|_| Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>())))
@@ -709,7 +734,7 @@ mod tests {
             let remaining = short.len();
             assert!(verify(&statement, &proof, delta, &mut start(), &mut short).is_err());
             assert_eq!(short.len(), remaining);
-            assert_eq!(fs_count, 2163);
         }
+        observed
     }
 }

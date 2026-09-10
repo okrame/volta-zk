@@ -307,10 +307,21 @@ requires an owner decision on the quantized function. Its local numerical
 bound grants no cryptographic or full-model quality credit. Independent
 work on source binding, exact division and full simulation can continue.
 
+The [exact ratio component](c7.1-gemma31b-design.md#b12-divisione-rne-esatta-sugli-originali-byte-pzy)
+now reuses the RMS circuit/GKR for signed RNE(2^m*P/Z), m=0..14,
+with a strictly positive bounded denominator and original P32/Z48/Y16
+bytes. Its 7,164-row ideal range/PCS case rejects wrong rounding and
+changed numerator bytes preserving the output. It neither selects EXP30
+nor adds full softmax credit. The output-chain check also accepts a DV
+simulation with zero dummy values and arbitrary public decisions by
+retagging the original public argmax target under the same verifier key.
+That resolves this output constraint; the full-Gemma trace, NoPeek and
+termination composition remain open.
+
 Forty-four B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
 range/product identities and the joint source bounds. The relevant Python checks total 227; the 17
-narrow bootstrap/pool checks and forty-four B12 PCS/caller/layout checks pass.
+narrow bootstrap/pool checks and forty-six B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

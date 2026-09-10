@@ -243,7 +243,7 @@ mod tests {
     use rand_010::{RngExt, SeedableRng};
 
     #[test]
-    fn c71_b12_gemma_output_head_rne_softcap_and_public_argmax_share_original_A() {
+    fn c71_b12_gemma_output_head_rne_softcap_and_public_argmax_share_original_a() {
         let plan = crate::c71_matrix::gemma::rms::tests::toy_plan(3, 2);
         let bytes = plan.auxiliary_bytes().unwrap();
         let base = bytes.scalar.layout.sources.len();
@@ -284,10 +284,14 @@ mod tests {
         // Certified subset of C71-SOFTCAP-RNE-v1 at (10,2), inputs -3..3.
         // Python checks this exact table; the canonical table has 65535 rows.
         let table = || lookup::Table { profile: 0, lower: -3, outputs: &[-7, -7, -7, 0, 7, 7, 7] };
-        let x = [[-3i64, 3, -1, 0], [1, 2, -1, 0], [0, -1, 2, 3]];
-        for fault in 0..4 {
+        for fault in 0..5 {
+            let x = if fault == 4 {
+                [[0i64; 4]; 3]
+            } else {
+                [[-3i64, 3, -1, 0], [1, 2, -1, 0], [0, -1, 2, 3]]
+            };
             let mut tokens = [3u32, 1, 0, 2];
-            if fault == 3 {
+            if fault >= 3 {
                 tokens[2] = 1;
             }
             let y = |r: usize, c: usize| {
@@ -312,6 +316,9 @@ mod tests {
                     return x.iter().flatten().filter(|&&v| v == c as i64 - 3).count() as i64;
                 }
                 if id == route.slack {
+                    if fault == 4 {
+                        return -32768;
+                    } // unsigned zero, fake decisions need DV keys
                     return (y(r, tokens[r + 1] as usize)
                         - y(r, c)
                         - i64::from(c < tokens[r + 1] as usize))
@@ -357,10 +364,17 @@ mod tests {
                 tokens: &tokens,
             };
             let mut rng = MatrixRng::from_seed([132 + fault; 32]);
-            let rows: Vec<_> = (0..count)
-                .map(|_| Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>())))
+            // Ideal MAC fixture sampled conditional on the verifier's keys.
+            // In the simulator case these keys, Delta and PUBLIC tokens are
+            // the only inputs; every witness value above is a dummy zero.
+            let keys: Vec<_> = (0..count).map(|_| Key::new(from_p3(rng.random::<E>()))).collect();
+            let rows: Vec<_> = keys
+                .iter()
+                .map(|k| {
+                    let x = from_p3(rng.random::<E>());
+                    Auth::new(x, k.k - delta * x)
+                })
                 .collect();
-            let keys: Vec<_> = rows.iter().map(|a| Key::new(a.m + delta * a.x)).collect();
             let start = || Fs::new(b"original head RNE softcap argmax one ranged source", 100000);
             let mut fs = start();
             let mut prows = rows.into_iter();
@@ -390,7 +404,16 @@ mod tests {
             .unwrap();
             let (mut forms, mut targets) = (Vec::from(forms), Vec::from(targets));
             forms.push(zero);
-            targets.push(Auth::new(bias, Fp3::ZERO));
+            targets.push(if fault == 4 {
+                // DV SIMULATOR ONLY: original public key is Delta*bias.
+                // Dummy Y/slack give form value zero. Auth(0,Delta*bias)
+                // has that SAME key. There is no new correction or changed
+                // verifier target; a malicious prover does not know Delta.
+                assert_ne!(bias, Fp3::ZERO);
+                Auth::new(Fp3::ZERO, delta * bias)
+            } else {
+                Auth::new(bias, Fp3::ZERO)
+            });
             let (f, b, t) = bytes.table_rne_forms(&plan, &pairs, &rp).unwrap();
             forms.extend(f);
             targets.extend(t.into_iter().zip(b).map(|(a, b)| Auth::new(a.x + b, a.m)));
@@ -468,7 +491,7 @@ mod tests {
                 &mut fs,
                 &mut vrows,
             );
-            if fault == 0 {
+            if fault == 0 || fault == 4 {
                 assert_eq!(result.unwrap(), digest);
             } else {
                 assert!(result.is_err(), "wrong public tie decision passed same source PCS");

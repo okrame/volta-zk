@@ -339,16 +339,45 @@ pub(super) fn compile(
     for v in &mut coefficients {
         *v /= common;
     }
-    let [a, b, c] = coefficients;
     let pw = if weighted { 32 } else { 16 };
+    let limit = if weighted { 32767u128.pow(2) } else { 32767 };
+    rounding_circuit(coefficients, pw, limit, columns as u128 * 32767u128.pow(2), false)
+}
+
+/// Exact signed RNE(2^fractional_bits * numerator / denominator).
+/// Independent component: this does not select a softmax exponential recipe.
+pub(super) fn compile_ratio(fractional_bits: u32) -> Result<Circuit, String> {
+    if fractional_bits > 14 {
+        return Err("ratio public output scale exceeds 14 bits".into());
+    }
+    rounding_circuit([1u128 << (2 * fractional_bits), 0, 1], 32, 1 << 30, 450u128 << 30, true)
+}
+
+// Reuse RMS's exact squared half-boundaries, sign and tie-even predicate.
+// The ratio variant squares its positive denominator inside the circuit;
+// it has no separately committed square or reciprocal.
+fn rounding_circuit(
+    coefficients: [u128; 3],
+    pw: usize,
+    limit: u128,
+    statistic_limit: u128,
+    square_statistic: bool,
+) -> Result<Circuit, String> {
+    let [a, b, c] = coefficients;
     let top = a.checked_mul(4).and_then(|v| v.checked_mul(1u128 << (2 * (pw - 1))));
+    let maximum_statistic = if square_statistic {
+        statistic_limit
+            .checked_mul(statistic_limit)
+            .ok_or("ratio denominator square exceeds u128")?
+    } else {
+        (1u128 << 47) - 1
+    };
     let bottom = c
-        .checked_mul((1u128 << 47) - 1)
+        .checked_mul(maximum_statistic)
         .and_then(|v| v.checked_add(b))
         .and_then(|v| v.checked_mul(((1u128 << 17) - 1).pow(2)));
     let (top, bottom) = top.zip(bottom).ok_or("RMS circuit exceeds local 128-bit limit")?;
     let width = 128 - top.leading_zeros().min(bottom.leading_zeros()) as usize;
-    let limit = if weighted { 32767u128.pow(2) } else { 32767 };
     let ports = 2 + pw + 48 + 16;
     let mut g =
         Builder { ports, gates: Vec::new(), depths: vec![0; ports], shared: HashMap::new() };
@@ -358,11 +387,21 @@ pub(super) fn compile(
     let (pmag, pneg) = g.magnitude(&product);
     let pg = g.le(&pmag, &constant(limit, pw), pw);
     let surrogate = &statistic[..47];
-    let sg = g.le(surrogate, &constant(columns as u128 * 32767u128.pow(2), 47), 47);
-    let sg = g.and(statistic[47], sg);
+    let sg = g.le(surrogate, &constant(statistic_limit, 47), 47);
+    let mut sg = g.and(statistic[47], sg);
+    let denominator_input = if square_statistic {
+        let zero_bits = surrogate.iter().map(|&v| g.not(v)).collect();
+        let zero = g.all(zero_bits);
+        let positive = g.not(zero);
+        sg = g.and(sg, positive);
+        let bits = 128 - statistic_limit.leading_zeros() as usize;
+        g.multiply(&surrogate[..bits], &surrogate[..bits], 2 * bits)
+    } else {
+        surrogate.to_vec()
+    };
     let square = g.multiply(&pmag, &pmag, 2 * pw);
     let numerator = g.multiply(&square, &constant(4 * a, width), width);
-    let denominator = g.multiply(surrogate, &constant(c, width), width);
+    let denominator = g.multiply(&denominator_input, &constant(c, width), width);
     let denominator = g.add(&denominator, &constant(b, width), width);
     let (m, negative) = g.magnitude(&output);
     let inverses = m.iter().map(|&v| g.not(v)).collect();
@@ -458,6 +497,83 @@ pub(super) mod tests {
         let threshold = d * (2 * lo + 1).pow(2);
         let y = lo + u128::from(4 * n > threshold || (4 * n == threshold && lo & 1 == 1));
         Some(if p < 0 { -(y as i64) } else { y as i64 })
+    }
+
+    #[test]
+    fn c71_b12_ratio_circuit_matches_exact_division_ties_ranges_and_positive_denominator() {
+        for m in 0..=14 {
+            let circuit = compile_ratio(m).unwrap();
+            assert_eq!(circuit.coefficients, [1u128 << (2 * m), 0, 1]);
+            assert_eq!(circuit.product_bits, 32);
+            assert!(circuit.arithmetic_bits <= 128 && circuit.levels.len() <= 128);
+            assert!(circuit.levels.iter().all(|l| l.len() <= 1 << 14));
+            let mut cases = Vec::new();
+            for (p, z) in [
+                (1i64, 2i64 << m),
+                (3, 2i64 << m),
+                (5, 2i64 << m),
+                (-1, 2i64 << m),
+                (-3, 2i64 << m),
+                (-5, 2i64 << m),
+                (1 << 30, 450i64 << 30),
+                (-(1 << 30), 450i64 << 30),
+                (0, 1),
+                (1, 1),
+                (2, 1),
+                (32767, 1),
+                (32768, 1),
+                (0, 0),
+                (0, -1),
+                (1, (450i64 << 30) + 1),
+                ((1 << 30) + 1, 1),
+                (-(1 << 31), 1),
+                (0, (1 << 47) - 1),
+            ] {
+                let expected = if p.unsigned_abs() > 1 << 30 || z <= 0 || z > 450i64 << 30 {
+                    None
+                } else {
+                    let n = p.unsigned_abs() << m;
+                    let (q, r) = (n / z as u64, n % z as u64);
+                    let y = q + u64::from(2 * r > z as u64 || (2 * r == z as u64 && q % 2 == 1));
+                    (y <= 32767).then_some(p.signum() * y as i64)
+                };
+                let y = expected.unwrap_or(0);
+                cases.push((p, z, y, expected.is_some()));
+                if y < 32767 {
+                    cases.push((p, z, y + 1, false));
+                }
+                cases.push((p, z, -32768, false));
+            }
+            let live = (1u64 << cases.len()) - 1;
+            let mut planes = vec![0u64; circuit.ports];
+            planes[1] = live;
+            for (cell, &(p, z, y, _)) in cases.iter().enumerate() {
+                let mut offset = 2;
+                for (v, bits) in [(p, 32), (z, 48), (y, 16)] {
+                    let encoded = (v + (1i64 << (bits - 1))) as u64;
+                    for bit in 0..bits {
+                        planes[offset + bit] |= ((encoded >> bit) & 1) << cell;
+                    }
+                    offset += bits;
+                }
+            }
+            let trace = circuit.replay(&planes, live).unwrap();
+            let valid = trace.last().unwrap()[circuit.valid];
+            for (i, &(_, _, _, ok)) in cases.iter().enumerate() {
+                assert_eq!((valid >> i) & 1, u64::from(ok), "ratio m={m}, case={:?}", cases[i]);
+            }
+            if m == 0 || m == 14 {
+                eprintln!(
+                    "ratio m={m}: gates={} height={} rows={} width={} arithmetic_bits={}",
+                    circuit.raw_gates,
+                    circuit.levels.len(),
+                    circuit.levels.iter().map(Vec::len).sum::<usize>(),
+                    circuit.levels.iter().map(Vec::len).max().unwrap(),
+                    circuit.arithmetic_bits
+                );
+            }
+        }
+        assert!(compile_ratio(15).is_err());
     }
 
     #[test]

@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its forty-four tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its forty-six tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -135,6 +135,14 @@ It rejects wrong Y and changed S preserving the same Y. There is no bit
 reauthentication or trace PCS. This proves the RMS predicate on committed
 P/S/Y bytes, before the canonical P0/statistic/output source routes;
 full calibrated Gemma profiles and the complete composition remain open.
+The two `c71_b12_ratio` checks reuse the RMS builder for exact signed
+RNE(2^m*P/Z), m=0..14, including ties, overflow and positive-denominator
+guards. The 7,164-row ideal case closes the original numerator,
+denominator and output through byte P/S, range and one PCS; a changed
+numerator preserving Y still rejects. After this shared builder refactor,
+also run `c71_b12_rms` separately to retain its exact circuit counts.
+The ratio component does not select the EXP30 softmax proposal or execute
+full-domain normalization.
 The `c71_b12_rms_statistic` case uses 7,761 ideal rows for weighted P0,
 S=sum X², joint exact RMS and both ranged PCS. One S word per row is
 broadcast through the same byte view. A changed statistic preserving Y
@@ -240,6 +248,11 @@ small softcap table, public argmax, range and the same PCS using 1,112
 ideal Fp3 rows. Wrong raw, softcap and tie decision reject at their
 respective checks. Its metadata portion compiles all three canonical
 output layouts and original P0 raw IDs; no full D24 lookup/RNE runs.
+The same case now checks a designated-verifier simulator with zero dummy
+raw/X/Y/slack and arbitrary public tokens. It retains the verifier's
+public target key using Delta; this is no malicious-prover capability.
+Acceptance supports the documented component simulation argument, not
+full-Gemma ZK by itself.
 After extending output sources, rerun `c71_b12_gemma` within the same
 60 s/2 GiB limits. Calibrated full output and Gemma simulation remain open.
 The Python `softmax_exp30` filter checks an unselected numerical recipe,

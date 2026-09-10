@@ -854,7 +854,7 @@ def test_B12_output_composes_original_lm_head_RNE_softcap_argmax_and_all_KV_root
     assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
 
 
-def test_softmax_exp30_candidate_is_explicitly_different_from_real_RNE_and_unselected():
+def test_softmax_exp30_selected_recipe_preserves_certified_difference_from_real_RNE():
     table=plan.softmax_exp30_table(0)
     assert len(table)==262140
     values=[int.from_bytes(table[i:i+4],'little',signed=True) for i in range(0,len(table),4)]
@@ -869,7 +869,8 @@ def test_softmax_exp30_candidate_is_explicitly_different_from_real_RNE_and_unsel
     assert round(real_low)==round(real_high)==16357
     assert row['probabilities'][0]==16358
     assert row['denominator']==(1 << 30)+97*17933
-    assert not row['selected_for_C71'] and not row['security_credit']
+    assert row['selected_for_C71'] and row['recipe']=='C71-SOFTMAX-EXP30-v1'
+    assert not row['security_credit']
     masked=plan.softmax_exp30_row([32767,0,-11],[False,True,True],0)
     assert masked['maximum']==0 and masked['probabilities'][0]==0
     assert masked['differences']==[0,0,11]
@@ -906,6 +907,54 @@ def test_B12_causal_mask_recomposes_original_Pi_with_no_new_MACs_or_PCS():
     assert b['both_resource_caps_hold'] and b['both_below_2_to_minus_78'] and b['full_RO_queries_upper'] < 1 << 74
     assert b['native_mask_range_PCS_Fp3_rows']==542
     assert b['causal_mask_and_query_padding_proven'] and not b['allowed_softmax_values_proven']
+    assert b['full_verifier_accepted_history_induction_required']
+    assert not b['full_Gemma_simulation_for_arbitrary_public_outputs_proven']
+    assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
+
+
+def test_B12_EXP30_producers_recompose_all_original_targets_and_dense_work():
+    report=plan.b12_pcs_binding_assessment()
+    base=report['ordinary_KV_output_and_causal_mask_composition']
+    b=report['ordinary_KV_output_and_EXP30_composition']
+    assert b['recipe']=='C71-SOFTMAX-EXP30-v1' and b['selected_for_C71']
+    assert b['new_sources']==300 and b['Pi_exponent']==-14
+    assert b['new_PCS_or_private_streams']==0 and b['private_streams']==39 and b['forest_distinct_trees']==526
+    assert b['same_D34_forests_exposures_samplers_and_decoders']
+    assert b['public_table_bytes_per_layer']==262140 and b['public_table_rows_per_layer']==65535
+    assert [plan.softmax_exp30_value(d,0) for d in range(8)]==[
+        1073741824,395007542,145315154,53458458,19666268,7234816,2661540,979126]
+    assert [c['auxiliary_live_bytes'] for c in b['cases']]==[13154672538,14334320538,15513968538]
+    assert [c['current_A_cubes_upper'] for c in b['cases']]==[239706,306066,319626]
+    assert all(c['auxiliary_sources']==3471 and c['current_A_targets_upper']==4446 for c in b['cases'])
+    assert [c['EXP30_allowed_rectangles_per_layer'] for c in b['cases']]==[280,402,432]
+    assert [c['EXP30_additional_Fp3_correlations_upper'] for c in b['cases']]==[20710,21348,21348]
+    assert [c['EXP30_additional_FS_draw_requests_upper'] for c in b['cases']]==[5850,6012,6012]
+    assert [c['EXP30_additional_field_payload_bytes_upper'] for c in b['cases']]==[634704,653808,653808]
+    for c in b['cases']:
+        m=c['EXP30_maximum']; r,k=m['row_bits'],m['key_bits']
+        assert m['cubic_rounds']==sum(r+i for i in range(k))
+        assert m['Fp3_correlations']==sum(4*(r+i)+7 for i in range(k))+1
+        assert c['EXP30_lookup']['query_count_less_than_characteristic']
+        assert c['EXP30_lookup']['fraction_domain_bits'] in (27,28)
+        assert c['current_A_cubes_upper'] < b['public_cube_cap']==524288
+        # Full dense scan of the underlying source tile even when prefix
+        # coordinates select one row/key. No sparse-support work credit.
+        extra_cubes=sum(c['EXP30_original_target_cubes'])+c['EXP30_zero_form_cubes']
+        assert 3*(extra_cubes*(1 << 24)+(1 << 34))*(1 << 12) < b['additional_honest_work_u64_upper']
+    h,w,domain=b['ratio_height_upper'],b['ratio_width_upper'],1 << 28
+    # Recompute whole prefixes at every depth; retain all dense levels if
+    # needed. Both are deliberately larger than a streaming implementation.
+    assert 3*h*h*w*domain*(1 << 12) < b['additional_honest_work_u64_upper']
+    assert 2*h*w*domain*3 < b['additional_honest_memory_words_upper']
+    assert b['maximum_added_FS_error_degree_upper']==225131586
+    assert b['added_MAC_error_degree_upper_over_run']==17536
+    expected=Fraction(base['conditional_soundness_sum'])+Fraction((1 << 74)*225131586,plan.P**3)+Fraction(17536,plan.P**3-1)
+    assert Fraction(b['conditional_soundness_sum'])==expected
+    assert b['conditional_ZK_sum']==base['conditional_ZK_sum']
+    assert b['initial_base_capacity_upper_three_attempts_before_other_operators']==11466948 < b['initial_base_capacity_limit']
+    assert b['both_resource_caps_hold'] and b['both_below_2_to_minus_78'] and b['full_RO_queries_upper'] < 1 << 74
+    assert b['native_softmax_range_and_PCS_Fp3_rows']==8096 and b['native_kernel_FS_draw_requests']==2360
+    assert b['allowed_softmax_values_proven'] and b['causal_mask_and_query_padding_proven']
     assert b['full_verifier_accepted_history_induction_required']
     assert not b['full_Gemma_simulation_for_arbitrary_public_outputs_proven']
     assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']

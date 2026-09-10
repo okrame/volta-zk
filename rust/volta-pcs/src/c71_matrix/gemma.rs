@@ -17,6 +17,7 @@ pub(super) mod rope;
 pub(super) mod attention;
 pub(super) mod residual;
 pub(super) mod output;
+pub(super) mod softmax;
 
 #[derive(Clone, Debug)]
 pub(super) struct Source {

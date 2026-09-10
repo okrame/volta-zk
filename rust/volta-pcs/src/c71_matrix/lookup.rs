@@ -1,4 +1,4 @@
-//! Public i16 lookup, with X/Y and the fixed histogram in the SAME source.
+//! Public i16-input lookup, with X/Y and the fixed histogram in the SAME source.
 //! Reuses range's fraction GKR; it does not commit inverses or a trace.
 
 use super::*;
@@ -7,7 +7,43 @@ pub(super) struct Table<'a> {
     pub profile: u8,
     pub lower: i16,
     // Consecutive signed inputs. MIN is an overflow marker, never an output.
-    pub outputs: &'a [i16],
+    pub outputs: Outputs<'a>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum Outputs<'a> {
+    I16(&'a [i16]),
+    I32(&'a [i32]),
+}
+
+impl Outputs<'_> {
+    pub fn len(self) -> usize {
+        match self {
+            Self::I16(v) => v.len(),
+            Self::I32(v) => v.len(),
+        }
+    }
+
+    fn get(self, i: usize) -> i32 {
+        match self {
+            Self::I16(v) => i32::from(v[i]),
+            Self::I32(v) => v[i],
+        }
+    }
+
+    fn overflow(self) -> i32 {
+        match self {
+            Self::I16(_) => i32::from(i16::MIN),
+            Self::I32(_) => i32::MIN,
+        }
+    }
+
+    fn encode(self, bytes: &mut Vec<u8>) {
+        match self {
+            Self::I16(v) => v.iter().for_each(|y| bytes.extend(y.to_le_bytes())),
+            Self::I32(v) => v.iter().for_each(|y| bytes.extend(y.to_le_bytes())),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -47,7 +83,7 @@ pub(super) fn required(bits: usize) -> usize {
     2 * bits * bits + 5 * bits + 6
 }
 
-fn tag(x: i16, y: i16, profile: u8) -> Fp3 {
+fn tag(x: i16, y: i32, profile: u8) -> Fp3 {
     let omega = Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO);
     signed(i64::from(x)) + omega * signed(i64::from(y)) + omega * omega * signed(i64::from(profile))
 }
@@ -70,7 +106,7 @@ impl Statement<'_> {
         for t in self.tables {
             if t.profile >= 60
                 || seen[t.profile as usize]
-                || t.outputs.is_empty()
+                || t.outputs.len() == 0
                 || t.outputs.len() > 65535
                 || t.lower == i16::MIN
                 || i64::from(t.lower) + t.outputs.len() as i64 - 1 > 32767
@@ -87,11 +123,12 @@ impl Statement<'_> {
             .tables
             .iter()
             .flat_map(|t| {
-                t.outputs.iter().enumerate().map(move |(j, &y)| {
+                (0..t.outputs.len()).map(move |j| {
+                    let y = t.outputs.get(j);
                     tag(
                         (i64::from(t.lower) + j as i64) as i16,
                         y,
-                        t.profile + if y == i16::MIN { 60 } else { 0 },
+                        t.profile + if y == t.outputs.overflow() { 60 } else { 0 },
                     )
                 })
             })
@@ -161,9 +198,13 @@ impl Statement<'_> {
 
     fn bind(&self, fs: &mut Fs) -> Result<(Vec<Fp3>, Vec<Row>, Fp3), String> {
         let (tags, domain) = self.public()?;
-        let mut bytes =
+        let wide = self.tables.iter().any(|t| matches!(t.outputs, Outputs::I32(_)));
+        let mut bytes = if wide {
+            b"C71-lookup-B12-v3;i16-input;typed-i16-i32-output;MIN-overflow;original-A".to_vec()
+        } else {
             b"C71-lookup-B12-v2;fixed-X-Y-M;public-blocks;overflow-profile-plus-60;original-A"
-                .to_vec();
+                .to_vec()
+        };
         bytes.extend(self.root.roots()[0]);
         bytes.extend((self.profile.len() as u64).to_le_bytes());
         bytes.extend(self.profile);
@@ -187,11 +228,15 @@ impl Statement<'_> {
         bytes.extend((self.tables.len() as u64).to_le_bytes());
         for t in self.tables {
             bytes.push(t.profile);
+            if wide {
+                bytes.push(match t.outputs {
+                    Outputs::I16(_) => 2,
+                    Outputs::I32(_) => 4,
+                });
+            }
             bytes.extend(t.lower.to_le_bytes());
             bytes.extend((t.outputs.len() as u64).to_le_bytes());
-            for y in t.outputs {
-                bytes.extend(y.to_le_bytes());
-            }
+            t.outputs.encode(&mut bytes);
         }
         fs.set_phase(0xd00);
         fs.record(0xb0, &bytes);
@@ -232,6 +277,25 @@ impl Statement<'_> {
 pub(super) fn prove(
     s: &Statement<'_>,
     read_query: impl Fn(usize) -> (i16, i16),
+    read_histogram: impl Fn(usize) -> i32,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Pending<Auth>), String> {
+    prove_wide(
+        s,
+        |i| {
+            let (x, y) = read_query(i);
+            (x, i32::from(y))
+        },
+        read_histogram,
+        fs,
+        correlations,
+    )
+}
+
+pub(super) fn prove_wide(
+    s: &Statement<'_>,
+    read_query: impl Fn(usize) -> (i16, i32),
     read_histogram: impl Fn(usize) -> i32,
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
@@ -422,8 +486,8 @@ mod tests {
         // exponents (0,0) and (0,-16). This is a restricted-domain component,
         // not a calibrated full Gemma table or a producer-RNE proof.
         let tables = [
-            Table { profile: 0, lower: -1, outputs: &[0, 0, 1] },
-            Table { profile: 1, lower: -1, outputs: &[-10408, 0, i16::MIN] },
+            Table { profile: 0, lower: -1, outputs: Outputs::I16(&[0, 0, 1]) },
+            Table { profile: 1, lower: -1, outputs: Outputs::I16(&[-10408, 0, i16::MIN]) },
         ];
         let blocks = [
             Block::Table { index: 1, first: 1, len: 2 },
@@ -604,6 +668,6 @@ mod tests {
             Block::Table { index: 1, first: 0, len: 3 },
         ];
         assert!(wrong.required().is_err());
-        assert_ne!(tag(1, i16::MIN, 1), tag(1, i16::MIN, 61));
+        assert_ne!(tag(1, i32::from(i16::MIN), 1), tag(1, i32::from(i16::MIN), 61));
     }
 }

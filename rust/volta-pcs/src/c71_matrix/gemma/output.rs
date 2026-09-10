@@ -78,6 +78,7 @@ impl Output {
     ) -> Result<[u8; 32], String> {
         self.layout(bytes)?;
         if table.profile != 0
+            || !matches!(table.outputs, lookup::Outputs::I16(_))
             || table.lower != self.lower
             || table.outputs.len() != bytes.scalar.layout.sources[self.histogram].cols
             || s.weights.num_roots() != 1
@@ -283,7 +284,11 @@ mod tests {
         let delta = signed(53);
         // Certified subset of C71-SOFTCAP-RNE-v1 at (10,2), inputs -3..3.
         // Python checks this exact table; the canonical table has 65535 rows.
-        let table = || lookup::Table { profile: 0, lower: -3, outputs: &[-7, -7, -7, 0, 7, 7, 7] };
+        let table = || lookup::Table {
+            profile: 0,
+            lower: -3,
+            outputs: lookup::Outputs::I16(&[-7, -7, -7, 0, 7, 7, 7]),
+        };
         for fault in 0..5 {
             let x = if fault == 4 {
                 [[0i64; 4]; 3]

@@ -1627,7 +1627,7 @@ def softcap_i16_table(input_exponent, output_exponent):
 
 
 def softmax_exp30_value(difference, score_exponent):
-    """UNSELECTED integer-softmax candidate: certified RNE(2^30 exp(-d*2^e))."""
+    """Selected C71-SOFTMAX-EXP30-v1 table: certified RNE(2^30 exp(-d*2^e))."""
     natural(difference,'softmax nonnegative score difference',0,65534)
     natural(score_exponent,'softmax score exponent',-128,128)
     x=difference*Fraction(2)**score_exponent
@@ -1643,17 +1643,17 @@ def softmax_exp30_value(difference, score_exponent):
 
 
 def softmax_exp30_table(score_exponent):
-    """Public candidate table. Input is d-32767, so -32768 stays invalid."""
+    """Public EXP30 table. Input is d-32767, so -32768 stays invalid."""
     softmax_exp30_value(0,score_exponent)
     return b''.join(softmax_exp30_value(d,score_exponent).to_bytes(4,'little',signed=True)
                     for d in range(65535))
 
 
 def softmax_exp30_row(scores, allowed, score_exponent):
-    """UNSELECTED exact integer recipe, NOT RNE of exact real softmax.
+    """Owner-selected exact integer recipe, NOT RNE of exact real softmax.
 
-    This is a small plaintext reference for a reviewable model-definition
-    choice. It is not a proof, source compiler or selected security subtotal.
+    This is the plaintext reference for C71-SOFTMAX-EXP30-v1.
+    Selection grants no complete proof or security credit by itself.
     Every eager raw score must still be computed/proved by the full caller.
     """
     natural(len(scores),'softmax fixed-run row length',1,450)
@@ -1669,7 +1669,8 @@ def softmax_exp30_row(scores, allowed, score_exponent):
     assert 1 << 30 <= denominator <= len(scores)*(1 << 30)
     return {'maximum':maximum,'differences':differences,'exponentials':exponentials,
             'denominator':denominator,'probabilities':probabilities,
-            'output_exponent':-14,'selected_for_C71':False,'security_credit':False}
+            'output_exponent':-14,'recipe':'C71-SOFTMAX-EXP30-v1',
+            'selected_for_C71':True,'security_credit':False}
 
 
 def gelu_i16_pair(magnitude, input_exponent, output_exponent):
@@ -7913,6 +7914,101 @@ def b12_causal_mask_composition(base):
     }
 
 
+def b12_exp30_composition(base):
+    """Selected integer softmax producers, all original endpoints in A.
+
+    The native test bounds every ratio layer by 4096 wires and height 94.
+    This uses that conservative envelope, not a full-domain allocation.
+    Whole-caller NoPeek and accepted-history induction remain separate.
+    """
+    cases=[]
+    for prior,rectangles in zip(base['cases'],(280,402,432)):
+        case=dict(prior)
+        old=case['old_tokens']
+        row_bits,key_bits=19,(old+149).bit_length()
+        cells=row_bits+key_bits
+        rounds=key_bits*row_bits+key_bits*(key_bits-1)//2
+        maximum={
+            'row_bits':row_bits,'key_bits':key_bits,'cubic_rounds':rounds,
+            'Fp3_correlations':4*rounds+7*key_bits+1,
+            'FS_draw_requests':row_bits+rounds+2*key_bits+1,
+            'field_payload_bytes':24*(5*rounds+8*key_bits+3),
+            'FS_error_degree':row_bits+3*rounds+5*key_bits-1,
+            'MAC_error_degree':rounds+key_bits+3,
+        }
+        lookup=b12_lookup_profile(60*8192*(old+150),60*65535)
+        ratio=b12_rms_joint_profile([[98]+[4096]*93+[1]],cells)
+        added_bytes=60*(8192*8+8192*(old+150)*6+65535*4)
+        cubes=[60*rectangles,240,240,960,240*rectangles]
+        zero_cubes=360+180*rectangles
+        rows=maximum['Fp3_correlations']+lookup['Fp3_correlations_before_range_and_shared_PCS']+ratio['Fp3_correlations_before_source_range_and_shared_PCS']
+        # The two linear identities share a fresh lambda, before all other
+        # messages. Charge c+1 and six extra targets in the common A bridge.
+        degree=maximum['FS_error_degree']+lookup['sum_of_all_FS_error_degrees_before_shared_PCS']+ratio['sum_of_all_FS_error_degrees_upper_before_shared_PCS']+cells+1+6
+        mac=maximum['MAC_error_degree']+lookup['MAC_degree_sum_before_shared_PCS']+ratio['MAC_degree_sum_before_shared_PCS']
+        case.update({
+            'EXP30_maximum':maximum,'EXP30_lookup':lookup,'EXP30_ratio_upper':ratio,
+            'EXP30_allowed_rectangles_per_layer':rectangles,
+            'EXP30_original_target_cubes':cubes,'EXP30_zero_form_cubes':zero_cubes,
+            'EXP30_additional_auxiliary_bytes':added_bytes,
+            'EXP30_additional_Fp3_correlations_upper':rows,
+            'EXP30_additional_FS_draw_requests_upper':maximum['FS_draw_requests']+lookup['FS_draw_requests']+ratio['FS_draw_requests']+cells+1,
+            'EXP30_additional_field_payload_bytes_upper':maximum['field_payload_bytes']+lookup['field_payload_bytes_before_context_and_framing']+ratio['field_payload_bytes_before_context_and_framing'],
+            'EXP30_added_FS_error_degree_upper':degree,'EXP30_added_MAC_error_degree_upper':mac,
+        })
+        case['auxiliary_sources']+=300
+        case['auxiliary_live_bytes']+=added_bytes
+        case['current_A_targets_upper']+=6
+        case['current_A_cubes_upper']+=sum(cubes)+zero_cubes
+        case['Fp3_correlations_upper_before_other_operators']+=rows
+        case['base_rows_upper_before_other_operators']+=3*rows
+        assert (case['auxiliary_live_bytes']-1).bit_length()==34
+        assert case['current_A_cubes_upper']<=524288 and case['current_A_targets_upper']<=8192
+        cases.append(case)
+    degree=max(c['EXP30_added_FS_error_degree_upper'] for c in cases)
+    mac=sum(c['EXP30_added_MAC_error_degree_upper'] for c in cases)
+    fe,me=Fraction((1 << 74)*degree,P**3),Fraction(mac,P**3-1)
+    sound=Fraction(base['conditional_soundness_sum'])+fe+me
+    privacy=Fraction(base['conditional_ZK_sum'])
+    # Dense ratio replay/level materialization, max/lookup trees and original
+    # cube scans, including fixed inner coordinates, for BOTH reduction roles.
+    work,memory,ro=1 << 76,1 << 53,1 << 32
+    tw,tm=base['reduction_work_upper']+work,base['reduction_memory_words_upper']+memory
+    return {
+        'source':'rust/volta-pcs/src/c71_matrix/gemma/softmax.rs',
+        'base_composition':'ordinary_KV_output_and_causal_mask_composition',
+        'recipe':'C71-SOFTMAX-EXP30-v1','selected_for_C71':True,
+        'relation':'previous producers, KV and output plus max/difference/EXP30/sum/exact-RNE on the original score and Pi of the same ranged A',
+        'cases':cases,'new_sources':300,'Pi_exponent':-14,
+        'table_input':'D-32767','table_signed_output_bits':32,'public_table_rows_per_layer':65535,
+        'public_table_bytes_per_layer':262140,'ratio_height_upper':94,'ratio_width_upper':4096,
+        'public_cube_cap':524288,'public_target_cap':8192,
+        'new_PCS_or_private_streams':0,'private_streams':base['private_streams'],
+        'forest_distinct_trees':base['forest_distinct_trees'],
+        'same_D34_forests_exposures_samplers_and_decoders':True,
+        'maximum_added_FS_error_degree_upper':degree,'added_MAC_error_degree_upper_over_run':mac,
+        'additional_global_FS_error':str(fe),'additional_fixed_run_MAC_error':str(me),
+        'initial_base_capacity_upper_three_attempts_before_other_operators':sum(c['base_rows_upper_before_other_operators'] for c in cases),
+        'initial_base_capacity_limit':base['initial_base_capacity_limit'],
+        'additional_honest_work_u64_upper':work,'additional_honest_memory_words_upper':memory,
+        'additional_honest_RO_events_upper':ro,'full_RO_queries_upper':base['full_RO_queries_upper']+ro,
+        'reduction_work_upper':tw,'reduction_memory_words_upper':tm,
+        'both_resource_caps_hold':tw < 1 << 121 and tm < 1 << 93,
+        'conditional_soundness_sum':str(sound),'conditional_ZK_sum':str(privacy),
+        'soundness_bits':math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits':math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78':max(sound,privacy) < Fraction(1,1 << 78),
+        'native_softmax_range_and_PCS_Fp3_rows':8096,'native_kernel_FS_draw_requests':2360,
+        'causal_mask_and_query_padding_proven':True,'allowed_softmax_values_proven':True,
+        'certified_expected_tables_and_consistent_score_Pi_profile_required':True,
+        'full_verifier_accepted_history_induction_required':True,
+        'full_Gemma_simulation_for_arbitrary_public_outputs_proven':False,
+        'numerical_profile_preparation_and_calibration_outside_this_subtotal':True,
+        'native_full_domain_execution':False,'full_Gemma_security_totals':None,
+        'physical_schedule_admitted':False,
+    }
+
+
 def b12_rope_joint_profile(cells):
     """Joint public adjoint over aligned dyadic RoPE blocks; no source closures.
 
@@ -8611,6 +8707,7 @@ def b12_pcs_binding_assessment():
         'ordinary_KV_original_A_tail_composition': kv_composition,
         'ordinary_KV_and_public_output_composition': output_composition,
         'ordinary_KV_output_and_causal_mask_composition': b12_causal_mask_composition(output_composition),
+        'ordinary_KV_output_and_EXP30_composition': b12_exp30_composition(b12_causal_mask_composition(output_composition)),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         'public_RoPE_joint_component': b12_rope_joint_profile(119808000),

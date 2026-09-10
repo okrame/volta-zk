@@ -4,7 +4,7 @@
 
 use super::*;
 
-pub(super) const MAX_CUBES: usize = 131072;
+pub(super) const MAX_CUBES: usize = 524288;
 pub(super) const MAX_TARGETS: usize = 8192;
 
 /// EQ-supported aligned cube in the root's Boolean table. Both this point

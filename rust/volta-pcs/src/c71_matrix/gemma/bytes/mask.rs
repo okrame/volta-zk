@@ -11,28 +11,53 @@ pub(in crate::c71_matrix) fn forbidden_rectangles(
     new: usize,
     old: usize,
 ) -> Result<Vec<[usize; 4]>, String> {
+    rectangles(new, old, false)
+}
+
+pub(in crate::c71_matrix) fn allowed_rectangles(
+    new: usize,
+    old: usize,
+) -> Result<Vec<[usize; 4]>, String> {
+    rectangles(new, old, true)
+}
+
+fn rectangles(new: usize, old: usize, want_allowed: bool) -> Result<Vec<[usize; 4]>, String> {
     if new == 0 || new > 150 || old > 300 {
         return Err("causal mask exceeds the fixed-run window".into());
     }
-    fn visit(out: &mut Vec<[usize; 4]>, new: usize, old: usize, [q, h, k, w]: [usize; 4]) {
+    fn visit(
+        out: &mut Vec<[usize; 4]>,
+        new: usize,
+        old: usize,
+        want_allowed: bool,
+        [q, h, k, w]: [usize; 4],
+    ) {
         let keys = old + new;
         if k >= keys {
             return;
         }
-        if k + w <= keys && (q >= new || k > old + q + h - 1) {
+        let forbidden = k + w <= keys && (q >= new || k > old + q + h - 1);
+        let allowed = q + h <= new && k + w - 1 <= old + q;
+        if if want_allowed { allowed } else { forbidden } {
             out.push([q, h, k, w]);
-        } else if q + h <= new && k + w - 1 <= old + q {
-            // Entirely allowed: no zero constraint here.
+        } else if if want_allowed { forbidden } else { allowed } {
+            // Entirely outside the selected mask.
         } else if h >= w && h > 1 {
-            visit(out, new, old, [q, h / 2, k, w]);
-            visit(out, new, old, [q + h / 2, h / 2, k, w]);
+            visit(out, new, old, want_allowed, [q, h / 2, k, w]);
+            visit(out, new, old, want_allowed, [q + h / 2, h / 2, k, w]);
         } else if w > 1 {
-            visit(out, new, old, [q, h, k, w / 2]);
-            visit(out, new, old, [q, h, k + w / 2, w / 2]);
+            visit(out, new, old, want_allowed, [q, h, k, w / 2]);
+            visit(out, new, old, want_allowed, [q, h, k + w / 2, w / 2]);
         }
     }
     let mut out = Vec::new();
-    visit(&mut out, new, old, [0, new.next_power_of_two(), 0, (old + new).next_power_of_two()]);
+    visit(
+        &mut out,
+        new,
+        old,
+        want_allowed,
+        [0, new.next_power_of_two(), 0, (old + new).next_power_of_two()],
+    );
     Ok(out)
 }
 

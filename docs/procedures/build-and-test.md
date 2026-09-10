@@ -74,9 +74,9 @@ No full workspace, matrix/Gemma runner or paid hardware is needed. These
 are component tests, not run-of-record benchmarks or complete security evidence.
 
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
-target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
-test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its forty-seven tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+target and profile, `--features c71-b12-pcs --lib`, and run the narrow filters
+below with one test thread. After compilation, bound each test invocation
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its forty-nine tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -103,6 +103,13 @@ A tiny actual raw graph uses 365 ideal Fp3 rows, a ranged W PCS and one
 canonical auxiliary PCS, rejecting wrong head selection and proof assignment.
 These checks read no full weight bodies and perform no Gemma inference
 or D35/D31 PCS allocation; no socket is needed.
+Run the two `c71_b12_softmax` checks separately. The selected EXP30 path
+uses 8,096 ideal Fp3 rows with byte range and one shared A PCS; six faults
+cover maximum, lookup, denominator, ratio, detached score and forbidden Pi.
+Its kernel uses 2,360 FS draws; total PCS draws vary with public sampler
+retries. Metadata cover all three canonical KV contexts and original source
+forms; no full Gemma body is allocated. The wide lookup preserves legacy
+i16 framing; rerun `c71_b12_lookup` and affected Gemma callers after edits.
 The byte bridge checks biased i48/i32/i16 source forms, signed extrema,
 physical byte addresses and incorrect affine shifts with 551 ideal Fp3
 rows and one ranged byte PCS. The `c71_b12_range_bytes` filter separately
@@ -141,8 +148,8 @@ guards. The 7,164-row ideal case closes the original numerator,
 denominator and output through byte P/S, range and one PCS; a changed
 numerator preserving Y still rejects. After this shared builder refactor,
 also run `c71_b12_rms` separately to retain its exact circuit counts.
-The ratio component does not select the EXP30 softmax proposal or execute
-full-domain normalization.
+The ratio component does not by itself prove the selected EXP30 producer
+or execute full-domain normalization.
 The `c71_b12_rms_statistic` case uses 7,761 ideal rows for weighted P0,
 S=sum X², joint exact RMS and both ranged PCS. One S word per row is
 broadcast through the same byte view. A changed statistic preserving Y
@@ -255,9 +262,9 @@ Acceptance supports the documented component simulation argument, not
 full-Gemma ZK by itself.
 After extending output sources, rerun `c71_b12_gemma` within the same
 60 s/2 GiB limits. Calibrated full output and Gemma simulation remain open.
-The Python `softmax_exp30` filter checks an unselected numerical recipe,
+The Python `softmax_exp30` filter checks the owner-selected numerical recipe,
 including its certified difference from RNE of the real softmax. Its
-passing test does not select the recipe or change the B12 security total.
+passing test does not by itself change the B12 security total.
 The `c71_b12_gemma_causal_mask` case uses 542 ideal Fp3 rows and a
 shared ranged PCS to reject nonzero Pi at a future key or padded query.
 Nonzero allowed values pass: the mask acts at Boolean source vertices,

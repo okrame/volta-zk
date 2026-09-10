@@ -137,10 +137,12 @@ impl Sources {
         fs: &mut Fs,
     ) -> Result<(), String> {
         if tables.len() != self.gelu.len()
-            || tables
-                .iter()
-                .zip(&self.gelu)
-                .any(|(t, g)| t.profile != g.layer || t.lower != -32767 || t.outputs.len() != 65535)
+            || tables.iter().zip(&self.gelu).any(|(t, g)| {
+                t.profile != g.layer
+                    || t.lower != -32767
+                    || t.outputs.len() != 65535
+                    || !matches!(t.outputs, lookup::Outputs::I16(_))
+            })
             || s.weights.num_roots() != 1
             || s.auxiliary.num_roots() != 1
             || s.quantization == [0; 32]
@@ -342,7 +344,8 @@ mod tests {
         // Equality with the certified generator is checked in Python. This
         // identity does not replace GELU by ReLU for any other profile.
         let outputs: Vec<i16> = (-32767i32..=32767).map(|x| x.max(0) as i16).collect();
-        let tables = [lookup::Table { profile: 0, lower: -32767, outputs: &outputs }];
+        let tables =
+            [lookup::Table { profile: 0, lower: -32767, outputs: lookup::Outputs::I16(&outputs) }];
         let blocks = source.blocks();
         let wroot = C61Commitment::new(vec![[65; 32]]);
         let aroot = C61Commitment::new(vec![[66; 32]]);

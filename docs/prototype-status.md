@@ -296,23 +296,26 @@ chain closes a ranged PCS and rejects wrong raw, softcap and token.
 The conditional subtotal retains **82.94166 soundness / 91.02272 ZK
 bits**, using **11,276,730 base rows** for three attempts. A now has
 3,171 sources, at most 14,167,203,978 bytes, still D34; private
-streams/forests remain 39/526. Mask/softmax, full accepted-history
-verification, actual calibration and full Gemma simulation remain open.
+streams/forests remain 39/526. The mask/EXP30 extension below completes
+the softmax producers; full accepted-history verification, actual
+calibration and full Gemma simulation remain open.
 
-The [EXP30 softmax proposal](c7.1-gemma31b-design.md#softmax-exp30-proposta-numerica-da-decidere-non-selezionata)
-is a tested, **unselected** integer reference with a certified public
-30-bit exponential table and exact rational RNE normalization. It can
-differ from final RNE of the real softmax; the documented counterexample
-requires an owner decision on the quantized function. Its local numerical
-bound grants no cryptographic or full-model quality credit. Independent
-work on source binding, exact division and full simulation can continue.
+The owner now **selects C71-SOFTMAX-EXP30-v1** for the first integer
+baseline and authorizes continued local B12 completion. The
+[selected recipe](c7.1-gemma31b-design.md#softmax-exp30-baseline-intera-selezionata)
+uses a certified public 30-bit exponential table and exact rational RNE
+normalization. Its documented difference from final RNE of the real
+softmax is accepted as a model-definition choice. Existing lookup/RMS
+reuse motivates the choice; lower complete prover cost or model-quality
+equivalence has not been measured. The floating-point hybrid remains a
+later profile. No further recipe approval is pending.
 
 The [exact ratio component](c7.1-gemma31b-design.md#b12-divisione-rne-esatta-sugli-originali-byte-pzy)
 now reuses the RMS circuit/GKR for signed RNE(2^m*P/Z), m=0..14,
 with a strictly positive bounded denominator and original P32/Z48/Y16
 bytes. Its 7,164-row ideal range/PCS case rejects wrong rounding and
-changed numerator bytes preserving the output. It neither selects EXP30
-nor adds full softmax credit. The output-chain check also accepts a DV
+changed numerator bytes preserving the output. The selected EXP30 caller
+below now binds its inputs. The output-chain check also accepts a DV
 simulation with zero dummy values and arbitrary public decisions by
 retagging the original public argmax target under the same verifier key.
 That resolves this output constraint. The design derives a dummy trace
@@ -328,16 +331,25 @@ The [causal mask compiler](c7.1-gemma31b-design.md#b12-maschera-causale-sulla-st
 now proves zero at forbidden keys and padded queries in the same original
 Pi used by PV. Its 542-row ideal ranged-PCS check rejects either violation;
 full metadata checks every selected query/key and all 60 source routes.
-It adds no source, correlation or PCS. The subtotal with ordinary KV,
-output and this mask still uses 11,276,730 base rows and retains about
-82.94166/91.02272 conditional bits at T121/M93. The largest A batch has
-111,306 cubes under the 131,072 cap. Allowed softmax values and complete
-caller/simulation remain unproved; EXP30 is still unselected.
+It adds no source, correlation or PCS. The
+[EXP30 producer](c7.1-gemma31b-design.md#b12-exp30-massimo-lookup-e-rapporto-nella-stessa-a)
+now binds maximum, nonnegative differences, i32 exponential lookup,
+denominator sum and exact RNE to the original score/Pi byte sources.
+The 8,096-Fp3 ideal ranged-PCS case rejects six violations, including
+consistent intermediates detached from the committed score. Metadata
+cover all three KV contexts. A has 3,471 sources and at most
+15,513,968,538 bytes, still D34, with 4,446 targets and at most
+319,626 cubes under the enlarged 524,288 guard. There are no new PCS
+or private streams. The joint subtotal is **11,466,948 base rows**,
+**82.93261/91.02272 conditional bits** at T121/M93. This includes
+allowed softmax values; complete caller, accepted-history induction
+and whole-run simulation remain open. No full Gemma execution is claimed.
 
-Forty-five B12 algebra/accounting checks include the scalar invariant,
+Forty-six B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint source bounds. The relevant Python checks total 228; the 17
-narrow bootstrap/pool checks and forty-seven B12 PCS/caller/layout checks pass.
+range/product identities and the joint source bounds. The relevant Python checks total 229; the 17
+narrow bootstrap/pool checks and prior forty-seven B12 PCS/caller/layout checks pass.
+Two new EXP30 checks cover the same-source producer and full route metadata.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -358,9 +370,9 @@ NoPeek, relation and resource composition.
 
 **Remaining work:** full Gemma malicious-verifier ZK, the complete quantized
 Gemma GKR relation using the range-checked W, full correlation census and
-both-role resource composition for the fixed run. The known 11,276,730-row upper
-for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE/attention/residual/output attempts with ordinary KV source openings fits the initial capacity;
-allowed softmax values, full accepted-state verification and whole-Gemma simulation remain open.
+both-role resource composition for the fixed run. The known 11,466,948-row upper
+for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE/attention/residual/output/EXP30 attempts with ordinary KV source openings fits the initial capacity;
+full accepted-state verification and whole-Gemma simulation remain open.
 The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
 soundness bound also included failed setups/key changes; that broader
 evidence remains valid without making renewal/recovery new gates. Neither

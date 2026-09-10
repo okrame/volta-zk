@@ -76,23 +76,18 @@ collega ora registro posseduto dal verifier, header locale e pool reale:
 burn prima del decoding, promozione solo dopo verifica completa e journal.
 Il profilo lega i corpi delle tabelle, senza certificarne i valori numerici.
 Il controllo reale a tre righe copre il rifiuto per capacità insufficiente
-senza promozione o riuso. **Il codec totale da 16 MiB è ora dimostrato
-insufficiente:** le sole 892 RNE richiedono almeno 29.371.448 byte a O=0
-e 29.442.008 byte a O=150/300, prima di framing, altri operatori e PCS.
-Con il solo istogramma W si supera già 30,94 MB, quindi la preferenza
-di 30 MB è incompatibile con l'encoding corrente. Sono limiti inferiori,
-non misure di un certificato completo. Il nuovo conteggio di tutti i
-frame non-PCS dà un intervallo analitico di 33,98–37,44 MB, ancora senza
-header e PCS. Il conteggio delle PCS aggiunge almeno 6,93 MB per apertura,
-anche omettendo tutti gli hash Merkle. Il lower totale è ora
-**47,84/54,87/61,80 MB** a O=0/150/300: l'allarme di 35 MB è superato
-per ogni calibrazione. L'upper PCS da schema supera anche il cap individuale
-di 8 MiB. Il codec Rust riproduce ora il conteggio fisso e i limiti delle
-frontiere su fixture sintetiche D34/D35, inclusi lunghezza dei vettori
-di profilo e rifiuto oltre il cap. Anche tutte le famiglie non-PCS fanno
-ora roundtrip nei tipi Rust sui tre contesti, con valori nulli e GKR
-massimi di forma. È verifica del conteggio per componenti separate:
-adeguamento del trasporto, framing completo e prova valida restano aperti.
+senza promozione o riuso.
+
+**Il limite di trasporto canonico è ora 96 MiB, con 16 MiB per PCS D34/D35.**
+Il conteggio verificato dà un upper completo di 92,73 MB, entro i nuovi
+cap. Il lower resta **47,84/54,87/61,80 MB** a O=0/150/300: preferenza
+30 MB e allarme 35 MB restano superati per ogni calibrazione. Il limite
+del percorso ridotto resta 16 MiB totali e 8 MiB per PCS.
+Le fixture canoniche complete da **64,64/78,53/92,31 MB** fanno roundtrip
+nel framing nativo con lo stesso digest FS e rifiuto di troncamenti,
+riordino e byte aggiunti. Sono prove nulle e massimi di forma, non
+certificati validi: Prepare/prover e accettazione canonici restano aperti.
+Il profilo pubblico lega i nuovi cap; non si riusano header canonici precedenti.
 
 Il [collegamento AES/journal](../../rust/volta-pcs/src/c71_matrix/gemma/native/pool.rs)
 ora alimenta il wrapper ridotto tramite riserve del pool reale, con segni
@@ -103,10 +98,8 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Il goal di estensione resta aperto:** adeguare i cap al conteggio
-verificato e controllare il framing completo, poi collegare Prepare/prover canonici
-al wrapper, conservando gli originali
-e la compilazione numerica comune; verificare poi il percorso composto AES positivo.
+**Il goal di estensione resta aperto:** collegare Prepare/prover canonici
+al wrapper, conservando gli originali e la compilazione numerica comune; verificare poi il percorso composto AES positivo.
 Le sue 797.139 righe base sul grafo ridotto superano il perimetro dei
 bootstrap locali e richiedono hardware autorizzato. La compilazione
 causale non fornisce lo schedule fisico per D34/D35.

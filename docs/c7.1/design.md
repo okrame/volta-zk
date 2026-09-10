@@ -299,8 +299,8 @@ L'ordine implementato comprende frame 0–7 per forme/P0/RMS/RNE/GELU/gate/RoPE,
 8–127 per le coppie QK/PV dei 60 layer, 128 per KV, 129–130 per softcap/EXP30,
 131–132 per range, 133 per W, quindi vecchie A e A corrente: 135/136/137
 frame complessivi. È un ordine del codice, non una misura di certificati
-canonici prodotti. Il cap di trasporto riusato resta 16 MiB ed è
-inferiore al minimo necessario per le sole RNE (vedi analisi sotto).
+canonici validi prodotti. Il framing sintetico e il cap canonico da
+96 MiB sono verificati sotto; il percorso ridotto resta a 16 MiB.
 
 `verify_body` è un consumer interno, non `VerifyResponse`: non riserva
 correlazioni, non costruisce l'header dal registro, non certifica Γ e non
@@ -335,11 +335,11 @@ Non esiste un ingresso per importare storia, chiavi o ricevute del peer.
 
 Il limite Fs interno è 2^42 richieste, ripreso come arresto operativo
 dall'envelope analitico di security §6, non come misura o dimostrazione
-del numero di draw del programma. Restano il cap di trasporto 16 MiB e
-il cap PCS di 8 MiB per apertura. Il cap totale è insufficiente;
-la compatibilità del cap PCS completo resta da determinare. I controlli del registro e del rifiuto AES a tre righe
-non percorrono la promozione positiva; la sua corrispondenza, il preparatore,
-il prover, la certificazione numerica e lo schedule fisico restano aperti.
+del numero di draw del programma. Il percorso canonico usa ora 96 MiB
+complessivi e 16 MiB per PCS D34/D35, giustificati dal conteggio sotto.
+I controlli del registro e del rifiuto AES a tre righe non percorrono la
+promozione positiva; preparatore, prover, certificazione numerica e
+schedule fisico restano aperti.
 
 ### Mandatory wire lower bound
 
@@ -367,13 +367,10 @@ L'encoding corrente non può quindi soddisfare la preferenza di 30 MB
 per nessuna calibrazione ammessa. Includendo le PCS, il conteggio esteso
 sotto supera anche l'allarme a 35 MB per ogni calibrazione.
 
-Il reader totale da 16.777.216 byte è quindi incompatibile con qualsiasi
-prova canonica completa corrente, anche su H100. Occorre completare il
-conteggio di tutti i frame e PCS, poi adeguare i limiti/codec; innalzare
-soltanto il cap sulla base di questo sottototale non dimostra sufficienza.
-Il writer ridotto ora riserva anche i 26 byte di chiusura nel proprio
-limite totale, evitando di emettere un certificato oltre il cap del reader.
-Questo fix del confine non risolve il dimensionamento canonico.
+Il precedente reader totale da 16.777.216 byte era incompatibile con
+qualsiasi prova canonica completa. Il nuovo cap deriva dal conteggio
+completo sotto, non da questo sottototale. Il percorso ridotto conserva
+il proprio limite; entrambi i writer riservano i 26 byte di chiusura.
 
 ### Analytic envelope of the complete non-PCS body
 
@@ -409,8 +406,7 @@ rettangolo massimo di forma; non sono prove valide o circuiti calibrati.
 Il corpo con RNE selezionate e GKR massimi conta
 36.913.833/37.028.767/37.028.797 byte; sostituendo le RNE con il loro
 upper si ritrovano gli upper della tabella. Framing e chiusura sono
-conteggiati, ma le componenti fanno roundtrip separatamente: nessun
-certificato completo viene accettato dal trasporto da 16 MiB.
+ora verificati anche sulla concatenazione sintetica completa descritta sotto.
 
 ### Canonical PCS wire accounting
 
@@ -431,14 +427,12 @@ apertura `c61_max_pruned_binary_siblings`, lo stesso limite del codec.
 | W/D35 | 6.929.180 | 7.012.352 | 13.941.532 |
 | A/D34 | 6.928.316 | 6.848.512 | 13.776.828 |
 
-Il cap di 8 MiB cade dentro entrambi gli intervalli. Quindi il formato
-non garantisce che basti; questo conteggio non dimostra che ogni prova
-lo superi. Il test Rust `c71_b12_canonical_pcs_codec` confronta ora
-il conteggio fisso con `decode_linear`/`encode_linear` sui due profili
-canonici: fixture nulle da 6.929.180/6.928.316 byte, roundtrip al confine
-inferiore al cap e rifiuto con un fratello in più. La geometria nativa
-riproduce anche i massimi delle frontiere e respinge le fixture massime
-al cap totale. Sono forme sintattiche con radici/valori/hash nulli,
+Il precedente cap di 8 MiB cadeva dentro entrambi gli intervalli. Il
+nuovo cap D34/D35 di 16 MiB supera gli upper: il test Rust
+`c71_b12_canonical_pcs_codec` serializza ora anche le frontiere massime,
+fa roundtrip completo e respinge conteggi oltre la frontiera e input
+oltre il cap. I byte fissi rimangono 6.929.180/6.928.316.
+Sono forme sintattiche con radici/valori/hash nulli,
 non PCS crittografiche valide né frontiere di prove reali.
 Il primo confronto ha corretto il messaggio base: il codec usa le
 32/64 celle **dopo** il fold finale, non le 128/256 precedenti. Il
@@ -448,22 +442,43 @@ Sommando una PCS W e `slot+1` PCS A, corpo e header, si ottiene:
 
 | O | Lower totale | Upper totale |
 |---:|---:|---:|
-| 0 | 47.841.178 | 65.053.242 |
-| 150 | 54.868.316 | 78.945.724 |
-| 300 | 61.797.382 | 92.723.302 |
+| 0 | 47.841.180 | 65.053.244 |
+| 150 | 54.868.318 | 78.945.726 |
+| 300 | 61.797.384 | 92.723.304 |
 
-Entrambi gli estremi includono ora i due vettori gamma da 2.276 byte
+Entrambi gli estremi includono ora i due vettori gamma da 2.277 byte
 ciascuno, la cui lunghezza è verificata sulle configurazioni Rust D35/D34.
-L'header completo è quindi `5873 + 720*slot` byte.
+L'header completo è quindi `5875 + 720*slot` byte.
 Il lower supera 35 MB per ogni calibrazione ammessa, anche omettendo
 GKR congiunti e fratelli Merkle. L'upper qui deriva dagli schemi, non
-dall'ipotesi che ciascuna PCS rientri nel cap di 8 MiB.
-Il rapporto `native_canonical_certificate_wire` conserva `credit:false`
-e assenza di misura completa. Il confronto nativo delle forme PCS è
-ora affiancato da quello di tutte le famiglie non-PCS. Restano
-l'adeguamento dei cap, il framing completo e una prova canonica valida;
-nessun limite
-runtime, profilo numerico o assunzione di sicurezza cambia per questi conti.
+dall'ipotesi che le PCS saturino il cap. Il rapporto conserva `credit:false`
+e assenza di una misura su prove valide.
+
+### Canonical transport limits and complete synthetic framing
+
+`codec::max_bytes` seleziona 16 MiB solo per D34/D35 con feature B12;
+gli altri profili conservano 8 MiB. Il gamma canonico dichiara `cap16MiB`,
+aggiungendo un byte per profilo, e il digest pubblico del registro assorbe
+il cap composto da 96 MiB. Header/FS canonici cambiano: nessuna compatibilità
+con i precedenti header è promessa. Il percorso ridotto conserva il suo
+codec e gamma. Sono limiti del parser, non nuovi parametri del protocollo
+matematico: domini, query, maschere, ricette, MAC e risorse di security §6
+restano invariati. Nessun trasferimento aggiuntivo del bound al Rust segue
+da questa modifica, né ammissione dello schedule fisico.
+
+Il test del corpo ora serializza tutti i 135/136/137 frame, PCS comprese,
+attraverso il writer canonico e ricostruisce lo stesso digest col reader.
+La fixture usa RNE a scale zero/Pi=-14, massimi di forma per i GKR e
+frontiere PCS massime. Le dimensioni sono **64.638.068/78.530.550/92.308.128
+byte**, con header sintetico della lunghezza canonica. Sono distinte
+dall'upper per tutte le ricette sopra. Troncamento, riordino e appendice
+sono respinti; il confine 96 MiB include il footer e un byte in più è
+rifiutato senza avanzare il writer o FS. Il reader ridotto rifiuta queste
+fixture per dimensione.
+
+Il test non chiama VerifyResponse e non produce prove crittografiche
+valide. `native_synthetic_full_framing_checked` distingue questo risultato
+dalla serializzazione positiva del prover canonico, tuttora aperta.
 
 ## Resource and measurement contract
 

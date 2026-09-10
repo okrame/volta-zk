@@ -276,8 +276,8 @@ Sono controlli di sviluppo, non un run di benchmark su albero pulito.
 descrittori canonici posseduti a O=0/150/300. Le somme dei bit di celle
 sono 18.935/18.995/18.995. Anche omettendo funzioni e prodotti terminali,
 i record richiedono **29.371.448/29.442.008/29.442.008 byte**.
-Il cap totale di 16 MiB è quindi insufficiente indipendentemente dalla
-calibrazione. È un limite inferiore analitico: esclude altri operatori,
+Il precedente cap totale di 16 MiB era quindi insufficiente
+indipendentemente dalla calibrazione. È un limite inferiore analitico: esclude altri operatori,
 PCS e framing; non è stato generato o misurato un certificato completo.
 Per la fixture con scale zero/Pi=-14, il sottototale RNE esatto è
 30.604.688/30.675.248/30.675.248 byte. Vedi
@@ -311,12 +311,12 @@ Il nuovo controllo Python `native_wire_body_envelope` verifica il
 conteggio degli schemi contro i censimenti field preesistenti di P0,
 range, QK/PV e GKR congiunto, aggiungendo i prefissi dei vettori e
 conservando separati tutti i frame. Il rapporto espone lower/upper,
-fixture, header simbolico ed envelope condizionato ai cap PCS.
+fixture e header; il rapporto PCS separato fornisce gli upper completi.
 Numeri e formule sono nel [design](design.md#analytic-envelope-of-the-complete-non-pcs-body).
 
 Sono conti da descrittori e codice, non prove canoniche serializzate:
-`full_native_serialization_checked` e `PCS_cap_sufficiency_proven`
-restano false. Il solo corpo supera 35 MB già per la fixture scale
+`full_native_serialization_checked` resta false per prove valide.
+La sufficienza dimensionale dei nuovi cap è verificata separatamente sotto. Il solo corpo supera 35 MB già per la fixture scale
 zero/Pi=-14; includendo le PCS sotto, il lower supera l'allarme per ogni
 calibrazione. Non viene alterato alcun codec, profilo o limite runtime.
 
@@ -333,55 +333,56 @@ le 40 maschere, le 59 aperture salate, i prefissi e la somma di W con
 tutte le A storiche/corrente nei tre contesti. Gli intervalli analitici
 sono nel [design](design.md#canonical-pcs-wire-accounting). Il limite
 superiore dei fratelli segue la ricorrenza del codec; non è una frontiera
-osservata su una prova. Nessuna PCS o inferenza D34/D35 è generata.
+osservata su una prova. Nessuna prova valida o inferenza D34/D35 è generata.
 
 Passano **3 controlli Python** (`canonical_PCS_wire or native_wire_body or
 complete_fixed_run`), self-check/CLI del diagnostico entro 60 s/2 GiB,
 parsing del rapporto JSON in `/tmp`, 98 link locali e `git diff --check`.
-Nessuna build Rust/Lean o esecuzione GPU. Non viene attribuito credito di serializzazione
-nativa o sufficienza del cap da 8 MiB, che cade dentro l'intervallo PCS.
+Questo primo conteggio non attribuiva credito di serializzazione nativa:
+il precedente cap da 8 MiB cadeva dentro l'intervallo PCS.
 
-## Native canonical PCS codec geometry
+## Native canonical codecs and complete framing
 
-`c71_b12_canonical_pcs_codec_geometry_and_byte_cap` usa le configurazioni
-Rust D35/D34 e il vero `decode_linear`/`encode_linear`, senza witness o
-alberi Merkle. Le fixture a valori nulli confermano i byte fissi e fanno
-roundtrip fino al cap; un fratello aggiuntivo viene respinto. La geometria
-nativa conferma i massimi dei fratelli e i 2.276 byte di ciascun gamma.
-Il test non invoca il verifier PCS: nessun credito di prova positiva.
+Il [test PCS](../../rust/volta-pcs/src/c71_matrix/codec.rs) usa le
+configurazioni D35/D34 e il vero `decode_linear`/`encode_linear`, senza
+witness o alberi Merkle. Conferma byte fissi e frontiere massime, ora
+serializzabili entro 16 MiB, e respinge conteggi oltre la frontiera e
+input oltre il cap. Ogni gamma canonico è di 2.277 byte.
 
-Il primo run ha fallito con `trailing bytes`: il conteggio Python usava
-il messaggio prima del fold finale. Corretto nel helper condiviso al
-messaggio finale da 32/64 celle, sottraendo 2.304/4.608 byte ad A/W.
-I totali correnti nel [design](design.md#canonical-pcs-wire-accounting)
-includono anche entrambi i gamma. Il confronto non-PCS è descritto sotto; `native_synthetic_codec_checked` distingue questo
-controllo da `native_serialization_checked`, tuttora false per prove valide.
+Il primo confronto aveva fallito con `trailing bytes`: il conteggio
+Python usava il messaggio prima del fold finale. Corretto al messaggio
+da 32/64 celle, sottraendo 2.304/4.608 byte ad A/W. Il precedente gamma
+era di 2.276 byte: il nuovo `cap16MiB` aggiunge un byte per profilo.
+Queste correzioni sono distinte da un cambiamento del protocollo numerico.
 
-Passano **1 test Rust** sui due domini (0,12 s entro 60 s/2 GiB,
-un worker) e **3 test Python** (`canonical_PCS_wire or native_wire_body or
-complete_fixed_run`), self-check/CLI e parsing del nuovo rapporto in
-`/tmp`, formato Rust, 99 link locali e `git diff --check`. Build mirata
-con un job, nessuna esecuzione AES/GPU o prova canonica positiva.
+Il [test del corpo](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_wire.rs)
+fa roundtrip nei tipi `Wire` di tutte le famiglie con descrittori canonici,
+partizione 410/482 RNE e GKR massimi di forma. Ora assembla anche tutti
+135/136/137 frame con PCS massime e un header sintetico della lunghezza
+canonica: **64.638.068/78.530.550/92.308.128 byte**. Writer e reader
+ricostruiscono lo stesso digest; troncamento, riordino e appendice sono
+respinti. Il test del confine comprende il footer a 16 e 96 MiB e
+rifiuta un byte aggiuntivo prima di cambiare writer/FS.
 
-## Native non-PCS component wire geometry
+`native_synthetic_full_framing_checked` è distinto da una prova valida:
+questi test non eseguono Prepare o VerifyResponse canonici. I limiti e
+il legame al profilo pubblico sono nel
+[design](design.md#canonical-transport-limits-and-complete-synthetic-framing).
+Il test composto ridotto continua a controllare l'accettazione con MAC
+ideali; il test reale preesistente da 180 righe rimane una regressione
+matriciale, non il run AES composto da 797.139 righe.
 
-Il [test delle forme](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_wire.rs)
-usa i descrittori canonici per tutte le famiglie e fa roundtrip nei
-rispettivi tipi `Wire`, lasciando privati i campi delle prove. Controlla
-separatamente i censimenti, la partizione 410/482 RNE e la somma nei tre
-contesti. I GKR congiunti usano il limite di forma, non programmi calibrati.
-
-Il conteggio del corpo è confermato per componenti sintetiche separate;
-non vengono eseguiti Prepare, VerifyResponse, PCS, bootstrap o inferenza.
-`native_synthetic_component_codecs_checked` segnala tale perimetro,
-mentre `full_native_serialization_checked` resta false: il trasporto
-completo e un certificato valido sono ancora da verificare.
-
-Passano **1 test Rust** (tre contesti, 0,90 s entro 60 s/2 GiB e un
-worker) e **3 test Python** (`canonical_PCS_wire or native_wire_body or
-complete_fixed_run`), self-check/CLI e parsing del rapporto in `/tmp`,
-formato Rust, 100 link locali e `git diff --check`. La build usa un job;
-nessuna esecuzione AES/GPU o materializzazione dei domini canonici.
+Passano **11 test Rust**: framing completo, cap PCS, confine del trasporto,
+composizione ridotta, certificati alterati, dispatcher, registro,
+campo/codec, FS, Merkle salato e ruoli durevoli AES. Ogni test è seriale
+entro 60 s/2 GiB e un worker; il framing dei tre contesti impiega 1,97 s.
+Passano anche **3 test Python** (`canonical_PCS_wire or native_wire_body or
+complete_fixed_run`), `cargo check --lib` senza `cfg(test)`, CLI/self-check,
+parsing del rapporto in `/tmp`, 101 link locali e `git diff --check`.
+Il formato dei moduli modificati passa; il file padre `c71_matrix.rs`
+conserva differenze di formato preesistenti fuori dal blocco gamma.
+Nessun benchmark su albero pulito, GPU o prova canonica valida è attribuito
+a questi controlli.
 
 ## Measured historical records
 

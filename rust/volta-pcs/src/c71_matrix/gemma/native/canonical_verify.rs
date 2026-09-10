@@ -1,6 +1,6 @@
 //! Canonical security §3 body. This internal consumer does not own or promote
 //! accepted history: only a complete registry/pool wrapper may authorize it.
-//! The inherited bounded transport cap is not a full-certificate size claim.
+//! The canonical transport cap bounds parsing, not cryptographic acceptance.
 use super::super::protocol::{Batch, Reader};
 use super::*;
 
@@ -82,7 +82,7 @@ impl Canonical {
             return Err("canonical dispatcher reservation differs".into());
         }
         let ks = a.kv_statement(s, parts)?;
-        let mut reader = Reader::new(certificate, header)?;
+        let mut reader = Reader::canonical(certificate, header)?;
         let shift = |t: Key, bias: Fp3| Key::new(t.k + delta * bias);
         let (mut bw, mut ba) = (Batch::new(), Batch::new());
         let (body, frame) = reader.raw(0)?;

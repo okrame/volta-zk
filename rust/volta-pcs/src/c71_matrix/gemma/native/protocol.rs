@@ -45,18 +45,20 @@ fn ashift(a: Auth, b: Fp3) -> Auth {
     Auth::new(a.x + b, a.m)
 }
 
-struct Writer {
+pub(super) struct Writer {
     bytes: Vec<u8>,
     count: u16,
+    limit: usize,
 }
 impl Writer {
     fn new(header: &[u8]) -> Self {
-        Self { bytes: header.to_vec(), count: 0 }
+        Self { bytes: header.to_vec(), count: 0, limit: wire::MAX_BYTES }
     }
-    fn raw(&mut self, kind: u16, body: &[u8], fs: &mut Fs) -> Result<(), String> {
-        if kind != self.count
-            || self.bytes.len() + body.len() + 6 + END.len() + 10 > wire::MAX_BYTES
-        {
+    pub(super) fn canonical(header: &[u8]) -> Self {
+        Self { bytes: header.to_vec(), count: 0, limit: wire::CANONICAL_MAX_BYTES }
+    }
+    pub(super) fn raw(&mut self, kind: u16, body: &[u8], fs: &mut Fs) -> Result<(), String> {
+        if kind != self.count || self.bytes.len() + body.len() + 6 + END.len() + 10 > self.limit {
             return Err("composed certificate size/order".into());
         }
         let start = self.bytes.len();
@@ -73,7 +75,7 @@ impl Writer {
         proof.write(&mut bytes);
         self.raw(kind, &bytes, fs)
     }
-    fn finish(mut self, fs: &mut Fs) -> (Vec<u8>, [u8; 32]) {
+    pub(super) fn finish(mut self, fs: &mut Fs) -> (Vec<u8>, [u8; 32]) {
         let mut end = END.to_vec();
         end.extend(self.count.to_le_bytes());
         end.extend((self.bytes.len() as u64).to_le_bytes());
@@ -90,7 +92,13 @@ pub(super) struct Reader<'a> {
 }
 impl<'a> Reader<'a> {
     pub(super) fn new(bytes: &'a [u8], header: &[u8]) -> Result<Self, String> {
-        if bytes.len() > wire::MAX_BYTES || !bytes.starts_with(header) {
+        Self::with_limit(bytes, header, wire::MAX_BYTES)
+    }
+    pub(super) fn canonical(bytes: &'a [u8], header: &[u8]) -> Result<Self, String> {
+        Self::with_limit(bytes, header, wire::CANONICAL_MAX_BYTES)
+    }
+    fn with_limit(bytes: &'a [u8], header: &[u8], limit: usize) -> Result<Self, String> {
+        if bytes.len() > limit || !bytes.starts_with(header) {
             return Err("composed context/header mismatch".into());
         }
         Ok(Self { input: &bytes[header.len()..], consumed: header.len(), count: 0 })

@@ -1,4 +1,4 @@
-//! Synthetic component encodings only. No witness, valid proof or full transport.
+//! Synthetic encodings and complete framing. No witness or valid proof.
 use super::*;
 use kernel::wire::Wire;
 
@@ -45,14 +45,16 @@ fn rne_record(c: usize, shift: i32) -> Vec<u8> {
     ]
     .concat()
 }
-fn checked<T: Wire>(bytes: Vec<u8>) -> usize {
+fn checked<T: Wire>(bytes: Vec<u8>, frames: &mut Vec<Vec<u8>>) -> usize {
     let mut input = bytes.as_slice();
     let proof = T::read(&mut input).unwrap();
     assert!(input.is_empty(), "{} has trailing bytes", std::any::type_name::<T>());
     let mut output = Vec::new();
     proof.write(&mut output);
     assert_eq!(output, bytes);
-    bytes.len()
+    let n = bytes.len();
+    frames.push(bytes);
+    n
 }
 
 #[test]
@@ -74,9 +76,10 @@ fn c71_b12_native_canonical_wire_body_geometry() {
         let (t, k) = (bits(150), bits(150 * (slot + 1)));
         // Includes the outer headers for PCS frames, but no PCS payload/header.
         let mut body = 6 * (135 + slot) + 26;
+        let mut frames = vec![Vec::new()];
         macro_rules! record {
             ($ty:ty, $bytes:expr, $expected:expr) => {{
-                let n = checked::<$ty>($bytes);
+                let n = checked::<$ty>($bytes, &mut frames);
                 assert_eq!(n, $expected, "{} slot={slot}", stringify!($ty));
                 body += n;
             }};
@@ -115,9 +118,13 @@ fn c71_b12_native_canonical_wire_body_geometry() {
             let (_, shape) = p.bytes().source_rne_view(pair.raw).unwrap();
             rne_record(bits(shape[0]) + bits(shape[1]), pair.shift)
         };
-        let first = checked::<Vec<kernel::rne::Proof>>(vector(original.iter().map(encode_rne)));
+        let first = checked::<Vec<kernel::rne::Proof>>(
+            vector(original.iter().map(encode_rne)),
+            &mut frames,
+        );
         let second = checked::<bytes::quantize::Proof>(
             [vector((0..482).map(|_| fields(1))), vector(table.iter().map(encode_rne))].concat(),
+            &mut frames,
         );
         assert_eq!(first + second, p.rne_wire_bytes().unwrap().2 + 11_580);
         body += first + second;
@@ -141,6 +148,7 @@ fn c71_b12_native_canonical_wire_body_geometry() {
                     fields(2),
                 ]
                 .concat(),
+                &mut frames,
             );
             pv += checked::<kernel::attention::PvProof>(
                 [
@@ -151,6 +159,7 @@ fn c71_b12_native_canonical_wire_body_geometry() {
                     fields(2),
                 ]
                 .concat(),
+                &mut frames,
             );
         }
         assert_eq!((qk, pv), if slot == 0 { (217_400, 192_400) } else { (224_840, 205_600) });
@@ -190,5 +199,42 @@ fn c71_b12_native_canonical_wire_body_geometry() {
             body - selected_rne + lower_rne + 24 * 892 * 77,
             [37_329_009, 37_443_943, 37_443_973][slot]
         );
+        frames.push(codec::tests::maximal_linear_fixture(35));
+        for _ in 0..=slot {
+            frames.push(codec::tests::maximal_linear_fixture(34));
+        }
+        assert_eq!(frames.len(), 135 + slot);
+        // Header-sized fixture, not the registry's actual acceptance context.
+        let header = vec![0; 5875 + 720 * slot];
+        let mut fs = Fs::new(&header, 0);
+        let mut writer = super::super::protocol::Writer::canonical(&header);
+        for (kind, frame) in frames.iter().enumerate() {
+            writer.raw(kind as u16, frame, &mut fs).unwrap();
+        }
+        let (mut certificate, digest) = writer.finish(&mut fs);
+        assert_eq!(certificate.len(), body + header.len() + 13_941_532 + (slot + 1) * 13_776_828);
+        assert_eq!(certificate.len(), [64_638_068, 78_530_550, 92_308_128][slot]);
+        assert!(certificate.len() < kernel::wire::CANONICAL_MAX_BYTES);
+        assert!(super::super::protocol::Reader::new(&certificate, &header).is_err());
+        assert_eq!(read_transport(&certificate, &header, frames.len()).unwrap(), digest);
+        assert!(
+            read_transport(&certificate[..certificate.len() - 1], &header, frames.len()).is_err()
+        );
+        certificate[header.len()] ^= 1;
+        assert!(read_transport(&certificate, &header, frames.len()).is_err());
+        certificate[header.len()] ^= 1;
+        certificate.push(0);
+        assert!(read_transport(&certificate, &header, frames.len()).is_err());
     }
+}
+
+fn read_transport(certificate: &[u8], header: &[u8], count: usize) -> Result<[u8; 32], String> {
+    use super::super::protocol::Reader;
+    let mut reader = Reader::canonical(certificate, header)?;
+    let mut fs = Fs::new(header, 0);
+    for kind in 0..count {
+        let (_, frame) = reader.raw(kind as u16)?;
+        Reader::record(&mut fs, frame);
+    }
+    reader.finish(&mut fs)
 }

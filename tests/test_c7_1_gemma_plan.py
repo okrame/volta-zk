@@ -178,19 +178,19 @@ def test_B12_native_wire_body_envelope_matches_field_censuses_without_PCS_credit
         assert (lower, upper) == [(33977809, 37329009), (34075911, 37443943),
                                   (34075941, 37443973)][slot]
         assert upper == sum(fixed.values()) + case['RNE_wire_interval'][1] + sum(case['joint_GKR_wire_upper'].values())
-        assert case['body_upper_with_existing_PCS_caps_excluding_header'] == upper+(slot+2)*(8 << 20)
         assert case['header_bytes_excluding_PCS_profile_vectors'] == 1321+720*slot
-        assert case['total_upper_with_existing_PCS_caps_excluding_profile_vectors'] == (
-            upper+(slot+2)*(8 << 20)+1321+720*slot)
         assert case['scale_zero_fixture_body_lower_excluding_PCS_and_header'] > 35_000_000
     assert not report['credit'] and not report['full_native_serialization_checked']
     assert report['native_synthetic_component_codecs_checked']
-    assert not report['PCS_cap_sufficiency_proven']
     assert report['complete_certificate_bytes'] is None
 
 
 def test_B12_canonical_PCS_wire_counts_masks_salts_and_all_history_openings():
     report = plan.b12_pcs_binding_assessment()
+    for profile in report['ideal_oracle_profiles'][:2]:
+        small = plan.b12_native_linear_pcs_wire(profile, report['shared_mask_code'])
+        assert small['decoder_cap_bytes'] == 8 << 20
+        assert not small['native_synthetic_codec_checked']
     pcs = {p['log_message_cells']: p for p in report['native_canonical_linear_PCS_wire']}
     for h, expected in [(35, [6929180, 13941532]), (34, [6928316, 13776828])]:
         p = pcs[h]
@@ -204,15 +204,17 @@ def test_B12_canonical_PCS_wire_counts_masks_salts_and_all_history_openings():
         assert expected[0] == sum(fields.values()) < 8 << 20
         assert expected[1] == expected[0]+p['multiproof_sibling_bytes_upper'] > 8 << 20
         assert not p['credit'] and not p['native_serialization_checked']
-        assert p['native_synthetic_codec_checked'] and p['PCS_profile_vector_bytes'] == 2276
-        assert not p['upper_fits_decoder_cap']
+        assert p['native_synthetic_codec_checked'] and p['PCS_profile_vector_bytes'] == 2277
+        assert p['upper_fits_decoder_cap'] and p['decoder_cap_bytes'] == 16 << 20
+    assert report['native_canonical_certificate_wire']['PCS_shape_upper_fits_cap']
+    assert report['native_canonical_certificate_wire']['total_shape_upper_fits_cap']
     cases = report['native_canonical_certificate_wire']['cases']
     assert report['native_canonical_certificate_wire']['total_interval_additional_bytes'] == 0
     for slot, (case, expected) in enumerate(zip(cases, [
             [47836626, 65048690], [54863764, 78941172], [61792830, 92718750]])):
         assert case['total_wire_interval_excluding_PCS_profile_vectors'] == expected
-        assert case['total_wire_interval'] == [n+4552 for n in expected]
-        assert case['header_wire_bytes'] == 5873+720*slot
+        assert case['total_wire_interval'] == [n+4554 for n in expected]
+        assert case['header_wire_bytes'] == 5875+720*slot
         for end, total in enumerate(expected):
             assert total == (case['body_wire_interval_excluding_PCS_and_header'][end]
                 +case['header_bytes_excluding_PCS_profile_vectors']
@@ -258,7 +260,7 @@ def test_B12_complete_fixed_run_preserves_exact_errors_and_counts_caller_resourc
     assert native['real_AES_shortage_checked_base_rows'] == 3
     transport = full['native_canonical_transport']
     assert transport['RNE_wire_lower_bound_bytes'] == [29371448, 29442008, 29442008]
-    assert all(size > transport['transport_cap_bytes'] for size in transport['RNE_wire_lower_bound_bytes'])
+    assert all(size > transport['small_transport_cap_bytes'] for size in transport['RNE_wire_lower_bound_bytes'])
     assert all(size >= lower for size, lower in zip(transport['scale_zero_fixture_RNE_wire_bytes'],
                                                   transport['RNE_wire_lower_bound_bytes']))
     assert transport['W_histogram_wire_bytes'] == 1572844
@@ -267,7 +269,12 @@ def test_B12_complete_fixed_run_preserves_exact_errors_and_counts_caller_resourc
                for size in transport['RNE_and_W_histogram_lower_bound_bytes'])
     assert not transport['current_encoding_can_meet_preference']
     assert transport['complete_certificate_bytes'] is None
-    assert not transport['credit'] and not transport['current_total_codec_can_accept_canonical_proof']
+    assert not transport['credit'] and not transport['canonical_positive_certificate_checked']
+    assert transport['native_synthetic_full_framing_checked']
+    assert transport['transport_cap_bytes'] == 96 << 20
+    assert transport['canonical_shape_upper_fits_transport']
+    assert all(c['total_wire_interval'][1] < transport['transport_cap_bytes']
+        for c in assessment['native_canonical_certificate_wire']['cases'])
     canonical = full['native_canonical_producers']
     assert (canonical['sources_A'], canonical['producers']) == (3471, 2328)
     assert canonical['old_tokens'] == [0, 150, 300]

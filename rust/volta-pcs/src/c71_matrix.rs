@@ -676,7 +676,13 @@ fn gamma(c: &ZkWhirConfig<E, Goldilocks, Fs>) -> Vec<u8> {
     #[cfg(not(feature = "c71-b12-pcs"))]
     let mut bytes = b"C71-matrix-v1;codec1;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF;Johnson128;PoW0;AES128-MMO;LPN64,512,8,4;setup16,128,4;checks2;pool3;lift9sVOLE48;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
     #[cfg(feature = "c71-b12-pcs")]
-    let mut bytes = b"C71-matrix-B12-unique-v1;codec2;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF-coin-block1-fixed-openings;CFW9.10+8.1;radius1/4;queries512;ell2048;OOD1;PoW0;B11-AES256-finite;post-bootstrap-capacity32;rows3;salts4Fp;private-coins-v1-cap2^40;no-security;slots3;draw8;distinct256;cap8MiB".to_vec();
+    let mut bytes = b"C71-matrix-B12-unique-v1;codec2;Fp3-u3-2;P3-v3-v-1;BLAKE3-XOF-coin-block1-fixed-openings;CFW9.10+8.1;radius1/4;queries512;ell2048;OOD1;PoW0;B11-AES256-finite;post-bootstrap-capacity32;rows3;salts4Fp;private-coins-v1-cap2^40;no-security;slots3;draw8;distinct256;".to_vec();
+    #[cfg(feature = "c71-b12-pcs")]
+    bytes.extend_from_slice(if codec::max_bytes(c.num_variables) > codec::MAX_BYTES {
+        b"cap16MiB"
+    } else {
+        b"cap8MiB"
+    });
     let mut words = vec![
         volta_field::P,
         c.zk.ell_zk as u64,

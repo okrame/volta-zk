@@ -35,6 +35,7 @@ impl<'a> Public<'a> {
         // Full body identity, not numerical certification. Hash incrementally.
         let mut h = blake3::Hasher::new();
         h.update(b"C71B12-Gemma-public-v1\0");
+        h.update(&(kernel::wire::CANONICAL_MAX_BYTES as u64).to_le_bytes());
         let mut common = None;
         for slot in 0..3 {
             let p = &public.profiles[slot];

@@ -102,8 +102,8 @@ componente realmente serializzata. Conservare `native_composed` e
 Il filtro Python `canonical_PCS_wire or native_wire_body or complete_fixed_run`
 controlla il corpo canonico contro i censimenti field già presenti e
 il conteggio PCS di maschere, sali, frontiere e aperture storiche.
-Non compila Rust né misura certificati; preservare le etichette di lower,
-upper e condizione sul cap PCS quando si riusano questi numeri.
+Non compila Rust né misura prove valide; preservare le etichette di
+lower, upper e fixture sintetica quando si riusano questi numeri.
 
 Il filtro Rust `c71_b12_canonical_pcs_codec` controlla le forme del codec
 D34/D35 con byte e frontiere sintetici, senza witness, Merkle tree o pool.
@@ -113,8 +113,12 @@ strutturale non è verifica crittografica positiva; il test non esegue Gemma.
 `c71_b12_native_canonical_wire_body` fa roundtrip dei tipi `Wire` di tutte
 le famiglie non-PCS con descrittori canonici nei tre contesti e fixture
 nulle, entro gli stessi 60 s/2 GiB e un worker. I due GKR usano l'envelope
-di forma, non circuiti calibrati. Le componenti sono serializzate
-separatamente: non è un certificato completo accettato dal trasporto.
+di forma, non circuiti calibrati. Il test assembla anche il framing completo
+con PCS massime, senza verifier crittografico. Dopo modifiche ai cap eseguire
+separatamente `c71_b12_native_wire_limit`, `c71_b12_canonical_pcs_codec`,
+`c71_b12_native_composed`, `c71_b12_native_certificate`, dispatch/registro
+e le regressioni campo/FS e salted PCS indicate sotto. I cap canonici
+96/16 MiB non autorizzano witness o bootstrap dei domini D34/D35.
 
 The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate

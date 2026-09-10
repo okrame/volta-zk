@@ -14,6 +14,14 @@ const MAGIC: &[u8; 8] = b"C71MX1\0\0";
 const MAGIC: &[u8; 8] = b"C71MX2\0\0";
 pub(super) const MAX_BYTES: usize = 8 << 20;
 
+pub(super) fn max_bytes(variables: usize) -> usize {
+    if cfg!(feature = "c71-b12-pcs") && matches!(variables, 34 | 35) {
+        16 << 20
+    } else {
+        MAX_BYTES
+    }
+}
+
 fn require(ok: bool, message: &str) -> ReferenceResult<()> {
     if ok {
         Ok(())
@@ -263,7 +271,10 @@ fn encode_body(
         )?;
     }
     w.bytes.extend_from_slice(&matrix.close_tag.to_bytes());
-    require(w.bytes.len() <= MAX_BYTES, "C71 certificate exceeds local byte cap")?;
+    require(
+        w.bytes.len() <= max_bytes(config.num_variables),
+        "C71 certificate exceeds local byte cap",
+    )?;
     Ok(w.bytes)
 }
 
@@ -285,8 +296,11 @@ pub(super) fn decode(
 
 #[cfg(feature = "c71-b12-pcs")]
 pub(super) fn decode_linear(domain: Domain, bytes: &[u8]) -> ReferenceResult<MatrixProof> {
-    require(bytes.len() <= MAX_BYTES, "C71 certificate exceeds local byte cap")?;
     let config = domain.config().map_err(C61WhirReferenceError::new)?;
+    require(
+        bytes.len() <= max_bytes(config.num_variables),
+        "C71 certificate exceeds local byte cap",
+    )?;
     decode_body(&config, config.num_variables, C61Reader::new(bytes))
 }
 
@@ -410,7 +424,7 @@ fn decode_body(
 }
 
 #[cfg(all(test, feature = "c71-b12-pcs"))]
-mod tests {
+pub(super) mod tests {
     use super::*;
 
     // Codec fixtures only: zero fields/roots are not cryptographic proofs.
@@ -460,13 +474,19 @@ mod tests {
         for (h, fixed, upper) in [(35, 6_929_180, 13_941_532), (34, 6_928_316, 13_776_828)] {
             let domain = Domain::Flat(h);
             let c = domain.config().unwrap();
-            assert_eq!(gamma(&c).len(), 2_276);
+            assert_eq!(gamma(&c).len(), 2_277);
             let bytes = vec![0; fixed];
             let mut p = decode_linear(domain, &bytes).unwrap();
             assert_eq!(encode_linear(domain, &p).unwrap(), bytes);
             assert!(decode_linear(domain, &bytes[..fixed - 1]).is_err());
             assert_eq!(fixed + 32 * set_frontiers(&c, &mut p, usize::MAX), upper);
-            assert!(encode_linear(domain, &p).unwrap_err().to_string().contains("local byte cap"));
+            let maximal = encode_linear(domain, &p).unwrap();
+            assert_eq!(maximal.len(), upper);
+            assert!(upper < max_bytes(h));
+            assert_eq!(
+                encode_linear(domain, &decode_linear(domain, &maximal).unwrap()).unwrap(),
+                maximal
+            );
 
             let fits = (MAX_BYTES - fixed) / 32;
             assert_eq!(set_frontiers(&c, &mut p, fits), fits);
@@ -477,7 +497,28 @@ mod tests {
                 bounded
             );
             assert_eq!(set_frontiers(&c, &mut p, fits + 1), fits + 1);
-            assert!(encode_linear(domain, &p).unwrap_err().to_string().contains("local byte cap"));
+            assert_eq!(encode_linear(domain, &p).unwrap().len(), fixed + 32 * (fits + 1));
+            assert!(decode_linear(domain, &vec![0; max_bytes(h) + 1]).is_err());
+            set_frontiers(&c, &mut p, usize::MAX);
+            let QueryOpenings::Base(first) = &mut p.pcs.rounds[0].openings else {
+                panic!("first field")
+            };
+            first.proof.1.sibling_hashes.push([0; 32]);
+            assert!(encode_linear(domain, &p).unwrap_err().to_string().contains("frontier bound"));
         }
+        assert_eq!(max_bytes(12), MAX_BYTES);
+        assert_eq!(max_bytes(14), MAX_BYTES);
+    }
+
+    pub(in crate::c71_matrix) fn maximal_linear_fixture(h: usize) -> Vec<u8> {
+        let fixed = match h {
+            35 => 6_929_180,
+            34 => 6_928_316,
+            _ => panic!("canonical fixture domain"),
+        };
+        let domain = Domain::Flat(h);
+        let mut proof = decode_linear(domain, &vec![0; fixed]).unwrap();
+        set_frontiers(&domain.config().unwrap(), &mut proof, usize::MAX);
+        encode_linear(domain, &proof).unwrap()
     }
 }

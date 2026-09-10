@@ -4,6 +4,8 @@
 use super::Fp3;
 
 pub(super) const MAX_BYTES: usize = 16 << 20;
+// Canonical D35/D34 shape upper <93 MB including all four PCS and header.
+pub(super) const CANONICAL_MAX_BYTES: usize = 96 << 20;
 
 pub(super) trait Wire: Sized {
     const MIN_BYTES: usize;

@@ -3,29 +3,37 @@ use rand_010::RngExt;
 
 #[test]
 fn c71_b12_native_wire_limit_includes_completion_record() {
-    let header = b"transport boundary only, no inference";
-    let body = vec![0; wire::MAX_BYTES - header.len() - 6 - END.len() - 10];
-    let mut fs = Fs::new(header, 0);
-    let mut writer = Writer::new(header);
-    writer.raw(0, &body, &mut fs).unwrap();
-    let (certificate, receipt) = writer.finish(&mut fs);
-    assert_eq!(certificate.len(), wire::MAX_BYTES);
-    let mut fs = Fs::new(header, 0);
-    let mut reader = Reader::new(&certificate, header).unwrap();
-    let (read, frame) = reader.raw(0).unwrap();
-    assert_eq!(read, body);
-    Reader::record(&mut fs, frame);
-    assert_eq!(reader.finish(&mut fs).unwrap(), receipt);
+    for canonical in [false, true] {
+        let cap = if canonical { wire::CANONICAL_MAX_BYTES } else { wire::MAX_BYTES };
+        let header = b"transport boundary only, no inference";
+        let body = vec![0; cap - header.len() - 6 - END.len() - 10];
+        let mut fs = Fs::new(header, 0);
+        let mut writer = if canonical { Writer::canonical(header) } else { Writer::new(header) };
+        writer.raw(0, &body, &mut fs).unwrap();
+        let (certificate, receipt) = writer.finish(&mut fs);
+        assert_eq!(certificate.len(), cap);
+        let mut fs = Fs::new(header, 0);
+        let mut reader = (if canonical {
+            Reader::canonical(&certificate, header)
+        } else {
+            Reader::new(&certificate, header)
+        })
+        .unwrap();
+        let (read, frame) = reader.raw(0).unwrap();
+        assert_eq!(read, body);
+        Reader::record(&mut fs, frame);
+        assert_eq!(reader.finish(&mut fs).unwrap(), receipt);
 
-    let mut writer = Writer::new(header);
-    let mut fs = Fs::new(header, 0);
-    let before = fs.digest();
-    let mut too_large = body;
-    too_large.push(0);
-    assert!(writer.raw(0, &too_large, &mut fs).is_err());
-    assert_eq!(fs.digest(), before);
-    assert_eq!(writer.bytes, header);
-    assert_eq!(writer.count, 0);
+        let mut writer = if canonical { Writer::canonical(header) } else { Writer::new(header) };
+        let mut fs = Fs::new(header, 0);
+        let before = fs.digest();
+        let mut too_large = body;
+        too_large.push(0);
+        assert!(writer.raw(0, &too_large, &mut fs).is_err());
+        assert_eq!(fs.digest(), before);
+        assert_eq!(writer.bytes, header);
+        assert_eq!(writer.count, 0);
+    }
 }
 
 pub(super) fn weights(p: &Profile) -> Vec<i16> {

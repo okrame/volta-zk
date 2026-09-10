@@ -8044,12 +8044,14 @@ def b12_native_linear_pcs_wire(profile, mask):
     fields.update(opened_values=leaves, opened_salts=salts, multiproof_counts=4*len(openings))
     lower = sum(fields.values())  # omit hashes; not an attainable minimum claim
     upper = lower+32*siblings
+    canonical = h in (34, 35)
+    cap = (16 if canonical else 8) << 20
     return {'credit': False, 'log_message_cells': h, 'fixed_wire_bytes': fields,
         'multiproof_sibling_bytes_upper': 32*siblings, 'wire_interval': [lower, upper],
-        'decoder_cap_bytes': 8 << 20, 'upper_fits_decoder_cap': upper <= 8 << 20,
-        # gamma(): 268-byte B12 descriptor, scalar words, lists, rounds, groups, isomorphism.
-        'PCS_profile_vector_bytes': 268+8*(9+2*(1+batches)+9*batches+1+4*len(widths)+15),
-        'native_synthetic_codec_checked': True,
+        'decoder_cap_bytes': cap, 'upper_fits_decoder_cap': upper <= cap,
+        # gamma(): cap8MiB/cap16MiB descriptor, words, lists, rounds, groups, isomorphism.
+        'PCS_profile_vector_bytes': 268+int(canonical)+8*(9+2*(1+batches)+9*batches+1+4*len(widths)+15),
+        'native_synthetic_codec_checked': canonical,
         'native_serialization_checked': False,
         'native_check_scope': 'zero-value codec fixtures; no valid PCS or canonical inference',
         'lower_omits': 'all Merkle sibling hashes',
@@ -8061,7 +8063,7 @@ def b12_native_wire_body_envelope():
 
     Exact fixed records plus calibration-independent RNE/joint-GKR bounds.
     The returned body includes all outer frames and completion, but no header
-    or PCS payload. An 8-MiB PCS allowance is only the existing decoder policy.
+    or PCS payload. PCS sizes are counted separately from their decoder caps.
     """
     cohorts = gemma_weight_cohorts(pinned_private_tensors())
     norms = rms_statistic_cohorts(cohorts)
@@ -8119,18 +8121,14 @@ def b12_native_wire_body_envelope():
             'RNE_wire_interval': [rne_min, rne_max], 'joint_GKR_wire_upper': joint,
             'body_wire_interval_excluding_PCS_and_header': [lower, upper],
             'scale_zero_fixture_body_lower_excluding_PCS_and_header':
-                lower + (30604688 if slot == 0 else 30675248) - rne_min,
-            'body_upper_with_existing_PCS_caps_excluding_header': upper+(slot+2)*(8 << 20),
-            'total_upper_with_existing_PCS_caps_excluding_profile_vectors':
-                upper+(slot+2)*(8 << 20)+header_fixed})
+                lower + (30604688 if slot == 0 else 30675248) - rne_min})
     return {'credit': False, 'basis': 'current mandatory Wire schemas and native public shape guards',
         'cases': cases, 'full_native_serialization_checked': False,
         'native_synthetic_component_codecs_checked': True,
         'native_check_scope': 'all non-PCS component types separately; zero values and joint-GKR shape upper',
-        'PCS_cap_sufficiency_proven': False, 'complete_certificate_bytes': None,
+        'complete_certificate_bytes': None,
         'omitted_from_non_PCS_lower_bound': ['joint RMS GKR', 'EXP30 ratio GKR'],
         'omitted_from_body_interval': ['canonical header', 'all PCS payloads'],
-        'total_upper_additional_bytes': 'len(gamma_W) + len(gamma_A)',
         'sources': ['rust/volta-pcs/src/c71_matrix/p0.rs',
             'rust/volta-pcs/src/c71_matrix/range.rs', 'rust/volta-pcs/src/c71_matrix/rms/gkr.rs',
             'rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs']}
@@ -8234,7 +8232,10 @@ def b12_complete_fixed_run_composition(base):
             'credit': False,
             'source': 'rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs',
             'test_filter': 'c71_b12_native_wire',
-            'transport_cap_bytes': 16 << 20,
+            'transport_cap_bytes': 96 << 20, 'small_transport_cap_bytes': 16 << 20,
+            'canonical_PCS_cap_bytes': 16 << 20,
+            'native_synthetic_full_framing_checked': True,
+            'synthetic_framed_bytes': [64638068, 78530550, 92308128],
             'mandatory_RNE_records': 892,
             'old_tokens': [0, 150, 300],
             'RNE_cell_bits_sum': [18935, 18995, 18995],
@@ -8247,7 +8248,8 @@ def b12_complete_fixed_run_composition(base):
             'current_encoding_can_meet_preference': False,
             'RNE_subtotal_includes_frames_other_operators_or_PCS': False,
             'complete_certificate_bytes': None,
-            'current_total_codec_can_accept_canonical_proof': False,
+            'canonical_shape_upper_fits_transport': True,
+            'canonical_positive_certificate_checked': False,
         },
         'next_goal': 'execute canonical Prepare/proof dispatch from the causal descriptors; validate the complete AES adapter on authorized hardware; no dense local execution',
     }
@@ -8640,6 +8642,8 @@ def b12_pcs_binding_assessment():
             case['total_wire_interval_excluding_PCS_profile_vectors']]
     certificate_wire['PCS_bounds_source'] = 'native_canonical_linear_PCS_wire'
     certificate_wire['total_interval_additional_bytes'] = 0
+    certificate_wire['PCS_shape_upper_fits_cap'] = all(p['upper_fits_decoder_cap'] for p in linear_pcs_wire)
+    certificate_wire['total_shape_upper_fits_cap'] = all(c['total_wire_interval'][1] <= 96 << 20 for c in certificate_wire['cases'])
     gate_up_byte_profile = profiles.pop()
     byte_profile = profiles.pop()
     auxiliary_profile = profiles.pop()  # P0 C/X geometry; keep the existing public profile list.

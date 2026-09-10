@@ -248,6 +248,34 @@ con tre righe AES; non comprende ancora la composizione positiva da
 797.139 righe base, né il port dei produttori numerici al grafo canonico.
 I [limiti di esecuzione](../procedures/build-and-test.md) rimangono invariati.
 
+### Canonical verifier body
+
+Il [corpo canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
+esegue le chiamate di security §3 sui descrittori di `Canonical`, con un
+unico Fs passato dal futuro wrapper. Riusa `Reader` e `Batch` del percorso
+ridotto, senza modificare il suo transcript. Prima di espandere le forme
+pubbliche controlla identità delle ricette/layout/PCS e uguaglianza fra
+riserva fornita e `Recipes::required`. Ricostruisce il P0Statement interno
+con il layout effettivamente posseduto dal compilatore. Le 410 RNE consumano key e punti
+originali; le 482 sonde, le 120 richieste K/V e i batch finali conservano
+le identità delle sorgenti. Sono implementati i confronti 775/4.446 target,
+una PCS per ogni sorgente, consumo esatto e framing finale con EOF.
+
+L'ordine implementato comprende frame 0–7 per forme/P0/RMS/RNE/GELU/gate/RoPE,
+8–127 per le coppie QK/PV dei 60 layer, 128 per KV, 129–130 per softcap/EXP30,
+131–132 per range, 133 per W, quindi vecchie A e A corrente: 135/136/137
+frame complessivi. È un ordine del codice, non una misura di certificati
+canonici prodotti. Il cap di trasporto riusato resta 16 MiB e non è
+dimostrato sufficiente per il certificato completo.
+
+`verify_body` è un consumer interno, non `VerifyResponse`: non riserva
+correlazioni, non costruisce l'header dal registro, non certifica Γ e non
+promuove uno stato. Registro dei segmenti, Fs iniziale e riserva già bruciata
+sono obblighi del wrapper ancora da collegare. Il digest restituito non è
+l'oggetto `Acceptance` del percorso ridotto. La verifica positiva dell'intero
+corpo, Prepare/prover canonici e il codec completo restano da eseguire;
+i controlli del prefisso non trasferiscono i bound matematici al runtime.
+
 ## Resource and measurement contract
 
 | Voce | Riferimento da soddisfare; nessuna nuova misura |

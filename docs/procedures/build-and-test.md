@@ -63,6 +63,15 @@ Dopo modifiche al lifecycle compilare anche `volta-pcg --features c71-b11
 `c71_b12_fixed_run_stops`, `c71_b12_burns`, `c71_b12_fixed_run_real_capacity`
 separatamente. I test di regressione precedenti conservano i propri limiti.
 
+`c71_b12_native_dispatch` controlla il nuovo corpo del verifier canonico
+nei tre contesti: riserva esatta, identità del profilo, forme pubbliche,
+framing iniziale e rifiuto di una prova P0 con zero coorti. Usa chiavi
+ideali e tabelle parzialmente placeholder, nessun witness D34/D35 o
+bootstrap. Eseguirlo separatamente entro 60 s/2 GiB con un worker Rayon.
+Il successo del test è il rifiuto al confine previsto; non è accettazione
+di un certificato canonico completo. Dopo modifiche ai helper condivisi,
+conservare `c71_b12_native_composed` e `c71_b12_native_certificate`.
+
 The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate
 D31/D33 source counts and partial target/cube totals describe those fixtures,

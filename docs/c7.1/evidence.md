@@ -154,6 +154,35 @@ e configurazione `rust/.cargo`; ogni test è seriale entro 60 s/2 GiB.
 Sono controlli di sviluppo, non benchmark su albero pulito o test dell'intero
 workspace. Nessuna build Lean o esecuzione GPU.
 
+## Canonical verifier body and prefix
+
+Il [nuovo corpo](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
+implementa tutte le chiamate della schedule con i descrittori canonici;
+riusa soltanto decoder e batch interni del percorso ridotto. Non è ancora
+il wrapper canonico con proprietà del registro, né un certificato positivo.
+
+`c71_b12_native_dispatch` passa a O=0/150/300: riserva vuota e profilo
+alterato rifiutati senza modificare Fs; riserva ideale completa e frame
+pubblico valido raggiungono il guard delle 773 coorti P0, che rifiuta una
+prova con zero coorti. Il digest del prefisso coincide con la ricostruzione
+delle quattro forme pubbliche e del frame; nessuna chiave è consumata.
+Il riordino del primo frame rifiuta prima delle sfide. Le tabelle restano
+quelle sintetiche del preflight (EXP30 esatto a e_score=128, le altre solo
+di forma); nessun witness o codeword D34/D35 viene materializzato.
+
+Il decoder conserva il cap ridotto di 16 MiB: il suo dimensionamento e
+il framing dell'header derivato dal registro fanno parte del wrapper
+canonico ancora aperto. La presenza delle chiamate a RMS, RNE, lookup,
+attenzione e PCS nel corpo compilato non costituisce loro esecuzione
+positiva congiunta. Il diagnostico distingue implementazione, prefisso
+controllato e verifica positiva assente.
+
+Validazione mirata: **3 test Rust passati** (prefisso e regressioni
+`native_composed`/`native_certificate`), **2 test Python passati** col filtro
+`complete_fixed_run or native_small_profile`, e `cargo check --lib` passato.
+Stessi limiti locali e build mirata di cui sopra, senza nuove esecuzioni
+AES, Lean, provider o hardware. Le evidenze precedenti restano distinte.
+
 ## Measured historical records
 
 I file sotto sono immutabili e identificano il codice effettivamente misurato.

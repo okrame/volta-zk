@@ -189,6 +189,9 @@ def test_B12_complete_fixed_run_preserves_exact_errors_and_counts_caller_resourc
     canonical = full['native_canonical_producers']
     assert (canonical['sources_A'], canonical['producers']) == (3471, 2328)
     assert canonical['old_tokens'] == [0, 150, 300]
+    assert canonical['canonical_verifier_body_implemented']
+    assert canonical['canonical_verifier_prefix_checked']
+    assert not canonical['canonical_verifier_body_positive_checked']
     assert not any(canonical[k] for k in ('canonical_prepare_executed',
         'canonical_proof_dispatch_executed', 'full_model_security_or_hardware_credit'))
     for change in ({'recipe': 'unselected'}, {'allowed_softmax_values_proven': False},

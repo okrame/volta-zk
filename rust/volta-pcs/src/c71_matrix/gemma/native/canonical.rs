@@ -3,6 +3,9 @@
 use super::*;
 use std::collections::{BTreeSet, VecDeque};
 
+#[path = "canonical_verify.rs"]
+mod verify;
+
 enum Producer {
     Embedding,
     Matrix(usize),

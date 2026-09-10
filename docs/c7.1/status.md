@@ -55,8 +55,16 @@ Il [compilatore causale canonico](../../rust/volta-pcs/src/c71_matrix/gemma/nati
 deriva 2.328 produttori per tutte le 3.471 sorgenti A, nei contesti
 O=0/150/300. Controlla dipendenze, unicità e i dieci alias K/V pre-norm
 globali; omissioni, duplicazioni e cicli sono respinti. È compilazione
-pubblica dei descrittori pinned, non ancora esecuzione numerica o dispatch
+pubblica dei descrittori pinned, non ancora esecuzione numerica o verifica positiva
 delle prove sui 773 P0/421 RMS.
+
+Il [corpo del verifier canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
+ora implementa la schedule completa di security §3 con ricette comuni,
+MAC originali e PCS W/vecchie A/A corrente. I controlli locali coprono
+riserva, contesto e prefisso pubblico fino al rifiuto di un P0 incompleto;
+non un certificato canonico positivo. Il corpo non possiede il registro,
+non crea `Acceptance` e non promuove KV. Il collegamento al wrapper
+canonico e il dimensionamento del codec completo restano aperti.
 
 Il [collegamento AES/journal](../../rust/volta-pcs/src/c71_matrix/gemma/native/pool.rs)
 ora alimenta il wrapper ridotto tramite riserve del pool reale, con segni
@@ -67,9 +75,9 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Il goal di estensione resta aperto:** eseguire Prepare e la schedule di
-prova dai descrittori canonici, conservando gli originali e la compilazione
-numerica comune; verificare poi il percorso composto AES positivo.
+**Il goal di estensione resta aperto:** collegare Prepare/prover canonici,
+registro e codec completo al corpo del verifier, conservando gli originali
+e la compilazione numerica comune; verificare poi il percorso composto AES positivo.
 Le sue 797.139 righe base sul grafo ridotto superano il perimetro dei
 bootstrap locali e richiedono hardware autorizzato. La compilazione
 causale non fornisce lo schedule fisico per D34/D35.

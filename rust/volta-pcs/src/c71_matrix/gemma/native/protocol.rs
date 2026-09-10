@@ -13,19 +13,19 @@ mod tests;
 const MAGIC: &[u8] = b"C71B12-Gemma-FixedRun-v1/native-small-v1\0";
 const END: &[u8] = b"C71B12-complete\0";
 
-struct Batch<T> {
-    forms: Vec<Vec<Cube>>,
-    targets: Vec<T>,
+pub(super) struct Batch<T> {
+    pub(super) forms: Vec<Vec<Cube>>,
+    pub(super) targets: Vec<T>,
 }
 impl<T: Copy> Batch<T> {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self { forms: Vec::new(), targets: Vec::new() }
     }
-    fn add(&mut self, form: Vec<Cube>, target: T) {
+    pub(super) fn add(&mut self, form: Vec<Cube>, target: T) {
         self.forms.push(form);
         self.targets.push(target);
     }
-    fn extend(
+    pub(super) fn extend(
         &mut self,
         forms: Vec<Vec<Cube>>,
         bias: Vec<Fp3>,
@@ -81,19 +81,19 @@ impl Writer {
         (self.bytes, *fs.digest().as_bytes())
     }
 }
-struct Reader<'a> {
+pub(super) struct Reader<'a> {
     input: &'a [u8],
     consumed: usize,
     count: u16,
 }
 impl<'a> Reader<'a> {
-    fn new(bytes: &'a [u8], header: &[u8]) -> Result<Self, String> {
+    pub(super) fn new(bytes: &'a [u8], header: &[u8]) -> Result<Self, String> {
         if bytes.len() > wire::MAX_BYTES || !bytes.starts_with(header) {
             return Err("composed context/header mismatch".into());
         }
         Ok(Self { input: &bytes[header.len()..], consumed: header.len(), count: 0 })
     }
-    fn raw(&mut self, kind: u16) -> Result<(&'a [u8], &'a [u8]), String> {
+    pub(super) fn raw(&mut self, kind: u16) -> Result<(&'a [u8], &'a [u8]), String> {
         let initial = self.input;
         let encoded = u16::from_le_bytes(wire::take(&mut self.input, 2)?.try_into().unwrap());
         let n = u32::from_le_bytes(wire::take(&mut self.input, 4)?.try_into().unwrap()) as usize;
@@ -105,7 +105,7 @@ impl<'a> Reader<'a> {
         self.consumed += n + 6;
         Ok((body, &initial[..n + 6]))
     }
-    fn get<P: Wire>(&mut self, kind: u16) -> Result<(P, &'a [u8]), String> {
+    pub(super) fn get<P: Wire>(&mut self, kind: u16) -> Result<(P, &'a [u8]), String> {
         let (mut body, frame) = self.raw(kind)?;
         let p = P::read(&mut body)?;
         if !body.is_empty() {
@@ -113,11 +113,11 @@ impl<'a> Reader<'a> {
         }
         Ok((p, frame))
     }
-    fn record(fs: &mut Fs, frame: &[u8]) {
+    pub(super) fn record(fs: &mut Fs, frame: &[u8]) {
         fs.set_phase(0x7f00);
         fs.record(0x7f00, frame);
     }
-    fn finish(mut self, fs: &mut Fs) -> Result<[u8; 32], String> {
+    pub(super) fn finish(mut self, fs: &mut Fs) -> Result<[u8; 32], String> {
         let mut end = END.to_vec();
         end.extend(self.count.to_le_bytes());
         end.extend((self.consumed as u64).to_le_bytes());

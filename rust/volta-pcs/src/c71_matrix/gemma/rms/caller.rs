@@ -52,8 +52,11 @@ impl Sources {
         &self,
         s: &P0Statement<'_>,
         parameters: &[[i32; 3]],
-    ) -> Result<(Vec<kernel::Circuit>, Vec<Option<usize>>, usize), String> {
-        if self.cells.next_power_of_two() > 64
+    ) -> Result<(Vec<kernel::Circuit>, Vec<usize>, usize), String> {
+        if self.cells == 0
+            || self.cells > 1 << 29
+            || self.norms.is_empty()
+            || self.norms.len() > 421
             || parameters.len() != self.norms.len()
             || s.auxiliary_layout.layout.layout_digest != self.bytes.scalar.layout.layout_digest
             || s.auxiliary_layout.weight_layout != self.bytes.scalar.weight_layout
@@ -64,7 +67,7 @@ impl Sources {
             || s.auxiliary_gamma.is_empty()
             || !s.attempt.valid()
         {
-            return Err("RMS dispatcher fixed context or D6 cell cap differs".into());
+            return Err("RMS dispatcher fixed context or D29 cell envelope differs".into());
         }
         let mut indices = BTreeMap::new();
         let mut keys = Vec::new();
@@ -78,29 +81,21 @@ impl Sources {
             }
             profile.push(index);
         }
-        if keys.len() > 8 {
-            return Err("RMS dispatcher exceeds eight native public profiles".into());
-        }
         let programs = keys
             .into_iter()
             .map(|(d, x, w, y, weighted)| kernel::compile(d, x, w, y, weighted))
             .collect::<Result<Vec<_>, _>>()?;
-        let assignments = (0..self.cells.next_power_of_two())
-            .map(|i| self.cell(i).map(|c| c.map(|(n, _, _)| profile[n])))
-            .collect::<Result<Vec<_>, _>>()?;
-        let gs = gkr::Statement {
-            root: s.auxiliary,
-            profile: s.auxiliary_gamma,
-            view: self.view,
-            attempt: s.attempt,
-            programs: &programs,
-            assignments: &assignments,
-        };
-        let mut count = gs.required()? + 1;
+        let mut count = gkr::required(&programs, bits(self.cells))? + 1;
         for n in 0..self.norms.len() {
             count += self.statistic_statement(s, n).required()?;
         }
-        Ok((programs, assignments, count))
+        Ok((programs, profile, count))
+    }
+
+    fn assignments(&self, profiles: &[usize]) -> Result<Vec<Option<usize>>, String> {
+        (0..self.cells.next_power_of_two())
+            .map(|i| self.cell(i).map(|c| c.map(|(n, _, _)| profiles[n])))
+            .collect()
     }
 
     pub fn rms_required(
@@ -172,10 +167,11 @@ impl Sources {
         fs: &mut Fs,
         correlations: &mut std::vec::IntoIter<Auth>,
     ) -> Result<(Proof, Pending<Auth>), String> {
-        let (programs, assignments, count) = self.prepare(s, parameters)?;
+        let (programs, profiles, count) = self.prepare(s, parameters)?;
         if correlations.len() < count {
             return Err("RMS dispatcher prover capacity exhausted".into());
         }
+        let assignments = self.assignments(&profiles)?;
         let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
         self.bind(s, parameters, fs);
         let (mut statistics, mut pending, mut triples) = (Vec::new(), Vec::new(), Vec::new());
@@ -223,10 +219,11 @@ impl Sources {
         fs: &mut Fs,
         correlations: &mut std::vec::IntoIter<Key>,
     ) -> Result<Pending<Key>, String> {
-        let (programs, assignments, count) = self.prepare(s, parameters)?;
+        let (programs, profiles, count) = self.prepare(s, parameters)?;
         if correlations.len() < count || proof.statistics.len() != self.norms.len() {
             return Err("RMS dispatcher verifier shape or capacity differs".into());
         }
+        let assignments = self.assignments(&profiles)?;
         let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
         self.bind(s, parameters, fs);
         let (mut pending, mut triples) = (Vec::new(), Vec::new());

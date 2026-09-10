@@ -317,6 +317,93 @@ mod tests {
     use super::*;
 
     #[test]
+    fn c71_b12_preflight_norm_and_exp30_counts_without_expanding_canonical_cells() {
+        use crate::c71_matrix::{gamma, lookup, AttemptContext, Auth, C61Commitment, Domain, Fs};
+        let plan = compile().unwrap();
+        let (w, a) = (C61Commitment::new(vec![[1; 32]]), C61Commitment::new(vec![[2; 32]]));
+        let wg = gamma(&Domain::Flat(35).config().unwrap());
+        let ag = gamma(&Domain::Flat(34).config().unwrap());
+        // Exact EXP30 table for e_score=128: every positive D is far past
+        // the certified zero shortcut. Synthetic scales, no Gemma witness.
+        let mut exponential = vec![0; 65535];
+        exponential[0] = 1 << 30;
+        let tables: Vec<_> = (0..60)
+            .map(|profile| lookup::Table {
+                profile,
+                lower: -32767,
+                outputs: lookup::Outputs::I32(&exponential),
+            })
+            .collect();
+        for (slot, old) in [0, 150, 300].into_iter().enumerate() {
+            let (s, o, sm) = plan.softmax_sources_at(old).unwrap();
+            let mut exponents: BTreeMap<_, _> =
+                Recipes::exponent_sources(&s, &o, &sm).into_iter().map(|id| (id, 0)).collect();
+            for l in &sm.layers {
+                exponents.insert(l.pi, -14);
+                exponents.insert(l.score, 128);
+            }
+            let recipes = Recipes::compile(&plan, &s, &o, &sm, &[0; 772], &exponents).unwrap();
+            let rms = &s.attention.rope.gate_up.gelu.rms;
+            let bytes = &rms.bytes;
+            let context = caller::P0Statement {
+                weights: &w,
+                auxiliary: &a,
+                weight_gamma: &wg,
+                auxiliary_gamma: &ag,
+                auxiliary_layout: &bytes.scalar,
+                quantization: recipes.digest,
+                tokens: &[0; 150],
+                attempt: AttemptContext {
+                    session: [3; 32],
+                    capacity: [4; 32],
+                    slot: slot as u8,
+                    predecessor: if slot == 0 { [0; 32] } else { [5; 32] },
+                    nonce: [6; 32],
+                },
+            };
+            let rms_count = rms.rms_required(&context, &recipes.rms).unwrap();
+            let exp_count = sm.required(bytes, &context, &tables).unwrap();
+            let statistic_count: usize =
+                rms.norms.iter().map(|n| 4 * (bits(n.rows) + bits(n.columns)) + 4).sum();
+            let joint_upper = 128 * (4 * 29 + 6 * 14 + 3) + 1 + (32 * 33 + 169);
+            assert!(rms_count <= 1 + statistic_count + joint_upper);
+            assert!(exp_count <= [20_710, 21_348, 21_348][slot]);
+            eprintln!("O={old}: RMS={rms_count}, EXP30={exp_count} Fp3; public preflight only");
+            let mut fs = Fs::new(b"canonical public preflight, no witness or coins", 0);
+            let digest = fs.digest();
+            let mut rows = Vec::<Auth>::new().into_iter();
+            assert_eq!(
+                rms.prove_rms(
+                    &context,
+                    &recipes.rms,
+                    |_, _, _, _| panic!("preflight read RMS witness"),
+                    &mut fs,
+                    &mut rows,
+                )
+                .err()
+                .unwrap(),
+                "RMS dispatcher prover capacity exhausted"
+            );
+            assert_eq!(
+                sm.prove(
+                    bytes,
+                    &context,
+                    &tables,
+                    |_, _, _, _| panic!("preflight read EXP30 witness"),
+                    &mut fs,
+                    &mut rows,
+                )
+                .err()
+                .unwrap(),
+                "EXP30 prover capacity exhausted"
+            );
+            assert_eq!(fs.digest(), digest);
+            assert_eq!(fs.requests(), 0);
+            assert_eq!(rows.len(), 0);
+        }
+    }
+
+    #[test]
     fn c71_b12_profile_derives_all_quantization_from_one_scale_map_across_kv() {
         let plan = compile().unwrap();
         let weights = vec![0; 772];

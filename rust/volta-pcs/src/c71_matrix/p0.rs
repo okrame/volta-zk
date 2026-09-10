@@ -15,7 +15,7 @@ pub(super) fn required(bits: usize, norm: bool) -> usize {
 }
 
 fn bind(bits: usize, column_point: Option<&[Fp3]>, fs: &mut Fs) -> Result<(), String> {
-    if bits > 15 || column_point.is_some_and(|p| p.len() != bits) {
+    if bits > 32 || column_point.is_some_and(|p| p.len() != bits) {
         return Err("B12 P0 compact dimension mismatch".into());
     }
     let mut bytes = b"C71-P0-B12-v1;MSB-first;original-C-X-W-MACs".to_vec();
@@ -54,8 +54,8 @@ pub(super) fn prove(
 // attention rectangle) in its context before this sumcheck. It evaluates
 // the SAME public MLE at the verifier endpoint; no private F is accepted.
 fn bind_public(bits: usize, fs: &mut Fs) -> Result<(), String> {
-    if bits > 15 {
-        return Err("B12 P0 public-weight dimension exceeds D15".into());
+    if bits > 32 {
+        return Err("B12 P0 public-weight dimension exceeds D32".into());
     }
     let mut bytes = b"C71-P0-public-weight-B12-v1;caller-fixed-MLE;original-left-right\0".to_vec();
     bytes.extend((bits as u32).to_le_bytes());
@@ -454,7 +454,14 @@ mod tests {
                 assert!(check(true).is_err());
             }
         }
-        for (bits, point) in [(16, None), (2, Some(&[Fp3::ONE][..]))] {
+        for bits in [16, 26, 29, 32] {
+            let mut fs = Fs::new(b"public P0 geometry only", 0);
+            bind(bits, None, &mut fs).unwrap();
+            bind(bits, Some(&vec![Fp3::ONE; bits]), &mut fs).unwrap();
+            bind_public(bits, &mut fs).unwrap();
+            assert_eq!(fs.requests(), 0);
+        }
+        for (bits, point) in [(33, None), (2, Some(&[Fp3::ONE][..]))] {
             let mut fs = Fs::new(b"bad P0 shape", 0);
             assert!(bind(bits, point, &mut fs).is_err());
         }

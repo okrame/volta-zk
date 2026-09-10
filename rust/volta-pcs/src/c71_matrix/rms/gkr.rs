@@ -26,6 +26,56 @@ pub(in super::super) struct Proof {
     functions: byte_function::Proof,
 }
 
+fn widths(programs: &[Circuit]) -> Result<Vec<usize>, String> {
+    if programs.is_empty() || programs.len() > 421 {
+        return Err("B12 RMS public program count differs".into());
+    }
+    let height = programs.iter().map(|p| p.levels.len()).max().unwrap();
+    if height == 0 || height > 128 {
+        return Err("B12 RMS joint height exceeds 128".into());
+    }
+    let mut widths = vec![1usize; height + 1];
+    for p in programs {
+        if ![16, 32].contains(&p.product_bits)
+            || p.ports != 2 + p.product_bits + 48 + 16
+            || p.valid != 0
+            || p.levels.last().is_none_or(|v| v.len() != 1)
+            || p.levels.iter().map(Vec::len).sum::<usize>() > 2_000_000
+        {
+            return Err("B12 RMS public program differs".into());
+        }
+        widths[0] = widths[0].max(p.ports);
+        let mut previous = p.ports;
+        for (d, layer) in p.levels.iter().enumerate() {
+            if layer.is_empty()
+                || layer.len() > 1 << 14
+                || layer
+                    .iter()
+                    .any(|g| g.x >= previous || g.y >= previous || (g.op == Op::Copy && g.x != g.y))
+            {
+                return Err("B12 RMS public wiring differs".into());
+            }
+            widths[d + 1] = widths[d + 1].max(layer.len());
+            previous = layer.len();
+        }
+    }
+    Ok(widths.into_iter().map(usize::next_power_of_two).collect())
+}
+
+fn correlation_count(widths: &[usize], c: usize) -> usize {
+    widths[..widths.len() - 1].iter().map(|w| 4 * c + 6 * w.ilog2() as usize + 3).sum::<usize>()
+        + 1
+        + byte_function::required(c + 4)
+}
+
+/// Public preflight: no cell assignments, witness, FS or correlation rows.
+pub(in super::super) fn required(programs: &[Circuit], cell_bits: usize) -> Result<usize, String> {
+    if cell_bits > 29 {
+        return Err("B12 RMS cell domain exceeds D29".into());
+    }
+    Ok(correlation_count(&widths(programs)?, cell_bits))
+}
+
 impl Statement<'_> {
     fn geometry(&self) -> Result<Vec<usize>, String> {
         if !self.assignments.len().is_power_of_two()
@@ -41,47 +91,13 @@ impl Statement<'_> {
         {
             return Err("B12 RMS statement mismatch".into());
         }
-        let height = self.programs.iter().map(|p| p.levels.len()).max().unwrap();
-        if height == 0 || height > 128 {
-            return Err("B12 RMS joint height exceeds 128".into());
-        }
-        let mut widths = vec![1usize; height + 1];
-        for p in self.programs {
-            if ![16, 32].contains(&p.product_bits)
-                || p.ports != 2 + p.product_bits + 48 + 16
-                || p.valid != 0
-                || p.levels.last().is_none_or(|v| v.len() != 1)
-                || p.levels.iter().map(Vec::len).sum::<usize>() > 2_000_000
-            {
-                return Err("B12 RMS public program differs".into());
-            }
-            widths[0] = widths[0].max(p.ports);
-            let mut previous = p.ports;
-            for (d, layer) in p.levels.iter().enumerate() {
-                if layer.is_empty()
-                    || layer.len() > 1 << 14
-                    || layer.iter().any(|g| {
-                        g.x >= previous || g.y >= previous || (g.op == Op::Copy && g.x != g.y)
-                    })
-                {
-                    return Err("B12 RMS public wiring differs".into());
-                }
-                widths[d + 1] = widths[d + 1].max(layer.len());
-                previous = layer.len();
-            }
-        }
-        Ok(widths.into_iter().map(usize::next_power_of_two).collect())
+        widths(self.programs)
     }
 
     pub fn required(&self) -> Result<usize, String> {
         let widths = self.geometry()?;
         let c = self.assignments.len().ilog2() as usize;
-        Ok(widths[..widths.len() - 1]
-            .iter()
-            .map(|w| 4 * c + 6 * w.ilog2() as usize + 3)
-            .sum::<usize>()
-            + 1
-            + byte_function::required(c + 4))
+        Ok(correlation_count(&widths, c))
     }
 
     fn bind(&self, fs: &mut Fs) -> Vec<Fp3> {
@@ -748,10 +764,14 @@ mod tests {
                 let mut changed = assignments.to_vec();
                 *changed.iter_mut().find(|p| **p == Some(256)).unwrap() = Some(0);
                 let altered = Statement { assignments: &changed, ..statement };
-                assert!(
-                    verify(&altered, &proof, delta, &mut start(), &mut keys.clone().into_iter())
-                        .is_err()
-                );
+                assert!(verify(
+                    &altered,
+                    &proof,
+                    delta,
+                    &mut start(),
+                    &mut keys.clone().into_iter()
+                )
+                .is_err());
             }
             let (range_proof, forms, targets) = range::prove(
                 &model,

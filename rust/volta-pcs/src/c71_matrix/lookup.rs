@@ -89,7 +89,7 @@ fn tag(x: i16, y: i32, profile: u8) -> Fp3 {
 }
 
 impl Statement<'_> {
-    fn public(&self) -> Result<(Vec<Fp3>, Vec<Row>), String> {
+    fn dimensions(&self) -> Result<(usize, usize, Vec<usize>), String> {
         if self.blocks.is_empty()
             || self.blocks.len() > 65791
             || self.tables.is_empty()
@@ -99,7 +99,7 @@ impl Statement<'_> {
             || self.view == [0; 32]
             || !self.attempt.valid()
         {
-            return Err("B12 lookup fixed context or native query cap differs".into());
+            return Err("B12 lookup fixed context or block count differs".into());
         }
         let mut seen = [false; 60];
         let mut rows = 0usize;
@@ -116,23 +116,6 @@ impl Statement<'_> {
             seen[t.profile as usize] = true;
             rows += t.outputs.len();
         }
-        if rows > 65535 {
-            return Err("B12 lookup public row cap differs".into());
-        }
-        let tags = self
-            .tables
-            .iter()
-            .flat_map(|t| {
-                (0..t.outputs.len()).map(move |j| {
-                    let y = t.outputs.get(j);
-                    tag(
-                        (i64::from(t.lower) + j as i64) as i16,
-                        y,
-                        t.profile + if y == t.outputs.overflow() { 60 } else { 0 },
-                    )
-                })
-            })
-            .collect();
         let mut coverage = vec![Vec::new(); self.tables.len()];
         let mut queries = 0usize;
         let mut offsets = Vec::new();
@@ -141,16 +124,16 @@ impl Statement<'_> {
             offsets.push(offset);
             offset += t.outputs.len();
         }
-        // Validate compact blocks BEFORE expanding this bounded native view.
+        // Validate compact blocks before allocating any expanded cell domain.
         for &block in self.blocks {
             match block {
                 Block::Query { profile, len } => {
-                    if profile >= 60 || !seen[profile as usize] || len == 0 || len > 256 {
+                    if profile >= 60 || !seen[profile as usize] || len == 0 || len > 1 << 28 {
                         return Err("B12 lookup query block differs".into());
                     }
                     queries += len;
-                    if queries > 256 {
-                        return Err("B12 lookup native query cap exceeded".into());
+                    if queries > 1 << 28 {
+                        return Err("B12 lookup query count exceeds 2^28".into());
                     }
                 }
                 Block::Table { index, first, len } => {
@@ -178,6 +161,25 @@ impl Statement<'_> {
                 return Err("B12 lookup table coverage is incomplete".into());
             }
         }
+        Ok((rows, queries, offsets))
+    }
+
+    fn public(&self) -> Result<(Vec<Fp3>, Vec<Row>), String> {
+        let (rows, queries, offsets) = self.dimensions()?;
+        let tags = self
+            .tables
+            .iter()
+            .flat_map(|t| {
+                (0..t.outputs.len()).map(move |j| {
+                    let y = t.outputs.get(j);
+                    tag(
+                        (i64::from(t.lower) + j as i64) as i16,
+                        y,
+                        t.profile + if y == t.outputs.overflow() { 60 } else { 0 },
+                    )
+                })
+            })
+            .collect();
         let mut domain = Vec::with_capacity(rows + queries);
         for &block in self.blocks {
             match block {
@@ -193,7 +195,8 @@ impl Statement<'_> {
     }
 
     pub fn required(&self) -> Result<usize, String> {
-        Ok(required(self.public()?.1.len().next_power_of_two().ilog2() as usize))
+        let (rows, queries, _) = self.dimensions()?;
+        Ok(required((rows + queries).next_power_of_two().ilog2() as usize))
     }
 
     fn bind(&self, fs: &mut Fs) -> Result<(Vec<Fp3>, Vec<Row>, Fp3), String> {
@@ -307,8 +310,8 @@ pub(super) fn prove_wide(
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
     let (tags, domain, alpha) = s.bind(fs)?;
     let bits = domain.len().next_power_of_two().ilog2() as usize;
-    // ponytail: dense D<=17 component. Full Gemma needs the documented
-    // subtree replay schedule and canonical source caller, not this array.
+    // ponytail: dense domain/tree within the analytic resource envelope.
+    // Physical Gemma admission still requires the subtree replay schedule.
     let mut bottom = vec![[Fp3::ZERO, Fp3::ONE]; 1 << bits];
     for (i, &row) in domain.iter().enumerate() {
         bottom[i] = match row {

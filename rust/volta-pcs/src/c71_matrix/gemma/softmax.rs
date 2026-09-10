@@ -591,25 +591,16 @@ impl Softmax {
         bytes: &bytes::Bytes,
         s: &P0Statement<'_>,
         tables: &[lookup::Table<'_>],
-    ) -> Result<(Vec<circuit::Circuit>, Vec<Option<usize>>, usize), String> {
+    ) -> Result<(Vec<circuit::Circuit>, usize), String> {
         self.validate(bytes, s)?;
         let cb = self.row_bits() + self.key_bits();
-        if cb>6 || tables.len()!=self.layers.len() || tables.iter().zip(&self.layers).enumerate().any(|(i,(t,l))|
+        if cb>28 || tables.len()!=self.layers.len() || tables.iter().zip(&self.layers).enumerate().any(|(i,(t,l))|
             t.profile!=i as u8 || t.lower != -32767
                 || !matches!(t.outputs,lookup::Outputs::I32(v) if v.first()==Some(&(1<<30)) && v.iter().all(|&e|(0..=1<<30).contains(&e)))
                 || t.outputs.len()!=bytes.scalar.layout.sources[l.histogram].cols) {
-            return Err("EXP30 native D6 cap or certified table differs".into());
+            return Err("EXP30 D28 envelope or certified table differs".into());
         }
         let programs = vec![circuit::compile_ratio(14)?];
-        let assignments = (0..1 << cb).map(|i| self.cell(i).map(|_| 0)).collect::<Vec<_>>();
-        let gs = gkr::Statement {
-            root: s.auxiliary,
-            profile: s.auxiliary_gamma,
-            view: bytes.layout_digest,
-            attempt: s.attempt,
-            programs: &programs,
-            assignments: &assignments,
-        };
         let blocks = self.lookup_blocks(bytes);
         let ls = lookup::Statement {
             root: s.auxiliary,
@@ -621,9 +612,12 @@ impl Softmax {
         };
         let k = self.key_bits();
         let r = self.row_bits();
-        let count =
-            gs.required()? + ls.required()? + 4 * (k * r + k * k.saturating_sub(1) / 2) + 7 * k + 1;
-        Ok((programs, assignments, count))
+        let count = gkr::required(&programs, cb)?
+            + ls.required()?
+            + 4 * (k * r + k * k.saturating_sub(1) / 2)
+            + 7 * k
+            + 1;
+        Ok((programs, count))
     }
 
     pub fn required(
@@ -632,7 +626,7 @@ impl Softmax {
         s: &P0Statement<'_>,
         tables: &[lookup::Table<'_>],
     ) -> Result<usize, String> {
-        Ok(self.prepare(bytes, s, tables)?.2)
+        Ok(self.prepare(bytes, s, tables)?.1)
     }
 
     // Signed source words are obtained from their biased bytes. No getter
@@ -657,10 +651,13 @@ impl Softmax {
         fs: &mut Fs,
         correlations: &mut std::vec::IntoIter<Auth>,
     ) -> Result<(Proof, Pending<Auth>), String> {
-        let (programs, assignments, count) = self.prepare(bytes, s, tables)?;
+        let (programs, count) = self.prepare(bytes, s, tables)?;
         if correlations.len() < count {
             return Err("EXP30 prover capacity exhausted".into());
         }
+        let assignments = (0..1 << (self.row_bits() + self.key_bits()))
+            .map(|i| self.cell(i).map(|_| 0))
+            .collect::<Vec<_>>();
         let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
         let view = self.bind(bytes, s, fs)?;
         let row_point = (0..self.row_bits()).map(|_| fs.fp3()).collect::<Vec<_>>();
@@ -772,12 +769,15 @@ impl Softmax {
         fs: &mut Fs,
         correlations: &mut std::vec::IntoIter<Key>,
     ) -> Result<Pending<Key>, String> {
-        let (programs, assignments, count) = self.prepare(bytes, s, tables)?;
+        let (programs, count) = self.prepare(bytes, s, tables)?;
         if correlations.len() < count
             || !range::tree_shape(&proof.maximum, self.key_bits(), self.row_bits())
         {
             return Err("EXP30 verifier capacity or tree shape differs".into());
         }
+        let assignments = (0..1 << (self.row_bits() + self.key_bits()))
+            .map(|i| self.cell(i).map(|_| 0))
+            .collect::<Vec<_>>();
         let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
         let view = self.bind(bytes, s, fs)?;
         let point = (0..self.row_bits()).map(|_| fs.fp3()).collect::<Vec<_>>();

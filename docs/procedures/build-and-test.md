@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the narrow filters
 below with one test thread. After compilation, bound each test invocation
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its fifty-two tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its fifty-three tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -186,8 +186,15 @@ The `c71_b12_gemma_rms_dispatch` case executes a canonical small graph
 with 10,003 ideal Fp3 rows: P0, all its RMS/statistics, direct q/k RNE,
 local V RNE and both ranged PCS. Original embedding-input MACs also
 open the same W. V altered with consistent S/Y fails RNE; norm weights
-altered with consistent P/Y fail the installed W PCS. The dispatcher
-has a 64-cell/eight-profile cap; this is no calibrated full-model run.
+altered with consistent P/Y fail the installed W PCS. The executed dispatcher check remains small; its public preflight now
+covers D29/421 profiles. This is no calibrated full-model run.
+Run `c71_b12_preflight` separately for the canonical RMS/EXP30 count.
+It uses synthetic public scales and an exact e_score=128 EXP30 table in
+all three KV contexts, without expanded cell/query arrays. Zero-capacity
+prover calls must reject before the witness getter or any FS change. It
+uses placeholder roots and gives no proof, calibration or hardware credit.
+The P0 check now accepts public geometries through D32 and rejects D33;
+its actual matrix/norm/lookup proof remains the existing small case.
 The `c71_b12_lookup` filter checks two restricted GELU tables against one
 fixed byte source with 600 ideal Fp3 rows, including range and shared PCS.
 It rejects wrong output, overflow, and an input/histogram pair changed

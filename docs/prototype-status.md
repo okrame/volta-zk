@@ -365,8 +365,9 @@ into one shared cell-domain proof, admitting up to 2^29 cells and 421
 public programs. Wide profile indices use distinct u16 framing. A new
 128-cell parity check closes one ranged A PCS and rejects faults beyond
 the old word boundary and a 256→0 profile substitution. The existing
-RMS/ratio predicates remain separately checked; canonical wrapper guards
-and the complete caller still need integration. Dense execution remains
+RMS/ratio predicates remain separately checked; the canonical RMS/EXP30
+preflight below now uses the expanded geometry. The complete caller still
+needs integration. Dense execution remains
 an analytic implementation, without physical-schedule admission.
 
 The [flat-source bridge](c7.1-gemma31b-design.md#b12-sorgenti-piatte-range-e-ponte-nei-domini-wa-originali)
@@ -377,6 +378,15 @@ A D11 check with 1,031 live values rejects a false original target and
 nonzero padding for signed and byte alphabets. D34/D35 checks allocate
 only public configurations. Complete Gemma dispatch remains open.
 
+The [RMS/EXP30 public preflight](c7.1-gemma31b-design.md#b12-preflight-pubblico-rms-ed-exp30-prima-delle-celle)
+now counts canonical programs/statistics and lookup intervals before
+expanding cell assignments or query rows. A coherent synthetic profile
+(e_score=128, Pi=-14) gives 54,829 RMS and 19,198/19,836/19,836 EXP30
+Fp3 across the three KV contexts, below the existing analytic uppers.
+Zero capacity rejects before reading any witness or changing FS. This is
+a public metadata check with placeholder roots; full execution, accepted
+history and calibration are not inferred. Other Gemma guards remain open.
+
 Forty-six B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
 range/product identities and the joint source bounds. The relevant Python checks total 229; the 17
@@ -385,6 +395,7 @@ Two new EXP30 checks cover the same-source producer and full route metadata.
 One common-profile check covers canonical scale derivation in all three contexts.
 One joint-replay check crosses the cell-word and profile-byte boundaries.
 One flat-source check covers odd domains, original targets and padding.
+One canonical RMS/EXP30 preflight check runs without expanding private cells.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The public matrix runner remains capped at D14/n<=128; flat kernels use

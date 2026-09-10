@@ -28,7 +28,7 @@ pub(in super::super) struct Pending<T> {
 impl Statement<'_> {
     fn dimensions(&self) -> Result<[usize; 2], String> {
         if self.shape[0] == 0
-            || self.shape[0] > 128
+            || self.shape[0] > 8192
             || self.shape[1] == 0
             || self.shape[1] > 5376
             || self.root.num_roots() != 1
@@ -39,8 +39,8 @@ impl Statement<'_> {
             return Err("B12 RMS statistic statement differs".into());
         }
         let bits = self.shape.map(|n| n.next_power_of_two().ilog2() as usize);
-        if bits[0] + bits[1] > 15 {
-            return Err("B12 RMS statistic exceeds compact D15".into());
+        if bits[0] + bits[1] > 26 {
+            return Err("B12 RMS statistic exceeds D26".into());
         }
         Ok(bits)
     }

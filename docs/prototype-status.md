@@ -354,6 +354,10 @@ The recipe digest remains identical across all three KV contexts.
 A metadata check with synthetic scales verifies these constraints;
 it supplies neither actual calibration nor certified table contents.
 The complete verifier must own that expected profile and its tables.
+The compiler also partitions all 1,434 activation owners plus the W
+embedding lookup into unique producers. Its dispatch preserves the points
+and original MACs of 410 RNE demands and adds exactly 482 disjoint table
+probes, covering all 892 RNE and reconciling the existing 4,446-target A batch.
 
 Forty-six B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and

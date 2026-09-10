@@ -5,6 +5,7 @@ use super::*;
 use crate::c71_matrix::gemma::caller::P0Statement;
 use crate::c71_matrix::*;
 
+#[derive(Clone, Copy)]
 pub(in crate::c71_matrix) struct Pair {
     pub raw: usize,
     pub output: usize,

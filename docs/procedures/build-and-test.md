@@ -114,6 +114,8 @@ The separate `c71_b12_profile` check derives all canonical numeric recipes
 from one synthetic scale map across O=0/150/300. It checks missing/extra
 scales, tied W exponents, Pi=-14 and coupled score/EXP30 changes; no
 Gemma witness, calibrated table generation or physical execution is involved.
+It also checks unique producer coverage of all 1,435 semantic i16 sources,
+preservation of the 410 original RNE MACs/points and the disjoint 482 probes.
 The byte bridge checks biased i48/i32/i16 source forms, signed extrema,
 physical byte addresses and incorrect affine shifts with 551 ideal Fp3
 rows and one ranged byte PCS. The `c71_b12_range_bytes` filter separately

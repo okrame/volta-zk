@@ -21,6 +21,87 @@ pub(in crate::c71_matrix) struct Recipes {
 }
 
 impl Recipes {
+    /// Fresh whole-table probes only for outputs with no original incoming
+    /// MAC. The other 410 RNE reductions MUST reuse those original claims.
+    pub fn table_pairs(&self, plan: &Plan) -> Result<Vec<Pair>, String> {
+        let mut pairs = self
+            .matrix
+            .iter()
+            .filter(|p| {
+                matches!(
+                    plan.cohorts[p.raw].operation.as_str(),
+                    "gate_proj" | "up_proj" | "lm_head"
+                )
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        if pairs.len() != 121 {
+            return Err("Gemma matrix table-probe census differs".into());
+        }
+        pairs.extend(&self.rope);
+        pairs.extend(&self.score);
+        pairs.extend(&self.residual);
+        if pairs.len() != 482 {
+            return Err("Gemma table-probe census differs".into());
+        }
+        Ok(pairs)
+    }
+
+    pub fn original_rne<T: Copy>(
+        &self,
+        plan: &Plan,
+        s: &residual::Sources,
+        p0: &caller::PendingP0<T>,
+        norms: &rms::caller::Pending<T>,
+    ) -> Result<Vec<(bytes::RneRequest<T>, i32)>, String> {
+        let a = &s.attention;
+        let gu = &a.rope.gate_up;
+        let rms = &gu.gelu.rms;
+        let bytes = &rms.bytes;
+        let mut requests = bytes.rne_requests(plan, p0)?;
+        if requests.len() != 240 {
+            return Err("Gemma original matrix RNE census differs".into());
+        }
+        let v = rms.local_v_rne_requests(plan, norms)?;
+        if v.len() != 50 {
+            return Err("Gemma original V RNE census differs".into());
+        }
+        requests.extend(v.into_iter().map(|v| bytes::RneRequest {
+            consumer: v.norm,
+            source: v.source,
+            view: v.view,
+            shape: v.shape,
+            point: v.point,
+            original: v.original,
+        }));
+        let gate = gu.output_rne_requests(plan, p0)?;
+        let pv = a.output_rne_requests(plan, p0)?;
+        if gate.len() != 60 || pv.len() != 60 {
+            return Err("Gemma original product RNE census differs".into());
+        }
+        requests.extend(gate);
+        requests.extend(pv);
+        let pairs = self
+            .matrix
+            .iter()
+            .chain(&self.gate_up)
+            .chain(&self.pv)
+            .map(|p| (p.raw, p))
+            .collect::<BTreeMap<_, _>>();
+        requests
+            .into_iter()
+            .map(|r| {
+                let p = pairs.get(&r.source).ok_or("original RNE has no fixed public recipe")?;
+                let out = &bytes.scalar.layout.sources[p.output];
+                if r.shape != [out.rows, out.cols] {
+                    return Err("original RNE recipe changes source axes".into());
+                }
+                let shift = p.shift;
+                Ok((r, shift))
+            })
+            .collect()
+    }
+
     /// Semantic i16 sources only. M and D are EXP30 witnesses, not scales
     /// chosen independently of score; the argmax slack is unsigned distance.
     pub fn exponent_sources(
@@ -184,6 +265,23 @@ impl Recipes {
             return Err("public exponent has no complete-relation consumer".into());
         }
         let (affine, residual) = s.recipes(exponents)?;
+        let owners = matrix
+            .iter()
+            .chain(&gate_up)
+            .chain(&rotations)
+            .chain(&score)
+            .chain(&pv)
+            .chain(&residual)
+            .map(|p| p.output)
+            .chain(rms.norms.iter().map(|n| n.output))
+            .chain(g.gelu.iter().map(|v| v.output))
+            .chain(sm.layers.iter().map(|l| l.pi))
+            .chain([o.output, 0])
+            .collect::<Vec<_>>();
+        let ownership = owners.iter().copied().collect::<BTreeSet<_>>();
+        if owners.len() != 1435 || ownership.len() != owners.len() || ownership != used {
+            return Err("Gemma semantic sources lack a unique complete-relation producer".into());
+        }
         // This is the scale/recipe identity, NOT a certified-table digest or
         // calibration claim. Absolute RoPE windows and A layouts bind later.
         let mut h = blake3::Hasher::new();
@@ -253,6 +351,64 @@ mod tests {
                 [411, 421, 60, 60, 120, 60, 60, 181, 181, 60]
             );
             assert_eq!(r.softcap, [0, 0]);
+            assert_eq!(r.table_pairs(&plan).unwrap().len(), 482);
+            assert_eq!(exponents.len(), 1435); // 1434 activation owners, plus the tied W lookup
+            let inputs = (1..plan.cohorts.len())
+                .map(|cohort| {
+                    let route = plan.input_route(cohort).unwrap();
+                    caller::InputOpening {
+                        cohort,
+                        point: vec![
+                            crate::c71_matrix::signed(3);
+                            bits(route.selected_rows) + bits(route.columns)
+                        ],
+                        route,
+                        original: cohort,
+                    }
+                })
+                .collect();
+            let p0 = caller::PendingP0 {
+                cuts: Vec::new(),
+                inputs,
+                weight_forms: Vec::new(),
+                weights: Vec::new(),
+            };
+            let rms = &s.attention.rope.gate_up.gelu.rms;
+            let stats = rms
+                .norms
+                .iter()
+                .enumerate()
+                .map(|(i, n)| crate::c71_matrix::rms::statistic::Pending {
+                    statistic_point: vec![Fp3::ONE; bits(n.rows)],
+                    statistic: 1000 + i,
+                    input_point: vec![crate::c71_matrix::signed(4); bits(n.rows) + bits(n.columns)],
+                    inputs: [2000 + 3 * i, 2001 + 3 * i, 2002 + 3 * i],
+                })
+                .collect();
+            let norms =
+                rms::caller::Pending { statistics: stats, byte_point: Vec::new(), byte: 4000 };
+            let demands = r.original_rne(&plan, &s, &p0, &norms).unwrap();
+            assert_eq!(demands.len(), 410);
+            for (i, (d, _)) in demands.iter().enumerate() {
+                let expected = if (240..290).contains(&i) {
+                    norms.statistics[d.consumer].inputs[0]
+                } else {
+                    p0.inputs[d.consumer - 1].original
+                };
+                assert_eq!(d.original, expected);
+                assert_eq!(
+                    d.point,
+                    vec![
+                        crate::c71_matrix::signed(if (240..290).contains(&i) { 4 } else { 3 });
+                        d.point.len()
+                    ]
+                );
+            }
+            let mut all_rne = demands.iter().map(|(d, _)| d.source).collect::<BTreeSet<_>>();
+            for p in r.table_pairs(&plan).unwrap() {
+                assert!(all_rne.insert(p.raw));
+            }
+            assert_eq!(all_rne.len(), 892);
             assert!(r.exp30.iter().all(|&e| e == 0));
             assert!(r.matrix.iter().chain(&r.gate_up).chain(&r.score).all(|p| p.shift == 0));
             assert!(r.rope.iter().all(|p| p.shift == 30));

@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the narrow filters
 below with one test thread. After compilation, bound each test invocation
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its fifty-one tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its fifty-two tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -90,6 +90,12 @@ The range checks cover the full symmetric i16 table with ideal MACs, native
 QuickSilver signs and a real fixed pool of 1,746 base rows. The latter
 accepts [-3,3], rejects a false [-1,1] claim under the same root and ends
 the run. These are small D10 cases, not a full Gemma range execution.
+The separate `c71_b12_flat_sources` filter checks the same source/range/PCS
+at D11 with 1,031 live signed/byte values, original target faults and
+nonzero padding. It uses 344/593 ideal Fp3 rows. D34/D35 checks only
+construct public profiles and framing; do not run full source allocations.
+After shared source changes, rerun the existing range, linear, P0/Gemma
+and matrix consumer filters in separate bounded invocations.
 Run the `c71_b12_range` and `c71_b12_product_batch` filters separately
 from the earlier PCS checks to keep each invocation below 60 seconds.
 The `c71_b12_p0` filter executes a small raw matrix/norm/lookup caller

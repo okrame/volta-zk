@@ -37,7 +37,7 @@ impl Cube {
 /// before lambda. No value/tag/key is serialized here, and no new MAC for
 /// the aggregate is requested. One root, one batch, one PCS chain.
 fn bind(
-    n: usize,
+    domain: impl Into<Domain>,
     root: &C61Commitment,
     attempt: AttemptContext,
     layout: [u8; 32],
@@ -45,7 +45,8 @@ fn bind(
     count: usize,
     fs: &mut Fs,
 ) -> Result<(ZkWhirConfig<E, Goldilocks, Fs>, Vec<Fp3>), String> {
-    let config = matrix_config(n)?;
+    let domain = domain.into();
+    let config = domain.config()?;
     let bits = config.num_variables;
     if root.num_roots() != 1
         || !attempt.valid()
@@ -59,7 +60,7 @@ fn bind(
     }
     let mut bytes = b"C71-linear-B12-v1;MSB-first;original-target-MACs;one-PCS".to_vec();
     bytes.extend(gamma(&config));
-    bytes.extend((n as u32).to_le_bytes());
+    bytes.extend(domain.identity().to_le_bytes());
     bytes.extend(root.roots()[0]);
     bytes.extend(attempt.encode());
     bytes.extend(layout);
@@ -111,13 +112,13 @@ pub(super) fn prove(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(MatrixProof, blake3::Hash), String> {
-    let required = 3 * matrix_config(model.n)?.num_variables + 2;
+    let required = 3 * model.domain.config()?.num_variables + 2;
     if correlations.len() < required {
         return Err("B12 linear prover correlations exhausted".into());
     }
     let mut reserved = correlations.by_ref().take(required).collect::<Vec<_>>().into_iter();
     let (config, coefficients) =
-        bind(model.n, &model.root, attempt, layout, forms, targets.len(), fs)?;
+        bind(model.domain, &model.root, attempt, layout, forms, targets.len(), fs)?;
     let target =
         targets.iter().zip(&coefficients).fold(Auth::ZERO, |s, (&x, &c)| s.add(x.scale(c)));
     let mut form = vec![Fp3::ZERO; 1usize << config.num_variables];
@@ -128,8 +129,8 @@ pub(super) fn prove(
             }
         }
     }
-    // ponytail: dense D<=14 component only; a full Gemma caller needs the
-    // existing streaming/tiled source plan, never a D35 dense allocation.
+    // ponytail: dense source/form materialization within the analytic bound.
+    // Physical Gemma admission still requires its streaming/tiled schedule.
     let weights = model
         .polynomial()
         .as_slice()
@@ -150,7 +151,7 @@ pub(super) fn prove(
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn verify(
-    n: usize,
+    domain: impl Into<Domain>,
     root: &C61Commitment,
     attempt: AttemptContext,
     layout: [u8; 32],
@@ -161,13 +162,14 @@ pub(super) fn verify(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Key>,
 ) -> Result<blake3::Hash, String> {
-    let bits = matrix_config(n)?.num_variables;
+    let domain = domain.into();
+    let bits = domain.config()?.num_variables;
     let required = 3 * bits + 2;
     if correlations.len() < required || proof.rounds.len() != bits {
         return Err("B12 linear verifier correlations or round count mismatch".into());
     }
     let mut reserved = correlations.by_ref().take(required).collect::<Vec<_>>().into_iter();
-    let (config, coefficients) = bind(n, root, attempt, layout, forms, targets.len(), fs)?;
+    let (config, coefficients) = bind(domain, root, attempt, layout, forms, targets.len(), fs)?;
     let target = targets.iter().zip(&coefficients).fold(Key::ZERO, |s, (&x, &c)| s.add(x.scale(c)));
     let (target, point) = verify_product(&proof.rounds, target, delta, fs, &mut reserved)?;
     // O(D * cube count) verifier work: no N-cell public form or W.
@@ -222,16 +224,24 @@ mod tests {
             Cube { offset: 0, point: vec![Fp3::ONE; 11], coefficient: Fp3::ONE },
             Cube { offset: usize::MAX, point: vec![], coefficient: Fp3::ONE },
         ] {
-            assert!(bind(
-                32,
-                &root,
-                attempt,
-                [5; 32],
-                &[vec![cube]],
-                1,
-                &mut Fs::new(b"bad cube", 0)
-            )
-            .is_err());
+            assert!(
+                bind(32, &root, attempt, [5; 32], &[vec![cube]], 1, &mut Fs::new(b"bad cube", 0))
+                    .is_err()
+            );
+        }
+        for bits in [11, 34, 35] {
+            let form = vec![Cube {
+                offset: (1usize << bits) - 8,
+                point: point[..3].to_vec(),
+                coefficient: Fp3::ONE,
+            }];
+            let mut fs = Fs::new(b"flat cube metadata only", 1);
+            let (config, weights) =
+                bind(Domain::Flat(bits), &root, attempt, [5; 32], &[form], 1, &mut fs)
+                    .unwrap();
+            assert_eq!(config.num_variables, bits);
+            assert_eq!(weights, vec![Fp3::ONE]);
+            assert_eq!(fs.requests(), 1);
         }
     }
 
@@ -460,8 +470,10 @@ mod tests {
                     other[2][0].offset = 18; // lookup switched to another embedding row
                     assert!(check(&root, layout, &other, &original).is_err());
                     assert!(check(&root, [7; 32], &forms, &original).is_err());
-                    assert!(check(&C61Commitment::new(vec![[8; 32]]), layout, &forms, &original)
-                        .is_err());
+                    assert!(
+                        check(&C61Commitment::new(vec![[8; 32]]), layout, &forms, &original)
+                            .is_err()
+                    );
                     let checked = verify(
                         n,
                         &root,

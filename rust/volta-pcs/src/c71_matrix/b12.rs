@@ -6,7 +6,8 @@ use p3_merkle_tree::MerkleTreeHidingMmcs;
 use p3_symmetric::{CompressionFunctionFromHasher, CryptographicHasher, SerializingHasher};
 
 /// Theorem 9.10 code switches, terminated by Theorem 8.1's masked fold/base
-/// case. Only creates a small configuration; callers keep the D14 CPU cap.
+/// case. This only creates a small configuration. The matrix diagnostic keeps
+/// its D14 cap; larger flat sources have no physical-schedule admission.
 pub(super) fn config(h: usize) -> Result<ZkWhirConfig<E, Goldilocks, Fs>, String> {
     if !(10..=35).contains(&h) {
         return Err("B12 configuration domain must be D10..D35".into());

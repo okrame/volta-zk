@@ -1,4 +1,4 @@
-//! Bounded C7.1 CPU matrix composition. No complete security or Gemma credit.
+//! C7.1 matrix and B12 flat-source composition. No complete Gemma credit.
 
 mod codec;
 mod census;
@@ -490,11 +490,44 @@ fn eq(point: &[Fp3]) -> Vec<Fp3> {
 
 #[derive(Clone)]
 struct Model {
-    n: usize,
+    domain: Domain,
     weights: Vec<i16>,
     seed: [u8; 32],
     salt_seed: [u8; 32],
     root: C61Commitment,
+}
+
+#[derive(Clone, Copy)]
+enum Domain {
+    Matrix(usize),
+    #[cfg(feature = "c71-b12-pcs")]
+    Flat(usize),
+}
+
+impl From<usize> for Domain {
+    fn from(n: usize) -> Self {
+        Self::Matrix(n)
+    }
+}
+
+impl Domain {
+    fn config(self) -> Result<ZkWhirConfig<E, Goldilocks, Fs>, String> {
+        match self {
+            Self::Matrix(n) => matrix_config(n),
+            #[cfg(feature = "c71-b12-pcs")]
+            Self::Flat(bits) => b12::config(bits),
+        }
+    }
+
+    // Preserve the legacy side word. Its reserved high bit distinguishes a
+    // flat Boolean domain, including odd dimensions D11/D35, without aliasing.
+    fn identity(self) -> u32 {
+        match self {
+            Self::Matrix(n) => n as u32,
+            #[cfg(feature = "c71-b12-pcs")]
+            Self::Flat(bits) => (1 << 31) | bits as u32,
+        }
+    }
 }
 
 fn matrix_config(n: usize) -> Result<ZkWhirConfig<E, Goldilocks, Fs>, String> {
@@ -528,15 +561,25 @@ fn matrix_config(n: usize) -> Result<ZkWhirConfig<E, Goldilocks, Fs>, String> {
 
 impl Model {
     fn new(n: usize, weights: Vec<i16>) -> Result<Self, String> {
-        let config = matrix_config(n)?;
-        if weights.len() != n * n {
+        Self::new_in(Domain::Matrix(n), weights)
+    }
+
+    fn new_in(domain: Domain, weights: Vec<i16>) -> Result<Self, String> {
+        let config = domain.config()?;
+        let valid = match domain {
+            Domain::Matrix(n) => weights.len() == n * n,
+            #[cfg(feature = "c71-b12-pcs")]
+            Domain::Flat(bits) => !weights.is_empty() && weights.len() <= 1usize << bits,
+        };
+        if !valid {
             return Err("C71 weight dimensions differ".into());
         }
         let mut seed = [0; 32];
         rand::rngs::OsRng.try_fill_bytes(&mut seed).map_err(|e| e.to_string())?;
         let mut salt_seed = [0; 32];
         rand::rngs::OsRng.try_fill_bytes(&mut salt_seed).map_err(|e| e.to_string())?;
-        let mut model = Self { n, weights, seed, salt_seed, root: C61Commitment::new(vec![[0; 32]]) };
+        let mut model =
+            Self { domain, weights, seed, salt_seed, root: C61Commitment::new(vec![[0; 32]]) };
         let mmcs = matrix_mmcs(salt_seed);
         let dft = Radix2DFTSmallBatch::default();
         let prover = HidingWhirProver::new(&config, &dft, &mmcs);
@@ -546,13 +589,19 @@ impl Model {
     }
 
     fn polynomial(&self) -> Poly<Goldilocks> {
-        let side = self.n.next_power_of_two().max(32);
-        let mut values = vec![Goldilocks::ZERO; side * side];
-        for i in 0..self.n {
-            for j in 0..self.n {
-                values[i * side + j] =
-                    Goldilocks::new(signed(self.weights[i * self.n + j] as i64).c0.value());
-            }
+        let size = match self.domain {
+            Domain::Matrix(n) => n.next_power_of_two().max(32).pow(2),
+            #[cfg(feature = "c71-b12-pcs")]
+            Domain::Flat(bits) => 1usize << bits,
+        };
+        let mut values = vec![Goldilocks::ZERO; size];
+        for (i, &weight) in self.weights.iter().enumerate() {
+            let index = match self.domain {
+                Domain::Matrix(n) => (i / n) * n.next_power_of_two().max(32) + i % n,
+                #[cfg(feature = "c71-b12-pcs")]
+                Domain::Flat(_) => i,
+            };
+            values[index] = Goldilocks::new(signed(i64::from(weight)).c0.value());
         }
         Poly::new(values)
     }
@@ -832,7 +881,12 @@ fn matrix_prove(
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(MatrixProof, blake3::Hash), String> {
     census::mark("prover_reduction")?;
-    let config = matrix_config(model.n)?;
+    let n = match model.domain {
+        Domain::Matrix(n) => n,
+        #[cfg(feature = "c71-b12-pcs")]
+        Domain::Flat(_) => return Err("C71 matrix caller needs a matrix source".into()),
+    };
+    let config = matrix_config(n)?;
     let h = config.num_variables / 2;
     let required = 3 * h + 2;
     if correlations.len() < required {
@@ -844,7 +898,7 @@ fn matrix_prove(
     // The caller must durably burn this entire attempt before any emission.
     let mut reserved: std::vec::IntoIter<_> =
         correlations.by_ref().take(required).collect::<Vec<_>>().into_iter();
-    let mut fs = matrix_statement(model.n, &model.root, input, output, attempt, &config)?;
+    let mut fs = matrix_statement(n, &model.root, input, output, attempt, &config)?;
     let side = 1 << h;
     let row_point: Vec<_> = (0..h).map(|_| fs.fp3()).collect();
     let row_weights = eq(&row_point);
@@ -852,9 +906,9 @@ fn matrix_prove(
         output.iter().zip(&row_weights).fold(Fp3::ZERO, |s, (&y, &r)| s + signed(y) * r);
     let target = Auth::new(public_sum, Fp3::ZERO);
     let mut a = vec![Fp3::ZERO; side];
-    for i in 0..model.n {
-        for j in 0..model.n {
-            a[j] += row_weights[i] * signed(model.weights[i * model.n + j] as i64);
+    for i in 0..n {
+        for j in 0..n {
+            a[j] += row_weights[i] * signed(model.weights[i * n + j] as i64);
         }
     }
     let mut b: Vec<_> = input.iter().map(|&x| signed(x as i64)).collect();

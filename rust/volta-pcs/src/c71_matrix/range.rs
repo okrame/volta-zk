@@ -53,7 +53,7 @@ pub(super) fn required(bits: usize, limit: impl Into<Alphabet>) -> usize {
 
 #[allow(clippy::too_many_arguments)]
 fn bind(
-    n: usize,
+    domain: impl Into<Domain>,
     root: &C61Commitment,
     attempt: AttemptContext,
     layout: [u8; 32],
@@ -61,7 +61,8 @@ fn bind(
     limit: impl Into<Alphabet>,
     fs: &mut Fs,
 ) -> Result<usize, String> {
-    let config = matrix_config(n)?;
+    let domain = domain.into();
+    let config = domain.config()?;
     let limit = limit.into();
     if limit.len() == 0
         || live == 0
@@ -81,7 +82,7 @@ fn bind(
         }
     };
     bytes.extend(gamma(&config));
-    bytes.extend((n as u32).to_le_bytes());
+    bytes.extend(domain.identity().to_le_bytes());
     bytes.extend(root.roots()[0]);
     bytes.extend(attempt.encode());
     bytes.extend(layout);
@@ -198,7 +199,7 @@ pub(super) fn prove(
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
     let limit = limit.into();
-    let bits = bind(model.n, &model.root, attempt, layout, live, limit, fs)?;
+    let bits = bind(model.domain, &model.root, attempt, layout, live, limit, fs)?;
     let count = required(bits, limit);
     if correlations.len() < count {
         return Err("B12 range prover capacity exhausted".into());
@@ -229,8 +230,8 @@ pub(super) fn prove(
     record_values(fs, 0x41, &histogram);
     let (alpha, inverse, rho) = challenges(bits, limit, fs)?;
     let h = authed.iter().zip(&inverse).fold(Auth::ZERO, |s, (&a, &d)| s.add(a.scale(d)));
-    // ponytail: dense D<=14 component; full-size fraction-tree storage and
-    // source reads need a separate schedule, never a D35 allocation here.
+    // ponytail: dense fraction tree within the analytic resource envelope.
+    // This does not admit its full-size storage or source-read schedule.
     let mut tree = vec![weights.iter().map(|&w| [Fp3::ONE, alpha - w]).collect::<Vec<_>>()];
     while tree.last().unwrap().len() > 1 {
         tree.push(
@@ -266,7 +267,7 @@ pub(super) fn prove(
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(super) fn verify(
-    n: usize,
+    domain: impl Into<Domain>,
     root: &C61Commitment,
     attempt: AttemptContext,
     layout: [u8; 32],
@@ -278,7 +279,7 @@ pub(super) fn verify(
     correlations: &mut std::vec::IntoIter<Key>,
 ) -> Result<([Vec<Cube>; 2], [Key; 2]), String> {
     let limit = limit.into();
-    let bits = bind(n, root, attempt, layout, live, limit, fs)?;
+    let bits = bind(domain, root, attempt, layout, live, limit, fs)?;
     let count = required(bits, limit);
     if proof.histogram.len() != limit.len()
         || !tree_shape(&proof.layers, bits, 0)
@@ -454,6 +455,131 @@ mod tests {
 
     fn transcript(n: usize) -> Fs {
         Fs::new(b"B12 same-root range component", request_limit(&matrix_config(n).unwrap()) + 256)
+    }
+
+    #[test]
+    fn c71_b12_flat_sources_close_odd_domains_and_keep_original_targets_and_padding() {
+        use rand_010::RngExt;
+        let domain = Domain::Flat(11);
+        let delta = signed(29);
+        let layout = [17; 32];
+        let mut rng = MatrixRng::from_seed([143; 32]);
+        let start = || {
+            Fs::new(
+                b"B12 flat source range and original PCS",
+                request_limit(&domain.config().unwrap()) + 256,
+            )
+        };
+        for alphabet in [Alphabet::Symmetric(3), Alphabet::Byte] {
+            for fault in 0..3 {
+                let mut values: Vec<_> = (0..1031)
+                    .map(|i| (alphabet.lower() + (i % alphabet.len()) as i64) as i16)
+                    .collect();
+                if fault == 2 {
+                    values.resize(1537, 0);
+                    values[1536] = 1; // valid alphabet, outside the live prefix
+                }
+                let model = Model::new_in(domain, values).unwrap();
+                let polynomial = model.polynomial();
+                assert_eq!(polynomial.as_slice().len(), 2048);
+                let probe = Cube {
+                    offset: 1024,
+                    point: [3, 5, 7].map(signed).to_vec(),
+                    coefficient: Fp3::ONE,
+                };
+                let value = eq(&probe.point).iter().enumerate().fold(Fp3::ZERO, |v, (i, &r)| {
+                    v + r * Fp3::from_base(Fp::new(
+                        polynomial.as_slice()[1024 + i].as_canonical_u64(),
+                    ))
+                }) + if fault == 1 { Fp3::ONE } else { Fp3::ZERO };
+                let count = 1 + required(11, alphabet) + 35;
+                assert_eq!(count, if matches!(alphabet, Alphabet::Byte) { 593 } else { 344 });
+                let rows: Vec<_> = (0..count)
+                    .map(|_| Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>())))
+                    .collect();
+                let keys: Vec<_> = rows.iter().map(|a| Key::new(a.m + delta * a.x)).collect();
+                let (mut fs, mut prows) = (start(), rows.into_iter());
+                let (wire, original) = authenticate([value], &mut prows);
+                record_values(&mut fs, 0x47, &wire);
+                let (proof, forms, targets) =
+                    prove(&model, context(), layout, 1031, alphabet, &mut fs, &mut prows).unwrap();
+                let mut forms = Vec::from(forms);
+                forms.push(vec![probe.clone()]);
+                let (pcs, digest) = linear::prove(
+                    &model,
+                    context(),
+                    layout,
+                    &forms,
+                    &[targets[0], targets[1], original[0]],
+                    &mut fs,
+                    &mut prows,
+                )
+                .unwrap();
+                assert_eq!(prows.len(), 0);
+                let (mut fs, mut vrows) = (start(), keys.into_iter());
+                let original = correct(wire, delta, &mut vrows);
+                record_values(&mut fs, 0x47, &wire);
+                let (forms, targets) = verify(
+                    domain,
+                    &model.root,
+                    context(),
+                    layout,
+                    1031,
+                    alphabet,
+                    &proof,
+                    delta,
+                    &mut fs,
+                    &mut vrows,
+                )
+                .unwrap();
+                let mut forms = Vec::from(forms);
+                forms.push(vec![probe]);
+                let checked = linear::verify(
+                    domain,
+                    &model.root,
+                    context(),
+                    layout,
+                    &forms,
+                    &[targets[0], targets[1], original[0]],
+                    &pcs,
+                    delta,
+                    &mut fs,
+                    &mut vrows,
+                );
+                if fault == 0 {
+                    assert_eq!(checked.unwrap(), digest);
+                    assert_eq!(vrows.len(), 0);
+                } else {
+                    assert_eq!(checked.unwrap_err(), "C71 matrix sumcheck MAC rejected");
+                }
+            }
+        }
+        // Full domains are public configuration/framing checks only. No source,
+        // tree, codeword, Gemma trace or large correlation pool is allocated.
+        let root = C61Commitment::new(vec![[7; 32]]);
+        for bits in [10, 11, 34, 35] {
+            let mut fs = start();
+            assert_eq!(
+                bind(
+                    Domain::Flat(bits),
+                    &root,
+                    context(),
+                    layout,
+                    (1 << bits) - 3,
+                    Alphabet::Byte,
+                    &mut fs
+                )
+                .unwrap(),
+                bits,
+            );
+            assert_eq!(fs.requests(), 0);
+        }
+        let (mut matrix, mut flat) = (start(), start());
+        bind(32, &root, context(), layout, 1000, Alphabet::Byte, &mut matrix).unwrap();
+        bind(Domain::Flat(10), &root, context(), layout, 1000, Alphabet::Byte, &mut flat).unwrap();
+        assert_ne!(matrix.digest(), flat.digest());
+        assert!(Domain::Flat(36).config().is_err());
+        assert!(Model::new_in(Domain::Flat(10), vec![0; 1025]).is_err());
     }
 
     #[test]
@@ -640,14 +766,16 @@ mod tests {
             let wire = prove_products(&triples, mask, &mut fs);
             verify_products(&keys, key(mask), wire, delta, &mut Fs::new(b"product algebra", 1))
                 .unwrap();
-            assert!(verify_products(
-                &keys,
-                key(mask),
-                [wire[0], wire[1] + Fp3::ONE],
-                delta,
-                &mut Fs::new(b"product algebra", 1)
-            )
-            .is_err());
+            assert!(
+                verify_products(
+                    &keys,
+                    key(mask),
+                    [wire[0], wire[1] + Fp3::ONE],
+                    delta,
+                    &mut Fs::new(b"product algebra", 1)
+                )
+                .is_err()
+            );
         }
     }
 

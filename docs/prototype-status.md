@@ -369,6 +369,14 @@ RMS/ratio predicates remain separately checked; canonical wrapper guards
 and the complete caller still need integration. Dense execution remains
 an analytic implementation, without physical-schedule admission.
 
+The [flat-source bridge](c7.1-gemma31b-design.md#b12-sorgenti-piatte-range-e-ponte-nei-domini-wa-originali)
+now lets the same owned source, range and PCS use D10–D35 directly,
+including odd dimensions and the canonical flat W/A indexing. Matrix
+framing stays unchanged; a distinct domain word prevents reinterpretation.
+A D11 check with 1,031 live values rejects a false original target and
+nonzero padding for signed and byte alphabets. D34/D35 checks allocate
+only public configurations. Complete Gemma dispatch remains open.
+
 Forty-six B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
 range/product identities and the joint source bounds. The relevant Python checks total 229; the 17
@@ -376,9 +384,11 @@ narrow bootstrap/pool checks and prior forty-seven B12 PCS/caller/layout checks 
 Two new EXP30 checks cover the same-source producer and full route metadata.
 One common-profile check covers canonical scale derivation in all three contexts.
 One joint-replay check crosses the cell-word and profile-byte boundaries.
+One flat-source check covers odd domains, original targets and padding.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
-The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
+The public matrix runner remains capped at D14/n<=128; flat kernels use
+the analytic resource envelope. The D35 analytic profile retains about 88
 PCS-only bits, but its 4 TiB initial codeword remains physically excluded.
 
 Privacy remains separate. Unsalted B2 roots permit candidate-W reconstruction

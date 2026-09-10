@@ -1,4 +1,4 @@
-# Current status — C7.1 Gemma-31B, B12 fixed-run goal active
+# Current status — C7.1 Gemma-31B, B12 mathematical goal complete
 
 Updated 2026-09-10. Editable working summary; Git preserves revisions.
 [Design](c7.1-gemma31b-design.md) · [Documentation index](README.md) ·
@@ -6,447 +6,82 @@ Updated 2026-09-10. Editable working summary; Git preserves revisions.
 
 ## Active authority — read first
 
-**B12 is authorized and remains open.** The owner's latest 2026-09-09 request
-keeps adversary resources beyond `2^78`, one private W across the entire
-Gemma inference and both complete errors at most `2^-78`, while **deferring
-renewal, abort recovery and restart composition**. The prototype covers one
-uninterrupted sequential run with one model root, key epoch and initial
-finite capacity. Error, abort or exhaustion ends the run. Queries to discarded
-FS candidates still count, and views up to termination must remain private.
-Response count must fit the declared root/correlation capacity; there is no
-requirement to complete the old 2^20-attempt lifecycle.
-The remaining closure obligation is **one complete same-W composition**:
-define whole-inference acceptance and accepted KV history, then discharge
-soundness and malicious-verifier simulation for that verifier. More isolated
-component checks do not discharge it. Calibration, hardware execution,
-performance optimization and recovery are not additional closure gates.
-[The fixed-run matrix composition](c7.1-gemma31b-design.md#b12-zk-del-consumer-claimless-nel-run-continuo)
-now gives **conditional soundness and malicious-verifier ZK**: about
-91.0166 and 91.0227 bits, respectively, at n=48/128 with three total
-attempts. Soundness connects the matrix sumcheck, PCS and MAC to one
-extracted W; ZK uses a dummy zero-model simulator with the corrupt role's
-Delta/keys and a joint mask-translation proof. Both reductions count the
-caller and RO tapes within T121/M93, for adversary work/memory 2^80 and
-global Q64. AES/DDH advantages at that envelope remain explicit hypotheses.
-This covers a field matrix from fresh model installation, not all of Gemma
-or simulation for an arbitrary externally fixed root. The earlier 86.8347-bit
-soundness argument with broader setup/reopen scope remains valid evidence.
+**B12 is complete as a conditional mathematical protocol goal.** The owner's
+2026-09-10 request identifies the remaining same-W/accepted-KV/privacy
+composition. The [complete fixed-run proof](c7.1-fixed-run-composition.md)
+now defines the prover, final verifier, mandatory original-MAC schedule and
+accepted-history transition together, then proves both claims for that
+algorithm. It discharges the integration obligation mathematically; it does
+not assert that the full native wrapper already implements that algorithm.
 
-The [finite-pool component](../rust/volta-pcg/src/c71_lifetime.rs) now also
-supports one larger initial AES capacity: up to 16,777,206 base rows under
-one key, with a conditional bootstrap bound of 91.022717 bits at T121/M93.
-The fixed-run profile records its mode before setup and rejects renewal,
-continuation after failure and reopen. Setup and joint root-slot/row burns
-precede use; the fresh 40-byte post-bootstrap seal fixes row assignment
-before usable FS prefixes. COPE streams through a 4,608-byte buffer while
-retaining the full frame before the challenge. A 258-row real check crosses
-B11's old cap. [Capacity and exact costs](c7.1-gemma31b-design.md#b12-capacità-aes-iniziale-per-il-run-continuo)
-include 506.6 MB of setup wire for P0 plus the bridge; smaller buffering
-does not remove that cost. The existing crash/reopen evidence for the old
-profile remains intact, without creating recovery requirements.
+The complete conditional bounds are **82.9326056822 soundness bits and
+91.0227170067 malicious-verifier ZK bits**, with adversary work/memory 2^80,
+preprocessing/advice included and global Q64. Both reductions, including
+caller, decoder, dummy preparation and RO tapes, stay below T121/M93/Q74.
+The existing AES-256/P-521 assumptions at that envelope remain explicit;
+these are not proven concrete AES/DDH advantages. No honest setup is added.
 
-The [PCS analysis](c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata)
-proves same-set MCA when 3*radius < distance and fixes the Merkle oracle at
-its commitment prefix, charging collisions and deferred preimages. Native
-B12 uses one XOF tape between free prover messages, retained across openings
-already determined by commitments. Merged-round errors are summed; independent
-mask-query groups have a separate bound. A direct scalar-relation proof now
-covers the actual native covectors and claimless endpoint. The soundness
-tester decodes the installed root once, then checks every accepted public
-output against that same padded field matrix. W remains private in the runtime.
+The selected run has one fresh private W installation, one key epoch and
+one initial AES capacity, with at most three 100+50-token attempts at
+O=0/150/300. All accepted inference operators, tied embedding/head and KV
+continuations use the same extracted W. The verifier does not learn W.
+Only complete verification promotes a tail, including K/V of the last
+emitted token. Error, abort or exhaustion terminates; renewal, recovery
+and restart composition remain deferred. Discarded FS candidates count.
 
-The opt-in [salted consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) uses
-common-mask unique-radius codes and fresh private salt streams. The earlier native
-checks cover FS blocks, geometry, private coins, salting and real B11 roles:
-two valid proofs, then a rejected salt alteration whose burn survives reopen.
-The new [linear-form bridge](../rust/volta-pcs/src/c71_matrix/linear.rs)
-combines the caller's original target MACs and closes one PCS against the
-installed root. A real-B11 small case covers matrix, ragged norm and shared
-embedding/logits, then rejects a freshly authenticated false norm target and
-terminates the run; the same check also passes with the new fixed-run AES
-profile. It is an internal component without a standalone codec.
-The public-layout compiler maps all 773 P0 endpoints to the same 772 physical
-tensors (3,606 cubes), including all 150 lookup rows in one target. It does
-not yet connect the actual Gemma GKR execution.
-[Design: bridge and capacity](c7.1-gemma31b-design.md#b12-ponte-nativo-dai-mac-originali-a-ununica-root-w).
+The simulator uses a single zero W, nonzero biased auxiliary snapshots
+and correctly rounded uniform allowed softmax probabilities. A DV retag
+handles arbitrary ideal public output tokens. Immutable preparation before
+proof emissions, fresh correlation consumption and one mask translation
+across W/A0/A1/A2 establish joint privacy, including interrupted prefixes.
+ZK begins with fresh installation; it does not simulate an arbitrary
+externally fixed root. Private preparation failures expose only generic
+termination, as prescribed by the active design.
 
-The new [range caller](../rust/volta-pcs/src/c71_matrix/range.rs) authenticates
-a private histogram, proves a fraction tree and derives the original W(r)
-MAC from its denominator leaf. That target and a zero-padding form share
-one PCS. Native checks accept the symmetric i16 endpoints, reject -32768,
-nonzero padding and detached MACs; a 1,746-row real AES run rejects a false
-range on its second attempt and terminates. The mathematical caller also
-has a NoPeek/QuickSilver simulator. At D12/D14 its composed conditional
-soundness/ZK remain about 91 bits. D35 gives 82.9944 soundness bits within
-T121/M93, as an analytic geometry only. The joint raw-P0 analysis below
-also extends its private-sampler ZK bound; the physical schedule remains excluded.
-P0 + range + one bridge needs
-312,693 base rows before P0's shared product mask; the complete Gemma census remains open.
-[Proof and exact counts](c7.1-gemma31b-design.md#b12-range-simmetrico-e-padding-nello-stesso-mac-della-root).
+The verifier owns one valid public numeric profile: common exponents,
+certified GELU/softcap/Q30/EXP30 tables, exact RMS/RNE and public scalars.
+The theorem is parametric in that profile. Actual checkpoint calibration,
+quantization provenance and numerical quality are separate from this
+conditional protocol theorem. **C71-SOFTMAX-EXP30-v1 remains selected**;
+no recipe approval is pending.
 
-The [native P0 caller](../rust/volta-pcs/src/c71_matrix/p0.rs) now runs the
-quadratic matrix and cubic weighted-product reductions, returning original
-C/X/W MAC obligations. A small check executes matrix, weighted norm product
-and lookup, closes one ranged W PCS and one private auxiliary C/X PCS,
-and rejects a false committed cut or detached input MAC. The auxiliary
-root is an additional source with its own costs, now included by the raw-P0
-composition below. Adding P0's product mask brings the known subtotal
-to 312,696 base rows before auxiliary openings and other Gemma operators.
-The [native layout compiler](../rust/volta-pcs/src/c71_matrix/gemma.rs)
-now maps the validated DAG's 39,421 weighted invocations into those 773
-cohorts and 3,156 W tiles. It preserves terminal-packed file offsets while
-using metadata order for the virtual root, and generates the 3,606 native
-forms. Its [DAG caller](../rust/volta-pcs/src/c71_matrix/gemma/caller.rs)
-now generates all output points after the fixed sources/profile/tokens,
-executes P0 and compiles the original C/X claims into one auxiliary layout:
-1,375 sources, 1,545 forms and 14,909 cubes. Head rows 99–148 and norm
-head reshaping follow the DAG. A tiny executed raw graph closes both PCS
-and rejects a wrong row selection; the full 773-cohort zero-vector check
-uses no full weights or Gemma forward.
-[Caller contract and limits](c7.1-gemma31b-design.md#b12-p0-nativo-e-aperture-originali-dei-tagli).
+The complete source batch contains **775 W targets, 4,446 current-A targets
+and one per old A**. Nine PCS across the run open W three times and
+A0/A1/A2 3/2/1 times, with 526 trees and 39 private streams. The upper is
+**11,466,948 base rows**, within 16,777,206 initially available. The public
+preflight's synthetic profile uses 11,187,057; that smaller number does not
+replace the conservative security count or certify its placeholder tables.
 
-The [two-source raw-P0 composition](c7.1-gemma31b-design.md#b12-composizione-raw-p0-a-due-sorgenti)
-now counts one W installation and three fresh auxiliary roots, including
-cross-source hiding collisions and finite private streams. Its D35/D31
-analytic profile has conditional soundness/ZK of 82.9944/91.0227 bits
-within T121/M93. The known subtotal is 312,981 base rows per attempt,
-938,943 for three attempts, before other operators. This proves the raw
-P0 relation to the ranged W, not the quantized producers of X/C. The
-full auxiliary materialization is excluded: packed cut/input bodies alone
-use 6,525,586,944 bytes, exceeding the reference arena. Both dense PCS
-sources and the fraction tree remain physically excluded.
+**Next goal: native correspondence to the composed protocol.** Port the
+complete verifier/preparer/codec and accepted-state ownership, preserve
+original endpoints and NoPeek, then validate on bounded graphs. Current
+native callers return pending obligations; component success is not full
+Gemma acceptance. Full Gemma execution, calibrated profile, physical
+schedule and complete certificate/performance accounting remain open.
+The D35 W codeword (4 TiB), D34 A codeword (2 TiB) and dense trace/fraction
+materializations remain physically excluded. No production or hardware
+credit, GPU/provider authorization or spending follows from this theorem.
 
-The [byte bridge](../rust/volta-pcs/src/c71_matrix/gemma/bytes.rs) now
-pulls those original scalar MACs into the biased i48/i32/i16 byte layout,
-using public affine shifts only. The same range caller checks the exact
-unsigned alphabet 0–255. Its D35/D33 raw-P0 composition includes byte
-range and both PCS: 320,808 base rows per attempt, 962,424 for three,
-with the same conditional 82.9944/91.0227-bit bounds. The new native
-checks reject −1/256 and incorrect bias, including signed extrema and
-ragged axes. The auxiliary codeword is 1 TiB and remains excluded.
-Byte validity does not prove RNE or the symmetric i16 output restriction.
+Existing component evidence remains applicable: real B11/AES pool checks,
+salted claimless PCS, original-W range/bridge, P0 and all integer operator
+kernels, source compilers and three-context KV routing. The common-profile,
+wide replay, flat-source and full public reservation checks remain small
+metadata/component checks. The new exact accounting and finite source-mask/
+history checks support the mathematical composition; 79 focused Python checks
+pass, including the reused G2 NoPeek check. They are not a native E2E or a
+new Lean proof. [Build/test procedure](procedures/build-and-test.md)
+keeps local verification narrow. G2 remains archived; its NoPeek coupling,
+accepted-tail induction and first-FS-query counterexample inform the proof
+without importing its unproved PCS assumptions or physical schedule.
 
-The [public byte-function caller](../rust/volta-pcs/src/c71_matrix/byte_function.rs)
-reuses the range GKR kernel for R2's P/S interpolation. Original function
-MACs reduce to an original byte MAC for the same auxiliary PCS, without a
-bit or trace commitment. Its 809-row ideal check rejects a false function
-and a consistent function of bytes changed after commitment. The native
-P/S accepts views through D34 under the analytic dense-tree envelope;
-the canonical full-DAG caller remains open.
-
-The [native RNE top](../rust/volta-pcs/src/c71_matrix/rne.rs) now proves
-one public shift class from original biased-i48 byte MACs to an original
-output MAC, including symmetric-i16 overflow rejection. Its degree-seven
-recipe reuses R2 and sends its byte functions to the same P/S/PCS.
-The 951-row ideal check rejects wrong output, both ±32768 overflows and
-changed raw bytes that preserve the rounded output. All 64 shift recipes
-and their degree are checked. A complete batch of incoming claims,
-calibrated shifts and the remaining operators are still required.
-The 411 canonical matrix-byte views now compile to 7,126 cubes. A new
-1,355-row ideal graph ties a norm P0's original input MAC directly to RNE
-of the preceding matrix's original cut, with the same ranged W and byte A.
-It covers ragged row/column padding and rejects inconsistent quantization
-or a changed raw getter. It does not prove the norm's RMS denominator.
-The native request compiler selects all 240 direct q/k/o/down-projection
-inputs of weighted P0 norms, retaining their original MACs and points.
-Their [conditional composition](c7.1-gemma31b-design.md#b12-composizione-raw-p0-a-due-sorgenti)
-with byte-P0/range/both PCS gives about 82.99443/91.02272 bits within
-T121/M93. The known upper is 1,165,368 base rows per attempt, 3,496,104
-for three, before other operators. This requires the fixed public shifts
-and prescribed dispatch; full calibrated-profile/native execution is open.
-
-The [RMS kernels](../rust/volta-pcs/src/c71_matrix/rms/gkr.rs) and
-[canonical dispatcher](../rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs)
-now connect P=X*W, S=sum X² and exact integer RMS to the original W/A
-MACs. The [source compiler](../rust/volta-pcs/src/c71_matrix/gemma/rms.rs)
-maps all 421 norms, reusing consumer Y and ten global pre-norm K/V aliases.
-It adds 50 local V inputs, 300 Y and 421 S sources: 2,146 total sources,
-7,091,219,838 bytes, still D33. All 50 local V RNE requests retain the
-statistic's original X MAC and point; the known A batch has 3,101 targets
-and at most 48,026 cubes, below the 65,536 guard.
-A 10,003-row ideal graph closes canonical P0/RMS and three RNE through
-the same two ranged PCS. It also binds original embedding-input MACs
-directly to W. Altered V with consistent S/Y fails RNE; altered weights
-with consistent P/Y fail the installed W PCS. Full metadata checks cover
-all source routes without allocating weight bodies or the large circuits.
-
-The [conditional P0/RNE/RMS composition](c7.1-gemma31b-design.md#b12-composizione-raw-p0-a-due-sorgenti)
-now covers 290 original matrix-to-i16 RNE tables and all 421 exact norms,
-under an explicit public compiler envelope: 128-bit arithmetic, H≤128,
-width≤2^14 and ≤2,000,000 public rows per profile. It retains about
-**82.99442 soundness / 91.02272 ZK bits** within T121/M93, with the same
-primitive hypotheses and global Q*. The known upper is **1,527,909 base
-rows per attempt, 4,583,727 for three**, before other Gemma operators.
-This is parametric in valid public profiles; actual calibrated parameters,
-full-domain execution and the remaining producer relations are still open.
-The enormous dense-trace resource upper grants no physical schedule credit;
-full A materialization also still exceeds the reference arena.
-
-The [native public lookup](../rust/volta-pcs/src/c71_matrix/lookup.rs) now
-reuses the fraction GKR with original X/Y/histogram MACs. Its 600-row
-ideal check uses two certified small GELU tables and one ranged A PCS:
-wrong output and overflow fail GKR; input and histogram changed together
-fail the original PCS. Histograms must be committed before alpha, and
-overflow tags cannot equal valid query tags. Public query/table blocks
-may interleave; every table row must be covered exactly once.
-The [canonical GELU sources](../rust/volta-pcs/src/c71_matrix/gemma/gelu.rs)
-now add 60 X, 60 Y and 60 histograms while preserving all P0/RMS IDs.
-A has 2,326 sources / 7,881,092,238 bytes, still D33. The three original
-lookup forms use 720/720/960 cubes across 1,680 public word blocks.
-The canonical dispatcher now binds full certified public tables and the
-60 gate RNE pairs before their probes. Both original X probes and raw-byte
-MACs close in the same A as lookup X/Y/M, for 3,224 known targets and
-52,586 cubes. A 1,356-row ideal P0/table-RNE graph closes both ranged PCS
-and rejects changed raw bytes even when the rounded output is unchanged.
-The small canonical GELU/one-gate-RNE dispatch uses 1,158 ideal rows;
-that larger source-view check has placeholder roots and grants no PCS acceptance.
-
-The conditional `P0_RNE_RMS_GELU_composition` includes 350 matrix RNE
-tables, 421 RMS/statistics and all 60 GELU relations. Given certified
-public tables and consistent shifts fixed before roots, it retains
-**82.98619 soundness / 91.02272 ZK bits** within T121/M93. The known
-upper is **1,760,571 base rows per attempt, 5,281,713 for three**.
-Reads and hashing of supplied public tables are counted; numerical
-profile preparation/calibration remain outside this partial subtotal.
-The next subtotal below adds gate-up; other operators and full-domain
-execution remain open.
-
-The [gate-up caller](../rust/volta-pcs/src/c71_matrix/gemma/gate_up.rs)
-reuses cubic P0 for one joint product over all 60 layers. It preserves
-original GELU Y, quantized U, raw R and down-P0 input MACs. Its 1,372-row
-ideal check closes product and both RNE with one ranged A PCS, rejecting
-wrong product and an operand swap with a consistently changed up raw.
-The canonical route check also compares original forms with literal bytes;
-its placeholder roots grant no PCS acceptance.
-The added 60 U and 60 i48 raw sources make A **9,429,380,238 bytes / D34**,
-with 3,407 known targets and ≤59,067 cubes. The conditional subtotal rebases
-both-source PCS/range, joint hiding, samplers and decoders at D35/D34:
-**82.98618 soundness / 91.02272 ZK bits**, **6,648,624 base rows for three**,
-under the same public-profile and primitive hypotheses. The auxiliary
-codeword is now 2 TiB; its dense implementation remains excluded.
-
-The [joint raw RoPE kernel](../rust/volta-pcs/src/c71_matrix/rope.rs)
-reuses the existing public-linear sumcheck and returns two original R/Y
-MACs for the same A. Its 559-row ideal case closes a ranged source PCS,
-rejecting a wrong raw and a consistently changed input/raw pair. Public
-adjoint checks cover dyadic blocks, absolute positions, full half-head
-pairing and inactive pairs. The full D27 arithmetic is 83 Fp3 before
-RNE/source closures. The [canonical RoPE source compiler](../rust/volta-pcs/src/c71_matrix/gemma/rope.rs)
-now maps all 120 routes to the original q_norm/k_norm Y, with 480 joint
-blocks and 120 raw/output RNE pairs. A has 2,686 sources / 10,387,844,238
-bytes, still D34; the known batch has 3,649 targets and ≤61,947 cubes.
-The conditional subtotal now includes these producers and retains
-**82.98618 soundness / 91.02272 ZK bits**, using **7,906,491 base rows for
-three attempts**. Q30 tables and consistent public shifts are premises;
-numerical profile preparation/calibration and full native execution remain open.
-
-The [raw QK/PV kernels](../rust/volta-pcs/src/c71_matrix/attention.rs)
-now use the exact eager rectangles and quotient GQA mapping. PV discharges
-its original contracted M through an explicit link to the original Pi;
-Pi and V may have different key points. Their 571/572-row ideal checks
-close one ranged A PCS and reject changed operands with consistent raw
-outputs, wrong GQA/padding and a detached M. The arithmetic is 13,020 Fp3
-for 60 QK/PV pairs at O=0/T=150, before integer/source/KV closures.
-The [canonical fresh attention sources](../rust/volta-pcs/src/c71_matrix/gemma/attention.rs)
-now reuse RoPE Q/K, RMS V and the original o-P0 input. Score probes and
-both RNE routes keep the original MACs, bringing A to 2,926 sources /
-11,641,220,238 bytes, still D34. The known batch has 4,189 targets and
-65,067 cubes; the target guard is now 8,192 with the same cube/domain caps.
-The conditional subtotal including fresh QK/PV and both RNE retains
-**82.98617 soundness / 91.02272 ZK bits**, with **9,305,451 base rows for
-three attempts**. The fourteen Gemma checks cover the canonical routes;
-full-domain execution, mask/softmax and ordinary accepted KV continuation
-remain open. Deferred recovery/restart composition does not remove KV history.
-
-The [affine zero-form bridge](../rust/volta-pcs/src/c71_matrix/gemma/bytes/affine.rs)
-now proves public linear raw identities as a known-bias target in the same
-PCS, with no new private MAC. Its 991-row ideal affine/RNE/range/PCS case
-rejects a false raw preserving RNE, a detached input and wrong output.
-The [canonical residual compiler](../rust/volta-pcs/src/c71_matrix/gemma/residual.rs)
-routes all 120 residual sums and 61 public scales through original
-embedding/RMS/stream sources and 181 whole-table RNE. The exact public
-BF16 scalars are reused; residual exponent alignment is limited to 30.
-A now has 3,167 sources / 12,613,738,638 bytes, still D34, with 4,552 targets
-and 79,539 cubes. The cube guard is 131,072; the domain cap stays D14.
-The conditional subtotal retains **82.98616 soundness / 91.02272 ZK bits**,
-with **11,234,187 base rows for three attempts**, given the same fixed
-public quantization profile and alignment envelope. The sixteen Gemma
-checks cover the new source routes, not a calibrated full-model execution.
-
-The [KV tail router](../rust/volta-pcs/src/c71_matrix/gemma/bytes/kv.rs)
-now splits the original K/V MAC batch across prior A tails and current A,
-using one fresh aggregate MAC per previous source. Its three-step ideal
-check uses 544/577/610 rows with actual byte range and all required PCS;
-wrong incoming K and an altered old-source getter reject before promotion.
-The full-size tail forms use 4/75/38 aligned blocks at offsets 0/150/300.
-Prior roots/receipts still require the full verifier's accepted history.
-The [canonical ordinary continuation](c7.1-gemma31b-design.md#b12-continuazione-ordinaria-route-canoniche-e-foresta-a-congiunta)
-now compiles O=0/150/300, absolute RoPE windows and the original K/V
-routes across those A roots. The new joint subtotal counts A openings
-3/2/1, 526 trees and 39 private streams, with 1,024 honest root
-announcements. It retains **82.94219 soundness / 91.02272 ZK conditional
-bits** at T121/M93 and needs **11,253,492 base rows for the run**.
-The largest A is 14,088,298,638 bytes, still D34. Full-verifier accepted
-history, mask/softmax, output and complete Gemma simulation remain open.
-
-The [argmax zero-form component](../rust/volta-pcs/src/c71_matrix/gemma/bytes/argmax.rs)
-now proves public decisions from the original final i16 table using
-unsigned byte slacks in the same A. Its 542-row ideal range/PCS case
-rejects wrong decisions, wrong tie ordering and wrapped negative slack.
-The [public softcap recipe](c7.1-gemma31b-design.md#b12-argmax-dai-byte-originali-e-ricetta-pubblica-del-softcap)
-certifies RNE of 30*tanh(x/30), reusing GELU's exp bounds. The new
-[output caller](../rust/volta-pcs/src/c71_matrix/gemma/output.rs) now
-connects the original P0 lm_head raw through its RNE, softcap lookup
-and argmax to `tokens[100:150]`, in the same A. Its 1,112-row ideal
-chain closes a ranged PCS and rejects wrong raw, softcap and token.
-The conditional subtotal retains **82.94166 soundness / 91.02272 ZK
-bits**, using **11,276,730 base rows** for three attempts. A now has
-3,171 sources, at most 14,167,203,978 bytes, still D34; private
-streams/forests remain 39/526. The mask/EXP30 extension below completes
-the softmax producers; full accepted-history verification, actual
-calibration and full Gemma simulation remain open.
-
-The owner now **selects C71-SOFTMAX-EXP30-v1** for the first integer
-baseline and authorizes continued local B12 completion. The
-[selected recipe](c7.1-gemma31b-design.md#softmax-exp30-baseline-intera-selezionata)
-uses a certified public 30-bit exponential table and exact rational RNE
-normalization. Its documented difference from final RNE of the real
-softmax is accepted as a model-definition choice. Existing lookup/RMS
-reuse motivates the choice; lower complete prover cost or model-quality
-equivalence has not been measured. The floating-point hybrid remains a
-later profile. No further recipe approval is pending.
-
-The [exact ratio component](c7.1-gemma31b-design.md#b12-divisione-rne-esatta-sugli-originali-byte-pzy)
-now reuses the RMS circuit/GKR for signed RNE(2^m*P/Z), m=0..14,
-with a strictly positive bounded denominator and original P32/Z48/Y16
-bytes. Its 7,164-row ideal range/PCS case rejects wrong rounding and
-changed numerator bytes preserving the output. The selected EXP30 caller
-below now binds its inputs. The output-chain check also accepts a DV
-simulation with zero dummy values and arbitrary public decisions by
-retagging the original public argmax target under the same verifier key.
-That resolves this output constraint. The design derives a dummy trace
-for the whole DAG using one zero W: all hidden values and KV tails are
-zero, while allowed softmax probabilities are the exactly rounded uniform
-distribution. Original A includes their biased bytes and honest histograms.
-Arbitrary ideal output tokens use the same DV argmax retag above. This
-establishes the dummy witness's existence; the complete caller still must
-enforce NoPeek, pre-proof preparation, generic termination and accepted
-history induction.
-
-The [causal mask compiler](c7.1-gemma31b-design.md#b12-maschera-causale-sulla-stessa-pi-originale)
-now proves zero at forbidden keys and padded queries in the same original
-Pi used by PV. Its 542-row ideal ranged-PCS check rejects either violation;
-full metadata checks every selected query/key and all 60 source routes.
-It adds no source, correlation or PCS. The
-[EXP30 producer](c7.1-gemma31b-design.md#b12-exp30-massimo-lookup-e-rapporto-nella-stessa-a)
-now binds maximum, nonnegative differences, i32 exponential lookup,
-denominator sum and exact RNE to the original score/Pi byte sources.
-The 8,096-Fp3 ideal ranged-PCS case rejects six violations, including
-consistent intermediates detached from the committed score. Metadata
-cover all three KV contexts. A has 3,471 sources and at most
-15,513,968,538 bytes, still D34, with 4,446 targets and at most
-319,626 cubes under the enlarged 524,288 guard. There are no new PCS
-or private streams. The joint subtotal is **11,466,948 base rows**,
-**82.93261/91.02272 conditional bits** at T121/M93. This includes
-allowed softmax values; complete caller, accepted-history induction
-and whole-run simulation remain open. No full Gemma execution is claimed.
-
-The [common numeric profile compiler](c7.1-gemma31b-design.md#b12-profilo-numerico-comune-ricette-derivate-dai-produttori)
-now derives all 411 matrix RNE, 421 RMS, GELU/gate-up, RoPE,
-score/EXP30/PV and residual/output recipes from one public scale map.
-It enforces the tied embedding/head W exponent and fixed Pi=-14,
-rejects missing/unused scales and checks every compiled RMS envelope.
-The recipe digest remains identical across all three KV contexts.
-A metadata check with synthetic scales verifies these constraints;
-it supplies neither actual calibration nor certified table contents.
-The complete verifier must own that expected profile and its tables.
-The compiler also partitions all 1,434 activation owners plus the W
-embedding lookup into unique producers. Its dispatch preserves the points
-and original MACs of 410 RNE demands and adds exactly 482 disjoint table
-probes, covering all 892 RNE and reconciling the existing 4,446-target A batch.
-
-The joint RMS/ratio GKR now replays consecutive 64-cell Boolean words
-into one shared cell-domain proof, admitting up to 2^29 cells and 421
-public programs. Wide profile indices use distinct u16 framing. A new
-128-cell parity check closes one ranged A PCS and rejects faults beyond
-the old word boundary and a 256→0 profile substitution. The existing
-RMS/ratio predicates remain separately checked; the canonical RMS/EXP30
-preflight below now uses the expanded geometry. The complete caller still
-needs integration. Dense execution remains
-an analytic implementation, without physical-schedule admission.
-
-The [flat-source bridge](c7.1-gemma31b-design.md#b12-sorgenti-piatte-range-e-ponte-nei-domini-wa-originali)
-now lets the same owned source, range and PCS use D10–D35 directly,
-including odd dimensions and the canonical flat W/A indexing. Matrix
-framing stays unchanged; a distinct domain word prevents reinterpretation.
-A D11 check with 1,031 live values rejects a false original target and
-nonzero padding for signed and byte alphabets. D34/D35 checks allocate
-only public configurations. Complete Gemma dispatch remains open.
-
-The [RMS/EXP30 public preflight](c7.1-gemma31b-design.md#b12-preflight-pubblico-rms-ed-exp30-prima-delle-celle)
-now counts canonical programs/statistics and lookup intervals before
-expanding cell assignments or query rows. A coherent synthetic profile
-(e_score=128, Pi=-14) gives 54,829 RMS and 19,198/19,836/19,836 EXP30
-Fp3 across the three KV contexts, below the existing analytic uppers.
-Zero capacity rejects before reading any witness or changing FS. This is
-a public metadata check with placeholder roots; full execution, accepted
-history and calibration are not inferred. The public reservation now also
-counts the remaining operators, all 892 RNE, both ranges and every W/A PCS:
-1,240,436 / 1,244,239 / 1,244,344 Fp3, or **11,187,057 base rows** for
-this synthetic profile. GELU/softcap/RoPE use shape-only placeholders in
-this check; their numerical contents are not certified. The conservative
-11,466,948-row security subtotal is unchanged. Canonical RNE, gate-up,
-RoPE, attention and KV geometry guards now admit the analytic domains;
-this adds neither whole-proof acceptance nor physical execution evidence.
-
-Forty-six B12 algebra/accounting checks include the scalar invariant,
-decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint source bounds. The relevant Python checks total 229; the 17
-narrow bootstrap/pool checks and prior forty-seven B12 PCS/caller/layout checks pass.
-Two new EXP30 checks cover the same-source producer and full route metadata.
-One common-profile check covers canonical scale derivation in all three contexts.
-One joint-replay check crosses the cell-word and profile-byte boundaries.
-One flat-source check covers odd domains, original targets and padding.
-One canonical RMS/EXP30 preflight check runs without expanding private cells.
-Native legacy replay and fork provenance remain valid. These are component
-checks and mathematical arguments, not new Lean or generated-code proofs.
-The public matrix runner remains capped at D14/n<=128; flat kernels use
-the analytic resource envelope. The D35 analytic profile retains about 88
-PCS-only bits, but its 4 TiB initial codeword remains physically excluded.
-
-Privacy remains separate. Unsalted B2 roots permit candidate-W reconstruction
-after mask exhaustion; its ideal n=128 event is about 2^-24.0445, not a
-measured native FS attack. B12 now has a bounded-query adaptive hiding
-argument for salted Merkle roots and paths, including private coins:
-159.15/158.68 bits for the two native geometries and 146.68 for the
-excluded D35 geometry. The initial RS rows remain private at all 1,536
-permitted adaptive queries. The matrix ZK argument now includes the
-correlated claimless messages, the final private shift, finite samplers
-and global zero-OOD event. Its simulator preserves the native FS; a check
-with DV secrets verifies the complete dummy-model certificate. Acceptance
-alone is not the ZK argument. The full Gemma caller still needs its own
-NoPeek, relation and resource composition.
-
-**Remaining work:** discharge the complete same-W composition, including
-accepted-history induction and one malicious-verifier simulation of the
-fixed run. The operator/source and correlation census is now covered;
-its upper is still conditional on that composition. The known 11,466,948-row upper
-for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE/attention/residual/output/EXP30 attempts with ordinary KV source openings fits the initial capacity;
-full accepted-state verification and whole-Gemma simulation remain open.
-The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
-soundness bound also included failed setups/key changes; that broader
-evidence remains valid without making renewal/recovery new gates. Neither
-matrix result yet binds the root to all weights used by the
-complete Gemma inference. Both complete security totals stay unknown, and
-the six prototype error allocations remain targets. No complete 78-bit or
-production credit.
+## Earlier scoped component decisions
 
 **B11 selected an intermediate finite AES construction under explicit primitive
 hypotheses.** The earlier 2026-09-09 authorization permitted the temporary
 global cap of `2^64` u64 work and `2^64` memory/advice words, including
 preprocessing, to close B11 and integrate the path. A later reduction must
 support adversary work **beyond `2^78`**, including preprocessing and lifetime;
-B12's component extension above does not yet close the complete upgrade.
+B12 now closes the selected fixed-run mathematical upgrade above; native correspondence remains open.
 Q64 remains global and `2^20` counts setup
 attempts, including preparation, failures and renewals.
 
@@ -547,8 +182,8 @@ claim they meet the reference. Scope and remaining thresholds are in design §1.
 malicious-verifier ZK and fixed-run error composition are authorized by the latest
 owner instruction, using narrow local checks. Production/security admission,
 matrix/Gemma E2E, provider/GPU access and spending do not follow from a
-component result. The final 78-bit requirements and complete adversary-resource
-upgrade remain open; no further approval is needed for the authorized local work.
+component result. The fixed-run mathematical 78-bit requirements are closed conditionally; native
+correspondence remains authorized local work, without a new approval gate.
 
 ## Evidence and open obligations
 
@@ -573,10 +208,9 @@ This summary no longer repeats their successive subtotals.
   No need to reload all dossiers to inspect B7. Exact quantization/runtime
   correspondence and real-correlation premises remain required when reused.
 
-Three critical-path obligations remain: same-W authenticated opening with
-the required security; a complete physical schedule; a complete certificate
-and work census. No new off-path kernel is authorized by this work plan.
-There is still **no complete C7.1 security, size, timing or memory credit**.
+The complete fixed-run protocol has the conditional same-W/ZK theorem above.
+Native refinement, a complete physical schedule and certificate/work census
+remain. There is no production security, size, timing or memory admission.
 
 ## B1 disposition and B2 result
 
@@ -845,8 +479,8 @@ The proposed auxiliary OT group is P-521, with 576 independent instances;
 the source's UC loss in adversarial queries is charged explicitly. The
 conditional bootstrap error is below `2^-82` only under the stated DDH/PRF
 advantage and reduction-resource premises. Those concrete primitive
-advantages are not established for a runtime: there is no numerical
-security credit, and the complete C7.1 lifetime theorem stays open.
+advantages are not established for a runtime. B8 alone supplies no complete
+C7.1 theorem; the later conditional fixed-run result is recorded above.
 
 Successful bootstrap wire is **383,065 bytes for 32 base rows** and
 **128,984,785 bytes for the 27,511-row k0/t0 screen**, including OT,
@@ -981,8 +615,8 @@ reservation for the fixed-root component; NoPeek and the full consumer remain
 obligations. SHAKE-state
 erasure and generated-code timing checks also remain open for production.
 
-B12 is active under the latest owner request; its component results and
-remaining same-W/PCS/GKR obligations are recorded at the top of this page.
+B12's mathematical same-W/PCS/GKR composition is complete; native refinement
+and its validation are the next work recorded at the top of this page.
 B11 supplies no security credit for the stopped B7/G2 lines or a full runner.
 
 ## G2 residual changes: integrated evidence, archived research line
@@ -998,19 +632,20 @@ The literal A5 size arithmetic is explicitly historical, and 35 MB remains
 an alarm. The three focused checks pass.
 
 **G2 is archived as an unselected research line, not queued for completion.**
-Its unproved same-W/FS obligations remain requirements of the active design;
-archiving does not prove them or assert impossibility. The
+Its construction-specific same-W/FS obligations remain undischarged;
+B12 meets those general requirements through its separate composed protocol.
+Archiving does not prove G2 or assert impossibility. The
 [G2 dossier](c7.1-committed-mac-opening.md) retains conditional results with
 an explicit historical scope. There is no pending G2 patch, alternate
 runtime or second active goal. The single budget records this disposition;
-B10 and the conditional intermediate B11 selection are complete; B12 is
-the active goal; bounded B11 component validation remains complete.
+B10, the conditional intermediate B11 selection and the B12 mathematical
+fixed-run goal are complete; native correspondence remains open.
 
 ## Documentation decision
 
-Status and design are the only active summaries; the existing index routes
-to evidence. This reset removes duplicated progress prose, not source
-material or research results. No new C7.1 Markdown dossier is needed.
-A fresh conversation can start from this page and design §10 (B12's remaining
-same-W/lifetime obligations, B11 selection and the preserved B7 failure) without
-importing the full G2 transcript or treating archived research as active work.
+Status and design remain the active summaries. The index now links the distinct
+[fixed-run composition proof](c7.1-fixed-run-composition.md), whose acceptance
+algorithm, security argument and runtime boundary are maintained together.
+Earlier component subtotals remain in their design sections and Git history.
+Start with the current closure and native next goal above; archived G2 and
+failed B7 constructions retain their scoped results and limitations.

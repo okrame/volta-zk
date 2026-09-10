@@ -38,6 +38,10 @@ def test_one_reference_without_inherited_margins_or_security_credit():
     assert not result["credit"] and not result["security_admitted"]
     assert result["complete_baseline_selected"] is None
     assert result["required_security_bits_at_least"] == 78
+    complete = result['B12_lifetime_admission']['PCS_binding_assessment']['complete_fixed_run_composition']
+    assert result['malicious_prover_soundness_bits'] == complete['soundness_bits'] > 78
+    assert result['malicious_verifier_zk_bits'] == complete['ZK_bits'] > 78
+    assert 'mathematical' in result['security_bound_scope']
     scope = result['active_goal_scope']
     assert scope == result['B12_lifetime_admission']['active_goal_scope']
     assert scope['model_roots'] == scope['key_epochs'] == scope['capacity_setups'] == 1

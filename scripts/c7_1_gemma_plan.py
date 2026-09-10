@@ -8009,6 +8009,67 @@ def b12_exp30_composition(base):
     }
 
 
+def b12_complete_fixed_run_composition(base):
+    """Accounting for the composed mathematical verifier, not native admission.
+
+    The acceptance algorithm, same-W induction and joint simulator are proved
+    in c7.1-fixed-run-composition.md. Adding a ledger is not a new probabilistic
+    check. Keep the component sums exact and count the whole caller's work.
+    """
+    if (base['recipe'] != 'C71-SOFTMAX-EXP30-v1'
+            or [c['old_tokens'] for c in base['cases']] != [0, 150, 300]
+            or not base['allowed_softmax_values_proven']):
+        raise ValueError('complete fixed-run composition requires the selected three-context relation')
+    targets = {'P0': 1545, 'RMS': 1264, 'original_RNE': 410, 'table_RNE': 964,
+        'GELU': 3, 'gate_up': 3, 'RoPE': 2, 'QK_PV_current': 240, 'KV_current': 1,
+        'softcap': 3, 'EXP30': 5, 'public_zero_forms': 4, 'range_padding': 2}
+    sound, privacy = Fraction(base['conditional_soundness_sum']), Fraction(base['conditional_ZK_sum'])
+    work, memory, ro = 1 << 80, 1 << 70, 1 << 42
+    tw = base['reduction_work_upper'] + work
+    tm = base['reduction_memory_words_upper'] + memory
+    tq = base['full_RO_queries_upper'] + ro
+    rows = sum(c['base_rows_upper_before_other_operators'] for c in base['cases'])
+    return {
+        'protocol': 'C71B12-Gemma-FixedRun-v1',
+        'source': 'docs/c7.1-fixed-run-composition.md',
+        'base_composition': 'ordinary_KV_output_and_EXP30_composition',
+        'scope': 'complete mathematical integer Gemma verifier from fresh installation; one uninterrupted run',
+        'conditional_mathematical_goal_complete': True,
+        'same_W_accepted_history_induction_proven': True,
+        'joint_malicious_verifier_simulation_proven': True,
+        'NoPeek_by_snapshot_and_consume_order': True,
+        'externally_fixed_root_simulation': False,
+        'initial_model_installations': 1, 'initial_capacity_setups': 1,
+        'attempts_including_failures': 3, 'old_tokens': [0, 150, 300],
+        'accepted_tokens_at_capacity': 450, 'terminal_token_KV_absorbed': True,
+        'current_A_targets_by_family': targets, 'current_A_targets': sum(targets.values()),
+        'W_targets': 773+2, 'old_A_targets_each': 1,
+        'source_PCS_per_attempt': [2, 3, 4], 'source_exposures_W_A0_A1_A2': [3, 3, 2, 1],
+        'decoder_invocations': 4, 'decoder_in_runtime': False,
+        'forest_distinct_trees': base['forest_distinct_trees'],
+        'private_streams': base['private_streams'],
+        'additional_MAC_rows_PCS_streams_or_challenges': 0,
+        'conditional_soundness_sum': str(sound), 'conditional_ZK_sum': str(privacy),
+        'soundness_bits': math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits': math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78': max(sound, privacy) < Fraction(1, 1 << 78),
+        'initial_base_rows_upper': rows, 'initial_base_capacity_limit': base['initial_base_capacity_limit'],
+        'fits_initial_capacity': rows <= base['initial_base_capacity_limit'],
+        'additional_honest_work_u64_upper': work, 'additional_honest_memory_words_upper': memory,
+        'additional_honest_RO_events_upper': ro,
+        'reduction_work_upper': tw, 'reduction_memory_words_upper': tm, 'full_RO_queries_upper': tq,
+        'both_resource_caps_hold': tw < 1 << 121 and tm < 1 << 93,
+        'global_RO_cap_holds': tq < 1 << 74,
+        'premises': ['B12 AES256/P521 hypotheses at T121/M93 in the classical ROM',
+            'valid verifier-owned certified public numeric profile within the compiler envelopes',
+            'fresh installation and the explicitly defined composed protocol'],
+        'native_complete_verifier_implemented': False, 'native_full_domain_execution': False,
+        'runtime_refinement_proven': False, 'physical_schedule_admitted': False,
+        'production_runtime_admitted': False,
+        'next_goal': 'port the composed verifier/preparer/codec and check runtime correspondence on bounded graphs',
+    }
+
+
 def b12_rope_joint_profile(cells):
     """Joint public adjoint over aligned dyadic RoPE blocks; no source closures.
 
@@ -8513,6 +8574,7 @@ def b12_pcs_binding_assessment():
     residual_composition = b12_residual_composition(attention_composition)
     kv_composition = b12_ordinary_KV_composition(residual_composition,gate_up_raw,gate_up_byte_profile,mask)
     output_composition = b12_output_composition(kv_composition)
+    exp30_composition = b12_exp30_composition(b12_causal_mask_composition(output_composition))
     for row, joint in zip(range_cases, p0_composition['cases']):
         row['large_domain_private_sampler_and_simulator_bound_derived'] = True
         if row['conditional_ZK_sum'] is None:
@@ -8707,7 +8769,8 @@ def b12_pcs_binding_assessment():
         'ordinary_KV_original_A_tail_composition': kv_composition,
         'ordinary_KV_and_public_output_composition': output_composition,
         'ordinary_KV_output_and_causal_mask_composition': b12_causal_mask_composition(output_composition),
-        'ordinary_KV_output_and_EXP30_composition': b12_exp30_composition(b12_causal_mask_composition(output_composition)),
+        'ordinary_KV_output_and_EXP30_composition': exp30_composition,
+        'complete_fixed_run_composition': b12_complete_fixed_run_composition(exp30_composition),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         'public_RoPE_joint_component': b12_rope_joint_profile(119808000),
@@ -8729,8 +8792,10 @@ def b12_pcs_binding_assessment():
 
 
 def b12_lifetime_admission():
-    """B12 resource lift and durable component; never fill missing PCS/FS errors with zero."""
+    """Conditional mathematical closure; native/physical admission stays separate."""
     b11 = b11_intermediate_selection()
+    pcs = b12_pcs_binding_assessment()
+    complete = pcs['complete_fixed_run_composition']
     work = memory = 1 << 80
     queries, q, honest = 1 << 64, 1 << 74, 1 << 50
     reduction_work = work + (1 << 12)*work + (1 << 46)*(q+honest)
@@ -8743,8 +8808,9 @@ def b12_lifetime_admission():
         "GKR_and_operator_links_FS_prefix", "MAC_and_cross_handle_equality",
         "remaining_samplers_and_transcript_binding", "accepted_in_run_state_relation")}
     return {
-        "status": "conditional_fixed_root_soundness_and_durable_component_full_admission_open",
-        "credit": False, "security_admitted": False, "B12_complete": False,
+        "status": "conditional_complete_fixed_run_theorem_native_refinement_open",
+        "credit": False, "security_admitted": False, "B12_complete": True,
+        "completion_scope": "mathematical protocol; no native, physical or production admission",
         "active_goal_scope": prototype_security_scope(),
         "production_runtime_admitted": False, "pool_PCS_integration_admitted": False,
         "source": "docs/c7.1-gemma31b-design.md#b12-risorse-lifetime-e-vincolo-same-w",
@@ -8789,9 +8855,10 @@ def b12_lifetime_admission():
             "root_renewal_fails_closed": True,
             "matrix_relation_component_checked": True,
             "field_matrix_conditional_soundness_instantiated": True,
-            "instantiated_authenticated_PCS_GKR_relation": False,
-            "conditional_induction": "design B12; anchor uniqueness + root link + same authenticated endpoint + GKR relation"},
-        "PCS_binding_assessment": b12_pcs_binding_assessment(),
+            "instantiated_authenticated_PCS_GKR_relation": True,
+            "native_complete_verifier_implemented": False,
+            "conditional_induction": "c7.1-fixed-run-composition.md section 4; immutable W, all original endpoints, accepted tails only"},
+        "PCS_binding_assessment": pcs,
         "composition": {
             "target": str(target), "known_bootstrap_subtotal": str(component),
             "remaining_error_allowance": str(target-component),
@@ -8799,11 +8866,15 @@ def b12_lifetime_admission():
             "allocation_screen_sum": str(component+sum(allocations.values())),
             "allocation_screen_below_target": component+sum(allocations.values()) < target,
             "allocations_are_established_bounds": False,
-            "soundness_total": None, "malicious_verifier_ZK_total": None,
-            "complete_admission_bound": "infinity",
-            "missing_ZK": ["hiding installed anchor", "same-W PCS/GKR joint simulator",
-                "NoPeek runtime correspondence", "fixed-run simulator primitive resources"]},
-        "next_goal": "bind the installed root to every Gemma operator and prove both 78-bit bounds for one fixed run; renewal, abort recovery and restart composition are deferred"}
+            "soundness_total": complete['conditional_soundness_sum'],
+            "malicious_verifier_ZK_total": complete['conditional_ZK_sum'],
+            "complete_admission_bound": str(max(Fraction(complete['conditional_soundness_sum']),
+                Fraction(complete['conditional_ZK_sum']))),
+            "complete_bound_scope": complete['scope'],
+            "runtime_admission_bound": "infinity",
+            "missing_ZK": [],
+            "missing_runtime_refinement": ["whole verifier and original-MAC routing", "NoPeek preparer and generic termination", "codec and accepted-state promotion"]},
+        "next_goal": complete['next_goal']}
 
 
 def b11_wider_aes_contract():
@@ -9014,6 +9085,8 @@ def baseline_budget():
     timing = json.loads((Path(__file__).resolve().parents[1] / timing_source).read_text())
     if timing["git_dirty"] or not timing["run_of_record"] or timing["status"] != "pass":
         raise ValueError("C71 B3 timing must retain its clean passing provenance")
+    b12 = b12_lifetime_admission()
+    complete = b12['PCS_binding_assessment']['complete_fixed_run_composition']
     return {
         "schema": "c71-baseline-budget-v1", "credit": False,
         "reference": "A5 + joint W/KV + Sigma(B, raw QK/PV, S); frozen accounting reference, not a selected runtime",
@@ -9021,11 +9094,13 @@ def baseline_budget():
         "excluded_extensions": ["Y", "RoPE", "GELU", "gate_up_mul", "public-scale checkpoints"],
         "required_security_bits_at_least": 78,
         "active_goal_scope": prototype_security_scope(),
-        "malicious_prover_soundness_bits": None, "malicious_verifier_zk_bits": None,
+        "malicious_prover_soundness_bits": complete['soundness_bits'],
+        "malicious_verifier_zk_bits": complete['ZK_bits'],
+        "security_bound_scope": "conditional complete B12 mathematical fixed-run protocol; native refinement open",
         "security_admitted": False, "complete_baseline_selected": None,
-        "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": "B12: resources beyond 2^78, same private W throughout Gemma and both 78-bit bounds in one uninterrupted fixed-root run",
+        "active_baseline_status": "stopped_after_failed_B7", "next_authorized_goal": "B12: native correspondence to the completed same-W fixed-run mathematical protocol",
         "replacement_bootstrap_status": "B11_intermediate_finite_AES_selected_conditionally",
-        "next_proposed_goal": b12_lifetime_admission()["next_goal"],
+        "next_proposed_goal": b12["next_goal"],
         "measurement_reuse_priority": None,
         "G2_disposition": {"status": "archived_unselected_research",
             "pending_patch": "integrated_as_three_regression_checks",
@@ -9074,7 +9149,7 @@ def baseline_budget():
         "B11_local_repair_admission": b11_local_repair_admission(),
         "B11_intermediate_selection": b11_intermediate_selection(),
         "B12_fixed_run_bootstrap": b12_fixed_run_bootstrap(),
-        "B12_lifetime_admission": b12_lifetime_admission(),
+        "B12_lifetime_admission": b12,
         "evidence_classes": {
             "payload_and_traffic": "exact arithmetic for the stated layouts; incomplete costs",
             "arena": "conditional upper bounds for named arrays; not measured RSS",

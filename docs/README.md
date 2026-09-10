@@ -8,8 +8,11 @@ The evaluated baseline remains stopped after B7. The owner's subsequent
 decisions opened B8/B9: a replacement construction and a checked native
 component. B10 concludes the premise/lifecycle assessment with integration
 not admitted. B11 selects the owner-authorized intermediate finite AES profile under
-explicit primitive/resource hypotheses. B12 is active: a conditional bootstrap
-resource extension to T80 and a durable finite-pool component are available.
+explicit primitive/resource hypotheses. B12's conditional mathematical goal
+is now complete: the [fixed-run composition](c7.1-fixed-run-composition.md)
+defines the whole same-W verifier, accepted KV history and joint simulator,
+with 82.93261 soundness / 91.02272 ZK bits. Native correspondence remains open.
+A bootstrap resource extension to T80 and a durable finite-pool component are available.
 A fresh post-bootstrap seal fixes the row assignment before usable FS prefixes.
 The PCS analysis adds a proven unique-radius MCA bound and identifies
 unsalted-root privacy loss at mask exhaustion. Its salted replacement now
@@ -37,13 +40,13 @@ native P0 reductions now keep their original C/X/W MACs; a two-source
 small check closes ranged W and private C/X and rejects false cuts. The
 native layout compiler now preserves both packed and virtual W orders,
 maps all weighted DAG invocations and emits the same 3,606 public forms.
-Its auxiliary PCS and full two-role composition remain explicit. The complete
-correlation census and actual quantized Gemma GKR caller remain open.
+The complete correlation census is 11,466,948 base rows for three attempts;
+the actual quantized Gemma wrapper/preparer/codec remains to be integrated.
 The owner now limits the goal to one uninterrupted fixed-root run: renewal,
-abort recovery and restart composition are deferred. Full Gemma malicious-verifier ZK,
-the root's binding to all of quantized Gemma and the two complete fixed-run
-bounds remain open in design §10. Full security and production integration
-remain unadmitted.
+abort recovery and restart composition are deferred. The mathematical proof
+closes both fixed-run bounds for the selected integer semantics and a valid
+verifier-owned numeric profile. Native refinement, calibrated Gemma execution,
+physical feasibility and production integration remain unadmitted.
 
 ## Current documents
 
@@ -51,6 +54,7 @@ remain unadmitted.
 |---|---|
 | [Status](prototype-status.md) | Active work, evidence, open obligations, authorization and next steps |
 | [C7.1 design](c7.1-gemma31b-design.md) | Model/relation, protocol requirements, security and resource accounting |
+| [B12 complete fixed-run composition](c7.1-fixed-run-composition.md) | Exact acceptance schedule, immutable same-W/KV induction, joint NoPeek simulator and complete conditional bounds; native implementation remains separate |
 | [G1 feasibility](c7.1-feasibility.md) | Analytic admission criteria, carrier derivations and counterexamples, next constructive obligation |
 | [G2 committed MAC opening](c7.1-committed-mac-opening.md) | Archived, unselected research: private-verifier bridge, ideal MAC/FS simulation and hash/GKR analyses; residual tests integrated, no active goal |
 | [A3 recursive RS opening](c7.1-recursive-rs-opening.md) | Fixed-cap encoder/recursion, ideal-oracle binding, IBCS rewinding audit and scoped 256-bit bound exclusion, remaining hash/FS repairs |
@@ -64,17 +68,17 @@ remain unadmitted.
 | [R3 auxiliary witness](c7.1-auxiliary-witness.md) | Unified B/raw-attention byte source, fresh raw probes/RNE pullbacks, identical striped RS encoder and staged tree-cache repairs; incomplete Gamma/liveness |
 | [B9 native bootstrap](../rust/volta-pcg/src/c71_bootstrap.rs) · [bounded runner](../scripts/run_c71_bootstrap.py) | Independent MR19/P-521 and COPE/Fp9 roles, adversarial byte checks and local resources; no production/security admission |
 | [B12 durable finite pool](../rust/volta-pcg/src/c71_lifetime.rs) · [salted PCS consumer](../rust/volta-pcs/src/c71_matrix/b12.rs) | Single-setup larger AES capacity with fail-closed termination, joint burns and post-bootstrap seal; legacy persistence evidence; fixed-root PCS component |
-| [B12 original-MAC linear bridge](../rust/volta-pcs/src/c71_matrix/linear.rs) · [range caller](../rust/volta-pcs/src/c71_matrix/range.rs) | One batch/PCS on the installed root; private range histogram, fraction-tree GKR and zero padding keep the original W MAC; 773 P0 public-layout identities, full Gemma caller/census still open |
-| [B12 native P0 kernels](../rust/volta-pcs/src/c71_matrix/p0.rs) · [native layout](../rust/volta-pcs/src/c71_matrix/gemma.rs) · [DAG caller](../rust/volta-pcs/src/c71_matrix/gemma/caller.rs) · [byte bridge](../rust/volta-pcs/src/c71_matrix/gemma/bytes.rs) | Original C/X/W MACs, canonical auxiliary selectors/biased bytes and conditional two-source raw-P0 soundness/ZK; integer producers and full physical schedule remain open |
-| [B12 public byte functions](../rust/volta-pcs/src/c71_matrix/byte_function.rs) · [RNE top](../rust/volta-pcs/src/c71_matrix/rne.rs) | Canonical matrix-byte views and 240 original P0-to-RNE requests; conditional partial composition stays below 2^-78 with both W/A PCS. RMS is now composed below; calibrated dispatch and complete Gemma relation remain open |
-| [B12 exact RMS compiler](../rust/volta-pcs/src/c71_matrix/rms.rs) · [joint GKR](../rust/volta-pcs/src/c71_matrix/rms/gkr.rs) · [statistic](../rust/volta-pcs/src/c71_matrix/rms/statistic.rs) · [canonical sources](../rust/volta-pcs/src/c71_matrix/gemma/rms.rs) · [dispatcher](../rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs) | Canonical RMS/statistics and 50 local V RNE use original MACs; conditional partial composition has 82.99442/91.02272 bits. Calibrated profile, remaining operators and full-domain execution stay open |
-| [B12 public lookup](../rust/volta-pcs/src/c71_matrix/lookup.rs) · [canonical GELU caller](../rust/volta-pcs/src/c71_matrix/gemma/gelu.rs) · [table RNE](../rust/volta-pcs/src/c71_matrix/gemma/bytes/quantize.rs) | Original X/Y/histogram and 60 gate RNE MACs share A. Given certified public profiles, partial composition has 82.98619/91.02272 bits; calibration, remaining operators and full execution stay open |
+| [B12 original-MAC linear bridge](../rust/volta-pcs/src/c71_matrix/linear.rs) · [range caller](../rust/volta-pcs/src/c71_matrix/range.rs) | One batch/PCS per source; private histogram, fraction-tree GKR and padding preserve the original range endpoint. Used in the complete mathematical composition above |
+| [B12 native P0 kernels](../rust/volta-pcs/src/c71_matrix/p0.rs) · [native layout](../rust/volta-pcs/src/c71_matrix/gemma.rs) · [DAG caller](../rust/volta-pcs/src/c71_matrix/gemma/caller.rs) · [byte bridge](../rust/volta-pcs/src/c71_matrix/gemma/bytes.rs) | Original C/X/W MACs and canonical selectors/biased bytes; native callers return obligations for the composed verifier |
+| [B12 public byte functions](../rust/volta-pcs/src/c71_matrix/byte_function.rs) · [RNE top](../rust/volta-pcs/src/c71_matrix/rne.rs) | Public P/S interpolation and exact RNE from original source bytes; used by the 410 original and 482 table-probe requests in the complete schedule |
+| [B12 exact RMS compiler](../rust/volta-pcs/src/c71_matrix/rms.rs) · [joint GKR](../rust/volta-pcs/src/c71_matrix/rms/gkr.rs) · [statistic](../rust/volta-pcs/src/c71_matrix/rms/statistic.rs) · [canonical sources](../rust/volta-pcs/src/c71_matrix/gemma/rms.rs) · [dispatcher](../rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs) | All 421 RMS/statistics and 50 local V RNE retain original MACs; bounded checks and full public preflight, without calibrated full-domain execution |
+| [B12 public lookup](../rust/volta-pcs/src/c71_matrix/lookup.rs) · [canonical GELU caller](../rust/volta-pcs/src/c71_matrix/gemma/gelu.rs) · [table RNE](../rust/volta-pcs/src/c71_matrix/gemma/bytes/quantize.rs) | Original X/Y/histogram and gate RNE in one A; full schedule uses verifier-owned certified tables |
 | [B12 gate-up](../rust/volta-pcs/src/c71_matrix/gemma/gate_up.rs) | Joint cubic product preserves GELU Y, up RNE and original down-P0 MACs. D34 A is explicitly recomposed: 82.98618/91.02272 conditional bits and 6,648,624 base rows for three attempts; no full Gemma or physical credit |
-| [B12 joint raw RoPE](../rust/volta-pcs/src/c71_matrix/rope.rs) · [canonical sources](../rust/volta-pcs/src/c71_matrix/gemma/rope.rs) | Original RMS Y and 120 raw/output RNE pairs in the same A; partial bound 82.98618/91.02272 conditional bits, 7,906,491 base rows for three attempts. Attention/KV, other operators and complete execution remain open |
+| [B12 joint raw RoPE](../rust/volta-pcs/src/c71_matrix/rope.rs) · [canonical sources](../rust/volta-pcs/src/c71_matrix/gemma/rope.rs) | Original RMS Y and 120 raw/output RNE pairs in the same A, with absolute O=0/150/300 windows; full native execution remains open |
 | [B3 native census](../scripts/c71_work_census.py) · [bounded runner](../scripts/run_c71_matrix.py) | Actual Goldilocks arithmetic and phase memory of the reduced B2 matrix path; physical traffic/security remain open in design §10 |
 | [Build and test](procedures/build-and-test.md) | Local checks, toolchains, generated assets and cleanup |
 | [RunPod](procedures/runpod.md) | Authorized hardware lifecycle, Git HTTPS and evidence handling |
-| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [B8–B12 checks](../tests/test_c71_bootstrap.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: single comparison budget, including B4–B7 decisions, B8/B9 construction/component, B10/B11 assessments and B12 resource/PCS analysis with complete security totals still unknown; `--research-screens`: preserved, non-additive research inventory |
+| [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py) · [budget tests](../tests/test_c7_1_baseline_budget.py) · [B8–B12 checks](../tests/test_c71_bootstrap.py) · [algebra tests](../tests/test_c7_1_gemma_plan.py) | Default: comparison budget with preserved B4–B11 decisions and complete conditional B12 mathematical bounds; runtime/physical admission stays open. `--research-screens`: preserved, non-additive research inventory |
 
 Status and design are editable; replace obsolete statements and use Git for
 history. Record important decisions with reasons and source links. Add a page

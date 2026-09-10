@@ -20,6 +20,14 @@ are reference diagnostics when their specific assumptions are needed.
 Documentation changes need link, consistency and diff checks, not Rust/Lean
 builds. Existing passing checks need repeating only after relevant changes.
 
+For the B12 mathematical fixed-run composition, run the existing Python
+`B12` algebra/accounting filter, bootstrap checks and baseline-budget checks.
+The added finite checks cover a source-mask translation across all of a
+root's exposures, same-source history including terminal absorption, and
+the exact complete bounds with the additional caller resource envelope.
+They do not execute the full native verifier or Gemma. Mathematical/doc
+closure alone requires no Rust or Lean build; native refinement is separate.
+
 ## Rust and resource limits
 
 Rust is installed through rustup. All Cargo commands, including standalone

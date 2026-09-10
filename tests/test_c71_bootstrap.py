@@ -481,11 +481,17 @@ def test_B12_composition_does_not_promote_unproved_allocations_or_model_labels()
     allocations = [Fraction(v) for v in c["unproved_prototype_allocations"].values()]
     assert len(allocations) == 6 and known+sum(allocations) == Fraction(c["allocation_screen_sum"]) < target
     assert not c["allocations_are_established_bounds"]
-    assert c["soundness_total"] is c["malicious_verifier_ZK_total"] is None
-    assert c["complete_admission_bound"] == "infinity"
-    assert not any(b[k] for k in ("credit", "security_admitted", "B12_complete", "pool_PCS_integration_admitted"))
+    complete = b['PCS_binding_assessment']['complete_fixed_run_composition']
+    assert c['soundness_total'] == complete['conditional_soundness_sum']
+    assert c['malicious_verifier_ZK_total'] == complete['conditional_ZK_sum']
+    assert Fraction(c['complete_admission_bound']) == max(
+        Fraction(c['soundness_total']), Fraction(c['malicious_verifier_ZK_total'])) < target
+    assert c['runtime_admission_bound'] == 'infinity'
+    assert b['B12_complete'] and c['missing_runtime_refinement']
+    assert not any(b[k] for k in ("credit", "security_admitted", "pool_PCS_integration_admitted"))
     assert b["same_W"]["root_renewal_fails_closed"]
-    assert not b["same_W"]["instantiated_authenticated_PCS_GKR_relation"]
+    assert b["same_W"]["instantiated_authenticated_PCS_GKR_relation"]
+    assert not b['same_W']['native_complete_verifier_implemented']
     assert not b["same_W"]["MAC_validity_implies_model_binding"]
 
 

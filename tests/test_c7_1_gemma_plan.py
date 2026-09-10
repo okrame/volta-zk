@@ -134,6 +134,104 @@ def test_B12_masked_product_batch_privacy_and_quadratic_feedback():
     assert collapses <= len(triples)-1
 
 
+def test_B12_complete_fixed_run_preserves_exact_errors_and_counts_caller_resources():
+    assessment = plan.b12_pcs_binding_assessment()
+    base = assessment['ordinary_KV_output_and_EXP30_composition']
+    full = assessment['complete_fixed_run_composition']
+    for key in ('conditional_soundness_sum', 'conditional_ZK_sum'):
+        assert full[key] == base[key]
+        assert Fraction(full[key]) < Fraction(1, 1 << 78)
+    assert full['soundness_bits'] == pytest.approx(82.9326056822)
+    assert full['ZK_bits'] == pytest.approx(91.0227170067)
+    for total, added, cap in (
+        ('reduction_work_upper', 'additional_honest_work_u64_upper', 121),
+        ('reduction_memory_words_upper', 'additional_honest_memory_words_upper', 93),
+        ('full_RO_queries_upper', 'additional_honest_RO_events_upper', 74),
+    ):
+        assert base[total] < full[total] == base[total] + full[added] < 1 << cap
+    assert full['source_exposures_W_A0_A1_A2'] == [3, 3, 2, 1]
+    assert sum(full['source_PCS_per_attempt']) == sum(full['source_exposures_W_A0_A1_A2']) == 9
+    assert full['decoder_invocations'] == 4 and not full['decoder_in_runtime']
+    assert (full['private_streams'], full['forest_distinct_trees']) == (39, 526)
+    assert full['initial_base_rows_upper'] == sum(
+        c['base_rows_upper_before_other_operators'] for c in base['cases']) == 11_466_948
+    assert full['initial_base_rows_upper'] < full['initial_base_capacity_limit'] == (1 << 24)-10
+    assert full['W_targets'] == 775 and full['old_A_targets_each'] == 1
+    assert sum(full['current_A_targets_by_family'].values()) == full['current_A_targets'] == 4446
+    assert full['same_W_accepted_history_induction_proven'] and full['joint_malicious_verifier_simulation_proven']
+    assert not any(full[k] for k in ('native_complete_verifier_implemented',
+        'native_full_domain_execution', 'runtime_refinement_proven',
+        'physical_schedule_admitted', 'production_runtime_admitted', 'externally_fixed_root_simulation'))
+    for change in ({'recipe': 'unselected'}, {'allowed_softmax_values_proven': False},
+                   {'cases': base['cases'][:2]}):
+        with pytest.raises(ValueError):
+            plan.b12_complete_fixed_run_composition({**base, **change})
+
+
+def test_B12_joint_source_translation_preserves_all_prior_exposures_not_just_current():
+    # Finite algebra check of the global source step in the composed proof.
+    # Each root is a constant message plus THREE private RS coefficients.
+    # Enumerate all pads and message differences per independent source;
+    # no Merkle, native PCS, or full-Gemma execution is claimed here.
+    p = 5
+    for points in ((1, 2, 3), (1, 3, 4), (2, 4), (3,)):
+        for difference in range(p):
+            # delta_f(X)=difference*product(1-X/r): preserves EVERY opened
+            # row of that root while translating its constant message.
+            polynomial = [difference]
+            for r in points:
+                nxt = [0] * (len(polynomial)+1)
+                for j, coefficient in enumerate(polynomial):
+                    nxt[j] = (nxt[j]+coefficient) % p
+                    nxt[j+1] = (nxt[j+1]-coefficient*pow(r, -1, p)) % p
+                polynomial = nxt
+            change = polynomial[1:] + [0]*(4-len(polynomial))
+            images = set()
+            for pads in product(range(p), repeat=3):
+                moved = tuple((u+d) % p for u, d in zip(pads, change))
+                images.add(moved)
+                assert tuple((u-d) % p for u, d in zip(moved, change)) == pads
+                for r in points:
+                    before = sum(u*pow(r, j+1, p) for j, u in enumerate(pads)) % p
+                    after = (difference+sum(u*pow(r, j+1, p) for j, u in enumerate(moved))) % p
+                    assert after == before
+            assert len(images) == p**3  # bijection, uniform pads stay uniform
+    # Independently repairing the last opening changes an earlier one.
+    assert (1-pow(3, -1, p)) % p != 0  # delta_f(1), with only r=3 repaired
+
+
+def test_B12_same_W_history_relation_rejects_a_consistent_substituted_tail():
+    # Exact-source model of the induction OUTSIDE all cryptographic bad
+    # events: roots stand for immutable tuples, not hashes or trusted flags.
+    # Two token cells per response also exercise terminal-token absorption.
+    def trace(w, old, prompt):
+        first = w*(prompt+sum(old))
+        token = first % 3
+        last = w*(token+sum(old)+first)
+        return token, (first, last)
+
+    def verify(w, history, used_w, incoming, prompt, token, tail):
+        return (used_w == w and incoming == tuple(x for prior in history for x in prior)
+                and (token, tail) == trace(w, incoming, prompt))
+
+    for w in range(1, 4):
+        history = []
+        for step in range(3):
+            old = tuple(x for prior in history for x in prior)
+            prompt = (sum(old)+step) % 5  # adaptive from the accepted prefix
+            token, tail = trace(w, old, prompt)
+            assert verify(w, history, w, old, prompt, token, tail)
+            wrong_token, wrong_tail = trace(w+1, old, prompt)
+            assert not verify(w, history, w+1, old, prompt, wrong_token, wrong_tail)
+            assert not verify(w, history, w, old, prompt, token, tail[:1])
+            if old:
+                replaced = (old[0]+1,)+old[1:]
+                wrong_token, wrong_tail = trace(w, replaced, prompt)
+                assert not verify(w, history, w, replaced, prompt, wrong_token, wrong_tail)
+            history.append(tail)  # only the complete same-source relation promotes
+        assert len(tuple(x for prior in history for x in prior)) == 6
+
+
 def test_B12_range_same_PCS_capacity_and_error_census():
     b = plan.b12_pcs_binding_assessment()['root_bound_range_and_padding']
     for row in b['cases']:
@@ -1404,7 +1502,7 @@ def test_B12_completion_seal_fixes_rows_before_usable_FS_prefixes():
     assert Fraction(seal['conditional_prequery_collision_or_zero_error_upper']) < Fraction(1, 1 << 152)
     assert seal['sampled_after_B11_output_is_fixed'] and seal['direct_public_FS_capacity_field']
     assert seal['wire_bytes_per_completed_setup'] == 8+32
-    assert not b['B12_complete'] and not b['security_admitted']
+    assert b['B12_complete'] and not b['security_admitted']  # mathematical closure only
 
 
 def test_B12_coin_blocks_sum_merged_rounds_and_charge_split_query_groups():
@@ -1698,7 +1796,7 @@ def test_B12_unique_decoder_and_fixed_root_component_resources():
     assert not any(b[key] for key in ('root_renewal', 'malicious_verifier_ZK_proven',
         'quantized_weight_range_proven', 'full_Gemma_GKR_proven', 'security_admitted'))
     admission = plan.b12_lifetime_admission()
-    assert not admission['B12_complete'] and not admission['security_admitted']
+    assert admission['B12_complete'] and not admission['security_admitted']
 
 
 def test_B12_weight_forms_pull_back_ragged_tensors_and_shared_embedding():

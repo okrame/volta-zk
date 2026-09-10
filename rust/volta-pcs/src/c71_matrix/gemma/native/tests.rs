@@ -43,7 +43,7 @@ fn c71_b12_native_prepare_covers_all_sources_and_absorbs_final_token() {
         Some("private preparation Stop")
     );
     for (n, d, want) in [(-5, 2, -2), (-3, 2, -2), (3, 2, 2), (5, 2, 2)] {
-        assert_eq!(super::super::prepare::rne(n, d), want);
+        assert_eq!(kernel::rne::divide(n, d).unwrap(), want);
     }
 }
 

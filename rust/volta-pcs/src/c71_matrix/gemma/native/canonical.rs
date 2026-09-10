@@ -190,6 +190,60 @@ mod tests {
     use super::*;
 
     #[test]
+    fn c71_b12_native_rne_rows_cover_all_canonical_pairs_and_contexts() {
+        let plan = super::super::super::compile().unwrap();
+        let (s, o, sm) = plan.softmax_sources_at(0).unwrap();
+        let mut exponents: BTreeMap<_, _> =
+            profile::Recipes::exponent_sources(&s, &o, &sm).into_iter().map(|id| (id, 0)).collect();
+        for l in &sm.layers {
+            exponents.insert(l.pi, -14);
+        }
+        let q_input = s
+            .attention
+            .rope
+            .gate_up
+            .gelu
+            .rms
+            .norms
+            .iter()
+            .find(|n| n.operation == "q_norm")
+            .unwrap()
+            .input;
+        exponents.insert(q_input, -1); // valid common scale map requiring left-shift RNE
+        for slot in 0..3 {
+            let p = Canonical::compile(slot, &[0; 772], &exponents).unwrap();
+            assert!(p.recipes.matrix.iter().any(|pair| pair.shift < 0));
+            let mut count = 0;
+            for step in &p.steps {
+                let Producer::Rne(pair) = step else {
+                    continue;
+                };
+                let (raw, rounded) = match pair.shift {
+                    i32::MIN..=-15 => (0, 0),
+                    -14..=-1 => (1, 1 << -pair.shift),
+                    0..=46 => (1 << pair.shift, 1),
+                    47 => ((1 << 46) + 1, 1),
+                    _ => (1, 0),
+                };
+                let columns = p.bytes().scalar.layout.sources[pair.raw].cols;
+                let mut input: Vec<_> = (0..columns).map(|c| (c as i64 % 3 - 1) * raw).collect();
+                let y = p.bytes().prepare_rne_row(&p.plan, pair, &input).unwrap();
+                assert_eq!(
+                    y,
+                    (0..columns).map(|c| (c as i64 % 3 - 1) * rounded).collect::<Vec<_>>()
+                );
+                assert!(p.bytes().prepare_rne_row(&p.plan, pair, &input[..columns - 1]).is_err());
+                input[0] = 1 << 47;
+                assert!(p.bytes().prepare_rne_row(&p.plan, pair, &input).is_err());
+                let bad = Pair { output: pair.raw, ..*pair };
+                assert!(p.bytes().prepare_rne_row(&p.plan, &bad, &input).is_err());
+                count += 1;
+            }
+            assert_eq!(count, 892);
+        }
+    }
+
+    #[test]
     fn c71_b12_native_norm_rows_use_canonical_heads_and_common_integer_recipes() {
         let plan = super::super::super::compile().unwrap();
         let (s, o, sm) = plan.softmax_sources_at(0).unwrap();

@@ -629,6 +629,9 @@ pub(super) mod tests {
                     let y = q + u64::from(2 * r > z as u64 || (2 * r == z as u64 && q % 2 == 1));
                     (y <= 32767).then_some(p.signum() * y as i64)
                 };
+                if p.unsigned_abs() <= 1 << 30 && z > 0 && z <= 450i64 << 30 {
+                    assert_eq!(super::super::rne::divide(p << m, z).ok().map(i64::from), expected);
+                }
                 let y = expected.unwrap_or(0);
                 cases.push((p, z, y, expected.is_some()));
                 if y < 32767 {

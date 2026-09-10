@@ -58,12 +58,14 @@ globali; omissioni, duplicazioni e cicli sono respinti. È compilazione
 pubblica dei descrittori pinned, non ancora esecuzione numerica del grafo
 completo o verifica positiva delle prove sui 773 P0/421 RMS.
 
-Il preparatore ridotto ora riusa la [valutazione RMS intera](../../rust/volta-pcs/src/c71_matrix/rms.rs)
-con coefficienti e limiti comuni al circuito booleano. La preparazione
-per teste è collegata ai descrittori canonici; restano da collegare gli
-altri produttori numerici e lo snapshot completo. Il relativo controllo
-locale passa su tutte le 421 norme con righe sintetiche, non un'inferenza
-canonica.
+Il preparatore ridotto riusa ora le valutazioni intere
+[RMS](../../rust/volta-pcs/src/c71_matrix/rms.rs) e
+[RNE](../../rust/volta-pcs/src/c71_matrix/rne.rs) collegate ai descrittori
+canonici e alla semantica dei circuiti. Gli shift negativi e grandi ammessi
+dal verifier sono gestiti prima dell'encoding, con overflow reject.
+I controlli locali usano righe sintetiche per 421 norme e 892 coppie RNE;
+restano da collegare gli altri produttori numerici e lo snapshot completo.
+Non è ancora un'inferenza canonica.
 
 Il [corpo del verifier canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
 ora implementa la schedule completa di security §3 con ricette comuni,

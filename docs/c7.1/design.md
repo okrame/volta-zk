@@ -248,7 +248,7 @@ con tre righe AES; non comprende ancora la composizione positiva da
 797.139 righe base, né il port dei produttori numerici al grafo canonico.
 I [limiti di esecuzione](../procedures/build-and-test.md) rimangono invariati.
 
-### Shared integer RMS preparation
+### Shared integer preparation
 
 `rms::Integer` deriva gli stessi coefficienti ridotti, epsilon 10^-6,
 range simmetrici e limite aritmetico u128 usati da `rms::compile`.
@@ -265,6 +265,22 @@ numerico canonico deve ancora collocare i risultati nei rispettivi raw,
 statistiche e output, con gli alias e le righe selezionate del DAG.
 Non vengono eseguiti snapshot completi o PCS D34/D35 da questi helper.
 Il limite u128 esistente resta un rifiuto pubblico, non viene ampliato.
+
+`rne::integer` copre le stesse 64 classi del predicato: shift ≥48
+producono zero; shift ≤-15 ammettono solo raw zero; le altre classi usano
+scaling esatto e RNE signed. Verifica il range signed-48 prima di ogni
+caso, anche quando l'output sarebbe zero, ed esclude -32768 dall'output.
+`Bytes::prepare_rne_row` riusa la validazione raw/output/shape del verifier
+per le 892 coppie, senza accettare un output quantizzato dal caller.
+Il preparatore ridotto usa questo percorso al posto di `1 << shift`,
+che non copriva gli shift negativi o grandi ammessi dal profilo.
+
+La divisione intera comune `rne::divide` serve anche il Pi del preparatore
+ridotto: denominatore positivo, parità su entrambi i segni e overflow
+reject. Il confronto del resto con `d-r` evita overflow di `2*r`.
+È il solo arrotondamento, non il controllo dell'intera relazione EXP30:
+range di E, maschera causale, somma Z e scala Pi restano responsabilità
+runtime del produttore softmax e del circuito ratio già esistente.
 
 ### Canonical verifier body
 

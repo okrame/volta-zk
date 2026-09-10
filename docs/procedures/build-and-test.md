@@ -85,6 +85,12 @@ Per la preparazione RMS condivisa eseguire separatamente
 Il primo valuta righe sintetiche per le 421 norme canoniche, senza W/A
 completi; i due circuiti controllano semantica e geometria preesistenti.
 
+Per la preparazione RNE condivisa eseguire separatamente
+`c71_b12_native_rne_rows`, `c71_b12_rne_recipes`, `c71_b12_ratio_circuit`,
+`c71_b12_native_prepare` e `c71_b12_native_composed`, con gli stessi limiti.
+Il primo controlla righe sintetiche delle 892 coppie nei tre contesti;
+il secondo le 64 classi di shift contro i polinomi byte del verifier.
+
 The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate
 D31/D33 source counts and partial target/cube totals describe those fixtures,

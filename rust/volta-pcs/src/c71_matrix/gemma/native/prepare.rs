@@ -34,12 +34,6 @@ pub(super) struct Snapshot {
     pub(super) model_root: [u8; 32],
 }
 
-pub(super) fn rne(n: i128, d: i128) -> i64 {
-    let q = n.div_euclid(d);
-    let r = n.rem_euclid(d);
-    (q + i128::from(2 * r > d || (2 * r == d && q & 1 != 0))) as i64
-}
-
 impl Snapshot {
     #[cfg(test)]
     pub(super) fn corrupt_value(&mut self, p: &Profile, id: usize, row: usize, col: usize) {
@@ -141,14 +135,11 @@ impl Snapshot {
                         result.extend([(n.statistic, s), (n.output, y)]);
                     }
                     Step::Rne(pair) => {
-                        let y = (0..sources[pair.raw].cols)
-                            .map(|c| {
-                                rne(i128::from(get(&values, pair.raw, row, c)), 1i128 << pair.shift)
-                            })
-                            .collect::<Vec<_>>();
-                        if y.iter().any(|x| !(-32767..=32767).contains(x)) {
-                            return Err(stop());
-                        }
+                        let raw: Vec<_> = (0..sources[pair.raw].cols)
+                            .map(|c| get(&values, pair.raw, row, c))
+                            .collect();
+                        let y =
+                            p.bytes().prepare_rne_row(&p.plan, pair, &raw).map_err(|_| stop())?;
                         result.push((pair.output, y));
                     }
                     Step::Affine(i) => {
@@ -249,12 +240,13 @@ impl Snapshot {
                             .enumerate()
                             .map(|(j, &e)| {
                                 if j < live {
-                                    rne(16384 * i128::from(e), i128::from(z))
+                                    kernel::rne::divide(16384 * e, z).map(i64::from)
                                 } else {
-                                    0
+                                    Ok(0)
                                 }
                             })
-                            .collect();
+                            .collect::<Result<Vec<_>, _>>()
+                            .map_err(|_| stop())?;
                         result.extend([
                             (s.maximum, vec![maximum]),
                             (s.difference, differences.into_iter().map(|d| d - 32767).collect()),

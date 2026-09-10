@@ -8092,6 +8092,7 @@ def b12_complete_fixed_run_composition(base):
             'old_tokens': [0, 150, 300], 'global_pre_norm_KV_aliases': 10,
             'canonical_prepare_executed': False, 'canonical_proof_dispatch_executed': False,
             'canonical_norm_row_descriptors_checked': 421,
+            'canonical_rne_row_pairs_checked': 892,
             'canonical_verifier_body_implemented': True,
             'canonical_verifier_prefix_checked': True,
             'canonical_registry_pool_wrapper_implemented': True,

@@ -27,6 +27,20 @@ pub(in crate::c71_matrix) struct Opening<T> {
 }
 
 impl Bytes {
+    /// A private logical row of the same raw/output pair used by the verifier.
+    pub fn prepare_rne_row(
+        &self,
+        plan: &Plan,
+        pair: &Pair,
+        raw: &[i64],
+    ) -> Result<Vec<i64>, String> {
+        let shape = self.quantized_shapes(plan, std::slice::from_ref(pair))?[0].1;
+        if raw.len() != shape[1] {
+            return Err("RNE private row cardinality differs".into());
+        }
+        raw.iter().map(|&x| rne::integer(x, pair.shift).map(i64::from)).collect()
+    }
+
     fn quantized_shapes(
         &self,
         plan: &Plan,

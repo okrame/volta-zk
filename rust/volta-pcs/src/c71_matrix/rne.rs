@@ -5,6 +5,38 @@ use super::*;
 
 component_wire!(Proof { rounds, terminal, tag, products, functions });
 
+/// Private signed RNE with the verifier's symmetric-i16 output alphabet.
+pub(super) fn divide(numerator: i64, denominator: i64) -> Result<i16, String> {
+    if denominator <= 0 {
+        return Err("RNE denominator must be positive".into());
+    }
+    let (q, r) = (numerator.div_euclid(denominator), numerator.rem_euclid(denominator));
+    // Compare r with d-r rather than overflowing 2*r at the i64 boundary.
+    let y = q + i64::from(r > denominator - r || (r == denominator - r && q & 1 != 0));
+    if !(-32767..=32767).contains(&y) {
+        return Err("RNE private output overflow".into());
+    }
+    Ok(y as i16)
+}
+
+/// Evaluate the same 64 shift classes as Recipe, before any byte encoding.
+pub(super) fn integer(raw: i64, shift: i32) -> Result<i16, String> {
+    if !(-(1i64 << 47)..1i64 << 47).contains(&raw) {
+        return Err("RNE private raw outside signed-48".into());
+    }
+    if shift >= 48 {
+        return Ok(0);
+    }
+    if shift <= -15 {
+        return if raw == 0 { Ok(0) } else { Err("RNE private output overflow".into()) };
+    }
+    if shift <= 0 {
+        divide(raw << -shift, 1)
+    } else {
+        divide(raw, 1i64 << shift)
+    }
+}
+
 struct Function {
     lane: usize,
     table: [Fp3; 256],
@@ -487,6 +519,32 @@ mod tests {
 
     #[test]
     fn c71_b12_rne_recipes_cover_all_64_shift_classes_and_degree_seven() {
+        for shift in [i32::MIN, -1000, -15, 48, 1000, i32::MAX] {
+            for raw in [-(1 << 47), -1, 0, 1, (1 << 47) - 1] {
+                assert_eq!(integer(raw, shift).ok().map(i64::from), reference(raw, shift));
+            }
+            for bad in [i64::MIN, -(1 << 47) - 1, 1 << 47, i64::MAX] {
+                assert!(integer(bad, shift).is_err());
+            }
+        }
+        for (n, d, expected) in [
+            (i64::MAX, i64::MAX, Some(1)),
+            (i64::MIN, i64::MAX, Some(-1)),
+            (i64::MAX / 2, i64::MAX, Some(0)),
+            (i64::MAX / 2 + 1, i64::MAX, Some(1)),
+            (3, 2, Some(2)),
+            (-3, 2, Some(-2)),
+            (5, 2, Some(2)),
+            (-5, 2, Some(-2)),
+            (65535, 2, None),
+            (-65535, 2, None),
+            (i64::MAX, 1, None),
+            (i64::MIN, 1, None),
+            (0, 0, None),
+            (1, -1, None),
+        ] {
+            assert_eq!(divide(n, d).ok(), expected);
+        }
         let mut maximum = (0, 0);
         for shift in -15..=48 {
             let recipe = Recipe::new(shift);
@@ -529,6 +587,7 @@ mod tests {
                     recipe.functions.iter().map(|f| f.table[b[f.lane] as usize]).collect();
                 let [y, valid] = recipe.evaluate(&values);
                 let expected = reference(value, shift);
+                assert_eq!(integer(value, shift).ok().map(i64::from), expected);
                 assert_eq!(
                     valid,
                     if expected.is_some() { Fp3::ONE } else { Fp3::ZERO },

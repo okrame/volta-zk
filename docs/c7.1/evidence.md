@@ -182,6 +182,31 @@ un worker Rayon e build offline/locked a un job nel target canonico.
 Passa anche `cargo check --lib` senza `cfg(test)`; verificati formattazione,
 link locali e diff. Nessun bootstrap, benchmark o esecuzione GPU.
 
+## Integer RNE preparation on canonical descriptors
+
+`Bytes::prepare_rne_row` riusa i controlli di identità/codec/shape del
+verifier e chiama `rne::integer` prima dell'encoding. Il preparatore
+ridotto usa questo percorso per tutte le proprie RNE; Pi usa la divisione
+intera controllata, senza conversioni troncanti da i128 a i64.
+
+`c71_b12_native_rne_rows` copre le 892 coppie nei contesti O=0/150/300,
+con una mappa comune di scale che richiede anche uno shift negativo.
+Controlla righe signed sintetiche, cardinalità, raw oltre signed-48 e
+output con codec sbagliato. `c71_b12_rne_recipes` confronta la nuova
+valutazione con il riferimento e i polinomi byte nelle 64 classi, ai tie
+e alle soglie di overflow; include shift i32 estremi e denominatori/valori
+ai confini i64. Il test ratio confronta anche la divisione del preparatore
+con il riferimento e il circuito, nel range ammesso degli operandi.
+Non sono istanziati W/A completi o prove canoniche positive.
+
+Validazione mirata: **5 test Rust passati** (`native_rne_rows`,
+`rne_recipes`, `ratio_circuit`, `native_prepare`, `native_composed` con
+prefisso `c71_b12_`) e **2 controlli Python passati**
+(`complete_fixed_run`/`native_small_profile`). Build offline/locked a un
+job nel target canonico; test seriali entro 60 s/2 GiB con un worker Rayon.
+Passa anche `cargo check --lib` senza `cfg(test)`; verificati formato,
+link locali e diff. Nessun bootstrap, GPU o credito canonico positivo.
+
 ## Canonical verifier body and prefix
 
 Il [nuovo corpo](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)

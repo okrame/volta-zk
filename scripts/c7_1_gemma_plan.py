@@ -7298,6 +7298,53 @@ def b12_RMS_composition(direct):
     }
 
 
+def b12_attention_product_profile(old=0, prompt=100, tokens=150):
+    """Actual B12 all-cubic QK / PV kernel counts, including raw probes/masks.
+
+    T1's narrower degree schedule is not the native public-weight P0 kernel.
+    The returned original Q/K/Pi/V endpoints still need canonical producers,
+    accepted KV history, integer closures and source PCS.
+    """
+    natural(tokens, 'attention new tokens', 1, 150)
+    natural(prompt, 'attention prompt', 1, tokens)
+    natural(old, 'attention accepted prefix', 0, 4096-tokens)
+    t, k = (tokens-1).bit_length(), (old+tokens-1).bit_length()
+    qk, pv = [], []
+    for layer in range(60):
+        g, e, a = (2,3,9) if layer % 6 == 5 else (4,1,8)
+        n, out = t+k+g+a, g+e+t+k
+        qk.append((4*n+5, 24*(5*n+7), out+n+1, n+3, out+3*n))
+        n, link, out = g+k, t+k, t+g+e+a
+        pv.append((4*n+3*link+6, 24*(5*n+4*link+9), out+n+link+1,
+                   n+link+4, out+3*n+2*link))
+    names = ['Fp3_correlations_before_source_range_and_PCS',
+             'field_payload_bytes_before_context_and_framing', 'FS_draw_requests',
+             'MAC_degree_sum_before_shared_PCS', 'sum_of_all_FS_error_degrees_before_shared_PCS']
+    total = lambda rows: dict(zip(names, map(sum, zip(*rows))))
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/attention.rs',
+        'old_tokens': old, 'prompt_tokens': prompt, 'new_tokens': tokens,
+        'query_bits': t, 'key_bits': k,
+        'QK': total(qk), 'PV_with_original_probability_link': total(pv),
+        'both_products': total(qk+pv), 'original_source_targets': 360,
+        'fresh_product_masks_per_complete_request': 120,
+        'native_QK_all_axis_bits_cap': 15,
+        'native_QK_range_and_PCS_check_Fp3_rows': 571,
+        'native_PV_range_and_PCS_check_Fp3_rows': 572,
+        'raw_QK_integer_difference_bound_given_i48_and_symmetric_i16': (1 << 47)+512*32767**2,
+        'raw_PV_integer_difference_bound_given_i48_and_symmetric_i16': (1 << 47)+(old+tokens)*32767**2,
+        'raw_scores_cover_eager_prefill_rectangle_before_causal_mask': True,
+        'GQA_uses_group_times_repeat_plus_repeat_index': True,
+        'original_contracted_M_discharged_by_Pi_link': True,
+        'Pi_and_V_key_points_may_differ': True,
+        'canonical_full_Gemma_source_routes_compiled': False,
+        'ordinary_accepted_KV_history_proven': False,
+        'softmax_mask_and_RNE_included': False,
+        'included_in_RoPE_security_subtotal': False,
+        'full_Gemma_security_totals': None, 'complete_security_or_physical_credit': False,
+    }
+
+
 def b12_rope_joint_profile(cells):
     """Joint public adjoint over aligned dyadic RoPE blocks; no source closures.
 
@@ -7989,6 +8036,7 @@ def b12_pcs_binding_assessment():
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         'public_RoPE_joint_component': b12_rope_joint_profile(119808000),
+        'raw_attention_QK_PV_component': b12_attention_product_profile(),
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",

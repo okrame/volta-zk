@@ -234,10 +234,20 @@ The conditional subtotal now includes these producers and retains
 three attempts**. Q30 tables and consistent public shifts are premises;
 numerical profile preparation/calibration and full native execution remain open.
 
-Thirty-seven B12 algebra/accounting checks include the scalar invariant,
+The [raw QK/PV kernels](../rust/volta-pcs/src/c71_matrix/attention.rs)
+now use the exact eager rectangles and quotient GQA mapping. PV discharges
+its original contracted M through an explicit link to the original Pi;
+Pi and V may have different key points. Their 571/572-row ideal checks
+close one ranged A PCS and reject changed operands with consistent raw
+outputs, wrong GQA/padding and a detached M. The arithmetic is 13,020 Fp3
+for 60 QK/PV pairs at O=0/T=150, before integer/source/KV closures.
+This component is not yet in the RoPE security subtotal. Ordinary accepted
+KV continuation remains required despite deferred recovery/restart composition.
+
+Thirty-eight B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 218; the 17
-narrow bootstrap/pool checks and thirty-five B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 219; the 17
+narrow bootstrap/pool checks and thirty-seven B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

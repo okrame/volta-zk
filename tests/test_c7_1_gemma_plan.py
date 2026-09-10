@@ -570,6 +570,40 @@ def test_B12_gate_up_rebases_all_joint_D34_privacy_resources_and_three_attempt_r
     assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
 
 
+def test_B12_attention_actual_cubic_kernel_counts_include_original_probability_link():
+    b = plan.b12_attention_product_profile()
+    assert b['query_bits'] == b['key_bits'] == 8
+    qk, pv = b['QK'], b['PV_with_original_probability_link']
+    assert qk['Fp3_correlations_before_source_range_and_PCS'] == 6980
+    assert pv['Fp3_correlations_before_source_range_and_PCS'] == 6040
+    assert qk['field_payload_bytes_before_context_and_framing'] == 210480
+    assert pv['field_payload_bytes_before_context_and_framing'] == 189120
+    assert qk['FS_draw_requests'] == pv['FS_draw_requests'] == 2990
+    assert qk['MAC_degree_sum_before_shared_PCS'] == 1850
+    assert pv['MAC_degree_sum_before_shared_PCS'] == 1900
+    assert qk['sum_of_all_FS_error_degrees_before_shared_PCS'] == 6270
+    assert pv['sum_of_all_FS_error_degrees_before_shared_PCS'] == 5290
+    for key in qk:
+        assert b['both_products'][key] == qk[key]+pv[key]
+    full = plan.b12_attention_product_profile(old=3946)
+    assert full['key_bits'] == 12
+    assert full['both_products']['Fp3_correlations_before_source_range_and_PCS'] == 15660
+    assert full['both_products']['sum_of_all_FS_error_degrees_before_shared_PCS'] == 13720
+    assert b['native_QK_range_and_PCS_check_Fp3_rows'] == 29+510+32
+    assert b['native_PV_range_and_PCS_check_Fp3_rows'] == 30+510+32
+    assert b['raw_QK_integer_difference_bound_given_i48_and_symmetric_i16'] < plan.P
+    assert full['raw_PV_integer_difference_bound_given_i48_and_symmetric_i16'] < plan.P
+    assert b['fresh_product_masks_per_complete_request'] == 120
+    assert b['original_contracted_M_discharged_by_Pi_link'] and b['Pi_and_V_key_points_may_differ']
+    assert b['raw_scores_cover_eager_prefill_rectangle_before_causal_mask']
+    assert b['GQA_uses_group_times_repeat_plus_repeat_index']
+    assert not b['canonical_full_Gemma_source_routes_compiled']
+    assert not b['ordinary_accepted_KV_history_proven'] and not b['softmax_mask_and_RNE_included']
+    assert not b['included_in_RoPE_security_subtotal'] and b['full_Gemma_security_totals'] is None
+    for args in [dict(old=3947), dict(prompt=151), dict(tokens=0), dict(tokens=151)]:
+        with pytest.raises(ValueError): plan.b12_attention_product_profile(**args)
+
+
 def test_B12_RoPE_joint_adjoint_counts_original_endpoints_and_fixed_public_recipe():
     cohorts = plan.gemma_weight_cohorts(plan.pinned_private_tensors())
     old = plan.gemma_rope_plan(cohorts)['summary']

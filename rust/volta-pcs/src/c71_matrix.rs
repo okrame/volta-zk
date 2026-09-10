@@ -27,6 +27,9 @@ mod lookup;
 #[allow(dead_code)] // Joint Q30 RoPE; original raw/Y source closures remain explicit.
 mod rope;
 #[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // Raw attention component; source, integer and KV-history closures stay explicit.
+mod attention;
+#[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // P0 caller; input/output openings remain explicit.
 mod p0;
 #[cfg(feature = "c71-b12-pcs")]

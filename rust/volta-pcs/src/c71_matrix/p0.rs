@@ -35,9 +35,9 @@ fn bind(bits: usize, column_point: Option<&[Fp3]>, fs: &mut Fs) -> Result<(), St
 // and its correction must already be recorded, under the caller's cohort ID.
 #[allow(clippy::type_complexity)]
 pub(super) fn prove(
-    mut x: Vec<Fp3>,
-    mut w: Vec<Fp3>,
-    mut target: Auth,
+    x: Vec<Fp3>,
+    w: Vec<Fp3>,
+    target: Auth,
     column_point: Option<&[Fp3]>,
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
@@ -47,12 +47,52 @@ pub(super) fn prove(
     }
     let bits = x.len().ilog2() as usize;
     bind(bits, column_point, fs)?;
-    let count = required(bits, column_point.is_some());
+    prove_inner(x, w, target, column_point.map(eq), fs, correlations)
+}
+
+// Public-weight mode: the caller fixes the expected MLE (e.g. the exact
+// attention rectangle) in its context before this sumcheck. It evaluates
+// the SAME public MLE at the verifier endpoint; no private F is accepted.
+fn bind_public(bits: usize, fs: &mut Fs) -> Result<(), String> {
+    if bits > 15 {
+        return Err("B12 P0 public-weight dimension exceeds D15".into());
+    }
+    let mut bytes = b"C71-P0-public-weight-B12-v1;caller-fixed-MLE;original-left-right\0".to_vec();
+    bytes.extend((bits as u32).to_le_bytes());
+    fs.set_phase(0x730);
+    fs.record(0x55, &bytes);
+    Ok(())
+}
+
+pub(super) fn prove_public(
+    x: Vec<Fp3>,
+    w: Vec<Fp3>,
+    target: Auth,
+    public: Vec<Fp3>,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Vec<Fp3>, [Auth; 3]), String> {
+    if x.len() != w.len() || x.len() != public.len() || !x.len().is_power_of_two() {
+        return Err("B12 P0 public-weight source lengths differ".into());
+    }
+    bind_public(x.len().ilog2() as usize, fs)?;
+    prove_inner(x, w, target, Some(public), fs, correlations)
+}
+
+fn prove_inner(
+    mut x: Vec<Fp3>,
+    mut w: Vec<Fp3>,
+    mut target: Auth,
+    mut equality: Option<Vec<Fp3>>,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Vec<Fp3>, [Auth; 3]), String> {
+    let bits = x.len().ilog2() as usize;
+    let count = required(bits, equality.is_some());
     if correlations.len() < count {
         return Err("B12 P0 prover capacity exhausted".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let mut equality = column_point.map(eq);
     let (mut point, mut rounds) = (Vec::new(), Vec::new());
     for round in 0..bits {
         let half = x.len() / 2;
@@ -106,7 +146,7 @@ pub(super) fn prove(
 // original source openings. Returning success here does not discharge them.
 pub(super) fn verify(
     bits: usize,
-    mut target: Key,
+    target: Key,
     column_point: Option<&[Fp3]>,
     proof: &Proof,
     delta: Fp3,
@@ -114,8 +154,50 @@ pub(super) fn verify(
     correlations: &mut std::vec::IntoIter<Key>,
 ) -> Result<(Vec<Fp3>, [Key; 3]), String> {
     bind(bits, column_point, fs)?;
-    let degree = if column_point.is_some() { 3 } else { 2 };
-    let count = required(bits, column_point.is_some());
+    verify_inner(
+        bits,
+        column_point.is_some(),
+        target,
+        proof,
+        delta,
+        |u| {
+            column_point.map_or(Fp3::ONE, |p| {
+                p.iter()
+                    .zip(u)
+                    .fold(Fp3::ONE, |v, (&p, &r)| v * ((Fp3::ONE - p) * (Fp3::ONE - r) + p * r))
+            })
+        },
+        fs,
+        correlations,
+    )
+}
+
+pub(super) fn verify_public(
+    bits: usize,
+    target: Key,
+    proof: &Proof,
+    delta: Fp3,
+    public_at: impl Fn(&[Fp3]) -> Fp3,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Key>,
+) -> Result<(Vec<Fp3>, [Key; 3]), String> {
+    bind_public(bits, fs)?;
+    verify_inner(bits, true, target, proof, delta, public_at, fs, correlations)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_inner(
+    bits: usize,
+    weighted: bool,
+    mut target: Key,
+    proof: &Proof,
+    delta: Fp3,
+    public_at: impl Fn(&[Fp3]) -> Fp3,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Key>,
+) -> Result<(Vec<Fp3>, [Key; 3]), String> {
+    let degree = if weighted { 3 } else { 2 };
+    let count = required(bits, weighted);
     if proof.rounds.len() != bits
         || proof.rounds.iter().any(|r| r.len() != degree + 2)
         || correlations.len() < count
@@ -123,7 +205,7 @@ pub(super) fn verify(
         return Err("B12 P0 proof shape or capacity mismatch".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let (mut point, mut equality) = (Vec::new(), Fp3::ONE);
+    let mut point = Vec::new();
     for (round, wire) in proof.rounds.iter().enumerate() {
         let keys: Vec<_> =
             wire[..degree + 1].iter().map(|&c| correct([c], delta, &mut rows)[0]).collect();
@@ -134,14 +216,11 @@ pub(super) fn verify(
         record_values(fs, 0x51, wire);
         let r = fs.fp3();
         target = keys.iter().rev().fold(Key::ZERO, |s, &k| s.scale(r).add(k));
-        if let Some(p) = column_point {
-            equality = equality * ((Fp3::ONE - p[round]) * (Fp3::ONE - r) + p[round] * r);
-        }
         point.push(r);
     }
     let original =
         correct([proof.terminal[0], proof.terminal[1], proof.terminal[2]], delta, &mut rows);
-    if equality * original[2].k - target.k != proof.terminal[3] {
+    if public_at(&point) * original[2].k - target.k != proof.terminal[3] {
         return Err("B12 P0 terminal MAC rejected".into());
     }
     fs.set_phase(0x720);

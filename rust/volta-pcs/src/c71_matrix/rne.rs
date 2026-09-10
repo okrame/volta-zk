@@ -170,8 +170,8 @@ pub(super) fn required(cell_bits: usize, shift: i32) -> usize {
 }
 
 fn bind(s: &Statement<'_>, fs: &mut Fs) -> Result<(Vec<Fp3>, Fp3), String> {
-    if s.output_point.len() > 7
-        || s.shape.iter().any(|&n| n == 0 || n > 128)
+    if s.output_point.len() > 31
+        || s.shape.iter().any(|&n| n == 0 || n > 1 << 18)
         || s.shape.iter().map(|&n| n.next_power_of_two().ilog2() as usize).sum::<usize>()
             != s.output_point.len()
         || s.root.num_roots() != 1

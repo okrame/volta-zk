@@ -232,7 +232,7 @@ mod tests {
         let (forms, _, targets) = bytes.table_rne_forms(&plan, &pairs, &pending).unwrap();
         assert_eq!(forms.iter().map(Vec::len).sum::<usize>(), 6516);
         assert_eq!(targets, (0..362).collect::<Vec<_>>());
-        assert!(bytes.table_rne_required(&plan, &pairs).is_err()); // full domain is not native D7
+        assert!(bytes.table_rne_required(&plan, &pairs).is_ok()); // public preflight only
         assert_eq!(4189 + 1 + 362, 4552);
         assert_eq!(65067 + 7956 + 6516, 79539);
         assert!(4552 <= super::super::super::linear::MAX_TARGETS);

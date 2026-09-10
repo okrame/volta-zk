@@ -5,6 +5,15 @@ use super::*;
 use bytes::{affine::Relation, quantize::Pair};
 use std::collections::BTreeSet;
 
+// The verifier's expected public tables. Cost/shape validation does not
+// certify their numerical contents; they are never read from a proof.
+pub(in crate::c71_matrix) struct Tables<'a> {
+    pub gelu: &'a [crate::c71_matrix::lookup::Table<'a>],
+    pub exp30: &'a [crate::c71_matrix::lookup::Table<'a>],
+    pub softcap: &'a crate::c71_matrix::lookup::Table<'a>,
+    pub rope: &'a [crate::c71_matrix::rope::Table<'a>],
+}
+
 pub(in crate::c71_matrix) struct Recipes {
     pub digest: [u8; 32],
     pub matrix: Vec<Pair>,
@@ -21,6 +30,72 @@ pub(in crate::c71_matrix) struct Recipes {
 }
 
 impl Recipes {
+    /// Complete canonical row reservation, before any live FS or witness IO.
+    /// Every operator's actual verifier/prover still must run before acceptance.
+    pub fn required(
+        &self,
+        plan: &Plan,
+        s: &residual::Sources,
+        output: &output::Output,
+        softmax: &softmax::Softmax,
+        context: &caller::P0Statement<'_>,
+        tables: &Tables<'_>,
+    ) -> Result<usize, String> {
+        use crate::c71_matrix::{range, Domain};
+        let rms = &s.attention.rope.gate_up.gelu.rms;
+        let bytes = &rms.bytes;
+        let slot = usize::from(context.attempt.slot);
+        if plan.sources.len() != 772
+            || plan.cohorts.len() != 773
+            || bits(plan.live) != 35
+            || bits(bytes.live) != 34
+            || slot > 2
+            || context.tokens.len() != 150
+            || s.attention.rope.old != 150 * slot
+        {
+            return Err("complete Gemma reservation requires the canonical fixed run".into());
+        }
+        let fresh = self.table_pairs(plan)?;
+        let fresh_raws: BTreeSet<_> = fresh.iter().map(|p| p.raw).collect();
+        if fresh.len() != 482 || fresh_raws.len() != 482 {
+            return Err("complete Gemma table-probe partition differs".into());
+        }
+        let mut count = bytes.table_rne_required(plan, &fresh)?;
+        let mut originals = 0;
+        for p in [&self.matrix, &self.gate_up, &self.rope, &self.score, &self.pv, &self.residual]
+            .into_iter()
+            .flatten()
+            .filter(|p| !fresh_raws.contains(&p.raw))
+        {
+            // Validate the same raw/output shape, then remove the probe row:
+            // these 410 predicates MUST consume the caller's original MACs.
+            count += bytes.table_rne_required(plan, std::slice::from_ref(p))? - 1;
+            originals += 1;
+        }
+        if originals != 410 {
+            return Err("complete Gemma original-RNE partition differs".into());
+        }
+        count += plan.p0_required() + rms.rms_required(context, &self.rms)?;
+        count += s.attention.rope.gate_up.gelu.lookup_required(context, tables.gelu)?;
+        count += s.attention.rope.gate_up.required(context)?;
+        count += s.attention.rope.required(context, tables.rope)?;
+        for layer in 0..60 {
+            let (qk, pv) = s.attention.required(context, layer)?;
+            count += qk + pv;
+        }
+        count += output.lookup_required(bytes, context, tables.softcap)?;
+        count += softmax.required(bytes, context, tables.exp30)?;
+        // One ranged W and current A; old A ranges are inherited ONLY from
+        // fully accepted history. Each old A adds one fresh KV aggregate/PCS.
+        let w = Domain::Flat(35).config()?.num_variables;
+        let a = Domain::Flat(34).config()?.num_variables;
+        count += range::required(w, 32767) + range::required(a, range::Alphabet::Byte);
+        count += (3 * w + 2) + (slot + 1) * (3 * a + 2) + slot;
+        // Affine, argmax, causal-mask and D/Z identities use public zero/bias
+        // targets already closed by that same current-A PCS, without new rows.
+        Ok(count)
+    }
+
     /// Fresh whole-table probes only for outputs with no original incoming
     /// MAC. The other 410 RNE reductions MUST reuse those original claims.
     pub fn table_pairs(&self, plan: &Plan) -> Result<Vec<Pair>, String> {
@@ -334,6 +409,21 @@ mod tests {
                 outputs: lookup::Outputs::I32(&exponential),
             })
             .collect();
+        // Shape-only placeholders for the other public tables. Their bodies
+        // are NOT certified and this cost check grants no proof acceptance.
+        let zero_i16 = vec![0; 65535];
+        let gelu_tables: Vec<_> = (0..60)
+            .map(|profile| lookup::Table {
+                profile,
+                lower: -32767,
+                outputs: lookup::Outputs::I16(&zero_i16),
+            })
+            .collect();
+        let softcap_table =
+            lookup::Table { profile: 0, lower: -32767, outputs: lookup::Outputs::I16(&zero_i16) };
+        let local_rope = vec![vec![[1 << 30, 0]; 128]; 150];
+        let global_rope = vec![vec![[1 << 30, 0]; 64]; 150];
+        let mut full_run_rows = 0;
         for (slot, old) in [0, 150, 300].into_iter().enumerate() {
             let (s, o, sm) = plan.softmax_sources_at(old).unwrap();
             let mut exponents: BTreeMap<_, _> =
@@ -369,6 +459,19 @@ mod tests {
             assert!(rms_count <= 1 + statistic_count + joint_upper);
             assert!(exp_count <= [20_710, 21_348, 21_348][slot]);
             eprintln!("O={old}: RMS={rms_count}, EXP30={exp_count} Fp3; public preflight only");
+            let rotations = [
+                crate::c71_matrix::rope::Table { position: old, rows: &local_rope },
+                crate::c71_matrix::rope::Table { position: old, rows: &global_rope },
+            ];
+            let public_tables = Tables {
+                gelu: &gelu_tables,
+                exp30: &tables,
+                softcap: &softcap_table,
+                rope: &rotations,
+            };
+            let full = recipes.required(&plan, &s, &o, &sm, &context, &public_tables).unwrap();
+            eprintln!("O={old}: complete reservation={full} Fp3; no proof execution");
+            full_run_rows += 3 * full;
             let mut fs = Fs::new(b"canonical public preflight, no witness or coins", 0);
             let digest = fs.digest();
             let mut rows = Vec::<Auth>::new().into_iter();
@@ -401,6 +504,8 @@ mod tests {
             assert_eq!(fs.requests(), 0);
             assert_eq!(rows.len(), 0);
         }
+        assert!(full_run_rows <= 11_466_948);
+        eprintln!("complete three-attempt reservation: {full_run_rows} base rows");
     }
 
     #[test]

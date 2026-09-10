@@ -227,12 +227,11 @@ impl Sources {
             .collect())
     }
 
-    pub fn statement<'a>(
+    fn prepare<'a>(
         &'a self,
         s: &'a P0Statement<'_>,
         tables: &'a [kernel::Table<'a>],
-        fs: &mut Fs,
-    ) -> Result<kernel::Statement<'a>, String> {
+    ) -> Result<(kernel::Statement<'a>, Vec<u8>), String> {
         if tables.len() != 2
             || tables.iter().enumerate().any(|(f, t)| {
                 t.position != self.old
@@ -263,16 +262,37 @@ impl Sources {
         bytes.extend(s.quantization);
         bytes.extend(s.attempt.encode());
         bytes.extend(self.view);
+        Ok((
+            kernel::Statement {
+                root: s.auxiliary,
+                profile: s.auxiliary_gamma,
+                view: self.view,
+                attempt: s.attempt,
+                blocks: &self.blocks,
+                tables,
+            },
+            bytes,
+        ))
+    }
+
+    pub fn required(
+        &self,
+        s: &P0Statement<'_>,
+        tables: &[kernel::Table<'_>],
+    ) -> Result<usize, String> {
+        self.prepare(s, tables)?.0.required()
+    }
+
+    pub fn statement<'a>(
+        &'a self,
+        s: &'a P0Statement<'_>,
+        tables: &'a [kernel::Table<'a>],
+        fs: &mut Fs,
+    ) -> Result<kernel::Statement<'a>, String> {
+        let (statement, frame) = self.prepare(s, tables)?;
         fs.set_phase(0x1120);
-        fs.record(0xe3, &bytes);
-        Ok(kernel::Statement {
-            root: s.auxiliary,
-            profile: s.auxiliary_gamma,
-            view: self.view,
-            attempt: s.attempt,
-            blocks: &self.blocks,
-            tables,
-        })
+        fs.record(0xe3, &frame);
+        Ok(statement)
     }
 }
 
@@ -360,7 +380,7 @@ mod tests {
         assert_eq!(forms.iter().step_by(2).map(Vec::len).sum::<usize>(), 480);
         assert_eq!(forms.iter().skip(1).step_by(2).map(Vec::len).sum::<usize>(), 960);
         assert_eq!(originals, (0..240).collect::<Vec<_>>());
-        assert!(bytes.table_rne_required(&plan, &pairs).is_err());
+        assert!(bytes.table_rne_required(&plan, &pairs).is_ok()); // public preflight only
         assert!(source.rne_pairs(&[]).is_err());
         let root = C61Commitment::new(vec![[1; 32]]);
         let profile = [2; 32];
@@ -391,7 +411,7 @@ mod tests {
         ];
         let mut fs = Fs::new(b"canonical RoPE metadata, no full-domain execution", 10000);
         let statement = source.statement(&context, &tables, &mut fs).unwrap();
-        assert!(statement.required().is_err()); // D27 is not native D15
+        assert_eq!(statement.required().unwrap(), 3 * 27 + 2); // public preflight only
         assert_eq!(fs.requests(), 0);
         assert!(source.statement(&context, &tables[..1], &mut fs).is_err());
         assert!(source

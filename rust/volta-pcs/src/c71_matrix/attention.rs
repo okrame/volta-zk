@@ -69,8 +69,8 @@ impl Statement<'_> {
         }
         let b = [self.tokens, self.old + self.tokens, self.groups, self.repeats, self.lanes]
             .map(|n| n.next_power_of_two().ilog2() as usize);
-        if b[0] + b[1] + b[2] + b[4] > 15 {
-            return Err("attention QK exceeds native D15".into());
+        if b[0] + b[1] + b[2] + b[4] > 31 {
+            return Err("attention QK exceeds D31".into());
         }
         Ok(b)
     }

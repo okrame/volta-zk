@@ -130,12 +130,11 @@ impl Sources {
         Ok(self)
     }
 
-    fn bind_lookup_context(
+    fn lookup_context(
         &self,
         s: &P0Statement<'_>,
         tables: &[lookup::Table<'_>],
-        fs: &mut Fs,
-    ) -> Result<(), String> {
+    ) -> Result<Vec<u8>, String> {
         if tables.len() != self.gelu.len()
             || tables.iter().zip(&self.gelu).any(|(t, g)| {
                 t.profile != g.layer
@@ -166,9 +165,36 @@ impl Sources {
         bytes.extend(s.quantization);
         bytes.extend(s.attempt.encode());
         bytes.extend(self.view);
+        Ok(bytes)
+    }
+
+    fn bind_lookup_context(
+        &self,
+        s: &P0Statement<'_>,
+        tables: &[lookup::Table<'_>],
+        fs: &mut Fs,
+    ) -> Result<(), String> {
+        let frame = self.lookup_context(s, tables)?;
         fs.set_phase(0xf00);
-        fs.record(0xd0, &bytes);
+        fs.record(0xd0, &frame);
         Ok(())
+    }
+
+    pub fn lookup_required(
+        &self,
+        s: &P0Statement<'_>,
+        tables: &[lookup::Table<'_>],
+    ) -> Result<usize, String> {
+        self.lookup_context(s, tables)?;
+        lookup::Statement {
+            root: s.auxiliary,
+            profile: s.auxiliary_gamma,
+            view: self.view,
+            attempt: s.attempt,
+            blocks: &self.blocks(),
+            tables,
+        }
+        .required()
     }
 
     pub fn prove_lookup(
@@ -595,7 +621,7 @@ mod tests {
         assert_eq!(forms.iter().step_by(2).map(Vec::len).sum::<usize>(), 720);
         assert_eq!(forms.iter().skip(1).step_by(2).map(Vec::len).sum::<usize>(), 1440);
         assert_eq!(originals, (0..120).collect::<Vec<_>>());
-        assert!(source.rms.bytes.table_rne_required(&plan, &pairs).is_err()); // D23 remains analytic
+        assert!(source.rms.bytes.table_rne_required(&plan, &pairs).is_ok()); // public preflight only
         for g in &source.gelu {
             assert_eq!(plan.cohorts[g.raw_gate].operation, "gate_proj");
             assert_eq!(plan.cohorts[g.raw_gate].layer, Some(u64::from(g.layer)));

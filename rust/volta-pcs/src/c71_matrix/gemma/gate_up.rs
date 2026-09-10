@@ -204,11 +204,7 @@ impl Sources {
         Ok((forms, shifts))
     }
 
-    pub fn statement<'a>(
-        &self,
-        s: &'a P0Statement<'_>,
-        fs: &mut Fs,
-    ) -> Result<Statement<'a>, String> {
+    fn prepare<'a>(&self, s: &'a P0Statement<'_>) -> Result<(Statement<'a>, Vec<u8>), String> {
         if s.weights.num_roots() != 1
             || s.auxiliary.num_roots() != 1
             || s.weight_gamma.is_empty()
@@ -231,15 +227,31 @@ impl Sources {
         bytes.extend(s.quantization);
         bytes.extend(s.attempt.encode());
         bytes.extend(self.view);
+        Ok((
+            Statement {
+                root: s.auxiliary,
+                profile: s.auxiliary_gamma,
+                view: self.view,
+                attempt: s.attempt,
+                cells: self.cells,
+            },
+            bytes,
+        ))
+    }
+
+    pub fn required(&self, s: &P0Statement<'_>) -> Result<usize, String> {
+        self.prepare(s)?.0.required()
+    }
+
+    pub fn statement<'a>(
+        &'a self,
+        s: &'a P0Statement<'_>,
+        fs: &mut Fs,
+    ) -> Result<Statement<'a>, String> {
+        let (statement, frame) = self.prepare(s)?;
         fs.set_phase(0x1000);
-        fs.record(0xd1, &bytes);
-        Ok(Statement {
-            root: s.auxiliary,
-            profile: s.auxiliary_gamma,
-            view: self.view,
-            attempt: s.attempt,
-            cells: self.cells,
-        })
+        fs.record(0xd1, &frame);
+        Ok(statement)
     }
 }
 
@@ -266,13 +278,13 @@ pub(in crate::c71_matrix) struct Pending<T> {
 impl Statement<'_> {
     pub fn required(&self) -> Result<usize, String> {
         if self.cells == 0
-            || self.cells > 1 << 15
+            || self.cells > 1 << 29
             || self.root.num_roots() != 1
             || self.profile.is_empty()
             || self.view == [0; 32]
             || !self.attempt.valid()
         {
-            return Err("gate-up product exceeds native D15 or fixed context differs".into());
+            return Err("gate-up product exceeds D29 or fixed context differs".into());
         }
         Ok(2 + p0::required(bits(self.cells), true))
     }
@@ -860,7 +872,8 @@ mod tests {
             source.gelu.rms.bytes.table_rne_forms(&plan, &pairs, &openings).unwrap();
         assert_eq!(forms.iter().map(Vec::len).sum::<usize>(), 2160);
         assert_eq!(targets, (0..120).collect::<Vec<_>>());
-        assert!(source.gelu.rms.bytes.table_rne_required(&plan, &pairs).is_err());
+        // Public preflight only; no full-domain execution.
+        assert!(source.gelu.rms.bytes.table_rne_required(&plan, &pairs).is_ok());
         // Every old form must be recompiled at D34; no stored old-offset form is reused.
         assert_eq!(source.gelu.forms(&q).unwrap().0.each_ref().map(Vec::len), [720, 720, 960]);
         let mut wrong = pending;

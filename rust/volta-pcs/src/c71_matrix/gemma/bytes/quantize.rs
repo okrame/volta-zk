@@ -65,8 +65,8 @@ impl Bytes {
             0,
             |total, ((_, shape), p)| {
                 let c = bits(shape[0]) + bits(shape[1]);
-                if c > 7 {
-                    return Err("RNE table caller exceeds native D7".into());
+                if c > 31 {
+                    return Err("RNE table caller exceeds D31".into());
                 }
                 Ok(total + 1 + rne::required(c, p.shift))
             },

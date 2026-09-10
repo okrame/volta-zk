@@ -15,6 +15,11 @@ finite capacity. Error, abort or exhaustion ends the run. Queries to discarded
 FS candidates still count, and views up to termination must remain private.
 Response count must fit the declared root/correlation capacity; there is no
 requirement to complete the old 2^20-attempt lifecycle.
+The remaining closure obligation is **one complete same-W composition**:
+define whole-inference acceptance and accepted KV history, then discharge
+soundness and malicious-verifier simulation for that verifier. More isolated
+component checks do not discharge it. Calibration, hardware execution,
+performance optimization and recovery are not additional closure gates.
 [The fixed-run matrix composition](c7.1-gemma31b-design.md#b12-zk-del-consumer-claimless-nel-run-continuo)
 now gives **conditional soundness and malicious-verifier ZK**: about
 91.0166 and 91.0227 bits, respectively, at n=48/128 with three total
@@ -385,7 +390,14 @@ expanding cell assignments or query rows. A coherent synthetic profile
 Fp3 across the three KV contexts, below the existing analytic uppers.
 Zero capacity rejects before reading any witness or changing FS. This is
 a public metadata check with placeholder roots; full execution, accepted
-history and calibration are not inferred. Other Gemma guards remain open.
+history and calibration are not inferred. The public reservation now also
+counts the remaining operators, all 892 RNE, both ranges and every W/A PCS:
+1,240,436 / 1,244,239 / 1,244,344 Fp3, or **11,187,057 base rows** for
+this synthetic profile. GELU/softcap/RoPE use shape-only placeholders in
+this check; their numerical contents are not certified. The conservative
+11,466,948-row security subtotal is unchanged. Canonical RNE, gate-up,
+RoPE, attention and KV geometry guards now admit the analytic domains;
+this adds neither whole-proof acceptance nor physical execution evidence.
 
 Forty-six B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
@@ -415,9 +427,10 @@ with DV secrets verifies the complete dummy-model certificate. Acceptance
 alone is not the ZK argument. The full Gemma caller still needs its own
 NoPeek, relation and resource composition.
 
-**Remaining work:** full Gemma malicious-verifier ZK, the complete quantized
-Gemma GKR relation using the range-checked W, full correlation census and
-both-role resource composition for the fixed run. The known 11,466,948-row upper
+**Remaining work:** discharge the complete same-W composition, including
+accepted-history induction and one malicious-verifier simulation of the
+fixed run. The operator/source and correlation census is now covered;
+its upper is still conditional on that composition. The known 11,466,948-row upper
 for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE/attention/residual/output/EXP30 attempts with ordinary KV source openings fits the initial capacity;
 full accepted-state verification and whole-Gemma simulation remain open.
 The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit

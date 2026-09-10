@@ -226,8 +226,8 @@ pub(in crate::c71_matrix) fn prove(
 ) -> Result<(Proof, Vec<Opening<Auth>>), String> {
     s.shape(requests)?;
     let count = s.segments.len() - 1;
-    if correlations.len() < count || s.segments.iter().any(|s| bits(s.bytes.live) > 14) {
-        return Err("KV native source exceeds D14 or prover capacity exhausted".into());
+    if correlations.len() < count || s.segments.iter().any(|s| bits(s.bytes.live) > 34) {
+        return Err("KV source exceeds D34 or prover capacity exhausted".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
     let (forms, coefficients) = s.forms(requests, fs)?;
@@ -270,7 +270,7 @@ pub(in crate::c71_matrix) fn verify(
     let count = s.segments.len() - 1;
     if proof.old.len() != count
         || correlations.len() < count
-        || s.segments.iter().any(|s| bits(s.bytes.live) > 14)
+        || s.segments.iter().any(|s| bits(s.bytes.live) > 34)
     {
         return Err("KV native source/proof shape or verifier capacity differs".into());
     }

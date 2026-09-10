@@ -188,11 +188,14 @@ local V RNE and both ranged PCS. Original embedding-input MACs also
 open the same W. V altered with consistent S/Y fails RNE; norm weights
 altered with consistent P/Y fail the installed W PCS. The executed dispatcher check remains small; its public preflight now
 covers D29/421 profiles. This is no calibrated full-model run.
-Run `c71_b12_preflight` separately for the canonical RMS/EXP30 count.
+Run `c71_b12_preflight` separately for the canonical complete reservation.
 It uses synthetic public scales and an exact e_score=128 EXP30 table in
 all three KV contexts, without expanded cell/query arrays. Zero-capacity
 prover calls must reject before the witness getter or any FS change. It
 uses placeholder roots and gives no proof, calibration or hardware credit.
+The complete count covers all operators and W/A openings: 11,187,057 base
+rows for this profile, below the conservative 11,466,948-row bound.
+GELU/softcap/RoPE tables are shape-only placeholders, not certified contents.
 The P0 check now accepts public geometries through D32 and rejects D33;
 its actual matrix/norm/lookup proof remains the existing small case.
 The `c71_b12_lookup` filter checks two restricted GELU tables against one

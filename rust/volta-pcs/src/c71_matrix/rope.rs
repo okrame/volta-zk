@@ -87,8 +87,8 @@ impl Statement<'_> {
             }
             cells = cells.checked_add(size).ok_or("RoPE cell count overflow")?;
         }
-        if cells > 1 << 15 {
-            return Err("RoPE joint caller exceeds native D15".into());
+        if cells > 1 << 29 {
+            return Err("RoPE joint caller exceeds D29".into());
         }
         Ok((cells, cells.next_power_of_two().ilog2() as usize))
     }

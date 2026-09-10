@@ -137,7 +137,13 @@ impl Sources {
             return Err("canonical attention mask slot or layer census differs".into());
         }
         self.rope.gate_up.gelu.rms.bytes.causal_zero_form(
-            plan, s, &self.layers.iter().map(|l| l.pi).collect::<Vec<_>>(), 32, 150, self.rope.old, fs,
+            plan,
+            s,
+            &self.layers.iter().map(|l| l.pi).collect::<Vec<_>>(),
+            32,
+            150,
+            self.rope.old,
+            fs,
         )
     }
 
@@ -330,12 +336,11 @@ impl Sources {
             .collect()
     }
 
-    pub fn statement<'a>(
+    fn prepare<'a>(
         &'a self,
         s: &'a P0Statement<'_>,
         layer: usize,
-        fs: &mut Fs,
-    ) -> Result<kernel::Statement<'a>, String> {
+    ) -> Result<(kernel::Statement<'a>, Vec<u8>), String> {
         let l = self.layers.get(layer).ok_or("attention layer missing")?;
         let bytes = &self.rope.gate_up.gelu.rms.bytes;
         if s.weights.num_roots() != 1
@@ -363,21 +368,39 @@ impl Sources {
         transcript.extend(s.attempt.encode());
         transcript.extend(self.view);
         transcript.extend((layer as u64).to_le_bytes());
+        Ok((
+            kernel::Statement {
+                root: s.auxiliary,
+                profile: s.auxiliary_gamma,
+                view: self.view,
+                attempt: s.attempt,
+                layer: layer as u8,
+                old: self.rope.old,
+                prompt: 100,
+                tokens: 150,
+                groups: l.groups,
+                repeats: l.repeats,
+                lanes: l.lanes,
+            },
+            transcript,
+        ))
+    }
+
+    pub fn required(&self, s: &P0Statement<'_>, layer: usize) -> Result<(usize, usize), String> {
+        let (statement, _) = self.prepare(s, layer)?;
+        Ok((statement.qk_required()?, statement.pv_required()?))
+    }
+
+    pub fn statement<'a>(
+        &'a self,
+        s: &'a P0Statement<'_>,
+        layer: usize,
+        fs: &mut Fs,
+    ) -> Result<kernel::Statement<'a>, String> {
+        let (statement, frame) = self.prepare(s, layer)?;
         fs.set_phase(0x1220);
-        fs.record(0xf5, &transcript);
-        Ok(kernel::Statement {
-            root: s.auxiliary,
-            profile: s.auxiliary_gamma,
-            view: self.view,
-            attempt: s.attempt,
-            layer: layer as u8,
-            old: self.rope.old,
-            prompt: 100,
-            tokens: 150,
-            groups: l.groups,
-            repeats: l.repeats,
-            lanes: l.lanes,
-        })
+        fs.record(0xf5, &frame);
+        Ok(statement)
     }
 }
 
@@ -501,7 +524,9 @@ mod tests {
             let (mask, _) = a.mask_zero_form(&plan, &context, &mut mask_fs).unwrap();
             assert_eq!(mask.len(), 60 * [398, 386, 446][step]);
             assert_eq!(mask_fs.requests(), 6 + 5 + 8 + key_bits);
-            assert!(mask.len() + [79626, 88146, 83706][step] <= crate::c71_matrix::linear::MAX_CUBES);
+            assert!(
+                mask.len() + [79626, 88146, 83706][step] <= crate::c71_matrix::linear::MAX_CUBES
+            );
             let mut fs = Fs::new(b"canonical continued metadata only", 1000);
             for layer in 0..60 {
                 let st = a.statement(&context, layer, &mut fs).unwrap();
@@ -615,7 +640,7 @@ mod tests {
         let (forms, _, targets) = bytes.table_rne_forms(&plan, &pairs, &pending).unwrap();
         assert_eq!(targets, (0..120).collect::<Vec<_>>());
         assert_eq!(forms.iter().map(Vec::len).sum::<usize>(), 720);
-        assert!(bytes.table_rne_required(&plan, &pairs).is_err());
+        assert!(bytes.table_rne_required(&plan, &pairs).is_ok()); // public preflight only
         let p0 = PendingP0 {
             cuts: Vec::new(),
             weight_forms: Vec::new(),
@@ -675,7 +700,7 @@ mod tests {
         for layer in 0..60 {
             let s = sources.statement(&context, layer, &mut fs).unwrap();
             assert_eq!([s.old, s.prompt, s.tokens], [0, 100, 150]);
-            assert!(s.qk_required().is_err()); // no D27/D28 execution
+            assert!(s.qk_required().is_ok() && s.pv_required().is_ok()); // public preflight only
         }
         assert_eq!(fs.requests(), 0);
         assert!(sources.statement(&context, 60, &mut fs).is_err());

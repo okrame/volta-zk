@@ -69,13 +69,12 @@ impl Output {
         Ok(tiles(&[x.clone(), m.clone()]))
     }
 
-    fn bind(
+    fn context(
         &self,
         bytes: &bytes::Bytes,
         s: &P0Statement<'_>,
         table: &lookup::Table<'_>,
-        fs: &mut Fs,
-    ) -> Result<[u8; 32], String> {
+    ) -> Result<Vec<u8>, String> {
         self.layout(bytes)?;
         if table.profile != 0
             || !matches!(table.outputs, lookup::Outputs::I16(_))
@@ -110,10 +109,39 @@ impl Output {
             frame.extend((n as u64).to_le_bytes());
         }
         frame.extend(self.lower.to_le_bytes());
+        Ok(frame)
+    }
+
+    fn bind(
+        &self,
+        bytes: &bytes::Bytes,
+        s: &P0Statement<'_>,
+        table: &lookup::Table<'_>,
+        fs: &mut Fs,
+    ) -> Result<[u8; 32], String> {
+        let frame = self.context(bytes, s, table)?;
         let view = *blake3::hash(&frame).as_bytes();
         fs.set_phase(0x1600);
         fs.record(0xfe, &frame);
         Ok(view)
+    }
+
+    pub fn lookup_required(
+        &self,
+        bytes: &bytes::Bytes,
+        s: &P0Statement<'_>,
+        table: &lookup::Table<'_>,
+    ) -> Result<usize, String> {
+        let frame = self.context(bytes, s, table)?;
+        lookup::Statement {
+            root: s.auxiliary,
+            profile: s.auxiliary_gamma,
+            view: *blake3::hash(&frame).as_bytes(),
+            attempt: s.attempt,
+            blocks: &self.blocks(bytes)?,
+            tables: std::slice::from_ref(table),
+        }
+        .required()
     }
 
     pub fn blocks(&self, bytes: &bytes::Bytes) -> Result<Vec<lookup::Block>, String> {
@@ -543,7 +571,8 @@ mod tests {
                 .unwrap();
             assert_eq!(forms.len(), 56);
             assert_eq!(fs.requests(), 24);
-            assert!(bytes.table_rne_required(&plan, &[route.rne_pair(2)]).is_err());
+            assert!(bytes.table_rne_required(&plan, &[route.rne_pair(2)]).is_ok());
+            // public preflight only
         }
     }
 }

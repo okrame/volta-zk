@@ -7426,6 +7426,95 @@ def b12_attention_composition(base):
     }
 
 
+def b12_public_affine_profile(cells):
+    natural(cells,'public affine live cells',1,1 << 35)
+    c=(cells-1).bit_length()
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/bytes/affine.rs',
+        'live_cells': cells, 'joint_cell_bits': c,
+        'Fp3_correlations_before_shared_PCS': 0,
+        'field_payload_bytes_before_public_forms_and_framing': 0,
+        'FS_draw_requests': c, 'MAC_degree_sum_before_shared_PCS': 0,
+        'sum_of_all_FS_error_degrees_before_shared_PCS': c,
+        'public_bias_target_forms_in_existing_PCS': 1,
+        'new_private_MACs_sumchecks_products_or_PCS': 0,
+        'maximum_input_coefficient_magnitude': 1 << 30,
+        'integer_difference_bound_given_i48_raw_and_i16_inputs': (1 << 47)+(1 << 46),
+        'native_ragged_affine_RNE_range_PCS_Fp3_rows': 991,
+        'complete_security_or_physical_credit': False,
+    }
+
+
+def b12_residual_source_profile():
+    base=b12_attention_source_profile()
+    cells=150*5376
+    added=(181*6+60*2)*cells
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/residual.rs',
+        'public_scale_operations': 61, 'residual_sum_operations': 120,
+        'new_raw_i48_sources': 181, 'new_ffw_residual_i16_sources': 60,
+        'embedding_C0_RMS_Y_and_original_residual_stream_sources_reused': True,
+        'layer_scalar_input_is_same_layer_ffw_residual': True,
+        'embedding_BF16_bits': 0x4293, 'embedding_exact_dyadic': [147,-1],
+        'public_layer_scalars_from_verified_pinned_frontend': 60,
+        'raw_cells': 181*cells, 'joint_word_blocks': 181*12,
+        'additional_auxiliary_bytes': added, 'auxiliary_live_bytes': base['auxiliary_live_bytes']+added,
+        'auxiliary_sources': base['auxiliary_sources']+241, 'auxiliary_root_log_cells': 34,
+        'original_joint_zero_form_byte_cubes_upper': 61*12*3+120*12*4,
+        'whole_table_RNE_probe_raw_byte_cubes': 181*12*3,
+        'whole_table_RNE_cell_bits_sum': 181*21,
+        'A_targets_with_affine_and_all_RNE': base['A_targets_with_products_and_both_RNE']+1+2*181,
+        'A_cubes_with_affine_and_all_RNE_upper': base['A_cubes_with_products_and_both_RNE_upper']+7956+6516,
+        'residual_exponent_alignment_difference_cap': 30,
+        'canonical_routes_and_expected_coefficients_compiled': True,
+        'actual_public_Gemma_quantization_profiles_supplied': False,
+        'native_full_domain_execution': False, 'complete_security_or_physical_credit': False,
+    }
+
+
+def b12_residual_composition(base):
+    s=b12_residual_source_profile()
+    raw=b12_public_affine_profile(s['raw_cells'])
+    rne=b12_rne_profile(21)
+    rows=181*(1+rne['Fp3_correlations_upper_before_incoming_claims_and_shared_PCS'])
+    degree=raw['sum_of_all_FS_error_degrees_before_shared_PCS']+181*(33*21+274)
+    mac=181*rne['MAC_degree_sum_upper_before_shared_PCS']
+    fe,me=Fraction((1 << 74)*degree,P**3),Fraction(3*mac,P**3-1)
+    sound,privacy=Fraction(base['conditional_soundness_sum'])+fe+me,Fraction(base['conditional_ZK_sum'])
+    total=base['Fp3_correlations_upper_per_attempt_before_other_operators']+rows
+    work,memory,ro=1 << 68,1 << 41,1 << 30
+    tw,tm=base['reduction_work_upper']+work,base['reduction_memory_words_upper']+memory
+    return {
+        'relation': 'previous subtotal plus all 120 residual additions, exact embedding/layer public scales and 181 whole-table RNE; same original W and A',
+        'sources': s, 'public_affine_zero_relation': raw,
+        'additional_Fp3_correlations_upper_per_attempt': rows,
+        'additional_FS_draw_requests': raw['FS_draw_requests']+181*(21+rne['FS_draw_requests']),
+        'additional_field_payload_bytes_upper_before_context_and_framing': 181*(24+rne['field_payload_bytes_upper_before_context_and_framing']),
+        'sum_of_all_added_FS_error_degrees_upper': degree,
+        'additional_MAC_degree_sum_upper_per_attempt': mac,
+        'additional_global_FS_error': str(fe), 'additional_fixed_run_MAC_error': str(me),
+        'Fp3_correlations_upper_per_attempt_before_other_operators': total,
+        'base_rows_upper_per_attempt_before_other_operators': 3*total,
+        'initial_base_capacity_upper_three_attempts_before_other_operators': 9*total,
+        'initial_base_capacity_limit': base['initial_base_capacity_limit'],
+        'additional_honest_work_u64_upper': work, 'additional_honest_memory_words_upper': memory,
+        'additional_honest_RO_events_upper': ro,'full_RO_queries_upper':base['full_RO_queries_upper']+ro,
+        'reduction_work_upper':tw,'reduction_memory_words_upper':tm,
+        'both_resource_caps_hold':tw < 1 << 121 and tm < 1 << 93,
+        'conditional_soundness_sum':str(sound),'conditional_ZK_sum':str(privacy),
+        'soundness_bits':math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits':math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78':max(sound,privacy) < Fraction(1,1 << 78),
+        'D34_geometry_and_joint_forest_unchanged':True,'new_PCS_chains_or_private_rng_streams':0,
+        'public_bias_targets_do_not_authenticate_a_free_value':True,
+        'same_public_quantization_profile_and_valid_alignment_envelope_required':True,
+        'numerical_profile_preparation_and_calibration_outside_this_subtotal':True,
+        'ordinary_accepted_KV_history_proven':False,'softmax_and_mask_included':False,
+        'native_full_domain_execution':False,'all_Gemma_integer_producers_proven':False,
+        'full_Gemma_security_totals':None,'physical_schedule_admitted':False,
+    }
+
+
 def b12_rope_joint_profile(cells):
     """Joint public adjoint over aligned dyadic RoPE blocks; no source closures.
 
@@ -7926,6 +8015,7 @@ def b12_pcs_binding_assessment():
     assert gate_up_byte_profile['max_XOF_bytes_per_block_upper']//8 <= tape_words
     gate_up_composition = b12_gate_up_composition(gelu_composition,p0_composition['cases'][-1],gate_up_raw,gate_up_byte_profile)
     rope_composition = b12_rope_composition(gate_up_composition)
+    attention_composition = b12_attention_composition(rope_composition)
     for row, joint in zip(range_cases, p0_composition['cases']):
         row['large_domain_private_sampler_and_simulator_bound_derived'] = True
         if row['conditional_ZK_sum'] is None:
@@ -8115,7 +8205,8 @@ def b12_pcs_binding_assessment():
         'P0_RNE_RMS_GELU_composition': gelu_composition,
         'P0_RNE_RMS_GELU_gate_up_composition': gate_up_composition,
         'P0_RNE_RMS_GELU_gate_up_RoPE_composition': rope_composition,
-        'P0_RNE_RMS_GELU_gate_up_RoPE_attention_composition': b12_attention_composition(rope_composition),
+        'P0_RNE_RMS_GELU_gate_up_RoPE_attention_composition': attention_composition,
+        'P0_RNE_RMS_GELU_gate_up_RoPE_attention_residual_composition': b12_residual_composition(attention_composition),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         'public_RoPE_joint_component': b12_rope_joint_profile(119808000),

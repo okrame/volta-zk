@@ -15,6 +15,7 @@ pub(super) mod gelu;
 pub(super) mod gate_up;
 pub(super) mod rope;
 pub(super) mod attention;
+pub(super) mod residual;
 
 #[derive(Clone, Debug)]
 pub(super) struct Source {

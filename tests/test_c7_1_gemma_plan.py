@@ -639,6 +639,51 @@ def test_B12_attention_canonical_fresh_sources_and_RNE_compose_with_same_D34():
     assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
 
 
+def test_B12_residual_zero_source_identity_and_original_RNE_compose_without_extra_MACs():
+    all_bounds=plan.b12_pcs_binding_assessment()
+    base=all_bounds['P0_RNE_RMS_GELU_gate_up_RoPE_attention_composition']
+    b=all_bounds['P0_RNE_RMS_GELU_gate_up_RoPE_attention_residual_composition']
+    s=b['sources']; raw=b['public_affine_zero_relation']
+    assert s['public_scale_operations']==61 and s['residual_sum_operations']==120
+    assert s['raw_cells']==145958400 and s['joint_word_blocks']==2172
+    assert raw['joint_cell_bits']==28
+    assert s['embedding_exact_dyadic']==[147,-1] and s['embedding_BF16_bits']==0x4293
+    assert s['public_layer_scalars_from_verified_pinned_frontend']==60
+    assert s['layer_scalar_input_is_same_layer_ffw_residual']
+    assert s['additional_auxiliary_bytes']==181*150*5376*6+60*150*5376*2==972518400
+    assert s['auxiliary_live_bytes']==12613738638 and s['auxiliary_root_log_cells']==34
+    assert s['auxiliary_sources']==3167 and s['new_ffw_residual_i16_sources']==60
+    assert s['A_targets_with_affine_and_all_RNE']==4552 < 8192
+    assert s['A_cubes_with_affine_and_all_RNE_upper']==79539 < 131072
+    assert s['original_joint_zero_form_byte_cubes_upper']==7956
+    assert s['whole_table_RNE_probe_raw_byte_cubes']==6516
+    assert s['residual_exponent_alignment_difference_cap']==30
+    assert raw['maximum_input_coefficient_magnitude']==1 << 30
+    assert raw['integer_difference_bound_given_i48_raw_and_i16_inputs']==(1 << 47)+(1 << 46) < plan.P
+    assert raw['Fp3_correlations_before_shared_PCS']==raw['MAC_degree_sum_before_shared_PCS']==0
+    assert raw['new_private_MACs_sumchecks_products_or_PCS']==0
+    assert raw['public_bias_target_forms_in_existing_PCS']==1
+    assert raw['native_ragged_affine_RNE_range_PCS_Fp3_rows']==449+510+32==991
+    assert b['additional_Fp3_correlations_upper_per_attempt']==181*(1+40*21+343)==214304
+    assert b['additional_FS_draw_requests']==28+181*(21+10*21+75)==55414
+    assert b['additional_field_payload_bytes_upper_before_context_and_framing']==181*24*(1+49*21+407)==6242328
+    assert b['sum_of_all_added_FS_error_degrees_upper']==28+181*(33*21+274)==175055
+    assert b['additional_MAC_degree_sum_upper_per_attempt']==181*(9*21+66)==46155
+    assert Fraction(b['conditional_soundness_sum'])==Fraction(base['conditional_soundness_sum'])+Fraction((1 << 74)*175055,plan.P**3)+Fraction(3*46155,plan.P**3-1)
+    assert b['conditional_ZK_sum']==base['conditional_ZK_sum']
+    assert b['D34_geometry_and_joint_forest_unchanged'] and not b['new_PCS_chains_or_private_rng_streams']
+    assert b['public_bias_targets_do_not_authenticate_a_free_value']
+    assert b['Fp3_correlations_upper_per_attempt_before_other_operators']==1248243
+    assert b['base_rows_upper_per_attempt_before_other_operators']==3744729
+    assert b['initial_base_capacity_upper_three_attempts_before_other_operators']==11234187 < b['initial_base_capacity_limit']
+    assert b['both_below_2_to_minus_78'] and b['both_resource_caps_hold'] and b['full_RO_queries_upper'] < 1 << 74
+    assert b['same_public_quantization_profile_and_valid_alignment_envelope_required']
+    assert b['numerical_profile_preparation_and_calibration_outside_this_subtotal']
+    assert not b['ordinary_accepted_KV_history_proven'] and not b['softmax_and_mask_included']
+    assert not b['native_full_domain_execution'] and not b['all_Gemma_integer_producers_proven']
+    assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
+
+
 def test_B12_RoPE_joint_adjoint_counts_original_endpoints_and_fixed_public_recipe():
     cohorts = plan.gemma_weight_cohorts(plan.pinned_private_tensors())
     old = plan.gemma_rope_plan(cohorts)['summary']

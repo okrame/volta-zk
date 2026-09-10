@@ -120,6 +120,19 @@ impl Plan {
 }
 
 impl Sources {
+    pub(super) fn append(
+        mut self,
+        extra: Vec<(String, usize, usize, usize)>,
+    ) -> Result<Self, String> {
+        self.rope = self.rope.append(extra)?;
+        let mut digest = blake3::Hasher::new();
+        digest.update(b"C71-attention-view-A-extension-v1\0");
+        digest.update(&self.view);
+        digest.update(&self.rope.view);
+        self.view = *digest.finalize().as_bytes();
+        Ok(self)
+    }
+
     pub fn qk_forms<T: Copy>(
         &self,
         layer: usize,

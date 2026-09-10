@@ -76,7 +76,7 @@ are component tests, not run-of-record benchmarks or complete security evidence.
 For the B12 salted PCS consumer, build only `volta-pcs` with the same Cargo
 target and profile, `--features c71-b12-pcs --lib`, and run the `c71_b12`
 test filter with one test thread. After compilation, bound the test binary
-to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its thirty-three tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
+to 60 s and 2 GiB, with `RAYON_NUM_THREADS=1`. Its thirty-four tests cover FS coin-block replay, unique-radius geometry (D35 configuration only), private
 coin streams, salted Merkle/codec and three attempts of a 48×48 synthetic matrix using the real
 180-row B11 roles and durable journal. The linear-form checks cover aligned
 cubes and a 207-row real-B11 capacity: four original target MACs reach one
@@ -180,6 +180,13 @@ view check dispatches a 21-row product and compares forms with literal
 bytes, with placeholder roots and no PCS acceptance. Full pinned metadata
 checks the 60 original down-P0 demands and D34 counts without source bodies.
 Source RNE views accept only biased-i48; matrix view transcripts are preserved.
+The `c71_b12_rope` filter checks the joint Q30 public adjoint on aligned
+dyadic blocks, full half-head pairing, inactive pairs and absolute positions.
+Its 559 ideal Fp3 rows include one ranged A PCS; wrong raw fails the linear
+GKR and a coherently changed Y/raw pair fails that original PCS. It also
+rejects misaligned blocks and exhausted capacity before witness reads.
+Python checks the three active j=0 coefficient pairs against the existing
+exact Q30 recipe. Canonical full routes and output RNE remain separate.
 After byte-function changes, rerun `c71_b12_byte_functions` and
 `c71_b12_rne` separately; ordinary lane-mode transcripts are preserved.
 This internal bridge uses in-memory proof transport; it is not a Gemma runner

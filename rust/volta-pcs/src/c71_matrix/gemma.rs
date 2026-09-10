@@ -285,7 +285,7 @@ fn bits(n: usize) -> usize {
     (n - 1).checked_ilog2().map_or(0, |b| b as usize + 1)
 }
 
-fn eq_index(point: &[Fp3], index: usize) -> Fp3 {
+pub(super) fn eq_index(point: &[Fp3], index: usize) -> Fp3 {
     point.iter().enumerate().fold(Fp3::ONE, |s, (i, &r)| {
         s * if index >> (point.len() - 1 - i) & 1 == 1 { r } else { Fp3::ONE - r }
     })

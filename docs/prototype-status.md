@@ -219,10 +219,19 @@ both-source PCS/range, joint hiding, samplers and decoders at D35/D34:
 under the same public-profile and primitive hypotheses. The auxiliary
 codeword is now 2 TiB; its dense implementation remains excluded.
 
-Thirty-five B12 algebra/accounting checks include the scalar invariant,
+The [joint raw RoPE kernel](../rust/volta-pcs/src/c71_matrix/rope.rs)
+reuses the existing public-linear sumcheck and returns two original R/Y
+MACs for the same A. Its 559-row ideal case closes a ranged source PCS,
+rejecting a wrong raw and a consistently changed input/raw pair. Public
+adjoint checks cover dyadic blocks, absolute positions, full half-head
+pairing and inactive pairs. The full D27 arithmetic is 83 Fp3 before
+RNE/source closures; canonical routes and output RNE are not yet included
+in this component or the gate-up security subtotal.
+
+Thirty-six B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 216; the 17
-narrow bootstrap/pool checks and thirty-three B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 217; the 17
+narrow bootstrap/pool checks and thirty-four B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

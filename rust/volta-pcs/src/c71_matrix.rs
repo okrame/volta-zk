@@ -24,6 +24,9 @@ mod rms;
 #[allow(dead_code)] // Lookup component; canonical histogram and producer routes remain explicit.
 mod lookup;
 #[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // Joint Q30 RoPE; original raw/Y source closures remain explicit.
+mod rope;
+#[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // P0 caller; input/output openings remain explicit.
 mod p0;
 #[cfg(feature = "c71-b12-pcs")]

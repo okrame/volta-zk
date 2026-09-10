@@ -7298,6 +7298,33 @@ def b12_RMS_composition(direct):
     }
 
 
+def b12_rope_joint_profile(cells):
+    """Joint public adjoint over aligned dyadic RoPE blocks; no source closures.
+
+    Native code reuses the linear bridge's existing blind product sumcheck.
+    Public Q30 tables must be the verifier's certified expected profile.
+    """
+    natural(cells,'joint RoPE live cells',1,1 << 35)
+    c = (cells-1).bit_length()
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/rope.rs',
+        'live_cells': cells, 'cell_bits': c,
+        'Fp3_correlations_before_source_range_and_PCS': 3*c+2,
+        'field_payload_bytes_before_context_and_framing': 24*(4*c+3),
+        'FS_draw_requests': 2*c,
+        'MAC_degree_sum_before_shared_PCS': c+1,
+        'sum_of_all_FS_error_degrees_before_shared_PCS': 3*c,
+        'original_raw_and_Y_targets': 2, 'new_private_products_or_product_masks': 0,
+        'native_cell_bits_cap': 15, 'native_range_and_PCS_check_Fp3_rows': 559,
+        'native_canonical_Q30_pair_j0_positions_0_1_2': [[1073741824,0],[580145183,903522590],[-446834263,976350678]],
+        'public_half_head_adjoint_evaluated_without_private_Y': True,
+        'public_tables_and_positions_fixed_before_raw_probe': True,
+        'canonical_full_Gemma_source_routes_compiled': False,
+        'output_RNE_included': False, 'included_in_gate_up_security_subtotal': False,
+        'full_Gemma_security_totals': None, 'complete_security_or_physical_credit': False,
+    }
+
+
 def b12_gate_up_source_profile():
     """Gate-up reuses GELU Y and down-P0 X; U and raw R extend the SAME A."""
     base = b12_gelu_source_profile()
@@ -7885,6 +7912,7 @@ def b12_pcs_binding_assessment():
         'P0_RNE_RMS_GELU_gate_up_composition': b12_gate_up_composition(gelu_composition,p0_composition['cases'][-1],gate_up_raw,gate_up_byte_profile),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
+        'public_RoPE_joint_component': b12_rope_joint_profile(119808000),
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",

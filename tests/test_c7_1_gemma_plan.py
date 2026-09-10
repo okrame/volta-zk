@@ -570,6 +570,26 @@ def test_B12_gate_up_rebases_all_joint_D34_privacy_resources_and_three_attempt_r
     assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
 
 
+def test_B12_RoPE_joint_adjoint_counts_original_endpoints_and_fixed_public_recipe():
+    cohorts = plan.gemma_weight_cohorts(plan.pinned_private_tensors())
+    old = plan.gemma_rope_plan(cohorts)['summary']
+    b = plan.b12_rope_joint_profile(old['live_output_cells'])
+    assert b['live_cells'] == 119808000 and b['cell_bits'] == 27
+    assert b['Fp3_correlations_before_source_range_and_PCS'] == 83
+    assert b['field_payload_bytes_before_context_and_framing'] == 2664
+    assert b['FS_draw_requests'] == 54
+    assert b['MAC_degree_sum_before_shared_PCS'] == 28
+    assert b['sum_of_all_FS_error_degrees_before_shared_PCS'] == 81
+    assert b['original_raw_and_Y_targets'] == 2 and not b['new_private_products_or_product_masks']
+    assert b['native_range_and_PCS_check_Fp3_rows'] == 17+510+32 == 559
+    for family in ['local','global']:
+        assert [list(plan.gemma_rope_q30_coefficients(family,t)[0]) for t in range(3)] == b['native_canonical_Q30_pair_j0_positions_0_1_2']
+    assert b['public_half_head_adjoint_evaluated_without_private_Y']
+    assert b['public_tables_and_positions_fixed_before_raw_probe']
+    assert not b['canonical_full_Gemma_source_routes_compiled'] and not b['output_RNE_included']
+    assert not b['included_in_gate_up_security_subtotal'] and b['full_Gemma_security_totals'] is None
+
+
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():
     all_bounds = plan.b12_pcs_binding_assessment()
     b = all_bounds['raw_P0_two_source_composition']

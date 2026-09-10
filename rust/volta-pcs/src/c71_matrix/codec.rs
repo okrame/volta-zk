@@ -2,8 +2,7 @@
 
 use super::*;
 use crate::c61_whir_reference::{
-    c61_max_pruned_binary_siblings, C61Reader, C61WhirReferenceError, C61Writer,
-    ReferenceResult,
+    c61_max_pruned_binary_siblings, C61Reader, C61WhirReferenceError, C61Writer, ReferenceResult,
 };
 use p3_whir_c61::pcs::proof::{QueryOpenings, SharedProofOpening};
 use p3_whir_c61::pcs::zk::{BaseCaseZkProof, BlindedMask, MaskOpeningPair, ZkRoundProof};
@@ -85,9 +84,9 @@ fn get_open<V>(
     let rows =
         (0..q).map(|_| (0..width).map(|_| scalar(r)).collect()).collect::<ReferenceResult<_>>()?;
     #[cfg(feature = "c71-b12-pcs")]
-    let salts = (0..q).map(|_| {
-        (0..4).map(|_| r.fp()).collect::<ReferenceResult<Vec<_>>>().map(|row| vec![row])
-    }).collect::<ReferenceResult<Vec<_>>>()?;
+    let salts = (0..q)
+        .map(|_| (0..4).map(|_| r.fp()).collect::<ReferenceResult<Vec<_>>>().map(|row| vec![row]))
+        .collect::<ReferenceResult<Vec<_>>>()?;
     let proof = r.multiproof(c61_max_pruned_binary_siblings(domain, q))?;
     #[cfg(feature = "c71-b12-pcs")]
     let proof = (salts, proof);
@@ -408,4 +407,77 @@ fn decode_body(
         close_tag,
         pcs: ZkWhirProof { sumchecks, sumcheck_mask_commitments, rounds: pcs_rounds, base_case },
     })
+}
+
+#[cfg(all(test, feature = "c71-b12-pcs"))]
+mod tests {
+    use super::*;
+
+    // Codec fixtures only: zero fields/roots are not cryptographic proofs.
+    fn set_frontiers(
+        c: &ZkWhirConfig<E, Goldilocks, Fs>,
+        p: &mut MatrixProof,
+        mut budget: usize,
+    ) -> usize {
+        let mut total = 0;
+        let mut fill = |hashes: &mut Vec<[u8; 32]>, domain: usize, queries: usize| {
+            let count = budget.min(c61_max_pruned_binary_siblings(domain, domain.min(queries)));
+            hashes.resize(count, [0; 32]);
+            budget -= count;
+            total += count;
+        };
+        for (round, config) in p.pcs.rounds.iter_mut().zip(&c.round_parameters) {
+            let hashes = match &mut round.openings {
+                QueryOpenings::Base(o) => &mut o.proof.1.sibling_hashes,
+                QueryOpenings::Extension(o) => &mut o.proof.1.sibling_hashes,
+            };
+            fill(hashes, config.domain_size >> config.folding_factor, config.num_queries);
+        }
+        let last = c.final_round_config();
+        let base = &mut p.pcs.base_case;
+        let QueryOpenings::Extension(source) = &mut base.source_openings else {
+            panic!("final field")
+        };
+        fill(
+            &mut source.proof.1.sibling_hashes,
+            last.domain_size >> last.folding_factor,
+            c.final_queries,
+        );
+        fill(
+            &mut base.fresh_main_openings.proof.1.sibling_hashes,
+            last.domain_size >> last.folding_factor,
+            c.final_queries,
+        );
+        for (pair, group) in base.mask_openings.iter_mut().zip(c.mask_groups()) {
+            fill(&mut pair.carried.proof.1.sibling_hashes, group.shape.domain_size, c.mask_queries);
+            fill(&mut pair.fresh.proof.1.sibling_hashes, group.shape.domain_size, c.mask_queries);
+        }
+        total
+    }
+
+    #[test]
+    fn c71_b12_canonical_pcs_codec_geometry_and_byte_cap() {
+        for (h, fixed, upper) in [(35, 6_929_180, 13_941_532), (34, 6_928_316, 13_776_828)] {
+            let domain = Domain::Flat(h);
+            let c = domain.config().unwrap();
+            assert_eq!(gamma(&c).len(), 2_276);
+            let bytes = vec![0; fixed];
+            let mut p = decode_linear(domain, &bytes).unwrap();
+            assert_eq!(encode_linear(domain, &p).unwrap(), bytes);
+            assert!(decode_linear(domain, &bytes[..fixed - 1]).is_err());
+            assert_eq!(fixed + 32 * set_frontiers(&c, &mut p, usize::MAX), upper);
+            assert!(encode_linear(domain, &p).unwrap_err().to_string().contains("local byte cap"));
+
+            let fits = (MAX_BYTES - fixed) / 32;
+            assert_eq!(set_frontiers(&c, &mut p, fits), fits);
+            let bounded = encode_linear(domain, &p).unwrap();
+            assert_eq!(bounded.len(), fixed + 32 * fits);
+            assert_eq!(
+                encode_linear(domain, &decode_linear(domain, &bounded).unwrap()).unwrap(),
+                bounded
+            );
+            assert_eq!(set_frontiers(&c, &mut p, fits + 1), fits + 1);
+            assert!(encode_linear(domain, &p).unwrap_err().to_string().contains("local byte cap"));
+        }
+    }
 }

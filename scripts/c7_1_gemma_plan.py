@@ -8021,7 +8021,7 @@ def b12_native_linear_pcs_wire(profile, mask):
         'MAC_transfer_and_close': 24*(4*h+3),
         'claimless_sumchecks': 24*(batches+2047*sum(folds)),
         'OOD_answers': 24*(batches-1),
-        'base_claim_message_randomness': 24*(1+oracles[-1]['message_rows']*oracles[-1]['width']
+        'base_claim_message_randomness': 24*(1+oracles[-1]['message_rows']
                                              +oracles[-1]['randomness_rows']),
         'blinded_masks': 24*sum(widths)*(mask['message_rows']+mask['randomness_rows']),
         'commitments': 32*(batches+2*(batches-1)+1+len(widths)),
@@ -8047,7 +8047,11 @@ def b12_native_linear_pcs_wire(profile, mask):
     return {'credit': False, 'log_message_cells': h, 'fixed_wire_bytes': fields,
         'multiproof_sibling_bytes_upper': 32*siblings, 'wire_interval': [lower, upper],
         'decoder_cap_bytes': 8 << 20, 'upper_fits_decoder_cap': upper <= 8 << 20,
+        # gamma(): 268-byte B12 descriptor, scalar words, lists, rounds, groups, isomorphism.
+        'PCS_profile_vector_bytes': 268+8*(9+2*(1+batches)+9*batches+1+4*len(widths)+15),
+        'native_synthetic_codec_checked': True,
         'native_serialization_checked': False,
+        'native_check_scope': 'zero-value codec fixtures; no valid PCS or canonical inference',
         'lower_omits': 'all Merkle sibling hashes',
         'source': 'rust/volta-pcs/src/c71_matrix/codec.rs::encode_linear'}
 
@@ -8623,13 +8627,17 @@ def b12_pcs_binding_assessment():
                        if p['log_message_cells'] in (34, 35)]
     pcs_bounds = {p['log_message_cells']: p['wire_interval'] for p in linear_pcs_wire}
     certificate_wire = b12_native_wire_body_envelope()
+    profile_bytes = sum(p['PCS_profile_vector_bytes'] for p in linear_pcs_wire)
     for slot, case in enumerate(certificate_wire['cases']):
         case['total_wire_interval_excluding_PCS_profile_vectors'] = [
             body + case['header_bytes_excluding_PCS_profile_vectors']
             + pcs_bounds[35][end] + (slot+1)*pcs_bounds[34][end]
             for end, body in enumerate(case['body_wire_interval_excluding_PCS_and_header'])]
+        case['header_wire_bytes'] = case['header_bytes_excluding_PCS_profile_vectors']+profile_bytes
+        case['total_wire_interval'] = [n+profile_bytes for n in
+            case['total_wire_interval_excluding_PCS_profile_vectors']]
     certificate_wire['PCS_bounds_source'] = 'native_canonical_linear_PCS_wire'
-    certificate_wire['total_interval_additional_bytes'] = 'len(gamma_W) + len(gamma_A)'
+    certificate_wire['total_interval_additional_bytes'] = 0
     gate_up_byte_profile = profiles.pop()
     byte_profile = profiles.pop()
     auxiliary_profile = profiles.pop()  # P0 C/X geometry; keep the existing public profile list.

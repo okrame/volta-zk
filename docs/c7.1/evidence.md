@@ -341,6 +341,29 @@ parsing del rapporto JSON in `/tmp`, 98 link locali e `git diff --check`.
 Nessuna build Rust/Lean o esecuzione GPU. Non viene attribuito credito di serializzazione
 nativa o sufficienza del cap da 8 MiB, che cade dentro l'intervallo PCS.
 
+## Native canonical PCS codec geometry
+
+`c71_b12_canonical_pcs_codec_geometry_and_byte_cap` usa le configurazioni
+Rust D35/D34 e il vero `decode_linear`/`encode_linear`, senza witness o
+alberi Merkle. Le fixture a valori nulli confermano i byte fissi e fanno
+roundtrip fino al cap; un fratello aggiuntivo viene respinto. La geometria
+nativa conferma i massimi dei fratelli e i 2.276 byte di ciascun gamma.
+Il test non invoca il verifier PCS: nessun credito di prova positiva.
+
+Il primo run ha fallito con `trailing bytes`: il conteggio Python usava
+il messaggio prima del fold finale. Corretto nel helper condiviso al
+messaggio finale da 32/64 celle, sottraendo 2.304/4.608 byte ad A/W.
+I totali correnti nel [design](design.md#canonical-pcs-wire-accounting)
+includono anche entrambi i gamma. Rimane il confronto nativo di tutto
+il corpo non-PCS; `native_synthetic_codec_checked` distingue questo
+controllo da `native_serialization_checked`, tuttora false per prove valide.
+
+Passano **1 test Rust** sui due domini (0,12 s entro 60 s/2 GiB,
+un worker) e **3 test Python** (`canonical_PCS_wire or native_wire_body or
+complete_fixed_run`), self-check/CLI e parsing del nuovo rapporto in
+`/tmp`, formato Rust, 99 link locali e `git diff --check`. Build mirata
+con un job, nessuna esecuzione AES/GPU o prova canonica positiva.
+
 ## Measured historical records
 
 I file sotto sono immutabili e identificano il codice effettivamente misurato.

@@ -191,7 +191,7 @@ def test_B12_native_wire_body_envelope_matches_field_censuses_without_PCS_credit
 def test_B12_canonical_PCS_wire_counts_masks_salts_and_all_history_openings():
     report = plan.b12_pcs_binding_assessment()
     pcs = {p['log_message_cells']: p for p in report['native_canonical_linear_PCS_wire']}
-    for h, expected in [(35, [6933788, 13946140]), (34, [6930620, 13779132])]:
+    for h, expected in [(35, [6929180, 13941532]), (34, [6928316, 13776828])]:
         p = pcs[h]
         fields = p['fixed_wire_bytes']
         # Twelve fold batches: 29 masks plus eleven switch masks, 23 groups.
@@ -203,11 +203,15 @@ def test_B12_canonical_PCS_wire_counts_masks_salts_and_all_history_openings():
         assert expected[0] == sum(fields.values()) < 8 << 20
         assert expected[1] == expected[0]+p['multiproof_sibling_bytes_upper'] > 8 << 20
         assert not p['credit'] and not p['native_serialization_checked']
+        assert p['native_synthetic_codec_checked'] and p['PCS_profile_vector_bytes'] == 2276
         assert not p['upper_fits_decoder_cap']
     cases = report['native_canonical_certificate_wire']['cases']
+    assert report['native_canonical_certificate_wire']['total_interval_additional_bytes'] == 0
     for slot, (case, expected) in enumerate(zip(cases, [
-            [47843538, 65055602], [54872980, 78950388], [61804350, 92730270]])):
+            [47836626, 65048690], [54863764, 78941172], [61792830, 92718750]])):
         assert case['total_wire_interval_excluding_PCS_profile_vectors'] == expected
+        assert case['total_wire_interval'] == [n+4552 for n in expected]
+        assert case['header_wire_bytes'] == 5873+720*slot
         for end, total in enumerate(expected):
             assert total == (case['body_wire_interval_excluding_PCS_and_header'][end]
                 +case['header_bytes_excluding_PCS_profile_vectors']

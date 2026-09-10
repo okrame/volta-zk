@@ -87,7 +87,9 @@ header e PCS. Il conteggio delle PCS aggiunge almeno 6,93 MB per apertura,
 anche omettendo tutti gli hash Merkle. Il lower totale è ora
 **47,84/54,87/61,80 MB** a O=0/150/300: l'allarme di 35 MB è superato
 per ogni calibrazione. L'upper PCS da schema supera anche il cap individuale
-di 8 MiB; manca ancora il confronto con la serializzazione nativa.
+di 8 MiB. Il codec Rust riproduce ora il conteggio fisso e i limiti delle
+frontiere su fixture sintetiche D34/D35, inclusi lunghezza dei vettori
+di profilo e rifiuto oltre il cap. Restano il confronto di tutto il corpo e prove canoniche valide.
 Adeguamento del trasporto e verifica positiva restano aperti.
 
 Il [collegamento AES/journal](../../rust/volta-pcs/src/c71_matrix/gemma/native/pool.rs)
@@ -100,7 +102,7 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 ## Next goal
 
 **Il goal di estensione resta aperto:** verificare il conteggio completo
-contro la serializzazione nativa, comprese le PCS, poi correggere
+del corpo contro la serializzazione nativa, poi correggere
 l'incompatibilità del codec e collegare Prepare/prover canonici
 al wrapper, conservando gli originali
 e la compilazione numerica comune; verificare poi il percorso composto AES positivo.

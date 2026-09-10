@@ -105,6 +105,11 @@ il conteggio PCS di maschere, sali, frontiere e aperture storiche.
 Non compila Rust né misura certificati; preservare le etichette di lower,
 upper e condizione sul cap PCS quando si riusano questi numeri.
 
+Il filtro Rust `c71_b12_canonical_pcs_codec` controlla le forme del codec
+D34/D35 con byte e frontiere sintetici, senza witness, Merkle tree o pool.
+Usare la stessa build mirata e il limite seriale di 60 s/2 GiB. Il roundtrip
+strutturale non è verifica crittografica positiva; il test non esegue Gemma.
+
 The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate
 D31/D33 source counts and partial target/cube totals describe those fixtures,

@@ -417,28 +417,40 @@ apertura `c61_max_pruned_binary_siblings`, lo stesso limite del codec.
 
 | PCS | Byte fissi senza fratelli Merkle | Upper byte fratelli | Upper totale |
 |---|---:|---:|---:|
-| W/D35 | 6.933.788 | 7.012.352 | 13.946.140 |
-| A/D34 | 6.930.620 | 6.848.512 | 13.779.132 |
+| W/D35 | 6.929.180 | 7.012.352 | 13.941.532 |
+| A/D34 | 6.928.316 | 6.848.512 | 13.776.828 |
 
 Il cap di 8 MiB cade dentro entrambi gli intervalli. Quindi il formato
 non garantisce che basti; questo conteggio non dimostra che ogni prova
-lo superi. Non vengono generate PCS D34/D35 né misurate frontiere reali.
+lo superi. Il test Rust `c71_b12_canonical_pcs_codec` confronta ora
+il conteggio fisso con `decode_linear`/`encode_linear` sui due profili
+canonici: fixture nulle da 6.929.180/6.928.316 byte, roundtrip al confine
+inferiore al cap e rifiuto con un fratello in più. La geometria nativa
+riproduce anche i massimi delle frontiere e respinge le fixture massime
+al cap totale. Sono forme sintattiche con radici/valori/hash nulli,
+non PCS crittografiche valide né frontiere di prove reali.
+Il primo confronto ha corretto il messaggio base: il codec usa le
+32/64 celle **dopo** il fold finale, non le 128/256 precedenti. Il
+conteggio Python precedente sovrastimava quindi A/W di 2.304/4.608 byte.
 
 Sommando una PCS W e `slot+1` PCS A, corpo e header, si ottiene:
 
 | O | Lower totale | Upper totale |
 |---:|---:|---:|
-| 0 | 47.843.538 | 65.055.602 |
-| 150 | 54.872.980 | 78.950.388 |
-| 300 | 61.804.350 | 92.730.270 |
+| 0 | 47.841.178 | 65.053.242 |
+| 150 | 54.868.316 | 78.945.724 |
+| 300 | 61.797.382 | 92.723.302 |
 
-A entrambi gli estremi vanno aggiunti `len(gamma_W)+len(gamma_A)` byte.
+Entrambi gli estremi includono ora i due vettori gamma da 2.276 byte
+ciascuno, la cui lunghezza è verificata sulle configurazioni Rust D35/D34.
+L'header completo è quindi `5873 + 720*slot` byte.
 Il lower supera 35 MB per ogni calibrazione ammessa, anche omettendo
 GKR congiunti e fratelli Merkle. L'upper qui deriva dagli schemi, non
 dall'ipotesi che ciascuna PCS rientri nel cap di 8 MiB.
 Il rapporto `native_canonical_certificate_wire` conserva `credit:false`
-e assenza di misura completa. Occorre confrontare questi conteggi con
-l'encoding nativo prima di dimensionare il trasporto; nessun limite
+e assenza di misura completa. Il confronto nativo delle forme PCS è
+ora distinto dal confronto ancora aperto di tutto il corpo canonico.
+Quest'ultimo precede il dimensionamento del trasporto; nessun limite
 runtime, profilo numerico o assunzione di sicurezza cambia per questi conti.
 
 ## Resource and measurement contract

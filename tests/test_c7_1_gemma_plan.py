@@ -684,6 +684,33 @@ def test_B12_residual_zero_source_identity_and_original_RNE_compose_without_extr
     assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
 
 
+def test_B12_KV_original_tail_split_counts_fresh_MACs_and_unaligned_source_forms():
+    b=plan.b12_kv_tail_split_profile()
+    assert b['tail_tokens']==[150,150,150] and b['combined_tokens']==450
+    assert b['aligned_row_blocks_per_source']==[4,75,38]
+    assert b['byte_cubes_per_source_upper']==[480,9000,4560]
+    assert b['fresh_Fp3_correlations_before_source_PCS']==2
+    assert b['field_payload_bytes_before_context_forms_and_PCS']==48
+    assert b['FS_draw_requests']==1 and b['sum_of_all_FS_error_degrees_before_PCS']==119
+    assert b['additional_MAC_checks_or_private_products_before_PCS']==b['new_independent_KV_roots']==0
+    assert b['source_PCS_targets']==3
+    assert b['current_target_derived_from_original_KV_MACs'] and b['one_fresh_aggregate_MAC_per_previous_A']
+    assert b['previous_source_range_from_accepted_receipt_required']
+    assert b['native_three_step_Fp3_rows_including_two_incoming_claims_range_and_PCS']==[544,577,610]
+    assert sum(b['native_three_step_Fp3_rows_including_two_incoming_claims_range_and_PCS'])==1731
+    for count in [1,2,3]:
+        c=plan.b12_kv_tail_split_profile((3,)*count,2)
+        assert c['aligned_row_blocks_per_source']==[2,3,2][:count]
+        assert c['fresh_Fp3_correlations_before_source_PCS']==count-1
+    assert b['full_Gemma_verifier_controls_acceptance_and_root_history_required']
+    assert not b['canonical_RoPE_positions_and_full_KV_routes_integrated']
+    assert not b['included_in_residual_security_subtotal']
+    assert b['joint_extra_PCS_forests_streams_and_reduction_not_yet_composed']
+    assert b['full_Gemma_security_totals'] is None and not b['complete_security_or_physical_credit']
+    for tails in [(),(150,)*4,(0,),(151,)]:
+        with pytest.raises(ValueError):plan.b12_kv_tail_split_profile(tails)
+
+
 def test_B12_RoPE_joint_adjoint_counts_original_endpoints_and_fixed_public_recipe():
     cohorts = plan.gemma_weight_cohorts(plan.pinned_private_tensors())
     old = plan.gemma_rope_plan(cohorts)['summary']

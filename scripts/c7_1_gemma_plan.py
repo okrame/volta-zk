@@ -7445,6 +7445,41 @@ def b12_public_affine_profile(cells):
     }
 
 
+def b12_kv_tail_split_profile(tails=(150,150,150), endpoints=120):
+    natural(len(tails),'KV source roots in fixed run',1,3)
+    natural(endpoints,'original KV endpoint count',1,128)
+    offset=0;blocks=[]
+    for tokens in tails:
+        natural(tokens,'KV source tail tokens',1,150)
+        local=0;count=0
+        while local<tokens:
+            width=1 << (tokens-local-1).bit_length()
+            while width>tokens-local or local%width or (offset+local)%width:
+                width//=2
+            local+=width;count+=1
+        blocks.append(count);offset+=tokens
+    return {
+        'source':'rust/volta-pcs/src/c71_matrix/gemma/bytes/kv.rs',
+        'tail_tokens':list(tails),'combined_tokens':offset,'source_roots':len(tails),
+        'original_KV_endpoints':endpoints,'aligned_row_blocks_per_source':blocks,
+        'byte_cubes_per_source_upper':[endpoints*n for n in blocks],
+        'fresh_Fp3_correlations_before_source_PCS':len(tails)-1,
+        'field_payload_bytes_before_context_forms_and_PCS':24*(len(tails)-1),
+        'FS_draw_requests':1,'sum_of_all_FS_error_degrees_before_PCS':endpoints-1,
+        'additional_MAC_checks_or_private_products_before_PCS':0,
+        'new_independent_KV_roots':0,'current_target_derived_from_original_KV_MACs':True,
+        'one_fresh_aggregate_MAC_per_previous_A':True,
+        'source_PCS_targets':len(tails),'previous_source_range_from_accepted_receipt_required':True,
+        'native_source_log_cells_cap':14,
+        'native_three_step_Fp3_rows_including_two_incoming_claims_range_and_PCS':[544,577,610],
+        'canonical_RoPE_positions_and_full_KV_routes_integrated':False,
+        'full_Gemma_verifier_controls_acceptance_and_root_history_required':True,
+        'included_in_residual_security_subtotal':False,
+        'joint_extra_PCS_forests_streams_and_reduction_not_yet_composed':True,
+        'full_Gemma_security_totals':None,'complete_security_or_physical_credit':False,
+    }
+
+
 def b12_residual_source_profile():
     base=b12_attention_source_profile()
     cells=150*5376
@@ -8211,6 +8246,7 @@ def b12_pcs_binding_assessment():
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         'public_RoPE_joint_component': b12_rope_joint_profile(119808000),
         'raw_attention_QK_PV_component': b12_attention_product_profile(),
+        'original_KV_A_tail_split_component': b12_kv_tail_split_profile(),
         "claimless_projection": {
             "virtual_sumcheck_linear_coefficient": "A*z+B-2*c0-sum(tail)",
             "virtual_base_fresh_claim": "shifted_masked_claim-eta",

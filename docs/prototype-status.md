@@ -267,10 +267,20 @@ with **11,234,187 base rows for three attempts**, given the same fixed
 public quantization profile and alignment envelope. The sixteen Gemma
 checks cover the new source routes, not a calibrated full-model execution.
 
-Forty B12 algebra/accounting checks include the scalar invariant,
+The [KV tail router](../rust/volta-pcs/src/c71_matrix/gemma/bytes/kv.rs)
+now splits the original K/V MAC batch across prior A tails and current A,
+using one fresh aggregate MAC per previous source. Its three-step ideal
+check uses 544/577/610 rows with actual byte range and all required PCS;
+wrong incoming K and an altered old-source getter reject before promotion.
+The full-size tail forms use 4/75/38 aligned blocks at offsets 0/150/300.
+Prior roots/receipts still require the full verifier's accepted history.
+Canonical continued RoPE/attention, extra PCS forests/streams and complete
+state composition remain open; this kernel is outside the residual subtotal.
+
+Forty-one B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 221; the 17
-narrow bootstrap/pool checks and forty B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 222; the 17
+narrow bootstrap/pool checks and forty-one B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88

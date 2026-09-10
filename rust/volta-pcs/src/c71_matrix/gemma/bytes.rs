@@ -8,6 +8,7 @@ use super::{
 
 pub(super) mod quantize;
 pub(super) mod affine;
+pub(super) mod kv;
 
 struct ByteTile {
     scalar: usize,

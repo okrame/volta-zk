@@ -105,6 +105,19 @@ impl Plan {
 }
 
 impl Sources {
+    pub(super) fn append(
+        mut self,
+        extra: Vec<(String, usize, usize, usize)>,
+    ) -> Result<Self, String> {
+        self.gelu = self.gelu.append(extra)?;
+        let mut digest = blake3::Hasher::new();
+        digest.update(b"C71-gate-up-view-A-extension-v1\0");
+        digest.update(&self.view);
+        digest.update(&self.gelu.view);
+        self.view = *digest.finalize().as_bytes();
+        Ok(self)
+    }
+
     pub fn up_rne_pairs(&self, shifts: &[i32]) -> Result<Vec<bytes::quantize::Pair>, String> {
         if shifts.len() != self.products.len() {
             return Err("gate-up projection shifts differ".into());

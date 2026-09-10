@@ -225,13 +225,19 @@ MACs for the same A. Its 559-row ideal case closes a ranged source PCS,
 rejecting a wrong raw and a consistently changed input/raw pair. Public
 adjoint checks cover dyadic blocks, absolute positions, full half-head
 pairing and inactive pairs. The full D27 arithmetic is 83 Fp3 before
-RNE/source closures; canonical routes and output RNE are not yet included
-in this component or the gate-up security subtotal.
+RNE/source closures. The [canonical RoPE source compiler](../rust/volta-pcs/src/c71_matrix/gemma/rope.rs)
+now maps all 120 routes to the original q_norm/k_norm Y, with 480 joint
+blocks and 120 raw/output RNE pairs. A has 2,686 sources / 10,387,844,238
+bytes, still D34; the known batch has 3,649 targets and ≤61,947 cubes.
+The conditional subtotal now includes these producers and retains
+**82.98618 soundness / 91.02272 ZK bits**, using **7,906,491 base rows for
+three attempts**. Q30 tables and consistent public shifts are premises;
+numerical profile preparation/calibration and full native execution remain open.
 
-Thirty-six B12 algebra/accounting checks include the scalar invariant,
+Thirty-seven B12 algebra/accounting checks include the scalar invariant,
 decoder, adaptive Merkle/RS simulation, claimless mask translation and
-range/product identities and the joint two-source bounds. The relevant Python checks total 217; the 17
-narrow bootstrap/pool checks and thirty-four B12 PCS/caller/layout checks pass.
+range/product identities and the joint two-source bounds. The relevant Python checks total 218; the 17
+narrow bootstrap/pool checks and thirty-five B12 PCS/caller/layout checks pass.
 Native legacy replay and fork provenance remain valid. These are component
 checks and mathematical arguments, not new Lean or generated-code proofs.
 The CPU cap remains D14/n<=128. The D35 analytic profile retains about 88
@@ -252,9 +258,9 @@ NoPeek, relation and resource composition.
 
 **Remaining work:** full Gemma malicious-verifier ZK, the complete quantized
 Gemma GKR relation using the range-checked W, full correlation census and
-both-role resource composition for the fixed run. The known 6,648,624-row upper
-for three byte-backed P0/RNE/RMS/GELU/gate-up attempts fits the initial capacity;
-RoPE, attention, residual/scales, public output and other circuits remain uncounted.
+both-role resource composition for the fixed run. The known 7,906,491-row upper
+for three byte-backed P0/RNE/RMS/GELU/gate-up/RoPE attempts fits the initial capacity;
+attention/KV, residual/scales, public output and other circuits remain uncounted.
 The D35 dense PCS and fraction tree remain physically excluded. The earlier 86.8347-bit
 soundness bound also included failed setups/key changes; that broader
 evidence remains valid without making renewal/recovery new gates. Neither

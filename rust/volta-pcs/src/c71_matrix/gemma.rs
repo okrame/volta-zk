@@ -13,6 +13,7 @@ pub(super) mod caller;
 pub(super) mod rms;
 pub(super) mod gelu;
 pub(super) mod gate_up;
+pub(super) mod rope;
 
 #[derive(Clone, Debug)]
 pub(super) struct Source {

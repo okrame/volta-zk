@@ -586,8 +586,46 @@ def test_B12_RoPE_joint_adjoint_counts_original_endpoints_and_fixed_public_recip
         assert [list(plan.gemma_rope_q30_coefficients(family,t)[0]) for t in range(3)] == b['native_canonical_Q30_pair_j0_positions_0_1_2']
     assert b['public_half_head_adjoint_evaluated_without_private_Y']
     assert b['public_tables_and_positions_fixed_before_raw_probe']
-    assert not b['canonical_full_Gemma_source_routes_compiled'] and not b['output_RNE_included']
+    assert b['canonical_full_Gemma_source_routes_compiled'] and not b['output_RNE_included']
     assert not b['included_in_gate_up_security_subtotal'] and b['full_Gemma_security_totals'] is None
+
+
+def test_B12_RoPE_canonical_sources_and_RNE_recompose_with_same_RMS_A_and_D34():
+    all_bounds = plan.b12_pcs_binding_assessment()
+    base = all_bounds['P0_RNE_RMS_GELU_gate_up_composition']
+    b = all_bounds['P0_RNE_RMS_GELU_gate_up_RoPE_composition']
+    s = b['sources']
+    assert s['cohorts'] == s['new_raw_i48_sources'] == s['new_output_i16_sources'] == 120
+    assert s['original_q_norm_and_k_norm_Y_sources_reused']
+    assert s['auxiliary_sources'] == 2686 and s['auxiliary_live_bytes'] == 10387844238
+    assert s['auxiliary_root_log_cells'] == 34
+    assert s['additional_auxiliary_bytes'] == 958464000
+    assert s['public_dyadic_blocks'] == 480 and s['joint_cell_bits'] == 27
+    assert s['original_joint_raw_Y_byte_cubes'] == [960,480]
+    assert s['original_RNE_output_probe_raw_byte_cubes'] == [480,960]
+    assert s['RNE_cell_bits_sum'] == 2460
+    assert s['A_targets_with_joint_RoPE_and_output_RNE'] == 3649 < 4096
+    assert s['A_cubes_with_joint_RoPE_and_output_RNE_upper'] == 61947 < 65536
+    assert s['fresh_position_start'] == 0 and s['public_Q30_family_window_rows'] == 150
+    assert s['public_Q30_window_bytes'] == 230400
+    assert s['previous_source_ids_preserved_and_all_forms_recompiled']
+    assert b['additional_Fp3_correlations_upper_per_attempt'] == 83+120+40*2460+343*120 == 139763
+    assert b['additional_FS_draw_requests'] == 54+2460+10*2460+75*120 == 36114
+    assert b['additional_field_payload_bytes_upper_before_context_and_framing'] == 2664+24*(120+49*2460+407*120) == 4070664
+    assert b['sum_of_all_added_FS_error_degrees_upper'] == 81+33*2460+274*120 == 114141
+    assert b['additional_MAC_degree_sum_upper_per_attempt'] == 28+9*2460+66*120 == 30088
+    assert Fraction(b['conditional_soundness_sum']) == Fraction(base['conditional_soundness_sum'])+Fraction((1 << 74)*114141,plan.P**3)+Fraction(3*30088,plan.P**3-1)
+    assert b['conditional_ZK_sum'] == base['conditional_ZK_sum']
+    assert b['D34_geometry_and_joint_forest_unchanged'] and not b['new_PCS_or_private_rng_streams']
+    assert b['all_original_RMS_Y_raw_and_RNE_output_MACs_in_same_A']
+    assert b['raw_integer_difference_bound_given_i48_and_Q30_symmetric_i16'] == (1 << 47)+32767*(1 << 31) < plan.P
+    assert b['initial_base_capacity_upper_three_attempts_before_other_operators'] == 7906491 < b['initial_base_capacity_limit']
+    assert b['base_rows_upper_per_attempt_before_other_operators'] == 2635497
+    assert b['both_below_2_to_minus_78'] and b['both_resource_caps_hold'] and b['full_RO_queries_upper'] < 1 << 74
+    assert b['certified_Q30_tables_and_consistent_shifts_before_roots_required']
+    assert b['numerical_profile_preparation_and_calibration_outside_this_subtotal']
+    assert not b['native_full_domain_execution'] and not b['all_Gemma_integer_producers_proven']
+    assert b['full_Gemma_security_totals'] is None and not b['physical_schedule_admitted']
 
 
 def test_B12_raw_P0_two_sources_count_joint_forests_streams_and_original_MACs():

@@ -7319,9 +7319,83 @@ def b12_rope_joint_profile(cells):
         'native_canonical_Q30_pair_j0_positions_0_1_2': [[1073741824,0],[580145183,903522590],[-446834263,976350678]],
         'public_half_head_adjoint_evaluated_without_private_Y': True,
         'public_tables_and_positions_fixed_before_raw_probe': True,
-        'canonical_full_Gemma_source_routes_compiled': False,
+        'canonical_full_Gemma_source_routes_compiled': True,
         'output_RNE_included': False, 'included_in_gate_up_security_subtotal': False,
         'full_Gemma_security_totals': None, 'complete_security_or_physical_credit': False,
+    }
+
+
+def b12_rope_source_profile():
+    base = b12_gate_up_source_profile()
+    rotations = gemma_rope_plan(gemma_weight_cohorts(pinned_private_tensors()))['cohorts']
+    cells = sum(r['rows']*r['heads']*r['columns'] for r in rotations)
+    cubes = sum(r['rows'].bit_count() for r in rotations)
+    live = base['auxiliary_live_bytes']+8*cells
+    return {
+        'source': 'rust/volta-pcs/src/c71_matrix/gemma/rope.rs',
+        'cohorts': len(rotations), 'new_raw_i48_sources': len(rotations), 'new_output_i16_sources': len(rotations),
+        'original_q_norm_and_k_norm_Y_sources_reused': True,
+        'live_cells': cells, 'joint_cell_bits': (cells-1).bit_length(), 'public_dyadic_blocks': cubes,
+        'additional_auxiliary_bytes': 8*cells, 'auxiliary_live_bytes': live,
+        'auxiliary_sources': base['auxiliary_sources']+2*len(rotations),
+        'auxiliary_root_log_cells': (live-1).bit_length(),
+        'original_joint_raw_Y_byte_cubes': [2*cubes,cubes],
+        'original_RNE_output_probe_raw_byte_cubes': [cubes,2*cubes],
+        'RNE_cell_bits_sum': sum((r['rows']-1).bit_length()+(r['heads']*r['columns']-1).bit_length() for r in rotations),
+        'A_targets_with_joint_RoPE_and_output_RNE': base['A_targets_with_product_and_both_RNE']+2+2*len(rotations),
+        'A_cubes_with_joint_RoPE_and_output_RNE_upper': base['A_cubes_with_product_and_both_RNE_upper']+6*cubes,
+        'fresh_position_start': 0, 'public_Q30_family_window_rows': 150,
+        'public_Q30_window_bytes': 8*150*(128+64),
+        'previous_source_ids_preserved_and_all_forms_recompiled': True,
+        'native_full_domain_execution': False, 'actual_Gemma_quantization_calibrated': False,
+        'complete_security_or_physical_credit': False,
+    }
+
+
+def b12_rope_composition(base):
+    """Same D34, given certified public Q30 profile and consistent RNE shifts."""
+    sources = b12_rope_source_profile()
+    joint = b12_rope_joint_profile(sources['live_cells'])
+    rotations = gemma_rope_plan(gemma_weight_cohorts(pinned_private_tensors()))['cohorts']
+    dimensions = [(r['rows']-1).bit_length()+(r['heads']*r['columns']-1).bit_length() for r in rotations]
+    rne = [b12_rne_profile(c) for c in dimensions]
+    rows = joint['Fp3_correlations_before_source_range_and_PCS']+sum(1+p['Fp3_correlations_upper_before_incoming_claims_and_shared_PCS'] for p in rne)
+    degree = joint['sum_of_all_FS_error_degrees_before_shared_PCS']+sum(33*c+274 for c in dimensions)
+    mac_degree = joint['MAC_degree_sum_before_shared_PCS']+sum(p['MAC_degree_sum_upper_before_shared_PCS'] for p in rne)
+    fs_error, mac_error = Fraction((1 << 74)*degree,P**3),Fraction(3*mac_degree,P**3-1)
+    sound,privacy = Fraction(base['conditional_soundness_sum'])+fs_error+mac_error,Fraction(base['conditional_ZK_sum'])
+    total_rows = base['Fp3_correlations_upper_per_attempt_before_other_operators']+rows
+    work,memory,ro = 1 << 68,1 << 41,1 << 30
+    total_work,total_memory = base['reduction_work_upper']+work,base['reduction_memory_words_upper']+memory
+    return {
+        'relation': 'P0, 410 matrix RNE, 421 RMS/statistics, 60 GELU, gate-up/product RNE, and 120 Q30 RoPE/output RNE',
+        'sources': sources, 'joint_raw_linear': joint,
+        'additional_Fp3_correlations_upper_per_attempt': rows,
+        'additional_FS_draw_requests': joint['FS_draw_requests']+sum(dimensions)+sum(p['FS_draw_requests'] for p in rne),
+        'additional_field_payload_bytes_upper_before_context_and_framing': joint['field_payload_bytes_before_context_and_framing']+24*len(rotations)+sum(p['field_payload_bytes_upper_before_context_and_framing'] for p in rne),
+        'sum_of_all_added_FS_error_degrees_upper': degree,
+        'additional_MAC_degree_sum_upper_per_attempt': mac_degree,
+        'additional_global_FS_error': str(fs_error), 'additional_fixed_run_MAC_error': str(mac_error),
+        'Fp3_correlations_upper_per_attempt_before_other_operators': total_rows,
+        'base_rows_upper_per_attempt_before_other_operators': 3*total_rows,
+        'initial_base_capacity_upper_three_attempts_before_other_operators': 9*total_rows,
+        'initial_base_capacity_limit': base['initial_base_capacity_limit'],
+        'additional_honest_work_u64_upper': work, 'additional_honest_memory_words_upper': memory,
+        'additional_honest_RO_events_upper': ro,
+        'full_RO_queries_upper': base['full_RO_queries_upper']+ro,
+        'reduction_work_upper': total_work, 'reduction_memory_words_upper': total_memory,
+        'both_resource_caps_hold': total_work < 1 << 121 and total_memory < 1 << 93,
+        'conditional_soundness_sum': str(sound), 'conditional_ZK_sum': str(privacy),
+        'soundness_bits': math.log2(sound.denominator)-math.log2(sound.numerator),
+        'ZK_bits': math.log2(privacy.denominator)-math.log2(privacy.numerator),
+        'both_below_2_to_minus_78': max(sound,privacy) < Fraction(1,1 << 78),
+        'D34_geometry_and_joint_forest_unchanged': True, 'new_PCS_or_private_rng_streams': 0,
+        'all_original_RMS_Y_raw_and_RNE_output_MACs_in_same_A': True,
+        'raw_integer_difference_bound_given_i48_and_Q30_symmetric_i16': (1 << 47)+32767*(1 << 31),
+        'certified_Q30_tables_and_consistent_shifts_before_roots_required': True,
+        'numerical_profile_preparation_and_calibration_outside_this_subtotal': True,
+        'native_full_domain_execution': False, 'all_Gemma_integer_producers_proven': False,
+        'full_Gemma_security_totals': None, 'physical_schedule_admitted': False,
     }
 
 
@@ -7722,6 +7796,7 @@ def b12_pcs_binding_assessment():
         fixed_boot, merkle_collision+merkle_deferred, bootstrap_work, bootstrap_memory,
         tape_words)['cases'][-1]
     assert gate_up_byte_profile['max_XOF_bytes_per_block_upper']//8 <= tape_words
+    gate_up_composition = b12_gate_up_composition(gelu_composition,p0_composition['cases'][-1],gate_up_raw,gate_up_byte_profile)
     for row, joint in zip(range_cases, p0_composition['cases']):
         row['large_domain_private_sampler_and_simulator_bound_derived'] = True
         if row['conditional_ZK_sum'] is None:
@@ -7909,7 +7984,8 @@ def b12_pcs_binding_assessment():
         'direct_P0_RNE_composition': direct_composition,
         'P0_RNE_RMS_composition': rms_composition,
         'P0_RNE_RMS_GELU_composition': gelu_composition,
-        'P0_RNE_RMS_GELU_gate_up_composition': b12_gate_up_composition(gelu_composition,p0_composition['cases'][-1],gate_up_raw,gate_up_byte_profile),
+        'P0_RNE_RMS_GELU_gate_up_composition': gate_up_composition,
+        'P0_RNE_RMS_GELU_gate_up_RoPE_composition': b12_rope_composition(gate_up_composition),
         'public_lookup_component': b12_lookup_profile(60*150*21504,60*65535),
         'canonical_GELU_source_extension': b12_gelu_source_profile(),
         'public_RoPE_joint_component': b12_rope_joint_profile(119808000),

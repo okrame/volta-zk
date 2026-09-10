@@ -37,7 +37,11 @@ impl Bytes {
         pairs
             .iter()
             .map(|p| {
-                let view = self.rne_view(plan, p.raw)?;
+                let view = if p.raw < plan.cohorts.len() {
+                    self.rne_view(plan, p.raw)?
+                } else {
+                    self.source_rne_view(p.raw)?
+                };
                 let out = self
                     .scalar
                     .layout
@@ -231,7 +235,7 @@ impl Bytes {
             forms.push(form);
             shifts.push(shift);
             targets.push(o.output);
-            forms.push(self.rne_form(plan, p.raw, &o.raw_point)?);
+            forms.push(self.source_rne_form(p.raw, &o.raw_point)?);
             shifts.push(Fp3::ZERO);
             targets.push(o.raw);
         }

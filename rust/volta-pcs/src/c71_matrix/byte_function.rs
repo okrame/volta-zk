@@ -4,6 +4,8 @@
 
 use super::*;
 
+component_wire!(Proof { layers, leaf_tag, products });
+
 pub(super) struct Statement<'a> {
     pub root: &'a C61Commitment,
     pub profile: &'a [u8],

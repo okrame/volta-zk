@@ -138,7 +138,7 @@ precedenti sono storici; per il risultato congiunto vale [security](security.md)
 
 ## Native correspondence
 
-Il prossimo port deve dimostrare la corrispondenza fra il codice composto
+Il port canonico deve dimostrare la corrispondenza fra il codice composto
 e [Prepare/VerifyResponse](security.md#2-preparatore-e-macchina-di-accettazione).
 Le API componenti restituiscono obblighi pendenti: il loro successo non
 implica già un'inferenza Gemma accettata. I collegamenti da verificare sono:
@@ -157,6 +157,63 @@ esperimento; i lemmi di promozione presuppongono code ammissibili.
 Non si eredita un vecchio numeratore Lean né la correttezza Gemma dal
 golden GPT-2. L'output effettivo del compilatore deve corrispondere alla
 relazione, non soltanto a una lista di conteggi condivisa.
+
+### Executed bounded path
+
+Il [percorso nativo ridotto](../../rust/volta-pcs/src/c71_matrix/gemma/native.rs)
+esegue tutte le famiglie della schedule su un layer locale, hidden e
+vocabolario 2, prompt 1 + generato 1, O=0/2/4. Usa gli stessi kernel
+P0/RMS/RNE/lookup/gate-up/RoPE/QK/PV/KV/EXP30, le forme byte originali,
+range e PCS salata. GELU riusa la vista tabellare del caller output con
+la propria tabella e i propri ID. Il compilatore ridotto è esplicito;
+non sostituisce `Recipes::compile` o i descrittori pinned.
+
+Γ ridotto fissa ex=ew=ey=0, Pi=-14, epsilon RMS=10^-6, coefficienti
+affini identità, RoPE Q30 j=0 alle sei posizioni assolute, GELU su [-2,2],
+softcap su [-4,4] ed EXP30 su D=0..7. Le tabelle sono restrizioni delle
+ricette selezionate, controllate con il generatore certificato Python.
+Un input privato fuori da queste restrizioni produce solo Stop. Questo
+profilo non è una calibrazione o un'istanza del checkpoint Gemma completo.
+
+`Installed` fissa W (46 i16, Flat D10) senza input DV; `Snapshot::prepare`
+produce tutti i raw, gli i16, gli istogrammi e i byte di A (69 sorgenti,
+Flat D12) senza FS, Delta, tag, righe o seed PCS in ingresso. Le due righe
+sono calcolate causalmente, compreso il KV del token emesso. C_A è creata
+solo dopo il successo di tutta la preparazione. Il preflight di capacità
+precede le letture private. Dopo le sfide i getter prendono soltanto
+riferimenti immutabili allo snapshot e agli originali W.
+
+Il compilatore verifica un produttore per ogni sorgente. Il dispatcher
+chiude 18 target W, 110 target A corrente e uno per vecchia A: sette RNE
+consumano MAC/punti originali, dieci usano sonde intere. Range W i16
+simmetrico, range A byte e padding sono obbligatori. Ogni risposta ha
+2/3/4 PCS, una per sorgente, con righe fresche; le riserve complete sono
+88.049/88.562/89.102 Fp3 (797.139 righe base equivalenti nel run).
+
+Il codec ridotto usa frame `(u16 ordine, u32 lunghezza, payload)`, conteggi
+interni canonici e Fp3 canonici; il payload PCS riusa il codec esistente.
+I 17/18/19 frame sono obbligatori e assorbiti nello stesso FS dei kernel.
+Il verifier ricostruisce header, profili, storia ordinata e forme dal
+proprio stato. Lunghezze/vettori sono limitati prima dell'allocazione
+(16 MiB totali, 65.536 elementi per vettore); il record finale vincola
+conteggio e lunghezza e richiede EOF prima del digest di completamento.
+
+L'ingresso della verifica rende subito terminale il run. Slot e intero
+intervallo vengono bruciati prima del decoding dei componenti; anche
+panic/esaurimento FS si traducono in Stop. Solo il successo di tutte le
+verifiche e del framing aggiunge la nuova voce al registro. Il prover
+mantiene lo snapshot pendente e lo promuove tramite un oggetto di
+accettazione costruibile solo dal verifier completo, non da un ACK wire.
+Non esistono API di clone/import delle ricevute, rollback o reopen.
+
+**Limite del trasferimento:** questi sono controlli eseguiti della
+composizione ridotta nel modello di correlazioni indipendenti ideali.
+I lemmi MAC/prefissi/KV sopra si applicano alle medesime equazioni e
+regole di stato, senza costituire una prova Lean del wrapper. Restano
+da collegare il dispatcher canonico e la capacità reale AES/journal;
+non sono provati un raffinamento generale Rust, i bound 82,93/91,02 per
+questa istanza ridotta o uno schedule fisico. Il runner di produzione
+non acquisisce un backend ideale o un fallback CPU da questo modulo interno.
 
 ## Resource and measurement contract
 

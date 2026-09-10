@@ -2,6 +2,8 @@
 //! exponential lookup, denominator and exact RNE all close in the SAME A.
 
 use super::caller::P0Statement;
+
+component_wire!(Proof { maximum, max_leaf_tag, max_products, lookup, ratio });
 use super::rms::prefix;
 use super::*;
 use crate::c71_matrix::{

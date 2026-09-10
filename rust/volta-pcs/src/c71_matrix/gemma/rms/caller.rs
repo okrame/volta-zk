@@ -3,6 +3,8 @@
 //! obligations still join P0/RNE in ONE auxiliary PCS.
 
 use super::*;
+
+component_wire!(Proof { statistics, products, joint });
 use crate::c71_matrix::gemma::caller::P0Statement;
 use crate::c71_matrix::rms::{self as kernel, gkr, statistic};
 use crate::c71_matrix::*;

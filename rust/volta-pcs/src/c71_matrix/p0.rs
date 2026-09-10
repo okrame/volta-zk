@@ -3,6 +3,8 @@
 //! MACs at the returned points. Lookup is a direct linear W target.
 
 use super::*;
+
+component_wire!(Proof { rounds, terminal });
 use range::{authenticate, correct};
 
 pub(super) struct Proof {

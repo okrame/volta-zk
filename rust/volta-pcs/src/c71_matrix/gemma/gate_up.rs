@@ -2,6 +2,8 @@
 //! original down-P0 input. Reuse the cubic P0 kernel; no product PCS.
 
 use super::caller::{P0Statement, PendingP0};
+
+component_wire!(Proof { raw, reduction, product });
 use super::rms::prefix as point;
 use super::*;
 use crate::c71_matrix::{

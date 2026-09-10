@@ -1,6 +1,9 @@
 //! C7.1 matrix and B12 flat-source composition. No complete Gemma credit.
 
 mod codec;
+#[cfg(feature = "c71-b12-pcs")]
+#[macro_use]
+mod wire;
 mod census;
 mod diagnostic;
 #[cfg(feature = "c71-b12-pcs")]

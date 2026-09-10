@@ -2,6 +2,8 @@
 //! Original probe and raw-byte MACs both close in the SAME auxiliary PCS.
 
 use super::*;
+
+component_wire!(Proof { probes, reductions });
 use crate::c71_matrix::gemma::caller::P0Statement;
 use crate::c71_matrix::*;
 

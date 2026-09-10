@@ -3,6 +3,8 @@
 
 use super::*;
 
+component_wire!(Proof { rounds, terminal, tag, products, functions });
+
 struct Function {
     lane: usize,
     table: [Fp3; 256],

@@ -129,8 +129,23 @@ pub(super) fn encode(
     matrix: &MatrixProof,
 ) -> ReferenceResult<Vec<u8>> {
     let config = matrix_config(n).map_err(C61WhirReferenceError::new)?;
-    let mut w = header(n, root, input, output, attempt)?;
-    require(matrix.rounds.len() == config.num_variables / 2, "C71 matrix round count mismatch")?;
+    let w = header(n, root, input, output, attempt)?;
+    encode_body(&config, config.num_variables / 2, matrix, w)
+}
+
+#[cfg(feature = "c71-b12-pcs")]
+pub(super) fn encode_linear(domain: Domain, proof: &MatrixProof) -> ReferenceResult<Vec<u8>> {
+    let config = domain.config().map_err(C61WhirReferenceError::new)?;
+    encode_body(&config, config.num_variables, proof, C61Writer::default())
+}
+
+fn encode_body(
+    config: &ZkWhirConfig<E, Goldilocks, Fs>,
+    rounds: usize,
+    matrix: &MatrixProof,
+    mut w: C61Writer,
+) -> ReferenceResult<Vec<u8>> {
+    require(matrix.rounds.len() == rounds, "C71 matrix round count mismatch")?;
     for row in &matrix.rounds {
         for x in row {
             w.bytes.extend_from_slice(&x.to_bytes());
@@ -266,8 +281,23 @@ pub(super) fn decode(
     let expected = header(n, root, input, output, attempt)?.bytes;
     let mut r = C61Reader::new(bytes);
     require(r.take(expected.len())? == expected, "C71 statement/header mismatch")?;
+    decode_body(&config, config.num_variables / 2, r)
+}
+
+#[cfg(feature = "c71-b12-pcs")]
+pub(super) fn decode_linear(domain: Domain, bytes: &[u8]) -> ReferenceResult<MatrixProof> {
+    require(bytes.len() <= MAX_BYTES, "C71 certificate exceeds local byte cap")?;
+    let config = domain.config().map_err(C61WhirReferenceError::new)?;
+    decode_body(&config, config.num_variables, C61Reader::new(bytes))
+}
+
+fn decode_body(
+    config: &ZkWhirConfig<E, Goldilocks, Fs>,
+    round_count: usize,
+    mut r: C61Reader<'_>,
+) -> ReferenceResult<MatrixProof> {
     let mut rounds = Vec::new();
-    for _ in 0..config.num_variables / 2 {
+    for _ in 0..round_count {
         rounds.push([get_fp3(&mut r)?, get_fp3(&mut r)?, get_fp3(&mut r)?, get_fp3(&mut r)?]);
     }
     let terminal = [get_fp3(&mut r)?, get_fp3(&mut r)?];

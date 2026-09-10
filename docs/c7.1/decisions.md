@@ -22,7 +22,7 @@ impossibile. L'harness e gli identificatori dei goal esistenti restano invariati
 | B9 | Componente nativo e controlli avversari acquisiti; premesse concrete e composizione ancora separate | [B9](../c7.1-gemma31b-design.md#b9-componente-nativo-e-confine-di-ammissione) |
 | B10 | Valutazione premesse/lifecycle conclusa senza ammissione; seed-search esclude il vantaggio PRG richiesto per GGM a 128 bit | [B10](../c7.1-gemma31b-design.md#b10-premesse-concrete-e-contratto-di-composizione) |
 | B11 | Riparazione locale 128-bit respinta; successivamente selezionato e concluso il profilo finito AES-256 condizionale | [Rifiuto](../c7.1-gemma31b-design.md#b11-esito-del-test-di-riparazione-locale), [selezione](../c7.1-gemma31b-design.md#b11-selezione-intermedia-aes-a-capacità-finita) |
-| B12 | Goal matematico same-W/KV/ZK congiunta chiuso a `9e57199`; corrispondenza nativa è il prossimo lavoro | [Prova corrente](security.md), [stato e criteri di completamento](status.md#next-goal) |
+| B12 | Goal matematico same-W/KV/ZK congiunta chiuso a `9e57199`; percorso nativo ridotto completo verificato con MAC ideali, port canonico/AES aperto | [Prova corrente](security.md), [evidenza nativa](evidence.md#native-bounded-composition), [prossimo lavoro](status.md#next-goal) |
 
 I vecchi limiti di commit e stop della fase B1 non si riapplicano come
 nuovi gate a B12. Il rifiuto B7 rimane invece effettivo per quella baseline.
@@ -84,7 +84,7 @@ selezionata. Nessuna di queste linee si riattiva per aggirare un costo ignoto.
 
 | Profilo o stato precedente | Interpretazione corrente |
 |---|---|
-| Obbligo aperto «comporre same-W/KV/ZK» | Scaricato per l'algoritmo matematico in security; ancora da realizzare e verificare nel wrapper nativo |
+| Obbligo aperto «comporre same-W/KV/ZK» | Scaricato per l'algoritmo matematico in security; percorso nativo ridotto verificato, trasferimento al dispatcher canonico e al pool reale ancora aperto |
 | «Ricetta softmax da scegliere» | `C71-SOFTMAX-EXP30-v1` selezionata; non equivalenza alla softmax reale |
 | Lifetime S20, memoria del riduttore M89, 27 risposte/32 slot | Derivazioni precedenti; profilo attuale S=1, M93 e tre tentativi, senza rinnovi |
 | B2 matrice, A5/S e R3/S+Y/altre estensioni incrementali | Profili/componenti distinti, non parti indipendenti da sommare al B12 finale |

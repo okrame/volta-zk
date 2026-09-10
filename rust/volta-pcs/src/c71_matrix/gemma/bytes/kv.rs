@@ -4,6 +4,8 @@
 //! a new receipt; each returned target still needs its source PCS.
 
 use super::*;
+
+component_wire!(Proof { old });
 use crate::c71_matrix::gemma::rms::prefix;
 use crate::c71_matrix::{
     range, record_values, signed, AttemptContext, Auth, C61Commitment, Fs, Key,

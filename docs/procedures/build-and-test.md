@@ -30,6 +30,26 @@ closure alone requires no Rust or Lean build; native refinement is separate.
 
 ## Rust and resource limits
 
+Per il percorso composto ridotto, compilare solo `volta-pcs` con il target
+canonico assoluto e `CARGO_INCREMENTAL=0` come sotto:
+
+```bash
+CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2 cargo test --offline --locked -j 1 -p volta-pcs --features c71-b12-pcs --lib c71_b12_native --no-run
+```
+
+Eseguire il binario test stampato da Cargo con un filtro alla volta:
+`c71_b12_native_prepare`, `c71_b12_native_composed`,
+`c71_b12_native_certificate`, `c71_b12_native_interrupted`,
+`c71_b12_native_context`, `c71_b12_native_consistent_inference`,
+`c71_b12_native_changed_predecessor`, `c71_b12_native_exhaustion`.
+Ogni invocazione usa `--test-threads=1`, `RAYON_NUM_THREADS=1`,
+`timeout 60s` e `ulimit -v 2097152`; nessun caso si esegue in parallelo.
+Sono test composti con MAC ideali, non bootstrap AES delle 797.139 righe
+base equivalenti. Non avviare quest'ultimo sulla VM. Per le tabelle usare
+il filtro Python `native_small_profile`; dopo modifiche al codec PCS
+conservare anche i test campo/FS e salted/codec preesistenti.
+Vedi [perimetro ed evidenza](../c7.1/evidence.md#native-bounded-composition).
+
 The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate
 D31/D33 source counts and partial target/cube totals describe those fixtures,

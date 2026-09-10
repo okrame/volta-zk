@@ -3,6 +3,8 @@
 
 use super::*;
 
+component_wire!(Proof { raw, rounds, terminal });
+
 pub(super) struct Block {
     pub rows: usize, // dyadic token interval; columns are head || half || pair
     pub heads: usize,

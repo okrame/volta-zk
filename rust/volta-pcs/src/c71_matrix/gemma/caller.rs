@@ -2,6 +2,8 @@
 //! Success returns pending source openings, not a complete Gemma proof.
 
 use super::*;
+
+component_wire!(Proof { cohorts, products });
 use crate::c71_matrix::{p0, range, record_values, AttemptContext, Auth, C61Commitment, Fs, Key};
 
 pub(in crate::c71_matrix) struct P0Statement<'a> {

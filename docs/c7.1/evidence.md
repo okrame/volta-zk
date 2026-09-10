@@ -58,6 +58,69 @@ pubbliche più grandi senza averne eseguito i corpi: distinguere guard del
 compilatore, guard del runner e dominio realmente testato. Le vecchie
 menzioni di D14/D15/D33 o 131.072 cubi non fissano il profilo completo corrente.
 
+## Native bounded composition
+
+Il 2026-09-10 il [wrapper nativo](../../rust/volta-pcs/src/c71_matrix/gemma/native/protocol.rs)
+e il [preparatore](../../rust/volta-pcs/src/c71_matrix/gemma/native/prepare.rs)
+sono verificati con otto [test Rust](../../rust/volta-pcs/src/c71_matrix/gemma/native/tests.rs)
+e un controllo delle tabelle contro le ricette certificate Python. Si tratta
+di verifiche di sviluppo su un grafo piccolo, con correlazioni Fp3 ideali;
+non di benchmark su albero pulito, E2E AES o checkpoint Gemma.
+
+| Controllo `c71_b12_native_…` | Proprietà esercitata |
+|---|---|
+| `prepare` | Tutte le 69 sorgenti, tre contesti, KV dell'ultimo token, ties-to-even e Stop della preparazione |
+| `composed` | Tre certificati completi; digest FS uguali nei ruoli; 18 target W, 110 A, uno per vecchia A; riserve esaurite esattamente e promozioni concordi |
+| `certificate` | Componente omesso/duplicato/riordinato, cardinalità RNE alterata, byte finali eccedenti, lunghezza ostile e Fp3 non canonico |
+| `interrupted` | Troncamento dopo ciascuno dei 17 componenti del primo tentativo; tag finale PCS alterato; nessuna promozione e nessun riuso dopo Stop |
+| `context` | W, predecessore, profilo, token, epoch e nonce diversi; replay di una risposta già accettata |
+| `consistent_inference` | Calcolo interamente coerente con getter W alterati, mantenendo corpo e root W originali per range/PCS: rifiuto |
+| `changed_predecessor` | K dell'ultimo token del predecessore alterata nel getter, con A precedente originale: continuazione respinta e registro fermo alla prima risposta |
+| `exhaustion` | Capacità esaurita: Stop terminale, nessuna A pendente/promossa e nessun riavvio |
+
+Il test positivo usa prompt 1 + generato 1 a O=0/2/4, un layer, hidden e
+vocabolario 2, W Flat D10 e A Flat D12. Le 942/1.006/1.070 posizioni byte
+vive includono tutti i produttori e gli istogrammi; padding fino a D12
+verificato. Le PCS per risposta sono 2/3/4; W/A0/A1/A2 hanno 3/3/2/1
+esposizioni. Le riserve sono 264.147/265.686/267.306 righe base equivalenti.
+I certificati includono kernel, range, PCS, sali/path e framing: i byte
+variano con le monete private, senza che questi test forniscano un bound
+o una misura del certificato del modello completo.
+
+Le mutazioni del certificato usano fork **solo nella fixture di test**
+del registro già verificato e delle relative chiavi, per esperimenti
+controfattuali sul medesimo certificato. Nessuna API di fork/import viene
+esposta dal protocollo. I casi di getter W/KV alterati generano invece
+nuovi certificati avversari e controllano i collegamenti agli originali.
+
+Compilazione mirata `volta-pcs --features c71-b12-pcs --lib --no-run`,
+offline/locked, opt-level 2 senza debug/incremental, un job, target canonico.
+Ogni filtro sopra viene eseguito separatamente con `--test-threads=1`,
+`RAYON_NUM_THREADS=1`, `timeout 60s` e `ulimit -v 2097152`.
+Il [test Python](../../tests/test_c7_1_gemma_plan.py)
+`-k native_small_profile` confronta GELU, softcap, EXP30 e tutti i sei
+coefficienti Q30 con i generatori esatti esistenti. I campi canonici di
+ammissione dell'harness rimangono falsi; `native_bounded_composition`
+registra questo risultato separato.
+
+Le 797.139 righe base del run composto non sono state espanse con AES:
+quel bootstrap supera i limiti dei casi locali descritti nelle procedure.
+Il port al pool reale e ai descrittori canonici resta esplicito nel
+[design](design.md#native-correspondence). Nessuna esecuzione GPU/provider,
+spesa, build Lean o build dell'intero workspace.
+
+Validazione finale: **8 test nativi composti, 6 regressioni native e
+81 controlli Python passati**, oltre a CLI/self-check, JSON rigoroso e
+controlli documentali. Le regressioni native sono i tre
+`c71_matrix::tests::`, `c71_b12_fs_uses_one_tape`,
+`c71_b12_salted_merkle` e `c71_b12_real_durable_roles`.
+Quest'ultimo ha inizialmente incontrato il divieto sandbox su socketpair;
+è passato rieseguendo il solo caso locale con l'autorizzazione prevista
+dalle procedure, mantenendo 60 s/2 GiB. Non è un fallimento crittografico.
+Il filtro Python combinato è `B12 or ideal_mac_simulation or bootstrap or
+budget` nei tre file di test indicati sotto; il controllo delle tabelle
+è stato ricontrollato dopo aver adeguato il reader alla formattazione Rust.
+
 ## Measured historical records
 
 I file sotto sono immutabili e identificano il codice effettivamente misurato.

@@ -3,6 +3,9 @@
 //! The caller closes the returned forms/targets in ONE linear PCS batch.
 
 use super::*;
+
+component_wire!(Layer { rounds, split });
+component_wire!(Proof { histogram, roots, layers, leaf_tag, products });
 use linear::Cube;
 
 #[derive(Clone, Copy)]

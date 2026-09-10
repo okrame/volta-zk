@@ -3,6 +3,8 @@
 
 use super::*;
 
+component_wire!(Proof { roots, layers, leaves, products });
+
 pub(super) struct Table<'a> {
     pub profile: u8,
     pub lower: i16,

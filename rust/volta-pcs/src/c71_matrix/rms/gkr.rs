@@ -3,6 +3,9 @@
 //! Returning success leaves one original byte-view obligation for the SAME A PCS.
 
 use super::super::*;
+
+component_wire!(Layer { rounds, terminal });
+component_wire!(Proof { layers, products, functions });
 use super::{Circuit, Gate, Op};
 
 pub(in super::super) struct Statement<'a> {

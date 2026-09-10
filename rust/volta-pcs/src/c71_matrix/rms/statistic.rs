@@ -3,6 +3,8 @@
 
 use super::super::*;
 
+component_wire!(Proof { statistic, reduction });
+
 pub(in super::super) struct Statement<'a> {
     pub root: &'a C61Commitment,
     pub profile: &'a [u8],

@@ -20,6 +20,22 @@ plan = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plan)
 
 
+def test_B12_native_small_profile_uses_certified_numeric_table_restrictions():
+    import ast
+    import re
+    source = (Path(__file__).resolve().parents[1] /
+              'rust/volta-pcs/src/c71_matrix/gemma/native.rs').read_text()
+    constants = {name: ast.literal_eval(value.strip()) for name, value in re.findall(
+        r'const (GELU|SOFTCAP|EXP30|Q30):[^=]+=(\s*\[[\s\S]*?\]);', source)}
+    assert constants['GELU'] == [plan.gelu_i16_pair(abs(x), 0, 0)[int(x < 0)]
+                                 for x in range(-2, 3)]
+    assert constants['SOFTCAP'] == [plan.softcap_i16_pair(abs(x), 0, 0)[int(x < 0)]
+                                    for x in range(-4, 5)]
+    assert constants['EXP30'] == [plan.softmax_exp30_value(d, 0) for d in range(8)]
+    assert constants['Q30'] == [list(plan.gemma_rope_q30_coefficients('local', t)[0])
+                               for t in range(6)]
+
+
 def test_B12_affine_MCA_on_the_same_agreement_set_and_strict_radius():
     # Exhaust every affine pencil in F3^4 for the repetition code. MCA asks
     # about the SAME S, not just existence of a nearby codeword for each input.
@@ -162,6 +178,12 @@ def test_B12_complete_fixed_run_preserves_exact_errors_and_counts_caller_resourc
     assert not any(full[k] for k in ('native_complete_verifier_implemented',
         'native_full_domain_execution', 'runtime_refinement_proven',
         'physical_schedule_admitted', 'production_runtime_admitted', 'externally_fixed_root_simulation'))
+    native = full['native_bounded_composition']
+    assert native['source_PCS_per_attempt'] == full['source_PCS_per_attempt']
+    assert native['old_tokens'] == [0, 2, 4]
+    assert sum(native['base_row_reservations']) == 797139
+    assert native['single_reconstructed_FS'] and native['atomic_verified_KV_promotion']
+    assert not native['real_AES_composed_run'] and not native['canonical_Gemma_dispatch']
     for change in ({'recipe': 'unselected'}, {'allowed_softmax_values_proven': False},
                    {'cases': base['cases'][:2]}):
         with pytest.raises(ValueError):

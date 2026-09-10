@@ -26,37 +26,49 @@ Il profilo pubblico numerico deve essere valido e posseduto dal verifier.
 `C71-SOFTMAX-EXP30-v1` è già selezionato: non c'è una decisione sulla ricetta
 ancora da chiedere. Calibrazione e qualità del checkpoint reale restano aperte.
 
+## Native bounded result
+
+**Il percorso nativo completo su un grafo piccolo è ora verificato nel
+modello MAC ideale.** Il [runner interno](../../rust/volta-pcs/src/c71_matrix/gemma/native.rs)
+collega Prepare, snapshot, tutti i produttori numerici/GKR, range/PCS,
+certificato, VerifyResponse e promozione KV. Tre tentativi consecutivi
+conservano un solo W installato e ricostruiscono lo stesso FS nei due ruoli.
+Gli otto [test nativi](evidence.md#native-bounded-composition) coprono anche
+framing, cardinalità, riordino, interruzioni, esaurimento, W e predecessore
+alterati, inclusa la K dell'ultimo token già accettato. Un errore non promuove
+lo snapshot pendente e termina il run.
+
+È il controllo composto richiesto, anziché un insieme di ricevute componenti:
+un layer, hidden/vocabolario 2, prompt 1 + generato 1, O=0/2/4, W/D10 e A/D12.
+Il compilatore possiede 69 sorgenti A e tutte le relative ricette; i getter
+leggono lo snapshot fissato prima delle sfide. Nessun logit, Pi, output RNE
+o KV entra dal caller. Le restrizioni delle tabelle certificate sono
+controllate contro il riferimento Python.
+
+Questo non trasferisce automaticamente gli 82,93/91,02 bit al programma
+Rust o al piccolo profilo. Restano distinti il teorema matematico completo,
+l'esecuzione nativa nel modello MAC ideale e il port canonico/AES.
+
 ## Next goal
 
-**Portare e verificare la corrispondenza nativa al protocollo composto.**
-Riprendere l'harness a step esistente, con gli stessi identificatori e
-criteri di completamento; questo riordino non introduce un nuovo milestone
-né modifica gli script, i test o i loro campi di stato.
+**Estendere il percorso verificato ai descrittori canonici e al pool reale.**
+Il piccolo compilatore non è ancora il dispatcher dei 773 P0/421 RMS del
+profilo pinned. Il collegamento alla capacità AES/journal completa non è
+eseguito dal test composto: le sue 797.139 righe base superano il perimetro
+dei test bootstrap locali. Restano validi i controlli separati del pool.
+Non si ammettono per questo esito esecuzione Gemma completa, produzione,
+un nuovo bound Rust o materializzazioni D34/D35.
 
-Il prossimo goal è concluso quando, su grafi piccoli:
-
-1. Il preparatore produce lo snapshot immutabile e completa il KV dell'ultimo
-   token, rispettando NoPeek e la semantica numerica del design.
-2. Il verificatore possiede profilo, W e registro dei predecessori; esegue
-   l'intera schedule obbligatoria, chiude tutti gli endpoint originali e
-   promuove soltanto dopo il successo congiunto.
-3. Il codec completo vincola ordine, cardinalità, contesto e framing nel
-   medesimo FS; certificati incompleti, alterati o riferiti a un altro
-   W/predecessore sono respinti senza promozione.
-4. Controlli positivi e avversari documentano la corrispondenza, i consumi
-   monouso e l'arresto definitivo; stato, design ed evidenza sono aggiornati
-   insieme. Il successo di un componente isolato non conta come tale risultato.
-
-Il riferimento preciso è [security §§2–3](security.md#2-preparatore-e-macchina-di-accettazione),
-con le premesse runtime del [design](design.md#native-correspondence).
-Non serve riaprire G2 né ripetere il goal matematico prima di questo port.
+L'harness conserva B12 e i campi di ammissione canonica; il nuovo campo
+`native_bounded_composition` distingue il risultato ridotto. Il riferimento
+resta [security §§2–3](security.md#2-preparatore-e-macchina-di-accettazione),
+con i limiti del [design](design.md#native-correspondence).
 
 ## Scope and authorization
 
-Il lavoro locale pertinente è autorizzato. Si seguono le
-[procedure di build e test](../procedures/build-and-test.md), con casi
-piccoli e controlli mirati. Questo passaggio documentale non avvia il
-prossimo goal tecnico: il punto di ripartenza sopra è pronto per il reset.
+Il lavoro locale pertinente è autorizzato dalla richiesta del proprietario
+del 2026-09-10. Si seguono le [procedure di build e test](../procedures/build-and-test.md):
+build mirata con un job, test seriali limitati a 60 s/2 GiB e un worker Rayon.
 
 Restano fuori dal risultato acquisito: esecuzione Gemma completa, profilo
 calibrato, provenienza dei pesi, codec misurato completo, schedule fisico,
@@ -68,9 +80,9 @@ La baseline B7 resta fermata; G2 e A5 restano non selezionati, con gli
 
 ## Validation and maintenance
 
-La chiusura matematica a `9e57199` ha 79 controlli Python mirati e il
-self-check del diagnostico; sono evidenza algebrica/contabile, non un
-nuovo teorema Lean o un E2E nativo. L'[evidence ledger](evidence.md)
-registra comandi, ambito, provenienza e verifica di questo riordino.
+La chiusura matematica a `9e57199` conserva i suoi 79 controlli Python.
+L'[evidence ledger](evidence.md) registra separatamente i controlli del
+nuovo percorso nativo e le regressioni. Nessun benchmark di produzione,
+nuovo teorema Lean o E2E su checkpoint reale è attribuito a questi test.
 Gli aggiornamenti successivi sostituiscono lo stato superato: niente
 sottototali storici o diario dei componenti in questa pagina.

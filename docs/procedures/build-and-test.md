@@ -131,6 +131,14 @@ il positivo RNE condiviso, il codec PCS B12 e la composizione ridotta dopo
 cambiamenti ai helper. Nessuno di questi controlli esegue lo stato mobile
 canonico, misura il lavoro completo o amplia l'autorizzazione hardware.
 
+`c71_pcs_retained_commit_data_preserves_wire_and_removes_rebuild` confronta
+commit ricostruito e dati conservati con lo stesso tape: PCS/MAC, byte/FS,
+indirizzi dei buffer e trace DFT. Usa gli stessi limiti seriali 60 s/2 GiB.
+Il caso D10 senza switch conserva il rifiuto del codec C71 dell'oracolo
+finale base e confronta serde/FS; solo D12 concede byte nativi identici.
+Dopo modifiche al motore condiviso conservare PCS valida, salted/codec,
+campo/FS, `c71_b12_native_composed` e `c71_b12_native_certificate`.
+
 Il filtro Python `canonical_PCS_wire or native_wire_body or complete_fixed_run`
 controlla il corpo canonico contro i censimenti field già presenti e
 il conteggio PCS di maschere, sali, frontiere e aperture storiche.

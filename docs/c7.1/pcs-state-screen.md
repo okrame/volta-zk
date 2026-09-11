@@ -171,8 +171,9 @@ avere un rapporto diverso dai byte dei codeword.
 La memoria persistente fuori H100 autorizzata dal proprietario permette
 di studiare la conservazione dei dati iniziali di commit fino all'ultimo
 consumer. Non permette di saltare copie, trasferimenti, nuovi pad, proof
-fresche o il costo di creare quella cache. Lo schedule corrente consuma
-i dati del prover: non c'è qui un'implementazione di cache a costo zero.
+fresche o il costo di creare quella cache. Il prover C71 corrente continua
+a rimaterializzare: la nuova API di lettura dei dati conservati, descritta
+sotto, è verificata come componente e non ancora collegata al suo wrapper.
 Rimangono invariati H100, arena, trust model e assenza di autorizzazione
 a run pesanti/provider. I dati canonici non vengono materializzati localmente.
 
@@ -181,3 +182,75 @@ contro la baseline, composizione ROM/ZK/risorse, routing canonico e prova
 completa valida. I lemmi `Mac.Valid.add/smul/sum` e l'induzione KV già
 citati in [security §6](security.md#6-risorse-riuso-formale-e-confine-runtime)
 supportano le identità; non dimostrano da soli questa nuova costruzione.
+
+## Dati iniziali conservati: uguaglianza della prova e lavoro evitato
+
+`HidingWhirProver::prove_claimless_retained` prende un riferimento immutabile
+al `HidingWhirProverData` già restituito da commit. Riusa il motore ordinario:
+messaggio, randomness e Merkle iniziali non vengono clonati o ricostruiti.
+Le prove fresche, gli switch e i loro coin restano necessari. Il ramo
+ordinario continua a possedere e rilasciare il Merkle iniziale al primo
+switch; solo il nuovo ramo mantiene il riferimento alla cache del caller.
+
+**Equivalenza circoscritta.** Fissare i coin modello e una sequenza ammessa
+di target, nonce, key e coin di proof. A ogni apertura il commit ripetuto
+del prover precedente ricostruisce lo stesso messaggio, pad, codeword,
+salt e albero. Il nuovo percorso legge proprio quell'oggetto già creato
+nel setup e assorbe la stessa root, allo stesso punto di FS. Ogni passo
+successivo riceve gli stessi valori e coin nel medesimo motore; produce
+quindi gli stessi byte, sfide e residui. L'induzione vale anche sui prefissi
+interrotti. Per questa sola sostituzione di storage non nasce un evento
+di soundness/ZK aggiuntivo. Restano le premesse B12, l'indipendenza del
+setup da Delta e il budget di esposizioni imposto dal caller. Non è una
+dimostrazione del rinnovo W, del nuovo batch RNE o del protocollo mobile.
+
+Il test `c71_pcs_retained_commit_data_preserves_wire_and_removes_rebuild`
+confronta due esecuzioni con lo stesso tape per ciascuna esposizione,
+verifica PCS/MAC e digest FS e controlla l'identità byte-per-byte.
+Il trace del DFT perde esattamente il primo encode e conserva tutte le
+chiamate successive nelle stesse dimensioni. Gli indirizzi di messaggio,
+pad, matrice codificata, sali e root del Merkle rimangono invariati.
+I payload conservati D12 sono 3.727.328 byte per B12 e 1.984.480 per
+la candidata a due esposizioni; le capacità dei buffer coincidono in
+questi casi. Header Vec e allocator restano esclusi da quei payload.
+
+Il caso D10 senza switch viene verificato anche dal kernel, ma il codec
+C71 rifiuta il suo oracolo finale base anziché cubico. Il test conserva
+quel rifiuto e confronta il payload serde completo e FS; non attribuisce
+byte nativi ammessi a quel caso e non allarga il parser C71.
+
+Lo screen ora conta setup e ogni apertura sull'intera conversazione:
+
+| Prefisso | Commit iniziali B12 W/A | B12 con dati conservati W/A | Stato mobile con dati conservati W/A | PCS B12 / mobili |
+|---:|---|---|---|---|
+| 1 | 2 / 2 | 1 / 1 | 1 / 1 | 2 / 2 |
+| 2 | 3 / 5 | 1 / 2 | 2 / 2 | 5 / 6 |
+| 3 | 4 / 9 | 1 / 3 | 3 / 3 | 9 / 10 |
+
+I dati necessari per ogni nuovo commitment mobile sono creati e contati
+una volta, senza spostarli in un setup gratuito. I dati iniziali conservati
+per due W e due A della candidata sommano **8.658.655.936.384 byte** di
+payload prima della promozione (circa 7,875 TiB). Comprendono messaggi
+Fp, codeword, randomness, sali e tutti i digest; escludono strutture,
+allocator, runtime, proof fresche e staging. È una proiezione di storage
+privato fuori H100, non RAM disponibile o un picco hardware misurato.
+
+**Costo scoperto nel resto della PCS.**
+`SelectStatement::combine_packed` costruisce i covettori delle query con
+un prodotto scalare di t termini per ciascuna delle M celle. Lo split
+riduce la memoria temporanea, non il lavoro t*M. Per i tre prefissi,
+la somma di questi termini è:
+
+| Prefisso | B12 | Stato mobile, fold iniziale 6 |
+|---:|---:|---:|
+| 1 | 274.877.841.408 | 391.700.994.048 |
+| 2 | 641.381.629.952 | 1.175.102.982.144 |
+| 3 | 1.099.511.365.632 | 1.958.504.970.240 |
+
+Questa voce aumenta e non sparisce conservando il commitment. È contata
+separatamente dai DFT, non sommata come se ogni termine avesse costo
+identico a una butterfly o a una moltiplicazione Fp3. La clausola del
+design che vieta di nascondere t*M nel trattamento delle sorgenti non
+è quindi scaricata da questo percorso denso. Il confronto completo deve
+includere questi covettori, il sumcheck RNE aggiunto, le forme di link,
+il KV e lo schedule fisico della cache. Rimane `full_work_nonincrease_verified:false`.

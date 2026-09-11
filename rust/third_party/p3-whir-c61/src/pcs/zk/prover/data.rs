@@ -18,13 +18,6 @@ pub enum HidingWhirInitialMessage<F> {
 }
 
 impl<F> HidingWhirInitialMessage<F> {
-    pub(super) fn len(&self) -> usize {
-        match self {
-            Self::Host(message) => message.as_slice().len(),
-            Self::Resident { len } => *len,
-        }
-    }
-
     pub(super) fn borrowed(&self) -> ZkWhirInitialMessage<'_, F> {
         match self {
             Self::Host(message) => ZkWhirInitialMessage::Host(message.as_slice()),
@@ -80,7 +73,7 @@ where
 }
 
 /// Merkle prover data of the active committed oracle.
-pub(super) enum ZkRoundData<F, EF, MT>
+pub(super) enum ZkRoundData<'a, F, EF, MT>
 where
     F: TwoAdicField,
     EF: ExtensionField<F>,
@@ -88,6 +81,8 @@ where
 {
     /// Base-field initial oracle.
     Base(MT::ProverData<DenseMatrix<F>>),
+    /// Immutable initial oracle kept by the caller across bounded exposures.
+    RetainedBase(&'a MT::ProverData<DenseMatrix<F>>),
     /// Extension-field folded oracle.
     Ext(<MT as Mmcs<F>>::ProverData<FlatMatrixView<F, EF, DenseMatrix<EF>>>),
 }

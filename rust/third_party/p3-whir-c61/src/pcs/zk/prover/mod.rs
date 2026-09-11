@@ -456,6 +456,40 @@ where
         }
     }
 
+    /// Open already committed data without copying or rebuilding its initial
+    /// oracle. The caller must enforce the root's exposure budget and supply
+    /// fresh proof/mask coins. This does not renew pads or reset that budget.
+    #[instrument(skip_all)]
+    pub fn prove_claimless_retained<R: Rng>(
+        &self,
+        prover_data: &HidingWhirProverData<F, EF, MT>,
+        claims: &[(Point<EF>, EF)],
+        base_claim_shift: EF,
+        challenger: &mut Challenger,
+        rng: &mut R,
+    ) -> ClaimlessWhirProverOutput<F, EF, MT> {
+        let oracle = ReferenceOracleCommitter {
+            dft: self.dft,
+            mmcs: self.mmcs,
+            extension_mmcs: &self.extension_mmcs,
+        };
+        match self.prove_claimless_with_initial_state(
+            prover_data.message.borrowed(),
+            &prover_data.randomness,
+            ZkRoundData::RetainedBase(&prover_data.merkle),
+            claims,
+            base_claim_shift,
+            &oracle,
+            &NoZkWhirInitialOracleLink,
+            None,
+            challenger,
+            rng,
+        ) {
+            Ok(output) => output,
+            Err(error) => match error {},
+        }
+    }
+
     /// Claimless prover with an opt-in verifier-visible decomposition of the
     /// first randomized oracle.
     ///
@@ -603,6 +637,41 @@ where
         O: ZkWhirOracleCommitter<F, EF, MT>,
         L: ZkWhirInitialOracleLink<F, EF, MT>,
     {
+        // Keep the original ownership/drop path: normal callers release the
+        // initial Merkle data at the first switch, rather than retaining it.
+        self.prove_claimless_with_initial_state(
+            prover_data.message.borrowed(),
+            &prover_data.randomness,
+            ZkRoundData::Base(prover_data.merkle),
+            claims,
+            base_claim_shift,
+            oracle,
+            initial_link,
+            batch_alpha,
+            challenger,
+            rng,
+        )
+    }
+
+    #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+    fn prove_claimless_with_initial_state<R, O, L>(
+        &self,
+        initial_message: ZkWhirInitialMessage<'_, F>,
+        initial_randomness: &[F],
+        initial_oracle: ZkRoundData<'_, F, EF, MT>,
+        claims: &[(Point<EF>, EF)],
+        base_claim_shift: EF,
+        oracle: &O,
+        initial_link: &L,
+        batch_alpha: Option<EF>,
+        challenger: &mut Challenger,
+        rng: &mut R,
+    ) -> Result<ClaimlessWhirProverOutput<F, EF, MT>, O::Error>
+    where
+        R: Rng,
+        O: ZkWhirOracleCommitter<F, EF, MT>,
+        L: ZkWhirInitialOracleLink<F, EF, MT>,
+    {
         let config = self.config;
         let num_variables = config.num_variables;
         let sumcheck_mask_encoding = config.sumcheck_mask.encoding::<EF>();
@@ -626,13 +695,9 @@ where
             batched_target += *coeff * *eval;
         }
 
-        debug_assert_eq!(prover_data.message.len(), 1usize << num_variables);
-        let sumcheck_prover = oracle.initialize_sumcheck(
-            prover_data.message.borrowed(),
-            claims,
-            &coeffs,
-            batched_target,
-        )?;
+        debug_assert_eq!(initial_message.len(), 1usize << num_variables);
+        let sumcheck_prover =
+            oracle.initialize_sumcheck(initial_message, claims, &coeffs, batched_target)?;
 
         // Initial masked sumcheck batch.
         let mut masks = ProverMasks::<F, EF, MT>::new();
@@ -670,12 +735,9 @@ where
         // Current oracle state: message randomness folds along with the
         // message (Lemma 3.26), the Merkle data answers the spot checks.
         // Mixed-field fold: base-field chunks against the extension eq table.
-        let mut oracle_randomness: Vec<EF> = fold_limb_chunks(
-            &prover_data.randomness,
-            config.oracle_randomness[0],
-            &batch.randomness,
-        );
-        let mut round_data = ZkRoundData::<F, EF, MT>::Base(prover_data.merkle);
+        let mut oracle_randomness: Vec<EF> =
+            fold_limb_chunks(initial_randomness, config.oracle_randomness[0], &batch.randomness);
+        let mut round_data = initial_oracle;
 
         // Code-switching rounds.
         for round in 0..config.n_rounds() {
@@ -1060,28 +1122,30 @@ where
     /// each opened leaf at the randomness.
     fn open_and_fold(
         &self,
-        round_data: &ZkRoundData<F, EF, MT>,
+        round_data: &ZkRoundData<'_, F, EF, MT>,
         indices: &[usize],
         randomness: &Point<EF>,
     ) -> (QueryOpenings<F, EF, MT::MultiProof>, Vec<EF>) {
+        let open_base = |data: &MT::ProverData<DenseMatrix<F>>| {
+            let mut opening = SharedProofOpening::open(self.mmcs, indices, data);
+            let folded = opening
+                .rows
+                .iter_mut()
+                .map(|row| {
+                    // Fold from the owned row, then move it back. The row itself is what
+                    // travels into the proof, so cloning it just to satisfy `Poly::new`
+                    // is pure allocation. Mirrors the non-ZK prover's fold.
+                    let poly = Poly::new(mem::take(row));
+                    let eval = poly.eval_base(randomness);
+                    *row = poly.into_evals();
+                    eval
+                })
+                .collect();
+            (QueryOpenings::Base(opening), folded)
+        };
         match round_data {
-            ZkRoundData::Base(data) => {
-                let mut opening = SharedProofOpening::open(self.mmcs, indices, data);
-                let folded = opening
-                    .rows
-                    .iter_mut()
-                    .map(|row| {
-                        // Fold from the owned row, then move it back. The row itself is what
-                        // travels into the proof, so cloning it just to satisfy `Poly::new`
-                        // is pure allocation. Mirrors the non-ZK prover's fold.
-                        let poly = Poly::new(mem::take(row));
-                        let eval = poly.eval_base(randomness);
-                        *row = poly.into_evals();
-                        eval
-                    })
-                    .collect();
-                (QueryOpenings::Base(opening), folded)
-            }
+            ZkRoundData::Base(data) => open_base(data),
+            ZkRoundData::RetainedBase(data) => open_base(data),
             ZkRoundData::Ext(data) => {
                 let mut opening = SharedProofOpening::open(&self.extension_mmcs, indices, data);
                 let folded = opening

@@ -30,6 +30,25 @@ def test_pcs_state_screen_counts_full_envelopes_and_keeps_work_unadmitted():
         assert all(a < b for a, b in zip(c['rolling_W_and_KV_interval'], c['baseline_interval']))
         assert all(a < b for a, b in zip(c['projected_complete_response_interval'], c['baseline_interval']))
 
+    work = r['retained_commit_work']
+    assert not work['credit'] and not work['full_work_nonincrease_verified']
+    for t, prefix in enumerate(work['prefixes'], 1):
+        old, kept, rolling = (prefix[k] for k in
+            ('baseline', 'same_protocol_retained', 'rolling_with_retention'))
+        assert old['initial_commit_calls'] == [1+t, t+t*(t+1)//2]
+        assert kept['initial_commit_calls'] == [1, t]
+        assert rolling['initial_commit_calls'] == [t, t]
+        assert kept['PCS_calls'] == old['PCS_calls']
+        assert rolling['PCS_calls'] == [2*t-1, 2*t-1]
+        assert kept['fresh_PCS_DFT_output_extension_cells'] == old['fresh_PCS_DFT_output_extension_cells']
+        assert kept['power_covector_dot_terms'] == old['power_covector_dot_terms']
+        # Current first-fold=6 candidate increases this real t*M kernel:
+        # smaller DFTs alone must never be promoted to complete-work credit.
+        assert rolling['power_covector_dot_terms'] > old['power_covector_dot_terms']
+        for key in ('initial_DFT_output_base_cells', 'initial_radix2_butterfly_geometry',
+                    'initial_salted_rows_created', 'initial_stored_digests_created', 'initial_private_pad_fp'):
+            assert kept[key] < old[key] and rolling[key] < old[key]
+
     # Prefix equality must cover every old cell, including the final accepted K.
     # On a Boolean point eq selects precisely that cell; any single alteration
     # produces a nonzero multilinear difference. Padding is part of the layout.

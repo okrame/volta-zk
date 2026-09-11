@@ -1,5 +1,25 @@
 //! Parameter experiment only: no selected profile or canonical prover change.
 use super::*;
+use p3_dft::TwoAdicSubgroupDft;
+use p3_matrix::dense::RowMajorMatrix;
+use p3_matrix::Matrix;
+
+#[derive(Clone, Default)]
+struct CountDft {
+    inner: Radix2DFTSmallBatch<Goldilocks>,
+    // Per-call dimensions only, outside the arithmetic kernel; not timing.
+    calls: std::sync::Arc<std::sync::Mutex<Vec<(usize, usize)>>>,
+}
+
+impl TwoAdicSubgroupDft<Goldilocks> for CountDft {
+    type Evaluations =
+        <Radix2DFTSmallBatch<Goldilocks> as TwoAdicSubgroupDft<Goldilocks>>::Evaluations;
+
+    fn dft_batch(&self, matrix: RowMajorMatrix<Goldilocks>) -> Self::Evaluations {
+        self.calls.lock().unwrap().push((matrix.height(), matrix.width()));
+        self.inner.dft_batch(matrix)
+    }
+}
 
 fn candidate(h: usize, exposures: usize) -> ZkWhirConfig<E, Goldilocks, Fs> {
     let queries = 456;
@@ -153,5 +173,148 @@ fn c71_pcs_tuning_canonical_geometry() {
         let restored = decode_body(&c, h, C61Reader::new(&encoded)).unwrap();
         assert_eq!(encode_body(&c, h, &restored, C61Writer::default()).unwrap(), encoded);
         eprintln!("PCS tuning synthetic D{h} fixed={fixed} upper={upper}");
+    }
+}
+
+#[test]
+fn c71_pcs_retained_commit_data_preserves_wire_and_removes_rebuild() {
+    use p3_challenger::CanObserve;
+    for (h, tuned) in [(12, false), (12, true), (10, true)] {
+        let exposures = if tuned { 2 } else { 3 };
+        let c = if tuned { candidate(h, exposures) } else { b12::config(h).unwrap() };
+        let dft = CountDft::default();
+        let values: Vec<_> = (0..1 << h).map(|i| Goldilocks::new((i % 31) as u64)).collect();
+        let mut setup = Fs::new(b"retained setup independent of Delta", 0);
+        let model_mmcs = ObservedMmcs::new(setup.clone(), [72; 32]);
+        let committer = HidingWhirProver::new(&c, &dft, &model_mmcs);
+        let (root, retained) = committer.commit(
+            Poly::new(values.clone()),
+            &mut setup,
+            &mut MatrixRng::from_seed([71; 32]),
+        );
+        let setup_calls = std::mem::take(&mut *dft.calls.lock().unwrap());
+        assert_eq!(setup_calls.len(), 1);
+        let message_ptr = retained.message.host().unwrap().as_slice().as_ptr();
+        let pad_ptr = retained.randomness.as_ptr();
+        let leaves = retained.merkle.c61_spill_leaves();
+        let matrix_ptr = leaves[0].left.values.as_ptr();
+        let salts_ptr = leaves[0].right.values.as_ptr();
+        let digests = retained.merkle.c61_spill_digest_layers();
+        let digest_count: usize = digests.iter().map(Vec::len).sum();
+        let root_ptr = digests.last().unwrap().as_ptr();
+        let retained_payload = 8
+            * (values.len()
+                + retained.randomness.len()
+                + leaves[0].left.values.len()
+                + leaves[0].right.values.len())
+            + 32 * digest_count;
+        let retained_capacity = 8
+            * (values.capacity()
+                + retained.randomness.capacity()
+                + leaves[0].left.values.capacity()
+                + leaves[0].right.values.capacity())
+            + 32 * digests.iter().map(Vec::capacity).sum::<usize>();
+        assert_eq!(digest_count, 2 * setup_calls[0].0 - 1);
+        for slot in 0..exposures {
+            let point: Vec<_> = (0..h).map(|i| signed((i + 3 + slot) as i64)).collect();
+            let terminal = Auth::new(
+                values.iter().zip(eq(&point)).fold(Fp3::ZERO, |s, (x, e)| {
+                    s + Fp3::from_base(Fp::new(x.as_canonical_u64())) * e
+                }),
+                signed(21 + slot as i64),
+            );
+            let mask = Auth::new(signed(43 + slot as i64), signed(51 + slot as i64));
+            let claims = [(Point::new(point.into_iter().map(to_p3).collect()), to_p3(terminal.x))];
+            let start = || {
+                let mut fs = Fs::new(b"C71 retained-data comparison", request_limit(&c));
+                fs.record(0x70, &gamma(&c));
+                fs.record(0x71, &(slot as u64).to_le_bytes());
+                fs.set_phase(0x200);
+                fs
+            };
+            let mut paired = Vec::new();
+            let mut traces = Vec::new();
+            for cached in [false, true] {
+                let mut fs = start();
+                let rebuilt = if cached {
+                    fs.observe(root.clone()); // same event as commit, with no new root/coins
+                    None
+                } else {
+                    let mmcs = ObservedMmcs::new(fs.clone(), [72; 32]);
+                    let (r, data) = HidingWhirProver::new(&c, &dft, &mmcs).commit(
+                        Poly::new(values.clone()),
+                        &mut fs,
+                        &mut MatrixRng::from_seed([71; 32]),
+                    );
+                    assert_eq!(r, root);
+                    Some(data)
+                };
+                // Fresh per exposure; the two executions compare the SAME random tape.
+                let mmcs = ObservedMmcs::new(fs.clone(), [90 + slot as u8; 32]);
+                let prover = HidingWhirProver::new(&c, &dft, &mmcs);
+                let mut rng = MatrixRng::from_seed([80 + slot as u8; 32]);
+                let out = if let Some(data) = rebuilt {
+                    prover.prove_claimless(data, &claims, to_p3(mask.x), &mut fs, &mut rng)
+                } else {
+                    prover.prove_claimless_retained(
+                        &retained,
+                        &claims,
+                        to_p3(mask.x),
+                        &mut fs,
+                        &mut rng,
+                    )
+                };
+                let close_tag =
+                    mask.m - from_p3(out.base_case.gamma * out.target.coefficient) * terminal.m;
+                record_values(&mut fs, 0x12, &[close_tag]);
+                let proof = MatrixProof {
+                    rounds: vec![],
+                    terminal: [Fp3::ZERO; 2],
+                    pcs: out.proof,
+                    close_tag,
+                };
+                // The C71 codec only admits a cubic final oracle. A no-switch
+                // library proof has a base-field final oracle: check its full
+                // serde representation and verifier, without widening that codec.
+                let encoded = if c.n_rounds() == 0 {
+                    assert!(encode_body(&c, 0, &proof, C61Writer::default()).is_err());
+                    serde_json::to_vec(&proof.pcs).unwrap()
+                } else {
+                    encode_body(&c, 0, &proof, C61Writer::default()).unwrap()
+                };
+                let delta = signed(19);
+                let key = |a: Auth| Key::new(a.m + delta * a.x);
+                let mut vf = start();
+                verify_pcs(
+                    &c,
+                    &root,
+                    claims[0].0.clone(),
+                    &proof.pcs,
+                    close_tag,
+                    key(terminal),
+                    key(mask),
+                    delta,
+                    &mut vf,
+                )
+                .unwrap();
+                assert_eq!(vf.digest(), fs.digest());
+                paired.push((encoded, fs.digest()));
+                traces.push(std::mem::take(&mut *dft.calls.lock().unwrap()));
+            }
+            assert_eq!(paired[0], paired[1]);
+            assert_eq!(traces[0][0], setup_calls[0]);
+            assert_eq!(traces[0][1..], traces[1]);
+            assert_eq!(retained.message.host().unwrap().as_slice().as_ptr(), message_ptr);
+            assert_eq!(retained.randomness.as_ptr(), pad_ptr);
+            assert_eq!(retained.merkle.c61_spill_leaves()[0].left.values.as_ptr(), matrix_ptr);
+            assert_eq!(retained.merkle.c61_spill_leaves()[0].right.values.as_ptr(), salts_ptr);
+            assert_eq!(
+                retained.merkle.c61_spill_digest_layers().last().unwrap().as_ptr(),
+                root_ptr
+            );
+            let native_bytes = (c.n_rounds() != 0).then(|| paired[0].0.len() - 48);
+            eprintln!("PCS retained D{h} tuned={tuned} slot={slot} identical_native_pcs_bytes={native_bytes:?} removed_DFT={:?} retained_payload={retained_payload} retained_buffer_capacity={retained_capacity}",
+                setup_calls[0]);
+        }
     }
 }

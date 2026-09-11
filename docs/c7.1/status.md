@@ -126,9 +126,17 @@ commitment W freschi al predecessore si proiettano **26,69 / 41,16 / 41,16 MB**,
 con 2/4/4 PCS e due esposizioni per root. Sono schemi candidati, non un
 minimo globale, un lifetime esteso ammesso o prove Gemma misurate.
 
+Il kernel PCS permette ora di conservare i dati iniziali del commitment:
+il confronto D12 mantiene byte/FS identici ed elimina l'encode ripetuto,
+senza rinnovare le esposizioni. Il wrapper C71 resta da collegare alla cache.
+Lo screen conta anche setup e rinnovi e scopre una voce in aumento nella
+candidata fold-6: i covettori delle query mantengono il lavoro t*M.
+Il payload persistente proiettato di due W e due A è 8,66 TB prima della
+promozione, esclusi workspace, allocator e trasferimenti; non è una misura.
+
 **Nessuna variante soddisfa ancora tutte le condizioni verificate.** Il
 prossimo lavoro è chiudere il confronto di lavoro completo, inclusi rinnovi
-W, conservazione dei dati di commit, sumcheck RNE aggiunto e copia/link KV;
+W, covettori delle query, sumcheck RNE aggiunto e copia/link KV;
 poi composizione ROM/ZK e routing canonico. Le geometrie FFT più piccole
 non concedono da sole lavoro totale inferiore. B12 rimane selezionato.
 

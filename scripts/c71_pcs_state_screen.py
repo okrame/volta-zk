@@ -54,12 +54,60 @@ def geometry(h, *, queries=512, exposures=3, first=7, step=2, rate=8, ell=2048):
     fresh += [(oracles[-1]['domain_rows'], 1), (mask['domain_rows'], 2*widths)]
     return dict(h=h, queries=queries, exposures=exposures, first=first, step=step,
         rate=rate, ell=ell, folds=folds, wire=wire,
+        initial_domain_rows=initial['domain_rows'], initial_width=initial['width'],
+        initial_private_pad_fp=initial['randomness_rows']*initial['width'],
+        retained_initial_payload_bytes=8*((1 << h)+initial_cells
+            +initial['randomness_rows']*initial['width'])
+            +32*initial['domain_rows']+32*(2*initial['domain_rows']-1),
         initial_encoded_base_cells=initial_cells,
         initial_radix2_butterflies=initial_cells*(initial['domain_rows'].bit_length()-1)//2,
         fresh_encoded_extension_cells=sum(n*w for n, w in fresh),
         fresh_radix2_butterflies=sum(n*w*(n.bit_length()-1)//2 for n, w in fresh),
+        # SelectStatement::combine_packed still dots all t query weights into
+        # each of M cells. Splitting reduces scratch, not the t*M products.
+        power_covector_dot_terms=queries*sum(o['message_rows'] for o in oracles[:-1]),
         PCS_max_coin_block_error=str(maximum),
         PCS_prefix_error=str((1 << 74)*maximum))
+
+
+def retained_work(old, rolling):
+    """Actual commit/proof multiplicities; separate partial costs, no net-work credit."""
+    def count(profiles, commits, openings):
+        return dict(initial_commit_calls=commits, PCS_calls=openings,
+            initial_DFT_output_base_cells=sum(n*p['initial_encoded_base_cells']
+                for n, p in zip(commits, profiles)),
+            initial_radix2_butterfly_geometry=sum(n*p['initial_radix2_butterflies']
+                for n, p in zip(commits, profiles)),
+            initial_salted_rows_created=sum(n*p['initial_domain_rows']
+                for n, p in zip(commits, profiles)),
+            initial_stored_digests_created=sum(n*(2*p['initial_domain_rows']-1)
+                for n, p in zip(commits, profiles)),
+            initial_private_pad_fp=sum(n*p['initial_private_pad_fp']
+                for n, p in zip(commits, profiles)),
+            fresh_PCS_DFT_output_extension_cells=sum(n*p['fresh_encoded_extension_cells']
+                for n, p in zip(openings, profiles)),
+            power_covector_dot_terms=sum(n*p['power_covector_dot_terms']
+                for n, p in zip(openings, profiles)))
+    prefixes = []
+    for t in (1, 2, 3):
+        old_openings = [t, t*(t+1)//2]
+        baseline = count(old, [1+t, t+old_openings[1]], old_openings)
+        kept = count(old, [1, t], old_openings)
+        renewed = count(rolling, [t, t], [2*t-1, 2*t-1])
+        prefixes.append(dict(responses=t, baseline=baseline,
+            same_protocol_retained=kept, rolling_with_retention=renewed,
+            same_protocol_retained_payload_bytes=old[0]['retained_initial_payload_bytes']
+                +t*old[1]['retained_initial_payload_bytes'],
+            rolling_retained_payload_bytes_before_promotion=(1 if t == 1 else 2)
+                *sum(p['retained_initial_payload_bytes'] for p in rolling)))
+    return dict(credit=False, native_scope='D12 native wire / D10 serde identity, common FS and initial DFT deletion',
+        canonical_scope='arithmetic multiplicities and payload sizes, not materialization',
+        new_H100_or_provider_execution=False, prefixes=prefixes,
+        payload_excludes=['Vec headers, allocator and page overhead', 'weights/KV/runtime outside the retained object',
+            'fresh proof temporaries, PCG and transport staging'],
+        full_work_nonincrease_verified=False,
+        unresolved=['additional fresh W PCS work, including t*M query covectors', 'RNE top sumcheck and link forms',
+            'current KV preparation and range', 'physical cache placement and transfer schedule'])
 
 
 def report():
@@ -131,7 +179,7 @@ def report():
         search=dict(family_size=60, passing_PCS_prefix_screen=len(candidates),
             best_parameters={k:best[0][k] for k in ('queries','first','step')},
             best_two_PCS_upper=sum(p['wire']['wire_interval'][1] for p in best)),
-        cases=cases,
+        cases=cases, retained_commit_work=retained_work(old, [rolling_w, chosen[1]]),
         full_work_unresolved=['RNE added sumcheck and scheduling (new padding removed)', 'rolling KV copy and link forms',
             'W refresh commitment, equality form and second W PCS; retained data IO',
             'all FFT/fold/hash/PCG work, setup, replay, serialization and off-H100 IO',

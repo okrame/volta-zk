@@ -146,6 +146,23 @@ I campi `full_prover_work:null`, `full_work_nonincrease_verified:false` e
 Non sono stati eseguiti benchmark GPU, bootstrap completo o inferenza
 Gemma, e non è stata cambiata la costruzione selezionata.
 
+### Retained initial PCS data
+
+Il nuovo confronto in `codec/tuning.rs` esegue sette coppie di aperture:
+tre D12 B12, due D12 candidate e due D10 candidate senza switch.
+Nei casi D12 byte nativi e FS coincidono esattamente; tutti i casi
+verificano PCS e chiusura MAC. D10 mantiene il rifiuto del codec nativo
+per oracolo finale base e confronta serde completo, senza cambiare formato.
+Il trace del DFT elimina solo l'encode iniziale; i buffer conservati
+mantengono i propri indirizzi. È un risultato del kernel, non del wrapper
+canonico o dello schedule fisico fuori H100.
+
+Lo [screen aggiornato](pcs-state-screen.md#dati-iniziali-conservati-uguaglianza-della-prova-e-lavoro-evitato)
+conta separatamente i commitment iniziali, le PCS fresche, i payload
+persistenti e i prodotti dei covettori per ogni prefisso. Conserva la voce
+t*M in aumento nella candidata fold-6: il minor encode iniziale non vale
+come confronto del lavoro totale. I campi di non ammissione restano falsi.
+
 ## Native component evidence
 
 Il [catalogo dei controlli nativi](../procedures/build-and-test.md#rust-and-resource-limits)

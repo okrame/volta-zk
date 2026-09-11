@@ -586,6 +586,19 @@ spesa. Conservazione, copia, scrittura/rilettura e trasferimenti delle cache
 devono comparire nel lavoro totale, insieme a setup, rinnovi e replay.
 Non si materializzano localmente codeword D34/D35.
 
+Il kernel sperimentale `prove_claimless_retained` riusa immutabilmente
+messaggio, pad e Merkle già prodotti dal commit. L'equivalenza con il
+percorso ricostruito e il suo perimetro sono nello
+[screen](pcs-state-screen.md#dati-iniziali-conservati-uguaglianza-della-prova-e-lavoro-evitato):
+stessi coin e assorbimento della root producono gli stessi byte/FS;
+il caller deve ancora imporre freschezza e limite di esposizioni.
+La sola sostituzione di storage non cambia il protocollo o i suoi eventi
+di sicurezza. Non prova il rinnovo W/KV e non è collegata al wrapper C71.
+La contabilità separa l'encode iniziale evitato dalle proof fresche:
+`SelectStatement::combine_packed` esegue ancora t*M termini, in aumento
+nella candidata fold-6. Il contratto sulle sorgenti sotto resta aperto;
+nessuna conversione implicita fra geometrie FFT e lavoro totale è ammessa.
+
 Il confronto va effettuato su ogni prefisso della stessa conversazione,
 con gli stessi modello e token. La metrica dello screen è il singolo
 certificato rispetto alla storia, a risposta nuova fissata. I token nuovi

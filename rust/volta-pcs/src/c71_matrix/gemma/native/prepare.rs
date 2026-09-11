@@ -144,17 +144,15 @@ impl Snapshot {
                     }
                     Step::Affine(i) => {
                         let r = &p.affine[*i];
-                        result.push((
-                            r.raw,
-                            (0..2)
-                                .map(|c| {
-                                    r.inputs
-                                        .iter()
-                                        .map(|&(id, k)| k * get(&values, id, row, c))
-                                        .sum()
-                                })
-                                .collect(),
-                        ));
+                        let input: [Vec<_>; 2] = std::array::from_fn(|i| {
+                            let id = r.inputs[i].0;
+                            (0..sources[id].cols).map(|c| get(&values, id, row, c)).collect()
+                        });
+                        let raw = p
+                            .bytes()
+                            .prepare_affine_row(r, [&input[0], &input[1]])
+                            .map_err(|_| stop())?;
+                        result.push((r.raw, raw));
                     }
                     Step::Gelu | Step::Softcap => {
                         let (o, table) = if matches!(step, Step::Gelu) {

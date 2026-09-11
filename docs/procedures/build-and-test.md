@@ -99,6 +99,12 @@ comprensivo del record finale. Il test di trasporto usa un buffer di
 componente realmente serializzata. Conservare `native_composed` e
 `native_certificate` dopo modifiche al writer.
 
+Per la preparazione affine condivisa usare `c71_b12_native_affine_rows`,
+`c71_b12_gemma_affine`, `c71_b12_native_prepare`, `c71_b12_native_composed`
+e `c71_b12_native_certificate`, separatamente entro 60 s/2 GiB e un worker.
+Il primo copre le 181 relazioni canoniche con righe sintetiche; non è
+un'esecuzione del grafo completo.
+
 Il filtro Python `canonical_PCS_wire or native_wire_body or complete_fixed_run`
 controlla il corpo canonico contro i censimenti field già presenti e
 il conteggio PCS di maschere, sali, frontiere e aperture storiche.

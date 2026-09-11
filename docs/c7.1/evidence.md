@@ -384,6 +384,25 @@ conserva differenze di formato preesistenti fuori dal blocco gamma.
 Nessun benchmark su albero pulito, GPU o prova canonica valida è attribuito
 a questi controlli.
 
+## Shared affine integer preparation
+
+Il controllo `c71_b12_native_affine_rows` valuta righe sintetiche per tutte
+le **181 relazioni affini nei tre contesti canonici**, con coefficienti
+del profilo, estremi ammessi e zero. Confronta i prodotti con aritmetica
+i128 e controlla il range signed-48; righe corte, input fuori i16, codec
+raw errato e coefficienti fuori limite sono respinti prima dei prodotti.
+Prepare ridotto e `affine_zero_form` condividono ora la validazione dei
+descrittori. La [semantica intera](design.md#shared-integer-preparation)
+non introduce arrotondamenti o nuovi MAC.
+
+Validazione del 2026-09-11: **5 test Rust passati** (`native_affine_rows`,
+`gemma_affine`, `native_prepare`, `native_composed`, `native_certificate`),
+seriali entro 60 s/2 GiB e un worker Rayon. Passano anche **1 test Python**
+(`complete_fixed_run`), CLI/self-check con JSON in `/tmp` e
+`cargo check --lib` senza `cfg(test)`, offline/locked a un job.
+Sono controlli locali di sviluppo: nessuno snapshot canonico completo,
+peso reale, bootstrap AES composto, benchmark o esecuzione H100.
+
 ## Measured historical records
 
 I file sotto sono immutabili e identificano il codice effettivamente misurato.

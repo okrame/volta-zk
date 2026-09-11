@@ -11,6 +11,42 @@ pub(in crate::c71_matrix) struct Relation {
 }
 
 impl Bytes {
+    fn affine_shape(&self, r: &Relation) -> Result<&Source, String> {
+        let raw = self.scalar.layout.sources.get(r.raw).ok_or("affine raw source missing")?;
+        if self.widths.get(r.raw) != Some(&6) || raw.rows == 0 || raw.cols == 0 {
+            return Err("affine raw codec or shape differs".into());
+        }
+        for &(id, coefficient) in &r.inputs {
+            let input = self.scalar.layout.sources.get(id).ok_or("affine input missing")?;
+            if self.widths.get(id) != Some(&2)
+                || [input.rows, input.cols] != [raw.rows, raw.cols]
+                || coefficient.unsigned_abs() > 1 << 30
+            {
+                return Err(
+                    "affine input codec, shape or coefficient exceeds integer envelope".into()
+                );
+            }
+        }
+        Ok(raw)
+    }
+
+    /// One private row of the same R=aX+bY identity used by affine_zero_form.
+    pub fn prepare_affine_row(&self, r: &Relation, input: [&[i64]; 2]) -> Result<Vec<i64>, String> {
+        let raw = self.affine_shape(r)?;
+        if input
+            .iter()
+            .any(|row| row.len() != raw.cols || row.iter().any(|&x| i16::try_from(x).is_err()))
+        {
+            return Err("affine private input row shape or i16 range differs".into());
+        }
+        // Two i16 terms with |coefficient|<=2^30 fit signed 48 bits and i64.
+        Ok(input[0]
+            .iter()
+            .zip(input[1])
+            .map(|(&x, &y)| r.inputs[0].1 * x + r.inputs[1].1 * y)
+            .collect())
+    }
+
     /// Both roles call the SAME public function, after fixing roots/profile.
     /// Return one form with PUBLIC target `bias`: Auth(bias,0), Key(delta*bias).
     /// No new private MAC, product, sumcheck or independently committed input.
@@ -37,21 +73,12 @@ impl Bytes {
         let mut seen = std::collections::BTreeSet::new();
         let (mut words, mut cells, mut cubes) = (Vec::new(), 0usize, 0usize);
         for r in relations {
-            let raw = self.scalar.layout.sources.get(r.raw).ok_or("affine raw source missing")?;
-            if self.widths[r.raw] != 6 || !seen.insert(r.raw) {
+            let raw = self.affine_shape(r)?;
+            if !seen.insert(r.raw) {
                 return Err("affine raw codec or identity differs".into());
             }
             let mut terms = 2; // biased i48 raw has 4+2 byte cubes
-            for &(id, coefficient) in &r.inputs {
-                let input = self.scalar.layout.sources.get(id).ok_or("affine input missing")?;
-                if self.widths[id] != 2
-                    || [input.rows, input.cols] != [raw.rows, raw.cols]
-                    || coefficient.unsigned_abs() > 1 << 30
-                {
-                    return Err(
-                        "affine input codec, shape or coefficient exceeds integer envelope".into(),
-                    );
-                }
+            for &(_, coefficient) in &r.inputs {
                 terms += usize::from(coefficient != 0);
             }
             cells = cells

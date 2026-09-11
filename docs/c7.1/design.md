@@ -282,6 +282,17 @@ reject. Il confronto del resto con `d-r` evita overflow di `2*r`.
 range di E, maschera causale, somma Z e scala Pi restano responsabilità
 runtime del produttore softmax e del circuito ratio già esistente.
 
+`Bytes::prepare_affine_row` calcola R=aX+bY usando lo stesso validatore
+di descrittori di `affine_zero_form`: raw a sei byte, ingressi a due byte,
+forme identiche e coefficienti di modulo al più 2^30. Verifica la lunghezza
+delle due righe e il range i16 prima dei prodotti. Due termini così
+limitati hanno modulo al più 2^46 e rientrano in signed-48/i64; non c'è
+un nuovo arrotondamento. Il preparatore ridotto usa già questa funzione.
+Il controllo canonico valuta tutte le 181 relazioni nei tre contesti con
+righe sintetiche, coefficienti del profilo ed estremi ammessi, confrontando
+con aritmetica i128 e verificando i rifiuti. Non esegue lo snapshot canonico
+né legge pesi reali. Le premesse del bound del verificatore non cambiano.
+
 ### Canonical verifier body
 
 Il [corpo canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)

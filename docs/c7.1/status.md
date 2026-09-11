@@ -1,6 +1,6 @@
 # C7.1 — Goals and current status
 
-Aggiornato al 2026-09-10. [Design](design.md) · [Security](security.md) ·
+Aggiornato al 2026-09-11. [Design](design.md) · [Security](security.md) ·
 [Evidence](evidence.md) · [Decisions](decisions.md) · [Indice](../README.md).
 Questa pagina contiene stato, autorizzazione e prossimo lavoro; requisiti,
 prove e risultati dei test hanno ciascuno la propria sede nei link sopra.
@@ -63,7 +63,11 @@ Il preparatore ridotto riusa ora le valutazioni intere
 [RNE](../../rust/volta-pcs/src/c71_matrix/rne.rs) collegate ai descrittori
 canonici e alla semantica dei circuiti. Gli shift negativi e grandi ammessi
 dal verifier sono gestiti prima dell'encoding, con overflow reject.
-I controlli locali usano righe sintetiche per 421 norme e 892 coppie RNE;
+Anche le [181 relazioni affini](../../rust/volta-pcs/src/c71_matrix/gemma/bytes/affine.rs)
+ora condividono validazione di forma/codec/coefficienti fra Prepare e
+verifier, con controllo i16 prima della valutazione intera.
+I controlli locali usano righe sintetiche per 421 norme, 892 coppie RNE
+e tutte le relazioni affini nei tre contesti;
 restano da collegare gli altri produttori numerici e lo snapshot completo.
 Non è ancora un'inferenza canonica.
 

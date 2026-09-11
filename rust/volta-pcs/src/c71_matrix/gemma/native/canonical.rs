@@ -210,6 +210,58 @@ mod tests {
     use super::*;
 
     #[test]
+    fn c71_b12_native_affine_rows_cover_all_canonical_relations() {
+        let plan = super::super::super::compile().unwrap();
+        let (s, o, sm) = plan.softmax_sources_at(0).unwrap();
+        let mut exponents: BTreeMap<_, _> =
+            profile::Recipes::exponent_sources(&s, &o, &sm).into_iter().map(|id| (id, 0)).collect();
+        for l in &sm.layers {
+            exponents.insert(l.pi, -14);
+        }
+        for slot in 0..3 {
+            let p = Canonical::compile(slot, &[0; 772], &exponents).unwrap();
+            assert_eq!(p.recipes.affine.len(), 181);
+            for r in &p.recipes.affine {
+                let columns = p.bytes().scalar.layout.sources[r.raw].cols;
+                let x: Vec<_> = (0..columns).map(|i| [-32768, 32767, -1, 0, 1][i % 5]).collect();
+                let y: Vec<_> = x.iter().rev().copied().collect();
+                for coefficients in [[r.inputs[0].1, r.inputs[1].1], [1 << 30, -(1 << 30)], [0, 0]]
+                {
+                    let relation = Relation {
+                        raw: r.raw,
+                        inputs: [
+                            (r.inputs[0].0, coefficients[0]),
+                            (r.inputs[1].0, coefficients[1]),
+                        ],
+                    };
+                    let raw = p.bytes().prepare_affine_row(&relation, [&x, &y]).unwrap();
+                    for ((&value, &x), &y) in raw.iter().zip(&x).zip(&y) {
+                        let expected = i128::from(coefficients[0]) * i128::from(x)
+                            + i128::from(coefficients[1]) * i128::from(y);
+                        assert_eq!(i128::from(value), expected);
+                        assert!((-(1i64 << 47)..1i64 << 47).contains(&value));
+                    }
+                }
+                assert!(p.bytes().prepare_affine_row(r, [&x[..columns - 1], &y]).is_err());
+                let mut bad = y.clone();
+                bad[0] = 32768;
+                assert!(p.bytes().prepare_affine_row(r, [&x, &bad]).is_err());
+                bad[0] = -32769;
+                assert!(p.bytes().prepare_affine_row(r, [&bad, &y]).is_err());
+                for coefficient in [i64::MIN, (1 << 30) + 1] {
+                    let bad = Relation {
+                        raw: r.raw,
+                        inputs: [(r.inputs[0].0, coefficient), r.inputs[1]],
+                    };
+                    assert!(p.bytes().prepare_affine_row(&bad, [&x, &y]).is_err());
+                }
+                let bad = Relation { raw: r.inputs[0].0, inputs: r.inputs };
+                assert!(p.bytes().prepare_affine_row(&bad, [&x, &y]).is_err());
+            }
+        }
+    }
+
+    #[test]
     fn c71_b12_native_wire_rne_alone_exceeds_bounded_transport() {
         let plan = super::super::super::compile().unwrap();
         let (s, o, sm) = plan.softmax_sources_at(0).unwrap();

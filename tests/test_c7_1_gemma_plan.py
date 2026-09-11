@@ -280,6 +280,7 @@ def test_B12_complete_fixed_run_preserves_exact_errors_and_counts_caller_resourc
     assert canonical['old_tokens'] == [0, 150, 300]
     assert canonical['canonical_norm_row_descriptors_checked'] == 421
     assert canonical['canonical_rne_row_pairs_checked'] == 892
+    assert canonical['canonical_affine_row_relations_checked'] == 181
     assert canonical['canonical_verifier_body_implemented']
     assert canonical['canonical_verifier_prefix_checked']
     assert canonical['canonical_registry_pool_wrapper_implemented']

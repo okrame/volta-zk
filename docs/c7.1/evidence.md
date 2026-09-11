@@ -148,6 +148,13 @@ Gemma, e non è stata cambiata la costruzione selezionata.
 
 ### Retained initial PCS data
 
+[Record immutabile](../../benchmarks/results/c71-pcs-retained-2026-09-11-d84e7da4e24f.json)
+dal commit `d84e7da4e24f`, con `git_dirty:false`, hash del binario, build,
+comandi e output integrali. Passano nove test Rust mirati (riuso,
+PCS valida, salted/codec, tre campo/FS e due composti) e quattro Python
+(screen e regressioni dei byte/composizione). I limiti sono 60 s/2 GiB,
+un worker Rayon e nessun test Rust parallelo.
+
 Il nuovo confronto in `codec/tuning.rs` esegue sette coppie di aperture:
 tre D12 B12, due D12 candidate e due D10 candidate senza switch.
 Nei casi D12 byte nativi e FS coincidono esattamente; tutti i casi

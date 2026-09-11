@@ -196,6 +196,31 @@ Il positivo piccolo copre anche una esposizione e D13/fold iniziale 5,
 sempre con target falso e troncamento respinti. Il dispatch C71 e la
 costruzione selezionata restano invariati.
 
+### Joint-state native transition and retained wrapper
+
+Il nuovo [runner test-only](../../rust/volta-pcs/src/c71_matrix/gemma/native/joint_state.rs)
+esegue tre transizioni con W/D12 installato e S/D13: link W/KV con MAC
+originali condivisi, range i16 simmetrico W, range byte A, padding zero,
+due batch lineari/PCS e record finale nello stesso FS. Il wrapper con
+conservazione riusa i dati del commit attraverso `Arc`; quello ordinario
+mantiene la rimaterializzazione. Ogni snapshot nasce una volta e il
+predecessore viene rilasciato dopo la promozione.
+
+I tre test nuovi passano: sequenza positiva e digest FS concordi;
+W iniziale alterato, quarto zero alterato, byte 256 e i16 -32768 respinti;
+ultimo KV accettato alterato respinto. Troncamento tardivo non promuove e
+brucia la riserva; retry, capacità insufficiente e root ritirata sono
+terminali. La capacità ideale consumata è 66.524 / 66.528 / 66.528 righe
+Fp3, 199.580 totali, con cursor verificato. Non è un bootstrap PCG reale.
+
+Passano anche nove regressioni: PCS coi nuovi parametri, equivalenza dei
+dati conservati, salted/codec, tre campo/FS e due composti B12 ordinari.
+Le emissioni sono framing reale di prove valide sui dati sintetici, circa
+4,36 / 4,78 / 4,78 MB. Non contengono inferenza o RNE: non sono un
+confronto di certificati Gemma, né misure complete di lavoro o sicurezza.
+La tabella degli upper canonici rimane una proiezione separata. I cloni del
+verifier nei casi negativi sono replay controfattuali di una sola prova.
+
 ## Native component evidence
 
 Il [catalogo dei controlli nativi](../procedures/build-and-test.md#rust-and-resource-limits)

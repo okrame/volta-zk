@@ -178,9 +178,9 @@ avere un rapporto diverso dai byte dei codeword.
 La memoria persistente fuori H100 autorizzata dal proprietario permette
 di studiare la conservazione dei dati iniziali di commit fino all'ultimo
 consumer. Non permette di saltare copie, trasferimenti, nuovi pad, proof
-fresche o il costo di creare quella cache. Il prover C71 corrente continua
-a rimaterializzare: la nuova API di lettura dei dati conservati, descritta
-sotto, è verificata come componente e non ancora collegata al suo wrapper.
+fresche o il costo di creare quella cache. Il costruttore C71 ordinario
+continua a rimaterializzare; il nuovo costruttore con conservazione è ora
+collegato al batch lineare e usato dalla transizione sperimentale piccola.
 Rimangono invariati H100, arena, trust model e assenza di autorizzazione
 a run pesanti/provider. I dati canonici non vengono materializzati localmente.
 
@@ -234,8 +234,10 @@ Entrambe usano 456 query e rate factor 4; i domini iniziali sono 2^31,
 entro la two-adicity Goldilocks. Le maschere restano comuni dentro ciascuna
 PCS. Si confrontano le forme native del codec con questi parametri, ma
 il dispatch C71 selezionato resta D35/D34 e **non ammette S/D36**.
-Il positivo piccolo aggiunge W a una esposizione e D13 con primo fold 5;
-non è un'esecuzione del nuovo protocollo di stato.
+Il positivo PCS piccolo aggiunge W a una esposizione e D13 con primo fold 5.
+Il nuovo [percorso di transizione](../../rust/volta-pcs/src/c71_matrix/gemma/native/joint_state.rs)
+li collega a range, MAC originali e promozione su sorgenti sintetiche;
+il suo perimetro è descritto sotto, separato dall'inferenza Gemma.
 
 Il conto completo sostituisce le quattro PCS mobili con le due S,
 mantenendo prudenzialmente i loro frame e la riserva metadata di 128 byte.
@@ -264,6 +266,39 @@ arbitrario. Le celle sommano i domini di ingresso alle PCS, non tutte le
 operazioni dei sumcheck lineari/PCS. Il kernel dei covettori è ancora t*M:
 questa riduzione finita non scarica il contratto uniforme delle sorgenti.
 Contabilità completa, schedule fisico e positivo canonico restano necessari.
+
+### Transizione nativa piccola con range e dati PCS conservati
+
+`joint_state.rs` è test-only e riusa `Batch`, `Writer`, `Reader`, range e
+batch lineare del percorso nativo. Il profilo locale è W/D12 a una
+esposizione e S/D13 a due; ogni S contiene W, A/D11 e un quarto zero.
+Le sorgenti sono sintetiche: non c'è Prepare/inferenza o batch RNE in
+questa esecuzione, né una nuova ammissione AES o del profilo canonico.
+
+Il trasporto contiene un header di dominio sperimentale, i link W/KV,
+range i16 simmetrico W e byte A, le due prove lineari/PCS e il record finale.
+Ogni record passa nello stesso FS. Il verifier ricostruisce i link dal
+proprio slot e predecessore; i valori condivisi sono autenticati una sola
+volta e consumati originali nei due batch. La forma del quarto zero usa
+il target noto zero. I range leggono viste dello snapshot e restituiscono
+forme che vengono traslate agli offset di S, senza creare altre root.
+
+Il wrapper `Model::new_with_retention` mantiene i dati iniziali tramite
+`Arc` immutabile; `prove_pcs` usa il kernel di apertura conservata, senza
+rimaterializzare. I cloni condividono quei dati, non rinnovano pad o
+esposizioni. Le proof e i sali freschi rimangono indipendenti. Il costruttore
+ordinario conserva il percorso precedente e il dispatch D36 resta chiuso.
+Il percorso positivo prepara un successore per volta e rilascia il vecchio
+oggetto dopo la promozione. Le copie delle viste range del test non sono
+uno schedule fisico ammesso e vanno considerate nel confronto completo.
+
+Il verifier riserva l'intera capacità prima del parsing, conserva il
+predecessore in caso di errore e termina su errore o esaurimento. Mantiene
+anche l'insieme delle root già viste per rifiutare il riuso di una root
+ritirata: sono identificatori persistenti lato verifier, non nuove aperture
+o una lista trasmessa nel certificato. La loro memoria/lavoro non sono zero.
+I replay negativi del verifier sono controfattuali di una sola emissione,
+non esecuzioni del prover che riusano le correlazioni.
 
 ## Dati iniziali conservati: uguaglianza della prova e lavoro evitato
 

@@ -66,7 +66,9 @@ use p3_field::extension::CubicTrinomialExtensionField;
 use p3_field::{BasedVectorSpace, PrimeCharacteristicRing, PrimeField64};
 use p3_goldilocks::Goldilocks;
 use p3_multilinear_util::{point::Point, poly::Poly};
-use p3_whir_c61::pcs::zk::{HidingWhirProver, HidingWhirVerifier, MaskCodeShape, ZkWhirProof};
+use p3_whir_c61::pcs::zk::{
+    HidingWhirProver, HidingWhirProverData, HidingWhirVerifier, MaskCodeShape, ZkWhirProof,
+};
 use p3_whir_c61::pcs::zk::{ZkParameters, ZkWhirConfig};
 use p3_whir_c61::{FoldingFactor, ProtocolParameters, SecurityAssumption};
 use rand::RngCore;
@@ -498,6 +500,8 @@ struct Model {
     seed: [u8; 32],
     salt_seed: [u8; 32],
     root: C61Commitment,
+    // Immutable across clones; the caller still owns the exposure/attempt budget.
+    retained: Option<std::sync::Arc<HidingWhirProverData<Goldilocks, E, ObservedMmcs>>>,
 }
 
 #[derive(Clone, Copy)]
@@ -505,6 +509,12 @@ enum Domain {
     Matrix(usize),
     #[cfg(feature = "c71-b12-pcs")]
     Flat(usize),
+    #[cfg(all(test, feature = "c71-b12-pcs"))]
+    JointTest {
+        bits: usize,
+        exposures: usize,
+        first: usize,
+    },
 }
 
 impl From<usize> for Domain {
@@ -519,6 +529,16 @@ impl Domain {
             Self::Matrix(n) => matrix_config(n),
             #[cfg(feature = "c71-b12-pcs")]
             Self::Flat(bits) => b12::config(bits),
+            #[cfg(all(test, feature = "c71-b12-pcs"))]
+            Self::JointTest { bits, exposures, first } => {
+                if !(12..=13).contains(&bits)
+                    || !(1..=2).contains(&exposures)
+                    || !(4..=5).contains(&first)
+                {
+                    return Err("joint-state test profile outside bounded scope".into());
+                }
+                Ok(codec::tuning::parameters(bits, exposures, first))
+            }
         }
     }
 
@@ -529,6 +549,10 @@ impl Domain {
             Self::Matrix(n) => n as u32,
             #[cfg(feature = "c71-b12-pcs")]
             Self::Flat(bits) => (1 << 31) | bits as u32,
+            #[cfg(all(test, feature = "c71-b12-pcs"))]
+            Self::JointTest { bits, exposures, first } => {
+                (1 << 30) | ((exposures as u32) << 16) | ((first as u32) << 8) | bits as u32
+            }
         }
     }
 }
@@ -568,11 +592,19 @@ impl Model {
     }
 
     fn new_in(domain: Domain, weights: Vec<i16>) -> Result<Self, String> {
+        Self::new_with_retention(domain, weights, false)
+    }
+
+    fn new_with_retention(domain: Domain, weights: Vec<i16>, retain: bool) -> Result<Self, String> {
         let config = domain.config()?;
         let valid = match domain {
             Domain::Matrix(n) => weights.len() == n * n,
             #[cfg(feature = "c71-b12-pcs")]
             Domain::Flat(bits) => !weights.is_empty() && weights.len() <= 1usize << bits,
+            #[cfg(all(test, feature = "c71-b12-pcs"))]
+            Domain::JointTest { bits, .. } => {
+                !weights.is_empty() && weights.len() <= 1usize << bits
+            }
         };
         if !valid {
             return Err("C71 weight dimensions differ".into());
@@ -581,13 +613,22 @@ impl Model {
         rand::rngs::OsRng.try_fill_bytes(&mut seed).map_err(|e| e.to_string())?;
         let mut salt_seed = [0; 32];
         rand::rngs::OsRng.try_fill_bytes(&mut salt_seed).map_err(|e| e.to_string())?;
-        let mut model =
-            Self { domain, weights, seed, salt_seed, root: C61Commitment::new(vec![[0; 32]]) };
-        let mmcs = matrix_mmcs(salt_seed);
+        let mut model = Self {
+            domain,
+            weights,
+            seed,
+            salt_seed,
+            root: C61Commitment::new(vec![[0; 32]]),
+            retained: None,
+        };
+        let mut fs = Fs::new(b"C71 model setup, Delta independent", 0);
+        let mmcs = ObservedMmcs::new(fs.clone(), salt_seed);
         let dft = Radix2DFTSmallBatch::default();
         let prover = HidingWhirProver::new(&config, &dft, &mmcs);
-        let mut fs = Fs::new(b"C71 model setup, Delta independent", 0);
-        model.root = prover.commit(model.polynomial(), &mut fs, &mut MatrixRng::from_seed(seed)).0;
+        let (root, data) =
+            prover.commit(model.polynomial(), &mut fs, &mut MatrixRng::from_seed(seed));
+        model.root = root;
+        model.retained = if retain { Some(std::sync::Arc::new(data)) } else { None };
         Ok(model)
     }
 
@@ -596,6 +637,8 @@ impl Model {
             Domain::Matrix(n) => n.next_power_of_two().max(32).pow(2),
             #[cfg(feature = "c71-b12-pcs")]
             Domain::Flat(bits) => 1usize << bits,
+            #[cfg(all(test, feature = "c71-b12-pcs"))]
+            Domain::JointTest { bits, .. } => 1usize << bits,
         };
         let mut values = vec![Goldilocks::ZERO; size];
         for (i, &weight) in self.weights.iter().enumerate() {
@@ -603,6 +646,8 @@ impl Model {
                 Domain::Matrix(n) => (i / n) * n.next_power_of_two().max(32) + i % n,
                 #[cfg(feature = "c71-b12-pcs")]
                 Domain::Flat(_) => i,
+                #[cfg(all(test, feature = "c71-b12-pcs"))]
+                Domain::JointTest { .. } => i,
             };
             values[index] = Goldilocks::new(signed(i64::from(weight)).c0.value());
         }
@@ -788,17 +833,22 @@ fn prove_pcs(
     fs: &mut Fs,
 ) -> Result<(ZkWhirProof<Goldilocks, E, ObservedMmcs>, Fp3), String> {
     fs.set_phase(0x200);
-    let mmcs = ObservedMmcs::new(fs.clone(), model.salt_seed);
     let dft = Radix2DFTSmallBatch::default();
-    let prover = HidingWhirProver::new(config, &dft, &mmcs);
-    census::mark("prover_commit_rematerialization")?;
-    // Re-materialization is charged to this attempt. Only the initial model
-    // mask seed repeats, within the three-slot root capacity; proof masks do not.
-    let (root, data) =
-        prover.commit(model.polynomial(), fs, &mut MatrixRng::from_seed(model.seed));
-    if root != model.root {
-        return Err("C71 prover changed the installed model root".into());
-    }
+    let data = if model.retained.is_some() {
+        fs.observe(model.root.clone());
+        None
+    } else {
+        census::mark("prover_commit_rematerialization")?;
+        let mmcs = ObservedMmcs::new(fs.clone(), model.salt_seed);
+        let prover = HidingWhirProver::new(config, &dft, &mmcs);
+        // Re-materialization is charged to this attempt; only initial coins repeat.
+        let (root, data) =
+            prover.commit(model.polynomial(), fs, &mut MatrixRng::from_seed(model.seed));
+        if root != model.root {
+            return Err("C71 prover changed the installed model root".into());
+        }
+        Some(data)
+    };
     census::mark("prover_pcs")?;
     let mut seed = [0; 32];
     rand::rngs::OsRng.try_fill_bytes(&mut seed).map_err(|e| e.to_string())?;
@@ -808,13 +858,18 @@ fn prove_pcs(
     rand::rngs::OsRng.try_fill_bytes(&mut proof_salt_seed).map_err(|e| e.to_string())?;
     let proof_mmcs = ObservedMmcs::new(fs.clone(), proof_salt_seed);
     let prover = HidingWhirProver::new(config, &dft, &proof_mmcs);
-    let proved = prover.prove_claimless(
-        data,
-        &[(point, to_p3(terminal.x))],
-        to_p3(mask.x),
-        fs,
-        &mut MatrixRng::from_seed(seed),
-    );
+    let claims = [(point, to_p3(terminal.x))];
+    let mut rng = MatrixRng::from_seed(seed);
+    let proved = match data {
+        Some(data) => prover.prove_claimless(data, &claims, to_p3(mask.x), fs, &mut rng),
+        None => prover.prove_claimless_retained(
+            model.retained.as_ref().unwrap(),
+            &claims,
+            to_p3(mask.x),
+            fs,
+            &mut rng,
+        ),
+    };
     let close_tag =
         mask.m - from_p3(proved.base_case.gamma * proved.target.coefficient) * terminal.m;
     record_values(fs, 0x12, &[close_tag]);
@@ -894,6 +949,8 @@ fn matrix_prove(
         Domain::Matrix(n) => n,
         #[cfg(feature = "c71-b12-pcs")]
         Domain::Flat(_) => return Err("C71 matrix caller needs a matrix source".into()),
+        #[cfg(all(test, feature = "c71-b12-pcs"))]
+        Domain::JointTest { .. } => return Err("C71 matrix caller needs a matrix source".into()),
     };
     let config = matrix_config(n)?;
     let h = config.num_variables / 2;

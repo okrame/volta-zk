@@ -142,6 +142,15 @@ finale base e confronta serde/FS; solo D12 concede byte nativi identici.
 Dopo modifiche al motore condiviso conservare PCS valida, salted/codec,
 campo/FS, `c71_b12_native_composed` e `c71_b12_native_certificate`.
 
+Per la transizione W/A/KV sperimentale eseguire separatamente i filtri
+`c71_joint_state_three_transitions`, `c71_joint_state_changed_installed_w`
+e `c71_joint_state_changed_last_accepted_kv`, con gli stessi limiti seriali
+60 s/2 GiB e un worker Rayon. Usano W/D12 e S/D13, MAC ideali, due PCS,
+range W/A e framing; non eseguono inferenza/RNE, AES o domini canonici.
+Dopo modifiche al costruttore con conservazione e a `prove_pcs`, mantenere
+il confronto byte/FS dei dati conservati, campo/FS, salted/codec e i due
+test composti ordinari, oltre al positivo dei parametri PCS sperimentali.
+
 Il filtro Python `canonical_PCS_wire or native_wire_body or complete_fixed_run`
 controlla il corpo canonico contro i censimenti field già presenti e
 il conteggio PCS di maschere, sali, frontiere e aperture storiche.

@@ -25,7 +25,11 @@ fn candidate(h: usize, exposures: usize) -> ZkWhirConfig<E, Goldilocks, Fs> {
     parameters(h, exposures, if h <= 14 { 4 } else { 6 })
 }
 
-fn parameters(h: usize, exposures: usize, first: usize) -> ZkWhirConfig<E, Goldilocks, Fs> {
+pub(in crate::c71_matrix) fn parameters(
+    h: usize,
+    exposures: usize,
+    first: usize,
+) -> ZkWhirConfig<E, Goldilocks, Fs> {
     let queries = 456;
     let ell = exposures * queries + 1;
     let strategy = FoldingFactor::ConstantFromSecondRound(first, 4);
@@ -77,6 +81,7 @@ fn c71_pcs_tuning_valid_original_mac_and_codec() {
                 seed: [71; 32],
                 salt_seed: [72; 32],
                 root: C61Commitment::new(vec![[0; 32]]),
+                retained: None,
             };
             let mmcs = matrix_mmcs(model.salt_seed);
             let dft = Radix2DFTSmallBatch::default();

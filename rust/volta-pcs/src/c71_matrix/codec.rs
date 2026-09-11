@@ -3,7 +3,7 @@
 use super::*;
 
 #[cfg(all(test, feature = "c71-b12-pcs"))]
-mod tuning;
+pub(super) mod tuning;
 use crate::c61_whir_reference::{
     c61_max_pruned_binary_siblings, C61Reader, C61WhirReferenceError, C61Writer, ReferenceResult,
 };

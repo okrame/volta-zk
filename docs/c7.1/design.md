@@ -586,6 +586,12 @@ trasportati ai rispettivi offset, e il quarto zero deve essere vincolato.
 I piccoli controlli algebrici/PCS e i nuovi conteggi non dimostrano ancora
 questa composizione, la ZK congiunta o lo schedule fisico. Il protocollo
 B12 selezionato e i suoi cap di dominio restano quelli di security §§1–3.
+Il [percorso nativo di transizione](pcs-state-screen.md#transizione-nativa-piccola-con-range-e-dati-pcs-conservati)
+collega ora range separati, link originali W/KV, due PCS e promozione in
+un unico FS su sorgenti sintetiche W/D12 e S/D13. I suoi MAC sono ideali;
+non esegue inferenza/RNE e non prova la composizione ROM/ZK. Le copie
+delle viste e l'insieme persistente delle root ritirate restano costi da
+includere, anche se non aggiungono PCS o storia al wire della risposta.
 
 Per questo esperimento il proprietario autorizza memoria persistente
 aggiuntiva **fuori H100**. Questa eccezione supera il divieto di spill e
@@ -602,7 +608,11 @@ percorso ricostruito e il suo perimetro sono nello
 stessi coin e assorbimento della root producono gli stessi byte/FS;
 il caller deve ancora imporre freschezza e limite di esposizioni.
 La sola sostituzione di storage non cambia il protocollo o i suoi eventi
-di sicurezza. Non prova il rinnovo W/KV e non è collegata al wrapper C71.
+di sicurezza. Il wrapper C71 può ora usarla tramite il costruttore interno
+con conservazione; quello ordinario mantiene la rimaterializzazione.
+I dati di commit sono condivisi immutabilmente con `Arc`, senza rinnovare
+esposizioni. La disciplina di tentativi resta responsabilità del caller;
+non si abilita per questo la produzione o lo stato mobile canonico.
 La contabilità separa l'encode iniziale evitato dalle proof fresche:
 `SelectStatement::combine_packed` esegue ancora t*M termini, in aumento
 nella candidata fold-6. Il contratto sulle sorgenti sotto resta aperto;

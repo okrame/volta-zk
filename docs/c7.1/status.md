@@ -138,7 +138,14 @@ non è selezionabile dal dispatch e non ha un positivo canonico completo.
 
 Il kernel PCS permette ora di conservare i dati iniziali del commitment:
 il confronto D12 mantiene byte/FS identici ed elimina l'encode ripetuto,
-senza rinnovare le esposizioni. Il wrapper C71 resta da collegare alla cache.
+senza rinnovare le esposizioni. Il wrapper con conservazione è ora collegato
+al batch lineare della transizione W/D12–S/D13, con range separati e un
+unico FS. Sono sorgenti sintetiche e MAC ideali, senza inferenza/RNE;
+il costruttore e la costruzione ordinari restano invariati nella selezione.
+I tre controlli della transizione passano: sequenza positiva, W/padding/range
+alterati e ultimo KV alterato, con burn e mancata promozione sui rifiuti.
+Resta da collegare a questa root unica l'intera inferenza/RNE per un
+confronto composto sulla stessa conversazione del runner B12.
 Lo screen conta anche setup e rinnovi e scopre una voce in aumento nella
 candidata fold-6: i covettori delle query mantengono il lavoro t*M.
 Il payload persistente proiettato di due W e due A è 8,66 TB prima della

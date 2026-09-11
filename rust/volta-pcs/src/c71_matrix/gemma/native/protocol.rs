@@ -7,6 +7,9 @@ use prepare::{Installed, Snapshot};
 pub(super) mod pool;
 
 #[cfg(test)]
+#[path = "joint_state.rs"]
+mod joint_state;
+#[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
 

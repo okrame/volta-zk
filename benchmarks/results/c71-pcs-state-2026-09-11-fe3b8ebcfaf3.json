@@ -1,0 +1,528 @@
+{
+  "schema": "c71-pcs-state-component-screen-v1",
+  "timestamp_utc": "2026-09-11T17:10:17.018014+00:00",
+  "git_sha": "fe3b8ebcfaf3106ecc27429797ded8f844d82f2c",
+  "git_dirty": false,
+  "credit": false,
+  "security_credit": false,
+  "hardware_credit": false,
+  "full_prover_work_nonincrease_verified": false,
+  "complete_valid_canonical_certificate_bytes": null,
+  "limits": {
+    "timeout_seconds_per_check": 60,
+    "address_space_bytes_rust": 2147483648,
+    "rayon_workers": 1,
+    "test_threads": 1
+  },
+  "binary_sha256": "b76378af8eb8482adcd22acf4b4a99c024a07f4c97e78fa710d336eaf339e9d8",
+  "checks": [
+    {
+      "filter": "c71_pcs_tuning_valid_original_mac_and_codec",
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_pcs_tuning_valid_original_mac_and_codec",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::codec::tuning::c71_pcs_tuning_valid_original_mac_and_codec ... PCS tuning valid D12 exposures=3 tuned=false slot=0 pcs_bytes=3189820\nPCS tuning valid D12 exposures=3 tuned=false slot=1 pcs_bytes=3187580\nPCS tuning valid D12 exposures=3 tuned=false slot=2 pcs_bytes=3180860\nPCS tuning valid D12 exposures=3 tuned=true slot=0 pcs_bytes=1634932\nPCS tuning valid D12 exposures=3 tuned=true slot=1 pcs_bytes=1638644\nPCS tuning valid D12 exposures=3 tuned=true slot=2 pcs_bytes=1633236\nPCS tuning valid D12 exposures=2 tuned=false slot=0 pcs_bytes=3181660\nPCS tuning valid D12 exposures=2 tuned=false slot=1 pcs_bytes=3185148\nPCS tuning valid D12 exposures=2 tuned=true slot=0 pcs_bytes=1453396\nPCS tuning valid D12 exposures=2 tuned=true slot=1 pcs_bytes=1449044\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 7.43s\n\n"
+    },
+    {
+      "filter": "c71_pcs_tuning_canonical_geometry",
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_pcs_tuning_canonical_geometry",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::codec::tuning::c71_pcs_tuning_canonical_geometry ... PCS tuning D35 folds=[6, 4, 4, 4, 4, 4, 4] ell=1369 mask_domain=8192 profile_bytes=1517\nPCS tuning synthetic D35 fixed=5157568 upper=7932608\nPCS tuning D34 folds=[6, 4, 4, 4, 4, 4, 4] ell=913 mask_domain=8192 profile_bytes=1517\nPCS tuning synthetic D34 fixed=4434784 upper=7136864\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.05s\n\n"
+    },
+    {
+      "filter": "c71_rne_unpadded_groups_cover_without_extra_cells",
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_rne_unpadded_groups_cover_without_extra_cells",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::rne::batch_tests::c71_rne_unpadded_groups_cover_without_extra_cells ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.00s\n\n"
+    },
+    {
+      "filter": "c71_b12_rne_joint_bytes_canonical_geometry",
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_rne_joint_bytes_canonical_geometry",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::tests::c71_b12_rne_joint_bytes_canonical_geometry ... joint_RNE unpadded slot=0 dimensions=[34, 32, 30, 29, 25, 24] wire_with_frames=214116\njoint_RNE work slot=0 separate_byte_cells=23135780864 padded_joint_byte_cells=25769803776\njoint_RNE canonical slot=0 view_bits=[34, 33] old_functions=25210128 joint=80864 extra_frames=12 saved=25129252 selected_RNE=5475424 projected_total_lower=22711928 projected_total_upper=39923992 saved_fp3_rows=839615\njoint_RNE unpadded slot=1 dimensions=[34, 32, 31, 28, 27, 26, 25, 24] wire_with_frames=280208\njoint_RNE work slot=1 separate_byte_cells=24142413824 padded_joint_byte_cells=25769803776\njoint_RNE canonical slot=1 view_bits=[34, 33] old_functions=25267728 joint=80864 extra_frames=12 saved=25186852 selected_RNE=5488384 projected_total_lower=29681466 projected_total_upper=53758874 saved_fp3_rows=841535\njoint_RNE unpadded slot=2 dimensions=[34, 32, 31, 28, 27, 26, 25, 24] wire_with_frames=280208\njoint_RNE work slot=2 separate_byte_cells=24142413824 padded_joint_byte_cells=25769803776\njoint_RNE canonical slot=2 view_bits=[34, 33] old_functions=25267728 joint=80864 extra_frames=12 saved=25186852 selected_RNE=5488384 projected_total_lower=36610532 projected_total_upper=67536452 saved_fp3_rows=841535\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.59s\n\n"
+    },
+    {
+      "filter": "c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs",
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::rne::batch_tests::c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs ... joint_RNE valid component bytes old=22436 new=15180 saved=7256 joint=11392 correlations=1074\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 3.15s\n\n"
+    },
+    {
+      "filter": "c71_b12_canonical_pcs_codec",
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_canonical_pcs_codec",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::codec::tests::c71_b12_canonical_pcs_codec_geometry_and_byte_cap ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.15s\n\n"
+    },
+    {
+      "filter": "c71_b12_native_composed",
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_composed",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_composed_three_attempts_close_one_fs_and_promote_same_w_kv ... native slot=0, certificate=7741065 bytes, base_cursor=264147\nnative slot=1, certificate=10957079 bytes, base_cursor=529833\nnative slot=2, certificate=14126081 bytes, base_cursor=797139\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 14.87s\n\n"
+    },
+    {
+      "command": [
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_pcs_state_screen.py",
+        "tests/test_c7_1_gemma_plan.py",
+        "-k",
+        "pcs_state_screen or canonical_PCS_wire or native_wire_body or complete_fixed_run"
+      ],
+      "exit_code": 0,
+      "output": "....                                                                     [100%]\n4 passed, 203 deselected in 2.26s\n"
+    }
+  ],
+  "screen": {
+    "credit": false,
+    "selected": false,
+    "complete_security_proven": false,
+    "canonical_valid_proof_bytes": null,
+    "hardware_credit": false,
+    "metric": "one response, same pinned model and 100+50 tokens; O=0/150/300",
+    "baseline": [
+      {
+        "h": 35,
+        "queries": 512,
+        "exposures": 3,
+        "first": 7,
+        "step": 2,
+        "rate": 8,
+        "ell": 2048,
+        "folds": [
+          7,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "wire": {
+          "credit": false,
+          "log_message_cells": 35,
+          "fixed_wire_bytes": {
+            "MAC_transfer_and_close": 3432,
+            "claimless_sumchecks": 1425000,
+            "OOD_answers": 264,
+            "base_claim_message_randomness": 13848,
+            "blinded_masks": 2457600,
+            "commitments": 1856,
+            "opened_values": 2060288,
+            "opened_salts": 966656,
+            "multiproof_counts": 236
+          },
+          "multiproof_sibling_bytes_upper": 7012352,
+          "wire_interval": [
+            6929180,
+            13941532
+          ],
+          "decoder_cap_bytes": 16777216,
+          "upper_fits_decoder_cap": true,
+          "PCS_profile_vector_bytes": 2277,
+          "native_synthetic_codec_checked": true,
+          "native_serialization_checked": false,
+          "native_check_scope": "zero-value codec fixtures; no valid PCS or canonical inference",
+          "lower_omits": "all Merkle sibling hashes",
+          "source": "rust/volta-pcs/src/c71_matrix/codec.rs::encode_linear"
+        },
+        "initial_encoded_base_cells": 549755813888,
+        "initial_radix2_butterflies": 8796093022208,
+        "fresh_encoded_extension_cells": 5729296384,
+        "fresh_radix2_butterflies": 84010487808,
+        "PCS_max_coin_block_error": "19807078439779775888924612611/115792089237316195423570985008687907853269984665640564039457584007913129639936",
+        "PCS_prefix_error": "19807078439779775888924612611/6129982163463555433433388108601236734474956488734408704"
+      },
+      {
+        "h": 34,
+        "queries": 512,
+        "exposures": 3,
+        "first": 7,
+        "step": 2,
+        "rate": 8,
+        "ell": 2048,
+        "folds": [
+          7,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "wire": {
+          "credit": false,
+          "log_message_cells": 34,
+          "fixed_wire_bytes": {
+            "MAC_transfer_and_close": 3336,
+            "claimless_sumchecks": 1425000,
+            "OOD_answers": 264,
+            "base_claim_message_randomness": 13080,
+            "blinded_masks": 2457600,
+            "commitments": 1856,
+            "opened_values": 2060288,
+            "opened_salts": 966656,
+            "multiproof_counts": 236
+          },
+          "multiproof_sibling_bytes_upper": 6848512,
+          "wire_interval": [
+            6928316,
+            13776828
+          ],
+          "decoder_cap_bytes": 16777216,
+          "upper_fits_decoder_cap": true,
+          "PCS_profile_vector_bytes": 2277,
+          "native_synthetic_codec_checked": true,
+          "native_serialization_checked": false,
+          "native_check_scope": "zero-value codec fixtures; no valid PCS or canonical inference",
+          "lower_omits": "all Merkle sibling hashes",
+          "source": "rust/volta-pcs/src/c71_matrix/codec.rs::encode_linear"
+        },
+        "initial_encoded_base_cells": 274877906944,
+        "initial_radix2_butterflies": 4260607557632,
+        "fresh_encoded_extension_cells": 2865995776,
+        "fresh_radix2_butterflies": 40583663616,
+        "PCS_max_coin_block_error": "9903558118579204660479924227/115792089237316195423570985008687907853269984665640564039457584007913129639936",
+        "PCS_prefix_error": "9903558118579204660479924227/6129982163463555433433388108601236734474956488734408704"
+      }
+    ],
+    "candidate": [
+      {
+        "h": 35,
+        "queries": 456,
+        "exposures": 3,
+        "first": 6,
+        "step": 4,
+        "rate": 4,
+        "ell": 1369,
+        "folds": [
+          6,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4
+        ],
+        "wire": {
+          "credit": false,
+          "log_message_cells": 35,
+          "fixed_wire_bytes": {
+            "MAC_transfer_and_close": 3432,
+            "claimless_sumchecks": 985128,
+            "OOD_answers": 144,
+            "base_claim_message_randomness": 11736,
+            "blinded_masks": 1576800,
+            "commitments": 1056,
+            "opened_values": 2083008,
+            "opened_salts": 496128,
+            "multiproof_counts": 136
+          },
+          "multiproof_sibling_bytes_upper": 2775040,
+          "wire_interval": [
+            5157568,
+            7932608
+          ],
+          "decoder_cap_bytes": 16777216,
+          "upper_fits_decoder_cap": true,
+          "PCS_profile_vector_bytes": 1517,
+          "native_synthetic_codec_checked": false,
+          "native_serialization_checked": false,
+          "native_check_scope": "zero-value codec fixtures; no valid PCS or canonical inference",
+          "lower_omits": "all Merkle sibling hashes",
+          "source": "rust/volta-pcs/src/c71_matrix/codec.rs::encode_linear"
+        },
+        "initial_encoded_base_cells": 274877906944,
+        "initial_radix2_butterflies": 4398046511104,
+        "fresh_encoded_extension_cells": 4581918720,
+        "fresh_radix2_butterflies": 63531346944,
+        "PCS_max_coin_block_error": "1237943194543310211207135745/7237005577332262213973186563042994240829374041602535252466099000494570602496",
+        "PCS_prefix_error": "1237943194543310211207135745/383123885216472214589586756787577295904684780545900544"
+      },
+      {
+        "h": 34,
+        "queries": 456,
+        "exposures": 2,
+        "first": 6,
+        "step": 4,
+        "rate": 4,
+        "ell": 913,
+        "folds": [
+          6,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4
+        ],
+        "wire": {
+          "credit": false,
+          "log_message_cells": 34,
+          "fixed_wire_bytes": {
+            "MAC_transfer_and_close": 3336,
+            "claimless_sumchecks": 656808,
+            "OOD_answers": 144,
+            "base_claim_message_randomness": 11352,
+            "blinded_masks": 1182816,
+            "commitments": 1056,
+            "opened_values": 2083008,
+            "opened_salts": 496128,
+            "multiproof_counts": 136
+          },
+          "multiproof_sibling_bytes_upper": 2702080,
+          "wire_interval": [
+            4434784,
+            7136864
+          ],
+          "decoder_cap_bytes": 16777216,
+          "upper_fits_decoder_cap": true,
+          "PCS_profile_vector_bytes": 1517,
+          "native_synthetic_codec_checked": false,
+          "native_serialization_checked": false,
+          "native_check_scope": "zero-value codec fixtures; no valid PCS or canonical inference",
+          "lower_omits": "all Merkle sibling hashes",
+          "source": "rust/volta-pcs/src/c71_matrix/codec.rs::encode_linear"
+        },
+        "initial_encoded_base_cells": 137438953472,
+        "initial_radix2_butterflies": 2130303778816,
+        "fresh_encoded_extension_cells": 2291304448,
+        "fresh_radix2_butterflies": 30622575616,
+        "PCS_max_coin_block_error": "309486061501930786772746411/3618502788666131106986593281521497120414687020801267626233049500247285301248",
+        "PCS_prefix_error": "309486061501930786772746411/191561942608236107294793378393788647952342390272950272"
+      }
+    ],
+    "rolling_W_candidate": {
+      "h": 35,
+      "queries": 456,
+      "exposures": 2,
+      "first": 6,
+      "step": 4,
+      "rate": 4,
+      "ell": 913,
+      "folds": [
+        6,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4
+      ],
+      "wire": {
+        "credit": false,
+        "log_message_cells": 35,
+        "fixed_wire_bytes": {
+          "MAC_transfer_and_close": 3432,
+          "claimless_sumchecks": 656808,
+          "OOD_answers": 144,
+          "base_claim_message_randomness": 11736,
+          "blinded_masks": 1182816,
+          "commitments": 1056,
+          "opened_values": 2083008,
+          "opened_salts": 496128,
+          "multiproof_counts": 136
+        },
+        "multiproof_sibling_bytes_upper": 2775040,
+        "wire_interval": [
+          4435264,
+          7210304
+        ],
+        "decoder_cap_bytes": 16777216,
+        "upper_fits_decoder_cap": true,
+        "PCS_profile_vector_bytes": 1517,
+        "native_synthetic_codec_checked": false,
+        "native_serialization_checked": false,
+        "native_check_scope": "zero-value codec fixtures; no valid PCS or canonical inference",
+        "lower_omits": "all Merkle sibling hashes",
+        "source": "rust/volta-pcs/src/c71_matrix/codec.rs::encode_linear"
+      },
+      "initial_encoded_base_cells": 274877906944,
+      "initial_radix2_butterflies": 4398046511104,
+      "fresh_encoded_extension_cells": 4581918720,
+      "fresh_radix2_butterflies": 63531346944,
+      "PCS_max_coin_block_error": "618971071539448637661642923/3618502788666131106986593281521497120414687020801267626233049500247285301248",
+      "PCS_prefix_error": "618971071539448637661642923/191561942608236107294793378393788647952342390272950272"
+    },
+    "search": {
+      "family_size": 60,
+      "passing_PCS_prefix_screen": 60,
+      "best_parameters": {
+        "queries": 448,
+        "first": 6,
+        "step": 4
+      },
+      "best_two_PCS_upper": 14824864
+    },
+    "cases": [
+      {
+        "old_tokens": 0,
+        "baseline_interval": [
+          47841180,
+          65053244
+        ],
+        "projected_complete_response_interval": [
+          18580024,
+          27408344
+        ],
+        "source_PCS_count": 2,
+        "unpadded_RNE_group_bits": [
+          34,
+          32,
+          30,
+          29,
+          25,
+          24
+        ],
+        "RNE_group_bytes_with_frames": 214116,
+        "RNE_separate_and_unpadded_byte_cells": 23135780864,
+        "rejected_two_group_padding_byte_cells": 2634022912,
+        "old_KV_bytes_copied": 0,
+        "rolling_A_live_bytes": 13154672538,
+        "fits_D34": true,
+        "rolling_W_and_KV_interval": [
+          17857848,
+          26686168
+        ],
+        "rolling_W_and_KV_PCS_count": 2,
+        "full_prover_work": null,
+        "full_work_nonincrease_verified": false
+      },
+      {
+        "old_tokens": 150,
+        "baseline_interval": [
+          54868318,
+          78945726
+        ],
+        "projected_complete_response_interval": [
+          23122152,
+          34669384
+        ],
+        "source_PCS_count": 3,
+        "unpadded_RNE_group_bits": [
+          34,
+          32,
+          31,
+          28,
+          27,
+          26,
+          25,
+          24
+        ],
+        "RNE_group_bytes_with_frames": 280208,
+        "RNE_separate_and_unpadded_byte_cells": 24142413824,
+        "rejected_two_group_padding_byte_cells": 1627389952,
+        "old_KV_bytes_copied": 344064000,
+        "rolling_A_live_bytes": 14678384538,
+        "fits_D34": true,
+        "rolling_W_and_KV_interval": [
+          26835276,
+          41157548
+        ],
+        "rolling_W_and_KV_PCS_count": 4,
+        "full_prover_work": null,
+        "full_work_nonincrease_verified": false
+      },
+      {
+        "old_tokens": 300,
+        "baseline_interval": [
+          61797384,
+          92723304
+        ],
+        "projected_complete_response_interval": [
+          23122152,
+          34669384
+        ],
+        "source_PCS_count": 3,
+        "unpadded_RNE_group_bits": [
+          34,
+          32,
+          31,
+          28,
+          27,
+          26,
+          25,
+          24
+        ],
+        "RNE_group_bytes_with_frames": 280208,
+        "RNE_separate_and_unpadded_byte_cells": 24142413824,
+        "rejected_two_group_padding_byte_cells": 1627389952,
+        "old_KV_bytes_copied": 688128000,
+        "rolling_A_live_bytes": 16202096538,
+        "fits_D34": true,
+        "rolling_W_and_KV_interval": [
+          26835276,
+          41157548
+        ],
+        "rolling_W_and_KV_PCS_count": 4,
+        "full_prover_work": null,
+        "full_work_nonincrease_verified": false
+      }
+    ],
+    "full_work_unresolved": [
+      "RNE added sumcheck and scheduling (new padding removed)",
+      "rolling KV copy and link forms",
+      "W refresh commitment, equality form and second W PCS; retained data IO",
+      "all FFT/fold/hash/PCG work, setup, replay, serialization and off-H100 IO",
+      "canonical physical schedule; array/butterfly proxies do not prove time dominance"
+    ],
+    "security_unresolved": [
+      "joint RNE FS/simulator",
+      "rolling-state FS link and same-W induction",
+      "complete new ROM/PCG/private-sampler/reduction resource census"
+    ],
+    "lifetime": "three attempts only; no security or growth admission for an unbounded run",
+    "bytes_scope": "conditional full response wire envelope; offline bootstrap/setup counted separately and not measured"
+  },
+  "preliminary_failure": {
+    "scope": "local test before this commit, not a run of record",
+    "configuration": "D10, first fold 1 then 4, 456 queries",
+    "observed_error": "Whir(RateGrowsDomain { round: 0 })",
+    "disposition": "Retained in docs/c7.1/pcs-state-screen.md; positive component uses D12 with folds 4 then 4."
+  }
+}

@@ -100,6 +100,12 @@ nessuna build workspace o Lean è stata eseguita.
 
 ## PCS/state byte and work screen
 
+[Record immutabile](../../benchmarks/results/c71-pcs-state-2026-09-11-fe3b8ebcfaf3.json)
+dal commit `fe3b8ebcfaf3`, con `git_dirty:false`, hash del binario, comandi,
+output integrali, limiti e rapporto contabile. È evidenza componente/screen,
+non un benchmark completo. Conserva anche la disposizione del primo
+fallimento della geometria D10.
+
 Lo [screen](pcs-state-screen.md) e il
 [diagnostico](../../scripts/c71_pcs_state_screen.py) confrontano i bound del
 codec B12 con due schedule candidate, senza ammissione del lavoro completo.

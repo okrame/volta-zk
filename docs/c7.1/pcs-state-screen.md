@@ -330,11 +330,12 @@ ritornano alla S effettiva, non a un commitment virtuale aggiuntivo.
 
 | Turno | Certificato B12 circa | Certificato con stato unico circa | PCS B12 / candidata | Righe Fp3 candidata |
 |---:|---:|---:|---:|---:|
-| 1 | 7,75 MB | 5,00 MB | 2 / 2 | 86.845 |
-| 2 | 10,94 MB | 5,43 MB | 3 / 2 | 87.323 |
-| 3 | 14,13 MB | 5,45 MB | 4 / 2 | 87.824 |
+| 1 | 7,74 MB | 5,01 MB | 2 / 2 | 86.845 |
+| 2 | 10,94 MB | 5,44 MB | 3 / 2 | 87.323 |
+| 3 | 14,15 MB | 5,45 MB | 4 / 2 | 87.824 |
 
-Sono byte completi di prove valide sul **grafo ridotto**, con sali/sfide
+I [byte del record pulito](evidence.md#joint-state-complete-bounded-inference-comparison)
+comprendono l’intero certificato valido sul **grafo ridotto**, con sali/sfide
 freschi e frontiere Merkle variabili. Non sono i 26,65/28,44/28,44 MB
 canonici: questi restano upper condizionali del codec. Il totale ideale
 è 261.992 righe Fp3 contro 265.713; il bootstrap reale non viene eseguito.

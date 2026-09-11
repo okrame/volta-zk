@@ -141,8 +141,8 @@ il confronto D12 mantiene byte/FS identici ed elimina l'encode ripetuto.
 Dopo la transizione sintetica, il [confronto composto ridotto](pcs-state-screen.md#inferenza-completa-ridotta-con-rne-raggruppate)
 collega alla root unica Prepare, tutti i consumer numerici, range, KV e
 RNE raggruppate. Usa gli stessi pesi, prompt, snapshot numerici e token del
-runner B12. I certificati completi misurati sono circa **5,00 / 5,43 / 5,45 MB**,
-contro **7,75 / 10,94 / 14,13 MB**, con due PCS per risposta e tre gruppi
+runner B12. I certificati completi misurati sono circa **5,01 / 5,44 / 5,45 MB**,
+contro **7,74 / 10,94 / 14,15 MB**, con due PCS per risposta e tre gruppi
 RNE senza celle aggiunte. Le righe MAC ideali scendono da 265.713 a 261.992
 sull'intera conversazione; non è ancora un confronto di lavoro totale.
 La continuazione preparata su ultimo KV alterato è respinta, senza promozione.

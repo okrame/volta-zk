@@ -227,6 +227,33 @@ confronto di certificati Gemma, né misure complete di lavoro o sicurezza.
 La tabella degli upper canonici rimane una proiezione separata. I cloni del
 verifier nei casi negativi sono replay controfattuali di una sola prova.
 
+### Joint-state complete bounded inference comparison
+
+[Record immutabile](../../benchmarks/results/c71-joint-inference-2026-09-11-869e00974eec.json)
+dal commit `869e00974eec`, albero pulito prima e dopo i quindici
+controlli seriali, con hash binario, build, comandi e output. Il record
+conserva separatamente il confronto preliminare con RNE originali da
+working tree: non è un run di record né il risultato selezionato qui.
+
+Il [runner](../../rust/volta-pcs/src/c71_matrix/gemma/native/joint_inference.rs)
+confronta tre certificati B12 con la candidata W/D12–S/D13, sullo stesso
+modello e conversazione. Verifica uguaglianza dei token e dell'intero A
+numerico prima del packing, digest FS concordi e riserve esatte. I byte
+completi sono **7.741.001 / 10.944.887 / 14.151.777** per B12 e
+**5.006.647 / 5.438.291 / 5.446.811** per la candidata. Le PCS sono 2/3/4
+contro 2/2/2. Le sette riduzioni RNE originali chiudono in tre gruppi byte
+da 128/64/32 celle, senza padding aggiunto; le righe Fp3 ideali totali
+sono 265.713 contro 261.992. Non sono misure del prover canonico.
+
+Passano il positivo composto, il negativo con ultima K accettata alterata,
+otto regressioni del runner B12, due RNE e tre transizioni sintetiche.
+Troncamento tardivo e cardinalità RNE errata sono rifiutati sui cloni
+diagnostici del verifier; il tentativo fallito consuma l'intera riserva e
+non promuove. Il negativo KV produce prima l'intera continuazione e viene
+rifiutato dal MAC del sumcheck finale; un retry non consuma un'altra riserva.
+Restano aperti lavoro totale, esecuzione canonica/AES e composizione ROM/ZK
+come dichiarato nel [design](design.md).
+
 ## Native component evidence
 
 Il [catalogo dei controlli nativi](../procedures/build-and-test.md#rust-and-resource-limits)

@@ -1,0 +1,265 @@
+{
+  "milestone": "c71-joint-inference",
+  "date": "2026-09-11",
+  "gitsha": "869e00974eec0309a70075c96a6d0c3a4a153f1b",
+  "git_dirty": false,
+  "credit": false,
+  "selected": false,
+  "complete_security_proven": false,
+  "full_prover_work": null,
+  "full_work_nonincrease_verified": false,
+  "scope": "Complete bounded one-layer inference on the same model, prompts, numerical A and tokens as B12; W/D12 and S/D13 with unpadded original RNE groups; ideal MACs only.",
+  "binary_sha256": "83414b02af4923b1c7ba655eb124479f636f902169bbacc8f8625c286a05a948",
+  "build": {
+    "command": "CARGO_TARGET_DIR=/home/okrame/projects/volta-zk/rust/target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2 cargo test --offline --locked -j 1 -p volta-pcs --features c71-b12-pcs --lib c71_joint_inference --no-run",
+    "output": "warning: function `cache_fold_rows_values` is never used\n    --> volta-proto/src/block_proof.rs:2209:4\n     |\n2209 | fn cache_fold_rows_values(segs: &[CacheSegP], wr: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {\n     |    ^^^^^^^^^^^^^^^^^^^^^^\n     |\n     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: function `cache_fold_cols_values` is never used\n    --> volta-proto/src/block_proof.rs:2264:4\n     |\n2264 | fn cache_fold_cols_values(segs: &[CacheSegP], wc: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {\n     |    ^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: `volta-proto` (lib) generated 2 warnings\n   Compiling volta-pcs v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-pcs)\nwarning: unused import: `volta_mac::CorrelationStream`\n    --> volta-pcs/src/c63_authenticated_sketch.rs:2169:9\n     |\n2169 |     use volta_mac::CorrelationStream;\n     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n     |\n     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: unused imports: `C6_PERSISTENT_CACHE_CAPACITY_TOKENS`, `C6_PERSISTENT_CACHE_LAYERS`, `C6_PERSISTENT_CACHE_PADDED_LAYERS`, `C6_PERSISTENT_CACHE_PADDED_WIDTH`, `C6_PERSISTENT_CACHE_SLOT_CAPACITY`, and `C6_PERSISTENT_CACHE_WIDTH`\n  --> volta-pcs/src/c6_persistent_cache_blind.rs:32:5\n   |\n32 |     C6_PERSISTENT_CACHE_CAPACITY_TOKENS, C6_PERSISTENT_CACHE_FOLD_CAPACITY,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n33 |     C6_PERSISTENT_CACHE_LAYERS, C6_PERSISTENT_CACHE_PADDED_LAYERS,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n34 |     C6_PERSISTENT_CACHE_PADDED_WIDTH, C6_PERSISTENT_CACHE_SLOT_CAPACITY, C6_PERSISTENT_CACHE_WIDTH,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c63_direct_source_domain_offsets` is never used\n   --> volta-pcs/src/c63_authenticated_sketch.rs:568:15\n    |\n568 | pub(crate) fn c63_direct_source_domain_offsets(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: function `c63_correction_rows_opening_from_resident_parts` is never used\n    --> volta-pcs/src/c63_authenticated_sketch.rs:1336:15\n     |\n1336 | pub(crate) fn c63_correction_rows_opening_from_resident_parts(\n     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `fold_c64_terminal_pending_prover` is never used\n  --> volta-pcs/src/c64_joint_residual_sketch.rs:40:15\n   |\n40 | pub(crate) fn fold_c64_terminal_pending_prover(\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `fold_c64_terminal_pending_verifier` is never used\n  --> volta-pcs/src/c64_joint_residual_sketch.rs:64:15\n   |\n64 | pub(crate) fn fold_c64_terminal_pending_verifier(\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `fold_c64_projected_pending_prover` is never used\n  --> volta-pcs/src/c64_joint_residual_sketch.rs:88:15\n   |\n88 | pub(crate) fn fold_c64_projected_pending_prover(\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `fold_c64_projected_pending_verifier` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:119:15\n    |\n119 | pub(crate) fn fold_c64_projected_pending_verifier(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_correction_pending_prover` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:150:15\n    |\n150 | pub(crate) fn c64_correction_pending_prover(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_correction_pending_verifier` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:160:15\n    |\n160 | pub(crate) fn c64_correction_pending_verifier(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_projected_pending_digest` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:170:15\n    |\n170 | pub(crate) fn c64_projected_pending_digest(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_projected_pending_digest_verifier` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:189:15\n    |\n189 | pub(crate) fn c64_projected_pending_digest_verifier(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `validate_projected_terminal_entries` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:208:4\n    |\n208 | fn validate_projected_terminal_entries<'a>(\n    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `validate_and_digest_terminal_entries` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:237:4\n    |\n237 | fn validate_and_digest_terminal_entries<'a>(\n    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `draw_c64_projected_residual_postclaim_challenges` is never used\n   --> volta-pcs/src/c64_projected_residual_suffix.rs:301:15\n    |\n301 | pub(crate) fn draw_c64_projected_residual_postclaim_challenges(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_residual_auth_context` is never used\n   --> volta-pcs/src/c64_projected_residual_suffix.rs:679:4\n    |\n679 | fn c64_residual_auth_context(\n    |    ^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_residual_limb_context` is never used\n   --> volta-pcs/src/c64_projected_residual_suffix.rs:878:4\n    |\n878 | fn c64_residual_limb_context(\n    |    ^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: method `finish_c62` is never used\n   --> volta-pcs/src/c61_whir_reference.rs:250:19\n    |\n139 | impl<'a> C61InteractiveChallenger<'a> {\n    | ------------------------------------- method in this implementation\n...\n250 |     pub(crate) fn finish_c62(&self, payload: &[u8]) -> ReferenceResult<C61WhirInteractionStats> {\n    |                   ^^^^^^^^^^\n\nwarning: associated function `for_test` is never used\n   --> volta-pcs/src/c6_authenticated_output_link.rs:309:19\n    |\n299 | impl C63ResidualSourceFunctionalsVerifiedLink {\n    | --------------------------------------------- associated function in this implementation\n...\n309 |     pub(crate) fn for_test(\n    |                   ^^^^^^^^\n\nwarning: methods `absorb_residual` and `absorb_persistent_cache` are never used\n    --> volta-pcs/src/c6_authenticated_output_link.rs:1342:19\n     |\n1332 | impl C61NativePendingSlotRegistryProverBuilder {\n     | ---------------------------------------------- methods in this implementation\n...\n1342 |     pub(crate) fn absorb_residual(\n     |                   ^^^^^^^^^^^^^^^\n...\n1349 |     pub(crate) fn absorb_persistent_cache(\n     |                   ^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: methods `absorb_residual` and `absorb_persistent_cache` are never used\n    --> volta-pcs/src/c6_authenticated_output_link.rs:1371:19\n     |\n1361 | impl C61NativePendingSlotRegistryVerifierBuilder {\n     | ------------------------------------------------ methods in this implementation\n...\n1371 |     pub(crate) fn absorb_residual(\n     |                   ^^^^^^^^^^^^^^^\n...\n1378 |     pub(crate) fn absorb_persistent_cache(\n     |                   ^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: method `absorb_residual` is never used\n    --> volta-pcs/src/c6_authenticated_output_link.rs:1400:19\n     |\n1390 | impl C63AuthenticatedSketchPendingSlotRegistryProverBuilder {\n     | ----------------------------------------------------------- method in this implementation\n...\n1400 |     pub(crate) fn absorb_residual(\n     |                   ^^^^^^^^^^^^^^^\n\nwarning: method `absorb_residual` is never used\n    --> volta-pcs/src/c6_authenticated_output_link.rs:1422:19\n     |\n1412 | impl C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder {\n     | ------------------------------------------------------------- method in this implementation\n...\n1422 |     pub(crate) fn absorb_residual(\n     |                   ^^^^^^^^^^^^^^^\n\nwarning: associated function `scaled` is never used\n   --> volta-pcs/src/c6_live_wrapper.rs:175:8\n    |\n131 | impl<'a> C6LiveWrapperSources<'a> {\n    | --------------------------------- associated function in this implementation\n...\n175 |     fn scaled(\n    |        ^^^^^^\n\nwarning: `volta-pcs` (lib test) generated 24 warnings (run `cargo fix --lib -p volta-pcs --tests` to apply 2 suggestions)\n    Finished `test` profile [optimized] target(s) in 1m 45s\n  Executable unittests src/lib.rs (target/debug/deps/volta_pcs-75a7a8438ed5a22d)\n"
+  },
+  "limits": {
+    "rust_timeout_seconds": 60,
+    "rust_address_space_bytes": 2147483648,
+    "rayon_threads": 1,
+    "test_threads": 1,
+    "parallel_test_processes": 1
+  },
+  "rust_checks": [
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_joint_inference_same_model",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 24.139866932062432,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::joint_inference::c71_joint_inference_same_model_conversation_has_two_pcs_and_complete_valid_certificates ... joint inference slot=0 tokens=[0, 0] baseline_bytes=7741001 joint_bytes=5006647 PCS=2 ideal_Fp3_rows=86845\njoint inference late truncation and RNE cardinality rejected; full burn; no promotion\njoint inference slot=1 tokens=[1, 1] baseline_bytes=10944887 joint_bytes=5438291 PCS=2 ideal_Fp3_rows=87323\njoint inference slot=2 tokens=[0, 0] baseline_bytes=14151777 joint_bytes=5446811 PCS=2 ideal_Fp3_rows=87824\njoint inference baseline_total_ideal_Fp3_rows=265713\njoint inference total_ideal_Fp3_rows=261992 original_RNE=false RNE_groups=3 RNE_cells=224 full_canonical_work_admitted=false\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 24.14s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_joint_inference_changed_last",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 14.568337646080181,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::joint_inference::c71_joint_inference_changed_last_kv_cannot_promote ... joint inference slot=0 tokens=[0, 0] baseline_bytes=7747593 joint_bytes=5008983 PCS=2 ideal_Fp3_rows=86845\njoint inference changed last accepted K rejected after full Prepare/prove; burn=87323; no promotion; error=Some(\"C71 matrix sumcheck MAC rejected\")\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 14.57s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_prepare",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.13486567698419094,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_prepare_covers_all_sources_and_absorbs_final_token ... slot=0 sources=69 live=942 tokens=[0, 0]\nslot=1 sources=69 live=1006 tokens=[1, 1]\nslot=2 sources=69 live=1070 tokens=[0, 0]\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 0.13s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_composed",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 14.92273439699784,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_composed_three_attempts_close_one_fs_and_promote_same_w_kv ... native slot=0, certificate=7742921 bytes, base_cursor=264147\nnative slot=1, certificate=10931767 bytes, base_cursor=529833\nnative slot=2, certificate=14130273 bytes, base_cursor=797139\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 14.92s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_certificate",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 4.70150454598479,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_certificate_rejects_order_cardinality_framing_and_noncanonical_fields ... native composed rejection: composed component order/cardinality mismatch\nnative composed rejection: composed component order/cardinality mismatch\nnative composed rejection: composed component order/cardinality mismatch\nnative composed rejection: component trailing bytes\nnative composed rejection: composed completion framing mismatch\nnative composed rejection: certificate vector exceeds remaining frame\nnative composed rejection: Fp3 limb 0 is not canonical\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 4.70s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_interrupted",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 7.115126957884058,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_interrupted_and_late_rejection_burn_without_kv_promotion ... native composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: truncated composed certificate\nnative composed rejection: C71 matrix PCS terminal MAC rejected\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 7.11s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_context",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 9.155782968970016,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_context_binds_w_predecessor_profile_tokens_and_epoch ... native composed rejection: composed context/header mismatch\nnative composed rejection: composed context/header mismatch\nnative composed rejection: composed context/header mismatch\nnative composed rejection: composed context/header mismatch\nnative composed rejection: composed context/header mismatch\nnative composed rejection: composed context/header mismatch\nnative composed rejection: invalid composed response context\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 9.15s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_consistent_inference",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 3.7156021369155496,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_consistent_inference_under_changed_w_cannot_replace_installed_w ... native composed rejection: C71 matrix sumcheck MAC rejected\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 3.71s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_changed_predecessor",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 8.743448808789253,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_changed_predecessor_final_kv_getter_cannot_promote_continuation ... native composed rejection: C71 matrix sumcheck MAC rejected\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 8.74s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_exhaustion",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.28598670195788145,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_exhaustion_and_private_stop_cannot_reuse_slots_or_publish_a ... native composed rejection: capacity exhausted\nnative composed rejection: capacity exhausted\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 0.28s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_rne_joint_bytes_valid",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 3.155323831131682,
+      "output": "\nrunning 1 test\ntest c71_matrix::rne::batch_tests::c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs ... joint_RNE valid component bytes old=22436 new=15180 saved=7256 joint=11392 correlations=1074\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 3.15s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_rne_unpadded_groups_cover",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.0023816528264433146,
+      "output": "\nrunning 1 test\ntest c71_matrix::rne::batch_tests::c71_rne_unpadded_groups_cover_without_extra_cells ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 0.00s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_joint_state_three_transitions",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 2.069605679018423,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::joint_state::c71_joint_state_three_transitions_keep_installed_w_and_original_range_kv_macs ... joint state slot=0 PCS=2 certificate_bytes=4364789 ideal_rows=66524 cursor=66524\njoint state slot=1 PCS=2 certificate_bytes=4768933 ideal_rows=66528 cursor=133052\njoint state slot=2 PCS=2 certificate_bytes=4779877 ideal_rows=66528 cursor=199580\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 2.07s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_joint_state_changed_installed_w",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.1047332780435681,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::joint_state::c71_joint_state_changed_installed_w_padding_or_range_cannot_promote ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 1.10s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_joint_state_changed_last_accepted_kv",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.7977400021627545,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::joint_state::c71_joint_state_changed_last_accepted_kv_cannot_promote ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 377 filtered out; finished in 0.80s\n\n"
+    }
+  ],
+  "complete_certificates": [
+    {
+      "slot": 0,
+      "baseline_bytes": 7741001,
+      "joint_bytes": 5006647,
+      "joint_PCS_count": 2,
+      "ideal_Fp3_rows": 86845
+    },
+    {
+      "slot": 1,
+      "baseline_bytes": 10944887,
+      "joint_bytes": 5438291,
+      "joint_PCS_count": 2,
+      "ideal_Fp3_rows": 87323
+    },
+    {
+      "slot": 2,
+      "baseline_bytes": 14151777,
+      "joint_bytes": 5446811,
+      "joint_PCS_count": 2,
+      "ideal_Fp3_rows": 87824
+    }
+  ],
+  "baseline_total_ideal_Fp3_rows": 265713,
+  "joint_total_ideal_Fp3_rows": 261992,
+  "RNE": {
+    "original_reductions": 7,
+    "baseline_byte_cells": 224,
+    "joint_byte_cells": 224,
+    "group_byte_cells": [
+      128,
+      64,
+      32
+    ],
+    "extra_padded_cells": 0
+  },
+  "verification": {
+    "same_model": true,
+    "same_prompt_tokens": true,
+    "same_complete_numerical_A": true,
+    "same_output_tokens": true,
+    "common_FS_per_response": true,
+    "changed_last_accepted_K_rejected": true,
+    "late_truncation_rejected": true,
+    "RNE_cardinality_rejected": true,
+    "no_promotion_on_reject": true,
+    "full_reservation_burned": true,
+    "terminal_retry_rejected": true
+  },
+  "canonical": {
+    "measured_positive": false,
+    "complete_upper_bytes": [
+      26653252,
+      28444684,
+      28444684
+    ],
+    "source": "benchmarks/results/c71-joint-state-2026-09-11-d0191f0127fd.json",
+    "full_work_nonincrease_verified": false,
+    "complete_security_proven": false
+  },
+  "unresolved": [
+    "Full prover work including setup, cache materialization/copies/reads and all transfers; ideal MAC count is not a work proof.",
+    "D36 native routing and complete canonical positive/AES execution.",
+    "Joint ROM/ZK composition, W/KV link error and full resource census for the candidate.",
+    "Only three bounded attempts measured; no unbounded or sublinear lifetime/token guarantee.",
+    "No H100 execution or new hardware spending."
+  ],
+  "preliminary_original_RNE_comparison": {
+    "gitsha": "acc4ee5",
+    "git_dirty": true,
+    "run_of_record": false,
+    "scope": "Earlier working-tree comparison with joint W/KV PCS and original unbatched RNE. Superseded by clean coupled comparison, retained as preliminary provenance; exact patch was not frozen.",
+    "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::joint_inference::c71_joint_inference_same_model_conversation_has_two_pcs_and_complete_valid_certificates ... joint inference slot=0 tokens=[0, 0] baseline_bytes=7742089 joint_bytes=5044807 PCS=2 ideal_Fp3_rows=88008\njoint inference slot=1 tokens=[1, 1] baseline_bytes=10930167 joint_bytes=5472195 PCS=2 ideal_Fp3_rows=88486\njoint inference slot=2 tokens=[0, 0] baseline_bytes=14140993 joint_bytes=5486635 PCS=2 ideal_Fp3_rows=88987\njoint inference total_ideal_Fp3_rows=265481 original_RNE=true full_canonical_work_admitted=false\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 376 filtered out; finished in 23.73s\n\n"
+  }
+}

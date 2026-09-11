@@ -3,7 +3,11 @@
 
 use super::*;
 
-component_wire!(Proof { rounds, terminal, tag, products, functions });
+component_wire!(Reduction { rounds, terminal, tag, products });
+component_wire!(Proof { reduction, functions });
+
+#[cfg(test)]
+mod batch_tests;
 
 /// Private signed RNE with the verifier's symmetric-i16 output alphabet.
 pub(super) fn divide(numerator: i64, denominator: i64) -> Result<i16, String> {
@@ -186,12 +190,36 @@ impl Statement<'_> {
     }
 }
 
-pub(super) struct Proof {
+struct Reduction {
     rounds: Vec<[Fp3; 9]>, // g(0),...,g(7) corrections, zero tag for g(0)+g(1)
     terminal: Vec<Fp3>,    // original byte-function claims, then product results
     tag: Fp3,
     products: [Fp3; 2],
+}
+
+pub(super) struct Proof {
+    reduction: Reduction,
     functions: byte_function::Proof,
+}
+
+struct Deferred<T> {
+    point: Vec<Fp3>,
+    tables: Vec<[Fp3; 256]>,
+    aggregate: [T; 8],
+}
+
+impl<T> Deferred<T> {
+    fn statement<'a>(&'a self, s: &Statement<'a>) -> byte_function::Statement<'a> {
+        byte_function::Statement {
+            root: s.root,
+            profile: s.profile,
+            view: s.view,
+            attempt: s.attempt,
+            cell_point: &self.point,
+            live_cells: 1 << self.point.len(),
+            tables: &self.tables,
+        }
+    }
 }
 
 /// Mandatory wire bytes even when a shift has no terminal function/product.
@@ -272,16 +300,17 @@ fn function_tables(recipe: &Recipe, beta: Fp3) -> (Vec<[Fp3; 256]>, Vec<Fp3>) {
 // Output correction is already bound by the caller. The byte view has eight
 // lanes: the six biased i48 bytes followed by two public zeros, and all-zero
 // bytes on dummy cells on either axis. The returned byte obligation still needs the SAME PCS.
-pub(super) fn prove(
+fn prove_reduction(
     s: &Statement<'_>,
     mut target: Auth,
     get_bytes: impl Fn(usize) -> [u8; 6],
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
-) -> Result<(Proof, Vec<Fp3>, Auth), String> {
+) -> Result<(Reduction, Deferred<Auth>), String> {
     let (rho, tau) = bind(s, fs)?;
     let recipe = Recipe::new(s.shift);
-    let count = required(s.output_point.len(), s.shift);
+    let count =
+        required(s.output_point.len(), s.shift) - byte_function::required(s.output_point.len() + 3);
     if correlations.len() < count {
         return Err("B12 RNE prover capacity exhausted".into());
     }
@@ -371,43 +400,43 @@ pub(super) fn prove(
     for ((function, &a), &power) in recipe.functions.iter().zip(&original).zip(&powers) {
         aggregate[function.lane] = aggregate[function.lane].add(a.scale(power));
     }
-    let statement = byte_function::Statement {
-        root: s.root,
-        profile: s.profile,
-        view: s.view,
-        attempt: s.attempt,
-        cell_point: &point,
-        live_cells: 1 << point.len(),
-        tables: &tables,
-    };
-    let (functions, point, original) = byte_function::prove(
-        &statement,
-        byte_function::Original::Lanes(&aggregate),
-        |i| {
-            if s.live(i / 8) && i % 8 < 6 {
-                get_bytes(i / 8)[i % 8]
-            } else {
-                0
-            }
-        },
-        fs,
-        &mut rows,
-    )?;
     debug_assert!(rows.next().is_none());
-    Ok((Proof { rounds, terminal, tag, products, functions }, point, original))
+    Ok((Reduction { rounds, terminal, tag, products }, Deferred { point, tables, aggregate }))
 }
 
-pub(super) fn verify(
+pub(super) fn prove(
+    s: &Statement<'_>,
+    target: Auth,
+    get_bytes: impl Fn(usize) -> [u8; 6],
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Vec<Fp3>, Auth), String> {
+    if correlations.len() < required(s.output_point.len(), s.shift) {
+        return Err("B12 RNE prover capacity exhausted".into());
+    }
+    let (reduction, pending) = prove_reduction(s, target, &get_bytes, fs, correlations)?;
+    let (functions, point, original) = byte_function::prove(
+        &pending.statement(s),
+        byte_function::Original::Lanes(&pending.aggregate),
+        |i| if s.live(i / 8) && i % 8 < 6 { get_bytes(i / 8)[i % 8] } else { 0 },
+        fs,
+        correlations,
+    )?;
+    Ok((Proof { reduction, functions }, point, original))
+}
+
+fn verify_reduction(
     s: &Statement<'_>,
     mut target: Key,
-    proof: &Proof,
+    proof: &Reduction,
     delta: Fp3,
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Key>,
-) -> Result<(Vec<Fp3>, Key), String> {
+) -> Result<Deferred<Key>, String> {
     let (rho, tau) = bind(s, fs)?;
     let recipe = Recipe::new(s.shift);
-    let count = required(s.output_point.len(), s.shift);
+    let count =
+        required(s.output_point.len(), s.shift) - byte_function::required(s.output_point.len() + 3);
     if proof.rounds.len() != s.output_point.len()
         || proof.terminal.len() != recipe.functions.len() + recipe.products()
         || correlations.len() < count
@@ -474,25 +503,30 @@ pub(super) fn verify(
     for ((function, &a), &power) in recipe.functions.iter().zip(&original).zip(&powers) {
         aggregate[function.lane] = aggregate[function.lane].add(a.scale(power));
     }
-    let statement = byte_function::Statement {
-        root: s.root,
-        profile: s.profile,
-        view: s.view,
-        attempt: s.attempt,
-        cell_point: &point,
-        live_cells: 1 << point.len(),
-        tables: &tables,
-    };
-    let result = byte_function::verify(
-        &statement,
-        byte_function::Original::Lanes(&aggregate),
+    debug_assert!(rows.next().is_none());
+    Ok(Deferred { point, tables, aggregate })
+}
+
+pub(super) fn verify(
+    s: &Statement<'_>,
+    target: Key,
+    proof: &Proof,
+    delta: Fp3,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Key>,
+) -> Result<(Vec<Fp3>, Key), String> {
+    if correlations.len() < required(s.output_point.len(), s.shift) {
+        return Err("B12 RNE proof shape or capacity mismatch".into());
+    }
+    let pending = verify_reduction(s, target, &proof.reduction, delta, fs, correlations)?;
+    byte_function::verify(
+        &pending.statement(s),
+        byte_function::Original::Lanes(&pending.aggregate),
         &proof.functions,
         delta,
         fs,
-        &mut rows,
-    )?;
-    debug_assert!(rows.next().is_none());
-    Ok(result)
+        correlations,
+    )
 }
 
 #[cfg(test)]

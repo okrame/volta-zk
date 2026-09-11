@@ -11,6 +11,11 @@ Il [design](design.md#assumptions-and-component-dependencies) fissa le
 ipotesi primitive e le derivazioni componenti applicabili. I risultati
 nativi e i loro limiti sono nell'[evidenza](evidence.md).
 
+La [candidata P/S condivisa per RNE](design.md#experimental-shared-rne-byte-proofs)
+del 2026-09-11 cambia la schedule ed è un esperimento separato: i bound
+di questo documento non le sono trasferiti. Gli obblighi di composizione
+aperti sono dichiarati nel design; i sei paragrafi seguenti restano B12 v1.
+
 ## 1. Enunciato e oggetti fissati
 
 Il protocollo qui definito compone le componenti B12 già analizzate.

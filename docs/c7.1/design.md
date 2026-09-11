@@ -491,6 +491,81 @@ Il test non chiama VerifyResponse e non produce prove crittografiche
 valide. `native_synthetic_full_framing_checked` distingue questo risultato
 dalla serializzazione positiva del prover canonico, tuttora aperta.
 
+### Experimental shared RNE byte proofs
+
+La richiesta del proprietario del 2026-09-11 sposta il lavoro sulla riduzione
+dei byte. La candidata `C71-RNE-joint-byte-experiment-v1` conserva le 892
+riduzioni grado sette e differisce il loro controllo P/S. Il
+[prototipo](../../rust/volta-pcs/src/c71_matrix/byte_function/batch.rs)
+è compilato soltanto nei test; il verifier selezionato continua a eseguire
+la schedule B12 e il suo lower di 47,84 MB resta valido per quella schedule.
+Non sono cambiate semantica RNE, sorgenti W/A, parametri PCS o modello DV.
+
+Ogni riduzione restituisce otto MAC aggregati **originali**, il punto di
+cella e le otto tabelle pubbliche derivate da shift e beta FS. Nessuno di
+questi MAC viene riautenticato. Dopo tutte le riduzioni, il caller ordina
+le richieste secondo i produttori del compilatore canonico e forma gruppi
+con al più 2^34 byte virtuali ciascuno. All'interno del gruppo, ordina i
+blocchi per dimensione decrescente, stabilmente a parità, per ottenere
+offset allineati senza riempire ogni richiesta fino alla dimensione massima.
+Questa vista è una forma lineare su A, non un nuovo commitment o un nuovo
+snapshot. Il primo screen con un solo gruppo ha fallito il limite D34:
+la variante qui studiata usa esplicitamente più gruppi e ne paga i frame.
+
+Per un gruppo, siano `r_j` i punti originali estesi con tre nuove sfide
+di lane, `a_j` i corrispondenti aggregati MAC, e `off_j` gli offset pubblici.
+Il transcript lega ordine, cardinalità, offset, root, profilo, tentativo,
+identità, punti e tabelle prima della sfida di batching lambda. Gli
+originali provengono dalle riduzioni già assorbite nello stesso FS.
+Si costruisce la forma pubblica
+
+```text
+L(x) = sum_j lambda^j * selector(off_j,x_prefix) * eq(r_j,x_suffix).
+target = sum_j lambda^j * a_j.
+```
+
+Un sumcheck quadratico riduce `sum_x L(x)*P_top(x)=target` a un solo MAC
+di `P_top(r)`. Le correzioni autenticano tre coefficienti per round, con
+residuo `2*c0+c1+c2-target`; il terminale controlla `L(r)*P_top(r)`.
+Da `[P_top(r),0]` si riusano gli otto livelli di `range::prove_tree` e
+`verify_tree`. Ogni blocco usa i coefficienti Lagrange delle proprie
+tabelle; al terminale il coefficiente P è pubblico e Q è `byte-index`.
+Gli spazi non usati hanno byte e coefficienti pubblici zero. Il MAC byte
+risultante termina nella stessa PCS A: ogni forma raw originale viene
+moltiplicata dal selettore del suo blocco, con punto locale dato dal
+suffisso del punto congiunto. Range A, output e tutti gli altri obblighi
+rimangono necessari. Una PCS valida isolata non chiude il gruppo.
+
+Per una vista con `d` bit il nuovo schema `Wire` costa
+`5056 + 1056*d` byte e consuma `170 + 35*d` correlazioni Fp3, inclusi
+sumcheck iniziale, root, P/S e maschera prodotti. Sostituisce la somma
+dei vecchi `7884 + 960*c_j` byte e `265 + 32*c_j` righe Fp3.
+Ogni gruppo aggiunge un frame da sei byte. Le riduzioni grado sette,
+i loro prodotti, i prefissi delle liste e le 482 sonde sono ancora contati.
+Gli [esiti e i byte](evidence.md#shared-rne-byte-experiment) distinguono
+prove piccole valide, forme canoniche sintetiche e proiezione completa.
+
+**Obblighi prima della selezione.** `Mac.Valid.add/smul/sum` in
+[`Mac.lean`](../../lean/VoltaZk/Mac.lean) giustificano le combinazioni degli
+originali con i segni nativi; i lemmi di simulazione di
+[`BlindSumcheck.lean`](../../lean/VoltaZk/BlindSumcheck.lean) riguardano
+correzioni/residui sotto le proprie premesse. Non sono una prova Lean
+del nuovo batch. Occorre ricomporre soundness FS sui veri prefissi
+(batch lambda di grado al più `gruppo-1`, lane, sumcheck quadratico e
+alberi condivisi), simulazione congiunta/NoPeek e risorse del riduttore.
+Il codice legge valori prima delle righe e usa una maschera prodotti
+fresca per gruppo, ma il test finito non scarica quei teoremi generali.
+Gli 82,93/91,02 bit di B12 **non sono attribuiti alla candidata**.
+
+Occorrono inoltre routing canonico degli originali, nuovo profilo/ordine
+dei frame, riserve e verifica composta del certificato. Gli endpoint raw
+passano da 892 a uno per gruppo, ma ciascuna forma sorgente resta nel
+batch PCS; le aperture W/vecchie A/A e i loro byte restano presenti.
+Il test limita il prover denso a `d<=9`; a D34 controlla soltanto
+metadati e codec. La materializzazione contemporanea dell'albero richiede
+`256*2^d` foglie: non è uno schedule fisico ammesso e non si avvia localmente.
+Calibrazione, hardware e completa accettazione canonica rimangono separati.
+
 ## Resource and measurement contract
 
 | Voce | Riferimento da soddisfare; nessuna nuova misura |

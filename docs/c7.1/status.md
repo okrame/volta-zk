@@ -102,8 +102,23 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Il goal di estensione resta aperto:** collegare Prepare/prover canonici
-al wrapper, conservando gli originali e la compilazione numerica comune; verificare poi il percorso composto AES positivo.
+**La priorità del proprietario del 2026-09-11 è trovare una modifica e
+testarne i byte.** È stata implementata una
+[candidata con P/S RNE condivisi](design.md#experimental-shared-rne-byte-proofs),
+con [prove componenti valide e censimento canonico](evidence.md#shared-rne-byte-experiment).
+Il risparmio proiettato è 25,13–25,19 MB per certificato; le RNE della
+fixture a scale zero scendono a circa 5,48 MB. Non è più soltanto una
+proposta di calibrazione. La candidata è test-only e non eredita i bound B12.
+
+Il riferimento sotto 35 MB **non è ancora raggiunto**: la proiezione completa
+è 22,71–39,92 MB al primo turno e il lower del terzo resta 36,61 MB.
+Per soddisfarlo anche a O=300 occorre ridurre altre componenti, con le
+PCS come prossimo costo da studiare; prima della selezione del batch RNE
+restano composizione di sicurezza e integrazione canonica.
+
+Il precedente goal di estensione resta aperto e subordinato a questa
+priorità: collegare Prepare/prover canonici al wrapper, conservando gli
+originali e la compilazione numerica comune; verificare poi il percorso composto AES positivo.
 Le sue 797.139 righe base sul grafo ridotto superano il perimetro dei
 bootstrap locali e richiedono hardware autorizzato. La compilazione
 causale non fornisce lo schedule fisico per D34/D35.
@@ -118,8 +133,9 @@ con i limiti del [design](design.md#native-correspondence).
 
 ## Scope and authorization
 
-Il lavoro locale pertinente è autorizzato dalla richiesta del proprietario
-del 2026-09-10. Si seguono le [procedure di build e test](../procedures/build-and-test.md):
+Il lavoro locale pertinente è autorizzato dalle richieste del proprietario
+del 2026-09-10 e del 2026-09-11 sulla riduzione dei byte.
+Si seguono le [procedure di build e test](../procedures/build-and-test.md):
 build mirata con un job, test seriali limitati a 60 s/2 GiB e un worker Rayon.
 
 Restano fuori dal risultato acquisito: esecuzione Gemma completa, profilo

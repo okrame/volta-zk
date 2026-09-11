@@ -30,6 +30,70 @@ una build Lean o un benchmark per la chiusura matematica. Non trasformare
 I risultati e le derive complete restano collegati anche al
 [notebook congelato](../c7.1-gemma31b-design.md#b12-criterio-di-chiusura-composizione-completa-same-w).
 
+## Shared RNE byte experiment
+
+Il [test di prove valide](../../rust/volta-pcs/src/c71_matrix/rne/batch_tests.rs)
+esegue due RNE con shift 2/1, punti distinti, tre/due celle vive, padding
+e raw in blocchi fisici non contigui della stessa A/D10. Usa MAC ideali
+casuali, trasporto `Wire`, range byte e PCS salata realmente verificata.
+La variante [condivisa](design.md#experimental-shared-rne-byte-proofs)
+consuma 1.074 righe Fp3 nel controllo composto di queste due RNE/range/PCS.
+La serializzazione delle **sole prove RNE**, con prefisso della lista,
+passa da **22.436 a 15.180 byte**, un risparmio di 7.256 byte (32,34%).
+Il P/S condiviso e la riduzione iniziale occupano 11.392 byte.
+Questi valori escludono correzioni dei due output, range, PCS e framing
+esterno: non sono la dimensione completa del piccolo certificato.
+
+Output falso, MAC originale alterato, tabella modificata e riordino sono
+respinti. Un raw diverso che arrotonda allo stesso output supera le RNE
+ma viene respinto alla PCS originale. Il decoder rifiuta i troncamenti;
+prover/verifier positivi ricostruiscono lo stesso digest e consumano
+esattamente la riserva. La baseline è misurata con il prover corrente in
+un transcript indipendente. Non si comprime una fixture nulla per attribuire
+un risparmio a una prova valida.
+
+Il [censimento canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs)
+visita le 892 richieste nei tre contesti e ottiene due gruppi virtuali
+D34/D33. Verifica copertura, allineamento e assenza di sovrapposizioni;
+serializza e fa roundtrip dei due nuovi `Wire` con valori sintetici:
+40.960 +39.904 = **80.864 byte**, più **12 byte** per i due nuovi frame.
+Il primo screen con un gruppo unico aveva respinto il superamento di D34;
+non si amplia quel limite nella candidata corretta.
+
+| O | P/S precedenti | Nuove RNE, fixture scale zero | Risparmio incluso framing | Proiezione totale lower–upper |
+|---:|---:|---:|---:|---:|
+| 0 | 25.210.128 | 5.475.424 | 25.129.252 | 22.711.928–39.923.992 |
+| 150 | 25.267.728 | 5.488.384 | 25.186.852 | 29.681.466–53.758.874 |
+| 300 | 25.267.728 | 5.488.384 | 25.186.852 | 36.610.532–67.536.452 |
+
+Byte decimali. La colonna RNE include i due payload condivisi ma non i
+loro frame, i prefissi esterni o le sonde; il risparmio totale paga anche
+i nuovi frame. Le righe Fp3 eliminate sono 839.615/841.535/841.535 per
+tentativo. Le proiezioni sottraggono il risparmio dai
+[bound completi del codec corrente](design.md#canonical-pcs-wire-accounting):
+tutte le PCS, i loro hash/maschere/sali, range, altri operatori, header
+e chiusura restano conteggiati con gli stessi parametri. Il lower conserva
+le omissioni esplicite di GKR congiunti e fratelli Merkle; non è una
+dimensione necessariamente realizzabile. La nuova schedule dovrà usare
+un profilo distinto di pari lunghezza, senza metadata scelti dalla prova.
+
+**Ambito:** `credit:false`; positivo componente su dominio piccolo,
+geometria/codec sintetici sui descrittori canonici, proiezione dei byte
+completi. Nessuna prova Gemma canonica valida, nuova sicurezza composta,
+esecuzione AES positiva o misura hardware. Il lower a O=300 supera
+ancora 35 MB: questa modifica da sola non basta per tutti i turni.
+
+Filtri riproducibili, con la [build mirata e i limiti usuali](../procedures/build-and-test.md):
+`c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs` e
+`c71_b12_rne_joint_bytes_canonical_geometry`, ciascuno con
+`--test-threads=1 --nocapture`, un worker Rayon, 60 s e 2 GiB.
+Sono passati nove test mirati: i due nuovi controlli, le ricette RNE,
+RNE ties/overflow/PCS, funzioni byte, Prepare ridotto, composizione nativa
+a tre tentativi, rifiuti del certificato e codec canonico completo
+sintetico. Le regressioni conservano byte/FS del percorso corrente.
+Format dei file Rust toccati, link locali e `git diff --check` passano;
+nessuna build workspace o Lean è stata eseguita.
+
 ## Native component evidence
 
 Il [catalogo dei controlli nativi](../procedures/build-and-test.md#rust-and-resource-limits)

@@ -4,6 +4,9 @@
 
 use super::*;
 
+#[cfg(test)]
+pub(super) mod batch;
+
 component_wire!(Proof { layers, leaf_tag, products });
 
 pub(super) struct Statement<'a> {

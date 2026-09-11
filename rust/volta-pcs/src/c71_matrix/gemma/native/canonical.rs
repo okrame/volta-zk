@@ -262,6 +262,85 @@ mod tests {
     }
 
     #[test]
+    fn c71_b12_rne_joint_bytes_canonical_geometry() {
+        let plan = super::super::super::compile().unwrap();
+        let (s, o, sm) = plan.softmax_sources_at(0).unwrap();
+        let mut exponents: BTreeMap<_, _> =
+            profile::Recipes::exponent_sources(&s, &o, &sm).into_iter().map(|id| (id, 0)).collect();
+        for l in &sm.layers {
+            exponents.insert(l.pi, -14);
+        }
+        for slot in 0..3 {
+            let p = Canonical::compile(slot, &[0; 772], &exponents).unwrap();
+            let mut view_bits = Vec::new();
+            let mut previous = 0;
+            let mut previous_rows = 0;
+            for step in &p.steps {
+                if let Producer::Rne(pair) = step {
+                    let (_, shape) = p.bytes().source_rne_view(pair.raw).unwrap();
+                    let b = bits(shape[0]) + bits(shape[1]) + 3;
+                    view_bits.push(b);
+                    previous += kernel::byte_function::wire_bytes(b);
+                    previous_rows += kernel::byte_function::required(b);
+                }
+            }
+            assert_eq!(view_bits.len(), 892);
+            let groups = kernel::byte_function::batch::groups(&view_bits).unwrap();
+            assert_eq!(
+                groups.iter().flatten().copied().collect::<Vec<_>>(),
+                (0..892).collect::<Vec<_>>()
+            );
+            let (mut joint, mut joint_rows) = (0, 0);
+            let mut dimensions = Vec::new();
+            for group in &groups {
+                let local: Vec<_> = group.iter().map(|&i| view_bits[i]).collect();
+                let (d, offsets) = kernel::byte_function::batch::geometry(&local).unwrap();
+                let mut blocks: Vec<_> = offsets
+                    .iter()
+                    .zip(&local)
+                    .map(|(&o, &b)| {
+                        assert_eq!(o % (1usize << b), 0);
+                        (o, o + (1usize << b))
+                    })
+                    .collect();
+                blocks.sort_unstable();
+                assert!(blocks.windows(2).all(|p| p[0].1 == p[1].0));
+                assert!(blocks.last().unwrap().1 <= 1usize << d);
+                dimensions.push(d);
+                // Serialize actual joint Wire types at canonical shapes; synthetic values only.
+                use kernel::wire::Wire;
+                let mut encoded = Vec::new();
+                vec![[Fp3::ZERO; 4]; d].write(&mut encoded);
+                [Fp3::ZERO; 2].write(&mut encoded);
+                encoded.extend(8u32.to_le_bytes());
+                for i in 0..8 {
+                    vec![[Fp3::ZERO; 5]; d + i].write(&mut encoded);
+                    [Fp3::ZERO; 8].write(&mut encoded);
+                }
+                [Fp3::ZERO; 3].write(&mut encoded);
+                let mut input = encoded.as_slice();
+                let proof = kernel::byte_function::batch::Proof::read(&mut input).unwrap();
+                assert!(input.is_empty());
+                let mut output = Vec::new();
+                proof.write(&mut output);
+                assert_eq!(encoded, output);
+                assert_eq!(encoded.len(), kernel::byte_function::batch::wire_bytes(d));
+                joint += encoded.len();
+                joint_rows += kernel::byte_function::batch::required(d);
+            }
+            let frames = 6 * groups.len();
+            let saved = previous - joint - frames;
+            let (_, _, old_rne) = p.rne_wire_bytes().unwrap();
+            let lower = [47_841_180usize, 54_868_318, 61_797_384][slot] - saved;
+            let upper = [65_053_244usize, 78_945_726, 92_723_304][slot] - saved;
+            eprintln!("joint_RNE canonical slot={slot} view_bits={dimensions:?} old_functions={previous} joint={joint} extra_frames={frames} saved={saved} selected_RNE={} projected_total_lower={lower} projected_total_upper={upper} saved_fp3_rows={}",
+                old_rne - previous + joint, previous_rows - joint_rows);
+            assert!(saved > 25_000_000);
+            assert!(upper > 35_000_000); // This candidate does not establish the 35 MB target.
+        }
+    }
+
+    #[test]
     fn c71_b12_native_wire_rne_alone_exceeds_bounded_transport() {
         let plan = super::super::super::compile().unwrap();
         let (s, o, sm) = plan.softmax_sources_at(0).unwrap();

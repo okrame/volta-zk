@@ -9,6 +9,13 @@ impossibile. L'harness e gli identificatori dei goal esistenti restano invariati
 
 ## Goal dispositions
 
+Il 2026-09-11 il proprietario ha dato priorità a trovare una modifica
+della prova/encoding e testarne i byte. Si studia il
+[batch dei P/S RNE](design.md#experimental-shared-rne-byte-proofs), perché
+quel costo si ripete 892 volte. La calibrazione non può abbassare il
+lower del codec corrente. La candidata resta sperimentale; il port
+canonico/AES è ancora aperto e non è il lavoro prioritario di questo goal.
+
 | Step | Esito conservato e ragione | Fonte completa |
 |---|---|---|
 | B1 | Chiuso negativamente: riuso WHIR invariato non soddisfa il piccolo contratto C7.1; non esclusione della famiglia WHIR | [B1](../c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto) |

@@ -99,6 +99,18 @@ comprensivo del record finale. Il test di trasporto usa un buffer di
 componente realmente serializzata. Conservare `native_composed` e
 `native_certificate` dopo modifiche al writer.
 
+Per l'esperimento di P/S RNE condivisi eseguire separatamente
+`c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs` e
+`c71_b12_rne_joint_bytes_canonical_geometry`, con `--nocapture` per i byte.
+Stessa build mirata, un worker Rayon, test seriali entro 60 s/2 GiB.
+Il primo usa due RNE e una PCS reale nel modello MAC ideale; il secondo
+solo descrittori e forme wire sintetiche D34/D33. Il prover sperimentale
+è test-only e rifiuta viste dense sopra D9. Dopo la separazione della
+riduzione RNE conservare `c71_b12_rne_recipes`, `c71_b12_rne_ties_overflow`,
+`c71_b12_byte_functions`, `c71_b12_native_prepare`, `c71_b12_native_composed`,
+`c71_b12_native_certificate` e `c71_b12_native_canonical_wire_body`.
+Non viene autorizzata la materializzazione dei gruppi canonici.
+
 Per la preparazione affine condivisa usare `c71_b12_native_affine_rows`,
 `c71_b12_gemma_affine`, `c71_b12_native_prepare`, `c71_b12_native_composed`
 e `c71_b12_native_certificate`, separatamente entro 60 s/2 GiB e un worker.

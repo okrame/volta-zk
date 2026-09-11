@@ -172,6 +172,14 @@ come confronto del lavoro totale. I campi di non ammissione restano falsi.
 
 ### Joint W/A/KV state screen
 
+[Record immutabile](../../benchmarks/results/c71-joint-state-2026-09-11-d0191f0127fd.json)
+dal commit `d0191f0127fd`, con `git_dirty:false`, hash del binario, build,
+comandi e output. Passano tre test Rust (PCS positive, codec sintetico e
+regressione del riuso) e cinque Python (screen, routing e tre regressioni).
+I test Rust sono seriali, un worker Rayon, 60 s/2 GiB ciascuno. Il record
+conserva le esclusioni del primo fold D36 fuori dominio e del conto che
+ometteva erroneamente il collegamento all'installazione.
+
 Lo screen aggiunge uno stato unico S/D36 e conserva il link PCS al W/D35
 installato prima del primo prompt. Gli upper completi condizionali sono
 26.653.252 / 28.444.684 / 28.444.684 byte, due PCS per risposta.

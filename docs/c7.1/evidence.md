@@ -32,6 +32,10 @@ I risultati e le derive complete restano collegati anche al
 
 ## Shared RNE byte experiment
 
+Il [record immutabile](../../benchmarks/results/c71-rne-joint-bytes-2026-09-11-589ce7b8f86c.json)
+proviene dal commit `589ce7b8f86c` con `git_dirty:false`, limiti, hash del
+binario, comandi e output integrali dei due controlli della candidata.
+
 Il [test di prove valide](../../rust/volta-pcs/src/c71_matrix/rne/batch_tests.rs)
 esegue due RNE con shift 2/1, punti distinti, tre/due celle vive, padding
 e raw in blocchi fisici non contigui della stessa A/D10. Usa MAC ideali

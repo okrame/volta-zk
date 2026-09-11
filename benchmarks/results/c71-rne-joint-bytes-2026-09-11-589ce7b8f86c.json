@@ -1,0 +1,111 @@
+{
+  "schema": "c71-rne-joint-bytes-component-v1",
+  "timestamp_utc": "2026-09-11T16:16:11.912196+00:00",
+  "git_sha": "589ce7b8f86c4fabdddb34bb97bf8a0c6a0ee42e",
+  "git_dirty": false,
+  "credit": false,
+  "selected_protocol": false,
+  "security_credit": false,
+  "hardware_credit": false,
+  "complete_valid_canonical_certificate_bytes": null,
+  "limits": {
+    "timeout_seconds_per_check": 60,
+    "address_space_bytes": 2147483648,
+    "rayon_workers": 1,
+    "test_threads": 1
+  },
+  "build": {
+    "package": "volta-pcs",
+    "features": [
+      "c71-b12-pcs"
+    ],
+    "offline": true,
+    "locked": true,
+    "jobs": 1,
+    "incremental": false,
+    "opt_level": 2,
+    "debug": 0,
+    "binary_sha256": "52e475a093f4000821bb70000fbb413e362fb0d398725005458965bc9814849b"
+  },
+  "checks": [
+    {
+      "filter": "c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs",
+      "command": "ulimit -v 2097152\nRAYON_NUM_THREADS=1 timeout 60s rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::rne::batch_tests::c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs ... joint_RNE valid component bytes old=22436 new=15180 saved=7256 joint=11392 correlations=1074\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 368 filtered out; finished in 3.39s\n\n"
+    },
+    {
+      "filter": "c71_b12_rne_joint_bytes_canonical_geometry",
+      "command": "ulimit -v 2097152\nRAYON_NUM_THREADS=1 timeout 60s rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d c71_b12_rne_joint_bytes_canonical_geometry --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::tests::c71_b12_rne_joint_bytes_canonical_geometry ... joint_RNE canonical slot=0 view_bits=[34, 33] old_functions=25210128 joint=80864 extra_frames=12 saved=25129252 selected_RNE=5475424 projected_total_lower=22711928 projected_total_upper=39923992 saved_fp3_rows=839615\njoint_RNE canonical slot=1 view_bits=[34, 33] old_functions=25267728 joint=80864 extra_frames=12 saved=25186852 selected_RNE=5488384 projected_total_lower=29681466 projected_total_upper=53758874 saved_fp3_rows=841535\njoint_RNE canonical slot=2 view_bits=[34, 33] old_functions=25267728 joint=80864 extra_frames=12 saved=25186852 selected_RNE=5488384 projected_total_lower=36610532 projected_total_upper=67536452 saved_fp3_rows=841535\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 368 filtered out; finished in 0.57s\n\n"
+    }
+  ],
+  "small_valid_RNE_component": {
+    "old_bytes": 22436,
+    "new_bytes": 15180,
+    "saved_bytes": 7256,
+    "joint_bytes": 11392,
+    "full_small_check_ideal_fp3_rows": 1074,
+    "excludes": [
+      "two output corrections",
+      "range proof",
+      "PCS proof",
+      "outer framing and header"
+    ]
+  },
+  "canonical_wire_projection": [
+    {
+      "slot": 0,
+      "old_functions": 25210128,
+      "joint": 80864,
+      "extra_frames": 12,
+      "saved": 25129252,
+      "selected_RNE": 5475424,
+      "projected_total_lower": 22711928,
+      "projected_total_upper": 39923992,
+      "saved_fp3_rows": 839615,
+      "group_view_bits": [
+        34,
+        33
+      ],
+      "old_tokens": 0,
+      "valid_canonical_proof_measured": false
+    },
+    {
+      "slot": 1,
+      "old_functions": 25267728,
+      "joint": 80864,
+      "extra_frames": 12,
+      "saved": 25186852,
+      "selected_RNE": 5488384,
+      "projected_total_lower": 29681466,
+      "projected_total_upper": 53758874,
+      "saved_fp3_rows": 841535,
+      "group_view_bits": [
+        34,
+        33
+      ],
+      "old_tokens": 150,
+      "valid_canonical_proof_measured": false
+    },
+    {
+      "slot": 2,
+      "old_functions": 25267728,
+      "joint": 80864,
+      "extra_frames": 12,
+      "saved": 25186852,
+      "selected_RNE": 5488384,
+      "projected_total_lower": 36610532,
+      "projected_total_upper": 67536452,
+      "saved_fp3_rows": 841535,
+      "group_view_bits": [
+        34,
+        33
+      ],
+      "old_tokens": 300,
+      "valid_canonical_proof_measured": false
+    }
+  ],
+  "passed": true
+}

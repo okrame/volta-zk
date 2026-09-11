@@ -300,6 +300,63 @@ o una lista trasmessa nel certificato. La loro memoria/lavoro non sono zero.
 I replay negativi del verifier sono controfattuali di una sola emissione,
 non esecuzioni del prover che riusano le correlazioni.
 
+### Inferenza completa ridotta con RNE raggruppate
+
+Il [confronto test-only](../../rust/volta-pcs/src/c71_matrix/gemma/native/joint_inference.rs)
+esegue la stessa inferenza ridotta B12: un layer, hidden/vocabolario 2,
+prompt 1 e generato 1, O=0/2/4. Confronta esattamente pesi, token e intero
+snapshot A prima del nuovo packing. Prepare possiede sempre i valori;
+il callback cambia solo la costruzione finale della sorgente, evitando
+un commitment A provvisorio. Prover e verifier condividono il corpo B12
+attraverso RMS, RNE, lookup, gate, RoPE, QK/PV, softmax, argmax e range.
+
+W/D12 installato precede il prompt. Ogni S/D13 contiene W, A/D11 e un
+quarto zero; i vecchi KV sono byte i16 nel bank A a offset 1536, oltre
+alle sorgenti correnti. Le forme QK/PV dei KV usano gli stessi MAC
+originali, combinati pubblicamente fra bank e K/V correnti. Il link al
+predecessore confronta tutte le parole KV già accettate, compreso l'ultimo
+token emesso, sotto range byte. Una sola uguaglianza W collega W installato
+alla prima S e poi ciascun predecessore al successore. Le forme W/A sono
+traslate nel batch finale S, senza cambiare i target originali. Header,
+framing, link, entrambe le PCS e completion entrano nello stesso FS.
+
+Le sette riduzioni RNE originali del frame 3 rimangono; i relativi controlli
+byte usano tre gruppi da 128/64/32 celle: **224 celle in entrambi i percorsi**.
+Il punto di ogni gruppo viene riportato alle forme della medesima A tramite
+prefisso e offset pubblici. I controlli RNE interni agli altri consumer
+rimangono quelli B12, come nel conto canonico delle 892 RNE originali.
+La cardinalità dei gruppi è derivata dal verifier. Tutti gli endpoint
+ritornano alla S effettiva, non a un commitment virtuale aggiuntivo.
+
+| Turno | Certificato B12 circa | Certificato con stato unico circa | PCS B12 / candidata | Righe Fp3 candidata |
+|---:|---:|---:|---:|---:|
+| 1 | 7,75 MB | 5,00 MB | 2 / 2 | 86.845 |
+| 2 | 10,94 MB | 5,43 MB | 3 / 2 | 87.323 |
+| 3 | 14,13 MB | 5,45 MB | 4 / 2 | 87.824 |
+
+Sono byte completi di prove valide sul **grafo ridotto**, con sali/sfide
+freschi e frontiere Merkle variabili. Non sono i 26,65/28,44/28,44 MB
+canonici: questi restano upper condizionali del codec. Il totale ideale
+è 261.992 righe Fp3 contro 265.713; il bootstrap reale non viene eseguito.
+La riduzione delle correlazioni non compensa automaticamente altre operazioni.
+
+Il negativo modifica la K dell'ultimo token accettato prima di Prepare:
+l'intera nuova inferenza e il suo certificato sono prodotti, ma Verify
+rifiuta e brucia la riserva senza promuovere. I replay diagnostici di
+troncamento tardivo e cardinalità RNE errata sono controfattuali della
+singola emissione; non rinnovano correlazioni o esposizioni. La cache
+PCS dell'installazione viene rilasciata dopo la prima promozione; poi si
+mantengono solo predecessore e successore. Le copie delle viste e gli
+snapshot numerici storici del runner rimangono espliciti costi locali,
+non uno schedule fisico ammesso per la H100.
+
+Questo controllo composto scarica la lacuna di integrazione **sul grafo
+piccolo**. Non scarica il lavoro totale, il routing D36, l'esecuzione
+canonica/AES, i bound ROM/ZK della nuova costruzione o una crescita
+sublineare oltre la capacità finita. La composizione scientifica deve
+ancora includere le uguaglianze fra sorgenti, il batch RNE e le risorse
+della foresta PCS prima di trasferire garanzie di sicurezza.
+
 ## Dati iniziali conservati: uguaglianza della prova e lavoro evitato
 
 `HidingWhirProver::prove_claimless_retained` prende un riferimento immutabile

@@ -13,13 +13,36 @@ impl Installed {
     }
 
     pub(super) fn new(p: &Profile, packed: Vec<i16>) -> Result<Self, String> {
+        Self::new_with_source(p, packed, |values| Model::new_in(DOMAIN_W, values))
+    }
+
+    pub(super) fn new_with_source(
+        p: &Profile,
+        packed: Vec<i16>,
+        build: impl FnOnce(Vec<i16>) -> Result<Model, String>,
+    ) -> Result<Self, String> {
         if packed.len() != p.plan.live || packed.iter().any(|&x| x == i16::MIN) {
             return Err("private W layout or symmetric range differs".into());
         }
         let values = (0..p.plan.live)
             .map(|i| p.plan.virtual_to_packed(i).map(|j| j.map_or(0, |j| packed[j])))
             .collect::<Result<_, _>>()?;
-        Ok(Self { packed, model: Model::new_in(DOMAIN_W, values)? })
+        Ok(Self { packed, model: build(values)? })
+    }
+
+    #[cfg(test)]
+    pub(super) fn source_view(&self, root: C61Commitment) -> Self {
+        Self {
+            packed: self.packed.clone(),
+            model: Model {
+                domain: DOMAIN_W,
+                weights: self.model.weights.clone(),
+                root,
+                seed: [0; 32],
+                salt_seed: [0; 32],
+                retained: None,
+            },
+        }
     }
     pub(super) fn weight(&self, p: &Profile, id: usize, row: usize, col: usize) -> i64 {
         let s = &p.plan.sources[id];
@@ -67,6 +90,16 @@ impl Snapshot {
         w: &Installed,
         old: &[Snapshot],
         prompt: u32,
+    ) -> Result<Self, String> {
+        Self::prepare_with_source(p, w, old, prompt, |values| Model::new_in(DOMAIN_A, values))
+    }
+
+    pub(super) fn prepare_with_source(
+        p: &Profile,
+        w: &Installed,
+        old: &[Snapshot],
+        prompt: u32,
+        build: impl FnOnce(Vec<i16>) -> Result<Model, String>,
     ) -> Result<Self, String> {
         let stop = || "private preparation Stop".to_string();
         if prompt >= 2
@@ -322,12 +355,7 @@ impl Snapshot {
             })
             .collect::<Result<Vec<_>, _>>()?;
         // C_A and its independent random coins exist only after every private check.
-        Ok(Self {
-            values,
-            tokens,
-            source: Model::new_in(DOMAIN_A, encoded)?,
-            model_root: w.model.root.roots()[0],
-        })
+        Ok(Self { values, tokens, source: build(encoded)?, model_root: w.model.root.roots()[0] })
     }
 
     pub(super) fn compact(

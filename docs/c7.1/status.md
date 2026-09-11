@@ -136,16 +136,19 @@ persistente prima delle promozioni successive, esclusi workspace e IO.
 È ora la pista da verificare per il confronto congiunto byte/lavoro;
 non è selezionabile dal dispatch e non ha un positivo canonico completo.
 
-Il kernel PCS permette ora di conservare i dati iniziali del commitment:
-il confronto D12 mantiene byte/FS identici ed elimina l'encode ripetuto,
-senza rinnovare le esposizioni. Il wrapper con conservazione è ora collegato
-al batch lineare della transizione W/D12–S/D13, con range separati e un
-unico FS. Sono sorgenti sintetiche e MAC ideali, senza inferenza/RNE;
-il costruttore e la costruzione ordinari restano invariati nella selezione.
-I tre controlli della transizione passano: sequenza positiva, W/padding/range
-alterati e ultimo KV alterato, con burn e mancata promozione sui rifiuti.
-Resta da collegare a questa root unica l'intera inferenza/RNE per un
-confronto composto sulla stessa conversazione del runner B12.
+Il kernel PCS conserva ora i dati iniziali senza rinnovare esposizioni;
+il confronto D12 mantiene byte/FS identici ed elimina l'encode ripetuto.
+Dopo la transizione sintetica, il [confronto composto ridotto](pcs-state-screen.md#inferenza-completa-ridotta-con-rne-raggruppate)
+collega alla root unica Prepare, tutti i consumer numerici, range, KV e
+RNE raggruppate. Usa gli stessi pesi, prompt, snapshot numerici e token del
+runner B12. I certificati completi misurati sono circa **5,00 / 5,43 / 5,45 MB**,
+contro **7,75 / 10,94 / 14,13 MB**, con due PCS per risposta e tre gruppi
+RNE senza celle aggiunte. Le righe MAC ideali scendono da 265.713 a 261.992
+sull'intera conversazione; non è ancora un confronto di lavoro totale.
+La continuazione preparata su ultimo KV alterato è respinta, senza promozione.
+Il profilo è test-only W/D12–S/D13: non è un positivo canonico, una prova
+ROM/ZK o un'esecuzione AES. I due percorsi riusano lo stesso corpo numerico;
+la costruzione B12 rimane quella selezionata.
 Lo screen conta anche setup e rinnovi e scopre una voce in aumento nella
 candidata fold-6: i covettori delle query mantengono il lavoro t*M.
 Il payload persistente proiettato di due W e due A è 8,66 TB prima della

@@ -134,6 +134,15 @@ il positivo RNE condiviso, il codec PCS B12 e la composizione ridotta dopo
 cambiamenti ai helper. Nessuno di questi controlli esegue lo stato mobile
 canonico, misura il lavoro completo o amplia l'autorizzazione hardware.
 
+Per il confronto completo ridotto con stato unico eseguire separatamente
+`c71_joint_inference_same_model` e `c71_joint_inference_changed_last`,
+con gli stessi limiti 60 s/2 GiB e un worker. Il primo confronta tre
+certificati completi B12/candidata e include rifiuti di troncamento e
+cardinalità RNE; il secondo prepara una continuazione su ultimo KV alterato.
+Sono MAC ideali e domini D12/D13, senza credito canonico o di lavoro totale.
+Dopo cambi al corpo condiviso conservare gli otto filtri nativi sopra,
+`c71_b12_rne_joint_bytes_valid` e `c71_rne_unpadded_groups_cover`.
+
 `c71_pcs_retained_commit_data_preserves_wire_and_removes_rebuild` confronta
 commit ricostruito e dati conservati con lo stesso tape: PCS/MAC, byte/FS,
 indirizzi dei buffer e trace DFT. Usa gli stessi limiti seriali 60 s/2 GiB.

@@ -7,6 +7,9 @@ use prepare::{Installed, Snapshot};
 pub(super) mod pool;
 
 #[cfg(test)]
+#[path = "joint_inference.rs"]
+mod joint_inference;
+#[cfg(test)]
 #[path = "joint_state.rs"]
 mod joint_state;
 #[cfg(test)]
@@ -278,6 +281,14 @@ fn segments<'a>(
         .collect()
 }
 
+struct Body<T, W> {
+    fs: Fs,
+    wire: W,
+    bw: Batch<T>,
+    ba: Batch<T>,
+    openings: Vec<kv::Opening<T>>,
+}
+
 fn prove_schedule(
     state: &State,
     p: &Profile,
@@ -288,6 +299,184 @@ fn prove_schedule(
     header: &[u8],
     rows: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Vec<u8>, [u8; 32]), String> {
+    let Body { mut fs, mut wire, bw, ba, openings } = prove_components(
+        state,
+        p,
+        w,
+        snapshot,
+        old,
+        s,
+        header,
+        rows,
+        p.bytes().live,
+        |requests, fs, rows| prove_originals(p, snapshot, s, requests, fs, rows),
+        |requests, fs, rows| {
+            let parts = segments(state, s, s.auxiliary_gamma);
+            let ks = kv::Statement {
+                model: state.weight.roots()[0],
+                quantization: p.digest,
+                attempt: s.attempt,
+                segments: &parts,
+            };
+            let (proof, openings) = kv::prove(
+                &ks,
+                requests,
+                |i, j| old[i].source.weights.get(j).copied().unwrap_or(0) as u8,
+                fs,
+                rows,
+            )?;
+            let mut body = Vec::new();
+            proof.write(&mut body);
+            Ok((body, openings))
+        },
+    )?;
+    if openings.len() != old.len() {
+        return Err("native historical closure census differs".into());
+    }
+    let (proof, _) = linear::prove(
+        &w.model,
+        s.attempt,
+        p.plan.layout_digest,
+        &bw.forms,
+        &bw.targets,
+        &mut fs,
+        rows,
+    )?;
+    wire.raw(15, &codec::encode_linear(DOMAIN_W, &proof).map_err(|e| e.to_string())?, &mut fs)?;
+    for (i, o) in openings.into_iter().enumerate() {
+        let (proof, _) = linear::prove(
+            &old[i].source,
+            s.attempt,
+            state.profiles[i].bytes().layout_digest,
+            &[o.form],
+            &[o.original],
+            &mut fs,
+            rows,
+        )?;
+        wire.raw(
+            16 + i as u16,
+            &codec::encode_linear(DOMAIN_A, &proof).map_err(|e| e.to_string())?,
+            &mut fs,
+        )?;
+    }
+    let (proof, _) = linear::prove(
+        &snapshot.source,
+        s.attempt,
+        p.bytes().layout_digest,
+        &ba.forms,
+        &ba.targets,
+        &mut fs,
+        rows,
+    )?;
+    wire.raw(
+        16 + old.len() as u16,
+        &codec::encode_linear(DOMAIN_A, &proof).map_err(|e| e.to_string())?,
+        &mut fs,
+    )?;
+    if rows.len() != 0 {
+        return Err("composed prover did not consume its exact reservation".into());
+    }
+    Ok(wire.finish(&mut fs))
+}
+
+fn prove_originals(
+    p: &Profile,
+    snapshot: &Snapshot,
+    s: &caller::P0Statement<'_>,
+    requests: Vec<(bytes::RneRequest<Auth>, i32)>,
+    fs: &mut Fs,
+    rows: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Vec<u8>, Batch<Auth>), String> {
+    let mut ba = Batch::new();
+    let mut proofs = Vec::new();
+    for (r, shift) in requests {
+        let rs = rne::Statement {
+            root: s.auxiliary,
+            profile: s.auxiliary_gamma,
+            view: r.view,
+            attempt: s.attempt,
+            output_point: &r.point,
+            shape: r.shape,
+            shift,
+        };
+        let (proof, point, original) = rne::prove(
+            &rs,
+            r.original,
+            |j| {
+                snapshot.word6(
+                    p,
+                    r.source,
+                    j / r.shape[1].next_power_of_two(),
+                    j % r.shape[1].next_power_of_two(),
+                )
+            },
+            fs,
+            rows,
+        )?;
+        ba.add(p.bytes().source_rne_form(r.source, &point)?, original);
+        proofs.push(proof);
+    }
+    let mut body = Vec::new();
+    proofs.write(&mut body);
+    Ok((body, ba))
+}
+
+fn verify_originals(
+    p: &Profile,
+    s: &caller::P0Statement<'_>,
+    requests: Vec<(bytes::RneRequest<Key>, i32)>,
+    mut body: &[u8],
+    delta: Fp3,
+    fs: &mut Fs,
+    rows: &mut std::vec::IntoIter<Key>,
+) -> Result<Batch<Key>, String> {
+    let mut ba = Batch::new();
+    let proofs = Vec::<rne::Proof>::read(&mut body)?;
+    if !body.is_empty() {
+        return Err("component trailing bytes".into());
+    }
+    if proofs.len() != requests.len() {
+        return Err("original RNE certificate cardinality differs".into());
+    }
+    for ((r, rounding), proof) in requests.into_iter().zip(proofs) {
+        let rs = rne::Statement {
+            root: s.auxiliary,
+            profile: s.auxiliary_gamma,
+            view: r.view,
+            attempt: s.attempt,
+            output_point: &r.point,
+            shape: r.shape,
+            shift: rounding,
+        };
+        let (point, original) = rne::verify(&rs, r.original, &proof, delta, fs, rows)?;
+        ba.add(p.bytes().source_rne_form(r.source, &point)?, original);
+    }
+    Ok(ba)
+}
+
+// Both schedules run this exact numerical/GKR body. The test-only joint
+// variant changes only original-RNE byte checks, KV closure and final PCS.
+fn prove_components(
+    state: &State,
+    p: &Profile,
+    w: &Installed,
+    snapshot: &Snapshot,
+    old: &[Snapshot],
+    s: &caller::P0Statement<'_>,
+    header: &[u8],
+    rows: &mut std::vec::IntoIter<Auth>,
+    auxiliary_live: usize,
+    rne_hook: impl FnOnce(
+        Vec<(bytes::RneRequest<Auth>, i32)>,
+        &mut Fs,
+        &mut std::vec::IntoIter<Auth>,
+    ) -> Result<(Vec<u8>, Batch<Auth>), String>,
+    kv_hook: impl FnOnce(
+        &[kv::Request<Auth>],
+        &mut Fs,
+        &mut std::vec::IntoIter<Auth>,
+    ) -> Result<(Vec<u8>, Vec<kv::Opening<Auth>>), String>,
+) -> Result<Body<Auth, Writer>, String> {
     let mut fs = Fs::new(header, 1_000_000);
     let mut wire = Writer::new(header);
     let (mut bw, mut ba) = (Batch::new(), Batch::new());
@@ -312,35 +501,11 @@ fn prove_schedule(
     wire.put(2, &proof, &mut fs)?;
     let (f, b, t) = p.rms.rms_forms(&norms)?;
     ba.extend(f, b, t, ashift)?;
-    let mut proofs = Vec::new();
-    for (r, shift) in p.originals(&p0, &norms)? {
-        let rs = rne::Statement {
-            root: s.auxiliary,
-            profile: s.auxiliary_gamma,
-            view: r.view,
-            attempt: s.attempt,
-            output_point: &r.point,
-            shape: r.shape,
-            shift,
-        };
-        let (proof, point, original) = rne::prove(
-            &rs,
-            r.original,
-            |j| {
-                snapshot.word6(
-                    p,
-                    r.source,
-                    j / r.shape[1].next_power_of_two(),
-                    j % r.shape[1].next_power_of_two(),
-                )
-            },
-            &mut fs,
-            rows,
-        )?;
-        ba.add(p.bytes().source_rne_form(r.source, &point)?, original);
-        proofs.push(proof);
-    }
-    wire.put(3, &proofs, &mut fs)?;
+    let (body, rne_batch) = rne_hook(p.originals(&p0, &norms)?, &mut fs, rows)?;
+    let rne_sources = rne_batch.targets.len();
+    ba.forms.extend(rne_batch.forms);
+    ba.targets.extend(rne_batch.targets);
+    wire.raw(3, &body, &mut fs)?;
     let pairs = p.table_pairs();
     let (proof, pending) = p.bytes().prove_table_rne(&p.plan, s, &pairs, read, &mut fs, rows)?;
     wire.put(4, &proof, &mut fs)?;
@@ -433,21 +598,8 @@ fn prove_schedule(
     )?;
     wire.put(9, &proof, &mut fs)?;
     let requests = p.routes(&q, &v, &mut ba, ashift)?;
-    let parts = segments(state, s, s.auxiliary_gamma);
-    let ks = kv::Statement {
-        model: state.weight.roots()[0],
-        quantization: p.digest,
-        attempt: s.attempt,
-        segments: &parts,
-    };
-    let (proof, mut openings) = kv::prove(
-        &ks,
-        &requests,
-        |i, j| old[i].source.weights.get(j).copied().unwrap_or(0) as u8,
-        &mut fs,
-        rows,
-    )?;
-    wire.put(10, &proof, &mut fs)?;
+    let (body, mut openings) = kv_hook(&requests, &mut fs, rows)?;
+    wire.raw(10, &body, &mut fs)?;
     let current = openings.pop().ok_or("missing current KV opening")?;
     ba.add(current.form, current.original);
     let (proof, pending) = p.output.prove_lookup(
@@ -482,7 +634,7 @@ fn prove_schedule(
         &snapshot.source,
         s.attempt,
         p.bytes().layout_digest,
-        p.bytes().live,
+        auxiliary_live,
         range::Alphabet::Byte,
         &mut fs,
         rows,
@@ -491,57 +643,14 @@ fn prove_schedule(
     for (f, t) in f.into_iter().zip(t) {
         ba.add(f, t);
     }
-    if bw.targets.len() != 18 || ba.targets.len() != 110 || openings.len() != old.len() {
+    if bw.targets.len() != 18 || ba.targets.len() != 103 + rne_sources {
         return Err(format!(
             "native closure census differs W={} A={}",
             bw.targets.len(),
             ba.targets.len()
         ));
     }
-    let (proof, _) = linear::prove(
-        &w.model,
-        s.attempt,
-        p.plan.layout_digest,
-        &bw.forms,
-        &bw.targets,
-        &mut fs,
-        rows,
-    )?;
-    wire.raw(15, &codec::encode_linear(DOMAIN_W, &proof).map_err(|e| e.to_string())?, &mut fs)?;
-    for (i, o) in openings.into_iter().enumerate() {
-        let (proof, _) = linear::prove(
-            &old[i].source,
-            s.attempt,
-            state.profiles[i].bytes().layout_digest,
-            &[o.form],
-            &[o.original],
-            &mut fs,
-            rows,
-        )?;
-        wire.raw(
-            16 + i as u16,
-            &codec::encode_linear(DOMAIN_A, &proof).map_err(|e| e.to_string())?,
-            &mut fs,
-        )?;
-    }
-    let (proof, _) = linear::prove(
-        &snapshot.source,
-        s.attempt,
-        p.bytes().layout_digest,
-        &ba.forms,
-        &ba.targets,
-        &mut fs,
-        rows,
-    )?;
-    wire.raw(
-        16 + old.len() as u16,
-        &codec::encode_linear(DOMAIN_A, &proof).map_err(|e| e.to_string())?,
-        &mut fs,
-    )?;
-    if rows.len() != 0 {
-        return Err("composed prover did not consume its exact reservation".into());
-    }
-    Ok(wire.finish(&mut fs))
+    Ok(Body { fs, wire, bw, ba, openings })
 }
 
 fn verify_schedule(
@@ -553,6 +662,107 @@ fn verify_schedule(
     delta: Fp3,
     rows: &mut std::vec::IntoIter<Key>,
 ) -> Result<[u8; 32], String> {
+    let Body { mut fs, mut wire, bw, ba, openings } = verify_components(
+        p,
+        s,
+        header,
+        certificate,
+        delta,
+        rows,
+        (DOMAIN_A, p.bytes().live),
+        |requests, body, fs, rows| verify_originals(p, s, requests, body, delta, fs, rows),
+        |requests, mut body, fs, rows| {
+            let parts = segments(state, s, s.auxiliary_gamma);
+            let ks = kv::Statement {
+                model: state.weight.roots()[0],
+                quantization: p.digest,
+                attempt: s.attempt,
+                segments: &parts,
+            };
+            let proof = kv::Proof::read(&mut body)?;
+            if !body.is_empty() {
+                return Err("component trailing bytes".into());
+            }
+            kv::verify(&ks, requests, &proof, delta, fs, rows)
+        },
+    )?;
+    if openings.len() != state.accepted.len() {
+        return Err("native historical closure census differs".into());
+    }
+    let (body, frame) = wire.raw(15)?;
+    let proof = codec::decode_linear(DOMAIN_W, body).map_err(|e| e.to_string())?;
+    linear::verify(
+        DOMAIN_W,
+        s.weights,
+        s.attempt,
+        p.plan.layout_digest,
+        &bw.forms,
+        &bw.targets,
+        &proof,
+        delta,
+        &mut fs,
+        rows,
+    )?;
+    Reader::record(&mut fs, frame);
+    for (i, o) in openings.into_iter().enumerate() {
+        let (body, frame) = wire.raw(16 + i as u16)?;
+        let proof = codec::decode_linear(DOMAIN_A, body).map_err(|e| e.to_string())?;
+        linear::verify(
+            DOMAIN_A,
+            &state.accepted[i].root,
+            s.attempt,
+            state.profiles[i].bytes().layout_digest,
+            &[o.form],
+            &[o.original],
+            &proof,
+            delta,
+            &mut fs,
+            rows,
+        )?;
+        Reader::record(&mut fs, frame);
+    }
+    let (body, frame) = wire.raw(16 + state.accepted.len() as u16)?;
+    let proof = codec::decode_linear(DOMAIN_A, body).map_err(|e| e.to_string())?;
+    linear::verify(
+        DOMAIN_A,
+        s.auxiliary,
+        s.attempt,
+        p.bytes().layout_digest,
+        &ba.forms,
+        &ba.targets,
+        &proof,
+        delta,
+        &mut fs,
+        rows,
+    )?;
+    Reader::record(&mut fs, frame);
+    if rows.len() != 0 {
+        return Err("composed verifier did not consume its exact reservation".into());
+    }
+    wire.finish(&mut fs)
+}
+
+fn verify_components<'a>(
+    p: &Profile,
+    s: &caller::P0Statement<'_>,
+    header: &[u8],
+    certificate: &'a [u8],
+    delta: Fp3,
+    rows: &mut std::vec::IntoIter<Key>,
+    auxiliary_range: (Domain, usize),
+    rne_hook: impl FnOnce(
+        Vec<(bytes::RneRequest<Key>, i32)>,
+        &[u8],
+        &mut Fs,
+        &mut std::vec::IntoIter<Key>,
+    ) -> Result<Batch<Key>, String>,
+    kv_hook: impl FnOnce(
+        &[kv::Request<Key>],
+        &[u8],
+        &mut Fs,
+        &mut std::vec::IntoIter<Key>,
+    ) -> Result<Vec<kv::Opening<Key>>, String>,
+) -> Result<Body<Key, Reader<'a>>, String> {
     let mut fs = Fs::new(header, 1_000_000);
     let mut wire = Reader::new(certificate, header)?;
     let shift = |t: Key, b: Fp3| Key::new(t.k + delta * b);
@@ -583,24 +793,11 @@ fn verify_schedule(
     Reader::record(&mut fs, frame);
     let (f, b, t) = p.rms.rms_forms(&norms)?;
     ba.extend(f, b, t, shift)?;
-    let (proofs, frame) = wire.get::<Vec<rne::Proof>>(3)?;
-    let requests = p.originals(&p0, &norms)?;
-    if proofs.len() != requests.len() {
-        return Err("original RNE certificate cardinality differs".into());
-    }
-    for ((r, rounding), proof) in requests.into_iter().zip(proofs) {
-        let rs = rne::Statement {
-            root: s.auxiliary,
-            profile: s.auxiliary_gamma,
-            view: r.view,
-            attempt: s.attempt,
-            output_point: &r.point,
-            shape: r.shape,
-            shift: rounding,
-        };
-        let (point, original) = rne::verify(&rs, r.original, &proof, delta, &mut fs, rows)?;
-        ba.add(p.bytes().source_rne_form(r.source, &point)?, original);
-    }
+    let (body, frame) = wire.raw(3)?;
+    let rne_batch = rne_hook(p.originals(&p0, &norms)?, body, &mut fs, rows)?;
+    let rne_sources = rne_batch.targets.len();
+    ba.forms.extend(rne_batch.forms);
+    ba.targets.extend(rne_batch.targets);
     Reader::record(&mut fs, frame);
     let pairs = p.table_pairs();
     let (proof, frame) = wire.get(4)?;
@@ -657,15 +854,8 @@ fn verify_schedule(
     let v = kernel::attention::verify_pv(&p.attn(s), &proof, delta, &mut fs, rows)?;
     Reader::record(&mut fs, frame);
     let requests = p.routes(&q, &v, &mut ba, shift)?;
-    let parts = segments(state, s, s.auxiliary_gamma);
-    let ks = kv::Statement {
-        model: state.weight.roots()[0],
-        quantization: p.digest,
-        attempt: s.attempt,
-        segments: &parts,
-    };
-    let (proof, frame) = wire.get(10)?;
-    let mut openings = kv::verify(&ks, &requests, &proof, delta, &mut fs, rows)?;
+    let (body, frame) = wire.raw(10)?;
+    let mut openings = kv_hook(&requests, body, &mut fs, rows)?;
     Reader::record(&mut fs, frame);
     let current = openings.pop().ok_or("missing current KV opening")?;
     ba.add(current.form, current.original);
@@ -714,11 +904,11 @@ fn verify_schedule(
     }
     let (proof, frame) = wire.get(14)?;
     let (f, t) = range::verify(
-        DOMAIN_A,
+        auxiliary_range.0,
         s.auxiliary,
         s.attempt,
         p.bytes().layout_digest,
-        p.bytes().live,
+        auxiliary_range.1,
         range::Alphabet::Byte,
         &proof,
         delta,
@@ -729,60 +919,10 @@ fn verify_schedule(
     for (f, t) in f.into_iter().zip(t) {
         ba.add(f, t);
     }
-    if bw.targets.len() != 18 || ba.targets.len() != 110 || openings.len() != state.accepted.len() {
+    if bw.targets.len() != 18 || ba.targets.len() != 103 + rne_sources {
         return Err("native endpoint closure census differs".into());
     }
-    let (body, frame) = wire.raw(15)?;
-    let proof = codec::decode_linear(DOMAIN_W, body).map_err(|e| e.to_string())?;
-    linear::verify(
-        DOMAIN_W,
-        s.weights,
-        s.attempt,
-        p.plan.layout_digest,
-        &bw.forms,
-        &bw.targets,
-        &proof,
-        delta,
-        &mut fs,
-        rows,
-    )?;
-    Reader::record(&mut fs, frame);
-    for (i, o) in openings.into_iter().enumerate() {
-        let (body, frame) = wire.raw(16 + i as u16)?;
-        let proof = codec::decode_linear(DOMAIN_A, body).map_err(|e| e.to_string())?;
-        linear::verify(
-            DOMAIN_A,
-            &state.accepted[i].root,
-            s.attempt,
-            state.profiles[i].bytes().layout_digest,
-            &[o.form],
-            &[o.original],
-            &proof,
-            delta,
-            &mut fs,
-            rows,
-        )?;
-        Reader::record(&mut fs, frame);
-    }
-    let (body, frame) = wire.raw(16 + state.accepted.len() as u16)?;
-    let proof = codec::decode_linear(DOMAIN_A, body).map_err(|e| e.to_string())?;
-    linear::verify(
-        DOMAIN_A,
-        s.auxiliary,
-        s.attempt,
-        p.bytes().layout_digest,
-        &ba.forms,
-        &ba.targets,
-        &proof,
-        delta,
-        &mut fs,
-        rows,
-    )?;
-    Reader::record(&mut fs, frame);
-    if rows.len() != 0 {
-        return Err("composed verifier did not consume its exact reservation".into());
-    }
-    wire.finish(&mut fs)
+    Ok(Body { fs, wire, bw, ba, openings })
 }
 
 #[cfg_attr(test, derive(Clone))]

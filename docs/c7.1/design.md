@@ -587,11 +587,19 @@ I piccoli controlli algebrici/PCS e i nuovi conteggi non dimostrano ancora
 questa composizione, la ZK congiunta o lo schedule fisico. Il protocollo
 B12 selezionato e i suoi cap di dominio restano quelli di security §§1–3.
 Il [percorso nativo di transizione](pcs-state-screen.md#transizione-nativa-piccola-con-range-e-dati-pcs-conservati)
-collega ora range separati, link originali W/KV, due PCS e promozione in
-un unico FS su sorgenti sintetiche W/D12 e S/D13. I suoi MAC sono ideali;
-non esegue inferenza/RNE e non prova la composizione ROM/ZK. Le copie
-delle viste e l'insieme persistente delle root ritirate restano costi da
-includere, anche se non aggiungono PCS o storia al wire della risposta.
+collega range separati, link originali W/KV, due PCS e promozione su sorgenti
+sintetiche W/D12 e S/D13. Il successivo
+[confronto di inferenza ridotta](pcs-state-screen.md#inferenza-completa-ridotta-con-rne-raggruppate)
+riusa Prepare e l'intero corpo numerico/GKR B12, raggruppando le RNE del
+frame 3 e chiudendo le forme A/W/KV nella stessa S. Confronta snapshot
+numerici e certificati completi sulla stessa conversazione a tre turni.
+I MAC sono ideali: questo positivo non prova la composizione ROM/ZK o
+la corrispondenza canonica. In particolare restano da scaricare la
+riduzione delle uguaglianze W/KV fra root, il batch RNE accoppiato al FS,
+la simulazione sulle due esposizioni di S e il censimento completo delle
+query/eventi della nuova foresta; i bound B12 non si trasferiscono.
+Copie delle viste, snapshot, forme scalari KV e identificatori delle root
+ritirate restano costi da includere, anche senza altre PCS nel wire.
 
 Per questo esperimento il proprietario autorizza memoria persistente
 aggiuntiva **fuori H100**. Questa eccezione supera il divieto di spill e

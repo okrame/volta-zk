@@ -184,13 +184,13 @@ pub(super) struct Statement<'a> {
 }
 
 impl Statement<'_> {
-    fn live(&self, i: usize) -> bool {
+    pub(super) fn live(&self, i: usize) -> bool {
         let columns = self.shape[1].next_power_of_two();
         i / columns < self.shape[0] && i % columns < self.shape[1]
     }
 }
 
-struct Reduction {
+pub(super) struct Reduction {
     rounds: Vec<[Fp3; 9]>, // g(0),...,g(7) corrections, zero tag for g(0)+g(1)
     terminal: Vec<Fp3>,    // original byte-function claims, then product results
     tag: Fp3,
@@ -202,14 +202,14 @@ pub(super) struct Proof {
     functions: byte_function::Proof,
 }
 
-struct Deferred<T> {
+pub(super) struct Deferred<T> {
     point: Vec<Fp3>,
     tables: Vec<[Fp3; 256]>,
-    aggregate: [T; 8],
+    pub(super) aggregate: [T; 8],
 }
 
 impl<T> Deferred<T> {
-    fn statement<'a>(&'a self, s: &Statement<'a>) -> byte_function::Statement<'a> {
+    pub(super) fn statement<'a>(&'a self, s: &Statement<'a>) -> byte_function::Statement<'a> {
         byte_function::Statement {
             root: s.root,
             profile: s.profile,
@@ -300,7 +300,7 @@ fn function_tables(recipe: &Recipe, beta: Fp3) -> (Vec<[Fp3; 256]>, Vec<Fp3>) {
 // Output correction is already bound by the caller. The byte view has eight
 // lanes: the six biased i48 bytes followed by two public zeros, and all-zero
 // bytes on dummy cells on either axis. The returned byte obligation still needs the SAME PCS.
-fn prove_reduction(
+pub(super) fn prove_reduction(
     s: &Statement<'_>,
     mut target: Auth,
     get_bytes: impl Fn(usize) -> [u8; 6],
@@ -425,7 +425,7 @@ pub(super) fn prove(
     Ok((Proof { reduction, functions }, point, original))
 }
 
-fn verify_reduction(
+pub(super) fn verify_reduction(
     s: &Statement<'_>,
     mut target: Key,
     proof: &Reduction,

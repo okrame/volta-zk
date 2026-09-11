@@ -82,7 +82,7 @@ fn c71_b12_native_prepare_covers_all_sources_and_absorbs_final_token() {
     }
 }
 
-fn fixture() -> (Prover, Verifier) {
+pub(super) fn fixture() -> (Prover, Verifier) {
     let p = Profile::small(0).unwrap();
     let model = Installed::new(&p, weights(&p)).unwrap();
     let state = || State::new(model.model.root.clone(), [31; 32], 1, [32; 32]).unwrap();
@@ -144,18 +144,23 @@ fn c71_b12_native_composed_three_attempts_close_one_fs_and_promote_same_w_kv() {
 // check counterfactual corruptions of ONE proof. No clone/import API exists
 // in the native protocol; these are not extra honest PCS exposures.
 fn fork(v: &Verifier) -> Verifier {
-    let mut state =
-        State::new(v.state.weight.clone(), v.state.session, v.state.epoch, v.state.seal).unwrap();
-    state.cursor = v.state.cursor;
-    state.next_slot = v.state.next_slot;
-    state.live = v.state.live;
+    Verifier {
+        state: fork_state(&v.state),
+        delta: v.delta,
+        keys: v.keys.as_slice().to_vec().into_iter(),
+    }
+}
+pub(super) fn fork_state(v: &State) -> State {
+    let mut state = State::new(v.weight.clone(), v.session, v.epoch, v.seal).unwrap();
+    state.cursor = v.cursor;
+    state.next_slot = v.next_slot;
+    state.live = v.live;
     state.accepted = v
-        .state
         .accepted
         .iter()
         .map(|a| Accepted { root: a.root.clone(), tokens: a.tokens, receipt: a.receipt })
         .collect();
-    Verifier { state, delta: v.delta, keys: v.keys.as_slice().to_vec().into_iter() }
+    state
 }
 
 fn frames(v: &Verifier, r: &Response) -> Vec<std::ops::Range<usize>> {

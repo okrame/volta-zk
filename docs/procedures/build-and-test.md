@@ -117,6 +117,20 @@ e `c71_b12_native_certificate`, separatamente entro 60 s/2 GiB e un worker.
 Il primo copre le 181 relazioni canoniche con righe sintetiche; non è
 un'esecuzione del grafo completo.
 
+Per lo screen PCS/stato usare `scripts/c71_pcs_state_screen.py` e
+`tests/test_c71_pcs_state_screen.py`, oltre ai filtri Python
+`canonical_PCS_wire or native_wire_body or complete_fixed_run`.
+Con la stessa build mirata, eseguire separatamente
+`c71_pcs_tuning_valid_original_mac_and_codec`,
+`c71_pcs_tuning_canonical_geometry`,
+`c71_rne_unpadded_groups_cover_without_extra_cells` e
+`c71_b12_rne_joint_bytes_canonical_geometry`: un worker Rayon,
+`--test-threads=1 --nocapture`, 60 s/2 GiB per invocazione.
+Il positivo PCS è D12; il conteggio D34/D35 è un codec sintetico. Conservare
+il positivo RNE condiviso, il codec PCS B12 e la composizione ridotta dopo
+cambiamenti ai helper. Nessuno di questi controlli esegue lo stato mobile
+canonico, misura il lavoro completo o amplia l'autorizzazione hardware.
+
 Il filtro Python `canonical_PCS_wire or native_wire_body or complete_fixed_run`
 controlla il corpo canonico contro i censimenti field già presenti e
 il conteggio PCS di maschere, sali, frontiere e aperture storiche.

@@ -568,6 +568,35 @@ Calibrazione, hardware e completa accettazione canonica rimangono separati.
 
 ## Resource and measurement contract
 
+### Owner-authorized PCS/state experiment
+
+La richiesta corrente estende lo studio della riduzione byte a PCS W,
+stato KV e batch RNE, conservando sicurezza e lavoro totale del prover.
+Lo [screen e le due schedule candidate](pcs-state-screen.md) distinguono
+W con tre esposizioni da W rinnovato con collegamento same-W. Non cambiano
+il protocollo selezionato in security §§1–3. Il raggruppamento RNE senza
+padding aggiunto e i nuovi parametri PCS restano test-only; gli upper wire
+proiettati non sono certificati completi verificati.
+
+Per questo esperimento il proprietario autorizza memoria persistente
+aggiuntiva **fuori H100**. Questa eccezione supera il divieto di spill e
+il limite di materiale persistente del riferimento solo per lo studio
+della candidata: non cambia HBM, arena, trust model o autorizzazione di
+spesa. Conservazione, copia, scrittura/rilettura e trasferimenti delle cache
+devono comparire nel lavoro totale, insieme a setup, rinnovi e replay.
+Non si materializzano localmente codeword D34/D35.
+
+Il confronto va effettuato su ogni prefisso della stessa conversazione,
+con gli stessi modello e token. La metrica dello screen è il singolo
+certificato rispetto alla storia, a risposta nuova fissata. I token nuovi
+e i byte cumulativi delle risposte hanno un costo di trasporto almeno
+lineare nel codec attuale. La costanza del numero di PCS non estende il
+teorema a tentativi illimitati: il profilo deve comunque pagare capacità,
+esposizioni, query e sicurezza congiunta. Gli obblighi ancora non scaricati
+sono elencati nello screen prima di qualsiasi affidamento sui nuovi bound.
+
+### Selected reference
+
 | Voce | Riferimento da soddisfare; nessuna nuova misura |
 |---|---:|
 | Prover completo a modello residente | 45–50 s |

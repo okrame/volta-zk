@@ -16,6 +16,16 @@ quel costo si ripete 892 volte. La calibrazione non può abbassare il
 lower del codec corrente. La candidata resta sperimentale; il port
 canonico/AES è ancora aperto e non è il lavoro prioritario di questo goal.
 
+La successiva precisazione del proprietario impone anche lavoro totale
+non crescente e crescita sublineare/costante rispetto alla storia, con
+sola memoria persistente aggiuntiva fuori H100. Il nuovo
+[screen PCS/stato](pcs-state-screen.md) conserva due candidate non selezionate:
+KV cumulativo entro il run a tre esposizioni W, oppure collegamento anche
+di commitment W freschi. Nessun rinnovo entra per questo nel teorema B12.
+Il batch RNE a due gruppi aumenta le celle elaborate: il nuovo raggruppamento
+esatto evita quella specifica crescita, con più frame conteggiati. Nessun
+risparmio contabile viene promosso a verifica del lavoro o della sicurezza.
+
 | Step | Esito conservato e ragione | Fonte completa |
 |---|---|---|
 | B1 | Chiuso negativamente: riuso WHIR invariato non soddisfa il piccolo contratto C7.1; non esclusione della famiglia WHIR | [B1](../c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto) |

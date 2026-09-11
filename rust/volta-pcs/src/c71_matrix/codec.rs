@@ -1,6 +1,9 @@
 //! Fixed-shape C71 matrix certificate. Counts come from the verifier config.
 
 use super::*;
+
+#[cfg(all(test, feature = "c71-b12-pcs"))]
+mod tuning;
 use crate::c61_whir_reference::{
     c61_max_pruned_binary_siblings, C61Reader, C61WhirReferenceError, C61Writer, ReferenceResult,
 };
@@ -428,7 +431,7 @@ pub(super) mod tests {
     use super::*;
 
     // Codec fixtures only: zero fields/roots are not cryptographic proofs.
-    fn set_frontiers(
+    pub(super) fn set_frontiers(
         c: &ZkWhirConfig<E, Goldilocks, Fs>,
         p: &mut MatrixProof,
         mut budget: usize,

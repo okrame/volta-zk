@@ -8009,7 +8009,7 @@ def b12_exp30_composition(base):
     }
 
 
-def b12_native_linear_pcs_wire(profile, mask):
+def b12_native_linear_pcs_wire(profile, mask, *, query_count=512):
     """Analytic encode_linear census; no witness, frontier, or native proof generated."""
     h, folds, oracles = profile['log_message_cells'], profile['folds'], profile['oracles']
     batches = len(folds)
@@ -8019,7 +8019,7 @@ def b12_native_linear_pcs_wire(profile, mask):
     # codec::encode_body has fixed geometry: no vector prefixes except multiproofs.
     fields = {
         'MAC_transfer_and_close': 24*(4*h+3),
-        'claimless_sumchecks': 24*(batches+2047*sum(folds)),
+        'claimless_sumchecks': 24*(batches+(mask['message_rows']-1)*sum(folds)),
         'OOD_answers': 24*(batches-1),
         'base_claim_message_randomness': 24*(1+oracles[-1]['message_rows']
                                              +oracles[-1]['randomness_rows']),
@@ -8032,7 +8032,7 @@ def b12_native_linear_pcs_wire(profile, mask):
     openings.extend((mask['domain_rows'], width, 24) for width in widths for _ in range(2))
     leaves = salts = siblings = 0
     for domain, width, scalar_bytes in openings:
-        q = min(domain, 512)
+        q = min(domain, query_count)
         leaves += q*width*scalar_bytes
         salts += q*32
         # c61_max_pruned_binary_siblings: each level has at most q present nodes.
@@ -8051,7 +8051,12 @@ def b12_native_linear_pcs_wire(profile, mask):
         'decoder_cap_bytes': cap, 'upper_fits_decoder_cap': upper <= cap,
         # gamma(): cap8MiB/cap16MiB descriptor, words, lists, rounds, groups, isomorphism.
         'PCS_profile_vector_bytes': 268+int(canonical)+8*(9+2*(1+batches)+9*batches+1+4*len(widths)+15),
-        'native_synthetic_codec_checked': canonical,
+        'native_synthetic_codec_checked': canonical and query_count == 512
+            and mask['message_rows'] == 2048 and mask['domain_rows'] == 32768
+            and mask['randomness_rows'] == 512 and folds == [7]+[2]*11
+            and all(o['randomness_rows'] == (1536 if i == 0 else 512)
+                and o['domain_rows'] == 1 << (8*(o['message_rows']+o['randomness_rows'])-1).bit_length()
+                and o['width'] == 1 << folds[i] for i, o in enumerate(oracles)),
         'native_serialization_checked': False,
         'native_check_scope': 'zero-value codec fixtures; no valid PCS or canonical inference',
         'lower_omits': 'all Merkle sibling hashes',

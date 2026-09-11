@@ -285,6 +285,27 @@ mod tests {
                 }
             }
             assert_eq!(view_bits.len(), 892);
+            let exact = kernel::byte_function::batch::unpadded_groups(&view_bits).unwrap();
+            let mut ids: Vec<_> = exact.iter().flatten().copied().collect();
+            ids.sort_unstable();
+            assert_eq!(ids, (0..892).collect::<Vec<_>>());
+            let dimensions: Vec<_> = exact
+                .iter()
+                .map(|group| {
+                    let local: Vec<_> = group.iter().map(|&i| view_bits[i]).collect();
+                    let (d, _) = kernel::byte_function::batch::geometry(&local).unwrap();
+                    assert_eq!(1usize << d, local.iter().map(|&b| 1usize << b).sum::<usize>());
+                    d
+                })
+                .collect();
+            let exact_wire: usize =
+                dimensions.iter().map(|&d| kernel::byte_function::batch::wire_bytes(d) + 6).sum();
+            eprintln!("joint_RNE unpadded slot={slot} dimensions={dimensions:?} wire_with_frames={exact_wire}");
+            eprintln!(
+                "joint_RNE work slot={slot} separate_byte_cells={} padded_joint_byte_cells={}",
+                view_bits.iter().map(|&b| 1u64 << b).sum::<u64>(),
+                (1u64 << 34) + (1u64 << 33)
+            );
             let groups = kernel::byte_function::batch::groups(&view_bits).unwrap();
             assert_eq!(
                 groups.iter().flatten().copied().collect::<Vec<_>>(),

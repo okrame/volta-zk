@@ -9,6 +9,26 @@ fn bytes(value: i64) -> [u8; 6] {
 }
 
 #[test]
+fn c71_rne_unpadded_groups_cover_without_extra_cells() {
+    assert!(batch::unpadded_groups(&[]).is_err());
+    assert!(batch::unpadded_groups(&[35]).is_err());
+    for n in 1..100 {
+        let bits: Vec<_> = (0..n).map(|i| (i * 7 + n) % 12).collect();
+        let groups = batch::unpadded_groups(&bits).unwrap();
+        let mut seen = Vec::new();
+        for group in groups {
+            let local: Vec<_> = group.iter().map(|&i| bits[i]).collect();
+            let (d, _) = batch::geometry(&local).unwrap();
+            assert_eq!(1usize << d, local.iter().map(|&b| 1usize << b).sum::<usize>());
+            seen.extend(group);
+        }
+        seen.sort_unstable();
+        assert_eq!(seen, (0..n).collect::<Vec<_>>());
+    }
+    assert_eq!(batch::unpadded_groups(&[34, 34]).unwrap(), vec![vec![0], vec![1]]);
+}
+
+#[test]
 fn c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs() {
     let n = 32;
     let profile = gamma(&matrix_config(n).unwrap());

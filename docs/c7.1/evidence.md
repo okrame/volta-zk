@@ -98,6 +98,48 @@ sintetico. Le regressioni conservano byte/FS del percorso corrente.
 Format dei file Rust toccati, link locali e `git diff --check` passano;
 nessuna build workspace o Lean è stata eseguita.
 
+## PCS/state byte and work screen
+
+Lo [screen](pcs-state-screen.md) e il
+[diagnostico](../../scripts/c71_pcs_state_screen.py) confrontano i bound del
+codec B12 con due schedule candidate, senza ammissione del lavoro completo.
+Il [controllo nativo PCS](../../rust/volta-pcs/src/c71_matrix/codec/tuning.rs)
+produce PCS D12 valide con gli originali e trasporta il vero codec:
+circa 3,17 MB nella baseline, 1,64 MB con tre esposizioni e 1,45 MB con due.
+Sono byte PCS, esclusi i due word di scaffolding del test; non una prova
+linear o un certificato Gemma completo. Tag/punti cambiano a ogni apertura,
+la root installata resta identica; falso target e troncamento sono respinti
+e i due ruoli ricostruiscono lo stesso FS. Il primo test D10 1→4 ha fallito
+`RateGrowsDomain`; il controllo corretto D12 4→4 non cancella quel fallimento.
+
+Per D35/D34, il test fa roundtrip di fixture sintetiche sia senza fratelli
+Merkle sia con frontiere massime: 5.157.568–7.932.608 e
+4.434.784–7.136.864 byte rispettivamente. Nessuna root/PCS canonica valida
+viene materializzata. Il gamma numerico sperimentale è di 1.517 byte;
+lo screen riserva i 2.277 del vecchio profilo per includere la nuova identità.
+Il runner test-only non rende selezionabile il profilo dal peer.
+
+Il censimento delle 892 RNE rende esplicito il lavoro aggiunto dai due
+vecchi gruppi padded e controlla il nuovo `unpadded_groups`: copertura
+unica, layout allineato e identico numero di celle ai prover separati.
+Le dimensioni canoniche sono sei/otto/otto gruppi; i byte includono i frame.
+Il kernel positivo RNE condiviso preesistente resta verificato. Non c'è
+un positivo canonico della nuova schedule RNE/PCS/KV.
+
+Passano **7 test Rust mirati**: PCS valida, geometria/codec PCS candidata,
+gruppi esatti, censimento RNE canonico, positivo RNE condiviso, codec PCS
+B12 e composizione ridotta a tre tentativi. Passano **4 test Python**:
+screen/stato e regressioni `canonical_PCS_wire or native_wire_body or
+complete_fixed_run`. Tutti i test Rust usano un worker Rayon e 60 s/2 GiB,
+in serie, dopo la build mirata con un job. Il check Python sul prefisso
+è un'identità finita MAC/MLE, non una dimostrazione della sicurezza FS.
+Le [procedure](../procedures/build-and-test.md) riportano i filtri esatti.
+
+I campi `full_prover_work:null`, `full_work_nonincrease_verified:false` e
+`complete_security_proven:false` sono obbligatori per questo screen.
+Non sono stati eseguiti benchmark GPU, bootstrap completo o inferenza
+Gemma, e non è stata cambiata la costruzione selezionata.
+
 ## Native component evidence
 
 Il [catalogo dei controlli nativi](../procedures/build-and-test.md#rust-and-resource-limits)

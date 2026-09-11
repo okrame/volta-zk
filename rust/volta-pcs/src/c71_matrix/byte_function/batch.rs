@@ -49,6 +49,33 @@ pub(crate) fn groups(bits: &[usize]) -> Result<Vec<Vec<usize>>, String> {
     Ok(groups)
 }
 
+/// Dyadic bins with no new padded cells; order is public (size, original ID).
+pub(crate) fn unpadded_groups(bits: &[usize]) -> Result<Vec<Vec<usize>>, String> {
+    if bits.is_empty() || bits.len() > 1024 || bits.iter().any(|&b| b > 34) {
+        return Err("joint byte group shape".into());
+    }
+    let mut order: Vec<_> = (0..bits.len()).collect();
+    order.sort_by_key(|&i| std::cmp::Reverse(bits[i]));
+    let mut remaining: usize = bits.iter().map(|&b| 1usize << b).sum();
+    let mut groups = Vec::new();
+    let mut next = 0;
+    while remaining != 0 {
+        let size = 1usize << remaining.ilog2().min(34);
+        let mut group = Vec::new();
+        let mut filled = 0;
+        while filled < size {
+            let i = order[next];
+            filled += 1usize << bits[i];
+            group.push(i);
+            next += 1;
+        }
+        assert_eq!(filled, size); // descending dyadic blocks tile each bin exactly
+        remaining -= size;
+        groups.push(group);
+    }
+    Ok(groups)
+}
+
 pub(crate) fn required(d: usize) -> usize {
     3 * d + 1 + super::required(d)
 }

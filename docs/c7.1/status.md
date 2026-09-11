@@ -102,19 +102,35 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**La priorità del proprietario del 2026-09-11 è trovare una modifica e
-testarne i byte.** È stata implementata una
+**La priorità del proprietario del 2026-09-11 è ridurre i byte completi dal
+primo turno, riferimento 30 MB, e ottenere crescita costante/sublineare
+con la storia, senza aumentare il lavoro totale del prover.** Setup,
+precomputazione e replay contano; la sola risorsa aggiuntiva ammessa è
+memoria persistente fuori H100. Sicurezza e confronto sulla stessa
+conversazione sono condizioni di chiusura, tuttora aperte.
+
+È stata implementata una
 [candidata con P/S RNE condivisi](design.md#experimental-shared-rne-byte-proofs),
 con [prove componenti valide e censimento canonico](evidence.md#shared-rne-byte-experiment).
 Il risparmio proiettato è 25,13–25,19 MB per certificato; le RNE della
 fixture a scale zero scendono a circa 5,48 MB. Non è più soltanto una
 proposta di calibrazione. La candidata è test-only e non eredita i bound B12.
 
-Il riferimento sotto 35 MB **non è ancora raggiunto**: la proiezione completa
-è 22,71–39,92 MB al primo turno e il lower del terzo resta 36,61 MB.
-Per soddisfarlo anche a O=300 occorre ridurre altre componenti, con le
-PCS come prossimo costo da studiare; prima della selezione del batch RNE
-restano composizione di sicurezza e integrazione canonica.
+Il nuovo [screen PCS/stato](pcs-state-screen.md) verifica PCS valide piccole
+con parametri ridotti e identifica il padding aggiunto dal primo batch
+RNE. Il raggruppamento alternativo elimina quel padding, pagando 0,13–0,20 MB
+in più. Con KV cumulativo e W a tre esposizioni, gli upper condizionali
+della risposta sono **27,41 / 34,67 / 34,67 MB**: 2/3/3 PCS.
+Questa variante resta limitata dalle tre esposizioni di W. Collegando anche
+commitment W freschi al predecessore si proiettano **26,69 / 41,16 / 41,16 MB**,
+con 2/4/4 PCS e due esposizioni per root. Sono schemi candidati, non un
+minimo globale, un lifetime esteso ammesso o prove Gemma misurate.
+
+**Nessuna variante soddisfa ancora tutte le condizioni verificate.** Il
+prossimo lavoro è chiudere il confronto di lavoro completo, inclusi rinnovi
+W, conservazione dei dati di commit, sumcheck RNE aggiunto e copia/link KV;
+poi composizione ROM/ZK e routing canonico. Le geometrie FFT più piccole
+non concedono da sole lavoro totale inferiore. B12 rimane selezionato.
 
 Il precedente goal di estensione resta aperto e subordinato a questa
 priorità: collegare Prepare/prover canonici al wrapper, conservando gli

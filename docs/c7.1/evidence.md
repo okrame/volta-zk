@@ -198,6 +198,12 @@ costruzione selezionata restano invariati.
 
 ### Joint-state native transition and retained wrapper
 
+[Record immutabile](../../benchmarks/results/c71-joint-native-2026-09-11-dc635fc402ae.json)
+dal commit `dc635fc402ae`, con `git_dirty:false`, hash del binario, build,
+comandi e output dei dodici controlli. Ogni invocazione Rust è seriale,
+un worker Rayon, limitata a 60 s/2 GiB. I byte esatti di queste emissioni
+sono nel record; dipendono dalle frontiere Merkle delle sfide fresche.
+
 Il nuovo [runner test-only](../../rust/volta-pcs/src/c71_matrix/gemma/native/joint_state.rs)
 esegue tre transizioni con W/D12 installato e S/D13: link W/KV con MAC
 originali condivisi, range i16 simmetrico W, range byte A, padding zero,

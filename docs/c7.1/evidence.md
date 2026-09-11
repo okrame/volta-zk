@@ -170,6 +170,24 @@ persistenti e i prodotti dei covettori per ogni prefisso. Conserva la voce
 t*M in aumento nella candidata fold-6: il minor encode iniziale non vale
 come confronto del lavoro totale. I campi di non ammissione restano falsi.
 
+### Joint W/A/KV state screen
+
+Lo screen aggiunge uno stato unico S/D36 e conserva il link PCS al W/D35
+installato prima del primo prompt. Gli upper completi condizionali sono
+26.653.252 / 28.444.684 / 28.444.684 byte, due PCS per risposta.
+Setup, nuovi commitment e aperture sono contati in ogni prefisso;
+il minor costo delle query è distinto dalle maggiori celle dei sumcheck
+iniziali. Lavoro totale e sicurezza completa restano non verificati.
+
+Il controllo algebrico finito verifica il trasporto delle forme W/A ai
+nuovi offset con gli originali MAC e distingue W installato, ultimo KV,
+nuove sorgenti A e padding zero. Non è una composizione FS.
+Le geometrie sintetiche PCS aggiunte sono W/D35 a una esposizione
+(4.000.792–6.323.480 byte) e S/D36 a due (5.288.656–7.990.736).
+Il positivo piccolo copre anche una esposizione e D13/fold iniziale 5,
+sempre con target falso e troncamento respinti. Il dispatch C71 e la
+costruzione selezionata restano invariati.
+
 ## Native component evidence
 
 Il [catalogo dei controlli nativi](../procedures/build-and-test.md#rust-and-resource-limits)

@@ -572,11 +572,20 @@ Calibrazione, hardware e completa accettazione canonica rimangono separati.
 
 La richiesta corrente estende lo studio della riduzione byte a PCS W,
 stato KV e batch RNE, conservando sicurezza e lavoro totale del prover.
-Lo [screen e le due schedule candidate](pcs-state-screen.md) distinguono
-W con tre esposizioni da W rinnovato con collegamento same-W. Non cambiano
+Lo [screen delle schedule candidate](pcs-state-screen.md) distingue
+W con tre esposizioni, W rinnovato e stato unico W/A/KV. Non cambiano
 il protocollo selezionato in security §§1–3. Il raggruppamento RNE senza
 padding aggiunto e i nuovi parametri PCS restano test-only; gli upper wire
 proiettati non sono certificati completi verificati.
+
+La [candidata a root unica](pcs-state-screen.md#stato-unico-wakv-con-installazione-separata)
+colloca W/D35, A/KV/D34 e un quarto zero in S/D36. Conserva la PCS del W
+installato prima del primo prompt; poi ogni risposta apre soltanto vecchio
+e nuovo S. Le forme originali e i due alphabet range devono essere
+trasportati ai rispettivi offset, e il quarto zero deve essere vincolato.
+I piccoli controlli algebrici/PCS e i nuovi conteggi non dimostrano ancora
+questa composizione, la ZK congiunta o lo schedule fisico. Il protocollo
+B12 selezionato e i suoi cap di dominio restano quelli di security §§1–3.
 
 Per questo esperimento il proprietario autorizza memoria persistente
 aggiuntiva **fuori H100**. Questa eccezione supera il divieto di spill e

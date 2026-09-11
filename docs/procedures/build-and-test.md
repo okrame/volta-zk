@@ -126,7 +126,10 @@ Con la stessa build mirata, eseguire separatamente
 `c71_rne_unpadded_groups_cover_without_extra_cells` e
 `c71_b12_rne_joint_bytes_canonical_geometry`: un worker Rayon,
 `--test-threads=1 --nocapture`, 60 s/2 GiB per invocazione.
-Il positivo PCS è D12; il conteggio D34/D35 è un codec sintetico. Conservare
+Il positivo PCS è D12/D13; i conteggi D34/D35/D36 sono codec sintetici.
+La geometria include W installato a una esposizione e stato unico D36
+a due; il dispatch canonico non ammette per questo il nuovo dominio.
+Conservare
 il positivo RNE condiviso, il codec PCS B12 e la composizione ridotta dopo
 cambiamenti ai helper. Nessuno di questi controlli esegue lo stato mobile
 canonico, misura il lavoro completo o amplia l'autorizzazione hardware.

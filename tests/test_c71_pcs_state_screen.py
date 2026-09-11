@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 from fractions import Fraction
+from math import prod
 
 
 def test_pcs_state_screen_counts_full_envelopes_and_keeps_work_unadmitted():
@@ -49,6 +50,28 @@ def test_pcs_state_screen_counts_full_envelopes_and_keeps_work_unadmitted():
                     'initial_salted_rows_created', 'initial_stored_digests_created', 'initial_private_pad_fp'):
             assert kept[key] < old[key] and rolling[key] < old[key]
 
+    joint = r['joint_state']
+    assert not joint['selected'] and not joint['complete_security_proven']
+    assert joint['full_prover_work'] is None and not joint['full_work_nonincrease_verified']
+    assert [c['source_PCS_count'] for c in joint['cases']] == [2, 2, 2]
+    assert [c['complete_response_interval'][1] for c in joint['cases']] == [26653252, 28444684, 28444684]
+    assert all(c['complete_response_interval'][1] < 30_000_000 for c in joint['cases'])
+    # W is installed before the first prompt: its PCS must not disappear when
+    # W is merged into the first state root. A new root alone is insufficient.
+    assert joint['installed_W']['exposures'] == 1 and joint['state']['exposures'] == 2
+    assert joint['cases'][0]['installed_W_PCS_included']
+    assert all(c['explicit_zero_quarter_cells'] == 1 << 34 for c in joint['cases'])
+    for t, prefix in enumerate(joint['prefixes'], 1):
+        old, new = prefix['baseline'], prefix['joint']
+        assert new['initial_commit_calls'] == [1, t]
+        assert new['PCS_calls'] == [1, 2*t-1]
+        for cost in ('initial_encoded_base_cells', 'initial_radix2_butterflies',
+                     'fresh_encoded_extension_cells', 'fresh_radix2_butterflies',
+                     'power_covector_dot_terms'):
+            assert new[cost] < old[cost]
+        assert new['initial_sumcheck_source_cells'] > old['initial_sumcheck_source_cells']
+        assert not prefix['full_work_nonincrease_verified']
+
     # Prefix equality must cover every old cell, including the final accepted K.
     # On a Boolean point eq selects precisely that cell; any single alteration
     # produces a nonzero multilinear difference. Padding is part of the layout.
@@ -71,3 +94,52 @@ def test_pcs_state_screen_counts_full_envelopes_and_keeps_work_unadmitted():
         assert (key - sum(w*m for w, m in zip(weights, tags))
                 - delta*sum(w*x for w, x in zip(weights, source))) % p == 0
         assert sum(w*(x-y) for w, x, y in zip(weights[:6], old, bad)) % p != 0
+
+
+def test_joint_root_rebases_original_forms_and_checks_installation_kv_and_padding():
+    # Finite algebra check of the proposed routing, NOT a PCS/FS composition test.
+    p, delta = 101, 19
+    w = [3, -5, 7, 11, 13, 17, 19, 23]
+    a0 = [29, 31, 37, 41]
+    a1 = [29, 31, 43, 47]  # first two cells are accepted KV, including its tail
+    s0, s1 = w+a0+[0]*4, w+a1+[0]*4
+
+    def eq(point):
+        return [prod(
+            (r if i >> (len(point)-1-j) & 1 else 1-r
+             for j, r in enumerate(point))) % p for i in range(1 << len(point))]
+
+    def dot(x, y):
+        assert len(x) == len(y)
+        return sum(a*b for a, b in zip(x, y)) % p
+
+    # Rebase cubes, retaining the SAME authenticated target/key for both roots.
+    for original, offset, point in [(w, 0, [2, 3, 5]), (a0, 8, [7, 11])]:
+        form = eq(point)
+        merged = [0]*16
+        merged[offset:offset+len(form)] = form
+        value = dot(original, form)
+        tag = 53
+        key = (tag+delta*value) % p
+        assert dot(s0, merged) == value
+        assert (key-tag-delta*dot(s0, merged)) % p == 0
+        # An incorrect offset must not silently retarget the original MAC.
+        shifted = merged[1:]+merged[:1]
+        assert (key-tag-delta*dot(s0, shifted)) % p != 0
+
+    # Every W cell needs the installation link even on the first response.
+    # Later links also cover the final accepted KV cell; suffix zero is separate.
+    for cell in range(16):
+        bad = s1.copy()
+        bad[cell] += 1
+        if cell < 8:
+            assert bad[cell] != w[cell] and s0[cell] == w[cell]
+        elif cell < 10:
+            assert bad[cell] != s0[cell]
+        elif cell >= 12:
+            point = [(cell-12) >> 1, (cell-12) & 1]
+            assert dot(bad[12:], eq(point)) != 0
+        else:
+            # Current auxiliary cells are constrained by inference/range,
+            # not by equality with the previous response.
+            assert s1[cell] != s0[cell]

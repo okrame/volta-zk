@@ -110,6 +110,54 @@ def retained_work(old, rolling):
             'current KV preparation and range', 'physical cache placement and transfer schedule'])
 
 
+def joint_state(old, rolling_w, rolling_a, cases):
+    """One mobile root, retaining the separate pre-prompt W installation link."""
+    installed = geometry(35, queries=456, exposures=1, first=7, step=4, rate=4, ell=457)
+    state = geometry(36, queries=456, exposures=2, first=8, step=4, rate=4, ell=913)
+    wire, work = [], []
+    partial_costs = ('initial_encoded_base_cells', 'initial_radix2_butterflies',
+                     'fresh_encoded_extension_cells', 'fresh_radix2_butterflies',
+                     'power_covector_dot_terms')
+    for slot, case in enumerate(cases):
+        # S = W[D35] || A_with_old_KV[D34] || zero[D34]. No free padding.
+        assert case['rolling_A_live_bytes'] <= 1 << 34
+        count = 1 + bool(slot)
+        interval = [case['rolling_W_and_KV_interval'][e]
+            - count*(rolling_w['wire']['wire_interval'][e]+rolling_a['wire']['wire_interval'][e])
+            + count*state['wire']['wire_interval'][e]
+            + (installed['wire']['wire_interval'][e]+36 if slot == 0 else 0)
+            for e in (0, 1)]
+        wire.append(dict(old_tokens=case['old_tokens'], source_PCS_count=2,
+            complete_response_interval=interval, current_state_dimension=36,
+            explicit_zero_quarter_cells=1 << 34,
+            installed_W_PCS_included=(slot == 0), native_certificate_verified=False))
+        t = slot+1
+        previous = dict(initial_commit_calls=[1+t, t+t*(t+1)//2],
+                        PCS_calls=[t, t*(t+1)//2])
+        merged = dict(initial_commit_calls=[1, t], PCS_calls=[1, 2*t-1])
+        for key in partial_costs:
+            calls = 'initial_commit_calls' if key.startswith('initial_') else 'PCS_calls'
+            previous[key] = sum(n*p[key] for n, p in zip(previous[calls], old))
+            merged[key] = sum(n*p[key] for n, p in zip(merged[calls], (installed, state)))
+        # These larger source domains are not concealed by cheaper query/DFT phases.
+        previous['initial_sumcheck_source_cells'] = sum(n*(1 << p['h'])
+            for n, p in zip(previous['PCS_calls'], old))
+        merged['initial_sumcheck_source_cells'] = (1 << 35)+(2*t-1)*(1 << 36)
+        work.append(dict(responses=t, baseline=previous, joint=merged,
+            retained_payload_bytes_before_promotion=(installed['retained_initial_payload_bytes']
+                +state['retained_initial_payload_bytes'] if t == 1
+                else 2*state['retained_initial_payload_bytes']),
+            full_work_nonincrease_verified=False))
+    return dict(credit=False, selected=False, complete_security_proven=False,
+        installed_W=installed, state=state, cases=wire, prefixes=work,
+        lifetime='three attempts screened; finite-profile security extension unproved',
+        full_prover_work=None, full_work_nonincrease_verified=False,
+        unresolved=['D36 native dispatch and canonical positive certificate',
+            'same installed W and cumulative KV composition, including first-response link',
+            'extra zero quarter, larger initial sumchecks and rebased source forms',
+            'RNE work and ROM/ZK resource census', 'host storage, peak HBM and all transfers'])
+
+
 def report():
     current = base.b12_pcs_binding_assessment()
     old = [geometry(h) for h in (35, 34)]
@@ -180,6 +228,7 @@ def report():
             best_parameters={k:best[0][k] for k in ('queries','first','step')},
             best_two_PCS_upper=sum(p['wire']['wire_interval'][1] for p in best)),
         cases=cases, retained_commit_work=retained_work(old, [rolling_w, chosen[1]]),
+        joint_state=joint_state(old, rolling_w, chosen[1], cases),
         full_work_unresolved=['RNE added sumcheck and scheduling (new padding removed)', 'rolling KV copy and link forms',
             'W refresh commitment, equality form and second W PCS; retained data IO',
             'all FFT/fold/hash/PCG work, setup, replay, serialization and off-H100 IO',

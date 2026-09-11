@@ -22,9 +22,13 @@ impl TwoAdicSubgroupDft<Goldilocks> for CountDft {
 }
 
 fn candidate(h: usize, exposures: usize) -> ZkWhirConfig<E, Goldilocks, Fs> {
+    parameters(h, exposures, if h <= 14 { 4 } else { 6 })
+}
+
+fn parameters(h: usize, exposures: usize, first: usize) -> ZkWhirConfig<E, Goldilocks, Fs> {
     let queries = 456;
     let ell = exposures * queries + 1;
-    let strategy = FoldingFactor::ConstantFromSecondRound(if h <= 14 { 4 } else { 6 }, 4);
+    let strategy = FoldingFactor::ConstantFromSecondRound(first, 4);
     let folds = strategy.compute_folding_schedule(h).unwrap();
     let mut remaining = h;
     let rates: Vec<_> = folds
@@ -64,10 +68,9 @@ fn candidate(h: usize, exposures: usize) -> ZkWhirConfig<E, Goldilocks, Fs> {
 
 #[test]
 fn c71_pcs_tuning_valid_original_mac_and_codec() {
-    let h = 12;
-    for exposures in [3, 2] {
+    for (h, exposures, first) in [(12, 3, 4), (12, 2, 4), (12, 1, 4), (13, 2, 5)] {
         for tuned in [false, true] {
-            let c = if tuned { candidate(h, exposures) } else { b12::config(h).unwrap() };
+            let c = if tuned { parameters(h, exposures, first) } else { b12::config(h).unwrap() };
             let mut model = Model {
                 domain: Domain::Flat(h),
                 weights: (0..1 << h).map(|i| (i % 31) - 15).collect(),
@@ -144,10 +147,13 @@ fn c71_pcs_tuning_valid_original_mac_and_codec() {
 
 #[test]
 fn c71_pcs_tuning_canonical_geometry() {
-    for (h, exposures, fixed, upper) in
-        [(35, 3, 5_157_568, 7_932_608), (34, 2, 4_434_784, 7_136_864)]
-    {
-        let c = candidate(h, exposures);
+    for (h, exposures, first, fixed, upper) in [
+        (35, 3, 6, 5_157_568, 7_932_608),
+        (34, 2, 6, 4_434_784, 7_136_864),
+        (35, 1, 7, 4_000_792, 6_323_480),
+        (36, 2, 8, 5_288_656, 7_990_736),
+    ] {
+        let c = parameters(h, exposures, first);
         assert!(c.mask_groups().iter().all(|g| g.shape == c.sumcheck_mask));
         for (i, r) in
             c.round_parameters.iter().chain(std::iter::once(&c.final_round_config())).enumerate()

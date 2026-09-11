@@ -126,6 +126,16 @@ commitment W freschi al predecessore si proiettano **26,69 / 41,16 / 41,16 MB**,
 con 2/4/4 PCS e due esposizioni per root. Sono schemi candidati, non un
 minimo globale, un lifetime esteso ammesso o prove Gemma misurate.
 
+La nuova [candidata con stato unico W/A/KV](pcs-state-screen.md#stato-unico-wakv-con-installazione-separata)
+porta gli upper a **26,65 / 28,44 / 28,44 MB**, con due PCS per risposta:
+W installato e S al primo turno, predecessore S e nuovo S nei successivi.
+Il collegamento al W fissato prima del prompt resta incluso. Il dominio
+S/D36 aumenta le celle dei sumcheck iniziali, ma riduce geometrie FFT e
+termini delle query nei tre prefissi. Richiede circa 10,31 TB di payload
+persistente prima delle promozioni successive, esclusi workspace e IO.
+È ora la pista da verificare per il confronto congiunto byte/lavoro;
+non è selezionabile dal dispatch e non ha un positivo canonico completo.
+
 Il kernel PCS permette ora di conservare i dati iniziali del commitment:
 il confronto D12 mantiene byte/FS identici ed elimina l'encode ripetuto,
 senza rinnovare le esposizioni. Il wrapper C71 resta da collegare alla cache.
@@ -136,7 +146,8 @@ promozione, esclusi workspace, allocator e trasferimenti; non è una misura.
 
 **Nessuna variante soddisfa ancora tutte le condizioni verificate.** Il
 prossimo lavoro è chiudere il confronto di lavoro completo, inclusi rinnovi
-W, covettori delle query, sumcheck RNE aggiunto e copia/link KV;
+W, nuovi domini dei sumcheck iniziali, covettori delle query, sumcheck RNE
+aggiunto e copia/link KV;
 poi composizione ROM/ZK e routing canonico. Le geometrie FFT più piccole
 non concedono da sole lavoro totale inferiore. B12 rimane selezionato.
 

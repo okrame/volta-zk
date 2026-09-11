@@ -7,7 +7,7 @@
 La variante studiata combina PCS con parametri ridotti, RNE in gruppi senza
 padding aggiunto e KV cumulativo nel nuovo snapshot. Il solo KV cumulativo
 non risolve il lifetime di W: il commitment B12 installato ha tre esposizioni.
-Si distinguono quindi due costruzioni, entrambe **non selezionate**:
+Le prime due costruzioni restano **non selezionate**:
 
 | O | B12 attuale, upper | KV cumulativo, W a tre esposizioni | KV e W entrambi collegati al predecessore |
 |---:|---:|---:|---:|
@@ -29,6 +29,13 @@ di tentativi pianificati, ma paga una PCS W aggiuntiva dopo il primo turno.
 Non è dimostrato un minimo globale: lo screen visita soltanto 60 geometrie.
 Il minimo wire della famiglia usa 448 query; il componente nativo studiato
 ne usa 456. Il margine di questo screen PCS non sostituisce il bound completo.
+
+Una terza candidata, [stato unico W/A/KV](#stato-unico-wakv-con-installazione-separata),
+proietta **26.653.252 / 28.444.684 / 28.444.684 byte** completi, pagando
+anche il collegamento al W installato prima del primo prompt. Usa due PCS
+per risposta e riduce i termini delle query nei tre prefissi confrontati.
+Il dominio D36 aggiunge però padding e lavoro nei sumcheck iniziali.
+È la pista da verificare per il vincolo congiunto byte/lavoro; non è ammessa.
 
 **L'obiettivo del proprietario resta aperto:** manca la verifica di lavoro
 totale non crescente e la composizione di sicurezza della candidata. Non
@@ -182,6 +189,81 @@ contro la baseline, composizione ROM/ZK/risorse, routing canonico e prova
 completa valida. I lemmi `Mac.Valid.add/smul/sum` e l'induzione KV già
 citati in [security §6](security.md#6-risorse-riuso-formale-e-confine-runtime)
 supportano le identità; non dimostrano da soli questa nuova costruzione.
+
+## Stato unico W/A/KV con installazione separata
+
+La terza candidata mantiene una root W iniziale, fissata **prima del primo
+prompt**, e crea per ciascuna risposta uno stato privato immutabile:
+
+```text
+S_j[D36] = W_j[D35] || A_j_con_KV_precedente[D34] || zero[D34].
+```
+
+W contiene gli i16 simmetrici del modello; A contiene byte e le sorgenti
+previste dalle ricette. Non si applica lo stesso alphabet ai due blocchi.
+Le forme W originali restano all'offset zero, le forme A/KV ricevono
+l'offset pubblico 2^35. Range W e range A mantengono domini D35 e D34:
+i loro MAC terminali entrano nel batch lineare della stessa root S.
+Non si sostituisce il range i16 con quello byte. Il quarto finale è
+esplicitamente zero e richiede una forma casuale con target noto zero;
+non è witness libero, né un costo di elaborazione omesso.
+
+Al primo turno le PCS sono **W installato + S_0**. Dopo entrambe le root,
+un MAC originale condiviso collega una forma casuale di tutto W installato
+al blocco W di S_0. Omettere questa prima PCS cambierebbe la garanzia in
+«W scelto dopo il prompt»: l'upper di 20,33 MB ottenuto omettendola non
+è un risultato della candidata. Dal secondo turno si aprono soltanto
+**S_(j-1) + S_j**. Le forme di uguaglianza collegano W e tutto il KV
+precedentemente accettato, incluso l'ultimo token, con gli stessi MAC
+nei due batch. Le altre sorgenti A correnti sono vincolate dall'inferenza,
+non dall'uguaglianza col vecchio snapshot. Le root precedono le nuove
+sfide e la promozione avviene soltanto dopo tutti i controlli; abort termina.
+
+Questo dà l'induzione same-W/KV interattiva condizionata alla correttezza
+delle PCS, delle forme e dei consumer originali. Il test finito verifica
+il trasporto dei MAC sotto gli offset e copre alterazioni di W iniziale,
+ultimo KV e padding. Non è una prova ROM/ZK: nuovi blocchi FS, simulatore,
+esposizioni congiunte e risorse della riduzione restano da comporre.
+
+| PCS | Dominio | Esposizioni | Primo fold, poi 4 | ell | Intervallo wire |
+|---|---:|---:|---:|---:|---:|
+| W installato | D35 | 1 | 7 | 457 | 4.000.792–6.323.480 |
+| Stato S | D36 | 2 | 8 | 913 | 5.288.656–7.990.736 |
+
+Entrambe usano 456 query e rate factor 4; i domini iniziali sono 2^31,
+entro la two-adicity Goldilocks. Le maschere restano comuni dentro ciascuna
+PCS. Si confrontano le forme native del codec con questi parametri, ma
+il dispatch C71 selezionato resta D35/D34 e **non ammette S/D36**.
+Il positivo piccolo aggiunge W a una esposizione e D13 con primo fold 5;
+non è un'esecuzione del nuovo protocollo di stato.
+
+Il conto completo sostituisce le quattro PCS mobili con le due S,
+mantenendo prudenzialmente i loro frame e la riserva metadata di 128 byte.
+Al primo turno aggiunge la PCS di installazione e 36 byte per il link.
+I gruppi RNE senza padding aggiunto e tutti gli altri consumer restano
+nel conto. Ne risultano gli upper 26,65/28,44/28,44 MB; non si eliminano
+setup, bootstrap o il costo della root di installazione dal lavoro.
+
+Per un prefisso di T risposte si creano una volta W installato e T stati;
+le PCS sono una su W e 2T-1 su S. Il numero di root aperte per risposta
+è costante, entro la capacità finita dichiarata. Il payload conservato
+prima della prima promozione è 7.834.022.682.560 byte; successivamente
+due S sommano **10.307.925.245.888 byte**, circa 9,375 TiB fuori H100.
+Valgono le stesse esclusioni di allocator, workspace e trasferimenti
+del conto precedente. Nessuna allocazione canonica è stata eseguita.
+
+| Prefisso | Termini covettori B12 | Termini stato unico | Celle sorgente sumcheck B12 | Celle stato unico |
+|---:|---:|---:|---:|---:|
+| 1 | 274.877.841.408 | 261.133.996.032 | 51.539.607.552 | 103.079.215.104 |
+| 2 | 641.381.629.952 | 522.267.992.064 | 120.259.084.288 | 240.518.168.576 |
+| 3 | 1.099.511.365.632 | 783.401.988.096 | 206.158.430.208 | 377.957.122.048 |
+
+Anche le geometrie DFT iniziali e fresche diminuiscono in ogni prefisso;
+la tabella mostra il costo in aumento invece di compensarlo con un peso
+arbitrario. Le celle sommano i domini di ingresso alle PCS, non tutte le
+operazioni dei sumcheck lineari/PCS. Il kernel dei covettori è ancora t*M:
+questa riduzione finita non scarica il contratto uniforme delle sorgenti.
+Contabilità completa, schedule fisico e positivo canonico restano necessari.
 
 ## Dati iniziali conservati: uguaglianza della prova e lavoro evitato
 

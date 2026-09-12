@@ -61,3 +61,26 @@ def test_base_field_scalar_orthomorphism_reveals_delta_with_one_inverse():
             recovered_offset = (sibling+pow(2, -1, 5)*x) % 5
             recovered_delta = (mb-recovered_offset)*pow(beta, -1, 5) % 5
             assert recovered_delta == delta
+
+
+def test_zero_payload_reveals_delta_before_check_for_any_hash():
+    # Enumerate every H:Fp->Fp, not just invertible or affine functions.
+    # This uses only forward H queries and works in characteristic two too.
+    for p in (2, 5):
+        for h in product(range(p), repeat=p):
+            for delta, c0 in product(range(p), repeat=2):
+                values, tags = (0, 1, 1), (1, 1, 1)
+                keys = tuple((m-x*delta) % p for x, m in zip(values, tags))
+                d = (values[1], (values[2]-1) % p)  # Last gamma=s-d=1.
+                kr = tuple((-keys[j+1]-d[j]*delta) % p for j in range(2))
+                left = (c0-kr[0]) % p
+                right = (keys[0]-left) % p
+                last_left_sum = (h[left]+h[right]) % p
+                c1 = (kr[1]+last_left_sum) % p
+                # Receiver: beta=0 makes offset=M(beta) known. The first
+                # d was honest, so the entire tree is known from c0.
+                known_left = (c0+tags[1]) % p
+                known_right = (tags[0]-known_left) % p
+                known_sum = (h[known_left]+h[known_right]) % p
+                recovered_delta = (c1+tags[2]-known_sum) % p
+                assert recovered_delta == delta

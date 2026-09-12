@@ -694,7 +694,14 @@ non assumere sempre abort. Nel ramo RPM, sigma=c*id con c nel campo
 base diverso da 0,1 espone Delta mediante una sola query inversa;
 questa istanza è esclusa, anche con i check separati. Sigma=u*id su
 Fp3 evita quella cancellazione, ma non fornisce già la riduzione.
-ROM diretto, realizzazione concreta e simulazione malevola rimangono aperti.
+Il [payload zero](construction-screen.md#payload-zero-controllo-necessario-prima-delle-correzioni)
+espone Delta prima del check anche nel ROM: il ramo letterale che lo
+ammette è escluso. È candidata una prova preventiva beta*eta=1 sui MAC
+originali con il batch prodotti esistente, t righe inverse e una maschera
+Fp3. Con i check per blocco porta il sottototale LPN3 a 121,49 MB nelle
+due direzioni, prima di corpo e voci mancanti. Distribuzione F*, NoPeek,
+FS e bound composto richiedono la nuova riduzione. Il controllo non
+sana sigma scalare o i cammini non binari; il bootstrap resta aperto.
 
 ### Selected reference
 

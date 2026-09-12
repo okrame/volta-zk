@@ -658,16 +658,103 @@ beta nonzero e prime correzioni. Non è un benchmark, un test del
 bootstrap nativo o una prova di sicurezza su campo piccolo. Le identità
 sopra, non la dimensione del test, estendono il risultato a Fp/Fp3.
 
-**Prossima verifica circoscritta.** Il ROM diretto non fornisce l'oracolo
-inverso usato nell'attacco, ma conserva il caso accettato con due foglie.
+**Alternative per il solo caso beta nonzero.** Il ROM diretto non fornisce
+l'oracolo inverso usato nell'attacco, ma conserva le due foglie accettate.
 Nel ramo RPM, sigma(y)=u*y con u in Fp3\Fp evita questa cancellazione
 scalare: per ogni r in Fp, sigma−r*id è invertibile. Questa proprietà
 permette di risolvere l'equazione di una query inversa in un *candidato*
 a, da validare con l'interfaccia di guess; non rivela a da L da solo.
 Non è ancora una riduzione: vanno trattati i livelli precedenti, i
 transcript adattivi e l'output Delta del verifier dopo il check. Nessuna
-permutazione concreta su Fp3 o nuova assunzione è selezionata. LPN,
-bound composto, byte completi e tempo del bootstrap restano aperti.
+permutazione concreta su Fp3 o nuova assunzione è selezionata. Prima di
+questo trasferimento va inoltre risolto il caso beta=0 qui sotto.
+
+### Payload zero: controllo necessario prima delle correzioni
+
+**Il ramo letterale della Fig. 5 con beta zero ammesso è escluso anche
+nel ROM.** Non basta cambiare sigma. Per un blocco con h>=2 e beta=0,
+il prover conosce a=K(beta)=M(beta). Sceglie `d_j=s_j` a tutti i livelli
+salvo l'ultimo, dove sceglie `d_last=s_last-1`. Qui s_j indica il seed
+della maschera di cammino, distinto dal payload beta. Con i segni della fonte,
+
+```text
+K(r_j) = -K(s_j)-d_j*Delta = -M(s_j)+(s_j-d_j)*Delta
+k = c_0-K(r_0) = c_0+M(s_0)
+Delta = c_last + M(s_last) - sum_left_last.
+```
+
+L'offset a e la prima root k sono quindi noti. Il prover riespande tutto
+l'albero con sole query **forward**, calcola sum_left_last e recupera
+Delta dall'ultima correzione prima di F_Rand/F_EQ. Il lavoro è O(B),
+senza oracolo inverso o ipotesi su H. Con Delta può poi ricostruire le
+key seed e produrre un check accettato; un controllo tardivo non ripara
+l'esposizione. Il [test](../../tests/test_c71_dory_nonbinary_path.py)
+enumera tutti gli hash F2→F2 e F5→F5, tutti i Delta e c_0, da seed MAC
+validi. La derivazione vale anche su Fp/Fp3; non è una verifica del codice
+COT pubblicato, il cui protocollo implementato non è stato ispezionato.
+
+La Fig. 2 consente al receiver corrotto di scegliere beta=0. Anche se il
+backend imponesse beta uniformi oneste, con t=1120 la probabilità di
+almeno uno zero è `1-(1-1/p)^t`, circa **2^-53,87**: non si può assorbire
+fra gli errori da 78 bit. La distribuzione regolare rilassata della fonte
+include zero. Escluderlo richiede un vincolo verificato **prima di c**,
+non una promessa del prover o il test locale `if beta == 0`.
+
+**Riparazione candidata con il batch prodotti esistente.** Il prover
+campiona beta_i esattamente in F* prima di leggere le righe seed da
+correggere, e fissa eta_i=beta_i^(-1). Trasferisce beta sui t seed payload
+già contati e eta su t righe base aggiuntive, con **2t correzioni Fp**.
+Non si usa una mappa zero→1 attribuendole la distribuzione uniforme F*.
+Sampler, loro abort e transcript rimangono da istanziare e contare.
+Una maschera Fp3 disgiunta costa altre tre righe base. Il verifier
+controlla i t prodotti sui **MAC originali corretti**, con costante 1
+pubblica, mediante il [batch già presente](../../rust/volta-pcs/src/c71_matrix/range.rs).
+Non serve una PCS per questi vettori residenti o un sumcheck per blocco.
+Tutti i seed e le correzioni sono fissati prima di lambda; nessun c Dory
+viene rilasciato finché il controllo non accetta.
+
+Usando qui i segni **nativi** `k=m+Delta*x`, il prover invia soltanto
+due scalari Fp3, 48 byte, per una maschera fresca (rho,m_rho):
+
+```text
+A = rho   + sum_i lambda^i * (beta_i*m_eta_i + eta_i*m_beta_i)
+B = m_rho + sum_i lambda^i * m_beta_i*m_eta_i
+B+Delta*A == k_rho + sum_i lambda^i*(k_beta_i*k_eta_i-Delta^2).
+```
+
+Il prodotto pubblico 1 ha tag zero e key Delta, senza nuova riga.
+La differenza è `Delta^2*sum_i lambda^i*(beta_i*eta_i-1)` per il wire
+calcolato dal prover. Un wire alterato può aggiungere solo termini di
+grado <=1 in Delta. Nel modello MAC ideale, con Delta nascosto e lambda
+uniforme dopo i valori fissati, il consueto argomento di radici dà
+`(t-1)/|K| + 2/|K|`; non un bound composto B11→Dory. La maschera fresca
+nasconde A; dato lo stato del verifier, l'equazione determina B.
+Il [controllo finito](../../tests/test_c71_dory_nonzero_precheck.py)
+verifica identità, rifiuto dello zero e gradi delle due equazioni.
+FS, NoPeek e simulazione congiunta vanno collegati alla nuova schedule;
+non si trasferiscono automaticamente i bound B12.
+
+**Nuovo costo parziale.** Aggiungendo questo precheck alla variante con
+check per blocco, `s=t*(h+5)+3`. I payload ricevuti d/z/correzioni beta/eta
+e precheck sono `8*t*(h+5)+48` byte, oltre COPE; c costa ancora `24*t*h`
+nella direzione opposta. Per la geometria LPN3:
+
+| Voce | Byte o righe |
+|---|---:|
+| Seed base B11 | 25.763 righe |
+| COPE e payload ricevuti, lower | 118.922.032 byte |
+| B11 con seal e payload, due direzioni | 121.494.153 byte |
+| Margine parziale su 130 MB | 8.505.847 byte |
+| Lower ricevuto con PCS/altro corpo B12 conservato | 141.553.084 byte |
+
+Coin/check finali, completamento, metadata e corpo restano fuori dal
+sottototale. La nuova distribuzione F* richiede i propri parametri LPN:
+le geometrie binarie della Tab. 2 non diventano per questo sicure.
+Il precheck elimina questo specifico ingresso zero; non elimina il
+recupero con sigma scalare, né dimostra la simulazione dei cammini non
+binari. **Prossimo lavoro:** cGGM concreto e riduzione malevola sotto il
+vincolo verificato beta nonzero, prima di approfondire Shout. L'arena,
+il legame agli originali e il tempo completo restano obblighi aperti.
 
 ## IO, sicurezza e criterio di riapertura
 
@@ -796,6 +883,22 @@ assert Fraction(1, 2**147) < err < Fraction(1, 2**146)
 assert (1 << 74)*err > Fraction(1, 1 << 78)
 assert t*2**(2*h) == 76_965_813_944_320
 assert split_received[2]+47_841_180-25_210_128 == 136_360_332 > 130_000_000
+
+# A zero payload cannot be charged as a <=2^-78 event for honest Fp seeds.
+zero_lower = Fraction(t, p)-Fraction(t*(t-1), 2*p*p)
+assert Fraction(1, 2**54) < zero_lower <= Fraction(t, p) < Fraction(1, 2**53)
+# Candidate nonzero guard: t inverse rows, one Fp3 mask, two Fp corrections
+# per block and two Fp3 wire scalars; all are ADDITIONAL to split checks.
+guard_seeds = t*(h+5)+3
+guard_received = 4608*guard_seeds + 8*t*(h+5)+48
+guard_subtotal = 233345+4680*guard_seeds+8*t*(h+5)+24*t*h+48
+assert guard_seeds == 25763
+assert guard_received == 118_922_032
+assert guard_subtotal == 121_494_153
+assert 130_000_000-guard_subtotal == 8_505_847
+assert guard_received+47_841_180-25_210_128 == 141_553_084 > 130_000_000
+# Only the ideal product-check term, NOT a complete FS or bootstrap bound.
+assert 2**74*Fraction(t+1, p**3) < Fraction(1, 2**107)
 ```
 
 Fonti lette nei Markdown conservati: [Dory PCG](../../sota/2025-1660-dory-streaming-vole.md),

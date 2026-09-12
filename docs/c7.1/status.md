@@ -129,9 +129,6 @@ ma non ne chiude la riduzione. Il nuovo
 risolve condizionalmente il collegamento alla forma cartesiana del
 leakage LPN; il check congiunto della fonte non fornisce automaticamente
 quel collegamento. Occorrono maschere distinte e **un solo esito AND**.
-Per LPN3 il sottototale B11+d/z/c sale a **116,22 MB**, prima delle voci
-mancanti e del corpo. Conservando la PCS e il resto del corpo B12,
-il lower ricevuto supera già **136,36 MB**: occorre cambiarli comunque.
 Il lemma presuppone coin fresche; il trasferimento FS con Q*=2^74
 non conserva i 78 bit richiesti.
 
@@ -140,9 +137,16 @@ mostra che il check può accettare due foglie autenticate: quel caso
 richiede estrazione, non abort presunto. Inoltre il port RPM con
 **sigma=c*id, c in Fp diverso da 0,1, espone Delta con una query inversa**
 ed è escluso; il risultato algebrico ha un controesempio finito riproducibile.
-La prossima verifica riguarda il cGGM Fp3 nel ROM, oppure un sigma
-diverso, con simulazione dei cammini precedenti non binari e istanza
-concreta. EA-LPN-SL, F_Rand/F_EQ e costo completo restano aperti. La
+Il [caso beta=0](construction-screen.md#payload-zero-controllo-necessario-prima-delle-correzioni)
+espone Delta anche nel ROM, prima del check: è escluso il port letterale
+che lo ammette. La riparazione candidata prova beta*beta^(-1)=1 sui MAC
+originali **prima di c**, riusando il batch prodotti. Con questo controllo
+e quelli per blocco, il sottototale LPN3 diventa **121,49 MB** nelle due
+direzioni, prima di corpo e voci mancanti. Conservando PCS/altro corpo
+B12, il lower ricevuto è già **141,55 MB**: occorre cambiarli comunque.
+Restano da provare la nuova distribuzione F*, il cGGM concreto con beta
+nonzero e la simulazione malevola. EA-LPN-SL, F_Rand/F_EQ e costo completo
+restano aperti. La
 [verifica Half-Tree](construction-screen.md#realizzazione-cggm-cosa-trasferisce-half-tree)
 esclude anche il trasferimento diretto del ramo pcGGM binario: l'hash
 finale rompe le somme richieste dall'accumulo Dory. I cGGM nel ROM

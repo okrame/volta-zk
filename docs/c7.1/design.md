@@ -717,7 +717,9 @@ usa Wolverine con rho=95 e un solo setup: il bound condizionale seed
 AES/P-521 o risorse avversarie. Con 12.883 righe riduce il
 sottototale seed/payload Dory a **40,70 MB**. Non è un bootstrap completo
 o una modifica al B11 selezionato: campo K6, suite e corrispondenza nativa
-vanno implementati e verificati; espansione, corpo e costi mancanti restano aperti.
+vanno implementati e verificati. Con l'upper B12 corrente del primo corpo
+il parziale è 105,75 MB, sotto 130 MB; F_Rand/F_EQ, security, framing e
+tempo restano aperti e quindi non è un'ammissione.
 
 ### Selected reference
 

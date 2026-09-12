@@ -62,6 +62,8 @@ def test_guarded_bootstrap_partial_screen_keeps_missing_costs_open():
         'canonical_fiber_positions': 153_931_627_888_640}
     assert screen['partial_wire_both_directions'] == 40_699_897
     assert screen['partial_margin_under_first_130MB'] == 89_300_103
+    assert screen['partial_plus_current_first_body_upper'] == 105_753_141
+    assert screen['margin_after_current_first_body_upper'] == 24_246_859
     assert screen['received_lower'] == 39_679_664
     assert screen['received_plus_retained_PCS_and_other_body_lower'] == 62_310_716
     assert screen['first_cap_margin_after_that_lower'] == 67_689_284

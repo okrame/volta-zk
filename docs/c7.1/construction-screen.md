@@ -770,6 +770,11 @@ Per il seed Fp6 della sezione seguente:
 | Lower ricevuto | 39.679.664 byte |
 | Lower ricevuto con PCS/altro corpo B12 conservato | **62.310.716 byte** |
 
+Sommando prudenzialmente l'intero upper corrente del primo corpo B12,
+65.053.244 byte, il parziale diventa **105.753.141 byte** e lascia
+**24.246.859 byte** per F_Rand/F_EQ, framing e altre voci mancanti. È un
+upper del corpo più un parziale bootstrap, non un upper completo.
+
 Il check split passa a 145,870720 bit e il suo enumeratore canonico conta
 153.931.627.888.640 posizioni. Un fattore FS meccanico `2^74` lascerebbe
 soltanto 71,870720 bit: questa candidata richiede coin interattive fresche
@@ -856,6 +861,21 @@ Delta→nodo nascosto su F5. Non è una prova UC o un'implementazione SHAKE.
 Restano da realizzare codec, rejection sampler e schedule nativa e da
 chiudere la composizione sender con guard/split, EA-LPN-SL/F_Rand/F_EQ,
 framing, tempo e accounting completo.
+
+#### F_Rand e F_EQ non sono scaricati dalle citazioni
+
+Dory tratta entrambe come funzionalità ideali. La fonte citata per F_EQ,
+[Liu et al. 2025](../../sota/2025-0614-one-bit-advantage-2pc.md), dimostra
+il proprio 2PC nell'ibrido `(F_Com,F_OT,F_OLE,F_Rand,F_EQ)` e quindi non
+realizza F_EQ. Anche la sua ottimizzazione ROM per valori ad alta entropia
+non si trasferisce automaticamente ai checksum Dory dipendenti dal rumore.
+Il commit/response/open già presente in `phase_b.rs` resta una candidata,
+ma il design B11 registra già che non scarica il commitment UC né la vista
+su rifiuto. Non gli si assegna wire o sicurezza nel totale completo.
+
+PDF e Markdown sono stati acquisiti il 2026-09-12 senza sovrascrivere
+fonti: SHA-256 `9a55f451b75b8b1a5dedcfce40067ef14bc2ca35b0202abaa5040642f8a1443c`
+e `6d42104498113df5767235d2d1e0e3c7da09e221f29028ed63cdece6c0a1d497`.
 
 ### Seed Fp6: compressione a 95 bit nel singolo setup
 

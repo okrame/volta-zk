@@ -153,6 +153,9 @@ corpo e voci mancanti. È uno screen riproducibile; il port nativo Fp6 non è im
 Col lower di PCS/altro corpo B12 e senza i vecchi P/S si arriva a
 **62,31 MB**, quindi restano 67,69 MB non ancora assegnabili: serve l'upper
 del nuovo corpo e di tutte le voci bootstrap mancanti.
+Con l'intero upper B12 corrente del primo corpo il parziale è
+**105,75 MB**, lasciando 24,25 MB: il byte cap iniziale non respinge più
+la geometria, ma F_Rand/F_EQ, security e tempo impediscono l'ammissione.
 La [candidata cGGM nel ROM separato per nodo](construction-screen.md#cggm-con-random-oracle-separato-per-nodo)
 elimina la permutazione RPM: con cammini già binari, ogni query forward al
 nodo nascosto fornisce un candidato Delta e una singola cella programmabile.

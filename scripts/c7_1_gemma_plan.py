@@ -6661,6 +6661,7 @@ def c71_dory_guarded_bootstrap_screen():
                 + payload['path_d_and_split_z_received']
                 + payload['path_guard_two_fp3_scalars'])
     other_body_lower = 47_841_180-25_210_128
+    current_first_body_upper = 65_053_244
     q = P**3
     path_error = Fraction(t*h+1, q)
     split_error = Fraction(t*2**h*(2**h-1), 2*q)
@@ -6676,6 +6677,8 @@ def c71_dory_guarded_bootstrap_screen():
         'seed_base_rows': rows, 'seed': seed, 'Dory_payload_bytes': payload,
         'partial_wire_both_directions': total,
         'partial_margin_under_first_130MB': 130_000_000-total,
+        'partial_plus_current_first_body_upper': total+current_first_body_upper,
+        'margin_after_current_first_body_upper': 130_000_000-total-current_first_body_upper,
         'received_lower': received,
         'received_plus_retained_PCS_and_other_body_lower': received+other_body_lower,
         'first_cap_margin_after_that_lower': 130_000_000-received-other_body_lower,

@@ -639,10 +639,15 @@ una misura completa né autorizza run pesanti/provider o spese.
 **Esito dello [screen minimo](pcs-state-screen.md#screen-minimo-sotto-i-tetti-assoluti)
 e del [confronto di nuove famiglie](construction-screen.md): nessuna
 costruzione completa selezionabile.** PCG silent, LogVOLE, PCS con codici,
-streaming e Akita non acquisiscono bound B12: per le nuove composizioni
+streaming, Akita e le nuove linee LogUp/Jindo/Dory non acquisiscono bound B12:
+per le nuove composizioni
 restano da istanziare campo, endpoint MAC privati, same-W/KV, ZK e risorse.
 In particolare Akita lascia la ZK a lavoro futuro; non se ne adotta il
-profilo pubblico per il modello privato. Il bootstrap corrente supera
+profilo pubblico per il modello privato. Il
+[secondo screen](construction-screen.md#estensione-lookup-frazionari-e-pcs-hiding)
+distingue evaluation hiding da apertura privata e conta i passaggi di
+ricomputazione: anche la pista LogUp/Dory resta senza ponte di campo/MAC
+e senza costo completo, non una sostituzione selezionata. Il bootstrap corrente supera
 i tetti già per le sole correlazioni P/S RNE; le strutture dense superano
 anche memoria e 50 s. La candidata W/A/KV da 10,31 TB resta fermata.
 RNE v2, parametri PCS e conservazione dei dati iniziali mantengono soltanto

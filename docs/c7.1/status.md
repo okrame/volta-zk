@@ -105,10 +105,14 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 **Selezione estesa a nuove famiglie: nessuna costruzione completa supera
 lo screen.** La riduzione della prova completa resta aperta. Il
-[nuovo confronto](construction-screen.md) copre anche PCG silent, LogVOLE,
-PCS con codici/reticoli e prover streaming. Akita con lookup Shout è la
-pista strutturalmente più interessante, ma la ZK della PCS è ancora lavoro
-futuro e manca il costo della composizione privata: non viene selezionata.
+[confronto](construction-screen.md) copre PCG silent, LogVOLE,
+PCS con codici/reticoli/gruppi, lookup frazionari e prover streaming.
+La pista strutturale più interessante è ora LogUp-GKR con PCS Dory a
+valutazione impegnata, ma il ponte Goldilocks/Fp3–MAC e lo schedule del
+witness restano senza costo completo. Non viene selezionata. Il
+[secondo screen](construction-screen.md#estensione-lookup-frazionari-e-pcs-hiding)
+respinge i backend densi anche di LogUp, Jindo e Dory, e chiarisce perché
+hiding e sumcheck streaming non risolvono da soli endpoint e ricomputazione.
 Lo steering del 2026-09-12 sostituisce lo 0,5–1,5% con **35.000.000 byte
 alla prima risposta e 40.000.000 a ciascuna successiva**, senza crescita
 del tetto. Valgono <=50 s per risposta sulla singola H100, IO incluso,
@@ -138,9 +142,11 @@ I [tre certificati ridotti](pcs-state-screen.md#inferenza-completa-ridotta-con-r
 non ricevono credito canonico, AES, multi-sessione o di lavoro totale.
 B12 rimane selezionato, senza soddisfare i nuovi obiettivi.
 
-Non si prosegue il port delle candidate respinte. Le nuove sostituzioni
-dirette non rimuovono insieme i costi di correlazioni fresche, consumer e
-PCS privata in memoria ordinaria. Il confronto distingue i rifiuti numerici
+Non si prosegue il port delle candidate respinte. Il collo di bottiglia
+è una composizione privata con consumer e PCS eseguibili nell'arena,
+senza spill del witness né replay non contabilizzato, oltre al bootstrap
+fresco. Nessuna capacità canonica soddisfa ancora congiuntamente 35/40 MB,
+50 s e lavoro totale non crescente. Il confronto distingue i rifiuti numerici
 dalle composizioni con costi ancora ignoti; non afferma un'impossibilità
 generale. Per riaprire servono tutti questi costi finiti, compreso il riuso
 globale sicuro fra sessioni, senza occultare stato dinamico o setup.

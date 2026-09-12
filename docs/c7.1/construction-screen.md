@@ -5,8 +5,8 @@
 
 **Esito: nessuna costruzione completa selezionabile, `credit:false`.**
 La ricerca comprende bootstrap silent/streaming, chosen-input VOLE,
-PCS con codici, sumcheck a memoria ridotta e PCS su reticoli con lookup
-one-hot. Le esclusioni sotto riguardano le sostituzioni specificate;
+PCS con codici, sumcheck a memoria ridotta, lookup frazionari e PCS
+hiding su reticoli o gruppi bilineari. Le esclusioni sotto riguardano le sostituzioni specificate;
 non sono un'impossibilità per tutte le combinazioni di queste famiglie.
 Non si implementa né si ottimizza una linea già respinta.
 
@@ -63,8 +63,8 @@ ricade nel primo tipo di sostituzione, non risolve la selezione.
 Il [paper appena acquisito, §§13–14](../../sota/2026-09-12-akita.md)
 conferma workspace sublineare oltre al polinomio e impegni adatti a dati
 sparsi. Per questo, insieme ai lookup
-[Shout](https://eprint.iacr.org/2025/105), è la pista più interessante
-fra quelle esaminate per evitare sia i codeword RS sia i 256 nodi foglia
+[Shout](https://eprint.iacr.org/2025/105), è interessante
+per evitare sia i codeword RS sia i 256 nodi foglia
 P/S per byte. È una priorità concettuale, **non uno screen superato**.
 La §14 lascia esplicitamente ZK al lavoro futuro. La §13.1 misura aperture
 pubbliche, distingue coefficienti da bit impegnati ed esclude planning
@@ -82,6 +82,78 @@ L'accesso in sola lettura ai polinomi è una premessa: su A gli stream
 devono essere conservati nei limiti ordinari o rigenerati. Preparazione,
 replay del forward, costruzione dei prodotti e PCS rimangono nel costo.
 Il modello Scribe, invece, concede proprio lo stato esterno qui vietato.
+
+## Estensione: lookup frazionari e PCS hiding
+
+**Nessuna nuova candidata completa supera lo screen.** La combinazione
+più interessante sul solo piano strutturale è **LogUp-GKR + PCS Dory
+con valutazione impegnata**: cambia anche il consumer e dispone già di
+un endpoint nascosto, a differenza della PCS pubblica Akita. Non viene
+selezionata: mancano il ponte al campo/MAC corrente e uno schedule del
+witness entro l'arena. Il vantaggio strutturale non è una previsione <=50 s.
+Qui Dory indica la **PCS del 2020**, non il PCG silent omonimo del 2025.
+
+Lo screen seguente precede qualsiasi port. Conserva C=3, stesso Gemma,
+semantica intera, originali e obblighi W/KV; non usa una PCS per operatore.
+Per ciascuna riga il certificato completo P1/P2/P3 e il tempo completo
+restano **ignoti**, dunque senza upper finito di ammissione. Le dimensioni
+di una singola PCS pubblicata non sostituiscono quei tre conteggi.
+
+| Linea e costo decisivo | Memoria globale / dinamica | Passaggi, traffico, crittografia e disposizione |
+|---|---|---|
+| LogUp-GKR al posto dei P/S RNE, poi PCS privata | Tabelle pubbliche riusabili; molteplicità e intermedi dipendono da A e dalle sfide. Il solo albero interno esplicito D34 costa **824.633.720.784 byte** con due Fp3 per nodo, senza foglie né fold | 34 livelli di costruzione; almeno una scrittura e successive letture degli intermedi, poi i sumcheck. La §3.3 stima circa `43N` prodotti e `29N` somme di campo per il solo GKR frazionario, con intermedi disponibili. **Respinta la materializzazione**; non si trasferiscono i 169 s della diversa costruzione a 256 foglie |
+| Jindo hiding, con consumer da sostituire | Setup pubblico/trasformazioni di W possono essere globali; `op` conserva matrici codificate, maschere e randomness. Una A/D34 densa anche a soli 8 byte/cella costa **137.438.953.472 byte**, prima del resto | Split/encode, commitment e apertura sono fasi distinte; il backend denso richiede almeno scrittura/lettura delle matrici, oltre a prodotti ring/NTT e sampling. **Respinto il layout denso**. Streaming non istanziato; inoltre la PCS pubblica y e il suo slot encoding non offre Fp3 nativo |
+| Dory PCS hiding, con LogUp e accesso al witness da sostituire | Hint privati delle righe di W possono evitare nuove MSM sui pesi; quelli di A sono dinamici. La rappresentazione densa a scalari di 32 byte costa **549.755.813.888 byte** per A/D34 | Commit A: MSM su N coefficienti; apertura: contrazione del witness più operazioni di gruppo/pairing su vettori ridotti. Commit e contrazione visitano A separatamente. **Respinto quel backend denso**; un reader packed richiede costi propri, così come il ponte Goldilocks/Fp3 ↔ campo scalare |
+
+Questi sono lower delle rappresentazioni specificate, non della memoria
+minima delle famiglie. Tutte eccedono già gli 80 GB totali, prima di W da
+61,39 GB e arena da 6,44 GB. Non serve attribuire loro una banda effettiva
+per respingerle; spostare A o `op` su host/disco violerebbe lo stesso contratto.
+Per varianti senza quelle allocazioni restano da contare witness/replay,
+bootstrap fresco, producer, range, PCS, serializzazione e IO: nessuna voce
+mancante viene sostituita da zero o da un tempo CPU riscalato alla H100.
+
+**Il nuovo sumcheck streaming chiarisce il costo della ricomputazione.**
+[Dao et al., Fig. 2 e §C.4](../../sota/2026-0587-speeding-up-sumcheck.md)
+richiedono stream enumerabili in spazio piccolo. Per il prodotto cubico,
+`k=2`, D34/D35, la schedule dà finestre **1,2,4,8,8**, poi un passaggio
+finale: **sei visite complete degli input**, non due. Il workspace del
+sumcheck è sublineare; non include la produzione dei suoi input. Applicata
+a un albero LogUp, la premessa riguarda i valori dei figli di ciascun
+livello, da conservare o rigenerare dopo le sfide. I `43N/29N` sopra non
+includono questa nuova rigenerazione. Se le sei visite leggessero W packed
+dall'esterno, sarebbero 368.368.143.360 byte, **7,37 s a 50 GB/s**; con
+15 s riservati alla crittografia rimarrebbero 27,63 s per inferenza e
+tutto il resto. È solo sensibilità sequenziale, con la banda motivata sotto,
+non uno schedule completo: ulteriori stream, copie e replay si sommano.
+Se fossero sei letture dirette di W per la prova, supererebbero anche le
+quattro ammesse dal riferimento. Il paper migliora i prodotti generici,
+ma non dimostra lavoro totale non crescente sui prefissi C7.1.
+
+**Jindo: hiding e campo non sono già il ponte richiesto.**
+La [Def. 10](../../sota/2026-0044-jindo.md) simula dati la valutazione
+pubblica `y=f(x)`; non attesta direttamente il MAC privato originale.
+Nel suo encoding (§4.1), `d` è potenza di due, `γ,δ` suoi divisori:
+il grado dello slot field `d/δ` non può essere 3. Inoltre per Goldilocks
+`p-1` ha valutazione 3-adica uno; `p=b^(d/γ)+1` forza `d/γ=1`, quindi
+`b=p-1`, anziché il radix di circa 32 bit dei benchmark. Questo esclude
+il port letterale e il trasferimento dei suoi costi, non altri encoding.
+I parametri pubblicati usano stime MSIS/MLWE e spreadness euristica;
+non forniscono i vantaggi concreti B12 a T121/M93. La verifica minima
+si ferma qui, senza progettare un wrapper o estrapolare il benchmark D20.
+
+**Dory: endpoint impegnato, ma in un altro campo.**
+Le [§§5–6](../../sota/2020-1274-dory-pcs.md) provano una valutazione
+impegnata e nascondono la matrice. L'operazione `v=LᵀM` resta una scansione
+scalare: il costo sublineare di gruppo dell'apertura non la elimina.
+Le sue identità vivono nel campo scalare del gruppo, non in Goldilocks/Fp3;
+inviare le tre coordinate come scalari non preserva automaticamente le
+riduzioni modulo p né `k=m+Delta*x`. Mancano costo e sicurezza del ponte,
+FS malevolo e composizione same-W/KV: SXDH/HVSZK non ereditano B12.
+Solo hint deterministici privati di W, senza nuove emissioni, hanno il
+riuso funzionale già autorizzato. Pubblicare o riusare commitment/blinding
+fra sessioni richiede una prova della vista congiunta; maschere delle prove
+e VOLE restano freschi. Nessun hint di A diventa globale.
 
 ## IO, sicurezza e criterio di riapertura
 
@@ -135,6 +207,23 @@ assert wire == [351_436_800, 459_571_200, 459_571_200]
 assert all(b > cap for b, cap in zip(wire, (35_000_000, 40_000_000, 40_000_000)))
 assert 8 * 2**34 == 137_438_953_472 > 80_000_000_000
 assert 35 * 50_000_000_000 == 1_750_000_000_000 < 2_199_023_255_552
+
+# Nuove famiglie: lower dei layout espliciti, non memoria minima universale.
+assert 48 * (2**34 - 1) == 824_633_720_784 > 80_000_000_000
+assert 32 * 2**34 == 549_755_813_888 > 80_000_000_000
+p = 2**64 - 2**32 + 1
+assert (p - 1) % 3 == 0 and (p - 1) % 9 != 0
+assert all(2**i != 3 for i in range(36))  # gradi slot Jindo ammessi
+for ell in (34, 35):
+    # Fig. 2, d=3: delta=2, alpha=2, k=2, cutoff ell/2.
+    consumed, window, windows = 0, 1, []
+    while 2 * (ell - consumed) > ell:
+        window = min(window, ell // 4, ell - consumed)
+        windows.append(window)
+        consumed += window
+        window *= 2
+    assert windows == [1, 2, 4, 8, 8] and len(windows) + 1 == 6
+assert 6 * 61_394_690_560 == 368_368_143_360
 ```
 
 Fonti lette nei Markdown conservati: [Dory PCG](../../sota/2025-1660-dory-streaming-vole.md),
@@ -148,3 +237,15 @@ Il nuovo [PDF Akita](../../sota/2026-09-12-akita.pdf) proviene da
 e convertito localmente con AnyDoc 0.1.7. SHA-256 PDF:
 `b82969386ed3f006cf86ba95eb0ab02cd9f741ae79c98611680531b81a34f67d`;
 Markdown: `566fe8c55c55bf331eb243872d66dbdbacb2df33b7642118c65e15ad44e608c6`.
+
+Nuove fonti del secondo screen, acquisite il 2026-09-12 e convertite con
+AnyDoc 0.1.7; nessuna fonte precedente sovrascritta. Metadati primari:
+[sumcheck](https://eprint.iacr.org/2026/587),
+[Jindo](https://eprint.iacr.org/2026/044),
+[Dory PCS](https://eprint.iacr.org/2020/1274).
+
+| PDF conservato / URL di acquisizione | SHA-256 PDF / Markdown omonimo |
+|---|---|
+| [Sumcheck](../../sota/2026-0587-speeding-up-sumcheck.pdf), `https://cs.nyu.edu/~zd2131/papers/26-587.pdf` | `04ac867dc2d2e68f967bbb4550c1afe1340439e8b0aae1611464c4e433f8a1a7` / `630c077243d532bebfeb7b20cdc28280da40990439c6adcd101e23e2889d4f20` |
+| [Jindo](../../sota/2026-0044-jindo.pdf), `https://eprint.iacr.org/2026/044.pdf` | `ebf0f9634b2d6a5c42e8f4810a7b9da07c3edd760cfca3d5a8159838d2bdc70e` / `c75c0bf0539a42ad4887c6cb1df54e635bfa09367910901b6a53d59224f45bc4` |
+| [Dory PCS](../../sota/2020-1274-dory-pcs.pdf), `https://eprint.iacr.org/2020/1274.pdf` | `d0789bc9497d5532b53065176ed3c85d5d3360b23d20fd7e839174ec23518a52` / `b78c7f401ee77c6fadaa991a9287a815f0a6da960d3e115055db718e116d42a6` |

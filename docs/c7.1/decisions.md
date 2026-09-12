@@ -14,8 +14,8 @@ essere globale del modello, preparata/caricata una volta e riutilizzabile
 fra utenti/sessioni senza crescita, anche sequenziale. Il prover completo
 deve rientrare in **50 s**, accessi inclusi; non si sviluppano candidate
 giudicate incompatibili. Il primo certificato ha cap **35 MB**; il
-proprietario ha chiarito che i successivi possono **incrementare dello
-0,5–1,5% rispetto alla prima proof**, senza crescita composta per turno.
+proprietario ha fissato per ciascuno dei successivi **40.000.000 byte**,
+senza crescita per turno; il precedente criterio 0,5–1,5% è sostituito.
 Il [contratto corrente](design.md#owner-authorized-pcsstate-experiment)
 ferma quindi la candidata densa W/A/KV con 10,31 TB di dati dinamici:
 liberare il predecessore non trasforma il successore in una cache globale.
@@ -101,9 +101,9 @@ selezionata. Nessuna di queste linee si riattiva per aggirare un costo ignoto.
 - Calibrazione/qualità Gemma, provenienza dei pesi e confronto BF16, full E2E,
   contesti fino a 4.096 e schedule fisico: obblighi successivi distinti dalla
   corrispondenza nativa su grafi piccoli. Non sono prestazioni acquisite.
-- Cinque letture W o circa 20 GB di spill host: opzioni da confrontare se
-  migliorano il tempo completo. Contare scrittura+rilettura, calcolo evitato,
-  staging e overlap dimostrato; il riferimento resta quattro letture/no spill.
+- Cinque letture W o circa 20 GB di spill host: opzioni storiche fuori dal
+  contratto corrente. Lo steering del 2026-09-12 esclude lo spill dinamico;
+  il riferimento resta quattro letture/no spill, anche con memoria globale W.
 - Profilo ibrido INT16 GEMM con BF16/FP32 per non-lineari: non adottato.
   Richiede stesso checkpoint/dati/tokenizzazione, confronto qualità/costo e
   semantica provata di cast, RNE/FMA, subnormali, non-finiti e KV. Il

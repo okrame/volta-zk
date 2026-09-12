@@ -379,8 +379,9 @@ RNE: `range::verify` impone 65.535 campi per l'alfabeto simmetrico 32767,
 quindi `4 + 24*65535 = 1.572.844` byte di wire. Sommato al minimo RNE,
 porta il limite inferiore a **30.944.292/31.014.852/31.014.852 byte**.
 Questo è ancora un sottototale. Includendo le PCS, il conteggio esteso
-sotto supera i tetti correnti di 35/40 MB per ogni calibrazione, già
-prima del bootstrap per sessione.
+sotto supera i 40 MB delle risposte successive per ogni calibrazione,
+già prima del bootstrap. Il nuovo tetto iniziale di 70 MB non è escluso
+dal solo corpo; il bootstrap resta da aggiungere.
 
 Il precedente reader totale da 16.777.216 byte era incompatibile con
 qualsiasi prova canonica completa. Il nuovo cap deriva dal conteggio
@@ -464,9 +465,9 @@ Sommando una PCS W e `slot+1` PCS A, corpo e header, si ottiene:
 Entrambi gli estremi includono ora i due vettori gamma da 2.277 byte
 ciascuno, la cui lunghezza è verificata sulle configurazioni Rust D35/D34.
 L'header completo è quindi `5875 + 720*slot` byte.
-Il lower supera 35 MB per ogni calibrazione ammessa, anche omettendo
-GKR congiunti e fratelli Merkle. L'upper qui deriva dagli schemi, non
-dall'ipotesi che le PCS saturino il cap. Il rapporto conserva `credit:false`
+Il lower supera 40 MB nelle continuazioni per ogni calibrazione ammessa,
+anche omettendo GKR congiunti e fratelli Merkle. L'upper qui deriva dagli
+schemi, non dall'ipotesi che le PCS saturino il cap. Il rapporto conserva `credit:false`
 e assenza di una misura su prove valide.
 
 ### Canonical transport limits and complete synthetic framing
@@ -574,7 +575,9 @@ Calibrazione, hardware e completa accettazione canonica rimangono separati.
 
 ### Owner-authorized PCS/state experiment
 
-**Steering del proprietario del 2026-09-12, prevalente sui piani precedenti.**
+**Steering del proprietario del 2026-09-12, con ultima deroga 70/40 MB.**
+Il tetto iniziale di 70.000.000 sostituisce quello di 35.000.000 byte;
+le successive restano a 40.000.000, senza incremento cumulativo.
 Per «prova» si intende il **certificato completo**, coerentemente con
 [C4.1](../c4.1-seed-streaming-fiat-shamir.md#objective-and-terminology).
 Il corpo serializzato della risposta è una sua voce, non l'intero costo.
@@ -582,7 +585,7 @@ Indicando con R_j quel corpo e con B_j tutti gli altri byte necessari al
 verifier e non già addebitati, valgono tetti assoluti in byte decimali:
 
 ```text
-P_1 = R_1 + B_1 <= 35.000.000
+P_1 = R_1 + B_1 <= 70.000.000
 P_j = R_j + B_j <= 40.000.000   per ogni 2 <= j <= C
 ```
 
@@ -657,11 +660,14 @@ deve risolvere sia il costo delle correlazioni fresche sia quello dei
 consumer/PCS dinamici prima di essere selezionata.
 
 Il [confronto mirato Akita–Shout/LogUp–Dory](construction-screen.md#confronto-mirato-akita-shout-e-logup-dory)
-non seleziona una composizione. La prima dipendenza di ricerca è un
+non seleziona una composizione. La priorità di contributo resta il
 consumer Shout negli originali DV con witness/passaggi entro arena.
-Restano indimostrati il suo adapter di tabelle/pesi, la PCS privata e il
-riuso multi-sessione. Akita non offre Fp3 nel packing pubblicato, e i
-profili di apertura da circa 128 bit non soddisfano il bound FS richiesto
+Lo [screen dei costi residui](construction-screen.md#shout-con-endpoint-originali-screen-dei-costi-residui)
+respinge anche la sostituzione dei soli P/S con witness virtuale: conserva
+bootstrap e range W incompatibili. Restano indimostrati adapter di
+tabelle/pesi, apertura privata del one-hot e riuso multi-sessione.
+Nessun lemma B12 copre queste nuove relazioni. Akita non offre Fp3 nel
+packing pubblicato, e i profili di apertura da circa 128 bit non soddisfano il bound FS richiesto
 a Q=2^64; Dory richiede il collegamento dell'intera valutazione fra campi,
 non soltanto tre scalari finali. Nessuna di queste ipotesi è assunta vera
 per B12, né i layout densi respinti vengono riaperti.
@@ -671,7 +677,7 @@ per B12, né i layout densi respinti vengono riaperti.
 | Voce | Riferimento da soddisfare; nessuna nuova misura |
 |---|---:|
 | Prover completo a modello residente | <=50 s per risposta nella capacità dichiarata |
-| Certificato completo, bootstrap per sessione incluso | prima <=35.000.000 byte; successive <=40.000.000 |
+| Certificato completo, bootstrap per sessione incluso | prima <=70.000.000 byte; successive <=40.000.000 |
 | Verifier CPU locale, quattro core | 6,4–8,2 s |
 | Caricamento modello per residenza | riferimento storico 19,186 s, distinto dal setup crittografico |
 | Inferenza e prover sulla stessa H100 | picco globale <80.000.000.000 byte |

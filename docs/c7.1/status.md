@@ -85,8 +85,9 @@ senza promozione o riuso.
 **Il limite di trasporto canonico è ora 96 MiB, con 16 MiB per PCS D34/D35.**
 Il conteggio verificato dà un upper del corpo della risposta di 92,73 MB,
 entro i cap tecnici di trasporto, non i tetti del goal. Il lower resta
-**47,84/54,87/61,80 MB** a O=0/150/300: i tetti 35/40 MB restano superati
-per ogni calibrazione, prima del bootstrap. Il limite
+**47,84/54,87/61,80 MB** a O=0/150/300: il corpo esclude già i 40 MB
+delle continuazioni per ogni calibrazione. Il nuovo tetto iniziale di
+70 MB richiede anche il bootstrap, escluso da questi conteggi. Il limite
 del percorso ridotto resta 16 MiB totali e 8 MiB per PCS.
 Le fixture canoniche complete da **64,64/78,53/92,31 MB** fanno roundtrip
 nel framing nativo con lo stesso digest FS e rifiuto di troncamenti,
@@ -103,57 +104,41 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Selezione estesa a nuove famiglie: nessuna costruzione completa supera
-lo screen.** La riduzione della prova completa resta aperta. Il
-[confronto](construction-screen.md) copre PCG silent, LogVOLE,
-PCS con codici/reticoli/gruppi, lookup frazionari e prover streaming.
-Il [confronto mirato](construction-screen.md#confronto-mirato-akita-shout-e-logup-dory)
-assegna priorità di contributo al consumer Shout con endpoint DV originali
-e witness entro arena; **non seleziona Akita–Shout o LogUp–Dory**.
-Shout ha un conto aritmetico favorevole, ma i suoi array espliciti restano
-fuori memoria. Akita richiede anche un nuovo adattamento Fp3 e parametri
-FS oltre ai profili pubblicati; Dory non risolve il ponte di campo/MAC
-con il solo impegno della valutazione finale. Il
-[secondo screen](construction-screen.md#estensione-lookup-frazionari-e-pcs-hiding)
-respinge i backend densi anche di LogUp, Jindo e Dory, e chiarisce perché
-hiding e sumcheck streaming non risolvono da soli endpoint e ricomputazione.
-Lo steering del 2026-09-12 sostituisce lo 0,5–1,5% con **35.000.000 byte
-alla prima risposta e 40.000.000 a ciascuna successiva**, senza crescita
-del tetto. Valgono <=50 s per risposta sulla singola H100, IO incluso,
-sola memoria extra globale riutilizzabile fra sessioni e lavoro totale non
-crescente. Il [design](design.md#owner-authorized-pcsstate-experiment)
-definisce contabilità completa e riuso; nessuna nuova spesa è autorizzata.
+**Priorità: Shout con endpoint VOLE-MAC originali e witness entro arena;
+nessuna candidata completa selezionabile.** L'ultima deroga del proprietario
+porta il certificato completo a **70.000.000 byte alla prima risposta e
+40.000.000 a ciascuna successiva**, bootstrap/installazione inclusi. Restano
+≤50 s anche alla prima, sola memoria extra globale riusabile fra sessioni
+e lavoro totale non crescente su ogni prefisso. Capacità esaminata:
+**C=3 tentativi 100+50, O=0/150/300, 450 token**. Capacità che soddisfa
+congiuntamente i requisiti: **nessuna**. Vale il
+[contratto aggiornato](design.md#owner-authorized-pcsstate-experiment).
 
-Lo [screen minimo](pcs-state-screen.md#screen-minimo-sotto-i-tetti-assoluti)
-copre il profilo canonico a **tre tentativi 100+50, 450 token totali**.
-Gli upper del solo corpo della risposta non includevano il bootstrap della
-sessione. Con il bootstrap B12, le sole correlazioni P/S delle RNE
-raggruppate richiedono al verifier almeno **90.989.568 / 119.107.584 /
-119.107.584 byte**: già oltre i tetti, senza PCS e altri consumer.
-Nemmeno distribuire quel costo sui tre turni rientrerebbe nei 115 MB totali.
+Il [nuovo screen dei costi residui](construction-screen.md#shout-con-endpoint-originali-screen-dei-costi-residui)
+respinge la sostituzione dei soli P/S con Shout, anche se il nuovo consumer
+riuscisse a stare nell'arena. RNE originali e contatori W conservano almeno
+**9,05 GB di correzioni COPE nel bootstrap iniziale** per C=3. Il range W
+conserva un **albero dinamico da 3,30 TB**, dipendente dalle sfide e quindi
+non globale. Questi lower riguardano i componenti conservati, non tutte
+le costruzioni Shout. Non si implementa né si ottimizza questa sostituzione.
 
-La candidata densa W/A/KV da 10,31 TB resta esclusa per memoria dinamica.
-Anche il percorso denso delle RNE condivise richiede oltre **169/176/176 s
-di sole scritture** al picco teorico HBM, prima di letture, calcolo e PCS.
-Sono limiti analitici della materializzazione, non tempi misurati né un
-teorema d'impossibilità per altre costruzioni. Rendere globale soltanto W
-non elimina né il bootstrap monouso né le strutture dinamiche.
+Shout resta la priorità strutturale del [confronto](construction-screen.md)
+per il minor conto aritmetico del consumer. Per riaprirne l'approfondimento
+va prima chiarito un bootstrap fresco compatto con parametri/costi adeguati,
+oppure una schedule che riduca anche le correlazioni residue. Restano poi
+aperti il collegamento privato del one-hot ai byte e MAC originali, range/PCS
+entro arena, disponibilità del witness, IO/replay e lavoro completo.
+Akita–Shout e LogUp–Dory non sono composizioni selezionate; non hanno un
+upper completo giustificato o una prova trasferibile dai bound B12.
 
-Restano riutilizzabili, entro le rispettive premesse, la semantica e gli
-endpoint originali, i controlli di [RNE condivise](evidence.md#shared-rne-byte-experiment)
-e l'[identità byte/FS dei dati conservati](pcs-state-screen.md#dati-iniziali-conservati-uguaglianza-della-prova-e-lavoro-evitato).
-I [tre certificati ridotti](pcs-state-screen.md#inferenza-completa-ridotta-con-rne-raggruppate)
-non ricevono credito canonico, AES, multi-sessione o di lavoro totale.
-B12 rimane selezionato, senza soddisfare i nuovi obiettivi.
-
-Non si prosegue il port delle candidate respinte. Il collo di bottiglia
-è una composizione privata con consumer e PCS eseguibili nell'arena,
-senza spill del witness né replay non contabilizzato, oltre al bootstrap
-fresco. Nessuna capacità canonica soddisfa ancora congiuntamente 35/40 MB,
-50 s e lavoro totale non crescente. Il confronto distingue i rifiuti numerici
-dalle composizioni con costi ancora ignoti; non afferma un'impossibilità
-generale. Per riaprire servono tutti questi costi finiti, compreso il riuso
-globale sicuro fra sessioni, senza occultare stato dinamico o setup.
+Lo [screen precedente](pcs-state-screen.md#screen-minimo-sotto-i-tetti-assoluti)
+resta negativo anche sotto 70/40 MB: non si riaprono le materializzazioni
+RNE o le cache dinamiche W/A/KV. Semantica, originali e controlli delle
+[RNE condivise](evidence.md#shared-rne-byte-experiment) restano riusabili
+entro le proprie premesse; i tre certificati ridotti non acquisiscono
+credito canonico, AES, multi-sessione, prestazioni o lavoro totale.
+B12 rimane selezionato senza soddisfare il goal di riduzione.
+Nessuna nuova spesa o esecuzione pesante è autorizzata.
 
 Il precedente goal di estensione resta aperto e subordinato a questa
 priorità: collegare Prepare/prover canonici al wrapper, conservando gli

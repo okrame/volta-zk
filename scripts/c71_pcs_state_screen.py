@@ -173,7 +173,7 @@ def feasibility(cases):
         fp3_rows = sum(169+32*d for d in bits)
         writes = 48*511*cells
         screened.append(dict(old_tokens=150*slot,
-            certificate_cap_bytes=35_000_000 if slot == 0 else 40_000_000,
+            certificate_cap_bytes=70_000_000 if slot == 0 else 40_000_000,
             RNE_PS_Fp3_rows=fp3_rows,
             # Excludes sacrifices, OT, checks, seal and every response byte.
             verifier_COPE_bytes_lower=576*8*3*fp3_rows,
@@ -188,9 +188,45 @@ def feasibility(cases):
         complete_certificate_cap_verified=False,
         full_work_nonincrease_verified=False,
         cases=screened,
-        conversation_certificate_cap_bytes=115_000_000,
+        conversation_certificate_cap_bytes=150_000_000,
         conversation_RNE_COPE_bytes_lower=sum(c['verifier_COPE_bytes_lower'] for c in screened),
         decision='reject current dense candidates; COPE alone also rejects global-W-only repair')
+
+
+def shout_residual_screen(current):
+    """Necessary residual costs if ONLY the RNE P/S consumer is replaced.
+
+    rne::required minus byte_function::required is >= 8*c+1 for every
+    shift. range::prove separately authenticates all 65535 W histogram
+    entries. Omitted costs are unknown, not free or a proposed Shout codec.
+    """
+    shape = current['complete_fixed_run_composition']['native_canonical_transport']
+    cases = []
+    for slot, bits in enumerate(shape['RNE_cell_bits_sum']):
+        rne_rows = 8*bits + shape['mandatory_RNE_records']
+        rows = rne_rows + 65535
+        cases.append(dict(old_tokens=150*slot,
+            RNE_reduction_Fp3_rows_lower=rne_rows,
+            RNE_reduction_COPE_bytes_lower=13824*rne_rows,
+            RNE_and_W_histogram_Fp3_rows_lower=rows,
+            attributable_COPE_bytes_lower=13824*rows,
+            prover_COPE_field_outputs_lower=2*576*3*rows))
+    # range::prove retains leaves and every internal node, all after alpha FS.
+    trees = [48*(2*(1 << d)-1) for d in (35, 34)]
+    return dict(credit=False, selected=False, hardware_credit=False,
+        scope='replace RNE P/S only; original RNE reductions, W range and bootstrap unchanged',
+        capacity=dict(attempts=3, prompt_tokens=100, generated_tokens=50, total_tokens=450),
+        certificate_caps_bytes=[70_000_000, 40_000_000, 40_000_000], cases=cases,
+        first_certificate_COPE_bytes_lower=sum(c['attributable_COPE_bytes_lower'] for c in cases),
+        complete_certificate_bytes=None, complete_certificate_cap_verified=False,
+        unchanged_W_A_range_tree_bytes=trees,
+        unchanged_range_tree_write_bytes_lower=sum(trees),
+        unchanged_range_build_levels=[35, 34],
+        unchanged_range_GKR_rounds=[35*34//2, 34*33//2],
+        complete_global_bytes=None, complete_dynamic_bytes=None,
+        complete_response_traffic_bytes=None, full_prover_seconds=None,
+        full_work_nonincrease_verified=False,
+        decision='reject local substitution: residual COPE exceeds caps and FS-dependent W tree exceeds arena')
 
 
 def report():
@@ -263,6 +299,7 @@ def report():
             best_parameters={k:best[0][k] for k in ('queries','first','step')},
             best_two_PCS_upper=sum(p['wire']['wire_interval'][1] for p in best)),
         cases=cases, feasibility=feasibility(cases),
+        shout_residual_screen=shout_residual_screen(current),
         retained_commit_work=retained_work(old, [rolling_w, chosen[1]]),
         joint_state=joint_state(old, rolling_w, chosen[1], cases),
         full_work_unresolved=['RNE added sumcheck and scheduling (new padding removed)', 'rolling KV copy and link forms',

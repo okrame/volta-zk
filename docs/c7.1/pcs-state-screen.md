@@ -39,14 +39,14 @@ batch. Sommando sui gruppi senza padding già censiti si ottiene:
 
 | O | Righe Fp3 P/S | Correzioni COPE necessarie al verifier, lower | Tetto certificato |
 |---:|---:|---:|---:|
-| 0 | 6.582 | 90.989.568 | 35.000.000 |
+| 0 | 6.582 | 90.989.568 | 70.000.000 |
 | 150 | 8.616 | 119.107.584 | 40.000.000 |
 | 300 | 8.616 | 119.107.584 | 40.000.000 |
 
 Il lower è `righe_Fp3 * 3 * 576 * 8`: **esclude** sacrifici, OT, check,
 seal, framing, tutto il corpo della risposta, le PCS e gli altri consumer.
 Sono esclusioni favorevoli alla candidata, non costi assunti nulli.
-La somma **329.204.736 > 115.000.000 byte** esclude persino una ripartizione
+La somma **329.204.736 > 150.000.000 byte** esclude persino una ripartizione
 ipotetica sui tre turni. Il setup unico reale deve invece precedere la
 prima risposta e va addebitato lì. Per confronto, provisionare il pool B12
 al bound conservativo di 11.466.948 righe dà **53.665.549.985 byte** totali

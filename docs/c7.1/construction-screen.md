@@ -15,11 +15,13 @@ originali e witness entro arena.** Il [confronto mirato](#confronto-mirato-akita
 trova ulteriori ostacoli al port letterale di entrambe le PCS; il vantaggio
 di Dory sulle valutazioni nascoste non basta a preferire l'intera
 composizione LogUp–Dory. Nessuna delle due ha un tempo completo finito
-giustificato sotto 50 s. Non si avvia un'implementazione.
+giustificato sotto 50 s. Il [nuovo screen residuo](#shout-con-endpoint-originali-screen-dei-costi-residui)
+respinge anche la sostituzione dei soli P/S, indipendentemente dal costo Shout.
+Non si avvia un'implementazione.
 
 Capacità richiesta/esaminata: **C=3, 100+50 token per risposta,
 O=0/150/300, 450 token complessivi**. Capacità acquisita sotto l'intero
-contratto: **nessuna**. Per ogni contesto valgono 35/40/40 milioni di byte,
+contratto: **nessuna**. Per ogni contesto valgono 70/40/40 milioni di byte,
 inclusi installazione, bootstrap per sessione e ogni dato necessario al
 verifier; niente ammortamento sui turni successivi. Gli ignoti sotto
 hanno upper di ammissione infinito, non costo zero.
@@ -239,17 +241,13 @@ Non segue che occorra emulare ogni gate in aritmetica non nativa: eventuali
 lift interi o riduzioni dei pesi a basso rango richiedono conti e prove
 propri. Qui non si attribuisce loro un lower di lavoro per cella.
 
-**Contributi candidati, in ordine di dipendenza.** La prima verifica da
-riaprire riguarda un consumer di funzioni byte **Shout con endpoint DV**:
-indirizzo legato ai byte della stessa A, lettura legata ai P/S originali,
-booleanità/peso uno, tabelle/lane corrette e padding. La componente nuova
-utile sarebbe la composizione privata con witness virtuale e un numero
-finito di passaggi entro arena, non Shout stesso. Finché manca quel conto
-non si progetta una PCS privata completa. Successivamente servirebbero
-un'apertura nascosta compatibile col campo/MAC e il bootstrap fresco
-compatto: nessuna PCS rende gratuito il COPE corrente. Con 13.824 byte
-di sole correzioni per riga Fp3, i cap ospitano al massimo 2.531/2.893
-righe **prima di ogni altro byte**.
+**Contributo candidato: consumer di funzioni byte Shout con endpoint DV.**
+Deve legare indirizzo ai byte della stessa A, lettura ai P/S originali,
+booleanità/peso uno, tabelle/lane corrette e padding. Il
+[nuovo screen residuo](#shout-con-endpoint-originali-screen-dei-costi-residui)
+chiarisce perché, prima di approfondirlo, va risolto anche il bootstrap.
+Con 13.824 byte di sole correzioni per riga Fp3, i cap ospitano al massimo
+5.063/2.893 righe **prima di ogni altro byte**.
 
 Il contributo sul materiale globale consiste nel separare hint privati
 deterministici di W da ogni emissione mascherata, e provare same-W e ZK
@@ -270,6 +268,77 @@ del grande witness. Non si procede al port: costi completi ancora ignoti.
 [Jolt Atlas](https://arxiv.org/html/2602.17452v1), §§1.2 e 4, usa invece
 HyperKZG e ammette trasformazioni del modello; non è un confronto acquisito
 a setup/semantica invariati. Non si importano i suoi benchmark.
+
+## Shout con endpoint originali: screen dei costi residui
+
+**Ultima deroga 70/40/40 MB, C=3 canonica; `credit:false`.** La candidata
+più promettente come contributo resta Shout con witness virtuale e MAC
+originali, per il minor lavoro aritmetico del consumer censito sopra.
+Lo screen minimo distingue però la **sostituzione dei soli P/S RNE** da
+una nuova composizione che cambi anche bootstrap, range e PCS. La prima
+è respinta prima di approfondire il prover Shout, persino senza addebitarle
+il suo costo ancora ignoto. Non si seleziona la seconda per implementazione.
+
+Il [conteggio eseguibile](../../scripts/c71_pcs_state_screen.py), voce
+`shout_residual_screen`, verificata dal [test locale](../../tests/test_c71_pcs_state_screen.py),
+sottrae da
+[`rne::required`](../../rust/volta-pcs/src/c71_matrix/rne.rs) solo il consumer
+P/S. Restano `8*c + funzioni + prodotti + 1` correlazioni Fp3: otto per
+round grado sette e una maschera finale. Per **ogni** shift ammesso il
+lower è `8*c+1`. Il range W autentica separatamente tutti i 65.535 contatori
+in [`range::prove`](../../rust/volta-pcs/src/c71_matrix/range.rs).
+
+| Costo attribuibile alla risposta, ancora senza Shout/PCS/altri consumer | O=0 | O=150 | O=300 |
+|---|---:|---:|---:|
+| Righe Fp3 delle sole riduzioni RNE, lower | 152.372 | 152.852 | 152.852 |
+| Correzioni COPE per tali RNE, byte | 2.106.390.528 | 2.113.026.048 | 2.113.026.048 |
+| Con i contatori del range W, byte COPE | 3.012.346.368 | 3.018.981.888 | 3.018.981.888 |
+| Output di campo PRF del solo prover COPE, lower | 753.086.592 | 754.745.472 | 754.745.472 |
+
+Sono quote di fabbisogno, **non una distribuzione del bootstrap sui turni**.
+Nel setup unico B12 tutte arrivano prima della prima risposta:
+**P1 ≥9.050.310.144 byte**, oltre 70 MB e persino oltre i 150 MB complessivi.
+Il fattore resta `3*576*8` byte/Fp3; gli output PRF sono `2*576*3` per
+riga Fp3, non istruzioni AES o secondi. Sono esclusi dal lower sacrifici,
+OT, seal, setup metadata, terminali RNE, altre correlazioni e tutto il corpo;
+nessuna di queste voci è gratuita. Il solo Shout non rende compatto COPE.
+
+| Altra voce dello screen locale | Conto e disposizione |
+|---|---|
+| Memoria globale | W packed 61.394.690.560 byte già nel riferimento. Gli hint deterministici W/Γ possono essere globali; nessun nuovo setup completo è istanziato o valutato a zero |
+| Memoria dinamica residua | `range::prove` conserva `48*(2*N-1)` byte di albero: **3.298.534.883.280** per W/D35, **1.649.267.441.616** per A/D34. Ciascuno eccede arena e HBM, anche eseguendoli in sequenza |
+| Traffico e passaggi residui | Almeno **4.947.802.324.896 byte di scritture** per i due alberi, più letture figli e fold. Costruzione di 35/34 livelli; GKR di 595/561 round. Getter, PCS, copie, serializzazione e replay si aggiungono |
+| Banda e budget | Alla sensibilità sequenziale già motivata di 2,68 TB/s, quelle sole scritture valgono 1,85 s **ipotizzando memoria sufficiente**, non un tempo realizzabile. Spostarle fuori HBM è vietato; persino una scrittura a 50 GB/s esterni costerebbe 98,96 s. Il budget esterno resta ≤35 s, riservandone 15 al resto |
+| Tempo completo e lavoro | Upper completo **ignoto**, sia per la sostituzione che per una composizione più ampia. Nessun vantaggio su setup + tutti i prefissi 1/2/3 è dimostrato. Il rifiuto per memoria/byte è già decisivo; nessun benchmark è necessario |
+
+L'albero W dipende da `alpha` derivata **dopo** i contatori autenticati:
+anche su W fisso non è materiale globale. Non si trasferisce questo lower
+a un diverso algoritmo di range; vale proprio per il componente conservato.
+
+**Dipendenza da chiarire prima di riaprire Shout.** Serve un bootstrap
+compatto fresco, con parametri malevoli Fp3 e costi completi, oppure una
+schedule che riduca anche quelle correlazioni residue. B11 può essere un
+seed bootstrap di un'espansione diversa, ma quella trasformazione richiede
+conteggi e riduzione propri; riusare il vecchio PCG B7 intero non risolve
+il suo fallimento. Anche un bootstrap idoneo lascia aperti range e PCS
+entro arena, disponibilità di A/replay e costo totale non crescente.
+
+Sul lato Shout, §§4.1/6 del [paper conservato](../../sota/2025-0105-twist-shout.md),
+resta necessaria l'apertura del polinomio one-hot fissato prima delle sfide:
+`ra(tau,r) = sum_i eq(r,i)*eq(tau,bits(A_i))` non è una forma lineare
+nei byte A. L'apertura del solo `A(r)` e un nuovo MAC libero non la
+sostituiscono. I pesi/lane delle 892 RNE e le tabelle combinate dopo FS
+richiedono inoltre il proprio collegamento, già censito sopra. Una prova
+privata di questa relazione è il contributo da valutare, senza una nuova
+PCS per token e senza riaprire il layout one-hot denso respinto.
+
+Riusabili fra sessioni sono solo hint privati deterministici W/Γ e setup
+pubblico indipendente dal verifier; resta da provare la vista congiunta
+same-W/ZK con risorse globali. Il riuso lineare degli originali può usare
+`Mac.Valid.add/smul/sum` di [security §6](security.md#6-risorse-riuso-formale-e-confine-runtime);
+il nuovo one-hot, FS e simulatore non ereditano i bound B12. Correlazioni,
+pad e sali a esposizioni finite restano freschi. **Capacità supportata nel
+contratto completo: nessuna; capacità sottoposta allo screen: tre risposte.**
 
 ## IO, sicurezza e criterio di riapertura
 
@@ -320,7 +389,7 @@ digest = 8192 * 220 // 8
 wire = [r * digest for r in rounds]
 assert rounds == [1560, 2040, 2040]
 assert wire == [351_436_800, 459_571_200, 459_571_200]
-assert all(b > cap for b, cap in zip(wire, (35_000_000, 40_000_000, 40_000_000)))
+assert all(b > cap for b, cap in zip(wire, (70_000_000, 40_000_000, 40_000_000)))
 assert 8 * 2**34 == 137_438_953_472 > 80_000_000_000
 assert 35 * 50_000_000_000 == 1_750_000_000_000 < 2_199_023_255_552
 
@@ -351,7 +420,7 @@ assert 48*256*2**34 > 50*3_350_000_000_000  # write+read >50 s persino al picco
 assert 892*8*256*24 == 43_843_584  # tabelle combinate, dinamiche
 assert all((2**i) % 3 for i in range(36))  # k=3 non divide d/s_split Akita
 assert (2**64 + 1)*2**78 > 2**128  # anche c=1 non ammette il target FS
-assert [cap//13_824 for cap in (35_000_000, 40_000_000)] == [2531, 2893]
+assert [cap//13_824 for cap in (70_000_000, 40_000_000)] == [5063, 2893]
 ```
 
 Fonti lette nei Markdown conservati: [Dory PCG](../../sota/2025-1660-dory-streaming-vole.md),

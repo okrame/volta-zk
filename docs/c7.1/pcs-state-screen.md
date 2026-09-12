@@ -2,6 +2,16 @@
 
 2026-09-11. [Stato](status.md) · [Design](design.md) · [Evidenza](evidence.md).
 
+**Disposizione aggiornata al 2026-09-12.** Lo
+[steering del proprietario](design.md#owner-authorized-pcsstate-experiment)
+ammette soltanto memoria extra globale caricata una volta e riutilizzabile
+fra sessioni, con prover completo <=50 s e accessi inclusi. Le cache
+dinamiche qui studiate non soddisfano quella concessione: la candidata
+densa W/A/KV da 10,31 TB è fermata, anche con una sola sessione alla volta.
+I conti e i test sotto conservano il loro perimetro di evidenza; non sono
+un piano per continuarne il port. Eventuali componenti riutilizzati in
+una costruzione diversa devono prima superare lo screen di fattibilità.
+
 ## Risultato e criterio del proprietario
 
 La variante studiata combina PCS con parametri ridotti, RNE in gruppi senza
@@ -35,7 +45,8 @@ proietta **26.653.252 / 28.444.684 / 28.444.684 byte** completi, pagando
 anche il collegamento al W installato prima del primo prompt. Usa due PCS
 per risposta e riduce i termini delle query nei tre prefissi confrontati.
 Il dominio D36 aggiunge però padding e lavoro nei sumcheck iniziali.
-È la pista da verificare per il vincolo congiunto byte/lavoro; non è ammessa.
+Era la pista da verificare per il vincolo congiunto byte/lavoro; ora è
+fermata dal vincolo di memoria globale, non è ammessa.
 
 **L'obiettivo del proprietario resta aperto:** manca la verifica di lavoro
 totale non crescente e la composizione di sicurezza della candidata. Non
@@ -175,10 +186,11 @@ da 4 a 8 esecuzioni a T=3, pur con encoding più piccolo. Non basta
 mostrare il costo di una singola PCS. Anche gli hash/sali per riga possono
 avere un rapporto diverso dai byte dei codeword.
 
-La memoria persistente fuori H100 autorizzata dal proprietario permette
-di studiare la conservazione dei dati iniziali di commit fino all'ultimo
-consumer. Non permette di saltare copie, trasferimenti, nuovi pad, proof
-fresche o il costo di creare quella cache. Il costruttore C71 ordinario
+L'interpretazione precedente della memoria fuori H100 ha motivato lo studio
+della conservazione dei dati iniziali di commit fino all'ultimo consumer.
+Lo steering del 2026-09-12 esclude questa cache quando dipende dalla sessione;
+copie, trasferimenti, nuovi pad, proof fresche e creazione non sono gratuiti.
+Il costruttore C71 ordinario
 continua a rimaterializzare; il nuovo costruttore con conservazione è ora
 collegato al batch lineare e usato dalla transizione sperimentale piccola.
 Rimangono invariati H100, arena, trust model e assenza di autorizzazione

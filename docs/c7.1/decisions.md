@@ -9,6 +9,22 @@ impossibile. L'harness e gli identificatori dei goal esistenti restano invariati
 
 ## Goal dispositions
 
+Il **2026-09-12** il proprietario ha precisato che la memoria extra deve
+essere globale del modello, preparata/caricata una volta e riutilizzabile
+fra utenti/sessioni senza crescita, anche sequenziale. Il prover completo
+deve rientrare in **50 s**, accessi inclusi; non si sviluppano candidate
+giudicate incompatibili. Il primo certificato ha cap **35 MB**; il
+proprietario ha chiarito che i successivi possono **incrementare dello
+0,5–1,5% rispetto alla prima proof**, senza crescita composta per turno.
+Il [contratto corrente](design.md#owner-authorized-pcsstate-experiment)
+ferma quindi la candidata densa W/A/KV con 10,31 TB di dati dinamici:
+liberare il predecessore non trasforma il successore in una cache globale.
+È un'esclusione per risorse della costruzione, non un attacco né una prova
+di impossibilità di ogni variante. Si conservano codice, evidenze e lavoro
+in corso; componenti indipendenti possono essere riusati solo dopo lo screen
+di fattibilità e la verifica delle loro premesse. I mandati precedenti sotto
+rimangono subordinati a questa precisazione.
+
 Il 2026-09-11 il proprietario ha dato priorità a trovare una modifica
 della prova/encoding e testarne i byte. Si studia il
 [batch dei P/S RNE](design.md#experimental-shared-rne-byte-proofs), perché

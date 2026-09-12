@@ -1,6 +1,6 @@
 # C7.1 — Goals and current status
 
-Aggiornato al 2026-09-11. [Design](design.md) · [Security](security.md) ·
+Aggiornato al 2026-09-12. [Design](design.md) · [Security](security.md) ·
 [Evidence](evidence.md) · [Decisions](decisions.md) · [Indice](../README.md).
 Questa pagina contiene stato, autorizzazione e prossimo lavoro; requisiti,
 prove e risultati dei test hanno ciascuno la propria sede nei link sopra.
@@ -102,12 +102,24 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**La priorità del proprietario del 2026-09-11 è ridurre i byte completi dal
-primo turno, riferimento 30 MB, e ottenere crescita costante/sublineare
-con la storia, senza aumentare il lavoro totale del prover.** Setup,
-precomputazione e replay contano; la sola risorsa aggiuntiva ammessa è
-memoria persistente fuori H100. Sicurezza e confronto sulla stessa
-conversazione sono condizioni di chiusura, tuttora aperte.
+**Lo steering del proprietario del 2026-09-12 richiede memoria extra
+globale del modello, caricata una volta e riutilizzabile fra utenti/sessioni,
+e prover completo <=50 s, IO incluso.** Il prototipo è sequenziale; questo
+non autorizza cache esterne rigenerate per sessione o risposta. Restano
+lavoro totale non crescente e sicurezza equivalente. Il primo certificato
+deve essere <=35 MB; i successivi possono incrementare al massimo circa
+l'1,5% rispetto alla prima proof, con obiettivo 0,5% o inferiore, senza
+crescita composta turno dopo turno. Il
+[contratto aggiornato](design.md#owner-authorized-pcsstate-experiment)
+precede le interpretazioni e i prossimi passi del 2026-09-11.
+
+La candidata densa W/A/KV da 10,31 TB è **fermata nel goal corrente**:
+la cache dipende dalla conversazione e non è materiale globale preparato
+una volta. I risultati seguenti restano evidenza circoscritta, non una
+raccomandazione a proseguirne il port. Prima di avanzare altre candidate,
+verificare con uno screen minimo memoria globale, traffico e tempo completo;
+scartare subito le linee giudicate incompatibili con 50 s. Nessuna stima
+parziale dei byte o delle operazioni sostituisce questo criterio.
 
 È stata implementata una
 [candidata con P/S RNE condivisi](design.md#experimental-shared-rne-byte-proofs),
@@ -133,7 +145,7 @@ Il collegamento al W fissato prima del prompt resta incluso. Il dominio
 S/D36 aumenta le celle dei sumcheck iniziali, ma riduce geometrie FFT e
 termini delle query nei tre prefissi. Richiede circa 10,31 TB di payload
 persistente prima delle promozioni successive, esclusi workspace e IO.
-È ora la pista da verificare per il confronto congiunto byte/lavoro;
+La costruzione è ora fuori dal perimetro di memoria autorizzato;
 non è selezionabile dal dispatch e non ha un positivo canonico completo.
 
 Il kernel PCS conserva ora i dati iniziali senza rinnovare esposizioni;
@@ -155,11 +167,11 @@ Il payload persistente proiettato di due W e due A è 8,66 TB prima della
 promozione, esclusi workspace, allocator e trasferimenti; non è una misura.
 
 **Nessuna variante soddisfa ancora tutte le condizioni verificate.** Il
-prossimo lavoro è chiudere il confronto di lavoro completo, inclusi rinnovi
-W, nuovi domini dei sumcheck iniziali, covettori delle query, sumcheck RNE
-aggiunto e copia/link KV;
-poi composizione ROM/ZK e routing canonico. Le geometrie FFT più piccole
-non concedono da sole lavoro totale inferiore. B12 rimane selezionato.
+prossimo lavoro è la selezione di fattibilità sotto il nuovo contratto,
+prima del port o di ulteriori ottimizzazioni della costruzione fermata.
+Per le sole candidate plausibili seguiranno confronto completo di lavoro,
+composizione ROM/ZK anche per il materiale riusato fra sessioni e routing
+canonico. B12 rimane selezionato; non soddisfa per questo i nuovi obiettivi.
 
 Il precedente goal di estensione resta aperto e subordinato a questa
 priorità: collegare Prepare/prover canonici al wrapper, conservando gli
@@ -179,7 +191,8 @@ con i limiti del [design](design.md#native-correspondence).
 ## Scope and authorization
 
 Il lavoro locale pertinente è autorizzato dalle richieste del proprietario
-del 2026-09-10 e del 2026-09-11 sulla riduzione dei byte.
+del 2026-09-10 e del 2026-09-11 sulla riduzione dei byte, ristrette dallo
+steering del 2026-09-12 su memoria globale e fattibilità entro 50 s.
 Si seguono le [procedure di build e test](../procedures/build-and-test.md):
 build mirata con un job, test seriali limitati a 60 s/2 GiB e un worker Rayon.
 

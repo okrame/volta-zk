@@ -570,7 +570,64 @@ Calibrazione, hardware e completa accettazione canonica rimangono separati.
 
 ### Owner-authorized PCS/state experiment
 
-La richiesta corrente estende lo studio della riduzione byte a PCS W,
+**Steering del proprietario del 2026-09-12, prevalente sul perimetro
+interpretato il 2026-09-11.** La sola memoria persistente aggiuntiva ammessa
+è materiale globale del modello, preparato/caricato una volta all'inizio
+dal provider e riutilizzabile fra sessioni con verifier diversi. A modello
+fissato, contenuto e capacità non devono crescere col numero di utenti o
+sessioni, nemmeno sequenziali. Il prototipo usa una sessione e un utente
+alla volta. Una cache A/KV/PCS generata per risposta o sessione non rientra
+in questa concessione, anche se viene liberata prima della sessione dopo;
+lo stato dinamico deve rispettare i limiti ordinari del runtime.
+Il riuso globale deve essere giustificato crittograficamente: una capacità
+di pad/correlazioni monouso preallocata per future sessioni non è materiale
+riutilizzabile illimitatamente. Restano separazione dei domini, freschezza,
+budget di esposizioni e obbligo di sicurezza composta fra sessioni.
+
+Il prover completo deve impiegare **al massimo 50 s per risposta** sulla
+singola H100 nel carico dichiarato. Valgono le voci del riferimento sotto:
+generazione, preparazione witness, PCG, prova e serializzazione, comprese
+letture/scritture e trasferimenti necessari. Il caricamento globale iniziale
+si contabilizza separatamente una volta; setup e lavoro per sessione o
+risposta non si occultano in quel caricamento. Resta il vincolo precedente
+di lavoro totale non crescente, inclusi setup/precomputazione/replay,
+contro la baseline sulla stessa conversazione. Tempo e lavoro sono due
+verifiche distinte.
+
+Prima di sviluppare o portare una candidata occorre uno screen circoscritto
+di fattibilità: byte letti/scritti per risposta e numero di passaggi,
+collocazione dei dati e banda effettiva motivata, lavoro crittografico e
+tempo completo con margine esplicito per le operazioni restanti. L'overlap
+non è gratuito e richiede giustificazione. Una linea giudicata incompatibile
+con i 50 s si scarta subito; se il costo è ignoto si può solo svolgere la
+verifica minima che risolve quell'incertezza, senza avanzare implementazione,
+port o composizione estesa assumendo prestazioni future. Un lower bound
+inferiore a 50 s non basta ad ammettere la candidata; un costo ignoto non
+vale zero. Questo screening non concede credito hardware o nuove spese.
+
+Il primo certificato completo deve essere **<=35.000.000 byte** (MB decimali).
+Il proprietario ha chiarito che lo 0,5–1,5% indica **l'incremento rispetto
+alla prima proof**: indicando con P_j i byte completi della risposta j,
+il criterio è P_1 <=35.000.000 e P_j <=1,015*P_1 per ogni j>=2 del profilo
+dichiarato, con obiettivo di incremento 0,5% o inferiore. Non è un incremento
+composto a ogni turno né un limite relativo alla proof immediatamente prima.
+Per P_1=35 MB, le successive hanno obiettivo <=35,175 MB e tetto indicativo
+35,525 MB; proof più piccole soddisfano il criterio. La tolleranza non
+autorizza una crescita indefinita: va dichiarata e verificata la capacità
+finita di storia supportata. Non basta mostrare tre prefissi sul grafo piccolo.
+Restano inclusi
+tutti i byte necessari al verifier, senza spostarli in un offline per
+sessione non contato; il carico nuovo deve essere lo stesso nel confronto.
+
+**La candidata densa S/D36 con 10,31 TB di predecessore/successore è
+fermata per incompatibilità con il vincolo di memoria globale.** Quei dati
+dipendono da A/KV della conversazione e vengono creati a ogni risposta.
+Non si continua il suo port o la chiusura come soluzione di questo goal;
+un'eventuale costruzione diversa deve prima superare i criteri sopra.
+Il batch RNE e la conservazione di dati realmente globali restano componenti
+riutilizzabili solo dopo verifica del costo e delle premesse applicabili.
+
+Lo studio precedente estendeva la riduzione byte a PCS W,
 stato KV e batch RNE, conservando sicurezza e lavoro totale del prover.
 Lo [screen delle schedule candidate](pcs-state-screen.md) distingue
 W con tre esposizioni, W rinnovato e stato unico W/A/KV. Non cambiano
@@ -601,13 +658,13 @@ query/eventi della nuova foresta; i bound B12 non si trasferiscono.
 Copie delle viste, snapshot, forme scalari KV e identificatori delle root
 ritirate restano costi da includere, anche senza altre PCS nel wire.
 
-Per questo esperimento il proprietario autorizza memoria persistente
-aggiuntiva **fuori H100**. Questa eccezione supera il divieto di spill e
-il limite di materiale persistente del riferimento solo per lo studio
-della candidata: non cambia HBM, arena, trust model o autorizzazione di
-spesa. Conservazione, copia, scrittura/rilettura e trasferimenti delle cache
-devono comparire nel lavoro totale, insieme a setup, rinnovi e replay.
-Non si materializzano localmente codeword D34/D35.
+La precedente interpretazione dell'eccezione fuori H100 come autorizzazione
+a conservare cache PCS dinamiche è superata dallo steering sopra. Solo il
+materiale globale riutilizzabile può eccedere il limite persistente del
+riferimento; HBM, arena, trust model e autorizzazione di spesa non cambiano.
+Conservazione, copia, scrittura/rilettura e trasferimenti devono comparire
+nel lavoro totale, insieme a setup, rinnovi e replay. Non si materializzano
+localmente codeword D34/D35.
 
 Il kernel sperimentale `prove_claimless_retained` riusa immutabilmente
 messaggio, pad e Merkle già prodotti dal commit. L'equivalenza con il

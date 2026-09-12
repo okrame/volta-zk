@@ -44,9 +44,9 @@ def test_fp6_seed_parameter_boundary_compression_and_complete_seed_count():
         assert screen['primitive_hypotheses'] == reference['primitive_hypotheses']
         assert not screen['credit'] and not screen['native_implemented']
         assert not screen['complete_bootstrap_admitted']
-    seed = plan.c71_fp6_seed_screen(24643)
-    assert seed['wire_total_both_directions']+8*1120*21+24*1120*18+48 == 77_704_697
-    assert seed['COPE_data_only_received_lower']+8*1120*21+48 == 75_891_504
+    seed = plan.c71_fp6_seed_screen(12883)
+    assert seed['wire_total_both_directions']+8*560+8*560*22+24*560*19+48 == 40_699_897
+    assert seed['COPE_data_only_received_lower']+8*560+8*560*22+48 == 39_679_664
     for rows in (0, 2**24-8):
         with pytest.raises(ValueError):
             plan.c71_fp6_seed_screen(rows)
@@ -54,19 +54,22 @@ def test_fp6_seed_parameter_boundary_compression_and_complete_seed_count():
 
 def test_guarded_bootstrap_partial_screen_keeps_missing_costs_open():
     screen = plan.c71_dory_guarded_bootstrap_screen()
-    assert screen['seed_base_rows'] == 24643
+    assert screen['seed_base_rows'] == 12883
     assert screen['geometry'] == {
-        't': 1120, 'h': 18, 'N': 293_601_280,
-        'published_base_capacity': 58_720_256}
-    assert screen['partial_wire_both_directions'] == 77_704_697
-    assert screen['partial_margin_under_first_130MB'] == 52_295_303
-    assert screen['received_lower'] == 75_891_504
-    assert screen['received_plus_retained_PCS_and_other_body_lower'] == 98_522_556
-    assert screen['first_cap_margin_after_that_lower'] == 31_477_444
+        't': 560, 'h': 19, 'N': 293_601_280,
+        'published_base_capacity': 58_720_256,
+        'noise': 'large-field regular with honest beta in Fp*',
+        'canonical_fiber_positions': 153_931_627_888_640}
+    assert screen['partial_wire_both_directions'] == 40_699_897
+    assert screen['partial_margin_under_first_130MB'] == 89_300_103
+    assert screen['received_lower'] == 39_679_664
+    assert screen['received_plus_retained_PCS_and_other_body_lower'] == 62_310_716
+    assert screen['first_cap_margin_after_that_lower'] == 67_689_284
     errors = screen['conditional_known_errors']
-    assert Fraction(errors['path_guard']) == Fraction(20161, plan.P**3)
+    assert Fraction(errors['path_guard']) == Fraction(10641, plan.P**3)
     assert Fraction(errors['domain_separated_ROM_prequeries']) == Fraction(2**74, plan.P**3)
     assert Fraction(errors['ROM_malformed_equality']) == Fraction(1, plan.P**3-2**74)
+    assert Fraction(errors['split_check'])*2**74 > Fraction(1, 2**72)
     assert Fraction(errors['sum']) < Fraction(1, 2**90)
     assert not screen['credit'] and not screen['complete_bootstrap_admitted']
     assert len(screen['missing_for_admission']) == 6

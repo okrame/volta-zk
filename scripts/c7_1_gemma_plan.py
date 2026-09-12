@@ -6643,17 +6643,21 @@ def c71_fp6_seed_screen(rows):
 
 
 def c71_dory_guarded_bootstrap_screen():
-    """Fp6 seed plus guarded LPN3 geometry; partial screen, no admission."""
-    t, h = 1120, 18
+    """Fp6 seed plus guarded large-field LPN3 geometry; no admission."""
+    # Dory section 4.2: over F != F2, nonzero regular payloads avoid the
+    # doubled block count. N and n stay LPN3; N/t grows from 2^18 to 2^19.
+    t, h = 560, 19
     rows = t*(h+4)+3
     seed = c71_fp6_seed_screen(rows)
     payload = {
+        'nonzero_beta_correction_received': 8*t,
         'path_d_and_split_z_received': 8*t*(h+3),
         'tree_c_sent_by_verifier': 24*t*h,
         'path_guard_two_fp3_scalars': 48,
     }
     total = seed['wire_total_both_directions']+sum(payload.values())
     received = (seed['COPE_data_only_received_lower']
+                + payload['nonzero_beta_correction_received']
                 + payload['path_d_and_split_z_received']
                 + payload['path_guard_two_fp3_scalars'])
     other_body_lower = 47_841_180-25_210_128
@@ -6666,7 +6670,9 @@ def c71_dory_guarded_bootstrap_screen():
     return {
         'credit': False, 'complete_bootstrap_admitted': False,
         'geometry': {'t': t, 'h': h, 'N': t*2**h,
-                     'published_base_capacity': t*2**h//5},
+                     'published_base_capacity': t*2**h//5,
+                     'noise': 'large-field regular with honest beta in Fp*',
+                     'canonical_fiber_positions': t*2**(2*h)},
         'seed_base_rows': rows, 'seed': seed, 'Dory_payload_bytes': payload,
         'partial_wire_both_directions': total,
         'partial_margin_under_first_130MB': 130_000_000-total,
@@ -6681,7 +6687,8 @@ def c71_dory_guarded_bootstrap_screen():
             'sum': str(Fraction(seed['conditional_seed_component']['sum'])
                        + path_error+split_error+rom_prequery_error+rom_equality_error),
         },
-        'missing_for_admission': ['EA-LPN-SL parameters over Goldilocks',
+        'coin_requirement': 'fresh interactive F_Rand; no mechanical Q*=2^74 FS credit',
+        'missing_for_admission': ['EA-LPN-SL regular-LPN3 assumption over Goldilocks',
             'native SHAKE cGGM and guarded malicious-sender composition', 'F_Rand/F_EQ',
             'completion/framing/metadata', 'complete proof-body upper',
             'honest runtime and work-prefix comparison'],

@@ -682,13 +682,13 @@ enumera tutti gli hash F2→F2 e F5→F5, tutti i Delta e c_0, da seed MAC
 validi. La derivazione vale anche su Fp/Fp3; non è una verifica del codice
 COT pubblicato, il cui protocollo implementato non è stato ispezionato.
 
-La Fig. 2 consente al receiver corrotto di scegliere beta=0. Anche se il
-backend imponesse beta uniformi oneste, con t=1120 la probabilità di
-almeno uno zero è `1-(1-1/p)^t`, circa **2^-53,87**: non si può assorbire
-fra gli errori da 78 bit. La distribuzione regolare rilassata della fonte
-include zero. Il precheck precedente beta*eta=1 avrebbe cambiato la
-distribuzione e consumato t righe aggiuntive. È sostituito dal seguente
-guard, che conserva beta uniforme in tutto F, zero incluso.
+La Fig. 2 consente al receiver corrotto di scegliere beta=0. Nella variante
+rilassata onesta con t=1120 la probabilità di almeno uno zero è
+`1-(1-1/p)^t`, circa **2^-53,87**: non si può assorbire fra gli errori da
+78 bit. La successiva ottimizzazione large-field usa invece beta onesti
+nonzero, ma un receiver corrotto può ancora dichiarare zero. Il precheck
+precedente beta*eta=1 avrebbe consumato t righe aggiuntive. È sostituito
+dal seguente guard, che copre entrambi i profili.
 
 Per ogni blocco i e livello j, dopo d e prima di qualsiasi c, definire
 `gamma_ij=s_ij-d_ij` sui MAC originali del seed. Il verifier ne ricava
@@ -721,8 +721,9 @@ Schwartz–Zippel e il bound di radici danno nel modello MAC ideale
 epsilon_path <= (t*h-1)/|Fp3| + 2/|Fp3| = (t*h+1)/|Fp3|.
 ```
 
-Per t=1120,h=18 sono **177,700720 bit**; persino moltiplicare
-meccanicamente per Q*=2^74 lascia 103,700720 bit. Questo è il termine
+Per la variante large-field `t=560,h=19` sono **178,622654 bit**;
+persino moltiplicare meccanicamente per Q*=2^74 lascia 104,622654 bit.
+Questo è il termine
 del guard, non un bound composto B11→Dory. La maschera rende A uniforme;
 condizionatamente allo stato del verifier, l'equazione determina B.
 
@@ -742,19 +743,37 @@ MAC e gradi. È stato riesaminato indipendentemente senza trovare un
 controesempio al lemma condizionale. Non copre adattività, FS, backend
 Fp6 o una prova UC completa.
 
-**Costo sostitutivo.** Con i check per blocco, il guard richiede
-`s=t*(h+4)+3` righe seed: nessuna riga inversa e nessuna correzione
-beta/eta. I payload d,z restano `8*t*(h+3)`, c `24*t*h`, più 48 byte
-del guard. Per LPN3 col seed Fp6 della sezione seguente:
+**Costo sostitutivo large-field.** La §4.2 della fonte permette, per
+`F!=F2`, rumore regolare con payload onesto `beta in F*`: il receiver
+corregge il seed uniforme con `delta=s_0-beta`. Questo evita il raddoppio
+usato dalla tabella rilassata. Manteniamo `N=293.601.280` e
+`n=58.720.256`, ma usiamo `t=560`, blocchi da `2^19` e `h=19`. La fonte
+afferma qualitativamente che la sicurezza si mantiene, ma Table 2 misura
+il caso rilassato binario: **non trasferiamo i suoi 128 bit a Goldilocks**.
+Qui resta un'istanza esplicita, ancora senza credito, della nuova ipotesi
+`EA-LPN-SL(560,58720256,293601280,9,Fp)` con payload regolari nonzero.
+Ogni beta onesto va campionato esattamente in Fp*: un retry locale su
+codifica canonica è indipendente dal valore finale. Un singolo campione Fp
+seguito da abort avrebbe probabilità cumulativa circa `560/p`, troppo alta.
+
+Con i check per blocco, il guard richiede `s=t*(h+4)+3` righe seed:
+nessuna riga inversa. La correzione beta aggiunge `8*t` byte ricevuti;
+i payload d,z restano `8*t*(h+3)`, c `24*t*h`, più 48 byte del guard.
+Per il seed Fp6 della sezione seguente:
 
 | Voce | Byte o righe |
 |---|---:|
-| Seed base | 24.643 righe |
-| Seed Fp6 | 77.032.649 byte |
-| Seed e payload Dory, due direzioni | **77.704.697 byte** |
-| Margine parziale su 130 MB | **52.295.303 byte** |
-| Lower ricevuto | 75.891.504 byte |
-| Lower ricevuto con PCS/altro corpo B12 conservato | **98.522.556 byte** |
+| Seed base | 12.883 righe |
+| Seed Fp6 | 40.341.449 byte |
+| Seed e payload Dory, due direzioni | **40.699.897 byte** |
+| Margine parziale su 130 MB | **89.300.103 byte** |
+| Lower ricevuto | 39.679.664 byte |
+| Lower ricevuto con PCS/altro corpo B12 conservato | **62.310.716 byte** |
+
+Il check split passa a 145,870720 bit e il suo enumeratore canonico conta
+153.931.627.888.640 posizioni. Un fattore FS meccanico `2^74` lascerebbe
+soltanto 71,870720 bit: questa candidata richiede coin interattive fresche
+da F_Rand oppure una riduzione FS più stretta; lo screen non accredita FS.
 
 Coin/check finali, completamento, metadata e corpo restano fuori dal
 sottototale. Il guard scarica i due difetti di cammino identificati e
@@ -896,15 +915,15 @@ implementare.** Per n righe base restituite, contando anche le sei sacrificate:
 | Seal del seed | 40 |
 | Totale del seed | **146.489+3.120*n** |
 
-Con le **24.643 righe** del guard dei cammini e dei check Dory per blocco,
-il seed costa 77.032.649 byte. Aggiungendo i payload Dory già censiti
-si arriva a **77.704.697 byte nelle due direzioni**, con 52.295.303 byte
-di margine parziale sul primo tetto. Il lower ricevuto è 75.891.504 byte,
+Con le **12.883 righe** del profilo large-field, del guard e dei check per
+blocco, il seed costa 40.341.449 byte. Aggiungendo correzioni e payload
+Dory già censiti si arriva a **40.699.897 byte nelle due direzioni**, con
+89.300.103 byte di margine parziale sul primo tetto. Il lower ricevuto è 39.679.664 byte,
 esclusi sacrifici/OT e altre voci. Il risparmio sul sottototale Fp9 con
-precheck dell'inverso è **43.789.456 byte**. F_Rand/F_EQ, completamento Dory, metadata e
+precheck dell'inverso è **80.794.256 byte**. F_Rand/F_EQ, completamento Dory, metadata e
 corpo vanno ancora aggiunti; il margine non è un upper del certificato.
 Conservando il lower di PCS e altro corpo B12 dopo la rimozione dei soli
-P/S si arriva a 98.522.556 byte: restano 31.477.444 byte, ancora non
+P/S si arriva a 62.310.716 byte: restano 67.689.284 byte, ancora non
 assegnabili finché le voci mancanti e l'upper del nuovo corpo non sono chiusi.
 
 Il [test locale](../../tests/test_c71_fp6_seed_screen.py) controlla il
@@ -1044,25 +1063,28 @@ assert (1 << 74)*err > Fraction(1, 1 << 78)
 assert t*2**(2*h) == 76_965_813_944_320
 assert split_received[2]+47_841_180-25_210_128 == 136_360_332 > 130_000_000
 
-# A zero payload cannot be charged as a <=2^-78 event for honest Fp seeds.
+# A zero payload could not be charged as <=2^-78 in the relaxed predecessor.
 zero_lower = Fraction(t, p)-Fraction(t*(t-1), 2*p*p)
 assert Fraction(1, 2**54) < zero_lower <= Fraction(t, p) < Fraction(1, 2**53)
+# Large-field optimization: regular nonzero payload, half t, same N/n.
+t, h = 560, 19
+assert t*2**h == 293_601_280 and t*2**h//5 == 58_720_256
 # Global path guard: one mask and two Fp3 wire scalars, no inverse rows.
 path_seeds = t*(h+4)+3
 path_guard_error = Fraction(t*h+1, p**3)
-assert path_seeds == 24643
-assert Fraction(1, 2**178) < path_guard_error < Fraction(1, 2**177)
-assert 2**74*path_guard_error < Fraction(1, 2**103)
+assert path_seeds == 12883
+assert Fraction(1, 2**179) < path_guard_error < Fraction(1, 2**178)
+assert 2**74*path_guard_error < Fraction(1, 2**104)
 # Candidate Fp6 seed and Dory payload subtotal; no complete admission.
 fp6_seed_wire = 146489+3120*path_seeds
-fp6_subtotal = fp6_seed_wire+8*t*(h+3)+24*t*h+48
-fp6_received = 3072*path_seeds+8*t*(h+3)+48
-assert fp6_seed_wire == 77_032_649
-assert fp6_subtotal == 77_704_697
-assert fp6_received == 75_891_504
-assert 130_000_000-fp6_subtotal == 52_295_303
-assert fp6_received+47_841_180-25_210_128 == 98_522_556
-assert 130_000_000-98_522_556 == 31_477_444
+fp6_subtotal = fp6_seed_wire+8*t+8*t*(h+3)+24*t*h+48
+fp6_received = 3072*path_seeds+8*t+8*t*(h+3)+48
+assert fp6_seed_wire == 40_341_449
+assert fp6_subtotal == 40_699_897
+assert fp6_received == 39_679_664
+assert 130_000_000-fp6_subtotal == 89_300_103
+assert fp6_received+47_841_180-25_210_128 == 62_310_716
+assert 130_000_000-62_310_716 == 67_689_284
 ```
 
 Fonti lette nei Markdown conservati: [Dory PCG](../../sota/2025-1660-dory-streaming-vole.md),

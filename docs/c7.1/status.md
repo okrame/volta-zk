@@ -137,17 +137,21 @@ prova `gamma*(gamma-beta)=0` su tutte le coordinate, usando i MAC
 originali e un solo batch **prima di c**. Sostituisce il precheck
 dell'inverso: conserva beta uniforme incluso zero, estrae ogni cammino
 nonzero come binario e simula esattamente il ramo zero senza Delta.
-Il bound condizionale ideale è 177,70 bit; anche applicando Q*=2^74
-restano 103,70 bit. I controesempi precedenti sono respinti prima che
+Il bound condizionale ideale è 178,62 bit nel profilo large-field;
+anche applicando Q*=2^74 restano 104,62 bit. I controesempi precedenti sono respinti prima che
 possano osservare c; il test finito e una revisione indipendente concordano.
 La [candidata seed Fp6→Fp3](construction-screen.md#seed-fp6-compressione-a-95-bit-nel-singolo-setup)
 riduce il costo con rho=95, compatibile con un solo setup e un bound
 condizionale seed di **90,93 bit** sotto le stesse ipotesi primitive.
-Con guard e check per blocco, il sottototale LPN3 scende a **77,70 MB**
-nelle due direzioni: 52,30 MB di margine parziale, prima di corpo e voci
-mancanti. È uno screen riproducibile; il port nativo Fp6 non è implementato.
+La §4.2 di Dory propone su Fp il rumore regolare con beta onesto nonzero,
+riducendo LPN3 da `t=1120,h=18` a **`t=560,h=19`** a N e capacità
+invariati. Table 2 non fornisce però 128 bit concreti per Goldilocks:
+la geometria resta `credit:false` sotto una nuova ipotesi EA-LPN-SL.
+Con guard e check per blocco, il sottototale scende a
+**40,70 MB** nelle due direzioni: 89,30 MB di margine parziale, prima di
+corpo e voci mancanti. È uno screen riproducibile; il port nativo Fp6 non è implementato.
 Col lower di PCS/altro corpo B12 e senza i vecchi P/S si arriva a
-**98,52 MB**, quindi restano 31,48 MB non ancora assegnabili: serve l'upper
+**62,31 MB**, quindi restano 67,69 MB non ancora assegnabili: serve l'upper
 del nuovo corpo e di tutte le voci bootstrap mancanti.
 La [candidata cGGM nel ROM separato per nodo](construction-screen.md#cggm-con-random-oracle-separato-per-nodo)
 elimina la permutazione RPM: con cammini già binari, ogni query forward al

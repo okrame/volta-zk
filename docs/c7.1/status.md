@@ -166,7 +166,9 @@ con PoK/DLEQ è ora respinta: l'estrazione Schnorr via forking lascia circa
 59,5 bit. Anche il malicious PSI `n=2` non realizza il doppio output con
 un solo input corrotto. La nuova candidata usa due seed MAC Fp6 con ruoli
 opposti: autentica `v,w`, li comprime dopo una seconda coin e apre share di
-`(Delta0+Delta1)*(wbar-vbar)`. Il mismatch aperto è uniforme e F_EQ costa
+`(Delta0+Delta1)*(wbar-vbar)`. B11 campiona la chiave onesta in Fp3*:
+la cancellazione costa `1/(|Fp3|-1)` e le viste di rifiuto per residui
+diversi hanno distanza al più `1/(|Fp3|-2)`. F_EQ costa
 **12.815.247 byte**, senza VOPRF o nuova ipotesi gruppo. Il bootstrap
 complessivo è 61.841.290 byte; il secondo seed porta gli errori noti a
 89,93 bit. Entrambe le chiavi precedono gli input, che precedono coin e

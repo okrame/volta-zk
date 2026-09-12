@@ -24,8 +24,9 @@ per la perdita concreta dell'estrazione Schnorr. La nuova F_EQ usa invece
 due seed MAC Fp6 con ruoli opposti e apre share del prodotto mascherato
 `(Delta0+Delta1)*(wbar-vbar)`: non aggiunge un'ipotesi gruppo. Entrambe le
 chiavi precedono le correzioni degli input; una seconda coin precede i
-commitment role-bound e ogni apertura. Il mismatch è simulato da un Fp3
-uniforme nonzero, con abort e burn.
+commitment role-bound e ogni apertura. Poiché B11 esclude la chiave zero,
+la cancellazione sul mismatch costa `1/(|Fp3|-1)` e la vista di rifiuto
+ha distanza statistica al più `1/(|Fp3|-2)` fra due residui, con abort e burn.
 Mancano ancora trasferimento compositivo e codec nativi; il cGGM separato
 per nodo sostituisce la permutazione soltanto in una riduzione condizionale
 contro il receiver.

@@ -97,6 +97,8 @@ def test_guarded_bootstrap_partial_screen_keeps_missing_costs_open():
     assert Fraction(errors['FRand_bounded_Fp3_sampling']) < Fraction(1, 2**226)
     assert Fraction(errors['private_FEq_information_theoretic']) < Fraction(1, 2**107)
     assert Fraction(errors['private_FEq_reverse_seed']) == Fraction(errors['seed'])
+    assert Fraction(feq['key_cancellation_error']) == Fraction(1, plan.P**3-1)
+    assert Fraction(feq['conditional_reject_privacy_distance']) == Fraction(1, plan.P**3-2)
     assert Fraction(errors['split_check'])*2**74 > Fraction(1, 2**72)
     assert Fraction(1, 2**90) < Fraction(errors['sum']) < Fraction(1, 2**89)
     assert not screen['credit'] and not screen['complete_bootstrap_admitted']
@@ -122,8 +124,11 @@ def test_private_equality_from_opposite_mac_keys():
         assert opened == (delta0+delta1)*(value_w-value_v) % p
         assert (opened == 0) == (value_w == value_v)
 
-    # With one honest key, every nonzero difference opens uniformly; the
-    # other party learns only zero/nonzero (up to the 1/|K| zero mask).
+    # B11 samples the honest key from K*. The mismatch view omits one point;
+    # conditioning on rejection omits zero and that point.
     for corrupt_delta, difference in product(range(p), range(1, p)):
-        assert sorted((corrupt_delta+honest_delta)*difference % p
-                      for honest_delta in range(p)) == list(range(p))
+        opened = sorted((corrupt_delta+honest_delta)*difference % p
+                        for honest_delta in range(1, p))
+        omitted = corrupt_delta*difference % p
+        assert opened == [x for x in range(p) if x != omitted]
+        assert opened.count(0) == (corrupt_delta != 0)

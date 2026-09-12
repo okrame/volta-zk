@@ -1054,12 +1054,14 @@ Ogni parte committa
 `H(D_com||SID||role_i||s_i||blind_i)`; entrambi i commitment precedono
 le aperture. Si accetta soltanto se la somma aperta è zero. Sul mismatch
 fissato, la compressione è zero con probabilità `1/|K|`; altrimenti la
-chiave onesta rende la somma uniforme, salvo `Delta0+Delta1=0`. Una share
-malevola deve essere fissata prima di vedere quella onesta. La vista su
-rifiuto è quindi un elemento uniforme nonzero, indipendente dal residuo:
-non consente il dizionario dei cammini. Un guess della chiave onesta nelle
-global-key query aggiunge `Q_ROM/|K|`. Withholding o codec non canonico
-causano abort e burn di entrambi i setup.
+chiave onesta di B11 è uniforme in `K*`. Per un residuo compresso nonzero D,
+la somma è uniforme su `K` tranne il punto `Delta_corrupt*D`; la cancellazione
+costa al più `1/(|K|-1)`. Condizionando sul rifiuto, le distribuzioni di due
+residui hanno distanza statistica al più `1/(|K|-2)`: questo termine realizza
+il leakage di un solo bit senza consentire il dizionario dei cammini. Una
+share malevola deve essere fissata prima di vedere quella onesta. Un guess
+della chiave onesta nelle global-key query aggiunge `Q_ROM/(|K|-1)`.
+Withholding o codec non canonico causano abort e burn di entrambi i setup.
 
 Questo realizza F_EQ con abort nel modello ROM e dei due seed MAC, senza
 one-more gap CDH, VOPRF o DLEQ. Il secondo seed aggiunge un'altra copia del

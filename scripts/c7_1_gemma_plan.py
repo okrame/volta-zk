@@ -6706,9 +6706,17 @@ def c71_dory_guarded_bootstrap_screen():
         Fraction(rom_query_cap*(rom_query_cap-1), 1 << 257)
         + 3*Fraction(rom_query_cap, 1 << 256)
         + Fraction(1, 1 << 256))
+    # B11 rejects a zero global key, so the honest key is uniform in K*.
+    # For a fixed nonzero mismatch D, (delta_corrupt+delta_honest)*D is
+    # uniform on K without one point.  Cancellation costs 1/(q-1), and
+    # reject views for two residuals are within 1/(q-2) statistical distance.
+    feq_key_cancellation_error = Fraction(1, q-1)
+    feq_reject_privacy_distance = Fraction(1, q-2)
     feq_information_theoretic_error = (
-        2*Fraction(1, q)                  # compression zero or delta0+delta1=0
-        + Fraction(rom_query_cap, q)      # corrupt reverse receiver guesses honest key
+        Fraction(1, q)                    # linear compression is zero
+        + feq_key_cancellation_error
+        + Fraction(rom_query_cap, q-1)    # corrupt party guesses the honest K* key
+        + feq_reject_privacy_distance
         + rom_commitment_error+xof_seed_prequery_error
         + feq_second_sampler_error+feq_share_commitment_error)
     total_with_coin_feq = total_with_coin+feq_wire
@@ -6751,6 +6759,8 @@ def c71_dory_guarded_bootstrap_screen():
             'second_coin_wire_bytes': feq_second_coin_wire,
             'share_commit_open_wire_bytes': feq_share_commit_open_wire,
             'conditional_information_theoretic_error': str(feq_information_theoretic_error),
+            'key_cancellation_error': str(feq_key_cancellation_error),
+            'conditional_reject_privacy_distance': str(feq_reject_privacy_distance),
             'new_computational_assumption': False,
             'algebraic_hybrid_argument_recorded': True,
             'formal_reduction_checked': False,

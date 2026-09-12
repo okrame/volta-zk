@@ -636,8 +636,13 @@ incompatibile con tempo o memoria si scarta; per un costo decisivo ignoto
 si svolge solo la verifica minima necessaria a chiarirlo. Lo screen non è
 una misura completa né autorizza run pesanti/provider o spese.
 
-**Esito dello [screen minimo](pcs-state-screen.md#screen-minimo-sotto-i-tetti-assoluti):
-nessuna candidata esaminata è plausibile.** Il bootstrap corrente supera
+**Esito dello [screen minimo](pcs-state-screen.md#screen-minimo-sotto-i-tetti-assoluti)
+e del [confronto di nuove famiglie](construction-screen.md): nessuna
+costruzione completa selezionabile.** PCG silent, LogVOLE, PCS con codici,
+streaming e Akita non acquisiscono bound B12: per le nuove composizioni
+restano da istanziare campo, endpoint MAC privati, same-W/KV, ZK e risorse.
+In particolare Akita lascia la ZK a lavoro futuro; non se ne adotta il
+profilo pubblico per il modello privato. Il bootstrap corrente supera
 i tetti già per le sole correlazioni P/S RNE; le strutture dense superano
 anche memoria e 50 s. La candidata W/A/KV da 10,31 TB resta fermata.
 RNE v2, parametri PCS e conservazione dei dati iniziali mantengono soltanto

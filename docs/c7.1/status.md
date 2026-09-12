@@ -103,8 +103,12 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Screen di selezione concluso: nessuna candidata esaminata è plausibile
-sotto il nuovo contratto.** La riduzione della prova completa resta aperta.
+**Selezione estesa a nuove famiglie: nessuna costruzione completa supera
+lo screen.** La riduzione della prova completa resta aperta. Il
+[nuovo confronto](construction-screen.md) copre anche PCG silent, LogVOLE,
+PCS con codici/reticoli e prover streaming. Akita con lookup Shout è la
+pista strutturalmente più interessante, ma la ZK della PCS è ancora lavoro
+futuro e manca il costo della composizione privata: non viene selezionata.
 Lo steering del 2026-09-12 sostituisce lo 0,5–1,5% con **35.000.000 byte
 alla prima risposta e 40.000.000 a ciascuna successiva**, senza crescita
 del tetto. Valgono <=50 s per risposta sulla singola H100, IO incluso,
@@ -134,10 +138,12 @@ I [tre certificati ridotti](pcs-state-screen.md#inferenza-completa-ridotta-con-r
 non ricevono credito canonico, AES, multi-sessione o di lavoro totale.
 B12 rimane selezionato, senza soddisfare i nuovi obiettivi.
 
-Non si prosegue il port delle candidate respinte. Per riaprire la selezione
-serve una costruzione che superi prima lo screen sia delle correlazioni
-fresche sia dei consumer/PCS in memoria ordinaria; nessuna di queste due
-voci può essere risolta occultandola nel materiale globale del modello.
+Non si prosegue il port delle candidate respinte. Le nuove sostituzioni
+dirette non rimuovono insieme i costi di correlazioni fresche, consumer e
+PCS privata in memoria ordinaria. Il confronto distingue i rifiuti numerici
+dalle composizioni con costi ancora ignoti; non afferma un'impossibilità
+generale. Per riaprire servono tutti questi costi finiti, compreso il riuso
+globale sicuro fra sessioni, senza occultare stato dinamico o setup.
 
 Il precedente goal di estensione resta aperto e subordinato a questa
 priorità: collegare Prepare/prover canonici al wrapper, conservando gli

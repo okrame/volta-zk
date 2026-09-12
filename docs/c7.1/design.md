@@ -688,6 +688,13 @@ i vettori fissati, tre maschere per blocco e un unico AND finale. Non
 realizza F_Rand/F_EQ, EA-LPN-SL o il cGGM: il teorema B12 rimane invariato.
 La variante LPN3 conserva 13,78 MB di margine parziale; con il resto
 del corpo/PCS B12 invariato è respinta già per byte ricevuti.
+Il [caso finale non binario](construction-screen.md#cammino-finale-non-binario-check-e-recupero-della-chiave)
+passa il check con due foglie autenticate: la simulazione deve estrarlo,
+non assumere sempre abort. Nel ramo RPM, sigma=c*id con c nel campo
+base diverso da 0,1 espone Delta mediante una sola query inversa;
+questa istanza è esclusa, anche con i check separati. Sigma=u*id su
+Fp3 evita quella cancellazione, ma non fornisce già la riduzione.
+ROM diretto, realizzazione concreta e simulazione malevola rimangono aperti.
 
 ### Selected reference
 

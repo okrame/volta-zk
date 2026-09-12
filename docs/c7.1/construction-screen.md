@@ -583,10 +583,91 @@ permutazione. I suoi lemmi riguardano però semi-binding/hiding di un
 commitment binario; non la generazione DV con key nell'output onesto.
 La revisione 2025-11-20 corregge inoltre la precedente variante con root
 derivata dalla chiave di firma: non se ne importa quel riuso.
-Il prossimo contributo utile è la prova del ramo cGGM Fp3 nel ROM con
-questi check, oppure un'altra realizzazione concreta con pari garanzie.
-L'invariante additivo da solo non fornisce quella prova, un'espansione
-AES, il bound completo del riduttore o la fattibilità onesta entro 50 s.
+Il [controllo dei cammini non binari](#cammino-finale-non-binario-check-e-recupero-della-chiave)
+qui sotto aggiunge un obbligo alla simulazione e respinge una particolare
+istanza RPM. L'invariante additivo da solo non fornisce una prova nel ROM,
+un'espansione AES, il bound completo del riduttore o i 50 s onesti.
+
+### Cammino finale non binario: check e recupero della chiave
+
+**Derivazione locale sulle formule della fonte, non nuovo protocollo.**
+La [versione primaria Dory](https://eprint.iacr.org/2025/1660) del
+2025-09-23, Fig. 5 e Appendice C/Lemma 3, assume che un r non binario
+con beta nonzero provochi abort salvo errore trascurabile. Il caso in
+cui soltanto **l'ultima** coordinata r appartiene a F\{0,1} richiede
+invece un estrattore diverso, anche con coin realmente uniformi.
+
+Fissare un blocco, a=K(beta), M_beta=a+beta*Delta. Il prefisso del
+cammino è binario; il prover conosce tutti i sottoalberi fuori da quel
+prefisso. Sia S la somma delle loro foglie e x=a−S il padre delle due
+foglie ancora nascoste. Dall'ultima correzione, sottraendo M(r) e le
+foglie sinistre già note, il prover ricava
+
+```text
+L = H(x) - r*a.
+K_left  = L + r*a;        K_right = -S-L + (1-r)*a
+e_left  = r*beta;         e_right = (1-r)*beta
+M_left  = L + r*M_beta;   M_right = -S-L + (1-r)*M_beta.
+```
+
+Entrambe le identità `M=K+e*Delta` sono esatte, per **qualsiasi H** e
+qualsiasi K estensione di F. Il prover calcola e,M senza Delta; fuori
+da queste due foglie usa e=0 e i nodi noti. Per beta nonzero il rumore
+ha due punti, anziché uno. Con `z=m+coords(U(e))` e
+`w=U(M)+sum_j M(m_j)*u^j`, il check della Fig. 5 accetta per **ogni U**.
+Anche i check per blocco accettano. L'argomento della fonte che considera
+un valore della foglia indipendente dal valore indovinato non copre la
+compensazione mediante z, scelto dopo U. Non serve indovinare Delta per
+questo solo passaggio.
+
+Questo fatto **da solo non rompe F_sPCG-sVOLE**: quando P1 è corrotto,
+Fig. 4 gli permette output x,M arbitrari, non soltanto rumore regolare.
+La simulazione deve estrarre i due pesi e i relativi MAC; la linearità
+conserva tutti gli accumuli. Non può però abortire incondizionatamente
+su quest'ultimo r non binario come l'estrattore citato. Il caso di una
+coordinata non binaria a livelli precedenti rimane distinto e aperto.
+
+**Esclusione concreta in RPM: sigma scalare nel campo base.** Il
+Teorema 1 e la nota 2 consentono `sigma(y)=c*y` con c in K\{0,1}.
+Se si sceglie c in **F\{0,1}**, il prover sceglie r=c. Poiché
+`H(x)=pi(c*x)+c*x`, l'osservazione precedente diventa
+
+```text
+L + c*S = pi(c*x)
+x = c^(-1) * pi^(-1)(L+c*S)
+a = x+S;                 Delta = (M_beta-a)/beta.
+```
+
+Una sola query inversa recupera Delta esattamente, condizionatamente
+a beta nonzero. Con seed onesto questo evento ha probabilità 1−1/|F|;
+non è una ricerca su |K| chiavi. Una volta nota Delta il prover può
+calcolare tutte le key dai suoi seed, ricostruire l'albero e superare
+il check anche usando un rumore single-point scelto da lui. Il problema
+precede F_Rand/F_EQ e non si corregge aumentando maschere o ripetizioni.
+**Non si porta dunque il ramo RPM con sigma=2*id su Fp3**: 2 è una
+scelta formalmente ortomorfa in caratteristica Goldilocks, ma insicura
+contro questo prover. Il risultato non riguarda l'implementazione COT
+binaria della fonte, dove quel r non binario non esiste, né B11/B12.
+
+Il [test finito riproducibile](../../tests/test_c71_dory_nonbinary_path.py)
+costruisce due livelli da seed MAC validi su F5 e distingue la vista del
+prover dalle key del verifier. Controlla tutti i 625 hash lineari per
+ciascun ultimo r non binario e Delta, inclusi gli accumuli, poi il
+recupero di Delta per **tutte le 120 permutazioni**, tutti i Delta,
+beta nonzero e prime correzioni. Non è un benchmark, un test del
+bootstrap nativo o una prova di sicurezza su campo piccolo. Le identità
+sopra, non la dimensione del test, estendono il risultato a Fp/Fp3.
+
+**Prossima verifica circoscritta.** Il ROM diretto non fornisce l'oracolo
+inverso usato nell'attacco, ma conserva il caso accettato con due foglie.
+Nel ramo RPM, sigma(y)=u*y con u in Fp3\Fp evita questa cancellazione
+scalare: per ogni r in Fp, sigma−r*id è invertibile. Questa proprietà
+permette di risolvere l'equazione di una query inversa in un *candidato*
+a, da validare con l'interfaccia di guess; non rivela a da L da solo.
+Non è ancora una riduzione: vanno trattati i livelli precedenti, i
+transcript adattivi e l'output Delta del verifier dopo il check. Nessuna
+permutazione concreta su Fp3 o nuova assunzione è selezionata. LPN,
+bound composto, byte completi e tempo del bootstrap restano aperti.
 
 ## IO, sicurezza e criterio di riapertura
 

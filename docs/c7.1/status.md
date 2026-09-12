@@ -135,9 +135,14 @@ il lower ricevuto supera già **136,36 MB**: occorre cambiarli comunque.
 Il lemma presuppone coin fresche; il trasferimento FS con Q*=2^74
 non conserva i 78 bit richiesti.
 
-La prossima verifica riguarda il cGGM Fp3 nel ROM, con i nuovi check e
-una realizzazione concreta, oppure una schedule con meno correlazioni.
-EA-LPN-SL, F_Rand/F_EQ e costo completo restano da giustificare. La
+La [verifica del cammino finale non binario](construction-screen.md#cammino-finale-non-binario-check-e-recupero-della-chiave)
+mostra che il check può accettare due foglie autenticate: quel caso
+richiede estrazione, non abort presunto. Inoltre il port RPM con
+**sigma=c*id, c in Fp diverso da 0,1, espone Delta con una query inversa**
+ed è escluso; il risultato algebrico ha un controesempio finito riproducibile.
+La prossima verifica riguarda il cGGM Fp3 nel ROM, oppure un sigma
+diverso, con simulazione dei cammini precedenti non binari e istanza
+concreta. EA-LPN-SL, F_Rand/F_EQ e costo completo restano aperti. La
 [verifica Half-Tree](construction-screen.md#realizzazione-cggm-cosa-trasferisce-half-tree)
 esclude anche il trasferimento diretto del ramo pcGGM binario: l'hash
 finale rompe le somme richieste dall'accumulo Dory. I cGGM nel ROM

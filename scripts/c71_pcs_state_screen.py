@@ -158,6 +158,41 @@ def joint_state(old, rolling_w, rolling_a, cases):
             'RNE work and ROM/ZK resource census', 'host storage, peak HBM and all transfers'])
 
 
+def feasibility(cases):
+    """Reject the existing dense candidates; lower bounds, not H100 timings.
+
+    byte_function::required(d) = 169+32*d; the B12 prover sends 576
+    eight-byte COPE corrections per base row, three rows per Fp3.
+    The dense byte-function tree retains 256+128+...+1 pairs per cell.
+    NVIDIA H100 SXM: 3.35 TB/s peak HBM. Never treat peak as effective.
+    """
+    screened = []
+    for slot, case in enumerate(cases):
+        bits = case['unpadded_RNE_group_bits']
+        cells = sum(1 << d for d in bits)
+        fp3_rows = sum(169+32*d for d in bits)
+        writes = 48*511*cells
+        screened.append(dict(old_tokens=150*slot,
+            certificate_cap_bytes=35_000_000 if slot == 0 else 40_000_000,
+            RNE_PS_Fp3_rows=fp3_rows,
+            # Excludes sacrifices, OT, checks, seal and every response byte.
+            verifier_COPE_bytes_lower=576*8*3*fp3_rows,
+            dense_RNE_tree_peak_bytes=48*511*(1 << max(bits)),
+            dense_RNE_tree_write_bytes_lower=writes,
+            dense_RNE_write_seconds_at_HBM_peak_lower=writes/3.35e12,
+            # Illustrative 80% efficiency, not a measured or admitted rate.
+            dense_RNE_write_seconds_at_80pct_peak=writes/2.68e12,
+            full_prover_seconds=None, feasible=False))
+    return dict(credit=False, selected=False, hardware_credit=False,
+        capacity=dict(attempts=3, new_tokens_per_attempt=150, total_tokens=450),
+        complete_certificate_cap_verified=False,
+        full_work_nonincrease_verified=False,
+        cases=screened,
+        conversation_certificate_cap_bytes=115_000_000,
+        conversation_RNE_COPE_bytes_lower=sum(c['verifier_COPE_bytes_lower'] for c in screened),
+        decision='reject current dense candidates; COPE alone also rejects global-W-only repair')
+
+
 def report():
     current = base.b12_pcs_binding_assessment()
     old = [geometry(h) for h in (35, 34)]
@@ -227,7 +262,8 @@ def report():
         search=dict(family_size=60, passing_PCS_prefix_screen=len(candidates),
             best_parameters={k:best[0][k] for k in ('queries','first','step')},
             best_two_PCS_upper=sum(p['wire']['wire_interval'][1] for p in best)),
-        cases=cases, retained_commit_work=retained_work(old, [rolling_w, chosen[1]]),
+        cases=cases, feasibility=feasibility(cases),
+        retained_commit_work=retained_work(old, [rolling_w, chosen[1]]),
         joint_state=joint_state(old, rolling_w, chosen[1], cases),
         full_work_unresolved=['RNE added sumcheck and scheduling (new padding removed)', 'rolling KV copy and link forms',
             'W refresh commitment, equality form and second W PCS; retained data IO',
@@ -236,7 +272,7 @@ def report():
         security_unresolved=['joint RNE FS/simulator', 'rolling-state FS link and same-W induction',
             'complete new ROM/PCG/private-sampler/reduction resource census'],
         lifetime='three attempts only; no security or growth admission for an unbounded run',
-        bytes_scope='conditional full response wire envelope; offline bootstrap/setup counted separately and not measured')
+        bytes_scope='response body only; feasibility includes a verifier bootstrap lower bound and rejects the complete certificate caps')
 
 
 if __name__ == '__main__':

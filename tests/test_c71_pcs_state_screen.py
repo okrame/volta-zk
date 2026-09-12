@@ -31,6 +31,18 @@ def test_pcs_state_screen_counts_full_envelopes_and_keeps_work_unadmitted():
         assert all(a < b for a, b in zip(c['rolling_W_and_KV_interval'], c['baseline_interval']))
         assert all(a < b for a, b in zip(c['projected_complete_response_interval'], c['baseline_interval']))
 
+    screen = r['feasibility']
+    assert not screen['credit'] and not screen['complete_certificate_cap_verified']
+    assert [c['RNE_PS_Fp3_rows'] for c in screen['cases']] == [6582, 8616, 8616]
+    assert [c['verifier_COPE_bytes_lower'] for c in screen['cases']] == [90_989_568, 119_107_584, 119_107_584]
+    assert screen['conversation_RNE_COPE_bytes_lower'] == 329_204_736
+    assert screen['conversation_RNE_COPE_bytes_lower'] > screen['conversation_certificate_cap_bytes']
+    for c in screen['cases']:
+        assert c['verifier_COPE_bytes_lower'] > c['certificate_cap_bytes']
+        assert c['dense_RNE_tree_peak_bytes'] > 80_000_000_000
+        assert c['dense_RNE_write_seconds_at_HBM_peak_lower'] > 50
+        assert c['full_prover_seconds'] is None and not c['feasible']
+
     work = r['retained_commit_work']
     assert not work['credit'] and not work['full_work_nonincrease_verified']
     for t, prefix in enumerate(work['prefixes'], 1):

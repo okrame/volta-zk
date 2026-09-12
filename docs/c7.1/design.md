@@ -354,6 +354,10 @@ schedule fisico restano aperti.
 
 ### Mandatory wire lower bound
 
+I conteggi di codec nelle sezioni seguenti riguardano il **corpo della
+risposta**. Escludono il bootstrap per sessione e quindi non sono upper
+del certificato completo definito nel contratto aggiornato sotto.
+
 L'encoding corrente impone, per una RNE con c bit di celle,
 `7964 + 1176*c + 24*(funzioni + prodotti)` byte. I primi due termini
 includono i nove campi per round, i tag, i prefissi u32 dei vettori e
@@ -374,9 +378,9 @@ Anche il solo istogramma del range W è obbligatorio e disgiunto dalle
 RNE: `range::verify` impone 65.535 campi per l'alfabeto simmetrico 32767,
 quindi `4 + 24*65535 = 1.572.844` byte di wire. Sommato al minimo RNE,
 porta il limite inferiore a **30.944.292/31.014.852/31.014.852 byte**.
-L'encoding corrente non può quindi soddisfare la preferenza di 30 MB
-per nessuna calibrazione ammessa. Includendo le PCS, il conteggio esteso
-sotto supera anche l'allarme a 35 MB per ogni calibrazione.
+Questo è ancora un sottototale. Includendo le PCS, il conteggio esteso
+sotto supera i tetti correnti di 35/40 MB per ogni calibrazione, già
+prima del bootstrap per sessione.
 
 Il precedente reader totale da 16.777.216 byte era incompatibile con
 qualsiasi prova canonica completa. Il nuovo cap deriva dal conteggio
@@ -570,134 +574,84 @@ Calibrazione, hardware e completa accettazione canonica rimangono separati.
 
 ### Owner-authorized PCS/state experiment
 
-**Steering del proprietario del 2026-09-12, prevalente sul perimetro
-interpretato il 2026-09-11.** La sola memoria persistente aggiuntiva ammessa
-è materiale globale del modello, preparato/caricato una volta all'inizio
-dal provider e riutilizzabile fra sessioni con verifier diversi. A modello
-fissato, contenuto e capacità non devono crescere col numero di utenti o
-sessioni, nemmeno sequenziali. Il prototipo usa una sessione e un utente
-alla volta. Una cache A/KV/PCS generata per risposta o sessione non rientra
-in questa concessione, anche se viene liberata prima della sessione dopo;
-lo stato dinamico deve rispettare i limiti ordinari del runtime.
-Il riuso globale deve essere giustificato crittograficamente: una capacità
-di pad/correlazioni monouso preallocata per future sessioni non è materiale
-riutilizzabile illimitatamente. Restano separazione dei domini, freschezza,
-budget di esposizioni e obbligo di sicurezza composta fra sessioni.
+**Steering del proprietario del 2026-09-12, prevalente sui piani precedenti.**
+Per «prova» si intende il **certificato completo**, coerentemente con
+[C4.1](../c4.1-seed-streaming-fiat-shamir.md#objective-and-terminology).
+Il corpo serializzato della risposta è una sua voce, non l'intero costo.
+Indicando con R_j quel corpo e con B_j tutti gli altri byte necessari al
+verifier e non già addebitati, valgono tetti assoluti in byte decimali:
 
-Il prover completo deve impiegare **al massimo 50 s per risposta** sulla
-singola H100 nel carico dichiarato. Valgono le voci del riferimento sotto:
-generazione, preparazione witness, PCG, prova e serializzazione, comprese
-letture/scritture e trasferimenti necessari. Il caricamento globale iniziale
-si contabilizza separatamente una volta; setup e lavoro per sessione o
-risposta non si occultano in quel caricamento. Resta il vincolo precedente
-di lavoro totale non crescente, inclusi setup/precomputazione/replay,
-contro la baseline sulla stessa conversazione. Tempo e lavoro sono due
-verifiche distinte.
+```text
+P_1 = R_1 + B_1 <= 35.000.000
+P_j = R_j + B_j <= 40.000.000   per ogni 2 <= j <= C
+```
 
-Prima di sviluppare o portare una candidata occorre uno screen circoscritto
-di fattibilità: byte letti/scritti per risposta e numero di passaggi,
-collocazione dei dati e banda effettiva motivata, lavoro crittografico e
-tempo completo con margine esplicito per le operazioni restanti. L'overlap
-non è gratuito e richiede giustificazione. Una linea giudicata incompatibile
-con i 50 s si scarta subito; se il costo è ignoto si può solo svolgere la
-verifica minima che risolve quell'incertezza, senza avanzare implementazione,
-port o composizione estesa assumendo prestazioni future. Un lower bound
-inferiore a 50 s non basta ad ammettere la candidata; un costo ignoto non
-vale zero. Questo screening non concede credito hardware o nuove spese.
+B_1 include installazione/metadata trasmessi e tutto il bootstrap offline
+per sessione ricevuto prima della prima risposta; B_j include eventuali
+nuovi dati necessari. Si contano una volta i dati ricevuti, nuovamente i
+riferimenti ritrasmessi. Il traffico nelle due direzioni resta esplicito;
+almeno tutti i byte ricevuti dal verifier rientrano nei tetti. Non si
+ammortizza B_1 su risposte future. **Lo 0,5–1,5% è sostituito**, non resta
+un criterio aggiuntivo e il tetto non cresce col turno.
 
-Il primo certificato completo deve essere **<=35.000.000 byte** (MB decimali).
-Il proprietario ha chiarito che lo 0,5–1,5% indica **l'incremento rispetto
-alla prima proof**: indicando con P_j i byte completi della risposta j,
-il criterio è P_1 <=35.000.000 e P_j <=1,015*P_1 per ogni j>=2 del profilo
-dichiarato, con obiettivo di incremento 0,5% o inferiore. Non è un incremento
-composto a ogni turno né un limite relativo alla proof immediatamente prima.
-Per P_1=35 MB, le successive hanno obiettivo <=35,175 MB e tetto indicativo
-35,525 MB; proof più piccole soddisfano il criterio. La tolleranza non
-autorizza una crescita indefinita: va dichiarata e verificata la capacità
-finita di storia supportata. Non basta mostrare tre prefissi sul grafo piccolo.
-Restano inclusi
-tutti i byte necessari al verifier, senza spostarli in un offline per
-sessione non contato; il carico nuovo deve essere lo stesso nel confronto.
+La capacità dello screen corrente è **C=3 tentativi 100+50, O=0/150/300,
+450 token totali**, come il profilo matematico selezionato; non 4.096 o
+una conversazione illimitata. Si verificano tutti e tre i contesti canonici.
+Nessuna candidata ha dimostrato questi tetti entro tale capacità: tre
+certificati validi su un grafo ridotto non costituiscono quella verifica.
 
-**La candidata densa S/D36 con 10,31 TB di predecessore/successore è
-fermata per incompatibilità con il vincolo di memoria globale.** Quei dati
-dipendono da A/KV della conversazione e vengono creati a ogni risposta.
-Non si continua il suo port o la chiusura come soluzione di questo goal;
-un'eventuale costruzione diversa deve prima superare i criteri sopra.
-Il batch RNE e la conservazione di dati realmente globali restano componenti
-riutilizzabili solo dopo verifica del costo e delle premesse applicabili.
+La sola memoria aggiuntiva concessa è materiale globale del modello,
+preparato/caricato una volta dal provider e riutilizzabile fra sessioni.
+A modello fissato, contenuto e capacità non crescono né si rigenerano con
+utenti/sessioni. Una sola sessione alla volta non autorizza cache esterne
+A/KV/PCS specifiche della conversazione. Stato dinamico, HBM e arena restano
+nei limiti ordinari sotto; nessuno spill dinamico è ammesso.
 
-Lo studio precedente estendeva la riduzione byte a PCS W,
-stato KV e batch RNE, conservando sicurezza e lavoro totale del prover.
-Lo [screen delle schedule candidate](pcs-state-screen.md) distingue
-W con tre esposizioni, W rinnovato e stato unico W/A/KV. Non cambiano
-il protocollo selezionato in security §§1–3. Il raggruppamento RNE senza
-padding aggiunto e i nuovi parametri PCS restano test-only; gli upper wire
-proiettati non sono certificati completi verificati.
+Il riuso di una trasformazione deterministica privata di W/Γ, senza nuova
+vista esterna, può riusare la stessa funzione su input invariati; caricamento,
+letture e copie si contano comunque. Questa osservazione non giustifica il
+riuso del commitment salato B12: la simulazione di [security §5](security.md#5-simulatore-congiunto-e-nopeek)
+trasla i pad sull'unione finita delle esposizioni di una nuova installazione.
+Pad, sali con il loro budget di esposizioni, maschere e correlazioni monouso
+non diventano materiale globale illimitatamente riutilizzabile. Nuove
+sessioni richiedono casualità/righe fresche, domini separati e una composizione
+same-W/ZK multi-sessione con risorse globali; i bound B12 non si trasferiscono.
+Le sole identità MAC riusano i lemmi già elencati in security §6.
 
-La [candidata a root unica](pcs-state-screen.md#stato-unico-wakv-con-installazione-separata)
-colloca W/D35, A/KV/D34 e un quarto zero in S/D36. Conserva la PCS del W
-installato prima del primo prompt; poi ogni risposta apre soltanto vecchio
-e nuovo S. Le forme originali e i due alphabet range devono essere
-trasportati ai rispettivi offset, e il quarto zero deve essere vincolato.
-I piccoli controlli algebrici/PCS e i nuovi conteggi non dimostrano ancora
-questa composizione, la ZK congiunta o lo schedule fisico. Il protocollo
-B12 selezionato e i suoi cap di dominio restano quelli di security §§1–3.
-Il [percorso nativo di transizione](pcs-state-screen.md#transizione-nativa-piccola-con-range-e-dati-pcs-conservati)
-collega range separati, link originali W/KV, due PCS e promozione su sorgenti
-sintetiche W/D12 e S/D13. Il successivo
-[confronto di inferenza ridotta](pcs-state-screen.md#inferenza-completa-ridotta-con-rne-raggruppate)
-riusa Prepare e l'intero corpo numerico/GKR B12, raggruppando le RNE del
-frame 3 e chiudendo le forme A/W/KV nella stessa S. Confronta snapshot
-numerici e certificati completi sulla stessa conversazione a tre turni.
-I MAC sono ideali: questo positivo non prova la composizione ROM/ZK o
-la corrispondenza canonica. In particolare restano da scaricare la
-riduzione delle uguaglianze W/KV fra root, il batch RNE accoppiato al FS,
-la simulazione sulle due esposizioni di S e il censimento completo delle
-query/eventi della nuova foresta; i bound B12 non si trasferiscono.
-Copie delle viste, snapshot, forme scalari KV e identificatori delle root
-ritirate restano costi da includere, anche senza altre PCS nel wire.
+Il prover completo deve impiegare **<=50 s per ogni risposta** della capacità
+dichiarata sulla singola H100: generazione, witness, PCG, prova,
+serializzazione, letture, scritture e trasferimenti necessari. Il caricamento
+globale iniziale si registra una volta separatamente; setup per sessione e
+risposta non si occultano in esso. Resta **lavoro totale non crescente su
+ogni prefisso della stessa conversazione**, contro la baseline con stesso
+modello, semantica, token e sicurezza: setup, precomputazione, replay e IO
+inclusi. Un risparmio di byte o di correlazioni non dimostra quella proprietà.
 
-La precedente interpretazione dell'eccezione fuori H100 come autorizzazione
-a conservare cache PCS dinamiche è superata dallo steering sopra. Solo il
-materiale globale riutilizzabile può eccedere il limite persistente del
-riferimento; HBM, arena, trust model e autorizzazione di spesa non cambiano.
-Conservazione, copia, scrittura/rilettura e trasferimenti devono comparire
-nel lavoro totale, insieme a setup, rinnovi e replay. Non si materializzano
-localmente codeword D34/D35.
+Prima di implementare o approfondire: screen minimo di certificato, memoria
+globale/dinamica, traffico per risposta, passaggi, banda effettiva motivata,
+lavoro crittografico e tempo completo. Gli accessi esterni devono lasciare
+un budget esplicito al calcolo; nessun overlap gratuito. Costi mancanti
+restano ignoti (bound di ammissione infinito), non zero. Una candidata
+incompatibile con tempo o memoria si scarta; per un costo decisivo ignoto
+si svolge solo la verifica minima necessaria a chiarirlo. Lo screen non è
+una misura completa né autorizza run pesanti/provider o spese.
 
-Il kernel sperimentale `prove_claimless_retained` riusa immutabilmente
-messaggio, pad e Merkle già prodotti dal commit. L'equivalenza con il
-percorso ricostruito e il suo perimetro sono nello
-[screen](pcs-state-screen.md#dati-iniziali-conservati-uguaglianza-della-prova-e-lavoro-evitato):
-stessi coin e assorbimento della root producono gli stessi byte/FS;
-il caller deve ancora imporre freschezza e limite di esposizioni.
-La sola sostituzione di storage non cambia il protocollo o i suoi eventi
-di sicurezza. Il wrapper C71 può ora usarla tramite il costruttore interno
-con conservazione; quello ordinario mantiene la rimaterializzazione.
-I dati di commit sono condivisi immutabilmente con `Arc`, senza rinnovare
-esposizioni. La disciplina di tentativi resta responsabilità del caller;
-non si abilita per questo la produzione o lo stato mobile canonico.
-La contabilità separa l'encode iniziale evitato dalle proof fresche:
-`SelectStatement::combine_packed` esegue ancora t*M termini, in aumento
-nella candidata fold-6. Il contratto sulle sorgenti sotto resta aperto;
-nessuna conversione implicita fra geometrie FFT e lavoro totale è ammessa.
-
-Il confronto va effettuato su ogni prefisso della stessa conversazione,
-con gli stessi modello e token. La metrica dello screen è il singolo
-certificato rispetto alla storia, a risposta nuova fissata. I token nuovi
-e i byte cumulativi delle risposte hanno un costo di trasporto almeno
-lineare nel codec attuale. La costanza del numero di PCS non estende il
-teorema a tentativi illimitati: il profilo deve comunque pagare capacità,
-esposizioni, query e sicurezza congiunta. Gli obblighi ancora non scaricati
-sono elencati nello screen prima di qualsiasi affidamento sui nuovi bound.
+**Esito dello [screen minimo](pcs-state-screen.md#screen-minimo-sotto-i-tetti-assoluti):
+nessuna candidata esaminata è plausibile.** Il bootstrap corrente supera
+i tetti già per le sole correlazioni P/S RNE; le strutture dense superano
+anche memoria e 50 s. La candidata W/A/KV da 10,31 TB resta fermata.
+RNE v2, parametri PCS e conservazione dei dati iniziali mantengono soltanto
+l'evidenza componente descritta nello screen; nessun port o ulteriore
+ottimizzazione di queste costruzioni è il prossimo passo. Una nuova linea
+deve risolvere sia il costo delle correlazioni fresche sia quello dei
+consumer/PCS dinamici prima di essere selezionata.
 
 ### Selected reference
 
 | Voce | Riferimento da soddisfare; nessuna nuova misura |
 |---|---:|
-| Prover completo a modello residente | 45–50 s |
-| Certificato completo per risposta | preferenza 30.000.000 byte; allarme oltre 35.000.000 |
+| Prover completo a modello residente | <=50 s per risposta nella capacità dichiarata |
+| Certificato completo, bootstrap per sessione incluso | prima <=35.000.000 byte; successive <=40.000.000 |
 | Verifier CPU locale, quattro core | 6,4–8,2 s |
 | Caricamento modello per residenza | riferimento storico 19,186 s, distinto dal setup crittografico |
 | Inferenza e prover sulla stessa H100 | picco globale <80.000.000.000 byte |
@@ -706,8 +660,10 @@ sono elencati nello screen prima di qualsiasi affidamento sui nuovi bound.
 | W packed | 61.394.690.560 byte |
 | Materiale modello persistente, W inclusi | ≤2,10× W packed =128.928.850.176 byte |
 
-Queste sono preferenze, limiti e allarmi del riferimento, non autorizzazioni
-a indebolire privacy o soundness. Nessuno spill, seconda copia dei pesi o
+I tetti di certificato e prover sono requisiti dello steering, non allarmi.
+Solo il materiale globale riutilizzabile può eccedere i 2,10× persistenti;
+questa concessione non aumenta HBM o arena. Gli altri riferimenti non
+autorizzano a indebolire privacy o soundness. Nessuno spill, seconda copia dei pesi o
 codeword completo è ammesso nel riferimento. Il trattamento delle sorgenti
 richiede `c_source*N + P(q,h)` con coefficienti uniformi indipendenti da q/N;
 nessun `qN`, `N log q` o `N log N` si nasconde sotto GKR o witness.
@@ -757,7 +713,7 @@ controlli bit-per-bit e misure dei kernel reali, non crediti da roofline GPT-2.
 
 Il profilo matematico selezionato si ferma a 450 token. Il futuro confronto
 Gemma fino a 4.096 token totali (vecchi+prompt+generati) richiede nuovi conti
-e composizione: i tempi obiettivo riguardano il primo 100+50. Il layout KV
+e composizione: il requisito <=50 s vale su ogni risposta della capacità dichiarata sopra. Il layout KV
 i16 usa 901.120 byte/token e 3.690.987.520 byte a capacità 4.096. La capacità
 vuota non diventa arena aggiuntiva senza una prova di liveness/padding.
 Size massima, lavoro e memoria vanno ricompilati per ogni carico; niente

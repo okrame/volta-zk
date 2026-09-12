@@ -12,6 +12,124 @@ I conti e i test sotto conservano il loro perimetro di evidenza; non sono
 un piano per continuarne il port. Eventuali componenti riutilizzati in
 una costruzione diversa devono prima superare lo screen di fattibilità.
 
+## Screen minimo sotto i tetti assoluti
+
+**2026-09-12 — esito negativo, `credit:false`.** Per «prova» vale il
+certificato completo del [contratto](design.md#owner-authorized-pcsstate-experiment),
+non soltanto il corpo online delle tabelle seguenti. Capacità esaminata:
+**tre tentativi canonici 100+50 a O=0/150/300, 450 token totali**.
+Capacità dimostrata sotto tutti i nuovi requisiti: **nessuna**. Non si
+estende il profilo a 4.096 token o a nuove sessioni tramite i test ridotti.
+
+Lo [screen eseguibile](../../scripts/c71_pcs_state_screen.py) espone la voce
+`feasibility`; il [controllo locale](../../tests/test_c71_pcs_state_screen.py)
+verifica i conteggi e i rifiuti. Sono solo interi e geometrie, senza
+materializzazioni canoniche, benchmark o nuove implementazioni del protocollo.
+
+### Certificato: il bootstrap della sessione è decisivo
+
+Nel [bootstrap B12](../../rust/volta-pcg/src/c71_bootstrap.rs) `prover_for`
+invia al verifier **576 correzioni da 8 byte per riga base**; `verifier_for`
+le legge tutte prima della sfida di controllo. Tre righe base producono
+una correlazione Fp3. Le correzioni dipendono dalla sessione: AES genera
+le foglie ma non elimina quel frame COPE. Non è materiale globale W.
+
+Per il solo P/S RNE v2, `byte_function::required(d)=169+32*d`, anche nel
+batch. Sommando sui gruppi senza padding già censiti si ottiene:
+
+| O | Righe Fp3 P/S | Correzioni COPE necessarie al verifier, lower | Tetto certificato |
+|---:|---:|---:|---:|
+| 0 | 6.582 | 90.989.568 | 35.000.000 |
+| 150 | 8.616 | 119.107.584 | 40.000.000 |
+| 300 | 8.616 | 119.107.584 | 40.000.000 |
+
+Il lower è `righe_Fp3 * 3 * 576 * 8`: **esclude** sacrifici, OT, check,
+seal, framing, tutto il corpo della risposta, le PCS e gli altri consumer.
+Sono esclusioni favorevoli alla candidata, non costi assunti nulli.
+La somma **329.204.736 > 115.000.000 byte** esclude persino una ripartizione
+ipotetica sui tre turni. Il setup unico reale deve invece precedere la
+prima risposta e va addebitato lì. Per confronto, provisionare il pool B12
+al bound conservativo di 11.466.948 righe dà **53.665.549.985 byte** totali
+nelle due direzioni (`233345+4680*n`, seal incluso); non è una misura.
+
+### Memoria, passaggi, traffico e tempo
+
+La variante H100 SXM da 80 GB ha **3,35 TB/s di picco HBM** nelle
+[specifiche NVIDIA](https://www.nvidia.com/en-eu/data-center/h100/).
+Per l'esterno, PCIe Gen5 offre al più **64 GB/s per direzione**, non 128,
+secondo [NVIDIA Hopper](https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/).
+Non è disponibile una banda effettiva misurata per questo schedule.
+Il picco serve soltanto a un limite inferiore favorevole; come sensibilità
+si usa 80% del picco HBM (2,68 TB/s), senza credito di misura. Storage,
+accessi sparsi, staging e contesa possono solo peggiorare questi limiti.
+
+Il [prover P/S denso](../../rust/volta-pcs/src/c71_matrix/byte_function/batch.rs)
+crea 256 foglie e otto livelli fino alla root per ogni cella byte:
+`256+128+...+1=511` coppie da 48 byte. Una sola scrittura per nodo costa
+`48*511*N`; gli otto passaggi di costruzione leggono inoltre i figli.
+Seguono otto livelli GKR con scansioni/fold dipendenti dalle sfide:
+1.560/2.040/2.040 round nei gruppi. Non si può precomputare globalmente
+il witness dipendente da A o anticipare quelle sfide.
+
+| O | N celle byte | Sole scritture alberi, byte | Tempo minimo al picco HBM | A 80% del picco |
+|---:|---:|---:|---:|---:|
+| 0 | 23.135.780.864 | 567.474.433.032.192 | 169,40 s | 211,74 s |
+| 150/300 | 24.142.413.824 | 592.165.126.275.072 | 176,77 s | 220,96 s |
+
+Il gruppo maggiore D34 trattiene **421.387.831.345.152 byte** di soli
+alberi, contro arena 6.442.450.944 e HBM totale <80.000.000.000 byte.
+Questa materializzazione è esclusa anche processando i gruppi in sequenza.
+I limiti di tempo assumono persino una memoria abbastanza grande: sono
+una seconda ragione di rifiuto, non uno schedule hardware realizzabile.
+Il nucleo cubico conserva circa **200,59 / 209,31 / 209,31 mila miliardi
+di moltiplicazioni Fp3 espresse nel codice**, oltre alla costruzione alberi;
+non sono istruzioni GPU né operazioni tensor FP8. Letture, copie dei figli,
+fold, hash, PCS, PCG, inferenza e serializzazione restano da aggiungere.
+Il tempo completo non ha upper finito verificato; il lower delle sole
+scritture basta a respingere la variante densa. Non serve misurarla.
+
+| Linea esaminata | Memoria globale / dinamica | Esito minimo |
+|---|---|---|
+| KV cumulativo, W a tre esposizioni | W conservato 2,886 TB, con pad a lifetime finito; ogni A densa 1,443 TB, predecessore e successore vivi | Esclusa: A fuori memoria ordinaria, RNE dense e COPE sopra i tetti |
+| W e KV rinnovati separatamente | W rinnovato è anch'esso stato specifico; fino a 8,66 TB conservati | Esclusa: memoria dinamica e stessi costi RNE/COPE; upper del solo corpo 41,14 MB non certifica il tetto |
+| Stato unico W/A/KV | Due S dinamici, 10,31 TB; W installato separato al primo turno | Esclusa: memoria dinamica e stessi costi RNE/COPE |
+| Sola trasformazione privata globale di W, mantenendo i consumer correnti | Il solo codeword W non mascherato della geometria ridotta è 2.199.023.255.552 byte, oltre a W/runtime; A, maschere fresche e workspace restano dinamici | Non selezionabile: non risolve COPE o RNE/A; rigenerare pad e Merkle per sessione non è precaricamento globale |
+
+Per l'ultima linea, anche **una sola lettura completa** di quel codeword
+esterno richiederebbe almeno 34,36 s a 64 GB/s. Nello scenario ottimistico
+di 50 GB/s sostenuti (78,125% del picco, non misurato) richiede 43,98 s:
+restano **6,02 s** per tutto il resto. Con due letture sono già 87,96 s.
+Se si riservano esplicitamente 15 s al lavoro restante, il budget IO è
+35 s, ossia al più 1,75 TB a 50 GB/s: nemmeno una lettura vi entra.
+Questa riserva è un criterio di screen, non una previsione del costo crypto.
+Un canale esterno diverso o accessi parziali richiederebbero evidenza propria;
+non sono assunti disponibili. Il rifiuto COPE/RNE non dipende da PCIe.
+
+### Disposizione e riuso
+
+**Nessuna candidata esaminata è plausibile nel contratto completo.**
+Si ferma il port delle costruzioni dense e la loro ottimizzazione wire.
+Setup, caricamento globale una tantum, bootstrap per sessione, replay e IO
+restano nel confronto di lavoro su ogni prefisso; non è dimostrato lavoro
+totale non crescente, neppure contro una baseline fisicamente esclusa.
+
+Si possono riusare semantica intera, endpoint originali, codice di framing
+e identità MAC nei loro perimetri. Conservare un calcolo deterministico
+privato di W/Γ può evitare lavoro ripetuto; non concede il riuso delle
+maschere PCS o delle correlazioni VOLE. La traslazione B12 di
+[security §5](security.md#5-simulatore-congiunto-e-nopeek) copre una nuova
+installazione e un'unione finita di esposizioni, non sessioni illimitate.
+Le nuove schedule richiedono i propri bound composti ROM/ZK e risorse.
+
+Il collo di bottiglia è doppio: **comunicazione delle correlazioni fresche**
+e **materializzazione/lavoro dei consumer e PCS dinamici**. Una nuova PCG
+a comunicazione minore e un algoritmo senza tali alberi/codeword sarebbero
+cambi di costruzione da sottoporre prima allo screen, non ottimizzazioni
+ammesse per ipotesi. Non si afferma un'impossibilità per ogni protocollo:
+si chiude negativamente questa selezione senza approfondire una nuova
+candidata priva dei costi decisivi.
+
+
 ## Risultato e criterio del proprietario
 
 La variante studiata combina PCS con parametri ridotti, RNE in gruppi senza
@@ -31,8 +149,9 @@ maschere, sali, frontiere Merkle massime, header, frame e chiusura. Non sono
 certificati Gemma validi misurati. I lower corrispondenti della seconda
 variante sono 17.857.848 / 26.835.276 / 26.835.276 byte e conservano le
 omissioni del lower B12: GKR congiunti e hash fratelli. Il lower non è un
-obiettivo raggiunto. Bootstrap/offline e setup restano voci separate da
-misurare e contare una volta nel confronto della conversazione completa.
+obiettivo raggiunto. Questi upper escludono bootstrap/offline: non sono upper del certificato
+completo sotto il contratto corrente. Il loro costo obbligatorio è contato
+nello screen sopra, senza modificare i record storici.
 
 La seconda variante evita anche il budget di maschere W lineare nel numero
 di tentativi pianificati, ma paga una PCS W aggiuntiva dopo il primo turno.
@@ -48,9 +167,9 @@ Il dominio D36 aggiunge però padding e lavoro nei sumcheck iniziali.
 Era la pista da verificare per il vincolo congiunto byte/lavoro; ora è
 fermata dal vincolo di memoria globale, non è ammessa.
 
-**L'obiettivo del proprietario resta aperto:** manca la verifica di lavoro
-totale non crescente e la composizione di sicurezza della candidata. Non
-si deduce quella verifica dalla riduzione di byte, correlazioni o FFT.
+**L'obiettivo di riduzione resta aperto; la selezione corrente è negativa.**
+Le tabelle seguenti conservano derivazioni componenti, non un piano di port
+o una candidata che abbia superato lo screen.
 
 ## PCS: cambiamento circoscritto
 
@@ -196,9 +315,9 @@ collegato al batch lineare e usato dalla transizione sperimentale piccola.
 Rimangono invariati H100, arena, trust model e assenza di autorizzazione
 a run pesanti/provider. I dati canonici non vengono materializzati localmente.
 
-Prima della selezione servono quindi contabilità completa con disuguaglianza
-contro la baseline, composizione ROM/ZK/risorse, routing canonico e prova
-completa valida. I lemmi `Mac.Valid.add/smul/sum` e l'induzione KV già
+I seguenti obblighi restano non scaricati; il rifiuto nello screen sopra
+non autorizza a proseguirli su questa costruzione: lavoro completo contro
+la baseline, composizione ROM/ZK/risorse, routing e certificato canonico valido. I lemmi `Mac.Valid.add/smul/sum` e l'induzione KV già
 citati in [security §6](security.md#6-risorse-riuso-formale-e-confine-runtime)
 supportano le identità; non dimostrano da soli questa nuova costruzione.
 

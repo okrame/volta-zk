@@ -83,9 +83,10 @@ Il controllo reale a tre righe copre il rifiuto per capacità insufficiente
 senza promozione o riuso.
 
 **Il limite di trasporto canonico è ora 96 MiB, con 16 MiB per PCS D34/D35.**
-Il conteggio verificato dà un upper completo di 92,73 MB, entro i nuovi
-cap. Il lower resta **47,84/54,87/61,80 MB** a O=0/150/300: preferenza
-30 MB e allarme 35 MB restano superati per ogni calibrazione. Il limite
+Il conteggio verificato dà un upper del corpo della risposta di 92,73 MB,
+entro i cap tecnici di trasporto, non i tetti del goal. Il lower resta
+**47,84/54,87/61,80 MB** a O=0/150/300: i tetti 35/40 MB restano superati
+per ogni calibrazione, prima del bootstrap. Il limite
 del percorso ridotto resta 16 MiB totali e 8 MiB per PCS.
 Le fixture canoniche complete da **64,64/78,53/92,31 MB** fanno roundtrip
 nel framing nativo con lo stesso digest FS e rifiuto di troncamenti,
@@ -102,76 +103,41 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Lo steering del proprietario del 2026-09-12 richiede memoria extra
-globale del modello, caricata una volta e riutilizzabile fra utenti/sessioni,
-e prover completo <=50 s, IO incluso.** Il prototipo è sequenziale; questo
-non autorizza cache esterne rigenerate per sessione o risposta. Restano
-lavoro totale non crescente e sicurezza equivalente. Il primo certificato
-deve essere <=35 MB; i successivi possono incrementare al massimo circa
-l'1,5% rispetto alla prima proof, con obiettivo 0,5% o inferiore, senza
-crescita composta turno dopo turno. Il
-[contratto aggiornato](design.md#owner-authorized-pcsstate-experiment)
-precede le interpretazioni e i prossimi passi del 2026-09-11.
+**Screen di selezione concluso: nessuna candidata esaminata è plausibile
+sotto il nuovo contratto.** La riduzione della prova completa resta aperta.
+Lo steering del 2026-09-12 sostituisce lo 0,5–1,5% con **35.000.000 byte
+alla prima risposta e 40.000.000 a ciascuna successiva**, senza crescita
+del tetto. Valgono <=50 s per risposta sulla singola H100, IO incluso,
+sola memoria extra globale riutilizzabile fra sessioni e lavoro totale non
+crescente. Il [design](design.md#owner-authorized-pcsstate-experiment)
+definisce contabilità completa e riuso; nessuna nuova spesa è autorizzata.
 
-La candidata densa W/A/KV da 10,31 TB è **fermata nel goal corrente**:
-la cache dipende dalla conversazione e non è materiale globale preparato
-una volta. I risultati seguenti restano evidenza circoscritta, non una
-raccomandazione a proseguirne il port. Prima di avanzare altre candidate,
-verificare con uno screen minimo memoria globale, traffico e tempo completo;
-scartare subito le linee giudicate incompatibili con 50 s. Nessuna stima
-parziale dei byte o delle operazioni sostituisce questo criterio.
+Lo [screen minimo](pcs-state-screen.md#screen-minimo-sotto-i-tetti-assoluti)
+copre il profilo canonico a **tre tentativi 100+50, 450 token totali**.
+Gli upper del solo corpo della risposta non includevano il bootstrap della
+sessione. Con il bootstrap B12, le sole correlazioni P/S delle RNE
+raggruppate richiedono al verifier almeno **90.989.568 / 119.107.584 /
+119.107.584 byte**: già oltre i tetti, senza PCS e altri consumer.
+Nemmeno distribuire quel costo sui tre turni rientrerebbe nei 115 MB totali.
 
-È stata implementata una
-[candidata con P/S RNE condivisi](design.md#experimental-shared-rne-byte-proofs),
-con [prove componenti valide e censimento canonico](evidence.md#shared-rne-byte-experiment).
-Il risparmio proiettato è 25,13–25,19 MB per certificato; le RNE della
-fixture a scale zero scendono a circa 5,48 MB. Non è più soltanto una
-proposta di calibrazione. La candidata è test-only e non eredita i bound B12.
+La candidata densa W/A/KV da 10,31 TB resta esclusa per memoria dinamica.
+Anche il percorso denso delle RNE condivise richiede oltre **169/176/176 s
+di sole scritture** al picco teorico HBM, prima di letture, calcolo e PCS.
+Sono limiti analitici della materializzazione, non tempi misurati né un
+teorema d'impossibilità per altre costruzioni. Rendere globale soltanto W
+non elimina né il bootstrap monouso né le strutture dinamiche.
 
-Il nuovo [screen PCS/stato](pcs-state-screen.md) verifica PCS valide piccole
-con parametri ridotti e identifica il padding aggiunto dal primo batch
-RNE. Il raggruppamento alternativo elimina quel padding, pagando 0,13–0,20 MB
-in più. Con KV cumulativo e W a tre esposizioni, gli upper condizionali
-della risposta sono **27,41 / 34,67 / 34,67 MB**: 2/3/3 PCS.
-Questa variante resta limitata dalle tre esposizioni di W. Collegando anche
-commitment W freschi al predecessore si proiettano **26,69 / 41,16 / 41,16 MB**,
-con 2/4/4 PCS e due esposizioni per root. Sono schemi candidati, non un
-minimo globale, un lifetime esteso ammesso o prove Gemma misurate.
+Restano riutilizzabili, entro le rispettive premesse, la semantica e gli
+endpoint originali, i controlli di [RNE condivise](evidence.md#shared-rne-byte-experiment)
+e l'[identità byte/FS dei dati conservati](pcs-state-screen.md#dati-iniziali-conservati-uguaglianza-della-prova-e-lavoro-evitato).
+I [tre certificati ridotti](pcs-state-screen.md#inferenza-completa-ridotta-con-rne-raggruppate)
+non ricevono credito canonico, AES, multi-sessione o di lavoro totale.
+B12 rimane selezionato, senza soddisfare i nuovi obiettivi.
 
-La nuova [candidata con stato unico W/A/KV](pcs-state-screen.md#stato-unico-wakv-con-installazione-separata)
-porta gli upper a **26,65 / 28,44 / 28,44 MB**, con due PCS per risposta:
-W installato e S al primo turno, predecessore S e nuovo S nei successivi.
-Il collegamento al W fissato prima del prompt resta incluso. Il dominio
-S/D36 aumenta le celle dei sumcheck iniziali, ma riduce geometrie FFT e
-termini delle query nei tre prefissi. Richiede circa 10,31 TB di payload
-persistente prima delle promozioni successive, esclusi workspace e IO.
-La costruzione è ora fuori dal perimetro di memoria autorizzato;
-non è selezionabile dal dispatch e non ha un positivo canonico completo.
-
-Il kernel PCS conserva ora i dati iniziali senza rinnovare esposizioni;
-il confronto D12 mantiene byte/FS identici ed elimina l'encode ripetuto.
-Dopo la transizione sintetica, il [confronto composto ridotto](pcs-state-screen.md#inferenza-completa-ridotta-con-rne-raggruppate)
-collega alla root unica Prepare, tutti i consumer numerici, range, KV e
-RNE raggruppate. Usa gli stessi pesi, prompt, snapshot numerici e token del
-runner B12. I certificati completi misurati sono circa **5,01 / 5,44 / 5,45 MB**,
-contro **7,74 / 10,94 / 14,15 MB**, con due PCS per risposta e tre gruppi
-RNE senza celle aggiunte. Le righe MAC ideali scendono da 265.713 a 261.992
-sull'intera conversazione; non è ancora un confronto di lavoro totale.
-La continuazione preparata su ultimo KV alterato è respinta, senza promozione.
-Il profilo è test-only W/D12–S/D13: non è un positivo canonico, una prova
-ROM/ZK o un'esecuzione AES. I due percorsi riusano lo stesso corpo numerico;
-la costruzione B12 rimane quella selezionata.
-Lo screen conta anche setup e rinnovi e scopre una voce in aumento nella
-candidata fold-6: i covettori delle query mantengono il lavoro t*M.
-Il payload persistente proiettato di due W e due A è 8,66 TB prima della
-promozione, esclusi workspace, allocator e trasferimenti; non è una misura.
-
-**Nessuna variante soddisfa ancora tutte le condizioni verificate.** Il
-prossimo lavoro è la selezione di fattibilità sotto il nuovo contratto,
-prima del port o di ulteriori ottimizzazioni della costruzione fermata.
-Per le sole candidate plausibili seguiranno confronto completo di lavoro,
-composizione ROM/ZK anche per il materiale riusato fra sessioni e routing
-canonico. B12 rimane selezionato; non soddisfa per questo i nuovi obiettivi.
+Non si prosegue il port delle candidate respinte. Per riaprire la selezione
+serve una costruzione che superi prima lo screen sia delle correlazioni
+fresche sia dei consumer/PCS in memoria ordinaria; nessuna di queste due
+voci può essere risolta occultandola nel materiale globale del modello.
 
 Il precedente goal di estensione resta aperto e subordinato a questa
 priorità: collegare Prepare/prover canonici al wrapper, conservando gli

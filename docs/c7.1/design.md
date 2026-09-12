@@ -682,6 +682,12 @@ F_Rand/F_EQ e il cGGM con permutazione programmabile su Fp3, con riduzioni
 malevole e risorse concrete: AES-256/B11 non scaricano queste premesse.
 Non si aggiungono tali ipotesi al teorema selezionato. Anche un bootstrap
 idoneo lascia aperti range/PCS entro arena e il legame privato one-hot/originali.
+Il [lemma candidato sui check per blocco](construction-screen.md#check-per-blocco-compatibilita-con-il-leakage-dichiarato)
+fornisce `t*binom(N/t,2)/|Fp3|` soltanto con hash lineari fresche dopo
+i vettori fissati, tre maschere per blocco e un unico AND finale. Non
+realizza F_Rand/F_EQ, EA-LPN-SL o il cGGM: il teorema B12 rimane invariato.
+La variante LPN3 conserva 13,78 MB di margine parziale; con il resto
+del corpo/PCS B12 invariato è respinta già per byte ricevuti.
 
 ### Selected reference
 

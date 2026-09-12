@@ -480,6 +480,114 @@ permutazione su Fp3 nel ROM, oppure una prova diretta del cGGM con un
 altro hash, resta una verifica crittografica distinta. Non basta una
 permutazione invertibile o un test di uguaglianza dei MAC per concluderla.
 
+### Check per blocco: compatibilita con il leakage dichiarato
+
+**Nuovo risultato componente, non bootstrap ammesso.** Dory Def. 2
+consente al distinguisher di scegliere t insiemi I_i e ricevere un solo
+bit per `alpha in product(I_i)`. In Appendice C, Lemma 2, Hybrid 2,
+il check unico definisce invece `I_v={alpha: U(g(alpha))=v}`. Questo
+insieme non è automaticamente cartesiano. Inoltre alpha e alpha′
+sono scelti condizionando sulla stessa U: l'epsilon-universalità per
+due vettori fissati **prima** di U non si applica direttamente al
+passaggio che precede (11). Serve un argomento aggiuntivo; non si
+trasferisce quel solo epsilon al bound C7.1.
+
+Il [controllo finito](../../tests/test_c71_dory_split_check.py) ricostruisce
+i vettori di key modificati (8)–(10) su due blocchi da quattro foglie,
+K=F5, con H nella forma Half-Tree. Un checksum di livello alterato
+produce due classi di cammini per blocco. Una possibile U congiunta
+accetta le coppie di classi (0,0) e (1,1), ma non (0,1): le proiezioni
+sono complete e il prodotto contiene anche cammini respinti. Il test
+enumera inoltre tutte le 625 hash lineari del singolo blocco. È un
+controesempio al trasferimento automatico dell'insieme di accettazione,
+**non un attacco al PCG completo** o una confutazione di ogni sua riduzione.
+
+**Variante da valutare: t check con un solo esito finale.** Sostituire
+U:K^N→K con una U_i:K^B→K per blocco, B=N/t=2^h, e usare tre maschere
+base fresche per ciascuno. Si confrontano i t valori mediante **un'unica
+F_EQ vettoriale**, che espone soltanto l'AND finale. Non si pubblicano
+i singoli esiti, il primo blocco errato o un arresto indicizzato: tali
+emissioni non sono il bit di leakage della Def. 2. Tutti i c,d sono
+fissati prima delle U_i; F_Rand rimane una premessa da realizzare.
+
+Il punto utile è che, per ogni blocco e ogni cammino candidato a, il
+vettore g_i(a) è fissato senza conoscere il payload beta. Con i segni
+del paper, dalle righe seed e dal d già inviato:
+
+```text
+M(beta) = K(beta) + beta*Delta
+M(s_j) = K(s_j) + (d_j + a_j*beta)*Delta
+M(r_j) = a_j*K(beta) - K(s_j) - d_j*Delta.
+```
+
+Il patch della foglia sottrae beta*Delta e lascia K(beta) meno le altre
+foglie. Quindi g_i(a) dipende soltanto da key seed, Delta, d,c, hash
+dell'albero e a, tutti fissati prima delle U_i. La convenzione che
+complementa i bit del cammino non cambia questa proprietà.
+
+**Lemma condizionale sui check.** Se le U_i sono hash lineari uniformi
+fresche su K, indipendenti da questi vettori, tranne che con probabilità
+
+```text
+epsilon_split <= t * binom(B,2) / |K|,
+```
+
+ogni fibra accettata `I_i={a: U_i(g_i(a))+offset_i=v_i}` contiene un
+solo **vettore g_i**, anche se più cammini lo producono e v_i viene
+scelto dopo U_i. Infatti una coppia con vettori diversi collide con
+probabilità 1/|K|; un'unione sulle al più binom(B,2) coppie per blocco
+vale simultaneamente per tutti i v_i. Fuori da questo evento si sceglie
+un rappresentante canonico di ogni I_i non vuoto. Ogni cammino accettato
+produce gli stessi vettori di key e gli stessi accumuli. L'evento di
+accettazione è ora esattamente `alpha in product(I_i)`: questo scarica
+il particolare collegamento alla **forma** della Def. 2, non l'ipotesi
+EA-LPN-SL o la simulazione dell'altro ruolo.
+
+Il rappresentante si trova enumerando B cammini per blocco, senza
+enumerare B^t combinazioni o campionare condizionatamente su un insieme
+congiunto. La ricostruzione diretta costa O(t*B²) posizioni di foglie:
+per LPN3 sono 76.965.813.944.320. È lavoro del riduttore da contabilizzare,
+non lavoro onesto, una misura o un'esecuzione locale autorizzata.
+Per LPN3 il lemma dà **146,87 bit** nel modello con coin fresche.
+Applicare meccanicamente il fattore Q*=2^74 lascia **72,87 bit**, sotto
+78: non si realizza F_Rand dicendo soltanto «Fiat–Shamir». Il bootstrap
+offline interattivo è ammesso dal contratto, con byte/tempo e abort contati.
+
+**Costi necessari della variante, alle geometrie già censite.** I seed
+diventano `s_split=t*(h+4)`; d,z costano `8*t*(h+3)` byte ricevuti dal
+verifier, c costa ancora `24*t*h` nella direzione opposta. In questo
+masking lineare servono tre maschere per blocco per nascondere tutti i check;
+riusare le tre maschere globali non conserva quella privacy.
+
+| Geometria | Seed base | COPE+d/z ricevuti, lower | B11 con seal+d/z/c, due direzioni | Margine su 130 MB prima delle voci mancanti |
+|---|---:|---:|---:|---:|
+| LPN1 | 20.298 | 93.686.016 | 95.753.345 | 34.246.655 |
+| LPN2 | 29.849 | 137.770.416 | 140.718.449 | già esclusa dal lower ricevuto |
+| LPN3 | 24.640 | 113.729.280 | 116.220.545 | 13.779.455 |
+
+F_Rand/F_EQ vettoriale, completamento Dory, metadata/installazione e R1
+restano aggiuntivi. Capacità e sicurezza LPN su campo grande conservano
+i limiti dello screen precedente: solo LPN3 copre il riferimento B12.
+Anche concedendo Shout gratuito, **LPN3 con questi check e PCS/altro corpo
+B12 invariati supera 130 MB**: il lower del corpo privato dei soli P/S
+RNE è `47.841.180-25.210.128=22.631.052` byte, dai
+[conteggi canonici](../../scripts/c7_1_gemma_plan.py). Aggiungendo il lower
+ricevuto del bootstrap si ottengono **136.360.332 byte**. Non si trasferisce
+questo rifiuto a un'altra PCS, a un altro range o a nuovi parametri LPN.
+
+**ROM e prossimo passo.** La [fonte primaria sul cGGM nel ROM](https://eprint.iacr.org/2024/1004),
+§3.1/Fig. 1 nel [Markdown conservato](../../sota/2024-1004-relaxed-vector-commitment.md),
+costruisce figli `H_tree(salt,livello,posizione,x)` e `x XOR H_tree(...)`.
+Conferma che la correlazione può essere studiata nel ROM senza una
+permutazione. I suoi lemmi riguardano però semi-binding/hiding di un
+commitment binario; non la generazione DV con key nell'output onesto.
+La revisione 2025-11-20 corregge inoltre la precedente variante con root
+derivata dalla chiave di firma: non se ne importa quel riuso.
+Il prossimo contributo utile è la prova del ramo cGGM Fp3 nel ROM con
+questi check, oppure un'altra realizzazione concreta con pari garanzie.
+L'invariante additivo da solo non fornisce quella prova, un'espansione
+AES, il bound completo del riduttore o la fattibilità onesta entro 50 s.
+
 ## IO, sicurezza e criterio di riapertura
 
 Per ogni nuova linea il tempo da chiudere è una **somma senza overlap
@@ -588,6 +696,25 @@ for h in (16, 17, 18):
     cost = lambda t: 4608*(t*(h+1)+3)+8*(t*h+3)
     assert cost(upper) <= 130_000_000 < cost(upper+1)
 assert windows == [(875, 1656), (438, 1564), (219, 1482)]
+
+# Separate block checks, one final equality result; still no PCG admission.
+from fractions import Fraction
+split_seeds = [t*(h+4) for t, h in geometries]
+split_received = [4608*s + 8*t*(h+3)
+                  for s, (t, h) in zip(split_seeds, geometries)]
+split_subtotals = [233345 + 4680*s + 8*t*(h+3) + 24*t*h
+                   for s, (t, h) in zip(split_seeds, geometries)]
+assert split_seeds == [20298, 29849, 24640]
+assert split_received == [93686016, 137770416, 113729280]
+assert split_subtotals == [95753345, 140718449, 116220545]
+assert split_received[1] > 130_000_000
+assert 130_000_000-split_subtotals[2] == 13_779_455
+t, h = geometries[2]
+err = Fraction(t*2**h*(2**h-1), 2*p**3)
+assert Fraction(1, 2**147) < err < Fraction(1, 2**146)
+assert (1 << 74)*err > Fraction(1, 1 << 78)
+assert t*2**(2*h) == 76_965_813_944_320
+assert split_received[2]+47_841_180-25_210_128 == 136_360_332 > 130_000_000
 ```
 
 Fonti lette nei Markdown conservati: [Dory PCG](../../sota/2025-1660-dory-streaming-vole.md),
@@ -615,3 +742,4 @@ AnyDoc 0.1.7; nessuna fonte precedente sovrascritta. Metadati primari:
 | [Dory PCS](../../sota/2020-1274-dory-pcs.pdf), `https://eprint.iacr.org/2020/1274.pdf` | `d0789bc9497d5532b53065176ed3c85d5d3360b23d20fd7e839174ec23518a52` / `b78c7f401ee77c6fadaa991a9287a815f0a6da960d3e115055db718e116d42a6` |
 | [Twist and Shout](../../sota/2025-0105-twist-shout.pdf), `https://eprint.iacr.org/2025/105.pdf` | `0808fe28ffc921cd99df3c4a9f8afd0300c3e933bed2bfb2241f859982d4b538` / `1205252b260a2d6058fad79976067e7bc900c6c8430abf282247633bed9f1c44` |
 | [Half-Tree](../../sota/2022-1431-half-tree.pdf), `https://eprint.iacr.org/2022/1431.pdf` | `abf39d5084c369e7926da59aca712aa252a1cfd97c79fb6c31d6e2eea7bb778f` / `3dd7bf0cdfe1a6f22308e779460c888325583c5af914ba6022b25c88f87f3327` |
+| [Relaxed Vector Commitment](../../sota/2024-1004-relaxed-vector-commitment.pdf), `https://eprint.iacr.org/2024/1004.pdf` | `7d401823a18e049ed6d068b92e4d1ca625eeed87b4c39628b507b8ab996cb699` / `22b9c1db9227ba0c082174caf97eba5e427990cd74eca71f9e079d41e0f13b77` |

@@ -122,22 +122,26 @@ conserva un **albero dinamico da 3,30 TB**, dipendente dalle sfide e quindi
 non globale. Questi lower riguardano i componenti conservati, non tutte
 le costruzioni Shout. Non si implementa né si ottimizza questa sostituzione.
 
-Il [nuovo screen del bootstrap Dory](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
-con B11 come unica sorgente seed delle tre geometrie pubblicate conta
-**77,04/115,84/98,07 MB di sole correzioni COPE**, prima del corpo.
-Una riga base basta per il seed sVOLE Fp/Fp3; il fattore tre serve invece
-agli output Fp3. **La deroga a 130 MB elimina il precedente rifiuto per
-il solo seed.** Il sottototale B11+d/z/c nelle due direzioni lascia
-51,03/11,36/29,52 MB per il resto; soltanto LPN3 copre il fabbisogno B12
-di riferimento. Il certificato completo e i parametri su campo grande
-restano da giustificare. La prossima verifica riguarda una realizzazione
-concreta del cGGM e EA-LPN con leakage statico entro quella finestra,
-oppure una schedule che riduca anche le correlazioni residue. Il teorema
-del paper richiede una permutazione programmabile su Fp3, che AES-256
-e il GGM B11 non istanziano automaticamente. La
+La deroga a 130 MB rende valutabile il
+[seed B11→Dory](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11),
+ma non ne chiude la riduzione. Il nuovo
+[lemma sui check per blocco](construction-screen.md#check-per-blocco-compatibilita-con-il-leakage-dichiarato)
+risolve condizionalmente il collegamento alla forma cartesiana del
+leakage LPN; il check congiunto della fonte non fornisce automaticamente
+quel collegamento. Occorrono maschere distinte e **un solo esito AND**.
+Per LPN3 il sottototale B11+d/z/c sale a **116,22 MB**, prima delle voci
+mancanti e del corpo. Conservando la PCS e il resto del corpo B12,
+il lower ricevuto supera già **136,36 MB**: occorre cambiarli comunque.
+Il lemma presuppone coin fresche; il trasferimento FS con Q*=2^74
+non conserva i 78 bit richiesti.
+
+La prossima verifica riguarda il cGGM Fp3 nel ROM, con i nuovi check e
+una realizzazione concreta, oppure una schedule con meno correlazioni.
+EA-LPN-SL, F_Rand/F_EQ e costo completo restano da giustificare. La
 [verifica Half-Tree](construction-screen.md#realizzazione-cggm-cosa-trasferisce-half-tree)
 esclude anche il trasferimento diretto del ramo pcGGM binario: l'hash
-finale rompe le somme di sottoalbero richieste dall'accumulo Dory.
+finale rompe le somme richieste dall'accumulo Dory. I cGGM nel ROM
+pubblicati per commitment binari non danno già la simulazione DV.
 
 Shout resta la priorità strutturale del [confronto](construction-screen.md)
 per il minor conto aritmetico del consumer, subordinata al bootstrap.

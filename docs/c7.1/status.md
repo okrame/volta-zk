@@ -104,8 +104,8 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Priorità: Shout con endpoint VOLE-MAC originali e witness entro arena;
-nessuna candidata completa selezionabile.** L'ultima deroga del proprietario
+**Priorità immediata: bootstrap fresco compatto, prima di approfondire
+Shout; nessuna candidata completa selezionabile.** L'ultima deroga del proprietario
 porta il certificato completo a **70.000.000 byte alla prima risposta e
 40.000.000 a ciascuna successiva**, bootstrap/installazione inclusi. Restano
 ≤50 s anche alla prima, sola memoria extra globale riusabile fra sessioni
@@ -122,12 +122,22 @@ conserva un **albero dinamico da 3,30 TB**, dipendente dalle sfide e quindi
 non globale. Questi lower riguardano i componenti conservati, non tutte
 le costruzioni Shout. Non si implementa né si ottimizza questa sostituzione.
 
+Il [nuovo screen del bootstrap Dory](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
+respinge B11 come unica sorgente seed delle tre geometrie pubblicate:
+**77,04/115,84/98,07 MB di sole correzioni COPE**, prima del corpo.
+Una riga base basta per il seed sVOLE Fp/Fp3; il fattore tre serve invece
+agli output Fp3. Non è un'impossibilità Dory: lo screen delimita una
+finestra numerica per parametri di campo grande, ancora senza sicurezza
+o prestazioni acquisite. La prossima verifica riguarda una realizzazione
+concreta del cGGM e EA-LPN con leakage statico entro quella finestra,
+oppure una schedule che riduca anche le correlazioni residue. Il teorema
+del paper richiede una permutazione programmabile su Fp3, che AES-256
+e il GGM B11 non istanziano automaticamente.
+
 Shout resta la priorità strutturale del [confronto](construction-screen.md)
-per il minor conto aritmetico del consumer. Per riaprirne l'approfondimento
-va prima chiarito un bootstrap fresco compatto con parametri/costi adeguati,
-oppure una schedule che riduca anche le correlazioni residue. Restano poi
-aperti il collegamento privato del one-hot ai byte e MAC originali, range/PCS
-entro arena, disponibilità del witness, IO/replay e lavoro completo.
+per il minor conto aritmetico del consumer, subordinata al bootstrap.
+Restano aperti il collegamento privato del one-hot ai byte e MAC originali,
+range/PCS entro arena, disponibilità del witness, IO/replay e lavoro completo.
 Akita–Shout e LogUp–Dory non sono composizioni selezionate; non hanno un
 upper completo giustificato o una prova trasferibile dai bound B12.
 

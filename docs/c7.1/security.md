@@ -16,6 +16,11 @@ del 2026-09-11 cambia la schedule ed è un esperimento separato: i bound
 di questo documento non le sono trasferiti. Gli obblighi di composizione
 aperti sono dichiarati nel design; i sei paragrafi seguenti restano B12 v1.
 
+Anche lo [screen del bootstrap fresco Dory](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
+è esterno a questo teorema: i conti seed non realizzano EA-LPN-SL,
+F_Rand/F_EQ o la permutazione programmabile richiesta dalla fonte.
+La sostituzione reale→ideale del §5 continua a riguardare soltanto B11/B12.
+
 ## 1. Enunciato e oggetti fissati
 
 Il protocollo qui definito compone le componenti B12 già analizzate.

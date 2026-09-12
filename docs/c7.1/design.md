@@ -672,6 +672,16 @@ a Q=2^64; Dory richiede il collegamento dell'intera valutazione fra campi,
 non soltanto tre scalari finali. Nessuna di queste ipotesi è assunta vera
 per B12, né i layout densi respinti vengono riaperti.
 
+**Bootstrap prima di approfondire Shout.** Lo
+[screen Dory alimentato da B11](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
+conta `t*(h+1)+3` seed sVOLE Fp/Fp3, una riga base ciascuno, e respinge
+le tre geometrie pubblicate per il solo COPE iniziale. La finestra numerica
+su campo grande non dimostra la sicurezza EA-LPN-SL. Restano da realizzare
+F_Rand/F_EQ e il cGGM con permutazione programmabile su Fp3, con riduzioni
+malevole e risorse concrete: AES-256/B11 non scaricano queste premesse.
+Non si aggiungono tali ipotesi al teorema selezionato. Anche un bootstrap
+idoneo lascia aperti range/PCS entro arena e il legame privato one-hot/originali.
+
 ### Selected reference
 
 | Voce | Riferimento da soddisfare; nessuna nuova misura |

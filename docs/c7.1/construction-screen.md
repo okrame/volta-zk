@@ -17,7 +17,8 @@ di Dory sulle valutazioni nascoste non basta a preferire l'intera
 composizione LogUp–Dory. Nessuna delle due ha un tempo completo finito
 giustificato sotto 50 s. Il [nuovo screen residuo](#shout-con-endpoint-originali-screen-dei-costi-residui)
 respinge anche la sostituzione dei soli P/S, indipendentemente dal costo Shout.
-Non si avvia un'implementazione.
+Il [bootstrap fresco](#bootstrap-fresco-dory-alimentato-da-b11) precede
+ogni ulteriore approfondimento Shout. Non si avvia un'implementazione.
 
 Capacità richiesta/esaminata: **C=3, 100+50 token per risposta,
 O=0/150/300, 450 token complessivi**. Capacità acquisita sotto l'intero
@@ -340,6 +341,104 @@ il nuovo one-hot, FS e simulatore non ereditano i bound B12. Correlazioni,
 pad e sali a esposizioni finite restano freschi. **Capacità supportata nel
 contratto completo: nessuna; capacità sottoposta allo screen: tre risposte.**
 
+## Bootstrap fresco: Dory alimentato da B11
+
+**Screen analitico del 2026-09-12, senza credito di protocollo o hardware.**
+La verifica minima legge Dory **PCG** §4.2/Fig. 5, §5.2/Tab. 2 e
+Appendice C nel [Markdown conservato](../../sota/2025-1660-dory-streaming-vole.md);
+la [pagina primaria](https://eprint.iacr.org/2025/1660) identifica la versione
+del 2025-09-23. Il risultato nuovo è circoscritto: **B11 come unica sorgente
+seed per le tre geometrie pubblicate supera il tetto iniziale**. Non è un
+rifiuto di ogni istanza Dory su campo grande.
+
+Si considerano F=Goldilocks, K=Fp3, grado μ=3 e un solo setup fresco.
+Nel paper P0 è il verifier DV, P1 il prover, con M=K+Δ*x; si applica
+Δ_native=−Δ_paper come nel [packing esistente](../../rust/volta-pcs/src/c71_matrix/gemma/native/pool.rs).
+Una riga B11 ha già x in F e tag/key in K: **un seed sVOLE costa una
+riga base**, non tre. Tre output base disgiunti sotto la stessa Δ danno
+invece una correlazione Fp3 completa, mediante 1,u,u².
+
+Con t blocchi e h=log2(N/t), Fig. 5 consuma
+`s=t*(h+1)+3` righe seed: t payload β, t*h maschere dei cammini e tre
+maschere del check. Non basta contare soltanto β. Dopo B11, il prover
+invia d,z per `8*(t*h+3)` byte; il verifier invia c per `24*t*h` byte.
+Sono payload, prima di framing, F_Rand e F_EQ. B11 aggiunge almeno
+`4608*s` byte ricevuti dal verifier per COPE; il wire B11 nelle **due
+direzioni**, seal incluso, è `233345+4680*s`, dal
+[conteggio esistente](../../scripts/c7_1_gemma_plan.py) `b12_fixed_run_bootstrap`.
+Quel seal non certifica già il nuovo setup Dory: occorre un completamento
+del protocollo composto prima di rendere disponibili gli output.
+
+| Geometria Tab. 2, solo trasposta per il conto | t / h | Capacità n base pubblicata | Seed s a μ=3 | Solo COPE ricevuto, byte | d,z / c, byte |
+|---|---:|---:|---:|---:|---:|
+| LPN1 | 1.194 / 13 | 1.956.249 | 16.719 | 77.041.152 | 124.200 / 372.528 |
+| LPN2 | 1.571 / 15 | 10.295.705 | 25.139 | 115.840.512 | 188.544 / 565.560 |
+| LPN3 | 1.120 / 18 | 58.720.256 | 21.283 | 98.072.064 | 161.304 / 483.840 |
+
+La Tab. 2 è un profilo COT F2/F_(2^128), **non parametri di sicurezza
+Goldilocks/Fp3**. Il lower conta soltanto quelle geometrie con il seed
+B11; omette persino i nove sacrifici COPE, OT e corpo della risposta.
+Anche la capacità va distinta: i soli residui RNE+istogrammi W richiedono
+1.964.043 righe base, già più di LPN1; B12 completo richiede 11.466.948,
+più di LPN2. Il nuovo fabbisogno Shout/range/PCS non è ancora censito.
+Non si divide il seed sui tre turni e non si riusano i suoi output.
+
+**Finestra numerica, non nuova selezione.** §4.2 ammette rumore regolare
+nonzero per campi grandi, con correzioni β aggiuntive; §5.2 distingue
+questo caso dal rumore binario rilassato. Non si dimezza t attribuendogli
+automaticamente i 128 bit pubblicati. Prima di cercare un parametro,
+indicando con R1 il nuovo corpo e con U gli altri byte ricevuti ancora
+da contare, sono necessarie entrambe le disuguaglianze
+
+```text
+4608*(t*(h+1)+3) + 8*(t*h+3) + R1 + U <= 70.000.000
+floor(t*2^h/5) >= n_richiesto                     [se si mantiene N≈5n]
+```
+
+U include sacrifici/OT/check/seal/metadata e l'eventuale correzione β;
+non è zero. Usando 11.466.948 soltanto come capacità di confronto,
+R1=U=0 dà gli intervalli **necessari** t=875..891 per h=16,
+438..842 per h=17, 219..798 per h=18. Non sono parametri LPN ammessi:
+mostrano dove una verifica di sicurezza avrebbe utilità, evitando di
+escludere la famiglia per il solo costo delle geometrie binarie.
+
+**Obblighi che impediscono di chiamarlo bootstrap compatto risolto:**
+
+- Il Teorema 1 usa EA-LPN **con leakage statico**, F_sVOLE, F_Rand,
+  F_EQ e una **permutazione casuale programmabile su K**. Servono una
+  realizzazione malevola dei funzionali e un bound concreto composto,
+  con risorse dell'Appendice C, nel modello T80/M80/Q64 corrente.
+  I 128 bit stimati contro attacchi LPN non sono quel bound di vantaggio.
+- `H(x)=π(σ(x))+σ(x)` e figli `H(x), x−H(x)` sono il cGGM del paper.
+  AES-256 ha blocchi di 128 bit, K ha circa 192 bit: né AES applicato
+  direttamente né il GGM B11 a seed di 32 byte istanziano quel teorema.
+  ROM SHAKE e permutazione programmabile non sono la stessa primitiva.
+  Nuove ipotesi o un nuovo costruttore richiedono una riduzione dichiarata;
+  non vengono aggiunti alle ipotesi selezionate di B12.
+- Il costo di inizializzazione pubblicato è circa **2N espansioni per
+  ruolo**, più universal hashing su N elementi; l'ottimizzazione a N
+  per il prover è specifica di F2. L'output richiede fino a ℓ*h visite
+  cGGM per riga base, tre volte per Fp3. Non sono istruzioni AES o secondi
+  H100. Le chiavi compatte non cancellano quei due passaggi iniziali.
+  B11, chiavi/cammini, hash streaming, output vivi e scratch sono memoria
+  di sessione da contare insieme entro arena; il solo `O(t*h)` non è
+  un upper completo. Traffico e tempo completo restano ignoti.
+- Tutto il materiale Dory dipendente da Δ/rumore resta fresco e privato
+  della sessione. FRand/check devono seguire i messaggi che controllano;
+  burn, NoPeek, abort e seal devono precedere l'uso delle correlazioni.
+  L'espansione non autentica da sola il one-hot Shout contro A, né risolve
+  range/PCS o il riuso globale multi-sessione di W.
+
+**Prossimo lavoro utile:** chiarire una realizzazione concreta del cGGM e
+un'istanza EA-LPN-SL su campo grande dentro la finestra, oppure ridurre il
+fabbisogno con una schedule diversa. Un seed alternativo a B11 può cambiare
+il lower, ma richiede il proprio costo e simulazione malevola. Il vecchio
+PCG B7, il refill con righe già consumate o un setup dipendente da Δ
+classificato globale non sono sostituzioni ammesse. Shout resta subordinato
+a questa verifica; range/PCS entro arena e legame privato agli originali
+restano obblighi indipendenti. Nessun tempo <=50 s o lavoro totale non
+crescente sui prefissi 1/2/3 è acquisito.
+
 ## IO, sicurezza e criterio di riapertura
 
 Per ogni nuova linea il tempo da chiudere è una **somma senza overlap
@@ -421,6 +520,29 @@ assert 892*8*256*24 == 43_843_584  # tabelle combinate, dinamiche
 assert all((2**i) % 3 for i in range(36))  # k=3 non divide d/s_split Akita
 assert (2**64 + 1)*2**78 > 2**128  # anche c=1 non ammette il target FS
 assert [cap//13_824 for cap in (70_000_000, 40_000_000)] == [5063, 2893]
+
+# Dory Fig. 5: Fp/Fp3 seed rows; no protocol execution or parameter admission.
+geometries = [(1194, 13), (1571, 15), (1120, 18)]
+seeds = [t*(h+1)+3 for t, h in geometries]
+assert seeds == [16719, 25139, 21283]
+assert [4608*s for s in seeds] == [77041152, 115840512, 98072064]
+assert all(4608*s > 70_000_000 for s in seeds)
+assert [8*(t*h+3) for t, h in geometries] == [124200, 188544, 161304]
+assert [24*t*h for t, h in geometries] == [372528, 565560, 483840]
+capacities = [t*2**h//5 for t, h in geometries]
+assert capacities == [1956249, 10295705, 58720256]
+residual_base_rows = 3*sum(8*c+892+65535 for c in (18935, 18995, 18995))
+assert residual_base_rows == 1_964_043 > capacities[0]
+assert capacities[1] < 11_466_948 < capacities[2]
+windows = []
+for h in (16, 17, 18):
+    lower = (5*11_466_948 + 2**h-1)//2**h
+    upper = (70_000_000 - 4608*3 - 24)//(4608*(h+1)+8*h)
+    windows.append((lower, upper))
+    assert (lower-1)*2**h//5 < 11_466_948 <= lower*2**h//5
+    cost = lambda t: 4608*(t*(h+1)+3)+8*(t*h+3)
+    assert cost(upper) <= 70_000_000 < cost(upper+1)
+assert windows == [(875, 891), (438, 842), (219, 798)]
 ```
 
 Fonti lette nei Markdown conservati: [Dory PCG](../../sota/2025-1660-dory-streaming-vole.md),

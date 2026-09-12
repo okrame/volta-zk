@@ -562,3 +562,36 @@ design che vieta di nascondere t*M nel trattamento delle sorgenti non
 è quindi scaricata da questo percorso denso. Il confronto completo deve
 includere questi covettori, il sumcheck RNE aggiunto, le forme di link,
 il KV e lo schedule fisico della cache. Rimane `full_work_nonincrease_verified:false`.
+
+## Esito fisico D36 nel backend corrente
+
+Il wire da 26,64/28,42/28,42 MB non rende eseguibile la candidata. Il
+`HidingWhirProverData` canonico occupa 2.680.060.059.616 byte per W/D35 e
+5.153.962.622.944 per S/D36: W+S al primo turno sono
+7.834.022.682.560 byte, mentre due S sono 10.307.925.245.888 byte. Sono
+1.216x e 1.600x l'arena da 6.442.450.944 byte. `Resident` rimuove soltanto
+il messaggio host; `retain=false` ricostruisce la stessa matrice e lo stesso
+Merkle durante l'apertura, quindi nessuna delle due opzioni riduce il picco.
+
+Il limite precede anche MMCS/DFT: il batch lineare D36 alloca `form` e
+`weights`, due vettori Fp3 da 1.649.267.441.664 byte ciascuno. Il range W
+materializza 3.298.534.883.280 byte e quello A 1.649.267.441.616. Ogni
+apertura W o S conserva inoltre 130.566.998.016 termini `t*M`; due PCS
+richiedono 261.133.996.032 termini per risposta, in contrasto col contratto
+che esclude lavoro `qN/t*M`.
+
+Lo sharding letterale non è una correzione: per portare S sotto arena
+servono 1.024 shard diadici e i soli 456 row opening iniziali costano circa
+956 MB con width 256. Un aggregatore che eviti questi opening, MMCS/DFT
+streaming e batch lineare/range tiled costituiscono una nuova PCS e nuovi
+kernel, assenti dal repository. La candidata D36 è quindi **respinta nel
+backend e contratto correnti**, senza pretendere un lower bound contro ogni
+PCS possibile.
+
+Il legame agli originali resta un risultato condizionale distinto: range
+restituisce gli stessi `Auth/Key`, il rebasing modifica soltanto offset
+pubblici, `linear::bind` fissa forme e target prima di lambda e
+`prove_product` termina nel valore autenticato della PCS. `OpeningMac`
+copre il seam sotto binding PCS e indipendenza di Delta. Mancano ancora il
+teorema binding/HVZK D36 multi-esposizione e la composizione ROM; il test
+piccolo prova identità e framing, non questi obblighi o lo schedule fisico.

@@ -17,8 +17,10 @@ di Dory sulle valutazioni nascoste non basta a preferire l'intera
 composizione LogUp–Dory. Nessuna delle due ha un tempo completo finito
 giustificato sotto 50 s. Il [nuovo screen residuo](#shout-con-endpoint-originali-screen-dei-costi-residui)
 respinge anche la sostituzione dei soli P/S, indipendentemente dal costo Shout.
-Il [bootstrap fresco](#bootstrap-fresco-dory-alimentato-da-b11) precede
-ogni ulteriore approfondimento Shout. Non si avvia un'implementazione.
+Il [bootstrap fresco](#bootstrap-fresco-dory-alimentato-da-b11) ha ora una
+candidata completa delle primitive censite da 61,84 MB; la sua premessa
+EA-LPN-SL-reg* resta da selezionare e prezzare. Lo screen Shout viene quindi
+riaperto soltanto sul piano analitico. Non si avvia un'implementazione.
 
 Capacità richiesta/esaminata: **C=3, 100+50 token per risposta,
 O=0/150/300, 450 token complessivi**. Capacità acquisita sotto l'intero
@@ -164,6 +166,26 @@ riuso funzionale già autorizzato. Pubblicare o riusare commitment/blinding
 fra sessioni richiede una prova della vista congiunta; maschere delle prove
 e VOLE restano freschi. Nessun hint di A diventa globale.
 
+### PCS private recenti: tre port letterali respinti
+
+Queste fonti sono state lette per il requisito preciso «valutazione legata
+agli originali senza rivelarla al verifier». Le loro nozioni di privacy non
+coincidono con quell'endpoint DV e nessuna fornisce il ponte VOLE-MAC.
+
+| Fonte | Disallineamento decisivo | Screen di risorse |
+|---|---|---|
+| [Blind PCS RAA 2026/487](../../sota/2026-0487-bootstrapping-free-blind-pcs.md) | Il verifier possiede la secret key BFV, decripta colonne aperte e risposta e verifica in chiaro (§6.1/App. B). Nasconde i dati al prover del PCS, non la valutazione al designated verifier C7.1 | Usa `q=65537`, grado ring `2^14` e `ell=843` per 128 bit per-proof. Il paper misura circa **32 MB** a N=`2^20` e **105 MB** a N=`2^22`; il secondo eccede già il residuo iniziale di 24,22 MB, prima del ponte Fp3, range e consumer. Il fattore ROM globale C7.1 richiederebbe inoltre un nuovo parametro, non `ell=843` |
+| [Private polynomial commitments 2023/680](../../sota/2023-0680-private-polynomial-commitments.md) | Il prover opera su un polinomio cifrato AHE e produce una valutazione cifrata; le identità sono in gruppi bilineari sotto DLIN/DPP. Non termina in un valore Fp3 autenticato e nascosto al verifier senza una nuova 2PC | A grado `2^16`, una apertura costa **701 s** prover e 53,7 s verifier; `2^16` aperture costano 242.395 s e 6,1 MB. Campo/gruppi e tempo escludono il port letterale prima della memoria |
+| [Greyhound 2024/1293](../../sota/2024-1293-greyhound.md) | Hiding/HVZK mascherano commitment e termini ring, mentre la sintassi della valutazione conserva `y=f(x)` nello statement. La riduzione usa ring ciclotomici e l'ipotesi `q congruent 5 mod 8`; Goldilocks è `1 mod 8`, quindi parametri e teoremi non si trasferiscono | A N=`2^30` il benchmark CPU pubblica 132 s commit, 41,2 s prove e 2,80 s verify. Una decomposizione bilineare rank-5 può ridurre la MLE Fp3 a cinque forme base, ma non crea hiding dell'endpoint, range per coordinata o un commitment omomorfo rispetto al MAC con Delta segreto |
+
+Il commitment Greyhound usa decomposizioni gadget con carry: non è lineare
+nel messaggio nel senso necessario per uguagliare direttamente un'apertura a
+`k=m+Delta*x`. Anche concedendo le cinque forme, servirebbero nuovi teoremi
+per hiding dell'evaluation, batching, range e composizione DV. Analogamente,
+il nome «blind» di 2026/487 riguarda verifiable FHE: il possessore della
+chiave di decrittazione vede proprio i valori che C7.1 deve tenere privati.
+Le tre linee restano `credit:false`; non si implementano wrapper.
+
 ## Confronto mirato Akita-Shout e LogUp-Dory
 
 Screen del 2026-09-12, prima di progettare nuovi wrapper; **`credit:false`**.
@@ -230,6 +252,19 @@ vanno ricontati tutti i termini ring/FS e le ipotesi MSIS alle risorse
 della riduzione. Questo è un limite del bound pubblicato, non un attacco
 dimostrato. I 61–70 KB e i tempi pubblicati non sono parametri C7.1.
 
+Il confronto MAC a due chiavi del bootstrap non ripara questo punto.
+Akita usa `v` nello statement pubblico e trasmette già nei fold partial,
+risposte e stato terminale dipendenti dal witness. Sostituire soltanto il
+check finale con `(Delta0+Delta1)*(y-x)=0` nasconde il confronto, non quel
+transcript. Per simulare dal solo bit occorrerebbe mascherare e autenticare
+tutti i claim ricorsivi, le relazioni ring e i norm check: una nuova PCS
+blind/2PC, esattamente il lavoro che Akita lascia aperto.
+
+La relazione one-hot con l'originale byte non è invece l'ostacolo:
+`E_ij` booleani, `sum_j E_ij=1` e `A_i=sum_j j*E_ij` sono relazioni lineari
+dopo la booleanità e danno anche il range byte. Serve però che l'apertura
+privata di E termini nello stesso MAC di A. La PCS pubblica non lo fa.
+
 **Dory: il ponte non si limita a certificare tre scalari finali.** Se il
 gruppo ha ordine primo r diverso da p, non esiste embedding unitale di
 Fp in Fr: p·1=0 nel primo campo e p·1≠0 nel secondo. La contrazione
@@ -269,6 +304,29 @@ del grande witness. Non si procede al port: costi completi ancora ignoti.
 [Jolt Atlas](https://arxiv.org/html/2602.17452v1), §§1.2 e 4, usa invece
 HyperKZG e ammette trasformazioni del modello; non è un confronto acquisito
 a setup/semantica invariati. Non si importano i suoi benchmark.
+
+**Wrapper ricorsivo Akita: screen minimo negativo.** In astratto si potrebbe
+mettere prova, valutazione e transcript Akita nel witness di un blind GKR,
+verificare `AkitaVerify` internamente e chiudere `y` sul MAC originale.
+Questo rimuoverebbe la fuga pubblica, ma non è un adapter: aggiunge il
+verifier lattice completo, aritmetica ring/range non nativa e la propria
+PCS al circuito DV. Inoltre il Cor. 10.32 lascia meno di 64 bit dopo Q64
+per una singola apertura da circa 128 bit; una composizione deve amplificare
+anche quel termine prima di sommarlo agli errori B12.
+Il toolkit lattice succinct del 2026/1289 offre ZK per relazioni lattice
+native, ma non un adattatore black-box per il verifier Akita, il ponte Fp3
+o l'endpoint VOLE-MAC; non cambia quindi questo esito.
+
+Il costo sorgente chiude il port letterale prima del wrapper. Per il gruppo
+canonico maggiore, il one-hot byte ha `256*2^34=2^42` bit; sui gruppi reali
+O=150 sono 6.180.457.938.944 bit, circa 180 volte il massimo `2^35` della
+Tab. 9. Akita risparmia sugli zeri nel **commitment**, mentre l'apertura ha
+lavoro lineare nella lunghezza del polinomio. Il massimo pubblicato impiega
+18,6 s per la sola apertura CPU; non si estrapola quel tempo a H100, ma la
+scala e il nuovo wrapper impediscono un upper <=50 s. Shardare il one-hot
+Fp entro arena richiede almeno 5.462 PCS e almeno 334,82 MB usando persino
+61,3 KB per shard. Occorre quindi un'unica apertura sparse/virtuale con
+reader streaming e prova privata; nessun componente corrente la realizza.
 
 ## Shout con endpoint originali: screen dei costi residui
 
@@ -438,15 +496,31 @@ escludere la famiglia per il solo costo delle geometrie binarie.
   L'espansione non autentica da sola il one-hot Shout contro A, né risolve
   range/PCS o il riuso globale multi-sessione di W.
 
-**Prossimo lavoro utile:** chiarire una realizzazione concreta del cGGM e
-un'istanza EA-LPN-SL su campo grande dentro la finestra, oppure ridurre il
-fabbisogno con una schedule diversa. Un seed alternativo a B11 può cambiare
-il lower, ma richiede il proprio costo e simulazione malevola. Il vecchio
+Il conto specializzato del paper per K=256,d=1 è `4T+O(K log K)` prodotti,
+ossia 96.569.655.296 al caso O=150; la tabella precedente conserva il
+termine generale prudente `6T=144.854.482.944`. Anche il minore richiede
+6,44 miliardi di prodotti/s per occupare da solo 15 s, prima di PCS,
+wrapper privato, producer, replay e serializzazione. Non esiste una misura
+H100 equivalente da cui dedurre il tempo completo.
+
+Il range W può essere provato una sola volta nello stesso key epoch e
+registrato contro la stessa `C_W`; non deve essere riemesso nei turni 2–3.
+Questo risparmierebbe 1.651.252 byte successivi, ma non rende gratuito il
+prover iniziale. Un LogUp con inversi virtuali sostituisce l'albero da
+3,30 TB con un product-sumcheck e una PCS aggiuntiva; il tradeoff a radice
+quadrata sta nell'arena ma visita lo stream circa sei volte. Rimane oltre
+le quattro letture W autorizzate se eseguito online, e l'attuale PCS densa
+rimane fuori arena. Spostarlo all'installazione richiede una singola PCS
+streaming e contabilizzazione di setup/tempo; è un successore analitico,
+non una candidata ammessa.
+
+**Prossimo lavoro utile:** decidere se ammettere e prezzare
+EA-LPN-SL-reg* sulla geometria large-field. Solo dopo ha senso il port
+nativo del bootstrap. Sul lato Shout serve invece una singola PCS
+sparse/streaming privata che termini nei MAC originali e rispetti arena,
+quattro letture e 50 s; nessun componente censito la realizza. Il vecchio
 PCG B7, il refill con righe già consumate o un setup dipendente da Δ
-classificato globale non sono sostituzioni ammesse. Shout resta subordinato
-a questa verifica; range/PCS entro arena e legame privato agli originali
-restano obblighi indipendenti. Nessun tempo <=50 s o lavoro totale non
-crescente sui prefissi 1/2/3 è acquisito.
+classificato globale non sono sostituzioni ammesse.
 
 ### Realizzazione cGGM: cosa trasferisce Half-Tree
 
@@ -721,8 +795,8 @@ Schwartz–Zippel e il bound di radici danno nel modello MAC ideale
 epsilon_path <= (t*h-1)/|Fp3| + 2/|Fp3| = (t*h+1)/|Fp3|.
 ```
 
-Per la variante large-field `t=560,h=19` sono **178,622654 bit**;
-persino moltiplicare meccanicamente per Q*=2^74 lascia 104,622654 bit.
+Per la variante large-field corrente `t=675,h=19` sono **178,353216 bit**;
+persino moltiplicare meccanicamente per Q*=2^74 lascia 104,353216 bit.
 Questo è il termine
 del guard, non un bound composto B11→Dory. La maschera rende A uniforme;
 condizionatamente allo stato del verifier, l'equazione determina B.
@@ -745,16 +819,26 @@ Fp6 o una prova UC completa.
 
 **Costo sostitutivo large-field.** La §4.2 della fonte permette, per
 `F!=F2`, rumore regolare con payload onesto `beta in F*`: il receiver
-corregge il seed uniforme con `delta=s_0-beta`. Questo evita il raddoppio
-usato dalla tabella rilassata. Manteniamo `N=293.601.280` e
-`n=58.720.256`, ma usiamo `t=560`, blocchi da `2^19` e `h=19`. La fonte
-afferma qualitativamente che la sicurezza si mantiene, ma Table 2 misura
-il caso rilassato binario: **non trasferiamo i suoi 128 bit a Goldilocks**.
-Qui resta un'istanza esplicita, ancora senza credito, della nuova ipotesi
-`EA-LPN-SL(560,58720256,293601280,9,Fp)` con payload regolari nonzero.
+corregge il seed uniforme con `delta=s_0-beta`. Table 2 misura però il
+caso rilassato binario e non trasferisce i suoi 128 bit a Goldilocks.
+La prima geometria `t=560,ell=9` è quindi sostituita dallo screen più
+prudente **`t=675,h=19,ell=11`**, con `N=353.894.400=5*70.778.880`.
+Resta un'istanza esplicita senza credito della nuova ipotesi
+`EA-LPN-SL-reg*(675,70778880,353894400,11,Fp)`.
+
+Il motivo del cambio è verificabile tramite i caratteri additivi. Per un
+codeword nonzero con frazione `f_i` di coordinate nonzero nel blocco i,
+il rumore regolare nonzero ha bias esatto
+`prod_i(1-p*f_i/(p-1))`; il rilassato uniforme su Fp dà
+`prod_i(1-f_i)`. Su Goldilocks sono quasi uguali, quindi il dimezzamento
+binario di t non è una riduzione concreta. Applicando soltanto come screen
+la regressione di distanza della fonte per ell=11, il profilo nuovo dà
+**83,4181 bit** di bias, contro circa 70,46 per t=560/ell=11. La regressione
+è empirica, non copre failure, ricerca del codeword o leakage statico:
+non è il bound di advantage richiesto a T121/M93.
 Ogni beta onesto va campionato esattamente in Fp*: un retry locale su
 codifica canonica è indipendente dal valore finale. Un singolo campione Fp
-seguito da abort avrebbe probabilità cumulativa circa `560/p`, troppo alta.
+seguito da abort avrebbe probabilità cumulativa circa `675/p`, troppo alta.
 
 Con i check per blocco, il guard richiede `s=t*(h+4)+3` righe seed:
 nessuna riga inversa. La correzione beta aggiunge `8*t` byte ricevuti;
@@ -763,25 +847,28 @@ Per il seed Fp6 della sezione seguente:
 
 | Voce | Byte o righe |
 |---|---:|
-| Seed base | 12.883 righe |
-| Seed Fp6 | 40.341.449 byte |
-| Seed e payload Dory, due direzioni | **40.699.897 byte** |
-| Margine parziale su 130 MB | **89.300.103 byte** |
-| Lower ricevuto | 39.679.664 byte |
-| Lower ricevuto con PCS/altro corpo B12 conservato | **62.310.716 byte** |
+| Seed base Dory | 15.528 righe |
+| Seed Fp6 Dory | 48.593.849 byte |
+| Seed e payload Dory, traffico totale | **49.025.897 byte** |
+| F_Rand ROM, framing incluso | **146 byte** |
+| Parziale con coin | **49.026.043 byte** |
+| Margine parziale su 130 MB | **80.973.957 byte** |
+| Lower ricevuto | 47.826.264 byte |
+| Lower ricevuto con PCS/altro corpo B12 conservato | **70.457.316 byte** |
 
 Sommando prudenzialmente l'intero upper corrente del primo corpo B12,
-65.053.244 byte, il parziale diventa **105.753.141 byte** e lascia
-**24.246.859 byte** per F_Rand/F_EQ, framing e altre voci mancanti. È un
-upper del corpo più un parziale bootstrap, non un upper completo.
+65.053.244 byte, e i 146 byte della coin descritta sotto, il parziale
+diventa **114.079.287 byte** e lascia **15.920.713 byte** per F_EQ e le
+altre voci mancanti. È un upper del corpo più un parziale bootstrap, non
+un upper completo.
 
-Il check split passa a 145,870720 bit e il suo enumeratore canonico conta
-153.931.627.888.640 posizioni. Un fattore FS meccanico `2^74` lascerebbe
-soltanto 71,870720 bit: questa candidata richiede coin interattive fresche
+Il check split vale 145,601259 bit e il suo enumeratore canonico conta
+185.542.587.187.200 posizioni. Un fattore FS meccanico `2^74` lascerebbe
+soltanto 71,601259 bit: questa candidata richiede coin interattive fresche
 da F_Rand oppure una riduzione FS più stretta; lo screen non accredita FS.
 
-Coin/check finali, completamento, metadata e corpo restano fuori dal
-sottototale. Il guard scarica i due difetti di cammino identificati e
+Completamento, metadata e corpo restano fuori dal sottototale seed/payload.
+Il guard scarica i due difetti di cammino identificati e
 conserva la distribuzione rilassata; non realizza EA-LPN-SL o il cGGM.
 Arena, legame agli originali e tempo completo restano obblighi aperti.
 
@@ -853,29 +940,177 @@ automatico: deve includere il transcript mascherato del guard, gli abort
 selettivi, le maschere split distinte e la semantica locale delle query
 ROM. La sostituzione chiude quindi condizionatamente la sola parte cGGM
 del Lemma 3 contro il receiver. Condizionatamente agli errori già censiti,
-la somma seed/guard/split/ROM resta a **90,933907923 bit**.
+prima della seconda chiave F_EQ la somma seed/guard/split/ROM resta a
+**90,9339 bit**; con entrambi i seed scende a **89,9339 bit**.
 
 Il [controllo finito](../../tests/test_c71_dory_rom_cggm.py) verifica
 estrazione, programmazione dei due bit, simulazione `beta=0` e la biiezione
 Delta→nodo nascosto su F5. Non è una prova UC o un'implementazione SHAKE.
-Restano da realizzare codec, rejection sampler e schedule nativa e da
-chiudere la composizione sender con guard/split, EA-LPN-SL/F_Rand/F_EQ,
-framing, tempo e accounting completo.
+Restano da realizzare codec, rejection sampler e schedule nativa, da
+formalizzare la composizione sender con guard/split e da chiudere
+EA-LPN-SL, framing, tempo e accounting completo.
 
-#### F_Rand e F_EQ non sono scaricati dalle citazioni
+#### F_Rand condizionale e F_EQ con due chiavi MAC
 
-Dory tratta entrambe come funzionalità ideali. La fonte citata per F_EQ,
-[Liu et al. 2025](../../sota/2025-0614-one-bit-advantage-2pc.md), dimostra
-il proprio 2PC nell'ibrido `(F_Com,F_OT,F_OLE,F_Rand,F_EQ)` e quindi non
-realizza F_EQ. Anche la sua ottimizzazione ROM per valori ad alta entropia
-non si trasferisce automaticamente ai checksum Dory dipendenti dal rumore.
-Il commit/response/open già presente in `phase_b.rs` resta una candidata,
-ma il design B11 registra già che non scarica il commitment UC né la vista
-su rifiuto. Non gli si assegna wire o sicurezza nel totale completo.
+Dory tratta entrambe come funzionalità ideali. La fonte citata in precedenza
+per F_EQ, [Liu et al. 2025](../../sota/2025-0614-one-bit-advantage-2pc.md),
+dimostra il proprio 2PC nell'ibrido `(F_Com,F_OT,F_OLE,F_Rand,F_EQ)` e
+quindi non le realizza. La verifica seguente non importa quel teorema.
 
-PDF e Markdown sono stati acquisiti il 2026-09-12 senza sovrascrivere
-fonti: SHA-256 `9a55f451b75b8b1a5dedcfce40067ef14bc2ca35b0202abaa5040642f8a1443c`
-e `6d42104498113df5767235d2d1e0e3c7da09e221f29028ed63cdece6c0a1d497`.
+Per F_Rand tutti i campi del commitment hanno codec canonico e lunghezza
+fissa: `H("VOLTA-C71-DORY-COIN-v1" || setup_nonce || prefix_hash ||
+direzione || messaggio || blind)`. Il prover
+campiona `s1,blind1`, invia il commitment; il verifier invia `s0`; il prover
+apre e il seed congiunto è `s0 XOR s1`. Da questo solo seed, dopo `d` e prima
+dei check split, si derivano tutte le U_i con SHAKE256 e rejection sampling
+canonico in Fp3. **Tutti i c devono essere inviati insieme a s0 prima
+dell'apertura**: altrimenti il sender potrebbe adattarli alle U_i. Non sono
+ammessi retry dell'intero setup. Ogni limb Fp ha
+al massimo otto tentativi; il fallimento termina la sessione e contribuisce
+
+```text
+epsilon_sample <= 3*N*((2^64-p)/2^64)^8 < 2^-226.
+```
+
+Nel ROM programmabile, con al più `Q_ROM=2^74` query globali, l'envelope
+prudente per commitment, blind, opening e prequery del seed XOF è
+
+```text
+epsilon_coin <= Q_ROM*(Q_ROM-1)/2^257
+                + 3*Q_ROM/2^256 + 1/2^256 < 2^-108.
+```
+
+Contro il prover corrotto, un'apertura valida estrae `s1` dalla query che ha
+prodotto il digest; se la query manca resta soltanto la guess. Contro il
+verifier corrotto, il simulatore equivoca la coin dopo `s0,c`; una query
+anteriore al seed XOF è inclusa nell'envelope. Il blind rende `s1`
+indipendente prima della risposta. Il prover può comunque vedere la risposta
+e poi abortire: questa è una realizzazione **con abort**. Poiché
+abort brucia nonce, righe e sessione prima di qualsiasi output PCG, non crea
+retry adattivi; il trasferimento dal F_Rand ideale di Dory deve però
+esplicitare questa semantica. Non si accredita fairness impossibile a due
+parti né una composizione UC dal solo argomento ROM.
+
+Il wire completo è `32+32+64=128` byte; tre header da sei byte portano
+F_Rand a **146 byte nelle due direzioni**. Il parziale bootstrap sale così a
+**49.026.043 byte**; insieme all'upper corrente del primo corpo arriva a
+**114.079.287 byte**, con **15.920.713 byte** residui sul cap iniziale.
+Prima del secondo seed F_EQ, la somma degli errori condizionali noti resta
+dominata dal seed Fp6 a circa **90,93 bit**.
+
+La candidata che invia `w in Fp3^675` resta **respinta**: sul mismatch un
+verifier corrotto apprende l'intero vettore dei residui, non il solo AND
+concesso dal leakage EA-LPN-SL. Il formato scartato avrebbe 26.962 byte.
+Anche comprimere prima i vettori con una sfida pubblica non basta: senza
+una prova che lega il fingerprint al vettore precedente, una parte corrotta
+può scegliere soltanto lo scalare. La variante OLE a una riga confronta un
+solo elemento di K; 675 istanze rivelano gli esiti singoli e il solo seed
+B11 supera 130 MB. Nessuna di queste varianti riceve credito.
+
+Anche il confronto dei soli digest ROM è **respinto**. Se P0 malforma un
+solo blocco, può enumerare i `2^19` cammini, calcolare ogni possibile input
+onesto `w` e confrontarne il digest con quello ricevuto. La min-entropia
+condizionale è al più 19 bit, non `log2|K|`; a `Q_ROM=2^74` la prequery ha
+probabilità essenzialmente uno. Le maschere sono già assorbite nel valore
+`v` noto a P0. Il formato da 153 byte conserva binding e correttezza, ma
+non il leakage di un solo bit e non riceve credito.
+
+**Due esclusioni malevole.** La PEQT a doppia esponenziazione di
+[Cong et al. 2024](../../sota/2024-1340-unbalanced-psu-private-equality.md)
+è provata soltanto semi-honest. L'estensione P-521 con PoK Schnorr e DLEQ
+richiede di estrarre il primo esponente: il forking generico trasforma
+un vantaggio `epsilon` in circa `epsilon^2/Q_ROM`. Con
+`Adv_DLog<=2^-193` e `Q_ROM=2^74` restano circa 59,5 bit, sotto 78.
+Il precedente wire da 823 byte e il suo envelope DDH non ricevono credito.
+
+Neppure il malicious PSI di
+[Rosulek--Trieu 2021](../../sota/2021-1159-compact-malicious-psi-small-sets.md)
+è una F_EQ letterale. Per `n=1` il polinomio è costante e il protocollo
+aborta; con `n=2` e un dummy si ottiene un output PSI a una sola parte e
+la funzionalità ammette slack nell'insieme estratto. Duplicare le direzioni
+per consegnare il bit a entrambi permette a una parte corrotta di scegliere
+due input diversi. Il core evita il forking, ma non soddisfa l'interfaccia.
+
+**Candidata F_EQ con due chiavi MAC, senza nuova ipotesi gruppo.** Il seed
+Dory corrente fissa `Delta0` e viene esteso di `3*t` righe base. Un secondo
+seed Fp6 fresco di `3*t` righe, coi ruoli scambiati, fissa `Delta1`.
+Entrambi i setup completano e sono sigillati prima di qualsiasi input.
+Usando la convenzione bootstrap `m=k+Delta*x`, le parti autenticano ogni
+coordinata dei due vettori `v,w in K^t` sotto la chiave della parte opposta:
+tre righe Fp per un elemento Fp3. Le correzioni chosen-input `d=x-r`
+sono uniformemente mascherate e vengono fissate in un frame per ruolo.
+
+Soltanto dopo entrambe le correzioni una seconda F_Rand genera coefficienti
+freschi `r_i in K`; si comprimono valori, tag e key in `vbar,wbar`. Se
+`m_w=k_w+Delta0*wbar` e `m_v=k_v+Delta1*vbar`, le share sono
+
+```text
+s0 = -k_w - Delta0*vbar - m_v
+s1 =  m_w + Delta1*wbar + k_v
+s0+s1 = (Delta0+Delta1)*(wbar-vbar).
+```
+
+Ogni parte committa
+`H(D_com||SID||role_i||s_i||blind_i)`; entrambi i commitment precedono
+le aperture. Si accetta soltanto se la somma aperta è zero. Sul mismatch
+fissato, la compressione è zero con probabilità `1/|K|`; altrimenti la
+chiave onesta rende la somma uniforme, salvo `Delta0+Delta1=0`. Una share
+malevola deve essere fissata prima di vedere quella onesta. La vista su
+rifiuto è quindi un elemento uniforme nonzero, indipendente dal residuo:
+non consente il dizionario dei cammini. Un guess della chiave onesta nelle
+global-key query aggiunge `Q_ROM/|K|`. Withholding o codec non canonico
+causano abort e burn di entrambi i setup.
+
+Questo realizza F_EQ con abort nel modello ROM e dei due seed MAC, senza
+one-more gap CDH, VOPRF o DLEQ. Il secondo seed aggiunge un'altra copia del
+bound Fp6: la somma condizionale nota passa a **89,9339 bit**. Restano
+obblighi nativi il roleswap B11/Fp6, il codec delle correzioni e l'ordine
+atomico setup→input→coin→commit→open.
+
+Per `t=675`, il seed principale cresce di 2.025 righe e quello inverso ne
+usa 2.025: **12.782.489 byte**. Le correzioni chosen-input costano 32.412
+byte, la seconda coin 146 e commit/open 200. F_EQ costa quindi
+**12.815.247 byte**. Il bootstrap candidato completo delle primitive
+censite è **61.841.290 byte**; con l'upper corrente del primo corpo arriva
+a **126.894.534 byte**, lasciando **3.105.466 byte**. Resta `credit:false`
+per EA-LPN-SL non prezzata, schedule/tempo e implementazione, non per F_EQ.
+
+**Composizione sender condizionale.** Contro P0 corrotto, l'honesto P1
+soddisfa sempre il guard. La sua share `A=rho+known` è uniforme e `B` è
+determinata dall'equazione MAC, quindi accettazione o abort del guard non
+aggiunge una predicate sul rumore. P0 fissa tutto `c` insieme alla risposta
+della prima coin prima dell'apertura. Le U_i fresche producono le fibre
+cartesiane della Def. 2 fuori dall'evento split; il rappresentante canonico
+per blocco preserva key e accumuli nell'Hybrid 2→3 della fonte. La F_EQ MAC
+espone un solo AND finale e il withholding diventa abort dell'intero setup.
+Il lavoro del riduttore `t*B^2=185.542.587.187.200` è circa 2^47,4 e si può
+enumerare in streaming, entro T121/M93. Contro P1 corrotto, il guard estrae
+i cammini binari e il cGGM forward-ROM realizza il ramo receiver già
+descritto. Tutti gli epoch vengono bruciati su qualunque fallimento.
+
+Per un'unica leakage cartesiana, senza moltiplicare l'EA game per Q*, il
+bound candidato ha la forma
+
+```text
+Adv_boot <= Adv_EA-LPN-SL-reg*(675,70778880,353894400,11,Fp;
+                               T=2^121,M=2^93,one-leakage)
+            + epsilon_seed/guard/split/ROM/coin/F_EQ.
+```
+
+Il secondo termine vale meno di 2^-89,9339. Richiedere
+`Adv_EA-LPN-SL-reg* <= 2^-80` darebbe quindi oltre 79,99 bit complessivi,
+ma è una **nuova premessa di sicurezza**: la regressione da 83,42 bit è
+soltanto uno screen e non la dimostra. Nessun teorema B12 viene modificato
+finché questa premessa non è selezionata esplicitamente.
+
+Le fonti PEQT, PSI e OPRF sono state acquisite il 2026-09-12 senza
+sovrascritture. SHA-256 PDF/Markdown: PEQT
+`18a5340fc7dfb2fdab83026cf34cfd88b5ee63bd3d3d42d01aeb2b93e038e413` /
+`a721d8dc8e817861a6f5c72056bb489a7315a37cb1670aff6ae0440d594ac913`;
+PSI `91477d8a5c838b023d48f11f3f508c43a66a483b6b97aed01a1109eebd8cdfe7` /
+`81852098d1029e7645b99fb32dd2a0a9748c244e60f96d1016870fd4074c8c1b`;
+OPRF `316f4634a0dcbc041598bf4589682ae53ce74417ec18e72cbcc87f4cc53664a9` /
+`eb51613320d152cf2a06a87ab04b3208fe7f566555bbf19a8cca64cdce10801f`.
 
 ### Seed Fp6: compressione a 95 bit nel singolo setup
 
@@ -935,15 +1170,15 @@ implementare.** Per n righe base restituite, contando anche le sei sacrificate:
 | Seal del seed | 40 |
 | Totale del seed | **146.489+3.120*n** |
 
-Con le **12.883 righe** del profilo large-field, del guard e dei check per
-blocco, il seed costa 40.341.449 byte. Aggiungendo correzioni e payload
-Dory già censiti si arriva a **40.699.897 byte nelle due direzioni**, con
-89.300.103 byte di margine parziale sul primo tetto. Il lower ricevuto è 39.679.664 byte,
+Con le **15.528 righe** del profilo large-field, del guard e dei check per
+blocco, il seed costa 48.593.849 byte. Aggiungendo correzioni e payload
+Dory già censiti si arriva a **49.025.897 byte di traffico totale**, con
+80.974.103 byte di margine parziale sul primo tetto. Il lower ricevuto è 47.826.264 byte,
 esclusi sacrifici/OT e altre voci. Il risparmio sul sottototale Fp9 con
 precheck dell'inverso è **80.794.256 byte**. F_Rand/F_EQ, completamento Dory, metadata e
 corpo vanno ancora aggiunti; il margine non è un upper del certificato.
 Conservando il lower di PCS e altro corpo B12 dopo la rimozione dei soli
-P/S si arriva a 62.310.716 byte: restano 67.689.284 byte, ancora non
+P/S si arriva a 70.457.316 byte: restano 59.542.684 byte, ancora non
 assegnabili finché le voci mancanti e l'upper del nuovo corpo non sono chiusi.
 
 Il [test locale](../../tests/test_c71_fp6_seed_screen.py) controlla il
@@ -1086,25 +1321,25 @@ assert split_received[2]+47_841_180-25_210_128 == 136_360_332 > 130_000_000
 # A zero payload could not be charged as <=2^-78 in the relaxed predecessor.
 zero_lower = Fraction(t, p)-Fraction(t*(t-1), 2*p*p)
 assert Fraction(1, 2**54) < zero_lower <= Fraction(t, p) < Fraction(1, 2**53)
-# Large-field optimization: regular nonzero payload, half t, same N/n.
-t, h = 560, 19
-assert t*2**h == 293_601_280 and t*2**h//5 == 58_720_256
+# Large-field candidate: full binary blocks and N=5n.
+t, h, ell = 675, 19, 11
+assert t*2**h == 353_894_400 and t*2**h//5 == 70_778_880
 # Global path guard: one mask and two Fp3 wire scalars, no inverse rows.
 path_seeds = t*(h+4)+3
 path_guard_error = Fraction(t*h+1, p**3)
-assert path_seeds == 12883
+assert path_seeds == 15528
 assert Fraction(1, 2**179) < path_guard_error < Fraction(1, 2**178)
 assert 2**74*path_guard_error < Fraction(1, 2**104)
 # Candidate Fp6 seed and Dory payload subtotal; no complete admission.
 fp6_seed_wire = 146489+3120*path_seeds
 fp6_subtotal = fp6_seed_wire+8*t+8*t*(h+3)+24*t*h+48
 fp6_received = 3072*path_seeds+8*t+8*t*(h+3)+48
-assert fp6_seed_wire == 40_341_449
-assert fp6_subtotal == 40_699_897
-assert fp6_received == 39_679_664
-assert 130_000_000-fp6_subtotal == 89_300_103
-assert fp6_received+47_841_180-25_210_128 == 62_310_716
-assert 130_000_000-62_310_716 == 67_689_284
+assert fp6_seed_wire == 48_593_849
+assert fp6_subtotal == 49_025_897
+assert fp6_received == 47_826_264
+assert 130_000_000-fp6_subtotal == 80_974_103
+assert fp6_received+47_841_180-25_210_128 == 70_457_316
+assert 130_000_000-70_457_316 == 59_542_684
 ```
 
 Fonti lette nei Markdown conservati: [Dory PCG](../../sota/2025-1660-dory-streaming-vole.md),
@@ -1133,3 +1368,5 @@ AnyDoc 0.1.7; nessuna fonte precedente sovrascritta. Metadati primari:
 | [Twist and Shout](../../sota/2025-0105-twist-shout.pdf), `https://eprint.iacr.org/2025/105.pdf` | `0808fe28ffc921cd99df3c4a9f8afd0300c3e933bed2bfb2241f859982d4b538` / `1205252b260a2d6058fad79976067e7bc900c6c8430abf282247633bed9f1c44` |
 | [Half-Tree](../../sota/2022-1431-half-tree.pdf), `https://eprint.iacr.org/2022/1431.pdf` | `abf39d5084c369e7926da59aca712aa252a1cfd97c79fb6c31d6e2eea7bb778f` / `3dd7bf0cdfe1a6f22308e779460c888325583c5af914ba6022b25c88f87f3327` |
 | [Relaxed Vector Commitment](../../sota/2024-1004-relaxed-vector-commitment.pdf), `https://eprint.iacr.org/2024/1004.pdf` | `7d401823a18e049ed6d068b92e4d1ca625eeed87b4c39628b507b8ab996cb699` / `22b9c1db9227ba0c082174caf97eba5e427990cd74eca71f9e079d41e0f13b77` |
+| [Succinct lattice ZK toolkit](../../sota/2026-1289-succinct-lattice-zk-toolkit.pdf), `https://eprint.iacr.org/2026/1289.pdf` | `fea3783839c0e1360e64e7f07e32677a3b1b66f79768448e914a3de5f8ef61e0` / `acc3b8b95a5895289f5d475d18fe0a585e8aafeefce10567474f3ec4975cb583` |
+| [Ring-LPN PCG](../../sota/2022-1035-ring-lpn-pcg.pdf), `https://eprint.iacr.org/2022/1035.pdf` | `a3d0ed7d8669bcf62d867dcfb606f3a2bcb6bd25107aaa011a6189ed6d1821f9` / `07b039b80b231e66bc2c2c6d9dbc4a71e96e6d36518fe49aec145890405ee364` |

@@ -17,8 +17,18 @@ di questo documento non le sono trasferiti. Gli obblighi di composizione
 aperti sono dichiarati nel design; i sei paragrafi seguenti restano B12 v1.
 
 Anche lo [screen del bootstrap fresco Dory](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
-è esterno a questo teorema: i conti seed non realizzano EA-LPN-SL,
-F_Rand/F_EQ o la permutazione programmabile richiesta dalla fonte.
+è esterno a questo teorema: i conti seed non realizzano EA-LPN-SL. La
+candidata ROM realizza F_Rand con abort. Il confronto di digest F_EQ è
+respinto dal dizionario dei cammini; la sostituzione DDH/DLEQ è respinta
+per la perdita concreta dell'estrazione Schnorr. La nuova F_EQ usa invece
+due seed MAC Fp6 con ruoli opposti e apre share del prodotto mascherato
+`(Delta0+Delta1)*(wbar-vbar)`: non aggiunge un'ipotesi gruppo. Entrambe le
+chiavi precedono le correzioni degli input; una seconda coin precede i
+commitment role-bound e ogni apertura. Il mismatch è simulato da un Fp3
+uniforme nonzero, con abort e burn.
+Mancano ancora trasferimento compositivo e codec nativi; il cGGM separato
+per nodo sostituisce la permutazione soltanto in una riduzione condizionale
+contro il receiver.
 La sostituzione reale→ideale del §5 continua a riguardare soltanto B11/B12.
 
 ## 1. Enunciato e oggetti fissati

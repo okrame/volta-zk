@@ -104,8 +104,8 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
-**Priorità immediata: bootstrap fresco compatto, prima di approfondire
-Shout; nessuna candidata completa selezionabile.** L'ultima deroga del proprietario
+**Bootstrap fresco chiarito condizionalmente; screen Shout riaperto e ancora
+negativo; nessuna candidata completa selezionabile.** L'ultima deroga del proprietario
 porta il certificato completo a **130.000.000 byte alla prima risposta e
 40.000.000 a ciascuna successiva**, bootstrap/installazione inclusi. Restano
 ≤50 s anche alla prima, sola memoria extra globale riusabile fra sessioni
@@ -137,48 +137,97 @@ prova `gamma*(gamma-beta)=0` su tutte le coordinate, usando i MAC
 originali e un solo batch **prima di c**. Sostituisce il precheck
 dell'inverso: conserva beta uniforme incluso zero, estrae ogni cammino
 nonzero come binario e simula esattamente il ramo zero senza Delta.
-Il bound condizionale ideale è 178,62 bit nel profilo large-field;
-anche applicando Q*=2^74 restano 104,62 bit. I controesempi precedenti sono respinti prima che
+Il bound condizionale ideale è 178,35 bit nel profilo large-field;
+anche applicando Q*=2^74 restano 104,35 bit. I controesempi precedenti sono respinti prima che
 possano osservare c; il test finito e una revisione indipendente concordano.
 La [candidata seed Fp6→Fp3](construction-screen.md#seed-fp6-compressione-a-95-bit-nel-singolo-setup)
 riduce il costo con rho=95, compatibile con un solo setup e un bound
 condizionale seed di **90,93 bit** sotto le stesse ipotesi primitive.
 La §4.2 di Dory propone su Fp il rumore regolare con beta onesto nonzero,
-riducendo LPN3 da `t=1120,h=18` a **`t=560,h=19`** a N e capacità
-invariati. Table 2 non fornisce però 128 bit concreti per Goldilocks:
-la geometria resta `credit:false` sotto una nuova ipotesi EA-LPN-SL.
-Con guard e check per blocco, il sottototale scende a
-**40,70 MB** nelle due direzioni: 89,30 MB di margine parziale, prima di
-corpo e voci mancanti. È uno screen riproducibile; il port nativo Fp6 non è implementato.
+ma Table 2 non fornisce 128 bit concreti per Goldilocks. Il dimezzamento
+`t=560` non segue nemmeno dal bias Fourier large-field: la candidata passa
+a **`t=675,h=19,ell=11`**, `N=353.894.400`, capacità 70.778.880.
+Lo screen empirico lineare sale a 83,42 bit, ma failure, ricerca e leakage
+statico non sono prezzati: la geometria resta `credit:false` sotto la nuova
+ipotesi EA-LPN-SL-reg*. Con guard e check per blocco, il sottototale Dory è
+**49.025.897 byte**. Il commit/response/open ROM realizza condizionalmente
+la coin con abort in **146 byte**: il parziale diventa **49.026.043 byte**.
+Tutti i `c` sono fissati prima dell'apertura del seed. È uno screen
+riproducibile; il port nativo Fp6 e il codec coin non sono implementati.
 Col lower di PCS/altro corpo B12 e senza i vecchi P/S si arriva a
-**62,31 MB**, quindi restano 67,69 MB non ancora assegnabili: serve l'upper
+**70,46 MB**, quindi restano 59,54 MB non ancora assegnabili: serve l'upper
 del nuovo corpo e di tutte le voci bootstrap mancanti.
-Con l'intero upper B12 corrente del primo corpo il parziale è
-**105,75 MB**, lasciando 24,25 MB: il byte cap iniziale non respinge più
-la geometria, ma F_Rand/F_EQ, security e tempo impediscono l'ammissione.
+Con l'intero upper B12 corrente del primo corpo e la candidata F_EQ il
+parziale è **126.894.534 byte**, lasciando **3.105.466 byte**: il byte cap
+iniziale non respinge più la geometria. La F_EQ che trasmetteva il vettore
+è stata respinta perché rivelava tutti i residui sul mismatch; anche i
+soli digest falliscono per un dizionario di `2^19` cammini. La PEQT P-521
+con PoK/DLEQ è ora respinta: l'estrazione Schnorr via forking lascia circa
+59,5 bit. Anche il malicious PSI `n=2` non realizza il doppio output con
+un solo input corrotto. La nuova candidata usa due seed MAC Fp6 con ruoli
+opposti: autentica `v,w`, li comprime dopo una seconda coin e apre share di
+`(Delta0+Delta1)*(wbar-vbar)`. Il mismatch aperto è uniforme e F_EQ costa
+**12.815.247 byte**, senza VOPRF o nuova ipotesi gruppo. Il bootstrap
+complessivo è 61.841.290 byte; il secondo seed porta gli errori noti a
+89,93 bit. Entrambe le chiavi precedono gli input, che precedono coin e
+commit/open role-bound. Resta `credit:false`: manca il roleswap Fp6 nativo,
+oltre al codec
+nativo, EA-LPN-SL, composizione sender, corpo completo e tempo.
+La composizione sender è ora esplicitata come lemma condizionale: guard
+perfettamente mascherato, fibre split cartesiane e un solo AND F_EQ portano
+all'Hybrid 2→3 con lavoro riduttore circa 2^47,4. Assumere
+`Adv_EA-LPN-SL-reg*(T121,M93,one-leakage)<=2^-80` darebbe oltre 79,99 bit
+per il bootstrap; questa nuova premessa non è ancora selezionata.
+La fonte Ring-LPN 2022/1035 conferma che rumore regolare e leakage statico
+sono trattati nel large-field e censisce gli attacchi noti, ma usa un'altra
+famiglia quasi-ciclica e moduli di circa 128 bit. Non dimostra quindi la
+geometria expander Goldilocks qui proposta né sostituisce il bound richiesto.
 La [candidata cGGM nel ROM separato per nodo](construction-screen.md#cggm-con-random-oracle-separato-per-nodo)
 elimina la permutazione RPM: con cammini già binari, ogni query forward al
 nodo nascosto fornisce un candidato Delta e una singola cella programmabile.
 La costruzione sequenziale di `c` gestisce anche query anteriori; un bound
 prudente `Q_ROM/|Fp3|` vale 118 bit a `Q_ROM=2^74`. Il ramo beta zero è
 simulato esattamente. Il controllo finito e la revisione indipendente non
-hanno trovato controesempi alla parte receiver. Restano da chiudere la
-composizione sender con guard/split, il codec SHAKE nativo, EA-LPN-SL,
-F_Rand/F_EQ e costo completo. La
+hanno trovato controesempi alla parte receiver. Restano da formalizzare la
+composizione sender con guard/split e da chiudere il codec SHAKE nativo,
+EA-LPN-SL e il costo completo. La
 [verifica Half-Tree](construction-screen.md#realizzazione-cggm-cosa-trasferisce-half-tree)
 esclude anche il trasferimento diretto del ramo pcGGM binario: l'hash
 finale rompe le somme richieste dall'accumulo Dory. I cGGM nel ROM
 pubblicati per commitment binari non danno già la simulazione DV.
 
-Shout resta la priorità strutturale del [confronto](construction-screen.md)
-per il minor conto aritmetico del consumer, subordinata al bootstrap.
-Restano aperti il collegamento privato del one-hot ai byte e MAC originali,
-range/PCS entro arena, disponibilità del witness, IO/replay e lavoro completo.
-Akita–Shout e LogUp–Dory non sono composizioni selezionate; non hanno un
-upper completo giustificato o una prova trasferibile dai bound B12.
+Lo [screen delle PCS private recenti](construction-screen.md#pcs-private-recenti-tre-port-letterali-respinti)
+respinge tre port diretti. La blind PCS RAA 2026/487 fa decrittare colonne
+e risposta al verifier BFV; la PPC 2023/680 termina in ciphertext e gruppi
+bilineari ed è già fuori tempo; Greyhound lascia `y=f(x)` nello statement,
+richiede `q congruent 5 mod 8` e non è omomorfa rispetto al MAC con Delta
+segreto. Una PCS utile deve terminare direttamente negli originali
+autenticati privati e avere stato streamabile entro arena.
+
+Lo [screen Shout approfondito](construction-screen.md#confronto-mirato-akita-shout-e-logup-dory)
+mostra che il legame one-hot→byte è lineare, ma il confronto MAC a due
+chiavi non privatizza Akita: valutazione, partial, risposte e terminale sono
+già pubblici. Il wrapper ricorsivo BlindFold-like richiederebbe provare il
+verifier lattice e i suoi range in blind GKR. Il one-hot byte arriva a
+6,180 mila miliardi di bit, circa 180 volte il massimo Akita misurato;
+l'apertura resta lineare nella lunghezza. Anche lo Shout specializzato
+richiede 96,57 miliardi di prodotti prima di PCS e wrapper. Range W può
+essere certificato una sola volta per `C_W`, risparmiando 1,65 MB nei turni
+successivi, ma il product-sumcheck streaming richiede circa sei visite e
+una PCS aggiuntiva. Akita–Shout, il wrapper ricorsivo e LogUp–Dory restano
+non selezionabili: nessuno ha insieme endpoint privato, arena, quattro
+letture W, <=50 s e upper completo.
 
 Lo [screen precedente](pcs-state-screen.md#screen-minimo-sotto-i-tetti-assoluti)
-resta negativo anche sotto 130/40 MB: non si riaprono le materializzazioni
+resta negativo anche sotto 130/40 MB. La candidata D36 corrente richiede
+7,834 TB al primo turno per `HidingWhirProverData` W+S e 10,308 TB nei
+turni con due S, 1.216x/1.600x l'arena; `retain=false` ricostruisce le
+stesse matrici. Prima della PCS, il batch lineare D36 alloca già due vettori
+Fp3 da 1,649 TB e il range W un albero da 3,299 TB. Lo sharding letterale
+in 1.024 PCS supera 956 MB con i soli opening iniziali. Il wire analitico
+da 28,42 MB e il collegamento condizionale range--MAC--PCS restano utili,
+ma non esiste una correzione minima del backend: servono nuovi kernel
+streaming/tiled e una nuova PCS aggregata. Non si riaprono le materializzazioni
 RNE o le cache dinamiche W/A/KV. Semantica, originali e controlli delle
 [RNE condivise](evidence.md#shared-rne-byte-experiment) restano riusabili
 entro le proprie premesse; i tre certificati ridotti non acquisiscono

@@ -6644,9 +6644,10 @@ def c71_fp6_seed_screen(rows):
 
 def c71_dory_guarded_bootstrap_screen():
     """Fp6 seed plus guarded large-field LPN3 geometry; no admission."""
-    # Dory section 4.2: over F != F2, nonzero regular payloads avoid the
-    # doubled block count. N and n stay LPN3; N/t grows from 2^18 to 2^19.
-    t, h = 560, 19
+    # Large-field candidate. ell=11 raises the empirical EA-code distance;
+    # t=675 keeps N=5n and leaves concrete room above the 78-bit linear-bias
+    # screen. This is not a proved EA-LPN-SL advantage bound.
+    t, h, ell = 675, 19, 11
     rows = t*(h+4)+3
     seed = c71_fp6_seed_screen(rows)
     payload = {
@@ -6668,17 +6669,107 @@ def c71_dory_guarded_bootstrap_screen():
     rom_query_cap = 1 << 74
     rom_prequery_error = Fraction(rom_query_cap, q)
     rom_equality_error = Fraction(1, q-rom_query_cap)
+    # One domain-separated commit/response/open coin toss fixes all split
+    # hashes after d and c.  Abort terminates the setup.  The analogous
+    # equality proposal is deliberately not credited: it exposes the honest
+    # receiver's checksum vector to a corrupt sender on mismatch.
+    frand_wire = 32+32+64
+    frand_frame_headers = 3*6
+    frand_total_wire = frand_wire+frand_frame_headers
+    rejected_feq_wire = 32+24*t+(24*t+32)+3*6
+    rom_commitment_error = (Fraction(rom_query_cap*(rom_query_cap-1), 1 << 257)
+                            + 2*Fraction(rom_query_cap, 1 << 256)
+                            + Fraction(1, 1 << 256))
+    xof_seed_prequery_error = Fraction(rom_query_cap, 1 << 256)
+    coefficient_sampler_error = (3*t*2**h
+        * Fraction((1 << 64)-P, 1 << 64)**8)
+    total_with_coin = total+frand_total_wire
+    # Information-theoretic F_EQ from two oppositely directed MAC keys.
+    # Three base-field rows authenticate one Fp3 coordinate.  The current
+    # seed grows by 3t rows for w; a roles-swapped 3t-row seed authenticates
+    # v.  Corrections bind both vectors before a second fresh coin compresses
+    # them. Opening additive shares reveals (delta0+delta1)*(wbar-vbar).
+    feq_auth_rows = 3*t
+    seed_with_feq_auth = c71_fp6_seed_screen(rows+feq_auth_rows)
+    reverse_seed = c71_fp6_seed_screen(feq_auth_rows)
+    feq_seed_wire = (seed_with_feq_auth['wire_total_both_directions']
+                     - seed['wire_total_both_directions']
+                     + reverse_seed['wire_total_both_directions'])
+    feq_input_corrections = 2*(8*feq_auth_rows+6)
+    feq_second_coin_wire = frand_total_wire
+    feq_share_commit_open_wire = 2*32+2*(24+32)+4*6
+    feq_wire = (feq_seed_wire+feq_input_corrections
+                + feq_second_coin_wire+feq_share_commit_open_wire)
+    feq_second_sampler_error = (3*t
+        * Fraction((1 << 64)-P, 1 << 64)**8)
+    feq_share_commitment_error = (
+        Fraction(rom_query_cap*(rom_query_cap-1), 1 << 257)
+        + 3*Fraction(rom_query_cap, 1 << 256)
+        + Fraction(1, 1 << 256))
+    feq_information_theoretic_error = (
+        2*Fraction(1, q)                  # compression zero or delta0+delta1=0
+        + Fraction(rom_query_cap, q)      # corrupt reverse receiver guesses honest key
+        + rom_commitment_error+xof_seed_prequery_error
+        + feq_second_sampler_error+feq_share_commitment_error)
+    total_with_coin_feq = total_with_coin+feq_wire
     return {
         'credit': False, 'complete_bootstrap_admitted': False,
-        'geometry': {'t': t, 'h': h, 'N': t*2**h,
-                     'published_base_capacity': t*2**h//5,
+        'geometry': {'t': t, 'h': h, 'ell': ell, 'N': t*2**h,
+                     'candidate_base_capacity': t*2**h//5,
                      'noise': 'large-field regular with honest beta in Fp*',
                      'canonical_fiber_positions': t*2**(2*h)},
         'seed_base_rows': rows, 'seed': seed, 'Dory_payload_bytes': payload,
         'partial_wire_both_directions': total,
         'partial_margin_under_first_130MB': 130_000_000-total,
+        'coin_toss': {
+            'protocol': ('domain-separated ROM commit/response/open; prover commits '
+                         'the coin seed; d and c precede the opening'),
+            'FRand_wire_bytes': frand_wire,
+            'three_frame_headers_bytes': frand_frame_headers,
+            'wire_bytes_both_directions': frand_total_wire,
+            'query_cap': rom_query_cap,
+            'ROM_commitment_error': str(rom_commitment_error),
+            'XOF_seed_prequery_error': str(xof_seed_prequery_error),
+            'bounded_coefficient_sampler_error': str(coefficient_sampler_error),
+            'native_implemented': False,
+        },
+        'rejected_equality_candidate': {
+            'wire_bytes_both_directions': rejected_feq_wire,
+            'reason': ('corrupt sender learns the honest receiver checksum vector '
+                       'on mismatch; does not realize vector F_EQ'),
+        },
+        'private_equality_candidate': {
+            'protocol': ('opposite-direction Fp3 MAC input authentication, fresh '
+                         'linear compression, and role-bound commit/open of additive '
+                         'shares of (delta0+delta1)*(wbar-vbar)'),
+            'block_checks_collapsed': t,
+            'wire_bytes_both_directions': feq_wire,
+            'forward_extra_auth_rows': feq_auth_rows,
+            'reverse_seed_rows': feq_auth_rows,
+            'seed_wire_bytes': feq_seed_wire,
+            'input_correction_wire_bytes': feq_input_corrections,
+            'second_coin_wire_bytes': feq_second_coin_wire,
+            'share_commit_open_wire_bytes': feq_share_commit_open_wire,
+            'conditional_information_theoretic_error': str(feq_information_theoretic_error),
+            'new_computational_assumption': False,
+            'algebraic_hybrid_argument_recorded': True,
+            'formal_reduction_checked': False,
+            'with_abort_not_fair_delivery': True,
+            'native_implemented': False,
+        },
+        'partial_with_coin_wire': total_with_coin,
+        'margin_after_coin': 130_000_000-total_with_coin,
+        'partial_with_coin_and_private_equality_wire': total_with_coin_feq,
+        'margin_after_coin_and_private_equality': 130_000_000-total_with_coin_feq,
         'partial_plus_current_first_body_upper': total+current_first_body_upper,
         'margin_after_current_first_body_upper': 130_000_000-total-current_first_body_upper,
+        'partial_coin_plus_current_first_body_upper': total_with_coin+current_first_body_upper,
+        'margin_after_coin_and_current_first_body_upper': (
+            130_000_000-total_with_coin-current_first_body_upper),
+        'partial_coin_private_equality_plus_current_first_body_upper': (
+            total_with_coin_feq+current_first_body_upper),
+        'margin_after_coin_private_equality_and_current_first_body_upper': (
+            130_000_000-total_with_coin_feq-current_first_body_upper),
         'received_lower': received,
         'received_plus_retained_PCS_and_other_body_lower': received+other_body_lower,
         'first_cap_margin_after_that_lower': 130_000_000-received-other_body_lower,
@@ -6687,12 +6778,22 @@ def c71_dory_guarded_bootstrap_screen():
             'path_guard': str(path_error), 'split_check': str(split_error),
             'domain_separated_ROM_prequeries': str(rom_prequery_error),
             'ROM_malformed_equality': str(rom_equality_error),
+            'FRand_ROM_commitment': str(rom_commitment_error),
+            'FRand_XOF_seed_prequery': str(xof_seed_prequery_error),
+            'FRand_bounded_Fp3_sampling': str(coefficient_sampler_error),
+            'private_FEq_information_theoretic': str(feq_information_theoretic_error),
+            'private_FEq_reverse_seed': reverse_seed['conditional_seed_component']['sum'],
             'sum': str(Fraction(seed['conditional_seed_component']['sum'])
-                       + path_error+split_error+rom_prequery_error+rom_equality_error),
+                       + Fraction(reverse_seed['conditional_seed_component']['sum'])
+                       + path_error+split_error+rom_prequery_error+rom_equality_error
+                       + rom_commitment_error+xof_seed_prequery_error
+                       + coefficient_sampler_error+feq_information_theoretic_error),
         },
-        'coin_requirement': 'fresh interactive F_Rand; no mechanical Q*=2^74 FS credit',
-        'missing_for_admission': ['EA-LPN-SL regular-LPN3 assumption over Goldilocks',
-            'native SHAKE cGGM and guarded malicious-sender composition', 'F_Rand/F_EQ',
+        'coin_requirement': ('fresh interactive commit/response/open; all d and c are fixed '
+                             'before opening; U_i derive next from the joint seed'),
+        'missing_for_admission': ['EA-LPN-SL regular large-field assumption over Goldilocks',
+            'native SHAKE cGGM and guarded malicious-sender composition',
+            'native reverse-role Fp6 seed and F_Rand/F_EQ codec/abort schedule',
             'completion/framing/metadata', 'complete proof-body upper',
             'honest runtime and work-prefix comparison'],
     }

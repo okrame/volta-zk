@@ -660,49 +660,57 @@ deve risolvere sia il costo delle correlazioni fresche sia quello dei
 consumer/PCS dinamici prima di essere selezionata.
 
 Il [confronto mirato Akita–Shout/LogUp–Dory](construction-screen.md#confronto-mirato-akita-shout-e-logup-dory)
-non seleziona una composizione. La priorità di contributo resta il
-consumer Shout negli originali DV con witness/passaggi entro arena.
+non seleziona una composizione. Shout negli originali DV resta un contributo
+strutturale possibile, ma il suo screen minimo è ora completo abbastanza
+da escludere i port letterali disponibili.
 Lo [screen dei costi residui](construction-screen.md#shout-con-endpoint-originali-screen-dei-costi-residui)
 respinge anche la sostituzione dei soli P/S con witness virtuale: conserva
 bootstrap e range W incompatibili. Restano indimostrati adapter di
 tabelle/pesi, apertura privata del one-hot e riuso multi-sessione.
 Nessun lemma B12 copre queste nuove relazioni. Akita non offre Fp3 nel
-packing pubblicato, e i profili di apertura da circa 128 bit non soddisfano il bound FS richiesto
-a Q=2^64; Dory richiede il collegamento dell'intera valutazione fra campi,
-non soltanto tre scalari finali. Nessuna di queste ipotesi è assunta vera
-per B12, né i layout densi respinti vengono riaperti.
+packing pubblicato, i profili di apertura da circa 128 bit non soddisfano
+il bound FS richiesto a Q=2^64 e il confronto MAC a due chiavi non nasconde
+il transcript ricorsivo. Un wrapper blind-GKR dovrebbe provare l'intero
+verifier lattice e i norm check; non è un adapter finale. Dory richiede il
+collegamento dell'intera valutazione fra campi, non soltanto tre scalari.
+Nessuna di queste ipotesi è assunta vera per B12, né i layout densi respinti
+vengono riaperti.
 
-**Bootstrap prima di approfondire Shout.** Lo
+**Bootstrap fresco candidato, con premessa ancora da selezionare.** Lo
 [screen Dory alimentato da B11](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
 conta `t*(h+4)+3` seed sVOLE Fp/Fp3 nella variante con guard e check per
 blocco, una riga base ciascuno. Con 130 MB
 il solo COPE iniziale non respinge più le tre geometrie pubblicate;
 la capacità di riferimento B12 rientra soltanto in LPN3. Non è un'ammissione
-del certificato completo o della sicurezza EA-LPN-SL. Restano da realizzare
-F_Rand/F_EQ e il cGGM su Fp3, con riduzioni malevole e risorse concrete:
+del certificato completo o della sicurezza EA-LPN-SL. F_Rand ha ora una
+realizzazione ROM condizionale commit/response/open con abort e wire
+completo; la prima candidata F_EQ vettoriale è respinta perché rivela i
+residui di blocco sul mismatch. Il trasferimento compositivo, i codec nativi e il
+cGGM su Fp3 richiedono ancora riduzioni malevole e risorse concrete.
 AES-256/B11 non scaricano queste premesse.
 Non si aggiungono tali ipotesi al teorema selezionato. Anche un bootstrap
 idoneo lascia aperti range/PCS entro arena e il legame privato one-hot/originali.
 Il [lemma candidato sui check per blocco](construction-screen.md#check-per-blocco-compatibilita-con-il-leakage-dichiarato)
 fornisce `t*binom(N/t,2)/|Fp3|` soltanto con hash lineari fresche dopo
 i vettori fissati, tre maschere per blocco e un unico AND finale. Non
-realizza F_Rand/F_EQ, EA-LPN-SL o il cGGM: il teorema B12 rimane invariato.
+realizza EA-LPN-SL o il cGGM: il teorema B12 rimane invariato.
 Con il seed Fp9 la variante LPN3 rilassata conserva 13,78 MB di margine parziale;
 con il resto del corpo/PCS B12 invariato è respinta già per byte ricevuti.
 Il [guard dei cammini](construction-screen.md#guard-dei-cammini-prima-delle-correzioni-cggm)
 verifica sui MAC originali `gamma*(gamma-beta)=0` per tutte le t*h
 coordinate, in un solo batch prima di inviare c. Conserva beta uniforme,
 zero incluso; con beta nonzero estrae un cammino binario, mentre con zero
-simula c senza Delta. La §4.2 di Dory permette su Fp il profilo regolare
-nonzero `t=560,h=19`, con N/capacità invariati rispetto al rilassato
-`t=1120,h=18`; il receiver invia la correzione autenticata del payload.
-Table 2 non assegna 128 bit concreti a questa istanza Goldilocks, che resta
-una nuova ipotesi EA-LPN-SL senza credito; beta onesti sono campionati
+simula c senza Delta. Lo screen large-field usa il profilo regolare
+nonzero `t=675,h=19,ell=11`, N=353.894.400 e capacità 70.778.880; il
+receiver invia la correzione autenticata del payload. Table 2 non assegna
+128 bit concreti a Goldilocks e il bias Fourier mostra che dimezzare t non
+è una riduzione: resta una nuova ipotesi EA-LPN-SL-reg* senza credito;
+beta onesti sono campionati
 esattamente in Fp* senza abort osservabile.
 Il bound ideale è `(t*h+1)/|Fp3|`; anche il fattore Q*=2^74 lascia
-104,62 bit. Il guard elimina i due controesempi
-identificati e sostituisce il precheck dell'inverso; NoPeek, FS e
-composizione B11→Dory richiedono ancora una riduzione completa.
+104,35 bit. Il guard elimina i due controesempi
+identificati e sostituisce il precheck dell'inverso; NoPeek, FS e la
+composizione B11→Dory richiedono ancora una formalizzazione completa.
 La [candidata cGGM nel ROM separato per nodo](construction-screen.md#cggm-con-random-oracle-separato-per-nodo)
 usa `left=H_D(x), right=x-H_D(x)` e nessuna permutazione/inversa. Dopo il
 guard, una query al nodo nascosto determina un candidato Delta; il
@@ -710,16 +718,39 @@ simulatore costruisce `c` per livelli e programma soltanto la cella ROM
 identificata da setup/blocco/livello/posizione. Il ramo beta zero resta
 esatto. Il bound prudente per prequery è `Q_ROM/|Fp3|`, 118 bit con
 `Q_ROM=2^74`; la somma condizionale nota resta 90,93 bit. Restano aperti
-la composizione sender con guard/split, l'istanza SHAKE/codec e le risorse.
+la formalizzazione della composizione sender con guard/split,
+l'istanza SHAKE/codec e le risorse.
 La [candidata seed Fp6→Fp3](construction-screen.md#seed-fp6-compressione-a-95-bit-nel-singolo-setup)
 usa Wolverine con rho=95 e un solo setup: il bound condizionale seed
 è 90,93 bit con gli envelope B12 conservati, senza cambiare ipotesi
-AES/P-521 o risorse avversarie. Con 12.883 righe riduce il
-sottototale seed/payload Dory a **40,70 MB**. Non è un bootstrap completo
+AES/P-521 o risorse avversarie. Con 15.528 righe porta il
+sottototale seed/payload Dory a **49,03 MB**. Non è un bootstrap completo
 o una modifica al B11 selezionato: campo K6, suite e corrispondenza nativa
-vanno implementati e verificati. Con l'upper B12 corrente del primo corpo
-il parziale è 105,75 MB, sotto 130 MB; F_Rand/F_EQ, security, framing e
-tempo restano aperti e quindi non è un'ammissione.
+vanno implementati e verificati. La coin aggiunge 146 byte. Il confronto
+dei digest ROM è respinto da un dizionario di `2^19` cammini. La PEQT
+DDH/DLEQ da 823 byte è respinta perché l'estrazione via forking scende a
+circa 59,5 bit; il malicious PSI compatto non fornisce due output con un
+solo input corrotto. La candidata successiva usa un secondo seed Fp6 con
+ruoli scambiati e le due chiavi MAC per aprire soltanto
+`(Delta0+Delta1)*(wbar-vbar)` dopo autenticazione e coin fresche:
+**12.815.247 byte**, senza nuova ipotesi gruppo. Con l'upper B12 corrente
+del primo corpo il parziale è **126.894.534 byte**, sotto 130 MB. Restano
+da prezzare EA-LPN-SL-reg* a T121/M93 e da implementare roleswap/codec;
+formalizzazione compositiva, semantica con abort, corpo completo e tempo
+restano aperti. Non è
+un'ammissione. La fonte Ring-LPN 2022/1035 sostiene soltanto la plausibilità
+di rumore regolare e leakage statico contro gli attacchi censiti su una
+diversa famiglia large-field; non assegna sicurezza alla geometria corrente.
+
+Lo screen successivo usa questo bootstrap soltanto come candidata
+condizionale. Per K=256,d=1, Shout costa almeno `4T` prodotti, 96,57 miliardi
+nel caso maggiore. Il one-hot corrispondente ha oltre 6,18 mila miliardi di
+bit; l'apertura Akita è lineare nella lunghezza e il massimo pubblicato è
+`2^35` bit. Range W può essere promosso una volta per la stessa `C_W`, ma
+un product-sumcheck a memoria sublineare richiede circa sei visite, oltre
+le quattro letture autorizzate se resta online. Una candidata successiva
+deve fornire insieme un'unica PCS sparse/streaming privata, il wrapper
+Fp3–MAC e un upper completo <=50 s; nessun componente censito lo fa.
 
 ### Selected reference
 

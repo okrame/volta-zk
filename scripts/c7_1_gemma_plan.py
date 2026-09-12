@@ -6596,6 +6596,52 @@ def b12_fixed_run_bootstrap():
         'complete_Gemma_correlation_census': None, 'complete_fixed_run_security': None}
 
 
+def c71_fp6_seed_screen(rows):
+    """Candidate Wolverine seed, one setup, rho=95; no native/Dory credit.
+
+    Reuse B12's larger 576-OT/depth-24 envelopes conservatively. Only the
+    statistical compression term changes; no new AES or DDH assumption.
+    """
+    reference = b12_fixed_run_bootstrap()
+    natural(rows, 'Fp6 seed rows', 1, reference['profile']['max_data_rows'])
+    # ell=ceil(2*rho/log2(p^3))+1. Exact integer boundaries avoid rounding
+    # log2(p^3) up to 192, which would incorrectly allow rho=96 at ell=2.
+    assert (1 << 190) < P**3 < (1 << 192)
+    assert pow(7, (P-1)//2, P) == P-1  # v^2-7 irreducible over Fp3.
+    terms = {k: Fraction(v) for k, v in reference['conditional_component']['terms'].items()}
+    terms['Wolverine_hybrid_and_zero_key_abort'] = (
+        Fraction(192**2+1, P**3)+Fraction(1, 1 << 95))
+    total = sum(terms.values())
+    ots, wide, field_bytes = 384, 6, 48
+    wire = {
+        'four_P521_points_and_two_seed_ciphertexts_per_OT': ots*(4*67+2*32),
+        'COPE_including_sacrificed_rows': 8*ots*(rows+wide),
+        'explicit_wide_challenges': field_bytes*rows,
+        'context_nonces_nine_frames_check_and_compression': 385+3*field_bytes,
+        'completion_seal': 40,
+    }
+    return {
+        'credit': False, 'native_implemented': False, 'complete_bootstrap_admitted': False,
+        'scope': 'one fresh linear-wire seed only; expansion and proof body excluded',
+        'base_rows': rows, 'statistical_parameter_bits': 95,
+        'wide_degree': wide, 'output_degree': 3, 'OT_instances': ots,
+        'sacrificed_rows': wide, 'tree_depth': (rows+wide-1).bit_length(),
+        'field': 'Fp3[v]/(v^2-7), Fp3=Fp[u]/(u^3-2)',
+        'compression': 'alpha0*x0+alpha1*x1 after the full wide check',
+        'wire_bytes_both_directions': wire, 'wire_total_both_directions': sum(wire.values()),
+        'COPE_data_only_received_lower': 8*ots*rows,
+        'conditional_seed_component': {
+            'terms': {k: str(v) for k, v in terms.items()}, 'sum': str(total),
+            'bits': math.log2(total.denominator)-math.log2(total.numerator),
+            'below_2_to_minus_90': total < Fraction(1, 1 << 90),
+            'full_B12_forest_envelope_retained': True,
+            'Dory_or_complete_proof_bound': False,
+        },
+        'primitive_hypotheses': reference['primitive_hypotheses'],
+        'reduction_envelope': reference['reduction'],
+    }
+
+
 def b12_p0_native_caller():
     """Actual compact Fp3 schema, with source-opening obligations retained."""
     cohorts = gemma_weight_cohorts(pinned_private_tensors())

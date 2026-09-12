@@ -140,10 +140,13 @@ ed è escluso; il risultato algebrico ha un controesempio finito riproducibile.
 Il [caso beta=0](construction-screen.md#payload-zero-controllo-necessario-prima-delle-correzioni)
 espone Delta anche nel ROM, prima del check: è escluso il port letterale
 che lo ammette. La riparazione candidata prova beta*beta^(-1)=1 sui MAC
-originali **prima di c**, riusando il batch prodotti. Con questo controllo
-e quelli per blocco, il sottototale LPN3 diventa **121,49 MB** nelle due
-direzioni, prima di corpo e voci mancanti. Conservando PCS/altro corpo
-B12, il lower ricevuto è già **141,55 MB**: occorre cambiarli comunque.
+originali **prima di c**, riusando il batch prodotti.
+La [candidata seed Fp6→Fp3](construction-screen.md#seed-fp6-compressione-a-95-bit-nel-singolo-setup)
+riduce il costo con rho=95, compatibile con un solo setup e un bound
+condizionale seed di **90,93 bit** sotto le stesse ipotesi primitive.
+Con precheck e check per blocco, il sottototale LPN3 scende a **81,22 MB**
+nelle due direzioni: 48,78 MB di margine parziale, prima di corpo e voci
+mancanti. È uno screen riproducibile; il port nativo Fp6 non è implementato.
 Restano da provare la nuova distribuzione F*, il cGGM concreto con beta
 nonzero e la simulazione malevola. EA-LPN-SL, F_Rand/F_EQ e costo completo
 restano aperti. La

@@ -756,6 +756,81 @@ binari. **Prossimo lavoro:** cGGM concreto e riduzione malevola sotto il
 vincolo verificato beta nonzero, prima di approfondire Shout. L'arena,
 il legame agli originali e il tempo completo restano obblighi aperti.
 
+### Seed Fp6: compressione a 95 bit nel singolo setup
+
+**Nuova candidata analitica: ridurre il campo interno del seed, mantenendo
+Fp/Fp3 all'uscita.** La [fonte Wolverine](https://eprint.iacr.org/2020/925),
+Fig. 5/Teorema 2 e Appendice B.2 nel
+[Markdown conservato](../../sota/2020-0925-wolverine.md), specifica
+`ell=ceil(2*rho/log2(p^3))+1`. B11 sceglie rho=128 e quindi ell=3,
+campo interno Fp9. Con un solo setup fresco e target completo >=78 bit
+si può valutare **rho=95, ell=2, campo interno Fp6**. Non si abbassano
+le ipotesi AES-256/P-521 o le risorse avversarie T80/M80/Q64.
+
+Il bordo va calcolato esattamente: `2^190 < p^3 < 2^192`.
+Rho=95 ammette ell=2; **rho=96 richiede ancora ell=3**, perché p è
+minore di 2^64. Arrotondare log2(p³) a 192 darebbe un parametro errato.
+Il campo candidato è `K6=E[v]/(v²-7)`, con `E=Fp[u]/(u³-2)` già usato.
+Il controllo `7^((p-1)/2)=-1` e il grado dispari di E/Fp implicano che
+7 non è un quadrato in E. La base Fp è `1,u,u²,v,uv,u²v`.
+
+Si eseguono **384 OT** e il check nell'intero K6, con sei righe maschera
+indipendenti e challenge K6 dopo tutte le correzioni COPE. Solo dopo il
+check si campionano alpha0,alpha1 in E e si applica
+`C_alpha(x0+v*x1)=alpha0*x0+alpha1*x1` a Delta, key e tag. La mappa è
+E-lineare e universale, e conserva `M=K+Delta*x` per il plaintext x in
+Fp. La rimozione del leakage usa lo stesso teorema Wolverine; non è il
+taglio arbitrario di tre limb. La simulazione del check contro verifier
+malevolo usa tutte le sei maschere. La key compressa zero termina il setup,
+con l'evento ideale 1/p³ già addebitato.
+
+**Bound condizionale della sola componente seed.** Il
+[diagnostico](../../scripts/c7_1_gemma_plan.py) `c71_fp6_seed_screen`
+conserva per prudenza tutti gli envelope B12 a 576 OT, profondità 24,
+T121/M93/Q*=2^74 e una sola installazione. Il nuovo numero di OT, le
+righe sacrificate, i sampler e l'aritmetica schoolbook non li aumentano.
+Sostituisce soltanto il termine statistico:
+
+```text
+epsilon_seed6 = epsilon_B12_seed - 2^-128 + 2^-95
+              < 2^-90   (90,9339079333 bit).
+```
+
+Resta compreso l'upper conservativo `(192²+1)/p³` del check e della key
+zero. Il termine bootstrap entra una volta, senza un ulteriore fattore
+Q*; è così che viene composto nel contratto B12 corrente. Il conto non
+copre un lifetime di 2^20 setup, Dory, EA-LPN o l'intero certificato.
+Non cambia il teorema B12 selezionato o il suo backend Fp9.
+
+**Wire candidato, stesso formato dimensionale e nuovo dominio/suite da
+implementare.** Per n righe base restituite, contando anche le sei sacrificate:
+
+| Voce, due direzioni | Byte |
+|---|---:|
+| 384 OT, quattro punti P-521 e due ciphertext seed ciascuno | 127.488 |
+| COPE | 3.072*(n+6) |
+| Challenge K6 esplicite | 48*n |
+| Contesto/nonce/frame, risposta del check e compressione | 529 |
+| Seal del seed | 40 |
+| Totale del seed | **146.489+3.120*n** |
+
+Con le **25.763 righe** del precheck nonzero e dei check Dory per blocco,
+il seed costa 80.527.049 byte. Aggiungendo i payload Dory già censiti
+si arriva a **81.217.017 byte nelle due direzioni**, con 48.782.983 byte
+di margine parziale sul primo tetto. Il lower ricevuto è 79.350.064 byte,
+esclusi sacrifici/OT e altre voci. Il risparmio sul precedente sottototale
+Fp9 è **40.277.136 byte**. F_Rand/F_EQ, completamento Dory, metadata e
+corpo vanno ancora aggiunti; il margine non è un upper del certificato.
+
+Il [test locale](../../tests/test_c71_fp6_seed_screen.py) controlla il
+bordo 95/96, il nonsquare, la compressione dei MAC originali, i byte e
+la sostituzione esatta del termine di errore. Non esegue OT/AES o un
+codec Fp6. La candidata richiede una suite distinta, mapping nativo e
+test malevoli prima del riuso; **non si cambia il parametro in B11 sul
+posto**. Il prossimo obbligo crittografico dell'espansione resta il cGGM
+con beta nonzero verificato, senza sigma scalare vulnerabile. Non sono
+ancora chiusi i parametri LPN, l'arena o il costo completo entro 50 s.
+
 ## IO, sicurezza e criterio di riapertura
 
 Per ogni nuova linea il tempo da chiudere è una **somma senza overlap

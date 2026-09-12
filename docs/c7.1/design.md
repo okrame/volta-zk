@@ -686,8 +686,8 @@ Il [lemma candidato sui check per blocco](construction-screen.md#check-per-blocc
 fornisce `t*binom(N/t,2)/|Fp3|` soltanto con hash lineari fresche dopo
 i vettori fissati, tre maschere per blocco e un unico AND finale. Non
 realizza F_Rand/F_EQ, EA-LPN-SL o il cGGM: il teorema B12 rimane invariato.
-La variante LPN3 conserva 13,78 MB di margine parziale; con il resto
-del corpo/PCS B12 invariato è respinta già per byte ricevuti.
+Con il seed Fp9 la variante LPN3 conserva 13,78 MB di margine parziale;
+con il resto del corpo/PCS B12 invariato è respinta già per byte ricevuti.
 Il [caso finale non binario](construction-screen.md#cammino-finale-non-binario-check-e-recupero-della-chiave)
 passa il check con due foglie autenticate: la simulazione deve estrarlo,
 non assumere sempre abort. Nel ramo RPM, sigma=c*id con c nel campo
@@ -698,10 +698,17 @@ Il [payload zero](construction-screen.md#payload-zero-controllo-necessario-prima
 espone Delta prima del check anche nel ROM: il ramo letterale che lo
 ammette è escluso. È candidata una prova preventiva beta*eta=1 sui MAC
 originali con il batch prodotti esistente, t righe inverse e una maschera
-Fp3. Con i check per blocco porta il sottototale LPN3 a 121,49 MB nelle
-due direzioni, prima di corpo e voci mancanti. Distribuzione F*, NoPeek,
+Fp3. Col seed Fp9 e i check per blocco il sottototale LPN3 è 121,49 MB
+nelle due direzioni, prima di corpo e voci mancanti. Distribuzione F*, NoPeek,
 FS e bound composto richiedono la nuova riduzione. Il controllo non
 sana sigma scalare o i cammini non binari; il bootstrap resta aperto.
+La [candidata seed Fp6→Fp3](construction-screen.md#seed-fp6-compressione-a-95-bit-nel-singolo-setup)
+usa Wolverine con rho=95 e un solo setup: il bound condizionale seed
+è 90,93 bit con gli envelope B12 conservati, senza cambiare ipotesi
+AES/P-521 o risorse avversarie. Con le stesse 25.763 righe riduce il
+sottototale seed/payload Dory a **81,22 MB**. Non è un bootstrap completo
+o una modifica al B11 selezionato: campo K6, suite e corrispondenza nativa
+vanno implementati e verificati; espansione, corpo e costi mancanti restano aperti.
 
 ### Selected reference
 

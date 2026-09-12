@@ -37,16 +37,21 @@ def test_pcs_state_screen_counts_full_envelopes_and_keeps_work_unadmitted():
     assert [c['verifier_COPE_bytes_lower'] for c in screen['cases']] == [90_989_568, 119_107_584, 119_107_584]
     assert screen['conversation_RNE_COPE_bytes_lower'] == 329_204_736
     assert screen['conversation_RNE_COPE_bytes_lower'] > screen['conversation_certificate_cap_bytes']
-    assert [c['certificate_cap_bytes'] for c in screen['cases']] == [70_000_000, 40_000_000, 40_000_000]
-    assert screen['conversation_certificate_cap_bytes'] == 150_000_000
+    assert [c['certificate_cap_bytes'] for c in screen['cases']] == [130_000_000, 40_000_000, 40_000_000]
+    assert screen['conversation_certificate_cap_bytes'] == 210_000_000
+    # Only response 1's cap increased; its quota is not the full fresh setup.
+    assert screen['cases'][0]['verifier_COPE_bytes_lower'] < 130_000_000
+    assert screen['conversation_RNE_COPE_bytes_lower'] > 130_000_000
+    assert all(c['verifier_COPE_bytes_lower'] > c['certificate_cap_bytes']
+               for c in screen['cases'][1:])
     for c in screen['cases']:
-        assert c['verifier_COPE_bytes_lower'] > c['certificate_cap_bytes']
         assert c['dense_RNE_tree_peak_bytes'] > 80_000_000_000
         assert c['dense_RNE_write_seconds_at_HBM_peak_lower'] > 50
         assert c['full_prover_seconds'] is None and not c['feasible']
 
     residual = r['shout_residual_screen']
     assert not residual['credit'] and not residual['selected']
+    assert residual['certificate_caps_bytes'] == [c['certificate_cap_bytes'] for c in screen['cases']]
     assert residual['capacity']['total_tokens'] == 450
     assert [c['RNE_reduction_Fp3_rows_lower'] for c in residual['cases']] == [152372, 152852, 152852]
     assert [c['attributable_COPE_bytes_lower'] for c in residual['cases']] == [3012346368, 3018981888, 3018981888]

@@ -22,7 +22,7 @@ ogni ulteriore approfondimento Shout. Non si avvia un'implementazione.
 
 Capacità richiesta/esaminata: **C=3, 100+50 token per risposta,
 O=0/150/300, 450 token complessivi**. Capacità acquisita sotto l'intero
-contratto: **nessuna**. Per ogni contesto valgono 70/40/40 milioni di byte,
+contratto: **nessuna**. Per ogni contesto valgono 130/40/40 milioni di byte,
 inclusi installazione, bootstrap per sessione e ogni dato necessario al
 verifier; niente ammortamento sui turni successivi. Gli ignoti sotto
 hanno upper di ammissione infinito, non costo zero.
@@ -272,7 +272,7 @@ a setup/semantica invariati. Non si importano i suoi benchmark.
 
 ## Shout con endpoint originali: screen dei costi residui
 
-**Ultima deroga 70/40/40 MB, C=3 canonica; `credit:false`.** La candidata
+**Ultima deroga 130/40/40 MB, C=3 canonica; `credit:false`.** La candidata
 più promettente come contributo resta Shout con witness virtuale e MAC
 originali, per il minor lavoro aritmetico del consumer censito sopra.
 Lo screen minimo distingue però la **sostituzione dei soli P/S RNE** da
@@ -298,7 +298,7 @@ in [`range::prove`](../../rust/volta-pcs/src/c71_matrix/range.rs).
 
 Sono quote di fabbisogno, **non una distribuzione del bootstrap sui turni**.
 Nel setup unico B12 tutte arrivano prima della prima risposta:
-**P1 ≥9.050.310.144 byte**, oltre 70 MB e persino oltre i 150 MB complessivi.
+**P1 ≥9.050.310.144 byte**, oltre 130 MB e persino oltre i 210 MB complessivi.
 Il fattore resta `3*576*8` byte/Fp3; gli output PRF sono `2*576*3` per
 riga Fp3, non istruzioni AES o secondi. Sono esclusi dal lower sacrifici,
 OT, seal, setup metadata, terminali RNE, altre correlazioni e tutto il corpo;
@@ -347,9 +347,10 @@ contratto completo: nessuna; capacità sottoposta allo screen: tre risposte.**
 La verifica minima legge Dory **PCG** §4.2/Fig. 5, §5.2/Tab. 2 e
 Appendice C nel [Markdown conservato](../../sota/2025-1660-dory-streaming-vole.md);
 la [pagina primaria](https://eprint.iacr.org/2025/1660) identifica la versione
-del 2025-09-23. Il risultato nuovo è circoscritto: **B11 come unica sorgente
-seed per le tre geometrie pubblicate supera il tetto iniziale**. Non è un
-rifiuto di ogni istanza Dory su campo grande.
+del 2025-09-23. **La deroga successiva a 130 MB elimina il rifiuto per
+il solo seed delle tre geometrie pubblicate.** Si ricontano capacità e
+byte residui; la famiglia non acquisisce sicurezza, tempo o certificato
+completo dal solo margine di trasporto.
 
 Si considerano F=Goldilocks, K=Fp3, grado μ=3 e un solo setup fresco.
 Nel paper P0 è il verifier DV, P1 il prover, con M=K+Δ*x; si applica
@@ -375,6 +376,14 @@ del protocollo composto prima di rendere disponibili gli output.
 | LPN2 | 1.571 / 15 | 10.295.705 | 25.139 | 115.840.512 | 188.544 / 565.560 |
 | LPN3 | 1.120 / 18 | 58.720.256 | 21.283 | 98.072.064 | 161.304 / 483.840 |
 
+Sommando il wire B11 con seal e i payload d,z,c si ottengono nelle **due
+direzioni** 78.974.993/118.637.969/100.482.929 byte: restano rispettivamente
+51.025.007/11.362.031/29.517.071 byte rispetto ai 130 milioni. Questo è
+un confronto prudente che conta anche l'outgoing del verifier, non un
+upper del bootstrap o del certificato: F_Rand/F_EQ e loro framing, il
+completamento Dory, metadata/installazione e corpo R1 vanno aggiunti.
+Nessun residuo è un budget assegnato a una PCS o al consumer Shout.
+
 La Tab. 2 è un profilo COT F2/F_(2^128), **non parametri di sicurezza
 Goldilocks/Fp3**. Il lower conta soltanto quelle geometrie con il seed
 B11; omette persino i nove sacrifici COPE, OT e corpo della risposta.
@@ -391,14 +400,14 @@ indicando con R1 il nuovo corpo e con U gli altri byte ricevuti ancora
 da contare, sono necessarie entrambe le disuguaglianze
 
 ```text
-4608*(t*(h+1)+3) + 8*(t*h+3) + R1 + U <= 70.000.000
+4608*(t*(h+1)+3) + 8*(t*h+3) + R1 + U <= 130.000.000
 floor(t*2^h/5) >= n_richiesto                     [se si mantiene N≈5n]
 ```
 
 U include sacrifici/OT/check/seal/metadata e l'eventuale correzione β;
 non è zero. Usando 11.466.948 soltanto come capacità di confronto,
-R1=U=0 dà gli intervalli **necessari** t=875..891 per h=16,
-438..842 per h=17, 219..798 per h=18. Non sono parametri LPN ammessi:
+R1=U=0 dà gli intervalli **necessari** t=875..1656 per h=16,
+438..1564 per h=17, 219..1482 per h=18. Non sono parametri LPN ammessi:
 mostrano dove una verifica di sicurezza avrebbe utilità, evitando di
 escludere la famiglia per il solo costo delle geometrie binarie.
 
@@ -438,6 +447,38 @@ classificato globale non sono sostituzioni ammesse. Shout resta subordinato
 a questa verifica; range/PCS entro arena e legame privato agli originali
 restano obblighi indipendenti. Nessun tempo <=50 s o lavoro totale non
 crescente sui prefissi 1/2/3 è acquisito.
+
+### Realizzazione cGGM: cosa trasferisce Half-Tree
+
+La [fonte primaria Half-Tree](https://eprint.iacr.org/2022/1431), revisione
+2023-12-21, è ora conservata in [Markdown](../../sota/2022-1431-half-tree.md).
+§4.1.2 e Appendice B.2/Teorema 7 confermano il ramo usato da Dory:
+nodi nel campo K, permutazione su **quello stesso K**, sicurezza
+semi-onesta del single-point in RPM. La sicurezza malevola streaming
+proviene poi dal check e dalla riduzione di Dory, non dal solo Teorema 7.
+
+L'invariante decisivo è `left+right=parent` in K: per induzione la somma
+delle foglie di un sottoalbero è il suo nodo. Dory usa proprio questa
+identità in `Acc/PuncAcc` per evitare di riespandere tutte le foglie.
+Il GGM B11 produce due seed pseudocasuali indipendenti: convertirli in
+Fp3 non impone quell'identità. Cambiare soltanto il generatore dentro
+`Acc` non è quindi una sostituzione corretta. La primitiva deve conservare
+sia l'invariante sia la simulazione con Δ nell'output onesto del verifier.
+
+§4.2 offre un altro ramo, **pcGGM**, con nodi binari e conversione finale
+in un K arbitrario. Questo risolve il tipo del campo delle foglie per il
+single-point, ma il paper applica un hash finale proprio per **rompere
+la correlazione dell'ultimo livello**. Non fornisce la somma delle foglie
+Fp3 dalla radice binaria; non si trasferisce dunque l'accumulo streaming
+Dory dal nome Half-Tree o dal costo AES del pcGGM. Costruire e conservare
+somme Fp3 ausiliarie richiederebbe un nuovo conteggio di setup e memoria,
+mentre rigenerarle richiederebbe un nuovo bound dei passaggi.
+
+Non è dimostrata un'impossibilità di un cGGM nel ROM o con AES. È escluso
+il port letterale delle due alternative esaminate; una costruzione di
+permutazione su Fp3 nel ROM, oppure una prova diretta del cGGM con un
+altro hash, resta una verifica crittografica distinta. Non basta una
+permutazione invertibile o un test di uguaglianza dei MAC per concluderla.
 
 ## IO, sicurezza e criterio di riapertura
 
@@ -488,7 +529,7 @@ digest = 8192 * 220 // 8
 wire = [r * digest for r in rounds]
 assert rounds == [1560, 2040, 2040]
 assert wire == [351_436_800, 459_571_200, 459_571_200]
-assert all(b > cap for b, cap in zip(wire, (70_000_000, 40_000_000, 40_000_000)))
+assert all(b > cap for b, cap in zip(wire, (130_000_000, 40_000_000, 40_000_000)))
 assert 8 * 2**34 == 137_438_953_472 > 80_000_000_000
 assert 35 * 50_000_000_000 == 1_750_000_000_000 < 2_199_023_255_552
 
@@ -519,16 +560,20 @@ assert 48*256*2**34 > 50*3_350_000_000_000  # write+read >50 s persino al picco
 assert 892*8*256*24 == 43_843_584  # tabelle combinate, dinamiche
 assert all((2**i) % 3 for i in range(36))  # k=3 non divide d/s_split Akita
 assert (2**64 + 1)*2**78 > 2**128  # anche c=1 non ammette il target FS
-assert [cap//13_824 for cap in (70_000_000, 40_000_000)] == [5063, 2893]
+assert [cap//13_824 for cap in (130_000_000, 40_000_000)] == [9403, 2893]
 
 # Dory Fig. 5: Fp/Fp3 seed rows; no protocol execution or parameter admission.
 geometries = [(1194, 13), (1571, 15), (1120, 18)]
 seeds = [t*(h+1)+3 for t, h in geometries]
 assert seeds == [16719, 25139, 21283]
 assert [4608*s for s in seeds] == [77041152, 115840512, 98072064]
-assert all(4608*s > 70_000_000 for s in seeds)
+assert all(4608*s < 130_000_000 for s in seeds)
 assert [8*(t*h+3) for t, h in geometries] == [124200, 188544, 161304]
 assert [24*t*h for t, h in geometries] == [372528, 565560, 483840]
+subtotals = [233345 + 4680*s + 8*(t*h+3) + 24*t*h
+             for s, (t, h) in zip(seeds, geometries)]
+assert subtotals == [78974993, 118637969, 100482929]
+assert [130_000_000-b for b in subtotals] == [51025007, 11362031, 29517071]
 capacities = [t*2**h//5 for t, h in geometries]
 assert capacities == [1956249, 10295705, 58720256]
 residual_base_rows = 3*sum(8*c+892+65535 for c in (18935, 18995, 18995))
@@ -537,12 +582,12 @@ assert capacities[1] < 11_466_948 < capacities[2]
 windows = []
 for h in (16, 17, 18):
     lower = (5*11_466_948 + 2**h-1)//2**h
-    upper = (70_000_000 - 4608*3 - 24)//(4608*(h+1)+8*h)
+    upper = (130_000_000 - 4608*3 - 24)//(4608*(h+1)+8*h)
     windows.append((lower, upper))
     assert (lower-1)*2**h//5 < 11_466_948 <= lower*2**h//5
     cost = lambda t: 4608*(t*(h+1)+3)+8*(t*h+3)
-    assert cost(upper) <= 70_000_000 < cost(upper+1)
-assert windows == [(875, 891), (438, 842), (219, 798)]
+    assert cost(upper) <= 130_000_000 < cost(upper+1)
+assert windows == [(875, 1656), (438, 1564), (219, 1482)]
 ```
 
 Fonti lette nei Markdown conservati: [Dory PCG](../../sota/2025-1660-dory-streaming-vole.md),
@@ -569,3 +614,4 @@ AnyDoc 0.1.7; nessuna fonte precedente sovrascritta. Metadati primari:
 | [Jindo](../../sota/2026-0044-jindo.pdf), `https://eprint.iacr.org/2026/044.pdf` | `ebf0f9634b2d6a5c42e8f4810a7b9da07c3edd760cfca3d5a8159838d2bdc70e` / `c75c0bf0539a42ad4887c6cb1df54e635bfa09367910901b6a53d59224f45bc4` |
 | [Dory PCS](../../sota/2020-1274-dory-pcs.pdf), `https://eprint.iacr.org/2020/1274.pdf` | `d0789bc9497d5532b53065176ed3c85d5d3360b23d20fd7e839174ec23518a52` / `b78c7f401ee77c6fadaa991a9287a815f0a6da960d3e115055db718e116d42a6` |
 | [Twist and Shout](../../sota/2025-0105-twist-shout.pdf), `https://eprint.iacr.org/2025/105.pdf` | `0808fe28ffc921cd99df3c4a9f8afd0300c3e933bed2bfb2241f859982d4b538` / `1205252b260a2d6058fad79976067e7bc900c6c8430abf282247633bed9f1c44` |
+| [Half-Tree](../../sota/2022-1431-half-tree.pdf), `https://eprint.iacr.org/2022/1431.pdf` | `abf39d5084c369e7926da59aca712aa252a1cfd97c79fb6c31d6e2eea7bb778f` / `3dd7bf0cdfe1a6f22308e779460c888325583c5af914ba6022b25c88f87f3327` |

@@ -380,7 +380,7 @@ quindi `4 + 24*65535 = 1.572.844` byte di wire. Sommato al minimo RNE,
 porta il limite inferiore a **30.944.292/31.014.852/31.014.852 byte**.
 Questo è ancora un sottototale. Includendo le PCS, il conteggio esteso
 sotto supera i 40 MB delle risposte successive per ogni calibrazione,
-già prima del bootstrap. Il nuovo tetto iniziale di 70 MB non è escluso
+già prima del bootstrap. Il nuovo tetto iniziale di 130 MB non è escluso
 dal solo corpo; il bootstrap resta da aggiungere.
 
 Il precedente reader totale da 16.777.216 byte era incompatibile con
@@ -575,8 +575,8 @@ Calibrazione, hardware e completa accettazione canonica rimangono separati.
 
 ### Owner-authorized PCS/state experiment
 
-**Steering del proprietario del 2026-09-12, con ultima deroga 70/40 MB.**
-Il tetto iniziale di 70.000.000 sostituisce quello di 35.000.000 byte;
+**Steering del proprietario del 2026-09-12, con ultima deroga 130/40 MB.**
+Il tetto iniziale di 130.000.000 sostituisce quello di 70.000.000 byte;
 le successive restano a 40.000.000, senza incremento cumulativo.
 Per «prova» si intende il **certificato completo**, coerentemente con
 [C4.1](../c4.1-seed-streaming-fiat-shamir.md#objective-and-terminology).
@@ -585,7 +585,7 @@ Indicando con R_j quel corpo e con B_j tutti gli altri byte necessari al
 verifier e non già addebitati, valgono tetti assoluti in byte decimali:
 
 ```text
-P_1 = R_1 + B_1 <= 70.000.000
+P_1 = R_1 + B_1 <= 130.000.000
 P_j = R_j + B_j <= 40.000.000   per ogni 2 <= j <= C
 ```
 
@@ -674,9 +674,10 @@ per B12, né i layout densi respinti vengono riaperti.
 
 **Bootstrap prima di approfondire Shout.** Lo
 [screen Dory alimentato da B11](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
-conta `t*(h+1)+3` seed sVOLE Fp/Fp3, una riga base ciascuno, e respinge
-le tre geometrie pubblicate per il solo COPE iniziale. La finestra numerica
-su campo grande non dimostra la sicurezza EA-LPN-SL. Restano da realizzare
+conta `t*(h+1)+3` seed sVOLE Fp/Fp3, una riga base ciascuno. Con 130 MB
+il solo COPE iniziale non respinge più le tre geometrie pubblicate;
+la capacità di riferimento B12 rientra soltanto in LPN3. Non è un'ammissione
+del certificato completo o della sicurezza EA-LPN-SL. Restano da realizzare
 F_Rand/F_EQ e il cGGM con permutazione programmabile su Fp3, con riduzioni
 malevole e risorse concrete: AES-256/B11 non scaricano queste premesse.
 Non si aggiungono tali ipotesi al teorema selezionato. Anche un bootstrap
@@ -687,7 +688,7 @@ idoneo lascia aperti range/PCS entro arena e il legame privato one-hot/originali
 | Voce | Riferimento da soddisfare; nessuna nuova misura |
 |---|---:|
 | Prover completo a modello residente | <=50 s per risposta nella capacità dichiarata |
-| Certificato completo, bootstrap per sessione incluso | prima <=70.000.000 byte; successive <=40.000.000 |
+| Certificato completo, bootstrap per sessione incluso | prima <=130.000.000 byte; successive <=40.000.000 |
 | Verifier CPU locale, quattro core | 6,4–8,2 s |
 | Caricamento modello per residenza | riferimento storico 19,186 s, distinto dal setup crittografico |
 | Inferenza e prover sulla stessa H100 | picco globale <80.000.000.000 byte |

@@ -173,7 +173,7 @@ def feasibility(cases):
         fp3_rows = sum(169+32*d for d in bits)
         writes = 48*511*cells
         screened.append(dict(old_tokens=150*slot,
-            certificate_cap_bytes=70_000_000 if slot == 0 else 40_000_000,
+            certificate_cap_bytes=130_000_000 if slot == 0 else 40_000_000,
             RNE_PS_Fp3_rows=fp3_rows,
             # Excludes sacrifices, OT, checks, seal and every response byte.
             verifier_COPE_bytes_lower=576*8*3*fp3_rows,
@@ -188,7 +188,7 @@ def feasibility(cases):
         complete_certificate_cap_verified=False,
         full_work_nonincrease_verified=False,
         cases=screened,
-        conversation_certificate_cap_bytes=150_000_000,
+        conversation_certificate_cap_bytes=210_000_000,
         conversation_RNE_COPE_bytes_lower=sum(c['verifier_COPE_bytes_lower'] for c in screened),
         decision='reject current dense candidates; COPE alone also rejects global-W-only repair')
 
@@ -216,7 +216,7 @@ def shout_residual_screen(current):
     return dict(credit=False, selected=False, hardware_credit=False,
         scope='replace RNE P/S only; original RNE reductions, W range and bootstrap unchanged',
         capacity=dict(attempts=3, prompt_tokens=100, generated_tokens=50, total_tokens=450),
-        certificate_caps_bytes=[70_000_000, 40_000_000, 40_000_000], cases=cases,
+        certificate_caps_bytes=[130_000_000, 40_000_000, 40_000_000], cases=cases,
         first_certificate_COPE_bytes_lower=sum(c['attributable_COPE_bytes_lower'] for c in cases),
         complete_certificate_bytes=None, complete_certificate_cap_verified=False,
         unchanged_W_A_range_tree_bytes=trees,

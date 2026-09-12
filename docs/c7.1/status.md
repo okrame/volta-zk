@@ -87,7 +87,7 @@ Il conteggio verificato dà un upper del corpo della risposta di 92,73 MB,
 entro i cap tecnici di trasporto, non i tetti del goal. Il lower resta
 **47,84/54,87/61,80 MB** a O=0/150/300: il corpo esclude già i 40 MB
 delle continuazioni per ogni calibrazione. Il nuovo tetto iniziale di
-70 MB richiede anche il bootstrap, escluso da questi conteggi. Il limite
+130 MB richiede anche il bootstrap, escluso da questi conteggi. Il limite
 del percorso ridotto resta 16 MiB totali e 8 MiB per PCS.
 Le fixture canoniche complete da **64,64/78,53/92,31 MB** fanno roundtrip
 nel framing nativo con lo stesso digest FS e rifiuto di troncamenti,
@@ -106,7 +106,7 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 **Priorità immediata: bootstrap fresco compatto, prima di approfondire
 Shout; nessuna candidata completa selezionabile.** L'ultima deroga del proprietario
-porta il certificato completo a **70.000.000 byte alla prima risposta e
+porta il certificato completo a **130.000.000 byte alla prima risposta e
 40.000.000 a ciascuna successiva**, bootstrap/installazione inclusi. Restano
 ≤50 s anche alla prima, sola memoria extra globale riusabile fra sessioni
 e lavoro totale non crescente su ogni prefisso. Capacità esaminata:
@@ -123,16 +123,21 @@ non globale. Questi lower riguardano i componenti conservati, non tutte
 le costruzioni Shout. Non si implementa né si ottimizza questa sostituzione.
 
 Il [nuovo screen del bootstrap Dory](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
-respinge B11 come unica sorgente seed delle tre geometrie pubblicate:
+con B11 come unica sorgente seed delle tre geometrie pubblicate conta
 **77,04/115,84/98,07 MB di sole correzioni COPE**, prima del corpo.
 Una riga base basta per il seed sVOLE Fp/Fp3; il fattore tre serve invece
-agli output Fp3. Non è un'impossibilità Dory: lo screen delimita una
-finestra numerica per parametri di campo grande, ancora senza sicurezza
-o prestazioni acquisite. La prossima verifica riguarda una realizzazione
+agli output Fp3. **La deroga a 130 MB elimina il precedente rifiuto per
+il solo seed.** Il sottototale B11+d/z/c nelle due direzioni lascia
+51,03/11,36/29,52 MB per il resto; soltanto LPN3 copre il fabbisogno B12
+di riferimento. Il certificato completo e i parametri su campo grande
+restano da giustificare. La prossima verifica riguarda una realizzazione
 concreta del cGGM e EA-LPN con leakage statico entro quella finestra,
 oppure una schedule che riduca anche le correlazioni residue. Il teorema
 del paper richiede una permutazione programmabile su Fp3, che AES-256
-e il GGM B11 non istanziano automaticamente.
+e il GGM B11 non istanziano automaticamente. La
+[verifica Half-Tree](construction-screen.md#realizzazione-cggm-cosa-trasferisce-half-tree)
+esclude anche il trasferimento diretto del ramo pcGGM binario: l'hash
+finale rompe le somme di sottoalbero richieste dall'accumulo Dory.
 
 Shout resta la priorità strutturale del [confronto](construction-screen.md)
 per il minor conto aritmetico del consumer, subordinata al bootstrap.
@@ -142,7 +147,7 @@ Akita–Shout e LogUp–Dory non sono composizioni selezionate; non hanno un
 upper completo giustificato o una prova trasferibile dai bound B12.
 
 Lo [screen precedente](pcs-state-screen.md#screen-minimo-sotto-i-tetti-assoluti)
-resta negativo anche sotto 70/40 MB: non si riaprono le materializzazioni
+resta negativo anche sotto 130/40 MB: non si riaprono le materializzazioni
 RNE o le cache dinamiche W/A/KV. Semantica, originali e controlli delle
 [RNE condivise](evidence.md#shared-rne-byte-experiment) restano riusabili
 entro le proprie premesse; i tre certificati ridotti non acquisiscono

@@ -178,6 +178,19 @@ premessa LPN o il ripiego sui byte non fornisce quella costruzione.
 Le materializzazioni dense già respinte restano escluse; il lavoro locale
 indipendente è autorizzato, senza spese o esecuzioni pesanti.
 
+Il proprietario autorizza esplicitamente lo
+[schedule integrato suffix-first + range + PCS privata](construction-screen.md#schedule-integrato-liveness-range-e-pcs-privata).
+Il residuo aritmetico dell'arena è **3.543.662.592 byte**; C può essere
+rilasciata prima del secondo passaggio, che usa circa 50 MB di array.
+Una cache privata globale dell'istogramma W costa 524.280 byte e consente
+di evitare la sua scansione per risposta, con autenticazione sempre fresca.
+Il checkpoint range a 11 livelli entra nei soli array con C (5,466 GB),
+ma il replay di un livello alla volta richiede già almeno 12 letture W
+per il range: questa schedule è respinta. Il punto di ogni livello viene
+ridisegnato; non si anticipa il terminale range usando il punto del top tree.
+Riuso dell'arena e ordine delle sfide sono ora espliciti; range senza quei
+replay, PCS privata e tempo completo restano il prossimo problema concreto.
+
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso
 AES composto positivo e refinement dei codec non sono ancora chiusi.
 I controlli piccoli in [evidence](evidence.md) e i riferimenti di

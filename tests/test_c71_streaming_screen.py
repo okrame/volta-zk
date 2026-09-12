@@ -156,3 +156,36 @@ def test_suffix_first_restores_the_original_PCS_endpoint():
     assert value == sum(x*w for x, w in zip(values, eq)) % p
     assert public == sum(x*w for x, w in zip(original_L, eq)) % p
     assert scans == [1 << d, 1 << d]
+
+
+def test_range_checkpoint_roots_and_integrated_liveness_screen():
+    p, d = 97, 7
+    leaves = [(1, (83-i*i) % p) for i in range(1 << d)]
+    def tree(level):
+        levels = [level]
+        while len(levels[-1]) > 1:
+            row = levels[-1]
+            levels.append([((a*d+b*c) % p, b*d % p)
+                           for (a, b), (c, d) in zip(row[::2], row[1::2])])
+        return levels
+    reference = tree(leaves)
+    for cut in (2, 3, 4):
+        block = 1 << cut
+        # Only one small subtree is live while computing each checkpoint.
+        roots = [tree(leaves[i:i+block])[-1][0] for i in range(0, len(leaves), block)]
+        assert tree(roots) == reference[cut:]
+
+    suffix = screen.suffix_first_weight_budget()
+    r = screen.integrated_schedule_screen(suffix)
+    assert r['old_simultaneous_arrays_margin'] == 3543662592
+    assert r['HBM_after_W_and_full_arena_before_other_residents'] == 12162858496
+    assert [p['named_arrays_bytes'] for p in r['phase_liveness']] == [2848456704, 50331648]
+    assert r['full_range_source_visible_core_peak'] == 6184752906192
+    assert r['private_global_W_histogram_u64_bytes'] == 524280
+    checkpoints = r['checkpoint_top_only']
+    assert [c['named_peak_with_C_bytes'] for c in checkpoints] == [5234491344, 5465702352]
+    assert all(c['named_peak_with_C_bytes'] < r['arena_bytes'] for c in checkpoints)
+    assert [c['partial_W_scans_lower_with_cached_histogram'] for c in checkpoints] == [14, 15]
+    assert screen.range_checkpoint_budget(35, 10, suffix['contraction_bytes'])['named_peak_with_C_bytes'] > r['arena_bytes']
+    assert r['complete_W_scans_upper'] is None and r['complete_seconds_upper'] is None
+    assert not r['admitted']

@@ -1320,6 +1320,92 @@ letture W per encoding e apertura PCS, che il replay RS sopra non rispetta.
 Mancano un upper di tempo e il confronto del lavoro totale su tutti i
 prefissi. Nessuno di questi controlli ammette il prover completo.
 
+## Schedule integrato: liveness, range e PCS privata
+
+Il proprietario autorizza ora esplicitamente lo screen locale integrato
+suffix-first + range + PCS privata, con arena 6 GiB, quattro letture W e
+50 s invariati. Il [diagnostico](../../scripts/c71_streaming_screen.py)
+separa occupazione simultanea, riuso temporale e dipendenze dalle sfide.
+
+**Memoria disponibile.** Sottrarre 2.898.788.352 dall'arena dà esattamente
+**3.543.662.592 byte**: gli array censiti occupano il 44,995% dell'arena.
+È il margine prima di altri buffer/stati vivi, non una riserva già assegnata
+a una PCS. I 6 GiB sono un requisito progettuale distinto dal picco globale
+di 80 GB. Con W packed e arena piena rimangono **12.162.858.496 byte** del
+picco globale per gli altri residenti; KV/runtime non sono già dimostrati
+compatibili da questa sottrazione. I temporanei dell'inferenza rientrano
+anch'essi nell'arena, quando vivi.
+
+Il vecchio conto C+B+L è prudente: dopo i primi 15 round basta conservare
+il target MAC aggiornato; C non ha più consumer nel secondo passaggio.
+Dopo l'ultimo consumer e completamento GPU, lo spazio si può riusare.
+
+| Fase lineare | Array nominati vivi | Margine prima degli altri stati |
+|---|---:|---:|
+| Contrazione C e primi 15 round | 2.848.456.704 | 3.593.994.240 |
+| Seconda lettura W e ultimi 20 round, B/L | 50.331.648 | 6.392.119.296 |
+| Dopo il terminale MAC | B/L rilasciabili | Arena riutilizzabile dalla PCS, dedotti i suoi stati trattenuti e gli altri consumer |
+
+La fase PCS viene dopo linear nel [caller corrente](../../rust/volta-pcs/src/c71_matrix.rs):
+conservare solo il terminale non implica conservare gratuitamente il witness
+di apertura. Il root iniziale precede già la prova; encoding iniziale,
+pad/sali, eventuali dati retained e successiva apertura rimangono nel conto.
+
+**Ordine e fusioni lecite.** [Security §3](security.md#3-schedule-completa-e-destinazione-degli-endpoint)
+e `range.rs` fissano istogramma autenticato → alpha/rho → range W → range A
+→ batch lambda → 35 round linear → PCS. Le C delle forme P0 possono essere
+accumulate dopo P0, separatamente e senza lambda; quelle del padding solo
+dopo rho. Entrambe possono condividere una scansione post-alpha del range.
+La C della forma range piena dipende invece dal punto dell'ultimo livello
+leaf. **Ogni livello GKR sostituisce il proprio punto**: il punto prodotto
+dai livelli alti non anticipa le coordinate finali. La scansione B richiede
+le prime 15 sfide linear; la PCS il punto completo successivo. Nessuna
+fusione anticipa queste sfide o riusa MAC di un tentativo precedente.
+
+Un istogramma numerico privato del W immutabile, con padding zero incluso,
+può essere materiale globale: **65.535 contatori u64 = 524.280 byte**.
+Si contabilizza la sua costruzione una volta, si autenticano ed emettono
+nuove correzioni a ogni tentativo e soltanto dopo si estrae alpha. Questo
+risparmia la lettura dell'istogramma per risposta, non la costruzione
+post-alpha dell'albero. Non si memorizzano globalmente transcript o tag.
+
+**Checkpoint range: spazio compatibile, replay respinto.** Il range W
+letterale trattiene W convertito, tutto l'albero e figli/equality dell'ultimo
+livello: `24N + 48(2N-1) + 60N = 180N-48`, cioè
+**6.184.752.906.192 byte** a D35. Già questi buffer visibili superano l'arena.
+Una variante streaming può invece costruire radici di blocchi da `2^k`
+foglie con una pila O(k), conservando solo le M=`2^(35-k)` radici e antenati.
+Il top tree usa `48(2M-1)` byte; il suo GKR corrente aggiunge `60M` per figli
+ed equality. Il [test finito](../../tests/test_c71_streaming_screen.py)
+confronta tutte le radici/antenati con l'albero completo, senza allocare W.
+
+| Livelli bassi scartati k | Picco array del top GKR | Con C trattenuta | Esito memoria dei soli array |
+|---:|---:|---:|---|
+| 10 | 5.234.491.344 | 8.082.948.048 | Entra solo senza C |
+| 11 | 2.617.245.648 | 5.465.702.352 | Entra anche con C; residuo 976.748.592 |
+
+Sono payload degli array nominati: produzione di equality, riallocazioni,
+metadata e staging hanno un budget distinto. Non sono upper del picco
+del processo o misure del backend nativo.
+
+Il checkpoint non prova i k livelli scartati. Nella costruzione letterale
+che rigenera **un livello alla volta da W**, le sfide adattive impongono
+almeno k nuove visite: con istogramma cached il solo range costa almeno
+`1+k`, ossia **11/12 letture** nei due casi, prima dei replay interni ai
+sumcheck. Aggiungendo separatamente le due scansioni linear e una per la
+rimaterializzazione PCS si ottengono almeno **14/15**. Non è un lower su
+ogni protocollo range: respinge questa schedule di checkpoint/replay.
+
+Lo screen integrato conserva dunque il riuso dell'arena e la cache numerica
+dell'istogramma, ma scarta il replay per livello. Restano da costruire il
+range senza questi replay e encoding/apertura privata compatibili: il
+replay RS a righe complete resta a 683 letture persino con arena intera.
+Il trasferimento del range a un nuovo protocollo deve mantenere i target
+originali e scaricare soundness/NoPeek. A/KV, PCG, staging, allocator e
+lavoro su tutti i prefissi restano voci esplicite non prezzate. Tempo
+completo e numero massimo di letture restano **ignoti**, non zero; nessuna
+build canonica densa o misura GPU viene autorizzata dallo screen.
+
 ## IO, sicurezza e criterio di riapertura
 
 Per ogni nuova linea il tempo da chiudere è una **somma senza overlap

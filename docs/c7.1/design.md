@@ -841,7 +841,13 @@ Un costo ignoto ha bound di ammissione infinito, non costo zero.
 Il picco comprende ciò che coesiste: W, KV, modello/runtime, testimone,
 alberi, staging, GKR/PCS/PCG, maschere, attivazioni, workspace e allocator.
 L'arena comprende tutti i temporanei controllati dall'implementazione;
-capacità riservata e occupazione logica sono distinte. Riuso e rilascio
+è un requisito progettuale per la coesistenza del carico sulla H100, non
+memoria aggiuntiva agli 80 GB né il limite totale della GPU. Il nuovo
+[screen integrato](construction-screen.md#schedule-integrato-liveness-range-e-pcs-privata)
+conta 3.543.662.592 byte residui sottraendo gli array suffix-first prudenti;
+dimostra inoltre il rilascio algebrico di C prima del secondo passaggio,
+senza attribuire il margine a buffer PCS/range ancora non costruiti.
+Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.
 Le letture W non contano automaticamente tutte le letture dei temporanei.

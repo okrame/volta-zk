@@ -46,7 +46,10 @@ I [controlli finiti](../../tests/test_c71_streaming_screen.py) verificano:
 - riduzione per coset identica alla valutazione RS diretta, inclusi i pad,
   e contabilità dei buffer/scansioni nelle geometrie canoniche;
 - variante suffix-first con riordino del punto finale nella stessa
-  polinomiale W originale, senza cambiare il commitment.
+  polinomiale W originale, senza cambiare il commitment;
+- radici e antenati del range costruiti per blocchi identici al tree intero;
+  conti di liveness e checkpoint dello schedule integrato, con replay
+  oltre quattro letture e tempo completo ancora ignoto.
 
 I test lavorano su F97 e piccoli vettori, con sfide dipendenti dal prefisso.
 Non eseguono maschere MAC, transcript FS nativo, Dory, Merkle o Gemma.

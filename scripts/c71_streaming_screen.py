@@ -82,6 +82,69 @@ def suffix_first_weight_budget():
     }
 
 
+def range_checkpoint_budget(d, cut, retained_C=0):
+    """Literal top-tree retention, excluding the unresolved lower-layer prover.
+
+    Build one subtree of 2**cut leaves at a time, retain its root and the
+    upper tree. During upper GKR retain four children and an equality array.
+    The replay bound concerns rebuilding discarded layers independently.
+    """
+    if not 0 <= cut < d or retained_C < 0:
+        raise ValueError('require 0 <= cut < d and nonnegative retained bytes')
+    roots = 1 << (d-cut)
+    tree = 48*(2*roots-1)
+    return {
+        'cut_bottom_levels': cut,
+        'retained_top_tree_bytes': tree,
+        'upper_GKR_children_and_eq_bytes': 60*roots,
+        'named_peak_with_C_bytes': tree+60*roots+retained_C,
+        'excludes': ['equality construction scratch', 'allocator/metadata', 'staging'],
+        'independent_lower_layer_rebuild_W_scans_lower': cut,
+        # One initial post-alpha tree scan, two linear scans, one PCS scan.
+        # Excludes initial commitment, extra sumcheck/PCS replays and A.
+        'partial_W_scans_lower_with_cached_histogram': cut+4,
+        'lower_layers_fit_or_time_proved': False,
+    }
+
+
+def integrated_schedule_screen(suffix):
+    arena, packed_W = 6_442_450_944, 61_394_690_560
+    C = suffix['contraction_bytes']
+    phases = [
+        {'phase': 'linear_first_15_rounds', 'named_arrays_bytes': C},
+        {'phase': 'linear_second_scan_and_last_20_rounds',
+         'named_arrays_bytes': suffix['terminal_W_and_L_bytes']},
+    ]
+    for phase in phases:
+        phase['remaining_arena_before_other_state'] = arena-phase['named_arrays_bytes']
+    return {
+        'arena_bytes': arena,
+        'old_simultaneous_arrays_margin': arena-suffix['named_arrays_simultaneous_bytes'],
+        'old_simultaneous_arrays_fraction': suffix['named_arrays_simultaneous_bytes']/arena,
+        'HBM_cap_bytes': 80_000_000_000,
+        'HBM_after_W_and_full_arena_before_other_residents': 80_000_000_000-packed_W-arena,
+        'phase_liveness': phases,
+        'release_C': 'after round 15 target is authenticated; before second W scan',
+        'PCS_after_linear': 'reuses arena after B/L release; retained PCS state still counts',
+        'private_global_W_histogram_u64_bytes': 65535*8,
+        'histogram_reuse': 'counts only; fresh MAC corrections before each alpha/rho',
+        'full_range_source_visible_core_peak': 180*(1 << 35)-48,
+        'checkpoint_top_only': [range_checkpoint_budget(35, 10),
+                                range_checkpoint_budget(35, 11, C)],
+        'legal_early_C': 'P0 after P0 challenges; padding after range histogram/rho',
+        'full_range_C_requires': 'adaptive range terminal point',
+        'linear_batch_lambda_requires': 'all W targets plus intervening A range transcript',
+        'second_W_scan_requires': 'first 15 linear challenges',
+        'PCS_opening_requires': 'all 35 linear challenges and original-order terminal',
+        'unpriced': ['lower range layers and their replays', 'private PCS encode/open',
+                     'A/KV witness production and liveness', 'PCG/MAC retained state',
+                     'reader/staging/allocator', 'complete time and prefix work comparison'],
+        'complete_W_scans_upper': None,
+        'complete_seconds_upper': None,
+        'admitted': False,
+    }
+
+
 def report():
     assessment = base.b12_pcs_binding_assessment()
     bootstrap = base.c71_dory_guarded_bootstrap_screen()
@@ -112,6 +175,7 @@ def report():
         domain = 1 << (8*((1 << d)//width+1536)-1).bit_length()
         profiles.append({'dimension': d,
                          **coset_replay_budget(domain, width, arena)})
+    suffix = suffix_first_weight_budget()
     return {
         'credit': False,
         'trust_model': 'B12 + owner-authorized EA-LPN-SL-reg* at T121/M93, one leakage',
@@ -128,7 +192,8 @@ def report():
         'wire': wire,
         'fallback_authorization': 'body lower bounds as analytic proof-size result only',
         'coset_replay': profiles,
-        'suffix_first_W_linear_reducer': suffix_first_weight_budget(),
+        'suffix_first_W_linear_reducer': suffix,
+        'integrated_schedule': integrated_schedule_screen(suffix),
         'arena_bytes': arena,
         'native_Dory_implemented': False,
         'physical_schedule_admitted': False,

@@ -132,23 +132,25 @@ quel collegamento. Occorrono maschere distinte e **un solo esito AND**.
 Il lemma presuppone coin fresche; il trasferimento FS con Q*=2^74
 non conserva i 78 bit richiesti.
 
-La [verifica del cammino finale non binario](construction-screen.md#cammino-finale-non-binario-check-e-recupero-della-chiave)
-mostra che il check può accettare due foglie autenticate: quel caso
-richiede estrazione, non abort presunto. Inoltre il port RPM con
-**sigma=c*id, c in Fp diverso da 0,1, espone Delta con una query inversa**
-ed è escluso; il risultato algebrico ha un controesempio finito riproducibile.
-Il [caso beta=0](construction-screen.md#payload-zero-controllo-necessario-prima-delle-correzioni)
-espone Delta anche nel ROM, prima del check: è escluso il port letterale
-che lo ammette. La riparazione candidata prova beta*beta^(-1)=1 sui MAC
-originali **prima di c**, riusando il batch prodotti.
+Il [guard dei cammini](construction-screen.md#guard-dei-cammini-prima-delle-correzioni-cggm)
+prova `gamma*(gamma-beta)=0` su tutte le coordinate, usando i MAC
+originali e un solo batch **prima di c**. Sostituisce il precheck
+dell'inverso: conserva beta uniforme incluso zero, estrae ogni cammino
+nonzero come binario e simula esattamente il ramo zero senza Delta.
+Il bound condizionale ideale è 177,70 bit; anche applicando Q*=2^74
+restano 103,70 bit. I controesempi precedenti sono respinti prima che
+possano osservare c; il test finito e una revisione indipendente concordano.
 La [candidata seed Fp6→Fp3](construction-screen.md#seed-fp6-compressione-a-95-bit-nel-singolo-setup)
 riduce il costo con rho=95, compatibile con un solo setup e un bound
 condizionale seed di **90,93 bit** sotto le stesse ipotesi primitive.
-Con precheck e check per blocco, il sottototale LPN3 scende a **81,22 MB**
-nelle due direzioni: 48,78 MB di margine parziale, prima di corpo e voci
+Con guard e check per blocco, il sottototale LPN3 scende a **77,70 MB**
+nelle due direzioni: 52,30 MB di margine parziale, prima di corpo e voci
 mancanti. È uno screen riproducibile; il port nativo Fp6 non è implementato.
-Restano da provare la nuova distribuzione F*, il cGGM concreto con beta
-nonzero e la simulazione malevola. EA-LPN-SL, F_Rand/F_EQ e costo completo
+Col lower di PCS/altro corpo B12 e senza i vecchi P/S si arriva a
+**98,52 MB**, quindi restano 31,48 MB non ancora assegnabili: serve l'upper
+del nuovo corpo e di tutte le voci bootstrap mancanti.
+Restano da provare il cGGM concreto dopo il guard e la simulazione malevola.
+EA-LPN-SL, F_Rand/F_EQ e costo completo
 restano aperti. La
 [verifica Half-Tree](construction-screen.md#realizzazione-cggm-cosa-trasferisce-half-tree)
 esclude anche il trasferimento diretto del ramo pcGGM binario: l'hash

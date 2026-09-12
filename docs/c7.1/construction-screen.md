@@ -658,18 +658,7 @@ beta nonzero e prime correzioni. Non è un benchmark, un test del
 bootstrap nativo o una prova di sicurezza su campo piccolo. Le identità
 sopra, non la dimensione del test, estendono il risultato a Fp/Fp3.
 
-**Alternative per il solo caso beta nonzero.** Il ROM diretto non fornisce
-l'oracolo inverso usato nell'attacco, ma conserva le due foglie accettate.
-Nel ramo RPM, sigma(y)=u*y con u in Fp3\Fp evita questa cancellazione
-scalare: per ogni r in Fp, sigma−r*id è invertibile. Questa proprietà
-permette di risolvere l'equazione di una query inversa in un *candidato*
-a, da validare con l'interfaccia di guess; non rivela a da L da solo.
-Non è ancora una riduzione: vanno trattati i livelli precedenti, i
-transcript adattivi e l'output Delta del verifier dopo il check. Nessuna
-permutazione concreta su Fp3 o nuova assunzione è selezionata. Prima di
-questo trasferimento va inoltre risolto il caso beta=0 qui sotto.
-
-### Payload zero: controllo necessario prima delle correzioni
+### Guard dei cammini prima delle correzioni cGGM
 
 **Il ramo letterale della Fig. 5 con beta zero ammesso è escluso anche
 nel ROM.** Non basta cambiare sigma. Per un blocco con h>=2 e beta=0,
@@ -697,64 +686,82 @@ La Fig. 2 consente al receiver corrotto di scegliere beta=0. Anche se il
 backend imponesse beta uniformi oneste, con t=1120 la probabilità di
 almeno uno zero è `1-(1-1/p)^t`, circa **2^-53,87**: non si può assorbire
 fra gli errori da 78 bit. La distribuzione regolare rilassata della fonte
-include zero. Escluderlo richiede un vincolo verificato **prima di c**,
-non una promessa del prover o il test locale `if beta == 0`.
+include zero. Il precheck precedente beta*eta=1 avrebbe cambiato la
+distribuzione e consumato t righe aggiuntive. È sostituito dal seguente
+guard, che conserva beta uniforme in tutto F, zero incluso.
 
-**Riparazione candidata con il batch prodotti esistente.** Il prover
-campiona beta_i esattamente in F* prima di leggere le righe seed da
-correggere, e fissa eta_i=beta_i^(-1). Trasferisce beta sui t seed payload
-già contati e eta su t righe base aggiuntive, con **2t correzioni Fp**.
-Non si usa una mappa zero→1 attribuendole la distribuzione uniforme F*.
-Sampler, loro abort e transcript rimangono da istanziare e contare.
-Una maschera Fp3 disgiunta costa altre tre righe base. Il verifier
-controlla i t prodotti sui **MAC originali corretti**, con costante 1
-pubblica, mediante il [batch già presente](../../rust/volta-pcs/src/c71_matrix/range.rs).
-Non serve una PCS per questi vettori residenti o un sumcheck per blocco.
-Tutti i seed e le correzioni sono fissati prima di lambda; nessun c Dory
-viene rilasciato finché il controllo non accetta.
+Per ogni blocco i e livello j, dopo d e prima di qualsiasi c, definire
+`gamma_ij=s_ij-d_ij` sui MAC originali del seed. Il verifier ne ricava
+la key correggendo linearmente con il d pubblico; `gamma_ij-beta_i` usa
+la stessa beta originale. Si sottopongono tutte le `t*h` triple
+`(gamma, gamma-beta, 0)` a **un solo batch prodotti** già presente nel
+[consumer nativo](../../rust/volta-pcs/src/c71_matrix/range.rs). Servono
+una maschera Fp3 disgiunta, cioè tre righe base, e due scalari Fp3 di wire.
+Tutti i d, gli ID delle righe e l'ordine globale non resettabile delle
+triple sono legati al transcript prima di lambda. Nessun c viene inviato
+prima dell'accettazione; un fallimento brucia e termina l'intero setup,
+senza retry sotto la stessa Delta.
 
-Usando qui i segni **nativi** `k=m+Delta*x`, il prover invia soltanto
-due scalari Fp3, 48 byte, per una maschera fresca (rho,m_rho):
+Usando i segni nativi `k=m+delta*x`, porre
+`e_l=gamma_l*(gamma_l-beta_block(l))` ed
+`E(lambda)=sum_l lambda^l*e_l`. Il batch invia
 
 ```text
-A = rho   + sum_i lambda^i * (beta_i*m_eta_i + eta_i*m_beta_i)
-B = m_rho + sum_i lambda^i * m_beta_i*m_eta_i
-B+Delta*A == k_rho + sum_i lambda^i*(k_beta_i*k_eta_i-Delta^2).
+A = rho   + sum_l lambda^l * (gamma_l*m_(gamma-beta)_l
+                              +(gamma_l-beta_l)*m_gamma_l)
+B = m_rho + sum_l lambda^l * m_gamma_l*m_(gamma-beta)_l
+B+delta*A == k_rho + sum_l lambda^l*k_gamma_l*k_(gamma-beta)_l.
 ```
 
-Il prodotto pubblico 1 ha tag zero e key Delta, senza nuova riga.
-La differenza è `Delta^2*sum_i lambda^i*(beta_i*eta_i-1)` per il wire
-calcolato dal prover. Un wire alterato può aggiungere solo termini di
-grado <=1 in Delta. Nel modello MAC ideale, con Delta nascosto e lambda
-uniforme dopo i valori fissati, il consueto argomento di radici dà
-`(t-1)/|K| + 2/|K|`; non un bound composto B11→Dory. La maschera fresca
-nasconde A; dato lo stato del verifier, l'equazione determina B.
-Il [controllo finito](../../tests/test_c71_dory_nonzero_precheck.py)
-verifica identità, rifiuto dello zero e gradi delle due equazioni.
-FS, NoPeek e simulazione congiunta vanno collegati alla nuova schedule;
-non si trasferiscono automaticamente i bound B12.
+La differenza è `delta^2*E(lambda)` per il wire onesto; un wire alterato
+aggiunge soltanto termini di grado <=1 in delta. Se una relazione è falsa,
+Schwartz–Zippel e il bound di radici danno nel modello MAC ideale
 
-**Nuovo costo parziale.** Aggiungendo questo precheck alla variante con
-check per blocco, `s=t*(h+5)+3`. I payload ricevuti d/z/correzioni beta/eta
-e precheck sono `8*t*(h+5)+48` byte, oltre COPE; c costa ancora `24*t*h`
-nella direzione opposta. Per la geometria LPN3:
+```text
+epsilon_path <= (t*h-1)/|Fp3| + 2/|Fp3| = (t*h+1)/|Fp3|.
+```
+
+Per t=1120,h=18 sono **177,700720 bit**; persino moltiplicare
+meccanicamente per Q*=2^74 lascia 103,700720 bit. Questo è il termine
+del guard, non un bound composto B11→Dory. La maschera rende A uniforme;
+condizionatamente allo stato del verifier, l'equazione determina B.
+
+Fuori dall'errore, se beta!=0 si estrae
+`r_j=gamma_j/beta in {0,1}` a **ogni livello**. Sono quindi esclusi prima
+di c sia il cammino finale a due foglie sia il recupero con sigma scalare.
+Se beta=0, tutte le gamma sono zero: `d_j=s_j`, `K(beta)=M(beta)` e
+`K(r_j)=-M(s_j)`. Il simulatore sceglie c_0 uniforme, pone
+`k=c_0+M(s_0)`, espande H in avanti e calcola ogni
+`c_j=-M(s_j)+sum_left_j`. Simula esattamente l'intero c senza Delta,
+divisione o cammino estratto. L'onesto soddisfa sempre il guard perché
+`gamma=r*beta`; la distribuzione originale non viene condizionata.
+
+Il [controllo finito](../../tests/test_c71_dory_path_guard.py) enumera
+beta, s,d, lambda e Delta su F5; verifica estrazione, ramo zero, identità
+MAC e gradi. È stato riesaminato indipendentemente senza trovare un
+controesempio al lemma condizionale. Non copre adattività, FS, backend
+Fp6 o una prova UC completa.
+
+**Costo sostitutivo.** Con i check per blocco, il guard richiede
+`s=t*(h+4)+3` righe seed: nessuna riga inversa e nessuna correzione
+beta/eta. I payload d,z restano `8*t*(h+3)`, c `24*t*h`, più 48 byte
+del guard. Per LPN3 col seed Fp6 della sezione seguente:
 
 | Voce | Byte o righe |
 |---|---:|
-| Seed base B11 | 25.763 righe |
-| COPE e payload ricevuti, lower | 118.922.032 byte |
-| B11 con seal e payload, due direzioni | 121.494.153 byte |
-| Margine parziale su 130 MB | 8.505.847 byte |
-| Lower ricevuto con PCS/altro corpo B12 conservato | 141.553.084 byte |
+| Seed base | 24.643 righe |
+| Seed Fp6 | 77.032.649 byte |
+| Seed e payload Dory, due direzioni | **77.704.697 byte** |
+| Margine parziale su 130 MB | **52.295.303 byte** |
+| Lower ricevuto | 75.891.504 byte |
+| Lower ricevuto con PCS/altro corpo B12 conservato | **98.522.556 byte** |
 
 Coin/check finali, completamento, metadata e corpo restano fuori dal
-sottototale. La nuova distribuzione F* richiede i propri parametri LPN:
-le geometrie binarie della Tab. 2 non diventano per questo sicure.
-Il precheck elimina questo specifico ingresso zero; non elimina il
-recupero con sigma scalare, né dimostra la simulazione dei cammini non
-binari. **Prossimo lavoro:** cGGM concreto e riduzione malevola sotto il
-vincolo verificato beta nonzero, prima di approfondire Shout. L'arena,
-il legame agli originali e il tempo completo restano obblighi aperti.
+sottototale. Il guard scarica i due difetti di cammino identificati e
+conserva la distribuzione rilassata; non realizza EA-LPN-SL o il cGGM.
+**Prossimo lavoro:** adattare la simulazione cGGM ai soli cammini binari
+prima di approfondire Shout. Arena, legame agli originali e tempo completo
+restano obblighi aperti.
 
 ### Seed Fp6: compressione a 95 bit nel singolo setup
 
@@ -814,13 +821,16 @@ implementare.** Per n righe base restituite, contando anche le sei sacrificate:
 | Seal del seed | 40 |
 | Totale del seed | **146.489+3.120*n** |
 
-Con le **25.763 righe** del precheck nonzero e dei check Dory per blocco,
-il seed costa 80.527.049 byte. Aggiungendo i payload Dory già censiti
-si arriva a **81.217.017 byte nelle due direzioni**, con 48.782.983 byte
-di margine parziale sul primo tetto. Il lower ricevuto è 79.350.064 byte,
-esclusi sacrifici/OT e altre voci. Il risparmio sul precedente sottototale
-Fp9 è **40.277.136 byte**. F_Rand/F_EQ, completamento Dory, metadata e
+Con le **24.643 righe** del guard dei cammini e dei check Dory per blocco,
+il seed costa 77.032.649 byte. Aggiungendo i payload Dory già censiti
+si arriva a **77.704.697 byte nelle due direzioni**, con 52.295.303 byte
+di margine parziale sul primo tetto. Il lower ricevuto è 75.891.504 byte,
+esclusi sacrifici/OT e altre voci. Il risparmio sul sottototale Fp9 con
+precheck dell'inverso è **43.789.456 byte**. F_Rand/F_EQ, completamento Dory, metadata e
 corpo vanno ancora aggiunti; il margine non è un upper del certificato.
+Conservando il lower di PCS e altro corpo B12 dopo la rimozione dei soli
+P/S si arriva a 98.522.556 byte: restano 31.477.444 byte, ancora non
+assegnabili finché le voci mancanti e l'upper del nuovo corpo non sono chiusi.
 
 Il [test locale](../../tests/test_c71_fp6_seed_screen.py) controlla il
 bordo 95/96, il nonsquare, la compressione dei MAC originali, i byte e
@@ -828,7 +838,7 @@ la sostituzione esatta del termine di errore. Non esegue OT/AES o un
 codec Fp6. La candidata richiede una suite distinta, mapping nativo e
 test malevoli prima del riuso; **non si cambia il parametro in B11 sul
 posto**. Il prossimo obbligo crittografico dell'espansione resta il cGGM
-con beta nonzero verificato, senza sigma scalare vulnerabile. Non sono
+con il guard accettato, senza sigma scalare vulnerabile. Non sono
 ancora chiusi i parametri LPN, l'arena o il costo completo entro 50 s.
 
 ## IO, sicurezza e criterio di riapertura
@@ -962,18 +972,22 @@ assert split_received[2]+47_841_180-25_210_128 == 136_360_332 > 130_000_000
 # A zero payload cannot be charged as a <=2^-78 event for honest Fp seeds.
 zero_lower = Fraction(t, p)-Fraction(t*(t-1), 2*p*p)
 assert Fraction(1, 2**54) < zero_lower <= Fraction(t, p) < Fraction(1, 2**53)
-# Candidate nonzero guard: t inverse rows, one Fp3 mask, two Fp corrections
-# per block and two Fp3 wire scalars; all are ADDITIONAL to split checks.
-guard_seeds = t*(h+5)+3
-guard_received = 4608*guard_seeds + 8*t*(h+5)+48
-guard_subtotal = 233345+4680*guard_seeds+8*t*(h+5)+24*t*h+48
-assert guard_seeds == 25763
-assert guard_received == 118_922_032
-assert guard_subtotal == 121_494_153
-assert 130_000_000-guard_subtotal == 8_505_847
-assert guard_received+47_841_180-25_210_128 == 141_553_084 > 130_000_000
-# Only the ideal product-check term, NOT a complete FS or bootstrap bound.
-assert 2**74*Fraction(t+1, p**3) < Fraction(1, 2**107)
+# Global path guard: one mask and two Fp3 wire scalars, no inverse rows.
+path_seeds = t*(h+4)+3
+path_guard_error = Fraction(t*h+1, p**3)
+assert path_seeds == 24643
+assert Fraction(1, 2**178) < path_guard_error < Fraction(1, 2**177)
+assert 2**74*path_guard_error < Fraction(1, 2**103)
+# Candidate Fp6 seed and Dory payload subtotal; no complete admission.
+fp6_seed_wire = 146489+3120*path_seeds
+fp6_subtotal = fp6_seed_wire+8*t*(h+3)+24*t*h+48
+fp6_received = 3072*path_seeds+8*t*(h+3)+48
+assert fp6_seed_wire == 77_032_649
+assert fp6_subtotal == 77_704_697
+assert fp6_received == 75_891_504
+assert 130_000_000-fp6_subtotal == 52_295_303
+assert fp6_received+47_841_180-25_210_128 == 98_522_556
+assert 130_000_000-98_522_556 == 31_477_444
 ```
 
 Fonti lette nei Markdown conservati: [Dory PCG](../../sota/2025-1660-dory-streaming-vole.md),

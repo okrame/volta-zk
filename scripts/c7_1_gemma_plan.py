@@ -6642,6 +6642,47 @@ def c71_fp6_seed_screen(rows):
     }
 
 
+def c71_dory_guarded_bootstrap_screen():
+    """Fp6 seed plus guarded LPN3 geometry; partial screen, no admission."""
+    t, h = 1120, 18
+    rows = t*(h+4)+3
+    seed = c71_fp6_seed_screen(rows)
+    payload = {
+        'path_d_and_split_z_received': 8*t*(h+3),
+        'tree_c_sent_by_verifier': 24*t*h,
+        'path_guard_two_fp3_scalars': 48,
+    }
+    total = seed['wire_total_both_directions']+sum(payload.values())
+    received = (seed['COPE_data_only_received_lower']
+                + payload['path_d_and_split_z_received']
+                + payload['path_guard_two_fp3_scalars'])
+    other_body_lower = 47_841_180-25_210_128
+    q = P**3
+    path_error = Fraction(t*h+1, q)
+    split_error = Fraction(t*2**h*(2**h-1), 2*q)
+    return {
+        'credit': False, 'complete_bootstrap_admitted': False,
+        'geometry': {'t': t, 'h': h, 'N': t*2**h,
+                     'published_base_capacity': t*2**h//5},
+        'seed_base_rows': rows, 'seed': seed, 'Dory_payload_bytes': payload,
+        'partial_wire_both_directions': total,
+        'partial_margin_under_first_130MB': 130_000_000-total,
+        'received_lower': received,
+        'received_plus_retained_PCS_and_other_body_lower': received+other_body_lower,
+        'first_cap_margin_after_that_lower': 130_000_000-received-other_body_lower,
+        'conditional_known_errors': {
+            'seed': seed['conditional_seed_component']['sum'],
+            'path_guard': str(path_error), 'split_check': str(split_error),
+            'sum': str(Fraction(seed['conditional_seed_component']['sum'])
+                       + path_error+split_error),
+        },
+        'missing_for_admission': ['EA-LPN-SL parameters over Goldilocks',
+            'cGGM malicious reduction and concrete realization', 'F_Rand/F_EQ',
+            'completion/framing/metadata', 'complete proof-body upper',
+            'honest runtime and work-prefix comparison'],
+    }
+
+
 def b12_p0_native_caller():
     """Actual compact Fp3 schema, with source-opening obligations retained."""
     cohorts = gemma_weight_cohorts(pinned_private_tensors())

@@ -688,25 +688,19 @@ i vettori fissati, tre maschere per blocco e un unico AND finale. Non
 realizza F_Rand/F_EQ, EA-LPN-SL o il cGGM: il teorema B12 rimane invariato.
 Con il seed Fp9 la variante LPN3 conserva 13,78 MB di margine parziale;
 con il resto del corpo/PCS B12 invariato è respinta già per byte ricevuti.
-Il [caso finale non binario](construction-screen.md#cammino-finale-non-binario-check-e-recupero-della-chiave)
-passa il check con due foglie autenticate: la simulazione deve estrarlo,
-non assumere sempre abort. Nel ramo RPM, sigma=c*id con c nel campo
-base diverso da 0,1 espone Delta mediante una sola query inversa;
-questa istanza è esclusa, anche con i check separati. Sigma=u*id su
-Fp3 evita quella cancellazione, ma non fornisce già la riduzione.
-Il [payload zero](construction-screen.md#payload-zero-controllo-necessario-prima-delle-correzioni)
-espone Delta prima del check anche nel ROM: il ramo letterale che lo
-ammette è escluso. È candidata una prova preventiva beta*eta=1 sui MAC
-originali con il batch prodotti esistente, t righe inverse e una maschera
-Fp3. Col seed Fp9 e i check per blocco il sottototale LPN3 è 121,49 MB
-nelle due direzioni, prima di corpo e voci mancanti. Distribuzione F*, NoPeek,
-FS e bound composto richiedono la nuova riduzione. Il controllo non
-sana sigma scalare o i cammini non binari; il bootstrap resta aperto.
+Il [guard dei cammini](construction-screen.md#guard-dei-cammini-prima-delle-correzioni-cggm)
+verifica sui MAC originali `gamma*(gamma-beta)=0` per tutte le t*h
+coordinate, in un solo batch prima di inviare c. Conserva beta uniforme,
+zero incluso; con beta nonzero estrae un cammino binario, mentre con zero
+simula c senza Delta. Il bound ideale è `(t*h+1)/|Fp3|`; per LPN3 anche
+il fattore Q*=2^74 lascia 103,70 bit. Il guard elimina i due controesempi
+identificati e sostituisce il precheck dell'inverso; NoPeek, FS e
+composizione B11→Dory richiedono ancora una riduzione completa.
 La [candidata seed Fp6→Fp3](construction-screen.md#seed-fp6-compressione-a-95-bit-nel-singolo-setup)
 usa Wolverine con rho=95 e un solo setup: il bound condizionale seed
 è 90,93 bit con gli envelope B12 conservati, senza cambiare ipotesi
-AES/P-521 o risorse avversarie. Con le stesse 25.763 righe riduce il
-sottototale seed/payload Dory a **81,22 MB**. Non è un bootstrap completo
+AES/P-521 o risorse avversarie. Con 24.643 righe riduce il
+sottototale seed/payload Dory a **77,70 MB**. Non è un bootstrap completo
 o una modifica al B11 selezionato: campo K6, suite e corrispondenza nativa
 vanno implementati e verificati; espansione, corpo e costi mancanti restano aperti.
 

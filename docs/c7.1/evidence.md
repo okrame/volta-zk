@@ -30,6 +30,36 @@ una build Lean o un benchmark per la chiusura matematica. Non trasformare
 I risultati e le derive complete restano collegati anche al
 [notebook congelato](../c7.1-gemma31b-design.md#b12-criterio-di-chiusura-composizione-completa-same-w).
 
+## Streaming and authorized bootstrap screen
+
+Il [diagnostico](../../scripts/c71_streaming_screen.py) riprende il trust
+model B12 + EA-LPN-SL-reg* autorizzato e i lower di ripiego, mantenendo
+`credit:false`, nessun tempo completo e nessuna ammissione fisica.
+La [derivazione](construction-screen.md#screen-dopo-lautorizzazione-ea-lpn-e-ripiego-sui-byte)
+distingue capacità base/Fp3, bootstrap unico, intervalli wire e unione
+condizionale degli errori. Non modifica i bound del teorema B12 v1.
+
+I [controlli finiti](../../tests/test_c71_streaming_screen.py) verificano:
+
+- sumcheck quadratico in due letture con gli stessi coefficienti/sfide/
+  terminali del calcolo denso, più un controesempio al pruning dei supporti;
+- riduzione per coset identica alla valutazione RS diretta, inclusi i pad,
+  e contabilità dei buffer/scansioni nelle geometrie canoniche;
+- variante suffix-first con riordino del punto finale nella stessa
+  polinomiale W originale, senza cambiare il commitment.
+
+I test lavorano su F97 e piccoli vettori, con sfide dipendenti dal prefisso.
+Non eseguono maschere MAC, transcript FS nativo, Dory, Merkle o Gemma.
+Confrontare gli endpoint algebrici non equivale a provare il refinement
+della nuova schedule o una performance H100.
+
+Riproduzione locale: `PYTHONDONTWRITEBYTECODE=1 pytest -q -p no:cacheprovider
+tests/test_c71_streaming_screen.py`; report con
+`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/c71_streaming_screen.py`.
+Conservare le regressioni `test_c71_fp6_seed_screen`, `test_c71_dory_path_guard`,
+`test_c71_dory_split_check`, `test_c71_dory_rom_cggm` e i filtri B12
+`canonical_PCS_wire or complete_fixed_run or native_wire_body`.
+
 ## Shared RNE byte experiment
 
 Il [record immutabile](../../benchmarks/results/c71-rne-joint-bytes-2026-09-11-589ce7b8f86c.json)

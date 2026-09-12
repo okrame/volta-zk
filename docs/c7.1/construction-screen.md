@@ -18,8 +18,8 @@ composizione LogUp–Dory. Nessuna delle due ha un tempo completo finito
 giustificato sotto 50 s. Il [nuovo screen residuo](#shout-con-endpoint-originali-screen-dei-costi-residui)
 respinge anche la sostituzione dei soli P/S, indipendentemente dal costo Shout.
 Il [bootstrap fresco](#bootstrap-fresco-dory-alimentato-da-b11) ha ora una
-candidata completa delle primitive censite da 61,84 MB; la sua premessa
-EA-LPN-SL-reg* resta da selezionare e prezzare. Lo screen Shout viene quindi
+candidata completa delle primitive censite da 61,84 MB; il proprietario
+ha ora autorizzato EA-LPN-SL-reg* al bound concreto del design. Lo screen Shout viene quindi
 riaperto soltanto sul piano analitico. Non si avvia un'implementazione.
 
 Capacità richiesta/esaminata: **C=3, 100+50 token per risposta,
@@ -514,9 +514,9 @@ rimane fuori arena. Spostarlo all'installazione richiede una singola PCS
 streaming e contabilizzazione di setup/tempo; è un successore analitico,
 non una candidata ammessa.
 
-**Prossimo lavoro utile:** decidere se ammettere e prezzare
-EA-LPN-SL-reg* sulla geometria large-field. Solo dopo ha senso il port
-nativo del bootstrap. Sul lato Shout serve invece una singola PCS
+**Premessa acquisita:** il proprietario ha autorizzato EA-LPN-SL-reg*
+sulla geometria large-field e al bound proposto. Il port nativo resta
+subordinato a una composizione fisicamente praticabile. Sul lato Shout serve invece una singola PCS
 sparse/streaming privata che termini nei MAC originali e rispetti arena,
 quattro letture e 50 s; nessun componente censito la realizza. Il vecchio
 PCG B7, il refill con righe già consumate o un setup dipendente da Δ
@@ -947,8 +947,8 @@ Il [controllo finito](../../tests/test_c71_dory_rom_cggm.py) verifica
 estrazione, programmazione dei due bit, simulazione `beta=0` e la biiezione
 Delta→nodo nascosto su F5. Non è una prova UC o un'implementazione SHAKE.
 Restano da realizzare codec, rejection sampler e schedule nativa, da
-formalizzare la composizione sender con guard/split e da chiudere
-EA-LPN-SL, framing, tempo e accounting completo.
+formalizzare la composizione sender con guard/split sotto EA-LPN-SL
+autorizzata e da chiudere framing, tempo e accounting completo.
 
 #### F_Rand condizionale e F_EQ con due chiavi MAC
 
@@ -1056,7 +1056,10 @@ le aperture. Si accetta soltanto se la somma aperta è zero. Sul mismatch
 fissato, la compressione è zero con probabilità `1/|K|`; altrimenti la
 chiave onesta di B11 è uniforme in `K*`. Per un residuo compresso nonzero D,
 la somma è uniforme su `K` tranne il punto `Delta_corrupt*D`; la cancellazione
-costa al più `1/(|K|-1)`. Condizionando sul rifiuto, le distribuzioni di due
+costa al più `1/(|K|-1)`. Lo stesso bound copre qualunque share malevola
+fissata prima dell’apertura onesta, per il massimo peso di un punto nella
+distribuzione della share onesta; non si somma un secondo errore di forgery.
+Condizionando sul rifiuto, le distribuzioni di due
 residui hanno distanza statistica al più `1/(|K|-2)`: questo termine realizza
 il leakage di un solo bit senza consentire il dizionario dei cammini. Una
 share malevola deve essere fissata prima di vedere quella onesta. Un guess
@@ -1075,7 +1078,8 @@ byte, la seconda coin 146 e commit/open 200. F_EQ costa quindi
 **12.815.247 byte**. Il bootstrap candidato completo delle primitive
 censite è **61.841.290 byte**; con l'upper corrente del primo corpo arriva
 a **126.894.534 byte**, lasciando **3.105.466 byte**. Resta `credit:false`
-per EA-LPN-SL non prezzata, schedule/tempo e implementazione, non per F_EQ.
+per composizione, schedule/tempo e implementazione; EA-LPN-SL-reg* è
+ora assunta con il bound autorizzato, F_EQ ha l’argomento ibrido sopra.
 
 **Composizione sender condizionale.** Contro P0 corrotto, l'honesto P1
 soddisfa sempre il guard. La sua share `A=rho+known` è uniforme e `B` è
@@ -1099,11 +1103,12 @@ Adv_boot <= Adv_EA-LPN-SL-reg*(675,70778880,353894400,11,Fp;
             + epsilon_seed/guard/split/ROM/coin/F_EQ.
 ```
 
-Il secondo termine vale meno di 2^-89,9339. Richiedere
-`Adv_EA-LPN-SL-reg* <= 2^-80` darebbe quindi oltre 79,99 bit complessivi,
-ma è una **nuova premessa di sicurezza**: la regressione da 83,42 bit è
-soltanto uno screen e non la dimostra. Nessun teorema B12 viene modificato
-finché questa premessa non è selezionata esplicitamente.
+Il secondo termine vale meno di 2^-89,9339. Il proprietario ha ora
+**autorizzato** `Adv_EA-LPN-SL-reg* <= 2^-80` alle risorse e alla geometria
+sopra: il ledger bootstrap condizionale supera quindi 79,99 bit. La
+regressione da 83,42 bit resta uno screen, non una dimostrazione della
+premessa. B12 v1 conserva il suo teorema; il goal usa il trust model
+esteso dichiarato nel design, con gli obblighi compositivi ancora aperti.
 
 Le fonti PEQT, PSI e OPRF sono state acquisite il 2026-09-12 senza
 sovrascritture. SHA-256 PDF/Markdown: PEQT
@@ -1190,7 +1195,130 @@ codec Fp6. La candidata richiede una suite distinta, mapping nativo e
 test malevoli prima del riuso; **non si cambia il parametro in B11 sul
 posto**. Il prossimo obbligo crittografico dell'espansione resta il cGGM
 con il guard accettato, senza sigma scalare vulnerabile. Non sono
-ancora chiusi i parametri LPN, l'arena o il costo completo entro 50 s.
+ancora chiusi il trasferimento sotto la premessa LPN autorizzata, l’arena
+o il costo completo entro 50 s.
+
+## Screen dopo l'autorizzazione EA-LPN e ripiego sui byte
+
+Il [nuovo diagnostico](../../scripts/c71_streaming_screen.py) usa le geometrie
+e gli intervalli B12, senza importare le modifiche RNE sperimentali. Il trust
+model autorizzato è B12 + EA-LPN-SL-reg*. La capacità Dory di 70.778.880
+righe **base** supera le 11.466.948 dell'intero run canonico: tre righe base
+per Fp3, setup unico, nessun bootstrap aggiunto ai turni 2–3. La F_EQ
+consuma i suoi due seed separati già contati, non questa capacità espansa.
+
+La somma conservativa `epsilon_B12 + 2^-80 + epsilon_boot_known`, senza
+nemmeno sottrarre il vecchio errore bootstrap B12, dà 79,8211 bit di
+soundness e 79,9978 bit di ZK. È un ledger condizionale alla realizzazione
+della medesima interfaccia MAC e alla composizione; non prova il refinement
+del nuovo bootstrap o di una PCS modificata. Si arrotondano gli errori
+razionali verso l'alto a 256 bit nel rapporto, senza accreditarli al runtime.
+
+| O | Lower corpo B12 | Upper corpo B12 | Con bootstrap censito al solo primo turno |
+|---:|---:|---:|---:|
+| 0 | 47.841.180 | 65.053.244 | 109.682.470–126.894.534 |
+| 150 | 54.868.318 | 78.945.726 | 54.868.318–78.945.726 |
+| 300 | 61.797.384 | 92.723.304 | 61.797.384–92.723.304 |
+
+Il proprietario consente i lower come **esito analitico della parte
+proof-size**, se non si trova una soluzione praticabile da 40 MB. Le
+alternative sotto 40 MB censite restano respinte fisicamente: si registra
+questo ripiego autorizzato. Restano distinti upper, prove valide prodotte
+e fallback: i lower omettono GKR congiunti e fratelli Merkle, e la prima
+somma omette ancora il framing esterno/completion non censito del bootstrap.
+Il goal completo non si chiude con questa sola tabella.
+
+**RS per coset: identità corretta, replay incompatibile.** Nel commitment
+[CFW corrente](../../rust/third_party/p3-whir-c61/src/pcs/zk/committer.rs)
+una colonna è la DFT di messaggio, pad e zeri; il Merkle impegna righe
+complete. Per produrre un coset `z*<omega>` lungo L, basta ridurre i
+coefficienti modulo `X^L-z^L` e calcolare una DFT di L elementi. Il
+[controllo finito](../../tests/test_c71_streaming_screen.py) confronta
+tutte le posizioni con la valutazione diretta, pad compreso, su F97.
+
+Consideriamo la costruzione concreta che mantiene buffer di coset a
+**larghezza completa**, ricostruisce ciascun batch con una scansione della
+sorgente e li scarta dopo l'emissione. Se un batch produce R righe di
+larghezza b, occupa almeno `8*b*R` byte; con arena S, il numero di scansioni
+necessarie è almeno `ceil(H/floor(S/(8*b)))`. Questo ammette ottimisticamente
+qualunque numero di coset per batch e nessun altro buffer.
+
+| Primo oracolo B12 | H × b | Codeword | Scansioni sorgente minime in questa costruzione | Buffer minimo per quattro scansioni |
+|---|---:|---:|---:|---:|
+| W/D35 | 2^32 × 128 | 4.398.046.511.104 B | 683 | 1.099.511.627.776 B |
+| A/D34 | 2^31 × 128 | 2.199.023.255.552 B | 342 | 549.755.813.888 B |
+
+Sono esclusi workspace FFT, pad, riordino delle righe per hashing,
+Merkle/frontiere e rigenerazione per le aperture successive. Una scansione
+di W qui legge l'intera sorgente packed; padding pubblico non aggiunge
+letture ma non riduce le visite a W. La variante per colonne evita alcuni
+replay conservando gli stati intermedi di tutte le righe: persino
+ipotizzare 32 byte per riga richiede 137,44 GB per W e 68,72 GB per A.
+Non è un lower universale sulle FFT o sulle PCS: respinge questi due
+adattamenti specifici del layout corrente.
+
+**Sumcheck lineare in due passaggi: il costo delle forme non sparisce.**
+Per `L(i,j)=sum_a u_a(i)*v_a(j)` il primo passaggio calcola
+`A_a(i)=sum_j W(i,j)*v_a(j)`. I primi k round del sumcheck quadratico si
+calcolano piegando A_a e u_a; dopo r_prefix, il secondo passaggio calcola
+`B(j)=sum_i eq(r_prefix,i)*W(i,j)` e conclude i round sul suffisso. Il test
+confronta coefficienti, sfide derivate dai messaggi e terminali col percorso
+denso, su forme anche con selettori di prefisso. Sono identità algebriche,
+non un codec MAC implementato; applicare le medesime maschere richiederebbe
+ancora il trasferimento nativo e la disciplina NoPeek del caller.
+
+La contrazione A_a deve però includere anche i per cui `u_a(i)=0`:
+il folding introduce termini incrociati. Già `W(x,y)=x*(1-y)` e
+`L(x,y)=(1-x)*(1-y)` danno primo messaggio `x-x^2`; troncare W al solo
+supporto booleano di L produce invece zero e altera il protocollo. Quindi
+la disgiunzione dei Cube originali non dimostra lavoro O(N). Quando i v_a
+hanno supporto pieno sul suffisso, questo algoritmo contrae ogni cella
+per ogni forma, pagando rank×N. Ha due letture ma non supera il contratto
+sul lavoro delle sorgenti. Questo respinge il port letterale prefix-first,
+non ogni ordine dei round.
+
+**Variante suffix-first: due letture e array W compatibili, PCS ancora aperta.**
+Si scrive l'indice originale come `(i,j)`, con 20 bit di prefisso e 15 di
+suffisso. Il primo passaggio calcola `C_a(j)=sum_i W(i,j)*u_a(i)` e i primi
+15 round piegano C_a e v_a. I selettori di prefisso rimangono fissi durante
+la contrazione: si possono fondere le visite degli intervalli in una sola
+lettura, senza troncare le j fuori dal supporto di v_a. Dopo r_suffix,
+il secondo passaggio calcola `B(i)=sum_j eq(r_suffix,j)*W(i,j)` e conclude
+i 20 round con `L(i,r_suffix)`. I v_a pubblici sono rigenerati per termine,
+C si piega in-place; non occorre conservare una seconda matrice rank×2^15.
+
+Il [censimento riproducibile](../../scripts/c71_streaming_screen.py) usa
+metadati pinned, gli helper delle forme W e token pubblici 0..149:
+773 forme P0, 3.606 Cube P0, uno range pieno e 15 di padding. Per questi
+3.622 termini gli array C occupano **2.848.456.704 byte** e B/L
+**50.331.648 byte**: persino la somma simultanea **2.898.788.352** entra
+nell'arena, prima di metadata e buffer delle altre fasi. Il modello di
+contrazione conta `sum_a 2^max(dim_a,15)` = **280.138.842.112** aggiornamenti
+nel primo passaggio e **314.498.580.480** includendo il secondo. Questo
+conteggio conserva interi Cube anche quando un fattore interno è booleano;
+non presume rank×N gratis, né include folding, range, PCS o hash.
+È un upper uniforme sulle sequenze ammesse di 150 token: l'embedding
+`[262144,5376]` ha un solo tile lungo l'asse vocab e tre lungo i canali,
+quindi ogni posizione contribuisce al massimo Cube di dimensione 30/28/26.
+Ripetizioni o ID estremi non aumentano il numero; coefficienti pubblici
+nulli possono soltanto ridurlo. I token 0..149 realizzano il massimo
+nel diagnostico, senza imporre quel contenuto al run.
+
+Il terminale passa alla PCS il punto **originale `(r_prefix,r_suffix)`**,
+benché le sfide arrivino nell'ordine inverso. Il controllo finito verifica
+entrambe le valutazioni W e L su quel punto. L'oracolo impegnato e i MAC
+originali restano gli stessi; non si introducono PCS per token o blocco.
+I 35 round restano quadratici, con le medesime cardinalità wire/MAC.
+Serve però un ordine pubblico distinto nel dominio del transcript e il
+refinement della composizione blind/NoPeek: il test F97 non li dimostra.
+Non si attribuisce quindi il teorema B12 v1 al nuovo programma.
+
+È una candidata utile per il solo riduttore W. Il reader fisico packed,
+le forme A/KV e il range non sono implementati da questo diagnostico;
+il budget completo deve includerli. Restano al più due delle quattro
+letture W per encoding e apertura PCS, che il replay RS sopra non rispetta.
+Mancano un upper di tempo e il confronto del lavoro totale su tutti i
+prefissi. Nessuno di questi controlli ammette il prover completo.
 
 ## IO, sicurezza e criterio di riapertura
 
@@ -1215,7 +1343,8 @@ Materiale riusabile: funzioni deterministiche private di W/Γ e setup
 pubblico indipendente da sessione; va dimostrata la sicurezza della vista
 di tutte le sessioni che li usano. Hint privati senza nuove emissioni non
 autorizzano riuso di correlazioni, pad o maschere. Dory PCG aggiunge
-ipotesi LPN e un'istanza di campo da valutare; LogVOLE e Akita introducono
+l’ipotesi EA-LPN-SL-reg* ora autorizzata sulla geometria dichiarata;
+LogVOLE e Akita introducono
 ipotesi su reticoli e riduzioni proprie. Non sono già le ipotesi B12.
 Le identità `Mac.Valid` restano riusabili nei segni/campi dichiarati;
 né esse né `OpeningMac` forniscono ZK/binding della nuova PCS. Per ora

@@ -6714,7 +6714,7 @@ def c71_dory_guarded_bootstrap_screen():
     feq_reject_privacy_distance = Fraction(1, q-2)
     feq_information_theoretic_error = (
         Fraction(1, q)                    # linear compression is zero
-        + feq_key_cancellation_error
+        + feq_key_cancellation_error      # any committed malicious share; includes cancellation
         + Fraction(rom_query_cap, q-1)    # corrupt party guesses the honest K* key
         + feq_reject_privacy_distance
         + rom_commitment_error+xof_seed_prequery_error
@@ -6801,7 +6801,7 @@ def c71_dory_guarded_bootstrap_screen():
         },
         'coin_requirement': ('fresh interactive commit/response/open; all d and c are fixed '
                              'before opening; U_i derive next from the joint seed'),
-        'missing_for_admission': ['EA-LPN-SL regular large-field assumption over Goldilocks',
+        'missing_for_admission': ['complete reduction under owner-authorized EA-LPN-SL-reg*',
             'native SHAKE cGGM and guarded malicious-sender composition',
             'native reverse-role Fp6 seed and F_Rand/F_EQ codec/abort schedule',
             'completion/framing/metadata', 'complete proof-body upper',

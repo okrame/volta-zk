@@ -122,6 +122,21 @@ Nessun setup onesto aggiuntivo è assunto. ZK parte da nuova installazione,
 non da una root arbitraria fissata esternamente; tempi/accessi fisici e
 side channel non appartengono alla vista matematica simulata.
 
+**Estensione autorizzata dal proprietario il 2026-09-12.** Il trust model
+del goal di riduzione è ora **B12 + EA-LPN-SL-reg\***, con la premessa
+concreta proposta:
+
+```text
+Adv_EA-LPN-SL-reg*(675,70778880,353894400,11,Fp;
+                  T=2^121,M=2^93,one-leakage) <= 2^-80.
+```
+
+È una premessa accettata, non un risultato della regressione empirica LPN.
+Non richiede altra approvazione per proseguire il lavoro locale su questa
+geometria. Restano da verificare il trasferimento compositivo del bootstrap,
+il codec e le risorse; il teorema B12 v1 sotto rimane il riferimento già
+dimostrato. L'estensione non introduce ipotesi lattice o un setup fidato PCS.
+
 Le seguenti parti del notebook restano derivazioni tecniche applicabili
 entro il profilo selezionato. La loro prosa di stato e i loro sottototali
 precedenti sono storici; per il risultato congiunto vale [security](security.md).
@@ -575,9 +590,16 @@ Calibrazione, hardware e completa accettazione canonica rimangono separati.
 
 ### Owner-authorized PCS/state experiment
 
-**Steering del proprietario del 2026-09-12, con ultima deroga 130/40 MB.**
+**Steering del proprietario del 2026-09-12: 130/40 MB e ripiego analitico.**
 Il tetto iniziale di 130.000.000 sostituisce quello di 70.000.000 byte;
 le successive restano a 40.000.000, senza incremento cumulativo.
+Se non emerge una soluzione praticabile per le continuazioni da 40 MB,
+il proprietario autorizza la conclusione della parte proof-size anche con
+i lower del corpo **47.841.180 / 54.868.318 / 61.797.384 byte** a O=0/150/300.
+Questa deroga ammette un esito analitico: i lower omettono GKR congiunti e
+fratelli Merkle e non diventano né upper né prove prodotte. La prima proof
+include ancora il bootstrap entro 130 MB. PCS streaming, endpoint MAC
+privati, arena, quattro letture W e <=50 s restano requisiti del goal completo.
 Per «prova» si intende il **certificato completo**, coerentemente con
 [C4.1](../c4.1-seed-streaming-fiat-shamir.md#objective-and-terminology).
 Il corpo serializzato della risposta è una sua voce, non l'intero costo.
@@ -676,7 +698,7 @@ collegamento dell'intera valutazione fra campi, non soltanto tre scalari.
 Nessuna di queste ipotesi è assunta vera per B12, né i layout densi respinti
 vengono riaperti.
 
-**Bootstrap fresco candidato, con premessa ancora da selezionare.** Lo
+**Bootstrap fresco candidato sotto la premessa ora autorizzata.** Lo
 [screen Dory alimentato da B11](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
 conta `t*(h+4)+3` seed sVOLE Fp/Fp3 nella variante con guard e check per
 blocco, una riga base ciascuno. Con 130 MB
@@ -688,7 +710,8 @@ completo; la prima candidata F_EQ vettoriale è respinta perché rivela i
 residui di blocco sul mismatch. Il trasferimento compositivo, i codec nativi e il
 cGGM su Fp3 richiedono ancora riduzioni malevole e risorse concrete.
 AES-256/B11 non scaricano queste premesse.
-Non si aggiungono tali ipotesi al teorema selezionato. Anche un bootstrap
+L'ipotesi EA-LPN-SL-reg* è autorizzata nel trust model esteso sopra;
+non modifica retroattivamente la dimostrazione B12 v1. Anche un bootstrap
 idoneo lascia aperti range/PCS entro arena e il legame privato one-hot/originali.
 Il [lemma candidato sui check per blocco](construction-screen.md#check-per-blocco-compatibilita-con-il-leakage-dichiarato)
 fornisce `t*binom(N/t,2)/|Fp3|` soltanto con hash lineari fresche dopo
@@ -704,7 +727,7 @@ simula c senza Delta. Lo screen large-field usa il profilo regolare
 nonzero `t=675,h=19,ell=11`, N=353.894.400 e capacità 70.778.880; il
 receiver invia la correzione autenticata del payload. Table 2 non assegna
 128 bit concreti a Goldilocks e il bias Fourier mostra che dimezzare t non
-è una riduzione: resta una nuova ipotesi EA-LPN-SL-reg* senza credito;
+è una riduzione: EA-LPN-SL-reg* è assunta con il bound autorizzato sopra;
 beta onesti sono campionati
 esattamente in Fp* senza abort osservabile.
 Il bound ideale è `(t*h+1)/|Fp3|`; anche il fattore Q*=2^74 lascia
@@ -735,7 +758,7 @@ ruoli scambiati e le due chiavi MAC per aprire soltanto
 `(Delta0+Delta1)*(wbar-vbar)` dopo autenticazione e coin fresche:
 **12.815.247 byte**, senza nuova ipotesi gruppo. Con l'upper B12 corrente
 del primo corpo il parziale è **126.894.534 byte**, sotto 130 MB. Restano
-da prezzare EA-LPN-SL-reg* a T121/M93 e da implementare roleswap/codec;
+da implementare roleswap/codec sotto EA-LPN-SL-reg* a T121/M93 autorizzata;
 formalizzazione compositiva, semantica con abort, corpo completo e tempo
 restano aperti. Non è
 un'ammissione. La fonte Ring-LPN 2022/1035 sostiene soltanto la plausibilità
@@ -751,6 +774,19 @@ un product-sumcheck a memoria sublineare richiede circa sei visite, oltre
 le quattro letture autorizzate se resta online. Una candidata successiva
 deve fornire insieme un'unica PCS sparse/streaming privata, il wrapper
 Fp3–MAC e un upper completo <=50 s; nessun componente censito lo fa.
+
+Lo [screen dopo l'autorizzazione](construction-screen.md#screen-dopo-lautorizzazione-ea-lpn-e-ripiego-sui-byte)
+verifica capacità e byte sul run intero e registra il ripiego analitico
+autorizzato. Il replay RS per coset con buffer di righe complete richiede
+almeno 683 scansioni W nella costruzione esaminata. Un sumcheck lineare
+prefix-first in due letture conserva invece lavoro rank×N; troncare i
+supporti prima dei fold è errato. La variante suffix-first conserva invece
+i selettori nella contrazione e ripristina il punto originale alla PCS:
+due letture, 2.898.788.352 byte di array nel censimento pubblico e circa
+314,5 miliardi di aggiornamenti dei due passaggi, esclusi PCS/range/folding.
+È una candidata del solo riduttore W, con refinement del transcript ancora
+aperto, non una schedule ammessa. Gli esiti negativi sono circoscritti alle
+implementazioni esaminate, non lower universali sulle PCS streaming.
 
 ### Selected reference
 

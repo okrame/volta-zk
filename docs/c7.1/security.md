@@ -16,8 +16,11 @@ del 2026-09-11 cambia la schedule ed è un esperimento separato: i bound
 di questo documento non le sono trasferiti. Gli obblighi di composizione
 aperti sono dichiarati nel design; i sei paragrafi seguenti restano B12 v1.
 
-Anche lo [screen del bootstrap fresco Dory](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
-è esterno a questo teorema: i conti seed non realizzano EA-LPN-SL. La
+Il proprietario ha autorizzato il trust model esteso **B12 + EA-LPN-SL-reg\***
+per il goal di riduzione; il [bound preciso](design.md#assumptions-and-component-dependencies)
+è ora una premessa ammessa. Non è una dimostrazione della nuova composizione.
+Lo [screen del bootstrap fresco Dory](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
+è ancora esterno al teorema B12 v1: i conti seed non provano EA-LPN-SL. La
 candidata ROM realizza F_Rand con abort. Il confronto di digest F_EQ è
 respinto dal dizionario dei cammini; la sostituzione DDH/DLEQ è respinta
 per la perdita concreta dell'estrazione Schnorr. La nuova F_EQ usa invece
@@ -25,7 +28,9 @@ due seed MAC Fp6 con ruoli opposti e apre share del prodotto mascherato
 `(Delta0+Delta1)*(wbar-vbar)`: non aggiunge un'ipotesi gruppo. Entrambe le
 chiavi precedono le correzioni degli input; una seconda coin precede i
 commitment role-bound e ogni apertura. Poiché B11 esclude la chiave zero,
-la cancellazione sul mismatch costa `1/(|Fp3|-1)` e la vista di rifiuto
+una share malevola fissata prima dell'apertura accetta sul mismatch con
+probabilità al più `1/(|Fp3|-1)`, inclusa la cancellazione delle chiavi;
+la vista di rifiuto
 ha distanza statistica al più `1/(|Fp3|-2)` fra due residui, con abort e burn.
 Mancano ancora trasferimento compositivo e codec nativi; il cGGM separato
 per nodo sostituisce la permutazione soltanto in una riduzione condizionale

@@ -10,6 +10,13 @@ hiding su reticoli o gruppi bilineari. Le esclusioni sotto riguardano le sostitu
 non sono un'impossibilità per tutte le combinazioni di queste famiglie.
 Non si implementa né si ottimizza una linea già respinta.
 
+**Priorità di contributo, non selezione: consumer Shout con endpoint DV
+originali e witness entro arena.** Il [confronto mirato](#confronto-mirato-akita-shout-e-logup-dory)
+trova ulteriori ostacoli al port letterale di entrambe le PCS; il vantaggio
+di Dory sulle valutazioni nascoste non basta a preferire l'intera
+composizione LogUp–Dory. Nessuna delle due ha un tempo completo finito
+giustificato sotto 50 s. Non si avvia un'implementazione.
+
 Capacità richiesta/esaminata: **C=3, 100+50 token per risposta,
 O=0/150/300, 450 token complessivi**. Capacità acquisita sotto l'intero
 contratto: **nessuna**. Per ogni contesto valgono 35/40/40 milioni di byte,
@@ -85,9 +92,8 @@ Il modello Scribe, invece, concede proprio lo stato esterno qui vietato.
 
 ## Estensione: lookup frazionari e PCS hiding
 
-**Nessuna nuova candidata completa supera lo screen.** La combinazione
-più interessante sul solo piano strutturale è **LogUp-GKR + PCS Dory
-con valutazione impegnata**: cambia anche il consumer e dispone già di
+**Nessuna nuova candidata completa supera lo screen.** **LogUp-GKR + PCS Dory
+con valutazione impegnata** cambia anche il consumer e dispone già di
 un endpoint nascosto, a differenza della PCS pubblica Akita. Non viene
 selezionata: mancano il ponte al campo/MAC corrente e uno schedule del
 witness entro l'arena. Il vantaggio strutturale non è una previsione <=50 s.
@@ -154,6 +160,116 @@ Solo hint deterministici privati di W, senza nuove emissioni, hanno il
 riuso funzionale già autorizzato. Pubblicare o riusare commitment/blinding
 fra sessioni richiede una prova della vista congiunta; maschere delle prove
 e VOLE restano freschi. Nessun hint di A diventa globale.
+
+## Confronto mirato Akita-Shout e LogUp-Dory
+
+Screen del 2026-09-12, prima di progettare nuovi wrapper; **`credit:false`**.
+Capacità esaminata sempre C=3 canonica, capacità soddisfatta **nessuna**.
+I costi seguenti chiariscono ostacoli decisivi, non completano i costi
+mancanti delle composizioni private. Per entrambe P1/P2/P3 e tempo completo
+hanno ancora upper di ammissione infinito; i lower non sono previsioni.
+
+**Shout è un possibile sostituto del consumer, non soltanto della PCS.**
+Il [paper, §§4.1 e 6](../../sota/2025-0105-twist-shout.md) controlla lettura,
+booleanità, peso uno e indirizzo. Per K=256, d=1, il core usa T+3K prodotti;
+il conto generale §6.4 dà il termine conservativo 6T più termini di tabella
+per il PIOP combinato. LogUp §3.3 dà circa 43T prodotti e 29T somme.
+Applicando **solo quei modelli aritmetici** alle 23.135.780.864 /
+24.142.413.824 / 24.142.413.824 celle virtuali RNE censite:
+
+| Voce parziale | O=0 | O=150/300 |
+|---|---:|---:|
+| Shout, termine 6T, prodotti di campo | 138.814.685.184 | 144.854.482.944 |
+| LogUp, termine 43T, prodotti di campo | 994.838.577.152 | 1.038.123.794.432 |
+| Throughput del solo termine Shout per stare in 15 s | 9,25 miliardi/s | 9,66 miliardi/s |
+| Throughput del solo termine LogUp per stare in 15 s | 66,32 miliardi/s | 69,21 miliardi/s |
+
+Non sono lower universali né costi del nostro adattamento: Shout qui assume
+una tabella pubblica e sfide/pesi della propria schedule. Le tabelle RNE
+variano per ricetta/lane e sono combinate **dopo FS** da
+[`function_tables(recipe,beta)`](../../rust/volta-pcs/src/c71_matrix/rne.rs).
+Pesi L e MAC originali non sono automaticamente i claim Shout del paper.
+Il batch deve provare anche questa corrispondenza, senza un passaggio qN.
+Le 892×8 tabelle combinate da 256 Fp3 costerebbero 43.843.584 byte se
+conservate tutte: sono temporanei di risposta, non materiale globale.
+Le ricette non combinate sono riusabili. Il 6T non comprende PCS, adapter,
+ZK, bootstrap, produttori, replay o IO; nessun throughput H100 per essi
+è verificato. I 15 s sono una soglia di screen da condividere con le altre
+operazioni crittografiche, non una disponibilità acquisita.
+
+| Implementazione sottoposta allo screen | Memoria, passaggi e traffico | Disposizione |
+|---|---|---|
+| Shout §6, array espliciti su un gruppo D34, campo Fp3 | E/D ha T elementi; §6.3 costruisce anche H di T elementi dopo gli 8 round indirizzo. D+H = **824.633.720.832 byte**, prima degli indirizzi e della PCS. Seguono 34 round ciclo con letture/fold. Una sola scrittura e lettura di **un** array sui gruppi O=0 costa 1.110.517.481.472 byte | **Respinto per memoria**, anche senza la seconda copia; non si approfondisce il kernel denso |
+| Akita–Shout con pad Fp3 indipendente su ogni cella one-hot | La matrice logica ha 256×2^34 celle: una copia mascherata costa **105.553.116.266.496 byte**. Una scrittura e lettura richiedono già **63,02 s al picco HBM** di 3,35 TB/s, senza commitment | **Respinta questa privatizzazione densa** per memoria e tempo. Maschere strutturate potrebbero cambiare il conto, ma la loro privacy va dimostrata |
+| Shout con input virtuali, array rigenerati e PCS privata | Solo setup pubblico/hint deterministici W sono globali; byte del setup espanso e workspace PCS non istanziati. Gli indirizzi dipendono da A. Numero completo di replay, passaggi, traffico e costo crypto ignoti | **Non selezionabile**; spazio sublineare oltre all'input non fornisce quell'input entro arena |
+| LogUp–Dory con reader packed | Può evitare l'array di scalari da 549,76 GB, ma richiede ancora commitment su N coefficienti, contrazione LᵀM, produzione/rigenerazione degli alberi e ponte di campo. Hint A sono dinamici; hint W e setup vanno dimensionati | **Non selezionabile**, senza upper completo di memoria/tempo; i backend densi restano respinti |
+
+Per la riga virtuale non si presume un passaggio unico né overlap: usare
+50 GB/s esterni e 2,68 TB/s HBM è solo la sensibilità motivata sotto.
+Il tetto di 35 s di IO esterno, riservandone 15 al resto, resta 1,75 TB;
+non autorizza spill di A. Setup globale, caricamento e tutte le letture
+si registrano, oltre al setup fresco per sessione. La mancata misura
+della banda effettiva e del resto impedisce una previsione completa.
+
+**Akita richiede più della ZK.** La §3.1 usa d potenza di due e un embedding
+di F_(q^k) con k divisore di d/s_split. Quella via non ammette k=3:
+**Fp3 non entra nel packing pubblicato**, anche scegliendo q=Goldilocks.
+Trattare tre coordinate non è l'embedding moltiplicativo richiesto.
+Una riduzione fra coordinate della stessa caratteristica, o un altro ring,
+è lavoro crittografico nuovo da contare e provare; non un cambio di codec.
+Inoltre il Cor. 10.32 limita il bound FS a
+`log2(|E|) - log2(c) - log2(Q+1)` se il ledger contiene c/|E|.
+Con i campi di apertura da circa 128 bit dei benchmark e Q=2^64, già
+c=1 lascia **meno di 64 bit**, sotto i 78 richiesti, prima degli altri
+errori. Per quell'analisi servono più di 142+log2(c) bit di campo;
+restringere Q sarebbe indebolire il confronto. Anche con un nuovo campo
+vanno ricontati tutti i termini ring/FS e le ipotesi MSIS alle risorse
+della riduzione. Questo è un limite del bound pubblicato, non un attacco
+dimostrato. I 61–70 KB e i tempi pubblicati non sono parametri C7.1.
+
+**Dory: il ponte non si limita a certificare tre scalari finali.** Se il
+gruppo ha ordine primo r diverso da p, non esiste embedding unitale di
+Fp in Fr: p·1=0 nel primo campo e p·1≠0 nel secondo. La contrazione
+multilineare Dory è in Fr; un attestato sul solo valore finale non prova
+che sia la valutazione Fp3 della stessa A. Vanno collegati commitment,
+coefficienti/pesi, riduzioni modulari e **MAC originale**. Spostare tutto
+GKR/MAC in Fr evita quel ponte ma cambia campo, bootstrap e riduzioni:
+è un'altra costruzione da sottoporre al contratto, senza credito B12.
+Non segue che occorra emulare ogni gate in aritmetica non nativa: eventuali
+lift interi o riduzioni dei pesi a basso rango richiedono conti e prove
+propri. Qui non si attribuisce loro un lower di lavoro per cella.
+
+**Contributi candidati, in ordine di dipendenza.** La prima verifica da
+riaprire riguarda un consumer di funzioni byte **Shout con endpoint DV**:
+indirizzo legato ai byte della stessa A, lettura legata ai P/S originali,
+booleanità/peso uno, tabelle/lane corrette e padding. La componente nuova
+utile sarebbe la composizione privata con witness virtuale e un numero
+finito di passaggi entro arena, non Shout stesso. Finché manca quel conto
+non si progetta una PCS privata completa. Successivamente servirebbero
+un'apertura nascosta compatibile col campo/MAC e il bootstrap fresco
+compatto: nessuna PCS rende gratuito il COPE corrente. Con 13.824 byte
+di sole correzioni per riga Fp3, i cap ospitano al massimo 2.531/2.893
+righe **prima di ogni altro byte**.
+
+Il contributo sul materiale globale consiste nel separare hint privati
+deterministici di W da ogni emissione mascherata, e provare same-W e ZK
+sulla vista congiunta delle sessioni sotto un budget avversariale globale.
+La capacità C=3 è per conversazione; non dimostra da sola il riuso fra
+conversazioni. Maschere/VOLE restano freschi, i costi di rigenerarli restano
+nel turno. I lemmi `Mac.Valid` e l'induzione KV di security §6 possono
+essere riusati soltanto dopo averne scaricato le nuove premesse. Non c'è
+una rivendicazione di novità accademica o un nuovo teorema dimostrato.
+
+**Famiglia aggiuntiva controllata: BlindFold.** La
+[documentazione primaria Jolt](https://jolt.a16zcrypto.com/how/blindfold.html)
+nasconde i messaggi sumcheck e prova le relazioni del verifier in un
+piccolo R1CS, collegato alle valutazioni impegnate Dory. È un modello
+utile di separazione fra grande witness e piccolo transcript; non
+privatizza la PCS Akita pubblica né fornisce un ponte Fp3–MAC o uno schedule
+del grande witness. Non si procede al port: costi completi ancora ignoti.
+[Jolt Atlas](https://arxiv.org/html/2602.17452v1), §§1.2 e 4, usa invece
+HyperKZG e ammette trasformazioni del modello; non è un confronto acquisito
+a setup/semantica invariati. Non si importano i suoi benchmark.
 
 ## IO, sicurezza e criterio di riapertura
 
@@ -224,21 +340,33 @@ for ell in (34, 35):
         window *= 2
     assert windows == [1, 2, 4, 8, 8] and len(windows) + 1 == 6
 assert 6 * 61_394_690_560 == 368_368_143_360
+
+# Confronto mirato: aritmetica parziale, nessun tempo completo acquisito.
+assert [6*n for n in cells] == [138_814_685_184, 144_854_482_944, 144_854_482_944]
+assert [43*n for n in cells] == [994_838_577_152, 1_038_123_794_432, 1_038_123_794_432]
+assert 48*2**34 == 824_633_720_832 > 6_442_450_944
+assert 48*cells[0] == 1_110_517_481_472
+assert 24*256*2**34 == 105_553_116_266_496
+assert 48*256*2**34 > 50*3_350_000_000_000  # write+read >50 s persino al picco
+assert 892*8*256*24 == 43_843_584  # tabelle combinate, dinamiche
+assert all((2**i) % 3 for i in range(36))  # k=3 non divide d/s_split Akita
+assert (2**64 + 1)*2**78 > 2**128  # anche c=1 non ammette il target FS
+assert [cap//13_824 for cap in (35_000_000, 40_000_000)] == [2531, 2893]
 ```
 
 Fonti lette nei Markdown conservati: [Dory PCG](../../sota/2025-1660-dory-streaming-vole.md),
 [LogVOLE](../../sota/2026-0925-logvole.md), [LiftWHIR](../../sota/2026-1561-liftwhir.md),
 [Brakedown](../../sota/2021-1043-brakedown.md), [Jagged](../../sota/2025-917-jagged-pcs.md),
 [Scribe](../../sota/2024-1970-scribe.md), sumcheck e Akita sopra.
-Metadati verificati sulle pagine IACR; per Shout basta l'abstract primario
-per identificarne il ruolo, senza attribuirgli un port o un costo C7.1.
+Metadati verificati sulle pagine primarie; il confronto mirato legge anche
+Shout §§4/6, senza attribuirgli un port o un costo completo C7.1.
 Il nuovo [PDF Akita](../../sota/2026-09-12-akita.pdf) proviene da
 `https://assets.layerzero.network/pdf/akita.pdf`, scaricato il 2026-09-12
 e convertito localmente con AnyDoc 0.1.7. SHA-256 PDF:
 `b82969386ed3f006cf86ba95eb0ab02cd9f741ae79c98611680531b81a34f67d`;
 Markdown: `566fe8c55c55bf331eb243872d66dbdbacb2df33b7642118c65e15ad44e608c6`.
 
-Nuove fonti del secondo screen, acquisite il 2026-09-12 e convertite con
+Fonti aggiuntive degli screen, acquisite il 2026-09-12 e convertite con
 AnyDoc 0.1.7; nessuna fonte precedente sovrascritta. Metadati primari:
 [sumcheck](https://eprint.iacr.org/2026/587),
 [Jindo](https://eprint.iacr.org/2026/044),
@@ -249,3 +377,4 @@ AnyDoc 0.1.7; nessuna fonte precedente sovrascritta. Metadati primari:
 | [Sumcheck](../../sota/2026-0587-speeding-up-sumcheck.pdf), `https://cs.nyu.edu/~zd2131/papers/26-587.pdf` | `04ac867dc2d2e68f967bbb4550c1afe1340439e8b0aae1611464c4e433f8a1a7` / `630c077243d532bebfeb7b20cdc28280da40990439c6adcd101e23e2889d4f20` |
 | [Jindo](../../sota/2026-0044-jindo.pdf), `https://eprint.iacr.org/2026/044.pdf` | `ebf0f9634b2d6a5c42e8f4810a7b9da07c3edd760cfca3d5a8159838d2bdc70e` / `c75c0bf0539a42ad4887c6cb1df54e635bfa09367910901b6a53d59224f45bc4` |
 | [Dory PCS](../../sota/2020-1274-dory-pcs.pdf), `https://eprint.iacr.org/2020/1274.pdf` | `d0789bc9497d5532b53065176ed3c85d5d3360b23d20fd7e839174ec23518a52` / `b78c7f401ee77c6fadaa991a9287a815f0a6da960d3e115055db718e116d42a6` |
+| [Twist and Shout](../../sota/2025-0105-twist-shout.pdf), `https://eprint.iacr.org/2025/105.pdf` | `0808fe28ffc921cd99df3c4a9f8afd0300c3e933bed2bfb2241f859982d4b538` / `1205252b260a2d6058fad79976067e7bc900c6c8430abf282247633bed9f1c44` |

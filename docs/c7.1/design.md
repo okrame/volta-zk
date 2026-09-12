@@ -656,6 +656,16 @@ ottimizzazione di queste costruzioni è il prossimo passo. Una nuova linea
 deve risolvere sia il costo delle correlazioni fresche sia quello dei
 consumer/PCS dinamici prima di essere selezionata.
 
+Il [confronto mirato Akita–Shout/LogUp–Dory](construction-screen.md#confronto-mirato-akita-shout-e-logup-dory)
+non seleziona una composizione. La prima dipendenza di ricerca è un
+consumer Shout negli originali DV con witness/passaggi entro arena.
+Restano indimostrati il suo adapter di tabelle/pesi, la PCS privata e il
+riuso multi-sessione. Akita non offre Fp3 nel packing pubblicato, e i
+profili di apertura da circa 128 bit non soddisfano il bound FS richiesto
+a Q=2^64; Dory richiede il collegamento dell'intera valutazione fra campi,
+non soltanto tre scalari finali. Nessuna di queste ipotesi è assunta vera
+per B12, né i layout densi respinti vengono riaperti.
+
 ### Selected reference
 
 | Voce | Riferimento da soddisfare; nessuna nuova misura |

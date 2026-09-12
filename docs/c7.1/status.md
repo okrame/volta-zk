@@ -107,9 +107,13 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 lo screen.** La riduzione della prova completa resta aperta. Il
 [confronto](construction-screen.md) copre PCG silent, LogVOLE,
 PCS con codici/reticoli/gruppi, lookup frazionari e prover streaming.
-La pista strutturale più interessante è ora LogUp-GKR con PCS Dory a
-valutazione impegnata, ma il ponte Goldilocks/Fp3–MAC e lo schedule del
-witness restano senza costo completo. Non viene selezionata. Il
+Il [confronto mirato](construction-screen.md#confronto-mirato-akita-shout-e-logup-dory)
+assegna priorità di contributo al consumer Shout con endpoint DV originali
+e witness entro arena; **non seleziona Akita–Shout o LogUp–Dory**.
+Shout ha un conto aritmetico favorevole, ma i suoi array espliciti restano
+fuori memoria. Akita richiede anche un nuovo adattamento Fp3 e parametri
+FS oltre ai profili pubblicati; Dory non risolve il ponte di campo/MAC
+con il solo impegno della valutazione finale. Il
 [secondo screen](construction-screen.md#estensione-lookup-frazionari-e-pcs-hiding)
 respinge i backend densi anche di LogUp, Jindo e Dory, e chiarisce perché
 hiding e sumcheck streaming non risolvono da soli endpoint e ricomputazione.

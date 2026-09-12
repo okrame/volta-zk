@@ -6660,6 +6660,9 @@ def c71_dory_guarded_bootstrap_screen():
     q = P**3
     path_error = Fraction(t*h+1, q)
     split_error = Fraction(t*2**h*(2**h-1), 2*q)
+    rom_query_cap = 1 << 74
+    rom_prequery_error = Fraction(rom_query_cap, q)
+    rom_equality_error = Fraction(1, q-rom_query_cap)
     return {
         'credit': False, 'complete_bootstrap_admitted': False,
         'geometry': {'t': t, 'h': h, 'N': t*2**h,
@@ -6673,11 +6676,13 @@ def c71_dory_guarded_bootstrap_screen():
         'conditional_known_errors': {
             'seed': seed['conditional_seed_component']['sum'],
             'path_guard': str(path_error), 'split_check': str(split_error),
+            'domain_separated_ROM_prequeries': str(rom_prequery_error),
+            'ROM_malformed_equality': str(rom_equality_error),
             'sum': str(Fraction(seed['conditional_seed_component']['sum'])
-                       + path_error+split_error),
+                       + path_error+split_error+rom_prequery_error+rom_equality_error),
         },
         'missing_for_admission': ['EA-LPN-SL parameters over Goldilocks',
-            'cGGM malicious reduction and concrete realization', 'F_Rand/F_EQ',
+            'native SHAKE cGGM and guarded malicious-sender composition', 'F_Rand/F_EQ',
             'completion/framing/metadata', 'complete proof-body upper',
             'honest runtime and work-prefix comparison'],
     }

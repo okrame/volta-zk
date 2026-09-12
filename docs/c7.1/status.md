@@ -149,9 +149,15 @@ mancanti. È uno screen riproducibile; il port nativo Fp6 non è implementato.
 Col lower di PCS/altro corpo B12 e senza i vecchi P/S si arriva a
 **98,52 MB**, quindi restano 31,48 MB non ancora assegnabili: serve l'upper
 del nuovo corpo e di tutte le voci bootstrap mancanti.
-Restano da provare il cGGM concreto dopo il guard e la simulazione malevola.
-EA-LPN-SL, F_Rand/F_EQ e costo completo
-restano aperti. La
+La [candidata cGGM nel ROM separato per nodo](construction-screen.md#cggm-con-random-oracle-separato-per-nodo)
+elimina la permutazione RPM: con cammini già binari, ogni query forward al
+nodo nascosto fornisce un candidato Delta e una singola cella programmabile.
+La costruzione sequenziale di `c` gestisce anche query anteriori; un bound
+prudente `Q_ROM/|Fp3|` vale 118 bit a `Q_ROM=2^74`. Il ramo beta zero è
+simulato esattamente. Il controllo finito e la revisione indipendente non
+hanno trovato controesempi alla parte receiver. Restano da chiudere la
+composizione sender con guard/split, il codec SHAKE nativo, EA-LPN-SL,
+F_Rand/F_EQ e costo completo. La
 [verifica Half-Tree](construction-screen.md#realizzazione-cggm-cosa-trasferisce-half-tree)
 esclude anche il trasferimento diretto del ramo pcGGM binario: l'hash
 finale rompe le somme richieste dall'accumulo Dory. I cGGM nel ROM

@@ -674,12 +674,13 @@ per B12, né i layout densi respinti vengono riaperti.
 
 **Bootstrap prima di approfondire Shout.** Lo
 [screen Dory alimentato da B11](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
-conta `t*(h+1)+3` seed sVOLE Fp/Fp3, una riga base ciascuno. Con 130 MB
+conta `t*(h+4)+3` seed sVOLE Fp/Fp3 nella variante con guard e check per
+blocco, una riga base ciascuno. Con 130 MB
 il solo COPE iniziale non respinge più le tre geometrie pubblicate;
 la capacità di riferimento B12 rientra soltanto in LPN3. Non è un'ammissione
 del certificato completo o della sicurezza EA-LPN-SL. Restano da realizzare
-F_Rand/F_EQ e il cGGM con permutazione programmabile su Fp3, con riduzioni
-malevole e risorse concrete: AES-256/B11 non scaricano queste premesse.
+F_Rand/F_EQ e il cGGM su Fp3, con riduzioni malevole e risorse concrete:
+AES-256/B11 non scaricano queste premesse.
 Non si aggiungono tali ipotesi al teorema selezionato. Anche un bootstrap
 idoneo lascia aperti range/PCS entro arena e il legame privato one-hot/originali.
 Il [lemma candidato sui check per blocco](construction-screen.md#check-per-blocco-compatibilita-con-il-leakage-dichiarato)
@@ -696,6 +697,14 @@ simula c senza Delta. Il bound ideale è `(t*h+1)/|Fp3|`; per LPN3 anche
 il fattore Q*=2^74 lascia 103,70 bit. Il guard elimina i due controesempi
 identificati e sostituisce il precheck dell'inverso; NoPeek, FS e
 composizione B11→Dory richiedono ancora una riduzione completa.
+La [candidata cGGM nel ROM separato per nodo](construction-screen.md#cggm-con-random-oracle-separato-per-nodo)
+usa `left=H_D(x), right=x-H_D(x)` e nessuna permutazione/inversa. Dopo il
+guard, una query al nodo nascosto determina un candidato Delta; il
+simulatore costruisce `c` per livelli e programma soltanto la cella ROM
+identificata da setup/blocco/livello/posizione. Il ramo beta zero resta
+esatto. Il bound prudente per prequery è `Q_ROM/|Fp3|`, 118 bit con
+`Q_ROM=2^74`; la somma condizionale nota resta 90,93 bit. Restano aperti
+la composizione sender con guard/split, l'istanza SHAKE/codec e le risorse.
 La [candidata seed Fp6→Fp3](construction-screen.md#seed-fp6-compressione-a-95-bit-nel-singolo-setup)
 usa Wolverine con rho=95 e un solo setup: il bound condizionale seed
 è 90,93 bit con gli envelope B12 conservati, senza cambiare ipotesi

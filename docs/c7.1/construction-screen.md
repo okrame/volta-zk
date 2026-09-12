@@ -759,9 +759,84 @@ del guard. Per LPN3 col seed Fp6 della sezione seguente:
 Coin/check finali, completamento, metadata e corpo restano fuori dal
 sottototale. Il guard scarica i due difetti di cammino identificati e
 conserva la distribuzione rilassata; non realizza EA-LPN-SL o il cGGM.
-**Prossimo lavoro:** adattare la simulazione cGGM ai soli cammini binari
-prima di approfondire Shout. Arena, legame agli originali e tempo completo
-restano obblighi aperti.
+Arena, legame agli originali e tempo completo restano obblighi aperti.
+
+#### cGGM con random oracle separato per nodo
+
+**Candidata condizionale che chiude il difetto RPM senza permutazione.**
+Dopo l'accettazione del guard, usare
+
+```text
+H_D(x) = Fp3-Reject(SHAKE256(
+  "VOLTA-C71-DORY-CGGM-v1" || setup_nonce || block || level || position || enc(x)))
+```
+
+dove `D=(setup_nonce,block,level,position)`, `enc` è il codec canonico Fp3
+e il rejection sampler produce tre limb Fp uniformi. Il nonce è fresco per
+l'unico setup e tutti i campi hanno lunghezza canonica. Fig. 3 resta
+invariata: figlio sinistro `H_D(x)`, destro `x-H_D(x)`. Non esiste
+un'interfaccia inversa. La separazione per posizione assegna una cella ROM
+distinta a ogni nodo, anche se due valori Fp3 coincidono.
+
+Per un receiver corrotto e un blocco con `beta!=0`, sia `z_j` il fratello
+rivelato e `w_j` la somma dei fratelli precedenti della fonte. Il nodo
+nascosto è
+
+```text
+u_j = K(beta)-w_j = M(beta)-beta*Delta-w_j.
+```
+
+Una query `H_D(x)` nella sola etichetta del nodo determina quindi il
+candidato
+
+```text
+Delta' = (M(beta)-w_j-x)/beta.
+```
+
+Il simulatore lo inoltra alla global-key query ideale prima di rispondere.
+Se ha successo, programma `H_D(x)=x-z_j` quando il bit del cammino è zero,
+oppure `H_D(x)=z_j` quando è uno. Sono esattamente le due equazioni
+`right=x-H_D(x)` e `left=H_D(x)`. Se la query non individua Delta, la
+risposta rimane uniforme. Query nuove dopo `c` sono dunque simulate
+esattamente.
+
+Il vettore `c` va costruito internamente per livelli prima di consegnarlo:
+`u_j` dipende soltanto dalle correzioni precedenti. Per le query già
+registrate nel dominio del livello, il simulatore prova i candidati Delta.
+Se trova quello corretto, usa l'output ROM già fissato per determinare il
+fratello e quindi `c_j`; altrimenti campiona `c_j` uniforme. È la stessa
+lazy sampling della vista reale, dove l'unico `H_D(u_j)` ancora fresco
+rende uniforme la correzione. Un ibrido più semplice che dichiara bad su
+una prequery conserva il seguente bound prudente nell'accounting:
+
+```text
+epsilon_ROM <= Q_ROM / |Fp3|.
+```
+
+Non compare un fattore `t*h`: ogni query porta già una sola etichetta
+`block/level/position`; un union bound conta le query globali una volta.
+Con `Q_ROM<=2^74` il termine ha **117,999999999 bit**. Nel ramo `beta=0`
+il guard impone `d=s`, quindi `K(beta)=M(beta)` e `K(r_j)=-M(s_j)`; il
+simulatore sceglie `c_0`, ricostruisce le due radici e tutti i `sum_0`
+con sole query forward, ottenendo la distribuzione reale senza Delta.
+Un input F_EQ malformato che accetta senza una precedente guess riuscita
+aggiunge al più `1/(|Fp3|-Q_ROM)`. È censito separatamente nello screen.
+
+Il Lemma 2 della fonte contro il sender corrotto non usa la forma RPM:
+usa l'invariante additivo, il check universale e EA-LPN-SL. L'invariante
+vale per ogni funzione `H_D`. Il trasferimento composto non è però ancora
+automatico: deve includere il transcript mascherato del guard, gli abort
+selettivi, le maschere split distinte e la semantica locale delle query
+ROM. La sostituzione chiude quindi condizionatamente la sola parte cGGM
+del Lemma 3 contro il receiver. Condizionatamente agli errori già censiti,
+la somma seed/guard/split/ROM resta a **90,933907923 bit**.
+
+Il [controllo finito](../../tests/test_c71_dory_rom_cggm.py) verifica
+estrazione, programmazione dei due bit, simulazione `beta=0` e la biiezione
+Delta→nodo nascosto su F5. Non è una prova UC o un'implementazione SHAKE.
+Restano da realizzare codec, rejection sampler e schedule nativa e da
+chiudere la composizione sender con guard/split, EA-LPN-SL/F_Rand/F_EQ,
+framing, tempo e accounting completo.
 
 ### Seed Fp6: compressione a 95 bit nel singolo setup
 

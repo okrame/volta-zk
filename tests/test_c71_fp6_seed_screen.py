@@ -65,6 +65,8 @@ def test_guarded_bootstrap_partial_screen_keeps_missing_costs_open():
     assert screen['first_cap_margin_after_that_lower'] == 31_477_444
     errors = screen['conditional_known_errors']
     assert Fraction(errors['path_guard']) == Fraction(20161, plan.P**3)
+    assert Fraction(errors['domain_separated_ROM_prequeries']) == Fraction(2**74, plan.P**3)
+    assert Fraction(errors['ROM_malformed_equality']) == Fraction(1, plan.P**3-2**74)
     assert Fraction(errors['sum']) < Fraction(1, 2**90)
     assert not screen['credit'] and not screen['complete_bootstrap_admitted']
     assert len(screen['missing_for_admission']) == 6

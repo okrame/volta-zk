@@ -514,7 +514,7 @@ dalla serializzazione positiva del prover canonico, tuttora aperta.
 ### Experimental shared RNE byte proofs
 
 La richiesta del proprietario del 2026-09-11 sposta il lavoro sulla riduzione
-dei byte. La candidata `C71-RNE-joint-byte-experiment-v1` conserva le 892
+dei byte. La candidata `C71-RNE-joint-byte-experiment-v2` conserva le 892
 riduzioni grado sette e differisce il loro controllo P/S. Il
 [prototipo](../../rust/volta-pcs/src/c71_matrix/byte_function/batch.rs)
 è compilato soltanto nei test; il verifier selezionato continua a eseguire
@@ -544,24 +544,36 @@ L(x) = sum_j lambda^j * selector(off_j,x_prefix) * eq(r_j,x_suffix).
 target = sum_j lambda^j * a_j.
 ```
 
-Un sumcheck quadratico riduce `sum_x L(x)*P_top(x)=target` a un solo MAC
-di `P_top(r)`. Le correzioni autenticano tre coefficienti per round, con
-residuo `2*c0+c1+c2-target`; il terminale controlla `L(r)*P_top(r)`.
-Da `[P_top(r),0]` si riusano gli otto livelli di `range::prove_tree` e
-`verify_tree`. Ogni blocco usa i coefficienti Lagrange delle proprie
-tabelle; al terminale il coefficiente P è pubblico e Q è `byte-index`.
-Gli spazi non usati hanno byte e coefficienti pubblici zero. Il MAC byte
-risultante termina nella stessa PCS A: ogni forma raw originale viene
-moltiplicata dal selettore del suo blocco, con punto locale dato dal
-suffisso del punto congiunto. Range A, output e tutti gli altri obblighi
-rimangono necessari. Una PCS valida isolata non chiude il gruppo.
+La versione 2 consuma direttamente quel target nel primo dei consueti
+otto livelli GKR. Il suo polinomio è
 
-Per una vista con `d` bit il nuovo schema `Wire` costa
-`5056 + 1056*d` byte e consuma `170 + 35*d` correlazioni Fp3, inclusi
-sumcheck iniziale, root, P/S e maschera prodotti. Sostituisce la somma
-dei vecchi `7884 + 960*c_j` byte e `265 + 32*c_j` righe Fp3.
-Ogni gruppo aggiunge un frame da sei byte. Le riduzioni grado sette,
-i loro prodotti, i prefissi delle liste e le 482 sonde sono ancora contati.
+```text
+sum_x L(x) * (mu*(P_left(x)*Q_right(x) + P_right(x)*Q_left(x))
+                   + Q_left(x)*Q_right(x)).
+```
+
+`mu` è la sfida del livello e il target iniziale è `mu*target`, perché
+Q_top è zero sui byte ammessi. L è multilineare: il polinomio ha grado
+al più tre in ogni variabile, come il livello GKR ordinario. Il terminale
+usa `L(r)` calcolato pubblicamente dal verifier. Dopo la scelta del figlio,
+gli altri sette livelli tornano ai pesi di uguaglianza ordinari. Si elimina
+così il sumcheck quadratico separato e il suo MAC della root, senza una
+nuova apertura o un nuovo target privato. La versione 1 con quel sumcheck
+rimane documentata nei record immutabili precedenti.
+
+I coefficienti Lagrange e il terminale byte rimangono quelli del batch:
+ogni forma raw originale viene moltiplicata dal selettore del suo blocco,
+con punto locale dato dal suffisso del punto congiunto. Tutti gli altri
+obblighi di range, output e PCS A rimangono. `eq_scaled` costruisce il peso
+partendo da lambda^j, senza un passaggio di moltiplicazione su tutte le
+celle. Il riempimento dei byte fittizi riguarda solo gli spazi non usati;
+i gruppi senza padding non eseguono quel passaggio.
+
+Per una vista con `d` bit lo schema `Wire` ora costa
+`5004 + 960*d` byte e consuma `169 + 32*d` correlazioni Fp3, inclusi gli
+otto P/S e la maschera prodotti. Rispetto a v1 elimina `52+96*d` byte
+e `1+3*d` righe per gruppo. Ogni gruppo conserva il frame da sei byte;
+le 892 riduzioni grado sette, prodotti, liste e sonde restano nel conto.
 Gli [esiti e i byte](evidence.md#shared-rne-byte-experiment) distinguono
 prove piccole valide, forme canoniche sintetiche e proiezione completa.
 
@@ -571,8 +583,8 @@ originali con i segni nativi; i lemmi di simulazione di
 [`BlindSumcheck.lean`](../../lean/VoltaZk/BlindSumcheck.lean) riguardano
 correzioni/residui sotto le proprie premesse. Non sono una prova Lean
 del nuovo batch. Occorre ricomporre soundness FS sui veri prefissi
-(batch lambda di grado al più `gruppo-1`, lane, sumcheck quadratico e
-alberi condivisi), simulazione congiunta/NoPeek e risorse del riduttore.
+(batch lambda di grado al più `gruppo-1`, lane, primo livello cubico
+con peso L e alberi condivisi), simulazione congiunta/NoPeek e risorse del riduttore.
 Il codice legge valori prima delle righe e usa una maschera prodotti
 fresca per gruppo, ma il test finito non scarica quei teoremi generali.
 Gli 82,93/91,02 bit di B12 **non sono attribuiti alla candidata**.

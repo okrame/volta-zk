@@ -106,8 +106,24 @@ def retained_work(old, rolling):
         payload_excludes=['Vec headers, allocator and page overhead', 'weights/KV/runtime outside the retained object',
             'fresh proof temporaries, PCG and transport staging'],
         full_work_nonincrease_verified=False,
-        unresolved=['additional fresh W PCS work, including t*M query covectors', 'RNE top sumcheck and link forms',
+        unresolved=['additional fresh W PCS work, including t*M query covectors', 'RNE weighted first-layer construction and link forms',
             'current KV preparation and range', 'physical cache placement and transfer schedule'])
+
+
+def rne_tree_core(cells, components, rounds, original_views):
+    """Source-expression counts for eight range::prove_tree layers + products.
+
+    A pair costs 27 mul/23 add in cubic coefficients and 5 mul/10 add
+    in folds; a round costs 8 mul/17 add; a layer 17 mul/20 add.
+    Each component has 24 product triples, at 6 mul/4 add each.
+    Seeded first weights use the original views, without an extra cell pass.
+    Excludes tables, caller MAC aggregation, FS, memory/IO and all PCS.
+    """
+    pairs = 255*cells-8*components
+    equality_pairs = 255*cells-7*components-original_views
+    return dict(cubic_pairs=pairs, cubic_rounds=rounds,
+        Fp3_mul_expressions=32*pairs+2*equality_pairs+8*rounds+280*components,
+        Fp3_add_sub_expressions=33*pairs+equality_pairs+17*rounds+256*components)
 
 
 def joint_state(old, rolling_w, rolling_a, cases):
@@ -258,7 +274,14 @@ def report():
         separate_cells = (23135780864, 24142413824, 24142413824)[slot]
         group_bits = [d for d in range(34, -1, -1) if separate_cells >> d & 1]
         assert sum(1 << d for d in group_bits) == separate_cells
-        rne_wire = sum(5056 + 1056*d + 6 for d in group_bits)
+        rne_wire = sum(5004 + 960*d + 6 for d in group_bits)
+        previous_functions = (25210128, 25267728, 25267728)[slot]
+        assert (previous_functions-892*5004) % 960 == 0
+        original_dimension_sum = (previous_functions-892*5004)//960
+        baseline_rne_core = rne_tree_core(separate_cells, 892,
+            8*original_dimension_sum+28*892, 892)
+        grouped_rne_core = rne_tree_core(separate_cells, len(group_bits),
+            8*sum(group_bits)+28*len(group_bits), 892)
         saved_rne = (25210128, 25267728, 25267728)[slot] - rne_wire
         intervals = []
         for end in (0, 1):
@@ -278,6 +301,16 @@ def report():
         cases.append(dict(old_tokens=150*slot, baseline_interval=c['total_wire_interval'],
             projected_complete_response_interval=intervals, source_PCS_count=2+bool(slot),
             unpadded_RNE_group_bits=group_bits, RNE_group_bytes_with_frames=rne_wire,
+            RNE_weighted_first_GKR=dict(version=2, separate_sumcheck_removed=True,
+                removed_wire_bytes=sum(52+96*d for d in group_bits),
+                removed_Fp3_rows=sum(1+3*d for d in group_bits),
+                removed_quadratic_pair_iterations=separate_cells-len(group_bits),
+                added_quadratic_pair_iterations=0,
+                # Eight unchanged cubic layers: sum_l (N*2^l-1).
+                baseline_cubic_pair_iterations=255*separate_cells-8*892,
+                grouped_cubic_pair_iterations=255*separate_cells-8*len(group_bits),
+                baseline_shared_core=baseline_rne_core, grouped_shared_core=grouped_rne_core,
+                full_work_nonincrease_verified=False),
             RNE_separate_and_unpadded_byte_cells=separate_cells,
             rejected_two_group_padding_byte_cells=(1 << 34)+(1 << 33)-separate_cells,
             old_KV_bytes_copied=copied, rolling_A_live_bytes=live+copied,
@@ -302,7 +335,7 @@ def report():
         shout_residual_screen=shout_residual_screen(current),
         retained_commit_work=retained_work(old, [rolling_w, chosen[1]]),
         joint_state=joint_state(old, rolling_w, chosen[1], cases),
-        full_work_unresolved=['RNE added sumcheck and scheduling (new padding removed)', 'rolling KV copy and link forms',
+        full_work_unresolved=['RNE weighted first-layer scheduling (extra sumcheck and padding removed)', 'rolling KV copy and link forms',
             'W refresh commitment, equality form and second W PCS; retained data IO',
             'all FFT/fold/hash/PCG work, setup, replay, serialization and off-H100 IO',
             'canonical physical schedule; array/butterfly proxies do not prove time dominance'],

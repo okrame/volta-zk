@@ -325,12 +325,30 @@ pub(super) fn verify(
 // Callers validate dimensions and reserve every row before entering here.
 pub(super) fn prove_tree(
     tree: &[Vec<[Fp3; 2]>],
+    point: Vec<Fp3>,
+    claims: [Auth; 2],
+    fs: &mut Fs,
+    rows: &mut std::vec::IntoIter<Auth>,
+    triples: &mut Vec<[Auth; 3]>,
+) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2]) {
+    prove_tree_with_first_weight(tree, point, claims, fs, rows, triples, None)
+}
+
+// A public multilinear first-layer weight can combine original point claims.
+// Subsequent layers use the ordinary equality weight at the returned point.
+// The caller binds the weight recipe and validates the top dimension.
+pub(super) fn prove_tree_with_first_weight(
+    tree: &[Vec<[Fp3; 2]>],
     mut point: Vec<Fp3>,
     mut claims: [Auth; 2],
     fs: &mut Fs,
     rows: &mut std::vec::IntoIter<Auth>,
     triples: &mut Vec<[Auth; 3]>,
+    mut first_weight: Option<Vec<Fp3>>,
 ) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2]) {
+    if let Some(w) = &first_weight {
+        assert_eq!(w.len(), 1usize << point.len());
+    }
     let bits = tree.len() - 1;
     let mut layers = Vec::new();
     for l in 0..bits {
@@ -339,7 +357,7 @@ pub(super) fn prove_tree(
         let level = &tree[bits - 1 - l];
         let mut children: [Vec<Fp3>; 4] =
             std::array::from_fn(|j| level.chunks_exact(2).map(|pair| pair[j / 2][j % 2]).collect());
-        let mut equality = eq(&point);
+        let mut equality = first_weight.take().unwrap_or_else(|| eq(&point));
         let (mut next_point, mut rounds) = (Vec::new(), Vec::new());
         for round in 0..point.len() {
             fs.set_phase(0x500 + (32 * l + round) as u16);
@@ -400,12 +418,25 @@ pub(super) fn tree_shape(layers: &[Layer], depth: usize, top_bits: usize) -> boo
 
 pub(super) fn verify_tree(
     layers: &[Layer],
+    point: Vec<Fp3>,
+    claims: [Key; 2],
+    delta: Fp3,
+    fs: &mut Fs,
+    rows: &mut std::vec::IntoIter<Key>,
+    triples: &mut Vec<[Key; 3]>,
+) -> Result<(Vec<Fp3>, [Key; 2]), String> {
+    verify_tree_with_first_weight(layers, point, claims, delta, fs, rows, triples, None)
+}
+
+pub(super) fn verify_tree_with_first_weight(
+    layers: &[Layer],
     mut point: Vec<Fp3>,
     mut claims: [Key; 2],
     delta: Fp3,
     fs: &mut Fs,
     rows: &mut std::vec::IntoIter<Key>,
     triples: &mut Vec<[Key; 3]>,
+    first_weight: Option<&dyn Fn(&[Fp3]) -> Fp3>,
 ) -> Result<(Vec<Fp3>, [Key; 2]), String> {
     for (l, layer) in layers.iter().enumerate() {
         let lambda = fs.fp3();
@@ -420,8 +451,16 @@ pub(super) fn verify_tree(
             record_values(fs, 0x43, wire);
             let r = fs.fp3();
             target = a.iter().rev().fold(Key::ZERO, |s, &x| s.scale(r).add(x));
-            equality = equality * ((Fp3::ONE - point[round]) * (Fp3::ONE - r) + point[round] * r);
+            if l != 0 || first_weight.is_none() {
+                equality =
+                    equality * ((Fp3::ONE - point[round]) * (Fp3::ONE - r) + point[round] * r);
+            }
             next_point.push(r);
+        }
+        if l == 0 {
+            if let Some(weight) = first_weight {
+                equality = weight(&next_point);
+            }
         }
         let a = correct(std::array::from_fn::<_, 7, _>(|i| layer.split[i]), delta, rows);
         triples.extend([[a[0], a[3], a[4]], [a[2], a[1], a[5]], [a[1], a[3], a[6]]]);
@@ -769,16 +808,14 @@ mod tests {
             let wire = prove_products(&triples, mask, &mut fs);
             verify_products(&keys, key(mask), wire, delta, &mut Fs::new(b"product algebra", 1))
                 .unwrap();
-            assert!(
-                verify_products(
-                    &keys,
-                    key(mask),
-                    [wire[0], wire[1] + Fp3::ONE],
-                    delta,
-                    &mut Fs::new(b"product algebra", 1)
-                )
-                .is_err()
-            );
+            assert!(verify_products(
+                &keys,
+                key(mask),
+                [wire[0], wire[1] + Fp3::ONE],
+                delta,
+                &mut Fs::new(b"product algebra", 1)
+            )
+            .is_err());
         }
     }
 

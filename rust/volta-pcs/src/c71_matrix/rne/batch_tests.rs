@@ -10,6 +10,14 @@ fn bytes(value: i64) -> [u8; 6] {
 
 #[test]
 fn c71_rne_unpadded_groups_cover_without_extra_cells() {
+    for point in [vec![], vec![signed(2)], vec![signed(3), signed(5), signed(7)]] {
+        for scale in [Fp3::ZERO, Fp3::ONE, signed(11)] {
+            assert_eq!(
+                eq_scaled(&point, scale),
+                eq(&point).into_iter().map(|v| v * scale).collect::<Vec<_>>()
+            );
+        }
+    }
     assert!(batch::unpadded_groups(&[]).is_err());
     assert!(batch::unpadded_groups(&[35]).is_err());
     for n in 1..100 {

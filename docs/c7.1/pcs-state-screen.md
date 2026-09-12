@@ -141,15 +141,15 @@ Le prime due costruzioni restano **non selezionate**:
 
 | O | B12 attuale, upper | KV cumulativo, W a tre esposizioni | KV e W entrambi collegati al predecessore |
 |---:|---:|---:|---:|
-| 0 | 65.053.244 | 27.408.344 | 26.686.168 |
-| 150 | 78.945.726 | 34.669.384 | 41.157.548 |
-| 300 | 92.723.304 | 34.669.384 | 41.157.548 |
+| 0 | 65.053.244 | 27.391.328 | 26.669.152 |
+| 150 | 78.945.726 | 34.647.176 | 41.135.340 |
+| 300 | 92.723.304 | 34.647.176 | 41.135.340 |
 | PCS per risposta | 2 / 3 / 4 | 2 / 3 / 3 | 2 / 4 / 4 |
 
 Sono **upper condizionali del wire della risposta**, con corpo, RNE, range,
 maschere, sali, frontiere Merkle massime, header, frame e chiusura. Non sono
 certificati Gemma validi misurati. I lower corrispondenti della seconda
-variante sono 17.857.848 / 26.835.276 / 26.835.276 byte e conservano le
+variante sono 17.840.832 / 26.813.068 / 26.813.068 byte e conservano le
 omissioni del lower B12: GKR congiunti e hash fratelli. Il lower non è un
 obiettivo raggiunto. Questi upper escludono bootstrap/offline: non sono upper del certificato
 completo sotto il contratto corrente. Il loro costo obbligatorio è contato
@@ -162,7 +162,7 @@ Il minimo wire della famiglia usa 448 query; il componente nativo studiato
 ne usa 456. Il margine di questo screen PCS non sostituisce il bound completo.
 
 Una terza candidata, [stato unico W/A/KV](#stato-unico-wakv-con-installazione-separata),
-proietta **26.653.252 / 28.444.684 / 28.444.684 byte** completi, pagando
+proietta **26.636.236 / 28.422.476 / 28.422.476 byte** completi, pagando
 anche il collegamento al W installato prima del primo prompt. Usa due PCS
 per risposta e riduce i termini delle query nei tre prefissi confrontati.
 Il dominio D36 aggiunge però padding e lavoro nei sumcheck iniziali.
@@ -272,14 +272,38 @@ non spezza endpoint o tabelle e non aggiunge celle:
 
 | O | Bit dei gruppi | Byte P/S con frame |
 |---:|---|---:|
-| 0 | 34,32,30,29,25,24 | 214.116 |
-| 150/300 | 34,32,31,28,27,26,25,24 | 280.208 |
+| 0 | 34,32,30,29,25,24 | 197.100 |
+| 150/300 | 34,32,31,28,27,26,25,24 | 258.000 |
 
-Il sovrapprezzo rispetto ai due gruppi è 133.240 / 199.332 byte, incluso
-nella tabella iniziale. Il numero di foglie e nodi dei 256-entry alberi
-rimane quello separato; resta da addebitare il sumcheck iniziale aggiunto,
-le forme, il routing e lo schedule. La sola uguaglianza del numero di
-foglie non dimostra lavoro totale uguale. Il kernel condiviso resta test-only.
+La versione 2 passa il peso pubblico L direttamente al primo livello
+GKR, eliminando il precedente sumcheck quadratico e il suo MAC della root.
+Risparmia altri 17.016 / 22.208 / 22.208 byte e 528 / 689 / 689 righe
+Fp3 rispetto ai gruppi v1. Per risposta spariscono rispettivamente
+23.135.780.858 / 24.142.413.816 iterazioni quadratiche. I byte delle
+versioni precedenti rimangono nei loro record, non vengono corretti.
+
+Il nucleo condiviso è sempre `range::prove_tree` con otto livelli cubici:
+il primo usa L, gli altri i normali pesi eq. Per N celle e K controlli
+separati, le coppie sono `255*N-8*K`; con G gruppi sono `255*N-8*G`.
+Le coppie aumentano dunque di 7.088 / 7.072; i round cubici scendono da
+197.864 / 198.344 a 1.560 / 2.040. Il numero di foglie e nodi P/S rimane
+quello separato. Non si nasconde il piccolo aumento delle coppie.
+
+Lo screen conta anche le espressioni Fp3 del nucleo: per coppia 27 mul e
+23 add/sub nei coefficienti, più 5 mul/10 add/sub nei fold; per round
+8 mul/17 add/sub; per livello 17 mul/20 add/sub; ogni controllo prodotti
+ha 24 triple a 6 mul/4 add/sub. La costruzione eq usa il seme lambda^j,
+senza moltiplicare nuovamente ogni cella. In questo perimetro, contro
+le RNE separate si eliminano 1.579.292 / 1.579.272 mul e
+3.323.878 / 3.323.908 add/sub. Il risparmio del sumcheck separato
+confronta invece v2 con v1.
+Sono conteggi delle espressioni del codice, non istruzioni CPU/GPU.
+
+**Restano esclusi** da questi numeri tabelle, aggregazione caller,
+trascrizione FS, memoria/IO e PCS. Il confronto completo deve pagarli;
+non si assegna credito di lavoro totale o di sicurezza dal solo nucleo.
+Il kernel condiviso conserva il percorso ordinario con L=eq e la variante
+resta test-only. La dimostrazione di composizione del peso L è aperta.
 
 ## Lavoro completo: confronto richiesto, ancora non scaricato
 
@@ -376,7 +400,7 @@ Il conto completo sostituisce le quattro PCS mobili con le due S,
 mantenendo prudenzialmente i loro frame e la riserva metadata di 128 byte.
 Al primo turno aggiunge la PCS di installazione e 36 byte per il link.
 I gruppi RNE senza padding aggiunto e tutti gli altri consumer restano
-nel conto. Ne risultano gli upper 26,65/28,44/28,44 MB; non si eliminano
+nel conto. Ne risultano gli upper 26,64/28,42/28,42 MB; non si eliminano
 setup, bootstrap o il costo della root di installazione dal lavoro.
 
 Per un prefisso di T risposte si creano una volta W installato e T stati;
@@ -469,7 +493,7 @@ ritornano alla S effettiva, non a un commitment virtuale aggiuntivo.
 
 I [byte del record pulito](evidence.md#joint-state-complete-bounded-inference-comparison)
 comprendono l’intero certificato valido sul **grafo ridotto**, con sali/sfide
-freschi e frontiere Merkle variabili. Non sono i 26,65/28,44/28,44 MB
+freschi e frontiere Merkle variabili. Non sono i 26,64/28,42/28,42 MB
 canonici: questi restano upper condizionali del codec. Il totale ideale
 è 261.992 righe Fp3 contro 265.713; il bootstrap reale non viene eseguito.
 La riduzione delle correlazioni non compensa automaticamente altre operazioni.
@@ -560,7 +584,7 @@ separatamente dai DFT, non sommata come se ogni termine avesse costo
 identico a una butterfly o a una moltiplicazione Fp3. La clausola del
 design che vieta di nascondere t*M nel trattamento delle sorgenti non
 è quindi scaricata da questo percorso denso. Il confronto completo deve
-includere questi covettori, il sumcheck RNE aggiunto, le forme di link,
+includere questi covettori, il primo livello RNE pesato, le forme di link,
 il KV e lo schedule fisico della cache. Rimane `full_work_nonincrease_verified:false`.
 
 ## Esito fisico D36 nel backend corrente

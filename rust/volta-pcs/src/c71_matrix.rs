@@ -486,7 +486,11 @@ fn fold(values: &mut Vec<Fp3>, r: Fp3) {
 }
 
 fn eq(point: &[Fp3]) -> Vec<Fp3> {
-    let mut weights = vec![Fp3::ONE];
+    eq_scaled(point, Fp3::ONE)
+}
+
+fn eq_scaled(point: &[Fp3], scale: Fp3) -> Vec<Fp3> {
+    let mut weights = vec![scale];
     for &r in point {
         weights = weights.into_iter().flat_map(|x| [x * (Fp3::ONE - r), x * r]).collect();
     }

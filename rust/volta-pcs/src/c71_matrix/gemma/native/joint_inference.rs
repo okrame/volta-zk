@@ -9,7 +9,7 @@ const WD: Domain = Domain::JointTest { bits: 12, exposures: 1, first: 4 };
 const SD: Domain = Domain::JointTest { bits: 13, exposures: 2, first: 5 };
 const AD: Domain = Domain::Flat(11);
 const MAGIC: &[u8] =
-    b"C71-joint-inference-test-v1;W4096;A2048;bank1536;zero-quarter;unpadded-RNE\0";
+    b"C71-joint-inference-test-v1;W4096;A2048;bank1536;zero-quarter;unpadded-RNE-weighted-first-GKR-v2\0";
 
 // Keep the seven original reductions; batch only their byte-function checks.
 // The groups cover 224 cells exactly (128+64+32), with no added padding.

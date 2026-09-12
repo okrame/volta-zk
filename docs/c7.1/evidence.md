@@ -62,6 +62,23 @@ Conservare le regressioni `test_c71_fp6_seed_screen`, `test_c71_dory_path_guard`
 
 ## Shared RNE byte experiment
 
+**Checkpoint v2 (2026-09-12).** Il primo livello GKR consuma direttamente
+il peso delle forme originali; spariscono sumcheck quadratico e MAC della
+root separati. Il positivo piccolo passa da 22.436 a **14.552 byte** per
+le sole prove RNE, con **10.764 byte** condivisi e **1.055 righe Fp3** nel
+controllo composto. Rimangono esclusi i costi esterni elencati sotto.
+Passano 21 test Rust distinti: quattro RNE/codec, copertura dei gruppi,
+tre range, prodotti, funzioni byte, due confronti joint-inference, gli
+otto wrapper nativi e il corpo canonico sintetico; due test Python dello
+screen PCS passano. Build mirata offline, un job; invocazioni Rust con
+60 s/2 GiB e un worker Rayon. Il test del pool reale ha prima incontrato
+il divieto sandbox di creare una socketpair Unix, poi è passato con
+l'accesso locale consentito. Nessun run hardware o nuovo bound composto.
+
+I numeri nei paragrafi seguenti documentano **v1 e il suo record congelato**;
+non vengono attribuiti al codec v2. La proiezione v2 con gruppi senza
+padding è nello [screen attivo](pcs-state-screen.md#rne-eliminare-il-padding-aggiunto-prima-di-confrontare-il-lavoro).
+
 Il [record immutabile](../../benchmarks/results/c71-rne-joint-bytes-2026-09-11-589ce7b8f86c.json)
 proviene dal commit `589ce7b8f86c` con `git_dirty:false`, limiti, hash del
 binario, comandi e output integrali dei due controlli della candidata.

@@ -331,8 +331,6 @@ mod tests {
                 // Serialize actual joint Wire types at canonical shapes; synthetic values only.
                 use kernel::wire::Wire;
                 let mut encoded = Vec::new();
-                vec![[Fp3::ZERO; 4]; d].write(&mut encoded);
-                [Fp3::ZERO; 2].write(&mut encoded);
                 encoded.extend(8u32.to_le_bytes());
                 for i in 0..8 {
                     vec![[Fp3::ZERO; 5]; d + i].write(&mut encoded);

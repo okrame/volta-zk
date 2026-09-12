@@ -28,6 +28,14 @@ def test_pcs_state_screen_counts_full_envelopes_and_keeps_work_unadmitted():
         assert c['fits_D34'] and c['rolling_A_live_bytes'] <= 1 << 34
         assert c['full_prover_work'] is None and not c['full_work_nonincrease_verified']
         assert sum(1 << d for d in c['unpadded_RNE_group_bits']) == c['RNE_separate_and_unpadded_byte_cells']
+        fused = c['RNE_weighted_first_GKR']
+        assert fused['separate_sumcheck_removed'] and fused['added_quadratic_pair_iterations'] == 0
+        assert fused['removed_quadratic_pair_iterations'] == c['RNE_separate_and_unpadded_byte_cells'] - len(c['unpadded_RNE_group_bits'])
+        assert fused['grouped_cubic_pair_iterations'] - fused['baseline_cubic_pair_iterations'] == 8*(892-len(c['unpadded_RNE_group_bits']))
+
+        for key in ('Fp3_mul_expressions', 'Fp3_add_sub_expressions', 'cubic_rounds'):
+            assert fused['grouped_shared_core'][key] < fused['baseline_shared_core'][key]
+        assert not fused['full_work_nonincrease_verified']
         assert all(a < b for a, b in zip(c['rolling_W_and_KV_interval'], c['baseline_interval']))
         assert all(a < b for a, b in zip(c['projected_complete_response_interval'], c['baseline_interval']))
 
@@ -86,7 +94,7 @@ def test_pcs_state_screen_counts_full_envelopes_and_keeps_work_unadmitted():
     assert not joint['selected'] and not joint['complete_security_proven']
     assert joint['full_prover_work'] is None and not joint['full_work_nonincrease_verified']
     assert [c['source_PCS_count'] for c in joint['cases']] == [2, 2, 2]
-    assert [c['complete_response_interval'][1] for c in joint['cases']] == [26653252, 28444684, 28444684]
+    assert [c['complete_response_interval'][1] for c in joint['cases']] == [26636236, 28422476, 28422476]
     assert all(c['complete_response_interval'][1] < 30_000_000 for c in joint['cases'])
     # W is installed before the first prompt: its PCS must not disappear when
     # W is merged into the first state root. A new root alone is insufficient.

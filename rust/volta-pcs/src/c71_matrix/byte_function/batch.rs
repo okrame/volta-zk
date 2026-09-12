@@ -1,11 +1,9 @@
 //! Experimental joint RNE byte-function reduction. Test-only, no B12 admission.
 use super::*;
 
-component_wire!(Proof { rounds, root, layers, leaf_tag, products });
+component_wire!(Proof { layers, leaf_tag, products });
 
 pub(crate) struct Proof {
-    rounds: Vec<[Fp3; 4]>,
-    root: [Fp3; 2],
     layers: Vec<range::Layer>,
     leaf_tag: Fp3,
     products: [Fp3; 2],
@@ -77,11 +75,11 @@ pub(crate) fn unpadded_groups(bits: &[usize]) -> Result<Vec<Vec<usize>>, String>
 }
 
 pub(crate) fn required(d: usize) -> usize {
-    3 * d + 1 + super::required(d)
+    super::required(d)
 }
 
 pub(crate) fn wire_bytes(d: usize) -> usize {
-    4 + 4 * 24 * d + 2 * 24 + super::wire_bytes(d)
+    super::wire_bytes(d)
 }
 
 fn prefix(offset: usize, local_bits: usize, point: &[Fp3]) -> Fp3 {
@@ -113,7 +111,10 @@ fn bind_batch(statements: &[Statement<'_>], fs: &mut Fs) -> Result<Public, Strin
         return Err("joint byte statements must share one source and attempt".into());
     }
     fs.set_phase(0xa00);
-    fs.record(0x75, b"C71-RNE-joint-byte-experiment-v1;ordered-originals;packed-MSB");
+    fs.record(
+        0x75,
+        b"C71-RNE-joint-byte-experiment-v2;weighted-first-GKR;ordered-originals;packed-MSB",
+    );
     let mut header = (statements.len() as u32).to_le_bytes().to_vec();
     for &offset in &offsets {
         header.extend((offset as u64).to_le_bytes());
@@ -180,7 +181,8 @@ pub(crate) fn prove(
     let c: Vec<_> = statements.iter().map(|s| coefficients(s.tables)).collect();
     let mut bottom = vec![[Fp3::ZERO; 2]; 256 << public.d];
     // Unused packed cells have public byte zero and zero numerator coefficients.
-    for cell in bottom.chunks_exact_mut(256) {
+    let covered: usize = public.points.iter().map(|p| 1usize << p.len()).sum();
+    for cell in bottom[256 * covered..].chunks_exact_mut(256) {
         for (j, v) in cell.iter_mut().enumerate() {
             v[1] = -signed(j as i64);
         }
@@ -189,14 +191,11 @@ pub(crate) fn prove(
     let mut target = Auth::ZERO;
     for (i, original) in originals.iter().enumerate() {
         let local = &public.points[i];
-        let lane_weights = eq(&local[local.len() - 3..]);
-        target = original
-            .iter()
-            .zip(lane_weights)
-            .fold(target, |v, (&a, w)| v.add(a.scale(public.powers[i] * w)));
-        for (j, w) in eq(local).into_iter().enumerate() {
+        let lane_weights = eq_scaled(&local[local.len() - 3..], public.powers[i]);
+        target = original.iter().zip(lane_weights).fold(target, |v, (&a, w)| v.add(a.scale(w)));
+        for (j, w) in eq_scaled(local, public.powers[i]).into_iter().enumerate() {
             let cell = public.offsets[i] + j;
-            weight[cell] = public.powers[i] * w;
+            weight[cell] = w;
             let byte = signed(i64::from(get(i, j)));
             for k in 0..256 {
                 bottom[256 * cell + k] = [c[i][j % 8][k], byte - signed(k as i64)];
@@ -216,46 +215,25 @@ pub(crate) fn prove(
                 .collect(),
         );
     }
-    let mut values: Vec<_> = tree[8].iter().map(|v| v[0]).collect();
-    let (mut rounds, mut point) = (Vec::new(), Vec::new());
-    for round in 0..public.d {
-        let half = values.len() / 2;
-        let mut coefficients = [Fp3::ZERO; 3];
-        for i in 0..half {
-            let (a, b) = (values[i], weight[i]);
-            let (da, db) = (values[i + half] - a, weight[i + half] - b);
-            coefficients[0] += a * b;
-            coefficients[1] += da * b + a * db;
-            coefficients[2] += da * db;
-        }
-        let (wire, a) = range::authenticate(coefficients, rows);
-        let tag = a[0].m + a[0].m + a[1].m + a[2].m - target.m;
-        let wire = [wire[0], wire[1], wire[2], tag];
-        fs.set_phase(0xa10 + round as u16);
-        record_values(fs, 0x77, &wire);
-        let r = fs.fp3();
-        target = a.iter().rev().fold(Auth::ZERO, |v, &a| v.scale(r).add(a));
-        fold(&mut values, r);
-        fold(&mut weight, r);
-        point.push(r);
-        rounds.push(wire);
-    }
-    let (wire, a) = range::authenticate([values[0]], rows);
-    let root = [wire[0], a[0].m * weight[0] - target.m];
-    record_values(fs, 0x78, &root);
     let mut triples = Vec::new();
-    let (layers, mut point, claims) =
-        range::prove_tree(&tree, point, [a[0], Auth::ZERO], fs, rows, &mut triples);
+    // Use the original weighted sum directly in the first cubic GKR layer.
+    // The placeholder coordinates carry only its public dimension; the
+    // supplied weight replaces their equality polynomial in that layer.
+    let (layers, mut point, claims) = range::prove_tree_with_first_weight(
+        &tree,
+        vec![Fp3::ZERO; public.d],
+        [target, Auth::ZERO],
+        fs,
+        rows,
+        &mut triples,
+        Some(weight),
+    );
     let (_, index) = public.leaf(&c, &point);
     let leaf_tag = claims[0].m;
     record_values(fs, 0x79, &[leaf_tag]);
     let products = range::prove_products(&triples, rows.next().unwrap(), fs);
     point.truncate(public.d);
-    Ok((
-        Proof { rounds, root, layers, leaf_tag, products },
-        point,
-        Auth::new(claims[1].x + index, claims[1].m),
-    ))
+    Ok((Proof { layers, leaf_tag, products }, point, Auth::new(claims[1].x + index, claims[1].m)))
 }
 
 pub(crate) fn verify(
@@ -268,7 +246,6 @@ pub(crate) fn verify(
 ) -> Result<(Vec<Fp3>, Key), String> {
     let public = bind_batch(statements, fs)?;
     if originals.len() != statements.len()
-        || proof.rounds.len() != public.d
         || !range::tree_shape(&proof.layers, 8, public.d)
         || rows.len() < required(public.d)
     {
@@ -279,29 +256,20 @@ pub(crate) fn verify(
         let local = &public.points[i];
         target = original
             .iter()
-            .zip(eq(&local[local.len() - 3..]))
-            .fold(target, |v, (&a, w)| v.add(a.scale(public.powers[i] * w)));
+            .zip(eq_scaled(&local[local.len() - 3..], public.powers[i]))
+            .fold(target, |v, (&a, w)| v.add(a.scale(w)));
     }
-    let mut point = Vec::new();
-    for (round, wire) in proof.rounds.iter().enumerate() {
-        let a = range::correct([wire[0], wire[1], wire[2]], delta, rows);
-        if a[0].k + a[0].k + a[1].k + a[2].k - target.k != wire[3] {
-            return Err("joint byte quadratic MAC rejected".into());
-        }
-        fs.set_phase(0xa10 + round as u16);
-        record_values(fs, 0x77, wire);
-        let r = fs.fp3();
-        target = a.iter().rev().fold(Key::ZERO, |v, &a| v.scale(r).add(a));
-        point.push(r);
-    }
-    let a = range::correct([proof.root[0]], delta, rows)[0];
-    if a.k * public.weight(&point) - target.k != proof.root[1] {
-        return Err("joint byte root MAC rejected".into());
-    }
-    record_values(fs, 0x78, &proof.root);
     let mut triples = Vec::new();
-    let (mut point, claims) =
-        range::verify_tree(&proof.layers, point, [a, Key::ZERO], delta, fs, rows, &mut triples)?;
+    let (mut point, claims) = range::verify_tree_with_first_weight(
+        &proof.layers,
+        vec![Fp3::ZERO; public.d],
+        [target, Key::ZERO],
+        delta,
+        fs,
+        rows,
+        &mut triples,
+        Some(&|point| public.weight(point)),
+    )?;
     let c: Vec<_> = statements.iter().map(|s| coefficients(s.tables)).collect();
     let (coefficient, index) = public.leaf(&c, &point);
     if claims[0].k - delta * coefficient != proof.leaf_tag {

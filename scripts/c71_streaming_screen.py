@@ -286,8 +286,8 @@ def local_preflight(gram, suffix):
     return {
         'credit': False, 'spending_authorized': False, 'decision': 'NO_GO',
         'counted_work': work,
-        'necessary_per_second_if_component_had_all_50_seconds': {
-            k: None if v is None else v/50 for k, v in work.items()},
+        'necessary_per_second_if_component_had_all_65_seconds': {
+            k: None if v is None else v/65 for k, v in work.items()},
         'rates_are_not_sufficient_and_overlapping_work_must_not_be_added': True,
         'W_visits_range_plus_linear': visits,
         'W_visits_complete': None, 'A_visits_complete': None, 'KV_visits_complete': None,

@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Bounded address plan; no GPU allocation or native prover admission."""
+import json
+import c71_response_trace as response
+import c71_whir_trace as whir
+import c71_pcg_trace as pcg
+import c71_getter_trace as getter
+
+ALIGN = 256
+MARGIN = response.OPERATIONAL_MARGIN_BYTES
+LIMIT = response.ARENA - MARGIN
+
+
+def aligned(n):
+    return (n+ALIGN-1)//ALIGN*ALIGN
+
+
+def place_events(events, persistent):
+    """First-fit offsets; releases require a stream completion fence.
+
+    The output is a plan for one preallocated slab, not cudaMalloc accounting.
+    No moving live allocation or releasing a retained predecessor before query.
+    """
+    live, output, peak, logical_peak = {}, [], 0, 0
+    def allocate(key, size):
+        nonlocal peak
+        if key in live or size < 0: raise ValueError('duplicate or negative allocation')
+        size=aligned(size)
+        offset=0
+        for start,n in sorted(live.values()):
+            if offset+size <= start: break
+            offset=max(offset,start+n)
+        live[key]=(offset,size)
+        peak=max(peak,offset+size)
+        return (key,offset,size)
+    initial=[allocate(key,size) for key,size in sorted(persistent.items(),key=lambda x:-x[1])]
+    for event in events:
+        freed=event.get('free',[])
+        allocations=event.get('allocate',{})
+        before=dict(live)
+        inplace=next((k for k in freed if k.startswith('retained:')),None)
+        replacement=next((k for k in allocations if k.startswith('retained:')),None)
+        for key in freed:
+            if key not in live:raise ValueError('release without live owner: '+key)
+            del live[key]
+        assigned=[]
+        if inplace and replacement and 'fold' in event['event']:
+            offset,old_size=before[inplace];size=aligned(allocations[replacement])
+            if size>old_size:raise ValueError('in-place fold grows allocation')
+            live[replacement]=(offset,size)
+            assigned.append((replacement,offset,size))
+        for key,size in sorted(allocations.items(),key=lambda x:-x[1]):
+            if key!=replacement or not assigned:assigned.append(allocate(key,size))
+        spans=sorted(live.values())
+        assert all(a+n<=b for (a,n),(b,_) in zip(spans,spans[1:]))
+        logical_peak=max(logical_peak,sum(n for _,n in spans))
+        output.append({'event':event['event'],'allocate':assigned,'free':list(freed),
+            'fence_before_release':bool(freed),'live_aligned_bytes':sum(n for _,n in spans),
+            'address_end':max((a+n for a,n in spans),default=0)})
+    return {'initial_allocations':initial,'events':output,'address_high_water_bytes':peak,'aligned_live_peak_bytes':logical_peak,
+        'arena_reserved_bytes':response.ARENA,'operational_margin_required_bytes':MARGIN,
+        'unaddressed_tail_bytes':response.ARENA-peak,'fits_with_operational_margin':peak<=LIMIT,
+        'device_allocation_measured':False,'native_allocator_connected':False}
+
+
+def report():
+    pcs={35:whir.trace(35),34:whir.trace(34,initial_coset_rows=1 << 21)}
+    retained=whir.a_s1_retention_schedule(s2_coset_rows=1 << 22)
+    correlations=pcg.report()
+    cases=[]
+    for old in (0,150,300):
+        memory=response.integrated_memory(old,pcs,correlations,retained_A=retained)
+        persistent=dict(memory['slots_bytes'],shared_roots=response.shared_roots(old))
+        # Each chain runs serially in the same slab; roots and session slots
+        # never disappear between chains. Freeing occurs only after a fence.
+        chains={'initial_A_commit':[e for e in pcs[34]['events'] if e['event'] in ('commit_data_0','retain_data_0_root')],
+            'W_opening':[e for e in pcs[35]['events'] if e['event'] not in ('commit_data_0','retain_data_0_root')],
+            'each_A_opening':retained['events']}
+        phase_events=[]
+        for e in memory['phases']:
+            if e['chain']=='response':
+                size=e['known_arena_live_bytes']-sum(persistent.values())
+                phase_events.extend([{'event':e['event'],'allocate':{'phase:core':size},'free':[]},
+                    {'event':e['event']+'_fence_release','allocate':{},'free':['phase:core']}])
+        chains['range_and_linear']=phase_events
+        layouts={}
+        for name,events in chains.items():
+            stripped=[dict(e,allocate={k:v for k,v in e['allocate'].items() if not k.startswith('shared:')},
+                free=[k for k in e['free'] if not k.startswith('shared:')]) for e in events]
+            layouts[name]=place_events(stripped,persistent)
+        original_A_passes=[36]*(old//150)+[1024+26+36]
+        macs=sum(n*getter.scatter_generation_trace(o)['work']['integer_MACs']
+            for n,o in zip(original_A_passes,range(0,old+1,150)))
+        tiles=getter.byte_tiles(getter.sources_at(old))
+        largest_tile=max(t['rows']*t['cols']*t['width'] for t in tiles)
+        cases.append({'old_tokens':old,'memory_with_slots':memory,'address_layouts':layouts,
+            'all_chain_layouts_fit_margin':all(p['fits_with_operational_margin'] for p in layouts.values()),
+            'original_A_passes_by_generation':original_A_passes,'getter_integer_MACs':macs,
+            'four_INT8_learned_matrix_replay_lower_seconds_conditional':
+                sum(original_A_passes)*8*4_463_473_459_200/2.2e15,
+            'retained_state_logical_read_bytes_per_A':retained['retained_state_logical_read_bytes_total'],
+            'native_snapshot_i64_dense_values_lower_bytes':8*getter.getter_trace(old)['unique_words'],
+            'ordered_getter_full_DAG_per_tile_fallback':{
+                'tile_count':len(tiles),'tile_payload_buffer_cap_bytes':largest_tile,
+                'buffer_inside_reader_hash_slot':largest_tile<=memory['slots_bytes']['reader_hash_slot'],
+                'full_A_generations_per_ordered_pass':len(tiles),
+                'integer_MACs_per_ordered_pass':len(tiles)*getter.scatter_generation_trace(old)['work']['integer_MACs'],
+                'four_INT8_lower_seconds_one_ordered_pass_conditional':len(tiles)*8*4_463_473_459_200/2.2e15,
+                'decision':'NO_GO_literal_full_DAG_per_tile_under_same_INT8_ceiling',
+                'not_a_lower_for_shared_dependency_getters':True},
+            'physical_peak_complete':None,'time_upper_complete':None,'admitted':False})
+    return {'credit':False,'deadline_seconds':response.DEADLINE_SECONDS,
+        'initial_A_coset_rows':1 << 21,'A_S2_coset_rows':1 << 22,
+        'cases':cases,'missing':['odd-log FFT parity-scatter adapter with identical roots',
+            'ordered getter dependency cuts and native producer workspaces',
+            'native PCS/PCG and global context allocator census',
+            'all phase work and applicable service floors'],
+        'native_workspace_audit':{
+            'FFT_square':'in-place values + n*8 twiddles; native launch_five_pass allocates no extra global scratch',
+            'range':'native src/dst and reduction arrays; Gram microbench materialization is component-only',
+            'snapshot':'native Snapshot stores Vec<Vec<i64>>; literal lift exceeds arena before byte packing',
+            'WHIR':'native initialize_sumcheck allocates dense evals and weights; streaming candidate is not wired',
+            'PCG':'Fp6/OT/setup adapter workspace remains unbounded in this candidate',
+            'arena_checker_metadata_bytes':512*24,
+            'global_unallocated_margin_required_bytes':1 << 30,
+            'remaining_global_for_unverified_residents_after_margin':80_000_000_000-response.W_BYTES-450*response.KV_PER_TOKEN-response.ARENA-(1 << 30)},
+        'minimum_H100_benchmark_ready':False}
+
+if __name__=='__main__':print(json.dumps(report(),indent=2))

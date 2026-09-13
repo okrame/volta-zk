@@ -4,9 +4,10 @@
 rigenera tutta A con prodotti scalari a ogni visita: il solo commit A
 impone >=135,257 s nelle condizioni esplicite sotto. Le specializzazioni
 range/FFT/apertura per resti riducono il lavoro, ma il loro lower parziale
-non esclude una costruzione diversa entro 50 s. Upper completo e picco
+non esclude una costruzione diversa entro 65 s. Upper completo e picco
 completo restano aperti. **90 s è una soglia di discussione del proprietario,
-non una deroga autorizzata.** Nessun pod, spesa o esecuzione GPU.
+non una deroga autorizzata.** Il contratto vigente autorizzato è
+`T_inference + T_proof_only <=65 s`. Nessun pod, spesa o esecuzione GPU.
 
 I conti riproducibili sono in
 [`integrated_resource_ledger`](../../scripts/c71_streaming_screen.py) e
@@ -434,27 +435,27 @@ bootstrap si riportano anche nei prefissi totali, senza nasconderli.
 
 Per ottenere un numero finito mancano lavoro e service-rate floors
 applicabili a diverse categorie; **l'upper di ammissione è quindi
-+infinito, non 50 s e non una previsione di tempo infinito reale**.
-Le soglie seguenti concedono tutti i 50 s a una sola voce e sono solo
-necessarie; per un budget t_k usare `work/t_k`, con `sum(t_k)<=50`.
++infinito, non 65 s e non una previsione di tempo infinito reale**.
+Le soglie seguenti concedono tutti i 65 s a una sola voce e sono solo
+necessarie; per un budget t_k usare `work/t_k`, con `sum(t_k)<=65`.
 
-| Nucleo variante | Lavoro | Throughput minimo /50 s |
+| Nucleo variante | Lavoro | Throughput minimo /65 s |
 |---|---:|---:|
-| Merge W | 740.982.521.855 | 14,820 Gmerge/s |
-| Coefficienti W residenti, 18 mul/bucket | 201.326.556 bucket | 4,027 Mbucket/s |
-| Fold W, H incluso | 1.006.637.247 scalari | 20,133 Mfold/s |
-| Nucleo range W fattorizzato | 3.469.226.278.261 mul Fp3 | 69,385 Gmul/s |
-| Nucleo range A fattorizzato | 1.571.622.485.383 mul Fp3 | 31,432 Gmul/s |
-| Suffix-first W | 314.498.580.480 aggiornamenti | 6,290 Gaggiornamenti/s |
-| Prima apertura W, payload e pad specializzati | 2.738.851.151.872 butterfly | 54,777 Gbutterfly/s |
-| Primo commit A, FFT sola | 3.023.656.976.384 butterfly | 60,473 Gbutterfly/s |
+| Merge W | 740.982.521.855 | 11,400 Gmerge/s |
+| Coefficienti W residenti, 18 mul/bucket | 201.326.556 bucket | 3,097 Mbucket/s |
+| Fold W, H incluso | 1.006.637.247 scalari | 15,487 Mfold/s |
+| Nucleo range W fattorizzato | 3.469.226.278.261 mul Fp3 | 53,373 Gmul/s |
+| Nucleo range A fattorizzato | 1.571.622.485.383 mul Fp3 | 24,179 Gmul/s |
+| Suffix-first W | 314.498.580.480 aggiornamenti | 4,838 Gaggiornamenti/s |
+| Prima apertura W, payload e pad specializzati | 2.738.851.151.872 butterfly | 42,136 Gbutterfly/s |
+| Primo commit A, FFT sola | 3.023.656.976.384 butterfly | 46,518 Gbutterfly/s |
 | PCS complete, getter A/KV, PCG, inferenza, serializzazione | Parzialmente ignoti | Soglia completa non disponibile |
 
 Le righe range nucleo includono merge e coefficienti; non sommarle.
 Il commit A aggiunge 512*(A_live+128*1536) prodotti di scaling generico,
-oltre a twiddle, hash e sali; non sparisce con l'apertura per resti.
-Per le sole prime aperture specializzate servono almeno 78,673/104,648/
-132,697 Gbutterfly/s se si concedono tutti i 50 s a questa voce. Per un
+nella geometria precedente, oltre a twiddle, hash e sali; non sparisce con l'apertura per resti.
+Per le sole prime aperture specializzate servono almeno 60,518/80,498/
+102,075 Gbutterfly/s se si concedono tutti i 65 s a questa voce. Per un
 budget assegnato t, ogni soglia è work/t; 90 s resta solo un confronto.
 Per PCG si divide per t l'upper del lavoro effettivamente selezionato per
 il contratto di servizio, non lo si presenta come throughput necessario
@@ -557,28 +558,31 @@ servizio, con la stessa somma per O=0/150/300, non una previsione:
 | Fase | Budget s |
 |---|---:|
 | Inferenza nativa originale | 3,0 |
-| Getter e ricostruzioni durante la prova | 2,0 |
+| Getter e ricostruzioni durante la prova | 14,0 |
 | Relazioni producer e GKR | 1,0 |
 | Range W e A | 18,0 |
 | Linear W/A e history | 1,0 |
 | Commit iniziale A | 7,0 |
 | Prime aperture W e tutte A | 15,2 |
-| WHIR successivo, maschere e terminale | 1,0 |
-| PCG/MAC | 1,0 |
+| WHIR successivo, maschere e terminale | 3,0 |
+| PCG/MAC, setup fresco nella prima prova | 2,0 |
 | Serializzazione/trasporto | 0,3 |
 | Host, sincronizzazioni e interazioni verifier | 0,5 |
-| **Proof only / totale** | **47,0 / 50,0** |
+| **Proof only / totale** | **62,0 / 65,0** |
 
 Il ledger genera le soglie work/budget, **non service-rate floors**:
 FFT commit A >=431,95 Gbutterfly/s per la sola voce; le aperture chiedono
-258,79 / 344,24 / 436,50 Gbutterfly/s. PCG richiede nel piano trie gli
+258,79 / 344,24 / 436,50 Gbutterfly/s. PCG conta nel piano trie gli
 upper 583,386 / 585,121 / 585,175 milioni H per ruolo, più
 83,921 / 84,172 / 84,179 milioni chiamate SHAKE EAGen. Alla prima prova
 si aggiungono 707,787 milioni H/ruolo del setup a due traversate, hash
 universale e seed/guard/OT, con costi ancora parziali. Non confondere
 un upper di lavoro con un lower di lavoro necessario per ogni algoritmo.
-Il budget getter di 2 s è già incompatibile con il lower della ricostruzione
-a quattro GEMM esaminata: la tabella non costituisce uno schedule ammesso.
+Le soglie PCG per secondo dividono questi conteggi per il nuovo budget
+di 2 s; quelle del nucleo WHIR successivo per 3 s.
+Il budget getter è ora 14 s per la geometria precedente; la variante con
+più margine richiede già 17,627–18,795 s nel suo lower condizionale. La
+ripartizione resta provvisoria e non costituisce uno schedule ammesso.
 Per getter le soglie si riferiscono al piano di ricostruzione dichiarato;
 non sono il costo dell'inferenza originale.
 
@@ -695,8 +699,8 @@ generoso di 2,2 POPS densi**, superiore alla targa densa ricavata dalla
 Non è un throughput minimo, né una conversione di TOPS in Fp3.
 Per il piano seriale senza retention, soltanto learned-matrix replay più
 il precedente lower range/FFT/aperture danno **43,012 / 47,934 / 53,091 s**,
-prima di inferenza, PCG e resto. È quindi respinto quel piano per la
-terza risposta sotto le condizioni dichiarate, non ogni getter/PCS.
+prima di inferenza, PCG e resto. Questo respingeva il piano alla terza
+risposta con 50 s; con il nuovo limite a 65 s non basta per respingerlo.
 Questo giustifica cercare retention/fusioni A; non ulteriore tuning range/FFT.
 
 La candidata retention A ora arriva **fino al base case**, per ciascuna
@@ -723,12 +727,11 @@ non accredita questi subtotali come HBM completo.
 
 Il massimo integrato resta il commit A corrente della tabella precedente;
 range e linear riusano l'arena in fasi separate, senza C anticipata durante
-il range. La retention evita 60/120/180 rigenerazioni A, ma **la terza
-risposta resta esclusa sotto le stesse condizioni del modello a quattro
-GEMM**, già prima di inferenza e lavoro retained aggiuntivo. La soglia
+il range. La retention evita 60/120/180 rigenerazioni A. Il lower della terza
+risposta superava il vecchio limite a 50 s; **non esclude i 65 s autorizzati**.
+Inferenza e lavoro retained restano aggiuntivi. La soglia
 50,170 s è un lower condizionale, non una previsione o un upper. Restano
-da cambiare almeno una premessa del costo dominante e da chiudere i
-controlli nativi; questo checkpoint non giustifica una spesa H100.
+da chiudere margine fisico, lavoro completo e controlli nativi; questo checkpoint non giustifica una spesa H100.
 
 ## GO/NO-GO prima di qualsiasi spesa
 
@@ -740,12 +743,76 @@ controlli nativi; questo checkpoint non giustifica una spesa H100.
 | PCS completa | Tutti i 12 oracoli per catena, maschere, stati folded, source-uniformity e salt seek | Ancora aperto |
 | PCG | Trace AES/cGGM a batch, seed/state/OT, no pool bulk; costi di entrambi i ruoli | Upper componente soltanto |
 | Memoria | Ogni buffer vivo, arena totale, allocated/reserved globale <80 GB, assenza di spill | Buffer nominati compatibili nella variante, totale ignoto |
-| Tempo | Somma completa <=50 s sotto contratti applicabili; ogni lower compatibile | Replay completo e getter scalare esclusi; alternativa senza upper finito |
+| Tempo | Somma completa <=65 s sotto contratti applicabili; ogni lower compatibile | Replay completo e getter scalare esclusi; alternativa senza upper finito |
 | Riproduzione e spesa | Clean SHA pubblicata, harness/input integrati, immagine/deadline/prezzo fissati, autorizzazione nuova | Gate non raggiunto |
 
 Non si propone RunPod per il replay già escluso né si usa un microbench
 veloce per accreditare il resto. Il precedente comando/preventivo puramente
 indicativo resta nella storia Git: con lo steering corrente non è una
 proposta attiva. Preparare un comando provider istanziato e un preventivo
-solo dopo che la costruzione completa resta plausibile entro 50 s e
+solo dopo che la costruzione completa resta plausibile entro 65 s e
 l'harness integrato è pronto; nessuna autorizzazione di spesa è acquisita.
+
+## Picco con margine operativo: contratto a 65 s
+
+Il [piano degli indirizzi](../../scripts/c71_arena_plan.py) adotta **256 MiB
+(268.435.456 B) inutilizzati dentro l'arena** e 1 GiB di margine globale.
+Sono criteri operativi locali più prudenti del solo fit, non memoria
+aggiuntiva: il cap resta 6.442.450.944 B e il globale sotto 80 GB.
+Il [checker C++](../../cuda/c71_arena_preflight.cpp) verifica offset allineati
+256 B, assenza di sovrapposizioni, cap con margine e rilascio soltanto con
+fence dichiarata. I suoi 512 descrittori occupano 12.288 B nel test nativo.
+Non alloca 6 GiB, non usa CUDA e non dimostra che un kernel abbia completato
+la fence: è il controllo nativo del piano per un singolo slab preallocato.
+
+Per liberare spazio senza ridurre slot ipotetici, la candidata dimezza il
+coset iniziale A da 2^22 a **2^21** e quello S2 da 2^23 a **2^22**. Conserva
+root/cache/pad, proof buffer, PCG, getter e metadata. L'allocatore first-fit
+mantiene gli indirizzi dei buffer vivi; il fold in place accorcia lo stesso
+span dopo la query e la fence. Range e linear riusano lo slab in fasi
+separate. Lo spazio liberato non viene dichiarato workspace già verificato.
+
+| O | Massimo indirizzo occupato, B | Coda libera nell'arena, B | Rigenerazioni A nominate |
+|---:|---:|---:|---:|
+| 0 | 5.983.782.912 | 458.668.032 | 1.086 |
+| 150 | 6.023.104.512 | 419.346.432 | 1.122 |
+| 300 | 6.062.426.112 | 380.024.832 | 1.158 |
+
+Il massimo è il primo switch W; riservato totale dello slab resta 6 GiB.
+Rimangono 10.683.612.672 B globali per residenti ancora non verificati,
+**dopo** W, KV450, slab e margine globale da 1 GiB. Non è un'autorizzazione
+ad allocare witness o temporanei fuori arena. La prima codifica A ora
+richiede 1.024 rigenerazioni; gli stati retained aggiungono 96 passaggi e
+126.433.087.488 B logici letti per catena. Il lower condizionale del solo
+replay learned-matrix è **17,627 / 18,211 / 18,795 s**. Non riutilizzare
+il precedente lower FFT completo: il coset cambia kernel/layout.
+
+La FFT di lunghezza 2^21 può usare scatter iniziale per parità, due FFT
+quadrate da 2^20 e merge finale in place. Il test finito confronta questa
+identità con DFT in ordine naturale. **L'adapter CUDA dispari non è ancora
+implementato**: niente credito di tempo o root nativa dal test algebrico.
+La FFT quadrata esistente usa soltanto values e twiddle globali; i suoi
+transpose/row kernel usano shared memory, già distinta dall'HBM. Il trace
+non trasforma questo controllo nel workspace completo della PCS.
+
+L'audit dei percorsi nativi distingue tre incompatibilità/obblighi:
+
+- Estendere letteralmente `Snapshot::values: Vec<Vec<i64>>` alle shape
+  canoniche richiede almeno 29.170.839.776 / 32.119.959.776 /
+  35.069.079.776 B, prima di byte packing o PCS: **NO-GO per quel layout**.
+  Il percorso piccolo non è un getter canonico streaming.
+- Il getter ordinato con una rigenerazione completa per tessera ha un
+  buffer di uscita massimo 32 MiB, ma 36.171 rigenerazioni per passaggio:
+  **>=587,085 s per un solo passaggio**, sotto lo stesso ceiling INT8 e
+  modello quattro GEMM. **NO-GO per questa fallback**; occorrono dependency
+  cut condivisi, senza assumere gratuitamente il costo sourcewise.
+- WHIR nativo alloca evaluations e pesi densi; PCG seed/OT/Fp6, producer
+  GKR, inferenza e allocator/context completi restano da collegare. Il
+  checker degli offset non assorbe quei costi negli slot per definizione.
+
+Il picco fisico completo e l'upper temporale completo restano ignoti per
+O=0/150/300. Questi NO-GO riguardano costruzioni precise; nessun lower
+universale respinge tutte le candidate a 65 s. Il gate H100 resta chiuso:
+prima serve un getter ordinato praticabile e il censimento dei workspace
+nativi dentro gli slot. Non c'è ancora un microbenchmark completo minimo
+pronto a validare tale percorso; non si propone un costo di pod speculativo.

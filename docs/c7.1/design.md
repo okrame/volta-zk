@@ -611,7 +611,7 @@ i lower del corpo **47.841.180 / 54.868.318 / 61.797.384 byte** a O=0/150/300.
 Questa deroga ammette un esito analitico: i lower omettono GKR congiunti e
 fratelli Merkle e non diventano né upper né prove prodotte. La prima proof
 include ancora il bootstrap entro 130 MB. PCS streaming, endpoint MAC
-privati, arena e <=50 s restano requisiti del goal completo. Dal 2026-09-13
+privati, arena e <=65 s restano requisiti del goal completo. Dal 2026-09-13
 quattro letture W sono solo un obiettivo di ottimizzazione: più letture
 sono autorizzate nello screen locale se tutti i costi restano espliciti.
 Per «prova» si intende il **certificato completo**, coerentemente con
@@ -657,7 +657,9 @@ sessioni richiedono casualità/righe fresche, domini separati e una composizione
 same-W/ZK multi-sessione con risorse globali; i bound B12 non si trasferiscono.
 Le sole identità MAC riusano i lemmi già elencati in security §6.
 
-Il prover completo deve impiegare **<=50 s per ogni risposta** della capacità
+Per autorizzazione esplicita del proprietario, il contratto temporale passa
+da 50 a 65 s, senza modifiche alle garanzie o agli altri cap.
+Il prover completo deve impiegare **<=65 s per ogni risposta** della capacità
 dichiarata sulla singola H100: generazione, witness, PCG, prova,
 serializzazione, letture, scritture e trasferimenti necessari. Il caricamento
 globale iniziale si registra una volta separatamente; setup per sessione e
@@ -688,7 +690,7 @@ distingue evaluation hiding da apertura privata e conta i passaggi di
 ricomputazione: anche la pista LogUp/Dory resta senza ponte di campo/MAC
 e senza costo completo, non una sostituzione selezionata. Il bootstrap corrente supera
 i tetti già per le sole correlazioni P/S RNE; le strutture dense superano
-anche memoria e 50 s. La candidata W/A/KV da 10,31 TB resta fermata.
+anche memoria e 65 s. La candidata W/A/KV da 10,31 TB resta fermata.
 RNE v2, parametri PCS e conservazione dei dati iniziali mantengono soltanto
 l'evidenza componente descritta nello screen; nessun port o ulteriore
 ottimizzazione di queste costruzioni è il prossimo passo. Una nuova linea
@@ -787,7 +789,7 @@ bit; l'apertura Akita è lineare nella lunghezza e il massimo pubblicato è
 un product-sumcheck a memoria sublineare richiede circa sei visite,
 ora ammesse in principio ma da prezzare nel tempo completo. Una candidata successiva
 deve fornire insieme un'unica PCS sparse/streaming privata, il wrapper
-Fp3–MAC e un upper completo <=50 s; nessun componente censito lo fa.
+Fp3–MAC e un upper completo <=65 s; nessun componente censito lo fa.
 
 Lo [screen dopo l'autorizzazione](construction-screen.md#screen-dopo-lautorizzazione-ea-lpn-e-ripiego-sui-byte)
 verifica capacità e byte sul run intero e registra il ripiego analitico
@@ -806,7 +808,7 @@ implementazioni esaminate, non lower universali sulle PCS streaming.
 
 | Voce | Riferimento da soddisfare; nessuna nuova misura |
 |---|---:|
-| Prover completo a modello residente | <=50 s per risposta nella capacità dichiarata |
+| Prover completo a modello residente | <=65 s per risposta nella capacità dichiarata |
 | Certificato completo, bootstrap per sessione incluso | prima <=130.000.000 byte; successive <=40.000.000 |
 | Verifier CPU locale, quattro core | 6,4–8,2 s |
 | Caricamento modello per residenza | riferimento storico 19,186 s, distinto dal setup crittografico |
@@ -832,7 +834,7 @@ senza una seconda cache completa o alias che sovrascrivano dati ancora vivi.
 Il teorema denso con codeword W da 4 TiB e A da 2 TiB è fisicamente escluso.
 
 La partizione temporale vigente è `T_response_total = T_inference +
-T_proof_only <=50 s`. `T_inference` è la sola generazione nativa originale
+T_proof_only <=65 s`. `T_inference` è la sola generazione nativa originale
 del provider. Ogni ricostruzione/riesecuzione A/KV durante la prova resta
 in `T_proof_only`, insieme a producer, PCG, prova, serializzazione/trasporto
 e attese/verifica necessarie; FS non aggiunge round-trip di challenge online.
@@ -887,7 +889,7 @@ PCG pubblico richiedono refinement, senza nuove assunzioni di sicurezza.
 Il primo switch senza retention aggiunge 64/32 replay W/A; il guard
 sumcheck denso resta chiuso. Il cap proposto getter 64 MiB e PCG output
 32 B/riga non scaricano i costi ignoti di maschere/covettore/seed/allocator.
-Il confronto con 90 s non modifica l'obiettivo autorizzato <=50 s.
+Il confronto con 90 s non modifica l'obiettivo autorizzato <=65 s.
 I trace locali coprono indirizzi di 3.471 sorgenti A, liveness dei tensori
 per producer, tutti gli stati/oracoli WHIR e PCG. Singleton iniziale e
 covettore Eq+Pow permettono contrazione e generazione a blocchi, ancora
@@ -896,7 +898,8 @@ vincolo uniforme per l'intero lavoro. La retention A fino al base case
 conserva il predecessore fino alla query e solo poi fa fold/fence:
 574 pass A corrente, 36 per storica, più letture e fold degli stati retained.
 Anche questa schedule a quattro GEMM ha lower parziale condizionale
-50,170 s alla terza risposta, prima dell'inferenza; non è ammessa.
+50,170 s alla terza risposta, prima dell'inferenza: non esclude i 65 s
+ora autorizzati, né dimostra un upper o un’ammissione fisica.
 I reference codec SHAKE H/EAGen sono decisioni locali,
 non un trasferimento della composizione o nuovi messaggi; contare il
 sampler fail-closed e verificare il binding alla coin originale. Non si
@@ -908,6 +911,13 @@ La proposta di un solo buffer persistente KV per 450 token conta anche
 la coda pendente; non autorizza temporanei fuori arena. I picchi globali
 completi allocato/riservato sono ignoti. In assenza di tutti i contratti
 di lavoro e servizio, l'upper analitico di ammissione rimane +infinito.
+Il [piano di indirizzi con margine](preflight.md#picco-con-margine-operativo-contratto-a-65-s)
+richiede 256 MiB inutilizzati dentro arena e 1 GiB globale. Il checker
+nativo degli span non certifica allocazioni GPU, fence eseguite o scratch
+ignoti. Coset A 2^21/S2 2^22 preservano i polinomi, con più replay:
+sono una candidata di memoria, ancora senza adapter CUDA completo.
+Il getter ordinato full-DAG-per-tessera e il lift del Snapshot denso sono
+respinti per le rispettive condizioni esplicite; non ogni getter streaming.
 Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.
@@ -934,7 +944,7 @@ controlli bit-per-bit e misure dei kernel reali, non crediti da roofline GPT-2.
 
 Il profilo matematico selezionato si ferma a 450 token. Il futuro confronto
 Gemma fino a 4.096 token totali (vecchi+prompt+generati) richiede nuovi conti
-e composizione: il requisito <=50 s vale su ogni risposta della capacità dichiarata sopra. Il layout KV
+e composizione: il requisito <=65 s vale su ogni risposta della capacità dichiarata sopra. Il layout KV
 i16 usa 901.120 byte/token e 3.690.987.520 byte a capacità 4.096. La capacità
 vuota non diventa arena aggiuntiva senza una prova di liveness/padding.
 Size massima, lavoro e memoria vanno ricompilati per ogni carico; niente

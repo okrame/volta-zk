@@ -12,24 +12,26 @@ import c71_pcg_trace as pcg
 import c71_streaming_screen as screen
 import c71_whir_trace as whir
 
+DEADLINE_SECONDS = 65.0
+OPERATIONAL_MARGIN_BYTES = 256 << 20
 ARENA = 6_442_450_944
 W_BYTES = 61_394_690_560
 KV_PER_TOKEN = 4*(50*16*256+10*4*512)
-# Keep the actual user constraint on the complete response. No 90s relaxation.
+# Owner-authorized complete-response contract; budgets remain targets.
 BUDGET_SECONDS = {
     'inference':3.0,
-    'proof_getter_replay':2.0,
+    'proof_getter_replay':14.0,
     'proof_producer_relations':1.0,
     'proof_range_W_A':18.0,
     'proof_linear_W_A_history':1.0,
     'proof_initial_commit_A':7.0,
     'proof_first_oracle_openings':15.2,
-    'proof_WHIR_remaining':1.0,
-    'proof_PCG_MAC':1.0,
+    'proof_WHIR_remaining':3.0,
+    'proof_PCG_MAC':2.0,
     'proof_serialization_transport':0.3,
     'proof_host_waits_verifier_interactions':0.5,
 }
-assert math.isclose(sum(BUDGET_SECONDS.values()),50)
+assert math.isclose(sum(BUDGET_SECONDS.values()),DEADLINE_SECONDS)
 
 # Each missing item is an admission control, not zero work. Keep the same
 # phase keys as the time partition so no unpriced phase disappears in totals.
@@ -177,15 +179,15 @@ def report():
         retained_replay_lower=8*dominant['matrix_MACs_per_full_A_generation']*sum(retained_passes)/2.2e15
         retained_joint_lower=retained_replay_lower+lower['range_merges_commit_FFT_first_openings_joint_lower_seconds']
         demands={
-            'proof_getter_replay':{'integer_MACs_per_second_for_named_replays':replay_macs/2},
+            'proof_getter_replay':{'integer_MACs_per_second_for_named_replays':replay_macs/BUDGET_SECONDS['proof_getter_replay']},
             'proof_range_W_A':{'named_merge_issue_instructions_per_second':
                 lower['range_W_A_named_merge_issue_lower_seconds']*(132*4*32*2e9)/18},
             'proof_initial_commit_A':{'FFT_butterflies_per_second':3_023_656_976_384/7},
             'proof_first_oracle_openings':{'FFT_butterflies_per_second':
                 lower['split_payload_pad_openings_first_oracles_Fp_butterflies']/15.2},
-            'proof_PCG_MAC':{'selected_trie_H_work_upper_per_second_if_budget_1s':
-                correlations['responses'][slot]['union_trie_H_evaluations_upper_per_role'],
-                'EAGen_SHAKE_calls_per_second_if_budget_1s':22*pcg.ROWS[slot][1]},
+            'proof_PCG_MAC':{'selected_trie_H_work_upper_per_second_for_phase_budget':
+                correlations['responses'][slot]['union_trie_H_evaluations_upper_per_role']/BUDGET_SECONDS['proof_PCG_MAC'],
+                'EAGen_SHAKE_calls_per_second_for_phase_budget':22*pcg.ROWS[slot][1]/BUDGET_SECONDS['proof_PCG_MAC']},
         }
         setup=correlations['setup_once_before_all_responses']
         demands['proof_PCG_MAC']['fresh_session_setup_H_additional_per_role_if_first_response']=(
@@ -202,7 +204,7 @@ def report():
         demands['proof_WHIR_remaining']={
             'covector_core_Fp3_butterflies_per_second':sum(
                 pcs[d]['later_covector_candidate']['block_convolution_fp3_butterflies_excluding_inverse_precomputation']
-                for d in [35]+[34]*(slot+1))}
+                for d in [35]+[34]*(slot+1))/BUDGET_SECONDS['proof_WHIR_remaining']}
         cases.append({'old_tokens':old,'budget_seconds':dict(BUDGET_SECONDS),
             'budget_is_target_not_time_upper':True,
             'fresh_session_setup_charged_to_proof_PCG_MAC':slot==0,
@@ -217,7 +219,7 @@ def report():
                 'proof_joint_partial_lower_seconds':joint_lower,
                 'excludes_native_inference_and_other_positive_work':True,
                 'serial_named_schedule_no_additional_fusion_or_retention':True,
-                'fifty_second_goal_excluded_under_these_conditions':joint_lower>50},
+                'deadline_excluded_under_these_conditions':joint_lower>DEADLINE_SECONDS},
             'known_source_visits_before_sumcheck':{'direct_W':W_visits,'A_by_generation':before_sumcheck,
                 'complete_W_A_KV_visits':None},
             'known_source_visits_with_sumcheck_candidate':{'direct_W':W_visits+sumcheck_passes,
@@ -249,14 +251,14 @@ def report():
                 'retained_Fp3_fold_interpolations':(slot+1)*retained['fp3_interpolations_all_retained_folds_and_virtual_getters'],
                 'four_INT8_getter_partial_lower_seconds_under_same_conditions':retained_replay_lower,
                 'joint_partial_lower_seconds_under_same_conditions':retained_joint_lower,
-                'fifty_second_goal_excluded_under_same_conditions':retained_joint_lower>50,
-                'getter_integer_MACs_per_second_for_2s_budget':retained_macs/2,
+                'deadline_excluded_under_same_conditions':retained_joint_lower>DEADLINE_SECONDS,
+                'getter_integer_MACs_per_second_for_phase_budget':retained_macs/BUDGET_SECONDS['proof_getter_replay'],
                 'extra_retained_work_is_positive_not_in_lower':True,
                 'dependency_replays_and_HBM_total_still_unknown':True,
                 'memory':integrated_memory(old,pcs,correlations,retained_A=retained),
             },
             'admitted':False})
-    return {'credit':False,'constraint':'T_response_total <= 50 seconds',
+    return {'credit':False,'constraint':'T_response_total <= 65 seconds',
         'time_identity':'T_response_total = T_inference + T_proof_only; serial accounting, no overlap credit',
         'inference_definition':'one native correct provider generation; no proof replay deducted',
         'proof_definition':'all reconstruction/authentication, proof kernels, transport, verifier completion and serialization; fresh session setup charged once to first proof',

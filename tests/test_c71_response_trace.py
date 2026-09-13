@@ -20,7 +20,7 @@ def test_composed_trace_keeps_current_old_sources_memory_and_unknowns():
     r=trace.report()
     assert r['complete_time_upper'] is None
     for c in r['cases']:
-        assert sum(c['budget_seconds'].values())==50
+        assert sum(c['budget_seconds'].values())==65
         assert c['times_seconds']==dict(T_inference=None,T_proof_only=None,T_response_total=None)
         assert c['known_source_visits_before_sumcheck']['A_by_generation']==[73]*(c['old_tokens']//150)+[611]
         assert c['proof_getter_replay_work']['native_provider_inference_replays_deducted']==0
@@ -36,5 +36,5 @@ def test_composed_trace_keeps_current_old_sources_memory_and_unknowns():
         assert not any(e['chain'].startswith('A') and e['event']=='base_case_open_all' for e in events)
         assert retained['memory']['known_peak_with_proposed_slots_bytes']<trace.ARENA
         assert c['fresh_session_setup_charged_to_proof_PCG_MAC']==(c['old_tokens']==0)
-    assert r['cases'][-1]['retained_A_alternative']['fifty_second_goal_excluded_under_same_conditions']
+    assert not r['cases'][-1]['retained_A_alternative']['deadline_excluded_under_same_conditions']
     assert r['online_verifier_challenge_round_trips']==0

@@ -841,3 +841,29 @@ dell'harness contro i documenti. I controlli di integrità sopra e dei link
 locali/anchor passano, inclusi i riferimenti entranti dai documenti storici. Nessuna build Rust/Lean, esecuzione nativa o misura
 nuova è attribuita al riordino. Le correzioni dei guard nelle procedure sono
 riconciliate con il codice e i test sorgente attuali, senza rieseguirli.
+
+## Contratto 65 s e margine dell’arena
+
+Il [piano](../../scripts/c71_arena_plan.py) compone i trace con coset A
+2^21/S2 2^22 e verifica offset, allineamento e liveness con il
+[checker nativo C++](../../cuda/c71_arena_preflight.cpp). Il test compila
+soltanto questo programma host, esegue metadati e rifiuta overlap,
+rilasci senza fence dichiarata e consumo del margine. Il controllo FFT
+finito verifica scatter per parità e ricomposizione naturale, non CUDA.
+
+Il contratto a 65 s modifica le soglie di ammissione, non i vecchi risultati
+immutabili. Replay/auth A/KV restano proof-only. I test mirati sono:
+
+```sh
+ulimit -v 2097152
+PYTHONDONTWRITEBYTECODE=1 timeout 60s pytest -q -p no:cacheprovider \
+  tests/test_c71_arena_plan.py tests/test_c71_getter_trace.py \
+  tests/test_c71_whir_trace.py tests/test_c71_pcg_trace.py \
+  tests/test_c71_response_trace.py tests/test_c71_streaming_screen.py
+PYTHONDONTWRITEBYTECODE=1 timeout 60s .venv/bin/python scripts/c71_arena_plan.py
+```
+
+30 controlli ridotti passati; nessuna GPU, modello, spill o spesa. Il
+risultato è un piano di indirizzi con margine, non il picco fisico completo
+o un upper completo di tempo. Il getter full-DAG-per-tessera e il layout
+Snapshot denso hanno NO-GO circoscritti nel preflight.

@@ -122,7 +122,7 @@ registra questo esito di ripiego: le alternative sotto 40 MB censite
 restano fisicamente non selezionabili. I lower omettono GKR congiunti e
 fratelli Merkle; non sono upper o dimensioni di prove valide prodotte.
 La deroga non chiude PCS streaming, endpoint privati, arena da
-6.442.450.944 byte, <=50 s o confronto di lavoro totale.
+6.442.450.944 byte, <=65 s o confronto di lavoro totale.
 
 **Bootstrap:** la candidata Fp6 con guard prima di c, cGGM separato per
 nodo, coin ROM e F_EQ a due chiavi costa **61.841.290 byte** per le primitive
@@ -173,7 +173,7 @@ Gli esiti negativi non sono lower universali contro ogni PCS possibile.
 
 Il prossimo avanzamento richiede una costruzione che chiuda insieme
 encoding/apertura privata, disponibilità di W/A/KV senza spill, lavoro delle
-forme pubbliche e schedule completo entro memoria e 50 s. Accettare la
+forme pubbliche e schedule completo entro memoria e 65 s. Accettare la
 premessa LPN o il ripiego sui byte non fornisce quella costruzione.
 Le materializzazioni dense già respinte restano escluse; il lavoro locale
 indipendente è autorizzato, senza spese o esecuzioni pesanti.
@@ -185,7 +185,7 @@ rilasciata prima del secondo passaggio, che usa circa 50 MB di array.
 Una cache privata globale dell'istogramma W costa 524.280 byte e consente
 di evitare la sua scansione per risposta, con autenticazione sempre fresca.
 **Steering del 2026-09-13:** quattro letture W sono solo un obiettivo;
-più letture sono autorizzate entro 6 GiB, picco globale <80 GB e <=50 s.
+più letture sono autorizzate entro 6 GiB, picco globale <80 GB e <=65 s.
 Il checkpoint non è più respinto per le dodici letture, che erano un lower.
 La [schedule a finestre Gram private](construction-screen.md#range-con-finestre-gram-private)
 supera ora il replay da 56 visite: **26 visite W per il range**, con
@@ -217,14 +217,15 @@ scalari: **>=135,257 s per il solo commit A**, con ceiling espliciti.
 Le alternative esatte restano aperte. Range W/A specializzato + FFT commit
 A + prime aperture W/tutte A danno lower congiunti parziali **32,722 /
 36,085 / 39,685 s** a O=0/150/300. Escludono costi positivi e non sono
-upper né certificati <=50 s. Il confronto <=90 s è una possibile futura
+upper né certificati <=65 s. Il confronto <=90 s è una possibile futura
 deroga da valutare **solo dopo un upper completo**, non autorizzata ora.
 
 Il [ledger dei trace](preflight.md#trace-della-risposta-e-budget-separati)
 separa `T_inference`, `T_proof_only` e `T_response_total`: ogni replay A/KV
-è lavoro della prova. La ripartizione di obiettivi è 3 s inferenza e 47 s
-prova; **non sono upper**. Il vincolo totale resta <=50 s, nessun overlap
-presunto e nessuna deroga a 90 s.
+è lavoro della prova. La ripartizione di obiettivi è 3 s inferenza e 62 s
+prova; **non sono upper**. Il vincolo totale resta <=65 s, nessun overlap
+presunto. Il proprietario ha autorizzato 65 s totali; nessuna deroga a 90 s.
+Arena, HBM, endpoint, trust model e divieto di GPU/spesa restano invariati.
 Il [checkpoint riproducibile](evidence.md#trace-akv-whir-e-pcg-della-risposta)
 è su SHA pulita `aca17d19eb4b`, 27 controlli ridotti passati e nessuna GPU.
 
@@ -252,17 +253,26 @@ La retention A è ora censita fino al base case: 574 visite A corrente,
 36 per vecchia A, 80 letture degli stati retained per catena. Conserva
 ogni predecessore fino alla query e poi fold/fence. Evita 60/120/180
 rigenerazioni, ma il lower parziale diventa **42,038/45,986/50,170 s**:
-anche questo piano seriale a quattro GEMM non rispetta i 50 s alla terza
-risposta, sotto le condizioni dichiarate e prima degli altri costi.
-Il prossimo cambio strutturale deve ridurre ulteriormente il lavoro
-dominante; non bastano meno visite senza contare la ricostruzione.
+questi lower escludevano il vecchio contratto a 50 s, ma non escludono
+il nuovo limite a 65 s. Non sono upper: inferenza e altri costi restano
+aggiuntivi. La priorità autorizzata è ora chiudere il picco fisico con margine.
 
 Corretto il KV: **901.120 B/token**, non 4.915.200 (incremento di A
 attenzione). W+KV450+arena riservati noti sono **68.242.645.504 B**.
-I trace con gli slot proposti occupano **6.324.532.620 / 6.363.854.220 /
-6.403.175.820 B** nell'arena, prima dei workspace ancora non verificati.
-Picchi completi allocato/riservato e tutti gli upper temporali restano
-ignoti; upper di ammissione +infinito. Nessun H100 o spesa proposti.
+Il nuovo [piano con margine](preflight.md#picco-con-margine-operativo-contratto-a-65-s)
+dimezza i coset iniziale A e S2. Il checker C++ degli offset verifica
+rilasci/fence dichiarate, allineamento e non sovrapposizione: massimo
+5.983.782.912 / 6.023.104.512 / 6.062.426.112 B, con almeno 256 MiB
+inutilizzati dentro arena. Non è il picco GPU misurato o completo.
+Il prezzo è 1.086/1.122/1.158 rigenerazioni A nominate; il solo replay
+learned-matrix ha lower condizionale 17,627/18,211/18,795 s.
+
+Il getter ordinato “full DAG per tessera” è respinto: >=587,085 s per
+un passaggio nel modello dichiarato. Anche l'estensione letterale del
+Snapshot denso supera l'arena. Occorrono dependency cut condivisi,
+adapter FFT 2^21 e workspace producer/PCS/PCG/inferenza nativi.
+Upper completo e picco fisico restano ignoti; il piano con margine non
+li certifica. Nessuna GPU, spill o spesa; H100 non ancora proponibile.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso
 AES composto positivo e refinement dei codec non sono ancora chiusi.
@@ -274,7 +284,8 @@ conservano il loro perimetro.
 
 Il lavoro locale pertinente è autorizzato dalle richieste del proprietario
 del 2026-09-10 e del 2026-09-11 sulla riduzione dei byte, ristrette dallo
-steering del 2026-09-12 su memoria globale e fattibilità entro 50 s.
+steering successivo su memoria globale e dall’aggiornamento esplicito
+a 65 s totali del proprietario. Il vecchio limite a 50 s non è più vigente.
 Si seguono le [procedure di build e test](../procedures/build-and-test.md):
 build mirata con un job, test seriali limitati a 60 s/2 GiB e un worker Rayon.
 

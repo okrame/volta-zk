@@ -111,6 +111,8 @@ def mask_commit_work(group):
 def commit_workspace(oracle, coset_rows=None):
     if coset_rows is None:
         coset_rows = INITIAL_COSET_ROWS if oracle["oracle"] == 0 else SWITCH_COSET_ROWS
+    if not isinstance(coset_rows, int) or coset_rows <= 0 or coset_rows & (coset_rows - 1):
+        raise ValueError("coset rows must be a positive power of two")
     coset_rows = min(coset_rows, oracle["height"])
     cosets = oracle["height"] // coset_rows
     frontier = 32 * coset_rows * ((cosets).bit_length() - 1)
@@ -161,7 +163,7 @@ def remainder_workspace(oracle, cap=None):
     }
 
 
-def a_s1_retention_schedule():
+def a_s1_retention_schedule(s2_coset_rows=1 << 23):
     """Bounded A-only alternative from the installed root through the base opening."""
     dimension = 34
     oracles = oracle_geometry(dimension)
@@ -282,7 +284,7 @@ def a_s1_retention_schedule():
     )
 
     s2 = oracles[2]
-    commit2 = commit_workspace(s2, 1 << 23)
+    commit2 = commit_workspace(s2, s2_coset_rows)
     commit2_live = {
         "s2_commit:coset": commit2["coset_buffer_bytes"],
         "s2_commit:frontier": commit2["frontier_bytes"],
@@ -861,7 +863,7 @@ class Events:
         })
 
 
-def trace(dimension):
+def trace(dimension, initial_coset_rows=INITIAL_COSET_ROWS):
     if dimension not in (34, 35):
         raise ValueError("only the selected D34/D35 profiles are traced")
     oracles = oracle_geometry(dimension)
@@ -880,7 +882,7 @@ def trace(dimension):
     )
 
     initial = oracles[0]
-    c = commit_workspace(initial)
+    c = commit_workspace(initial, initial_coset_rows)
     events.add(
         "commit_data_0",
         "observe initial data root before opening claims",
@@ -1056,7 +1058,7 @@ def trace(dimension):
         free=tuple(key for key in events.live if not key.startswith("shared:")),
     )
 
-    commit_replays = [commit_workspace(row)["source_replays"] for row in oracles]
+    commit_replays = [commit_workspace(row, initial_coset_rows if row["oracle"] == 0 else None)["source_replays"] for row in oracles]
     return {
         "credit": False,
         "dimension": dimension,

@@ -101,9 +101,9 @@ selezionata. Nessuna di queste linee si riattiva per aggirare un costo ignoto.
 - Calibrazione/qualità Gemma, provenienza dei pesi e confronto BF16, full E2E,
   contesti fino a 4.096 e schedule fisico: obblighi successivi distinti dalla
   corrispondenza nativa su grafi piccoli. Non sono prestazioni acquisite.
-- Cinque letture W o circa 20 GB di spill host: opzioni storiche fuori dal
-  contratto corrente. Lo steering del 2026-09-12 esclude lo spill dinamico;
-  il riferimento resta quattro letture/no spill, anche con memoria globale W.
+- Dal 2026-09-13 più di quattro letture W sono autorizzate entro arena
+  6 GiB, picco globale sotto 80 GB e tempo completo <=50 s, senza overlap
+  presunto. Quattro rimane un obiettivo. Lo spill dinamico resta escluso.
 - Profilo ibrido INT16 GEMM con BF16/FP32 per non-lineari: non adottato.
   Richiede stesso checkpoint/dati/tokenizzazione, confronto qualità/costo e
   semantica provata di cast, RNE/FMA, subnormali, non-finiti e KV. Il

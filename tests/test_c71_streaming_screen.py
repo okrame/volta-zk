@@ -189,3 +189,90 @@ def test_range_checkpoint_roots_and_integrated_liveness_screen():
     assert screen.range_checkpoint_budget(35, 10, suffix['contraction_bytes'])['named_peak_with_C_bytes'] > r['arena_bytes']
     assert r['complete_W_scans_upper'] is None and r['complete_seconds_upper'] is None
     assert not r['admitted']
+
+
+def test_checkpoint_replay_then_retain_matches_adaptive_dense_rounds():
+    p, d, retained_bits = 97, 7, 3
+    values = [(i*i+3*i+7) % 71 for i in range(1 << d)]
+    def merge(a, b):
+        return ((a[0]*b[1]+b[0]*a[1]) % p, a[1]*b[1] % p)
+    full = [[(1, (89-w) % p) for w in values]]
+    while len(full[-1]) > 1:
+        row = full[-1]
+        full.append([merge(a, b) for a, b in zip(row[::2], row[1::2])])
+
+    def cubic(a, b, ea, eb):
+        v = [0, 0, 0]
+        for x, y, lam in ((0, 3, 13), (2, 1, 13), (1, 3, 1)):
+            dx, dy = b[x]-a[x], b[y]-a[y]
+            for j, z in enumerate((a[x]*a[y], dx*a[y]+a[x]*dy, dx*dy)):
+                v[j] += lam*z
+        c = [0]*4
+        for j in range(3):
+            c[j] += ea*v[j]
+            c[j+1] += (eb-ea)*v[j]
+        return [x % p for x in c]
+
+    def prefixes(point, index=0, weight=1, depth=0):
+        if depth == len(point):
+            yield index, weight
+        else:
+            yield from prefixes(point, 2*index, weight*(1-point[depth]) % p, depth+1)
+            yield from prefixes(point, 2*index+1, weight*point[depth] % p, depth+1)
+
+    for m in range(4, d):
+        height = d-m-1
+        level = full[height]
+        dense = [[level[2*i+j//2][j % 2] for i in range(1 << m)] for j in range(4)]
+        equality = table([(1-r, r) for r in range(2, m+2)], p)
+        prefix, transcript, scans = [], [], []
+        visits = [0, 0]
+        def root(start, h):
+            if not h:
+                visits[0] += 1
+                return 1, (89-values[start]) % p
+            a, b = root(start, h-1), root(start+(1 << (h-1)), h-1)
+            visits[1] += 1
+            return merge(a, b)
+        def gathered(suffix):
+            out = [0]*4
+            for high, weight in prefixes(prefix):
+                index = (high << (m-len(prefix)))+suffix
+                pair = (*root((2*index) << height, height),
+                        *root((2*index+1) << height, height))
+                for j in range(4):
+                    out[j] = (out[j]+weight*pair[j]) % p
+            return out
+        resident = None
+        for round_index in range(m):
+            size, half = len(equality), len(equality)//2
+            visits[:] = [0, 0]
+            if resident is None and m-round_index <= retained_bits:
+                resident = list(map(list, zip(*(gathered(i) for i in range(size)))))
+                assert resident == dense
+            actual, expected = [0]*4, [0]*4
+            for i in range(half):
+                a, b = ([row[i] for row in dense], [row[i+half] for row in dense])
+                ga, gb = ((gathered(i), gathered(i+half)) if resident is None else
+                          ([row[i] for row in resident], [row[i+half] for row in resident]))
+                for j, (x, y) in enumerate(zip(cubic(a, b, equality[i], equality[i+half]),
+                                              cubic(ga, gb, equality[i], equality[i+half]))):
+                    expected[j] = (expected[j]+x) % p
+                    actual[j] = (actual[j]+y) % p
+            assert actual == expected
+            if visits[0]:
+                assert visits == [1 << d, (1 << d)-(1 << (m+1))]
+                scans.append(visits[:])
+            r = challenge(transcript, actual, p)
+            prefix.append(r)
+            dense = [fold(row, r, p) for row in dense]
+            if resident is not None:
+                resident = [fold(row, r, p) for row in resident]
+            equality = fold(equality, r, p)
+        assert resident == dense
+        assert len(scans) == 1+max(0, m-retained_bits)
+    r = screen.checkpoint_round_replay_budget(35, 10, 61394690560, 25)
+    assert r['range_W_visits_with_cached_histogram'] == 56
+    assert r['retained_children_and_eq_bytes'] == 4026531840 < 6442450944
+    assert r['external_W_bytes_if_resident'] == 0
+    assert r['runtime_upper'] is None and not r['rejected_for_read_count']

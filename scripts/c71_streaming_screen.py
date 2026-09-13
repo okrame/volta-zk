@@ -107,6 +107,57 @@ def range_checkpoint_budget(d, cut, retained_C=0):
     }
 
 
+def checkpoint_round_replay_budget(d, cut, packed_bytes, retained_bits=None):
+    """Explicit gather/rebuild per lower GKR round; no bandwidth/time model.
+
+    Each suffix bucket rebuilds the child roots for all Boolean prefixes,
+    folds them with already-known challenges and immediately consumes them.
+    With retained_bits, stop replaying when the folded tables fit, rebuild
+    them once and finish in-place; release the canopy before lower layers.
+    Source payload is not physical HBM transaction traffic.
+    """
+    if (not 1 <= cut < d or packed_bytes <= 0
+            or retained_bits is not None and not 0 <= retained_bits < d):
+        raise ValueError('positive source bytes and 1 <= cut < d required')
+    n = 1 << d
+    rounds = sum(range(d-cut, d))
+    visits = {m: m if retained_bits is None else 1+max(0, m-retained_bits)
+              for m in range(d-cut, d)}
+    scans = 1+sum(visits.values())
+    merges = sum(v*(n-(1 << (m+1))) for m, v in visits.items())
+    child_accumulations = sum(v*(1 << (m+2)) for m, v in visits.items())
+    coefficient_buckets = n-1-d
+    folded_cells = 5*sum((1 << m)-1 for m in range(d-cut))
+    if retained_bits is not None:
+        folded_cells += 5*sum((1 << min(m, retained_bits))-1 for m in visits)
+    return {
+        'lower_layer_rounds': rounds,
+        'retained_folded_bits': retained_bits,
+        'retained_children_and_eq_bytes': 0 if retained_bits is None else 120*(1 << retained_bits),
+        'lower_layer_source_visits': visits,
+        'range_W_visits_with_cached_histogram': scans,
+        'range_W_payload_bytes': scans*packed_bytes,
+        'reconstruction_leaf_evaluations': scans*n,
+        'fraction_merges_initial_and_replay': n-1+merges,
+        'fraction_merge_Fp3_mul_expressions': 3*(n-1+merges),
+        'fraction_merge_Fp3_add_expressions': n-1+merges,
+        'lower_child_weighted_accumulations': child_accumulations,
+        'accumulation_Fp3_mul_and_add_each': child_accumulations,
+        'all_range_coefficient_buckets': coefficient_buckets,
+        'coefficient_Fp3_mul_expressions': 27*coefficient_buckets,
+        'coefficient_Fp3_add_sub_expressions': 23*coefficient_buckets,
+        'resident_scalar_interpolations': folded_cells,
+        'remaining_field_work': ['prefix/equality weights', 'round/terminal MAC bookkeeping',
+                                 'MAC products and inversions'],
+        'HBM_W_payload_if_resident': scans*packed_bytes,
+        'external_W_bytes_if_resident': 0,
+        'HBM_transactions_and_scratch_bytes': None,
+        'source_order': 'gather by suffix bucket then Boolean prefix; not sequential packed order',
+        'runtime_upper': None,
+        'rejected_for_read_count': False,
+    }
+
+
 def integrated_schedule_screen(suffix):
     arena, packed_W = 6_442_450_944, 61_394_690_560
     C = suffix['contraction_bytes']
@@ -119,6 +170,7 @@ def integrated_schedule_screen(suffix):
         phase['remaining_arena_before_other_state'] = arena-phase['named_arrays_bytes']
     return {
         'arena_bytes': arena,
+        'W_read_policy': 'four is an optimization target, not a cap (2026-09-13)',
         'old_simultaneous_arrays_margin': arena-suffix['named_arrays_simultaneous_bytes'],
         'old_simultaneous_arrays_fraction': suffix['named_arrays_simultaneous_bytes']/arena,
         'HBM_cap_bytes': 80_000_000_000,
@@ -131,6 +183,8 @@ def integrated_schedule_screen(suffix):
         'full_range_source_visible_core_peak': 180*(1 << 35)-48,
         'checkpoint_top_only': [range_checkpoint_budget(35, 10),
                                 range_checkpoint_budget(35, 11, C)],
+        'checkpoint_round_replay': checkpoint_round_replay_budget(35, 11, packed_W),
+        'checkpoint_replay_then_retain': checkpoint_round_replay_budget(35, 10, packed_W, 25),
         'legal_early_C': 'P0 after P0 challenges; padding after range histogram/rho',
         'full_range_C_requires': 'adaptive range terminal point',
         'linear_batch_lambda_requires': 'all W targets plus intervening A range transcript',

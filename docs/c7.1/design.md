@@ -611,7 +611,9 @@ i lower del corpo **47.841.180 / 54.868.318 / 61.797.384 byte** a O=0/150/300.
 Questa deroga ammette un esito analitico: i lower omettono GKR congiunti e
 fratelli Merkle e non diventano né upper né prove prodotte. La prima proof
 include ancora il bootstrap entro 130 MB. PCS streaming, endpoint MAC
-privati, arena, quattro letture W e <=50 s restano requisiti del goal completo.
+privati, arena e <=50 s restano requisiti del goal completo. Dal 2026-09-13
+quattro letture W sono solo un obiettivo di ottimizzazione: più letture
+sono autorizzate nello screen locale se tutti i costi restano espliciti.
 Per «prova» si intende il **certificato completo**, coerentemente con
 [C4.1](../c4.1-seed-streaming-fiat-shamir.md#objective-and-terminology).
 Il corpo serializzato della risposta è una sua voce, non l'intero costo.
@@ -782,8 +784,8 @@ condizionale. Per K=256,d=1, Shout costa almeno `4T` prodotti, 96,57 miliardi
 nel caso maggiore. Il one-hot corrispondente ha oltre 6,18 mila miliardi di
 bit; l'apertura Akita è lineare nella lunghezza e il massimo pubblicato è
 `2^35` bit. Range W può essere promosso una volta per la stessa `C_W`, ma
-un product-sumcheck a memoria sublineare richiede circa sei visite, oltre
-le quattro letture autorizzate se resta online. Una candidata successiva
+un product-sumcheck a memoria sublineare richiede circa sei visite,
+ora ammesse in principio ma da prezzare nel tempo completo. Una candidata successiva
 deve fornire insieme un'unica PCS sparse/streaming privata, il wrapper
 Fp3–MAC e un upper completo <=50 s; nessun componente censito lo fa.
 
@@ -809,7 +811,7 @@ implementazioni esaminate, non lower universali sulle PCS streaming.
 | Verifier CPU locale, quattro core | 6,4–8,2 s |
 | Caricamento modello per residenza | riferimento storico 19,186 s, distinto dal setup crittografico |
 | Inferenza e prover sulla stessa H100 | picco globale <80.000.000.000 byte |
-| Letture packed W per la prova, oltre all'inferenza | fino a quattro; due restano un'ottimizzazione |
+| Letture packed W per la prova, oltre all'inferenza | quattro come ottimizzazione; più letture ammesse entro memoria e tempo |
 | Arena temporanea complessiva | 6.442.450.944 byte |
 | W packed | 61.394.690.560 byte |
 | Materiale modello persistente, W inclusi | ≤2,10× W packed =128.928.850.176 byte |
@@ -823,7 +825,7 @@ richiede `c_source*N + P(q,h)` con coefficienti uniformi indipendenti da q/N;
 nessun `qN`, `N log q` o `N log N` si nasconde sotto GKR o witness.
 La dimensione del circuito/token rimane una voce distinta del lavoro completo.
 Le letture W per ricostruire il witness, anche rieseguendo il forward,
-consumano il limite della prova. Prima che l'output fissi il prefisso FS si
+rientrano nel traffico e nel tempo della prova. Prima che l'output fissi il prefisso FS si
 prepara solo ciò che non dipende dalle sfide successive; non si anticipa
 il folding. La cache accettata resta valida preparando il successore,
 senza una seconda cache completa o alias che sovrascrivano dati ancora vivi.
@@ -877,8 +879,8 @@ e composizione: il requisito <=50 s vale su ogni risposta della capacità dichia
 i16 usa 901.120 byte/token e 3.690.987.520 byte a capacità 4.096. La capacità
 vuota non diventa arena aggiuntiva senza una prova di liveness/padding.
 Size massima, lavoro e memoria vanno ricompilati per ogni carico; niente
-medie o somme di sottototali incompatibili. Le varianti a cinque letture,
-spill host e aritmetica ibrida sono [opzioni differite](decisions.md#deferred-requirements-and-options).
+medie o somme di sottototali incompatibili. Le letture oltre quattro sono ora autorizzate;
+spill host e aritmetica ibrida restano [opzioni differite](decisions.md#deferred-requirements-and-options).
 
 Le procedure e i limiti delle verifiche locali sono in
 [build-and-test](../procedures/build-and-test.md). I test documentali non

@@ -48,8 +48,11 @@ I [controlli finiti](../../tests/test_c71_streaming_screen.py) verificano:
 - variante suffix-first con riordino del punto finale nella stessa
   polinomiale W originale, senza cambiare il commitment;
 - radici e antenati del range costruiti per blocchi identici al tree intero;
-  conti di liveness e checkpoint dello schedule integrato, con replay
-  oltre quattro letture e tempo completo ancora ignoto.
+  conti di liveness e checkpoint dello schedule integrato;
+- dal 2026-09-13, gather/rebuild dei round iniziali e successiva
+  materializzazione dei figli piegati: stessi coefficienti cubici con sfide
+  adattive, stessi terminali e visite/merge contati contro il denso su F97.
+  Più di quattro letture sono ora autorizzate; il tempo resta ignoto.
 
 I test lavorano su F97 e piccoli vettori, con sfide dipendenti dal prefisso.
 Non eseguono maschere MAC, transcript FS nativo, Dory, Merkle o Gemma.

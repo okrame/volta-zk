@@ -1,6 +1,6 @@
 # C7.1 — Goals and current status
 
-Aggiornato al 2026-09-12. [Design](design.md) · [Security](security.md) ·
+Aggiornato al 2026-09-13. [Design](design.md) · [Security](security.md) ·
 [Evidence](evidence.md) · [Decisions](decisions.md) · [Indice](../README.md).
 Questa pagina contiene stato, autorizzazione e prossimo lavoro; requisiti,
 prove e risultati dei test hanno ciascuno la propria sede nei link sopra.
@@ -122,7 +122,7 @@ registra questo esito di ripiego: le alternative sotto 40 MB censite
 restano fisicamente non selezionabili. I lower omettono GKR congiunti e
 fratelli Merkle; non sono upper o dimensioni di prove valide prodotte.
 La deroga non chiude PCS streaming, endpoint privati, arena da
-6.442.450.944 byte, quattro letture W, <=50 s o confronto di lavoro totale.
+6.442.450.944 byte, <=50 s o confronto di lavoro totale.
 
 **Bootstrap:** la candidata Fp6 con guard prima di c, cGGM separato per
 nodo, coin ROM e F_EQ a due chiavi costa **61.841.290 byte** per le primitive
@@ -167,13 +167,13 @@ contrazione: nel censimento pubblico gli array del riduttore W occupano
 **2.898.788.352 byte**, con due letture e **314.498.580.480 aggiornamenti**
 nel modello dei due passaggi. Il punto finale viene rimesso nell'ordine
 originale per la medesima PCS; il controllo algebrico passa. Sono esclusi
-range, PCS, reader fisico e tempo; non è un prover nativo. Restano solo
-due letture W per la PCS, ancora senza una costruzione compatibile.
+range, PCS, reader fisico e tempo; non è un prover nativo. Le letture
+aggiuntive della PCS vanno ora prezzate, senza un tetto assoluto di quattro.
 Gli esiti negativi non sono lower universali contro ogni PCS possibile.
 
 Il prossimo avanzamento richiede una costruzione che chiuda insieme
 encoding/apertura privata, disponibilità di W/A/KV senza spill, lavoro delle
-forme pubbliche e schedule completo nei quattro passaggi. Accettare la
+forme pubbliche e schedule completo entro memoria e 50 s. Accettare la
 premessa LPN o il ripiego sui byte non fornisce quella costruzione.
 Le materializzazioni dense già respinte restano escluse; il lavoro locale
 indipendente è autorizzato, senza spese o esecuzioni pesanti.
@@ -184,12 +184,20 @@ Il residuo aritmetico dell'arena è **3.543.662.592 byte**; C può essere
 rilasciata prima del secondo passaggio, che usa circa 50 MB di array.
 Una cache privata globale dell'istogramma W costa 524.280 byte e consente
 di evitare la sua scansione per risposta, con autenticazione sempre fresca.
-Il checkpoint range a 11 livelli entra nei soli array con C (5,466 GB),
-ma il replay di un livello alla volta richiede già almeno 12 letture W
-per il range: questa schedule è respinta. Il punto di ogni livello viene
-ridisegnato; non si anticipa il terminale range usando il punto del top tree.
-Riuso dell'arena e ordine delle sfide sono ora espliciti; range senza quei
-replay, PCS privata e tempo completo restano il prossimo problema concreto.
+**Steering del 2026-09-13:** quattro letture W sono solo un obiettivo;
+più letture sono autorizzate entro 6 GiB, picco globale <80 GB e <=50 s.
+Il checkpoint non è più respinto per le dodici letture, che erano un lower.
+La [schedule esplicita](construction-screen.md#checkpoint-range-con-piu-letture-autorizzate)
+con k=10 differisce C, rilascia il top tree, ricostruisce i primi round e
+conserva i figli quando scendono a 25 bit. Il controllo finito coincide con
+il denso sui coefficienti adattivi e terminali. Occorrono **56 visite W per
+il range**, **3.438.102.671.360 byte di payload W residente** e circa
+**1.305.602.949.119 merge razionali**.
+I buffer nominati massimi restano 5,234 GB per il top, 4,027 GB nei livelli
+bassi e poi 2,899 GB per linear; non coesistono. Transazioni HBM, workspace,
+PCS, PCG, inferenza e serializzazione non hanno ancora un upper completo.
+La candidata rimane aperta sul tempo e sull'integrazione, senza credito
+hardware; i controlli minimi per le voci ignote sono nello screen.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso
 AES composto positivo e refinement dei codec non sono ancora chiusi.

@@ -137,8 +137,8 @@ dall'esterno, sarebbero 368.368.143.360 byte, **7,37 s a 50 GB/s**; con
 15 s riservati alla crittografia rimarrebbero 27,63 s per inferenza e
 tutto il resto. È solo sensibilità sequenziale, con la banda motivata sotto,
 non uno schedule completo: ulteriori stream, copie e replay si sommano.
-Se fossero sei letture dirette di W per la prova, supererebbero anche le
-quattro ammesse dal riferimento. Il paper migliora i prodotti generici,
+Se sono sei letture dirette di W, dal 2026-09-13 il loro numero non
+le esclude; resta da chiudere il costo del calcolo e dello schedule. Il paper migliora i prodotti generici,
 ma non dimostra lavoro totale non crescente sui prefissi C7.1.
 
 **Jindo: hiding e campo non sono già il ponte richiesto.**
@@ -508,8 +508,8 @@ registrato contro la stessa `C_W`; non deve essere riemesso nei turni 2–3.
 Questo risparmierebbe 1.651.252 byte successivi, ma non rende gratuito il
 prover iniziale. Un LogUp con inversi virtuali sostituisce l'albero da
 3,30 TB con un product-sumcheck e una PCS aggiuntiva; il tradeoff a radice
-quadrata sta nell'arena ma visita lo stream circa sei volte. Rimane oltre
-le quattro letture W autorizzate se eseguito online, e l'attuale PCS densa
+quadrata sta nell'arena ma visita lo stream circa sei volte. Il nuovo
+steering ammette quel numero, con tempo da verificare; l'attuale PCS densa
 rimane fuori arena. Spostarlo all'installazione richiede una singola PCS
 streaming e contabilizzazione di setup/tempo; è un successore analitico,
 non una candidata ammessa.
@@ -518,7 +518,7 @@ non una candidata ammessa.
 sulla geometria large-field e al bound proposto. Il port nativo resta
 subordinato a una composizione fisicamente praticabile. Sul lato Shout serve invece una singola PCS
 sparse/streaming privata che termini nei MAC originali e rispetti arena,
-quattro letture e 50 s; nessun componente censito la realizza. Il vecchio
+50 s, con letture interamente contabilizzate; nessun componente censito la realizza. Il vecchio
 PCG B7, il refill con righe già consumate o un setup dipendente da Δ
 classificato globale non sono sostituzioni ammesse.
 
@@ -1315,16 +1315,17 @@ Non si attribuisce quindi il teorema B12 v1 al nuovo programma.
 
 È una candidata utile per il solo riduttore W. Il reader fisico packed,
 le forme A/KV e il range non sono implementati da questo diagnostico;
-il budget completo deve includerli. Restano al più due delle quattro
-letture W per encoding e apertura PCS, che il replay RS sopra non rispetta.
+il budget completo deve includerli. Encoding e apertura PCS aggiungono
+letture W da prezzare; il nuovo steering rimuove il precedente tetto di quattro.
 Mancano un upper di tempo e il confronto del lavoro totale su tutti i
 prefissi. Nessuno di questi controlli ammette il prover completo.
 
 ## Schedule integrato: liveness, range e PCS privata
 
 Il proprietario autorizza ora esplicitamente lo screen locale integrato
-suffix-first + range + PCS privata, con arena 6 GiB, quattro letture W e
-50 s invariati. Il [diagnostico](../../scripts/c71_streaming_screen.py)
+suffix-first + range + PCS privata, con arena 6 GiB e 50 s invariati.
+Dal 2026-09-13 quattro letture W sono un obiettivo di ottimizzazione,
+non un cap: il checkpoint viene rivalutato sul calcolo e sul traffico. Il [diagnostico](../../scripts/c71_streaming_screen.py)
 separa occupazione simultanea, riuso temporale e dipendenze dalle sfide.
 
 **Memoria disponibile.** Sottrarre 2.898.788.352 dall'arena dà esattamente
@@ -1369,7 +1370,7 @@ nuove correzioni a ogni tentativo e soltanto dopo si estrae alpha. Questo
 risparmia la lettura dell'istogramma per risposta, non la costruzione
 post-alpha dell'albero. Non si memorizzano globalmente transcript o tag.
 
-**Checkpoint range: spazio compatibile, replay respinto.** Il range W
+**Checkpoint range: spazio compatibile, replay da prezzare.** Il range W
 letterale trattiene W convertito, tutto l'albero e figli/equality dell'ultimo
 livello: `24N + 48(2N-1) + 60N = 180N-48`, cioè
 **6.184.752.906.192 byte** a D35. Già questi buffer visibili superano l'arena.
@@ -1394,17 +1395,107 @@ almeno k nuove visite: con istogramma cached il solo range costa almeno
 `1+k`, ossia **11/12 letture** nei due casi, prima dei replay interni ai
 sumcheck. Aggiungendo separatamente le due scansioni linear e una per la
 rimaterializzazione PCS si ottengono almeno **14/15**. Non è un lower su
-ogni protocollo range: respinge questa schedule di checkpoint/replay.
+ogni protocollo range, né un upper completo dei passaggi. Il numero
+di letture non respinge più questa schedule sotto lo steering aggiornato.
 
 Lo screen integrato conserva dunque il riuso dell'arena e la cache numerica
-dell'istogramma, ma scarta il replay per livello. Restano da costruire il
-range senza questi replay e encoding/apertura privata compatibili: il
+dell'istogramma e riapre il replay per livello sul costo completo.
+Restano da costruire range ed encoding/apertura privata compatibili: il
 replay RS a righe complete resta a 683 letture persino con arena intera.
 Il trasferimento del range a un nuovo protocollo deve mantenere i target
 originali e scaricare soundness/NoPeek. A/KV, PCG, staging, allocator e
 lavoro su tutti i prefissi restano voci esplicite non prezzate. Tempo
 completo e numero massimo di letture restano **ignoti**, non zero; nessuna
 build canonica densa o misura GPU viene autorizzata dallo screen.
+
+## Checkpoint range con piu letture autorizzate
+
+Lo steering del 2026-09-13 mantiene arena, HBM, 50 s, privacy, endpoint e
+trust model, ma rende quattro letture un obiettivo di ottimizzazione.
+I precedenti 11/12 passaggi del solo range erano **lower**, non schedule
+complete: mancavano i replay dentro i sumcheck. Non costituiscono più una
+ragione di esclusione. Rimangono respinti i layout che materializzano TB.
+
+**Schedule concreta, k=10, C differita.** Dopo alpha si costruiscono in una
+visita le radici dei blocchi da 1.024 foglie e il top tree. Il top GKR usa
+gli array già censiti da 5.234.491.344 byte; dopo il suo terminale il tree
+è rilasciato completamente. Non si conserva C durante questa fase.
+Nei dieci livelli bassi il numero di coordinate m va da 25 a 34:
+
+1. Per i primi `g=max(0,m-25)` round, si enumera un bucket di suffisso per
+   volta. Per ciascun bucket si ricostruiscono da W i figli per ogni
+   assegnazione booleana del prefisso e si accumulano otto scalari
+   (quattro child per ciascuno dei due valori della coordinata corrente).
+   Una pila per i sottalberi e una visita DFS dei pesi del prefisso usano
+   spazio O(d). Non si memorizza un'intera tabella di pesi del prefisso.
+   Il coefficiente cubico viene emesso prima della nuova sfida.
+2. Una visita successiva, con quelle g sfide ormai fissate, materializza
+   i quattro child piegati, lunghi al massimo `2^25`, e l'equality pubblica.
+   Il payload è **120*2^25 = 4.026.531.840 byte**. I round restanti procedono
+   in-place; i valori dell'ultimo round bastano per il terminale dopo la
+   sfida, senza un'altra visita W.
+3. Si rilasciano i child alla fine del livello. Ogni livello usa un nuovo
+   punto; il suo prefisso non anticipa il punto leaf finale. Dopo tutto il
+   range W e A, le due scansioni suffix-first restano separate, seguite
+   dalla PCS privata sul punto originale.
+
+Il numero di visite per livello è `v_m=1+max(0,m-25)`: 1..10, **55 visite**,
+più la costruzione iniziale = **56**. k=11 ne usa 57. Il replay senza
+materializzazione intermedia ne userebbe 320 a k=11. I valori 59/60 che
+aggiungono due linear e una ricostruzione PCS sono solo parziali: non
+chiudono encoding iniziale, ulteriori replay PCS o producer A/KV.
+
+Il [controllo minimo locale](../../tests/test_c71_streaming_screen.py)
+confronta ogni coefficiente cubico e i terminali con i child densi, con
+sfide dipendenti dai messaggi. Conta inoltre una visita a ogni foglia per
+round ricostruito/materializzazione e `N-2^(m+1)` merge per visita. Non
+esegue MAC, FS nativo, GPU o allocazioni canoniche. La correttezza generale
+segue dalla linearità del folding dei singoli child prima del prodotto,
+non dal prodotto delle valutazioni booleanamente troncate. Il refinement
+del reader packed e della disciplina NoPeek resta da scaricare; i segni
+dei MAC e i polinomi del range non vengono cambiati da questa schedule.
+
+**Conti distinti per k=10.** Il [rapporto](../../scripts/c71_streaming_screen.py)
+mantiene i seguenti conteggi di espressioni/visite, senza frequenze hardware:
+
+| Voce | Quantità censita | Limite del conteggio |
+|---|---:|---|
+| Payload W letto, residente in HBM | 3.438.102.671.360 B | Gather nel layout virtuale; non transazioni HBM effettive |
+| Trasferimenti esterni di W per queste visite | 0 | Condizionato a W residente; caricamento globale separato |
+| Valutazioni foglia logiche, padding incluso | 1.924.145.348.608 | Il padding zero non legge W |
+| Merge razionali, costruzione e replay | 1.305.602.949.119 | Ogni merge generico: 3 mul Fp3 e 1 add |
+| Accumuli scalari dei child sui prefissi | 1.237.084.798.976 | Nel riferimento generico, 1 mul e 1 add ciascuno |
+| Bucket coefficienti cubici, intero range | 34.359.738.332 | 27 mul e 23 add/sub Fp3 per bucket nel nucleo corrente |
+| Fold residenti | Censiti separatamente nel rapporto | Ogni interpolazione: 1 mul e 2 add/sub |
+| Scratch/child/equality in HBM | Da chiudere | Letture, scritture, allocator e generazione pesi non inclusi nel payload W |
+
+I prodotti per coefficienti/merge non sono istruzioni GPU; moltiplicare
+una componente base o una costante può costare meno del prodotto Fp3
+generico. Non si sommano conteggi sovrapposti e non si usa il picco HBM
+come throughput delle operazioni di campo. Il carico del checkpoint è
+esplicito, non rivendicato come trattamento lineare uniforme delle sorgenti;
+il confronto di lavoro totale su ogni prefisso resta aperto.
+
+**Voci ignote e controlli minimi.** La somma per risposta resta
+`T_inferenza + T_witness/range + T_PCS + T_PCG + T_serializzazione + T_IO_residuo`,
+senza overlap presunto. L'IO dentro un kernel misurato non si aggiunge una
+seconda volta al tempo dello stesso kernel.
+
+| Componente | Controllo minimo necessario | Stato |
+|---|---|---|
+| Range: algebra e visite | Confronto finito adaptive gather/rebuild/retain contro il denso | Passato localmente |
+| Range: memoria fisica e traffico | Reader su descrittori dyadic, trace di transazioni/staging e riserve; equality generata in buffer preallocato | Aperto, nessuna allocazione D35 autorizzata |
+| Campo/range: tempo | Kernel del merge e del bucket sul campo effettivo, poi replay rappresentativo con gather; nessun riscalamento da CPU | Non misurato; hardware fuori da questa autorizzazione |
+| PCS privata | Encoder e rigenerazione delle aperture/Merkle su un dominio piccolo con pad/sali originali, poi census completo di array, visite, FFT/hash | Aperto; 683 scansioni del replay RS sono soltanto un lower, ora non escludente da solo |
+| PCG | Dory Fp6/guard/roleswap su parametri ridotti con codec e stato massimo vivo; census dell'espansione completa | Aperto; 61.841.290 B sono wire delle primitive, non tempo o memoria del PCG |
+| Inferenza e witness A/KV | Liveness dei producer canonici con medesima semantica; leggere/riprodurre A senza spill o seconde cache | Aperto; il piccolo runner non misura il carico canonico |
+| Serializzazione | Writer incrementale che conta il certificato e i buffer, inclusi completion e framing | Aperto; restano i bound analitici del corpo |
+| Trasferimenti esterni residui | Timeline esplicita di caricamento globale, staging e protocollo; conteggio senza duplicazioni | Aperto; non si presume spill né banda effettiva |
+
+La candidata checkpoint viene quindi **mantenuta per approfondimento
+minimo**, non respinta per 56 visite e non ammessa sotto 50 s. Il goal
+completo resta aperto: i costi ignoti hanno upper di ammissione infinito.
+Nessuna nuova premessa crittografica, spesa o esecuzione pesante è introdotta.
 
 ## IO, sicurezza e criterio di riapertura
 

@@ -52,7 +52,11 @@ I [controlli finiti](../../tests/test_c71_streaming_screen.py) verificano:
 - dal 2026-09-13, gather/rebuild dei round iniziali e successiva
   materializzazione dei figli piegati: stessi coefficienti cubici con sfide
   adattive, stessi terminali e visite/merge contati contro il denso su F97.
-  Più di quattro letture sono ora autorizzate; il tempo resta ignoto.
+  Più di quattro letture sono ora autorizzate; il tempo resta ignoto;
+- finestre Gram private non simmetriche, pesi del prefisso e fold su
+  entrambi gli assi: stessi quattro coefficienti e terminali del denso
+  con sfide adattive; conteggio della schedule variabile da 26 visite.
+  L'audit indipendente conferma il minimo del modello parziale, non del tempo.
 
 I test lavorano su F97 e piccoli vettori, con sfide dipendenti dal prefisso.
 Non eseguono maschere MAC, transcript FS nativo, Dory, Merkle o Gemma.

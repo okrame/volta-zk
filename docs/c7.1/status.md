@@ -187,17 +187,21 @@ di evitare la sua scansione per risposta, con autenticazione sempre fresca.
 **Steering del 2026-09-13:** quattro letture W sono solo un obiettivo;
 più letture sono autorizzate entro 6 GiB, picco globale <80 GB e <=50 s.
 Il checkpoint non è più respinto per le dodici letture, che erano un lower.
-La [schedule esplicita](construction-screen.md#checkpoint-range-con-piu-letture-autorizzate)
-con k=10 differisce C, rilascia il top tree, ricostruisce i primi round e
-conserva i figli quando scendono a 25 bit. Il controllo finito coincide con
-il denso sui coefficienti adattivi e terminali. Occorrono **56 visite W per
-il range**, **3.438.102.671.360 byte di payload W residente** e circa
-**1.305.602.949.119 merge razionali**.
+La [schedule a finestre Gram private](construction-screen.md#range-con-finestre-gram-private)
+supera ora il replay da 56 visite: **26 visite W per il range**, con
+**1.596.261.954.560 B di payload** e **640.151.453.695 merge razionali**.
+Il nucleo aritmetico confrontabile scende del 48,26%; le finestre variabili
+mantengono coefficienti cubici, sfide ed endpoint originali. Il test finito
+coincide con il denso. H è privata, al massimo 24.576 B; nessuna nuova
+premessa crittografica è introdotta. È un minimo del modello parziale di
+moltiplicazioni, non del tempo.
 I buffer nominati massimi restano 5,234 GB per il top, 4,027 GB nei livelli
-bassi e poi 2,899 GB per linear; non coesistono. Transazioni HBM, workspace,
-PCS, PCG, inferenza e serializzazione non hanno ancora un upper completo.
-La candidata rimane aperta sul tempo e sull'integrazione, senza credito
-hardware; i controlli minimi per le voci ignote sono nello screen.
+bassi e poi 2,899 GB per linear; non coesistono. Dopo range e linear sono
+28 visite W censite, **non** il totale completo con PCS e inferenza.
+Il preflight locale resta **NO-GO**: transazioni HBM, picco fisico
+allocato/riservato, PCS, A/KV, PCG e tempo completo non sono ancora chiusi.
+I costi ignoti hanno controlli minimi espliciti e non sono motivi per
+respingere l'algebra. Nessun pod, spesa o workload pesante è autorizzato.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso
 AES composto positivo e refinement dei codec non sono ancora chiusi.

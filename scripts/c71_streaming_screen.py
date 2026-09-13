@@ -185,6 +185,7 @@ def integrated_schedule_screen(suffix):
                                 range_checkpoint_budget(35, 11, C)],
         'checkpoint_round_replay': checkpoint_round_replay_budget(35, 11, packed_W),
         'checkpoint_replay_then_retain': checkpoint_round_replay_budget(35, 10, packed_W, 25),
+        'checkpoint_Gram_windows': gram_window_budget(35, 10, packed_W, 25),
         'legal_early_C': 'P0 after P0 challenges; padding after range histogram/rho',
         'full_range_C_requires': 'adaptive range terminal point',
         'linear_batch_lambda_requires': 'all W targets plus intervening A range transcript',
@@ -196,6 +197,118 @@ def integrated_schedule_screen(suffix):
         'complete_W_scans_upper': None,
         'complete_seconds_upper': None,
         'admitted': False,
+    }
+
+
+def gram_window_budget(d, cut, packed_bytes, retained_bits, max_window=None):
+    """Private nonsymmetric Gram windows; same cubic messages and MAC endpoints.
+
+    Minimize a stated partial Fp3-multiplication count over ordered window
+    compositions, NOT runtime or all possible range algorithms. Small public
+    planner only. max_window selects the fixed-width comparison when given.
+    """
+    if not (1 <= cut < d and 0 <= retained_bits < d and packed_bytes > 0):
+        raise ValueError('invalid checkpoint geometry')
+    if max_window is not None and max_window < 1:
+        raise ValueError('positive window required')
+    n, layers = 1 << d, []
+    merges, accum, gram_mul, gram_add, h_folds = n-1, 0, 0, 0, 0
+    for m in range(d-cut, d):
+        g = max(0, m-retained_bits)
+        best = {g: (0, [])}
+        for p in reversed(range(g)):
+            choices = range(1, g-p+1) if max_window is None else [min(max_window, g-p)]
+            best[p] = min((3*(n-(1 << (m+1))) + (4 << m)
+                           + (4+2*(1 << b))*(1 << (m-p))
+                           + (1 << (2*b))-1 + best[p+b][0],
+                           [b]+best[p+b][1]) for b in choices)
+        widths = best[0][1]
+        visits = 1+len(widths)
+        merges += visits*(n-(1 << (m+1)))
+        accum += visits*(4 << m)
+        p = 0
+        for b in widths:
+            length = 1 << b
+            gram_mul += (4+2*length)*(1 << (m-p))
+            gram_add += (1+2*length)*(1 << (m-p))
+            h_folds += length*length-1
+            p += b
+        layers.append({'child_bits': m, 'window_bits': widths, 'W_visits': visits})
+    scans = 1+sum(x['W_visits'] for x in layers)
+    buckets = sum((1 << m)-1 for m in range(d-cut))
+    buckets += sum((1 << min(m, retained_bits))-1 for m in range(d-cut, d))
+    largest = max((b for x in layers for b in x['window_bits']), default=0)
+    return {
+        'credit': False, 'layers': layers,
+        'optimization': 'partial Fp3 mul plus H folds; not runtime optimum',
+        'range_W_visits_with_cached_histogram': scans,
+        'range_W_payload_bytes': scans*packed_bytes,
+        'external_W_bytes_if_resident': 0,
+        'fraction_merges_initial_and_replay': merges,
+        'fraction_merge_Fp3_mul_expressions': 3*merges,
+        'lower_child_weighted_accumulations': accum,
+        'Gram_build_Fp3_mul_expressions': gram_mul,
+        'Gram_build_Fp3_add_expressions': gram_add,
+        'resident_coefficient_buckets': buckets,
+        'resident_coefficient_Fp3_mul_expressions': 27*buckets,
+        'factored_resident_coefficient_Fp3_mul_expressions': 18*buckets,
+        'resident_scalar_interpolations': 5*buckets,
+        'H_scalar_interpolations': h_folds,
+        'comparable_core_Fp3_mul_expressions': 3*merges+accum+gram_mul+27*buckets,
+        'factored_core_Fp3_mul_expressions': 3*merges+accum+gram_mul+18*buckets,
+        'largest_H_bytes': 24*(1 << (2*largest)),
+        'largest_bucket_children_bytes': 96*(1 << largest),
+        'retained_children_and_eq_bytes': 120*(1 << retained_bits),
+        'unpriced': ['H trace/cubic extraction', 'prefix/equality generation',
+                     'bounded partial-H reduction', 'gather/staging/allocator',
+                     'MAC/PCS/PCG', 'A/KV/inference/serialization'],
+        'HBM_transactions_and_scratch_bytes': None,
+        'runtime_upper': None,
+    }
+
+
+def local_preflight(gram, suffix):
+    """Necessary rates and explicit missing evidence, never a hardware upper."""
+    work = {
+        'range_fraction_merges': gram['fraction_merges_initial_and_replay'],
+        'range_child_accumulations': gram['lower_child_weighted_accumulations'],
+        'range_Gram_build_Fp3_mul': gram['Gram_build_Fp3_mul_expressions'],
+        'range_resident_coefficient_buckets': gram['resident_coefficient_buckets'],
+        'range_scalar_folds': gram['resident_scalar_interpolations']+gram['H_scalar_interpolations'],
+        'range_comparable_core_Fp3_mul': gram['comparable_core_Fp3_mul_expressions'],
+        'W_linear_contraction_updates': suffix['both_scans_update_model'],
+        'PCS_complete_operations': None, 'PCG_complete_operations': None,
+        'A_range_operations': None, 'inference_operations': None,
+        'serialization_complete_bytes': None,
+    }
+    visits = gram['range_W_visits_with_cached_histogram']+2
+    return {
+        'credit': False, 'spending_authorized': False, 'decision': 'NO_GO',
+        'counted_work': work,
+        'necessary_per_second_if_component_had_all_50_seconds': {
+            k: None if v is None else v/50 for k, v in work.items()},
+        'rates_are_not_sufficient_and_overlapping_work_must_not_be_added': True,
+        'W_visits_range_plus_linear': visits,
+        'W_visits_complete': None, 'A_visits_complete': None, 'KV_visits_complete': None,
+        'W_range_plus_linear_payload_bytes': visits*61_394_690_560,
+        'HBM_W_range_lower_seconds_conditional_no_compression_cache_at_most_256MiB':
+            gram['range_W_visits_with_cached_histogram']*(61_394_690_560-(256 << 20))/3.35e12,
+        'compute_lower_seconds_formula': 'I_min / (132 * 64 * f_max_Hz)',
+        'compute_lower_requires': 'instruction-class census of compiled kernels and verified clock ceiling',
+        'compute_lower_numeric_unconditional': None,
+        'external_W_bytes_for_counted_resident_visits': 0,
+        'global_load_W_bytes_separate': 61_394_690_560,
+        'HBM_transactions_total': None, 'external_transfers_complete': None,
+        'planned_arena_reservation_bytes': 6_442_450_944,
+        'physical_allocated_peak': None, 'physical_reserved_peak': None,
+        'complete_seconds_upper': None,
+        'missing_before_paid_integrated_run': [
+            'compiled CUDA/SASS and bounded gather correctness',
+            'private PCS encode/open replay with original pads/salts and MAC endpoint',
+            'A/KV producer/replay liveness and complete visit census',
+            'complete real PCG and serialization costs',
+            'allocated/reserved global peak and complete non-overlapped time budget',
+            'published clean SHA, provider deadline, live price and explicit owner authorization'],
     }
 
 
@@ -248,6 +361,7 @@ def report():
         'coset_replay': profiles,
         'suffix_first_W_linear_reducer': suffix,
         'integrated_schedule': integrated_schedule_screen(suffix),
+        'local_preflight': local_preflight(gram_window_budget(35, 10, 61_394_690_560, 25), suffix),
         'arena_bytes': arena,
         'native_Dory_implemented': False,
         'physical_schedule_admitted': False,

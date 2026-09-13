@@ -276,3 +276,72 @@ def test_checkpoint_replay_then_retain_matches_adaptive_dense_rounds():
     assert r['retained_children_and_eq_bytes'] == 4026531840 < 6442450944
     assert r['external_W_bytes_if_resident'] == 0
     assert r['runtime_upper'] is None and not r['rejected_for_read_count']
+
+
+def test_gram_windows_preserve_cubic_messages_and_original_terminal():
+    p, d, lam = 97, 7, 13
+    rows = [[(7*i*i+(j+3)*i+11*j+2) % p for i in range(1 << d)] for j in range(4)]
+    parent = [2, 5, 11, 17, 23, 31, 41]
+    equality = table([(1-r, r) for r in parent], p)
+    original = [row[:] for row in rows]
+    point, transcript = [], []
+    def cubic_dense(children, weights):
+        h = len(weights)//2
+        out = [0]*4
+        for i in range(h):
+            v = [0]*3
+            for x, y, scale in ((0, 3, lam), (2, 1, lam), (1, 3, 1)):
+                a, b = children[x][i], children[y][i]
+                da, db = children[x][i+h]-a, children[y][i+h]-b
+                for j, c in enumerate((a*b, da*b+a*db, da*db)):
+                    v[j] += scale*c
+            for j in range(3):
+                out[j] += weights[i]*v[j]
+                out[j+1] += (weights[i+h]-weights[i])*v[j]
+        return [x % p for x in out]
+    for width in (3, 2, 2):
+        before = len(point)
+        length, tail = 1 << width, len(rows[0]) >> width
+        tail_eq = table([(1-r, r) for r in parent[before+width:]], p)
+        H = [[0]*length for _ in range(length)]
+        for t in range(tail):
+            for u in range(length):
+                a, b, c, _ = [row[u*tail+t] for row in rows]
+                U, V = tail_eq[t]*(lam*a+b), tail_eq[t]*lam*c
+                for v in range(length):
+                    H[u][v] = (H[u][v]+U*rows[3][v*tail+t]+V*rows[1][v*tail+t]) % p
+        for step in range(width):
+            h = len(H)//2
+            tail_weights = table([(1-r, r) for r in parent[before+step+1:before+width]], p)
+            prefix_weight = 1
+            for x, r in zip(parent, point):
+                prefix_weight = prefix_weight*((1-x)*(1-r)+x*r) % p
+            v = [0, 0, 0]
+            for z, w in enumerate(tail_weights):
+                a, b, c, e = H[z][z], H[z][z+h], H[z+h][z], H[z+h][z+h]
+                for j, val in enumerate((a, b+c-2*a, e-b-c+a)):
+                    v[j] += w*val
+            x = parent[len(point)]
+            coeff = [0]*4
+            for j in range(3):
+                coeff[j] += prefix_weight*(1-x)*v[j]
+                coeff[j+1] += prefix_weight*(2*x-1)*v[j]
+            coeff = [c % p for c in coeff]
+            assert coeff == cubic_dense(rows, equality)
+            r = challenge(transcript, coeff, p)
+            point.append(r)
+            H = [[((1-r)**2*H[i][j]+r*(1-r)*(H[i+h][j]+H[i][j+h])+r*r*H[i+h][j+h]) % p
+                  for j in range(h)] for i in range(h)]
+            rows = [fold(row, r, p) for row in rows]
+            equality = fold(equality, r, p)
+    eq = table([(1-r, r) for r in point], p)
+    assert [r[0] for r in rows] == [sum(a*b for a, b in zip(row, eq)) % p for row in original]
+    budget = screen.gram_window_budget(35, 10, 61394690560, 25)
+    assert [x['window_bits'] for x in budget['layers']] == [
+        [], [1], [2], [3], [4], [5], [2, 4], [3, 4], [2, 2, 4], [2, 3, 4]]
+    assert budget['range_W_visits_with_cached_histogram'] == 26
+    assert budget['fraction_merges_initial_and_replay'] == 640151453695
+    assert budget['comparable_core_Fp3_mul_expressions'] == 3146566859825
+    assert budget['H_scalar_interpolations'] == 2565
+    assert budget['largest_H_bytes'] == 24576
+    assert budget['runtime_upper'] is None and not budget['credit']

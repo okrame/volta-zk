@@ -1228,7 +1228,7 @@ e fallback: i lower omettono GKR congiunti e fratelli Merkle, e la prima
 somma omette ancora il framing esterno/completion non censito del bootstrap.
 Il goal completo non si chiude con questa sola tabella.
 
-**RS per coset: identità corretta, replay incompatibile.** Nel commitment
+**RS per coset: identità corretta, replay da integrare.** Nel commitment
 [CFW corrente](../../rust/third_party/p3-whir-c61/src/pcs/zk/committer.rs)
 una colonna è la DFT di messaggio, pad e zeri; il Merkle impegna righe
 complete. Per produrre un coset `z*<omega>` lungo L, basta ridurre i
@@ -1496,6 +1496,116 @@ La candidata checkpoint viene quindi **mantenuta per approfondimento
 minimo**, non respinta per 56 visite e non ammessa sotto 50 s. Il goal
 completo resta aperto: i costi ignoti hanno upper di ammissione infinito.
 Nessuna nuova premessa crittografica, spesa o esecuzione pesante è introdotta.
+
+## Range con finestre Gram private
+
+**Candidata locale del 2026-09-13:** il replay da 56 visite è superato
+nel modello aritmetico da una schedule a **26 visite W per il range**.
+Non cambia il protocollo range: nessun nuovo oracolo, sfida, messaggio,
+MAC o errore crittografico. Rimangono da dimostrare refinement del reader,
+NoPeek nativo e risorse complete; `credit:false` resta obbligatorio.
+
+Al livello con m coordinate dei child, dopo un prefisso r già sfidato,
+si scrivano A=P_left, B=Q_left, C=P_right, D=Q_right e
+`U=lambda*A+B`, `V=lambda*C`. Il prodotto da sommare è `U*D+V*B`.
+Per una finestra di b coordinate, L=2^b, e suffisso t, accumulare privatamente
+
+```
+H[u,v] = sum_t eq(parent_tail,t) * (U(u,t)*D(v,t) + V(u,t)*B(v,t)).
+```
+
+Ogni bucket t ricostruisce da W i 4L child, contraendo soltanto il
+prefisso già noto. Ogni foglia è visitata una volta per finestra.
+H ha L² elementi Fp3: è generalmente **non simmetrica**. Per il round
+corrente, i blocchi diagonali 2×2 contribuiscono i coefficienti quadratici
+`(H00, H01+H10-2*H00, H11-H01-H10+H00)`, pesati dall'equality delle
+coordinate rimanenti. Moltiplicarli per l'equality affine corrente e
+per il fattore del prefisso produce gli stessi quattro coefficienti cubici.
+Emettere/autenticare il round **prima** di conoscere la sua sfida; poi
+piegare entrambi gli assi di H con quella stessa sfida. La finestra
+successiva ricostruisce dal medesimo snapshot con il nuovo prefisso.
+
+L'identità segue espandendo la multilineare sui due assi e scambiando
+somme finite; i termini fuori diagonale sono indispensabili. Il test F97
+con sfide dipendenti dal transcript confronta tutti i coefficienti e
+le quattro valutazioni terminali originali. Il test gather precedente
+controlla la ricostruzione dei child. Non sono prove Lean del reader
+integrato né esecuzioni MAC. H resta privata, dipende solo da witness
+fissato e sfide precedenti, non da righe VOLE future: la nuova algebra
+non richiede NoPeek più debole. Le emissioni restano quelle di
+[security §3](security.md#3-schedule-completa-e-destinazione-degli-endpoint).
+
+Per scegliere le finestre prima di materializzare 25 bit, lo
+[screen](../../scripts/c71_streaming_screen.py) enumera le composizioni
+ordinate di g=m-25. A prefisso lungo p, una finestra b costa nel modello:
+
+```
+3*(N-2^(m+1)) + 4*2^m + (4+2*2^b)*2^(m-p) + (2^(2*b)-1) mul Fp3.
+```
+
+I termini sono merge, accumulo child, costruzione H e fold di H.
+La costruzione H usa, per bucket, 4L mul per U/V pesati, poi 2L² mul
+per i due prodotti esterni. L'equality del suffisso viene applicata
+una sola volta. Fold dei due assi: L²-1 interpolazioni, ciascuna 1 mul
++2 add/sub. Generazione equality, estrazione cubica da H, riduzione
+parallela, staging e MAC non entrano nell'obiettivo del planner.
+È un minimo **soltanto di questo modello**, non del tempo o di tutti i
+protocolli range. Il planner emette la tabella pubblica seguente:
+
+| m | Finestre b | Visite, materializzazione finale inclusa |
+|---:|---|---:|
+| 25 | nessuna | 1 |
+| 26 | 1 | 2 |
+| 27 | 2 | 2 |
+| 28 | 3 | 2 |
+| 29 | 4 | 2 |
+| 30 | 5 | 2 |
+| 31 | 2, 4 | 3 |
+| 32 | 3, 4 | 3 |
+| 33 | 2, 2, 4 | 4 |
+| 34 | 2, 3, 4 | 4 |
+
+Sono 15 finestre, 10 materializzazioni e la costruzione del canopy:
+26 visite. La H massima costa **24.576 B**, i suoi 4L child **3.072 B**.
+Una H per *ogni* bucket contemporaneamente sarebbe un altro layout,
+non ammesso: usare un numero fisso di worker e ridurre le H parziali.
+
+| Conteggio W range | Replay precedente | Finestre variabili |
+|---|---:|---:|
+| Visite W | 56 | 26 |
+| Payload W residente, B | 3.438.102.671.360 | 1.596.261.954.560 |
+| Merge razionali | 1.305.602.949.119 | 640.151.453.695 |
+| Accumuli child | 1.237.084.798.976 | 506.403.487.744 |
+| Mul Fp3 per H | 0 | 709.743.345.664 |
+| Mul Fp3 per coefficienti ordinari a 27/bucket | 927.712.934.964 | 9.965.665.332 |
+| Nucleo confrontabile, mul Fp3 | 6.081.606.581.297 | 3.146.566.859.825 |
+
+Il nucleo scende del **48,26%**. Le finestre fisse da 3 bit danno
+29 visite e 3.508.417.854.513 mul; quelle da 4 bit danno 26 visite e
+3.743.030.443.057 mul. Restano separati 1.845.493.580 fold residenti,
+2.565 fold H e le voci escluse sopra. Gli add della costruzione H sono
+581.095.653.376, oltre a un add per merge/accumulo.
+
+Anche il coefficiente cubico residente si può fattorizzare: U0,dU,V0,dV
+richiedono 4 mul, i coefficienti di UD+VB 8 mul, l'equality 6 mul:
+**18 contro 27** nel riferimento diretto. Il nucleo così fattorizzato è
+3.143.244.971.381 mul; il confronto sopra mantiene 27 in entrambe le
+colonne per isolare l'effetto delle finestre. Il kernel preparato usa 18,
+con il calcolo diretto come oracle di correttezza indipendente.
+
+**Cambio di protocollo range.** Le finestre sono preferibili come prossimo
+controllo perché conservano integralmente il transcript B12. Un oracolo
+reciproco Z=(alpha-W)^(-1) eliminerebbe l'albero razionale, ma Z deve
+essere impegnato privatamente prima delle sfide che ne verificano
+l'identità. Autenticare liberamente il solo terminale dopo la sfida
+consente di sceglierlo per soddisfare il test: questa scorciatoia è respinta.
+La versione con una vera PCS privata di Z rimane aperta, con tre limb Fp
+per valore Fp3, nuovi pad, righe MAC, byte, visite e bootstrap da censire.
+Il margine iniziale di 3.105.466 B non dimostra che la nuova PCS ci stia;
+non la si respinge solo perché un suo upper prudente lo supera.
+Registrare il range di W una volta contro C_W può risparmiare il range W
+successivo; serve aggiornare formalmente stato/FS e confronto su tutti i
+prefissi. Non elimina il costo della prima proof o il range A.
 
 ## IO, sicurezza e criterio di riapertura
 

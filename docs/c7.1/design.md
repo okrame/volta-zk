@@ -849,6 +849,12 @@ memoria aggiuntiva agli 80 GB né il limite totale della GPU. Il nuovo
 conta 3.543.662.592 byte residui sottraendo gli array suffix-first prudenti;
 dimostra inoltre il rilascio algebrico di C prima del secondo passaggio,
 senza attribuire il margine a buffer PCS/range ancora non costruiti.
+Lo [screen range a finestre private](construction-screen.md#range-con-finestre-gram-private)
+conserva gli endpoint originali e riduce il range W da 56 a 26 visite;
+i nuovi conteggi sono espressioni di campo e payload, non un upper di
+tempo o un refinement Lean. Non introduce ipotesi ulteriori. Rimangono
+da scaricare il reader integrato e la sua disciplina NoPeek, oltre a
+PCS, A/KV e risorse complete prima dell'ammissione fisica.
 Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.

@@ -855,13 +855,25 @@ i nuovi conteggi sono espressioni di campo e payload, non un upper di
 tempo o un refinement Lean. Non introduce ipotesi ulteriori. Rimangono
 da scaricare il reader integrato e la sua disciplina NoPeek, oltre a
 PCS, A/KV e risorse complete prima dell'ammissione fisica.
-Il [preflight](preflight.md) conta ora anche la destinazione dei fold
-CUDA fuori posto e il replay completo del primo oracolo PCS per coset,
-con frontier e checkpoint dei sali XOF. Il cap del reader privato e
-l'assegnazione canonica dei sali devono restare identici; il controllo
-Python non è il refinement del backend. I kernel globali FFT senza
-fusione sono esclusi soltanto sotto le condizioni di traffico dimostrate;
-il port a blocchi e la costruzione completa restano non ammessi.
+Il [preflight](preflight.md) include destinazioni fold CUDA fuori posto,
+cache PCS persistente dentro arena, A corrente e vecchie A, KV pendente e
+oracoli WHIR successivi. FFT a blocchi e range compilano per sm_90;
+questo è un controllo statico locale, non tempo o memoria GPU misurati.
+Il replay completo è escluso sotto i ceiling dichiarati di banda/cache
+(e per il primo tentativo anche clock/kernel merge): i lower parziali
+sono 52,885/61,369/70,033 s, prima del resto. La
+[variante di apertura per resti](construction-screen.md#aperture-per-resti-a-cap-fisso)
+ha un cap fisso 2^21 e costo sorgente uniforme nel suo nucleo, con
+cache h12 da 188.743.552 B e range cut11/m24 da 29 visite. L'identità
+algebrica è verificata su casi finiti; non introduce nuovi endpoint o
+assunzioni, né un nuovo teorema Lean. Restano da scaricare il refinement
+su codec/sali/NoPeek, source-uniformity del commitment e della PCS completa,
+i getter A/KV, gli stati folded e il port reale PCG. Il cap del reader
+privato, i pad e l'assegnazione dei sali devono restare identici.
+La proposta di un solo buffer persistente KV per 450 token conta anche
+la coda pendente; non autorizza temporanei fuori arena. I picchi globali
+completi allocato/riservato sono ignoti. In assenza di tutti i contratti
+di lavoro e servizio, l'upper analitico di ammissione rimane +infinito.
 Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.

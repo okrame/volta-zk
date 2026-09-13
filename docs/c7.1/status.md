@@ -198,17 +198,32 @@ moltiplicazioni, non del tempo.
 I buffer nominati massimi restano 5,234 GB per il top, 4,027 GB nei livelli
 bassi e poi 2,899 GB per linear; non coesistono. Dopo range e linear sono
 28 visite W censite, **non** il totale completo con PCS e inferenza.
-Il [preflight locale](preflight.md) resta **NO-GO**: transazioni HBM, picco fisico
-allocato/riservato, PCS, A/KV, PCG e tempo completo non sono ancora chiusi.
-La nuova [frontier PCS per coset](construction-screen.md#pcs-coset-frontiere-e-sali-riproducibili)
-conserva root e cammini originali nel controllo piccolo, con replay
-seekable dei sali canonici. Il primo oracolo W richiede 5.739.381.472 B
-nominati, 1.024 visite per commit e altre 1.024 per apertura. Il port FFT
-globale senza fusione è escluso dal lower condizionato di **54,155 s**;
-la FFT a blocchi conserva l'algebra ma non ha ancora un kernel misurato.
-Kernel range Fp3, input e harness sono pronti per i controlli host;
-nvcc e trace GPU sono assenti. I costi ignoti hanno controlli minimi
-espliciti e non sono motivi per respingere l'algebra. Nessun pod, spesa o workload pesante è autorizzato.
+Il [preflight locale](preflight.md) resta **NO-GO per H100**. La FFT a
+blocchi 2048² e il range ora compilano per sm_90 con nvcc 12.9.86:
+zero stack/spill ptxas, controlli CPU ridotti passati; nessun tempo GPU.
+La compilazione locale usa una correzione dichiarata di quattro prototipi
+math nell'header temporaneo per glibc 2.41, senza cambiare aritmetica CUDA.
+
+Il replay completo dei primi oracoli include ora A corrente e vecchie A.
+Con le condizioni di banda/cache dichiarate, impone **47,239 / 55,723 /
+64,388 s**; aggiungendo il lower del kernel merge generico e il ceiling
+esplicito di 2 GHz: **52,885 / 61,369 / 70,033 s**, prima di PCG,
+inferenza, range A e oracoli successivi. È respinta questa implementazione,
+non ogni PCS. L'upper completo resta +infinito per i costi ignoti.
+
+La [variante per resti polinomiali](construction-screen.md#aperture-per-resti-a-cap-fisso)
+ricostruisce i sottoalberi richiesti con una scansione sorgente, mantenendo
+le stesse righe, pad, sali, root e endpoint come obbligo di refinement.
+Il nucleo algebrico passa i controlli finiti. Cache h12 da 188.743.552 B
+nell'arena, canopy cut11 e range residente m24 danno **29 visite range W**
+e **32 visite W note** con linear e prima apertura; non il totale.
+Questa coordinazione evita la collisione tra cache PCS e range m25.
+KV originale ha una proposta append unica per 450 token, senza seconda
+cache; W+KV+arena riservati noti sono 70.048.981.504 B. Picco completo
+allocato/riservato, getter A, WHIR successivo, PCG e upper di tempo restano
+aperti. Gli harness/input FFT e range sono pronti, quello integrato no.
+Si prosegue con i controlli minimi indicati nel preflight; nessun pod,
+spesa o workload pesante è autorizzato o proposto.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso
 AES composto positivo e refinement dei codec non sono ancora chiusi.

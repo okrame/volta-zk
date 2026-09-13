@@ -1660,8 +1660,9 @@ il lower condizionato di sola banda supera 50 s per encoding. Una variante
 senza seconda codeword fattorizza L=2048²: trasposizione quadrata in-place,
 FFT di riga da 2.048 elementi, twiddle fuso con seconda trasposizione,
 altra FFT di riga e terza trasposizione nell'ordine naturale. Servono
-16 KiB shared per riga; nessuna di queste osservazioni è un upper di
-registri o una prova del kernel CUDA. Il controllo finito Goldilocks
+16 KiB shared per riga. Il kernel ora compila per sm_90: ptxas riporta
+al massimo 40 registri e zero stack/spill, non un tempo GPU. La
+trasposizione a tile usa 16.896 B shared. Il controllo finito Goldilocks
 M=4/8/16 coincide con la FFT diretta. I cinque passaggi hanno 10 volte
 il payload encoded come traffico logico, prima di hash/sali/reader.
 
@@ -1672,6 +1673,52 @@ esclusa dalla sola arena. Campo, hash, XOF, layout e visite sono separati
 nel preflight; il tempo completo rimane ignoto, così come source-uniformity
 e confronto di lavoro totale. Né il nuovo replay PCS né il nuovo range
 sono ancora port nativi o costruzioni fisicamente ammesse.
+
+## Aperture per resti a cap fisso
+
+Il [preflight integrato](preflight.md) respinge il replay completo anche
+con FFT a cinque passaggi: A corrente va committata e aperta, ogni vecchia
+A aperta. Le continuazioni superano 50 s già nel lower condizionato di
+banda dei primi oracoli; non si presume overlap o disponibilità gratuita
+del witness per ammettere una nuova costruzione.
+
+La minima alternativa locale esaminata conserva il medesimo commitment.
+Cache privata dei nodi Merkle sopra sottoalberi da 2^12 foglie e degli
+offset iniziali dei sali: 188.743.552 B per W e tre A, dentro arena in
+ogni fase. Dopo le query, completare l'insieme dei punti a B=2^21 punti
+distinti del dominio RS originale. B è fisso, non scelto in funzione di
+q/N. Per Z prodotto dei fattori (X-x), leggere ogni colonna sorgente,
+pad originali inclusi, una volta high-to-low a blocchi B, aggiornando
+`r=(r*X^B+f_i) mod Z`. Il reciproco del polinomio invertito permette due
+convoluzioni con fattore fisso: quattro FFT online di lunghezza 2B per
+blocco dopo due precalcoli condivisi. Usare soltanto la metà alta invertita
+per il quoziente evita l'alias della convoluzione ciclica.
+
+Il [controllo finito](../../tests/test_c71_query_remainder.py) verifica
+questa divisione contro long division e le valutazioni RS richieste,
+compresi pad privati non nulli, blocco leading parziale e zeri pubblici.
+Il piano canonico richiede alberi di prodotti/resti veloci; i piccoli
+helper quadratici non ricevono credito di complessità. Con cap fisso il
+nucleo sorgente paga 88N butterfly e 16N altri prodotti base, più pad e
+`P(q,h)` indipendente da N. Questo risultato non chiude il requisito
+source-uniformity per commitment, oracoli successivi o witness.
+
+La valutazione ai punti selezionati ricostruisce le foglie originali;
+il replay dei sali dallo stesso offset ricostruisce i sottoalberi, e la
+cache fornisce i fratelli superiori. Nessuna nuova emissione, root,
+correlazione riusata o MAC terminale libero è ammessa. Prima del credito
+nativo serve il confronto bit-per-bit di adapter, codec e transcript;
+le identità finite non sostituiscono le premesse PCS o i lemmi MAC.
+
+La cache non entra con il precedente range m25. Portare sia canopy a
+cut11 sia residente a m24 riduce i buffer nominati e aumenta il range W
+a 29 visite; il solo cambiamento m24 non basta al picco canopy. Con
+linear e prima apertura si contano 32 visite W note, più commitment
+installato, WHIR/witness e inferenza ancora da chiudere. La FFT quadrata
+già compilata ha proprio lunghezza 2B; il kernel remainder/valutazione,
+lo schedule degli stati folded W/A e la liveness completa PCG restano
+controlli minimi locali. Il preflight non propone H100 finché il tempo
+completo non resta plausibile e harness/input integrati non sono pronti.
 
 ## IO, sicurezza e criterio di riapertura
 

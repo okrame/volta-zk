@@ -86,12 +86,30 @@ ha un ulteriore confronto CPU/GPU prima delle allocazioni grandi.
 Input, seed, SHA sorgente, geometria e limiti sono registrati dall'
 [harness](../../scripts/run_c71_range_microbench.py).
 
-Validazione locale del checkpoint: **10 test passati** nei due file
-`test_c71_streaming_screen.py` e `test_c71_range_microbench.py`, entro
-60 s/2 GiB. Nessun nvcc locale, quindi nessuna compilazione dei rami CUDA,
-misura H100 o credit hardware. La Gram del microbench materializza H
-per bucket solo su input limitato; non è il reader integrato. Il
-[preflight](preflight.md) mantiene NO-GO e distingue tutti questi limiti.
+Validazione locale aggiornata: **12 controlli Python passati** streaming/range/remainder
+entro 60 s/2 GiB, più confronto host della
+[FFT a cinque passaggi](../../cuda/c71_fft_microbench.cu) con DFT e FFT
+radix-2, inclusi modello delle coppie di tile M64 e copertura delle scritture.
+L'[harness FFT](../../scripts/run_c71_fft_microbench.py) registra input e
+metadati e contiene un controllo GPU preliminare, non ancora eseguito.
+
+Range e FFT compilano per sm_90 con CUDA 12.9.1 temporaneo, nvcc 12.9.86,
+zero stack/spill ptxas, massimo 80/40 registri rispettivamente. Il toolkit
+ARM64 SBSA verificato SHA-256 richiede sulla VM glibc 2.41 la correzione
+locale dichiarata di quattro prototipi sinpi/cospi non usati. La prima
+compilazione fallita resta evidenza, non viene cancellata dal successo.
+Non sono una misura H100, un compiler production intatto o un credito
+per il reader/PCS integrati. La Gram materializza H per bucket soltanto
+nell'input componente limitato. Il [preflight](preflight.md) riporta il
+census SASS del merge e le condizioni dei lower temporali.
+
+Il [test remainder](../../tests/test_c71_query_remainder.py) confronta
+quattro FFT online per blocco con divisione ingenua e valutazioni RS,
+pad privati non nulli, zeri pubblici e leading block parziale. È algebra
+finita, senza PrivateRng/Merkle/codec nativo. Il nuovo ledger include
+A corrente/storiche, KV pendente, geometria dei 12 oracoli dati e PCG
+lifetime; gli upper di ammissione ignoti restano infiniti. Il goal fisico
+non è dichiarato concluso e non è stata eseguita GPU.
 
 ## Shared RNE byte experiment
 

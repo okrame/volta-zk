@@ -303,7 +303,7 @@ def local_preflight(gram, suffix):
         'physical_allocated_peak': None, 'physical_reserved_peak': None,
         'complete_seconds_upper': None,
         'missing_before_paid_integrated_run': [
-            'compiled CUDA/SASS and bounded gather correctness',
+            'bounded CUDA gather correctness and representative remainder/hash kernels',
             'private PCS encode/open replay with original pads/salts and MAC endpoint',
             'A/KV producer/replay liveness and complete visit census',
             'complete real PCG and serialization costs',
@@ -353,6 +353,122 @@ def coset_frontier_budget():
         'five_pass_FFT_Fp_twiddle_products_per_encoding': width*L*Q,
         'fused_FFT_seconds_upper': None,
         'all_PCS_visits_or_seconds_upper': None,
+    }
+
+
+def pcs_data_oracle_geometry(d):
+    """Data oracles only: masks, padding generation and WHIR state stay separate."""
+    remaining, first, rows = d, True, []
+    while remaining > 6:
+        fold = 7 if first else 2
+        width, pad, limbs = 1 << fold, 1536 if first else 512, 1 if first else 3
+        message_rows = 1 << (remaining-fold)
+        domain = 1 << (8*(message_rows+pad)-1).bit_length()
+        rows.append({'input_dimension': remaining, 'fold': fold,
+                     'domain_rows': domain, 'base_columns': width*limbs,
+                     'encoded_bytes': domain*width*limbs*8,
+                     'folded_Fp3_state_bytes': message_rows*24})
+        remaining -= fold
+        first = False
+    return rows
+
+
+def integrated_resource_ledger(assessment):
+    """Complete admission categories; unknown costs are NOT filled by peak rates.
+
+    Numeric lower applies to five separate full-array FFT passes and full
+    initial-oracle replays, plus the exact generic merge binary. It excludes
+    all positive unpriced work, so is not an upper or a PCS impossibility.
+    """
+    arena, w, cache, bw = 6_442_450_944, 61_394_690_560, 256 << 20, 3.35e12
+    cases = assessment['ordinary_KV_output_and_EXP30_composition']['cases']
+    complete = assessment['complete_fixed_run_composition']
+    packed_a = [c['auxiliary_live_bytes'] for c in cases]
+    # Each kernel boundary forces an array traversal; grant cache anew every
+    # traversal. The source must be read separately before transforming it.
+    pass_bytes = lambda packed, q: q*(packed-cache+10*((4 << 30)-cache))
+    w_lower = pass_bytes(w, 1024)
+    a_lower = [pass_bytes(a, 512) for a in packed_a]
+    merges = gram_window_budget(35, 10, w, 25)['fraction_merges_initial_and_replay']
+    merge_imad = 149*merges
+    compute_lower = merge_imad/(132*64*2e9)
+    output = []
+    for i, c in enumerate(cases):
+        known_hbm = w_lower+2*a_lower[i]+sum(a_lower[:i])
+        a_visits = [512]*(i+1)
+        a_visits[i] *= 2
+        output.append({
+            'old_tokens': c['old_tokens'], 'packed_A_bytes': packed_a[i],
+            'original_KV_accepted_bytes': c['old_tokens']*4_915_200,
+            'original_KV_with_pending_bytes': (c['old_tokens']+150)*4_915_200,
+            'initial_oracle_full_replay_W_visits_plus_range_linear': 1052,
+            'initial_oracle_A_visits_by_generation': a_visits,
+            'initial_oracle_HBM_lower_bytes_conditional': known_hbm,
+            'initial_oracle_bandwidth_lower_seconds_conditional': known_hbm/bw,
+            'initial_oracle_plus_generic_merge_lower_seconds_conditional': known_hbm/bw+compute_lower,
+            'source_PCS_chains': c['source_PCS_chains_including_W'],
+            'query_remainder_known_first_oracle_W_visits_plus_range_linear': 32,
+            'query_remainder_known_current_A_visits_with_range_before_linear': 539,
+            'range_A_Gram_screen': gram_window_budget(34, 10, packed_a[i], 24),
+            'W_A_KV_total_visits': None, 'HBM_total_bytes': None,
+            'complete_seconds_upper': None,
+        })
+    return {
+        'credit': False, 'decision_full_replay': 'NO_GO_under_stated_ceilings',
+        'query_remainder_range_variant': gram_window_budget(35, 11, w, 24),
+        'lower_conditions': ['HBM <=3.35e12 B/s', 'cache credit <=256MiB per traversal',
+                             'no transparent compression', 'five separate FFT array passes',
+                             'original first roots: W opening, current A commit+opening, old A opening',
+                             'exact compiled generic merge for every counted merge',
+                             '132 SM, <=64 INT32 multiply results/cycle/SM, clock <=2GHz'],
+        'generic_merge_IMAD_WIDE_U32_unpredicated_per_merge': 149,
+        'generic_merge_instruction_class_count': merge_imad,
+        'generic_merge_compute_lower_seconds_conditional': compute_lower,
+        'initial_W_install_HBM_lower_bytes_conditional': w_lower,
+        'initial_W_install_seconds_lower_conditional': w_lower/bw,
+        'initial_W_external_upload_bytes': w,
+        'resident_W_scan_external_bytes': 0,
+        'spill_external_bytes_allowed': 0,
+        'cases': output,
+        'data_oracles': {str(d): pcs_data_oracle_geometry(d) for d in (34, 35)},
+        'PCG': {'required_base_rows_lifetime_upper': complete['initial_base_rows_upper'],
+                'capacity_base_rows': 70_778_880,
+                'cGGM_steps_point_query_component_upper_per_role':
+                    2*353_894_400+209*complete['initial_base_rows_upper'],
+                'all_output_MAC_bytes_prover': 16*complete['initial_base_rows_upper'],
+                'stream_output_batch_proposed_bytes': 4096*16,
+                'live_state_bytes_upper': None, 'AES_OT_field_HBM_seconds_upper': None},
+        'memory': {'arena_reserved_bytes_target': arena,
+                   'single_KV_append_buffer_450_tokens_reserved_bytes': 450*4_915_200,
+                   'W_KV_arena_known_reserved_bytes': w+450*4_915_200+arena,
+                   'remaining_global_before_context_and_other_residents': 80_000_000_000-w-450*4_915_200-arena,
+                   'allocated_peak_complete': None, 'reserved_peak_complete': None,
+                   'full_current_A_plus_W_arena_bytes': [w+a+arena for a in packed_a]},
+        'query_remainder_named_buffer_plan': {
+            'persistent_cache_within_arena_bytes': 188_743_552,
+            'canopy_cut11_with_cache_scratch_histogram_bytes': 3_376_938_824,
+            'resident_range_m24_with_cache_scratch_histogram_bytes': 3_480_760_184,
+            'initial_PCS_commit_with_cache_256MiB_slot_histogram_PCG_output_bytes': 6_197_150_296,
+            'remaining_initial_PCS_before_other_live_state': arena-6_197_150_296,
+            'scratch_slots_are_proposed_caps_not_implemented_bounds': True,
+            'query_tree_and_folded_PCS_state_peak_bytes': None,
+        },
+        'time_upper_contract': {
+            'expression': 'T_response <= sum_k T_k_upper; T_k_upper = L_k_upper + sum_j work_kj/R_kj_min + HBM_k/BW_k_min + external_k/BWext_k_min',
+            'condition': 'certified workload-specific lower service rates and bounded stalls; serial charges, no assumed overlap',
+            'categories': ['inference', 'A/KV reconstruction and producer GKR', 'range W',
+                           'range A', 'linear W/A/old A', 'PCS all data and mask oracles',
+                           'PCG/OT/MAC/FS', 'serialization and external response transport',
+                           'allocation/launch/synchronization/host scheduling'],
+            'all_category_work_and_service_contracts_available': False,
+            'admission_upper': '+infinity',
+        },
+        'minimum_missing_checks': {
+            'A_KV': 'bounded immutable getter trace across all 3471 source recipes and three contexts; reads/recomputations and live buffers',
+            'PCS': 'canonical salt/hash/pad adapter with all switch and mask oracles and original terminal MACs',
+            'PCG': 'bounded AES/cGGM producer-consumer trace, seed/state/OT allocations and no bulk output pool',
+            'time': 'full work census and applicable service-rate floors; component peak bandwidth cannot supply these',
+        },
     }
 
 
@@ -407,6 +523,7 @@ def report():
         'suffix_first_W_linear_reducer': suffix,
         'integrated_schedule': integrated_schedule_screen(suffix),
         'local_preflight': local_preflight(gram_window_budget(35, 10, 61_394_690_560, 25), suffix),
+        'integrated_resource_ledger': integrated_resource_ledger(assessment),
         'arena_bytes': arena,
         'native_Dory_implemented': False,
         'physical_schedule_admitted': False,

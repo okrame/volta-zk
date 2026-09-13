@@ -475,6 +475,15 @@ archivi/toolchain, patch header, errori iniziali, log ptxas, dump SASS
 del merge e controlli host dei binari CUDA. `git_dirty:false`,
 `gpu_execution:false`, `credit:false`; nessun tempo GPU.
 
+Il [nuovo record statico dei costi dominanti](../../benchmarks/results/c71-dominant-static-2026-09-13-ca29dbd3cc8c.json)
+è raccolto su SHA pulita `ca29dbd3cc8c`: compile sm_90 di entrambi i file,
+15 test ridotti, controlli host dei binari CUDA, SASS dei probe range e
+della FFT ottimizzata, hash e ledger analitico. Conferma 1.183/231
+istruzioni per merge6/leaf-pair e 77 nel ciclo butterfly; zero stack/spill,
+range max 80 registri, FFT max 40 (row 32). Conserva per riferimento
+l'evidenza precedente e la patch temporanea del toolkit. È `credit:false`,
+`git_dirty:false`, `gpu_execution:false`: nessun tempo GPU o upper completo.
+
 Range e FFT compilano localmente con nvcc **12.9.86**, `-O3 -std=c++17
 -arch=sm_90 -Xptxas=-v`. ptxas: zero stack/spill in tutti i kernel;
 range massimo 80 registri, FFT massimo 40. Non è una misura H100.

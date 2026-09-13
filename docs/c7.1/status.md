@@ -226,8 +226,8 @@ separa `T_inference`, `T_proof_only` e `T_response_total`: ogni replay A/KV
 prova; **non sono upper**. Il vincolo totale resta <=65 s, nessun overlap
 presunto. Il proprietario ha autorizzato 65 s totali; nessuna deroga a 90 s.
 Arena, HBM, endpoint, trust model e divieto di GPU/spesa restano invariati.
-Il [checkpoint riproducibile](evidence.md#trace-akv-whir-e-pcg-della-risposta)
-è su SHA pulita `aca17d19eb4b`, 27 controlli ridotti passati e nessuna GPU.
+Il [checkpoint riproducibile](evidence.md#contratto-65-s-e-margine-dellarena)
+è su SHA pulita `2d49690547b9`, 30 controlli ridotti passati e nessuna GPU.
 
 Sono implementati trace locali per 3.471 sorgenti A, 36.171 tessere byte,
 liveness di 1.568 nodi per rigenerazione, tutti i 12 oracoli WHIR e PCG.

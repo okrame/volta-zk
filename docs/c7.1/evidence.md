@@ -863,7 +863,11 @@ PYTHONDONTWRITEBYTECODE=1 timeout 60s pytest -q -p no:cacheprovider \
 PYTHONDONTWRITEBYTECODE=1 timeout 60s .venv/bin/python scripts/c71_arena_plan.py
 ```
 
-30 controlli ridotti passati; nessuna GPU, modello, spill o spesa. Il
+Il [record immutabile](../../benchmarks/results/c71-arena65-2026-09-13-2d49690547b9.json)
+è raccolto su SHA pulita `2d49690547b9`: 30 test passati in 5,95 s,
+report di offset e risposta, hash delle sorgenti e comandi riproducibili.
+`git_dirty:false`, `credit:false`, `gpu_execution:false`; nessun modello,
+spill o spesa. Collega il record precedente senza modificarlo. Il
 risultato è un piano di indirizzi con margine, non il picco fisico completo
 o un upper completo di tempo. Il getter full-DAG-per-tessera e il layout
 Snapshot denso hanno NO-GO circoscritti nel preflight.

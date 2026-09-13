@@ -157,7 +157,13 @@ Il setup di sessione è addebitato una volta alla prima prova. I lower
 condizionali respingono alla terza risposta sia il piano senza retention
 sia quello retained con quattro GEMM; non ogni possibile costruzione.
 
-Validazione del checkpoint: **27 test passati in 3,84 s**, controllo link
+Il [record immutabile dei trace](../../benchmarks/results/c71-response-trace-2026-09-13-aca17d19eb4b.json)
+è raccolto su SHA pulita `aca17d19eb4b`, con hash delle sorgenti e del trace
+getter completo, ledger WHIR/PCG/risposta e stdout dei controlli.
+È `git_dirty:false`, `credit:false`, `gpu_execution:false`; collega il
+record dominante precedente per correggere il KV senza sovrascriverlo.
+
+Validazione su quel checkout: **27 test passati in 3,77 s**, controllo link
 locali e `git diff --check` senza errori. Nessun Rust/Lean build o GPU.
 Riproduzione mirata (60 s/2 GiB):
 

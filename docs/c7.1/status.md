@@ -225,6 +225,8 @@ separa `T_inference`, `T_proof_only` e `T_response_total`: ogni replay A/KV
 è lavoro della prova. La ripartizione di obiettivi è 3 s inferenza e 47 s
 prova; **non sono upper**. Il vincolo totale resta <=50 s, nessun overlap
 presunto e nessuna deroga a 90 s.
+Il [checkpoint riproducibile](evidence.md#trace-akv-whir-e-pcg-della-risposta)
+è su SHA pulita `aca17d19eb4b`, 27 controlli ridotti passati e nessuna GPU.
 
 Sono implementati trace locali per 3.471 sorgenti A, 36.171 tessere byte,
 liveness di 1.568 nodi per rigenerazione, tutti i 12 oracoli WHIR e PCG.

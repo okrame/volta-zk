@@ -6,11 +6,12 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import c71_arena_plan as arena
 
 
-def test_native_offsets_margin_and_fenced_release(tmp_path):
+@pytest.mark.parametrize('ordered,reuse',[(False,False),(True,False),(True,True)])
+def test_native_offsets_margin_and_fenced_release(tmp_path,ordered,reuse):
     binary=tmp_path/'arena'
     subprocess.run(['c++','-std=c++17','-O2','-Wall','-Wextra','-Werror',
                     'cuda/c71_arena_preflight.cpp','-o',str(binary)],check=True,timeout=60)
-    report=arena.report()
+    report=arena.report(ordered_getter=ordered,reuse_reader_for_commit=reuse)
     for case in report['cases']:
         assert case['all_chain_layouts_fit_margin']
         for plan in case['address_layouts'].values():
@@ -42,6 +43,29 @@ def test_lifetime_and_inplace_tail_release():
     assert plan['events'][0]['allocate'][0][1]==plan['events'][1]['allocate'][0][1]
     assert plan['events'][-1]['live_aligned_bytes']==512
     with pytest.raises(ValueError):arena.place_events([{'event':'bad','free':['absent']}],{})
+
+
+def test_reader_release_never_moves_roots_and_row_digest_overwrite_is_disjoint():
+    # Address identity only; the hash callback is not a B12 codec refinement.
+    import hashlib
+    import struct
+    plan=arena.place_events([
+        {'event':'release_reader_fence','free':['reader_hash_slot']},
+        {'event':'commit','allocate':{'coset':2048}},
+        {'event':'commit_fence','free':['coset']},
+        {'event':'restore_reader','allocate':{'reader_hash_slot':1024}},
+    ],{'root':512,'reader_hash_slot':1024})
+    assert plan['initial_allocations'][0]==('root',0,512)
+    assert plan['events'][1]['allocate']==[('coset',512,2048)]
+    rows,columns=16,8
+    values=[col*1000+row for col in range(columns) for row in range(rows)]
+    def digest(row):return hashlib.sha256(b''.join(struct.pack('<Q',values[col*rows+row]) for col in range(columns))).digest()
+    expected=[digest(row) for row in range(rows)]
+    # Any public row order; every writer touches only its own consumed row.
+    for row in reversed(range(rows)):
+        words=struct.unpack('<4Q',digest(row))
+        for col,word in enumerate(words):values[col*rows+row]=word
+    assert [struct.pack('<4Q',*(values[col*rows+row] for col in range(4))) for row in range(rows)]==expected
 
 
 def test_odd_log_fft_parity_scatter_preserves_natural_order():

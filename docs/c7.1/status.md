@@ -222,18 +222,18 @@ deroga da valutare **solo dopo un upper completo**, non autorizzata ora.
 
 Il [ledger dei trace](preflight.md#trace-della-risposta-e-budget-separati)
 separa `T_inference`, `T_proof_only` e `T_response_total`: ogni replay A/KV
-è lavoro della prova. La ripartizione di obiettivi è 3 s inferenza e 62 s
+è lavoro della prova. La ripartizione candidata aggiornata è 1,5 s inferenza e 63,5 s
 prova; **non sono upper**. Il vincolo totale resta <=65 s, nessun overlap
 presunto. Il proprietario ha autorizzato 65 s totali; nessuna deroga a 90 s.
 Arena, HBM, endpoint, trust model e divieto di GPU/spesa restano invariati.
-Il [checkpoint riproducibile](evidence.md#contratto-65-s-e-margine-dellarena)
-è su SHA pulita `2d49690547b9`, 30 controlli ridotti passati e nessuna GPU.
+Il [checkpoint riproducibile](evidence.md#dag-condiviso-e-slot-reader-riusato)
+registra i nuovi trace e i controlli ridotti; nessuna GPU.
 
 Sono implementati trace locali per 3.471 sorgenti A, 36.171 tessere byte,
 liveness di 1.568 nodi per rigenerazione, tutti i 12 oracoli WHIR e PCG.
 La fusione per producer/istogrammi nel commit porta i tensori nominati a
-52.690.940 B; il getter ordinato range/remainder richiede ancora dependency
-cut. WHIR iniziale apre un singleton: una scansione e 128 accumulatori
+52.690.940 B; il nuovo getter ordinato ha dependency cut condivisi
+e trace delle finestre, ancora senza adapter numerico nativo completo. WHIR iniziale apre un singleton: una scansione e 128 accumulatori
 Fp3 sostituiscono algebricamente il denso per sette round. La candidata
 successiva Eq+Pow/PQ ha scratch nominato 507.445.224 B, controlli finiti e
 upper di lavoro reference per il precompute. Port nativo, vincolo uniforme
@@ -245,34 +245,40 @@ punctured, stato persistente allineato 348.372 B. Mancano refinement e
 workspace del backend reale; questi check non aggiungono credito al
 teorema o al transcript nativo.
 
-Il piano senza retention censisce 169 visite W dirette, 634 A corrente
-e 96 per vecchia A, prima di ulteriori dependency replay. Con ceiling
-condizionale INT8 denso 2,2 POPS e quattro dot-product esatti, il lower
-parziale della terza prova sale a **53,091 s prima dell'inferenza**.
-La retention A è ora censita fino al base case: 574 visite A corrente,
-36 per vecchia A, 80 letture degli stati retained per catena. Conserva
-ogni predecessore fino alla query e poi fold/fence. Evita 60/120/180
-rigenerazioni, ma il lower parziale diventa **42,038/45,986/50,170 s**:
-questi lower escludevano il vecchio contratto a 50 s, ma non escludono
-il nuovo limite a 65 s. Non sono upper: inferenza e altri costi restano
-aggiuntivi. La priorità autorizzata è ora chiudere il picco fisico con margine.
-
 Corretto il KV: **901.120 B/token**, non 4.915.200 (incremento di A
 attenzione). W+KV450+arena riservati noti sono **68.242.645.504 B**.
-Il nuovo [piano con margine](preflight.md#picco-con-margine-operativo-contratto-a-65-s)
-dimezza i coset iniziale A e S2. Il checker C++ degli offset verifica
-rilasci/fence dichiarate, allineamento e non sovrapposizione: massimo
-5.983.782.912 / 6.023.104.512 / 6.062.426.112 B, con almeno 256 MiB
-inutilizzati dentro arena. Non è il picco GPU misurato o completo.
-Il prezzo è 1.086/1.122/1.158 rigenerazioni A nominate; il solo replay
-learned-matrix ha lower condizionale 17,627/18,211/18,795 s.
+Il [getter condiviso e piano integrato](preflight.md#dag-condiviso-getter-ordinato-e-riuso-del-reader)
+conservano 61 checkpoint di layer (98.380.800 B), una sola generazione
+alla volta. Ogni producer viene valutato una volta per finestra necessaria;
+raw, byte siblings e istogrammi vengono emessi prima dell'ultimo consumer.
+Sono censite le 26 passate range e la query iniziale di ogni A originale,
+con ordine MSB nativo e senza Snapshot/A completi. Restano da portare
+le operazioni numeriche e autenticare il collegamento al checkpoint originale.
 
-Il getter ordinato “full DAG per tessera” è respinto: >=587,085 s per
-un passaggio nel modello dichiarato. Anche l'estensione letterale del
-Snapshot denso supera l'arena. Occorrono dependency cut condivisi,
-adapter FFT 2^21 e workspace producer/PCS/PCG/inferenza nativi.
-Upper completo e picco fisico restano ignoti; il piano con margine non
-li certifica. Nessuna GPU, spill o spesa; H100 non ancora proponibile.
+Il getter condiviso, con commit A a 1.024 replay e FFT a batch intero,
+porta il lower parziale della terza risposta a **65,481 s**: NO-GO per
+questa schedule sotto i ceiling dichiarati, non per ogni getter/PCS.
+La minima alternativa riusa lo slot reader/hash nel commit scatter A,
+con hash nelle celle del coset consumato: coset 2^22 e **512 replay**,
+S2 sempre 2^22. I lower parziali diventano **46,882 / 51,360 / 56,136 s**.
+Il solo getter ha lower di banda **14,160 / 15,275 / 16,451 s**; il vecchio
+budget di 14 s è escluso. Il nuovo budget candidato assegna 17 s al getter,
+1,5 s all'inferenza e 46,5 s alle altre fasi, senza credito di overlap.
+
+Il checker nativo degli offset include finestre range 2 GiB/query 256 MiB,
+checkpoint, slot PCS/PCG, allocator e fence dichiarate. I massimi nominati
+sono **6.087.369.472 / 6.126.691.072 / 6.166.012.672 B**. Il minimo margine
+è **276.438.272 B**, appena 8.002.816 B oltre i 256 MiB richiesti. Lo slab
+riserva sempre 6.442.450.944 B. Non sono picchi fisici completi: workspace
+numerici, hash in place salted, PCG/OT/Fp6 e runtime restano da verificare.
+
+Il [checkpoint locale](evidence.md#dag-condiviso-e-slot-reader-riusato) distingue
+conteggi di istanze/indirizzi virtuali, richieste logiche agli operandi e
+lower condizionali da HBM fisica e upper completi, tuttora ignoti.
+Il successivo controllo minimo è il getter numerico esatto e l'hash salted
+nel coset riusato, poi gli adapter/workspace mancanti PCS/PCG e producer GKR.
+Non manca soltanto un service-rate H100: harness integrato e proposta di
+spesa restano non pronti. Nessuna GPU, spill o spesa autorizzata.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso
 AES composto positivo e refinement dei codec non sono ancora chiusi.

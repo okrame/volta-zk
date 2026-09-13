@@ -867,9 +867,9 @@ Il [preflight](preflight.md) include destinazioni fold CUDA fuori posto,
 cache PCS persistente dentro arena, A corrente e vecchie A, KV pendente e
 oracoli WHIR successivi. FFT a blocchi e range compilano per sm_90;
 questo è un controllo statico locale, non tempo o memoria GPU misurati.
-Il replay completo è escluso sotto i ceiling dichiarati di banda/cache
-(e per il primo tentativo anche clock/kernel merge): i lower parziali
-sono 52,885/61,369/70,033 s, prima del resto. La
+Il replay completo della terza risposta è escluso sotto i ceiling dichiarati
+di banda/cache: i lower parziali sono 52,885/61,369/70,033 s, prima del resto.
+I primi due valori non escludono da soli il contratto vigente a 65 s. La
 [variante di apertura per resti](construction-screen.md#aperture-per-resti-a-cap-fisso)
 ha un cap fisso 2^21 e costo sorgente uniforme nel suo nucleo, con
 cache h12 da 188.743.552 B e range cut11/m24 da 29 visite. L'identità
@@ -918,6 +918,33 @@ ignoti. Coset A 2^21/S2 2^22 preservano i polinomi, con più replay:
 sono una candidata di memoria, ancora senza adapter CUDA completo.
 Il getter ordinato full-DAG-per-tessera e il lift del Snapshot denso sono
 respinti per le rispettive condizioni esplicite; non ogni getter streaming.
+Il [DAG condiviso per finestre](preflight.md#dag-condiviso-getter-ordinato-e-riuso-del-reader)
+ora conserva 61 tagli di layer, **98.380.800 B per una sola generazione**,
+senza Snapshot/A completi. Raw e output arrotondato restano distinti;
+un raw richiesto forza il producer anche se il suo output è in checkpoint.
+L'ordine Gram è quello MSB-first del range nativo, con gruppo
+`[tail][prefisso già folded][nuova finestra][sottoalbero]`; le query iniziali
+PCS usano finestre byte originali, consumabili high-to-low entro colonna.
+Identità finite e conteggi del DAG non sono il refinement numerico/NoPeek
+del getter o un censimento delle transazioni HBM reali.
+
+La variante con 1.024 replay commit, FFT a batch intero e getter condiviso
+ha lower parziale condizionale **65,481 s a O=300**: NO-GO per quella
+schedule seriale. La candidata minima riusa lo slot reader/hash durante
+il solo commit iniziale A, torna a coset 2^22/512 replay e mantiene S2 2^22.
+Richiede scatter senza reader e hash salted direttamente nelle celle
+del coset già consumate, prima di ripristinare lo slot dopo fence; roots
+e seed persistenti non si spostano. Il riuso è un obbligo nativo ancora
+aperto, non uno shrink assunto del workspace. Con finestre range 2 GiB e
+query A 256 MiB il massimo nominato è **6.166.012.672 B**, coda libera
+**276.438.272 B**: restano appena **8.002.816 B** oltre il margine obbligatorio
+di 256 MiB. Qualunque scratch non assorbito negli slot va aggiunto prima
+di dichiarare fit fisico. I lower parziali con 512 replay sono
+46,882/51,360/56,136 s, escludono lavoro positivo e non sono upper.
+Il budget candidato separa 1,5 s inferenza e 63,5 s prova, sempre 65 s
+totali; replay e autenticazione restano interamente nella prova.
+Producer GKR, adapter nativi PCS/PCG, workspace completi e service floor
+restano gate locali, prima di qualsiasi proposta H100.
 Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.

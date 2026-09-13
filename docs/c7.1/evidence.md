@@ -871,3 +871,23 @@ spill o spesa. Collega il record precedente senza modificarlo. Il
 risultato è un piano di indirizzi con margine, non il picco fisico completo
 o un upper completo di tempo. Il getter full-DAG-per-tessera e il layout
 Snapshot denso hanno NO-GO circoscritti nel preflight.
+
+## DAG condiviso e slot reader riusato
+
+Il [getter ordinato](../../scripts/c71_ordered_getter.py) compila finestre
+A/KV dal DAG esistente e produce conteggi/hash canonici a O=0/150/300.
+I [test finiti](../../tests/test_c71_ordered_getter.py) controllano partizione
+esatta dei byte, dipendenze condivise, raw contro checkpoint arrotondato,
+ultimo consumer, binding del contesto, ordine MSB del range e scatter
+lineare fold/coset. Il [piano](../../scripts/c71_arena_plan.py) integra
+checkpoint/finestre e riuso del reader nel commit; il checker C++ verifica
+gli offset anche per la variante a 512 replay. La proprietà di overwrite
+dei digest è un test di indirizzi con hash sostitutivo, non del codec B12.
+
+Il [preflight](preflight.md#dag-condiviso-getter-ordinato-e-riuso-del-reader)
+registra NO-GO della schedule seriale 1.024 replay/FFT a batch intero,
+la minima alternativa 512 replay e i suoi limiti. Non c'è nuovo credito
+Lean, NoPeek, crittografico o GPU. Getter numerico, hash salted in place,
+workspace reali e upper completo restano aperti; i ceiling producono lower,
+non service floor. Il controllo locale mirato passa 29 test, entro 60 s
+per invocazione e 2 GiB, senza eseguire inferenza o workload canonici.

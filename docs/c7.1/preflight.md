@@ -739,7 +739,7 @@ da chiudere margine fisico, lavoro completo e controlli nativi; questo checkpoin
 |---|---|---|
 | Algebra/endpoint | Adapter piccolo nativo con righe, pad, sali, root, codec e MAC identici; rifiuto delle alterazioni | Identità finite passate, refinement aperto |
 | CUDA | Compile/SASS; poi reader, inverse/remainder e pipeline hash rappresentativi con input piccolo | FFT ottimizzata e probe range compilati; reader e remainder CUDA mancanti |
-| A/KV | Trace getter immutabile per tutte le ricette e O=0/150/300, conteggio ricostruzioni e dipendenze | Replay scalare escluso; getter esatto e slot 64 MiB da verificare |
+| A/KV | Trace getter immutabile per tutte le ricette e O=0/150/300, conteggio ricostruzioni e dipendenze | DAG condiviso e finestre censiti; getter numerico e slot 64 MiB ancora da verificare |
 | PCS completa | Tutti i 12 oracoli per catena, maschere, stati folded, source-uniformity e salt seek | Ancora aperto |
 | PCG | Trace AES/cGGM a batch, seed/state/OT, no pool bulk; costi di entrambi i ruoli | Upper componente soltanto |
 | Memoria | Ogni buffer vivo, arena totale, allocated/reserved globale <80 GB, assenza di spill | Buffer nominati compatibili nella variante, totale ignoto |
@@ -816,3 +816,144 @@ universale respinge tutte le candidate a 65 s. Il gate H100 resta chiuso:
 prima serve un getter ordinato praticabile e il censimento dei workspace
 nativi dentro gli slot. Non c'è ancora un microbenchmark completo minimo
 pronto a validare tale percorso; non si propone un costo di pod speculativo.
+
+## DAG condiviso, getter ordinato e riuso del reader
+
+Il [trace canonico](../../scripts/c71_ordered_getter.py) riusa i producer e
+le ricette esistenti: 3.471 sorgenti, 36.171 tessere, 1.568 nodi aggregati.
+Il taglio inter-layer conserva embedding scalato e uscite dei 60 layer:
+61 × 150 × 5376 × 2 = **98.380.800 B**, per una sola A originale. Costruirlo
+costa un replay nella prova; non si prende credito dall'inferenza del provider.
+Ogni finestra esegue una volta la chiusura delle dipendenze necessarie.
+Un output in checkpoint non sostituisce il raw del medesimo producer:
+se serve il raw, si esegue il producer e si emettono insieme i suoi output.
+Il checkpoint resta immutabile e legato a `(O, root, Gamma)`; non si promuove
+KV durante il replay. Il callback ridotto verifica la disciplina del DAG,
+non realizza da solo i MAC originali o il preparatore numerico canonico.
+
+Il range usa una finestra byte da 2 GiB. Il kernel deve vedere gruppi
+`[tail][prefisso già folded][u della nuova finestra Gram][sottoalbero]`.
+I fold nativi accoppiano le due metà: la prima coordinata è MSB, come in
+`c71_matrix::fold`, non l'ordine little-endian di altri helper diagnostici.
+Il trace conta esattamente le intersezioni fra tessere e queste finestre;
+il test finito confronta i gruppi raccolti con i fold densi originali.
+Le 26 passate comprendono il tree iniziale, le finestre Gram e la retention
+finale di ogni livello. Nessuna sfida futura serve a stabilire gli indirizzi.
+Il suffisso esterno di padding è zero pubblico; uno zero interno di una
+sorgente signed deve invece essere emesso con il suo encoding biased originale.
+
+La query iniziale di ciascuna A usa finestre da 256 MiB. Ogni colonna
+consuma i suoi blocchi high-to-low dalla finestra già prodotta, anche se
+la finestra copre due colonne. I 35 passaggi S1 non-query (singleton,
+32 commit coset, OOD e rigenerazione S1) possono accumulare mappe lineari
+sourcewise nello stato destinazione. Il test fold/coset verifica questa
+identità su dati finiti. **Non si fondono passaggi attraverso root, OOD
+o altre barriere FS.** Dopo la rigenerazione S1 e la fence si liberano
+i checkpoint; S1/S2 e tutte le catene successive conservano la liveness
+già censita. Prima del W opening non rimane un checkpoint A.
+
+| O | Istanze producer nelle 26 passate range | MAC learned-matrix range | Istanze producer query A originale | MAC learned-matrix query |
+|---:|---:|---:|---:|---:|
+| 0 | 313.469 | 904.403.877.888.000 | 42.291 | 109.468.503.244.800 |
+| 150 | 312.464 | 899.342.283.571.200 | 42.590 | 109.262.890.598.400 |
+| 300 | 316.187 | 912.629.484.748.800 | 42.767 | 107.695.610.265.600 |
+
+Le query storiche si sommano: a O=300 si pagano tutte e tre le righe query.
+Questi sono conteggi esatti di istanze nella schedule descritta, non il
+numero di istruzioni del futuro kernel. Attention MAC causali sono separati
+dall'upper rettangolare del vecchio producer trace. Le richieste KV storiche
+range, senza credito di riuso GQA, sono 0 / 10.602.086.400.000 /
+21.422.407.680.000 B. Le richieste W del modello 16×256 sono
+121.006.313.845.248 / 120.350.032.823.808 / 122.128.348.466.688 B:
+**non sono transazioni HBM né lower di banda**. Il report distingue il
+lower dei pesi learned disgiunti obbligatori, con 256 MiB di cache concessi
+a ogni finestra/generazione. I 169 passaggi W diretti della prova restano
+separati dalle letture W dentro il getter e dall'inferenza; il totale
+completo W/KV/HBM, inclusi producer GKR e backend, non è ancora chiuso.
+
+### Esito temporale e minima alternativa strutturale
+
+Con 1.024 replay del commit A, il solo getter ha lower condizionale
+compute INT8 **20,940 / 21,936 / 22,993 s** e banda pesi
+**23,502 / 24,617 / 25,793 s**. I ceiling sono 2,2 POPS densi, quattro
+dot INT8 esatti per MAC i16, HBM 3,35 TB/s e cache al più 256 MiB per
+finestra/generazione. Non sono service floor. Si usa il massimo fra
+banda e compute nella stessa fase, non la loro somma.
+La FFT 2^21, se eseguita come un solo batch di 256 metà 2^20 con cinque
+passaggi globali e merge separato, richiede almeno altri 6,892 s di banda
+nel modello dichiarato. Getter + merge range + prime aperture + FFT danno
+**56,227 / 60,704 / 65,481 s**. Il terzo caso è **NO-GO per questa schedule
+seriale** prima di inferenza, PCG e altro lavoro positivo. Questo bound non
+si trasferisce a FFT con batch minori, fusione o un altro metodo getter.
+
+La modifica minima censita riusa il reader/hash slot da 256 MiB **solo
+durante il commit iniziale A scatter**. Lo slot viene collocato alla coda
+delle riserve persistenti, rilasciato dopo fence e ripristinato dopo il
+commit: nessuna root/seed viva cambia indirizzo. Permette il coset 2^22
+con la FFT quadrata già compilata, **512 replay**, senza cambiare polinomio,
+pad, sali o root. L'hash deve leggere la riga completa e scrivere i quattro
+word del digest nelle quattro celle della medesima riga ormai consumata;
+righe diverse non si sovrascrivono. Il test degli indirizzi dimostra solo
+questa proprietà indipendente dall'hash. **Il codec salted nativo, il salt
+seek e lo scratch register/shared/local del kernel restano da collegare**:
+non si assume che eliminare la prenotazione elimini il lavoro del reader.
+
+| O | Picco commit A nominato, B | Picco integrato nominato, B | Coda arena libera, B | Lower getter compute / banda, s | Lower congiunto parziale, s |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 6.056.097.536 | 6.087.369.472 | 355.081.472 | 12,630 / 14,160 | 46,882 |
+| 150 | 6.095.419.136 | 6.126.691.072 | 315.759.872 | 13,626 / 15,275 | 51,360 |
+| 300 | 6.134.740.736 | 6.166.012.672 | 276.438.272 | 14,682 / 16,451 | 56,136 |
+
+Il picco range include core conservativo W, finestra A 2 GiB e checkpoint,
+oltre a tutti gli slot/root/cache già nominati. Il checker C++ verifica
+allineamento 256 B, non sovrapposizione, fence dichiarate e ripristino del
+reader. **8.002.816 B** è lo spazio ulteriore al margine richiesto di
+268.435.456 B nel caso peggiore. Nel getter slot da 64 MiB restano
+14.417.924 B dopo i 52.690.940 B di tensori; packing/correzioni devono
+rientrarvi o essere aggiunti al piano. L'arena riservata è sempre
+6.442.450.944 B. Il picco fisico allocato/riservato completo rimane ignoto.
+
+Il ledger candidato assegna i seguenti **budget di ammissione, non upper**:
+
+| Fase | Budget, s |
+|---|---:|
+| Inferenza originale provider (`T_inference`) | 1,5 |
+| Getter/replay A/KV della prova | 17,0 |
+| Relazioni producer GKR | 0,8 |
+| Range W/A | 17,9 |
+| Linear W/A/history | 0,8 |
+| Commit iniziale A: FFT/hash, escluso getter già contato | 7,0 |
+| Prime aperture W e tutte A | 15,2 |
+| WHIR restante/maschere/endpoint | 2,0 |
+| PCG/MAC, setup fresco nella prima risposta | 2,0 |
+| Serializzazione e trasporto | 0,3 |
+| Verifier/host/attese | 0,5 |
+| `T_proof_only` | **63,5** |
+| `T_response_total` | **65,0** |
+
+Il report ricalcola le soglie parziali per merge, coefficienti, fold, FFT,
+PCS e PCG con questi budget. A O=300 il getter richiede già almeno
+3,242 TB/s di letture obbligatorie dei pesi per rientrare nei 17 s,
+prima del resto del traffico. È un controllo di severità, non una previsione
+di prestazione. Per tutti gli O i tre **upper** temporali restano `null`;
+l'upper completo di ammissione è +infinito perché mancano contratti.
+Non si modifica il requisito totale a 65 s e non si presume overlap.
+
+Il controllo minimo successivo è locale: producer numerici equivalenti
+ai byte originali, hash salted in place e sourcewise WHIR con dominio,
+codec e sali identici; poi censimento di scratch reale PCG/OT/Fp6, producer
+GKR e provider. Sono obblighi di costruzione, non soli service-rate ignoti.
+Quindi **NO-GO per una proposta H100 ora**: nessun comando/pod/costo attivo.
+Un microbenchmark isolato sarà pertinente quando una fase concreta e il
+suo workspace sono chiusi e rimane da misurarne il service-rate.
+
+Riproduzione locale dei trace (metadati, nessuna GPU; ogni processo limitato
+separatamente a 60 s e 2 GiB), dalla SHA pulita indicata nell'evidence:
+
+```bash
+ulimit -v 2097152
+for C71_O in 0 150 300; do
+  PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python scripts/c71_ordered_getter.py --old "$C71_O" > "/tmp/c71-ordered-$C71_O.json"
+done
+PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python scripts/c71_ordered_getter.py --combine /tmp/c71-ordered-0.json /tmp/c71-ordered-150.json /tmp/c71-ordered-300.json > /tmp/c71-ordered-combined.json
+```

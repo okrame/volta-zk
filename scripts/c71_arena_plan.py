@@ -33,7 +33,10 @@ def place_events(events, persistent):
         live[key]=(offset,size)
         peak=max(peak,offset+size)
         return (key,offset,size)
-    initial=[allocate(key,size) for key,size in sorted(persistent.items(),key=lambda x:-x[1])]
+    # A reader slot can be fenced/released before a scatter-only commit. Keep
+    # it at the tail so its release never moves a persistent root or seed.
+    initial=[allocate(key,size) for key,size in sorted(persistent.items(),
+        key=lambda x:(x[0]=='reader_hash_slot',-x[1]))]
     for event in events:
         freed=event.get('free',[])
         allocations=event.get('allocate',{})
@@ -63,8 +66,10 @@ def place_events(events, persistent):
         'device_allocation_measured':False,'native_allocator_connected':False}
 
 
-def report():
-    pcs={35:whir.trace(35),34:whir.trace(34,initial_coset_rows=1 << 21)}
+def report(ordered_getter=False, reuse_reader_for_commit=False):
+    if reuse_reader_for_commit and not ordered_getter:raise ValueError('ordered getter variant required')
+    initial_rows=1 << (22 if reuse_reader_for_commit else 21)
+    pcs={35:whir.trace(35),34:whir.trace(34,initial_coset_rows=initial_rows)}
     retained=whir.a_s1_retention_schedule(s2_coset_rows=1 << 22)
     correlations=pcg.report()
     cases=[]
@@ -83,10 +88,39 @@ def report():
                 phase_events.extend([{'event':e['event'],'allocate':{'phase:core':size},'free':[]},
                     {'event':e['event']+'_fence_release','allocate':{},'free':['phase:core']}])
         chains['range_and_linear']=phase_events
+        if reuse_reader_for_commit:
+            chains['initial_A_commit']=[{'event':'scatter_commit_no_reader_fence','free':['reader_hash_slot']}]+chains['initial_A_commit']+[
+                {'event':'restore_reader_after_commit_fence','allocate':{'reader_hash_slot':persistent['reader_hash_slot']}}]
+        if ordered_getter:
+            memory['interpretation']='reference before ordered windows and reader reuse; address_layouts are the selected named liveness plan'
+            # One frozen generation's layer cuts, never all historical A.
+            cuts=98_380_800
+            opening=[]
+            opening.append({'event':'build_original_A_cuts','allocate':{'getter:cuts':cuts}})
+            for e in chains['each_A_opening']:
+                e=dict(e,allocate=dict(e['allocate']),free=list(e['free']))
+                if e['event']=='a_open_initial':e['allocate']['getter:ordered_bytes']=1 << 28
+                if e['event']=='a_release_initial_open':e['free'].append('getter:ordered_bytes')
+                opening.append(e)
+                if e['event']=='a_regenerate_and_retain_s1':
+                    opening.append({'event':'last_original_A_consumer_fence','free':['getter:cuts']})
+            chains['each_A_opening']=opening
+            # A range uses the conservative W core size; no extra arena cap.
+            # W range/linear and the W PCS chain never retain A cuts/windows.
+            a_range=[{'event':'build_range_A_cuts','allocate':{'getter:cuts':cuts}}]
+            for e in phase_events:
+                if not e['event'].startswith('range_'):continue
+                e=dict(e,allocate=dict(e['allocate']),free=list(e['free']))
+                if e['allocate']:
+                    e['allocate']['getter:ordered_bytes']=1 << 31
+                else:e['free'].append('getter:ordered_bytes')
+                a_range.append(e)
+            a_range.append({'event':'last_range_A_consumer_fence','free':['getter:cuts']})
+            chains['ordered_A_range']=a_range
         layouts={}
         for name,events in chains.items():
-            stripped=[dict(e,allocate={k:v for k,v in e['allocate'].items() if not k.startswith('shared:')},
-                free=[k for k in e['free'] if not k.startswith('shared:')]) for e in events]
+            stripped=[dict(e,allocate={k:v for k,v in e.get('allocate',{}).items() if not k.startswith('shared:')},
+                free=[k for k in e.get('free',[]) if not k.startswith('shared:')]) for e in events]
             layouts[name]=place_events(stripped,persistent)
         original_A_passes=[36]*(old//150)+[1024+26+36]
         macs=sum(n*getter.scatter_generation_trace(o)['work']['integer_MACs']
@@ -109,10 +143,20 @@ def report():
                 'decision':'NO_GO_literal_full_DAG_per_tile_under_same_INT8_ceiling',
                 'not_a_lower_for_shared_dependency_getters':True},
             'physical_peak_complete':None,'time_upper_complete':None,'admitted':False})
+        if ordered_getter:
+            for key in ('original_A_passes_by_generation','getter_integer_MACs',
+                        'four_INT8_learned_matrix_replay_lower_seconds_conditional',
+                        'ordered_getter_full_DAG_per_tile_fallback'):
+                del cases[-1][key]
+            cases[-1]['work_ledger']='c71_ordered_getter.response_ledger; legacy sourcewise pass counts do not apply'
     return {'credit':False,'deadline_seconds':response.DEADLINE_SECONDS,
-        'initial_A_coset_rows':1 << 21,'A_S2_coset_rows':1 << 22,
-        'cases':cases,'missing':['odd-log FFT parity-scatter adapter with identical roots',
-            'ordered getter dependency cuts and native producer workspaces',
+        'ordered_getter_windows_included':ordered_getter,
+        'reader_slot_reused_during_initial_commit':reuse_reader_for_commit,
+        'reader_reuse_requires':'native scatter producer and salted leaf hashing in consumed coset cells; adapter not implemented',
+        'initial_A_coset_rows':initial_rows,'A_S2_coset_rows':1 << 22,
+        'cases':cases,'missing':['salted in-place hash adapter with identical roots' if reuse_reader_for_commit
+            else 'odd-log FFT parity-scatter adapter with identical roots',
+            'native ordered getter and producer workspaces (shared cuts traced separately)',
             'native PCS/PCG and global context allocator census',
             'all phase work and applicable service floors'],
         'native_workspace_audit':{

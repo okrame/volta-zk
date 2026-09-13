@@ -312,6 +312,50 @@ def local_preflight(gram, suffix):
     }
 
 
+def coset_frontier_budget():
+    """First W oracle only, conditional on exact private salt replay.
+
+    Natural leaf index = c + Q*j. Keep a Q-leaf frontier for each j;
+    their roots arrive in natural j order on the last coset. Later PCS
+    oracles and all A commitments/openings are deliberately unpriced.
+    """
+    L, Q, width, arena = 1 << 22, 1 << 10, 128, 6_442_450_944
+    coset = 8*L*width
+    frontier = 32*L*10
+    # Full four-step twiddle table plus exact start/current salt-stream offsets.
+    named = coset+frontier+32*23+8*L+8*1536*width+16*L
+    # Generic nonzero coefficient scaling, including virtual message padding;
+    # actual packed W contains fewer live coefficients and can be specialized.
+    scaling = Q*width*((1 << 28)+1536)
+    butterflies = Q*width*(L//2)*22
+    return {
+        'credit': False, 'scope': 'W initial oracle only; salt adapter missing',
+        'coset_rows': L, 'cosets': Q, 'width': width,
+        'coset_buffer_bytes': coset, 'frontier_slot_bytes': frontier,
+        'named_bytes_with_twiddles_pads_and_upper_stack': named,
+        'margin_before_hash_reader_allocator': arena-named,
+        'salt_start_and_current_offsets_bytes': 16*L,
+        'salt_prescan_minimum_XOF_bytes': 32*L*Q,
+        'salt_prescan_W_visits': 0,
+        'salt_stream_byte_cap_fail_closed': 1 << 40,
+        'commit_W_visits': Q, 'opening_full_replay_W_visits': Q,
+        'commit_plus_open_W_payload_bytes': 2*Q*61_394_690_560,
+        'generic_scaling_Fp_mul_per_pass': scaling,
+        'FFT_Fp_butterflies_per_pass': butterflies,
+        'row_leaf_hashes_per_pass': L*Q,
+        'binary_internal_hashes_per_pass': L*Q-1,
+        'unfused_global_FFT_HBM_lower_bytes_per_pass_conditional':
+            Q*22*2*(coset-(256 << 20)),
+        'unfused_global_FFT_lower_seconds_per_pass_conditional':
+            Q*22*2*(coset-(256 << 20))/3.35e12,
+        'unfused_rejected_only_if': 'each radix-2 stage uses global buffers, no compression, <=256MiB cache credit',
+        'five_pass_FFT_logical_global_bytes_per_encoding': 10*coset*Q,
+        'five_pass_FFT_Fp_twiddle_products_per_encoding': width*L*Q,
+        'fused_FFT_seconds_upper': None,
+        'all_PCS_visits_or_seconds_upper': None,
+    }
+
+
 def report():
     assessment = base.b12_pcs_binding_assessment()
     bootstrap = base.c71_dory_guarded_bootstrap_screen()
@@ -359,6 +403,7 @@ def report():
         'wire': wire,
         'fallback_authorization': 'body lower bounds as analytic proof-size result only',
         'coset_replay': profiles,
+        'coset_Merkle_frontier': coset_frontier_budget(),
         'suffix_first_W_linear_reducer': suffix,
         'integrated_schedule': integrated_schedule_screen(suffix),
         'local_preflight': local_preflight(gram_window_budget(35, 10, 61_394_690_560, 25), suffix),

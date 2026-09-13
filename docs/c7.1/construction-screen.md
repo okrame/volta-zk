@@ -1607,6 +1607,72 @@ Registrare il range di W una volta contro C_W può risparmiare il range W
 successivo; serve aggiornare formalmente stato/FS e confronto su tutti i
 prefissi. Non elimina il costo della prima proof o il range A.
 
+## PCS coset, frontiere e sali riproducibili
+
+Il [preflight](preflight.md) estende il precedente lower da 683 scansioni
+con una schedule esplicita del **primo oracolo W**, non di tutta la PCS.
+Con H=2^32, larghezza 128, L=2^22 righe per coset e Q=1.024, il coset
+occupa 4.294.967.296 B. Emettere `c=0..Q-1`, poi `j=0..L-1`, con indice
+naturale della foglia `Q*j+c`. Ogni j riceve consecutivamente le foglie
+del proprio sottalbero da Q foglie, anche se le emissioni dei diversi j
+sono intercalate. Conservare una frontier per j costa al più
+`32*L*log2(Q)=1.342.177.280 B`. Nell'ultimo coset le radici dei sottalberi
+arrivano in ordine j: uno stack superiore produce la **root originale**,
+senza permutare foglie, dominio o commitment.
+
+Il backend corrente è ancora incompatibile con la materializzazione:
+crea quattro sali Fp per ogni foglia (137.438.953.472 B), oltre alla
+codeword. Il seed del modello è già conservato e ripetibile, ma
+l'assegnazione dei sali alle righe deve restare quella canonica. Cambiare
+l'ordine dei draw al nuovo ordine c-major non riproduce la stessa root.
+
+La soluzione individuata non introduce un PRG nuovo: il
+[PrivateRng B12](../../rust/volta-pcs/src/c71_matrix/b12.rs) usa BLAKE3 XOF
+seekable, con cap di 2^40 byte. Il sampler Goldilocks consuma u64 fino a
+ottenere un valore <p. Un prescan dei sali nell'ordine canonico registra
+la posizione byte iniziale di ogni blocco j da Q foglie. Nel replay
+c-major, leggere dal medesimo seed alla posizione corrente di j, estrarre
+quattro sali con il medesimo rejection sampling e aggiornare la posizione.
+Conservare start/current costa **16L=67.108.864 B**. Il prescan non legge
+W; produce almeno 137.438.953.472 B XOF, con consumo variabile per i
+rifiuti. Ripristinare anche `remaining=2^40-position`; l'esaurimento
+continua ad abortire. Seed, posizione di ingresso e sequenza dei clone
+MMCS devono corrispondere al commitment originale, non essere scelti
+nuovamente durante l'apertura.
+
+Il controllo minimo Python usa una piccola sorgente seekable con rejection
+sampling frequente: ogni sale riprodotto c-major coincide con quello
+sequenziale. Verifica root, cammini delle query, replay dagli offset
+iniziali e rifiuto di alterazioni. Non esegue BLAKE3/PrivateRng nativi:
+l'adapter seek e il confronto bit-per-bit col backend restano da implementare.
+È una derivazione di replay esatto, non una nuova ipotesi sui sali.
+
+L'apertura dopo le query ricostruisce lo stesso encoding e conserva solo
+i fratelli richiesti. La schedule semplice paga quindi **1.024 scansioni
+W per commit e altre 1.024 per il replay dell'apertura**. Le query non
+sono anticipate. Altri oracoli WHIR, maschere, switch e A/vecchie A devono
+ancora essere integrati; non si attribuisce questo upper parziale a tutta
+la PCS. Un tree globale riutilizzabile o un encoder per sottoinsiemi
+potrebbe cambiare il costo e richiede un proprio census.
+
+La FFT GPU letterale con un passaggio globale per ogni stadio è respinta:
+il lower condizionato di sola banda supera 50 s per encoding. Una variante
+senza seconda codeword fattorizza L=2048²: trasposizione quadrata in-place,
+FFT di riga da 2.048 elementi, twiddle fuso con seconda trasposizione,
+altra FFT di riga e terza trasposizione nell'ordine naturale. Servono
+16 KiB shared per riga; nessuna di queste osservazioni è un upper di
+registri o una prova del kernel CUDA. Il controllo finito Goldilocks
+M=4/8/16 coincide con la FFT diretta. I cinque passaggi hanno 10 volte
+il payload encoded come traffico logico, prima di hash/sali/reader.
+
+Coset + frontier + stack superiore + twiddle completo + pad originali +
+offset sali costano **5.739.381.472 B**, lasciando **703.069.472 B**
+prima di hash/staging/allocator e altro stato vivo. La geometria non è
+esclusa dalla sola arena. Campo, hash, XOF, layout e visite sono separati
+nel preflight; il tempo completo rimane ignoto, così come source-uniformity
+e confronto di lavoro totale. Né il nuovo replay PCS né il nuovo range
+sono ancora port nativi o costruzioni fisicamente ammesse.
+
 ## IO, sicurezza e criterio di riapertura
 
 Per ogni nuova linea il tempo da chiudere è una **somma senza overlap

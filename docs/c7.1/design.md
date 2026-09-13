@@ -855,6 +855,13 @@ i nuovi conteggi sono espressioni di campo e payload, non un upper di
 tempo o un refinement Lean. Non introduce ipotesi ulteriori. Rimangono
 da scaricare il reader integrato e la sua disciplina NoPeek, oltre a
 PCS, A/KV e risorse complete prima dell'ammissione fisica.
+Il [preflight](preflight.md) conta ora anche la destinazione dei fold
+CUDA fuori posto e il replay completo del primo oracolo PCS per coset,
+con frontier e checkpoint dei sali XOF. Il cap del reader privato e
+l'assegnazione canonica dei sali devono restare identici; il controllo
+Python non è il refinement del backend. I kernel globali FFT senza
+fusione sono esclusi soltanto sotto le condizioni di traffico dimostrate;
+il port a blocchi e la costruzione completa restano non ammessi.
 Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.

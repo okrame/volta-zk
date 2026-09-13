@@ -345,3 +345,141 @@ def test_gram_windows_preserve_cubic_messages_and_original_terminal():
     assert budget['H_scalar_interpolations'] == 2565
     assert budget['largest_H_bytes'] == 24576
     assert budget['runtime_upper'] is None and not budget['credit']
+
+
+def test_coset_emission_merkle_frontier_and_queried_path_match_dense():
+    def frame_hash(domain, *parts):
+        h = hashlib.sha256()
+        h.update(len(domain).to_bytes(4, 'little'))
+        h.update(domain)
+        for part in parts:
+            h.update(len(part).to_bytes(8, 'little'))
+            h.update(part)
+        return h.digest()
+
+    def stream_bytes(seed, offset, length):
+        out = bytearray()
+        while len(out) < length:
+            block, within = divmod(offset, 32)
+            chunk = frame_hash(b'toy-xof', seed, block.to_bytes(8, 'little'))
+            take = min(length-len(out), 32-within)
+            out.extend(chunk[within:within+take])
+            offset += take
+        return bytes(out)
+
+    def sample_salt(seed, offset, prime=241):
+        salt = []
+        while len(salt) < 4:
+            value = stream_bytes(seed, offset, 1)[0]
+            offset += 1
+            if value < prime:
+                salt.append(value)
+        return bytes(salt), offset
+
+    def leaf(index, salt):
+        # Toy seekable rejection stream only: not native PrivateRng or its refinement.
+        return frame_hash(b'leaf', index.to_bytes(8, 'little'), salt,
+                          (index*index+17).to_bytes(8, 'little'))
+
+    def parent(left, right):
+        return frame_hash(b'node', left, right)
+
+    def canonical_salts(height, cosets):
+        seed, offset, salts, starts = b'seed', 0, [], []
+        for index in range(height):
+            if index % cosets == 0:
+                starts.append(offset)
+            salt, offset = sample_salt(seed, offset)
+            salts.append(salt)
+        return seed, salts, starts, offset
+
+    def dense_direct(salts):
+        level = [leaf(i, salt) for i, salt in enumerate(salts)]
+        levels = [level]
+        while len(level) > 1:
+            level = [parent(level[i], level[i+1]) for i in range(0, len(level), 2)]
+            levels.append(level)
+        return levels
+
+    def emit(height, cosets, seed, starts, expected_salts, query=None):
+        length = height//cosets
+        frontiers = [[] for _ in range(length)]
+        offsets = starts[:]
+        upper, path, maximum = [], [], 0
+
+        def push(stack, node, base=1):
+            digest, start, size = node
+            level = (size//base).bit_length()-1
+            while level < len(stack) and stack[level] is not None:
+                left = stack[level]
+                if query is not None and (left[1] <= query < left[1]+left[2]
+                                          or start <= query < start+size):
+                    path.append(digest if left[1] <= query < left[1]+left[2] else left[0])
+                digest, start, size = parent(left[0], digest), left[1], 2*size
+                stack[level] = None
+                level += 1
+            if level == len(stack):
+                stack.append((digest, start, size))
+            else:
+                stack[level] = (digest, start, size)
+
+        for c in range(cosets):
+            for j in range(length):
+                index = c+cosets*j
+                salt, offsets[j] = sample_salt(seed, offsets[j])
+                assert salt == expected_salts[index]
+                push(frontiers[j], (leaf(index, salt), index, 1))
+                if c+1 == cosets:
+                    push(upper, next(node for node in frontiers[j] if node is not None), cosets)
+                    frontiers[j].clear()
+            maximum = max(maximum, sum(node is not None for stack in frontiers for node in stack)
+                          + sum(node is not None for node in upper))
+        root = next(node[0] for node in upper if node is not None)
+        return root, path, maximum
+
+    def verify(index, digest, path, root):
+        for sibling in path:
+            digest = parent(sibling, digest) if index & 1 else parent(digest, sibling)
+            index >>= 1
+        return digest == root
+
+    for height, cosets in ((32, 4), (32, 8), (64, 4), (64, 8)):
+        seed, salts, starts, final_offset = canonical_salts(height, cosets)
+        assert final_offset > 4*height  # The toy prime exercises rejection.
+        levels = dense_direct(salts)
+        for query in (0, height//3, height-1):
+            root, path, maximum = emit(height, cosets, seed, starts, salts, query)
+            expected_path = [level[(query >> level_index) ^ 1]
+                             for level_index, level in enumerate(levels[:-1])]
+            assert root == levels[-1][0]
+            assert path == expected_path
+            assert verify(query, leaf(query, salts[query]), path, root)
+            assert maximum <= max(n.bit_count() for n in range(1, cosets+1))*(height//cosets) \
+                + (height//cosets).bit_length()
+            damaged = bytearray(path[0])
+            damaged[0] ^= 1
+            assert not verify(query, leaf(query, salts[query]), [bytes(damaged), *path[1:]], root)
+            assert not verify(query, leaf(query, salts[query]), path, bytes(32))
+
+
+def test_square_fused_fft_schedule_preserves_natural_order():
+    p = screen.base.P
+
+    def transpose(values, width):
+        return [values[b+width*a] for b in range(width) for a in range(width)]
+
+    def row_ffts(values, width):
+        return sum((screen.base.small_goldilocks_fft(values[i:i+width])
+                    for i in range(0, len(values), width)), [])
+
+    for width in (4, 8, 16):
+        size = width*width
+        omega = pow(7, (p-1)//size, p)
+        values = [(13*i*i+7*i+19) % p for i in range(size)]
+        work = row_ffts(transpose(values, width), width)
+        for a in range(width):
+            for u in range(width):
+                work[u+width*a] = work[u+width*a]*pow(omega, a*u, p) % p
+        work = transpose(work, width)
+        work = transpose(row_ffts(work, width), width)
+        assert work == screen.base.small_goldilocks_fft(values)

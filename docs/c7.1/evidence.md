@@ -57,6 +57,11 @@ I [controlli finiti](../../tests/test_c71_streaming_screen.py) verificano:
   entrambi gli assi: stessi quattro coefficienti e terminali del denso
   con sfide adattive; conteggio della schedule variabile da 26 visite.
   L'audit indipendente conferma il minimo del modello parziale, non del tempo.
+- frontier Merkle per coset con root/path canonici, replay dei sali da
+  offset con rejection sampling e rifiuto di alterazioni; il test usa
+  uno stream toy seekable, non l'adapter BLAKE3 nativo;
+- FFT quadrata con tre trasposizioni e due FFT locali, naturale in uscita,
+  contro il riferimento Goldilocks per M=4/8/16. Nessun kernel CUDA PCS.
 
 I test lavorano su F97 e piccoli vettori, con sfide dipendenti dal prefisso.
 Non eseguono maschere MAC, transcript FS nativo, Dory, Merkle o Gemma.
@@ -69,6 +74,24 @@ tests/test_c71_streaming_screen.py`; report con
 Conservare le regressioni `test_c71_fp6_seed_screen`, `test_c71_dory_path_guard`,
 `test_c71_dory_split_check`, `test_c71_dory_rom_cggm` e i filtri B12
 `canonical_PCS_wire or complete_fixed_run or native_wire_body`.
+
+## Range kernel preflight
+
+Il [microbench CUDA](../../cuda/c71_range_microbench.cu) usa Fp3 Goldilocks
+`u^3=2`, merge frazionario, coefficiente cubico fattorizzato 18-mul contro
+oracle diretto 27-mul, fold e Gram L=8/16/32. I
+[controlli host](../../tests/test_c71_range_microbench.py) verificano
+l'aritmetica ai bordi e confronti algebrici indipendenti; il codice GPU
+ha un ulteriore confronto CPU/GPU prima delle allocazioni grandi.
+Input, seed, SHA sorgente, geometria e limiti sono registrati dall'
+[harness](../../scripts/run_c71_range_microbench.py).
+
+Validazione locale del checkpoint: **10 test passati** nei due file
+`test_c71_streaming_screen.py` e `test_c71_range_microbench.py`, entro
+60 s/2 GiB. Nessun nvcc locale, quindi nessuna compilazione dei rami CUDA,
+misura H100 o credit hardware. La Gram del microbench materializza H
+per bucket solo su input limitato; non è il reader integrato. Il
+[preflight](preflight.md) mantiene NO-GO e distingue tutti questi limiti.
 
 ## Shared RNE byte experiment
 

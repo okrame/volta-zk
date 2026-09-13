@@ -198,10 +198,17 @@ moltiplicazioni, non del tempo.
 I buffer nominati massimi restano 5,234 GB per il top, 4,027 GB nei livelli
 bassi e poi 2,899 GB per linear; non coesistono. Dopo range e linear sono
 28 visite W censite, **non** il totale completo con PCS e inferenza.
-Il preflight locale resta **NO-GO**: transazioni HBM, picco fisico
+Il [preflight locale](preflight.md) resta **NO-GO**: transazioni HBM, picco fisico
 allocato/riservato, PCS, A/KV, PCG e tempo completo non sono ancora chiusi.
-I costi ignoti hanno controlli minimi espliciti e non sono motivi per
-respingere l'algebra. Nessun pod, spesa o workload pesante è autorizzato.
+La nuova [frontier PCS per coset](construction-screen.md#pcs-coset-frontiere-e-sali-riproducibili)
+conserva root e cammini originali nel controllo piccolo, con replay
+seekable dei sali canonici. Il primo oracolo W richiede 5.739.381.472 B
+nominati, 1.024 visite per commit e altre 1.024 per apertura. Il port FFT
+globale senza fusione è escluso dal lower condizionato di **54,155 s**;
+la FFT a blocchi conserva l'algebra ma non ha ancora un kernel misurato.
+Kernel range Fp3, input e harness sono pronti per i controlli host;
+nvcc e trace GPU sono assenti. I costi ignoti hanno controlli minimi
+espliciti e non sono motivi per respingere l'algebra. Nessun pod, spesa o workload pesante è autorizzato.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso
 AES composto positivo e refinement dei codec non sono ancora chiusi.

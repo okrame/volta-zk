@@ -274,6 +274,12 @@ Input SplitMix64 seed `0xc701ff7025020001`; quick M256/batch8, completo
 M2048/batch128. Il controllo GPU preliminare M64/batch2 copre anche tile
 off-diagonal, prima delle allocazioni grandi. Non è stato eseguito.
 
+Il [record statico su checkout pulito](../../benchmarks/results/c71-local-cuda-static-2026-09-13-ef2cdabc1afa.json)
+fissa SHA `ef2cdabc1afabdb687e280092d0e07f8e40e30f0`,
+archivi/toolchain, patch header, errori iniziali, log ptxas, dump SASS
+del merge e controlli host dei binari CUDA. `git_dirty:false`,
+`gpu_execution:false`, `credit:false`; nessun tempo GPU.
+
 Range e FFT compilano localmente con nvcc **12.9.86**, `-O3 -std=c++17
 -arch=sm_90 -Xptxas=-v`. ptxas: zero stack/spill in tutti i kernel;
 range massimo 80 registri, FFT massimo 40. Non è una misura H100.

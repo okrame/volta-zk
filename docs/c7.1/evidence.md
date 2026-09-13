@@ -93,6 +93,12 @@ radix-2, inclusi modello delle coppie di tile M64 e copertura delle scritture.
 L'[harness FFT](../../scripts/run_c71_fft_microbench.py) registra input e
 metadati e contiene un controllo GPU preliminare, non ancora eseguito.
 
+Il [record statico su checkout pulito](../../benchmarks/results/c71-local-cuda-static-2026-09-13-ef2cdabc1afa.json)
+fissa SHA `ef2cdabc1afabdb687e280092d0e07f8e40e30f0`,
+archivi/toolchain, patch header, errori iniziali, log ptxas, dump SASS
+del merge e controlli host dei binari CUDA. `git_dirty:false`,
+`gpu_execution:false`, `credit:false`; nessun tempo GPU.
+
 Range e FFT compilano per sm_90 con CUDA 12.9.1 temporaneo, nvcc 12.9.86,
 zero stack/spill ptxas, massimo 80/40 registri rispettivamente. Il toolkit
 ARM64 SBSA verificato SHA-256 richiede sulla VM glibc 2.41 la correzione

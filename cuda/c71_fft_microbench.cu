@@ -198,6 +198,22 @@ bool field_self_check() {
     return true;
 }
 
+bool index_self_check() {
+    for (unsigned bits = 1; bits <= 11; ++bits) {
+        const size_t m = size_t{1} << bits;
+        for (unsigned stage = 1; stage <= bits; ++stage) {
+            const size_t half = size_t{1} << (stage-1), len = half*2;
+            for (size_t pair = 0; pair < m/2; ++pair) {
+                const size_t offset = pair & (half-1);
+                if (((pair >> (stage-1)) << stage) != (pair/half)*len ||
+                    offset != pair % half ||
+                    (offset << (2*bits-stage)) != offset*(m/len)*m) return false;
+            }
+        }
+    }
+    return true;
+}
+
 struct TileModelCheck {
     bool plain;
     bool twiddled;
@@ -283,7 +299,7 @@ int host_check(int log2_m) {
     const bool root_ok = fp_pow(omega, n) == 1 && fp_pow(omega, n / 2) == P - 1;
     const bool radix_ok = radix == direct;
     const bool blocked_ok = blocked == direct;
-    const bool field_ok = field_self_check();
+    const bool field_ok = field_self_check() && index_self_check();
     const TileModelCheck tiles = tile_model_check();
     std::cout << "{\"schema\":\"volta-c71-fft-microbench-v1\",\"mode\":\"host-check\""
               << ",\"field\":{\"base_modulus\":" << P << ",\"generator\":" << GENERATOR
@@ -386,14 +402,14 @@ __global__ void row_fft_kernel(
     if (row >= rows) return;
     uint64_t* data = values + row * m;
     for (size_t i = threadIdx.x; i < m; i += blockDim.x)
-        shared[bit_reverse(static_cast<uint32_t>(i), log2_m)] = data[i];
+        shared[__brev(static_cast<uint32_t>(i)) >> (32-log2_m)] = data[i];
     __syncthreads();
-    for (size_t len = 2; len <= m; len <<= 1) {
+    for (int stage = 1; stage <= log2_m; ++stage) {
+        const size_t half = size_t{1} << (stage-1);
         for (size_t pair = threadIdx.x; pair < m / 2; pair += blockDim.x) {
-            const size_t half = len / 2;
-            const size_t base = (pair / half) * len;
-            const size_t offset = pair % half;
-            const uint64_t w = twiddles[offset * (m / len) * m];
+            const size_t base = (pair >> (stage-1)) << stage;
+            const size_t offset = pair & (half-1);
+            const uint64_t w = twiddles[offset << (2*log2_m-stage)];
             const uint64_t a = shared[base + offset];
             const uint64_t b = fp_mul(w, shared[base + offset + half]);
             shared[base + offset] = fp_add(a, b);

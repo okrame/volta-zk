@@ -60,3 +60,26 @@ def test_fixed_cap_block_remainder_matches_division_and_selected_rs_rows():
         assert budget['online_ffts_per_block_with_shared_fixed_transforms'] == 4
         assert budget['small_test_ffts_per_block'] == 4
         assert budget['source_passes'] == 1 and budget['native_or_runtime_upper'] is None
+
+
+def test_split_private_pad_preserves_the_committed_polynomial():
+    p = remainder.base.P
+    for cap, message_rows, live in ((8, 32, 11), (16, 64, 35)):
+        modulus = remainder.product_polynomial(list(range(1, cap+1)))
+        payload = [(i*i+7) % p for i in range(live)]
+        pad = [p-13, 23, p-31]
+        complete = payload+[0]*(message_rows-live)+pad
+        actual, blocks = remainder.split_padded_remainder(payload, pad, message_rows, modulus, cap)
+        assert actual == naive_remainder(complete, modulus, p)
+        assert blocks == (live+cap-1)//cap
+        assert actual != naive_remainder(payload, modulus, p)  # pad was not discarded
+
+
+def test_native_contiguous_column_budget_has_only_one_partial_payload_block():
+    b = 1 << 21
+    r = remainder.split_padding_budget(61_394_690_560//2, 35)
+    assert r['payload_blocks_all_columns'] == 14_638
+    # One full message column and three cells occupy 128+1 blocks, not
+    # 128 partial tails: native columns are contiguous chunks of the message.
+    r = remainder.split_padding_budget((1 << 28)+3, 35)
+    assert r['payload_blocks_all_columns'] == 129

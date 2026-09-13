@@ -5,6 +5,7 @@ import math
 from fractions import Fraction
 
 import c7_1_gemma_plan as base
+import c71_query_remainder as remainder
 
 
 def error_upper(value):
@@ -373,6 +374,130 @@ def pcs_data_oracle_geometry(d):
     return rows
 
 
+def dominant_cost_screen(assessment):
+    """Conditional rejection of literal scalar A replay, not all streaming A.
+
+    SASS constants describe only the named straight-line compiled kernels.
+    All other positive time terms remain excluded from this lower.
+    """
+    w, issue_rate, int_rate = 61_394_690_560, 132*4*32*2e9, 132*64*2e9
+    cohorts = base.gemma_weight_cohorts(base.pinned_private_tensors())
+    matrix_macs = sum(c['rows']*c['columns']*c['inner']
+                      for c in cohorts if c['kind'] == 'matrix')
+
+    def range_merges(d, cut, packed, retained, live):
+        g = gram_window_budget(d, cut, packed, retained)
+        # Rebuild only nodes with a live leaf. Fully public zero subtrees
+        # return cached (P,Q); they are NOT removed from GKR's weighted sum.
+        heights = [(d, 1)]+[(d-x['child_bits']-1, x['W_visits']) for x in g['layers']]
+        active = sum(visits*sum((live+(1 << h)-1) >> h for h in range(1, height+1))
+                     for height, visits in heights)
+        leaf = sum(visits*((live+1)//2) for height, visits in heights if height)
+        return {'generic_merges_without_zero_or_leaf_specialization': g['fraction_merges_initial_and_replay'],
+                'active_merges': active, 'leaf_pairs': leaf, 'internal_mul6_merges': active-leaf,
+                'issue_instructions_lower_named_kernels': leaf*231+(active-leaf)*1183,
+                'zero_subtree_precompute_not_in_lower': True,
+                'other_range_arithmetic_not_in_lower': True}
+
+    wg = range_merges(35, 11, w, 24, w//2)
+    batch, trees, height, weight = 4096, 675, 19, 11
+    trie = lambda rows: sum(min(trees << j, weight*rows) for j in range(height))
+    cases = []
+    fft_bytes = 512*10*((4 << 30)-(256 << 20))
+    w_open = remainder.split_padding_budget(w//2, 35)
+    a_opens = []
+    for i, c in enumerate(assessment['ordinary_KV_output_and_EXP30_composition']['cases']):
+        a = c['auxiliary_live_bytes']
+        a_opens.append(remainder.split_padding_budget(a, 34))
+        ag = range_merges(34, 10, a, 24, a)
+        range_seconds = (wg['issue_instructions_lower_named_kernels']+
+                         ag['issue_instructions_lower_named_kernels'])/issue_rate
+        rows = c['base_rows_upper_before_other_operators']
+        full, tail = divmod(rows, batch)
+        first_butterflies = w_open['Fp_butterflies']+sum(x['Fp_butterflies'] for x in a_opens)
+        open_issue = 77*first_butterflies/issue_rate
+        commit_fft_issue = 77*3_023_656_976_384/issue_rate
+        scalar_getter = (540+2*i)*matrix_macs/int_rate
+        cases.append({'old_tokens': c['old_tokens'], 'range_A': ag,
+            'range_W_A_named_merge_issue_lower_seconds': range_seconds,
+            'commit_A_FFT_array_HBM_lower_bytes': fft_bytes,
+            'commit_A_FFT_array_bandwidth_lower_seconds': fft_bytes/3.35e12,
+            'commit_A_nonzero_source_scaling_products': 512*(a+128*1536),
+            'known_A_full_generation_visits_current_and_old': 540+2*i,
+            'scalar_full_A_getter_INT32_lower_seconds': scalar_getter,
+            'joint_scalar_getter_range_commit_lower_seconds':
+                scalar_getter+range_seconds+max(fft_bytes/3.35e12, commit_fft_issue)+open_issue,
+            'specialized_range_plus_commit_FFT_only_lower_seconds': range_seconds+fft_bytes/3.35e12,
+            'split_payload_pad_openings_first_oracles_Fp_butterflies': first_butterflies,
+            'first_oracle_opening_issue_lower_seconds': open_issue,
+            'commit_A_FFT_issue_lower_seconds': commit_fft_issue,
+            'range_merges_commit_FFT_first_openings_joint_lower_seconds':
+                range_seconds+max(fft_bytes/3.35e12, commit_fft_issue)+open_issue,
+            'PCG_base_rows_fixed_schedule': rows,
+            'PCG_independent_query_steps_upper_per_role': 209*rows,
+            'PCG_batched_trie_steps_upper_per_role': full*trie(batch)+trie(tail),
+            'complete_seconds_upper': None})
+    return {'credit': False,
+        'ninety_seconds_is_discussion_threshold_not_authorization': True,
+        'literal_scalar_getter_decision': 'NO_GO_above_90_seconds',
+        'exact_tensor_or_other_fused_getter_decision': 'UNRESOLVED_not_rejected_by_this_lower',
+        'ceiling_conditions': ['132 SM', 'clock <=2GHz', '<=64 scalar INT32 MAC results/cycle/SM',
+            '<=4 warp instruction issues/cycle/SM', '32 lanes/warp',
+            'named standalone merge kernels without additional fusion',
+            'five separate FFT array passes, no compression, <=256MiB cache credit',
+            'scalar getter replays every matrix once per full A visit; no tensor/SIMD/retained-cut shortcut'],
+        'matrix_cohorts': sum(c['kind']=='matrix' for c in cohorts),
+        'matrix_MACs_per_full_A_generation': matrix_macs,
+        'max_matrix_inner_dimension': max(c['inner'] for c in cohorts if c['kind']=='matrix'),
+        'commit_A_scalar_getter_only_lower_seconds': 512*matrix_macs/int_rate,
+        'range_W': wg, 'cases': cases,
+        'split_payload_pad_W_opening': w_open,
+        'split_payload_pad_A_openings': a_opens,
+        'WHIR': {'data_oracles_per_chain': 12,
+                 'literal_all_oracle_remainder_butterflies_W': 3_152_737_468_416,
+                 'literal_all_oracle_remainder_butterflies_per_A': 1_593_688_457_216,
+                 'current_initial_sumcheck_40N_guard_W_bytes': 40*(1 << 35),
+                 'current_initial_sumcheck_40N_guard_A_bytes': 40*(1 << 34),
+                 'post_fold7_eval_plus_weights_W_bytes': 48*(1 << 28),
+                 'post_fold7_eval_plus_weights_A_bytes': 48*(1 << 27),
+                 'known_W_visits_with_one_post_query_S1_reconstruction': 33,
+                 # Literal coset plan, no retained S1: reconstruct its input
+                 # for every coset. These additional costs are NOT in joint LB.
+                 'first_switch_coset_rows': 1 << 24,
+                 'first_switch_commit_extra_W_source_visits': 64,
+                 'first_switch_commit_extra_A_source_visits_per_chain': 32,
+                 'direct_W_visits_including_first_switch_commit': 97,
+                 'current_A_visits_including_first_switch_commit': 572,
+                 'each_old_A_visits_including_first_switch_commit': 34,
+                 'first_switch_commit_counts_exclude_later_oracles_and_sumchecks': True,
+                 'mask_oracle_and_new_commit_getter_costs': None},
+        'PCG': {'setup_internal_cGGM_evaluations_lower_per_role_if_two_full_traversals':
+                    2*trees*((1 << height)-1),
+                'batch_rows': batch, 'public_terms_upper': batch*weight,
+                'batched_trie_internal_nodes_upper': trie(batch),
+                'trie_requires_role_by_role_Acc_PuncAcc_refinement': True,
+                'two_aligned_term_arrays_bytes': 2*batch*weight*16,
+                'two_sparse_Fp3_frontiers_bytes': 2*batch*weight*24,
+                'prover_output_bytes_per_base_row': 32,
+                'prover_output_batch_bytes': batch*32,
+                'Fp3_packing_carry_bytes': 2*32,
+                'H_to_AES_or_seconds_lower': None,
+                'persistent_seeds_OT_corrections_peak': None},
+        'streaming_state_plan': {
+            'credit': False, 'getter_tile_slot_cap': 64 << 20,
+            'PCG_trie_extra_scratch_cap': 3_784_704,
+            'pending_W_S1_h8_Merkle_and_salt_cache': 301_989_856,
+            'first_switch_W_commit_named_geometry_bytes': 5_234_541_344,
+            'first_switch_W_commit_named_with_proof_getter_trie_cache': 6_195_259_192,
+            'query_named_with_proof_getter_trie_pending_S1_cache':
+                remainder.report()['query_named_peak_bytes']+(64 << 20)+3_784_704+301_989_856,
+            'unassigned': ['mask oracles', 'small-space sumcheck/public covector',
+                           'PCG seeds/OT/corrections', 'allocator/runtime overhead'],
+            'slot_caps_are_not_full_implementation_bounds': True},
+        'complete_allocated_reserved_peak': None,
+        'complete_time_admission_upper': '+infinity'}
+
+
 def integrated_resource_ledger(assessment):
     """Complete admission categories; unknown costs are NOT filled by peak rates.
 
@@ -435,8 +560,9 @@ def integrated_resource_ledger(assessment):
                 'capacity_base_rows': 70_778_880,
                 'cGGM_steps_point_query_component_upper_per_role':
                     2*353_894_400+209*complete['initial_base_rows_upper'],
-                'all_output_MAC_bytes_prover': 16*complete['initial_base_rows_upper'],
-                'stream_output_batch_proposed_bytes': 4096*16,
+                'all_output_MAC_bytes_prover': 32*complete['initial_base_rows_upper'],
+                'stream_output_batch_proposed_bytes': 4096*32,
+                'Fp3_packing_carry_bytes': 2*32,
                 'live_state_bytes_upper': None, 'AES_OT_field_HBM_seconds_upper': None},
         'memory': {'arena_reserved_bytes_target': arena,
                    'single_KV_append_buffer_450_tokens_reserved_bytes': 450*4_915_200,
@@ -448,8 +574,8 @@ def integrated_resource_ledger(assessment):
             'persistent_cache_within_arena_bytes': 188_743_552,
             'canopy_cut11_with_cache_scratch_histogram_bytes': 3_376_938_824,
             'resident_range_m24_with_cache_scratch_histogram_bytes': 3_480_760_184,
-            'initial_PCS_commit_with_cache_256MiB_slot_histogram_PCG_output_bytes': 6_197_150_296,
-            'remaining_initial_PCS_before_other_live_state': arena-6_197_150_296,
+            'initial_PCS_commit_with_cache_256MiB_slot_histogram_PCG_output_bytes': 6_197_215_896,
+            'remaining_initial_PCS_before_other_live_state': arena-6_197_215_896,
             'scratch_slots_are_proposed_caps_not_implemented_bounds': True,
             'query_tree_and_folded_PCS_state_peak_bytes': None,
         },
@@ -524,6 +650,7 @@ def report():
         'integrated_schedule': integrated_schedule_screen(suffix),
         'local_preflight': local_preflight(gram_window_budget(35, 10, 61_394_690_560, 25), suffix),
         'integrated_resource_ledger': integrated_resource_ledger(assessment),
+        'dominant_cost_screen': dominant_cost_screen(assessment),
         'arena_bytes': arena,
         'native_Dory_implemented': False,
         'physical_schedule_admitted': False,

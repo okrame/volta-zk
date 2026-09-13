@@ -870,6 +870,18 @@ assunzioni, né un nuovo teorema Lean. Restano da scaricare il refinement
 su codec/sali/NoPeek, source-uniformity del commitment e della PCS completa,
 i getter A/KV, gli stati folded e il port reale PCG. Il cap del reader
 privato, i pad e l'assegnazione dei sali devono restare identici.
+Lo [screen dominante](preflight.md#test-decisivo-sui-costi-dominanti)
+respinge il getter full-A con MAC scalari (solo commit >=135,257 s sotto
+ceiling espliciti). Range specializzato, FFT e prime aperture danno lower
+parziali 32,722/36,085/39,685 s, non upper o impossibilità universali.
+Separare payload e X^M*pad preserva il polinomio originario; il layout delle
+colonne è a chunk contigui. I sottoalberi zero restano nella somma GKR;
+cache/mul6 non autorizzano pruning del supporto. Getter i16 esatti e trie
+PCG pubblico richiedono refinement, senza nuove assunzioni di sicurezza.
+Il primo switch senza retention aggiunge 64/32 replay W/A; il guard
+sumcheck denso resta chiuso. Il cap proposto getter 64 MiB e PCG output
+32 B/riga non scaricano i costi ignoti di maschere/covettore/seed/allocator.
+Il confronto con 90 s non modifica l'obiettivo autorizzato <=50 s.
 La proposta di un solo buffer persistente KV per 450 token conta anche
 la coda pendente; non autorizza temporanei fuori arena. I picchi globali
 completi allocato/riservato sono ignoti. In assenza di tutti i contratti

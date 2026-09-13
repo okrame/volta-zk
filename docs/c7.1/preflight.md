@@ -1,10 +1,12 @@
 # C7.1 — preflight locale, 2026-09-13
 
-**NO-GO per H100.** La FFT a blocchi ora compila per `sm_90` e supera i
-controlli CPU ridotti. Il replay completo dei primi oracoli W/A/vecchie A
-è però escluso nelle condizioni esplicite sotto. La variante con apertura
-per resti polinomiali riduce questo lavoro; non è ancora una costruzione
-integrata ammessa. Nessun pod, spesa o esecuzione GPU è stato effettuato.
+**NO-GO per H100.** Lo screen dei costi dominanti respinge il getter che
+rigenera tutta A con prodotti scalari a ogni visita: il solo commit A
+impone >=135,257 s nelle condizioni esplicite sotto. Le specializzazioni
+range/FFT/apertura per resti riducono il lavoro, ma il loro lower parziale
+non esclude una costruzione diversa entro 50 s. Upper completo e picco
+completo restano aperti. **90 s è una soglia di discussione del proprietario,
+non una deroga autorizzata.** Nessun pod, spesa o esecuzione GPU.
 
 I conti riproducibili sono in
 [`integrated_resource_ledger`](../../scripts/c71_streaming_screen.py) e
@@ -114,6 +116,112 @@ incompatibile. Il range A/D34 può usare cut=10/m24: 26 visite A e
 1.571.622.485.383 mul Fp3 del medesimo nucleo, più getter/istogrammi/MAC.
 Sono replay della stessa algebra range, non un protocollo indebolito.
 
+## Test decisivo sui costi dominanti
+
+Il nuovo `dominant_cost_screen` separa il replay scalare escluso dalla
+variante specializzata ancora aperta. I lower di istruzioni assumono
+132 SM, clock <=2 GHz, <=4 emissioni warp/ciclo/SM e 32 lane/warp; il
+ceiling scalare è <=64 risultati INT32 multiply/ciclo/SM. Sono condizioni
+esplicite, non misure, né throughput minimi di servizio. Vedi architettura
+[Hopper NVIDIA](https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/)
+e la tabella CUDA linkata sopra. Gli stadi sommati sono distinti nel piano
+letterale: non si presume overlap. Un kernel fuso diverso richiede un
+nuovo conteggio; non eredita automaticamente questi lower.
+
+**Getter A scalare.** Le 411 coorti matrice richiedono almeno
+4.463.473.459.200 MAC interi per rigenerazione completa di A sui 150 token.
+512 rigenerazioni per il solo commit impongono >=135,256771 s. Con le
+540/542/544 rigenerazioni già note (incluse vecchie A e una ricostruzione
+S1 dopo query), il getter solo impone 142,654/143,182/143,710 s. Questo
+esclude 50 e 90 s **per il replay completo con MAC scalari**, senza
+pretendere un'impossibilità per Tensor Core esatti, cache o getter fusi.
+Non comprende ancora i replay di commitment del primo switch sotto.
+
+Tre specializzazioni riducono lavoro, senza cambiare il predicato:
+
+- `mul6` usa sei prodotti base per Fp3 invece di nove. Il merge compilato
+  richiede 1.183 istruzioni incondizionate anziché 1.379. La coppia di
+  foglie ha numeratori uno: con x,y uint16 e alpha traslata dello stesso
+  bias pubblico, `P=2alpha-x-y`, `Q=alpha²-(x+y)alpha+xy`. Alpha² è
+  precalcolata, xy è esatto in u32; il kernel ha 231 istruzioni.
+- Un sottoalbero di n=2^h zeri **pubblici** restituisce la coppia esatta
+  `(n*alpha^(n-1),alpha^n)`, precalcolata in O(d). Si saltano le sue
+  moltiplicazioni di ricostruzione, **non** le celle virtuali nel GKR
+  pesato: P/Q sono non nulli. Il bias delle foglie W non cambia lo zero
+  originale di questa formula. Il range W passa da 740.982.521.855 merge
+  generici a 383.716.816.000 leaf-pair e 278.284.625.245 merge interni.
+- La FFT usa shift/mask per indici di potenze di due e bit-reversal CUDA.
+  Spariscono CALL/divisioni/reciproci dal kernel di riga. Il ciclo della
+  butterfly contiene 77 istruzioni incondizionate nel binario compilato;
+  questo census vale per quel kernel quadrato, non per ogni FFT piccola.
+
+Le aperture sfruttano anche `f(X)=f_live(X)+X^M pad(X)`: il suffisso zero
+pubblico non richiede replay. Si calcola il resto del payload e si aggiunge
+`(X^M mod Z)*pad mod Z`, con **gli stessi pad privati**. Partire da
+`X^B=-Z_low mod Z`, poi log2(M/B) quadrature modulari; shift e spettro sono
+condivisi tra 128 colonne. Il [layout nativo](../../rust/third_party/p3-whir-c61/src/pcs/zk/committer.rs) divide il messaggio in chunk
+contigui prima di trasporre: il prefisso live occupa ceil(L/B) blocchi,
+non 128 code parziali distribuite uniformemente. Sei FFT per quadratura, sei per correzione pad
+con spettro fisso, più una FFT dello shift. Il piccolo helper algebrico usa
+una moltiplicazione generica (sette FFT), non è il runtime del piano a sei.
+Saltare blocchi zero intermedi nel vecchio Horner senza lo shift sarebbe
+errato. Questo nucleo resta `c_source*N + P(q,h)` con B fisso.
+
+| O | Range W+A, solo merge specializzati, lower s | Commit A, max(FFT HBM, issue), lower s | Prime aperture W e tutte A, issue lower s | Somma parziale, s | Con getter scalare, s |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 16,868684 | 6,889843 | 8,963441 | **32,721968** | **175,375595** |
+| 150 | 17,272523 | 6,889843 | 11,922764 | **36,085131** | **179,267104** |
+| 300 | 17,676362 | 6,889843 | 15,118421 | **39,684627** | **183,394946** |
+
+La FFT commit A muove >=20.615.843.020.800 B secondo il credito cache
+fissato, lower banda 6,153983 s; non sommarlo al suo lower issue. Le prime
+aperture specializzate costano 3.933.669.949.440 / 5.232.390.045.696 /
+6.634.826.891.264 butterfly. Restano fuori Gram, coefficienti, pesi,
+fold, scaling commit A, hash/sali, query product tree, oracoli successivi,
+PCG, getter non scalare, inferenza e serializzazione. **La colonna parziale
+non è un upper e non dimostra né 50 né 90 s.** I probe standalone Fp/Fp3
+includono load/indirizzi/controllo: moltiplicarne il census per tutti i
+prodotti inlined produrrebbe un falso lower.
+
+### Getter A/KV: contratto minimo e alternativa strutturale
+
+Un getter riceve solo snapshot originale/ID sorgente e intervallo pubblico;
+risolve ricetta, riga, colonna e byte nel layout originale. Riproduce i token
+originali già fissati (teacher forcing), lo stesso Gamma, RNE/EXP30, padding
+e maschere causali del relativo O. Usa soltanto il prefisso KV originale
+accettato di quel contesto, anche quando esistono token successivi. Non
+accetta un nuovo witness dal chiamante o dal transcript. Produce per tile
+una word raw e tutti i byte/RNE derivati insieme; nessuna inferenza per
+singolo byte. Il suo ordine di lavoro è pubblico, con terminali MAC
+originali e nessuna dipendenza da Delta. Il costo dei replay W/KV resta
+separato dall'inferenza iniziale che ha prodotto la risposta.
+
+Il primo cap proposto è **64 MiB** per tile di layer/row e lm_head a blocchi;
+è uno slot da implementare, non un upper già dimostrato. Il KV originale
+usa l'append unico sotto. Cache di tagli intermedi o batch di coset sono
+leciti solo contando i buffer contemporanei; il commit iniziale lascia
+poco margine. Fusione raw→byte→RNE e range con istogramma riduce lavoro
+ripetuto; non può anticipare alpha o query prima dei relativi messaggi.
+
+La minima alternativa al replay scalare è un prodotto i16 **esatto** con
+quattro dot-product signed-int8, correzioni affini e ricomposizione i64:
+per `x=256*h_x+l_x+128`, `h=x//256`, `l=x%256-128`,
+
+```
+x*y = 65536*h_x*h_y + 256*(h_x*l_y+l_x*h_y) + l_x*l_y
+      + 128*(256*(h_x+h_y)+l_x+l_y) + 16384.
+```
+
+Con K massimo 21.504, ogni accumulatore int8 è limitato da
+K*128²=352.321.536 <2^31. Le somme di righe/colonne e la ricomposizione
+si pagano, prima dello stesso RNE originale. Il test finito include estremi
+signed e cambi di byte; non implementa MMA, tutte le ricette A o inferenza.
+Il lavoro base è **8*4.463.473.459.200 operazioni int8 per rigenerazione**
+(contando multiply/add separati), più correzioni. Nessun TOPS teorico è
+usato come upper di tempo o come throughput Fp3. Il controllo minimo è un
+microkernel i16/GEMM esatto su shape e tile pertinenti, poi un trace getter
+piccolo con tutte le ricette e dipendenze; non occorre ancora portare Gemma.
+
 ## Schedule, liveness e picco allocato/riservato
 
 Ordine FS invariato: fissare snapshot e output; messaggi dei producer e
@@ -135,8 +243,8 @@ Sono upper dei buffer nominati/cap proposti, non picchi misurati.
 | Range residente m24, W o A | 3.480.760.184 | Array/riduzioni 3.023.056.896 + scratch 256 MiB; rilascio dopo terminale |
 | Suffix-first W, 15 round | C 2.848.456.704 + cache + scratch vivo | C rilasciata prima della seconda scansione; pesi/getter ancora da assegnare |
 | Seconda scansione linear W | B/L 50.331.648 + cache + scratch vivo | Rilascio prima PCS; linear A e vecchie A separati |
-| Commit PCS iniziale per coset | 6.197.150.296 | 5.739.381.472 nominati + cache + slot reader/hash 256 MiB + istogramma + output PCG 64 KiB; restano 245.300.648 B |
-| Apertura per resti | 5.352.498.160 | Include output 2 GiB, alberi/fattori FFT, cache, metadata, reader/hash, PCG output e cap proof; dettagli sotto |
+| Commit PCS iniziale per coset | 6.197.215.896 | 5.739.381.472 nominati + cache + slot reader/hash 256 MiB + istogramma + output PCG 128 KiB + carry 64 B; restano 245.235.048 B |
+| Apertura per resti | 5.402.895.408 | Include output 2 GiB, alberi/fattori FFT, cache, metadata, reader/hash, PCG output e cap proof; dettagli sotto |
 | Producer A/KV, WHIR successivo, PCG completo | Ignoto | Non assegnare a zero; nessun picco completo accreditato |
 
 Per l'apertura, un piano prudente conserva tutti i polinomi, reciproci e
@@ -144,11 +252,11 @@ due trasformate fisse di ciascun nodo dell'albero bilanciato, anche quelli
 non strettamente necessari: rispettivamente **402.653.176 / 369.098.752 /
 1.476.395.008 B**. Una colonna alla volta usa quattro workspace FFT da
 32 MiB, due livelli di resti da 16 MiB, un resto sorgente da 16 MiB,
-punti da 16 MiB e twiddle da 32 MiB. L'output selezionato da 2 GiB vive
+punti da 16 MiB, twiddle da 32 MiB e shift/spettro pad da 48 MiB. L'output selezionato da 2 GiB vive
 nel riuso dell'arena PCS, senza coset/frontier da 5,739 GB ancora vivi.
 Aggiungendo cache, slot metadata 128 MiB, reader/hash 256 MiB, istogramma,
 PCG output e **130.000.000 B di output proof**, i buffer nominati occupano
-**5.352.498.160 B**, lasciando 1.089.952.784 B prima degli altri stati.
+**5.402.895.408 B**, lasciando 1.039.555.536 B prima degli altri stati.
 Gli slot e le FFT di grado inferiore richiedono ancora il port nativo;
 questa è una prenotazione analitica, non una traccia di malloc. La discesa
 multipunto con quattro FFT per nodo ha un upper di 248.034.361.344
@@ -156,14 +264,14 @@ butterfly per 128 colonne, oltre al nucleo sorgente e alla costruzione
 degli alberi. Nessuna valutazione ingenua B² è ammessa come costo canonico.
 
 Le altre righe della tabella escludono l'output proof: riservando anche lì
-130 MB, il maggiore subtotal diventa **6.327.150.296 B** nel commit PCS,
-con soli 115.300.648 B residui. Non attribuire quel margine al PCG completo
+130 MB, il maggiore subtotal diventa **6.327.215.896 B** nel commit PCS,
+con soli 115.235.048 B residui. Non attribuire quel margine al PCG completo
 o ad altre allocazioni senza verificarle. Non si presume emissione anticipata
 della proof per liberare memoria prima del punto consentito dal transcript.
 
 Il top Merkle/offset completo è contato anche durante il commit corrente:
 non si sottrae la cache in costruzione. Gli slot di scratch sono cap da
-implementare. Il buffer output PCG proposto è 4.096 righe base, 65.536 B;
+implementare. Il buffer output PCG proposto è 4.096 righe base, 131.072 B, più carry 64 B;
 non limita automaticamente seed, OT, cGGM e altri stati del backend.
 
 KV originale costa **4.915.200 B/token**. Prefisso accettato:
@@ -216,13 +324,93 @@ census pertinente), 4.446 target correnti; W 775 e ogni vecchia A uno.
 Le aperture sorgente sono 2/3/4 per risposta. I 526 alberi e 39 stream
 privati del run completo sono un lifetime, non memoria simultanea.
 
-PCG: 11.466.948 righe base richieste nel run, capacità 70.778.880. Il
-solo componente point-query dà l'upper analitico per ruolo
-`2*353.894.400 + 209*11.466.948 = 3.104.380.932` passi cGGM. Non è il
-lavoro completo AES/OT/field/setup; conservare tutte le uscite MAC del
-prover costerebbe 183.471.168 B. Servono consumo a batch, cap al materiale
-vivo, conti di HBM/AES/field e trasferimenti distinti. Il bootstrap da
-61.841.290 B rimane un conteggio wire condizionale, non tempo o memoria.
+### WHIR: lo stato successivo non sostituisce quello interrogato
+
+Il [prover nativo](../../rust/third_party/p3-whir-c61/src/pcs/zk/prover/mod.rs) committa l'oracolo successivo e i mask/OOD prima delle
+query all'oracolo precedente; gamma arriva dopo le righe aperte. Si può
+fondere ricostruzione→hash sottoalbero→open-and-fold; non commitment con
+query future, né aggiornamento del covettore con gamma ancora ignota.
+Il folding ha kernel non banale: il successore da solo non determina le
+righe Merkle precedenti. Non cambiare root o rivelare pad per evitarlo.
+
+Il guard nativo `C62GpuSumcheckState::initialize` richiede 40N byte:
+**1.374.389.534.720 / 687.194.767.360 B** per W/A. È un'ammissione densa
+che fallisce chiusa, non un lower universale. Dopo fold7, evaluations+pesi
+Fp3 occupano **12.884.901.888 / 6.442.450.944 B**, prima di cache/pad.
+Non basta allentare il guard: serve un sumcheck/covettore streaming con
+lavoro uniforme; q valutazioni eq per cella reintrodurrebbero qN. Dopo
+fold9, sole values W/A costano 1.610.612.736 / 805.306.368 B; la retention
+è valutabile più avanti, contando destinazioni e ultimo consumer.
+
+La prima geometria esplicita senza retention S1 usa coset da 2^24 righe,
+12 coordinate base e Q=64 W /32 A. Ogni coset ricostruisce la sorgente:
+aggiunge **64 visite W e 32 di ciascuna A** al commitment del primo switch.
+Una ulteriore ricostruzione S1 dopo query porta il subtotal a **97 visite
+dirette W, 572 A corrente e 34 per vecchia A**. Non sono il totale: mancano
+sumcheck, altri switch, maschere e letture W/KV dei getter. Anche OOD
+ha challenge post-root: senza S1 retained il suo replay non si fonde
+con le 64/32 scansioni pre-root. Le 97 visite
+muovono 5.955.284.984.320 B di payload W; non tutto l'HBM. Il lower congiunto
+sopra omette deliberatamente questi costi aggiuntivi positivi. Il piano
+letterale per resti di tutti i 12 oracoli conta 3.152.737.468.416 butterfly W
+e 1.593.688.457.216 per A prima della specializzazione payload/pad;
+non mescolare questi totali con quelli specializzati dei primi oracoli.
+
+Liveness proposta del primo switch W: coset 1.610.612.736 B, frontiera
+3.221.225.472 B, twiddle 134.217.728 B, sali start/current 268.435.456 B,
+pad 49.152 B e stack 800 B = **5.234.541.344 B**. Conservare una cache S1
+h8 da 301.989.856 B finché S1 è stato interrogato, oltre alla cache iniziale
+W/tre A da 188.743.552 B. Con reader/hash 256 MiB, getter 64 MiB, scratch
+trie, output PCG, istogramma e cap proof, subtotal **6.195.259.192 B**,
+margine **247.191.752 B**. Dopo rilascio coset/frontiera, l'apertura usa
+il piano per resti, cache S1 e gli stessi slot: **5.775.778.832 B**,
+margine **666.672.112 B**. Una cache S1 h6 con questo workspace completo
+non entra: un piano che omette spettri/prodotto-tree non prova il picco.
+
+Sono cap dei buffer nominati, non un picco completo: mancano maschere,
+covettore/sumcheck, seed/OT e overhead allocator. Il commit A iniziale
+rimane ancora più stretto: dei 115.235.048 B residui dopo cap proof,
+getter+trie ne occupano 70.893.568, lasciando **44.341.480 B** per gli
+altri stati. Nessun trasferimento esterno può supplire: spill vietato.
+
+### PCG: righe reali, trie pubblico e costi separati
+
+Le 3.814.605 / 3.826.014 / 3.826.329 righe base dello schedule fisso sommano
+11.466.948, entro capacità 70.778.880. Nel formato nativo il prover conserva
+`[u64;4]`, valore 8 B più tag Fp3 24 B: **32 B/riga**, totale bulk
+**366.942.336 B**, non i precedenti 183.471.168 B. Il verifier ha 24 B/riga.
+Il piano usa 4.096 righe/131.072 B: produrre, combinare ogni tre righe in
+Auth/Key Fp3, consumare nel dominio previsto, azzerare. Poiché 4.096
+non è divisibile per tre, conservare fino a due righe fra batch: carry
+prover **64 B** (verifier 48 B), contato nei subtotal. Nessun pool bulk.
+
+Il setup letterale cGGM mem-sublinear a due traversate richiede almeno
+`2*675*(2^19-1)=707.787.450` valutazioni interne H per ruolo, più >=N
+accumulazioni UH con N=353.894.400. Si paga una volta per run; fondere UH
+con la seconda traversata dopo la challenge evita traffico separato, non
+la prima traversata senza conservare le foglie. Il vecchio conteggio
+`2N+209R=3.104.380.932` resta un **upper componente**, non un lower AES.
+Non identificare la H cGGM Fp3/ROM selezionata con un generico albero
+AES128-MMO; il backend B11 AES fornisce i seed. Costi H→AES/field, OT e
+stati persistenti sono ancora ignoti.
+
+Si può batchare la lista pubblica EA di ell=11 indici per riga. Con
+u<=45.056 termini su 675 alberi di altezza 19, il trie condiviso visita
+al più `sum(j=0..18,min(675*2^j,u))=626.397` nodi interni, contro 856.064
+path-step indipendenti per batch: **26,83% di lavoro upper in meno**.
+Con le code effettive: **583.385.798 / 585.121.123 / 585.174.648 H/ruolo**
+per risposta, anziché 209R. Non sono lower temporali. Il refinement va
+verificato separatamente per Acc e PuncAcc: memoization solo entro stesso
+albero/blocco/label, correzioni private del ruolo punctured, ordine originale
+degli output ripristinato. Indici/coefficienti vengono da EAGen pubblico,
+mai da witness o Delta; nessuna correlazione riutilizzata tra sessioni.
+
+Scratch proposto: due array di termini allineati 1.441.792 B, due
+frontiere sparse Fp3 2.162.688 B e istogramma 180.224 B, totale extra
+**3.784.704 B**, oltre output già contato. Seed/OT/off-path/correzioni non
+sono implicitamente inclusi. Il controllo minimo è un trace bounded
+Acc/PuncAcc equivalente al riferimento, contatori H/AES/field e vita di
+ogni stato. Il bootstrap **61.841.290 B** rimane wire condizionale.
 
 ## Upper analitico e throughput minimo
 
@@ -255,13 +443,20 @@ necessarie; per un budget t_k usare `work/t_k`, con `sum(t_k)<=50`.
 | Nucleo range W fattorizzato | 3.469.226.278.261 mul Fp3 | 69,385 Gmul/s |
 | Nucleo range A fattorizzato | 1.571.622.485.383 mul Fp3 | 31,432 Gmul/s |
 | Suffix-first W | 314.498.580.480 aggiornamenti | 6,290 Gaggiornamenti/s |
-| Apertura per resti W, sorgente virtuale 2^35 prima dei pad | 88*2^35 butterfly | 60,473 Gbutterfly/s |
+| Prima apertura W, payload e pad specializzati | 2.738.851.151.872 butterfly | 54,777 Gbutterfly/s |
 | Primo commit A, FFT sola | 3.023.656.976.384 butterfly | 60,473 Gbutterfly/s |
 | PCS complete, getter A/KV, PCG, inferenza, serializzazione | Parzialmente ignoti | Soglia completa non disponibile |
 
 Le righe range nucleo includono merge e coefficienti; non sommarle.
-Il commit A aggiunge circa 8,80e12 mul di scaling generico per sorgente,
+Il commit A aggiunge 512*(A_live+128*1536) prodotti di scaling generico,
 oltre a twiddle, hash e sali; non sparisce con l'apertura per resti.
+Per le sole prime aperture specializzate servono almeno 78,673/104,648/
+132,697 Gbutterfly/s se si concedono tutti i 50 s a questa voce. Per un
+budget assegnato t, ogni soglia è work/t; 90 s resta solo un confronto.
+Per PCG si divide per t l'upper del lavoro effettivamente selezionato per
+il contratto di servizio, non lo si presenta come throughput necessario
+universale. Mancando i costi completi non esiste ancora un'assegnazione
+di t che certifichi la risposta.
 
 ## CUDA, harness e controlli ridotti
 
@@ -318,12 +513,12 @@ l'input/harness della costruzione **integrata** non è ancora pronto.
 | Gate | Controllo minimo successivo | Stato |
 |---|---|---|
 | Algebra/endpoint | Adapter piccolo nativo con righe, pad, sali, root, codec e MAC identici; rifiuto delle alterazioni | Identità finite passate, refinement aperto |
-| CUDA | Compile/SASS; poi reader, inverse/remainder e pipeline hash rappresentativi con input piccolo | FFT/range compilati; reader e remainder CUDA mancanti |
-| A/KV | Trace getter immutabile per tutte le ricette e O=0/150/300, conteggio ricostruzioni e dipendenze | Census descrittori disponibile, schedule fisica assente |
+| CUDA | Compile/SASS; poi reader, inverse/remainder e pipeline hash rappresentativi con input piccolo | FFT ottimizzata e probe range compilati; reader e remainder CUDA mancanti |
+| A/KV | Trace getter immutabile per tutte le ricette e O=0/150/300, conteggio ricostruzioni e dipendenze | Replay scalare escluso; getter esatto e slot 64 MiB da verificare |
 | PCS completa | Tutti i 12 oracoli per catena, maschere, stati folded, source-uniformity e salt seek | Ancora aperto |
 | PCG | Trace AES/cGGM a batch, seed/state/OT, no pool bulk; costi di entrambi i ruoli | Upper componente soltanto |
 | Memoria | Ogni buffer vivo, arena totale, allocated/reserved globale <80 GB, assenza di spill | Buffer nominati compatibili nella variante, totale ignoto |
-| Tempo | Somma completa <=50 s sotto contratti applicabili; ogni lower compatibile | Replay completo escluso; alternativa non ammessa |
+| Tempo | Somma completa <=50 s sotto contratti applicabili; ogni lower compatibile | Replay completo e getter scalare esclusi; alternativa senza upper finito |
 | Riproduzione e spesa | Clean SHA pubblicata, harness/input integrati, immagine/deadline/prezzo fissati, autorizzazione nuova | Gate non raggiunto |
 
 Non si propone RunPod per il replay già escluso né si usa un microbench

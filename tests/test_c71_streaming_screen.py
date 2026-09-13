@@ -24,6 +24,37 @@ def test_integrated_screen_counts_old_A_and_does_not_invent_a_time_upper():
     assert variant['range_W_visits_with_cached_histogram'] == 29
 
 
+def test_dominant_screen_and_exact_scalar_getter_specializations():
+    r = screen.dominant_cost_screen(screen.base.b12_pcs_binding_assessment())
+    assert r['matrix_MACs_per_full_A_generation'] == 4_463_473_459_200
+    assert r['commit_A_scalar_getter_only_lower_seconds'] > 90
+    assert all(c['joint_scalar_getter_range_commit_lower_seconds'] > 90 for c in r['cases'])
+    assert r['complete_time_admission_upper'] == '+infinity'
+    assert r['PCG']['batched_trie_internal_nodes_upper'] == 626_397
+    # Exact four signed-int8 dot products, with affine correction for low bytes.
+    # No quantization change or floating-point approximation is involved.
+    values = [-32768, -32767, -256, -129, -128, -1, 0, 1, 127, 128, 255, 32767]
+    split = lambda x: (x//256, x % 256-128)
+    for x in values:
+        for y in values:
+            hx, lx = split(x)
+            hy, ly = split(y)
+            actual = 65536*hx*hy+256*(hx*ly+lx*hy)+lx*ly
+            actual += 128*(256*(hx+hy)+lx+ly)+16384
+            assert actual == x*y
+    assert r['max_matrix_inner_dimension']*128*128 < 1 << 31
+    # Cached all-zero fraction subtrees still have NONZERO denominators.
+    # Returning their exact (P,Q) is legal; deleting them from GKR is not.
+    p, alpha = 97, 17
+    for height in range(1, 7):
+        current = [(1, alpha)]*(1 << height)
+        while len(current) > 1:
+            current = [((a*d+c*b) % p, b*d % p)
+                       for (a, b), (c, d) in zip(current[::2], current[1::2])]
+        n = 1 << height
+        assert current[0] == (n*pow(alpha, n-1, p) % p, pow(alpha, n, p))
+
+
 def table(factors, p):
     out = [1]
     for a, b in factors:

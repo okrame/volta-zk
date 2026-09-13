@@ -204,26 +204,39 @@ zero stack/spill ptxas, controlli CPU ridotti passati; nessun tempo GPU.
 La compilazione locale usa una correzione dichiarata di quattro prototipi
 math nell'header temporaneo per glibc 2.41, senza cambiare aritmetica CUDA.
 
-Il replay completo dei primi oracoli include ora A corrente e vecchie A.
-Con le condizioni di banda/cache dichiarate, impone **47,239 / 55,723 /
-64,388 s**; aggiungendo il lower del kernel merge generico e il ceiling
-esplicito di 2 GHz: **52,885 / 61,369 / 70,033 s**, prima di PCG,
-inferenza, range A e oracoli successivi. È respinta questa implementazione,
-non ogni PCS. L'upper completo resta +infinito per i costi ignoti.
+Il replay completo dei primi oracoli è respinto nelle condizioni del
+preflight. La [variante per resti](construction-screen.md#aperture-per-resti-a-cap-fisso)
+ora separa payload, suffisso zero pubblico e **gli stessi pad privati**.
+Il conto rispetta i chunk contigui del layout nativo. Le specializzazioni
+foglie range, sottoalberi zero, Fp3 a sei prodotti e indici FFT riducono
+lavoro totale. Algebra finita e compilazione CUDA locale non attribuiscono
+credito al refinement su righe/sali/root/NoPeek o al prover completo.
 
-La [variante per resti polinomiali](construction-screen.md#aperture-per-resti-a-cap-fisso)
-ricostruisce i sottoalberi richiesti con una scansione sorgente, mantenendo
-le stesse righe, pad, sali, root e endpoint come obbligo di refinement.
-Il nucleo algebrico passa i controlli finiti. Cache h12 da 188.743.552 B
-nell'arena, canopy cut11 e range residente m24 danno **29 visite range W**
-e **32 visite W note** con linear e prima apertura; non il totale.
-Questa coordinazione evita la collisione tra cache PCS e range m25.
-KV originale ha una proposta append unica per 450 token, senza seconda
-cache; W+KV+arena riservati noti sono 70.048.981.504 B. Picco completo
-allocato/riservato, getter A, WHIR successivo, PCG e upper di tempo restano
-aperti. Gli harness/input FFT e range sono pronti, quello integrato no.
-Si prosegue con i controlli minimi indicati nel preflight; nessun pod,
-spesa o workload pesante è autorizzato o proposto.
+Il nuovo test dominante respinge il getter che rigenera tutta A con MAC
+scalari: **>=135,257 s per il solo commit A**, con ceiling espliciti.
+Le alternative esatte restano aperte. Range W/A specializzato + FFT commit
+A + prime aperture W/tutte A danno lower congiunti parziali **32,722 /
+36,085 / 39,685 s** a O=0/150/300. Escludono costi positivi e non sono
+upper né certificati <=50 s. Il confronto <=90 s è una possibile futura
+deroga da valutare **solo dopo un upper completo**, non autorizzata ora.
+
+Cache h12 iniziale da 188.743.552 B e range cut11/m24 restano coordinati
+nell'arena. Lo schedule esplicito senza retention S1 censisce già **97
+visite dirette W, 572 A corrente e 34 per vecchia A**, esclusi altri
+sumcheck/OOD/switch e W/KV letti dai getter. WHIR committa il successore
+prima di interrogare il predecessore; una root cache non evita quei
+replay. Gli stati densi sumcheck non entrano e restano fail-closed.
+
+Il getter A/KV ha un contratto streaming con slot proposto 64 MiB e una
+specializzazione i16 mediante quattro dot-product int8 esatti. PCG usa
+32 B/riga prover; memoization su trie di indici pubblici riduce del 26,83%
+l'upper path-step per batch, subordinata al refinement dei due ruoli.
+Il commit A iniziale lascia **44.341.480 B** dopo i buffer nominati,
+cap proof, getter e trie: mancano ancora maschere, covettore, seed/OT e
+allocator. W+KV450+arena riservati noti restano 70.048.981.504 B.
+**Picco completo allocato/riservato e upper di tempo restano aperti**;
+l'upper di ammissione rimane +infinito. I controlli minimi sono nel
+preflight; harness integrato non pronto, nessun H100 o spesa proposti.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso
 AES composto positivo e refinement dei codec non sono ancora chiusi.

@@ -94,6 +94,26 @@ HD inline Fp3 mul(Fp3 a, Fp3 b) {
     return {c0, c1, c2};
 }
 
+// Cost-screen alternative; the timed baseline below still uses mul().
+HD inline Fp3 mul6(Fp3 a, Fp3 b) {
+    const uint64_t p0 = fp_mul(a.c0, b.c0), p1 = fp_mul(a.c1, b.c1);
+    const uint64_t p2 = fp_mul(a.c2, b.c2);
+    const uint64_t p01 = fp_sub(fp_sub(fp_mul(fp_add(a.c0, a.c1), fp_add(b.c0, b.c1)), p0), p1);
+    const uint64_t p02 = fp_sub(fp_sub(fp_mul(fp_add(a.c0, a.c2), fp_add(b.c0, b.c2)), p0), p2);
+    const uint64_t p12 = fp_sub(fp_sub(fp_mul(fp_add(a.c1, a.c2), fp_add(b.c1, b.c2)), p1), p2);
+    return {fp_add(p0, fp_add(p12, p12)), fp_add(p01, fp_add(p2, p2)), fp_add(p02, p1)};
+}
+
+// Integer bias maps W to uint16; alpha is shifted by the SAME public bias.
+// A uses its uint8 value with zero bias. No secret-indexed lookup table.
+HD inline void leaf_pair(uint16_t x, uint16_t y, Fp3 alpha, Fp3 alpha2,
+                         Fp3& numerator, Fp3& denominator) {
+    const uint64_t sum = uint64_t(x)+y, product = uint64_t(x)*y;
+    numerator = sub(add(alpha, alpha), {sum, 0, 0});
+    denominator = add(sub(alpha2, {fp_mul(alpha.c0, sum), fp_mul(alpha.c1, sum),
+                                   fp_mul(alpha.c2, sum)}), {product, 0, 0});
+}
+
 HD inline Fp3 fold(Fp3 a, Fp3 b, Fp3 r) {
     return add(a, mul(sub(b, a), r));
 }
@@ -290,6 +310,21 @@ bool equal(Coeff4 a, Coeff4 b) {
 
 bool equal(Fp3 a, Fp3 b) { return a.c0 == b.c0 && a.c1 == b.c1 && a.c2 == b.c2; }
 
+bool specialization_check() {
+    for (size_t i = 0; i < 64; ++i) {
+        const Fp3 a = synthetic(0, i), b = synthetic(1, i);
+        if (!equal(mul6(a, b), mul(a, b))) return false;
+        for (uint16_t x : {uint16_t(0), uint16_t(255), uint16_t(32767), uint16_t(65535)}) {
+            const uint16_t y = uint16_t(i*1031);
+            Fp3 p, q;
+            leaf_pair(x, y, a, mul(a, a), p, q);
+            const Fp3 u = sub(a, {x, 0, 0}), v = sub(a, {y, 0, 0});
+            if (!equal(p, add(u, v)) || !equal(q, mul(u, v))) return false;
+        }
+    }
+    return true;
+}
+
 bool merge_identity_check(const std::vector<Fp3>& src, const std::vector<Fp3>& merged, size_t n) {
     for (size_t i = 0; i < n / 2; ++i) {
         const Fp3 p0 = src[2 * i], q0 = src[n + 2 * i];
@@ -353,7 +388,7 @@ int host_check(int log2_n, int gram_width) {
     const bool coeff_ok = equal(coeff, coeff_factored);
     const bool fold_ok = fold_linearity_check(src, folded, n, r);
     const bool gram_ok = equal(gram, gram_direct);
-    const bool field_ok = field_self_check();
+    const bool field_ok = field_self_check() && specialization_check();
     const bool ok = field_ok && merge_ok && coeff_ok && fold_ok && gram_ok;
     std::cout << "{\"schema\":\"volta-c71-range-microbench-v1\",\"mode\":\"host-check\""
               << ",\"field\":{\"base_modulus\":" << P
@@ -400,6 +435,33 @@ __global__ void merge_kernel(const Fp3* src, Fp3* dst, size_t n) {
     const Fp3 a = p[2 * i], b = q[2 * i], c = p[2 * i + 1], d = q[2 * i + 1];
     dst[i] = add(mul(a, d), mul(c, b));
     dst[n / 2 + i] = mul(b, d);
+}
+
+// Compile-only cost probes; never launched by the benchmark driver.
+__global__ void cost_merge6_kernel(const Fp3* src, Fp3* dst, size_t n) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= n / 2) return;
+    const Fp3 a = src[2*i], b = src[n+2*i], c = src[2*i+1], d = src[n+2*i+1];
+    dst[i] = add(mul6(a, d), mul6(c, b));
+    dst[n/2+i] = mul6(b, d);
+}
+
+__global__ void cost_leaf_pair_kernel(const uint16_t* src, Fp3* dst, size_t n,
+                                      Fp3 alpha, Fp3 alpha2) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= n/2) return;
+    leaf_pair(src[2*i], src[2*i+1], alpha, alpha2, dst[i], dst[n/2+i]);
+}
+
+__global__ void cost_fp_mul_kernel(const uint64_t* a, const uint64_t* b,
+                                    uint64_t* out, size_t n) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i < n) out[i] = fp_mul(a[i], b[i]);
+}
+
+__global__ void cost_fp3_mul6_kernel(const Fp3* a, const Fp3* b, Fp3* out, size_t n) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i < n) out[i] = mul6(a[i], b[i]);
 }
 
 __global__ void coeff_kernel(const Fp3* src, Coeff4* out, size_t n, Fp3 lambda) {

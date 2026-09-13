@@ -70,6 +70,55 @@ def remainder_by_blocks(coefficients, modulus, cap):
     return remainder, len(blocks)
 
 
+def split_padded_remainder(payload, pad, message_rows, modulus, cap):
+    """Finite identity for f_live + X^M * pad, retaining the original pad.
+
+    Canonical plan shares X^M mod Z and its spectrum across all columns.
+    This small helper uses generic polynomial multiplication as an oracle.
+    """
+    if message_rows < cap or message_rows & (message_rows-1) or len(payload) > message_rows:
+        raise ValueError('power-of-two message M >= B and payload within message required')
+    if len(pad) > cap:
+        raise ValueError('pad must fit one fixed block')
+    inverse = reciprocal_reversed(modulus, cap)
+    fixed = (base.small_goldilocks_fft(inverse+[0]*cap),
+             base.small_goldilocks_fft(modulus+[0]*(cap-1)))
+    def product_mod(a, b):
+        product = convolution(a, b, 2*cap)
+        return reduce_block_fft(product[cap:], product[:cap], modulus, fixed)
+    # X^B = -Z_low mod the monic degree-B modulus: no source traversal.
+    shift = [-x % base.P for x in modulus[:cap]]
+    exponent = cap
+    while exponent < message_rows:
+        shift = product_mod(shift, shift)
+        exponent *= 2
+    low, visits = remainder_by_blocks(payload, modulus, cap)
+    high = product_mod(shift, pad+[0]*(cap-len(pad)))
+    return [(x+y) % base.P for x, y in zip(low, high)], visits
+
+
+def split_padding_budget(live_cells, dimension):
+    cap, columns = 1 << 21, 128
+    message_rows = (1 << dimension)//columns
+    # Native zk_padded_matrix makes 128 CONTIGUOUS message chunks before
+    # transposition, not a balanced strided distribution of the live prefix.
+    # M is a multiple of B; all full chunks divide exactly, only one is partial.
+    if not 0 <= live_cells <= 1 << dimension:
+        raise ValueError('live prefix must fit original message')
+    blocks = (live_cells+cap-1)//cap
+    squarings = (message_rows//cap).bit_length()-1
+    # Each modular square: 2 FFT convolution + 4 FFT reduction; factors shared.
+    # Each pad correction: 2 FFT with shared shift spectrum + 4 FFT reduction.
+    transforms = 4*blocks+6*columns+6*squarings+1
+    return {'credit': False, 'live_payload_cells': live_cells,
+            'payload_blocks_all_columns': blocks,
+            'shared_modular_squarings': squarings,
+            'large_FFTs_including_pad_and_shared_shift': transforms,
+            'Fp_butterflies': transforms*cap*22,
+            'original_private_pad_preserved': True,
+            'counts_algorithmic_plan_not_native_runtime': True}
+
+
 def report():
     # Fixed algorithm cap, not a function of runtime query count/source size.
     cap, columns, leaf_rows = 1 << 21, 128, 1 << 12
@@ -87,11 +136,13 @@ def report():
         'source_column_remainder': 8*cap,
         'selected_and_dummy_points': 8*cap,
         'FFT_twiddles': 16*cap,
+        'shared_private_pad_shift_and_spectrum': 24*cap,
         'W_and_three_A_persistent_cache': 188_743_552,
         'metadata_slot_cap': 128 << 20,
         'hash_and_reader_slot_cap': 256 << 20,
         'W_histogram': 65535*8,
-        'PCG_output_batch': 4096*16,
+        'PCG_output_batch': 4096*32,
+        'PCG_Fp3_packing_carry_two_rows': 2*32,
         'proof_output_cap': 130_000_000,
     }
     return {

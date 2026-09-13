@@ -86,7 +86,7 @@ ha un ulteriore confronto CPU/GPU prima delle allocazioni grandi.
 Input, seed, SHA sorgente, geometria e limiti sono registrati dall'
 [harness](../../scripts/run_c71_range_microbench.py).
 
-Validazione locale aggiornata: **12 controlli Python passati** streaming/range/remainder
+Validazione locale aggiornata: **15 controlli Python passati** streaming/range/remainder
 entro 60 s/2 GiB, più confronto host della
 [FFT a cinque passaggi](../../cuda/c71_fft_microbench.cu) con DFT e FFT
 radix-2, inclusi modello delle coppie di tile M64 e copertura delle scritture.
@@ -114,7 +114,12 @@ quattro FFT online per blocco con divisione ingenua e valutazioni RS,
 pad privati non nulli, zeri pubblici e leading block parziale. È algebra
 finita, senza PrivateRng/Merkle/codec nativo. Il nuovo ledger include
 A corrente/storiche, KV pendente, geometria dei 12 oracoli dati e PCG
-lifetime; gli upper di ammissione ignoti restano infiniti. Il goal fisico
+lifetime; gli upper di ammissione ignoti restano infiniti. Il confronto split-pad mantiene X^M*pad privato e controlla il layout
+contiguo nativo dei coefficienti (una sola coda parziale, non 128).
+I nuovi check verificano mul6/leaf-pair, formula dei sottoalberi zero,
+ricomposizione i16 esatta e indici FFT shift/mask contro divisioni.
+Il range timed resta la baseline mul9: i nuovi kernel sono probe compile-only.
+Nessuna misura dei probe è attribuita al driver originale. Il goal fisico
 non è dichiarato concluso e non è stata eseguita GPU.
 
 ## Shared RNE byte experiment

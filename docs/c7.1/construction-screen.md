@@ -1901,3 +1901,25 @@ AnyDoc 0.1.7; nessuna fonte precedente sovrascritta. Metadati primari:
 | [Relaxed Vector Commitment](../../sota/2024-1004-relaxed-vector-commitment.pdf), `https://eprint.iacr.org/2024/1004.pdf` | `7d401823a18e049ed6d068b92e4d1ca625eeed87b4c39628b507b8ab996cb699` / `22b9c1db9227ba0c082174caf97eba5e427990cd74eca71f9e079d41e0f13b77` |
 | [Succinct lattice ZK toolkit](../../sota/2026-1289-succinct-lattice-zk-toolkit.pdf), `https://eprint.iacr.org/2026/1289.pdf` | `fea3783839c0e1360e64e7f07e32677a3b1b66f79768448e914a3de5f8ef61e0` / `acc3b8b95a5895289f5d475d18fe0a585e8aafeefce10567474f3ec4975cb583` |
 | [Ring-LPN PCG](../../sota/2022-1035-ring-lpn-pcg.pdf), `https://eprint.iacr.org/2022/1035.pdf` | `a3d0ed7d8669bcf62d867dcfb606f3a2bcb6bd25107aaa011a6189ed6d1821f9` / `07b039b80b231e66bc2c2c6d9dbc4a71e96e6d36518fe49aec145890405ee364` |
+
+### Specializzazione dei costi dominanti della variante per resti
+
+Il [preflight](preflight.md#test-decisivo-sui-costi-dominanti) aggiorna lo
+screen: mul6 e leaf-pair specializzati, ricostruzione chiusa degli zeri
+pubblici (conservando le celle nel GKR), FFT senza divisioni di indici e
+separazione esatta `f_live+X^M*pad`. Il budget usa le colonne native a
+chunk contigui; il pad privato originario resta presente. Nessuno di
+questi cambi modifica protocollo range, endpoint MAC o trust model.
+
+Il replay scalare full-A è escluso dal solo commit >=135,257 s sotto
+ceiling dichiarati. L'alternativa i16 con quattro dot-product int8 esatti
+richiede ancora kernel/getter; il suo throughput non è assunto. La somma
+parziale range W/A + commit FFT A + prime aperture impone
+32,722/36,085/39,685 s, escludendo getter/PCG e altre voci positive.
+Non esclude tutte le candidate, non è un upper. WHIR senza retention
+aggiunge replay del primo switch, OOD post-root e sumcheck ancora da
+schedulare. Gli stati densi non entrano. PCG prover occupa 32 B/riga e
+il trie pubblico riduce un upper di lavoro, non dimostra tempo.
+Picco completo e upper finito restano aperti; 90 s è solo una soglia di
+futura discussione. Nessun H100 proposto per chiudere costi ancora
+analiticamente ignoti.

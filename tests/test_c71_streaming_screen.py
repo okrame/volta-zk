@@ -17,7 +17,7 @@ def test_integrated_screen_counts_old_A_and_does_not_invent_a_time_upper():
     assert all(c['initial_oracle_plus_generic_merge_lower_seconds_conditional'] > 50
                and c['complete_seconds_upper'] is None for c in cases)
     assert r['time_upper_contract']['admission_upper'] == '+infinity'
-    assert r['memory']['W_KV_arena_known_reserved_bytes'] == 70_048_981_504
+    assert r['memory']['W_KV_arena_known_reserved_bytes'] == 68_242_645_504
     assert r['data_oracles']['35'][1]['encoded_bytes'] == 103_079_215_104
     assert r['data_oracles']['34'][1]['encoded_bytes'] == 51_539_607_552
     variant = r['query_remainder_range_variant']

@@ -131,6 +131,45 @@ Il range timed resta la baseline mul9: i nuovi kernel sono probe compile-only.
 Nessuna misura dei probe è attribuita al driver originale. Il goal fisico
 non è dichiarato concluso e non è stata eseguita GPU.
 
+## Trace A/KV, WHIR e PCG della risposta
+
+I nuovi [getter](../../scripts/c71_getter_trace.py),
+[WHIR](../../scripts/c71_whir_trace.py), [PCG](../../scripts/c71_pcg_trace.py)
+e [ledger temporale](../../scripts/c71_response_trace.py) sono strumenti
+locali `credit:false`. Coprono indirizzi/codec dei byte originali, shape
+canoniche, ultimo consumer dei tensori, ordine root/OOD/query/fold,
+segreti persistenti e burn/carry PCG. I test finiti confrontano singleton
+sumcheck e covettori geometrici con il denso; H/EAGen hanno sampler
+bounded. Non eseguono Gemma, bootstrap completo, provider o GPU.
+La retention controlla tutte le transizioni S1…S11 e il base case:
+commit del successore, query del predecessore ancora immutabile e solo
+poi fold/fence. Il ledger distingue 36 passaggi della sorgente originale
+da 80 degli stati conservati; non li somma come visite equivalenti.
+Il precompute P/Q ha un reference finito con uniformità completa ancora
+da dimostrare; non è un port FFT/product-tree nativo.
+
+La correzione KV deriva dalle shape pinned e distingue cache originale
+dall'incremento A: il [preflight](preflight.md#trace-della-risposta-e-budget-separati)
+contiene i conti corretti. I vecchi record immutabili restano preservati.
+La partizione temporale impedisce di sottrarre ricostruzioni dal proof-only;
+upper mancanti restano null, non sono riempiti dai budget di 3/47/50 s.
+Il setup di sessione è addebitato una volta alla prima prova. I lower
+condizionali respingono alla terza risposta sia il piano senza retention
+sia quello retained con quattro GEMM; non ogni possibile costruzione.
+
+Validazione del checkpoint: **27 test passati in 3,84 s**, controllo link
+locali e `git diff --check` senza errori. Nessun Rust/Lean build o GPU.
+Riproduzione mirata (60 s/2 GiB):
+
+```sh
+ulimit -v 2097152
+PYTHONDONTWRITEBYTECODE=1 timeout 60s pytest -q -p no:cacheprovider \
+  tests/test_c71_getter_trace.py tests/test_c71_whir_trace.py \
+  tests/test_c71_pcg_trace.py tests/test_c71_response_trace.py \
+  tests/test_c71_streaming_screen.py
+PYTHONDONTWRITEBYTECODE=1 timeout 60s python3 scripts/c71_response_trace.py
+```
+
 ## Shared RNE byte experiment
 
 **Checkpoint v2 (2026-09-12).** Il primo livello GKR consuma direttamente

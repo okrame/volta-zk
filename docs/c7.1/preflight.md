@@ -274,17 +274,20 @@ non si sottrae la cache in costruzione. Gli slot di scratch sono cap da
 implementare. Il buffer output PCG proposto è 4.096 righe base, 131.072 B, più carry 64 B;
 non limita automaticamente seed, OT, cGGM e altri stati del backend.
 
-KV originale costa **4.915.200 B/token**. Prefisso accettato:
-0 / 737.280.000 / 1.474.560.000 B; con coda pendente da 150 token:
-737.280.000 / 1.474.560.000 / 2.211.840.000 B. Proposta: un solo buffer
+KV originale costa **901.120 B/token**, cioè
+`4*(50*16*256+10*4*512)`. Il precedente 4.915.200 B/token era
+l'incremento di **A attenzione** (`60*8192*10`) e non la cache K/V:
+non usarlo come misura della cache. Questa correzione non riduce A. Prefisso accettato:
+0 / 135.168.000 / 270.336.000 B; con coda pendente da 150 token:
+135.168.000 / 270.336.000 / 405.504.000 B. Proposta: un solo buffer
 KV modello persistente prenotato per 450 token, append nella coda
 inutilizzata, promozione del cursore solo dopo accettazione. Questa
 classificazione vale solo per KV originale, non per witness o workspace;
 la coda pendente è sempre contata nel picco globale e non sovrascrive
 il prefisso. Se l'implementazione usa staging temporaneo, conta nell'arena.
 
-W + riserva KV450 + arena = **70.048.981.504 B**; rimangono
-**9.951.018.496 B** sotto 80 GB per runtime/context e altri residenti
+W + riserva KV450 + arena = **68.242.645.504 B**; rimangono
+**11.757.354.496 B** sotto 80 GB per runtime/context e altri residenti
 ammissibili. Non autorizza spostare temporanei fuori arena. Una copia
 packed completa di A non entra nell'arena; W+A+arena superano già 80 GB
 anche senza KV. A corrente e storica devono avere getter immutabili e
@@ -367,11 +370,11 @@ il piano per resti, cache S1 e gli stessi slot: **5.775.778.832 B**,
 margine **666.672.112 B**. Una cache S1 h6 con questo workspace completo
 non entra: un piano che omette spettri/prodotto-tree non prova il picco.
 
-Sono cap dei buffer nominati, non un picco completo: mancano maschere,
-covettore/sumcheck, seed/OT e overhead allocator. Il commit A iniziale
-rimane ancora più stretto: dei 115.235.048 B residui dopo cap proof,
-getter+trie ne occupano 70.893.568, lasciando **44.341.480 B** per gli
-altri stati. Nessun trasferimento esterno può supplire: spill vietato.
+Sono cap dei buffer nominati, non un picco completo: maschere e stati
+ora censiti nel [trace integrato](#trace-della-risposta-e-budget-separati)
+si aggiungono ai precedenti subtotali. Per i margini correnti usare quel
+ledger, che include anche metadata e pad/seed iniziali. Restano da
+verificare i workspace nativi e l'assenza di spill.
 
 ### PCG: righe reali, trie pubblico e costi separati
 
@@ -516,6 +519,216 @@ Gli harness [range](../../scripts/run_c71_range_microbench.py) e
 check CPU/GPU preliminare, metadata cloud obbligatori, controllo SHA/tree
 prima e dopo il run, timeout e record append-only. Sono componenti;
 l'input/harness della costruzione **integrata** non è ancora pronto.
+
+## Trace della risposta e budget separati
+
+Il [ledger eseguibile](../../scripts/c71_response_trace.py) compone tre
+trace locali: [A/KV](../../scripts/c71_getter_trace.py),
+[WHIR](../../scripts/c71_whir_trace.py) e [PCG](../../scripts/c71_pcg_trace.py).
+Sono `credit:false`, senza witness canonico, GPU o nuovi run di protocollo.
+Gli eventi nominano allocazioni, ultimo consumer e rilascio; i buffer
+condivisi W/A compaiono una volta. Le sorgenti hanno ID, nome, shape e
+codec compilati nel medesimo ordine del nativo, verificati sul census.
+
+La partizione richiesta è esplicita:
+
+```
+T_inference      = una corretta generazione nativa del provider
+T_proof_only     = getter/replay + producer/GKR + range + linear + PCS
+                   + PCG/MAC + serializzazione/trasporto + attese/verifica
+T_response_total = T_inference + T_proof_only
+```
+
+Le verifiche/attese necessarie per completare la risposta appartengono
+alla fase proof; nessuna fase di rete o final acceptance viene assegnata
+implicitamente a zero. Il protocollo FS non introduce round-trip online
+per challenge del verifier. L'installazione globale si riporta separatamente;
+il setup fresco di sessione è un sottocomponente separato, addebitato una
+volta al PCG della prima prova e a ogni prefisso completo, senza ammortizzarlo.
+Un replay dell'inferenza per ricostruire
+A, anche se identico a quello del provider, è **interamente proof_only**.
+Manca la baseline nativa del provider: attualmente tutti e tre gli upper
+sono ignoti (`null`), upper di ammissione +infinito. Non si usa il budget
+come input della funzione che somma gli upper.
+
+Questa è una **ripartizione di obiettivi** da sottoporre ai contratti di
+servizio, con la stessa somma per O=0/150/300, non una previsione:
+
+| Fase | Budget s |
+|---|---:|
+| Inferenza nativa originale | 3,0 |
+| Getter e ricostruzioni durante la prova | 2,0 |
+| Relazioni producer e GKR | 1,0 |
+| Range W e A | 18,0 |
+| Linear W/A e history | 1,0 |
+| Commit iniziale A | 7,0 |
+| Prime aperture W e tutte A | 15,2 |
+| WHIR successivo, maschere e terminale | 1,0 |
+| PCG/MAC | 1,0 |
+| Serializzazione/trasporto | 0,3 |
+| Host, sincronizzazioni e interazioni verifier | 0,5 |
+| **Proof only / totale** | **47,0 / 50,0** |
+
+Il ledger genera le soglie work/budget, **non service-rate floors**:
+FFT commit A >=431,95 Gbutterfly/s per la sola voce; le aperture chiedono
+258,79 / 344,24 / 436,50 Gbutterfly/s. PCG richiede nel piano trie gli
+upper 583,386 / 585,121 / 585,175 milioni H per ruolo, più
+83,921 / 84,172 / 84,179 milioni chiamate SHAKE EAGen. Alla prima prova
+si aggiungono 707,787 milioni H/ruolo del setup a due traversate, hash
+universale e seed/guard/OT, con costi ancora parziali. Non confondere
+un upper di lavoro con un lower di lavoro necessario per ogni algoritmo.
+Il budget getter di 2 s è già incompatibile con il lower della ricostruzione
+a quattro GEMM esaminata: la tabella non costituisce uno schedule ammesso.
+Per getter le soglie si riferiscono al piano di ricostruzione dichiarato;
+non sono il costo dell'inferenza originale.
+
+### A/KV: routing controllato e fusione per producer
+
+Il trace canonico ricostruisce **3.471 sorgenti e 36.171 tessere byte** per
+contesto, con gli esatti 13.154.672.538 / 14.334.320.538 / 15.513.968.538 B.
+Il reference getter verifica snapshot/root/Gamma, intervalli e larghezza
+signed; emette byte biased agli indirizzi originali. Il test ridotto
+confronta indipendentemente il complemento a due e rifiuta uno snapshot
+successivo sostituito. Non equivale al confronto bit-per-bit del digest
+nativo completo o a un teorema di NoPeek.
+
+Le tessere ordinate richiedono **4.913.944.241 / 5.356.312.241 /
+5.798.680.241 word fetch**, contro 3.646.354.972 / 4.014.994.972 /
+4.383.634.972 word distinte: i byte 4+2 degli i48 sono separati. Il commit
+può ricevere contributi sparsi all'indice originale, producendo raw, byte
+e RNE insieme; non cambia ordine di hash/transcript, che segue dopo la FFT.
+Il range ordinato e Horner high-to-low non ereditano questa fusione.
+Il loro piano di dependency cut resta un controllo richiesto.
+
+Il trace per producer segue **1.568 nodi** della topologia originale,
+con shape aggregate sui 150 token fissi. KV storico è immutabile; il replay
+non effettua una seconda append. I dot QK/PV sono contati separatamente
+dai learned matrix; EXP30, RMS, RNE, RoPE, istogrammi, affini e argmax
+hanno unità di lavoro separate. Il commit assorbe un istogramma completo
+prima di riusarne il buffer: un solo slot da 262.140 B al posto di 121
+istogrammi trattenuti. I tensori nominati hanno picco **52.690.940 B**;
+restano da verificare dentro lo slot 64 MiB kernel workspace, packing
+INT8/correzioni e callback nativo. Gli upper degli accessi agli operandi
+W/X del piano tiled16x256 sono logici; non sono HBM misurato. Nessuna
+cache efficace, coalescenza o inferenza gratis è presunta.
+
+### WHIR e PCG: stati prima mancanti
+
+WHIR censisce tutti i **12 oracoli dati, 23 gruppi/40 maschere**, le
+controparti fresche, OOD, query e base case. La cache di un nuovo root
+coesiste con coset/frontiera/twiddle durante la costruzione. Cache e pad
+iniziali persistono fino al teardown del fixed run; si bruciano soltanto
+stati e correlazioni del tentativo, non i segreti necessari a riaprire
+W e A accettate.
+
+Il caller `c71_matrix.rs` apre un **singleton** dopo il reducer lineare:
+`claim_count*N=N` non viola la regola uniforme. I primi sette round possono
+usare una contrazione su **128 Fp3 =3.072 B**, una scansione sorgente e
+127 pair-terms; il test finito confronta tutti i coefficienti con il denso.
+Il guard nativo 40N continua a fallire: il nuovo schema non è ancora il suo
+adapter. Nei round successivi il covettore è una Eq più <=**5.643 Pow**.
+Per la somma `w_j=sum a_i*x_i^j`, la serie è P(X)/Q(X), Q(0)=1.
+La candidata a blocchi genera questi coefficienti con inverse e FFT fisse,
+aggiorna le ampiezze tra blocchi e preserva il fold **MSB**:
+`a_i <- a_i*(1-r+r*x_i^(N/2))`, con x_i invariata. Il test confronta
+blocchi e fold con le somme dense; non usa l'identità even/odd errata.
+
+I 22 round successivi costano nel nucleo **23.613.929.984 /
+11.802.770.816 butterfly Fp3** W/A, ossia **70.841.789.952 /
+35.408.312.448 butterfly base**. OOD è in Fp3: non si possono trattare
+Q/inverso come polinomi base. Scratch nominato **507.445.224 B**, con
+allocazione durante i due round e rilascio prima del commit seguente.
+Il precompute ha ora un reference con upper finito: Q richiede <=66.598.686
+mul/add Fp3; i numeratori dei blocchi <=785.296.296 / 647.395.740;
+la ricorrenza inversa <=14.539.536.648 / 12.633.300.552. Sono contati
+separatamente gli spettri inversi. Non è credito al product-tree/Newton
+ottimizzato: il termine numero-blocchi per lavoro del numeratore deve
+ancora rispettare il coefficiente sorgente indipendente da q/h. Decoder,
+Eq, adapter e resto del runtime WHIR rimangono aperti.
+Il commit coset letterale resta invece
+non uniforme al crescere della sorgente; non è un encoder ammesso.
+
+PCG ora ha reference SHAKE **H** ed **EAGen** con codec domain-separated,
+otto tentativi per campionamento e fail-closed. Il supporto EAGen contiene
+11 indici distinti uniformi e coefficienti Fp non nulli; il bound di
+esaurimento è una frazione esatta nel report. È una decisione di codec
+locale da collegare alla stessa coin pubblica, **non un nuovo messaggio**,
+un port di B11 o un trasferimento automatico del teorema.
+Il prover GPU è il receiver punctured: stato allineato **348.372 B**;
+il verifier conserva Delta e **32.496 B** canonici. Le frontiere/batch
+sono ulteriori, così come le materializzazioni Fp3/Fp6 del setup. Seed,
+counter, carry e burn sono contati. EAGen aggiunge **252.272.856 RO** per
+ruolo nel run; non sono AES calls o byte HBM. Sono contati anche i figli
+destri cGGM, Acc/PuncAcc, mul/accumuli EA, hash universale e compressione
+Fp6→Fp3. PuncAcc del prover ha upper **4.793.184.264 add Fp3** nel run;
+EA aggiunge 126.136.428 mul scalari e altrettanti accumuli per ruolo.
+Workspace OT/Fp6 e costi
+completi dei due ruoli restano il controllo nativo minimo.
+
+### Picco integrato e screen della ricostruzione
+
+Senza retention dei folded state, includendo le candidate sumcheck, le
+visite note sono **169 W dirette**, A corrente **634**, ciascuna vecchia A
+**96**. I dependency replay del getter ordinato e altro lavoro dei producer
+restano ulteriori. Traffico diretto W: **10.375.702.704.640 B**, distinto
+dal W letto dal getter A. Le richieste logiche KV del piano querywise
+sono 12,854 / 27,655 / 44,403 TB: non un lower né il totale HBM.
+
+| O | Arena nominata con tutti gli slot proposti, B | Residuo, B |
+|---:|---:|---:|
+| 0 | 6.324.532.620 | 117.918.324 |
+| 150 | 6.363.854.220 | 78.596.724 |
+| 300 | 6.403.175.820 | 39.275.124 |
+
+Il picco è il commit A corrente; include root/pad/seed iniziali realmente
+vivi, getter 64 MiB, reader/hash 256 MiB, metadata 128 MiB, cap proof
+130 MB, istogramma W e stato/batch/trie PCG del prover. Gli slot non
+provano i workspace nativi che devono entrarvi. W+KV450+arena riservati
+sono **68.242.645.504 B**, residuo globale **11.757.354.496 B** prima di
+Gamma/runtime/context. Allocato e riservato **completi** restano ignoti.
+Setup ha un ledger separato: un picco risposta non ne certifica il fit.
+
+Lo screen a quattro dot-product int8 usa un ceiling **condizionale e
+generoso di 2,2 POPS densi**, superiore alla targa densa ricavata dalla
+[tabella NVIDIA H100](https://www.nvidia.com/en-eu/data-center/h100/)
+(3.958 TOPS con sparsity, che non è concessa a questi prodotti densi).
+Non è un throughput minimo, né una conversione di TOPS in Fp3.
+Per il piano seriale senza retention, soltanto learned-matrix replay più
+il precedente lower range/FFT/aperture danno **43,012 / 47,934 / 53,091 s**,
+prima di inferenza, PCG e resto. È quindi respinto quel piano per la
+terza risposta sotto le condizioni dichiarate, non ogni getter/PCS.
+Questo giustifica cercare retention/fusioni A; non ulteriore tuning range/FFT.
+
+La candidata retention A ora arriva **fino al base case**, per ciascuna
+catena corrente o storica con la propria prova fresca. Dopo la prima query
+si rigenera S1 una volta e lo conserva immutabile. Il commit S2 usa coset
+2^23; la query S1 usa blocchi 2^17 e cache h8. Solo dopo la query si fa
+fold in place, fence e rilascio della coda. Si ripete l'ordine
+commit-successore → query-predecessore → fold per S2…S11, mantenendo
+maschere, pad e segreti fino al loro ultimo consumer.
+
+Le visite originali diventano **574 A corrente e 36 per vecchia A**;
+W rimane a 169 visite dirette. Per catena si aggiungono **80 scansioni di
+stati conservati**, 74.893.479.936 B letti e 4.294.966.272 B scritti di
+payload, più **2.027.246.624 interpolazioni Fp3**. I commitment dei successori
+scrivono 68.720.787.456 B encoded: non sono letture A né trasferimenti
+esterni. Il report distingue anche XOF dei sali e operazioni dei resti;
+non accredita questi subtotali come HBM completo.
+
+| O | Rigenerazioni A nominate | Lower parziale con retention, s | Picco della sola catena retention con slot, B |
+|---:|---:|---:|---:|
+| 0 | 574 | 42,038 | 6.194.747.340 |
+| 150 | 610 | 45,986 | 6.234.068.940 |
+| 300 | 646 | 50,170 | 6.273.390.540 |
+
+Il massimo integrato resta il commit A corrente della tabella precedente;
+range e linear riusano l'arena in fasi separate, senza C anticipata durante
+il range. La retention evita 60/120/180 rigenerazioni A, ma **la terza
+risposta resta esclusa sotto le stesse condizioni del modello a quattro
+GEMM**, già prima di inferenza e lavoro retained aggiuntivo. La soglia
+50,170 s è un lower condizionale, non una previsione o un upper. Restano
+da cambiare almeno una premessa del costo dominante e da chiudere i
+controlli nativi; questo checkpoint non giustifica una spesa H100.
 
 ## GO/NO-GO prima di qualsiasi spesa
 

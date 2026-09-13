@@ -220,23 +220,47 @@ A + prime aperture W/tutte A danno lower congiunti parziali **32,722 /
 upper né certificati <=50 s. Il confronto <=90 s è una possibile futura
 deroga da valutare **solo dopo un upper completo**, non autorizzata ora.
 
-Cache h12 iniziale da 188.743.552 B e range cut11/m24 restano coordinati
-nell'arena. Lo schedule esplicito senza retention S1 censisce già **97
-visite dirette W, 572 A corrente e 34 per vecchia A**, esclusi altri
-sumcheck/OOD/switch e W/KV letti dai getter. WHIR committa il successore
-prima di interrogare il predecessore; una root cache non evita quei
-replay. Gli stati densi sumcheck non entrano e restano fail-closed.
+Il [ledger dei trace](preflight.md#trace-della-risposta-e-budget-separati)
+separa `T_inference`, `T_proof_only` e `T_response_total`: ogni replay A/KV
+è lavoro della prova. La ripartizione di obiettivi è 3 s inferenza e 47 s
+prova; **non sono upper**. Il vincolo totale resta <=50 s, nessun overlap
+presunto e nessuna deroga a 90 s.
 
-Il getter A/KV ha un contratto streaming con slot proposto 64 MiB e una
-specializzazione i16 mediante quattro dot-product int8 esatti. PCG usa
-32 B/riga prover; memoization su trie di indici pubblici riduce del 26,83%
-l'upper path-step per batch, subordinata al refinement dei due ruoli.
-Il commit A iniziale lascia **44.341.480 B** dopo i buffer nominati,
-cap proof, getter e trie: mancano ancora maschere, covettore, seed/OT e
-allocator. W+KV450+arena riservati noti restano 70.048.981.504 B.
-**Picco completo allocato/riservato e upper di tempo restano aperti**;
-l'upper di ammissione rimane +infinito. I controlli minimi sono nel
-preflight; harness integrato non pronto, nessun H100 o spesa proposti.
+Sono implementati trace locali per 3.471 sorgenti A, 36.171 tessere byte,
+liveness di 1.568 nodi per rigenerazione, tutti i 12 oracoli WHIR e PCG.
+La fusione per producer/istogrammi nel commit porta i tensori nominati a
+52.690.940 B; il getter ordinato range/remainder richiede ancora dependency
+cut. WHIR iniziale apre un singleton: una scansione e 128 accumulatori
+Fp3 sostituiscono algebricamente il denso per sette round. La candidata
+successiva Eq+Pow/PQ ha scratch nominato 507.445.224 B, controlli finiti e
+upper di lavoro reference per il precompute. Port nativo, vincolo uniforme
+del lavoro completo e liveness fisica restano aperti.
+
+PCG ha reference codec SHAKE H/EAGen con sampler bounded, indici pubblici
+distinti, stato dei due ruoli, carry e burn. Il prover è il receiver
+punctured, stato persistente allineato 348.372 B. Mancano refinement e
+workspace del backend reale; questi check non aggiungono credito al
+teorema o al transcript nativo.
+
+Il piano senza retention censisce 169 visite W dirette, 634 A corrente
+e 96 per vecchia A, prima di ulteriori dependency replay. Con ceiling
+condizionale INT8 denso 2,2 POPS e quattro dot-product esatti, il lower
+parziale della terza prova sale a **53,091 s prima dell'inferenza**.
+La retention A è ora censita fino al base case: 574 visite A corrente,
+36 per vecchia A, 80 letture degli stati retained per catena. Conserva
+ogni predecessore fino alla query e poi fold/fence. Evita 60/120/180
+rigenerazioni, ma il lower parziale diventa **42,038/45,986/50,170 s**:
+anche questo piano seriale a quattro GEMM non rispetta i 50 s alla terza
+risposta, sotto le condizioni dichiarate e prima degli altri costi.
+Il prossimo cambio strutturale deve ridurre ulteriormente il lavoro
+dominante; non bastano meno visite senza contare la ricostruzione.
+
+Corretto il KV: **901.120 B/token**, non 4.915.200 (incremento di A
+attenzione). W+KV450+arena riservati noti sono **68.242.645.504 B**.
+I trace con gli slot proposti occupano **6.324.532.620 / 6.363.854.220 /
+6.403.175.820 B** nell'arena, prima dei workspace ancora non verificati.
+Picchi completi allocato/riservato e tutti gli upper temporali restano
+ignoti; upper di ammissione +infinito. Nessun H100 o spesa proposti.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso
 AES composto positivo e refinement dei codec non sono ancora chiusi.

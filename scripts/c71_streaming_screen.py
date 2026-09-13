@@ -524,8 +524,8 @@ def integrated_resource_ledger(assessment):
         a_visits[i] *= 2
         output.append({
             'old_tokens': c['old_tokens'], 'packed_A_bytes': packed_a[i],
-            'original_KV_accepted_bytes': c['old_tokens']*4_915_200,
-            'original_KV_with_pending_bytes': (c['old_tokens']+150)*4_915_200,
+            'original_KV_accepted_bytes': c['old_tokens']*901_120,
+            'original_KV_with_pending_bytes': (c['old_tokens']+150)*901_120,
             'initial_oracle_full_replay_W_visits_plus_range_linear': 1052,
             'initial_oracle_A_visits_by_generation': a_visits,
             'initial_oracle_HBM_lower_bytes_conditional': known_hbm,
@@ -565,9 +565,9 @@ def integrated_resource_ledger(assessment):
                 'Fp3_packing_carry_bytes': 2*32,
                 'live_state_bytes_upper': None, 'AES_OT_field_HBM_seconds_upper': None},
         'memory': {'arena_reserved_bytes_target': arena,
-                   'single_KV_append_buffer_450_tokens_reserved_bytes': 450*4_915_200,
-                   'W_KV_arena_known_reserved_bytes': w+450*4_915_200+arena,
-                   'remaining_global_before_context_and_other_residents': 80_000_000_000-w-450*4_915_200-arena,
+                   'single_KV_append_buffer_450_tokens_reserved_bytes': 450*901_120,
+                   'W_KV_arena_known_reserved_bytes': w+450*901_120+arena,
+                   'remaining_global_before_context_and_other_residents': 80_000_000_000-w-450*901_120-arena,
                    'allocated_peak_complete': None, 'reserved_peak_complete': None,
                    'full_current_A_plus_W_arena_bytes': [w+a+arena for a in packed_a]},
         'query_remainder_named_buffer_plan': {

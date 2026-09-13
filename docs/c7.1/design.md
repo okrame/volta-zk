@@ -831,8 +831,14 @@ il folding. La cache accettata resta valida preparando il successore,
 senza una seconda cache completa o alias che sovrascrivano dati ancora vivi.
 Il teorema denso con codeword W da 4 TiB e A da 2 TiB è fisicamente escluso.
 
-Tempi prover includono generazione, preparazione witness, espansione PCG,
-prova e serializzazione. Separare setup, caricamento, trasporto e verifica
+La partizione temporale vigente è `T_response_total = T_inference +
+T_proof_only <=50 s`. `T_inference` è la sola generazione nativa originale
+del provider. Ogni ricostruzione/riesecuzione A/KV durante la prova resta
+in `T_proof_only`, insieme a producer, PCG, prova, serializzazione/trasporto
+e attese/verifica necessarie; FS non aggiunge round-trip di challenge online.
+Il setup fresco di sessione è censito separatamente e addebitato una volta
+al PCG della prima prova e ai prefissi completi. Il [ledger dei trace](preflight.md#trace-della-risposta-e-budget-separati)
+assegna budget di obiettivo a ogni fase, separati dagli upper ignoti. Separare setup, caricamento, trasporto e verifica
 non sottrae lavoro dipendente dalla risposta. I byte completi includono
 framing, roots, salts, indici/path, coefficienti, correzioni, prodotti,
 range/lookup/padding. Ogni record ha produttore, consumatore, cardinalità,
@@ -882,6 +888,22 @@ Il primo switch senza retention aggiunge 64/32 replay W/A; il guard
 sumcheck denso resta chiuso. Il cap proposto getter 64 MiB e PCG output
 32 B/riga non scaricano i costi ignoti di maschere/covettore/seed/allocator.
 Il confronto con 90 s non modifica l'obiettivo autorizzato <=50 s.
+I trace locali coprono indirizzi di 3.471 sorgenti A, liveness dei tensori
+per producer, tutti gli stati/oracoli WHIR e PCG. Singleton iniziale e
+covettore Eq+Pow permettono contrazione e generazione a blocchi, ancora
+senza adapter nativo; il precompute reference finito non dimostra il
+vincolo uniforme per l'intero lavoro. La retention A fino al base case
+conserva il predecessore fino alla query e solo poi fa fold/fence:
+574 pass A corrente, 36 per storica, più letture e fold degli stati retained.
+Anche questa schedule a quattro GEMM ha lower parziale condizionale
+50,170 s alla terza risposta, prima dell'inferenza; non è ammessa.
+I reference codec SHAKE H/EAGen sono decisioni locali,
+non un trasferimento della composizione o nuovi messaggi; contare il
+sampler fail-closed e verificare il binding alla coin originale. Non si
+attribuisce alcun nuovo credito Lean/NoPeek a questi check finiti.
+KV originale i16 costa 901.120 B/token: il precedente 4.915.200 era invece
+l'incremento delle sorgenti A di attenzione. Il picco globale noto corretto
+W+KV450+arena è 68.242.645.504 B, sempre prima dei residenti ignoti.
 La proposta di un solo buffer persistente KV per 450 token conta anche
 la coda pendente; non autorizza temporanei fuori arena. I picchi globali
 completi allocato/riservato sono ignoti. In assenza di tutti i contratti

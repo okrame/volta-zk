@@ -184,9 +184,10 @@ il gather, una PCS, PCG, inferenza o prover completo.
 
 ## Comando futuro, durata e costo
 
-La SHA del checkpoint eseguibile viene fissata nel checkpoint documentale
-successivo; deve essere pulita **e pubblicata tramite Git HTTPS** prima
-di una riproduzione sul pod. Al momento il lavoro è solo locale. Il
+SHA eseguibile verificata con tree pulito:
+`05eb3583f438f044671adfd0d3ac488c7229b1c4`. Deve essere anche
+**pubblicata tramite Git HTTPS** prima di una riproduzione sul pod.
+Al momento il lavoro è solo locale. Il
 [runbook](../procedures/runpod.md) richiede Secret repository-scoped,
 `git-preflight` prima di compilare e deadline lato provider.
 
@@ -203,6 +204,7 @@ un comando di creazione completamente istanziato.
 Il comando di workload sul futuro checkout della SHA fissata è:
 
 ```sh
+test "$(git rev-parse HEAD)" = 05eb3583f438f044671adfd0d3ac488c7229b1c4
 scripts/runpod_harness.sh git-preflight
 # VOLTA_CLOUD_*: metadati reali richiesti dall'harness, non valori sintetici.
 timeout --signal=TERM --kill-after=30s 600s \

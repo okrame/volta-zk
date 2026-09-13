@@ -874,6 +874,13 @@ Snapshot denso hanno NO-GO circoscritti nel preflight.
 
 ## DAG condiviso e slot reader riusato
 
+Record immutabile: [c71-ordered-getter, 2026-09-13](../../benchmarks/results/c71-ordered-getter-2026-09-13-179acb46e9f5.json),
+generato sulla SHA pulita `179acb46e9f5f765e210da22b8f864abd9995e5a`
+con `git_dirty:false`. Include i tre trace canonici e i rispettivi hash,
+confronto a 1.024 replay, candidata a 512, liveness/offset per tutti gli O,
+soglie per fase e stdout della verifica: **29 passati in 11,58 s**.
+Il combine dei metadati richiede 9,05 s sul solo host; non è tempo prover.
+
 Il [getter ordinato](../../scripts/c71_ordered_getter.py) compila finestre
 A/KV dal DAG esistente e produce conteggi/hash canonici a O=0/150/300.
 I [test finiti](../../tests/test_c71_ordered_getter.py) controllano partizione

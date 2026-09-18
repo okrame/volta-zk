@@ -500,6 +500,27 @@ Re-measure the registered paired baseline before quoting rates on another CPU.
 Reports use `cargo run --release -p volta-bench --bin <report>` with the active
 design's report and workload.
 
+## Getter e hash C7.1 ridotti
+
+Per il checkpoint 512 replay compilare soltanto `volta-pcs` con le opzioni
+sopra, dalla directory `rust` (così si applica `.cargo/config.toml`). Usare
+il target canonico, un job e nessuna build workspace. Eseguire separatamente
+`c71_b12_native_ordered` e `c71_b12_streaming` con un worker Rayon,
+`--test-threads=1 --nocapture`, `timeout 60s` e `ulimit -v 2097152`.
+Il primo confronta i byte originali su O=0/2/4; il secondo sali, seek,
+rigetti, overwrite in-place e root strided contro la MMCS nativa. Sono
+input ridotti CPU, senza snapshot/PCS canonici o esecuzione GPU.
+
+Dopo modifiche all'evaluatore condiviso conservare `c71_b12_native_prepare`
+e `c71_b12_native_composed`; dopo modifiche a hash/coin conservare
+`c71_b12_private_coins`, `c71_b12_salted_merkle` e
+`c71_b12_canonical_pcs_codec`. Ogni filtro mantiene gli stessi limiti.
+Il ledger si controlla con `tests/test_c71_whir_trace.py`,
+`tests/test_c71_ordered_getter.py` e `tests/test_c71_arena_plan.py`.
+Il report nuovo può riusare i trace pubblici del record congelato indicando
+file, SHA e digest; non può riattribuire al checkpoint nuovo un vecchio
+run o una misura hardware. La variante 1.024 non si riesegue.
+
 ## Lean and generated assets
 
 Formal M1–M11 milestones are closed and frozen. Open Lean only when the protocol

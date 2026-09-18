@@ -57,6 +57,174 @@ pub(super) struct Snapshot {
     pub(super) model_root: [u8; 32],
 }
 
+/// Same integer producer used by dense preparation and bounded replay.
+/// Inputs are private values fixed before FS; no MAC/PCS/coin input exists.
+pub(super) fn evaluate_row(
+    p: &Profile,
+    weight: impl Fn(usize, usize, usize) -> i64,
+    step: &Step,
+    row: usize,
+    tokens: &mut [u32; 2],
+    get: impl Fn(usize, usize, usize) -> i64,
+    tail: impl Fn(usize, usize, usize) -> i64,
+) -> Result<Vec<(usize, Vec<i64>)>, String> {
+    let stop = || "private preparation Stop".to_string();
+    let sources = &p.bytes().scalar.layout.sources;
+    let mut result: Vec<(usize, Vec<i64>)> = Vec::new();
+    match step {
+        Step::Embedding => {
+            result.push((0, (0..2).map(|c| weight(0, tokens[row] as usize, c)).collect()))
+        }
+        Step::Matrix(i) => {
+            let cohort = &p.plan.cohorts[*i];
+            let input = p.bytes().scalar.input_sources[i - 1];
+            result.push((
+                *i,
+                (0..2)
+                    .map(|c| (0..2).map(|j| get(input, row, j) * weight(cohort.tensor, c, j)).sum())
+                    .collect(),
+            ));
+        }
+        Step::Norm(i) => {
+            let n = &p.rms.norms[*i];
+            let x: Vec<_> = (0..n.columns * n.heads).map(|c| get(n.input, row, c)).collect();
+            let weights: Option<Vec<_>> = n.cohort.map(|i| {
+                (0..n.columns).map(|c| weight(p.plan.cohorts[i].tensor, 0, c) as i16).collect()
+            });
+            let (s, products, y) =
+                n.prepare_row([0; 3], &x, weights.as_deref()).map_err(|_| stop())?;
+            if let Some(i) = n.cohort {
+                result.push((i, products));
+            }
+            result.extend([(n.statistic, s), (n.output, y)]);
+        }
+        Step::Rne(pair) => {
+            let raw: Vec<_> = (0..sources[pair.raw].cols).map(|c| get(pair.raw, row, c)).collect();
+            let y = p.bytes().prepare_rne_row(&p.plan, pair, &raw).map_err(|_| stop())?;
+            result.push((pair.output, y));
+        }
+        Step::Affine(i) => {
+            let r = &p.affine[*i];
+            let input: [Vec<_>; 2] = std::array::from_fn(|i| {
+                let id = r.inputs[i].0;
+                (0..sources[id].cols).map(|c| get(id, row, c)).collect()
+            });
+            let raw =
+                p.bytes().prepare_affine_row(r, [&input[0], &input[1]]).map_err(|_| stop())?;
+            result.push((r.raw, raw));
+        }
+        Step::Gelu | Step::Softcap => {
+            let (o, table) = if matches!(step, Step::Gelu) {
+                (&p.gelu, GELU.as_slice())
+            } else {
+                (&p.output, SOFTCAP.as_slice())
+            };
+            let y = (0..2)
+                .map(|c| {
+                    let x = get(o.input, row, c) - i64::from(o.lower);
+                    usize::try_from(x)
+                        .ok()
+                        .and_then(|i| table.get(i))
+                        .copied()
+                        .map(i64::from)
+                        .ok_or_else(stop)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            result.push((o.output, y));
+        }
+        Step::Gate => result.push((
+            p.gate[0],
+            (0..2).map(|c| get(p.gate[2], row, c) * get(p.gate[3], row, c)).collect(),
+        )),
+        Step::Rope(i) => {
+            let [raw, _, input] = p.rotations[*i];
+            let [cos, sin] = Q30[p.old + row].map(i64::from);
+            let (x, y) = (get(input, row, 0), get(input, row, 1));
+            result.push((raw, vec![cos * x - sin * y, sin * x + cos * y]));
+        }
+        Step::Qk => {
+            let q = p.rotations[0][1];
+            let k = p.rotations[1][1];
+            result.push((
+                p.attention[0],
+                (0..p.old + 2)
+                    .map(|j| {
+                        if j <= p.old + row {
+                            (0..2).map(|c| get(q, row, c) * tail(k, j, c)).sum()
+                        } else {
+                            0
+                        }
+                    })
+                    .collect(),
+            ));
+        }
+        Step::Softmax => {
+            let s = &p.softmax.layers[0];
+            let live = p.old + row + 1;
+            let maximum = (0..live).map(|j| get(s.score, row, j)).max().unwrap();
+            let differences = (0..p.old + 2)
+                .map(|j| if j < live { maximum - get(s.score, row, j) } else { 0 })
+                .collect::<Vec<_>>();
+            let e = differences
+                .iter()
+                .map(|&d| {
+                    usize::try_from(d)
+                        .ok()
+                        .and_then(|d| EXP30.get(d))
+                        .map(|&e| i64::from(e))
+                        .ok_or_else(stop)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let z: i64 = e[..live].iter().sum();
+            let pi = e
+                .iter()
+                .enumerate()
+                .map(|(j, &e)| {
+                    if j < live {
+                        kernel::rne::divide(16384 * e, z).map(i64::from)
+                    } else {
+                        Ok(0)
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| stop())?;
+            result.extend([
+                (s.maximum, vec![maximum]),
+                (s.difference, differences.into_iter().map(|d| d - 32767).collect()),
+                (s.exponential, e),
+                (s.denominator, vec![z]),
+                (s.pi, pi),
+            ]);
+        }
+        Step::Pv => {
+            let v = p.rms.norms.iter().find(|n| n.operation == "v_norm").unwrap().output;
+            let pi = p.softmax.layers[0].pi;
+            result.push((
+                p.attention[1],
+                (0..2)
+                    .map(|c| (0..=p.old + row).map(|j| get(pi, row, j) * tail(v, j, c)).sum())
+                    .collect(),
+            ));
+        }
+        Step::Argmax => {
+            let y = [get(p.output.output, row, 0), get(p.output.output, row, 1)];
+            let token = usize::from(y[1] > y[0]);
+            tokens[1] = token as u32;
+            result.push((
+                p.output.slack,
+                (0..2).map(|j| y[token] - y[j] - i64::from(j < token) - 32768).collect(),
+            ));
+        }
+    }
+    for (id, words) in &result {
+        let bound = 1i64 << (8 * p.bytes().widths[*id] - 1);
+        if words.len() != sources[*id].cols || words.iter().any(|&v| v < -bound || v >= bound) {
+            return Err(stop());
+        }
+    }
+    Ok(result)
+}
+
 impl Snapshot {
     #[cfg(test)]
     pub(super) fn corrupt_value(&mut self, p: &Profile, id: usize, row: usize, col: usize) {
@@ -127,203 +295,16 @@ impl Snapshot {
                 if row >= sources[out].rows {
                     continue;
                 }
-                let mut result: Vec<(usize, Vec<i64>)> = Vec::new();
-                match step {
-                    Step::Embedding => result.push((
-                        0,
-                        (0..2).map(|c| w.weight(p, 0, tokens[row] as usize, c)).collect(),
-                    )),
-                    Step::Matrix(i) => {
-                        let cohort = &p.plan.cohorts[*i];
-                        let input = p.bytes().scalar.input_sources[i - 1];
-                        result.push((
-                            *i,
-                            (0..2)
-                                .map(|c| {
-                                    (0..2)
-                                        .map(|j| {
-                                            get(&values, input, row, j)
-                                                * w.weight(p, cohort.tensor, c, j)
-                                        })
-                                        .sum()
-                                })
-                                .collect(),
-                        ));
-                    }
-                    Step::Norm(i) => {
-                        let n = &p.rms.norms[*i];
-                        let x: Vec<_> = (0..n.columns * n.heads)
-                            .map(|c| get(&values, n.input, row, c))
-                            .collect();
-                        let weights: Option<Vec<_>> = n.cohort.map(|i| {
-                            (0..n.columns)
-                                .map(|c| w.weight(p, p.plan.cohorts[i].tensor, 0, c) as i16)
-                                .collect()
-                        });
-                        let (s, products, y) =
-                            n.prepare_row([0; 3], &x, weights.as_deref()).map_err(|_| stop())?;
-                        if let Some(i) = n.cohort {
-                            result.push((i, products));
-                        }
-                        result.extend([(n.statistic, s), (n.output, y)]);
-                    }
-                    Step::Rne(pair) => {
-                        let raw: Vec<_> = (0..sources[pair.raw].cols)
-                            .map(|c| get(&values, pair.raw, row, c))
-                            .collect();
-                        let y =
-                            p.bytes().prepare_rne_row(&p.plan, pair, &raw).map_err(|_| stop())?;
-                        result.push((pair.output, y));
-                    }
-                    Step::Affine(i) => {
-                        let r = &p.affine[*i];
-                        let input: [Vec<_>; 2] = std::array::from_fn(|i| {
-                            let id = r.inputs[i].0;
-                            (0..sources[id].cols).map(|c| get(&values, id, row, c)).collect()
-                        });
-                        let raw = p
-                            .bytes()
-                            .prepare_affine_row(r, [&input[0], &input[1]])
-                            .map_err(|_| stop())?;
-                        result.push((r.raw, raw));
-                    }
-                    Step::Gelu | Step::Softcap => {
-                        let (o, table) = if matches!(step, Step::Gelu) {
-                            (&p.gelu, GELU.as_slice())
-                        } else {
-                            (&p.output, SOFTCAP.as_slice())
-                        };
-                        let y = (0..2)
-                            .map(|c| {
-                                let x = get(&values, o.input, row, c) - i64::from(o.lower);
-                                usize::try_from(x)
-                                    .ok()
-                                    .and_then(|i| table.get(i))
-                                    .copied()
-                                    .map(i64::from)
-                                    .ok_or_else(stop)
-                            })
-                            .collect::<Result<Vec<_>, _>>()?;
-                        result.push((o.output, y));
-                    }
-                    Step::Gate => result.push((
-                        p.gate[0],
-                        (0..2)
-                            .map(|c| {
-                                get(&values, p.gate[2], row, c) * get(&values, p.gate[3], row, c)
-                            })
-                            .collect(),
-                    )),
-                    Step::Rope(i) => {
-                        let [raw, _, input] = p.rotations[*i];
-                        let [cos, sin] = Q30[p.old + row].map(i64::from);
-                        let (x, y) = (get(&values, input, row, 0), get(&values, input, row, 1));
-                        result.push((raw, vec![cos * x - sin * y, sin * x + cos * y]));
-                    }
-                    Step::Qk => {
-                        let q = p.rotations[0][1];
-                        let k = p.rotations[1][1];
-                        result.push((
-                            p.attention[0],
-                            (0..p.old + 2)
-                                .map(|j| {
-                                    if j <= p.old + row {
-                                        (0..2)
-                                            .map(|c| {
-                                                get(&values, q, row, c) * tail(&values, k, j, c)
-                                            })
-                                            .sum()
-                                    } else {
-                                        0
-                                    }
-                                })
-                                .collect(),
-                        ));
-                    }
-                    Step::Softmax => {
-                        let s = &p.softmax.layers[0];
-                        let live = p.old + row + 1;
-                        let maximum =
-                            (0..live).map(|j| get(&values, s.score, row, j)).max().unwrap();
-                        let differences =
-                            (0..p.old + 2)
-                                .map(|j| {
-                                    if j < live {
-                                        maximum - get(&values, s.score, row, j)
-                                    } else {
-                                        0
-                                    }
-                                })
-                                .collect::<Vec<_>>();
-                        let e = differences
-                            .iter()
-                            .map(|&d| {
-                                usize::try_from(d)
-                                    .ok()
-                                    .and_then(|d| EXP30.get(d))
-                                    .map(|&e| i64::from(e))
-                                    .ok_or_else(stop)
-                            })
-                            .collect::<Result<Vec<_>, _>>()?;
-                        let z: i64 = e[..live].iter().sum();
-                        let pi = e
-                            .iter()
-                            .enumerate()
-                            .map(|(j, &e)| {
-                                if j < live {
-                                    kernel::rne::divide(16384 * e, z).map(i64::from)
-                                } else {
-                                    Ok(0)
-                                }
-                            })
-                            .collect::<Result<Vec<_>, _>>()
-                            .map_err(|_| stop())?;
-                        result.extend([
-                            (s.maximum, vec![maximum]),
-                            (s.difference, differences.into_iter().map(|d| d - 32767).collect()),
-                            (s.exponential, e),
-                            (s.denominator, vec![z]),
-                            (s.pi, pi),
-                        ]);
-                    }
-                    Step::Pv => {
-                        let v =
-                            p.rms.norms.iter().find(|n| n.operation == "v_norm").unwrap().output;
-                        let pi = p.softmax.layers[0].pi;
-                        result.push((
-                            p.attention[1],
-                            (0..2)
-                                .map(|c| {
-                                    (0..=p.old + row)
-                                        .map(|j| get(&values, pi, row, j) * tail(&values, v, j, c))
-                                        .sum()
-                                })
-                                .collect(),
-                        ));
-                    }
-                    Step::Argmax => {
-                        let y = [
-                            get(&values, p.output.output, row, 0),
-                            get(&values, p.output.output, row, 1),
-                        ];
-                        let token = usize::from(y[1] > y[0]);
-                        tokens[1] = token as u32;
-                        result.push((
-                            p.output.slack,
-                            (0..2)
-                                .map(|j| y[token] - y[j] - i64::from(j < token) - 32768)
-                                .collect(),
-                        ));
-                    }
-                }
+                let result = evaluate_row(
+                    p,
+                    |id, r, c| w.weight(p, id, r, c),
+                    step,
+                    row,
+                    &mut tokens,
+                    |id, r, c| get(&values, id, r, c),
+                    |id, r, c| tail(&values, id, r, c),
+                )?;
                 for (id, words) in result {
-                    let width = p.bytes().widths[id];
-                    let bound = 1i64 << (8 * width - 1);
-                    if words.len() != sources[id].cols
-                        || words.iter().any(|&v| v < -bound || v >= bound)
-                    {
-                        return Err(stop());
-                    }
                     values[id][row * words.len()..(row + 1) * words.len()].copy_from_slice(&words);
                 }
             }

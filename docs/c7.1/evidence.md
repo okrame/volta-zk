@@ -898,3 +898,30 @@ Lean, NoPeek, crittografico o GPU. Getter numerico, hash salted in place,
 workspace reali e upper completo restano aperti; i ceiling producono lower,
 non service floor. Il controllo locale mirato passa 29 test, entro 60 s
 per invocazione e 2 GiB, senza eseguire inferenza o workload canonici.
+
+
+## Getter numerico e hash native a 512 replay
+
+Il [getter Rust](../../rust/volta-pcs/src/c71_matrix/gemma/native/ordered.rs)
+confronta tutti i byte originali, istogrammi e padding di tre inferenze
+ridotte O=0/2/4, con finestre 1/17/128/1.024. Il replay usa lo stesso
+operatore intero del preparatore, una sola generazione di cut i16 e
+KV i16 originali. Snapshot denso e A completa appartengono soltanto
+al riferimento del test. Root/profilo/token sono metadata fidati:
+il test non dimostra il binding del futuro adapter al registro accettato.
+
+I tre [controlli hash](../../rust/volta-pcs/src/c71_matrix/b12/streaming.rs)
+confrontano codec/sali/foglie/root con la MMCS nativa: multi-chunk BLAKE3,
+seek da offset effettivi, rigetti forzati del sampler, più root consecutive
+e coset strided `c+Q*j`. Il prescan e le frontier ricostruiscono la root
+originale; i digest sovrascrivono solo le celle della riga consumata.
+Questo chiude il confronto CPU delle primitive, non l'encoder WHIR completo,
+un kernel CUDA, tutti i workspace o il lifecycle originale.
+
+Il [preflight](preflight.md#getter-numerico-e-hash-nativo-ridotti) integra
+subito hash/prescan/cursori nel ledger: lower parziale con lettura leaf
+separata **47,497618 / 51,975184 / 56,751469 s**. Il piano nominato resta
+quello da 6.166.012.672 B massimi; scratch nativo/GPU non verificato non
+acquisisce credito. La 1.024 è chiusa; il combine non la riesamina.
+Le [procedure](../procedures/build-and-test.md#getter-e-hash-c71-ridotti)
+registrano filtri mirati e limiti. Nessuna GPU, spill o spesa.

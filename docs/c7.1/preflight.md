@@ -1,4 +1,4 @@
-# C7.1 — preflight locale, 2026-09-13
+# C7.1 — preflight locale, 2026-09-18
 
 **NO-GO per H100.** Lo screen dei costi dominanti respinge il getter che
 rigenera tutta A con prodotti scalari a ogni visita: il solo commit A
@@ -12,7 +12,13 @@ non una deroga autorizzata.** Il contratto vigente autorizzato è
 I conti riproducibili sono in
 [`integrated_resource_ledger`](../../scripts/c71_streaming_screen.py) e
 [`c71_query_remainder.py`](../../scripts/c71_query_remainder.py), `credit:false`.
-`null` significa ignoto; il corrispondente upper di ammissione è **+infinito**.
+`null` significa ignoto; il corrispondente upper di tempo è **+infinito**.
+**Il proprietario non richiede un upper H100 prima delle misure.** Il gate
+pre-spesa è ora: costruzione completa e corretta su input ridotti, lavoro
+senza voci ignote, picco pianificato completo con 256 MiB di margine e lower
+congiunto <65 s; poi harness/input, SHA pulita, durata/costo e soglie per le
+sole fasi a rate ignoto. La variante 1.024 replay è chiusa NO-GO; si procede
+soltanto sui 512. Nessun gate qui concede l'autorizzazione alla spesa.
 Non è possibile dare un upper completo finito usando soltanto un picco di
 banda e componenti ancora privi di implementazione e contratti temporali.
 
@@ -936,7 +942,8 @@ PCS e PCG con questi budget. A O=300 il getter richiede già almeno
 3,242 TB/s di letture obbligatorie dei pesi per rientrare nei 17 s,
 prima del resto del traffico. È un controllo di severità, non una previsione
 di prestazione. Per tutti gli O i tre **upper** temporali restano `null`;
-l'upper completo di ammissione è +infinito perché mancano contratti.
+l'upper completo di tempo è +infinito perché mancano contratti; il nuovo
+gate pre-misura non esige ancora questo upper.
 Non si modifica il requisito totale a 65 s e non si presume overlap.
 
 Il controllo minimo successivo è locale: producer numerici equivalenti
@@ -957,3 +964,94 @@ for C71_O in 0 150 300; do
 done
 PYTHONDONTWRITEBYTECODE=1 timeout 60 .venv/bin/python scripts/c71_ordered_getter.py --combine /tmp/c71-ordered-0.json /tmp/c71-ordered-150.json /tmp/c71-ordered-300.json > /tmp/c71-ordered-combined.json
 ```
+
+
+## Getter numerico e hash nativo ridotti
+
+Il [getter Rust](../../rust/volta-pcs/src/c71_matrix/gemma/native/ordered.rs)
+riusa lo stesso `evaluate_row` del preparatore per tutti gli operatori
+ridotti. Compila la chiusura delle dipendenze delle sorgenti richieste,
+calcola ogni producer una volta per finestra e libera gli input dopo
+l'ultimo consumer. Raw, istogrammi e byte biased vengono emessi prima del
+rilascio. Le due cut del profilo ridotto sono i16 effimeri; solo K/V i16,
+token e identità originali sopravvivono fra risposte. I cut non si accumulano
+con la storia. La forma canonica conserva ancora i 61 cut già censiti,
+senza acquisire credito numerico da questa prova ridotta.
+
+Il test confronta tutti i byte del dominio D12, padding esterno incluso,
+contro il `Snapshot::prepare` originale per O=0/2/4 e quattro larghezze di
+finestra (1/17/128/1.024). Lo Snapshot denso esiste soltanto come riferimento
+del test; non è allocato dal getter. Il controllo respinge contesto/root dei
+cut e bound alterati. Nessuna correlazione, seed PCS o FS entra nel replay.
+L'API è interna: non autorizza l'import di token/cut/KV dal prover avversario.
+`source_root` è metadata fidato del test, non viene ricalcolata dal replay:
+il binding al lifecycle accettato e alle root storiche originali resta
+un obbligo dell'adapter, non è scaricato dal confronto byte.
+
+| O ridotto | Byte A live | Righe producer, finestre da 1.024 B | Letture scalar W / A / KV | Picco heap nominato, B |
+|---:|---:|---:|---:|---:|
+| 0 | 942 | 85 | 90 / 240 / 0 | 1.296 |
+| 2 | 1.006 | 85 | 90 / 268 / 16 | 1.376 |
+| 4 | 1.070 | 159 | 176 / 562 / 64 | 1.520 |
+
+Questi conti sono per un passaggio ordinato ridotto; escludono la costruzione
+delle cut, workspace interni degli operatori e metadati dell'allocator.
+Non sono operazioni complete, HBM fisica, picco completo o misure canoniche.
+Restano da collegare dimensioni pinned/GQA/padding/selezione delle righe,
+gather Gram e consumer del prover; la correttezza ridotta non chiude questi
+obblighi. I MAC endpoint e il transcript esistenti non sono modificati.
+
+L'[hash native CPU](../../rust/volta-pcs/src/c71_matrix/b12/streaming.rs)
+legge una riga del coset column-major e scrive i quattro word digest nelle
+prime quattro celle consumate della stessa riga. I digest restano word raw,
+mai ridotti modulo p. Il test confronta le foglie e la root con la MMCS
+nativa per larghezze 4/7/128/384, comprese le soglie multi-chunk BLAKE3;
+verifica anche root consecutive, salt seek in ordine inverso e rigetti
+forzati del vero sampler Fp. Il codec resta little-endian canonico,
+`leaf/v1`/`node/v1` e quattro sali, senza nuova serializzazione.
+
+Il test strided usa foglie `c+Q*j`, prescan naturale del sampler, start/current
+offset effettivi e una frontier `j × log2(Q)`. Alla fine dell'ultimo coset
+le radici per j riusano le celle digest e si riducono alla root originale.
+Gli offset di subtree sono registrati nello stesso scan e il seek produce
+gli stessi sali delle aperture native. Non si assume assenza di rigetti:
+un caso forzato consuma 48 byte per quattro sali, anziché 32.
+Gli offset sono già nei 16L byte del piano, la frontier nei 32L log2(Q);
+non si aggiunge un array di tutti i sali o digest. `size_of` CPU rileva
+1.920 B per Hasher e 128 B per PrivateRng, esclusi stack dei callee; non
+sono stime dello scratch CUDA né una chiusura del picco fisico.
+
+Il [ledger hash](../../scripts/c71_whir_trace.py) è integrato nel workspace
+commit e nel [ledger risposta](../../scripts/c71_ordered_getter.py).
+Per il commit iniziale A, in ogni contesto canonico:
+
+| Lavoro/traffico logico | Quantità |
+|---|---:|
+| Foglie / nodi interni | 2.147.483.648 / 2.147.483.647 |
+| Letture payload foglie | 2.199.023.255.552 B |
+| Scritture digest foglie | 68.719.476.736 B |
+| Letture / scritture digest con frontier | 137.573.171.136 / 68.853.694.432 B |
+| Compressioni BLAKE3 foglie + nodi, escluso XOF | 42.949.672.958 |
+| Candidati XOF minimi prescan + replay | 137.438.953.472 B |
+| Letture/scritture logiche cursori | 34.359.738.368 B |
+| Scrittura start e copia current | 100.663.296 B |
+| Scrittura offset subtree trattenuti | 4.194.304 B |
+
+Il sampler mantiene il cap nativo di 2^40 byte per stream e Stop su
+esaurimento. I byte candidati effettivi dipendono dai rigetti; il ledger
+riporta separatamente minimo, cap e lavoro deterministico, senza inventare
+un conteggio esatto indipendente dalle coin. Le transazioni HBM e lo scratch
+CUDA restano da censire. Il passaggio foglie separato dalla FFT, concedendo
+256 MiB di cache a ognuno dei 512 coset e 3,35 TB/s, aggiunge un lower
+condizionale di **0,615398 s**. Non si sommano IO e compute dello stesso
+kernel. I lower congiunti **ancora parziali** diventano
+**47,497618 / 51,975184 / 56,751469 s**. Il budget commit da 7 s richiede,
+fra l'altro, 314,146 GB/s di payload leaf e 6,136 miliardi di compressioni
+BLAKE3/s; sono condizioni necessarie parziali, non sufficienti con la FFT.
+
+Restano aperti sourcewise WHIR completo/codec delle aperture, workspace
+nativi e allocator/fence, PCG/OT/Fp6, producer GKR e inferenza. I valori
+`T_inference`, `T_proof_only`, `T_response_total` restano distinti e ignoti;
+replay e autenticazione stanno interamente nella prova. Il margine 256 MiB
+è conservato dal piano nominato, non ancora dimostrato per il runtime.
+**NO-GO per proporre una spesa ora**, nessun NO-GO universale dei 512 replay.

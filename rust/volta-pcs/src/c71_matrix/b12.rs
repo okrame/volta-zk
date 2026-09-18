@@ -2,6 +2,8 @@
 //! compilation remains a separate obligation; this is not production admission.
 
 use super::*;
+mod streaming;
+
 use p3_merkle_tree::MerkleTreeHidingMmcs;
 use p3_symmetric::{CompressionFunctionFromHasher, CryptographicHasher, SerializingHasher};
 
@@ -67,6 +69,19 @@ impl SeedableRng for PrivateRng {
         hash.update(&seed);
         Self { reader: hash.finalize_xof(), remaining: 1 << 40 }
     }
+}
+
+impl PrivateRng {
+    // Replay only the same committed oracle, from a recorded sampler offset.
+    // No new root/session may use a replayed private stream.
+    fn replay_at(seed: [u8;32], offset: u64) -> Result<Self, String> {
+        if offset >= 1 << 40 { return Err("private coin offset exhausted".into()); }
+        let mut rng=Self::from_seed(seed);
+        rng.remaining=rng.remaining.checked_sub(offset).ok_or("private coin offset exceeds cap")?;
+        rng.reader.set_position(offset);
+        Ok(rng)
+    }
+    fn position(&self) -> u64 { (1 << 40)-self.remaining }
 }
 
 impl rand_010::TryRng for PrivateRng {

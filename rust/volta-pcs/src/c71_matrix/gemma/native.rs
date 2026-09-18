@@ -9,6 +9,7 @@ use bytes::{affine::Relation, kv, quantize::Pair};
 
 mod canonical;
 mod prepare;
+mod ordered;
 mod protocol;
 
 const TOKENS: usize = 2;
@@ -333,6 +334,25 @@ impl Profile {
                 let s = &self.softmax.layers[0];
                 vec![s.pi, s.maximum, s.difference, s.exponential, s.denominator, s.histogram]
             }
+        }
+    }
+
+    fn inputs(&self, step: &Step) -> Vec<usize> {
+        match step {
+            Step::Embedding => vec![],
+            Step::Matrix(i) => vec![self.bytes().scalar.input_sources[i-1]],
+            Step::Norm(i) => vec![self.rms.norms[*i].input],
+            Step::Rne(p) => vec![p.raw],
+            Step::Affine(i) => self.affine[*i].inputs.iter().map(|x| x.0).collect(),
+            Step::Gelu => vec![self.gelu.input],
+            Step::Gate => vec![self.gate[2], self.gate[3]],
+            Step::Rope(i) => vec![self.rotations[*i][2]],
+            Step::Qk => vec![self.rotations[0][1], self.rotations[1][1]],
+            Step::Softmax => vec![self.softmax.layers[0].score],
+            Step::Pv => vec![self.softmax.layers[0].pi,
+                self.rms.norms.iter().find(|n| n.operation=="v_norm").unwrap().output],
+            Step::Softcap => vec![self.output.input],
+            Step::Argmax => vec![self.output.output],
         }
     }
 }

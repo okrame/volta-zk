@@ -108,6 +108,50 @@ def mask_commit_work(group):
     }
 
 
+def salted_hash_work(height, base_columns, coset_rows=INITIAL_COSET_ROWS):
+    """Native b12/streaming.rs codec, one completed binary Merkle tree.
+
+    These are exact algorithmic reads/writes, not physical transactions. Salt
+    rejection consumes variable bytes; recorded XOF offsets preserve that order.
+    CPU Hasher/PrivateRng states are measured separately, never GPU scratch credit.
+    """
+    if height < 1 or height & (height-1) or base_columns < 4:
+        raise ValueError('power-of-two tree and at least four columns required')
+    if coset_rows < 1 or coset_rows & (coset_rows-1):
+        raise ValueError('power-of-two coset required')
+    rows=min(height,coset_rows)
+    leaf = len(b'volta-zk/c71/b12/merkle/leaf/v1\0') + 8*(base_columns+4)
+    node = len(b'volta-zk/c71/b12/merkle/node/v1\0') + 64
+    def compressions(n): return (n+63)//64+(n+1023)//1024-1
+    return {
+        'leaf_hashes':height, 'internal_hashes':height-1,
+        'leaf_field_read_bytes':height*base_columns*8,
+        'leaf_digest_write_bytes':height*32,
+        'internal_digest_read_bytes':32*height+32*(height-rows)+64*(rows-1),
+        'internal_digest_write_bytes':32*(height-rows)+32*rows+32*(rows-1),
+        'frontier_leaf_digest_reads_bytes':32*height,
+        'frontier_reads_bytes':32*(height-rows),
+        'frontier_writes_bytes':32*(height-rows),
+        'coset_roots_write_bytes':32*rows,
+        'upper_tree_read_bytes':64*(rows-1),
+        'upper_tree_write_bytes':32*(rows-1),
+        'salt_start_write_current_copy_bytes':24*rows,
+        'retained_subtree_offset_write_bytes':8*((height+(1<<TREE_CUT)-1)>>TREE_CUT),
+        'hash_input_bytes':height*leaf+(height-1)*node,
+        'blake3_compressions':height*compressions(leaf)+(height-1)*compressions(node),
+        'salt_candidate_bytes_lower':height*32,
+        'salt_prescan_candidate_bytes_lower':height*32,
+        'salt_prescan_and_replay_candidate_bytes_lower':height*64,
+        'salt_cursor_logical_read_write_bytes':height*16,
+        'salt_offsets_are_inside_existing_start_current_slots':True,
+        'private_coin_stream_byte_cap':1 << 40,
+        'salt_candidates_depend_on_rejection':True,
+        'sampler_offsets_retained_per_subtree':True,
+        'extra_global_leaf_digest_buffer_bytes':0,
+        'CPU_refinement_only':True,
+    }
+
+
 def commit_workspace(oracle, coset_rows=None):
     if coset_rows is None:
         coset_rows = INITIAL_COSET_ROWS if oracle["oracle"] == 0 else SWITCH_COSET_ROWS
@@ -128,6 +172,7 @@ def commit_workspace(oracle, coset_rows=None):
         ),
         "encoded_write_bytes": oracle["encoded_bytes"],
         "salt_xof_bytes": oracle["salt_xof_bytes_per_commit_or_full_replay"],
+        "salted_hash_work": salted_hash_work(oracle["height"], oracle["base_columns"], coset_rows),
     }
 
 

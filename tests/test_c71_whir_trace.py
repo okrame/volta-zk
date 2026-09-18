@@ -305,3 +305,23 @@ def test_a_s1_retention_opens_immutable_s1_before_in_place_fold():
     base = events["a_base_open_s11_and_masks"]
     assert sum(key.startswith("mask:") for key in base["known_live_buffers_after"]) == 23
     assert "s11_root:cache_h12" in base["known_live_buffers_after"]
+
+
+def test_native_salted_hash_census_includes_chunk_parents_and_no_digest_buffer():
+    # Native CPU check uses these four row widths and 16 leaves.
+    for columns in (4, 7, 128, 384):
+        r=whir.salted_hash_work(16,columns)
+        leaf=len(b'volta-zk/c71/b12/merkle/leaf/v1\0')+8*(columns+4)
+        chunks=[min(1024,leaf-i) for i in range(0,leaf,1024)]
+        leaf_compressions=sum((n+63)//64 for n in chunks)+len(chunks)-1
+        assert r['blake3_compressions']==16*leaf_compressions+15*2
+        assert r['leaf_field_read_bytes']==16*columns*8
+        assert r['extra_global_leaf_digest_buffer_bytes']==0
+        assert r['salt_candidates_depend_on_rejection']
+    assert whir.salted_hash_work(1<<31,128)['leaf_field_read_bytes']==1<<41
+
+    # Exact small strided native case: 128 leaves in eight 16-row cosets.
+    r=whir.salted_hash_work(128,128,16)
+    assert r['internal_digest_read_bytes']==32*128+32*112+64*15
+    assert r['internal_digest_write_bytes']==32*112+32*16+32*15
+    assert r['salt_start_write_current_copy_bytes']==24*16

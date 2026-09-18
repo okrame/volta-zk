@@ -152,13 +152,13 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
     return {'credit':False,'deadline_seconds':response.DEADLINE_SECONDS,
         'ordered_getter_windows_included':ordered_getter,
         'reader_slot_reused_during_initial_commit':reuse_reader_for_commit,
-        'reader_reuse_requires':'native scatter producer and salted leaf hashing in consumed coset cells; adapter not implemented',
+        'reader_reuse_requires':'native scatter producer and salted CUDA leaf hashing in consumed coset cells; CPU codec/strided root refinement checked, GPU adapter pending',
         'initial_A_coset_rows':initial_rows,'A_S2_coset_rows':1 << 22,
-        'cases':cases,'missing':['salted in-place hash adapter with identical roots' if reuse_reader_for_commit
+        'cases':cases,'missing':['CUDA salted in-place hash scratch and complete PCS adapter (CPU strided root check passes)' if reuse_reader_for_commit
             else 'odd-log FFT parity-scatter adapter with identical roots',
             'native ordered getter and producer workspaces (shared cuts traced separately)',
             'native PCS/PCG and global context allocator census',
-            'all phase work and applicable service floors'],
+            'complete phase work before spend; unknown service rates require isolated measurement'],
         'native_workspace_audit':{
             'FFT_square':'in-place values + n*8 twiddles; native launch_five_pass allocates no extra global scratch',
             'range':'native src/dst and reduction arrays; Gram microbench materialization is component-only',

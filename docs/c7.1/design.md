@@ -910,12 +910,19 @@ W+KV450+arena è 68.242.645.504 B, sempre prima dei residenti ignoti.
 La proposta di un solo buffer persistente KV per 450 token conta anche
 la coda pendente; non autorizza temporanei fuori arena. I picchi globali
 completi allocato/riservato sono ignoti. In assenza di tutti i contratti
-di lavoro e servizio, l'upper analitico di ammissione rimane +infinito.
+di lavoro e servizio, l'upper analitico di tempo rimane +infinito.
+Lo steering del 2026-09-18 distingue questo limite dal gate pre-spesa:
+un upper H100 non è richiesto prima delle misure. Restano obbligatori
+costruzione completa su input ridotti, conteggi completi, picco pianificato
+con almeno 256 MiB liberi e lower congiunto <65 s. Soltanto dopo questi
+controlli si propone il minimo microbenchmark delle fasi con rate ignoto,
+con SHA pulita, harness/input, durata massima, costo e soglie GO/NO-GO.
+La spesa richiede comunque autorizzazione esplicita successiva.
 Il [piano di indirizzi con margine](preflight.md#picco-con-margine-operativo-contratto-a-65-s)
 richiede 256 MiB inutilizzati dentro arena e 1 GiB globale. Il checker
 nativo degli span non certifica allocazioni GPU, fence eseguite o scratch
-ignoti. Coset A 2^21/S2 2^22 preservano i polinomi, con più replay:
-sono una candidata di memoria, ancora senza adapter CUDA completo.
+ignoti. La variante A 2^21/1.024 replay è chiusa NO-GO; il solo percorso
+attivo è A 2^22/512 replay, con S2 2^22 e reader riusato nel commit.
 Il getter ordinato full-DAG-per-tessera e il lift del Snapshot denso sono
 respinti per le rispettive condizioni esplicite; non ogni getter streaming.
 Il [DAG condiviso per finestre](preflight.md#dag-condiviso-getter-ordinato-e-riuso-del-reader)
@@ -940,11 +947,25 @@ query A 256 MiB il massimo nominato è **6.166.012.672 B**, coda libera
 **276.438.272 B**: restano appena **8.002.816 B** oltre il margine obbligatorio
 di 256 MiB. Qualunque scratch non assorbito negli slot va aggiunto prima
 di dichiarare fit fisico. I lower parziali con 512 replay sono
-46,882/51,360/56,136 s, escludono lavoro positivo e non sono upper.
+47,498/51,975/56,751 s includendo la lettura hash separata, ma escludono
+ancora lavoro positivo e non sono upper.
 Il budget candidato separa 1,5 s inferenza e 63,5 s prova, sempre 65 s
 totali; replay e autenticazione restano interamente nella prova.
-Producer GKR, adapter nativi PCS/PCG, workspace completi e service floor
-restano gate locali, prima di qualsiasi proposta H100.
+Il [getter numerico e hash ridotti](preflight.md#getter-numerico-e-hash-nativo-ridotti)
+confrontano ora i byte del preparatore e le root native. Il primo riusa
+operatori interi e conserva solo KV i16 fra risposte, con cut temporanei
+legati a root/W/profilo/token originali. La sua forma numerica resta
+quella ridotta: non dimostra ancora il port canonico o la composizione
+con il prover streaming. L'hash conserva domain separator, endian e quattro
+sali Fp canonici. Nell'ordine `c+Q*j` usa prescan naturale, offset effettivi
+e frontier per j; non sostituisce il sampler con indirizzi `32*row`.
+Il confronto root/sali è CPU, non un refinement CUDA/PCS completo o un
+nuovo lemma Lean. Il nuovo lower parziale con lettura foglie separata è
+47,498/51,975/56,751 s; hash compute, prescan, producer e backend ancora
+esclusi impediscono di chiamarlo completo.
+Producer GKR, adapter nativi PCS/PCG e workspace completi restano gate
+locali. I soli service-rate non misurabili localmente potranno passare al
+microbenchmark autorizzato dopo la chiusura dei gate di costruzione.
 Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.

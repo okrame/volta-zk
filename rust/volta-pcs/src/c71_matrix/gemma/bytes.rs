@@ -62,6 +62,48 @@ impl Plan {
 }
 
 impl Bytes {
+    /// Public source set for a contiguous original byte window, including
+    /// partially intersected dyadic tiles. External padding has no producer.
+    pub(super) fn window_sources(&self, first: usize, length: usize) -> Result<Vec<usize>, String> {
+        let end = first.checked_add(length).ok_or("byte window overflows")?;
+        let mut ids = std::collections::BTreeSet::new();
+        for b in &self.tiles {
+            let t = &self.scalar.layout.tiles[b.scalar];
+            if first < b.offset + t.rows * t.cols * b.width && b.offset < end {
+                ids.insert(t.tensor);
+            }
+        }
+        Ok(ids.into_iter().collect())
+    }
+
+    /// Scatter the original biased bytes before a producer row is released.
+    /// The dyadic layout and byte-plane order are the same as the PCS getter.
+    pub(super) fn emit_row_bytes(
+        &self, id: usize, row: usize, words: &[i64], mut emit: impl FnMut(usize, u8),
+    ) -> Result<(), String> {
+        let s = self.scalar.layout.sources.get(id).ok_or("unknown byte source")?;
+        let width = self.widths[id];
+        let bound = 1i64 << (8 * width - 1);
+        if row >= s.rows || words.len() != s.cols || words.iter().any(|&x| x < -bound || x >= bound) {
+            return Err("byte row shape or range differs".into());
+        }
+        for (index, t) in self.scalar.layout.tiles.iter().enumerate() {
+            if t.tensor != id || row < t.row || row >= t.row + t.rows { continue; }
+            for &b in &self.by_scalar[index] {
+                let b = &self.tiles[b];
+                for c in 0..t.cols {
+                    for j in 0..b.width {
+                        let byte = b.first + j;
+                        let value = (words[t.col+c] as u64 >> (8*byte)) as u8
+                            ^ if byte + 1 == width { 128 } else { 0 };
+                        emit(b.offset + ((row-t.row)*t.cols+c)*b.width+j, value);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Extend the SAME source statement while retaining all original IDs.
     /// Used before committing A; every packed offset and form is recompiled.
     pub(super) fn append(self, extra: Vec<(String, usize, usize, usize)>) -> Result<Self, String> {

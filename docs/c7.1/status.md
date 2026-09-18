@@ -1,6 +1,6 @@
 # C7.1 — Goals and current status
 
-Aggiornato al 2026-09-13. [Design](design.md) · [Security](security.md) ·
+Aggiornato al 2026-09-18. [Design](design.md) · [Security](security.md) ·
 [Evidence](evidence.md) · [Decisions](decisions.md) · [Indice](../README.md).
 Questa pagina contiene stato, autorizzazione e prossimo lavoro; requisiti,
 prove e risultati dei test hanno ciascuno la propria sede nei link sopra.
@@ -260,7 +260,7 @@ porta il lower parziale della terza risposta a **65,481 s**: NO-GO per
 questa schedule sotto i ceiling dichiarati, non per ogni getter/PCS.
 La minima alternativa riusa lo slot reader/hash nel commit scatter A,
 con hash nelle celle del coset consumato: coset 2^22 e **512 replay**,
-S2 sempre 2^22. I lower parziali diventano **46,882 / 51,360 / 56,136 s**.
+S2 sempre 2^22. Il ledger con lettura hash separata dà lower parziali **47,498 / 51,975 / 56,751 s**.
 Il solo getter ha lower di banda **14,160 / 15,275 / 16,451 s**; il vecchio
 budget di 14 s è escluso. Il nuovo budget candidato assegna 17 s al getter,
 1,5 s all'inferenza e 46,5 s alle altre fasi, senza credito di overlap.
@@ -275,10 +275,27 @@ numerici, hash in place salted, PCG/OT/Fp6 e runtime restano da verificare.
 Il [checkpoint locale](evidence.md#dag-condiviso-e-slot-reader-riusato) distingue
 conteggi di istanze/indirizzi virtuali, richieste logiche agli operandi e
 lower condizionali da HBM fisica e upper completi, tuttora ignoti.
-Il successivo controllo minimo è il getter numerico esatto e l'hash salted
-nel coset riusato, poi gli adapter/workspace mancanti PCS/PCG e producer GKR.
+Il [controllo numerico ridotto](preflight.md#getter-numerico-e-hash-nativo-ridotti)
+ora ricostruisce ogni byte originale a O=0/2/4 senza Snapshot/A nel getter:
+un solo insieme di cut i16 temporanei, KV originali i16 persistenti e
+rilascio dopo l'ultimo consumer. Riusa gli operatori interi del preparatore.
+Il port canonico numerico, il gather range e il collegamento al prover
+restano aperti; i conteggi ridotti non sostituiscono O=0/150/300.
+L'hash CPU in-place confronta codec, sali, seek, foglie e root con la MMCS
+nativa anche nell'ordine coset `c+Q*j`. Prescan naturale e cursori reali
+conservano i rigetti del sampler. Questo non è ancora un kernel CUDA o
+l'encoder/apertura WHIR completo. Il ledger include letture, scritture,
+compressioni hash e prescan: con la lettura foglie separata i lower parziali
+sono **47,498 / 51,975 / 56,751 s**; non cambiano i picchi solo pianificati.
+Il successivo lavoro è completare il port del getter e l'integrazione
+sourcewise WHIR/PCS, poi scratch PCG/OT/Fp6 e producer GKR/inferenza.
 Non manca soltanto un service-rate H100: harness integrato e proposta di
-spesa restano non pronti. Nessuna GPU, spill o spesa autorizzata.
+spesa restano non pronti. **Si lavora soltanto sui 512 replay**; la variante
+1.024 è chiusa e non viene riesaminata. Il proprietario non richiede più
+un upper H100 prima delle misure: richiede costruzione ridotta completa,
+conteggi senza ignoti, picco completo con margine e lower congiunto <65 s,
+poi microbenchmark isolati, SHA pulita, durata/costo e soglie verificabili.
+Questi gate non sono chiusi. Nessuna GPU, spill o spesa autorizzata.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso
 AES composto positivo e refinement dei codec non sono ancora chiusi.

@@ -297,6 +297,14 @@ def response_ledger(cases, commit_replays=1024):
             ((128*8 << fft_log)-(256 << 20)))/3.35e12
         fft_compute=d['commit_A_FFT_issue_lower_seconds'] if commit_replays==512 else None
         fft_lower=max(fft_bandwidth,fft_compute or 0)
+        hash_work=whir.salted_hash_work(whir.oracle_geometry(34)[0]['height'],128)
+        # Separate leaf pass after the complete coset FFT: charge the compulsory
+        # read only. Tree/salt compute and digest writes are counted but not yet
+        # converted to a lower; no extra GPU scratch credit from the CPU check.
+        hash_read_lower=(hash_work['leaf_field_read_bytes']-commit_replays*(256 << 20))/3.35e12
+        phase['proof_initial_commit_A'].update(
+            salted_leaf_bytes_per_second=hash_work['leaf_field_read_bytes']/budget['proof_initial_commit_A'],
+            salted_tree_blake3_compressions_per_second=hash_work['blake3_compressions']/budget['proof_initial_commit_A'])
         out.append({'old_tokens':c['old_tokens'],'sourcewise_passes_by_generation':sourcewise,
             'sourcewise_counts_exclude_ordered_range_and_queries':True,
             'getter_learned_matrix_MACs':learned,'getter_compulsory_W_HBM_lower_bytes_conditional':hbm,
@@ -312,7 +320,10 @@ def response_ledger(cases, commit_replays=1024):
             'commit_FFT_bandwidth_lower_seconds_conditional_whole_batch':fft_bandwidth,
             'commit_FFT_compute_lower_seconds_conditional':fft_compute,
             'joint_partial_lower_seconds_with_named_FFT':joint+fft_lower,
-            'named_serial_variant_NO_GO_65s':joint+fft_lower>response.DEADLINE_SECONDS,
+            'initial_commit_salted_hash_work':hash_work,
+            'salted_leaf_read_lower_seconds_conditional_separate_pass':hash_read_lower,
+            'joint_partial_lower_seconds_with_FFT_and_leaf_read':joint+fft_lower+hash_read_lower,
+            'named_serial_variant_NO_GO_65s':joint+fft_lower+hash_read_lower>response.DEADLINE_SECONDS,
             'complete_lower_seconds':None,'complete_HBM_traffic_bytes':None,
             'complete_W_KV_visits':None,'known_direct_proof_W_visits':169,
             'logical_direct_proof_W_payload_bytes':169*response.W_BYTES,
@@ -333,7 +344,9 @@ def response_ledger(cases, commit_replays=1024):
             '2^21 uses one batch of 256 parity halves plus a separate merge; 2^22 uses the existing 128-column batch',
             'cache credit at most 256 MiB separately for every read/write traversal',
             'no whole-batch HBM lower transferred to a smaller-batch or fused FFT schedule'],
-        'admission_upper':'+infinity','finite_work_is_not_a_finite_time_upper':True}
+        'time_upper':'+infinity','finite_work_is_not_a_finite_time_upper':True,
+        'finite_H100_time_upper_required_before_measurement':False,
+        'pre_spend_gate':'complete bounded construction, work and peak; joint lower <65s; isolated rate tests and authorized spend'}
 
 
 if __name__=='__main__':
@@ -349,7 +362,7 @@ if __name__=='__main__':
         cases=[json.loads(Path(p).read_text()) for p in args.combine]
         result={'credit':False,'canonical_getter_traces':cases,
             'input_trace_file_sha256':[hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in args.combine],
-            'commit_1024_comparison':response_ledger(cases,1024),
+            'commit_1024_status':'closed_NO_GO; frozen comparison in 2026-09-13 evidence; not reevaluated',
             'commit_512_candidate':response_ledger(cases,512),
             'arena':arena.report(ordered_getter=True,reuse_reader_for_commit=True)}
     print(json.dumps(result,indent=2))

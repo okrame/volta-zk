@@ -295,7 +295,12 @@ spesa restano non pronti. **Si lavora soltanto sui 512 replay**; la variante
 un upper H100 prima delle misure: richiede costruzione ridotta completa,
 conteggi senza ignoti, picco completo con margine e lower congiunto <65 s,
 poi microbenchmark isolati, SHA pulita, durata/costo e soglie verificabili.
-Questi gate non sono chiusi. Nessuna GPU, spill o spesa autorizzata.
+Questi gate non sono chiusi. L'[audit WHIR](preflight.md#confine-nativo-whir-e-workspace-da-collegare)
+ha individuato il prossimo confine concreto: il tipo `ProverData` nativo
+trattiene codeword/sali/albero completi; gli hook residenti da soli non
+realizzano la cache alta. Servono stato sourcewise e handle MMCS di replay
+con confronto di round/aperture/codec, inclusi fork e cursori delle coin.
+Nessuna GPU, spill o spesa autorizzata.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso
 AES composto positivo e refinement dei codec non sono ancora chiusi.

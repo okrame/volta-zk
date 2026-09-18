@@ -966,6 +966,13 @@ esclusi impediscono di chiamarlo completo.
 Producer GKR, adapter nativi PCS/PCG e workspace completi restano gate
 locali. I soli service-rate non misurabili localmente potranno passare al
 microbenchmark autorizzato dopo la chiusura dei gate di costruzione.
+L'[audit del confine WHIR](preflight.md#confine-nativo-whir-e-workspace-da-collegare)
+identifica due obblighi distinti: stato sumcheck sourcewise che copra tutti
+i fallback commit/OOD/claim, e ownership `ProverData` leggera per la MMCS.
+Il tipo attuale mantiene foglie salate e albero completo, perciò non realizza
+la cache alta del piano. Serve il wrapper di rigenerazione con gli stessi
+root/proof/codec, incluso l'ordine originale dei fork RNG; non è una nuova
+premessa di sicurezza o una causa di NO-GO universale.
 Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.

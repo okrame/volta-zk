@@ -1055,3 +1055,59 @@ nativi e allocator/fence, PCG/OT/Fp6, producer GKR e inferenza. I valori
 replay e autenticazione stanno interamente nella prova. Il margine 256 MiB
 è conservato dal piano nominato, non ancora dimostrato per il runtime.
 **NO-GO per proporre una spesa ora**, nessun NO-GO universale dei 512 replay.
+
+
+### Confine nativo WHIR e workspace da collegare
+
+L'audit delle API individua un percorso locale preciso, senza cambiare il
+transcript. `ZkWhirInitialMessage::Resident` e
+[`ZkWhirOracleCommitter`](../../rust/third_party/p3-whir-c61/src/pcs/zk/prover/mod.rs)
+accettano già un
+[`ResidualSumcheckProver`](../../rust/third_party/p3-sumcheck-c61/src/strategy.rs)
+custom. Il singleton iniziale può contrarre il suffisso in 128 accumulatori
+prima dei sette round adattivi. Lo stato successivo deve conservare Eq/Pow,
+claim, sfide già fissate e i workspace sourcewise censiti. Il solo handle
+`Resident` non impedisce le seguenti allocazioni:
+
+| Confine | Condizione necessaria per restare sourcewise | Fallback attuale da evitare |
+|---|---|---|
+| Commit successivo | `commit_extension_from_sumcheck` restituisce `Some` | `evals()` materializza il messaggio |
+| OOD | `evaluate_padded_ood_from_sumcheck` restituisce `Some` | nuova `evals()` prima dell'OOD |
+| Claim nuovo | `accumulate_round_claim_from_sumcheck` restituisce `true` | messaggio e `weight_delta` densi |
+| Base case | `evals()` e `weights()` finali reali | qui il dominio è solo 32 Fp3 per vettore |
+
+Il secondo confine è di ownership:
+[`HidingWhirProverData`](../../rust/third_party/p3-whir-c61/src/pcs/zk/prover/data.rs)
+richiede `MT::ProverData<DenseMatrix<F>>`. L'MMCS hiding installata conserva
+`MerkleTree<HorizontalPair<M, RowMajorMatrix<F>>>`, cioè matrice, sali e tutti
+i livelli digest. `open_and_fold` apre direttamente quel tipo. La sola
+root corretta del nuovo hash non converte tale ownership nella cache alta
+più replay contabilizzata dal piano. Per esempio il primo codeword A da
+2.199.023.255.552 B rende già NO-GO il lift di **questo backend denso**;
+non è un lower contro un backend sourcewise.
+
+La modifica minima da implementare è un wrapper MMCS con `ProverData<M>`
+leggero legato alla root originale (seed, pad, cache/offset e getter fissato),
+stessi Commitment/Proof/MultiProof e stessa verifica/serializzazione nativa.
+`open_multi_batch` deve rigenerare soltanto i sottoalberi richiesti, per
+sorgenti base ed extension; le maschere piccole possono conservare il loro
+backend denso già censito. Una variante che aggiungesse un hook di apertura
+al motore WHIR toccherebbe più tipi; non è necessaria finché il wrapper
+può conservare il contratto MMCS.
+
+Anche la mappa delle coin va confrontata nella costruzione composta:
+`HidingWhirProver::new` crea l'extension MMCS tramite `mmcs.clone()`, che
+consuma un seed di 32 byte dal parent. Seed/cursore di ciascuna root vanno
+quindi derivati dall'ordine nativo dei fork e commit; il confronto hash
+isolato non autorizza a iniziare tutti i sali dall'offset zero.
+
+Nel picco effettivo devono comparire simultaneamente i due root handle
+predecessore/successore fino alle query, pad/seed e offset originali,
+512 righe aperte/sali/multiproof, fresh randomness e OOD, tutte le maschere
+trattenute (messaggi, coin, covettori 2.048 Fp3 e Merkle data), vettori della
+prova e buffer codec, descrittori Eq/Pow, scratch razionale, stato base-case
+e chiusura OpeningMac. Gli slot del piano sono riserve: questo audit non
+attribuisce loro automaticamente l'ownership del backend reale.
+Il controllo minimo è una catena ridotta che confronti round/root/aperture,
+codec e chiusura originale con il riferimento, e fallisca se raggiunge uno
+dei tre fallback densi. Questi obblighi restano aperti prima del punto PCG.

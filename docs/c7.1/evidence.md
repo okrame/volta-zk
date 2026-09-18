@@ -925,3 +925,13 @@ quello da 6.166.012.672 B massimi; scratch nativo/GPU non verificato non
 acquisisce credito. La 1.024 è chiusa; il combine non la riesamina.
 Le [procedure](../procedures/build-and-test.md#getter-e-hash-c71-ridotti)
 registrano filtri mirati e limiti. Nessuna GPU, spill o spesa.
+
+
+Il [record immutabile del 2026-09-18](../../benchmarks/results/c71-native-streaming-2026-09-18-8ad3270ec1c9.json)
+è generato su SHA pulita `8ad3270ec1c9`, `git_dirty:false`: **9 test Rust**
+e **19 Python** passati, con filtri, stdout, limiti, hash del binario e
+build mirata. Il report riusa soltanto i metadati pubblici del record
+2026-09-13, identificati da file/digest, e ricalcola ledger 512 e arena.
+I tempi CPU registrati riguardano i controlli locali; non sono rate H100
+o `T_inference`/`T_proof_only`. Costruzione canonica, lavoro totale e picco
+fisico sono esplicitamente incompleti, perciò il gate di spesa resta NO-GO.

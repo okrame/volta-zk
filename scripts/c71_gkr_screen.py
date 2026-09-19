@@ -2,6 +2,7 @@
 """Public MSB-fold support census for the canonical C7.1 RMS programs."""
 
 from collections import Counter
+from functools import lru_cache
 import itertools
 import json
 from pathlib import Path
@@ -79,12 +80,29 @@ def tiny_checks():
                 assert modulo_union_length(intervals, half) == expected
 
 
+@lru_cache(maxsize=None)
 def native_record(path, kind='RMS', old=0):
-    for line in Path(path).read_text().splitlines():
+    text = Path(path).read_text()
+    try:
+        record = json.loads(text)
+    except json.JSONDecodeError:
+        texts = [text]
+    else:
+        texts = [run['stdout'] for run in record.get('rust_runs', []) if 'stdout' in run]
+    for line in itertools.chain.from_iterable(item.splitlines() for item in texts):
         match = re.search(rf'canonical_{kind}_GKR O={old} (\{{.*\}})', line)
         if match:
             return json.loads(match.group(1))
-    raise ValueError('native O=0 RMS census missing')
+    raise ValueError(f'native O={old} {kind} census missing')
+
+
+def factored_arithmetic(ops, program_pairs):
+    return {
+        'Fp3_mul':7*(ops['and']+ops['xor'])+2*ops['copy']+6*program_pairs,
+        'Fp3_add':4*ops['and']+9*ops['xor']+2*ops['copy']+6*program_pairs,
+        'Fp3_sub':2*ops['and']+4*ops['xor']+ops['copy']+program_pairs,
+        'Fp3_neg':ops['xor'],
+    }
 
 
 def canonical(native):
@@ -155,12 +173,6 @@ def canonical(native):
     for counter in op_by_profile:
         for op in ('and', 'xor', 'copy'):
             unpruned_ops[op] += counter[op] * (n - 1)
-    arithmetic = lambda ops, program_pairs: {
-        'Fp3_mul': 7 * (ops['and'] + ops['xor']) + 2 * ops['copy'] + 6*program_pairs,
-        'Fp3_add': 4 * ops['and'] + 9 * ops['xor'] + 2 * ops['copy'] + 6*program_pairs,
-        'Fp3_sub': 2 * ops['and'] + 4 * ops['xor'] + ops['copy'] + program_pairs,
-        'Fp3_neg':ops['xor'],
-    }
     result = {
         'credit': False,
         'scope': 'exact public structural support; fixed support-bool schedule; no runtime credit',
@@ -179,8 +191,8 @@ def canonical(native):
         'maximum_support_spans_one_round_profile': max(
             profile['support_span_count'] for round_ in rounds for profile in round_['profiles']),
         'supported_gate_iterations_all_rounds': dict(totals),
-        'factored_arithmetic_before_support_pruning': arithmetic(unpruned_ops,depth*len(profile_keys)*(n-1)),
-        'factored_arithmetic_after_structural_support_pruning': arithmetic(totals,
+        'factored_arithmetic_before_support_pruning': factored_arithmetic(unpruned_ops,depth*len(profile_keys)*(n-1)),
+        'factored_arithmetic_after_structural_support_pruning': factored_arithmetic(totals,
             depth*sum(p['supported_pairs'] for r in rounds for p in r['profiles'])),
         'logical_unpruned_gate_iterations': sum(
             sum(counter.values()) * (n - 1) for counter in op_by_profile),
@@ -224,8 +236,28 @@ def ratio_cases():
     return results
 
 
+@lru_cache(maxsize=None)
+def ratio_supported_pair_totals():
+    return tuple((case['old_tokens'], sum(item['supported_pairs'] for item in case['rounds']))
+                 for case in ratio_cases())
+
+
+def ratio_supported_pair_total(old):
+    try:
+        return dict(ratio_supported_pair_totals())[old]
+    except KeyError as error:
+        raise ValueError('unsupported EXP30 old-token count') from error
+
+
+def ratio_factored_arithmetic(native, old):
+    pairs = ratio_supported_pair_total(old)
+    ops = {op:sum(layer[op] for layer in native['layers'])*pairs
+           for op in ('and', 'xor', 'copy')}
+    return factored_arithmetic(ops, native['depth']*pairs)
+
+
 def byte_source_trace(view_bits, lanes):
-    """Literal MSB regeneration, excluding MAC/FS/coefficients and caller.
+    """MSB regeneration with shared prefix weights and a four-child getter.
 
     Count source expressions, never infer HBM transactions or a service rate.
     The fixed LUT replaces a domain-sized tree without reducing regeneration.
@@ -246,18 +278,23 @@ def byte_source_trace(view_bits, lanes):
         eq_mul += 3*d
         eq_add += d
         eq_sub += 2*d
-        prefix_mul = 2*n*d*(d+1)
-        calls = 4*n*(d+1)
-        item = dict(getter_calls=calls, prefix_terms=calls,
+        # Ascending binary prefixes update only the suffix changed by carry.
+        # One q-prefix scan uses 2^(q+1)-2 products and 2^q-1 complements.
+        prefix_mul = 2*n*(d-1)+2
+        prefix_sub = n*(d-1)+1
+        calls = n*(d+1)
+        item = dict(getter_calls=calls, getter_scalar_values=4*calls, prefix_terms=calls,
             equality_multiplications=prefix_mul+eq_mul,
             equality_additions=eq_add,
-            equality_subtractions=prefix_mul//2+eq_sub,
+            equality_subtractions=prefix_sub+eq_sub,
             cubic_multiplications=27*(n-1), cubic_additions=18*(n-1),
-            cubic_subtractions=5*(n-1), fold_multiplications=calls,
-            fold_additions=calls, fold_subtractions=0)
+            cubic_subtractions=5*(n-1), fold_multiplications=4*calls,
+            fold_additions=4*calls, fold_subtractions=0)
         totals.update(item)
         layers.append(dict(layer=layer, dimensions=d, **item))
     return dict(credit=False, view_bits=view_bits, lanes=lanes, layers=layers,
+        getter_returns_four_children=True,
+        max_prefix_weight_payload_bytes=24*(view_bits+8),
         counted_work=dict(totals), lut_nodes=lanes*256*511,
         lut_capacity_bytes=lanes*256*511*48,
         lut_build_multiplications=3*lanes*256*255,
@@ -274,12 +311,31 @@ def byte_source_trace(view_bits, lanes):
 def source_prover_trace(native):
     """Join the implemented cell replay with its original-byte obligation."""
     c = native['padded_cells'].bit_length()-1
+    widths = [layer['input_width'] for layer in native['layers']]
+    terminal = 0 if c == 0 else sum(widths)+native['programs']*native['depth']
+    derived = {
+        'field_fold_multiplications_active_boolean_rows':
+            native['live_cells']*c*native['depth']+terminal,
+        'field_fold_additions_active_boolean_rows':
+            native['live_cells']*c*(sum(widths)+native['depth'])+terminal,
+        'field_fold_subtractions_terminal':terminal,
+        'boolean_fold_masks_active':native['live_cells']*c*sum(widths),
+    }
+    for key, value in derived.items():
+        if key in native and native[key] != value:
+            raise ValueError(f'native {key} disagrees with active Boolean fold')
     fields = ('cell_first_logical_frame_callbacks', 'cell_first_scalar_boolean_replay_gates',
-              'field_value_source_scalars', 'field_fold_mul_add_each',
+              'field_value_source_scalars',
+              'field_fold_multiplications_active_boolean_rows',
+              'field_fold_additions_active_boolean_rows',
+              'field_fold_subtractions_terminal', 'boolean_fold_masks_active',
               'prefix_weight_multiplications', 'prefix_weight_subtractions',
               'structural_selector_callbacks', 'structural_selector_assigned_terms')
+    cell_phase = {k:native.get(k, derived.get(k)) for k in fields}
+    if any(value is None for value in cell_phase.values()):
+        raise ValueError('native source prover census is incomplete')
     return dict(credit=False, canonical_calibrated_profile=False,
-        cell_phase={k:native[k] for k in fields},
+        cell_phase=cell_phase,
         assignment_bytes_absorbed=native['padded_cells']*(2 if native['programs'] > 255 else 1),
         assignment_stream_scratch_bytes=4096,
         dense_assignment_payload_removed_bytes=native['dense_assignment_bytes'],

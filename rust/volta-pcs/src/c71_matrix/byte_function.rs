@@ -145,27 +145,29 @@ impl ByteTrees {
         Self { lanes: coefficients.len(), nodes }
     }
 
-    fn child(
+    fn children(
         &self,
         layer: usize,
-        child: usize,
         index: usize,
         live_cells: usize,
         get_byte: &impl Fn(usize) -> u8,
-    ) -> Fp3 {
-        debug_assert!(layer < 8 && child < 4);
+    ) -> [Fp3; 4] {
+        debug_assert!(layer < 8);
         let node_pairs = 1usize << layer;
         let top = index >> layer;
         let pair = index & (node_pairs - 1);
         let (cell, lane) = (top / self.lanes, top % self.lanes);
         let live = cell < live_cells;
         let byte = if live { usize::from(get_byte(top)) } else { 0 };
-        let node = (1usize << (layer + 1)) - 1 + 2 * pair + child / 2;
-        if !live && child & 1 == 0 {
-            Fp3::ZERO
-        } else {
-            self.nodes[(lane * 256 + byte) * BYTE_TREE_NODES + node][child & 1]
-        }
+        let first = (1usize << (layer + 1)) - 1 + 2 * pair;
+        let tree = &self.nodes[(lane * 256 + byte) * BYTE_TREE_NODES
+            ..(lane * 256 + byte + 1) * BYTE_TREE_NODES];
+        [
+            if live { tree[first][0] } else { Fp3::ZERO },
+            tree[first][1],
+            if live { tree[first + 1][0] } else { Fp3::ZERO },
+            tree[first + 1][1],
+        ]
     }
 }
 
@@ -237,7 +239,7 @@ pub(super) fn prove_sourcewise(
         8,
         point,
         [root, Auth::ZERO],
-        |layer, child, index| trees.child(layer, child, index, s.live_cells, &get_byte),
+        |layer, index| trees.children(layer, index, s.live_cells, &get_byte),
         fs,
         &mut rows,
         &mut triples,

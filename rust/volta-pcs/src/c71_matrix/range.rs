@@ -328,10 +328,11 @@ pub(super) fn prove_tree(
 /// These are exact Rust operations/getter calls, not machine instructions or
 /// a runtime lower. Proof/output vectors and correlation storage remain
 /// external; `owned_regeneration_heap_peak_bytes` counts only the coexisting
-/// input-point and next-point capacities owned by this function.
+/// input-point, next-point and incremental prefix-weight capacities.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
 pub(super) struct SourceTreeWork {
     pub getter_calls: u64,
+    pub getter_scalar_values: u64,
     pub prefix_terms: u64,
     pub equality_multiplications: u64,
     pub equality_additions: u64,
@@ -342,37 +343,57 @@ pub(super) struct SourceTreeWork {
     pub fold_multiplications: u64,
     pub fold_additions: u64,
     pub fold_subtractions: u64,
+    pub eq_weights_capacity_bytes: usize,
     pub owned_regeneration_heap_peak_bytes: usize,
 }
 
-fn source_folded_value(
+fn source_folded_children(
     layer: usize,
-    child: usize,
     original: usize,
     challenges: &[Fp3],
     suffix: usize,
-    get: &impl Fn(usize, usize, usize) -> Fp3,
+    get: &impl Fn(usize, usize) -> [Fp3; 4],
     work: &mut SourceTreeWork,
-) -> Fp3 {
-    let current = original >> challenges.len();
-    let mut sum = Fp3::ZERO;
-    for prefix in 0..1usize << challenges.len() {
-        let weight = challenges.iter().enumerate().fold(Fp3::ONE, |weight, (bit, &r)| {
-            work.equality_multiplications += 1;
-            if prefix >> (challenges.len() - 1 - bit) & 1 == 1 {
-                weight * r
-            } else {
-                work.equality_subtractions += 1;
-                weight * (Fp3::ONE - r)
-            }
-        });
-        sum += weight * get(layer, child, prefix * current + suffix);
-        work.getter_calls += 1;
-        work.prefix_terms += 1;
-        work.fold_multiplications += 1;
-        work.fold_additions += 1;
+) -> [Fp3; 4] {
+    let q = challenges.len();
+    let current = original >> q;
+    let mut sums = [Fp3::ZERO; 4];
+    let mut weights = Vec::with_capacity(q + 1);
+    weights.push(Fp3::ONE);
+    for (bit, &r) in challenges.iter().enumerate() {
+        weights.push(weights[bit] * (Fp3::ONE - r));
+        work.equality_multiplications += 1;
+        work.equality_subtractions += 1;
     }
-    sum
+    work.eq_weights_capacity_bytes = work
+        .eq_weights_capacity_bytes
+        .max(weights.capacity() * core::mem::size_of::<Fp3>());
+    for prefix in 0..1usize << q {
+        if prefix != 0 {
+            let start = q - 1 - prefix.trailing_zeros() as usize;
+            for bit in start..q {
+                let r = challenges[bit];
+                let factor = if prefix >> (q - 1 - bit) & 1 == 1 {
+                    r
+                } else {
+                    work.equality_subtractions += 1;
+                    Fp3::ONE - r
+                };
+                weights[bit + 1] = weights[bit] * factor;
+                work.equality_multiplications += 1;
+            }
+        }
+        let values = get(layer, prefix * current + suffix);
+        work.getter_calls += 1;
+        work.getter_scalar_values += 4;
+        work.prefix_terms += 1;
+        for child in 0..4 {
+            sums[child] += weights[q] * values[child];
+            work.fold_multiplications += 1;
+            work.fold_additions += 1;
+        }
+    }
+    sums
 }
 
 fn source_folded_equality(
@@ -409,7 +430,7 @@ pub(super) fn prove_tree_sourcewise(
     bits: usize,
     mut point: Vec<Fp3>,
     mut claims: [Auth; 2],
-    get: impl Fn(usize, usize, usize) -> Fp3,
+    get: impl Fn(usize, usize) -> [Fp3; 4],
     fs: &mut Fs,
     rows: &mut std::vec::IntoIter<Auth>,
     triples: &mut Vec<[Auth; 3]>,
@@ -430,20 +451,16 @@ pub(super) fn prove_tree_sourcewise(
             let half = current / 2;
             let mut c = [Fp3::ZERO; 4];
             for i in 0..half {
-                let a: [Fp3; 4] = std::array::from_fn(|child| {
-                    source_folded_value(l, child, original, &next_point, i, &get, &mut work)
-                });
-                let d: [Fp3; 4] = std::array::from_fn(|child| {
-                    source_folded_value(
-                        l,
-                        child,
-                        original,
-                        &next_point,
-                        i + half,
-                        &get,
-                        &mut work,
-                    ) - a[child]
-                });
+                let a = source_folded_children(l, original, &next_point, i, &get, &mut work);
+                let upper = source_folded_children(
+                    l,
+                    original,
+                    &next_point,
+                    i + half,
+                    &get,
+                    &mut work,
+                );
+                let d: [Fp3; 4] = std::array::from_fn(|child| upper[child] - a[child]);
                 work.cubic_subtractions += 4;
                 let mut v = [Fp3::ZERO; 3];
                 for (x, y, coefficient) in
@@ -467,6 +484,11 @@ pub(super) fn prove_tree_sourcewise(
                     work.cubic_additions += 2;
                 }
             }
+            work.owned_regeneration_heap_peak_bytes =
+                work.owned_regeneration_heap_peak_bytes.max(
+                    (point.capacity() + next_point.capacity()) * core::mem::size_of::<Fp3>()
+                        + work.eq_weights_capacity_bytes,
+                );
             let (corrections, a) = authenticate(c, rows);
             let tag = a[0].m + a[0].m + a[1].m + a[2].m + a[3].m - target.m;
             let wire = [corrections[0], corrections[1], corrections[2], corrections[3], tag];
@@ -480,9 +502,11 @@ pub(super) fn prove_tree_sourcewise(
                 );
             rounds.push(wire);
         }
-        let folded: [Fp3; 4] = std::array::from_fn(|child| {
-            source_folded_value(l, child, original, &next_point, 0, &get, &mut work)
-        });
+        let folded = source_folded_children(l, original, &next_point, 0, &get, &mut work);
+        work.owned_regeneration_heap_peak_bytes = work.owned_regeneration_heap_peak_bytes.max(
+            (point.capacity() + next_point.capacity()) * core::mem::size_of::<Fp3>()
+                + work.eq_weights_capacity_bytes,
+        );
         let [p, q, r, s] = folded;
         let equality = source_folded_equality(&point, &next_point, 0, &mut work);
         let (wire, a) = authenticate([p, q, r, s, p * s, r * q, q * s], rows);
@@ -654,6 +678,68 @@ pub(super) fn verify_tree_with_first_weight(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn incremental_prefix_weights_match_independent_scalar_reference() {
+        let all_challenges = [
+            Fp3::ZERO,
+            Fp3::ONE,
+            Fp3::new(Fp::new(3), Fp::new(5), Fp::new(7)),
+            Fp3::new(Fp::new(11), Fp::new(13), Fp::new(17)),
+            Fp3::new(Fp::new(19), Fp::new(23), Fp::new(29)),
+            Fp3::new(Fp::new(31), Fp::new(37), Fp::new(41)),
+        ];
+        let get = |layer: usize, index: usize| {
+            std::array::from_fn(|child| {
+                Fp3::new(
+                    Fp::new((1 + layer + 7 * index + child) as u64),
+                    Fp::new((3 + 2 * layer + index + 5 * child) as u64),
+                    Fp::new((9 + layer + 3 * index + 11 * child) as u64),
+                )
+            })
+        };
+        let original = 64;
+        for q in 0..=6 {
+            let challenges = &all_challenges[..q];
+            let current = original >> q;
+            for suffix in 0..current {
+                let expected: [Fp3; 4] = std::array::from_fn(|child| {
+                    (0..1usize << q).fold(Fp3::ZERO, |sum, prefix| {
+                        let weight = challenges.iter().enumerate().fold(
+                            Fp3::ONE,
+                            |weight, (bit, &r)| {
+                                weight
+                                    * if prefix >> (q - 1 - bit) & 1 == 1 {
+                                        r
+                                    } else {
+                                        Fp3::ONE - r
+                                    }
+                            },
+                        );
+                        sum + weight * get(2, prefix * current + suffix)[child]
+                    })
+                });
+                let mut work = SourceTreeWork::default();
+                let actual = source_folded_children(
+                    2,
+                    original,
+                    challenges,
+                    suffix,
+                    &get,
+                    &mut work,
+                );
+                assert_eq!(actual, expected);
+                assert_eq!(work.getter_calls, 1 << q);
+                assert_eq!(work.getter_scalar_values, 4 << q);
+                assert_eq!(work.prefix_terms, 1 << q);
+                assert_eq!(work.equality_multiplications, (2 << q) - 2);
+                assert_eq!(work.equality_subtractions, (1 << q) - 1);
+                assert_eq!(work.fold_multiplications, 4 << q);
+                assert_eq!(work.fold_additions, 4 << q);
+                assert!(work.eq_weights_capacity_bytes >= (q + 1) * core::mem::size_of::<Fp3>());
+            }
+        }
+    }
 
     fn context() -> AttemptContext {
         AttemptContext {

@@ -318,6 +318,7 @@ pub(in super::super) fn work_census(
     }
     let n = 1u64 << cell_bits;
     let c = cell_bits as u64;
+    let replay_repetitions = c.max(1);
     let live: u64 = assigned.iter().sum();
     if live > n {
         return Err("GKR work census live cells".into());
@@ -353,7 +354,7 @@ pub(in super::super) fn work_census(
         mul += products;
         add += additions;
         sub += subtractions;
-        frame_callbacks += live * c;
+        frame_callbacks += live * replay_repetitions;
         // Cell-first reconstruction: each live original cell is replayed
         // once per cell challenge, stopping at the required input layer.
         let replay: u64 = programs
@@ -363,9 +364,11 @@ pub(in super::super) fn work_census(
                 cells * p.levels.iter().take(d - 1).map(|l| l.len() as u64).sum::<u64>()
             })
             .sum::<u64>()
-            * c;
+            * replay_repetitions;
         boolean_replay_gates += replay;
         let w = widths[d - 1] as u64;
+        let terminal_interpolations =
+            if c == 0 { 0 } else { w + programs.len() as u64 };
         layers.push(serde_json::json!({
                 "depth":d, "input_width":w, "output_width":widths[d],
                 "and":and, "xor":xor, "copy":copy,
@@ -381,9 +384,13 @@ pub(in super::super) fn work_census(
                 "index_vector_interpolations":2*(w-1),
                 "dense_previous_bytes":n*w*24,
                 "cell_first_rows_selectors_and_support_bytes":(3*w+2*programs.len() as u64)*24+programs.len() as u64,
-                "logical_live_frame_callbacks":live*c,
+                "logical_live_frame_callbacks":live*replay_repetitions,
                 "field_value_source_scalars":live*c*w,
-                "field_fold_mul_add_each":live*c*(w+1),
+                "field_fold_mul_add_each_reference_generic_rows_before_terminal":live*c*(w+1),
+                "field_fold_multiplications_active_boolean_rows":live*c+terminal_interpolations,
+                "field_fold_additions_active_boolean_rows":live*c*(w+1)+terminal_interpolations,
+                "field_fold_subtractions_terminal":terminal_interpolations,
+                "boolean_fold_masks_active":live*c*w,
                 "prefix_weight_multiplications":n*c*c.saturating_sub(1)/2,
                 "prefix_weight_subtractions":n*c*c.saturating_sub(1)/4,
                 "scalar_boolean_replay_gate_evaluations":replay,
@@ -411,7 +418,11 @@ pub(in super::super) fn work_census(
         "cell_first_logical_frame_callbacks":frame_callbacks,
         "dummy_row_callbacks":0,
         "field_value_source_scalars":live*c*widths[..depth].iter().map(|&w| w as u64).sum::<u64>(),
-        "field_fold_mul_add_each":live*c*(widths[..depth].iter().map(|&w| w as u64).sum::<u64>()+depth as u64),
+        "field_fold_mul_add_each_reference_generic_rows_before_terminal":live*c*(widths[..depth].iter().map(|&w| w as u64).sum::<u64>()+depth as u64),
+        "field_fold_multiplications_active_boolean_rows":live*c*depth as u64+if c == 0 {0} else {widths[..depth].iter().map(|&w| w as u64).sum::<u64>()+programs.len() as u64*depth as u64},
+        "field_fold_additions_active_boolean_rows":live*c*(widths[..depth].iter().map(|&w| w as u64).sum::<u64>()+depth as u64)+if c == 0 {0} else {widths[..depth].iter().map(|&w| w as u64).sum::<u64>()+programs.len() as u64*depth as u64},
+        "field_fold_subtractions_terminal":if c == 0 {0} else {widths[..depth].iter().map(|&w| w as u64).sum::<u64>()+programs.len() as u64*depth as u64},
+        "boolean_fold_masks_active":live*c*widths[..depth].iter().map(|&w| w as u64).sum::<u64>(),
         "prefix_weight_multiplications":n*c*c.saturating_sub(1)/2*depth as u64,
         "prefix_weight_subtractions":n*c*c.saturating_sub(1)/4*depth as u64,
         "cell_first_scalar_boolean_replay_gates":boolean_replay_gates,
@@ -443,6 +454,7 @@ pub(in super::super) struct SourceCellWork {
     pub selector_weight_subtractions: u64,
     pub fold_weight_multiplications: u64,
     pub fold_value_multiplications: u64,
+    pub boolean_fold_masks: u64,
     pub fold_additions: u64,
     pub fold_subtractions: u64,
     pub coefficient_multiplications: u64,
@@ -466,6 +478,7 @@ pub(in super::super) struct SourceProverWork {
     pub boolean_and_gates: u64,
     pub boolean_xor_gates: u64,
     pub boolean_copy_gates: u64,
+    pub boolean_fold_masks: u64,
     pub boolean_replay_heap_peak_bytes: usize,
     pub boolean_input_heap_peak_bytes: usize,
     pub cell_phase_owned_heap_peak_bytes: usize,
@@ -501,7 +514,7 @@ fn prefix_weight(prefix: usize, challenges: &[Fp3], work: &mut SourceCellWork) -
 /// structural API cannot silently introduce two programs for one cell. The
 /// five owned vectors are exactly
 /// three width-W rows and two P-selector rows; there is no N*W or P*N table.
-fn source_cell_coefficients(
+fn source_cell_coefficients<const BOOLEAN_ROWS: bool>(
     programs: &[Circuit],
     depth: usize,
     width: usize,
@@ -512,13 +525,13 @@ fn source_cell_coefficients(
     weights: &[Fp3],
     work: &mut SourceCellWork,
 ) -> Result<[Fp3; 4], String> {
-    Ok(source_cell_round(
+    Ok(source_cell_round::<BOOLEAN_ROWS>(
         programs, depth, width, cell_count, challenges, row, selector, weights, work,
     )?
     .coefficients)
 }
 
-fn source_cell_round(
+fn source_cell_round<const BOOLEAN_ROWS: bool>(
     programs: &[Circuit],
     depth: usize,
     width: usize,
@@ -595,8 +608,18 @@ fn source_cell_round(
                     work.row_source_callbacks += 1;
                     work.value_source_scalars += width as u64;
                     for wire in 0..width {
-                        folded[wire] += weight * scratch[wire];
-                        work.fold_value_multiplications += 1;
+                        if BOOLEAN_ROWS {
+                            // The active caller fills this row directly from
+                            // Circuit::replay_layer bits. Keep the complete
+                            // invariant check in debug builds, then use only
+                            // the canonical base limb to form the mask.
+                            debug_assert!(scratch[wire] == Fp3::ZERO || scratch[wire] == Fp3::ONE);
+                            folded[wire] += weight.mul_bool(scratch[wire].c0.value() == 1);
+                            work.boolean_fold_masks += 1;
+                        } else {
+                            folded[wire] += weight * scratch[wire];
+                            work.fold_value_multiplications += 1;
+                        }
                         work.fold_additions += 1;
                     }
                 }
@@ -900,7 +923,7 @@ fn prove_impl(
             };
             for _ in 0..point.len() {
                 let mut work = SourceCellWork::default();
-                let result = source_cell_round(
+                let result = source_cell_round::<true>(
                     s.programs,
                     depth,
                     width,
@@ -1049,6 +1072,8 @@ fn prove_impl(
     source_work.boolean_and_gates = replay_and.get();
     source_work.boolean_xor_gates = replay_xor.get();
     source_work.boolean_copy_gates = replay_copy.get();
+    source_work.boolean_fold_masks =
+        source_work.cell_rounds.iter().map(|work| work.boolean_fold_masks).sum();
     source_work.boolean_replay_heap_peak_bytes = replay_heap.get();
     source_work.boolean_input_heap_peak_bytes = replay_input_heap.get();
     source_work.cell_phase_owned_heap_peak_bytes =
@@ -1297,7 +1322,7 @@ mod tests {
             let expected =
                 cell_coefficients(&statement, 1, width, &dense, &dense_selectors, &weights);
             let mut work = SourceCellWork::default();
-            let actual = source_cell_coefficients(
+            let actual = source_cell_coefficients::<false>(
                 statement.programs,
                 1,
                 width,
@@ -1348,7 +1373,7 @@ mod tests {
 
         let mut work = SourceCellWork::default();
         assert!(
-            source_cell_coefficients(
+            source_cell_coefficients::<false>(
                 statement.programs,
                 0,
                 width,
@@ -1362,7 +1387,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            source_cell_coefficients(
+            source_cell_coefficients::<false>(
                 statement.programs,
                 1,
                 width,
@@ -1375,7 +1400,7 @@ mod tests {
             )
             .is_err()
         );
-        let failure = source_cell_coefficients(
+        let failure = source_cell_coefficients::<false>(
             statement.programs,
             1,
             width,
@@ -1389,7 +1414,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(failure, "replay getter rejected");
 
-        let failure = source_cell_coefficients(
+        let failure = source_cell_coefficients::<false>(
             statement.programs,
             1,
             width,
@@ -1406,7 +1431,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(failure, "tile selector rejected");
 
-        let selector_failure = source_cell_coefficients(
+        let selector_failure = source_cell_coefficients::<false>(
             statement.programs,
             1,
             width,
@@ -1480,7 +1505,7 @@ mod tests {
             let mut prefix = Vec::new();
             for r in [signed(11), signed(13)] {
                 let mut work = SourceCellWork::default();
-                let actual = source_cell_coefficients(
+                let actual = source_cell_coefficients::<false>(
                     &programs,
                     depth,
                     width,
@@ -1505,10 +1530,38 @@ mod tests {
                     &mut work,
                 )
                 .unwrap();
+                let mut boolean_work = SourceCellWork::default();
+                let boolean_actual = source_cell_coefficients::<true>(
+                    &programs,
+                    depth,
+                    width,
+                    4,
+                    &prefix,
+                    &|cell, out| {
+                        let p = assignments[cell].expect("dummy cells never replay");
+                        let (layer, _) = programs[p].replay_layer(
+                            &input(cell),
+                            1,
+                            (depth - 1).min(programs[p].levels.len()),
+                        )?;
+                        out.fill(Fp3::ZERO);
+                        for (v, bit) in out.iter_mut().zip(layer) {
+                            *v = signed(bit as i64);
+                        }
+                        Ok(())
+                    },
+                    &|cell| Ok(assignments[cell].map(|p| (p, equality[cell]))),
+                    &weights,
+                    &mut boolean_work,
+                )
+                .unwrap();
                 assert_eq!(
                     actual,
                     cell_coefficients(&statement, depth, width, &dense, &selectors, &weights)
                 );
+                assert_eq!(boolean_actual, actual);
+                assert_eq!(work.boolean_fold_masks, 0);
+                assert_eq!(boolean_work.boolean_fold_masks, boolean_work.value_source_scalars);
                 assert_eq!(work.row_source_callbacks, 3);
                 fold(&mut dense, r);
                 for selector in &mut selectors {
@@ -1698,6 +1751,31 @@ mod tests {
             let (proof, point, original, source_work) =
                 prove_sourcewise(&statement, |i| used[i], &mut fs, &mut prows).unwrap();
             assert_eq!(source_work.cell_rounds.len(), c * (widths.len() - 1));
+            assert_eq!(
+                source_work.boolean_fold_masks,
+                source_work
+                    .cell_rounds
+                    .iter()
+                    .map(|work| work.value_source_scalars)
+                    .sum::<u64>()
+            );
+            if c == 0 {
+                let mut assigned = vec![0u64; programs.len()];
+                for &program in assignments.iter().flatten() {
+                    assigned[program] += 1;
+                }
+                let census = work_census(programs, &assigned, c).unwrap();
+                assert_eq!(
+                    census["cell_first_logical_frame_callbacks"].as_u64().unwrap(),
+                    source_work.boolean_replay_calls
+                );
+                assert_eq!(
+                    census["cell_first_scalar_boolean_replay_gates"].as_u64().unwrap(),
+                    source_work.boolean_and_gates
+                        + source_work.boolean_xor_gates
+                        + source_work.boolean_copy_gates
+                );
+            }
             assert!(source_work.cell_rounds.iter().all(|work| work.owned_heap_peak_bytes
                 <= (3 * (1 << 14) + 2 * programs.len()) * 24 + programs.len()));
             assert!(source_work.boolean_replay_heap_peak_bytes <= 2 * (1 << 14) * 8);

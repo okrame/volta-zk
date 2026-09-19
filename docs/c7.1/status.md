@@ -338,8 +338,11 @@ prodotti Fp3, prima di fold/replay. La scalar reference non è una schedule
 canonica ammessa; i probe CUDA non danno un lower per un kernel fuso.
 L'endpoint byte viene adattato allo stesso transcript con LUT pubblica
 lane/byte/nodo da 100.466.688 B al posto dell'albero denso da oltre 210 TB.
-Il ledger conta separatamente la rigenerazione MSB, senza trasformare
-accessi logici in HBM. Restano lavoro completo, workspace congiunto di
+Il ledger conta la rigenerazione MSB con pesi condivisi fra quattro figli:
+i prodotti Eq diminuiscono del 95,07%; le fold Boolean del GKR usano ora
+maschere dei limb mantenendo le addizioni. I confronti con le prove dense
+passano. Non si trasformano accessi logici in HBM o prodotti sorgente in
+istruzioni H100. Restano lavoro completo, workspace congiunto di
 circuiti/prove/correlazioni/allocator e port accelerato.
 Nessuna GPU, spill o spesa autorizzata.
 

@@ -291,6 +291,15 @@ impl Fp3 {
         Fp3::new(self.c0 * rhs, self.c1 * rhs, self.c2 * rhs)
     }
 
+    /// Multiplies by a Boolean without field multiplication or data-dependent
+    /// lookup. Each limb is canonical, so masking it to itself or zero keeps
+    /// the private raw representation canonical.
+    #[inline]
+    pub fn mul_bool(self, rhs: bool) -> Fp3 {
+        let mask = 0u64.wrapping_sub(u64::from(rhs));
+        Fp3::new(Fp(self.c0.0 & mask), Fp(self.c1.0 & mask), Fp(self.c2.0 & mask))
+    }
+
     /// Multiplicative inverse in `F_p[u]/(u^3-2)`. Panics on zero.
     pub fn inv(self) -> Fp3 {
         let two = Fp::new(2);
@@ -525,6 +534,24 @@ mod tests {
         }
 
         assert_eq!(left * left.inv(), Fp3::ONE);
+    }
+
+    #[test]
+    fn fp3_boolean_mask_preserves_canonical_nonbase_limbs() {
+        for value in [
+            Fp3::ZERO,
+            Fp3::ONE,
+            Fp3::new(Fp::new(P - 1), Fp::new(P - 2), Fp::new(P - 3)),
+        ] {
+            assert_eq!(value.mul_bool(false), Fp3::ZERO);
+            assert_eq!(value.mul_bool(true), value);
+            assert!(value.mul_bool(false).to_bytes().chunks_exact(8).all(|limb| {
+                u64::from_le_bytes(limb.try_into().unwrap()) < P
+            }));
+            assert!(value.mul_bool(true).to_bytes().chunks_exact(8).all(|limb| {
+                u64::from_le_bytes(limb.try_into().unwrap()) < P
+            }));
+        }
     }
 
     #[test]

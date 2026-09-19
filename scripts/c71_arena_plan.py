@@ -163,9 +163,11 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                 {'event':'RMS_last_numeric_getter_consumer_fence','free':['getter:cuts']},
                 {'event':'RMS_sourcewise_original_byte_obligation','allocate':{
                     'RMS:byte_LUT':byte_endpoint['lut_capacity_bytes'],
-                    'RMS:byte_coefficients':16*256*24}},
+                    'RMS:byte_coefficients':16*256*24,
+                    'RMS:byte_prefix_weights':byte_endpoint['max_prefix_weight_payload_bytes']}},
                 {'event':'RMS_original_byte_obligation_fence',
-                 'free':['RMS:original_PYS','RMS:byte_LUT','RMS:byte_coefficients']}]
+                 'free':['RMS:original_PYS','RMS:byte_LUT','RMS:byte_coefficients',
+                         'RMS:byte_prefix_weights']}]
 
         layouts={}
         for name,events in chains.items():

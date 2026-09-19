@@ -1021,6 +1021,12 @@ i confronti ridotti verificano byte, transcript e endpoint densi originali.
 Il verifier deve calcolare massa viva e selettori senza Eq(N) o P*N.
 La LUT pubblica dell'endpoint byte sostituisce gli alberi per cella,
 conservando le otto discese e le medesime correzioni/challenge/MAC.
+Il getter legge i quattro figli insieme; i pesi dei prefissi sono aggiornati
+incrementalmente senza divisioni e senza saltare pesi nulli. Il replay
+Boolean del GKR sostituisce solo i prodotti per bit con maschere dei limb
+canonici, eseguendo comunque ogni addizione. La specializzazione interna
+richiede righe prodotte da `Circuit::replay_layer`, non callback arbitrarie
+con valori di campo; i controlli del transcript rimangono gli stessi.
 Il ledger distingue rigenerazione, campo, getter e memoria; il fixture
 pubblico a scale zero non è un profilo calibrato. Il percorso scalare
 ridotto non ammette il canonico né chiude il workspace fisico completo.

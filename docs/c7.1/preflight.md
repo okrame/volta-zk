@@ -1211,7 +1211,7 @@ conserva i cut anche per le statistiche/X originali; li rilascia dopo
 l'ultimo consumer numerico e P/S/Y dopo l'obbligo byte RMS,
 prima di RNE/range. Riusa serialmente lo slot range da 2 GiB.
 Con LUT e coefficienti dell'endpoint byte, i picchi vivi nominati sono
-2.845.019.904 / 2.884.341.504 / 2.923.663.104 B; i massimi degli indirizzi
+2.845.020.928 / 2.884.342.528 / 2.923.664.128 B; i massimi degli indirizzi
 first-fit sono 2.943.302.400 / 2.982.624.000 / 3.021.945.600 B.
 Non aumentano i massimi nominati del piano integrato.
 Le capacità dei Vec sono censite; allocator e reader, insieme al replay Booleano limitato,
@@ -1247,12 +1247,26 @@ fattorizzato conta **377.460.232.230.821 moltiplicazioni Fp3**, prima dei
 fold, replay, adapter, FS e MAC. Sono conteggi dell'algoritmo specificato,
 non un lower hardware o il profilo reale calibrato. Sono censiti anche i
 ratio EXP30 a O=0/150/300. Le fusioni non danno credito al port canonico.
+Il ledger della risposta integra RMS ed EXP30 per O=0/150/300, derivando
+la geometria dai record nativi immutabili e ricalcolando le fold attive.
+Il solo nucleo coefficienti combinato conta 386.961.541.320.376 /
+405.831.540.624.554 / 424.701.435.131.804 prodotti Fp3; le maschere Boolean
+sono 1.292.872.328.352.000 / 1.449.092.941.632.000 /
+1.602.554.893.632.000. Getter, Eq, fold e coefficienti rimangono categorie
+separate. Le soglie dividono il lavoro noto per il budget producer di
+0,8 s: sono condizioni parziali da soddisfare, non service-rate o lower
+hardware. Anche range/commit/aperture leggono i budget correnti dalla
+stessa tabella del report, senza denominatori storici hardcoded.
 
 Il replay scalare del fixture RMS richiede **988.837.022.208 callback**
 per i livelli Booleani e **48.047.958.035.255.808 gate Booleani**;
-i fold contano **1.219.377.310.814.208 prodotti/addizioni Fp3** prima dei
-terminali. Questi costi sono aggiuntivi al nucleo coefficienti. Sono
-operazioni sorgente della reference, non istruzioni o lower hardware.
+le **1.218.388.473.792.000** moltiplicazioni per bit delle righe sono ora
+maschere dei limb canonici, senza saltare addizioni o getter. Restano
+988.837.022.208 prodotti Fp3 per i selettori, 1.219.377.310.814.208 addizioni
+prima dei terminali e 121.240 interpolazioni terminali. Il census distingue
+mask, prodotti, addizioni e sub terminali; il caso N=1 conta il replay
+senza attribuirgli fold di celle. Questi costi sono aggiuntivi al nucleo
+coefficienti. Sono operazioni sorgente della reference, non istruzioni o lower hardware.
 I contatori runtime separano replay, capacità dei Vec, getter e coefficienti;
 indice, autenticazione, codec e workspace complessivo non sono ancora chiusi.
 
@@ -1263,9 +1277,18 @@ La variante a getter usa una LUT pubblica di 511 nodi per byte/lane:
 checkpoint originale fino all'ultimo consumer; il piano li rilascia insieme
 prima di range. Nessuna Eq o matrice child proporzionale al dominio è
 necessaria per la rigenerazione MSB. Per gli otto livelli D33..D40 la
-reference scalare conta **350.744.209.260.544 richieste al getter byte**,
-inclusa la contrazione terminale: la riduzione di memoria non riduce quel
-lavoro. `byte_source_trace` distingue fold, pesi Eq, cubiche e LUT, ma
+reference ora legge i quattro figli insieme: **87.686.052.315.136 richieste
+al getter byte**, inclusa la contrazione terminale, per
+350.744.209.260.544 valori scalari. I pesi Eq dei prefissi vengono aggiornati
+solo sui bit cambiati dal riporto binario, nell'ordine MSB originale. Non
+usa divisioni o salti quando una sfida/peso vale 0 o 1. Condivide i pesi
+fra i quattro figli: il conteggio Eq scende da 7.032.424.831.646.836 a
+**346.363.342.617.732 prodotti Fp3** (-95,07%), comprese le Eq analitiche.
+Restano 350.744.209.260.544 prodotti/addizioni per i valori, senza credito
+di riduzione di quelle operazioni. Il buffer dei pesi ha al massimo 984 B
+nel caso RMS, 1.024 B allineati nel piano; coesiste con entrambi i punti.
+I test verificano sfide non base, 0/1, ogni prefisso/suffisso fino a sei bit
+e byte/FS/MAC/PCS originali. `byte_source_trace` distingue questi costi, ma
 esclude ancora MAC/FS, coefficienti pubblici, getter originale e allocator.
 Le richieste ripetute alla LUT non sono automaticamente transazioni HBM.
 La schedule canonica richiede specializzazione/fusione e un conteggio

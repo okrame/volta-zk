@@ -6,8 +6,10 @@ This file composes bounded traces, retaining explicit unknown-work gates.
 """
 import json
 import math
+from pathlib import Path
 
 import c71_getter_trace as getter
+import c71_gkr_screen as gkr
 import c71_pcg_trace as pcg
 import c71_streaming_screen as screen
 import c71_whir_trace as whir
@@ -19,14 +21,14 @@ W_BYTES = 61_394_690_560
 KV_PER_TOKEN = 4*(50*16*256+10*4*512)
 # Owner-authorized complete-response contract; budgets remain targets.
 BUDGET_SECONDS = {
-    'inference':3.0,
-    'proof_getter_replay':14.0,
-    'proof_producer_relations':1.0,
-    'proof_range_W_A':18.0,
-    'proof_linear_W_A_history':1.0,
+    'inference':1.5,
+    'proof_getter_replay':17.0,
+    'proof_producer_relations':0.8,
+    'proof_range_W_A':17.9,
+    'proof_linear_W_A_history':0.8,
     'proof_initial_commit_A':7.0,
     'proof_first_oracle_openings':15.2,
-    'proof_WHIR_remaining':3.0,
+    'proof_WHIR_remaining':2.0,
     'proof_PCG_MAC':2.0,
     'proof_serialization_transport':0.3,
     'proof_host_waits_verifier_interactions':0.5,
@@ -49,6 +51,75 @@ PHASE_CONTROLS = {
     'proof_host_waits_verifier_interactions':'verifier execution, round trips and bounded host stalls',
 }
 assert set(PHASE_CONTROLS)==set(BUDGET_SECONDS)
+
+GKR_RECORD = (Path(__file__).resolve().parents[1] / 'benchmarks' / 'results' /
+              'c71-bounded-rms-gkr-2026-09-19-3e7f24eb332b.json')
+
+
+def producer_gkr_trace(old):
+    """Known source work for RMS and this response's EXP30 relation.
+
+    Counts are mathematical/source-level operations. Dividing by the phase
+    budget states an admission throughput target, never a measured bound.
+    """
+    natives = [gkr.native_record(GKR_RECORD, 'RMS', 0),
+               gkr.native_record(GKR_RECORD, 'EXP30', old)]
+    traces = [gkr.source_prover_trace(native) for native in natives]
+    coefficient_cores = [
+        gkr.canonical(natives[0])['factored_arithmetic_after_structural_support_pruning'],
+        gkr.ratio_factored_arithmetic(natives[1], old),
+    ]
+    scalar = {
+        'original_frame_callbacks':sum(
+            trace['cell_phase']['cell_first_logical_frame_callbacks'] for trace in traces),
+        'Boolean_replay_gate_evaluations':sum(
+            trace['cell_phase']['cell_first_scalar_boolean_replay_gates'] for trace in traces),
+        'field_values_loaded_from_rows':sum(
+            trace['cell_phase']['field_value_source_scalars'] for trace in traces),
+        'byte_endpoint_getter_calls':sum(
+            trace['byte_endpoint']['counted_work']['getter_calls'] for trace in traces),
+    }
+    masks = sum(trace['cell_phase']['boolean_fold_masks_active'] for trace in traces)
+    field = {
+        'cell_fold_multiplications':sum(
+            trace['cell_phase']['field_fold_multiplications_active_boolean_rows'] for trace in traces),
+        'cell_fold_additions':sum(
+            trace['cell_phase']['field_fold_additions_active_boolean_rows'] for trace in traces),
+        'cell_fold_subtractions':sum(
+            trace['cell_phase']['field_fold_subtractions_terminal'] for trace in traces),
+        'prefix_weight_multiplications':sum(
+            trace['cell_phase']['prefix_weight_multiplications'] for trace in traces),
+        'prefix_weight_subtractions':sum(
+            trace['cell_phase']['prefix_weight_subtractions'] for trace in traces),
+        'selector_equality_multiplications':sum(
+            trace['cell_phase']['structural_selector_assigned_terms']
+            * (native['padded_cells'].bit_length()-1)
+            for trace, native in zip(traces, natives)),
+        **{f'factored_coefficient_{name}':sum(core[name] for core in coefficient_cores)
+           for name in ('Fp3_mul', 'Fp3_add', 'Fp3_sub', 'Fp3_neg')},
+    }
+    for name in ('equality_multiplications', 'equality_additions', 'equality_subtractions',
+                 'cubic_multiplications', 'cubic_additions', 'cubic_subtractions',
+                 'fold_multiplications', 'fold_additions', 'fold_subtractions'):
+        field['byte_endpoint_'+name] = sum(
+            trace['byte_endpoint']['counted_work'][name] for trace in traces)
+    budget = BUDGET_SECONDS['proof_producer_relations']
+    return {'credit':False, 'canonical_calibrated_profile':False,
+        'relations':['RMS', f'EXP30_O{old}'], 'record':GKR_RECORD.name,
+        'source_level_scalar_getter_work_known_components':scalar,
+        'branchless_Boolean_fold_masks':masks,
+        'source_level_field_work_known_components':field,
+        'phase_budget_seconds':budget,
+        'partial_admission_throughput_targets':{
+            **{name+'_per_second':value/budget for name,value in scalar.items()},
+            'Boolean_fold_masks_per_second':masks/budget,
+            **{name+'_per_second':value/budget for name,value in field.items()}},
+        'complete_work':False, 'complete_physical_peak':False,
+        'missing':['index-round and terminal authentication arithmetic',
+                   'selector equality complement subtractions',
+                   'MAC/FS/serialization work',
+                   'original frame getter integer work and traffic',
+                   'native fused-kernel service rate and complete allocator liveness']}
 
 
 def partition_times(upper_by_phase):
@@ -151,6 +222,7 @@ def report():
     correlations=pcg.report()
     cases=[]
     for slot,old in enumerate((0,150,300)):
+        producer_gkr = producer_gkr_trace(old)
         routes=getter.getter_trace(old)
         generation=getter.scatter_generation_trace(old)
         # Explicit no-folded-state replay model, before unknown sumcheck work.
@@ -181,11 +253,15 @@ def report():
         retained_joint_lower=retained_replay_lower+lower['range_merges_commit_FFT_first_openings_joint_lower_seconds']
         demands={
             'proof_getter_replay':{'integer_MACs_per_second_for_named_replays':replay_macs/BUDGET_SECONDS['proof_getter_replay']},
+            'proof_producer_relations':producer_gkr['partial_admission_throughput_targets'],
             'proof_range_W_A':{'named_merge_issue_instructions_per_second':
-                lower['range_W_A_named_merge_issue_lower_seconds']*(132*4*32*2e9)/18},
-            'proof_initial_commit_A':{'FFT_butterflies_per_second':3_023_656_976_384/7},
+                lower['range_W_A_named_merge_issue_lower_seconds']*(132*4*32*2e9)
+                /BUDGET_SECONDS['proof_range_W_A']},
+            'proof_initial_commit_A':{'FFT_butterflies_per_second':
+                3_023_656_976_384/BUDGET_SECONDS['proof_initial_commit_A']},
             'proof_first_oracle_openings':{'FFT_butterflies_per_second':
-                lower['split_payload_pad_openings_first_oracles_Fp_butterflies']/15.2},
+                lower['split_payload_pad_openings_first_oracles_Fp_butterflies']
+                /BUDGET_SECONDS['proof_first_oracle_openings']},
             'proof_PCG_MAC':{'selected_trie_H_work_upper_per_second_for_phase_budget':
                 correlations['responses'][slot]['union_trie_H_evaluations_upper_per_role']/BUDGET_SECONDS['proof_PCG_MAC'],
                 'EAGen_SHAKE_calls_per_second_for_phase_budget':22*pcg.ROWS[slot][1]/BUDGET_SECONDS['proof_PCG_MAC']},
@@ -199,7 +275,7 @@ def report():
                     'factored_resident_coefficient_Fp3_mul_expressions',
                     'resident_scalar_interpolations','Gram_build_Fp3_mul_expressions',
                     'lower_child_weighted_accumulations'):
-            demands['proof_range_W_A'][key+'_per_second']=sum(r[key] for r in ranges)/18
+            demands['proof_range_W_A'][key+'_per_second']=sum(r[key] for r in ranges)/BUDGET_SECONDS['proof_range_W_A']
         demands['proof_linear_W_A_history']={
             'W_only_contraction_updates_per_second':screen.suffix_first_weight_budget()['both_scans_update_model']}
         demands['proof_WHIR_remaining']={
@@ -237,6 +313,7 @@ def report():
                 'native_provider_inference_replays_deducted':0},
             'getter_census':{k:v for k,v in routes.items() if k!='sources'},
             'sourcewise_generator':{k:v for k,v in generation.items() if k!='events'},
+            'producer_GKR_partial_work':producer_gkr,
             'memory':integrated_memory(old,pcs,correlations),
             'retained_A_alternative':{
                 'original_A_passes_by_generation':retained_passes,

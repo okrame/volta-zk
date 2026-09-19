@@ -24,6 +24,18 @@ def test_composed_trace_keeps_current_old_sources_memory_and_unknowns():
         assert c['times_seconds']==dict(T_inference=None,T_proof_only=None,T_response_total=None)
         assert c['known_source_visits_before_sumcheck']['A_by_generation']==[73]*(c['old_tokens']//150)+[611]
         assert c['proof_getter_replay_work']['native_provider_inference_replays_deducted']==0
+        producer=c['producer_GKR_partial_work']
+        assert producer['relations']==['RMS',f'EXP30_O{c["old_tokens"]}']
+        assert producer['phase_budget_seconds']==.8
+        assert not producer['canonical_calibrated_profile'] and not producer['complete_work']
+        assert producer['branchless_Boolean_fold_masks']>0
+        assert producer['source_level_scalar_getter_work_known_components'][
+            'original_frame_callbacks']>0
+        field=producer['source_level_field_work_known_components']
+        assert field['cell_fold_multiplications']>0
+        assert field['factored_coefficient_Fp3_mul']>377_813_615_257_794
+        assert c['phase_throughput_conditions_partial']['proof_producer_relations']==producer[
+            'partial_admission_throughput_targets']
         assert c['memory']['known_global_reserved_bytes']==68_242_645_504
         assert c['memory']['physical_allocated_peak_complete'] is None
         assert c['memory']['known_peak_event']['chain']==f'A{c["old_tokens"]//150}'

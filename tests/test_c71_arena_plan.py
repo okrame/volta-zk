@@ -93,9 +93,9 @@ def test_compact_rms_original_bytes_are_released_before_range():
     for case in report['cases']:
         plan=case['address_layouts']['compact_RMS_original_frames']
         assert plan['fits_with_operational_margin']
-        assert plan['events'][-1]['free']==['RMS:original_PYS','RMS:byte_LUT','RMS:byte_coefficients']
+        assert plan['events'][-1]['free']==['RMS:original_PYS','RMS:byte_LUT','RMS:byte_coefficients','RMS:byte_prefix_weights']
         assert dict((key,size) for key,_,size in plan['events'][-2]['allocate'])=={
-            'RMS:byte_LUT':100_466_688,'RMS:byte_coefficients':98_304}
+            'RMS:byte_LUT':100_466_688,'RMS:byte_coefficients':98_304,'RMS:byte_prefix_weights':1024}
         assert plan['events'][-1]['fence_before_release']
         assert plan['events'][-1]['live_aligned_bytes']==sum(n for _,_,n in plan['initial_allocations'])
 

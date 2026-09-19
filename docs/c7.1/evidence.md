@@ -1031,3 +1031,11 @@ ratio EXP30 O=0/150/300. Il controllo esaustivo ridotto comprende
 assegnazioni intercalate e padding. I conteggi sorgente e SASS dei probe
 CUDA restano distinti: non sono tempi del kernel fuso o del prover completo.
 Nessun nuovo teorema Lean, credito al profilo calibrato o autorizzazione GPU.
+
+Il [record immutabile su SHA pulita `3e7f24eb332b`](../../benchmarks/results/c71-bounded-rms-gkr-2026-09-19-3e7f24eb332b.json)
+conserva **9 test Rust e 17 Python** passati, build Rust/CUDA seriali,
+SASS dei tre gate, contatori per O=0/150/300 e arena plan. Tutti i 29×5
+supporti RMS coincidono fra Rust e Python. Include separatamente gli
+errori di directory/PATH dei tentativi di sviluppo; `git_dirty:false`
+riguarda il run registrato. Nessuna esecuzione GPU o misura temporale
+completa; restano aperti proof sourcewise, kernel fuso e picco fisico.

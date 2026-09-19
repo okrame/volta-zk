@@ -455,7 +455,7 @@ def reduced_joint_trace(log):
     are deliberately not combined into a fictitious physical peak.
     """
     markers = ('C71_INTEGRATED_GETTER ', 'C71_INTEGRATED_GKR ',
-               'C71_LOOKUP_SOURCE_WORK ', 'C71_INTEGRATED_POSITIVE ')
+               'C71_LOOKUP_SOURCE_WORK ', 'C71_INTEGRATED_POSITIVE ', 'C71_EXP30_RATIO_CACHE ')
     parsed = {marker: [] for marker in markers}
     for line in log.splitlines():
         for marker in markers:
@@ -483,11 +483,13 @@ def reduced_joint_trace(log):
     lookups = parsed[markers[2]]
     return dict(credit=False, scope='one reduced O0 positive proof, ideal MAC, CPU scalar reference',
         positive=parsed[markers[3]][0], getter_phases=phases, getter_total=totals,
+        EXP30_original_ratio_cache=parsed[markers[4]],
         GKR_cell_round_operations=operations([r for g in gkrs for r in g['cell_rounds']]),
         GKR_pattern_prefix=[g['pattern_prefix'] for g in gkrs if g.get('pattern_prefix',{}).get('prefix_rounds')],
         GKR_byte_tree_operations=operations([g['byte_endpoint']['tree'] for g in gkrs]),
         lookup_tree_operations=operations([l['work']['tree'] for l in lookups]),
         ownership={'getter':'all producer reconstruction belongs here, including callbacks from PCS/GKR/lookup',
+                   'EXP30_original_ratio_cache':'source fill charged in getter; subsequent cache reads are not numerical reconstruction',
                    'GKR_cell':'cell coefficients and fold work only; excludes byte endpoint below',
                    'GKR_pattern_prefix':'replaces initial cell rounds; numerical getter already charged above; histogram/replay counters separate',
                    'GKR_byte':'original-byte fraction tree only; its getter callbacks are already above',

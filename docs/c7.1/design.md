@@ -863,8 +863,15 @@ non introduce nuovi messaggi, gradi o correlazioni. Il caso nativo a 32
 celle verifica tutti i quattro round e il proseguimento, inclusi rifiuti.
 L'esecuzione canonica, il refinement Lean e il picco completo restano
 separati da questo controllo finito. Il cap locale dei payload istogrammi
-è 512 MiB, controllato dalla forma pubblica prima dell'allocazione; non
+è 1 GiB, controllato dalla forma pubblica prima dell'allocazione; non
 sostituisce il contratto arena con 256 MiB di margine.
+I bin conservano tre somme intere a 96 bit (u64 basso più u32 di riporto),
+poi applicano la riduzione originale prima del peso Fp3. Ogni bin riceve
+al massimo un contributo per posizione suffix: il guard pubblico
+`suffix <= u32::MAX` esclude overflow. La cache privata E/Pi/Z contiene
+solo byte originali causali, senza Snapshot/A completi né nuove aperture;
+resta viva dal termine lookup all’ultimo consumer byte GKR. Le sfide,
+i MAC e il transcript sono invariati; il riuso non elimina il replay Boolean.
 
 Il lavoro locale segue il gate integrato del 2026-09-19: una prova ridotta
 positiva con getter ordinato, lookup streaming, GKR sourcewise e WHIR,

@@ -224,6 +224,8 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
             events.extend(lookup_events('EXP30_lookup',lookups['EXP30']))
             prefix = exp30.late_weights(old)
             events.extend([
+                {'event':'EXP30_original_ratio_cache', 'allocate':{
+                    'EXP30:ratio_original_cache':prefix['original_ratio_cache_bytes']}},
                 {'event':'EXP30_pattern_prefix_all_gates', 'allocate':{
                     'EXP30:per_gate_histograms':prefix['raw_histogram_peak_bytes'],
                     'EXP30:pattern_aggregate':prefix['aggregate_histogram_bytes']},
@@ -246,7 +248,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                 'unknown':['lookup descriptor/proof/correlations and allocator capacities',
                            'programs/proof/correlations and complete GKR workspace']})
             events.append({'event':'EXP30_last_original_byte_consumer_fence',
-                'free':['getter:cuts','EXP30:byte_LUT','EXP30:byte_coefficients',
+                'free':['EXP30:ratio_original_cache','getter:cuts','EXP30:byte_LUT','EXP30:byte_coefficients',
                         'EXP30:byte_prefix_weights']})
             chains['EXP30_maximum_original_bytes']=events
 

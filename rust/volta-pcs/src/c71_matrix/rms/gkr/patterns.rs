@@ -8,7 +8,8 @@ pub(super) struct Work {
     pub original_frames: u64,
     pub packed_replays: u64,
     pub packed_boolean_gates: u64,
-    pub histogram_additions: u64,
+    pub histogram_updates: u64,
+    pub deferred_base_reductions: u64,
     pub late_weight_products: u64,
     pub position_weight_products: u64,
     pub histogram_payload_peak: usize,
@@ -21,7 +22,8 @@ struct Histogram {
     offsets: Vec<usize>,
     size: usize,
     gate_offsets: Vec<usize>,
-    raw: Vec<Fp3>,
+    raw: Vec<[u64; 3]>,
+    carries: Vec<[u32; 3]>,
     quadratic: Vec<Fp3>,
     linear: Vec<Fp3>,
 }
@@ -55,6 +57,7 @@ impl Histogram {
             size,
             gate_offsets,
             raw: vec![],
+            carries: vec![],
             quadratic: vec![],
             linear: vec![],
         }
@@ -65,12 +68,13 @@ impl Histogram {
             .iter()
             .map(|g| if g.op == Op::Copy { self.size } else { self.size * self.size })
             .sum::<usize>();
-        (raw + self.size * self.size + self.size) * 24
+        raw * 36 + (self.size * self.size + self.size) * 24
     }
 
     fn allocate(&mut self, gates: &[Gate]) {
-        let len = self.payload(gates) / 24 - self.size * self.size - self.size;
-        self.raw = vec![Fp3::ZERO; len];
+        let len = (self.payload(gates) - (self.size * self.size + self.size) * 24) / 36;
+        self.raw = vec![[0; 3]; len];
+        self.carries = vec![[0; 3]; len];
         self.quadratic = vec![Fp3::ZERO; self.size * self.size];
         self.linear = vec![Fp3::ZERO; self.size];
     }
@@ -103,12 +107,13 @@ impl Histogram {
         for (g, &offset) in gates.iter().zip(&self.gate_offsets) {
             for &x in &patterns[g.x] {
                 if g.op == Op::Copy {
-                    self.raw[offset + x] += weight;
-                    work.histogram_additions += 1;
+                    add_wide(&mut self.raw[offset + x], &mut self.carries[offset + x], weight);
+                    work.histogram_updates += 1;
                 } else {
                     for &y in &patterns[g.y] {
-                        self.raw[offset + x * self.size + y] += weight;
-                        work.histogram_additions += 1;
+                        let slot = offset + x * self.size + y;
+                        add_wide(&mut self.raw[slot], &mut self.carries[slot], weight);
+                        work.histogram_updates += 1;
                     }
                 }
             }
@@ -120,14 +125,18 @@ impl Histogram {
         for ((g, &offset), &weight) in gates.iter().zip(&self.gate_offsets).zip(weights) {
             if g.op == Op::Copy {
                 for x in 0..self.size {
-                    self.linear[x] += weight * self.raw[offset + x];
+                    self.linear[x] +=
+                        weight * reduce_wide(self.raw[offset + x], self.carries[offset + x]);
                     work.late_weight_products += 1;
+                    work.deferred_base_reductions += 3;
                 }
             } else {
                 for x in 0..self.size {
                     for y in 0..self.size {
-                        let value = weight * self.raw[offset + x * self.size + y];
+                        let slot = offset + x * self.size + y;
+                        let value = weight * reduce_wide(self.raw[slot], self.carries[slot]);
                         work.late_weight_products += 1;
+                        work.deferred_base_reductions += 3;
                         let slot = &mut self.quadratic[x * self.size + y];
                         if g.op == Op::And {
                             *slot += value;
@@ -146,7 +155,23 @@ impl Histogram {
             }
         }
         self.raw = Vec::new(); // Last consumer; release before cubic evaluation.
+        self.carries = Vec::new();
     }
+}
+
+fn add_wide(lo: &mut [u64; 3], hi: &mut [u32; 3], value: Fp3) {
+    for (i, v) in [value.c0.value(), value.c1.value(), value.c2.value()].into_iter().enumerate() {
+        let (next, carry) = lo[i].overflowing_add(v);
+        lo[i] = next;
+        hi[i] += u32::from(carry);
+    }
+}
+
+fn reduce_wide(lo: [u64; 3], hi: [u32; 3]) -> Fp3 {
+    let v = std::array::from_fn::<_, 3, _>(|i| {
+        volta_field::reduce128((u128::from(hi[i]) << 64) | u128::from(lo[i]))
+    });
+    Fp3::new(v[0], v[1], v[2])
 }
 
 pub(super) struct Prefix {
@@ -172,6 +197,11 @@ pub(super) fn build(
     }
     let block = 1usize << bits;
     let suffix = s.assignments.len() / block;
+    // Every raw slot receives at most one canonical limb per suffix index.
+    // Thus its carry word is <suffix, even for adversarial field challenges.
+    if suffix > u32::MAX as usize {
+        return Err("pattern integer accumulator bound exceeded".into());
+    }
     let gates = gates(&s.programs[0], depth);
     let mask_at = |k| {
         (0..block)
@@ -182,7 +212,7 @@ pub(super) fn build(
     let mut histograms: Vec<_> = masks.into_iter().map(|m| Histogram::new(m, gates)).collect();
     let payload = histograms.iter().map(|h| h.payload(gates)).sum::<usize>();
     // Public cap on this component, not a claim about the complete arena.
-    if payload > 512 * 1024 * 1024 {
+    if payload > 1024 * 1024 * 1024 {
         return Err("pattern histograms exceed component cap".into());
     }
     work.histogram_payload_peak = work.histogram_payload_peak.max(payload);
@@ -250,6 +280,36 @@ pub(super) fn build(
     }
     work.prefix_rounds += bits as u64;
     Ok(Some(Prefix { bits, selector: eq(&point[..bits]), histograms }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn c71_pattern_wide_accumulator_matches_field_at_carry_boundaries() {
+        let p = volta_field::P;
+        let values = [Fp3::new(Fp::new(p - 1), Fp::new(p - 2), Fp::new(p - 3)), Fp3::ONE];
+        let mut lo = [0; 3];
+        let mut hi = [0; 3];
+        let mut expected = Fp3::ZERO;
+        for i in 0..257 {
+            let x = values[i % 2];
+            add_wide(&mut lo, &mut hi, x);
+            expected += x;
+            assert_eq!(reduce_wide(lo, hi), expected);
+        }
+        assert!(hi.iter().any(|&h| h > 0));
+        // Largest public carry envelope, without enumerating those updates.
+        for high in [0, 1, (1 << 25) - 1] {
+            let low = [0, u64::MAX, p - 1];
+            let upper = [high; 3];
+            let actual = reduce_wide(low, upper);
+            let expected = low.map(|v| {
+                Fp::new((((u128::from(high) << 64) | u128::from(v)) % u128::from(p)) as u64)
+            });
+            assert_eq!(actual, Fp3::new(expected[0], expected[1], expected[2]));
+        }
+    }
 }
 
 impl Prefix {

@@ -68,8 +68,14 @@ def test_prefix_component_screen_has_no_complete_or_hardware_credit():
     assert last[1]['weight_Fp3_products'] == 642858403200
     late = report['cases'][-1]['late_gate_weights']
     assert late['late_weight_Fp3_products'] == 428928192
-    assert late['raw_histogram_peak_bytes'] == 441149184
-    assert late['histogram_Fp3_additions'] == 3922447766400
+    assert late['raw_histogram_peak_bytes'] == 661723776
+    assert late['histogram_updates'] == 3922447766400
+    assert late['original_ratio_cache_bytes'] == 650592000
+    assert late['original_ratio_source_byte_calls'] == late['original_ratio_cache_bytes']
+    assert late['histogram_Fp3_additions'] == 0
+    assert late['histogram_u64_additions'] == 3*late['histogram_updates']
+    assert late['deferred_base_reductions'] == 3*late['late_weight_Fp3_products']
+    assert late['max_contributions_per_raw_slot'] < 1 << 25
     assert late['position_weight_Fp3_products'] == 3154116420
     assert late['packed_replays'] < 7209600*94//3
     assert late['all_gates_resident_no_per_gate_replay']

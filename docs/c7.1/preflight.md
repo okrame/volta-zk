@@ -1863,9 +1863,14 @@ Con 15 layer vivi per gruppo, le tessere **5+5+5** hanno 96 indici totali:
 restano residenti insieme: nessun nuovo replay per gate o banda di gate.
 Le tessere 8+7 richiederebbero **7.025.236.992 B** di soli istogrammi raw
 al layer massimo, già oltre arena. Il massimo raw selezionato è invece
-**441.149.184 B**, più 223.488 B per l'aggregato.
+**661.723.776 B**, più 223.488 B per l'aggregato.
+Sono 441.149.184 B di limb bassi e 220.574.592 B di riporti u32;
+le somme intere rinviano la riduzione modulare a una sola volta per bin.
+Ogni aggiornamento paga tre somme u64 e tre aggiornamenti dei riporti u32;
+le riduzioni base finali sono 1.286.784.576 per risposta.
+Il bound pubblico sulle posizioni suffix impedisce overflow a 96 bit.
 
-| O | Vecchi prodotti peso×posizione | Prodotti peso posticipato | Prodotti Eq posizione | Addizioni ai bin | Gate Boolean su word packed |
+| O | Vecchi prodotti peso×posizione | Prodotti peso posticipato | Prodotti Eq posizione | Aggiornamenti interi dei bin | Gate Boolean su word packed |
 |---:|---:|---:|---:|---:|---:|
 | 0 | 129.256.483.200 | 428.928.192 | 1.577.058.116 | 788.667.926.400 | 1.858.538.621.952 |
 | 150 | 386.057.443.200 | 428.928.192 | 3.154.116.420 | 2.355.557.846.400 | 5.477.798.043.648 |
@@ -1880,10 +1885,14 @@ milioni di prodotti dei pesi: non si presenta il loro totale come nullo.
 
 Il producer impacchetta quattro gruppi da 16 nelle stesse word u64 prima
 del replay. Il conteggio include la rigenerazione fino al livello
-richiesto, non solo i gate di quel livello. Le letture originali E/Z/Pi
-restano 94 per cella viva: a O=300 sono 10.165.536.000 frame,
-121.986.432.000 byte logici, prima della ricostruzione del getter.
-Tutto questo appartiene a `T_proof_only`. I 188.277.492.787.200 byte logici
+richiesto, non solo i gate di quel livello. Una cache privata conserva E/Pi per cella causale e Z per riga,
+confrontati byte per byte con gli originali anche sul padding. Il fill
+legge 132.192.000 / 391.392.000 / 650.592.000 byte sorgente per O=0/150/300.
+Le successive 94 letture per cella del prefisso sono dalla cache: a O=300
+10.165.536.000 frame e 121.986.432.000 byte logici. Non implicano più
+ricostruzione numerica a ogni frame; non eliminano il replay Boolean.
+Il fill non garantisce da solo una sola esecuzione di ogni producer numerico.
+Tutto questo appartiene a `T_proof_only`. I 282.416.239.180.800 byte logici
 di read/modify/write dei bin **non sono traffico HBM**: cache, staging,
 collisioni e riduzioni CUDA restano da progettare/misurare.
 
@@ -1891,10 +1900,11 @@ Nel [piano arena](../../scripts/c71_arena_plan.py) gli istogrammi vengono
 dopo la fence delle cache lookup e prima dell'obbligo byte finale. Il raw
 è rilasciato dopo l'applicazione dei pesi; l'aggregato dopo il quarto
 cubico, prima della coda GKR. Il live nominato dell'evento è
-1.260.834.304 / 1.300.159.232 / 1.339.480.832 B. Non aumenta il massimo
+1.613.600.896 / 1.912.125.824 / 2.210.647.424 B, inclusa la cache
+originale trattenuta fino all’endpoint byte. Non aumenta il massimo
 nominato del commit A e conserva il margine nel piano; allocator,
 workspace completi del getter e staging GPU restano obblighi espliciti.
-Il cap 512 MiB della funzione nativa è locale, non un'ammissione dell'arena
+Il cap 1 GiB della funzione nativa è locale, non un'ammissione dell'arena
 complessiva né un'autorizzazione a spill.
 
 La prova a 32 celle confronta l'intero wire con i prover sourcewise e

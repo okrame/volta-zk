@@ -102,26 +102,34 @@ def late_weights(old):
     packed_groups = 4*32*sum((old+q+1+3)//4 for q in range(150))
     size, tiles, depth = 96, 3, native['depth']
     scale = (ops['and']+ops['xor'])*size**2 + ops['copy']*size
-    raw_peak = max(((l['and']+l['xor'])*size**2+l['copy']*size)*24 for l in native['layers'])
+    raw_slots = max((l['and']+l['xor'])*size**2+l['copy']*size for l in native['layers'])
+    updates = blocks*((ops['and']+ops['xor'])*tiles**2+ops['copy']*tiles)
     prefix_gates = 0
     packed_gates = 0
     for layer in native['layers']:
         packed_gates += prefix_gates*packed_groups
         prefix_gates += sum(layer[op] for op in ops)
     return dict(old_tokens=old, block=16, live_per_block=15, tile_live_bits=[5,5,5],
-        raw_histogram_peak_bytes=raw_peak, aggregate_histogram_bytes=24*(size**2+size),
+        raw_histogram_peak_bytes=36*raw_slots,
+        raw_low_limb_bytes=24*raw_slots, raw_carry_bytes=12*raw_slots,
+        aggregate_histogram_bytes=24*(size**2+size),
         late_weight_Fp3_products=scale,
         old_weight_Fp3_products=blocks*sum(ops.values()),
-        histogram_Fp3_additions=blocks*((ops['and']+ops['xor'])*tiles**2+ops['copy']*tiles),
+        histogram_Fp3_additions=0, histogram_updates=updates,
+        histogram_u64_additions=3*updates, histogram_u32_carry_additions=3*updates,
+        deferred_base_reductions=3*scale,
+        max_contributions_per_raw_slot=blocks,
         reduction_Fp3_add_or_sub=scale+ops['xor']*2*32*size,
         reduction_XOR_doublings=ops['xor']*size**2,
         position_weight_Fp3_products=depth*(2*(case['padded_cells']//16)-2),
         prefix_selector_Fp3_products=30*depth,
         cubic_Fp3_products=depth*(22+15*(7*size**2+2*size+2*15+6)),
         packed_replays=packed_groups*depth, packed_boolean_word_gates=packed_gates,
-        original_frame_calls=case['live_cells']*depth,
+        cached_frame_calls=case['live_cells']*depth,
+        original_ratio_cache_bytes=6*(case['live_cells']+60*32*150),
+        original_ratio_source_byte_calls=6*(case['live_cells']+60*32*150),
         logical_frame_bytes=12*case['live_cells']*depth,
-        logical_raw_histogram_rmw_bytes=48*blocks*((ops['and']+ops['xor'])*tiles**2+ops['copy']*tiles),
+        logical_raw_histogram_rmw_bytes=72*updates,
         logical_bytes_are_not_HBM=True,
         all_gates_resident_no_per_gate_replay=True,
         complete_work=False, complete_peak=False)

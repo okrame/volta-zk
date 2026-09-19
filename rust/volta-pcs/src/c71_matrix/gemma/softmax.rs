@@ -31,6 +31,50 @@ mod tests {
     use rand_010::{RngExt, SeedableRng};
 
     #[test]
+    fn c71_exp30_ratio_cache_matches_original_bytes_and_causal_padding() {
+        for old in [0, 2, 5] {
+            let sm = Softmax {
+                layers: (0..2)
+                    .map(|i| Layer {
+                        score: i * 7,
+                        pi: i * 7 + 1,
+                        maximum: i * 7 + 2,
+                        difference: i * 7 + 3,
+                        exponential: i * 7 + 4,
+                        denominator: i * 7 + 5,
+                        histogram: i * 7 + 6,
+                    })
+                    .collect(),
+                heads: 2,
+                queries: 3,
+                old,
+            };
+            let read = |id, row, col, b| ((id * 71 + row * 23 + col * 11 + b) % 256) as u8;
+            let calls = std::cell::Cell::new(0);
+            let cache = RatioFrames::build(&sm, &|id, row, col, b| {
+                calls.set(calls.get() + 1);
+                read(id, row, col, b)
+            })
+            .unwrap();
+            assert_eq!(calls.get(), 6 * (cache.cells.len() + cache.denominators.len()));
+            for i in 0..1 << (sm.row_bits() + sm.key_bits()) {
+                let mut expected = [0; 12];
+                if let Some((layer, row, key)) = sm.cell(i) {
+                    let l = &sm.layers[layer];
+                    for (id, col, offset, width) in
+                        [(l.exponential, key, 0, 4), (l.denominator, 0, 4, 6), (l.pi, key, 10, 2)]
+                    {
+                        for b in 0..width {
+                            expected[offset + b] = read(id, row, col, b);
+                        }
+                    }
+                }
+                assert_eq!(cache.frame(&sm, i), expected);
+            }
+        }
+    }
+
+    #[test]
     fn maximum_checkpoint_and_source_tree_match_dense_transcript() {
         let sm = Softmax {
             layers: vec![Layer {
@@ -536,6 +580,74 @@ struct MaximumSourceWork {
     tree: range::SourceTreeWork,
 }
 
+// Original E/Pi bytes for causal cells, and one original Z per live row.
+// This is a bounded component cache, not another committed source or full A.
+struct RatioFrames {
+    cells: Vec<[u8; 6]>,
+    denominators: Vec<[u8; 6]>,
+}
+
+impl RatioFrames {
+    fn build(
+        sm: &Softmax,
+        read: &impl Fn(usize, usize, usize, usize) -> u8,
+    ) -> Result<Self, String> {
+        let per_head = sm.queries * sm.old + sm.queries * (sm.queries + 1) / 2;
+        let cells = sm.layers.len() * sm.heads * per_head;
+        let rows = sm.layers.len() * sm.heads * sm.queries;
+        if 6 * (cells + rows) > 1 << 30 {
+            return Err("EXP30 original frame cache exceeds component cap".into());
+        }
+        let mut cache = Self { cells: vec![[0; 6]; cells], denominators: vec![[0; 6]; rows] };
+        for (layer, l) in sm.layers.iter().enumerate() {
+            for head in 0..sm.heads {
+                for q in 0..sm.queries {
+                    let row = head * sm.queries.next_power_of_two() + q;
+                    let begin = (layer * sm.heads + head) * per_head + q * sm.old + q * (q + 1) / 2;
+                    for (id, offset, width) in [(l.exponential, 0, 4), (l.pi, 4, 2)] {
+                        for k in 0..sm.old + q + 1 {
+                            for b in 0..width {
+                                cache.cells[begin + k][offset + b] = read(id, row, k, b);
+                            }
+                        }
+                    }
+                    for b in 0..6 {
+                        cache.denominators[(layer * sm.heads + head) * sm.queries + q][b] =
+                            read(l.denominator, row, 0, b);
+                    }
+                }
+            }
+        }
+        #[cfg(test)]
+        if std::env::var_os("C71_INTEGRATED_TRACE").is_some() {
+            eprintln!(
+                "C71_EXP30_RATIO_CACHE {}",
+                serde_json::json!({
+                "source_byte_getter_calls":6*(cells+rows),
+                "payload_bytes":6*(cells+rows),
+                "capacity_bytes":6*(cache.cells.capacity()+cache.denominators.capacity()),
+                "full_A_materialized":false})
+            );
+        }
+        Ok(cache)
+    }
+
+    fn frame(&self, sm: &Softmax, index: usize) -> [u8; 12] {
+        let mut frame = [0; 12];
+        if let Some((layer, row, key)) = sm.cell(index) {
+            let (head, q) =
+                (row / sm.queries.next_power_of_two(), row % sm.queries.next_power_of_two());
+            let per_head = sm.queries * sm.old + sm.queries * (sm.queries + 1) / 2;
+            let cell = (layer * sm.heads + head) * per_head + q * sm.old + q * (q + 1) / 2 + key;
+            frame[..4].copy_from_slice(&self.cells[cell][..4]);
+            frame[4..10]
+                .copy_from_slice(&self.denominators[(layer * sm.heads + head) * sm.queries + q]);
+            frame[10..].copy_from_slice(&self.cells[cell][4..]);
+        }
+        frame
+    }
+}
+
 enum MaximumCheckpointData {
     Empty,
     Products(Vec<[Fp; 2]>),
@@ -612,14 +724,15 @@ impl MaximumCheckpoint {
                     for key in begin..begin + block {
                         let global = (row << key_bits) | key;
                         if softmax.cell(global).is_some() {
-                            *child = *child * signed(i64::from(Self::leaf(
-                                softmax,
-                                read,
-                                row,
-                                key,
-                                &mut self.work,
-                            )))
-                            .c0;
+                            *child = *child
+                                * signed(i64::from(Self::leaf(
+                                    softmax,
+                                    read,
+                                    row,
+                                    key,
+                                    &mut self.work,
+                                )))
+                                .c0;
                             self.work.base_field_products += 1;
                         }
                     }
@@ -987,25 +1100,10 @@ impl Softmax {
             programs: &programs,
             assignments,
         };
-        let (ratio, ratio_point, ratio_tag) = gkr::prove_patterns(
-            &gs,
-            |i| {
-                let mut frame = [0; 12];
-                if let Some((l, r, k)) = self.cell(i) {
-                    let l = &self.layers[l];
-                    for (id, c, start, width) in
-                        [(l.exponential, k, 0, 4), (l.denominator, 0, 4, 6), (l.pi, k, 10, 2)]
-                    {
-                        for b in 0..width {
-                            frame[start + b] = read(id, r, c, b);
-                        }
-                    }
-                }
-                frame
-            },
-            fs,
-            &mut rows,
-        )?;
+        let frames = RatioFrames::build(self, &read)?;
+        let (ratio, ratio_point, ratio_tag) =
+            gkr::prove_patterns(&gs, |i| frames.frame(self, i), fs, &mut rows)?;
+        drop(frames);
         debug_assert!(rows.next().is_none());
         Ok((
             Proof { maximum, max_leaf_tag, max_products, lookup, ratio },

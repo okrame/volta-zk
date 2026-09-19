@@ -994,3 +994,13 @@ ruolo. Il censimento conserva i tentativi effettivi dei sampler. I fixture
 con valori/tag noti non sostituiscono COPE, guard, secondo seed con ruoli
 opposti o il consumo MAC composto. Nessun credito H100, picco canonico o
 composizione crittografica aggiuntiva.
+
+Il [record su SHA pulita `44afc99cc23f`](../../benchmarks/results/c71-original-getter-seed6-2026-09-19-44afc99cc23f.json)
+conserva **36 test Rust e 26 Python** passati, build mirate, digest dei binari,
+comandi, limiti e censimento allocator/producer. Include separatamente i
+fallimenti di sviluppo corretti: socketpair vietata dal sandbox, tipo MMCS
+di riferimento e segno del fixture MAC. Non attribuisce quei tentativi alla
+SHA pulita. I tempi includono il riferimento denso e la normalizzazione del
+solo test; non sono `T_inference`, `T_proof_only` o `T_response_total`.
+I conteggi delle query dipendono dalle coin originali dei fixture e sono
+quelli di quel run; non sostituiscono il trace canonico O=0/150/300.

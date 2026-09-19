@@ -1083,3 +1083,34 @@ capacità nominate, ledger e arena. Include le regressioni range e la prova
 composta ridotta dopo l'estrazione dell'algebra condivisa. L'ABI CPU osserva
 Frozen=72 B, ProverGuard=528 B, VerifierChallenged=552 B e Hasher=1.920 B;
 queste dimensioni non sono un upper di stack o allocator.
+
+
+## WHIR: capacità conservata e FFT odd-log
+
+Il riferimento [sourcewise](../../rust/volta-pcs/src/c71_matrix/b12/sourcewise.rs)
+usa una sola allocazione S1 per tutte le generazioni. Le lease degli oracoli
+impongono commit-successore, query/rilascio-predecessore, quindi fold. Il
+[backend replay](../../rust/volta-pcs/src/c71_matrix/b12/replay.rs) distrugge
+il tree prima di rilasciare la lease e registra quest’ultima solo dopo un
+commit riuscito. La sorgente iniziale viene trasferita solo dopo validazione;
+il fallback A è rimosso dopo la materializzazione S1.
+
+Il test `c71_b12_retained_lifecycle` verifica rifiuto di prefissi e lease
+invalidi, promozione anticipata/duplicata, getter obsoleti, uguaglianza dei
+valori S2 prima/dopo fold, capacità preservata e rilascio del capture sorgente.
+I confronti completi ridotti O=0/2/4 conservano root, byte del proof, FS e
+MAC originali. Il controllo adaptive e quello della catena D10 restano
+regressioni; la catena canonica accelerata non è eseguita.
+
+Il [microbench FFT](../../cuda/c71_fft_microbench.cu) aggiunge i log dispari
+con input `[pari][dispari]`, due trasformate quadrate e un merge in-place.
+I controlli `--host-check-odd 1` fino a `4` confrontano con DFT indipendente.
+Il device è compilato per sm_90; questo non esegue CUDA e non misura rate.
+La tabella n*8 comprende entrambi i gruppi di twiddle. Gli accessi logici
+al merge sono espliciti nel [trace](../../scripts/c71_whir_trace.py), distinti
+dallo scatter PCS ancora da collegare e dal traffico fisico HBM.
+
+Il [piano arena](../../scripts/c71_arena_plan.py) conserva tutta la capacità
+S1 fino alla fine e respinge il vecchio cap S3 2^24. Con cap successori
+2^23, i controlli degli span conservano il margine nominato; non certificano
+allocator, fence GPU, picco completo o fattibilità temporale.

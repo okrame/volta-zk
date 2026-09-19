@@ -172,6 +172,22 @@ void five_pass_fft(std::vector<uint64_t>& values, size_t m, uint64_t omega_n) {
     (void)n;
 }
 
+void odd_fft_parity_scattered(std::vector<uint64_t>& values, size_t m, uint64_t omega_n) {
+    const size_t half = m * m;
+    for (size_t parity = 0; parity < 2; ++parity) {
+        std::vector<uint64_t> current(
+            values.begin() + parity * half, values.begin() + (parity + 1) * half);
+        five_pass_fft(current, m, fp_mul(omega_n, omega_n));
+        std::copy(current.begin(), current.end(), values.begin() + parity * half);
+    }
+    for (size_t k = 0; k < half; ++k) {
+        const uint64_t a = values[k];
+        const uint64_t b = fp_mul(fp_pow(omega_n, k), values[half + k]);
+        values[k] = fp_add(a, b);
+        values[half + k] = fp_sub(a, b);
+    }
+}
+
 uint64_t checksum(const std::vector<uint64_t>& values) {
     uint64_t h = 0xCBF2'9CE4'8422'2325ULL;
     for (uint64_t value : values) {
@@ -323,6 +339,40 @@ int host_check(int log2_m) {
         : 1;
 }
 
+int host_check_odd(int log2_m) {
+    if (log2_m < 1 || log2_m > 4) return 2;
+    const size_t m = size_t{1} << log2_m, half = m * m, n = 2 * half;
+    const uint64_t omega = root_of_unity(n);
+    std::vector<uint64_t> input(n), scattered(n);
+    fill_host(input);
+    for (size_t i = 0; i < n; ++i) scattered[(i & 1) * half + i / 2] = input[i];
+    odd_fft_parity_scattered(scattered, m, omega);
+    const auto direct = dft(input, omega);
+    const bool root_ok = fp_pow(omega, n) == 1 && fp_pow(omega, n / 2) == P - 1;
+    const bool odd_ok = scattered == direct;
+    std::cout << "{\"schema\":\"volta-c71-fft-microbench-v1\",\"mode\":\"host-check-odd\""
+              << ",\"input\":{\"log2_m\":" << log2_m << ",\"length\":" << n << "}"
+              << ",\"algorithm\":{\"square_passes\":5,\"merge_passes\":1"
+              << ",\"layout\":\"parity-scattered-input/natural-order-output\"}"
+              << ",\"correctness\":{\"primitive_root\":" << (root_ok ? "true" : "false")
+              << ",\"odd_adapter_vs_dft\":" << (odd_ok ? "true" : "false") << "}"
+              << ",\"merge\":{\"value_read_bytes\":" << 8 * n
+              << ",\"value_write_bytes\":" << 8 * n
+              << ",\"twiddle_read_bytes\":" << 4 * n
+              << ",\"twiddle_table_bytes\":" << 8 * n
+              << ",\"additional_twiddle_table_bytes_vs_square\":" << 4 * n
+              << ",\"additional_twiddle_initialization_write_bytes\":" << 4 * n
+              << ",\"field_multiplications\":" << n / 2
+              << ",\"field_additions\":" << n / 2
+              << ",\"field_subtractions\":" << n / 2 << "}"
+              << ",\"whole_fft\":{\"value_read_write_bytes\":" << 12 * 8 * n
+              << ",\"twiddle_read_bytes\":" << 4 * n * (2 * log2_m + 3)
+              << ",\"butterflies\":" << n * (2 * log2_m + 1) / 2
+              << ",\"square_cross_multiplications\":" << n << "}"
+              << ",\"checksum\":\"" << hex64(checksum(scattered)) << "\"}\n";
+    return root_ok && odd_ok ? 0 : 1;
+}
+
 #ifdef __CUDACC__
 
 #define CUDA_CHECK(call)                                                                    \
@@ -346,7 +396,7 @@ __global__ void twiddle_init_kernel(uint64_t* twiddles, size_t n, uint64_t omega
 
 template <bool APPLY_TWIDDLE>
 __global__ void tiled_transpose_kernel(
-    uint64_t* values, const uint64_t* twiddles, size_t m) {
+    uint64_t* values, const uint64_t* twiddles, size_t m, size_t twiddle_stride) {
     __shared__ uint64_t tile_a[32][33];
     __shared__ uint64_t tile_b[32][33];
     const size_t tile_column = blockIdx.x, tile_row = blockIdx.y;
@@ -375,7 +425,7 @@ __global__ void tiled_transpose_kernel(
             if (APPLY_TWIDDLE) {
                 const size_t source_row = tile_column * 32 + local_column;
                 const size_t source_column = tile_row * 32 + lane;
-                value = fp_mul(value, twiddles[source_row * source_column]);
+                value = fp_mul(value, twiddles[twiddle_stride * source_row * source_column]);
             }
             values[base + row_a * m + column_a] = value;
         }
@@ -387,7 +437,7 @@ __global__ void tiled_transpose_kernel(
                 if (APPLY_TWIDDLE) {
                     const size_t source_row = tile_row * 32 + local_column;
                     const size_t source_column = tile_column * 32 + lane;
-                    value = fp_mul(value, twiddles[source_row * source_column]);
+                    value = fp_mul(value, twiddles[twiddle_stride * source_row * source_column]);
                 }
                 values[base + row_b * m + column_b] = value;
             }
@@ -396,7 +446,8 @@ __global__ void tiled_transpose_kernel(
 }
 
 __global__ void row_fft_kernel(
-    uint64_t* values, const uint64_t* twiddles, size_t m, int log2_m, size_t rows) {
+    uint64_t* values, const uint64_t* twiddles, size_t m, int log2_m, size_t rows,
+    size_t twiddle_stride) {
     extern __shared__ uint64_t shared[];
     const size_t row = blockIdx.x;
     if (row >= rows) return;
@@ -409,7 +460,7 @@ __global__ void row_fft_kernel(
         for (size_t pair = threadIdx.x; pair < m / 2; pair += blockDim.x) {
             const size_t base = (pair >> (stage-1)) << stage;
             const size_t offset = pair & (half-1);
-            const uint64_t w = twiddles[offset << (2*log2_m-stage)];
+            const uint64_t w = twiddles[twiddle_stride * (offset << (2*log2_m-stage))];
             const uint64_t a = shared[base + offset];
             const uint64_t b = fp_mul(w, shared[base + offset + half]);
             shared[base + offset] = fp_add(a, b);
@@ -421,20 +472,48 @@ __global__ void row_fft_kernel(
 }
 
 void launch_five_pass(
-    uint64_t* values, const uint64_t* twiddles, size_t m, int log2_m, size_t batch) {
+    uint64_t* values, const uint64_t* twiddles, size_t m, int log2_m, size_t batch,
+    size_t twiddle_stride = 1) {
     const size_t tiles = (m + 31) / 32;
     const dim3 grid(tiles, tiles, batch), threads(32, 8);
-    tiled_transpose_kernel<false><<<grid, threads>>>(values, nullptr, m);
+    tiled_transpose_kernel<false><<<grid, threads>>>(values, nullptr, m, twiddle_stride);
     CUDA_CHECK(cudaGetLastError());
     row_fft_kernel<<<batch * m, BLOCK, m * sizeof(uint64_t)>>>(
-        values, twiddles, m, log2_m, batch * m);
+        values, twiddles, m, log2_m, batch * m, twiddle_stride);
     CUDA_CHECK(cudaGetLastError());
-    tiled_transpose_kernel<true><<<grid, threads>>>(values, twiddles, m);
+    tiled_transpose_kernel<true><<<grid, threads>>>(values, twiddles, m, twiddle_stride);
     CUDA_CHECK(cudaGetLastError());
     row_fft_kernel<<<batch * m, BLOCK, m * sizeof(uint64_t)>>>(
-        values, twiddles, m, log2_m, batch * m);
+        values, twiddles, m, log2_m, batch * m, twiddle_stride);
     CUDA_CHECK(cudaGetLastError());
-    tiled_transpose_kernel<false><<<grid, threads>>>(values, nullptr, m);
+    tiled_transpose_kernel<false><<<grid, threads>>>(values, nullptr, m, twiddle_stride);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+__global__ void odd_init_kernel(uint64_t* values, size_t n, size_t count) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= count) return;
+    const size_t local = i % n, base = i - local, half = n / 2;
+    values[base + (local & 1) * half + local / 2] = canonical(splitmix64(SEED + i));
+}
+
+__global__ void radix2_merge_kernel(
+    uint64_t* values, const uint64_t* twiddles, size_t half, size_t butterflies) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= butterflies) return;
+    const size_t k = i % half, base = 2 * (i - k);
+    const uint64_t a = values[base + k];
+    const uint64_t b = fp_mul(twiddles[k], values[base + half + k]);
+    values[base + k] = fp_add(a, b);
+    values[base + half + k] = fp_sub(a, b);
+}
+
+void launch_odd_fft(
+    uint64_t* values, const uint64_t* twiddles, size_t m, int log2_m, size_t batch) {
+    const size_t half = m * m, butterflies = batch * half;
+    launch_five_pass(values, twiddles, m, log2_m, 2 * batch, 2);
+    radix2_merge_kernel<<<(butterflies + BLOCK - 1) / BLOCK, BLOCK>>>(
+        values, twiddles, half, butterflies);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -481,9 +560,34 @@ bool gpu_correctness() {
     CUDA_CHECK(cudaMemcpy(device_twiddles, twiddle.data(), twiddle.size() * sizeof(uint64_t), cudaMemcpyHostToDevice));
     launch_five_pass(device_values, device_twiddles, m, log2_m, batch);
     CUDA_CHECK(cudaMemcpy(got.data(), device_values, got.size() * sizeof(uint64_t), cudaMemcpyDeviceToHost));
+    const bool even_ok = got == want;
     CUDA_CHECK(cudaFree(device_twiddles));
     CUDA_CHECK(cudaFree(device_values));
-    return got == want;
+
+    constexpr size_t odd_n = 2 * n;
+    const uint64_t odd_omega = root_of_unity(odd_n);
+    input.resize(odd_n);
+    want.resize(odd_n);
+    got.resize(odd_n);
+    twiddle.resize(odd_n);
+    fill_host(input);
+    std::vector<uint64_t> scattered(odd_n);
+    for (size_t i = 0; i < odd_n; ++i) scattered[(i & 1) * n + i / 2] = input[i];
+    want = input;
+    fft_radix2(want, odd_omega);
+    for (size_t i = 0; i < odd_n; ++i) twiddle[i] = fp_pow(odd_omega, i);
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&device_values), odd_n * sizeof(uint64_t)));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&device_twiddles), odd_n * sizeof(uint64_t)));
+    CUDA_CHECK(cudaMemcpy(
+        device_values, scattered.data(), odd_n * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(
+        device_twiddles, twiddle.data(), odd_n * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    launch_odd_fft(device_values, device_twiddles, m, log2_m, 1);
+    CUDA_CHECK(cudaMemcpy(
+        got.data(), device_values, odd_n * sizeof(uint64_t), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaFree(device_twiddles));
+    CUDA_CHECK(cudaFree(device_values));
+    return even_ok && got == want;
 }
 
 std::string escape(const char* text) {
@@ -495,23 +599,24 @@ std::string escape(const char* text) {
     return out.str();
 }
 
-int gpu_bench(int log2_m, size_t batch, int reps) {
-    if (log2_m < 1 || log2_m > 11 || batch < 1 || batch > 1024 || reps < 1 || reps > 99)
+int gpu_bench(int log2_m, size_t batch, int reps, bool odd) {
+    if (log2_m < 1 || log2_m > 12 || batch < 1 || batch > 1024 || reps < 1 || reps > 99)
         return 2;
     if (!gpu_correctness()) {
         std::cerr << "small CPU/GPU FFT correctness check failed\n";
         return 1;
     }
-    const size_t m = size_t{1} << log2_m, n = m * m, count = batch * n;
+    const size_t m = size_t{1} << log2_m, square = m * m, n = square * (odd ? 2 : 1);
+    const size_t count = batch * n;
     const size_t values_bytes = count * sizeof(uint64_t), twiddle_bytes = n * sizeof(uint64_t);
     const size_t requested = values_bytes + twiddle_bytes;
-    if (requested > ARENA_BYTES) {
-        std::cerr << "requested FFT buffers exceed the C7.1 arena\n";
+    constexpr size_t reserve = size_t{256} << 20;
+    if (requested + reserve > ARENA_BYTES) {
+        std::cerr << "requested FFT buffers plus reserve exceed the C7.1 arena\n";
         return 2;
     }
     size_t free_before = 0, total = 0;
     CUDA_CHECK(cudaMemGetInfo(&free_before, &total));
-    constexpr size_t reserve = size_t{256} << 20;
     if (requested + reserve > free_before) {
         std::cerr << "need " << requested << " device bytes plus reserve, have " << free_before << "\n";
         return 2;
@@ -526,15 +631,21 @@ int gpu_bench(int log2_m, size_t batch, int reps) {
     CUDA_CHECK(cudaMemGetInfo(&free_after, &total));
     const uint64_t omega = root_of_unity(n);
     const double initialize_ms = median_ms(reps, [&] {
-        init_kernel<<<(count + BLOCK - 1) / BLOCK, BLOCK>>>(values, count);
+        if (odd)
+            odd_init_kernel<<<(count + BLOCK - 1) / BLOCK, BLOCK>>>(values, n, count);
+        else
+            init_kernel<<<(count + BLOCK - 1) / BLOCK, BLOCK>>>(values, count);
         CUDA_CHECK(cudaGetLastError());
     });
     const double twiddle_initialize_ms = median_ms(reps, [&] {
         twiddle_init_kernel<<<(n + BLOCK - 1) / BLOCK, BLOCK>>>(twiddles, n, omega);
         CUDA_CHECK(cudaGetLastError());
     });
-    const double five_pass_ms = median_ms(reps, [&] {
-        launch_five_pass(values, twiddles, m, log2_m, batch);
+    const double fft_ms = median_ms(reps, [&] {
+        if (odd)
+            launch_odd_fft(values, twiddles, m, log2_m, batch);
+        else
+            launch_five_pass(values, twiddles, m, log2_m, batch);
     });
     std::vector<uint64_t> sample(4);
     CUDA_CHECK(cudaMemcpy(sample.data(), values, 2 * sizeof(uint64_t), cudaMemcpyDeviceToHost));
@@ -548,14 +659,17 @@ int gpu_bench(int log2_m, size_t batch, int reps) {
     CUDA_CHECK(cudaFree(twiddles));
     CUDA_CHECK(cudaFree(values));
     std::cout << std::setprecision(12)
-              << "{\"schema\":\"volta-c71-fft-microbench-v1\",\"mode\":\"cuda\""
+              << "{\"schema\":\"volta-c71-fft-microbench-v1\",\"mode\":\""
+              << (odd ? "cuda-odd" : "cuda") << "\""
               << ",\"field\":{\"base_modulus\":" << P << ",\"generator\":" << GENERATOR
               << ",\"element_bytes\":8}"
               << ",\"input\":{\"generator\":\"splitmix64-v1\",\"seed\":\""
               << hex64(SEED) << "\",\"log2_m\":" << log2_m << ",\"m\":" << m
               << ",\"length\":" << n << ",\"batch\":" << batch << "}"
-              << ",\"algorithm\":{\"passes\":5,\"layout\":\"natural-order\""
-              << ",\"steps\":[\"transpose\",\"row-fft\",\"twiddle-transpose\",\"row-fft\",\"transpose\"]}"
+              << ",\"algorithm\":{\"passes\":" << (odd ? 6 : 5)
+              << ",\"layout\":\"" << (odd ? "parity-scattered-input/natural-order-output" : "natural-order") << "\""
+              << ",\"steps\":[\"transpose\",\"row-fft\",\"twiddle-transpose\",\"row-fft\",\"transpose\""
+              << (odd ? ",\"radix2-merge\"]}" : "]}")
               << ",\"device\":{\"name\":\"" << escape(prop.name) << "\",\"total_bytes\":" << total
               << ",\"free_before_bytes\":" << free_before << ",\"free_after_alloc_bytes\":" << free_after
               << ",\"runtime_version\":" << runtime << ",\"driver_version\":" << driver << "}"
@@ -567,10 +681,27 @@ int gpu_bench(int log2_m, size_t batch, int reps) {
               << ",\"allocation_ms\":" << allocation_ms << "}"
               << ",\"timing_ms\":{\"initialize\":" << initialize_ms
               << ",\"twiddle_initialize\":" << twiddle_initialize_ms
-              << ",\"five_pass_fft\":" << five_pass_ms << "}"
-              << ",\"logical_global_traffic_bytes\":" << 10 * values_bytes
+              << (odd ? ",\"fft\":" : ",\"five_pass_fft\":") << fft_ms << "}"
+              << ",\"logical_global_traffic_bytes\":"
+              << (odd ? 12 * values_bytes : 10 * values_bytes)
+              << ",\"logical_global_traffic_scope\":\"value-array-only; twiddle reads in work\""
+              << ",\"odd_merge\":{\"value_read_bytes\":" << (odd ? 8 * count : 0)
+              << ",\"value_write_bytes\":" << (odd ? 8 * count : 0)
+              << ",\"twiddle_read_bytes\":" << (odd ? 4 * count : 0)
+              << ",\"field_multiplications\":" << (odd ? count / 2 : 0)
+              << ",\"field_additions\":" << (odd ? count / 2 : 0)
+              << ",\"field_subtractions\":" << (odd ? count / 2 : 0) << "}"
+              << ",\"work\":{\"twiddle_read_bytes\":"
+              << 4 * count * (2 * log2_m + 2 + (odd ? 1 : 0))
+              << ",\"butterflies\":" << count * (2 * log2_m + (odd ? 1 : 0)) / 2
+              << ",\"square_cross_multiplications\":" << count
+              << ",\"twiddle_table_bytes\":" << twiddle_bytes
+              << ",\"additional_twiddle_table_bytes_vs_square\":"
+              << (odd ? 4 * count / batch : 0)
+              << ",\"additional_twiddle_initialization_write_bytes_vs_square\":"
+              << (odd ? 4 * count / batch : 0) << "}"
               << ",\"rates\":{\"field_elements_per_second\":"
-              << count / (five_pass_ms / 1000.0) << "}"
+              << count / (fft_ms / 1000.0) << "}"
               << ",\"correctness\":{\"small_cpu_gpu_natural_order\":true}"
               << ",\"sample_checksum\":\"" << hex64(checksum(sample)) << "\"}\n";
     return 0;
@@ -583,13 +714,17 @@ int gpu_bench(int log2_m, size_t batch, int reps) {
 int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--host-check")
         return host_check(std::stoi(argv[2]));
+    if (argc == 3 && std::string(argv[1]) == "--host-check-odd")
+        return host_check_odd(std::stoi(argv[2]));
 #ifdef __CUDACC__
     if (argc == 5 && std::string(argv[1]) == "--gpu")
-        return gpu_bench(std::stoi(argv[2]), std::stoull(argv[3]), std::stoi(argv[4]));
+        return gpu_bench(std::stoi(argv[2]), std::stoull(argv[3]), std::stoi(argv[4]), false);
+    if (argc == 5 && std::string(argv[1]) == "--gpu-odd")
+        return gpu_bench(std::stoi(argv[2]), std::stoull(argv[3]), std::stoi(argv[4]), true);
 #endif
-    std::cerr << "usage: " << argv[0] << " --host-check LOG2_M";
+    std::cerr << "usage: " << argv[0] << " --host-check[-odd] LOG2_M";
 #ifdef __CUDACC__
-    std::cerr << " | --gpu LOG2_M BATCH REPS";
+    std::cerr << " | --gpu[-odd] LOG2_M BATCH REPS";
 #endif
     std::cerr << "\n";
     return 2;

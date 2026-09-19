@@ -70,7 +70,8 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
     if reuse_reader_for_commit and not ordered_getter:raise ValueError('ordered getter variant required')
     initial_rows=1 << (22 if reuse_reader_for_commit else 21)
     pcs={35:whir.trace(35),34:whir.trace(34,initial_coset_rows=initial_rows)}
-    retained=whir.a_s1_retention_schedule(s2_coset_rows=1 << 22)
+    retained=whir.a_s1_retention_schedule(s2_coset_rows=1<<22,
+                successor_coset_rows=1<<23, reserve_s1_capacity=True)
     correlations=pcg.report()
     cases=[]
     for old in (0,150,300):
@@ -189,7 +190,8 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
         'ordered_getter_windows_included':ordered_getter,
         'reader_slot_reused_during_initial_commit':reuse_reader_for_commit,
         'reader_reuse_requires':'native scatter producer and salted CUDA leaf hashing in consumed coset cells; CPU codec/strided root refinement checked, GPU adapter pending',
-        'initial_A_coset_rows':initial_rows,'A_S2_coset_rows':1 << 22,
+        'initial_A_coset_rows':initial_rows,'A_S2_coset_rows':1 << 22, 'A_successor_coset_rows_cap':1 << 23,
+        'full_S1_capacity_reserved_through_last_consumer':True,
         'cases':cases,'missing':['CUDA salted in-place hash scratch and complete PCS adapter (CPU strided root check passes)' if reuse_reader_for_commit
             else 'odd-log FFT parity-scatter adapter with identical roots',
             'native ordered getter and producer workspaces (shared cuts traced separately)',
@@ -197,6 +199,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
             'complete phase work before spend; unknown service rates require isolated measurement'],
         'native_workspace_audit':{
             'FFT_square':'in-place values + n*8 twiddles; native launch_five_pass allocates no extra global scratch',
+            'FFT_odd':'two square transforms + one in-place merge, no split buffer; CPU DFT checked and sm90 compiled, producer parity scatter not yet integrated',
             'range':'native src/dst and reduction arrays; Gram microbench materialization is component-only',
             'snapshot':'native Snapshot stores Vec<Vec<i64>>; literal lift exceeds arena before byte packing',
             'RMS':'compact original P/S/Y checkpoint uses the range slot serially; native full GKR, Boolean replay and allocator scratch remain open',

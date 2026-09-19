@@ -922,7 +922,9 @@ Il [piano di indirizzi con margine](preflight.md#picco-con-margine-operativo-con
 richiede 256 MiB inutilizzati dentro arena e 1 GiB globale. Il checker
 nativo degli span non certifica allocazioni GPU, fence eseguite o scratch
 ignoti. La variante A 2^21/1.024 replay è chiusa NO-GO; il solo percorso
-attivo è A 2^22/512 replay, con S2 2^22 e reader riusato nel commit.
+attivo è A 2^22/512 replay, con S2 2^22, successori al massimo 2^23
+e reader riusato nel commit. La capacità S1 completa resta riservata
+fino all’ultimo consumer: il fold non libera capacità tramite `truncate`.
 Il getter ordinato full-DAG-per-tessera e il lift del Snapshot denso sono
 respinti per le rispettive condizioni esplicite; non ogni getter streaming.
 Il [DAG condiviso per finestre](preflight.md#dag-condiviso-getter-ordinato-e-riuso-del-reader)
@@ -996,7 +998,13 @@ non il refinement di questo codec. `prodBatch_sound_scalar` usa potenze
 j+1; il consumer usa j: non si trasferisce il bound senza tale adattamento.
 Nessun nuovo credito al teorema B12 o alla composizione EA-LPN. Il getter numerico ridotto
 O=0/2/4 apre la root A originale con S1 condiviso allocato dopo le query
-al predecessore; la riduzione in-place delle code successive resta aperta. Restano fermi NoPeek, endpoint e trust autorizzati.
+al predecessore. Il fold in-place dei successori segue il rilascio esplicito
+dell’handle precedente; il riferimento CPU rifiuta riordini e getter obsoleti.
+Il vecchio layout S3 2^24 supera l’arena se conta la capacità S1 reale; il
+cap 2^23 conserva il massimo integrato nominato, pagando due letture S2
+aggiuntive per A. Il merge FFT odd-log è censito separatamente: scatter PCS,
+fence GPU e picco fisico completo restano aperti. I confronti finiti
+non scaricano un nuovo refinement Lean. Restano NoPeek, endpoint e trust autorizzati.
 Il [checkpoint RMS e il motore coefficienti](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
 conservano P/Y originali e S48 condiviso per riga: 2.023.511.878 B con
 descrittori, nello slot range riusato prima di RNE. Il backend denso è

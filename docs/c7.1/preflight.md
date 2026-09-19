@@ -709,35 +709,51 @@ prima di inferenza, PCG e resto. Questo respingeva il piano alla terza
 risposta con 50 s; con il nuovo limite a 65 s non basta per respingerlo.
 Questo giustifica cercare retention/fusioni A; non ulteriore tuning range/FFT.
 
-La candidata retention A ora arriva **fino al base case**, per ciascuna
-catena corrente o storica con la propria prova fresca. Dopo la prima query
-si rigenera S1 una volta e lo conserva immutabile. Il commit S2 usa coset
-2^23; la query S1 usa blocchi 2^17 e cache h8. Solo dopo la query si fa
-fold in place, fence e rilascio della coda. Si ripete l'ordine
-commit-successore → query-predecessore → fold per S2…S11, mantenendo
-maschere, pad e segreti fino al loro ultimo consumer.
+La retention A arriva **fino al base case**, per ciascuna catena corrente
+o storica con la propria prova fresca. Dopo la prima query si rigenera S1
+una volta. L'ordine resta commit-successore → query-predecessore → rilascio
+handle → fold per S2…S11. Il riferimento CPU conserva **l'intera capacità
+S1 di 3.221.225.472 B** fino all'ultimo consumer: `Vec::truncate` riduce la
+lunghezza, non la capacità. Non si accredita più il rilascio della coda.
 
-Le visite originali diventano **574 A corrente e 36 per vecchia A**;
-W rimane a 169 visite dirette. Per catena si aggiungono **80 scansioni di
-stati conservati**, 74.893.479.936 B letti e 4.294.966.272 B scritti di
-payload, più **2.027.246.624 interpolazioni Fp3**. I commitment dei successori
-scrivono 68.720.787.456 B encoded: non sono letture A né trasferimenti
-esterni. Il report distingue anche XOF dei sali e operazioni dei resti;
-non accredita questi subtotali come HBM completo.
+Il vecchio cap S3 2^24, conservando questa capacità, porta a O=300 il live
+allineato a **6.602.051.328 B** e l'high-water di indirizzi a
+**6.682.796.800 B**: NO-GO per quel layout. Il cap minimo qui selezionato
+è **S2 2^22, S3 e successori al massimo 2^23**. S1 resta 2^24. Il cambio
+aggiunge due letture logiche S2, **1.610.612.736 B per apertura A**, senza
+nuove scansioni originali A/W. Ogni catena usa 76 replay per i commit dati,
+98 letture di stati conservati e **128.043.700.224 B** di payload letto;
+le interpolazioni pianificate diventano **3.688.191.008**. Le scritture
+encoded restano 68.720.787.456 B, quelle XOF dei sali 22.906.929.152 B.
+Questi sono conteggi della schedule, non istruzioni o transazioni HBM.
 
-| O | Rigenerazioni A nominate | Lower parziale con retention, s | Picco della sola catena retention con slot, B |
+| O | High-water indirizzi apertura A, B | Massimo integrato nominato, B | Coda libera integrata, B |
 |---:|---:|---:|---:|
-| 0 | 574 | 42,038 | 6.194.747.340 |
-| 150 | 610 | 45,986 | 6.234.068.940 |
-| 300 | 646 | 50,170 | 6.273.390.540 |
+| 0 | 5.945.848.832 | 6.087.369.472 | 355.081.472 |
+| 150 | 5.985.170.432 | 6.126.691.072 | 315.759.872 |
+| 300 | 6.024.492.032 | 6.166.012.672 | 276.438.272 |
 
-Il massimo integrato resta il commit A corrente della tabella precedente;
-range e linear riusano l'arena in fasi separate, senza C anticipata durante
-il range. La retention evita 60/120/180 rigenerazioni A. Il lower della terza
-risposta superava il vecchio limite a 50 s; **non esclude i 65 s autorizzati**.
-Inferenza e lavoro retained restano aggiuntivi. La soglia
-50,170 s è un lower condizionale, non una previsione o un upper. Restano
-da chiudere margine fisico, lavoro completo e controlli nativi; questo checkpoint non giustifica una spesa H100.
+Il massimo integrato resta il range. Il margine minimo nominato supera
+256 MiB di soli 8.002.816 B: allocator, fence GPU e workspace non ancora
+rifiniti non possono essere omessi. Le visite originali restano 574 per
+A corrente e 36 per ogni A storica, più il lavoro degli stati conservati.
+
+Le FFT dei commit S1…S11 hanno log-coset **24,22,23,23,21,19,17,15,13,13,13**.
+Per i log dispari il producer deve scrivere `[pari][dispari]`; due FFT
+quadrate five-pass sono seguite da un merge radix-2 in-place. Il merge
+costa un'ulteriore lettura e scrittura del payload, non zero. Per catena
+il ledger conta **101.156.536.320 butterfly**, 8.590.098.432 prodotti di
+cross-twiddle e 268.517.376 butterfly nel merge (già inclusi nel totale).
+I valori richiedono 347.900.215.296 B letti e altrettanti scritti; i twiddle
+877.973.078.016 B di accessi logici. Inizializzazione dei twiddle, scatter,
+hash e maschere restano separati. La tabella completa n*8 è già nello slot;
+non c'è un buffer globale aggiuntivo per lo split. Il microbench copre
+l'identità CPU e il codice device; il collegamento allo scatter PCS resta
+un gate. Non è traffico HBM misurato né un upper temporale.
+
+Il lower parziale corrente 47,498/51,975/56,751 s non include questi costi
+successivi e resta soltanto un lower parziale, non un upper o un gate GO.
+Non esclude i 65 s, ma non giustifica una spesa H100.
 
 ## GO/NO-GO prima di qualsiasi spesa
 
@@ -1152,9 +1168,15 @@ Il test dei round verifica il getter congelato prima/dopo la materializzazione.
 Il confronto numerico ridotto copre root, codec, FS e chiusura con
 `verify_pcs` sul MAC ideale fissato prima delle sfide. Un endpoint MAC
 alterato rifiuta; non c’è una nuova autenticazione dopo le sfide.
-La coda in-place S1→S2, i domini canonici e il binding al lifecycle accettato
-restano da collegare. Il riferimento CPU non accredita i passaggi del kernel
-razionale o il picco fisico canonico.
+Il passaggio in-place S1→S2 e successivi è ora collegato al rilascio
+dell’oracolo precedente: il tree viene distrutto prima di rilasciare la lease.
+La lease nasce solo dopo un commit riuscito; duplicati, prefissi troppo lunghi,
+getter obsoleti e promozioni senza avanzamento sono respinti. Il getter
+successore restituisce gli stessi valori prima/dopo il fold; la capacità S1
+resta integralmente allocata. La sorgente originale viene rimossa dal backend
+dopo la validazione e dal fallback dopo la materializzazione S1. I domini
+canonici, il lifecycle accettato, il kernel razionale e il picco fisico
+restano da collegare; il controllo CPU non li accredita.
 
 Il confine [Seed6](../../rust/volta-pcg/src/c71_seed6.rs) verifica codec K6,
 sei maschere, check completo e compressione E-lineare nonzero. È ora collegato
@@ -1167,8 +1189,9 @@ Le chiamate RMS/RNE/affine/divide restano esplicite: il flag di completezza
 aritmetica è falso finché i loro interni non sono censiti. Sono operazioni
 a livello sorgente, non istruzioni macchina o traffico HBM; i contatori
 non trasformano il preparatore ridotto nel producer canonico. La costruzione
-S1 usa `Arc<Vec<E>>` per spostare l'header senza una copia del corpo; la
-scansione di materializzazione legge A in ordine crescente.
+S1 usa uno slot `RwLock` condiviso con le lease degli oracoli, senza copia
+del corpo; la scansione di materializzazione legge A in ordine crescente.
+Il lock delimita il riferimento CPU: non è una fence GPU né prova di rate.
 
 
 ## RMS: checkpoint originale e coefficienti GKR a memoria limitata

@@ -5,7 +5,7 @@ use p3_multilinear_util::{point::Point, poly::Poly};
 use p3_sumcheck_c61::strategy::ResidualSumcheckProver;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc, OnceLock,
+    Arc, RwLock,
 };
 
 pub(super) type Getter = Arc<dyn Fn(usize) -> E + Send + Sync>;
@@ -14,6 +14,125 @@ fn equality(point: &[E], index: usize) -> E {
     point.iter().enumerate().fold(E::ONE, |v, (bit, &r)| {
         v * if index >> (point.len() - 1 - bit) & 1 == 1 { r } else { E::ONE - r }
     })
+}
+
+// One retained allocation. Logical folds never claim to free Vec capacity.
+// Only a consumed replay handle can release a committed generation.
+struct RetainedData {
+    fallback: Option<Getter>,
+    values: Option<Vec<E>>,
+    variables: usize,
+    applied: Vec<E>,
+    current: u8, // 0 unregistered, 1 live, 2 released
+    successor: Option<(Vec<E>, u8)>,
+    fold_interpolations: u64,
+}
+struct Retained {
+    data: RwLock<RetainedData>,
+    reads: Arc<AtomicU64>,
+}
+pub(super) struct Lease {
+    stage: Arc<Retained>,
+    prefix: Vec<E>,
+}
+impl Lease {
+    pub(super) fn release(self) -> Result<(), String> {
+        let mut data = self.stage.data.write().map_err(|_| "retained lock poisoned")?;
+        let state = if self.prefix == data.applied {
+            &mut data.current
+        } else {
+            let (prefix, state) = data.successor.as_mut().ok_or("unknown successor release")?;
+            if *prefix != self.prefix {
+                return Err("different successor release".into());
+            }
+            state
+        };
+        if *state != 1 {
+            return Err("duplicate or unregistered retained release".into());
+        }
+        *state = 2;
+        Ok(())
+    }
+}
+impl Retained {
+    fn getter(self: &Arc<Self>, prefix: Vec<E>) -> Getter {
+        let stage = self.clone();
+        Arc::new(move |i| {
+            let data = stage.data.read().expect("retained lock poisoned");
+            assert!(
+                prefix.len() <= data.variables && prefix.starts_with(&data.applied),
+                "stale, overlong or different retained getter"
+            );
+            let suffix = &prefix[data.applied.len()..];
+            let variables = data.variables - prefix.len();
+            assert!(i < 1 << variables);
+            match &data.values {
+                Some(values) => {
+                    stage.reads.fetch_add(1 << suffix.len(), Ordering::Relaxed);
+                    (0..1 << suffix.len())
+                        .map(|j| equality(suffix, j) * values[(j << variables) | i])
+                        .sum()
+                }
+                None => {
+                    let fallback = data.fallback.as_ref().expect("retained source unavailable");
+                    (0..1 << suffix.len())
+                        .map(|j| equality(suffix, j) * fallback((j << variables) | i))
+                        .sum()
+                }
+            }
+        })
+    }
+    fn lease(self: &Arc<Self>, prefix: &[E]) -> Result<Lease, String> {
+        let mut data = self.data.write().map_err(|_| "retained lock poisoned")?;
+        if prefix.len() > data.variables {
+            return Err("overlong retained prefix".into());
+        }
+        if prefix == data.applied {
+            if data.current != 0 {
+                return Err("retained root registered twice".into());
+            }
+            data.current = 1;
+        } else {
+            if !prefix.starts_with(&data.applied) || data.successor.is_some() {
+                return Err("retained successor differs or registered twice".into());
+            }
+            data.successor = Some((prefix.to_vec(), 1));
+        }
+        Ok(Lease { stage: self.clone(), prefix: prefix.to_vec() })
+    }
+    fn promote(&self, prefix: &[E]) -> Result<(), String> {
+        let mut data = self.data.write().map_err(|_| "retained lock poisoned")?;
+        if prefix.len() > data.variables || prefix == data.applied {
+            return Err("overlong or non-advancing retained promotion".into());
+        }
+        if data.current != 2
+            || data
+                .successor
+                .as_ref()
+                .map(|(expected, state)| expected.as_slice() == prefix && *state == 1)
+                != Some(true)
+            || !prefix.starts_with(&data.applied)
+        {
+            return Err("retained predecessor not released or successor not fixed".into());
+        }
+        let done = data.applied.len();
+        let values = data.values.as_mut().ok_or("retained values not materialized")?;
+        let mut interpolations = 0;
+        for &r in &prefix[done..] {
+            let half = values.len() / 2;
+            for i in 0..half {
+                let a = values[i];
+                values[i] = a + r * (values[i + half] - a);
+            }
+            values.truncate(half); // capacity stays reserved until State is dropped
+            interpolations += half as u64;
+        }
+        data.fold_interpolations += interpolations;
+        data.applied = prefix.to_vec();
+        data.current = 1;
+        data.successor = None;
+        Ok(())
+    }
 }
 
 /// Root-owned immutable original getter; folds are transcript-fixed descriptors.
@@ -29,7 +148,8 @@ pub(super) struct State {
     sum: E,
     retain_first: bool,
     retained_bytes: usize,
-    pending_retention: Option<(Getter, Arc<OnceLock<Arc<Vec<E>>>>, Vec<E>, usize)>,
+    pending_retention: Option<(Getter, Vec<E>, usize)>,
+    retained: Option<Arc<Retained>>,
     retained_reads: Arc<AtomicU64>,
     pub(super) source_reads: Arc<AtomicU64>,
 }
@@ -81,16 +201,25 @@ impl State {
             retain_first,
             retained_bytes: 0,
             pending_retention: None,
+            retained: None,
             retained_reads: Arc::new(AtomicU64::new(0)),
         })
     }
 
     pub(super) fn getter(&self) -> Getter {
+        if let Some(stage) = &self.retained {
+            return stage.getter(self.prefix.clone());
+        }
         let (source, prefix, n) = (self.source.clone(), self.prefix.clone(), self.num_variables());
         Arc::new(move |i| {
             assert!(i < 1 << n);
             (0..1 << prefix.len()).map(|j| equality(&prefix, j) * source((j << n) | i)).sum()
         })
+    }
+
+    // Register only after Tree::commit succeeds: errors cannot leave a live lease.
+    pub(super) fn replay_lease(&self) -> Result<Option<Lease>, String> {
+        self.retained.as_ref().map(|stage| stage.lease(&self.prefix)).transpose()
     }
 
     fn weight(&self, index: usize) -> E {
@@ -108,7 +237,7 @@ impl State {
         }
         // Called only after the predecessor's opening/release in WHIR.
         // The already-committed S1 oracle shares this immutable-value slot.
-        if let Some((source, slot, prefix, n)) = self.pending_retention.take() {
+        if let Some((source, prefix, n)) = self.pending_retention.take() {
             // Read original A in address order, evaluating each window once.
             // This is the same j-ordered sum for every S1 cell as getter().
             let mut values = vec![E::ZERO; 1 << n];
@@ -118,10 +247,16 @@ impl State {
                     *value += weight * source((j << n) | i);
                 }
             }
-            // Move the Vec header; do not copy a full temporary into Arc<[E]>.
-            let values = Arc::new(values);
             self.retained_bytes = values.capacity() * std::mem::size_of::<E>();
-            slot.set(values).map_err(|_| "S1 retained twice")?;
+            let stage = self.retained.as_ref().ok_or("retained holder missing")?;
+            let mut data = stage.data.write().map_err(|_| "retained lock poisoned")?;
+            if data.values.is_some() {
+                return Err("S1 retained twice".into());
+            }
+            data.values = Some(values);
+            data.fallback = None; // original A/cuts no longer captured by this stage
+        } else if let Some(stage) = &self.retained {
+            stage.promote(&self.prefix)?;
         }
         let get = self.getter();
         for i in 0..1 << self.num_variables() {
@@ -224,20 +359,22 @@ impl ResidualSumcheckProver<Goldilocks, E> for State {
             // queries see identical values from the one retained allocation.
             let get = self.getter();
             let n = self.num_variables();
-            let slot = Arc::new(OnceLock::<Arc<Vec<E>>>::new());
-            let shared = slot.clone();
-            let fallback = get.clone();
-            let reads = self.retained_reads.clone();
             let original_source = self.source.clone();
             let original_prefix = self.prefix.clone();
-            self.source = Arc::new(move |i| match shared.get() {
-                Some(values) => {
-                    reads.fetch_add(1, Ordering::Relaxed);
-                    values[i]
-                }
-                None => fallback(i),
-            });
-            self.pending_retention = Some((original_source, slot, original_prefix, n));
+            self.retained = Some(Arc::new(Retained {
+                data: RwLock::new(RetainedData {
+                    fallback: Some(get),
+                    values: None,
+                    variables: n,
+                    applied: Vec::new(),
+                    current: 0,
+                    successor: None,
+                    fold_interpolations: 0,
+                }),
+                reads: self.retained_reads.clone(),
+            }));
+            self.source = Arc::new(|_| panic!("original source replaced by retained stage"));
+            self.pending_retention = Some((original_source, original_prefix, n));
             self.dimension = n;
             self.prefix.clear();
             self.retain_first = false;
@@ -264,6 +401,77 @@ mod tests {
         product_polynomial::ProductPolynomial,
         strategy::{SumcheckProver, VariableOrder},
     };
+
+    #[test]
+    fn c71_b12_retained_lifecycle_rejects_reordering_and_preserves_storage() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+
+        let keepalive = Arc::new(());
+        let weak = Arc::downgrade(&keepalive);
+        let captured = keepalive.clone();
+        let fallback: Getter = Arc::new(move |i| {
+            let _keep_source_alive = &captured;
+            E::from(Goldilocks::new(i as u64 + 1))
+        });
+        drop(keepalive);
+
+        let mut values = Vec::with_capacity(16);
+        values.extend((0..8).map(|i| E::from(Goldilocks::new(i + 1))));
+        let reserved = values.capacity();
+        let stage = Arc::new(Retained {
+            data: RwLock::new(RetainedData {
+                fallback: Some(fallback),
+                values: None,
+                variables: 3,
+                applied: Vec::new(),
+                current: 0,
+                successor: None,
+                fold_interpolations: 0,
+            }),
+            reads: Arc::new(AtomicU64::new(0)),
+        });
+
+        // This is the materialization transition in add_powers: the immutable
+        // source capture is gone once the retained vector becomes authoritative.
+        {
+            let mut data = stage.data.write().unwrap();
+            data.values = Some(values);
+            data.fallback = None;
+        }
+        assert!(weak.upgrade().is_none());
+
+        assert!(stage.lease(&[E::ONE; 4]).is_err());
+        assert!(stage.promote(&[E::ONE; 4]).is_err());
+        let overlong = stage.getter(vec![E::ONE; 4]);
+        assert!(catch_unwind(AssertUnwindSafe(|| overlong(0))).is_err());
+        let s1 = stage.lease(&[]).unwrap();
+        assert!(stage.lease(&[]).is_err());
+        assert!(stage.promote(&[]).is_err());
+        let duplicate_s1 = Lease { stage: stage.clone(), prefix: Vec::new() };
+        let stale_s1_getter = stage.getter(Vec::new());
+
+        let r = E::new([Goldilocks::new(5), Goldilocks::new(7), Goldilocks::new(11)]);
+        let s2_prefix = vec![r];
+        let s2_getter = stage.getter(s2_prefix.clone());
+        let before: Vec<_> = (0..4).map(|i| s2_getter(i)).collect();
+        let s2 = stage.lease(&s2_prefix).unwrap();
+
+        assert!(stage.promote(&s2_prefix).is_err()); // predecessor still live
+        s1.release().unwrap();
+        assert!(duplicate_s1.release().is_err());
+        stage.promote(&s2_prefix).unwrap();
+
+        let after: Vec<_> = (0..4).map(|i| s2_getter(i)).collect();
+        assert_eq!(before, after);
+        let data = stage.data.read().unwrap();
+        assert_eq!(data.values.as_ref().unwrap().len(), 4);
+        assert_eq!(data.values.as_ref().unwrap().capacity(), reserved);
+        drop(data);
+
+        assert!(catch_unwind(AssertUnwindSafe(|| stale_s1_getter(0))).is_err());
+        s2.release().unwrap();
+    }
+
     #[test]
     fn c71_b12_sourcewise_adaptive_rounds_match_dense_and_forbid_fallbacks() {
         for (dimension, first, retain) in [(10, 1, false), (12, 7, false), (12, 7, true)] {

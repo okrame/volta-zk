@@ -146,7 +146,8 @@ def report():
     assessment=screen.base.b12_pcs_binding_assessment()
     dominant=screen.dominant_cost_screen(assessment)
     pcs={d:whir.trace(d) for d in (35,34)}
-    retained=whir.a_s1_retention_schedule()
+    retained=whir.a_s1_retention_schedule(s2_coset_rows=1<<22,
+                successor_coset_rows=1<<23, reserve_s1_capacity=True)
     correlations=pcg.report()
     cases=[]
     for slot,old in enumerate((0,150,300)):

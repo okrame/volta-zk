@@ -325,3 +325,40 @@ def test_native_salted_hash_census_includes_chunk_parents_and_no_digest_buffer()
     assert r['internal_digest_read_bytes']==32*128+32*112+64*15
     assert r['internal_digest_write_bytes']==32*112+32*16+32*15
     assert r['salt_start_write_current_copy_bytes']==24*16
+
+
+def test_full_s1_capacity_with_smaller_s3_commit_counts_every_extra_read():
+    previous=whir.a_s1_retention_schedule(s2_coset_rows=1<<22)
+    current=whir.a_s1_retention_schedule(s2_coset_rows=1<<22,
+        successor_coset_rows=1<<23,reserve_s1_capacity=True)
+    assert current['full_S1_capacity_reserved_through_last_consumer']
+    assert current['retained_capacity_bytes']==3_221_225_472
+    assert current['all_data_commit_source_replays']==76
+    assert current['retained_state_read_passes_total']==98
+    assert current['retained_state_logical_read_bytes_total']==128_043_700_224
+    assert current['retained_state_logical_read_bytes_total']-previous['retained_state_logical_read_bytes_total']==1_610_612_736
+    assert current['fp3_interpolations_all_retained_folds_and_virtual_getters']==3_688_191_008
+    for field in ['all_data_commit_encoded_write_bytes','all_data_commit_salt_xof_bytes',
+                  'original_A_source_passes_through_S1','all_query_remainder_fp_butterflies']:
+        assert current[field]==previous[field]
+
+
+def test_odd_commit_fft_counts_merge_without_hiding_shuffle_or_hbm():
+    even=whir.commit_fft_work(32,12,16)
+    odd=whir.commit_fft_work(32,12,32)
+    assert even['whole_value_array_passes_per_coset']==5
+    assert odd['whole_value_array_passes_per_coset']==6
+    assert odd['radix2_butterflies']==32*12*5//2
+    assert odd['odd_merge_butterflies']==32*12//2
+    assert odd['value_logical_read_bytes']-even['value_logical_read_bytes']==32*12*8
+    assert odd['value_logical_write_bytes']-even['value_logical_write_bytes']==32*12*8
+    assert odd['twiddle_logical_read_bytes']==(32*12*5//2+32*12)*8
+    assert odd['extra_global_shuffle_buffer_bytes']==0
+    assert odd['producer_parity_scatter_required']
+    assert not odd['producer_scatter_integrated'] and not odd['physical_HBM_complete']
+    selected=whir.a_s1_retention_schedule(s2_coset_rows=1<<22,
+        successor_coset_rows=1<<23,reserve_s1_capacity=True)
+    rows=selected['data_commit_fft_by_oracle']
+    assert [r['log2_coset_rows'] for r in rows]==[24,22,23,23,21,19,17,15,13,13,13]
+    assert selected['all_data_commit_fft_work']['odd_merge_butterflies']==sum(
+        r['odd_merge_butterflies'] for r in rows)

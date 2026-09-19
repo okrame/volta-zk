@@ -96,3 +96,26 @@ def test_compact_rms_original_bytes_are_released_before_range():
         assert plan['events'][-1]['free']==['RMS:original_PYS']
         assert plan['events'][-1]['fence_before_release']
         assert plan['events'][-1]['live_aligned_bytes']==sum(n for _,_,n in plan['initial_allocations'])
+
+
+def test_retained_capacity_is_never_freed_by_truncate_and_s3_cap_is_necessary():
+    report=arena.report(ordered_getter=True,reuse_reader_for_commit=True)
+    for case in report['cases']:
+        plan=case['address_layouts']['each_A_opening']
+        spans=[(offset,size) for event in plan['events'] for key,offset,size in event['allocate']
+               if key.startswith('retained:S')]
+        assert len(spans)==11 and len(set(spans))==1
+        assert spans[0][1]==3_221_225_472
+        assert plan['unaddressed_tail_bytes']>=arena.MARGIN
+        old=arena.whir.commit_workspace(arena.whir.oracle_geometry(34)[3],1<<24)
+        fields={'coset':'coset_buffer_bytes','frontier':'frontier_bytes',
+                'twiddles':'twiddle_bytes','salt_offsets':'salt_offsets_bytes'}
+        events=[]
+        for e in plan['events']:
+            allocate={key:size for key,_,size in e['allocate']}
+            if e['event']=='a_commit_s3_with_s2_immutable':
+                for key,field in fields.items():allocate['s3_commit:'+key]=old[field]
+            events.append(dict(event=e['event'],free=e['free'],allocate=allocate))
+        bad=arena.place_events(events,{key:size for key,_,size in plan['initial_allocations']})
+        assert bad['aligned_live_peak_bytes']>arena.response.ARENA
+        assert not bad['fits_with_operational_margin']

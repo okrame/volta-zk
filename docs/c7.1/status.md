@@ -260,7 +260,7 @@ porta il lower parziale della terza risposta a **65,481 s**: NO-GO per
 questa schedule sotto i ceiling dichiarati, non per ogni getter/PCS.
 La minima alternativa riusa lo slot reader/hash nel commit scatter A,
 con hash nelle celle del coset consumato: coset 2^22 e **512 replay**,
-S2 sempre 2^22. Il ledger con lettura hash separata dà lower parziali **47,498 / 51,975 / 56,751 s**.
+S2 sempre 2^22, successori al massimo 2^23. Il ledger con lettura hash separata dà lower parziali **47,498 / 51,975 / 56,751 s**.
 Il solo getter ha lower di banda **14,160 / 15,275 / 16,451 s**; il vecchio
 budget di 14 s è escluso. Il nuovo budget candidato assegna 17 s al getter,
 1,5 s all'inferenza e 46,5 s alle altre fasi, senza credito di overlap.
@@ -315,6 +315,11 @@ con ricetta disgiunta e sfida fissata prima della prova. Restano da collegare
 FS globale, exchange delle correzioni e costruttore cGGM dopo il guard.
 Il getter numerico ridotto O=0/2/4 ora apre la root A originale tramite
 WHIR; S1 condiviso viene allocato solo dopo le query al predecessore.
+Il fold dei successori ora richiede il rilascio dell’handle precedente e
+conserva tutta la capacità S1. Il vecchio layout S3 2^24 è NO-GO con questa
+capacità; il cap 2^23 paga due letture S2 in più per apertura A e lascia
+invariato il massimo integrato nominato di 6.166.012.672 B. Il merge FFT
+odd-log è contato; scatter PCS e fence GPU restano da integrare.
 Il [checkpoint RMS](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
 usa 2.023.511.878 B con descrittori e riusa lo slot range prima di RNE;
 il confronto dei frame originali passa senza A/Snapshot completi.

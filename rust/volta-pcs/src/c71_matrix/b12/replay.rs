@@ -2,7 +2,7 @@
 use super::*;
 use super::{
     replay_tree::Tree,
-    sourcewise::{Getter, State},
+    sourcewise::{Getter, Lease, State},
 };
 use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_dft::TwoAdicSubgroupDft;
@@ -13,7 +13,7 @@ use p3_whir_c61::pcs::{
     proof::{QueryOpenings, SharedProofOpening},
     zk::{ZkWhirInitialMessage, ZkWhirOracleCommitter, ZkWhirReplayHandle},
 };
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 fn limbs(x: &E) -> &[Goldilocks] {
     <E as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(x)
 }
@@ -124,6 +124,7 @@ impl Code {
     fn commit(
         self,
         mmcs: &HidingMmcs,
+        state: Option<&State>,
     ) -> Result<(replay_tree::Commitment, ZkWhirReplayHandle), String> {
         let base = self.base();
         let code = Arc::new(self);
@@ -138,17 +139,19 @@ impl Code {
             |c| code.coset(c, rows),
             Arc::new(move |indices| rowcode.rows(indices)),
         )?;
-        Ok((root, ZkWhirReplayHandle::new(Oracle { tree, base })))
+        let lease = state.map(State::replay_lease).transpose()?.flatten();
+        Ok((root, ZkWhirReplayHandle::new(Oracle { tree, base, lease })))
     }
 }
 struct Oracle {
     tree: Tree,
     base: bool,
+    lease: Option<Lease>,
 }
 struct Backend<'a> {
     base: &'a ObservedMmcs,
     extension: &'a ObservedMmcs,
-    source: Getter,
+    source: Mutex<Option<Getter>>,
     first: usize,
     retain_first: bool,
 }
@@ -168,13 +171,16 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
         {
             return Err("bounded singleton sourcewise claim".into());
         }
-        State::new(
-            self.source.clone(),
+        let mut source = self.source.lock().map_err(|_| "source lock poisoned")?;
+        let state = State::new(
+            source.as_ref().ok_or("source already consumed")?.clone(),
             claims[0].0.as_slice(),
             self.first,
             target,
             self.retain_first,
-        )
+        )?;
+        source.take(); // transfer ownership only after geometry and claim validation
+        Ok(state)
     }
     fn commit_initial(
         &self,
@@ -215,14 +221,15 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
         folding: usize,
         height: usize,
     ) -> Result<Option<(replay_tree::Commitment, ZkWhirReplayHandle)>, String> {
+        let get = state.getter();
         Code {
-            get: state.getter(),
+            get,
             len: 1 << state.num_variables(),
             width: 1 << folding,
             height,
             pads: Pads::Extension(randomness.to_vec()),
         }
-        .commit(&self.extension.inner)
+        .commit(&self.extension.inner, Some(state))
         .map(Some)
     }
     fn evaluate_padded_ood_from_sumcheck(
@@ -254,6 +261,15 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
         );
         state.add_powers(&terms)?;
         Ok(true)
+    }
+    fn release_replay(&self, handle: ZkWhirReplayHandle) -> Result<(), String> {
+        let oracle = handle.downcast::<Oracle>().map_err(|_| "replay handle type")?;
+        let Oracle { tree, lease, .. } = *oracle;
+        drop(tree); // no opening callback survives when the generation is released
+        if let Some(lease) = lease {
+            lease.release()?;
+        }
+        Ok(())
     }
     fn open_replay(
         &self,
@@ -350,7 +366,7 @@ pub(in crate::c71_matrix) fn compare_source(
         height,
         pads: Pads::Base(pads.clone()),
     }
-    .commit(&original_mmcs.inner)
+    .commit(&original_mmcs.inner, None)
     .unwrap();
     assert_eq!(root, replay_root);
     assert_eq!(root_rng.position(), initial_rng.position());
@@ -369,7 +385,7 @@ pub(in crate::c71_matrix) fn compare_source(
     let backend = Backend {
         base: &base,
         extension: &extension,
-        source,
+        source: Mutex::new(Some(source)),
         first,
         retain_first: original.is_some(),
     };

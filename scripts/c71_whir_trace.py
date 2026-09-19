@@ -152,6 +152,38 @@ def salted_hash_work(height, base_columns, coset_rows=INITIAL_COSET_ROWS):
     }
 
 
+def commit_fft_work(height, columns, coset_rows):
+    """Algorithmic traffic of the square kernels plus odd-log parity merge.
+
+    The producer writes parity-scattered coefficients for odd log sizes; no
+    extra full-array shuffle is hidden here. That producer integration is an
+    open gate. Twiddle initialization, coefficient scatter and hash are separate.
+    Logical accesses are not an HBM measurement or a service-rate guarantee.
+    """
+    rows = min(height, coset_rows)
+    if rows < 4 or rows & (rows - 1) or height % rows:
+        raise ValueError("FFT requires power-of-two cosets of at least four rows")
+    log = rows.bit_length() - 1
+    odd = log % 2
+    cells = height * columns
+    butterflies = cells * log // 2
+    return {
+        "log2_coset_rows": log,
+        "cosets": height // rows,
+        "whole_value_array_passes_per_coset": 5 + odd,
+        "radix2_butterflies": butterflies,
+        "square_transpose_twiddle_products": cells,
+        "odd_merge_butterflies": cells // 2 if odd else 0,
+        "value_logical_read_bytes": (5 + odd) * cells * 8,
+        "value_logical_write_bytes": (5 + odd) * cells * 8,
+        "twiddle_logical_read_bytes": (butterflies + cells) * 8,
+        "extra_global_shuffle_buffer_bytes": 0,
+        "producer_parity_scatter_required": bool(odd),
+        "producer_scatter_integrated": False,
+        "physical_HBM_complete": False,
+    }
+
+
 def commit_workspace(oracle, coset_rows=None):
     if coset_rows is None:
         coset_rows = INITIAL_COSET_ROWS if oracle["oracle"] == 0 else SWITCH_COSET_ROWS
@@ -173,6 +205,7 @@ def commit_workspace(oracle, coset_rows=None):
         "encoded_write_bytes": oracle["encoded_bytes"],
         "salt_xof_bytes": oracle["salt_xof_bytes_per_commit_or_full_replay"],
         "salted_hash_work": salted_hash_work(oracle["height"], oracle["base_columns"], coset_rows),
+        "fft_work": commit_fft_work(oracle["height"], oracle["base_columns"], coset_rows),
     }
 
 
@@ -208,7 +241,8 @@ def remainder_workspace(oracle, cap=None):
     }
 
 
-def a_s1_retention_schedule(s2_coset_rows=1 << 23):
+def a_s1_retention_schedule(s2_coset_rows=1 << 23, successor_coset_rows=1 << 24,
+                            reserve_s1_capacity=False):
     """Bounded A-only alternative from the installed root through the base opening."""
     dimension = 34
     oracles = oracle_geometry(dimension)
@@ -393,9 +427,10 @@ def a_s1_retention_schedule(s2_coset_rows=1 << 23):
     s2_bytes = (1 << s2["source_dimension"]) * FP3_BYTES
     events.add(
         "a_fold_s1_to_s2_in_place_and_fence",
-        "fold four prefix chunks into the first quarter, fence, then release the S1 tail",
+        ("fold in place after predecessor release; preserve the full S1 allocation" if reserve_s1_capacity
+         else "fold four prefix chunks into the first quarter, fence, then release the S1 tail"),
         free=("retained:S1_values",),
-        allocate={"retained:S2_values_in_s1_allocation": s2_bytes},
+        allocate={"retained:S2_values_in_s1_allocation": s1_bytes if reserve_s1_capacity else s2_bytes},
         work={
             "retained_S1_read_passes": 1,
             "S2_fp3_write_bytes": s2_bytes,
@@ -504,7 +539,7 @@ def a_s1_retention_schedule(s2_coset_rows=1 << 23):
             break
 
         successor = oracles[state_index + 1]
-        commit = commit_workspace(successor, 1 << 24)
+        commit = commit_workspace(successor, successor_coset_rows)
         commit_live = {
             f"s{state_index + 1}_commit:coset": commit["coset_buffer_bytes"],
             f"s{state_index + 1}_commit:frontier": commit["frontier_bytes"],
@@ -574,9 +609,10 @@ def a_s1_retention_schedule(s2_coset_rows=1 << 23):
         successor_bytes = (1 << successor["source_dimension"]) * FP3_BYTES
         events.add(
             f"a_fold_s{state_index}_to_s{state_index + 1}_in_place_and_fence",
-            "fold four prefix chunks, fence, then release the predecessor tail",
+            ("fold in place after predecessor release; preserve the full S1 allocation" if reserve_s1_capacity
+             else "fold four prefix chunks, fence, then release the predecessor tail"),
             free=(current_value_key,),
-            allocate={successor_value_key: successor_bytes},
+            allocate={successor_value_key: s1_bytes if reserve_s1_capacity else successor_bytes},
             work={
                 f"retained_S{state_index}_read_passes": 1,
                 "successor_fp3_write_bytes": successor_bytes,
@@ -600,7 +636,7 @@ def a_s1_retention_schedule(s2_coset_rows=1 << 23):
         remainder_workspace(oracles[index], 1 << 17) for index in range(2, len(oracles))
     ]
     commit_rows = [commit1, commit2] + [
-        commit_workspace(oracles[index], 1 << 24) for index in range(3, len(oracles))
+        commit_workspace(oracles[index], successor_coset_rows) for index in range(3, len(oracles))
     ]
     fold_interpolations = sum(
         (1 << (oracles[index]["source_dimension"] - 1))
@@ -629,6 +665,10 @@ def a_s1_retention_schedule(s2_coset_rows=1 << 23):
         "retained_S1_read_passes_through_S2_birth": retained_s1_passes,
         "retained_S1_read_bytes_through_S2_birth": retained_s1_passes * s1_bytes,
         "retained_state_rows": retained_states,
+        "full_S1_capacity_reserved_through_last_consumer": reserve_s1_capacity,
+        "successor_coset_rows_cap": successor_coset_rows,
+        "s2_coset_rows_cap": s2_coset_rows,
+        "retained_capacity_bytes": s1_bytes if reserve_s1_capacity else 0,
         "retained_state_read_passes_total": retained_read_passes,
         "retained_state_read_passes_breakdown": {
             "two_adaptive_sumcheck_scans": 22,
@@ -663,6 +703,11 @@ def a_s1_retention_schedule(s2_coset_rows=1 << 23):
         "S1_query_remainder_fp_pointwise_products": s1_open_rounded * 4,
         "all_data_commit_encoded_write_bytes": sum(row["encoded_write_bytes"] for row in commit_rows),
         "all_data_commit_source_replays": sum(row["source_replays"] for row in commit_rows),
+        "all_data_commit_fft_work": {key: sum(row["fft_work"][key] for row in commit_rows)
+            for key in ("radix2_butterflies", "square_transpose_twiddle_products",
+                        "odd_merge_butterflies", "value_logical_read_bytes",
+                        "value_logical_write_bytes", "twiddle_logical_read_bytes")},
+        "data_commit_fft_by_oracle": [row["fft_work"] for row in commit_rows],
         "all_data_commit_salt_xof_bytes": sum(row["salt_xof_bytes"] for row in commit_rows),
         "all_query_remainder_fp_butterflies": sum(row["fp_butterflies"] for row in query_workspaces),
         "all_query_remainder_fp_pointwise_products": sum(
@@ -678,7 +723,7 @@ def a_s1_retention_schedule(s2_coset_rows=1 << 23):
         "immutable_until": "S1 query opening is fixed",
         "analytic_lifecycle_reaches_final_opening": True,
         "unknown_residue": [
-            "native retained-state getter, in-place fold and fence implementation",
+            "canonical accelerated retained getter/fold and GPU fence; bounded CPU lifecycle checked",
             "rational-covector adapter and its product-tree/Q-inverse arithmetic",
             "FFT/hash/reader/allocator traffic and proof accumulation",
             "mask multiproofs, terminal OpeningMac and complete service-rate bounds",

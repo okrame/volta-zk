@@ -1207,3 +1207,17 @@ transizioni Eq e LUT byte. Il record conserva esplicitamente le omissioni
 individuate: Eq root/leaf byte, riallocazioni del binding, temporanei FS e
 allocator/caller. Non attribuisce un upper fisico o temporale completo.
 Nessuna GPU; gli errori di compilazione corretti prima del run sono registrati.
+
+### Owned capacities, Eq temporaries and transcript buffers
+
+Il [record su SHA pulita `9ca0882c31e5`](../../benchmarks/results/c71-owned-capacity-2026-09-19-9ca0882c31e5.json)
+conserva **12 test Rust e 21 Python**. I 22 dump lookup confrontano anche
+righe, prove, triple, punti, scratch e letture cache con il ledger; le
+capacità prenotate coincidono con i payload richiesti nei casi ridotti.
+Eq root/leaf byte include il transitorio vecchio+nuovo e distingue Lanes
+da Sum. I record FS streaming coincidono col frame contiguo, compreso il
+caso vuoto; passano KAT indipendente e composizione ridotta. I buffer proof
+lookup restano riservati attraverso tutte le catene del piano.
+Il test ha respinto la prima ipotesi ABI di CompactBlock=40 B; la dimensione
+osservata di 32 B è stata usata prima del run pulito. Restano esclusi
+allocator, stack del compilatore, caller e picco fisico/tempo completi.

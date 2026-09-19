@@ -1300,3 +1300,29 @@ Restano immutati transcript, endpoint e modello MAC ideale dei test.
 Nessuna GPU o spesa. Sono preservati il primo errore di build (`SubAssign`
 non disponibile) e i due errori del fixture corretto: padding impegnato
 non nullo e fault che violava il circuito prima di poter isolare la PCS.
+
+### Native EXP30 wide accumulators and original cache
+
+Il [record su SHA pulita `1fa2c20d03df`](../../benchmarks/results/c71-exp30-wide-cache-2026-09-19-1fa2c20d03df.json)
+verifica sei filtri Rust ridotti, otto controlli Python e tre controlli
+Python/C++ del piano arena. Tutti passano. Il positivo integrato usa
+7.741.993 B e 88.049 MAC ideali, senza Snapshot/A completi; non è un
+risultato canonico o AES-PCG. I tempi CPU sono solo quelli dei test.
+
+Il nuovo accumulatore conserva limb u64 e riporti u32 e riduce una volta
+per bin, prima del peso Fp3. Il test controlla carry e riduzione anche al
+bound; la parità completa wire/FS/MAC dei quattro round rimane verificata.
+La cache E/Pi/Z è confrontata con ogni byte originale e con il padding
+causale a tre valori ridotti di O. Il ledger separa il fill, già addebitato
+al getter, dalle successive letture interne; il positivo ridotto alloca
+30 B di cache. Restano 428.928.192 prodotti dei pesi per risposta, senza
+moltiplicazione per il numero di celle, e 1.286.784.576 riduzioni base.
+
+A O=0/150/300 il payload cache canonico è
+132.192.000 / 391.392.000 / 650.592.000 B. Il live allineato dell’evento
+prefisso diventa 1.613.601.024 / 1.912.125.952 / 2.210.647.552 B;
+la high-water nominata della catena EXP30 resta
+2.082.995.968 / 3.370.001.152 / 3.851.690.752 B. Tutti i layout censiti
+mantengono almeno 256 MiB di margine. Workspace e staging completi,
+traffico HBM reale, refinement Lean e tempo totale restano aperti:
+`credit:false`, nessuna ammissione H100 e nessuna spesa.

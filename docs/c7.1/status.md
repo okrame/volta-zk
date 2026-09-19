@@ -133,7 +133,9 @@ Il lower della sola coda scalare resta 4,220242 s. Il payload aggiuntivo
 con margine. Una cache dei soli originali E/Pi/Z costa
 132.192.000 / 391.392.000 / 650.592.000 B e sostituisce le ricostruzioni
 del getter durante il rapporto; viene liberata dopo l’endpoint byte.
-Non è il picco fisico completo. Nessun nuovo GO H100.
+Non è il picco fisico completo. Il [record nativo aggiornato](evidence.md#native-exp30-wide-accumulators-and-original-cache)
+conferma sei test Rust, otto Python e tre controlli arena su SHA pulita.
+Nessun nuovo GO H100.
 Prossime fasi dominanti: accumulo/riduzione dei bin e replay packed;
 restano da chiudere kernel, staging, getter e ledger temporale congiunto.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.

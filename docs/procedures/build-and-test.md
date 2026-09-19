@@ -48,6 +48,9 @@ esecuzione GPU è autorizzata da questa procedura.
 Per i pesi EXP30 posticipati aggiungere il filtro nativo
 `c71_b12_pattern_prefix_four_rounds_original_wire_and_mac` e
 `c71_b12_softmax_original_scores`; il primo usa wiring piccolo a 32 celle.
+Per i riporti e la cache originali aggiungere
+`c71_pattern_wide_accumulator_matches_field_at_carry_boundaries` e
+`c71_exp30_ratio_cache_matches_original_bytes_and_causal_padding`.
 Il trace integrato distingue `pattern_prefix` dai round scalari rimanenti.
 I conteggi e la liveness sono controllati da
 `tests/test_c71_exp30_alternatives.py` e dal filtro

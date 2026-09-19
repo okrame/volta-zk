@@ -1900,7 +1900,7 @@ Nel [piano arena](../../scripts/c71_arena_plan.py) gli istogrammi vengono
 dopo la fence delle cache lookup e prima dell'obbligo byte finale. Il raw
 è rilasciato dopo l'applicazione dei pesi; l'aggregato dopo il quarto
 cubico, prima della coda GKR. Il live nominato dell'evento è
-1.613.600.896 / 1.912.125.824 / 2.210.647.424 B, inclusa la cache
+1.613.601.024 / 1.912.125.952 / 2.210.647.552 B, inclusa la cache
 originale trattenuta fino all’endpoint byte. Non aumenta il massimo
 nominato del commit A e conserva il margine nel piano; allocator,
 workspace completi del getter e staging GPU restano obblighi espliciti.
@@ -1922,3 +1922,7 @@ si convertono conteggi Boolean/addizioni in un upper H100. I tre tempi
 `T_inference`, `T_proof_only`, `T_response_total` restano distinti e non
 misurati su hardware target. La prossima fase dominante è il consumer
 degli istogrammi insieme al producer packed; non altri censimenti ABI.
+
+La variante con riporti e cache è verificata nel
+[record nativo su SHA pulita](evidence.md#native-exp30-wide-accumulators-and-original-cache).
+I conteggi restano un modello sorgente, non istruzioni CUDA o un upper H100.

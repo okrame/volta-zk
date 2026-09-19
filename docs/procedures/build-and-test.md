@@ -30,6 +30,19 @@ closure alone requires no Rust or Lean build; native refinement is separate.
 
 ## Rust and resource limits
 
+Per il GKR a getter e l'endpoint byte a LUT, dopo la build mirata PCS sotto,
+eseguire separatamente `fs_streamed_record`, `c71_b12_byte_functions`,
+`c71_b12_single_cell_sourcewise`, `c71_b12_rms_joint_gkr`,
+`c71_b12_ratio_joint_gkr`, `c71_b12_replay_crosses_u64`,
+`compact_frames_match_original`, `c71_b12_gemma_rms_dispatch` e
+`c71_b12_native_composed`. Restano 60 s/2 GiB, un thread e un worker Rayon
+per invocazione; il caso u16/N=128 è il più costoso e non va ampliato.
+`--nocapture` emette i contatori `C71_SOURCE_WORK` e `C71_BYTE_SOURCE_WORK`.
+La parità con la prova densa è controllo ridotto di transcript/MAC/PCS;
+non esecuzione canonica né misura H100. Il ledger Python usa
+`tests/test_c71_gkr_screen.py` e `tests/test_c71_arena_plan.py`.
+
+
 Per il percorso composto ridotto, compilare solo `volta-pcs` con il target
 canonico assoluto e `CARGO_INCREMENTAL=0` come sotto:
 

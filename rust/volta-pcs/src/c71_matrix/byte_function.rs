@@ -106,6 +106,69 @@ fn coefficients(tables: &[[Fp3; 256]]) -> Vec<[Fp3; 256]> {
         .collect()
 }
 
+const BYTE_TREE_NODES: usize = 511;
+
+/// Public per-lane/per-byte fraction trees. The table is independent of the
+/// cell domain and can be shared by every regenerated sumcheck scan.
+struct ByteTrees {
+    lanes: usize,
+    nodes: Vec<[Fp3; 2]>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+pub(super) struct SourceWork {
+    pub tree: range::SourceTreeWork,
+    pub coefficient_capacity_bytes: usize,
+    pub lut_nodes: usize,
+    pub lut_capacity_bytes: usize,
+    pub lut_build_multiplications: u64,
+    pub lut_build_additions: u64,
+}
+
+impl ByteTrees {
+    fn new(coefficients: &[[Fp3; 256]]) -> Self {
+        let mut nodes = vec![[Fp3::ZERO; 2]; coefficients.len() * 256 * BYTE_TREE_NODES];
+        for (lane, coefficients) in coefficients.iter().enumerate() {
+            for byte in 0..256 {
+                let tree = &mut nodes[(lane * 256 + byte) * BYTE_TREE_NODES
+                    ..(lane * 256 + byte + 1) * BYTE_TREE_NODES];
+                for j in 0..256 {
+                    tree[255 + j] = [coefficients[j], signed(byte as i64) - signed(j as i64)];
+                }
+                for node in (0..255).rev() {
+                    let [p, q] = tree[2 * node + 1];
+                    let [r, s] = tree[2 * node + 2];
+                    tree[node] = [p * s + r * q, q * s];
+                }
+            }
+        }
+        Self { lanes: coefficients.len(), nodes }
+    }
+
+    fn child(
+        &self,
+        layer: usize,
+        child: usize,
+        index: usize,
+        live_cells: usize,
+        get_byte: &impl Fn(usize) -> u8,
+    ) -> Fp3 {
+        debug_assert!(layer < 8 && child < 4);
+        let node_pairs = 1usize << layer;
+        let top = index >> layer;
+        let pair = index & (node_pairs - 1);
+        let (cell, lane) = (top / self.lanes, top % self.lanes);
+        let live = cell < live_cells;
+        let byte = if live { usize::from(get_byte(top)) } else { 0 };
+        let node = (1usize << (layer + 1)) - 1 + 2 * pair + child / 2;
+        if !live && child & 1 == 0 {
+            Fp3::ZERO
+        } else {
+            self.nodes[(lane * 256 + byte) * BYTE_TREE_NODES + node][child & 1]
+        }
+    }
+}
+
 pub(super) fn live_mass(live: usize, point: &[Fp3]) -> Fp3 {
     if live == 1usize << point.len() {
         return Fp3::ONE;
@@ -141,7 +204,81 @@ fn leaf(s: &Statement<'_>, coefficients: &[[Fp3; 256]], point: &[Fp3]) -> (Fp3, 
 // identity before this call. All claims use s.cell_point; dummy cells are
 // zero outputs, including when f(0)!=0. The getter reads the fixed byte view
 // in cell-major/lane-fastest order and must not inspect unused correlations.
+/// Counted scalar reference. Correlation-row storage, authenticated arithmetic,
+/// proof/output vectors and allocator metadata are outside `SourceWork`.
+pub(super) fn prove_sourcewise(
+    s: &Statement<'_>,
+    original: Original<'_, Auth>,
+    get_byte: impl Fn(usize) -> u8,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
+    let (len, sum) = match &original {
+        Original::Lanes(v) => (v.len(), false),
+        Original::Sum(_) => (1, true),
+    };
+    let lane_point = bind(s, len, sum, fs)?;
+    let point: Vec<_> = s.cell_point.iter().chain(&lane_point).copied().collect();
+    let count = required(point.len());
+    if correlations.len() < count {
+        return Err("B12 byte-function prover capacity exhausted".into());
+    }
+    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let root = match original {
+        Original::Lanes(v) => {
+            v.iter().zip(eq(&lane_point)).fold(Auth::ZERO, |v, (&a, r)| v.add(a.scale(r)))
+        }
+        Original::Sum(a) => a.scale(signed(s.tables.len() as i64).inv()),
+    };
+    let c = coefficients(s.tables);
+    let trees = ByteTrees::new(&c);
+    let mut triples = Vec::new();
+    let (layers, mut point, claims, tree_work) = range::prove_tree_sourcewise(
+        8,
+        point,
+        [root, Auth::ZERO],
+        |layer, child, index| trees.child(layer, child, index, s.live_cells, &get_byte),
+        fs,
+        &mut rows,
+        &mut triples,
+    );
+    let (_, index) = leaf(s, &c, &point);
+    let leaf_tag = claims[0].m;
+    record_values(fs, 0x61, &[leaf_tag]);
+    let products = range::prove_products(&triples, rows.next().unwrap(), fs);
+    debug_assert!(rows.next().is_none());
+    point.truncate(point.len() - 8);
+    let internal_nodes = (s.tables.len() * 256 * 255) as u64;
+    let work = SourceWork {
+        tree: tree_work,
+        coefficient_capacity_bytes: c.capacity() * core::mem::size_of::<[Fp3; 256]>(),
+        lut_nodes: trees.nodes.len(),
+        lut_capacity_bytes: trees.nodes.capacity() * core::mem::size_of::<[Fp3; 2]>(),
+        lut_build_multiplications: 3 * internal_nodes,
+        lut_build_additions: internal_nodes,
+    };
+    Ok((
+        Proof { layers, leaf_tag, products },
+        point,
+        Auth::new(claims[1].x + index, claims[1].m),
+        work,
+    ))
+}
+
 pub(super) fn prove(
+    s: &Statement<'_>,
+    original: Original<'_, Auth>,
+    get_byte: impl Fn(usize) -> u8,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Vec<Fp3>, Auth), String> {
+    let (proof, point, original, _) =
+        prove_sourcewise(s, original, get_byte, fs, correlations)?;
+    Ok((proof, point, original))
+}
+
+#[cfg(test)]
+fn prove_dense(
     s: &Statement<'_>,
     original: Original<'_, Auth>,
     get_byte: impl Fn(usize) -> u8,
@@ -166,8 +303,6 @@ pub(super) fn prove(
         Original::Sum(a) => a.scale(signed(s.tables.len() as i64).inv()),
     };
     let c = coefficients(s.tables);
-    // ponytail: dense P/S tree, within the analytic resource envelope. The
-    // admitted physical schedule must use the existing R2 public fold tables.
     let mut bottom = Vec::with_capacity(256 << point.len());
     for i in 0..1usize << point.len() {
         let byte = signed(i64::from(get_byte(i)));
@@ -275,8 +410,16 @@ mod tests {
         };
         let layout = [17; 32];
         let tables = [
-            std::array::from_fn(|j| signed((j & 1) as i64)),
-            std::array::from_fn(|j| signed((7 + j / 2 + usize::from(j % 4 == 3)) as i64)),
+            std::array::from_fn(|j| {
+                Fp3::new(Fp::new((j & 1) as u64), Fp::new((j + 1) as u64), Fp::new((2 * j) as u64))
+            }),
+            std::array::from_fn(|j| {
+                Fp3::new(
+                    Fp::new((7 + j / 2 + usize::from(j % 4 == 3)) as u64),
+                    Fp::new((3 * j + 1) as u64),
+                    Fp::new((5 * j + 2) as u64),
+                )
+            }),
         ];
         let point = [signed(3), signed(11)];
         let statement = Statement {
@@ -316,9 +459,38 @@ mod tests {
             let mut prows = rows.clone().into_iter();
             let (wire, original) = range::authenticate(values, &mut prows);
             record_values(&mut fs, 0x62, &wire);
-            let (proof, byte_point, byte) =
-                prove(&statement, Original::Lanes(&original), |i| used[i], &mut fs, &mut prows)
-                    .unwrap();
+            let (proof, byte_point, byte, source_work) = prove_sourcewise(
+                &statement,
+                Original::Lanes(&original),
+                |i| used[i],
+                &mut fs,
+                &mut prows,
+            )
+            .unwrap();
+            assert_eq!(source_work.lut_nodes, tables.len() * 256 * BYTE_TREE_NODES);
+            assert!(source_work.tree.getter_calls > 0);
+            if fault == 0 {
+                println!("C71_BYTE_SOURCE_WORK {}", serde_json::json!(source_work));
+                let mut dense_fs = start();
+                let mut dense_rows = rows.clone().into_iter();
+                let (dense_wire, dense_original) = range::authenticate(values, &mut dense_rows);
+                record_values(&mut dense_fs, 0x62, &dense_wire);
+                let (dense, dense_point, dense_byte) = prove_dense(
+                    &statement,
+                    Original::Lanes(&dense_original),
+                    |i| used[i],
+                    &mut dense_fs,
+                    &mut dense_rows,
+                )
+                .unwrap();
+                let (mut source_bytes, mut dense_bytes) = (Vec::new(), Vec::new());
+                crate::c71_matrix::wire::Wire::write(&proof, &mut source_bytes);
+                crate::c71_matrix::wire::Wire::write(&dense, &mut dense_bytes);
+                assert_eq!(source_bytes, dense_bytes);
+                assert_eq!(byte_point, dense_point);
+                assert_eq!((byte.x, byte.m), (dense_byte.x, dense_byte.m));
+                assert_eq!(fs.digest(), dense_fs.digest());
+            }
             assert_eq!(fs.requests(), 70);
             let (range_proof, mut forms, targets) = range::prove(
                 &model,

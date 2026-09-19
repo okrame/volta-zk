@@ -1010,17 +1010,23 @@ cap 2^23 conserva il massimo integrato nominato, pagando due letture S2
 aggiuntive per A. Il merge FFT odd-log è censito separatamente: scatter PCS,
 fence GPU e picco fisico completo restano aperti. I confronti finiti
 non scaricano un nuovo refinement Lean. Restano NoPeek, endpoint e trust autorizzati.
-Il [checkpoint RMS e il motore coefficienti](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
+Il [checkpoint RMS e il prover a memoria limitata](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
 conservano P/Y originali e S48 condiviso per riga: 2.023.511.878 B con
-descrittori, nello slot range riusato prima di RNE. Il backend denso è
-escluso dai soli frame N*12; il motore alternativo confronta i coefficienti
-MSB con quelli densi e fattorizza il selettore comune al programma.
-I conteggi pubblici di supporto, replay/fold e gate sono separati; il
-fixture a scale zero non è un profilo calibrato. Il port GKR completo,
-workspace Booleani/allocator e timing restano aperti. I probe CUDA
-standalone non danno lower al futuro kernel fuso, e il vecchio risparmio
-LSB-first non si applica al transcript MSB. Nessun nuovo lemma Lean,
-variazione del trust o credito NoPeek deriva da questi controlli finiti.
+descrittori, nello slot range riusato prima di RNE. Il caller costruisce
+il checkpoint dopo statistiche/prodotti e lo conserva fino al MAC byte.
+Lookup pubblici sostituiscono gli assegnamenti densi; la serializzazione
+streaming preserva l'unico frame FS originale, compreso il confine v1/v2.
+Il prover collega replay Booleano, coefficienti MSB e riduzioni degli indici;
+i confronti ridotti verificano byte, transcript e endpoint densi originali.
+Il verifier deve calcolare massa viva e selettori senza Eq(N) o P*N.
+La LUT pubblica dell'endpoint byte sostituisce gli alberi per cella,
+conservando le otto discese e le medesime correzioni/challenge/MAC.
+Il ledger distingue rigenerazione, campo, getter e memoria; il fixture
+pubblico a scale zero non è un profilo calibrato. Il percorso scalare
+ridotto non ammette il canonico né chiude il workspace fisico completo.
+I probe CUDA standalone non danno lower al futuro kernel fuso e il vecchio
+risparmio LSB-first non si applica al transcript MSB. Nessun nuovo lemma
+Lean, variazione del trust o credito NoPeek deriva da questi controlli finiti.
 Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.

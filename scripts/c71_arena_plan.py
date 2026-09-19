@@ -5,6 +5,7 @@ import c71_response_trace as response
 import c71_whir_trace as whir
 import c71_pcg_trace as pcg
 import c71_getter_trace as getter
+import c71_gkr_screen as gkr
 
 ALIGN = 256
 MARGIN = response.OPERATIONAL_MARGIN_BYTES
@@ -151,6 +152,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
             a_range.append({'event':'last_range_A_consumer_fence','free':['getter:cuts']})
             chains['ordered_A_range']=a_range
             checkpoint=getter.rms_checkpoint()
+            byte_endpoint=gkr.byte_source_trace(33,16)
             # Serial reuse after P0 and before RNE/range. Source production and
             # circuit/replay scratch remain in their explicitly unverified slots.
             chains['compact_RMS_original_frames']=[
@@ -159,7 +161,11 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                     'RMS:original_PYS':checkpoint['owned_payload_and_metadata_bytes']}},
                 {'event':'RMS_statistics_and_original_inputs','allocate':{}},
                 {'event':'RMS_last_numeric_getter_consumer_fence','free':['getter:cuts']},
-                {'event':'RMS_original_byte_obligation_fence','free':['RMS:original_PYS']}]
+                {'event':'RMS_sourcewise_original_byte_obligation','allocate':{
+                    'RMS:byte_LUT':byte_endpoint['lut_capacity_bytes'],
+                    'RMS:byte_coefficients':16*256*24}},
+                {'event':'RMS_original_byte_obligation_fence',
+                 'free':['RMS:original_PYS','RMS:byte_LUT','RMS:byte_coefficients']}]
 
         layouts={}
         for name,events in chains.items():
@@ -209,7 +215,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
             'FFT_odd':'two square transforms + one in-place merge, no split buffer; CPU DFT checked and sm90 compiled, producer parity scatter not yet integrated',
             'range':'native src/dst and reduction arrays; Gram microbench materialization is component-only',
             'snapshot':'native Snapshot stores Vec<Vec<i64>>; literal lift exceeds arena before byte packing',
-            'RMS':'compact original P/S/Y checkpoint uses the range slot serially; native full GKR, Boolean replay and allocator scratch remain open',
+            'RMS':'original P/S/Y plus byte LUT/coefficients included; bounded cell/index/replay checked on reduced proofs; public circuits, proof/correlation capacities, allocator and full getter workspace remain to join',
             'WHIR':'bounded sourcewise replay matches native D10 bytes and rejects dense fallbacks; canonical accelerated state/workspace not yet wired',
             'PCG':'Seed6 real OT/AES named heap phases and retained opposite-role outputs included; crypto stack, transport, allocator and outer guard/cGGM lifecycle remain open',
             'arena_checker_metadata_bytes':512*24,

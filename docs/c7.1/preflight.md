@@ -1210,8 +1210,10 @@ Non conserva A/Snapshot completi. Il piano lo costruisce dopo root A/P0,
 conserva i cut anche per le statistiche/X originali; li rilascia dopo
 l'ultimo consumer numerico e P/S/Y dopo l'obbligo byte RMS,
 prima di RNE/range. Riusa serialmente lo slot range da 2 GiB.
-I picchi nominati di questa fase sono 2.842.835.712 / 2.882.157.312 /
-2.921.478.912 B; non aumentano i massimi nominati del piano integrato.
+Con LUT e coefficienti dell'endpoint byte, i picchi vivi nominati sono
+2.845.019.904 / 2.884.341.504 / 2.923.663.104 B; i massimi degli indirizzi
+first-fit sono 2.943.302.400 / 2.982.624.000 / 3.021.945.600 B.
+Non aumentano i massimi nominati del piano integrato.
 Le capacità dei Vec sono censite; allocator e reader, insieme al replay Booleano limitato,
 restano da collegare al picco fisico, senza assorbimenti impliciti negli slot.
 
@@ -1222,7 +1224,15 @@ Xor, Copy e padding. Il replay Booleano selezionato usa la stessa validazione e 
 operatori del riferimento, conserva solo livello corrente/successivo e
 confronta ogni livello di circuiti weighted/unweighted reali. Un secondo
 controllo collega tale replay al motore dei coefficienti dopo sfide MSB.
-Non genera ancora una prova GKR sourcewise completa.
+Il prover collega ora questi coefficienti alle riduzioni degli indici, al
+controllo prodotti e all'endpoint byte originale. `Assignments::Lookup`
+sostituisce il Vec da 8.589.934.592 B; il suo ABI misurato è 24 B,
+contro 16 B per ogni `Option<usize>`. Il binding usa chunk da 4.096 B:
+assorbe N byte nel fixture a cinque programmi (v1), 2N se i programmi
+superano 255 (v2), senza cambiare frame o coin. Il caller costruisce
+`CompactFrames` una sola volta dopo statistiche/prodotti. I test ridotti
+confrontano l'intera prova serializzata, digest FS, punto e Auth con il
+riferimento denso; il verifier non può conservare Eq(N) o P*N.
 Salta i getter delle celle dummy. Il selettore usa una sola assegnazione
 pubblica per cella; il salto dei programmi dipende dalla presenza pubblica,
 mai da witness o cancellazioni in Fp3. Somma prima `weight_gate*f_gate`
@@ -1237,6 +1247,29 @@ fattorizzato conta **377.460.232.230.821 moltiplicazioni Fp3**, prima dei
 fold, replay, adapter, FS e MAC. Sono conteggi dell'algoritmo specificato,
 non un lower hardware o il profilo reale calibrato. Sono censiti anche i
 ratio EXP30 a O=0/150/300. Le fusioni non danno credito al port canonico.
+
+Il replay scalare del fixture RMS richiede **988.837.022.208 callback**
+per i livelli Booleani e **48.047.958.035.255.808 gate Booleani**;
+i fold contano **1.219.377.310.814.208 prodotti/addizioni Fp3** prima dei
+terminali. Questi costi sono aggiuntivi al nucleo coefficienti. Sono
+operazioni sorgente della reference, non istruzioni o lower hardware.
+I contatori runtime separano replay, capacità dei Vec, getter e coefficienti;
+indice, autenticazione, codec e workspace complessivo non sono ancora chiusi.
+
+L'endpoint byte denso è separatamente NO-GO: a cell_bits=29 e 16 lane,
+il bottom occupa 105.553.116.266.496 B e l'albero 210.693.915.672.576 B.
+La variante a getter usa una LUT pubblica di 511 nodi per byte/lane:
+**100.466.688 B**, più **98.304 B** di coefficienti. Coesistono con il
+checkpoint originale fino all'ultimo consumer; il piano li rilascia insieme
+prima di range. Nessuna Eq o matrice child proporzionale al dominio è
+necessaria per la rigenerazione MSB. Per gli otto livelli D33..D40 la
+reference scalare conta **350.744.209.260.544 richieste al getter byte**,
+inclusa la contrazione terminale: la riduzione di memoria non riduce quel
+lavoro. `byte_source_trace` distingue fold, pesi Eq, cubiche e LUT, ma
+esclude ancora MAC/FS, coefficienti pubblici, getter originale e allocator.
+Le richieste ripetute alla LUT non sono automaticamente transazioni HBM.
+La schedule canonica richiede specializzazione/fusione e un conteggio
+proprio; non eredita il lower parziale precedente come lower completo.
 
 Il vecchio screen delle prime sei coordinate dentro parole contigue usa
 LSB-first; il transcript nativo fissa invece prima le coordinate MSB.

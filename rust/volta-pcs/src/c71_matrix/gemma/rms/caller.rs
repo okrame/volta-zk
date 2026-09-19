@@ -309,12 +309,6 @@ impl Sources {
         Ok(report)
     }
 
-    fn assignments(&self, profiles: &[usize]) -> Result<Vec<Option<usize>>, String> {
-        (0..self.cells.next_power_of_two())
-            .map(|i| self.cell(i).map(|c| c.map(|(n, _, _)| profiles[n])))
-            .collect()
-    }
-
     pub fn rms_required(
         &self,
         s: &P0Statement<'_>,
@@ -388,7 +382,11 @@ impl Sources {
         if correlations.len() < count {
             return Err("RMS dispatcher prover capacity exhausted".into());
         }
-        let assignments = self.assignments(&profiles)?;
+        let assignment = |cell| {
+            self.cell(cell)
+                .expect("validated RMS padded cell domain")
+                .map(|(norm, _, _)| profiles[norm])
+        };
         let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
         self.bind(s, parameters, fs);
         let (mut statistics, mut pending, mut triples) = (Vec::new(), Vec::new(), Vec::new());
@@ -410,16 +408,22 @@ impl Sources {
             statistics.push(proof);
         }
         let products = range::prove_products(&triples, rows.next().unwrap(), fs);
+        // Materialize each original P/Y cell byte once and each row statistic
+        // once. Joint GKR replays this bounded checkpoint; it never re-reads
+        // the numeric producer or expands padding into N frame rows.
+        let frames = CompactFrames::build(self, |source, row, col, byte| {
+            Ok(read(source, row, col, byte))
+        })?;
         let gs = gkr::Statement {
             root: s.auxiliary,
             profile: s.auxiliary_gamma,
             view: self.view,
             attempt: s.attempt,
             programs: &programs,
-            assignments: &assignments,
+            assignments: gkr::Assignments::new(self.cells.next_power_of_two(), &assignment),
         };
         let (joint, byte_point, byte) =
-            gkr::prove(&gs, |i| self.frame(i, &read).unwrap(), fs, &mut rows)?;
+            gkr::prove(&gs, |i| frames.frame(i).unwrap(), fs, &mut rows)?;
         debug_assert!(rows.next().is_none());
         Ok((
             Proof { statistics, products, joint },
@@ -440,7 +444,11 @@ impl Sources {
         if correlations.len() < count || proof.statistics.len() != self.norms.len() {
             return Err("RMS dispatcher verifier shape or capacity differs".into());
         }
-        let assignments = self.assignments(&profiles)?;
+        let assignment = |cell| {
+            self.cell(cell)
+                .expect("validated RMS padded cell domain")
+                .map(|(norm, _, _)| profiles[norm])
+        };
         let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
         self.bind(s, parameters, fs);
         let (mut pending, mut triples) = (Vec::new(), Vec::new());
@@ -462,7 +470,7 @@ impl Sources {
             view: self.view,
             attempt: s.attempt,
             programs: &programs,
-            assignments: &assignments,
+            assignments: gkr::Assignments::new(self.cells.next_power_of_two(), &assignment),
         };
         let (byte_point, byte) = gkr::verify(&gs, &proof.joint, delta, fs, &mut rows)?;
         debug_assert!(rows.next().is_none());

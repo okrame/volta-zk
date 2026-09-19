@@ -171,6 +171,36 @@ impl Fs {
         state.record(kind, bytes);
     }
 
+    /// Records one framed message while allowing its payload to be supplied in
+    /// bounded pieces. The framing and hash input are byte-for-byte identical
+    /// to `record(kind, concatenated_parts)`.
+    fn record_stream(
+        &mut self,
+        kind: u16,
+        length: usize,
+        write: impl FnOnce(&mut dyn FnMut(&[u8])),
+    ) {
+        let mut state = self.0.lock().unwrap();
+        #[cfg(feature = "c71-b12-pcs")]
+        if kind != 0x2100 {
+            state.coin_tape = None;
+        }
+        let event = state.events.to_le_bytes();
+        let phase = state.phase.to_le_bytes();
+        state.hash.update(&event);
+        state.hash.update(&phase);
+        state.hash.update(&kind.to_le_bytes());
+        state.hash.update(&(length as u64).to_le_bytes());
+        let mut written = 0usize;
+        write(&mut |part| {
+            written = written.checked_add(part.len()).expect("C71FS streamed length overflow");
+            assert!(written <= length, "C71FS streamed record exceeds declared length");
+            state.hash.update(part);
+        });
+        assert_eq!(written, length, "C71FS streamed record length differs");
+        state.events = state.events.checked_add(1).expect("C71FS event counter exhausted");
+    }
+
     fn set_phase(&mut self, phase: u16) {
         self.0.lock().unwrap().phase = phase;
     }
@@ -1054,6 +1084,23 @@ fn matrix_verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fs_streamed_record_matches_one_contiguous_frame_at_u16_boundary() {
+        let body: Vec<_> = (0..=256u16).flat_map(u16::to_le_bytes).collect();
+        let mut contiguous = Fs::new(b"stream framing", 0);
+        contiguous.set_phase(0xa00);
+        contiguous.record(0x80, &body);
+
+        let mut streamed = Fs::new(b"stream framing", 0);
+        streamed.set_phase(0xa00);
+        streamed.record_stream(0x80, body.len(), |update| {
+            for chunk in body.chunks(17) {
+                update(chunk);
+            }
+        });
+        assert_eq!(streamed.digest(), contiguous.digest());
+    }
 
     #[test]
     fn fs_bytes_match_independent_flat_reference() {

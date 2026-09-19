@@ -738,7 +738,7 @@ impl Softmax {
             view,
             attempt: s.attempt,
             programs: &programs,
-            assignments: &assignments,
+            assignments: gkr::Assignments::dense(&assignments),
         };
         let (ratio, ratio_point, ratio_tag) = gkr::prove(
             &gs,
@@ -827,7 +827,7 @@ impl Softmax {
             view,
             attempt: s.attempt,
             programs: &programs,
-            assignments: &assignments,
+            assignments: gkr::Assignments::dense(&assignments),
         };
         let (ratio_point, ratio) = gkr::verify(&gs, &proof.ratio, delta, fs, &mut rows)?;
         debug_assert!(rows.next().is_none());

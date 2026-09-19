@@ -8,6 +8,41 @@ component_wire!(Layer { rounds, terminal });
 component_wire!(Proof { layers, products, functions });
 use super::{Circuit, Gate, Op};
 
+#[derive(Clone, Copy)]
+pub(in super::super) enum Assignments<'a> {
+    Dense(&'a [Option<usize>]),
+    Lookup { len: usize, get: &'a dyn Fn(usize) -> Option<usize> },
+}
+
+impl<'a> Assignments<'a> {
+    pub(in super::super) fn new(len: usize, get: &'a dyn Fn(usize) -> Option<usize>) -> Self {
+        Self::Lookup { len, get }
+    }
+
+    pub(in super::super) fn dense(values: &'a [Option<usize>]) -> Self {
+        Self::Dense(values)
+    }
+
+    fn len(self) -> usize {
+        match self {
+            Self::Dense(values) => values.len(),
+            Self::Lookup { len, .. } => len,
+        }
+    }
+
+    fn get(self, index: usize) -> Option<usize> {
+        assert!(index < self.len(), "RMS assignment index exceeds domain");
+        match self {
+            Self::Dense(values) => values[index],
+            Self::Lookup { get, .. } => get(index),
+        }
+    }
+
+    fn iter(self) -> impl Iterator<Item = Option<usize>> + 'a {
+        (0..self.len()).map(move |index| self.get(index))
+    }
+}
+
 pub(in super::super) struct Statement<'a> {
     pub root: &'a C61Commitment,
     pub profile: &'a [u8],
@@ -15,7 +50,7 @@ pub(in super::super) struct Statement<'a> {
     pub attempt: AttemptContext,
     // Compiled by the verifier from its fixed public quantization parameters.
     pub programs: &'a [Circuit],
-    pub assignments: &'a [Option<usize>],
+    pub assignments: Assignments<'a>,
 }
 
 struct Layer {
@@ -85,8 +120,8 @@ impl Statement<'_> {
             || self.assignments.len() > 1 << 29
             || self.programs.is_empty()
             || self.programs.len() > 421
-            || self.assignments.iter().flatten().any(|&p| p >= self.programs.len())
-            || self.assignments.iter().all(Option::is_none)
+            || self.assignments.iter().flatten().any(|p| p >= self.programs.len())
+            || self.assignments.iter().all(|p| p.is_none())
             || self.root.num_roots() != 1
             || self.profile.is_empty()
             || self.view == [0; 32]
@@ -140,15 +175,37 @@ impl Statement<'_> {
             }
         }
         bytes.extend((self.assignments.len() as u32).to_le_bytes());
-        for p in self.assignments {
-            if wide {
-                bytes.extend(p.map_or(u16::MAX, |p| p as u16).to_le_bytes());
-            } else {
-                bytes.push(p.map_or(255, |p| p as u8));
-            }
-        }
+        let entry_bytes = if wide { 2 } else { 1 };
+        let total = bytes
+            .len()
+            .checked_add(
+                self.assignments
+                    .len()
+                    .checked_mul(entry_bytes)
+                    .expect("RMS assignment transcript length overflow"),
+            )
+            .expect("RMS assignment transcript length overflow");
         fs.set_phase(0xa00);
-        fs.record(0x80, &bytes);
+        fs.record_stream(0x80, total, |update| {
+            update(&bytes);
+            let mut chunk = [0u8; 4096];
+            let mut used = 0;
+            for p in self.assignments.iter() {
+                if wide {
+                    let encoded = p.map_or(u16::MAX, |p| p as u16).to_le_bytes();
+                    chunk[used..used + 2].copy_from_slice(&encoded);
+                    used += 2;
+                } else {
+                    chunk[used] = p.map_or(255, |p| p as u8);
+                    used += 1;
+                }
+                if used == chunk.len() {
+                    update(&chunk);
+                    used = 0;
+                }
+            }
+            update(&chunk[..used]);
+        });
         (0..self.assignments.len().ilog2()).map(|_| fs.fp3()).collect()
     }
 
@@ -160,6 +217,15 @@ impl Statement<'_> {
             .fold(Fp3::ZERO, |v, (_, r)| v + r)
     }
 
+    fn live_sourcewise(&self, point: &[Fp3]) -> Fp3 {
+        self.assignments
+            .iter()
+            .enumerate()
+            .filter(|(_, assignment)| assignment.is_some())
+            .map(|(cell, _)| equality_at(point, cell))
+            .fold(Fp3::ZERO, |sum, value| sum + value)
+    }
+
     fn selectors(&self, point: &[Fp3]) -> Vec<Vec<Fp3>> {
         let equality = eq(point);
         (0..self.programs.len())
@@ -167,25 +233,31 @@ impl Statement<'_> {
                 self.assignments
                     .iter()
                     .zip(&equality)
-                    .map(|(a, &r)| if *a == Some(p) { r } else { Fp3::ZERO })
+                    .map(|(a, &r)| if a == Some(p) { r } else { Fp3::ZERO })
                     .collect()
             })
             .collect()
     }
 
-    // Sixteen lanes per cell. Unweighted frames use ten bytes, weighted
-    // frames twelve; unused lanes and dummy cells are PUBLIC zeros.
-    fn byte(&self, frames: &[[u8; 12]], i: usize) -> u8 {
-        let (cell, lane) = (i / 16, i % 16);
-        match self.assignments[cell] {
-            Some(p) if lane < (self.programs[p].ports - 2) / 8 => frames[cell][lane],
-            _ => 0,
+    fn terminal_selectors_sourcewise(&self, point: &[Fp3], following: &[Fp3]) -> Vec<Fp3> {
+        let mut selectors = vec![Fp3::ZERO; self.programs.len()];
+        for (cell, assignment) in self.assignments.iter().enumerate() {
+            if let Some(program) = assignment {
+                selectors[program] += equality_at(point, cell) * equality_at(following, cell);
+            }
         }
+        selectors
     }
 }
 
 fn gates(p: &Circuit, depth: usize) -> &[Gate] {
     p.levels.get(depth - 1).map_or(&[Gate { op: Op::Copy, x: 0, y: 0 }], Vec::as_slice)
+}
+
+fn equality_at(point: &[Fp3], index: usize) -> Fp3 {
+    point.iter().enumerate().fold(Fp3::ONE, |weight, (bit, &r)| {
+        weight * if index >> (point.len() - 1 - bit) & 1 == 1 { r } else { Fp3::ONE - r }
+    })
 }
 
 // Exact field arithmetic of Boolean gates AFTER the source bitplanes fold.
@@ -357,25 +429,54 @@ pub(in super::super) fn work_census(
 /// Work owned by the bounded cell-round coefficient builder. Counts are
 /// source-level operations before optimization, not machine instructions,
 /// physical traffic, or a runtime lower. Getter workspace is external.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-struct SourceCellWork {
-    logical_gate_cell_iterations: u64,
-    gate_cell_iterations: u64,
-    unsupported_program_cells: u64,
-    unsupported_gate_iterations_saved: u64,
-    row_source_callbacks: u64,
-    value_source_scalars: u64,
-    selector_source_callbacks: u64,
-    selector_assigned_terms: u64,
-    fold_weight_multiplications: u64,
-    fold_value_multiplications: u64,
-    fold_additions: u64,
-    fold_subtractions: u64,
-    coefficient_multiplications: u64,
-    coefficient_additions: u64,
-    coefficient_subtractions: u64,
-    coefficient_negations: u64,
-    owned_heap_peak_bytes: usize,
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+pub(in super::super) struct SourceCellWork {
+    pub logical_gate_cell_iterations: u64,
+    pub gate_cell_iterations: u64,
+    pub unsupported_program_cells: u64,
+    pub unsupported_gate_iterations_saved: u64,
+    pub row_source_callbacks: u64,
+    pub value_source_scalars: u64,
+    pub selector_source_callbacks: u64,
+    pub selector_assigned_terms: u64,
+    pub selector_weight_multiplications: u64,
+    pub selector_weight_subtractions: u64,
+    pub fold_weight_multiplications: u64,
+    pub fold_value_multiplications: u64,
+    pub fold_additions: u64,
+    pub fold_subtractions: u64,
+    pub coefficient_multiplications: u64,
+    pub coefficient_additions: u64,
+    pub coefficient_subtractions: u64,
+    pub coefficient_negations: u64,
+    pub owned_heap_peak_bytes: usize,
+}
+
+struct SourceCellRound {
+    coefficients: [Fp3; 4],
+    // Present only in the last cell round. Moving these existing allocations
+    // avoids a second source scan before the two index reductions.
+    terminal: Option<(Vec<Fp3>, Vec<Fp3>, Vec<Fp3>, Vec<Fp3>)>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize)]
+pub(in super::super) struct SourceProverWork {
+    pub cell_rounds: Vec<SourceCellWork>,
+    pub boolean_replay_calls: u64,
+    pub boolean_and_gates: u64,
+    pub boolean_xor_gates: u64,
+    pub boolean_copy_gates: u64,
+    pub boolean_replay_heap_peak_bytes: usize,
+    pub boolean_input_heap_peak_bytes: usize,
+    pub cell_phase_owned_heap_peak_bytes: usize,
+    pub index_phase_owned_heap_peak_bytes: usize,
+    pub edge_capacity_elements_peak: usize,
+    pub index_vector_capacity_elements_peak: usize,
+    pub original_frame_reads: u64,
+    pub live_weight_multiplications: u64,
+    pub live_weight_subtractions: u64,
+    pub live_weight_additions: u64,
+    pub byte_endpoint: byte_function::SourceWork,
 }
 
 fn prefix_weight(prefix: usize, challenges: &[Fp3], work: &mut SourceCellWork) -> Fp3 {
@@ -411,6 +512,23 @@ fn source_cell_coefficients(
     weights: &[Fp3],
     work: &mut SourceCellWork,
 ) -> Result<[Fp3; 4], String> {
+    Ok(source_cell_round(
+        programs, depth, width, cell_count, challenges, row, selector, weights, work,
+    )?
+    .coefficients)
+}
+
+fn source_cell_round(
+    programs: &[Circuit],
+    depth: usize,
+    width: usize,
+    cell_count: usize,
+    challenges: &[Fp3],
+    row: &impl Fn(usize, &mut [Fp3]) -> Result<(), String>,
+    selector: &impl Fn(usize) -> Result<Option<(usize, Fp3)>, String>,
+    weights: &[Fp3],
+    work: &mut SourceCellWork,
+) -> Result<SourceCellRound, String> {
     if depth == 0
         || cell_count == 0
         || cell_count > 1 << 29
@@ -535,7 +653,8 @@ fn source_cell_coefficients(
             work.coefficient_subtractions += 1;
         }
     }
-    Ok(c)
+    let terminal = (half == 1).then_some((lo, hi, selector_lo, selector_hi));
+    Ok(SourceCellRound { coefficients: c, terminal })
 }
 
 // Sparse wiring: each edge supplies one equality selector. There is no
@@ -662,12 +781,15 @@ fn tables(weights: &[Fp3]) -> [[Fp3; 256]; 16] {
     })
 }
 
-pub(in super::super) fn prove(
+fn prove_impl(
     s: &Statement<'_>,
-    get_frame: impl Fn(usize) -> [u8; 12],
+    get_frame: &impl Fn(usize) -> [u8; 12],
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
-) -> Result<(Proof, Vec<Fp3>, Auth), String> {
+    sourcewise: bool,
+) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
+    use std::cell::Cell;
+
     let widths = s.geometry()?;
     let count = s.required()?;
     if correlations.len() < count {
@@ -675,72 +797,183 @@ pub(in super::super) fn prove(
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
     let mut point = s.bind(fs);
-    let mut target = Auth::new(s.live(&point), Fp3::ZERO);
+    let cell_bits = point.len();
+    let mut target =
+        Auth::new(if sourcewise { s.live_sourcewise(&point) } else { s.live(&point) }, Fp3::ZERO);
     let mut weights = vec![Fp3::ONE];
-    let frames: Vec<_> = s
+    let frame_reads = Cell::new(0u64);
+    let read_frame = |cell| {
+        frame_reads.set(frame_reads.get() + 1);
+        get_frame(cell)
+    };
+    // The dense trace exists only for the reduced byte/transcript oracle. The
+    // active path replays one selected Boolean layer and retains no N*W table.
+    let mut traces = Vec::new();
+    if !sourcewise {
+        for block in 0..s.assignments.len().div_ceil(64) {
+            let begin = 64 * block;
+            let end = (begin + 64).min(s.assignments.len());
+            let assignments: Vec<_> = (begin..end).map(|cell| s.assignments.get(cell)).collect();
+            for (p, program) in s.programs.iter().enumerate() {
+                if !assignments.contains(&Some(p)) {
+                    continue;
+                }
+                let mut planes = vec![0u64; program.ports];
+                for (cell, assignment) in assignments.iter().enumerate() {
+                    if *assignment == Some(p) {
+                        let frame = read_frame(64 * block + cell);
+                        planes[1] |= 1 << cell;
+                        for bit in 0..program.ports - 2 {
+                            planes[2 + bit] |= u64::from((frame[bit / 8] >> (bit % 8)) & 1) << cell;
+                        }
+                    }
+                }
+                traces.push((64 * block, program.replay(&planes, planes[1])?));
+            }
+        }
+    }
+    let replay_calls = Cell::new(0u64);
+    let replay_and = Cell::new(0u64);
+    let replay_xor = Cell::new(0u64);
+    let replay_copy = Cell::new(0u64);
+    let replay_heap = Cell::new(0usize);
+    let replay_input_heap = Cell::new(0usize);
+    let selector_zero_bits: u64 = s
         .assignments
         .iter()
         .enumerate()
-        .map(|(i, p)| if p.is_some() { get_frame(i) } else { [0; 12] })
-        .collect();
-    // Boolean replay is local to each 64-cell word. All blocks then enter
-    // ONE cell-domain GKR and one original byte obligation; no block proof.
-    // ponytail: retain the Boolean traces and one dense field layer. A physical
-    // Gemma schedule needs bounded replay/folding; this is the analytic caller.
-    let mut traces = Vec::new();
-    for (block, assignments) in s.assignments.chunks(64).enumerate() {
-        for (p, program) in s.programs.iter().enumerate() {
-            if !assignments.contains(&Some(p)) {
-                continue;
-            }
-            let mut planes = vec![0u64; program.ports];
-            for (cell, assignment) in assignments.iter().enumerate() {
-                if *assignment == Some(p) {
-                    planes[1] |= 1 << cell;
-                    for bit in 0..program.ports - 2 {
-                        planes[2 + bit] |=
-                            u64::from((frames[64 * block + cell][bit / 8] >> (bit % 8)) & 1)
-                                << cell;
-                    }
-                }
-            }
-            traces.push((64 * block, program.replay(&planes, planes[1])?));
-        }
-    }
+        .filter(|(_, assignment)| assignment.is_some())
+        .map(|(cell, _)| cell_bits as u64 - u64::from(cell.count_ones()))
+        .sum();
+    let mut source_work = SourceProverWork::default();
     let (mut layers, mut triples) = (Vec::new(), Vec::new());
     for depth in (1..widths.len()).rev() {
         let width = widths[depth - 1];
-        let mut previous = vec![Fp3::ZERO; s.assignments.len() * width];
-        for (offset, trace) in &traces {
-            let planes = &trace[(depth - 1).min(trace.len() - 1)];
-            for (wire, &plane) in planes.iter().enumerate() {
-                for cell in 0..64.min(s.assignments.len() - offset) {
-                    if plane >> cell & 1 == 1 {
-                        previous[(offset + cell) * width + wire] = Fp3::ONE;
+        let (previous, selectors, following, mut rounds) = if sourcewise {
+            let selector_point = point.clone();
+            let mut prefix = Vec::new();
+            let mut following = Vec::new();
+            let mut rounds = Vec::new();
+            let row = |cell: usize, out: &mut [Fp3]| -> Result<(), String> {
+                let p = s.assignments.get(cell).ok_or("dummy RMS cell replayed")?;
+                let program = &s.programs[p];
+                let frame = read_frame(cell);
+                let mut inputs = vec![0u64; program.ports];
+                inputs[1] = 1;
+                for bit in 0..program.ports - 2 {
+                    inputs[2 + bit] = u64::from((frame[bit / 8] >> (bit % 8)) & 1);
+                }
+                replay_input_heap.set(
+                    replay_input_heap
+                        .get()
+                        .max(inputs.capacity() * core::mem::size_of::<u64>()),
+                );
+                let selected = (depth - 1).min(program.levels.len());
+                let (layer, replay) = program.replay_layer(&inputs, 1, selected)?;
+                replay_calls.set(replay_calls.get() + 1);
+                replay_and.set(replay_and.get() + replay.and_gates);
+                replay_xor.set(replay_xor.get() + replay.xor_gates);
+                replay_copy.set(replay_copy.get() + replay.copy_gates);
+                replay_heap.set(replay_heap.get().max(replay.peak_two_vector_capacity_bytes));
+                out.fill(Fp3::ZERO);
+                for (value, bit) in out.iter_mut().zip(layer) {
+                    *value = signed(bit as i64);
+                }
+                Ok(())
+            };
+            let selector = |cell: usize| {
+                Ok(s.assignments.get(cell).map(|p| (p, equality_at(&selector_point, cell))))
+            };
+            let mut terminal = if point.is_empty() {
+                let mut values = vec![Fp3::ZERO; width];
+                row(0, &mut values)?;
+                let mut selectors = vec![Fp3::ZERO; s.programs.len()];
+                let (program, value) = selector(0)?.ok_or("RMS single cell is padding")?;
+                selectors[program] = value;
+                source_work.cell_phase_owned_heap_peak_bytes =
+                    source_work.cell_phase_owned_heap_peak_bytes.max(
+                        (values.capacity() + selectors.capacity()) * core::mem::size_of::<Fp3>(),
+                    );
+                Some((values, selectors))
+            } else {
+                None
+            };
+            for _ in 0..point.len() {
+                let mut work = SourceCellWork::default();
+                let result = source_cell_round(
+                    s.programs,
+                    depth,
+                    width,
+                    s.assignments.len(),
+                    &prefix,
+                    &row,
+                    &selector,
+                    &weights,
+                    &mut work,
+                )?;
+                work.selector_weight_multiplications +=
+                    work.selector_assigned_terms * selector_point.len() as u64;
+                work.selector_weight_subtractions += selector_zero_bits;
+                fs.set_phase(0x1000 + 64 * depth as u16 + rounds.len() as u16);
+                let (wire, r) = round_prove(&result.coefficients, &mut target, fs, &mut rows);
+                if let Some((lo, hi, selector_lo, selector_hi)) = result.terminal {
+                    let interpolations = (lo.len() + selector_lo.len()) as u64;
+                    let values = lo.into_iter().zip(hi).map(|(a, b)| a + r * (b - a)).collect();
+                    let selectors: Vec<Fp3> = selector_lo
+                        .into_iter()
+                        .zip(selector_hi)
+                        .map(|(a, b)| a + r * (b - a))
+                        .collect();
+                    work.fold_value_multiplications += interpolations;
+                    work.fold_additions += interpolations;
+                    work.fold_subtractions += interpolations;
+                    terminal = Some((values, selectors));
+                }
+                source_work.cell_rounds.push(work);
+                prefix.push(r);
+                following.push(r);
+                rounds.push(wire);
+            }
+            let (previous, selectors) = terminal.ok_or("RMS sourcewise terminal missing")?;
+            (previous, selectors, following, rounds)
+        } else {
+            let mut previous = vec![Fp3::ZERO; s.assignments.len() * width];
+            for (offset, trace) in &traces {
+                let planes = &trace[(depth - 1).min(trace.len() - 1)];
+                for (wire, &plane) in planes.iter().enumerate() {
+                    for cell in 0..64.min(s.assignments.len() - offset) {
+                        if plane >> cell & 1 == 1 {
+                            previous[(offset + cell) * width + wire] = Fp3::ONE;
+                        }
                     }
                 }
             }
-        }
-        let mut selectors = s.selectors(&point);
-        let mut following = Vec::new();
-        let mut rounds = Vec::new();
-        for _ in 0..point.len() {
-            let c = cell_coefficients(s, depth, width, &previous, &selectors, &weights);
-            fs.set_phase(0x1000 + 64 * depth as u16 + rounds.len() as u16);
-            let (wire, r) = round_prove(&c, &mut target, fs, &mut rows);
-            fold(&mut previous, r);
-            for selector in &mut selectors {
-                fold(selector, r);
+            let mut selectors = s.selectors(&point);
+            let mut following = Vec::new();
+            let mut rounds = Vec::new();
+            for _ in 0..point.len() {
+                let c = cell_coefficients(s, depth, width, &previous, &selectors, &weights);
+                fs.set_phase(0x1000 + 64 * depth as u16 + rounds.len() as u16);
+                let (wire, r) = round_prove(&c, &mut target, fs, &mut rows);
+                fold(&mut previous, r);
+                for selector in &mut selectors {
+                    fold(selector, r);
+                }
+                following.push(r);
+                rounds.push(wire);
             }
-            following.push(r);
-            rounds.push(wire);
-        }
-        let selectors: Vec<_> = selectors.iter().map(|v| v[0]).collect();
+            let selectors: Vec<Fp3> = selectors.into_iter().map(|v| v[0]).collect();
+            (previous, selectors, following, rounds)
+        };
         let mut edges = edges(s, depth, &weights, &selectors);
+        source_work.edge_capacity_elements_peak =
+            source_work.edge_capacity_elements_peak.max(edges.capacity());
         let mut points = [Vec::new(), Vec::new()];
         let mut values = [Fp3::ZERO; 2];
         for side in 0..2 {
             let mut vector = previous.clone();
+            source_work.index_vector_capacity_elements_peak =
+                source_work.index_vector_capacity_elements_peak.max(vector.capacity());
             while vector.len() > 1 {
                 let c = index_coefficients(
                     &edges,
@@ -756,6 +989,20 @@ pub(in super::super) fn prove(
                 rounds.push(wire);
             }
             values[side] = vector[0];
+            if sourcewise {
+                source_work.index_phase_owned_heap_peak_bytes =
+                    source_work.index_phase_owned_heap_peak_bytes.max(
+                        (previous.capacity()
+                            + vector.capacity()
+                            + selectors.capacity()
+                            + following.capacity()
+                            + weights.capacity()
+                            + points[0].capacity()
+                            + points[1].capacity())
+                            * core::mem::size_of::<Fp3>()
+                            + edges.capacity() * core::mem::size_of::<Edge>(),
+                    );
+            }
         }
         let c = terminal_coefficients(&edges);
         let (wire, original) =
@@ -772,7 +1019,8 @@ pub(in super::super) fn prove(
         layers.push(Layer { rounds, terminal });
     }
     let products = range::prove_products(&triples, rows.next().unwrap(), fs);
-    let target = Auth::new(target.x - weights[1] * s.live(&point), target.m);
+    let live = if sourcewise { s.live_sourcewise(&point) } else { s.live(&point) };
+    let target = Auth::new(target.x - weights[1] * live, target.m);
     let tables = tables(&weights);
     let bs = byte_function::Statement {
         root: s.root,
@@ -783,15 +1031,72 @@ pub(in super::super) fn prove(
         live_cells: s.assignments.len(),
         tables: &tables,
     };
-    let (functions, point, original) = byte_function::prove(
+    let (functions, point, original, byte_endpoint) = byte_function::prove_sourcewise(
         &bs,
         byte_function::Original::Sum(target),
-        |i| s.byte(&frames, i),
+        |i| {
+            let (cell, lane) = (i / 16, i % 16);
+            match s.assignments.get(cell) {
+                Some(p) if lane < (s.programs[p].ports - 2) / 8 => read_frame(cell)[lane],
+                _ => 0,
+            }
+        },
         fs,
         &mut rows,
     )?;
     debug_assert!(rows.next().is_none());
-    Ok((Proof { layers, products, functions }, point, original))
+    source_work.boolean_replay_calls = replay_calls.get();
+    source_work.boolean_and_gates = replay_and.get();
+    source_work.boolean_xor_gates = replay_xor.get();
+    source_work.boolean_copy_gates = replay_copy.get();
+    source_work.boolean_replay_heap_peak_bytes = replay_heap.get();
+    source_work.boolean_input_heap_peak_bytes = replay_input_heap.get();
+    source_work.cell_phase_owned_heap_peak_bytes =
+        source_work.cell_rounds.iter().map(|work| work.owned_heap_peak_bytes).max().unwrap_or(0)
+            .max(source_work.cell_phase_owned_heap_peak_bytes)
+            + source_work.boolean_replay_heap_peak_bytes
+            + source_work.boolean_input_heap_peak_bytes
+            + source_work.cell_rounds.capacity() * core::mem::size_of::<SourceCellWork>();
+    source_work.original_frame_reads = frame_reads.get();
+    source_work.byte_endpoint = byte_endpoint;
+    if sourcewise {
+        let live = s.assignments.iter().filter(|assignment| assignment.is_some()).count() as u64;
+        let evaluations = 2;
+        source_work.live_weight_multiplications = live * cell_bits as u64 * evaluations;
+        source_work.live_weight_subtractions = selector_zero_bits * evaluations;
+        source_work.live_weight_additions = live * evaluations;
+    }
+    Ok((Proof { layers, products, functions }, point, original, source_work))
+}
+
+pub(in super::super) fn prove_sourcewise(
+    s: &Statement<'_>,
+    get_frame: impl Fn(usize) -> [u8; 12],
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
+    prove_impl(s, &get_frame, fs, correlations, true)
+}
+
+pub(in super::super) fn prove(
+    s: &Statement<'_>,
+    get_frame: impl Fn(usize) -> [u8; 12],
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Vec<Fp3>, Auth), String> {
+    let (proof, point, original, _) = prove_sourcewise(s, get_frame, fs, correlations)?;
+    Ok((proof, point, original))
+}
+
+#[cfg(test)]
+fn prove_dense(
+    s: &Statement<'_>,
+    get_frame: impl Fn(usize) -> [u8; 12],
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Vec<Fp3>, Auth), String> {
+    let (proof, point, original, _) = prove_impl(s, &get_frame, fs, correlations, false)?;
+    Ok((proof, point, original))
 }
 
 pub(in super::super) fn verify(
@@ -819,7 +1124,7 @@ pub(in super::super) fn verify(
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
     let mut point = s.bind(fs);
-    let mut target = Key::new(delta * s.live(&point));
+    let mut target = Key::new(delta * s.live_sourcewise(&point));
     let mut weights = vec![Fp3::ONE];
     let mut triples = Vec::new();
     for (layer, depth) in proof.layers.iter().zip((1..widths.len()).rev()) {
@@ -828,12 +1133,7 @@ pub(in super::super) fn verify(
             fs.set_phase(0x1000 + 64 * depth as u16 + j as u16);
             following.push(round_verify(wire, &mut target, delta, fs, &mut rows)?);
         }
-        let equality = eq(&following);
-        let selectors: Vec<_> = s
-            .selectors(&point)
-            .iter()
-            .map(|v| v.iter().zip(&equality).fold(Fp3::ZERO, |sum, (&a, &b)| sum + a * b))
-            .collect();
+        let selectors = s.terminal_selectors_sourcewise(&point, &following);
         let mut edges = edges(s, depth, &weights, &selectors);
         let mut points = [Vec::new(), Vec::new()];
         let bits = widths[depth - 1].ilog2() as usize;
@@ -871,7 +1171,7 @@ pub(in super::super) fn verify(
         triples.push(original);
     }
     range::verify_products(&triples, rows.next().unwrap(), proof.products, delta, fs)?;
-    let target = Key::new(target.k - delta * weights[1] * s.live(&point));
+    let target = Key::new(target.k - delta * weights[1] * s.live_sourcewise(&point));
     let tables = tables(&weights);
     let bs = byte_function::Statement {
         root: s.root,
@@ -942,7 +1242,7 @@ mod tests {
                 nonce: [3; 32],
             },
             programs: &programs,
-            assignments: &assignments,
+            assignments: Assignments::dense(&assignments),
         };
         let width = 4;
         let traces: Vec<_> = programs
@@ -979,11 +1279,7 @@ mod tests {
                     .enumerate()
                     .map(
                         |(cell, assignment)| {
-                            if *assignment == Some(program) {
-                                equality[cell]
-                            } else {
-                                Fp3::ZERO
-                            }
+                            if *assignment == Some(program) { equality[cell] } else { Fp3::ZERO }
                         },
                     )
                     .collect()
@@ -1051,30 +1347,34 @@ mod tests {
         }
 
         let mut work = SourceCellWork::default();
-        assert!(source_cell_coefficients(
-            statement.programs,
-            0,
-            width,
-            assignments.len(),
-            &[],
-            &|_, _| Ok(()),
-            &|_| Ok(None),
-            &weights,
-            &mut work,
-        )
-        .is_err());
-        assert!(source_cell_coefficients(
-            statement.programs,
-            1,
-            width,
-            assignments.len(),
-            &[],
-            &|_, _| Ok(()),
-            &|_| Ok(None),
-            &weights[..1],
-            &mut work,
-        )
-        .is_err());
+        assert!(
+            source_cell_coefficients(
+                statement.programs,
+                0,
+                width,
+                assignments.len(),
+                &[],
+                &|_, _| Ok(()),
+                &|_| Ok(None),
+                &weights,
+                &mut work,
+            )
+            .is_err()
+        );
+        assert!(
+            source_cell_coefficients(
+                statement.programs,
+                1,
+                width,
+                assignments.len(),
+                &[],
+                &|_, _| Ok(()),
+                &|_| Ok(None),
+                &weights[..1],
+                &mut work,
+            )
+            .is_err()
+        );
         let failure = source_cell_coefficients(
             statement.programs,
             1,
@@ -1160,7 +1460,7 @@ mod tests {
                 nonce: [75; 32],
             },
             programs: &programs,
-            assignments: &assignments,
+            assignments: Assignments::dense(&assignments),
         };
         let point = [signed(3), signed(7)];
         let equality = eq(&point);
@@ -1243,6 +1543,20 @@ mod tests {
         assert_eq!(
             check(&programs, honest, frame(-3, 9, -15, false), frame(6, 15, 3, true)),
             (7299, 2163)
+        );
+    }
+
+    #[test]
+    fn c71_b12_single_cell_sourcewise_matches_dense_proof_and_endpoint() {
+        let programs = [super::super::compile(3, 0, 0, 0, true).unwrap()];
+        let assignments = [Some(0)];
+        let honest = [frame(6, 14, 3, true)];
+        check_cells(
+            &programs,
+            &assignments,
+            &honest,
+            (0, frame(6, 14, 4, true)),
+            (0, frame(6, 15, 3, true)),
         );
     }
 
@@ -1346,7 +1660,7 @@ mod tests {
                 view: [42; 32],
                 attempt,
                 programs,
-                assignments,
+                assignments: Assignments::dense(assignments),
             };
             let mut used = committed;
             if fault == 2 {
@@ -1381,23 +1695,75 @@ mod tests {
             let start = || Fs::new(b"joint exact RMS same-byte-root check", 100_000);
             let mut fs = start();
             let mut prows = rows.clone().into_iter();
-            let (proof, point, original) =
-                prove(&statement, |i| used[i], &mut fs, &mut prows).unwrap();
+            let (proof, point, original, source_work) =
+                prove_sourcewise(&statement, |i| used[i], &mut fs, &mut prows).unwrap();
+            assert_eq!(source_work.cell_rounds.len(), c * (widths.len() - 1));
+            assert!(source_work.cell_rounds.iter().all(|work| work.owned_heap_peak_bytes
+                <= (3 * (1 << 14) + 2 * programs.len()) * 24 + programs.len()));
+            assert!(source_work.boolean_replay_heap_peak_bytes <= 2 * (1 << 14) * 8);
+            if fault == 0 {
+                println!(
+                    "C71_SOURCE_WORK {}",
+                    serde_json::json!({
+                        "work": &source_work,
+                        "abi": {
+                            "assignments": core::mem::size_of::<Assignments<'_>>(),
+                            "statement": core::mem::size_of::<Statement<'_>>(),
+                            "edge": core::mem::size_of::<Edge>(),
+                        }
+                    })
+                );
+                let mut dense_fs = start();
+                let mut dense_rows = rows[..statement.required().unwrap()].to_vec().into_iter();
+                let (dense, dense_point, dense_original) =
+                    prove_dense(&statement, |i| used[i], &mut dense_fs, &mut dense_rows).unwrap();
+                let (mut source_bytes, mut dense_bytes) = (Vec::new(), Vec::new());
+                crate::c71_matrix::wire::Wire::write(&proof, &mut source_bytes);
+                crate::c71_matrix::wire::Wire::write(&dense, &mut dense_bytes);
+                assert_eq!(source_bytes, dense_bytes);
+                assert_eq!(point, dense_point);
+                assert_eq!((original.x, original.m), (dense_original.x, dense_original.m));
+                assert_eq!(fs.digest(), dense_fs.digest());
+                assert!(dense_rows.next().is_none());
+
+                // The canonical caller supplies this public lookup rather
+                // than retaining one Option<usize> per padded cell. Its bind
+                // remains the same single transcript frame, including the
+                // u16 codec boundary at program 256.
+                let lookup = |cell| assignments[cell];
+                let lookup_statement = Statement {
+                    assignments: Assignments::new(assignments.len(), &lookup),
+                    ..statement
+                };
+                let mut lookup_fs = start();
+                let mut lookup_rows =
+                    rows[..lookup_statement.required().unwrap()].to_vec().into_iter();
+                let (lookup_proof, lookup_point, lookup_original, _) = prove_sourcewise(
+                    &lookup_statement,
+                    |i| used[i],
+                    &mut lookup_fs,
+                    &mut lookup_rows,
+                )
+                .unwrap();
+                let mut lookup_bytes = Vec::new();
+                crate::c71_matrix::wire::Wire::write(&lookup_proof, &mut lookup_bytes);
+                assert_eq!(source_bytes, lookup_bytes);
+                assert_eq!(point, lookup_point);
+                assert_eq!((original.x, original.m), (lookup_original.x, lookup_original.m));
+                assert_eq!(fs.digest(), lookup_fs.digest());
+                assert!(lookup_rows.next().is_none());
+            }
             assert_eq!(fs.requests(), fs_count);
             if fault == 0 && programs.len() > 255 {
                 // Programs 0 and 256 have identical gates here. A u8-cast
                 // collision would therefore accept this changed assignment.
                 let mut changed = assignments.to_vec();
                 *changed.iter_mut().find(|p| **p == Some(256)).unwrap() = Some(0);
-                let altered = Statement { assignments: &changed, ..statement };
-                assert!(verify(
-                    &altered,
-                    &proof,
-                    delta,
-                    &mut start(),
-                    &mut keys.clone().into_iter()
-                )
-                .is_err());
+                let altered = Statement { assignments: Assignments::dense(&changed), ..statement };
+                assert!(
+                    verify(&altered, &proof, delta, &mut start(), &mut keys.clone().into_iter())
+                        .is_err()
+                );
             }
             let (range_proof, forms, targets) = range::prove(
                 &model,

@@ -268,7 +268,7 @@ mod tests {
                 view: [53; 32],
                 attempt,
                 programs: &programs,
-                assignments: &assignments,
+                assignments: gkr::Assignments::dense(&assignments),
             };
             let mut context =
                 b"B12 exact weighted RMS; one W and one shared X/P/S/Y byte source".to_vec();

@@ -324,6 +324,186 @@ pub(super) fn prove_tree(
     prove_tree_with_first_weight(tree, point, claims, fs, rows, triples, None)
 }
 
+/// Source-level accounting for the scalar regenerating fraction-tree prover.
+/// These are exact Rust operations/getter calls, not machine instructions or
+/// a runtime lower. Proof/output vectors and correlation storage remain
+/// external; `owned_regeneration_heap_peak_bytes` counts only the coexisting
+/// input-point and next-point capacities owned by this function.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+pub(super) struct SourceTreeWork {
+    pub getter_calls: u64,
+    pub prefix_terms: u64,
+    pub equality_multiplications: u64,
+    pub equality_additions: u64,
+    pub equality_subtractions: u64,
+    pub cubic_multiplications: u64,
+    pub cubic_additions: u64,
+    pub cubic_subtractions: u64,
+    pub fold_multiplications: u64,
+    pub fold_additions: u64,
+    pub fold_subtractions: u64,
+    pub owned_regeneration_heap_peak_bytes: usize,
+}
+
+fn source_folded_value(
+    layer: usize,
+    child: usize,
+    original: usize,
+    challenges: &[Fp3],
+    suffix: usize,
+    get: &impl Fn(usize, usize, usize) -> Fp3,
+    work: &mut SourceTreeWork,
+) -> Fp3 {
+    let current = original >> challenges.len();
+    let mut sum = Fp3::ZERO;
+    for prefix in 0..1usize << challenges.len() {
+        let weight = challenges.iter().enumerate().fold(Fp3::ONE, |weight, (bit, &r)| {
+            work.equality_multiplications += 1;
+            if prefix >> (challenges.len() - 1 - bit) & 1 == 1 {
+                weight * r
+            } else {
+                work.equality_subtractions += 1;
+                weight * (Fp3::ONE - r)
+            }
+        });
+        sum += weight * get(layer, child, prefix * current + suffix);
+        work.getter_calls += 1;
+        work.prefix_terms += 1;
+        work.fold_multiplications += 1;
+        work.fold_additions += 1;
+    }
+    sum
+}
+
+fn source_folded_equality(
+    point: &[Fp3],
+    challenges: &[Fp3],
+    suffix: usize,
+    work: &mut SourceTreeWork,
+) -> Fp3 {
+    let mut value = Fp3::ONE;
+    for (&p, &r) in point.iter().zip(challenges) {
+        value = value * ((Fp3::ONE - p) * (Fp3::ONE - r) + p * r);
+        work.equality_multiplications += 3;
+        work.equality_additions += 1;
+        work.equality_subtractions += 2;
+    }
+    let tail = &point[challenges.len()..];
+    for (bit, &p) in tail.iter().enumerate() {
+        value = value
+            * if suffix >> (tail.len() - 1 - bit) & 1 == 1 { p } else { Fp3::ONE - p };
+        work.equality_multiplications += 1;
+        if suffix >> (tail.len() - 1 - bit) & 1 == 0 {
+            work.equality_subtractions += 1;
+        }
+    }
+    value
+}
+
+/// Transcript-identical scalar reference for a fraction tree supplied by four
+/// public child functions per layer. It regenerates prior folds and retains no
+/// vector proportional to the multilinear domain. This is deliberately a CPU
+/// reference; an admitted canonical schedule still needs the bounded Gram
+/// implementation and its own complete traffic/runtime ledger.
+pub(super) fn prove_tree_sourcewise(
+    bits: usize,
+    mut point: Vec<Fp3>,
+    mut claims: [Auth; 2],
+    get: impl Fn(usize, usize, usize) -> Fp3,
+    fs: &mut Fs,
+    rows: &mut std::vec::IntoIter<Auth>,
+    triples: &mut Vec<[Auth; 3]>,
+) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2], SourceTreeWork) {
+    let mut layers = Vec::new();
+    let mut work = SourceTreeWork::default();
+    for l in 0..bits {
+        let lambda = fs.fp3();
+        let mut target = claims[0].scale(lambda).add(claims[1]);
+        let original = 1usize << point.len();
+        let (mut next_point, mut rounds) = (Vec::new(), Vec::new());
+        work.owned_regeneration_heap_peak_bytes = work
+            .owned_regeneration_heap_peak_bytes
+            .max(point.capacity() * core::mem::size_of::<Fp3>());
+        for round in 0..point.len() {
+            fs.set_phase(0x500 + (32 * l + round) as u16);
+            let current = original >> round;
+            let half = current / 2;
+            let mut c = [Fp3::ZERO; 4];
+            for i in 0..half {
+                let a: [Fp3; 4] = std::array::from_fn(|child| {
+                    source_folded_value(l, child, original, &next_point, i, &get, &mut work)
+                });
+                let d: [Fp3; 4] = std::array::from_fn(|child| {
+                    source_folded_value(
+                        l,
+                        child,
+                        original,
+                        &next_point,
+                        i + half,
+                        &get,
+                        &mut work,
+                    ) - a[child]
+                });
+                work.cubic_subtractions += 4;
+                let mut v = [Fp3::ZERO; 3];
+                for (x, y, coefficient) in
+                    [(0, 3, lambda), (2, 1, lambda), (1, 3, Fp3::ONE)]
+                {
+                    v[0] += coefficient * a[x] * a[y];
+                    v[1] += coefficient * (d[x] * a[y] + a[x] * d[y]);
+                    v[2] += coefficient * d[x] * d[y];
+                    work.cubic_multiplications += 7;
+                    work.cubic_additions += 4;
+                }
+                let equality = source_folded_equality(&point, &next_point, i, &mut work);
+                let equality_hi =
+                    source_folded_equality(&point, &next_point, i + half, &mut work);
+                let de = equality_hi - equality;
+                work.cubic_subtractions += 1;
+                for j in 0..3 {
+                    c[j] += equality * v[j];
+                    c[j + 1] += de * v[j];
+                    work.cubic_multiplications += 2;
+                    work.cubic_additions += 2;
+                }
+            }
+            let (corrections, a) = authenticate(c, rows);
+            let tag = a[0].m + a[0].m + a[1].m + a[2].m + a[3].m - target.m;
+            let wire = [corrections[0], corrections[1], corrections[2], corrections[3], tag];
+            record_values(fs, 0x43, &wire);
+            let r = fs.fp3();
+            target = a.iter().rev().fold(Auth::ZERO, |s, &x| s.scale(r).add(x));
+            next_point.push(r);
+            work.owned_regeneration_heap_peak_bytes =
+                work.owned_regeneration_heap_peak_bytes.max(
+                    (point.capacity() + next_point.capacity()) * core::mem::size_of::<Fp3>(),
+                );
+            rounds.push(wire);
+        }
+        let folded: [Fp3; 4] = std::array::from_fn(|child| {
+            source_folded_value(l, child, original, &next_point, 0, &get, &mut work)
+        });
+        let [p, q, r, s] = folded;
+        let equality = source_folded_equality(&point, &next_point, 0, &mut work);
+        let (wire, a) = authenticate([p, q, r, s, p * s, r * q, q * s], rows);
+        triples.extend([[a[0], a[3], a[4]], [a[2], a[1], a[5]], [a[1], a[3], a[6]]]);
+        let residual = a[4].add(a[5]).scale(lambda).add(a[6]).scale(equality);
+        let split =
+            [wire[0], wire[1], wire[2], wire[3], wire[4], wire[5], wire[6], residual.m - target.m];
+        fs.set_phase(0x410 + l as u16);
+        record_values(fs, 0x44, &split);
+        let t = fs.fp3();
+        claims = [
+            a[0].scale(Fp3::ONE - t).add(a[2].scale(t)),
+            a[1].scale(Fp3::ONE - t).add(a[3].scale(t)),
+        ];
+        next_point.push(t);
+        point = next_point;
+        layers.push(Layer { rounds, split });
+    }
+    (layers, point, claims, work)
+}
+
 // A public multilinear first-layer weight can combine original point claims.
 // Subsequent layers use the ordinary equality weight at the returned point.
 // The caller binds the weight recipe and validates the top dimension.

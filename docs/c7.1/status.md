@@ -326,14 +326,21 @@ odd-log è contato; scatter PCS e fence GPU restano da integrare.
 Il [checkpoint RMS](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
 usa 2.023.511.878 B con descrittori e riusa lo slot range prima di RNE;
 il confronto dei frame originali passa senza A/Snapshot completi.
-Il backend GKR denso è NO-GO per memoria. Il motore limitato dei
-coefficienti conserva l'ordine MSB, salta solo supporti pubblici e applica
-il selettore dopo la somma dei gate. Il censimento del fixture a scale zero
-mostra che il lavoro GKR è una priorità: 377.460 miliardi di prodotti Fp3
-nel solo nucleo fattorizzato, prima di fold/replay. Il port della prova
-completa e il kernel fuso restano aperti. I probe CUDA compilati localmente
-non autorizzano un lower per quel kernel futuro; il vecchio screen
-LSB-first non dà credito al transcript nativo.
+Il backend GKR denso è NO-GO per memoria. Il prover ora collega replay
+Booleano limitato, coefficienti MSB, riduzione degli indici e MAC originali;
+il caller usa il checkpoint compatto e assegnamenti pubblici via lookup.
+Il binding serializza gli assegnamenti a blocchi di 4 KiB nello stesso
+record FS. I confronti ridotti conservano byte della prova, punto, MAC e
+transcript del riferimento denso. Il verifier deve rispettare lo stesso
+vincolo di memoria: nessuna tabella Eq o selettore proporzionale a N.
+Il nucleo fattorizzato del fixture a scale zero conta 377.460 miliardi di
+prodotti Fp3, prima di fold/replay. La scalar reference non è una schedule
+canonica ammessa; i probe CUDA non danno un lower per un kernel fuso.
+L'endpoint byte viene adattato allo stesso transcript con LUT pubblica
+lane/byte/nodo da 100.466.688 B al posto dell'albero denso da oltre 210 TB.
+Il ledger conta separatamente la rigenerazione MSB, senza trasformare
+accessi logici in HBM. Restano lavoro completo, workspace congiunto di
+circuiti/prove/correlazioni/allocator e port accelerato.
 Nessuna GPU, spill o spesa autorizzata.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso

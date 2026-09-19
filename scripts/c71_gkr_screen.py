@@ -224,6 +224,73 @@ def ratio_cases():
     return results
 
 
+def byte_source_trace(view_bits, lanes):
+    """Literal MSB regeneration, excluding MAC/FS/coefficients and caller.
+
+    Count source expressions, never infer HBM transactions or a service rate.
+    The fixed LUT replaces a domain-sized tree without reducing regeneration.
+    """
+    if lanes not in (1, 2, 4, 8, 16) or not lanes.bit_length()-1 <= view_bits <= 34:
+        raise ValueError('byte source geometry')
+    totals = Counter()
+    layers = []
+    for layer in range(8):
+        d = view_bits + layer
+        n = 1 << d
+        eq_mul = eq_add = eq_sub = 0
+        for r in range(d):
+            calls = n >> r
+            eq_mul += calls * (d + 2*r)
+            eq_add += calls * r
+            eq_sub += calls * 2*r + calls * (d-r)//2
+        eq_mul += 3*d
+        eq_add += d
+        eq_sub += 2*d
+        prefix_mul = 2*n*d*(d+1)
+        calls = 4*n*(d+1)
+        item = dict(getter_calls=calls, prefix_terms=calls,
+            equality_multiplications=prefix_mul+eq_mul,
+            equality_additions=eq_add,
+            equality_subtractions=prefix_mul//2+eq_sub,
+            cubic_multiplications=27*(n-1), cubic_additions=18*(n-1),
+            cubic_subtractions=5*(n-1), fold_multiplications=calls,
+            fold_additions=calls, fold_subtractions=0)
+        totals.update(item)
+        layers.append(dict(layer=layer, dimensions=d, **item))
+    return dict(credit=False, view_bits=view_bits, lanes=lanes, layers=layers,
+        counted_work=dict(totals), lut_nodes=lanes*256*511,
+        lut_capacity_bytes=lanes*256*511*48,
+        lut_build_multiplications=3*lanes*256*255,
+        lut_build_additions=lanes*256*255,
+        lut_leaf_subtractions=lanes*256*256,
+        dense_tree_payload_bytes=(1 << view_bits)*511*48,
+        dense_bottom_payload_bytes=(1 << view_bits)*256*48,
+        complete_work=False, complete_physical_peak=False,
+        logical_accesses_are_not_HBM=True,
+        missing=['coefficient factorial/inverse generation', 'MAC/FS/serialization',
+                 'original byte getter work', 'proof/correlation/allocator/stack liveness'])
+
+
+def source_prover_trace(native):
+    """Join the implemented cell replay with its original-byte obligation."""
+    c = native['padded_cells'].bit_length()-1
+    fields = ('cell_first_logical_frame_callbacks', 'cell_first_scalar_boolean_replay_gates',
+              'field_value_source_scalars', 'field_fold_mul_add_each',
+              'prefix_weight_multiplications', 'prefix_weight_subtractions',
+              'structural_selector_callbacks', 'structural_selector_assigned_terms')
+    return dict(credit=False, canonical_calibrated_profile=False,
+        cell_phase={k:native[k] for k in fields},
+        assignment_bytes_absorbed=native['padded_cells']*(2 if native['programs'] > 255 else 1),
+        assignment_stream_scratch_bytes=4096,
+        dense_assignment_payload_removed_bytes=native['dense_assignment_bytes'],
+        public_program_heap_bytes=native['public_program_inner_vec_capacity_bytes']+
+                                  native['public_program_descriptor_bytes'],
+        byte_endpoint=byte_source_trace(c+4, 16),
+        complete_work=False, complete_physical_peak=False,
+        missing=['index/terminal/authentication work', 'full proof and allocator capacity',
+                 'original frame getter work', 'measured fused kernel service rate'])
+
+
 def sass_gate_census(path):
     text=Path(path).read_text()
     result={}
@@ -270,7 +337,9 @@ def probe_screen(rms, ratios, sass):
 
 
 def report(rms_log,ratio_log,sass_path):
-    rms=canonical(native_record(rms_log))
+    rms_native=native_record(rms_log)
+    rms=canonical(rms_native)
+    rms['source_prover']=source_prover_trace(rms_native)
     ratios=ratio_cases()
     for r in ratios:
         native=native_record(ratio_log,'EXP30',r['old_tokens'])
@@ -278,6 +347,7 @@ def report(rms_log,ratio_log,sass_path):
         ops={op:sum(layer[op] for layer in native['layers']) for op in ('and','xor','copy')}
         pairs=sum(h['supported_pairs'] for h in r['rounds'])
         r['supported_gate_iterations_all_rounds']={op:v*pairs for op,v in ops.items()}
+        r['source_prover']=source_prover_trace(native)
         del r['gate_iterations_need_native_ratio_profile']
     sass=sass_gate_census(sass_path)
     return dict(credit=False,canonical_calibrated_profile=False,

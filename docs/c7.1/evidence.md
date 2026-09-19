@@ -1192,3 +1192,18 @@ liberati prima della LUT byte. Il piano trattiene i cut originali anche
 attraverso lookup/ratio. Il record include gli errori di build e liveness
 corretti prima del run pulito, senza GPU o credito al picco completo.
 Il lookup denso rimane un blocco distinto, ancora da sostituire.
+
+### Original lookup caches and GKR capacity census
+
+Il [record su SHA pulita `e39324ba5e18`](../../benchmarks/results/c71-original-lookup-2026-09-19-e39324ba5e18.json)
+conserva **12 test Rust e 20 Python**. Cache query/istogrammi e cut a 16
+foglie conservano wire, MAC, consumo righe e FS del lookup denso, anche con
+output i32 fuori i16, blocchi interleaved, padding e sfide Eq 0/1/non-base.
+Passano le regressioni GELU, softcap, massimo/ratio EXP30, RMS, N=1 e
+composizione ridotta. Tutti i 28 dump dei contatori lookup corrispondono
+al ledger Python; il dominio EXP30 include anche il padding causale.
+Il census GKR distingue backing delle righe, programmi, prove, triple,
+transizioni Eq e LUT byte. Il record conserva esplicitamente le omissioni
+individuate: Eq root/leaf byte, riallocazioni del binding, temporanei FS e
+allocator/caller. Non attribuisce un upper fisico o temporale completo.
+Nessuna GPU; gli errori di compilazione corretti prima del run sono registrati.

@@ -1,13 +1,15 @@
-# C7.1 — preflight locale, 2026-09-18
+# C7.1 — preflight locale, 2026-09-19
 
-**NO-GO per H100.** Lo screen dei costi dominanti respinge il getter che
-rigenera tutta A con prodotti scalari a ogni visita: il solo commit A
-impone >=135,257 s nelle condizioni esplicite sotto. Le specializzazioni
-range/FFT/apertura per resti riducono il lavoro, ma il loro lower parziale
-non esclude una costruzione diversa entro 65 s. Upper completo e picco
-completo restano aperti. **90 s è una soglia di discussione del proprietario,
-non una deroga autorizzata.** Il contratto vigente autorizzato è
-`T_inference + T_proof_only <=65 s`. Nessun pod, spesa o esecuzione GPU.
+**NO-GO per H100 del main-cell scalare implementato.** Il solo EXP30 a
+O=300 richiede ≥67,103981 s alle condizioni hardware dichiarate, prima
+di qualsiasi altro costo. La prova ridotta integrata passa, ma questo
+backend non può rispettare il contratto `T_inference + T_proof_only <=65 s`.
+Il precedente getter che rigenera A con prodotti scalari era già escluso
+(≥135,257 s per il solo commit nelle sue condizioni). Una costruzione con
+lavoro aritmetico o backend diversi resta da dimostrare; upper e picco
+fisico completi non vengono attribuiti ai controlli ridotti. **90 s è una
+soglia di discussione, non una deroga autorizzata.** Nessun pod, spesa o
+esecuzione GPU.
 
 I conti riproducibili sono in
 [`integrated_resource_ledger`](../../scripts/c71_streaming_screen.py) e
@@ -22,7 +24,21 @@ soltanto sui 512. Nessun gate qui concede l'autorizzazione alla spesa.
 Non è possibile dare un upper completo finito usando soltanto un picco di
 banda e componenti ancora privi di implementazione e contratti temporali.
 
+Il nuovo [lower del main-cell scalare fuso](#no-go-del-main-cell-scalare-fuso)
+è decisivo già senza completare i costi mancanti: EXP30 O=300 da solo
+richiede ≥67,103981 s nel backend compilato. Questo backend è NO-GO;
+non si propone un run H100 per cercare di recuperare il tetto di 65 s.
+
 ## Lower di banda e calcolo separati
+
+Il lavoro locale segue il gate integrato del 2026-09-19: una prova ridotta
+positiva con getter ordinato, lookup streaming, GKR sourcewise e WHIR,
+transcript e MAC originali, seguita dal ledger congiunto e dal minimo
+kernel fuso rappresentativo. Lookup/GKR/capacity accounting restano
+congelati salvo errori da almeno 16 MiB di picco o 0,5 s; nuovi dettagli
+ABI non sono un gate autonomo. I contatori del riferimento scalare non
+sostituiscono il lavoro della schedule canonica a 512 replay.
+
 
 Per uno stadio k, `max(B_k/BW_max,I_k/R_max)` è un lower. Sommare i lower
 solo tra stadi distinti obbligatori; non sommare IO e calcolo dello stesso
@@ -1550,3 +1566,134 @@ un'ipotesi iniziale di 40 B è stata respinta dal test, prima del join.
 Caller, allocator, transcript interno, altre riallocazioni e workspace
 esterni restano esplicitamente esclusi.
 Questa strumentazione non rende completo il picco né il lavoro temporale.
+
+
+## Percorso critico integrato ridotto
+
+Il test `c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs`
+usa il runner/verifier originali con reader ordinato e PCS replay. Il
+positivo O=0 produce circa 7,75 MB e consuma 88.049 MAC ideali; Snapshot e A
+completa non sono materializzati nel percorso selezionato. Un controllo
+separato confronta i byte del reader con l'oracolo Snapshot; range e
+linear hanno inoltre parità wire/FS/endpoint con il denso. Questo chiude
+il raccordo di correttezza, non i costi del port canonico.
+
+Il ledger `reduced_joint_trace` in
+[c71_response_trace.py](../../scripts/c71_response_trace.py) partiziona le
+chiamate numeriche ai confini reali del runner. Per questa singola proof:
+
+| Fase del getter | Righe producer eseguite | Letture scalari W | Letture scalari A |
+|---|---:|---:|---:|
+| Preparazione prima del commitment | 219 | 222 | 606 |
+| Commitment A iniziale | 70.016 | 78.848 | 197.376 |
+| Relazioni producer | 21.016.027 | 22.764.640 | 57.498.846 |
+| Range A | 329.879 | 371.260 | 929.880 |
+| Linear A e WHIR | 32.994.752 | 37.172.064 | 93.028.080 |
+
+Sono contatori CPU del riferimento, non accessi HBM e non una stima H100.
+Le callback di GKR/lookup/PCS sono già pagate qui; i relativi contatori
+aritmetici coprono soltanto il consumer. I picchi componenti non vengono
+sommati né presentati come picco fisico completo. I 512 replay canonici
+non vengono sostituiti con le rigenerazioni di questo riferimento ridotto.
+I tempi H100 `T_inference`, `T_proof_only`, `T_response_total` restano da
+chiudere; ogni ricostruzione qui ripetuta appartiene a `T_proof_only`.
+
+Il kernel CUDA `previous_fold_current_coeff_kernel` fonde il fold MSB
+precedente, con sfida già disponibile, e i coefficienti del round corrente.
+La sfida corrente viene solo dopo autenticazione/record/riduzione. I cinque
+vettori materializzati consumano 480 B letti + 240 B scritti per coppia;
+il percorso separato ne consuma 960 B. Il lavoro resta 28 moltiplicazioni,
+23 addizioni e 15 sottrazioni Fp3 per coppia, più riduzione. Nessun credito
+di tempo per la sola banda risparmiata. Il primo round è coefficient-only;
+il fold terminale rimane separato. La modalità `--fused-gkr LOG2_N REPS`
+verifica tutti gli output e la riduzione globale prima di cronometrare il
+componente; richiede input/output disgiunti e non include producer/getter,
+FS, autenticazione o PCG. Il test host distingue l'ordine MSB da quello
+adiacente del vecchio microbenchmark. Non è ancora il kernel main-cell
+And/Xor/Copy né una sua misura sostitutiva.
+
+
+## NO-GO del main-cell scalare fuso
+
+`c71_gkr_main_cell_fused` implementa il nucleo di `source_cell_round`:
+una voce pubblica programma/cella supportata per thread, input lo/hi già
+foldati, loop dei gate And/Xor/Copy, accumulo del polinomio quadratico e
+applicazione del selettore una sola volta per programma. L'oracolo CPU
+confronta la valutazione del cubico con la relazione originale su 0, 1
+e punti Fp3 non-base. `sm_90`, nvcc 12.9.86, produce 130 registri,
+24.576 B shared, zero stack e zero spill. È un kernel di coefficienti;
+getter, fold iniziali, indici, FS/MAC e riduzione globale aggiuntiva sono
+esclusi dal lower favorevole. La fusion precedente della fraction tree
+è un altro kernel e non viene conteggiata una seconda volta.
+
+Il checker [c71_main_cell_screen.py](../../scripts/c71_main_cell_screen.py)
+pinna l'hash della funzione e verifica dispatch, join, back-edge,
+assenza di branch nei segmenti contati e moltiplicandi register×register.
+Una ricompilazione diversa fallisce chiusa e richiede nuovo controllo.
+Riproduzione locale senza GPU, dopo la compilazione statica documentata:
+
+```sh
+PATH=/tmp/c71-cuda-12.9.1/toolkit/bin:$PATH \
+  /tmp/c71-cuda-12.9.1/toolkit/bin/cuobjdump --dump-sass \
+  /tmp/c71-integrated-kernels-sm90.o > /tmp/c71-integrated-kernels-sm90.sass
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/c71_main_cell_screen.py \
+  /tmp/c71-integrated-kernels-sm90.sass
+```
+
+L'analisi del CFG conta istruzioni **dinamiche per attraversamento** dei
+rami nel loop, non istruzioni statiche moltiplicate indiscriminatamente
+per i gate. Il cammino Copy contiene 66 `IMAD.WIDE.U32`, And/Xor 249,
+e il tail selettore per programma 216; tutti quelli contati sono non
+predicati. Scartando persino i moltiplicatori immediati restano
+rispettivamente **54 / 205 / 180**. Pertanto, per A/X/C gate eseguiti e
+P coppie programma/cella, il numero di risultati moltiplicativi soddisfa:
+
+```
+I >= 205*(A+X) + 54*C + 180*P
+  >= 24*(7*(A+X) + 2*C + 6*P)
+   = 24 * prodotti_Fp3_censiti.
+```
+
+Il circuito EXP30 usa realmente `compile_ratio(14)`; la sua cardinalità
+non dipende dal fixture RMS a scale zero o dalla calibrazione dei pesi.
+Le coppie supportate sono l'unione pubblica dei residui MSB delle celle
+causali, conteggiata da `ratio_supported_pair_total`; ogni kernel esegue
+il loop dei gate della rispettiva voce esattamente una volta. Non è
+necessario materializzare la lista canonica per calcolare la cardinalità.
+Questa è la schedule nominata; una specializzazione che salta o sostituisce
+quei prodotti richiede una nuova analisi e non eredita automaticamente
+questo NO-GO.
+
+La [descrizione NVIDIA di Hopper](https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/)
+riporta 132 SM e 64 core INT32/SM per H100 SXM. Il passaggio al ceiling
+per `IMAD.WIDE.U32` e il clock ≤2 GHz sono condizioni esplicite dello
+screen, non un service-rate misurato o una promessa del provider.
+
+Sotto il tetto già dichiarato di 132 SM × 64 risultati scalar
+INT-multiply/ciclo/SM × 2 GHz = **16.896.000.000.000 risultati/s**, applicato
+alle istruzioni del binario, si ottiene:
+
+| O | Prodotti Fp3 EXP30 | Lower dei soli coefficienti EXP30 |
+|---:|---:|---:|
+| 0 | 9.501.309.089.555 | 13,496178 s |
+| 150 | 28.371.308.393.733 | 40,300154 s |
+| 300 | 47.241.202.900.983 | **67,103981 s** |
+
+A O=300 `T_proof_only >=67,103981 s` e quindi
+`T_response_total = T_inference + T_proof_only >=67,103981 s`, con
+`T_inference >=0` non misurato. Il lower non include RMS, inferenza,
+ricostruzione/auth A/KV, range, PCS, PCG, serializzazione o HBM. Sono
+costi positivi omessi, non assegnati a zero nel ledger. Nessun overlap
+può rendere questo singolo lavoro più breve del proprio lower aritmetico.
+Non serve completare un upper o il picco fisico per respingere il backend.
+
+È **NO-GO della costruzione con questo main-cell scalare**, non lower
+universale su B12 né impossibilità di ogni schedule a 512 replay. Vale
+per il mapping pubblico e il codice/toolchain censiti; nuovo codice,
+Tensor Core, packing o una riduzione algebrica richiedono un nuovo
+certificato. La minima alternativa utile deve cambiare lavoro o risorsa
+aritmetica. Con gli altri lower nominati della schedule seriale invariati,
+a O=300 restano meno di 8,249 s per tutti i costi omessi: servirebbe già
+oltre **8,13×** di riduzione su questo lower EXP30, prima di RMS e degli
+altri costi. La sola eliminazione di riletture o del workspace non basta.
+Nessun nuovo censimento ABI, pod o spesa è richiesto per questo esito.

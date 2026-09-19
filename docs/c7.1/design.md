@@ -230,6 +230,27 @@ non sono provati un raffinamento generale Rust, i bound 82,93/91,02 per
 questa istanza ridotta o uno schedule fisico. Il runner di produzione
 non acquisisce un backend ideale o un fallback CPU da questo modulo interno.
 
+Il raccordo ridotto streaming usa `ordered::Reader` fissato prima delle
+sfide: replay dei soli logits causali per determinare il token, validazione
+di tutti i producer con i token finali e poi cut/KV privati immutabili.
+`ReplayModel::new` costruisce davvero la root dal getter, dai pad e dal salt;
+la proof ricommitta con le monete iniziali e controlla la stessa root.
+Range e linear rigenerano i valori senza polinomio A o Eq(N) densi e
+passano il terminale autenticato originale al backend WHIR replay. Le
+conversioni tra tipi PCS spostano i payload senza roundtrip JSON. I test
+con monete fissate controllano transcript, wire e MAC; i punti di ingresso
+ordinari continuano a usare monete fresche da OsRng.
+
+Il getter riceve soltanto indici e possiede W/cut/token già fissati, senza
+accesso a FS o correlazioni. Le celle pubbliche tra `live` e DOMAIN_A sono
+zero anche quando il dominio PCS eccede quello minimo del layout. Il
+profilo selezionato dal nuovo reader è esplicitamente O=0; storia A e
+real-PCG non acquisiscono credito dalla prova positiva. La rigenerazione
+ricorsiva CPU è un riferimento di correttezza, non la schedule canonica
+512 replay. I contatori per fasi includono ogni replay in proof work;
+le callback annotate in GKR/lookup non addebitano una seconda copia del
+lavoro del getter.
+
 ### Canonical producers and real-pool adapter
 
 Il [compilatore canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs)
@@ -805,6 +826,29 @@ aperto, non una schedule ammessa. Gli esiti negativi sono circoscritti alle
 implementazioni esaminate, non lower universali sulle PCS streaming.
 
 ### Selected reference
+
+Il port scalare `c71_gkr_main_cell_fused` è ora escluso dal requisito a
+65 s per O=300: il solo EXP30 a frazione 14 ha lower 67,103981 s sotto
+132 SM, clock ≤2 GHz e ≤64 risultati scalar INT-multiply/ciclo/SM applicati
+agli `IMAD.WIDE.U32` emessi. Il mapping censito enumera una volta ogni
+coppia programma/cella pubblicamente supportata, per livello e round, e
+tutti i gate del programma; input già foldati sono concessi gratuitamente.
+Il [certificato dei cammini compilati](preflight.md#no-go-del-main-cell-scalare-fuso)
+prova almeno 24 risultati per prodotto Fp3 censito. Non è un lower per
+Tensor Core/packing, nuove fattorizzazioni, specializzazioni dei primi
+round o altro codice compilato: tali varianti devono ridurre davvero il
+lavoro o cambiare la risorsa aritmetica e conservare transcript/endpoints.
+Non si indebolisce il requisito temporale o crittografico per ammettere
+il backend respinto.
+
+Il lavoro locale segue il gate integrato del 2026-09-19: una prova ridotta
+positiva con getter ordinato, lookup streaming, GKR sourcewise e WHIR,
+transcript e MAC originali, seguita dal ledger congiunto e dal minimo
+kernel fuso rappresentativo. Lookup/GKR/capacity accounting restano
+congelati salvo errori da almeno 16 MiB di picco o 0,5 s; nuovi dettagli
+ABI non sono un gate autonomo. I contatori del riferimento scalare non
+sostituiscono il lavoro della schedule canonica a 512 replay.
+
 
 | Voce | Riferimento da soddisfare; nessuna nuova misura |
 |---|---:|

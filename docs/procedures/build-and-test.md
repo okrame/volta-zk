@@ -30,6 +30,22 @@ closure alone requires no Rust or Lean build; native refinement is separate.
 
 ## Rust and resource limits
 
+Per il raccordo streaming critico, dopo la build PCS mirata, eseguire
+separatamente `sourcewise_range_matches_dense_original_wire_and_mac`,
+`c71_b12_sourcewise_linear_matches_dense_wire_fs_point_and_original_mac`,
+`c71_b12_o0_reader_discovers_token_and_matches_numeric_source` e
+`c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs`, più la
+regressione `c71_b12_native_composed`. Restano 60 s/2 GiB, un worker Rayon
+e `--test-threads=1` per filtro. Con `C71_INTEGRATED_TRACE=1 --nocapture`
+il positivo emette i contatori esistenti di GKR/lookup e i confini disgiunti
+del getter; `c71_response_trace.reduced_joint_trace` controlla il ledger.
+Non sono conteggi canonici completi, HBM o tempo H100. Il nuovo reader
+è O=0: il test storico a tre tentativi continua a coprire il percorso denso.
+Per il CUDA usare il controllo host preesistente, che ora verifica anche
+main-cell e fold/coeff MSB fusi, e compilazione statica `sm_90`; nessuna
+esecuzione GPU è autorizzata da questa procedura.
+
+
 Per la riserva Seed6 eseguire separatamente `c71_seed6_tail_reservation`,
 `c71_seed6_real_prefix_guard_and_exact_equality_tail` e `c71_seed6_equality`
 nel binario PCG con feature `c71-b11`, dopo la build mirata. Il secondo

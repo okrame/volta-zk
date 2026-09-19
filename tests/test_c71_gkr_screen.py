@@ -85,3 +85,23 @@ def test_lookup_cut_replay_counts_every_padded_leaf():
         assert x['endpoint_equality_multiplications_each_role']==2*n-2
         assert x['build_fraction_merges']==n-1
         assert not x['complete_work'] and not x['complete_physical_peak']
+
+
+def test_maincell_certificate_excludes_predicates_and_immediate_multipliers(tmp_path):
+    import c71_main_cell_screen as cell
+    instructions = {
+        0: 'IMAD.WIDE.U32 R4, R6, R8.reuse, R10',
+        16: 'IMAD.WIDE.U32 R4, R6, 0x18, R10',
+        32: 'IMAD.WIDE.U32.X R4, P0, R6, R8, R10',
+    }
+    assert cell.register_only_wide(instructions, 0, 48) == [0, 32]
+    instructions[16] = '@P0 IMAD.WIDE.U32 R4, R6, R8, R10'
+    with pytest.raises(ValueError, match='predicated'):
+        cell.register_only_wide(instructions, 0, 48)
+    for op in ['BRA 0x100', 'CALL 0x100', 'EXIT', 'RET']:
+        with pytest.raises(ValueError, match='branch'):
+            cell.no_branch({0: op}, 0, 16, 'test path')
+    path = tmp_path/'changed.sass'
+    path.write_text('Function : c71_gkr_main_cell_fused\n/*0000*/ EXIT; /* 0x0 */\n')
+    with pytest.raises(ValueError, match='function changed'):
+        cell.screen(path)

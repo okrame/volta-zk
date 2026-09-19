@@ -49,6 +49,17 @@ Questo non trasferisce automaticamente gli 82,93/91,02 bit al programma
 Rust o al piccolo profilo. Restano distinti il teorema matematico completo,
 l'esecuzione nativa nel modello MAC ideale e il port canonico/AES.
 
+Il nuovo percorso integrato **O=0** sostituisce Snapshot/A densi con un
+reader ordinato: ricava il token dai logits causali, valida tutti i producer
+prima del commitment e conserva soltanto cut/KV ridotti, una riga numerica
+e una finestra byte da 128 B. Lookup streaming e GKR sourcewise riusano lo
+stesso corpo; range A, riduzione lineare e WHIR chiudono sugli stessi MAC.
+Il verifier originale accetta una proof da **circa 7,75 MB**, consumando
+**88.049 righe MAC** e ricostruendo la stessa ricevuta. Range e linear
+sourcewise coincidono byte per byte con le rispettive prove dense a
+monete fissate nel test. È correttezza ridotta con MAC ideali, non port
+canonico, storia A streaming o PCG reale positivo.
+
 ## Native port in progress
 
 Il [compilatore causale canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs)
@@ -103,6 +114,28 @@ verifica l'arresto per capacità insufficiente, senza pubblicare A né
 promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
+
+**NO-GO del backend scalare fuso ora implementato:** per il circuito
+EXP30 fissato `compile_ratio(14)`, a O=300 i soli coefficienti main-cell
+richiedono almeno **67,103981 s** alle condizioni hardware del preflight.
+Il conteggio deriva dai cammini del kernel compilato, dopo inline/CSE,
+e non usa il fixture RMS non calibrato. È già maggiore di 65 s senza
+inferenza, range, PCS, PCG, replay o traffico. Questo esclude quel backend
+nella capacità a tre risposte, non ogni backend matematicamente possibile.
+Si chiude questa linea senza H100: per riaprirla serve una riduzione
+strutturale del lavoro o un'esecuzione aritmetica diversa dimostrata;
+ulteriori dettagli allocator/ABI o una misura di banda non possono
+rimuovere il lower. Vedi [derivazione e condizioni](preflight.md#no-go-del-main-cell-scalare-fuso).
+
+**Priorità operativa del proprietario (2026-09-19):** congelati lookup,
+GKR e capacity accounting, salvo errori che cambino il picco di almeno
+16 MiB o il tempo di almeno 0,5 s. Il prossimo gate è una singola prova
+positiva nel runner ridotto che colleghi getter ordinato, lookup streaming,
+GKR sourcewise e WHIR con transcript/MAC originali; poi ledger congiunto
+senza doppio conteggio e kernel fuso rappresentativo. Nuovi censimenti
+ABI sono esclusi se non chiudono direttamente memoria, tempo o correttezza
+di questo percorso. Restano invariati 512 replay, margine di 256 MiB e
+assenza di autorizzazione H100/spesa.
 
 **Il trust model autorizzato è ora B12 + EA-LPN-SL-reg\*. Il goal completo
 resta aperto sulla fattibilità fisica.** Il proprietario ha accettato la

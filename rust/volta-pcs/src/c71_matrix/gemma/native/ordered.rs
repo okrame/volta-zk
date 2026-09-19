@@ -3,16 +3,34 @@
 use super::*;
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex};
 
-#[derive(Default, Debug)]
-struct Work {
-    producer_rows: Vec<usize>,
-    numerical: prepare::RowWork,
-    original_scalar_reads: usize,
-    old_kv_reads: usize,
-    weight_scalar_reads: usize,
-    emitted_bytes: usize,
-    named_heap_peak: usize,
+#[derive(Default, Debug, serde::Serialize)]
+pub(super) struct Work {
+    pub(super) producer_rows: Vec<usize>,
+    pub(super) numerical: prepare::RowWork,
+    pub(super) original_scalar_reads: usize,
+    pub(super) old_kv_reads: usize,
+    pub(super) weight_scalar_reads: usize,
+    pub(super) emitted_bytes: usize,
+    pub(super) named_heap_peak: usize,
+}
+
+impl Work {
+    fn absorb(&mut self, rhs: Self) {
+        if self.producer_rows.len() < rhs.producer_rows.len() {
+            self.producer_rows.resize(rhs.producer_rows.len(), 0);
+        }
+        for (dst, value) in self.producer_rows.iter_mut().zip(rhs.producer_rows) {
+            *dst += value;
+        }
+        self.numerical.add_assign(rhs.numerical);
+        self.original_scalar_reads += rhs.original_scalar_reads;
+        self.old_kv_reads += rhs.old_kv_reads;
+        self.weight_scalar_reads += rhs.weight_scalar_reads;
+        self.emitted_bytes += rhs.emitted_bytes;
+        self.named_heap_peak = self.named_heap_peak.max(rhs.named_heap_peak);
+    }
 }
 
 /// Compact original K/V for the bounded replay check. Identities are trusted
@@ -43,6 +61,7 @@ fn replay(
     tokens: [u32; 2],
     cuts: &BTreeMap<usize, Vec<i16>>,
     targets: &BTreeSet<usize>,
+    row_limit: usize,
     mut emit: impl FnMut(usize, usize, &[i64]) -> Result<(), String>,
 ) -> Result<Work, String> {
     if old.len() * TOKENS != p.old
@@ -106,7 +125,7 @@ fn replay(
             .filter(|&id| uses[id] > 0 && !cuts.contains_key(&id))
             .map(|id| (id, vec![0; sources[id].rows * sources[id].cols]))
             .collect();
-        for row in 0..sources[outputs[0]].rows {
+        for row in 0..sources[outputs[0]].rows.min(row_limit) {
             let get = |id: usize, r: usize, c: usize| {
                 reads.set(reads.get() + 1);
                 let index = r * sources[id].cols + c;
@@ -213,6 +232,166 @@ fn replay(
     Ok(work)
 }
 
+/// O=0 numerical source. Its identity and both causal tokens are fixed before
+/// a PCS/FS caller obtains any getter. The PCS model remains a separate owner.
+pub(super) struct Reader {
+    profile: Arc<Profile>,
+    weights: Arc<prepare::Installed>,
+    frozen: Frozen,
+    cuts: Cuts,
+    row_cache: Mutex<Option<(usize, usize, Vec<i64>)>>,
+    byte_cache: Mutex<(usize, [u8; 128])>,
+    work: Mutex<Work>,
+}
+
+impl Reader {
+    pub(super) fn prepare(
+        profile: Arc<Profile>,
+        weights: Arc<prepare::Installed>,
+        prompt: u32,
+    ) -> Result<Arc<Self>, String> {
+        if profile.old != 0 || prompt >= 2 {
+            return Err("ordered reader currently requires O=0 and a binary prompt".into());
+        }
+        // Discover only from causal row-0 logits. Row 1 and Argmax are outside
+        // this replay, so the provisional second token is never privately read
+        // or checked.
+        let target = profile.output.output;
+        let targets = [target].into_iter().collect();
+        let mut logits = None;
+        let discovery_work = replay(
+            &profile,
+            &weights,
+            &[],
+            [prompt, 0],
+            &BTreeMap::new(),
+            &targets,
+            1,
+            |id, row, words| {
+                if id == target && row == 0 {
+                    logits = Some(words.to_vec());
+                }
+                Ok(())
+            },
+        )?;
+        let logits = logits.ok_or("ordered row-0 logits were not produced")?;
+        if logits.len() != 2 {
+            return Err("ordered row-0 logits width differs".into());
+        }
+        let generated = u32::from(logits[1] > logits[0]);
+        let tokens = [prompt, generated];
+        // Validate every producer and every private bound with the final causal
+        // tokens before any getter can escape. Emission is streamed/discarded;
+        // this retains neither Snapshot nor the full A source.
+        let all_sources = profile.steps.iter().flat_map(|step| profile.outputs(step)).collect();
+        let validation_work = replay(
+            &profile,
+            &weights,
+            &[],
+            tokens,
+            &BTreeMap::new(),
+            &all_sources,
+            TOKENS,
+            |_id, _row, _words| Ok(()),
+        )?;
+        // The numeric reader has no commitment yet. This private placeholder is
+        // only the internal Frozen/Cuts ownership nonce; the caller constructs
+        // and owns the eventual ReplayModel/root.
+        let (frozen, cuts, frozen_work) =
+            Frozen::prepare(&profile, &weights, &[], tokens, [0; 32])?;
+        let mut work = Work::default();
+        work.absorb(discovery_work);
+        work.absorb(validation_work);
+        work.absorb(frozen_work);
+        Ok(Arc::new(Self {
+            profile,
+            weights,
+            frozen,
+            cuts,
+            row_cache: Mutex::new(None),
+            byte_cache: Mutex::new((usize::MAX, [0; 128])),
+            work: Mutex::new(work),
+        }))
+    }
+
+    pub(super) fn tokens(&self) -> [u32; 2] {
+        self.frozen.tokens
+    }
+
+    pub(super) fn take_work(&self) -> Result<Work, String> {
+        let mut work = self.work.lock().map_err(|_| "ordered work poisoned")?;
+        Ok(core::mem::take(&mut *work))
+    }
+
+    pub(super) fn value(&self, id: usize, row: usize, col: usize) -> Result<i64, String> {
+        let sources = &self.profile.bytes().scalar.layout.sources;
+        let shape = sources.get(id).ok_or("ordered source id outside layout")?;
+        if row >= shape.rows || col >= shape.cols {
+            return Ok(0);
+        }
+        let mut cache = self.row_cache.lock().map_err(|_| "ordered row cache poisoned")?;
+        if cache
+            .as_ref()
+            .is_none_or(|(cached_id, cached_row, _)| *cached_id != id || *cached_row != row)
+        {
+            let targets = [id].into_iter().collect();
+            let mut selected = None;
+            let replay_work = replay(
+                &self.profile,
+                &self.weights,
+                &[],
+                self.frozen.tokens,
+                &self.cuts.values,
+                &targets,
+                TOKENS,
+                |source, emitted_row, words| {
+                    if source == id && emitted_row == row {
+                        selected = Some(words.to_vec());
+                    }
+                    Ok(())
+                },
+            )?;
+            self.work.lock().map_err(|_| "ordered work poisoned")?.absorb(replay_work);
+            let selected = selected.ok_or("ordered source row was not produced")?;
+            if selected.len() != shape.cols {
+                return Err("ordered source row width differs".into());
+            }
+            *cache = Some((id, row, selected));
+        }
+        Ok(cache.as_ref().unwrap().2[col])
+    }
+
+    pub(super) fn byte_at(&self, index: usize) -> Result<u8, String> {
+        let domain = match DOMAIN_A {
+            Domain::Flat(bits) => 1usize << bits,
+            _ => unreachable!(),
+        };
+        if index >= domain {
+            return Err("ordered byte index outside padded source domain".into());
+        }
+        // DOMAIN_A can exceed the layout's minimum Boolean domain. These
+        // public padding cells are fixed zeros in Model::polynomial too.
+        if index >= self.profile.bytes().live {
+            return Ok(0);
+        }
+        let first = index / 128 * 128;
+        let mut cache = self.byte_cache.lock().map_err(|_| "ordered byte cache poisoned")?;
+        if cache.0 != first {
+            let window_work = self.frozen.window(
+                &self.cuts,
+                &self.profile,
+                &self.weights,
+                &[],
+                first,
+                &mut cache.1,
+            )?;
+            self.work.lock().map_err(|_| "ordered work poisoned")?.absorb(window_work);
+            cache.0 = first;
+        }
+        Ok(cache.1[index - first])
+    }
+}
+
 impl Frozen {
     fn prepare(
         p: &Profile,
@@ -220,19 +399,20 @@ impl Frozen {
         old: &[Frozen],
         tokens: [u32; 2],
         source_root: [u8; 32],
-    ) -> Result<(Self, Cuts), String> {
+    ) -> Result<(Self, Cuts, Work), String> {
         let cuts = [p.residual[0].output, p.residual[3].output];
         let kv = kv_ids(p);
         let targets = cuts.into_iter().chain(kv).collect();
         let mut values = BTreeMap::new();
-        replay(p, w, old, tokens, &BTreeMap::new(), &targets, |id, _row, words| {
-            let words = words
-                .iter()
-                .map(|&x| i16::try_from(x).map_err(|_| "cut/KV outside i16"))
-                .collect::<Result<Vec<_>, _>>()?;
-            values.entry(id).or_insert_with(Vec::new).extend(words);
-            Ok(())
-        })?;
+        let work =
+            replay(p, w, old, tokens, &BTreeMap::new(), &targets, TOKENS, |id, _row, words| {
+                let words = words
+                    .iter()
+                    .map(|&x| i16::try_from(x).map_err(|_| "cut/KV outside i16"))
+                    .collect::<Result<Vec<_>, _>>()?;
+                values.entry(id).or_insert_with(Vec::new).extend(words);
+                Ok(())
+            })?;
         let model_root = w.model.root.roots()[0];
         let checkpoint = Cuts {
             owner: (source_root, model_root, p.digest, p.old, tokens),
@@ -248,6 +428,7 @@ impl Frozen {
                 kv: kv.into_iter().map(|id| (id, values.remove(&id).unwrap())).collect(),
             },
             checkpoint,
+            work,
         ))
     }
 
@@ -264,21 +445,24 @@ impl Frozen {
             || p.old != self.old
             || p.digest != self.profile
             || w.model.root.roots()[0] != self.model_root
-            || first.checked_add(output.len()).is_none_or(|end| end > 1 << 12)
+            || first
+                .checked_add(output.len())
+                .is_none_or(|end| end > p.bytes().live.next_power_of_two())
         {
             return Err("ordered window context or bound differs".into());
         }
         let targets = p.bytes().window_sources(first, output.len())?.into_iter().collect();
         output.fill(0);
         let mut writes = 0;
-        let mut work = replay(p, w, old, self.tokens, &cuts.values, &targets, |id, row, words| {
-            p.bytes().emit_row_bytes(id, row, words, |index, value| {
-                if index >= first && index - first < output.len() {
-                    output[index - first] = value;
-                    writes += 1;
-                }
-            })
-        })?;
+        let mut work =
+            replay(p, w, old, self.tokens, &cuts.values, &targets, TOKENS, |id, row, words| {
+                p.bytes().emit_row_bytes(id, row, words, |index, value| {
+                    if index >= first && index - first < output.len() {
+                        output[index - first] = value;
+                        writes += 1;
+                    }
+                })
+            })?;
         work.emitted_bytes = writes;
         work.named_heap_peak += output.len();
         Ok(work)
@@ -288,6 +472,37 @@ impl Frozen {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn c71_b12_o0_reader_discovers_token_and_matches_numeric_source() {
+        let p = Arc::new(Profile::small(0).unwrap());
+        let packed = p
+            .plan
+            .sources
+            .iter()
+            .flat_map(|s| {
+                (0..s.rows)
+                    .flat_map(move |r| (0..s.cols).map(move |c| i16::from(s.rows == 1 || r == c)))
+            })
+            .collect();
+        let w = Arc::new(prepare::Installed::new(&p, packed).unwrap());
+        let dense = prepare::Snapshot::prepare(&p, &w, &[], 1).unwrap();
+        let reader = Reader::prepare(p.clone(), w, 1).unwrap();
+        assert_eq!(reader.tokens(), dense.tokens);
+        for id in [p.output.output, p.gate[2], p.softmax.layers[0].pi] {
+            let shape = &p.bytes().scalar.layout.sources[id];
+            for row in 0..shape.rows {
+                for col in 0..shape.cols {
+                    assert_eq!(reader.value(id, row, col).unwrap(), dense.value(&p, id, row, col));
+                }
+            }
+        }
+        for index in 0..(1usize << DOMAIN_A.config().unwrap().num_variables) {
+            let expected = dense.source.weights.get(index).copied().unwrap_or(0) as u8;
+            assert_eq!(reader.byte_at(index).unwrap(), expected, "byte={index}");
+        }
+        assert!(reader.byte_at(1usize << DOMAIN_A.config().unwrap().num_variables).is_err());
+    }
+
     #[test]
     fn c71_b12_native_ordered_bytes_equal_original_snapshot_across_history() {
         let p = Profile::small(0).unwrap();
@@ -305,7 +520,7 @@ mod tests {
         for slot in 0..3 {
             let p = Profile::small(slot).unwrap();
             let original = prepare::Snapshot::prepare(&p, &w, &dense, (slot % 2) as u32).unwrap();
-            let (compact, mut cuts) =
+            let (compact, mut cuts, _) =
                 Frozen::prepare(&p, &w, &frozen, original.tokens, original.source.root.roots()[0])
                     .unwrap();
             for width in [1, 17, 128, 1024] {
@@ -373,7 +588,7 @@ mod tests {
             let p = Profile::small(slot).unwrap();
             let original =
                 prepare::Snapshot::prepare(&p, &w, &originals, (slot % 2) as u32).unwrap();
-            let (current, cuts) = Frozen::prepare(
+            let (current, cuts, _) = Frozen::prepare(
                 &p,
                 &w,
                 &accepted,

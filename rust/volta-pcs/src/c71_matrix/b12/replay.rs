@@ -11,8 +11,12 @@ use p3_matrix::{dense::DenseMatrix, extension::FlatMatrixView, Matrix};
 use p3_sumcheck_c61::strategy::ResidualSumcheckProver;
 use p3_whir_c61::pcs::{
     proof::{QueryOpenings, SharedProofOpening},
-    zk::{ZkWhirInitialMessage, ZkWhirOracleCommitter, ZkWhirReplayHandle},
+    zk::{
+        BaseCaseZkProof, ZkRoundProof, ZkWhirInitialMessage, ZkWhirOracleCommitter,
+        ZkWhirReplayHandle,
+    },
 };
+use rand_010::RngExt;
 use std::sync::{Arc, Mutex};
 fn limbs(x: &E) -> &[Goldilocks] {
     <E as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(x)
@@ -142,6 +146,200 @@ impl Code {
         let lease = state.map(State::replay_lease).transpose()?.flatten();
         Ok((root, ZkWhirReplayHandle::new(Oracle { tree, base, lease })))
     }
+}
+
+/// Immutable base-field source behind one already committed flat oracle.
+///
+/// The caller owns the getter's storage and must keep its answers immutable
+/// for the root's lifetime. Construction replays the installation coins and
+/// rejects a root mismatch before this handle can be used by a proof.
+pub(in crate::c71_matrix) struct ReplayModel {
+    domain: Domain,
+    root: C61Commitment,
+    seed: [u8; 32],
+    salt_seed: [u8; 32],
+    source: Getter,
+}
+
+impl ReplayModel {
+    pub(in crate::c71_matrix) fn new(
+        domain: Domain,
+        seed: [u8; 32],
+        salt_seed: [u8; 32],
+        source: Getter,
+    ) -> Result<Self, String> {
+        let mut model =
+            Self { domain, root: C61Commitment::new(vec![[0; 32]]), seed, salt_seed, source };
+        let mut setup = Fs::new(b"C71 model setup, Delta independent", 0);
+        let (root, handle, _) = model.commit_initial(&mut setup)?;
+        drop(handle);
+        model.root = root;
+        Ok(model)
+    }
+
+    pub(in crate::c71_matrix) fn new_checked(
+        domain: Domain,
+        root: C61Commitment,
+        seed: [u8; 32],
+        salt_seed: [u8; 32],
+        source: Getter,
+    ) -> Result<Self, String> {
+        let model = Self::new(domain, seed, salt_seed, source)?;
+        if root != model.root {
+            return Err("C71 replay source changed the installed model root".into());
+        }
+        Ok(model)
+    }
+
+    pub(in crate::c71_matrix) fn domain(&self) -> Domain {
+        self.domain
+    }
+
+    pub(in crate::c71_matrix) fn root(&self) -> &C61Commitment {
+        &self.root
+    }
+
+    pub(in crate::c71_matrix) fn source(&self) -> Getter {
+        self.source.clone()
+    }
+
+    pub(in crate::c71_matrix) fn value(&self, index: usize) -> Fp3 {
+        from_p3((self.source)(index))
+    }
+
+    fn commit_initial(
+        &self,
+        fs: &mut Fs,
+    ) -> Result<(C61Commitment, ZkWhirReplayHandle, Arc<[Goldilocks]>), String> {
+        let config = self.domain.config()?;
+        let first = config.round_folding_factor(0);
+        let mut rng = PrivateRng::from_seed(self.seed);
+        let pads: Arc<[Goldilocks]> =
+            (0..config.oracle_randomness[0] << first).map(|_| rng.random()).collect();
+        let len = 1usize << config.num_variables;
+        let height = (len >> first) << config.starting_log_inv_rate;
+        let mmcs = ObservedMmcs::new(fs.clone(), self.salt_seed);
+        // Match `HidingWhirProver::new`: cloning forks the extension salt
+        // stream by consuming one seed from the base stream before its commit.
+        let _extension = mmcs.clone();
+        let (root, handle) = Code {
+            get: self.source.clone(),
+            len,
+            width: 1 << first,
+            height,
+            pads: Pads::Base(pads.clone()),
+        }
+        .commit(&mmcs.inner, None)?;
+        Ok((root, handle, pads))
+    }
+}
+
+pub(in crate::c71_matrix) fn prove_pcs_sourcewise(
+    model: &ReplayModel,
+    config: &ZkWhirConfig<E, Goldilocks, Fs>,
+    point: Point<E>,
+    terminal: Auth,
+    mask: Auth,
+    fs: &mut Fs,
+) -> Result<(ZkWhirProof<Goldilocks, E, ObservedMmcs>, Fp3), String> {
+    prove_pcs_sourcewise_with_coins(model, config, point, terminal, mask, fs, fresh_pcs_coins()?)
+}
+
+pub(in crate::c71_matrix) fn prove_pcs_sourcewise_with_coins(
+    model: &ReplayModel,
+    config: &ZkWhirConfig<E, Goldilocks, Fs>,
+    point: Point<E>,
+    terminal: Auth,
+    mask: Auth,
+    fs: &mut Fs,
+    coins: PcsCoins,
+) -> Result<(ZkWhirProof<Goldilocks, E, ObservedMmcs>, Fp3), String> {
+    if model.domain.config()?.num_variables != config.num_variables {
+        return Err("C71 replay source and PCS domains differ".into());
+    }
+    fs.set_phase(0x200);
+    census::mark("prover_commit_rematerialization")?;
+    let (root, handle, pads) = model.commit_initial(fs)?;
+    if root != model.root {
+        return Err("C71 replay source changed the installed model root".into());
+    }
+    fs.observe(root);
+    census::mark("prover_pcs")?;
+    let dft = Radix2DFTSmallBatch::default();
+    let base = ObservedMmcs::new(fs.clone(), coins.salt_seed);
+    let extension = base.clone();
+    let base_ref = &base;
+    let prover = HidingWhirProver {
+        config,
+        dft: &dft,
+        mmcs: &base_ref,
+        extension_mmcs: ExtensionMmcs::new(&extension),
+    };
+    let claims = [(point, to_p3(terminal.x))];
+    let backend = Backend {
+        base: &base,
+        extension: &extension,
+        source: Mutex::new(Some(model.source.clone())),
+        first: config.round_folding_factor(0),
+        retain_first: false,
+    };
+    let mut rng = PrivateRng::from_seed(coins.seed);
+    let proved = prover.prove_claimless_replay_with_oracle(
+        1 << config.num_variables,
+        &pads,
+        handle,
+        &claims,
+        to_p3(mask.x),
+        &backend,
+        fs,
+        &mut rng,
+    )?;
+    let close_tag =
+        mask.m - from_p3(proved.base_case.gamma * proved.target.coefficient) * terminal.m;
+    record_values(fs, 0x12, &[close_tag]);
+    Ok((owned_proof(proved.proof), close_tag))
+}
+
+// `&ObservedMmcs` and `ObservedMmcs` have identical commitment/proof associated
+// types. Move the payload between their nominal WHIR wrappers without a codec
+// round trip or a second copy of any proof vector.
+fn owned_proof(
+    proof: ZkWhirProof<Goldilocks, E, &ObservedMmcs>,
+) -> ZkWhirProof<Goldilocks, E, ObservedMmcs> {
+    let ZkWhirProof { sumchecks, sumcheck_mask_commitments, rounds, base_case } = proof;
+    let rounds = rounds
+        .into_iter()
+        .map(|round| {
+            let ZkRoundProof { commitment, mask_commitment, ood_answers, pow_witness, openings } =
+                round;
+            ZkRoundProof { commitment, mask_commitment, ood_answers, pow_witness, openings }
+        })
+        .collect();
+    let BaseCaseZkProof {
+        fresh_main_commitment,
+        fresh_mask_commitments,
+        masked_claim,
+        blinded_message,
+        blinded_randomness,
+        blinded_masks,
+        pow_witness,
+        source_openings,
+        fresh_main_openings,
+        mask_openings,
+    } = base_case;
+    let base_case = BaseCaseZkProof {
+        fresh_main_commitment,
+        fresh_mask_commitments,
+        masked_claim,
+        blinded_message,
+        blinded_randomness,
+        blinded_masks,
+        pow_witness,
+        source_openings,
+        fresh_main_openings,
+        mask_openings,
+    };
+    ZkWhirProof { sumchecks, sumcheck_mask_commitments, rounds, base_case }
 }
 struct Oracle {
     tree: Tree,

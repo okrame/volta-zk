@@ -289,12 +289,100 @@ struct Body<T, W> {
     openings: Vec<kv::Opening<T>>,
 }
 
-fn prove_schedule(
+// The two source representations share the original numerical body and verifier.
+// Replay owns only immutable getter state; it closes in the same original MACs.
+enum SourceModel<'a> {
+    Dense(&'a Model),
+    Replay(&'a b12::replay::ReplayModel),
+}
+impl SourceModel<'_> {
+    fn byte(&self, index: usize) -> u8 {
+        match self {
+            Self::Dense(m) => m.weights.get(index).copied().unwrap_or(0) as u8,
+            Self::Replay(m) => m.value(index).c0.value() as u8,
+        }
+    }
+    fn range(
+        &self,
+        attempt: AttemptContext,
+        layout: [u8; 32],
+        live: usize,
+        fs: &mut Fs,
+        rows: &mut std::vec::IntoIter<Auth>,
+    ) -> Result<(range::Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
+        match self {
+            Self::Dense(m) => {
+                range::prove(m, attempt, layout, live, range::Alphabet::Byte, fs, rows)
+            }
+            Self::Replay(m) => range::prove_sourcewise(
+                m.domain(),
+                m.root(),
+                attempt,
+                layout,
+                live,
+                range::Alphabet::Byte,
+                &|i| m.value(i),
+                fs,
+                rows,
+            ),
+        }
+    }
+    fn close(
+        &self,
+        attempt: AttemptContext,
+        layout: [u8; 32],
+        forms: &[Vec<Cube>],
+        targets: &[Auth],
+        fs: &mut Fs,
+        rows: &mut std::vec::IntoIter<Auth>,
+    ) -> Result<(MatrixProof, blake3::Hash), String> {
+        match self {
+            Self::Dense(m) => linear::prove(m, attempt, layout, forms, targets, fs, rows),
+            Self::Replay(m) => {
+                linear::prove_sourcewise(m, attempt, layout, forms, targets, fs, rows)
+            }
+        }
+    }
+}
+trait Auxiliary {
+    fn phase_end(&self, _phase: &str) {}
+    fn value(&self, p: &Profile, id: usize, row: usize, col: usize) -> i64;
+    fn model(&self) -> SourceModel<'_>;
+    fn byte(&self, p: &Profile, id: usize, row: usize, col: usize, b: usize) -> u8 {
+        let shape = &p.bytes().scalar.layout.sources[id];
+        if row >= shape.rows || col >= shape.cols {
+            return 0;
+        }
+        (self.value(p, id, row, col) as u64 >> (8 * b)) as u8
+            ^ if b + 1 == p.bytes().widths[id] { 128 } else { 0 }
+    }
+    fn word6(&self, p: &Profile, id: usize, row: usize, col: usize) -> [u8; 6] {
+        std::array::from_fn(|b| self.byte(p, id, row, col, b))
+    }
+    fn compact(
+        &self,
+        p: &Profile,
+        w: &Installed,
+        points: &[Vec<Fp3>],
+    ) -> Result<Vec<caller::Compact>, String> {
+        prepare::compact(p, w, points, |id, r, c| self.value(p, id, r, c))
+    }
+}
+impl Auxiliary for Snapshot {
+    fn value(&self, p: &Profile, id: usize, row: usize, col: usize) -> i64 {
+        Snapshot::value(self, p, id, row, col)
+    }
+    fn model(&self) -> SourceModel<'_> {
+        SourceModel::Dense(&self.source)
+    }
+}
+
+fn prove_schedule<S: Auxiliary>(
     state: &State,
     p: &Profile,
     w: &Installed,
-    snapshot: &Snapshot,
-    old: &[Snapshot],
+    snapshot: &S,
+    old: &[S],
     s: &caller::P0Statement<'_>,
     header: &[u8],
     rows: &mut std::vec::IntoIter<Auth>,
@@ -318,13 +406,8 @@ fn prove_schedule(
                 attempt: s.attempt,
                 segments: &parts,
             };
-            let (proof, openings) = kv::prove(
-                &ks,
-                requests,
-                |i, j| old[i].source.weights.get(j).copied().unwrap_or(0) as u8,
-                fs,
-                rows,
-            )?;
+            let (proof, openings) =
+                kv::prove(&ks, requests, |i, j| old[i].model().byte(j), fs, rows)?;
             let mut body = Vec::new();
             proof.write(&mut body);
             Ok((body, openings))
@@ -344,8 +427,7 @@ fn prove_schedule(
     )?;
     wire.raw(15, &codec::encode_linear(DOMAIN_W, &proof).map_err(|e| e.to_string())?, &mut fs)?;
     for (i, o) in openings.into_iter().enumerate() {
-        let (proof, _) = linear::prove(
-            &old[i].source,
+        let (proof, _) = old[i].model().close(
             s.attempt,
             state.profiles[i].bytes().layout_digest,
             &[o.form],
@@ -359,8 +441,7 @@ fn prove_schedule(
             &mut fs,
         )?;
     }
-    let (proof, _) = linear::prove(
-        &snapshot.source,
+    let (proof, _) = snapshot.model().close(
         s.attempt,
         p.bytes().layout_digest,
         &ba.forms,
@@ -373,15 +454,16 @@ fn prove_schedule(
         &codec::encode_linear(DOMAIN_A, &proof).map_err(|e| e.to_string())?,
         &mut fs,
     )?;
+    snapshot.phase_end("linear_A_and_WHIR");
     if rows.len() != 0 {
         return Err("composed prover did not consume its exact reservation".into());
     }
     Ok(wire.finish(&mut fs))
 }
 
-fn prove_originals(
+fn prove_originals<S: Auxiliary>(
     p: &Profile,
-    snapshot: &Snapshot,
+    snapshot: &S,
     s: &caller::P0Statement<'_>,
     requests: Vec<(bytes::RneRequest<Auth>, i32)>,
     fs: &mut Fs,
@@ -456,12 +538,12 @@ fn verify_originals(
 
 // Both schedules run this exact numerical/GKR body. The test-only joint
 // variant changes only original-RNE byte checks, KV closure and final PCS.
-fn prove_components(
+fn prove_components<S: Auxiliary>(
     state: &State,
     p: &Profile,
     w: &Installed,
-    snapshot: &Snapshot,
-    old: &[Snapshot],
+    snapshot: &S,
+    old: &[S],
     s: &caller::P0Statement<'_>,
     header: &[u8],
     rows: &mut std::vec::IntoIter<Auth>,
@@ -630,12 +712,11 @@ fn prove_components(
     for (f, t) in f.into_iter().zip(t) {
         bw.add(f, t);
     }
-    let (proof, f, t) = range::prove(
-        &snapshot.source,
+    snapshot.phase_end("producer_relations");
+    let (proof, f, t) = snapshot.model().range(
         s.attempt,
         p.bytes().layout_digest,
         auxiliary_live,
-        range::Alphabet::Byte,
         &mut fs,
         rows,
     )?;
@@ -643,6 +724,7 @@ fn prove_components(
     for (f, t) in f.into_iter().zip(t) {
         ba.add(f, t);
     }
+    snapshot.phase_end("range_A");
     if bw.targets.len() != 18 || ba.targets.len() != 103 + rne_sources {
         return Err(format!(
             "native closure census differs W={} A={}",

@@ -353,3 +353,78 @@ fn c71_b12_native_changed_predecessor_final_kv_getter_cannot_promote_continuatio
     assert!(!prover.state.live && !verifier.state.live);
     assert_eq!(prover.state.cursor, verifier.state.cursor);
 }
+
+// Same mandatory runner/verifier, but A exists only behind ordered replay.
+#[test]
+fn c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs() {
+    use std::sync::Arc;
+    struct OrderedAux {
+        reader: Arc<ordered::Reader>,
+        source: b12::replay::ReplayModel,
+    }
+    impl Auxiliary for OrderedAux {
+        fn value(&self, _p: &Profile, id: usize, row: usize, col: usize) -> i64 {
+            self.reader.value(id, row, col).expect("immutable validated numerical reader")
+        }
+        fn model(&self) -> SourceModel<'_> {
+            SourceModel::Replay(&self.source)
+        }
+        fn phase_end(&self, phase: &str) {
+            eprintln!(
+                "C71_INTEGRATED_GETTER {}",
+                serde_json::json!({
+                "phase":phase,"work":self.reader.take_work().unwrap(),
+                "scope":"O0 reduced original numerical source; CPU work, not HBM or H100 time"})
+            );
+        }
+    }
+    let (prover, mut verifier) = fixture();
+    let Prover { mut state, model, mut rows, .. } = prover;
+    let weights = Arc::new(model);
+    let p = Arc::new(Profile::small(0).unwrap());
+    let reader = ordered::Reader::prepare(p.clone(), weights.clone(), 1).unwrap();
+    eprintln!(
+        "C71_INTEGRATED_GETTER {}",
+        serde_json::json!({"phase":"prepare_before_commit",
+        "work":reader.take_work().unwrap()})
+    );
+    let getter = reader.clone();
+    // Deterministic private coins belong only to this ideal-MAC test fixture.
+    let source = b12::replay::ReplayModel::new(
+        DOMAIN_A,
+        [171; 32],
+        [172; 32],
+        Arc::new(move |i| {
+            E::from(Goldilocks::from_u64(u64::from(getter.byte_at(i).expect("original A byte"))))
+        }),
+    )
+    .unwrap();
+    let snapshot = OrderedAux { reader, source };
+    snapshot.phase_end("initial_commit_A");
+    let tokens = snapshot.reader.tokens();
+    let nonce = [173; 32];
+    let (wg, ag) = (gamma(&DOMAIN_W.config().unwrap()), gamma(&DOMAIN_A.config().unwrap()));
+    let attempt = state.attempt(nonce);
+    let statement = p.context(&state.weight, snapshot.source.root(), &tokens, attempt, &wg, &ag);
+    let required = p.required(&statement).unwrap();
+    let header = state.header(snapshot.source.root(), tokens, nonce, required).unwrap();
+    state.live = false;
+    state.next_slot += 1;
+    state.cursor += 3 * required;
+    let mut reserved = rows.by_ref().take(required).collect::<Vec<_>>().into_iter();
+    let (certificate, receipt) =
+        prove_schedule(&state, &p, &weights, &snapshot, &[], &statement, &header, &mut reserved)
+            .unwrap();
+    assert_eq!(reserved.len(), 0);
+    let response = Response { root: snapshot.source.root().clone(), tokens, nonce, certificate };
+    let accepted = verifier.verify_response(1, &response).unwrap();
+    assert_eq!(accepted.receipt, receipt);
+    assert_eq!(state.cursor, verifier.state.cursor);
+    eprintln!(
+        "C71_INTEGRATED_POSITIVE {}",
+        serde_json::json!({"credit":false,
+        "original_mac_rows":required,"certificate_bytes":response.certificate.len(),
+        "receipt":receipt,"snapshot_materialized":false,"dense_A_materialized":false,
+        "scope":"O0 reduced; ideal MAC; canonical timing and complete PCG not admitted"})
+    );
+}

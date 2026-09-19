@@ -875,6 +875,19 @@ fn prove_product(
     (rounds, point, target, a[0], b[0])
 }
 
+#[derive(Clone, Copy)]
+struct PcsCoins {
+    seed: [u8; 32],
+    salt_seed: [u8; 32],
+}
+
+fn fresh_pcs_coins() -> Result<PcsCoins, String> {
+    let mut coins = PcsCoins { seed: [0; 32], salt_seed: [0; 32] };
+    rand::rngs::OsRng.try_fill_bytes(&mut coins.seed).map_err(|e| e.to_string())?;
+    rand::rngs::OsRng.try_fill_bytes(&mut coins.salt_seed).map_err(|e| e.to_string())?;
+    Ok(coins)
+}
+
 fn prove_pcs(
     model: &Model,
     config: &ZkWhirConfig<E, Goldilocks, Fs>,
@@ -882,6 +895,18 @@ fn prove_pcs(
     terminal: Auth,
     mask: Auth,
     fs: &mut Fs,
+) -> Result<(ZkWhirProof<Goldilocks, E, ObservedMmcs>, Fp3), String> {
+    prove_pcs_with_coins(model, config, point, terminal, mask, fs, fresh_pcs_coins()?)
+}
+
+fn prove_pcs_with_coins(
+    model: &Model,
+    config: &ZkWhirConfig<E, Goldilocks, Fs>,
+    point: Point<E>,
+    terminal: Auth,
+    mask: Auth,
+    fs: &mut Fs,
+    coins: PcsCoins,
 ) -> Result<(ZkWhirProof<Goldilocks, E, ObservedMmcs>, Fp3), String> {
     fs.set_phase(0x200);
     let dft = Radix2DFTSmallBatch::default();
@@ -901,16 +926,12 @@ fn prove_pcs(
         Some(data)
     };
     census::mark("prover_pcs")?;
-    let mut seed = [0; 32];
-    rand::rngs::OsRng.try_fill_bytes(&mut seed).map_err(|e| e.to_string())?;
     // A new MMCS instance is essential: rematerializing the fixed root must
     // not restart the salt stream used for the fresh proof commitments.
-    let mut proof_salt_seed = [0; 32];
-    rand::rngs::OsRng.try_fill_bytes(&mut proof_salt_seed).map_err(|e| e.to_string())?;
-    let proof_mmcs = ObservedMmcs::new(fs.clone(), proof_salt_seed);
+    let proof_mmcs = ObservedMmcs::new(fs.clone(), coins.salt_seed);
     let prover = HidingWhirProver::new(config, &dft, &proof_mmcs);
     let claims = [(point, to_p3(terminal.x))];
-    let mut rng = MatrixRng::from_seed(seed);
+    let mut rng = MatrixRng::from_seed(coins.seed);
     let proved = match data {
         Some(data) => prover.prove_claimless(data, &claims, to_p3(mask.x), fs, &mut rng),
         None => prover.prove_claimless_retained(

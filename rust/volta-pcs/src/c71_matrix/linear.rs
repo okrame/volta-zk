@@ -112,6 +112,20 @@ pub(super) fn prove(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(MatrixProof, blake3::Hash), String> {
+    prove_dense_with_coins(model, attempt, layout, forms, targets, fs, correlations, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_dense_with_coins(
+    model: &Model,
+    attempt: AttemptContext,
+    layout: [u8; 32],
+    forms: &[Vec<Cube>],
+    targets: &[Auth],
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+    coins: Option<PcsCoins>,
+) -> Result<(MatrixProof, blake3::Hash), String> {
     let required = 3 * model.domain.config()?.num_variables + 2;
     if correlations.len() < required {
         return Err("B12 linear prover correlations exhausted".into());
@@ -145,7 +159,147 @@ pub(super) fn prove(
     record_values(fs, 0x11, &terminal_wire);
     let mask = reserved.next().unwrap();
     let point = Point::new(point.into_iter().map(to_p3).collect());
-    let (pcs, close_tag) = prove_pcs(model, &config, point, terminal, mask, fs)?;
+    let (pcs, close_tag) = match coins {
+        Some(coins) => prove_pcs_with_coins(model, &config, point, terminal, mask, fs, coins)?,
+        None => prove_pcs(model, &config, point, terminal, mask, fs)?,
+    };
+    Ok((MatrixProof { rounds, terminal: terminal_wire, pcs, close_tag }, fs.digest()))
+}
+
+fn folded_source(
+    model: &b12::replay::ReplayModel,
+    prefix_point: &[Fp3],
+    suffix: usize,
+    remaining: usize,
+) -> Fp3 {
+    (0..1usize << prefix_point.len()).fold(Fp3::ZERO, |sum, prefix| {
+        let weight = prefix_point.iter().enumerate().fold(Fp3::ONE, |weight, (bit, &r)| {
+            weight
+                * if prefix >> (prefix_point.len() - 1 - bit) & 1 == 1 { r } else { Fp3::ONE - r }
+        });
+        sum + weight * model.value((prefix << remaining) | suffix)
+    })
+}
+
+fn public_value(forms: &[Vec<Cube>], coefficients: &[Fp3], point: &[Fp3]) -> Fp3 {
+    forms.iter().zip(coefficients).fold(Fp3::ZERO, |sum, (form, &coefficient)| {
+        sum + coefficient * form.iter().fold(Fp3::ZERO, |value, cube| value + cube.at(point))
+    })
+}
+
+fn prove_product_sourcewise(
+    model: &b12::replay::ReplayModel,
+    forms: &[Vec<Cube>],
+    coefficients: &[Fp3],
+    mut target: Auth,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> (Vec<[Fp3; 4]>, Vec<Fp3>, Auth, Fp3, Fp3) {
+    let bits = model.domain().config().unwrap().num_variables;
+    let mut point = Vec::with_capacity(bits);
+    let mut rounds = Vec::with_capacity(bits);
+    let mut endpoints = None;
+    for round in 0..bits {
+        fs.set_phase(1 + round as u16);
+        let remaining = bits - round;
+        let half = 1usize << (remaining - 1);
+        let mut coefficients_round = [Fp3::ZERO; 3];
+        for suffix in 0..half {
+            let a = folded_source(model, &point, suffix, remaining);
+            let upper = folded_source(model, &point, suffix + half, remaining);
+            let mut boolean = point.clone();
+            boolean.push(Fp3::ZERO);
+            boolean.extend((0..remaining - 1).map(|bit| {
+                if suffix >> (remaining - 2 - bit) & 1 == 1 {
+                    Fp3::ONE
+                } else {
+                    Fp3::ZERO
+                }
+            }));
+            let b = public_value(forms, coefficients, &boolean);
+            boolean[round] = Fp3::ONE;
+            let b_upper = public_value(forms, coefficients, &boolean);
+            let da = upper - a;
+            let db = b_upper - b;
+            coefficients_round[0] += a * b;
+            coefficients_round[1] += da * b + a * db;
+            coefficients_round[2] += da * db;
+            if half == 1 {
+                endpoints = Some((a, upper, b, b_upper));
+            }
+        }
+        let mut authenticated = [Auth::ZERO; 3];
+        let mut wire = [Fp3::ZERO; 4];
+        for i in 0..3 {
+            let (correction, value) =
+                c7_fp3_transfer_prover(correlations.next().unwrap(), coefficients_round[i]);
+            wire[i] = correction.value();
+            authenticated[i] = value;
+        }
+        wire[3] = authenticated[0].m + authenticated[0].m + authenticated[1].m + authenticated[2].m
+            - target.m;
+        record_values(fs, 0x10, &wire);
+        let r = fs.fp3();
+        target = authenticated[0].add(authenticated[1].scale(r)).add(authenticated[2].scale(r * r));
+        point.push(r);
+        rounds.push(wire);
+    }
+    let (a, upper, b, b_upper) = endpoints.expect("nonempty flat source");
+    let r = *point.last().unwrap();
+    (rounds, point, target, a + r * (upper - a), b + r * (b_upper - b))
+}
+
+/// Sourcewise counterpart of `prove`: it retains neither the original A
+/// polynomial nor the dense public EQ form. The immutable getter is replayed
+/// in original MSB order for each product-sumcheck round, then handed to the
+/// sourcewise WHIR backend for the same terminal point.
+#[allow(clippy::too_many_arguments)]
+pub(in crate::c71_matrix) fn prove_sourcewise(
+    model: &b12::replay::ReplayModel,
+    attempt: AttemptContext,
+    layout: [u8; 32],
+    forms: &[Vec<Cube>],
+    targets: &[Auth],
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(MatrixProof, blake3::Hash), String> {
+    prove_sourcewise_with_coins(model, attempt, layout, forms, targets, fs, correlations, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_sourcewise_with_coins(
+    model: &b12::replay::ReplayModel,
+    attempt: AttemptContext,
+    layout: [u8; 32],
+    forms: &[Vec<Cube>],
+    targets: &[Auth],
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+    coins: Option<PcsCoins>,
+) -> Result<(MatrixProof, blake3::Hash), String> {
+    let required = 3 * model.domain().config()?.num_variables + 2;
+    if correlations.len() < required {
+        return Err("B12 linear prover correlations exhausted".into());
+    }
+    let mut reserved = correlations.by_ref().take(required).collect::<Vec<_>>().into_iter();
+    let (config, coefficients) =
+        bind(model.domain(), model.root(), attempt, layout, forms, targets.len(), fs)?;
+    let target =
+        targets.iter().zip(&coefficients).fold(Auth::ZERO, |s, (&x, &c)| s.add(x.scale(c)));
+    let (rounds, point, target, value, public_endpoint) =
+        prove_product_sourcewise(model, forms, &coefficients, target, fs, &mut reserved);
+    fs.set_phase(0x100);
+    let (correction, terminal) = c7_fp3_transfer_prover(reserved.next().unwrap(), value);
+    let terminal_wire = [correction.value(), target.m - public_endpoint * terminal.m];
+    record_values(fs, 0x11, &terminal_wire);
+    let mask = reserved.next().unwrap();
+    let point = Point::new(point.into_iter().map(to_p3).collect());
+    let (pcs, close_tag) = match coins {
+        Some(coins) => b12::replay::prove_pcs_sourcewise_with_coins(
+            model, &config, point, terminal, mask, fs, coins,
+        )?,
+        None => b12::replay::prove_pcs_sourcewise(model, &config, point, terminal, mask, fs)?,
+    };
     Ok((MatrixProof { rounds, terminal: terminal_wire, pcs, close_tag }, fs.digest()))
 }
 
@@ -197,6 +351,178 @@ mod tests {
     use super::*;
 
     #[test]
+    fn c71_b12_sourcewise_linear_matches_dense_wire_fs_point_and_original_mac() {
+        use std::sync::Arc;
+
+        let bits = 10;
+        let weights: Vec<_> =
+            (0..1usize << bits).map(|i| ((i * 29 + i * i * 3) % 251) as i16 - 125).collect();
+        let model = Model::new_in(Domain::Flat(bits), weights).unwrap();
+        let values: Vec<_> = model.polynomial().as_slice().iter().map(|&x| E::from(x)).collect();
+        let source = {
+            let values = Arc::new(values);
+            Arc::new(move |i| values[i])
+        };
+        let replay = b12::replay::ReplayModel::new_checked(
+            model.domain,
+            model.root.clone(),
+            model.seed,
+            model.salt_seed,
+            source,
+        )
+        .unwrap();
+        let forms = vec![
+            vec![
+                Cube { offset: 0, point: vec![signed(2), signed(3)], coefficient: signed(5) },
+                Cube { offset: 512, point: vec![signed(7)], coefficient: signed(-11) },
+            ],
+            vec![Cube { offset: 256, point: vec![signed(13); 4], coefficient: signed(17) }],
+        ];
+        let scalar_values: Vec<_> = model
+            .polynomial()
+            .as_slice()
+            .iter()
+            .map(|x| Fp3::from_base(Fp::new(x.as_canonical_u64())))
+            .collect();
+        let target_value = |form: &[Cube]| {
+            form.iter().fold(Fp3::ZERO, |sum, cube| {
+                sum + eq(&cube.point).into_iter().enumerate().fold(
+                    Fp3::ZERO,
+                    |value, (i, weight)| {
+                        value + cube.coefficient * weight * scalar_values[cube.offset + i]
+                    },
+                )
+            })
+        };
+        let targets = [
+            Auth::new(target_value(&forms[0]), signed(23)),
+            Auth::new(target_value(&forms[1]), signed(31)),
+        ];
+        let attempt = AttemptContext {
+            session: [1; 32],
+            capacity: [2; 32],
+            slot: 0,
+            predecessor: [0; 32],
+            nonce: [3; 32],
+        };
+        let layout = [4; 32];
+        let correlations: Vec<_> = (0..3 * bits + 2)
+            .map(|i| Auth::new(signed(i as i64 + 37), signed(i as i64 + 71)))
+            .collect();
+
+        // First compare the reduction itself, including its reconstructed point
+        // and the original authenticated target after every identical round.
+        let mut dense_fs = Fs::new(b"sourcewise linear parity", 10_000);
+        let mut source_fs = Fs::new(b"sourcewise linear parity", 10_000);
+        let (_, dense_coefficients) =
+            bind(model.domain, &model.root, attempt, layout, &forms, targets.len(), &mut dense_fs)
+                .unwrap();
+        let (_, source_coefficients) = bind(
+            replay.domain(),
+            replay.root(),
+            attempt,
+            layout,
+            &forms,
+            targets.len(),
+            &mut source_fs,
+        )
+        .unwrap();
+        assert_eq!(dense_coefficients, source_coefficients);
+        let target = targets
+            .iter()
+            .zip(&dense_coefficients)
+            .fold(Auth::ZERO, |sum, (&value, &coefficient)| sum.add(value.scale(coefficient)));
+        let mut dense_form = vec![Fp3::ZERO; 1 << bits];
+        for (form, &coefficient) in forms.iter().zip(&dense_coefficients) {
+            for cube in form {
+                for (i, weight) in eq(&cube.point).into_iter().enumerate() {
+                    dense_form[cube.offset + i] += coefficient * cube.coefficient * weight;
+                }
+            }
+        }
+        let dense_values = scalar_values;
+        let mut dense_rows = correlations[..3 * bits].to_vec().into_iter();
+        let mut source_rows = correlations[..3 * bits].to_vec().into_iter();
+        let dense = prove_product(dense_values, dense_form, target, &mut dense_fs, &mut dense_rows);
+        let source = prove_product_sourcewise(
+            &replay,
+            &forms,
+            &source_coefficients,
+            target,
+            &mut source_fs,
+            &mut source_rows,
+        );
+        assert_eq!(dense.0, source.0);
+        assert_eq!(dense.1, source.1);
+        assert_eq!((dense.2.x, dense.2.m), (source.2.x, source.2.m));
+        assert_eq!((dense.3, dense.4), (source.3, source.4));
+        assert_eq!(dense_fs.digest(), source_fs.digest());
+
+        // Fixed test-only proof coins make the PCS bytes comparable. Production
+        // wrappers still draw fresh OS randomness on every attempt.
+        let coins = PcsCoins { seed: [5; 32], salt_seed: [6; 32] };
+        let mut dense_fs = Fs::new(b"sourcewise linear full parity", 100_000);
+        let mut source_fs = Fs::new(b"sourcewise linear full parity", 100_000);
+        let mut dense_rows = correlations.clone().into_iter();
+        let mut source_rows = correlations.into_iter();
+        let (dense, dense_digest) = prove_dense_with_coins(
+            &model,
+            attempt,
+            layout,
+            &forms,
+            &targets,
+            &mut dense_fs,
+            &mut dense_rows,
+            Some(coins),
+        )
+        .unwrap();
+        let (source, source_digest) = prove_sourcewise_with_coins(
+            &replay,
+            attempt,
+            layout,
+            &forms,
+            &targets,
+            &mut source_fs,
+            &mut source_rows,
+            Some(coins),
+        )
+        .unwrap();
+        assert_eq!(
+            codec::encode_linear(Domain::Flat(bits), &dense).unwrap(),
+            codec::encode_linear(Domain::Flat(bits), &source).unwrap()
+        );
+        assert_eq!(dense_digest, source_digest);
+        assert_eq!(dense_fs.digest(), source_fs.digest());
+        assert!(dense_rows.next().is_none() && source_rows.next().is_none());
+        let delta = signed(41);
+        let target_keys: Vec<_> = targets.iter().map(|a| Key::new(a.m + delta * a.x)).collect();
+        let mut verifier_rows = (0..3 * bits + 2)
+            .map(|i| {
+                let a = Auth::new(signed(i as i64 + 37), signed(i as i64 + 71));
+                Key::new(a.m + delta * a.x)
+            })
+            .collect::<Vec<_>>()
+            .into_iter();
+        let mut verifier_fs = Fs::new(b"sourcewise linear full parity", 100_000);
+        let verified = verify(
+            replay.domain(),
+            replay.root(),
+            attempt,
+            layout,
+            &forms,
+            &target_keys,
+            &source,
+            delta,
+            &mut verifier_fs,
+            &mut verifier_rows,
+        )
+        .unwrap();
+        assert_eq!(verified, source_digest);
+        assert_eq!(verifier_fs.digest(), source_fs.digest());
+        assert!(verifier_rows.next().is_none());
+    }
+
+    #[test]
     fn c71_b12_cube_evaluator_matches_dense_forms_and_rejects_bad_layout() {
         let point: Vec<_> = (0..10).map(|i| Fp3::new(Fp::new(i + 2), Fp::ONE, Fp::ONE)).collect();
         let rho = eq(&point);
@@ -224,10 +550,16 @@ mod tests {
             Cube { offset: 0, point: vec![Fp3::ONE; 11], coefficient: Fp3::ONE },
             Cube { offset: usize::MAX, point: vec![], coefficient: Fp3::ONE },
         ] {
-            assert!(
-                bind(32, &root, attempt, [5; 32], &[vec![cube]], 1, &mut Fs::new(b"bad cube", 0))
-                    .is_err()
-            );
+            assert!(bind(
+                32,
+                &root,
+                attempt,
+                [5; 32],
+                &[vec![cube]],
+                1,
+                &mut Fs::new(b"bad cube", 0)
+            )
+            .is_err());
         }
         for bits in [11, 34, 35] {
             let form = vec![Cube {
@@ -237,8 +569,7 @@ mod tests {
             }];
             let mut fs = Fs::new(b"flat cube metadata only", 1);
             let (config, weights) =
-                bind(Domain::Flat(bits), &root, attempt, [5; 32], &[form], 1, &mut fs)
-                    .unwrap();
+                bind(Domain::Flat(bits), &root, attempt, [5; 32], &[form], 1, &mut fs).unwrap();
             assert_eq!(config.num_variables, bits);
             assert_eq!(weights, vec![Fp3::ONE]);
             assert_eq!(fs.requests(), 1);
@@ -470,10 +801,8 @@ mod tests {
                     other[2][0].offset = 18; // lookup switched to another embedding row
                     assert!(check(&root, layout, &other, &original).is_err());
                     assert!(check(&root, [7; 32], &forms, &original).is_err());
-                    assert!(
-                        check(&C61Commitment::new(vec![[8; 32]]), layout, &forms, &original)
-                            .is_err()
-                    );
+                    assert!(check(&C61Commitment::new(vec![[8; 32]]), layout, &forms, &original)
+                        .is_err());
                     let checked = verify(
                         n,
                         &root,

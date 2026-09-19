@@ -76,3 +76,33 @@ def test_lookup_exp30_counts_full_original_domain_including_causal_padding():
         assert lookups['softcap']['query_rows']==13107200
         joined=trace.producer_gkr_trace(old)
         assert joined['source_level_scalar_getter_work_known_components']['lookup_original_query_callbacks']==sum(v['query_rows'] for v in lookups.values())
+
+
+def test_reduced_joint_ledger_owns_getter_reconstruction_once():
+    import json
+    phases = ['prepare_before_commit', 'initial_commit_A', 'producer_relations',
+              'range_A', 'linear_A_and_WHIR']
+    arithmetic = ('integer_additions integer_subtractions integer_multiplications '
+                  'integer_comparisons fp_additions fp_multiplications table_reads '
+                  'divide_calls opaque_rms_calls opaque_rne_calls opaque_affine_calls').split()
+    work = dict(original_scalar_reads=2, old_kv_reads=0, weight_scalar_reads=3,
+                emitted_bytes=4, producer_rows=[1, 2], numerical=dict.fromkeys(arithmetic, 1))
+    lines = ['C71_INTEGRATED_GETTER '+json.dumps(dict(phase=p, work=work)) for p in phases]
+    # Callback cardinalities are references, not duplicate producer charges.
+    gkr = dict(cell_rounds=[dict(coefficient_multiplications=7, row_source_callbacks=999)],
+               byte_endpoint=dict(tree=dict(cubic_multiplications=11, getter_calls=888)))
+    lines += ['C71_INTEGRATED_GKR '+json.dumps(gkr)]
+    lines += ['C71_LOOKUP_SOURCE_WORK '+json.dumps(dict(work=dict(tree=dict(
+        cubic_multiplications=13, getter_calls=777))))]*3
+    lines += ['C71_INTEGRATED_POSITIVE '+json.dumps(dict(credit=False))]
+    report = trace.reduced_joint_trace('\n'.join(lines))
+    assert report['getter_total']['producer_rows'] == 15
+    assert report['getter_total']['weight_scalar_reads'] == 15
+    assert report['getter_total']['numerical']['integer_multiplications'] == 5
+    assert report['GKR_cell_round_operations'] == dict(coefficient_multiplications=7)
+    assert report['GKR_byte_tree_operations'] == dict(cubic_multiplications=11)
+    assert report['lookup_tree_operations'] == dict(cubic_multiplications=39)
+    assert not report['complete_canonical_work'] and not report['physical_HBM_measured']
+    for bad in [lines[1:], lines+[lines[0]], lines[:-1], lines+[lines[-1]]]:
+        with pytest.raises(ValueError):
+            trace.reduced_joint_trace('\n'.join(bad))

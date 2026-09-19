@@ -8,7 +8,7 @@ use std::sync::{
     Arc, RwLock,
 };
 
-pub(super) type Getter = Arc<dyn Fn(usize) -> E + Send + Sync>;
+pub(in crate::c71_matrix) type Getter = Arc<dyn Fn(usize) -> E + Send + Sync>;
 
 fn equality(point: &[E], index: usize) -> E {
     point.iter().enumerate().fold(E::ONE, |v, (bit, &r)| {

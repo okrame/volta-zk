@@ -1437,7 +1437,11 @@ pub(in super::super) fn prove(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
-    let (proof, point, original, _) = prove_sourcewise(s, get_frame, fs, correlations)?;
+    let (proof, point, original, _work) = prove_sourcewise(s, get_frame, fs, correlations)?;
+    #[cfg(test)]
+    if std::env::var_os("C71_INTEGRATED_TRACE").is_some() {
+        eprintln!("C71_INTEGRATED_GKR {}", serde_json::to_string(&_work).unwrap());
+    }
     Ok((proof, point, original))
 }
 

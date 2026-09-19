@@ -207,21 +207,76 @@ pub(super) fn prove(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
-    let limit = limit.into();
-    let bits = bind(model.domain, &model.root, attempt, layout, live, limit, fs)?;
-    let count = required(bits, limit);
-    if correlations.len() < count {
-        return Err("B12 range prover capacity exhausted".into());
-    }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
     let weights: Vec<_> = model
         .polynomial()
         .as_slice()
         .iter()
         .map(|x| Fp3::from_base(Fp::new(x.as_canonical_u64())))
         .collect();
+    prove_from_getter(
+        model.domain,
+        &model.root,
+        attempt,
+        layout,
+        live,
+        limit.into(),
+        &|i| weights[i],
+        false,
+        fs,
+        correlations,
+    )
+}
+
+/// Reduced reference: immutable original source, no dense witness or fraction tree.
+/// Regeneration is charged to proof work; this is not the canonical GPU schedule.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub(super) fn prove_sourcewise(
+    domain: Domain,
+    root: &C61Commitment,
+    attempt: AttemptContext,
+    layout: [u8; 32],
+    live: usize,
+    limit: impl Into<Alphabet>,
+    get: &impl Fn(usize) -> Fp3,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
+    prove_from_getter(
+        domain,
+        root,
+        attempt,
+        layout,
+        live,
+        limit.into(),
+        get,
+        true,
+        fs,
+        correlations,
+    )
+}
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn prove_from_getter(
+    domain: Domain,
+    root: &C61Commitment,
+    attempt: AttemptContext,
+    layout: [u8; 32],
+    live: usize,
+    limit: Alphabet,
+    get: &impl Fn(usize) -> Fp3,
+    sourcewise: bool,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
+    let bits = bind(domain, root, attempt, layout, live, limit, fs)?;
+    let count = required(bits, limit);
+    if correlations.len() < count {
+        return Err("B12 range prover capacity exhausted".into());
+    }
+    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
     let mut histogram = vec![Fp3::ZERO; limit.len()];
-    for &w in &weights {
+    for i in 0..(1usize << bits) {
+        let w = get(i);
         let index = (w - signed(limit.lower())).c0.value();
         // A candidate with an out-of-range private witness is still provable
         // syntactically; the verifier's rational/product check must reject it.
@@ -239,22 +294,36 @@ pub(super) fn prove(
     record_values(fs, 0x41, &histogram);
     let (alpha, inverse, rho) = challenges(bits, limit, fs)?;
     let h = authed.iter().zip(&inverse).fold(Auth::ZERO, |s, (&a, &d)| s.add(a.scale(d)));
-    // ponytail: dense fraction tree within the analytic resource envelope.
-    // This does not admit its full-size storage or source-read schedule.
-    let mut tree = vec![weights.iter().map(|&w| [Fp3::ONE, alpha - w]).collect::<Vec<_>>()];
-    while tree.last().unwrap().len() > 1 {
-        tree.push(
-            tree.last()
-                .unwrap()
-                .chunks_exact(2)
-                .map(|pair| {
-                    let ([p, q], [r, s]) = (pair[0], pair[1]);
-                    [p * s + r * q, q * s]
-                })
-                .collect(),
-        );
+    // ponytail: scalar subtree regeneration is the small-input oracle. The
+    // canonical canopy/Gram schedule must supply its own work/traffic ledger.
+    fn subtree(get: &impl Fn(usize) -> Fp3, alpha: Fp3, height: usize, index: usize) -> [Fp3; 2] {
+        if height == 0 {
+            return [Fp3::ONE, alpha - get(index)];
+        }
+        let [p, q] = subtree(get, alpha, height - 1, 2 * index);
+        let [r, s] = subtree(get, alpha, height - 1, 2 * index + 1);
+        [p * s + r * q, q * s]
     }
-    let [p, q] = tree.last().unwrap()[0];
+    let tree = if sourcewise {
+        Vec::new()
+    } else {
+        let mut tree =
+            vec![(0..(1usize << bits)).map(|i| [Fp3::ONE, alpha - get(i)]).collect::<Vec<_>>()];
+        while tree.last().unwrap().len() > 1 {
+            tree.push(
+                tree.last()
+                    .unwrap()
+                    .chunks_exact(2)
+                    .map(|pair| {
+                        let ([p, q], [r, s]) = (pair[0], pair[1]);
+                        [p * s + r * q, q * s]
+                    })
+                    .collect(),
+            );
+        }
+        tree
+    };
+    let [p, q] = if sourcewise { subtree(get, alpha, bits, 0) } else { tree.last().unwrap()[0] };
     if q == Fp3::ZERO {
         return Err("B12 range witness pole".into());
     }
@@ -263,8 +332,24 @@ pub(super) fn prove(
     record_values(fs, 0x42, &roots);
     let mut triples =
         vec![[h, root[1], root[0]], [root[1], root[2], Auth::new(Fp3::ONE, Fp3::ZERO)]];
-    let (layers, point, claims) =
-        prove_tree(&tree, Vec::new(), [root[0], root[1]], fs, &mut rows, &mut triples);
+    let (layers, point, claims) = if sourcewise {
+        let (layers, point, claims, _) = prove_tree_sourcewise(
+            bits,
+            Vec::new(),
+            [root[0], root[1]],
+            |layer, index| {
+                let [p, q] = subtree(get, alpha, bits - 1 - layer, 2 * index);
+                let [r, s] = subtree(get, alpha, bits - 1 - layer, 2 * index + 1);
+                [p, q, r, s]
+            },
+            fs,
+            &mut rows,
+            &mut triples,
+        );
+        (layers, point, claims)
+    } else {
+        prove_tree(&tree, Vec::new(), [root[0], root[1]], fs, &mut rows, &mut triples)
+    };
     let leaf_tag = claims[0].m; // numerator is the constant one at every leaf
     record_values(fs, 0x46, &[leaf_tag]);
     let products = prove_products(&triples, rows.next().unwrap(), fs);
@@ -708,6 +793,72 @@ pub(super) fn verify_tree_with_first_weight(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sourcewise_range_matches_dense_original_wire_and_mac() {
+        use crate::c71_matrix::wire::Wire;
+        let model =
+            Model::new_in(Domain::Flat(10), (0..731).map(|i| (i % 7) as i16).collect()).unwrap();
+        let weights = model.polynomial();
+        let get = |i: usize| Fp3::from_base(Fp::new(weights.as_slice()[i].as_canonical_u64()));
+        let count = required(10, Alphabet::Byte);
+        let rows: Vec<_> =
+            (0..count).map(|i| Auth::new(signed(i as i64 + 1), signed(3 * i as i64 + 7))).collect();
+        let (mut dense_fs, mut source_fs) =
+            (Fs::new(b"range parity", 10000), Fs::new(b"range parity", 10000));
+        let (mut dense_rows, mut source_rows) =
+            (rows.clone().into_iter(), rows.clone().into_iter());
+        let (dense, df, dt) =
+            prove(&model, context(), [9; 32], 731, Alphabet::Byte, &mut dense_fs, &mut dense_rows)
+                .unwrap();
+        let (source, sf, st) = prove_sourcewise(
+            model.domain,
+            &model.root,
+            context(),
+            [9; 32],
+            731,
+            Alphabet::Byte,
+            &get,
+            &mut source_fs,
+            &mut source_rows,
+        )
+        .unwrap();
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        dense.write(&mut a);
+        source.write(&mut b);
+        assert_eq!(a, b);
+        assert_eq!(dense_fs.digest(), source_fs.digest());
+        for (a, b) in dt.iter().zip(st) {
+            assert_eq!(a.x, b.x);
+            assert_eq!(a.m, b.m);
+        }
+        for (a, b) in df.iter().flatten().zip(sf.iter().flatten()) {
+            assert_eq!(a.offset, b.offset);
+            assert_eq!(a.point, b.point);
+            assert_eq!(a.coefficient, b.coefficient);
+        }
+        assert_eq!(dense_rows.len(), 0);
+        assert_eq!(source_rows.len(), 0);
+        let delta = signed(29);
+        let mut keys =
+            rows.iter().map(|a| Key::new(a.m + delta * a.x)).collect::<Vec<_>>().into_iter();
+        let mut fs = Fs::new(b"range parity", 10000);
+        verify(
+            model.domain,
+            &model.root,
+            context(),
+            [9; 32],
+            731,
+            Alphabet::Byte,
+            &source,
+            delta,
+            &mut fs,
+            &mut keys,
+        )
+        .unwrap();
+        assert_eq!(fs.digest(), source_fs.digest());
+        assert_eq!(keys.len(), 0);
+    }
 
     #[test]
     fn incremental_prefix_weights_reuse_one_buffer_and_match_scalar_reference() {

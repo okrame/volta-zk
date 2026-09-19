@@ -446,5 +446,57 @@ def report():
             'applicable service floors for every phase, including native inference']}
 
 
+
+def reduced_joint_trace(log):
+    """Disjoint counters from ONE positive integrated run, not an H100 model.
+
+    Getter callbacks from GKR/lookup are references to the getter phase costs,
+    never another charge of producer arithmetic. Existing capacity summaries
+    are deliberately not combined into a fictitious physical peak.
+    """
+    markers = ('C71_INTEGRATED_GETTER ', 'C71_INTEGRATED_GKR ',
+               'C71_LOOKUP_SOURCE_WORK ', 'C71_INTEGRATED_POSITIVE ')
+    parsed = {marker: [] for marker in markers}
+    for line in log.splitlines():
+        for marker in markers:
+            if marker in line:
+                parsed[marker].append(json.loads(line.split(marker, 1)[1]))
+    phases = parsed[markers[0]]
+    expected = ['prepare_before_commit', 'initial_commit_A', 'producer_relations',
+                'range_A', 'linear_A_and_WHIR']
+    if [p['phase'] for p in phases] != expected or len(parsed[markers[3]]) != 1:
+        raise ValueError('one complete positive trace with every disjoint getter phase is required')
+    if not parsed[markers[1]] or len(parsed[markers[2]]) != 3:
+        raise ValueError('integrated GKR and all three lookup callers are required')
+    getter_fields = ('original_scalar_reads', 'old_kv_reads', 'weight_scalar_reads', 'emitted_bytes')
+    arithmetic = ('integer_additions', 'integer_subtractions', 'integer_multiplications',
+                  'integer_comparisons', 'fp_additions', 'fp_multiplications', 'table_reads',
+                  'divide_calls', 'opaque_rms_calls', 'opaque_rne_calls', 'opaque_affine_calls')
+    totals = {key: sum(p['work'][key] for p in phases) for key in getter_fields}
+    totals['producer_rows'] = sum(sum(p['work']['producer_rows']) for p in phases)
+    totals['numerical'] = {key: sum(p['work']['numerical'][key] for p in phases) for key in arithmetic}
+    def operations(records):
+        keys = {key for record in records for key in record
+                if key.endswith(('_multiplications', '_additions', '_subtractions', '_negations'))}
+        return {key: sum(record.get(key, 0) for record in records) for key in sorted(keys)}
+    gkrs = parsed[markers[1]]
+    lookups = parsed[markers[2]]
+    return dict(credit=False, scope='one reduced O0 positive proof, ideal MAC, CPU scalar reference',
+        positive=parsed[markers[3]][0], getter_phases=phases, getter_total=totals,
+        GKR_cell_round_operations=operations([r for g in gkrs for r in g['cell_rounds']]),
+        GKR_byte_tree_operations=operations([g['byte_endpoint']['tree'] for g in gkrs]),
+        lookup_tree_operations=operations([l['work']['tree'] for l in lookups]),
+        ownership={'getter':'all producer reconstruction belongs here, including callbacks from PCS/GKR/lookup',
+                   'GKR_cell':'cell coefficients and fold work only; excludes byte endpoint below',
+                   'GKR_byte':'original-byte fraction tree only; its getter callbacks are already above',
+                   'lookup':'three original lookup fraction trees; cached source construction already above'},
+        complete_canonical_work=False, physical_HBM_measured=False, complete_physical_peak=False,
+        missing=['GKR index/authentication and all other producer arithmetic',
+                 'complete range/linear/WHIR arithmetic, hash and machine traffic',
+                 'real PCG and native inference integration',
+                 'canonical schedule mapping and jointly live accelerator buffers'],
+        time_claim='CPU counters are not H100 seconds; all replay remains in T_proof_only')
+
+
 if __name__=='__main__':
     print(json.dumps(report(),indent=2))

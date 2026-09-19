@@ -163,7 +163,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
             'FFT_square':'in-place values + n*8 twiddles; native launch_five_pass allocates no extra global scratch',
             'range':'native src/dst and reduction arrays; Gram microbench materialization is component-only',
             'snapshot':'native Snapshot stores Vec<Vec<i64>>; literal lift exceeds arena before byte packing',
-            'WHIR':'native initialize_sumcheck allocates dense evals and weights; streaming candidate is not wired',
+            'WHIR':'bounded sourcewise replay matches native D10 bytes and rejects dense fallbacks; canonical accelerated state/workspace not yet wired',
             'PCG':'Fp6/OT/setup adapter workspace remains unbounded in this candidate',
             'arena_checker_metadata_bytes':512*24,
             'global_unallocated_margin_required_bytes':1 << 30,

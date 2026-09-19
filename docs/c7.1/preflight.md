@@ -1049,8 +1049,9 @@ kernel. I lower congiunti **ancora parziali** diventano
 fra l'altro, 314,146 GB/s di payload leaf e 6,136 miliardi di compressioni
 BLAKE3/s; sono condizioni necessarie parziali, non sufficienti con la FFT.
 
-Restano aperti sourcewise WHIR completo/codec delle aperture, workspace
-nativi e allocator/fence, PCG/OT/Fp6, producer GKR e inferenza. I valori
+Il confronto sourcewise WHIR/codec ridotto è ora chiuso sotto. Restano
+aperti il port canonico, workspace nativi e allocator/fence, PCG/OT/Fp6,
+producer GKR e inferenza. I valori
 `T_inference`, `T_proof_only`, `T_response_total` restano distinti e ignoti;
 replay e autenticazione stanno interamente nella prova. Il margine 256 MiB
 è conservato dal piano nominato, non ancora dimostrato per il runtime.
@@ -1086,14 +1087,15 @@ più replay contabilizzata dal piano. Per esempio il primo codeword A da
 2.199.023.255.552 B rende già NO-GO il lift di **questo backend denso**;
 non è un lower contro un backend sourcewise.
 
-La modifica minima da implementare è un wrapper MMCS con `ProverData<M>`
-leggero legato alla root originale (seed, pad, cache/offset e getter fissato),
-stessi Commitment/Proof/MultiProof e stessa verifica/serializzazione nativa.
-`open_multi_batch` deve rigenerare soltanto i sottoalberi richiesti, per
-sorgenti base ed extension; le maschere piccole possono conservare il loro
-backend denso già censito. Una variante che aggiungesse un hook di apertura
-al motore WHIR toccherebbe più tipi; non è necessaria finché il wrapper
-può conservare il contratto MMCS.
+Il wrapper MMCS da solo non conserva il contratto `get_matrices -> Vec<&M>`
+senza trattenere una matrice. È stato quindi aggiunto il confine di replay
+al motore WHIR: handle privato opaco, commit/apertura e rilascio dopo
+l'ultimo consumer. I chiamanti residenti esistenti restano supportati;
+Commitment/MultiProof, verifier e codec non cambiano. Le maschere piccole
+conservano il backend nativo già censito. Le aperture intermediate
+propagano gli errori; il callback base-case nativo non è fallibile e un
+errore termina con panic, da tradurre in `Stop` prima della promozione
+quando si collega il lifecycle completo.
 
 Anche la mappa delle coin va confrontata nella costruzione composta:
 `HidingWhirProver::new` crea l'extension MMCS tramite `mmcs.clone()`, che
@@ -1108,6 +1110,31 @@ trattenute (messaggi, coin, covettori 2.048 Fp3 e Merkle data), vettori della
 prova e buffer codec, descrittori Eq/Pow, scratch razionale, stato base-case
 e chiusura OpeningMac. Gli slot del piano sono riserve: questo audit non
 attribuisce loro automaticamente l'ownership del backend reale.
-Il controllo minimo è una catena ridotta che confronti round/root/aperture,
-codec e chiusura originale con il riferimento, e fallisca se raggiunge uno
-dei tre fallback densi. Questi obblighi restano aperti prima del punto PCG.
+Il controllo ridotto D10 con 512 query ora confronta tutti i round,
+root/aperture/sali, codec (**2.277.848 B**), transcript, target affine e
+chiusura base-case, con verifica nativa finale. Rifiuta i fallback densi
+prima del dominio finale di al più 64 elementi. Il test separato dei round
+copre anche la contrazione iniziale a sette sfide. Lo stato sourcewise
+è un riferimento CPU limitato a D16: la valutazione diretta Eq/Pow e il
+replay Horner non sono il kernel razionale/remainder del ledger canonico.
+
+L'albero di replay conserva getter fissato, snapshot XOF, offset effettivi
+e cache alta. Il `cut` è esplicito e deve essere una potenza di due fra Q
+e H. Le root Q-leaf dell'ultimo coset vengono ridotte nelle celle consumate:
+nessuna copia `32*L` (**134.217.728 B** a L=2^22). Il pad iniziale è condiviso
+tramite Arc. I test piccoli confrontano fork, avanzamento del cursore,
+query duplicate e ordine del multiproof. I contatori della cache e dello
+scratch sono byte nominati; non certificano allocator o picco GPU completo.
+
+Il [riferimento PCG](../../rust/volta-pcg/src/c71_ea_lpn.rs) confronta H ed
+EAGen con vettori del codec Python. H usa tre slot XOF distinti da 64 B,
+un massimo di otto candidati per componente e 192 B complessivi, cioè due
+permutazioni SHAKE256; i candidati effettivamente verificati restano
+variabili. EAGen usa due XOF per termine. Il controllo esaustivo a profondità
+1–7 verifica `Acc(omega)-PuncAcc(omega)=Delta*[omega>=alpha]`. Non è un
+setup OT: il fixture conosce root e Delta. Restano OT reale, bridge Fp6,
+trie batch, consumo MAC e picco completo con producer/inferenza.
+
+Questi risultati mantengono `credit:false`, lower parziali invariati e gate
+pre-spesa NO-GO. Non sostituiscono i trace canonici O=0/150/300 né chiudono
+il margine fisico di 256 MiB.

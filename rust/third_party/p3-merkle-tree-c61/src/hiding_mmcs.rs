@@ -76,6 +76,15 @@ impl<P, PW, H, C, R, const N: usize, const DIGEST_ELEMS: usize, const SALT_ELEMS
     pub const fn cap_height(&self) -> usize {
         self.inner.cap_height()
     }
+
+    /// Runs one operation against the live private-coin stream while holding
+    /// its lock. The callback continues the existing stream; it does not seed,
+    /// clone, fork, or reset it.
+    #[doc(hidden)]
+    pub fn with_private_rng<T>(&self, f: impl FnOnce(&mut R) -> T) -> T {
+        let mut rng = self.rng.lock();
+        f(&mut *rng)
+    }
 }
 
 /// Cloning forks the RNG stream by drawing a fresh seed from the source RNG, so the clone and the

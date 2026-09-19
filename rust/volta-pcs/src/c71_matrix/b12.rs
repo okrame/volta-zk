@@ -3,6 +3,9 @@
 
 use super::*;
 mod streaming;
+mod sourcewise;
+mod replay_tree;
+mod replay;
 
 use p3_merkle_tree::MerkleTreeHidingMmcs;
 use p3_symmetric::{CompressionFunctionFromHasher, CryptographicHasher, SerializingHasher};

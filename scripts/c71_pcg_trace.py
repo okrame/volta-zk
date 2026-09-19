@@ -254,6 +254,16 @@ def report():
             'implemented': 'B11/Fp9 seed bootstrap and AES128-MMO binary GGM diagnostics',
             'selected_plan': 'domain-separated Fp3 SHAKE/ROM cGGM with additive children',
             'selected_cGGM_native_implemented': False,
+            'bounded_CPU_codec_and_Acc_PuncAcc_refinement': {
+                'source': 'rust/volta-pcg/src/c71_ea_lpn.rs',
+                'H_and_EAGen_match_python_vectors': True,
+                'H_output_bytes_each_evaluation': 192,
+                'H_fixed_candidate_slots_bytes_per_limb': 64,
+                'H_SHAKE256_permutations_each_evaluation': 2,
+                'EA_SHAKE256_permutations_per_term': 2,
+                'punctured_prefix_identity_exhaustive_heights': [1,2,3,4,5,6,7],
+                'OT_Fp6_bridge_and_composed_MAC_credit': False,
+            },
             'AES128_MMO_is_selected_Fp3_cGGM': False,
             'reference_H_codec': ('tag || nonce[32] || block_u64_le || level_u32_le || '
                                   'position_u64_le || three canonical u64_le limbs'),
@@ -272,9 +282,8 @@ def report():
             'regenerate public EA weights from their public seed instead of retaining them',
         ],
         'correlation_reuse': False,
-        'minimum_missing_check': ('role-by-role Acc/PuncAcc trie equivalence plus native '
-                                  'H/EAGen codec refinement, field/OT '
-                                  'counters and bounded backend workspace liveness'),
+        'minimum_missing_check': ('batched union-trie execution, real OT/Fp6 bridge and composed MAC consumption; '
+                                  'complete field/OT counters and physical backend workspace liveness'),
     }
 
 

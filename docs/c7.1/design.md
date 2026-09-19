@@ -966,13 +966,18 @@ esclusi impediscono di chiamarlo completo.
 Producer GKR, adapter nativi PCS/PCG e workspace completi restano gate
 locali. I soli service-rate non misurabili localmente potranno passare al
 microbenchmark autorizzato dopo la chiusura dei gate di costruzione.
-L'[audit del confine WHIR](preflight.md#confine-nativo-whir-e-workspace-da-collegare)
-identifica due obblighi distinti: stato sumcheck sourcewise che copra tutti
-i fallback commit/OOD/claim, e ownership `ProverData` leggera per la MMCS.
-Il tipo attuale mantiene foglie salate e albero completo, perciò non realizza
-la cache alta del piano. Serve il wrapper di rigenerazione con gli stessi
-root/proof/codec, incluso l'ordine originale dei fork RNG; non è una nuova
-premessa di sicurezza o una causa di NO-GO universale.
+Il [replay WHIR ridotto](preflight.md#confine-nativo-whir-e-workspace-da-collegare)
+chiude il confronto della catena D10 completa con il riferimento: stessi
+root, aperture, coin, codec, transcript e chiusura affine/base-case.
+Il motore usa handle di replay perché l'interfaccia MMCS richiede riferimenti
+alle matrici. Il percorso sourcewise rifiuta fallback densi, mantiene solo
+Eq/Pow/sfide già fissate e libera ogni handle dopo l'ultimo consumer.
+Il getter è ancora un riferimento CPU; razionale/remainder, port numerico
+canonico e liveness fisica completa restano obblighi. Il cut della cache è
+esplicito; l'ultimo coset riduce i digest in-place senza copia da 128 MiB.
+H/EAGen hanno ora equivalenza Rust/Python e un controllo esaustivo ridotto
+Acc/PuncAcc. Non ne segue credito per OT/Fp6, consumo MAC composto, CUDA
+o un nuovo lemma Lean. Restano fermi NoPeek, endpoint e trust autorizzati.
 Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.

@@ -935,3 +935,25 @@ build mirata. Il report riusa soltanto i metadati pubblici del record
 I tempi CPU registrati riguardano i controlli locali; non sono rate H100
 o `T_inference`/`T_proof_only`. Costruzione canonica, lavoro totale e picco
 fisico sono esplicitamente incompleti, perciò il gate di spesa resta NO-GO.
+
+## Replay WHIR e codec cGGM ridotti
+
+Il [backend sourcewise](../../rust/volta-pcs/src/c71_matrix/b12/replay.rs)
+confronta una catena D10/512 query completa con il prover e il verifier
+nativi: root, round, aperture salted, multiproof, codec da **2.277.848 B**,
+FS, cursore dei coin, target affine e chiusura base-case coincidono.
+I fallback evals/weights grandi sono rifiutati. Il test dei round copre
+anche la contrazione a sette sfide; il replay dell'albero copre fork,
+coin consecutive e query duplicate. L'ultimo coset riduce i digest in-place,
+senza duplicare 32*L byte. Le query sono rigenerate per sottoalbero e
+valutate in gruppo, condividendo la lettura del coefficiente originale.
+Il censimento CPU per fase usa l'allocator esistente; non certifica
+scratch CUDA, arena canonica o rate H100.
+
+Il [codec PCG](../../rust/volta-pcg/src/c71_ea_lpn.rs) riproduce i vettori
+Python H/EAGen e rifiuta esaurimento o forme errate. H preserva slot XOF
+fissi di 64 B per componente. Il controllo esaustivo dei ruoli a profondità
+1–7 usa le stesse coin, con root e Delta note al fixture: non prova OT,
+bridge Fp6 o composizione MAC. Le [procedure](../procedures/build-and-test.md#replay-whir-e-codec-cggm-ridotti)
+conservano test piccoli e seriali. Nessun nuovo credito Lean o modifica
+a transcript, NoPeek, endpoint o trust model.

@@ -539,3 +539,21 @@ GPT-2 golden success does not validate Gemma.
 Raw runs are new files under `benchmarks/results/<milestone>-<date>-<gitsha>.json`.
 Keep every failure and all framing/resource costs. A run of record requires a
 clean source tree and `git_dirty: false`; corrections go in a new linked record.
+
+### Replay WHIR e codec cGGM ridotti
+
+Il confronto sourcewise usa la build mirata `volta-pcs --features c71-b12-pcs
+--lib --no-run`, con gli env e il target canonico già indicati. Eseguire
+separatamente i filtri `c71_b12_sourcewise_adaptive`, `b12::replay`,
+`b12::streaming`, `c71_b12_native_composed` e
+`c71_b12_native_certificate`. Il test della catena stampa il codec canonico
+e il censimento per fase dell'allocator CPU; il reset VmHWM riguarda solo
+il processo corrente. Non sono workspace o service-rate GPU. Conservare
+anche il filtro `c71_b12_canonical_pcs_codec` dopo modifiche al codec.
+
+Per il codec EA-LPN usare la build mirata
+`volta-pcg --features c71-b11 --lib --no-run` e il filtro
+`c71_ea_lpn::tests`. Comprende vettori Rust/Python, esaurimento sampler,
+identità dei ruoli a profondità 1–7. Non esegue OT o bootstrap AES completo.
+Ogni invocazione resta seriale con `RAYON_NUM_THREADS=1`, `timeout 60s` e
+`ulimit -v 2097152`; non avviare i due binari in parallelo.

@@ -13,7 +13,7 @@ use core::mem;
 
 use data::HidingWhirInitialMessage;
 use data::ZkRoundData;
-pub use data::{HidingWhirProverData, ZkWhirInitialMessage};
+pub use data::{HidingWhirProverData, ZkWhirInitialMessage, ZkWhirReplayHandle};
 use masks::{fold_limb_chunks, ProverMasks};
 use p3_challenger::{CanObserve, CanSampleUniformBits, FieldChallenger, GrindingChallenger};
 use p3_commit::{ExtensionMmcs, Mmcs};
@@ -131,6 +131,32 @@ where
         Self::Error,
     > {
         Ok(None)
+    }
+
+    fn commit_extension_replay_from_sumcheck(
+        &self,
+        _state: &Self::SumcheckState,
+        _randomness: &[EF],
+        _folding: usize,
+        _height: usize,
+    ) -> Result<Option<(MT::Commitment, ZkWhirReplayHandle)>, Self::Error> {
+        Ok(None)
+    }
+
+    /// Opens a prover-local replay oracle without changing its commitment or
+    /// the proof representation.
+    fn open_replay(
+        &self,
+        _handle: &ZkWhirReplayHandle,
+        _indices: &[usize],
+        _randomness: &Point<EF>,
+    ) -> Result<Option<(QueryOpenings<F, EF, MT::MultiProof>, Vec<EF>)>, Self::Error> {
+        Ok(None)
+    }
+
+    /// Releases provider-owned state after the oracle's last opening.
+    fn release_replay(&self, _handle: ZkWhirReplayHandle) -> Result<(), Self::Error> {
+        Ok(())
     }
 
     fn evaluate_padded_ood_from_sumcheck(
@@ -560,6 +586,41 @@ where
         )
     }
 
+    /// Opens an already committed initial oracle through a private replay
+    /// handle. Its root must have been observed before this call.
+    #[doc(hidden)]
+    #[instrument(skip_all)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn prove_claimless_replay_with_oracle<R, O>(
+        &self,
+        message_len: usize,
+        initial_randomness: &[F],
+        initial_handle: ZkWhirReplayHandle,
+        claims: &[(Point<EF>, EF)],
+        base_claim_shift: EF,
+        oracle: &O,
+        challenger: &mut Challenger,
+        rng: &mut R,
+    ) -> Result<ClaimlessWhirProverOutput<F, EF, MT>, O::Error>
+    where
+        R: Rng,
+        O: ZkWhirOracleCommitter<F, EF, MT>,
+    {
+        assert_eq!(message_len, 1usize << self.config.num_variables);
+        self.prove_claimless_with_initial_state(
+            ZkWhirInitialMessage::Resident { len: message_len },
+            initial_randomness,
+            ZkRoundData::Replay(initial_handle),
+            claims,
+            base_claim_shift,
+            oracle,
+            &NoZkWhirInitialOracleLink,
+            None,
+            challenger,
+            rng,
+        )
+    }
+
     /// Native-oracle multi-opening with a batching challenge derived by a
     /// wider transcript after all related limb commitments are fixed.
     #[instrument(skip_all)]
@@ -753,26 +814,34 @@ where
                 (0..next_randomness_len << folding_next).map(|_| rng.random()).collect();
             // Interleaved ZK encoding over the extension, base-field DFT.
             let height = config.inv_rate(round) * (message_len >> folding_next);
-            let resident_commit = oracle.commit_extension_from_sumcheck(
+            let mut host_message = None;
+            let replay_commit = oracle.commit_extension_replay_from_sumcheck(
                 &batch.residual_prover,
                 &fresh_randomness,
                 folding_next,
                 height,
             )?;
-            let mut host_message = None;
-            let (commitment, merkle) = match resident_commit {
-                Some(committed) => committed,
-                None => {
-                    let message = batch.residual_prover.evals()?;
-                    let committed = oracle.commit_extension(
-                        message.as_slice(),
-                        &fresh_randomness,
-                        folding_next,
-                        height,
-                    )?;
-                    host_message = Some(message);
-                    committed
-                }
+            let (commitment, next_round_data) = match replay_commit {
+                Some((commitment, handle)) => (commitment, ZkRoundData::Replay(handle)),
+                None => match oracle.commit_extension_from_sumcheck(
+                    &batch.residual_prover,
+                    &fresh_randomness,
+                    folding_next,
+                    height,
+                )? {
+                    Some((commitment, merkle)) => (commitment, ZkRoundData::Ext(merkle)),
+                    None => {
+                        let message = batch.residual_prover.evals()?;
+                        let (commitment, merkle) = oracle.commit_extension(
+                            message.as_slice(),
+                            &fresh_randomness,
+                            folding_next,
+                            height,
+                        )?;
+                        host_message = Some(message);
+                        (commitment, ZkRoundData::Ext(merkle))
+                    }
+                },
             };
             challenger.observe(commitment.clone());
 
@@ -843,8 +912,15 @@ where
 
             // Open the previous oracle in one multiproof and fold each leaf
             // at the batch randomness; the verifier recomputes the same folds.
-            let (openings, folded_values) =
-                self.open_and_fold(&round_data, &stir_indexes, &batch.randomness);
+            let (openings, folded_values) = match &round_data {
+                ZkRoundData::Replay(handle) => {
+                    match oracle.open_replay(handle, &stir_indexes, &batch.randomness)? {
+                        Some(opened) => opened,
+                        None => panic!("replay oracle has no opening provider"),
+                    }
+                }
+                _ => self.open_and_fold(&round_data, &stir_indexes, &batch.randomness),
+            };
             let linked_mask_values = (round == 0)
                 .then(|| {
                     initial_link.folded_mask_values(&openings, &stir_indexes, &batch.randomness)
@@ -857,6 +933,10 @@ where
             );
             if let Some(values) = &linked_mask_values {
                 assert_eq!(values.len(), stir_indexes.len());
+            }
+            let previous = mem::replace(&mut round_data, next_round_data);
+            if let ZkRoundData::Replay(handle) = previous {
+                oracle.release_replay(handle)?;
             }
             let query_vars: Vec<F> = stir_indexes
                 .iter()
@@ -1059,7 +1139,6 @@ where
 
             oracle_randomness =
                 fold_limb_chunks(&fresh_randomness, next_randomness_len, &batch.randomness);
-            round_data = ZkRoundData::Ext(merkle);
         }
 
         // Masked base case on the virtual folded oracle.
@@ -1105,10 +1184,23 @@ where
             source_covector.as_slice(),
             &mask_witnesses,
             base_claim_shift,
-            |positions| self.open_and_fold(&round_data, positions, &batch.randomness).0,
+            |positions| match &round_data {
+                ZkRoundData::Replay(handle) => {
+                    match oracle.open_replay(handle, positions, &batch.randomness) {
+                        Ok(Some((openings, _))) => openings,
+                        Ok(None) => panic!("replay oracle has no base opening provider"),
+                        Err(_) => panic!("replay oracle base opening failed"),
+                    }
+                }
+                _ => self.open_and_fold(&round_data, positions, &batch.randomness).0,
+            },
             challenger,
             rng,
         );
+
+        if let ZkRoundData::Replay(handle) = round_data {
+            oracle.release_replay(handle)?;
+        }
 
         Ok(ClaimlessWhirProverOutput {
             proof: ZkWhirProof { sumchecks, sumcheck_mask_commitments, rounds, base_case },
@@ -1159,6 +1251,9 @@ where
                     })
                     .collect();
                 (QueryOpenings::Extension(opening), folded)
+            }
+            ZkRoundData::Replay(_) => {
+                panic!("replay openings require the native oracle provider")
             }
         }
     }

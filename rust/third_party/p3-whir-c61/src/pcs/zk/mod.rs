@@ -129,7 +129,7 @@ pub use mask::{MaskCodeShape, MaskGroupShape};
 pub use proof::{BaseCaseZkProof, BlindedMask, MaskOpeningPair, ZkRoundProof, ZkWhirProof};
 pub use prover::{
     ClaimlessWhirProverOutput, HidingWhirProver, HidingWhirProverData, ZkWhirInitialMessage,
-    ZkWhirOracleCommitter,
+    ZkWhirOracleCommitter, ZkWhirReplayHandle,
 };
 pub use verifier::{ClaimlessWhirVerifierClosure, HidingWhirVerifier, ZkVerifierError};
 

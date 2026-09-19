@@ -283,8 +283,8 @@ Il port canonico numerico, il gather range e il collegamento al prover
 restano aperti; i conteggi ridotti non sostituiscono O=0/150/300.
 L'hash CPU in-place confronta codec, sali, seek, foglie e root con la MMCS
 nativa anche nell'ordine coset `c+Q*j`. Prescan naturale e cursori reali
-conservano i rigetti del sampler. Questo non è ancora un kernel CUDA o
-l'encoder/apertura WHIR completo. Il ledger include letture, scritture,
+conservano i rigetti del sampler. Il confronto della catena WHIR ridotta è ora acquisito sotto; il kernel
+CUDA e la catena canonica restano aperti. Il ledger include letture, scritture,
 compressioni hash e prescan: con la lettura foglie separata i lower parziali
 sono **47,498 / 51,975 / 56,751 s**; non cambiano i picchi solo pianificati.
 Il successivo lavoro è completare il port del getter e l'integrazione
@@ -295,11 +295,14 @@ spesa restano non pronti. **Si lavora soltanto sui 512 replay**; la variante
 un upper H100 prima delle misure: richiede costruzione ridotta completa,
 conteggi senza ignoti, picco completo con margine e lower congiunto <65 s,
 poi microbenchmark isolati, SHA pulita, durata/costo e soglie verificabili.
-Questi gate non sono chiusi. L'[audit WHIR](preflight.md#confine-nativo-whir-e-workspace-da-collegare)
-ha individuato il prossimo confine concreto: il tipo `ProverData` nativo
-trattiene codeword/sali/albero completi; gli hook residenti da soli non
-realizzano la cache alta. Servono stato sourcewise e handle MMCS di replay
-con confronto di round/aperture/codec, inclusi fork e cursori delle coin.
+Questi gate non sono chiusi. Il [replay WHIR ridotto](preflight.md#confine-nativo-whir-e-workspace-da-collegare)
+ora coincide con il riferimento D10 per root, aperture, codec da 2.277.848 B,
+transcript e chiusura originale, senza fallback source densi. Il nuovo
+handle conserva getter/cache/offset e libera il predecessore dopo le query;
+il pad iniziale è condiviso e la riduzione finale in-place evita 128 MiB
+aggiuntivi al coset canonico. Restano port accelerato e picco fisico.
+H/EAGen hanno confronto Rust/Python e identità Acc/PuncAcc ridotta;
+OT, bridge Fp6, trie batch e consumo MAC composto non sono ancora chiusi.
 Nessuna GPU, spill o spesa autorizzata.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso

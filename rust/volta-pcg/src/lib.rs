@@ -20,6 +20,10 @@ pub mod c71_bootstrap;
 #[cfg(feature = "c71-b11")]
 pub mod c71_lifetime;
 
+/// Bounded selected-codec refinement; no OT or production admission.
+#[cfg(feature = "c71-b11")]
+pub mod c71_ea_lpn;
+
 pub use fase_d::{
     BatchLiftReport, CanonicalBatchLift, FaseDCapacityReport, FaseDError, FaseDParams,
     FaseDStagePlan, ProverBufferAccount, RefillLedger, RegularNoiseTuple, Stage3Batch,

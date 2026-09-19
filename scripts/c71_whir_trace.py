@@ -1113,6 +1113,14 @@ def trace(dimension, initial_coset_rows=INITIAL_COSET_ROWS):
             "the original getter, and must be removed if a future schedule retains that source"
         ),
         "transcript_source": "p3-whir-c61 zk prover native ordering and zk_padded_matrix layout",
+        "bounded_native_refinement": {
+            "dimension": 10, "first_fold": 1, "queries": 512,
+            "canonical_codec_bytes": 2_277_848,
+            "same_root_proof_transcript_affine_and_base_closure": True,
+            "large_dense_fallbacks_forbidden": True,
+            "reference_only_no_canonical_service_or_peak_credit": True,
+            "source": "rust/volta-pcs/src/c71_matrix/b12/replay.rs",
+        },
         "oracles": oracles,
         "selected_initial_sumcheck": selected_initial_sumcheck(dimension),
         "later_covector_candidate": covector,
@@ -1181,8 +1189,8 @@ def trace(dimension, initial_coset_rows=INITIAL_COSET_ROWS):
         "incompatibilities": [
             "current native 40N admission and post-fold7 eval+weights exceed the arena",
             "literal coset commitments use dimension-dependent source replays",
-            "the algebraic source-uniform covector candidate has no native implementation or liveness trace",
-            "hash/reader traffic and terminal MAC liveness are unimplemented",
+            "bounded D10 sourcewise replay matches native codec; fast canonical covector/liveness remain open",
+            "canonical hash/reader/terminal MAC liveness is not yet a complete physical plan",
         ],
         "complete_work_upper": None,
         "runtime_upper_seconds": None,

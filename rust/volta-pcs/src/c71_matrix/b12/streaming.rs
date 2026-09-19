@@ -6,12 +6,12 @@ const LEAF: &[u8] = b"volta-zk/c71/b12/merkle/leaf/v1\0";
 const NODE: &[u8] = b"volta-zk/c71/b12/merkle/node/v1\0";
 
 #[derive(Debug, Default)]
-struct HashWork {
-    field_reads: usize,
-    digest_word_writes: usize,
-    salt_candidate_bytes: u64,
-    hash_input_bytes: usize,
-    blake3_compressions: usize,
+pub(super) struct HashWork {
+    pub(super) field_reads: usize,
+    pub(super) digest_word_writes: usize,
+    pub(super) salt_candidate_bytes: u64,
+    pub(super) hash_input_bytes: usize,
+    pub(super) blake3_compressions: usize,
 }
 
 fn compressions(bytes: usize) -> usize {
@@ -43,13 +43,13 @@ fn leaves_in_place(
     Ok(work)
 }
 
-fn hash_rows_in_place(
+pub(super) fn hash_rows_in_place(
     cells: &mut [u64],
     rows: usize,
     columns: usize,
     mut salts: impl FnMut(usize) -> [Goldilocks; 4],
 ) -> Result<HashWork, String> {
-    if rows == 0 || columns < 4 || rows.checked_mul(columns) != Some(cells.len()) {
+    if rows == 0 || columns == 0 || rows.checked_mul(columns.max(4)) != Some(cells.len()) {
         return Err("consumed coset shape differs".into());
     }
     let mut work = HashWork::default();
@@ -81,7 +81,7 @@ fn hash_rows_in_place(
 
 /// Natural-order sampler scan. Start/current slots already belong to the coset
 /// workspace. The callback records immutable upper-cache subtree offsets.
-fn prepare_offsets(
+pub(super) fn prepare_offsets(
     rng: &mut PrivateRng,
     cosets: usize,
     starts: &mut [u64],
@@ -104,7 +104,7 @@ fn prepare_offsets(
     Ok(rng.position() - first)
 }
 
-fn strided_leaves_in_place(
+pub(super) fn strided_leaves_in_place(
     cells: &mut [u64],
     rows: usize,
     columns: usize,
@@ -132,7 +132,7 @@ fn strided_leaves_in_place(
     Ok(work)
 }
 
-fn node_hash(left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
+pub(super) fn node_hash(left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
     let mut hash = blake3::Hasher::new();
     hash.update(NODE);
     hash.update(&left);
@@ -140,7 +140,7 @@ fn node_hash(left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
     hash.finalize().into()
 }
 
-fn write_digest(cells: &mut [u64], stride: usize, row: usize, value: [u8; 32]) {
+pub(super) fn write_digest(cells: &mut [u64], stride: usize, row: usize, value: [u8; 32]) {
     for (col, word) in value.chunks_exact(8).enumerate() {
         cells[col * stride + row] = u64::from_le_bytes(word.try_into().unwrap());
     }
@@ -148,7 +148,7 @@ fn write_digest(cells: &mut [u64], stride: usize, row: usize, value: [u8; 32]) {
 
 /// Coset c holds natural leaves c+Q*j. Each j owns log2(Q) frontier
 /// entries. On the final coset their roots replace the consumed leaf cells.
-fn merge_coset(
+pub(super) fn merge_coset(
     cells: &mut [u64],
     rows: usize,
     coset: usize,
@@ -182,7 +182,7 @@ fn merge_coset(
     Ok(nodes)
 }
 
-fn digest(cells: &[u64], stride: usize, row: usize) -> [u8; 32] {
+pub(super) fn digest(cells: &[u64], stride: usize, row: usize) -> [u8; 32] {
     let mut bytes = [0; 32];
     for col in 0..4 {
         bytes[8 * col..8 * col + 8].copy_from_slice(&cells[col * stride + row].to_le_bytes());
@@ -192,7 +192,7 @@ fn digest(cells: &[u64], stride: usize, row: usize) -> [u8; 32] {
 
 /// Reference subtree reduction after leaf consumption. Upper nodes are copied
 /// to the existing cache by the caller before reducing another level.
-fn reduce_in_place(cells: &mut [u64], stride: usize, live: usize) -> Result<HashWork, String> {
+pub(super) fn reduce_in_place(cells: &mut [u64], stride: usize, live: usize) -> Result<HashWork, String> {
     if !live.is_power_of_two() || live < 2 || live > stride || cells.len() < 4 * stride {
         return Err("digest reduction shape differs".into());
     }

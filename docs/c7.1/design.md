@@ -967,7 +967,8 @@ Producer GKR, adapter nativi PCS/PCG e workspace completi restano gate
 locali. I soli service-rate non misurabili localmente potranno passare al
 microbenchmark autorizzato dopo la chiusura dei gate di costruzione.
 Il [replay WHIR ridotto](preflight.md#confine-nativo-whir-e-workspace-da-collegare)
-chiude il confronto della catena D10 completa con il riferimento: stessi
+chiude il confronto della catena D10 completa con `ObservedMmcs`, incluso
+il binding pubblico delle aperture al FS C7.1: stessi
 root, aperture, coin, codec, transcript e chiusura affine/base-case.
 Il motore usa handle di replay perché l'interfaccia MMCS richiede riferimenti
 alle matrici. Il percorso sourcewise rifiuta fallback densi, mantiene solo
@@ -976,8 +977,12 @@ Il getter è ancora un riferimento CPU; razionale/remainder, port numerico
 canonico e liveness fisica completa restano obblighi. Il cut della cache è
 esplicito; l'ultimo coset riduce i digest in-place senza copia da 128 MiB.
 H/EAGen hanno ora equivalenza Rust/Python e un controllo esaustivo ridotto
-Acc/PuncAcc. Non ne segue credito per OT/Fp6, consumo MAC composto, CUDA
-o un nuovo lemma Lean. Restano fermi NoPeek, endpoint e trust autorizzati.
+Acc/PuncAcc. Il confine Seed6 e i 384 OT reali sono controlli separati con domini
+MR19 distinti; K6 è verificato prima della compressione e il rifiuto non
+campiona alpha. Non ne segue credito per COPE/guard/ruoli opposti, consumo
+MAC composto, CUDA o un nuovo lemma Lean. Il getter numerico ridotto
+O=0/2/4 apre la root A originale con S1 condiviso allocato dopo le query
+al predecessore; la riduzione in-place delle code successive resta aperta. Restano fermi NoPeek, endpoint e trust autorizzati.
 Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.

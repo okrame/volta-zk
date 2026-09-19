@@ -146,11 +146,13 @@ struct Oracle {
     base: bool,
 }
 struct Backend<'a> {
-    extension: &'a HidingMmcs,
+    base: &'a ObservedMmcs,
+    extension: &'a ObservedMmcs,
     source: Getter,
     first: usize,
+    retain_first: bool,
 }
-impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a HidingMmcs> for Backend<'a> {
+impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> {
     type Error = String;
     type SumcheckState = State;
     fn initialize_sumcheck(
@@ -166,7 +168,13 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a HidingMmcs> for Backend<'a> {
         {
             return Err("bounded singleton sourcewise claim".into());
         }
-        State::new(self.source.clone(), claims[0].0.as_slice(), self.first, target)
+        State::new(
+            self.source.clone(),
+            claims[0].0.as_slice(),
+            self.first,
+            target,
+            self.retain_first,
+        )
     }
     fn commit_initial(
         &self,
@@ -214,7 +222,7 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a HidingMmcs> for Backend<'a> {
             height,
             pads: Pads::Extension(randomness.to_vec()),
         }
-        .commit(self.extension)
+        .commit(&self.extension.inner)
         .map(Some)
     }
     fn evaluate_padded_ood_from_sumcheck(
@@ -256,6 +264,10 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a HidingMmcs> for Backend<'a> {
     {
         let oracle = handle.downcast_ref::<Oracle>().ok_or("replay handle type")?;
         let (rows, proof) = oracle.tree.open(indices)?;
+        // The C7.1 wrapper binds original rows/salts/frontier into FS before
+        // the next coin, including extension rows in their native base layout.
+        let mmcs = if oracle.base { self.base } else { self.extension };
+        mmcs.bind(indices, &rows, &proof);
         let rows: Vec<_> = rows.into_iter().map(|mut v| v.remove(0)).collect();
         if oracle.base {
             let folded = rows.iter().map(|v| Poly::new(v.clone()).eval_base(randomness)).collect();
@@ -274,99 +286,174 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a HidingMmcs> for Backend<'a> {
     }
 }
 #[cfg(test)]
+pub(in crate::c71_matrix) fn compare_source(
+    dimension: usize,
+    source: Getter,
+    values: Vec<Goldilocks>,
+    original: Option<&Model>,
+) {
+    use rand_010::RngExt;
+    assert!((10..=12).contains(&dimension));
+    assert_eq!(values.len(), 1 << dimension);
+    census::start().unwrap();
+    let config = config(dimension).unwrap();
+    let dft = Radix2DFTSmallBatch::default();
+    let salt_seed = original.map_or([73; 32], |m| m.salt_seed);
+    let root_seed = original.map_or([91; 32], |m| m.seed);
+    let witness = Poly::new(values);
+    let point = Point::new(
+        (0..dimension)
+            .map(|i| {
+                E::new([Goldilocks::new(i as u64 + 3), Goldilocks::new(7), Goldilocks::new(11)])
+            })
+            .collect(),
+    );
+    let value = witness.eval_base(&point);
+    // Original endpoint fixed before the proof. Ideal MACs here, as in the
+    // bounded composed runner; no reauthentication after challenges.
+    let delta =
+        Fp3::new(volta_field::Fp::new(7), volta_field::Fp::new(11), volta_field::Fp::new(13));
+    let terminal_key = Key { k: Fp3::ONE };
+    let terminal = Auth { x: from_p3(value), m: terminal_key.k - delta * from_p3(value) };
+    let mask_key = Key { k: Fp3::ONE + Fp3::ONE };
+    let mask = Auth { x: Fp3::ONE, m: mask_key.k - delta };
+    let claims = [(point.clone(), value)];
+    let mut fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
+    fs.set_phase(0x200);
+    let root_mmcs = ObservedMmcs::new(fs.clone(), salt_seed);
+    let root_prover = HidingWhirProver::new(&config, &dft, &root_mmcs);
+    let mut root_rng = PrivateRng::from_seed(root_seed);
+    let (root, data) = root_prover.commit(witness, &mut fs, &mut root_rng);
+    if let Some(original) = original {
+        assert_eq!(root, original.root);
+    }
+    // Actual C7.1 discipline: fresh proof coins/MMCS, independent of root replay.
+    let proof_mmcs = ObservedMmcs::new(fs.clone(), [83; 32]);
+    let reference = HidingWhirProver::new(&config, &dft, &proof_mmcs);
+    let mut rng = PrivateRng::from_seed([101; 32]);
+    let result = reference.prove_claimless(data, &claims, to_p3(mask.x), &mut fs, &mut rng);
+
+    census::mark("sourcewise_initial_commit").unwrap();
+    let mut replay_fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
+    replay_fs.set_phase(0x200);
+    let original_mmcs = ObservedMmcs::new(replay_fs.clone(), salt_seed);
+    let _original_extension = original_mmcs.clone(); // the native initial-construction fork
+    let mut initial_rng = PrivateRng::from_seed(root_seed);
+    let first = config.round_folding_factor(0);
+    let pads: Arc<[Goldilocks]> =
+        (0..config.oracle_randomness[0] << first).map(|_| initial_rng.random()).collect();
+    let height = ((1 << dimension) >> first) << config.starting_log_inv_rate;
+    let (replay_root, handle) = Code {
+        get: source.clone(),
+        len: 1 << dimension,
+        width: 1 << first,
+        height,
+        pads: Pads::Base(pads.clone()),
+    }
+    .commit(&original_mmcs.inner)
+    .unwrap();
+    assert_eq!(root, replay_root);
+    assert_eq!(root_rng.position(), initial_rng.position());
+    replay_fs.observe(replay_root.clone());
+    let base = ObservedMmcs::new(replay_fs.clone(), [83; 32]);
+    let extension = base.clone();
+    let base_ref = &base;
+    let engine = HidingWhirProver {
+        config: &config,
+        dft: &dft,
+        mmcs: &base_ref,
+        extension_mmcs: ExtensionMmcs::new(&extension),
+    };
+    let mut replay_rng = PrivateRng::from_seed([101; 32]);
+    census::mark("sourcewise_open_all_rounds").unwrap();
+    let backend = Backend {
+        base: &base,
+        extension: &extension,
+        source,
+        first,
+        retain_first: original.is_some(),
+    };
+    let output = engine
+        .prove_claimless_replay_with_oracle(
+            1 << dimension,
+            &pads,
+            handle,
+            &claims,
+            to_p3(mask.x),
+            &backend,
+            &mut replay_fs,
+            &mut replay_rng,
+        )
+        .unwrap();
+    census::mark("codec_and_native_verifier").unwrap();
+    assert_eq!(
+        serde_json::to_vec(&result.proof).unwrap(),
+        serde_json::to_vec(&output.proof).unwrap()
+    );
+    let close_tag =
+        mask.m - from_p3(output.base_case.gamma * output.target.coefficient) * terminal.m;
+    assert_eq!(
+        close_tag,
+        mask.m - from_p3(result.base_case.gamma * result.target.coefficient) * terminal.m
+    );
+    let canonical = |value| {
+        let matrix = MatrixProof {
+            rounds: vec![[Fp3::ZERO; 4]; dimension],
+            terminal: [Fp3::ZERO; 2],
+            pcs: serde_json::from_value(value).unwrap(),
+            close_tag,
+        };
+        codec::encode_linear(Domain::Flat(dimension), &matrix).unwrap()
+    };
+    let bytes = canonical(serde_json::to_value(&result.proof).unwrap());
+    assert_eq!(bytes, canonical(serde_json::to_value(&output.proof).unwrap()));
+    eprintln!("sourcewise observed D{dimension} canonical_bytes={}", bytes.len());
+    assert_eq!(fs.digest(), replay_fs.digest());
+    assert_eq!(rng.position(), replay_rng.position());
+    assert_eq!(result.target, output.target);
+    assert_eq!(result.base_case, output.base_case);
+    record_values(&mut fs, 0x12, &[close_tag]);
+    record_values(&mut replay_fs, 0x12, &[close_tag]);
+    let owned_proof: ZkWhirProof<Goldilocks, E, ObservedMmcs> =
+        serde_json::from_value(serde_json::to_value(&output.proof).unwrap()).unwrap();
+    let mut verifier_fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
+    verify_pcs(
+        &config,
+        &root,
+        point.clone(),
+        &owned_proof,
+        close_tag,
+        terminal_key,
+        mask_key,
+        delta,
+        &mut verifier_fs,
+    )
+    .unwrap();
+    assert_eq!(verifier_fs.digest(), fs.digest());
+    // A coherently encoded proof cannot be closed on a different endpoint MAC.
+    let mut wrong_fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
+    assert!(verify_pcs(
+        &config,
+        &root,
+        point,
+        &owned_proof,
+        close_tag,
+        Key { k: terminal_key.k + Fp3::ONE },
+        mask_key,
+        delta,
+        &mut wrong_fs
+    )
+    .is_err());
+    eprintln!("sourcewise_allocator={}", census::finish().unwrap());
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use rand_010::RngExt;
     #[test]
     fn c71_b12_full_sourcewise_chain_matches_native_bytes() {
-        census::start().unwrap();
-        let config = config(10).unwrap();
-        let dft = Radix2DFTSmallBatch::default();
-        let native = mmcs([73; 32]);
-        let reference = HidingWhirProver::new(&config, &dft, &native);
         let source: Getter = Arc::new(|i| E::from(Goldilocks::new((i * i + 17 * i + 23) as u64)));
-        let witness = Poly::new((0..1024).map(|i| limbs(&source(i))[0]).collect());
-        let point = Point::new(
-            (0..10)
-                .map(|i| E::new([Goldilocks::new(i + 3), Goldilocks::new(7), Goldilocks::new(11)]))
-                .collect(),
-        );
-        let value = witness.eval_base(&point);
-        let claims = [(point.clone(), value)];
-        let mut rng = PrivateRng::from_seed([91; 32]);
-        let mut fs = Fs::new(b"sourcewise refinement", request_limit(&config));
-        let (root, data) = reference.commit(witness, &mut fs, &mut rng);
-        let result = reference.prove_claimless(data, &claims, E::ZERO, &mut fs, &mut rng);
-        census::mark("sourcewise_initial_commit").unwrap();
-        let base = mmcs([73; 32]);
-        let extension = base.clone();
-        let base_ref = &base;
-        let engine = HidingWhirProver {
-            config: &config,
-            dft: &dft,
-            mmcs: &base_ref,
-            extension_mmcs: ExtensionMmcs::new(&extension),
-        };
-        let mut replay_rng = PrivateRng::from_seed([91; 32]);
-        let mut replay_fs = Fs::new(b"sourcewise refinement", request_limit(&config));
-        let first = config.round_folding_factor(0);
-        let pads: Arc<[Goldilocks]> =
-            (0..config.oracle_randomness[0] << first).map(|_| replay_rng.random()).collect();
-        let height = (1024 >> first) << config.starting_log_inv_rate;
-        let (replay_root, handle) = Code {
-            get: source.clone(),
-            len: 1024,
-            width: 1 << first,
-            height,
-            pads: Pads::Base(pads.clone()),
-        }
-        .commit(&base)
-        .unwrap();
-        assert_eq!(root, replay_root);
-        replay_fs.observe(replay_root.clone());
-        census::mark("sourcewise_open_all_rounds").unwrap();
-        let backend = Backend { extension: &extension, source, first };
-        let output = engine
-            .prove_claimless_replay_with_oracle(
-                1024,
-                &pads,
-                handle,
-                &claims,
-                E::ZERO,
-                &backend,
-                &mut replay_fs,
-                &mut replay_rng,
-            )
-            .unwrap();
-        census::mark("codec_and_native_verifier").unwrap();
-        assert_eq!(
-            serde_json::to_vec(&result.proof).unwrap(),
-            serde_json::to_vec(&output.proof).unwrap()
-        );
-        let canonical = |value| {
-            let matrix = MatrixProof {
-                rounds: vec![[Fp3::ZERO; 4]; 10],
-                terminal: [Fp3::ZERO; 2],
-                pcs: serde_json::from_value(value).unwrap(),
-                close_tag: Fp3::ZERO,
-            };
-            codec::encode_linear(Domain::Flat(10), &matrix).unwrap()
-        };
-        let native_bytes = canonical(serde_json::to_value(&result.proof).unwrap());
-        assert_eq!(native_bytes, canonical(serde_json::to_value(&output.proof).unwrap()));
-        eprintln!("sourcewise D10 canonical_bytes={}", native_bytes.len());
-        assert_eq!(fs.digest(), replay_fs.digest());
-        assert_eq!(rng.position(), replay_rng.position());
-        assert_eq!(result.target, output.target);
-        assert_eq!(result.base_case, output.base_case);
-        let mut verifier_fs = Fs::new(b"sourcewise refinement", request_limit(&config));
-        verifier_fs.observe(root.clone());
-        let checked = HidingWhirVerifier::new(&config, &base_ref)
-            .verify_claimless(&output.proof, &root, &[point], &mut verifier_fs)
-            .unwrap();
-        assert_eq!(checked.target, output.target);
-        assert_eq!(checked.base_case, output.base_case);
-        assert_eq!(verifier_fs.digest(), fs.digest());
-        eprintln!("sourcewise_allocator={}", census::finish().unwrap());
+        let values = (0..1024).map(|i| limbs(&source(i))[0]).collect();
+        compare_source(10, source, values, None);
     }
 }

@@ -1110,8 +1110,9 @@ trattenute (messaggi, coin, covettori 2.048 Fp3 e Merkle data), vettori della
 prova e buffer codec, descrittori Eq/Pow, scratch razionale, stato base-case
 e chiusura OpeningMac. Gli slot del piano sono riserve: questo audit non
 attribuisce loro automaticamente l'ownership del backend reale.
-Il controllo ridotto D10 con 512 query ora confronta tutti i round,
-root/aperture/sali, codec (**2.277.848 B**), transcript, target affine e
+Il controllo ridotto D10 con 512 query include ora `ObservedMmcs`, che
+lega aperture/sali/frontiere al FS C7.1, e confronta tutti i round,
+root/aperture/sali, codec (**2.289.176 B**), transcript, target affine e
 chiusura base-case, con verifica nativa finale. Rifiuta i fallback densi
 prima del dominio finale di al più 64 elementi. Il test separato dei round
 copre anche la contrazione iniziale a sette sfide. Lo stato sourcewise
@@ -1132,9 +1133,47 @@ un massimo di otto candidati per componente e 192 B complessivi, cioè due
 permutazioni SHAKE256; i candidati effettivamente verificati restano
 variabili. EAGen usa due XOF per termine. Il controllo esaustivo a profondità
 1–7 verifica `Acc(omega)-PuncAcc(omega)=Delta*[omega>=alpha]`. Non è un
-setup OT: il fixture conosce root e Delta. Restano OT reale, bridge Fp6,
-trie batch, consumo MAC e picco completo con producer/inferenza.
+setup OT: il fixture conosce root e Delta. Il confine OT/Seed6 seguente è
+un controllo separato; trie batch, consumo MAC e picco completo con
+producer/inferenza restano aperti.
 
 Questi risultati mantengono `credit:false`, lower parziali invariati e gate
 pre-spesa NO-GO. Non sostituiscono i trace canonici O=0/150/300 né chiudono
 il margine fisico di 256 MiB.
+
+Il getter numerico è collegato alla catena con la root A originale nei tre
+contesti ridotti O=0/2/4. Conserva una finestra di 128 byte, cut i16 e KV
+originali; Snapshot/A completi restano soltanto nel riferimento indipendente.
+S1 viene fissato al primo fold ma materializzato soltanto dopo le query
+alla root A e il rilascio del predecessore. Un unico slot condiviso conserva
+gli stessi valori per lo stato e l'oracolo S1 già impegnato. Non anticipare
+questa allocazione al commit S1: violerebbe la liveness del piano canonico.
+Il test dei round verifica il getter congelato prima/dopo la materializzazione.
+Il confronto numerico ridotto copre root, codec, FS e chiusura con
+`verify_pcs` sul MAC ideale fissato prima delle sfide. Un endpoint MAC
+alterato rifiuta; non c’è una nuova autenticazione dopo le sfide.
+La coda in-place S1→S2, i domini canonici e il binding al lifecycle accettato
+restano da collegare. Il riferimento CPU non accredita i passaggi del kernel
+razionale o il picco fisico canonico.
+
+Il confine [Seed6](../../rust/volta-pcg/src/c71_seed6.rs) controlla codec K6
+canonico, sei maschere e relazione completa prima della compressione E-lineare;
+una key compressa zero rifiuta. Vettori indipendenti e alterazioni di ogni
+limb verificano il rifiuto prima del campionamento alpha. Il motore MR19
+esistente ora ammette internamente conteggio e domini separati: il controllo
+reale a 384 OT restituisce il seed scelto per tutte le coordinate, con
+127.488 B di payload e 27 B di framing. Le vecchie suite mantengono i domini
+precedenti. Sono componenti test-only: COPE Seed6, handshake/lifetime, secondo
+seed con ruoli fisici opposti, guard e consumo MAC composto restano aperti.
+I conteggi esatti di check/compressione e i payload nominati sono nel
+[ledger PCG](../../scripts/c71_pcg_trace.py); non comprendono allocator,
+stack crittografico e temporanei del backend, né chiudono il picco.
+
+Il nuovo censimento di `evaluate_row` aggrega le operazioni scalari dirette,
+le letture LUT e le capacità effettive dei risultati nel trace del getter.
+Le chiamate RMS/RNE/affine/divide restano esplicite: il flag di completezza
+aritmetica è falso finché i loro interni non sono censiti. Sono operazioni
+a livello sorgente, non istruzioni macchina o traffico HBM; i contatori
+non trasformano il preparatore ridotto nel producer canonico. La costruzione
+S1 usa `Arc<Vec<E>>` per spostare l'header senza una copia del corpo; la
+scansione di materializzazione legge A in ordine crescente.

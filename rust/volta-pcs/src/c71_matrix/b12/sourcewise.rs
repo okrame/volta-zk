@@ -5,7 +5,7 @@ use p3_multilinear_util::{point::Point, poly::Poly};
 use p3_sumcheck_c61::strategy::ResidualSumcheckProver;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc,
+    Arc, OnceLock,
 };
 
 pub(super) type Getter = Arc<dyn Fn(usize) -> E + Send + Sync>;
@@ -27,6 +27,10 @@ pub(super) struct State {
     prefix_acc: Vec<E>,
     prefix_remaining: usize,
     sum: E,
+    retain_first: bool,
+    retained_bytes: usize,
+    pending_retention: Option<(Getter, Arc<OnceLock<Arc<Vec<E>>>>, Vec<E>, usize)>,
+    retained_reads: Arc<AtomicU64>,
     pub(super) source_reads: Arc<AtomicU64>,
 }
 
@@ -36,12 +40,19 @@ impl State {
         point: &[E],
         first_fold: usize,
         target: E,
+        retain_first: bool,
     ) -> Result<Self, String> {
         // This executable comparison is deliberately bounded. The full resource
         // ledger must price the accelerated Eq/Pow adapter before lifting it.
         if !(1..=16).contains(&point.len()) || first_fold == 0 || first_fold > point.len() {
             return Err("bounded sourcewise geometry".into());
         }
+        let source_reads = Arc::new(AtomicU64::new(0));
+        let reads = source_reads.clone();
+        let source: Getter = Arc::new(move |i| {
+            reads.fetch_add(1, Ordering::Relaxed);
+            source(i)
+        });
         let mut prefix_acc = vec![E::ZERO; 1 << first_fold];
         let suffix = point.len() - first_fold;
         for i in 0..1 << point.len() {
@@ -66,20 +77,18 @@ impl State {
             prefix_acc,
             prefix_remaining: first_fold,
             sum,
-            source_reads: Arc::new(AtomicU64::new(1 << point.len())),
+            source_reads,
+            retain_first,
+            retained_bytes: 0,
+            pending_retention: None,
+            retained_reads: Arc::new(AtomicU64::new(0)),
         })
     }
 
     pub(super) fn getter(&self) -> Getter {
-        let (source, prefix, n, reads) = (
-            self.source.clone(),
-            self.prefix.clone(),
-            self.num_variables(),
-            self.source_reads.clone(),
-        );
+        let (source, prefix, n) = (self.source.clone(), self.prefix.clone(), self.num_variables());
         Arc::new(move |i| {
             assert!(i < 1 << n);
-            reads.fetch_add(1 << prefix.len(), Ordering::Relaxed);
             (0..1 << prefix.len()).map(|j| equality(&prefix, j) * source((j << n) | i)).sum()
         })
     }
@@ -97,6 +106,23 @@ impl State {
         if self.prefix_remaining != 0 {
             return Err("power claims before first fold boundary".into());
         }
+        // Called only after the predecessor's opening/release in WHIR.
+        // The already-committed S1 oracle shares this immutable-value slot.
+        if let Some((source, slot, prefix, n)) = self.pending_retention.take() {
+            // Read original A in address order, evaluating each window once.
+            // This is the same j-ordered sum for every S1 cell as getter().
+            let mut values = vec![E::ZERO; 1 << n];
+            for j in 0..1 << prefix.len() {
+                let weight = equality(&prefix, j);
+                for (i, value) in values.iter_mut().enumerate() {
+                    *value += weight * source((j << n) | i);
+                }
+            }
+            // Move the Vec header; do not copy a full temporary into Arc<[E]>.
+            let values = Arc::new(values);
+            self.retained_bytes = values.capacity() * std::mem::size_of::<E>();
+            slot.set(values).map_err(|_| "S1 retained twice")?;
+        }
         let get = self.getter();
         for i in 0..1 << self.num_variables() {
             let delta: E =
@@ -108,7 +134,8 @@ impl State {
     }
 
     pub(super) fn named_bytes(&self) -> usize {
-        24 * (self.prefix.capacity() + self.eq_point.capacity() + self.prefix_acc.capacity())
+        self.retained_bytes
+            + 24 * (self.prefix.capacity() + self.eq_point.capacity() + self.prefix_acc.capacity())
             + 48 * self.powers.capacity()
     }
 }
@@ -191,6 +218,30 @@ impl ResidualSumcheckProver<Goldilocks, E> for State {
             }
         }
         self.prefix.push(r);
+        if self.retain_first && self.prefix_remaining == 0 {
+            // Bind S1 now, but allocate only after the original A opening.
+            // The frozen getter is shared with the S1 root, so subsequent
+            // queries see identical values from the one retained allocation.
+            let get = self.getter();
+            let n = self.num_variables();
+            let slot = Arc::new(OnceLock::<Arc<Vec<E>>>::new());
+            let shared = slot.clone();
+            let fallback = get.clone();
+            let reads = self.retained_reads.clone();
+            let original_source = self.source.clone();
+            let original_prefix = self.prefix.clone();
+            self.source = Arc::new(move |i| match shared.get() {
+                Some(values) => {
+                    reads.fetch_add(1, Ordering::Relaxed);
+                    values[i]
+                }
+                None => fallback(i),
+            });
+            self.pending_retention = Some((original_source, slot, original_prefix, n));
+            self.dimension = n;
+            self.prefix.clear();
+            self.retain_first = false;
+        }
         Ok(())
     }
     fn scale_weights_and_claim(&mut self, scale: E) -> Result<(), String> {
@@ -215,7 +266,7 @@ mod tests {
     };
     #[test]
     fn c71_b12_sourcewise_adaptive_rounds_match_dense_and_forbid_fallbacks() {
-        for (dimension, first) in [(10, 1), (12, 7)] {
+        for (dimension, first, retain) in [(10, 1, false), (12, 7, false), (12, 7, true)] {
             let source: Getter =
                 Arc::new(|i| E::from(Goldilocks::new((i * i + 17 * i + 23) as u64)));
             let point: Vec<_> = (0..dimension)
@@ -226,7 +277,7 @@ mod tests {
             let values: Vec<_> = (0..1 << dimension).map(|i| source(i)).collect();
             let weights: Vec<_> = (0..1 << dimension).map(|i| equality(&point, i)).collect();
             let target = values.iter().zip(&weights).map(|(&x, &y)| x * y).sum();
-            let mut state = State::new(source, &point, first, target).unwrap();
+            let mut state = State::new(source, &point, first, target, retain).unwrap();
             let mut dense: SumcheckProver<Goldilocks, E> = SumcheckProver::new(
                 ProductPolynomial::new_unpacked(
                     VariableOrder::Prefix,
@@ -240,6 +291,10 @@ mod tests {
             assert!(state.accumulate_claim(&[], E::ZERO).is_err());
             for round in 0..dimension {
                 if round == first {
+                    let frozen = state.getter();
+                    let before: Vec<_> =
+                        (0..1 << state.num_variables()).map(|i| frozen(i)).collect();
+                    assert_eq!(state.retained_bytes, 0);
                     let terms = [
                         (E::from(Goldilocks::new(19)), E::from(Goldilocks::new(5))),
                         (
@@ -248,6 +303,14 @@ mod tests {
                         ),
                     ];
                     state.add_powers(&terms).unwrap();
+                    assert_eq!(
+                        before,
+                        (0..1 << state.num_variables()).map(|i| frozen(i)).collect::<Vec<_>>()
+                    );
+                    assert_eq!(
+                        state.retained_bytes,
+                        if retain { 24 << (dimension - first) } else { 0 }
+                    );
                     let delta: Vec<_> = (0..1 << state.num_variables())
                         .map(|i| terms.iter().map(|&(p, c)| c * p.exp_u64(i as u64)).sum())
                         .collect();

@@ -82,3 +82,17 @@ def test_public_eagen_small_domain_fails_closed_when_trial_cap_exhausts():
         except RuntimeError:
             failures += 1
     assert failures > 0
+
+
+def test_seed6_boundary_matches_reduced_native_payload_and_work():
+    bounded = trace.seed6_boundary(3)
+    assert [bounded[k] for k in ('prover_K6_products', 'verifier_K6_products',
+        'relation_K6_products', 'compression_Fp3_products_both_roles')] == [9, 9, 1, 14]
+    assert [bounded[k] for k in ('prover_borrowed_input_bytes',
+        'verifier_borrowed_input_bytes', 'prover_compressed_output_bytes',
+        'verifier_compressed_output_bytes')] == [648, 576, 72, 96]
+    setup = trace.report()['setup_once_before_all_responses']['native_seed6_check_and_compression']
+    assert setup['main']['rows'] == 15_528
+    assert setup['roleswap']['rows'] == 2_025
+    assert not setup['main']['physical_peak_credit']
+    assert not setup['roleswap']['OT_guard_roleswap_composition_credit']

@@ -33,6 +33,17 @@ const OTS: usize = 576;
 const POINT_BYTES: usize = 67;
 const MAX_ROWS: usize = 27_511;
 const MAGIC: &[u8; 8] = b"C71B9v01";
+#[derive(Clone, Copy)]
+pub(super) struct Mr19Profile {
+    pub(super) ot_count: usize,
+    pub(super) group_receiver_domain: &'static [u8],
+    pub(super) seed_sender_domain: &'static [u8],
+}
+pub(super) const LEGACY_MR19: Mr19Profile = Mr19Profile {
+    ot_count: OTS,
+    group_receiver_domain: b"C71B9/group/receiver/",
+    seed_sender_domain: b"C71B9/seed/sender/",
+};
 /// One initial B12 capacity. The nine check masks are never returned as data.
 #[cfg(feature = "c71-b11")]
 pub const MAX_FIXED_RUN_ROWS: usize = (1 << 24) - 9;
@@ -266,9 +277,16 @@ fn shake(domain: &[u8], context: &[u8], i: usize, j: u8, point: &Point) -> Shake
     h.update(&encode(point));
     h
 }
-fn group_hash(context: &[u8], i: usize, j: u8, p: &Point, work: &mut Work) -> Result<Point> {
+fn group_hash_for(
+    domain: &[u8],
+    context: &[u8],
+    i: usize,
+    j: u8,
+    p: &Point,
+    work: &mut Work,
+) -> Result<Point> {
     work.group_hash += 1;
-    let base = shake(b"C71B9/group/receiver/", context, i, j, p);
+    let base = shake(domain, context, i, j, p);
     for trial in 0u16..512 {
         work.group_candidates += 1;
         let mut h = base.clone();
@@ -296,14 +314,26 @@ fn group_hash(context: &[u8], i: usize, j: u8, p: &Point, work: &mut Work) -> Re
     }
     Err(invalid("group sampling exhausted"))
 }
-fn kdf(context: &[u8], i: usize, j: u8, p: &Point, work: &mut Work) -> Zeroizing<[u8; 32]> {
+#[cfg(test)]
+fn group_hash(context: &[u8], i: usize, j: u8, p: &Point, work: &mut Work) -> Result<Point> {
+    group_hash_for(LEGACY_MR19.group_receiver_domain, context, i, j, p, work)
+}
+fn kdf_for(
+    domain: &[u8],
+    context: &[u8],
+    i: usize,
+    j: u8,
+    p: &Point,
+    work: &mut Work,
+) -> Zeroizing<[u8; 32]> {
     work.kdf += 1;
     let mut out = Zeroizing::new([0u8; 32]);
-    XofReader::read(
-        &mut shake(b"C71B9/seed/sender/", context, i, j, p).finalize_xof(),
-        &mut out[..],
-    );
+    XofReader::read(&mut shake(domain, context, i, j, p).finalize_xof(), &mut out[..]);
     out
+}
+#[cfg(test)]
+fn kdf(context: &[u8], i: usize, j: u8, p: &Point, work: &mut Work) -> Zeroizing<[u8; 32]> {
+    kdf_for(LEGACY_MR19.seed_sender_domain, context, i, j, p, work)
 }
 fn fixed(s: &Scalar, w: &mut Work) -> Point {
     w.fixed_scalar_mul += 1;
@@ -504,33 +534,128 @@ fn aes_prf(
     )
 }
 
-fn ot_sender(
+pub(super) fn mr19_sender(
     channel: &mut (impl Read + Write),
     context: &[u8],
+    profile: Mr19Profile,
     rng: &mut (impl RngCore + CryptoRng),
     audit: &mut Audit,
 ) -> Result<Zeroizing<Vec<[[u8; 32]; 2]>>> {
-    let receiver = recv(channel, 3, OTS * 2 * POINT_BYTES, audit)?;
+    let point_bytes = profile
+        .ot_count
+        .checked_mul(2 * POINT_BYTES)
+        .ok_or_else(|| invalid("MR19 profile overflow"))?;
+    let seed_bytes =
+        profile.ot_count.checked_mul(64).ok_or_else(|| invalid("MR19 profile overflow"))?;
+    if profile.ot_count == 0 || profile.ot_count > OTS {
+        return Err(invalid("MR19 profile outside supported OT envelope"));
+    }
+    let receiver = recv(channel, 3, point_bytes, audit)?;
     // Decode the entire first message before sampling any sender exponent.
     let points = receiver.chunks_exact(POINT_BYTES).map(decode).collect::<Result<Vec<_>>>()?;
-    let mut seeds = Zeroizing::new(vec![[[0u8; 32]; 2]; OTS]);
-    let mut responses = Vec::with_capacity(OTS * 2 * POINT_BYTES);
-    let mut ciphertexts = Zeroizing::new(Vec::with_capacity(OTS * 64));
-    for i in 0..OTS {
+    let mut seeds = Zeroizing::new(vec![[[0u8; 32]; 2]; profile.ot_count]);
+    let mut responses = Vec::with_capacity(point_bytes);
+    let mut ciphertexts = Zeroizing::new(Vec::with_capacity(seed_bytes));
+    for i in 0..profile.ot_count {
         for j in 0..2 {
-            let h = group_hash(context, i, j as u8, &points[2 * i + 1 - j], &mut audit.work)?;
+            let h = group_hash_for(
+                profile.group_receiver_domain,
+                context,
+                i,
+                j as u8,
+                &points[2 * i + 1 - j],
+                &mut audit.work,
+            )?;
             audit.work.point_add += 1;
             let a_point = points[2 * i + j] + h;
             let a = scalar(rng, &mut audit.work)?;
             responses.extend(encode(&fixed(&a, &mut audit.work)));
             let z = variable(&a_point, &a, &mut audit.work);
-            let pad = kdf(context, i, j as u8, &z, &mut audit.work);
+            let pad = kdf_for(profile.seed_sender_domain, context, i, j as u8, &z, &mut audit.work);
             random_bytes(rng, &mut seeds[i][j])?;
             ciphertexts.extend(seeds[i][j].iter().zip(pad.iter()).map(|(a, b)| a ^ b));
         }
     }
     send(channel, 4, &responses, audit)?;
     send(channel, 5, &ciphertexts, audit)?;
+    Ok(seeds)
+}
+fn ot_sender(
+    channel: &mut (impl Read + Write),
+    context: &[u8],
+    rng: &mut (impl RngCore + CryptoRng),
+    audit: &mut Audit,
+) -> Result<Zeroizing<Vec<[[u8; 32]; 2]>>> {
+    mr19_sender(channel, context, LEGACY_MR19, rng, audit)
+}
+pub(super) fn mr19_receiver(
+    channel: &mut (impl Read + Write),
+    context: &[u8],
+    profile: Mr19Profile,
+    choice: impl Fn(usize) -> u8,
+    rng: &mut (impl RngCore + CryptoRng),
+    audit: &mut Audit,
+) -> Result<Zeroizing<Vec<[u8; 32]>>> {
+    let point_bytes = profile
+        .ot_count
+        .checked_mul(2 * POINT_BYTES)
+        .ok_or_else(|| invalid("MR19 profile overflow"))?;
+    let seed_bytes =
+        profile.ot_count.checked_mul(64).ok_or_else(|| invalid("MR19 profile overflow"))?;
+    if profile.ot_count == 0 || profile.ot_count > OTS {
+        return Err(invalid("MR19 profile outside supported OT envelope"));
+    }
+    let mut scalars = Zeroizing::new(Vec::with_capacity(profile.ot_count));
+    let mut choices = Zeroizing::new(Vec::with_capacity(profile.ot_count));
+    let mut request = Vec::with_capacity(point_bytes);
+    for i in 0..profile.ot_count {
+        let c = choice(i);
+        if c > 1 {
+            return Err(invalid("MR19 choice is not a bit"));
+        }
+        choices.push(c);
+        let choice = Choice::from(c);
+        let b = scalar(rng, &mut audit.work)?;
+        let t = scalar(rng, &mut audit.work)?;
+        let other = fixed(&t, &mut audit.work);
+        let h =
+            group_hash_for(profile.group_receiver_domain, context, i, c, &other, &mut audit.work)?;
+        audit.work.point_add += 1;
+        let selected = fixed(&b, &mut audit.work) - h;
+        // Balance the *other final public RO input* before exposing the message.
+        // Total rejection work now depends on both final public inputs, not c.
+        std::hint::black_box(group_hash_for(
+            profile.group_receiver_domain,
+            context,
+            i,
+            1 - c,
+            &selected,
+            &mut audit.work,
+        )?);
+        request.extend(encode(&Point::conditional_select(&selected, &other, choice)));
+        request.extend(encode(&Point::conditional_select(&other, &selected, choice)));
+        scalars.push(*b);
+    }
+    send(channel, 3, &request, audit)?;
+    let response = recv(channel, 4, point_bytes, audit)?;
+    // A malformed unselected branch must also abort, before any COPE output.
+    let points = response.chunks_exact(POINT_BYTES).map(decode).collect::<Result<Vec<_>>>()?;
+    let ciphertexts = recv(channel, 5, seed_bytes, audit)?;
+    let mut seeds = Zeroizing::new(vec![[0u8; 32]; profile.ot_count]);
+    for i in 0..profile.ot_count {
+        let mut options = Zeroizing::new([[0u8; 32]; 2]);
+        for j in 0..2 {
+            let z = variable(&points[2 * i + j], &scalars[i], &mut audit.work);
+            let pad = kdf_for(profile.seed_sender_domain, context, i, j as u8, &z, &mut audit.work);
+            for k in 0..32 {
+                options[j][k] = ciphertexts[(2 * i + j) * 32 + k] ^ pad[k];
+            }
+        }
+        for k in 0..32 {
+            seeds[i][k] =
+                u8::conditional_select(&options[0][k], &options[1][k], Choice::from(choices[i]));
+        }
+    }
     Ok(seeds)
 }
 fn ot_receiver(
@@ -540,45 +665,7 @@ fn ot_receiver(
     rng: &mut (impl RngCore + CryptoRng),
     audit: &mut Audit,
 ) -> Result<Zeroizing<Vec<[u8; 32]>>> {
-    let mut scalars = Zeroizing::new(Vec::with_capacity(OTS));
-    let mut request = Vec::with_capacity(OTS * 2 * POINT_BYTES);
-    for i in 0..OTS {
-        let c = bit(delta, i);
-        let choice = Choice::from(c);
-        let b = scalar(rng, &mut audit.work)?;
-        let t = scalar(rng, &mut audit.work)?;
-        let other = fixed(&t, &mut audit.work);
-        let h = group_hash(context, i, c, &other, &mut audit.work)?;
-        audit.work.point_add += 1;
-        let selected = fixed(&b, &mut audit.work) - h;
-        // Balance the *other final public RO input* before exposing the message.
-        // Total rejection work now depends on both final public inputs, not c.
-        std::hint::black_box(group_hash(context, i, 1 - c, &selected, &mut audit.work)?);
-        request.extend(encode(&Point::conditional_select(&selected, &other, choice)));
-        request.extend(encode(&Point::conditional_select(&other, &selected, choice)));
-        scalars.push(*b);
-    }
-    send(channel, 3, &request, audit)?;
-    let response = recv(channel, 4, OTS * 2 * POINT_BYTES, audit)?;
-    // A malformed unselected branch must also abort, before any COPE output.
-    let points = response.chunks_exact(POINT_BYTES).map(decode).collect::<Result<Vec<_>>>()?;
-    let ciphertexts = recv(channel, 5, OTS * 64, audit)?;
-    let mut seeds = Zeroizing::new(vec![[0u8; 32]; OTS]);
-    for i in 0..OTS {
-        let mut options = Zeroizing::new([[0u8; 32]; 2]);
-        for j in 0..2 {
-            let z = variable(&points[2 * i + j], &scalars[i], &mut audit.work);
-            let pad = kdf(context, i, j as u8, &z, &mut audit.work);
-            for k in 0..32 {
-                options[j][k] = ciphertexts[(2 * i + j) * 32 + k] ^ pad[k];
-            }
-        }
-        for k in 0..32 {
-            seeds[i][k] =
-                u8::conditional_select(&options[0][k], &options[1][k], Choice::from(bit(delta, i)));
-        }
-    }
-    Ok(seeds)
+    mr19_receiver(channel, context, LEGACY_MR19, |i| bit(delta, i), rng, audit)
 }
 
 /// Real OT/PRF prover role. Run once on a dedicated authenticated channel.

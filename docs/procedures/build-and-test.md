@@ -557,3 +557,18 @@ Per il codec EA-LPN usare la build mirata
 identità dei ruoli a profondità 1–7. Non esegue OT o bootstrap AES completo.
 Ogni invocazione resta seriale con `RAYON_NUM_THREADS=1`, `timeout 60s` e
 `ulimit -v 2097152`; non avviare i due binari in parallelo.
+
+Per il collegamento getter/PCS eseguire separatamente
+`c71_b12_ordered_sourcewise_o0`, `c71_b12_ordered_sourcewise_o2` e
+`c71_b12_ordered_sourcewise_o4`, con gli stessi limiti. Il riferimento
+indipendente materializza solo il dominio piccolo; il callback del prover
+conserva una finestra, cut e KV. Per Seed6 usare `c71_seed6::tests`, più
+`c71_b9_` dopo modifiche al motore MR19 condiviso. Il test a 384 OT richiede
+una socketpair Unix anonima fra due ruoli, senza connessioni esterne;
+se il sandbox la blocca, usare l'eccezione locale circoscritta. Non esegue
+il bootstrap canonico o la seconda installazione con ruoli opposti.
+
+Il filtro `c71_row_work_counts` controlla il censimento dei passi ridotti;
+conservare `c71_b12_native_prepare` e `c71_b12_native_composed` dopo modifiche
+al valutatore condiviso. Il censimento distingue i helper ancora opachi e
+non fornisce conteggi completi del modello canonico o del producer GKR.

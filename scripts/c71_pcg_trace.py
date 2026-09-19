@@ -82,6 +82,33 @@ def public_EA_row(seed, row, domain=DOMAIN, weight=WEIGHT, max_trials=8):
                    'logical_row_bytes': 16*weight}
 
 
+def seed6_boundary(rows):
+    """Exact arithmetic/named payload of the reduced Rust check, not OT/peak."""
+    if rows <= 0:
+        raise ValueError('nonempty seed required')
+    return {
+        'rows': rows, 'masks': 6,
+        'prover_K6_products': rows+6, 'prover_K6_base_products': rows+6,
+        'prover_K6_adds': 2*(rows+6),
+        'verifier_K6_products': rows+6, 'verifier_K6_adds': rows+6,
+        'relation_K6_products': 1, 'relation_K6_adds': 1,
+        'compression_Fp3_products_both_roles': 4*rows+2,
+        'compression_Fp3_adds_both_roles': 2*rows+1,
+        'prover_borrowed_input_bytes': 104*rows+336,
+        'verifier_borrowed_input_bytes': 96*rows+288,
+        'prover_check_payload_bytes': 96, 'verifier_check_payload_bytes': 48,
+        'prover_compressed_output_bytes': 24*rows,
+        'verifier_compressed_output_bytes': 24*(rows+1),
+        'input_scan_bytes_both_roles': 200*rows+624,
+        'compression_input_read_bytes_both_roles': 96*rows+48,
+        'compression_output_write_bytes_both_roles': 48*rows+24,
+        'HBM_traffic_credit': False,
+        'physical_peak_credit': False,
+        'OT_guard_roleswap_composition_credit': False,
+        'source': 'rust/volta-pcg/src/c71_seed6.rs',
+    }
+
+
 def trie_nodes(rows):
     """Distribution-free union-trie upper for public EA point terms."""
     terms = WEIGHT * rows
@@ -181,6 +208,11 @@ def report():
             'Fp6_to_Fp3_linear_Fp3_additions_per_role': compressed_elements,
             'compression_excludes_sampler_and_limb_reduction_costs': True,
             'field_operations_complete': None,
+            'native_seed6_check_and_compression': {
+                'main': seed6_boundary(15_528),
+                'roleswap': seed6_boundary(3*TREES),
+                'separate_seed_Delta_each': True,
+            },
             'persistent_selected_cGGM_state': {
                 'sender_canonical_bytes': sender_persistent,
                 'receiver_canonical_serialized_bytes': receiver_serialized,
@@ -254,6 +286,20 @@ def report():
             'implemented': 'B11/Fp9 seed bootstrap and AES128-MMO binary GGM diagnostics',
             'selected_plan': 'domain-separated Fp3 SHAKE/ROM cGGM with additive children',
             'selected_cGGM_native_implemented': False,
+            'bounded_real_MR19_seed6': {
+                'OT_count': 384,
+                'group_domain': 'C71S6/MR19/group/receiver/v1/',
+                'KDF_domain': 'C71S6/MR19/seed/sender/v1/',
+                'wire_payload_bytes': 127_488,
+                'wire_framing_bytes': 27,
+                'fixed_scalar_multiplications_each_role': 768,
+                'variable_scalar_multiplications_each_role': 768,
+                'group_hash_evaluations_each_role': 768,
+                'KDF_evaluations_each_role': 768,
+                'receiver_point_additions': 384,
+                'sender_point_additions': 768,
+                'COPE_guard_roleswap_lifetime_credit': False,
+            },
             'bounded_CPU_codec_and_Acc_PuncAcc_refinement': {
                 'source': 'rust/volta-pcg/src/c71_ea_lpn.rs',
                 'H_and_EAGen_match_python_vectors': True,

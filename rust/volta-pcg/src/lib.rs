@@ -24,6 +24,9 @@ pub mod c71_lifetime;
 #[cfg(feature = "c71-b11")]
 pub mod c71_ea_lpn;
 
+#[cfg(all(test, feature = "c71-b11"))]
+mod c71_seed6;
+
 pub use fase_d::{
     BatchLiftReport, CanonicalBatchLift, FaseDCapacityReport, FaseDError, FaseDParams,
     FaseDStagePlan, ProverBufferAccount, RefillLedger, RegularNoiseTuple, Stage3Batch,

@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Default, Debug)]
 struct Work {
     producer_rows: Vec<usize>,
+    numerical: prepare::RowWork,
     original_scalar_reads: usize,
     old_kv_reads: usize,
     weight_scalar_reads: usize,
@@ -125,8 +126,16 @@ fn replay(
                 weight_reads.set(weight_reads.get() + 1);
                 w.weight(p, id, r, c)
             };
-            let result =
-                prepare::evaluate_row(p, weight, step, row, &mut emitted_tokens, get, tail)?;
+            let result = prepare::evaluate_row_counted(
+                p,
+                weight,
+                step,
+                row,
+                &mut emitted_tokens,
+                get,
+                tail,
+                &mut work.numerical,
+            )?;
             if matches!(step, Step::Argmax) && emitted_tokens != tokens {
                 return Err("ordered token differs from original inference".into());
             }
@@ -344,5 +353,96 @@ mod tests {
             dense.push(original);
             frozen.push(compact);
         }
+    }
+    // Each invocation is independently bounded by the local 60s/2GiB runner.
+    fn compare_pcs(target: usize) {
+        use std::sync::{Arc, Mutex};
+        let p = Profile::small(0).unwrap();
+        let weights = p
+            .plan
+            .sources
+            .iter()
+            .flat_map(|s| {
+                (0..s.rows)
+                    .flat_map(move |r| (0..s.cols).map(move |c| i16::from(s.rows == 1 || r == c)))
+            })
+            .collect();
+        let w = prepare::Installed::new(&p, weights).unwrap();
+        let (mut originals, mut accepted) = (Vec::new(), Vec::new());
+        for slot in 0..=target {
+            let p = Profile::small(slot).unwrap();
+            let original =
+                prepare::Snapshot::prepare(&p, &w, &originals, (slot % 2) as u32).unwrap();
+            let (current, cuts) = Frozen::prepare(
+                &p,
+                &w,
+                &accepted,
+                original.tokens,
+                original.source.root.roots()[0],
+            )
+            .unwrap();
+            if slot == target {
+                // Only the independent native reference receives dense original A.
+                let expected = (0..1 << 12)
+                    .map(|i| {
+                        Goldilocks::new(original.source.weights.get(i).copied().unwrap_or(0) as u64)
+                    })
+                    .collect();
+                let stats = Arc::new(Mutex::new((
+                    0usize,
+                    0usize,
+                    0usize,
+                    0usize,
+                    0usize,
+                    prepare::RowWork::default(),
+                )));
+                let count = stats.clone();
+                // A single 128-byte original window. Never retains Snapshot or full A.
+                let cache = Mutex::new((usize::MAX, [0u8; 128]));
+                let source = Arc::new(move |i: usize| {
+                    let first = i / 128 * 128;
+                    let mut cache = cache.lock().unwrap();
+                    if cache.0 != first {
+                        let work =
+                            current.window(&cuts, &p, &w, &accepted, first, &mut cache.1).unwrap();
+                        cache.0 = first;
+                        let mut count = count.lock().unwrap();
+                        count.0 += 1;
+                        count.1 += work.producer_rows.iter().sum::<usize>();
+                        count.2 += work.weight_scalar_reads;
+                        count.3 += work.original_scalar_reads;
+                        count.4 += work.old_kv_reads;
+                        count.5.add_assign(work.numerical);
+                    }
+                    E::from(Goldilocks::new(u64::from(cache.1[i - first])))
+                });
+                crate::c71_matrix::b12::replay::compare_source(
+                    12,
+                    source,
+                    expected,
+                    Some(&original.source),
+                );
+                eprintln!(
+                    "ordered_sourcewise O={} windows_producerrows_W_A_KV_numerical={:?}",
+                    target * TOKENS,
+                    *stats.lock().unwrap()
+                );
+                return;
+            }
+            originals.push(original);
+            accepted.push(current);
+        }
+    }
+    #[test]
+    fn c71_b12_ordered_sourcewise_o0() {
+        compare_pcs(0)
+    }
+    #[test]
+    fn c71_b12_ordered_sourcewise_o2() {
+        compare_pcs(1)
+    }
+    #[test]
+    fn c71_b12_ordered_sourcewise_o4() {
+        compare_pcs(2)
     }
 }

@@ -940,8 +940,10 @@ fisico sono esplicitamente incompleti, perciò il gate di spesa resta NO-GO.
 
 Il [backend sourcewise](../../rust/volta-pcs/src/c71_matrix/b12/replay.rs)
 confronta una catena D10/512 query completa con il prover e il verifier
-nativi: root, round, aperture salted, multiproof, codec da **2.277.848 B**,
-FS, cursore dei coin, target affine e chiusura base-case coincidono.
+nativi: root, round, aperture salted, multiproof e codec coincidono.
+Il primo record usa HidingMmcs semplice (**2.277.848 B**); il controllo
+aggiornato include il binding C7.1 di `ObservedMmcs` (**2.289.176 B**).
+Anche FS, cursore dei coin, target affine e chiusura base-case coincidono.
 I fallback evals/weights grandi sono rifiutati. Il test dei round copre
 anche la contrazione a sette sfide; il replay dell'albero copre fork,
 coin consecutive e query duplicate. L'ultimo coset riduce i digest in-place,
@@ -960,8 +962,35 @@ a transcript, NoPeek, endpoint o trust model.
 
 Il [record immutabile del 2026-09-19](../../benchmarks/results/c71-sourcewise-2026-09-19-5afc54ceaac5.json)
 usa SHA pulita `5afc54ceaac5`, `git_dirty:false`: **16 test Rust e 19 Python**
-passati. Conserva build, hash dei binari, comandi/limiti e stdout, incluso
+passati. Il confronto della catena in quel record precede il binding
+`ObservedMmcs`: non è evidenza di tale binding C7.1. Conserva build, hash
+dei binari, comandi/limiti e stdout, incluso
 il censimento per fase. Il picco durante l'apertura D10 comprende anche la
 prova di riferimento trattenuta; la fase codec comprende la normalizzazione
 JSON del solo test. Questi numeri non sono il picco GPU, né tempi completi
 C7.1. I gate di costruzione canonica e spesa restano aperti.
+
+
+## Getter originale, MAC nativo e Seed6 ridotti
+
+Il test aggiornato usa `ObservedMmcs` e la fase FS C7.1, una maschera di
+chiusura non nulla e il vero `verify_pcs`. Il MAC ideale dell'endpoint è
+fissato prima delle sfide; una key alterata rifiuta. Il codec D10 misura
+2.289.176 B per questo fixture. Il framing lineare esterno rimane un
+fixture: non è un nuovo certificato Gemma completo.
+
+Nei casi numerici O=0/2/4 il getter apre la root A del preparatore originale,
+senza catturare Snapshot o A completa. Condivide S1 dopo il rilascio del
+predecessore; la scansione di materializzazione conserva l'ordine originale
+e non copia il corpo in una seconda allocazione. I contatori includono
+finestre, righe producer, letture W/A/KV e operazioni sorgente dirette;
+RMS/RNE/affine/divide restano chiamate da dettagliare. Il confronto dei
+coefficienti include il getter congelato prima/dopo la conservazione.
+
+Seed6 controlla codec K6, sei maschere, check prima di alpha e compressione
+in Fp3. Il test reale a 384 OT riusa MR19 con domini separati: 127.515 B
+comprensivi di framing e 768 moltiplicazioni scalari fisse/variabili per
+ruolo. Il censimento conserva i tentativi effettivi dei sampler. I fixture
+con valori/tag noti non sostituiscono COPE, guard, secondo seed con ruoli
+opposti o il consumo MAC composto. Nessun credito H100, picco canonico o
+composizione crittografica aggiuntiva.

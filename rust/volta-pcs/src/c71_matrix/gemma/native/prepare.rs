@@ -57,6 +57,133 @@ pub(super) struct Snapshot {
     pub(super) model_root: [u8; 32],
 }
 
+/// Source-level scalar operations executed directly by `evaluate_row` on a
+/// successful row. These are not machine instructions: loop/index arithmetic,
+/// iterator control, allocation, and helper internals are excluded. Calls into
+/// RMS/RNE/affine/divide helpers stay explicit instead of becoming zero work.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct RowWork {
+    pub integer_additions: usize,
+    pub integer_subtractions: usize,
+    pub integer_multiplications: usize,
+    pub integer_comparisons: usize,
+    /// Direct evaluator arithmetic is integer-only; GKR/helper field work is excluded.
+    pub fp_additions: usize,
+    pub fp_multiplications: usize,
+    pub table_reads: usize,
+    pub divide_calls: usize,
+    pub opaque_rms_calls: usize,
+    pub opaque_rne_calls: usize,
+    pub opaque_affine_calls: usize,
+    pub result_logical_bytes: usize,
+    pub result_capacity_bytes: usize,
+    pub caller_transient_logical_bytes_upper: usize,
+}
+
+impl RowWork {
+    pub fn add_assign(&mut self, rhs: Self) {
+        self.integer_additions += rhs.integer_additions;
+        self.integer_subtractions += rhs.integer_subtractions;
+        self.integer_multiplications += rhs.integer_multiplications;
+        self.integer_comparisons += rhs.integer_comparisons;
+        self.fp_additions += rhs.fp_additions;
+        self.fp_multiplications += rhs.fp_multiplications;
+        self.table_reads += rhs.table_reads;
+        self.divide_calls += rhs.divide_calls;
+        self.opaque_rms_calls += rhs.opaque_rms_calls;
+        self.opaque_rne_calls += rhs.opaque_rne_calls;
+        self.opaque_affine_calls += rhs.opaque_affine_calls;
+        self.result_logical_bytes += rhs.result_logical_bytes;
+        self.result_capacity_bytes += rhs.result_capacity_bytes;
+        self.caller_transient_logical_bytes_upper =
+            self.caller_transient_logical_bytes_upper.max(rhs.caller_transient_logical_bytes_upper);
+    }
+
+    pub fn arithmetic_complete(self) -> bool {
+        self.opaque_rms_calls == 0
+            && self.opaque_rne_calls == 0
+            && self.opaque_affine_calls == 0
+            && self.divide_calls == 0
+    }
+}
+
+fn account_row_work(p: &Profile, step: &Step, row: usize, result: &[(usize, Vec<i64>)]) -> RowWork {
+    let sources = &p.bytes().scalar.layout.sources;
+    let mut work = RowWork {
+        result_logical_bytes: result.iter().map(|(_, values)| values.len() * 8).sum(),
+        result_capacity_bytes: result.iter().map(|(_, values)| values.capacity() * 8).sum(),
+        ..RowWork::default()
+    };
+    match step {
+        Step::Embedding => {}
+        Step::Matrix(i) => {
+            let columns = result[0].1.len();
+            let inner = sources[p.bytes().scalar.input_sources[i - 1]].cols;
+            work.integer_multiplications = columns * inner;
+            work.integer_additions = columns * inner;
+        }
+        Step::Norm(i) => {
+            let norm = &p.rms.norms[*i];
+            work.opaque_rms_calls = 1;
+            work.caller_transient_logical_bytes_upper =
+                8 * norm.columns * norm.heads + norm.cohort.map_or(0, |_| 2 * norm.columns);
+        }
+        Step::Rne(pair) => {
+            work.opaque_rne_calls = 1;
+            work.caller_transient_logical_bytes_upper = 8 * sources[pair.raw].cols;
+        }
+        Step::Affine(i) => {
+            let relation = &p.affine[*i];
+            work.opaque_affine_calls = 1;
+            work.caller_transient_logical_bytes_upper =
+                8 * relation.inputs.iter().map(|(id, _)| sources[*id].cols).sum::<usize>();
+        }
+        Step::Gelu | Step::Softcap => {
+            let columns = result.first().map_or(0, |(_, values)| values.len());
+            work.integer_subtractions = columns;
+            work.integer_comparisons = 2 * columns;
+            work.table_reads = columns;
+        }
+        Step::Gate => work.integer_multiplications = result[0].1.len(),
+        Step::Rope(_) => {
+            work.integer_multiplications = 4;
+            work.integer_additions = 1;
+            work.integer_subtractions = 1;
+        }
+        Step::Qk => {
+            let live = p.old + row + 1;
+            work.integer_multiplications = 2 * live;
+            work.integer_additions = 2 * live;
+            work.integer_comparisons = p.old + 2;
+        }
+        Step::Softmax => {
+            let width = p.old + 2;
+            let live = p.old + row + 1;
+            work.integer_additions = live;
+            work.integer_subtractions = live + width;
+            work.integer_multiplications = live;
+            // max comparisons; the two public `j < live` branches; checked
+            // signed conversion and table bounds for every exponential.
+            work.integer_comparisons = live.saturating_sub(1) + 4 * width;
+            work.table_reads = width;
+            work.divide_calls = live;
+            work.caller_transient_logical_bytes_upper = 3 * width * 8;
+        }
+        Step::Pv => {
+            let live = p.old + row + 1;
+            work.integer_multiplications = 2 * live;
+            work.integer_additions = 2 * live;
+        }
+        Step::Argmax => {
+            work.integer_subtractions = 6;
+            work.integer_comparisons = 3;
+        }
+    }
+    // The common output validation performs two signed bound comparisons.
+    work.integer_comparisons += 2 * result.iter().map(|(_, values)| values.len()).sum::<usize>();
+    work
+}
+
 /// Same integer producer used by dense preparation and bounded replay.
 /// Inputs are private values fixed before FS; no MAC/PCS/coin input exists.
 pub(super) fn evaluate_row(
@@ -67,6 +194,19 @@ pub(super) fn evaluate_row(
     tokens: &mut [u32; 2],
     get: impl Fn(usize, usize, usize) -> i64,
     tail: impl Fn(usize, usize, usize) -> i64,
+) -> Result<Vec<(usize, Vec<i64>)>, String> {
+    evaluate_row_counted(p, weight, step, row, tokens, get, tail, &mut RowWork::default())
+}
+
+pub(super) fn evaluate_row_counted(
+    p: &Profile,
+    weight: impl Fn(usize, usize, usize) -> i64,
+    step: &Step,
+    row: usize,
+    tokens: &mut [u32; 2],
+    get: impl Fn(usize, usize, usize) -> i64,
+    tail: impl Fn(usize, usize, usize) -> i64,
+    work: &mut RowWork,
 ) -> Result<Vec<(usize, Vec<i64>)>, String> {
     let stop = || "private preparation Stop".to_string();
     let sources = &p.bytes().scalar.layout.sources;
@@ -222,6 +362,7 @@ pub(super) fn evaluate_row(
             return Err(stop());
         }
     }
+    work.add_assign(account_row_work(p, step, row, &result));
     Ok(result)
 }
 
@@ -386,5 +527,58 @@ impl Snapshot {
                 Ok(caller::Compact { output, x, w: weights })
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod work_tests {
+    use super::*;
+
+    fn result_shape(p: &Profile, step: &Step) -> Vec<(usize, Vec<i64>)> {
+        p.outputs(step)
+            .into_iter()
+            .map(|id| (id, vec![0; p.bytes().scalar.layout.sources[id].cols]))
+            .collect()
+    }
+
+    #[test]
+    fn c71_row_work_counts_source_level_shapes_and_helper_gaps() {
+        let p = Profile::small(0).unwrap();
+        let matrix = p.steps.iter().find(|step| matches!(step, Step::Matrix(_))).unwrap();
+        let matrix_work = account_row_work(&p, matrix, 0, &result_shape(&p, matrix));
+        assert_eq!(matrix_work.integer_multiplications, 4);
+        assert_eq!(matrix_work.integer_additions, 4);
+        assert_eq!(matrix_work.integer_comparisons, 4);
+        assert!(matrix_work.arithmetic_complete());
+
+        let rope = p.steps.iter().find(|step| matches!(step, Step::Rope(_))).unwrap();
+        let rope_work = account_row_work(&p, rope, 0, &result_shape(&p, rope));
+        assert_eq!(rope_work.integer_multiplications, 4);
+        assert_eq!(rope_work.integer_additions, 1);
+        assert_eq!(rope_work.integer_subtractions, 1);
+
+        let softmax = p.steps.iter().find(|step| matches!(step, Step::Softmax)).unwrap();
+        let s = &p.softmax.layers[0];
+        let softmax_result = [s.maximum, s.difference, s.exponential, s.denominator, s.pi]
+            .map(|id| (id, vec![0; p.bytes().scalar.layout.sources[id].cols]))
+            .into_iter()
+            .collect::<Vec<_>>();
+        let softmax_work = account_row_work(&p, softmax, 1, &softmax_result);
+        assert_eq!(softmax_work.integer_multiplications, 2); // 16384 * e for two live cells.
+        assert_eq!(softmax_work.integer_additions, 2);
+        assert_eq!(softmax_work.integer_subtractions, 4);
+        assert_eq!(softmax_work.integer_comparisons, 25);
+        assert_eq!(softmax_work.table_reads, 2);
+        assert_eq!(softmax_work.divide_calls, 2);
+        assert!(!softmax_work.arithmetic_complete());
+
+        let rne = p.steps.iter().find(|step| matches!(step, Step::Rne(_))).unwrap();
+        let Step::Rne(pair) = rne else { unreachable!() };
+        let rne_result =
+            vec![(pair.output, vec![0; p.bytes().scalar.layout.sources[pair.output].cols])];
+        let rne_work = account_row_work(&p, rne, 0, &rne_result);
+        assert_eq!(rne_work.opaque_rne_calls, 1);
+        assert!(!rne_work.arithmetic_complete());
+        assert_eq!(matrix_work.fp_additions + matrix_work.fp_multiplications, 0);
     }
 }

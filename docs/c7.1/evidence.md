@@ -1274,3 +1274,29 @@ separati: il lower della coda non viene presentato come tempo EXP30.
 Restano producer packed, parità FS/MAC nativa, workspace e tempo congiunti.
 Le fonti locali sono identificate da hash; nessun file storico è modificato,
 nessun credito hardware o nuova assunzione crittografica è attribuito.
+
+### Native EXP30 late gate weights
+
+Il [record su SHA pulita `9183368ec904`](../../benchmarks/results/c71-exp30-late-weights-2026-09-19-9183368ec904.json)
+conserva **4 test Rust, 8 Python e 3 controlli arena Python/C++**.
+La prova del piccolo circuito a 32 celle confronta l'intero wire GKR,
+FS, punto, consumo MAC ed endpoint originale dopo quattro round a pattern
+con i prover sourcewise e denso. I casi alterati sono respinti e la
+continuazione range/PCS passa. È un test del nuovo algoritmo con wiring
+piccolo, non una misura del circuito EXP30 canonico a 32 celle.
+Passano inoltre EXP30 numerico ridotto, la proof integrata senza A/Snapshot
+densi e la composizione nativa a tre risposte. Il ledger include separati
+contatori del prefisso, senza duplicare il lavoro numerico dei getter.
+
+I conteggi canonici della [fattorizzazione](preflight.md#pesi-di-gate-applicati-dopo-listogramma)
+usano i gate del record nativo precedente. A O=300 i prodotti dei pesi
+passano da 642.858.403.200 a 428.928.192, ma restano 3.154.116.420 prodotti
+Eq posizione, valutazione dei cubici, 3.922.447.766.400 addizioni ai bin
+e 9.098.344.541.952 gate Boolean packed. Il record conserva questi costi,
+frame logici e liveness dei 441.372.672 B di payload. Il piano mantiene
+il margine richiesto, senza credito al picco fisico completo o al tempo.
+
+Restano immutati transcript, endpoint e modello MAC ideale dei test.
+Nessuna GPU o spesa. Sono preservati il primo errore di build (`SubAssign`
+non disponibile) e i due errori del fixture corretto: padding impegnato
+non nullo e fault che violava il circuito prima di poter isolare la PCS.

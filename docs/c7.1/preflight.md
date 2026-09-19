@@ -1840,6 +1840,8 @@ o spesa, e nessuna terza alternativa aperta.
 
 ### Pesi di gate applicati dopo l'istogramma
 
+Validazione: [record nativo su SHA pulita](evidence.md#native-exp30-late-gate-weights).
+
 Il fattore `weight_g*Eq(k)` non deve essere formato per ogni coppia.
 Il [prover nativo](../../rust/volta-pcs/src/c71_matrix/rms/gkr/patterns.rs)
 mantiene temporaneamente l'asse dei gate:

@@ -45,6 +45,15 @@ Per il CUDA usare il controllo host preesistente, che ora verifica anche
 main-cell e fold/coeff MSB fusi, e compilazione statica `sm_90`; nessuna
 esecuzione GPU è autorizzata da questa procedura.
 
+Per i pesi EXP30 posticipati aggiungere il filtro nativo
+`c71_b12_pattern_prefix_four_rounds_original_wire_and_mac` e
+`c71_b12_softmax_original_scores`; il primo usa wiring piccolo a 32 celle.
+Il trace integrato distingue `pattern_prefix` dai round scalari rimanenti.
+I conteggi e la liveness sono controllati da
+`tests/test_c71_exp30_alternatives.py` e dal filtro
+`native_offsets_margin_and_fenced_release` di `tests/test_c71_arena_plan.py`.
+Restano test ridotti con i limiti sopra; nessuna misura CUDA è implicita.
+
 
 Per la riserva Seed6 eseguire separatamente `c71_seed6_tail_reservation`,
 `c71_seed6_real_prefix_guard_and_exact_equality_tail` e `c71_seed6_equality`

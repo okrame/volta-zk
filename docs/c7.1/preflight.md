@@ -1580,7 +1580,9 @@ il raccordo di correttezza, non i costi del port canonico.
 
 Il ledger `reduced_joint_trace` in
 [c71_response_trace.py](../../scripts/c71_response_trace.py) partiziona le
-chiamate numeriche ai confini reali del runner. Per questa singola proof:
+chiamate numeriche ai confini reali del runner. Il
+[record su SHA pulita](evidence.md#integrated-positive-and-scalar-main-cell-no-go)
+conserva log, ledger e compilazione. Per la sua singola proof:
 
 | Fase del getter | Righe producer eseguite | Letture scalari W | Letture scalari A |
 |---|---:|---:|---:|
@@ -1588,9 +1590,11 @@ chiamate numeriche ai confini reali del runner. Per questa singola proof:
 | Commitment A iniziale | 70.016 | 78.848 | 197.376 |
 | Relazioni producer | 21.016.027 | 22.764.640 | 57.498.846 |
 | Range A | 329.879 | 371.260 | 929.880 |
-| Linear A e WHIR | 32.994.752 | 37.172.064 | 93.028.080 |
+| Linear A e WHIR | 32.793.738 | 36.943.680 | 92.460.372 |
 
 Sono contatori CPU del riferimento, non accessi HBM e non una stima H100.
+Il commitment iniziale usa casualità fresca: proof e query WHIR, e quindi
+i conteggi dipendenti dalle query, possono variare fra run.
 Le callback di GKR/lookup/PCS sono già pagate qui; i relativi contatori
 aritmetici coprono soltanto il consumer. I picchi componenti non vengono
 sommati né presentati come picco fisico completo. I 512 replay canonici

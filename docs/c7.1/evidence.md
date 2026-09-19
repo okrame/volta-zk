@@ -1221,3 +1221,35 @@ lookup restano riservati attraverso tutte le catene del piano.
 Il test ha respinto la prima ipotesi ABI di CompactBlock=40 B; la dimensione
 osservata di 32 B è stata usata prima del run pulito. Restano esclusi
 allocator, stack del compilatore, caller e picco fisico/tempo completi.
+
+### Integrated positive and scalar main-cell NO-GO
+
+Il [record su SHA pulita `522476437dee`](../../benchmarks/results/c71-integrated-critical-path-2026-09-19-522476437dee.json)
+conserva **5 test Rust e 14 Python**, controlli numerici host, compilazione
+CUDA statica `sm_90` e certificato dei cammini del kernel main-cell fuso.
+La proof positiva O=0 ridotta collega getter ordinato, lookup streaming,
+GKR sourcewise, range e WHIR attraverso runner/verifier originali: consuma
+88.049 righe MAC ideali e produce 7.747.977 byte senza materializzare
+Snapshot o A completi sul percorso selezionato. I confronti separati
+coprono byte numerici, wire, punti, endpoint MAC e FS; passa anche la
+regressione nativa densa. Il ledger attribuisce la ricostruzione una sola
+volta e separa l'aritmetica dei consumer. Non chiude PCG reale composto,
+storia O=150/300, traffico HBM o picco fisico canonico.
+
+Il kernel `c71_gkr_main_cell_fused` conserva 130 registri, 24.576 B shared,
+zero stack e zero spill nella compilazione censita. Il record contiene
+SASS della funzione, hash, log e la modifica locale dichiarata delle
+quattro dichiarazioni sinpi/cospi nell'header del toolkit. Nessuna GPU
+è stata eseguita. Il checker pinna il binario e verifica un minimo di
+24 risultati INT-multiply per prodotto Fp3 del mapping nominato.
+Sotto le [condizioni hardware esplicite](preflight.md#no-go-del-main-cell-scalare-fuso),
+i soli coefficienti EXP30 danno lower **13,496178 / 40,300154 / 67,103981 s**
+per O=0/150/300. Il terzo caso esclude questo backend dal totale ≤65 s
+anche omettendo tutti gli altri costi: NO-GO circoscritto, non impossibilità
+universale della variante 512 replay. Il tempo CPU ridotto non vale come
+misura H100. Restano distinti inferenza, prova e totale end-to-end.
+
+Sono preservati come fallimenti preliminari, esterni al run di record,
+il padding A oltre il dominio del layout e il validatore host con chiavi
+obsolete, entrambi corretti prima del run pulito. Nessun credito hardware,
+nuovo censimento ABI, pod o spesa.

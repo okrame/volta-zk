@@ -125,14 +125,16 @@ nella capacità a tre risposte, non ogni backend matematicamente possibile.
 Si chiude questa linea senza H100: per riaprirla serve una riduzione
 strutturale del lavoro o un'esecuzione aritmetica diversa dimostrata;
 ulteriori dettagli allocator/ABI o una misura di banda non possono
-rimuovere il lower. Vedi [derivazione e condizioni](preflight.md#no-go-del-main-cell-scalare-fuso).
+rimuovere il lower. Vedi [derivazione e condizioni](preflight.md#no-go-del-main-cell-scalare-fuso)
+e [record su SHA pulita](evidence.md#integrated-positive-and-scalar-main-cell-no-go).
 
 **Priorità operativa del proprietario (2026-09-19):** congelati lookup,
 GKR e capacity accounting, salvo errori che cambino il picco di almeno
-16 MiB o il tempo di almeno 0,5 s. Il prossimo gate è una singola prova
-positiva nel runner ridotto che colleghi getter ordinato, lookup streaming,
-GKR sourcewise e WHIR con transcript/MAC originali; poi ledger congiunto
-senza doppio conteggio e kernel fuso rappresentativo. Nuovi censimenti
+16 MiB o il tempo di almeno 0,5 s. Il gate ridotto è passato: una singola
+proof positiva collega getter ordinato, lookup streaming, GKR sourcewise
+e WHIR con transcript/MAC originali ideali. Il ledger separa ricostruzione
+e consumer senza doppio conteggio; il kernel fuso porta al NO-GO sopra.
+Nuovi censimenti
 ABI sono esclusi se non chiudono direttamente memoria, tempo o correttezza
 di questo percorso. Restano invariati 512 replay, margine di 256 MiB e
 assenza di autorizzazione H100/spesa.

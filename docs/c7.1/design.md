@@ -833,7 +833,8 @@ Il port scalare `c71_gkr_main_cell_fused` è ora escluso dal requisito a
 agli `IMAD.WIDE.U32` emessi. Il mapping censito enumera una volta ogni
 coppia programma/cella pubblicamente supportata, per livello e round, e
 tutti i gate del programma; input già foldati sono concessi gratuitamente.
-Il [certificato dei cammini compilati](preflight.md#no-go-del-main-cell-scalare-fuso)
+Il [certificato dei cammini compilati](preflight.md#no-go-del-main-cell-scalare-fuso),
+conservato nel [record pulito](evidence.md#integrated-positive-and-scalar-main-cell-no-go),
 prova almeno 24 risultati per prodotto Fp3 censito. Non è un lower per
 Tensor Core/packing, nuove fattorizzazioni, specializzazioni dei primi
 round o altro codice compilato: tali varianti devono ridurre davvero il

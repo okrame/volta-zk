@@ -842,6 +842,25 @@ lavoro o cambiare la risorsa aritmetica e conservare transcript/endpoints.
 Non si indebolisce il requisito temporale o crittografico per ammettere
 il backend respinto.
 
+Lo [screen delle due alternative EXP30](preflight.md#due-alternative-strutturali-exp30)
+separa una sostituzione di protocollo da una diversa valutazione dello
+stesso prover. La prova dedicata tramite residuo e range non è selezionata:
+richiede nuove forme/slack/MAC e un nuovo transcript, con soundness e
+simulazione da comporre. Gli endpoint E/Z/Pi originali e la causalità non
+possono essere sostituiti da un solo istogramma D/E.
+
+La candidata locale conserva invece circuito, ordine MSB, quattro
+coefficienti per round e autenticazioni. Accumula pattern Boolean in
+istogrammi **interni al prover**, pesati da Eq sulla posizione originale
+e dal peso del gate; nessun conteggio privato viene aperto. La derivazione
+algebrica vale sul campo originale, incluso il selettore del padding;
+il check finito usa F97[u]/(u³−2). Il passaggio al runner nativo resta da
+verificare. NoPeek richiede che i pattern provengano solo dal getter
+immutabile e che nessuna maschera MAC non consumata entri nei bin.
+Solo dopo parità di ogni coefficiente e della continuazione FS/MAC si
+potrà riusare il teorema del transcript invariato: non si attribuisce ora
+un nuovo refinement Lean, una simulazione nativa o il picco canonico.
+
 Il lavoro locale segue il gate integrato del 2026-09-19: una prova ridotta
 positiva con getter ordinato, lookup streaming, GKR sourcewise e WHIR,
 transcript e MAC originali, seguita dal ledger congiunto e dal minimo

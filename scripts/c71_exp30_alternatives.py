@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Two EXP30 research screens; no native protocol or hardware admission."""
+
+from collections import defaultdict
+import json
+
+import c71_gkr_screen as gkr
+from c71_main_cell_screen import NATIVE_RECORD, SCALAR_RESULT_CEILING
+
+
+def equality(point):
+    values = [1]
+    for r in point:
+        one = r * 0 + 1
+        values = [v * factor for v in values for factor in (one - r, r)]
+    return values
+
+
+def pattern_histogram(rows, live, gates, weights, selector_point, prefix_bits, tile_bits):
+    """Internal weighted bins, built before the current layer's cell challenges.
+
+    Gates are (And/Xor/Copy, x, y). Rows are original Boolean wires in
+    existing MSB cell order. This small oracle does not implement a packed
+    producer; its scalar Python input-reading cost earns no speed credit.
+    """
+    n, block = len(rows), 1 << prefix_bits
+    assert n == 1 << len(selector_point) and 0 < prefix_bits <= len(selector_point)
+    assert len(live) == n and len(gates) == len(weights) and tile_bits > 0
+    assert all(v in (0, 1) for row in rows for v in row)
+    assert all(flag or not any(row) for flag, row in zip(live, rows))
+    suffix = n // block
+    suffix_weights = equality(selector_point[prefix_bits:])
+    bins = defaultdict(int)
+    for k in range(suffix):
+        mask = sum(int(live[j * suffix + k]) << j for j in range(block))
+        if not mask:
+            continue
+        patterns = []
+        for wire in range(len(rows[0])):
+            patterns.append([
+                sum(rows[(start + j) * suffix + k][wire] << j
+                    for j in range(min(tile_bits, block - start)))
+                for start in range(0, block, tile_bits)])
+        for (op, x, y), gate_weight in zip(gates, weights):
+            assert op in ('And', 'Xor', 'Copy')
+            weight = gate_weight * suffix_weights[k]
+            if op != 'Copy':
+                # XOR = x+y-2xy; consolidate all gates in the same two bins.
+                bilinear = weight if op == 'And' else weight * -2
+                for a, px in enumerate(patterns[x]):
+                    for b, py in enumerate(patterns[y]):
+                        bins[(mask, a, px, b, py)] += bilinear
+            if op != 'And':
+                for wire in ((x,) if op == 'Copy' else (x, y)):
+                    for a, px in enumerate(patterns[wire]):
+                        bins[(mask, a, px, -1, 0)] += weight
+    return dict(bins)
+
+
+def pattern_round_value(bins, selector_prefix, prefix, trial, tile_bits):
+    """Value of the *original cubic* at trial, with earlier challenges fixed."""
+    bits = len(selector_prefix)
+    assert len(prefix) < bits
+    original = equality(selector_prefix)
+    total = 0
+    for tail in range(1 << (bits - len(prefix) - 1)):
+        tail_bits = [(tail >> j) & 1 for j in reversed(range(bits - len(prefix) - 1))]
+        folded = equality([*prefix, trial, *tail_bits])
+        for (mask, a, px, b, py), weight in bins.items():
+            selector = sum(v * w for j, (v, w) in enumerate(zip(original, folded))
+                           if mask >> j & 1)
+            def value(tile, pattern):
+                return sum(folded[j] for j in range(tile * tile_bits,
+                           min((tile + 1) * tile_bits, len(folded)))
+                           if pattern >> (j - tile * tile_bits) & 1)
+            product = value(a, px)
+            if b >= 0:
+                product *= value(b, py)
+            total += weight * selector * product
+    return total
+
+
+def exact_ratio_predicate(e, z, pi, fractional_bits=14):
+    """Candidate 1's integer predicate, NOT a field proof or new verifier."""
+    if not (0 <= e <= 1 << 30 and 1 << 30 <= z <= 450 << 30
+            and 0 <= pi <= 1 << fractional_bits):
+        return False
+    residual = (e << fractional_bits) - pi * z
+    return 2 * abs(residual) < z or (2 * abs(residual) == z and pi % 2 == 0)
+
+
+def report():
+    cases = []
+    for case in gkr.ratio_cases():
+        native = gkr.native_record(NATIVE_RECORD, 'EXP30', case['old_tokens'])
+        ops = {op: sum(layer[op] for layer in native['layers'])
+               for op in ('and', 'xor', 'copy')}
+        per_pair = gkr.factored_arithmetic(ops, native['depth'])['Fp3_mul']
+        variants = []
+        for bits in (3, 4):
+            block, tile = 1 << bits, 8
+            tiles = block // tile
+            blocks = case['rounds'][bits - 1]['supported_pairs']
+            tail_pairs = sum(r['supported_pairs'] for r in case['rounds'][bits:])
+            # First bits are layer bits: layer l = j*(64/B)+suffix_layer.
+            masks = {tuple(j * (64 // block) + base < 60 for j in range(block))
+                     for base in range(64 // block)}
+            bins = sum((sum(1 << sum(mask[a:a+tile]) for a in range(0, block, tile)))**2
+                       + sum(1 << sum(mask[a:a+tile]) for a in range(0, block, tile))
+                       for mask in masks)
+            variants.append(dict(
+                prefix_bits=bits, block=block, tile_bits=tile, public_masks=len(masks),
+                histogram_entries=bins, histogram_payload_bytes=24*bins,
+                supported_blocks=blocks,
+                weight_Fp3_products=blocks*sum(ops.values()),
+                bin_Fp3_additions=blocks*((ops['and']+ops['xor'])*tiles**2
+                                            +(2*ops['xor']+ops['copy'])*tiles),
+                xor_doublings=blocks*ops['xor'],
+                tail_Fp3_products=tail_pairs*per_pair,
+                unchanged_scalar_tail_lower_seconds=tail_pairs*per_pair*24/SCALAR_RESULT_CEILING,
+            ))
+        cases.append(dict(old_tokens=case['old_tokens'], live_cells=case['live_cells'],
+                          circuit_gates=sum(ops.values()), variants=variants))
+    return dict(credit=False, scope='two EXP30 algebra/cost screens; no protocol replacement',
+                cases=cases, complete_work=False, complete_peak=False,
+                missing=['packed Boolean producer/replay and checkpoint liveness',
+                         'histogram reduction and contention, exact field kernel',
+                         'all-bin evaluation, original tail getter and original MAC/FS',
+                         'joint canonical time and allocated/reserved peak'],
+                conditional_tail_ceiling=SCALAR_RESULT_CEILING,
+                asymptotics='B=2b, M public masks <=2^B: O(S/B + M*B*2^(2b)) field work per layer; b=Theta(log S) small enough, packed input assumed',
+                spending_gate='NO-GO for spending; reduced algebra only')
+
+
+if __name__ == '__main__':
+    print(json.dumps(report(), indent=2))

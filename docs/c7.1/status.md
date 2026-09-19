@@ -115,6 +115,19 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
 
+**Due alternative EXP30, su richiesta del proprietario:** il NO-GO sotto
+non chiude la ricerca. Lo [screen circoscritto](preflight.md#due-alternative-strutturali-exp30)
+trova una prova dedicata del rapporto che richiederebbe un nuovo transcript,
+e un'aggregazione privata dei pattern Boolean per i primi quattro round
+che ricostruisce gli stessi cubici. Quest'ultima supera il controllo
+algebrico ridotto e riapre il lavoro locale: blocchi da 16, sotto-tabelle
+da 8 bit, payload istogrammi 3.548.160 B. A O=300 il lower della sola coda
+scalare diventa 4,220242 s; costruzione istogrammi, replay, resto GKR e
+picco integrato non sono chiusi. Nessun nuovo GO fisico o H100.
+Prossimo controllo utile: parità nativa dei quattro round con le stesse
+monete/MAC, poi producer Boolean packed e costo delle riduzioni dei bin.
+Nessun altro census ABI né cambiamento del protocollo è selezionato.
+
 **NO-GO del backend scalare fuso ora implementato:** per il circuito
 EXP30 fissato `compile_ratio(14)`, a O=300 i soli coefficienti main-cell
 richiedono almeno **67,103981 s** alle condizioni hardware del preflight.

@@ -28,6 +28,10 @@ Il nuovo [lower del main-cell scalare fuso](#no-go-del-main-cell-scalare-fuso)
 è decisivo già senza completare i costi mancanti: EXP30 O=300 da solo
 richiede ≥67,103981 s nel backend compilato. Questo backend è NO-GO;
 non si propone un run H100 per cercare di recuperare il tetto di 65 s.
+Lo [screen successivo di due alternative](#due-alternative-strutturali-exp30)
+riapre soltanto una candidata locale a transcript invariato: aggregazione
+dei pattern Boolean nei primi quattro round. Il lower di 67,10 s non si
+trasferisce al lavoro rimosso; non c'è ancora un lower/upper completo nuovo.
 
 ## Lower di banda e calcolo separati
 
@@ -1701,3 +1705,136 @@ a O=300 restano meno di 8,249 s per tutti i costi omessi: servirebbe già
 oltre **8,13×** di riduzione su questo lower EXP30, prima di RMS e degli
 altri costi. La sola eliminazione di riletture o del workspace non basta.
 Nessun nuovo censimento ABI, pod o spesa è richiesto per questo esito.
+
+## Due alternative strutturali EXP30
+
+L'incarico limita la ricerca a due vie. Il codice dello
+[screen](../../scripts/c71_exp30_alternatives.py) e i
+[tre controlli ridotti](../../tests/test_c71_exp30_alternatives.py) non
+modificano il verifier. Non si riaprono Tensor Core o port scalari a
+fattore costante. Le fonti primarie sono LogUp/GKR
+([ePrint 2023/1284](https://eprint.iacr.org/2023/1284),
+[copia locale](../../sota/2023-1284-logup-gkr.md)) e il GKR Boolean a pattern
+([ePrint 2025/717](https://eprint.iacr.org/2025/717),
+[copia locale](../../sota/2025-717-gkr-boolean-circuits-sublinear-ram.md)).
+Il secondo paper cambia rappresentazione con un polinomio univariato:
+**non** se ne importa il protocollo o il benchmark. L'adattamento sotto,
+che mantiene i round multilineari, è una derivazione locale.
+
+### 1. Rapporto dedicato con residuo intero e range
+
+Massimo, differenze, lookup D→E, istogrammi e somma Z rimangono quelli
+originali. Si sostituirebbe soltanto il circuito ratio da 94 livelli e
+89.167 gate/copy complessivi. Per ogni cella causale:
+
+```
+r = 2^14 E - Pi*Z
+delta = Pi mod 2
+u = Z - 2r - delta
+v = Z + 2r - delta
+```
+
+Con `0<=E<=2^30`, `2^30<=Z<=450*2^30`, `0<=Pi<=2^14`,
+`delta in {0,1}` e parità autenticata, `0<=u,v<2^40` è equivalente
+a RNE, inclusi entrambi i tie-even. I bound rendono le identità intere:
+`Pi*Z<2^53`, quindi le discrepanze restano molto sotto p; non basta
+verificare uguaglianze modulo p senza range. Le due slack e la parità
+vanno collegate agli stessi byte E/Z/Pi, con forme autenticate,
+commitment/masking e range batch dell'intera risposta. Non si fanno proof
+per token e non si aprono residui o istogrammi privati.
+
+In precisione variabile b, la candidata elimina i prodotti Boolean
+quadratici del predicato squared-RMS: O(N b) vincoli bit/range e O(N)
+prodotti di campo invece dell'espansione O(N b²) del moltiplicatore
+scolastico, esclusi costo del prover range e nuovi endpoint. A b fissato
+entrambe sono lineari in N: non si promette un prover sublineare nel
+numero delle celle. Le slack sono nuovi witness da autenticare; il
+range byte di A già pagato non ne dimostra automaticamente la validità.
+
+L'istogramma D/E esistente non include Z o Pi né la posizione. Il check
+usa `E=(2^30,2^29)`, `Z=3*2^29`: Pi corrette `(10923,5461)` e scambiate
+hanno lo stesso istogramma E e la stessa somma Pi, ma solo le prime
+soddisfano il rapporto. Una tabella per `(E,Z,Pi)` dipendente da Z privato
+richiederebbe a sua volta prova di correttezza e legame posizionale.
+Il protocollo LogUp non fornisce quel legame gratuitamente.
+
+**Esito:** candidata semantica concreta, ma incompatibile con il
+transcript ratio vigente (`gkr::Proof`, numero di round, consumo MAC e
+FS). Non è selezionata sotto il vincolo di transcript invariato. Per
+adottarla servono decisione esplicita sul nuovo protocollo e dimostrazioni
+compositive, senza cambiare trust o garanzie. L'analisi non autorizza tale
+sostituzione.
+
+### 2. Aggregazione pesata dei pattern Boolean per layer
+
+Sia c=(j,k) la cella in ordine MSB, con i primi t bit in j e B=2^t.
+Per il layer di circuito corrente, ciascun wire Boolean è un pattern
+di B bit; il selettore originale è `Eq(r_prefix,j)*Eq(r_suffix,k)*U(j,k)`.
+Nei primi quattro bit si raggruppano layer del modello, conservando
+head/query/key nel suffisso: la causalità è identica per ogni j e U
+dipende solo dal padding pubblico dei 60 layer in 64 slot.
+
+Si costruiscono istogrammi interni pesati da
+`gate_weight*Eq(r_suffix,k)`, distinti per pattern e maschera U. AND
+contribuisce al termine XY; XOR a X+Y−2XY; Copy a X. Il pattern da 16
+bit è diviso in due da 8: `X*Y=sum_(a,b) X_a*Y_b`, quindi bastano quattro
+tabelle di coppie, non una tabella da 2^32 righe. I bit nei layer dummy
+sono zero pubblico; per B=16 ci sono 15 layer vivi per gruppo e una
+sola U, con tessere da 8 e 7 bit effettivi.
+
+Per ogni sfida precedente nota si valuta la stessa MLE del pattern.
+Per il round corrente si somma sui restanti bit Boolean di j e si
+moltiplica per il selettore MLE di U. La distributività ricostruisce
+esattamente il cubico originale, compresi i prodotti incrociati fra
+prefissi; non si moltiplicano medie e non si perdono pesi posizionali.
+La sfida corrente arriva dopo gli stessi quattro coefficienti e MAC.
+I bin si costruiscono prima delle sfide dei t round e non sono comunicati.
+Il controllo confronta i cubici a quattro punti base e uno non-base,
+con prefissi 0, 1 e non-base, AND/XOR/Copy, padding e più suffissi.
+
+Per S=N*G voci gate/cella del layer, blocchi B=2b e sotto-pattern di b bit
+richiedono O(S/B + M*B*2^(2b)) operazioni di campo, con M maschere
+pubbliche distinte, più generazione packed dei bit e coda su N/B righe.
+Anche usando M<=2^B, scegliendo b proporzionale a log S con costante
+abbastanza piccola la parte di campo è O(S/log S), non una sola riduzione
+costante; il termine tabellare è allora O(B*2^(4b)). La geometria concreta
+B=16 ha M=1. È un bound parametrico **del consumer**: il
+riferimento Python legge bit scalari, e il replay canonico non eredita
+questa complessità. Non è una compressione garantita dei dati privati.
+Il bound riusa le valutazioni MLE di ciascun sotto-pattern fra i bin;
+l'oracolo Python le ricalcola per semplicità e non ne è un'implementazione
+efficiente. Le tabelle di produzione devono avere cap pubblico: numero
+di pattern presenti e occupazione privata non entrano nel transcript.
+
+Per la variante concreta B=16, b=8:
+
+| O | Blocchi pubblicamente supportati | Prodotti Fp3 per pesi bin | Addizioni Fp3 ai bin | Lower della sola coda scalare, s |
+|---:|---:|---:|---:|---:|
+| 0 | 1.449.600 | 129.256.483.200 | 520.818.086.400 | 0,852443 |
+| 150 | 4.329.600 | 386.057.443.200 | 1.555.556.006.400 | 2,536417 |
+| 300 | 7.209.600 | 642.858.403.200 | 2.590.293.926.400 | 4,220242 |
+
+Le addizioni non includono i raddoppi XOR (32.168.073.600 /
+96.078.153.600 / 159.988.233.600), valutazione dei bin, producer/replay, fold,
+riduzioni fra worker, MAC/FS e PCS. Nessuno di questi costi vale zero.
+Il payload dei bin è **3.548.160 B** per un layer di circuito; non è il
+workspace completo né una misura allocata/riservata. Repliche per worker
+e contesa possono dominare. Un aggiornamento logico non viene convertito
+in traffico HBM: il riuso in cache va provato, non assunto.
+
+La coda riusa il kernel scalare certificato e le sue condizioni hardware;
+il lower 24 IMAD/prodotto non viene attribuito al nuovo codice dei bin.
+La variante B=8 lascia invece 8,412492 s di sola coda a O=300: con il
+restante lower seriale nominato 56,751469 s è già esclusa quella
+combinazione, anche gratis per i bin. B=16 lascia circa 4,028 s dopo
+quei due lower, **non** un budget garantito: mancano ancora RMS, inferenza
+e altri lavori. Solo i pesi bin richiederebbero oltre 159 miliardi di
+prodotti Fp3/s se tutto quel residuo fosse disponibile.
+
+**Esito:** candidata a transcript invariato da portare nel controllo
+nativo ridotto. Gate minimo: stessi coefficienti/FS/MAC per i primi
+quattro round e continuazione invariata, producer bit-sliced da originali
+immutabili, conteggio della generazione e riduzione dei bin e loro
+liveness nel piano integrato. Il vecchio NO-GO non la esclude, ma nessun
+upper completo, GO entro arena o tempo ≤65 s è dimostrato. Nessuna GPU
+o spesa, e nessuna terza alternativa aperta.

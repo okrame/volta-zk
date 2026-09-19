@@ -77,8 +77,9 @@ use rand_010::SeedableRng;
 use rand_010::rngs::StdRng;
 use volta_field::{Fp, Fp3};
 use volta_mac::c7_fp3::{
-    c7_fp3_transfer_prover, c7_fp3_transfer_verifier, C7Fp3ProverAuthed as Auth,
-    C7Fp3TransferCorrection, C7Fp3VerifierKey as Key,
+    c7_fp3_product_batch_prover, c7_fp3_product_batch_verify, c7_fp3_transfer_prover,
+    c7_fp3_transfer_verifier, C7Fp3ProverAuthed as Auth, C7Fp3TransferCorrection,
+    C7Fp3VerifierKey as Key,
 };
 
 type E = CubicTrinomialExtensionField<Goldilocks>;

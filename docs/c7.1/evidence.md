@@ -1063,3 +1063,16 @@ conserva **13 test Rust e 18 Python** passati, KAT indipendenti, ledger e
 arena O=0/150/300. Le capacità native di ogni fase coincidono con il modello
 Python nei due casi ridotti. Include separatamente l'errore di compilazione
 sulla cancellazione delle slice K6, corretto prima del run pulito.
+
+
+## Guard sui MAC Seed6 originali
+
+Il nuovo consumer riusa il batch prodotti del range, con wrapper FS
+invariato. Il fixture reale da nove righe conserva il segno dei tag/key
+originali e usa Delta nativo negato. I fixture negativi coprono il cammino
+malevolo beta=0, gamma non binario, mutazione delle correzioni/proof e codec.
+La sfida del verifier viene fissata prima della prova; il fixture non
+implementa FS globale, seal/burn o il trasporto del guard. I tre mask row
+sono cancellati mentre split/F_EQ restano disponibili al consumer futuro.
+Il [preflight](preflight.md#guard-originale-consumer-nativo) riporta lavoro,
+memoria nominata e confine formale senza attribuire credito al bootstrap.

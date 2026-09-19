@@ -76,6 +76,7 @@ pub(super) struct NamedCapacities {
 
 /// Output local to the party playing the authenticated-value/OT-sender role.
 pub(super) struct RealProverOutput {
+    pub binding: [u8; 32],
     pub values: Zeroizing<Vec<u64>>,
     pub tags: Zeroizing<Vec<Fp3Words>>,
     pub audit: Audit,
@@ -85,6 +86,7 @@ pub(super) struct RealProverOutput {
 
 /// Output local to the party holding Delta and playing the OT-receiver role.
 pub(super) struct RealVerifierOutput {
+    pub binding: [u8; 32],
     pub delta: Zeroizing<Fp3Words>,
     pub keys: Zeroizing<Vec<Fp3Words>>,
     pub audit: Audit,
@@ -107,6 +109,7 @@ pub(super) fn prover_with_rng(
     let rows = checked_rows(n)?;
     let mut audit = Audit::default();
     let full = handshake(&mut channel, &context, true, rng, &mut audit, Suite::Seed6(direction))?;
+    let binding = *blake3::hash(&full).as_bytes();
     let full_context_capacity = full.capacity();
     let seeds = mr19_sender(&mut channel, &full, MR19, rng, &mut audit)?;
     if seeds.len() != OTS {
@@ -211,6 +214,7 @@ pub(super) fn prover_with_rng(
     capacities.retained_output =
         values.capacity() * 8 + compressed.capacity() * core::mem::size_of::<Fp3Words>();
     Ok(RealProverOutput {
+        binding,
         values,
         tags: compressed,
         audit,
@@ -234,6 +238,7 @@ pub(super) fn verifier_with_rng(
     let rows = checked_rows(n)?;
     let mut audit = Audit::default();
     let full = handshake(&mut channel, &context, false, rng, &mut audit, Suite::Seed6(direction))?;
+    let binding = *blake3::hash(&full).as_bytes();
     let full_context_capacity = full.capacity();
     let delta = Zeroizing::new(random_k6(rng, &mut audit)?);
     let seeds =
@@ -329,6 +334,7 @@ pub(super) fn verifier_with_rng(
     drop(keys);
     capacities.retained_output = compressed_keys.capacity() * core::mem::size_of::<Fp3Words>();
     Ok(RealVerifierOutput {
+        binding,
         delta: compressed_delta,
         keys: compressed_keys,
         audit,
@@ -468,7 +474,15 @@ mod tests {
                 + verifier.delta.fp3().mul_base(Fp::new(prover.values[row]));
             assert_eq!(prover.tags[row].fp3(), expected);
         }
+        if n == 9 {
+            super::super::guard::check_real_seed(prover, verifier);
+        }
         tape.0.read
+    }
+
+    #[test]
+    fn real_seed6_n9_original_mac_path_guard() {
+        run(9, 0, false);
     }
 
     #[test]

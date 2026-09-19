@@ -6,6 +6,7 @@
 //! 384 MR19 OTs and streamed AES-COPE. Outer one-use lifetime, guard and
 //! opposite-role composition remain open.
 
+mod guard;
 mod real;
 
 use p521::elliptic_curve::subtle::ConstantTimeEq;

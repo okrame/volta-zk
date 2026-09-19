@@ -162,6 +162,7 @@ def seed6_real_trace(n):
         'planned_seal_bytes_not_implemented': 40,
         'wire_delta_vs_old_screen_per_seed_bytes': 2,
         'common_context_bytes': 121, 'full_context_bytes': 185,
+        'binding_digest_retained_bytes': 32,
         'full_context_observed_capacity_bytes': 240,
         'prover': parties['prover'], 'verifier': parties['verifier'],
         'K6_check_and_compression': seed6_boundary(n),
@@ -169,6 +170,48 @@ def seed6_real_trace(n):
         'outer_lifetime_guard_roleswap_composition_credit': False,
         'missing_physical': ['allocator metadata/reserve', 'crypto stack/spills',
                              'audit vectors', 'transport buffering', 'outer setup lifecycle'],
+    }
+
+
+def seed6_guard_trace(blocks=TREES, height=HEIGHT):
+    """Original-row consumer only; outer FS/transport/one-use seal still open."""
+    if not 0 < blocks <= 675 or not 0 < height <= 19:
+        raise ValueError('outside bounded guard geometry')
+    triples, count = blocks*height, blocks*(height+1)
+    return {
+        'triple_count': triples, 'Dory_rows': blocks*(height+4)+3,
+        'global_mask_row_ids': list(range(blocks*(height+4), blocks*(height+4)+3)),
+        'split_rows_retained': 3*blocks,
+        'correction_payload_bytes': 8*count, 'proof_payload_bytes': 48,
+        'correction_Fp_multiplications': triples,
+        'correction_Fp_add_sub': blocks+triples,
+        'prover_Fp3_multiplications': 6*triples+6,
+        'prover_Fp3_add_sub': 8*triples+6,
+        'verifier_Fp3_multiplications': 4*triples+4,
+        'verifier_Fp3_by_Fp_multiplications': 2*triples,
+        'verifier_Fp3_add_sub': 5*triples+5,
+        'verifier_Fp3_equality_comparisons': 1,
+        'prefix_hash_absorbed_bytes_each_role': 85+16*count,
+        'prefix_hash_update_calls_each_role': 5+2*count,
+        'prefix_digest_bytes_each_role': 32,
+        'Seed6_binding_retained_bytes_each_role': 32,
+        'Seed6_binding_hash_input_bytes_each_role': 185,
+        'native_Frozen_size_bytes': 72,
+        'native_ProverGuard_size_bytes': 528,
+        'native_VerifierChallenged_size_bytes': 552,
+        'native_BLAKE3_Hasher_size_bytes': 1920,
+        'native_sizes_scope': 'observed CPU ABI; not total stack/spill reserve',
+        'verifier_challenge_retained_bytes': 24,
+        'correction_heap_capacity_bytes_each_role': 8*count,
+        'triple_vector_allocation_bytes': 0,
+        'prover_logical_original_seed_reads_bytes': 64*triples+96,
+        'verifier_logical_original_seed_reads_bytes': 48*triples+96,
+        'logical_correction_reads_bytes_each_role': 16*triples,
+        'counter_scope': 'source field calls and logical payload; not HBM/instruction counts',
+        'challenge_fixed_before_proof_input': True,
+        'global_FS_codec_credit': False, 'durable_burn_credit': False,
+        'cGGM_producer_before_after_guard_connected': False,
+        'complete_physical_peak': False,
     }
 
 
@@ -280,6 +323,7 @@ def report():
                 'main': seed6_real_trace(MAIN_SEED_ROWS),
                 'roleswap': seed6_real_trace(EQ_SEED_ROWS),
                 'Dory_rows': DORY_SEED_ROWS, 'F_EQ_extra_rows_each_seed': EQ_SEED_ROWS,
+                'path_guard_consumer': seed6_guard_trace(),
                 'physical_roles_opposite': True, 'composed_execution_credit': False,
             },
             'persistent_selected_cGGM_state': {

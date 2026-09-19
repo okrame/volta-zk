@@ -160,14 +160,9 @@ pub(super) fn correct<const N: usize>(
 pub(super) fn prove_products(triples: &[[Auth; 3]], mask: Auth, fs: &mut Fs) -> [Fp3; 2] {
     fs.set_phase(0x600);
     let lambda = fs.fp3();
-    let (mut a, mut b, mut power) = (mask.x, mask.m, Fp3::ONE);
-    for &[x, y, z] in triples {
-        a += power * (x.x * y.m + y.x * x.m - z.m);
-        b += power * x.m * y.m;
-        power = power * lambda;
-    }
-    record_values(fs, 0x45, &[a, b]);
-    [a, b]
+    let wire = c7_fp3_product_batch_prover(triples.iter().copied(), mask, lambda);
+    record_values(fs, 0x45, &wire);
+    wire
 }
 
 pub(super) fn verify_products(
@@ -179,12 +174,7 @@ pub(super) fn verify_products(
 ) -> Result<(), String> {
     fs.set_phase(0x600);
     let lambda = fs.fp3();
-    let (mut expected, mut power) = (mask.k, Fp3::ONE);
-    for &[x, y, z] in triples {
-        expected += power * (x.k * y.k - delta * z.k);
-        power = power * lambda;
-    }
-    if wire[1] + delta * wire[0] != expected {
+    if !c7_fp3_product_batch_verify(triples.iter().copied(), mask, wire, lambda, delta) {
         return Err("B12 range product MAC rejected".into());
     }
     record_values(fs, 0x45, &wire);

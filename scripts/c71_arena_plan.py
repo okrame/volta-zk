@@ -101,11 +101,16 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                         if phase in ('mr19','cope'):
                             nonheap=party['MR19_Delta_nonheap_bytes']
                         events += [{'event':label+'_'+phase,'allocate':{
-                            'Seed6:phase':party['heap_phase_bytes'][phase]+nonheap}},
+                            'Seed6:phase':party['heap_phase_bytes'][phase]+nonheap+32}},
                             {'event':label+'_'+phase+'_release','free':['Seed6:phase']}]
                     events.append({'event':label+'_retain_until_outer_setup_consumer',
                         'allocate':{'Seed6:'+label:party['heap_phase_bytes']['retained_output']+
-                            party['retained_nonheap_secret_bytes']}})
+                            party['retained_nonheap_secret_bytes']+32}})
+                events.append({'event':'freeze_guard_corrections_outer_FS_pending',
+                    'allocate':{'Seed6:guard_corrections':setup['path_guard_consumer']['correction_heap_capacity_bytes_each_role'],
+                                'Seed6:guard_native_value_state':552}})
+                events += [{'event':'guard_prefix_native_hash_object', 'allocate':{'Seed6:hash_object':1920}},
+                           {'event':'guard_prefix_hash_release_before_challenge','free':['Seed6:hash_object']}]
                 chains['Seed6_'+main_role+'_then_'+inverse_role+'_outer_pending']=events
 
         if reuse_reader_for_commit:

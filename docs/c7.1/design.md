@@ -983,7 +983,18 @@ check K6 e compressione. Non emette alpha dopo un check fallito. Il seed
 principale richiede 17.553 righe (15.528 Dory + 2.025 F_EQ), quello inverso
 2.025; il contesto nativo aggiunge 4 B al budget dei due seed. Capacità dei
 Vec e rilasci anticipati sono censiti; seal, guard, lifecycle a ruoli opposti,
-consumo MAC composto, picco fisico, CUDA e refinement Lean restano aperti. Il getter numerico ridotto
+consumo MAC composto, picco fisico, CUDA e refinement Lean restano aperti.
+Il [consumer guard ridotto](preflight.md#guard-originale-consumer-nativo)
+usa ora l'algebra prodotti condivisa con range, negando solo Delta nel
+passaggio bootstrap→MAC nativo. La ricetta di righe e il prefisso sono
+fissati prima della sfida; l'API verifier fissa lambda prima di leggere la
+prova. Il callback di test non è la FS globale, e il costruttore cGGM non
+è collegato. Il bound matematico candidato resta quello dello screen;
+`prodKey_expand`/`prodKey_rlc_expand` in
+[ProdSound](../../lean/VoltaZk/ProdSound.lean) giustificano l'identità algebrica,
+non il refinement di questo codec. `prodBatch_sound_scalar` usa potenze
+j+1; il consumer usa j: non si trasferisce il bound senza tale adattamento.
+Nessun nuovo credito al teorema B12 o alla composizione EA-LPN. Il getter numerico ridotto
 O=0/2/4 apre la root A originale con S1 condiviso allocato dopo le query
 al predecessore; la riduzione in-place delle code successive resta aperta. Restano fermi NoPeek, endpoint e trust autorizzati.
 Il [checkpoint RMS e il motore coefficienti](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)

@@ -309,7 +309,10 @@ emettono alpha. Il ledger corregge il seed principale a 17.553 righe,
 incluse le 2.025 aggiuntive di F_EQ; il secondo ne usa 2.025. Il byte di
 direzione nel contesto aggiunge 4 B al budget dei due seed.
 Capacità native e rilasci sono censiti; allocator, stack crittografico,
-trasporto, seal, guard, ruoli opposti composti e trie batch restano aperti.
+trasporto, seal, ruoli opposti composti e trie batch restano aperti.
+Il consumer guard sui MAC originali passa nel caso reale da nove righe,
+con ricetta disgiunta e sfida fissata prima della prova. Restano da collegare
+FS globale, exchange delle correzioni e costruttore cGGM dopo il guard.
 Il getter numerico ridotto O=0/2/4 ora apre la root A originale tramite
 WHIR; S1 condiviso viene allocato solo dopo le query al predecessore.
 Il [checkpoint RMS](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)

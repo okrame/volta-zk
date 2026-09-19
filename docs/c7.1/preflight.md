@@ -1275,3 +1275,39 @@ cGGM e F_EQ. `puncture(delta,root)` è soltanto l'oracolo del riferimento:
 nessun ruolo reale possiede entrambi gli input. Non dà credito al bootstrap
 composto, né chiude il picco fisico o il lower temporale congiunto. Restano
 `T_inference`, `T_proof_only` e `T_response_total <= 65 s`, senza overlap.
+
+
+## Guard originale: consumer nativo
+
+Il [consumer Seed6](../../rust/volta-pcg/src/c71_seed6/guard.rs) usa la
+[stessa algebra](../../rust/volta-mac/src/c7_fp3.rs) ora condivisa dal range.
+Il wrapper range conserva fase 0x600, sorteggio e record 0x45 nello stesso
+ordine. Seed6 conserva tag/key originali e nega soltanto Delta, come il
+pool nativo esistente. I test ridotti controllano cammini binari, beta zero,
+gamma non binario, correzioni riordinate, proof alterata, codec e troncamento.
+Un test collega il consumer a nove righe generate dagli OT/AES reali.
+
+Per t=675,h=19 la ricetta usa 15.528 righe Dory: beta/path per blocco,
+tre maschere split per blocco e le tre righe globali 15.525–15.527.
+Queste ultime vengono cancellate dopo il check; split e ulteriori 2.025
+righe F_EQ restano vivi. La sfida viene fissata in un oggetto distinto
+prima dell'ingresso della proof. Solo la verifica positiva restituisce
+`GuardAccepted`; il futuro producer c dovrà consumare tale oggetto.
+Il callback del fixture non è una realizzazione della FS globale e il
+producer c non è ancora collegato: nessun credito di bootstrap composto.
+
+Il ledger aggiunge 108.000 B di correzioni per ruolo, proof da 48 B,
+216.085 B assorbiti nel prefisso e 32 B di digest; nessun vettore di triple.
+Per il guard, incluse costruzione delle triple e maschera, conta 76.956
+prodotti Fp3 / 102.606 add-sub lato prover; lato verifier 51.304 prodotti
+Fp3, 25.650 prodotti Fp3×Fp e 64.130 add-sub, incluso il cambio di segno
+Delta. La costruzione locale delle correzioni aggiunge 12.825 prodotti Fp
+e 13.500 add-sub. Sono conteggi sorgente, esclusi istruzioni/permute hash,
+trasporto, FS e lifecycle; non sono traffico HBM.
+
+Sul seed principale da 17.553 righe il corpo heap nominato guard+seed è
+669.744 B prover / 529.272 B verifier, prima di audit/allocator/stack.
+Il piano conserva anche il secondo seed: non libera righe necessarie a
+F_EQ. Il nuovo stato non alza il picco nominato precedente né chiude quello
+fisico. Copie temporanee Auth/Key/Fp3 sullo stack non hanno ancora un audit
+di cancellazione. Restano i gate del preflight e il totale ≤65 s.

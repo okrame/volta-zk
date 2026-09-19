@@ -157,6 +157,38 @@ pub fn c7_fp3_transfer_verifier(
     C7Fp3VerifierKey::new(correlation_key.k + delta * correction.value())
 }
 
+/// Pure algebra for one ordered product batch. The caller must bind every
+/// triple before sampling `lambda`, and owns transcript phase/recording.
+pub fn c7_fp3_product_batch_prover(
+    triples: impl IntoIterator<Item = [C7Fp3ProverAuthed; 3]>,
+    mask: C7Fp3ProverAuthed,
+    lambda: Fp3,
+) -> [Fp3; 2] {
+    let (mut a, mut b, mut power) = (mask.x, mask.m, Fp3::ONE);
+    for [x, y, z] in triples {
+        a += power * (x.x * y.m + y.x * x.m - z.m);
+        b += power * x.m * y.m;
+        power = power * lambda;
+    }
+    [a, b]
+}
+
+/// Verifier half of [`c7_fp3_product_batch_prover`] under `k=m+Delta*x`.
+pub fn c7_fp3_product_batch_verify(
+    triples: impl IntoIterator<Item = [C7Fp3VerifierKey; 3]>,
+    mask: C7Fp3VerifierKey,
+    wire: [Fp3; 2],
+    lambda: Fp3,
+    delta: Fp3,
+) -> bool {
+    let (mut expected, mut power) = (mask.k, Fp3::ONE);
+    for [x, y, z] in triples {
+        expected += power * (x.k * y.k - delta * z.k);
+        power = power * lambda;
+    }
+    wire[1] + delta * wire[0] == expected
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,6 +204,27 @@ mod tests {
 
     fn valid(delta: Fp3, prover: C7Fp3ProverAuthed, verifier: C7Fp3VerifierKey) -> bool {
         verifier.k == prover.m + delta * prover.x
+    }
+
+    #[test]
+    fn product_batch_shared_algebra_accepts_and_rejects_mutation() {
+        let delta = fp3(17, 19, 23);
+        let lambda = fp3(29, 31, 37);
+        let authed = |x, m| (C7Fp3ProverAuthed::new(x, m), C7Fp3VerifierKey::new(m + delta * x));
+        let (x0, kx0) = authed(fp3(2, 3, 5), fp3(7, 11, 13));
+        let (y0, ky0) = authed(fp3(17, 19, 23), fp3(29, 31, 37));
+        let (z0, kz0) = authed(x0.x * y0.x, fp3(41, 43, 47));
+        let (x1, kx1) = authed(fp3(53, 59, 61), fp3(67, 71, 73));
+        let (y1, ky1) = authed(fp3(79, 83, 89), fp3(97, 101, 103));
+        let (z1, kz1) = authed(x1.x * y1.x, fp3(107, 109, 113));
+        let (mask, mask_key) = authed(fp3(127, 131, 137), fp3(139, 149, 151));
+        let prover = [[x0, y0, z0], [x1, y1, z1]];
+        let verifier = [[kx0, ky0, kz0], [kx1, ky1, kz1]];
+        let wire = c7_fp3_product_batch_prover(prover, mask, lambda);
+        assert!(c7_fp3_product_batch_verify(verifier, mask_key, wire, lambda, delta));
+        let mut bad = wire;
+        bad[0] += Fp3::ONE;
+        assert!(!c7_fp3_product_batch_verify(verifier, mask_key, bad, lambda, delta));
     }
 
     #[test]

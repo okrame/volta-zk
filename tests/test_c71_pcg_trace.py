@@ -113,3 +113,20 @@ def test_real_seed6_wire_work_and_named_heap_match_native_reduced_runs():
     assert setup['roleswap']['rows'] == 2025
     assert setup['main']['prover']['heap_phase_peak_bytes'] == 80*17553+336
     assert sum(setup[k]['wire_delta_vs_old_screen_per_seed_bytes'] for k in ['main','roleswap']) == 4
+
+
+def test_original_guard_rows_and_named_arena_state():
+    guard=trace.seed6_guard_trace()
+    assert guard['triple_count']==12825
+    assert guard['global_mask_row_ids']==[15525,15526,15527]
+    assert guard['Dory_rows']==15528
+    assert guard['split_rows_retained']==2025
+    assert guard['correction_heap_capacity_bytes_each_role']==108000
+    assert guard['prefix_hash_absorbed_bytes_each_role']==216085
+    assert guard['prefix_hash_update_calls_each_role']==27005
+    assert guard['prover_Fp3_multiplications']==76956
+    assert guard['verifier_Fp3_multiplications']==51304
+    assert guard['verifier_Fp3_by_Fp_multiplications']==25650
+    assert guard['verifier_Fp3_add_sub']==64130
+    assert guard['challenge_fixed_before_proof_input']
+    assert not guard['global_FS_codec_credit']

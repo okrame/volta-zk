@@ -1711,7 +1711,8 @@ Nessun nuovo censimento ABI, pod o spesa è richiesto per questo esito.
 L'incarico limita la ricerca a due vie. Il codice dello
 [screen](../../scripts/c71_exp30_alternatives.py) e i
 [tre controlli ridotti](../../tests/test_c71_exp30_alternatives.py) non
-modificano il verifier. Non si riaprono Tensor Core o port scalari a
+modificano il verifier. Il [record pulito](evidence.md#two-structural-exp30-alternatives)
+conserva i risultati e i conteggi. Non si riaprono Tensor Core o port scalari a
 fattore costante. Le fonti primarie sono LogUp/GKR
 ([ePrint 2023/1284](https://eprint.iacr.org/2023/1284),
 [copia locale](../../sota/2023-1284-logup-gkr.md)) e il GKR Boolean a pattern

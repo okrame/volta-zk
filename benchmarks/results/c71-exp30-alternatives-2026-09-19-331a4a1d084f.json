@@ -1,0 +1,148 @@
+{
+  "milestone": "C7.1-EXP30-two-alternatives",
+  "date": "2026-09-19",
+  "git_sha": "331a4a1d084f2c53faf8b5d26b84913abcb835a7",
+  "git_dirty": false,
+  "credit": false,
+  "tests": {
+    "command": [
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_c71_exp30_alternatives.py"
+    ],
+    "stdout": "...                                                                      [100%]\n3 passed in 6.83s\n",
+    "exit_code": 0,
+    "elapsed_seconds": 13.422165800118819
+  },
+  "screen": {
+    "credit": false,
+    "scope": "two EXP30 algebra/cost screens; no protocol replacement",
+    "cases": [
+      {
+        "old_tokens": 0,
+        "live_cells": 21744000,
+        "circuit_gates": 89167,
+        "variants": [
+          {
+            "prefix_bits": 3,
+            "block": 8,
+            "tile_bits": 8,
+            "public_masks": 2,
+            "histogram_entries": 82304,
+            "histogram_payload_bytes": 1975296,
+            "supported_blocks": 2899200,
+            "weight_Fp3_products": 258512966400,
+            "bin_Fp3_additions": 387185260800,
+            "xor_doublings": 64336147200,
+            "tail_Fp3_products": 1193532622355,
+            "unchanged_scalar_tail_lower_seconds": 1.6953588385724432
+          },
+          {
+            "prefix_bits": 4,
+            "block": 16,
+            "tile_bits": 8,
+            "public_masks": 1,
+            "histogram_entries": 147840,
+            "histogram_payload_bytes": 3548160,
+            "supported_blocks": 1449600,
+            "weight_Fp3_products": 129256483200,
+            "bin_Fp3_additions": 520818086400,
+            "xor_doublings": 32168073600,
+            "tail_Fp3_products": 600120017555,
+            "unchanged_scalar_tail_lower_seconds": 0.8524432067542613
+          }
+        ]
+      },
+      {
+        "old_tokens": 150,
+        "live_cells": 64944000,
+        "circuit_gates": 89167,
+        "variants": [
+          {
+            "prefix_bits": 3,
+            "block": 8,
+            "tile_bits": 8,
+            "public_masks": 2,
+            "histogram_entries": 82304,
+            "histogram_payload_bytes": 1975296,
+            "supported_blocks": 8659200,
+            "weight_Fp3_products": 772114886400,
+            "bin_Fp3_additions": 1156427500800,
+            "xor_doublings": 192156307200,
+            "tail_Fp3_products": 3558015766533,
+            "unchanged_scalar_tail_lower_seconds": 5.053999668370738
+          },
+          {
+            "prefix_bits": 4,
+            "block": 16,
+            "tile_bits": 8,
+            "public_masks": 1,
+            "histogram_entries": 147840,
+            "histogram_payload_bytes": 3548160,
+            "supported_blocks": 4329600,
+            "weight_Fp3_products": 386057443200,
+            "bin_Fp3_additions": 1555556006400,
+            "xor_doublings": 96078153600,
+            "tail_Fp3_products": 1785637721733,
+            "unchanged_scalar_tail_lower_seconds": 2.5364172183707385
+          }
+        ]
+      },
+      {
+        "old_tokens": 300,
+        "live_cells": 108144000,
+        "circuit_gates": 89167,
+        "variants": [
+          {
+            "prefix_bits": 3,
+            "block": 8,
+            "tile_bits": 8,
+            "public_masks": 2,
+            "histogram_entries": 82304,
+            "histogram_payload_bytes": 1975296,
+            "supported_blocks": 14419200,
+            "weight_Fp3_products": 1285716806400,
+            "bin_Fp3_additions": 1925669740800,
+            "xor_doublings": 319976467200,
+            "tail_Fp3_products": 5922394113783,
+            "unchanged_scalar_tail_lower_seconds": 8.412491638896308
+          },
+          {
+            "prefix_bits": 4,
+            "block": 16,
+            "tile_bits": 8,
+            "public_masks": 1,
+            "histogram_entries": 147840,
+            "histogram_payload_bytes": 3548160,
+            "supported_blocks": 7209600,
+            "weight_Fp3_products": 642858403200,
+            "bin_Fp3_additions": 2590293926400,
+            "xor_doublings": 159988233600,
+            "tail_Fp3_products": 2971050628983,
+            "unchanged_scalar_tail_lower_seconds": 4.220242370714488
+          }
+        ]
+      }
+    ],
+    "complete_work": false,
+    "complete_peak": false,
+    "missing": [
+      "packed Boolean producer/replay and checkpoint liveness",
+      "histogram reduction and contention, exact field kernel",
+      "all-bin evaluation, original tail getter and original MAC/FS",
+      "joint canonical time and allocated/reserved peak"
+    ],
+    "conditional_tail_ceiling": 16896000000000,
+    "asymptotics": "B=2b, M public masks <=2^B: O(S/B + M*B*2^(2b)) field work per layer; b=Theta(log S) small enough, packed input assumed",
+    "spending_gate": "NO-GO for spending; reduced algebra only"
+  },
+  "source_sha256": {
+    "scripts/c71_exp30_alternatives.py": "d35dbe10daaf2cb1310db13230cca0219ee9e39b17f13a20bf3abffb2ba9fa42",
+    "tests/test_c71_exp30_alternatives.py": "00c990c242d6839205687c7b3c19a539b0628222f2d4d434cb91e4622f42580f",
+    "sota/2025-717-gkr-boolean-circuits-sublinear-ram.md": "73ca21771d9075d8f8e1cab047f587c6db7b859a112a88404d352567ad6e945b",
+    "sota/2023-1284-logup-gkr.md": "9e2122006e4d4695994b4e730bd86b32a290eef060bd6b9feacbb45472cb9fe7"
+  },
+  "scope": "finite algebra and component work screen; no native implementation, GPU or canonical physical admission"
+}

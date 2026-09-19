@@ -1253,3 +1253,24 @@ Sono preservati come fallimenti preliminari, esterni al run di record,
 il padding A oltre il dominio del layout e il validatore host con chiavi
 obsolete, entrambi corretti prima del run pulito. Nessun credito hardware,
 nuovo censimento ABI, pod o spesa.
+
+### Two structural EXP30 alternatives
+
+Il [record su SHA pulita `331a4a1d084f`](../../benchmarks/results/c71-exp30-alternatives-2026-09-19-331a4a1d084f.json)
+conserva **3 test Python** e lo
+[screen di due sole alternative](preflight.md#due-alternative-strutturali-exp30).
+Il predicato intero a residuo coincide con RNE sul reticolo ridotto e
+sui tie; il controesempio mostra che istogramma E e somma Pi non bastano
+al legame posizionale. Questa alternativa richiederebbe un nuovo transcript.
+
+L'aggregazione privata a pattern ricostruisce gli stessi cubici originali
+per prefissi da 2/3/4 bit, con sotto-tabelle, AND/XOR/Copy, padding,
+molteplici suffissi e sfide 0/1/non-base. Il campo del controllo è
+F97[u]/(u³−2); non è un test del prover Rust completo. Il ledger deriva
+la geometria canonica e i gate dal record nativo precedente: per B=16
+i bin richiedono 3.548.160 B di payload e il lower condizionale della
+coda scalare è 0,852443 / 2,536417 / 4,220242 s. I costi dei bin sono
+separati: il lower della coda non viene presentato come tempo EXP30.
+Restano producer packed, parità FS/MAC nativa, workspace e tempo congiunti.
+Le fonti locali sono identificate da hash; nessun file storico è modificato,
+nessun credito hardware o nuova assunzione crittografica è attribuito.

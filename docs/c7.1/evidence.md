@@ -1123,3 +1123,30 @@ max 48 registri e 16.896 B shared statici; la FFT righe usa shared dinamico
 fino a 32 KiB per le geometrie selezionate. Include comandi, hash del binario,
 stdout, trace completo della retention e piano degli indirizzi O=0/150/300.
 `credit:false`, nessuna GPU eseguita; picco e lower temporale completi non acquisiti.
+
+### Sourcewise GKR, byte endpoint and two-key Seed6 equality
+
+Il [record su SHA pulita `98b109ba81ab`](../../benchmarks/results/c71-source-proof-2026-09-19-98b109ba81ab.json)
+contiene **13 test Rust e 21 Python**, seriali entro 60 s/2 GiB per processo,
+senza GPU. I confronti GKR RMS/EXP30, N=1 e il confine u16/N=128 preservano
+byte della prova, transcript, punto e Auth originali rispetto al riferimento
+denso; i consumer chiudono l'endpoint nella stessa PCS. Il caller RMS usa
+`CompactFrames`, il binding degli assegnamenti è streaming e il verifier
+mantiene solo P selettori. La LUT dell'endpoint byte sostituisce gli alberi
+per cella; il test copre padding, estremi byte, coefficienti Fp3 non base,
+funzioni false e sorgenti alterate. I contatori nativi della rigenerazione
+sono confrontati con le formule Python, inclusa la scansione terminale.
+
+Il record comprende anche F_EQ con due seed AES/OT a ruoli opposti e i
+rifiuti di framing/commitment/apertura. Questo è un consumer locale:
+F_Rand globale, riserva disgiunta delle code, cGGM/guard, trasporto e burn
+non sono composti. Il report mantiene le capacità native e il ledger arena
+con LUT/coefficienti coesistenti con il checkpoint originale. La coda libera
+minima nominata resta 276.438.272 B, di cui 268.435.456 B di margine richiesto;
+non è il picco fisico completo.
+
+I conteggi scalari canonici sono parziali e usano profili sintetici pubblici.
+Non sono un tempo misurato, un lower H100 o credito al profilo calibrato.
+Restano lavoro index/MAC/FS/getter, capacità di programmi/prove/correlazioni,
+allocator/fence, kernel fusi e costruzione canonica/AES completa.
+Le correzioni emerse in sviluppo e review sono conservate nel record.

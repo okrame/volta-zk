@@ -1178,3 +1178,17 @@ scalare, endpoint byte e prova nativa composta ridotta. Il record conserva
 il fallimento iniziale di build corretto prima del run pulito.
 Il piano mantiene le capacità extra delle code e il margine nominato,
 senza credito al picco fisico completo o all'esecuzione H100.
+
+### EXP30 maximum checkpoint and reused Boolean replay
+
+Il [record su SHA pulita `add6c214c06d`](../../benchmarks/results/c71-maximum-checkpoint-2026-09-19-add6c214c06d.json)
+conserva **9 test Rust e 17 Python**. Il massimo a un solo checkpoint è
+confrontato con l'albero denso su tutti i figli, inclusi padding e foglia -1,
+e conserva proof, punto, Auth, triple, prodotti, consumo MAC e FS. Passano
+softmax completo ridotto, GKR RMS/ratio, N=1 e composizione nativa ridotta.
+I contatori del sumcheck coincidono con il trace Python. Input/current/next
+Boolean mantengono puntatori e capacità dopo la riserva iniziale e vengono
+liberati prima della LUT byte. Il piano trattiene i cut originali anche
+attraverso lookup/ratio. Il record include gli errori di build e liveness
+corretti prima del run pulito, senza GPU o credito al picco completo.
+Il lookup denso rimane un blocco distinto, ancora da sostituire.

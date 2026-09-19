@@ -1057,3 +1057,9 @@ non sono un censimento completo del setup F_EQ.
 È un controllo componente test-only: non esegue seal/burn, guard prima di
 c, costruttore cGGM separato per ruolo o la F_EQ composta. Il picco fisico,
 il tempo congiunto e i gate pre-spesa restano aperti.
+
+Il [record su SHA pulita `d80b0490333d`](../../benchmarks/results/c71-real-seed6-2026-09-19-d80b0490333d.json)
+conserva **13 test Rust e 18 Python** passati, KAT indipendenti, ledger e
+arena O=0/150/300. Le capacità native di ogni fase coincidono con il modello
+Python nei due casi ridotti. Include separatamente l'errore di compilazione
+sulla cancellazione delle slice K6, corretto prima del run pulito.

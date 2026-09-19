@@ -130,3 +130,18 @@ def test_original_guard_rows_and_named_arena_state():
     assert guard['verifier_Fp3_add_sub']==64130
     assert guard['challenge_fixed_before_proof_input']
     assert not guard['global_FS_codec_credit']
+
+
+def test_two_key_equality_work_and_bounded_heap_envelope():
+    eq=trace.seed6_equality_trace()
+    assert eq['reserved_tail_rows_each_seed']==2025
+    assert eq['wire_both_roles_without_coins_or_seed']==32612
+    assert eq['Fp3_multiplications_each_role']==6751
+    assert eq['Fp3_by_Fp_multiplications_each_role']==2025
+    assert eq['Fp3_additions_role0']==8100
+    assert eq['Fp3_subtractions_role0']==1352
+    assert max(eq['extra_owned_heap_phase_bytes_each_role'].values())==64800
+    assert eq['logical_original_seed_reads_bytes_each_role']==113424
+    assert eq['both_corrections_fixed_before_coin_callback']
+    assert eq['peer_commitment_fixed_before_own_opening']
+    assert not eq['global_F_Rand_or_seal_credit']

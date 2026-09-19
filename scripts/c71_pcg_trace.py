@@ -215,6 +215,55 @@ def seed6_guard_trace(blocks=TREES, height=HEIGHT):
     }
 
 
+def seed6_equality_trace(n=TREES):
+    """Two-key consumer after both seed completions; no outer F_Rand/seal credit."""
+    if not 1 <= n <= TREES:
+        raise ValueError('equality requires 1..675 coordinates')
+    domain = len(b'VOLTA-C71-Seed6-equality-v1')
+    return {
+        'coordinates':n, 'reserved_tail_rows_each_seed':3*n,
+        'correction_payload_bytes_each_role':24*n,
+        'commit_payload_bytes_each_role':32, 'opening_payload_bytes_each_role':56,
+        'wire_both_roles_without_coins_or_seed':48*n+212,
+        'framing_assumption':'six existing 6-byte frame headers, not yet transported',
+        'Fp3_multiplications_each_role':10*n+1,
+        'Fp3_by_Fp_multiplications_each_role':3*n,
+        'Fp3_additions_role0':12*n,
+        'Fp3_additions_role1':12*n+2,
+        'Fp3_subtractions_role0':2*n+2,
+        'Fp3_subtractions_role1':2*n,
+        'Fp3_negations_role0':1,
+        'Fp3_negations_role1':0,
+        'acceptance_Fp3_additions_each_role':1,
+        'acceptance_Fp3_equality_tests_each_role':1,
+        'prefix_hash_absorbed_bytes_each_role':domain+len(b'/corrections/')+32+8+64+2+48*n,
+        'prefix_hash_update_calls_each_role':10,
+        'share_commit_hash_absorbed_bytes_each_role':domain+len(b'/share/')+32+1+56,
+        'share_commit_and_peer_verify_hash_calls_each_role':2,
+        'owned_input_payload_bytes_each_role':24*n,
+        'extra_owned_heap_phase_bytes_each_role':{
+            'prepare':48*n, 'freeze_with_received_frame':96*n,
+            'commit_with_coins':96*n, 'open_and_verify':0},
+        'seed_output_liveness':'both owned outputs retained until share is committed, then erased',
+        'diagnostic_Audit_Vecs_released_before_correction_allocation':True,
+        'main_seed_rows_cap':17553, 'inverse_seed_rows_exact':3*n,
+        'dedicated_tail_reservation_token_implemented':False,
+        'native_Prepared_size_bytes':1000, 'native_Frozen_size_bytes':1056,
+        'native_Committed_size_bytes':121, 'native_Openable_size_bytes':153,
+        'native_BLAKE3_Hasher_size_bytes':1920,
+        'native_value_state_slot_bytes':4096,
+        'native_value_state_slot_is_not_compiler_stack_bound':True,
+        'logical_original_seed_reads_bytes_each_role':168*n+24,
+        'logical_correction_payload_read_bytes_each_role':24*n,
+        'counter_scope':'source field calls and owned payload; no hardware instructions/HBM credit',
+        'both_corrections_fixed_before_coin_callback':True,
+        'peer_commitment_fixed_before_own_opening':True,
+        'global_F_Rand_or_seal_credit':False,
+        'guard_cGGM_to_equality_connected':False,
+        'complete_physical_peak':False,
+    }
+
+
 def trie_nodes(rows):
     """Distribution-free union-trie upper for public EA point terms."""
     terms = WEIGHT * rows
@@ -324,6 +373,7 @@ def report():
                 'roleswap': seed6_real_trace(EQ_SEED_ROWS),
                 'Dory_rows': DORY_SEED_ROWS, 'F_EQ_extra_rows_each_seed': EQ_SEED_ROWS,
                 'path_guard_consumer': seed6_guard_trace(),
+                'two_key_equality_consumer':seed6_equality_trace(),
                 'physical_roles_opposite': True, 'composed_execution_credit': False,
             },
             'persistent_selected_cGGM_state': {

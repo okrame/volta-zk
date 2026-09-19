@@ -996,7 +996,12 @@ prova. Il callback di test non è la FS globale, e il costruttore cGGM non
 [ProdSound](../../lean/VoltaZk/ProdSound.lean) giustificano l'identità algebrica,
 non il refinement di questo codec. `prodBatch_sound_scalar` usa potenze
 j+1; il consumer usa j: non si trasferisce il bound senza tale adattamento.
-Nessun nuovo credito al teorema B12 o alla composizione EA-LPN. Il getter numerico ridotto
+Nessun nuovo credito al teorema B12 o alla composizione EA-LPN. Il
+[consumer F_EQ](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti) verifica
+localmente chosen-input e share a due chiavi con codec canonico e ordine
+commit-before-open. F_Rand globale, token delle code disgiunte, trasporto e
+burn non sono scaricati; l’ownership degli output non sostituisce tali premesse.
+ Il getter numerico ridotto
 O=0/2/4 apre la root A originale con S1 condiviso allocato dopo le query
 al predecessore. Il fold in-place dei successori segue il rilascio esplicito
 dell’handle precedente; il riferimento CPU rifiuta riordini e getter obsoleti.

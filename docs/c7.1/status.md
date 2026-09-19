@@ -313,6 +313,9 @@ trasporto, seal, ruoli opposti composti e trie batch restano aperti.
 Il consumer guard sui MAC originali passa nel caso reale da nove righe,
 con ricetta disgiunta e sfida fissata prima della prova. Restano da collegare
 FS globale, exchange delle correzioni e costruttore cGGM dopo il guard.
+Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
+usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
+coin globale, riserva disgiunta delle code e burn restano obblighi esterni.
 Il getter numerico ridotto O=0/2/4 ora apre la root A originale tramite
 WHIR; S1 condiviso viene allocato solo dopo le query al predecessore.
 Il fold dei successori ora richiede il rilascio dell’handle precedente e

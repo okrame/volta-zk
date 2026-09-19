@@ -112,6 +112,13 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                                 'Seed6:guard_native_value_state':552}})
                 events += [{'event':'guard_prefix_native_hash_object', 'allocate':{'Seed6:hash_object':1920}},
                            {'event':'guard_prefix_hash_release_before_challenge','free':['Seed6:hash_object']}]
+                equality=setup['two_key_equality_consumer']
+                # Reserve the component envelope conservatively while both seed
+                # outputs and guard corrections still live. This is NOT an
+                # executed guard/cGGM/F_EQ composition or an inferred release.
+                events.append({'event':'reserve_equality_component_outer_transition_pending',
+                    'allocate':{'Seed6:equality_payload_envelope':max(equality['extra_owned_heap_phase_bytes_each_role'].values()),
+                                'Seed6:equality_native_value_slot':equality['native_value_state_slot_bytes']}})
                 chains['Seed6_'+main_role+'_then_'+inverse_role+'_outer_pending']=events
 
         if reuse_reader_for_commit:

@@ -1334,3 +1334,39 @@ Il piano conserva anche il secondo seed: non libera righe necessarie a
 F_EQ. Il nuovo stato non alza il picco nominato precedente né chiude quello
 fisico. Copie temporanee Auth/Key/Fp3 sullo stack non hanno ancora un audit
 di cancellazione. Restano i gate del preflight e il totale ≤65 s.
+
+
+## F_EQ: consumer locale dei due seed opposti
+
+Il [consumer ridotto](../../rust/volta-pcg/src/c71_seed6/equality.rs) usa
+le code riservate dei due seed completati, con ruoli opposti. Corregge la
+key con `k' = k - Delta*(x-r)`, mantenendo il tag originale. Entrambe le
+correzioni canoniche entrano nel prefisso role-bound prima del callback coin;
+ogni parte riceve il commitment peer prima di poter aprire la propria share.
+Le share sommano a `(Delta0+Delta1)*(x1-x0)`. I test coprono input diversi,
+framing, campi non canonici, commitment errato/riflesso e share alterata anche
+prima del commitment; il caso reale usa due seed da tre righe, direzioni 0/1.
+
+Il callback deterministico dei test **non realizza F_Rand**. Il vincolo
+locale commit-before-open non realizza il trasporto atomico o il burn durevole.
+Il consumer possiede i due output, ma il token che riserva la coda prima
+che Dory usi il prefisso e il collegamento guard→cGGM→F_EQ restano da costruire.
+Le garanzie di privacy/soundness dello screen sono condizionali a quelle
+premesse: nessun credito alla composizione o alla sola coin del fixture.
+
+Il ledger per t=675 conta, per parte, 6.751 prodotti Fp3 e 2.025 prodotti
+Fp3×Fp, prima del lavoro della coin; il payload più sei header da 6 B costa
+32.612 B complessivi, esclusi seed e coin. Il framing di trasporto è una
+prenotazione, non ancora un exchange nativo. Input, frame e coin sono
+limitati in capacità; la decodifica trasferisce il frame posseduto, poi lo
+rilascia. Gli Audit di setup vengono liberati prima delle correzioni.
+Il massimo payload aggiuntivo è **64.800 B per parte**, oltre ai due output
+Seed6 ancora vivi. A dimensione canonica, il payload simultaneo dà
+**550.920 B per ruolo 0 / 675.144 B per ruolo 1**; si aggiungono stato di
+valore, stack, allocator e trasporto. `size_of` è soltanto shallow.
+
+Il piano riserva conservativamente quei 64.800 B più uno slot di stato
+4.096 B mentre trattiene ancora entrambi i seed e le correzioni guard.
+Questo envelope non dichiara eseguita la transizione esterna e non libera
+implicitamente i seed nel piano. I massimi risposta restano quelli del
+range; lo stack crittografico e il picco completo non sono certificati.

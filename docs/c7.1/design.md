@@ -1040,7 +1040,14 @@ il massimo denso da 12,86/25,74 GB con un livello alla volta da
 Rilascia il checkpoint prima di lookup/GKR e conserva byte, ordine MSB e
 endpoint del massimo. Il ledger conta le nuove scansioni D e il sumcheck.
 Input/current/next del replay GKR sono riusati e liberati prima della LUT
-byte; restano census di programmi/prove/correlazioni e allocator completi.
+byte. Il census nativo distingue capacità di programmi/prove/righe/triple,
+transizioni dei pesi e fasi; caller, allocator e workspace esterni restano
+aperti. Il [lookup compatto](preflight.md#lookup-cache-originale-e-albero-tagliato)
+conserva query/istogrammi originali e il cut superiore, rigenerando quattro
+livelli senza modificare transcript o endpoint. EXP30 include tutto D/E,
+anche il padding causale; la cache i32 non viene ristretta a i16. Albero,
+cache e cut A hanno rilasci distinti dopo gli ultimi consumer. Il confronto
+ridotto non è una prova del refinement canonico né del NoPeek del caller.
 I probe CUDA standalone non danno lower al futuro kernel fuso e il vecchio
 risparmio LSB-first non si applica al transcript MSB. Nessun nuovo lemma
 Lean, variazione del trust o credito NoPeek deriva da questi controlli finiti.

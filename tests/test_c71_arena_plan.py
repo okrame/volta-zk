@@ -140,3 +140,17 @@ def test_maximum_checkpoint_fences_before_replacement_and_lookup():
         cut_releases=[e['event'] for e in p['events'] if 'getter:cuts' in e['free']]
         assert cut_releases==['EXP30_last_original_byte_consumer_fence']
         assert p['events'][-1]['live_aligned_bytes']==sum(v for _,_,v in p['initial_allocations'])
+
+
+def test_lookup_cache_survives_tree_release_and_cuts_survive_endpoint():
+    for c in arena.report(True,True)['cases']:
+        for key in ('GELU_original_lookup','softcap_original_lookup','EXP30_maximum_original_bytes'):
+            p=c['address_layouts'][key];live={x[0] for x in p['initial_allocations']}
+            for event in p['events']:
+                live.difference_update(event['free']);live.update(x[0] for x in event['allocate'])
+                if event['event'].endswith('_original_MAC_endpoint'):
+                    assert 'getter:cuts' in live
+                    assert any(k.endswith(':query_cache') for k in live)
+                    assert not any(k.endswith(':upper_tree') for k in live)
+            assert live=={x[0] for x in p['initial_allocations']}
+            assert p['fits_with_operational_margin']

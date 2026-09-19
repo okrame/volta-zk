@@ -67,6 +67,25 @@ def place_events(events, persistent):
         'device_allocation_measured':False,'native_allocator_connected':False}
 
 
+def lookup_events(name, trace):
+    """Named requested payloads; caller cuts remain live across this helper.
+
+    Native descriptor/proof/correlation/allocator capacities are still separate
+    obligations; this chain cannot certify the full physical peak.
+    """
+    cache={name+':query_cache':trace['query_cache_payload_bytes'],
+           name+':histogram_cache':trace['histogram_cache_payload_bytes']}
+    tree={name+':upper_tree':trace['upper_tree_node_payload_bytes'],
+          name+':upper_tree_descriptors':trace['upper_tree_descriptor_requested_bytes'],
+          name+':prefix_weights':trace['source_tree_work']['max_prefix_weight_payload_bytes'],
+          name+':subtree_stack':trace['subtree_stack_payload_bytes']}
+    return [dict(event=name+'_freeze_original_query_histogram',allocate=cache),
+            dict(event=name+'_build_and_prove_cut_tree',allocate=tree),
+            dict(event=name+'_tree_last_consumer_fence',free=list(tree)),
+            dict(event=name+'_original_MAC_endpoint',allocate={name+':Eq_scratch':24*(trace['bits']+1)}),
+            dict(event=name+'_endpoint_last_consumer_fence',free=[*cache,name+':Eq_scratch'])]
+
+
 def report(ordered_getter=False, reuse_reader_for_commit=False):
     if reuse_reader_for_commit and not ordered_getter:raise ValueError('ordered getter variant required')
     initial_rows=1 << (22 if reuse_reader_for_commit else 21)
@@ -188,12 +207,19 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                     'free':['EXP30:maximum_checkpoint']})
             events.append({'event':'EXP30_maximum_before_lookup_and_ratio',
                 'free':['EXP30:maximum_weights']})
+            lookups=response.producer_lookup_trace(old)
+            events.extend(lookup_events('EXP30_lookup',lookups['EXP30']))
+            for name in ('GELU','softcap'):
+                chains[name+'_original_lookup']=[
+                    dict(event=name+'_build_original_cuts',allocate={'getter:cuts':cuts}),
+                    *lookup_events(name+'_lookup',lookups[name]),
+                    dict(event=name+'_last_original_consumer_fence',free=['getter:cuts'])]
             endpoint=gkr.byte_source_trace(maximum['row_bits']+maximum['key_bits']+4,16)
             events.append({'event':'EXP30_ratio_original_byte_obligation',
                 'allocate':{'EXP30:byte_LUT':endpoint['lut_capacity_bytes'],
                     'EXP30:byte_coefficients':16*256*24,
                     'EXP30:byte_prefix_weights':endpoint['max_prefix_weight_payload_bytes']},
-                'unknown':['lookup dense domain/tree must be replaced',
+                'unknown':['lookup descriptor/proof/correlations and allocator capacities',
                            'programs/proof/correlations and complete GKR workspace']})
             events.append({'event':'EXP30_last_original_byte_consumer_fence',
                 'free':['getter:cuts','EXP30:byte_LUT','EXP30:byte_coefficients',

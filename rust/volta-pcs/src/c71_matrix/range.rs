@@ -42,6 +42,22 @@ pub(super) struct Layer {
     split: [Fp3; 8], // four children, three products, one zero-MAC tag
 }
 
+pub(super) fn tree_proof_heap_capacity_bytes(layers: &[Layer], capacity: usize) -> usize {
+    capacity * core::mem::size_of::<Layer>()
+        + layers
+            .iter()
+            .map(|layer| layer.rounds.capacity() * core::mem::size_of::<[Fp3; 5]>())
+            .sum::<usize>()
+}
+
+#[cfg(test)]
+pub(super) fn tree_proof_logical_heap_bytes(depth: usize, top_bits: usize) -> usize {
+    depth * core::mem::size_of::<Layer>()
+        + (0..depth)
+            .map(|layer| (top_bits + layer) * core::mem::size_of::<[Fp3; 5]>())
+            .sum::<usize>()
+}
+
 pub(super) struct Proof {
     histogram: Vec<Fp3>,
     roots: [Fp3; 3], // numerator, denominator, denominator inverse
@@ -366,9 +382,8 @@ fn source_folded_children(
         work.equality_multiplications += 1;
         work.equality_subtractions += 1;
     }
-    work.eq_weights_capacity_bytes = work
-        .eq_weights_capacity_bytes
-        .max(weights.capacity() * core::mem::size_of::<Fp3>());
+    work.eq_weights_capacity_bytes =
+        work.eq_weights_capacity_bytes.max(weights.capacity() * core::mem::size_of::<Fp3>());
     for prefix in 0..1usize << q {
         if prefix != 0 {
             let start = q - 1 - prefix.trailing_zeros() as usize;
@@ -412,8 +427,7 @@ fn source_folded_equality(
     }
     let tail = &point[challenges.len()..];
     for (bit, &p) in tail.iter().enumerate() {
-        value = value
-            * if suffix >> (tail.len() - 1 - bit) & 1 == 1 { p } else { Fp3::ONE - p };
+        value = value * if suffix >> (tail.len() - 1 - bit) & 1 == 1 { p } else { Fp3::ONE - p };
         work.equality_multiplications += 1;
         if suffix >> (tail.len() - 1 - bit) & 1 == 0 {
             work.equality_subtractions += 1;
@@ -474,9 +488,7 @@ pub(super) fn prove_tree_sourcewise(
                 let d: [Fp3; 4] = std::array::from_fn(|child| upper[child] - a[child]);
                 work.cubic_subtractions += 4;
                 let mut v = [Fp3::ZERO; 3];
-                for (x, y, coefficient) in
-                    [(0, 3, lambda), (2, 1, lambda), (1, 3, Fp3::ONE)]
-                {
+                for (x, y, coefficient) in [(0, 3, lambda), (2, 1, lambda), (1, 3, Fp3::ONE)] {
                     v[0] += coefficient * a[x] * a[y];
                     v[1] += coefficient * (d[x] * a[y] + a[x] * d[y]);
                     v[2] += coefficient * d[x] * d[y];
@@ -484,8 +496,7 @@ pub(super) fn prove_tree_sourcewise(
                     work.cubic_additions += 4;
                 }
                 let equality = source_folded_equality(&point, &next_point, i, &mut work);
-                let equality_hi =
-                    source_folded_equality(&point, &next_point, i + half, &mut work);
+                let equality_hi = source_folded_equality(&point, &next_point, i + half, &mut work);
                 let de = equality_hi - equality;
                 work.cubic_subtractions += 1;
                 for j in 0..3 {
@@ -495,11 +506,10 @@ pub(super) fn prove_tree_sourcewise(
                     work.cubic_additions += 2;
                 }
             }
-            work.owned_regeneration_heap_peak_bytes =
-                work.owned_regeneration_heap_peak_bytes.max(
-                    (point.capacity() + next_point.capacity()) * core::mem::size_of::<Fp3>()
-                        + work.eq_weights_capacity_bytes,
-                );
+            work.owned_regeneration_heap_peak_bytes = work.owned_regeneration_heap_peak_bytes.max(
+                (point.capacity() + next_point.capacity()) * core::mem::size_of::<Fp3>()
+                    + work.eq_weights_capacity_bytes,
+            );
             let (corrections, a) = authenticate(c, rows);
             let tag = a[0].m + a[0].m + a[1].m + a[2].m + a[3].m - target.m;
             let wire = [corrections[0], corrections[1], corrections[2], corrections[3], tag];
@@ -507,10 +517,9 @@ pub(super) fn prove_tree_sourcewise(
             let r = fs.fp3();
             target = a.iter().rev().fold(Auth::ZERO, |s, &x| s.scale(r).add(x));
             next_point.push(r);
-            work.owned_regeneration_heap_peak_bytes =
-                work.owned_regeneration_heap_peak_bytes.max(
-                    (point.capacity() + next_point.capacity()) * core::mem::size_of::<Fp3>(),
-                );
+            work.owned_regeneration_heap_peak_bytes = work
+                .owned_regeneration_heap_peak_bytes
+                .max((point.capacity() + next_point.capacity()) * core::mem::size_of::<Fp3>());
             rounds.push(wire);
         }
         let folded = source_folded_children(
@@ -727,17 +736,15 @@ mod tests {
             for suffix in 0..current {
                 let expected: [Fp3; 4] = std::array::from_fn(|child| {
                     (0..1usize << q).fold(Fp3::ZERO, |sum, prefix| {
-                        let weight = challenges.iter().enumerate().fold(
-                            Fp3::ONE,
-                            |weight, (bit, &r)| {
+                        let weight =
+                            challenges.iter().enumerate().fold(Fp3::ONE, |weight, (bit, &r)| {
                                 weight
                                     * if prefix >> (q - 1 - bit) & 1 == 1 {
                                         r
                                     } else {
                                         Fp3::ONE - r
                                     }
-                            },
-                        );
+                            });
                         sum + weight * get(2, prefix * current + suffix)[child]
                     })
                 });

@@ -292,6 +292,72 @@ def source_tree_trace(view_bits, bits):
                 max_prefix_weight_payload_bytes=24*(view_bits+bits))
 
 
+def lookup_source_trace(query_rows, table_rows, query_width, cut=4):
+    """Fixed original cache and cut-tree source work; no service/HBM credit."""
+    if query_rows<1 or table_rows<1 or query_width not in (4,6) or cut<0:
+        raise ValueError('lookup source geometry')
+    bits=(query_rows+table_rows-1).bit_length()
+    n=1 << bits;cut=min(cut,bits)
+    tree=source_tree_trace(0,bits)
+    cache=query_width*query_rows+4*table_rows
+    layers=[]
+    for x in tree['layers']:
+        height=bits-1-x['layer'];calls=x['getter_calls']
+        replay=height<cut
+        repetitions=x['dimensions']+1 if replay else 0
+        layers.append(dict(layer=x['layer'],height=height,
+            cached_original_read_bytes=repetitions*cache,
+            checkpoint_read_bytes=0 if replay else 96*calls,
+            fraction_merges=2*calls*((1<<height)-1) if replay else 0,
+            cached_live_leaf_visits=repetitions*(query_rows+table_rows),
+            padded_leaf_visits=repetitions*(n-query_rows-table_rows)))
+    replay_repetitions=sum(x['dimensions']+1 for x in tree['layers']
+                           if bits-1-x['layer']<cut)
+    tag_calls=table_rows+(query_rows+table_rows)*(1+replay_repetitions)
+    return dict(credit=False,query_rows=query_rows,table_rows=table_rows,
+        query_width=query_width,bits=bits,cut=cut,padded_rows=n,
+        query_cache_payload_bytes=query_width*query_rows,
+        histogram_cache_payload_bytes=4*table_rows,
+        original_cache_payload_bytes=cache,
+        upper_tree_node_payload_bytes=48*(2*(n>>cut)-1),
+        upper_tree_levels=bits-cut+1,
+        upper_tree_descriptor_requested_bytes=24*(bits-cut+1),
+        subtree_stack_payload_bytes=16*48,
+        original_query_getter_calls=query_rows,original_histogram_getter_calls=table_rows,
+        original_cache_payload_writes=cache,
+        build_fraction_merges=n-1,build_original_leaf_reads_bytes=cache,
+        replay_fraction_merges=sum(l['fraction_merges'] for l in layers),
+        replay_leaf_reads=sum(l['cached_live_leaf_visits']+l['padded_leaf_visits'] for l in layers),
+        replay_cached_original_read_bytes=sum(l['cached_original_read_bytes'] for l in layers),
+        replay_checkpoint_read_bytes=sum(l['checkpoint_read_bytes'] for l in layers),
+        endpoint_original_cache_read_bytes=cache,
+        endpoint_domain_visits_each_role=n,
+        endpoint_equality_multiplications_each_role=2*n-2,
+        endpoint_equality_subtractions_each_role=n-1,
+        endpoint_weighted_original_mul_add_each=2*query_rows+table_rows,
+        prover_tag_evaluations=tag_calls,
+        prover_tag_Fp3_multiplications_source=3*tag_calls,
+        prover_tag_Fp3_additions_source=2*tag_calls,
+        prover_leaf_denominator_subtractions=(query_rows+table_rows)*(1+replay_repetitions),
+        prover_histogram_numerator_negations=table_rows*(1+replay_repetitions),
+        prover_descriptor_row_calls=query_rows+table_rows+n*(2+replay_repetitions),
+        verifier_public_tag_evaluations=2*table_rows,
+        verifier_endpoint_Fp3_multiplications=3*query_rows+4*table_rows,
+        verifier_endpoint_Fp3_additions=2*query_rows+3*table_rows+n-query_rows-table_rows,
+        verifier_endpoint_Fp3_subtractions=query_rows+table_rows,
+        signed_integer_to_field_calls_not_primitive_expanded=True,
+        source_tree_work=tree,layers=layers,
+        dense_tree_payload_rejected_bytes=48*(2*n-1),
+        complete_work=False,complete_physical_peak=False,
+        missing=['MAC/FS/correlation/proof work and capacities',
+                 'signed integer conversion, descriptor comparisons and allocation mechanics',
+                 'descriptor, binding frame/AttemptContext and allocator capacity joins',
+                 'public table output reads and root inversion/pole comparison',
+                 'integer cache encoding and decoding',
+                 'original producer/getter work and physical traffic'],
+        logical_accesses_are_not_HBM=True)
+
+
 def byte_source_trace(view_bits, lanes):
     """MSB regeneration with shared prefix weights and a four-child getter.
 

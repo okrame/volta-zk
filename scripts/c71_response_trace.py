@@ -89,6 +89,22 @@ def maximum_source_trace(old):
                  'allocator and complete caller liveness'])
 
 
+def producer_lookup_trace(old):
+    """All original source cells: lookup includes EXP30 causal padding."""
+    sources=getter.sources_at(old)
+    def cells(predicate):
+        return sum(s['rows']*s['cols'] for s in sources if predicate(s['name']))
+    shapes={
+        'GELU':(cells(lambda n:n.startswith('X/') and n.endswith('/gelu_tanh')),
+                cells(lambda n:n.startswith('M/GELU/')),4),
+        'softcap':(cells(lambda n:n=='X/global/final_tanh_softcap'),
+                   cells(lambda n:n=='M/global/final_tanh_softcap'),4),
+        'EXP30':(cells(lambda n:n.startswith('softmax/') and n.endswith('/D')),
+                 cells(lambda n:n.startswith('softmax/') and n.endswith('/M')),6),
+    }
+    return {name:gkr.lookup_source_trace(*shape) for name,shape in shapes.items()}
+
+
 def producer_gkr_trace(old):
     """Known source work for RMS and this response's EXP30 relation.
 
@@ -143,10 +159,26 @@ def producer_gkr_trace(old):
     for name,value in maximum['source_tree_work']['counted_work'].items():
         if name.startswith(('equality_','cubic_','fold_')):
             field['maximum_'+name]=value
+    lookups=producer_lookup_trace(old)
+    scalar['lookup_original_query_callbacks']=sum(x['original_query_getter_calls'] for x in lookups.values())
+    scalar['lookup_original_histogram_callbacks']=sum(x['original_histogram_getter_calls'] for x in lookups.values())
+    for name in ('equality_multiplications','equality_additions','equality_subtractions',
+                 'cubic_multiplications','cubic_additions','cubic_subtractions',
+                 'fold_multiplications','fold_additions','fold_subtractions'):
+        field['lookup_tree_'+name]=sum(x['source_tree_work']['counted_work'][name] for x in lookups.values())
+    merges=sum(x['build_fraction_merges']+x['replay_fraction_merges'] for x in lookups.values())
+    field['lookup_fraction_multiplications']=3*merges
+    field['lookup_fraction_additions']=merges
+    for name in ('prover_tag_Fp3_multiplications_source','prover_tag_Fp3_additions_source',
+                 'prover_leaf_denominator_subtractions','prover_histogram_numerator_negations',
+                 'endpoint_weighted_original_mul_add_each','endpoint_equality_multiplications_each_role',
+                 'endpoint_equality_subtractions_each_role'):
+        field['lookup_'+name]=sum(x[name] for x in lookups.values())
     budget = BUDGET_SECONDS['proof_producer_relations']
     return {'credit':False, 'canonical_calibrated_profile':False,
         'relations':['RMS', f'EXP30_O{old}'], 'record':GKR_RECORD.name,
         'EXP30_maximum':maximum,
+        'lookup_relations':lookups,
         'source_level_scalar_getter_work_known_components':scalar,
         'branchless_Boolean_fold_masks':masks,
         'source_level_field_work_known_components':field,

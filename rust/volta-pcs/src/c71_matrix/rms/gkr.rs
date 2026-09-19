@@ -58,10 +58,41 @@ struct Layer {
     terminal: [Fp3; 4],    // X/Y/XY corrections and the affine zero-MAC tag
 }
 
+fn layers_heap_capacity_bytes(layers: &[Layer], capacity: usize) -> usize {
+    capacity * core::mem::size_of::<Layer>()
+        + layers
+            .iter()
+            .map(|layer| {
+                layer.rounds.capacity() * core::mem::size_of::<Vec<Fp3>>()
+                    + layer
+                        .rounds
+                        .iter()
+                        .map(|round| round.capacity() * core::mem::size_of::<Fp3>())
+                        .sum::<usize>()
+            })
+            .sum::<usize>()
+}
+
 pub(in super::super) struct Proof {
     layers: Vec<Layer>,
     products: [Fp3; 2],
     functions: byte_function::Proof,
+}
+
+impl Proof {
+    fn heap_capacity_bytes(&self) -> usize {
+        layers_heap_capacity_bytes(&self.layers, self.layers.capacity())
+            + self.functions.heap_capacity_bytes()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+struct BindWork {
+    prefix_capacity_bytes: usize,
+    point_capacity_bytes: usize,
+    attempt_capacity_bytes: usize,
+    transcript_bytes: usize,
+    stream_stack_bytes: usize,
 }
 
 fn widths(programs: &[Circuit]) -> Result<Vec<usize>, String> {
@@ -138,7 +169,7 @@ impl Statement<'_> {
         Ok(correlation_count(&widths, c))
     }
 
-    fn bind(&self, fs: &mut Fs) -> Vec<Fp3> {
+    fn bind(&self, fs: &mut Fs) -> (Vec<Fp3>, BindWork) {
         // Keep the original framing when every profile fits below its 255
         // padding sentinel. Canonical RMS may have 421 distinct programs.
         let wide = self.programs.len() > 255;
@@ -151,7 +182,10 @@ impl Statement<'_> {
         bytes.extend((self.profile.len() as u64).to_le_bytes());
         bytes.extend(self.profile);
         bytes.extend(self.view);
-        bytes.extend(self.attempt.encode());
+        let attempt = self.attempt.encode();
+        let attempt_capacity_bytes = attempt.capacity();
+        bytes.extend(&attempt);
+        drop(attempt);
         bytes.extend((self.programs.len() as u32).to_le_bytes());
         for p in self.programs {
             bytes.extend((p.ports as u32).to_le_bytes());
@@ -206,7 +240,16 @@ impl Statement<'_> {
             }
             update(&chunk[..used]);
         });
-        (0..self.assignments.len().ilog2()).map(|_| fs.fp3()).collect()
+        let prefix_capacity_bytes = bytes.capacity();
+        let point: Vec<_> = (0..self.assignments.len().ilog2()).map(|_| fs.fp3()).collect();
+        let work = BindWork {
+            prefix_capacity_bytes,
+            point_capacity_bytes: point.capacity() * core::mem::size_of::<Fp3>(),
+            attempt_capacity_bytes,
+            transcript_bytes: total,
+            stream_stack_bytes: 4096,
+        };
+        (point, work)
     }
 
     fn live(&self, point: &[Fp3]) -> Fp3 {
@@ -307,6 +350,20 @@ fn cell_coefficients(
     c
 }
 
+fn program_inner_capacity_bytes(programs: &[Circuit]) -> usize {
+    programs
+        .iter()
+        .map(|program| {
+            program.levels.capacity() * core::mem::size_of::<Vec<Gate>>()
+                + program
+                    .levels
+                    .iter()
+                    .map(|layer| layer.capacity() * core::mem::size_of::<Gate>())
+                    .sum::<usize>()
+        })
+        .sum()
+}
+
 #[cfg(test)]
 pub(in super::super) fn work_census(
     programs: &[Circuit],
@@ -328,6 +385,7 @@ pub(in super::super) fn work_census(
     let mut layers = Vec::new();
     let (mut mul, mut add, mut sub, mut frame_callbacks) = (0u64, 0u64, 0u64, 0u64);
     let mut boolean_replay_gates = 0u64;
+    let mut edge_logical_heap_peak_bytes = 0usize;
     for d in 1..=depth {
         let mut counts = [0u64; 3];
         for program in programs {
@@ -345,6 +403,8 @@ pub(in super::super) fn work_census(
             }
         }
         let g = counts.iter().sum::<u64>();
+        edge_logical_heap_peak_bytes =
+            edge_logical_heap_peak_bytes.max(g as usize * core::mem::size_of::<Edge>());
         let [and, xor, copy] = counts;
         // Factor the shared program selector after summing weighted gate
         // polynomials; Copy omits y/dy and Xor uses additions for doubling.
@@ -380,6 +440,8 @@ pub(in super::super) fn work_census(
                 "dense_previous_interpolations":w*(n-1),
                 "dense_selector_interpolations":programs.len() as u64*(n-1),
                 "index_edge_iterations":2*g*w.ilog2() as u64,
+                "edge_logical_elements":g,
+                "edge_logical_heap_bytes":g as usize*core::mem::size_of::<Edge>(),
                 "index_vector_interpolations":2*(w-1),
                 "dense_previous_bytes":n*w*24,
                 "cell_first_rows_selectors_and_support_bytes":(3*w+2*programs.len() as u64)*24+programs.len() as u64,
@@ -395,17 +457,33 @@ pub(in super::super) fn work_census(
                 "scalar_boolean_replay_gate_evaluations":replay,
             }));
     }
-    Ok(serde_json::json!({
+    let logical_rows = correlation_count(&widths, cell_bits);
+    let gkr_proof_logical_heap_bytes = depth * core::mem::size_of::<Layer>()
+        + widths[..depth]
+            .iter()
+            .map(|width| {
+                let bits = width.ilog2() as usize;
+                (cell_bits + 2 * bits) * core::mem::size_of::<Vec<Fp3>>()
+                    + (5 * cell_bits + 8 * bits) * core::mem::size_of::<Fp3>()
+            })
+            .sum::<usize>();
+    let byte_proof_logical_heap_bytes = range::tree_proof_logical_heap_bytes(8, cell_bits + 4);
+    let mut result = serde_json::json!({
         "credit":false, "scope":"exact public synthetic-profile geometry; source-level partial work",
 
         "live_cells":live, "padded_cells":n, "programs":programs.len(),
         "assigned_cells_by_program":assigned, "depth":depth,
         "dense_frame_bytes":n*12,
         "public_program_descriptor_bytes":programs.len()*core::mem::size_of::<Circuit>(),
-        "public_program_inner_vec_capacity_bytes":programs.iter().map(|p|
-            p.levels.capacity()*core::mem::size_of::<Vec<Gate>>()+
-            p.levels.iter().map(|l| l.capacity()*core::mem::size_of::<Gate>()).sum::<usize>()
-        ).sum::<usize>(),
+        "public_program_inner_vec_capacity_bytes":program_inner_capacity_bytes(programs),
+        "canonical_shape_capacity_kind":"logical/requested; not runtime Vec capacity",
+        "row_logical_elements":logical_rows,
+        "row_logical_heap_bytes":logical_rows*core::mem::size_of::<Auth>(),
+        "gkr_proof_logical_heap_bytes":gkr_proof_logical_heap_bytes,
+        "byte_proof_logical_heap_bytes":byte_proof_logical_heap_bytes,
+        "proof_logical_heap_bytes":gkr_proof_logical_heap_bytes+byte_proof_logical_heap_bytes,
+        "gkr_triples_logical_heap_bytes":depth*core::mem::size_of::<[Auth;3]>(),
+        "edge_logical_heap_peak_bytes":edge_logical_heap_peak_bytes,
         "selected_Boolean_replay_two_vectors_payload_upper_bytes":programs.iter().map(|p|
             16*std::iter::once(p.ports).chain(p.levels.iter().map(Vec::len)).max().unwrap()
         ).max().unwrap_or(0),
@@ -414,6 +492,8 @@ pub(in super::super) fn work_census(
         "cell_Fp3_multiplications_source_level_upper_before_structural_support_pruning":mul,
         "cell_Fp3_additions_source_level_upper_before_structural_support_pruning":add,
         "cell_Fp3_subtractions_source_level_upper_before_structural_support_pruning":sub,
+    });
+    result.as_object_mut().unwrap().extend(serde_json::json!({
         "cell_first_logical_frame_callbacks":frame_callbacks,
         "dummy_row_callbacks":0,
         "field_value_source_scalars":live*c*widths[..depth].iter().map(|&w| w as u64).sum::<u64>(),
@@ -435,7 +515,8 @@ pub(in super::super) fn work_census(
         "replay_scratch_reused_and_released_before_byte_LUT":true,
         "canonical_calibrated_profile":false, "complete_work":false,
         "complete_physical_peak":false, "layers":layers,
-    }))
+    }).as_object().unwrap().clone());
+    Ok(result)
 }
 
 /// Work owned by the bounded cell-round coefficient builder. Counts are
@@ -472,6 +553,84 @@ struct SourceCellRound {
     terminal: Option<(Vec<Fp3>, Vec<Fp3>, Vec<Fp3>, Vec<Fp3>)>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+pub(in super::super) struct SourceCapacitySnapshot {
+    pub program_inner_capacity_bytes: usize,
+    pub row_capacity_bytes: usize,
+    pub proof_capacity_bytes: usize,
+    pub triples_capacity_bytes: usize,
+    pub protocol_capacity_bytes: usize,
+    pub phase_owned_capacity_bytes: usize,
+    pub total_named_heap_capacity_bytes: usize,
+}
+
+impl SourceCapacitySnapshot {
+    fn new(
+        program_inner_capacity_bytes: usize,
+        row_capacity_bytes: usize,
+        proof_capacity_bytes: usize,
+        triples_capacity_bytes: usize,
+        protocol_capacity_bytes: usize,
+        phase_owned_capacity_bytes: usize,
+    ) -> Self {
+        Self {
+            program_inner_capacity_bytes,
+            row_capacity_bytes,
+            proof_capacity_bytes,
+            triples_capacity_bytes,
+            protocol_capacity_bytes,
+            phase_owned_capacity_bytes,
+            total_named_heap_capacity_bytes: program_inner_capacity_bytes
+                + row_capacity_bytes
+                + proof_capacity_bytes
+                + triples_capacity_bytes
+                + protocol_capacity_bytes
+                + phase_owned_capacity_bytes,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+pub(in super::super) struct SourceCapacityWork {
+    pub program_inner_capacity_bytes: usize,
+    pub widths_capacity_bytes: usize,
+    pub row_capacity_bytes: usize,
+    pub bind_prefix_capacity_bytes: usize,
+    pub bind_point_capacity_bytes: usize,
+    pub bind_attempt_capacity_bytes: usize,
+    pub bind_transcript_bytes: usize,
+    pub bind_stream_stack_bytes: usize,
+    pub gkr_layers_capacity_bytes: usize,
+    pub gkr_triples_capacity_bytes: usize,
+    pub proof_capacity_bytes: usize,
+    pub edge_capacity_bytes_peak: usize,
+    pub round_auth_capacity_bytes_peak: usize,
+    pub next_weights_transition_capacity_bytes_peak: usize,
+    pub cell_round_records_capacity_bytes: usize,
+    pub byte_row_capacity_bytes: usize,
+    pub byte_triples_capacity_bytes: usize,
+    pub byte_proof_capacity_bytes: usize,
+    pub table_stack_bytes: usize,
+    pub bind: SourceCapacitySnapshot,
+    pub cell: SourceCapacitySnapshot,
+    pub index: SourceCapacitySnapshot,
+    pub byte_bind: SourceCapacitySnapshot,
+    pub byte_lut: SourceCapacitySnapshot,
+    pub named_heap_capacity_peak_bytes: usize,
+    pub complete_owned_capacity: bool,
+    pub excluded_external_owner_count: usize,
+}
+
+const SOURCE_CAPACITY_EXCLUDED_OWNERS: [&str; 7] = [
+    "caller correlation IntoIter backing allocation",
+    "caller program outer Vec and Circuit slots",
+    "getter/checkpoint storage",
+    "Fiat-Shamir/challenger storage",
+    "response serialization buffer",
+    "allocator metadata",
+    "other transient Vec/reallocation peaks outside named helpers",
+];
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize)]
 pub(in super::super) struct SourceProverWork {
     pub cell_rounds: Vec<SourceCellWork>,
@@ -491,6 +650,7 @@ pub(in super::super) struct SourceProverWork {
     pub live_weight_subtractions: u64,
     pub live_weight_additions: u64,
     pub byte_endpoint: byte_function::SourceWork,
+    pub capacity: SourceCapacityWork,
 }
 
 fn prefix_weight(prefix: usize, challenges: &[Fp3], work: &mut SourceCellWork) -> Fp3 {
@@ -754,6 +914,7 @@ fn round_prove(
     target: &mut Auth,
     fs: &mut Fs,
     rows: &mut std::vec::IntoIter<Auth>,
+    auth_capacity_peak: &std::cell::Cell<usize>,
 ) -> (Vec<Fp3>, Fp3) {
     let (mut wire, auth): (Vec<_>, Vec<_>) = coefficients
         .iter()
@@ -762,6 +923,8 @@ fn round_prove(
             (c.value(), a)
         })
         .unzip();
+    auth_capacity_peak
+        .set(auth_capacity_peak.get().max(auth.capacity() * core::mem::size_of::<Auth>()));
     wire.push(auth[0].m + auth.iter().fold(Fp3::ZERO, |v, a| v + a.m) - target.m);
     record_values(fs, 0x81, &wire);
     let r = fs.fp3();
@@ -787,8 +950,30 @@ fn round_verify(
     Ok(r)
 }
 
+fn eq_counted(point: &[Fp3]) -> (Vec<Fp3>, usize) {
+    let mut weights = vec![Fp3::ONE];
+    let mut capacity_peak = weights.capacity() * core::mem::size_of::<Fp3>();
+    for &r in point {
+        let next: Vec<_> = weights.iter().flat_map(|&x| [x * (Fp3::ONE - r), x * r]).collect();
+        capacity_peak =
+            capacity_peak.max((weights.capacity() + next.capacity()) * core::mem::size_of::<Fp3>());
+        weights = next;
+    }
+    (weights, capacity_peak)
+}
+
+fn next_weights_counted(left: &[Fp3], right: &[Fp3], beta: Fp3) -> (Vec<Fp3>, usize) {
+    let (a, a_peak) = eq_counted(left);
+    let (b, b_peak) = eq_counted(right);
+    let result: Vec<_> = a.iter().zip(&b).map(|(&a, &b)| a + beta * b).collect();
+    let capacity_bytes = a_peak
+        .max(a.capacity() * core::mem::size_of::<Fp3>() + b_peak)
+        .max((a.capacity() + b.capacity() + result.capacity()) * core::mem::size_of::<Fp3>());
+    (result, capacity_bytes)
+}
+
 fn next_weights(left: &[Fp3], right: &[Fp3], beta: Fp3) -> Vec<Fp3> {
-    eq(left).into_iter().zip(eq(right)).map(|(a, b)| a + beta * b).collect()
+    next_weights_counted(left, right, beta).0
 }
 
 fn tables(weights: &[Fp3]) -> [[Fp3; 256]; 16] {
@@ -815,13 +1000,17 @@ fn prove_impl(
     use std::cell::{Cell, RefCell};
 
     let widths = s.geometry()?;
+    let widths_capacity_bytes = widths.capacity() * core::mem::size_of::<usize>();
     let count = s.required()?;
     if correlations.len() < count {
         return Err("B12 RMS prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let mut point = s.bind(fs);
+    let row_values = correlations.by_ref().take(count).collect::<Vec<_>>();
+    let row_capacity_bytes = row_values.capacity() * core::mem::size_of::<Auth>();
+    let mut rows = row_values.into_iter();
+    let (mut point, bind_work) = s.bind(fs);
     let cell_bits = point.len();
+    let program_inner_capacity_bytes = program_inner_capacity_bytes(s.programs);
     let mut target =
         Auth::new(if sourcewise { s.live_sourcewise(&point) } else { s.live(&point) }, Fp3::ZERO);
     let mut weights = vec![Fp3::ONE];
@@ -862,6 +1051,7 @@ fn prove_impl(
     let replay_copy = Cell::new(0u64);
     let replay_heap = Cell::new(0usize);
     let replay_input_heap = Cell::new(0usize);
+    let round_auth_heap = Cell::new(0usize);
     let replay_scratch = RefCell::new(ReplayLayerScratch::default());
     let selector_zero_bits: u64 = s
         .assignments
@@ -871,6 +1061,8 @@ fn prove_impl(
         .map(|(cell, _)| cell_bits as u64 - u64::from(cell.count_ones()))
         .sum();
     let mut source_work = SourceProverWork::default();
+    let mut cell_protocol_capacity_peak_bytes = 0usize;
+    let mut next_weights_transition_capacity_peak_bytes = 0usize;
     let (mut layers, mut triples) = (Vec::new(), Vec::new());
     for depth in (1..widths.len()).rev() {
         let width = widths[depth - 1];
@@ -938,7 +1130,8 @@ fn prove_impl(
                     work.selector_assigned_terms * selector_point.len() as u64;
                 work.selector_weight_subtractions += selector_zero_bits;
                 fs.set_phase(0x1000 + 64 * depth as u16 + rounds.len() as u16);
-                let (wire, r) = round_prove(&result.coefficients, &mut target, fs, &mut rows);
+                let (wire, r) =
+                    round_prove(&result.coefficients, &mut target, fs, &mut rows, &round_auth_heap);
                 if let Some((lo, hi, selector_lo, selector_hi)) = result.terminal {
                     let interpolations = (lo.len() + selector_lo.len()) as u64;
                     let values = lo.into_iter().zip(hi).map(|(a, b)| a + r * (b - a)).collect();
@@ -957,6 +1150,14 @@ fn prove_impl(
                 following.push(r);
                 rounds.push(wire);
             }
+            cell_protocol_capacity_peak_bytes = cell_protocol_capacity_peak_bytes.max(
+                (point.capacity()
+                    + weights.capacity()
+                    + selector_point.capacity()
+                    + prefix.capacity()
+                    + following.capacity())
+                    * core::mem::size_of::<Fp3>(),
+            );
             let (previous, selectors) = terminal.ok_or("RMS sourcewise terminal missing")?;
             (previous, selectors, following, rounds)
         } else {
@@ -977,7 +1178,7 @@ fn prove_impl(
             for _ in 0..point.len() {
                 let c = cell_coefficients(s, depth, width, &previous, &selectors, &weights);
                 fs.set_phase(0x1000 + 64 * depth as u16 + rounds.len() as u16);
-                let (wire, r) = round_prove(&c, &mut target, fs, &mut rows);
+                let (wire, r) = round_prove(&c, &mut target, fs, &mut rows, &round_auth_heap);
                 fold(&mut previous, r);
                 for selector in &mut selectors {
                     fold(selector, r);
@@ -1005,7 +1206,7 @@ fn prove_impl(
                     (side == 1).then_some(values[0]),
                 );
                 fs.set_phase(0x1000 + 64 * depth as u16 + rounds.len() as u16);
-                let (wire, r) = round_prove(&c, &mut target, fs, &mut rows);
+                let (wire, r) = round_prove(&c, &mut target, fs, &mut rows, &round_auth_heap);
                 fold_edges(&mut edges, vector.len() / 2, side == 1, r);
                 fold(&mut vector, r);
                 points[side].push(r);
@@ -1019,6 +1220,7 @@ fn prove_impl(
                             + vector.capacity()
                             + selectors.capacity()
                             + following.capacity()
+                            + point.capacity()
                             + weights.capacity()
                             + points[0].capacity()
                             + points[1].capacity())
@@ -1036,15 +1238,34 @@ fn prove_impl(
         record_values(fs, 0x82, &terminal);
         let beta = fs.fp3();
         target = original[0].add(original[1].scale(beta));
-        weights = next_weights(&points[0], &points[1], beta);
+        let (next, transition_capacity_bytes) = next_weights_counted(&points[0], &points[1], beta);
+        next_weights_transition_capacity_peak_bytes = next_weights_transition_capacity_peak_bytes
+            .max(
+                (previous.capacity()
+                    + selectors.capacity()
+                    + following.capacity()
+                    + point.capacity()
+                    + weights.capacity()
+                    + points[0].capacity()
+                    + points[1].capacity())
+                    * core::mem::size_of::<Fp3>()
+                    + edges.capacity() * core::mem::size_of::<Edge>()
+                    + transition_capacity_bytes,
+            );
+        weights = next;
         point = following;
         triples.push(original);
         layers.push(Layer { rounds, terminal });
     }
     drop(replay_scratch); // Last Boolean consumer precedes the byte LUT allocation.
+    let gkr_layers_capacity_bytes = layers_heap_capacity_bytes(&layers, layers.capacity());
+    let gkr_triples_capacity_bytes = triples.capacity() * core::mem::size_of::<[Auth; 3]>();
     let products = range::prove_products(&triples, rows.next().unwrap(), fs);
+    drop(triples); // Product corrections are fixed before the disjoint byte LUT phase.
     let live = if sourcewise { s.live_sourcewise(&point) } else { s.live(&point) };
     let target = Auth::new(target.x - weights[1] * live, target.m);
+    let byte_protocol_capacity_bytes =
+        (point.capacity() + weights.capacity()) * core::mem::size_of::<Fp3>();
     let tables = tables(&weights);
     let bs = byte_function::Statement {
         root: s.root,
@@ -1087,6 +1308,8 @@ fn prove_impl(
         + source_work.boolean_replay_heap_peak_bytes
         + source_work.boolean_input_heap_peak_bytes
         + source_work.cell_rounds.capacity() * core::mem::size_of::<SourceCellWork>();
+    let cell_round_records_capacity_bytes =
+        source_work.cell_rounds.capacity() * core::mem::size_of::<SourceCellWork>();
     source_work.original_frame_reads = frame_reads.get();
     source_work.byte_endpoint = byte_endpoint;
     if sourcewise {
@@ -1096,7 +1319,93 @@ fn prove_impl(
         source_work.live_weight_subtractions = selector_zero_bits * evaluations;
         source_work.live_weight_additions = live * evaluations;
     }
-    Ok((Proof { layers, products, functions }, point, original, source_work))
+    let proof = Proof { layers, products, functions };
+    let proof_capacity_bytes = proof.heap_capacity_bytes();
+    let edge_capacity_bytes_peak =
+        source_work.edge_capacity_elements_peak * core::mem::size_of::<Edge>();
+    let bind = SourceCapacitySnapshot::new(
+        program_inner_capacity_bytes,
+        row_capacity_bytes,
+        0,
+        0,
+        widths_capacity_bytes,
+        bind_work.prefix_capacity_bytes
+            + bind_work.point_capacity_bytes.max(bind_work.attempt_capacity_bytes),
+    );
+    let cell = SourceCapacitySnapshot::new(
+        program_inner_capacity_bytes,
+        row_capacity_bytes,
+        gkr_layers_capacity_bytes,
+        gkr_triples_capacity_bytes,
+        widths_capacity_bytes + cell_protocol_capacity_peak_bytes,
+        source_work.cell_phase_owned_heap_peak_bytes + round_auth_heap.get(),
+    );
+    let index_phase_owned_capacity_bytes = (source_work.index_phase_owned_heap_peak_bytes
+        + round_auth_heap.get())
+    .max(next_weights_transition_capacity_peak_bytes)
+        + source_work.boolean_replay_heap_peak_bytes
+        + source_work.boolean_input_heap_peak_bytes
+        + cell_round_records_capacity_bytes;
+    let index = SourceCapacitySnapshot::new(
+        program_inner_capacity_bytes,
+        row_capacity_bytes,
+        gkr_layers_capacity_bytes,
+        gkr_triples_capacity_bytes,
+        widths_capacity_bytes,
+        index_phase_owned_capacity_bytes,
+    );
+    let byte_bind = SourceCapacitySnapshot::new(
+        program_inner_capacity_bytes,
+        row_capacity_bytes,
+        gkr_layers_capacity_bytes,
+        0,
+        widths_capacity_bytes + byte_protocol_capacity_bytes,
+        cell_round_records_capacity_bytes
+            + source_work.byte_endpoint.bind_phase_owned_heap_peak_bytes,
+    );
+    let byte_lut = SourceCapacitySnapshot::new(
+        program_inner_capacity_bytes,
+        row_capacity_bytes,
+        gkr_layers_capacity_bytes,
+        0,
+        widths_capacity_bytes + byte_protocol_capacity_bytes,
+        cell_round_records_capacity_bytes
+            + source_work.byte_endpoint.tree_phase_owned_heap_peak_bytes,
+    );
+    source_work.capacity = SourceCapacityWork {
+        program_inner_capacity_bytes,
+        widths_capacity_bytes,
+        row_capacity_bytes,
+        bind_prefix_capacity_bytes: bind_work.prefix_capacity_bytes,
+        bind_point_capacity_bytes: bind_work.point_capacity_bytes,
+        bind_attempt_capacity_bytes: bind_work.attempt_capacity_bytes,
+        bind_transcript_bytes: bind_work.transcript_bytes,
+        bind_stream_stack_bytes: bind_work.stream_stack_bytes,
+        gkr_layers_capacity_bytes,
+        gkr_triples_capacity_bytes,
+        proof_capacity_bytes,
+        edge_capacity_bytes_peak,
+        round_auth_capacity_bytes_peak: round_auth_heap.get(),
+        next_weights_transition_capacity_bytes_peak: next_weights_transition_capacity_peak_bytes,
+        cell_round_records_capacity_bytes,
+        byte_row_capacity_bytes: source_work.byte_endpoint.row_capacity_bytes,
+        byte_triples_capacity_bytes: source_work.byte_endpoint.triples_capacity_bytes,
+        byte_proof_capacity_bytes: source_work.byte_endpoint.proof_capacity_bytes,
+        table_stack_bytes: 4096 * core::mem::size_of::<Fp3>(),
+        bind,
+        cell,
+        index,
+        byte_bind,
+        byte_lut,
+        named_heap_capacity_peak_bytes: [bind, cell, index, byte_bind, byte_lut]
+            .into_iter()
+            .map(|snapshot| snapshot.total_named_heap_capacity_bytes)
+            .max()
+            .unwrap(),
+        complete_owned_capacity: false,
+        excluded_external_owner_count: SOURCE_CAPACITY_EXCLUDED_OWNERS.len(),
+    };
+    Ok((proof, point, original, source_work))
 }
 
 pub(in super::super) fn prove_sourcewise(
@@ -1153,7 +1462,7 @@ pub(in super::super) fn verify(
         return Err("B12 RMS proof shape or capacity mismatch".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let mut point = s.bind(fs);
+    let (mut point, _) = s.bind(fs);
     let mut target = Key::new(delta * s.live_sourcewise(&point));
     let mut weights = vec![Fp3::ONE];
     let mut triples = Vec::new();
@@ -1201,6 +1510,7 @@ pub(in super::super) fn verify(
         triples.push(original);
     }
     range::verify_products(&triples, rows.next().unwrap(), proof.products, delta, fs)?;
+    drop(triples);
     let target = Key::new(target.k - delta * weights[1] * s.live_sourcewise(&point));
     let tables = tables(&weights);
     let bs = byte_function::Statement {
@@ -1760,12 +2070,12 @@ mod tests {
                 source_work.boolean_fold_masks,
                 source_work.cell_rounds.iter().map(|work| work.value_source_scalars).sum::<u64>()
             );
+            let mut assigned = vec![0u64; programs.len()];
+            for &program in assignments.iter().flatten() {
+                assigned[program] += 1;
+            }
+            let census = work_census(programs, &assigned, c).unwrap();
             if c == 0 {
-                let mut assigned = vec![0u64; programs.len()];
-                for &program in assignments.iter().flatten() {
-                    assigned[program] += 1;
-                }
-                let census = work_census(programs, &assigned, c).unwrap();
                 assert_eq!(
                     census["cell_first_logical_frame_callbacks"].as_u64().unwrap(),
                     source_work.boolean_replay_calls
@@ -1780,11 +2090,77 @@ mod tests {
             assert!(source_work.cell_rounds.iter().all(|work| work.owned_heap_peak_bytes
                 <= (3 * (1 << 14) + 2 * programs.len()) * 24 + programs.len()));
             assert!(source_work.boolean_replay_heap_peak_bytes <= 2 * (1 << 14) * 8);
+            let capacity = &source_work.capacity;
+            assert!(
+                capacity.row_capacity_bytes
+                    >= census["row_logical_heap_bytes"].as_u64().unwrap() as usize
+            );
+            assert!(
+                capacity.proof_capacity_bytes
+                    >= census["proof_logical_heap_bytes"].as_u64().unwrap() as usize
+            );
+            assert!(
+                capacity.gkr_triples_capacity_bytes
+                    >= census["gkr_triples_logical_heap_bytes"].as_u64().unwrap() as usize
+            );
+            assert!(
+                capacity.edge_capacity_bytes_peak
+                    >= census["edge_logical_heap_peak_bytes"].as_u64().unwrap() as usize
+            );
+            assert_eq!(
+                capacity.gkr_layers_capacity_bytes,
+                layers_heap_capacity_bytes(&proof.layers, proof.layers.capacity())
+            );
+            assert_eq!(capacity.byte_proof_capacity_bytes, proof.functions.heap_capacity_bytes());
+            assert_eq!(capacity.proof_capacity_bytes, proof.heap_capacity_bytes());
+            assert_eq!(
+                capacity.proof_capacity_bytes,
+                capacity.gkr_layers_capacity_bytes + capacity.byte_proof_capacity_bytes
+            );
+            assert_eq!(
+                capacity.edge_capacity_bytes_peak,
+                source_work.edge_capacity_elements_peak * core::mem::size_of::<Edge>()
+            );
+            assert!(
+                capacity.row_capacity_bytes
+                    >= statement.required().unwrap() * core::mem::size_of::<Auth>()
+            );
+            assert!(
+                capacity.byte_row_capacity_bytes
+                    >= byte_function::required(c + 4) * core::mem::size_of::<Auth>()
+            );
+            assert!(capacity.widths_capacity_bytes > 0);
+            assert!(capacity.round_auth_capacity_bytes_peak > 0);
+            assert!(capacity.next_weights_transition_capacity_bytes_peak > 0);
+            assert_eq!(capacity.bind.proof_capacity_bytes, 0);
+            assert_eq!(capacity.bind.triples_capacity_bytes, 0);
+            for snapshot in [capacity.cell, capacity.index] {
+                assert_eq!(snapshot.proof_capacity_bytes, capacity.gkr_layers_capacity_bytes);
+                assert_eq!(snapshot.triples_capacity_bytes, capacity.gkr_triples_capacity_bytes);
+                assert!(snapshot.protocol_capacity_bytes >= capacity.widths_capacity_bytes);
+            }
+            for snapshot in [capacity.byte_bind, capacity.byte_lut] {
+                assert_eq!(snapshot.proof_capacity_bytes, capacity.gkr_layers_capacity_bytes);
+                assert_eq!(snapshot.triples_capacity_bytes, 0);
+                assert!(snapshot.protocol_capacity_bytes >= capacity.widths_capacity_bytes);
+            }
+            assert!(
+                capacity.byte_lut.phase_owned_capacity_bytes
+                    >= capacity.byte_row_capacity_bytes
+                        + capacity.byte_triples_capacity_bytes
+                        + capacity.byte_proof_capacity_bytes
+            );
+            assert!(!capacity.complete_owned_capacity);
+            assert_eq!(
+                capacity.excluded_external_owner_count,
+                SOURCE_CAPACITY_EXCLUDED_OWNERS.len()
+            );
             if fault == 0 {
                 println!(
                     "C71_SOURCE_WORK {}",
                     serde_json::json!({
                         "work": &source_work,
+                        "capacity_excluded_owners": SOURCE_CAPACITY_EXCLUDED_OWNERS,
                         "abi": {
                             "assignments": core::mem::size_of::<Assignments<'_>>(),
                             "statement": core::mem::size_of::<Statement<'_>>(),

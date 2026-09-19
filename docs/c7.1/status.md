@@ -349,6 +349,12 @@ circuiti/prove/correlazioni/allocator e port accelerato. Il caller EXP30
 sostituisce il massimo denso NO-GO con un checkpoint da 512 MiB/1 GiB,
 rilasciato prima di lookup/GKR; il ledger include le scansioni D aggiuntive.
 Il replay GKR riusa input/current/next e li libera prima della LUT byte.
+Il lookup conserva cache originali e un cut a 16 foglie; GELU/EXP30 evitano
+così gli alberi densi già esclusi dall'arena. EXP30 conta il dominio D/E
+completo, inclusi padding causali. Il piano incorpora i payload con cut A
+vivi fino all'ultimo consumer; il massimo nominato integrato resta invariato.
+Il nuovo census nativo GKR/byte misura righe, programmi, prove, triple e
+transizioni di buffer; allocator, caller e picco fisico completo restano aperti.
 Nessuna GPU, spill o spesa autorizzata.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso

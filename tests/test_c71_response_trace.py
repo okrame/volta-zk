@@ -63,3 +63,16 @@ def test_maximum_checkpoint_trace_replaces_only_one_layer_at_a_time():
         assert x['dense_tree_payload_rejected_bytes']>trace.ARENA
         assert x['layers'][-1]['checkpoint_capacity_bytes']==x['layers'][-2]['checkpoint_capacity_bytes']
         assert not x['complete_work'] and not x['complete_physical_peak']
+
+
+def test_lookup_exp30_counts_full_original_domain_including_causal_padding():
+    for old in (0,150,300):
+        lookups=trace.producer_lookup_trace(old)
+        x=lookups['EXP30']
+        assert x['query_rows']==60*8192*(old+150)
+        assert x['table_rows']==60*65535
+        assert x['query_width']==6
+        assert lookups['GELU']['query_rows']==193536000
+        assert lookups['softcap']['query_rows']==13107200
+        joined=trace.producer_gkr_trace(old)
+        assert joined['source_level_scalar_getter_work_known_components']['lookup_original_query_callbacks']==sum(v['query_rows'] for v in lookups.values())

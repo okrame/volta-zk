@@ -45,6 +45,10 @@ eseguire separatamente `fs_streamed_record`, `c71_b12_byte_functions`,
 `c71_b12_native_composed`. Restano 60 s/2 GiB, un thread e un worker Rayon
 per invocazione; il caso u16/N=128 è il più costoso e non va ampliato.
 `--nocapture` emette i contatori `C71_SOURCE_WORK` e `C71_BYTE_SOURCE_WORK`.
+Per il lookup compatto aggiungere `source_lookup_matches_dense`,
+`c71_b12_lookup`, `c71_b12_gemma_gelu_sources` e `c71_b12_gemma_output_head`;
+`C71_LOOKUP_SOURCE_WORK` confronta cache/cut/Eq con il ledger Python.
+Il census GKR aggiunge capacità native e distingue i payload canonici.
 Dopo modifiche alle fold condivise mantenere anche
 `incremental_prefix_weights`, `selected_layer_replay`,
 `sourcewise_real_boolean_replay`, `maximum_checkpoint_and_source_tree` e

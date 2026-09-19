@@ -1473,15 +1473,66 @@ il budget 0,8 s solo per ricavare soglie di throughput, non un tempo.
 Il piano degli indirizzi conserva cut del getter e pesi insieme al checkpoint.
 I cut restano vivi attraverso lookup e ratio, inclusa la LUT byte, fino
 all'ultimo consumer originale. Workspace/liveness di lookup, GKR,
-proof/correlazioni e allocator restano da unire; il lookup conserva ancora
-domain/tree densi e non è ammesso nel piano completo.
+proof/correlazioni e allocator restano da unire; il lookup usa ora la cache
+compatta e il cut descritti sotto, senza ammissione del piano completo.
 Le letture/scritture sono accessi sorgente, non transazioni HBM misurate.
 
 Il confronto ridotto esaurisce ogni figlio contro il vecchio albero e
 confronta wire, punto, Auth, triple, batch prodotti, consumo delle righe e
 FS. La prova softmax e la composizione ridotta restano controlli di regressione.
 Il massimo componente non è il picco fisico completo o un credito di tempo.
-I massimi nominati di questa catena sono 1.356.195.328 / 1.932.387.840 /
-1.971.709.440 B; il massimo integrato nominato resta 6.166.012.672 B.
+Dopo il join del lookup sotto, i massimi nominati di questa catena sono
+2.082.728.960 / 3.369.724.928 / 3.851.414.528 B; il massimo integrato
+nominato resta 6.166.012.672 B.
 Il tipo `Fn` non impone da solo immutabilità/NoPeek: il caller deve continuare
 a legare il reader ai byte originali fissati, senza accesso ai MAC non spesi.
+
+## Lookup: cache originale e albero tagliato
+
+Il lookup riguarda GELU, softcap e EXP30. EXP30 interroga **tutto** il dominio
+D/E originale, compresi i padding causali: 60×8192×(O+150) query, quindi
+73.728.000 / 147.456.000 / 221.184.000. Non si possono usare le sole celle
+vive del GKR ratio per ridurne il conto o il predicato. GELU ha 193.536.000
+query e softcap 13.107.200; i rispettivi istogrammi hanno 3.932.100 e 65.535
+righe, con 3.932.100 righe anche per EXP30.
+
+L'albero denso occupa `48*(2P-1)` B per dominio padded P: 25.769.803.728 B
+per GELU, 12.884.901.840 B per EXP30 O=0 e 25.769.803.728 B per O=150/300.
+Questi backend sono NO-GO per arena già prima di domain, Eq e sorgenti.
+Il solo albero softcap occupa 1.610.612.688 B e non viene escluso dal medesimo
+lower. Restano separati fallimento del backend e fattibilità della relazione.
+
+Il port locale conserva query/istogrammi originali compatti,
+un albero superiore tagliato a gruppi di 16 foglie e rigenera gli ultimi
+quattro livelli, usando lo stesso sumcheck. Cache più albero superiore:
+2.400.485.088 B GELU, 153.354.188 B softcap e
+1.263.402.720 / 2.511.077.088 / 2.953.445.088 B EXP30.
+Sono payload nominati, esclusi descrittori delle sorgenti, proof, correlazioni,
+source provider e allocator. Il ledger conta costruzione, rigenerazione,
+visite anche padded, tag e endpoint Eq; letture logiche e operazioni sorgente
+non diventano traffico HBM o istruzioni GPU. Le cache chiamano ogni getter
+originale una sola volta, nell'ordine originale; il tipo stretto è selezionato
+solo dal wrapper i16, mai inferito dalle tabelle pubbliche per query i32.
+Il verifier genera i tag pubblici dal descrittore e scorre Eq senza dominio
+denso. L'albero superiore viene rilasciato prima dell'endpoint MAC, le cache
+dopo; i cut A rimangono vivi fino all'ultimo consumer originale del caller.
+Il piano include anche metadata dei livelli, stack dei sottoalberi e pesi;
+GELU arriva a 3.219.811.328 / 3.259.132.928 / 3.298.454.528 B nominati.
+Non è ancora un picco completo. La parità ridotta confronta prova densa,
+punto, MAC, consumo righe e prossimo FS, con query i32 oltre i16 e punti
+Eq Boolean/non-base. Immutabilità del getter resta una premessa del caller.
+
+## Capacità native GKR e endpoint byte
+
+Il census locale misura capacità di programmi, backing delle righe anche
+dopo il consumo dell'iteratore, prove annidate, triple, punti, edge e vettori
+intermedi. Distingue binding, round sulle celle, riduzione degli indici e
+LUT byte; input/current/next sono rilasciati prima di quest'ultima. Conta
+insieme vecchi e nuovi pesi nella transizione, compresi i vettori Eq interni;
+nessuno shrink di capacità segue dal solo consumo logico.
+Il binding mantiene lo stesso frame FS e dichiara il chunk da 4 KiB.
+I piccoli test confrontano le capacità osservate con i payload logici;
+il census della forma canonica riporta soltanto quantità richieste/logiche,
+non capacità osservate su un'esecuzione canonica. Caller, allocator,
+transcript interno e workspace esterni restano esplicitamente esclusi.
+Questa strumentazione non rende completo il picco né il lavoro temporale.

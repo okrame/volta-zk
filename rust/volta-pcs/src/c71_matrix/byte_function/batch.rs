@@ -122,7 +122,7 @@ fn bind_batch(statements: &[Statement<'_>], fs: &mut Fs) -> Result<Public, Strin
     fs.record(0x76, &header);
     let mut points = Vec::new();
     for s in statements {
-        let lanes = super::bind(s, 8, false, fs)?;
+        let (lanes, _) = super::bind(s, 8, false, fs)?;
         points.push(s.cell_point.iter().chain(&lanes).copied().collect());
     }
     let lambda = fs.fp3();

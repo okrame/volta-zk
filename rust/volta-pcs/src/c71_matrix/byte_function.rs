@@ -25,6 +25,12 @@ pub(super) struct Proof {
     products: [Fp3; 2],
 }
 
+impl Proof {
+    pub(super) fn heap_capacity_bytes(&self) -> usize {
+        range::tree_proof_heap_capacity_bytes(&self.layers, self.layers.capacity())
+    }
+}
+
 pub(super) enum Original<'a, T> {
     Lanes(&'a [T]),
     // One ORIGINAL sum claim; never split it using fresh correlations.
@@ -41,7 +47,20 @@ pub(super) fn wire_bytes(view_bits: usize) -> usize {
     4 + 8 * (4 + 8 * 24) + 5 * 24 * rounds + 3 * 24
 }
 
-fn bind(s: &Statement<'_>, count: usize, sum: bool, fs: &mut Fs) -> Result<Vec<Fp3>, String> {
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+struct BindWork {
+    prefix_capacity_bytes: usize,
+    point_capacity_bytes: usize,
+    attempt_capacity_bytes: usize,
+    transcript_bytes: usize,
+}
+
+fn bind(
+    s: &Statement<'_>,
+    count: usize,
+    sum: bool,
+    fs: &mut Fs,
+) -> Result<(Vec<Fp3>, BindWork), String> {
     if !s.tables.len().is_power_of_two()
         || s.tables.len() > 16
         || count != if sum { 1 } else { s.tables.len() }
@@ -68,7 +87,10 @@ fn bind(s: &Statement<'_>, count: usize, sum: bool, fs: &mut Fs) -> Result<Vec<F
     bytes.extend((s.profile.len() as u64).to_le_bytes());
     bytes.extend(s.profile);
     bytes.extend(s.view);
-    bytes.extend(s.attempt.encode());
+    let attempt = s.attempt.encode();
+    let attempt_capacity_bytes = attempt.capacity();
+    bytes.extend(&attempt);
+    drop(attempt);
     bytes.extend((s.cell_point.len() as u32).to_le_bytes());
     bytes.extend((s.live_cells as u64).to_le_bytes());
     bytes.extend((s.tables.len() as u32).to_le_bytes());
@@ -77,11 +99,20 @@ fn bind(s: &Statement<'_>, count: usize, sum: bool, fs: &mut Fs) -> Result<Vec<F
     }
     fs.set_phase(0x800);
     fs.record(0x60, &bytes);
-    Ok(if sum {
+    let transcript_bytes = bytes.len();
+    let prefix_capacity_bytes = bytes.capacity();
+    let point = if sum {
         vec![signed(2).inv(); lane_bits]
     } else {
         (0..lane_bits).map(|_| fs.fp3()).collect()
-    })
+    };
+    let work = BindWork {
+        prefix_capacity_bytes,
+        point_capacity_bytes: point.capacity() * core::mem::size_of::<Fp3>(),
+        attempt_capacity_bytes,
+        transcript_bytes,
+    };
+    Ok((point, work))
 }
 
 // Public Lagrange weights f(j)/product_{k!=j}(j-k); only public nonzero
@@ -118,6 +149,16 @@ struct ByteTrees {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
 pub(super) struct SourceWork {
     pub tree: range::SourceTreeWork,
+    pub bind_prefix_capacity_bytes: usize,
+    pub bind_point_capacity_bytes: usize,
+    pub bind_attempt_capacity_bytes: usize,
+    pub bind_transcript_bytes: usize,
+    pub combined_point_capacity_bytes: usize,
+    pub row_capacity_bytes: usize,
+    pub triples_capacity_bytes: usize,
+    pub proof_capacity_bytes: usize,
+    pub bind_phase_owned_heap_peak_bytes: usize,
+    pub tree_phase_owned_heap_peak_bytes: usize,
     pub coefficient_capacity_bytes: usize,
     pub lut_nodes: usize,
     pub lut_capacity_bytes: usize,
@@ -160,8 +201,8 @@ impl ByteTrees {
         let live = cell < live_cells;
         let byte = if live { usize::from(get_byte(top)) } else { 0 };
         let first = (1usize << (layer + 1)) - 1 + 2 * pair;
-        let tree = &self.nodes[(lane * 256 + byte) * BYTE_TREE_NODES
-            ..(lane * 256 + byte + 1) * BYTE_TREE_NODES];
+        let tree = &self.nodes
+            [(lane * 256 + byte) * BYTE_TREE_NODES..(lane * 256 + byte + 1) * BYTE_TREE_NODES];
         [
             if live { tree[first][0] } else { Fp3::ZERO },
             tree[first][1],
@@ -206,8 +247,9 @@ fn leaf(s: &Statement<'_>, coefficients: &[[Fp3; 256]], point: &[Fp3]) -> (Fp3, 
 // identity before this call. All claims use s.cell_point; dummy cells are
 // zero outputs, including when f(0)!=0. The getter reads the fixed byte view
 // in cell-major/lane-fastest order and must not inspect unused correlations.
-/// Counted scalar reference. Correlation-row storage, authenticated arithmetic,
-/// proof/output vectors and allocator metadata are outside `SourceWork`.
+/// Counted scalar reference. The nested row, proof and tree capacities are
+/// measured here; the caller's backing correlation allocation, authenticated
+/// arithmetic internals and allocator metadata remain external.
 pub(super) fn prove_sourcewise(
     s: &Statement<'_>,
     original: Original<'_, Auth>,
@@ -219,13 +261,16 @@ pub(super) fn prove_sourcewise(
         Original::Lanes(v) => (v.len(), false),
         Original::Sum(_) => (1, true),
     };
-    let lane_point = bind(s, len, sum, fs)?;
+    let (lane_point, bind_work) = bind(s, len, sum, fs)?;
     let point: Vec<_> = s.cell_point.iter().chain(&lane_point).copied().collect();
+    let combined_point_capacity_bytes = point.capacity() * core::mem::size_of::<Fp3>();
     let count = required(point.len());
     if correlations.len() < count {
         return Err("B12 byte-function prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let row_values = correlations.by_ref().take(count).collect::<Vec<_>>();
+    let row_capacity_bytes = row_values.capacity() * core::mem::size_of::<Auth>();
+    let mut rows = row_values.into_iter();
     let root = match original {
         Original::Lanes(v) => {
             v.iter().zip(eq(&lane_point)).fold(Auth::ZERO, |v, (&a, r)| v.add(a.scale(r)))
@@ -247,15 +292,40 @@ pub(super) fn prove_sourcewise(
     let (_, index) = leaf(s, &c, &point);
     let leaf_tag = claims[0].m;
     record_values(fs, 0x61, &[leaf_tag]);
+    let triples_capacity_bytes = triples.capacity() * core::mem::size_of::<[Auth; 3]>();
+    let proof_capacity_bytes = range::tree_proof_heap_capacity_bytes(&layers, layers.capacity());
     let products = range::prove_products(&triples, rows.next().unwrap(), fs);
+    drop(triples);
     debug_assert!(rows.next().is_none());
     point.truncate(point.len() - 8);
     let internal_nodes = (s.tables.len() * 256 * 255) as u64;
+    let coefficient_capacity_bytes = c.capacity() * core::mem::size_of::<[Fp3; 256]>();
+    let lut_capacity_bytes = trees.nodes.capacity() * core::mem::size_of::<[Fp3; 2]>();
+    let bind_phase_owned_heap_peak_bytes = (bind_work.prefix_capacity_bytes
+        + bind_work.point_capacity_bytes.max(bind_work.attempt_capacity_bytes))
+    .max(bind_work.point_capacity_bytes + combined_point_capacity_bytes);
+    let tree_phase_owned_heap_peak_bytes = bind_work.point_capacity_bytes
+        + row_capacity_bytes
+        + triples_capacity_bytes
+        + proof_capacity_bytes
+        + coefficient_capacity_bytes
+        + lut_capacity_bytes
+        + tree_work.owned_regeneration_heap_peak_bytes;
     let work = SourceWork {
         tree: tree_work,
-        coefficient_capacity_bytes: c.capacity() * core::mem::size_of::<[Fp3; 256]>(),
+        bind_prefix_capacity_bytes: bind_work.prefix_capacity_bytes,
+        bind_point_capacity_bytes: bind_work.point_capacity_bytes,
+        bind_attempt_capacity_bytes: bind_work.attempt_capacity_bytes,
+        bind_transcript_bytes: bind_work.transcript_bytes,
+        combined_point_capacity_bytes,
+        row_capacity_bytes,
+        triples_capacity_bytes,
+        proof_capacity_bytes,
+        bind_phase_owned_heap_peak_bytes,
+        tree_phase_owned_heap_peak_bytes,
+        coefficient_capacity_bytes,
         lut_nodes: trees.nodes.len(),
-        lut_capacity_bytes: trees.nodes.capacity() * core::mem::size_of::<[Fp3; 2]>(),
+        lut_capacity_bytes,
         lut_build_multiplications: 3 * internal_nodes,
         lut_build_additions: internal_nodes,
     };
@@ -274,8 +344,7 @@ pub(super) fn prove(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
-    let (proof, point, original, _) =
-        prove_sourcewise(s, original, get_byte, fs, correlations)?;
+    let (proof, point, original, _) = prove_sourcewise(s, original, get_byte, fs, correlations)?;
     Ok((proof, point, original))
 }
 
@@ -291,7 +360,7 @@ fn prove_dense(
         Original::Lanes(v) => (v.len(), false),
         Original::Sum(_) => (1, true),
     };
-    let lane_point = bind(s, len, sum, fs)?;
+    let (lane_point, _) = bind(s, len, sum, fs)?;
     let point: Vec<_> = s.cell_point.iter().chain(&lane_point).copied().collect();
     let count = required(point.len());
     if correlations.len() < count {
@@ -353,7 +422,7 @@ pub(super) fn verify(
         Original::Lanes(v) => (v.len(), false),
         Original::Sum(_) => (1, true),
     };
-    let lane_point = bind(s, len, sum, fs)?;
+    let (lane_point, _) = bind(s, len, sum, fs)?;
     let point: Vec<_> = s.cell_point.iter().chain(&lane_point).copied().collect();
     let count = required(point.len());
     if !range::tree_shape(&proof.layers, 8, point.len()) || correlations.len() < count {
@@ -382,6 +451,7 @@ pub(super) fn verify(
     }
     record_values(fs, 0x61, &[proof.leaf_tag]);
     range::verify_products(&triples, rows.next().unwrap(), proof.products, delta, fs)?;
+    drop(triples);
     debug_assert!(rows.next().is_none());
     point.truncate(point.len() - 8);
     Ok((point, Key::new(claims[1].k + delta * index)))

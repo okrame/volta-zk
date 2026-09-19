@@ -54,6 +54,7 @@ pub(super) enum Block {
     Table { index: usize, first: usize, len: usize },
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy)]
 enum Row {
     Query(u8),
@@ -67,6 +68,339 @@ pub(super) struct Statement<'a> {
     pub attempt: AttemptContext,
     pub blocks: &'a [Block],
     pub tables: &'a [Table<'a>],
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+pub(super) struct SourceWork {
+    pub descriptor_capacity_bytes: usize,
+    pub binding_frame_capacity_bytes: usize,
+    pub query_cache_capacity_bytes: usize,
+    pub histogram_cache_capacity_bytes: usize,
+    pub upper_tree_capacity_bytes: usize,
+    pub eq_scratch_capacity_bytes: usize,
+    /// Named descriptor/cache/tree/Eq subset only; excludes proof, correlation rows,
+    /// transcript internals, allocator metadata and caller storage.
+    pub named_heap_peak_bytes: usize,
+    pub named_heap_peak_is_complete: bool,
+    pub query_getter_calls: u64,
+    pub histogram_getter_calls: u64,
+    pub public_tag_scans: u64,
+    pub leaf_builds: u64,
+    pub tree_reductions: u64,
+    pub replay_leaf_reads: u64,
+    pub replay_reductions: u64,
+    pub endpoint_leaf_reads: u64,
+    pub equality_multiplications: u64,
+    pub equality_subtractions: u64,
+    pub tree: range::SourceTreeWork,
+}
+
+#[derive(Clone, Copy)]
+enum CompactKind {
+    Query { profile: u8, first: usize },
+    Table { first: usize },
+}
+
+#[derive(Clone, Copy)]
+struct CompactBlock {
+    begin: usize,
+    end: usize,
+    kind: CompactKind,
+}
+
+struct Descriptor {
+    blocks: Vec<CompactBlock>,
+    table_offsets: Vec<usize>,
+    live: usize,
+    queries: usize,
+    rows: usize,
+    bits: usize,
+}
+
+#[derive(Clone, Copy)]
+enum CompactRow {
+    Query { profile: u8, query: usize },
+    Table(usize),
+    Padding,
+}
+
+impl Descriptor {
+    fn new(s: &Statement<'_>) -> Result<Self, String> {
+        let (rows, queries, offsets) = s.dimensions()?;
+        let mut blocks = Vec::with_capacity(s.blocks.len());
+        let (mut begin, mut query_first) = (0usize, 0usize);
+        for &block in s.blocks {
+            let (len, kind) = match block {
+                Block::Query { profile, len } => {
+                    let kind = CompactKind::Query { profile, first: query_first };
+                    query_first += len;
+                    (len, kind)
+                }
+                Block::Table { index, first, len } => {
+                    (len, CompactKind::Table { first: offsets[index] + first })
+                }
+            };
+            blocks.push(CompactBlock { begin, end: begin + len, kind });
+            begin += len;
+        }
+        let live = rows + queries;
+        Ok(Self {
+            blocks,
+            table_offsets: offsets,
+            live,
+            queries,
+            rows,
+            bits: live.next_power_of_two().ilog2() as usize,
+        })
+    }
+
+    fn row(&self, index: usize) -> CompactRow {
+        if index >= self.live {
+            return CompactRow::Padding;
+        }
+        let at = self.blocks.partition_point(|block| block.end <= index);
+        let block = self.blocks[at];
+        let local = index - block.begin;
+        match block.kind {
+            CompactKind::Query { profile, first } => {
+                CompactRow::Query { profile, query: first + local }
+            }
+            CompactKind::Table { first } => CompactRow::Table(first + local),
+        }
+    }
+
+    fn capacity_bytes(&self) -> usize {
+        self.blocks.capacity() * core::mem::size_of::<CompactBlock>()
+            + self.table_offsets.capacity() * core::mem::size_of::<usize>()
+    }
+}
+
+enum QueryCache {
+    Narrow(Vec<[u8; 4]>),
+    Wide(Vec<[u8; 6]>),
+}
+
+impl QueryCache {
+    fn build(
+        descriptor: &Descriptor,
+        read: &impl Fn(usize) -> (i16, i32),
+        wide: bool,
+    ) -> Result<(Self, u64), String> {
+        if wide {
+            let mut cache = Vec::with_capacity(descriptor.queries);
+            for i in 0..descriptor.live {
+                if matches!(descriptor.row(i), CompactRow::Query { .. }) {
+                    let (x, y) = read(i);
+                    let mut row = [0u8; 6];
+                    row[..2].copy_from_slice(&x.to_le_bytes());
+                    row[2..].copy_from_slice(&y.to_le_bytes());
+                    cache.push(row);
+                }
+            }
+            Ok((Self::Wide(cache), descriptor.queries as u64))
+        } else {
+            let mut cache = Vec::with_capacity(descriptor.queries);
+            for i in 0..descriptor.live {
+                if matches!(descriptor.row(i), CompactRow::Query { .. }) {
+                    let (x, y) = read(i);
+                    let y = i16::try_from(y).map_err(|_| "narrow lookup query output differs")?;
+                    let mut row = [0u8; 4];
+                    row[..2].copy_from_slice(&x.to_le_bytes());
+                    row[2..].copy_from_slice(&y.to_le_bytes());
+                    cache.push(row);
+                }
+            }
+            Ok((Self::Narrow(cache), descriptor.queries as u64))
+        }
+    }
+
+    fn get(&self, index: usize) -> (i16, i32) {
+        match self {
+            Self::Narrow(rows) => {
+                let row = rows[index];
+                (
+                    i16::from_le_bytes(row[..2].try_into().unwrap()),
+                    i32::from(i16::from_le_bytes(row[2..].try_into().unwrap())),
+                )
+            }
+            Self::Wide(rows) => {
+                let row = rows[index];
+                (
+                    i16::from_le_bytes(row[..2].try_into().unwrap()),
+                    i32::from_le_bytes(row[2..].try_into().unwrap()),
+                )
+            }
+        }
+    }
+
+    fn capacity_bytes(&self) -> usize {
+        match self {
+            Self::Narrow(v) => v.capacity() * 4,
+            Self::Wide(v) => v.capacity() * 6,
+        }
+    }
+}
+
+fn table_tag(s: &Statement<'_>, descriptor: &Descriptor, j: usize) -> Fp3 {
+    let table = descriptor.table_offsets.partition_point(|&offset| offset <= j) - 1;
+    let local = j - descriptor.table_offsets[table];
+    let t = &s.tables[table];
+    let y = t.outputs.get(local);
+    tag(
+        (i64::from(t.lower) + local as i64) as i16,
+        y,
+        t.profile + if y == t.outputs.overflow() { 60 } else { 0 },
+    )
+}
+
+fn fraction_leaf(
+    s: &Statement<'_>,
+    descriptor: &Descriptor,
+    queries: &QueryCache,
+    histogram: &[i32],
+    alpha: Fp3,
+    index: usize,
+) -> [Fp3; 2] {
+    match descriptor.row(index) {
+        CompactRow::Query { profile, query } => {
+            let (x, y) = queries.get(query);
+            [Fp3::ONE, alpha - tag(x, y, profile)]
+        }
+        CompactRow::Table(j) => {
+            [-signed(i64::from(histogram[j])), alpha - table_tag(s, descriptor, j)]
+        }
+        CompactRow::Padding => [Fp3::ZERO, Fp3::ONE],
+    }
+}
+
+fn combine([p, q]: [Fp3; 2], [r, s]: [Fp3; 2]) -> [Fp3; 2] {
+    [p * s + r * q, q * s]
+}
+
+struct CutTree {
+    levels: Vec<Vec<[Fp3; 2]>>,
+    bits: usize,
+    cut: usize,
+}
+
+impl CutTree {
+    const CUT: usize = 4;
+
+    fn build(mut leaf: impl FnMut(usize) -> [Fp3; 2], bits: usize, work: &mut SourceWork) -> Self {
+        let cut_bits = bits.min(Self::CUT);
+        let cut_nodes = 1usize << (bits - cut_bits);
+        let mut cut = Vec::with_capacity(cut_nodes);
+        for chunk in 0..cut_nodes {
+            let mut nodes = [[Fp3::ZERO; 2]; 1 << Self::CUT];
+            let mut len = 1 << cut_bits;
+            for i in 0..len {
+                work.leaf_builds += 1;
+                nodes[i] = leaf((chunk << cut_bits) + i);
+            }
+            while len > 1 {
+                for i in 0..len / 2 {
+                    work.tree_reductions += 1;
+                    nodes[i] = combine(nodes[2 * i], nodes[2 * i + 1]);
+                }
+                len /= 2;
+            }
+            cut.push(nodes[0]);
+        }
+        let mut levels = Vec::with_capacity(bits - cut_bits + 1);
+        levels.push(cut);
+        while levels.last().unwrap().len() > 1 {
+            let next = levels
+                .last()
+                .unwrap()
+                .chunks_exact(2)
+                .map(|x| {
+                    work.tree_reductions += 1;
+                    combine(x[0], x[1])
+                })
+                .collect();
+            levels.push(next);
+        }
+        work.upper_tree_capacity_bytes = levels.capacity() * core::mem::size_of::<Vec<[Fp3; 2]>>()
+            + levels.iter().map(|v| v.capacity() * core::mem::size_of::<[Fp3; 2]>()).sum::<usize>();
+        Self { levels, bits, cut: cut_bits }
+    }
+
+    fn root(&self) -> [Fp3; 2] {
+        self.levels.last().unwrap()[0]
+    }
+
+    fn node(
+        &self,
+        height: usize,
+        position: usize,
+        leaf: &impl Fn(usize) -> [Fp3; 2],
+        work: &std::cell::Cell<(u64, u64)>,
+    ) -> [Fp3; 2] {
+        if height >= self.cut {
+            return self.levels[height - self.cut][position];
+        }
+        let begin = position << height;
+        let mut nodes = [[Fp3::ZERO; 2]; 1 << Self::CUT];
+        let mut len = 1 << height;
+        for i in 0..len {
+            let (reads, reductions) = work.get();
+            work.set((reads + 1, reductions));
+            nodes[i] = leaf(begin + i);
+        }
+        while len > 1 {
+            for i in 0..len / 2 {
+                let (reads, reductions) = work.get();
+                work.set((reads, reductions + 1));
+                nodes[i] = combine(nodes[2 * i], nodes[2 * i + 1]);
+            }
+            len /= 2;
+        }
+        nodes[0]
+    }
+
+    fn children(
+        &self,
+        layer: usize,
+        index: usize,
+        leaf: &impl Fn(usize) -> [Fp3; 2],
+        work: &std::cell::Cell<(u64, u64)>,
+    ) -> [Fp3; 4] {
+        let height = self.bits - layer - 1;
+        let a = self.node(height, 2 * index, leaf, work);
+        let b = self.node(height, 2 * index + 1, leaf, work);
+        [a[0], a[1], b[0], b[1]]
+    }
+}
+
+fn for_each_equality(point: &[Fp3], mut visit: impl FnMut(usize, Fp3)) -> (u64, u64, usize) {
+    if point.is_empty() {
+        visit(0, Fp3::ONE);
+        return (0, 0, 0);
+    }
+    let q = point.len();
+    let mut weights = Vec::with_capacity(q + 1);
+    weights.resize(q + 1, Fp3::ONE);
+    for bit in 0..q {
+        weights[bit + 1] = weights[bit] * (Fp3::ONE - point[bit]);
+    }
+    let mut mul = q as u64;
+    let mut sub = q as u64;
+    visit(0, weights[q]);
+    for prefix in 1..(1usize << q) {
+        let start = q - 1 - prefix.trailing_zeros() as usize;
+        for bit in start..q {
+            let factor = if (prefix >> (q - 1 - bit)) & 1 == 0 {
+                sub += 1;
+                Fp3::ONE - point[bit]
+            } else {
+                point[bit]
+            };
+            weights[bit + 1] = weights[bit] * factor;
+            mul += 1;
+        }
+        visit(prefix, weights[q]);
+    }
+    (mul, sub, weights.capacity() * core::mem::size_of::<Fp3>())
 }
 
 pub(super) struct Proof {
@@ -166,6 +500,7 @@ impl Statement<'_> {
         Ok((rows, queries, offsets))
     }
 
+    #[cfg(test)]
     fn public(&self) -> Result<(Vec<Fp3>, Vec<Row>), String> {
         let (rows, queries, offsets) = self.dimensions()?;
         let tags = self
@@ -201,8 +536,8 @@ impl Statement<'_> {
         Ok(required((rows + queries).next_power_of_two().ilog2() as usize))
     }
 
-    fn bind(&self, fs: &mut Fs) -> Result<(Vec<Fp3>, Vec<Row>, Fp3), String> {
-        let (tags, domain) = self.public()?;
+    fn bind(&self, fs: &mut Fs) -> Result<(Descriptor, Fp3, usize), String> {
+        let descriptor = Descriptor::new(self)?;
         let wide = self.tables.iter().any(|t| matches!(t.outputs, Outputs::I32(_)));
         let mut bytes = if wide {
             b"C71-lookup-B12-v3;i16-input;typed-i16-i32-output;MIN-overflow;original-A".to_vec()
@@ -243,39 +578,54 @@ impl Statement<'_> {
             bytes.extend((t.outputs.len() as u64).to_le_bytes());
             t.outputs.encode(&mut bytes);
         }
+        let binding_frame_capacity_bytes = bytes.capacity();
         fs.set_phase(0xd00);
         fs.record(0xb0, &bytes);
         let alpha = fs.fp3();
         // Every honest query tag is public-table-valued. Rejecting ALL public
         // poles makes the honest abort decision independent of the witness.
-        if tags.contains(&alpha) {
+        if self.tables.iter().any(|t| {
+            (0..t.outputs.len()).any(|j| {
+                let y = t.outputs.get(j);
+                tag(
+                    (i64::from(t.lower) + j as i64) as i16,
+                    y,
+                    t.profile + if y == t.outputs.overflow() { 60 } else { 0 },
+                ) == alpha
+            })
+        }) {
             return Err("B12 lookup public pole".into());
         }
-        Ok((tags, domain, alpha))
+        Ok((descriptor, alpha, binding_frame_capacity_bytes))
     }
 
-    fn leaf_constants(
+    fn leaf_constants_source(
         &self,
-        tags: &[Fp3],
-        domain: &[Row],
+        descriptor: &Descriptor,
         point: &[Fp3],
         alpha: Fp3,
-    ) -> (Fp3, Fp3) {
-        let weights = eq(point);
+    ) -> (Fp3, Fp3, SourceWork) {
         let omega = Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO);
         let mut query = Fp3::ZERO;
         let mut denominator = Fp3::ZERO;
-        for (i, &weight) in weights.iter().enumerate() {
-            match domain.get(i) {
-                Some(&Row::Query(profile)) => {
+        let mut work = SourceWork::default();
+        let (mul, sub, cap) = for_each_equality(point, |i, weight| {
+            work.endpoint_leaf_reads += 1;
+            match descriptor.row(i) {
+                CompactRow::Query { profile, .. } => {
                     query += weight;
                     denominator += weight * (alpha - omega * omega * signed(i64::from(profile)));
                 }
-                Some(&Row::Table(j)) => denominator += weight * (alpha - tags[j]),
-                None => denominator += weight,
+                CompactRow::Table(j) => {
+                    denominator += weight * (alpha - table_tag(self, descriptor, j))
+                }
+                CompactRow::Padding => denominator += weight,
             }
-        }
-        (query, denominator)
+        });
+        work.equality_multiplications = mul;
+        work.equality_subtractions = sub;
+        work.eq_scratch_capacity_bytes = cap;
+        (query, denominator, work)
     }
 }
 
@@ -286,19 +636,131 @@ pub(super) fn prove(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Pending<Auth>), String> {
-    prove_wide(
+    prove_wide_counted(
         s,
         |i| {
             let (x, y) = read_query(i);
             (x, i32::from(y))
         },
         read_histogram,
+        false,
         fs,
         correlations,
     )
+    .map(|(proof, pending, _)| (proof, pending))
 }
 
 pub(super) fn prove_wide(
+    s: &Statement<'_>,
+    read_query: impl Fn(usize) -> (i16, i32),
+    read_histogram: impl Fn(usize) -> i32,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Pending<Auth>), String> {
+    prove_wide_counted(s, read_query, read_histogram, true, fs, correlations)
+        .map(|(proof, pending, _)| (proof, pending))
+}
+
+pub(super) fn prove_wide_counted(
+    s: &Statement<'_>,
+    read_query: impl Fn(usize) -> (i16, i32),
+    read_histogram: impl Fn(usize) -> i32,
+    wide: bool,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Pending<Auth>, SourceWork), String> {
+    let count = s.required()?;
+    if correlations.len() < count {
+        return Err("B12 lookup prover capacity exhausted".into());
+    }
+    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let (descriptor, alpha, binding_frame_capacity_bytes) = s.bind(fs)?;
+    let mut work = SourceWork::default();
+    work.descriptor_capacity_bytes = descriptor.capacity_bytes();
+    work.binding_frame_capacity_bytes = binding_frame_capacity_bytes;
+    work.public_tag_scans = descriptor.rows as u64;
+    let (queries, calls) = QueryCache::build(&descriptor, &read_query, wide)?;
+    work.query_getter_calls = calls;
+    work.query_cache_capacity_bytes = queries.capacity_bytes();
+    let mut histogram = Vec::with_capacity(descriptor.rows);
+    for j in 0..descriptor.rows {
+        histogram.push(read_histogram(j));
+    }
+    work.histogram_getter_calls = descriptor.rows as u64;
+    work.histogram_cache_capacity_bytes = histogram.capacity() * core::mem::size_of::<i32>();
+    let leaf = |i| fraction_leaf(s, &descriptor, &queries, &histogram, alpha, i);
+    let tree = CutTree::build(&leaf, descriptor.bits, &mut work);
+    let denominator = tree.root()[1];
+    if denominator == Fp3::ZERO {
+        return Err("B12 lookup witness pole".into());
+    }
+    let (roots, root) = range::authenticate([denominator, denominator.inv()], &mut rows);
+    fs.set_phase(0xd01);
+    record_values(fs, 0xb1, &roots);
+    let mut triples = vec![[root[0], root[1], Auth::new(Fp3::ONE, Fp3::ZERO)]];
+    let replay = std::cell::Cell::new((0u64, 0u64));
+    let (layers, point, claims, tree_work) = range::prove_tree_sourcewise(
+        descriptor.bits,
+        Vec::new(),
+        [Auth::ZERO, root[0]],
+        |layer, index| tree.children(layer, index, &leaf, &replay),
+        fs,
+        &mut rows,
+        &mut triples,
+    );
+    work.tree = tree_work;
+    (work.replay_leaf_reads, work.replay_reductions) = replay.get();
+    drop(tree);
+    let mut values = [Fp3::ZERO; 3];
+    let (mul, sub, eq_cap) = for_each_equality(&point, |i, weight| {
+        work.endpoint_leaf_reads += 1;
+        match descriptor.row(i) {
+            CompactRow::Query { query, .. } => {
+                let (x, y) = queries.get(query);
+                values[0] += weight * signed(i64::from(x));
+                values[1] += weight * signed(i64::from(y));
+            }
+            CompactRow::Table(j) => values[2] += weight * signed(i64::from(histogram[j])),
+            CompactRow::Padding => {}
+        }
+    });
+    work.equality_multiplications += mul;
+    work.equality_subtractions += sub;
+    work.eq_scratch_capacity_bytes = eq_cap;
+    let retained = work.descriptor_capacity_bytes
+        + work.query_cache_capacity_bytes
+        + work.histogram_cache_capacity_bytes;
+    let build_or_replay =
+        retained + work.upper_tree_capacity_bytes + work.tree.owned_regeneration_heap_peak_bytes;
+    let endpoint = retained + work.eq_scratch_capacity_bytes;
+    let binding = work.descriptor_capacity_bytes + work.binding_frame_capacity_bytes;
+    work.named_heap_peak_bytes = binding.max(build_or_replay).max(endpoint);
+    work.named_heap_peak_is_complete = false;
+    let (wire, original) = range::authenticate(values, &mut rows);
+    let omega = Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO);
+    let leaves = [
+        wire[0],
+        wire[1],
+        wire[2],
+        claims[0].m + original[2].m,
+        claims[1].m + original[0].m + omega * original[1].m,
+    ];
+    fs.set_phase(0xd02);
+    record_values(fs, 0xb2, &leaves);
+    let products = range::prove_products(&triples, rows.next().unwrap(), fs);
+    debug_assert!(rows.next().is_none());
+    #[cfg(test)]
+    eprintln!(
+        "C71_LOOKUP_SOURCE_WORK {}",
+        serde_json::json!({
+        "query_rows":descriptor.queries,"table_rows":descriptor.rows,
+        "query_width":if wide {6} else {4},"work":work})
+    );
+    Ok((Proof { roots, layers, leaves, products }, Pending { point, originals: original }, work))
+}
+
+#[cfg(test)]
+fn prove_wide_dense_oracle(
     s: &Statement<'_>,
     read_query: impl Fn(usize) -> (i16, i32),
     read_histogram: impl Fn(usize) -> i32,
@@ -310,7 +772,9 @@ pub(super) fn prove_wide(
         return Err("B12 lookup prover capacity exhausted".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let (tags, domain, alpha) = s.bind(fs)?;
+    let (descriptor, alpha, _binding_frame_capacity_bytes) = s.bind(fs)?;
+    let (tags, domain) = s.public()?;
+    debug_assert_eq!(descriptor.live, domain.len());
     let bits = domain.len().next_power_of_two().ilog2() as usize;
     // ponytail: dense domain/tree within the analytic resource envelope.
     // Physical Gemma admission still requires the subtree replay schedule.
@@ -387,8 +851,8 @@ pub(super) fn verify(
         return Err("B12 lookup verifier capacity exhausted".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let (tags, domain, alpha) = s.bind(fs)?;
-    let bits = domain.len().next_power_of_two().ilog2() as usize;
+    let (descriptor, alpha, _binding_frame_capacity_bytes) = s.bind(fs)?;
+    let bits = descriptor.bits;
     if !range::tree_shape(&proof.layers, bits, 0) {
         return Err("B12 lookup tree shape differs".into());
     }
@@ -407,7 +871,7 @@ pub(super) fn verify(
     )?;
     let original =
         range::correct([proof.leaves[0], proof.leaves[1], proof.leaves[2]], delta, &mut rows);
-    let (query, denominator) = s.leaf_constants(&tags, &domain, &point, alpha);
+    let (query, denominator, _source_work) = s.leaf_constants_source(&descriptor, &point, alpha);
     let omega = Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO);
     if claims[0].k + original[2].k - delta * query != proof.leaves[3]
         || claims[1].k + original[0].k + omega * original[1].k - delta * denominator
@@ -674,5 +1138,183 @@ mod tests {
         ];
         assert!(wrong.required().is_err());
         assert_ne!(tag(1, i32::from(i16::MIN), 1), tag(1, i32::from(i16::MIN), 61));
+    }
+
+    #[test]
+    fn source_lookup_matches_dense_wire_transcript_endpoint_and_exact_cache_widths() {
+        use crate::c71_matrix::wire::Wire;
+        let narrow = [10i16, 20, 30];
+        let tables = [Table { profile: 0, lower: -1, outputs: Outputs::I16(&narrow) }];
+        let blocks = [
+            Block::Query { profile: 0, len: 30 },
+            Block::Table { index: 0, first: 0, len: 1 },
+            Block::Query { profile: 0, len: 30 },
+            Block::Table { index: 0, first: 1, len: 2 },
+        ];
+        let profile = gamma(&matrix_config(32).unwrap());
+        let root = C61Commitment::new(vec![[7; 32]]);
+        let statement = Statement {
+            root: &root,
+            profile: &profile,
+            view: [64; 32],
+            attempt: AttemptContext {
+                session: [1; 32],
+                capacity: [2; 32],
+                slot: 0,
+                predecessor: [3; 32],
+                nonce: [4; 32],
+            },
+            blocks: &blocks,
+            tables: &tables,
+        };
+        let histogram = [20, 20, 20];
+        let descriptor = Descriptor::new(&statement).unwrap();
+        let (dense_tags, dense_domain) = statement.public().unwrap();
+        for point in [
+            vec![Fp3::ZERO; descriptor.bits],
+            vec![Fp3::ONE; descriptor.bits],
+            (0..descriptor.bits)
+                .map(|i| {
+                    Fp3::new(
+                        Fp::new((i + 2) as u64),
+                        Fp::new((i + 7) as u64),
+                        Fp::new((i + 11) as u64),
+                    )
+                })
+                .collect(),
+        ] {
+            let alpha = Fp3::new(Fp::new(17), Fp::new(19), Fp::new(23));
+            let weights = eq(&point);
+            let omega = Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO);
+            let mut expected = (Fp3::ZERO, Fp3::ZERO);
+            for (i, weight) in weights.into_iter().enumerate() {
+                match dense_domain.get(i) {
+                    Some(Row::Query(profile)) => {
+                        expected.0 += weight;
+                        expected.1 +=
+                            weight * (alpha - omega * omega * signed(i64::from(*profile)));
+                    }
+                    Some(Row::Table(j)) => expected.1 += weight * (alpha - dense_tags[*j]),
+                    None => expected.1 += weight,
+                }
+            }
+            let (query, denominator, _) =
+                statement.leaf_constants_source(&descriptor, &point, alpha);
+            assert_eq!((query, denominator), expected);
+        }
+        let positions: Vec<_> = (0..descriptor.live)
+            .filter(|&i| matches!(descriptor.row(i), CompactRow::Query { .. }))
+            .collect();
+        let get = |i| {
+            let ordinal = positions.iter().position(|&x| x == i).unwrap();
+            let x = (ordinal % 3) as i16 - 1;
+            (x, narrow[(x + 1) as usize] as i32)
+        };
+        let count = statement.required().unwrap();
+        let delta = Fp3::new(Fp::new(3), Fp::new(5), Fp::new(9));
+        let mut rng = MatrixRng::from_seed([91; 32]);
+        let auth: Vec<_> = (0..count)
+            .map(|_| Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>())))
+            .collect();
+        let start = || Fs::new(b"lookup source dense identity", 100_000);
+        let mut dense_fs = start();
+        let mut dense_rows = auth.clone().into_iter();
+        let (dense, dense_pending) = prove_wide_dense_oracle(
+            &statement,
+            get,
+            |j| histogram[j],
+            &mut dense_fs,
+            &mut dense_rows,
+        )
+        .unwrap();
+        let mut source_fs = start();
+        let mut source_rows = auth.into_iter();
+        let (source, source_pending, work) = prove_wide_counted(
+            &statement,
+            get,
+            |j| histogram[j],
+            false,
+            &mut source_fs,
+            &mut source_rows,
+        )
+        .unwrap();
+        let mut dense_wire = Vec::new();
+        dense.write(&mut dense_wire);
+        let mut source_wire = Vec::new();
+        source.write(&mut source_wire);
+        assert_eq!(source_wire, dense_wire);
+        assert_eq!(source_pending.point, dense_pending.point);
+        assert_eq!(
+            source_pending.originals.map(|a| (a.x, a.m)),
+            dense_pending.originals.map(|a| (a.x, a.m))
+        );
+        assert_eq!(source_fs.requests(), dense_fs.requests());
+        assert_eq!(source_fs.fp3(), dense_fs.fp3());
+        assert_eq!(source_rows.len(), dense_rows.len());
+        assert_eq!(core::mem::size_of::<[u8; 4]>(), 4);
+        assert!(work.query_cache_capacity_bytes >= 4 * positions.len());
+        assert!(work.histogram_cache_capacity_bytes >= 4 * histogram.len());
+        assert_eq!(work.query_getter_calls, positions.len() as u64);
+        assert_eq!(work.histogram_getter_calls, histogram.len() as u64);
+        assert!(work.upper_tree_capacity_bytes < 48 * ((1usize << descriptor.bits) * 2 - 1));
+
+        let wide_values = [70_000i32];
+        let wide_tables = [Table { profile: 0, lower: 0, outputs: Outputs::I32(&wide_values) }];
+        let wide_blocks = [
+            Block::Query { profile: 0, len: 32 },
+            Block::Table { index: 0, first: 0, len: 1 },
+            Block::Query { profile: 0, len: 32 },
+        ];
+        let wide_statement = Statement { blocks: &wide_blocks, tables: &wide_tables, ..statement };
+        let wide_descriptor = Descriptor::new(&wide_statement).unwrap();
+        let (cache, calls) = QueryCache::build(&wide_descriptor, &|_| (0, 70_000), true).unwrap();
+        assert_eq!(calls, 64);
+        assert_eq!(core::mem::size_of::<[u8; 6]>(), 6);
+        assert!(cache.capacity_bytes() >= 6 * 64);
+        assert_eq!(cache.get(63), (0, 70_000));
+        assert!(QueryCache::build(&wide_descriptor, &|_| (0, 70_000), false).is_err());
+        let wide_count = wide_statement.required().unwrap();
+        let mut rng = MatrixRng::from_seed([92; 32]);
+        let wide_auth: Vec<_> = (0..wide_count)
+            .map(|_| Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>())))
+            .collect();
+        let wide_start = || Fs::new(b"lookup wide source dense identity", 100_000);
+        let mut dense_fs = wide_start();
+        let mut dense_rows = wide_auth.clone().into_iter();
+        let (dense, dense_pending) = prove_wide_dense_oracle(
+            &wide_statement,
+            |_| (0, 70_000),
+            |_| 64,
+            &mut dense_fs,
+            &mut dense_rows,
+        )
+        .unwrap();
+        let mut source_fs = wide_start();
+        let mut source_rows = wide_auth.into_iter();
+        let (source, source_pending_wide, wide_work) = prove_wide_counted(
+            &wide_statement,
+            |_| (0, 70_000),
+            |_| 64,
+            true,
+            &mut source_fs,
+            &mut source_rows,
+        )
+        .unwrap();
+        let mut dense_wire = Vec::new();
+        dense.write(&mut dense_wire);
+        let mut source_wire = Vec::new();
+        source.write(&mut source_wire);
+        assert_eq!(source_wire, dense_wire);
+        assert_eq!(source_pending_wide.point, dense_pending.point);
+        assert_eq!(
+            source_pending_wide.originals.map(|a| (a.x, a.m)),
+            dense_pending.originals.map(|a| (a.x, a.m))
+        );
+        assert_eq!(source_fs.fp3(), dense_fs.fp3());
+        assert_eq!(source_rows.len(), dense_rows.len());
+        assert!(wide_work.query_cache_capacity_bytes >= 6 * 64);
+        let keys: Vec<_> =
+            source_pending.originals.iter().map(|a| Key::new(a.m + delta * a.x)).collect();
+        assert_eq!(keys.len(), 3); // The original authenticated endpoint is unchanged.
     }
 }

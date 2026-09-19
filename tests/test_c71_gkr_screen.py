@@ -62,3 +62,26 @@ def test_zero_layer_source_tree_census_matches_empty_native_descent():
     x=screen.source_tree_trace(3,0)
     assert x['layers']==[] and x['counted_work']=={}
     assert x['max_prefix_weight_payload_bytes']==72
+
+
+def test_lookup_cut_replay_counts_every_padded_leaf():
+    for queries,tables,width in [(16,17,4),(32,33,6),(1,1,4)]:
+        x=gkr.lookup_source_trace(queries,tables,width)
+        n=x['padded_rows'];bits=x['bits'];cut=x['cut']
+        leaves=merges=reads=0
+        for layer in range(bits):
+            height=bits-layer-1
+            if height<cut:
+                # Independent literal small callback traversal, including terminal.
+                for _ in range(layer+1):
+                    for index in range(1<<layer):
+                        for child in (2*index,2*index+1):
+                            span=range(child<<height,(child+1)<<height)
+                            leaves+=len(span);merges+=len(span)-1
+                            reads+=sum(width if i<queries else 4 if i<queries+tables else 0 for i in span)
+        assert x['replay_leaf_reads']==leaves
+        assert x['replay_fraction_merges']==merges
+        assert x['replay_cached_original_read_bytes']==reads
+        assert x['endpoint_equality_multiplications_each_role']==2*n-2
+        assert x['build_fraction_merges']==n-1
+        assert not x['complete_work'] and not x['complete_physical_peak']

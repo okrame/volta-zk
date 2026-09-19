@@ -2,8 +2,11 @@
 //!
 //! This checks a complete K6 MAC relation with six independent mask rows and
 //! only then samples the E-linear compression map into Fp3. It deliberately
-//! has no production entry, suite handshake, COPE, or role swap. Its tests
-//! additionally exercise the existing MR19 engine with 384 OTs and fresh domains.
+//! has no production entry. The reduced real adapter binds a suite handshake,
+//! 384 MR19 OTs and streamed AES-COPE. Outer one-use lifetime, guard and
+//! opposite-role composition remain open.
+
+mod real;
 
 use p521::elliptic_curve::subtle::ConstantTimeEq;
 use volta_field::{Fp, Fp3};
@@ -11,6 +14,12 @@ use zeroize::{Zeroize, Zeroizing};
 
 const LIMBS: usize = 6;
 const MASKS: usize = 6;
+
+const MR19: crate::c71_bootstrap::Mr19Profile = crate::c71_bootstrap::Mr19Profile {
+    ot_count: 384,
+    group_receiver_domain: b"C71S6/MR19/group/receiver/v1/",
+    seed_sender_domain: b"C71S6/MR19/seed/sender/v1/",
+};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct K6([u64; LIMBS]);
@@ -134,6 +143,24 @@ struct ProverCheck {
 #[derive(Debug)]
 struct VerifierCheck(Zeroizing<K6>);
 
+impl ProverCheck {
+    fn new() -> Self {
+        Self { x: Zeroizing::new(K6::ZERO), z: Zeroizing::new(K6::ZERO) }
+    }
+    fn absorb(&mut self, chi: K6, value: Fp, tag: K6) {
+        *self.x = self.x.add(chi.mul_base(value));
+        *self.z = self.z.add(chi.mul(tag));
+    }
+}
+impl VerifierCheck {
+    fn new() -> Self {
+        Self(Zeroizing::new(K6::ZERO))
+    }
+    fn absorb(&mut self, chi: K6, key: K6) {
+        *self.0 = self.0.add(chi.mul(key));
+    }
+}
+
 struct Checked(());
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -226,32 +253,28 @@ fn prover_accumulators(rows: ProverRows<'_>) -> Result<ProverCheck, Seed6Error> 
     if n == 0 || rows.tags.len() != n || rows.challenges.len() != n {
         return Err(Seed6Error::Shape);
     }
-    let mut x = Zeroizing::new(K6::ZERO);
-    let mut z = Zeroizing::new(K6::ZERO);
+    let mut check = ProverCheck::new();
     for i in 0..n {
-        *x = x.add(rows.challenges[i].mul_base(rows.values[i]));
-        *z = z.add(rows.challenges[i].mul(rows.tags[i]));
+        check.absorb(rows.challenges[i], rows.values[i], rows.tags[i]);
     }
     for h in 0..MASKS {
-        let basis = K6::basis(h);
-        *x = x.add(basis.mul_base(rows.mask_values[h]));
-        *z = z.add(basis.mul(rows.mask_tags[h]));
+        check.absorb(K6::basis(h), rows.mask_values[h], rows.mask_tags[h]);
     }
-    Ok(ProverCheck { x, z })
+    Ok(check)
 }
 
 fn verifier_accumulator(rows: VerifierRows<'_>) -> Result<VerifierCheck, Seed6Error> {
     if rows.keys.is_empty() || rows.keys.len() != rows.challenges.len() {
         return Err(Seed6Error::Shape);
     }
-    let mut y = Zeroizing::new(K6::ZERO);
+    let mut check = VerifierCheck::new();
     for i in 0..rows.keys.len() {
-        *y = y.add(rows.challenges[i].mul(rows.keys[i]));
+        check.absorb(rows.challenges[i], rows.keys[i]);
     }
     for h in 0..MASKS {
-        *y = y.add(K6::basis(h).mul(rows.mask_keys[h]));
+        check.absorb(K6::basis(h), rows.mask_keys[h]);
     }
-    Ok(VerifierCheck(y))
+    Ok(check)
 }
 
 fn verify_relation(
@@ -265,7 +288,7 @@ fn verify_relation(
     Ok(Checked(()))
 }
 
-fn compress_prover(_checked: &Checked, tags: &[K6], alpha: [Fp3; 2]) -> Zeroizing<Vec<Fp3Words>> {
+fn compress_prover(tags: &[K6], alpha: [Fp3; 2]) -> Zeroizing<Vec<Fp3Words>> {
     Zeroizing::new(tags.iter().map(|value| Fp3Words::from_fp3(value.compress(alpha))).collect())
 }
 
@@ -299,7 +322,7 @@ fn check_then_compress(
     let verifier = verifier_accumulator(verifier_rows)?;
     let checked = verify_relation(delta, &prover, &verifier)?;
     let alpha = alpha_after_check();
-    let tags = compress_prover(&checked, tags, alpha);
+    let tags = compress_prover(tags, alpha);
     let (delta, keys) = compress_verifier(&checked, delta, keys, alpha)?;
     Ok(CompressedRows { delta, tags, keys })
 }
@@ -309,12 +332,6 @@ mod tests {
     use super::*;
     use std::cell::Cell;
     use volta_field::P;
-
-    const MR19: crate::c71_bootstrap::Mr19Profile = crate::c71_bootstrap::Mr19Profile {
-        ot_count: 384,
-        group_receiver_domain: b"C71S6/MR19/group/receiver/v1/",
-        seed_sender_domain: b"C71S6/MR19/seed/sender/v1/",
-    };
 
     #[test]
     fn seed6_real_384_ot_preserves_choices_and_censuses_frames() {

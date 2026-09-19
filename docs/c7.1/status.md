@@ -125,18 +125,18 @@ La deroga non chiude PCS streaming, endpoint privati, arena da
 6.442.450.944 byte, <=65 s o confronto di lavoro totale.
 
 **Bootstrap:** la candidata Fp6 con guard prima di c, cGGM separato per
-nodo, coin ROM e F_EQ a due chiavi costa **61.841.290 byte** per le primitive
+nodo, coin ROM e F_EQ a due chiavi costa **61.841.294 byte** per le primitive
 censite. La capacità di 70.778.880 righe base supera le 11.466.948 del run
 B12 completo; tre righe base formano un Fp3 e il setup si paga una sola
 volta. Il corpo B12 fornisce gli intervalli seguenti:
 
 | O | Lower corpo | Upper corpo | Bootstrap censito + corpo |
 |---:|---:|---:|---:|
-| 0 | 47.841.180 | 65.053.244 | 109.682.470–126.894.534 |
+| 0 | 47.841.180 | 65.053.244 | 109.682.474–126.894.538 |
 | 150 | 54.868.318 | 78.945.726 | 54.868.318–78.945.726 |
 | 300 | 61.797.384 | 92.723.304 | 61.797.384–92.723.304 |
 
-Il margine iniziale di 3.105.466 byte resta da confrontare con completion,
+Il margine iniziale di 3.105.462 byte resta da confrontare con completion,
 framing/metadata esterni alle primitive e il codec completo. I seed noti
 contribuiscono circa 89,9339 bit; con EA-LPN assunta a 80 bit il bootstrap
 ha un ledger condizionale di oltre 79,99 bit. La somma prudente con gli
@@ -303,9 +303,13 @@ handle conserva getter/cache/offset e libera il predecessore dopo le query;
 il pad iniziale è condiviso e la riduzione finale in-place evita 128 MiB
 aggiuntivi al coset canonico. Restano port accelerato e picco fisico.
 H/EAGen hanno confronto Rust/Python e identità Acc/PuncAcc ridotta;
-Il confine Seed6 controlla K6→Fp3 dopo sei maschere e rifiuto prima di alpha;
-i 384 OT reali riusano il motore MR19 con domini distinti. COPE, ruoli
-opposti, guard, trie batch e consumo MAC composto restano aperti.
+Il [Seed6 reale ridotto](preflight.md#seed6-reale-streaming-e-workspace)
+collega handshake, 384 OT, COPE AES streaming e K6→Fp3; i rifiuti non
+emettono alpha. Il ledger corregge il seed principale a 17.553 righe,
+incluse le 2.025 aggiuntive di F_EQ; il secondo ne usa 2.025. Il byte di
+direzione nel contesto aggiunge 4 B al budget dei due seed.
+Capacità native e rilasci sono censiti; allocator, stack crittografico,
+trasporto, seal, guard, ruoli opposti composti e trie batch restano aperti.
 Il getter numerico ridotto O=0/2/4 ora apre la root A originale tramite
 WHIR; S1 condiviso viene allocato solo dopo le query al predecessore.
 Il [checkpoint RMS](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)

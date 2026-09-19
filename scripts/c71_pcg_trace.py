@@ -13,6 +13,9 @@ ROWS = ((0, 3_814_605), (150, 3_826_014), (300, 3_826_329))
 BATCH = 4096
 TREES, HEIGHT, WEIGHT = 675, 19, 11
 DOMAIN = TREES * (1 << HEIGHT)
+DORY_SEED_ROWS = TREES*(HEIGHT+4)+3
+EQ_SEED_ROWS = 3*TREES
+MAIN_SEED_ROWS = DORY_SEED_ROWS+EQ_SEED_ROWS
 P = 0xffff_ffff_0000_0001
 CGGM_TAG = b"VOLTA-C71-DORY-CGGM-v1"
 H_DOMAIN_BYTES = len(CGGM_TAG)+32+8+4+8+24
@@ -109,6 +112,66 @@ def seed6_boundary(rows):
     }
 
 
+def seed6_real_trace(n):
+    """Source operations and named native heap bodies; no HBM/physical credit.
+
+    Host ABI point/scalar sizes and context capacity are observed in reduced
+    Rust tests. Crypto stack, allocator and transport still need integration.
+    """
+    if not 0 < n <= (1 << 24)-9:
+        raise ValueError('outside the conservative fixed-run profile')
+    rows, height = n+6, (n+5).bit_length()
+    parties = {}
+    for role, branches in [('prover', 2), ('verifier', 1)]:
+        outputs = branches*384*rows
+        retained = 32*n+48 if role == 'prover' else 24*n
+        arrays = 56*rows if role == 'prover' else 48*rows
+        heap = {
+            'mr19': (266_496 if role == 'prover' else 245_376)+240,
+            'cope': arrays+240+3072+(24_576 if role == 'prover' else 12_288),
+            'check': arrays+(48 if role == 'prover' else 96),
+            'compression': arrays+24*n,
+            'retained_output': retained,
+        }
+        parties[role] = {
+            'PRF_field_outputs': outputs,
+            'AES256_key_schedules': outputs*height,
+            'AES256_block_encryptions': 4*outputs*height,
+            'field_sampler_candidates': 8*(outputs+(rows if role == 'prover' else 6*n+12)),
+            'cope_Fp_products': 384*rows,
+            'cope_Fp_adds': (1 if role == 'prover' else 2)*384*rows,
+            'cope_Fp_subtractions': (2 if role == 'prover' else 0)*384*rows,
+            'fixed_scalar_mul': 768, 'variable_scalar_mul': 768,
+            'scalar_sampler_candidates': 6144, 'group_hashes': 768,
+            'group_candidates_lower': 768, 'group_candidates_upper': 512*768,
+            'point_additions': 768 if role == 'prover' else 384, 'KDF_calls': 768,
+            'heap_phase_bytes': heap, 'heap_phase_peak_bytes': max(heap.values()),
+            'check_named_nonheap_bytes': 240 if role == 'prover' else 192,
+            'compression_named_nonheap_bytes': 48 if role == 'prover' else 168,
+            'retained_nonheap_secret_bytes': 0 if role == 'prover' else 24,
+            'MR19_Delta_nonheap_bytes': 0 if role == 'prover' else 48,
+            'logical_COPE_write_bytes': arrays,
+            'logical_COPE_PRF_seed_input_bytes': outputs*32,
+            'logical_check_read_bytes': arrays+48*n,
+            'logical_compression_read_bytes': 48*n+(0 if role == 'prover' else 48),
+            'logical_compression_write_bytes': 24*n+(0 if role == 'prover' else 24),
+        }
+    return {
+        'rows': n, 'mask_rows': 6, 'AES_path_height': height,
+        'wire_bytes_both_directions_without_seal': 146_451+3120*n,
+        'planned_seal_bytes_not_implemented': 40,
+        'wire_delta_vs_old_screen_per_seed_bytes': 2,
+        'common_context_bytes': 121, 'full_context_bytes': 185,
+        'full_context_observed_capacity_bytes': 240,
+        'prover': parties['prover'], 'verifier': parties['verifier'],
+        'K6_check_and_compression': seed6_boundary(n),
+        'physical_peak_complete': False, 'HBM_traffic_credit': False,
+        'outer_lifetime_guard_roleswap_composition_credit': False,
+        'missing_physical': ['allocator metadata/reserve', 'crypto stack/spills',
+                             'audit vectors', 'transport buffering', 'outer setup lifecycle'],
+    }
+
+
 def trie_nodes(rows):
     """Distribution-free union-trie upper for public EA point terms."""
     terms = WEIGHT * rows
@@ -183,7 +246,7 @@ def report():
     ea_failure = 70_778_880*WEIGHT*(rejection**8+coefficient_rejection**8)
     # Roles swap for the second seed: each physical role compresses all row
     # tags/keys and exactly the one Delta it owns in its verifier role.
-    compressed_elements = 15_528+3*TREES+1
+    compressed_elements = MAIN_SEED_ROWS+EQ_SEED_ROWS+1
     extension_h = sum(r['union_trie_H_evaluations_upper_per_role'] for r in responses)
     h_rejection = Fraction((1 << 64)-P, 1 << 64)
     h_failure_both_roles = 2*3*(setup_h+extension_h)*h_rejection**8
@@ -194,7 +257,7 @@ def report():
         'setup_once_before_all_responses': {
             'internal_cGGM_H_evaluations_lower_per_role_if_two_full_traversals': setup_h,
             'universal_hash_field_inputs_lower_per_role': DOMAIN,
-            'conditional_bootstrap_wire_both_directions_bytes': 61_841_290,
+            'conditional_bootstrap_wire_both_directions_bytes': 61_841_294,
             'H_to_AES_calls': None,
             'H_to_domain_separated_SHAKE_RO_calls': setup_h,
             'H_SHAKE_absorbed_bytes': setup_h*H_DOMAIN_BYTES,
@@ -209,9 +272,15 @@ def report():
             'compression_excludes_sampler_and_limb_reduction_costs': True,
             'field_operations_complete': None,
             'native_seed6_check_and_compression': {
-                'main': seed6_boundary(15_528),
+                'main': seed6_boundary(MAIN_SEED_ROWS),
                 'roleswap': seed6_boundary(3*TREES),
                 'separate_seed_Delta_each': True,
+            },
+            'native_seed6_real_adapter': {
+                'main': seed6_real_trace(MAIN_SEED_ROWS),
+                'roleswap': seed6_real_trace(EQ_SEED_ROWS),
+                'Dory_rows': DORY_SEED_ROWS, 'F_EQ_extra_rows_each_seed': EQ_SEED_ROWS,
+                'physical_roles_opposite': True, 'composed_execution_credit': False,
             },
             'persistent_selected_cGGM_state': {
                 'sender_canonical_bytes': sender_persistent,
@@ -232,11 +301,11 @@ def report():
             'transient_named_setup_arrays_not_complete_peak': {
                 'path_c_Fp3_bytes': TREES*HEIGHT*24,
                 'path_d_Fp_bytes': TREES*HEIGHT*8,
-                'main_seed_rows': 15_528,
-                'main_seed_rows_prover_native_bytes': 15_528*32,
-                'main_seed_rows_verifier_native_bytes': 15_528*24,
-                'main_seed_rows_prover_Fp6_materialized_bytes': 15_528*(8+48),
-                'main_seed_rows_verifier_Fp6_materialized_bytes': 15_528*48,
+                'main_seed_rows': MAIN_SEED_ROWS,
+                'main_seed_rows_prover_native_bytes': MAIN_SEED_ROWS*32,
+                'main_seed_rows_verifier_native_bytes': MAIN_SEED_ROWS*24,
+                'main_seed_rows_prover_Fp6_materialized_bytes': MAIN_SEED_ROWS*(8+48),
+                'main_seed_rows_verifier_Fp6_materialized_bytes': MAIN_SEED_ROWS*48,
                 'roleswap_seed_rows': 3*TREES,
                 'roleswap_seed_rows_prover_native_bytes': 3*TREES*32,
                 'roleswap_seed_rows_verifier_native_bytes': 3*TREES*24,
@@ -298,7 +367,8 @@ def report():
                 'KDF_evaluations_each_role': 768,
                 'receiver_point_additions': 384,
                 'sender_point_additions': 768,
-                'COPE_guard_roleswap_lifetime_credit': False,
+                'streamed_AES_COPE_and_K6_component_checked': True,
+                'guard_roleswap_lifetime_credit': False,
             },
             'bounded_CPU_codec_and_Acc_PuncAcc_refinement': {
                 'source': 'rust/volta-pcg/src/c71_ea_lpn.rs',

@@ -1039,3 +1039,21 @@ supporti RMS coincidono fra Rust e Python. Include separatamente gli
 errori di directory/PATH dei tentativi di sviluppo; `git_dirty:false`
 riguarda il run registrato. Nessuna esecuzione GPU o misura temporale
 completa; restano aperti proof sourcewise, kernel fuso e picco fisico.
+
+
+## Seed6 reale OT-AES streaming
+
+L'[adapter ridotto](../../rust/volta-pcg/src/c71_seed6/real.rs) esegue due
+ruoli separati, n=1/n=3, handshake direction-bound e MR19 384 con COPE AES;
+confronta tutti i MAC restituiti. I test contano frame e operazioni e
+rifiutano correzioni non canoniche, check alterato e troncamento prima di
+alpha. Le capacità dei Vec e i rilasci sono osservati; non comprendono
+allocator, stack crittografico o trasporto. I
+[vettori indipendenti](../../scripts/c71_seed6_aes_kat.py) usano OpenSSL AES
+e hashlib SHAKE. Il ledger include ora le 2.025 righe F_EQ aggiuntive nel
+seed principale; i precedenti record con 15.528 righe restano immutabili e
+non sono un censimento completo del setup F_EQ.
+
+È un controllo componente test-only: non esegue seal/burn, guard prima di
+c, costruttore cGGM separato per ruolo o la F_EQ composta. Il picco fisico,
+il tempo congiunto e i gate pre-spesa restano aperti.

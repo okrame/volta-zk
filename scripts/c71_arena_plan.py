@@ -88,6 +88,26 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                 phase_events.extend([{'event':e['event'],'allocate':{'phase:core':size},'free':[]},
                     {'event':e['event']+'_fence_release','allocate':{},'free':['phase:core']}])
         chains['range_and_linear']=phase_events
+        if old == 0:
+            # Both seeds before their consumers, opposite physical roles. Outputs
+            # remain live at this chain's end: outer cGGM/guard is still pending.
+            setup=correlations['setup_once_before_all_responses']['native_seed6_real_adapter']
+            for main_role, inverse_role in [('prover','verifier'),('verifier','prover')]:
+                events=[]
+                for label,role in [('main',main_role),('roleswap',inverse_role)]:
+                    party=setup[label][role]
+                    for phase in ('mr19','cope','check','compression'):
+                        nonheap=party.get(phase+'_named_nonheap_bytes',0)
+                        if phase in ('mr19','cope'):
+                            nonheap=party['MR19_Delta_nonheap_bytes']
+                        events += [{'event':label+'_'+phase,'allocate':{
+                            'Seed6:phase':party['heap_phase_bytes'][phase]+nonheap}},
+                            {'event':label+'_'+phase+'_release','free':['Seed6:phase']}]
+                    events.append({'event':label+'_retain_until_outer_setup_consumer',
+                        'allocate':{'Seed6:'+label:party['heap_phase_bytes']['retained_output']+
+                            party['retained_nonheap_secret_bytes']}})
+                chains['Seed6_'+main_role+'_then_'+inverse_role+'_outer_pending']=events
+
         if reuse_reader_for_commit:
             chains['initial_A_commit']=[{'event':'scatter_commit_no_reader_fence','free':['reader_hash_slot']}]+chains['initial_A_commit']+[
                 {'event':'restore_reader_after_commit_fence','allocate':{'reader_hash_slot':persistent['reader_hash_slot']}}]
@@ -176,7 +196,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
             'snapshot':'native Snapshot stores Vec<Vec<i64>>; literal lift exceeds arena before byte packing',
             'RMS':'compact original P/S/Y checkpoint uses the range slot serially; native full GKR, Boolean replay and allocator scratch remain open',
             'WHIR':'bounded sourcewise replay matches native D10 bytes and rejects dense fallbacks; canonical accelerated state/workspace not yet wired',
-            'PCG':'Fp6/OT/setup adapter workspace remains unbounded in this candidate',
+            'PCG':'Seed6 real OT/AES named heap phases and retained opposite-role outputs included; crypto stack, transport, allocator and outer guard/cGGM lifecycle remain open',
             'arena_checker_metadata_bytes':512*24,
             'global_unallocated_margin_required_bytes':1 << 30,
             'remaining_global_for_unverified_residents_after_margin':80_000_000_000-response.W_BYTES-450*response.KV_PER_TOKEN-response.ARENA-(1 << 30)},

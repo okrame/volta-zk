@@ -1198,6 +1198,12 @@ con il guard accettato, senza sigma scalare vulnerabile. Non sono
 ancora chiusi il trasferimento sotto la premessa LPN autorizzata, l’arena
 o il costo completo entro 50 s.
 
+L'implementazione ridotta successiva aggiunge un byte di direzione al
+contesto di ciascuna delle due parti: **+2 B per seed, +4 B sul bootstrap**.
+I conteggi dimensionali di questa sezione precedono tale codec; lo stato
+attivo e il [preflight nativo](preflight.md#seed6-reale-streaming-e-workspace)
+usano 61.841.294 B e distinguono il seal ancora non implementato.
+
 ## Screen dopo l'autorizzazione EA-LPN e ripiego sui byte
 
 Il [nuovo diagnostico](../../scripts/c71_streaming_screen.py) usa le geometrie

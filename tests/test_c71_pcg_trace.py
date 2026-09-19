@@ -40,9 +40,9 @@ def test_distribution_free_trie_and_unknown_backend_costs():
     setup = report['setup_once_before_all_responses']
     assert setup['internal_cGGM_H_evaluations_lower_per_role_if_two_full_traversals'] == 707_787_450
     assert setup['H_to_AES_calls'] is None and setup['field_operations_complete'] is None
-    assert setup['Fp6_to_Fp3_compressed_elements_per_role'] == 17_554
-    assert setup['Fp6_to_Fp3_linear_Fp3_multiplications_per_role'] == 35_108
-    assert setup['Fp6_to_Fp3_linear_Fp3_additions_per_role'] == 17_554
+    assert setup['Fp6_to_Fp3_compressed_elements_per_role'] == 19_579
+    assert setup['Fp6_to_Fp3_linear_Fp3_multiplications_per_role'] == 39_158
+    assert setup['Fp6_to_Fp3_linear_Fp3_additions_per_role'] == 19_579
     assert not report['backend_boundary']['AES128_MMO_is_selected_Fp3_cGGM']
 
 
@@ -92,7 +92,24 @@ def test_seed6_boundary_matches_reduced_native_payload_and_work():
         'verifier_borrowed_input_bytes', 'prover_compressed_output_bytes',
         'verifier_compressed_output_bytes')] == [648, 576, 72, 96]
     setup = trace.report()['setup_once_before_all_responses']['native_seed6_check_and_compression']
-    assert setup['main']['rows'] == 15_528
+    assert setup['main']['rows'] == 17_553
     assert setup['roleswap']['rows'] == 2_025
     assert not setup['main']['physical_peak_credit']
     assert not setup['roleswap']['OT_guard_roleswap_composition_credit']
+
+
+def test_real_seed6_wire_work_and_named_heap_match_native_reduced_runs():
+    for n, wire, blocks, fields in [(1,149571,64512,43064),(3,155811,110592,55368)]:
+        real = trace.seed6_real_trace(n)
+        assert real['wire_bytes_both_directions_without_seal'] == wire
+        assert real['prover']['AES256_block_encryptions'] == blocks
+        assert real['prover']['field_sampler_candidates'] == fields
+        assert real['prover']['heap_phase_peak_bytes'] == 266736
+        assert real['verifier']['heap_phase_peak_bytes'] == 245616
+        assert not real['physical_peak_complete']
+    setup = trace.report()['setup_once_before_all_responses']['native_seed6_real_adapter']
+    assert setup['Dory_rows'] == 15528
+    assert setup['main']['rows'] == 15528+2025
+    assert setup['roleswap']['rows'] == 2025
+    assert setup['main']['prover']['heap_phase_peak_bytes'] == 80*17553+336
+    assert sum(setup[k]['wire_delta_vs_old_screen_per_seed_bytes'] for k in ['main','roleswap']) == 4

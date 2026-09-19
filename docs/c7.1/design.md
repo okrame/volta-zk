@@ -773,7 +773,7 @@ solo input corrotto. La candidata successiva usa un secondo seed Fp6 con
 ruoli scambiati e le due chiavi MAC per aprire soltanto
 `(Delta0+Delta1)*(wbar-vbar)` dopo autenticazione e coin fresche:
 **12.815.247 byte**, senza nuova ipotesi gruppo. Con l'upper B12 corrente
-del primo corpo il parziale è **126.894.534 byte**, sotto 130 MB. Restano
+del primo corpo il parziale è **126.894.538 byte**, sotto 130 MB. Restano
 da implementare roleswap/codec sotto EA-LPN-SL-reg* a T121/M93 autorizzata;
 formalizzazione compositiva, semantica con abort, corpo completo e tempo
 restano aperti. Non è
@@ -977,10 +977,13 @@ Il getter è ancora un riferimento CPU; razionale/remainder, port numerico
 canonico e liveness fisica completa restano obblighi. Il cut della cache è
 esplicito; l'ultimo coset riduce i digest in-place senza copia da 128 MiB.
 H/EAGen hanno ora equivalenza Rust/Python e un controllo esaustivo ridotto
-Acc/PuncAcc. Il confine Seed6 e i 384 OT reali sono controlli separati con domini
-MR19 distinti; K6 è verificato prima della compressione e il rifiuto non
-campiona alpha. Non ne segue credito per COPE/guard/ruoli opposti, consumo
-MAC composto, CUDA o un nuovo lemma Lean. Il getter numerico ridotto
+Acc/PuncAcc. Il [Seed6 reale ridotto](preflight.md#seed6-reale-streaming-e-workspace)
+collega domini MR19 distinti, handshake direction-bound, COPE AES streaming,
+check K6 e compressione. Non emette alpha dopo un check fallito. Il seed
+principale richiede 17.553 righe (15.528 Dory + 2.025 F_EQ), quello inverso
+2.025; il contesto nativo aggiunge 4 B al budget dei due seed. Capacità dei
+Vec e rilasci anticipati sono censiti; seal, guard, lifecycle a ruoli opposti,
+consumo MAC composto, picco fisico, CUDA e refinement Lean restano aperti. Il getter numerico ridotto
 O=0/2/4 apre la root A originale con S1 condiviso allocato dopo le query
 al predecessore; la riduzione in-place delle code successive resta aperta. Restano fermi NoPeek, endpoint e trust autorizzati.
 Il [checkpoint RMS e il motore coefficienti](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)

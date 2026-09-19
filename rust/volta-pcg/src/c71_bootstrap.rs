@@ -48,12 +48,14 @@ pub(super) const LEGACY_MR19: Mr19Profile = Mr19Profile {
 #[cfg(feature = "c71-b11")]
 pub const MAX_FIXED_RUN_ROWS: usize = (1 << 24) - 9;
 #[derive(Clone, Copy)]
-enum Suite {
+pub(super) enum Suite {
     B9,
     #[cfg(feature = "c71-b11")]
     B11,
     #[cfg(feature = "c71-b11")]
     B12FixedRun,
+    #[cfg(all(test, feature = "c71-b11"))]
+    Seed6(u8),
 }
 type Result<T> = io::Result<T>;
 
@@ -74,15 +76,22 @@ impl Context {
         self.common_for(Suite::B9)
     }
     fn common_for(&self, suite: Suite) -> Result<Vec<u8>> {
-        let (magic, id, max_rows) = match suite {
-            Suite::B9 => (MAGIC, 1u32, MAX_ROWS),
+        let (magic, id, max_rows, masks, ots, direction) = match suite {
+            Suite::B9 => (MAGIC, 1u32, MAX_ROWS, 9, OTS, None),
             #[cfg(feature = "c71-b11")]
-            Suite::B11 => (b"C71B11v1", 2u32, 207),
+            Suite::B11 => (b"C71B11v1", 2u32, 207, 9, OTS, None),
             #[cfg(feature = "c71-b11")]
-            Suite::B12FixedRun => (b"C71B12F1", 3u32, MAX_FIXED_RUN_ROWS),
+            Suite::B12FixedRun => (b"C71B12F1", 3u32, MAX_FIXED_RUN_ROWS, 9, OTS, None),
+            #[cfg(all(test, feature = "c71-b11"))]
+            Suite::Seed6(direction) => {
+                if direction > 1 {
+                    return Err(invalid("Seed6 direction differs"));
+                }
+                (b"C71S6v01", 4u32, MAX_FIXED_RUN_ROWS, 6, 384, Some(direction))
+            }
         };
         if !(1..=max_rows).contains(&self.rows)
-            || self.rows.checked_add(9).and_then(|n| n.checked_mul(OTS * 8)).is_none()
+            || self.rows.checked_add(masks).and_then(|n| n.checked_mul(ots * 8)).is_none()
             || [&self.session, &self.channel, &self.capacity].iter().any(|v| **v == [0; 32])
         {
             return Err(invalid("invalid bootstrap context or row capacity"));
@@ -94,7 +103,10 @@ impl Context {
         out.extend(self.capacity);
         out.extend((self.rows as u64).to_le_bytes());
         out.extend(id.to_le_bytes());
-        out.extend(9u32.to_le_bytes());
+        out.extend((masks as u32).to_le_bytes());
+        if let Some(direction) = direction {
+            out.push(direction);
+        }
         Ok(out)
     }
 }
@@ -124,8 +136,20 @@ pub struct Audit {
     pub sent_frames: Vec<(u8, usize)>,
     pub received_frames: Vec<(u8, usize)>,
     pub phase_seconds: Vec<(&'static str, f64)>,
+    /// Simultaneous capacities of MR19-owned Vec bodies; excludes caller,
+    /// allocator headers, stack crypto temporaries and transport buffering.
+    pub mr19_inner_vec_capacity_peak_bytes: usize,
+    pub mr19_retained_seed_capacity_bytes: usize,
+    pub native_point_bytes: usize,
+    pub native_scalar_bytes: usize,
 }
 impl Audit {
+    fn mr19_capacity(&mut self, bytes: usize) {
+        self.mr19_inner_vec_capacity_peak_bytes =
+            self.mr19_inner_vec_capacity_peak_bytes.max(bytes);
+        self.native_point_bytes = core::mem::size_of::<Point>();
+        self.native_scalar_bytes = core::mem::size_of::<Scalar>();
+    }
     fn phase(&mut self, name: &'static str, start: Instant) {
         self.phase_seconds.push((name, start.elapsed().as_secs_f64()));
     }
@@ -189,7 +213,7 @@ fn fp3(a: [u64; 3]) -> Fp3 {
     Fp3::new(Fp::new(a[0]), Fp::new(a[1]), Fp::new(a[2]))
 }
 
-fn random_bytes(rng: &mut (impl RngCore + CryptoRng), out: &mut [u8]) -> Result<()> {
+pub(super) fn random_bytes(rng: &mut (impl RngCore + CryptoRng), out: &mut [u8]) -> Result<()> {
     rng.try_fill_bytes(out).map_err(|_| invalid("OS randomness unavailable"))
 }
 fn scalar(rng: &mut (impl RngCore + CryptoRng), work: &mut Work) -> Result<Zeroizing<Scalar>> {
@@ -214,7 +238,10 @@ fn scalar(rng: &mut (impl RngCore + CryptoRng), work: &mut Work) -> Result<Zeroi
         Err(invalid("scalar sampling exhausted"))
     }
 }
-fn sample_fp(mut draw: impl FnMut(&mut [u8]) -> Result<()>, work: &mut Work) -> Result<u64> {
+pub(super) fn sample_fp(
+    mut draw: impl FnMut(&mut [u8]) -> Result<()>,
+    work: &mut Work,
+) -> Result<u64> {
     let mut raw = Zeroizing::new([0u8; 8]);
     let mut result = 0u64;
     let mut found = Choice::from(0);
@@ -344,18 +371,23 @@ fn variable(p: &Point, s: &Scalar, w: &mut Work) -> Zeroizing<Point> {
     Zeroizing::new(p * s)
 }
 
-fn send_header(channel: &mut impl Write, tag: u8, size: usize) -> Result<()> {
+pub(super) fn send_header(channel: &mut impl Write, tag: u8, size: usize) -> Result<()> {
     channel.write_all(&[tag])?;
     channel.write_all(&(size as u64).to_le_bytes())
 }
-fn send(channel: &mut impl Write, tag: u8, data: &[u8], audit: &mut Audit) -> Result<()> {
+pub(super) fn send(
+    channel: &mut impl Write,
+    tag: u8,
+    data: &[u8],
+    audit: &mut Audit,
+) -> Result<()> {
     send_header(channel, tag, data.len())?;
     channel.write_all(data)?;
     channel.flush()?;
     audit.sent_frames.push((tag, data.len() + 9));
     Ok(())
 }
-fn recv(
+pub(super) fn recv(
     channel: &mut impl Read,
     tag: u8,
     size: usize,
@@ -368,7 +400,7 @@ fn recv(
     audit.received_frames.push((tag, size + 9));
     Ok(data)
 }
-fn recv_header(channel: &mut impl Read, tag: u8, size: usize) -> Result<()> {
+pub(super) fn recv_header(channel: &mut impl Read, tag: u8, size: usize) -> Result<()> {
     let mut header = [0u8; 9];
     channel.read_exact(&mut header)?;
     if header[0] != tag || u64::from_le_bytes(header[1..].try_into().unwrap()) != size as u64 {
@@ -376,7 +408,7 @@ fn recv_header(channel: &mut impl Read, tag: u8, size: usize) -> Result<()> {
     }
     Ok(())
 }
-fn handshake(
+pub(super) fn handshake(
     channel: &mut (impl Read + Write),
     context: &Context,
     prover: bool,
@@ -385,31 +417,32 @@ fn handshake(
     suite: Suite,
 ) -> Result<Vec<u8>> {
     let common = context.common_for(suite)?;
+    let common_len = common.len();
     let mut mine = common.clone();
     let mut nonce = [0u8; 32];
     random_bytes(rng, &mut nonce)?;
     mine.extend(nonce);
     let theirs = if prover {
         send(channel, 1, &mine, audit)?;
-        recv(channel, 2, 152, audit)?
+        recv(channel, 2, common_len + 32, audit)?
     } else {
-        let peer = recv(channel, 1, 152, audit)?;
-        if peer[..120] != common {
+        let peer = recv(channel, 1, common_len + 32, audit)?;
+        if peer[..common_len] != common {
             return Err(invalid("context mismatch"));
         }
         send(channel, 2, &mine, audit)?;
         peer
     };
-    if theirs[..120] != common {
+    if theirs[..common_len] != common {
         return Err(invalid("context mismatch"));
     }
     let mut full = common;
     if prover {
-        full.extend(&mine[120..]);
-        full.extend(&theirs[120..]);
+        full.extend(&mine[common_len..]);
+        full.extend(&theirs[common_len..]);
     } else {
-        full.extend(&theirs[120..]);
-        full.extend(&mine[120..]);
+        full.extend(&theirs[common_len..]);
+        full.extend(&mine[common_len..]);
     }
     Ok(full)
 }
@@ -478,10 +511,6 @@ fn aes_prf(
     row: usize,
     work: &mut Work,
 ) -> Result<u64> {
-    use aes::{
-        cipher::{Block, BlockEncrypt, KeyInit},
-        Aes256,
-    };
     let (rows, height, domain) = if context.starts_with(b"C71B12F1") {
         if context.len() != 184 {
             return Err(invalid("B12 fixed-run PRF context length"));
@@ -495,9 +524,53 @@ fn aes_prf(
     } else {
         (216, 8, b"C71B11/COPE/leaf/".as_slice())
     };
-    if row >= rows || i >= OTS || j > 1 {
-        return Err(invalid("B11 PRF domain exceeds admitted profile"));
+    debug_assert_eq!(height, rows.next_power_of_two().ilog2());
+    aes_prf_for_profile(
+        seed,
+        context,
+        i,
+        j,
+        row,
+        AesPrfProfile { rows, ot_count: OTS, domain },
+        work,
+    )
+}
+
+#[cfg(feature = "c71-b11")]
+#[derive(Clone, Copy)]
+pub(super) struct AesPrfProfile {
+    pub rows: usize,
+    pub ot_count: usize,
+    pub domain: &'static [u8],
+}
+
+#[cfg(feature = "c71-b11")]
+pub(super) fn aes_prf_for_profile(
+    seed: &[u8; 32],
+    context: &[u8],
+    i: usize,
+    j: u8,
+    row: usize,
+    profile: AesPrfProfile,
+    work: &mut Work,
+) -> Result<u64> {
+    use aes::{
+        cipher::{Block, BlockEncrypt, KeyInit},
+        Aes256,
+    };
+    if profile.rows == 0
+        || profile.rows > 1 << 24
+        || profile.ot_count == 0
+        || profile.ot_count > OTS
+        || profile.domain.is_empty()
+        || row >= profile.rows
+        || i >= profile.ot_count
+        || j > 1
+    {
+        return Err(invalid("AES COPE PRF domain exceeds admitted profile"));
     }
+    let height = profile.rows.next_power_of_two().ilog2();
+    let domain = profile.domain;
     // ponytail: recompute the bounded path; a cache needs its own erasure audit.
     let mut leaf = Zeroizing::new(*seed);
     for depth in (0..height).rev() {
@@ -552,7 +625,12 @@ pub(super) fn mr19_sender(
     }
     let receiver = recv(channel, 3, point_bytes, audit)?;
     // Decode the entire first message before sampling any sender exponent.
-    let points = receiver.chunks_exact(POINT_BYTES).map(decode).collect::<Result<Vec<_>>>()?;
+    let mut points = Vec::with_capacity(2 * profile.ot_count);
+    for raw in receiver.chunks_exact(POINT_BYTES) {
+        points.push(decode(raw)?);
+    }
+    audit.mr19_capacity(receiver.capacity() + points.capacity() * core::mem::size_of::<Point>());
+    drop(receiver);
     let mut seeds = Zeroizing::new(vec![[[0u8; 32]; 2]; profile.ot_count]);
     let mut responses = Vec::with_capacity(point_bytes);
     let mut ciphertexts = Zeroizing::new(Vec::with_capacity(seed_bytes));
@@ -576,6 +654,13 @@ pub(super) fn mr19_sender(
             ciphertexts.extend(seeds[i][j].iter().zip(pad.iter()).map(|(a, b)| a ^ b));
         }
     }
+    audit.mr19_capacity(
+        points.capacity() * core::mem::size_of::<Point>()
+            + seeds.capacity() * 64
+            + responses.capacity()
+            + ciphertexts.capacity(),
+    );
+    audit.mr19_retained_seed_capacity_bytes = seeds.capacity() * 64;
     send(channel, 4, &responses, audit)?;
     send(channel, 5, &ciphertexts, audit)?;
     Ok(seeds)
@@ -636,12 +721,29 @@ pub(super) fn mr19_receiver(
         request.extend(encode(&Point::conditional_select(&other, &selected, choice)));
         scalars.push(*b);
     }
+    let secret_capacity = scalars.capacity() * core::mem::size_of::<Scalar>() + choices.capacity();
+    audit.mr19_capacity(secret_capacity + request.capacity());
     send(channel, 3, &request, audit)?;
+    drop(request);
     let response = recv(channel, 4, point_bytes, audit)?;
     // A malformed unselected branch must also abort, before any COPE output.
-    let points = response.chunks_exact(POINT_BYTES).map(decode).collect::<Result<Vec<_>>>()?;
+    let mut points = Vec::with_capacity(2 * profile.ot_count);
+    for raw in response.chunks_exact(POINT_BYTES) {
+        points.push(decode(raw)?);
+    }
+    audit.mr19_capacity(
+        secret_capacity + response.capacity() + points.capacity() * core::mem::size_of::<Point>(),
+    );
+    drop(response);
     let ciphertexts = recv(channel, 5, seed_bytes, audit)?;
     let mut seeds = Zeroizing::new(vec![[0u8; 32]; profile.ot_count]);
+    audit.mr19_capacity(
+        secret_capacity
+            + points.capacity() * core::mem::size_of::<Point>()
+            + ciphertexts.capacity()
+            + seeds.capacity() * 32,
+    );
+    audit.mr19_retained_seed_capacity_bytes = seeds.capacity() * 32;
     for i in 0..profile.ot_count {
         let mut options = Zeroizing::new([[0u8; 32]; 2]);
         for j in 0..2 {

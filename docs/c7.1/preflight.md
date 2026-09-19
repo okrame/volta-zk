@@ -1156,18 +1156,10 @@ La coda in-place S1→S2, i domini canonici e il binding al lifecycle accettato
 restano da collegare. Il riferimento CPU non accredita i passaggi del kernel
 razionale o il picco fisico canonico.
 
-Il confine [Seed6](../../rust/volta-pcg/src/c71_seed6.rs) controlla codec K6
-canonico, sei maschere e relazione completa prima della compressione E-lineare;
-una key compressa zero rifiuta. Vettori indipendenti e alterazioni di ogni
-limb verificano il rifiuto prima del campionamento alpha. Il motore MR19
-esistente ora ammette internamente conteggio e domini separati: il controllo
-reale a 384 OT restituisce il seed scelto per tutte le coordinate, con
-127.488 B di payload e 27 B di framing. Le vecchie suite mantengono i domini
-precedenti. Sono componenti test-only: COPE Seed6, handshake/lifetime, secondo
-seed con ruoli fisici opposti, guard e consumo MAC composto restano aperti.
-I conteggi esatti di check/compressione e i payload nominati sono nel
-[ledger PCG](../../scripts/c71_pcg_trace.py); non comprendono allocator,
-stack crittografico e temporanei del backend, né chiudono il picco.
+Il confine [Seed6](../../rust/volta-pcg/src/c71_seed6.rs) verifica codec K6,
+sei maschere, check completo e compressione E-lineare nonzero. È ora collegato
+al percorso OT/AES ridotto descritto nella sezione seguente; il record
+precedente resta evidenza dei soli componenti che allora eseguiva.
 
 Il nuovo censimento di `evaluate_row` aggrega le operazioni scalari dirette,
 le letture LUT e le capacità effettive dei risultati nel trace del getter.
@@ -1239,3 +1231,47 @@ fuso da quei lower. Il controllo minimo successivo è replay Booleano
 limitato, fold MSB e accumulo nel kernel integrato, con stessi coefficienti,
 scratch e conteggio di istruzioni. Nessun microbenchmark H100 è ammesso
 finché i gate di costruzione restano aperti.
+
+
+## Seed6 reale streaming e workspace
+
+L'[adapter test-only](../../rust/volta-pcg/src/c71_seed6/real.rs) collega
+handshake `C71S6v01`, direction 0/1, MR19 384, COPE AES-256, check K6 e
+compressione. Ogni correzione usa un buffer da 3.072 B; ogni sfida 48 B.
+Il verifier riceve tutte le correzioni canoniche prima di inviare le sfide,
+verifica K6 prima di campionare alpha e rifiuta la chiave compressa zero.
+I seed OT e il contesto vengono rilasciati dopo COPE; check e mask si
+cancellano prima della compressione. La capacità delle sei righe sacrificate
+rimane allocata dopo `truncate`: il ledger la conta.
+
+I test n=1/n=3 usano ruoli separati, due direzioni e socket locali; verificano
+ogni MAC restituito e wire da **149.571 / 155.811 B**, senza seal. Il replay
+di transcript privati alterati controlla correzione non canonica, Z alterato
+e troncamento senza alpha. I [vettori OpenSSL/SHAKE indipendenti](../../scripts/c71_seed6_aes_kat.py)
+verificano AES ai bordi dei cammini. Non è ancora una sessione con entrambi
+i seed sigillati, F_EQ, guard e consumo cGGM.
+
+Il [ledger](../../scripts/c71_pcg_trace.py) conta AES, sampler, MR19, check,
+compressione, traffico logico e capacità per fase; non spaccia le letture
+sorgente per traffico HBM. Corregge un'omissione: 15.528 è il solo seed
+Dory; il principale con F_EQ contiene **17.553** righe, l'inverso **2.025**.
+Ogni ruolo comprime quindi 19.579 elementi includendo la sua Delta. I due
+byte direction-bound delle handshake aggiungono 2 B per seed allo screen:
+bootstrap condizionale **61.841.294 B**, primo corpo parziale **126.894.538 B**.
+Il seal da 40 B per seed resta previsto, non implementato.
+
+I Vec dei punti MR19 hanno ora capacità preallocata esatta, senza crescita.
+Sull'ABI CPU osservata (Point=216 B, Scalar=72 B), il massimo dei corpi Vec
+MR19 è **266.496 B prover / 245.376 B verifier**, più il contesto da 240 B.
+Sul seed principale la compressione prover conserva **1.404.576 B** di
+corpi Vec, prima di stack/allocator/trasporto. Il piano arena include entrambi
+i seed seriali, i ruoli invertiti e l'output del primo ancora vivo durante
+il secondo; non ne rilascia gli output prima del consumer esterno ancora
+mancante. Queste fasi non alzano il massimo complessivo nominato.
+
+Restano espliciti stack crittografico/spill del compilatore, allocator,
+trasporto, audit, seal/burn, guard prima di c, costruttore role-separated
+cGGM e F_EQ. `puncture(delta,root)` è soltanto l'oracolo del riferimento:
+nessun ruolo reale possiede entrambi gli input. Non dà credito al bootstrap
+composto, né chiude il picco fisico o il lower temporale congiunto. Restano
+`T_inference`, `T_proof_only` e `T_response_total <= 65 s`, senza overlap.

@@ -1163,3 +1163,18 @@ ridotta. I contatori byte nativi coincidono con il ledger Python.
 Il ledger della risposta include ora entrambi i producer RMS ed EXP30
 per O=0/150/300 e separa maschere, campo e getter. Il record conserva
 le voci mancanti: non è un lower temporale completo né il picco fisico.
+
+### Disjoint Seed6 reservation and reusable byte scratch
+
+Il [record su SHA pulita `72f7f8d70d1f`](../../benchmarks/results/c71-tail-reservation-2026-09-19-72f7f8d70d1f.json)
+conserva **7 test Rust e 19 Python**. La riserva consuma il seed, copia
+soltanto la coda e cancella gli slot prima di troncare il prefisso, mantenendo
+la sua capacità. Il caso reale collega i prefissi da nove righe al guard e
+le code da tre a F_EQ; seed non separati e forme errate sono respinti.
+I contatori Rust coincidono con il ledger Python. Restano aperti cGGM,
+F_Rand globale e burn; il fixture non è un bootstrap composto.
+Il buffer dei pesi byte è riusato senza riallocazioni; passano confronto
+scalare, endpoint byte e prova nativa composta ridotta. Il record conserva
+il fallimento iniziale di build corretto prima del run pulito.
+Il piano mantiene le capacità extra delle code e il margine nominato,
+senza credito al picco fisico completo o all'esecuzione H100.

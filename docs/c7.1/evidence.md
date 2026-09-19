@@ -1076,3 +1076,10 @@ implementa FS globale, seal/burn o il trasporto del guard. I tre mask row
 sono cancellati mentre split/F_EQ restano disponibili al consumer futuro.
 Il [preflight](preflight.md#guard-originale-consumer-nativo) riporta lavoro,
 memoria nominata e confine formale senza attribuire credito al bootstrap.
+
+Il [record su SHA pulita `40b1972c8efc`](../../benchmarks/results/c71-seed6-guard-2026-09-19-40b1972c8efc.json)
+conserva **17 test Rust e 17 Python** passati, i tre casi Seed6 n=1/3/9,
+capacità nominate, ledger e arena. Include le regressioni range e la prova
+composta ridotta dopo l'estrazione dell'algebra condivisa. L'ABI CPU osserva
+Frozen=72 B, ProverGuard=528 B, VerifierChallenged=552 B e Hasher=1.920 B;
+queste dimensioni non sono un upper di stack o allocator.

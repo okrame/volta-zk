@@ -315,7 +315,8 @@ con ricetta disgiunta e sfida fissata prima della prova. Restano da collegare
 FS globale, exchange delle correzioni e costruttore cGGM dopo il guard.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
-coin globale, riserva disgiunta delle code e burn restano obblighi esterni.
+la riserva consuma il seed e separa coda F_EQ/prefisso guard, cancellando
+la vecchia copia della coda. Coin globale, cGGM e burn restano aperti.
 Il getter numerico ridotto O=0/2/4 ora apre la root A originale tramite
 WHIR; S1 condiviso viene allocato solo dopo le query al predecessore.
 Il fold dei successori ora richiede il rilascio dell’handle precedente e
@@ -339,11 +340,14 @@ canonica ammessa; i probe CUDA non danno un lower per un kernel fuso.
 L'endpoint byte viene adattato allo stesso transcript con LUT pubblica
 lane/byte/nodo da 100.466.688 B al posto dell'albero denso da oltre 210 TB.
 Il ledger conta la rigenerazione MSB con pesi condivisi fra quattro figli:
-i prodotti Eq diminuiscono del 95,07%; le fold Boolean del GKR usano ora
+i prodotti Eq diminuiscono del 95,07%, con un solo scratch riusato;
+le fold Boolean del GKR usano ora
 maschere dei limb mantenendo le addizioni. I confronti con le prove dense
 passano. Non si trasformano accessi logici in HBM o prodotti sorgente in
 istruzioni H100. Restano lavoro completo, workspace congiunto di
-circuiti/prove/correlazioni/allocator e port accelerato.
+circuiti/prove/correlazioni/allocator e port accelerato. Il massimo denso
+nel caller EXP30 richiede già 12,86/25,74 GB: quel backend è NO-GO;
+il prossimo adattamento deve eliminare anche questa materializzazione.
 Nessuna GPU, spill o spesa autorizzata.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso

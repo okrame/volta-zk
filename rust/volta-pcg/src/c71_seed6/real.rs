@@ -94,6 +94,117 @@ pub(super) struct RealVerifierOutput {
     pub capacities: NamedCapacities,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+pub(super) struct ReservationWork {
+    pub copied_payload_bytes: usize,
+    pub source_vec_capacity_bytes: usize,
+    pub destination_vec_capacity_bytes: usize,
+    pub named_vec_capacity_peak_bytes: usize,
+    pub duplicated_fixed_secret_bytes: usize,
+}
+
+pub(super) struct ProverReservation {
+    pub prefix: RealProverOutput,
+    pub equality_tail: RealProverOutput,
+    pub work: ReservationWork,
+}
+
+pub(super) struct VerifierReservation {
+    pub prefix: RealVerifierOutput,
+    pub equality_tail: RealVerifierOutput,
+    pub work: ReservationWork,
+}
+
+fn exact_copy<T: Copy + Zeroize>(source: &[T]) -> Zeroizing<Vec<T>> {
+    let mut out = Zeroizing::new(Vec::with_capacity(source.len()));
+    out.extend_from_slice(source);
+    out
+}
+
+/// Consume one output, copy only the reserved tail, then erase its original
+/// slots before truncating. The prefix retains its original capacity, audit and
+/// setup work; no inaccessible copy of a live tail remains in that allocation.
+pub(super) fn reserve_equality_prover_tail(
+    mut source: RealProverOutput,
+    tail_rows: usize,
+) -> Result<ProverReservation> {
+    let rows = source.values.len();
+    if tail_rows == 0 || tail_rows >= rows || source.tags.len() != rows {
+        return Err(invalid("Seed6 prover equality-tail shape"));
+    }
+    let prefix_rows = rows - tail_rows;
+    let source_capacity = source.values.capacity() * 8 + source.tags.capacity() * 24;
+    let values = exact_copy(&source.values[prefix_rows..]);
+    let tags = exact_copy(&source.tags[prefix_rows..]);
+    let tail_capacity = values.capacity() * 8 + tags.capacity() * 24;
+    source.values[prefix_rows..].zeroize();
+    source.tags[prefix_rows..].iter_mut().for_each(Zeroize::zeroize);
+    source.values.truncate(prefix_rows);
+    source.tags.truncate(prefix_rows);
+    let equality_tail = RealProverOutput {
+        binding: source.binding,
+        values,
+        tags,
+        audit: Audit::default(),
+        seed6_work: Seed6Work::default(),
+        capacities: NamedCapacities {
+            retained_output: tail_capacity,
+            ..NamedCapacities::default()
+        },
+    };
+    source.capacities.retained_output = source_capacity;
+    Ok(ProverReservation {
+        prefix: source,
+        equality_tail,
+        work: ReservationWork {
+            copied_payload_bytes: 32 * tail_rows,
+            source_vec_capacity_bytes: source_capacity,
+            destination_vec_capacity_bytes: source_capacity + tail_capacity,
+            named_vec_capacity_peak_bytes: source_capacity + tail_capacity,
+            duplicated_fixed_secret_bytes: 0,
+        },
+    })
+}
+
+pub(super) fn reserve_equality_verifier_tail(
+    mut source: RealVerifierOutput,
+    tail_rows: usize,
+) -> Result<VerifierReservation> {
+    let rows = source.keys.len();
+    if tail_rows == 0 || tail_rows >= rows {
+        return Err(invalid("Seed6 verifier equality-tail shape"));
+    }
+    let prefix_rows = rows - tail_rows;
+    let source_capacity = source.keys.capacity() * 24;
+    let keys = exact_copy(&source.keys[prefix_rows..]);
+    let tail_capacity = keys.capacity() * 24;
+    source.keys[prefix_rows..].iter_mut().for_each(Zeroize::zeroize);
+    source.keys.truncate(prefix_rows);
+    let equality_tail = RealVerifierOutput {
+        binding: source.binding,
+        delta: Zeroizing::new(*source.delta),
+        keys,
+        audit: Audit::default(),
+        seed6_work: Seed6Work::default(),
+        capacities: NamedCapacities {
+            retained_output: tail_capacity,
+            ..NamedCapacities::default()
+        },
+    };
+    source.capacities.retained_output = source_capacity;
+    Ok(VerifierReservation {
+        prefix: source,
+        equality_tail,
+        work: ReservationWork {
+            copied_payload_bytes: 24 * tail_rows,
+            source_vec_capacity_bytes: source_capacity,
+            destination_vec_capacity_bytes: source_capacity + tail_capacity,
+            named_vec_capacity_peak_bytes: source_capacity + tail_capacity,
+            duplicated_fixed_secret_bytes: 24,
+        },
+    })
+}
+
 /// Test-only real prover role. `direction` is 0 for the main seed and 1 for
 /// the opposite-role seed and is transcript-bound by `Suite::Seed6`.
 pub(super) fn prover_with_rng(

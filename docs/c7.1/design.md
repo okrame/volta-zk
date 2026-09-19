@@ -999,8 +999,11 @@ j+1; il consumer usa j: non si trasferisce il bound senza tale adattamento.
 Nessun nuovo credito al teorema B12 o alla composizione EA-LPN. Il
 [consumer F_EQ](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti) verifica
 localmente chosen-input e share a due chiavi con codec canonico e ordine
-commit-before-open. F_Rand globale, token delle code disgiunte, trasporto e
-burn non sono scaricati; l’ownership degli output non sostituisce tali premesse.
+commit-before-open. La riserva consuma il seed principale prima del guard:
+copia solo la coda, cancella gli slot originali e conserva la capacità del
+prefisso. F_EQ accetta esclusivamente code esatte, con binding originale.
+F_Rand globale, cGGM, trasporto e burn non sono scaricati; la separazione
+locale delle righe non sostituisce tali premesse.
  Il getter numerico ridotto
 O=0/2/4 apre la root A originale con S1 condiviso allocato dopo le query
 al predecessore. Il fold in-place dei successori segue il rilascio esplicito
@@ -1022,7 +1025,8 @@ Il verifier deve calcolare massa viva e selettori senza Eq(N) o P*N.
 La LUT pubblica dell'endpoint byte sostituisce gli alberi per cella,
 conservando le otto discese e le medesime correzioni/challenge/MAC.
 Il getter legge i quattro figli insieme; i pesi dei prefissi sono aggiornati
-incrementalmente senza divisioni e senza saltare pesi nulli. Il replay
+incrementalmente senza divisioni e senza saltare pesi nulli; un solo buffer
+è riusato per tutte le richieste. Il replay
 Boolean del GKR sostituisce solo i prodotti per bit con maschere dei limb
 canonici, eseguendo comunque ogni addizione. La specializzazione interna
 richiede righe prodotte da `Circuit::replay_layer`, non callback arbitrarie
@@ -1030,6 +1034,10 @@ con valori di campo; i controlli del transcript rimangono gli stessi.
 Il ledger distingue rigenerazione, campo, getter e memoria; il fixture
 pubblico a scale zero non è un profilo calibrato. Il percorso scalare
 ridotto non ammette il canonico né chiude il workspace fisico completo.
+Il caller EXP30 mantiene ancora un massimo denso da 12.859.736.064 B a
+O=0 e 25.744.637.952 B a O=150/300: quel backend è NO-GO per arena.
+Serve sostituirlo mantenendo la medesima prova, oltre al census GKR;
+un getter nel solo GKR non risolve il massimo.
 I probe CUDA standalone non danno lower al futuro kernel fuso e il vecchio
 risparmio LSB-first non si applica al transcript MSB. Nessun nuovo lemma
 Lean, variazione del trust o credito NoPeek deriva da questi controlli finiti.

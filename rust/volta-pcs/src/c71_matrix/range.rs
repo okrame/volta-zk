@@ -353,12 +353,13 @@ fn source_folded_children(
     challenges: &[Fp3],
     suffix: usize,
     get: &impl Fn(usize, usize) -> [Fp3; 4],
+    weights: &mut Vec<Fp3>,
     work: &mut SourceTreeWork,
 ) -> [Fp3; 4] {
     let q = challenges.len();
     let current = original >> q;
     let mut sums = [Fp3::ZERO; 4];
-    let mut weights = Vec::with_capacity(q + 1);
+    weights.clear();
     weights.push(Fp3::ONE);
     for (bit, &r) in challenges.iter().enumerate() {
         weights.push(weights[bit] * (Fp3::ONE - r));
@@ -437,6 +438,7 @@ pub(super) fn prove_tree_sourcewise(
 ) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2], SourceTreeWork) {
     let mut layers = Vec::new();
     let mut work = SourceTreeWork::default();
+    let mut prefix_weights = Vec::with_capacity(point.len() + bits);
     for l in 0..bits {
         let lambda = fs.fp3();
         let mut target = claims[0].scale(lambda).add(claims[1]);
@@ -451,13 +453,22 @@ pub(super) fn prove_tree_sourcewise(
             let half = current / 2;
             let mut c = [Fp3::ZERO; 4];
             for i in 0..half {
-                let a = source_folded_children(l, original, &next_point, i, &get, &mut work);
+                let a = source_folded_children(
+                    l,
+                    original,
+                    &next_point,
+                    i,
+                    &get,
+                    &mut prefix_weights,
+                    &mut work,
+                );
                 let upper = source_folded_children(
                     l,
                     original,
                     &next_point,
                     i + half,
                     &get,
+                    &mut prefix_weights,
                     &mut work,
                 );
                 let d: [Fp3; 4] = std::array::from_fn(|child| upper[child] - a[child]);
@@ -502,7 +513,15 @@ pub(super) fn prove_tree_sourcewise(
                 );
             rounds.push(wire);
         }
-        let folded = source_folded_children(l, original, &next_point, 0, &get, &mut work);
+        let folded = source_folded_children(
+            l,
+            original,
+            &next_point,
+            0,
+            &get,
+            &mut prefix_weights,
+            &mut work,
+        );
         work.owned_regeneration_heap_peak_bytes = work.owned_regeneration_heap_peak_bytes.max(
             (point.capacity() + next_point.capacity()) * core::mem::size_of::<Fp3>()
                 + work.eq_weights_capacity_bytes,
@@ -680,7 +699,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn incremental_prefix_weights_match_independent_scalar_reference() {
+    fn incremental_prefix_weights_reuse_one_buffer_and_match_scalar_reference() {
         let all_challenges = [
             Fp3::ZERO,
             Fp3::ONE,
@@ -699,6 +718,9 @@ mod tests {
             })
         };
         let original = 64;
+        let mut prefix_weights = Vec::with_capacity(all_challenges.len() + 1);
+        let allocation = prefix_weights.as_ptr();
+        let capacity = prefix_weights.capacity();
         for q in 0..=6 {
             let challenges = &all_challenges[..q];
             let current = original >> q;
@@ -726,9 +748,12 @@ mod tests {
                     challenges,
                     suffix,
                     &get,
+                    &mut prefix_weights,
                     &mut work,
                 );
                 assert_eq!(actual, expected);
+                assert_eq!(prefix_weights.as_ptr(), allocation);
+                assert_eq!(prefix_weights.capacity(), capacity);
                 assert_eq!(work.getter_calls, 1 << q);
                 assert_eq!(work.getter_scalar_values, 4 << q);
                 assert_eq!(work.prefix_terms, 1 << q);
@@ -736,7 +761,7 @@ mod tests {
                 assert_eq!(work.equality_subtractions, (1 << q) - 1);
                 assert_eq!(work.fold_multiplications, 4 << q);
                 assert_eq!(work.fold_additions, 4 << q);
-                assert!(work.eq_weights_capacity_bytes >= (q + 1) * core::mem::size_of::<Fp3>());
+                assert_eq!(work.eq_weights_capacity_bytes, capacity * core::mem::size_of::<Fp3>());
             }
         }
     }

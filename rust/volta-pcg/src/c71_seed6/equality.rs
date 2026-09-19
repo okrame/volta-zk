@@ -76,29 +76,22 @@ impl Prepared {
             || receiver.binding == [0; 32]
             || sender.binding == receiver.binding
             || sender.values.len() != sender.tags.len()
-            || sender.values.len() > 17_553
-            || receiver.keys.len() > 17_553
             || sender.values.capacity() > sender.values.len() + 6
             || sender.tags.capacity() != sender.tags.len()
             || receiver.keys.capacity() != receiver.keys.len()
-            || (role == 0 && sender.values.len() != 3 * values.len())
-            || (role == 1 && receiver.keys.len() != 3 * values.len())
-            || sender.values.len() < 3 * values.len()
-            || receiver.keys.len() < 3 * values.len()
+            || sender.values.len() != 3 * values.len()
+            || receiver.keys.len() != 3 * values.len()
         {
             return Err("equality seed/input shape");
         }
         // Setup diagnostics have no equality consumer; release their Vec bodies.
         sender.audit = crate::c71_bootstrap::Audit::default();
         receiver.audit = crate::c71_bootstrap::Audit::default();
-        // The caller must reserve the dedicated tail before Dory consumption.
-        // No reservation token or guard/cGGM transition is implemented here.
-        // Ownership is consumed: no returned seed can reuse these correlations.
-        let start = sender.values.len() - 3 * values.len();
+        // This consumer accepts only an exact reserved tail. Prefix ownership
+        // cannot enter F_EQ or be recovered from the consumed output.
         let mut corrections = Vec::with_capacity(24 * values.len());
         for (i, x) in values.iter().enumerate() {
-            corrections
-                .extend_from_slice(&(x.fp3() - pack_base(&sender, start + 3 * i)).to_bytes());
+            corrections.extend_from_slice(&(x.fp3() - pack_base(&sender, 3 * i)).to_bytes());
         }
         Ok(Self { role, sid, sender, receiver, values, corrections })
     }
@@ -146,14 +139,12 @@ impl Frozen {
         if coefficients.len() != n || coefficients.capacity() != n {
             return Err("equality coin count");
         }
-        let ps = self.local.sender.values.len() - 3 * n;
-        let vs = self.local.receiver.keys.len() - 3 * n;
         let delta = self.local.receiver.delta.fp3();
         let (mut value, mut tag, mut key) = (Fp3::ZERO, Fp3::ZERO, Fp3::ZERO);
         for (i, &r) in coefficients.iter().enumerate() {
             value += r * self.local.values[i].fp3();
-            tag += r * pack_tags(&self.local.sender, ps + 3 * i);
-            key += r * (pack_keys(&self.local.receiver, vs + 3 * i) - delta * self.peer[i].fp3());
+            tag += r * pack_tags(&self.local.sender, 3 * i);
+            key += r * (pack_keys(&self.local.receiver, 3 * i) - delta * self.peer[i].fp3());
         }
         let share = if self.local.role == 0 {
             -key - delta * value - tag
@@ -266,14 +257,27 @@ mod tests {
         )
     }
     fn prepared_pair(x: &[Fp3], y: &[Fp3]) -> (Prepared, Prepared) {
-        // Include an unused prefix in the main seed: only the last 3*n rows
-        // belong to equality, as in the full 15528+2025 reservation.
-        let (p0, v0) = ideal(15 + 3 * x.len(), 1);
+        let (p0, v0) = ideal(3 * x.len(), 1);
         let (p1, v1) = ideal(3 * x.len(), 2);
         (
             Prepared::new(0, [8; 32], p1, v0, inputs(x)).unwrap(),
             Prepared::new(1, [8; 32], p0, v1, inputs(y)).unwrap(),
         )
+    }
+    #[test]
+    fn c71_seed6_tail_reservation_rejects_unsplit_prefix_and_bad_shapes() {
+        let x = [Fp3::ONE];
+        let (p, _) = ideal(12, 1);
+        let (_, v) = ideal(3, 2);
+        assert!(Prepared::new(0, [8; 32], p, v, inputs(&x)).is_err());
+        for tail in [0, 12, 13] {
+            let (p, v) = ideal(12, 1);
+            assert!(real::reserve_equality_prover_tail(p, tail).is_err());
+            assert!(real::reserve_equality_verifier_tail(v, tail).is_err());
+        }
+        let (mut p, _) = ideal(12, 1);
+        p.tags.pop();
+        assert!(real::reserve_equality_prover_tail(p, 3).is_err());
     }
     #[test]
     fn c71_seed6_equality_two_keys_match_and_reject_framing() {
@@ -331,7 +335,7 @@ mod tests {
             "equal_share_sum_zero":true,"global_F_Rand_and_seal_credit":false})
         );
     }
-    fn real_pair(direction: u8) -> (RealProverOutput, RealVerifierOutput) {
+    fn real_pair(n: usize, direction: u8) -> (RealProverOutput, RealVerifierOutput) {
         use std::{os::unix::net::UnixStream, thread, time::Duration};
         let (left, right) = UnixStream::pair().unwrap();
         for s in [&left, &right] {
@@ -339,7 +343,7 @@ mod tests {
             s.set_write_timeout(Some(Duration::from_secs(45))).unwrap();
         }
         let context =
-            || Context { session: [0x31; 32], channel: [0x51; 32], capacity: [0x71; 32], rows: 3 };
+            || Context { session: [0x31; 32], channel: [0x51; 32], capacity: [0x71; 32], rows: n };
         let c = context();
         let sender = thread::spawn(move || {
             real::prover_with_rng(
@@ -361,8 +365,8 @@ mod tests {
     }
     #[test]
     fn c71_seed6_equality_real_opposite_role_seeds() {
-        let (p0, v0) = real_pair(0);
-        let (p1, v1) = real_pair(1);
+        let (p0, v0) = real_pair(3, 0);
+        let (p1, v1) = real_pair(3, 1);
         let x = [Fp3::new(Fp::new(17), Fp::new(19), Fp::new(23))];
         let (c0, c1) = commit_pair(
             Prepared::new(0, [8; 32], p1, v0, inputs(&x)).unwrap(),
@@ -371,6 +375,50 @@ mod tests {
         let (h0, h1) = (c0.commitment, c1.commitment);
         let o0 = c0.accept_peer_commitment(h1);
         let o1 = c1.accept_peer_commitment(h0);
+        let (b0, b1) = (o0.opening(), o1.opening());
+        assert!(o0.verify(&b1).is_ok());
+        assert!(o1.verify(&b0).is_ok());
+    }
+
+    #[test]
+    fn c71_seed6_real_prefix_guard_and_exact_equality_tail_are_disjoint() {
+        let (p0, v0) = real_pair(12, 0);
+        let (p1, v1) = real_pair(12, 1);
+        let p0 = real::reserve_equality_prover_tail(p0, 3).unwrap();
+        let v0 = real::reserve_equality_verifier_tail(v0, 3).unwrap();
+        let p1 = real::reserve_equality_prover_tail(p1, 3).unwrap();
+        let v1 = real::reserve_equality_verifier_tail(v1, 3).unwrap();
+        assert_eq!((p0.prefix.values.len(), p0.equality_tail.values.len()), (9, 3));
+        assert_eq!((v0.prefix.keys.len(), v0.equality_tail.keys.len()), (9, 3));
+        assert_eq!(p0.work.copied_payload_bytes, 3 * 32);
+        assert_eq!(v0.work.copied_payload_bytes, 3 * 24);
+        assert_eq!(p0.work.named_vec_capacity_peak_bytes, p0.work.destination_vec_capacity_bytes);
+        assert_eq!(v0.work.named_vec_capacity_peak_bytes, v0.work.destination_vec_capacity_bytes);
+        assert_eq!(
+            p0.work.destination_vec_capacity_bytes,
+            8 * (p0.prefix.values.capacity() + p0.equality_tail.values.capacity())
+                + 24 * (p0.prefix.tags.capacity() + p0.equality_tail.tags.capacity())
+        );
+        assert_eq!(
+            v0.work.destination_vec_capacity_bytes,
+            24 * (v0.prefix.keys.capacity() + v0.equality_tail.keys.capacity())
+        );
+        assert_eq!(p0.prefix.binding, p0.equality_tail.binding);
+        assert_eq!(v0.prefix.binding, v0.equality_tail.binding);
+        println!(
+            "seed6_tail_reservation {}",
+            serde_json::json!({
+            "rows":12,"tail_rows":3,"prover":p0.work,"verifier":v0.work})
+        );
+        super::super::guard::check_real_seed(p0.prefix, v0.prefix);
+        super::super::guard::check_real_seed(p1.prefix, v1.prefix);
+        let x = [Fp3::new(Fp::new(17), Fp::new(19), Fp::new(23))];
+        let (c0, c1) = commit_pair(
+            Prepared::new(0, [8; 32], p1.equality_tail, v0.equality_tail, inputs(&x)).unwrap(),
+            Prepared::new(1, [8; 32], p0.equality_tail, v1.equality_tail, inputs(&x)).unwrap(),
+        );
+        let (h0, h1) = (c0.commitment, c1.commitment);
+        let (o0, o1) = (c0.accept_peer_commitment(h1), c1.accept_peer_commitment(h0));
         let (b0, b1) = (o0.opening(), o1.opening());
         assert!(o0.verify(&b1).is_ok());
         assert!(o1.verify(&b0).is_ok());

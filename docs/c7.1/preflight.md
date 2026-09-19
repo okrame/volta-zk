@@ -1287,6 +1287,8 @@ fra i quattro figli: il conteggio Eq scende da 7.032.424.831.646.836 a
 Restano 350.744.209.260.544 prodotti/addizioni per i valori, senza credito
 di riduzione di quelle operazioni. Il buffer dei pesi ha al massimo 984 B
 nel caso RMS, 1.024 B allineati nel piano; coesiste con entrambi i punti.
+È allocato una sola volta e riusato: il test verifica stabilità di puntatore
+e capacità, oltre all'uguaglianza dei valori.
 I test verificano sfide non base, 0/1, ogni prefisso/suffisso fino a sei bit
 e byte/FS/MAC/PCS originali. `byte_source_trace` distingue questi costi, ma
 esclude ancora MAC/FS, coefficienti pubblici, getter originale e allocator.
@@ -1405,8 +1407,11 @@ prima del commitment; il caso reale usa due seed da tre righe, direzioni 0/1.
 
 Il callback deterministico dei test **non realizza F_Rand**. Il vincolo
 locale commit-before-open non realizza il trasporto atomico o il burn durevole.
-Il consumer possiede i due output, ma il token che riserva la coda prima
-che Dory usi il prefisso e il collegamento guard→cGGM→F_EQ restano da costruire.
+La riserva ora consuma il seed principale prima del guard: copia la sola
+coda, cancella esplicitamente gli slot originali e tronca il prefisso senza
+ridurne la capacità. Conserva il binding e passa a F_EQ solo code esatte;
+seed non separati vengono respinti. Il collegamento guard→cGGM→F_EQ resta
+aperto: il test locale collega i due consumer ma non costruisce cGGM.
 Le garanzie di privacy/soundness dello screen sono condizionali a quelle
 premesse: nessun credito alla composizione o alla sola coin del fixture.
 
@@ -1417,12 +1422,35 @@ prenotazione, non ancora un exchange nativo. Input, frame e coin sono
 limitati in capacità; la decodifica trasferisce il frame posseduto, poi lo
 rilascia. Gli Audit di setup vengono liberati prima delle correzioni.
 Il massimo payload aggiuntivo è **64.800 B per parte**, oltre ai due output
-Seed6 ancora vivi. A dimensione canonica, il payload simultaneo dà
-**550.920 B per ruolo 0 / 675.144 B per ruolo 1**; si aggiungono stato di
-valore, stack, allocator e trasporto. `size_of` è soltanto shallow.
+Seed6 ancora vivi. F_EQ possiede ora soltanto le due code da 2.025 righe:
+178.248 B per ruolo 0 / 178.200 B per ruolo 1, compreso l'envelope
+aggiuntivo; il prefisso principale resta esterno e vivo nel piano.
+Si aggiungono stato di valore, stack, allocator e trasporto.
+`size_of` è soltanto shallow.
 
 Il piano riserva conservativamente quei 64.800 B più uno slot di stato
 4.096 B mentre trattiene ancora entrambi i seed e le correzioni guard.
+La separazione aggiunge una coda da 64.800 B prover / 48.600 B verifier,
+più 24 B per la copia Delta del verifier. La capacità principale rimane
+561.744 / 421.272 B: il picco Vec della riserva è quindi 626.544 / 469.872 B.
+Copia e cancellazione contano ciascuna 64.800 / 48.600 B logici, oltre alla
+lettura della copia; non sono traffico HBM misurato. L'audit e il lavoro
+setup originari restano sul prefisso: lo split non ripete OT o compressione.
+Il test reale ridotto usa seed da 12 righe, prefissi da 9 nel guard e code
+da 3 in F_EQ; la build/test resta entro i limiti locali.
 Questo envelope non dichiara eseguita la transizione esterna e non libera
 implicitamente i seed nel piano. I massimi risposta restano quelli del
 range; lo stack crittografico e il picco completo non sono certificati.
+
+
+## EXP30: blocco del massimo denso
+
+Il census GKR non include automaticamente il caller softmax. Il suo albero
+massimo conserva coppie Fp3 a tutti i livelli: per N=2^27 e key_bits=8
+occupa 12.859.736.064 B; per N=2^28 e key_bits=9 occupa 25.744.637.952 B.
+Le assegnazioni dense aggiungono 2.147.483.648 / 4.294.967.296 B.
+Questo è NO-GO del backend denso rispetto all'arena, indipendente dal tempo.
+La sostituzione minima deve usare assegnamenti lookup e un massimo a getter
+o checkpoint con lo stesso ordine MSB/FS e gli stessi endpoint originali.
+Non è un lower contro ogni costruzione EXP30. Programmi, proof, correlazioni,
+replay e allocator richiedono ancora un census di capacità/liveness condiviso.

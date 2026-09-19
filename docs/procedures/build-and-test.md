@@ -30,6 +30,13 @@ closure alone requires no Rust or Lean build; native refinement is separate.
 
 ## Rust and resource limits
 
+Per la riserva Seed6 eseguire separatamente `c71_seed6_tail_reservation`,
+`c71_seed6_real_prefix_guard_and_exact_equality_tail` e `c71_seed6_equality`
+nel binario PCG con feature `c71-b11`, dopo la build mirata. Il secondo
+filtro usa due seed reali da 12 righe su socketpair Unix; il terzo comprende
+il fixture reale da tre righe. Restano 60 s/2 GiB e un worker per invocazione,
+nessun bootstrap canonico, GPU o rete esterna.
+
 Per il GKR a getter e l'endpoint byte a LUT, dopo la build mirata PCS sotto,
 eseguire separatamente `fs_streamed_record`, `c71_b12_byte_functions`,
 `c71_b12_single_cell_sourcewise`, `c71_b12_rms_joint_gkr`,

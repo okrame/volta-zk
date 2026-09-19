@@ -108,6 +108,12 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                     events.append({'event':label+'_retain_until_outer_setup_consumer',
                         'allocate':{'Seed6:'+label:party['heap_phase_bytes']['retained_output']+
                             party['retained_nonheap_secret_bytes']+32}})
+                # Main prefix keeps its old capacity (erased tail slack). The
+                # new exact tail stays live independently through the guard.
+                reservation=setup['disjoint_tail_reservation'][main_role]
+                events.append({'event':'reserve_disjoint_equality_tail_before_guard',
+                    'allocate':{'Seed6:main_equality_tail':reservation['new_tail_vec_capacity_bytes']+
+                        reservation['duplicated_fixed_secret_bytes']+32}})
                 events.append({'event':'freeze_guard_corrections_outer_FS_pending',
                     'allocate':{'Seed6:guard_corrections':setup['path_guard_consumer']['correction_heap_capacity_bytes_each_role'],
                                 'Seed6:guard_native_value_state':552}})

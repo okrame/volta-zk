@@ -145,3 +145,16 @@ def test_two_key_equality_work_and_bounded_heap_envelope():
     assert eq['both_corrections_fixed_before_coin_callback']
     assert eq['peer_commitment_fixed_before_own_opening']
     assert not eq['global_F_Rand_or_seal_credit']
+
+
+def test_consuming_tail_reservation_preserves_prefix_capacity():
+    r=trace.seed6_tail_reservation_trace()
+    assert (r['prefix_rows'],r['tail_rows'])==(15528,2025)
+    assert r['prover']['named_vec_capacity_peak_bytes']==626544
+    assert r['verifier']['named_vec_capacity_peak_bytes']==469872
+    for role in ('prover','verifier'):
+        x=r[role]
+        assert x['destination_vec_capacity_bytes']==x['source_vec_capacity_bytes']+x['copied_payload_bytes']
+        assert x['logical_explicit_erasure_write_bytes']==x['copied_payload_bytes']
+    assert r['verifier']['duplicated_fixed_secret_bytes']==24
+    assert trace.seed6_equality_trace()['each_consumer_seed_rows_exact']==2025

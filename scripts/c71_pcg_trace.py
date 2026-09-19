@@ -215,6 +215,32 @@ def seed6_guard_trace(blocks=TREES, height=HEIGHT):
     }
 
 
+def seed6_tail_reservation_trace(rows=MAIN_SEED_ROWS, tail=EQ_SEED_ROWS):
+    """Copy only the disjoint tail; erased prefix slack remains allocated."""
+    if not 0 < tail < rows:
+        raise ValueError('nonempty prefix and tail required')
+    roles = {}
+    for role, stride, slack in [('prover', 32, 48), ('verifier', 24, 0)]:
+        source = stride*rows+slack
+        copied = stride*tail
+        roles[role] = {
+            'copied_payload_bytes':copied,
+            'logical_copy_read_bytes':copied,
+            'logical_copy_write_bytes':copied,
+            'logical_explicit_erasure_write_bytes':copied,
+            'source_vec_capacity_bytes':source,
+            'new_tail_vec_capacity_bytes':copied,
+            'destination_vec_capacity_bytes':source+copied,
+            'named_vec_capacity_peak_bytes':source+copied,
+            'duplicated_fixed_secret_bytes':24 if role=='verifier' else 0,
+        }
+    return dict(rows=rows, tail_rows=tail, prefix_rows=rows-tail, **roles,
+                consuming_split_implemented=True, original_binding_preserved=True,
+                prefix_capacity_retained=True, tail_erased_before_truncate=True,
+                capacity_scope='selected native Vec capacities; no allocator/stack/HBM credit',
+                complete_physical_peak=False)
+
+
 def seed6_equality_trace(n=TREES):
     """Two-key consumer after both seed completions; no outer F_Rand/seal credit."""
     if not 1 <= n <= TREES:
@@ -244,10 +270,11 @@ def seed6_equality_trace(n=TREES):
         'extra_owned_heap_phase_bytes_each_role':{
             'prepare':48*n, 'freeze_with_received_frame':96*n,
             'commit_with_coins':96*n, 'open_and_verify':0},
-        'seed_output_liveness':'both owned outputs retained until share is committed, then erased',
+        'seed_output_liveness':'only exact reserved tails owned until share commitment; outer prefix retained separately',
         'diagnostic_Audit_Vecs_released_before_correction_allocation':True,
-        'main_seed_rows_cap':17553, 'inverse_seed_rows_exact':3*n,
-        'dedicated_tail_reservation_token_implemented':False,
+        'each_consumer_seed_rows_exact':3*n,
+        'consuming_disjoint_tail_reservation_implemented':True,
+        'guard_prefix_then_equality_tail_reduced_real_check':True,
         'native_Prepared_size_bytes':1000, 'native_Frozen_size_bytes':1056,
         'native_Committed_size_bytes':121, 'native_Openable_size_bytes':153,
         'native_BLAKE3_Hasher_size_bytes':1920,
@@ -374,6 +401,7 @@ def report():
                 'Dory_rows': DORY_SEED_ROWS, 'F_EQ_extra_rows_each_seed': EQ_SEED_ROWS,
                 'path_guard_consumer': seed6_guard_trace(),
                 'two_key_equality_consumer':seed6_equality_trace(),
+                'disjoint_tail_reservation':seed6_tail_reservation_trace(),
                 'physical_roles_opposite': True, 'composed_execution_credit': False,
             },
             'persistent_selected_cGGM_state': {

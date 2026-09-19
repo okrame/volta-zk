@@ -1177,3 +1177,65 @@ a livello sorgente, non istruzioni macchina o traffico HBM; i contatori
 non trasformano il preparatore ridotto nel producer canonico. La costruzione
 S1 usa `Arc<Vec<E>>` per spostare l'header senza una copia del corpo; la
 scansione di materializzazione legge A in ordine crescente.
+
+
+## RMS: checkpoint originale e coefficienti GKR a memoria limitata
+
+Il port denso è NO-GO per memoria: 347.937.024 celle RMS vive richiedono
+N=2^29; i soli frame padded da 12 B occupano tutti i **6.442.450.944 B**.
+Le assegnazioni `Option<usize>` aggiungerebbero 8.589.934.592 B. Questo
+esclude quel backend, non il predicato o ogni prover streaming.
+
+Il checkpoint compatto conserva i byte originali P/Y e S48 una volta per
+riga, legato alla stessa `Sources` per lifetime. Comprende 314.145.024 celle
+weighted, 33.792.000 unweighted e 576.149 statistiche: **2.023.495.038 B**
+di payload e 16.840 B di descrittori. Il test nativo confronta tutti i frame
+vivi/padded con il getter originale e propaga gli errori del reader.
+Non conserva A/Snapshot completi. Il piano lo costruisce dopo root A/P0,
+conserva i cut anche per le statistiche/X originali; li rilascia dopo
+l'ultimo consumer numerico e P/S/Y dopo l'obbligo byte RMS,
+prima di RNE/range. Riusa serialmente lo slot range da 2 GiB.
+I picchi nominati di questa fase sono 2.842.835.712 / 2.882.157.312 /
+2.921.478.912 B; non aumentano i massimi nominati del piano integrato.
+Le capacità dei Vec sono censite; allocator e reader, insieme al replay Booleano limitato,
+restano da collegare al picco fisico, senza assorbimenti impliciti negli slot.
+
+Il nuovo motore dei coefficienti conserva tre righe Fp3, due vettori di
+selettori e P flag pubblici: `(3W+2P)*24+P` B. Confronta i quattro
+coefficienti con il riferimento denso dopo ogni sfida MSB, compresi And,
+Xor, Copy e padding. Il replay Booleano selezionato usa la stessa validazione e gli stessi
+operatori del riferimento, conserva solo livello corrente/successivo e
+confronta ogni livello di circuiti weighted/unweighted reali. Un secondo
+controllo collega tale replay al motore dei coefficienti dopo sfide MSB.
+Non genera ancora una prova GKR sourcewise completa.
+Salta i getter delle celle dummy. Il selettore usa una sola assegnazione
+pubblica per cella; il salto dei programmi dipende dalla presenza pubblica,
+mai da witness o cancellazioni in Fp3. Somma prima `weight_gate*f_gate`
+nel programma, poi applica il selettore comune. Copy elimina i termini
+quadratici e Xor raddoppia per addizione. Root, transcript e MAC non cambiano.
+
+Il [censimento](../../scripts/c71_gkr_screen.py) confronta Python e Rust
+su circuiti e supporti pubblici MSB, senza allocare N celle. Per il fixture
+RMS a scale zero (cinque programmi, 98 livelli), le coppie gate/cella
+passano da 214.231.894.583.618 a **85.128.509.507.906**. Il nucleo
+fattorizzato conta **377.460.232.230.821 moltiplicazioni Fp3**, prima dei
+fold, replay, adapter, FS e MAC. Sono conteggi dell'algoritmo specificato,
+non un lower hardware o il profilo reale calibrato. Sono censiti anche i
+ratio EXP30 a O=0/150/300. Le fusioni non danno credito al port canonico.
+
+Il vecchio screen delle prime sei coordinate dentro parole contigue usa
+LSB-first; il transcript nativo fissa invece prima le coordinate MSB.
+Non trasferire quei risparmi: servono un gather dimostrato e lo stesso
+supporto pubblico. Il packing Booleano delle ultime sei coordinate resta
+valutabile, contando i replay e i fold effettivi.
+
+I kernel CUDA `c71_gkr_{and,xor,copy}_gate` compilano per sm_90 e hanno
+controllo algebrico CPU su Fp3 non base. Sono probe separati di polinomi
+weighted, con SASS e registri censibili; non un kernel GKR fuso completo.
+I loro lower condizionali valgono solo per la schedule che esegue proprio
+quei kernel, incluse le letture/scritture per gate. Non moltiplicare il
+costo di un probe per prodotti inlined, né dichiarare NO-GO del motore
+fuso da quei lower. Il controllo minimo successivo è replay Booleano
+limitato, fold MSB e accumulo nel kernel integrato, con stessi coefficienti,
+scratch e conteggio di istruzioni. Nessun microbenchmark H100 è ammesso
+finché i gate di costruzione restano aperti.

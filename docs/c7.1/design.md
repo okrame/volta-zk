@@ -983,6 +983,17 @@ campiona alpha. Non ne segue credito per COPE/guard/ruoli opposti, consumo
 MAC composto, CUDA o un nuovo lemma Lean. Il getter numerico ridotto
 O=0/2/4 apre la root A originale con S1 condiviso allocato dopo le query
 al predecessore; la riduzione in-place delle code successive resta aperta. Restano fermi NoPeek, endpoint e trust autorizzati.
+Il [checkpoint RMS e il motore coefficienti](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
+conservano P/Y originali e S48 condiviso per riga: 2.023.511.878 B con
+descrittori, nello slot range riusato prima di RNE. Il backend denso è
+escluso dai soli frame N*12; il motore alternativo confronta i coefficienti
+MSB con quelli densi e fattorizza il selettore comune al programma.
+I conteggi pubblici di supporto, replay/fold e gate sono separati; il
+fixture a scale zero non è un profilo calibrato. Il port GKR completo,
+workspace Booleani/allocator e timing restano aperti. I probe CUDA
+standalone non danno lower al futuro kernel fuso, e il vecchio risparmio
+LSB-first non si applica al transcript MSB. Nessun nuovo lemma Lean,
+variazione del trust o credito NoPeek deriva da questi controlli finiti.
 Capacità riservata e occupazione logica sono distinte. Riuso e rilascio
 richiedono l'ultimo consumer e il completamento GPU. Registrare memoria
 trattenuta fino alla terminazione. I 2,10× persistenti non sono capienza HBM.

@@ -104,6 +104,41 @@ HD inline Fp3 mul6(Fp3 a, Fp3 b) {
     return {fp_add(p0, fp_add(p12, p12)), fp_add(p01, fp_add(p2, p2)), fp_add(p02, p1)};
 }
 
+// GKR arithmetic probe, one gate/cell pair after source folding. The gate
+// operation is public; specialization removes Copy's quadratic products.
+// Standalone cost only: a fused producer must be recounted, never charged
+// these load/address instructions once per inlined field multiplication.
+template<int Op> HD Coeff4 gkr_gate(Fp3 x0, Fp3 x1, Fp3 y0, Fp3 y1, Fp3 weight) {
+    const Fp3 dx=sub(x1,x0);
+    Coeff4 out{};
+    if constexpr (Op == 2) {
+        out.c[0]=mul6(weight,x0);
+        out.c[1]=mul6(weight,dx);
+    } else {
+        const Fp3 dy=sub(y1,y0);
+        Fp3 f[]={mul6(x0,y0),add(mul6(x0,dy),mul6(dx,y0)),mul6(dx,dy)};
+        if constexpr (Op == 1) {
+            f[0]=sub(add(x0,y0),add(f[0],f[0]));
+            f[1]=sub(add(dx,dy),add(f[1],f[1]));
+            f[2]=sub(Fp3{},add(f[2],f[2]));
+        }
+        for(int j=0;j<3;++j) out.c[j]=mul6(weight,f[j]);
+    }
+    return out;
+}
+
+template<int Op> HD Coeff4 gkr_pair(Fp3 x0, Fp3 x1, Fp3 y0, Fp3 y1,
+                                  Fp3 s0, Fp3 s1, Fp3 weight) {
+    const Coeff4 u=gkr_gate<Op>(x0,x1,y0,y1,weight);
+    const Fp3 b=sub(s1,s0);
+    Coeff4 out{};
+    for(int j=0;j<(Op==2 ? 2 : 3);++j) {
+        out.c[j]=add(out.c[j],mul6(s0,u.c[j]));
+        out.c[j+1]=add(out.c[j+1],mul6(b,u.c[j]));
+    }
+    return out;
+}
+
 // Integer bias maps W to uint16; alpha is shifted by the SAME public bias.
 // A uses its uint8 value with zero bias. No secret-indexed lookup table.
 HD inline void leaf_pair(uint16_t x, uint16_t y, Fp3 alpha, Fp3 alpha2,
@@ -310,7 +345,29 @@ bool equal(Coeff4 a, Coeff4 b) {
 
 bool equal(Fp3 a, Fp3 b) { return a.c0 == b.c0 && a.c1 == b.c1 && a.c2 == b.c2; }
 
+bool gkr_pair_check() {
+    for (size_t i=0;i<64;++i) {
+        const Fp3 x0=synthetic(0,i), x1=synthetic(1,i), y0=synthetic(2,i), y1=synthetic(3,i);
+        const Fp3 s0=synthetic(4,i), s1=synthetic(5,i), w=synthetic(6,i);
+        const Coeff4 coefficients[]={gkr_pair<0>(x0,x1,y0,y1,s0,s1,w),
+            gkr_pair<1>(x0,x1,y0,y1,s0,s1,w),gkr_pair<2>(x0,x1,y0,y1,s0,s1,w)};
+        for (Fp3 r : {Fp3{},Fp3{1,0,0},synthetic(7,i),Fp3{P-1,P-2,P-3}}) {
+            const Fp3 x=add(x0,mul(r,sub(x1,x0))), y=add(y0,mul(r,sub(y1,y0)));
+            const Fp3 selector=mul(w,add(s0,mul(r,sub(s1,s0))));
+            const Fp3 xy=mul(x,y);
+            const Fp3 values[]={xy,sub(add(x,y),add(xy,xy)),x};
+            for (int op=0;op<3;++op) {
+                Fp3 value{};
+                for (int j=3;j>=0;--j) value=add(mul(value,r),coefficients[op].c[j]);
+                if(!equal(value,mul(selector,values[op]))) return false;
+            }
+        }
+    }
+    return true;
+}
+
 bool specialization_check() {
+    if (!gkr_pair_check()) return false;
     for (size_t i = 0; i < 64; ++i) {
         const Fp3 a = synthetic(0, i), b = synthetic(1, i);
         if (!equal(mul6(a, b), mul(a, b))) return false;
@@ -462,6 +519,21 @@ __global__ void cost_fp_mul_kernel(const uint64_t* a, const uint64_t* b,
 __global__ void cost_fp3_mul6_kernel(const Fp3* a, const Fp3* b, Fp3* out, size_t n) {
     const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
     if (i < n) out[i] = mul6(a[i], b[i]);
+}
+
+// Three weighted gate-polynomial probes for the selector-factored schedule.
+// The selector is applied once after summing every gate of a public program.
+extern "C" __global__ void c71_gkr_and_gate(const Fp3* in, Coeff4* out, size_t n) {
+    const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i<n) out[i]=gkr_gate<0>(in[5*i],in[5*i+1],in[5*i+2],in[5*i+3],in[5*i+4]);
+}
+extern "C" __global__ void c71_gkr_xor_gate(const Fp3* in, Coeff4* out, size_t n) {
+    const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i<n) out[i]=gkr_gate<1>(in[5*i],in[5*i+1],in[5*i+2],in[5*i+3],in[5*i+4]);
+}
+extern "C" __global__ void c71_gkr_copy_gate(const Fp3* in, Coeff4* out, size_t n) {
+    const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i<n) out[i]=gkr_gate<2>(in[5*i],in[5*i+1],Fp3{},Fp3{},in[5*i+4]);
 }
 
 __global__ void coeff_kernel(const Fp3* src, Coeff4* out, size_t n, Fp3 lambda) {

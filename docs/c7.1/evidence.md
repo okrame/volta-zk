@@ -1004,3 +1004,30 @@ SHA pulita. I tempi includono il riferimento denso e la normalizzazione del
 solo test; non sono `T_inference`, `T_proof_only` o `T_response_total`.
 I conteggi delle query dipendono dalle coin originali dei fixture e sono
 quelli di quel run; non sostituiscono il trace canonico O=0/150/300.
+
+
+## Checkpoint RMS e coefficienti GKR limitati
+
+Il [getter compatto RMS](../../rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs)
+conserva P/Y originali e una S48 per riga, legato alla `Sources` originaria.
+Confronta tutti i frame vivi/padded con il reader indipendente, censisce
+capacità effettive e propagazione degli errori. Il census canonico di sola
+geometria è 2.023.495.038 B di payload e 16.840 B di descrittori; i buffer
+riusano lo slot range prima di RNE. Non è un picco allocator/GPU completo.
+
+Il [motore coefficienti](../../rust/volta-pcs/src/c71_matrix/rms/gkr.rs)
+confronta la schedule MSB a memoria limitata con i fold densi. Il selettore
+è fattorizzato dopo la somma weighted del programma; Copy/Xor sono
+specializzati senza cambiare il polinomio. Solo i supporti pubblici
+controllano gli skip e le celle dummy non richiamano il reader.
+Il [replay Booleano](../../rust/volta-pcs/src/c71_matrix/rms.rs) limitato
+conserva due vettori, conta operazioni/capacità e coincide con ogni livello
+del riferimento su circuiti reali weighted/unweighted. Il confronto dei
+coefficienti usa anche questo replay, senza tracce dense nella candidata.
+
+Il [report pubblico](../../scripts/c71_gkr_screen.py) confronta i circuiti
+Python/Rust e tutti i 29×5 supporti RMS nel fixture a scale zero, oltre ai
+ratio EXP30 O=0/150/300. Il controllo esaustivo ridotto comprende
+assegnazioni intercalate e padding. I conteggi sorgente e SASS dei probe
+CUDA restano distinti: non sono tempi del kernel fuso o del prover completo.
+Nessun nuovo teorema Lean, credito al profilo calibrato o autorizzazione GPU.

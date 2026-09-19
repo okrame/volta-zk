@@ -89,6 +89,30 @@ def sources_at(old):
     return sources
 
 
+
+def rms_checkpoint():
+    """Original P/S/Y bytes, with S48 once per row; no full A or frame table.
+
+    This is a logical layout, not a CUDA allocation census. Construction uses
+    the ordered original getter; its work and scratch are separate obligations.
+    """
+    norms = base.rms_statistic_cohorts(base.gemma_weight_cohorts(base.pinned_private_tensors()))
+    weighted = sum(n['statistic_rows']*n['columns'] for n in norms if n['weighted'])
+    unweighted = sum(n['statistic_rows']*n['columns'] for n in norms if not n['weighted'])
+    rows = sum(n['statistic_rows'] for n in norms)
+    payload = 6*weighted+4*unweighted+6*rows
+    # Five usize fields per CompactNorm on the selected 64-bit native target.
+    metadata = 40*len(norms)
+    return dict(credit=False, weighted_cells=weighted, unweighted_cells=unweighted,
+        statistic_rows=rows, payload_bytes=payload, metadata_bytes=metadata,
+        owned_payload_and_metadata_bytes=payload+metadata,
+        construction_original_byte_reads=payload, construction_payload_writes=payload,
+        frame_logical_byte_reads_per_live_pass=12*weighted+10*unweighted,
+        dense_padded_frame_bytes=12*(1 << (weighted+unweighted-1).bit_length()),
+        reuse_range_slot_bytes=2 << 30,
+        lifetime='after A root/P0; release after RMS original-byte obligation before RNE/range',
+        source_reconstruction_count_closed=False, complete_physical_peak=False)
+
 def byte_tiles(sources):
     """Same size/tensor/row/column/byte sort as native Bytes::new."""
     tiles = []

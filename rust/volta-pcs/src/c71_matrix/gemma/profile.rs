@@ -452,6 +452,10 @@ mod tests {
                 },
             };
             let rms_count = rms.rms_required(&context, &recipes.rms).unwrap();
+            eprintln!(
+                "canonical_RMS_GKR O={old} {}",
+                rms.work_census(&context, &recipes.rms).unwrap()
+            );
             let exp_count = sm.required(bytes, &context, &tables).unwrap();
             let statistic_count: usize =
                 rms.norms.iter().map(|n| 4 * (bits(n.rows) + bits(n.columns)) + 4).sum();

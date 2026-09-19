@@ -117,6 +117,17 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                 a_range.append(e)
             a_range.append({'event':'last_range_A_consumer_fence','free':['getter:cuts']})
             chains['ordered_A_range']=a_range
+            checkpoint=getter.rms_checkpoint()
+            # Serial reuse after P0 and before RNE/range. Source production and
+            # circuit/replay scratch remain in their explicitly unverified slots.
+            chains['compact_RMS_original_frames']=[
+                {'event':'build_RMS_original_cuts','allocate':{'getter:cuts':cuts}},
+                {'event':'build_RMS_compact_PYS','allocate':{
+                    'RMS:original_PYS':checkpoint['owned_payload_and_metadata_bytes']}},
+                {'event':'RMS_statistics_and_original_inputs','allocate':{}},
+                {'event':'RMS_last_numeric_getter_consumer_fence','free':['getter:cuts']},
+                {'event':'RMS_original_byte_obligation_fence','free':['RMS:original_PYS']}]
+
         layouts={}
         for name,events in chains.items():
             stripped=[dict(e,allocate={k:v for k,v in e.get('allocate',{}).items() if not k.startswith('shared:')},
@@ -163,6 +174,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
             'FFT_square':'in-place values + n*8 twiddles; native launch_five_pass allocates no extra global scratch',
             'range':'native src/dst and reduction arrays; Gram microbench materialization is component-only',
             'snapshot':'native Snapshot stores Vec<Vec<i64>>; literal lift exceeds arena before byte packing',
+            'RMS':'compact original P/S/Y checkpoint uses the range slot serially; native full GKR, Boolean replay and allocator scratch remain open',
             'WHIR':'bounded sourcewise replay matches native D10 bytes and rejects dense fallbacks; canonical accelerated state/workspace not yet wired',
             'PCG':'Fp6/OT/setup adapter workspace remains unbounded in this candidate',
             'arena_checker_metadata_bytes':512*24,

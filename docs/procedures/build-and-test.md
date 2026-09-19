@@ -572,3 +572,25 @@ Il filtro `c71_row_work_counts` controlla il censimento dei passi ridotti;
 conservare `c71_b12_native_prepare` e `c71_b12_native_composed` dopo modifiche
 al valutatore condiviso. Il censimento distingue i helper ancora opachi e
 non fornisce conteggi completi del modello canonico o del producer GKR.
+
+
+### Coefficienti RMS sourcewise e censimento pubblico
+
+Stessa build `volta-pcs --features c71-b12-pcs --lib`, un job e target
+canonico assoluto. Eseguire separatamente entro 60 s/2 GiB, Rayon=1:
+`compact_frames_match_original`, `sourcewise_cell_coefficients_match_dense`,
+`sourcewise_real_boolean_replay`, `selected_layer_replay`,
+`c71_b12_preflight_norm_and_exp30_counts`,
+`c71_b12_softmax_canonical_sources_and_vertex_forms_cover_all_three_attempts`.
+Gli ultimi due richiedono `--nocapture` per salvare i log del censimento.
+Conservare `c71_b12_rms_public_circuit`, `c71_b12_ratio_circuit` e
+`c71_b12_native_composed`; nessun witness canonico.
+
+Il report `scripts/c71_gkr_screen.py --rms-log RMS_LOG --ratio-log RATIO_LOG
+--sass SASS_FILE` confronta i supporti/circuiti pubblici e conta solo i
+kernel standalone esplicitamente presenti nel dump SASS. Non usa tempi
+GPU. Compilare il solo `cuda/c71_range_microbench.cu` per sm_90 con `-cubin`,
+poi `cuobjdump -sass`, secondo il toolchain locale già registrato.
+Non avviare `--gpu`. I test Python pertinenti sono
+`tests/test_c71_gkr_screen.py`, `tests/test_c71_range_microbench.py` e
+`tests/test_c71_arena_plan.py`, in seriale entro gli stessi limiti.

@@ -30,6 +30,142 @@ pub(in crate::c71_matrix) struct VRequest<T> {
     pub original: T,
 }
 
+/// Original RMS endpoint bytes retained only through the joint RMS proof.
+/// Products and outputs are cell-major; each statistic is stored once per
+/// selected row rather than broadcast over that row's columns.
+struct CompactFrames<'a> {
+    sources: &'a Sources,
+    payload: Vec<u8>,
+    norms: Vec<CompactNorm>,
+    source_byte_reads: u64,
+}
+
+#[derive(Clone, Copy)]
+struct CompactNorm {
+    product: usize,
+    statistic: usize,
+    output: usize,
+    cells: usize,
+    pbytes: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CompactFrameWorkspace {
+    payload_len: usize,
+    payload_capacity: usize,
+    metadata_len: usize,
+    metadata_capacity: usize,
+    retained_capacity_bytes: usize,
+    build_peak_owned_bytes: usize,
+    source_byte_reads: u64,
+}
+
+impl<'a> CompactFrames<'a> {
+    fn build(
+        sources: &'a Sources,
+        mut read: impl FnMut(usize, usize, usize, usize) -> Result<u8, String>,
+    ) -> Result<Self, String> {
+        let mut payload_len = 0usize;
+        for norm in &sources.norms {
+            let pbytes = if norm.cohort.is_some() { 4 } else { 2 };
+            payload_len = payload_len
+                .checked_add(
+                    norm.rows
+                        .checked_mul(norm.columns)
+                        .ok_or("RMS frame size overflow")?
+                        .checked_mul(pbytes + 2)
+                        .ok_or("RMS frame size overflow")?,
+                )
+                .and_then(|n| n.checked_add(norm.rows.checked_mul(6)?))
+                .ok_or("RMS frame size overflow")?;
+        }
+        let metadata = sources
+            .norms
+            .len()
+            .checked_mul(core::mem::size_of::<CompactNorm>())
+            .ok_or("RMS frame metadata overflow")?;
+        if payload_len.checked_add(metadata).filter(|&n| n <= 2usize << 30).is_none() {
+            return Err("RMS compact frames exceed reused 2 GiB slot".into());
+        }
+        let mut payload = Vec::with_capacity(payload_len);
+        let mut norms = Vec::with_capacity(sources.norms.len());
+        for norm in &sources.norms {
+            let pbytes = if norm.cohort.is_some() { 4 } else { 2 };
+            let cells = norm.rows.checked_mul(norm.columns).ok_or("RMS frame size overflow")?;
+            let product = payload.len();
+            for row in 0..norm.rows {
+                for col in 0..norm.columns {
+                    let (r, c) = sources.position(norm.product, norm, row, col);
+                    for byte in 0..pbytes {
+                        payload.push(read(norm.product, r, c, byte)?);
+                    }
+                }
+            }
+            let statistic = payload.len();
+            for row in 0..norm.rows {
+                for byte in 0..6 {
+                    payload.push(read(norm.statistic, row, 0, byte)?);
+                }
+            }
+            let output = payload.len();
+            for row in 0..norm.rows {
+                for col in 0..norm.columns {
+                    let (r, c) = sources.position(norm.output, norm, row, col);
+                    for byte in 0..2 {
+                        payload.push(read(norm.output, r, c, byte)?);
+                    }
+                }
+            }
+            norms.push(CompactNorm { product, statistic, output, cells, pbytes });
+        }
+        if payload.len() != payload_len {
+            return Err("RMS compact frame payload differs".into());
+        }
+        Ok(Self { sources, source_byte_reads: payload_len as u64, payload, norms })
+    }
+
+    /// Uses the canonical tile lookup in `Sources::cell`; padded cells remain
+    /// the all-zero frame and no N-entry assignment/index table is retained.
+    fn frame(&self, cell: usize) -> Result<[u8; 12], String> {
+        let sources = self.sources;
+        let mut frame = [0u8; 12];
+        let Some((ordinal, row, col)) = sources.cell(cell)? else {
+            return Ok(frame);
+        };
+        let norm = sources.norms.get(ordinal).ok_or("RMS compact norm missing")?;
+        let compact = self.norms.get(ordinal).ok_or("RMS compact frame layout missing")?;
+        let local = row
+            .checked_mul(norm.columns)
+            .and_then(|v| v.checked_add(col))
+            .filter(|&v| v < compact.cells)
+            .ok_or("RMS compact frame coordinate differs")?;
+        let p = compact.product + local * compact.pbytes;
+        frame[..compact.pbytes].copy_from_slice(&self.payload[p..p + compact.pbytes]);
+        let s = compact.statistic + row * 6;
+        frame[compact.pbytes..compact.pbytes + 6].copy_from_slice(&self.payload[s..s + 6]);
+        let y = compact.output + local * 2;
+        frame[compact.pbytes + 6..compact.pbytes + 8].copy_from_slice(&self.payload[y..y + 2]);
+        Ok(frame)
+    }
+
+    fn workspace(&self) -> CompactFrameWorkspace {
+        let metadata_len = self.norms.len() * core::mem::size_of::<CompactNorm>();
+        let metadata_capacity = self.norms.capacity() * core::mem::size_of::<CompactNorm>();
+        let retained_capacity_bytes = self.payload.capacity() + metadata_capacity;
+        CompactFrameWorkspace {
+            payload_len: self.payload.len(),
+            payload_capacity: self.payload.capacity(),
+            metadata_len,
+            metadata_capacity,
+            retained_capacity_bytes,
+            // Construction has no second heap payload or N-entry index. This
+            // excludes Vec allocator headers/rounding and the caller's reader.
+            build_peak_owned_bytes: retained_capacity_bytes,
+            source_byte_reads: self.source_byte_reads,
+        }
+    }
+}
+
 impl Sources {
     fn statistic_statement<'a>(
         &'a self,
@@ -92,6 +228,85 @@ impl Sources {
             count += self.statistic_statement(s, n).required()?;
         }
         Ok((programs, profile, count))
+    }
+
+    /// Public metadata only. Counts the current source-level algorithm before
+    /// compiler simplification; these are neither instruction nor time lowers.
+    #[cfg(test)]
+    pub(in crate::c71_matrix) fn work_census(
+        &self,
+        s: &P0Statement<'_>,
+        parameters: &[[i32; 3]],
+    ) -> Result<serde_json::Value, String> {
+        let (programs, profiles, _) = self.prepare(s, parameters)?;
+        let mut assigned = vec![0u64; programs.len()];
+        for (norm, &profile) in self.norms.iter().zip(&profiles) {
+            assigned[profile] += (norm.rows * norm.columns) as u64;
+        }
+        assert_eq!(assigned.iter().sum::<u64>(), self.cells as u64);
+        // Check the original tile mapping at each boundary, without N entries.
+        for tile in &self.tiles {
+            for i in [tile.offset, tile.offset + tile.rows * tile.cols - 1] {
+                let (norm, _, _) = self.cell(i)?.ok_or("missing live RMS cell")?;
+                assert_eq!(profiles[norm], profiles[tile.tensor]);
+            }
+        }
+        let mut report = gkr::work_census(&programs, &assigned, bits(self.cells))?;
+        report["profile_digest"] = serde_json::json!(s.quantization);
+        report["RMS_view"] = serde_json::json!(self.view);
+        let support: Vec<Vec<usize>> = (0..bits(self.cells))
+            .map(|round| {
+                let half = self.cells.next_power_of_two() >> (round + 1);
+                let mut intervals = vec![Vec::<(usize, usize)>::new(); programs.len()];
+                for tile in &self.tiles {
+                    let p = profiles[tile.tensor];
+                    let size = tile.rows * tile.cols;
+                    let begin = tile.offset % half;
+                    if size >= half {
+                        intervals[p].push((0, half));
+                    } else if begin + size <= half {
+                        intervals[p].push((begin, begin + size));
+                    } else {
+                        intervals[p].push((begin, half));
+                        intervals[p].push((0, begin + size - half));
+                    }
+                }
+                intervals
+                    .into_iter()
+                    .map(|mut spans| {
+                        spans.sort_unstable();
+                        let (mut end, mut count) = (0, 0);
+                        for (a, b) in spans {
+                            if b > end {
+                                count += b - a.max(end);
+                                end = b;
+                            }
+                        }
+                        count
+                    })
+                    .collect()
+            })
+            .collect();
+        report["public_supported_pairs_by_round_and_profile"] = serde_json::json!(support);
+        let statistics: usize = self.norms.iter().map(|norm| norm.rows * 6).sum();
+        let products: usize = self
+            .norms
+            .iter()
+            .map(|norm| norm.rows * norm.columns * if norm.cohort.is_some() { 4 } else { 2 })
+            .sum();
+        let checkpoint = products + 2 * self.cells + statistics;
+        report["compact_original_PYS_candidate"] = serde_json::json!({
+            "product_bytes":products, "output_bytes":2*self.cells,
+            "shared_statistic_s48_bytes":statistics, "payload_bytes":checkpoint,
+            "metadata_bytes":self.norms.len()*core::mem::size_of::<CompactNorm>(),
+            "payload_and_metadata_bytes":checkpoint+self.norms.len()*core::mem::size_of::<CompactNorm>(),
+            "range_slot_bytes":2usize<<30,
+            "payload_fits_reused_range_slot":checkpoint <= 2usize<<30,
+            "construction_before_RMS_after_A_root_is_proof_only":true,
+            "release_after_original_byte_endpoint_before_RNE_and_range":true,
+            "physical_peak_complete":false,
+        });
+        Ok(report)
     }
 
     fn assignments(&self, profiles: &[usize]) -> Result<Vec<Option<usize>>, String> {
@@ -421,6 +636,52 @@ mod tests {
             finish_norm(&mut values, n);
         }
         values
+    }
+
+    #[test]
+    fn compact_frames_match_original_rms_frame_without_broadcast_statistic_storage() {
+        let plan = super::super::tests::toy_plan(3, 2);
+        let sources = plan.rms_sources().unwrap();
+        let mut weights = vec![1i64; plan.live];
+        for (i, value) in weights.iter_mut().enumerate() {
+            *value = i as i64 % 5 - 2;
+        }
+        let values = values(&plan, &sources, &weights, 0);
+        let read = |source: usize, row: usize, col: usize, byte: usize| {
+            let shape = &sources.bytes.scalar.layout.sources[source];
+            let width = width(&plan, &sources, source);
+            let word = (values[source][row * shape.cols + col] + (1 << (8 * width - 1))) as u64;
+            (word >> (8 * byte)) as u8
+        };
+        let cache = CompactFrames::build(&sources, |s, r, c, b| Ok(read(s, r, c, b))).unwrap();
+        assert!(CompactFrames::build(&sources, |_, _, _, _| Err("source failure".into()))
+            .err()
+            .unwrap()
+            .contains("source failure"));
+        assert!(cache.frame(sources.cells.next_power_of_two()).is_err());
+        let expected_payload: usize = sources
+            .norms
+            .iter()
+            .map(|norm| {
+                let pbytes = if norm.cohort.is_some() { 4 } else { 2 };
+                norm.rows * norm.columns * (pbytes + 2) + norm.rows * 6
+            })
+            .sum();
+        let workspace = cache.workspace();
+        assert_eq!(workspace.payload_len, expected_payload);
+        assert!(workspace.payload_capacity >= expected_payload);
+        assert_eq!(workspace.source_byte_reads, expected_payload as u64);
+        assert_eq!(workspace.build_peak_owned_bytes, workspace.retained_capacity_bytes);
+        for cell in 0..sources.cells.next_power_of_two() {
+            assert_eq!(cache.frame(cell).unwrap(), sources.frame(cell, read).unwrap());
+        }
+
+        // A row statistic occupies six retained bytes once, yet both columns
+        // reconstruct exactly the broadcast S bytes in the original frame.
+        let first = cache.frame(0).unwrap();
+        let second = cache.frame(1).unwrap();
+        let pbytes = if sources.norms[0].cohort.is_some() { 4 } else { 2 };
+        assert_eq!(&first[pbytes..pbytes + 6], &second[pbytes..pbytes + 6]);
     }
 
     fn compact(

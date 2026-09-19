@@ -525,41 +525,176 @@ fn rounding_circuit(
 }
 
 impl Circuit {
-    /// At most 64 Boolean cells, one bit per cell, before any field fold.
-    /// Padding is zero in EVERY plane, including the public constant one.
-    pub fn replay(&self, inputs: &[u64], live: u64) -> Result<Vec<Vec<u64>>, String> {
+    fn validate_replay_inputs(&self, inputs: &[u64], live: u64) -> Result<(), String> {
         if inputs.len() != self.ports
-            || inputs[0] != 0
-            || inputs[1] != live
+            || inputs.first() != Some(&0)
+            || inputs.get(1) != Some(&live)
             || inputs.iter().any(|&v| v & !live != 0)
         {
             return Err("RMS Boolean inputs or padding differ".into());
         }
+        Ok(())
+    }
+
+    fn replay_step(layer: &[Gate], previous: &[u64]) -> Result<(Vec<u64>, ReplayLayerOps), String> {
+        let mut next = Vec::with_capacity(layer.len());
+        let mut work = ReplayLayerOps::default();
+        for &Gate { op, x, y } in layer {
+            let (&a, &b) =
+                previous.get(x).zip(previous.get(y)).ok_or("RMS Boolean parent out of range")?;
+            next.push(match op {
+                Op::And => {
+                    work.and += 1;
+                    a & b
+                }
+                Op::Xor => {
+                    work.xor += 1;
+                    a ^ b
+                }
+                Op::Copy if x == y => {
+                    work.copy += 1;
+                    a
+                }
+                _ => return Err("RMS Boolean copy differs".into()),
+            });
+        }
+        Ok((next, work))
+    }
+
+    /// At most 64 Boolean cells, one bit per cell, before any field fold.
+    /// Padding is zero in EVERY plane, including the public constant one.
+    pub fn replay(&self, inputs: &[u64], live: u64) -> Result<Vec<Vec<u64>>, String> {
+        self.validate_replay_inputs(inputs, live)?;
         let mut trace = vec![inputs.to_vec()];
         for layer in &self.levels {
             let previous = trace.last().unwrap();
-            let mut next = Vec::with_capacity(layer.len());
-            for &Gate { op, x, y } in layer {
-                let (&a, &b) = previous
-                    .get(x)
-                    .zip(previous.get(y))
-                    .ok_or("RMS Boolean parent out of range")?;
-                next.push(match op {
-                    Op::And => a & b,
-                    Op::Xor => a ^ b,
-                    Op::Copy if x == y => a,
-                    _ => return Err("RMS Boolean copy differs".into()),
-                });
-            }
+            let (next, _) = Self::replay_step(layer, previous)?;
             trace.push(next);
         }
         Ok(trace)
     }
+
+    /// Replays only through `depth` and retains the selected Boolean layer.
+    /// At most `current` and `next` are live. Counts describe source Boolean
+    /// gate operations; capacities are the actual Vec capacities requested by
+    /// this implementation, excluding allocator metadata and stack headers.
+    pub fn replay_layer(
+        &self,
+        inputs: &[u64],
+        live: u64,
+        depth: usize,
+    ) -> Result<(Vec<u64>, ReplayLayerWork), String> {
+        self.validate_replay_inputs(inputs, live)?;
+        if depth > self.levels.len() {
+            return Err("RMS Boolean replay depth differs".into());
+        }
+        let mut current = inputs.to_vec();
+        let mut work = ReplayLayerWork {
+            selected_depth: depth,
+            peak_two_vector_capacity_words: current.capacity(),
+            peak_two_vector_capacity_bytes: current.capacity() * core::mem::size_of::<u64>(),
+            ..ReplayLayerWork::default()
+        };
+        for layer in &self.levels[..depth] {
+            let (next, step) = Self::replay_step(layer, &current)?;
+            let words = current.capacity() + next.capacity();
+            work.peak_two_vector_capacity_words = work.peak_two_vector_capacity_words.max(words);
+            work.peak_two_vector_capacity_bytes =
+                work.peak_two_vector_capacity_bytes.max(words * core::mem::size_of::<u64>());
+            work.layers_evaluated += 1;
+            work.and_gates += step.and;
+            work.xor_gates += step.xor;
+            work.copy_gates += step.copy;
+            current = next;
+        }
+        Ok((current, work))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct ReplayLayerOps {
+    and: u64,
+    xor: u64,
+    copy: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct ReplayLayerWork {
+    pub selected_depth: usize,
+    pub layers_evaluated: usize,
+    pub and_gates: u64,
+    pub xor_gates: u64,
+    pub copy_gates: u64,
+    pub peak_two_vector_capacity_words: usize,
+    pub peak_two_vector_capacity_bytes: usize,
 }
 
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
+
+    #[test]
+    fn selected_layer_replay_matches_full_real_weighted_and_unweighted_circuits() {
+        for weighted in [false, true] {
+            let circuit = compile(256, 0, 0, 0, weighted).unwrap();
+            let live = 0x0000_0000_002d_b6d5u64;
+            let mut inputs = vec![0u64; circuit.ports];
+            inputs[1] = live;
+            for (wire, plane) in inputs.iter_mut().enumerate().skip(2) {
+                *plane = live & (0x9e37_79b9_7f4a_7c15u64.rotate_left(wire as u32));
+            }
+            let full = circuit.replay(&inputs, live).unwrap();
+            let mut expected = ReplayLayerOps::default();
+            for depth in 0..=circuit.levels.len() {
+                if depth != 0 {
+                    for gate in &circuit.levels[depth - 1] {
+                        match gate.op {
+                            Op::And => expected.and += 1,
+                            Op::Xor => expected.xor += 1,
+                            Op::Copy => expected.copy += 1,
+                        }
+                    }
+                }
+                let (selected, work) = circuit.replay_layer(&inputs, live, depth).unwrap();
+                assert_eq!(selected, full[depth], "weighted={weighted}, depth={depth}");
+                assert_eq!(work.selected_depth, depth);
+                assert_eq!(work.layers_evaluated, depth);
+                assert_eq!(
+                    (work.and_gates, work.xor_gates, work.copy_gates),
+                    (expected.and, expected.xor, expected.copy)
+                );
+                assert_eq!(
+                    work.peak_two_vector_capacity_bytes,
+                    work.peak_two_vector_capacity_words * core::mem::size_of::<u64>()
+                );
+                let minimum = if depth == 0 {
+                    inputs.len()
+                } else {
+                    std::iter::once(inputs.len())
+                        .chain((0..depth).map(|d| {
+                            let previous =
+                                if d == 0 { inputs.len() } else { circuit.levels[d - 1].len() };
+                            previous + circuit.levels[d].len()
+                        }))
+                        .max()
+                        .unwrap()
+                };
+                assert!(work.peak_two_vector_capacity_words >= minimum);
+            }
+
+            let mut malformed = inputs.clone();
+            malformed[0] = 1;
+            assert!(circuit.replay_layer(&malformed, live, 0).is_err());
+            malformed = inputs.clone();
+            malformed[1] ^= 1;
+            assert!(circuit.replay_layer(&malformed, live, 0).is_err());
+            malformed = inputs.clone();
+            malformed[2] |= 1 << 63;
+            assert!(circuit.replay_layer(&malformed, live, 0).is_err());
+            assert!(circuit.replay_layer(&inputs[..inputs.len() - 1], live, 0).is_err());
+            assert!(circuit.replay_layer(&inputs, live, circuit.levels.len() + 1).is_err());
+        }
+    }
 
     pub(in crate::c71_matrix) fn expected(
         p: i64,

@@ -313,6 +313,17 @@ mod tests {
         for (slot, old) in [0, 150, 300].into_iter().enumerate() {
             let (sources, _, sm) = plan.softmax_sources_at(old).unwrap();
             let bytes = &sources.attention.rope.gate_up.gelu.rms.bytes;
+            let allowed_cells =
+                sm.layers.len() * sm.heads * (sm.queries * old + sm.queries * (sm.queries + 1) / 2);
+            eprintln!(
+                "canonical_EXP30_GKR O={old} {}",
+                gkr::work_census(
+                    std::slice::from_ref(&ratio),
+                    &[allowed_cells as u64],
+                    sm.row_bits() + sm.key_bits()
+                )
+                .unwrap()
+            );
             assert_eq!(bytes.scalar.layout.sources.len(), 3471);
             assert_eq!(bits(bytes.live), 34);
             for (l, original) in sm.layers.iter().zip(&sources.attention.layers) {

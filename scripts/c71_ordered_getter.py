@@ -313,6 +313,7 @@ def response_ledger(cases, commit_replays=1024):
             'getter_W_operand_requested_bytes_tile16x256_upper':W_requested,
             'logical_operand_requests_are_not_physical_HBM_transactions':True,
             'checkpoint_build_write_bytes':(slot+2)*c['checkpoint_bytes'],
+            'RMS_original_checkpoint_named_work':getter.rms_checkpoint(),
             'getter_four_INT8_compute_lower_seconds_conditional':compute_lower,
             'getter_W_bandwidth_lower_seconds_conditional':bandwidth_lower,
             'getter_14s_budget_excluded_under_conditions':max(compute_lower,bandwidth_lower)>14,

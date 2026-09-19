@@ -308,6 +308,17 @@ i 384 OT reali riusano il motore MR19 con domini distinti. COPE, ruoli
 opposti, guard, trie batch e consumo MAC composto restano aperti.
 Il getter numerico ridotto O=0/2/4 ora apre la root A originale tramite
 WHIR; S1 condiviso viene allocato solo dopo le query al predecessore.
+Il [checkpoint RMS](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
+usa 2.023.511.878 B con descrittori e riusa lo slot range prima di RNE;
+il confronto dei frame originali passa senza A/Snapshot completi.
+Il backend GKR denso è NO-GO per memoria. Il motore limitato dei
+coefficienti conserva l'ordine MSB, salta solo supporti pubblici e applica
+il selettore dopo la somma dei gate. Il censimento del fixture a scale zero
+mostra che il lavoro GKR è una priorità: 377.460 miliardi di prodotti Fp3
+nel solo nucleo fattorizzato, prima di fold/replay. Il port della prova
+completa e il kernel fuso restano aperti. I probe CUDA compilati localmente
+non autorizzano un lower per quel kernel futuro; il vecchio screen
+LSB-first non dà credito al transcript nativo.
 Nessuna GPU, spill o spesa autorizzata.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso

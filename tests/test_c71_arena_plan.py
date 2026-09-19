@@ -78,3 +78,21 @@ def test_odd_log_fft_parity_scatter_preserves_natural_order():
     merged=[(even[k]+pow(root,k,p)*odd[k])%p for k in range(n//2)]
     merged +=[(even[k]-pow(root,k,p)*odd[k])%p for k in range(n//2)]
     assert merged==dft(values,root)
+
+
+def test_compact_rms_original_bytes_are_released_before_range():
+    checkpoint=arena.getter.rms_checkpoint()
+    assert checkpoint['weighted_cells']==314_145_024
+    assert checkpoint['unweighted_cells']==33_792_000
+    assert checkpoint['statistic_rows']==576_149
+    assert checkpoint['payload_bytes']==2_023_495_038
+    assert checkpoint['owned_payload_and_metadata_bytes']==2_023_511_878
+    assert checkpoint['dense_padded_frame_bytes']==arena.response.ARENA
+    assert checkpoint['owned_payload_and_metadata_bytes']<2 << 30
+    report=arena.report(ordered_getter=True,reuse_reader_for_commit=True)
+    for case in report['cases']:
+        plan=case['address_layouts']['compact_RMS_original_frames']
+        assert plan['fits_with_operational_margin']
+        assert plan['events'][-1]['free']==['RMS:original_PYS']
+        assert plan['events'][-1]['fence_before_release']
+        assert plan['events'][-1]['live_aligned_bytes']==sum(n for _,_,n in plan['initial_allocations'])

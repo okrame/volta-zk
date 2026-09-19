@@ -235,6 +235,309 @@ fn cell_coefficients(
     c
 }
 
+#[cfg(test)]
+pub(in super::super) fn work_census(
+    programs: &[Circuit],
+    assigned: &[u64],
+    cell_bits: usize,
+) -> Result<serde_json::Value, String> {
+    if cell_bits > 29 || assigned.len() != programs.len() {
+        return Err("GKR work census shape".into());
+    }
+    let n = 1u64 << cell_bits;
+    let c = cell_bits as u64;
+    let live: u64 = assigned.iter().sum();
+    if live > n {
+        return Err("GKR work census live cells".into());
+    }
+    let widths = widths(programs)?;
+    let depth = widths.len() - 1;
+    let mut layers = Vec::new();
+    let (mut mul, mut add, mut sub, mut frame_callbacks) = (0u64, 0u64, 0u64, 0u64);
+    let mut boolean_replay_gates = 0u64;
+    for d in 1..=depth {
+        let mut counts = [0u64; 3];
+        for program in programs {
+            if let Some(layer) = program.levels.get(d - 1) {
+                assert!(layer.len() <= widths[d]);
+                for gate in layer {
+                    counts[match gate.op {
+                        Op::And => 0,
+                        Op::Xor => 1,
+                        Op::Copy => 2,
+                    }] += 1;
+                }
+            } else {
+                counts[2] += 1;
+            }
+        }
+        let g = counts.iter().sum::<u64>();
+        let [and, xor, copy] = counts;
+        // Factor the shared program selector after summing weighted gate
+        // polynomials; Copy omits y/dy and Xor uses additions for doubling.
+        let products = (7 * and + 7 * xor + 2 * copy + 6 * programs.len() as u64) * (n - 1);
+        let additions = (4 * and + 9 * xor + 2 * copy + 6 * programs.len() as u64) * (n - 1);
+        let subtractions = (2 * and + 4 * xor + copy + programs.len() as u64) * (n - 1);
+        mul += products;
+        add += additions;
+        sub += subtractions;
+        frame_callbacks += live * c;
+        // Cell-first reconstruction: each live original cell is replayed
+        // once per cell challenge, stopping at the required input layer.
+        let replay: u64 = programs
+            .iter()
+            .zip(assigned)
+            .map(|(p, &cells)| {
+                cells * p.levels.iter().take(d - 1).map(|l| l.len() as u64).sum::<u64>()
+            })
+            .sum::<u64>()
+            * c;
+        boolean_replay_gates += replay;
+        let w = widths[d - 1] as u64;
+        layers.push(serde_json::json!({
+                "depth":d, "input_width":w, "output_width":widths[d],
+                "and":and, "xor":xor, "copy":copy,
+                "logical_cell_gate_iterations_before_structural_support_pruning":g*(n-1),
+                "cell_Fp3_mul_source_level_upper_before_structural_support_pruning":products,
+                "cell_Fp3_add_source_level_upper_before_structural_support_pruning":additions,
+                "cell_Fp3_sub_source_level_upper_before_structural_support_pruning":subtractions,
+                "eager_original_Fp3_mul":(12*g+3*xor)*(n-1),
+                "cell_Fp3_negations_upper_before_structural_support_pruning":xor*(n-1),
+                "dense_previous_interpolations":w*(n-1),
+                "dense_selector_interpolations":programs.len() as u64*(n-1),
+                "index_edge_iterations":2*g*w.ilog2() as u64,
+                "index_vector_interpolations":2*(w-1),
+                "dense_previous_bytes":n*w*24,
+                "cell_first_rows_selectors_and_support_bytes":(3*w+2*programs.len() as u64)*24+programs.len() as u64,
+                "logical_live_frame_callbacks":live*c,
+                "field_value_source_scalars":live*c*w,
+                "field_fold_mul_add_each":live*c*(w+1),
+                "prefix_weight_multiplications":n*c*c.saturating_sub(1)/2,
+                "prefix_weight_subtractions":n*c*c.saturating_sub(1)/4,
+                "scalar_boolean_replay_gate_evaluations":replay,
+            }));
+    }
+    Ok(serde_json::json!({
+        "credit":false, "scope":"exact public synthetic-profile geometry; source-level partial work",
+
+        "live_cells":live, "padded_cells":n, "programs":programs.len(),
+        "assigned_cells_by_program":assigned, "depth":depth,
+        "dense_frame_bytes":n*12,
+        "public_program_descriptor_bytes":programs.len()*core::mem::size_of::<Circuit>(),
+        "public_program_inner_vec_capacity_bytes":programs.iter().map(|p|
+            p.levels.capacity()*core::mem::size_of::<Vec<Gate>>()+
+            p.levels.iter().map(|l| l.capacity()*core::mem::size_of::<Gate>()).sum::<usize>()
+        ).sum::<usize>(),
+        "selected_Boolean_replay_two_vectors_payload_upper_bytes":programs.iter().map(|p|
+            p.levels.iter().enumerate().map(|(d,l)| 8*(l.len()+if d==0 {p.ports} else {p.levels[d-1].len()})).max().unwrap_or(8*p.ports)
+        ).max().unwrap_or(0),
+        "dense_assignment_bytes":n*std::mem::size_of::<Option<usize>>() as u64,
+        "dense_selector_bytes":n*programs.len() as u64*24,
+        "cell_Fp3_multiplications_source_level_upper_before_structural_support_pruning":mul,
+        "cell_Fp3_additions_source_level_upper_before_structural_support_pruning":add,
+        "cell_Fp3_subtractions_source_level_upper_before_structural_support_pruning":sub,
+        "cell_first_logical_frame_callbacks":frame_callbacks,
+        "dummy_row_callbacks":0,
+        "field_value_source_scalars":live*c*widths[..depth].iter().map(|&w| w as u64).sum::<u64>(),
+        "field_fold_mul_add_each":live*c*(widths[..depth].iter().map(|&w| w as u64).sum::<u64>()+depth as u64),
+        "prefix_weight_multiplications":n*c*c.saturating_sub(1)/2*depth as u64,
+        "prefix_weight_subtractions":n*c*c.saturating_sub(1)/4*depth as u64,
+        "cell_first_scalar_boolean_replay_gates":boolean_replay_gates,
+        "structural_selector_callbacks":n*c*depth as u64,
+        "structural_selector_assigned_terms":live*c*depth as u64,
+        "selector_specialization_saved_callbacks":(programs.len() as u64-1)*n*c*depth as u64,
+        "selector_specialization_saved_Fp3_mul_add_each":
+            (programs.len() as u64*n-live)*c*depth as u64,
+        "compiler_constant_folding_or_Boolean_specialization_credit":false,
+        "canonical_calibrated_profile":false, "complete_work":false,
+        "complete_physical_peak":false, "layers":layers,
+    }))
+}
+
+/// Work owned by the bounded cell-round coefficient builder. Counts are
+/// source-level operations before optimization, not machine instructions,
+/// physical traffic, or a runtime lower. Getter workspace is external.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct SourceCellWork {
+    logical_gate_cell_iterations: u64,
+    gate_cell_iterations: u64,
+    unsupported_program_cells: u64,
+    unsupported_gate_iterations_saved: u64,
+    row_source_callbacks: u64,
+    value_source_scalars: u64,
+    selector_source_callbacks: u64,
+    selector_assigned_terms: u64,
+    fold_weight_multiplications: u64,
+    fold_value_multiplications: u64,
+    fold_additions: u64,
+    fold_subtractions: u64,
+    coefficient_multiplications: u64,
+    coefficient_additions: u64,
+    coefficient_subtractions: u64,
+    coefficient_negations: u64,
+    owned_heap_peak_bytes: usize,
+}
+
+fn prefix_weight(prefix: usize, challenges: &[Fp3], work: &mut SourceCellWork) -> Fp3 {
+    let mut weight = Fp3::ONE;
+    for (round, &r) in challenges.iter().enumerate() {
+        let bit = prefix >> (challenges.len() - 1 - round) & 1;
+        if bit == 0 {
+            weight = weight * (Fp3::ONE - r);
+            work.fold_subtractions += 1;
+        } else {
+            weight = weight * r;
+        }
+        work.fold_weight_multiplications += 1;
+    }
+    weight
+}
+
+/// Bounded equivalent of `cell_coefficients` for one cell-domain round.
+/// `row(cell,out)` fills the complete unfurled Boolean layer row, normally by
+/// bounded `Circuit::replay`. `selector(cell)` supplies the cell's single
+/// assigned program and original Eq weight, or `None` for a dummy cell. This
+/// structural API cannot silently introduce two programs for one cell. The
+/// five owned vectors are exactly
+/// three width-W rows and two P-selector rows; there is no N*W or P*N table.
+fn source_cell_coefficients(
+    programs: &[Circuit],
+    depth: usize,
+    width: usize,
+    cell_count: usize,
+    challenges: &[Fp3],
+    row: &impl Fn(usize, &mut [Fp3]) -> Result<(), String>,
+    selector: &impl Fn(usize) -> Result<Option<(usize, Fp3)>, String>,
+    weights: &[Fp3],
+    work: &mut SourceCellWork,
+) -> Result<[Fp3; 4], String> {
+    if depth == 0
+        || cell_count == 0
+        || cell_count > 1 << 29
+        || !cell_count.is_power_of_two()
+        || !width.is_power_of_two()
+        || width > 1 << 14
+        || programs.is_empty()
+        || programs.len() > 421
+        || challenges.len() >= cell_count.ilog2() as usize
+        || programs.iter().any(|program| {
+            let gates = gates(program, depth);
+            gates.len() > weights.len()
+                || gates.iter().any(|gate| gate.x >= width || gate.y >= width)
+        })
+    {
+        return Err("RMS sourcewise coefficient geometry differs".into());
+    }
+    let active = cell_count >> challenges.len();
+    let half = active / 2;
+    let program_count = programs.len();
+    let mut lo = vec![Fp3::ZERO; width];
+    let mut hi = vec![Fp3::ZERO; width];
+    let mut scratch = vec![Fp3::ZERO; width];
+    let mut selector_lo = vec![Fp3::ZERO; program_count];
+    let mut selector_hi = vec![Fp3::ZERO; program_count];
+    let mut present = vec![false; program_count];
+    work.owned_heap_peak_bytes = work.owned_heap_peak_bytes.max(
+        (lo.capacity()
+            + hi.capacity()
+            + scratch.capacity()
+            + selector_lo.capacity()
+            + selector_hi.capacity())
+            * core::mem::size_of::<Fp3>()
+            + present.capacity(),
+    );
+    let leaves = 1usize << challenges.len();
+    let mut c = [Fp3::ZERO; 4];
+    for cell in 0..half {
+        lo.fill(Fp3::ZERO);
+        hi.fill(Fp3::ZERO);
+        selector_lo.fill(Fp3::ZERO);
+        selector_hi.fill(Fp3::ZERO);
+        present.fill(false);
+        for side in 0..2 {
+            let index = cell + side * half;
+            let (folded, folded_selectors) =
+                if side == 0 { (&mut lo, &mut selector_lo) } else { (&mut hi, &mut selector_hi) };
+            for prefix in 0..leaves {
+                let weight = prefix_weight(prefix, challenges, work);
+                let source_cell = index + prefix * active;
+                work.selector_source_callbacks += 1;
+                if let Some((program, value)) = selector(source_cell)? {
+                    let slot = folded_selectors
+                        .get_mut(program)
+                        .ok_or("RMS sourcewise selector program differs")?;
+                    present[program] = true;
+                    *slot += weight * value;
+                    work.selector_assigned_terms += 1;
+                    work.fold_value_multiplications += 1;
+                    work.fold_additions += 1;
+                    // Public padding has a fixed zero Boolean row. Do not
+                    // invoke the original-byte getter for a dummy cell.
+                    row(source_cell, &mut scratch)?;
+                    work.row_source_callbacks += 1;
+                    work.value_source_scalars += width as u64;
+                    for wire in 0..width {
+                        folded[wire] += weight * scratch[wire];
+                        work.fold_value_multiplications += 1;
+                        work.fold_additions += 1;
+                    }
+                }
+            }
+        }
+        for (program_index, program) in programs.iter().enumerate() {
+            let program_gates = gates(program, depth);
+            work.logical_gate_cell_iterations += program_gates.len() as u64;
+            if !present[program_index] {
+                work.unsupported_program_cells += 1;
+                work.unsupported_gate_iterations_saved += program_gates.len() as u64;
+                continue;
+            }
+            // The public selector is shared by every gate of this program.
+            // Accumulate its weighted gate polynomial first, then multiply by
+            // that selector once. This preserves the four transcript values.
+            let mut u = [Fp3::ZERO; 3];
+            for (gate, &gate_weight) in program_gates.iter().zip(weights) {
+                work.gate_cell_iterations += 1;
+                let x = lo[gate.x];
+                let dx = hi[gate.x] - x;
+                if gate.op == Op::Copy {
+                    u[0] += gate_weight * x;
+                    u[1] += gate_weight * dx;
+                    work.coefficient_multiplications += 2;
+                    work.coefficient_additions += 2;
+                    work.coefficient_subtractions += 1;
+                } else {
+                    let y = lo[gate.y];
+                    let dy = hi[gate.y] - y;
+                    let mut f = [x * y, x * dy + dx * y, dx * dy];
+                    if gate.op == Op::Xor {
+                        f = [x + y - (f[0] + f[0]), dx + dy - (f[1] + f[1]), -(f[2] + f[2])];
+                        work.coefficient_additions += 5;
+                        work.coefficient_subtractions += 2;
+                        work.coefficient_negations += 1;
+                    }
+                    for j in 0..3 {
+                        u[j] += gate_weight * f[j];
+                    }
+                    work.coefficient_multiplications += 7;
+                    work.coefficient_additions += 4;
+                    work.coefficient_subtractions += 2;
+                }
+            }
+            let a = selector_lo[program_index];
+            let b = selector_hi[program_index] - a;
+            for j in 0..3 {
+                c[j] += a * u[j];
+                c[j + 1] += b * u[j];
+            }
+            work.coefficient_multiplications += 6;
+            work.coefficient_additions += 6;
+            work.coefficient_subtractions += 1;
+        }
+    }
+    Ok(c)
+}
+
 // Sparse wiring: each edge supplies one equality selector. There is no
 // quadratic-size wire-pair table, even for a public layer of thousands of gates.
 struct Edge {
@@ -595,6 +898,326 @@ pub(in super::super) fn verify(
 mod tests {
     use super::*;
     use rand_010::RngExt;
+
+    #[test]
+    fn sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix() {
+        let programs = [
+            Circuit {
+                ports: 4,
+                product_bits: 16,
+                levels: vec![vec![
+                    Gate { op: Op::And, x: 0, y: 1 },
+                    Gate { op: Op::Xor, x: 2, y: 3 },
+                ]],
+                valid: 0,
+                coefficients: [0; 3],
+                arithmetic_bits: 1,
+                raw_gates: 2,
+            },
+            Circuit {
+                ports: 4,
+                product_bits: 16,
+                levels: vec![vec![
+                    Gate { op: Op::Copy, x: 1, y: 1 },
+                    Gate { op: Op::Xor, x: 0, y: 3 },
+                ]],
+                valid: 0,
+                coefficients: [0; 3],
+                arithmetic_bits: 1,
+                raw_gates: 2,
+            },
+        ];
+        let assignments = [Some(0), Some(1), None, Some(0)];
+        let root = C61Commitment::new(vec![[7; 32]]);
+        let profile = [8];
+        let statement = Statement {
+            root: &root,
+            profile: &profile,
+            view: [9; 32],
+            attempt: AttemptContext {
+                session: [1; 32],
+                capacity: [2; 32],
+                slot: 0,
+                predecessor: [0; 32],
+                nonce: [3; 32],
+            },
+            programs: &programs,
+            assignments: &assignments,
+        };
+        let width = 4;
+        let traces: Vec<_> = programs
+            .iter()
+            .enumerate()
+            .map(|(program, circuit)| {
+                let live = assignments.iter().enumerate().fold(0u64, |bits, (cell, assignment)| {
+                    bits | (u64::from(*assignment == Some(program)) << cell)
+                });
+                circuit.replay(&[0, live, live & 0b0101, live & 0b1010], live).unwrap()
+            })
+            .collect();
+        let trace_ref = &traces;
+        let original: Vec<_> = assignments
+            .iter()
+            .enumerate()
+            .flat_map(|(cell, assignment)| {
+                (0..width).map(move |wire| {
+                    assignment.map_or(Fp3::ZERO, |program| {
+                        Fp3::from_base(Fp::new((trace_ref[program][0][wire] >> cell) & 1))
+                    })
+                })
+            })
+            .collect();
+        let selector_point = [
+            Fp3::new(Fp::new(17), Fp::new(2), Fp::new(3)),
+            Fp3::new(Fp::new(19), Fp::new(5), Fp::new(7)),
+        ];
+        let equality = eq(&selector_point);
+        let original_selectors: Vec<Vec<Fp3>> = (0..programs.len())
+            .map(|program| {
+                assignments
+                    .iter()
+                    .enumerate()
+                    .map(
+                        |(cell, assignment)| {
+                            if *assignment == Some(program) {
+                                equality[cell]
+                            } else {
+                                Fp3::ZERO
+                            }
+                        },
+                    )
+                    .collect()
+            })
+            .collect();
+        let weights = [Fp3::from_base(Fp::new(5)), Fp3::from_base(Fp::new(7))];
+        let challenges = [
+            Fp3::new(Fp::new(11), Fp::new(2), Fp::new(3)),
+            Fp3::new(Fp::new(13), Fp::new(5), Fp::new(7)),
+        ];
+        let mut dense = original.clone();
+        let mut dense_selectors = original_selectors.clone();
+        let mut prefix = Vec::new();
+        for &challenge in &challenges {
+            let expected =
+                cell_coefficients(&statement, 1, width, &dense, &dense_selectors, &weights);
+            let mut work = SourceCellWork::default();
+            let actual = source_cell_coefficients(
+                statement.programs,
+                1,
+                width,
+                assignments.len(),
+                &prefix,
+                &|cell, out| {
+                    out.fill(Fp3::ZERO);
+                    if let Some(program) = assignments[cell] {
+                        for (wire, value) in out.iter_mut().enumerate() {
+                            *value =
+                                Fp3::from_base(Fp::new((traces[program][0][wire] >> cell) & 1));
+                        }
+                    }
+                    Ok(())
+                },
+                &|cell| Ok(assignments[cell].map(|program| (program, equality[cell]))),
+                &weights,
+                &mut work,
+            )
+            .unwrap();
+            assert_eq!(actual, expected);
+            assert_eq!(
+                work.owned_heap_peak_bytes,
+                (3 * width + 2 * programs.len()) * core::mem::size_of::<Fp3>() + programs.len()
+            );
+            assert_eq!(work.row_source_callbacks, 3);
+            assert_eq!(work.value_source_scalars, (3 * width) as u64);
+            assert_eq!(work.selector_source_callbacks, assignments.len() as u64);
+            assert_eq!(work.selector_assigned_terms, 3);
+            let expected_work = if prefix.is_empty() {
+                // One of the two cell pairs has no program-1 selector.
+                (8, 6, 2, 55, 55, 20)
+            } else {
+                (4, 4, 0, 35, 36, 13)
+            };
+            assert_eq!(work.logical_gate_cell_iterations, expected_work.0);
+            assert_eq!(work.gate_cell_iterations, expected_work.1);
+            assert_eq!(work.unsupported_gate_iterations_saved, expected_work.2);
+            assert_eq!(work.coefficient_multiplications, expected_work.3);
+            assert_eq!(work.coefficient_additions, expected_work.4);
+            assert_eq!(work.coefficient_subtractions, expected_work.5);
+            fold(&mut dense, challenge);
+            for selector in &mut dense_selectors {
+                fold(selector, challenge);
+            }
+            prefix.push(challenge);
+        }
+
+        let mut work = SourceCellWork::default();
+        assert!(source_cell_coefficients(
+            statement.programs,
+            0,
+            width,
+            assignments.len(),
+            &[],
+            &|_, _| Ok(()),
+            &|_| Ok(None),
+            &weights,
+            &mut work,
+        )
+        .is_err());
+        assert!(source_cell_coefficients(
+            statement.programs,
+            1,
+            width,
+            assignments.len(),
+            &[],
+            &|_, _| Ok(()),
+            &|_| Ok(None),
+            &weights[..1],
+            &mut work,
+        )
+        .is_err());
+        let failure = source_cell_coefficients(
+            statement.programs,
+            1,
+            width,
+            assignments.len(),
+            &[],
+            &|_, _| Err("replay getter rejected".into()),
+            &|_| Ok(Some((0, Fp3::ONE))),
+            &weights,
+            &mut work,
+        )
+        .unwrap_err();
+        assert_eq!(failure, "replay getter rejected");
+
+        let failure = source_cell_coefficients(
+            statement.programs,
+            1,
+            width,
+            assignments.len(),
+            &[],
+            &|_, out| {
+                out.fill(Fp3::ZERO);
+                Ok(())
+            },
+            &|_| Err("tile selector rejected".into()),
+            &weights,
+            &mut SourceCellWork::default(),
+        )
+        .unwrap_err();
+        assert_eq!(failure, "tile selector rejected");
+
+        let selector_failure = source_cell_coefficients(
+            statement.programs,
+            1,
+            width,
+            assignments.len(),
+            &[],
+            &|_, out| {
+                out.fill(Fp3::ZERO);
+                Ok(())
+            },
+            &|_| Ok(Some((programs.len(), Fp3::ONE))),
+            &weights,
+            &mut SourceCellWork::default(),
+        )
+        .unwrap_err();
+        assert_eq!(selector_failure, "RMS sourcewise selector program differs");
+    }
+
+    #[test]
+    fn sourcewise_real_boolean_replay_matches_dense_coefficients_at_selected_depths() {
+        let programs = [
+            super::super::compile(256, 0, 0, 0, true).unwrap(),
+            super::super::compile(256, 0, 0, 0, false).unwrap(),
+        ];
+        let assignments = [Some(0), Some(1), None, Some(0)];
+        let frames =
+            [frame(9, 81, 16, true), frame(-3, 9, -16, false), [0; 12], frame(0, 0, 0, true)];
+        let input = |cell: usize| {
+            let p = assignments[cell].unwrap();
+            let mut bits = vec![0u64; programs[p].ports];
+            bits[1] = 1;
+            for bit in 0..programs[p].ports - 2 {
+                bits[bit + 2] = u64::from(frames[cell][bit / 8] >> (bit % 8) & 1);
+            }
+            bits
+        };
+        // Full traces belong only to the independent dense reference.
+        let reference: Vec<_> = (0..4)
+            .map(|i| assignments[i].map(|p| programs[p].replay(&input(i), 1).unwrap()))
+            .collect();
+        let geometry = widths(&programs).unwrap();
+        let root = C61Commitment::new(vec![[71; 32]]);
+        let statement = Statement {
+            root: &root,
+            profile: b"bounded real replay",
+            view: [72; 32],
+            attempt: AttemptContext {
+                session: [73; 32],
+                capacity: [74; 32],
+                slot: 0,
+                predecessor: [0; 32],
+                nonce: [75; 32],
+            },
+            programs: &programs,
+            assignments: &assignments,
+        };
+        let point = [signed(3), signed(7)];
+        let equality = eq(&point);
+        for depth in [1, 7, geometry.len() - 1] {
+            let width = geometry[depth - 1];
+            let mut dense = vec![Fp3::ZERO; 4 * width];
+            for cell in 0..4 {
+                if let Some(trace) = &reference[cell] {
+                    let layer = &trace[(depth - 1).min(trace.len() - 1)];
+                    for (wire, &v) in layer.iter().enumerate() {
+                        dense[cell * width + wire] = signed(v as i64);
+                    }
+                }
+            }
+            let weights: Vec<_> = (0..geometry[depth]).map(|i| signed(i as i64 + 2)).collect();
+            let mut selectors = statement.selectors(&point);
+            let mut prefix = Vec::new();
+            for r in [signed(11), signed(13)] {
+                let mut work = SourceCellWork::default();
+                let actual = source_cell_coefficients(
+                    &programs,
+                    depth,
+                    width,
+                    4,
+                    &prefix,
+                    &|cell, out| {
+                        let p = assignments[cell].expect("dummy cells never replay");
+                        let (layer, replay_work) = programs[p].replay_layer(
+                            &input(cell),
+                            1,
+                            (depth - 1).min(programs[p].levels.len()),
+                        )?;
+                        assert!(replay_work.peak_two_vector_capacity_bytes <= 2 * 4096 * 8);
+                        out.fill(Fp3::ZERO);
+                        for (v, bit) in out.iter_mut().zip(layer) {
+                            *v = signed(bit as i64);
+                        }
+                        Ok(())
+                    },
+                    &|cell| Ok(assignments[cell].map(|p| (p, equality[cell]))),
+                    &weights,
+                    &mut work,
+                )
+                .unwrap();
+                assert_eq!(
+                    actual,
+                    cell_coefficients(&statement, depth, width, &dense, &selectors, &weights)
+                );
+                assert_eq!(work.row_source_callbacks, 3);
+                fold(&mut dense, r);
+                for selector in &mut selectors {
+                    fold(selector, r);
+                }
+                prefix.push(r);
+            }
+        }
+    }
 
     fn frame(p: i64, s: i64, y: i64, weighted: bool) -> [u8; 12] {
         let mut result = [0; 12];

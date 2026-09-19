@@ -173,16 +173,41 @@ impl Statement<'_> {
         // Keep the original framing when every profile fits below its 255
         // padding sentinel. Canonical RMS may have 421 distinct programs.
         let wide = self.programs.len() > 255;
-        let mut bytes = if wide {
-            b"C71-RMS-J-B12-v2;assignment-u16;Boolean-XOR;cell-wire-MSB;P-S-Y-byte-view;original-MAC".to_vec()
+        let domain: &[u8] = if wide {
+            b"C71-RMS-J-B12-v2;assignment-u16;Boolean-XOR;cell-wire-MSB;P-S-Y-byte-view;original-MAC"
         } else {
-            b"C71-RMS-J-B12-v1;Boolean-XOR;cell-wire-MSB;P-S-Y-byte-view;original-MAC".to_vec()
+            b"C71-RMS-J-B12-v1;Boolean-XOR;cell-wire-MSB;P-S-Y-byte-view;original-MAC"
         };
+        let attempt = self.attempt.encode();
+        let program_bytes = self
+            .programs
+            .iter()
+            .try_fold(0usize, |total, p| {
+                let layers = p.levels.iter().try_fold(0usize, |total, layer| {
+                    total.checked_add(4)?.checked_add(layer.len().checked_mul(9)?)
+                })?;
+                total.checked_add(64)?.checked_add(layers)
+            })
+            .expect("RMS program transcript length overflow");
+        let prefix_len = [
+            self.root.roots()[0].len(),
+            8,
+            self.profile.len(),
+            self.view.len(),
+            attempt.len(),
+            4,
+            program_bytes,
+            4,
+        ]
+        .into_iter()
+        .try_fold(domain.len(), |total, len| total.checked_add(len))
+        .expect("RMS prefix transcript length overflow");
+        let mut bytes = Vec::with_capacity(prefix_len);
+        bytes.extend(domain);
         bytes.extend(self.root.roots()[0]);
         bytes.extend((self.profile.len() as u64).to_le_bytes());
         bytes.extend(self.profile);
         bytes.extend(self.view);
-        let attempt = self.attempt.encode();
         let attempt_capacity_bytes = attempt.capacity();
         bytes.extend(&attempt);
         drop(attempt);
@@ -209,6 +234,7 @@ impl Statement<'_> {
             }
         }
         bytes.extend((self.assignments.len() as u32).to_le_bytes());
+        debug_assert_eq!(bytes.len(), prefix_len);
         let entry_bytes = if wide { 2 } else { 1 };
         let total = bytes
             .len()
@@ -950,21 +976,9 @@ fn round_verify(
     Ok(r)
 }
 
-fn eq_counted(point: &[Fp3]) -> (Vec<Fp3>, usize) {
-    let mut weights = vec![Fp3::ONE];
-    let mut capacity_peak = weights.capacity() * core::mem::size_of::<Fp3>();
-    for &r in point {
-        let next: Vec<_> = weights.iter().flat_map(|&x| [x * (Fp3::ONE - r), x * r]).collect();
-        capacity_peak =
-            capacity_peak.max((weights.capacity() + next.capacity()) * core::mem::size_of::<Fp3>());
-        weights = next;
-    }
-    (weights, capacity_peak)
-}
-
 fn next_weights_counted(left: &[Fp3], right: &[Fp3], beta: Fp3) -> (Vec<Fp3>, usize) {
-    let (a, a_peak) = eq_counted(left);
-    let (b, b_peak) = eq_counted(right);
+    let (a, a_peak) = eq_scaled_counted(left, Fp3::ONE);
+    let (b, b_peak) = eq_scaled_counted(right, Fp3::ONE);
     let result: Vec<_> = a.iter().zip(&b).map(|(&a, &b)| a + beta * b).collect();
     let capacity_bytes = a_peak
         .max(a.capacity() * core::mem::size_of::<Fp3>() + b_peak)
@@ -2132,6 +2146,12 @@ mod tests {
             assert!(capacity.widths_capacity_bytes > 0);
             assert!(capacity.round_auth_capacity_bytes_peak > 0);
             assert!(capacity.next_weights_transition_capacity_bytes_peak > 0);
+            assert_eq!(source_work.byte_endpoint.root_eq_capacity_peak_bytes, 0);
+            assert!(source_work.byte_endpoint.leaf_eq_capacity_peak_bytes > 0);
+            assert!(
+                source_work.byte_endpoint.tree_phase_owned_heap_peak_bytes
+                    >= source_work.byte_endpoint.root_phase_owned_heap_peak_bytes
+            );
             assert_eq!(capacity.bind.proof_capacity_bytes, 0);
             assert_eq!(capacity.bind.triples_capacity_bytes, 0);
             for snapshot in [capacity.cell, capacity.index] {

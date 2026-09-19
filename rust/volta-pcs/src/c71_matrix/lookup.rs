@@ -74,6 +74,7 @@ pub(super) struct Statement<'a> {
 pub(super) struct SourceWork {
     pub descriptor_capacity_bytes: usize,
     pub binding_frame_capacity_bytes: usize,
+    pub binding_frame_capacity_while_attempt_live_bytes: usize,
     pub query_cache_capacity_bytes: usize,
     pub histogram_cache_capacity_bytes: usize,
     pub upper_tree_capacity_bytes: usize,
@@ -82,6 +83,54 @@ pub(super) struct SourceWork {
     /// transcript internals, allocator metadata and caller storage.
     pub named_heap_peak_bytes: usize,
     pub named_heap_peak_is_complete: bool,
+    pub rows_backing_capacity_bytes: usize,
+    pub proof_heap_capacity_bytes: usize,
+    pub proof_logical_heap_bytes: usize,
+    pub triples_capacity_bytes: usize,
+    pub triples_logical_bytes: usize,
+    pub point_capacity_bytes: usize,
+    pub point_logical_bytes: usize,
+    pub dimensions_transient_capacity_bytes: usize,
+    pub attempt_encode_capacity_bytes: usize,
+    pub binding_frame_logical_bytes: usize,
+    pub binding_table_output_encoded_bytes: usize,
+    pub declared_subtree_stack_bytes: usize,
+    pub declared_nested_stack_payload_lower_bound_bytes: usize,
+    pub declared_stack_is_complete: bool,
+    pub owned_heap_peak_bytes: usize,
+    pub owned_capacity_is_complete: bool,
+    /// Excludes caller correlation backing, Statement/public tables and blocks,
+    /// getter/provider state, Fs state, allocator metadata, transient
+    /// old+new allocations during Vec growth, and compiler stack.
+    pub owned_heap_peak_excludes_external: bool,
+    pub auth_size_bytes: usize,
+    pub triple_size_bytes: usize,
+    pub layer_size_bytes: usize,
+    pub compact_block_size_bytes: usize,
+    pub attempt_context_size_bytes: usize,
+    pub descriptor_size_bytes: usize,
+    pub query_cache_size_bytes: usize,
+    pub proof_size_bytes: usize,
+    pub pending_auth_size_bytes: usize,
+    pub bind_work_size_bytes: usize,
+    pub dimension_work_size_bytes: usize,
+    pub source_work_size_bytes: usize,
+    pub correlation_rows_reserved: u64,
+    pub correlation_rows_consumed: u64,
+    pub denominator_inversions: u64,
+    pub denominator_zero_comparisons: u64,
+    pub correlation_row_copy_bytes: u64,
+    pub cache_payload_write_bytes: u64,
+    pub cache_payload_read_bytes: u64,
+    pub binding_frame_payload_write_bytes: u64,
+    pub cache_query_decodes: u64,
+    pub cache_histogram_reads: u64,
+    pub public_table_output_reads: u64,
+    pub descriptor_row_calls: u64,
+    pub dimension_validation_passes: u64,
+    pub dimension_table_metadata_visits: u64,
+    pub dimension_block_visits: u64,
+    pub dimension_coverage_interval_visits: u64,
     pub query_getter_calls: u64,
     pub histogram_getter_calls: u64,
     pub public_tag_scans: u64,
@@ -108,6 +157,22 @@ struct CompactBlock {
     kind: CompactKind,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+struct BindWork {
+    frame_capacity_bytes: usize,
+    frame_logical_bytes: usize,
+    attempt_encode_capacity_bytes: usize,
+    frame_capacity_while_attempt_live_bytes: usize,
+    table_output_encoded_bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+struct DimensionWork {
+    coverage_outer_capacity_bytes: usize,
+    coverage_inner_capacity_bytes: usize,
+    offsets_capacity_bytes: usize,
+}
+
 struct Descriptor {
     blocks: Vec<CompactBlock>,
     table_offsets: Vec<usize>,
@@ -115,6 +180,7 @@ struct Descriptor {
     queries: usize,
     rows: usize,
     bits: usize,
+    dimensions_work: DimensionWork,
 }
 
 #[derive(Clone, Copy)]
@@ -126,7 +192,7 @@ enum CompactRow {
 
 impl Descriptor {
     fn new(s: &Statement<'_>) -> Result<Self, String> {
-        let (rows, queries, offsets) = s.dimensions()?;
+        let (rows, queries, offsets, dimensions_work) = s.dimensions()?;
         let mut blocks = Vec::with_capacity(s.blocks.len());
         let (mut begin, mut query_first) = (0usize, 0usize);
         for &block in s.blocks {
@@ -151,6 +217,7 @@ impl Descriptor {
             queries,
             rows,
             bits: live.next_power_of_two().ilog2() as usize,
+            dimensions_work,
         })
     }
 
@@ -425,7 +492,7 @@ fn tag(x: i16, y: i32, profile: u8) -> Fp3 {
 }
 
 impl Statement<'_> {
-    fn dimensions(&self) -> Result<(usize, usize, Vec<usize>), String> {
+    fn dimensions(&self) -> Result<(usize, usize, Vec<usize>, DimensionWork), String> {
         if self.blocks.is_empty()
             || self.blocks.len() > 65791
             || self.tables.is_empty()
@@ -454,7 +521,7 @@ impl Statement<'_> {
         }
         let mut coverage = vec![Vec::new(); self.tables.len()];
         let mut queries = 0usize;
-        let mut offsets = Vec::new();
+        let mut offsets = Vec::with_capacity(self.tables.len());
         let mut offset = 0;
         for t in self.tables {
             offsets.push(offset);
@@ -497,12 +564,21 @@ impl Statement<'_> {
                 return Err("B12 lookup table coverage is incomplete".into());
             }
         }
-        Ok((rows, queries, offsets))
+        let work = DimensionWork {
+            coverage_outer_capacity_bytes: coverage.capacity()
+                * core::mem::size_of::<Vec<(usize, usize)>>(),
+            coverage_inner_capacity_bytes: coverage
+                .iter()
+                .map(|v| v.capacity() * core::mem::size_of::<(usize, usize)>())
+                .sum(),
+            offsets_capacity_bytes: offsets.capacity() * core::mem::size_of::<usize>(),
+        };
+        Ok((rows, queries, offsets, work))
     }
 
     #[cfg(test)]
     fn public(&self) -> Result<(Vec<Fp3>, Vec<Row>), String> {
-        let (rows, queries, offsets) = self.dimensions()?;
+        let (rows, queries, offsets, _) = self.dimensions()?;
         let tags = self
             .tables
             .iter()
@@ -532,24 +608,47 @@ impl Statement<'_> {
     }
 
     pub fn required(&self) -> Result<usize, String> {
-        let (rows, queries, _) = self.dimensions()?;
+        let (rows, queries, _, _) = self.dimensions()?;
         Ok(required((rows + queries).next_power_of_two().ilog2() as usize))
     }
 
-    fn bind(&self, fs: &mut Fs) -> Result<(Descriptor, Fp3, usize), String> {
+    fn bind(&self, fs: &mut Fs) -> Result<(Descriptor, Fp3, BindWork), String> {
         let descriptor = Descriptor::new(self)?;
         let wide = self.tables.iter().any(|t| matches!(t.outputs, Outputs::I32(_)));
-        let mut bytes = if wide {
-            b"C71-lookup-B12-v3;i16-input;typed-i16-i32-output;MIN-overflow;original-A".to_vec()
+        let domain: &[u8] = if wide {
+            b"C71-lookup-B12-v3;i16-input;typed-i16-i32-output;MIN-overflow;original-A"
         } else {
             b"C71-lookup-B12-v2;fixed-X-Y-M;public-blocks;overflow-profile-plus-60;original-A"
-                .to_vec()
         };
+        let attempt = self.attempt.encode();
+        let attempt_encode_capacity_bytes = attempt.capacity();
+        let block_bytes = self.blocks.iter().map(|b| match b {
+            Block::Query { .. } => 10,
+            Block::Table { .. } => 25,
+        });
+        let table_bytes = self.tables.iter().map(|t| {
+            11 + usize::from(wide)
+                + t.outputs.len()
+                    * match t.outputs {
+                        Outputs::I16(_) => 2,
+                        Outputs::I32(_) => 4,
+                    }
+        });
+        let frame_length = [domain.len(), 32, 8, self.profile.len(), 32, attempt.len(), 8, 8]
+            .into_iter()
+            .chain(block_bytes)
+            .chain(table_bytes)
+            .try_fold(0usize, usize::checked_add)
+            .ok_or("B12 lookup binding length overflow")?;
+        let mut bytes = Vec::with_capacity(frame_length);
+        bytes.extend(domain);
         bytes.extend(self.root.roots()[0]);
         bytes.extend((self.profile.len() as u64).to_le_bytes());
         bytes.extend(self.profile);
         bytes.extend(self.view);
-        bytes.extend(self.attempt.encode());
+        bytes.extend(&attempt);
+        let binding_frame_capacity_while_attempt_live_bytes = bytes.capacity();
+        drop(attempt);
         bytes.extend((self.blocks.len() as u64).to_le_bytes());
         for &block in self.blocks {
             match block {
@@ -566,6 +665,7 @@ impl Statement<'_> {
             }
         }
         bytes.extend((self.tables.len() as u64).to_le_bytes());
+        let mut binding_table_output_encoded_bytes = 0usize;
         for t in self.tables {
             bytes.push(t.profile);
             if wide {
@@ -576,8 +676,15 @@ impl Statement<'_> {
             }
             bytes.extend(t.lower.to_le_bytes());
             bytes.extend((t.outputs.len() as u64).to_le_bytes());
+            binding_table_output_encoded_bytes += t.outputs.len()
+                * match t.outputs {
+                    Outputs::I16(_) => 2,
+                    Outputs::I32(_) => 4,
+                };
             t.outputs.encode(&mut bytes);
         }
+        debug_assert_eq!(bytes.len(), frame_length);
+        let binding_frame_logical_bytes = bytes.len();
         let binding_frame_capacity_bytes = bytes.capacity();
         fs.set_phase(0xd00);
         fs.record(0xb0, &bytes);
@@ -596,7 +703,18 @@ impl Statement<'_> {
         }) {
             return Err("B12 lookup public pole".into());
         }
-        Ok((descriptor, alpha, binding_frame_capacity_bytes))
+        Ok((
+            descriptor,
+            alpha,
+            BindWork {
+                frame_capacity_bytes: binding_frame_capacity_bytes,
+                frame_logical_bytes: binding_frame_logical_bytes,
+                attempt_encode_capacity_bytes,
+                frame_capacity_while_attempt_live_bytes:
+                    binding_frame_capacity_while_attempt_live_bytes,
+                table_output_encoded_bytes: binding_table_output_encoded_bytes,
+            },
+        ))
     }
 
     fn leaf_constants_source(
@@ -673,11 +791,55 @@ pub(super) fn prove_wide_counted(
     if correlations.len() < count {
         return Err("B12 lookup prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let (descriptor, alpha, binding_frame_capacity_bytes) = s.bind(fs)?;
+    let reserved_rows = correlations.by_ref().take(count).collect::<Vec<_>>();
+    let rows_backing_capacity_bytes = reserved_rows.capacity() * core::mem::size_of::<Auth>();
+    let mut rows = reserved_rows.into_iter();
+    let (descriptor, alpha, bind_work) = s.bind(fs)?;
     let mut work = SourceWork::default();
     work.descriptor_capacity_bytes = descriptor.capacity_bytes();
-    work.binding_frame_capacity_bytes = binding_frame_capacity_bytes;
+    work.binding_frame_capacity_bytes = bind_work.frame_capacity_bytes;
+    work.binding_frame_capacity_while_attempt_live_bytes =
+        bind_work.frame_capacity_while_attempt_live_bytes;
+    work.binding_frame_logical_bytes = bind_work.frame_logical_bytes;
+    work.binding_table_output_encoded_bytes = bind_work.table_output_encoded_bytes;
+    work.attempt_encode_capacity_bytes = bind_work.attempt_encode_capacity_bytes;
+    work.rows_backing_capacity_bytes = rows_backing_capacity_bytes;
+    work.dimensions_transient_capacity_bytes =
+        descriptor.dimensions_work.coverage_outer_capacity_bytes
+            + descriptor.dimensions_work.coverage_inner_capacity_bytes
+            + descriptor.dimensions_work.offsets_capacity_bytes;
+    work.declared_subtree_stack_bytes = (1 << CutTree::CUT) * core::mem::size_of::<[Fp3; 2]>();
+    // During the second child regeneration, the node array is nested under
+    // the source-tree cubic accumulator, first child and folded sums. This is
+    // source-visible payload, not a compiler/ABI stack-usage claim.
+    work.declared_nested_stack_payload_lower_bound_bytes =
+        work.declared_subtree_stack_bytes + 3 * core::mem::size_of::<[Fp3; 4]>();
+    work.declared_stack_is_complete = false;
+    work.correlation_rows_reserved = count as u64;
+    work.correlation_rows_consumed = count as u64;
+    work.correlation_row_copy_bytes = (count * core::mem::size_of::<Auth>()) as u64;
+    work.binding_frame_payload_write_bytes = work.binding_frame_logical_bytes as u64;
+    work.auth_size_bytes = core::mem::size_of::<Auth>();
+    work.triple_size_bytes = core::mem::size_of::<[Auth; 3]>();
+    work.layer_size_bytes = core::mem::size_of::<range::Layer>();
+    work.compact_block_size_bytes = core::mem::size_of::<CompactBlock>();
+    work.attempt_context_size_bytes = core::mem::size_of::<AttemptContext>();
+    work.descriptor_size_bytes = core::mem::size_of::<Descriptor>();
+    work.query_cache_size_bytes = core::mem::size_of::<QueryCache>();
+    work.proof_size_bytes = core::mem::size_of::<Proof>();
+    work.pending_auth_size_bytes = core::mem::size_of::<Pending<Auth>>();
+    work.bind_work_size_bytes = core::mem::size_of::<BindWork>();
+    work.dimension_work_size_bytes = core::mem::size_of::<DimensionWork>();
+    work.source_work_size_bytes = core::mem::size_of::<SourceWork>();
+    work.denominator_inversions = 1;
+    work.denominator_zero_comparisons = 1;
+    // `required` validates once before reserving correlations; `bind` builds
+    // the descriptor and repeats the same fail-closed public validation.
+    work.dimension_validation_passes = 2;
+    work.dimension_table_metadata_visits = 6 * s.tables.len() as u64;
+    work.dimension_block_visits = 2 * s.blocks.len() as u64;
+    work.dimension_coverage_interval_visits =
+        2 * s.blocks.iter().filter(|block| matches!(block, Block::Table { .. })).count() as u64;
     work.public_tag_scans = descriptor.rows as u64;
     let (queries, calls) = QueryCache::build(&descriptor, &read_query, wide)?;
     work.query_getter_calls = calls;
@@ -710,6 +872,15 @@ pub(super) fn prove_wide_counted(
     );
     work.tree = tree_work;
     (work.replay_leaf_reads, work.replay_reductions) = replay.get();
+    work.proof_heap_capacity_bytes =
+        range::tree_proof_heap_capacity_bytes(&layers, layers.capacity());
+    work.proof_logical_heap_bytes = descriptor.bits * core::mem::size_of::<range::Layer>()
+        + descriptor.bits.saturating_sub(1) * descriptor.bits / 2
+            * core::mem::size_of::<[Fp3; 5]>();
+    work.triples_capacity_bytes = triples.capacity() * core::mem::size_of::<[Auth; 3]>();
+    work.triples_logical_bytes = triples.len() * core::mem::size_of::<[Auth; 3]>();
+    work.point_capacity_bytes = point.capacity() * core::mem::size_of::<Fp3>();
+    work.point_logical_bytes = point.len() * core::mem::size_of::<Fp3>();
     drop(tree);
     let mut values = [Fp3::ZERO; 3];
     let (mul, sub, eq_cap) = for_each_equality(&point, |i, weight| {
@@ -730,12 +901,37 @@ pub(super) fn prove_wide_counted(
     let retained = work.descriptor_capacity_bytes
         + work.query_cache_capacity_bytes
         + work.histogram_cache_capacity_bytes;
-    let build_or_replay =
-        retained + work.upper_tree_capacity_bytes + work.tree.owned_regeneration_heap_peak_bytes;
-    let endpoint = retained + work.eq_scratch_capacity_bytes;
-    let binding = work.descriptor_capacity_bytes + work.binding_frame_capacity_bytes;
-    work.named_heap_peak_bytes = binding.max(build_or_replay).max(endpoint);
+    let persistent = work.rows_backing_capacity_bytes + retained;
+    let dimensions = work.rows_backing_capacity_bytes + work.dimensions_transient_capacity_bytes;
+    let binding_payload = work.binding_frame_capacity_bytes.max(
+        work.binding_frame_capacity_while_attempt_live_bytes + work.attempt_encode_capacity_bytes,
+    );
+    let binding =
+        work.rows_backing_capacity_bytes + work.descriptor_capacity_bytes + binding_payload;
+    let build = persistent + work.upper_tree_capacity_bytes;
+    let replay = build
+        + work.proof_heap_capacity_bytes
+        + work.triples_capacity_bytes
+        + work.tree.owned_regeneration_heap_peak_bytes;
+    let endpoint = persistent
+        + work.proof_heap_capacity_bytes
+        + work.triples_capacity_bytes
+        + work.point_capacity_bytes
+        + work.eq_scratch_capacity_bytes;
+    work.named_heap_peak_bytes = binding.max(build).max(endpoint);
     work.named_heap_peak_is_complete = false;
+    work.owned_heap_peak_bytes = dimensions.max(binding).max(build).max(replay).max(endpoint);
+    work.owned_capacity_is_complete = false;
+    work.owned_heap_peak_excludes_external = true;
+    let n = 1u64 << descriptor.bits;
+    let replay_repetitions = work.replay_leaf_reads / n;
+    let cache_payload = (if wide { 6 } else { 4 }) * descriptor.queries + 4 * descriptor.rows;
+    work.cache_payload_write_bytes = cache_payload as u64;
+    work.cache_payload_read_bytes = cache_payload as u64 * (2 + replay_repetitions);
+    work.cache_query_decodes = descriptor.queries as u64 * (2 + replay_repetitions);
+    work.cache_histogram_reads = descriptor.rows as u64 * (2 + replay_repetitions);
+    work.public_table_output_reads = descriptor.rows as u64 * (3 + replay_repetitions);
+    work.descriptor_row_calls = descriptor.live as u64 + 2 * n + work.replay_leaf_reads;
     let (wire, original) = range::authenticate(values, &mut rows);
     let omega = Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO);
     let leaves = [
@@ -772,7 +968,7 @@ fn prove_wide_dense_oracle(
         return Err("B12 lookup prover capacity exhausted".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let (descriptor, alpha, _binding_frame_capacity_bytes) = s.bind(fs)?;
+    let (descriptor, alpha, _bind_work) = s.bind(fs)?;
     let (tags, domain) = s.public()?;
     debug_assert_eq!(descriptor.live, domain.len());
     let bits = domain.len().next_power_of_two().ilog2() as usize;
@@ -851,7 +1047,7 @@ pub(super) fn verify(
         return Err("B12 lookup verifier capacity exhausted".into());
     }
     let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
-    let (descriptor, alpha, _binding_frame_capacity_bytes) = s.bind(fs)?;
+    let (descriptor, alpha, _bind_work) = s.bind(fs)?;
     let bits = descriptor.bits;
     if !range::tree_shape(&proof.layers, bits, 0) {
         return Err("B12 lookup tree shape differs".into());
@@ -1257,6 +1453,75 @@ mod tests {
         assert_eq!(work.query_getter_calls, positions.len() as u64);
         assert_eq!(work.histogram_getter_calls, histogram.len() as u64);
         assert!(work.upper_tree_capacity_bytes < 48 * ((1usize << descriptor.bits) * 2 - 1));
+        let n = 1usize << descriptor.bits;
+        let replay_repetitions: usize =
+            (descriptor.bits - CutTree::CUT..descriptor.bits).map(|layer| layer + 1).sum();
+        assert_eq!(work.dimension_validation_passes, 2);
+        assert_eq!(work.dimension_table_metadata_visits, 6 * tables.len() as u64);
+        assert_eq!(work.dimension_block_visits, 2 * blocks.len() as u64);
+        assert_eq!(work.dimension_coverage_interval_visits, 4);
+        assert_eq!(work.correlation_rows_reserved, count as u64);
+        assert_eq!(work.correlation_rows_consumed, count as u64);
+        assert_eq!(work.correlation_row_copy_bytes, (count * 48) as u64);
+        assert_eq!(
+            work.cache_payload_write_bytes,
+            (4 * positions.len() + 4 * histogram.len()) as u64
+        );
+        assert_eq!(
+            work.cache_payload_read_bytes,
+            ((4 * positions.len() + 4 * histogram.len()) * (2 + replay_repetitions)) as u64
+        );
+        assert_eq!(work.binding_frame_payload_write_bytes, work.binding_frame_logical_bytes as u64);
+        assert!(work.rows_backing_capacity_bytes >= count * 48);
+        assert_eq!(
+            work.proof_logical_heap_bytes,
+            range::tree_proof_logical_heap_bytes(descriptor.bits, 0)
+        );
+        assert!(work.proof_heap_capacity_bytes >= work.proof_logical_heap_bytes);
+        assert_eq!(work.triples_logical_bytes, (1 + 3 * descriptor.bits) * 144);
+        assert!(work.triples_capacity_bytes >= work.triples_logical_bytes);
+        assert_eq!(work.point_logical_bytes, descriptor.bits * 24);
+        assert!(work.point_capacity_bytes >= work.point_logical_bytes);
+        assert!(work.binding_frame_capacity_bytes >= work.binding_frame_logical_bytes);
+        assert!(work.attempt_encode_capacity_bytes >= 130);
+        assert_eq!(work.declared_subtree_stack_bytes, 16 * 48);
+        assert_eq!(work.declared_nested_stack_payload_lower_bound_bytes, 16 * 48 + 3 * 96);
+        assert_eq!(work.cache_query_decodes, (positions.len() * (2 + replay_repetitions)) as u64);
+        assert_eq!(work.cache_histogram_reads, (histogram.len() * (2 + replay_repetitions)) as u64);
+        assert_eq!(
+            work.public_table_output_reads,
+            (histogram.len() * (3 + replay_repetitions)) as u64
+        );
+        assert_eq!(
+            work.descriptor_row_calls,
+            (descriptor.live + 2 * n + n * replay_repetitions) as u64
+        );
+        let simultaneous_replay_lower = work.rows_backing_capacity_bytes
+            + work.descriptor_capacity_bytes
+            + work.query_cache_capacity_bytes
+            + work.histogram_cache_capacity_bytes
+            + work.upper_tree_capacity_bytes
+            + work.proof_heap_capacity_bytes
+            + work.triples_capacity_bytes;
+        assert!(work.owned_heap_peak_bytes >= simultaneous_replay_lower);
+        assert!(!work.owned_capacity_is_complete);
+        assert!(work.owned_heap_peak_excludes_external);
+        assert!(!work.declared_stack_is_complete);
+        #[cfg(target_pointer_width = "64")]
+        {
+            assert_eq!(work.auth_size_bytes, 48);
+            assert_eq!(work.triple_size_bytes, 144);
+            assert_eq!(work.layer_size_bytes, 216);
+            assert_eq!(work.compact_block_size_bytes, 32);
+            assert_eq!(work.attempt_context_size_bytes, 129);
+            assert_eq!(work.descriptor_size_bytes, 104);
+            assert_eq!(work.query_cache_size_bytes, 32);
+            assert_eq!(work.proof_size_bytes, 240);
+            assert_eq!(work.pending_auth_size_bytes, 168);
+            assert_eq!(work.bind_work_size_bytes, 40);
+            assert_eq!(work.dimension_work_size_bytes, 24);
+            assert!(work.source_work_size_bytes >= 40 * core::mem::size_of::<usize>());
+        }
 
         let wide_values = [70_000i32];
         let wide_tables = [Table { profile: 0, lower: 0, outputs: Outputs::I32(&wide_values) }];

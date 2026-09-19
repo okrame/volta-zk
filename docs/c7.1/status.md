@@ -267,8 +267,8 @@ budget di 14 s è escluso. Il nuovo budget candidato assegna 17 s al getter,
 
 Il checker nativo degli offset include finestre range 2 GiB/query 256 MiB,
 checkpoint, slot PCS/PCG, allocator e fence dichiarate. I massimi nominati
-sono **6.087.369.472 / 6.126.691.072 / 6.166.012.672 B**. Il minimo margine
-è **276.438.272 B**, appena 8.002.816 B oltre i 256 MiB richiesti. Lo slab
+sono **6.087.507.456 / 6.126.832.384 / 6.166.153.984 B**. Il minimo margine
+è **276.296.960 B**, appena 7.861.504 B oltre i 256 MiB richiesti. Lo slab
 riserva sempre 6.442.450.944 B. Non sono picchi fisici completi: workspace
 numerici, hash in place salted, PCG/OT/Fp6 e runtime restano da verificare.
 
@@ -322,7 +322,7 @@ WHIR; S1 condiviso viene allocato solo dopo le query al predecessore.
 Il fold dei successori ora richiede il rilascio dell’handle precedente e
 conserva tutta la capacità S1. Il vecchio layout S3 2^24 è NO-GO con questa
 capacità; il cap 2^23 paga due letture S2 in più per apertura A e lascia
-invariato il massimo integrato nominato di 6.166.012.672 B. Il merge FFT
+invariato il massimo integrato nominato di 6.166.153.984 B. Il merge FFT
 odd-log è contato; scatter PCS e fence GPU restano da integrare.
 Il [checkpoint RMS](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
 usa 2.023.511.878 B con descrittori e riusa lo slot range prima di RNE;
@@ -352,9 +352,11 @@ Il replay GKR riusa input/current/next e li libera prima della LUT byte.
 Il lookup conserva cache originali e un cut a 16 foglie; GELU/EXP30 evitano
 così gli alberi densi già esclusi dall'arena. EXP30 conta il dominio D/E
 completo, inclusi padding causali. Il piano incorpora i payload con cut A
-vivi fino all'ultimo consumer; il massimo nominato integrato resta invariato.
+vivi fino all'ultimo consumer; le prove lookup restano riservate tra le fasi.
 Il nuovo census nativo GKR/byte misura righe, programmi, prove, triple e
-transizioni di buffer; allocator, caller e picco fisico completo restano aperti.
+transizioni di buffer, compresi Eq root/leaf. I prefissi e le strutture del
+sumcheck prenotano la capacità; il frame FS dei valori viene scritto in
+streaming. Allocator, caller e picco fisico completo restano aperti.
 Nessuna GPU, spill o spesa autorizzata.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso

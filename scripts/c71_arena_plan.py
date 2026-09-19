@@ -60,7 +60,8 @@ def place_events(events, persistent):
         logical_peak=max(logical_peak,sum(n for _,n in spans))
         output.append({'event':event['event'],'allocate':assigned,'free':list(freed),
             'fence_before_release':bool(freed),'live_aligned_bytes':sum(n for _,n in spans),
-            'address_end':max((a+n for a,n in spans),default=0)})
+            'address_end':max((a+n for a,n in spans),default=0),
+            'unverified_requirements':event.get('unknown',[])})
     return {'initial_allocations':initial,'events':output,'address_high_water_bytes':peak,'aligned_live_peak_bytes':logical_peak,
         'arena_reserved_bytes':response.ARENA,'operational_margin_required_bytes':MARGIN,
         'unaddressed_tail_bytes':response.ARENA-peak,'fits_with_operational_margin':peak<=LIMIT,
@@ -70,20 +71,28 @@ def place_events(events, persistent):
 def lookup_events(name, trace):
     """Named requested payloads; caller cuts remain live across this helper.
 
-    Native descriptor/proof/correlation/allocator capacities are still separate
-    obligations; this chain cannot certify the full physical peak.
+    Requested descriptor/row payloads join the chain. Proof buffers are
+    reserved persistently across chains until the response consumer; actual
+    capacities and the native arena adapter remain unverified.
     """
+    retained={name+':rows':trace['correlation_rows_requested_bytes'],
+              name+':descriptor':trace['descriptor_requested_bytes']}
     cache={name+':query_cache':trace['query_cache_payload_bytes'],
            name+':histogram_cache':trace['histogram_cache_payload_bytes']}
     tree={name+':upper_tree':trace['upper_tree_node_payload_bytes'],
           name+':upper_tree_descriptors':trace['upper_tree_descriptor_requested_bytes'],
-          name+':prefix_weights':trace['source_tree_work']['max_prefix_weight_payload_bytes'],
+          name+':regeneration_scratch':trace['regeneration_scratch_requested_bytes'],
           name+':subtree_stack':trace['subtree_stack_payload_bytes']}
-    return [dict(event=name+'_freeze_original_query_histogram',allocate=cache),
-            dict(event=name+'_build_and_prove_cut_tree',allocate=tree),
+    proof={name+':triples':trace['triples_requested_bytes']}
+    return [dict(event=name+'_reserve_rows_and_descriptor',allocate=retained),
+            dict(event=name+'_bind_original_frame',allocate={name+':binding_known_payload':trace['binding_payload_bytes_excluding_profile']+130},
+                 unknown=['copied profile bytes and allocator capacity']),
+            dict(event=name+'_binding_absorbed_fence',free=[name+':binding_known_payload']),
+            dict(event=name+'_freeze_original_query_histogram',allocate=cache),
+            dict(event=name+'_build_and_prove_cut_tree',allocate=dict(tree,**proof)),
             dict(event=name+'_tree_last_consumer_fence',free=list(tree)),
-            dict(event=name+'_original_MAC_endpoint',allocate={name+':Eq_scratch':24*(trace['bits']+1)}),
-            dict(event=name+'_endpoint_last_consumer_fence',free=[*cache,name+':Eq_scratch'])]
+            dict(event=name+'_original_MAC_endpoint',allocate={name+':Eq_scratch':24*(2*trace['bits']+1)}),
+            dict(event=name+'_endpoint_last_consumer_fence',free=[*cache,*retained,name+':triples',name+':Eq_scratch'])]
 
 
 def report(ordered_getter=False, reuse_reader_for_commit=False):
@@ -97,6 +106,9 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
     for old in (0,150,300):
         memory=response.integrated_memory(old,pcs,correlations,retained_A=retained)
         persistent=dict(memory['slots_bytes'],shared_roots=response.shared_roots(old))
+        if ordered_getter:
+            persistent.update({name+'_lookup:proof':x['proof_requested_bytes']
+                for name,x in response.producer_lookup_trace(old).items()})
         # Each chain runs serially in the same slab; roots and session slots
         # never disappear between chains. Freeing occurs only after a fence.
         chains={'initial_A_commit':[e for e in pcs[34]['events'] if e['event'] in ('commit_data_0','retain_data_0_root')],
@@ -105,7 +117,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
         phase_events=[]
         for e in memory['phases']:
             if e['chain']=='response':
-                size=e['known_arena_live_bytes']-sum(persistent.values())
+                size=e['known_arena_live_bytes']-sum(memory['slots_bytes'].values())-response.shared_roots(old)
                 phase_events.extend([{'event':e['event'],'allocate':{'phase:core':size},'free':[]},
                     {'event':e['event']+'_fence_release','allocate':{},'free':['phase:core']}])
         chains['range_and_linear']=phase_events

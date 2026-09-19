@@ -729,12 +729,12 @@ Questi sono conteggi della schedule, non istruzioni o transazioni HBM.
 
 | O | High-water indirizzi apertura A, B | Massimo integrato nominato, B | Coda libera integrata, B |
 |---:|---:|---:|---:|
-| 0 | 5.945.848.832 | 6.087.369.472 | 355.081.472 |
-| 150 | 5.985.170.432 | 6.126.691.072 | 315.759.872 |
-| 300 | 6.024.492.032 | 6.166.012.672 | 276.438.272 |
+| 0 | 5.945.986.816 | 6.087.507.456 | 354.943.488 |
+| 150 | 5.985.311.744 | 6.126.832.384 | 315.618.560 |
+| 300 | 6.024.633.344 | 6.166.153.984 | 276.296.960 |
 
 Il massimo integrato resta il range. Il margine minimo nominato supera
-256 MiB di soli 8.002.816 B: allocator, fence GPU e workspace non ancora
+256 MiB di soli 7.861.504 B: allocator, fence GPU e workspace non ancora
 rifiniti non possono essere omessi. Le visite originali restano 574 per
 A corrente e 36 per ogni A storica, più il lavoro degli stati conservati.
 
@@ -922,14 +922,14 @@ non si assume che eliminare la prenotazione elimini il lavoro del reader.
 
 | O | Picco commit A nominato, B | Picco integrato nominato, B | Coda arena libera, B | Lower getter compute / banda, s | Lower congiunto parziale, s |
 |---:|---:|---:|---:|---:|---:|
-| 0 | 6.056.097.536 | 6.087.369.472 | 355.081.472 | 12,630 / 14,160 | 46,882 |
-| 150 | 6.095.419.136 | 6.126.691.072 | 315.759.872 | 13,626 / 15,275 | 51,360 |
-| 300 | 6.134.740.736 | 6.166.012.672 | 276.438.272 | 14,682 / 16,451 | 56,136 |
+| 0 | 6.056.235.520 | 6.087.507.456 | 354.943.488 | 12,630 / 14,160 | 46,882 |
+| 150 | 6.095.560.448 | 6.126.832.384 | 315.618.560 | 13,626 / 15,275 | 51,360 |
+| 300 | 6.134.882.048 | 6.166.153.984 | 276.296.960 | 14,682 / 16,451 | 56,136 |
 
 Il picco range include core conservativo W, finestra A 2 GiB e checkpoint,
 oltre a tutti gli slot/root/cache già nominati. Il checker C++ verifica
 allineamento 256 B, non sovrapposizione, fence dichiarate e ripristino del
-reader. **8.002.816 B** è lo spazio ulteriore al margine richiesto di
+reader. **7.861.504 B** è lo spazio ulteriore al margine richiesto di
 268.435.456 B nel caso peggiore. Nel getter slot da 64 MiB restano
 14.417.924 B dopo i 52.690.940 B di tensori; packing/correzioni devono
 rientrarvi o essere aggiunti al piano. L'arena riservata è sempre
@@ -1482,8 +1482,8 @@ confronta wire, punto, Auth, triple, batch prodotti, consumo delle righe e
 FS. La prova softmax e la composizione ridotta restano controlli di regressione.
 Il massimo componente non è il picco fisico completo o un credito di tempo.
 Dopo il join del lookup sotto, i massimi nominati di questa catena sono
-2.082.728.960 / 3.369.724.928 / 3.851.414.528 B; il massimo integrato
-nominato resta 6.166.012.672 B.
+2.082.995.968 / 3.370.001.152 / 3.851.690.752 B; il massimo integrato
+nominato resta 6.166.153.984 B.
 Il tipo `Fn` non impone da solo immutabilità/NoPeek: il caller deve continuare
 a legare il reader ai byte originali fissati, senza accesso ai MAC non spesi.
 
@@ -1516,8 +1516,15 @@ solo dal wrapper i16, mai inferito dalle tabelle pubbliche per query i32.
 Il verifier genera i tag pubblici dal descrittore e scorre Eq senza dominio
 denso. L'albero superiore viene rilasciato prima dell'endpoint MAC, le cache
 dopo; i cut A rimangono vivi fino all'ultimo consumer originale del caller.
-Il piano include anche metadata dei livelli, stack dei sottoalberi e pesi;
-GELU arriva a 3.219.811.328 / 3.259.132.928 / 3.298.454.528 B nominati.
+Il piano include anche descrittori, righe, triple, metadata dei livelli,
+stack dei sottoalberi, punto ed Eq. I tre buffer proof rimangono prenotati
+fra tutte le catene fino al consumer della risposta: 137.984 / 141.312 /
+141.312 B allineati, senza dedurre un rilascio dal ritorno della funzione.
+Sono richieste ABI pianificate, da collegare all'allocator nativo. Il binding
+aggiunge il payload noto delle tabelle; la copia del profilo effettivo resta
+un requisito esplicito nell'evento. Nessuna allocazione ignota vale zero.
+
+GELU arriva a 3.220.099.584 / 3.259.424.512 / 3.298.746.112 B nominati.
 Non è ancora un picco completo. La parità ridotta confronta prova densa,
 punto, MAC, consumo righe e prossimo FS, con query i32 oltre i16 e punti
 Eq Boolean/non-base. Immutabilità del getter resta una premessa del caller.
@@ -1533,6 +1540,13 @@ nessuno shrink di capacità segue dal solo consumo logico.
 Il binding mantiene lo stesso frame FS e dichiara il chunk da 4 KiB.
 I piccoli test confrontano le capacità osservate con i payload logici;
 il census della forma canonica riporta soltanto quantità richieste/logiche,
-non capacità osservate su un'esecuzione canonica. Caller, allocator,
-transcript interno e workspace esterni restano esplicitamente esclusi.
+non capacità osservate su un'esecuzione canonica. Il census include anche Eq root/leaf, compresi vecchio e nuovo buffer vivi
+insieme. Prefissi RMS/byte/lookup e AttemptContext hanno prenotazione esatta;
+le strutture del sumcheck sorgente prenotano livelli, round, punti e triple.
+`record_values` usa lo stesso frame FS in streaming, con un codec stack di
+24 B; i test lo confrontano con il frame contiguo, incluso il caso vuoto.
+La dimensione osservata di CompactBlock è 32 B sull'ABI della build locale;
+un'ipotesi iniziale di 40 B è stata respinta dal test, prima del join.
+Caller, allocator, transcript interno, altre riallocazioni e workspace
+esterni restano esplicitamente esclusi.
 Questa strumentazione non rende completo il picco né il lavoro temporale.

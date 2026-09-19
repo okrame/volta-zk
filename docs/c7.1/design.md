@@ -945,8 +945,8 @@ Richiede scatter senza reader e hash salted direttamente nelle celle
 del coset già consumate, prima di ripristinare lo slot dopo fence; roots
 e seed persistenti non si spostano. Il riuso è un obbligo nativo ancora
 aperto, non uno shrink assunto del workspace. Con finestre range 2 GiB e
-query A 256 MiB il massimo nominato è **6.166.012.672 B**, coda libera
-**276.438.272 B**: restano appena **8.002.816 B** oltre il margine obbligatorio
+query A 256 MiB il massimo nominato è **6.166.153.984 B**, coda libera
+**276.296.960 B**: restano appena **7.861.504 B** oltre il margine obbligatorio
 di 256 MiB. Qualunque scratch non assorbito negli slot va aggiunto prima
 di dichiarare fit fisico. I lower parziali con 512 replay sono
 47,498/51,975/56,751 s includendo la lettura hash separata, ma escludono
@@ -1041,7 +1041,9 @@ Rilascia il checkpoint prima di lookup/GKR e conserva byte, ordine MSB e
 endpoint del massimo. Il ledger conta le nuove scansioni D e il sumcheck.
 Input/current/next del replay GKR sono riusati e liberati prima della LUT
 byte. Il census nativo distingue capacità di programmi/prove/righe/triple,
-transizioni dei pesi e fasi; caller, allocator e workspace esterni restano
+transizioni dei pesi, Eq root/leaf e fasi. Le prove lookup restano vive fino
+al consumer della risposta; prefissi prenotati e frame FS streaming eliminano
+riallocazioni evitabili. Caller, allocator e workspace esterni restano
 aperti. Il [lookup compatto](preflight.md#lookup-cache-originale-e-albero-tagliato)
 conserva query/istogrammi originali e il cut superiore, rigenerando quattro
 livelli senza modificare transcript o endpoint. EXP30 include tutto D/E,

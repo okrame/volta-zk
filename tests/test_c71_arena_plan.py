@@ -154,3 +154,16 @@ def test_lookup_cache_survives_tree_release_and_cuts_survive_endpoint():
                     assert not any(k.endswith(':upper_tree') for k in live)
             assert live=={x[0] for x in p['initial_allocations']}
             assert p['fits_with_operational_margin']
+
+
+def test_lookup_response_proof_buffers_persist_across_all_chains():
+    for c in arena.report(True,True)['cases']:
+        shapes=arena.response.producer_lookup_trace(c['old_tokens'])
+        for p in c['address_layouts'].values():
+            initial={k:n for k,_,n in p['initial_allocations']}
+            for name,x in shapes.items():
+                key=name+'_lookup:proof'
+                assert initial[key]==arena.aligned(x['proof_requested_bytes'])
+                assert not any(key in e['free'] for e in p['events'])
+        p=c['address_layouts']['EXP30_maximum_original_bytes']
+        assert any(e['unverified_requirements'] for e in p['events'] if 'bind_original' in e['event'])

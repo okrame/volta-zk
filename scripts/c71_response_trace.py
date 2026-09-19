@@ -53,7 +53,7 @@ PHASE_CONTROLS = {
 assert set(PHASE_CONTROLS)==set(BUDGET_SECONDS)
 
 GKR_RECORD = (Path(__file__).resolve().parents[1] / 'benchmarks' / 'results' /
-              'c71-bounded-rms-gkr-2026-09-19-3e7f24eb332b.json')
+              'c71-original-lookup-2026-09-19-e39324ba5e18.json')
 
 
 def maximum_source_trace(old):
@@ -92,17 +92,33 @@ def maximum_source_trace(old):
 def producer_lookup_trace(old):
     """All original source cells: lookup includes EXP30 causal padding."""
     sources=getter.sources_at(old)
-    def cells(predicate):
-        return sum(s['rows']*s['cols'] for s in sources if predicate(s['name']))
-    shapes={
-        'GELU':(cells(lambda n:n.startswith('X/') and n.endswith('/gelu_tanh')),
-                cells(lambda n:n.startswith('M/GELU/')),4),
-        'softcap':(cells(lambda n:n=='X/global/final_tanh_softcap'),
-                   cells(lambda n:n=='M/global/final_tanh_softcap'),4),
-        'EXP30':(cells(lambda n:n.startswith('softmax/') and n.endswith('/D')),
-                 cells(lambda n:n.startswith('softmax/') and n.endswith('/M')),6),
+    predicates={
+        'GELU':(lambda n:n.startswith('X/') and n.endswith('/gelu_tanh'),
+                lambda n:n.startswith('M/GELU/'),4),
+        'softcap':(lambda n:n=='X/global/final_tanh_softcap',
+                   lambda n:n=='M/global/final_tanh_softcap',4),
+        'EXP30':(lambda n:n.startswith('softmax/') and n.endswith('/D'),
+                 lambda n:n.startswith('softmax/') and n.endswith('/M'),6),
     }
-    return {name:gkr.lookup_source_trace(*shape) for name,shape in shapes.items()}
+    result={}
+    for name,(query,histogram,width) in predicates.items():
+        qs=[s for s in sources if query(s['name'])]
+        ts=[s for s in sources if histogram(s['name'])]
+        q=sum(s['rows']*s['cols'] for s in qs);t=sum(s['rows']*s['cols'] for s in ts)
+        qb=sum(s['rows'].bit_count()*s['cols'].bit_count() for s in qs)
+        tb=sum(s['rows'].bit_count()*s['cols'].bit_count() for s in ts)
+        x=gkr.lookup_source_trace(q,t,width)
+        tag=(b'C71-lookup-B12-v3;i16-input;typed-i16-i32-output;MIN-overflow;original-A' if width==6
+             else b'C71-lookup-B12-v2;fixed-X-Y-M;public-blocks;overflow-profile-plus-60;original-A')
+        x.update(query_blocks=qb,table_blocks=tb,tables=len(ts),
+            descriptor_requested_bytes=32*(qb+tb)+8*len(ts),
+            binding_payload_bytes_excluding_profile=len(tag)+32+8+32+130+8+8+10*qb+25*tb+(11+(width==6))*len(ts)+(width-2)*t,
+            binding_requires_actual_profile_length=True,
+            dimension_validation_passes=2,dimension_table_metadata_visits=6*len(ts),
+            dimension_block_visits=2*(qb+tb),dimension_coverage_interval_visits=2*tb,
+            requested_ABI_bytes_not_allocator_peak=True)
+        result[name]=x
+    return result
 
 
 def producer_gkr_trace(old):
@@ -162,6 +178,9 @@ def producer_gkr_trace(old):
     lookups=producer_lookup_trace(old)
     scalar['lookup_original_query_callbacks']=sum(x['original_query_getter_calls'] for x in lookups.values())
     scalar['lookup_original_histogram_callbacks']=sum(x['original_histogram_getter_calls'] for x in lookups.values())
+    for name in ('cache_query_decodes','cache_histogram_reads','public_table_output_reads','dimension_validation_passes',
+                 'dimension_table_metadata_visits','dimension_block_visits','dimension_coverage_interval_visits'):
+        scalar['lookup_'+name]=sum(x[name] for x in lookups.values())
     for name in ('equality_multiplications','equality_additions','equality_subtractions',
                  'cubic_multiplications','cubic_additions','cubic_subtractions',
                  'fold_multiplications','fold_additions','fold_subtractions'):
@@ -171,7 +190,8 @@ def producer_gkr_trace(old):
     field['lookup_fraction_additions']=merges
     for name in ('prover_tag_Fp3_multiplications_source','prover_tag_Fp3_additions_source',
                  'prover_leaf_denominator_subtractions','prover_histogram_numerator_negations',
-                 'endpoint_weighted_original_mul_add_each','endpoint_equality_multiplications_each_role',
+                 'endpoint_weighted_original_multiplications','endpoint_weighted_original_additions',
+                 'denominator_inversions','denominator_zero_comparisons','endpoint_equality_multiplications_each_role',
                  'endpoint_equality_subtractions_each_role'):
         field['lookup_'+name]=sum(x[name] for x in lookups.values())
     budget = BUDGET_SECONDS['proof_producer_relations']

@@ -78,16 +78,38 @@ fn bind(
     if s.cell_point.len() + lane_bits > 34 {
         return Err("B12 byte-function view exceeds D34".into());
     }
-    let mut bytes = if sum {
-        b"C71-byte-function-B12-v2;P-S-SUM;fixed-half-lanes;original-MAC".to_vec()
+    let domain: &[u8] = if sum {
+        b"C71-byte-function-B12-v2;P-S-SUM;fixed-half-lanes;original-MAC"
     } else {
-        b"C71-byte-function-B12-v1;P-S;cell-lane-gate-MSB;original-MAC".to_vec()
+        b"C71-byte-function-B12-v1;P-S;cell-lane-gate-MSB;original-MAC"
     };
+    let attempt = s.attempt.encode();
+    let encoded_values = s
+        .cell_point
+        .len()
+        .checked_add(s.tables.len().checked_mul(256).expect("byte table count overflow"))
+        .and_then(|count| count.checked_mul(core::mem::size_of::<Fp3>()))
+        .expect("byte-function value transcript length overflow");
+    let prefix_len = [
+        s.root.roots()[0].len(),
+        8,
+        s.profile.len(),
+        s.view.len(),
+        attempt.len(),
+        4,
+        8,
+        4,
+        encoded_values,
+    ]
+    .into_iter()
+    .try_fold(domain.len(), |total, len| total.checked_add(len))
+    .expect("byte-function prefix transcript length overflow");
+    let mut bytes = Vec::with_capacity(prefix_len);
+    bytes.extend(domain);
     bytes.extend(s.root.roots()[0]);
     bytes.extend((s.profile.len() as u64).to_le_bytes());
     bytes.extend(s.profile);
     bytes.extend(s.view);
-    let attempt = s.attempt.encode();
     let attempt_capacity_bytes = attempt.capacity();
     bytes.extend(&attempt);
     drop(attempt);
@@ -97,6 +119,7 @@ fn bind(
     for &value in s.cell_point.iter().chain(s.tables.iter().flatten()) {
         bytes.extend(value.to_bytes());
     }
+    debug_assert_eq!(bytes.len(), prefix_len);
     fs.set_phase(0x800);
     fs.record(0x60, &bytes);
     let transcript_bytes = bytes.len();
@@ -157,6 +180,9 @@ pub(super) struct SourceWork {
     pub row_capacity_bytes: usize,
     pub triples_capacity_bytes: usize,
     pub proof_capacity_bytes: usize,
+    pub root_eq_capacity_peak_bytes: usize,
+    pub leaf_eq_capacity_peak_bytes: usize,
+    pub root_phase_owned_heap_peak_bytes: usize,
     pub bind_phase_owned_heap_peak_bytes: usize,
     pub tree_phase_owned_heap_peak_bytes: usize,
     pub coefficient_capacity_bytes: usize,
@@ -228,11 +254,13 @@ pub(super) fn live_mass(live: usize, point: &[Fp3]) -> Fp3 {
     prefix
 }
 
-fn leaf(s: &Statement<'_>, coefficients: &[[Fp3; 256]], point: &[Fp3]) -> (Fp3, Fp3) {
+fn leaf(s: &Statement<'_>, coefficients: &[[Fp3; 256]], point: &[Fp3]) -> (Fp3, Fp3, usize) {
     let cells = s.cell_point.len();
     let gates = point.len() - 8;
-    let lane_eq = eq(&point[cells..gates]);
-    let gate_eq = eq(&point[gates..]);
+    let (lane_eq, lane_eq_peak) = eq_scaled_counted(&point[cells..gates], Fp3::ONE);
+    let (gate_eq, gate_eq_peak) = eq_scaled_counted(&point[gates..], Fp3::ONE);
+    let eq_capacity_peak_bytes =
+        lane_eq_peak.max(lane_eq.capacity() * core::mem::size_of::<Fp3>() + gate_eq_peak);
     let coefficient = coefficients.iter().zip(lane_eq).fold(Fp3::ZERO, |sum, (c, w)| {
         sum + w * c.iter().zip(&gate_eq).fold(Fp3::ZERO, |v, (&c, &r)| v + c * r)
     });
@@ -240,7 +268,7 @@ fn leaf(s: &Statement<'_>, coefficients: &[[Fp3; 256]], point: &[Fp3]) -> (Fp3, 
         .iter()
         .enumerate()
         .fold(Fp3::ZERO, |v, (i, &r)| v + signed(1 << (7 - i)) * r);
-    (live_mass(s.live_cells, &point[..cells]) * coefficient, index)
+    (live_mass(s.live_cells, &point[..cells]) * coefficient, index, eq_capacity_peak_bytes)
 }
 
 // The caller records every original function correction under its public
@@ -271,11 +299,13 @@ pub(super) fn prove_sourcewise(
     let row_values = correlations.by_ref().take(count).collect::<Vec<_>>();
     let row_capacity_bytes = row_values.capacity() * core::mem::size_of::<Auth>();
     let mut rows = row_values.into_iter();
-    let root = match original {
+    let (root, root_eq_capacity_peak_bytes) = match original {
         Original::Lanes(v) => {
-            v.iter().zip(eq(&lane_point)).fold(Auth::ZERO, |v, (&a, r)| v.add(a.scale(r)))
+            let (weights, peak) = eq_scaled_counted(&lane_point, Fp3::ONE);
+            let root = v.iter().zip(weights).fold(Auth::ZERO, |v, (&a, r)| v.add(a.scale(r)));
+            (root, peak)
         }
-        Original::Sum(a) => a.scale(signed(s.tables.len() as i64).inv()),
+        Original::Sum(a) => (a.scale(signed(s.tables.len() as i64).inv()), 0),
     };
     let c = coefficients(s.tables);
     let trees = ByteTrees::new(&c);
@@ -289,7 +319,8 @@ pub(super) fn prove_sourcewise(
         &mut rows,
         &mut triples,
     );
-    let (_, index) = leaf(s, &c, &point);
+    let (_, index, leaf_eq_capacity_peak_bytes) = leaf(s, &c, &point);
+    let leaf_point_capacity_bytes = point.capacity() * core::mem::size_of::<Fp3>();
     let leaf_tag = claims[0].m;
     record_values(fs, 0x61, &[leaf_tag]);
     let triples_capacity_bytes = triples.capacity() * core::mem::size_of::<[Auth; 3]>();
@@ -304,13 +335,21 @@ pub(super) fn prove_sourcewise(
     let bind_phase_owned_heap_peak_bytes = (bind_work.prefix_capacity_bytes
         + bind_work.point_capacity_bytes.max(bind_work.attempt_capacity_bytes))
     .max(bind_work.point_capacity_bytes + combined_point_capacity_bytes);
-    let tree_phase_owned_heap_peak_bytes = bind_work.point_capacity_bytes
+    let root_phase_owned_heap_peak_bytes = bind_work.point_capacity_bytes
+        + combined_point_capacity_bytes
         + row_capacity_bytes
-        + triples_capacity_bytes
-        + proof_capacity_bytes
-        + coefficient_capacity_bytes
-        + lut_capacity_bytes
-        + tree_work.owned_regeneration_heap_peak_bytes;
+        + root_eq_capacity_peak_bytes;
+    let tree_phase_owned_heap_peak_bytes = root_phase_owned_heap_peak_bytes.max(
+        bind_work.point_capacity_bytes
+            + row_capacity_bytes
+            + triples_capacity_bytes
+            + proof_capacity_bytes
+            + coefficient_capacity_bytes
+            + lut_capacity_bytes
+            + tree_work
+                .owned_regeneration_heap_peak_bytes
+                .max(leaf_point_capacity_bytes + leaf_eq_capacity_peak_bytes),
+    );
     let work = SourceWork {
         tree: tree_work,
         bind_prefix_capacity_bytes: bind_work.prefix_capacity_bytes,
@@ -321,6 +360,9 @@ pub(super) fn prove_sourcewise(
         row_capacity_bytes,
         triples_capacity_bytes,
         proof_capacity_bytes,
+        root_eq_capacity_peak_bytes,
+        leaf_eq_capacity_peak_bytes,
+        root_phase_owned_heap_peak_bytes,
         bind_phase_owned_heap_peak_bytes,
         tree_phase_owned_heap_peak_bytes,
         coefficient_capacity_bytes,
@@ -401,7 +443,7 @@ fn prove_dense(
     let mut triples = Vec::new();
     let (layers, mut point, claims) =
         range::prove_tree(&tree, point, [root, Auth::ZERO], fs, &mut rows, &mut triples);
-    let (_, index) = leaf(s, &c, &point);
+    let (_, index, _) = leaf(s, &c, &point);
     let leaf_tag = claims[0].m;
     record_values(fs, 0x61, &[leaf_tag]);
     let products = range::prove_products(&triples, rows.next().unwrap(), fs);
@@ -445,7 +487,7 @@ pub(super) fn verify(
         &mut rows,
         &mut triples,
     )?;
-    let (coefficient, index) = leaf(s, &coefficients(s.tables), &point);
+    let (coefficient, index, _) = leaf(s, &coefficients(s.tables), &point);
     if claims[0].k - delta * coefficient != proof.leaf_tag {
         return Err("B12 byte-function public leaf MAC rejected".into());
     }
@@ -541,6 +583,15 @@ mod tests {
             .unwrap();
             assert_eq!(source_work.lut_nodes, tables.len() * 256 * BYTE_TREE_NODES);
             assert!(source_work.tree.getter_calls > 0);
+            assert!(
+                source_work.root_eq_capacity_peak_bytes
+                    > tables.len() * core::mem::size_of::<Fp3>()
+            );
+            assert!(source_work.leaf_eq_capacity_peak_bytes > 256 * core::mem::size_of::<Fp3>());
+            assert!(
+                source_work.tree_phase_owned_heap_peak_bytes
+                    >= source_work.root_phase_owned_heap_peak_bytes
+            );
             if fault == 0 {
                 println!("C71_BYTE_SOURCE_WORK {}", serde_json::json!(source_work));
                 let mut dense_fs = start();

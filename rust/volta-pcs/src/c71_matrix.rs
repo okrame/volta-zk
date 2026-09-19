@@ -4,43 +4,45 @@ mod codec;
 #[cfg(feature = "c71-b12-pcs")]
 #[macro_use]
 mod wire;
+#[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)]
+// Raw attention component; source, integer and KV-history closures stay explicit.
+mod attention;
+#[cfg(feature = "c71-b12-pcs")]
+mod b12;
+#[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)]
+// Public byte functions; returned original source MAC still needs the shared PCS.
+mod byte_function;
 mod census;
 mod diagnostic;
 #[cfg(feature = "c71-b12-pcs")]
-mod b12;
+#[allow(dead_code)] // Native pinned W layout and P0 routes; full Gemma runtime remains open.
+mod gemma;
 #[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // Internal component seam; no admitted Gemma runner yet.
 mod linear;
 #[cfg(feature = "c71-b12-pcs")]
-#[allow(dead_code)] // Internal same-W range caller, no full Gemma runner.
-mod range;
-#[cfg(feature = "c71-b12-pcs")]
-#[allow(dead_code)] // Public byte functions; returned original source MAC still needs the shared PCS.
-mod byte_function;
-#[cfg(feature = "c71-b12-pcs")]
-#[allow(dead_code)] // RNE component; full Gemma producer and source routing remain explicit.
-mod rne;
-#[cfg(feature = "c71-b12-pcs")]
-#[allow(dead_code)] // Exact RMS GKR component; canonical P/S/Y producer routes remain explicit.
-mod rms;
-#[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // Lookup component; canonical histogram and producer routes remain explicit.
 mod lookup;
-#[cfg(feature = "c71-b12-pcs")]
-#[allow(dead_code)] // Joint Q30 RoPE; original raw/Y source closures remain explicit.
-mod rope;
-#[cfg(feature = "c71-b12-pcs")]
-#[allow(dead_code)] // Raw attention component; source, integer and KV-history closures stay explicit.
-mod attention;
 #[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // P0 caller; input/output openings remain explicit.
 mod p0;
 #[cfg(feature = "c71-b12-pcs")]
-#[allow(dead_code)] // Native pinned W layout and P0 routes; full Gemma runtime remains open.
-mod gemma;
-pub use diagnostic::{preflight, run};
+#[allow(dead_code)] // Internal same-W range caller, no full Gemma runner.
+mod range;
+#[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // Exact RMS GKR component; canonical P/S/Y producer routes remain explicit.
+mod rms;
+#[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // RNE component; full Gemma producer and source routing remain explicit.
+mod rne;
+#[cfg(feature = "c71-b12-pcs")]
+#[allow(dead_code)] // Joint Q30 RoPE; original raw/Y source closures remain explicit.
+mod rope;
 #[cfg(feature = "c71-work-census")]
 pub use census::self_check;
+pub use diagnostic::{preflight, run};
 
 use crate::c61_whir_reference::C61Commitment;
 #[cfg(not(feature = "c71-b12-pcs"))]
@@ -72,9 +74,9 @@ use p3_whir_c61::pcs::zk::{
 use p3_whir_c61::pcs::zk::{ZkParameters, ZkWhirConfig};
 use p3_whir_c61::{FoldingFactor, ProtocolParameters, SecurityAssumption};
 use rand::RngCore;
-use rand_010::SeedableRng;
 #[cfg(not(feature = "c71-b12-pcs"))]
 use rand_010::rngs::StdRng;
+use rand_010::SeedableRng;
 use volta_field::{Fp, Fp3};
 use volta_mac::c7_fp3::{
     c7_fp3_product_batch_prover, c7_fp3_product_batch_verify, c7_fp3_transfer_prover,
@@ -521,11 +523,19 @@ fn eq(point: &[Fp3]) -> Vec<Fp3> {
 }
 
 fn eq_scaled(point: &[Fp3], scale: Fp3) -> Vec<Fp3> {
+    eq_scaled_counted(point, scale).0
+}
+
+fn eq_scaled_counted(point: &[Fp3], scale: Fp3) -> (Vec<Fp3>, usize) {
     let mut weights = vec![scale];
+    let mut capacity_peak_bytes = weights.capacity() * core::mem::size_of::<Fp3>();
     for &r in point {
-        weights = weights.into_iter().flat_map(|x| [x * (Fp3::ONE - r), x * r]).collect();
+        let next: Vec<_> = weights.iter().flat_map(|&x| [x * (Fp3::ONE - r), x * r]).collect();
+        capacity_peak_bytes = capacity_peak_bytes
+            .max((weights.capacity() + next.capacity()) * core::mem::size_of::<Fp3>());
+        weights = next;
     }
-    weights
+    (weights, capacity_peak_bytes)
 }
 
 #[derive(Clone)]
@@ -714,7 +724,8 @@ impl AttemptContext {
             && self.nonce != [0; 32]
     }
     fn encode(self) -> Vec<u8> {
-        let mut bytes = vec![u8::from(self.predecessor != [0; 32]), self.slot];
+        let mut bytes = Vec::with_capacity(130);
+        bytes.extend([u8::from(self.predecessor != [0; 32]), self.slot]);
         bytes.extend_from_slice(&self.session);
         bytes.extend_from_slice(&self.capacity);
         bytes.extend_from_slice(&self.predecessor);
@@ -810,7 +821,12 @@ fn gamma(c: &ZkWhirConfig<E, Goldilocks, Fs>) -> Vec<u8> {
 }
 
 fn record_values(fs: &mut Fs, kind: u16, values: &[Fp3]) {
-    fs.record(kind, &values.iter().flat_map(|x| x.to_bytes()).collect::<Vec<_>>());
+    let length = values.len().checked_mul(24).expect("C71 field frame length overflow");
+    fs.record_stream(kind, length, |update| {
+        for value in values {
+            update(&value.to_bytes());
+        }
+    });
 }
 
 // Shared blind product sumcheck: matrix and arbitrary public linear forms
@@ -957,9 +973,7 @@ fn verify_pcs(
     // Verification never commits or uses this dummy salt RNG.
     let mmcs = ObservedMmcs::new(fs.clone(), [0; 32]);
     let verifier = HidingWhirVerifier::new(config, &mmcs);
-    let checked = verifier
-        .verify_claimless(pcs, root, &[point], fs)
-        .map_err(|e| e.to_string())?;
+    let checked = verifier.verify_claimless(pcs, root, &[point], fs).map_err(|e| e.to_string())?;
     let key = mask.k
         + delta * from_p3(checked.base_case.combined - checked.base_case.shifted_masked_claim)
         - from_p3(checked.base_case.gamma)
@@ -1014,8 +1028,7 @@ fn matrix_prove(
     }
     let mut b: Vec<_> = input.iter().map(|&x| signed(x as i64)).collect();
     b.resize(side, Fp3::ZERO);
-    let (rounds, col_point, target, a, b) =
-        prove_product(a, b, target, &mut fs, &mut reserved);
+    let (rounds, col_point, target, a, b) = prove_product(a, b, target, &mut fs, &mut reserved);
     fs.set_phase(0x100);
     let (correction, terminal) = c7_fp3_transfer_prover(reserved.next().unwrap(), a);
     let terminal_wire = [correction.value(), target.m - b * terminal.m];
@@ -1060,8 +1073,7 @@ fn matrix_verify(
     let target = Key::new(delta * public_sum);
     let mut b: Vec<_> = input.iter().map(|&x| signed(x as i64)).collect();
     b.resize(1 << h, Fp3::ZERO);
-    let (target, col_point) =
-        verify_product(&proof.rounds, target, delta, &mut fs, &mut reserved)?;
+    let (target, col_point) = verify_product(&proof.rounds, target, delta, &mut fs, &mut reserved)?;
     for &r in &col_point {
         fold(&mut b, r);
     }
@@ -1100,6 +1112,14 @@ mod tests {
             }
         });
         assert_eq!(streamed.digest(), contiguous.digest());
+        for count in [0, 1, 8, 257] {
+            let values: Vec<_> =
+                (0..count).map(|i| Fp3::new(Fp::new(i), Fp::ONE, Fp::ZERO)).collect();
+            let bytes: Vec<_> = values.iter().flat_map(|x| x.to_bytes()).collect();
+            contiguous.record(0x81, &bytes);
+            record_values(&mut streamed, 0x81, &values);
+            assert_eq!(streamed.digest(), contiguous.digest());
+        }
     }
 
     #[test]

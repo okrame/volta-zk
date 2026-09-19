@@ -450,14 +450,16 @@ pub(super) fn prove_tree_sourcewise(
     rows: &mut std::vec::IntoIter<Auth>,
     triples: &mut Vec<[Auth; 3]>,
 ) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2], SourceTreeWork) {
-    let mut layers = Vec::new();
+    let mut layers = Vec::with_capacity(bits);
+    triples.reserve_exact(3 * bits);
     let mut work = SourceTreeWork::default();
     let mut prefix_weights = Vec::with_capacity(point.len() + bits);
     for l in 0..bits {
         let lambda = fs.fp3();
         let mut target = claims[0].scale(lambda).add(claims[1]);
         let original = 1usize << point.len();
-        let (mut next_point, mut rounds) = (Vec::new(), Vec::new());
+        let (mut next_point, mut rounds) =
+            (Vec::with_capacity(point.len() + 1), Vec::with_capacity(point.len()));
         work.owned_regeneration_heap_peak_bytes = work
             .owned_regeneration_heap_peak_bytes
             .max(point.capacity() * core::mem::size_of::<Fp3>());

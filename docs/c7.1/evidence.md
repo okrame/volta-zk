@@ -957,3 +957,11 @@ fissi di 64 B per componente. Il controllo esaustivo dei ruoli a profondità
 bridge Fp6 o composizione MAC. Le [procedure](../procedures/build-and-test.md#replay-whir-e-codec-cggm-ridotti)
 conservano test piccoli e seriali. Nessun nuovo credito Lean o modifica
 a transcript, NoPeek, endpoint o trust model.
+
+Il [record immutabile del 2026-09-19](../../benchmarks/results/c71-sourcewise-2026-09-19-5afc54ceaac5.json)
+usa SHA pulita `5afc54ceaac5`, `git_dirty:false`: **16 test Rust e 19 Python**
+passati. Conserva build, hash dei binari, comandi/limiti e stdout, incluso
+il censimento per fase. Il picco durante l'apertura D10 comprende anche la
+prova di riferimento trattenuta; la fase codec comprende la normalizzazione
+JSON del solo test. Questi numeri non sono il picco GPU, né tempi completi
+C7.1. I gate di costruzione canonica e spesa restano aperti.

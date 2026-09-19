@@ -1,0 +1,155 @@
+{
+  "schema": "c71-local-sourcewise-refinement-v1",
+  "date": "2026-09-19",
+  "git_sha": "5afc54ceaac5e4aad90c663eaa85a8779343ace2",
+  "git_dirty": false,
+  "credit": false,
+  "scope": "bounded CPU WHIR D10 and cGGM codecs; no GPU/canonical construction admission",
+  "limits": {
+    "rayon_threads": 1,
+    "test_threads": 1,
+    "timeout_seconds_each": 60,
+    "address_space_bytes": 2147483648
+  },
+  "builds": {
+    "target": "rust/target",
+    "incremental": false,
+    "dev_debug": 0,
+    "dev_opt_level": 2,
+    "jobs": 1,
+    "offline": true,
+    "locked": true,
+    "pcs_log": "   Compiling volta-pcg v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-pcg)\n   Compiling volta-mac v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-mac)\n   Compiling volta-proto v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-proto)\nwarning: function `cache_fold_rows_values` is never used\n    --> volta-proto/src/block_proof.rs:2209:4\n     |\n2209 | fn cache_fold_rows_values(segs: &[CacheSegP], wr: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {\n     |    ^^^^^^^^^^^^^^^^^^^^^^\n     |\n     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: function `cache_fold_cols_values` is never used\n    --> volta-proto/src/block_proof.rs:2264:4\n     |\n2264 | fn cache_fold_cols_values(segs: &[CacheSegP], wc: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {\n     |    ^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: `volta-proto` (lib) generated 2 warnings\n   Compiling volta-pcs v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-pcs)\nwarning: unused import: `volta_mac::CorrelationStream`\n    --> volta-pcs/src/c63_authenticated_sketch.rs:2169:9\n     |\n2169 |     use volta_mac::CorrelationStream;\n     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n     |\n     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: unused imports: `C6_PERSISTENT_CACHE_CAPACITY_TOKENS`, `C6_PERSISTENT_CACHE_LAYERS`, `C6_PERSISTENT_CACHE_PADDED_LAYERS`, `C6_PERSISTENT_CACHE_PADDED_WIDTH`, `C6_PERSISTENT_CACHE_SLOT_CAPACITY`, and `C6_PERSISTENT_CACHE_WIDTH`\n  --> volta-pcs/src/c6_persistent_cache_blind.rs:32:5\n   |\n32 |     C6_PERSISTENT_CACHE_CAPACITY_TOKENS, C6_PERSISTENT_CACHE_FOLD_CAPACITY,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n33 |     C6_PERSISTENT_CACHE_LAYERS, C6_PERSISTENT_CACHE_PADDED_LAYERS,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n34 |     C6_PERSISTENT_CACHE_PADDED_WIDTH, C6_PERSISTENT_CACHE_SLOT_CAPACITY, C6_PERSISTENT_CACHE_WIDTH,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c63_direct_source_domain_offsets` is never used\n   --> volta-pcs/src/c63_authenticated_sketch.rs:568:15\n    |\n568 | pub(crate) fn c63_direct_source_domain_offsets(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: function `c63_correction_rows_opening_from_resident_parts` is never used\n    --> volta-pcs/src/c63_authenticated_sketch.rs:1336:15\n     |\n1336 | pub(crate) fn c63_correction_rows_opening_from_resident_parts(\n     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `fold_c64_terminal_pending_prover` is never used\n  --> volta-pcs/src/c64_joint_residual_sketch.rs:40:15\n   |\n40 | pub(crate) fn fold_c64_terminal_pending_prover(\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `fold_c64_terminal_pending_verifier` is never used\n  --> volta-pcs/src/c64_joint_residual_sketch.rs:64:15\n   |\n64 | pub(crate) fn fold_c64_terminal_pending_verifier(\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `fold_c64_projected_pending_prover` is never used\n  --> volta-pcs/src/c64_joint_residual_sketch.rs:88:15\n   |\n88 | pub(crate) fn fold_c64_projected_pending_prover(\n   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `fold_c64_projected_pending_verifier` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:119:15\n    |\n119 | pub(crate) fn fold_c64_projected_pending_verifier(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_correction_pending_prover` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:150:15\n    |\n150 | pub(crate) fn c64_correction_pending_prover(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_correction_pending_verifier` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:160:15\n    |\n160 | pub(crate) fn c64_correction_pending_verifier(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_projected_pending_digest` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:170:15\n    |\n170 | pub(crate) fn c64_projected_pending_digest(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_projected_pending_digest_verifier` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:189:15\n    |\n189 | pub(crate) fn c64_projected_pending_digest_verifier(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `validate_projected_terminal_entries` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:208:4\n    |\n208 | fn validate_projected_terminal_entries<'a>(\n    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `validate_and_digest_terminal_entries` is never used\n   --> volta-pcs/src/c64_joint_residual_sketch.rs:237:4\n    |\n237 | fn validate_and_digest_terminal_entries<'a>(\n    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `draw_c64_projected_residual_postclaim_challenges` is never used\n   --> volta-pcs/src/c64_projected_residual_suffix.rs:301:15\n    |\n301 | pub(crate) fn draw_c64_projected_residual_postclaim_challenges(\n    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_residual_auth_context` is never used\n   --> volta-pcs/src/c64_projected_residual_suffix.rs:679:4\n    |\n679 | fn c64_residual_auth_context(\n    |    ^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: function `c64_residual_limb_context` is never used\n   --> volta-pcs/src/c64_projected_residual_suffix.rs:878:4\n    |\n878 | fn c64_residual_limb_context(\n    |    ^^^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: method `finish_c62` is never used\n   --> volta-pcs/src/c61_whir_reference.rs:250:19\n    |\n139 | impl<'a> C61InteractiveChallenger<'a> {\n    | ------------------------------------- method in this implementation\n...\n250 |     pub(crate) fn finish_c62(&self, payload: &[u8]) -> ReferenceResult<C61WhirInteractionStats> {\n    |                   ^^^^^^^^^^\n\nwarning: associated function `for_test` is never used\n   --> volta-pcs/src/c6_authenticated_output_link.rs:309:19\n    |\n299 | impl C63ResidualSourceFunctionalsVerifiedLink {\n    | --------------------------------------------- associated function in this implementation\n...\n309 |     pub(crate) fn for_test(\n    |                   ^^^^^^^^\n\nwarning: methods `absorb_residual` and `absorb_persistent_cache` are never used\n    --> volta-pcs/src/c6_authenticated_output_link.rs:1342:19\n     |\n1332 | impl C61NativePendingSlotRegistryProverBuilder {\n     | ---------------------------------------------- methods in this implementation\n...\n1342 |     pub(crate) fn absorb_residual(\n     |                   ^^^^^^^^^^^^^^^\n...\n1349 |     pub(crate) fn absorb_persistent_cache(\n     |                   ^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: methods `absorb_residual` and `absorb_persistent_cache` are never used\n    --> volta-pcs/src/c6_authenticated_output_link.rs:1371:19\n     |\n1361 | impl C61NativePendingSlotRegistryVerifierBuilder {\n     | ------------------------------------------------ methods in this implementation\n...\n1371 |     pub(crate) fn absorb_residual(\n     |                   ^^^^^^^^^^^^^^^\n...\n1378 |     pub(crate) fn absorb_persistent_cache(\n     |                   ^^^^^^^^^^^^^^^^^^^^^^^\n\nwarning: method `absorb_residual` is never used\n    --> volta-pcs/src/c6_authenticated_output_link.rs:1400:19\n     |\n1390 | impl C63AuthenticatedSketchPendingSlotRegistryProverBuilder {\n     | ----------------------------------------------------------- method in this implementation\n...\n1400 |     pub(crate) fn absorb_residual(\n     |                   ^^^^^^^^^^^^^^^\n\nwarning: method `absorb_residual` is never used\n    --> volta-pcs/src/c6_authenticated_output_link.rs:1422:19\n     |\n1412 | impl C63AuthenticatedSketchPendingSlotRegistryVerifierBuilder {\n     | ------------------------------------------------------------- method in this implementation\n...\n1422 |     pub(crate) fn absorb_residual(\n     |                   ^^^^^^^^^^^^^^^\n\nwarning: associated function `scaled` is never used\n   --> volta-pcs/src/c6_live_wrapper.rs:175:8\n    |\n131 | impl<'a> C6LiveWrapperSources<'a> {\n    | --------------------------------- associated function in this implementation\n...\n175 |     fn scaled(\n    |        ^^^^^^\n\nwarning: `volta-pcs` (lib test) generated 24 warnings (run `cargo fix --lib -p volta-pcs --tests` to apply 2 suggestions)\n    Finished `test` profile [optimized] target(s) in 2m 54s\n  Executable unittests src/lib.rs (target/debug/deps/volta_pcs-75a7a8438ed5a22d)\n",
+    "pcg_log": "   Compiling volta-pcg v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-pcg)\n   Compiling volta-mac v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-mac)\n    Finished `test` profile [optimized] target(s) in 18.52s\n  Executable unittests src/lib.rs (target/debug/deps/volta_pcg-e9188784cdacb957)\n"
+  },
+  "binaries": [
+    {
+      "path": "rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+      "sha256": "6872a061ab1ae62912a9c32a36081d65147ab28781ff99b2753cc8d869a83473"
+    },
+    {
+      "path": "rust/target/debug/deps/volta_pcg-e9188784cdacb957",
+      "sha256": "235dd0950782c3f83421044cc1362de05d10232c185e7daef47ad9413294885d"
+    }
+  ],
+  "rust_passed": 16,
+  "rust_runs": [
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_sourcewise_adaptive",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "returncode": 0,
+      "seconds": 0.008755489019677043,
+      "passed": 1,
+      "stdout": "\nrunning 1 test\ntest c71_matrix::b12::sourcewise::tests::c71_b12_sourcewise_adaptive_rounds_match_dense_and_forbid_fallbacks ... sourcewise dimension=10 first=1 original_reads=12288 named_final_bytes=816\nsourcewise dimension=12 first=7 original_reads=32768 named_final_bytes=864\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 386 filtered out; finished in 0.01s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "b12::replay",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "returncode": 0,
+      "seconds": 1.7817826210521162,
+      "passed": 4,
+      "stdout": "\nrunning 4 tests\ntest c71_matrix::b12::replay::tests::c71_b12_full_sourcewise_chain_matches_native_bytes ... sourcewise D10 canonical_bytes=2277848\nsourcewise_allocator={\"coverage_instrumented\":false,\"expanded_array_DRAM_read_bytes\":null,\"expanded_array_DRAM_write_bytes\":null,\"heap_kind\":\"requested allocator layouts including reallocations; not memory-access traffic\",\"phases\":[{\"heap_allocated_bytes\":100632792,\"heap_freed_bytes\":96484648,\"heap_live_end_bytes\":4168541,\"heap_live_start_bytes\":20397,\"heap_peak_requested_bytes\":51175981,\"index\":0,\"name\":\"initialization\",\"rss_end_bytes\":26324992,\"rss_peak_bytes\":58630144,\"seconds\":0.498065603},{\"heap_allocated_bytes\":1791840,\"heap_freed_bytes\":1745912,\"heap_live_end_bytes\":4215387,\"heap_live_start_bytes\":4169459,\"heap_peak_requested_bytes\":4278171,\"index\":1,\"name\":\"sourcewise_initial_commit\",\"rss_end_bytes\":26456064,\"rss_peak_bytes\":26456064,\"seconds\":0.017711937},{\"heap_allocated_bytes\":101237744,\"heap_freed_bytes\":97485176,\"heap_live_end_bytes\":7968756,\"heap_live_start_bytes\":4216188,\"heap_peak_requested_bytes\":53439076,\"index\":2,\"name\":\"sourcewise_open_all_rounds\",\"rss_end_bytes\":61198336,\"rss_peak_bytes\":61198336,\"seconds\":0.99530273},{\"heap_allocated_bytes\":198842902,\"heap_freed_bytes\":195695222,\"heap_live_end_bytes\":11117238,\"heap_live_start_bytes\":7969558,\"heap_peak_requested_bytes\":79370963,\"index\":3,\"name\":\"codec_and_native_verifier\",\"rss_end_bytes\":91316224,\"rss_peak_bytes\":91316224,\"seconds\":0.262697492}],\"physical_traffic_admission_bound\":\"infinity\",\"rss_kind\":\"Linux VmHWM reset each phase; same process contains both roles\"}\nok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_matches_native_root_rows_salts_and_pruned_frontier ... ok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_respects_mmcs_clone_fork ... ok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_uses_live_rng_cursor_and_rejects_bad_shapes ... ok\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 383 filtered out; finished in 1.78s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "b12::streaming",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "returncode": 0,
+      "seconds": 0.003986740950495005,
+      "passed": 3,
+      "stdout": "\nrunning 3 tests\ntest c71_matrix::b12::streaming::tests::c71_b12_streaming_hash_matches_native_salts_roots_and_seek ... stream_hash columns=4 rows=16 work=HashWork { field_reads: 64, digest_word_writes: 64, salt_candidate_bytes: 512, hash_input_bytes: 1536, blake3_compressions: 32 } hasher_state=1920 rng_state=128\nstream_hash columns=7 rows=16 work=HashWork { field_reads: 112, digest_word_writes: 64, salt_candidate_bytes: 512, hash_input_bytes: 1920, blake3_compressions: 32 } hasher_state=1920 rng_state=128\nstream_hash columns=128 rows=16 work=HashWork { field_reads: 2048, digest_word_writes: 64, salt_candidate_bytes: 512, hash_input_bytes: 17408, blake3_compressions: 288 } hasher_state=1920 rng_state=128\nstream_hash columns=384 rows=16 work=HashWork { field_reads: 6144, digest_word_writes: 64, salt_candidate_bytes: 512, hash_input_bytes: 50176, blake3_compressions: 832 } hasher_state=1920 rng_state=128\nok\ntest c71_matrix::b12::streaming::tests::c71_b12_streaming_sampler_rejection_consumes_variable_offsets ... ok\ntest c71_matrix::b12::streaming::tests::c71_b12_streaming_strided_cosets_match_native_root ... strided_hash height=128 cosets=8 prescan_bytes=4096 replay_bytes=4096 frontier_bytes=1536 offsets_bytes=256\nok\n\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 384 filtered out; finished in 0.00s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_composed",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "returncode": 0,
+      "seconds": 14.879271404119208,
+      "passed": 1,
+      "stdout": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_composed_three_attempts_close_one_fs_and_promote_same_w_kv ... native slot=0, certificate=7745737 bytes, base_cursor=264147\nnative slot=1, certificate=10936887 bytes, base_cursor=529833\nnative slot=2, certificate=14132769 bytes, base_cursor=797139\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 386 filtered out; finished in 14.88s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_certificate",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "returncode": 0,
+      "seconds": 4.77375041693449,
+      "passed": 1,
+      "stdout": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_certificate_rejects_order_cardinality_framing_and_noncanonical_fields ... native composed rejection: composed component order/cardinality mismatch\nnative composed rejection: composed component order/cardinality mismatch\nnative composed rejection: composed component order/cardinality mismatch\nnative composed rejection: component trailing bytes\nnative composed rejection: composed completion framing mismatch\nnative composed rejection: certificate vector exceeds remaining frame\nnative composed rejection: Fp3 limb 0 is not canonical\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 386 filtered out; finished in 4.77s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_canonical_pcs_codec",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "returncode": 0,
+      "seconds": 0.14592483383603394,
+      "passed": 1,
+      "stdout": "\nrunning 1 test\ntest c71_matrix::codec::tests::c71_b12_canonical_pcs_codec_geometry_and_byte_cap ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 386 filtered out; finished in 0.14s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "fp3_fs_replays_native_whir",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "returncode": 0,
+      "seconds": 0.9185773050412536,
+      "passed": 1,
+      "stdout": "\nrunning 1 test\ntest c71_matrix::tests::fp3_fs_replays_native_whir_and_rejects_changes ... \nthread 'c71_matrix::tests::fp3_fs_replays_native_whir_and_rejects_changes' (26) panicked at volta-pcs/src/c71_matrix.rs:190:9:\nC71FS request reservation exhausted\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 386 filtered out; finished in 0.92s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-e9188784cdacb957",
+        "c71_ea_lpn::tests",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "returncode": 0,
+      "seconds": 0.18617090419866145,
+      "passed": 4,
+      "stdout": "\nrunning 4 tests\ntest c71_ea_lpn::tests::cggm_h_matches_python_reference_vectors ... ok\ntest c71_ea_lpn::tests::codecs_fail_closed_on_bad_shapes ... ok\ntest c71_ea_lpn::tests::ea_row_is_deterministic_distinct_nonzero_and_domain_separated ... ok\ntest c71_ea_lpn::tests::punctured_accumulation_matches_original_coin_tree ... ok\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 62 filtered out; finished in 0.18s\n\n"
+    }
+  ],
+  "python": {
+    "command": [
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_c71_pcg_trace.py",
+      "tests/test_c71_whir_trace.py",
+      "tests/test_c71_ordered_getter.py"
+    ],
+    "stdout": "...................                                                      [100%]\n19 passed in 2.45s\n"
+  },
+  "complete_response_metrics_measured": false,
+  "canonical_peak_complete": false,
+  "H100_ready": false,
+  "remaining": [
+    "ordered A/KV connection to sourcewise proof",
+    "canonical fast PCS/remainder and full physical arena",
+    "selected OT384/Seed6 role-swap/guard/cGGM consumption",
+    "producer GKR/inference complete work and integrated liveness"
+  ]
+}

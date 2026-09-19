@@ -175,6 +175,31 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                  'free':['RMS:original_PYS','RMS:byte_LUT','RMS:byte_coefficients',
                          'RMS:byte_prefix_weights']}]
 
+            # Maximum layers descend in public order. Drop each checkpoint
+            # before allocating the next; the original D getter stays live.
+            maximum=response.maximum_source_trace(old)
+            events=[{'event':'build_EXP30_original_cuts','allocate':{'getter:cuts':cuts}},
+                {'event':'EXP30_maximum_prefix_weights','allocate':{
+                    'EXP30:maximum_weights':maximum['source_tree_work']['max_prefix_weight_payload_bytes']}}]
+            for layer in maximum['layers']:
+                events.append({'event':f"EXP30_maximum_layer_{layer['layer']}",
+                    'allocate':{'EXP30:maximum_checkpoint':layer['checkpoint_capacity_bytes']}})
+                events.append({'event':f"EXP30_maximum_layer_{layer['layer']}_last_consumer_fence",
+                    'free':['EXP30:maximum_checkpoint']})
+            events.append({'event':'EXP30_maximum_before_lookup_and_ratio',
+                'free':['EXP30:maximum_weights']})
+            endpoint=gkr.byte_source_trace(maximum['row_bits']+maximum['key_bits']+4,16)
+            events.append({'event':'EXP30_ratio_original_byte_obligation',
+                'allocate':{'EXP30:byte_LUT':endpoint['lut_capacity_bytes'],
+                    'EXP30:byte_coefficients':16*256*24,
+                    'EXP30:byte_prefix_weights':endpoint['max_prefix_weight_payload_bytes']},
+                'unknown':['lookup dense domain/tree must be replaced',
+                           'programs/proof/correlations and complete GKR workspace']})
+            events.append({'event':'EXP30_last_original_byte_consumer_fence',
+                'free':['getter:cuts','EXP30:byte_LUT','EXP30:byte_coefficients',
+                        'EXP30:byte_prefix_weights']})
+            chains['EXP30_maximum_original_bytes']=events
+
         layouts={}
         for name,events in chains.items():
             stripped=[dict(e,allocate={k:v for k,v in e.get('allocate',{}).items() if not k.startswith('shared:')},

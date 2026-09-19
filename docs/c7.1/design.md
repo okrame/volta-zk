@@ -1034,10 +1034,13 @@ con valori di campo; i controlli del transcript rimangono gli stessi.
 Il ledger distingue rigenerazione, campo, getter e memoria; il fixture
 pubblico a scale zero non è un profilo calibrato. Il percorso scalare
 ridotto non ammette il canonico né chiude il workspace fisico completo.
-Il caller EXP30 mantiene ancora un massimo denso da 12.859.736.064 B a
-O=0 e 25.744.637.952 B a O=150/300: quel backend è NO-GO per arena.
-Serve sostituirlo mantenendo la medesima prova, oltre al census GKR;
-un getter nel solo GKR non risolve il massimo.
+Il [caller EXP30](preflight.md#exp30-massimo-con-un-solo-checkpoint) sostituisce
+il massimo denso da 12,86/25,74 GB con un livello alla volta da
+536.870.912 / 1.073.741.824 B; le assegnazioni sono lookup anche nel verifier.
+Rilascia il checkpoint prima di lookup/GKR e conserva byte, ordine MSB e
+endpoint del massimo. Il ledger conta le nuove scansioni D e il sumcheck.
+Input/current/next del replay GKR sono riusati e liberati prima della LUT
+byte; restano census di programmi/prove/correlazioni e allocator completi.
 I probe CUDA standalone non danno lower al futuro kernel fuso e il vecchio
 risparmio LSB-first non si applica al transcript MSB. Nessun nuovo lemma
 Lean, variazione del trust o credito NoPeek deriva da questi controlli finiti.

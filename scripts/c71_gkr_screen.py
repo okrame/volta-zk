@@ -256,17 +256,13 @@ def ratio_factored_arithmetic(native, old):
     return factored_arithmetic(ops, native['depth']*pairs)
 
 
-def byte_source_trace(view_bits, lanes):
-    """MSB regeneration with shared prefix weights and a four-child getter.
-
-    Count source expressions, never infer HBM transactions or a service rate.
-    The fixed LUT replaces a domain-sized tree without reducing regeneration.
-    """
-    if lanes not in (1, 2, 4, 8, 16) or not lanes.bit_length()-1 <= view_bits <= 34:
-        raise ValueError('byte source geometry')
+def source_tree_trace(view_bits, bits):
+    """Exact sourcewise tree arithmetic, independent of its original getter."""
+    if view_bits < 0 or bits < 0 or view_bits+bits > 42:
+        raise ValueError('source tree geometry')
     totals = Counter()
     layers = []
-    for layer in range(8):
+    for layer in range(bits):
         d = view_bits + layer
         n = 1 << d
         eq_mul = eq_add = eq_sub = 0
@@ -292,10 +288,22 @@ def byte_source_trace(view_bits, lanes):
             fold_additions=4*calls, fold_subtractions=0)
         totals.update(item)
         layers.append(dict(layer=layer, dimensions=d, **item))
-    return dict(credit=False, view_bits=view_bits, lanes=lanes, layers=layers,
+    return dict(layers=layers, counted_work=dict(totals),
+                max_prefix_weight_payload_bytes=24*(view_bits+bits))
+
+
+def byte_source_trace(view_bits, lanes):
+    """MSB regeneration with shared prefix weights and a four-child getter.
+
+    Count source expressions, never infer HBM transactions or a service rate.
+    The fixed LUT replaces a domain-sized tree without reducing regeneration.
+    """
+    if lanes not in (1, 2, 4, 8, 16) or not lanes.bit_length()-1 <= view_bits <= 34:
+        raise ValueError('byte source geometry')
+    tree = source_tree_trace(view_bits, 8)
+    return dict(credit=False, view_bits=view_bits, lanes=lanes, **tree,
         getter_returns_four_children=True,
-        max_prefix_weight_payload_bytes=24*(view_bits+8),
-        counted_work=dict(totals), lut_nodes=lanes*256*511,
+        lut_nodes=lanes*256*511,
         lut_capacity_bytes=lanes*256*511*48,
         lut_build_multiplications=3*lanes*256*255,
         lut_build_additions=lanes*256*255,

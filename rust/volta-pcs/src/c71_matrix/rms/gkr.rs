@@ -6,7 +6,7 @@ use super::super::*;
 
 component_wire!(Layer { rounds, terminal });
 component_wire!(Proof { layers, products, functions });
-use super::{Circuit, Gate, Op};
+use super::{Circuit, Gate, Op, ReplayLayerScratch};
 
 #[derive(Clone, Copy)]
 pub(in super::super) enum Assignments<'a> {
@@ -367,8 +367,7 @@ pub(in super::super) fn work_census(
             * replay_repetitions;
         boolean_replay_gates += replay;
         let w = widths[d - 1] as u64;
-        let terminal_interpolations =
-            if c == 0 { 0 } else { w + programs.len() as u64 };
+        let terminal_interpolations = if c == 0 { 0 } else { w + programs.len() as u64 };
         layers.push(serde_json::json!({
                 "depth":d, "input_width":w, "output_width":widths[d],
                 "and":and, "xor":xor, "copy":copy,
@@ -408,7 +407,7 @@ pub(in super::super) fn work_census(
             p.levels.iter().map(|l| l.capacity()*core::mem::size_of::<Gate>()).sum::<usize>()
         ).sum::<usize>(),
         "selected_Boolean_replay_two_vectors_payload_upper_bytes":programs.iter().map(|p|
-            p.levels.iter().enumerate().map(|(d,l)| 8*(l.len()+if d==0 {p.ports} else {p.levels[d-1].len()})).max().unwrap_or(8*p.ports)
+            16*std::iter::once(p.ports).chain(p.levels.iter().map(Vec::len)).max().unwrap()
         ).max().unwrap_or(0),
         "dense_assignment_bytes":n*std::mem::size_of::<Option<usize>>() as u64,
         "dense_selector_bytes":n*programs.len() as u64*24,
@@ -431,7 +430,9 @@ pub(in super::super) fn work_census(
         "selector_specialization_saved_callbacks":(programs.len() as u64-1)*n*c*depth as u64,
         "selector_specialization_saved_Fp3_mul_add_each":
             (programs.len() as u64*n-live)*c*depth as u64,
-        "compiler_constant_folding_or_Boolean_specialization_credit":false,
+        "compiler_constant_folding_credit":false,
+        "explicit_Boolean_fold_masks_implemented":true,
+        "replay_scratch_reused_and_released_before_byte_LUT":true,
         "canonical_calibrated_profile":false, "complete_work":false,
         "complete_physical_peak":false, "layers":layers,
     }))
@@ -811,7 +812,7 @@ fn prove_impl(
     correlations: &mut std::vec::IntoIter<Auth>,
     sourcewise: bool,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
 
     let widths = s.geometry()?;
     let count = s.required()?;
@@ -861,6 +862,7 @@ fn prove_impl(
     let replay_copy = Cell::new(0u64);
     let replay_heap = Cell::new(0usize);
     let replay_input_heap = Cell::new(0usize);
+    let replay_scratch = RefCell::new(ReplayLayerScratch::default());
     let selector_zero_bits: u64 = s
         .assignments
         .iter()
@@ -881,25 +883,24 @@ fn prove_impl(
                 let p = s.assignments.get(cell).ok_or("dummy RMS cell replayed")?;
                 let program = &s.programs[p];
                 let frame = read_frame(cell);
-                let mut inputs = vec![0u64; program.ports];
-                inputs[1] = 1;
-                for bit in 0..program.ports - 2 {
-                    inputs[2 + bit] = u64::from((frame[bit / 8] >> (bit % 8)) & 1);
+                let mut scratch = replay_scratch.borrow_mut();
+                {
+                    let inputs = scratch.inputs(program.ports);
+                    inputs[1] = 1;
+                    for bit in 0..program.ports - 2 {
+                        inputs[2 + bit] = u64::from((frame[bit / 8] >> (bit % 8)) & 1);
+                    }
                 }
-                replay_input_heap.set(
-                    replay_input_heap
-                        .get()
-                        .max(inputs.capacity() * core::mem::size_of::<u64>()),
-                );
                 let selected = (depth - 1).min(program.levels.len());
-                let (layer, replay) = program.replay_layer(&inputs, 1, selected)?;
+                let replay = program.replay_layer_reuse(&mut scratch, 1, selected)?;
                 replay_calls.set(replay_calls.get() + 1);
                 replay_and.set(replay_and.get() + replay.and_gates);
                 replay_xor.set(replay_xor.get() + replay.xor_gates);
                 replay_copy.set(replay_copy.get() + replay.copy_gates);
                 replay_heap.set(replay_heap.get().max(replay.peak_two_vector_capacity_bytes));
+                replay_input_heap.set(replay_input_heap.get().max(scratch.input_capacity_bytes()));
                 out.fill(Fp3::ZERO);
-                for (value, bit) in out.iter_mut().zip(layer) {
+                for (value, bit) in out.iter_mut().zip(scratch.selected().iter().copied()) {
                     *value = signed(bit as i64);
                 }
                 Ok(())
@@ -913,10 +914,9 @@ fn prove_impl(
                 let mut selectors = vec![Fp3::ZERO; s.programs.len()];
                 let (program, value) = selector(0)?.ok_or("RMS single cell is padding")?;
                 selectors[program] = value;
-                source_work.cell_phase_owned_heap_peak_bytes =
-                    source_work.cell_phase_owned_heap_peak_bytes.max(
-                        (values.capacity() + selectors.capacity()) * core::mem::size_of::<Fp3>(),
-                    );
+                source_work.cell_phase_owned_heap_peak_bytes = source_work
+                    .cell_phase_owned_heap_peak_bytes
+                    .max((values.capacity() + selectors.capacity()) * core::mem::size_of::<Fp3>());
                 Some((values, selectors))
             } else {
                 None
@@ -1041,6 +1041,7 @@ fn prove_impl(
         triples.push(original);
         layers.push(Layer { rounds, terminal });
     }
+    drop(replay_scratch); // Last Boolean consumer precedes the byte LUT allocation.
     let products = range::prove_products(&triples, rows.next().unwrap(), fs);
     let live = if sourcewise { s.live_sourcewise(&point) } else { s.live(&point) };
     let target = Auth::new(target.x - weights[1] * live, target.m);
@@ -1076,12 +1077,16 @@ fn prove_impl(
         source_work.cell_rounds.iter().map(|work| work.boolean_fold_masks).sum();
     source_work.boolean_replay_heap_peak_bytes = replay_heap.get();
     source_work.boolean_input_heap_peak_bytes = replay_input_heap.get();
-    source_work.cell_phase_owned_heap_peak_bytes =
-        source_work.cell_rounds.iter().map(|work| work.owned_heap_peak_bytes).max().unwrap_or(0)
-            .max(source_work.cell_phase_owned_heap_peak_bytes)
-            + source_work.boolean_replay_heap_peak_bytes
-            + source_work.boolean_input_heap_peak_bytes
-            + source_work.cell_rounds.capacity() * core::mem::size_of::<SourceCellWork>();
+    source_work.cell_phase_owned_heap_peak_bytes = source_work
+        .cell_rounds
+        .iter()
+        .map(|work| work.owned_heap_peak_bytes)
+        .max()
+        .unwrap_or(0)
+        .max(source_work.cell_phase_owned_heap_peak_bytes)
+        + source_work.boolean_replay_heap_peak_bytes
+        + source_work.boolean_input_heap_peak_bytes
+        + source_work.cell_rounds.capacity() * core::mem::size_of::<SourceCellWork>();
     source_work.original_frame_reads = frame_reads.get();
     source_work.byte_endpoint = byte_endpoint;
     if sourcewise {
@@ -1304,7 +1309,11 @@ mod tests {
                     .enumerate()
                     .map(
                         |(cell, assignment)| {
-                            if *assignment == Some(program) { equality[cell] } else { Fp3::ZERO }
+                            if *assignment == Some(program) {
+                                equality[cell]
+                            } else {
+                                Fp3::ZERO
+                            }
                         },
                     )
                     .collect()
@@ -1372,34 +1381,30 @@ mod tests {
         }
 
         let mut work = SourceCellWork::default();
-        assert!(
-            source_cell_coefficients::<false>(
-                statement.programs,
-                0,
-                width,
-                assignments.len(),
-                &[],
-                &|_, _| Ok(()),
-                &|_| Ok(None),
-                &weights,
-                &mut work,
-            )
-            .is_err()
-        );
-        assert!(
-            source_cell_coefficients::<false>(
-                statement.programs,
-                1,
-                width,
-                assignments.len(),
-                &[],
-                &|_, _| Ok(()),
-                &|_| Ok(None),
-                &weights[..1],
-                &mut work,
-            )
-            .is_err()
-        );
+        assert!(source_cell_coefficients::<false>(
+            statement.programs,
+            0,
+            width,
+            assignments.len(),
+            &[],
+            &|_, _| Ok(()),
+            &|_| Ok(None),
+            &weights,
+            &mut work,
+        )
+        .is_err());
+        assert!(source_cell_coefficients::<false>(
+            statement.programs,
+            1,
+            width,
+            assignments.len(),
+            &[],
+            &|_, _| Ok(()),
+            &|_| Ok(None),
+            &weights[..1],
+            &mut work,
+        )
+        .is_err());
         let failure = source_cell_coefficients::<false>(
             statement.programs,
             1,
@@ -1753,11 +1758,7 @@ mod tests {
             assert_eq!(source_work.cell_rounds.len(), c * (widths.len() - 1));
             assert_eq!(
                 source_work.boolean_fold_masks,
-                source_work
-                    .cell_rounds
-                    .iter()
-                    .map(|work| work.value_source_scalars)
-                    .sum::<u64>()
+                source_work.cell_rounds.iter().map(|work| work.value_source_scalars).sum::<u64>()
             );
             if c == 0 {
                 let mut assigned = vec![0u64; programs.len()];
@@ -1838,10 +1839,14 @@ mod tests {
                 let mut changed = assignments.to_vec();
                 *changed.iter_mut().find(|p| **p == Some(256)).unwrap() = Some(0);
                 let altered = Statement { assignments: Assignments::dense(&changed), ..statement };
-                assert!(
-                    verify(&altered, &proof, delta, &mut start(), &mut keys.clone().into_iter())
-                        .is_err()
-                );
+                assert!(verify(
+                    &altered,
+                    &proof,
+                    delta,
+                    &mut start(),
+                    &mut keys.clone().into_iter()
+                )
+                .is_err());
             }
             let (range_proof, forms, targets) = range::prove(
                 &model,

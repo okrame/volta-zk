@@ -10,6 +10,7 @@ use crate::c71_matrix::{
     byte_function, lookup, range, record_values, rms as circuit, signed, Auth, Fs, Key,
 };
 use circuit::gkr;
+use volta_field::Fp;
 
 pub(in crate::c71_matrix) struct Layer {
     pub score: usize,
@@ -28,6 +29,113 @@ mod tests {
         from_p3, gamma, linear, matrix_config, AttemptContext, C61Commitment, MatrixRng, Model, E,
     };
     use rand_010::{RngExt, SeedableRng};
+
+    #[test]
+    fn maximum_checkpoint_and_source_tree_match_dense_transcript() {
+        let sm = Softmax {
+            layers: vec![Layer {
+                score: 0,
+                pi: 0,
+                maximum: 0,
+                difference: 0,
+                exponential: 0,
+                denominator: 0,
+                histogram: 0,
+            }],
+            heads: 1,
+            queries: 3,
+            old: 1,
+        };
+        let q = [[-1i32, 0, 2, 5], [7, 0, 3, 1], [9, 4, 0, 6], [1; 4]];
+        let read = |_: usize, row: usize, key: usize, byte: usize| {
+            let encoded = ((q[row][key] - 32767) as i16).to_le_bytes();
+            encoded[byte] ^ if byte == 1 { 128 } else { 0 }
+        };
+        let domain = 1usize << (sm.row_bits() + sm.key_bits());
+        let mut bottom = vec![[Fp3::ZERO, Fp3::ONE]; domain];
+        for (index, value) in bottom.iter_mut().enumerate() {
+            if let Some((layer, row, key)) = sm.cell(index) {
+                value[1] =
+                    signed(Softmax::word(&read, sm.layers[layer].difference, row, key, 2) + 32767);
+            }
+        }
+        let mut tree = vec![bottom];
+        for _ in 0..sm.key_bits() {
+            tree.push(
+                tree.last()
+                    .unwrap()
+                    .chunks_exact(2)
+                    .map(|pair| [Fp3::ZERO, pair[0][1] * pair[1][1]])
+                    .collect(),
+            );
+        }
+        let mut checkpoint = MaximumCheckpoint::default();
+        for layer in 0..sm.key_bits() {
+            for index in 0..1usize << (sm.row_bits() + layer) {
+                let pair = &tree[sm.key_bits() - 1 - layer][2 * index..2 * index + 2];
+                assert_eq!(
+                    checkpoint.children(&sm, &read, layer, index),
+                    [pair[0][0], pair[0][1], pair[1][0], pair[1][1]]
+                );
+            }
+        }
+        assert_eq!(checkpoint.work.checkpoint_builds, sm.key_bits() as u64);
+        assert_eq!(checkpoint.work.source_byte_getter_calls, 36);
+        assert_eq!(checkpoint.work.base_field_products, 9);
+        assert_eq!(checkpoint.work.checkpoint_scalar_writes, 24);
+        assert!(checkpoint.work.checkpoint_capacity_peak_bytes <= 4 * domain);
+
+        let point = vec![signed(3), signed(5)];
+        let claims = [Auth::new(signed(7), signed(11)), Auth::new(signed(13), signed(17))];
+        let mut rng = MatrixRng::from_seed([199; 32]);
+        let correlations = (0..4096)
+            .map(|_| Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>())))
+            .collect::<Vec<_>>();
+        let start = || Fs::new(b"maximum dense/source transcript", 10000);
+        let mut dense_fs = start();
+        let mut dense_rows = correlations.clone().into_iter();
+        let mut dense_triples = Vec::new();
+        let (dense_layers, dense_point, dense_claims) = range::prove_tree(
+            &tree,
+            point.clone(),
+            claims,
+            &mut dense_fs,
+            &mut dense_rows,
+            &mut dense_triples,
+        );
+        let mut source_fs = start();
+        let mut source_rows = correlations.into_iter();
+        let mut source_triples = Vec::new();
+        let source_checkpoint = std::cell::RefCell::new(MaximumCheckpoint::default());
+        let (source_layers, source_point, source_claims, _) = range::prove_tree_sourcewise(
+            sm.key_bits(),
+            point,
+            claims,
+            |layer, index| source_checkpoint.borrow_mut().children(&sm, &read, layer, index),
+            &mut source_fs,
+            &mut source_rows,
+            &mut source_triples,
+        );
+        let mut dense_wire = Vec::new();
+        let mut source_wire = Vec::new();
+        crate::c71_matrix::wire::Wire::write(&dense_layers, &mut dense_wire);
+        crate::c71_matrix::wire::Wire::write(&source_layers, &mut source_wire);
+        assert_eq!(dense_wire, source_wire);
+        assert_eq!(dense_point, source_point);
+        assert_eq!(dense_claims.map(|a| (a.x, a.m)), source_claims.map(|a| (a.x, a.m)));
+        assert_eq!(
+            dense_triples.iter().flatten().map(|a| (a.x, a.m)).collect::<Vec<_>>(),
+            source_triples.iter().flatten().map(|a| (a.x, a.m)).collect::<Vec<_>>()
+        );
+        let dense_products =
+            range::prove_products(&dense_triples, dense_rows.next().unwrap(), &mut dense_fs);
+        let source_products =
+            range::prove_products(&source_triples, source_rows.next().unwrap(), &mut source_fs);
+        assert_eq!(dense_products, source_products);
+        assert_eq!(dense_fs.requests(), source_fs.requests());
+        assert_eq!(dense_fs.fp3(), source_fs.fp3());
+        assert_eq!(dense_rows.len(), source_rows.len());
+    }
 
     #[test]
     fn c71_b12_softmax_original_scores_exp30_denominator_rne_and_mask_share_one_a() {
@@ -413,6 +521,147 @@ pub(in crate::c71_matrix) struct Pending<T> {
     pub ratio: T,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+struct MaximumCheckpointWork {
+    source_byte_getter_calls: u64,
+    base_field_products: u64,
+    checkpoint_scalar_writes: u64,
+    checkpoint_builds: u64,
+    checkpoint_capacity_peak_bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+struct MaximumSourceWork {
+    checkpoint: MaximumCheckpointWork,
+    tree: range::SourceTreeWork,
+}
+
+enum MaximumCheckpointData {
+    Empty,
+    Products(Vec<[Fp; 2]>),
+    Leaves(Vec<[i32; 2]>),
+}
+
+struct MaximumCheckpoint {
+    layer: Option<usize>,
+    data: MaximumCheckpointData,
+    work: MaximumCheckpointWork,
+}
+
+impl Default for MaximumCheckpoint {
+    fn default() -> Self {
+        Self { layer: None, data: MaximumCheckpointData::Empty, work: Default::default() }
+    }
+}
+
+impl MaximumCheckpoint {
+    fn leaf(
+        softmax: &Softmax,
+        read: &impl Fn(usize, usize, usize, usize) -> u8,
+        row: usize,
+        key: usize,
+        work: &mut MaximumCheckpointWork,
+    ) -> i32 {
+        let index = (row << softmax.key_bits()) | key;
+        if let Some((layer, source_row, source_key)) = softmax.cell(index) {
+            work.source_byte_getter_calls += 2;
+            (Softmax::word(read, softmax.layers[layer].difference, source_row, source_key, 2)
+                + 32767) as i32
+        } else {
+            1
+        }
+    }
+
+    fn rebuild(
+        &mut self,
+        softmax: &Softmax,
+        read: &impl Fn(usize, usize, usize, usize) -> u8,
+        layer: usize,
+    ) {
+        let (row_bits, key_bits) = (softmax.row_bits(), softmax.key_bits());
+        assert!(layer < key_bits);
+        // Drop the preceding layer before allocating its replacement.
+        self.data = MaximumCheckpointData::Empty;
+        self.layer = None;
+        let entries = 1usize << (row_bits + layer);
+        if layer + 1 == key_bits {
+            let mut values = Vec::with_capacity(entries);
+            for index in 0..entries {
+                let row = index >> layer;
+                let prefix = index & ((1usize << layer) - 1);
+                values.push([
+                    Self::leaf(softmax, read, row, 2 * prefix, &mut self.work),
+                    Self::leaf(softmax, read, row, 2 * prefix + 1, &mut self.work),
+                ]);
+            }
+            self.work.checkpoint_scalar_writes += 2 * entries as u64;
+            self.work.checkpoint_capacity_peak_bytes = self
+                .work
+                .checkpoint_capacity_peak_bytes
+                .max(values.capacity() * core::mem::size_of::<[i32; 2]>());
+            self.data = MaximumCheckpointData::Leaves(values);
+        } else {
+            let block = 1usize << (key_bits - layer - 1);
+            let mut values = Vec::with_capacity(entries);
+            for index in 0..entries {
+                let row = index >> layer;
+                let prefix = index & ((1usize << layer) - 1);
+                let mut children = [Fp::ONE; 2];
+                for (side, child) in children.iter_mut().enumerate() {
+                    let begin = (2 * prefix + side) * block;
+                    for key in begin..begin + block {
+                        let global = (row << key_bits) | key;
+                        if softmax.cell(global).is_some() {
+                            *child = *child * signed(i64::from(Self::leaf(
+                                softmax,
+                                read,
+                                row,
+                                key,
+                                &mut self.work,
+                            )))
+                            .c0;
+                            self.work.base_field_products += 1;
+                        }
+                    }
+                }
+                values.push(children);
+            }
+            self.work.checkpoint_scalar_writes += 2 * entries as u64;
+            self.work.checkpoint_capacity_peak_bytes = self
+                .work
+                .checkpoint_capacity_peak_bytes
+                .max(values.capacity() * core::mem::size_of::<[Fp; 2]>());
+            self.data = MaximumCheckpointData::Products(values);
+        }
+        self.work.checkpoint_builds += 1;
+        self.layer = Some(layer);
+    }
+
+    fn children(
+        &mut self,
+        softmax: &Softmax,
+        read: &impl Fn(usize, usize, usize, usize) -> u8,
+        layer: usize,
+        index: usize,
+    ) -> [Fp3; 4] {
+        if self.layer != Some(layer) {
+            self.rebuild(softmax, read, layer);
+        }
+        let pair = match &self.data {
+            MaximumCheckpointData::Products(values) => {
+                let [left, right] = values[index];
+                [Fp3::from_base(left), Fp3::from_base(right)]
+            }
+            MaximumCheckpointData::Leaves(values) => {
+                let [left, right] = values[index];
+                [signed(i64::from(left)), signed(i64::from(right))]
+            }
+            MaximumCheckpointData::Empty => unreachable!(),
+        };
+        [Fp3::ZERO, pair[0], Fp3::ZERO, pair[1]]
+    }
+}
+
 impl Plan {
     pub fn softmax_sources_at(
         &self,
@@ -668,32 +917,30 @@ impl Softmax {
         if correlations.len() < count {
             return Err("EXP30 prover capacity exhausted".into());
         }
-        let assignments = (0..1 << (self.row_bits() + self.key_bits()))
-            .map(|i| self.cell(i).map(|_| 0))
-            .collect::<Vec<_>>();
+        let assignment = |i| self.cell(i).map(|_| 0);
+        let assignments =
+            gkr::Assignments::new(1 << (self.row_bits() + self.key_bits()), &assignment);
         let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
         let view = self.bind(bytes, s, fs)?;
         let row_point = (0..self.row_bits()).map(|_| fs.fp3()).collect::<Vec<_>>();
-        let mut bottom = vec![[Fp3::ZERO, Fp3::ONE]; assignments.len()];
-        for (i, v) in bottom.iter_mut().enumerate() {
-            if let Some((l, r, k)) = self.cell(i) {
-                v[1] = signed(Self::word(&read, self.layers[l].difference, r, k, 2) + 32767);
-            }
-        }
-        let mut tree = vec![bottom];
-        for _ in 0..self.key_bits() {
-            tree.push(
-                tree.last()
-                    .unwrap()
-                    .chunks_exact(2)
-                    .map(|p| [Fp3::ZERO, p[0][1] * p[1][1]])
-                    .collect(),
-            );
-        }
         let mut triples = Vec::new();
         let top = Auth::new(Fp3::ONE - self.live_rows(&row_point), Fp3::ZERO);
-        let (maximum, maximum_point, claims) =
-            range::prove_tree(&tree, row_point, [Auth::ZERO, top], fs, &mut rows, &mut triples);
+        // `read` is the immutable getter for the already-bound auxiliary root.
+        // The checkpoint is replaced only between public tree layers.
+        let checkpoint = std::cell::RefCell::new(MaximumCheckpoint::default());
+        let (maximum, maximum_point, claims, tree_work) = range::prove_tree_sourcewise(
+            self.key_bits(),
+            row_point,
+            [Auth::ZERO, top],
+            |layer, index| checkpoint.borrow_mut().children(self, &read, layer, index),
+            fs,
+            &mut rows,
+            &mut triples,
+        );
+        let maximum_work =
+            MaximumSourceWork { checkpoint: checkpoint.into_inner().work, tree: tree_work };
+        #[cfg(test)]
+        eprintln!("C71_MAXIMUM_SOURCE_WORK {}", serde_json::to_string(&maximum_work).unwrap());
         let max_leaf_tag = claims[0].m;
         fs.set_phase(0x1801);
         record_values(fs, 0xc1, &[max_leaf_tag]);
@@ -738,7 +985,7 @@ impl Softmax {
             view,
             attempt: s.attempt,
             programs: &programs,
-            assignments: gkr::Assignments::dense(&assignments),
+            assignments,
         };
         let (ratio, ratio_point, ratio_tag) = gkr::prove(
             &gs,
@@ -788,9 +1035,9 @@ impl Softmax {
         {
             return Err("EXP30 verifier capacity or tree shape differs".into());
         }
-        let assignments = (0..1 << (self.row_bits() + self.key_bits()))
-            .map(|i| self.cell(i).map(|_| 0))
-            .collect::<Vec<_>>();
+        let assignment = |i| self.cell(i).map(|_| 0);
+        let assignments =
+            gkr::Assignments::new(1 << (self.row_bits() + self.key_bits()), &assignment);
         let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
         let view = self.bind(bytes, s, fs)?;
         let point = (0..self.row_bits()).map(|_| fs.fp3()).collect::<Vec<_>>();
@@ -827,7 +1074,7 @@ impl Softmax {
             view,
             attempt: s.attempt,
             programs: &programs,
-            assignments: gkr::Assignments::dense(&assignments),
+            assignments,
         };
         let (ratio_point, ratio) = gkr::verify(&gs, &proof.ratio, delta, fs, &mut rows)?;
         debug_assert!(rows.next().is_none());

@@ -121,3 +121,22 @@ def test_retained_capacity_is_never_freed_by_truncate_and_s3_cap_is_necessary():
         bad=arena.place_events(events,{key:size for key,_,size in plan['initial_allocations']})
         assert bad['aligned_live_peak_bytes']>arena.response.ARENA
         assert not bad['fits_with_operational_margin']
+
+
+def test_maximum_checkpoint_fences_before_replacement_and_lookup():
+    for c in arena.report(ordered_getter=True,reuse_reader_for_commit=True)['cases']:
+        p=c['address_layouts']['EXP30_maximum_original_bytes']
+        alive=False
+        for e in p['events']:
+            if 'EXP30:maximum_checkpoint' in e['free']:
+                assert alive and e['fence_before_release']
+                alive=False
+            for name,_,size in e['allocate']:
+                if name=='EXP30:maximum_checkpoint':
+                    assert not alive
+                    assert size<=1073741824
+                    alive=True
+        assert not alive and p['fits_with_operational_margin']
+        cut_releases=[e['event'] for e in p['events'] if 'getter:cuts' in e['free']]
+        assert cut_releases==['EXP30_last_original_byte_consumer_fence']
+        assert p['events'][-1]['live_aligned_bytes']==sum(v for _,_,v in p['initial_allocations'])

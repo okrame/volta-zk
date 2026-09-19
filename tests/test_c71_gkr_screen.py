@@ -55,3 +55,10 @@ def test_frozen_native_record_derives_active_boolean_fold_without_calibration_cr
         arithmetic = gkr.ratio_factored_arithmetic(ratio, old)
         assert arithmetic['Fp3_mul'] > 0
         assert gkr.ratio_supported_pair_total(old) > 0
+
+
+def test_zero_layer_source_tree_census_matches_empty_native_descent():
+    import c71_gkr_screen as screen
+    x=screen.source_tree_trace(3,0)
+    assert x['layers']==[] and x['counted_work']=={}
+    assert x['max_prefix_weight_payload_bytes']==72

@@ -345,9 +345,10 @@ le fold Boolean del GKR usano ora
 maschere dei limb mantenendo le addizioni. I confronti con le prove dense
 passano. Non si trasformano accessi logici in HBM o prodotti sorgente in
 istruzioni H100. Restano lavoro completo, workspace congiunto di
-circuiti/prove/correlazioni/allocator e port accelerato. Il massimo denso
-nel caller EXP30 richiede già 12,86/25,74 GB: quel backend è NO-GO;
-il prossimo adattamento deve eliminare anche questa materializzazione.
+circuiti/prove/correlazioni/allocator e port accelerato. Il caller EXP30
+sostituisce il massimo denso NO-GO con un checkpoint da 512 MiB/1 GiB,
+rilasciato prima di lookup/GKR; il ledger include le scansioni D aggiuntive.
+Il replay GKR riusa input/current/next e li libera prima della LUT byte.
 Nessuna GPU, spill o spesa autorizzata.
 
 L'estensione nativa resta subordinata: Prepare/prover canonici, percorso

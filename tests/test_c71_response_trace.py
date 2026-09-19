@@ -50,3 +50,16 @@ def test_composed_trace_keeps_current_old_sources_memory_and_unknowns():
         assert c['fresh_session_setup_charged_to_proof_PCG_MAC']==(c['old_tokens']==0)
     assert not r['cases'][-1]['retained_A_alternative']['deadline_excluded_under_same_conditions']
     assert r['online_verifier_challenge_round_trips']==0
+
+
+def test_maximum_checkpoint_trace_replaces_only_one_layer_at_a_time():
+    for old,peak,reads,products in [(0,536870912,347904000,152208000),
+            (150,1073741824,1168992000,519552000),
+            (300,1073741824,1946592000,865152000)]:
+        x=trace.maximum_source_trace(old)
+        assert x['maximum_checkpoint_capacity_bytes']==peak
+        assert x['original_byte_getter_calls']==reads
+        assert x['build_Fp_products']==products
+        assert x['dense_tree_payload_rejected_bytes']>trace.ARENA
+        assert x['layers'][-1]['checkpoint_capacity_bytes']==x['layers'][-2]['checkpoint_capacity_bytes']
+        assert not x['complete_work'] and not x['complete_physical_peak']

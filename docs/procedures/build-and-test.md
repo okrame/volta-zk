@@ -46,7 +46,9 @@ eseguire separatamente `fs_streamed_record`, `c71_b12_byte_functions`,
 per invocazione; il caso u16/N=128 è il più costoso e non va ampliato.
 `--nocapture` emette i contatori `C71_SOURCE_WORK` e `C71_BYTE_SOURCE_WORK`.
 Dopo modifiche alle fold condivise mantenere anche
-`incremental_prefix_weights` e `sourcewise_real_boolean_replay`; compilare
+`incremental_prefix_weights`, `selected_layer_replay`,
+`sourcewise_real_boolean_replay`, `maximum_checkpoint_and_source_tree` e
+`c71_b12_softmax_original_scores`; compilare
 separatamente `volta-field --lib --no-run` con gli stessi env/job e usare
 il filtro `fp3_` per codec, prodotto e maschera Boolean.
 La parità con la prova densa è controllo ridotto di transcript/MAC/PCS;

@@ -56,6 +56,39 @@ GKR_RECORD = (Path(__file__).resolve().parents[1] / 'benchmarks' / 'results' /
               'c71-bounded-rms-gkr-2026-09-19-3e7f24eb332b.json')
 
 
+def maximum_source_trace(old):
+    """One public layer checkpoint, rebuilt from the fixed original D bytes."""
+    native=gkr.native_record(GKR_RECORD, 'EXP30', old)
+    n=native['padded_cells'];live=native['live_cells']
+    key_bits=(old+150-1).bit_length()
+    row_bits=n.bit_length()-1-key_bits
+    tree=gkr.source_tree_trace(row_bits,key_bits)
+    layers=[]
+    for l,work in enumerate(tree['layers']):
+        entries=1 << (row_bits+l)
+        leaves=l==key_bits-1
+        layers.append(dict(entries=entries,
+            checkpoint_capacity_bytes=entries*(8 if leaves else 16),
+            original_byte_getter_calls=2*live,
+            build_Fp_products=0 if leaves else live,
+            logical_checkpoint_read_bytes=work['getter_calls']*(8 if leaves else 16),
+            **work))
+    return dict(credit=False,old_tokens=old,live_cells=live,padded_cells=n,
+        row_bits=row_bits,key_bits=key_bits,layers=layers,
+        maximum_checkpoint_capacity_bytes=max(x['checkpoint_capacity_bytes'] for x in layers),
+        checkpoint_logical_write_bytes=sum(x['checkpoint_capacity_bytes'] for x in layers),
+        checkpoint_logical_read_bytes=sum(x['logical_checkpoint_read_bytes'] for x in layers),
+        original_byte_getter_calls=2*key_bits*live,
+        build_Fp_products=(key_bits-1)*live,
+        source_tree_work=tree,
+        dense_tree_payload_rejected_bytes=48*sum(n>>l for l in range(key_bits+1)),
+        dense_assignment_payload_removed_bytes=16*n,
+        complete_work=False,complete_physical_peak=False,
+        missing=['terminal MAC/products/FS and proof capacities',
+                 'original D getter integer work and physical traffic',
+                 'allocator and complete caller liveness'])
+
+
 def producer_gkr_trace(old):
     """Known source work for RMS and this response's EXP30 relation.
 
@@ -103,9 +136,17 @@ def producer_gkr_trace(old):
                  'fold_multiplications', 'fold_additions', 'fold_subtractions'):
         field['byte_endpoint_'+name] = sum(
             trace['byte_endpoint']['counted_work'][name] for trace in traces)
+    maximum=maximum_source_trace(old)
+    scalar['maximum_original_byte_getter_calls']=maximum['original_byte_getter_calls']
+    scalar['maximum_checkpoint_getter_bundles']=maximum['source_tree_work']['counted_work']['getter_calls']
+    field['maximum_build_Fp_products']=maximum['build_Fp_products']
+    for name,value in maximum['source_tree_work']['counted_work'].items():
+        if name.startswith(('equality_','cubic_','fold_')):
+            field['maximum_'+name]=value
     budget = BUDGET_SECONDS['proof_producer_relations']
     return {'credit':False, 'canonical_calibrated_profile':False,
         'relations':['RMS', f'EXP30_O{old}'], 'record':GKR_RECORD.name,
+        'EXP30_maximum':maximum,
         'source_level_scalar_getter_work_known_components':scalar,
         'branchless_Boolean_fold_masks':masks,
         'source_level_field_work_known_components':field,

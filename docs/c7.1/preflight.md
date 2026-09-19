@@ -1220,7 +1220,9 @@ restano da collegare al picco fisico, senza assorbimenti impliciti negli slot.
 Il nuovo motore dei coefficienti conserva tre righe Fp3, due vettori di
 selettori e P flag pubblici: `(3W+2P)*24+P` B. Confronta i quattro
 coefficienti con il riferimento denso dopo ogni sfida MSB, compresi And,
-Xor, Copy e padding. Il replay Booleano selezionato usa la stessa validazione e gli stessi
+Xor, Copy e padding. Il replay Booleano selezionato riusa input/current/next nel medesimo prover
+e li libera prima della LUT byte; capacità e puntatori sono verificati su
+ogni profondità dopo la riserva iniziale. Usa la stessa validazione e gli stessi
 operatori del riferimento, conserva solo livello corrente/successivo e
 confronta ogni livello di circuiti weighted/unweighted reali. Un secondo
 controllo collega tale replay al motore dei coefficienti dopo sfide MSB.
@@ -1443,14 +1445,43 @@ implicitamente i seed nel piano. I massimi risposta restano quelli del
 range; lo stack crittografico e il picco completo non sono certificati.
 
 
-## EXP30: blocco del massimo denso
+## EXP30: massimo con un solo checkpoint
 
-Il census GKR non include automaticamente il caller softmax. Il suo albero
-massimo conserva coppie Fp3 a tutti i livelli: per N=2^27 e key_bits=8
-occupa 12.859.736.064 B; per N=2^28 e key_bits=9 occupa 25.744.637.952 B.
-Le assegnazioni dense aggiungono 2.147.483.648 / 4.294.967.296 B.
-Questo è NO-GO del backend denso rispetto all'arena, indipendente dal tempo.
-La sostituzione minima deve usare assegnamenti lookup e un massimo a getter
-o checkpoint con lo stesso ordine MSB/FS e gli stessi endpoint originali.
-Non è un lower contro ogni costruzione EXP30. Programmi, proof, correlazioni,
-replay e allocator richiedono ancora un census di capacità/liveness condiviso.
+Il vecchio albero massimo conserva coppie Fp3 a tutti i livelli: per N=2^27
+e key_bits=8 occupa 12.859.736.064 B; per N=2^28 e key_bits=9 occupa
+25.744.637.952 B. Le assegnazioni dense aggiungono
+2.147.483.648 / 4.294.967.296 B. Quel backend è NO-GO per arena.
+
+Il caller usa ora assegnamenti lookup e lo stesso `prove_tree_sourcewise`
+dell'endpoint byte. Il getter restituisce i quattro figli originali;
+i numeratori sono zero pubblico, i prodotti interni sono in Fp e le foglie
+sono i32, incluso il valore -1 ammesso dall'encoding. Tiene un solo livello:
+rilascia il vecchio prima di allocare il successivo e rilascia l'ultimo
+prima del lookup EXP30 e del GKR ratio. Nessuna sorgente dipende dalle sfide;
+i byte D provengono dalla stessa A immutabile già legata al transcript.
+
+| O | Checkpoint massimo | Getter byte D | Prodotti Fp per costruzione | Scritture checkpoint | Letture logiche checkpoint |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 536.870.912 B | 347.904.000 | 152.208.000 | 1.602.224.128 B | 41.188.065.280 B |
+| 150 | 1.073.741.824 B | 1.168.992.000 | 519.552.000 | 3.212.836.864 B | 85.748.350.976 B |
+| 300 | 1.073.741.824 B | 1.946.592.000 | 865.152.000 | 3.212.836.864 B | 85.748.350.976 B |
+
+La ricostruzione legge ogni cella valida a ogni livello, senza salti per
+valore zero. `source_tree_trace` conta separatamente Eq, fold e coefficienti
+cubici; il ledger producer aggiunge il massimo a RMS/ratio e divide per
+il budget 0,8 s solo per ricavare soglie di throughput, non un tempo.
+Il piano degli indirizzi conserva cut del getter e pesi insieme al checkpoint.
+I cut restano vivi attraverso lookup e ratio, inclusa la LUT byte, fino
+all'ultimo consumer originale. Workspace/liveness di lookup, GKR,
+proof/correlazioni e allocator restano da unire; il lookup conserva ancora
+domain/tree densi e non è ammesso nel piano completo.
+Le letture/scritture sono accessi sorgente, non transazioni HBM misurate.
+
+Il confronto ridotto esaurisce ogni figlio contro il vecchio albero e
+confronta wire, punto, Auth, triple, batch prodotti, consumo delle righe e
+FS. La prova softmax e la composizione ridotta restano controlli di regressione.
+Il massimo componente non è il picco fisico completo o un credito di tempo.
+I massimi nominati di questa catena sono 1.356.195.328 / 1.932.387.840 /
+1.971.709.440 B; il massimo integrato nominato resta 6.166.012.672 B.
+Il tipo `Fn` non impone da solo immutabilità/NoPeek: il caller deve continuare
+a legare il reader ai byte originali fissati, senza accesso ai MAC non spesi.

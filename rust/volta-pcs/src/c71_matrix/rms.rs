@@ -536,8 +536,13 @@ impl Circuit {
         Ok(())
     }
 
-    fn replay_step(layer: &[Gate], previous: &[u64]) -> Result<(Vec<u64>, ReplayLayerOps), String> {
-        let mut next = Vec::with_capacity(layer.len());
+    fn replay_step_into(
+        layer: &[Gate],
+        previous: &[u64],
+        next: &mut Vec<u64>,
+    ) -> Result<ReplayLayerOps, String> {
+        next.clear();
+        next.reserve_exact(layer.len());
         let mut work = ReplayLayerOps::default();
         for &Gate { op, x, y } in layer {
             let (&a, &b) =
@@ -558,6 +563,12 @@ impl Circuit {
                 _ => return Err("RMS Boolean copy differs".into()),
             });
         }
+        Ok(work)
+    }
+
+    fn replay_step(layer: &[Gate], previous: &[u64]) -> Result<(Vec<u64>, ReplayLayerOps), String> {
+        let mut next = Vec::with_capacity(layer.len());
+        let work = Self::replay_step_into(layer, previous, &mut next)?;
         Ok((next, work))
     }
 
@@ -584,20 +595,43 @@ impl Circuit {
         live: u64,
         depth: usize,
     ) -> Result<(Vec<u64>, ReplayLayerWork), String> {
-        self.validate_replay_inputs(inputs, live)?;
+        let mut scratch = ReplayLayerScratch::default();
+        scratch.load_inputs(inputs);
+        let work = self.replay_layer_reuse(&mut scratch, live, depth)?;
+        Ok((std::mem::take(&mut scratch.current), work))
+    }
+
+    pub(super) fn replay_layer_reuse(
+        &self,
+        scratch: &mut ReplayLayerScratch,
+        live: u64,
+        depth: usize,
+    ) -> Result<ReplayLayerWork, String> {
+        self.validate_replay_inputs(&scratch.inputs, live)?;
         if depth > self.levels.len() {
             return Err("RMS Boolean replay depth differs".into());
         }
-        let mut current = inputs.to_vec();
+        let width = std::iter::once(self.ports)
+            .chain(self.levels[..depth].iter().map(Vec::len))
+            .max()
+            .unwrap();
+        scratch.current.clear();
+        scratch.next.clear();
+        scratch.current.reserve_exact(width);
+        scratch.next.reserve_exact(width);
+        scratch.current.extend_from_slice(&scratch.inputs);
         let mut work = ReplayLayerWork {
             selected_depth: depth,
-            peak_two_vector_capacity_words: current.capacity(),
-            peak_two_vector_capacity_bytes: current.capacity() * core::mem::size_of::<u64>(),
+            peak_two_vector_capacity_words: scratch.replay_capacity_words(),
+            peak_two_vector_capacity_bytes: scratch.replay_capacity_bytes(),
             ..ReplayLayerWork::default()
         };
         for layer in &self.levels[..depth] {
-            let (next, step) = Self::replay_step(layer, &current)?;
-            let words = current.capacity() + next.capacity();
+            let step = {
+                let ReplayLayerScratch { current, next, .. } = scratch;
+                Self::replay_step_into(layer, current, next)?
+            };
+            let words = scratch.replay_capacity_words();
             work.peak_two_vector_capacity_words = work.peak_two_vector_capacity_words.max(words);
             work.peak_two_vector_capacity_bytes =
                 work.peak_two_vector_capacity_bytes.max(words * core::mem::size_of::<u64>());
@@ -605,9 +639,45 @@ impl Circuit {
             work.and_gates += step.and;
             work.xor_gates += step.xor;
             work.copy_gates += step.copy;
-            current = next;
+            std::mem::swap(&mut scratch.current, &mut scratch.next);
         }
-        Ok((current, work))
+        Ok(work)
+    }
+}
+
+#[derive(Default)]
+pub(super) struct ReplayLayerScratch {
+    inputs: Vec<u64>,
+    current: Vec<u64>,
+    next: Vec<u64>,
+}
+
+impl ReplayLayerScratch {
+    pub(super) fn inputs(&mut self, len: usize) -> &mut [u64] {
+        self.inputs.resize(len, 0);
+        self.inputs.fill(0);
+        &mut self.inputs
+    }
+
+    fn load_inputs(&mut self, inputs: &[u64]) {
+        self.inputs.clear();
+        self.inputs.extend_from_slice(inputs);
+    }
+
+    pub(super) fn selected(&self) -> &[u64] {
+        &self.current
+    }
+
+    pub(super) fn input_capacity_bytes(&self) -> usize {
+        self.inputs.capacity() * core::mem::size_of::<u64>()
+    }
+
+    fn replay_capacity_words(&self) -> usize {
+        self.current.capacity() + self.next.capacity()
+    }
+
+    pub(super) fn replay_capacity_bytes(&self) -> usize {
+        self.replay_capacity_words() * core::mem::size_of::<u64>()
     }
 }
 
@@ -644,6 +714,15 @@ pub(super) mod tests {
                 *plane = live & (0x9e37_79b9_7f4a_7c15u64.rotate_left(wire as u32));
             }
             let full = circuit.replay(&inputs, live).unwrap();
+            let mut scratch = ReplayLayerScratch::default();
+            scratch.load_inputs(&inputs);
+            circuit.replay_layer_reuse(&mut scratch, live, circuit.levels.len()).unwrap();
+            let input_allocation = scratch.inputs.as_ptr();
+            let mut replay_allocations =
+                [scratch.current.as_ptr() as usize, scratch.next.as_ptr() as usize];
+            replay_allocations.sort_unstable();
+            let capacities =
+                (scratch.inputs.capacity(), scratch.current.capacity(), scratch.next.capacity());
             let mut expected = ReplayLayerOps::default();
             for depth in 0..=circuit.levels.len() {
                 if depth != 0 {
@@ -655,12 +734,39 @@ pub(super) mod tests {
                         }
                     }
                 }
+                scratch.load_inputs(&inputs);
+                let reused = circuit.replay_layer_reuse(&mut scratch, live, depth).unwrap();
+                assert_eq!(scratch.selected(), full[depth]);
+                assert_eq!(scratch.inputs.as_ptr(), input_allocation);
+                let mut allocations =
+                    [scratch.current.as_ptr() as usize, scratch.next.as_ptr() as usize];
+                allocations.sort_unstable();
+                assert_eq!(allocations, replay_allocations);
+                assert_eq!(
+                    (
+                        scratch.inputs.capacity(),
+                        scratch.current.capacity(),
+                        scratch.next.capacity(),
+                    ),
+                    capacities
+                );
+                assert_eq!(reused.peak_two_vector_capacity_bytes, scratch.replay_capacity_bytes());
+                assert_eq!(
+                    scratch.input_capacity_bytes(),
+                    capacities.0 * core::mem::size_of::<u64>()
+                );
                 let (selected, work) = circuit.replay_layer(&inputs, live, depth).unwrap();
                 assert_eq!(selected, full[depth], "weighted={weighted}, depth={depth}");
                 assert_eq!(work.selected_depth, depth);
                 assert_eq!(work.layers_evaluated, depth);
+                assert_eq!(reused.selected_depth, depth);
+                assert_eq!(reused.layers_evaluated, depth);
                 assert_eq!(
                     (work.and_gates, work.xor_gates, work.copy_gates),
+                    (expected.and, expected.xor, expected.copy)
+                );
+                assert_eq!(
+                    (reused.and_gates, reused.xor_gates, reused.copy_gates),
                     (expected.and, expected.xor, expected.copy)
                 );
                 assert_eq!(

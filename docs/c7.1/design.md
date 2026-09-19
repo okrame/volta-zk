@@ -854,12 +854,17 @@ coefficienti per round e autenticazioni. Accumula pattern Boolean in
 istogrammi **interni al prover**, pesati da Eq sulla posizione originale
 e dal peso del gate; nessun conteggio privato viene aperto. La derivazione
 algebrica vale sul campo originale, incluso il selettore del padding;
-il check finito usa F97[u]/(u³−2). Il passaggio al runner nativo resta da
-verificare. NoPeek richiede che i pattern provengano solo dal getter
+il primo check finito usa F97[u]/(u³−2). Il nuovo percorso nativo usa Fp3
+originale e verifica parità wire/FS/MAC nel caso ridotto, con la stessa
+continuazione range/PCS. NoPeek richiede che i pattern provengano solo dal getter
 immutabile e che nessuna maschera MAC non consumata entri nei bin.
-Solo dopo parità di ogni coefficiente e della continuazione FS/MAC si
-potrà riusare il teorema del transcript invariato: non si attribuisce ora
-un nuovo refinement Lean, una simulazione nativa o il picco canonico.
+La fattorizzazione `H_g=sum_k Eq(k)*indicator`, poi `sum_g weight_g*H_g`,
+non introduce nuovi messaggi, gradi o correlazioni. Il caso nativo a 32
+celle verifica tutti i quattro round e il proseguimento, inclusi rifiuti.
+L'esecuzione canonica, il refinement Lean e il picco completo restano
+separati da questo controllo finito. Il cap locale dei payload istogrammi
+è 512 MiB, controllato dalla forma pubblica prima dell'allocazione; non
+sostituisce il contratto arena con 256 MiB di margine.
 
 Il lavoro locale segue il gate integrato del 2026-09-19: una prova ridotta
 positiva con getter ordinato, lookup streaming, GKR sourcewise e WHIR,

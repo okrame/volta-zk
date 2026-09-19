@@ -1807,7 +1807,7 @@ l'oracolo Python le ricalcola per semplicità e non ne è un'implementazione
 efficiente. Le tabelle di produzione devono avere cap pubblico: numero
 di pattern presenti e occupazione privata non entrano nel transcript.
 
-Per la variante concreta B=16, b=8:
+Per la prima variante B=16, b=8, prima della fattorizzazione dei pesi sotto:
 
 | O | Blocchi pubblicamente supportati | Prodotti Fp3 per pesi bin | Addizioni Fp3 ai bin | Lower della sola coda scalare, s |
 |---:|---:|---:|---:|---:|
@@ -1829,13 +1829,84 @@ La variante B=8 lascia invece 8,412492 s di sola coda a O=300: con il
 restante lower seriale nominato 56,751469 s è già esclusa quella
 combinazione, anche gratis per i bin. B=16 lascia circa 4,028 s dopo
 quei due lower, **non** un budget garantito: mancano ancora RMS, inferenza
-e altri lavori. Solo i pesi bin richiederebbero oltre 159 miliardi di
-prodotti Fp3/s se tutto quel residuo fosse disponibile.
+e altri lavori. La prima costruzione dei pesi bin avrebbe richiesto oltre
+159 miliardi di prodotti Fp3/s se tutto quel residuo fosse disponibile;
+tale conteggio è superato dalla fattorizzazione seguente.
 
-**Esito:** candidata a transcript invariato da portare nel controllo
-nativo ridotto. Gate minimo: stessi coefficienti/FS/MAC per i primi
-quattro round e continuazione invariata, producer bit-sliced da originali
-immutabili, conteggio della generazione e riduzione dei bin e loro
-liveness nel piano integrato. Il vecchio NO-GO non la esclude, ma nessun
+**Esito:** candidata a transcript invariato, ora portata nel controllo
+nativo ridotto con pesi posticipati. Il vecchio NO-GO non la esclude, ma nessun
 upper completo, GO entro arena o tempo ≤65 s è dimostrato. Nessuna GPU
 o spesa, e nessuna terza alternativa aperta.
+
+### Pesi di gate applicati dopo l'istogramma
+
+Il fattore `weight_g*Eq(k)` non deve essere formato per ogni coppia.
+Il [prover nativo](../../rust/volta-pcs/src/c71_matrix/rms/gkr/patterns.rs)
+mantiene temporaneamente l'asse dei gate:
+
+```
+H_g[a,x,b,y] = sum_k Eq(k) * [pattern_g,x(k)=x, pattern_g,y(k)=y]
+H[a,x,b,y]   = sum_g weight_g * H_g[a,x,b,y]
+```
+
+Ogni prodotto col peso si paga una volta per slot della tabella, inclusi
+gli slot zero, invece che per blocco sorgente. Per XOR si ottengono X e Y
+dai margini di una sola tessera della controparte; non si costruiscono
+istogrammi lineari durante la lettura. Copy conserva il solo marginale.
+Nessuna media sostituisce prodotti, nessun istogramma viene pubblicato e
+nessuna correlazione entra nel modulo. Cap e tessere sono pubblici.
+
+Con 15 layer vivi per gruppo, le tessere **5+5+5** hanno 96 indici totali:
+9.216 bin per gate AND/XOR e 96 per Copy. Tutti i gate del layer di circuito
+restano residenti insieme: nessun nuovo replay per gate o banda di gate.
+Le tessere 8+7 richiederebbero **7.025.236.992 B** di soli istogrammi raw
+al layer massimo, già oltre arena. Il massimo raw selezionato è invece
+**441.149.184 B**, più 223.488 B per l'aggregato.
+
+| O | Vecchi prodotti peso×posizione | Prodotti peso posticipato | Prodotti Eq posizione | Addizioni ai bin | Gate Boolean su word packed |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 129.256.483.200 | 428.928.192 | 1.577.058.116 | 788.667.926.400 | 1.858.538.621.952 |
+| 150 | 386.057.443.200 | 428.928.192 | 3.154.116.420 | 2.355.557.846.400 | 5.477.798.043.648 |
+| 300 | 642.858.403.200 | 428.928.192 | 3.154.116.420 | 3.922.447.766.400 | 9.098.344.541.952 |
+
+Eq posizione è generato incrementalmente senza divisioni, anche con sfide
+0/1, con una pila O(log N). La riduzione paga inoltre 565.269.696
+addizioni/sottrazioni e 204.512.256 raddoppi XOR. La valutazione densa dei
+cubici censita paga 91.285.468 prodotti Fp3, più 2.820 per i selettori dei
+prefissi, su ciascuna risposta. Questi lavori restano distinti dai 428,93
+milioni di prodotti dei pesi: non si presenta il loro totale come nullo.
+
+Il producer impacchetta quattro gruppi da 16 nelle stesse word u64 prima
+del replay. Il conteggio include la rigenerazione fino al livello
+richiesto, non solo i gate di quel livello. Le letture originali E/Z/Pi
+restano 94 per cella viva: a O=300 sono 10.165.536.000 frame,
+121.986.432.000 byte logici, prima della ricostruzione del getter.
+Tutto questo appartiene a `T_proof_only`. I 188.277.492.787.200 byte logici
+di read/modify/write dei bin **non sono traffico HBM**: cache, staging,
+collisioni e riduzioni CUDA restano da progettare/misurare.
+
+Nel [piano arena](../../scripts/c71_arena_plan.py) gli istogrammi vengono
+dopo la fence delle cache lookup e prima dell'obbligo byte finale. Il raw
+è rilasciato dopo l'applicazione dei pesi; l'aggregato dopo il quarto
+cubico, prima della coda GKR. Il live nominato dell'evento è
+1.260.834.304 / 1.300.159.232 / 1.339.480.832 B. Non aumenta il massimo
+nominato del commit A e conserva il margine nel piano; allocator,
+workspace completi del getter e staging GPU restano obblighi espliciti.
+Il cap 512 MiB della funzione nativa è locale, non un'ammissione dell'arena
+complessiva né un'autorizzazione a spill.
+
+La prova a 32 celle confronta l'intero wire con i prover sourcewise e
+denso, punto, endpoint originale, consumo MAC e FS dopo quattro round,
+con padding e prosecuzione fino a range/PCS. Il runner integrato O=0 usa
+ora questo percorso EXP30; la proof positiva conserva 88.049 MAC ideali.
+Il primo fixture impegnava byte non nulli nelle celle dummy: la PCS lo
+ha respinto dopo parità dei wire GKR. Il secondo fault di input violava
+già il piccolo circuito, invece di isolare il legame PCS: corretto anche
+questo fixture, senza allentare i controlli.
+
+Il lower della coda scalare resta 0,852443 / 2,536417 / 4,220242 s.
+Non si attribuisce il ceiling IMAD del vecchio kernel ai nuovi bin, né
+si convertono conteggi Boolean/addizioni in un upper H100. I tre tempi
+`T_inference`, `T_proof_only`, `T_response_total` restano distinti e non
+misurati su hardware target. La prossima fase dominante è il consumer
+degli istogrammi insieme al producer packed; non altri censimenti ABI.

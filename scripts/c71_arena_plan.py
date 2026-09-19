@@ -6,6 +6,7 @@ import c71_whir_trace as whir
 import c71_pcg_trace as pcg
 import c71_getter_trace as getter
 import c71_gkr_screen as gkr
+import c71_exp30_alternatives as exp30
 
 ALIGN = 256
 MARGIN = response.OPERATIONAL_MARGIN_BYTES
@@ -221,6 +222,17 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                 'free':['EXP30:maximum_weights']})
             lookups=response.producer_lookup_trace(old)
             events.extend(lookup_events('EXP30_lookup',lookups['EXP30']))
+            prefix = exp30.late_weights(old)
+            events.extend([
+                {'event':'EXP30_pattern_prefix_all_gates', 'allocate':{
+                    'EXP30:per_gate_histograms':prefix['raw_histogram_peak_bytes'],
+                    'EXP30:pattern_aggregate':prefix['aggregate_histogram_bytes']},
+                 'unknown':['packed producer/getter complete workspace and allocator; component payload only']},
+                {'event':'EXP30_pattern_raw_last_consumer_fence',
+                 'free':['EXP30:per_gate_histograms']},
+                {'event':'EXP30_four_cubics_last_consumer_fence',
+                 'free':['EXP30:pattern_aggregate']},
+            ])
             for name in ('GELU','softcap'):
                 chains[name+'_original_lookup']=[
                     dict(event=name+'_build_original_cuts',allocate={'getter:cuts':cuts}),

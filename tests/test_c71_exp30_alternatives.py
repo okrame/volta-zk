@@ -66,3 +66,10 @@ def test_prefix_component_screen_has_no_complete_or_hardware_credit():
     assert 8.4 < last[0]['unchanged_scalar_tail_lower_seconds'] < 8.5
     assert 4.2 < last[1]['unchanged_scalar_tail_lower_seconds'] < 4.3
     assert last[1]['weight_Fp3_products'] == 642858403200
+    late = report['cases'][-1]['late_gate_weights']
+    assert late['late_weight_Fp3_products'] == 428928192
+    assert late['raw_histogram_peak_bytes'] == 441149184
+    assert late['histogram_Fp3_additions'] == 3922447766400
+    assert late['position_weight_Fp3_products'] == 3154116420
+    assert late['packed_replays'] < 7209600*94//3
+    assert late['all_gates_resident_no_per_gate_replay']

@@ -119,13 +119,19 @@ promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 non chiude la ricerca. Lo [screen circoscritto](preflight.md#due-alternative-strutturali-exp30)
 trova una prova dedicata del rapporto che richiederebbe un nuovo transcript,
 e un'aggregazione privata dei pattern Boolean per i primi quattro round
-che ricostruisce gli stessi cubici. Quest'ultima supera il controllo
-algebrico ridotto e riapre il lavoro locale: blocchi da 16, sotto-tabelle
-da 8 bit, payload istogrammi 3.548.160 B. A O=300 il lower della sola coda
-scalare diventa 4,220242 s; costruzione istogrammi, replay, resto GKR e
-picco integrato non sono chiusi. Nessun nuovo GO fisico o H100.
-Prossimo controllo utile: parità nativa dei quattro round con le stesse
-monete/MAC, poi producer Boolean packed e costo delle riduzioni dei bin.
+che ricostruisce gli stessi cubici. La
+[fattorizzazione dei pesi](preflight.md#pesi-di-gate-applicati-dopo-listogramma)
+è ora implementata: blocchi da 16, sotto-pattern da 5 bit, gate mantenuti
+separati fino alla riduzione. A O=300 i prodotti per i pesi scendono da
+642.858.403.200 a **428.928.192**, senza replay per gate; le addizioni ai
+bin salgono a 3.922.447.766.400. Il producer usa fino a 64 lane Boolean
+e i buffer raw sono liberati prima dei cubici. La parità nativa verifica
+quattro round e continuazione MAC/FS; passa anche la proof integrata O=0.
+Il lower della sola coda scalare resta 4,220242 s. Il payload aggiuntivo
+è 441.372.672 B, collocato dopo il rilascio delle cache lookup nel piano
+con margine; non è il picco fisico completo. Nessun nuovo GO H100.
+Prossime fasi dominanti: accumulo/riduzione dei bin e replay packed;
+restano da chiudere kernel, staging, getter e ledger temporale congiunto.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 
 **NO-GO del backend scalare fuso ora implementato:** per il circuito

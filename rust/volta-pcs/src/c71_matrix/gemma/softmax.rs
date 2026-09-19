@@ -987,7 +987,7 @@ impl Softmax {
             programs: &programs,
             assignments,
         };
-        let (ratio, ratio_point, ratio_tag) = gkr::prove(
+        let (ratio, ratio_point, ratio_tag) = gkr::prove_patterns(
             &gs,
             |i| {
                 let mut frame = [0; 12];

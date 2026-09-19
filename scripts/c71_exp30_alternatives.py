@@ -89,6 +89,44 @@ def exact_ratio_predicate(e, z, pi, fractional_bits=14):
     return 2 * abs(residual) < z or (2 * abs(residual) == z and pi % 2 == 0)
 
 
+def late_weights(old):
+    """Native B=16, live mask 15/16, tiles 5+5+5; all gates coexist.
+
+    Retaining the gate axis eliminates weight products on input items.
+    It does not require another producer replay per gate or gate batch.
+    """
+    case = next(c for c in gkr.ratio_cases() if c['old_tokens'] == old)
+    native = gkr.native_record(NATIVE_RECORD, 'EXP30', old)
+    ops = {op:sum(l[op] for l in native['layers']) for op in ('and','xor','copy')}
+    blocks = case['rounds'][3]['supported_pairs']
+    packed_groups = 4*32*sum((old+q+1+3)//4 for q in range(150))
+    size, tiles, depth = 96, 3, native['depth']
+    scale = (ops['and']+ops['xor'])*size**2 + ops['copy']*size
+    raw_peak = max(((l['and']+l['xor'])*size**2+l['copy']*size)*24 for l in native['layers'])
+    prefix_gates = 0
+    packed_gates = 0
+    for layer in native['layers']:
+        packed_gates += prefix_gates*packed_groups
+        prefix_gates += sum(layer[op] for op in ops)
+    return dict(old_tokens=old, block=16, live_per_block=15, tile_live_bits=[5,5,5],
+        raw_histogram_peak_bytes=raw_peak, aggregate_histogram_bytes=24*(size**2+size),
+        late_weight_Fp3_products=scale,
+        old_weight_Fp3_products=blocks*sum(ops.values()),
+        histogram_Fp3_additions=blocks*((ops['and']+ops['xor'])*tiles**2+ops['copy']*tiles),
+        reduction_Fp3_add_or_sub=scale+ops['xor']*2*32*size,
+        reduction_XOR_doublings=ops['xor']*size**2,
+        position_weight_Fp3_products=depth*(2*(case['padded_cells']//16)-2),
+        prefix_selector_Fp3_products=30*depth,
+        cubic_Fp3_products=depth*(22+15*(7*size**2+2*size+2*15+6)),
+        packed_replays=packed_groups*depth, packed_boolean_word_gates=packed_gates,
+        original_frame_calls=case['live_cells']*depth,
+        logical_frame_bytes=12*case['live_cells']*depth,
+        logical_raw_histogram_rmw_bytes=48*blocks*((ops['and']+ops['xor'])*tiles**2+ops['copy']*tiles),
+        logical_bytes_are_not_HBM=True,
+        all_gates_resident_no_per_gate_replay=True,
+        complete_work=False, complete_peak=False)
+
+
 def report():
     cases = []
     for case in gkr.ratio_cases():
@@ -120,7 +158,8 @@ def report():
                 unchanged_scalar_tail_lower_seconds=tail_pairs*per_pair*24/SCALAR_RESULT_CEILING,
             ))
         cases.append(dict(old_tokens=case['old_tokens'], live_cells=case['live_cells'],
-                          circuit_gates=sum(ops.values()), variants=variants))
+                          circuit_gates=sum(ops.values()), variants=variants,
+                          late_gate_weights=late_weights(case['old_tokens'])))
     return dict(credit=False, scope='two EXP30 algebra/cost screens; no protocol replacement',
                 cases=cases, complete_work=False, complete_peak=False,
                 missing=['packed Boolean producer/replay and checkpoint liveness',

@@ -7,6 +7,7 @@ use super::super::*;
 component_wire!(Layer { rounds, terminal });
 component_wire!(Proof { layers, products, functions });
 use super::{Circuit, Gate, Op, ReplayLayerScratch};
+mod patterns;
 
 #[derive(Clone, Copy)]
 pub(in super::super) enum Assignments<'a> {
@@ -659,6 +660,7 @@ const SOURCE_CAPACITY_EXCLUDED_OWNERS: [&str; 7] = [
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize)]
 pub(in super::super) struct SourceProverWork {
+    pattern_prefix: patterns::Work,
     pub cell_rounds: Vec<SourceCellWork>,
     pub boolean_replay_calls: u64,
     pub boolean_and_gates: u64,
@@ -1010,6 +1012,7 @@ fn prove_impl(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
     sourcewise: bool,
+    pattern_prefix: bool,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
     use std::cell::{Cell, RefCell};
 
@@ -1082,6 +1085,18 @@ fn prove_impl(
         let width = widths[depth - 1];
         let (previous, selectors, following, mut rounds) = if sourcewise {
             let selector_point = point.clone();
+            let mut pattern = if pattern_prefix {
+                patterns::build(
+                    s,
+                    depth,
+                    &point,
+                    &weights,
+                    &read_frame,
+                    &mut source_work.pattern_prefix,
+                )?
+            } else {
+                None
+            };
             let mut prefix = Vec::new();
             let mut following = Vec::new();
             let mut rounds = Vec::new();
@@ -1128,6 +1143,18 @@ fn prove_impl(
                 None
             };
             for _ in 0..point.len() {
+                if let Some(table) = &pattern {
+                    let c = table.coefficients(&prefix);
+                    fs.set_phase(0x1000 + 64 * depth as u16 + rounds.len() as u16);
+                    let (wire, r) = round_prove(&c, &mut target, fs, &mut rows, &round_auth_heap);
+                    prefix.push(r);
+                    following.push(r);
+                    rounds.push(wire);
+                    if prefix.len() == table.bits() {
+                        pattern = None;
+                    }
+                    continue;
+                }
                 let mut work = SourceCellWork::default();
                 let result = source_cell_round::<true>(
                     s.programs,
@@ -1319,6 +1346,10 @@ fn prove_impl(
         .max()
         .unwrap_or(0)
         .max(source_work.cell_phase_owned_heap_peak_bytes)
+        .max(
+            source_work.pattern_prefix.histogram_payload_peak
+                + source_work.pattern_prefix.packed_replay_capacity_peak,
+        )
         + source_work.boolean_replay_heap_peak_bytes
         + source_work.boolean_input_heap_peak_bytes
         + source_work.cell_rounds.capacity() * core::mem::size_of::<SourceCellWork>();
@@ -1428,7 +1459,21 @@ pub(in super::super) fn prove_sourcewise(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
-    prove_impl(s, &get_frame, fs, correlations, true)
+    prove_impl(s, &get_frame, fs, correlations, true, false)
+}
+
+pub(in super::super) fn prove_patterns(
+    s: &Statement<'_>,
+    get_frame: impl Fn(usize) -> [u8; 12],
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Vec<Fp3>, Auth), String> {
+    let (proof, point, original, _work) = prove_impl(s, &get_frame, fs, correlations, true, true)?;
+    #[cfg(test)]
+    if std::env::var_os("C71_INTEGRATED_TRACE").is_some() {
+        eprintln!("C71_INTEGRATED_GKR {}", serde_json::to_string(&_work).unwrap());
+    }
+    Ok((proof, point, original))
 }
 
 pub(in super::super) fn prove(
@@ -1452,7 +1497,7 @@ fn prove_dense(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
-    let (proof, point, original, _) = prove_impl(s, &get_frame, fs, correlations, false)?;
+    let (proof, point, original, _) = prove_impl(s, &get_frame, fs, correlations, false, false)?;
     Ok((proof, point, original))
 }
 
@@ -1958,6 +2003,39 @@ mod tests {
         assert!(count <= 12000 && draws <= 4000);
     }
 
+    #[test]
+    fn c71_b12_pattern_prefix_four_rounds_original_wire_and_mac() {
+        // Small wiring exercises the four-round algorithm, not EXP30 semantics.
+        let programs = [Circuit {
+            ports: 98,
+            product_bits: 32,
+            valid: 0,
+            coefficients: [0; 3],
+            arithmetic_bits: 1,
+            raw_gates: 6,
+            levels: vec![
+                vec![
+                    Gate { op: Op::And, x: 2, y: 3 },
+                    Gate { op: Op::Xor, x: 2, y: 3 },
+                    Gate { op: Op::Copy, x: 1, y: 1 },
+                ],
+                vec![Gate { op: Op::Xor, x: 0, y: 1 }, Gate { op: Op::Copy, x: 2, y: 2 }],
+                vec![Gate { op: Op::Xor, x: 0, y: 1 }],
+            ],
+        }];
+        let assignments: Vec<_> =
+            (0..32).map(|i| (i % 7 != 5 && i / 2 < 15).then_some(0)).collect();
+        let honest: Vec<_> =
+            assignments.iter().map(|p| p.map_or([0; 12], |_| frame(0, 1, 0, true))).collect();
+        check_cells(
+            &programs,
+            &assignments,
+            &honest,
+            (0, frame(1, 1, 0, true)),
+            (0, frame(4, 1, 0, true)),
+        );
+    }
+
     fn check(
         programs: &[Circuit],
         honest: [[u8; 12]; 4],
@@ -2204,6 +2282,36 @@ mod tests {
                 assert_eq!((original.x, original.m), (dense_original.x, dense_original.m));
                 assert_eq!(fs.digest(), dense_fs.digest());
                 assert!(dense_rows.next().is_none());
+
+                if programs.len() == 1 {
+                    let mut pattern_fs = start();
+                    let mut pattern_rows =
+                        rows[..statement.required().unwrap()].to_vec().into_iter();
+                    let (pattern, pattern_point, pattern_original, pattern_work) = prove_impl(
+                        &statement,
+                        &|i| used[i],
+                        &mut pattern_fs,
+                        &mut pattern_rows,
+                        true,
+                        true,
+                    )
+                    .unwrap();
+                    let mut pattern_bytes = Vec::new();
+                    crate::c71_matrix::wire::Wire::write(&pattern, &mut pattern_bytes);
+                    assert_eq!(pattern_bytes, source_bytes);
+                    assert_eq!(pattern_point, point);
+                    assert_eq!((pattern_original.x, pattern_original.m), (original.x, original.m));
+                    assert_eq!(pattern_fs.digest(), fs.digest());
+                    assert!(pattern_rows.next().is_none());
+                    assert_eq!(
+                        pattern_work.pattern_prefix.prefix_rounds,
+                        (4.min(c.saturating_sub(1)) * (widths.len() - 1)) as u64
+                    );
+                    eprintln!(
+                        "C71_PATTERN_PREFIX {}",
+                        serde_json::to_string(&pattern_work.pattern_prefix).unwrap()
+                    );
+                }
 
                 // The canonical caller supplies this public lookup rather
                 // than retaining one Option<usize> per padded cell. Its bind

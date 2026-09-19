@@ -1114,3 +1114,12 @@ Il [piano arena](../../scripts/c71_arena_plan.py) conserva tutta la capacità
 S1 fino alla fine e respinge il vecchio cap S3 2^24. Con cap successori
 2^23, i controlli degli span conservano il margine nominato; non certificano
 allocator, fence GPU, picco completo o fattibilità temporale.
+
+
+Il [record su SHA pulita `bfb274a1fcf2`](../../benchmarks/results/c71-retained-capacity-2026-09-19-bfb274a1fcf2.json)
+conserva **6 test Rust, 25 Python**, quattro DFT odd-log e il runner host
+FFT precedente. La compilazione CUDA 12.9.86/sm_90 ha zero stack/spill,
+max 48 registri e 16.896 B shared statici; la FFT righe usa shared dinamico
+fino a 32 KiB per le geometrie selezionate. Include comandi, hash del binario,
+stdout, trace completo della retention e piano degli indirizzi O=0/150/300.
+`credit:false`, nessuna GPU eseguita; picco e lower temporale completi non acquisiti.

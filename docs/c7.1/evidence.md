@@ -1150,3 +1150,16 @@ Non sono un tempo misurato, un lower H100 o credito al profilo calibrato.
 Restano lavoro index/MAC/FS/getter, capacità di programmi/prove/correlazioni,
 allocator/fence, kernel fusi e costruzione canonica/AES completa.
 Le correzioni emerse in sviluppo e review sono conservate nel record.
+
+### Incremental prefix weights and Boolean source folds
+
+Il [record su SHA pulita `e1f3a00f4eb4`](../../benchmarks/results/c71-fold-sharing-2026-09-19-e1f3a00f4eb4.json)
+conserva **12 test Rust e 14 Python**, senza GPU. I pesi prefix incrementali
+sono confrontati con il riferimento indipendente, incluse sfide 0/1;
+il getter riunisce i quattro figli della stessa sorgente. Le righe Boolean
+usano maschere canoniche Fp3, con confronto al fold generico e al prover
+denso. Passano anche N=1, endpoint byte, RMS/EXP30, confine u16 e composizione
+ridotta. I contatori byte nativi coincidono con il ledger Python.
+Il ledger della risposta include ora entrambi i producer RMS ed EXP30
+per O=0/150/300 e separa maschere, campo e getter. Il record conserva
+le voci mancanti: non è un lower temporale completo né il picco fisico.

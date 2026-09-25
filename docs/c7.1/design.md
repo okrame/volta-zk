@@ -882,6 +882,15 @@ al massimo un contributo per posizione suffix: il guard pubblico
 solo byte originali causali, senza Snapshot/A completi né nuove aperture;
 resta viva dal termine lookup all’ultimo consumer byte GKR. Le sfide,
 i MAC e il transcript sono invariati; il riuso non elimina il replay Boolean.
+Il replay packed usa ora un DAG di valutazione derivato solo dal circuito
+pubblico: Copy diventa alias, identità Boolean e gate identici condividono
+il risultato, sopravvivono solo gli antenati dei wire richiesti. I wire
+originali sono ricostruiti nell’ordine originale prima degli istogrammi.
+Queste identità si applicano ai bitplane Boolean prima del fold, **non**
+ai polinomi dei gate dopo il fold. Circuito impegnato e transcript restano
+invariati. La parità finita copre ogni livello EXP30 con maschere live
+piene, parziali e vuote; il refinement Lean resta un obbligo distinto.
+
 
 Il lavoro locale segue il gate integrato del 2026-09-19: una prova ridotta
 positiva con getter ordinato, lookup streaming, GKR sourcewise e WHIR,

@@ -16,6 +16,101 @@ pub(super) struct Work {
     pub packed_replay_capacity_peak: usize,
 }
 
+// Evaluation-only DAG: the committed layered circuit is never rewritten.
+// Copies are aliases; public Boolean identities and identical gates share nodes.
+struct ReplayPlan {
+    nodes: Vec<Gate>,
+    outputs: Vec<usize>,
+}
+
+impl ReplayPlan {
+    fn new(program: &Circuit, depth: usize) -> Result<Self, String> {
+        if depth > program.levels.len() {
+            return Err("pattern replay depth differs".into());
+        }
+        let mut nodes = Vec::<Gate>::new();
+        let mut aliases: Vec<_> = (0..program.ports).collect();
+        let mut shared = std::collections::HashMap::new();
+        for level in &program.levels[..depth] {
+            let mut next = Vec::with_capacity(level.len());
+            for g in level {
+                let (&a, &b) = aliases
+                    .get(g.x)
+                    .zip(aliases.get(g.y))
+                    .ok_or("pattern replay parent out of range")?;
+                let (x, y) = (a.min(b), a.max(b));
+                let alias = match g.op {
+                    Op::Copy if g.x == g.y => Some(a),
+                    Op::Copy => return Err("pattern copy parents differ".into()),
+                    Op::And if x == 0 => Some(0),
+                    Op::And if x == 1 || x == y => Some(y),
+                    Op::Xor if x == y => Some(0),
+                    Op::Xor if x == 0 => Some(y),
+                    _ => None,
+                };
+                let id = alias.unwrap_or_else(|| {
+                    *shared.entry((g.op, x, y)).or_insert_with(|| {
+                        let id = program.ports + nodes.len();
+                        nodes.push(Gate { op: g.op, x, y });
+                        id
+                    })
+                });
+                next.push(id);
+            }
+            aliases = next;
+        }
+        // Only ancestors of the requested original wires survive.
+        let mut needed = vec![false; program.ports + nodes.len()];
+        for &id in &aliases {
+            needed[id] = true;
+        }
+        for (i, g) in nodes.iter().enumerate().rev() {
+            if needed[program.ports + i] {
+                needed[g.x] = true;
+                needed[g.y] = true;
+            }
+        }
+        let mut map: Vec<_> = (0..needed.len()).collect();
+        let mut compact = Vec::new();
+        for (i, g) in nodes.iter().enumerate() {
+            if needed[program.ports + i] {
+                map[program.ports + i] = program.ports + compact.len();
+                compact.push(Gate { op: g.op, x: map[g.x], y: map[g.y] });
+            }
+        }
+        Ok(Self { nodes: compact, outputs: aliases.into_iter().map(|i| map[i]).collect() })
+    }
+
+    fn replay(
+        &self,
+        program: &Circuit,
+        inputs: &[u64],
+        live: u64,
+        values: &mut Vec<u64>,
+        selected: &mut Vec<u64>,
+    ) -> Result<(), String> {
+        program.validate_replay_inputs(inputs, live)?;
+        values.clear();
+        values.reserve_exact(program.ports + self.nodes.len());
+        values.extend_from_slice(inputs);
+        for g in &self.nodes {
+            values.push(match g.op {
+                Op::And => values[g.x] & values[g.y],
+                Op::Xor => values[g.x] ^ values[g.y],
+                Op::Copy => unreachable!("copies are aliases"),
+            });
+        }
+        selected.clear();
+        selected.extend(self.outputs.iter().map(|&i| values[i]));
+        Ok(())
+    }
+
+    fn bytes(&self) -> usize {
+        self.nodes.capacity() * std::mem::size_of::<Gate>()
+            + self.outputs.capacity() * std::mem::size_of::<usize>()
+    }
+}
+
 struct Histogram {
     mask: u64,
     tiles: Vec<Vec<usize>>,
@@ -220,13 +315,16 @@ pub(super) fn build(
         h.allocate(gates);
     }
     let program = &s.programs[0];
-    let mut scratch = ReplayLayerScratch::default();
+    let plan = ReplayPlan::new(program, depth - 1)?;
+    let mut inputs = vec![0u64; program.ports];
+    let mut values = Vec::new();
+    let mut selected = Vec::new();
     let mut path = vec![Fp3::ONE; point.len() - bits + 1];
     // Division-free incremental Eq; zero/one challenges are allowed.
     let packed_groups = 64 / block;
     for start in (0..suffix).step_by(packed_groups) {
         let mut groups = Vec::with_capacity(packed_groups);
-        let inputs = scratch.inputs(program.ports);
+        inputs.fill(0);
         let mut live = 0u64;
         for k in start..suffix.min(start + packed_groups) {
             let suffix_bits = point.len() - bits;
@@ -259,20 +357,18 @@ pub(super) fn build(
             continue;
         }
         inputs[1] = live;
-        let replay = program.replay_layer_reuse(&mut scratch, live, depth - 1)?;
+        plan.replay(program, &inputs, live, &mut values, &mut selected)?;
         work.packed_replays += 1;
-        work.packed_boolean_gates += replay.and_gates + replay.xor_gates + replay.copy_gates;
+        work.packed_boolean_gates += plan.nodes.len() as u64;
         work.packed_replay_capacity_peak = work
             .packed_replay_capacity_peak
-            .max(replay.peak_two_vector_capacity_bytes + scratch.input_capacity_bytes());
+            .max(plan.bytes() + 8 * (inputs.capacity() + values.capacity() + selected.capacity()));
         for (mask, shift, weight) in groups {
-            histograms.iter_mut().find(|h| h.mask == mask).unwrap().accumulate(
-                gates,
-                scratch.selected(),
-                shift,
-                weight,
-                work,
-            );
+            histograms
+                .iter_mut()
+                .find(|h| h.mask == mask)
+                .unwrap()
+                .accumulate(gates, &selected, shift, weight, work);
         }
     }
     for h in &mut histograms {
@@ -285,6 +381,39 @@ pub(super) fn build(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn c71_pattern_replay_dag_matches_every_original_exp30_level() {
+        let program = super::super::super::compile_ratio(14).unwrap();
+        let mut records = Vec::new();
+        for depth in 0..=program.levels.len() {
+            let plan = ReplayPlan::new(&program, depth).unwrap();
+            let mut values = Vec::new();
+            let mut selected = Vec::new();
+            for live in [u64::MAX, 0x8421_137f_aab9_7654, 0] {
+                let mut inputs: Vec<_> = (0..program.ports)
+                    .map(|i| {
+                        (i as u64)
+                            .wrapping_add(7)
+                            .wrapping_mul(0x9e37_79b9_7f4a_7c15)
+                            .rotate_left(i as u32 % 64)
+                            & live
+                    })
+                    .collect();
+                inputs[0] = 0;
+                inputs[1] = live;
+                let (expected, _) = program.replay_layer(&inputs, live, depth).unwrap();
+                plan.replay(&program, &inputs, live, &mut values, &mut selected).unwrap();
+                assert_eq!(selected, expected, "depth {depth}");
+            }
+            records.push(serde_json::json!({"depth":depth,
+                "word_operations":plan.nodes.len(), "plan_bytes":plan.bytes(),
+                "value_bytes":8*values.capacity(), "selected_bytes":8*selected.capacity(),
+                "input_bytes":8*program.ports,
+                "original_word_operations":program.levels[..depth].iter().map(Vec::len).sum::<usize>()}));
+        }
+        eprintln!("C71_EXP30_REPLAY_DAG {}", serde_json::to_string(&records).unwrap());
+    }
+
     #[test]
     fn c71_pattern_wide_accumulator_matches_field_at_carry_boundaries() {
         let p = volta_field::P;

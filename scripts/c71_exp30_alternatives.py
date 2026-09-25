@@ -8,6 +8,12 @@ import c71_gkr_screen as gkr
 from c71_main_cell_screen import NATIVE_RECORD, SCALAR_RESULT_CEILING
 
 
+# Fixed compile_ratio(14), checked against every native level by
+# c71_pattern_replay_dag_matches_every_original_exp30_level and replay_dag_screen.
+REPLAY_DAG_WORDS_PER_BATCH = 2_695_370
+REPLAY_DAG_RESIDENT_BYTES = 1_943_984
+
+
 def equality(point):
     values = [1]
     for r in point:
@@ -124,7 +130,10 @@ def late_weights(old):
         position_weight_Fp3_products=depth*(2*(case['padded_cells']//16)-2),
         prefix_selector_Fp3_products=30*depth,
         cubic_Fp3_products=depth*(22+15*(7*size**2+2*size+2*15+6)),
-        packed_replays=packed_groups*depth, packed_boolean_word_gates=packed_gates,
+        packed_replays=packed_groups*depth,
+        layered_packed_boolean_word_gates=packed_gates,
+        packed_boolean_word_gates=packed_groups*REPLAY_DAG_WORDS_PER_BATCH,
+        packed_replay_resident_bytes=REPLAY_DAG_RESIDENT_BYTES,
         cached_frame_calls=case['live_cells']*depth,
         original_ratio_cache_bytes=6*(case['live_cells']+60*32*150),
         original_ratio_source_byte_calls=6*(case['live_cells']+60*32*150),
@@ -133,6 +142,45 @@ def late_weights(old):
         logical_bytes_are_not_HBM=True,
         all_gates_resident_no_per_gate_replay=True,
         complete_work=False, complete_peak=False)
+
+
+def replay_dag_screen(plans):
+    """Public evaluation DAG counts; exact words, not GPU instruction rates.
+
+    One selected-level plan is live at a time. Constructor transients are
+    deliberately separate from steady replay storage and cannot admit a peak.
+    """
+    assert [p['depth'] for p in plans] == list(range(len(plans)))
+    native = gkr.native_record(NATIVE_RECORD, 'EXP30', 0)
+    active = plans[:native['depth']]
+    assert len(active) == native['depth']
+    original = sum(p['original_word_operations'] for p in active)
+    optimized = sum(p['word_operations'] for p in active)
+    gathers = active[0]['input_bytes']//8 + sum(
+        l['and']+l['xor']+l['copy'] for l in native['layers'][:-1])
+    replay_bytes = max(p['plan_bytes']+p['value_bytes']+p['selected_bytes']+p['input_bytes']
+                       for p in active)
+    cases = []
+    for old in (0,150,300):
+        base = late_weights(old)
+        assert base['packed_replays'] % len(active) == 0
+        batches = base['packed_replays']//len(active)
+        assert batches*original == base['layered_packed_boolean_word_gates']
+        assert optimized == REPLAY_DAG_WORDS_PER_BATCH
+        assert replay_bytes == REPLAY_DAG_RESIDENT_BYTES
+        cases.append(dict(old_tokens=old, packed_replays=base['packed_replays'],
+            original_word_operations=batches*original,
+            DAG_word_operations=batches*optimized,
+            original_wire_gathers=batches*gathers,
+            replay_resident_capacity_bytes=replay_bytes,
+            logical_DAG_operand_read_and_write_bytes=24*batches*optimized,
+            logical_bytes_are_not_HBM=True,
+            histogram_updates=base['histogram_updates'],
+            original_ratio_cache_bytes=base['original_ratio_cache_bytes']))
+    return dict(credit=False, plans=plans, cases=cases,
+        transcript_change=False, complete_peak=False, complete_time=False,
+        missing=['public compiler transient workspace', 'GPU staging and instruction/service rates',
+                 'bin accumulation and complete canonical integrated ledger'])
 
 
 def report():
@@ -170,13 +218,13 @@ def report():
                           late_gate_weights=late_weights(case['old_tokens'])))
     return dict(credit=False, scope='two EXP30 algebra/cost screens; no protocol replacement',
                 cases=cases, complete_work=False, complete_peak=False,
-                missing=['packed Boolean producer/replay and checkpoint liveness',
+                missing=['CUDA replay mapping, public compiler transient and checkpoint liveness',
                          'histogram reduction and contention, exact field kernel',
                          'all-bin evaluation, original tail getter and original MAC/FS',
                          'joint canonical time and allocated/reserved peak'],
                 conditional_tail_ceiling=SCALAR_RESULT_CEILING,
                 asymptotics='B=2b, M public masks <=2^B: O(S/B + M*B*2^(2b)) field work per layer; b=Theta(log S) small enough, packed input assumed',
-                spending_gate='NO-GO for spending; reduced algebra only')
+                spending_gate='NO-GO for spending; reduced native correctness, incomplete canonical resources')
 
 
 if __name__ == '__main__':

@@ -228,10 +228,11 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                     'EXP30:ratio_original_cache':prefix['original_ratio_cache_bytes']}},
                 {'event':'EXP30_pattern_prefix_all_gates', 'allocate':{
                     'EXP30:per_gate_histograms':prefix['raw_histogram_peak_bytes'],
+                    'EXP30:packed_replay':prefix['packed_replay_resident_bytes'],
                     'EXP30:pattern_aggregate':prefix['aggregate_histogram_bytes']},
-                 'unknown':['packed producer/getter complete workspace and allocator; component payload only']},
+                 'unknown':['public DAG compiler transient, GPU staging, getter complete workspace and allocator; component payload only']},
                 {'event':'EXP30_pattern_raw_last_consumer_fence',
-                 'free':['EXP30:per_gate_histograms']},
+                 'free':['EXP30:per_gate_histograms','EXP30:packed_replay']},
                 {'event':'EXP30_four_cubics_last_consumer_fence',
                  'free':['EXP30:pattern_aggregate']},
             ])

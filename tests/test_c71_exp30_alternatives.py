@@ -79,3 +79,6 @@ def test_prefix_component_screen_has_no_complete_or_hardware_credit():
     assert late['position_weight_Fp3_products'] == 3154116420
     assert late['packed_replays'] < 7209600*94//3
     assert late['all_gates_resident_no_per_gate_replay']
+    assert late['layered_packed_boolean_word_gates'] == 9098344541952
+    assert late['packed_boolean_word_gates'] == 4877714055680
+    assert late['packed_replay_resident_bytes'] == 1943984

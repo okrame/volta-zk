@@ -146,7 +146,11 @@ del getter durante il rapporto; viene liberata dopo l’endpoint byte.
 Non è il picco fisico completo. Il [record nativo aggiornato](evidence.md#native-exp30-wide-accumulators-and-original-cache)
 conferma sei test Rust, otto Python e tre controlli arena su SHA pulita.
 Nessun nuovo GO H100.
-Prossime fasi dominanti: accumulo/riduzione dei bin e replay packed;
+Il replay packed elimina ora le copie di livello e condivide gli antenati
+in un DAG pubblico: a O=300 passa da 9.098.344.541.952 a
+4.877.714.055.680 operazioni Boolean su word, più le gather originali.
+È riduzione del lavoro sorgente, senza credito di tempo GPU.
+Prossime fasi dominanti: accumulo/riduzione dei bin e mapping GPU del replay;
 restano da chiudere kernel, staging, getter e ledger temporale congiunto.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 

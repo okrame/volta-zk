@@ -1870,7 +1870,7 @@ Ogni aggiornamento paga tre somme u64 e tre aggiornamenti dei riporti u32;
 le riduzioni base finali sono 1.286.784.576 per risposta.
 Il bound pubblico sulle posizioni suffix impedisce overflow a 96 bit.
 
-| O | Vecchi prodotti peso×posizione | Prodotti peso posticipato | Prodotti Eq posizione | Aggiornamenti interi dei bin | Gate Boolean su word packed |
+| O | Vecchi prodotti peso×posizione | Prodotti peso posticipato | Prodotti Eq posizione | Aggiornamenti interi dei bin | Gate word con replay precedente |
 |---:|---:|---:|---:|---:|---:|
 | 0 | 129.256.483.200 | 428.928.192 | 1.577.058.116 | 788.667.926.400 | 1.858.538.621.952 |
 | 150 | 386.057.443.200 | 428.928.192 | 3.154.116.420 | 2.355.557.846.400 | 5.477.798.043.648 |
@@ -1900,7 +1900,7 @@ Nel [piano arena](../../scripts/c71_arena_plan.py) gli istogrammi vengono
 dopo la fence delle cache lookup e prima dell'obbligo byte finale. Il raw
 è rilasciato dopo l'applicazione dei pesi; l'aggregato dopo il quarto
 cubico, prima della coda GKR. Il live nominato dell'evento è
-1.613.601.024 / 1.912.125.952 / 2.210.647.552 B, inclusa la cache
+1.615.545.088 / 1.914.070.016 / 2.212.591.616 B, inclusi il replay DAG e la cache
 originale trattenuta fino all’endpoint byte. Non aumenta il massimo
 nominato del commit A e conserva il margine nel piano; allocator,
 workspace completi del getter e staging GPU restano obblighi espliciti.
@@ -1926,3 +1926,33 @@ degli istogrammi insieme al producer packed; non altri censimenti ABI.
 La variante con riporti e cache è verificata nel
 [record nativo su SHA pulita](evidence.md#native-exp30-wide-accumulators-and-original-cache).
 I conteggi restano un modello sorgente, non istruzioni CUDA o un upper H100.
+
+### Replay EXP30 con alias e antenati condivisi
+
+Il DAG interno di valutazione sostituisce il replay packed per livelli,
+conservando i wire originali usati dall’istogramma. Copy non esegue una
+operazione Boolean; zero, uno, identità e gate commutativi identici sono
+risolti dalla forma pubblica. La selezione all’indietro elimina gli
+antenati non usati. Nessuna scelta dipende da witness o correlazioni.
+Non si semplificano i polinomi GKR dopo il fold.
+
+| O | Operazioni word precedenti | Operazioni word DAG | Gather dei wire originali |
+|---:|---:|---:|---:|
+| 0 | 1.858.538.621.952 | 996.381.255.680 | 32.997.687.296 |
+| 150 | 5.477.798.043.648 | 2.936.702.648.320 | 97.256.341.504 |
+| 300 | 9.098.344.541.952 | 4.877.714.055.680 | 161.537.847.296 |
+
+Il replay diminuisce del 46,39%; non cambiano i 3.922.447.766.400
+aggiornamenti dei bin a O=300, i prodotti dei pesi o la coda scalare.
+Un solo piano del livello richiesto vive durante il prefisso. Piano,
+input, valori intermedi e vettore originale selezionato richiedono al
+massimo 1.943.984 B nel riferimento nativo, senza il transitorio del
+compilatore pubblico. Il compilatore viene eseguito una volta per livello,
+non per gruppo di celle. Il DAG è liberato prima della valutazione dei cubici.
+
+I 117.065.137.336.320 B logici di lettura di due operandi e scrittura del
+risultato a O=300 non sono un lower HBM. Restano da definire mapping CUDA,
+residenza dei valori e parallelismo. Il conteggio word non è un conteggio
+di istruzioni macchina né garantisce uno speedup. Tutto il replay resta
+in `T_proof_only`; `T_inference` e `T_response_total` non ricevono nuovi
+upper o crediti. Il requisito totale resta 65 s; nessun GO alla spesa.

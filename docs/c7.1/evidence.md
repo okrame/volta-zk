@@ -1326,3 +1326,34 @@ la high-water nominata della catena EXP30 resta
 mantengono almeno 256 MiB di margine. Workspace e staging completi,
 traffico HBM reale, refinement Lean e tempo totale restano aperti:
 `credit:false`, nessuna ammissione H100 e nessuna spesa.
+
+### Native EXP30 replay DAG
+
+Il [record su SHA pulita `d4f8c98f2b96`](../../benchmarks/results/c71-exp30-replay-dag-2026-09-25-d4f8c98f2b96.json)
+contiene cinque test Rust ridotti, otto controlli Python e tre controlli
+Python/C++ arena, tutti passati. Ogni invocazione nativa ha limite
+60 s/2 GiB, un thread e un worker Rayon. Nessuna esecuzione GPU.
+
+Il nuovo test confronta il DAG con il replay originale a tutti i 95
+livelli selezionabili del circuito EXP30, con live mask piena, parziale
+e vuota. Per il prefisso GKR servono i primi 94 piani. La somma verificata
+è 2.695.370 operazioni Boolean per gruppo packed sui livelli, contro il
+replay originale comprensivo delle copie. Lo screen confronta i conteggi
+originari con il precedente census nativo; non attribuisce costo nullo
+alle gather o agli accessi ai valori. Piano e buffer stabili raggiungono
+1.943.984 B nel riferimento CPU; lo staging GPU rimane da definire.
+
+La parità dei quattro round mantiene wire, FS e MAC originali, inclusa
+la continuazione range/PCS. Il positivo integrato O=0 accetta 7.737.865 B
+con 88.049 MAC ideali e senza A/Snapshot completi; passa anche la
+regressione a tre risposte. Non è un positivo canonico o AES-PCG.
+
+Il piano inserisce il workspace del DAG insieme agli istogrammi e lo
+rilascia prima dei cubici. Il live allineato di quell’evento è
+1.615.545.088 / 1.914.070.016 / 2.212.591.616 B a O=0/150/300;
+la high-water nominata EXP30 resta
+2.082.995.968 / 3.370.001.152 / 3.851.690.752 B. Tutti i layout censiti
+mantengono 256 MiB di margine. Il record include hash del binario e dei
+sorgenti, log di compilazione, conteggi congiunti e formule canoniche.
+È `credit:false`: il DAG riduce del 46,39% il lavoro word del replay,
+non dimostra uno speedup GPU né un upper end-to-end entro 65 s.

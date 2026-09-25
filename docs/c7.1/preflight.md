@@ -1956,3 +1956,6 @@ residenza dei valori e parallelismo. Il conteggio word non è un conteggio
 di istruzioni macchina né garantisce uno speedup. Tutto il replay resta
 in `T_proof_only`; `T_inference` e `T_response_total` non ricevono nuovi
 upper o crediti. Il requisito totale resta 65 s; nessun GO alla spesa.
+
+Il [record del DAG nativo](evidence.md#native-exp30-replay-dag) verifica
+questi conteggi sui piani pubblici effettivi e la parità nel percorso ridotto.

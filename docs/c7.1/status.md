@@ -149,6 +149,8 @@ Nessun nuovo GO H100.
 Il replay packed elimina ora le copie di livello e condivide gli antenati
 in un DAG pubblico: a O=300 passa da 9.098.344.541.952 a
 4.877.714.055.680 operazioni Boolean su word, più le gather originali.
+Il [record su SHA pulita](evidence.md#native-exp30-replay-dag) conferma
+parità a tutti i livelli e cinque test nativi, inclusa la proof integrata.
 È riduzione del lavoro sorgente, senza credito di tempo GPU.
 Prossime fasi dominanti: accumulo/riduzione dei bin e mapping GPU del replay;
 restano da chiudere kernel, staging, getter e ledger temporale congiunto.

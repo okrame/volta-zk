@@ -186,6 +186,206 @@ il nome «blind» di 2026/487 riguarda verifiable FHE: il possessore della
 chiave di decrittazione vede proprio i valori che C7.1 deve tenere privati.
 Le tre linee restano `credit:false`; non si implementano wrapper.
 
+## Wasp: PCS VOLE-AHE e limiti del port
+
+**Screen del 2026-09-25, richiesto dal proprietario: utile come direzione
+PCS e confronto di ricerca; port letterale non ammissibile, `credit:false`.**
+Fonte: Guo et al., *Wasp: Succinct Non-Interactive Zero-Knowledge Proofs
+from VOLE*, [ePrint 2026/1988](https://eprint.iacr.org/2026/1988), revisione
+indicata dal sito al 2026-09-15. Copie immutabili: [PDF](../../sota/2026-1988-wasp.pdf)
+e [Markdown AnyDoc](../../sota/2026-1988-wasp.md). È stato letto il Markdown;
+la conversione conserva alcuni difetti di impaginazione delle formule.
+I riferimenti sotto usano sezioni/protocolli e formule ricostruite con
+segni espliciti, senza correggere la fonte.
+
+| Artefatto | Byte | SHA-256 |
+|---|---:|---|
+| PDF scaricato da `https://eprint.iacr.org/2026/1988.pdf` | 1.986.401 | `bc7ff498dc459e3b1e3a14075cf1e477026750064cd817597c46f0994219ff65` |
+| Markdown prodotto da `@firecrawl/anydoc` 0.1.7 | 154.604 | `2291e5d3b46d0f4726cc87bb36b1168a6e87f918b7e2030e55b57828868b915e` |
+
+La CLI già disponibile nella cache locale è stata invocata con il PDF e
+`-o sota/2026-1988-wasp.md`; nessuna fonte precedente è stata sovrascritta.
+Il [repository degli autori](https://github.com/AntCPLab/openWASP), consultato
+il 2026-09-25, mostra soltanto README e licenza e annuncia l'aggiornamento
+dopo CCS 2026. Il paragrafo *Open Science* del paper indica quel repository,
+ma il codice necessario a verificare parametri, masking e misure non è
+attualmente disponibile lì.
+
+### Contributo e utilità per C7.1
+
+La PCS (§3, App. C) autentica `f(Lambda)` a un punto segreto del verifier.
+Il prover riceve cifrature AHE delle potenze di Lambda. Per aprire a un
+punto pubblico r, impegna `q(X)=(f(X)-y)/(X-r)` e fa verificare la divisione
+a Lambda mediante un residuo MAC cifrato. Lambda rimane segreto; le sfide
+pubbliche successive possono essere derivate via Fiat–Shamir. Le due
+cifrature dell'apertura sostituiscono i codeword e le query Merkle di una
+PCS con codici, pagando setup e prodotti AHE. È questa la pista pertinente
+al costo WHIR/replay di C7.1.
+
+| Uso possibile | Beneficio da investigare | Limite del trasferimento |
+|---|---|---|
+| Solo PCS al posto di WHIR | Apertura univariata di dimensione costante e identità vicina ai MAC originali | Mancano MLE/forme arbitrarie, endpoint privato sicuro, same-W e schedule entro memoria |
+| Wasp S per circuiti ripetuti RMS/ratio | La struttura SIMD corrisponde qualitativamente a molte celle con lo stesso predicato | Cambia PIOP, transcript, interpolazioni, endpoint e prova ZK; non accelera automaticamente il GKR selezionato |
+| Wasp G / Wasp C per l'intera inferenza | Confronto rispettivamente con PLONK e con compilazione SIMD a wiring sparso | Nuova aritmetizzazione completa di RNE/range/lookup/KV; i 122 KB pubblicati non sono un certificato Gemma |
+
+La §6 riporta circa **121 KB per la PCS**, **122 KB per Wasp G** e
+**0,7–0,9 ms** di verifica per quest'ultimo. Sono misure degli autori su
+CPU Xeon 8369B, un thread, macchina con 256 GB, campo primo da 59 bit,
+parametri dichiarati kappa=128 e lambda>40 con ripetizione delle sfide.
+I domini misurati arrivano a 2^26. Non sono misure Fp3, picchi di memoria
+o tempi H100, né contabilizzazioni del certificato completo C7.1.
+
+Il motivo concreto per non scartare l'idea sulla sola dimensione è il
+[corpo non-PCS](design.md#analytic-envelope-of-the-complete-non-pcs-body):
+
+| O | Upper corpo non-PCS + header corrente | PCS richieste | Residuo sotto 40 MB, prima di nuovi costi |
+|---:|---:|---:|---:|
+| 150 | 37.450.538 B | 3 | 2.549.462 B |
+| 300 | 37.451.288 B | 4 | 2.548.712 B |
+
+Quattro aperture ipotetiche da circa 121 KB entrerebbero in quel residuo.
+È una **sensibilità sui byte**, non un upper di una candidata: le aperture
+attuali sono multilineari private, la nuova codifica/header/setup non sono
+definiti e il prezzo di una singola PCS pubblicata non li sostituisce.
+La prima risposta deve ancora includere tutto il bootstrap nei 130 MB.
+Anche una PCS gratuita lascerebbe il lower EXP30 scalare di 67,104 s:
+la linea a pattern già selezionata resta un problema distinto.
+
+### Endpoint privato: identità utile, protocollo ancora da dimostrare
+
+La PCS pubblicata riceve **y in chiaro** (`Verify`, Protocol C.1).
+Hiding del commitment non implica hiding della valutazione. Esiste però
+un adattamento algebrico diretto, più vicino al nostro requisito delle PCS
+che aprono in un campo di gruppo diverso.
+
+Usando i segni nativi `k=m+Delta*x` (nel paper `m=k+Delta_paper*x`, dunque
+`Delta_paper=-Delta`), siano f e q autenticati allo stesso Lambda, e sia
+`(y,m_y;k_y)` **il MAC originale** prodotto dal consumer. Si può formare:
+
+```text
+Enc(m_t) = (Enc(Lambda)-r)*m_q - m_f + m_y
+k_t      = (Lambda-r)*k_q - k_f + k_y
+k_t-m_t  = Delta * ((Lambda-r)*q(Lambda)-f(Lambda)+y).
+```
+
+La verifica decripta solo il tag del residuo e controlla `m_t=k_t`.
+Il valore y e il suo tag individuale non sono aperti; q consuma una
+correlazione fresca. È un'identità locale per un'apertura univariata con
+parametri corretti, **non** una PCS privata dimostrata. I lemmi lineari
+[`Mac.Valid.add/smul`](../../lean/VoltaZk/Mac.lean) coprono solo l'algebra MAC;
+non provano sicurezza AHE, estrazione, FS o simulazione di questa vista.
+
+**Controesempio al solo adapter con SRS malevola.** Un verifier può fornire
+`Enc(Lambda)=Enc(2)` e una presunta `Enc(Lambda^2)=Enc(5)`. Le cifrature
+possono essere valide, ma le potenze sono incoerenti. Sia `f(X)=a*X^2`,
+con a privato: `y=a*r^2`, `q(X)=a*(X+r)`. La funzionale L codificata dalla
+SRS ha `L(f)=5*a`, `L(q)=a*(2+r)`; il residuo decriptato dà
+
+```text
+k_t-m_t = Delta * ((2-r)*a*(2+r)-5*a+a*r^2) = -Delta*a.
+```
+
+Il verifier conosce Delta e recupera a prima di qualsiasi eventuale Stop.
+La sola circuit privacy del ciphertext non nasconde il suo plaintext.
+Occorre dunque una costruzione che gestisca SRS/key malformate e privacy
+sui rifiuti: non basta cifrare l'ultima equazione. Il controesempio riguarda
+questa estensione privata senza validazione, non è un attacco dichiarato
+a ogni possibile variante Wasp. Assumere setup onesto aggiuntivo cambierebbe
+il trust model C7.1.
+
+**Ulteriore limite della specifica SIMD letta.** Protocol 3.1 interpola i
+wire con grado B−1 e invia esplicitamente `f(r),g(r),h(r)`. Per B esecuzioni
+del circuito `a*0=0`, tutte con lo stesso a segreto, si ha `f(X)=a` e il
+messaggio rivela a, sebbene l'output sia sempre zero. Il protocollo scritto
+non specifica blinding di questi polinomi; l'App. D dimostra knowledge
+soundness. Per riusarlo come ZK occorre esplicitare masking e relativo
+simulatore. Il rilievo è sul protocollo così descritto: non si attribuiscono
+al codice non disponibile né una correzione implicita né una vulnerabilità
+verificata. Il titolo ZK e l'hiding della PCS non scaricano questo obbligo.
+
+### Trust, campo e risorse che restano da chiudere
+
+1. **Nuove premesse.** La §6.1 usa BGV; l'App. B richiede sicurezza CPA,
+   circuit privacy e **polynomial linear targeted malleability (PLTM)**,
+   con spiegazioni congiunte di grado limitato per ciphertext malevoli.
+   BGV è indicata come candidata. RLWE/PLTM e i loro vantaggi concreti a
+   T121/M93 non sono inclusi nell'EA-LPN autorizzata. Nessuna di queste
+   premesse viene aggiunta al teorema B12 da questo screen.
+2. **Univariata e campo.** Un vettore di 2^d valori e la sua MLE a un punto
+   Fp3^d non diventano un'apertura univariata sostituendo il nome della PCS.
+   Servono riduzione delle forme originali, eventuali quotient/fold e loro
+   endpoint privati. Il paper non istanzia Fp3 o i costi delle tre coordinate.
+   Inoltre `v2(p^3-1)=32`: un port monolitico dei domini moltiplicativi
+   Wasp S/PLONK da 2^34 o 2^35 non esiste in quel campo. Questo limite dei
+   domini non impedisce da solo una PCS univariata in base monomiale o
+   una nuova costruzione a blocchi.
+3. **Sicurezza concreta e FS.** App. C, Lemma 2/Teoremi 3–4, espone termini
+   D/|F|, ND/|F| ed estrazione da d+1 aperture a sfide uniformi con rewind.
+   A grado circa 2^35, il solo d/p Goldilocks è circa 2^-29; in Fp3 il
+   termine dell'estrazione di ordine d²/|Fp3| è circa 2^-122, prima di
+   primitive, composizione e trasferimento FS. Non è il bound completo
+   >=78 bit richiesto a Q globale 2^64/Q* 2^74. Non si moltiplicano né
+   trasferiscono automaticamente i bound interattivi; vanno provati
+   estrazione same-W e limiti del riduttore per il nuovo transcript.
+4. **Setup di sessione.** Protocol C.1 invia potenze cifrate fino al grado
+   supportato. Packing riduce i ciphertext, ma vanno contati tutti i
+   coefficienti cifrati, chiavi di rotazione, generazione, trasporto e letture.
+   Dipendono da Lambda/key del verifier e non sono materiale globale W
+   indipendente dalle sessioni. Il traffico SRS è verifier→prover: non è
+   automaticamente un lower dei byte ricevuti dal verifier, ma resta nel
+   costo totale. L'apertura corta non rende piccolo il setup.
+5. **Memoria.** Un singolo array monolitico da 2^34/2^35 elementi occupa
+   **137.438.953.472 / 274.877.906.944 B** in Fp e
+   **412.316.860.416 / 824.633.720.832 B** in Fp3, prima di SRS,
+   quotient e W. Sono costi di queste rappresentazioni, non lower universali
+   di Wasp: reader packed, divisione streaming e SRS a finestre richiedono
+   uno schedule proprio. Il paper non fornisce il picco congiunto entro
+   6.442.450.944 B di arena e <80 GB totali né il costo dei replay A/KV.
+6. **Installazione e storia.** L'IT-PAC dipende da SRS/correlazioni;
+   `ModelSetup(W,Gamma)` di C7.1 ne è indipendente. Un IT-PAC fresco di
+   un W liberamente scelto non lo collega a C_W. Occorrono il collegamento
+   all'installazione, le tre esposizioni W e le 3/2/1 di A, burn e domini
+   separati, stesso KV finale e simulazione congiunta sui prefissi abortiti.
+
+**Disposizione:** conservare Wasp come prior art e candidata di ricerca
+per una PCS DV con endpoint privato; nessun port o parametro selezionato.
+Il prossimo passo minimo, se si intende proseguire questa linea, è una
+specifica dell'apertura privata con setup malevolo e riduzione MLE, seguita
+dal conto SRS/witness/quotient/IO nelle tre risposte. Solo una candidata
+concreta motiverebbe una decisione del proprietario sulle nuove premesse.
+L'analisi richiesta è autorizzata; non richiede tale decisione per essere
+completata e non modifica le priorità implementative EXP30.
+
+### Controllo algebrico riproducibile
+
+Eseguito localmente con Python, senza librerie aggiuntive. Verifica in Fp
+l'identità per SRS onesta, il rigetto di un target alterato e il recupero
+del coefficiente con le potenze incoerenti sopra. Non implementa AHE,
+non valida PLTM/ZK/FS e non dà credito di protocollo o hardware.
+
+```python
+p = 2**64 - 2**32 + 1
+delta, mf, mq, my = 19, 7, 11, 13
+
+def residual(lam, r, lf, lq, y):
+    kf, kq, ky = mf + delta*lf, mq + delta*lq, my + delta*y
+    mt = (lam-r)*mq - mf + my
+    return ((lam-r)*kq - kf + ky - mt) % p
+
+points = (0, 1, 2, 17, p-1)
+for a in (0, 1, 27, p-1):
+    for r in points:
+        y = a*r*r % p
+        for lam in points:
+            lf, lq = a*lam*lam % p, a*(lam+r) % p
+            assert residual(lam, r, lf, lq, y) == 0
+            assert residual(lam, r, lf, lq, y+1) == delta
+        leaked = residual(2, r, 5*a % p, a*(2+r) % p, y)
+        assert (-leaked * pow(delta, -1, p)) % p == a
+assert ((p**3-1) & -(p**3-1)) == 2**32
+print("Wasp: identita MAC, target alterato e SRS incoerente verificati")
+```
+
 ## Confronto mirato Akita-Shout e LogUp-Dory
 
 Screen del 2026-09-12, prima di progettare nuovi wrapper; **`credit:false`**.

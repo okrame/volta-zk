@@ -137,6 +137,16 @@ geometria. Restano da verificare il trasferimento compositivo del bootstrap,
 il codec e le risorse; il teorema B12 v1 sotto rimane il riferimento già
 dimostrato. L'estensione non introduce ipotesi lattice o un setup fidato PCS.
 
+Lo [screen Wasp del 2026-09-25](construction-screen.md#wasp-pcs-vole-ahe-e-limiti-del-port)
+studia una PCS VOLE-AHE con apertura univariata corta. BGV/RLWE, circuit
+privacy e polynomial linear targeted malleability restano premesse **non
+selezionate**. La PCS pubblicata apre y in chiaro; l'identità candidata
+negli originali MAC richiede validazione del setup contro verifier malevolo,
+simulazione sui rifiuti, riduzione MLE e collegamento al W installato.
+Un controesempio con potenze SRS incoerenti esclude il solo adapter finale
+senza tali protezioni. Nessun bound B12 o risultato fisico si trasferisce;
+setup cifrato e stato di sessione devono essere contabilizzati integralmente.
+
 Le seguenti parti del notebook restano derivazioni tecniche applicabili
 entro il profilo selezionato. La loro prosa di stato e i loro sottototali
 precedenti sono storici; per il risultato congiunto vale [security](security.md).

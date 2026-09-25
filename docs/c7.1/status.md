@@ -1,6 +1,6 @@
 # C7.1 — Goals and current status
 
-Aggiornato al 2026-09-19. [Design](design.md) · [Security](security.md) ·
+Aggiornato al 2026-09-25. [Design](design.md) · [Security](security.md) ·
 [Evidence](evidence.md) · [Decisions](decisions.md) · [Indice](../README.md).
 Questa pagina contiene stato, autorizzazione e prossimo lavoro; requisiti,
 prove e risultati dei test hanno ciascuno la propria sede nei link sopra.
@@ -114,6 +114,16 @@ verifica l'arresto per capacità insufficiente, senza pubblicare A né
 promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
 
 ## Next goal
+
+**Ricerca Wasp completata su richiesta del proprietario (2026-09-25).**
+Il [paper convertito con AnyDoc](../../sota/2026-1988-wasp.md) e lo
+[screen di applicabilità](construction-screen.md#wasp-pcs-vole-ahe-e-limiti-del-port)
+individuano una possibile riduzione dei byte PCS e un'identità di apertura
+negli originali MAC. Il port letterale non soddisfa il contratto: endpoint
+pubblico, nuove premesse AHE/PLTM, setup malevolo, riduzione MLE/same-W e
+risorse restano da risolvere. Sono documentati un controesempio all'adapter
+privato senza validazione SRS e un limite ZK della specifica SIMD scritta.
+È ricerca `credit:false`, senza selezione di protocollo o nuove ipotesi.
 
 **Due alternative EXP30, su richiesta del proprietario:** il NO-GO sotto
 non chiude la ricerca. Lo [screen circoscritto](preflight.md#due-alternative-strutturali-exp30)

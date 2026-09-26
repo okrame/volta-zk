@@ -64,7 +64,7 @@ def test_seed6_guard_cggm_and_split_remain_live_through_equality():
                 assert live['Seed6:coin_native_value_slot']>=4096
                 assert live['Seed6:main'] and live['Seed6:roleswap'] and live['Seed6:main_equality_tail']
         assert live['Seed6:cggm_private']>=private
-        assert live.get('Seed6:accepted_beta',0)>=(5400 if role=='prover' else 0)
+        assert live.get('Seed6:accepted_prefixes',0)>=(21600 if role=='prover' else 0)
         assert 'Seed6:main' not in live and 'Seed6:main_equality_tail' not in live
         assert 'Seed6:roleswap' not in live and 'Seed6:guard_corrections' not in live
         assert 'Seed6:cggm_temporary' not in live and 'Seed6:H_codec' not in live

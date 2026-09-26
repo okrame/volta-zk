@@ -1495,7 +1495,7 @@ Copia e cancellazione contano ciascuna 64.800 / 48.600 B logici, oltre alla
 lettura della copia; non sono traffico HBM misurato. L'audit e il lavoro
 setup originari restano sul prefisso: lo split non ripete OT o compressione.
 Il test della riserva usa seed da 12 righe, prefissi da 9 nel guard e code
-da 3 in F_EQ; il test composto attuale usa 14 righe principali e 3 inverse.
+da 3 in F_EQ; il test composto attuale usa 25 righe principali e 6 inverse.
 Il piano conserva i seed fino alla conversione positiva nello stato EA
 descritta sotto, non li libera implicitamente prima di F_EQ.
 I massimi risposta restano quelli del
@@ -1525,10 +1525,10 @@ esaurito non restituiscono stato. Gli oggetti sono consumati, non clonati.
 
 Il controllo esaustivo h=1–7 copre ogni cammino, tutti i prefissi, beta zero
 e due blocchi; confronta anche i contatori con le formule del ledger.
-La catena attuale con seed AES reali da 14+3 righe passa e rifiuta c/z alterati
+La catena attuale con seed AES reali da 25+6 righe passa e rifiuta c/z alterati
 attraverso F_EQ. Ora esegue entrambe le coin commit/risposta/apertura
 descritte sotto; i test algebrici mantengono callback deterministici.
-Il raccordo successivo aggiunge tre righe EA; restano burn durevole,
+Il raccordo successivo aggiunge sei righe EA; restano burn durevole,
 nonce freshness globale, trasporto e port canonico a trie batch.
 Non è ancora un bootstrap completo né credito alla sicurezza composta.
 
@@ -1589,33 +1589,37 @@ collegamento alla capacità PCG canonica restano aperti, senza nuovo credito H10
 
 ## EA puntuale dopo accettazione F_EQ
 
-Evidenza: [32 test Rust e 29 Python/C++](evidence.md#equality-owned-pointwise-expansion).
-**NO-GO multiblocco alla SHA `228ed64`:** il controllo t=1 passa, ma mancano
-i prefissi dei blocchi precedenti del vero accumulatore EA globale.
-La correzione e l'oracolo BAe multiblocco sono il prossimo lavoro locale.
+La [versione `228ed64`](evidence.md#equality-owned-pointwise-expansion)
+rimane NO-GO multiblocco: il controllo t=1 non rilevava l'omissione dei
+blocchi precedenti. Il difetto è riprodotto sulla seconda riga del fixture
+t=2 e ora corretto con prefissi globali e confronto diretto con BAe.
 
 Il [consumer test-only](../../rust/volta-pcg/src/c71_seed6/expand.rs) riusa
 EAGen e Acc/PuncAcc esistenti. F_EQ ora possiede lo stato cGGM pendente:
 solo `Accepted<State>` permette la conversione, mentre un rifiuto distrugge
-lo stato trattenuto. Dopo il successo il sender conserva k/K(beta)/Delta;
-il receiver conserva alpha/beta/sibling/foglia alternativa, mai root
+lo stato trattenuto. Dopo il successo il sender conserva k/Delta e i
+prefissi K(beta); il receiver conserva alpha, prefissi beta/M(beta),
+sibling e foglia alternativa, mai root
 sender o Delta. Il receiver legge la chiave punctured senza copiarla,
 con scratch fisso da 20 elementi Fp3. Non materializza un pool denso.
 
 Un cursore monotono produce al più `floor(t*2^h/5)` righe base, ciascuna
 con gli stessi termini pubblici EA nei due ruoli. Per il receiver,
-`x=sum(chi*beta*[omega>=alpha])`; l'identità dei prefissi dà `m=k+Delta*x`.
-Il controllo reale h=4,t=1,ell=2 usa seed principali/inversi da 14+3 righe,
-produce tre righe e verifica anche il packing Fp3 originale, nonzero.
+`x=sum_j(chi_j*sum_i(beta_i*[j>=i*2^h+alpha_i]))`; l'identità dei prefissi
+dà `m=k+Delta*x`. Per ogni termine EA il prefisso locale si somma a tutti
+i blocchi precedenti, usando somme cumulative anziché uno scan per termine.
+Il controllo reale h=4,t=2,ell=2 usa seed principali/inversi da 25+6 righe,
+produce sei righe, le confronta con BAe e verifica due packing Fp3 nonzero.
 c/z alterati non producono la capacità. Un test controlla il drop degli
 stati trattenuti su rifiuto; un altro forma, capacità e fallimento reale
 del sampler EAGen. Errore o richiesta oltre capacità avvelenano il cursore
 e cancellano i buffer segreti posseduti; non sostituiscono un journal.
 
 Per la geometria selezionata il payload heap dopo conversione è
-32.400 B sender / 334.800 B receiver. M(beta) è già incorporato nella
-foglia alternativa; alpha usa u64. La conversione aggiunge 5.400 B per
-beta receiver mentre lo stato precedente è ancora vivo; poi rilascia seed,
+32.400 B sender / 351.000 B receiver. M(beta) è incorporato nella
+foglia alternativa e riaccumulato nei prefissi; alpha usa u64. La conversione
+aggiunge 21.600 B per i prefissi beta/M(beta) receiver mentre lo stato
+precedente è ancora vivo; poi rilascia seed,
 correzioni e frame consumati. Il piano conserva inoltre il precedente
 slot persistente conservativo, senza reclamarne un risparmio o un nuovo
 picco. Una riga usa al più 409 B heap EA/hash e 480 B di scratch receiver,
@@ -1625,6 +1629,10 @@ Il riferimento puntuale costa **198 H sender per riga base**, al più
 198 receiver, più 22 SHAKE EAGen, 11 prodotti Fp3×Fp per ruolo e
 11 coppie prodotto/somma Fp receiver. Questi non sono i costi del trie
 batch selezionato e non entrano come sostituto nel budget canonico.
+I prefissi aggiungono 11 somme Fp3 per riga/ruolo e 11 sottrazioni sender;
+la conversione costa 1.350 somme Fp3 sender, 13.500 receiver e 1.350 somme
+Fp receiver. Il piano persistente canonico conserva lo slot M(beta), ora
+cumulativo, con alpha u32; non confonde questo layout con quello nativo u64.
 I contatori runtime registrano righe complete: su errore del sampler
 sono parziali, con upper pari al lavoro di una riga tentata intera.
 Il seed EA nel fixture è pubblico prefissato, non un accordo F_Rand.

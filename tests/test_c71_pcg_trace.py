@@ -201,8 +201,11 @@ def test_native_coin_stream_independent_python_vectors_and_accounting():
 def test_accepted_expansion_capacity_state_and_reference_cost():
     expansion=trace.seed6_expansion_trace()
     assert expansion['capacity_base_rows']==70_778_880
-    assert expansion['retained_heap_bytes']=={'sender':32400,'receiver':334800}
-    assert expansion['conversion_extra_beta_heap_bytes_receiver']==5400
+    assert expansion['retained_heap_bytes']=={'sender':32400,'receiver':351000}
+    assert expansion['conversion_extra_prefix_heap_bytes_receiver']==21600
+    assert expansion['conversion_Fp3_additions_sender']==1350
+    assert expansion['conversion_Fp3_additions_receiver']==13500
+    assert expansion['global_accumulator_prefix_for_all_preceding_blocks']
     assert expansion['H_calls_per_successful_row_sender']==198
     assert expansion['EAGen_SHAKE_calls_per_successful_row_each_role']==22
     assert expansion['EA_sampler_heap_bytes_upper']==409
@@ -211,7 +214,7 @@ def test_accepted_expansion_capacity_state_and_reference_cost():
     assert not expansion['batch_trie_or_canonical_cost_credit']
     reduced=trace.seed6_expansion_trace(1,4,2)
     assert reduced['capacity_base_rows']==3
-    assert reduced['retained_heap_bytes']=={'sender':48,'receiver':136}
+    assert reduced['retained_heap_bytes']=={'sender':48,'receiver':160}
     assert 3*(reduced['H_calls_per_successful_row_sender']+
               reduced['EAGen_SHAKE_calls_per_successful_row_each_role'])==30
 

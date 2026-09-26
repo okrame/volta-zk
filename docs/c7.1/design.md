@@ -1291,9 +1291,13 @@ F_EQ possiede root/chiavi pendenti e solo il successo restituisce la
 capacità consumata dal [raccordo EA puntuale](preflight.md#ea-puntuale-dopo-accettazione-f_eq).
 Questo componente test-only riusa Acc/PuncAcc ed EAGen, restituisce MAC
 base uno alla volta e respinge riuso/esaurimento. Per ogni riga,
-`m-k=Delta*sum(chi*beta*[omega>=alpha])`; il packing nelle tre basi Fp3
-conserva la stessa identità. Il controllo reale produce tre righe e un
-MAC Fp3, non una proof positiva o il percorso canonico a trie batch.
+`m-k=Delta*sum_j(chi_j*sum_i(beta_i*[j>=i*2^h+alpha_i]))`:
+l'accumulatore è globale, non separato per albero. Prefissi cumulativi
+di beta/K(beta)/M(beta) includono i blocchi precedenti in tempo costante
+per termine. Il packing nelle tre basi Fp3 conserva la stessa identità.
+Il controllo reale produce sei righe e due MAC Fp3, confrontando anche
+BAe su due blocchi; il precedente fixture t=1 non rilevava l'omissione.
+Non è una proof positiva o il percorso canonico a trie batch.
 L'accordo sul seed pubblico EA e il binding globale restano obblighi
 del caller; nessuna nuova premessa viene implicitamente scaricata.
 La catena ridotta passa con seed AES reali e rifiuta c/z alterati.

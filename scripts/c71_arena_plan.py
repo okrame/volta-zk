@@ -176,7 +176,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                                 'Seed6:equality_native_value_slot':equality['native_value_state_slot_bytes']}})
                 expansion=setup['accepted_pointwise_expansion']
                 events.append({'event':'equality_accepted_convert_to_expansion',
-                    'allocate':({'Seed6:accepted_beta':expansion['conversion_extra_beta_heap_bytes_receiver']}
+                    'allocate':({'Seed6:accepted_prefixes':expansion['conversion_extra_prefix_heap_bytes_receiver']}
                                 if tree_role=='receiver' else {})})
                 events.append({'event':'accepted_expansion_releases_consumed_setup',
                     'free':['Seed6:'+name for name in ('main','roleswap','main_equality_tail',

@@ -61,6 +61,7 @@ pub(super) struct Receiver {
     alpha: Zeroizing<Vec<u64>>,
     beta: Zeroizing<Vec<u64>>,
     keys: Zeroizing<Vec<Fp3Words>>,
+    prefix_tags: Zeroizing<Vec<Fp3Words>>,
     pub(super) binding: [u8; 32],
     pub(super) work: Work,
     pub(super) base_mul_add_pairs: u64,
@@ -76,15 +77,17 @@ impl Sender {
         let frozen = &pending.guard.frozen;
         let stream = Stream::new(pending.nonce, seed, frozen.blocks, frozen.height, weight)?;
         let mut roots = pending.roots;
+        let mut prefix = Fp3::ZERO;
         for children in roots.iter_mut() {
-            children[1] = Fp3Words::from_fp3(children[0].fp3() + children[1].fp3());
+            prefix += children[0].fp3() + children[1].fp3();
+            children[1] = Fp3Words::from_fp3(prefix);
         }
         Ok(Self {
             stream,
             delta: pending.guard.seed.delta,
             roots,
             binding,
-            work: Work { fp3_additions: frozen.blocks as u64, ..Work::default() },
+            work: Work { fp3_additions: 2 * frozen.blocks as u64, ..Work::default() },
         })
     }
 
@@ -96,19 +99,21 @@ impl Sender {
                 let block = (term.index >> self.stream.height) as usize;
                 let omega = term.index & ((1 << self.stream.height) - 1);
                 let roots = self.roots[block];
+                let prefix = if block == 0 { Fp3::ZERO } else { self.roots[block - 1][1].fp3() };
                 let (value, point_work) = acc(
                     self.stream.nonce,
                     block as u64,
                     self.stream.height,
                     omega,
-                    roots[1].fp3(),
+                    roots[1].fp3() - prefix,
                     roots[0].fp3(),
                 )
                 .map_err(|_| Error::Rejected)?;
                 add_work(&mut work, point_work);
-                key += value.mul_base(term.coefficient);
+                key += (value + prefix).mul_base(term.coefficient);
                 work.fp3_by_fp_multiplications += 1;
-                work.fp3_additions += 1;
+                work.fp3_additions += 2;
+                work.fp3_subtractions += 1;
             }
             add_work(&mut self.work, work);
             Ok([key.c0.value(), key.c1.value(), key.c2.value()])
@@ -140,20 +145,28 @@ impl Receiver {
         let frozen = &pending.guard.frozen;
         let stream = Stream::new(pending.nonce, seed, frozen.blocks, frozen.height, weight)?;
         let mut beta = Zeroizing::new(Vec::with_capacity(frozen.blocks));
+        let mut prefix_tags = Zeroizing::new(Vec::with_capacity(frozen.blocks));
+        let (mut beta_sum, mut tag_sum) = (Fp::ZERO, Fp3::ZERO);
         for block in 0..frozen.blocks {
-            beta.push(
-                (Fp::new(pending.guard.seed.values[block * (frozen.height + 4)])
-                    + Fp::new(frozen.corrections[block * (frozen.height + 1)]))
-                .value(),
-            );
+            beta_sum += Fp::new(pending.guard.seed.values[block * (frozen.height + 4)])
+                + Fp::new(frozen.corrections[block * (frozen.height + 1)]);
+            beta.push(beta_sum.value());
+            for word in &pending.keys[block * (frozen.height + 1)..][..frozen.height + 1] {
+                tag_sum += word.fp3();
+            }
+            prefix_tags.push(Fp3Words::from_fp3(tag_sum));
         }
         Ok(Self {
             stream,
             alpha: pending.alpha,
             beta,
             keys: pending.keys,
+            prefix_tags,
             binding,
-            work: Work::default(),
+            work: Work {
+                fp3_additions: (frozen.blocks * (frozen.height + 1)) as u64,
+                ..Work::default()
+            },
             base_mul_add_pairs: 0,
         })
     }
@@ -180,13 +193,19 @@ impl Receiver {
                 )
                 .map_err(|_| Error::Rejected)?;
                 add_work(&mut work, point_work);
-                let noise =
-                    if omega >= self.alpha[block] { Fp::new(self.beta[block]) } else { Fp::ZERO };
+                let noise = if omega >= self.alpha[block] {
+                    Fp::new(self.beta[block])
+                } else if block > 0 {
+                    Fp::new(self.beta[block - 1])
+                } else {
+                    Fp::ZERO
+                };
                 value += term.coefficient * noise;
                 self.base_mul_add_pairs += 1;
-                tag += point_tag.mul_base(term.coefficient);
+                let prefix = if block == 0 { Fp3::ZERO } else { self.prefix_tags[block - 1].fp3() };
+                tag += (point_tag + prefix).mul_base(term.coefficient);
                 work.fp3_by_fp_multiplications += 1;
-                work.fp3_additions += 1;
+                work.fp3_additions += 2;
             }
             add_work(&mut self.work, work);
             Ok([value.value(), tag.c0.value(), tag.c1.value(), tag.c2.value()])
@@ -196,12 +215,14 @@ impl Receiver {
             self.alpha.zeroize();
             self.beta.zeroize();
             self.keys.zeroize();
+            self.prefix_tags.zeroize();
         }
         result
     }
 
     pub(super) fn heap_bytes(&self) -> usize {
-        8 * (self.alpha.capacity() + self.beta.capacity()) + 24 * self.keys.capacity()
+        8 * (self.alpha.capacity() + self.beta.capacity())
+            + 24 * (self.keys.capacity() + self.prefix_tags.capacity())
     }
 }
 

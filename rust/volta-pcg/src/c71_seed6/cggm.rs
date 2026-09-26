@@ -583,14 +583,14 @@ mod tests {
     fn c71_seed6_real_guard_cggm_split_and_two_key_equality() {
         use crate::c71_seed6::{equality::tests as equality, real};
         for fault in 0..3 {
-            let (main_prover, main_verifier) = equality::real_pair(14, 0);
-            let (opposite_prover, opposite_verifier) = equality::real_pair(3, 1);
-            let main_prover = real::reserve_equality_prover_tail(main_prover, 3).unwrap();
-            let main_verifier = real::reserve_equality_verifier_tail(main_verifier, 3).unwrap();
+            let (main_prover, main_verifier) = equality::real_pair(25, 0);
+            let (opposite_prover, opposite_verifier) = equality::real_pair(6, 1);
+            let main_prover = real::reserve_equality_prover_tail(main_prover, 6).unwrap();
+            let main_verifier = real::reserve_equality_verifier_tail(main_verifier, 6).unwrap();
             let (prover, verifier) =
-                guarded_outputs(main_prover.prefix, main_verifier.prefix, 4, &[17], &[13]);
+                guarded_outputs(main_prover.prefix, main_verifier.prefix, 4, &[17, 23], &[13, 5]);
             let context =
-                coins::Context::new([7; 32], prover.frozen.prefix, coins::Phase::Split, 16)
+                coins::Context::new([7; 32], prover.frozen.prefix, coins::Phase::Split, 32)
                     .unwrap();
             let (commitment, committed) =
                 coins::Committed::new(context, &mut StdRng::seed_from_u64(1007)).unwrap();
@@ -603,7 +603,7 @@ mod tests {
                 wire[0] ^= 1;
                 sender.prefix = prefix(sender.guard.frozen.prefix, sender.nonce, &wire);
             }
-            let receiver = prover.cggm([7; 32], vec![13], &wire).unwrap();
+            let receiver = prover.cggm([7; 32], vec![13, 5], &wire).unwrap();
             assert_eq!(sender.prefix, receiver.prefix);
             let (opening, mut receiver_coins) = committed.open(&response, receiver.prefix).unwrap();
             let mut sender_coins = replied.open(&opening, sender.prefix).unwrap();
@@ -622,8 +622,8 @@ mod tests {
                     sender_coins.draw(prefix, 16 * block as u64 + leaf).map_err(|_| Error::Rejected)
                 })
                 .unwrap();
-            assert_eq!(sender_coins.finish().unwrap().squeezed_bytes, 16 * 192);
-            assert_eq!(receiver_coins.finish().unwrap().squeezed_bytes, 16 * 192);
+            assert_eq!(sender_coins.finish().unwrap().squeezed_bytes, 32 * 192);
+            assert_eq!(receiver_coins.finish().unwrap().squeezed_bytes, 32 * 192);
             let (accepted_sender, accepted_receiver) = equality::finish_chosen_inputs(
                 opposite_prover,
                 main_verifier.equality_tail,
@@ -642,28 +642,50 @@ mod tests {
                 let mut receiver =
                     expand::Receiver::new(accepted_receiver.unwrap(), [0x61; 32], 2).unwrap();
                 assert_eq!(sender.binding, receiver.binding);
-                assert_eq!(sender.heap_bytes(), 48);
-                assert_eq!(receiver.heap_bytes(), 136);
+                assert_eq!(sender.heap_bytes(), 96);
+                assert_eq!(receiver.heap_bytes(), 320);
                 let delta = sender.delta();
                 let (mut packed_value, mut packed_tag, mut packed_key) =
                     (Fp3::ZERO, Fp3::ZERO, Fp3::ZERO);
-                for basis in super::super::BASIS {
+                for row_index in 0..6 {
+                    let basis = super::super::BASIS[row_index as usize % 3];
                     let key = sender.next_row().unwrap();
                     let row = receiver.next_row().unwrap();
+                    let (terms, _) =
+                        crate::c71_ea_lpn::public_ea_row([0x61; 32], row_index, 32, 2).unwrap();
+                    let expected = terms.iter().fold(Fp::ZERO, |sum, term| {
+                        let prefix =
+                            [(2, 17), (26, 23)].iter().fold(Fp::ZERO, |sum, &(position, beta)| {
+                                if term.index >= position {
+                                    sum + Fp::new(beta)
+                                } else {
+                                    sum
+                                }
+                            });
+                        sum + term.coefficient * prefix
+                    });
+                    assert_eq!(
+                        Fp::new(row[0]),
+                        expected,
+                        "global EA accumulator at row {row_index}"
+                    );
                     let key = Fp3::new(Fp::new(key[0]), Fp::new(key[1]), Fp::new(key[2]));
                     let tag = Fp3::new(Fp::new(row[1]), Fp::new(row[2]), Fp::new(row[3]));
                     assert_eq!(tag, key + delta.mul_base(Fp::new(row[0])));
                     packed_value += basis.mul_base(Fp::new(row[0]));
                     packed_tag += basis * tag;
                     packed_key += basis * key;
+                    if row_index % 3 == 2 {
+                        assert_ne!(packed_value, Fp3::ZERO);
+                        assert_eq!(packed_tag, packed_key + delta * packed_value);
+                        (packed_value, packed_tag, packed_key) = (Fp3::ZERO, Fp3::ZERO, Fp3::ZERO);
+                    }
                 }
-                assert_ne!(packed_value, Fp3::ZERO);
-                assert_eq!(packed_tag, packed_key + delta * packed_value);
-                assert_eq!(receiver.base_mul_add_pairs, 6);
-                assert_eq!(sender.work.fp3_by_fp_multiplications, 6);
-                assert_eq!(receiver.work.fp3_by_fp_multiplications, 6);
-                assert_eq!(sender.work.shake_calls, 30);
-                assert!(receiver.work.shake_calls <= 30);
+                assert_eq!(receiver.base_mul_add_pairs, 12);
+                assert_eq!(sender.work.fp3_by_fp_multiplications, 12);
+                assert_eq!(receiver.work.fp3_by_fp_multiplications, 12);
+                assert_eq!(sender.work.shake_calls, 60);
+                assert!(receiver.work.shake_calls <= 60);
                 for _ in 0..2 {
                     assert!(sender.next_row().is_err());
                     assert!(receiver.next_row().is_err());
@@ -671,6 +693,6 @@ mod tests {
                 assert_eq!(sender.delta(), Fp3::ZERO);
             }
         }
-        eprintln!("C71_SEED6_CGGM_EQUALITY main_rows=14 inverse_rows=3 original_macs=true altered_c_and_z_rejected=true both_coin_commit_open=true EA_rows_after_acceptance=3 durable_burn=false");
+        eprintln!("C71_SEED6_CGGM_EQUALITY main_rows=25 inverse_rows=6 original_macs=true altered_c_and_z_rejected=true both_coin_commit_open=true EA_rows_after_acceptance=6 global_EA_accumulator=true durable_burn=false");
     }
 }

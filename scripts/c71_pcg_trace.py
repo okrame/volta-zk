@@ -290,10 +290,13 @@ def seed6_expansion_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
         raise ValueError('outside bounded EA geometry')
     return {
         'capacity_base_rows':domain//5,
-        'retained_heap_bytes':{'sender':48*blocks,'receiver':blocks*(16+24*(height+1))},
-        'conversion_extra_beta_heap_bytes_receiver':8*blocks,
-        'conversion_Fp3_additions_sender':blocks,
-        'conversion_base_Fp_additions_receiver':blocks,
+        'retained_heap_bytes':{'sender':48*blocks,'receiver':blocks*(16+24*(height+2))},
+        'conversion_extra_prefix_heap_bytes_receiver':32*blocks,
+        'conversion_Fp3_additions_sender':2*blocks,
+        'conversion_Fp3_additions_receiver':blocks*(height+1),
+        'conversion_base_Fp_additions_receiver':2*blocks,
+        'global_prefix_Fp3_additions_per_row_each_role':weight,
+        'global_prefix_Fp3_subtractions_per_row_sender':weight,
         'H_calls_per_successful_row_sender':weight*(height-1),
         'H_calls_per_row_receiver_upper':weight*(height-1),
         'EAGen_SHAKE_calls_per_successful_row_each_role':2*weight,
@@ -308,6 +311,7 @@ def seed6_expansion_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
         'pending_roots_owned_by_equality_until_acceptance':True,
         'seed_and_guard_buffers_dropped_on_conversion':True,
         'M_beta_folded_into_alternative_leaf':True,
+        'global_accumulator_prefix_for_all_preceding_blocks':True,
         'monotone_cursor_and_terminal_failure':True,
         'reduced_real_original_MAC_identity_and_Fp3_packing':True,
         'EA_public_seed_agreement_credit':False,
@@ -550,9 +554,9 @@ def report():
                 'native_roles': 'sender P0 is DV verifier; receiver P1 is GPU prover',
                 'DV_verifier_sender_canonical_bytes': sender_persistent,
                 'GPU_prover_receiver_u32_path_aligned_bytes': receiver_aligned,
-                'sender_per_tree': 'k_i Fp3 + K(beta_i) Fp3',
-                'receiver_per_tree': ('19-bit alpha + beta Fp + 19 sibling Fp3 + '
-                                      'alternative alpha-leaf Fp3 + M(beta) Fp3'),
+                'sender_per_tree': 'k_i Fp3 + cumulative K(beta_i) Fp3',
+                'receiver_per_tree': ('19-bit alpha + cumulative beta Fp + 19 sibling Fp3 + '
+                                      'alternative alpha-leaf Fp3 + cumulative M(beta) Fp3'),
                 'shared_fields_each_role': 'cGGM nonce 32 B + EAGen seed 32 B + counter u64',
                 'public_EAGen_seed_and_counter_bytes': 40,
                 'public_EAGen_one_row_terms_bytes_already_within_batch_arrays': WEIGHT*16,

@@ -502,16 +502,16 @@ per seed erano già nel budget: nessuna seconda contabilizzazione.
 Il consumer guard sui MAC originali passa nel caso reale da nove righe,
 con ricetta disgiunta e sfida fissata prima della prova. Il nuovo raccordo
 consuma `GuardAccepted`, costruisce cGGM a ruoli separati e usa i MAC
-originali per i check split e F_EQ: il caso reale da 14+3 righe accetta
+originali per i check split e F_EQ: il caso reale da 25+6 righe accetta
 il positivo e rifiuta c/z alterati. Non usa l'oracolo con input congiunti.
 Le coin split/F_EQ ora eseguono commit/risposta/apertura e derivano i
 coefficienti da uno stream SHAKE, senza array U denso. Anche la sfida guard
 ora deriva dal binding sigillato e dalle correzioni congelate, prima della
 proof. F_EQ ora possiede gli stati pendenti e li rilascia solo al successo:
 il [raccordo EA puntuale](preflight.md#ea-puntuale-dopo-accettazione-f_eq)
-produce tre righe base con MAC originali e ne verifica il packing Fp3.
-La review rileva però che t>1 omette i blocchi precedenti dell'accumulatore
-EA globale: quel percorso è NO-GO fino a correzione e confronto con BAe.
+produce sei righe base su due blocchi e due MAC Fp3 originali. Il difetto
+dei prefissi globali trovato nella versione t=1 è riprodotto e corretto:
+il confronto ora controlla anche BAe, non soltanto l'identità MAC.
 Esaurimento o errore terminano il cursore e cancellano lo stato posseduto.
 Restano accordo sul seed EA, transcript/trasporto globali, burn durevole,
 trie batch e collegamento alla proof; non è ancora il PCG canonico.

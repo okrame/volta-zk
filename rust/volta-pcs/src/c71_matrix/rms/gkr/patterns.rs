@@ -182,6 +182,7 @@ impl ParallelReplay {
 
 struct Histogram {
     mask: u64,
+    moments: bool,
     tiles: Vec<Vec<usize>>,
     offsets: Vec<usize>,
     size: usize,
@@ -216,6 +217,7 @@ impl Histogram {
             .collect();
         Self {
             mask,
+            moments: false,
             tiles,
             offsets,
             size,
@@ -451,6 +453,22 @@ pub(super) fn build(
         h.finish(gates, weights, work);
     }
     work.prefix_rounds += bits as u64;
+    // CPU reference for the CUDA aggregate seam. Only the canonical 15-live
+    // prefix mask is admitted; irregular masks retain the existing oracle.
+    if tile_bits == 1 && bits == 4 && histograms.len() == 1 && histograms[0].mask == 0x7fff {
+        let h = &histograms[0];
+        let mut bytes = Vec::with_capacity(240 * Fp3::ENCODED_BYTES);
+        for i in 0..15 {
+            for j in 0..15 {
+                bytes.extend(h.quadratic[(2*i+1)*h.size+2*j+1].to_bytes());
+            }
+        }
+        for i in 0..15 { bytes.extend(h.linear[2*i+1].to_bytes()); }
+        #[cfg(test)]
+        eprintln!("C71_BMMA_NATIVE_AGGREGATE bytes={} original_selector=true quadratic_nonzero={}",
+            bytes.len(), h.quadratic.iter().any(|x| *x != Fp3::ZERO));
+        return Prefix::from_bmma_bytes(point, &bytes).map(Some);
+    }
     Ok(Some(Prefix { bits, selector: eq(&point[..bits]), histograms }))
 }
 
@@ -515,6 +533,17 @@ mod tests {
     }
 
     #[test]
+    fn c71_bmma_moment_decoder_rejects_shape_and_noncanonical_field() {
+        let point = [Fp3::ONE; 5];
+        let mut bytes = vec![0; 240 * Fp3::ENCODED_BYTES];
+        assert!(Prefix::from_bmma_bytes(&point, &bytes).is_ok());
+        assert!(Prefix::from_bmma_bytes(&point[..4], &bytes).is_err());
+        assert!(Prefix::from_bmma_bytes(&point, &bytes[..bytes.len()-1]).is_err());
+        bytes[..8].copy_from_slice(&volta_field::P.to_le_bytes());
+        assert!(Prefix::from_bmma_bytes(&point, &bytes).is_err());
+    }
+
+    #[test]
     fn c71_pattern_wide_accumulator_matches_field_at_carry_boundaries() {
         let p = volta_field::P;
         let values = [Fp3::new(Fp::new(p - 1), Fp::new(p - 2), Fp::new(p - 3)), Fp3::ONE];
@@ -542,6 +571,22 @@ mod tests {
 }
 
 impl Prefix {
+    // Private prover-internal transfer, NOT a transcript message or new MAC.
+    // Caller must establish the public canonical support and original Eq.
+    pub(super) fn from_bmma_bytes(point: &[Fp3], bytes: &[u8]) -> Result<Self, String> {
+        if point.len() < 5 || bytes.len() != 240 * Fp3::ENCODED_BYTES {
+            return Err("BMMA moment shape differs".into());
+        }
+        let mut values = bytes.chunks_exact(Fp3::ENCODED_BYTES)
+            .map(|b| Fp3::from_bytes(b).map_err(|_| "BMMA noncanonical moment".to_string()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let linear = values.split_off(225);
+        Ok(Self { bits: 4, selector: eq(&point[..4]), histograms: vec![Histogram {
+            mask: 0x7fff, moments: true, tiles: vec![], offsets: vec![], size: 15,
+            gate_offsets: vec![], raw: vec![], carries: vec![], quadratic: values, linear,
+        }] })
+    }
+
     pub(super) fn bits(&self) -> usize {
         self.bits
     }
@@ -559,12 +604,16 @@ impl Prefix {
             }
             for h in &self.histograms {
                 let mut values = vec![[Fp3::ZERO; 2]; h.size];
-                for (tile, &offset) in h.tiles.iter().zip(&h.offsets) {
-                    for pattern in 1usize..1 << tile.len() {
-                        let bit = pattern.trailing_zeros() as usize;
-                        let base = values[offset + (pattern & (pattern - 1))];
-                        values[offset + pattern] =
-                            [base[0] + lo[tile[bit]], base[1] + hi[tile[bit]]];
+                if h.moments {
+                    for j in 0..15 { values[j] = [lo[j], hi[j]]; }
+                } else {
+                    for (tile, &offset) in h.tiles.iter().zip(&h.offsets) {
+                        for pattern in 1usize..1 << tile.len() {
+                            let bit = pattern.trailing_zeros() as usize;
+                            let base = values[offset + (pattern & (pattern - 1))];
+                            values[offset + pattern] =
+                                [base[0] + lo[tile[bit]], base[1] + hi[tile[bit]]];
+                        }
                     }
                 }
                 for v in &mut values {

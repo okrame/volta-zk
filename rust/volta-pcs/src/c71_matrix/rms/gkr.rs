@@ -2008,7 +2008,7 @@ mod tests {
     #[test]
     fn c71_b12_pattern_prefix_four_rounds_original_wire_and_mac() {
         // Small wiring exercises the four-round algorithm, not EXP30 semantics.
-        let programs = [Circuit {
+        let mut programs = [Circuit {
             ports: 98,
             product_bits: 32,
             valid: 0,
@@ -2036,6 +2036,15 @@ mod tests {
             (0, frame(1, 1, 0, true)),
             (0, frame(4, 1, 0, true)),
         );
+        // Canonical prefix support: 15 live rows and one public padding row.
+        // The one-bit oracle crosses the actual 240-Fp3 BMMA aggregate decoder.
+        programs[0].levels[0][0] = Gate { op: Op::And, x: 2, y: 1 };
+        programs[0].levels[0][1] = Gate { op: Op::Xor, x: 3, y: 3 };
+        let assignments: Vec<_> = (0..32).map(|i| (i < 30).then_some(0)).collect();
+        let honest: Vec<_> =
+            assignments.iter().map(|p| p.map_or([0; 12], |_| frame(2, 1, 0, true))).collect();
+        check_cells(&programs, &assignments, &honest,
+            (0, frame(1, 1, 0, true)), (0, frame(4, 1, 0, true)));
     }
 
     fn check(

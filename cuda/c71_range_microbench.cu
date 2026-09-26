@@ -165,28 +165,31 @@ HD inline Coeff4 cubic_coeff_direct(
 // Same polynomial as cubic_coeff_direct, factored as
 // (lambda*A+B)*D + (lambda*C)*B before multiplying by the equality line.
 // Per pair this uses 4 + 8 + 6 = 18 general Fp3 multiplications.
-HD inline Coeff4 cubic_coeff_factored(
+template<bool Six> HD inline Fp3 coefficient_product(Fp3 a, Fp3 b) {
+    return Six ? mul6(a, b) : mul(a, b);
+}
+template<bool Six = false> HD inline Coeff4 cubic_coeff_factored(
     const Fp3 child[4][2], const Fp3 equality[2], Fp3 lambda) {
     Fp3 a[4], d[4];
     for (int i = 0; i < 4; ++i) {
         a[i] = child[i][0];
         d[i] = sub(child[i][1], a[i]);
     }
-    const Fp3 u0 = add(mul(lambda, a[0]), a[1]);
-    const Fp3 du = add(mul(lambda, d[0]), d[1]);
-    const Fp3 v0 = mul(lambda, a[2]);
-    const Fp3 dv = mul(lambda, d[2]);
+    const Fp3 u0 = add(coefficient_product<Six>(lambda, a[0]), a[1]);
+    const Fp3 du = add(coefficient_product<Six>(lambda, d[0]), d[1]);
+    const Fp3 v0 = coefficient_product<Six>(lambda, a[2]);
+    const Fp3 dv = coefficient_product<Six>(lambda, d[2]);
     const Fp3 v[3] = {
-        add(mul(u0, a[3]), mul(v0, a[1])),
-        add(add(mul(du, a[3]), mul(u0, d[3])),
-            add(mul(dv, a[1]), mul(v0, d[1]))),
-        add(mul(du, d[3]), mul(dv, d[1])),
+        add(coefficient_product<Six>(u0, a[3]), coefficient_product<Six>(v0, a[1])),
+        add(add(coefficient_product<Six>(du, a[3]), coefficient_product<Six>(u0, d[3])),
+            add(coefficient_product<Six>(dv, a[1]), coefficient_product<Six>(v0, d[1]))),
+        add(coefficient_product<Six>(du, d[3]), coefficient_product<Six>(dv, d[1])),
     };
     const Fp3 de = sub(equality[1], equality[0]);
     Coeff4 out{};
     for (int i = 0; i < 3; ++i) {
-        out.c[i] = add(out.c[i], mul(equality[0], v[i]));
-        out.c[i + 1] = add(out.c[i + 1], mul(de, v[i]));
+        out.c[i] = add(out.c[i], coefficient_product<Six>(equality[0], v[i]));
+        out.c[i + 1] = add(out.c[i + 1], coefficient_product<Six>(de, v[i]));
     }
     return out;
 }
@@ -223,7 +226,7 @@ std::vector<Fp3> merge_cpu(const std::vector<Fp3>& src, size_t n) {
     return out;
 }
 
-Coeff4 coeff_cpu(const std::vector<Fp3>& src, size_t n, Fp3 lambda, bool factored) {
+Coeff4 coeff_cpu(const std::vector<Fp3>& src, size_t n, Fp3 lambda, bool factored, bool six = false) {
     Coeff4 total{};
     for (size_t i = 0; i < n / 2; ++i) {
         Fp3 child[4][2];
@@ -232,7 +235,8 @@ Coeff4 coeff_cpu(const std::vector<Fp3>& src, size_t n, Fp3 lambda, bool factore
             child[j][1] = src[j * n + 2 * i + 1];
         }
         const Fp3 equality[2] = {src[4 * n + 2 * i], src[4 * n + 2 * i + 1]};
-        total = coeff_add(total, factored ? cubic_coeff_factored(child, equality, lambda)
+        total = coeff_add(total, factored ? (six ? cubic_coeff_factored<true>(child, equality, lambda)
+                                            : cubic_coeff_factored(child, equality, lambda))
                                           : cubic_coeff_direct(child, equality, lambda));
     }
     return total;
@@ -505,7 +509,7 @@ int host_check(int log2_n, int gram_width) {
     const auto gram = gram_cpu(src, n, gram_width, lambda);
     const auto gram_direct = gram_cpu_direct(src, n, gram_width, lambda);
     const bool merge_ok = merge_identity_check(src, merged, n);
-    const bool coeff_ok = equal(coeff, coeff_factored);
+    const bool coeff_ok = equal(coeff, coeff_factored) && equal(coeff, coeff_cpu(src, n, lambda, true, true));
     const bool fold_ok = fold_linearity_check(src, folded, n, r);
     const bool gram_ok = equal(gram, gram_direct);
     const bool field_ok = field_self_check() && specialization_check();
@@ -632,6 +636,20 @@ extern "C" __global__ void c71_gkr_main_cell_fused(
         __syncthreads();
     }
     if (threadIdx.x == 0) partials[blockIdx.x] = shared[0];
+}
+
+// Best-case scalar byte-tree probe: 18 general Fp3 products, six base
+// products each. Batch output is reduced separately; no full-domain buffer.
+extern "C" __global__ void c71_byte_coeff6(const Fp3* src, Coeff4* out, size_t n, Fp3 lambda) {
+    const size_t pair=size_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(pair>=n/2) return;
+    Fp3 child[4][2];
+    for(unsigned j=0;j<4;++j) {
+        child[j][0]=src[j*n+2*pair];
+        child[j][1]=src[j*n+2*pair+1];
+    }
+    const Fp3 equality[2]={src[4*n+2*pair],src[4*n+2*pair+1]};
+    out[pair]=cubic_coeff_factored<true>(child,equality,lambda);
 }
 
 __global__ void coeff_kernel(const Fp3* src, Coeff4* out, size_t n, Fp3 lambda) {

@@ -913,9 +913,26 @@ di uno stesso livello non sovrascrivono nessun input; gli slot scaduti
 sono riusati soltanto dopo la barriera. La compattazione elimina solo
 padding pubblico: Eq usa il suffix originale, ricostruito da layer/head/
 query/key, con due tabelle di mezzi punti, anche per sfide 0/1. Il
-compiler pubblico si prepara prima della risposta; i trasferimenti dei
+raccordo privato dei 240 momenti canonici (225 quadratici, 15 lineari)
+al prefisso nativo conserva i quattro cubici originali nel test ridotto.
+Rifiuta dimensioni e codifiche Fp3 non canoniche; non è un messaggio
+del transcript. Il compiler pubblico si prepara prima della risposta; i trasferimenti dei
 piani per livello sono conteggiati nella prova. Il port integrato,
 il refinement e l’esecuzione CUDA restano da verificare.
+
+Il port letterale della fraction tree finale byte conserva ancora
+`255*2^view_bits-8` coppie di coefficienti. Il kernel compilato a sei
+prodotti base/Fp3 esegue 525 risultati IMAD.WIDE.U32 register-register per
+coppia attiva. Sotto le condizioni esplicite del
+[preflight](preflight.md#original-byte-tree-coefficient-screen), la sua
+somma seriale con range/commit/prime aperture supera 65 s a O=150/300,
+anche concedendo gratis inferenza, tutti i producer e il resto. Questa
+linea è NO-GO senza H100; la condizione di riapertura è una riduzione del
+lavoro o un mapping aritmetico diverso con nuovo screen. Il bound non si
+trasferisce a una fattorizzazione della tree. La prossima analisi riguarda
+la contrazione pubblica dell’asse dei nodi e il grado delle funzioni del
+byte, conservando endpoint, gradi GKR, FS e NoPeek. È ricerca locale,
+non una nuova ipotesi o selezione di protocollo.
 
 
 

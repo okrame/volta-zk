@@ -2083,7 +2083,60 @@ il kernel range già verificato, la cui regressione host passa.
 
 La riduzione produce momenti canonici prima di rilasciare i contatori;
 pesi e flag sono allocati dopo quel rilascio. Il controllo CPU attraversa
-packing→conteggi→riduzione→pesi e confronta somme dirette Fp3. Resta da
-collegare l’aggregato al prefisso nativo e lanciare/verificare CUDA: non è
-una proof GPU positiva. I lower completi, il picco fisico e le tre metriche
+packing→conteggi→riduzione→pesi e confronta somme dirette Fp3. Il raccordo dei 240 momenti canonici al prefisso nativo passa il
+confronto proof/FS/MAC, inclusi quadratici non nulli e rifiuti di codec.
+Resta da lanciare/verificare CUDA: non è una proof GPU positiva. I lower completi, il picco fisico e le tre metriche
 temporali restano aperti; nessuna autorizzazione H100 o spesa.
+
+
+Il raccordo finale usa 5.760 B device→host per livello, 541.440 B per
+risposta. Il prefisso compatto usa 2.318.698 prodotti, 1.362.060 somme e
+25.004 sottrazioni Fp3 sui 94 livelli, inclusa Eq del selettore e dei
+prefissi. Sono lavoro nativo e trasferimento della prova, non inferenza
+né byte del certificato. La produzione nativa selezionata rimane a tile
+cinque bit; il decoder candidato viene attraversato dal riferimento a
+momenti e dalla continuazione originale nel test ridotto.
+
+### Original byte tree coefficient screen
+
+Lo [screen del binario](../../scripts/c71_byte_endpoint_screen.py) considera
+il port letterale della fraction tree byte con la LUT originale. La LUT
+non riduce le coppie visitate dai round: per `v=cell_bits+4` e otto livelli,
+`sum(h=0..7, 2^(v+h)-1)=255*2^v-8`. Sono 547.608.330.232 coppie a O=0
+(v=31) e 1.095.216.660.472 a O=150/300 (v=32). Non si somma questo costo
+agli stessi coefficienti di un altro ledger: il main-cell EXP30 è qui
+interamente omesso.
+
+Il kernel fattorizzato già compilato usa 774 IMAD.WIDE.U32 non predicati,
+con entrambi i moltiplicandi in registri, per coppia attiva. Il controllo
+minimo aggiunge `c71_byte_coeff6`, con gli stessi 18 prodotti Fp3 e sei
+prodotti base per Fp3: il numero scende a **525**, con 130 registri e zero
+stack/spill. Il confronto host contro il cubico diretto passa. Il parser
+lega il conteggio all’hash delle istruzioni, controlla guard/uscita e
+assenza di rami/call nel corpo; rifiuta un binario cambiato. Non addebita
+load/store o overhead per ciascuna moltiplicazione inlined.
+
+Condizioni: 132 SM, clock ≤2 GHz, al più 64 risultati scalar INT multiply
+per ciclo/SM applicabili a IMAD.WIDE.U32, stesso kernel, una visita per
+coppia e schedule seriale nominata. Il ceiling è 16.896.000.000.000
+risultati/s. Il campo sotto usa la variante più favorevole a sei prodotti:
+
+| O | Lower coefficienti byte, s | Lower disgiunto range/commit/prime aperture, s | Lower parziale T_proof_only e T_response_total, s |
+|---:|---:|---:|---:|
+| 0 | 17,015529 | 32,721968 | 49,737497 |
+| 150 | 34,031057 | 36,085131 | **70,116188** |
+| 300 | 34,031057 | 39,684627 | **73,715684** |
+
+`T_inference >=0` rimane non misurato. Il lower omette tutta l’inferenza,
+getter/replay/auth, RMS, main-cell EXP30/BMMA, rigenerazione/fold byte,
+PCG, WHIR restante, MAC/FS e serializzazione. Sono costi positivi omessi,
+non dichiarati nulli. La somma è fra fasi distinte della schedule seriale;
+nessun overlap e nessun upper derivato dalla banda. La variante a nove
+prodotti dà invece 57,807719 / 86,256632 / 89,856128 s per le stesse fasi.
+
+**NO-GO della costruzione con questo port letterale**, già a O=150/300;
+non serve un ledger completo per respingere un sottoinsieme che supera
+65 s. Non è un lower universale sulla relazione: contrazione dell’asse
+pubblico dei nodi, struttura polinomiale del byte o altro mapping cambiano
+le premesse e richiedono un nuovo screen. La priorità locale diventa quel
+controllo strutturale. Nessun H100/pod/spesa; il goal fisico resta aperto.

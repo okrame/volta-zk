@@ -105,3 +105,11 @@ def test_maincell_certificate_excludes_predicates_and_immediate_multipliers(tmp_
     path.write_text('Function : c71_gkr_main_cell_fused\n/*0000*/ EXIT; /* 0x0 */\n')
     with pytest.raises(ValueError, match='function changed'):
         cell.screen(path)
+
+
+def test_byte_endpoint_certificate_rejects_a_changed_kernel(tmp_path):
+    import c71_byte_endpoint_screen as endpoint
+    path = tmp_path/'changed.sass'
+    path.write_text('Function : c71_byte_coeff6\n/*0000*/ EXIT; /* 0x0 */\n')
+    with pytest.raises(ValueError, match='binary changed'):
+        endpoint.screen(path)

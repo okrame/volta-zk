@@ -166,9 +166,19 @@ trasposizione usa 512 B shared per tile e nessun secondo stage globale.
 Il [producer parallelo](evidence.md#exp30-shared-producer) legge direttamente E/Pi/Z originali: il piano
 con riuso dopo barriera coincide con tutti i 95 livelli nativi e usa al
 massimo 39.792 B shared per CTA. Eq sugli indici originali e pesi Fp3
-hanno kernel e controlli CPU; resta il collegamento al prefisso nativo
-e il lancio/controllo GPU. Nessun positivo GPU o upper totale è ancora disponibile.
-Priorità: chiudere questo percorso e il ledger congiunto, senza nuovi census ABI.
+hanno kernel e controlli CPU. Il raccordo dei 240 momenti al prefisso
+nativo conserva proof/FS/MAC nel caso ridotto, anche con quadratici
+non nulli. Restano lancio/controllo GPU e costruzione completa. Nessun positivo GPU o upper totale è ancora disponibile.
+**Nuovo NO-GO del port scalare della fraction tree sui byte originali:**
+lo [screen del percorso compilato](preflight.md#original-byte-tree-coefficient-screen)
+esclude anche la variante Fp3 a sei prodotti base. Coefficienti byte più
+range/commit/prime aperture, senza altri lavori, danno lower condizionali
+**49,737497 / 70,116188 / 73,715684 s**. È NO-GO per O=150/300 della
+schedule letterale, non della relazione o di ogni fattorizzazione possibile.
+La LUT risparmia memoria ma non elimina l’enumerazione dei nodi.
+Priorità: fattorizzare quel lavoro a transcript invariato, prima di altri
+port scalari o H100. Il miglioramento EXP30 resta riutilizzabile; nessun
+nuovo census ABI.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 
 **NO-GO del backend scalare fuso ora implementato:** per il circuito

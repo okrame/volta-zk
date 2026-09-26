@@ -1434,3 +1434,27 @@ barriere, ballot, tabelle Eq, trasferimenti del piano e pesi tardivi.
 Il riferimento nativo di proof/FS/MAC resta il record precedente: questo
 record non collega ancora l’aggregato CUDA al prover. `credit:false`,
 nessun service-rate, upper temporale, positivo AES/GPU o autorizzazione di spesa.
+
+### Native moment seam and byte tree screen
+
+Il [record pulito `b63461fa58e8`](../../benchmarks/results/c71-byte-seam-and-tree-screen-2026-09-26-b63461fa58e8.json)
+contiene la parità proof/FS/MAC del raccordo privato da 240 Fp3, anche con
+momenti quadratici non nulli, il rifiuto di forma/codec, la proof integrata
+ridotta positiva e tre controlli Python/C++. Il riferimento CPU produce
+l’aggregato: non è esecuzione GPU. Il costo dei cubici e dei 541.440 B di
+trasferimento per risposta è esplicito nel ledger.
+
+Il SASS conservato verifica 774 risultati IMAD.WIDE.U32 register-register
+non predicati per coppia nel coefficiente fattorizzato originale e 525
+nella variante con sei prodotti base/Fp3. Quest’ultima usa 130 registri,
+zero stack/spill e coincide con il cubico diretto nel test host. Il
+controllo lega hash, guard, corpo senza salti e uscita. Conserva il primo
+test fallito del parser su prefisso vuoto, poi corretto; binari diversi
+sono respinti. La compilazione usa il toolkit temporaneo già dichiarato.
+
+Sotto le condizioni hardware/schedule esplicite, il lower delle sole
+fasi disgiunte byte-coefficienti e range/commit/prime aperture è
+49,737497 / 70,116188 / 73,715684 s. Esclude il port letterale a O=150/300
+anche concedendo gratis tutti gli altri lavori, compresa inferenza e BMMA.
+Non esclude una fattorizzazione della tree né chiude il goal generale.
+`credit:false`; niente H100, spesa, upper o picco fisico completo.

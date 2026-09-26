@@ -170,7 +170,8 @@ hanno kernel e controlli CPU. Il raccordo dei 240 momenti al prefisso
 nativo conserva proof/FS/MAC nel caso ridotto, anche con quadratici
 non nulli. Restano lancio/controllo GPU e costruzione completa. Nessun positivo GPU o upper totale è ancora disponibile.
 **Nuovo NO-GO del port scalare della fraction tree sui byte originali:**
-lo [screen del percorso compilato](preflight.md#original-byte-tree-coefficient-screen)
+lo [screen del percorso compilato](preflight.md#original-byte-tree-coefficient-screen),
+[verificato su SHA pulita](evidence.md#native-moment-seam-and-byte-tree-screen),
 esclude anche la variante Fp3 a sei prodotti base. Coefficienti byte più
 range/commit/prime aperture, senza altri lavori, danno lower condizionali
 **49,737497 / 70,116188 / 73,715684 s**. È NO-GO per O=150/300 della

@@ -2099,6 +2099,8 @@ momenti e dalla continuazione originale nel test ridotto.
 
 ### Original byte tree coefficient screen
 
+[Record del raccordo e del lower](evidence.md#native-moment-seam-and-byte-tree-screen).
+
 Lo [screen del binario](../../scripts/c71_byte_endpoint_screen.py) considera
 il port letterale della fraction tree byte con la LUT originale. La LUT
 non riduce le coppie visitate dai round: per `v=cell_bits+4` e otto livelli,

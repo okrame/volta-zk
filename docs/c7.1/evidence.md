@@ -1447,6 +1447,14 @@ O=0/150/300, cache e LUT originali ancora vive. Sono controlli algebrici
 e di indirizzi richiesti: nessuna esecuzione della nuova tree nativa,
 CUDA o misura hardware. [Conteggi e limiti](preflight.md#original-byte-node-contraction).
 
+Il successivo [oracolo nativo](../../rust/volta-pcs/src/c71_matrix/byte_function/contraction.rs)
+confronta direttamente la LUT ByteTrees nel campo originale: 256 byte,
+otto livelli, due lane, fold con sfide non Boolean/0/1 e recupero dei
+figli da istogramma pesato. Il filtro `c71_byte_node_contraction` passa;
+non chiama una proof con il nuovo backend. La base di Lagrange riusa
+le valutazioni pubbliche esistenti invece di duplicare il costruttore
+polinomiale della tree. Il backend di produzione resta invariato.
+
 ### Native moment seam and byte tree screen
 
 Il [record pulito `b63461fa58e8`](../../benchmarks/results/c71-byte-seam-and-tree-screen-2026-09-26-b63461fa58e8.json)

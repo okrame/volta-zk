@@ -953,8 +953,11 @@ al dominio ha invece numeratori nulli fuori live_cells e richiede una
 baseline distinta; non è coperto da questo piano EXP30. Nessun pruning
 dipende da zeri privati. Istogrammi e stati contratti restano privati,
 senza nuovi messaggi, sfide, endpoint o assunzioni. Il test finito
-controlla l'identità algebrica e il recupero terminale; refinement
-nativo completo/Lean e costi hardware restano obblighi aperti.
+controlla l'identità algebrica e il recupero terminale. L'oracolo Fp3
+nativo riusa la LUT ByteTrees: per i livelli polinomiali usa la base di
+Lagrange sui byte pubblici 0..D e verifica il grado su tutti i 256 byte.
+Non collega ancora la contrazione al prover; refinement nativo
+completo/Lean e costi hardware restano obblighi aperti.
 
 
 

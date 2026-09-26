@@ -2189,4 +2189,8 @@ LUT, rigenerazione, recupero e coda lane/nodo. Restano setup pubblico,
 baseline/Eq, istruzioni e traffico completi: non eredita il lower del
 kernel scalare respinto. `T_inference`, `T_proof_only`, `T_response_total`
 non hanno nuovi upper; replay e recupero appartengono alla prova.
-Gate di spesa **NO-GO**, priorità al confronto nativo con la stessa tree.
+Il confronto Fp3 nativo con la stessa LUT passa sui 256 byte, otto
+livelli e due lane, anche dopo fold non Booleani. Recupera i figli
+originali tramite istogramma privato. È un componente ridotto CPU,
+ancora scollegato dalla proof: non modifica il backend selezionato.
+Gate di spesa **NO-GO**, priorità al raccordo con proof/FS/MAC originali.

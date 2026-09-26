@@ -39,6 +39,11 @@ Per la contrazione della tree byte eseguire soltanto
 `tests/test_c71_byte_tree_contraction.py`, entro 60 s/2 GiB. Comprende
 oracolo algebrico e checker C++ di indirizzi/fence nei tre contesti.
 Non esegue una proof con la nuova tree, né inferenza o GPU.
+Per il confronto Fp3 aggiungere il filtro `c71_byte_node_contraction`
+alla build PCS mirata e usare il binario emesso da quella build, entro
+60 s/2 GiB con un worker Rayon e `--test-threads=1 --nocapture`.
+Verificare un test eseguito e il marker `C71_BYTE_NODE_CONTRACTION`:
+un filtro senza test non costituisce evidenza.
 
 ## Rust and resource limits
 

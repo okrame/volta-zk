@@ -7,6 +7,9 @@ use super::*;
 #[cfg(test)]
 pub(super) mod batch;
 
+#[cfg(test)]
+mod contraction;
+
 component_wire!(Proof { layers, leaf_tag, products });
 
 pub(super) struct Statement<'a> {

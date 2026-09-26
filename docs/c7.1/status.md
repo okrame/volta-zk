@@ -180,12 +180,15 @@ La LUT risparmia memoria ma non elimina l’enumerazione dei nodi.
 La [contrazione pubblica dei nodi](preflight.md#original-byte-node-contraction)
 riduce a **64** il numero complessivo di funzioni intermedie per cella,
 contro 1.020: conserva i cubici e recupera i figli originali con un nuovo
-passaggio sui byte autenticati. Passano l'oracolo algebrico ridotto e il
-piano nominato con due buffer disgiunti. Il massimo indirizzo EXP30 resta
+passaggio sui byte autenticati. Passano l'oracolo algebrico ridotto, il
+confronto Fp3 con tutti i 256 byte della LUT nativa e il piano nominato
+con due buffer disgiunti. Il massimo indirizzo EXP30 resta
 2.082.995.968 / 3.370.001.152 / 3.851.690.752 B; il massimo delle catene
 note resta range A, con almeno 276.296.960 B non indirizzati. Non è il
-picco fisico completo. Priorità: confronto nel campo nativo e raccordo
-alla tree originale, poi istruzioni/traffico e lower congiunto della nuova
+picco fisico completo. Il margine stretto della fase range A non blocca
+gli sviluppi reversibili nella catena EXP30, che ha spazio distinto;
+i 256 MiB restano il criterio finale del piano integrato.
+Priorità: raccordo alla proof originale, poi istruzioni/traffico e lower congiunto della nuova
 costruzione. Il NO-GO scalare non si trasferisce alla contrazione.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 

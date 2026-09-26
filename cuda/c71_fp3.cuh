@@ -9,17 +9,37 @@ struct Fp3 {
 
 static_assert(sizeof(Fp3) == 24, "C7 Fp3 must use three canonical u64 limbs");
 
+// Canonical operands have a+b <= 2p-2. Select (a+b mod 2^64)-p
+// iff carry OR no borrow from subtracting p. PTX CC carries are explicit;
+// the host branch is the same integer identity, checked against u128 mod p.
 HD inline uint64_t fp_add(uint64_t a, uint64_t b) {
-    const uint64_t r0 = a + b;
-    const bool carry = r0 < a;
-    uint64_t r = carry ? r0 + EPSILON : r0;
-    if (r >= P) r -= P;
-    return r;
+#ifdef __CUDA_ARCH__
+    uint64_t out;
+    asm("{ .reg .u64 t,s; .reg .u32 carry,borrow; .reg .pred take;\n"
+        "add.cc.u64 t,%1,%2; addc.u32 carry,0,0;\n"
+        "sub.cc.u64 s,t,%3; subc.u32 borrow,0,0;\n"
+        "not.b32 borrow,borrow; or.b32 carry,carry,borrow;\n"
+        "setp.ne.u32 take,carry,0; selp.u64 %0,s,t,take; }"
+        : "=l"(out): "l"(a),"l"(b),"l"(P));
+    return out;
+#else
+    const uint64_t t=a+b, c=t<a;
+    return (c || t>=P) ? t-P : t;
+#endif
 }
 
 HD inline uint64_t fp_sub(uint64_t a, uint64_t b) {
-    const uint64_t r = a - b;
-    return a < b ? r - EPSILON : r;
+#ifdef __CUDA_ARCH__
+    uint64_t out;
+    asm("{ .reg .u64 t,correction; .reg .u32 borrow;\n"
+        "sub.cc.u64 t,%1,%2; subc.u32 borrow,0,0;\n"
+        "cvt.u64.u32 correction,borrow; sub.u64 %0,t,correction; }"
+        : "=l"(out): "l"(a),"l"(b));
+    return out;
+#else
+    const uint64_t t=a-b;
+    return t-(a<b ? EPSILON:0);
+#endif
 }
 
 HD inline uint64_t fp_mul(uint64_t a, uint64_t b) {
@@ -31,17 +51,10 @@ HD inline uint64_t fp_mul(uint64_t a, uint64_t b) {
     const uint64_t lo = static_cast<uint64_t>(product);
     const uint64_t hi = static_cast<uint64_t>(product >> 64);
 #endif
-    const uint64_t hi_hi = hi >> 32;
-    const uint64_t hi_lo = hi & EPSILON;
-    const bool borrow = lo < hi_hi;
-    uint64_t t = lo - hi_hi;
-    if (borrow) t -= EPSILON;
-    const uint64_t t1 = hi_lo * EPSILON;
-    const uint64_t r0 = t + t1;
-    const bool carry = r0 < t;
-    uint64_t r = carry ? r0 + EPSILON : r0;
-    if (r >= P) r -= P;
-    return r;
+    // t may be noncanonical, but t + t1 <= 2p-2. The same carry-aware
+    // addition therefore returns the unique canonical residue.
+    const uint64_t t = fp_sub(lo, hi >> 32);
+    return fp_add(t, (hi & EPSILON) * EPSILON);
 }
 
 HD inline Fp3 add(Fp3 a, Fp3 b) {

@@ -1510,6 +1510,14 @@ I [primi cinque prodotti per feature](../../benchmarks/results/c71-byte-contract
 e il [primo selettore per coppia](../../benchmarks/results/c71-byte-contract-paired-first-diagnostic-2026-09-26-281ac61.json)
 sono conservati come diagnostici dirty delle implementazioni scartate.
 
+Le primitive carry/borrow mantengono il confronto host modulo p per
+valori al bordo e input deterministici. Passano anche il cubico contratto
+e il checker CPU BMMA. I kernel range e i dieci kernel BMMA compilano
+senza spill. Lo screen collega per digest il nuovo coefficiente, i due
+merge range e la coda main: sostituisce il vecchio costo range e conserva
+il bound IMAD applicabile alla coda. La somma parziale scende sotto 65 s,
+senza nuove allocazioni; mancano ancora fasi, profilo RMS e misura GPU.
+
 ### Native moment seam and byte tree screen
 
 Il [record pulito `b63461fa58e8`](../../benchmarks/results/c71-byte-seam-and-tree-screen-2026-09-26-b63461fa58e8.json)

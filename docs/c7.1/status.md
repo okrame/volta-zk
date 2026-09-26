@@ -223,11 +223,16 @@ recupero usa fattori compatti, inclusi nel piano senza cambiarne il massimo.
 La proof passa anche con feature accoppiate f e d·f e selettore corrente
 posticipato: tre prodotti per feature, doppio stato esplicito, nessun
 cambiamento del massimo globale noto. Il kernel CUDA compila senza spill.
-Lo screen congiunto del backend a slot fissi raggiunge però
-49,307409 / 57,370385 / 65,731923 s di lower parziale con il BMMA:
-NO-GO di questa implementazione a O=300. Priorità alla minima riduzione
-del costo campo che riapra il percorso; contatori completi, picco fisico
-e harness finale restano aperti. Il NO-GO scalare non si trasferisce
+Il primo backend a slot fissi è NO-GO a O=300 con il BMMA: 65,731923 s
+parziali. La riscrittura carry/borrow delle primitive campo riapre lo
+screen: ricontando range e coefficienti, il lower parziale congiunto è
+45,267005 / 52,813136 / 60,657831 s. Controlli host ai bordi e compilazioni
+range/BMMA passano; nessuna esecuzione PTX o misura GPU. Il massimo arena
+non cambia. La priorità è completare le fasi mancanti nella stessa somma.
+Occorre fissare Γ per il ledger RMS: il fixture usa scale zero. È pendente
+la decisione del proprietario fra Γ sintetico esplicito per l’esperimento
+e Γ calibrato reale; non si equiparano i due workload. Contatori completi,
+picco fisico e harness finale restano aperti. Il NO-GO scalare non si trasferisce
 alla contrazione. Il goal locale resta in corso.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 

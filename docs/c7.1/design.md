@@ -974,8 +974,14 @@ prepesatura sono contati; il massimo EXP30 sale a 4.964.490.752 B a O=300,
 sotto il massimo globale noto. Il backend CUDA a slot fissi conserva
 i ranghi massimi anche quando una direzione pubblica è nulla. Lo
 [screen compilato](preflight.md#original-byte-node-contraction) esclude
-questa combinazione col BMMA corrente a O=300; non la contrazione
-algebrica o altre implementazioni del campo.
+la prima implementazione con BMMA a O=300; non la contrazione
+algebrica. Le primitive carry/borrow successive mantengono rappresentanti
+canonici e campo originale. Lo screen ricontato sostituisce il costo range,
+ricertifica la coda main e riapre il lower parziale: non trasferisce il
+NO-GO al nuovo binario, né dichiara completo il ledger. I test host non
+sono esecuzione delle istruzioni PTX; quel controllo resta nel futuro
+esperimento autorizzato. Il profilo RMS a scale zero resta sintetico:
+prima di chiudere il ledger del workload va fissato Γ per l’esperimento.
 
 Nel riferimento ridotto il getter usa LUT prepesate di f(byte)−f(0),
 batch da 16 coppie e checkpoint min(9,floor(cell_bits/2)). Il supporto

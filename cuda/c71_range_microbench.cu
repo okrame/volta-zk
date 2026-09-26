@@ -522,6 +522,17 @@ bool field_self_check() {
             (static_cast<unsigned __int128>(x) * y) % P);
         if (fp_mul(x, y) != want) return false;
     }
+    // Boundary/carry vectors plus deterministic reduced random input. Shared
+    // arithmetic is checked independently of the Fp3/cubic identities.
+    const uint64_t edge[]={0,1,2,EPSILON-1,EPSILON,EPSILON+1,P/2,P/2+1,P-EPSILON,P-2,P-1};
+    auto check=[](uint64_t x,uint64_t y) {
+        using Wide=unsigned __int128;
+        return fp_add(x,y)==(Wide(x)+y)%P && fp_sub(x,y)==(Wide(x)+P-y)%P
+            && fp_mul(x,y)==Wide(x)*y%P;
+    };
+    for(auto x:edge) for(auto y:edge) if(!check(x,y)) return false;
+    for(uint64_t i=0;i<4096;++i)
+        if(!check(canonical(splitmix64(SEED+2*i)),canonical(splitmix64(SEED+2*i+1)))) return false;
     return true;
 }
 

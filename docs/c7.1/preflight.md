@@ -2242,6 +2242,33 @@ producer Boolean, rigenerazione/fold byte, PCG e PCS rimanente. Non è
 un lower universale: slot adattivi, aritmetica diversa o nuove fusioni
 richiedono un nuovo screen. I precedenti tentativi diretti sono conservati
 come diagnostici dirty, non come misure o record di protocollo.
-Il controllo minimo successivo è ridurre il costo delle primitive campo
-nel percorso dominante, poi ricomporre il lower; nessun harness pagato
-viene proposto per il backend escluso.
+La riscrittura successiva delle primitive campo sostituisce quel backend:
+`fp_add` seleziona la sottrazione di p se c’è carry oppure se la somma
+senza carry è ≥p; `fp_sub` corregge il borrow con 2^32−1. Per il prodotto,
+con hi/lo del prodotto intero, t=lo−(hi>>32) corretto modulo p e
+u=(hi mod 2^32)·(2^32−1) soddisfano t+u≤2p−2, anche se t non è ancora
+canonico. La stessa addizione restituisce quindi il rappresentante canonico.
+Il device usa carry/borrow PTX espliciti secondo la
+[specifica NVIDIA](https://docs.nvidia.com/cuda/archive/12.1.1/parallel-thread-execution/index.html#extended-precision-arithmetic-instructions);
+il controllo host confronta con u128 modulo p ai bordi e su 4.096 coppie.
+Non cambia campo, codec o transcript; l’esecuzione PTX resta da verificare
+nel primo controllo GPU autorizzato.
+
+Il binario carry ha 946 istruzioni per feature e 823 per suffix selector;
+leaf-pair e merge6 scendono da 231/1.183 a **197/889**. Il checker lega
+i quattro corpi compilati a digest e controlla anche i percorsi della coda
+main: il lower di 24 risultati IMAD.WIDE/Fp3 resta valido. Il costo range
+precedente è **sostituito**, mai sommato al nuovo; FFT e getter mantengono
+le condizioni precedenti. I coefficienti byte danno 0,553281 / 1,652121 /
+2,750955 s; la somma parziale congiunta diventa **45,267005 / 52,813136 /
+60,657831 s**, ancora senza inferenza e le altre fasi indicate dal report.
+Il kernel byte usa 96 registri, 24.576 B shared, zero stack/spill; anche
+i dieci kernel BMMA condivisi compilano senza spill. I buffer arena non
+cambiano. Non è un upper, un lower completo o un GO alla spesa.
+
+La chiusura del ledger richiede un Γ pubblico esplicito per RMS e le altre
+ricette: il census corrente usa scale zero, non una calibrazione del
+modello. La scelta fra esperimento con Γ sintetico dichiarato e Γ calibrato
+è stata posta al proprietario; finché resta aperta non si promuovono i
+conteggi del fixture a conteggi del modello reale. Il lavoro locale resta
+in corso, senza richiesta di autorizzazione GPU o spesa.

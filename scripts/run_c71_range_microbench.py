@@ -106,7 +106,7 @@ def validate(kernel: dict, mode: str, log2_n: int, gram_log2_n: int, gram_width:
         {"small_cpu_gpu_reference": True}
         if mode == "cuda"
         else {"field": True, "merge": True, "cubic_coeff": True, "fold": True, "gram": True,
-              "main_cell_coeff": True, "previous_fold_current_coeff": True}
+              "main_cell_coeff": True, "previous_fold_current_coeff": True, "byte_contract_coeff": True}
     )
     if kernel.get("correctness") != expected_correctness:
         raise SystemExit("range microbenchmark correctness check failed")

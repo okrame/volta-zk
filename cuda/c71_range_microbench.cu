@@ -33,6 +33,38 @@ struct Coeff4 {
 
 static_assert(sizeof(Coeff4) == 96, "four cubic coefficients must occupy 96 bytes");
 
+// Diagonal public node contraction. Inputs are features of ORIGINAL bytes
+// (or their multilinear folds), never features of an already folded byte.
+// One lane per launch, feature-major pair buffers. The public zero-byte
+// baseline is restored analytically by the caller, outside this sum.
+HD Coeff4 byte_contract_pair(const Fp3* lo, const Fp3* hi, const Fp3* weighted_lo,
+                            const Fp3* weighted_hi, unsigned rank, size_t stride, Fp3 baseline,
+                            Fp3 suffix_eq) {
+    Fp3 v[3]={sub(Fp3{},baseline),Fp3{},Fp3{}};
+    for(unsigned j=0;j<rank;++j) {
+        const Fp3 a=lo[j*stride], delta=sub(hi[j*stride],a);
+        const Fp3 da=weighted_lo[j*stride], dd=sub(weighted_hi[j*stride],da);
+        const Fp3 cross=mul6(da,delta);
+        v[0]=add(v[0],mul6(da,a));
+        v[1]=add(v[1],add(cross,cross));
+        v[2]=add(v[2],mul6(dd,delta));
+    }
+    Coeff4 out{};
+    for(unsigned j=0;j<3;++j) out.c[j]=mul6(suffix_eq,v[j]);
+    return out; // fourth entry stays zero for the shared reduction ABI.
+}
+
+// Apply the current-axis selector ONCE after reducing all supported pairs.
+HD Coeff4 byte_contract_selector(Coeff4 quadratic, Fp3 e0, Fp3 e1) {
+    Coeff4 out{};
+    const Fp3 de=sub(e1,e0);
+    for(unsigned j=0;j<3;++j) {
+        out.c[j]=add(out.c[j],mul6(e0,quadratic.c[j]));
+        out.c[j+1]=add(out.c[j+1],mul6(de,quadratic.c[j]));
+    }
+    return out;
+}
+
 // GKR arithmetic probe, one gate/cell pair after source folding. The gate
 // operation is public; specialization removes Copy's quadratic products.
 // Standalone cost only: a fused producer must be recounted, never charged
@@ -493,6 +525,32 @@ bool field_self_check() {
     return true;
 }
 
+bool byte_contract_check() {
+    std::vector<Fp3> data(5*32);
+    fill_host(data,32);
+    for(unsigned rank: {0u,2u,3u,4u,5u,8u,9u,16u,17u}) {
+        const Fp3 *a=data.data(), *b=a+32, *d=b+32;
+        const Fp3 baseline{P-1,19,31}, e0{P-2,37,41}, e1{43,P-3,47};
+        Fp3 da[17], db[17];
+        for(unsigned j=0;j<rank;++j) { da[j]=mul(d[j],a[j]); db[j]=mul(d[j],b[j]); }
+        const Fp3 weight{67,71,73};
+        const Coeff4 c=byte_contract_selector(
+            byte_contract_pair(a,b,da,db,rank,1,baseline,weight),e0,e1);
+        for(Fp3 t: {Fp3{},Fp3{1,0,0},Fp3{2,0,0},Fp3{3,0,0},Fp3{53,59,61}}) {
+            Fp3 want=sub(Fp3{},baseline);
+            for(unsigned j=0;j<rank;++j) {
+                const Fp3 value=add(a[j],mul(t,sub(b[j],a[j])));
+                want=add(want,mul(d[j],mul(value,value)));
+            }
+            want=mul(weight,mul(add(e0,mul(t,sub(e1,e0))),want));
+            Fp3 got{};
+            for(int j=3;j>=0;--j) got=add(c.c[j],mul(got,t));
+            if(!equal(got,want)) return false;
+        }
+    }
+    return true;
+}
+
 int host_check(int log2_n, int gram_width) {
     if (log2_n < 5 || log2_n > 20 ||
         (gram_width != 8 && gram_width != 16 && gram_width != 32) ||
@@ -513,10 +571,11 @@ int host_check(int log2_n, int gram_width) {
     const bool fold_ok = fold_linearity_check(src, folded, n, r);
     const bool gram_ok = equal(gram, gram_direct);
     const bool field_ok = field_self_check() && specialization_check();
+    const bool contraction_ok = byte_contract_check();
     const bool main_cell_ok = main_cell_check();
     const bool fused_ok = pipelined_round_cpu_check();
     const bool ok =
-        field_ok && merge_ok && coeff_ok && fold_ok && gram_ok && fused_ok && main_cell_ok;
+        field_ok && contraction_ok && merge_ok && coeff_ok && fold_ok && gram_ok && fused_ok && main_cell_ok;
     std::cout << "{\"schema\":\"volta-c71-range-microbench-v1\",\"mode\":\"host-check\""
               << ",\"field\":{\"base_modulus\":" << P
               << ",\"extension\":\"Fp[u]/(u^3-2)\",\"fp3_bytes\":24}"
@@ -529,6 +588,7 @@ int host_check(int log2_n, int gram_width) {
               << ",\"merge\":" << (merge_ok ? "true" : "false")
               << ",\"cubic_coeff\":" << (coeff_ok ? "true" : "false")
               << ",\"main_cell_coeff\":" << (main_cell_ok ? "true" : "false")
+              << ",\"byte_contract_coeff\":" << (contraction_ok ? "true" : "false")
               << ",\"fold\":" << (fold_ok ? "true" : "false")
               << ",\"previous_fold_current_coeff\":" << (fused_ok ? "true" : "false")
               << ",\"gram\":" << (gram_ok ? "true" : "false") << "}"
@@ -636,6 +696,26 @@ extern "C" __global__ void c71_gkr_main_cell_fused(
         __syncthreads();
     }
     if (threadIdx.x == 0) partials[blockIdx.x] = shared[0];
+}
+
+// Same arithmetic as the native contracted byte endpoint, followed by the
+// existing block/cross-block reduction. No domain-sized coefficient output.
+extern "C" __global__ void c71_byte_contract_coeff(
+    const Fp3* lo, const Fp3* hi, const Fp3* weighted_lo, const Fp3* weighted_hi, unsigned rank,
+    const Fp3* suffix_eq, Fp3 baseline, Coeff4* partials, size_t pairs) {
+    __shared__ Coeff4 shared[BLOCK];
+    const size_t i=size_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    Coeff4 value{};
+    if(i<pairs)
+        value=byte_contract_pair(lo+i,hi+i,weighted_lo+i,weighted_hi+i,rank,pairs,baseline,suffix_eq[i]);
+    shared[threadIdx.x]=value;
+    __syncthreads();
+    for(int stride=BLOCK/2;stride;stride>>=1) {
+        if(threadIdx.x<stride)
+            shared[threadIdx.x]=coeff_add(shared[threadIdx.x],shared[threadIdx.x+stride]);
+        __syncthreads();
+    }
+    if(threadIdx.x==0) partials[blockIdx.x]=shared[0];
 }
 
 // Best-case scalar byte-tree probe: 18 general Fp3 products, six base

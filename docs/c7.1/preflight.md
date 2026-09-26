@@ -2170,16 +2170,20 @@ usa una baseline byte zero pubblica, conservata analiticamente, e le
 Il piano mantiene nove round streaming. Una LUT pubblica prepesata
 per lane elimina i prodotti campo durante la rigenerazione dei singoli
 valori; il ledger conserva costruzione delle LUT, letture e somme.
-Al checkpoint la LUT massima occupa 53.477.376 B; un batch di 16.384
-coppie occupa al più 13.369.344 B, oltre a indici/Eq. Questi buffer sono
+La variante corrente prepesata mantiene f e d·f: il costo LUT/fold
+raddoppia, mentre il ciclo dei coefficienti scende da cinque a tre
+prodotti Fp3 per feature. Eq dell’asse corrente viene applicato dopo la
+somma globale; il suffix Eq richiede tre prodotti per coppia.
+Al checkpoint la LUT massima occupa 106.954.752 B; un batch di 16.384
+coppie occupa al più 26.738.688 B, oltre a indici/Eq. Questi buffer sono
 rilasciati con fence prima dei fold successivi. Non si presume residenza
 in cache o fold in-place: destinazione e sorgente sono disgiunte.
 
 | O | Stato al checkpoint, B | Massimo dei due stati, B | Indirizzo massimo catena EXP30, B | Massimo di tutte le catene note, B |
 |---:|---:|---:|---:|---:|
-| 0 | 221.788.800 | 332.683.200 | 2.082.995.968 | 6.087.507.456 |
-| 150 | 662.428.800 | 993.643.200 | 3.370.001.152 | 6.126.832.384 |
-| 300 | 1.103.068.800 | 1.654.603.200 | 3.851.690.752 | 6.166.153.984 |
+| 0 | 443.577.600 | 665.366.400 | 2.082.995.968 | 6.087.507.456 |
+| 150 | 1.324.857.600 | 1.987.286.400 | 3.370.001.152 | 6.126.832.384 |
+| 300 | 2.206.137.600 | 3.309.206.400 | 4.964.490.752 | 6.166.153.984 |
 
 Il massimo globale nominato resta range A. Il margine peggiore è
 276.296.960 B, appena 7.861.504 B oltre i 256 MiB richiesti: non autorizza
@@ -2190,7 +2194,7 @@ Il piano riserva anche feature/diagonali, supporti, scratch pubblico da
 native o misura del picco fisico.
 
 I soli coefficienti delle coppie supportate richiedono al più
-102.495.293.760 / 306.055.256.256 / 509.614.088.256 prodotti Fp3.
+60.160.281.120 / 179.641.128.672 / 299.121.312.672 prodotti Fp3.
 Il [report](../../scripts/c71_byte_tree_contraction.py) separa fold,
 LUT, rigenerazione, recupero e coda lane/nodo. Restano setup pubblico,
 baseline/Eq, istruzioni e traffico completi: non eredita il lower del
@@ -2219,3 +2223,25 @@ l’istogramma e sono rilasciate prima del fold dei figli: il massimo
 del piano non cambia. Restano lavoro/traffico congiunti e harness dei rate
 ignoti; il guard ridotto non viene promosso a esecuzione canonica.
 Gate di spesa **NO-GO**, goal locale in corso senza blocchi autorizzativi.
+
+
+Il kernel `c71_byte_contract_coeff` riusa Fp3 originale e riduzione a
+blocchi del microbenchmark range. Il controllo host confronta il cubico
+con valutazioni dirette per tutti i ranghi, inclusi zero e sfide estese;
+sm_90 compila con 94 registri, 24.576 B shared e zero stack/spill.
+Lo [screen del binario](../../scripts/c71_byte_contract_screen.py) conta
+1.315 istruzioni incondizionate per feature e 1.120 per suffix selector,
+senza attribuire istruzioni di carico per ogni prodotto inlined.
+Con slot fissi [4,8,16,17,9,5,3,2], dodici lane, 132 SM, clock ≤2 GHz e
+al più quattro warp issue/ciclo/SM, il lower dei coefficienti è
+0,767512 / 2,291823 / 3,816126 s. Sono disgiunti dal BMMA del prefisso,
+dalla coda main scalare e dal lower getter/range/commit/prime aperture:
+la somma parziale è **49,307409 / 57,370385 / 65,731923 s**.
+Questo backend/schedule è **NO-GO a O=300**, anche prima di inferenza,
+producer Boolean, rigenerazione/fold byte, PCG e PCS rimanente. Non è
+un lower universale: slot adattivi, aritmetica diversa o nuove fusioni
+richiedono un nuovo screen. I precedenti tentativi diretti sono conservati
+come diagnostici dirty, non come misure o record di protocollo.
+Il controllo minimo successivo è ridurre il costo delle primitive campo
+nel percorso dominante, poi ricomporre il lower; nessun harness pagato
+viene proposto per il backend escluso.

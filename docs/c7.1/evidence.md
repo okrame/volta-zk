@@ -1498,6 +1498,17 @@ quattro lane byte zero; Eq terminale usa due tabelle fattorizzate.
 Il controllo di arena include queste tabelle e non cambia il massimo.
 Il guard ≤128 e i limiti di credito restano invariati.
 
+Il passo successivo conserva nel getter e nei fold sia f sia d·f e
+applica Eq dell’asse corrente dopo la riduzione quadratica. Passano
+parità byte/pattern e positivo integrato; il checker indirizzi/fence
+conferma che il maggiore stato EXP30 non cambia il massimo globale.
+Il kernel CUDA corrispondente compila senza spill e riusa la riduzione
+esistente. Il lower congiunto esclude il backend a slot fissi a O=300;
+non è una misura GPU né la chiusura del goal locale.
+I [primi cinque prodotti per feature](../../benchmarks/results/c71-byte-contract-first-cuda-diagnostic-2026-09-26-281ac61.json)
+e il [primo selettore per coppia](../../benchmarks/results/c71-byte-contract-paired-first-diagnostic-2026-09-26-281ac61.json)
+sono conservati come diagnostici dirty delle implementazioni scartate.
+
 ### Native moment seam and byte tree screen
 
 Il [record pulito `b63461fa58e8`](../../benchmarks/results/c71-byte-seam-and-tree-screen-2026-09-26-b63461fa58e8.json)

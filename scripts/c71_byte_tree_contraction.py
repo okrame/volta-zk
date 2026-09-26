@@ -133,17 +133,17 @@ def arena_events(case):
             events.append(dict(event=name+'_'+phase+'_fence',
                 free=[name+':'+k for k in buffers]))
         alloc('public_transform', dict(public_scratch=1<<20,
-            features=12*rank*256*24, diagonal=12*rank*24,
+            features=2*12*rank*256*24, diagonal=12*rank*24,
             support_spans=16*max(r['support_span_count'] for r in case['rounds'])))
         events[-1]['unknown'] = ['planned public scratch and ordered CUDA getter, not native allocation measurements']
         free('public_transform_consumed', 'public_scratch')
         alloc('nine_streaming_rounds_and_checkpoint', dict(
-            scaled_LUT=(1<<9)*rank*256*24,
-            pair_batch=2*rank*16384*24, pair_index_and_Eq=16384*28,
-            state_0=12*rank*24*support[8]))
+            scaled_LUT=2*(1<<9)*rank*256*24,
+            pair_batch=4*rank*16384*24, pair_index_and_Eq=16384*28,
+            state_0=2*12*rank*24*support[8]))
         free('checkpoint_complete', 'scaled_LUT', 'pair_batch', 'pair_index_and_Eq', 'features')
         for r, n in enumerate(support[9:], 1):
-            alloc(f'fold_{r}_disjoint_destination', {f'state_{r%2}':12*rank*24*n})
+            alloc(f'fold_{r}_disjoint_destination', {f'state_{r%2}':2*12*rank*24*n})
             free(f'fold_{r}_last_source_consumer', f'state_{(r-1)%2}')
         free('cell_rounds_complete', f'state_{(len(support)-9)%2}', 'diagonal', 'support_spans')
         alloc('original_child_recovery', dict(histogram=16*256*36, Eq_factor_tables=recovery_eq,
@@ -165,7 +165,7 @@ def report():
         support = [r['supported_pairs'] for r in c['rounds']]
         # Twelve original byte lanes; four lanes and all structural padding
         # are the public zero-byte baseline, not discarded constraints.
-        states = [12*max(ranks)*24*n for n in support[checkpoint-1:]]
+        states = [2*12*max(ranks)*24*n for n in support[checkpoint-1:]]
         # Two disjoint allocations until a fence: compacted support is NOT
         # assumed to permit an in-place fold or to halve on every round.
         state_peak = max(a+b for a,b in zip(states,states[1:]+[0]))
@@ -173,21 +173,24 @@ def report():
             full_original_coefficient_pairs=255*c['padded_cells']*16-8,
             supported_cell_pairs=sum(support),
             supported_pair_diagonal_coefficient_Fp3_products_upper=
-                12*sum(support)*sum(5*r+6 for r in ranks),
+                12*sum(support)*sum(3*r+3 for r in ranks),
+            factored_current_axis_selector_Fp3_products=6*12*len(support)*len(ranks),
             scalar_lane_node_tail_Fp3_products=18*sum(16*(1<<h)-1 for h in range(8)),
             retained_features_after_nine_cell_rounds_bytes=states[0],
             disjoint_retained_fold_payload_peak_bytes=state_peak,
-            per_lane_scaled_feature_LUT_peak_bytes=(1<<checkpoint)*256*max(ranks)*24,
-            scaled_feature_LUT_Fp3_products_upper=((1<<(checkpoint+1))-1)*256*12*sum(ranks),
+            per_lane_scaled_feature_LUT_peak_bytes=2*(1<<checkpoint)*256*max(ranks)*24,
+            scaled_feature_LUT_Fp3_products_upper=2*((1<<(checkpoint+1))-1)*256*12*sum(ranks),
             cached_original_byte_reads_for_regeneration_checkpoint_recovery_upper=
                 (checkpoint+2)*8*12*c['live_cells'],
-            early_feature_regeneration_Fp3_additions_upper=(checkpoint+1)*12*c['live_cells']*sum(ranks),
-            retained_feature_fold_Fp3_products_upper=12*sum(ranks)*sum(support[checkpoint:]),
+            early_feature_regeneration_Fp3_additions_upper=2*(checkpoint+1)*12*c['live_cells']*sum(ranks),
+            retained_feature_fold_Fp3_products_upper=2*12*sum(ranks)*sum(support[checkpoint:]),
             recovery_wide_histogram_bytes=16*256*36,
             recovery_Eq_factor_tables_bytes=24*((1 << ((c['padded_cells'].bit_length()-1)//2))+
                 (1 << ((c['padded_cells'].bit_length())//2))),
             recovered_original_children_payload_peak_bytes=16*128*4*24,
             recovery_node_contractions_Fp3_products=16*256*4*255,
+            preweighted_public_feature_LUT_Fp3_products_upper=12*256*sum(ranks),
+            paired_public_diagonal_features=True,
             public_support_zero_baseline_required=True,
             checkpoint_liveness_is_component_only=True))
     return dict(credit=False, scope='node-axis contraction, same original cubic and child claims',

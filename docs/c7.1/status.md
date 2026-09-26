@@ -199,7 +199,7 @@ contro 1.020: conserva i cubici e recupera i figli originali con un nuovo
 passaggio sui byte autenticati. Passano l'oracolo algebrico ridotto, il
 confronto Fp3 con tutti i 256 byte della LUT nativa e il piano nominato
 con due buffer disgiunti. Il massimo indirizzo EXP30 resta
-2.082.995.968 / 3.370.001.152 / 3.851.690.752 B; il massimo delle catene
+2.082.995.968 / 3.370.001.152 / 4.964.490.752 B; il massimo delle catene
 note resta range A, con almeno 276.296.960 B non indirizzati. Non è il
 picco fisico completo. Il margine stretto della fase range A non blocca
 gli sviluppi reversibili nella catena EXP30, che ha spazio distinto;
@@ -220,8 +220,14 @@ intervalli causali, proiettati senza lista densa: tutti i round coincidono
 col ledger a O=0/150/300. Gli stati mantengono le 12 lane private previste;
 le quattro lane pubbliche zero conservano baseline e figli. Eq del
 recupero usa fattori compatti, inclusi nel piano senza cambiarne il massimo.
-Priorità: ledger congiunto e kernel/harness minimo; contatori completi
-e picco fisico restano aperti. Il NO-GO scalare non si trasferisce
+La proof passa anche con feature accoppiate f e d·f e selettore corrente
+posticipato: tre prodotti per feature, doppio stato esplicito, nessun
+cambiamento del massimo globale noto. Il kernel CUDA compila senza spill.
+Lo screen congiunto del backend a slot fissi raggiunge però
+49,307409 / 57,370385 / 65,731923 s di lower parziale con il BMMA:
+NO-GO di questa implementazione a O=300. Priorità alla minima riduzione
+del costo campo che riapra il percorso; contatori completi, picco fisico
+e harness finale restano aperti. Il NO-GO scalare non si trasferisce
 alla contrazione. Il goal locale resta in corso.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 

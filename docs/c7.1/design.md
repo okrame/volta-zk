@@ -964,6 +964,19 @@ mantiene il fattore Eq del prefisso cella nei round lane/nodo. Nel caller
 EXP30 a pattern è selezionato per domini completi ≤128 celle, con parità
 proof/FS/MAC e positivo integrato lookup/GKR/WHIR. Domini ragged sono
 respinti dall'entry point contratto prima di consumare righe o sfide.
+Le LUT e gli stati conservano ora coppie f(byte), d·f(byte), con d
+pubblico per il livello: foldare entrambi conserva d·fold(f), anche per
+d=0, senza inverse o nuove sfide. I coefficienti richiedono tre prodotti
+Fp3 per feature; il fattore Eq dell’asse corrente è applicato dopo la
+somma globale dei tre coefficienti quadratici. Baseline e endpoint
+restano quelli originali. Le due fold disgiunte e il lavoro di
+prepesatura sono contati; il massimo EXP30 sale a 4.964.490.752 B a O=300,
+sotto il massimo globale noto. Il backend CUDA a slot fissi conserva
+i ranghi massimi anche quando una direzione pubblica è nulla. Lo
+[screen compilato](preflight.md#original-byte-node-contraction) esclude
+questa combinazione col BMMA corrente a O=300; non la contrazione
+algebrica o altre implementazioni del campo.
+
 Nel riferimento ridotto il getter usa LUT prepesate di f(byte)−f(0),
 batch da 16 coppie e checkpoint min(9,floor(cell_bits/2)). Il supporto
 deriva dalle assegnazioni pubbliche del caller GKR, mai dai byte privati.

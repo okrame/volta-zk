@@ -165,6 +165,7 @@ pub(super) struct Prover<'a, G> {
     keys: Vec<usize>,
     get: &'a G,
     features: Vec<Vec<(Fp3, [Fp3; 256])>>,
+    weighted_features: Vec<Vec<[Fp3; 256]>>,
     values: Vec<Vec<Vec<Fp3>>>,
     recovered: Option<Vec<Vec<Fp3>>>,
 }
@@ -186,6 +187,7 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             keys: Vec::new(),
             get,
             features: Vec::new(),
+            weighted_features: Vec::new(),
             values: Vec::new(),
             recovered: None,
         }
@@ -197,7 +199,11 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             .map(|w| {
                 self.features[lane]
                     .iter()
-                    .map(|(_, f)| std::array::from_fn(|b| w * (f[b] - f[0])))
+                    .enumerate()
+                    .flat_map(|(j, (_, f))| {
+                        [f, &self.weighted_features[lane][j]]
+                            .map(|table| std::array::from_fn(|b| w * (table[b] - table[0])))
+                    })
                     .collect()
             })
             .collect()
@@ -214,7 +220,7 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
         let current = 1usize << (self.cells - rounds);
         (start..start + count)
             .map(|i| {
-                let mut values: Vec<_> = self.features[lane].iter().map(|(_, f)| f[0]).collect();
+                let mut values: Vec<_> = (0..2 * self.features[lane].len()).map(|j| self.baseline(lane, j)).collect();
                 for (prefix, table) in scaled.iter().enumerate() {
                     if !self.contains(prefix * current + i) {
                         continue;
@@ -247,11 +253,16 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             .collect()
     }
 
+    fn baseline(&self, lane: usize, j: usize) -> Fp3 {
+        if j % 2 == 0 { self.features[lane][j / 2].1[0] }
+        else { self.weighted_features[lane][j / 2][0] }
+    }
+
     fn retained_value(&self, lane: usize, key: usize, j: usize) -> Fp3 {
         self.keys
             .binary_search(&key)
             .map(|i| self.values[lane][i][j])
-            .unwrap_or(self.features[lane][j].1[0])
+            .unwrap_or_else(|_| self.baseline(lane, j))
     }
 
     fn recover(&mut self, layer: usize, point: &[Fp3]) {
@@ -259,6 +270,7 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             return;
         }
         self.features.clear();
+        self.weighted_features.clear();
         self.values.clear(); // No retained feature is needed by the original-byte replay.
         let split = self.cells / 2;
         let high = eq(&point[..split]);
@@ -308,6 +320,9 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             self.features = (0..self.trees.lanes)
                 .map(|lane| contract(self.trees, lane, layer, &node_eq, lambda))
                 .collect();
+            self.weighted_features = self.features.iter().map(|lane| {
+                lane.iter().map(|(d, f)| std::array::from_fn(|b| *d * f[b])).collect()
+            }).collect();
             self.values.clear();
         }
         let mut c = [Fp3::ZERO; 4];
@@ -334,7 +349,7 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
                     .map(|lane| {
                         keys.iter()
                             .map(|&i| {
-                                (0..self.features[lane].len())
+                                (0..2 * self.features[lane].len())
                                     .map(|j| {
                                         let a = self.retained_value(lane, i, j);
                                         let b = self.retained_value(lane, i + 2 * half, j);
@@ -369,6 +384,7 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
                 } else {
                     Vec::new()
                 };
+                let mut quadratic = [Fp3::ZERO; 3];
                 let mut indices =
                     pairs.iter().flat_map(|&(start, end)| start..end).map(|i| i as usize);
                 loop {
@@ -395,30 +411,30 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
                     };
                     for (offset, &i) in batch.iter().enumerate() {
                         let mut v = [-baseline, Fp3::ZERO, Fp3::ZERO];
-                        for (j, (d, _)) in features.iter().enumerate() {
-                            let (a, b) = match &streamed {
-                                Some(rows) => (rows[offset].0[j], rows[offset].1[j]),
-                                None => (
-                                    self.retained_value(lane, i, j),
-                                    self.retained_value(lane, i + half, j),
-                                ),
+                        for j in 0..features.len() {
+                            let value = |k, high| match &streamed {
+                                Some(rows) => if high { rows[offset].1[k] } else { rows[offset].0[k] },
+                                None => self.retained_value(lane, i + if high { half } else { 0 }, k),
                             };
-                            let delta = b - a;
-                            let da = *d * a;
-                            let dd = *d * delta;
+                            let a = value(2*j, false);
+                            let delta = value(2*j, true) - a;
+                            let da = value(2*j+1, false);
+                            let dd = value(2*j+1, true) - da;
                             let cross = da * delta;
                             v[0] += da * a;
                             v[1] += cross + cross;
                             v[2] += dd * delta;
                         }
-                        let e = lane_eq[lane] * equality(&point[..self.cells], prefix, i);
-                        let de =
-                            lane_eq[lane] * equality(&point[..self.cells], prefix, i + half) - e;
+                        let e = lane_eq[lane] * fixed
+                            * equality(&point[prefix.len()+1..self.cells], &[], i);
                         for j in 0..3 {
-                            c[j] += e * v[j];
-                            c[j + 1] += de * v[j];
+                            quadratic[j] += e * v[j];
                         }
                     }
+                }
+                for j in 0..3 {
+                    c[j] += (Fp3::ONE - at) * quadratic[j];
+                    c[j+1] += (at + at - Fp3::ONE) * quadratic[j];
                 }
             }
         } else {

@@ -4,6 +4,13 @@
 
 ## Canonical calibration row driver
 
+Il [record ingest W a SHA pulita 64732b9](../../benchmarks/results/c71-native-weight-ingest-2026-09-26-64732b9735e2.json)
+conserva 19 controlli Python/Rust passati entro 60 s/2 GiB: confronto
+BF16, selezione automatica degli esponenti su shard sintetici, hashing
+dello stesso stream, ordine packed, limiti operativi e mancata pubblicazione
+su errore. Il worker usa un solo buffer per tensore; i controlli non
+acquisiscono il checkpoint e non producono Γ calibrato o tempi H100.
+
 Il [record a SHA pulita d3690a6](../../benchmarks/results/c71-canonical-calibration-rows-2026-09-26-d3690a6d0abd.json)
 registra due filtri nativi separati, ciascuno entro 60 s/2 GiB con un worker:
 dispatcher numerico canonico per righe/driver causale sul suffisso ridotto,

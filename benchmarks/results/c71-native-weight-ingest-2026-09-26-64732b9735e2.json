@@ -1,0 +1,36 @@
+{
+  "milestone": "C7.1-native-weight-ingest",
+  "date": "2026-09-26",
+  "git_sha": "64732b9735e2f8fc14026ce86073c1b11b308a31",
+  "git_dirty": false,
+  "credit": false,
+  "calibrated": false,
+  "real_checkpoint_ingested": false,
+  "h100_preflight_ready": false,
+  "gpu_execution": false,
+  "limits": {
+    "address_space_bytes": 2147483648,
+    "timeout_seconds": 60
+  },
+  "command": [
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c7_d126_gemma_native_bf16.py",
+    "tests/test_c7_d126_gemma_weight_ingest.py"
+  ],
+  "exit_code": 0,
+  "seconds": 0.6843850519508123,
+  "stdout": "...................                                                      [100%]\n19 passed in 0.58s\n",
+  "stderr": "",
+  "passed": true,
+  "source_sha256": {
+    "scripts/c7_d126_gemma_weight_ingest.py": "7196238e2cfc81163366bed20d3d029618caa232d7f3cca507d527f9746fe491",
+    "rust/volta-pcs/examples/gemma31b_bf16_pack.rs": "715a81eb7867130e16fcd686f124b462adc6682302109e5647cb15f6df64e60a",
+    "rust/volta-pcs/src/gemma31b_bf16.rs": "92503f0e44394cdbc23d6ef70d0c953c346adbf6f31eb6825ec2f3cbd0de1c2e",
+    "tests/test_c7_d126_gemma_native_bf16.py": "8b0deedf950a8e5188fd772c0588aca8ec5489102f625e4d7751dfa0f04182ff",
+    "tests/test_c7_d126_gemma_weight_ingest.py": "f9a8c854bb0c653427d84a228c02bc25fe6c1122e6710f7fdb8eb8820de3f77e"
+  },
+  "scope": "Small synthetic safetensors and finite BF16 patterns; same-stream hashes, automatic W exponents, atomic packed publication, pipe framing/failures and planned resource guards; no real W, A calibration or H100 measurement"
+}

@@ -367,9 +367,8 @@ mod tests {
         let prover = ProverGuard::freeze(prover, betas.len(), height, correction.clone()).unwrap();
         let verifier = VerifierGuard::freeze(verifier, betas.len(), height, correction).unwrap();
         assert_eq!(prover.frozen.prefix, verifier.frozen.prefix);
-        let challenge = |_| Fp3::new(Fp::new(2), Fp::new(3), Fp::new(5));
-        let verifier = verifier.challenge(challenge);
-        let (wire, finished) = prover.prove(challenge);
+        let verifier = verifier.challenge_bound().unwrap();
+        let (wire, finished) = prover.prove_bound().unwrap();
         (finished, verifier.verify(&wire).unwrap())
     }
 

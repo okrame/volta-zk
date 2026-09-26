@@ -1422,8 +1422,15 @@ Queste ultime vengono cancellate dopo il check; split e ulteriori 2.025
 righe F_EQ restano vivi. La sfida viene fissata in un oggetto distinto
 prima dell'ingresso della proof. Solo la verifica positiva restituisce
 `GuardAccepted`, ora consumato dal producer c a ruoli separati.
-Il callback del fixture non è una realizzazione della FS globale:
-nessun credito crittografico al bootstrap composto.
+Il raccordo reale usa ora `prove_bound`/`challenge_bound`: SHAKE256 del
+dominio guard, `/challenge/` e prefisso congelato, con il sampler Fp3
+condiviso (otto candidati per limb, 192 B). Il prefisso comprende il binding
+sigillato v02 e tutte le correzioni/righe prima della sfida. Nessun lambda
+entra dal caller in questo percorso. I callback prefissati restano nei
+test algebrici; il codec locale non chiude il transcript globale o il burn.
+Il KAT Python/Rust verifica i 72 B assorbiti e il valore; prefisso/proof
+alterati vengono respinti. Lo slot temporaneo pianificato è 1.024 B,
+senza nuova heap o aumento del massimo arena. Non è un bound di stack.
 
 Il ledger aggiunge 108.000 B di correzioni per ruolo, proof da 48 B,
 216.085 B assorbiti nel prefisso e 32 B di digest; nessun vettore di triple.
@@ -1572,7 +1579,7 @@ contano anche commitment, RNG e candidati del sampler. Lo stato stream
 CPU è 488 B, i due stati di fase 144 B ciascuno; un solo slot conservativo
 da 4.096 B copre i valori/hash, non lo stack compilato. Il massimo arena
 nominato resta invariato. La coin nativa non scarica da sola l'ipotesi ROM:
-FS del guard, burn durevole senza retry, trasporto globale e
+Transcript globale, burn durevole senza retry, trasporto globale e
 collegamento alla capacità PCG restano aperti, senza nuovo credito H100.
 
 
@@ -1599,7 +1606,7 @@ e non attestano il nuovo ordine del completamento.
 
 Il seal fissa un identificatore fresco, **non un burn durevole**. Il
 journal deve ancora possedere entrambi i setup e terminare su qualunque
-errore o withholding senza retry; anche FS globale del guard e output EA
+errore o withholding senza retry; anche transcript globale e output EA
 restano da collegare. I test locali non conferiscono nuovo credito alla
 riduzione composta, al picco fisico o all'H100.
 

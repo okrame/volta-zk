@@ -151,6 +151,9 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                                 'Seed6:guard_native_value_state':552}})
                 events += [{'event':'guard_prefix_native_hash_object', 'allocate':{'Seed6:hash_object':1920}},
                            {'event':'guard_prefix_hash_release_before_challenge','free':['Seed6:hash_object']}]
+                events += [{'event':'guard_sealed_prefix_challenge_before_proof',
+                            'allocate':{'Seed6:guard_challenge':setup['path_guard_consumer']['challenge_native_value_slot_bytes']}},
+                           {'event':'guard_challenge_temporary_release','free':['Seed6:guard_challenge']}]
                 events.append({'event':'split_coin_commit_before_c_then_reuse_for_equality',
                     'allocate':{'Seed6:coin_native_value_slot':setup['coin_tosses']['split']['native_value_and_hash_slot_bytes']}})
                 cggm=setup['guard_to_cggm_and_split_consumer']

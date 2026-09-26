@@ -1688,3 +1688,15 @@ nativa e gli oggetti/hash nominati, senza alzare il massimo arena globale.
 Un identificatore fresco non è un journal non rollbackabile: burn durevole,
 FS globale e capacità EA rimangono aperti. I record v01 sono conservati
 e non vengono usati per attribuire credito al nuovo completamento.
+
+## Guard challenge from the sealed prefix
+
+Il percorso reale usa ora una sfida SHAKE256 derivata dal prefisso guard
+immutabile, che include il binding sigillato e le correzioni ordinate.
+I due ruoli la ricostruiscono prima della proof senza lambda fornita dal
+caller. Il KAT Python/Rust verifica dominio da 72 B e slot da 192 B;
+prefisso/proof alterati falliscono. La catena reale Seed6→guard→cGGM→coin→F_EQ
+esegue questa derivazione; le coin prefissate restano nei test algebrici.
+Il ledger include sampler e temporanei, senza variare il massimo arena.
+Il codec locale non è il transcript globale né il burn senza retry:
+nessun nuovo credito al teorema composto, al picco fisico o all'H100.

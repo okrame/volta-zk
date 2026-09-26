@@ -128,7 +128,11 @@ split/F_EQ native. Aggiungere `c71_seed6_coin` (due test, marker
 Per il seal eseguire anche `completion_seal` (due test, incluso il dominio
 B12 originale) e la regressione `real_seed6_main_n1_and_inverse_n3`, che
 rifiuta v01 prima degli OT. La catena reale usa ora v02 e seal in entrambe
-le direzioni. FS del guard, burn e trasporto globale restano aperti. Ogni filtro
+le direzioni. Per il guard da prefisso sigillato aggiungere
+`c71_seed6_guard_bound_challenge` (un test, marker `C71_SEED6_GUARD_FS`):
+KAT SHAKE Python/Rust, MAC originali e rifiuto di prefisso/proof alterati.
+Il raccordo reale usa questa derivazione invece della lambda prefissata.
+Transcript globale, burn e trasporto restano aperti. Ogni filtro
 resta entro 60 s/2 GiB, un worker/thread,
 senza rete esterna. Conservare anche i filtri `c71_seed6::guard::tests`,
 `c71_seed6_equality`, `c71_seed6_tail_reservation` e `c71_ea_lpn::tests`.

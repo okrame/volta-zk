@@ -121,6 +121,7 @@ def test_real_seed6_wire_work_and_named_heap_match_native_reduced_runs():
 
 
 def test_original_guard_rows_and_named_arena_state():
+    import hashlib
     guard=trace.seed6_guard_trace()
     assert guard['triple_count']==12825
     assert guard['global_mask_row_ids']==[15525,15526,15527]
@@ -134,6 +135,13 @@ def test_original_guard_rows_and_named_arena_state():
     assert guard['verifier_Fp3_by_Fp_multiplications']==25650
     assert guard['verifier_Fp3_add_sub']==64130
     assert guard['challenge_fixed_before_proof_input']
+    prefix=b'VOLTA-C71-Seed6-path-guard-v1/challenge/'+bytes([1])*32
+    tape=hashlib.shake_256(prefix).digest(192)
+    assert [int.from_bytes(tape[index*64:index*64+8],'little') for index in range(3)]==[
+        12348370486373678026,8578382865034854480,9726913847348157411]
+    assert guard['challenge_SHAKE_absorbed_bytes_each_role']==len(prefix)==72
+    assert guard['challenge_SHAKE_squeezed_bytes_each_role']==192
+    assert guard['sealed_prefix_native_challenge']
     assert not guard['global_FS_codec_credit']
 
 

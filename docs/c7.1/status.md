@@ -505,8 +505,9 @@ consuma `GuardAccepted`, costruisce cGGM a ruoli separati e usa i MAC
 originali per i check split e F_EQ: il caso reale da 12+3 righe accetta
 il positivo e rifiuta c/z alterati. Non usa l'oracolo con input congiunti.
 Le coin split/F_EQ ora eseguono commit/risposta/apertura e derivano i
-coefficienti da uno stream SHAKE, senza array U denso. Restano FS globale
-del guard, exchange completo, burn durevole ed espansione EA.
+coefficienti da uno stream SHAKE, senza array U denso. Anche la sfida guard
+ora deriva dal binding sigillato e dalle correzioni congelate, prima della
+proof. Restano transcript/trasporto globali, burn durevole ed espansione EA.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 la riserva consuma il seed e separa coda F_EQ/prefisso guard, cancellando

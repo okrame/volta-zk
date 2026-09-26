@@ -2,6 +2,9 @@
 //! the returned public prefix into its one-shot challenge transcript. This
 //! component does not implement the outer FS, seal, cGGM or F_EQ lifecycle.
 use super::real::{RealProverOutput, RealVerifierOutput};
+use crate::c71_ea_lpn::{sample_h_limbs, Work};
+use sha3::digest::{ExtendableOutput, Update, XofReader};
+use sha3::Shake256;
 use volta_field::{Fp, Fp3, P};
 use volta_mac::c7_fp3::{
     c7_fp3_product_batch_prover, c7_fp3_product_batch_verify, C7Fp3ProverAuthed as Auth,
@@ -15,6 +18,28 @@ mod cggm;
 const BASIS: [Fp3; 3] =
     [Fp3::ONE, Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO), Fp3::new(Fp::ZERO, Fp::ZERO, Fp::ONE)];
 const DOMAIN: &[u8] = b"VOLTA-C71-Seed6-path-guard-v1";
+
+fn bound_challenge(prefix: [u8; 32]) -> Result<(Fp3, Work), Error> {
+    if prefix == [0; 32] {
+        return Err(Error::Shape);
+    }
+    let mut hash = Shake256::default();
+    hash.update(DOMAIN);
+    hash.update(b"/challenge/");
+    hash.update(&prefix);
+    let mut reader = hash.finalize_xof();
+    let mut tape = [0; 192];
+    reader.read(&mut tape);
+    let mut work = Work {
+        shake_calls: 1,
+        absorbed_bytes: (DOMAIN.len() + b"/challenge/".len() + 32) as u64,
+        squeezed_bytes: 192,
+        shake_object_bytes_peak: size_of::<Shake256>().max(size_of_val(&reader)),
+        ..Default::default()
+    };
+    let limbs = sample_h_limbs(&tape, &mut work).map_err(|_| Error::Rejected)?;
+    Ok((Fp3::new(limbs[0], limbs[1], limbs[2]), work))
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Error {
@@ -108,6 +133,10 @@ fn pack_key(seed: &RealVerifierOutput, start: usize) -> Key {
 }
 
 impl ProverGuard {
+    pub(super) fn prove_bound(self) -> Result<([u8; 48], ProverFinished), Error> {
+        let lambda = bound_challenge(self.frozen.prefix)?.0;
+        Ok(self.prove(|_| lambda))
+    }
     pub(super) fn freeze(
         seed: RealProverOutput,
         blocks: usize,
@@ -151,6 +180,10 @@ impl ProverGuard {
     }
 }
 impl VerifierGuard {
+    pub(super) fn challenge_bound(self) -> Result<VerifierChallenged, Error> {
+        let lambda = bound_challenge(self.frozen.prefix)?.0;
+        Ok(self.challenge(|_| lambda))
+    }
     pub(super) fn freeze(
         seed: RealVerifierOutput,
         blocks: usize,
@@ -235,16 +268,15 @@ pub(super) fn corrections(
     Ok(out)
 }
 
-/// Reduced integration check: the callback is a deterministic test coin,
-/// not an implementation of the composed global bootstrap transcript.
+/// Reduced integration check with the local sealed-prefix guard challenge.
+/// The outer global transcript and durable lifecycle remain separate.
 pub(super) fn check_real_seed(prover: RealProverOutput, verifier: RealVerifierOutput) {
     let d = corrections(&prover, 2, &[17], &[2]).unwrap();
     let p = ProverGuard::freeze(prover, 1, 2, d.clone()).unwrap();
     let v = VerifierGuard::freeze(verifier, 1, 2, d).unwrap();
     assert_eq!(p.frozen.prefix, v.frozen.prefix);
-    let lambda = Fp3::new(Fp::new(2), Fp::new(3), Fp::new(5));
-    let verifier = v.challenge(|_| lambda);
-    let (proof, finished) = p.prove(|_| lambda);
+    let verifier = v.challenge_bound().unwrap();
+    let (proof, finished) = p.prove_bound().unwrap();
     let accepted = verifier.verify(&proof).unwrap();
     check_remaining(&finished, &accepted);
     cggm::check_real(finished, accepted);
@@ -379,5 +411,39 @@ mod tests {
                 "complete_stack_or_allocator_peak":false
             })
         );
+    }
+
+    #[test]
+    fn c71_seed6_guard_bound_challenge_matches_python_and_original_macs() {
+        let (value, work) = bound_challenge([1; 32]).unwrap();
+        assert_eq!(
+            [value.c0.value(), value.c1.value(), value.c2.value()],
+            [12348370486373678026, 8578382865034854480, 9726913847348157411]
+        );
+        assert_eq!(work.absorbed_bytes, 72);
+        assert_eq!(work.squeezed_bytes, 192);
+        assert_eq!(work.fp_candidates, 3);
+        assert!(bound_challenge([0; 32]).is_err());
+        assert_ne!(value, bound_challenge([2; 32]).unwrap().0);
+        for fault in 0..3 {
+            let (prover, verifier) = fixture();
+            let corrections = corrections(&prover, 2, &[17, 0], &[2, 1]).unwrap();
+            let prover = ProverGuard::freeze(prover, 2, 2, corrections.clone()).unwrap();
+            let mut verifier = VerifierGuard::freeze(verifier, 2, 2, corrections).unwrap();
+            if fault == 1 {
+                verifier.frozen.prefix[0] ^= 1;
+            }
+            let verifier = verifier.challenge_bound().unwrap();
+            let (mut proof, finished) = prover.prove_bound().unwrap();
+            if fault == 2 {
+                proof[0] ^= 1;
+            }
+            let result = verifier.verify(&proof);
+            assert_eq!(result.is_ok(), fault == 0);
+            if let Ok(accepted) = result {
+                check_remaining(&finished, &accepted);
+            }
+        }
+        eprintln!("C71_SEED6_GUARD_FS absorbed_bytes=72 squeezed_bytes=192 fixed_before_proof=true global_lifecycle=false");
     }
 }

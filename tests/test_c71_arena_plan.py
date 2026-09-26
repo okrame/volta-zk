@@ -51,6 +51,7 @@ def test_seed6_guard_cggm_and_split_remain_live_through_equality():
         plan=case['address_layouts'][f'Seed6_{role}_then_{inverse}_outer_pending']
         names=[event['event'] for event in plan['events']]
         assert names.index('main_seal')<names.index('roleswap_seal')<names.index('freeze_guard_corrections_outer_FS_pending')
+        assert names.index('guard_sealed_prefix_challenge_before_proof')<names.index('guard_accepted_then_role_separated_cggm')
         live={key:size for key,_,size in plan['initial_allocations']}
         for event in plan['events']:
             for key in event['free']:live.pop(key)
@@ -62,6 +63,7 @@ def test_seed6_guard_cggm_and_split_remain_live_through_equality():
         assert live['Seed6:coin_native_value_slot']>=4096
         assert live['Seed6:main'] and live['Seed6:roleswap'] and live['Seed6:main_equality_tail']
         assert 'Seed6:cggm_temporary' not in live and 'Seed6:H_codec' not in live
+        assert 'Seed6:guard_challenge' not in live
         assert plan['fits_with_operational_margin']
 
 

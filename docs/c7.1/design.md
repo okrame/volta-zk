@@ -1268,8 +1268,10 @@ Il [consumer guard ridotto](preflight.md#guard-originale-consumer-nativo)
 usa ora l'algebra prodotti condivisa con range, negando solo Delta nel
 passaggio bootstrap→MAC nativo. La ricetta di righe e il prefisso sono
 fissati prima della sfida; l'API verifier fissa lambda prima di leggere la
-prova. Il callback di test non è la FS globale. Il bound matematico
-candidato resta quello dello screen;
+prova. Il percorso reale ora deriva lambda con SHAKE256 dal prefisso
+congelato contenente il binding sigillato; i callback prefissati restano
+solo nei test algebrici. È il codec locale, non il transcript/lifecycle
+globale. Il bound matematico candidato resta quello dello screen;
 `prodKey_expand`/`prodKey_rlc_expand` in
 [ProdSound](../../lean/VoltaZk/ProdSound.lean) giustificano l'identità algebrica,
 non il refinement di questo codec. `prodBatch_sound_scalar` usa potenze
@@ -1296,8 +1298,8 @@ prefisso, fase, direzione, cardinalità e apertura; lo stream SHAKE256 lega
 anche il prefisso successivo fissato prima dell'apertura. Questa scelta
 instanzia i domini ROM condizionali dello screen, non aggiunge un teorema
 Lean o una prova UC. L'argomento F_Rand resta subordinato a nonce fresco,
-burn senza retry e ordine globale: il fixture non scarica FS del guard,
-trasporto o lifecycle. Il seal dei due seed è ora obbligatorio nel
+burn senza retry e ordine globale: il fixture non scarica il transcript
+globale, trasporto o lifecycle. Il seal dei due seed è ora obbligatorio nel
 [raccordo reale v02](preflight.md#seed6-seal-di-completamento): il binding
 comprende il seal fresco dopo check/compressione e prima di qualsiasi
 output. Si riusa il meccanismo B12 con un dominio wire Seed6 distinto;

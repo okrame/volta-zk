@@ -13,7 +13,17 @@ nonzero; controlla anche padding EXP30 e contributo pubblico all'istogramma.
 La proof di regressione usa il runner ridotto preesistente, non il nuovo
 driver canonico. Non sono Γ calibrato reale, forward completo, picco fisico
 o misure H100. Il [preflight](preflight.md#real-calibrated-gamma) conserva
-gli obblighi aperti di storage/getter e calibrazione.
+gli obblighi aperti del percorso reale e della calibrazione.
+
+Il [record storage a SHA pulita c862023](../../benchmarks/results/c71-canonical-calibration-storage-2026-09-26-c862023d0c8b.json)
+aggiunge il raccordo packed W → embedding/affine/RNE, GELU/gate e PV causale
+nei tre contesti, con rilascio all'ultimo consumer e conteggi separati.
+Passano un test dello storage e la regressione delle righe numeriche,
+separatamente entro 60 s/2 GiB. Sono verificati anche ordine sorgenti diverso
+dal file, codec invalido, input troncato, lettura dopo rilascio e arresto del
+trial dopo errore. Il record conserva i tre trace dei sottografi e dichiara
+`calibrated:false`, `full_model_execution:false`, `credit:false`:
+nessuna inferenza completa, proof sul nuovo driver o misura del picco GPU.
 
 I risultati sono distinti per ciò che controllano. Un test finito supporta
 la derivazione indicata; non dimostra da solo il teorema generale, la

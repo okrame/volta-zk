@@ -1,0 +1,211 @@
+{
+  "milestone": "C7.1-canonical-calibration-storage",
+  "date": "2026-09-26",
+  "git_sha": "c862023d0c8bc9b3944b727988eac41f1cf3144a",
+  "git_dirty": false,
+  "credit": false,
+  "gpu_execution": false,
+  "calibrated": false,
+  "canonical_admitted": false,
+  "full_model_execution": false,
+  "h100_preflight_ready": false,
+  "source_sha256": {
+    "rust/volta-pcs/src/c71_matrix/gemma/native/canonical.rs": "173f84bcab212da5b152c5ec55a20f89554f54ecd8c069e98fc49d095631a331",
+    "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prepare.rs": "a45f31d62e1066c6310074c9d8bb0680db1b73a92d3ad2ec3d89831f7ed0c07a",
+    "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs": "71c922895dde7407be8b8283b8aecf47825bbef72f1c6ced67a562a7da7e4a81"
+  },
+  "build_command": "CARGO_TARGET_DIR=/home/okrame/projects/volta-zk/rust/target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2 cargo test --offline --locked -j 1 -p volta-pcs --features c71-b12-pcs --lib c71_b12_native_canonical_calibration --no-run",
+  "limits": {
+    "address_space_bytes": 2147483648,
+    "timeout_seconds": 60,
+    "rayon_threads": 1,
+    "test_threads": 1
+  },
+  "runs": [
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_canonical_numeric_rows_original_routes",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 0.703161776997149,
+      "stdout": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::prepare::tests::c71_b12_native_canonical_numeric_rows_original_routes ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 412 filtered out; finished in 0.70s\n\n",
+      "stderr": "C71_CANONICAL_NUMERIC_ROWS offsets=0/150/300 calibrated=false full_model=false\n",
+      "passed": true
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-75a7a8438ed5a22d",
+        "c71_b12_native_canonical_calibration_storage_release_and_ranges",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 1.408088187687099,
+      "stdout": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::calibration::tests::c71_b12_native_canonical_calibration_storage_release_and_ranges ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 412 filtered out; finished in 1.41s\n\n",
+      "stderr": "C71_CALIBRATION_STORAGE {\"calibrated\":false,\"complete_physical_peak\":false,\"embedding\":{\"current_kv_reads\":0,\"current_reads\":21504,\"emitted_words\":32256,\"histogram_visits\":0,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":108544,\"payload_plus_incoming_bundle_peak_bytes\":151552,\"producer_rows\":6,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":10752},\"external_prior_KV_payload_bytes\":0,\"full_current_KV_payload_bytes\":135168000,\"full_histogram_payload_bytes\":31718940,\"full_model\":false,\"lookup\":{\"current_kv_reads\":0,\"current_reads\":64512,\"emitted_words\":86016,\"histogram_visits\":21504,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":778236,\"payload_plus_incoming_bundle_peak_bytes\":1122300,\"producer_rows\":3,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0},\"old_tokens\":0,\"pv\":{\"current_kv_reads\":8192,\"current_reads\":32,\"emitted_words\":17088,\"histogram_visits\":0,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":46592,\"payload_plus_incoming_bundle_peak_bytes\":117760,\"producer_rows\":2,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0}}\nC71_CALIBRATION_STORAGE {\"calibrated\":false,\"complete_physical_peak\":false,\"embedding\":{\"current_kv_reads\":0,\"current_reads\":21504,\"emitted_words\":32256,\"histogram_visits\":0,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":108544,\"payload_plus_incoming_bundle_peak_bytes\":151552,\"producer_rows\":6,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":10752},\"external_prior_KV_payload_bytes\":135168000,\"full_current_KV_payload_bytes\":135168000,\"full_histogram_payload_bytes\":31718940,\"full_model\":false,\"lookup\":{\"current_kv_reads\":0,\"current_reads\":64512,\"emitted_words\":86016,\"histogram_visits\":21504,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":778236,\"payload_plus_incoming_bundle_peak_bytes\":1122300,\"producer_rows\":3,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0},\"old_tokens\":150,\"pv\":{\"current_kv_reads\":8192,\"current_reads\":4832,\"emitted_words\":21888,\"histogram_visits\":0,\"historical_kv_reads\":1228800,\"named_payload_peak_bytes\":84992,\"payload_plus_incoming_bundle_peak_bytes\":194560,\"producer_rows\":2,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0}}\nC71_CALIBRATION_STORAGE {\"calibrated\":false,\"complete_physical_peak\":false,\"embedding\":{\"current_kv_reads\":0,\"current_reads\":21504,\"emitted_words\":32256,\"histogram_visits\":0,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":108544,\"payload_plus_incoming_bundle_peak_bytes\":151552,\"producer_rows\":6,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":10752},\"external_prior_KV_payload_bytes\":270336000,\"full_current_KV_payload_bytes\":135168000,\"full_histogram_payload_bytes\":31718940,\"full_model\":false,\"lookup\":{\"current_kv_reads\":0,\"current_reads\":64512,\"emitted_words\":86016,\"histogram_visits\":21504,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":778236,\"payload_plus_incoming_bundle_peak_bytes\":1122300,\"producer_rows\":3,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0},\"old_tokens\":300,\"pv\":{\"current_kv_reads\":8192,\"current_reads\":9632,\"emitted_words\":26688,\"histogram_visits\":0,\"historical_kv_reads\":2457600,\"named_payload_peak_bytes\":123392,\"payload_plus_incoming_bundle_peak_bytes\":271360,\"producer_rows\":2,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0}}\n",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "scope": {
+    "new_path": "packed row IO, embedding/affine/RNE, GELU/gate and causal PV subgraphs with last-consumer release; synthetic values/tables on original O=0/150/300 geometry",
+    "regression": "canonical numeric row routes and causal output suffix, not a complete model",
+    "not_covered": [
+      "real checkpoint calibration",
+      "complete canonical forward",
+      "authenticated canonical getters",
+      "full physical peak",
+      "complete timing lower",
+      "H100 execution"
+    ]
+  },
+  "storage_traces": [
+    {
+      "calibrated": false,
+      "complete_physical_peak": false,
+      "embedding": {
+        "current_kv_reads": 0,
+        "current_reads": 21504,
+        "emitted_words": 32256,
+        "histogram_visits": 0,
+        "historical_kv_reads": 0,
+        "named_payload_peak_bytes": 108544,
+        "payload_plus_incoming_bundle_peak_bytes": 151552,
+        "producer_rows": 6,
+        "public_padding_histogram_visits": 0,
+        "public_padding_words": 0,
+        "weight_reads": 10752
+      },
+      "external_prior_KV_payload_bytes": 0,
+      "full_current_KV_payload_bytes": 135168000,
+      "full_histogram_payload_bytes": 31718940,
+      "full_model": false,
+      "lookup": {
+        "current_kv_reads": 0,
+        "current_reads": 64512,
+        "emitted_words": 86016,
+        "histogram_visits": 21504,
+        "historical_kv_reads": 0,
+        "named_payload_peak_bytes": 778236,
+        "payload_plus_incoming_bundle_peak_bytes": 1122300,
+        "producer_rows": 3,
+        "public_padding_histogram_visits": 0,
+        "public_padding_words": 0,
+        "weight_reads": 0
+      },
+      "old_tokens": 0,
+      "pv": {
+        "current_kv_reads": 8192,
+        "current_reads": 32,
+        "emitted_words": 17088,
+        "histogram_visits": 0,
+        "historical_kv_reads": 0,
+        "named_payload_peak_bytes": 46592,
+        "payload_plus_incoming_bundle_peak_bytes": 117760,
+        "producer_rows": 2,
+        "public_padding_histogram_visits": 0,
+        "public_padding_words": 0,
+        "weight_reads": 0
+      }
+    },
+    {
+      "calibrated": false,
+      "complete_physical_peak": false,
+      "embedding": {
+        "current_kv_reads": 0,
+        "current_reads": 21504,
+        "emitted_words": 32256,
+        "histogram_visits": 0,
+        "historical_kv_reads": 0,
+        "named_payload_peak_bytes": 108544,
+        "payload_plus_incoming_bundle_peak_bytes": 151552,
+        "producer_rows": 6,
+        "public_padding_histogram_visits": 0,
+        "public_padding_words": 0,
+        "weight_reads": 10752
+      },
+      "external_prior_KV_payload_bytes": 135168000,
+      "full_current_KV_payload_bytes": 135168000,
+      "full_histogram_payload_bytes": 31718940,
+      "full_model": false,
+      "lookup": {
+        "current_kv_reads": 0,
+        "current_reads": 64512,
+        "emitted_words": 86016,
+        "histogram_visits": 21504,
+        "historical_kv_reads": 0,
+        "named_payload_peak_bytes": 778236,
+        "payload_plus_incoming_bundle_peak_bytes": 1122300,
+        "producer_rows": 3,
+        "public_padding_histogram_visits": 0,
+        "public_padding_words": 0,
+        "weight_reads": 0
+      },
+      "old_tokens": 150,
+      "pv": {
+        "current_kv_reads": 8192,
+        "current_reads": 4832,
+        "emitted_words": 21888,
+        "histogram_visits": 0,
+        "historical_kv_reads": 1228800,
+        "named_payload_peak_bytes": 84992,
+        "payload_plus_incoming_bundle_peak_bytes": 194560,
+        "producer_rows": 2,
+        "public_padding_histogram_visits": 0,
+        "public_padding_words": 0,
+        "weight_reads": 0
+      }
+    },
+    {
+      "calibrated": false,
+      "complete_physical_peak": false,
+      "embedding": {
+        "current_kv_reads": 0,
+        "current_reads": 21504,
+        "emitted_words": 32256,
+        "histogram_visits": 0,
+        "historical_kv_reads": 0,
+        "named_payload_peak_bytes": 108544,
+        "payload_plus_incoming_bundle_peak_bytes": 151552,
+        "producer_rows": 6,
+        "public_padding_histogram_visits": 0,
+        "public_padding_words": 0,
+        "weight_reads": 10752
+      },
+      "external_prior_KV_payload_bytes": 270336000,
+      "full_current_KV_payload_bytes": 135168000,
+      "full_histogram_payload_bytes": 31718940,
+      "full_model": false,
+      "lookup": {
+        "current_kv_reads": 0,
+        "current_reads": 64512,
+        "emitted_words": 86016,
+        "histogram_visits": 21504,
+        "historical_kv_reads": 0,
+        "named_payload_peak_bytes": 778236,
+        "payload_plus_incoming_bundle_peak_bytes": 1122300,
+        "producer_rows": 3,
+        "public_padding_histogram_visits": 0,
+        "public_padding_words": 0,
+        "weight_reads": 0
+      },
+      "old_tokens": 300,
+      "pv": {
+        "current_kv_reads": 8192,
+        "current_reads": 9632,
+        "emitted_words": 26688,
+        "histogram_visits": 0,
+        "historical_kv_reads": 2457600,
+        "named_payload_peak_bytes": 123392,
+        "payload_plus_incoming_bundle_peak_bytes": 271360,
+        "producer_rows": 2,
+        "public_padding_histogram_visits": 0,
+        "public_padding_words": 0,
+        "weight_reads": 0
+      }
+    }
+  ]
+}

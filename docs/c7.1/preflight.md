@@ -2417,3 +2417,6 @@ input troncato, letture future/rilasciate, budget del payload e arresto dopo
 errore. Le statistiche dei sottografi non vengono dichiarate Γ calibrato;
 `finish` richiede 150 token e copertura completa prima di accettare un trial.
 Nessun tempo CPU viene trasferito al ledger H100.
+Il [record c862023](../../benchmarks/results/c71-canonical-calibration-storage-2026-09-26-c862023d0c8b.json)
+conserva i tre trace del test dello storage e la regressione del dispatcher,
+entrambi passati da SHA pulita; distingue ordine degli ID e ordine packed.

@@ -1490,6 +1490,13 @@ privati dal sistema. Non si richiede uguaglianza fra installazioni diverse.
 Il [controllo scartato fra run](../../benchmarks/results/c71-integrated-cross-run-coins-2026-09-26-e95d8a51d6cd.json)
 è conservato con provenienza dirty, senza credito di protocollo.
 
+Il raccordo successivo passa intervalli causali da Softmax al getter,
+con proiezione pubblica verificata per ogni round nei tre contesti.
+La proof ridotta conserva 12 lane private e recupera analiticamente le
+quattro lane byte zero; Eq terminale usa due tabelle fattorizzate.
+Il controllo di arena include queste tabelle e non cambia il massimo.
+Il guard ≤128 e i limiti di credito restano invariati.
+
 ### Native moment seam and byte tree screen
 
 Il [record pulito `b63461fa58e8`](../../benchmarks/results/c71-byte-seam-and-tree-screen-2026-09-26-b63461fa58e8.json)

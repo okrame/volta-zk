@@ -121,6 +121,8 @@ def arena_events(case):
     requested payloads, not evidence for an implemented CUDA allocator.
     """
     support = [r['supported_pairs'] for r in case['rounds']]
+    bits = case['padded_cells'].bit_length()-1
+    recovery_eq = 24*((1 << (bits//2))+(1 << (bits-bits//2)))
     events = []
     for h, rank in enumerate(rank_bounds()):
         name = f'EXP30_byte_contract_{h}'
@@ -144,9 +146,9 @@ def arena_events(case):
             alloc(f'fold_{r}_disjoint_destination', {f'state_{r%2}':12*rank*24*n})
             free(f'fold_{r}_last_source_consumer', f'state_{(r-1)%2}')
         free('cell_rounds_complete', f'state_{(len(support)-9)%2}', 'diagonal', 'support_spans')
-        alloc('original_child_recovery', dict(histogram=16*256*36,
+        alloc('original_child_recovery', dict(histogram=16*256*36, Eq_factor_tables=recovery_eq,
             original_children=16*(1<<h)*4*24))
-        free('histogram_last_consumer', 'histogram')
+        free('histogram_last_consumer', 'histogram', 'Eq_factor_tables')
         # Lane/node folding also keeps source and destination disjoint.
         alloc('original_lane_node_fold', dict(child_destination=16*(1<<h)*2*24))
         free('original_endpoint', 'original_children', 'child_destination')
@@ -182,6 +184,8 @@ def report():
             early_feature_regeneration_Fp3_additions_upper=(checkpoint+1)*12*c['live_cells']*sum(ranks),
             retained_feature_fold_Fp3_products_upper=12*sum(ranks)*sum(support[checkpoint:]),
             recovery_wide_histogram_bytes=16*256*36,
+            recovery_Eq_factor_tables_bytes=24*((1 << ((c['padded_cells'].bit_length()-1)//2))+
+                (1 << ((c['padded_cells'].bit_length())//2))),
             recovered_original_children_payload_peak_bytes=16*128*4*24,
             recovery_node_contractions_Fp3_products=16*256*4*255,
             public_support_zero_baseline_required=True,
@@ -190,9 +194,9 @@ def report():
         cases=cases, rank_sum_upper=sum(ranks), original_child_functions=4*255,
         asymptotic_cell_work='O(N*sqrt(B)) versus O(N*B) for byte alphabet B, public transforms and terminal replay separate',
         complete_work=False, complete_peak=False, complete_time=False,
-        missing=['native original-field/transcript/MAC refinement',
+        missing=['canonical execution beyond the reduced original-field/transcript/MAC check',
                  'public transforms, baseline coefficients, Eq and full instruction/traffic counts',
-                 'scaled-LUT streaming and compact support getters',
+                 'CUDA scaled-LUT streaming and compact support getters',
                  'joint allocator/fences/peak and measured service rates'],
         spending_gate='NO-GO for spending; algebra and component payload bounds only')
 

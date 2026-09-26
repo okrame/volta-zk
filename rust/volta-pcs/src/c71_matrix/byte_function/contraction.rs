@@ -126,11 +126,42 @@ fn equality(point: &[Fp3], prefix: &[Fp3], suffix: usize) -> Fp3 {
     value
 }
 
+/// Public half-open original-coordinate spans; projection never depends on bytes.
+pub(in crate::c71_matrix) fn project_support(spans: &[(u32, u32)], period: u32) -> Vec<(u32, u32)> {
+    assert!(period.is_power_of_two());
+    let mut pieces = Vec::new();
+    for &(start, end) in spans {
+        assert!(start < end);
+        let len = end - start;
+        if len >= period {
+            return vec![(0, period)];
+        }
+        let first = start % period;
+        if first + len <= period {
+            pieces.push((first, first + len));
+        } else {
+            pieces.push((first, period));
+            pieces.push((0, first + len - period));
+        }
+    }
+    pieces.sort_unstable();
+    let mut merged: Vec<(u32, u32)> = Vec::new();
+    for (start, end) in pieces {
+        if let Some(last) = merged.last_mut().filter(|last| start <= last.1) {
+            last.1 = last.1.max(end);
+        } else {
+            merged.push((start, end));
+        }
+    }
+    merged
+}
+
 pub(super) struct Prover<'a, G> {
     trees: &'a ByteTrees,
     cells: usize,
+    live_lanes: usize,
     checkpoint: usize,
-    active: Vec<usize>,
+    active: Vec<(u32, u32)>,
     keys: Vec<usize>,
     get: &'a G,
     features: Vec<Vec<(Fp3, [Fp3; 256])>>,
@@ -143,13 +174,15 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
         trees: &'a ByteTrees,
         cells: usize,
         get: &'a G,
-        public_support: impl Fn(usize) -> bool,
+        public_support: &[(u32, u32)],
+        live_lanes: usize,
     ) -> Self {
         Self {
             trees,
             cells,
+            live_lanes,
             checkpoint: 9.min(cells / 2),
-            active: (0..1usize << cells).filter(|&i| public_support(i)).collect(),
+            active: project_support(public_support, 1u32 << cells),
             keys: Vec::new(),
             get,
             features: Vec::new(),
@@ -183,7 +216,7 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             .map(|i| {
                 let mut values: Vec<_> = self.features[lane].iter().map(|(_, f)| f[0]).collect();
                 for (prefix, table) in scaled.iter().enumerate() {
-                    if self.active.binary_search(&(prefix * current + i)).is_err() {
+                    if !self.contains(prefix * current + i) {
                         continue;
                     }
                     let b =
@@ -197,11 +230,21 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             .collect()
     }
 
-    fn projected(&self, period: usize) -> Vec<usize> {
-        let mut keys: Vec<_> = self.active.iter().map(|i| i % period).collect();
-        keys.sort_unstable();
-        keys.dedup();
-        keys
+    fn contains(&self, i: usize) -> bool {
+        let at = self.active.partition_point(|&(start, _)| start as usize <= i);
+        at > 0 && i < (self.active[at - 1].1 as usize)
+    }
+
+    fn projected(&self, period: usize) -> Vec<(u32, u32)> {
+        project_support(&self.active, period as u32)
+    }
+
+    fn projected_keys(&self, period: usize) -> Vec<usize> {
+        self.projected(period)
+            .into_iter()
+            .flat_map(|(start, end)| start..end)
+            .map(|i| i as usize)
+            .collect()
     }
 
     fn retained_value(&self, lane: usize, key: usize, j: usize) -> Fp3 {
@@ -217,14 +260,25 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
         }
         self.features.clear();
         self.values.clear(); // No retained feature is needed by the original-byte replay.
-        let weights = eq(&point[..self.cells]);
+        let split = self.cells / 2;
+        let high = eq(&point[..split]);
+        let low = eq(&point[split..self.cells]);
+        let low_bits = self.cells - split;
         let mut values = Vec::new();
         for lane in 0..self.trees.lanes {
+            if lane >= self.live_lanes {
+                values.extend(
+                    children(self.trees, lane, layer, 0).chunks_exact(4).map(|v| v.to_vec()),
+                );
+                continue;
+            }
             let mut histogram = [Fp3::ZERO; 256];
             let mut mass = Fp3::ZERO;
-            for &cell in &self.active {
-                histogram[usize::from((self.get)(cell * self.trees.lanes + lane))] += weights[cell];
-                mass += weights[cell];
+            for cell in self.active.iter().flat_map(|&(start, end)| start..end).map(|i| i as usize)
+            {
+                let weight = high[cell >> low_bits] * low[cell & (low.len() - 1)];
+                histogram[usize::from((self.get)(cell * self.trees.lanes + lane))] += weight;
+                mass += weight;
             }
             histogram[0] += Fp3::ONE - mass;
             let mut children_at_cell = vec![Fp3::ZERO; 4 << layer];
@@ -261,8 +315,8 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             let lane_eq = eq(&point[self.cells..self.cells + lane_bits]);
             let half = 1usize << (self.cells - prefix.len() - 1);
             if prefix.len() == self.checkpoint {
-                self.keys = self.projected(2 * half);
-                self.values = (0..self.trees.lanes)
+                self.keys = self.projected_keys(2 * half);
+                self.values = (0..self.live_lanes)
                     .map(|lane| {
                         let scaled = self.scaled(lane, prefix);
                         self.keys
@@ -275,8 +329,8 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
                     .collect();
             } else if prefix.len() > self.checkpoint {
                 let r = *prefix.last().unwrap();
-                let keys = self.projected(2 * half);
-                let next: Vec<_> = (0..self.trees.lanes)
+                let keys = self.projected_keys(2 * half);
+                let next: Vec<_> = (0..self.live_lanes)
                     .map(|lane| {
                         keys.iter()
                             .map(|&i| {
@@ -307,12 +361,21 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
                 let e1 = lane_eq[lane] * fixed * at;
                 c[0] += e0 * baseline;
                 c[1] += (e1 - e0) * baseline;
+                if lane >= self.live_lanes {
+                    continue;
+                }
                 let scaled = if prefix.len() < self.checkpoint {
                     self.scaled(lane, prefix)
                 } else {
                     Vec::new()
                 };
-                for batch in pairs.chunks(16) {
+                let mut indices =
+                    pairs.iter().flat_map(|&(start, end)| start..end).map(|i| i as usize);
+                loop {
+                    let batch: Vec<_> = indices.by_ref().take(16).collect();
+                    if batch.is_empty() {
+                        break;
+                    }
                     let streamed = if prefix.len() < self.checkpoint {
                         Some(
                             batch

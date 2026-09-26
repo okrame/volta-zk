@@ -970,10 +970,14 @@ deriva dalle assegnazioni pubbliche del caller GKR, mai dai byte privati.
 La baseline f(0) entra analiticamente in ogni cubico; i buffer retained
 contengono solo le chiavi proiettate e i fold mantengono due stati
 disgiunti. Il recupero terminale aggiunge a H[0] la massa del padding
-pubblico e precede gli stessi claim originali. Le liste esplicite di
-indici restano limitate dal guard ≤128: il port canonico necessita dei
-descrittori a intervalli, non di una scansione/mappa densa del dominio.
-Quel port, il refinement Lean e i costi hardware restano aperti.
+pubblico e precede gli stessi claim originali. Il caller Softmax ora passa i descrittori a intervalli delle righe causali:
+la proiezione del supporto non enumera il dominio prima del checkpoint.
+Le 12 lane private occupano gli stati; le quattro lane pubbliche zero
+restano nella baseline e nei figli terminali. Il recupero Eq usa due
+fattori di dimensione circa sqrt(N), senza tabella completa. I conteggi
+di supporto coincidono col ledger a ogni round a O=0/150/300. Il guard
+della proof resta ≤128: esecuzione canonica, refinement Lean e costi
+hardware restano aperti.
 I contatori scalari non contano implicitamente
 l'evaluatore sostitutivo: il ledger ridotto registra i round custom a
 parte, senza presentarli come lavoro nullo o conteggio canonico completo.

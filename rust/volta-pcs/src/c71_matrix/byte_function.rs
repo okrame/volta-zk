@@ -7,7 +7,7 @@ use super::*;
 #[cfg(test)]
 pub(super) mod batch;
 
-mod contraction;
+pub(super) mod contraction;
 
 component_wire!(Proof { layers, leaf_tag, products });
 
@@ -287,7 +287,7 @@ pub(super) fn prove_sourcewise(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
-    prove_sourcewise_impl(s, original, get_byte, fs, correlations, false, |_| true)
+    prove_sourcewise_impl(s, original, get_byte, fs, correlations, false, &[], 0)
 }
 
 /// Reduced integration path. The canonical compact streaming getter is separate.
@@ -295,14 +295,18 @@ pub(super) fn prove_contracted(
     s: &Statement<'_>,
     original: Original<'_, Auth>,
     get_byte: impl Fn(usize) -> u8,
-    public_support: impl Fn(usize) -> bool,
+    public_support: &[(u32, u32)],
+    live_lanes: usize,
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
-    if s.cell_point.len() > 7 || s.live_cells != 1usize << s.cell_point.len() {
+    if s.cell_point.len() > 7
+        || s.live_cells != 1usize << s.cell_point.len()
+        || live_lanes > s.tables.len()
+    {
         return Err("byte contraction requires a reduced complete frame domain".into());
     }
-    prove_sourcewise_impl(s, original, get_byte, fs, correlations, true, public_support)
+    prove_sourcewise_impl(s, original, get_byte, fs, correlations, true, public_support, live_lanes)
 }
 
 fn prove_sourcewise_impl(
@@ -312,7 +316,8 @@ fn prove_sourcewise_impl(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
     contracted: bool,
-    public_support: impl Fn(usize) -> bool,
+    public_support: &[(u32, u32)],
+    live_lanes: usize,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
     let (len, sum) = match &original {
         Original::Lanes(v) => (v.len(), false),
@@ -345,6 +350,7 @@ fn prove_sourcewise_impl(
             s.cell_point.len(),
             &get_byte,
             public_support,
+            live_lanes,
         ))
     });
     let (layers, mut point, claims, tree_work) = range::prove_tree_sourcewise_custom(
@@ -622,7 +628,8 @@ mod tests {
                     &statement,
                     Original::Lanes(&original),
                     |_| panic!("rejected shape must not read the source"),
-                    |_| true,
+                    &[(0, live_cells as u32)],
+                    tables.len(),
                     &mut fs,
                     &mut prows
                 )
@@ -634,7 +641,8 @@ mod tests {
                     &statement,
                     Original::Lanes(&original),
                     |i| used[i],
-                    |_| true,
+                    &[(0, live_cells as u32)],
+                    tables.len(),
                     &mut fs,
                     &mut prows,
                 )

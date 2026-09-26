@@ -215,10 +215,13 @@ usano sorgente/destinazione disgiunte; feature e stati sono liberati
 prima del recupero dei figli. Baseline zero ed Eq sulle coordinate
 originali sono preservate nella proof integrata. Domini ragged sono
 respinti senza letture o consumo MAC/FS. Il riferimento resta limitato
-a domini completi ≤128 celle, con liste pubbliche ridotte: non accredita
-ancora i descrittori/intervalli canonici o contatori/workspace completi.
-Priorità: collegare i descrittori canonici a questo getter, poi ledger
-congiunto e harness minimo. Il NO-GO scalare non si trasferisce
+a domini completi ≤128 celle. Il caller canonico passa ora 288.000
+intervalli causali, proiettati senza lista densa: tutti i round coincidono
+col ledger a O=0/150/300. Gli stati mantengono le 12 lane private previste;
+le quattro lane pubbliche zero conservano baseline e figli. Eq del
+recupero usa fattori compatti, inclusi nel piano senza cambiarne il massimo.
+Priorità: ledger congiunto e kernel/harness minimo; contatori completi
+e picco fisico restano aperti. Il NO-GO scalare non si trasferisce
 alla contrazione. Il goal locale resta in corso.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 

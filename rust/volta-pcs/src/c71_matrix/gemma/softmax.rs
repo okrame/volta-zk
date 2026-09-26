@@ -467,6 +467,27 @@ mod tests {
             let bytes = &sources.attention.rope.gate_up.gelu.rms.bytes;
             let allowed_cells =
                 sm.layers.len() * sm.heads * (sm.queries * old + sm.queries * (sm.queries + 1) / 2);
+            let spans = sm.support_spans();
+            assert_eq!(spans.len(), 60 * 32 * 150);
+            assert_eq!(spans.iter().map(|&(a, b)| (b - a) as usize).sum::<usize>(), allowed_cells);
+            for &(a, b) in &spans {
+                assert!(sm.cell(a as usize).is_some() && sm.cell(b as usize - 1).is_some());
+                assert!(sm.cell(b as usize).is_none());
+            }
+            let n = 1u32 << (sm.row_bits() + sm.key_bits());
+            let pairs: Vec<_> = (1..=sm.row_bits() + sm.key_bits())
+                .map(|r| {
+                    byte_function::contraction::project_support(&spans, n >> r)
+                        .iter()
+                        .map(|&(a, b)| u64::from(b - a))
+                        .sum::<u64>()
+                })
+                .collect();
+            assert_eq!(pairs.iter().sum::<u64>(), [23_209_985, 69_305_991, 115_401_741][slot]);
+            eprintln!(
+                "C71_BYTE_SUPPORT O={old} {}",
+                serde_json::json!({"spans":spans.len(),"pairs":pairs})
+            );
             eprintln!(
                 "canonical_EXP30_GKR O={old} {}",
                 gkr::work_census(
@@ -914,6 +935,19 @@ impl Softmax {
         Ok(view)
     }
 
+    fn support_spans(&self) -> Vec<(u32, u32)> {
+        let stride = 1u32 << self.key_bits();
+        let queries = self.queries.next_power_of_two();
+        (0..self.layers.len() * self.heads)
+            .flat_map(|group| {
+                (0..self.queries).map(move |q| {
+                    let start = ((group * queries + q) as u32) * stride;
+                    (start, start + (self.old + q + 1) as u32)
+                })
+            })
+            .collect()
+    }
+
     fn cell(&self, index: usize) -> Option<(usize, usize, usize)> {
         let kb = self.key_bits();
         let rows = self.heads * self.queries.next_power_of_two();
@@ -1031,8 +1065,12 @@ impl Softmax {
             return Err("EXP30 prover capacity exhausted".into());
         }
         let assignment = |i| self.cell(i).map(|_| 0);
-        let assignments =
-            gkr::Assignments::new(1 << (self.row_bits() + self.key_bits()), &assignment);
+        let support = self.support_spans();
+        let assignments = gkr::Assignments::with_support(
+            1 << (self.row_bits() + self.key_bits()),
+            &assignment,
+            &support,
+        );
         let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
         let view = self.bind(bytes, s, fs)?;
         let row_point = (0..self.row_bits()).map(|_| fs.fp3()).collect::<Vec<_>>();
@@ -1134,8 +1172,12 @@ impl Softmax {
             return Err("EXP30 verifier capacity or tree shape differs".into());
         }
         let assignment = |i| self.cell(i).map(|_| 0);
-        let assignments =
-            gkr::Assignments::new(1 << (self.row_bits() + self.key_bits()), &assignment);
+        let support = self.support_spans();
+        let assignments = gkr::Assignments::with_support(
+            1 << (self.row_bits() + self.key_bits()),
+            &assignment,
+            &support,
+        );
         let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
         let view = self.bind(bytes, s, fs)?;
         let point = (0..self.row_bits()).map(|_| fs.fp3()).collect::<Vec<_>>();

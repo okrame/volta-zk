@@ -2208,7 +2208,14 @@ Il riferimento è limitato a domini completi ≤128 celle e viene selezionato
 nel caller EXP30 a pattern solo in tale ambito. Passa ora anche il getter
 a batch con LUT prepesate, baseline pubblica, chiavi compatte e checkpoint,
 fino alla stessa proof integrata. Il controllo ragged rifiuta prima di
-leggere la sorgente o consumare righe/sfide. Restano descrittori canonici
-a intervalli, lavoro/traffico congiunti e harness dei rate ignoti; le liste
-esplicite della prova ridotta non sono un adapter per N canonico.
+leggere la sorgente o consumare righe/sfide. Il caller passa ora gli
+intervalli canonici: 288.000 righe causali, con 23.209.985 / 69.305.991 /
+115.401.741 coppie supportate sommate sui round, coincidenti col ledger
+a ogni round. Prima del checkpoint si iterano intervalli; gli indici
+espliciti appartengono soltanto allo stato compatto. Le lane private sono
+12, le altre quattro restano nella baseline pubblica. Le due tabelle Eq
+del recupero occupano 589.824 / 786.432 / 786.432 B, vivono con
+l’istogramma e sono rilasciate prima del fold dei figli: il massimo
+del piano non cambia. Restano lavoro/traffico congiunti e harness dei rate
+ignoti; il guard ridotto non viene promosso a esecuzione canonica.
 Gate di spesa **NO-GO**, goal locale in corso senza blocchi autorizzativi.

@@ -12,12 +12,44 @@ mod patterns;
 #[derive(Clone, Copy)]
 pub(in super::super) enum Assignments<'a> {
     Dense(&'a [Option<usize>]),
-    Lookup { len: usize, get: &'a dyn Fn(usize) -> Option<usize> },
+    Lookup {
+        len: usize,
+        get: &'a dyn Fn(usize) -> Option<usize>,
+        support: Option<&'a [(u32, u32)]>,
+    },
 }
 
 impl<'a> Assignments<'a> {
     pub(in super::super) fn new(len: usize, get: &'a dyn Fn(usize) -> Option<usize>) -> Self {
-        Self::Lookup { len, get }
+        Self::Lookup { len, get, support: None }
+    }
+
+    pub(in super::super) fn with_support(
+        len: usize,
+        get: &'a dyn Fn(usize) -> Option<usize>,
+        support: &'a [(u32, u32)],
+    ) -> Self {
+        Self::Lookup { len, get, support: Some(support) }
+    }
+
+    fn support(self) -> Vec<(u32, u32)> {
+        if let Self::Lookup { support: Some(spans), .. } = self {
+            return spans.to_vec();
+        }
+        // Only bounded reference callers lack the compiled interval descriptor.
+        assert!(self.len() <= 128);
+        let mut spans: Vec<(u32, u32)> = Vec::new();
+        for i in 0..self.len() {
+            if self.get(i).is_none() {
+                continue;
+            }
+            if let Some(last) = spans.last_mut().filter(|last| last.1 == i as u32) {
+                last.1 += 1;
+            } else {
+                spans.push((i as u32, i as u32 + 1));
+            }
+        }
+        spans
     }
 
     pub(in super::super) fn dense(values: &'a [Option<usize>]) -> Self {
@@ -1331,7 +1363,8 @@ fn prove_impl(
                 &bs,
                 byte_function::Original::Sum(target),
                 get_byte,
-                |cell| s.assignments.get(cell).is_some(),
+                &s.assignments.support(),
+                s.programs.iter().map(|p| (p.ports - 2) / 8).max().unwrap(),
                 fs,
                 &mut rows,
             )?

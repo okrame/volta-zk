@@ -174,6 +174,21 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                 events.append({'event':'reserve_equality_envelope_with_pending_cggm_states',
                     'allocate':{'Seed6:equality_payload_envelope':max(equality['extra_owned_heap_phase_bytes_each_role'].values()),
                                 'Seed6:equality_native_value_slot':equality['native_value_state_slot_bytes']}})
+                expansion=setup['accepted_pointwise_expansion']
+                events.append({'event':'equality_accepted_convert_to_expansion',
+                    'allocate':({'Seed6:accepted_beta':expansion['conversion_extra_beta_heap_bytes_receiver']}
+                                if tree_role=='receiver' else {})})
+                events.append({'event':'accepted_expansion_releases_consumed_setup',
+                    'free':['Seed6:'+name for name in ('main','roleswap','main_equality_tail',
+                            'guard_corrections','guard_native_value_state','coin_native_value_slot',
+                            'c_wire','z_wire','split_values','equality_payload_envelope',
+                            'equality_native_value_slot')]})
+                events += [{'event':'accepted_pointwise_row_reference',
+                    'allocate':{'Seed6:EA_temporary_heap':max(expansion['EA_sampler_heap_bytes_upper'],
+                                                            expansion['H_codec_heap_with_EA_terms_bytes']),
+                                'Seed6:EA_named_value_scratch':expansion['receiver_on_path_named_value_scratch_bytes']}},
+                           {'event':'accepted_pointwise_row_reference_release',
+                            'free':['Seed6:EA_temporary_heap','Seed6:EA_named_value_scratch']}]
                 chains['Seed6_'+main_role+'_then_'+inverse_role+'_outer_pending']=events
 
         if reuse_reader_for_commit:

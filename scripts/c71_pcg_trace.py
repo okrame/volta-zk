@@ -281,6 +281,43 @@ def seed6_cggm_trace(blocks=TREES, height=HEIGHT):
     }
 
 
+def seed6_expansion_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
+    """Accepted-state pointwise reference, not the selected batch-trie cost."""
+    if not 0 < blocks <= TREES or not 0 < height <= HEIGHT:
+        raise ValueError('outside bounded cGGM geometry')
+    domain=blocks*(1 << height)
+    if not 0 < weight <= min(WEIGHT,domain) or domain < 5:
+        raise ValueError('outside bounded EA geometry')
+    return {
+        'capacity_base_rows':domain//5,
+        'retained_heap_bytes':{'sender':48*blocks,'receiver':blocks*(16+24*(height+1))},
+        'conversion_extra_beta_heap_bytes_receiver':8*blocks,
+        'conversion_Fp3_additions_sender':blocks,
+        'conversion_base_Fp_additions_receiver':blocks,
+        'H_calls_per_successful_row_sender':weight*(height-1),
+        'H_calls_per_row_receiver_upper':weight*(height-1),
+        'EAGen_SHAKE_calls_per_successful_row_each_role':2*weight,
+        'Fp3_by_Fp_products_per_successful_row_each_role':weight,
+        'Fp_mul_add_pairs_per_successful_row_receiver':weight,
+        'EA_terms_heap_bytes':16*weight,
+        'EA_sampler_heap_bytes_upper':24*weight+2*(len(EA_TAG)+44)+11,
+        'H_codec_heap_with_EA_terms_bytes':16*weight+H_DOMAIN_BYTES,
+        'receiver_on_path_named_value_scratch_bytes':20*24,
+        'native_value_and_hash_slot_bytes':4096,
+        'native_value_slot_is_not_compiler_stack_bound':True,
+        'pending_roots_owned_by_equality_until_acceptance':True,
+        'seed_and_guard_buffers_dropped_on_conversion':True,
+        'M_beta_folded_into_alternative_leaf':True,
+        'monotone_cursor_and_terminal_failure':True,
+        'reduced_real_original_MAC_identity_and_Fp3_packing':True,
+        'EA_public_seed_agreement_credit':False,
+        'batch_trie_or_canonical_cost_credit':False,
+        'global_transport_or_durable_burn_credit':False,
+        'complete_physical_peak':False,
+        'counter_scope':'successful rows; failed primitive counters are partial, bounded by a full attempted row; no HBM/time/compiled-stack credit',
+    }
+
+
 def seed6_coin_trace(count=DOMAIN):
     """One transcript-bound native coin; sequential SHAKE, no dense U array."""
     if not 1 <= count <= DOMAIN:
@@ -499,6 +536,7 @@ def report():
                 'Dory_rows': DORY_SEED_ROWS, 'F_EQ_extra_rows_each_seed': EQ_SEED_ROWS,
                 'path_guard_consumer': seed6_guard_trace(),
                 'guard_to_cggm_and_split_consumer':cggm,
+                'accepted_pointwise_expansion':seed6_expansion_trace(),
                 'coin_tosses':{'split':seed6_coin_trace(),'equality':seed6_coin_trace(TREES)},
                 'two_key_equality_consumer':seed6_equality_trace(),
                 'disjoint_tail_reservation':seed6_tail_reservation_trace(),

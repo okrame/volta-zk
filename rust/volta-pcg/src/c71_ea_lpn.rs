@@ -259,29 +259,57 @@ pub fn punc_acc(
     if key.siblings.len() != key.height {
         return Err(Error::Shape);
     }
+    let mut on_path = vec![Fp3::ZERO; key.height + 1];
+    let (result, work) = punc_acc_borrowed(
+        nonce,
+        block,
+        omega,
+        key.height,
+        key.alpha,
+        key.alternative_leaf,
+        |level| key.siblings[level],
+        &mut on_path,
+    )?;
+    Ok((result, work, workspace(key, &on_path)))
+}
+
+pub(crate) fn punc_acc_borrowed(
+    nonce: [u8; 32],
+    block: u64,
+    omega: u64,
+    height: usize,
+    alpha: u64,
+    alternative_leaf: Fp3,
+    sibling_at: impl Fn(usize) -> Fp3,
+    on_path: &mut [Fp3],
+) -> Result<(Fp3, Work), Error> {
+    check_tree(height, omega)?;
+    check_tree(height, alpha)?;
+    if on_path.len() != height + 1 {
+        return Err(Error::Shape);
+    }
     // Sums of the modified on-path subtrees, bottom-up. The alpha leaf is
     // the only changed leaf, so this reconstructs without Delta or root.
-    let mut on_path = vec![Fp3::ZERO; key.height + 1];
-    on_path[key.height] = key.alternative_leaf;
+    on_path[height] = alternative_leaf;
     let mut work = Work::default();
-    for level in (0..key.height).rev() {
-        on_path[level] = on_path[level + 1] + key.siblings[level];
+    for level in (0..height).rev() {
+        on_path[level] = on_path[level + 1] + sibling_at(level);
         work.fp3_additions += 1;
     }
 
     let mut result = Fp3::ZERO;
     let mut position = 0u64;
-    for level in 0..key.height {
-        let alpha_bit = bit(key.alpha, key.height, level);
-        let omega_bit = bit(omega, key.height, level);
-        let left = if alpha_bit == 0 { on_path[level + 1] } else { key.siblings[level] };
+    for level in 0..height {
+        let alpha_bit = bit(alpha, height, level);
+        let omega_bit = bit(omega, height, level);
+        let left = if alpha_bit == 0 { on_path[level + 1] } else { sibling_at(level) };
         if omega_bit == 1 {
             result += left;
             work.fp3_additions += 1;
         }
         if omega_bit != alpha_bit {
-            let sibling = key.siblings[level];
-            let remaining = key.height - level - 1;
+            let sibling = sibling_at(level);
+            let remaining = height - level - 1;
             let suffix = omega & ((1u64 << remaining) - 1);
             let (tail, tail_work) = if remaining == 0 {
                 (sibling, Work::default())
@@ -299,13 +327,13 @@ pub fn punc_acc(
             add_work(&mut work, tail_work);
             result += tail;
             work.fp3_additions += 1;
-            return Ok((result, work, workspace(key, &on_path)));
+            return Ok((result, work));
         }
         position = 2 * position + alpha_bit;
     }
-    result += key.alternative_leaf;
+    result += alternative_leaf;
     work.fp3_additions += 1;
-    Ok((result, work, workspace(key, &on_path)))
+    Ok((result, work))
 }
 
 fn prefix_from_root(

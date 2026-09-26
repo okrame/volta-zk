@@ -1286,8 +1286,16 @@ Il [raccordo cGGM](preflight.md#guard-cggm-split-e-f_eq-a-ruoli-separati)
 consuma il guard positivo e mantiene separati root/Delta sender da
 cammino/beta/tag receiver. Il primo split è indipendente; con la convenzione
 `d=s-r*beta` il puncture è il complemento dei bit r. I check split usano
-le tre maschere originali per blocco, poi le sole code alimentano F_EQ;
-nessun output PCG è pubblicato da questo componente test-only.
+le tre maschere originali per blocco, poi le sole code alimentano F_EQ.
+F_EQ possiede root/chiavi pendenti e solo il successo restituisce la
+capacità consumata dal [raccordo EA puntuale](preflight.md#ea-puntuale-dopo-accettazione-f_eq).
+Questo componente test-only riusa Acc/PuncAcc ed EAGen, restituisce MAC
+base uno alla volta e respinge riuso/esaurimento. Per ogni riga,
+`m-k=Delta*sum(chi*beta*[omega>=alpha])`; il packing nelle tre basi Fp3
+conserva la stessa identità. Il controllo reale produce tre righe e un
+MAC Fp3, non una proof positiva o il percorso canonico a trie batch.
+L'accordo sul seed pubblico EA e il binding globale restano obblighi
+del caller; nessuna nuova premessa viene implicitamente scaricata.
 La catena ridotta passa con seed AES reali e rifiuta c/z alterati.
 Questa è un'identità di correttezza verificata, non una nuova riduzione
 malevola o un refinement Lean: si mantengono le premesse EA-LPN/cGGM dello

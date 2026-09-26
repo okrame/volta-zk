@@ -198,6 +198,24 @@ def test_native_coin_stream_independent_python_vectors_and_accounting():
     assert trace.seed6_cggm_trace()['receiver_ordered_sibling_bit_tests']==25650
 
 
+def test_accepted_expansion_capacity_state_and_reference_cost():
+    expansion=trace.seed6_expansion_trace()
+    assert expansion['capacity_base_rows']==70_778_880
+    assert expansion['retained_heap_bytes']=={'sender':32400,'receiver':334800}
+    assert expansion['conversion_extra_beta_heap_bytes_receiver']==5400
+    assert expansion['H_calls_per_successful_row_sender']==198
+    assert expansion['EAGen_SHAKE_calls_per_successful_row_each_role']==22
+    assert expansion['EA_sampler_heap_bytes_upper']==409
+    assert expansion['H_codec_heap_with_EA_terms_bytes']==274
+    assert not expansion['EA_public_seed_agreement_credit']
+    assert not expansion['batch_trie_or_canonical_cost_credit']
+    reduced=trace.seed6_expansion_trace(1,4,2)
+    assert reduced['capacity_base_rows']==3
+    assert reduced['retained_heap_bytes']=={'sender':48,'receiver':136}
+    assert 3*(reduced['H_calls_per_successful_row_sender']+
+              reduced['EAGen_SHAKE_calls_per_successful_row_each_role'])==30
+
+
 def test_consuming_tail_reservation_preserves_prefix_capacity():
     r=trace.seed6_tail_reservation_trace()
     assert (r['prefix_rows'],r['tail_rows'])==(15528,2025)

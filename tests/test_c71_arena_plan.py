@@ -52,16 +52,21 @@ def test_seed6_guard_cggm_and_split_remain_live_through_equality():
         names=[event['event'] for event in plan['events']]
         assert names.index('main_seal')<names.index('roleswap_seal')<names.index('freeze_guard_corrections_outer_FS_pending')
         assert names.index('guard_sealed_prefix_challenge_before_proof')<names.index('guard_accepted_then_role_separated_cggm')
+        assert names.index('reserve_equality_envelope_with_pending_cggm_states')<names.index('equality_accepted_convert_to_expansion')
         live={key:size for key,_,size in plan['initial_allocations']}
         for event in plan['events']:
             for key in event['free']:live.pop(key)
             live.update({key:size for key,_,size in event['allocate']})
+            if event['event']=='reserve_equality_envelope_with_pending_cggm_states':
+                assert live['Seed6:c_wire']>=307800 and live['Seed6:z_wire']>=16200
+                assert live['Seed6:split_values']>=16200
+                assert live['Seed6:equality_payload_envelope']>=64800
+                assert live['Seed6:coin_native_value_slot']>=4096
+                assert live['Seed6:main'] and live['Seed6:roleswap'] and live['Seed6:main_equality_tail']
         assert live['Seed6:cggm_private']>=private
-        assert live['Seed6:c_wire']>=307800 and live['Seed6:z_wire']>=16200
-        assert live['Seed6:split_values']>=16200
-        assert live['Seed6:equality_payload_envelope']>=64800
-        assert live['Seed6:coin_native_value_slot']>=4096
-        assert live['Seed6:main'] and live['Seed6:roleswap'] and live['Seed6:main_equality_tail']
+        assert live.get('Seed6:accepted_beta',0)>=(5400 if role=='prover' else 0)
+        assert 'Seed6:main' not in live and 'Seed6:main_equality_tail' not in live
+        assert 'Seed6:roleswap' not in live and 'Seed6:guard_corrections' not in live
         assert 'Seed6:cggm_temporary' not in live and 'Seed6:H_codec' not in live
         assert 'Seed6:guard_challenge' not in live
         assert plan['fits_with_operational_margin']

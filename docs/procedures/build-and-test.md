@@ -121,7 +121,7 @@ nessun bootstrap canonico, GPU o rete esterna.
 Per il raccordo a ruoli separati usare `c71_seed6_guard_cggm` (tre test,
 marker `C71_GUARD_CGGM`) e separatamente
 `c71_seed6_real_guard_cggm_split_and_two_key_equality` (un test, marker
-`C71_SEED6_CGGM_EQUALITY`). Il secondo crea seed reali 12+3 righe e controlla
+`C71_SEED6_CGGM_EQUALITY`). Il secondo crea seed reali 14+3 righe e controlla
 positivo, c alterato e z alterato su socketpair Unix, eseguendo le coin
 split/F_EQ native. Aggiungere `c71_seed6_coin` (due test, marker
 `C71_SEED6_COINS`) per codec, ordinamento e vettori SHAKE indipendenti.
@@ -132,6 +132,11 @@ le direzioni. Per il guard da prefisso sigillato aggiungere
 `c71_seed6_guard_bound_challenge` (un test, marker `C71_SEED6_GUARD_FS`):
 KAT SHAKE Python/Rust, MAC originali e rifiuto di prefisso/proof alterati.
 Il raccordo reale usa questa derivazione invece della lambda prefissata.
+Ora verifica anche tre righe EA dopo F_EQ, la stessa Delta e il packing
+Fp3 nonzero. Aggiungere `c71_seed6_expansion_stream` (un test) e
+`c71_seed6_equality_retained_state` (un test) per capacità, sampler fail-stop
+e distruzione degli stati trattenuti su rifiuto. Il seed EA del fixture è
+prefissato: non accredita accordo globale, trie batch o bridge alla proof.
 Transcript globale, burn e trasporto restano aperti. Ogni filtro
 resta entro 60 s/2 GiB, un worker/thread,
 senza rete esterna. Conservare anche i filtri `c71_seed6::guard::tests`,

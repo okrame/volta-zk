@@ -1495,9 +1495,10 @@ Copia e cancellazione contano ciascuna 64.800 / 48.600 B logici, oltre alla
 lettura della copia; non sono traffico HBM misurato. L'audit e il lavoro
 setup originari restano sul prefisso: lo split non ripete OT o compressione.
 Il test della riserva usa seed da 12 righe, prefissi da 9 nel guard e code
-da 3 in F_EQ; il nuovo test composto usa 12 righe principali e 3 inverse.
-Questo envelope non dichiara eseguita la transizione esterna e non libera
-implicitamente i seed nel piano. I massimi risposta restano quelli del
+da 3 in F_EQ; il test composto attuale usa 14 righe principali e 3 inverse.
+Il piano conserva i seed fino alla conversione positiva nello stato EA
+descritta sotto, non li libera implicitamente prima di F_EQ.
+I massimi risposta restano quelli del
 range; lo stack crittografico e il picco completo non sono certificati.
 
 
@@ -1524,10 +1525,11 @@ esaurito non restituiscono stato. Gli oggetti sono consumati, non clonati.
 
 Il controllo esaustivo h=1–7 copre ogni cammino, tutti i prefissi, beta zero
 e due blocchi; confronta anche i contatori con le formule del ledger.
-La catena con seed AES reali da 12+3 righe passa e rifiuta c/z alterati
+La catena attuale con seed AES reali da 14+3 righe passa e rifiuta c/z alterati
 attraverso F_EQ. Ora esegue entrambe le coin commit/risposta/apertura
 descritte sotto; i test algebrici mantengono callback deterministici.
-Non realizza ancora burn durevole, nonce freshness globale, trasporto o espansione EA.
+Il raccordo successivo aggiunge tre righe EA; restano burn durevole,
+nonce freshness globale, trasporto e port canonico a trie batch.
 Non è ancora un bootstrap completo né credito alla sicurezza composta.
 
 Per t=675,h=19 i due passaggi costano 707.786.100 H sender e 707.761.800
@@ -1582,7 +1584,48 @@ CPU è 488 B, i due stati di fase 144 B ciascuno; un solo slot conservativo
 da 4.096 B copre i valori/hash, non lo stack compilato. Il massimo arena
 nominato resta invariato. La coin nativa non scarica da sola l'ipotesi ROM:
 Transcript globale, burn durevole senza retry, trasporto globale e
-collegamento alla capacità PCG restano aperti, senza nuovo credito H100.
+collegamento alla capacità PCG canonica restano aperti, senza nuovo credito H100.
+
+
+## EA puntuale dopo accettazione F_EQ
+
+Il [consumer test-only](../../rust/volta-pcg/src/c71_seed6/expand.rs) riusa
+EAGen e Acc/PuncAcc esistenti. F_EQ ora possiede lo stato cGGM pendente:
+solo `Accepted<State>` permette la conversione, mentre un rifiuto distrugge
+lo stato trattenuto. Dopo il successo il sender conserva k/K(beta)/Delta;
+il receiver conserva alpha/beta/sibling/foglia alternativa, mai root
+sender o Delta. Il receiver legge la chiave punctured senza copiarla,
+con scratch fisso da 20 elementi Fp3. Non materializza un pool denso.
+
+Un cursore monotono produce al più `floor(t*2^h/5)` righe base, ciascuna
+con gli stessi termini pubblici EA nei due ruoli. Per il receiver,
+`x=sum(chi*beta*[omega>=alpha])`; l'identità dei prefissi dà `m=k+Delta*x`.
+Il controllo reale h=4,t=1,ell=2 usa seed principali/inversi da 14+3 righe,
+produce tre righe e verifica anche il packing Fp3 originale, nonzero.
+c/z alterati non producono la capacità. Un test controlla il drop degli
+stati trattenuti su rifiuto; un altro forma, capacità e fallimento reale
+del sampler EAGen. Errore o richiesta oltre capacità avvelenano il cursore
+e cancellano i buffer segreti posseduti; non sostituiscono un journal.
+
+Per la geometria selezionata il payload heap dopo conversione è
+32.400 B sender / 334.800 B receiver. M(beta) è già incorporato nella
+foglia alternativa; alpha usa u64. La conversione aggiunge 5.400 B per
+beta receiver mentre lo stato precedente è ancora vivo; poi rilascia seed,
+correzioni e frame consumati. Il piano conserva inoltre il precedente
+slot persistente conservativo, senza reclamarne un risparmio o un nuovo
+picco. Una riga usa al più 409 B heap EA/hash e 480 B di scratch receiver,
+oltre allo slot di valori/hash da 4.096 B, non bound dello stack compilato.
+
+Il riferimento puntuale costa **198 H sender per riga base**, al più
+198 receiver, più 22 SHAKE EAGen, 11 prodotti Fp3×Fp per ruolo e
+11 coppie prodotto/somma Fp receiver. Questi non sono i costi del trie
+batch selezionato e non entrano come sostituto nel budget canonico.
+I contatori runtime registrano righe complete: su errore del sampler
+sono parziali, con upper pari al lavoro di una riga tentata intera.
+Il seed EA nel fixture è pubblico prefissato, non un accordo F_Rand.
+Restano seed agreement/binding globale, trasporto, burn durevole,
+trie batch, bridge alla proof, erasure di stack/spill e picco fisico.
+Nessun credito alla composizione malevola, al refinement Lean o a H100.
 
 
 ## Seed6: seal di completamento

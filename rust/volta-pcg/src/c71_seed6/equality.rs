@@ -1,6 +1,7 @@
 //! Reduced two-key F_EQ consumer. Both seeds must already be complete. This
 //! module consumes their reserved tail once; the outer seal/burn, F_Rand and
-//! guard/cGGM -> equality transition remain caller obligations, not credit here.
+//! global transcript/transport remain caller obligations, not credit here.
+//! Pending caller state is consumed on failure and released only on acceptance.
 use super::real::{RealProverOutput, RealVerifierOutput};
 use super::Fp3Words;
 use rand::{CryptoRng, RngCore};
@@ -11,28 +12,41 @@ const DOMAIN: &[u8] = b"VOLTA-C71-Seed6-equality-v1";
 const BASIS: [Fp3; 3] =
     [Fp3::ONE, Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO), Fp3::new(Fp::ZERO, Fp::ZERO, Fp::ONE)];
 
-struct Prepared {
+struct Prepared<State = ()> {
     role: u8,
     sid: [u8; 32],
     sender: RealProverOutput,
     receiver: RealVerifierOutput,
     values: Zeroizing<Vec<Fp3Words>>,
     corrections: Vec<u8>,
+    retained: State,
 }
-struct Frozen {
-    local: Prepared,
+struct Frozen<State = ()> {
+    local: Prepared<State>,
     peer: Vec<Fp3Words>,
     prefix: [u8; 32],
 }
-struct Committed {
+struct Committed<State = ()> {
     role: u8,
     prefix: [u8; 32],
     commitment: [u8; 32],
     opening: Zeroizing<[u8; 56]>,
+    retained: State,
 }
-struct Openable {
-    local: Committed,
+struct Openable<State = ()> {
+    local: Committed<State>,
     peer_commitment: [u8; 32],
+}
+
+pub(super) struct Accepted<State> {
+    retained: State,
+    prefix: [u8; 32],
+}
+
+impl<State> Accepted<State> {
+    pub(super) fn into_parts(self) -> (State, [u8; 32]) {
+        (self.retained, self.prefix)
+    }
 }
 fn pack_base(seed: &RealProverOutput, i: usize) -> Fp3 {
     (0..3).fold(Fp3::ZERO, |s, j| s + BASIS[j].mul_base(Fp::new(seed.values[i + j])))
@@ -52,7 +66,7 @@ fn commitment(prefix: &[u8; 32], role: u8, opening: &[u8; 56]) -> [u8; 32] {
     h.update(opening);
     *h.finalize().as_bytes()
 }
-impl Prepared {
+impl<State> Prepared<State> {
     fn heap_bytes(&self) -> usize {
         self.sender.values.capacity() * 8
             + self.sender.tags.capacity() * 24
@@ -66,6 +80,7 @@ impl Prepared {
         mut sender: RealProverOutput,
         mut receiver: RealVerifierOutput,
         values: Zeroizing<Vec<Fp3Words>>,
+        retained: State,
     ) -> Result<Self, &'static str> {
         if role > 1
             || sid == [0; 32]
@@ -93,9 +108,9 @@ impl Prepared {
         for (i, x) in values.iter().enumerate() {
             corrections.extend_from_slice(&(x.fp3() - pack_base(&sender, 3 * i)).to_bytes());
         }
-        Ok(Self { role, sid, sender, receiver, values, corrections })
+        Ok(Self { role, sid, sender, receiver, values, corrections, retained })
     }
-    fn freeze(self, peer: Vec<u8>) -> Result<Frozen, &'static str> {
+    fn freeze(self, peer: Vec<u8>) -> Result<Frozen<State>, &'static str> {
         if peer.len() != self.corrections.len() || peer.capacity() != peer.len() {
             return Err("equality correction length");
         }
@@ -126,14 +141,14 @@ impl Prepared {
         Ok(Frozen { local: self, peer: peer_values, prefix: *h.finalize().as_bytes() })
     }
 }
-impl Frozen {
+impl<State> Frozen<State> {
     // Called after both correction frames are immutable. Production must supply
     // the same fresh F_Rand coefficients, not the deterministic test callback.
     fn commit(
         self,
         draw: impl FnOnce([u8; 32], usize) -> Result<Vec<Fp3>, &'static str>,
         rng: &mut (impl RngCore + CryptoRng),
-    ) -> Result<Committed, &'static str> {
+    ) -> Result<Committed<State>, &'static str> {
         let n = self.local.values.len();
         let coefficients = draw(self.prefix, n)?;
         if coefficients.len() != n || coefficients.capacity() != n {
@@ -156,20 +171,26 @@ impl Frozen {
         crate::c71_bootstrap::random_bytes(rng, &mut opening[24..])
             .map_err(|_| "equality randomness")?;
         let commitment = commitment(&self.prefix, self.local.role, &opening);
-        Ok(Committed { role: self.local.role, prefix: self.prefix, commitment, opening })
+        Ok(Committed {
+            role: self.local.role,
+            prefix: self.prefix,
+            commitment,
+            opening,
+            retained: self.local.retained,
+        })
         // Both owned seeds and inputs are erased on drop after share computation.
     }
 }
-impl Committed {
-    fn accept_peer_commitment(self, peer_commitment: [u8; 32]) -> Openable {
+impl<State> Committed<State> {
+    fn accept_peer_commitment(self, peer_commitment: [u8; 32]) -> Openable<State> {
         Openable { local: self, peer_commitment }
     }
 }
-impl Openable {
+impl<State> Openable<State> {
     fn opening(&self) -> [u8; 56] {
         *self.local.opening
     }
-    fn verify(self, peer: &[u8]) -> Result<(), &'static str> {
+    fn verify(self, peer: &[u8]) -> Result<Accepted<State>, &'static str> {
         let bytes: &[u8; 56] = peer.try_into().map_err(|_| "equality opening length")?;
         let share = Fp3::from_bytes(&bytes[..24]).map_err(|_| "equality noncanonical share")?;
         if commitment(&self.local.prefix, 1 - self.local.role, bytes) != self.peer_commitment {
@@ -179,7 +200,7 @@ impl Openable {
         if local + share != Fp3::ZERO {
             return Err("equality mismatch");
         }
-        Ok(())
+        Ok(Accepted { retained: self.local.retained, prefix: self.local.prefix })
     }
 }
 
@@ -261,8 +282,8 @@ pub(super) mod tests {
         let (p0, v0) = ideal(3 * x.len(), 1);
         let (p1, v1) = ideal(3 * x.len(), 2);
         (
-            Prepared::new(0, [8; 32], p1, v0, inputs(x)).unwrap(),
-            Prepared::new(1, [8; 32], p0, v1, inputs(y)).unwrap(),
+            Prepared::new(0, [8; 32], p1, v0, inputs(x), ()).unwrap(),
+            Prepared::new(1, [8; 32], p0, v1, inputs(y), ()).unwrap(),
         )
     }
     #[test]
@@ -270,7 +291,7 @@ pub(super) mod tests {
         let x = [Fp3::ONE];
         let (p, _) = ideal(12, 1);
         let (_, v) = ideal(3, 2);
-        assert!(Prepared::new(0, [8; 32], p, v, inputs(&x)).is_err());
+        assert!(Prepared::new(0, [8; 32], p, v, inputs(&x), ()).is_err());
         for tail in [0, 12, 13] {
             let (p, v) = ideal(12, 1);
             assert!(real::reserve_equality_prover_tail(p, tail).is_err());
@@ -348,6 +369,37 @@ pub(super) mod tests {
             "equal_share_sum_zero":true,"global_F_Rand_and_seal_credit":false})
         );
     }
+
+    #[test]
+    fn c71_seed6_equality_retained_state_drops_on_rejection() {
+        use std::{cell::Cell, rc::Rc};
+        struct Retained(Rc<Cell<usize>>);
+        impl Drop for Retained {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+        for mismatch in [false, true] {
+            let dropped = Rc::new(Cell::new(0));
+            let (prover0, verifier0) = ideal(3, 1);
+            let (prover1, verifier1) = ideal(3, 2);
+            let (left, right) = finish_chosen_inputs(
+                prover1,
+                verifier0,
+                prover0,
+                verifier1,
+                inputs(&[Fp3::ONE]),
+                inputs(&[if mismatch { Fp3::ZERO } else { Fp3::ONE }]),
+                Retained(dropped.clone()),
+                Retained(dropped.clone()),
+            );
+            assert_eq!(left.is_err(), mismatch);
+            assert_eq!(right.is_err(), mismatch);
+            assert_eq!(dropped.get(), if mismatch { 2 } else { 0 });
+            drop((left, right));
+            assert_eq!(dropped.get(), 2);
+        }
+    }
     pub(in crate::c71_seed6) fn real_pair(
         n: usize,
         direction: u8,
@@ -380,17 +432,20 @@ pub(super) mod tests {
         (sender.join().unwrap(), receiver)
     }
 
-    pub(in crate::c71_seed6) fn chosen_inputs_accept(
+    pub(in crate::c71_seed6) fn finish_chosen_inputs<SenderState, ReceiverState>(
         sender0: RealProverOutput,
         receiver0: RealVerifierOutput,
         sender1: RealProverOutput,
         receiver1: RealVerifierOutput,
         value0: Zeroizing<Vec<Fp3Words>>,
         value1: Zeroizing<Vec<Fp3Words>>,
-    ) -> bool {
+        retained0: SenderState,
+        retained1: ReceiverState,
+    ) -> (Result<Accepted<SenderState>, &'static str>, Result<Accepted<ReceiverState>, &'static str>)
+    {
         use crate::c71_seed6::coins as coin;
-        let prepared0 = Prepared::new(0, [8; 32], sender0, receiver0, value0).unwrap();
-        let prepared1 = Prepared::new(1, [8; 32], sender1, receiver1, value1).unwrap();
+        let prepared0 = Prepared::new(0, [8; 32], sender0, receiver0, value0, retained0).unwrap();
+        let prepared1 = Prepared::new(1, [8; 32], sender1, receiver1, value1, retained1).unwrap();
         let corrections0 = prepared0.corrections.clone();
         let corrections1 = prepared1.corrections.clone();
         let frozen0 = prepared0.freeze(corrections1).unwrap();
@@ -428,10 +483,10 @@ pub(super) mod tests {
         let openable0 = committed0.accept_peer_commitment(hash1);
         let openable1 = committed1.accept_peer_commitment(hash0);
         let (bytes0, bytes1) = (openable0.opening(), openable1.opening());
-        let accepted0 = openable0.verify(&bytes1).is_ok();
-        let accepted1 = openable1.verify(&bytes0).is_ok();
-        assert_eq!(accepted0, accepted1);
-        accepted0
+        let accepted0 = openable0.verify(&bytes1);
+        let accepted1 = openable1.verify(&bytes0);
+        assert_eq!(accepted0.is_ok(), accepted1.is_ok());
+        (accepted0, accepted1)
     }
     #[test]
     fn c71_seed6_equality_real_opposite_role_seeds() {
@@ -439,8 +494,8 @@ pub(super) mod tests {
         let (p1, v1) = real_pair(3, 1);
         let x = [Fp3::new(Fp::new(17), Fp::new(19), Fp::new(23))];
         let (c0, c1) = commit_pair(
-            Prepared::new(0, [8; 32], p1, v0, inputs(&x)).unwrap(),
-            Prepared::new(1, [8; 32], p0, v1, inputs(&x)).unwrap(),
+            Prepared::new(0, [8; 32], p1, v0, inputs(&x), ()).unwrap(),
+            Prepared::new(1, [8; 32], p0, v1, inputs(&x), ()).unwrap(),
         );
         let (h0, h1) = (c0.commitment, c1.commitment);
         let o0 = c0.accept_peer_commitment(h1);
@@ -484,8 +539,8 @@ pub(super) mod tests {
         super::super::guard::check_real_seed(p1.prefix, v1.prefix);
         let x = [Fp3::new(Fp::new(17), Fp::new(19), Fp::new(23))];
         let (c0, c1) = commit_pair(
-            Prepared::new(0, [8; 32], p1.equality_tail, v0.equality_tail, inputs(&x)).unwrap(),
-            Prepared::new(1, [8; 32], p0.equality_tail, v1.equality_tail, inputs(&x)).unwrap(),
+            Prepared::new(0, [8; 32], p1.equality_tail, v0.equality_tail, inputs(&x), ()).unwrap(),
+            Prepared::new(1, [8; 32], p0.equality_tail, v1.equality_tail, inputs(&x), ()).unwrap(),
         );
         let (h0, h1) = (c0.commitment, c1.commitment);
         let (o0, o1) = (c0.accept_peer_commitment(h1), c1.accept_peer_commitment(h0));

@@ -1437,6 +1437,8 @@ nessun service-rate, upper temporale, positivo AES/GPU o autorizzazione di spesa
 
 ### Original byte node contraction
 
+Il [record su SHA pulita](../../benchmarks/results/c71-byte-node-contraction-2026-09-26-606ec16ba48a.json)
+conserva tre test locali passati, il ledger candidato e il piano arena.
 L'[oracolo](../../tests/test_c71_byte_tree_contraction.py) controlla la
 diagonalizzazione anche singolare, la parità dei cubici dopo fold non
 Booleani, la baseline del padding pubblico e il recupero dei figli

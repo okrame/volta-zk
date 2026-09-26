@@ -2436,6 +2436,17 @@ le funzioni certificate esistenti. Il codec delle tabelle è 24.414.870 B:
 forma e identità, non ricalcola la certificazione numerica Python.
 Un file arbitrario passato direttamente a Rust non riceve quel credito.
 
+Il modo `ledger` del wrapper riusa quella candidata congelata e le stesse
+tabelle, senza leggere W o attivazioni. Esporta le riserve Fp3 dei tre
+contesti e la somma in righe base (tre per Fp3), esclusi installazione W
+e bootstrap. Collega il census RMS preesistente a `Recipes::rms`; lo
+screen Python ricompila gli stessi 421 tripletti e confronta programmi,
+gate per livello e supporti originali. Non usa più scale zero quando il
+record contiene ricette differenti. Conserva digest di candidata,
+ricette/tabelle e binario; il controllo nonzero sintetico non promuove
+`calibrated`, `complete_work`, picco fisico o readiness H100. Questo è il
+raccordo da rieseguire sul futuro Γ congelato, non un nuovo ledger completo.
+
 Il controller parte da KV vuoto, usa lo stesso W/Γ per i tre contesti e
 il prompt pinned a ogni tentativo; trasferisce il KV soltanto dopo
 `finish`, senza clonare i buffer delle righe. Non accetta KV importato,

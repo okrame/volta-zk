@@ -261,7 +261,7 @@ impl Tables {
 }
 
 pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
-    let usage = "usage: c71_calibration describe | recipes CANDIDATE | check-input CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES";
+    let usage = "usage: c71_calibration describe | recipes CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES";
     let Some(mode) = arguments.first().map(String::as_str) else {
         return Err(usage.into());
     };
@@ -292,7 +292,7 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
         }));
     }
     if !((mode == "recipes" && arguments.len() == 2)
-        || (mode == "check-input" && arguments.len() == 3)
+        || (matches!(mode, "check-input" | "ledger") && arguments.len() == 3)
         || (mode == "run" && arguments.len() == 5))
     {
         return Err(usage.into());
@@ -350,6 +350,41 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
             "tables_numerically_certified_by_this_binary": false,
             "public_table_blake3": input.digest,
             "required_rows": public.required,
+        }));
+    }
+    if mode == "ledger" {
+        let root = C61Commitment::new(vec![[1; 32]]);
+        let mut contexts = Vec::new();
+        for (slot, profile) in public.profiles.iter().enumerate() {
+            let statement = public.statement(
+                slot,
+                &root,
+                &root,
+                &[0; 150],
+                AttemptContext {
+                    session: [2; 32],
+                    capacity: [3; 32],
+                    slot: slot as u8,
+                    predecessor: if slot == 0 { [0; 32] } else { [4; 32] },
+                    nonce: [5; 32],
+                },
+            );
+            let rms = &profile.sources.attention.rope.gate_up.gelu.rms;
+            contexts.push(serde_json::json!({
+                "old_tokens": slot * 150,
+                "required_rows_fp3": public.required[slot],
+                "rms": rms.work_census(&statement, &profile.recipes.rms)?
+            }));
+        }
+        return Ok(serde_json::json!({
+            "calibrated": false, "credit": false, "complete_work": false,
+            "complete_physical_peak": false, "full_model_execution": false,
+            "tables_numerically_certified_by_this_binary": false,
+            "public_table_blake3": input.digest,
+            "recipe_digest": blake3::Hash::from_bytes(public.profiles[0].recipes.digest).to_hex().to_string(),
+            "three_attempt_reservation_base_rows": 3 * public.required.iter().sum::<usize>(),
+            "reservation_scope": "three responses only; excludes W installation and bootstrap",
+            "contexts": contexts
         }));
     }
     let limit: usize = arguments[4].parse().map_err(|_| "invalid calibration payload budget")?;

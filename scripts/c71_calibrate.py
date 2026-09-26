@@ -98,7 +98,7 @@ def validate_weights(report: dict, candidate: dict, packed: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("tables", "run"))
+    parser.add_argument("mode", choices=("tables", "ledger", "run"))
     parser.add_argument("--native", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -123,6 +123,26 @@ def main() -> None:
         recipes = native_recipes(args.native, snapshot)
         if args.mode == "tables":
             result = write_tables(recipes, args.output)
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return
+        if args.mode == "ledger":
+            tables = Path(temporary) / "tables.bin"
+            table_report = write_tables(recipes, tables)
+            run = subprocess.run([str(args.native), "ledger", str(snapshot), str(tables)],
+                                 capture_output=True, text=True, timeout=60, check=True)
+            result = json.loads(run.stdout)
+            if result["recipe_digest"] != recipes["recipe_digest"]:
+                raise ValueError("ledger recipe digest differs from the frozen candidate")
+            import c71_gkr_screen as gkr
+            for context in result["contexts"]:
+                context["rms_structural_support"] = gkr.canonical(context["rms"])
+                context["rms_source_prover"] = gkr.source_prover_trace(context["rms"])
+            result.update(table_report, candidate_sha256=hashlib.sha256(candidate_body).hexdigest(),
+                          native_sha256=ingest.stream_sha256(args.native)[0],
+                          tables_generated_by_certified_reference=True)
+            with args.output.open("x") as sink:
+                json.dump(result, sink, indent=2, sort_keys=True)
+                sink.write("\n")
             print(json.dumps(result, indent=2, sort_keys=True))
             return
         candidate = ingest._json_no_duplicates(candidate_body, "calibration candidate")

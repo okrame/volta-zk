@@ -64,6 +64,8 @@ sola mappa A dai tre contesti e conserva provenienza/errori. I controlli
 coprono un grafo piccolo e gli ID canonici, non attivazioni reali.
 Restano esecuzione sui pesi reali, eventuale adattamento delle scale e
 replay intero positivo; non è ancora Γ calibrato né modello completo.
+Il raccordo al ledger ora usa le ricette RMS della candidata e ricompila
+le riserve dei tre contesti; il controllo nonzero resta sintetico.
 
 ## Native bounded result
 

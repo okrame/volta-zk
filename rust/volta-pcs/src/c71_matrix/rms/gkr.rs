@@ -423,7 +423,6 @@ fn program_inner_capacity_bytes(programs: &[Circuit]) -> usize {
         .sum()
 }
 
-#[cfg(test)]
 pub(in super::super) fn work_census(
     programs: &[Circuit],
     assigned: &[u64],
@@ -528,7 +527,7 @@ pub(in super::super) fn work_census(
             .sum::<usize>();
     let byte_proof_logical_heap_bytes = range::tree_proof_logical_heap_bytes(8, cell_bits + 4);
     let mut result = serde_json::json!({
-        "credit":false, "scope":"exact public synthetic-profile geometry; source-level partial work",
+        "credit":false, "scope":"exact public profile geometry; source-level partial work",
 
         "live_cells":live, "padded_cells":n, "programs":programs.len(),
         "assigned_cells_by_program":assigned, "depth":depth,

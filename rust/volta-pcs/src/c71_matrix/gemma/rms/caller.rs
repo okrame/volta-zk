@@ -232,7 +232,6 @@ impl Sources {
 
     /// Public metadata only. Counts the current source-level algorithm before
     /// compiler simplification; these are neither instruction nor time lowers.
-    #[cfg(test)]
     pub(in crate::c71_matrix) fn work_census(
         &self,
         s: &P0Statement<'_>,
@@ -252,6 +251,7 @@ impl Sources {
             }
         }
         let mut report = gkr::work_census(&programs, &assigned, bits(self.cells))?;
+        report["rms_parameters"] = serde_json::json!(parameters);
         report["profile_digest"] = serde_json::json!(s.quantization);
         report["RMS_view"] = serde_json::json!(self.view);
         let support: Vec<Vec<usize>> = (0..bits(self.cells))

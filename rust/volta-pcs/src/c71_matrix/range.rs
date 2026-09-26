@@ -50,7 +50,6 @@ pub(super) fn tree_proof_heap_capacity_bytes(layers: &[Layer], capacity: usize) 
             .sum::<usize>()
 }
 
-#[cfg(test)]
 pub(super) fn tree_proof_logical_heap_bytes(depth: usize, top_bits: usize) -> usize {
     depth * core::mem::size_of::<Layer>()
         + (0..depth)

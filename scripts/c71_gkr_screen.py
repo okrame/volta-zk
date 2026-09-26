@@ -88,6 +88,11 @@ def native_record(path, kind='RMS', old=0):
     except json.JSONDecodeError:
         texts = [text]
     else:
+        if kind == 'RMS' and 'contexts' in record:
+            matches = [context for context in record['contexts'] if context['old_tokens'] == old]
+            if len(matches) != 1:
+                raise ValueError(f'native O={old} RMS context missing or duplicated')
+            return matches[0]['rms']
         texts = [run['stdout'] for run in record.get('rust_runs', []) if 'stdout' in run]
     for line in itertools.chain.from_iterable(item.splitlines() for item in texts):
         match = re.search(rf'canonical_{kind}_GKR O={old} (\{{.*\}})', line)
@@ -114,8 +119,13 @@ def canonical(native):
     n = 1 << (cells - 1).bit_length()
 
     profile_keys, profile_of_norm = [], []
-    for norm in norms:
-        key = (norm['columns'], 0, 0, 0, norm['weighted'])
+    parameters = native.get('rms_parameters', [[0, 0, 0]] * len(norms))
+    if len(parameters) != len(norms) or any(len(values) != 3 or any(
+            type(value) is not int or not -128 <= value <= 128 for value in values)
+            for values in parameters):
+        raise ValueError('native RMS scale recipes differ')
+    for norm, exponents in zip(norms, parameters):
+        key = (norm['columns'], *exponents, norm['weighted'])
         if key not in profile_keys:
             profile_keys.append(key)
         profile_of_norm.append(profile_keys.index(key))
@@ -179,7 +189,7 @@ def canonical(native):
         'padded_cells': n,
         'live_cells': cells,
         'profiles': [
-            {'profile': p, 'columns': key[0], 'weighted': key[4],
+            {'profile': p, 'columns': key[0], 'weighted': key[4], 'exponents': key[1:4],
              'assigned_cells': assigned[p], 'merged_interval_count': len(intervals[p]),
              'gates_across_all_layers': dict(op_by_profile[p]),
              'supported_gate_iterations_all_rounds': dict(per_profile_totals[p])}

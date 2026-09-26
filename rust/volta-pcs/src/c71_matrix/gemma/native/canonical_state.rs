@@ -133,7 +133,7 @@ impl<'a> Public<'a> {
         })
     }
 
-    fn statement<'s>(
+    pub(super) fn statement<'s>(
         &'s self,
         slot: usize,
         weight: &'s C61Commitment,

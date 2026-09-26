@@ -184,6 +184,14 @@ con `C71_CALIBRATION_BINARY` uguale al percorso assoluto del binario.
 Il test genera 24,4 MB di tabelle certificate a scale sintetiche, controlla
 il codec nativo e rifiuta input incompleti prima del replay W, entro 60 s/2 GiB.
 Include controlli separati del report d'ingest e dei record di timeout/errore.
+Il test del modo `ledger` usa una scala RMS nonzero sintetica: confronta
+il census nativo con lo screen Python e ricompila le riserve nei tre contesti.
+`scripts/c71_calibrate.py ledger --native BIN --candidate CANDIDATE
+--output NEW_REPORT` genera tabelle temporanee certificate e il report
+RMS/riserve senza W. È il raccordo da usare sul futuro Γ congelato, non
+una calibrazione o un conteggio completo di installazione/bootstrap.
+Conservare anche `tests/test_c71_gkr_screen.py -k frozen_native_record`
+per verificare che il fixture storico a scale zero rimanga invariato.
 Il futuro replay reale usa `scripts/c71_calibrate.py run --native BIN
 --candidate CANDIDATE --ingest-report REPORT --packed PACKED --output NEW_REPORT
 --payload-bytes LIMIT --timeout-seconds DEADLINE`. Non eseguirlo sulla VM:

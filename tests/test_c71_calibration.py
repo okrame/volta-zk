@@ -64,6 +64,57 @@ def test_certified_tables_match_native_input_and_scale_recipes(tmp_path):
     print("C71_CALIBRATION_INPUT tables=24414870 offsets=0/150/300 calibrated=false full_model=false")
 
 
+def test_candidate_ledger_uses_nonzero_rms_recipes_and_certified_tables(tmp_path):
+    import c71_gkr_screen as gkr
+    binary = os.environ.get("C71_CALIBRATION_BINARY")
+    assert binary, "build c71_calibration and set C71_CALIBRATION_BINARY"
+    description = json.loads(subprocess.run([binary, "describe"], capture_output=True, text=True,
+                                            timeout=60, check=True).stdout)
+    candidate = dict(
+        weight_exponents_by_tensor={source["name"]: 0 for source in description["weight_sources"]},
+        activation_exponents_by_source={str(source["id"]): 0 for source in description["activation_sources"]})
+    candidate["activation_exponents_by_source"].update(description["fixed_pi_exponents"])
+    first_norm = next(step for step in description["pilot"]["steps"] if step["operation"] == "norm")
+    candidate["activation_exponents_by_source"][str(first_norm["output"])] = -1
+    path = tmp_path / "candidate.json"
+    path.write_text(json.dumps(candidate))
+    output = tmp_path / "ledger.json"
+    command = [sys.executable, str(Path(calibration.__file__)), "ledger", "--native", binary,
+               "--candidate", str(path), "--output", str(output)]
+    run = subprocess.run(command, capture_output=True, text=True, timeout=60, check=True)
+    result = json.loads(run.stdout)
+    assert result == json.loads(output.read_text())
+    assert result["candidate_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert result["tables_generated_by_certified_reference"] and result["table_bytes"] == 24_414_870
+    assert not result["calibrated"] and not result["full_model_execution"]
+    assert not result["credit"] and not result["complete_work"] and not result["complete_physical_peak"]
+    assert [context["old_tokens"] for context in result["contexts"]] == [0, 150, 300]
+    assert result["three_attempt_reservation_base_rows"] == 3 * sum(
+        context["required_rows_fp3"] for context in result["contexts"])
+    for context in result["contexts"]:
+        native = context["rms"]
+        assert gkr.native_record(output, old=context["old_tokens"]) == native
+        assert bytes(native["profile_digest"]).hex() == result["recipe_digest"]
+        assert native["rms_parameters"][0] == [0, 0, -1]
+        assert len(native["rms_parameters"]) == 421
+        assert context["rms_structural_support"]["factored_arithmetic_after_structural_support_pruning"][
+            "Fp3_mul"] != 377_460_232_230_821
+        assert not context["rms_source_prover"]["complete_work"]
+    with pytest.raises(ValueError, match="context missing"):
+        gkr.native_record(output, old=450)
+    native = copy.deepcopy(result["contexts"][0]["rms"])
+    native["rms_parameters"] = native["rms_parameters"][:-1]
+    with pytest.raises(ValueError, match="scale recipes"):
+        gkr.canonical(native)
+    native.pop("rms_parameters")
+    with pytest.raises(AssertionError):
+        gkr.canonical(native)
+    before = output.read_bytes()
+    assert subprocess.run(command, capture_output=True, timeout=60).returncode
+    assert output.read_bytes() == before
+    print("C71_CANDIDATE_LEDGER offsets=0/150/300 nonzero_rms=true calibrated=false full_model=false")
+
+
 def test_weight_provenance_failure_precedes_large_file_access(tmp_path, monkeypatch):
     ingest = calibration.ingest
     candidate = {"weight_exponents_by_tensor": {"test": -14}}

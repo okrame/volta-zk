@@ -1031,6 +1031,12 @@ esecuzione/validazione numerica completa restano aperti. Non è ancora Prepare c
 completo o ammissione del runtime. Questo storage offline non sostituisce
 l'arena della prova: payload e bundle in ingresso sono contati, workspace
 interni dei producer e allocator non sono un picco fisico chiuso.
+Il ledger candidato riusa il census RMS nativo e lo screen Python con
+gli stessi 421 tripletti di esponenti: non sostituisce con scale zero un
+Γ differente. Ricompila le riserve delle tre risposte sulle tabelle
+certificate; installazione W e bootstrap restano fuori da quel subtotale.
+Conteggi di sorgente, ricette valide e confronto finito non certificano
+calibrazione, istruzioni H100 o risorse complete.
 Il padding query interno ai rettangoli A conserva la relazione originale:
 `D-32767=-32767`, `E=2^30`, `Z=Pi=0`, a differenza del padding zero esterno
 al dominio delle sorgenti. Il getter fornisce queste costanti; ciascun

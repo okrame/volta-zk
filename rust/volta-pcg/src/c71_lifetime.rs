@@ -27,23 +27,7 @@ fn invalid(message: &'static str) -> io::Error {
 /// A usable FS prefix queried before its rows are fixed must guess this seal.
 /// B11's preparation context remains domain-separated by model/session/epoch.
 fn capacity_seal(channel: &mut (impl Read + Write), prover: bool) -> io::Result<Digest> {
-    use rand::RngCore;
-    let mut frame = [0u8; 40];
-    frame[..8].copy_from_slice(b"C71B12S1");
-    if prover {
-        channel.read_exact(&mut frame)?;
-    } else {
-        rand::rngs::OsRng.try_fill_bytes(&mut frame[8..]).map_err(io::Error::other)?;
-    }
-    let capacity: Digest = frame[8..].try_into().unwrap();
-    if &frame[..8] != b"C71B12S1" || capacity == [0; 32] {
-        return Err(invalid("invalid B12 completion seal"));
-    }
-    if !prover {
-        channel.write_all(&frame)?;
-        channel.flush()?;
-    }
-    Ok(capacity)
+    c71_bootstrap::completion_seal(channel, prover, b"C71B12S1", &mut rand::rngs::OsRng)
 }
 
 /// Public identity only: no W or Delta in model installation.

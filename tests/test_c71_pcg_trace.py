@@ -102,10 +102,15 @@ def test_real_seed6_wire_work_and_named_heap_match_native_reduced_runs():
     for n, wire, blocks, fields in [(1,149571,64512,43064),(3,155811,110592,55368)]:
         real = trace.seed6_real_trace(n)
         assert real['wire_bytes_both_directions_without_seal'] == wire
+        assert real['wire_bytes_both_directions_with_seal']==wire+40
+        assert real['completion_seal_native_bytes']==40
+        assert real['completion_seal_before_any_output'] and real['seal_already_in_bootstrap_screen']
         assert real['prover']['AES256_block_encryptions'] == blocks
         assert real['prover']['field_sampler_candidates'] == fields
         assert real['prover']['heap_phase_peak_bytes'] == 266736
         assert real['verifier']['heap_phase_peak_bytes'] == 245616
+        for role in ('prover','verifier'):
+            assert real[role]['heap_phase_bytes']['seal']==real[role]['heap_phase_bytes']['retained_output']
         assert not real['physical_peak_complete']
     setup = trace.report()['setup_once_before_all_responses']['native_seed6_real_adapter']
     assert setup['Dory_rows'] == 15528

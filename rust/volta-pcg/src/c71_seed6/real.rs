@@ -9,8 +9,8 @@ use super::{
     VerifierCheck, K6, MASKS, MR19,
 };
 use crate::c71_bootstrap::{
-    aes_prf_for_profile, handshake, mr19_receiver, mr19_sender, random_bytes, recv, recv_header,
-    sample_fp, send, send_header, AesPrfProfile, Audit, Context, Suite,
+    aes_prf_for_profile, completion_seal, handshake, mr19_receiver, mr19_sender, random_bytes,
+    recv, recv_header, sample_fp, send, send_header, AesPrfProfile, Audit, Context, Suite,
 };
 use p521::elliptic_curve::subtle::{Choice, ConditionallySelectable};
 use rand::{CryptoRng, RngCore};
@@ -26,6 +26,14 @@ type Result<T> = io::Result<T>;
 
 fn invalid(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+fn completed_binding(binding: [u8; 32], seal: [u8; 32]) -> [u8; 32] {
+    let mut hash = blake3::Hasher::new();
+    hash.update(b"VOLTA-C71-Seed6-completed-v1");
+    hash.update(&binding);
+    hash.update(&seal);
+    *hash.finalize().as_bytes()
 }
 
 fn checked_rows(n: usize) -> Result<usize> {
@@ -324,8 +332,10 @@ pub(super) fn prover_with_rng(
     drop(tags);
     capacities.retained_output =
         values.capacity() * 8 + compressed.capacity() * core::mem::size_of::<Fp3Words>();
+    let seal = completion_seal(&mut channel, true, b"C71S6S01", rng)?;
+    audit.received_frames.push((10, 40));
     Ok(RealProverOutput {
-        binding,
+        binding: completed_binding(binding, seal),
         values,
         tags: compressed,
         audit,
@@ -444,8 +454,10 @@ pub(super) fn verifier_with_rng(
     keys.zeroize();
     drop(keys);
     capacities.retained_output = compressed_keys.capacity() * core::mem::size_of::<Fp3Words>();
+    let seal = completion_seal(&mut channel, false, b"C71S6S01", rng)?;
+    audit.sent_frames.push((10, 40));
     Ok(RealVerifierOutput {
-        binding,
+        binding: completed_binding(binding, seal),
         delta: compressed_delta,
         keys: compressed_keys,
         audit,
@@ -568,8 +580,10 @@ mod tests {
                 .chain(verifier.audit.sent_frames.iter())
                 .map(|(_, n)| n)
                 .sum::<usize>(),
-            127_515 + 324 + 3072 * (n + 6) + 48 * n + 96 + 48 + 36
+            127_515 + 324 + 3072 * (n + 6) + 48 * n + 96 + 48 + 36 + 40
         );
+        assert_eq!(prover.binding, verifier.binding);
+        assert_eq!(verifier.audit.sent_frames.last(), Some(&(10, 40)));
         assert_eq!(prover.capacities.retained_output, 8 * (n + 6) + 24 * n);
         assert_eq!(verifier.capacities.retained_output, 24 * n);
         println!(
@@ -604,7 +618,8 @@ mod tests {
         let (_, check, size) = *layout.iter().find(|x| x.0 == 8).unwrap();
         assert_eq!(size, 96);
         let (_, cope, _) = *layout.iter().find(|x| x.0 == 6).unwrap();
-        for fault in 0..3 {
+        let (_, handshake, _) = *layout.iter().find(|x| x.0 == 1).unwrap();
+        for fault in 0..4 {
             let mut bad = wire.clone();
             match fault {
                 0 => {
@@ -612,8 +627,12 @@ mod tests {
                     decode_k6(&bad[check + 48..check + 96]).unwrap();
                 }
                 1 => bad[cope..cope + 8].copy_from_slice(&volta_field::P.to_le_bytes()),
-                _ => {
+                2 => {
                     bad.pop();
+                }
+                _ => {
+                    bad[handshake..handshake + 8].copy_from_slice(b"C71S6v01");
+                    bad[handshake + 8..handshake + 12].copy_from_slice(&4u32.to_le_bytes());
                 }
             }
             let mut replay =
@@ -627,7 +646,10 @@ mod tests {
             assert!(result.is_err());
             let tags: Vec<_> = frames(&replay.written).iter().map(|x| x.0).collect();
             assert!(!tags.contains(&9)); // no alpha after any failed check
-            assert_eq!(tags.contains(&7), fault != 1); // all corrections before challenge
+            assert_eq!(tags.contains(&7), fault != 1 && fault != 3);
+            if fault == 3 {
+                assert!(!tags.contains(&3));
+            }
         }
     }
 
@@ -679,5 +701,44 @@ mod tests {
         wire.push(7);
         wire.extend(49u64.to_le_bytes());
         assert!(recv_header(&mut io::Cursor::new(wire), 7, 48).is_err());
+    }
+
+    #[test]
+    fn c71_seed6_completion_seal_codec_rng_and_binding() {
+        let mut rng = StdRng::seed_from_u64(100);
+        let mut wire = io::Cursor::new(Vec::new());
+        let seal = completion_seal(&mut wire, false, b"C71S6S01", &mut rng).unwrap();
+        wire.set_position(0);
+        assert_eq!(completion_seal(&mut wire, true, b"C71S6S01", &mut rng).unwrap(), seal);
+        let bytes = wire.into_inner();
+        assert_eq!(bytes.len(), 40);
+        for fault in 0..3 {
+            let mut changed = bytes.clone();
+            match fault {
+                0 => {
+                    changed.pop();
+                }
+                1 => changed[..8].copy_from_slice(b"C71B12S1"),
+                _ => changed[8..].fill(0),
+            }
+            assert!(completion_seal(&mut io::Cursor::new(changed), true, b"C71S6S01", &mut rng)
+                .is_err());
+        }
+        let mut wire = io::Cursor::new(Vec::new());
+        assert!(completion_seal(
+            &mut wire,
+            false,
+            b"C71S6S01",
+            &mut super::super::coins::tests::BadRng(true)
+        )
+        .is_err());
+        assert!(wire.into_inner().is_empty());
+        let binding = completed_binding([1; 32], seal);
+        assert_ne!(binding, [1; 32]);
+        assert_ne!(binding, completed_binding([2; 32], seal));
+        let mut changed = seal;
+        changed[0] ^= 1;
+        assert_ne!(binding, completed_binding([1; 32], changed));
+        eprintln!("C71_SEED6_SEAL wire_bytes=40 before_output=true durable_burn=false");
     }
 }

@@ -1349,7 +1349,7 @@ finché i gate di costruzione restano aperti.
 ## Seed6 reale streaming e workspace
 
 L'[adapter test-only](../../rust/volta-pcg/src/c71_seed6/real.rs) collega
-handshake `C71S6v01`, direction 0/1, MR19 384, COPE AES-256, check K6 e
+handshake `C71S6v02`, direction 0/1, MR19 384, COPE AES-256, check K6 e
 compressione. Ogni correzione usa un buffer da 3.072 B; ogni sfida 48 B.
 Il verifier riceve tutte le correzioni canoniche prima di inviare le sfide,
 verifica K6 prima di campionare alpha e rifiuta la chiave compressa zero.
@@ -1358,11 +1358,11 @@ cancellano prima della compressione. La capacità delle sei righe sacrificate
 rimane allocata dopo `truncate`: il ledger la conta.
 
 I test n=1/n=3 usano ruoli separati, due direzioni e socket locali; verificano
-ogni MAC restituito e wire da **149.571 / 155.811 B**, senza seal. Il replay
+ogni MAC restituito e wire da **149.611 / 155.851 B**, incluso il seal. Il replay
 di transcript privati alterati controlla correzione non canonica, Z alterato
 e troncamento senza alpha. I [vettori OpenSSL/SHAKE indipendenti](../../scripts/c71_seed6_aes_kat.py)
-verificano AES ai bordi dei cammini. Non è ancora una sessione con entrambi
-i seed sigillati, F_EQ, guard e consumo cGGM.
+verificano AES ai bordi dei cammini. La catena ridotta ora usa entrambi
+i seed sigillati, guard, cGGM, coin e F_EQ; non il lifecycle completo.
 
 Il [ledger](../../scripts/c71_pcg_trace.py) conta AES, sampler, MR19, check,
 compressione, traffico logico e capacità per fase; non spaccia le letture
@@ -1371,7 +1371,7 @@ Dory; il principale con F_EQ contiene **17.553** righe, l'inverso **2.025**.
 Ogni ruolo comprime quindi 19.579 elementi includendo la sua Delta. I due
 byte direction-bound delle handshake aggiungono 2 B per seed allo screen:
 bootstrap condizionale **61.841.294 B**, primo corpo parziale **126.894.538 B**.
-Il seal da 40 B per seed resta previsto, non implementato.
+Il seal da 40 B per seed è ora implementato ed era già incluso nel budget.
 
 I Vec dei punti MR19 hanno ora capacità preallocata esatta, senza crescita.
 Sull'ABI CPU osservata (Point=216 B, Scalar=72 B), il massimo dei corpi Vec
@@ -1383,7 +1383,7 @@ il secondo; non ne rilascia gli output prima del consumer esterno ancora
 mancante. Queste fasi non alzano il massimo complessivo nominato.
 
 Restano espliciti stack crittografico/spill del compilatore, allocator,
-trasporto, audit, seal/burn e FS globale. Il raccordo locale guard→cGGM→F_EQ
+trasporto, audit, burn durevole e FS globale. Il raccordo locale guard→cGGM→F_EQ
 è descritto sotto. `puncture` è soltanto l'oracolo del riferimento:
 nessun ruolo reale possiede tutti i suoi input. Non dà credito al bootstrap
 composto, né chiude il picco fisico o il lower temporale congiunto. Restano
@@ -1518,7 +1518,7 @@ e due blocchi; confronta anche i contatori con le formule del ledger.
 La catena con seed AES reali da 12+3 righe passa e rifiuta c/z alterati
 attraverso F_EQ. Ora esegue entrambe le coin commit/risposta/apertura
 descritte sotto; i test algebrici mantengono callback deterministici.
-Non realizza ancora seal/burn, nonce freshness, trasporto o espansione EA.
+Non realizza ancora burn durevole, nonce freshness globale, trasporto o espansione EA.
 Non è ancora un bootstrap completo né credito alla sicurezza composta.
 
 Per t=675,h=19 i due passaggi costano 707.786.100 H sender e 707.761.800
@@ -1572,8 +1572,34 @@ contano anche commitment, RNG e candidati del sampler. Lo stato stream
 CPU è 488 B, i due stati di fase 144 B ciascuno; un solo slot conservativo
 da 4.096 B copre i valori/hash, non lo stack compilato. Il massimo arena
 nominato resta invariato. La coin nativa non scarica da sola l'ipotesi ROM:
-FS del guard, sealing, burn durevole senza retry, trasporto globale e
+FS del guard, burn durevole senza retry, trasporto globale e
 collegamento alla capacità PCG restano aperti, senza nuovo credito H100.
+
+
+## Seed6: seal di completamento
+
+Il [meccanismo di seal B12](../../rust/volta-pcg/src/c71_bootstrap.rs) è ora
+riusato dall'adapter Seed6. Il verifier genera 32 B freschi soltanto dopo
+check K6, compressione e rifiuto della chiave zero; il frame fisso ha dominio
+`C71S6S01` e 40 B totali. Entrambi i ruoli restituiscono l'output soltanto
+dopo il seal. Il nuovo binding è BLAKE3 di `VOLTA-C71-Seed6-completed-v1`,
+binding della handshake e seal, e alimenta guard, code F_EQ e coin.
+Troncamento, dominio errato, seal zero o entropia indisponibile fermano
+il percorso. Il dominio B12 originale `C71B12S1` resta invariato.
+
+La handshake diventa `C71S6v02`, suite 5: un peer v01 senza questo obbligo
+viene respinto prima degli OT, non silenziosamente accettato con un tail
+di trasporto diverso. Non cambiano lunghezze o budget analitico: i 40 B
+per seed erano già contati. Il ledger aggiunge la fase seal dopo il
+rilascio dei K6, 32 B RNG verifier, hash del binding e oggetti nominati;
+non aumenta il massimo arena globale. Le evidenze v01 rimangono immutabili
+e non attestano il nuovo ordine del completamento.
+
+Il seal fissa un identificatore fresco, **non un burn durevole**. Il
+journal deve ancora possedere entrambi i setup e terminare su qualunque
+errore o withholding senza retry; anche FS globale del guard e output EA
+restano da collegare. I test locali non conferiscono nuovo credito alla
+riduzione composta, al picco fisico o all'H100.
 
 
 ## EXP30: massimo con un solo checkpoint

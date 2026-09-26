@@ -1667,3 +1667,18 @@ Il ledger distingue XOF locale da wire/HBM e non riconta i 146 B già inclusi
 per coin. FS del guard, sealing, burn e trasporto globale rimangono aperti:
 non è ancora una realizzazione completa della funzionalità F_Rand con abort,
 né credito alla sicurezza composta, al picco fisico o all'H100.
+
+## Seed6 completion seals
+
+Il seal condiviso mantiene invariato il formato B12 e aggiunge il dominio
+`C71S6S01` ai seed reali, dopo il check e prima degli output. Il binding
+usato da guard, code F_EQ e coin include il seal. La handshake v02 respinge
+v01 prima degli OT; codec, seal nullo, troncamento e RNG falliscono senza
+output. Il positivo reale 12+3 attraversa entrambi i seal e conserva i
+rifiuti c/z della catena cGGM/coin/F_EQ.
+
+I 40 B per seed erano già nel budget analitico. Il ledger aggiunge la fase
+nativa e gli oggetti/hash nominati, senza alzare il massimo arena globale.
+Un identificatore fresco non è un journal non rollbackabile: burn durevole,
+FS globale e capacità EA rimangono aperti. I record v01 sono conservati
+e non vengono usati per attribuire credito al nuovo completamento.

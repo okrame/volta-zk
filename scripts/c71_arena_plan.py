@@ -130,7 +130,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                 events=[]
                 for label,role in [('main',main_role),('roleswap',inverse_role)]:
                     party=setup[label][role]
-                    for phase in ('mr19','cope','check','compression'):
+                    for phase in ('mr19','cope','check','compression','seal'):
                         nonheap=party.get(phase+'_named_nonheap_bytes',0)
                         if phase in ('mr19','cope'):
                             nonheap=party['MR19_Delta_nonheap_bytes']

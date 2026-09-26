@@ -87,7 +87,7 @@ impl Context {
                 if direction > 1 {
                     return Err(invalid("Seed6 direction differs"));
                 }
-                (b"C71S6v01", 4u32, MAX_FIXED_RUN_ROWS, 6, 384, Some(direction))
+                (b"C71S6v02", 5u32, MAX_FIXED_RUN_ROWS, 6, 384, Some(direction))
             }
         };
         if !(1..=max_rows).contains(&self.rows)
@@ -216,6 +216,32 @@ fn fp3(a: [u64; 3]) -> Fp3 {
 pub(super) fn random_bytes(rng: &mut (impl RngCore + CryptoRng), out: &mut [u8]) -> Result<()> {
     rng.try_fill_bytes(out).map_err(|_| invalid("OS randomness unavailable"))
 }
+
+#[cfg(feature = "c71-b11")]
+pub(super) fn completion_seal(
+    channel: &mut (impl Read + Write),
+    prover: bool,
+    domain: &[u8; 8],
+    rng: &mut (impl RngCore + CryptoRng),
+) -> Result<[u8; 32]> {
+    let mut frame = [0u8; 40];
+    frame[..8].copy_from_slice(domain);
+    if prover {
+        channel.read_exact(&mut frame)?;
+    } else {
+        random_bytes(rng, &mut frame[8..])?;
+    }
+    let seal: [u8; 32] = frame[8..].try_into().unwrap();
+    if &frame[..8] != domain || seal == [0; 32] {
+        return Err(invalid("invalid completion seal"));
+    }
+    if !prover {
+        channel.write_all(&frame)?;
+        channel.flush()?;
+    }
+    Ok(seal)
+}
+
 fn scalar(rng: &mut (impl RngCore + CryptoRng), work: &mut Work) -> Result<Zeroizing<Scalar>> {
     let mut raw = Zeroizing::new([0u8; 66]);
     let mut result = Zeroizing::new(Scalar::ZERO);

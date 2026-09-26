@@ -49,6 +49,8 @@ def test_seed6_guard_cggm_and_split_remain_live_through_equality():
     case=arena.report(ordered_getter=True,reuse_reader_for_commit=True)['cases'][0]
     for role,inverse,private in [('prover','verifier',329400),('verifier','prover',32400)]:
         plan=case['address_layouts'][f'Seed6_{role}_then_{inverse}_outer_pending']
+        names=[event['event'] for event in plan['events']]
+        assert names.index('main_seal')<names.index('roleswap_seal')<names.index('freeze_guard_corrections_outer_FS_pending')
         live={key:size for key,_,size in plan['initial_allocations']}
         for event in plan['events']:
             for key in event['free']:live.pop(key)

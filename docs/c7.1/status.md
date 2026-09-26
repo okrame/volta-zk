@@ -495,7 +495,10 @@ emettono alpha. Il ledger corregge il seed principale a 17.553 righe,
 incluse le 2.025 aggiuntive di F_EQ; il secondo ne usa 2.025. Il byte di
 direzione nel contesto aggiunge 4 B al budget dei due seed.
 Capacità native e rilasci sono censiti; allocator, stack crittografico,
-trasporto, seal/burn, FS globale e trie batch restano aperti.
+trasporto, burn durevole, FS globale e trie batch restano aperti.
+I due seed ora richiedono il seal fresco prima di restituire valori/chiavi;
+la handshake v02 respinge la versione precedente prima degli OT. I 40 B
+per seed erano già nel budget: nessuna seconda contabilizzazione.
 Il consumer guard sui MAC originali passa nel caso reale da nove righe,
 con ricetta disgiunta e sfida fissata prima della prova. Il nuovo raccordo
 consuma `GuardAccepted`, costruisce cGGM a ruoli separati e usa i MAC
@@ -503,7 +506,7 @@ originali per i check split e F_EQ: il caso reale da 12+3 righe accetta
 il positivo e rifiuta c/z alterati. Non usa l'oracolo con input congiunti.
 Le coin split/F_EQ ora eseguono commit/risposta/apertura e derivano i
 coefficienti da uno stream SHAKE, senza array U denso. Restano FS globale
-del guard, exchange completo, seal/burn ed espansione EA.
+del guard, exchange completo, burn durevole ed espansione EA.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 la riserva consuma il seed e separa coda F_EQ/prefisso guard, cancellando

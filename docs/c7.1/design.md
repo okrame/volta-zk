@@ -1262,7 +1262,7 @@ collega domini MR19 distinti, handshake direction-bound, COPE AES streaming,
 check K6 e compressione. Non emette alpha dopo un check fallito. Il seed
 principale richiede 17.553 righe (15.528 Dory + 2.025 F_EQ), quello inverso
 2.025; il contesto nativo aggiunge 4 B al budget dei due seed. Capacità dei
-Vec e rilasci anticipati sono censiti; seal/burn, FS globale, lifecycle
+Vec e rilasci anticipati sono censiti; burn durevole, FS globale, lifecycle
 completo, picco fisico, CUDA e refinement Lean restano aperti.
 Il [consumer guard ridotto](preflight.md#guard-originale-consumer-nativo)
 usa ora l'algebra prodotti condivisa con range, negando solo Delta nel
@@ -1297,7 +1297,12 @@ anche il prefisso successivo fissato prima dell'apertura. Questa scelta
 instanzia i domini ROM condizionali dello screen, non aggiunge un teorema
 Lean o una prova UC. L'argomento F_Rand resta subordinato a nonce fresco,
 burn senza retry e ordine globale: il fixture non scarica FS del guard,
-sealing dei due seed, trasporto o lifecycle. Le coin dei test algebrici
+trasporto o lifecycle. Il seal dei due seed è ora obbligatorio nel
+[raccordo reale v02](preflight.md#seed6-seal-di-completamento): il binding
+comprende il seal fresco dopo check/compressione e prima di qualsiasi
+output. Si riusa il meccanismo B12 con un dominio wire Seed6 distinto;
+il solo seal non impedisce rollback o retry senza il journal esterno.
+Le coin dei test algebrici
 restano distinte dalla catena che esegue il protocollo nativo.
  Il getter numerico ridotto
 O=0/2/4 apre la root A originale con S1 condiviso allocato dopo le query

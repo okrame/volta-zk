@@ -1447,6 +1447,8 @@ O=0/150/300, cache e LUT originali ancora vive. Sono controlli algebrici
 e di indirizzi richiesti: nessuna esecuzione della nuova tree nativa,
 CUDA o misura hardware. [Conteggi e limiti](preflight.md#original-byte-node-contraction).
 
+Il [record nativo su SHA pulita](../../benchmarks/results/c71-native-byte-node-contraction-2026-09-26-188ff70d1a78.json)
+conserva il test passato, la build e i tentativi preliminari non validi.
 Il successivo [oracolo nativo](../../rust/volta-pcs/src/c71_matrix/byte_function/contraction.rs)
 confronta direttamente la LUT ByteTrees nel campo originale: 256 byte,
 otto livelli, due lane, fold con sfide non Boolean/0/1 e recupero dei

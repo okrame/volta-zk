@@ -1691,6 +1691,10 @@ e non vengono usati per attribuire credito al nuovo completamento.
 
 ## Guard challenge from the sealed prefix
 
+Il [record su SHA pulita `ba2e5b962f39`](../../benchmarks/results/c71-seed6-guard-fs-2026-09-27-ba2e5b962f39.json)
+conserva **30 test Rust e 28 Python/C++**, seriali entro 60 s/2 GiB per
+processo, con stdout, hash, ledger e regressione del seal B12 originale.
+
 Il percorso reale usa ora una sfida SHAKE256 derivata dal prefisso guard
 immutabile, che include il binding sigillato e le correzioni ordinate.
 I due ruoli la ricostruiscono prima della proof senza lambda fornita dal

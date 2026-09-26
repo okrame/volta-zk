@@ -1431,6 +1431,8 @@ test algebrici; il codec locale non chiude il transcript globale o il burn.
 Il KAT Python/Rust verifica i 72 B assorbiti e il valore; prefisso/proof
 alterati vengono respinti. Lo slot temporaneo pianificato è 1.024 B,
 senza nuova heap o aumento del massimo arena. Non è un bound di stack.
+Il [record su SHA pulita](evidence.md#guard-challenge-from-the-sealed-prefix)
+conserva la catena reale e i controlli del ledger.
 
 Il ledger aggiunge 108.000 B di correzioni per ruolo, proof da 48 B,
 216.085 B assorbiti nel prefisso e 32 B di digest; nessun vettore di triple.

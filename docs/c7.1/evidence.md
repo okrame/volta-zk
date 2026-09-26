@@ -4,6 +4,20 @@
 
 ## Canonical calibration row driver
 
+Il [record del controller a SHA pulita 5e9d8ff](../../benchmarks/results/c71-calibration-fixed-run-inputs-2026-09-26-5e9d8ff3e827.json)
+conserva cinque filtri Rust e cinque test Python passati, ciascuna
+invocazione entro 60 s/2 GiB e un worker. I nuovi controlli coprono il
+codec completo da 24.414.870 B generato dal riferimento certificato a
+scale sintetiche, ricette/riserve nei tre contesti, errori di input e
+record di errore/timeout su candidata congelata. Il test del passaggio KV
+usa righe sintetiche per 450 token (405.504.000 B), senza forward numerico,
+e verifica mancata copia, rifiuto di trial parziali e cambi di scale.
+Le regressioni comprendono righe/storage canonici, rifiuto reale a tre
+righe AES e proof lookup/GKR/WHIR ridotta con MAC ideali. La socketpair
+del registro richiede il permesso locale mirato dopo EPERM nella sandbox;
+nessuna rete esterna. Il record non esegue pesi reali, calibrazione,
+forward canonico completo o GPU e mantiene `h100_preflight_ready:false`.
+
 Il [record ingest W a SHA pulita 64732b9](../../benchmarks/results/c71-native-weight-ingest-2026-09-26-64732b9735e2.json)
 conserva 19 controlli Python/Rust passati entro 60 s/2 GiB: confronto
 BF16, selezione automatica degli esponenti su shard sintetici, hashing

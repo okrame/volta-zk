@@ -2423,6 +2423,9 @@ una spesa: mancano l'inizializzazione delle scale A sui pesi reali, il
 replay completo positivo e il relativo piano di esecuzione autorizzato.
 `calibrated:false` resta esplicito anche per un trial intero positivo:
 freeze, confronto della relazione e trasferimento al ledger sono successivi.
+Il [record su SHA pulita 5e9d8ff](../../benchmarks/results/c71-calibration-fixed-run-inputs-2026-09-26-5e9d8ff3e827.json)
+conserva questi controlli e le regressioni del registro e della proof
+ridotta; non sostituisce l'evidenza del trial reale ancora mancante.
 
 Il test `c71_b12_native_canonical_numeric_rows_original_routes` usa le
 geometrie originali a O=0/150/300 e dati/tabelle sintetici dichiarati,

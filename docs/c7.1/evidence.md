@@ -1357,3 +1357,30 @@ mantengono 256 MiB di margine. Il record include hash del binario e dei
 sorgenti, log di compilazione, conteggi congiunti e formule canoniche.
 È `credit:false`: il DAG riduce del 46,39% il lavoro word del replay,
 non dimostra uno speedup GPU né un upper end-to-end entro 65 s.
+
+### EXP30 BMMA component
+
+Il [record pulito `9f730329e8f2`](../../benchmarks/results/c71-exp30-bmma-2026-09-26-9f730329e8f2.json)
+contiene tre test Python/C++ passati, oggetto sm_90, SASS, log ptxas, hash
+sorgenti/binario e i piani a O=0/150/300. Non esegue GPU. Verifica le somme
+native unsigned a 96 bit prima della riduzione modulo p, le mappe dei
+frammenti di entrambi i kernel, i cubici nel campo ridotto e le fence/offset
+nel checker C++. I conteggi s32 sono protetti dal bound pubblico N<2^31.
+
+Due kernel nativi BMMA, zero stack/spill: And/Xor usa 70 registri e load Eq
+vettoriali; Copy usa 40 registri. Il loop Copy è srotolato dal compilatore:
+i cinque siti BMMA statici non moltiplicano per cinque il numero dinamico
+per tile. Il primo assert del record supponeva erroneamente un solo sito;
+il fallimento è conservato e il controllo distingue presenza statica e
+conteggio dinamico della schedule. Sono conservati anche un errore iniziale
+d’import e il checker arena che esauriva gli ID perché il fixture non
+riusava gli handle dopo le fence: corretto il fixture, senza alzare il cap.
+
+Payload candidato massimo 490.859.484 B. Il live allineato della fase
+BMMA è 1.442.513.408 / 1.741.038.336 / 2.039.559.936 B, mentre il massimo
+nominato EXP30 resta 2.082.995.968 / 3.370.001.152 / 3.851.690.752 B.
+Tutti i layout censiti mantengono il margine 256 MiB; non è il picco fisico
+completo. Il record distingue lower condizionali, traffico logico e HBM,
+e non converte il primo in un upper di tempo. Producer/packing, riduzione
+Fp3, adapter nativo e service-rate restano da collegare. `credit:false`,
+nessun nuovo protocollo, nessun positivo AES/GPU e nessuna spesa.

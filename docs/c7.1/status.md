@@ -155,7 +155,8 @@ parità a tutti i livelli e cinque test nativi, inclusa la proof integrata.
 Il [consumer BMMA candidato](preflight.md#exp30-momenti-binari-bmma) elimina
 nel modello gli aggiornamenti sparsi dei bin, compresi i Copy, con payload
 nominato di 490.859.484 B. Due kernel compilano per sm_90 senza spill;
-passano i controlli CPU di ricostruzione esatta, cubici e arena. È una
+passano i [controlli CPU su SHA pulita](evidence.md#exp30-bmma-component)
+di ricostruzione esatta, cubici e arena. È una
 rappresentazione degli stessi aggregati privati, non un terzo protocollo.
 Resta da collegare producer → packing Eq/wire → BMMA → riduzione Fp3
 al prefisso nativo. Nessun positivo GPU o upper totale è ancora disponibile.

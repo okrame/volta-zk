@@ -28,6 +28,13 @@ the exact complete bounds with the additional caller resource envelope.
 They do not execute the full native verifier or Gemma. Mathematical/doc
 closure alone requires no Rust or Lean build; native refinement is separate.
 
+Per il consumer BMMA EXP30 eseguire `tests/test_c71_exp30_bmma.py`:
+sono oracoli CPU e controllo arena, senza prove canoniche né GPU. Il file
+`cuda/c71_exp30_bmma.cu` compila come C++ per il controllo host, oppure con
+`nvcc -O3 -std=c++17 -arch=sm_90 -Xptxas=-v -c` per i soli kernel. Conservare
+SASS e ptxas; i siti BMMA statici di un ciclo srotolato non sono il conteggio
+dinamico per tile. Il programma non contiene un percorso di lancio GPU.
+
 ## Rust and resource limits
 
 Per il raccordo streaming critico, dopo la build PCS mirata, eseguire

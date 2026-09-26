@@ -1485,8 +1485,10 @@ Il [record su SHA pulita](../../benchmarks/results/c71-streamed-byte-contraction
 conserva cinque filtri nativi, il controllo del ledger e il positivo
 integrato. La parità wire/FS/MAC è verificata nello stesso fixture a
 monete fissate. Receipt e dimensione del certificato integrato possono
-variare fra run: `fixture()` installa W con `Model::new`, che estrae seed
+variare fra run: `fixture()` installa W con `Model::new_in`, che estrae seed
 privati dal sistema. Non si richiede uguaglianza fra installazioni diverse.
+Il [controllo scartato fra run](../../benchmarks/results/c71-integrated-cross-run-coins-2026-09-26-e95d8a51d6cd.json)
+è conservato con provenienza dirty, senza credito di protocollo.
 
 ### Native moment seam and byte tree screen
 

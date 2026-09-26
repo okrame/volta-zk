@@ -310,14 +310,14 @@ La deroga non chiude PCS streaming, endpoint privati, arena da
 6.442.450.944 byte, <=65 s o confronto di lavoro totale.
 
 **Bootstrap:** la candidata Fp6 con guard prima di c, cGGM separato per
-nodo, coin ROM e F_EQ a due chiavi costa **61.841.294 byte** per le primitive
+nodo, coin ROM e F_EQ a due chiavi costa **61.841.321 byte** per le primitive
 censite. La capacità di 70.778.880 righe base supera le 11.466.948 del run
 B12 completo; tre righe base formano un Fp3 e il setup si paga una sola
 volta. Il corpo B12 fornisce gli intervalli seguenti:
 
 | O | Lower corpo | Upper corpo | Bootstrap censito + corpo |
 |---:|---:|---:|---:|
-| 0 | 47.841.180 | 65.053.244 | 109.682.474–126.894.538 |
+| 0 | 47.841.180 | 65.053.244 | 109.682.501–126.894.565 |
 | 150 | 54.868.318 | 78.945.726 | 54.868.318–78.945.726 |
 | 300 | 61.797.384 | 92.723.304 | 61.797.384–92.723.304 |
 
@@ -517,6 +517,9 @@ Restano accordo sul seed EA, transcript/trasporto globali, burn durevole,
 trie batch e collegamento alla proof; non è ancora il PCG canonico.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
+correzioni, coin e share ora attraversano due endpoint indipendenti tramite
+il framing bootstrap esistente. Nove header da 9 B sostituiscono quelli
+prenotati da 6 B: +27 B sul bootstrap, senza nuova primitiva.
 la riserva consuma il seed e separa coda F_EQ/prefisso guard, cancellando
 la vecchia copia della coda. Il test della coin usa randomness riproducibile,
 non coefficienti prefissati; non chiude la composizione crittografica.

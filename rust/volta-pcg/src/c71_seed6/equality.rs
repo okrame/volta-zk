@@ -5,6 +5,7 @@
 use super::real::{RealProverOutput, RealVerifierOutput};
 use super::Fp3Words;
 use rand::{CryptoRng, RngCore};
+use std::io::{self, Read, Write};
 use volta_field::{Fp, Fp3};
 use zeroize::Zeroizing;
 
@@ -67,6 +68,75 @@ fn commitment(prefix: &[u8; 32], role: u8, opening: &[u8; 56]) -> [u8; 32] {
     *h.finalize().as_bytes()
 }
 impl<State> Prepared<State> {
+    fn exchange(
+        self,
+        mut channel: impl Read + Write,
+        rng: &mut (impl RngCore + CryptoRng),
+        audit: &mut crate::c71_bootstrap::Audit,
+    ) -> io::Result<Accepted<State>> {
+        use super::coins::{Committed as CoinCommitted, Context, Phase, Replied};
+        use crate::c71_bootstrap::{recv, send};
+        let invalid = |message| io::Error::new(io::ErrorKind::InvalidData, message);
+        let (role, sid, count) = (self.role, self.sid, self.values.len());
+        let mut peer = if role == 1 {
+            send(&mut channel, 60, &self.corrections, audit)?;
+            recv(&mut channel, 61, 24 * count, audit)?
+        } else {
+            let peer = recv(&mut channel, 60, 24 * count, audit)?;
+            send(&mut channel, 61, &self.corrections, audit)?;
+            peer
+        };
+        let frozen = self.freeze(std::mem::take(&mut *peer)).map_err(invalid)?;
+        let context =
+            Context::new(sid, frozen.prefix, Phase::Equality, count as u64).map_err(invalid)?;
+        let mut coefficients = if role == 1 {
+            let (commitment, committed) = CoinCommitted::new(context, rng).map_err(invalid)?;
+            send(&mut channel, 62, &commitment, audit)?;
+            let response = recv(&mut channel, 63, 32, audit)?;
+            let (opening, coefficients) =
+                committed.open(&response, frozen.prefix).map_err(invalid)?;
+            send(&mut channel, 64, &opening, audit)?;
+            coefficients
+        } else {
+            let commitment = recv(&mut channel, 62, 32, audit)?;
+            let (response, replied) = Replied::new(context, &commitment, rng).map_err(invalid)?;
+            send(&mut channel, 63, &response, audit)?;
+            let opening = recv(&mut channel, 64, 64, audit)?;
+            replied.open(&opening, frozen.prefix).map_err(invalid)?
+        };
+        let committed = frozen
+            .commit(
+                |prefix, count| {
+                    let mut values = Vec::with_capacity(count);
+                    for index in 0..count {
+                        values.push(coefficients.draw(prefix, index as u64)?);
+                    }
+                    coefficients.finish()?;
+                    Ok(values)
+                },
+                rng,
+            )
+            .map_err(invalid)?;
+        let peer = if role == 1 {
+            send(&mut channel, 65, &committed.commitment, audit)?;
+            recv(&mut channel, 66, 32, audit)?
+        } else {
+            let peer = recv(&mut channel, 65, 32, audit)?;
+            send(&mut channel, 66, &committed.commitment, audit)?;
+            peer
+        };
+        let openable = committed.accept_peer_commitment(peer.as_slice().try_into().unwrap());
+        let peer = if role == 1 {
+            send(&mut channel, 67, &openable.opening(), audit)?;
+            recv(&mut channel, 68, 56, audit)?
+        } else {
+            let peer = recv(&mut channel, 67, 56, audit)?;
+            send(&mut channel, 68, &openable.opening(), audit)?;
+            peer
+        };
+        openable.verify(&peer).map_err(invalid)
+    }
+
     fn heap_bytes(&self) -> usize {
         self.sender.values.capacity() * 8
             + self.sender.tags.capacity() * 24
@@ -371,16 +441,48 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn c71_seed6_equality_wire_rejects_order_lengths_and_truncation() {
+        for (tag, length, truncate) in
+            [(61, 24, false), (60, u64::MAX, false), (60, 24, true), (60, 24, false)]
+        {
+            let (prepared, _) = prepared_pair(&[Fp3::ONE], &[Fp3::ONE]);
+            let mut bytes = vec![tag];
+            bytes.extend_from_slice(&length.to_le_bytes());
+            if truncate {
+                bytes.pop();
+            }
+            let mut audit = Audit::default();
+            let error = prepared
+                .exchange(
+                    std::io::Cursor::new(bytes),
+                    &mut crate::c71_seed6::coins::tests::BadRng(true),
+                    &mut audit,
+                )
+                .err()
+                .unwrap();
+            assert!(matches!(
+                error.kind(),
+                io::ErrorKind::InvalidData | io::ErrorKind::UnexpectedEof
+            ));
+            assert!(audit.sent_frames.is_empty());
+            assert!(audit.received_frames.is_empty());
+        }
+    }
+
+    #[test]
     fn c71_seed6_equality_retained_state_drops_on_rejection() {
-        use std::{cell::Cell, rc::Rc};
-        struct Retained(Rc<Cell<usize>>);
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        struct Retained(Arc<AtomicUsize>);
         impl Drop for Retained {
             fn drop(&mut self) {
-                self.0.set(self.0.get() + 1);
+                self.0.fetch_add(1, Ordering::SeqCst);
             }
         }
         for mismatch in [false, true] {
-            let dropped = Rc::new(Cell::new(0));
+            let dropped = Arc::new(AtomicUsize::new(0));
             let (prover0, verifier0) = ideal(3, 1);
             let (prover1, verifier1) = ideal(3, 2);
             let (left, right) = finish_chosen_inputs(
@@ -395,9 +497,9 @@ pub(super) mod tests {
             );
             assert_eq!(left.is_err(), mismatch);
             assert_eq!(right.is_err(), mismatch);
-            assert_eq!(dropped.get(), if mismatch { 2 } else { 0 });
+            assert_eq!(dropped.load(Ordering::SeqCst), if mismatch { 2 } else { 0 });
             drop((left, right));
-            assert_eq!(dropped.get(), 2);
+            assert_eq!(dropped.load(Ordering::SeqCst), 2);
         }
     }
     pub(in crate::c71_seed6) fn real_pair(
@@ -432,7 +534,7 @@ pub(super) mod tests {
         (sender.join().unwrap(), receiver)
     }
 
-    pub(in crate::c71_seed6) fn finish_chosen_inputs<SenderState, ReceiverState>(
+    pub(in crate::c71_seed6) fn finish_chosen_inputs<SenderState: Send, ReceiverState: Send>(
         sender0: RealProverOutput,
         receiver0: RealVerifierOutput,
         sender1: RealProverOutput,
@@ -441,51 +543,50 @@ pub(super) mod tests {
         value1: Zeroizing<Vec<Fp3Words>>,
         retained0: SenderState,
         retained1: ReceiverState,
-    ) -> (Result<Accepted<SenderState>, &'static str>, Result<Accepted<ReceiverState>, &'static str>)
-    {
-        use crate::c71_seed6::coins as coin;
+    ) -> (io::Result<Accepted<SenderState>>, io::Result<Accepted<ReceiverState>>) {
+        use std::{os::unix::net::UnixStream, thread, time::Duration};
         let prepared0 = Prepared::new(0, [8; 32], sender0, receiver0, value0, retained0).unwrap();
         let prepared1 = Prepared::new(1, [8; 32], sender1, receiver1, value1, retained1).unwrap();
-        let corrections0 = prepared0.corrections.clone();
-        let corrections1 = prepared1.corrections.clone();
-        let frozen0 = prepared0.freeze(corrections1).unwrap();
-        let frozen1 = prepared1.freeze(corrections0).unwrap();
-        assert_eq!(frozen0.prefix, frozen1.prefix);
-        let context = coin::Context::new(
-            [8; 32],
-            frozen0.prefix,
-            coin::Phase::Equality,
-            frozen0.local.values.len() as u64,
-        )
-        .unwrap();
-        let (commitment, committed) =
-            coin::Committed::new(context, &mut StdRng::seed_from_u64(72)).unwrap();
-        let (response, replied) =
-            coin::Replied::new(context, &commitment, &mut StdRng::seed_from_u64(73)).unwrap();
-        let (opening, coins1) = committed.open(&response, frozen1.prefix).unwrap();
-        let coins0 = replied.open(&opening, frozen0.prefix).unwrap();
-        let draw =
-            |mut tape: coin::Coefficients, prefix, count| -> Result<Vec<Fp3>, &'static str> {
-                let mut values = Vec::with_capacity(count);
-                for index in 0..count {
-                    values.push(tape.draw(prefix, index as u64)?);
-                }
-                tape.finish()?;
-                Ok(values)
-            };
-        let committed0 = frozen0
-            .commit(|prefix, count| draw(coins0, prefix, count), &mut StdRng::seed_from_u64(74))
-            .unwrap();
-        let committed1 = frozen1
-            .commit(|prefix, count| draw(coins1, prefix, count), &mut StdRng::seed_from_u64(75))
-            .unwrap();
-        let (hash0, hash1) = (committed0.commitment, committed1.commitment);
-        let openable0 = committed0.accept_peer_commitment(hash1);
-        let openable1 = committed1.accept_peer_commitment(hash0);
-        let (bytes0, bytes1) = (openable0.opening(), openable1.opening());
-        let accepted0 = openable0.verify(&bytes1);
-        let accepted1 = openable1.verify(&bytes0);
+        let count = prepared0.values.len();
+        let (left, right) = UnixStream::pair().unwrap();
+        for stream in [&left, &right] {
+            stream.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            stream.set_write_timeout(Some(Duration::from_secs(3))).unwrap();
+        }
+        let ((accepted0, audit0), (accepted1, audit1)) = thread::scope(|scope| {
+            let peer = scope.spawn(move || {
+                let mut audit = Audit::default();
+                let result = prepared1.exchange(right, &mut StdRng::seed_from_u64(72), &mut audit);
+                (result, audit)
+            });
+            let mut audit = Audit::default();
+            let result = prepared0.exchange(left, &mut StdRng::seed_from_u64(73), &mut audit);
+            ((result, audit), peer.join().unwrap())
+        });
         assert_eq!(accepted0.is_ok(), accepted1.is_ok());
+        assert_eq!(audit0.sent_frames, audit1.received_frames);
+        assert_eq!(audit1.sent_frames, audit0.received_frames);
+        for audit in [&audit0, &audit1] {
+            assert_eq!(
+                (audit.sent_frames.capacity() + audit.received_frames.capacity())
+                    * size_of::<(u8, usize)>(),
+                192
+            );
+            assert!(audit.phase_seconds.is_empty());
+        }
+        assert_eq!(
+            audit0
+                .sent_frames
+                .iter()
+                .chain(&audit0.received_frames)
+                .map(|(_, size)| size)
+                .sum::<usize>(),
+            48 * count + 385
+        );
+        println!(
+            "C71_SEED6_EQUALITY_WIRE coordinates={count} bytes={} frames=9 header_bytes=9",
+            48 * count + 385
+        );
         (accepted0, accepted1)
     }
     #[test]

@@ -173,6 +173,8 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                 equality=setup['two_key_equality_consumer']
                 events.append({'event':'reserve_equality_envelope_with_pending_cggm_states',
                     'allocate':{'Seed6:equality_payload_envelope':max(equality['extra_owned_heap_phase_bytes_each_role'].values()),
+                                'Seed6:equality_transport':equality['native_transport_audit_heap_bytes_each_role']+
+                                    equality['native_transport_extra_read_buffers_heap_upper_each_role'],
                                 'Seed6:equality_native_value_slot':equality['native_value_state_slot_bytes']}})
                 expansion=setup['accepted_pointwise_expansion']
                 events.append({'event':'equality_accepted_convert_to_expansion',
@@ -182,7 +184,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                     'free':['Seed6:'+name for name in ('main','roleswap','main_equality_tail',
                             'guard_corrections','guard_native_value_state','coin_native_value_slot',
                             'c_wire','z_wire','split_values','equality_payload_envelope',
-                            'equality_native_value_slot')]})
+                            'equality_native_value_slot','equality_transport')]})
                 events += [{'event':'accepted_pointwise_row_reference',
                     'allocate':{'Seed6:EA_temporary_heap':max(expansion['EA_sampler_heap_bytes_upper'],
                                                             expansion['H_codec_heap_with_EA_terms_bytes']),

@@ -1402,7 +1402,10 @@ L'implementazione ridotta successiva aggiunge un byte di direzione al
 contesto di ciascuna delle due parti: **+2 B per seed, +4 B sul bootstrap**.
 I conteggi dimensionali di questa sezione precedono tale codec; lo stato
 attivo e il [preflight nativo](preflight.md#seed6-reale-streaming-e-workspace)
-usano 61.841.294 B e distinguono il seal ancora non implementato.
+usano **61.841.321 B**, inclusi anche i 27 B del successivo framing nativo
+F_EQ/coin. I seal locali sono ora implementati; restano setup/trasporto
+globale e burn durevole. Le formule storiche di questa sezione non sono
+retroattivamente risultati nativi.
 
 ## Screen dopo l'autorizzazione EA-LPN e ripiego sui byte
 

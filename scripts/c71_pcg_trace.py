@@ -322,15 +322,17 @@ def seed6_expansion_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
     }
 
 
-def seed6_coin_trace(count=DOMAIN):
+def seed6_coin_trace(count=DOMAIN, header_bytes=6):
     """One transcript-bound native coin; sequential SHAKE, no dense U array."""
-    if not 1 <= count <= DOMAIN:
+    if not 1 <= count <= DOMAIN or header_bytes not in (6,9):
         raise ValueError('outside coin coefficient cap')
     domain=len(b'VOLTA-C71-DORY-COIN-v1')
     return {
         'coefficients':count,
         'commit_response_open_payload_bytes_both_directions':128,
-        'wire_with_three_reserved_headers_bytes':146,
+        'wire_with_three_reserved_headers_bytes':128+3*header_bytes,
+        'header_bytes':header_bytes,
+        'framing_scope':'native equality exchange' if header_bytes==9 else 'split six-byte reservation, not native transport',
         'wire_already_in_bootstrap_screen':True,
         'random_bytes_requested':{'committer':64,'responder':32},
         'BLAKE3_commitment_calls_each_role':1,
@@ -387,8 +389,13 @@ def seed6_equality_trace(n=TREES):
         'coordinates':n, 'reserved_tail_rows_each_seed':3*n,
         'correction_payload_bytes_each_role':24*n,
         'commit_payload_bytes_each_role':32, 'opening_payload_bytes_each_role':56,
-        'wire_both_roles_without_coins_or_seed':48*n+212,
-        'framing_assumption':'six existing 6-byte frame headers, not yet transported',
+        'wire_both_roles_without_coins_or_seed':48*n+230,
+        'wire_both_roles_with_native_coin_without_seed':48*n+385,
+        'native_frame_count_including_coin':9,
+        'native_frame_header_bytes':9,
+        'native_transport_audit_heap_bytes_each_role':192,
+        'native_transport_extra_read_buffers_heap_upper_each_role':96,
+        'framing_assumption':'native bootstrap tag-u8/length-u64-LE, validated before allocation',
         'Fp3_multiplications_each_role':10*n+1,
         'Fp3_by_Fp_multiplications_each_role':3*n,
         'Fp3_additions_role0':12*n,
@@ -515,7 +522,7 @@ def report():
         'setup_once_before_all_responses': {
             'internal_cGGM_H_evaluations_upper_per_role_two_passes': setup_h,
             'universal_hash_field_inputs_lower_per_role': DOMAIN,
-            'conditional_bootstrap_wire_both_directions_bytes': 61_841_294,
+            'conditional_bootstrap_wire_both_directions_bytes': 61_841_321,
             'H_to_AES_calls': None,
             'H_to_domain_separated_SHAKE_RO_calls': setup_h,
             'H_SHAKE_absorbed_bytes': setup_h*H_DOMAIN_BYTES,
@@ -541,7 +548,7 @@ def report():
                 'path_guard_consumer': seed6_guard_trace(),
                 'guard_to_cggm_and_split_consumer':cggm,
                 'accepted_pointwise_expansion':seed6_expansion_trace(),
-                'coin_tosses':{'split':seed6_coin_trace(),'equality':seed6_coin_trace(TREES)},
+                'coin_tosses':{'split':seed6_coin_trace(),'equality':seed6_coin_trace(TREES,9)},
                 'two_key_equality_consumer':seed6_equality_trace(),
                 'disjoint_tail_reservation':seed6_tail_reservation_trace(),
                 'physical_roles_opposite': True, 'composed_execution_credit': False,

@@ -1370,7 +1370,8 @@ sorgente per traffico HBM. Corregge un'omissione: 15.528 è il solo seed
 Dory; il principale con F_EQ contiene **17.553** righe, l'inverso **2.025**.
 Ogni ruolo comprime quindi 19.579 elementi includendo la sua Delta. I due
 byte direction-bound delle handshake aggiungono 2 B per seed allo screen:
-bootstrap condizionale **61.841.294 B**, primo corpo parziale **126.894.538 B**.
+bootstrap condizionale **61.841.321 B**, primo corpo parziale **126.894.565 B**,
+inclusi i 27 B aggiunti dal successivo framing nativo F_EQ/coin.
 Il seal da 40 B per seed è ora implementato ed era già incluso nel budget.
 
 I Vec dei punti MR19 hanno ora capacità preallocata esatta, senza crescita.
@@ -1465,6 +1466,12 @@ prima del commitment; il caso reale usa due seed da tre righe, direzioni 0/1.
 Il callback deterministico dei test algebrici **non realizza F_Rand**;
 la catena cGGM ora usa la coin nativa descritta sotto. Il vincolo locale
 commit-before-open non realizza trasporto atomico o burn durevole.
+L'exchange F_EQ ora usa due endpoint indipendenti con i helper `send/recv`
+del bootstrap: correzioni, coin e share sono nove frame ordinati. Ogni
+header ha tag u8 e lunghezza u64 LE, validata prima di allocare. Il primo
+commitment della share peer è ricevuto prima della propria apertura.
+Il test reale composto esegue questo exchange invece di spostare i frame
+direttamente fra i due stati; framing errato/troncato è respinto.
 La riserva ora consuma il seed principale prima del guard: copia la sola
 coda, cancella esplicitamente gli slot originali e tronca il prefisso senza
 ridurne la capacità. Conserva il binding e passa a F_EQ solo code esatte;
@@ -1474,9 +1481,11 @@ Le garanzie di privacy/soundness dello screen sono condizionali a quelle
 premesse: nessun credito alla composizione o alla sola coin del fixture.
 
 Il ledger per t=675 conta, per parte, 6.751 prodotti Fp3 e 2.025 prodotti
-Fp3×Fp, prima del lavoro della coin; il payload più sei header da 6 B costa
-32.612 B complessivi, esclusi seed e coin. Il framing di trasporto è una
-prenotazione, non ancora un exchange nativo. Input, frame e coin sono
+Fp3×Fp, prima del lavoro della coin; il payload più sei header da 9 B costa
+32.630 B complessivi, esclusi seed e coin, oppure **32.785 B con la coin**.
+Rispetto alla prenotazione da sei byte, i nove header costano 27 B in più
+sul bootstrap. Il wire ridotto è 433 B a t=1 e 481 B a t=2, misurato nei
+due Audit speculari. Input, frame e coin sono
 limitati in capacità; la decodifica trasferisce il frame posseduto, poi lo
 rilascia. Gli Audit di setup vengono liberati prima delle correzioni.
 Il massimo payload aggiuntivo è **64.800 B per parte**, oltre ai due output
@@ -1485,6 +1494,11 @@ Seed6 ancora vivi. F_EQ possiede ora soltanto le due code da 2.025 righe:
 aggiuntivo; il prefisso principale resta esterno e vivo nel piano.
 Si aggiungono stato di valore, stack, allocator e trasporto.
 `size_of` è soltanto shallow.
+L'exchange riserva altri 192 B heap per i Vec Audit (capacità 4+8 record)
+e fino a 96 B di read buffer temporanei; il piano mantiene i 288 B fino
+alla conversione positiva. Buffer del socket/kernel e stack fisico restano
+fuori da questi payload nominati. Non è un canale autenticato o una prova
+di accordo atomico sull'esito, né il trasporto globale del setup.
 
 Il piano riserva conservativamente quei 64.800 B più uno slot di stato
 4.096 B mentre trattiene ancora entrambi i seed e le correzioni guard.
@@ -1575,8 +1589,9 @@ positivo e rifiuto c/z; nel caso c alterato entrambi i ruoli usano lo
 stesso prefisso alterato, quindi il rifiuto non si limita a una divergenza
 di transcript. La randomness è riproducibile nei test, non una stub delle U.
 
-Il wire di ogni coin resta 128 B più tre header prenotati, **146 B già
-inclusi** nel bootstrap: non viene sommato due volte. Per ruolo la coin
+Il payload di ogni coin resta 128 B. Split mantiene tre header prenotati
+da 6 B (**146 B**); F_EQ usa tre header nativi da 9 B (**155 B**).
+Sono già inclusi nel bootstrap aggiornato, senza sommarli due volte. Per ruolo la coin
 split assorbe 173 B e produce **67.947.724.800 B di XOF**, quella F_EQ
 129.600 B. Sono byte generati localmente, non wire o traffico HBM. Si
 contano anche commitment, RNG e candidati del sampler. Lo stato stream

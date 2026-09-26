@@ -803,9 +803,10 @@ circa 59,5 bit; il malicious PSI compatto non fornisce due output con un
 solo input corrotto. La candidata successiva usa un secondo seed Fp6 con
 ruoli scambiati e le due chiavi MAC per aprire soltanto
 `(Delta0+Delta1)*(wbar-vbar)` dopo autenticazione e coin fresche:
-**12.815.247 byte**, senza nuova ipotesi gruppo. Con l'upper B12 corrente
-del primo corpo il parziale è **126.894.538 byte**, sotto 130 MB. Restano
-da implementare roleswap/codec sotto EA-LPN-SL-reg* a T121/M93 autorizzata;
+**12.815.274 byte**, incluso l'aggiornamento agli header nativi F_EQ/coin,
+senza nuova ipotesi gruppo. Con l'upper B12 corrente
+del primo corpo il parziale è **126.894.565 byte**, sotto 130 MB. Restano
+da integrare setup/codec globali sotto EA-LPN-SL-reg* a T121/M93 autorizzata;
 formalizzazione compositiva, semantica con abort, corpo completo e tempo
 restano aperti. Non è
 un'ammissione. La fonte Ring-LPN 2022/1035 sostiene soltanto la plausibilità
@@ -1279,7 +1280,12 @@ j+1; il consumer usa j: non si trasferisce il bound senza tale adattamento.
 Nessun nuovo credito al teorema B12 o alla composizione EA-LPN. Il
 [consumer F_EQ](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti) verifica
 localmente chosen-input e share a due chiavi con codec canonico e ordine
-commit-before-open. La riserva consuma il seed principale prima del guard:
+commit-before-open. L'exchange a due endpoint usa ora il framing bootstrap
+esistente (tag u8, lunghezza u64 LE), controllato prima delle allocazioni;
+nessun thread possiede entrambi gli stati F_EQ. I nove messaggi comprendono
+correzioni, coin e share. È trasporto di questo consumer, non handshake
+globale, canale autenticato, atomicità/fairness o journal durevole.
+La riserva consuma il seed principale prima del guard:
 copia solo la coda, cancella gli slot originali e conserva la capacità del
 prefisso. F_EQ accetta esclusivamente code esatte, con binding originale.
 Il [raccordo cGGM](preflight.md#guard-cggm-split-e-f_eq-a-ruoli-separati)

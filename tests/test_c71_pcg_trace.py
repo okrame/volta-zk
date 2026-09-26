@@ -148,7 +148,10 @@ def test_original_guard_rows_and_named_arena_state():
 def test_two_key_equality_work_and_bounded_heap_envelope():
     eq=trace.seed6_equality_trace()
     assert eq['reserved_tail_rows_each_seed']==2025
-    assert eq['wire_both_roles_without_coins_or_seed']==32612
+    assert eq['wire_both_roles_without_coins_or_seed']==32630
+    assert eq['wire_both_roles_with_native_coin_without_seed']==32785
+    assert eq['native_frame_count_including_coin']==9
+    assert eq['native_frame_header_bytes']==9
     assert eq['Fp3_multiplications_each_role']==6751
     assert eq['Fp3_by_Fp_multiplications_each_role']==2025
     assert eq['Fp3_additions_role0']==8100
@@ -195,6 +198,7 @@ def test_native_coin_stream_independent_python_vectors_and_accounting():
     assert coin['coefficient_storage_heap_bytes']==0
     assert not coin['full_FS_seal_transport_burn_credit']
     assert trace.seed6_coin_trace(675)['SHAKE_squeezed_bytes_each_role']==129600
+    assert trace.seed6_coin_trace(675,9)['wire_with_three_reserved_headers_bytes']==155
     assert trace.seed6_cggm_trace()['receiver_ordered_sibling_bit_tests']==25650
 
 

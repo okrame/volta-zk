@@ -92,6 +92,19 @@ impl State {
                 self.setups = 1;
                 self.rows = count;
             }
+            #[cfg(test)]
+            5 if self.setups == 0
+                && self.attempts == 0
+                && setup == 1
+                && start == 0
+                && (3..=(675_u64 << 19) / 5).contains(&count)
+                && count % 3 == 0
+                && digest == [0; 32] =>
+            {
+                self.fixed_run = true;
+                self.setups = 1;
+                self.rows = count;
+            }
             2 if setup == self.setups
                 && setup > 0
                 && start == self.used
@@ -226,13 +239,40 @@ impl Lifetime {
         rows: usize,
         fixed_run: bool,
     ) -> io::Result<Context> {
+        self.begin_profile(
+            session,
+            channel,
+            rows,
+            if fixed_run { 4 } else { 1 },
+            b"C71B12/capacity/",
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn begin_seed6(
+        &mut self,
+        session: Digest,
+        channel: Digest,
+        rows: usize,
+    ) -> io::Result<Context> {
+        self.begin_profile(session, channel, rows, 5, b"VOLTA-C71-Seed6/lifetime/")
+    }
+
+    fn begin_profile(
+        &mut self,
+        session: Digest,
+        channel: Digest,
+        rows: usize,
+        kind: u8,
+        domain: &[u8],
+    ) -> io::Result<Context> {
         if session == [0; 32] || channel == [0; 32] || self.state.attempts >= ROOT_SLOTS {
             return Err(invalid("invalid channel/session or exhausted installed root"));
         }
         let setup = self.state.setups + 1;
-        self.append(if fixed_run { 4 } else { 1 }, setup, 0, rows as u64, [0; 32])?; // before RNG/header/OT
+        self.append(kind, setup, 0, rows as u64, [0; 32])?;
         let mut hash = blake3::Hasher::new();
-        hash.update(b"C71B12/capacity/");
+        hash.update(domain);
         hash.update(&self.model.bytes()?);
         hash.update(&session);
         hash.update(&channel);

@@ -448,7 +448,7 @@ def seed6_equality_trace(n=TREES):
 
 
 def seed6_setup_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
-    """One-channel native setup, not the missing durable pool/proof bridge."""
+    """One-use journalled setup, not the missing per-attempt pool/proof bridge."""
     expansion=seed6_expansion_trace(blocks,height,weight)
     main_rows,inverse_rows=blocks*(height+7)+3,3*blocks
     seed_wire=sum(seed6_real_trace(rows)['wire_bytes_both_directions_with_seal']
@@ -467,6 +467,17 @@ def seed6_setup_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
         'geometry_binding_BLAKE3_absorbed_bytes_each_role':98,
         'sealed_nonce_BLAKE3_absorbed_bytes_each_role':102,
         'geometry_and_nonce_BLAKE3_calls_each_role':2,
+        'journal_capacity_BLAKE3_calls_each_role':1,
+        'journal_capacity_BLAKE3_absorbed_bytes_each_role':201,
+        'journal_model_heap_temporary_bytes':104,
+        'journal_install_and_setup_disk_bytes_each_role':104+57,
+        'journal_install_file_and_directory_syncs_each_role':2,
+        'journal_setup_record_syncs_each_role':1,
+        'journal_OS_locks_each_role':1,
+        'journal_IO_metadata_and_latency_credit':False,
+        'journal_test_only_record_kind':5,
+        'setup_burn_before_rng_and_live_owner_borrow':True,
+        'per_attempt_pool_and_acceptance_connected':False,
         'private_path_rng_bytes_receiver':8*blocks,
         'beta_reuses_original_seed_value':True,
         'guard_correction_frame_heap_temporary_bytes':8*blocks*(height+1),

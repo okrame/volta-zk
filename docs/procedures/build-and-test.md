@@ -149,8 +149,13 @@ righe su un solo socketpair fino a sei MAC EA, geometria invalida prima
 di I/O/RNG e discordanza ell prima degli OT. Stessi limiti 60 s/2 GiB,
 un worker/thread; il marker `C71_SEED6_ONE_CHANNEL` registra 390.742 B,
 mentre `C71_SEED6_SETUP_AUDIT` separa capacità heap e valori nativi.
-Il controllo non usa un journal né un canale autenticato.
-Transcript globale, burn e trasporto restano aperti. Ogni filtro
+Il controllo originale non usa un journal né un canale autenticato.
+Aggiungere `c71_seed6_journal` (due test) per burn prima di RNG,
+retry/reopen respinti e owner esclusivo durante il setup reale a sei righe.
+Conservare `c71_lifetime::tests` (otto test) per le transizioni B12 condivise;
+stessi limiti seriali, con socketpair locale. Il marker `C71_SEED6_JOURNAL`
+non accredita riserve per tentativo o proof. Transcript globale, lifecycle
+completo e trasporto autenticato restano aperti. Ogni filtro
 resta entro 60 s/2 GiB, un worker/thread,
 senza rete esterna. Conservare anche i filtri `c71_seed6::guard::tests`,
 `c71_seed6_equality`, `c71_seed6_tail_reservation` e `c71_ea_lpn::tests`.

@@ -495,7 +495,7 @@ emettono alpha. Il ledger corregge il seed principale a 17.553 righe,
 incluse le 2.025 aggiuntive di F_EQ; il secondo ne usa 2.025. Il byte di
 direzione nel contesto aggiunge 4 B al budget dei due seed.
 Capacità native e rilasci sono censiti; allocator, stack crittografico,
-trasporto, burn durevole, FS globale e trie batch restano aperti.
+trasporto, lifecycle durevole completo, FS globale e trie batch restano aperti.
 I due seed ora richiedono il seal fresco prima di restituire valori/chiavi;
 la handshake v02 respinge la versione precedente prima degli OT. I 40 B
 per seed erano già nel budget: nessuna seconda contabilizzazione.
@@ -519,8 +519,10 @@ Il [setup su un solo canale](preflight.md#setup-seed6-su-un-solo-canale)
 collega ora entrambi i bootstrap, guard, split, coin e F_EQ fino allo stato
 EA: sei MAC reali, con beta dai seed originali e cammini campionati.
 La geometria è legata alla handshake prima degli OT; il nonce deriva dai
-due seed sigillati. Restano composizione ROM del seed, transcript del run,
-canale autenticato, burn durevole,
+due seed sigillati. L'entry monouso ora riusa il journal B12: burn fsync
+prima di RNG, nessun retry/reopen e owner esclusivo fino al rilascio
+dello stato EA. Restano composizione ROM del seed, transcript del run,
+canale autenticato, riserve durevoli per tentativo e promozione,
 trie batch e collegamento alla proof; non è ancora il PCG canonico.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;

@@ -1264,7 +1264,7 @@ collega domini MR19 distinti, handshake direction-bound, COPE AES streaming,
 check K6 e compressione. Non emette alpha dopo un check fallito. Il seed
 principale richiede 17.553 righe (15.528 Dory + 2.025 F_EQ), quello inverso
 2.025; il contesto nativo aggiunge 4 B al budget dei due seed. Capacità dei
-Vec e rilasci anticipati sono censiti; burn durevole, FS globale, lifecycle
+Vec e rilasci anticipati sono censiti; burn per tentativo, FS globale, lifecycle
 completo, picco fisico, CUDA e refinement Lean restano aperti.
 Il [consumer guard ridotto](preflight.md#guard-originale-consumer-nativo)
 usa ora l'algebra prodotti condivisa con range, negando solo Delta nel
@@ -1336,8 +1336,15 @@ esegue tutti questi scambi su un canale. Hash della geometria nel contesto
 lega t/h/ell/capacità prima degli OT; il nonce cGGM deriva dai due binding
 sigillati. Il receiver usa beta originale e cammini uniformi h-bit, non
 valori privati prefissati dal fixture. Si conserva l'argomento algebrico
-precedente, senza un nuovo teorema di composizione: autenticazione del
-canale, non-rollback del journal e collegamento alla proof restano esterni.
+precedente, senza un nuovo teorema di composizione. L'entry monouso
+riusa `Lifetime`: record sperimentale 5 fsync prima di RNG/header/OT,
+capacità legata a modello/sessione/canale/epoch in dominio Seed6 e borrow
+esclusivo dell'owner finché vive lo stato EA. Retry, rinnovo B12 e reopen
+sono respinti anche dopo un setup fallito. Il tipo 5 è solo test;
+il dominio e il record 4 B12 restano invariati. Sono controlli runtime
+ridotti, non un nuovo lemma Lean: autenticazione del canale e store
+non-rollbackabile restano premesse del caller, e riserve per tentativo,
+promozione e collegamento alla proof restano da integrare.
 Le coin dei test algebrici
 restano distinte dalla catena che esegue il protocollo nativo.
  Il getter numerico ridotto

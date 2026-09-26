@@ -1,8 +1,10 @@
 //! One-channel reduced setup, through accepted EA state. The caller still
-//! owes an authenticated channel, non-rollbackable burn and full transcript.
+//! owns the authenticated channel and non-rollbackable store. The one-use
+//! entry burns setup before RNG; per-attempt pool/proof integration is open.
 use super::super::{corrections, ProverGuard, VerifierGuard};
 use super::{expand, Error};
 use crate::c71_bootstrap::{random_bytes, recv, send, Audit, Context};
+use crate::c71_lifetime::Lifetime;
 use crate::c71_seed6::{coins, equality, real};
 use rand::{CryptoRng, RngCore};
 use std::io::{self, Read, Write};
@@ -17,6 +19,12 @@ struct Geometry {
     weight: usize,
 }
 
+struct Once<'lifetime, State> {
+    store: &'lifetime mut Lifetime,
+    state: State,
+    audits: [Audit; 3],
+}
+
 fn invalid(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
@@ -26,19 +34,28 @@ fn rejected(_: Error) -> io::Error {
 }
 
 impl Geometry {
-    fn contexts(self, context: &Context) -> io::Result<[Context; 2]> {
+    fn capacity(self) -> io::Result<usize> {
         if self.blocks == 0
             || self.blocks > 675
             || self.height == 0
             || self.height > 19
             || self.weight == 0
             || self.weight > 11
-            || [context.session, context.channel, context.capacity].contains(&[0; 32])
         {
-            return Err(invalid("setup geometry or context"));
+            return Err(invalid("setup geometry"));
         }
         let domain = self.blocks << self.height;
-        if domain < 5 || self.weight > domain || context.rows != domain / 5 {
+        if domain < 5 || self.weight > domain {
+            return Err(invalid("setup domain"));
+        }
+        Ok(domain / 5)
+    }
+
+    fn contexts(self, context: &Context) -> io::Result<[Context; 2]> {
+        if [context.session, context.channel, context.capacity].contains(&[0; 32]) {
+            return Err(invalid("setup geometry or context"));
+        }
+        if context.rows != self.capacity()? {
             return Err(invalid("setup output capacity"));
         }
         let mut hash = blake3::Hasher::new();
@@ -56,6 +73,32 @@ impl Geometry {
             rows,
         }))
     }
+}
+
+fn sender_once<'lifetime>(
+    store: &'lifetime mut Lifetime,
+    channel: impl Read + Write,
+    session: [u8; 32],
+    binding: [u8; 32],
+    geometry: Geometry,
+    rng: &mut (impl RngCore + CryptoRng),
+) -> io::Result<Once<'lifetime, expand::Sender>> {
+    let context = store.begin_seed6(session, binding, geometry.capacity()?)?;
+    let (state, audits) = sender(channel, context, geometry, rng)?;
+    Ok(Once { store, state, audits })
+}
+
+fn receiver_once<'lifetime>(
+    store: &'lifetime mut Lifetime,
+    channel: impl Read + Write,
+    session: [u8; 32],
+    binding: [u8; 32],
+    geometry: Geometry,
+    rng: &mut (impl RngCore + CryptoRng),
+) -> io::Result<Once<'lifetime, expand::Receiver>> {
+    let context = store.begin_seed6(session, binding, geometry.capacity()?)?;
+    let (state, audits) = receiver(channel, context, geometry, rng)?;
+    Ok(Once { store, state, audits })
 }
 
 fn nonce(main: [u8; 32], inverse: [u8; 32]) -> [u8; 32] {
@@ -205,9 +248,22 @@ fn receiver(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::c71_lifetime::ModelBinding;
     use rand::{rngs::StdRng, SeedableRng};
     use std::{os::unix::net::UnixStream, thread, time::Duration};
     use volta_field::{Fp, Fp3};
+
+    fn model() -> ModelBinding {
+        ModelBinding { anchor: [1; 32], semantics: [2; 32], root: [3; 32] }
+    }
+
+    fn journal_path(role: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "c71-seed6-{role}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ))
+    }
 
     fn context() -> Context {
         Context { session: [1; 32], channel: [2; 32], capacity: [3; 32], rows: 6 }
@@ -314,5 +370,109 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         assert_eq!(error.to_string(), "context mismatch");
         assert_eq!(peer.join().unwrap().kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[test]
+    fn c71_seed6_journal_burns_before_rng_and_cannot_retry_or_reopen() {
+        let path = journal_path("failure");
+        let mut store = Lifetime::install(&path, model()).unwrap();
+        let geometry = Geometry { blocks: 2, height: 4, weight: 2 };
+        for rows in [0, 1, 70_778_883] {
+            assert!(store.begin_seed6([1; 32], [2; 32], rows).is_err());
+            assert_eq!(store.counters(), (0, 0));
+        }
+        let error = sender_once(
+            &mut store,
+            std::io::Cursor::new(Vec::<u8>::new()),
+            [1; 32],
+            [2; 32],
+            geometry,
+            &mut coins::tests::BadRng(true),
+        )
+        .err()
+        .unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "OS randomness unavailable");
+        assert_eq!(store.counters(), (1, 0));
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(bytes.len(), 104 + 57);
+        assert_eq!(bytes[104], 5);
+        assert_eq!(u64::from_le_bytes(bytes[121..129].try_into().unwrap()), 6);
+        assert!(store.begin_seed6([1; 32], [2; 32], 6).is_err());
+        assert!(store
+            .prover_fixed_run(std::io::Cursor::new(Vec::<u8>::new()), [1; 32], [2; 32], 3)
+            .is_err());
+        assert!(store.prover(std::io::Cursor::new(Vec::<u8>::new()), [1; 32], [2; 32], 3).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        drop(store);
+        assert!(Lifetime::open(&path, model()).is_err());
+        assert!(Lifetime::install(&path, model()).is_err());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn c71_seed6_journal_real_setup_owns_the_live_lifetime() {
+        let geometry = Geometry { blocks: 2, height: 4, weight: 2 };
+        let (left, right) = UnixStream::pair().unwrap();
+        for stream in [&left, &right] {
+            stream.set_read_timeout(Some(Duration::from_secs(45))).unwrap();
+            stream.set_write_timeout(Some(Duration::from_secs(45))).unwrap();
+        }
+        let peer = thread::spawn(move || {
+            let path = journal_path("receiver");
+            let mut store = Lifetime::install(&path, model()).unwrap();
+            let output = {
+                let mut setup = receiver_once(
+                    &mut store,
+                    right,
+                    [1; 32],
+                    [2; 32],
+                    geometry,
+                    &mut StdRng::seed_from_u64(905),
+                )
+                .unwrap();
+                assert_eq!(setup.store.counters(), (1, 0));
+                assert_eq!(
+                    setup.audits[2].sent_frames.len() + setup.audits[2].received_frames.len(),
+                    16
+                );
+                let rows: Vec<_> = (0..6).map(|_| setup.state.next_row().unwrap()).collect();
+                assert!(setup.state.next_row().is_err());
+                (setup.state.binding, rows)
+            };
+            assert!(store.begin_seed6([1; 32], [2; 32], 6).is_err());
+            drop(store);
+            assert!(Lifetime::open(&path, model()).is_err());
+            std::fs::remove_file(path).unwrap();
+            output
+        });
+        let path = journal_path("sender");
+        let mut store = Lifetime::install(&path, model()).unwrap();
+        {
+            let mut setup = sender_once(
+                &mut store,
+                left,
+                [1; 32],
+                [2; 32],
+                geometry,
+                &mut StdRng::seed_from_u64(906),
+            )
+            .unwrap();
+            assert_eq!(setup.store.counters(), (1, 0));
+            let (binding, rows) = peer.join().unwrap();
+            assert_eq!(setup.state.binding, binding);
+            for row in rows {
+                let key = setup.state.next_row().unwrap();
+                let key = Fp3::new(Fp::new(key[0]), Fp::new(key[1]), Fp::new(key[2]));
+                let tag = Fp3::new(Fp::new(row[1]), Fp::new(row[2]), Fp::new(row[3]));
+                assert_eq!(tag, key + setup.state.delta().mul_base(Fp::new(row[0])));
+            }
+            assert!(setup.state.next_row().is_err());
+        }
+        assert!(store.begin_seed6([1; 32], [2; 32], 6).is_err());
+        drop(store);
+        assert!(Lifetime::open(&path, model()).is_err());
+        std::fs::remove_file(path).unwrap();
+        println!("C71_SEED6_JOURNAL record_kind=5 burn_before_RNG=true one_live_owner=true no_retry_or_reopen=true base_rows=6 per_attempt_pool=false");
     }
 }

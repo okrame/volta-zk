@@ -131,6 +131,9 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                 events=[{'event':'bind_setup_geometry_and_reserve_returned_diagnostics',
                     'allocate':{'Seed6:setup_audits':transport['returned_Audit_heap_bytes_each_role'],
                                 'Seed6:setup_native_value_slot':transport['native_value_and_hash_slot_bytes']}}]
+                events += [{'event':'journal_setup_burn_before_rng',
+                            'allocate':{'Seed6:journal_model':transport['journal_model_heap_temporary_bytes']}},
+                           {'event':'journal_binding_model_release','free':['Seed6:journal_model']}]
                 for label,role in [('main',main_role),('roleswap',inverse_role)]:
                     party=setup[label][role]
                     for phase in ('mr19','cope','check','compression','seal'):

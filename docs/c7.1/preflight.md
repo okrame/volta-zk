@@ -1725,9 +1725,36 @@ non accredita la liberazione di alias privati. Il massimo globale nominato
 resta quello della risposta, non un picco fisico completo.
 
 Questo chiude il percorso byte del setup ridotto, non autenticazione del
-canale, journal non-rollback/no-retry, transcript del run, trie batch,
+canale, lifecycle completo, transcript del run, trie batch,
 bridge al pool/proof canonico o composizione crittografica. Il modulo resta
 test-only; nessuna esecuzione canonica, GPU o spesa è autorizzata.
+
+### Journal monouso del setup
+
+L'entry `sender_once/receiver_once` riusa il journal `Lifetime`, non un
+secondo formato o lock. Il record sperimentale 5 prenota l'intera capacità
+EA prima di RNG/header/OT, con write+fsync: dopo errore, drop o successo
+non sono disponibili retry, rinnovo B12 o reopen. È ammesso solo nei test,
+per capacità multiple di tre fino a 70.778.880 righe. L'output possiede
+un borrow esclusivo del journal insieme allo stato EA; non può sopravvivere
+al suo owner né estrarre pubblicamente uno stato riutilizzabile.
+
+Il binding aggiunge un BLAKE3 per ruolo, dominio
+`VOLTA-C71-Seed6/lifetime/`, con 201 B assorbiti e 104 B heap temporanei
+del modello. Installazione e setup scrivono 104+57=161 B per ruolo;
+installazione sincronizza file e directory, il record sincronizza il file,
+con un lock OS mantenuto fino al drop. Nessun byte wire aggiuntivo.
+Lo slot valori/hash già nominato resta 4.096 B, non un bound di stack;
+metadata OS, allocator e latenza fsync restano da misurare. Il massimo
+arena nominato non cambia, senza credito di picco fisico completo.
+
+I controlli ridotti coprono RNG fallito dopo burn, capacità invalidata
+prima del record, rifiuto retry/reopen e setup reale fino a sei MAC con
+owner vivo. Le regressioni del journal B12 conservano dominio e record 4.
+Il filesystem non dimostra non-rollbackabilità: una copia/reset esterna
+viola la premessa dell'owner. Non sono ancora collegati burn per tentativo,
+NoPeek, promozione della ricevuta e pool/proof; nessun nuovo credito
+compositivo o Lean.
 
 
 ## Seed6: seal di completamento
@@ -1751,10 +1778,10 @@ rilascio dei K6, 32 B RNG verifier, hash del binding e oggetti nominati;
 non aumenta il massimo arena globale. Le evidenze v01 rimangono immutabili
 e non attestano il nuovo ordine del completamento.
 
-Il seal fissa un identificatore fresco, **non un burn durevole**. Il
-journal deve ancora possedere entrambi i setup e terminare su qualunque
-errore o withholding senza retry; anche transcript globale e output EA
-restano da collegare. I test locali non conferiscono nuovo credito alla
+Il seal fissa un identificatore fresco, **non un burn durevole**. L'entry
+monouso ora prenota entrambi i setup nel journal prima di RNG e impedisce
+retry anche su errore o withholding; burn per tentativo, transcript globale
+e proof restano da collegare. I test locali non conferiscono nuovo credito alla
 riduzione composta, al picco fisico o all'H100.
 
 

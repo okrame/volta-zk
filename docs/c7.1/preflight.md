@@ -2266,12 +2266,10 @@ Il kernel byte usa 96 registri, 24.576 B shared, zero stack/spill; anche
 i dieci kernel BMMA condivisi compilano senza spill. I buffer arena non
 cambiano. Non è un upper, un lower completo o un GO alla spesa.
 
-La chiusura del ledger richiede un Γ pubblico esplicito per RMS e le altre
-ricette: il census corrente usa scale zero, non una calibrazione del
-modello. La scelta fra esperimento con Γ sintetico dichiarato e Γ calibrato
-è stata posta al proprietario; finché resta aperta non si promuovono i
-conteggi del fixture a conteggi del modello reale. Il lavoro locale resta
-in corso, senza richiesta di autorizzazione GPU o spesa.
+La chiusura del ledger richiede il **Γ calibrato del modello reale**,
+selezionato dal proprietario il 2026-09-26. Il census RMS a scale zero
+non lo sostituisce. Il lavoro locale resta in corso; GPU e spesa non sono
+autorizzate.
 
 
 Sul solo Γ RMS sintetico a scale zero, riusando gli intervalli e i profili
@@ -2283,5 +2281,41 @@ la pre-elaborazione concessa gratis non è un algoritmo implementato.
 I conteggi includono i selettori per ogni coppia/profilo/livello, non
 soltanto le porte. Trasferire a RMS il solo prefisso EXP30 B=16 non
 riapre quindi quel fixture. Non è un bound per Γ calibrati diversi o
-per un nuovo prover non scalare. La scelta del workload precede un
-ulteriore port specifico RMS e la chiusura dei relativi conti PCG.
+per un nuovo prover non scalare. L'acquisizione del Γ selezionato precede
+un ulteriore port specifico RMS e la chiusura dei relativi conti PCG.
+
+### Real calibrated Gamma
+
+La scelta è risolta; resta da ottenere l'input. La ricerca locale del
+2026-09-26 nel repository, nei progetti locali e nei percorsi temporanei
+non ha individuato un manifest calibrato. Il
+[contratto congelato](../../manifests/c7-d126-gemma31b-quant-requirements-v1.json)
+ha `instantiated:false` ed esponenti/calibrazione non istanziati; resta
+immutato. Il solo `benchmarks/weights/model.safetensors` contiene 160
+tensori GPT-2 (controllato il solo header di 14.283 B), non i 772 tensori
+Gemma. È stato richiesto il percorso del profilo reale, oppure conferma
+che sia ancora da calibrare. Questo non esclude artefatti esterni ai
+percorsi controllati.
+
+Il raccordo minimo riusa [Recipes::compile](../../rust/volta-pcs/src/c71_matrix/gemma/profile.rs)
+e il wrapper canonico: 772 esponenti W nell'ordine dei tensori pinned e
+1.435 esponenti delle sorgenti A semantiche, identificati dal layout
+ricompilato. La stessa mappa deve valere a O=0/150/300, con alias
+embedding/head coerente ed e_Pi=-14. Servono i riferimenti del manifest
+alla revisione del checkpoint, alla procedura/dati di calibrazione e ai
+controlli numerici: la sola validità sintattica della mappa non dimostra
+che sia calibrata. Le regole correnti RNE/overflow reject, EXP30 e le
+tabelle certificate restano quelle del design e della security; i campi
+vuoti del contratto storico non riaprono quelle scelte.
+
+Ricevuto il profilo, si validano identità e scale, si ricompilano ricette
+e tabelle attese nei tre contesti, quindi si sostituiscono nel ledger
+i circuiti RMS e le riserve PCG dipendenti da Γ. Solo allora si rivalutano
+lower congiunto e picco. Se invece il profilo va prodotto, i soli header
+del checkpoint non bastano: occorrono i pesi reali e dati di attivazione
+per la calibrazione. L'[ingest esistente](../../scripts/c7_d126_gemma_weight_ingest.py)
+gestisce esponenti W e conversione BF16→i16, non calibra da solo A.
+Non si avviano acquisizioni pesanti, calibrazione completa o GPU in questa
+tranche. La ricerca della calibrazione è esterna al protocollo;
+validazione/compilazione di Γ e tutto il replay durante la prova restano
+contati secondo [security §1](security.md#1-enunciato-e-oggetti-fissati).

@@ -40,7 +40,11 @@ abort o esaurimento. Non è un'ammissione del verificatore nativo completo.
 
 Il profilo pubblico numerico deve essere valido e posseduto dal verifier.
 `C71-SOFTMAX-EXP30-v1` è già selezionato: non c'è una decisione sulla ricetta
-ancora da chiedere. Calibrazione e qualità del checkpoint reale restano aperte.
+ancora da chiedere. Il proprietario ha selezionato **Γ calibrato del modello
+reale** per il preflight; il profilo sintetico non lo sostituisce.
+L'artefatto calibrato non è stato trovato nei percorsi locali controllati:
+è richiesto il percorso, oppure la conferma che debba ancora essere prodotto.
+Calibrazione e qualità del checkpoint reale restano da verificare.
 
 ## Native bounded result
 
@@ -229,9 +233,9 @@ screen: ricontando range e coefficienti, il lower parziale congiunto è
 45,267005 / 52,813136 / 60,657831 s. Controlli host ai bordi e compilazioni
 range/BMMA passano; nessuna esecuzione PTX o misura GPU. Il massimo arena
 non cambia. La priorità è completare le fasi mancanti nella stessa somma.
-Occorre fissare Γ per il ledger RMS: il fixture usa scale zero. È pendente
-la decisione del proprietario fra Γ sintetico esplicito per l’esperimento
-e Γ calibrato reale; non si equiparano i due workload. Sul fixture
+Per il ledger RMS è selezionato Γ calibrato reale; manca il relativo
+artefatto, non una decisione fra workload. Il [preflight](preflight.md#real-calibrated-gamma)
+identifica gli input e il raccordo al compilatore esistente. Sul fixture
 a scale zero la coda RMS dopo quattro round concessi gratis dà già
 70,268864 s: il solo trasferimento del prefisso EXP30 B=16 è NO-GO.
 Contatori completi,

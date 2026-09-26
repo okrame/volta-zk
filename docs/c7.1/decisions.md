@@ -9,6 +9,14 @@ impossibile. L'harness e gli identificatori dei goal esistenti restano invariati
 
 ## Goal dispositions
 
+Il **2026-09-26** il proprietario ha scelto **Γ calibrato del modello reale**
+per il goal locale «C7.1 pronto per il minimo esperimento H100».
+Gli esponenti cambiano i circuiti RMS e le riserve: il fixture a scale zero
+non può certificare il ledger di questo workload. Il
+[preflight](preflight.md#real-calibrated-gamma) registra l'artefatto mancante
+e il raccordo al compilatore già disponibile. Restano i vincoli correnti
+su arena, privacy e tempo totale ≤65 s; nessuna GPU o spesa autorizzata.
+
 Il **2026-09-12** il proprietario ha precisato che la memoria extra deve
 essere globale del modello, preparata/caricata una volta e riutilizzabile
 fra utenti/sessioni senza crescita, anche sequenziale. Il prover completo

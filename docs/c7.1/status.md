@@ -512,8 +512,10 @@ il [raccordo EA puntuale](preflight.md#ea-puntuale-dopo-accettazione-f_eq)
 produce sei righe base su due blocchi e due MAC Fp3 originali. Il difetto
 dei prefissi globali trovato nella versione t=1 è riprodotto e corretto:
 il confronto ora controlla anche BAe, non soltanto l'identità MAC.
-Esaurimento o errore terminano il cursore e cancellano lo stato posseduto.
-Restano accordo sul seed EA, transcript/trasporto globali, burn durevole,
+Il seed EA ora deriva dalle aperture F_EQ verificate e dai relativi blind
+freschi già committati, senza parametro prefissato del caller o nuovi
+messaggi. Esaurimento o errore terminano il cursore e cancellano lo stato posseduto.
+Restano composizione ROM del seed, transcript/trasporto globali, burn durevole,
 trie batch e collegamento alla proof; non è ancora il PCG canonico.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;

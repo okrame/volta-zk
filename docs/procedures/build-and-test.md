@@ -140,8 +140,10 @@ e distruzione degli stati trattenuti su rifiuto. Quest'ultimo ora usa
 socketpair Unix, come la catena reale: F_EQ trasporta nove frame tramite
 i helper bootstrap e stampa `C71_SEED6_EQUALITY_WIRE` con i byte effettivi.
 Il filtro `c71_seed6_equality_wire_rejects` verifica ordine, lunghezza
-e troncamenti prima di allocare o usare RNG. Il seed EA del fixture è
-prefissato: non accredita accordo globale, trie batch o bridge alla proof.
+e troncamenti prima di allocare o usare RNG. Il filtro
+`c71_seed6_equality_accepted_ea_seed` confronta SHAKE Python/Rust e binding
+delle aperture; la catena reale usa quel seed, non un parametro prefissato.
+Non accredita composizione ROM globale, trie batch o bridge alla proof.
 Transcript globale, burn e trasporto restano aperti. Ogni filtro
 resta entro 60 s/2 GiB, un worker/thread,
 senza rete esterna. Conservare anche i filtri `c71_seed6::guard::tests`,

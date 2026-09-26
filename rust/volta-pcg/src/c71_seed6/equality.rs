@@ -5,6 +5,10 @@
 use super::real::{RealProverOutput, RealVerifierOutput};
 use super::Fp3Words;
 use rand::{CryptoRng, RngCore};
+use sha3::{
+    digest::{ExtendableOutput, Update, XofReader},
+    Shake256,
+};
 use std::io::{self, Read, Write};
 use volta_field::{Fp, Fp3};
 use zeroize::Zeroizing;
@@ -66,6 +70,18 @@ fn commitment(prefix: &[u8; 32], role: u8, opening: &[u8; 56]) -> [u8; 32] {
     h.update(&[role]);
     h.update(opening);
     *h.finalize().as_bytes()
+}
+
+fn accepted_ea_seed(prefix: &[u8; 32], opening0: &[u8; 56], opening1: &[u8; 56]) -> [u8; 32] {
+    let mut hash = Shake256::default();
+    hash.update(DOMAIN);
+    hash.update(b"/accepted-EA/");
+    hash.update(prefix);
+    hash.update(opening0);
+    hash.update(opening1);
+    let mut seed = [0; 32];
+    XofReader::read(&mut hash.finalize_xof(), &mut seed);
+    seed
 }
 impl<State> Prepared<State> {
     fn exchange(
@@ -270,7 +286,16 @@ impl<State> Openable<State> {
         if local + share != Fp3::ZERO {
             return Err("equality mismatch");
         }
-        Ok(Accepted { retained: self.local.retained, prefix: self.local.prefix })
+        let (opening0, opening1) = if self.local.role == 0 {
+            (&*self.local.opening, bytes)
+        } else {
+            (bytes, &*self.local.opening)
+        };
+        let prefix = accepted_ea_seed(&self.local.prefix, opening0, opening1);
+        if prefix == [0; 32] {
+            return Err("zero accepted EA seed");
+        }
+        Ok(Accepted { retained: self.local.retained, prefix })
     }
 }
 
@@ -438,6 +463,30 @@ pub(super) mod tests {
             "blake3_hasher_bytes":std::mem::size_of::<blake3::Hasher>(),
             "equal_share_sum_zero":true,"global_F_Rand_and_seal_credit":false})
         );
+    }
+
+    #[test]
+    fn c71_seed6_equality_accepted_ea_seed_matches_python_and_binds_openings() {
+        let seed = accepted_ea_seed(&[1; 32], &[2; 56], &[3; 56]);
+        assert_eq!(
+            seed.iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
+            "eeef3cfe102609c57c32479bb08b83107582bf3e75b4996b465d02c135e7bc64"
+        );
+        assert_ne!(seed, accepted_ea_seed(&[4; 32], &[2; 56], &[3; 56]));
+        assert_ne!(seed, accepted_ea_seed(&[1; 32], &[3; 56], &[2; 56]));
+        let mut changed = [3; 56];
+        changed[55] ^= 1;
+        assert_ne!(seed, accepted_ea_seed(&[1; 32], &[2; 56], &changed));
+        let (prepared0, prepared1) = prepared_pair(&[Fp3::ONE], &[Fp3::ONE]);
+        let (committed0, committed1) = commit_pair(prepared0, prepared1);
+        let (commitment0, commitment1) = (committed0.commitment, committed1.commitment);
+        let openable0 = committed0.accept_peer_commitment(commitment1);
+        let openable1 = committed1.accept_peer_commitment(commitment0);
+        let (opening0, opening1) = (openable0.opening(), openable1.opening());
+        let expected = accepted_ea_seed(&openable0.local.prefix, &opening0, &opening1);
+        assert_eq!(openable0.verify(&opening1).unwrap().into_parts().1, expected);
+        assert_eq!(openable1.verify(&opening0).unwrap().into_parts().1, expected);
+        println!("C71_SEED6_EA_SEED absorbed_bytes=184 squeezed_bytes=32 verified_openings=true extra_wire_bytes=0 global_burn=false");
     }
 
     #[test]

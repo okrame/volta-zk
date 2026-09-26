@@ -1652,10 +1652,40 @@ Fp receiver. Il piano persistente canonico conserva lo slot M(beta), ora
 cumulativo, con alpha u32; non confonde questo layout con quello nativo u64.
 I contatori runtime registrano righe complete: su errore del sampler
 sono parziali, con upper pari al lavoro di una riga tentata intera.
-Il seed EA nel fixture è pubblico prefissato, non un accordo F_Rand.
-Restano seed agreement/binding globale, trasporto, burn durevole,
+Il seed EA nel fixture ora deriva dalle aperture F_EQ come sotto, non è
+prefissato dal caller. Restano composizione ROM/binding globale, trasporto, burn durevole,
 trie batch, bridge alla proof, erasure di stack/spill e picco fisico.
 Nessun credito alla composizione malevola, al refinement Lean o a H100.
+
+
+## Seed EA dalle aperture F_EQ
+
+Solo dopo verifica dei commitment e della somma delle share, `Accepted`
+contiene il nuovo binding/seed pubblico di 32 B. È SHAKE256 di
+`VOLTA-C71-Seed6-equality-v1 || /accepted-EA/ || frozen_prefix32 || opening0_56 || opening1_56`.
+Ogni opening è `share24 || blind32`; l'ordine è quello dei ruoli, non di
+ricezione. Sono **184 B assorbiti e 32 B prodotti per ruolo**, senza nuovo
+wire, RNG o heap. Il costruttore EA consuma il seed di `Accepted` e non
+accetta più un parametro seed esterno. Seed zero, apertura non canonica,
+commitment errato o mismatch non rilasciano lo stato. Lo slot di valori/hash
+già riservato resta conservativo, non un bound dello stack compilato.
+
+La scelta riusa i blind freschi di F_EQ, non la coin delle U già pubblica
+prima del confronto: entrambe le share sono committate prima che il blind
+onesto sia aperto. Nel ROM, fuori da collisioni/prequery del blind onesto,
+il nuovo dominio dà una coin pubblica fresca con abort, senza rivelare
+nulla oltre alle aperture già previste. Come envelope locale prudente a
+Q=2^74 il ledger registra `Q*(Q-1)/2^257 + (2*Q+1)/2^256 < 2^-108` per
+collisione, prequery e zero, oltre agli errori primitive già censiti.
+È condizionale a randomness fresca, binding/hiding dei commitment e burn
+senza retry; il trasferimento congiunto sotto EA-LPN-SL e l'indipendenza
+richiesta dalla riduzione non vengono dichiarati provati dal test.
+Non è fairness, UC, una nuova ipotesi o un lemma Lean aggiuntivo.
+
+Il KAT Python/Rust verifica codec e ordine; modifiche a prefisso, ruolo o
+blind cambiano il seed. La catena reale a due blocchi usa lo stesso seed
+derivato nei due endpoint e conserva confronto BAe, MAC e rifiuto c/z.
+I vettori EAGen con seed prefissato restano soltanto test del sampler.
 
 
 ## Seed6: seal di completamento

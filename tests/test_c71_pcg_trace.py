@@ -216,11 +216,27 @@ def test_accepted_expansion_capacity_state_and_reference_cost():
     assert expansion['H_codec_heap_with_EA_terms_bytes']==274
     assert not expansion['EA_public_seed_agreement_credit']
     assert not expansion['batch_trie_or_canonical_cost_credit']
+    assert expansion['local_EA_seed_from_verified_committed_openings']
+    assert not expansion['caller_chosen_EA_seed']
     reduced=trace.seed6_expansion_trace(1,4,2)
     assert reduced['capacity_base_rows']==3
     assert reduced['retained_heap_bytes']=={'sender':48,'receiver':160}
     assert 3*(reduced['H_calls_per_successful_row_sender']+
               reduced['EAGen_SHAKE_calls_per_successful_row_each_role'])==30
+
+
+def test_accepted_ea_seed_python_vector_and_conditional_accounting():
+    import hashlib
+    from fractions import Fraction
+    message=(b'VOLTA-C71-Seed6-equality-v1'+b'/accepted-EA/'+
+             bytes([1])*32+bytes([2])*56+bytes([3])*56)
+    assert hashlib.shake_256(message).hexdigest(32)=='eeef3cfe102609c57c32479bb08b83107582bf3e75b4996b465d02c135e7bc64'
+    equality=trace.seed6_equality_trace()
+    assert equality['accepted_EA_seed_SHAKE_absorbed_bytes_each_role']==len(message)==184
+    assert equality['accepted_EA_seed_SHAKE_squeezed_bytes_each_role']==32
+    assert equality['accepted_EA_seed_extra_rng_and_wire_bytes']==0
+    assert Fraction(equality['accepted_EA_seed_ROM_error_upper_conditional'])<Fraction(1,1<<108)
+    assert not equality['accepted_EA_seed_compositional_or_Lean_credit']
 
 
 def test_consuming_tail_reservation_preserves_prefix_capacity():

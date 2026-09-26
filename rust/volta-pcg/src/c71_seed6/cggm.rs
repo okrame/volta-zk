@@ -637,10 +637,8 @@ mod tests {
             assert_eq!(accepted_sender.is_ok(), fault == 0);
             assert_eq!(accepted_receiver.is_ok(), fault == 0);
             if fault == 0 {
-                let mut sender =
-                    expand::Sender::new(accepted_sender.unwrap(), [0x61; 32], 2).unwrap();
-                let mut receiver =
-                    expand::Receiver::new(accepted_receiver.unwrap(), [0x61; 32], 2).unwrap();
+                let mut sender = expand::Sender::new(accepted_sender.unwrap(), 2).unwrap();
+                let mut receiver = expand::Receiver::new(accepted_receiver.unwrap(), 2).unwrap();
                 assert_eq!(sender.binding, receiver.binding);
                 assert_eq!(sender.heap_bytes(), 96);
                 assert_eq!(receiver.heap_bytes(), 320);
@@ -652,7 +650,7 @@ mod tests {
                     let key = sender.next_row().unwrap();
                     let row = receiver.next_row().unwrap();
                     let (terms, _) =
-                        crate::c71_ea_lpn::public_ea_row([0x61; 32], row_index, 32, 2).unwrap();
+                        crate::c71_ea_lpn::public_ea_row(sender.binding, row_index, 32, 2).unwrap();
                     let expected = terms.iter().fold(Fp::ZERO, |sum, term| {
                         let prefix =
                             [(2, 17), (26, 23)].iter().fold(Fp::ZERO, |sum, &(position, beta)| {

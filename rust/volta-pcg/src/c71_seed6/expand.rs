@@ -1,6 +1,6 @@
 //! Reference expansion after F_EQ acceptance, with one monotone row cursor.
-//! Public EA seed agreement, batch trie, outer transport and durable burn are
-//! still caller obligations. No dense correlation pool is materialized here.
+//! The public EA seed is derived from verified F_EQ openings. Batch trie,
+//! global transcript/burn remain open; no dense pool is materialized here.
 use super::{Error, ReceiverPending, SenderPending};
 use crate::c71_ea_lpn::{acc, add_work, public_ea_row, punc_acc_borrowed, EaTerm, Work};
 use crate::c71_seed6::{equality::Accepted, Fp3Words};
@@ -68,14 +68,10 @@ pub(super) struct Receiver {
 }
 
 impl Sender {
-    pub(super) fn new(
-        accepted: Accepted<SenderPending>,
-        seed: [u8; 32],
-        weight: usize,
-    ) -> Result<Self, Error> {
+    pub(super) fn new(accepted: Accepted<SenderPending>, weight: usize) -> Result<Self, Error> {
         let (pending, binding) = accepted.into_parts();
         let frozen = &pending.guard.frozen;
-        let stream = Stream::new(pending.nonce, seed, frozen.blocks, frozen.height, weight)?;
+        let stream = Stream::new(pending.nonce, binding, frozen.blocks, frozen.height, weight)?;
         let mut roots = pending.roots;
         let mut prefix = Fp3::ZERO;
         for children in roots.iter_mut() {
@@ -136,14 +132,10 @@ impl Sender {
 }
 
 impl Receiver {
-    pub(super) fn new(
-        accepted: Accepted<ReceiverPending>,
-        seed: [u8; 32],
-        weight: usize,
-    ) -> Result<Self, Error> {
+    pub(super) fn new(accepted: Accepted<ReceiverPending>, weight: usize) -> Result<Self, Error> {
         let (pending, binding) = accepted.into_parts();
         let frozen = &pending.guard.frozen;
-        let stream = Stream::new(pending.nonce, seed, frozen.blocks, frozen.height, weight)?;
+        let stream = Stream::new(pending.nonce, binding, frozen.blocks, frozen.height, weight)?;
         let mut beta = Zeroizing::new(Vec::with_capacity(frozen.blocks));
         let mut prefix_tags = Zeroizing::new(Vec::with_capacity(frozen.blocks));
         let (mut beta_sum, mut tag_sum) = (Fp::ZERO, Fp3::ZERO);

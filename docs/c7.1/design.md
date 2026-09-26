@@ -1304,8 +1304,16 @@ per termine. Il packing nelle tre basi Fp3 conserva la stessa identità.
 Il controllo reale produce sei righe e due MAC Fp3, confrontando anche
 BAe su due blocchi; il precedente fixture t=1 non rilevava l'omissione.
 Non è una proof positiva o il percorso canonico a trie batch.
-L'accordo sul seed pubblico EA e il binding globale restano obblighi
-del caller; nessuna nuova premessa viene implicitamente scaricata.
+Il seed EA pubblico è ora SHAKE256 del prefisso F_EQ e delle due aperture
+verificate ordinate per ruolo, nel dominio `/accepted-EA/`; i blind da
+32 B erano già committati prima delle aperture. Nessun nuovo messaggio o
+override del seed nel costruttore di espansione. Nel ROM separato, la
+coin locale richiede blind onesto fresco, commitment binding/hiding e
+assenza di retry: il [ledger condizionale](preflight.md#seed-ea-dalle-aperture-f_eq)
+aggiunge un envelope <2^-108, non un nuovo teorema Lean o un trasferimento
+compositivo automatico. Rifiuti/withholding restano abort, non fairness;
+binding globale, burn durevole e indipendenza nella riduzione completa
+rimangono obblighi aperti, senza modificare le ipotesi primitive selezionate.
 La catena ridotta passa con seed AES reali e rifiuta c/z alterati.
 Questa è un'identità di correttezza verificata, non una nuova riduzione
 malevola o un refinement Lean: si mantengono le premesse EA-LPN/cGGM dello

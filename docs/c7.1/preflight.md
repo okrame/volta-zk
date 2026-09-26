@@ -1537,6 +1537,8 @@ picco fisico rimangono aperti. Nessuna esecuzione H100 è autorizzata.
 
 ## Coin native per split e F_EQ
 
+Evidenza: [27 controlli Rust e 28 Python/C++ su SHA pulita](evidence.md#native-split-and-equality-coins).
+
 Il [protocollo locale](../../rust/volta-pcg/src/c71_seed6/coins.rs) sostituisce
 i coefficienti prefissati della catena reale con commit/risposta/apertura.
 Il commitment BLAKE3 usa il dominio `VOLTA-C71-DORY-COIN-v1`, nonce 32 B,

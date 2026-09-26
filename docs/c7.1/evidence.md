@@ -1647,6 +1647,11 @@ di quel record non danno credito crittografico composto, fisico o H100.
 
 ## Native split and equality coins
 
+Il [record su SHA pulita `efd66bad212b`](../../benchmarks/results/c71-seed6-coins-2026-09-27-efd66bad212b.json)
+conserva **27 test Rust e 28 Python/C++**, seriali entro 60 s/2 GiB per
+processo, hash dei sorgenti/binario, stdout e ledger delle due coin.
+Nessuna GPU o rete esterna; socketpair Unix per i soli seed locali.
+
 La [coin nativa](../../rust/volta-pcg/src/c71_seed6/coins.rs) esegue
 commit/risposta/apertura a ruoli separati, con fase/prefissi/cardinalità
 legati al codec. Uno stream SHAKE e il sampler Fp3 esistente producono le U

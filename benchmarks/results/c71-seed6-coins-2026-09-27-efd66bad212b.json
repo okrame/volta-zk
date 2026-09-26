@@ -1,0 +1,233 @@
+{
+  "binary_sha256": "cec771fdeb657f8c5a0163ec7a178dddb612d06c84011437bd65f6627ac894ec",
+  "build": {
+    "command": "CARGO_TARGET_DIR=/home/okrame/projects/volta-zk/rust/target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2 cargo test --offline --locked -j 1 -p volta-pcg --features c71-b11 --lib c71_seed6 --no-run",
+    "cwd": "rust",
+    "log": "   Compiling volta-pcg v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-pcg)\n    Finished `test` profile [optimized] target(s) in 11.90s\n  Executable unittests src/lib.rs (target/debug/deps/volta_pcg-e9188784cdacb957)\n"
+  },
+  "cggm_ledger": {
+    "H_calls_both_passes": {
+      "receiver": 707761800,
+      "sender": 707786100
+    },
+    "H_calls_each_pass": {
+      "receiver": 353880900,
+      "sender": 353893050
+    },
+    "H_codec_heap_bytes": 98,
+    "blocks": 675,
+    "c_payload_bytes": 307800,
+    "c_prefix_hash_absorbed_bytes_each_role": 307907,
+    "c_prefix_hash_update_calls_each_role": 5,
+    "complete_physical_peak": false,
+    "counter_scope": "source field calls and Vec capacity; coin primitive counted separately, no HBM/hash-permutation credit",
+    "first_pass_Fp3_additions": {
+      "receiver": 707787450,
+      "sender": 353906550
+    },
+    "first_pass_Fp3_by_Fp_multiplications": {
+      "receiver": 12825,
+      "sender": 14175
+    },
+    "first_pass_Fp3_subtractions_upper": {
+      "receiver": 353932875,
+      "sender": 353922075
+    },
+    "first_pass_temporary_heap_bytes": {
+      "receiver": 912,
+      "sender": 456
+    },
+    "global_F_Rand_transport_and_burn_credit": false,
+    "height": 19,
+    "independent_c0_Fp_candidates": 16200,
+    "independent_c0_rng_bytes": 129600,
+    "local_U_coefficient_queries_each_role": 353894400,
+    "native_value_and_hash_slot_bytes": 4096,
+    "native_value_slot_is_not_compiler_stack_bound": true,
+    "ordered_leaf_stream_has_dense_coefficient_array": false,
+    "pending_split_values_heap_bytes_each_role": 16200,
+    "puncture_is_complement_of_guard_bits": true,
+    "real_seed_guard_split_equality_reduced_check": true,
+    "receiver_base_Fp_additions_both_passes": 1350,
+    "receiver_base_Fp_subtractions_and_multiplications_each": 12825,
+    "receiver_ordered_sibling_bit_tests": 25650,
+    "retained_private_heap_bytes": {
+      "receiver": 329400,
+      "sender": 32400
+    },
+    "seed_and_guard_state_retained_through_F_EQ": true,
+    "split_Fp3_additions": {
+      "receiver": 353899800,
+      "sender": 353897775
+    },
+    "split_Fp3_by_Fp_multiplications_receiver": 675,
+    "split_Fp3_multiplications": {
+      "receiver": 353898450,
+      "sender": 353897100
+    },
+    "split_Fp3_subtractions": {
+      "receiver": 353880900,
+      "sender": 353893050
+    },
+    "split_coin_native_commit_open_connected": true,
+    "z_payload_bytes": 16200
+  },
+  "coin_ledger": {
+    "equality": {
+      "BLAKE3_absorbed_bytes_each_role": 160,
+      "BLAKE3_commitment_calls_each_role": 1,
+      "Fp_candidates_upper_each_role": 16200,
+      "SHAKE_absorbed_bytes_each_role": 173,
+      "SHAKE_initializations_each_role": 1,
+      "SHAKE_squeezed_bytes_each_role": 129600,
+      "c_and_equality_corrections_fixed_before_relevant_opening_in_fixture": true,
+      "coefficient_storage_heap_bytes": 0,
+      "coefficients": 675,
+      "commit_response_open_payload_bytes_both_directions": 128,
+      "coordinate_or_prefix_error_poison_stream": true,
+      "counter_scope": "primitive calls/bytes, not Keccak/BLAKE3 instructions or physical stack",
+      "fresh_seed_XOR_bytes_each_role": 32,
+      "full_FS_seal_transport_burn_credit": false,
+      "native_commit_response_open_and_codec": true,
+      "native_value_and_hash_slot_bytes": 4096,
+      "native_value_slot_is_not_compiler_stack_bound": true,
+      "random_bytes_requested": {
+        "committer": 64,
+        "responder": 32
+      },
+      "sampler_failure_upper_shared_tape": "234478980268814160080802548199677882677553596908635781865583097803528621103515625/13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096",
+      "wire_already_in_bootstrap_screen": true,
+      "wire_with_three_reserved_headers_bytes": 146
+    },
+    "split": {
+      "BLAKE3_absorbed_bytes_each_role": 160,
+      "BLAKE3_commitment_calls_each_role": 1,
+      "Fp_candidates_upper_each_role": 8493465600,
+      "SHAKE_absorbed_bytes_each_role": 173,
+      "SHAKE_initializations_each_role": 1,
+      "SHAKE_squeezed_bytes_each_role": 67947724800,
+      "c_and_equality_corrections_fixed_before_relevant_opening_in_fixture": true,
+      "coefficient_storage_heap_bytes": 0,
+      "coefficients": 353894400,
+      "commit_response_open_payload_bytes_both_directions": 128,
+      "coordinate_or_prefix_error_poison_stream": true,
+      "counter_scope": "primitive calls/bytes, not Keccak/BLAKE3 instructions or physical stack",
+      "fresh_seed_XOR_bytes_each_role": 32,
+      "full_FS_seal_transport_burn_credit": false,
+      "native_commit_response_open_and_codec": true,
+      "native_value_and_hash_slot_bytes": 4096,
+      "native_value_slot_is_not_compiler_stack_bound": true,
+      "random_bytes_requested": {
+        "committer": 64,
+        "responder": 32
+      },
+      "sampler_failure_upper_shared_tape": "234478980268814160080802548199677882677553596908635781865583097803528621103515625/25573364124188608359478044506465618376692515984711443667838213813251045284411519960025547596296126227741302219746563054759509816764729633229129121792",
+      "wire_already_in_bootstrap_screen": true,
+      "wire_with_three_reserved_headers_bytes": 146
+    }
+  },
+  "complete_F_Rand_with_abort": false,
+  "complete_physical_peak": false,
+  "credit": false,
+  "date": "2026-09-27",
+  "development_failures": [],
+  "durable_burn": false,
+  "git_dirty": false,
+  "git_sha": "efd66bad212b1092d7f51939fef0207dd532f06b",
+  "gpu_execution": false,
+  "h100_preflight_ready": false,
+  "limits": {
+    "address_space_bytes": 2147483648,
+    "external_network": false,
+    "local_Unix_socket_exception": true,
+    "rayon_threads": 1,
+    "test_threads": 1,
+    "timeout_seconds": 60
+  },
+  "milestone": "C7.1-seed6-native-coins",
+  "prior_evidence": [
+    "benchmarks/results/c71-guard-cggm-split-equality-2026-09-26-4382db54e0ef.json"
+  ],
+  "runs": [
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-e9188784cdacb957",
+        "c71_seed6",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "seconds": 32.939169394318014,
+      "stderr": "C71_SEED6_COINS {\"Coefficients_bytes\":488,\"Committed_bytes\":144,\"Replied_bytes\":144,\"SHAKE_object_bytes\":352,\"XOF_squeezed_bytes\":768,\"coefficients\":4,\"full_FS_and_seal\":false,\"hash_absorbed_bytes\":173,\"heap_bytes\":0}\nC71_GUARD_CGGM_REAL rows=9 original_macs=true split_and_equality_pending=true\nC71_GUARD_CGGM_REAL rows=9 original_macs=true split_and_equality_pending=true\nC71_GUARD_CGGM heights=1..7 roles_separate=true beta_zero=true split_checks=true full_bootstrap=false\nseed6_cggm_native_sizes {\"complete_physical_peak\":false,\"receiver_pending\":728,\"receiver_split_pending\":840,\"sender_pending\":712,\"sender_split_pending\":824}\nC71_SEED6_CGGM_EQUALITY main_rows=12 inverse_rows=3 original_macs=true altered_c_and_z_rejected=true both_coin_commit_open=true full_FS_and_seal=false\nC71_GUARD_CGGM_REAL rows=9 original_macs=true split_and_equality_pending=true\nseed6_mr19_sender={\"work\":{\"fixed_scalar_mul\":768,\"variable_scalar_mul\":768,\"point_add\":768,\"group_hash\":768,\"group_candidates\":1529,\"kdf\":768,\"scalar_candidates\":6144,\"field_candidates\":0,\"prf_field_outputs\":0,\"aes_key_schedules\":0,\"aes_block_encryptions\":0,\"cope_gadget_products\":0,\"check_base_products\":0,\"check_fp9_products\":0,\"compression_fp3_products\":0},\"sent_frames\":[[4,51465],[5,24585]],\"received_frames\":[[3,51465]],\"phase_seconds\":[],\"mr19_inner_vec_capacity_peak_bytes\":266496,\"mr19_retained_seed_capacity_bytes\":24576,\"native_point_bytes\":216,\"native_scalar_bytes\":72} receiver={\"work\":{\"fixed_scalar_mul\":768,\"variable_scalar_mul\":768,\"point_add\":384,\"group_hash\":768,\"group_candidates\":1529,\"kdf\":768,\"scalar_candidates\":6144,\"field_candidates\":0,\"prf_field_outputs\":0,\"aes_key_schedules\":0,\"aes_block_encryptions\":0,\"cope_gadget_products\":0,\"check_base_products\":0,\"check_fp9_products\":0,\"compression_fp3_products\":0},\"sent_frames\":[[3,51465]],\"received_frames\":[[4,51465],[5,24585]],\"phase_seconds\":[],\"mr19_inner_vec_capacity_peak_bytes\":245376,\"mr19_retained_seed_capacity_bytes\":12288,\"native_point_bytes\":216,\"native_scalar_bytes\":72}\n",
+      "stdout": "\nrunning 23 tests\ntest c71_seed6::coins::tests::c71_seed6_coin_order_domains_and_fail_closed ... ok\ntest c71_seed6::coins::tests::c71_seed6_coin_shake_matches_python_stream ... ok\ntest c71_seed6::equality::tests::c71_seed6_equality_real_opposite_role_seeds ... seed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":312,\"n\":1,\"prepare_owned_heap\":264,\"receiver_rows\":3,\"role\":0,\"sender_rows\":3,\"sender_values_capacity\":9}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":312,\"n\":1,\"prepare_owned_heap\":264,\"receiver_rows\":3,\"role\":1,\"sender_rows\":3,\"sender_values_capacity\":9}\nok\ntest c71_seed6::equality::tests::c71_seed6_equality_two_keys_match_and_reject_framing ... seed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":0,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":1,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":0,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":1,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":0,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":1,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":0,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":1,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":0,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":1,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":0,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":1,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":0,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":528,\"n\":2,\"prepare_owned_heap\":432,\"receiver_rows\":6,\"role\":1,\"sender_rows\":6,\"sender_values_capacity\":6}\nseed6_equality {\"Committed_bytes\":121,\"Frozen_bytes\":1056,\"Openable_bytes\":153,\"Prepared_bytes\":1000,\"blake3_hasher_bytes\":1920,\"equal_share_sum_zero\":true,\"global_F_Rand_and_seal_credit\":false}\nok\ntest c71_seed6::equality::tests::c71_seed6_real_prefix_guard_and_exact_equality_tail_are_disjoint ... seed6_tail_reservation {\"prover\":{\"copied_payload_bytes\":96,\"destination_vec_capacity_bytes\":528,\"duplicated_fixed_secret_bytes\":0,\"named_vec_capacity_peak_bytes\":528,\"source_vec_capacity_bytes\":432},\"rows\":12,\"tail_rows\":3,\"verifier\":{\"copied_payload_bytes\":72,\"destination_vec_capacity_bytes\":360,\"duplicated_fixed_secret_bytes\":24,\"named_vec_capacity_peak_bytes\":360,\"source_vec_capacity_bytes\":288}}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":264,\"n\":1,\"prepare_owned_heap\":216,\"receiver_rows\":3,\"role\":0,\"sender_rows\":3,\"sender_values_capacity\":3}\nseed6_equality_heap {\"audit_heap_after_prepare\":0,\"complete_physical_peak\":false,\"freeze_or_commit_owned_heap\":264,\"n\":1,\"prepare_owned_heap\":216,\"receiver_rows\":3,\"role\":1,\"sender_rows\":3,\"sender_values_capacity\":3}\nok\ntest c71_seed6::equality::tests::c71_seed6_tail_reservation_rejects_unsplit_prefix_and_bad_shapes ... ok\ntest c71_seed6::guard::cggm::tests::c71_seed6_guard_cggm_randomness_and_sampler_fail_closed ... ok\ntest c71_seed6::guard::cggm::tests::c71_seed6_guard_cggm_rejects_shapes_codec_and_changed_private_path ... ok\ntest c71_seed6::guard::cggm::tests::c71_seed6_guard_cggm_separate_roles_all_small_paths ... ok\ntest c71_seed6::guard::cggm::tests::c71_seed6_real_guard_cggm_split_and_two_key_equality ... ok\ntest c71_seed6::guard::tests::guard_recipe_shapes_ids_and_prefix_bindings ... seed6_guard_workspace {\"BLAKE3_Hasher_size\":1920,\"Frozen_size\":72,\"ProverGuard_size\":528,\"VerifierChallenged_size\":552,\"VerifierGuard_size\":528,\"complete_stack_or_allocator_peak\":false,\"correction_heap_capacity\":108000}\nok\ntest c71_seed6::guard::tests::original_seed_guard_binary_zero_and_malformed_paths ... ok\ntest c71_seed6::real::tests::aes_cope_independent_openssl_vectors_and_bounds ... ok\ntest c71_seed6::real::tests::frame_header_rejects_wrong_length_before_payload_allocation ... ok\ntest c71_seed6::real::tests::real_seed6_main_n1_and_inverse_n3_with_swapped_endpoints ... seed6_real {\"direction\":0,\"n\":1,\"outer_composition_credit\":false,\"physical_peak_credit\":false,\"prover\":{\"mr19_inner_vec_capacity_peak_bytes\":266496,\"mr19_retained_seed_capacity_bytes\":24576,\"native_point_bytes\":216,\"native_scalar_bytes\":72,\"phase_seconds\":[],\"received_frames\":[[2,162],[3,51465],[7,57],[9,57]],\"sent_frames\":[[1,162],[4,51465],[5,24585],[6,21513],[8,105]],\"work\":{\"aes_block_encryptions\":64512,\"aes_key_schedules\":16128,\"check_base_products\":0,\"check_fp9_products\":0,\"compression_fp3_products\":0,\"cope_gadget_products\":2688,\"field_candidates\":43064,\"fixed_scalar_mul\":768,\"group_candidates\":1572,\"group_hash\":768,\"kdf\":768,\"point_add\":768,\"prf_field_outputs\":5376,\"scalar_candidates\":6144,\"variable_scalar_mul\":768}},\"prover_capacities\":{\"check_named_state_bytes\":240,\"check_phase\":440,\"common_context_len\":121,\"compression_named_state_bytes\":48,\"compression_phase\":416,\"cope_phase\":28280,\"full_context_capacity\":240,\"mr19_phase\":266736,\"retained_output\":80},\"verifier\":{\"mr19_inner_vec_capacity_peak_bytes\":245376,\"mr19_retained_seed_capacity_bytes\":12288,\"native_point_bytes\":216,\"native_scalar_bytes\":72,\"phase_seconds\":[],\"received_frames\":[[1,162],[4,51465],[5,24585],[6,21513],[8,105]],\"sent_frames\":[[2,162],[3,51465],[7,57],[9,57]],\"work\":{\"aes_block_encryptions\":32256,\"aes_key_schedules\":8064,\"check_base_products\":0,\"check_fp9_products\":0,\"compression_fp3_products\":0,\"cope_gadget_products\":2688,\"field_candidates\":21648,\"fixed_scalar_mul\":768,\"group_candidates\":1572,\"group_hash\":768,\"kdf\":768,\"point_add\":384,\"prf_field_outputs\":2688,\"scalar_candidates\":6144,\"variable_scalar_mul\":768}},\"verifier_capacities\":{\"check_named_state_bytes\":192,\"check_phase\":432,\"common_context_len\":121,\"compression_named_state_bytes\":168,\"compression_phase\":360,\"cope_phase\":15936,\"full_context_capacity\":240,\"mr19_phase\":245616,\"retained_output\":24}}\nseed6_real {\"direction\":1,\"n\":3,\"outer_composition_credit\":false,\"physical_peak_credit\":false,\"prover\":{\"mr19_inner_vec_capacity_peak_bytes\":266496,\"mr19_retained_seed_capacity_bytes\":24576,\"native_point_bytes\":216,\"native_scalar_bytes\":72,\"phase_seconds\":[],\"received_frames\":[[2,162],[3,51465],[7,153],[9,57]],\"sent_frames\":[[1,162],[4,51465],[5,24585],[6,27657],[8,105]],\"work\":{\"aes_block_encryptions\":110592,\"aes_key_schedules\":27648,\"check_base_products\":0,\"check_fp9_products\":0,\"compression_fp3_products\":0,\"cope_gadget_products\":3456,\"field_candidates\":55368,\"fixed_scalar_mul\":768,\"group_candidates\":1544,\"group_hash\":768,\"kdf\":768,\"point_add\":768,\"prf_field_outputs\":6912,\"scalar_candidates\":6144,\"variable_scalar_mul\":768}},\"prover_capacities\":{\"check_named_state_bytes\":240,\"check_phase\":552,\"common_context_len\":121,\"compression_named_state_bytes\":48,\"compression_phase\":576,\"cope_phase\":28392,\"full_context_capacity\":240,\"mr19_phase\":266736,\"retained_output\":144},\"verifier\":{\"mr19_inner_vec_capacity_peak_bytes\":245376,\"mr19_retained_seed_capacity_bytes\":12288,\"native_point_bytes\":216,\"native_scalar_bytes\":72,\"phase_seconds\":[],\"received_frames\":[[1,162],[4,51465],[5,24585],[6,27657],[8,105]],\"sent_frames\":[[2,162],[3,51465],[7,153],[9,57]],\"work\":{\"aes_block_encryptions\":55296,\"aes_key_schedules\":13824,\"check_base_products\":0,\"check_fp9_products\":0,\"compression_fp3_products\":0,\"cope_gadget_products\":3456,\"field_candidates\":27888,\"fixed_scalar_mul\":768,\"group_candidates\":1544,\"group_hash\":768,\"kdf\":768,\"point_add\":384,\"prf_field_outputs\":3456,\"scalar_candidates\":6144,\"variable_scalar_mul\":768}},\"verifier_capacities\":{\"check_named_state_bytes\":192,\"check_phase\":528,\"common_context_len\":121,\"compression_named_state_bytes\":168,\"compression_phase\":504,\"cope_phase\":16032,\"full_context_capacity\":240,\"mr19_phase\":245616,\"retained_output\":72}}\nok\ntest c71_seed6::real::tests::real_seed6_n9_original_mac_path_guard ... seed6_real {\"direction\":0,\"n\":9,\"outer_composition_credit\":false,\"physical_peak_credit\":false,\"prover\":{\"mr19_inner_vec_capacity_peak_bytes\":266496,\"mr19_retained_seed_capacity_bytes\":24576,\"native_point_bytes\":216,\"native_scalar_bytes\":72,\"phase_seconds\":[],\"received_frames\":[[2,162],[3,51465],[7,441],[9,57]],\"sent_frames\":[[1,162],[4,51465],[5,24585],[6,46089],[8,105]],\"work\":{\"aes_block_encryptions\":184320,\"aes_key_schedules\":46080,\"check_base_products\":0,\"check_fp9_products\":0,\"compression_fp3_products\":0,\"cope_gadget_products\":5760,\"field_candidates\":92280,\"fixed_scalar_mul\":768,\"group_candidates\":1565,\"group_hash\":768,\"kdf\":768,\"point_add\":768,\"prf_field_outputs\":11520,\"scalar_candidates\":6144,\"variable_scalar_mul\":768}},\"prover_capacities\":{\"check_named_state_bytes\":240,\"check_phase\":888,\"common_context_len\":121,\"compression_named_state_bytes\":48,\"compression_phase\":1056,\"cope_phase\":28728,\"full_context_capacity\":240,\"mr19_phase\":266736,\"retained_output\":336},\"verifier\":{\"mr19_inner_vec_capacity_peak_bytes\":245376,\"mr19_retained_seed_capacity_bytes\":12288,\"native_point_bytes\":216,\"native_scalar_bytes\":72,\"phase_seconds\":[],\"received_frames\":[[1,162],[4,51465],[5,24585],[6,46089],[8,105]],\"sent_frames\":[[2,162],[3,51465],[7,441],[9,57]],\"work\":{\"aes_block_encryptions\":92160,\"aes_key_schedules\":23040,\"check_base_products\":0,\"check_fp9_products\":0,\"compression_fp3_products\":0,\"cope_gadget_products\":5760,\"field_candidates\":46608,\"fixed_scalar_mul\":768,\"group_candidates\":1565,\"group_hash\":768,\"kdf\":768,\"point_add\":384,\"prf_field_outputs\":5760,\"scalar_candidates\":6144,\"variable_scalar_mul\":768}},\"verifier_capacities\":{\"check_named_state_bytes\":192,\"check_phase\":816,\"common_context_len\":121,\"compression_named_state_bytes\":168,\"compression_phase\":936,\"cope_phase\":16320,\"full_context_capacity\":240,\"mr19_phase\":245616,\"retained_output\":216}}\nok\ntest c71_seed6::tests::seed6_codec_is_strict_for_every_limb ... ok\ntest c71_seed6::tests::seed6_k6_multiplication_reduces_and_uses_v_squared_seven ... ok\ntest c71_seed6::tests::seed6_mr19_invalid_choice_fails_before_first_frame ... ok\ntest c71_seed6::tests::seed6_python_vectors_check_before_compress_and_preserve_mac ... ok\ntest c71_seed6::tests::seed6_real_384_ot_preserves_choices_and_censuses_frames ... ok\ntest c71_seed6::tests::seed6_rejects_before_alpha_and_rejects_zero_compressed_key ... ok\ntest c71_seed6::tests::seed6_rejects_each_data_and_mask_limb_before_alpha ... ok\n\ntest result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 66 filtered out; finished in 32.94s\n\n"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-e9188784cdacb957",
+        "c71_ea_lpn::tests",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "seconds": 0.18390541104599833,
+      "stderr": "C71_CGGM_FIRST_SPLIT heights=1..7 independent_k=true distributed_setup=false\n",
+      "stdout": "\nrunning 4 tests\ntest c71_ea_lpn::tests::cggm_h_matches_python_reference_vectors ... ok\ntest c71_ea_lpn::tests::codecs_fail_closed_on_bad_shapes ... ok\ntest c71_ea_lpn::tests::ea_row_is_deterministic_distinct_nonzero_and_domain_separated ... ok\ntest c71_ea_lpn::tests::punctured_accumulation_matches_original_coin_tree ... ok\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 85 filtered out; finished in 0.18s\n\n"
+    },
+    {
+      "command": [
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_pcg_trace.py",
+        "tests/test_c71_response_trace.py",
+        "tests/test_c71_ordered_getter.py"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "seconds": 13.243527550250292,
+      "stderr": "",
+      "stdout": "........................                                                 [100%]\n24 passed in 13.16s\n"
+    },
+    {
+      "command": [
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_arena_plan.py",
+        "-k",
+        "seed6_guard_cggm or native_offsets_margin_and_fenced_release"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "seconds": 14.904569517821074,
+      "stderr": "",
+      "stdout": "....                                                                     [100%]\n4 passed, 8 deselected in 14.82s\n"
+    }
+  ],
+  "sampler_failure_upper": "234478980268814160080802548199677882677553596908635781865583097803528621103515625/13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096",
+  "scope": "Real AES Seed6 (12 main and 3 inverse rows), guard, role-separated cGGM, split and two-key equality now execute both native commit/response/open coins. Test RNG is reproducible, not a fixed coefficient callback. c/z mutations reject; altered c is bound to the same prefix by both roles. Independent Python SHAKE vectors, ordered leaf stream, phase/codec/RNG failures. No global guard FS, sealing, durable burn, transport, EA expansion, full PCG or H100 credit.",
+  "source_sha256": {
+    "docs/c7.1/design.md": "963f4e2f11a6d6a121c0384895f49f2eace893056781773a0f9f7d4b18149eb1",
+    "docs/c7.1/evidence.md": "907db5085ed924b2611b705013cc0a5ad044c28598e64b3666bcf6e8f48cae4c",
+    "docs/c7.1/preflight.md": "205b7cea0f4a669021fab82a75d03a2eb1e9ed89b67616adeec5cea789b5b817",
+    "docs/c7.1/status.md": "53b49d27b48c53541b080a15476d8fa72725ddf3d8654d60c8913c309161a154",
+    "docs/procedures/build-and-test.md": "b762d567980b381dc97cd72e653675de511d6be04e302a30cdca2c36d4f53822",
+    "rust/volta-pcg/src/c71_ea_lpn.rs": "ac1e169b7fc9613454025a1194280a31feaee49037ce49558d3426d4e8978e31",
+    "rust/volta-pcg/src/c71_seed6.rs": "86910fe9f9dd1ecf4b8495a2ace720883d82be7b019d688da9b6fa9fbd4b3de0",
+    "rust/volta-pcg/src/c71_seed6/cggm.rs": "015ab459a0e062f996b2fd7d0ae3a3d600001a2c7025f737de6ff09d41692237",
+    "rust/volta-pcg/src/c71_seed6/coins.rs": "5842989ec3715eaca672c1c7833892e65fb25b09c5ed0dae82292d8877dcb1a2",
+    "rust/volta-pcg/src/c71_seed6/equality.rs": "7b5e36b506687a179d20a0da7ee4bcd0faf2739d1c9e4372f75f241720d4ef4d",
+    "scripts/c71_arena_plan.py": "cf7900e18ca89ec5d120b3d91891737643884d1030c23d163317fa73910c8ff2",
+    "scripts/c71_pcg_trace.py": "fed79e327b3a1696c4dda62e1cff12aada1192a530ceedc4a34765c40ab6d6f5",
+    "tests/test_c71_arena_plan.py": "f5a06eefa4a19337066c589b1bce1d60656669d213a73b564eaa4a111704b9f5",
+    "tests/test_c71_pcg_trace.py": "50c5847cf372c850465002aeec8b07a42c0e92472b9cdc489a7e4297ffdfb170"
+  },
+  "tests_passed": {
+    "rust": 27,
+    "python": 28
+  }
+}

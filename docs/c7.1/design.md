@@ -929,10 +929,32 @@ somma seriale con range/commit/prime aperture supera 65 s a O=150/300,
 anche concedendo gratis inferenza, tutti i producer e il resto. Questa
 linea è NO-GO senza H100; la condizione di riapertura è una riduzione del
 lavoro o un mapping aritmetico diverso con nuovo screen. Il bound non si
-trasferisce a una fattorizzazione della tree. La prossima analisi riguarda
-la contrazione pubblica dell’asse dei nodi e il grado delle funzioni del
-byte, conservando endpoint, gradi GKR, FS e NoPeek. È ricerca locale,
-non una nuova ipotesi o selezione di protocollo.
+trasferisce a una fattorizzazione della tree.
+
+La [contrazione candidata](preflight.md#original-byte-node-contraction)
+usa il grado delle funzioni del byte e il selettore originale dei nodi.
+Al livello h ogni figlio ha numeratore di grado ≤D−1 e denominatore di
+grado D, D=2^(7−h). La forma quadratica pubblica dei figli ha una base di
+dimensione al più min(4·2^h,D+1). La diagonalizzazione per congruenza in
+caratteristica dispari conserva anche matrici singolari e pivot fuori
+diagonale; non richiede radici quadrate. I ranghi massimi degli otto
+livelli sono [4,8,16,17,9,5,3,2], somma 64. Si foldano le funzioni dei
+byte originali, mai la funzione del byte già foldato. Il selettore dei
+nodi e lambda sono quelli già disponibili all'inizio del livello.
+
+Le direzioni eliminate dalla forma possono servire ai quattro claim
+terminali. Un nuovo replay privato dei byte, pesato con Eq del punto
+cella appena completato, ricostruisce quindi tutti i figli originali;
+seguono gli stessi round lane/nodo e MAC. Il padding strutturale del
+frame GKR, il cui dominio è già completo, è byte zero: si separa la
+baseline pubblica f(0) e si compatta soltanto il supporto pubblico di
+f(byte)−f(0). Il caso generico byte-function con live_cells inferiore
+al dominio ha invece numeratori nulli fuori live_cells e richiede una
+baseline distinta; non è coperto da questo piano EXP30. Nessun pruning
+dipende da zeri privati. Istogrammi e stati contratti restano privati,
+senza nuovi messaggi, sfide, endpoint o assunzioni. Il test finito
+controlla l'identità algebrica e il recupero terminale; refinement
+nativo completo/Lean e costi hardware restano obblighi aperti.
 
 
 

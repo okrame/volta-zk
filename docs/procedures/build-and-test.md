@@ -35,6 +35,11 @@ sono oracoli CPU e controllo arena, senza prove canoniche né GPU. Il file
 SASS e ptxas; i siti BMMA statici di un ciclo srotolato non sono il conteggio
 dinamico per tile. Il programma non contiene un percorso di lancio GPU.
 
+Per la contrazione della tree byte eseguire soltanto
+`tests/test_c71_byte_tree_contraction.py`, entro 60 s/2 GiB. Comprende
+oracolo algebrico e checker C++ di indirizzi/fence nei tre contesti.
+Non esegue una proof con la nuova tree, né inferenza o GPU.
+
 ## Rust and resource limits
 
 Per il raccordo streaming critico, dopo la build PCS mirata, eseguire

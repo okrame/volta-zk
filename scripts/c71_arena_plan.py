@@ -96,8 +96,10 @@ def lookup_events(name, trace):
             dict(event=name+'_endpoint_last_consumer_fence',free=[*cache,*retained,name+':triples',name+':Eq_scratch'])]
 
 
-def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False):
+def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False,
+           byte_node_contraction=False):
     if reuse_reader_for_commit and not ordered_getter:raise ValueError('ordered getter variant required')
+    if byte_node_contraction and not ordered_getter:raise ValueError('ordered getter variant required')
     initial_rows=1 << (22 if reuse_reader_for_commit else 21)
     pcs={35:whir.trace(35),34:whir.trace(34,initial_coset_rows=initial_rows)}
     retained=whir.a_s1_retention_schedule(s2_coset_rows=1<<22,
@@ -267,6 +269,9 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                     'EXP30:byte_prefix_weights':endpoint['max_prefix_weight_payload_bytes']},
                 'unknown':['lookup descriptor/proof/correlations and allocator capacities',
                            'programs/proof/correlations and complete GKR workspace']})
+            if byte_node_contraction:
+                import c71_byte_tree_contraction as contraction
+                events.extend(contraction.arena_events(next(c for c in gkr.ratio_cases() if c['old_tokens']==old)))
             events.append({'event':'EXP30_last_original_byte_consumer_fence',
                 'free':['EXP30:ratio_original_cache','getter:cuts','EXP30:byte_LUT','EXP30:byte_coefficients',
                         'EXP30:byte_prefix_weights']})
@@ -306,6 +311,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
             cases[-1]['work_ledger']='c71_ordered_getter.response_ledger; legacy sourcewise pass counts do not apply'
     return {'credit':False,'deadline_seconds':response.DEADLINE_SECONDS,
         'ordered_getter_windows_included':ordered_getter,
+        'candidate_byte_node_contraction_included':byte_node_contraction,
         'reader_slot_reused_during_initial_commit':reuse_reader_for_commit,
         'reader_reuse_requires':'native scatter producer and salted CUDA leaf hashing in consumed coset cells; CPU codec/strided root refinement checked, GPU adapter pending',
         'initial_A_coset_rows':initial_rows,'A_S2_coset_rows':1 << 22, 'A_successor_coset_rows_cap':1 << 23,

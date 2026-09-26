@@ -1435,6 +1435,16 @@ Il riferimento nativo di proof/FS/MAC resta il record precedente: questo
 record non collega ancora l’aggregato CUDA al prover. `credit:false`,
 nessun service-rate, upper temporale, positivo AES/GPU o autorizzazione di spesa.
 
+### Original byte node contraction
+
+L'[oracolo](../../tests/test_c71_byte_tree_contraction.py) controlla la
+diagonalizzazione anche singolare, la parità dei cubici dopo fold non
+Booleani, la baseline del padding pubblico e il recupero dei figli
+originali. Il checker C++ controlla il piano con due stati disgiunti a
+O=0/150/300, cache e LUT originali ancora vive. Sono controlli algebrici
+e di indirizzi richiesti: nessuna esecuzione della nuova tree nativa,
+CUDA o misura hardware. [Conteggi e limiti](preflight.md#original-byte-node-contraction).
+
 ### Native moment seam and byte tree screen
 
 Il [record pulito `b63461fa58e8`](../../benchmarks/results/c71-byte-seam-and-tree-screen-2026-09-26-b63461fa58e8.json)

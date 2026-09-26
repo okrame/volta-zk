@@ -2142,3 +2142,51 @@ non serve un ledger completo per respingere un sottoinsieme che supera
 pubblico dei nodi, struttura polinomiale del byte o altro mapping cambiano
 le premesse e richiedono un nuovo screen. La priorità locale diventa quel
 controllo strutturale. Nessun H100/pod/spesa; il goal fisico resta aperto.
+
+### Original byte node contraction
+
+La [candidata locale](../../scripts/c71_byte_tree_contraction.py) contrae
+il selettore pubblico originale dei nodi prima dei round cella. I figli
+sono polinomi nel byte di grado D=2^(7−h): una base di dimensione
+min(4·2^h,D+1) contiene la forma quadratica originale. La somma delle
+dimensioni è **64**, contro **1.020** funzioni figlio. Il lavoro cella
+passa da O(N·B) a O(N·sqrt(B)) rispetto all'alfabeto B; setup pubblico
+e recupero terminale sono separati. Nessun costo è dichiarato gratuito.
+
+Il test algebrico confronta tutti i cubici su piccoli alfabeti, sfide
+non Boolean/0/1, matrici singolari e padding pubblico. Un istogramma
+pesato al punto cella finale ricostruisce anche le direzioni eliminate
+dalla forma: omettere quel replay sarebbe scorretto. Il padding EXP30
+usa una baseline byte zero pubblica, conservata analiticamente, e le
+12 lane vive. Eq resta sugli indici originali.
+
+Il piano mantiene nove round streaming. Una LUT pubblica prepesata
+per lane elimina i prodotti campo durante la rigenerazione dei singoli
+valori; il ledger conserva costruzione delle LUT, letture e somme.
+Al checkpoint la LUT massima occupa 53.477.376 B; un batch di 16.384
+coppie occupa al più 13.369.344 B, oltre a indici/Eq. Questi buffer sono
+rilasciati con fence prima dei fold successivi. Non si presume residenza
+in cache o fold in-place: destinazione e sorgente sono disgiunte.
+
+| O | Stato al checkpoint, B | Massimo dei due stati, B | Indirizzo massimo catena EXP30, B | Massimo di tutte le catene note, B |
+|---:|---:|---:|---:|---:|
+| 0 | 221.788.800 | 332.683.200 | 2.082.995.968 | 6.087.507.456 |
+| 150 | 662.428.800 | 993.643.200 | 3.370.001.152 | 6.126.832.384 |
+| 300 | 1.103.068.800 | 1.654.603.200 | 3.851.690.752 | 6.166.153.984 |
+
+Il massimo globale nominato resta range A. Il margine peggiore è
+276.296.960 B, appena 7.861.504 B oltre i 256 MiB richiesti: non autorizza
+workspace ulteriori impliciti. Cache E/Pi/Z, LUT byte originale e slot
+persistenti restano vivi; il checker nativo controlla indirizzi e fence.
+Il piano riserva anche feature/diagonali, supporti, scratch pubblico da
+1 MiB e recupero dei figli. Sono payload pianificati, non capacità
+native o misura del picco fisico.
+
+I soli coefficienti delle coppie supportate richiedono al più
+102.495.293.760 / 306.055.256.256 / 509.614.088.256 prodotti Fp3.
+Il [report](../../scripts/c71_byte_tree_contraction.py) separa fold,
+LUT, rigenerazione, recupero e coda lane/nodo. Restano setup pubblico,
+baseline/Eq, istruzioni e traffico completi: non eredita il lower del
+kernel scalare respinto. `T_inference`, `T_proof_only`, `T_response_total`
+non hanno nuovi upper; replay e recupero appartengono alla prova.
+Gate di spesa **NO-GO**, priorità al confronto nativo con la stessa tree.

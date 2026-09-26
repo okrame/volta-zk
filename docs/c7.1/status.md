@@ -177,9 +177,16 @@ range/commit/prime aperture, senza altri lavori, danno lower condizionali
 **49,737497 / 70,116188 / 73,715684 s**. È NO-GO per O=150/300 della
 schedule letterale, non della relazione o di ogni fattorizzazione possibile.
 La LUT risparmia memoria ma non elimina l’enumerazione dei nodi.
-Priorità: fattorizzare quel lavoro a transcript invariato, prima di altri
-port scalari o H100. Il miglioramento EXP30 resta riutilizzabile; nessun
-nuovo census ABI.
+La [contrazione pubblica dei nodi](preflight.md#original-byte-node-contraction)
+riduce a **64** il numero complessivo di funzioni intermedie per cella,
+contro 1.020: conserva i cubici e recupera i figli originali con un nuovo
+passaggio sui byte autenticati. Passano l'oracolo algebrico ridotto e il
+piano nominato con due buffer disgiunti. Il massimo indirizzo EXP30 resta
+2.082.995.968 / 3.370.001.152 / 3.851.690.752 B; il massimo delle catene
+note resta range A, con almeno 276.296.960 B non indirizzati. Non è il
+picco fisico completo. Priorità: confronto nel campo nativo e raccordo
+alla tree originale, poi istruzioni/traffico e lower congiunto della nuova
+costruzione. Il NO-GO scalare non si trasferisce alla contrazione.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 
 **NO-GO del backend scalare fuso ora implementato:** per il circuito

@@ -1,5 +1,12 @@
 # C7.1 — preflight locale, 2026-09-19
 
+**Traguardo locale attivo (2026-09-26): pronto per il minimo esperimento
+H100.** Il gate pre-spesa sotto è il criterio di achieved; un upper H100
+misurato entro 65 s non è richiesto per chiudere questo goal locale.
+Il lavoro continua senza GPU o spesa. Margine invariato: si interviene
+su una coesistenza di buffer che sfora concretamente, senza riservare
+preventivamente ulteriore margine.
+
 **NO-GO per H100 del main-cell scalare implementato.** Il solo EXP30 a
 O=300 richiede ≥67,103981 s alle condizioni hardware dichiarate, prima
 di qualsiasi altro costo. La prova ridotta integrata passa, ma questo
@@ -785,7 +792,7 @@ Non esclude i 65 s, ma non giustifica una spesa H100.
 | PCS completa | Tutti i 12 oracoli per catena, maschere, stati folded, source-uniformity e salt seek | Ancora aperto |
 | PCG | Trace AES/cGGM a batch, seed/state/OT, no pool bulk; costi di entrambi i ruoli | Upper componente soltanto |
 | Memoria | Ogni buffer vivo, arena totale, allocated/reserved globale <80 GB, assenza di spill | Buffer nominati compatibili nella variante, totale ignoto |
-| Tempo | Somma completa <=65 s sotto contratti applicabili; ogni lower compatibile | Replay completo e getter scalare esclusi; alternativa senza upper finito |
+| Tempo prima delle misure | Lavoro completo, lower congiunto compatibile con 65 s, service-rate ignoti isolati; nessun upper H100 richiesto | Replay completo e getter scalare esclusi; ledger integrato candidato aperto |
 | Riproduzione e spesa | Clean SHA pubblicata, harness/input integrati, immagine/deadline/prezzo fissati, autorizzazione nuova | Gate non raggiunto |
 
 Non si propone RunPod per il replay già escluso né si usa un microbench

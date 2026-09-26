@@ -7,6 +7,22 @@ prove e risultati dei test hanno ciascuno la propria sede nei link sopra.
 
 ## Current result
 
+**Goal locale in corso: C7.1 pronto per il minimo esperimento H100.**
+Il proprietario ha confermato il 2026-09-26 che non occorre dimostrare
+i 65 s prima delle misure. La chiusura richiede costruzione integrata
+corretta su input ridotti, ledger completo senza costi omessi, picco
+pianificato con almeno 256 MiB liberi e lower congiunto compatibile
+con 65 s a O=0/150/300; poi harness/input, SHA pulita, comando,
+durata massima, costo e soglie verificabili per il minimo esperimento.
+Solo allora il goal locale è achieved e si presenta la proposta H100.
+Il lavoro locale è autorizzato e non è stalled; GPU e spesa restano
+subordinate a successiva autorizzazione. Il vecchio tracker automatico
+riporta ancora il goal 70/40 MB come blocked: l'API disponibile consente
+solo complete/blocked e rifiuta la sostituzione di un goal incompleto.
+Non viene falsificata la chiusura del vecchio goal per aggirare quel limite.
+Priorità all'integrazione; nessun nuovo census o ottimizzazione isolata
+salvo correttezza o impatto ≥16 MiB di picco / ≥0,5 s di tempo.
+
 **B12 è concluso come goal matematico condizionale.** Il
 [protocollo composto](security.md) definisce preparatore, verificatore,
 consumo dei MAC originali e promozione dello stato, e dimostra che tutta

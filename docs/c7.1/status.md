@@ -45,7 +45,7 @@ Il proprietario ha confermato che Γ è **da calibrare**: non si attende un
 percorso a un artefatto già esistente. È selezionato il **workload C7.1
 fissato nei tre contesti O=0/150/300, senza certificazione di qualità generale**.
 Il [percorso preparatorio](preflight.md#real-calibrated-gamma) distingue
-quantizzazione W già disponibile, calibrazione A da integrare ed esecuzioni
+quantizzazione W e inizializzatore A disponibili, validazione da eseguire ed esecuzioni
 pesanti ancora non autorizzate.
 È implementato il dispatcher numerico per righe del DAG canonico, con
 ricette RMS/RNE originali, indirizzi QK/KV/RoPE e driver causale per token;
@@ -59,8 +59,11 @@ reali, scelta delle scale e validazione completa. L'harness offline ora
 lega una mappa candidata ai tre contesti, genera le tabelle con il
 riferimento certificato e trasferisce solo KV di trial terminati. Sono
 controllati input pubblici e passaggio dello stato, non un forward completo.
-Restano inizializzazione delle scale A sui pesi reali e replay numerico
-positivo; non è ancora Γ calibrato né esecuzione completa del modello.
+L'inizializzatore floating riusa il DAG nativo e W packed, propone una
+sola mappa A dai tre contesti e conserva provenienza/errori. I controlli
+coprono un grafo piccolo e gli ID canonici, non attivazioni reali.
+Restano esecuzione sui pesi reali, eventuale adattamento delle scale e
+replay intero positivo; non è ancora Γ calibrato né modello completo.
 
 ## Native bounded result
 
@@ -115,7 +118,8 @@ ora condividono validazione di forma/codec/coefficienti fra Prepare e
 verifier, con controllo i16 prima della valutazione intera.
 I controlli locali usano righe sintetiche per 421 norme, 892 coppie RNE
 e tutte le relazioni affini nei tre contesti;
-restano da collegare gli altri produttori numerici e lo snapshot completo.
+il dispatcher per gli altri produttori è ora disponibile, ma resta il
+collegamento completo al Prepare/prover canonico.
 Non è ancora un'inferenza canonica.
 
 Il [corpo del verifier canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)

@@ -1016,9 +1016,18 @@ lo stesso reader W; il KV passa al trial successivo solo dopo copertura
 completa, per movimento delle righe. Il wrapper da file genera le tabelle
 con il riferimento certificato e verifica l'hash del packed contro il
 report d'ingest. La sola CLI Rust non certifica quei due input. I test
-eseguono sottografi, input pubblici e handoff KV con dati sintetici;
-input reale, inizializzazione delle scale e validazione numerica completa
-restano aperti. Non è ancora Prepare canonico
+eseguono sottografi, input pubblici e handoff KV con dati sintetici.
+L'[inizializzatore A](../../scripts/c71_activation_pilot.py) usa una proiezione
+del DAG nativo sui 1.435 ID semantici, W packed dequantizzato e KV causale
+floating nei tre contesti. Propone esponenti da estremi osservati con un
+bit di margine, mantenendo embedding legato a W e Pi a −14. RMS, GELU e
+softmax floating sono approssimazioni preparatorie, non ricette intere
+certificate o equivalenza BF16. Γ diventa utilizzabile solo dopo replay
+intero completo positivo e congelamento; eventuali nuove scale invalidano
+le tracce precedenti. Il [piano offline](preflight.md#real-calibrated-gamma)
+separa letture logiche, payload e costi fisici ancora ignoti; questo pilot
+non aggiunge costi o operazioni alla risposta certificata. Input reale ed
+esecuzione/validazione numerica completa restano aperti. Non è ancora Prepare canonico
 completo o ammissione del runtime. Questo storage offline non sostituisce
 l'arena della prova: payload e bundle in ingresso sono contati, workspace
 interni dei producer e allocator non sono un picco fisico chiuso.

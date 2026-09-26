@@ -189,6 +189,18 @@ Il futuro replay reale usa `scripts/c71_calibrate.py run --native BIN
 --payload-bytes LIMIT --timeout-seconds DEADLINE`. Non eseguirlo sulla VM:
 scale A iniziali e hardware/durata autorizzati restano da predisporre.
 Il subcomando `tables` richiede solo native/candidate/output e non legge W.
+Per l'inizializzatore A usare `.venv/bin/python -m pytest -q -p no:cacheprovider
+tests/test_c71_activation_pilot.py`, con lo stesso `C71_CALIBRATION_BINARY`,
+`OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 RAYON_NUM_THREADS=1`, entro 60 s/2 GiB.
+NumPy è già nella `.venv`; non si aggiungono dipendenze. I test usano pesi
+piccoli sintetici, e il binario esporta soltanto metadati canonici.
+`scripts/c71_activation_pilot.py plan --native BIN` calcola lavoro logico
+e payload senza W. Il futuro `run --native BIN --ingest-report REPORT
+--packed PACKED --output NEW_DIRECTORY --timeout-seconds DEADLINE` propone
+`candidate.json` e conserva `report.json` anche su errore, senza dichiarare
+calibrazione. L'hash preliminare e le invocazioni native hanno limiti
+separati dalla deadline numerica. Non eseguire il pilot reale sulla VM:
+restano necessarie autorizzazione, risorse e durata per il lavoro pesante.
 Conservare `c71_b12_native_registry`, le righe/storage canoniche e la proof
 ridotta streaming dopo cambi al collegamento del registro pubblico.
 `c71_b12_native_pool_packing` controlla conversione Fp3 e identità del

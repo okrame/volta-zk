@@ -2371,8 +2371,8 @@ Il percorso minimo riusa i componenti esistenti, nell'ordine seguente:
    ora collega W packed a una riga, A viva e KV causale, rilascia all'ultimo
    consumer e accumula min/max e istogrammi. Non materializza Snapshot/A
    completi; i test restano sottografi sintetici, senza validazione di un
-   forward reale. Restano identità/input reali, inizializzazione delle scale,
-   tabelle certificate e replay completo sui tre contesti.
+   forward reale. Restano identità/input reali, esecuzione dell'inizializzatore,
+   eventuale adattamento delle scale e replay certificato completo nei tre contesti.
    Un manifest da solo non rende il fixture un runner Gemma.
    Il padding query interno è fornito virtualmente: D matematico zero
    (word signed −32767), E=2^30, Z/Pi zero. Il lookup originale lo include,
@@ -2394,6 +2394,36 @@ compila una candidata con 772 esponenti W e 1.435 A, e `check-input`
 controlla forme, ricette comuni e riserve dei tre contesti senza leggere W.
 La candidata JSON contiene solo `weight_exponents_by_tensor` e
 `activation_exponents_by_source`; non dichiara da sé una calibrazione.
+
+L'[inizializzatore A](../../scripts/c71_activation_pilot.py) consuma la
+proiezione semantica esportata da `describe`: 1.436 step, inclusa argmax,
+e tutti i 1.435 ID A. Non duplica il routing dei 60 layer o i dieci alias
+K/V globali pre-norm. Riusa NumPy già installato, blocchi W da massimo
+128 righe e le costanti RoPE Q30 esistenti; libera A all'ultimo consumer.
+Esegue floating RMS/GELU/softmax su W dequantizzato, non il modello BF16
+o EXP30 intero. Tutti i 450 token, incluso l'ultimo emesso di ogni risposta,
+aggiornano KV causale; `lm_head` e decisioni operano solo sulle righe 99–148.
+Una mappa comune usa l'esponente minimo RNE-fit degli estremi binary64
+osservati più un bit di margine, salvo embedding legato a W e Pi a −14.
+Il margine è un'euristica, non garantisce assenza di overflow nel replay:
+se serve cambiare Γ, ripartire dal prefisso vuoto e ricontrollare tutti i trial.
+Un errore impedisce il riuso dello stato parziale. Report e candidata non
+si sovrascrivono; hash di ingest, packed, workload e binario accompagnano
+il risultato, che resta `calibrated:false` anche quando compila.
+
+Il modo `plan` non legge W: conta **26.782.043.904.000 B** di letture
+logiche W e **13.390.420.377.600** prodotti scalari delle matrici nel pilot.
+Non sono byte fisici disco/HBM o tempo CPU/H100: la cache del sistema e
+il backend BLAS non sono modellati. Il blocco W i16+f64 occupa al massimo
+27.525.120 B; il KV finale f64 ha payload 1.622.016.000 B. Questi non sono
+picco fisico completo né memoria dell'arena della prova; A temporanea,
+stack di KV per attention, allocator, NumPy/BLAS e cache OS restano separati.
+La deadline del modo `run` copre il loop numerico, non l'hash preliminare
+del packed né le invocazioni native limitate separatamente a 60 s.
+Il [test](../../tests/test_c71_activation_pilot.py) verifica tutte le famiglie
+di operatori in un grafo piccolo, RNE ai confini, causalità, ultimo token,
+provenienza/errori e routing pubblico canonico. Non inizializza scale reali
+e non autorizza l'esecuzione pesante sulla VM locale.
 
 Il wrapper congela la candidata in una copia temporanea, verifica il
 report d'ingest e l'hash del packed e genera GELU/EXP30/softcap/Q30 usando

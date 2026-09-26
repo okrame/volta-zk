@@ -227,7 +227,7 @@ impl SenderPending {
     fn split(
         self,
         wire: &[u8],
-        mut coefficient: impl FnMut([u8; 32], usize, u64) -> Fp3,
+        mut coefficient: impl FnMut([u8; 32], usize, u64) -> Result<Fp3, Error>,
     ) -> Result<SplitPending<Self>, Error> {
         let (blocks, height) = (self.guard.frozen.blocks, self.guard.frozen.height);
         canonical_words(wire, blocks)?;
@@ -245,7 +245,7 @@ impl SenderPending {
                     node.fp3(),
                     &mut |depth, leaf, node| {
                         if depth == height {
-                            value += coefficient(self.prefix, block, leaf) * node;
+                            value += coefficient(self.prefix, block, leaf)? * node;
                         }
                         Ok(())
                     },
@@ -268,7 +268,7 @@ impl SenderPending {
 impl ReceiverPending {
     fn split(
         self,
-        mut coefficient: impl FnMut([u8; 32], usize, u64) -> Fp3,
+        mut coefficient: impl FnMut([u8; 32], usize, u64) -> Result<Fp3, Error>,
     ) -> Result<(Vec<u8>, SplitPending<Self>), Error> {
         let (blocks, height) = (self.guard.frozen.blocks, self.guard.frozen.height);
         let mut wire = Vec::with_capacity(24 * blocks);
@@ -277,26 +277,45 @@ impl ReceiverPending {
         for block in 0..blocks {
             let mut value = Fp3::ZERO;
             let words = &self.keys[block * (height + 1)..][..height + 1];
-            for (level, sibling) in words[..height].iter().enumerate() {
+            let left_siblings =
+                (0..height).filter(|&level| self.alpha[block] >> (height - level - 1) & 1 == 1);
+            let right_siblings = (0..height)
+                .rev()
+                .filter(|&level| self.alpha[block] >> (height - level - 1) & 1 == 0);
+            let mut alpha_coefficient = None;
+            for level in left_siblings.chain(right_siblings) {
                 let position = (self.alpha[block] >> (height - level - 1)) ^ 1;
+                if alpha_coefficient.is_none()
+                    && self.alpha[block] < position << (height - level - 1)
+                {
+                    let alpha = coefficient(self.prefix, block, self.alpha[block])?;
+                    value += alpha * words[height].fp3();
+                    alpha_coefficient = Some(alpha);
+                }
                 walk(
                     self.nonce,
                     block,
                     height,
                     level + 1,
                     position,
-                    sibling.fp3(),
+                    words[level].fp3(),
                     &mut |depth, leaf, node| {
                         if depth == height {
-                            value += coefficient(self.prefix, block, leaf) * node;
+                            value += coefficient(self.prefix, block, leaf)? * node;
                         }
                         Ok(())
                     },
                     &mut work,
                 )?;
             }
-            let alpha_coefficient = coefficient(self.prefix, block, self.alpha[block]);
-            value += alpha_coefficient * words[height].fp3();
+            let alpha_coefficient = match alpha_coefficient {
+                Some(alpha) => alpha,
+                None => {
+                    let alpha = coefficient(self.prefix, block, self.alpha[block])?;
+                    value += alpha * words[height].fp3();
+                    alpha
+                }
+            };
             let row = block * (height + 4);
             let beta = Fp::new(self.guard.seed.values[row])
                 + Fp::new(self.guard.frozen.corrections[block * (height + 1)]);
@@ -324,6 +343,7 @@ mod tests {
     use super::super::{corrections, ProverGuard, VerifierGuard};
     use super::*;
     use crate::c71_ea_lpn::{acc, punc_acc, PuncturedKey};
+    use crate::c71_seed6::coins::{self, tests::BadRng};
     use rand::{rngs::StdRng, SeedableRng};
 
     fn guarded(height: usize, betas: &[u64], paths: &[u64]) -> (ProverFinished, GuardAccepted) {
@@ -353,17 +373,31 @@ mod tests {
         (finished, verifier.verify(&wire).unwrap())
     }
 
-    fn coefficient(prefix: [u8; 32], block: usize, leaf: u64) -> Fp3 {
+    fn coefficient(prefix: [u8; 32], block: usize, leaf: u64) -> Result<Fp3, Error> {
         assert_ne!(prefix, [0; 32]);
-        Fp3::new(Fp::new(leaf + 1), Fp::new(block as u64 + 2), Fp::new((leaf + 1).pow(2)))
+        Ok(Fp3::new(Fp::new(leaf + 1), Fp::new(block as u64 + 2), Fp::new((leaf + 1).pow(2))))
     }
 
     fn check_split(sender: SenderPending, receiver: ReceiverPending) {
         let sender_hashes = sender.work.shake_calls;
         let receiver_hashes = receiver.work.shake_calls;
         let (blocks, height) = (sender.guard.frozen.blocks, sender.guard.frozen.height);
-        let (wire, receiver) = receiver.split(coefficient).unwrap();
-        let sender = sender.split(&wire, coefficient).unwrap();
+        let mut next = 0;
+        let (wire, receiver) = receiver
+            .split(|prefix, block, leaf| {
+                assert_eq!(((block as u64) << height) + leaf, next);
+                next += 1;
+                coefficient(prefix, block, leaf)
+            })
+            .unwrap();
+        next = 0;
+        let sender = sender
+            .split(&wire, |prefix, block, leaf| {
+                assert_eq!(((block as u64) << height) + leaf, next);
+                next += 1;
+                coefficient(prefix, block, leaf)
+            })
+            .unwrap();
         assert_eq!(sender.values, receiver.values);
         assert_eq!(sender.state.prefix, receiver.state.prefix);
         assert_eq!(wire.len(), 24 * blocks);
@@ -524,27 +558,6 @@ mod tests {
         }
     }
 
-    struct BadRng(bool);
-    impl CryptoRng for BadRng {}
-    impl RngCore for BadRng {
-        fn next_u32(&mut self) -> u32 {
-            unreachable!()
-        }
-        fn next_u64(&mut self) -> u64 {
-            unreachable!()
-        }
-        fn fill_bytes(&mut self, _: &mut [u8]) {
-            unreachable!()
-        }
-        fn try_fill_bytes(&mut self, bytes: &mut [u8]) -> Result<(), rand::Error> {
-            if self.0 {
-                return Err(rand::Error::new("unavailable test randomness"));
-            }
-            bytes.fill(0xff);
-            Ok(())
-        }
-    }
-
     #[test]
     fn c71_seed6_guard_cggm_randomness_and_sampler_fail_closed() {
         for unavailable in [false, true] {
@@ -554,6 +567,14 @@ mod tests {
                 Err(Error::Rejected)
             ));
         }
+        let (prover, verifier) = guarded(2, &[17], &[2]);
+        let (wire, sender) = verifier.cggm([7; 32], &mut StdRng::seed_from_u64(1010)).unwrap();
+        let receiver = prover.cggm([7; 32], vec![2], &wire).unwrap();
+        assert!(matches!(receiver.split(|_, _, _| Err(Error::Rejected)), Err(Error::Rejected)));
+        assert!(matches!(
+            sender.split(&[0; 24], |_, _, _| Err(Error::Rejected)),
+            Err(Error::Rejected)
+        ));
     }
 
     #[test]
@@ -566,17 +587,40 @@ mod tests {
             let main_verifier = real::reserve_equality_verifier_tail(main_verifier, 3).unwrap();
             let (prover, verifier) =
                 guarded_outputs(main_prover.prefix, main_verifier.prefix, 2, &[17], &[2]);
-            let (mut wire, sender) =
+            let context =
+                coins::Context::new([7; 32], prover.frozen.prefix, coins::Phase::Split, 4).unwrap();
+            let (commitment, committed) =
+                coins::Committed::new(context, &mut StdRng::seed_from_u64(1007)).unwrap();
+            let (mut wire, mut sender) =
                 verifier.cggm([7; 32], &mut StdRng::seed_from_u64(1006)).unwrap();
+            let (response, replied) =
+                coins::Replied::new(context, &commitment, &mut StdRng::seed_from_u64(1008))
+                    .unwrap();
             if fault == 1 {
                 wire[0] ^= 1;
+                sender.prefix = prefix(sender.guard.frozen.prefix, sender.nonce, &wire);
             }
             let receiver = prover.cggm([7; 32], vec![2], &wire).unwrap();
-            let (mut wire, receiver) = receiver.split(coefficient).unwrap();
+            assert_eq!(sender.prefix, receiver.prefix);
+            let (opening, mut receiver_coins) = committed.open(&response, receiver.prefix).unwrap();
+            let mut sender_coins = replied.open(&opening, sender.prefix).unwrap();
+            let (mut wire, receiver) = receiver
+                .split(|prefix, block, leaf| {
+                    receiver_coins
+                        .draw(prefix, 4 * block as u64 + leaf)
+                        .map_err(|_| Error::Rejected)
+                })
+                .unwrap();
             if fault == 2 {
                 wire[0] ^= 1;
             }
-            let sender = sender.split(&wire, coefficient).unwrap();
+            let sender = sender
+                .split(&wire, |prefix, block, leaf| {
+                    sender_coins.draw(prefix, 4 * block as u64 + leaf).map_err(|_| Error::Rejected)
+                })
+                .unwrap();
+            assert_eq!(sender_coins.finish().unwrap().squeezed_bytes, 4 * 192);
+            assert_eq!(receiver_coins.finish().unwrap().squeezed_bytes, 4 * 192);
             let (sender_state, receiver_state) = (sender.state, receiver.state);
             assert_eq!(
                 equality::chosen_inputs_accept(
@@ -593,6 +637,6 @@ mod tests {
                 check(&sender_state, &receiver_state, &[17]);
             }
         }
-        eprintln!("C71_SEED6_CGGM_EQUALITY main_rows=12 inverse_rows=3 original_macs=true altered_c_and_z_rejected=true global_coins_and_seal=false");
+        eprintln!("C71_SEED6_CGGM_EQUALITY main_rows=12 inverse_rows=3 original_macs=true altered_c_and_z_rejected=true both_coin_commit_open=true full_FS_and_seal=false");
     }
 }

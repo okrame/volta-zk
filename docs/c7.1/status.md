@@ -1,6 +1,6 @@
 # C7.1 — Goals and current status
 
-Aggiornato al 2026-09-26. [Design](design.md) · [Security](security.md) ·
+Aggiornato al 2026-09-27. [Design](design.md) · [Security](security.md) ·
 [Evidence](evidence.md) · [Decisions](decisions.md) · [Indice](../README.md).
 Questa pagina contiene stato, autorizzazione e prossimo lavoro; requisiti,
 prove e risultati dei test hanno ciascuno la propria sede nei link sopra.
@@ -495,18 +495,21 @@ emettono alpha. Il ledger corregge il seed principale a 17.553 righe,
 incluse le 2.025 aggiuntive di F_EQ; il secondo ne usa 2.025. Il byte di
 direzione nel contesto aggiunge 4 B al budget dei due seed.
 Capacità native e rilasci sono censiti; allocator, stack crittografico,
-trasporto, seal/burn, coin globali e trie batch restano aperti.
+trasporto, seal/burn, FS globale e trie batch restano aperti.
 Il consumer guard sui MAC originali passa nel caso reale da nove righe,
 con ricetta disgiunta e sfida fissata prima della prova. Il nuovo raccordo
 consuma `GuardAccepted`, costruisce cGGM a ruoli separati e usa i MAC
 originali per i check split e F_EQ: il caso reale da 12+3 righe accetta
 il positivo e rifiuta c/z alterati. Non usa l'oracolo con input congiunti.
-Restano FS/F_Rand globale, exchange completo, seal/burn ed espansione EA.
+Le coin split/F_EQ ora eseguono commit/risposta/apertura e derivano i
+coefficienti da uno stream SHAKE, senza array U denso. Restano FS globale
+del guard, exchange completo, seal/burn ed espansione EA.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 la riserva consuma il seed e separa coda F_EQ/prefisso guard, cancellando
-la vecchia copia della coda. Le coin deterministiche dei test non chiudono
-la composizione crittografica; il ledger include i due passaggi cGGM e
+la vecchia copia della coda. Il test della coin usa randomness riproducibile,
+non coefficienti prefissati; non chiude la composizione crittografica.
+Il ledger include il lavoro di entrambe le coin, i due passaggi cGGM e
 gli stati privati trattenuti fino a F_EQ, non il picco fisico completo.
 Il getter numerico ridotto O=0/2/4 ora apre la root A originale tramite
 WHIR; S1 condiviso viene allocato solo dopo le query al predecessore.

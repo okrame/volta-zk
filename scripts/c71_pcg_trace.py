@@ -240,6 +240,8 @@ def seed6_cggm_trace(blocks=TREES, height=HEIGHT):
         'receiver_base_Fp_additions_both_passes':2*blocks,
         'receiver_base_Fp_subtractions_and_multiplications_each':blocks*height,
         'local_U_coefficient_queries_each_role':blocks*leaves,
+        'receiver_ordered_sibling_bit_tests':2*blocks*height,
+        'ordered_leaf_stream_has_dense_coefficient_array':False,
         'independent_c0_Fp_candidates':24*blocks,
         'independent_c0_rng_bytes':192*blocks,
         'c_payload_bytes':24*blocks*height, 'z_payload_bytes':24*blocks,
@@ -255,9 +257,40 @@ def seed6_cggm_trace(blocks=TREES, height=HEIGHT):
         'seed_and_guard_state_retained_through_F_EQ':True,
         'puncture_is_complement_of_guard_bits':True,
         'real_seed_guard_split_equality_reduced_check':True,
+        'split_coin_native_commit_open_connected':True,
         'global_F_Rand_transport_and_burn_credit':False,
         'complete_physical_peak':False,
-        'counter_scope':'source field calls and Vec capacity; no HBM, hash permutation or global coin work',
+        'counter_scope':'source field calls and Vec capacity; coin primitive counted separately, no HBM/hash-permutation credit',
+    }
+
+
+def seed6_coin_trace(count=DOMAIN):
+    """One transcript-bound native coin; sequential SHAKE, no dense U array."""
+    if not 1 <= count <= DOMAIN:
+        raise ValueError('outside coin coefficient cap')
+    domain=len(b'VOLTA-C71-DORY-COIN-v1')
+    return {
+        'coefficients':count,
+        'commit_response_open_payload_bytes_both_directions':128,
+        'wire_with_three_reserved_headers_bytes':146,
+        'wire_already_in_bootstrap_screen':True,
+        'random_bytes_requested':{'committer':64,'responder':32},
+        'BLAKE3_commitment_calls_each_role':1,
+        'BLAKE3_absorbed_bytes_each_role':domain+138,
+        'SHAKE_initializations_each_role':1,
+        'SHAKE_absorbed_bytes_each_role':domain+len(b'/coefficients/')+137,
+        'SHAKE_squeezed_bytes_each_role':192*count,
+        'Fp_candidates_upper_each_role':24*count,
+        'fresh_seed_XOR_bytes_each_role':32,
+        'coefficient_storage_heap_bytes':0,
+        'native_value_and_hash_slot_bytes':4096,
+        'native_value_slot_is_not_compiler_stack_bound':True,
+        'sampler_failure_upper_shared_tape':str(3*count*Fraction((1<<64)-P,1<<64)**8),
+        'native_commit_response_open_and_codec':True,
+        'c_and_equality_corrections_fixed_before_relevant_opening_in_fixture':True,
+        'coordinate_or_prefix_error_poison_stream':True,
+        'full_FS_seal_transport_burn_credit':False,
+        'counter_scope':'primitive calls/bytes, not Keccak/BLAKE3 instructions or physical stack',
     }
 
 
@@ -333,6 +366,7 @@ def seed6_equality_trace(n=TREES):
         'peer_commitment_fixed_before_own_opening':True,
         'global_F_Rand_or_seal_credit':False,
         'guard_cGGM_to_equality_connected':True,
+        'coin_native_commit_open_connected':True,
         'complete_physical_peak':False,
     }
 
@@ -448,6 +482,7 @@ def report():
                 'Dory_rows': DORY_SEED_ROWS, 'F_EQ_extra_rows_each_seed': EQ_SEED_ROWS,
                 'path_guard_consumer': seed6_guard_trace(),
                 'guard_to_cggm_and_split_consumer':cggm,
+                'coin_tosses':{'split':seed6_coin_trace(),'equality':seed6_coin_trace(TREES)},
                 'two_key_equality_consumer':seed6_equality_trace(),
                 'disjoint_tail_reservation':seed6_tail_reservation_trace(),
                 'physical_roles_opposite': True, 'composed_execution_credit': False,

@@ -6,6 +6,7 @@
 //! 384 MR19 OTs and streamed AES-COPE. Outer one-use lifetime, guard and
 //! opposite-role composition remain open.
 
+mod coins;
 mod equality;
 mod guard;
 mod real;

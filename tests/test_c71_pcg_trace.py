@@ -162,6 +162,29 @@ def test_role_separated_cggm_split_work_and_retained_state():
     assert trace.seed6_cggm_trace(1,1)['H_calls_both_passes']=={'sender':0,'receiver':0}
 
 
+def test_native_coin_stream_independent_python_vectors_and_accounting():
+    import hashlib
+    prefix=(b'VOLTA-C71-DORY-COIN-v1'+b'/coefficients/'+bytes([1])*32+
+            bytes([2])*32+bytes([0])+bytes([3])*32+(4).to_bytes(8,'little')+bytes([4])*32)
+    tape=hashlib.shake_256(prefix).digest(4*192)
+    expected=[
+        [7834151124423964235,13031131941374409903,5681944031133750938],
+        [10799003285637748551,2284425053434151683,5053289842844629254],
+        [521325176319418978,2348289769777282647,13570224334304954887],
+        [7349065728333141785,3639344013350648656,7378902005202314930]]
+    assert [[int.from_bytes(tape[row*192+limb*64:row*192+limb*64+8],'little')
+             for limb in range(3)] for row in range(4)]==expected
+    coin=trace.seed6_coin_trace()
+    assert coin['SHAKE_absorbed_bytes_each_role']==len(prefix)==173
+    assert coin['SHAKE_squeezed_bytes_each_role']==67_947_724_800
+    assert coin['wire_with_three_reserved_headers_bytes']==146
+    assert coin['wire_already_in_bootstrap_screen']
+    assert coin['coefficient_storage_heap_bytes']==0
+    assert not coin['full_FS_seal_transport_burn_credit']
+    assert trace.seed6_coin_trace(675)['SHAKE_squeezed_bytes_each_role']==129600
+    assert trace.seed6_cggm_trace()['receiver_ordered_sibling_bit_tests']==25650
+
+
 def test_consuming_tail_reservation_preserves_prefix_capacity():
     r=trace.seed6_tail_reservation_trace()
     assert (r['prefix_rows'],r['tail_rows'])==(15528,2025)

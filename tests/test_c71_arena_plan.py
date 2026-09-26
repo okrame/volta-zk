@@ -57,6 +57,7 @@ def test_seed6_guard_cggm_and_split_remain_live_through_equality():
         assert live['Seed6:c_wire']>=307800 and live['Seed6:z_wire']>=16200
         assert live['Seed6:split_values']>=16200
         assert live['Seed6:equality_payload_envelope']>=64800
+        assert live['Seed6:coin_native_value_slot']>=4096
         assert live['Seed6:main'] and live['Seed6:roleswap'] and live['Seed6:main_equality_tail']
         assert 'Seed6:cggm_temporary' not in live and 'Seed6:H_codec' not in live
         assert plan['fits_with_operational_margin']

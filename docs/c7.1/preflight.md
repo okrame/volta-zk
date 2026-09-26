@@ -1383,7 +1383,7 @@ il secondo; non ne rilascia gli output prima del consumer esterno ancora
 mancante. Queste fasi non alzano il massimo complessivo nominato.
 
 Restano espliciti stack crittografico/spill del compilatore, allocator,
-trasporto, audit, seal/burn e coin globali. Il raccordo locale guard→cGGM→F_EQ
+trasporto, audit, seal/burn e FS globale. Il raccordo locale guard→cGGM→F_EQ
 è descritto sotto. `puncture` è soltanto l'oracolo del riferimento:
 nessun ruolo reale possiede tutti i suoi input. Non dà credito al bootstrap
 composto, né chiude il picco fisico o il lower temporale congiunto. Restano
@@ -1400,8 +1400,8 @@ confronta ogni prefisso con le foglie dense e ogni cammino punctured,
 e controlla esattamente h−1 chiamate H per cammino sender. A h=1 non
 si chiama H. Il conteggio prudente h dello screen resta un upper, non
 si rivendica un risparmio di tempo H100. Il raccordo role-separated ora
-usa lo stesso primo split; campionamento globale delle coin e lifecycle
-restano da collegare.
+usa lo stesso primo split e le coin native sotto; transcript globale e
+lifecycle restano da collegare.
 Il [record 42f0814](../../benchmarks/results/c71-cggm-first-split-2026-09-26-42f08149164e.json)
 registra i quattro controlli nativi su SHA pulita, senza credito composto.
 
@@ -1453,8 +1453,9 @@ Le share sommano a `(Delta0+Delta1)*(x1-x0)`. I test coprono input diversi,
 framing, campi non canonici, commitment errato/riflesso e share alterata anche
 prima del commitment; il caso reale usa due seed da tre righe, direzioni 0/1.
 
-Il callback deterministico dei test **non realizza F_Rand**. Il vincolo
-locale commit-before-open non realizza il trasporto atomico o il burn durevole.
+Il callback deterministico dei test algebrici **non realizza F_Rand**;
+la catena cGGM ora usa la coin nativa descritta sotto. Il vincolo locale
+commit-before-open non realizza trasporto atomico o burn durevole.
 La riserva ora consuma il seed principale prima del guard: copia la sola
 coda, cancella esplicitamente gli slot originali e tronca il prefisso senza
 ridurne la capacità. Conserva il binding e passa a F_EQ solo code esatte;
@@ -1515,8 +1516,9 @@ esaurito non restituiscono stato. Gli oggetti sono consumati, non clonati.
 Il controllo esaustivo h=1–7 copre ogni cammino, tutti i prefissi, beta zero
 e due blocchi; confronta anche i contatori con le formule del ledger.
 La catena con seed AES reali da 12+3 righe passa e rifiuta c/z alterati
-attraverso F_EQ. **I callback delle coin rimangono deterministici nei test**:
-non realizzano F_Rand, seal/burn, nonce freshness, trasporto o espansione EA.
+attraverso F_EQ. Ora esegue entrambe le coin commit/risposta/apertura
+descritte sotto; i test algebrici mantengono callback deterministici.
+Non realizza ancora seal/burn, nonce freshness, trasporto o espansione EA.
 Non è ancora un bootstrap completo né credito alla sicurezza composta.
 
 Per t=675,h=19 i due passaggi costano 707.786.100 H sender e 707.761.800
@@ -1529,8 +1531,47 @@ v/w usano 16.200 B per parte. Il piano conserva conservativamente seed,
 correzioni guard, frame c/z e stati privati fino a F_EQ, includendo lo slot
 di valori/hash da 4.096 B. I `size_of` CPU sono 712/728 B prima dello split
 e 824/840 B dopo: non sono bound dello stack compilato. Il massimo globale
-nominato non aumenta; coin globali, allocator, stack/spill, trasporto e
+nominato non aumenta; FS globale, allocator, stack/spill, trasporto e
 picco fisico rimangono aperti. Nessuna esecuzione H100 è autorizzata.
+
+
+## Coin native per split e F_EQ
+
+Il [protocollo locale](../../rust/volta-pcg/src/c71_seed6/coins.rs) sostituisce
+i coefficienti prefissati della catena reale con commit/risposta/apertura.
+Il commitment BLAKE3 usa il dominio `VOLTA-C71-DORY-COIN-v1`, nonce 32 B,
+prefisso 32 B, fase u8 (split=0, equality=1), direzione u8 (=1), numero di
+coefficienti u64 LE e apertura `s1||blind` da 64 B. Dopo il commitment il
+sender fissa c e s0; il receiver decodifica tutto c prima di aprire. Per
+F_EQ entrambe le correzioni chosen-input sono congelate prima della coin.
+Il seed XOR alimenta SHAKE256 nello stesso dominio con `/coefficients/`,
+nonce, prefisso iniziale, fase, prefisso successivo, cardinalità e seed.
+Questi 173 B hanno lunghezza e ordine canonici.
+
+Un solo XOF per coin/ruolo produce slot da 192 B per Fp3, con otto tentativi
+per limb e fallimento terminale. Le foglie receiver sono visitate in ordine:
+sibling sinistri dal livello esterno all'interno, alpha, poi destri
+dall'interno all'esterno. Due scan dei bit bastano; nessun sort o vettore U
+di dimensione N. Il callback fallibile respinge prefisso/indice errato,
+riuso e consumo incompleto, senza poter riprendere lo stream dopo errore.
+F_EQ propaga anche gli errori della coin e dell'entropia della share.
+
+I vettori Python/Rust verificano lo stream; i test coprono fase, apertura
+alterata/troncata, RNG indisponibile e ordering. La catena reale conserva
+positivo e rifiuto c/z; nel caso c alterato entrambi i ruoli usano lo
+stesso prefisso alterato, quindi il rifiuto non si limita a una divergenza
+di transcript. La randomness è riproducibile nei test, non una stub delle U.
+
+Il wire di ogni coin resta 128 B più tre header prenotati, **146 B già
+inclusi** nel bootstrap: non viene sommato due volte. Per ruolo la coin
+split assorbe 173 B e produce **67.947.724.800 B di XOF**, quella F_EQ
+129.600 B. Sono byte generati localmente, non wire o traffico HBM. Si
+contano anche commitment, RNG e candidati del sampler. Lo stato stream
+CPU è 488 B, i due stati di fase 144 B ciascuno; un solo slot conservativo
+da 4.096 B copre i valori/hash, non lo stack compilato. Il massimo arena
+nominato resta invariato. La coin nativa non scarica da sola l'ipotesi ROM:
+FS del guard, sealing, burn durevole senza retry, trasporto globale e
+collegamento alla capacità PCG restano aperti, senza nuovo credito H100.
 
 
 ## EXP30: massimo con un solo checkpoint

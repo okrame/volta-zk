@@ -151,6 +151,8 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                                 'Seed6:guard_native_value_state':552}})
                 events += [{'event':'guard_prefix_native_hash_object', 'allocate':{'Seed6:hash_object':1920}},
                            {'event':'guard_prefix_hash_release_before_challenge','free':['Seed6:hash_object']}]
+                events.append({'event':'split_coin_commit_before_c_then_reuse_for_equality',
+                    'allocate':{'Seed6:coin_native_value_slot':setup['coin_tosses']['split']['native_value_and_hash_slot_bytes']}})
                 cggm=setup['guard_to_cggm_and_split_consumer']
                 tree_role='receiver' if main_role=='prover' else 'sender'
                 events.append({'event':'guard_accepted_then_role_separated_cggm',
@@ -337,7 +339,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
             'snapshot':'native Snapshot stores Vec<Vec<i64>>; literal lift exceeds arena before byte packing',
             'RMS':'original P/S/Y plus byte LUT/coefficients included; bounded cell/index/replay checked on reduced proofs; public circuits, proof/correlation capacities, allocator and full getter workspace remain to join',
             'WHIR':'bounded sourcewise replay matches native D10 bytes and rejects dense fallbacks; canonical accelerated state/workspace not yet wired',
-            'PCG':'Seed6 OT/AES, guard, role-separated cGGM, split and F_EQ named heap envelopes included conservatively; global coins, crypto stack, transport, allocator and seal/burn lifecycle remain open',
+            'PCG':'Seed6 OT/AES, guard, role-separated cGGM, split/F_EQ and two native coin envelopes included conservatively; full FS, crypto stack, transport, allocator and seal/burn lifecycle remain open',
             'arena_checker_metadata_bytes':512*24,
             'global_unallocated_margin_required_bytes':1 << 30,
             'remaining_global_for_unverified_residents_after_margin':80_000_000_000-response.W_BYTES-450*response.KV_PER_TOKEN-response.ARENA-(1 << 30)},

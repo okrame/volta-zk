@@ -122,8 +122,11 @@ Per il raccordo a ruoli separati usare `c71_seed6_guard_cggm` (tre test,
 marker `C71_GUARD_CGGM`) e separatamente
 `c71_seed6_real_guard_cggm_split_and_two_key_equality` (un test, marker
 `C71_SEED6_CGGM_EQUALITY`). Il secondo crea seed reali 12+3 righe e controlla
-positivo, c alterato e z alterato su socketpair Unix. Le coin globali restano
-callback di test. Ogni filtro resta entro 60 s/2 GiB, un worker/thread,
+positivo, c alterato e z alterato su socketpair Unix, eseguendo le coin
+split/F_EQ native. Aggiungere `c71_seed6_coin` (due test, marker
+`C71_SEED6_COINS`) per codec, ordinamento e vettori SHAKE indipendenti.
+FS del guard, seal/burn e trasporto globale restano aperti. Ogni filtro
+resta entro 60 s/2 GiB, un worker/thread,
 senza rete esterna. Conservare anche i filtri `c71_seed6::guard::tests`,
 `c71_seed6_equality`, `c71_seed6_tail_reservation` e `c71_ea_lpn::tests`.
 Per il ledger usare `tests/test_c71_pcg_trace.py`, i controlli response/getter

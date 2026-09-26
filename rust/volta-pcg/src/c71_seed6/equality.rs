@@ -131,11 +131,11 @@ impl Frozen {
     // the same fresh F_Rand coefficients, not the deterministic test callback.
     fn commit(
         self,
-        draw: impl FnOnce([u8; 32], usize) -> Vec<Fp3>,
+        draw: impl FnOnce([u8; 32], usize) -> Result<Vec<Fp3>, &'static str>,
         rng: &mut (impl RngCore + CryptoRng),
     ) -> Result<Committed, &'static str> {
         let n = self.local.values.len();
-        let coefficients = draw(self.prefix, n);
+        let coefficients = draw(self.prefix, n)?;
         if coefficients.len() != n || coefficients.capacity() != n {
             return Err("equality coin count");
         }
@@ -153,7 +153,8 @@ impl Frozen {
         };
         let mut opening = Zeroizing::new([0; 56]);
         opening[..24].copy_from_slice(&share.to_bytes());
-        rng.fill_bytes(&mut opening[24..]);
+        crate::c71_bootstrap::random_bytes(rng, &mut opening[24..])
+            .map_err(|_| "equality randomness")?;
         let commitment = commitment(&self.prefix, self.local.role, &opening);
         Ok(Committed { role: self.local.role, prefix: self.prefix, commitment, opening })
         // Both owned seeds and inputs are erased on drop after share computation.
@@ -224,8 +225,8 @@ pub(super) mod tests {
     fn inputs(x: &[Fp3]) -> Zeroizing<Vec<Fp3Words>> {
         Zeroizing::new(x.iter().map(|&v| Fp3Words::from_fp3(v)).collect())
     }
-    fn coins(_: [u8; 32], n: usize) -> Vec<Fp3> {
-        (0..n).map(|i| Fp3::new(Fp::new(i as u64 + 2), Fp::new(3), Fp::new(5))).collect()
+    fn coins(_: [u8; 32], n: usize) -> Result<Vec<Fp3>, &'static str> {
+        Ok((0..n).map(|i| Fp3::new(Fp::new(i as u64 + 2), Fp::new(3), Fp::new(5))).collect())
     }
     fn commit_pair(p0: Prepared, p1: Prepared) -> (Committed, Committed) {
         let c0 = p0.corrections.clone();
@@ -322,7 +323,19 @@ pub(super) mod tests {
         assert!(p0
             .freeze(p1.corrections)
             .unwrap()
-            .commit(|_, _| vec![], &mut StdRng::seed_from_u64(1))
+            .commit(|_, _| Ok(vec![]), &mut StdRng::seed_from_u64(1))
+            .is_err());
+        let (p0, p1) = prepared_pair(&x, &x);
+        assert!(p0
+            .freeze(p1.corrections)
+            .unwrap()
+            .commit(coins, &mut crate::c71_seed6::coins::tests::BadRng(true))
+            .is_err());
+        let (p0, p1) = prepared_pair(&x, &x);
+        assert!(p0
+            .freeze(p1.corrections)
+            .unwrap()
+            .commit(|_, _| Err("coin failure"), &mut StdRng::seed_from_u64(1))
             .is_err());
         println!(
             "seed6_equality {}",
@@ -375,10 +388,42 @@ pub(super) mod tests {
         value0: Zeroizing<Vec<Fp3Words>>,
         value1: Zeroizing<Vec<Fp3Words>>,
     ) -> bool {
-        let (committed0, committed1) = commit_pair(
-            Prepared::new(0, [8; 32], sender0, receiver0, value0).unwrap(),
-            Prepared::new(1, [8; 32], sender1, receiver1, value1).unwrap(),
-        );
+        use crate::c71_seed6::coins as coin;
+        let prepared0 = Prepared::new(0, [8; 32], sender0, receiver0, value0).unwrap();
+        let prepared1 = Prepared::new(1, [8; 32], sender1, receiver1, value1).unwrap();
+        let corrections0 = prepared0.corrections.clone();
+        let corrections1 = prepared1.corrections.clone();
+        let frozen0 = prepared0.freeze(corrections1).unwrap();
+        let frozen1 = prepared1.freeze(corrections0).unwrap();
+        assert_eq!(frozen0.prefix, frozen1.prefix);
+        let context = coin::Context::new(
+            [8; 32],
+            frozen0.prefix,
+            coin::Phase::Equality,
+            frozen0.local.values.len() as u64,
+        )
+        .unwrap();
+        let (commitment, committed) =
+            coin::Committed::new(context, &mut StdRng::seed_from_u64(72)).unwrap();
+        let (response, replied) =
+            coin::Replied::new(context, &commitment, &mut StdRng::seed_from_u64(73)).unwrap();
+        let (opening, coins1) = committed.open(&response, frozen1.prefix).unwrap();
+        let coins0 = replied.open(&opening, frozen0.prefix).unwrap();
+        let draw =
+            |mut tape: coin::Coefficients, prefix, count| -> Result<Vec<Fp3>, &'static str> {
+                let mut values = Vec::with_capacity(count);
+                for index in 0..count {
+                    values.push(tape.draw(prefix, index as u64)?);
+                }
+                tape.finish()?;
+                Ok(values)
+            };
+        let committed0 = frozen0
+            .commit(|prefix, count| draw(coins0, prefix, count), &mut StdRng::seed_from_u64(74))
+            .unwrap();
+        let committed1 = frozen1
+            .commit(|prefix, count| draw(coins1, prefix, count), &mut StdRng::seed_from_u64(75))
+            .unwrap();
         let (hash0, hash1) = (committed0.commitment, committed1.commitment);
         let openable0 = committed0.accept_peer_commitment(hash1);
         let openable1 = committed1.accept_peer_commitment(hash0);

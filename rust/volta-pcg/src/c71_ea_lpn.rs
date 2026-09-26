@@ -150,7 +150,7 @@ pub fn cggm_h(
     Ok((Fp3::new(limbs[0], limbs[1], limbs[2]), work))
 }
 
-fn sample_h_limbs(tape: &[u8; 192], work: &mut Work) -> Result<[Fp; 3], Error> {
+pub(crate) fn sample_h_limbs(tape: &[u8; 192], work: &mut Work) -> Result<[Fp; 3], Error> {
     let mut limbs = [Fp::ZERO; 3];
     for (limb, slot) in limbs.iter_mut().zip(tape.chunks_exact(64)) {
         let mut accepted = None;

@@ -1643,4 +1643,22 @@ Il [ledger](../../scripts/c71_pcg_trace.py) corregge il vecchio conteggio H
 spacciato per lower comune: due passaggi danno 707.786.100 sender e
 707.761.800 receiver. Il piano arena conserva seed, frame e chiavi fino a
 F_EQ e non cambia il massimo globale nominato. I callback deterministici
-non danno credito crittografico composto, fisico o H100.
+di quel record non danno credito crittografico composto, fisico o H100.
+
+## Native split and equality coins
+
+La [coin nativa](../../rust/volta-pcg/src/c71_seed6/coins.rs) esegue
+commit/risposta/apertura a ruoli separati, con fase/prefissi/cardinalità
+legati al codec. Uno stream SHAKE e il sampler Fp3 esistente producono le U
+senza array denso. Le foglie receiver vengono visitate nello stesso ordine
+pubblico del sender; il controllo esaustivo h=1–7 include anche tale ordine.
+Il nuovo raccordo reale 12+3 esegue entrambe le coin prima di F_EQ e rifiuta
+c/z alterati. Per c alterato anche il sender lega il frame modificato:
+entrambi usano le stesse coin, evitando un rigetto solo per prefissi diversi.
+
+Il KAT indipendente Python/Rust verifica quattro Fp3 e i 173 B del dominio;
+aperture alterate, fase errata, framing, RNG e consumo non monotono falliscono.
+Il ledger distingue XOF locale da wire/HBM e non riconta i 146 B già inclusi
+per coin. FS del guard, sealing, burn e trasporto globale rimangono aperti:
+non è ancora una realizzazione completa della funzionalità F_Rand con abort,
+né credito alla sicurezza composta, al picco fisico o all'H100.

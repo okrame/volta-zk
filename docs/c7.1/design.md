@@ -1262,7 +1262,7 @@ collega domini MR19 distinti, handshake direction-bound, COPE AES streaming,
 check K6 e compressione. Non emette alpha dopo un check fallito. Il seed
 principale richiede 17.553 righe (15.528 Dory + 2.025 F_EQ), quello inverso
 2.025; il contesto nativo aggiunge 4 B al budget dei due seed. Capacità dei
-Vec e rilasci anticipati sono censiti; seal/burn, coin globali, lifecycle
+Vec e rilasci anticipati sono censiti; seal/burn, FS globale, lifecycle
 completo, picco fisico, CUDA e refinement Lean restano aperti.
 Il [consumer guard ridotto](preflight.md#guard-originale-consumer-nativo)
 usa ora l'algebra prodotti condivisa con range, negando solo Delta nel
@@ -1289,8 +1289,16 @@ nessun output PCG è pubblicato da questo componente test-only.
 La catena ridotta passa con seed AES reali e rifiuta c/z alterati.
 Questa è un'identità di correttezza verificata, non una nuova riduzione
 malevola o un refinement Lean: si mantengono le premesse EA-LPN/cGGM dello
-screen e i limiti formali del guard sopra. F_Rand globale, trasporto e
-seal/burn restano obblighi; i callback dei test non li sostituiscono.
+screen e i limiti formali del guard sopra. La
+[coin nativa locale](preflight.md#coin-native-per-split-e-f_eq) realizza ora
+commit/risposta/apertura per split e F_EQ. Il codec BLAKE3 lega nonce,
+prefisso, fase, direzione, cardinalità e apertura; lo stream SHAKE256 lega
+anche il prefisso successivo fissato prima dell'apertura. Questa scelta
+instanzia i domini ROM condizionali dello screen, non aggiunge un teorema
+Lean o una prova UC. L'argomento F_Rand resta subordinato a nonce fresco,
+burn senza retry e ordine globale: il fixture non scarica FS del guard,
+sealing dei due seed, trasporto o lifecycle. Le coin dei test algebrici
+restano distinte dalla catena che esegue il protocollo nativo.
  Il getter numerico ridotto
 O=0/2/4 apre la root A originale con S1 condiviso allocato dopo le query
 al predecessore. Il fold in-place dei successori segue il rilascio esplicito

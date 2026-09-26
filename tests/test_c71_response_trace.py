@@ -90,7 +90,8 @@ def test_reduced_joint_ledger_owns_getter_reconstruction_once():
     lines = ['C71_INTEGRATED_GETTER '+json.dumps(dict(phase=p, work=work)) for p in phases]
     # Callback cardinalities are references, not duplicate producer charges.
     gkr = dict(cell_rounds=[dict(coefficient_multiplications=7, row_source_callbacks=999)],
-               byte_endpoint=dict(tree=dict(cubic_multiplications=11, getter_calls=888)))
+               byte_endpoint=dict(tree=dict(cubic_multiplications=11, getter_calls=888,
+                                            custom_rounds=52, custom_terminals=8)))
     lines += ['C71_INTEGRATED_GKR '+json.dumps(gkr)]
     lines += ['C71_LOOKUP_SOURCE_WORK '+json.dumps(dict(work=dict(tree=dict(
         cubic_multiplications=13, getter_calls=777))))]*3
@@ -101,6 +102,7 @@ def test_reduced_joint_ledger_owns_getter_reconstruction_once():
     assert report['getter_total']['numerical']['integer_multiplications'] == 5
     assert report['GKR_cell_round_operations'] == dict(coefficient_multiplications=7)
     assert report['GKR_byte_tree_operations'] == dict(cubic_multiplications=11)
+    assert report['GKR_byte_contracted_evaluators'] == [dict(rounds=52,terminals=8)]
     assert report['lookup_tree_operations'] == dict(cubic_multiplications=39)
     assert not report['complete_canonical_work'] and not report['physical_HBM_measured']
     for bad in [lines[1:], lines+[lines[0]], lines[:-1], lines+[lines[-1]]]:

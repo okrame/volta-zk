@@ -44,6 +44,14 @@ alla build PCS mirata e usare il binario emesso da quella build, entro
 60 s/2 GiB con un worker Rayon e `--test-threads=1 --nocapture`.
 Verificare un test eseguito e il marker `C71_BYTE_NODE_CONTRACTION`:
 un filtro senza test non costituisce evidenza.
+Per il raccordo alla proof riusare `c71_b12_byte_functions`,
+`c71_b12_pattern_prefix_four_rounds_original_wire_and_mac`,
+`c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs`,
+`sourcewise_range_matches_dense_original_wire_and_mac` e
+`c71_b12_native_composed`, separatamente entro gli stessi limiti.
+Con `C71_INTEGRATED_TRACE=1`, `reduced_joint_trace` deve rilevare i round
+byte custom separatamente dai contatori scalari; il suo test Python è
+`tests/test_c71_response_trace.py -k reduced_joint`.
 
 ## Rust and resource limits
 

@@ -1457,6 +1457,19 @@ non chiama una proof con il nuovo backend. La base di Lagrange riusa
 le valutazioni pubbliche esistenti invece di duplicare il costruttore
 polinomiale della tree. Il backend di produzione resta invariato.
 
+### Integrated contracted byte endpoint
+
+Il motore [sourcewise](../../rust/volta-pcs/src/c71_matrix/range.rs) ora
+ammette evaluator privati dei cubici e dei quattro figli finali mantenendo
+comune autenticazione, transcript e MAC. Il [caller byte](../../rust/volta-pcs/src/c71_matrix/byte_function.rs)
+limita il riferimento contratto ai domini completi ≤128 celle. I test
+esistenti verificano wire/FS/MAC contro la proof densa, claim errati,
+byte cambiati coerentemente ma scollegati dall'originale PCS, prefissi
+pattern EXP30 e la proof integrata lookup/GKR/WHIR. Quest'ultima registra
+76 round contratti e otto terminali, senza Snapshot/A densi. Il ledger
+ridotto separa questi evaluator dai contatori del fallback scalare.
+Non sono ancora getter canonico streaming, conteggi completi o misura GPU.
+
 ### Native moment seam and byte tree screen
 
 Il [record pulito `b63461fa58e8`](../../benchmarks/results/c71-byte-seam-and-tree-screen-2026-09-26-b63461fa58e8.json)

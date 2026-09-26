@@ -956,8 +956,18 @@ senza nuovi messaggi, sfide, endpoint o assunzioni. Il test finito
 controlla l'identità algebrica e il recupero terminale. L'oracolo Fp3
 nativo riusa la LUT ByteTrees: per i livelli polinomiali usa la base di
 Lagrange sui byte pubblici 0..D e verifica il grado su tutti i 256 byte.
-Non collega ancora la contrazione al prover; refinement nativo
-completo/Lean e costi hardware restano obblighi aperti.
+Il raccordo nativo ridotto sostituisce soltanto coefficienti e quattro
+figli terminali dentro lo stesso motore sourcewise: autenticazione,
+tag residuali, FS, consumo MAC e split non sono duplicati. Il riferimento
+riusa le valutazioni pubbliche e recupera i figli da istogrammi privati;
+mantiene il fattore Eq del prefisso cella nei round lane/nodo. Nel caller
+EXP30 a pattern è selezionato per domini completi ≤128 celle, con parità
+proof/FS/MAC e positivo integrato lookup/GKR/WHIR. Domini ragged sono
+respinti dall'entry point contratto prima di consumare righe o sfide.
+Il getter streaming/checkpoint canonico, il refinement Lean e i costi
+hardware restano aperti. I contatori scalari non contano implicitamente
+l'evaluatore sostitutivo: il ledger ridotto registra i round custom a
+parte, senza presentarli come lavoro nullo o conteggio canonico completo.
 
 
 

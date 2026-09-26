@@ -1,4 +1,4 @@
-//! Reduced native oracle; no production selection or hardware-rate claim.
+//! Reduced native evaluator; canonical streaming and hardware rates stay open.
 //! Uses the original public ByteTrees LUT. No new transcript or MAC input.
 use super::*;
 
@@ -112,6 +112,146 @@ fn fold(mut rows: Vec<Vec<Fp3>>, prefix: &[Fp3]) -> Vec<Vec<Fp3>> {
         rows.truncate(half);
     }
     rows
+}
+
+fn equality(point: &[Fp3], prefix: &[Fp3], suffix: usize) -> Fp3 {
+    let mut value = Fp3::ONE;
+    for (&p, &r) in point.iter().zip(prefix) {
+        value = value * ((Fp3::ONE - p) * (Fp3::ONE - r) + p * r);
+    }
+    let tail = &point[prefix.len()..];
+    for (bit, &p) in tail.iter().enumerate() {
+        value = value * if suffix >> (tail.len() - 1 - bit) & 1 == 1 { p } else { Fp3::ONE - p };
+    }
+    value
+}
+
+pub(super) struct Prover<'a, G> {
+    trees: &'a ByteTrees,
+    cells: usize,
+    get: &'a G,
+    features: Vec<Vec<(Fp3, [Fp3; 256])>>,
+    values: Vec<Vec<Vec<Fp3>>>,
+    recovered: Option<Vec<Vec<Fp3>>>,
+}
+
+impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
+    pub(super) fn new(trees: &'a ByteTrees, cells: usize, get: &'a G) -> Self {
+        Self { trees, cells, get, features: Vec::new(), values: Vec::new(), recovered: None }
+    }
+
+    fn recover(&mut self, layer: usize, point: &[Fp3]) {
+        if self.recovered.is_some() {
+            return;
+        }
+        let weights = eq(&point[..self.cells]);
+        let mut values = Vec::new();
+        for lane in 0..self.trees.lanes {
+            let mut histogram = [Fp3::ZERO; 256];
+            for (cell, &w) in weights.iter().enumerate() {
+                histogram[usize::from((self.get)(cell * self.trees.lanes + lane))] += w;
+            }
+            let mut children_at_cell = vec![Fp3::ZERO; 4 << layer];
+            for (b, &w) in histogram.iter().enumerate() {
+                for (out, v) in
+                    children_at_cell.iter_mut().zip(children(self.trees, lane, layer, b))
+                {
+                    *out += w * v;
+                }
+            }
+            values.extend(children_at_cell.chunks_exact(4).map(|v| v.to_vec()));
+        }
+        self.features.clear();
+        self.values.clear();
+        self.recovered = Some(values);
+    }
+
+    pub(super) fn coefficients(
+        &mut self,
+        layer: usize,
+        point: &[Fp3],
+        lambda: Fp3,
+        prefix: &[Fp3],
+    ) -> [Fp3; 4] {
+        let lane_bits = self.trees.lanes.trailing_zeros() as usize;
+        if prefix.is_empty() {
+            self.recovered = None;
+            let node_eq = eq(&point[self.cells + lane_bits..]);
+            self.features = (0..self.trees.lanes)
+                .map(|lane| contract(self.trees, lane, layer, &node_eq, lambda))
+                .collect();
+            // ponytail: reduced domain <=128 only; replace with the planned
+            // streaming/checkpoint getter before any canonical admission.
+            self.values = self
+                .features
+                .iter()
+                .enumerate()
+                .map(|(lane, features)| {
+                    (0..1usize << self.cells)
+                        .map(|cell| {
+                            let b = usize::from((self.get)(cell * self.trees.lanes + lane));
+                            features.iter().map(|(_, f)| f[b]).collect()
+                        })
+                        .collect()
+                })
+                .collect();
+        }
+        let mut c = [Fp3::ZERO; 4];
+        if prefix.len() < self.cells {
+            let lane_eq = eq(&point[self.cells..self.cells + lane_bits]);
+            let half = 1usize << (self.cells - prefix.len() - 1);
+            for (lane, features) in self.features.iter().enumerate() {
+                let values = fold(self.values[lane].clone(), prefix);
+                for i in 0..half {
+                    let mut v = [Fp3::ZERO; 3];
+                    for (j, (d, _)) in features.iter().enumerate() {
+                        let a = values[i][j];
+                        let delta = values[i + half][j] - a;
+                        let da = *d * a;
+                        let dd = *d * delta;
+                        v[0] += da * a;
+                        v[1] += signed(2) * da * delta;
+                        v[2] += dd * delta;
+                    }
+                    let e = lane_eq[lane] * equality(&point[..self.cells], prefix, i);
+                    let de = lane_eq[lane] * equality(&point[..self.cells], prefix, i + half) - e;
+                    for j in 0..3 {
+                        c[j] += e * v[j];
+                        c[j + 1] += de * v[j];
+                    }
+                }
+            }
+        } else {
+            self.recover(layer, prefix);
+            let values = fold(self.recovered.as_ref().unwrap().clone(), &prefix[self.cells..]);
+            let half = values.len() / 2;
+            for i in 0..half {
+                let a = &values[i];
+                let d: [Fp3; 4] = std::array::from_fn(|j| values[i + half][j] - a[j]);
+                let mut v = [Fp3::ZERO; 3];
+                for (x, y, w) in [(0, 3, lambda), (2, 1, lambda), (1, 3, Fp3::ONE)] {
+                    v[0] += w * a[x] * a[y];
+                    v[1] += w * (d[x] * a[y] + a[x] * d[y]);
+                    v[2] += w * d[x] * d[y];
+                }
+                let e = equality(point, prefix, i);
+                let de = equality(point, prefix, i + half) - e;
+                for j in 0..3 {
+                    c[j] += e * v[j];
+                    c[j + 1] += de * v[j];
+                }
+            }
+        }
+        c
+    }
+
+    pub(super) fn terminal(&mut self, layer: usize, point: &[Fp3]) -> [Fp3; 4] {
+        self.recover(layer, point);
+        fold(self.recovered.as_ref().unwrap().clone(), &point[self.cells..])[0]
+            .as_slice()
+            .try_into()
+            .unwrap()
+    }
 }
 
 #[test]

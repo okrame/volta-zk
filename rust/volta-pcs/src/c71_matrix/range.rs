@@ -432,6 +432,8 @@ pub(super) fn prove_tree(
 /// input-point, next-point and incremental prefix-weight capacities.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
 pub(super) struct SourceTreeWork {
+    pub custom_rounds: u64,
+    pub custom_terminals: u64,
     pub getter_calls: u64,
     pub getter_scalar_values: u64,
     pub prefix_terms: u64,
@@ -528,12 +530,37 @@ fn source_folded_equality(
 /// implementation and its own complete traffic/runtime ledger.
 pub(super) fn prove_tree_sourcewise(
     bits: usize,
+    point: Vec<Fp3>,
+    claims: [Auth; 2],
+    get: impl Fn(usize, usize) -> [Fp3; 4],
+    fs: &mut Fs,
+    rows: &mut std::vec::IntoIter<Auth>,
+    triples: &mut Vec<[Auth; 3]>,
+) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2], SourceTreeWork) {
+    prove_tree_sourcewise_custom(
+        bits,
+        point,
+        claims,
+        get,
+        fs,
+        rows,
+        triples,
+        |_, _, _, _| None,
+        |_, _| None,
+    )
+}
+
+// Optional private evaluators replace arithmetic only; authentication and FS stay here.
+pub(super) fn prove_tree_sourcewise_custom(
+    bits: usize,
     mut point: Vec<Fp3>,
     mut claims: [Auth; 2],
     get: impl Fn(usize, usize) -> [Fp3; 4],
     fs: &mut Fs,
     rows: &mut std::vec::IntoIter<Auth>,
     triples: &mut Vec<[Auth; 3]>,
+    mut coefficients: impl FnMut(usize, &[Fp3], Fp3, &[Fp3]) -> Option<[Fp3; 4]>,
+    mut terminal: impl FnMut(usize, &[Fp3]) -> Option<[Fp3; 4]>,
 ) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2], SourceTreeWork) {
     let mut layers = Vec::with_capacity(bits);
     triples.reserve_exact(3 * bits);
@@ -553,44 +580,50 @@ pub(super) fn prove_tree_sourcewise(
             let current = original >> round;
             let half = current / 2;
             let mut c = [Fp3::ZERO; 4];
-            for i in 0..half {
-                let a = source_folded_children(
-                    l,
-                    original,
-                    &next_point,
-                    i,
-                    &get,
-                    &mut prefix_weights,
-                    &mut work,
-                );
-                let upper = source_folded_children(
-                    l,
-                    original,
-                    &next_point,
-                    i + half,
-                    &get,
-                    &mut prefix_weights,
-                    &mut work,
-                );
-                let d: [Fp3; 4] = std::array::from_fn(|child| upper[child] - a[child]);
-                work.cubic_subtractions += 4;
-                let mut v = [Fp3::ZERO; 3];
-                for (x, y, coefficient) in [(0, 3, lambda), (2, 1, lambda), (1, 3, Fp3::ONE)] {
-                    v[0] += coefficient * a[x] * a[y];
-                    v[1] += coefficient * (d[x] * a[y] + a[x] * d[y]);
-                    v[2] += coefficient * d[x] * d[y];
-                    work.cubic_multiplications += 7;
-                    work.cubic_additions += 4;
-                }
-                let equality = source_folded_equality(&point, &next_point, i, &mut work);
-                let equality_hi = source_folded_equality(&point, &next_point, i + half, &mut work);
-                let de = equality_hi - equality;
-                work.cubic_subtractions += 1;
-                for j in 0..3 {
-                    c[j] += equality * v[j];
-                    c[j + 1] += de * v[j];
-                    work.cubic_multiplications += 2;
-                    work.cubic_additions += 2;
+            if let Some(value) = coefficients(l, &point, lambda, &next_point) {
+                c = value;
+                work.custom_rounds += 1;
+            } else {
+                for i in 0..half {
+                    let a = source_folded_children(
+                        l,
+                        original,
+                        &next_point,
+                        i,
+                        &get,
+                        &mut prefix_weights,
+                        &mut work,
+                    );
+                    let upper = source_folded_children(
+                        l,
+                        original,
+                        &next_point,
+                        i + half,
+                        &get,
+                        &mut prefix_weights,
+                        &mut work,
+                    );
+                    let d: [Fp3; 4] = std::array::from_fn(|child| upper[child] - a[child]);
+                    work.cubic_subtractions += 4;
+                    let mut v = [Fp3::ZERO; 3];
+                    for (x, y, coefficient) in [(0, 3, lambda), (2, 1, lambda), (1, 3, Fp3::ONE)] {
+                        v[0] += coefficient * a[x] * a[y];
+                        v[1] += coefficient * (d[x] * a[y] + a[x] * d[y]);
+                        v[2] += coefficient * d[x] * d[y];
+                        work.cubic_multiplications += 7;
+                        work.cubic_additions += 4;
+                    }
+                    let equality = source_folded_equality(&point, &next_point, i, &mut work);
+                    let equality_hi =
+                        source_folded_equality(&point, &next_point, i + half, &mut work);
+                    let de = equality_hi - equality;
+                    work.cubic_subtractions += 1;
+                    for j in 0..3 {
+                        c[j] += equality * v[j];
+                        c[j + 1] += de * v[j];
+                        work.cubic_multiplications += 2;
+                        work.cubic_additions += 2;
+                    }
                 }
             }
             work.owned_regeneration_heap_peak_bytes = work.owned_regeneration_heap_peak_bytes.max(
@@ -609,15 +642,20 @@ pub(super) fn prove_tree_sourcewise(
                 .max((point.capacity() + next_point.capacity()) * core::mem::size_of::<Fp3>());
             rounds.push(wire);
         }
-        let folded = source_folded_children(
-            l,
-            original,
-            &next_point,
-            0,
-            &get,
-            &mut prefix_weights,
-            &mut work,
-        );
+        let folded = if let Some(value) = terminal(l, &next_point) {
+            work.custom_terminals += 1;
+            value
+        } else {
+            source_folded_children(
+                l,
+                original,
+                &next_point,
+                0,
+                &get,
+                &mut prefix_weights,
+                &mut work,
+            )
+        };
         work.owned_regeneration_heap_peak_bytes = work.owned_regeneration_heap_peak_bytes.max(
             (point.capacity() + next_point.capacity()) * core::mem::size_of::<Fp3>()
                 + work.eq_weights_capacity_bytes,

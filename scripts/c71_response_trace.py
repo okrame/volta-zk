@@ -487,6 +487,9 @@ def reduced_joint_trace(log):
         GKR_cell_round_operations=operations([r for g in gkrs for r in g['cell_rounds']]),
         GKR_pattern_prefix=[g['pattern_prefix'] for g in gkrs if g.get('pattern_prefix',{}).get('prefix_rounds')],
         GKR_byte_tree_operations=operations([g['byte_endpoint']['tree'] for g in gkrs]),
+        GKR_byte_contracted_evaluators=[dict(rounds=g['byte_endpoint']['tree'].get('custom_rounds',0),
+            terminals=g['byte_endpoint']['tree'].get('custom_terminals',0)) for g in gkrs
+            if g['byte_endpoint']['tree'].get('custom_rounds',0)],
         lookup_tree_operations=operations([l['work']['tree'] for l in lookups]),
         ownership={'getter':'all producer reconstruction belongs here, including callbacks from PCS/GKR/lookup',
                    'EXP30_original_ratio_cache':'source fill charged in getter; subsequent cache reads are not numerical reconstruction',
@@ -496,6 +499,7 @@ def reduced_joint_trace(log):
                    'lookup':'three original lookup fraction trees; cached source construction already above'},
         complete_canonical_work=False, physical_HBM_measured=False, complete_physical_peak=False,
         missing=['GKR index/authentication and all other producer arithmetic',
+                 'contracted byte evaluator arithmetic/workspace is separate from scalar tree counters',
                  'complete range/linear/WHIR arithmetic, hash and machine traffic',
                  'real PCG and native inference integration',
                  'canonical schedule mapping and jointly live accelerator buffers'],

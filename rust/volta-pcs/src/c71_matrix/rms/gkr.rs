@@ -1318,19 +1318,31 @@ fn prove_impl(
         live_cells: s.assignments.len(),
         tables: &tables,
     };
-    let (functions, point, original, byte_endpoint) = byte_function::prove_sourcewise(
-        &bs,
-        byte_function::Original::Sum(target),
-        |i| {
-            let (cell, lane) = (i / 16, i % 16);
-            match s.assignments.get(cell) {
-                Some(p) if lane < (s.programs[p].ports - 2) / 8 => read_frame(cell)[lane],
-                _ => 0,
-            }
-        },
-        fs,
-        &mut rows,
-    )?;
+    let get_byte = |i| {
+        let (cell, lane) = (i / 16, i % 16);
+        match s.assignments.get(cell) {
+            Some(p) if lane < (s.programs[p].ports - 2) / 8 => read_frame(cell)[lane],
+            _ => 0,
+        }
+    };
+    let (functions, point, original, byte_endpoint) =
+        if pattern_prefix.is_some() && bs.cell_point.len() <= 7 {
+            byte_function::prove_contracted(
+                &bs,
+                byte_function::Original::Sum(target),
+                get_byte,
+                fs,
+                &mut rows,
+            )?
+        } else {
+            byte_function::prove_sourcewise(
+                &bs,
+                byte_function::Original::Sum(target),
+                get_byte,
+                fs,
+                &mut rows,
+            )?
+        };
     debug_assert!(rows.next().is_none());
     source_work.boolean_replay_calls = replay_calls.get();
     source_work.boolean_and_gates = replay_and.get();
@@ -2043,8 +2055,13 @@ mod tests {
         let assignments: Vec<_> = (0..32).map(|i| (i < 30).then_some(0)).collect();
         let honest: Vec<_> =
             assignments.iter().map(|p| p.map_or([0; 12], |_| frame(2, 1, 0, true))).collect();
-        check_cells(&programs, &assignments, &honest,
-            (0, frame(1, 1, 0, true)), (0, frame(4, 1, 0, true)));
+        check_cells(
+            &programs,
+            &assignments,
+            &honest,
+            (0, frame(1, 1, 0, true)),
+            (0, frame(4, 1, 0, true)),
+        );
     }
 
     fn check(

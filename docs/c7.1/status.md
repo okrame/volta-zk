@@ -204,8 +204,16 @@ note resta range A, con almeno 276.296.960 B non indirizzati. Non è il
 picco fisico completo. Il margine stretto della fase range A non blocca
 gli sviluppi reversibili nella catena EXP30, che ha spazio distinto;
 i 256 MiB restano il criterio finale del piano integrato.
-Priorità: raccordo alla proof originale, poi istruzioni/traffico e lower congiunto della nuova
-costruzione. Il NO-GO scalare non si trasferisce alla contrazione.
+Il raccordo ridotto alla proof è ora passato: cubici e figli recuperati
+entrano nella stessa autenticazione/FS, la proof coincide byte per byte
+con la densa, claim errati e byte alterati sono respinti. Passa anche il
+positivo lookup/GKR/WHIR O=0, con 88.049 MAC originali e senza Snapshot/A
+densi; il trace registra 76 round contratti e otto terminali.
+L'evaluatore CPU è limitato a domini completi ≤128 celle; non accredita
+lo schedule canonico streaming o i relativi contatori/workspace.
+Priorità: collegare quel getter/checkpoint al medesimo raccordo, poi
+ledger congiunto e harness minimo. Il NO-GO scalare non si trasferisce
+alla contrazione. Il goal locale resta in corso.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 
 **NO-GO del backend scalare fuso ora implementato:** per il circuito

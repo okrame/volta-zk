@@ -7,7 +7,6 @@ use super::*;
 #[cfg(test)]
 pub(super) mod batch;
 
-#[cfg(test)]
 mod contraction;
 
 component_wire!(Proof { layers, leaf_tag, products });
@@ -288,6 +287,31 @@ pub(super) fn prove_sourcewise(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
+    prove_sourcewise_impl(s, original, get_byte, fs, correlations, false)
+}
+
+/// Reduced integration path. The canonical compact streaming getter is separate.
+pub(super) fn prove_contracted(
+    s: &Statement<'_>,
+    original: Original<'_, Auth>,
+    get_byte: impl Fn(usize) -> u8,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
+    if s.cell_point.len() > 7 || s.live_cells != 1usize << s.cell_point.len() {
+        return Err("byte contraction requires a reduced complete frame domain".into());
+    }
+    prove_sourcewise_impl(s, original, get_byte, fs, correlations, true)
+}
+
+fn prove_sourcewise_impl(
+    s: &Statement<'_>,
+    original: Original<'_, Auth>,
+    get_byte: impl Fn(usize) -> u8,
+    fs: &mut Fs,
+    correlations: &mut std::vec::IntoIter<Auth>,
+    contracted: bool,
+) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
     let (len, sum) = match &original {
         Original::Lanes(v) => (v.len(), false),
         Original::Sum(_) => (1, true),
@@ -313,7 +337,9 @@ pub(super) fn prove_sourcewise(
     let c = coefficients(s.tables);
     let trees = ByteTrees::new(&c);
     let mut triples = Vec::new();
-    let (layers, mut point, claims, tree_work) = range::prove_tree_sourcewise(
+    let evaluator =
+        std::cell::RefCell::new(contraction::Prover::new(&trees, s.cell_point.len(), &get_byte));
+    let (layers, mut point, claims, tree_work) = range::prove_tree_sourcewise_custom(
         8,
         point,
         [root, Auth::ZERO],
@@ -321,6 +347,10 @@ pub(super) fn prove_sourcewise(
         fs,
         &mut rows,
         &mut triples,
+        |layer, point, lambda, prefix| {
+            contracted.then(|| evaluator.borrow_mut().coefficients(layer, point, lambda, prefix))
+        },
+        |layer, point| contracted.then(|| evaluator.borrow_mut().terminal(layer, point)),
     );
     let (_, index, leaf_eq_capacity_peak_bytes) = leaf(s, &c, &point);
     let leaf_point_capacity_bytes = point.capacity() * core::mem::size_of::<Fp3>();
@@ -559,13 +589,14 @@ mod tests {
         let start = || Fs::new(b"byte function original sources", 100_000);
         // A false incoming function must fail GKR; a consistent function of
         // changed bytes must reach GKR's endpoint and fail the SAME source PCS.
-        for fault in 0..3 {
+        for (live_cells, fault) in [3, 4].into_iter().flat_map(|n| (0..3).map(move |f| (n, f))) {
+            let statement = Statement { live_cells, ..statement };
             let mut used = source;
             if fault == 2 {
                 used[0] = 3;
             }
             let mut values: [Fp3; 2] = std::array::from_fn(|lane| {
-                eq(&point).iter().take(3).enumerate().fold(Fp3::ZERO, |v, (cell, &r)| {
+                eq(&point).iter().take(live_cells).enumerate().fold(Fp3::ZERO, |v, (cell, &r)| {
                     v + r * tables[lane][used[2 * cell + lane] as usize]
                 })
             });
@@ -576,16 +607,31 @@ mod tests {
             let mut prows = rows.clone().into_iter();
             let (wire, original) = range::authenticate(values, &mut prows);
             record_values(&mut fs, 0x62, &wire);
-            let (proof, byte_point, byte, source_work) = prove_sourcewise(
-                &statement,
-                Original::Lanes(&original),
-                |i| used[i],
-                &mut fs,
-                &mut prows,
-            )
+            let (proof, byte_point, byte, source_work) = if live_cells == 4 {
+                prove_contracted(
+                    &statement,
+                    Original::Lanes(&original),
+                    |i| used[i],
+                    &mut fs,
+                    &mut prows,
+                )
+            } else {
+                prove_sourcewise(
+                    &statement,
+                    Original::Lanes(&original),
+                    |i| used[i],
+                    &mut fs,
+                    &mut prows,
+                )
+            }
             .unwrap();
             assert_eq!(source_work.lut_nodes, tables.len() * 256 * BYTE_TREE_NODES);
-            assert!(source_work.tree.getter_calls > 0);
+            if live_cells == 4 {
+                assert_eq!(source_work.tree.custom_terminals, 8);
+                assert_eq!(source_work.tree.custom_rounds, (0..8).map(|l| 3 + l).sum::<u64>());
+            } else {
+                assert!(source_work.tree.getter_calls > 0);
+            }
             assert!(
                 source_work.root_eq_capacity_peak_bytes
                     > tables.len() * core::mem::size_of::<Fp3>()
@@ -596,6 +642,11 @@ mod tests {
                     >= source_work.root_phase_owned_heap_peak_bytes
             );
             if fault == 0 {
+                if live_cells == 4 {
+                    println!(
+                        "C71_BYTE_CONTRACTED_PROOF original_wire_fs_mac=true fault_checks=true"
+                    );
+                }
                 println!("C71_BYTE_SOURCE_WORK {}", serde_json::json!(source_work));
                 let mut dense_fs = start();
                 let mut dense_rows = rows.clone().into_iter();

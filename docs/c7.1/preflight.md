@@ -2198,6 +2198,11 @@ kernel scalare respinto. `T_inference`, `T_proof_only`, `T_response_total`
 non hanno nuovi upper; replay e recupero appartengono alla prova.
 Il confronto Fp3 nativo con la stessa LUT passa sui 256 byte, otto
 livelli e due lane, anche dopo fold non Booleani. Recupera i figli
-originali tramite istogramma privato. È un componente ridotto CPU,
-ancora scollegato dalla proof: non modifica il backend selezionato.
-Gate di spesa **NO-GO**, priorità al raccordo con proof/FS/MAC originali.
+originali tramite istogramma privato. Il successivo raccordo alla proof
+passa con wire/FS/MAC identici, rigetti sull'endpoint originale e positivo
+integrato lookup/GKR/WHIR. Quest'ultimo usa 76 round custom e otto
+terminali; il certificato è di 7.733.929 B con 88.049 MAC ideali originali.
+Il riferimento è limitato a domini completi ≤128 celle e viene selezionato
+nel caller EXP30 a pattern solo in tale ambito. Restano getter/checkpoint
+streaming canonico, lavoro/traffico congiunti e harness dei rate ignoti.
+Gate di spesa **NO-GO**, goal locale in corso senza blocchi autorizzativi.

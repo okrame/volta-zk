@@ -69,6 +69,8 @@ def test_seed6_guard_cggm_and_split_remain_live_through_equality():
         assert 'Seed6:roleswap' not in live and 'Seed6:guard_corrections' not in live
         assert 'Seed6:cggm_temporary' not in live and 'Seed6:H_codec' not in live
         assert 'Seed6:guard_challenge' not in live
+        assert 'Seed6:guard_wire' not in live and 'Seed6:setup_paths_and_beta' not in live
+        assert live['Seed6:setup_audits']>=896
         assert plan['fits_with_operational_margin']
 
 

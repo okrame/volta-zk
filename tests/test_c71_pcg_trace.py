@@ -193,7 +193,7 @@ def test_native_coin_stream_independent_python_vectors_and_accounting():
     coin=trace.seed6_coin_trace()
     assert coin['SHAKE_absorbed_bytes_each_role']==len(prefix)==173
     assert coin['SHAKE_squeezed_bytes_each_role']==67_947_724_800
-    assert coin['wire_with_three_reserved_headers_bytes']==146
+    assert coin['wire_with_three_reserved_headers_bytes']==155
     assert coin['wire_already_in_bootstrap_screen']
     assert coin['coefficient_storage_heap_bytes']==0
     assert not coin['full_FS_seal_transport_burn_credit']
@@ -237,6 +237,22 @@ def test_accepted_ea_seed_python_vector_and_conditional_accounting():
     assert equality['accepted_EA_seed_extra_rng_and_wire_bytes']==0
     assert Fraction(equality['accepted_EA_seed_ROM_error_upper_conditional'])<Fraction(1,1<<108)
     assert not equality['accepted_EA_seed_compositional_or_Lean_credit']
+
+
+def test_one_channel_setup_wire_and_added_payload():
+    setup=trace.seed6_setup_trace()
+    assert setup['wire_bytes_both_directions']==61_841_366
+    assert setup['guard_split_wire_bytes_both_directions']==432_239
+    assert setup['added_wire_vs_equality_only_transport']==45
+    assert setup['guard_correction_frame_heap_temporary_bytes']==108000
+    assert setup['private_path_rng_bytes_receiver']==5400
+    assert setup['returned_Audit_heap_bytes_each_role']==896
+    reduced=trace.seed6_setup_trace(2,4,2)
+    assert (reduced['main_seed_rows'],reduced['inverse_seed_rows'])==(25,6)
+    assert reduced['capacity_base_rows']==6
+    assert reduced['wire_bytes_both_directions']==390742
+    assert reduced['post_seed_frames']==16
+    assert not setup['durable_burn_or_authenticated_transport_credit']
 
 
 def test_consuming_tail_reservation_preserves_prefix_capacity():

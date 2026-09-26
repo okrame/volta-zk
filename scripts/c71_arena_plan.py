@@ -127,7 +127,10 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
         if old == 0:
             setup=correlations['setup_once_before_all_responses']['native_seed6_real_adapter']
             for main_role, inverse_role in [('prover','verifier'),('verifier','prover')]:
-                events=[]
+                transport=setup['one_channel_setup']
+                events=[{'event':'bind_setup_geometry_and_reserve_returned_diagnostics',
+                    'allocate':{'Seed6:setup_audits':transport['returned_Audit_heap_bytes_each_role'],
+                                'Seed6:setup_native_value_slot':transport['native_value_and_hash_slot_bytes']}}]
                 for label,role in [('main',main_role),('roleswap',inverse_role)]:
                     party=setup[label][role]
                     for phase in ('mr19','cope','check','compression','seal'):
@@ -146,6 +149,10 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                 events.append({'event':'reserve_disjoint_equality_tail_before_guard',
                     'allocate':{'Seed6:main_equality_tail':reservation['new_tail_vec_capacity_bytes']+
                         reservation['duplicated_fixed_secret_bytes']+32}})
+                events.append({'event':'setup_private_paths_and_guard_wire',
+                    'allocate':{'Seed6:guard_wire':transport['guard_correction_frame_heap_temporary_bytes'],
+                                'Seed6:setup_paths_and_beta':(transport['private_paths_heap_bytes_receiver_before_cggm']+
+                                    transport['beta_heap_temporary_bytes_receiver']) if main_role=='prover' else 0}})
                 events.append({'event':'freeze_guard_corrections_outer_FS_pending',
                     'allocate':{'Seed6:guard_corrections':setup['path_guard_consumer']['correction_heap_capacity_bytes_each_role'],
                                 'Seed6:guard_native_value_state':552}})
@@ -154,6 +161,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                 events += [{'event':'guard_sealed_prefix_challenge_before_proof',
                             'allocate':{'Seed6:guard_challenge':setup['path_guard_consumer']['challenge_native_value_slot_bytes']}},
                            {'event':'guard_challenge_temporary_release','free':['Seed6:guard_challenge']}]
+                events.append({'event':'guard_wire_consumed_before_cggm','free':['Seed6:guard_wire']})
                 events.append({'event':'split_coin_commit_before_c_then_reuse_for_equality',
                     'allocate':{'Seed6:coin_native_value_slot':setup['coin_tosses']['split']['native_value_and_hash_slot_bytes']}})
                 cggm=setup['guard_to_cggm_and_split_consumer']
@@ -184,7 +192,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                     'free':['Seed6:'+name for name in ('main','roleswap','main_equality_tail',
                             'guard_corrections','guard_native_value_state','coin_native_value_slot',
                             'c_wire','z_wire','split_values','equality_payload_envelope',
-                            'equality_native_value_slot','equality_transport')]})
+                            'equality_native_value_slot','equality_transport','setup_paths_and_beta')]})
                 events += [{'event':'accepted_pointwise_row_reference',
                     'allocate':{'Seed6:EA_temporary_heap':max(expansion['EA_sampler_heap_bytes_upper'],
                                                             expansion['H_codec_heap_with_EA_terms_bytes']),

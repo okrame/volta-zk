@@ -324,7 +324,7 @@ def seed6_expansion_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
     }
 
 
-def seed6_coin_trace(count=DOMAIN, header_bytes=6):
+def seed6_coin_trace(count=DOMAIN, header_bytes=9):
     """One transcript-bound native coin; sequential SHAKE, no dense U array."""
     if not 1 <= count <= DOMAIN or header_bytes not in (6,9):
         raise ValueError('outside coin coefficient cap')
@@ -334,7 +334,7 @@ def seed6_coin_trace(count=DOMAIN, header_bytes=6):
         'commit_response_open_payload_bytes_both_directions':128,
         'wire_with_three_reserved_headers_bytes':128+3*header_bytes,
         'header_bytes':header_bytes,
-        'framing_scope':'native equality exchange' if header_bytes==9 else 'split six-byte reservation, not native transport',
+        'framing_scope':'native setup/equality exchanges' if header_bytes==9 else 'historical six-byte reservation',
         'wire_already_in_bootstrap_screen':True,
         'random_bytes_requested':{'committer':64,'responder':32},
         'BLAKE3_commitment_calls_each_role':1,
@@ -447,6 +447,43 @@ def seed6_equality_trace(n=TREES):
     }
 
 
+def seed6_setup_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
+    """One-channel native setup, not the missing durable pool/proof bridge."""
+    expansion=seed6_expansion_trace(blocks,height,weight)
+    main_rows,inverse_rows=blocks*(height+7)+3,3*blocks
+    seed_wire=sum(seed6_real_trace(rows)['wire_bytes_both_directions_with_seal']
+                  for rows in (main_rows,inverse_rows))
+    guard_split_wire=8*blocks*(height+1)+48+24*blocks*height+128+24*blocks+7*9
+    equality_wire=seed6_equality_trace(blocks)['wire_both_roles_with_native_coin_without_seed']
+    return {
+        'main_seed_rows':main_rows, 'inverse_seed_rows':inverse_rows,
+        'capacity_base_rows':expansion['capacity_base_rows'],
+        'seed_wire_bytes_both_directions':seed_wire,
+        'guard_split_wire_bytes_both_directions':guard_split_wire,
+        'equality_wire_bytes_both_directions':equality_wire,
+        'wire_bytes_both_directions':seed_wire+guard_split_wire+equality_wire,
+        'post_seed_frames':16, 'header_bytes':9,
+        'added_wire_vs_equality_only_transport':45,
+        'geometry_binding_BLAKE3_absorbed_bytes_each_role':98,
+        'sealed_nonce_BLAKE3_absorbed_bytes_each_role':102,
+        'geometry_and_nonce_BLAKE3_calls_each_role':2,
+        'private_path_rng_bytes_receiver':8*blocks,
+        'beta_reuses_original_seed_value':True,
+        'guard_correction_frame_heap_temporary_bytes':8*blocks*(height+1),
+        'private_paths_heap_bytes_receiver_before_cggm':8*blocks,
+        'beta_heap_temporary_bytes_receiver':8*blocks,
+        'returned_Audit_heap_bytes_each_role':896,
+        'returned_Audit_native_value_bytes_each_role':672,
+        'native_value_and_hash_slot_bytes':4096,
+        'native_value_slot_is_not_compiler_stack_bound':True,
+        'audit_vec_scope':'observed fixed frame/phase counts on the native CPU ABI; kept through caller diagnostic consumption',
+        'geometry_bound_before_OT':True,
+        'one_channel_seed_guard_split_equality_and_EA_state':True,
+        'durable_burn_or_authenticated_transport_credit':False,
+        'complete_physical_peak':False,
+    }
+
+
 def trie_nodes(rows):
     """Distribution-free union-trie upper for public EA point terms."""
     terms = WEIGHT * rows
@@ -509,6 +546,7 @@ def report():
         responses.append(trace)
         cursor += rows
     cggm = seed6_cggm_trace()
+    setup = seed6_setup_trace()
     setup_h = max(cggm['H_calls_both_passes'].values())
     path_bytes = (HEIGHT+7)//8
     common = 32+32+8  # cGGM nonce, public EAGen seed, counter
@@ -533,7 +571,7 @@ def report():
         'setup_once_before_all_responses': {
             'internal_cGGM_H_evaluations_upper_per_role_two_passes': setup_h,
             'universal_hash_field_inputs_lower_per_role': DOMAIN,
-            'conditional_bootstrap_wire_both_directions_bytes': 61_841_321,
+            'conditional_bootstrap_wire_both_directions_bytes': setup['wire_bytes_both_directions'],
             'H_to_AES_calls': None,
             'H_to_domain_separated_SHAKE_RO_calls': setup_h,
             'H_SHAKE_absorbed_bytes': setup_h*H_DOMAIN_BYTES,
@@ -559,6 +597,7 @@ def report():
                 'path_guard_consumer': seed6_guard_trace(),
                 'guard_to_cggm_and_split_consumer':cggm,
                 'accepted_pointwise_expansion':seed6_expansion_trace(),
+                'one_channel_setup':setup,
                 'coin_tosses':{'split':seed6_coin_trace(),'equality':seed6_coin_trace(TREES,9)},
                 'two_key_equality_consumer':seed6_equality_trace(),
                 'disjoint_tail_reservation':seed6_tail_reservation_trace(),

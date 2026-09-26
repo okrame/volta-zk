@@ -1370,8 +1370,8 @@ sorgente per traffico HBM. Corregge un'omissione: 15.528 è il solo seed
 Dory; il principale con F_EQ contiene **17.553** righe, l'inverso **2.025**.
 Ogni ruolo comprime quindi 19.579 elementi includendo la sua Delta. I due
 byte direction-bound delle handshake aggiungono 2 B per seed allo screen:
-bootstrap condizionale **61.841.321 B**, primo corpo parziale **126.894.565 B**,
-inclusi i 27 B aggiunti dal successivo framing nativo F_EQ/coin.
+bootstrap condizionale **61.841.366 B**, primo corpo parziale **126.894.610 B**,
+inclusi i 27 B del framing F_EQ/coin e i successivi 45 B guard/split.
 Il seal da 40 B per seed è ora implementato ed era già incluso nel budget.
 
 I Vec dei punti MR19 hanno ora capacità preallocata esatta, senza crescita.
@@ -1590,8 +1590,8 @@ positivo e rifiuto c/z; nel caso c alterato entrambi i ruoli usano lo
 stesso prefisso alterato, quindi il rifiuto non si limita a una divergenza
 di transcript. La randomness è riproducibile nei test, non una stub delle U.
 
-Il payload di ogni coin resta 128 B. Split mantiene tre header prenotati
-da 6 B (**146 B**); F_EQ usa tre header nativi da 9 B (**155 B**).
+Il payload di ogni coin resta 128 B. Ora split e F_EQ usano entrambi tre
+header nativi da 9 B (**155 B per coin**).
 Sono già inclusi nel bootstrap aggiornato, senza sommarli due volte. Per ruolo la coin
 split assorbe 173 B e produce **67.947.724.800 B di XOF**, quella F_EQ
 129.600 B. Sono byte generati localmente, non wire o traffico HBM. Si
@@ -1599,7 +1599,7 @@ contano anche commitment, RNG e candidati del sampler. Lo stato stream
 CPU è 488 B, i due stati di fase 144 B ciascuno; un solo slot conservativo
 da 4.096 B copre i valori/hash, non lo stack compilato. Il massimo arena
 nominato resta invariato. La coin nativa non scarica da sola l'ipotesi ROM:
-Transcript globale, burn durevole senza retry, trasporto globale e
+Transcript del run, burn durevole senza retry, canale autenticato e
 collegamento alla capacità PCG canonica restano aperti, senza nuovo credito H100.
 
 
@@ -1687,6 +1687,46 @@ Il KAT Python/Rust verifica codec e ordine; modifiche a prefisso, ruolo o
 blind cambiano il seed. La catena reale a due blocchi usa lo stesso seed
 derivato nei due endpoint e conserva confronto BAe, MAC e rifiuto c/z.
 I vettori EAGen con seed prefissato restano soltanto test del sampler.
+
+
+## Setup Seed6 su un solo canale
+
+Il [driver test-only](../../rust/volta-pcg/src/c71_seed6/setup.rs) esegue
+su un unico canale: seed principale, seed inverso, riserva disgiunta,
+guard, prima coin/cGGM, split, F_EQ trasportata e conversione EA. Nessun
+ruolo riceve i segreti peer. t/h/ell/capacità entrano nel digest del
+contesto bootstrap prima degli OT; una diversa ell viene respinta nella
+handshake, anche se forma e numero di righe coincidono. Il nonce cGGM è
+BLAKE3 dei due binding sigillati, in dominio setup distinto. Il receiver
+riusa beta dai valori originali e campiona h bit uniformi per ogni cammino
+con 8 B RNG per blocco, cancellando i buffer privati intermedi.
+
+Il controllo h=4,t=2,ell=2 attraversa realmente il doppio MR19/AES da 25+6
+righe, produce sei MAC base e ferma l'esaurimento. I due Audit sono
+speculari: **390.742 B totali**. Le coin sono deterministiche solo per
+riproducibilità del test; beta e cammini non sono più forniti a mano.
+La geometria invalida è respinta prima di I/O/RNG. Rimangono separati i
+test BAe multiblocco e i rifiuti c/z della catena componente precedente.
+
+Il wire canonico delle primitive è ora **61.841.366 B**, calcolato dagli
+stessi seed e frame: 16 messaggi dopo i seed, con header da 9 B. I **45 B
+aggiunti** sono quattro header guard/d/c/z prima esclusi dal payload
+(36 B) e i 9 B aggiuntivi della coin split rispetto alla prenotazione.
+I 27 B F_EQ erano già inclusi. Non si aggiungono nuovi payload crittografici.
+Geometry/nonce richiedono due BLAKE3 per ruolo, con 98/102 B assorbiti.
+
+Il ledger include 108.000 B temporanei per il frame delle correzioni,
+5.400 B ciascuno per cammini e beta receiver, 896 B heap degli Audit
+restituiti e 672 B di valore nativo. Uno slot aggiuntivo da 4.096 B riserva
+valori/hash, non certifica lo stack. Il piano conserva prudentemente i
+cammini/beta anche durante la conversione e i diagnostici fino al consumer;
+non accredita la liberazione di alias privati. Il massimo globale nominato
+resta quello della risposta, non un picco fisico completo.
+
+Questo chiude il percorso byte del setup ridotto, non autenticazione del
+canale, journal non-rollback/no-retry, transcript del run, trie batch,
+bridge al pool/proof canonico o composizione crittografica. Il modulo resta
+test-only; nessuna esecuzione canonica, GPU o spesa è autorizzata.
 
 
 ## Seed6: seal di completamento

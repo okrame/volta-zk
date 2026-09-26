@@ -17,7 +17,7 @@ const DOMAIN: &[u8] = b"VOLTA-C71-Seed6-equality-v1";
 const BASIS: [Fp3; 3] =
     [Fp3::ONE, Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO), Fp3::new(Fp::ZERO, Fp::ZERO, Fp::ONE)];
 
-struct Prepared<State = ()> {
+pub(super) struct Prepared<State = ()> {
     role: u8,
     sid: [u8; 32],
     sender: RealProverOutput,
@@ -84,7 +84,7 @@ fn accepted_ea_seed(prefix: &[u8; 32], opening0: &[u8; 56], opening1: &[u8; 56])
     seed
 }
 impl<State> Prepared<State> {
-    fn exchange(
+    pub(super) fn exchange(
         self,
         mut channel: impl Read + Write,
         rng: &mut (impl RngCore + CryptoRng),
@@ -160,7 +160,7 @@ impl<State> Prepared<State> {
             + self.values.capacity() * 24
             + self.corrections.capacity()
     }
-    fn new(
+    pub(super) fn new(
         role: u8,
         sid: [u8; 32],
         mut sender: RealProverOutput,

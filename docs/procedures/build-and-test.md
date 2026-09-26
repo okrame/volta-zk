@@ -144,6 +144,12 @@ e troncamenti prima di allocare o usare RNG. Il filtro
 `c71_seed6_equality_accepted_ea_seed` confronta SHAKE Python/Rust e binding
 delle aperture; la catena reale usa quel seed, non un parametro prefissato.
 Non accredita composizione ROM globale, trie batch o bridge alla proof.
+Il filtro `c71_seed6_one_channel` comprende tre test: setup reale 25+6
+righe su un solo socketpair fino a sei MAC EA, geometria invalida prima
+di I/O/RNG e discordanza ell prima degli OT. Stessi limiti 60 s/2 GiB,
+un worker/thread; il marker `C71_SEED6_ONE_CHANNEL` registra 390.742 B,
+mentre `C71_SEED6_SETUP_AUDIT` separa capacità heap e valori nativi.
+Il controllo non usa un journal né un canale autenticato.
 Transcript globale, burn e trasporto restano aperti. Ogni filtro
 resta entro 60 s/2 GiB, un worker/thread,
 senza rete esterna. Conservare anche i filtri `c71_seed6::guard::tests`,

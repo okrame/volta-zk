@@ -805,8 +805,9 @@ ruoli scambiati e le due chiavi MAC per aprire soltanto
 `(Delta0+Delta1)*(wbar-vbar)` dopo autenticazione e coin fresche:
 **12.815.274 byte**, incluso l'aggiornamento agli header nativi F_EQ/coin,
 senza nuova ipotesi gruppo. Con l'upper B12 corrente
-del primo corpo il parziale è **126.894.565 byte**, sotto 130 MB. Restano
-da integrare setup/codec globali sotto EA-LPN-SL-reg* a T121/M93 autorizzata;
+del primo corpo il parziale, incluso il framing guard/split nativo,
+è **126.894.610 byte**, sotto 130 MB. Resta
+da integrare il setup nel run sotto EA-LPN-SL-reg* a T121/M93 autorizzata;
 formalizzazione compositiva, semantica con abort, corpo completo e tempo
 restano aperti. Non è
 un'ammissione. La fonte Ring-LPN 2022/1035 sostiene soltanto la plausibilità
@@ -1330,6 +1331,13 @@ globale, trasporto o lifecycle. Il seal dei due seed è ora obbligatorio nel
 comprende il seal fresco dopo check/compressione e prima di qualsiasi
 output. Si riusa il meccanismo B12 con un dominio wire Seed6 distinto;
 il solo seal non impedisce rollback o retry senza il journal esterno.
+Il [setup unico ridotto](preflight.md#setup-seed6-su-un-solo-canale) ora
+esegue tutti questi scambi su un canale. Hash della geometria nel contesto
+lega t/h/ell/capacità prima degli OT; il nonce cGGM deriva dai due binding
+sigillati. Il receiver usa beta originale e cammini uniformi h-bit, non
+valori privati prefissati dal fixture. Si conserva l'argomento algebrico
+precedente, senza un nuovo teorema di composizione: autenticazione del
+canale, non-rollback del journal e collegamento alla proof restano esterni.
 Le coin dei test algebrici
 restano distinte dalla catena che esegue il protocollo nativo.
  Il getter numerico ridotto

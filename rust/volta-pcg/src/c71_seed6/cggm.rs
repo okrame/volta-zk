@@ -13,6 +13,9 @@ const DOMAIN: &[u8] = b"VOLTA-C71-Seed6-cggm-corrections-v1";
 #[path = "expand.rs"]
 mod expand;
 
+#[path = "setup.rs"]
+mod setup;
+
 struct SenderPending {
     guard: GuardAccepted,
     nonce: [u8; 32],

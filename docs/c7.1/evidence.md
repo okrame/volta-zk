@@ -1624,6 +1624,11 @@ Non esclude una fattorizzazione della tree né chiude il goal generale.
 
 ## Seed6 guard-to-cGGM and split equality
 
+Il [record su SHA pulita `4382db54e0ef`](../../benchmarks/results/c71-guard-cggm-split-equality-2026-09-26-4382db54e0ef.json)
+conserva **25 test Rust e 27 Python/C++** passati, comandi, hash, contatori,
+ledger e rifiuti di sviluppo. Ogni processo è seriale entro 60 s/2 GiB;
+solo socketpair Unix locali, senza rete esterna o GPU.
+
 Il [raccordo locale](../../rust/volta-pcg/src/c71_seed6/cggm.rs) consuma il
 guard prima di produrre c, costruisce il primo split indipendente e separa
 le chiavi sender dai tag/cammini receiver. I check a h=1–7 confrontano ogni

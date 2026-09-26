@@ -1493,6 +1493,8 @@ range; lo stack crittografico e il picco completo non sono certificati.
 
 ## Guard, cGGM, split e F_EQ a ruoli separati
 
+Evidenza: [25 controlli Rust e 27 Python/C++ su SHA pulita](evidence.md#seed6-guard-to-cggm-and-split-equality).
+
 Il [raccordo test-only](../../rust/volta-pcg/src/c71_seed6/cggm.rs) consuma
 `GuardAccepted` prima di generare c. Il sender campiona c0 in Fp3 con il
 sampler limitato esistente, calcola `k=c0-K(r0)` e percorre `(k,K(beta)-k)`;

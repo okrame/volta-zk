@@ -2201,7 +2201,9 @@ livelli e due lane, anche dopo fold non Booleani. Recupera i figli
 originali tramite istogramma privato. Il successivo raccordo alla proof
 passa con wire/FS/MAC identici, rigetti sull'endpoint originale e positivo
 integrato lookup/GKR/WHIR. Quest'ultimo usa 76 round custom e otto
-terminali; il certificato è di 7.733.929 B con 88.049 MAC ideali originali.
+terminali; il certificato è di circa 7,75 MB con 88.049 MAC ideali originali.
+La dimensione e il receipt possono variare con le monete dell'installazione;
+la parità byte per byte dei componenti usa lo stesso fixture e le stesse monete.
 Il riferimento è limitato a domini completi ≤128 celle e viene selezionato
 nel caller EXP30 a pattern solo in tale ambito. Passa ora anche il getter
 a batch con LUT prepesate, baseline pubblica, chiavi compatte e checkpoint,

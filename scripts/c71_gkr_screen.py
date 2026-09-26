@@ -204,6 +204,7 @@ def canonical(native):
     return result
 
 
+@lru_cache(maxsize=1)
 def ratio_cases():
     # Python has no independent compile_ratio entry point. Gate totals come
     # directly from the native public census; only causal support is derived.

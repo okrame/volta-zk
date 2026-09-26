@@ -1012,7 +1012,7 @@ fn prove_impl(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
     sourcewise: bool,
-    pattern_prefix: bool,
+    pattern_prefix: Option<usize>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
     use std::cell::{Cell, RefCell};
 
@@ -1085,7 +1085,7 @@ fn prove_impl(
         let width = widths[depth - 1];
         let (previous, selectors, following, mut rounds) = if sourcewise {
             let selector_point = point.clone();
-            let mut pattern = if pattern_prefix {
+            let mut pattern = if let Some(tile_bits) = pattern_prefix {
                 patterns::build(
                     s,
                     depth,
@@ -1093,6 +1093,7 @@ fn prove_impl(
                     &weights,
                     &read_frame,
                     &mut source_work.pattern_prefix,
+                    tile_bits,
                 )?
             } else {
                 None
@@ -1459,7 +1460,7 @@ pub(in super::super) fn prove_sourcewise(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
-    prove_impl(s, &get_frame, fs, correlations, true, false)
+    prove_impl(s, &get_frame, fs, correlations, true, None)
 }
 
 pub(in super::super) fn prove_patterns(
@@ -1468,7 +1469,8 @@ pub(in super::super) fn prove_patterns(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
-    let (proof, point, original, _work) = prove_impl(s, &get_frame, fs, correlations, true, true)?;
+    let (proof, point, original, _work) =
+        prove_impl(s, &get_frame, fs, correlations, true, Some(5))?;
     #[cfg(test)]
     if std::env::var_os("C71_INTEGRATED_TRACE").is_some() {
         eprintln!("C71_INTEGRATED_GKR {}", serde_json::to_string(&_work).unwrap());
@@ -1497,7 +1499,7 @@ fn prove_dense(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
-    let (proof, point, original, _) = prove_impl(s, &get_frame, fs, correlations, false, false)?;
+    let (proof, point, original, _) = prove_impl(s, &get_frame, fs, correlations, false, None)?;
     Ok((proof, point, original))
 }
 
@@ -2283,7 +2285,13 @@ mod tests {
                 assert_eq!(fs.digest(), dense_fs.digest());
                 assert!(dense_rows.next().is_none());
 
-                if programs.len() == 1 {
+                // One-bit bins are the original-coordinate Gram/linear basis.
+                // This checks the MOMENT representation through the original
+                // wire, FS, MAC and PCS continuation, not the CUDA adapter.
+                for tile_bits in [5, 1] {
+                    if programs.len() != 1 {
+                        continue;
+                    }
                     let mut pattern_fs = start();
                     let mut pattern_rows =
                         rows[..statement.required().unwrap()].to_vec().into_iter();
@@ -2293,7 +2301,7 @@ mod tests {
                         &mut pattern_fs,
                         &mut pattern_rows,
                         true,
-                        true,
+                        Some(tile_bits),
                     )
                     .unwrap();
                     let mut pattern_bytes = Vec::new();
@@ -2307,6 +2315,7 @@ mod tests {
                         pattern_work.pattern_prefix.prefix_rounds,
                         (4.min(c.saturating_sub(1)) * (widths.len() - 1)) as u64
                     );
+                    eprintln!("C71_PATTERN_PARITY tile_bits={tile_bits} original_wire_fs_mac=true");
                     eprintln!(
                         "C71_PATTERN_PREFIX {}",
                         serde_json::to_string(&pattern_work.pattern_prefix).unwrap()

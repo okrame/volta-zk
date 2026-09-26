@@ -24,7 +24,81 @@ HD unsigned b_word(unsigned lane, unsigned reg) { return lane % 4 + 4 * reg; }
 HD unsigned c_row(unsigned lane, unsigned reg) { return lane / 4 + 8 * (reg / 2); }
 HD unsigned c_col(unsigned lane, unsigned reg) { return 2 * (lane % 4) + (reg & 1); }
 
+HD uint32_t stage_word(const uint64_t* packed, unsigned n, unsigned word, unsigned row) {
+    const unsigned first=word*32;
+    const unsigned valid=first>=n?0:(n-first<32?n-first:32);
+    const uint32_t mask=valid==32?~uint32_t{0}:(valid?((uint32_t{1}<<valid)-1):0);
+    if(row==15) return mask; // Auxiliary constant, not an original GKR wire.
+    uint32_t out=0;
+    for(unsigned q=0;q<8;++q) if(first+q*4<n) {
+        const uint64_t x=(packed[word*8+q]>>row)&0x0001000100010001ULL;
+        out|=uint32_t((x*0x0001000200040008ULL)>>48&15)<<(q*4);
+    }
+    return out&mask;
+}
+
+HD uint64_t reduce_count_bits(const uint32_t* counts, size_t stride) {
+    uint64_t lo=0; uint32_t hi=0;
+    for(unsigned bit=0;bit<64;++bit) {
+        const uint64_t count=counts[bit*stride];
+        const uint64_t term=count<<bit, next=lo+term;
+        hi+=uint32_t(bit?count>>(64-bit):0)+uint32_t(next<lo);
+        lo=next;
+    }
+    // 2^64 == 2^32-1 mod p; hi<=N<2^31, no 128-bit device arithmetic.
+    constexpr uint64_t epsilon=0xffffffffULL;
+    uint64_t reduced=lo+uint64_t(hi)*epsilon;
+    if(reduced<lo) reduced+=epsilon;
+    return reduced>=FIELD_P?reduced-FIELD_P:reduced;
+}
+
 #ifdef __CUDACC__
+// In-place transpose of a disjoint 512-byte tile. Launch exactly 128 threads.
+// Producer quads use fixed [wire][64 tiles][64 u64] strides; compact rank
+// must be mapped to original Eq before this component is called.
+extern "C" __global__ void c71_exp30_pack_wires(
+    uint64_t* packed_stage, unsigned wires, unsigned n) {
+    const unsigned tiles=(n+255)/256, job=blockIdx.x;
+    if(job>=wires*tiles) return;
+    const unsigned wire=job/tiles, tile=job%tiles;
+    const unsigned remaining=n-tile*256, count=remaining<256?remaining:256;
+    uint64_t* input=packed_stage+(size_t(wire)*64+tile)*64;
+    __shared__ uint64_t snapshot[64];
+    if(threadIdx.x<64) snapshot[threadIdx.x]=threadIdx.x*4<count?input[threadIdx.x]:0;
+    __syncthreads();
+    const unsigned row=threadIdx.x%16, word=threadIdx.x/16;
+    reinterpret_cast<uint32_t*>(input)[row*8+word]=stage_word(snapshot,count,word,row);
+}
+
+extern "C" __global__ void c71_exp30_pack_eq(
+    const uint64_t* canonical_limbs, uint32_t* eq_bits, unsigned n) {
+    const unsigned k=blockIdx.x*blockDim.x+threadIdx.x, lane=threadIdx.x&31;
+    if(k/256>=(n+255)/256) return; // Uniform for every full warp.
+    for(unsigned limb=0;limb<3;++limb) {
+        const uint64_t value=k<n?canonical_limbs[size_t(k)*3+limb]:0;
+        for(unsigned b=0;b<64;++b) {
+            const uint32_t bits=__ballot_sync(0xffffffffu,(value>>b)&1);
+            if(lane==0) eq_bits[eq_index(k/256,(k%256)/32,limb*64+b)]=bits;
+        }
+    }
+}
+
+// Separate binary and Copy layouts; output consists of three canonical limbs
+// per original moment. Counts are consumed only after every batch fence.
+extern "C" __global__ void c71_exp30_reduce_binary(
+    const uint32_t* counts, uint64_t* moments, unsigned gates) {
+    const size_t i=size_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i>=size_t(gates)*256*3) return;
+    const size_t gate=i/(256*3), cell=(i/3)%256, limb=i%3;
+    moments[i]=reduce_count_bits(counts+(gate*192+limb*64)*256+cell,256);
+}
+extern "C" __global__ void c71_exp30_reduce_copy(
+    const uint32_t* counts, uint64_t* moments, unsigned columns) {
+    const size_t i=size_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i>=size_t(columns)*3) return;
+    moments[i]=reduce_count_bits(counts+(i/3)*192+(i%3)*64,1);
+}
+
 // One warp owns gate x (8 weight bits) x (8 output columns). Disjoint writes.
 // tiles <=64; fixed public strides permit immediate-offset loads.
 // Stage: [wire][64 K tiles][16 rows][8 u32]; row 15 is a public constant one.
@@ -139,6 +213,28 @@ bool host_check(unsigned n) {
                 stage[(wire*BATCH_TILES+k/256)*WIRE_WORDS+j*8+(k%256)/32]
                     |=uint32_t(values[k][wire]>>j&1)<<(k%32);
     }
+    std::vector<uint64_t> packed(2*((n+3)/4));
+    for(unsigned k=0;k<n;++k) for(unsigned wire=0;wire<2;++wire)
+        packed[wire*((n+3)/4)+k/4]|=uint64_t(values[k][wire]&0x7fff)<<(16*(k%4));
+    for(unsigned wire=0;wire<2;++wire) for(unsigned word=0;word<tiles*8;++word)
+        for(unsigned row=0;row<16;++row)
+            if(stage_word(packed.data()+wire*((n+3)/4),n,word,row)
+               !=stage[(wire*64+word/8)*128+row*8+word%8]) return false;
+    std::vector<uint32_t> inplace(2*64*128);
+    for(unsigned wire=0;wire<2;++wire) for(unsigned q=0;q<(n+3)/4;++q) {
+        const uint64_t v=packed[wire*((n+3)/4)+q];
+        inplace[wire*64*128+2*q]=uint32_t(v);
+        inplace[wire*64*128+2*q+1]=uint32_t(v>>32);
+    }
+    for(unsigned wire=0;wire<2;++wire) for(unsigned tile=0;tile<tiles;++tile) {
+        const unsigned base=(wire*64+tile)*128, count=n-tile*256<256?n-tile*256:256;
+        std::array<uint64_t,64> snapshot{};
+        for(unsigned q=0;q<64;++q)
+            snapshot[q]=uint64_t(inplace[base+2*q])|(uint64_t(inplace[base+2*q+1])<<32);
+        for(unsigned row=0;row<16;++row) for(unsigned word=0;word<8;++word)
+            inplace[base+row*8+word]=stage_word(snapshot.data(),count,word,row);
+        for(unsigned i=0;i<128;++i) if(inplace[base+i]!=stage[base+i]) return false;
+    }
     std::vector<uint32_t> counts(192*256);
     for(unsigned q=0;q<192;++q) for(unsigned tile=0;tile<tiles;++tile) {
         uint32_t a[32][4], b[2][32][2];
@@ -195,12 +291,17 @@ bool host_check(unsigned n) {
             for(unsigned k=0;k<n;++k)
                 if((values[k][0]>>i&1)&&(values[k][1]>>j&1)) direct+=eq[k][limb];
             if(recovered!=direct || recovered%FIELD_P!=direct%FIELD_P) return false;
+            if(reduce_count_bits(counts.data()+limb*64*256+i*16+j,256)!=uint64_t(direct%FIELD_P)) return false;
         }
     return true;
 }
 
 int main() {
-    const bool ok=host_check(17)&&host_check(256)&&host_check(513);
+    std::array<uint32_t,64> edge;
+    edge.fill(0x7ffffffeu);
+    const __uint128_t expected=__uint128_t(0x7ffffffeu)*UINT64_MAX;
+    const bool boundary=reduce_count_bits(edge.data(),1)==uint64_t(expected%FIELD_P);
+    const bool ok=boundary&&host_check(17)&&host_check(256)&&host_check(513);
     std::cout << "{\"host_exact_gram_and_fragments\":" << (ok?"true":"false")
         << ",\"gpu_execution\":false,\"credit\":false}\n";
     return ok?0:1;

@@ -154,12 +154,16 @@ parità a tutti i livelli e cinque test nativi, inclusa la proof integrata.
 È riduzione del lavoro sorgente, senza credito di tempo GPU.
 Il [consumer BMMA candidato](preflight.md#exp30-momenti-binari-bmma) elimina
 nel modello gli aggiornamenti sparsi dei bin, compresi i Copy, con payload
-nominato di 490.859.484 B. Due kernel compilano per sm_90 senza spill;
+nominato di 490.859.484 B. Sei kernel compilano per sm_90 senza spill;
 passano i [controlli CPU su SHA pulita](evidence.md#exp30-bmma-component)
 di ricostruzione esatta, cubici e arena. È una
 rappresentazione degli stessi aggregati privati, non un terzo protocollo.
-Resta da collegare producer → packing Eq/wire → BMMA → riduzione Fp3
-al prefisso nativo. Nessun positivo GPU o upper totale è ancora disponibile.
+Packing Eq, trasposizione wire in-place e riduzione dei contatori in Fp
+hanno ora controlli CPU e compilazione statica. Il riferimento nativo a
+momenti di un bit conserva proof/FS/MAC originali; non esegue CUDA. La
+trasposizione usa 512 B shared per tile e nessun secondo stage globale.
+Resta da collegare producer parallelo, indici originali e pesi Fp3 al
+prefisso nativo. Nessun positivo GPU o upper totale è ancora disponibile.
 Priorità: chiudere questo percorso e il ledger congiunto, senza nuovi census ABI.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 

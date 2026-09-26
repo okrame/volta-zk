@@ -242,13 +242,18 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                 events=events[:-3]  # Keep the original ratio cache allocation.
                 for state in reversed(bm.geometry()[2]):
                     name=f"EXP30_BMMA_layer_{state['depth']}"
-                    buffers={name+':'+k:v for k,v in state.items() if k!='depth'}
+                    buffers={name+':'+k:v for k,v in state.items() if k not in ('depth','moment_output_bytes')}
                     buffers[name+':packed_replay']=prefix['packed_replay_resident_bytes']
                     events.append(dict(event=name+'_producer_consumer_batches',
                         allocate={**buffers,name+':aggregate':24*(256+16)},
-                        unknown=['producer transpose/reduction kernels, compiler transient and allocator; candidate only']))
-                    events.append(dict(event=name+'_last_count_consumer_fence',free=list(buffers)))
-                    events.append(dict(event=name+'_four_cubics_fence',free=[name+':aggregate']))
+                        unknown=['parallel producer, moment weighting, compiler transient and allocator; candidate only']))
+                    events.append(dict(event=name+'_last_BMMA_fence',
+                        free=[name+':stage_bytes',name+':Eq_bitplanes_bytes',name+':packed_replay'],
+                        allocate={name+':moments':state['moment_output_bytes']}))
+                    events.append(dict(event=name+'_last_count_consumer_fence',
+                        free=[name+':count_bytes',name+':copy_count_bytes']))
+                    events.append(dict(event=name+'_four_cubics_fence',
+                        free=[name+':moments',name+':gate_map_bytes',name+':aggregate']))
             for name in ('GELU','softcap'):
                 chains[name+'_original_lookup']=[
                     dict(event=name+'_build_original_cuts',allocate={'getter:cuts':cuts}),

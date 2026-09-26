@@ -1979,18 +1979,23 @@ Il [componente CUDA](../../cuda/c71_exp30_bmma.cu) usa
 `mma.sync.aligned.m16n8k256.row.col.s32.b1.b1.s32.and.popc` e le
 [mappe PTX ufficiali](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-168256).
 Il compilatore locale 12.9.86 emette BMMA native per sm_90, con zero stack,
-spill e shared: 70 registri per And/Xor, 40 per Copy. Sono compilazioni
+spill: 70 registri per And/Xor, 40 per Copy. I due kernel di riduzione
+usano 32 registri ciascuno; packing Eq 32, trasposizione wire 18 e 512 B
+shared per CTA. Solo quest’ultima richiede una barriera locale. Sono compilazioni
 statiche sul toolkit temporaneo già documentato, non esecuzioni H100.
 I test host emulano la disposizione collettiva dei frammenti e confrontano
 le somme intere originali, con valori vicini a p, padding e tile parziali.
 Il test algebrico verifica tutti i cubici del prefisso, maschere pubbliche
-multiple e sfide 0/1/non-base. Non è ancora parità di un nuovo prover nativo.
+multiple e sfide 0/1/non-base. Il riferimento nativo con tile di un bit verifica anche la parità con
+proof, FS e MAC originali. È un oracolo dei momenti, non l’adapter CUDA.
 
 Schedule proposta: un livello di circuito per volta; batch di al più
 16.384 posizioni suffix, 64 tile da 256. Il producer emette una sola
 finestra di bitplane, poi una fence precede i consumer; questi completano
 prima di riusare la finestra. I contatori restano vivi tra i batch e sono
-ridotti dopo l’ultimo. Eq si impacchetta come `[tile][word][bit]`, con load
+ridotti dopo l’ultimo. Il producer emette quad da quattro posizioni ×
+16 righe; ogni tile si traspone sul posto dopo aver salvato i suoi 512 B
+in shared memory. Non si alloca un secondo stage globale. Eq si impacchetta come `[tile][word][bit]`, con load
 vettoriali a 128 bit per ridurre le istruzioni, senza ridurre i byte logici.
 Gli indici originali restano necessari: compattare il supporto non permette
 di usare Eq del rango compatto. N massimo è 7.209.600, quindi nessun
@@ -2021,7 +2026,9 @@ queste voci e conserva gli obblighi mancanti.
 
 La variante `exp30_bmma=True` del [piano arena](../../scripts/c71_arena_plan.py)
 riserva separatamente stage wire, Eq, contatori And/Xor, contatori Copy,
-mappa gate, piano replay e aggregato. Il payload massimo nominato è
+mappa gate, piano replay, momenti canonici e aggregato. Dopo l’ultima
+fence BMMA libera stage/Eq/replay prima di allocare i momenti; dopo la
+fence di riduzione libera i contatori. Il payload massimo nominato è
 490.859.484 B, con riuso dopo fence a ogni livello. La cache E/Pi/Z resta
 viva fino all’endpoint byte. I layout censiti mantengono 256 MiB di margine;
 questo non include ancora transitori completi, allocator e port CUDA.
@@ -2029,3 +2036,10 @@ Il backend nativo selezionato resta quello a istogrammi finché non è
 verificato il nuovo collegamento completo. `T_inference`, `T_proof_only`
 e `T_response_total` restano distinti e senza upper H100; target totale
 65 s. Nessun pod o spesa è ammesso da questi controlli.
+
+Il ledger del packing conta ora Eq per tutti i 94 livelli: il precedente
+record componente ometteva questo fattore nel solo campo
+`Eq_stage_write_bytes`. Il nuovo conteggio distingue input canonici,
+voti warp, store Eq, lettura/scrittura della trasposizione e output dei
+momenti. I vecchi record restano immutati; nessun tempo è dedotto da
+questi byte logici.

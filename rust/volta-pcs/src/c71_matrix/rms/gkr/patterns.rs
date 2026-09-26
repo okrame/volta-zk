@@ -124,9 +124,9 @@ struct Histogram {
 }
 
 impl Histogram {
-    fn new(mask: u64, gates: &[Gate]) -> Self {
+    fn new(mask: u64, gates: &[Gate], tile_bits: usize) -> Self {
         let positions: Vec<_> = (0..16).filter(|j| mask >> j & 1 != 0).collect();
-        let tiles: Vec<_> = positions.chunks(5).map(<[usize]>::to_vec).collect();
+        let tiles: Vec<_> = positions.chunks(tile_bits).map(<[usize]>::to_vec).collect();
         let mut size = 0;
         let offsets = tiles
             .iter()
@@ -282,7 +282,13 @@ pub(super) fn build(
     weights: &[Fp3],
     read: &impl Fn(usize) -> [u8; 12],
     work: &mut Work,
+    tile_bits: usize,
 ) -> Result<Option<Prefix>, String> {
+    // One-bit tiles are a CPU moment oracle; production still uses five bits.
+    // The nonzero pattern of each one-bit tile is exactly an original wire.
+    if !matches!(tile_bits, 1 | 5) {
+        return Err("unsupported pattern tile width".into());
+    }
     let bits = 4.min(point.len().saturating_sub(1));
     if bits == 0 {
         return Ok(None);
@@ -304,7 +310,8 @@ pub(super) fn build(
     };
     let masks: std::collections::BTreeSet<_> =
         (0..suffix).map(mask_at).filter(|&m| m != 0).collect();
-    let mut histograms: Vec<_> = masks.into_iter().map(|m| Histogram::new(m, gates)).collect();
+    let mut histograms: Vec<_> =
+        masks.into_iter().map(|m| Histogram::new(m, gates, tile_bits)).collect();
     let payload = histograms.iter().map(|h| h.payload(gates)).sum::<usize>();
     // Public cap on this component, not a claim about the complete arena.
     if payload > 1024 * 1024 * 1024 {

@@ -900,8 +900,14 @@ costante, che produce i margini lineari; quest’ultima non entra nel
 selettore GKR originale. Copy usa Eq×wire, And/Xor usano X×(Y AND Eq_bit).
 Nessun conteggio viene aperto. Per N<2^31 i contatori s32 e la successiva
 ricostruzione unsigned a 96 bit sono esatti. Le sfide e i MAC non entrano
-nelle scelte di layout. Il port nativo, il refinement e l’esecuzione CUDA
-restano da verificare: il backend validato rimane quello a istogrammi.
+nelle scelte di layout. Il riferimento nativo con tile di un bit verifica gli stessi momenti
+attraverso proof, FS, MAC e continuazione originale; non chiama i buffer
+CUDA. Il backend selezionato rimane quello a istogrammi di cinque bit.
+Il packing trasforma in-place ciascun tile dopo averne acquisito tutti i
+512 B in shared memory; una fence separa producer e consumer. Dopo
+l’ultimo batch, stage e piano replay sono liberati prima dei momenti Fp3;
+i contatori restano vivi fino alla fence di riduzione. Il port integrato,
+il refinement e l’esecuzione CUDA restano da verificare.
 
 
 

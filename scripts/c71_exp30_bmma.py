@@ -54,7 +54,8 @@ def geometry():
                    copy_count_bytes=((l['copy']*15+7)//8)*8*192*4,
                    stage_bytes=widths[i]*64*16*32,
                    Eq_bitplanes_bytes=192*64*32,
-                   gate_map_bytes=(l['and']+l['xor'])*8+l['copy']*4)
+                   gate_map_bytes=(l['and']+l['xor'])*8+l['copy']*4,
+                   moment_output_bytes=((l['and']+l['xor'])*256+(l['copy']*15+7)//8*8)*24)
               for i,l in enumerate(levels)]
     return levels, widths, states
 
@@ -62,7 +63,10 @@ def geometry():
 def report():
     levels, widths, states = geometry()
     binary = sum(l['and']+l['xor'] for l in levels)
-    peak = max(sum(v for k,v in s.items() if k!='depth') for s in states)
+    peak = max(max(
+        sum(v for k,v in s.items() if k not in ('depth','moment_output_bytes'))+alt.REPLAY_DAG_RESIDENT_BYTES,
+        s['count_bytes']+s['copy_count_bytes']+s['gate_map_bytes']+s['moment_output_bytes'])
+        for s in states)+24*(256+16)
     cases = []
     for old in (0,150,300):
         base = alt.late_weights(old)
@@ -92,16 +96,22 @@ def report():
             count_load_store_logical_bytes=2*counts*batches,
             A_Y_load_logical_bytes=warp_tiles*32*6*4,
             Eq_load_logical_bytes=mma*32*2*4,
-            producer_stage_write_bytes=sum(widths)*tiles*16*32,
-            Eq_stage_write_bytes=tiles*192*32,
+            producer_packed_stage_write_bytes=sum(widths)*((n+3)//4)*8,
+            inplace_transpose_read_bytes=sum(widths)*((n+3)//4)*8,
+            inplace_transpose_write_bytes=sum(widths)*tiles*16*32,
+            transpose_shared_bytes_per_CTA=512,
+            Eq_canonical_input_read_bytes=len(levels)*n*24,
+            Eq_pack_warp_votes=len(levels)*tiles*8*192,
+            Eq_stage_write_bytes=len(levels)*tiles*192*32,
             counts_zero_fill_bytes=counts,
             final_count_read_bytes=counts,
+            canonical_moment_output_bytes=sum(s['moment_output_bytes'] for s in states),
             final_moment_base_reductions=(binary*256+sum((l['copy']*15+7)//8*8 for l in levels))*3,
             final_count_shift_add_terms=counts//4,
             late_gate_Fp3_products=sum(l['and']*225+l['xor']*255+l['copy']*15 for l in levels),
             replay_word_operations=base['packed_boolean_word_gates'],
             source_frame_cache_bytes=base['original_ratio_cache_bytes'],
-            phase_payload_bytes=peak+alt.REPLAY_DAG_RESIDENT_BYTES+24*(256+16),
+            phase_payload_bytes=peak,
             logical_bytes_are_not_HBM=True))
     return dict(credit=False, scope='same four EXP30 cubics, candidate BMMA consumer',
         batch_suffix_capacity=16384, states=states, cases=cases,
@@ -109,8 +119,8 @@ def report():
         lower_conditions=['132 SM, clock <=2 GHz, grant 128 bitwise results/cycle/SM',
                           '3.35 TB/s HBM, <=256 MiB retained count cache between fenced batches',
                           'max of compute and bandwidth lower; no bandwidth-derived upper'],
-        missing=['producer transpose and original-index Eq packing kernels',
-                 'count-to-Fp3 reduction kernel and native prefix integration',
+        missing=['parallel packed producer and original-index compact schedule adapter',
+                 'GPU moment weighting and native prefix integration',
                  'GPU validation/service rates and complete physical arena'],
         time_metrics=dict(T_inference='unmeasured', T_proof_only='unmeasured',
                           T_response_total='unmeasured', target_total_seconds=65))

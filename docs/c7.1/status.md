@@ -52,7 +52,10 @@ pesanti ancora non autorizzate.
 ricette RMS/RNE originali, indirizzi QK/KV/RoPE e driver causale per token;
 il relativo storage CPU ora raccoglie range e istogrammi, conserva KV i16
 causale e libera le righe all'ultimo consumer. Il lettore packed usa una
-sola riga W. Sono controllati sottografi con input sintetici; restano pesi
+sola riga W. L'ingest ora seleziona automaticamente gli esponenti W con
+il componente nativo, conservando hash dei due shard e pubblicazione
+atomica del packed; è controllato su shard piccoli. Sono controllati
+sottografi con input sintetici; restano pesi
 reali, scelta delle scale e validazione completa. Non è ancora Γ calibrato
 né esecuzione completa del modello.
 

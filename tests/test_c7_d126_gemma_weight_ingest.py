@@ -303,6 +303,32 @@ def test_insufficient_disk_blocks_without_creating_output(
     assert not output.with_name(output.name + ".partial").exists()
 
 
+def test_native_pack_budget_uses_largest_tensor_and_streaming_headroom(tmp_path, monkeypatch):
+    module = load_module()
+    output = tmp_path / "packed.i16"
+    metadata = module.load_metadata()
+    tensor_bytes = max(row["nbytes"] for row in metadata["tensors"]
+                       if row["disposition"] == "private_text")
+    assert tensor_bytes == 2_818_572_288
+    ram = tensor_bytes + 512 * 1024**2
+    free = module.PACKED_BYTES + 1024**3
+    usage = SimpleNamespace(total=module.SOURCE_BYTES + free, free=free)
+    monkeypatch.setattr(module.shutil, "disk_usage", lambda _path: usage)
+    monkeypatch.setattr(module, "_host_ram_bytes", lambda: ram)
+    report = module.check_pack_resources(output, tensor_bytes)
+    assert report["required_ram_bytes"] == ram
+    assert report["required_free_bytes"] == free
+    assert report["required_filesystem_bytes"] == 123_941_028_808
+    usage.free -= 1
+    with pytest.raises(module.BlockedError, match="before packing"):
+        module.check_pack_resources(output, tensor_bytes)
+    usage.free += 1
+    monkeypatch.setattr(module, "_host_ram_bytes", lambda: ram - 1)
+    with pytest.raises(module.BlockedError, match="RAM"):
+        module.check_pack_resources(output, tensor_bytes)
+    assert not output.exists()
+
+
 def test_orphan_partial_blocks_retry_before_resource_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

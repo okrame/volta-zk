@@ -2331,15 +2331,26 @@ Il percorso minimo riusa i componenti esistenti, nell'ordine seguente:
    il packed nell'ordine dei terminali. L'[ingest](../../scripts/c7_d126_gemma_weight_ingest.py)
    verifica hash e minimalità degli esponenti forniti; il
    [componente Rust](../../rust/volta-pcs/src/gemma31b_bf16.rs) già scansiona,
-   sceglie l'esponente e converte un tensore nel medesimo buffer.
-   Il [confronto Python/Rust](../../tests/test_c7_d126_gemma_native_bf16.py)
-   copre anche non finiti, overflow e input troncati. Non è un ingester
-   nativo completo né una misura di throughput. Gli shard occupano
+   sceglie l'esponente e converte un tensore nel medesimo buffer. Il modo
+   `pack --native-packer` ora collega quel componente all'ingest: il parent
+   verifica gli header e fa SHA-256 degli stessi byte passati al worker,
+   riceve esponente minimo e packed, scrive nell'ordine dei terminali e
+   pubblica solo dopo i due hash completi e il controllo del file persistito.
+   Gli esponenti ricavati e l'hash del binario sono nel report. Il
+   [confronto Python/Rust](../../tests/test_c7_d126_gemma_native_bf16.py)
+   copre anche più tensori, pipe oltre capacità, hash errati, non finiti,
+   input troncati, worker assente e pulizia delle partial. Non è ancora
+   un ingest del checkpoint reale né una misura di throughput. Gli shard occupano
    62.546.338.248 B, il packed 61.394.690.560 B: conservarli entrambi richiede
    123.941.028.808 B, esclusi temporanei. Il massimo tensore privato è
    l'embedding, 2.818.572.288 B; questi sono costi offline, non nuovo spazio
-   nell'arena della risposta. Non si applicano i requisiti host storici
-   dell'ingest come lower inevitabili della calibrazione.
+   nell'arena della risposta. Il modo nativo pianifica il massimo tensore
+   più 512 MiB di margine host (3.355.443.200 B), con chunk Python da 4 MiB;
+   richiede packed più 1 GiB libero oltre agli shard già presenti.
+   Questo è un requisito operativo del tool, non un picco RSS misurato.
+   Non si applicano i requisiti host storici del modo Python come lower
+   inevitabili della calibrazione. Acquisizione ed esecuzione completa
+   restano fuori dall'autorizzazione locale; i test non leggono pesi reali.
 2. **A reale.** Raccogliere le statistiche delle sorgenti semantiche sui
    dati scelti, mantenendo identità dei produttori e posizioni KV. Le
    statistiche floating point possono inizializzare scale candidate ma

@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager, suppress
 import hashlib
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -318,7 +320,7 @@ def require_canonical_output(shard_dir: Path, output: Path) -> None:
         raise BlockedError(f"packed output must be the canonical path: {expected}")
 
 
-def check_pack_resources(output: Path) -> dict[str, int]:
+def check_pack_resources(output: Path, native_tensor_bytes: int | None = None) -> dict[str, int]:
     parent = output.parent
     partial = output.with_name(output.name + ".partial")
     lock = output.with_name(f".{output.name}.pack.lock")
@@ -346,18 +348,22 @@ def check_pack_resources(output: Path) -> dict[str, int]:
         )
     usage = shutil.disk_usage(parent)
     ram = _host_ram_bytes()
-    if usage.total < MIN_STORAGE_BYTES:
+    storage_minimum = MIN_STORAGE_BYTES if native_tensor_bytes is None else SOURCE_BYTES + PACKED_BYTES
+    ram_minimum = MIN_RAM_BYTES if native_tensor_bytes is None else native_tensor_bytes + 512 * 1024**2
+    if usage.total < storage_minimum:
         raise BlockedError(
-            f"output filesystem has {usage.total} bytes; pod requires at least {MIN_STORAGE_BYTES}"
+            f"output filesystem has {usage.total} bytes; pod requires at least {storage_minimum}"
         )
-    needed_free = PACKED_BYTES + RESERVED_FREE_BYTES
+    needed_free = PACKED_BYTES + (RESERVED_FREE_BYTES if native_tensor_bytes is None else 1024**3)
     if usage.free < needed_free:
         raise BlockedError(
             f"output filesystem has {usage.free} free bytes; requires {needed_free} before packing"
         )
-    if ram is None or ram < MIN_RAM_BYTES:
-        raise BlockedError(f"host RAM is {ram!r} bytes; pod requires at least {MIN_RAM_BYTES}")
-    return {"filesystem_bytes": usage.total, "free_bytes": usage.free, "ram_bytes": ram}
+    if ram is None or ram < ram_minimum:
+        raise BlockedError(f"host RAM is {ram!r} bytes; pod requires at least {ram_minimum}")
+    return {"filesystem_bytes": usage.total, "free_bytes": usage.free, "ram_bytes": ram,
+            "required_free_bytes": needed_free, "required_ram_bytes": ram_minimum,
+            "required_filesystem_bytes": storage_minimum}
 
 
 def stream_sha256(path: Path, chunk_bytes: int = CHUNK_BYTES) -> tuple[str, int]:
@@ -515,6 +521,31 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+@contextmanager
+def _native_packer(executable: Path | None, tensor_bytes: int):
+    if executable is None:
+        yield None
+        return
+    worker = subprocess.Popen(
+        [str(executable.resolve(strict=True)), str(tensor_bytes)],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    )
+    try:
+        yield worker
+        worker.stdin.close()
+        if worker.stdout.read(1):
+            raise IngestError("native packer emitted trailing bytes")
+        if worker.wait(timeout=60) != 0:
+            raise IngestError("native packer failed")
+    finally:
+        if worker.poll() is None:
+            worker.kill()
+        worker.wait()
+        with suppress(OSError):
+            worker.stdin.close()
+        worker.stdout.close()
+
+
 def _pack_private_weights_source_once(
     paths: dict[str, Path],
     metadata: dict,
@@ -524,8 +555,13 @@ def _pack_private_weights_source_once(
     chunk_bytes: int = CHUNK_BYTES,
     shard_specs: dict = SHARDS,
     packed_bytes: int = PACKED_BYTES,
+    native_packer: Path | None = None,
 ) -> tuple[dict[str, str], str, int]:
-    """One-source-pass scalar reference packer; no production throughput credit."""
+    """Hash the exact source stream; optionally derive W scales in a native worker.
+
+    Native mode fills the initially empty exponent map. Publication still waits
+    for both complete shard hashes and persisted packed output verification.
+    """
     if chunk_bytes <= 0 or chunk_bytes % 2:
         raise ValueError("chunk_bytes must be a positive even integer")
     if set(paths) != set(shard_specs):
@@ -539,7 +575,7 @@ def _pack_private_weights_source_once(
         len(private_names) != len(expected_private)
         or len(set(private_names)) != len(private_names)
         or set(private_names) != expected_private
-        or set(exponents) != expected_private
+        or set(exponents) != (expected_private if native_packer is None else set())
     ):
         raise IngestError("private terminal order or exponent keys differ")
 
@@ -580,8 +616,10 @@ def _pack_private_weights_source_once(
         )
         partial = Path(partial_name)
         owned_partial = True
-        with os.fdopen(partial_fd, "r+b", buffering=0) as sink:
-            partial_fd = -1
+        tensor_bytes = max(rows[name]["nbytes"] for name in private_names)
+        sink = os.fdopen(partial_fd, "r+b", buffering=0)
+        partial_fd = -1
+        with sink, _native_packer(native_packer, tensor_bytes) as worker:
             for shard, spec in shard_specs.items():
                 digest = hashlib.sha256()
                 shard_rows = [row for row in metadata["tensors"] if row["shard"] == shard]
@@ -610,18 +648,36 @@ def _pack_private_weights_source_once(
 
                             tensor_position = 0
                             max_abs_bits = 0
+                            if worker is not None:
+                                worker.stdin.write(row["nbytes"].to_bytes(8, "little"))
                             while source_position < end:
                                 length = min(chunk_bytes, end - source_position)
                                 body = _read_exact(source, length, row["name"])
                                 digest.update(body)
-                                converted, max_abs_bits = _convert_bf16le_chunk_with_max(
-                                    body, exponents[row["name"]], max_abs_bits
-                                )
-                                sink.seek(output_offsets[row["name"]] + tensor_position)
-                                _write_all(sink, converted)
-                                tensor_position += len(converted)
                                 source_position += length
-                                written += len(converted)
+                                if worker is not None:
+                                    worker.stdin.write(body)
+                                else:
+                                    converted, max_abs_bits = _convert_bf16le_chunk_with_max(
+                                        body, exponents[row["name"]], max_abs_bits
+                                    )
+                                    sink.seek(output_offsets[row["name"]] + tensor_position)
+                                    _write_all(sink, converted)
+                                    tensor_position += len(converted)
+                                    written += len(converted)
+
+                            if worker is not None:
+                                worker.stdin.flush()
+                                reply = _read_exact(worker.stdout, 6, "native packer result")
+                                exponents[row["name"]] = int.from_bytes(reply[:4], "little", signed=True)
+                                max_abs_bits = int.from_bytes(reply[4:], "little")
+                                sink.seek(output_offsets[row["name"]])
+                                while tensor_position < row["nbytes"]:
+                                    length = min(chunk_bytes, row["nbytes"] - tensor_position)
+                                    converted = _read_exact(worker.stdout, length, "native packed tensor")
+                                    _write_all(sink, converted)
+                                    tensor_position += length
+                                    written += length
 
                             required = minimum_weight_exponent(max_abs_bits)
                             supplied = exponents[row["name"]]
@@ -726,7 +782,9 @@ def main() -> int:
     pack = commands.add_parser("pack")
     pack.add_argument("--shard-dir", type=Path, required=True)
     pack.add_argument("--output", type=Path, required=True)
-    pack.add_argument("--weight-exponents", type=Path, required=True)
+    scales = pack.add_mutually_exclusive_group(required=True)
+    scales.add_argument("--weight-exponents", type=Path)
+    scales.add_argument("--native-packer", type=Path)
     args = parser.parse_args()
 
     report = _base_report(args.mode, "INVALID")
@@ -748,19 +806,35 @@ def main() -> int:
             report["status"] = "SOURCE_VERIFIED"
             report["full_source_bodies_verified"] = True
         else:
-            exponents, exponent_digest = load_weight_exponents(
-                args.weight_exponents, private_names
+            tensor_bytes = max(row["nbytes"] for row in metadata["tensors"]
+                               if row["disposition"] == "private_text")
+            if args.native_packer is None:
+                exponents, exponent_digest = load_weight_exponents(args.weight_exponents, private_names)
+            else:
+                exponents, exponent_digest = {}, None
+                report.update(packer_classification="native_tensor_buffer_auto_exponents",
+                              native_packer_sha256=stream_sha256(args.native_packer)[0],
+                              native_tensor_buffer_bytes=tensor_bytes,
+                              required_pod_storage_bytes=SOURCE_BYTES + PACKED_BYTES,
+                              required_pod_ram_bytes=tensor_bytes + 512 * 1024**2)
+            report["host"] = check_pack_resources(
+                args.output, tensor_bytes if args.native_packer is not None else None
             )
-            report["host"] = check_pack_resources(args.output)
             source_digests, packed_digest, packed_bytes = _pack_private_weights_source_once(
-                paths, metadata, private_names, exponents, args.output
+                paths, metadata, private_names, exponents, args.output, native_packer=args.native_packer
             )
+            if args.native_packer is not None:
+                encoded = json.dumps({"weight_exponents_by_tensor": exponents},
+                                     sort_keys=True, separators=(",", ":")).encode("ascii")
+                exponent_digest = _sha256_bytes(encoded)
+                report["weight_exponents_digest_encoding"] = "ASCII JSON; sorted keys; compact separators; no newline"
             report.update(
                 {
                     "status": "PACKED_UNADMITTED",
                     "source_sha256": source_digests,
                     "full_source_bodies_verified": True,
                     "weight_exponents_sha256": exponent_digest,
+                    "weight_exponents_by_tensor": exponents,
                     "packed_sha256": packed_digest,
                     "packed_bytes": packed_bytes,
                     "output": str(args.output),

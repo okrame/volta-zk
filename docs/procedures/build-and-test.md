@@ -20,6 +20,21 @@ are reference diagnostics when their specific assumptions are needed.
 Documentation changes need link, consistency and diff checks, not Rust/Lean
 builds. Existing passing checks need repeating only after relevant changes.
 
+Per l'ingest W con selezione nativa delle scale usare
+`tests/test_c7_d126_gemma_native_bf16.py` e
+`tests/test_c7_d126_gemma_weight_ingest.py`, entro 60 s/2 GiB. La fixture
+compila con `rustc` i due helper stdlib in una directory temporanea di
+`rust/target`; gli shard di test sono piccoli. Controlla gli stessi byte
+hashati/quantizzati, esponenti minimi, ordine packed e rifiuto/pulizia su
+errore. Non acquisisce né processa il checkpoint reale.
+Il comando di preparazione del worker è
+`rustc --edition 2021 -O rust/volta-pcs/examples/gemma31b_bf16_pack.rs -o rust/target/gemma31b_bf16_pack`.
+Il futuro ingest autorizzato usa `scripts/c7_d126_gemma_weight_ingest.py pack
+--shard-dir SHARDS --output PACKED --native-packer rust/target/gemma31b_bf16_pack`;
+il report contiene `weight_exponents_by_tensor`, digest degli shard, packed
+e binario. Non servono esponenti W forniti a mano. La procedura non
+autorizza il download o l'ingest completo sulla VM locale.
+
 For the B12 mathematical fixed-run composition, run the existing Python
 `B12` algebra/accounting filter, bootstrap checks and baseline-budget checks.
 The added finite checks cover a source-mask translation across all of a

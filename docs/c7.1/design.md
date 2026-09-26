@@ -1004,7 +1004,11 @@ KV precedente a un getter esterno causale. Rilascia dopo l'ultimo consumer
 anche quando lo step non ha righe attive; accumula istogrammi e min/max
 privati, senza Snapshot o A completi. Il lettore W usa `Read + Seek` e una
 cache di riga sul packed già validato; lunghezza/codec non certificano hash
-o identità del checkpoint. L'errore rende il trial inutilizzabile e non
+o identità del checkpoint. L'ingest offline può ora derivare gli esponenti
+W con il worker BF16 nativo a un solo buffer per tensore, usando gli stessi
+byte sottoposti a SHA-256 dal parent e pubblicazione atomica del packed.
+Il test su shard piccoli non certifica provenienza o calibrazione di un
+checkpoint reale. L'errore rende il trial inutilizzabile e non
 pubblica il token parziale. La chiusura richiede tutti i 150 token e la
 copertura di ogni sorgente originale, inclusi padding e istogrammi.
 I test eseguono solo sottografi; input reale, scale, tabelle certificate e

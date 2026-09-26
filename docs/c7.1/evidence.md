@@ -2,6 +2,19 @@
 
 [Status](status.md) · [Design](design.md) · [Security](security.md) · [Decisions](decisions.md)
 
+## Canonical calibration row driver
+
+Il [record a SHA pulita d3690a6](../../benchmarks/results/c71-canonical-calibration-rows-2026-09-26-d3690a6d0abd.json)
+registra due filtri nativi separati, ciascuno entro 60 s/2 GiB con un worker:
+dispatcher numerico canonico per righe/driver causale sul suffisso ridotto,
+e regressione della proof lookup/GKR/WHIR con MAC originali. Entrambi passano.
+Il primo usa geometrie O=0/150/300, dati e tabelle sintetici e una scala RMS
+nonzero; controlla anche padding EXP30 e contributo pubblico all'istogramma.
+La proof di regressione usa il runner ridotto preesistente, non il nuovo
+driver canonico. Non sono Γ calibrato reale, forward completo, picco fisico
+o misure H100. Il [preflight](preflight.md#real-calibrated-gamma) conserva
+gli obblighi aperti di storage/getter e calibrazione.
+
 I risultati sono distinti per ciò che controllano. Un test finito supporta
 la derivazione indicata; non dimostra da solo il teorema generale, la
 corrispondenza del wrapper completo o la fattibilità hardware. Il diagnostico

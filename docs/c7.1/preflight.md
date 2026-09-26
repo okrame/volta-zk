@@ -2389,6 +2389,9 @@ questo fixture. È un controllo CPU per righe, senza
 proof o campo GKR, non calibrazione reale o inferenza completa.
 Il test verifica anche le costanti di padding e la somma delle visite
 vive/pubbliche contro il rettangolo originale `32*256*(O+150)`.
+Il [record d3690a6](../../benchmarks/results/c71-canonical-calibration-rows-2026-09-26-d3690a6d0abd.json)
+conserva il test e la regressione separata della proof ridotta originale,
+entrambi passati da SHA pulita entro i limiti locali.
 Il ledger hardware conserva i costi producer ancora aperti: non si
 sostituiscono i suoi costi con il tempo CPU di questo test né si attribuisce
 credito al picco fisico. Il dispatcher non modifica la schedule GPU

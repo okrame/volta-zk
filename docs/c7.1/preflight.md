@@ -1962,7 +1962,8 @@ questi conteggi sui piani pubblici effettivi e la parità nel percorso ridotto.
 
 ### EXP30 momenti binari BMMA
 
-[Record del componente su SHA pulita](evidence.md#exp30-bmma-component).
+[Record del componente](evidence.md#exp30-bmma-component) e
+[packing/riduzione con parità nativa](evidence.md#exp30-moment-pipeline), su SHA pulita.
 
 La candidata sostituisce i bin privati del prefisso con momenti pesati,
 conservando i quattro cubici originali. Posto `w_k=Eq(r_suffix,k)`, per

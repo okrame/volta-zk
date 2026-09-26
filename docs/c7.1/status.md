@@ -158,8 +158,8 @@ nominato di 490.859.484 B. Sei kernel compilano per sm_90 senza spill;
 passano i [controlli CPU su SHA pulita](evidence.md#exp30-bmma-component)
 di ricostruzione esatta, cubici e arena. È una
 rappresentazione degli stessi aggregati privati, non un terzo protocollo.
-Packing Eq, trasposizione wire in-place e riduzione dei contatori in Fp
-hanno ora controlli CPU e compilazione statica. Il riferimento nativo a
+[Packing e riduzione](evidence.md#exp30-moment-pipeline) hanno ora
+controlli CPU e compilazione statica su SHA pulita. Il riferimento nativo a
 momenti di un bit conserva proof/FS/MAC originali; non esegue CUDA. La
 trasposizione usa 512 B shared per tile e nessun secondo stage globale.
 Resta da collegare producer parallelo, indici originali e pesi Fp3 al

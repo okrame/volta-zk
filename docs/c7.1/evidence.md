@@ -1384,3 +1384,27 @@ completo. Il record distingue lower condizionali, traffico logico e HBM,
 e non converte il primo in un upper di tempo. Producer/packing, riduzione
 Fp3, adapter nativo e service-rate restano da collegare. `credit:false`,
 nessun nuovo protocollo, nessun positivo AES/GPU e nessuna spesa.
+
+### EXP30 moment pipeline
+
+Il [record pulito `8728a8e2bed0`](../../benchmarks/results/c71-exp30-moment-pipeline-2026-09-26-8728a8e2bed0.json)
+verifica tre filtri Python/C++, parità nativa dei tile a cinque e un bit,
+e la proof integrata ridotta lookup/GKR/WHIR con MAC originali. I momenti
+nativi sono ancora un riferimento CPU: non consumano i buffer CUDA.
+I sei kernel compilano sm_90 senza stack o spill; packing wire usa 512 B
+shared per CTA. I controlli host confrontano trasposizione in-place,
+frammenti, ricostruzione dei contatori e riduzione Goldilocks, inclusi
+carry al limite e batch parziali. Nessuna GPU viene eseguita.
+
+Il piano libera stage/Eq/replay prima dei momenti canonici, poi libera i
+contatori dopo la fence di riduzione. Il payload massimo resta
+490.859.484 B; il massimo nominato EXP30 resta invariato nei tre contesti.
+Il traffico `Eq_stage_write_bytes` corregge il record BMMA precedente:
+include tutti i 94 livelli, per 3.270.586.368 / 9.767.866.368 /
+16.265.146.368 B. È traffico logico, non una misura HBM o un upper.
+
+Il [timeout preliminare](../../benchmarks/results/c71-exp30-moment-timeout-2026-09-26-a19344f.json)
+conserva il test arena interrotto a 60 s. Il census pubblico identico ora
+è riusato tramite cache; ogni filtro del record passa entro il limite,
+senza ampliarlo. Producer parallelo, indici originali, adapter/pesi GPU,
+picco fisico e tempo completo restano aperti. `credit:false`.

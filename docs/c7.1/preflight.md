@@ -421,9 +421,12 @@ Auth/Key Fp3, consumare nel dominio previsto, azzerare. Poiché 4.096
 non è divisibile per tre, conservare fino a due righe fra batch: carry
 prover **64 B** (verifier 48 B), contato nei subtotal. Nessun pool bulk.
 
-Il setup letterale cGGM mem-sublinear a due traversate richiede almeno
-`2*675*(2^19-1)=707.787.450` valutazioni interne H per ruolo, più >=N
-accumulazioni UH con N=353.894.400. Si paga una volta per run; fondere UH
+Il raccordo cGGM mem-sublinear a due traversate conta
+`2*675*(2^19-2)=707.786.100` valutazioni H sender e
+`2*675*(2^19-19-1)=707.761.800` receiver, più N prodotti/accumuli UH
+con N=353.894.400 e maschere. Il primo split non usa H. Il vecchio
+707.787.450 era un upper, non un lower per ruolo; il ledger ora usa
+il massimo dei due ruoli come upper comune. Si paga una volta per run; fondere UH
 con la seconda traversata dopo la challenge evita traffico separato, non
 la prima traversata senza conservare le foglie. Il vecchio conteggio
 `2N+209R=3.104.380.932` resta un **upper componente**, non un lower AES.
@@ -608,7 +611,7 @@ FFT commit A >=431,95 Gbutterfly/s per la sola voce; le aperture chiedono
 258,79 / 344,24 / 436,50 Gbutterfly/s. PCG conta nel piano trie gli
 upper 583,386 / 585,121 / 585,175 milioni H per ruolo, più
 83,921 / 84,172 / 84,179 milioni chiamate SHAKE EAGen. Alla prima prova
-si aggiungono 707,787 milioni H/ruolo del setup a due traversate, hash
+si aggiungono al più 707,787 milioni H/ruolo del setup a due traversate, hash
 universale e seed/guard/OT, con costi ancora parziali. Non confondere
 un upper di lavoro con un lower di lavoro necessario per ogni algoritmo.
 Le soglie PCG per secondo dividono questi conteggi per il nuovo budget
@@ -1380,8 +1383,8 @@ il secondo; non ne rilascia gli output prima del consumer esterno ancora
 mancante. Queste fasi non alzano il massimo complessivo nominato.
 
 Restano espliciti stack crittografico/spill del compilatore, allocator,
-trasporto, audit, seal/burn, guard prima di c, costruttore role-separated
-cGGM e F_EQ. `puncture` è soltanto l'oracolo del riferimento:
+trasporto, audit, seal/burn e coin globali. Il raccordo locale guard→cGGM→F_EQ
+è descritto sotto. `puncture` è soltanto l'oracolo del riferimento:
 nessun ruolo reale possiede tutti i suoi input. Non dà credito al bootstrap
 composto, né chiude il picco fisico o il lower temporale congiunto. Restano
 `T_inference`, `T_proof_only` e `T_response_total <= 65 s`, senza overlap.
@@ -1396,8 +1399,9 @@ l'oracolo `puncture` ricevono entrambi gli input; il test a profondità 1–7
 confronta ogni prefisso con le foglie dense e ogni cammino punctured,
 e controlla esattamente h−1 chiamate H per cammino sender. A h=1 non
 si chiama H. Il conteggio prudente h dello screen resta un upper, non
-si rivendica un risparmio di tempo H100. Guard→correzioni c→split/F_EQ,
-campionamento delle coin e costruttore role-separated restano da collegare.
+si rivendica un risparmio di tempo H100. Il raccordo role-separated ora
+usa lo stesso primo split; campionamento globale delle coin e lifecycle
+restano da collegare.
 Il [record 42f0814](../../benchmarks/results/c71-cggm-first-split-2026-09-26-42f08149164e.json)
 registra i quattro controlli nativi su SHA pulita, senza credito composto.
 
@@ -1417,9 +1421,9 @@ tre maschere split per blocco e le tre righe globali 15.525–15.527.
 Queste ultime vengono cancellate dopo il check; split e ulteriori 2.025
 righe F_EQ restano vivi. La sfida viene fissata in un oggetto distinto
 prima dell'ingresso della proof. Solo la verifica positiva restituisce
-`GuardAccepted`; il futuro producer c dovrà consumare tale oggetto.
-Il callback del fixture non è una realizzazione della FS globale e il
-producer c non è ancora collegato: nessun credito di bootstrap composto.
+`GuardAccepted`, ora consumato dal producer c a ruoli separati.
+Il callback del fixture non è una realizzazione della FS globale:
+nessun credito crittografico al bootstrap composto.
 
 Il ledger aggiunge 108.000 B di correzioni per ruolo, proof da 48 B,
 216.085 B assorbiti nel prefisso e 32 B di digest; nessun vettore di triple.
@@ -1454,8 +1458,8 @@ locale commit-before-open non realizza il trasporto atomico o il burn durevole.
 La riserva ora consuma il seed principale prima del guard: copia la sola
 coda, cancella esplicitamente gli slot originali e tronca il prefisso senza
 ridurne la capacità. Conserva il binding e passa a F_EQ solo code esatte;
-seed non separati vengono respinti. Il collegamento guard→cGGM→F_EQ resta
-aperto: il test locale collega i due consumer ma non costruisce cGGM.
+seed non separati vengono respinti. Il raccordo seguente collega ora
+guard→cGGM→split→F_EQ usando le stesse righe originali dei due seed.
 Le garanzie di privacy/soundness dello screen sono condizionali a quelle
 premesse: nessun credito alla composizione o alla sola coin del fixture.
 
@@ -1480,11 +1484,51 @@ più 24 B per la copia Delta del verifier. La capacità principale rimane
 Copia e cancellazione contano ciascuna 64.800 / 48.600 B logici, oltre alla
 lettura della copia; non sono traffico HBM misurato. L'audit e il lavoro
 setup originari restano sul prefisso: lo split non ripete OT o compressione.
-Il test reale ridotto usa seed da 12 righe, prefissi da 9 nel guard e code
-da 3 in F_EQ; la build/test resta entro i limiti locali.
+Il test della riserva usa seed da 12 righe, prefissi da 9 nel guard e code
+da 3 in F_EQ; il nuovo test composto usa 12 righe principali e 3 inverse.
 Questo envelope non dichiara eseguita la transizione esterna e non libera
 implicitamente i seed nel piano. I massimi risposta restano quelli del
 range; lo stack crittografico e il picco completo non sono certificati.
+
+
+## Guard, cGGM, split e F_EQ a ruoli separati
+
+Il [raccordo test-only](../../rust/volta-pcg/src/c71_seed6/cggm.rs) consuma
+`GuardAccepted` prima di generare c. Il sender campiona c0 in Fp3 con il
+sampler limitato esistente, calcola `k=c0-K(r0)` e percorre `(k,K(beta)-k)`;
+il receiver possiede solo valori/tag, correzioni e cammino privato, mai
+Delta o root sender. Non chiama `puncture`, che rimane un oracolo di test.
+Con `d=s-r*beta`, i sibling trasmessi sono sul lato r: il puncture è quindi
+`alpha=~r` sui soli h bit. La foglia alternativa è `M(beta)-sum(sibling)`.
+I prefissi verificano `Macc-Kacc=beta*Delta` esattamente da alpha in poi.
+
+I due ruoli percorrono gli alberi una seconda volta per il check di ciascun
+blocco. Le tre maschere split originali danno `z=m+chi_alpha*beta`,
+`w=U(M)+M(m)` e `v=U(K)+K(m)+Delta*z`. Solo le code disgiunte dei seed
+entrano poi nel consumer F_EQ; root e chiavi punctured rimangono pendenti.
+Le correzioni c sono tutte canoniche e fissate nel prefisso prima delle U.
+Il codec rifiuta forme, cammini e nonce errati; RNG indisponibile o sampler
+esaurito non restituiscono stato. Gli oggetti sono consumati, non clonati.
+
+Il controllo esaustivo h=1–7 copre ogni cammino, tutti i prefissi, beta zero
+e due blocchi; confronta anche i contatori con le formule del ledger.
+La catena con seed AES reali da 12+3 righe passa e rifiuta c/z alterati
+attraverso F_EQ. **I callback delle coin rimangono deterministici nei test**:
+non realizzano F_Rand, seal/burn, nonce freshness, trasporto o espansione EA.
+Non è ancora un bootstrap completo né credito alla sicurezza composta.
+
+Per t=675,h=19 i due passaggi costano 707.786.100 H sender e 707.761.800
+receiver. Il ledger aggiunge maschere, campo, callback U e 129.600 B di
+randomness per c0; il fallimento del sampler c0 è censito separatamente
+come `3*t*((2^64-p)/2^64)^8`, senza attribuirgli una nuova prova composta.
+I payload c/z sono 307.800/16.200 B; root sender 32.400 B, key+path u64
+receiver 329.400 B. I temporanei per primo passaggio sono 456/912 B;
+v/w usano 16.200 B per parte. Il piano conserva conservativamente seed,
+correzioni guard, frame c/z e stati privati fino a F_EQ, includendo lo slot
+di valori/hash da 4.096 B. I `size_of` CPU sono 712/728 B prima dello split
+e 824/840 B dopo: non sono bound dello stack compilato. Il massimo globale
+nominato non aumenta; coin globali, allocator, stack/spill, trasporto e
+picco fisico rimangono aperti. Nessuna esecuzione H100 è autorizzata.
 
 
 ## EXP30: massimo con un solo checkpoint

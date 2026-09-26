@@ -45,6 +45,23 @@ def test_lifetime_and_inplace_tail_release():
     with pytest.raises(ValueError):arena.place_events([{'event':'bad','free':['absent']}],{})
 
 
+def test_seed6_guard_cggm_and_split_remain_live_through_equality():
+    case=arena.report(ordered_getter=True,reuse_reader_for_commit=True)['cases'][0]
+    for role,inverse,private in [('prover','verifier',329400),('verifier','prover',32400)]:
+        plan=case['address_layouts'][f'Seed6_{role}_then_{inverse}_outer_pending']
+        live={key:size for key,_,size in plan['initial_allocations']}
+        for event in plan['events']:
+            for key in event['free']:live.pop(key)
+            live.update({key:size for key,_,size in event['allocate']})
+        assert live['Seed6:cggm_private']>=private
+        assert live['Seed6:c_wire']>=307800 and live['Seed6:z_wire']>=16200
+        assert live['Seed6:split_values']>=16200
+        assert live['Seed6:equality_payload_envelope']>=64800
+        assert live['Seed6:main'] and live['Seed6:roleswap'] and live['Seed6:main_equality_tail']
+        assert 'Seed6:cggm_temporary' not in live and 'Seed6:H_codec' not in live
+        assert plan['fits_with_operational_margin']
+
+
 def test_reader_release_never_moves_roots_and_row_digest_overwrite_is_disjoint():
     # Address identity only; the hash callback is not a B12 codec refinement.
     import hashlib

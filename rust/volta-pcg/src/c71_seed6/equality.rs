@@ -183,7 +183,7 @@ impl Openable {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::super::{
         real::{self, NamedCapacities},
         Seed6Work,
@@ -335,7 +335,10 @@ mod tests {
             "equal_share_sum_zero":true,"global_F_Rand_and_seal_credit":false})
         );
     }
-    fn real_pair(n: usize, direction: u8) -> (RealProverOutput, RealVerifierOutput) {
+    pub(in crate::c71_seed6) fn real_pair(
+        n: usize,
+        direction: u8,
+    ) -> (RealProverOutput, RealVerifierOutput) {
         use std::{os::unix::net::UnixStream, thread, time::Duration};
         let (left, right) = UnixStream::pair().unwrap();
         for s in [&left, &right] {
@@ -362,6 +365,28 @@ mod tests {
         )
         .unwrap();
         (sender.join().unwrap(), receiver)
+    }
+
+    pub(in crate::c71_seed6) fn chosen_inputs_accept(
+        sender0: RealProverOutput,
+        receiver0: RealVerifierOutput,
+        sender1: RealProverOutput,
+        receiver1: RealVerifierOutput,
+        value0: Zeroizing<Vec<Fp3Words>>,
+        value1: Zeroizing<Vec<Fp3Words>>,
+    ) -> bool {
+        let (committed0, committed1) = commit_pair(
+            Prepared::new(0, [8; 32], sender0, receiver0, value0).unwrap(),
+            Prepared::new(1, [8; 32], sender1, receiver1, value1).unwrap(),
+        );
+        let (hash0, hash1) = (committed0.commitment, committed1.commitment);
+        let openable0 = committed0.accept_peer_commitment(hash1);
+        let openable1 = committed1.accept_peer_commitment(hash0);
+        let (bytes0, bytes1) = (openable0.opening(), openable1.opening());
+        let accepted0 = openable0.verify(&bytes1).is_ok();
+        let accepted1 = openable1.verify(&bytes0).is_ok();
+        assert_eq!(accepted0, accepted1);
+        accepted0
     }
     #[test]
     fn c71_seed6_equality_real_opposite_role_seeds() {

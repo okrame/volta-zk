@@ -287,8 +287,8 @@ def response_ledger(cases, commit_replays=1024):
         phase['proof_initial_commit_A']={'FFT_butterflies_per_second':fft_butterflies/7,
             'excludes_scatter_hash_and_native_adapter':True}
         pcg_demand=phase['proof_PCG_MAC']
-        setup=correlations['setup_once_before_all_responses']['internal_cGGM_H_evaluations_lower_per_role_if_two_full_traversals'] if slot==0 else 0
-        pcg_demand['selected_response_H_upper_plus_setup_lower_per_second']=(
+        setup=correlations['setup_once_before_all_responses']['internal_cGGM_H_evaluations_upper_per_role_two_passes'] if slot==0 else 0
+        pcg_demand['selected_response_and_setup_H_upper_per_second']=(
             correlations['responses'][slot]['union_trie_H_evaluations_upper_per_role']+setup)/2
         compute_lower=8*learned/2.2e15;bandwidth_lower=hbm/3.35e12
         d=dominant['cases'][slot]

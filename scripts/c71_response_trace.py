@@ -361,7 +361,7 @@ def report():
         }
         setup=correlations['setup_once_before_all_responses']
         demands['proof_PCG_MAC']['fresh_session_setup_H_additional_per_role_if_first_response']=(
-            setup['internal_cGGM_H_evaluations_lower_per_role_if_two_full_traversals'] if slot==0 else 0)
+            setup['internal_cGGM_H_evaluations_upper_per_role_two_passes'] if slot==0 else 0)
         ranges=[screen.gram_window_budget(35,11,W_BYTES,24),
                 screen.gram_window_budget(34,10,routes['live_bytes'],24)]
         for key in ('fraction_merges_initial_and_replay',

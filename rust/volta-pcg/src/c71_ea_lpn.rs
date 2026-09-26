@@ -21,6 +21,7 @@ pub struct Work {
     pub fp_candidates: u64,
     pub fp3_additions: u64,
     pub fp3_subtractions: u64,
+    pub fp3_multiplications: u64,
     pub fp3_by_fp_multiplications: u64,
     pub shake_object_bytes_peak: usize,
     pub codec_heap_capacity_bytes_peak: usize,
@@ -411,13 +412,14 @@ fn workspace(key: &PuncturedKey, on_path: &Vec<Fp3>) -> Workspace {
     }
 }
 
-fn add_work(total: &mut Work, add: Work) {
+pub(crate) fn add_work(total: &mut Work, add: Work) {
     total.shake_calls += add.shake_calls;
     total.absorbed_bytes += add.absorbed_bytes;
     total.squeezed_bytes += add.squeezed_bytes;
     total.fp_candidates += add.fp_candidates;
     total.fp3_additions += add.fp3_additions;
     total.fp3_subtractions += add.fp3_subtractions;
+    total.fp3_multiplications += add.fp3_multiplications;
     total.fp3_by_fp_multiplications += add.fp3_by_fp_multiplications;
     total.shake_object_bytes_peak = total.shake_object_bytes_peak.max(add.shake_object_bytes_peak);
     total.codec_heap_capacity_bytes_peak =

@@ -210,8 +210,54 @@ def seed6_guard_trace(blocks=TREES, height=HEIGHT):
         'counter_scope': 'source field calls and logical payload; not HBM/instruction counts',
         'challenge_fixed_before_proof_input': True,
         'global_FS_codec_credit': False, 'durable_burn_credit': False,
-        'cGGM_producer_before_after_guard_connected': False,
+        'cGGM_producer_before_after_guard_connected': True,
         'complete_physical_peak': False,
+    }
+
+
+def seed6_cggm_trace(blocks=TREES, height=HEIGHT):
+    """Source calls of the role-separated bridge, excluding global coin work."""
+    if not 0 < blocks <= TREES or not 0 < height <= HEIGHT:
+        raise ValueError('outside bounded cGGM geometry')
+    leaves = 1 << height
+    hashes = {'sender':blocks*(leaves-2), 'receiver':blocks*(leaves-height-1)}
+    return {
+        'blocks':blocks, 'height':height,
+        'H_calls_each_pass':hashes,
+        'H_calls_both_passes':{role:2*count for role,count in hashes.items()},
+        'first_pass_Fp3_additions':{'sender':blocks*(leaves-1+height),
+                                    'receiver':blocks*(2*leaves-2)},
+        'first_pass_Fp3_subtractions_upper':{'sender':blocks*(leaves+2*height+3),
+                                           'receiver':blocks*(leaves+3*height)},
+        'first_pass_Fp3_by_Fp_multiplications':{'sender':blocks*(height+2),
+                                               'receiver':blocks*height},
+        'split_Fp3_multiplications':{'sender':blocks*(leaves+4),
+                                     'receiver':blocks*(leaves+6)},
+        'split_Fp3_additions':{'sender':blocks*(leaves+5),
+                              'receiver':blocks*(leaves+8)},
+        'split_Fp3_subtractions':hashes,
+        'split_Fp3_by_Fp_multiplications_receiver':blocks,
+        'receiver_base_Fp_additions_both_passes':2*blocks,
+        'receiver_base_Fp_subtractions_and_multiplications_each':blocks*height,
+        'local_U_coefficient_queries_each_role':blocks*leaves,
+        'independent_c0_Fp_candidates':24*blocks,
+        'independent_c0_rng_bytes':192*blocks,
+        'c_payload_bytes':24*blocks*height, 'z_payload_bytes':24*blocks,
+        'retained_private_heap_bytes':{'sender':48*blocks,
+                                       'receiver':blocks*(8+24*(height+1))},
+        'first_pass_temporary_heap_bytes':{'sender':24*height,'receiver':48*height},
+        'pending_split_values_heap_bytes_each_role':24*blocks,
+        'c_prefix_hash_absorbed_bytes_each_role':len(b'VOLTA-C71-Seed6-cggm-corrections-v1')+72+24*blocks*height,
+        'c_prefix_hash_update_calls_each_role':5,
+        'H_codec_heap_bytes':H_DOMAIN_BYTES if height>1 else 0,
+        'native_value_and_hash_slot_bytes':4096,
+        'native_value_slot_is_not_compiler_stack_bound':True,
+        'seed_and_guard_state_retained_through_F_EQ':True,
+        'puncture_is_complement_of_guard_bits':True,
+        'real_seed_guard_split_equality_reduced_check':True,
+        'global_F_Rand_transport_and_burn_credit':False,
+        'complete_physical_peak':False,
+        'counter_scope':'source field calls and Vec capacity; no HBM, hash permutation or global coin work',
     }
 
 
@@ -286,7 +332,7 @@ def seed6_equality_trace(n=TREES):
         'both_corrections_fixed_before_coin_callback':True,
         'peer_commitment_fixed_before_own_opening':True,
         'global_F_Rand_or_seal_credit':False,
-        'guard_cGGM_to_equality_connected':False,
+        'guard_cGGM_to_equality_connected':True,
         'complete_physical_peak':False,
     }
 
@@ -352,7 +398,8 @@ def report():
         assert trace['final_carry'] == 0
         responses.append(trace)
         cursor += rows
-    setup_h = 2*TREES*((1 << HEIGHT)-1)
+    cggm = seed6_cggm_trace()
+    setup_h = max(cggm['H_calls_both_passes'].values())
     path_bytes = (HEIGHT+7)//8
     common = 32+32+8  # cGGM nonce, public EAGen seed, counter
     sender_persistent = 24 + TREES*(24+24) + common
@@ -374,7 +421,7 @@ def report():
         'profile': {'t': TREES, 'h': HEIGHT, 'ell': WEIGHT,
                     'N': DOMAIN, 'batch_base_rows': BATCH},
         'setup_once_before_all_responses': {
-            'internal_cGGM_H_evaluations_lower_per_role_if_two_full_traversals': setup_h,
+            'internal_cGGM_H_evaluations_upper_per_role_two_passes': setup_h,
             'universal_hash_field_inputs_lower_per_role': DOMAIN,
             'conditional_bootstrap_wire_both_directions_bytes': 61_841_294,
             'H_to_AES_calls': None,
@@ -400,6 +447,7 @@ def report():
                 'roleswap': seed6_real_trace(EQ_SEED_ROWS),
                 'Dory_rows': DORY_SEED_ROWS, 'F_EQ_extra_rows_each_seed': EQ_SEED_ROWS,
                 'path_guard_consumer': seed6_guard_trace(),
+                'guard_to_cggm_and_split_consumer':cggm,
                 'two_key_equality_consumer':seed6_equality_trace(),
                 'disjoint_tail_reservation':seed6_tail_reservation_trace(),
                 'physical_roles_opposite': True, 'composed_execution_credit': False,
@@ -450,6 +498,7 @@ def report():
             'EAGen_logical_term_bytes_per_role': 16*WEIGHT*cursor,
             'EAGen_bounded_sampler_failure_upper': str(ea_failure),
             'H_bounded_sampler_failure_upper_both_roles': str(h_failure_both_roles),
+            'independent_c0_sampler_failure_upper':str(3*TREES*h_rejection**8),
             'H_Fp_rejection_candidates_upper_per_role': sum(
                 r['H_Fp_rejection_candidates_upper_per_role'] for r in responses),
             'cGGM_right_child_Fp_subtractions_upper_per_role': sum(

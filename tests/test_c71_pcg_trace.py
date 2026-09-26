@@ -38,7 +38,7 @@ def test_distribution_free_trie_and_unknown_backend_costs():
         583_385_798, 585_121_123, 585_174_648]
     assert report['fixed_run']['union_trie_H_evaluations_upper_per_role'] == 1_753_681_569
     setup = report['setup_once_before_all_responses']
-    assert setup['internal_cGGM_H_evaluations_lower_per_role_if_two_full_traversals'] == 707_787_450
+    assert setup['internal_cGGM_H_evaluations_upper_per_role_two_passes'] == 707_786_100
     assert setup['H_to_AES_calls'] is None and setup['field_operations_complete'] is None
     assert setup['Fp6_to_Fp3_compressed_elements_per_role'] == 19_579
     assert setup['Fp6_to_Fp3_linear_Fp3_multiplications_per_role'] == 39_158
@@ -145,6 +145,21 @@ def test_two_key_equality_work_and_bounded_heap_envelope():
     assert eq['both_corrections_fixed_before_coin_callback']
     assert eq['peer_commitment_fixed_before_own_opening']
     assert not eq['global_F_Rand_or_seal_credit']
+
+
+def test_role_separated_cggm_split_work_and_retained_state():
+    cggm=trace.seed6_cggm_trace()
+    assert cggm['H_calls_both_passes']=={'sender':707_786_100,'receiver':707_761_800}
+    assert cggm['c_payload_bytes']==307_800 and cggm['z_payload_bytes']==16_200
+    assert cggm['retained_private_heap_bytes']=={'sender':32_400,'receiver':329_400}
+    assert cggm['first_pass_temporary_heap_bytes']=={'sender':456,'receiver':912}
+    assert cggm['split_Fp3_multiplications']=={'sender':353_897_100,'receiver':353_898_450}
+    assert cggm['independent_c0_rng_bytes']==129_600
+    assert cggm['seed_and_guard_state_retained_through_F_EQ']
+    assert not cggm['global_F_Rand_transport_and_burn_credit']
+    assert trace.seed6_guard_trace()['cGGM_producer_before_after_guard_connected']
+    assert trace.seed6_equality_trace()['guard_cGGM_to_equality_connected']
+    assert trace.seed6_cggm_trace(1,1)['H_calls_both_passes']=={'sender':0,'receiver':0}
 
 
 def test_consuming_tail_reservation_preserves_prefix_capacity():

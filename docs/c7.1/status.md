@@ -495,14 +495,19 @@ emettono alpha. Il ledger corregge il seed principale a 17.553 righe,
 incluse le 2.025 aggiuntive di F_EQ; il secondo ne usa 2.025. Il byte di
 direzione nel contesto aggiunge 4 B al budget dei due seed.
 Capacità native e rilasci sono censiti; allocator, stack crittografico,
-trasporto, seal, ruoli opposti composti e trie batch restano aperti.
+trasporto, seal/burn, coin globali e trie batch restano aperti.
 Il consumer guard sui MAC originali passa nel caso reale da nove righe,
-con ricetta disgiunta e sfida fissata prima della prova. Restano da collegare
-FS globale, exchange delle correzioni e costruttore cGGM dopo il guard.
+con ricetta disgiunta e sfida fissata prima della prova. Il nuovo raccordo
+consuma `GuardAccepted`, costruisce cGGM a ruoli separati e usa i MAC
+originali per i check split e F_EQ: il caso reale da 12+3 righe accetta
+il positivo e rifiuta c/z alterati. Non usa l'oracolo con input congiunti.
+Restano FS/F_Rand globale, exchange completo, seal/burn ed espansione EA.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 la riserva consuma il seed e separa coda F_EQ/prefisso guard, cancellando
-la vecchia copia della coda. Coin globale, cGGM e burn restano aperti.
+la vecchia copia della coda. Le coin deterministiche dei test non chiudono
+la composizione crittografica; il ledger include i due passaggi cGGM e
+gli stati privati trattenuti fino a F_EQ, non il picco fisico completo.
 Il getter numerico ridotto O=0/2/4 ora apre la root A originale tramite
 WHIR; S1 condiviso viene allocato solo dopo le query al predecessore.
 Il fold dei successori ora richiede il rilascio dell’handle precedente e

@@ -118,6 +118,18 @@ filtro usa due seed reali da 12 righe su socketpair Unix; il terzo comprende
 il fixture reale da tre righe. Restano 60 s/2 GiB e un worker per invocazione,
 nessun bootstrap canonico, GPU o rete esterna.
 
+Per il raccordo a ruoli separati usare `c71_seed6_guard_cggm` (tre test,
+marker `C71_GUARD_CGGM`) e separatamente
+`c71_seed6_real_guard_cggm_split_and_two_key_equality` (un test, marker
+`C71_SEED6_CGGM_EQUALITY`). Il secondo crea seed reali 12+3 righe e controlla
+positivo, c alterato e z alterato su socketpair Unix. Le coin globali restano
+callback di test. Ogni filtro resta entro 60 s/2 GiB, un worker/thread,
+senza rete esterna. Conservare anche i filtri `c71_seed6::guard::tests`,
+`c71_seed6_equality`, `c71_seed6_tail_reservation` e `c71_ea_lpn::tests`.
+Per il ledger usare `tests/test_c71_pcg_trace.py`, i controlli response/getter
+e `seed6_guard_cggm`/`native_offsets_margin_and_fenced_release` in
+`tests/test_c71_arena_plan.py`, con gli stessi limiti per processo.
+
 Per il GKR a getter e l'endpoint byte a LUT, dopo la build mirata PCS sotto,
 eseguire separatamente `fs_streamed_record`, `c71_b12_byte_functions`,
 `c71_b12_single_cell_sourcewise`, `c71_b12_rms_joint_gkr`,

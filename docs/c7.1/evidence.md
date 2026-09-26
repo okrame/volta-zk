@@ -1621,3 +1621,21 @@ fasi disgiunte byte-coefficienti e range/commit/prime aperture è
 anche concedendo gratis tutti gli altri lavori, compresa inferenza e BMMA.
 Non esclude una fattorizzazione della tree né chiude il goal generale.
 `credit:false`; niente H100, spesa, upper o picco fisico completo.
+
+## Seed6 guard-to-cGGM and split equality
+
+Il [raccordo locale](../../rust/volta-pcg/src/c71_seed6/cggm.rs) consuma il
+guard prima di produrre c, costruisce il primo split indipendente e separa
+le chiavi sender dai tag/cammini receiver. I check a h=1–7 confrontano ogni
+prefisso con Acc/PuncAcc e i check split sui MAC originali, anche con beta
+zero e due blocchi. Falliscono forme/codec/cammini errati, code non separate,
+nonce zero, RNG indisponibile e sampler esaurito.
+
+Il test reale usa seed principali/inversi da 12+3 righe: il positivo arriva
+a F_EQ e c/z alterati vengono respinti. Gli stati privati restano pendenti;
+non è ancora una sessione con F_Rand globale, seal/burn o output EA.
+Il [ledger](../../scripts/c71_pcg_trace.py) corregge il vecchio conteggio H
+spacciato per lower comune: due passaggi danno 707.786.100 sender e
+707.761.800 receiver. Il piano arena conserva seed, frame e chiavi fino a
+F_EQ e non cambia il massimo globale nominato. I callback deterministici
+non danno credito crittografico composto, fisico o H100.

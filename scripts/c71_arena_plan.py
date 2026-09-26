@@ -125,8 +125,6 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                     {'event':e['event']+'_fence_release','allocate':{},'free':['phase:core']}])
         chains['range_and_linear']=phase_events
         if old == 0:
-            # Both seeds before their consumers, opposite physical roles. Outputs
-            # remain live at this chain's end: outer cGGM/guard is still pending.
             setup=correlations['setup_once_before_all_responses']['native_seed6_real_adapter']
             for main_role, inverse_role in [('prover','verifier'),('verifier','prover')]:
                 events=[]
@@ -153,11 +151,22 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                                 'Seed6:guard_native_value_state':552}})
                 events += [{'event':'guard_prefix_native_hash_object', 'allocate':{'Seed6:hash_object':1920}},
                            {'event':'guard_prefix_hash_release_before_challenge','free':['Seed6:hash_object']}]
+                cggm=setup['guard_to_cggm_and_split_consumer']
+                tree_role='receiver' if main_role=='prover' else 'sender'
+                events.append({'event':'guard_accepted_then_role_separated_cggm',
+                    'allocate':{'Seed6:c_wire':cggm['c_payload_bytes'],
+                                'Seed6:cggm_private':cggm['retained_private_heap_bytes'][tree_role],
+                                'Seed6:cggm_temporary':cggm['first_pass_temporary_heap_bytes'][tree_role],
+                                'Seed6:H_codec':cggm['H_codec_heap_bytes'],
+                                'Seed6:cggm_native_value_slot':cggm['native_value_and_hash_slot_bytes']}})
+                events.append({'event':'cggm_first_pass_temporaries_released',
+                               'free':['Seed6:cggm_temporary']})
+                events.append({'event':'split_second_pass_original_masks',
+                    'allocate':{'Seed6:z_wire':cggm['z_payload_bytes'],
+                                'Seed6:split_values':cggm['pending_split_values_heap_bytes_each_role']}})
+                events.append({'event':'split_H_codec_released','free':['Seed6:H_codec']})
                 equality=setup['two_key_equality_consumer']
-                # Reserve the component envelope conservatively while both seed
-                # outputs and guard corrections still live. This is NOT an
-                # executed guard/cGGM/F_EQ composition or an inferred release.
-                events.append({'event':'reserve_equality_component_outer_transition_pending',
+                events.append({'event':'reserve_equality_envelope_with_pending_cggm_states',
                     'allocate':{'Seed6:equality_payload_envelope':max(equality['extra_owned_heap_phase_bytes_each_role'].values()),
                                 'Seed6:equality_native_value_slot':equality['native_value_state_slot_bytes']}})
                 chains['Seed6_'+main_role+'_then_'+inverse_role+'_outer_pending']=events
@@ -328,7 +337,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
             'snapshot':'native Snapshot stores Vec<Vec<i64>>; literal lift exceeds arena before byte packing',
             'RMS':'original P/S/Y plus byte LUT/coefficients included; bounded cell/index/replay checked on reduced proofs; public circuits, proof/correlation capacities, allocator and full getter workspace remain to join',
             'WHIR':'bounded sourcewise replay matches native D10 bytes and rejects dense fallbacks; canonical accelerated state/workspace not yet wired',
-            'PCG':'Seed6 real OT/AES named heap phases and retained opposite-role outputs included; crypto stack, transport, allocator and outer guard/cGGM lifecycle remain open',
+            'PCG':'Seed6 OT/AES, guard, role-separated cGGM, split and F_EQ named heap envelopes included conservatively; global coins, crypto stack, transport, allocator and seal/burn lifecycle remain open',
             'arena_checker_metadata_bytes':512*24,
             'global_unallocated_margin_required_bytes':1 << 30,
             'remaining_global_for_unverified_residents_after_margin':80_000_000_000-response.W_BYTES-450*response.KV_PER_TOKEN-response.ARENA-(1 << 30)},

@@ -9,6 +9,9 @@ use volta_mac::c7_fp3::{
 };
 use zeroize::Zeroize;
 
+#[path = "cggm.rs"]
+mod cggm;
+
 const BASIS: [Fp3; 3] =
     [Fp3::ONE, Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO), Fp3::new(Fp::ZERO, Fp::ZERO, Fp::ONE)];
 const DOMAIN: &[u8] = b"VOLTA-C71-Seed6-path-guard-v1";
@@ -85,8 +88,6 @@ pub(super) struct VerifierChallenged {
     frozen: Frozen,
     lambda: Fp3,
 }
-// No Clone, public constructor or access to pre-guard verifier seed. A future
-// c producer must consume this capability; no c producer exists here yet.
 pub(super) struct GuardAccepted {
     seed: RealVerifierOutput,
     frozen: Frozen,
@@ -245,9 +246,10 @@ pub(super) fn check_real_seed(prover: RealProverOutput, verifier: RealVerifierOu
     let verifier = v.challenge(|_| lambda);
     let (proof, finished) = p.prove(|_| lambda);
     let accepted = verifier.verify(&proof).unwrap();
-    check_remaining(finished, accepted);
+    check_remaining(&finished, &accepted);
+    cggm::check_real(finished, accepted);
 }
-fn check_remaining(p: ProverFinished, v: GuardAccepted) {
+fn check_remaining(p: &ProverFinished, v: &GuardAccepted) {
     let start = p.frozen.mask_start();
     assert_eq!(start, v.frozen.mask_start());
     assert_eq!(p.frozen.corrections, v.frozen.corrections);
@@ -271,7 +273,7 @@ mod tests {
     use super::*;
     use crate::c71_bootstrap::Audit;
     use zeroize::Zeroizing;
-    fn fixture() -> (RealProverOutput, RealVerifierOutput) {
+    pub(super) fn fixture() -> (RealProverOutput, RealVerifierOutput) {
         let n = 15; // two h=2 blocks, three guard masks; split rows untouched
         let delta = Fp3::new(Fp::new(11), Fp::new(13), Fp::new(17));
         let values: Vec<_> = (1..=n as u64).collect();
@@ -338,7 +340,7 @@ mod tests {
             let wire = if fault == 6 { &wire[..47] } else { &wire[..] };
             let result = verifier.verify(wire);
             if fault == 0 {
-                check_remaining(finished, result.unwrap());
+                check_remaining(&finished, &result.unwrap());
             } else {
                 assert!(result.is_err(), "fault {fault}");
             }

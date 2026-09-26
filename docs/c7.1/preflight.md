@@ -1381,10 +1381,23 @@ mancante. Queste fasi non alzano il massimo complessivo nominato.
 
 Restano espliciti stack crittografico/spill del compilatore, allocator,
 trasporto, audit, seal/burn, guard prima di c, costruttore role-separated
-cGGM e F_EQ. `puncture(delta,root)` è soltanto l'oracolo del riferimento:
-nessun ruolo reale possiede entrambi gli input. Non dà credito al bootstrap
+cGGM e F_EQ. `puncture` è soltanto l'oracolo del riferimento:
+nessun ruolo reale possiede tutti i suoi input. Non dà credito al bootstrap
 composto, né chiude il picco fisico o il lower temporale congiunto. Restano
 `T_inference`, `T_proof_only` e `T_response_total <= 65 s`, senza overlap.
+
+Il primo split del riferimento è stato corretto rispetto alla
+[Fig. 3 Dory](../../sota/2025-1660-dory-streaming-vole.md): il sender deve
+ricevere `k` indipendente e offset, con figli `(k, offset-k)`, non
+`(H(offset), offset-H(offset))`. Solo i livelli successivi usano H.
+Il vecchio test restava un'identità additiva valida per l'albero hash-root,
+ma non trasferiva le coin del setup distribuito selezionato. Ora `acc` e
+l'oracolo `puncture` ricevono entrambi gli input; il test a profondità 1–7
+confronta ogni prefisso con le foglie dense e ogni cammino punctured,
+e controlla esattamente h−1 chiamate H per cammino sender. A h=1 non
+si chiama H. Il conteggio prudente h dello screen resta un upper, non
+si rivendica un risparmio di tempo H100. Guard→correzioni c→split/F_EQ,
+campionamento delle coin e costruttore role-separated restano da collegare.
 
 
 ## Guard originale: consumer nativo

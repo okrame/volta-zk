@@ -487,7 +487,8 @@ transcript e chiusura originale, senza fallback source densi. Il nuovo
 handle conserva getter/cache/offset e libera il predecessore dopo le query;
 il pad iniziale è condiviso e la riduzione finale in-place evita 128 MiB
 aggiuntivi al coset canonico. Restano port accelerato e picco fisico.
-H/EAGen hanno confronto Rust/Python e identità Acc/PuncAcc ridotta;
+H/EAGen hanno confronto Rust/Python e identità Acc/PuncAcc ridotta,
+ora con primo split indipendente conforme a Dory, non derivato dall'hash;
 Il [Seed6 reale ridotto](preflight.md#seed6-reale-streaming-e-workspace)
 collega handshake, 384 OT, COPE AES streaming e K6→Fp3; i rifiuti non
 emettono alpha. Il ledger corregge il seed principale a 17.553 righe,

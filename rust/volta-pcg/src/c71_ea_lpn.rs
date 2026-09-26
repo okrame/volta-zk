@@ -176,21 +176,25 @@ pub struct PuncturedKey {
     pub alternative_leaf: Fp3,
 }
 
-/// Derive the receiver's punctured state from the same original cGGM coins.
+/// Reference oracle over the sender's first split and a supplied leaf patch.
+/// A distributed constructor cannot call this oracle: no role owns all inputs.
 pub fn puncture(
     nonce: [u8; 32],
     block: u64,
     height: usize,
     alpha: u64,
     delta: Fp3,
-    root: Fp3,
+    offset: Fp3,
+    first_left: Fp3,
 ) -> Result<(PuncturedKey, Work), Error> {
     check_tree(height, alpha)?;
-    let mut work = Work::default();
-    let mut node = root;
-    let mut position = 0u64;
+    let mut work = Work { fp3_subtractions: 1, ..Work::default() };
+    let children = [first_left, offset - first_left];
+    let mut position = bit(alpha, height, 0);
+    let mut node = children[position as usize];
     let mut siblings = Vec::with_capacity(height);
-    for level in 0..height {
+    siblings.push(children[1 - position as usize]);
+    for level in 1..height {
         let (left, h_work) = cggm_h(nonce, block, level as u32, position, node)?;
         add_work(&mut work, h_work);
         let right = node - left;
@@ -207,16 +211,38 @@ pub fn puncture(
     ))
 }
 
-/// Sender prefix accumulation through leaf `omega`, inclusive.
+/// Sender prefix accumulation with Dory's independent first split (k, offset-k).
 pub fn acc(
     nonce: [u8; 32],
     block: u64,
     height: usize,
     omega: u64,
-    root: Fp3,
+    offset: Fp3,
+    first_left: Fp3,
 ) -> Result<(Fp3, Work), Error> {
     check_tree(height, omega)?;
-    prefix_from_root(nonce, block, 0, 0, height, omega, root)
+    let children = [first_left, offset - first_left];
+    let branch = bit(omega, height, 0);
+    let node = children[branch as usize];
+    let (mut result, mut work) = if height == 1 {
+        (node, Work::default())
+    } else {
+        prefix_from_root(
+            nonce,
+            block,
+            1,
+            branch,
+            height - 1,
+            omega & ((1u64 << (height - 1)) - 1),
+            node,
+        )?
+    };
+    work.fp3_subtractions += 1;
+    if branch == 1 {
+        result += first_left;
+        work.fp3_additions += 1;
+    }
+    Ok((result, work))
 }
 
 /// Receiver accumulation over the punctured tree. It equals the sender
@@ -480,19 +506,39 @@ mod tests {
         for height in 1..=7 {
             for alpha in 0..1u64 << height {
                 let delta = f(101 + alpha);
-                let root = f(17 + alpha);
-                let (key, setup_work) = puncture(nonce, 3, height, alpha, delta, root).unwrap();
-                assert_eq!(setup_work.shake_calls, height as u64);
+                let offset = f(17 + alpha);
+                let first_left = f(53 + alpha);
+                let (key, setup_work) =
+                    puncture(nonce, 3, height, alpha, delta, offset, first_left).unwrap();
+                assert_eq!(setup_work.shake_calls, height as u64 - 1);
+                let mut leaves = vec![first_left, offset - first_left];
+                for level in 1..height {
+                    leaves = leaves
+                        .iter()
+                        .enumerate()
+                        .flat_map(|(position, &node)| {
+                            let left =
+                                cggm_h(nonce, 3, level as u32, position as u64, node).unwrap().0;
+                            [left, node - left]
+                        })
+                        .collect();
+                }
+                let mut prefix = Fp3::ZERO;
                 for omega in 0..1u64 << height {
-                    let (sender, _) = acc(nonce, 3, height, omega, root).unwrap();
+                    prefix += leaves[omega as usize];
+                    let (sender, work) = acc(nonce, 3, height, omega, offset, first_left).unwrap();
+                    assert_eq!(sender, prefix);
+                    assert_eq!(work.shake_calls, height as u64 - 1);
                     let (receiver, _, space) = punc_acc(nonce, 3, omega, &key).unwrap();
                     let expected = if omega >= alpha { delta } else { Fp3::ZERO };
                     assert_eq!(sender - receiver, expected);
                     assert_eq!(space.serialized_persistent_bytes, 12 + (height + 1) * 24);
                     assert_eq!(space.complete_peak_bytes, None);
                 }
+                assert_eq!(prefix, offset);
             }
         }
+        eprintln!("C71_CGGM_FIRST_SPLIT heights=1..7 independent_k=true distributed_setup=false");
     }
 
     #[test]
@@ -503,6 +549,6 @@ mod tests {
         assert_eq!(work.fp_candidates, 8);
         assert_eq!(public_ea_row([0; 32], 0, 4, 5), Err(Error::Shape));
         assert_eq!(public_ea_row([0; 32], 0, 64, 12), Err(Error::Shape));
-        assert!(puncture([0; 32], 0, 20, 0, f(1), f(2)).is_err());
+        assert!(puncture([0; 32], 0, 20, 0, f(1), f(2), f(3)).is_err());
     }
 }

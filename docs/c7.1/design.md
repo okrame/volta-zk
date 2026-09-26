@@ -1251,8 +1251,13 @@ Eq/Pow/sfide già fissate e libera ogni handle dopo l'ultimo consumer.
 Il getter è ancora un riferimento CPU; razionale/remainder, port numerico
 canonico e liveness fisica completa restano obblighi. Il cut della cache è
 esplicito; l'ultimo coset riduce i digest in-place senza copia da 128 MiB.
-H/EAGen hanno ora equivalenza Rust/Python e un controllo esaustivo ridotto
-Acc/PuncAcc. Il [Seed6 reale ridotto](preflight.md#seed6-reale-streaming-e-workspace)
+H/EAGen hanno equivalenza Rust/Python e un controllo esaustivo ridotto
+Acc/PuncAcc. Il riferimento ora riceve il primo split indipendente
+`(k, offset-k)` della Fig. 3 Dory: derivare `k=H(offset)` non rappresentava
+le coin del costruttore distribuito. Il vecchio controllo provava soltanto
+l'identità additiva per quell'altro albero. La correzione riusa H dai
+livelli successivi e non accredita il costruttore a ruoli separati.
+Il [Seed6 reale ridotto](preflight.md#seed6-reale-streaming-e-workspace)
 collega domini MR19 distinti, handshake direction-bound, COPE AES streaming,
 check K6 e compressione. Non emette alpha dopo un check fallito. Il seed
 principale richiede 17.553 righe (15.528 Dory + 2.025 F_EQ), quello inverso

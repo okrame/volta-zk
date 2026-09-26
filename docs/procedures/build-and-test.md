@@ -714,6 +714,8 @@ Per il codec EA-LPN usare la build mirata
 `volta-pcg --features c71-b11 --lib --no-run` e il filtro
 `c71_ea_lpn::tests`. Comprende vettori Rust/Python, esaurimento sampler,
 identità dei ruoli a profondità 1–7. Non esegue OT o bootstrap AES completo.
+Il marker `C71_CGGM_FIRST_SPLIT` verifica split iniziale indipendente,
+confronto con foglie dense e h−1 chiamate H; non è un setup distribuito.
 Ogni invocazione resta seriale con `RAYON_NUM_THREADS=1`, `timeout 60s` e
 `ulimit -v 2097152`; non avviare i due binari in parallelo.
 

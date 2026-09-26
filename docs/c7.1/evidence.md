@@ -1019,10 +1019,19 @@ scratch CUDA, arena canonica o rate H100.
 Il [codec PCG](../../rust/volta-pcg/src/c71_ea_lpn.rs) riproduce i vettori
 Python H/EAGen e rifiuta esaurimento o forme errate. H preserva slot XOF
 fissi di 64 B per componente. Il controllo esaustivo dei ruoli a profondità
-1–7 usa le stesse coin, con root e Delta note al fixture: non prova OT,
+1–7 usa offset, primo split indipendente e patch della foglia noti al fixture: non prova OT,
 bridge Fp6 o composizione MAC. Le [procedure](../procedures/build-and-test.md#replay-whir-e-codec-cggm-ridotti)
 conservano test piccoli e seriali. Nessun nuovo credito Lean o modifica
 a transcript, NoPeek, endpoint o trust model.
+
+Il [record corretto a SHA pulita 42f0814](../../benchmarks/results/c71-cggm-first-split-2026-09-26-42f08149164e.json)
+conserva quattro test Rust passati entro 60 s/2 GiB, un thread/worker.
+Acc/PuncAcc usa ora `(k, offset-k)` al primo livello, come Fig. 3 Dory,
+non `k=H(offset)`. Ogni prefisso coincide con le foglie dense; il sender
+esegue h−1 chiamate H. Il precedente test dimostrava l'identità additiva
+del diverso albero hash-root, non il trasferimento delle coin del setup.
+Il record precedente resta immutato. Nessun setup distribuito o credito PCG
+composto viene attribuito alla correzione.
 
 Il [record immutabile del 2026-09-19](../../benchmarks/results/c71-sourcewise-2026-09-19-5afc54ceaac5.json)
 usa SHA pulita `5afc54ceaac5`, `git_dirty:false`: **16 test Rust e 19 Python**

@@ -1,0 +1,41 @@
+{
+  "binary_sha256": "0527fca5befd141fe5ae404bb81020dfdb6c09f6d66556561d5ed05223bfd744",
+  "corrects": "The earlier reference hashed the offset to derive the first split; its additive identity remains valid but did not represent the independently sampled first-level coins of Dory Figure 3. Prior raw evidence is preserved.",
+  "credit": false,
+  "date": "2026-09-26",
+  "distributed_setup": false,
+  "git_dirty": false,
+  "git_sha": "42f08149164ef21cc663a0328366b98482afcee7",
+  "gpu_execution": false,
+  "h100_preflight_ready": false,
+  "limits": {
+    "address_space_bytes": 2147483648,
+    "rayon_threads": 1,
+    "test_threads": 1,
+    "timeout_seconds": 60
+  },
+  "milestone": "C7.1-cggm-first-split",
+  "runs": [
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcg-e9188784cdacb957",
+        "c71_ea_lpn::tests",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "seconds": 0.18645687215030193,
+      "stderr": "C71_CGGM_FIRST_SPLIT heights=1..7 independent_k=true distributed_setup=false\n",
+      "stdout": "\nrunning 4 tests\ntest c71_ea_lpn::tests::cggm_h_matches_python_reference_vectors ... ok\ntest c71_ea_lpn::tests::codecs_fail_closed_on_bad_shapes ... ok\ntest c71_ea_lpn::tests::ea_row_is_deterministic_distinct_nonzero_and_domain_separated ... ok\ntest c71_ea_lpn::tests::punctured_accumulation_matches_original_coin_tree ... ok\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 79 filtered out; finished in 0.19s\n\n"
+    }
+  ],
+  "scope": "Independent Dory first split (k, offset-k), dense prefix and punctured accumulation comparison for all alpha/omega at heights 1 through 7, h-1 sender H calls, and unchanged H/EAGen codec vectors/rejections. Oracle inputs remain jointly held by the fixture; no role-separated cGGM, Seed6 composition, split check, F_EQ, full PCG, physical peak or H100 timing credit.",
+  "source_sha256": {
+    "rust/volta-pcg/src/c71_ea_lpn.rs": "61bb4ef8d0f41df5ec7ea7013065d5552ea86f9c8963e4024dc1a6b9d37f8f3e",
+    "sota/2025-1660-dory-streaming-vole.md": "d5c3d1e1943d1b6f1f4cf3990c2a1765c013e94693a547822d98e36b5bed0548"
+  },
+  "prior_evidence": [
+    "benchmarks/results/c71-sourcewise-2026-09-19-5afc54ceaac5.json"
+  ]
+}

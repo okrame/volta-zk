@@ -1398,6 +1398,8 @@ e controlla esattamente h−1 chiamate H per cammino sender. A h=1 non
 si chiama H. Il conteggio prudente h dello screen resta un upper, non
 si rivendica un risparmio di tempo H100. Guard→correzioni c→split/F_EQ,
 campionamento delle coin e costruttore role-separated restano da collegare.
+Il [record 42f0814](../../benchmarks/results/c71-cggm-first-split-2026-09-26-42f08149164e.json)
+registra i quattro controlli nativi su SHA pulita, senza credito composto.
 
 
 ## Guard originale: consumer nativo

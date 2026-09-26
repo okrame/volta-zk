@@ -890,6 +890,19 @@ Queste identità si applicano ai bitplane Boolean prima del fold, **non**
 ai polinomi dei gate dopo il fold. Circuito impegnato e transcript restano
 invariati. La parità finita copre ogni livello EXP30 con maschere live
 piene, parziali e vuote; il refinement Lean resta un obbligo distinto.
+La candidata BMMA usa una rappresentazione per momenti degli stessi
+quattro cubici: ogni limb canonico di Eq è decomposto in 64 bit e i
+conteggi esatti sono ricomposti prima della riduzione originale Fp.
+Non sostituisce il transcript né aggrega via istogrammi non posizionali:
+Eq resta valutata sugli indici suffix originali; il rango compatto serve
+solo al buffer. Il blocco canonico ha 15 righe vive e una riga ausiliaria
+costante, che produce i margini lineari; quest’ultima non entra nel
+selettore GKR originale. Copy usa Eq×wire, And/Xor usano X×(Y AND Eq_bit).
+Nessun conteggio viene aperto. Per N<2^31 i contatori s32 e la successiva
+ricostruzione unsigned a 96 bit sono esatti. Le sfide e i MAC non entrano
+nelle scelte di layout. Il port nativo, il refinement e l’esecuzione CUDA
+restano da verificare: il backend validato rimane quello a istogrammi.
+
 
 
 Il lavoro locale segue il gate integrato del 2026-09-19: una prova ridotta

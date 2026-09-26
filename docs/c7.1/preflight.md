@@ -1959,3 +1959,71 @@ upper o crediti. Il requisito totale resta 65 s; nessun GO alla spesa.
 
 Il [record del DAG nativo](evidence.md#native-exp30-replay-dag) verifica
 questi conteggi sui piani pubblici effettivi e la parità nel percorso ridotto.
+
+### EXP30 momenti binari BMMA
+
+La candidata sostituisce i bin privati del prefisso con momenti pesati,
+conservando i quattro cubici originali. Posto `w_k=Eq(r_suffix,k)`, per
+ogni limb canonico l e bit b calcola
+`C[g,i,j,l,b]=sum_k X[g,i,k] Y[g,j,k] bit_b(w_k[l])`.
+Poi ricostruisce `sum_b 2^b C`, riduce modulo Fp e applica il peso del gate
+una volta. Il conteggio conserva la posizione tramite Eq; nessun
+istogramma privato o momento viene inviato. Una riga/colonna costante
+produce i margini XOR, esclusa dal selettore originale. Per i Copy si
+calcola direttamente la matrice Eq_bit×wire, raggruppando 16 bit di Eq e
+8 colonne wire/posizione: nessun aggiornamento wide sparso residuo.
+
+Il [componente CUDA](../../cuda/c71_exp30_bmma.cu) usa
+`mma.sync.aligned.m16n8k256.row.col.s32.b1.b1.s32.and.popc` e le
+[mappe PTX ufficiali](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-168256).
+Il compilatore locale 12.9.86 emette BMMA native per sm_90, con zero stack,
+spill e shared: 70 registri per And/Xor, 40 per Copy. Sono compilazioni
+statiche sul toolkit temporaneo già documentato, non esecuzioni H100.
+I test host emulano la disposizione collettiva dei frammenti e confrontano
+le somme intere originali, con valori vicini a p, padding e tile parziali.
+Il test algebrico verifica tutti i cubici del prefisso, maschere pubbliche
+multiple e sfide 0/1/non-base. Non è ancora parità di un nuovo prover nativo.
+
+Schedule proposta: un livello di circuito per volta; batch di al più
+16.384 posizioni suffix, 64 tile da 256. Il producer emette una sola
+finestra di bitplane, poi una fence precede i consumer; questi completano
+prima di riusare la finestra. I contatori restano vivi tra i batch e sono
+ridotti dopo l’ultimo. Eq si impacchetta come `[tile][word][bit]`, con load
+vettoriali a 128 bit per ridurre le istruzioni, senza ridurre i byte logici.
+Gli indici originali restano necessari: compattare il supporto non permette
+di usare Eq del rango compatto. N massimo è 7.209.600, quindi nessun
+contatore s32 può traboccare; la somma ricomposta occupa meno di 96 bit.
+
+| O | BMMA warp And/Xor | BMMA warp Copy | Batch per livello | Lower parziale AND-mask, s |
+|---:|---:|---:|---:|---:|
+| 0 | 100.233.469.056 | 5.491.184.580 | 89 | 0,189836 |
+| 150 | 299.355.229.056 | 16.399.859.580 | 265 | 0,566961 |
+| 300 | 498.476.989.056 | 27.308.534.580 | 441 | 0,944085 |
+
+Il lower concede favorevolmente 132 SM, clock ≤2 GHz e 128 risultati
+bitwise/ciclo/SM e conta solo i due AND a 32 bit per lane e BMMA And/Xor.
+Non trasferisce ai LOP3 il vecchio bound IMAD, non conta i BMMA come singole
+operazioni scalari e non assegna loro un throughput non misurato. Il lower
+HBM dei soli contatori fra batch, concedendo 256 MiB di cache trattenuta e
+3,35 TB/s, è 0,031827 / 0,095482 / 0,159137 s. Si riporta separatamente;
+il massimo dei due è un lower valido senza assumere overlap o costruire
+un upper dalla banda. Il lower congiunto completo resta aperto.
+
+A O=300 i load/store logici dei contatori costano circa 8,43 TB, quelli
+A/Y circa 47,85 TB e quelli Eq circa 127,61 TB, oltre a Copy e staging.
+**Non sono traffico HBM misurato**: il riuso di Eq e degli operandi va
+verificato. Restano 11.682.765 prodotti Fp3 dei pesi, ricostruzione dei
+conteggi, trasposizione/packing, gather, producer e coda scalare; nessuno
+riceve tempo nullo. Il [ledger](../../scripts/c71_exp30_bmma.py) separa
+queste voci e conserva gli obblighi mancanti.
+
+La variante `exp30_bmma=True` del [piano arena](../../scripts/c71_arena_plan.py)
+riserva separatamente stage wire, Eq, contatori And/Xor, contatori Copy,
+mappa gate, piano replay e aggregato. Il payload massimo nominato è
+490.859.484 B, con riuso dopo fence a ogni livello. La cache E/Pi/Z resta
+viva fino all’endpoint byte. I layout censiti mantengono 256 MiB di margine;
+questo non include ancora transitori completi, allocator e port CUDA.
+Il backend nativo selezionato resta quello a istogrammi finché non è
+verificato il nuovo collegamento completo. `T_inference`, `T_proof_only`
+e `T_response_total` restano distinti e senza upper H100; target totale
+65 s. Nessun pod o spesa è ammesso da questi controlli.

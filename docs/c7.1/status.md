@@ -1,6 +1,6 @@
 # C7.1 — Goals and current status
 
-Aggiornato al 2026-09-25. [Design](design.md) · [Security](security.md) ·
+Aggiornato al 2026-09-26. [Design](design.md) · [Security](security.md) ·
 [Evidence](evidence.md) · [Decisions](decisions.md) · [Indice](../README.md).
 Questa pagina contiene stato, autorizzazione e prossimo lavoro; requisiti,
 prove e risultati dei test hanno ciascuno la propria sede nei link sopra.
@@ -152,8 +152,14 @@ in un DAG pubblico: a O=300 passa da 9.098.344.541.952 a
 Il [record su SHA pulita](evidence.md#native-exp30-replay-dag) conferma
 parità a tutti i livelli e cinque test nativi, inclusa la proof integrata.
 È riduzione del lavoro sorgente, senza credito di tempo GPU.
-Prossime fasi dominanti: accumulo/riduzione dei bin e mapping GPU del replay;
-restano da chiudere kernel, staging, getter e ledger temporale congiunto.
+Il [consumer BMMA candidato](preflight.md#exp30-momenti-binari-bmma) elimina
+nel modello gli aggiornamenti sparsi dei bin, compresi i Copy, con payload
+nominato di 490.859.484 B. Due kernel compilano per sm_90 senza spill;
+passano i controlli CPU di ricostruzione esatta, cubici e arena. È una
+rappresentazione degli stessi aggregati privati, non un terzo protocollo.
+Resta da collegare producer → packing Eq/wire → BMMA → riduzione Fp3
+al prefisso nativo. Nessun positivo GPU o upper totale è ancora disponibile.
+Priorità: chiudere questo percorso e il ledger congiunto, senza nuovi census ABI.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 
 **NO-GO del backend scalare fuso ora implementato:** per il circuito

@@ -96,7 +96,7 @@ def lookup_events(name, trace):
             dict(event=name+'_endpoint_last_consumer_fence',free=[*cache,*retained,name+':triples',name+':Eq_scratch'])]
 
 
-def report(ordered_getter=False, reuse_reader_for_commit=False):
+def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False):
     if reuse_reader_for_commit and not ordered_getter:raise ValueError('ordered getter variant required')
     initial_rows=1 << (22 if reuse_reader_for_commit else 21)
     pcs={35:whir.trace(35),34:whir.trace(34,initial_coset_rows=initial_rows)}
@@ -236,6 +236,19 @@ def report(ordered_getter=False, reuse_reader_for_commit=False):
                 {'event':'EXP30_four_cubics_last_consumer_fence',
                  'free':['EXP30:pattern_aggregate']},
             ])
+            if exp30_bmma:
+                import c71_exp30_bmma as bm
+                # Replace only the unselected consumer's named prefix schedule.
+                events=events[:-3]  # Keep the original ratio cache allocation.
+                for state in reversed(bm.geometry()[2]):
+                    name=f"EXP30_BMMA_layer_{state['depth']}"
+                    buffers={name+':'+k:v for k,v in state.items() if k!='depth'}
+                    buffers[name+':packed_replay']=prefix['packed_replay_resident_bytes']
+                    events.append(dict(event=name+'_producer_consumer_batches',
+                        allocate={**buffers,name+':aggregate':24*(256+16)},
+                        unknown=['producer transpose/reduction kernels, compiler transient and allocator; candidate only']))
+                    events.append(dict(event=name+'_last_count_consumer_fence',free=list(buffers)))
+                    events.append(dict(event=name+'_four_cubics_fence',free=[name+':aggregate']))
             for name in ('GELU','softcap'):
                 chains[name+'_original_lookup']=[
                     dict(event=name+'_build_original_cuts',allocate={'getter:cuts':cuts}),

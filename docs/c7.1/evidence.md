@@ -1490,7 +1490,8 @@ privati dal sistema. Non si richiede uguaglianza fra installazioni diverse.
 Il [controllo scartato fra run](../../benchmarks/results/c71-integrated-cross-run-coins-2026-09-26-e95d8a51d6cd.json)
 è conservato con provenienza dirty, senza credito di protocollo.
 
-Il raccordo successivo passa intervalli causali da Softmax al getter,
+Il [record su SHA pulita](../../benchmarks/results/c71-canonical-byte-support-2026-09-26-9a4d6634de68.json)
+verifica il raccordo degli intervalli causali da Softmax al getter,
 con proiezione pubblica verificata per ogni round nei tre contesti.
 La proof ridotta conserva 12 lane private e recupera analiticamente le
 quattro lane byte zero; Eq terminale usa due tabelle fattorizzate.

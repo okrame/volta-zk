@@ -1740,3 +1740,20 @@ la conversione receiver e 351.000 B heap trattenuti, con rilasci solo
 dopo accettazione; i massimi globali nominati non cambiano.
 Questo risolve il difetto multiblocco del riferimento, non accordo sul
 seed EA, trie batch, trasporto, journal, proof bridge o picco fisico.
+
+## Native two-role equality transport
+
+Il [record su SHA pulita `4f54c8fe12da`](../../benchmarks/results/c71-seed6-equality-wire-2026-09-27-4f54c8fe12da.json)
+conserva **33 test Rust e 29 Python/C++**, seriali entro 60 s/2 GiB.
+F_EQ ora scambia nove frame fra due endpoint Unix indipendenti usando
+`send/recv` del bootstrap, anziché trasferimenti diretti fra stati locali.
+I due Audit coincidono: 433 B a t=1, 481 B a t=2; il totale analitico a
+t=675 è 32.785 B con la coin. Tag, lunghezze errate e troncamenti sono
+respinti prima di allocazioni dipendenti dal peer o uso di RNG.
+
+La catena AES reale mantiene sei righe EA globali, due packing Fp3 e rifiuto
+di c/z alterati. Il ledger include 192 B Audit, fino a 96 B read buffer e
+27 B aggiuntivi sul bootstrap, ora 61.841.321 B. Le altre fasi non diventano
+automaticamente trasporto globale: restano canale autenticato, journal,
+accordo sul seed EA, trie batch e integrazione con la proof. Nessun credito
+di fairness/atomicità, picco fisico completo o H100.

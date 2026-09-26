@@ -1454,6 +1454,7 @@ di cancellazione. Restano i gate del preflight e il totale ≤65 s.
 
 ## F_EQ: consumer locale dei due seed opposti
 
+Evidenza del trasporto: [33 test Rust e 29 Python/C++](evidence.md#native-two-role-equality-transport).
 Il [consumer ridotto](../../rust/volta-pcg/src/c71_seed6/equality.rs) usa
 le code riservate dei due seed completati, con ruoli opposti. Corregge la
 key con `k' = k - Delta*(x-r)`, mantenendo il tag originale. Entrambe le

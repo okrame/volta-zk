@@ -1519,6 +1519,12 @@ merge range e la coda main: sostituisce il vecchio costo range e conserva
 il bound IMAD applicabile alla coda. La somma parziale scende sotto 65 s,
 senza nuove allocazioni; mancano ancora fasi, profilo RMS e misura GPU.
 
+Il [controllo RMS su SHA pulita](../../benchmarks/results/c71-rms-workload-screen-2026-09-26-b70887bb6bda.json)
+riusa i profili sintetici esistenti e il lower del main kernel ricertificato.
+Include i selettori per coppia/profilo/livello: la coda dopo quattro round
+concessi gratis costa almeno 70,268864 s. Esclude quel backend del fixture,
+non altri Γ o prover non scalari; nessun nuovo run nativo o hardware.
+
 ### Native moment seam and byte tree screen
 
 Il [record pulito `b63461fa58e8`](../../benchmarks/results/c71-byte-seam-and-tree-screen-2026-09-26-b63461fa58e8.json)

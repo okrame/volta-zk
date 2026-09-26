@@ -1,0 +1,175 @@
+{
+  "milestone": "C7.1-RMS-synthetic-workload-screen",
+  "date": "2026-09-26",
+  "git_sha": "b70887bb6bdaa2b5c078b744ed9f4a5cb33ee16c",
+  "git_dirty": false,
+  "credit": false,
+  "gpu_execution": false,
+  "scope": "Existing synthetic zero-exponent RMS profile only; no new runtime run or calibrated-model claim",
+  "padded_cells": 536870912,
+  "depth": 98,
+  "profiles": [
+    {
+      "profile": 0,
+      "columns": 5376,
+      "weighted": true,
+      "assigned_cells": 194337024,
+      "merged_interval_count": 342,
+      "gates_across_all_layers": {
+        "copy": 44545,
+        "xor": 20256,
+        "and": 21367
+      },
+      "supported_gate_iterations_all_rounds": {
+        "and": 9571103190153,
+        "xor": 9073443451104,
+        "copy": 19953423110655,
+        "all": 38597969751912
+      }
+    },
+    {
+      "profile": 1,
+      "columns": 256,
+      "weighted": true,
+      "assigned_cells": 92160000,
+      "merged_interval_count": 301,
+      "gates_across_all_layers": {
+        "copy": 42946,
+        "xor": 19803,
+        "and": 21010
+      },
+      "supported_gate_iterations_all_rounds": {
+        "and": 5973213572590,
+        "xor": 5630059418277,
+        "copy": 12209692055614,
+        "all": 23812965046481
+      }
+    },
+    {
+      "profile": 2,
+      "columns": 256,
+      "weighted": false,
+      "assigned_cells": 30720000,
+      "merged_interval_count": 200,
+      "gates_across_all_layers": {
+        "copy": 37270,
+        "xor": 17195,
+        "and": 18250
+      },
+      "supported_gate_iterations_all_rounds": {
+        "and": 2300866541750,
+        "xor": 2167857544405,
+        "copy": 4698810740330,
+        "all": 9167534826485
+      }
+    },
+    {
+      "profile": 3,
+      "columns": 512,
+      "weighted": true,
+      "assigned_cells": 27648000,
+      "merged_interval_count": 51,
+      "gates_across_all_layers": {
+        "copy": 42926,
+        "xor": 19801,
+        "and": 21001
+      },
+      "supported_gate_iterations_all_rounds": {
+        "and": 2944983985655,
+        "xor": 2776707199655,
+        "copy": 6019541096530,
+        "all": 11741232281840
+      }
+    },
+    {
+      "profile": 4,
+      "columns": 512,
+      "weighted": false,
+      "assigned_cells": 3072000,
+      "merged_interval_count": 40,
+      "gates_across_all_layers": {
+        "copy": 37232,
+        "xor": 17194,
+        "and": 18242
+      },
+      "supported_gate_iterations_all_rounds": {
+        "and": 454068754622,
+        "xor": 427982576854,
+        "copy": 926756269712,
+        "all": 1808807601188
+      }
+    }
+  ],
+  "tails": [
+    {
+      "initial_cell_rounds_granted_free": 0,
+      "gate_iterations": {
+        "and": 21244236044770,
+        "xor": 20076050190295,
+        "copy": 43808223272841
+      },
+      "program_level_pairs": 100297006614,
+      "Fp3_products": 377460232230821,
+      "conditional_scalar_tail_seconds": 536.1651026005981
+    },
+    {
+      "initial_cell_rounds_granted_free": 4,
+      "gate_iterations": {
+        "and": 2787841759714,
+        "xor": 2631656050647,
+        "copy": 5726148861833
+      },
+      "program_level_pairs": 13416259094,
+      "Fp3_products": 49469279950757,
+      "conditional_scalar_tail_seconds": 70.26886356641619
+    },
+    {
+      "initial_cell_rounds_granted_free": 6,
+      "gate_iterations": {
+        "and": 789193308642,
+        "xor": 744839344087,
+        "copy": 1619813965705
+      },
+      "program_level_pairs": 3849502230,
+      "Fp3_products": 14000953513893,
+      "conditional_scalar_tail_seconds": 19.8877180595071
+    },
+    {
+      "initial_cell_rounds_granted_free": 8,
+      "gate_iterations": {
+        "and": 209442470370,
+        "xor": 197654384599,
+        "copy": 429746085769
+      },
+      "program_level_pairs": 1027603990,
+      "Fp3_products": 3715335780261,
+      "conditional_scalar_tail_seconds": 5.2774655969616475
+    },
+    {
+      "initial_cell_rounds_granted_free": 9,
+      "gate_iterations": {
+        "and": 104721185250,
+        "xor": 98827145175,
+        "copy": 214872940425
+      },
+      "program_level_pairs": 513801750,
+      "Fp3_products": 1857667004325,
+      "conditional_scalar_tail_seconds": 2.638731540234375
+    }
+  ],
+  "inputs": {
+    "public_native_record": "benchmarks/results/c71-original-lookup-2026-09-19-e39324ba5e18.json",
+    "public_native_record_sha256": "55b2aa80fddefb35b53950eb76a05a44d94af16cb3ea549786783a7c9123d4a3",
+    "compiled_field_path_record": "benchmarks/results/c71-carry-field-joint-screen-2026-09-26-8662d88cbb8a.json"
+  },
+  "source_sha256": {
+    "scripts/c71_gkr_screen.py": "c968109ccbf31ae33e45aa53c9a0f10ab3e8e968b8eaafa779995110592bc9d9",
+    "scripts/c71_byte_contract_screen.py": "ffe634fb0647587ea4cc4035048895a41c7bafae8e38390e161fef9837b61b17"
+  },
+  "conditions": [
+    "same fixed-support scalar main kernel and selected synthetic profiles",
+    "132 SM, clock <=2GHz, <=64 INT multiply results/cycle/SM, certified 24 register-only IMAD.WIDE per Fp3 call",
+    "all skipped cell rounds and all replay/byte/other proof work granted free"
+  ],
+  "decision": "NO-GO for this RMS scalar backend even with the first four rounds free; not a lower for other Gamma or non-scalar provers"
+}

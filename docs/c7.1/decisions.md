@@ -15,9 +15,9 @@ Gli esponenti cambiano i circuiti RMS e le riserve: il fixture a scale zero
 non può certificare il ledger di questo workload. Il
 [preflight](preflight.md#real-calibrated-gamma) registra il raccordo al
 compilatore già disponibile. Il proprietario ha poi confermato «da calibrare»:
-occorre produrre Γ, non cercare ancora un manifest esistente. La copertura
-della calibrazione è da fissare; non si sceglie implicitamente una garanzia
-di qualità generale usando il solo workload del benchmark. Restano i vincoli correnti
+occorre produrre Γ, non cercare ancora un manifest esistente. Ha selezionato
+la prima calibrazione sul **workload C7.1 fissato a O=0/150/300**, senza
+certificazione di qualità generale. Restano i vincoli correnti
 su arena, privacy e tempo totale ≤65 s; nessuna GPU o spesa autorizzata.
 
 Il **2026-09-12** il proprietario ha precisato che la memoria extra deve

@@ -148,6 +148,11 @@ Vedi [perimetro ed evidenza](../c7.1/evidence.md#native-bounded-composition).
 
 Il filtro `c71_b12_native_canonical` controlla il compilatore causale di
 tutte le sorgenti pinned a O=0/150/300, senza witness o domini densi.
+Per il raccordo numerico alla calibrazione usare, nella stessa build,
+`c71_b12_native_canonical_numeric_rows_original_routes`, un test, con
+marker `C71_CANONICAL_NUMERIC_ROWS`, entro 60 s/2 GiB e un worker.
+Esegue righe e catene di operatori nelle geometrie canoniche con dati e
+tabelle sintetici; non un forward completo o una calibrazione reale.
 `c71_b12_native_pool_packing` controlla conversione Fp3 e identità del
 registro; `c71_b12_native_pool_real_shortage` usa una sola capacità AES
 da tre righe per verificare il rifiuto del wrapper prima di Prepare/decode.

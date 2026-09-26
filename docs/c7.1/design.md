@@ -981,12 +981,31 @@ ricertifica la coda main e riapre il lower parziale: non trasferisce il
 NO-GO al nuovo binario, né dichiara completo il ledger. I test host non
 sono esecuzione delle istruzioni PTX; quel controllo resta nel futuro
 esperimento autorizzato. Il proprietario ha scelto Γ calibrato del modello
-reale per l'esperimento e ha confermato che è da calibrare. Il profilo RMS
+reale per l'esperimento e ha confermato che è da calibrare sul workload C7.1
+fissato a O=0/150/300, senza certificazione di qualità generale. Il profilo RMS
 a scale zero resta sintetico; prima della chiusura del ledger occorre
 produrre l'artefatto reale e validarlo attraverso il
 [raccordo esistente](preflight.md#real-calibrated-gamma). La preparazione
 offline di Γ precede installazione/bootstrap; non consente di adattare
 scale, tabelle o circuiti durante una risposta certificata.
+
+Il [dispatcher numerico per righe](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prepare.rs)
+usa i produttori del DAG canonico e le ricette possedute dal compilatore.
+Riusa gli helper interi RMS/RNE/affine; restituisce righe nelle sorgenti
+originali e visite agli istogrammi, senza FS, MAC o correlazioni in input.
+Le tabelle devono essere già certificate dal profilo pubblico: i controlli
+di forma del dispatcher non le certificano. Il driver causale per token
+segue l'ordine del DAG, emette ogni bundle di righe al consumer e aggiorna
+il token successivo solo dopo il successo di tutti i consumer del token.
+Le decisioni usano le righe 99–148; il token 149 completa KV senza un'altra
+decisione. Il caller deve ancora fissare i getter W/A/KV, accumulare ogni
+istogramma una volta e gestire durata/riuso delle righe. Non è ancora
+Prepare canonico completo o ammissione del runtime.
+Il padding query interno ai rettangoli A conserva la relazione originale:
+`D-32767=-32767`, `E=2^30`, `Z=Pi=0`, a differenza del padding zero esterno
+al dominio delle sorgenti. Il getter fornisce queste costanti; ciascun
+istogramma EXP30 riceve una volta `32*106*(O+150)` visite pubbliche all'entry
+zero. I controlli finiti del dispatcher non scaricano un refinement Lean.
 
 Nel riferimento ridotto il getter usa LUT prepesate di f(byte)−f(0),
 batch da 16 coppie e checkpoint min(9,floor(cell_bits/2)). Il supporto

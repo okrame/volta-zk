@@ -43,11 +43,15 @@ Il profilo pubblico numerico deve essere valido e posseduto dal verifier.
 ancora da chiedere. Il proprietario ha selezionato **Γ calibrato del modello
 reale** per il preflight; il profilo sintetico non lo sostituisce.
 Il proprietario ha confermato che Γ è **da calibrare**: non si attende un
-percorso a un artefatto già esistente. La copertura della prima calibrazione
-(workload C7.1 oppure corpus rappresentativo) è stata posta al proprietario.
+percorso a un artefatto già esistente. È selezionato il **workload C7.1
+fissato nei tre contesti O=0/150/300, senza certificazione di qualità generale**.
 Il [percorso preparatorio](preflight.md#real-calibrated-gamma) distingue
 quantizzazione W già disponibile, calibrazione A da integrare ed esecuzioni
 pesanti ancora non autorizzate.
+È implementato il dispatcher numerico per righe del DAG canonico, con
+ricette RMS/RNE originali, indirizzi QK/KV/RoPE e driver causale per token;
+restano storage/getter reali e raccolta delle statistiche. Non è ancora Γ calibrato
+né esecuzione completa del modello.
 
 ## Native bounded result
 
@@ -238,7 +242,7 @@ range/BMMA passano; nessuna esecuzione PTX o misura GPU. Il massimo arena
 non cambia. La priorità è completare le fasi mancanti nella stessa somma.
 Per il ledger RMS è selezionato Γ calibrato reale, confermato da produrre.
 Il [preflight](preflight.md#real-calibrated-gamma) identifica gli input,
-il raccordo al compilatore e la copertura da fissare. Sul fixture
+il raccordo al compilatore e la copertura selezionata. Sul fixture
 a scale zero la coda RMS dopo quattro round concessi gratis dà già
 70,268864 s: il solo trasferimento del prefisso EXP30 B=16 è NO-GO.
 Contatori completi,

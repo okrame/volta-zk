@@ -2303,10 +2303,14 @@ ricompilato. La stessa mappa deve valere a O=0/150/300, con alias
 embedding/head coerente ed e_Pi=-14. Servono i riferimenti del manifest
 alla revisione del checkpoint, alla procedura/dati di calibrazione e ai
 controlli numerici: la sola validità sintattica della mappa non dimostra
-che sia calibrata. È da fissare la copertura della prima calibrazione:
-solo workload C7.1 nei tre contesti oppure corpus rappresentativo con
-valutazione della qualità. Il primo caso non certifica qualità generale;
-entrambi conservano le stesse garanzie crittografiche. Le regole correnti RNE/overflow reject, EXP30 e le
+che sia calibrata. Il proprietario ha selezionato la prima calibrazione sul
+**workload C7.1 fissato a O=0/150/300**, senza certificazione di qualità
+generale e senza modificare le garanzie crittografiche. Si riusano i 100
+token del [prompt pinned](../../manifests/c7-d126-gemma31b-workload-v1.json)
+in ciascun tentativo; i 50 token successivi sono generati dalla relazione
+intera, con il predecessore KV del tentativo precedente. Si conserva anche
+il KV dell'ultimo token emesso, senza generare un token aggiuntivo.
+Le regole correnti RNE/overflow reject, EXP30 e le
 tabelle certificate restano quelle del design e della security; i campi
 vuoti del contratto storico non riaprono quelle scelte.
 
@@ -2344,10 +2348,22 @@ Il percorso minimo riusa i componenti esistenti, nell'ordine seguente:
    nel replay; in caso di modifica delle scale invalidare le tracce
    dipendenti e ripetere la validazione. Non adattare Γ ai challenge o
    al transcript della prova. Il compilatore canonico possiede il DAG;
-   il runner numerico integrato attuale è ancora il piccolo `Profile`,
-   con dimensioni e tabelle del fixture. Non basta passargli un manifest
-   per ottenere una calibrazione Gemma: il raccordo numerico canonico
-   e la raccolta delle statistiche sono lavoro locale ancora da integrare.
+   il runner numerico integrato attuale è ancora il piccolo `Profile`.
+   Il nuovo [dispatcher canonico per righe](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prepare.rs)
+   copre embedding, matrici, RMS, RNE, affine, GELU, gate, RoPE, QK, EXP30,
+   PV, softcap e argmax. Le righe RMS mantengono il reshape delle teste,
+   `lm_head` la selezione originale; QK/PV chiedono solo KV causale e
+   RoPE usa posizioni assolute. Le visite agli istogrammi sono restituite
+   al caller senza costruire istogrammi o A completi. Il driver per token
+   segue il DAG, esegue le 32 righe testa/query quando necessarie e demanda
+   lo storage al consumer. Restano da collegare i getter reali, la liveness
+   del loro storage, l'accumulo degli istogrammi e le statistiche di
+   calibrazione. Un manifest da solo non rende il fixture un runner Gemma.
+   Il padding query interno è fornito virtualmente: D matematico zero
+   (word signed −32767), E=2^30, Z/Pi zero. Il lookup originale lo include,
+   perciò l'istogramma aggiunge una sola volta `32*106*(O+150)` visite
+   all'entry zero. Questa non è una nuova enumerazione o un nuovo circuito;
+   i conteggi lookup canonici già comprendono quei rettangoli.
 3. **Congelamento.** Fissare mappe, identità dei dati, regole, tabelle e
    digest dopo la validazione numerica; confrontare Python e Rust sulla
    stessa relazione intera, non pretendere uguaglianza con BF16.
@@ -2356,5 +2372,24 @@ Il percorso minimo riusa i componenti esistenti, nell'ordine seguente:
    della prova non dimostra da solo la qualità della calibrazione.
 
 La calibrazione reale è quindi un prerequisito separato del preflight
-H100 selezionato. Non si propone ancora una spesa: mancano copertura
-fissata, raccordo numerico completo e piano eseguibile della calibrazione.
+H100 selezionato. Non si propone ancora una spesa: mancano il raccordo
+numerico completo e il piano eseguibile della calibrazione.
+
+Il test `c71_b12_native_canonical_numeric_rows_original_routes` usa le
+geometrie originali a O=0/150/300 e dati/tabelle sintetici dichiarati,
+inclusa una scala RMS nonzero per intercettare il riuso del vecchio `[0;3]`.
+Controlla proiezione/RNE, reshape RMS, RoPE/RNE, GELU/gate, QK/EXP30/PV,
+softcap/argmax e rifiuti di indirizzi, padding, pesi e marker invalidi.
+Il probe `lm_head` si arresta dopo il primo indirizzo selezionato, prima
+di eseguire la grande proiezione. Il driver è eseguito sul solo suffisso
+softcap/argmax, con controllo delle righe 98/99/148/149, consumer successivo
+al producer, conteggio delle visite all'istogramma e mancato aggiornamento
+del token dopo errore del sink. I layer precedenti non sono eseguiti in
+questo fixture. È un controllo CPU per righe, senza
+proof o campo GKR, non calibrazione reale o inferenza completa.
+Il test verifica anche le costanti di padding e la somma delle visite
+vive/pubbliche contro il rettangolo originale `32*256*(O+150)`.
+Il ledger hardware conserva i costi producer ancora aperti: non si
+sostituiscono i suoi costi con il tempo CPU di questo test né si attribuisce
+credito al picco fisico. Il dispatcher non modifica la schedule GPU
+selezionata o il suo margine pianificato.

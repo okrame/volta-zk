@@ -1408,3 +1408,29 @@ conserva il test arena interrotto a 60 s. Il census pubblico identico ora
 è riusato tramite cache; ogni filtro del record passa entro il limite,
 senza ampliarlo. Producer parallelo, indici originali, adapter/pesi GPU,
 picco fisico e tempo completo restano aperti. `credit:false`.
+
+### EXP30 shared producer
+
+Il [record pulito `8bce6b5a90b0`](../../benchmarks/results/c71-exp30-shared-producer-2026-09-26-8bce6b5a90b0.json)
+confronta tutti i 95 livelli nativi con la schedule parallela, tre maschere
+live ciascuno, e ripete il confronto nel checker C++ sul fixture pubblico
+rigenerabile. Include hash del fixture, codice e oggetto sm_90, cinque
+test Python/C++ passati, ptxas e SASS dei dieci kernel. Non esegue GPU.
+Il primo dump SASS fallì perché `nvdisasm` non era nel PATH: log conservato,
+ambiente corretto, nessuna modifica al codice o al limite di risorse.
+
+Il producer usa al massimo 39.792 B shared per CTA e 737.856 B di piano
+pubblico per livello. Non conserva intermedi globali. Il checker verifica
+che le scritture di uno stage non aliasino alcun suo operando prima della
+barriera. Il kernel legge direttamente E/Pi/Z originali; la compattazione
+pubblica è verificata nei tre contesti e Eq conserva gli indici originali.
+Il check Fp3 confronta packing→conteggi→riduzione→pesi con somme dirette,
+inclusi And, Xor, Copy, riporti, padding e sfide 0/1/non-base.
+
+Il payload massimo nominato diventa 489.850.540 B. Il massimo nominato
+EXP30 e il margine dei piani complessivi restano compatibili; ciò non
+chiude il picco fisico. Il ledger include shared/logical/global reads,
+barriere, ballot, tabelle Eq, trasferimenti del piano e pesi tardivi.
+Il riferimento nativo di proof/FS/MAC resta il record precedente: questo
+record non collega ancora l’aggregato CUDA al prover. `credit:false`,
+nessun service-rate, upper temporale, positivo AES/GPU o autorizzazione di spesa.

@@ -163,7 +163,7 @@ rappresentazione degli stessi aggregati privati, non un terzo protocollo.
 controlli CPU e compilazione statica su SHA pulita. Il riferimento nativo a
 momenti di un bit conserva proof/FS/MAC originali; non esegue CUDA. La
 trasposizione usa 512 B shared per tile e nessun secondo stage globale.
-Il producer parallelo legge direttamente E/Pi/Z originali: il piano
+Il [producer parallelo](evidence.md#exp30-shared-producer) legge direttamente E/Pi/Z originali: il piano
 con riuso dopo barriera coincide con tutti i 95 livelli nativi e usa al
 massimo 39.792 B shared per CTA. Eq sugli indici originali e pesi Fp3
 hanno kernel e controlli CPU; resta il collegamento al prefisso nativo

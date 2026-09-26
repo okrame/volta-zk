@@ -2051,6 +2051,8 @@ questi byte logici.
 
 #### Producer condiviso e Eq originale
 
+[Record dei controlli su SHA pulita](evidence.md#exp30-shared-producer).
+
 Il DAG pubblico è pianificato per dipendenze: nessuna scrittura del livello
 può coincidere con un suo operando, e gli slot si riciclano dopo barriera.
 Il checker nativo e quello C++ confrontano tutti i 95 livelli, con live mask

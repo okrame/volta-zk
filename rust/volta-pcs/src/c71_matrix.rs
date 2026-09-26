@@ -43,6 +43,8 @@ mod rope;
 #[cfg(feature = "c71-work-census")]
 pub use census::self_check;
 pub use diagnostic::{preflight, run};
+#[cfg(feature = "c71-b12-pcs")]
+pub use gemma::native::canonical::calibration_input::command as calibration;
 
 use crate::c61_whir_reference::C61Commitment;
 #[cfg(not(feature = "c71-b12-pcs"))]

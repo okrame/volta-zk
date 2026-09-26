@@ -2359,7 +2359,7 @@ Il percorso minimo riusa i componenti esistenti, nell'ordine seguente:
    nel replay; in caso di modifica delle scale invalidare le tracce
    dipendenti e ripetere la validazione. Non adattare Γ ai challenge o
    al transcript della prova. Il compilatore canonico possiede il DAG;
-   il runner numerico integrato attuale è ancora il piccolo `Profile`.
+   il positivo composto inferenza/prova resta quello del piccolo `Profile`.
    Il nuovo [dispatcher canonico per righe](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prepare.rs)
    copre embedding, matrici, RMS, RNE, affine, GELU, gate, RoPE, QK, EXP30,
    PV, softcap e argmax. Le righe RMS mantengono il reshape delle teste,
@@ -2387,8 +2387,42 @@ Il percorso minimo riusa i componenti esistenti, nell'ordine seguente:
    della prova non dimostra da solo la qualità della calibrazione.
 
 La calibrazione reale è quindi un prerequisito separato del preflight
-H100 selezionato. Non si propone ancora una spesa: mancano il raccordo
-numerico completo e il piano eseguibile della calibrazione.
+H100 selezionato. L'[harness offline](../../scripts/c71_calibrate.py) ora
+collega input da file, tabelle certificate e controller dei tre trial.
+Il binario `c71_calibration describe` esporta i nomi/ID pinned; `recipes`
+compila una candidata con 772 esponenti W e 1.435 A, e `check-input`
+controlla forme, ricette comuni e riserve dei tre contesti senza leggere W.
+La candidata JSON contiene solo `weight_exponents_by_tensor` e
+`activation_exponents_by_source`; non dichiara da sé una calibrazione.
+
+Il wrapper congela la candidata in una copia temporanea, verifica il
+report d'ingest e l'hash del packed e genera GELU/EXP30/softcap/Q30 usando
+le funzioni certificate esistenti. Il codec delle tabelle è 24.414.870 B:
+60 GELU i16, 60 EXP30 i32, softcap i16, poi RoPE local/global per tutte le
+450 posizioni assolute, in little endian. Il binario Rust ne controlla
+forma e identità, non ricalcola la certificazione numerica Python.
+Un file arbitrario passato direttamente a Rust non riceve quel credito.
+
+Il controller parte da KV vuoto, usa lo stesso W/Γ per i tre contesti e
+il prompt pinned a ogni tentativo; trasferisce il KV soltanto dopo
+`finish`, senza clonare i buffer delle righe. Non accetta KV importato,
+trial parziali, scale cambiate, riordino o un quarto tentativo. Il report
+completo contiene token, range di tutte le sorgenti e contatori dei tre
+trial solo dopo il loro successo; gli errori del replay e i timeout hanno
+record separati di fallimento, senza sovrascrivere risultati esistenti.
+Il limite del payload comprende KV precedente e cache di riga W, ma
+esclude ancora tabelle/descrittori, workspace interni e allocator: non è
+un limite del picco fisico completo. Il trasferimento finale conserva
+405.504.000 B di KV per 450 token, costo offline già distinto dalla prova.
+
+I controlli locali esercitano il formato completo delle tabelle pubbliche
+su scale sintetiche e il trasferimento KV con righe sintetiche; il secondo
+test costruisce esplicitamente lo stato finale per controllare il solo
+handoff, senza attribuirgli un forward numerico. Non si propone ancora
+una spesa: mancano l'inizializzazione delle scale A sui pesi reali, il
+replay completo positivo e il relativo piano di esecuzione autorizzato.
+`calibrated:false` resta esplicito anche per un trial intero positivo:
+freeze, confronto della relazione e trasferimento al ledger sono successivi.
 
 Il test `c71_b12_native_canonical_numeric_rows_original_routes` usa le
 geometrie originali a O=0/150/300 e dati/tabelle sintetici dichiarati,

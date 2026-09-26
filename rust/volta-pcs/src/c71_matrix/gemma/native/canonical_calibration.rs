@@ -83,9 +83,218 @@ pub(super) struct Extent {
     pub maximum: i64,
 }
 
+struct History {
+    recipes: [u8; 32],
+    old: usize,
+    rows: Vec<Vec<Box<[i16]>>>,
+    payload: usize,
+}
+
+impl History {
+    fn new(profile: &Canonical) -> Result<Self, String> {
+        if profile.sources.attention.rope.old != 0 {
+            return Err("calibration history must start empty".into());
+        }
+        Ok(Self {
+            recipes: profile.recipes.digest,
+            old: 0,
+            rows: vec![Vec::new(); profile.bytes().widths.len()],
+            payload: 0,
+        })
+    }
+
+    fn check(&self, profile: &Canonical) -> Result<(), String> {
+        if self.old >= 450
+            || profile.sources.attention.rope.old != self.old
+            || profile.recipes.digest != self.recipes
+            || profile.bytes().widths.len() != self.rows.len()
+        {
+            return Err("calibration predecessor or common scale map differs".into());
+        }
+        Ok(())
+    }
+
+    fn read(&self, id: usize, token: usize, column: usize) -> Result<i64, String> {
+        if token >= self.old {
+            return Err("calibration historical KV outside completed prefix".into());
+        }
+        self.rows
+            .get(id)
+            .and_then(|rows| rows.get(token))
+            .and_then(|row| row.get(column))
+            .map(|&value| i64::from(value))
+            .ok_or("calibration historical KV source/address missing".into())
+    }
+
+    fn append(&mut self, trial: &mut Trial<'_>) -> Result<(), String> {
+        self.check(trial.profile)?;
+        if !trial.finished || trial.failed || trial.next_token != 150 {
+            return Err("calibration cannot retain an incomplete trial".into());
+        }
+        for (id, rows) in trial.kv.iter().enumerate() {
+            if trial.kv_sources.contains(&id) {
+                let columns = trial.profile.bytes().scalar.layout.sources[id].cols;
+                if rows.len() != 150
+                    || self.rows[id].len() != self.old
+                    || rows.iter().any(|row| row.len() != columns)
+                {
+                    return Err("calibration completed KV shape differs".into());
+                }
+            } else if !rows.is_empty() || !self.rows[id].is_empty() {
+                return Err("calibration non-KV source retained as history".into());
+            }
+        }
+        for &id in &trial.kv_sources {
+            let bytes = trial.kv[id].iter().map(|row| row.len() * 2).sum::<usize>();
+            self.rows[id].append(&mut trial.kv[id]);
+            self.payload += bytes;
+            trial.live_payload -= bytes;
+        }
+        self.old += 150;
+        Ok(())
+    }
+}
+
+#[derive(serde::Serialize)]
+pub(super) struct Response {
+    pub old_tokens: usize,
+    pub tokens: Vec<u32>,
+    pub extents: Vec<Extent>,
+    pub work: Work,
+    pub packed_row_loads: usize,
+    pub packed_row_bytes: usize,
+    pub named_peak_with_previous_kv_and_weight_row_bytes: usize,
+}
+
+pub(super) fn fixed_run<R: Read + Seek>(
+    public: &super::state::Public<'_>,
+    reader: &mut PackedRows<'_, R>,
+    payload_limit: usize,
+) -> Result<Vec<Response>, String> {
+    if public.profiles.len() != 3
+        || reader.sources.len() != public.profiles[0].plan.sources.len()
+        || reader.sources.iter().zip(&public.profiles[0].plan.sources).any(|(input, expected)| {
+            input.name != expected.name
+                || input.rows != expected.rows
+                || input.cols != expected.cols
+                || input.packed_offset != expected.packed_offset
+        })
+    {
+        return Err("calibration fixed-run model layout differs".into());
+    }
+    let workload: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../manifests/c7-d126-gemma31b-workload-v1.json"
+    )))
+    .map_err(|error| error.to_string())?;
+    let prompt: Vec<u32> = serde_json::from_value(workload["prompt"]["token_ids"].clone())
+        .map_err(|error| error.to_string())?;
+    if prompt.len() != 100 || prompt.iter().any(|&token| token >= 262144) {
+        return Err("calibration pinned prompt differs".into());
+    }
+    let mut history = History::new(&public.profiles[0])?;
+    let mut responses = Vec::with_capacity(3);
+    for (slot, profile) in public.profiles.iter().enumerate() {
+        history.check(profile)?;
+        let external = history.payload + reader.buffer.capacity();
+        let budget =
+            payload_limit.checked_sub(external).ok_or("calibration run budget exceeded")?;
+        let mut trial = Trial::new(profile, budget);
+        let mut tokens = [0; 150];
+        tokens[..100].copy_from_slice(&prompt);
+        let before = (reader.row_loads, reader.completed_row_bytes);
+        let weights = RefCell::new(&mut *reader);
+        for token in 0..150 {
+            trial
+                .token(
+                    &mut tokens,
+                    &public.tables[slot],
+                    &|id, row, column| weights.borrow_mut().get(id, row, column),
+                    &|id, row, column| history.read(id, row, column),
+                )
+                .map_err(|error| format!("calibration O={} token={token}: {error}", slot * 150))?;
+        }
+        trial.finish()?;
+        history.append(&mut trial)?;
+        let peak = trial.work.payload_plus_incoming_bundle_peak_bytes + external;
+        responses.push(Response {
+            old_tokens: slot * 150,
+            tokens: tokens.to_vec(),
+            extents: std::mem::take(&mut trial.extents),
+            work: std::mem::take(&mut trial.work),
+            packed_row_loads: reader.row_loads - before.0,
+            packed_row_bytes: reader.completed_row_bytes - before.1,
+            named_peak_with_previous_kv_and_weight_row_bytes: peak,
+        });
+    }
+    Ok(responses)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_b12_native_canonical_calibration_three_context_kv_handoff() {
+        let plan = super::super::super::super::compile().unwrap();
+        let (sources, output, softmax) = plan.softmax_sources_at(0).unwrap();
+        let mut scales: BTreeMap<_, _> =
+            profile::Recipes::exponent_sources(&sources, &output, &softmax)
+                .into_iter()
+                .map(|id| (id, 0))
+                .collect();
+        for layer in &softmax.layers {
+            scales.insert(layer.pi, -14);
+        }
+        let profiles: Vec<_> =
+            (0..3).map(|slot| Canonical::compile(slot, &[0; 772], &scales).unwrap()).collect();
+        assert!(History::new(&profiles[1]).is_err());
+        let mut history = History::new(&profiles[0]).unwrap();
+        assert!(history.check(&profiles[1]).is_err());
+        assert!(history.read(0, 0, 0).is_err());
+        for (slot, profile) in profiles.iter().enumerate() {
+            let mut trial = Trial::new(profile, 512 << 20);
+            assert!(history.append(&mut trial).is_err());
+            for &id in &trial.kv_sources {
+                let columns = profile.bytes().scalar.layout.sources[id].cols;
+                trial.kv[id] = (0..150)
+                    .map(|token| vec![(id + slot * 150 + token) as i16; columns].into_boxed_slice())
+                    .collect();
+                trial.live_payload += 150 * columns * 2;
+            }
+            assert_eq!(trial.live_payload, 135_168_000);
+            trial.finished = true;
+            trial.next_token = 150;
+            let id = *trial.kv_sources.first().unwrap();
+            let pointer = trial.kv[id][149].as_ptr();
+            trial.failed = true;
+            assert!(history.append(&mut trial).is_err());
+            trial.failed = false;
+            let tail = trial.kv[id].pop().unwrap();
+            assert!(history.append(&mut trial).is_err());
+            assert_eq!(history.old, slot * 150);
+            assert_eq!(trial.kv[id].len(), 149);
+            trial.kv[id].push(tail);
+            history.recipes[0] ^= 1;
+            assert!(history.append(&mut trial).is_err());
+            history.recipes[0] ^= 1;
+            history.append(&mut trial).unwrap();
+            assert_eq!(history.rows[id][slot * 150 + 149].as_ptr(), pointer);
+            assert_eq!(trial.live_payload, 0);
+            assert!(trial.kv.iter().all(Vec::is_empty));
+            assert_eq!(history.old, (slot + 1) * 150);
+            assert_eq!(history.payload, (slot + 1) * 135_168_000);
+            for token in 0..history.old {
+                assert_eq!(history.read(id, token, 0).unwrap(), (id + token) as i64);
+            }
+            assert!(history.read(id, history.old, 0).is_err());
+            assert!(history.read(id, 0, history.rows[id][0].len()).is_err());
+            assert!(history.read(0, 0, 0).is_err());
+            assert!(history.append(&mut trial).is_err());
+        }
+        assert!(history.check(&profiles[2]).is_err());
+        eprintln!("C71_CALIBRATION_HISTORY offsets=0/150/300 tokens=450 kv_bytes={} handoff_only=true calibrated=false", history.payload);
+    }
 
     #[test]
     fn c71_b12_native_canonical_calibration_storage_release_and_ranges() {

@@ -173,6 +173,24 @@ Per lo storage offline aggiungere il filtro
 con marker `C71_CALIBRATION_STORAGE` per O=0/150/300, agli stessi limiti.
 Usa due righe W packed e sottografi embedding, GELU/gate e PV; non un
 forward completo, una calibrazione o il picco GPU.
+Per il controller a tre trial aggiungere
+`c71_b12_native_canonical_calibration_three_context_kv_handoff`: passa
+righe KV sintetiche per 450 token attraverso il solo confine di handoff;
+non esegue il forward. Stessi limiti 60 s/2 GiB, Rayon=1, un test thread.
+Per il raccordo da file compilare anche `cargo build --offline --locked
+-j 1 -p volta-pcs --features c71-b12-pcs --example c71_calibration` con gli
+stessi env/target assoluto, quindi eseguire `tests/test_c71_calibration.py`
+con `C71_CALIBRATION_BINARY` uguale al percorso assoluto del binario.
+Il test genera 24,4 MB di tabelle certificate a scale sintetiche, controlla
+il codec nativo e rifiuta input incompleti prima del replay W, entro 60 s/2 GiB.
+Include controlli separati del report d'ingest e dei record di timeout/errore.
+Il futuro replay reale usa `scripts/c71_calibrate.py run --native BIN
+--candidate CANDIDATE --ingest-report REPORT --packed PACKED --output NEW_REPORT
+--payload-bytes LIMIT --timeout-seconds DEADLINE`. Non eseguirlo sulla VM:
+scale A iniziali e hardware/durata autorizzati restano da predisporre.
+Il subcomando `tables` richiede solo native/candidate/output e non legge W.
+Conservare `c71_b12_native_registry`, le righe/storage canoniche e la proof
+ridotta streaming dopo cambi al collegamento del registro pubblico.
 `c71_b12_native_pool_packing` controlla conversione Fp3 e identità del
 registro; `c71_b12_native_pool_real_shortage` usa una sola capacità AES
 da tre righe per verificare il rifiuto del wrapper prima di Prepare/decode.

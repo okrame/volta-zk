@@ -1011,8 +1011,14 @@ Il test su shard piccoli non certifica provenienza o calibrazione di un
 checkpoint reale. L'errore rende il trial inutilizzabile e non
 pubblica il token parziale. La chiusura richiede tutti i 150 token e la
 copertura di ogni sorgente originale, inclusi padding e istogrammi.
-I test eseguono solo sottografi; input reale, scale, tabelle certificate e
-validazione numerica completa restano aperti. Non è ancora Prepare canonico
+Il controller offline a tre trial riusa il registro pubblico compilato e
+lo stesso reader W; il KV passa al trial successivo solo dopo copertura
+completa, per movimento delle righe. Il wrapper da file genera le tabelle
+con il riferimento certificato e verifica l'hash del packed contro il
+report d'ingest. La sola CLI Rust non certifica quei due input. I test
+eseguono sottografi, input pubblici e handoff KV con dati sintetici;
+input reale, inizializzazione delle scale e validazione numerica completa
+restano aperti. Non è ancora Prepare canonico
 completo o ammissione del runtime. Questo storage offline non sostituisce
 l'arena della prova: payload e bundle in ingresso sono contati, workspace
 interni dei producer e allocator non sono un picco fisico chiuso.

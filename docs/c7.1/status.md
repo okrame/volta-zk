@@ -16,10 +16,9 @@ con 65 s a O=0/150/300; poi harness/input, SHA pulita, comando,
 durata massima, costo e soglie verificabili per il minimo esperimento.
 Solo allora il goal locale è achieved e si presenta la proposta H100.
 Il lavoro locale è autorizzato e non è stalled; GPU e spesa restano
-subordinate a successiva autorizzazione. Il vecchio tracker automatico
-riporta ancora il goal 70/40 MB come blocked: l'API disponibile consente
-solo complete/blocked e rifiuta la sostituzione di un goal incompleto.
-Non viene falsificata la chiusura del vecchio goal per aggirare quel limite.
+subordinate a successiva autorizzazione. Il tracker automatico corrente
+conserva questo goal come attivo; i gate sottostanti restano il criterio
+di chiusura.
 Priorità all'integrazione; nessun nuovo census o ottimizzazione isolata
 salvo correttezza o impatto ≥16 MiB di picco / ≥0,5 s di tempo.
 
@@ -56,8 +55,12 @@ sola riga W. L'ingest ora seleziona automaticamente gli esponenti W con
 il componente nativo, conservando hash dei due shard e pubblicazione
 atomica del packed; è controllato su shard piccoli. Sono controllati
 sottografi con input sintetici; restano pesi
-reali, scelta delle scale e validazione completa. Non è ancora Γ calibrato
-né esecuzione completa del modello.
+reali, scelta delle scale e validazione completa. L'harness offline ora
+lega una mappa candidata ai tre contesti, genera le tabelle con il
+riferimento certificato e trasferisce solo KV di trial terminati. Sono
+controllati input pubblici e passaggio dello stato, non un forward completo.
+Restano inizializzazione delle scale A sui pesi reali e replay numerico
+positivo; non è ancora Γ calibrato né esecuzione completa del modello.
 
 ## Native bounded result
 

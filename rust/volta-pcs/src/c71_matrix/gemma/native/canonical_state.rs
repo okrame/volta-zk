@@ -5,17 +5,17 @@ use super::*;
 use std::io;
 use volta_pcg::c71_lifetime::{Attempt, ModelBinding, Pool};
 
-struct Public<'a> {
-    profiles: Vec<Canonical>,
-    tables: [profile::Tables<'a>; 3],
+pub(super) struct Public<'a> {
+    pub(super) profiles: Vec<Canonical>,
+    pub(super) tables: [profile::Tables<'a>; 3],
     digest: [u8; 32],
-    required: [usize; 3],
+    pub(super) required: [usize; 3],
     wg: Vec<u8>,
     ag: Vec<u8>,
 }
 
 impl<'a> Public<'a> {
-    fn compile(
+    pub(super) fn compile(
         weights: &[i32],
         exponents: &BTreeMap<usize, i32>,
         tables: [profile::Tables<'a>; 3],
@@ -23,6 +23,21 @@ impl<'a> Public<'a> {
         let profiles = (0..3)
             .map(|slot| Canonical::compile(slot, weights, exponents))
             .collect::<Result<Vec<_>, _>>()?;
+        Self::from_profiles(profiles, tables)
+    }
+
+    pub(super) fn from_profiles(
+        profiles: Vec<Canonical>,
+        tables: [profile::Tables<'a>; 3],
+    ) -> Result<Self, String> {
+        if profiles.len() != 3
+            || profiles
+                .iter()
+                .enumerate()
+                .any(|(slot, profile)| profile.sources.attention.rope.old != slot * 150)
+        {
+            return Err("canonical fixed-run profile order differs".into());
+        }
         let mut public = Self {
             profiles,
             tables,

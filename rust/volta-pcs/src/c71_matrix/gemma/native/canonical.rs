@@ -3,14 +3,16 @@
 use super::*;
 use std::collections::{BTreeSet, VecDeque};
 
+#[path = "canonical_calibration.rs"]
+mod calibration;
+#[path = "canonical_calibration_input.rs"]
+pub(in crate::c71_matrix) mod calibration_input;
+#[path = "canonical_prepare.rs"]
+mod prepare;
 #[path = "canonical_state.rs"]
 mod state;
 #[path = "canonical_verify.rs"]
 mod verify;
-#[path = "canonical_prepare.rs"]
-mod prepare;
-#[path = "canonical_calibration.rs"]
-mod calibration;
 #[cfg(test)]
 #[path = "canonical_wire.rs"]
 mod wire_tests;

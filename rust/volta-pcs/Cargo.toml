@@ -75,3 +75,7 @@ volta-pcg = { workspace = true }
 [[example]]
 name = "c71_matrix"
 required-features = ["c71-cpu-matrix-reference"]
+
+[[example]]
+name = "c71_calibration"
+required-features = ["c71-b12-pcs"]

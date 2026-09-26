@@ -7,7 +7,7 @@ use super::*;
 use crate::c71_matrix::{self as kernel, *};
 use bytes::{affine::Relation, kv, quantize::Pair};
 
-mod canonical;
+pub(in crate::c71_matrix) mod canonical;
 mod prepare;
 mod ordered;
 mod protocol;

@@ -587,7 +587,9 @@ impl Canonical {
         let mut next = None;
         for (step_index, step) in self.steps.iter().enumerate() {
             for row in self.rows_at_token(step, token_index)? {
-                let result = self.prepare_row(step, row, token, tables, weight, get, tail)?;
+                let result = self
+                    .prepare_row(step, row, token, tables, weight, get, tail)
+                    .map_err(|error| format!("producer={step_index} row={row}: {error}"))?;
                 if let Some(t) = result.token {
                     if next.replace(t).is_some() {
                         return Err("canonical token has two decisions".into());

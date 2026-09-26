@@ -981,9 +981,12 @@ ricertifica la coda main e riapre il lower parziale: non trasferisce il
 NO-GO al nuovo binario, né dichiara completo il ledger. I test host non
 sono esecuzione delle istruzioni PTX; quel controllo resta nel futuro
 esperimento autorizzato. Il proprietario ha scelto Γ calibrato del modello
-reale per l'esperimento. Il profilo RMS a scale zero resta sintetico;
-la chiusura del ledger attende l'artefatto reale e la sua validazione
-attraverso il [raccordo esistente](preflight.md#real-calibrated-gamma).
+reale per l'esperimento e ha confermato che è da calibrare. Il profilo RMS
+a scale zero resta sintetico; prima della chiusura del ledger occorre
+produrre l'artefatto reale e validarlo attraverso il
+[raccordo esistente](preflight.md#real-calibrated-gamma). La preparazione
+offline di Γ precede installazione/bootstrap; non consente di adattare
+scale, tabelle o circuiti durante una risposta certificata.
 
 Nel riferimento ridotto il getter usa LUT prepesate di f(byte)−f(0),
 batch da 16 coppie e checkpoint min(9,floor(cell_bits/2)). Il supporto

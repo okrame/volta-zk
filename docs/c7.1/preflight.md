@@ -2286,16 +2286,15 @@ un ulteriore port specifico RMS e la chiusura dei relativi conti PCG.
 
 ### Real calibrated Gamma
 
-La scelta è risolta; resta da ottenere l'input. La ricerca locale del
+Il proprietario ha confermato che Γ è **da calibrare**; non si attende un
+manifest già prodotto. La ricerca locale del
 2026-09-26 nel repository, nei progetti locali e nei percorsi temporanei
 non ha individuato un manifest calibrato. Il
 [contratto congelato](../../manifests/c7-d126-gemma31b-quant-requirements-v1.json)
 ha `instantiated:false` ed esponenti/calibrazione non istanziati; resta
 immutato. Il solo `benchmarks/weights/model.safetensors` contiene 160
 tensori GPT-2 (controllato il solo header di 14.283 B), non i 772 tensori
-Gemma. È stato richiesto il percorso del profilo reale, oppure conferma
-che sia ancora da calibrare. Questo non esclude artefatti esterni ai
-percorsi controllati.
+Gemma. Non è stata acquisita alcuna copia del checkpoint reale.
 
 Il raccordo minimo riusa [Recipes::compile](../../rust/volta-pcs/src/c71_matrix/gemma/profile.rs)
 e il wrapper canonico: 772 esponenti W nell'ordine dei tensori pinned e
@@ -2304,18 +2303,58 @@ ricompilato. La stessa mappa deve valere a O=0/150/300, con alias
 embedding/head coerente ed e_Pi=-14. Servono i riferimenti del manifest
 alla revisione del checkpoint, alla procedura/dati di calibrazione e ai
 controlli numerici: la sola validità sintattica della mappa non dimostra
-che sia calibrata. Le regole correnti RNE/overflow reject, EXP30 e le
+che sia calibrata. È da fissare la copertura della prima calibrazione:
+solo workload C7.1 nei tre contesti oppure corpus rappresentativo con
+valutazione della qualità. Il primo caso non certifica qualità generale;
+entrambi conservano le stesse garanzie crittografiche. Le regole correnti RNE/overflow reject, EXP30 e le
 tabelle certificate restano quelle del design e della security; i campi
 vuoti del contratto storico non riaprono quelle scelte.
 
-Ricevuto il profilo, si validano identità e scale, si ricompilano ricette
+Prodotto il profilo, si validano identità e scale, si ricompilano ricette
 e tabelle attese nei tre contesti, quindi si sostituiscono nel ledger
 i circuiti RMS e le riserve PCG dipendenti da Γ. Solo allora si rivalutano
-lower congiunto e picco. Se invece il profilo va prodotto, i soli header
-del checkpoint non bastano: occorrono i pesi reali e dati di attivazione
-per la calibrazione. L'[ingest esistente](../../scripts/c7_d126_gemma_weight_ingest.py)
-gestisce esponenti W e conversione BF16→i16, non calibra da solo A.
+lower congiunto e picco. I soli header del checkpoint non bastano:
+occorrono i pesi reali e dati di attivazione per la calibrazione.
 Non si avviano acquisizioni pesanti, calibrazione completa o GPU in questa
 tranche. La ricerca della calibrazione è esterna al protocollo;
 validazione/compilazione di Γ e tutto il replay durante la prova restano
 contati secondo [security §1](security.md#1-enunciato-e-oggetti-fissati).
+
+Il percorso minimo riusa i componenti esistenti, nell'ordine seguente:
+
+1. **W reale.** Verificare i due shard pinned, derivare per ciascun tensore
+   l'esponente minimo che soddisfa RNE e range simmetrico i16, poi produrre
+   il packed nell'ordine dei terminali. L'[ingest](../../scripts/c7_d126_gemma_weight_ingest.py)
+   verifica hash e minimalità degli esponenti forniti; il
+   [componente Rust](../../rust/volta-pcs/src/gemma31b_bf16.rs) già scansiona,
+   sceglie l'esponente e converte un tensore nel medesimo buffer.
+   Il [confronto Python/Rust](../../tests/test_c7_d126_gemma_native_bf16.py)
+   copre anche non finiti, overflow e input troncati. Non è un ingester
+   nativo completo né una misura di throughput. Gli shard occupano
+   62.546.338.248 B, il packed 61.394.690.560 B: conservarli entrambi richiede
+   123.941.028.808 B, esclusi temporanei. Il massimo tensore privato è
+   l'embedding, 2.818.572.288 B; questi sono costi offline, non nuovo spazio
+   nell'arena della risposta. Non si applicano i requisiti host storici
+   dell'ingest come lower inevitabili della calibrazione.
+2. **A reale.** Raccogliere le statistiche delle sorgenti semantiche sui
+   dati scelti, mantenendo identità dei produttori e posizioni KV. Le
+   statistiche floating point possono inizializzare scale candidate ma
+   non sostituiscono il successivo replay intero esatto. Compilare una
+   sola mappa comune ai tre contesti e verificare RNE, RMS, LUT e range
+   nel replay; in caso di modifica delle scale invalidare le tracce
+   dipendenti e ripetere la validazione. Non adattare Γ ai challenge o
+   al transcript della prova. Il compilatore canonico possiede il DAG;
+   il runner numerico integrato attuale è ancora il piccolo `Profile`,
+   con dimensioni e tabelle del fixture. Non basta passargli un manifest
+   per ottenere una calibrazione Gemma: il raccordo numerico canonico
+   e la raccolta delle statistiche sono lavoro locale ancora da integrare.
+3. **Congelamento.** Fissare mappe, identità dei dati, regole, tabelle e
+   digest dopo la validazione numerica; confrontare Python e Rust sulla
+   stessa relazione intera, non pretendere uguaglianza con BF16.
+   Ricompilare RMS/PCG e il ledger integrato dal Γ congelato. Un run di
+   calibrazione non dimostra il tempo della prova, e il futuro benchmark
+   della prova non dimostra da solo la qualità della calibrazione.
+
+La calibrazione reale è quindi un prerequisito separato del preflight
+H100 selezionato. Non si propone ancora una spesa: mancano copertura
+fissata, raccordo numerico completo e piano eseguibile della calibrazione.

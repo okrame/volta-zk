@@ -13,8 +13,11 @@ Il **2026-09-26** il proprietario ha scelto **Γ calibrato del modello reale**
 per il goal locale «C7.1 pronto per il minimo esperimento H100».
 Gli esponenti cambiano i circuiti RMS e le riserve: il fixture a scale zero
 non può certificare il ledger di questo workload. Il
-[preflight](preflight.md#real-calibrated-gamma) registra l'artefatto mancante
-e il raccordo al compilatore già disponibile. Restano i vincoli correnti
+[preflight](preflight.md#real-calibrated-gamma) registra il raccordo al
+compilatore già disponibile. Il proprietario ha poi confermato «da calibrare»:
+occorre produrre Γ, non cercare ancora un manifest esistente. La copertura
+della calibrazione è da fissare; non si sceglie implicitamente una garanzia
+di qualità generale usando il solo workload del benchmark. Restano i vincoli correnti
 su arena, privacy e tempo totale ≤65 s; nessuna GPU o spesa autorizzata.
 
 Il **2026-09-12** il proprietario ha precisato che la memoria extra deve

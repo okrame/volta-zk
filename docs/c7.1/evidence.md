@@ -1459,6 +1459,9 @@ polinomiale della tree. Il backend di produzione resta invariato.
 
 ### Integrated contracted byte endpoint
 
+Il [record su SHA pulita](../../benchmarks/results/c71-integrated-byte-contraction-2026-09-26-ed509fa1ed83.json)
+conserva cinque filtri nativi passati, il controllo Python e il ledger
+del singolo positivo integrato, senza doppio conteggio del getter.
 Il motore [sourcewise](../../rust/volta-pcs/src/c71_matrix/range.rs) ora
 ammette evaluator privati dei cubici e dei quattro figli finali mantenendo
 comune autenticazione, transcript e MAC. Il [caller byte](../../rust/volta-pcs/src/c71_matrix/byte_function.rs)

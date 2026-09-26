@@ -1,0 +1,67 @@
+{
+  "calibrated": false,
+  "checks": {
+    "expected_pytest_tests": 22,
+    "nonzero_rms_recipe": [
+      0,
+      0,
+      -1
+    ],
+    "old_tokens": [
+      0,
+      150,
+      300
+    ]
+  },
+  "credit": false,
+  "date": "2026-09-26",
+  "full_model_execution": false,
+  "git_dirty": false,
+  "git_sha": "79634a3938a7715be75edaa5023401c20f031d5d",
+  "gpu_execution": false,
+  "h100_preflight_ready": false,
+  "limits": {
+    "address_space_bytes": 2147483648,
+    "omp_threads": 1,
+    "openblas_threads": 1,
+    "rayon_threads": 1,
+    "timeout_seconds": 60
+  },
+  "milestone": "C7.1-candidate-ledger",
+  "native_binary_sha256": "65d073eaa3e3483293bdd89ba80121b5ee0737561311361d7a87d6236dc3e7c2",
+  "real_weights": false,
+  "runs": [
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_activation_pilot.py",
+        "tests/test_c71_calibration.py",
+        "tests/test_c71_gkr_screen.py"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "seconds": 19.63964596996084,
+      "stderr": "",
+      "stdout": "....C71_ACTIVATION_PILOT semantic_sources=1435 producer_steps=1436 calibrated=false full_model=false\n....C71_CALIBRATION_INPUT tables=24414870 offsets=0/150/300 calibrated=false full_model=false\n.C71_CANDIDATE_LEDGER offsets=0/150/300 nonzero_rms=true calibrated=false full_model=false\n...{\n  \"calibrated\": false,\n  \"candidate_sha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\n  \"complete_integer_trial\": false,\n  \"credit\": false,\n  \"exit_code\": 1,\n  \"native_sha256\": \"f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d\",\n  \"packed_hash_checked\": true,\n  \"packed_sha256\": \"fixture\",\n  \"stderr\": \"fixture overflow\",\n  \"tables_generated_by_certified_reference\": true,\n  \"timeout_seconds\": 1,\n  \"workload_sha256\": \"70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b\"\n}\n.{\n  \"calibrated\": false,\n  \"candidate_sha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\n  \"complete_integer_trial\": false,\n  \"credit\": false,\n  \"exit_code\": 124,\n  \"native_sha256\": \"f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d\",\n  \"packed_hash_checked\": true,\n  \"packed_sha256\": \"fixture\",\n  \"stderr\": \"integer trial deadline exceeded\",\n  \"tables_generated_by_certified_reference\": true,\n  \"timeout_seconds\": 1,\n  \"workload_sha256\": \"70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b\"\n}\n.........\n22 passed in 19.54s\n"
+    }
+  ],
+  "scope": "Synthetic candidate with nonzero first RMS output scale, all 421 native RMS recipes compared to the Python compiler, reservation and source-level ledger linkage; pilot, input codec and historical GKR regressions. No real weight acquisition, calibrated Gamma, proof, full physical peak or H100 measurement.",
+  "source_sha256": {
+    "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration_input.rs": "9b7dca663379ca0d964d94bc10f9cf5028314c892b4bcf276b434d5ded5003e2",
+    "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state.rs": "b6015bd860b0aa3e7d777ad2c73fe1c59466ff84506bdf57d17acaeecfbdab2d",
+    "rust/volta-pcs/src/c71_matrix/gemma/rms/caller.rs": "dd9d1019ca3b6a2b35acd9dad4d662220b5bd4147f99e8bb6f469253b3146981",
+    "rust/volta-pcs/src/c71_matrix/range.rs": "173bc4a06504461b65ca569f1685e28fa5d879acd2da5cbb604f6497474a2dcd",
+    "rust/volta-pcs/src/c71_matrix/rms/gkr.rs": "3eadf78fa67a17709fe9c0abb52e66106920c9370cf21e344899bfb720b7f937",
+    "scripts/c71_calibrate.py": "f69b369c3ac8c34a658879e15fe21c08ed955ae890cf1dc63c99a0b09d545320",
+    "scripts/c71_gkr_screen.py": "81045eacb602e9a963f37060fb3c2ef78ef148a1355b8431345dfb3cb6ad2399",
+    "tests/test_c71_activation_pilot.py": "71394d12c901d199bf2b33fab71efb92c24d4a584ebedf5c0fc5d03cb8dbe59a",
+    "tests/test_c71_calibration.py": "710d525d2d951a23753e24d910c5258046510edf3396769d5f90d6415cade38e",
+    "tests/test_c71_gkr_screen.py": "d5109aad766476de36beafa74802065bc6b409bc5ff6949c11d2f96b9f7d1df3"
+  }
+}

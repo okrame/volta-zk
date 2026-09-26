@@ -4,6 +4,16 @@
 
 ## Canonical calibration row driver
 
+Il [record del ledger candidato a SHA pulita 79634a3](../../benchmarks/results/c71-candidate-ledger-2026-09-26-79634a3938a7.json)
+conserva 22 test Python passati in circa 20 s, entro 60 s/2 GiB con un
+thread BLAS/OpenMP/Rayon. Una candidata sintetica cambia la prima uscita
+RMS a −1: il ledger confronta tutti i 421 tripletti, programmi, gate e
+supporti Rust/Python, con riserve a O=0/150/300 e digest della stessa
+mappa/tabelle. Il parser degli screen legge anche quel report; il fixture
+storico a scale zero mantiene i suoi conteggi. Include le regressioni
+del pilot e del wrapper intero. Nessun checkpoint reale o Γ calibrato,
+forward completo, prova o misura H100; `h100_preflight_ready:false`.
+
 Il [record del pilot A a SHA pulita 19f53be](../../benchmarks/results/c71-activation-pilot-2026-09-26-19f53bed7022.json)
 conserva 13 test Python passati entro 60 s/2 GiB, con un thread
 BLAS/OpenMP/Rayon, e il piano logico senza W. Copre tutte le famiglie

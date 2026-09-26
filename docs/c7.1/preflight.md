@@ -2446,6 +2446,9 @@ record contiene ricette differenti. Conserva digest di candidata,
 ricette/tabelle e binario; il controllo nonzero sintetico non promuove
 `calibrated`, `complete_work`, picco fisico o readiness H100. Questo è il
 raccordo da rieseguire sul futuro Γ congelato, non un nuovo ledger completo.
+Il [record 79634a3](../../benchmarks/results/c71-candidate-ledger-2026-09-26-79634a3938a7.json)
+conserva il controllo nonzero e le regressioni: 22 test passati su SHA
+pulita, senza W reale o credito hardware.
 
 Il controller parte da KV vuoto, usa lo stesso W/Γ per i tre contesti e
 il prompt pinned a ogni tentativo; trasferisce il KV soltanto dopo

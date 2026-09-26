@@ -287,7 +287,7 @@ pub(super) fn prove_sourcewise(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
-    prove_sourcewise_impl(s, original, get_byte, fs, correlations, false)
+    prove_sourcewise_impl(s, original, get_byte, fs, correlations, false, |_| true)
 }
 
 /// Reduced integration path. The canonical compact streaming getter is separate.
@@ -295,13 +295,14 @@ pub(super) fn prove_contracted(
     s: &Statement<'_>,
     original: Original<'_, Auth>,
     get_byte: impl Fn(usize) -> u8,
+    public_support: impl Fn(usize) -> bool,
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
     if s.cell_point.len() > 7 || s.live_cells != 1usize << s.cell_point.len() {
         return Err("byte contraction requires a reduced complete frame domain".into());
     }
-    prove_sourcewise_impl(s, original, get_byte, fs, correlations, true)
+    prove_sourcewise_impl(s, original, get_byte, fs, correlations, true, public_support)
 }
 
 fn prove_sourcewise_impl(
@@ -311,6 +312,7 @@ fn prove_sourcewise_impl(
     fs: &mut Fs,
     correlations: &mut std::vec::IntoIter<Auth>,
     contracted: bool,
+    public_support: impl Fn(usize) -> bool,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
     let (len, sum) = match &original {
         Original::Lanes(v) => (v.len(), false),
@@ -337,8 +339,14 @@ fn prove_sourcewise_impl(
     let c = coefficients(s.tables);
     let trees = ByteTrees::new(&c);
     let mut triples = Vec::new();
-    let evaluator =
-        std::cell::RefCell::new(contraction::Prover::new(&trees, s.cell_point.len(), &get_byte));
+    let evaluator = contracted.then(|| {
+        std::cell::RefCell::new(contraction::Prover::new(
+            &trees,
+            s.cell_point.len(),
+            &get_byte,
+            public_support,
+        ))
+    });
     let (layers, mut point, claims, tree_work) = range::prove_tree_sourcewise_custom(
         8,
         point,
@@ -348,10 +356,11 @@ fn prove_sourcewise_impl(
         &mut rows,
         &mut triples,
         |layer, point, lambda, prefix| {
-            contracted.then(|| evaluator.borrow_mut().coefficients(layer, point, lambda, prefix))
+            evaluator.as_ref().map(|e| e.borrow_mut().coefficients(layer, point, lambda, prefix))
         },
-        |layer, point| contracted.then(|| evaluator.borrow_mut().terminal(layer, point)),
+        |layer, point| evaluator.as_ref().map(|e| e.borrow_mut().terminal(layer, point)),
     );
+    drop(evaluator); // Last recovered-child consumer precedes leaf/product work.
     let (_, index, leaf_eq_capacity_peak_bytes) = leaf(s, &c, &point);
     let leaf_point_capacity_bytes = point.capacity() * core::mem::size_of::<Fp3>();
     let leaf_tag = claims[0].m;
@@ -607,11 +616,25 @@ mod tests {
             let mut prows = rows.clone().into_iter();
             let (wire, original) = range::authenticate(values, &mut prows);
             record_values(&mut fs, 0x62, &wire);
+            if live_cells == 3 {
+                let before = (fs.digest(), prows.len());
+                assert!(prove_contracted(
+                    &statement,
+                    Original::Lanes(&original),
+                    |_| panic!("rejected shape must not read the source"),
+                    |_| true,
+                    &mut fs,
+                    &mut prows
+                )
+                .is_err());
+                assert_eq!((fs.digest(), prows.len()), before);
+            }
             let (proof, byte_point, byte, source_work) = if live_cells == 4 {
                 prove_contracted(
                     &statement,
                     Original::Lanes(&original),
                     |i| used[i],
+                    |_| true,
                     &mut fs,
                     &mut prows,
                 )

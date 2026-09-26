@@ -129,6 +129,9 @@ fn equality(point: &[Fp3], prefix: &[Fp3], suffix: usize) -> Fp3 {
 pub(super) struct Prover<'a, G> {
     trees: &'a ByteTrees,
     cells: usize,
+    checkpoint: usize,
+    active: Vec<usize>,
+    keys: Vec<usize>,
     get: &'a G,
     features: Vec<Vec<(Fp3, [Fp3; 256])>>,
     values: Vec<Vec<Vec<Fp3>>>,
@@ -136,21 +139,94 @@ pub(super) struct Prover<'a, G> {
 }
 
 impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
-    pub(super) fn new(trees: &'a ByteTrees, cells: usize, get: &'a G) -> Self {
-        Self { trees, cells, get, features: Vec::new(), values: Vec::new(), recovered: None }
+    pub(super) fn new(
+        trees: &'a ByteTrees,
+        cells: usize,
+        get: &'a G,
+        public_support: impl Fn(usize) -> bool,
+    ) -> Self {
+        Self {
+            trees,
+            cells,
+            checkpoint: 9.min(cells / 2),
+            active: (0..1usize << cells).filter(|&i| public_support(i)).collect(),
+            keys: Vec::new(),
+            get,
+            features: Vec::new(),
+            values: Vec::new(),
+            recovered: None,
+        }
+    }
+
+    fn scaled(&self, lane: usize, prefix: &[Fp3]) -> Vec<Vec<[Fp3; 256]>> {
+        eq(prefix)
+            .into_iter()
+            .map(|w| {
+                self.features[lane]
+                    .iter()
+                    .map(|(_, f)| std::array::from_fn(|b| w * (f[b] - f[0])))
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn regenerate(
+        &self,
+        lane: usize,
+        rounds: usize,
+        start: usize,
+        count: usize,
+        scaled: &[Vec<[Fp3; 256]>],
+    ) -> Vec<Vec<Fp3>> {
+        let current = 1usize << (self.cells - rounds);
+        (start..start + count)
+            .map(|i| {
+                let mut values: Vec<_> = self.features[lane].iter().map(|(_, f)| f[0]).collect();
+                for (prefix, table) in scaled.iter().enumerate() {
+                    if self.active.binary_search(&(prefix * current + i)).is_err() {
+                        continue;
+                    }
+                    let b =
+                        usize::from((self.get)((prefix * current + i) * self.trees.lanes + lane));
+                    for (out, f) in values.iter_mut().zip(table) {
+                        *out += f[b];
+                    }
+                }
+                values
+            })
+            .collect()
+    }
+
+    fn projected(&self, period: usize) -> Vec<usize> {
+        let mut keys: Vec<_> = self.active.iter().map(|i| i % period).collect();
+        keys.sort_unstable();
+        keys.dedup();
+        keys
+    }
+
+    fn retained_value(&self, lane: usize, key: usize, j: usize) -> Fp3 {
+        self.keys
+            .binary_search(&key)
+            .map(|i| self.values[lane][i][j])
+            .unwrap_or(self.features[lane][j].1[0])
     }
 
     fn recover(&mut self, layer: usize, point: &[Fp3]) {
         if self.recovered.is_some() {
             return;
         }
+        self.features.clear();
+        self.values.clear(); // No retained feature is needed by the original-byte replay.
         let weights = eq(&point[..self.cells]);
         let mut values = Vec::new();
         for lane in 0..self.trees.lanes {
             let mut histogram = [Fp3::ZERO; 256];
-            for (cell, &w) in weights.iter().enumerate() {
-                histogram[usize::from((self.get)(cell * self.trees.lanes + lane))] += w;
+            let mut mass = Fp3::ZERO;
+            for &cell in &self.active {
+                histogram[usize::from((self.get)(cell * self.trees.lanes + lane))] += weights[cell];
+                mass += weights[cell];
             }
+            histogram[0] += Fp3::ONE - mass;
             let mut children_at_cell = vec![Fp3::ZERO; 4 << layer];
             for (b, &w) in histogram.iter().enumerate() {
                 for (out, v) in
@@ -161,8 +237,6 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             }
             values.extend(children_at_cell.chunks_exact(4).map(|v| v.to_vec()));
         }
-        self.features.clear();
-        self.values.clear();
         self.recovered = Some(values);
     }
 
@@ -180,44 +254,107 @@ impl<'a, G: Fn(usize) -> u8> Prover<'a, G> {
             self.features = (0..self.trees.lanes)
                 .map(|lane| contract(self.trees, lane, layer, &node_eq, lambda))
                 .collect();
-            // ponytail: reduced domain <=128 only; replace with the planned
-            // streaming/checkpoint getter before any canonical admission.
-            self.values = self
-                .features
-                .iter()
-                .enumerate()
-                .map(|(lane, features)| {
-                    (0..1usize << self.cells)
-                        .map(|cell| {
-                            let b = usize::from((self.get)(cell * self.trees.lanes + lane));
-                            features.iter().map(|(_, f)| f[b]).collect()
-                        })
-                        .collect()
-                })
-                .collect();
+            self.values.clear();
         }
         let mut c = [Fp3::ZERO; 4];
         if prefix.len() < self.cells {
             let lane_eq = eq(&point[self.cells..self.cells + lane_bits]);
             let half = 1usize << (self.cells - prefix.len() - 1);
+            if prefix.len() == self.checkpoint {
+                self.keys = self.projected(2 * half);
+                self.values = (0..self.trees.lanes)
+                    .map(|lane| {
+                        let scaled = self.scaled(lane, prefix);
+                        self.keys
+                            .iter()
+                            .map(|&key| {
+                                self.regenerate(lane, prefix.len(), key, 1, &scaled).remove(0)
+                            })
+                            .collect()
+                    })
+                    .collect();
+            } else if prefix.len() > self.checkpoint {
+                let r = *prefix.last().unwrap();
+                let keys = self.projected(2 * half);
+                let next: Vec<_> = (0..self.trees.lanes)
+                    .map(|lane| {
+                        keys.iter()
+                            .map(|&i| {
+                                (0..self.features[lane].len())
+                                    .map(|j| {
+                                        let a = self.retained_value(lane, i, j);
+                                        let b = self.retained_value(lane, i + 2 * half, j);
+                                        a + r * (b - a)
+                                    })
+                                    .collect()
+                            })
+                            .collect()
+                    })
+                    .collect();
+                // Both allocations stay live until the destination is complete.
+                self.values = next;
+                self.keys = keys;
+            }
+            let pairs = self.projected(half);
             for (lane, features) in self.features.iter().enumerate() {
-                let values = fold(self.values[lane].clone(), prefix);
-                for i in 0..half {
-                    let mut v = [Fp3::ZERO; 3];
-                    for (j, (d, _)) in features.iter().enumerate() {
-                        let a = values[i][j];
-                        let delta = values[i + half][j] - a;
-                        let da = *d * a;
-                        let dd = *d * delta;
-                        v[0] += da * a;
-                        v[1] += signed(2) * da * delta;
-                        v[2] += dd * delta;
-                    }
-                    let e = lane_eq[lane] * equality(&point[..self.cells], prefix, i);
-                    let de = lane_eq[lane] * equality(&point[..self.cells], prefix, i + half) - e;
-                    for j in 0..3 {
-                        c[j] += e * v[j];
-                        c[j + 1] += de * v[j];
+                let baseline = features.iter().fold(Fp3::ZERO, |s, (d, f)| s + *d * f[0] * f[0]);
+                let mut fixed = Fp3::ONE;
+                for (&p, &r) in point.iter().zip(prefix) {
+                    fixed = fixed * ((Fp3::ONE - p) * (Fp3::ONE - r) + p * r);
+                }
+                let at = point[prefix.len()];
+                let e0 = lane_eq[lane] * fixed * (Fp3::ONE - at);
+                let e1 = lane_eq[lane] * fixed * at;
+                c[0] += e0 * baseline;
+                c[1] += (e1 - e0) * baseline;
+                let scaled = if prefix.len() < self.checkpoint {
+                    self.scaled(lane, prefix)
+                } else {
+                    Vec::new()
+                };
+                for batch in pairs.chunks(16) {
+                    let streamed = if prefix.len() < self.checkpoint {
+                        Some(
+                            batch
+                                .iter()
+                                .map(|&i| {
+                                    (
+                                        self.regenerate(lane, prefix.len(), i, 1, &scaled)
+                                            .remove(0),
+                                        self.regenerate(lane, prefix.len(), i + half, 1, &scaled)
+                                            .remove(0),
+                                    )
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                    } else {
+                        None
+                    };
+                    for (offset, &i) in batch.iter().enumerate() {
+                        let mut v = [-baseline, Fp3::ZERO, Fp3::ZERO];
+                        for (j, (d, _)) in features.iter().enumerate() {
+                            let (a, b) = match &streamed {
+                                Some(rows) => (rows[offset].0[j], rows[offset].1[j]),
+                                None => (
+                                    self.retained_value(lane, i, j),
+                                    self.retained_value(lane, i + half, j),
+                                ),
+                            };
+                            let delta = b - a;
+                            let da = *d * a;
+                            let dd = *d * delta;
+                            let cross = da * delta;
+                            v[0] += da * a;
+                            v[1] += cross + cross;
+                            v[2] += dd * delta;
+                        }
+                        let e = lane_eq[lane] * equality(&point[..self.cells], prefix, i);
+                        let de =
+                            lane_eq[lane] * equality(&point[..self.cells], prefix, i + half) - e;
+                        for j in 0..3 {
+                            c[j] += e * v[j];
+                            c[j + 1] += de * v[j];
+                        }
                     }
                 }
             }

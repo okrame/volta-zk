@@ -209,10 +209,16 @@ entrano nella stessa autenticazione/FS, la proof coincide byte per byte
 con la densa, claim errati e byte alterati sono respinti. Passa anche il
 positivo lookup/GKR/WHIR O=0, con 88.049 MAC originali e senza Snapshot/A
 densi; il trace registra 76 round contratti e otto terminali.
-L'evaluatore CPU è limitato a domini completi ≤128 celle; non accredita
-lo schedule canonico streaming o i relativi contatori/workspace.
-Priorità: collegare quel getter/checkpoint al medesimo raccordo, poi
-ledger congiunto e harness minimo. Il NO-GO scalare non si trasferisce
+L'evaluatore CPU ora rigenera a batch con LUT pubbliche prepesate,
+compatta il solo supporto pubblico e conserva un checkpoint. I fold
+usano sorgente/destinazione disgiunte; feature e stati sono liberati
+prima del recupero dei figli. Baseline zero ed Eq sulle coordinate
+originali sono preservate nella proof integrata. Domini ragged sono
+respinti senza letture o consumo MAC/FS. Il riferimento resta limitato
+a domini completi ≤128 celle, con liste pubbliche ridotte: non accredita
+ancora i descrittori/intervalli canonici o contatori/workspace completi.
+Priorità: collegare i descrittori canonici a questo getter, poi ledger
+congiunto e harness minimo. Il NO-GO scalare non si trasferisce
 alla contrazione. Il goal locale resta in corso.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 

@@ -964,8 +964,17 @@ mantiene il fattore Eq del prefisso cella nei round lane/nodo. Nel caller
 EXP30 a pattern è selezionato per domini completi ≤128 celle, con parità
 proof/FS/MAC e positivo integrato lookup/GKR/WHIR. Domini ragged sono
 respinti dall'entry point contratto prima di consumare righe o sfide.
-Il getter streaming/checkpoint canonico, il refinement Lean e i costi
-hardware restano aperti. I contatori scalari non contano implicitamente
+Nel riferimento ridotto il getter usa LUT prepesate di f(byte)−f(0),
+batch da 16 coppie e checkpoint min(9,floor(cell_bits/2)). Il supporto
+deriva dalle assegnazioni pubbliche del caller GKR, mai dai byte privati.
+La baseline f(0) entra analiticamente in ogni cubico; i buffer retained
+contengono solo le chiavi proiettate e i fold mantengono due stati
+disgiunti. Il recupero terminale aggiunge a H[0] la massa del padding
+pubblico e precede gli stessi claim originali. Le liste esplicite di
+indici restano limitate dal guard ≤128: il port canonico necessita dei
+descrittori a intervalli, non di una scansione/mappa densa del dominio.
+Quel port, il refinement Lean e i costi hardware restano aperti.
+I contatori scalari non contano implicitamente
 l'evaluatore sostitutivo: il ledger ridotto registra i round custom a
 parte, senza presentarli come lavoro nullo o conteggio canonico completo.
 

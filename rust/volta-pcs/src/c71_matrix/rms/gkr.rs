@@ -1331,6 +1331,7 @@ fn prove_impl(
                 &bs,
                 byte_function::Original::Sum(target),
                 get_byte,
+                |cell| s.assignments.get(cell).is_some(),
                 fs,
                 &mut rows,
             )?

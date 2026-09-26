@@ -2203,6 +2203,10 @@ passa con wire/FS/MAC identici, rigetti sull'endpoint originale e positivo
 integrato lookup/GKR/WHIR. Quest'ultimo usa 76 round custom e otto
 terminali; il certificato è di 7.733.929 B con 88.049 MAC ideali originali.
 Il riferimento è limitato a domini completi ≤128 celle e viene selezionato
-nel caller EXP30 a pattern solo in tale ambito. Restano getter/checkpoint
-streaming canonico, lavoro/traffico congiunti e harness dei rate ignoti.
+nel caller EXP30 a pattern solo in tale ambito. Passa ora anche il getter
+a batch con LUT prepesate, baseline pubblica, chiavi compatte e checkpoint,
+fino alla stessa proof integrata. Il controllo ragged rifiuta prima di
+leggere la sorgente o consumare righe/sfide. Restano descrittori canonici
+a intervalli, lavoro/traffico congiunti e harness dei rate ignoti; le liste
+esplicite della prova ridotta non sono un adapter per N canonico.
 Gate di spesa **NO-GO**, goal locale in corso senza blocchi autorizzativi.

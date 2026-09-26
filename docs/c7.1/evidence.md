@@ -1473,6 +1473,15 @@ pattern EXP30 e la proof integrata lookup/GKR/WHIR. Quest'ultima registra
 ridotto separa questi evaluator dai contatori del fallback scalare.
 Non sono ancora getter canonico streaming, conteggi completi o misura GPU.
 
+Il successivo getter ridotto rigenera per batch con LUT pubbliche prepesate,
+conserva solo il supporto pubblico proiettato dopo il checkpoint e usa
+fold con due allocazioni disgiunte. Baseline f(0), massa del padding e
+coordinate Eq originali restano nella proof. I test esistenti byte e
+pattern confrontano ancora wire/FS/MAC; il positivo lookup/GKR/WHIR passa
+senza Snapshot/A densi. Il test byte rifiuta anche un dominio ragged prima
+di leggere la sorgente o consumare righe/sfide. Il guard ≤128 resta:
+nessun credito ai descrittori canonici, al picco completo o al tempo GPU.
+
 ### Native moment seam and byte tree screen
 
 Il [record pulito `b63461fa58e8`](../../benchmarks/results/c71-byte-seam-and-tree-screen-2026-09-26-b63461fa58e8.json)

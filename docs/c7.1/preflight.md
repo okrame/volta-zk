@@ -1660,6 +1660,7 @@ Nessun credito alla composizione malevola, al refinement Lean o a H100.
 
 ## Seed EA dalle aperture F_EQ
 
+Evidenza: [34 test Rust e 30 Python/C++](evidence.md#ea-seed-from-accepted-committed-openings).
 Solo dopo verifica dei commitment e della somma delle share, `Accepted`
 contiene il nuovo binding/seed pubblico di 32 B. È SHAKE256 di
 `VOLTA-C71-Seed6-equality-v1 || /accepted-EA/ || frozen_prefix32 || opening0_56 || opening1_56`.

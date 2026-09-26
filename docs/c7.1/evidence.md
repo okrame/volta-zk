@@ -1757,3 +1757,20 @@ di c/z alterati. Il ledger include 192 B Audit, fino a 96 B read buffer e
 automaticamente trasporto globale: restano canale autenticato, journal,
 accordo sul seed EA, trie batch e integrazione con la proof. Nessun credito
 di fairness/atomicità, picco fisico completo o H100.
+
+## EA seed from accepted committed openings
+
+Il [record su SHA pulita `be0f1cab5f03`](../../benchmarks/results/c71-seed6-ea-seed-2026-09-27-be0f1cab5f03.json)
+conserva **34 test Rust e 30 Python/C++**, seriali entro 60 s/2 GiB.
+Il seed pubblico EA ora deriva con SHAKE dal prefisso F_EQ e dalle due
+aperture verificate, in ordine di ruolo. Riusa i blind freschi già
+committati, senza parametro seed nel costruttore di espansione né nuovo
+messaggio. Il KAT Python/Rust copre 184 B assorbiti e 32 B prodotti;
+prefisso, ordine e blind alterati cambiano il seed. La catena reale mantiene
+sei righe conformi a BAe, due MAC Fp3 e rifiuto c/z.
+
+Il record conserva l'errore iniziale di compilazione per `read` ambiguo,
+risolto selezionando esplicitamente `XofReader::read`. Il ledger separa
+l'envelope ROM condizionale aggiuntivo, senza trasferire automaticamente
+bound composti o credito Lean. Restano blind freschi e no-retry globali,
+setup/trasporto completo, journal, trie batch, proof bridge e picco fisico.

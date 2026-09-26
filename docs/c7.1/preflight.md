@@ -2424,6 +2424,9 @@ Il [test](../../tests/test_c71_activation_pilot.py) verifica tutte le famiglie
 di operatori in un grafo piccolo, RNE ai confini, causalità, ultimo token,
 provenienza/errori e routing pubblico canonico. Non inizializza scale reali
 e non autorizza l'esecuzione pesante sulla VM locale.
+Il [record 19f53be](../../benchmarks/results/c71-activation-pilot-2026-09-26-19f53bed7022.json)
+conserva questi controlli e quelli del wrapper intero, 13 test passati su
+SHA pulita, senza credito di calibrazione o hardware.
 
 Il wrapper congela la candidata in una copia temporanea, verifica il
 report d'ingest e l'hash del packed e genera GELU/EXP30/softcap/Q30 usando

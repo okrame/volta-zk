@@ -1,0 +1,80 @@
+{
+  "calibrated": false,
+  "checks": {
+    "expected_pytest_tests": 13,
+    "semantic_producer_steps": 1436,
+    "semantic_sources": 1435
+  },
+  "credit": false,
+  "date": "2026-09-26",
+  "full_model_execution": false,
+  "git_dirty": false,
+  "git_sha": "19f53bed70223998e3daf6c1ee590084a3401e39",
+  "gpu_execution": false,
+  "h100_preflight_ready": false,
+  "limits": {
+    "address_space_bytes": 2147483648,
+    "omp_threads": 1,
+    "openblas_threads": 1,
+    "rayon_threads": 1,
+    "timeout_seconds": 60
+  },
+  "milestone": "C7.1-activation-pilot",
+  "native_binary_sha256": "c1178195aae70715c892b50759307f516389ba61699e60d1755dd58195b5eb52",
+  "pilot_plan": {
+    "calibrated": false,
+    "complete_physical_peak": null,
+    "credit": false,
+    "final_f64_kv_payload_bytes": 1622016000,
+    "floating_initialization_only": true,
+    "logical_weight_read_bytes": 26782043904000,
+    "matrix_scalar_products": 13390420377600,
+    "physical_disk_bytes": null,
+    "runtime_seconds": null,
+    "weight_block_i16_plus_f64_payload_bytes": 27525120
+  },
+  "real_weights": false,
+  "runs": [
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_activation_pilot.py",
+        "tests/test_c71_calibration.py"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "seconds": 6.302739446051419,
+      "stderr": "",
+      "stdout": "....C71_ACTIVATION_PILOT semantic_sources=1435 producer_steps=1436 calibrated=false full_model=false\n....C71_CALIBRATION_INPUT tables=24414870 offsets=0/150/300 calibrated=false full_model=false\n...{\n  \"calibrated\": false,\n  \"candidate_sha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\n  \"complete_integer_trial\": false,\n  \"credit\": false,\n  \"exit_code\": 1,\n  \"native_sha256\": \"f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d\",\n  \"packed_hash_checked\": true,\n  \"packed_sha256\": \"fixture\",\n  \"stderr\": \"fixture overflow\",\n  \"tables_generated_by_certified_reference\": true,\n  \"timeout_seconds\": 1,\n  \"workload_sha256\": \"70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b\"\n}\n.{\n  \"calibrated\": false,\n  \"candidate_sha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\n  \"complete_integer_trial\": false,\n  \"credit\": false,\n  \"exit_code\": 124,\n  \"native_sha256\": \"f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d\",\n  \"packed_hash_checked\": true,\n  \"packed_sha256\": \"fixture\",\n  \"stderr\": \"integer trial deadline exceeded\",\n  \"tables_generated_by_certified_reference\": true,\n  \"timeout_seconds\": 1,\n  \"workload_sha256\": \"70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b\"\n}\n.\n13 passed in 6.20s\n"
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "scripts/c71_activation_pilot.py",
+        "plan",
+        "--native",
+        "/home/okrame/projects/volta-zk/rust/target/debug/examples/c71_calibration"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "seconds": 0.30572721222415566,
+      "stderr": "",
+      "stdout": "{\n  \"calibrated\": false,\n  \"complete_physical_peak\": null,\n  \"credit\": false,\n  \"final_f64_kv_payload_bytes\": 1622016000,\n  \"floating_initialization_only\": true,\n  \"logical_weight_read_bytes\": 26782043904000,\n  \"matrix_scalar_products\": 13390420377600,\n  \"physical_disk_bytes\": null,\n  \"runtime_seconds\": null,\n  \"weight_block_i16_plus_f64_payload_bytes\": 27525120\n}\n"
+    }
+  ],
+  "scope": "Synthetic complete floating tiny graph, exact RNE scale boundaries, fail-closed reports, native canonical public topology and logical pilot work plan. No real model, exact complete integer replay, proof, physical peak or H100 measurement.",
+  "source_sha256": {
+    "manifests/c7-d126-gemma31b-workload-v1.json": "70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b",
+    "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration_input.rs": "da5c486f039ff81d40bb4541c12807a4483d5150b4cc9b9e5ea69ea0c6f4ffc9",
+    "scripts/c71_activation_pilot.py": "b03429cc923dcf5b390058ace9e2336b21940bbf91de5c370d084af836df6d5e",
+    "scripts/c71_calibrate.py": "defb2f176b09e273d091bf9841f4bd08f358899b000ca784e97c76bf3be855af",
+    "tests/test_c71_activation_pilot.py": "71394d12c901d199bf2b33fab71efb92c24d4a584ebedf5c0fc5d03cb8dbe59a",
+    "tests/test_c71_calibration.py": "abeb3ae837b6c8238fd1b5eb27ff00786bbfb4b3203a7a8e412f6a8f00ce9d0a"
+  }
+}

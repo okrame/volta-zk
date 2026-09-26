@@ -4,6 +4,16 @@
 
 ## Canonical calibration row driver
 
+Il [record del pilot A a SHA pulita 19f53be](../../benchmarks/results/c71-activation-pilot-2026-09-26-19f53bed7022.json)
+conserva 13 test Python passati entro 60 s/2 GiB, con un thread
+BLAS/OpenMP/Rayon, e il piano logico senza W. Copre tutte le famiglie
+di operatori su un piccolo grafo floating, causalità e assorbimento finale,
+confini RNE, provenienza/errori e mancata sovrascrittura; controlla anche
+la proiezione nativa dei 1.435 ID A e i dieci alias globali pre-norm.
+Include le regressioni del codec delle tabelle e del wrapper intero.
+Non legge pesi reali né valida un forward intero completo: esponenti reali,
+Γ congelato, picco fisico e tempo H100 restano non acquisiti.
+
 Il [record del controller a SHA pulita 5e9d8ff](../../benchmarks/results/c71-calibration-fixed-run-inputs-2026-09-26-5e9d8ff3e827.json)
 conserva cinque filtri Rust e cinque test Python passati, ciascuna
 invocazione entro 60 s/2 GiB e un worker. I nuovi controlli coprono il

@@ -1589,6 +1589,7 @@ collegamento alla capacità PCG canonica restano aperti, senza nuovo credito H10
 
 ## EA puntuale dopo accettazione F_EQ
 
+Evidenza corrente: [32 test Rust e 29 Python/C++](evidence.md#global-ea-accumulator-correction).
 La [versione `228ed64`](evidence.md#equality-owned-pointwise-expansion)
 rimane NO-GO multiblocco: il controllo t=1 non rilevava l'omissione dei
 blocchi precedenti. Il difetto è riprodotto sulla seconda riga del fixture

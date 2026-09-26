@@ -1722,3 +1722,21 @@ neppure la sola identità MAC multiblocco certificherebbe la distribuzione EA.
 Questa versione è quindi NO-GO per t>1. Il record rimane valido come
 controllo t=1/ownership, non come EA canonico. Occorrono prefissi globali
 e confronto diretto con BAe prima di riusare l'espansione multiblocco.
+
+## Global EA accumulator correction
+
+Il [record su SHA pulita `65623518459b`](../../benchmarks/results/c71-seed6-global-ea-2026-09-27-65623518459b.json)
+conserva **32 test Rust e 29 Python/C++**, seriali entro 60 s/2 GiB.
+Include il fallimento riprodotto prima del fix: alla seconda riga del
+fixture t=2, la precedente espansione restituisce 646327468089327808
+invece di 11555904951444293626. Il test usa BAe globale come oracolo,
+non la sola uguaglianza MAC; il vecchio record t=1 resta immutato.
+
+Il fix accumula beta/K(beta)/M(beta) fra alberi. La catena reale usa
+25+6 righe seed, h=4,t=2,ell=2: sei righe base coincidono con BAe,
+mantengono la stessa Delta e formano due MAC Fp3 nonzero. c/z alterati
+non rilasciano stato. Ledger e arena contano 21.600 B aggiunti durante
+la conversione receiver e 351.000 B heap trattenuti, con rilasci solo
+dopo accettazione; i massimi globali nominati non cambiano.
+Questo risolve il difetto multiblocco del riferimento, non accordo sul
+seed EA, trie batch, trasporto, journal, proof bridge o picco fisico.

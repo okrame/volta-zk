@@ -1670,6 +1670,12 @@ né credito alla sicurezza composta, al picco fisico o all'H100.
 
 ## Seed6 completion seals
 
+Il [record su SHA pulita `0ca1a93fceb1`](../../benchmarks/results/c71-seed6-seal-2026-09-27-0ca1a93fceb1.json)
+conserva **29 test Rust e 28 Python/C++** passati, tutti rigorosamente
+seriali entro 60 s/2 GiB per processo. Include regressione B12, SHA/hash,
+wire e ledger dei due seed. Registra separatamente la sovrapposizione
+accidentale di due comandi di sviluppo, esclusi dal run di record.
+
 Il seal condiviso mantiene invariato il formato B12 e aggiunge il dominio
 `C71S6S01` ai seed reali, dopo il check e prima degli output. Il binding
 usato da guard, code F_EQ e coin include il seal. La handshake v02 respinge

@@ -1578,6 +1578,8 @@ collegamento alla capacità PCG restano aperti, senza nuovo credito H100.
 
 ## Seed6: seal di completamento
 
+Evidenza: [29 controlli Rust e 28 Python/C++ su SHA pulita](evidence.md#seed6-completion-seals).
+
 Il [meccanismo di seal B12](../../rust/volta-pcg/src/c71_bootstrap.rs) è ora
 riusato dall'adapter Seed6. Il verifier genera 32 B freschi soltanto dopo
 check K6, compressione e rifiuto della chiave zero; il frame fisso ha dominio

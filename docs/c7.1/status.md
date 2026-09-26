@@ -510,6 +510,8 @@ ora deriva dal binding sigillato e dalle correzioni congelate, prima della
 proof. F_EQ ora possiede gli stati pendenti e li rilascia solo al successo:
 il [raccordo EA puntuale](preflight.md#ea-puntuale-dopo-accettazione-f_eq)
 produce tre righe base con MAC originali e ne verifica il packing Fp3.
+La review rileva però che t>1 omette i blocchi precedenti dell'accumulatore
+EA globale: quel percorso è NO-GO fino a correzione e confronto con BAe.
 Esaurimento o errore terminano il cursore e cancellano lo stato posseduto.
 Restano accordo sul seed EA, transcript/trasporto globali, burn durevole,
 trie batch e collegamento alla proof; non è ancora il PCG canonico.

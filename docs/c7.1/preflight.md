@@ -1589,6 +1589,11 @@ collegamento alla capacità PCG canonica restano aperti, senza nuovo credito H10
 
 ## EA puntuale dopo accettazione F_EQ
 
+Evidenza: [32 test Rust e 29 Python/C++](evidence.md#equality-owned-pointwise-expansion).
+**NO-GO multiblocco alla SHA `228ed64`:** il controllo t=1 passa, ma mancano
+i prefissi dei blocchi precedenti del vero accumulatore EA globale.
+La correzione e l'oracolo BAe multiblocco sono il prossimo lavoro locale.
+
 Il [consumer test-only](../../rust/volta-pcg/src/c71_seed6/expand.rs) riusa
 EAGen e Acc/PuncAcc esistenti. F_EQ ora possiede lo stato cGGM pendente:
 solo `Accepted<State>` permette la conversione, mentre un rifiuto distrugge

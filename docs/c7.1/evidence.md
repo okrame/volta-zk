@@ -1704,3 +1704,21 @@ esegue questa derivazione; le coin prefissate restano nei test algebrici.
 Il ledger include sampler e temporanei, senza variare il massimo arena.
 Il codec locale non è il transcript globale né il burn senza retry:
 nessun nuovo credito al teorema composto, al picco fisico o all'H100.
+
+## Equality-owned pointwise expansion
+
+Il [record su SHA pulita `228ed64332ea`](../../benchmarks/results/c71-seed6-expansion-2026-09-27-228ed64332ea.json)
+conserva **32 test Rust e 29 Python/C++**, seriali entro 60 s/2 GiB per
+processo. F_EQ trattiene gli stati pendenti fino al successo; la catena
+reale da 14+3 seed produce tre MAC base e un packing Fp3 nonzero. I test
+coprono anche distruzione su rifiuto, cursore monotono e sampler fail-stop.
+Il record conserva due errori di costanti attese nel test del ledger,
+corrette usando le lunghezze effettive dei domini, non cambiando il codec.
+
+**Limite trovato in review dopo il run:** il riferimento accumula soltanto
+l'albero selezionato, omettendo tutti i blocchi precedenti richiesti dalla
+matrice globale A di Dory, Fig. 5. Il fixture reale t=1 non può rilevarlo;
+neppure la sola identità MAC multiblocco certificherebbe la distribuzione EA.
+Questa versione è quindi NO-GO per t>1. Il record rimane valido come
+controllo t=1/ownership, non come EA canonico. Occorrono prefissi globali
+e confronto diretto con BAe prima di riusare l'espansione multiblocco.

@@ -153,6 +153,11 @@ Per il raccordo numerico alla calibrazione usare, nella stessa build,
 marker `C71_CANONICAL_NUMERIC_ROWS`, entro 60 s/2 GiB e un worker.
 Esegue righe e catene di operatori nelle geometrie canoniche con dati e
 tabelle sintetici; non un forward completo o una calibrazione reale.
+Per lo storage offline aggiungere il filtro
+`c71_b12_native_canonical_calibration_storage_release_and_ranges`, un test
+con marker `C71_CALIBRATION_STORAGE` per O=0/150/300, agli stessi limiti.
+Usa due righe W packed e sottografi embedding, GELU/gate e PV; non un
+forward completo, una calibrazione o il picco GPU.
 `c71_b12_native_pool_packing` controlla conversione Fp3 e identità del
 registro; `c71_b12_native_pool_real_shortage` usa una sola capacità AES
 da tre righe per verificare il rifiuto del wrapper prima di Prepare/decode.

@@ -9,6 +9,8 @@ mod state;
 mod verify;
 #[path = "canonical_prepare.rs"]
 mod prepare;
+#[path = "canonical_calibration.rs"]
+mod calibration;
 #[cfg(test)]
 #[path = "canonical_wire.rs"]
 mod wire_tests;

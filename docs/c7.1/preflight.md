@@ -2356,9 +2356,13 @@ Il percorso minimo riusa i componenti esistenti, nell'ordine seguente:
    RoPE usa posizioni assolute. Le visite agli istogrammi sono restituite
    al caller senza costruire istogrammi o A completi. Il driver per token
    segue il DAG, esegue le 32 righe testa/query quando necessarie e demanda
-   lo storage al consumer. Restano da collegare i getter reali, la liveness
-   del loro storage, l'accumulo degli istogrammi e le statistiche di
-   calibrazione. Un manifest da solo non rende il fixture un runner Gemma.
+   lo storage al consumer. Lo [storage CPU del trial](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs)
+   ora collega W packed a una riga, A viva e KV causale, rilascia all'ultimo
+   consumer e accumula min/max e istogrammi. Non materializza Snapshot/A
+   completi; i test restano sottografi sintetici, senza validazione di un
+   forward reale. Restano identità/input reali, inizializzazione delle scale,
+   tabelle certificate e replay completo sui tre contesti.
+   Un manifest da solo non rende il fixture un runner Gemma.
    Il padding query interno è fornito virtualmente: D matematico zero
    (word signed −32767), E=2^30, Z/Pi zero. Il lookup originale lo include,
    perciò l'istogramma aggiunge una sola volta `32*106*(O+150)` visite
@@ -2396,3 +2400,20 @@ Il ledger hardware conserva i costi producer ancora aperti: non si
 sostituiscono i suoi costi con il tempo CPU di questo test né si attribuisce
 credito al picco fisico. Il dispatcher non modifica la schedule GPU
 selezionata o il suo margine pianificato.
+
+Lo storage offline distingue letture W, A corrente, KV precedente e KV
+corrente, righe emesse e visite istogramma. Il payload KV corrente completo
+è 135.168.000 B, gli istogrammi completi 31.718.940 B; il KV precedente
+fornito esternamente vale 0 / 135.168.000 / 270.336.000 B. Sono costi del
+trial numerico, non nuove allocazioni da sommare al ledger GPU: il KV totale
+è già presente nel budget globale della risposta. Il picco del trial conta
+payload retained e bundle entrante conservativamente; non comprende tutti
+i temporanei interni dei producer o l'allocator e non chiude il picco fisico.
+
+Il test `c71_b12_native_canonical_calibration_storage_release_and_ranges`
+esegue embedding → affine → RNE da due righe packed, GELU → gate e PV con
+KV corrente/precedente a O=0/150/300. Controlla codec simmetrico, cache W,
+input troncato, letture future/rilasciate, budget del payload e arresto dopo
+errore. Le statistiche dei sottografi non vengono dichiarate Γ calibrato;
+`finish` richiede 150 token e copertura completa prima di accettare un trial.
+Nessun tempo CPU viene trasferito al ledger H100.

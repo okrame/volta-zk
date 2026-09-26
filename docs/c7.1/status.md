@@ -50,7 +50,10 @@ quantizzazione W già disponibile, calibrazione A da integrare ed esecuzioni
 pesanti ancora non autorizzate.
 È implementato il dispatcher numerico per righe del DAG canonico, con
 ricette RMS/RNE originali, indirizzi QK/KV/RoPE e driver causale per token;
-restano storage/getter reali e raccolta delle statistiche. Non è ancora Γ calibrato
+il relativo storage CPU ora raccoglie range e istogrammi, conserva KV i16
+causale e libera le righe all'ultimo consumer. Il lettore packed usa una
+sola riga W. Sono controllati sottografi con input sintetici; restano pesi
+reali, scelta delle scale e validazione completa. Non è ancora Γ calibrato
 né esecuzione completa del modello.
 
 ## Native bounded result

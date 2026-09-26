@@ -425,16 +425,25 @@ mod tests {
             };
             for t in [98, 99, 148, 149] {
                 suffix
-                    .prepare_token(t, &mut tokens, &tables, &absent, &getter, &absent, |out| {
-                        for (id, r, v) in out.values {
-                            assert!(rows.borrow_mut().insert((id, r), v).is_none());
-                        }
-                        if let Some((id, entries)) = out.histogram {
-                            assert_eq!(id, suffix.output.histogram);
-                            visits.set(visits.get() + entries.len());
-                        }
-                        Ok(())
-                    })
+                    .prepare_token(
+                        t,
+                        &mut tokens,
+                        &tables,
+                        &absent,
+                        &getter,
+                        &absent,
+                        |out| {
+                            for (id, r, v) in out.values {
+                                assert!(rows.borrow_mut().insert((id, r), v).is_none());
+                            }
+                            if let Some((id, entries)) = out.histogram {
+                                assert_eq!(id, suffix.output.histogram);
+                                visits.set(visits.get() + entries.len());
+                            }
+                            Ok(())
+                        },
+                        |_| Ok(()),
+                    )
                     .unwrap();
             }
             assert_eq!((tokens[100], tokens[149]), (3, 3));
@@ -442,9 +451,16 @@ mod tests {
             assert_eq!(visits.get(), 2 * 262144);
             let mut failed_tokens = [0; 150];
             assert!(suffix
-                .prepare_token(99, &mut failed_tokens, &tables, &absent, &getter, &absent, |_| Err(
-                    "sink failed".into()
-                ))
+                .prepare_token(
+                    99,
+                    &mut failed_tokens,
+                    &tables,
+                    &absent,
+                    &getter,
+                    &absent,
+                    |_| Err("sink failed".into()),
+                    |_| Ok(())
+                )
                 .is_err());
             assert_eq!(failed_tokens[100], 0);
         }
@@ -565,10 +581,11 @@ impl Canonical {
         get: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
         tail: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
         mut emit: impl FnMut(Row) -> Result<(), String>,
+        mut after_step: impl FnMut(usize) -> Result<(), String>,
     ) -> Result<(), String> {
         let token = *tokens.get(token_index).ok_or("canonical token outside fixed response")?;
         let mut next = None;
-        for step in &self.steps {
+        for (step_index, step) in self.steps.iter().enumerate() {
             for row in self.rows_at_token(step, token_index)? {
                 let result = self.prepare_row(step, row, token, tables, weight, get, tail)?;
                 if let Some(t) = result.token {
@@ -578,6 +595,7 @@ impl Canonical {
                 }
                 emit(result)?;
             }
+            after_step(step_index)?;
         }
         if (99..149).contains(&token_index) != next.is_some() {
             return Err("canonical causal decision count differs".into());

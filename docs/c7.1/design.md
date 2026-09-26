@@ -998,9 +998,20 @@ di forma del dispatcher non le certificano. Il driver causale per token
 segue l'ordine del DAG, emette ogni bundle di righe al consumer e aggiorna
 il token successivo solo dopo il successo di tutti i consumer del token.
 Le decisioni usano le righe 99–148; il token 149 completa KV senza un'altra
-decisione. Il caller deve ancora fissare i getter W/A/KV, accumulare ogni
-istogramma una volta e gestire durata/riuso delle righe. Non è ancora
-Prepare canonico completo o ammissione del runtime.
+decisione. Lo [storage del trial offline](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs)
+collega i getter alle righe vive, conserva KV corrente in i16 e richiede il
+KV precedente a un getter esterno causale. Rilascia dopo l'ultimo consumer
+anche quando lo step non ha righe attive; accumula istogrammi e min/max
+privati, senza Snapshot o A completi. Il lettore W usa `Read + Seek` e una
+cache di riga sul packed già validato; lunghezza/codec non certificano hash
+o identità del checkpoint. L'errore rende il trial inutilizzabile e non
+pubblica il token parziale. La chiusura richiede tutti i 150 token e la
+copertura di ogni sorgente originale, inclusi padding e istogrammi.
+I test eseguono solo sottografi; input reale, scale, tabelle certificate e
+validazione numerica completa restano aperti. Non è ancora Prepare canonico
+completo o ammissione del runtime. Questo storage offline non sostituisce
+l'arena della prova: payload e bundle in ingresso sono contati, workspace
+interni dei producer e allocator non sono un picco fisico chiuso.
 Il padding query interno ai rettangoli A conserva la relazione originale:
 `D-32767=-32767`, `E=2^30`, `Z=Pi=0`, a differenza del padding zero esterno
 al dominio delle sorgenti. Il getter fornisce queste costanti; ciascun

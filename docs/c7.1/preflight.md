@@ -1731,6 +1731,8 @@ test-only; nessuna esecuzione canonica, GPU o spesa è autorizzata.
 
 ### Journal monouso del setup
 
+Evidenza: [46 test Rust e 31 Python/C++](evidence.md#one-use-seed6-setup-journal).
+
 L'entry `sender_once/receiver_once` riusa il journal `Lifetime`, non un
 secondo formato o lock. Il record sperimentale 5 prenota l'intera capacità
 EA prima di RNG/header/OT, con write+fsync: dopo errore, drop o successo

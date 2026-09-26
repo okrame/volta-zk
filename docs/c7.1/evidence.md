@@ -1793,3 +1793,21 @@ Audit restituiti (896 B heap, 672 B valori); il massimo arena nominato
 non aumenta. Il percorso byte è completo per questo setup ridotto, non
 per il run di inferenza: restano canale autenticato, journal non-rollback,
 trie batch, proof bridge, composizione crittografica e picco fisico.
+
+## One-use Seed6 setup journal
+
+Il [record su SHA pulita `8b11a44`](../../benchmarks/results/c71-seed6-journal-2026-09-27-8b11a44aacf7.json)
+conserva **46 test Rust e 31 Python/C++**, seriali entro 60 s/2 GiB.
+Riusa il journal B12 con record 5 test-only e dominio Seed6: burn fsync
+prima di RNG, owner esclusivo durante la vita dello stato EA, rifiuto di
+retry/rinnovo/reopen. Il caso RNG fallito lascia il record bruciato;
+il setup reale produce sei MAC originali. Passano anche tutte le otto
+regressioni del lifetime B12, il cui dominio e record 4 non cambiano.
+
+È conservato il primo fallimento di test: l'assert prevedeva `Other`,
+mentre il helper RNG preesistente restituisce `InvalidData`. Il fix
+controlla tipo e messaggio senza cambiare la semantica di errore.
+Il ledger include 161 B su disco per ruolo, tre sync con installazione,
+un lock OS, un BLAKE3 da 201 B e 104 B heap temporanei, senza nuovo wire.
+Non-rollback e canale autenticato restano premesse del caller; riserve
+per tentativo, NoPeek/promozione, proof, picco completo e H100 sono aperti.

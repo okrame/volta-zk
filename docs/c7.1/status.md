@@ -231,7 +231,10 @@ range/BMMA passano; nessuna esecuzione PTX o misura GPU. Il massimo arena
 non cambia. La priorità è completare le fasi mancanti nella stessa somma.
 Occorre fissare Γ per il ledger RMS: il fixture usa scale zero. È pendente
 la decisione del proprietario fra Γ sintetico esplicito per l’esperimento
-e Γ calibrato reale; non si equiparano i due workload. Contatori completi,
+e Γ calibrato reale; non si equiparano i due workload. Sul fixture
+a scale zero la coda RMS dopo quattro round concessi gratis dà già
+70,268864 s: il solo trasferimento del prefisso EXP30 B=16 è NO-GO.
+Contatori completi,
 picco fisico e harness finale restano aperti. Il NO-GO scalare non si trasferisce
 alla contrazione. Il goal locale resta in corso.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.

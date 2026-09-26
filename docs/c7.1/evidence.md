@@ -1510,7 +1510,8 @@ I [primi cinque prodotti per feature](../../benchmarks/results/c71-byte-contract
 e il [primo selettore per coppia](../../benchmarks/results/c71-byte-contract-paired-first-diagnostic-2026-09-26-281ac61.json)
 sono conservati come diagnostici dirty delle implementazioni scartate.
 
-Le primitive carry/borrow mantengono il confronto host modulo p per
+Il [record carry su SHA pulita](../../benchmarks/results/c71-carry-field-joint-screen-2026-09-26-8662d88cbb8a.json)
+conserva il confronto host modulo p per
 valori al bordo e input deterministici. Passano anche il cubico contratto
 e il checker CPU BMMA. I kernel range e i dieci kernel BMMA compilano
 senza spill. Lo screen collega per digest il nuovo coefficiente, i due

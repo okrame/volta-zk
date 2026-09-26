@@ -2272,3 +2272,16 @@ modello. La scelta fra esperimento con Γ sintetico dichiarato e Γ calibrato
 è stata posta al proprietario; finché resta aperta non si promuovono i
 conteggi del fixture a conteggi del modello reale. Il lavoro locale resta
 in corso, senza richiesta di autorizzazione GPU o spesa.
+
+
+Sul solo Γ RMS sintetico a scale zero, riusando gli intervalli e i profili
+pubblici del census esistente, il kernel main scalare certificato conta
+377.460.232.230.821 prodotti Fp3: lower condizionale 536,165103 s.
+Concedere gratis i primi 4/6/8/9 round cella lascia rispettivamente
+**70,268864 / 19,887718 / 5,277466 / 2,638732 s** di sola coda;
+la pre-elaborazione concessa gratis non è un algoritmo implementato.
+I conteggi includono i selettori per ogni coppia/profilo/livello, non
+soltanto le porte. Trasferire a RMS il solo prefisso EXP30 B=16 non
+riapre quindi quel fixture. Non è un bound per Γ calibrati diversi o
+per un nuovo prover non scalare. La scelta del workload precede un
+ulteriore port specifico RMS e la chiusura dei relativi conti PCG.

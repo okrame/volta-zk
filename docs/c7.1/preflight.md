@@ -1691,6 +1691,7 @@ I vettori EAGen con seed prefissato restano soltanto test del sampler.
 
 ## Setup Seed6 su un solo canale
 
+Evidenza: [37 test Rust e 31 Python/C++](evidence.md#one-channel-seed6-setup).
 Il [driver test-only](../../rust/volta-pcg/src/c71_seed6/setup.rs) esegue
 su un unico canale: seed principale, seed inverso, riserva disgiunta,
 guard, prima coin/cGGM, split, F_EQ trasportata e conversione EA. Nessun

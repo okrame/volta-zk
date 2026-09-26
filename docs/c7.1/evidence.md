@@ -1774,3 +1774,22 @@ risolto selezionando esplicitamente `XofReader::read`. Il ledger separa
 l'envelope ROM condizionale aggiuntivo, senza trasferire automaticamente
 bound composti o credito Lean. Restano blind freschi e no-retry globali,
 setup/trasporto completo, journal, trie batch, proof bridge e picco fisico.
+
+## One-channel Seed6 setup
+
+Il [record su SHA pulita `6dbf6fbf38c5`](../../benchmarks/results/c71-seed6-one-channel-2026-09-27-6dbf6fbf38c5.json)
+conserva **37 test Rust e 31 Python/C++**, seriali entro 60 s/2 GiB.
+Il nuovo driver attraversa su un unico canale entrambi i Seed6 MR19/AES,
+guard, cGGM/coin/split e F_EQ fino allo stato EA. A t=2,h=4,ell=2 usa
+25+6 righe seed e produce sei MAC originali; beta viene dal seed e i
+cammini sono campionati, non forniti dal fixture. La geometria errata
+è respinta prima di I/O/RNG; una ell diversa fra peer viene respinta
+prima degli OT. Il nonce deriva dai due binding sigillati.
+
+Gli Audit speculari danno 390.742 B totali. Il ledger canonico include
+quattro header prima esclusi e l'adeguamento della coin split: +45 B,
+totale primitive 61.841.366 B. Sono contati i buffer temporanei e i tre
+Audit restituiti (896 B heap, 672 B valori); il massimo arena nominato
+non aumenta. Il percorso byte è completo per questo setup ridotto, non
+per il run di inferenza: restano canale autenticato, journal non-rollback,
+trie batch, proof bridge, composizione crittografica e picco fisico.

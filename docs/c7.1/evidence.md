@@ -1498,7 +1498,8 @@ quattro lane byte zero; Eq terminale usa due tabelle fattorizzate.
 Il controllo di arena include queste tabelle e non cambia il massimo.
 Il guard ≤128 e i limiti di credito restano invariati.
 
-Il passo successivo conserva nel getter e nei fold sia f sia d·f e
+Il [record su SHA pulita](../../benchmarks/results/c71-paired-byte-contraction-2026-09-26-42d6af589cdb.json)
+conserva nel getter e nei fold sia f sia d·f e
 applica Eq dell’asse corrente dopo la riduzione quadratica. Passano
 parità byte/pattern e positivo integrato; il checker indirizzi/fence
 conferma che il maggiore stato EXP30 non cambia il massimo globale.

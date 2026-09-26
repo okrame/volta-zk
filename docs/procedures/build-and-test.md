@@ -63,7 +63,12 @@ Per il DAG di replay aggiungere
 `c71_pattern_replay_dag_matches_every_original_exp30_level`: usa solo
 un gruppo packed per live mask e livello, senza inferenza canonica.
 Il marker `C71_EXP30_REPLAY_DAG` alimenta `replay_dag_screen`, che verifica
-i conteggi fissati usati dal ledger.
+i conteggi fissati usati dal ledger. Con
+`C71_EXP30_SHARED_FIXTURE=/tmp/c71-exp30-shared-fixture.bin` lo stesso filtro
+verifica la schedule parallela e genera un fixture pubblico di circa 45 MiB.
+Passarlo come unico argomento al binario host di `cuda/c71_exp30_bmma.cu`
+per confrontare tutti i livelli e controllare assenza di race fra slot
+dello stesso stage. Il fixture si rigenera dalla SHA del codice; niente GPU.
 Il trace integrato distingue `pattern_prefix` dai round scalari rimanenti.
 I conteggi e la liveness sono controllati da
 `tests/test_c71_exp30_alternatives.py` e dal filtro

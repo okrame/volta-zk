@@ -3,6 +3,11 @@ import json
 from functools import lru_cache
 import c71_exp30_alternatives as alt
 
+# Checked against every native compile_ratio(14) producer level (depths 0..93).
+PARALLEL_PLAN_BYTES = 737_856
+PARALLEL_SHARED_BYTES = 39_792
+PARALLEL_STAGES = 4_371
+
 
 def moments(rows, live, gates, weights, point, bits):
     """Algebra oracle, retaining public support masks and ORIGINAL suffix Eq."""
@@ -54,8 +59,10 @@ def geometry():
                    copy_count_bytes=((l['copy']*15+7)//8)*8*192*4,
                    stage_bytes=widths[i]*64*16*32,
                    Eq_bitplanes_bytes=192*64*32,
+                   Eq_factor_tables_and_point_bytes=(4096+4096+24)*24,
                    gate_map_bytes=(l['and']+l['xor'])*8+l['copy']*4,
-                   moment_output_bytes=((l['and']+l['xor'])*256+(l['copy']*15+7)//8*8)*24)
+                   moment_output_bytes=((l['and']+l['xor'])*256+(l['copy']*15+7)//8*8)*24,
+                   late_weights_and_flags_bytes=24*(l['and']+l['xor']+l['copy'])+4*(l['and']+l['xor']))
               for i,l in enumerate(levels)]
     return levels, widths, states
 
@@ -64,8 +71,9 @@ def report():
     levels, widths, states = geometry()
     binary = sum(l['and']+l['xor'] for l in levels)
     peak = max(max(
-        sum(v for k,v in s.items() if k not in ('depth','moment_output_bytes'))+alt.REPLAY_DAG_RESIDENT_BYTES,
-        s['count_bytes']+s['copy_count_bytes']+s['gate_map_bytes']+s['moment_output_bytes'])
+        sum(v for k,v in s.items() if k not in ('depth','moment_output_bytes','late_weights_and_flags_bytes'))+PARALLEL_PLAN_BYTES,
+        s['count_bytes']+s['copy_count_bytes']+s['gate_map_bytes']+s['moment_output_bytes'],
+        s['gate_map_bytes']+s['moment_output_bytes']+s['late_weights_and_flags_bytes'])
         for s in states)+24*(256+16)
     cases = []
     for old in (0,150,300):
@@ -100,7 +108,12 @@ def report():
             inplace_transpose_read_bytes=sum(widths)*((n+3)//4)*8,
             inplace_transpose_write_bytes=sum(widths)*tiles*16*32,
             transpose_shared_bytes_per_CTA=512,
-            Eq_canonical_input_read_bytes=len(levels)*n*24,
+            Eq_canonical_input_read_bytes=0,
+            Eq_original_index_Fp3_products=len(levels)*n,
+            Eq_table_Fp3_products=len(levels)*((4096*12 if old else 2048*11)+4096*12),
+            Eq_factor_table_logical_read_bytes=len(levels)*n*48,
+            Eq_factor_table_write_bytes=len(levels)*(8192 if old else 6144)*24,
+            Eq_input_mode='original suffix, two half tables, fused evaluation/ballot',
             Eq_pack_warp_votes=len(levels)*tiles*8*192,
             Eq_stage_write_bytes=len(levels)*tiles*192*32,
             counts_zero_fill_bytes=counts,
@@ -108,19 +121,34 @@ def report():
             canonical_moment_output_bytes=sum(s['moment_output_bytes'] for s in states),
             final_moment_base_reductions=(binary*256+sum((l['copy']*15+7)//8*8 for l in levels))*3,
             final_count_shift_add_terms=counts//4,
-            late_gate_Fp3_products=sum(l['and']*225+l['xor']*255+l['copy']*15 for l in levels),
-            replay_word_operations=base['packed_boolean_word_gates'],
+            late_gate_Fp3_products=sum(l['and']*225+l['xor']*240+l['copy']*15 for l in levels),
+            late_XOR_margin_Fp3_additions=sum(l['xor']*15 for l in levels),
+            late_weights_host_to_device_bytes=24*sum(l['and']+l['xor']+l['copy'] for l in levels),
+            native_gate_maps_and_flags_host_to_device_bytes=sum(s['gate_map_bytes'] for s in states)+4*binary,
+            replay_word_operations=((n+3)//4)*alt.REPLAY_DAG_WORDS_PER_BATCH,
+            prior_row_aligned_replay_word_operations=base['packed_boolean_word_gates'],
+            producer_CTAs=len(levels)*((n+3)//4),
+            producer_plan_host_to_device_bytes=16*alt.REPLAY_DAG_WORDS_PER_BATCH+4*(PARALLEL_STAGES+len(levels)+sum(widths)),
+            producer_cache_host_to_device_bytes=0,
+            producer_plan_preparation='public compile_ratio(14), prepared before the response; one device plan per level',
+            producer_CTA_barriers=(PARALLEL_STAGES+len(levels))*((n+3)//4),
+            producer_warp_ballot_instructions=194*len(levels)*((n+3)//4),
+            producer_shared_operand_load_store_bytes=24*((n+3)//4)*alt.REPLAY_DAG_WORDS_PER_BATCH,
+            producer_plan_logical_read_bytes=16*((n+3)//4)*alt.REPLAY_DAG_WORDS_PER_BATCH,
+            producer_original_cache_load_bytes=12*15*n*len(levels),
+            producer_shared_bytes_per_CTA_max=PARALLEL_SHARED_BYTES,
+            producer_global_intermediate_history_bytes=0,
             source_frame_cache_bytes=base['original_ratio_cache_bytes'],
             phase_payload_bytes=peak,
             logical_bytes_are_not_HBM=True))
-    return dict(credit=False, scope='same four EXP30 cubics, candidate BMMA consumer',
+    return dict(credit=False, scope='same four EXP30 cubics, shared producer and candidate BMMA consumer',
         batch_suffix_capacity=16384, states=states, cases=cases,
         fixed_kernel_sm90=True, complete_time=False, complete_peak=False,
         lower_conditions=['132 SM, clock <=2 GHz, grant 128 bitwise results/cycle/SM',
                           '3.35 TB/s HBM, <=256 MiB retained count cache between fenced batches',
                           'max of compute and bandwidth lower; no bandwidth-derived upper'],
-        missing=['parallel packed producer and original-index compact schedule adapter',
-                 'GPU moment weighting and native prefix integration',
+        missing=['GPU launch/validation of the native public plan and original-cache producer',
+                 'native prefix integration and GPU execution of moment weighting',
                  'GPU validation/service rates and complete physical arena'],
         time_metrics=dict(T_inference='unmeasured', T_proof_only='unmeasured',
                           T_response_total='unmeasured', target_total_seconds=65))

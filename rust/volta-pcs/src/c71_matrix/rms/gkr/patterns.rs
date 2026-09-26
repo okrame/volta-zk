@@ -111,6 +111,75 @@ impl ReplayPlan {
     }
 }
 
+// Each stage reads only older values. Slots retired by a stage become reusable
+// AFTER its barrier; no in-place overwrite can race another thread's operand.
+#[cfg(test)]
+struct ParallelReplay {
+    ops: Vec<[u32; 4]>, // And=0/Xor=1, output slot, x slot, y slot.
+    boundaries: Vec<u32>,
+    outputs: Vec<u32>,
+    slots: usize,
+}
+
+#[cfg(test)]
+impl ReplayPlan {
+    fn parallel(&self, ports: usize) -> ParallelReplay {
+        let mut depth = vec![0; ports];
+        for g in &self.nodes {
+            depth.push(1 + depth[g.x].max(depth[g.y]));
+        }
+        let stages = *depth.iter().max().unwrap();
+        let mut levels = vec![Vec::new(); stages + 1];
+        let mut last = vec![0; depth.len()];
+        for (i, g) in self.nodes.iter().enumerate() {
+            let d = depth[ports + i];
+            levels[d].push(i);
+            last[g.x] = last[g.x].max(d);
+            last[g.y] = last[g.y].max(d);
+        }
+        for &i in &self.outputs { last[i] = stages + 1; }
+        let mut retired = vec![Vec::new(); stages + 2];
+        for (i, &d) in last.iter().enumerate() { retired[d].push(i); }
+        let mut slots = ports;
+        let mut map = vec![usize::MAX; depth.len()];
+        for (i, m) in map[..ports].iter_mut().enumerate() { *m = i; }
+        let mut free = retired[0].clone();
+        let mut ops = Vec::with_capacity(self.nodes.len());
+        let mut boundaries = vec![0];
+        for d in 1..=stages {
+            for &i in &levels[d] {
+                let g = self.nodes[i];
+                let slot = free.pop().unwrap_or_else(|| { let i = slots; slots += 1; i });
+                map[ports + i] = slot;
+                ops.push([u32::from(g.op == Op::Xor), slot as u32, map[g.x] as u32, map[g.y] as u32]);
+            }
+            boundaries.push(ops.len() as u32);
+            free.extend(retired[d].iter().map(|&i| map[i]));
+        }
+        ParallelReplay { ops, boundaries, outputs: self.outputs.iter().map(|&i| map[i] as u32).collect(), slots }
+    }
+}
+
+#[cfg(test)]
+impl ParallelReplay {
+    #[cfg(test)]
+    fn replay(&self, inputs: &[u64]) -> Vec<u64> {
+        let mut values = vec![0; self.slots];
+        values[..inputs.len()].copy_from_slice(inputs);
+        for range in self.boundaries.windows(2) {
+            let stage = &self.ops[range[0] as usize..range[1] as usize];
+            let writes: std::collections::BTreeSet<_> = stage.iter().map(|g| g[1]).collect();
+            assert_eq!(writes.len(), stage.len());
+            for &[op, z, x, y] in stage {
+                assert!(!writes.contains(&x) && !writes.contains(&y));
+                values[z as usize] = if op == 0 { values[x as usize] & values[y as usize] }
+                    else { values[x as usize] ^ values[y as usize] };
+            }
+        }
+        self.outputs.iter().map(|&i| values[i as usize]).collect()
+    }
+}
+
 struct Histogram {
     mask: u64,
     tiles: Vec<Vec<usize>>,
@@ -392,8 +461,25 @@ mod tests {
     fn c71_pattern_replay_dag_matches_every_original_exp30_level() {
         let program = super::super::super::compile_ratio(14).unwrap();
         let mut records = Vec::new();
+        use std::io::Write;
+        let mut fixture = std::env::var_os("C71_EXP30_SHARED_FIXTURE").map(|p|
+            std::io::BufWriter::new(std::fs::File::create(p).unwrap()));
+        if let Some(f) = &mut fixture {
+            f.write_all(b"C71DAG01").unwrap();
+            f.write_all(&((program.levels.len() + 1) as u32).to_le_bytes()).unwrap();
+        }
         for depth in 0..=program.levels.len() {
             let plan = ReplayPlan::new(&program, depth).unwrap();
+            let parallel = plan.parallel(program.ports);
+            if let Some(f) = &mut fixture {
+                for n in [depth, program.ports, parallel.slots, parallel.boundaries.len()-1,
+                          parallel.ops.len(), parallel.outputs.len()] {
+                    f.write_all(&(n as u32).to_le_bytes()).unwrap();
+                }
+                for n in parallel.boundaries.iter().chain(parallel.ops.iter().flatten()).chain(parallel.outputs.iter()) {
+                    f.write_all(&n.to_le_bytes()).unwrap();
+                }
+            }
             let mut values = Vec::new();
             let mut selected = Vec::new();
             for live in [u64::MAX, 0x8421_137f_aab9_7654, 0] {
@@ -411,9 +497,16 @@ mod tests {
                 let (expected, _) = program.replay_layer(&inputs, live, depth).unwrap();
                 plan.replay(&program, &inputs, live, &mut values, &mut selected).unwrap();
                 assert_eq!(selected, expected, "depth {depth}");
+                assert_eq!(parallel.replay(&inputs), expected, "parallel depth {depth}");
+                if let Some(f) = &mut fixture {
+                    for n in inputs.iter().chain(expected.iter()) { f.write_all(&n.to_le_bytes()).unwrap(); }
+                }
             }
             records.push(serde_json::json!({"depth":depth,
                 "word_operations":plan.nodes.len(), "plan_bytes":plan.bytes(),
+                "shared_slots":parallel.slots, "shared_bytes_per_CTA":8*parallel.slots,
+                "parallel_stages":parallel.boundaries.len()-1,
+                "parallel_plan_bytes":16*parallel.ops.len()+4*(parallel.boundaries.len()+parallel.outputs.len()),
                 "value_bytes":8*values.capacity(), "selected_bytes":8*selected.capacity(),
                 "input_bytes":8*program.ports,
                 "original_word_operations":program.levels[..depth].iter().map(Vec::len).sum::<usize>()}));

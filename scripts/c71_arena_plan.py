@@ -242,18 +242,19 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
                 events=events[:-3]  # Keep the original ratio cache allocation.
                 for state in reversed(bm.geometry()[2]):
                     name=f"EXP30_BMMA_layer_{state['depth']}"
-                    buffers={name+':'+k:v for k,v in state.items() if k not in ('depth','moment_output_bytes')}
-                    buffers[name+':packed_replay']=prefix['packed_replay_resident_bytes']
+                    buffers={name+':'+k:v for k,v in state.items() if k not in ('depth','moment_output_bytes','late_weights_and_flags_bytes')}
+                    buffers[name+':packed_replay']=bm.PARALLEL_PLAN_BYTES
                     events.append(dict(event=name+'_producer_consumer_batches',
                         allocate={**buffers,name+':aggregate':24*(256+16)},
-                        unknown=['parallel producer, moment weighting, compiler transient and allocator; candidate only']))
+                        unknown=['GPU launch, moment weighting, compiler transient and allocator; candidate only']))
                     events.append(dict(event=name+'_last_BMMA_fence',
-                        free=[name+':stage_bytes',name+':Eq_bitplanes_bytes',name+':packed_replay'],
+                        free=[name+':stage_bytes',name+':Eq_bitplanes_bytes',name+':Eq_factor_tables_and_point_bytes',name+':packed_replay'],
                         allocate={name+':moments':state['moment_output_bytes']}))
                     events.append(dict(event=name+'_last_count_consumer_fence',
-                        free=[name+':count_bytes',name+':copy_count_bytes']))
+                        free=[name+':count_bytes',name+':copy_count_bytes'],
+                        allocate={name+':late_weights_and_flags':state['late_weights_and_flags_bytes']}))
                     events.append(dict(event=name+'_four_cubics_fence',
-                        free=[name+':moments',name+':gate_map_bytes',name+':aggregate']))
+                        free=[name+':moments',name+':gate_map_bytes',name+':late_weights_and_flags',name+':aggregate']))
             for name in ('GELU','softcap'):
                 chains[name+'_original_lookup']=[
                     dict(event=name+'_build_original_cuts',allocate={'getter:cuts':cuts}),

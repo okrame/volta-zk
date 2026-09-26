@@ -2020,7 +2020,8 @@ un upper dalla banda. Il lower congiunto completo resta aperto.
 A O=300 i load/store logici dei contatori costano circa 8,43 TB, quelli
 A/Y circa 47,85 TB e quelli Eq circa 127,61 TB, oltre a Copy e staging.
 **Non sono traffico HBM misurato**: il riuso di Eq e degli operandi va
-verificato. Restano 11.682.765 prodotti Fp3 dei pesi, ricostruzione dei
+verificato. Restano 11.349.900 prodotti Fp3 dei pesi (i due margini XOR sono sommati
+prima dell’unico prodotto), ricostruzione dei
 conteggi, trasposizione/packing, gather, producer e coda scalare; nessuno
 riceve tempo nullo. Il [ledger](../../scripts/c71_exp30_bmma.py) separa
 queste voci e conserva gli obblighi mancanti.
@@ -2030,7 +2031,9 @@ riserva separatamente stage wire, Eq, contatori And/Xor, contatori Copy,
 mappa gate, piano replay, momenti canonici e aggregato. Dopo l’ultima
 fence BMMA libera stage/Eq/replay prima di allocare i momenti; dopo la
 fence di riduzione libera i contatori. Il payload massimo nominato è
-490.859.484 B, con riuso dopo fence a ogni livello. La cache E/Pi/Z resta
+489.850.540 B nella variante con producer condiviso ed Eq fattorizzata,
+con riuso dopo fence a ogni livello. Il precedente componente isolato
+riservava 490.859.484 B. La cache E/Pi/Z resta
 viva fino all’endpoint byte. I layout censiti mantengono 256 MiB di margine;
 questo non include ancora transitori completi, allocator e port CUDA.
 Il backend nativo selezionato resta quello a istogrammi finché non è
@@ -2044,3 +2047,41 @@ record componente ometteva questo fattore nel solo campo
 voti warp, store Eq, lettura/scrittura della trasposizione e output dei
 momenti. I vecchi record restano immutati; nessun tempo è dedotto da
 questi byte logici.
+
+
+#### Producer condiviso e Eq originale
+
+Il DAG pubblico è pianificato per dipendenze: nessuna scrittura del livello
+può coincidere con un suo operando, e gli slot si riciclano dopo barriera.
+Il checker nativo e quello C++ confrontano tutti i 95 livelli, con live mask
+piena/parziale/vuota. Il fixture binario pubblico si genera con
+`C71_EXP30_SHARED_FIXTURE`; non contiene witness canonici. Per i 94 livelli
+producer servono al massimo 737.856 B di piano e 39.792 B shared per CTA,
+senza storia intermedia globale. Il kernel usa 128 thread/CTA e 32 registri,
+zero stack/spill. Carica direttamente i byte originali E/Pi/Z e scrive il
+layout quad del packing in-place. Non materializza altri A o Snapshot.
+
+La nuova compattazione attraversa anche i confini delle righe: il lavoro
+Boolean diventa 976.802.088.000 / 2.917.468.488.000 / 4.858.134.888.000
+word-op, per O=0/150/300. I trasferimenti host→device dei piani pubblici
+costano 43.500.836 B per risposta, oltre a mappe/pesi; la cache originale
+resta sul device. Il ledger distingue 24.527.232.000 / 73.256.832.000 /
+121.986.432.000 B di load logici E/Pi/Z, traffico shared, istruzioni ballot
+e 1.618.116.000 / 4.832.916.000 / 8.047.716.000 barriere CTA. Queste ultime
+non hanno ancora service-rate misurato e non ricevono tempo nullo.
+
+Eq viene valutata sul suffix originale tramite due mezze tabelle, poi
+fusa con il packing bitplane. Tabelle e punto riservano 197.184 B, senza
+un buffer Eq canonico per batch né trasferimenti esterni per batch.
+Il costo include un prodotto Fp3 per posizione/livello e la costruzione
+delle tabelle; i controlli CPU includono sfide 0/1/non-base e confini di
+riga/batch. I kernel Eq-table/Eq-pack usano 38/40 registri; il kernel pesi
+usa 48 registri. Tutti senza stack/spill. L’aritmetica Fp3 è condivisa con
+il kernel range già verificato, la cui regressione host passa.
+
+La riduzione produce momenti canonici prima di rilasciare i contatori;
+pesi e flag sono allocati dopo quel rilascio. Il controllo CPU attraversa
+packing→conteggi→riduzione→pesi e confronta somme dirette Fp3. Resta da
+collegare l’aggregato al prefisso nativo e lanciare/verificare CUDA: non è
+una proof GPU positiva. I lower completi, il picco fisico e le tre metriche
+temporali restano aperti; nessuna autorizzazione H100 o spesa.

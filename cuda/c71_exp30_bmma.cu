@@ -9,7 +9,11 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <fstream>
+#include <stdexcept>
 #include <vector>
+
+#include "c71_fp3.cuh"
 
 constexpr uint64_t FIELD_P = 0xffffffff00000001ULL;
 constexpr unsigned BATCH_TILES = 64;
@@ -23,6 +27,29 @@ HD unsigned a_word(unsigned lane, unsigned reg) { return lane % 4 + 4 * (reg / 2
 HD unsigned b_word(unsigned lane, unsigned reg) { return lane % 4 + 4 * reg; }
 HD unsigned c_row(unsigned lane, unsigned reg) { return lane / 4 + 8 * (reg / 2); }
 HD unsigned c_col(unsigned lane, unsigned reg) { return 2 * (lane % 4) + (reg & 1); }
+
+struct RatioLocation { unsigned cell, denominator, suffix; };
+// Compact rank has 4 base layers x 32 heads x causal (query,key).
+// The original suffix still includes query/key padding; never use rank as Eq's index.
+HD RatioLocation ratio_location(unsigned rank, unsigned old, unsigned position) {
+    const unsigned per_head=150*old+150*151/2, group=rank/per_head, offset=rank%per_head;
+    unsigned lo=0, hi=150;
+    while(lo+1<hi) {
+        const unsigned mid=(lo+hi)/2;
+        if(mid*old+mid*(mid+1)/2<=offset) lo=mid; else hi=mid;
+    }
+    const unsigned key=offset-lo*old-lo*(lo+1)/2;
+    const unsigned layer_head=(position*4+group/32)*32+group%32;
+    return {layer_head*per_head+offset, layer_head*150+lo,
+            (group*256+lo)*(old?512:256)+key};
+}
+
+HD Fp3 equality_at(const Fp3* point, unsigned bits, unsigned index) {
+    Fp3 value{1,0,0};
+    for(unsigned d=0;d<bits;++d)
+        value=mul6(value,(index>>(bits-1-d))&1?point[d]:sub(Fp3{1,0,0},point[d]));
+    return value;
+}
 
 HD uint32_t stage_word(const uint64_t* packed, unsigned n, unsigned word, unsigned row) {
     const unsigned first=word*32;
@@ -52,7 +79,110 @@ HD uint64_t reduce_count_bits(const uint32_t* counts, size_t stride) {
     return reduced>=FIELD_P?reduced-FIELD_P:reduced;
 }
 
+// 225 quadratic coefficients followed by 15 linear coefficients; auxiliary
+// row/column 15 contributes only XOR's linear margins, never the selector.
+HD Fp3 weighted_moment(unsigned slot, const Fp3* binary, const Fp3* copies,
+    const Fp3* binary_weights, const Fp3* copy_weights, const uint32_t* is_xor,
+    unsigned gates, unsigned copy_count) {
+    Fp3 out{};
+    if(slot<225) {
+        const unsigned cell=(slot/15)*16+slot%15;
+        for(unsigned g=0;g<gates;++g) {
+            const Fp3 term=mul6(binary[size_t(g)*256+cell],binary_weights[g]);
+            out=is_xor[g]?sub(out,add(term,term)):add(out,term);
+        }
+    } else {
+        const unsigned row=slot-225;
+        for(unsigned g=0;g<gates;++g) if(is_xor[g])
+            out=add(out,mul6(add(binary[size_t(g)*256+row*16+15],
+                                binary[size_t(g)*256+15*16+row]),binary_weights[g]));
+        for(unsigned g=0;g<copy_count;++g)
+            out=add(out,mul6(copies[size_t(g)*15+row],copy_weights[g]));
+    }
+    return out;
+}
+
 #ifdef __CUDACC__
+extern "C" __global__ void c71_exp30_weight_moments(
+    const Fp3* binary, const Fp3* copies, const Fp3* binary_weights,
+    const Fp3* copy_weights, const uint32_t* is_xor, unsigned gates,
+    unsigned copy_count, Fp3* aggregate) {
+    const unsigned slot=blockIdx.x*blockDim.x+threadIdx.x;
+    if(slot<240) aggregate[slot]=weighted_moment(slot,binary,copies,binary_weights,
+                                              copy_weights,is_xor,gates,copy_count);
+}
+
+// Public suffix Eq factor tables. bits=23/24, low 12 bits; no full Eq domain.
+extern "C" __global__ void c71_exp30_eq_tables(const Fp3* point, unsigned bits, Fp3* tables) {
+    const unsigned index=blockIdx.x*blockDim.x+threadIdx.x, high_count=1u<<(bits-12);
+    if(index<high_count) tables[index]=equality_at(point,bits-12,index);
+    else if(index<high_count+4096) tables[index]=equality_at(point+bits-12,12,index-high_count);
+}
+
+// Fuse original-coordinate Eq evaluation with bitplane packing. No canonical
+// Eq input buffer, no host-to-device transfer per batch, no Eq(compact_rank).
+extern "C" __global__ void c71_exp30_original_eq(
+    const Fp3* tables, uint32_t* eq_bits, unsigned old, unsigned first, unsigned n) {
+    const unsigned k=blockIdx.x*blockDim.x+threadIdx.x, lane=threadIdx.x&31;
+    if(k/256>=(n+255)/256) return;
+    Fp3 weight{};
+    if(k<n) {
+        const unsigned index=ratio_location(first+k,old,0).suffix;
+        weight=mul6(tables[index>>12],tables[(old?4096:2048)+(index&4095)]);
+    }
+    const uint64_t limbs[3]={weight.c0,weight.c1,weight.c2};
+#pragma unroll
+    for(unsigned limb=0;limb<3;++limb) for(unsigned bit=0;bit<64;++bit) {
+        const uint32_t value=__ballot_sync(0xffffffffu,(limbs[limb]>>bit)&1);
+        if(lane==0) eq_bits[eq_index(k/256,(k%256)/32,limb*64+bit)]=value;
+    }
+}
+
+// Public native DAG, level-parallel slot reuse. Exactly 128 threads per CTA,
+// dynamic shared = 8*plan.slots. No per-quad global intermediate history.
+// Directly consumes the ORIGINAL causal E/Pi and Z cache; one CTA = four
+// compact suffix positions x 16 original prefix rows, row 15 zero.
+extern "C" __global__ void c71_exp30_replay_shared(
+    const uint8_t* cells, const uint8_t* denominators, unsigned old,
+    unsigned first, unsigned n, const uint4* ops, const uint32_t* boundaries,
+    unsigned stages, const uint32_t* outputs, unsigned wires, uint64_t* packed_stage) {
+    if(blockIdx.x*4>=n) return;
+    extern __shared__ uint64_t values[];
+    if(threadIdx.x<64) {
+        const unsigned local=blockIdx.x*4+threadIdx.x/16, position=threadIdx.x%16;
+        const unsigned lane=threadIdx.x%32, warp=threadIdx.x/32;
+        const bool live=local<n && position<15;
+        uint32_t frame[3]={0,0,0};
+        if(live) {
+            const RatioLocation at=ratio_location(first+local,old,position);
+            for(unsigned b=0;b<4;++b) frame[0]|=uint32_t(cells[size_t(at.cell)*6+b])<<(8*b);
+            for(unsigned b=0;b<4;++b) frame[1]|=uint32_t(denominators[size_t(at.denominator)*6+b])<<(8*b);
+            for(unsigned b=0;b<2;++b) {
+                frame[2]|=uint32_t(denominators[size_t(at.denominator)*6+4+b])<<(8*b);
+                frame[2]|=uint32_t(cells[size_t(at.cell)*6+4+b])<<(16+8*b);
+            }
+        }
+        uint32_t* words=reinterpret_cast<uint32_t*>(values);
+        const uint32_t live_bits=__ballot_sync(0xffffffffu,live);
+        if(lane==0) { words[warp]=0; words[2+warp]=live_bits; }
+        for(unsigned bit=0;bit<96;++bit) {
+            const uint32_t bits=__ballot_sync(0xffffffffu,(frame[bit/32]>>(bit%32))&1);
+            if(lane==0) words[2*(bit+2)+warp]=bits;
+        }
+    }
+    __syncthreads();
+    for(unsigned stage=0;stage<stages;++stage) {
+        for(unsigned i=boundaries[stage]+threadIdx.x;i<boundaries[stage+1];i+=128) {
+            const uint4 g=ops[i];
+            const uint64_t x=values[g.z], y=values[g.w];
+            values[g.y]=g.x?(x^y):(x&y);
+        }
+        __syncthreads(); // Slots retired here become reusable only in the NEXT stage.
+    }
+    for(unsigned wire=threadIdx.x;wire<wires;wire+=128)
+        packed_stage[size_t(wire)*BATCH_TILES*64+blockIdx.x]=values[outputs[wire]];
+}
+
 // In-place transpose of a disjoint 512-byte tile. Launch exactly 128 threads.
 // Producer quads use fixed [wire][64 tiles][64 u64] strides; compact rank
 // must be mapped to original Eq before this component is called.
@@ -293,16 +423,132 @@ bool host_check(unsigned n) {
             if(recovered!=direct || recovered%FIELD_P!=direct%FIELD_P) return false;
             if(reduce_count_bits(counts.data()+limb*64*256+i*16+j,256)!=uint64_t(direct%FIELD_P)) return false;
         }
+    std::vector<Fp3> binary(512), copies(30);
+    for(unsigned cell=0;cell<256;++cell) {
+        const Fp3 m{reduce_count_bits(counts.data()+cell,256),
+                    reduce_count_bits(counts.data()+64*256+cell,256),
+                    reduce_count_bits(counts.data()+128*256+cell,256)};
+        binary[cell]=binary[256+cell]=m; // And and Xor on the same original operands.
+    }
+    for(unsigned i=0;i<30;++i) copies[i]={reduce_count_bits(copy_counts.data()+i*192,1),
+        reduce_count_bits(copy_counts.data()+i*192+64,1),reduce_count_bits(copy_counts.data()+i*192+128,1)};
+    const Fp3 weights[4]={{P-3,7,11},{19,P-5,23},{29,31,P-7},{37,41,43}};
+    const uint32_t is_xor[2]={0,1};
+    for(unsigned slot=0;slot<240;++slot) {
+        const Fp3 got=weighted_moment(slot,binary.data(),copies.data(),weights,weights+2,is_xor,2,2);
+        Fp3 direct{};
+        for(unsigned k=0;k<n;++k) {
+            const Fp3 w{eq[k][0],eq[k][1],eq[k][2]};
+            const unsigned i=slot<225?slot/15:slot-225, j=slot%15;
+            const bool x=(values[k][0]>>i)&1, y=(values[k][1]>>i)&1;
+            if(slot<225) {
+                if(x&&((values[k][1]>>j)&1)) direct=add(direct,mul(w,sub(weights[0],add(weights[1],weights[1]))));
+            } else {
+                if(x) direct=add(direct,mul(w,add(weights[1],weights[2])));
+                if(y) direct=add(direct,mul(w,add(weights[1],weights[3])));
+            }
+        }
+        if(got.c0!=direct.c0||got.c1!=direct.c1||got.c2!=direct.c2) return false;
+    }
     return true;
 }
 
-int main() {
+bool location_check() {
+    for(unsigned old:{0u,150u,300u}) {
+        const unsigned per_head=150*old+150*151/2, key_domain=old?512:256;
+        unsigned rank=0;
+        for(unsigned group=0;group<128;++group) for(unsigned q=0;q<150;++q) {
+            for(unsigned key:{0u,old+q}) for(unsigned position:{0u,7u,14u}) {
+                const RatioLocation at=ratio_location(rank+key,old,position);
+                const unsigned layer=position*4+group/32, head=group%32;
+                if(at.cell!=(layer*32+head)*per_head+q*old+q*(q+1)/2+key ||
+                   at.denominator!=(layer*32+head)*150+q ||
+                   at.suffix!=((group*256+q)*key_domain+key)) return false;
+            }
+            rank+=old+q+1;
+        }
+        if(rank!=128*per_head) return false;
+    }
+    return true;
+}
+
+bool original_eq_check() {
+    for(unsigned old:{0u,150u,300u}) for(unsigned boundary:{0u,1u,2u}) {
+        const unsigned bits=old?24:23, high=bits-12, count=1u<<high;
+        std::vector<Fp3> point(bits), tables(count+4096);
+        for(unsigned i=0;i<bits;++i) point[i]=boundary<2?Fp3{boundary,0,0}:Fp3{P-7-i,13+i,29+i};
+        for(unsigned i=0;i<count;++i) tables[i]=equality_at(point.data(),high,i);
+        for(unsigned i=0;i<4096;++i) tables[count+i]=equality_at(point.data()+high,12,i);
+        const unsigned n=128*(150*old+150*151/2);
+        for(unsigned rank:{0u,1u,255u,256u,16383u,16384u,n-1}) {
+            const unsigned index=ratio_location(rank,old,0).suffix;
+            const Fp3 got=mul6(tables[index>>12],tables[count+(index&4095)]);
+            Fp3 expected{1,0,0};
+            // Independent original-coordinate evaluation with the direct product.
+            for(unsigned i=0;i<bits;++i)
+                expected=mul(expected,(index>>(bits-1-i))&1?point[i]:sub(Fp3{1,0,0},point[i]));
+            if(got.c0!=expected.c0||got.c1!=expected.c1||got.c2!=expected.c2) return false;
+        }
+    }
+    return true;
+}
+
+// Native-generated public schedules and original packed inputs/outputs only.
+// Bounded file reader; this exercises the GPU's slot layout on CPU, not CUDA.
+unsigned replay_fixture(const char* path) {
+    std::ifstream in(path,std::ios::binary);
+    in.exceptions(std::ios::failbit|std::ios::badbit);
+    char magic[8]; in.read(magic,8);
+    if(std::string(magic,8)!="C71DAG01") throw std::runtime_error("bad DAG fixture");
+    auto read32=[&]() {
+        uint8_t b[4]; in.read(reinterpret_cast<char*>(b),4);
+        return uint32_t(b[0])|(uint32_t(b[1])<<8)|(uint32_t(b[2])<<16)|(uint32_t(b[3])<<24);
+    };
+    auto read64=[&]() { const uint64_t lo=read32(); return lo|(uint64_t(read32())<<32); };
+    const unsigned cases=read32();
+    if(!cases||cases>95) throw std::runtime_error("DAG cases exceed bound");
+    for(unsigned c=0;c<cases;++c) {
+        const unsigned depth=read32(), ports=read32(), slots=read32(), stages=read32();
+        const unsigned nodes=read32(), wires=read32();
+        if(depth!=c||ports!=98||slots<ports||slots>16384||stages>94||nodes>100000||wires>4096)
+            throw std::runtime_error("DAG shape exceeds bound");
+        std::vector<uint32_t> boundaries(stages+1), outputs(wires);
+        std::vector<std::array<uint32_t,4>> ops(nodes);
+        for(auto& n:boundaries) n=read32();
+        for(auto& g:ops) for(auto& n:g) n=read32();
+        for(auto& n:outputs) { n=read32(); if(n>=slots) throw std::runtime_error("DAG output"); }
+        if(boundaries[0]!=0||boundaries.back()!=nodes) throw std::runtime_error("DAG bounds");
+        for(unsigned d=0;d<stages;++d) {
+            if(boundaries[d]>boundaries[d+1]||boundaries[d+1]>nodes) throw std::runtime_error("DAG order");
+            std::vector<bool> writes(slots);
+            for(unsigned i=boundaries[d];i<boundaries[d+1];++i) {
+                const auto g=ops[i];
+                if(g[0]>1||g[1]>=slots||g[2]>=slots||g[3]>=slots||writes[g[1]])
+                    throw std::runtime_error("DAG gate");
+                writes[g[1]]=true;
+            }
+            for(unsigned i=boundaries[d];i<boundaries[d+1];++i)
+                if(writes[ops[i][2]]||writes[ops[i][3]]) throw std::runtime_error("DAG stage race");
+        }
+        for(unsigned trial=0;trial<3;++trial) {
+            std::vector<uint64_t> values(slots);
+            for(unsigned i=0;i<ports;++i) values[i]=read64();
+            for(const auto g:ops) values[g[1]]=g[0]?(values[g[2]]^values[g[3]]):(values[g[2]]&values[g[3]]);
+            for(const auto n:outputs) if(values[n]!=read64()) throw std::runtime_error("original wire differs");
+        }
+    }
+    return cases;
+}
+
+int main(int argc, char** argv) {
     std::array<uint32_t,64> edge;
     edge.fill(0x7ffffffeu);
     const __uint128_t expected=__uint128_t(0x7ffffffeu)*UINT64_MAX;
     const bool boundary=reduce_count_bits(edge.data(),1)==uint64_t(expected%FIELD_P);
-    const bool ok=boundary&&host_check(17)&&host_check(256)&&host_check(513);
+    const unsigned native_cases=argc==2?replay_fixture(argv[1]):0;
+    const bool ok=boundary&&location_check()&&original_eq_check()&&host_check(17)&&host_check(256)&&host_check(513);
     std::cout << "{\"host_exact_gram_and_fragments\":" << (ok?"true":"false")
-        << ",\"gpu_execution\":false,\"credit\":false}\n";
+        << ",\"native_shared_replay_cases\":" << native_cases
+        << ",\"original_suffix_mapping\":true,\"gpu_execution\":false,\"credit\":false}\n";
     return ok?0:1;
 }

@@ -906,7 +906,15 @@ CUDA. Il backend selezionato rimane quello a istogrammi di cinque bit.
 Il packing trasforma in-place ciascun tile dopo averne acquisito tutti i
 512 B in shared memory; una fence separa producer e consumer. Dopo
 l’ultimo batch, stage e piano replay sono liberati prima dei momenti Fp3;
-i contatori restano vivi fino alla fence di riduzione. Il port integrato,
+i contatori restano vivi fino alla fence di riduzione. Il producer CUDA
+consuma direttamente la cache originale E/Pi/Z: un CTA costruisce quattro
+posizioni suffix e valuta il DAG pubblico in shared memory. Gli output
+di uno stesso livello non sovrascrivono nessun input; gli slot scaduti
+sono riusati soltanto dopo la barriera. La compattazione elimina solo
+padding pubblico: Eq usa il suffix originale, ricostruito da layer/head/
+query/key, con due tabelle di mezzi punti, anche per sfide 0/1. Il
+compiler pubblico si prepara prima della risposta; i trasferimenti dei
+piani per livello sono conteggiati nella prova. Il port integrato,
 il refinement e l’esecuzione CUDA restano da verificare.
 
 

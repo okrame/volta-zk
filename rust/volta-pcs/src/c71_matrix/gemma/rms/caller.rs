@@ -387,7 +387,7 @@ impl Sources {
                 .expect("validated RMS padded cell domain")
                 .map(|(norm, _, _)| profiles[norm])
         };
-        let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+        let mut rows = correlations.by_ref().take(count);
         self.bind(s, parameters, fs);
         let (mut statistics, mut pending, mut triples) = (Vec::new(), Vec::new(), Vec::new());
         for (ordinal, n) in self.norms.iter().enumerate() {
@@ -411,9 +411,8 @@ impl Sources {
         // Materialize each original P/Y cell byte once and each row statistic
         // once. Joint GKR replays this bounded checkpoint; it never re-reads
         // the numeric producer or expands padding into N frame rows.
-        let frames = CompactFrames::build(self, |source, row, col, byte| {
-            Ok(read(source, row, col, byte))
-        })?;
+        let frames =
+            CompactFrames::build(self, |source, row, col, byte| Ok(read(source, row, col, byte)))?;
         let gs = gkr::Statement {
             root: s.auxiliary,
             profile: s.auxiliary_gamma,
@@ -449,7 +448,7 @@ impl Sources {
                 .expect("validated RMS padded cell domain")
                 .map(|(norm, _, _)| profiles[norm])
         };
-        let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+        let mut rows = correlations.by_ref().take(count);
         self.bind(s, parameters, fs);
         let (mut pending, mut triples) = (Vec::new(), Vec::new());
         for (ordinal, proof) in proof.statistics.iter().enumerate() {
@@ -898,8 +897,26 @@ mod tests {
                     &mut prows,
                 )
                 .unwrap();
-            let (rms_proof, rms) =
-                sources.prove_rms(&statement, &parameters, read, &mut fs, &mut prows).unwrap();
+            let expanded = std::cell::Cell::new(0);
+            let first_read = std::cell::Cell::new(false);
+            let required_rms = sources.rms_required(&statement, &parameters).unwrap();
+            let mut lazy_rows = prows.by_ref().inspect(|_| expanded.set(expanded.get() + 1));
+            let (rms_proof, rms) = sources
+                .prove_rms(
+                    &statement,
+                    &parameters,
+                    |source, row, column, byte| {
+                        if !first_read.replace(true) {
+                            assert!(expanded.get() < required_rms);
+                        }
+                        read(source, row, column, byte)
+                    },
+                    &mut fs,
+                    &mut lazy_rows,
+                )
+                .unwrap();
+            assert!(first_read.get());
+            assert_eq!(expanded.get(), required_rms);
             let mut rne_proofs = Vec::new();
             let mut rne_targets = Vec::new();
             for (source, view, shape, point, original) in demands(&sources, &plan, &p0, &rms) {
@@ -979,9 +996,12 @@ mod tests {
             let mut fs = start();
             let mut vrows = keys.into_iter();
             let p0 = plan.verify_p0(&statement, &p0_proof, delta, &mut fs, &mut vrows).unwrap();
+            expanded.set(0);
+            let mut lazy_keys = vrows.by_ref().inspect(|_| expanded.set(expanded.get() + 1));
             let rms = sources
-                .verify_rms(&statement, &parameters, &rms_proof, delta, &mut fs, &mut vrows)
+                .verify_rms(&statement, &parameters, &rms_proof, delta, &mut fs, &mut lazy_keys)
                 .unwrap();
+            assert_eq!(expanded.get(), required_rms);
             let mut rne_targets = Vec::new();
             let mut rejected = false;
             for ((source, view, shape, point, original), proof) in

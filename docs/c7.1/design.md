@@ -251,6 +251,15 @@ conversioni tra tipi PCS spostano i payload senza roundtrip JSON. I test
 con monete fissate controllano transcript, wire e MAC; i punti di ingresso
 ordinari continuano a usare monete fresche da OsRng.
 
+Il dispatcher RMS prende ora in prestito l'intervallo MAC con `Take`,
+per entrambi i ruoli, senza raccoglierlo in un secondo Vec prima della
+prima statistica. I controlli di capacità e consumo esatto sul successo
+restano invariati. Un errore del componente può lasciare righe non espanse:
+il burn dell'intera riserva e lo Stop definitivo appartengono al wrapper
+nativo/pool, non al consumo fisico dell'iteratore. I kernel interni GKR e
+statistic conservano ancora i propri buffer; questa rimozione non dichiara
+un percorso interamente privo di copie o un nuovo picco canonico.
+
 Il callback delle righe RS ora riduce per blocchi il polinomio originale
 modulo il prodotto dei punti pubblici richiesti, riusando la DFT nativa.
 L'inverso della monica rovesciata e il suo spettro sono comuni alle colonne;

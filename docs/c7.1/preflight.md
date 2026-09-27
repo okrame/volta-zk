@@ -1977,6 +1977,13 @@ La catena WHIR D10 coincide con il backend originale a monete fissate;
 passano anche la proof streaming ideale e W replay/A ordinata con Seed6
 reale in 47,36 s. È correttezza ridotta, non una misura H100.
 
+Il dispatcher RMS non espande più preventivamente l'intera propria
+riserva Auth/Key in un Vec: passa un `Take` ai componenti originali.
+La cardinalità sul successo non cambia; su errore il wrapper resta
+responsabile del burn completo e non può riutilizzare il suffisso non
+materializzato. Restano buffer interni GKR/statistic e altre riserve
+componenti: nessun nuovo margine arena o picco fisico viene attribuito.
+
 ## Seed6: seal di completamento
 
 Evidenza: [29 controlli Rust e 28 Python/C++ su SHA pulita](evidence.md#seed6-completion-seals).

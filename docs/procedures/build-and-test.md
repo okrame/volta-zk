@@ -146,6 +146,13 @@ Ripetere `tests/test_c71_query_remainder.py` come oracolo algebrico indipendente
 Il cap ridotto e le chiamate per sottoalbero non sono una scansione unica
 dell'oracolo canonico; non aumentare i limiti in caso di timeout.
 
+Per gli intervalli RMS in prestito usare `c71_b12_gemma_rms_dispatch`:
+il fixture unisce P0/RMS/RNE e le PCS originali, osserva l'iteratore lazy
+prima del primo getter privato e verifica il consumo totale nei due ruoli.
+Ripetere composed, certificate e i filtri separati Seed6 partial, W replay/A
+ordinata e full O0 late rejection, entro 60 s/2 GiB ciascuno. L'errore di un
+componente non autorizza a riutilizzare la parte della riserva non espansa.
+
 Per il raccordo del verifier canonico al medesimo pool lazy eseguire
 separatamente `c71_b12_native_registry` e `c71_b12_native_dispatch_canonical`.
 Con feature Seed6 il primo verifica anche shortage con setup 25+6 su

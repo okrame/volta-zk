@@ -2035,3 +2035,31 @@ esclusivo. Sono verificati successo, errore del produttore e pubblicazione
 concorrente: niente file finale parziale, overwrite o temporanei residui
 dopo le normali eccezioni. Non è un journal anti-rollback o un commit
 distribuito; tutti i limiti di calibrazione e credito restano invariati.
+
+## Replay installed W with ordered A
+
+Il [record su SHA pulita `681def8`](../../benchmarks/results/c71-replay-weight-2026-09-27-681def8befff.json)
+conserva nove test Rust seriali entro 60 s/2 GiB, più check non-test B12
+e Seed6. Il packed W immutabile è condiviso fra Prepare e ReplayModel;
+il controllo D10 confronta valori positivi/negativi e padding con il
+precedente oracolo virtuale, e verifica che la corruzione numerica test-only
+copy-on-write non cambi il getter committato. Layout e i16::MIN sono respinti.
+
+La proof completa O=0 con W replay e A ordinata termina in 47,56 s con
+Seed6 reale t=4/h=19/ell=2, 264.147 righe base / 88.049 MAC Fp3 originali
+e una promozione con receipt coincidente dopo i journal dei due ruoli.
+Passano anche streaming ideale, tre tentativi densi, W e predecessore
+alterati, regressione joint e shortage. Il controllo dell'attributo ignore
+non riesegue il precedente test a due accettazioni fuori budget.
+
+Il record conserva due errori di sviluppo corretti: accesso del diagnostic
+joint al vecchio campo denso e getter W oltre il dominio minimo della
+mappa raw. Il secondo falliva prima del bootstrap; la correzione fornisce
+la coda zero pubblica prima della mappa, senza allentarne il controllo.
+Nessuna nuova identità crittografica o riserva viene introdotta.
+
+È eliminata la copia virtuale persistente di W nel riferimento ridotto,
+non il packed né workspace FFT/hash. Il getter conserva anche metadata
+del profilo; non se ne presume la condivisione con i profili dello State
+né costo nullo. Non è reader file-backed canonico, Γ calibrato, port GPU,
+picco completo o GO H100.

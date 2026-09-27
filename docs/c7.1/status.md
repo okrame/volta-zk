@@ -128,10 +128,11 @@ ridotto riusa questo corpo invece dei loop fissati a hidden=2. È controllato
 su sorgenti originali piccole, non l'esecuzione P0 sui pesi canonici.
 Non è ancora un'inferenza canonica.
 
-L'installazione W ridotta può ora usare il backend replay: un solo packed
+L'[installazione W ridotta](evidence.md#replay-installed-w-with-ordered-a) ora passa la proof O=0 con Seed6 reale e A ordinata: un solo packed
 immutabile alimenta Prepare e il getter PCS, senza la seconda copia W
 virtuale densa. Range simmetrico e chiusura W passano dall'adapter comune
-già usato per A. Non è ancora installazione canonica o picco fisico.
+già usato per A. Il controllo usa t=4/h=19/ell=2; non è ancora
+installazione canonica, tre accettazioni reali o picco fisico.
 
 Il [corpo del verifier canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
 ora implementa la schedule completa di security §3 con ricette comuni,

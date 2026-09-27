@@ -272,7 +272,7 @@ impl Code {
             Arc::new(move |indices| rowcode.rows(indices)),
         )?;
         let lease = state.map(State::replay_lease).transpose()?.flatten();
-        Ok((root, ZkWhirReplayHandle::new(Oracle { tree, base, lease })))
+        Ok((root, ZkWhirReplayHandle::new(Oracle { tree: Arc::new(tree), base, lease })))
     }
 }
 
@@ -284,9 +284,9 @@ impl Code {
 pub(in crate::c71_matrix) struct ReplayModel {
     domain: Domain,
     root: C61Commitment,
-    seed: [u8; 32],
-    salt_seed: [u8; 32],
     source: Getter,
+    tree: Arc<Tree>,
+    pads: Arc<[Goldilocks]>,
 }
 
 impl ReplayModel {
@@ -296,13 +296,25 @@ impl ReplayModel {
         salt_seed: [u8; 32],
         source: Getter,
     ) -> Result<Self, String> {
-        let mut model =
-            Self { domain, root: C61Commitment::new(vec![[0; 32]]), seed, salt_seed, source };
-        let mut setup = Fs::new(b"C71 model setup, Delta independent", 0);
-        let (root, handle, _) = model.commit_initial(&mut setup)?;
-        drop(handle);
-        model.root = root;
-        Ok(model)
+        let config = domain.config()?;
+        let first = config.round_folding_factor(0);
+        let mut rng = PrivateRng::from_seed(seed);
+        let pads: Arc<[Goldilocks]> =
+            (0..config.oracle_randomness[0] << first).map(|_| rng.random()).collect();
+        let len = 1usize << config.num_variables;
+        let height = (len >> first) << config.starting_log_inv_rate;
+        let mmcs = ObservedMmcs::new(Fs::new(b"C71 model setup, Delta independent", 0), salt_seed);
+        let _extension = mmcs.clone();
+        let (root, handle) = Code {
+            get: source.clone(),
+            len,
+            width: 1 << first,
+            height,
+            pads: Pads::Base(pads.clone()),
+        }
+        .commit(&mmcs.inner, None)?;
+        let oracle = handle.downcast::<Oracle>().map_err(|_| "C71 initial replay handle type")?;
+        Ok(Self { domain, root, source, tree: oracle.tree, pads })
     }
 
     pub(in crate::c71_matrix) fn new_checked(
@@ -335,30 +347,8 @@ impl ReplayModel {
         from_p3((self.source)(index))
     }
 
-    fn commit_initial(
-        &self,
-        fs: &mut Fs,
-    ) -> Result<(C61Commitment, ZkWhirReplayHandle, Arc<[Goldilocks]>), String> {
-        let config = self.domain.config()?;
-        let first = config.round_folding_factor(0);
-        let mut rng = PrivateRng::from_seed(self.seed);
-        let pads: Arc<[Goldilocks]> =
-            (0..config.oracle_randomness[0] << first).map(|_| rng.random()).collect();
-        let len = 1usize << config.num_variables;
-        let height = (len >> first) << config.starting_log_inv_rate;
-        let mmcs = ObservedMmcs::new(fs.clone(), self.salt_seed);
-        // Match `HidingWhirProver::new`: cloning forks the extension salt
-        // stream by consuming one seed from the base stream before its commit.
-        let _extension = mmcs.clone();
-        let (root, handle) = Code {
-            get: self.source.clone(),
-            len,
-            width: 1 << first,
-            height,
-            pads: Pads::Base(pads.clone()),
-        }
-        .commit(&mmcs.inner, None)?;
-        Ok((root, handle, pads))
+    fn initial_handle(&self) -> ZkWhirReplayHandle {
+        ZkWhirReplayHandle::new(Oracle { tree: self.tree.clone(), base: true, lease: None })
     }
 }
 
@@ -386,12 +376,9 @@ pub(in crate::c71_matrix) fn prove_pcs_sourcewise_with_coins(
         return Err("C71 replay source and PCS domains differ".into());
     }
     fs.set_phase(0x200);
-    census::mark("prover_commit_rematerialization")?;
-    let (root, handle, pads) = model.commit_initial(fs)?;
-    if root != model.root {
-        return Err("C71 replay source changed the installed model root".into());
-    }
-    fs.observe(root);
+    census::mark("prover_cached_initial_oracle")?;
+    let handle = model.initial_handle();
+    fs.observe(model.root.clone());
     census::mark("prover_pcs")?;
     let dft = Radix2DFTSmallBatch::default();
     let base = ObservedMmcs::new(fs.clone(), coins.salt_seed);
@@ -414,7 +401,7 @@ pub(in crate::c71_matrix) fn prove_pcs_sourcewise_with_coins(
     let mut rng = PrivateRng::from_seed(coins.seed);
     let proved = prover.prove_claimless_replay_with_oracle(
         1 << config.num_variables,
-        &pads,
+        &model.pads,
         handle,
         &claims,
         to_p3(mask.x),
@@ -470,7 +457,7 @@ fn owned_proof(
     ZkWhirProof { sumchecks, sumcheck_mask_commitments, rounds, base_case }
 }
 struct Oracle {
-    tree: Tree,
+    tree: Arc<Tree>,
     base: bool,
     lease: Option<Lease>,
 }
@@ -678,25 +665,22 @@ pub(in crate::c71_matrix) fn compare_source(
     census::mark("sourcewise_initial_commit").unwrap();
     let mut replay_fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
     replay_fs.set_phase(0x200);
-    let original_mmcs = ObservedMmcs::new(replay_fs.clone(), salt_seed);
-    let _original_extension = original_mmcs.clone(); // the native initial-construction fork
+    let model = ReplayModel::new_checked(
+        Domain::Flat(dimension),
+        root.clone(),
+        root_seed,
+        salt_seed,
+        source.clone(),
+    )
+    .unwrap();
     let mut initial_rng = PrivateRng::from_seed(root_seed);
     let first = config.round_folding_factor(0);
     let pads: Arc<[Goldilocks]> =
         (0..config.oracle_randomness[0] << first).map(|_| initial_rng.random()).collect();
-    let height = ((1 << dimension) >> first) << config.starting_log_inv_rate;
-    let (replay_root, handle) = Code {
-        get: source.clone(),
-        len: 1 << dimension,
-        width: 1 << first,
-        height,
-        pads: Pads::Base(pads.clone()),
-    }
-    .commit(&original_mmcs.inner, None)
-    .unwrap();
-    assert_eq!(root, replay_root);
+    assert_eq!(pads, model.pads);
+    let handle = model.initial_handle();
     assert_eq!(root_rng.position(), initial_rng.position());
-    replay_fs.observe(replay_root.clone());
+    replay_fs.observe(model.root.clone());
     let base = ObservedMmcs::new(replay_fs.clone(), [83; 32]);
     let extension = base.clone();
     let base_ref = &base;
@@ -792,6 +776,54 @@ pub(in crate::c71_matrix) fn compare_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_b12_retained_initial_oracle_shares_cache_without_source_recommit() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+        let reads = Arc::new(AtomicUsize::new(0));
+        let changed = Arc::new(AtomicBool::new(false));
+        let source_reads = reads.clone();
+        let source_changed = changed.clone();
+        let source: Getter = Arc::new(move |index| {
+            source_reads.fetch_add(1, Ordering::Relaxed);
+            let value =
+                index % 251 + usize::from(index == 0 && source_changed.load(Ordering::Relaxed));
+            E::from(Goldilocks::new(value as u64))
+        });
+        let model = ReplayModel::new(Domain::Flat(10), [91; 32], [73; 32], source.clone()).unwrap();
+        let installed_reads = reads.load(Ordering::Relaxed);
+        assert!(installed_reads > 0);
+        for _ in 0..3 {
+            let handle = model.initial_handle();
+            let oracle = handle.downcast_ref::<Oracle>().unwrap();
+            assert!(Arc::ptr_eq(&model.tree, &oracle.tree));
+            assert_eq!(Arc::strong_count(&model.tree), 2);
+            assert!(oracle.base);
+            assert!(oracle.lease.is_none());
+            assert_eq!(reads.load(Ordering::Relaxed), installed_reads);
+        }
+        assert_eq!(Arc::strong_count(&model.tree), 1);
+        let first = model.initial_handle();
+        let first = first.downcast_ref::<Oracle>().unwrap();
+        let opened = first.tree.open(&[1, 33, 1]).unwrap();
+        let second = model.initial_handle();
+        let second = second.downcast_ref::<Oracle>().unwrap();
+        let repeated = second.tree.open(&[1, 33, 1]).unwrap();
+        assert_eq!(opened.0, repeated.0);
+        assert_eq!(opened.1 .0, repeated.1 .0);
+        assert_eq!(opened.1 .1.sibling_hashes, repeated.1 .1.sibling_hashes);
+        changed.store(true, Ordering::Relaxed);
+        assert!(first.tree.open(&[1, 33, 1]).is_err());
+        assert!(ReplayModel::new_checked(
+            Domain::Flat(10),
+            model.root.clone(),
+            [91; 32],
+            [73; 32],
+            source,
+        )
+        .is_err());
+    }
 
     #[test]
     fn c71_b12_query_factors_balanced_product_and_newton_match_direct_oracle() {

@@ -134,6 +134,12 @@ virtuale densa. Range simmetrico e chiusura W passano dall'adapter comune
 già usato per A. Il controllo usa t=4/h=19/ell=2; non è ancora
 installazione canonica, tre accettazioni reali o picco fisico.
 
+`ReplayModel` ora conserva la cache Merkle iniziale e i pad di W/A;
+gli handle condividono la stessa tree senza rieseguire il commitment
+prima della proof. Le root storiche conservano ciascuna la propria
+cache; coin della proof, correlazioni e budget di esposizione non cambiano.
+Questo storage resta vivo e va incluso nel picco completo.
+
 Le [righe PCS replay](evidence.md#native-fft-remainder-in-replay-openings) usano ora il riduttore FFT per blocchi con i pad
 originali, invece di valutare tutta la sorgente per ogni query. È un
 callback limitato a 1.024 richieste, non l'apertura canonica completa.

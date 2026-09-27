@@ -1974,6 +1974,16 @@ nessun risparmio canonico o picco fisico è accreditato dal solo raccordo.
 Il positivo ridotto O=0 W replay/A ordinata usa Seed6 reale ell=2 e termina
 in 47,56 s entro il limite locale; non è il run canonico o tre accettazioni.
 
+Il modello replay ora conserva cache superiore, offset/snapshot dei sali
+e pad iniziali invece di rifare il commitment all'inizio della proof.
+Gli handle condividono la tree; ogni apertura rigenera ancora i sottoalberi
+richiesti e controlla le loro root. Le coin della proof e le correlazioni
+rimangono fresche e il wrapper conserva il budget originale delle root.
+Cache e pad sono storage persistente di ciascuna W/A viva, non memoria
+liberata dopo l'installazione. Il marker locale
+`prover_cached_initial_oracle` distingue questo percorso dalla
+rematerializzazione ancora presente nel riferimento denso.
+
 Il [callback RS del replay](evidence.md#native-fft-remainder-in-replay-openings) ora usa riduzione FFT a blocchi invece di
 Horner sull'intera sorgente per ciascuna query. Il riferimento mantiene
 pad e ordine originali, batch fino a 1.024 richieste e una lettura di ogni

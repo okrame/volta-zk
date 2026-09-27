@@ -281,7 +281,20 @@ la propria riga; gli errori restano terminali nel wrapper già bruciato.
 
 Il callback delle righe RS ora riduce per blocchi il polinomio originale
 modulo il prodotto dei punti pubblici richiesti, riusando la DFT nativa.
-L'inverso della monica rovesciata e il suo spettro sono comuni alle colonne;
+`ReplayModel` conserva dalla prima costruzione la cache superiore Merkle,
+gli offset/snapshot dei sali e gli stessi pad privati. I successivi handle
+condividono la tree tramite `Arc`, senza ricostruire il commitment iniziale
+né rileggere la sorgente. La clonazione MMCS iniziale conserva il fork
+del riferimento prima del primo sale; root e pad non cambiano.
+Le monete della proof e i MAC restano freschi, con il medesimo budget
+di esposizioni posseduto dal wrapper. Non è riuso di correlazioni o
+di maschere dei round successivi. Getter e snapshot devono restare
+immutabili; ogni sottoalbero aperto è ancora confrontato con la root
+memorizzata. La cache iniziale vive quanto W/A e si somma alle altre
+root attive; il rilascio delle generazioni foldate resta distinto.
+
+Nella riduzione per blocchi, l'inverso della monica rovesciata e il suo
+spettro sono comuni alle colonne;
 ogni blocco usa solo la metà alta per il quoziente, evitando alias ciclici.
 Payload, coda zero e pad privati rimangono agli stessi offset contigui;
 il percorso extension conserva tutte e tre le componenti. La riduzione

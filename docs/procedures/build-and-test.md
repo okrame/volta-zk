@@ -163,6 +163,18 @@ Cap e indici invalidi vengono rifiutati senza callback; l'apertura vuota
 non legge righe. Più batch non sono una scansione unica dell'oracolo
 canonico; non aumentare i limiti in caso di timeout.
 
+Per la cache iniziale trattenuta aggiungere `c71_b12_retained_initial`:
+controlla condivisione della stessa tree, zero letture durante la creazione
+degli handle, sali/frontiera riproducibili e rifiuto di una sorgente alterata.
+Ripetere `c71_b12_retained_lifecycle` per il rilascio delle generazioni foldate.
+`c71_b12_full_sourcewise_chain` passa ora dalla stessa cache e confronta
+anche i pad con il riferimento originale. Ripetere streaming e Seed6 W
+replay/A ordinata, separatamente entro 60 s/2 GiB. Non sono tre tentativi
+autenticati né una deroga al timeout del test ordinato a due risposte.
+Ripetere separatamente `c71_b12_ordered_sourcewise_o0`,
+`c71_b12_ordered_sourcewise_o2` e `c71_b12_ordered_sourcewise_o4` per
+la parità WHIR sulle sorgenti della storia numerica.
+
 Per gli intervalli RMS in prestito usare `c71_b12_gemma_rms_dispatch`:
 il fixture unisce P0/RMS/RNE e le PCS originali, osserva l'iteratore lazy
 prima del primo getter privato e verifica il consumo totale nei due ruoli.

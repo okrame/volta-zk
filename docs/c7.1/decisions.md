@@ -15,11 +15,16 @@ piano concreto per l'autorizzazione. Motivo: produrre il prerequisito
 numerico su hardware separatamente autorizzato, senza usare la sua assenza
 come permesso implicito di download, macchina o spesa. Il
 [piano](../procedures/c71-calibration.md) propone una sola campagna,
-24 h / 110 USD massimi, con hash pinned, replay O=0/150/300, stop e freeze
+ridotta dalla successiva richiesta del proprietario a **8 h massime**,
+con tetto di spesa proposto aggiornato a **40 USD**, hash pinned,
+replay O=0/150/300, stop e freeze
 condizionato all'audit; non è un GO. I comandi esistenti sono CPU anche
 su host H100; golden reali/audit completo Python/Rust restano mancanti.
 La chiusura del tracker riguarda il handoff richiesto, non una falsa
 chiusura dei gate Γ/ledger/picco/prova o una deroga ai 65 s.
+L'obiettivo ideale è completare tutti i test E2E: la priorità è la catena
+numerica completa, ma tool mancanti o timeout restano fallimenti aperti,
+senza prolungare la campagna né dichiarare passati test non eseguiti.
 
 Il **2026-09-26** il proprietario ha scelto **Γ calibrato del modello reale**
 per il goal locale «C7.1 pronto per il minimo esperimento H100».

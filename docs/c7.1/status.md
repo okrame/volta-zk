@@ -12,8 +12,10 @@ Il 2026-09-27 il proprietario ha chiesto di separare la calibrazione,
 prepararne il [piano operativo](../procedures/c71-calibration.md) e poi
 chiudere il goal locale per continuare su H100. Questo steering sostituisce
 il precedente criterio di chiusura del tracker, non i gate della prova.
-Il piano propone una campagna fino a 24 h / 110 USD, non ancora approvata,
-con shard pinned, comandi, controlli, deadline e condizioni di freeze.
+Il piano, ristretto su richiesta del proprietario, propone una campagna
+fino a 8 h / 40 USD, non ancora approvata, con shard pinned, comandi,
+controlli, deadline e condizioni di freeze. Completare tutti gli E2E è
+l'obiettivo ideale, non un risultato garantito né una deroga alla deadline.
 I tool attuali usano CPU anche su host H100; manca ancora l'audit completo
 Python/Rust dei golden reali necessario al freeze ammesso. Nessun download,
 pod, esecuzione GPU o spesa è autorizzato da questa separazione.

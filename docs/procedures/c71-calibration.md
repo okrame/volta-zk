@@ -9,8 +9,8 @@ Il [preflight della prova](../c7.1/preflight.md) resta NO-GO e distinto.
 ## Richiesta di autorizzazione proposta
 
 Autorizzare eventualmente **una sola campagna**, una sola candidata Γ,
-su un pod H100 SXM 80 GB, fino a **24 ore dalla creazione**, tetto assoluto
-**110 USD inclusi storage, eventuali imposte e altri addebiti**. Nessuna
+su un pod H100 SXM 80 GB, fino a **8 ore dalla creazione**, tetto assoluto
+proposto **40 USD inclusi storage, eventuali imposte e altri addebiti**. Nessuna
 ripartenza, proroga, cambio delle scale o seconda macchina impliciti.
 Il GO deve riportare SHA pulita, immagine/container digest, regione,
 offerta effettiva, deadline del provider e approvazione di questi limiti.
@@ -24,7 +24,15 @@ Un host CPU equivalente è l'alternativa meno costosa, da selezionare
 esplicitamente prima del GO. Non sostituire il replay con Transformers,
 BF16, TF32 o inferenza floating: non verificano la relazione intera C7.1.
 
-Il completamento entro 24 ore **non è misurato né garantito**. Il pilot
+Il proprietario ha ristretto il limite a 8 ore, indicando come obiettivo
+ideale il completamento di tutti i test E2E. Si dà priorità alla catena
+completa di calibrazione sui tre contesti, poi alla ripetibilità e agli
+audit; non si sostituisce un E2E incompleto con test di soli componenti.
+Gli E2E della prova canonica richiedono ancora i relativi adapter e gate:
+non sono resi disponibili né autorizzati da questo desiderio di copertura.
+Nessuna proroga delle 8 ore è implicita per finire i test.
+
+Il completamento entro 8 ore **non è misurato né garantito**. Il pilot
 conta 13.390.420.377.600 prodotti di matrice e 26.782.043.904.000 B di
 letture W logiche; non sono traffico fisico né un tempo H100. Il replay
 scalare può esaurire la deadline. L'esito ammesso in quel caso è un record
@@ -52,13 +60,13 @@ Il pack nativo verifica già header, entrambi i corpi e output persistito.
 Il [listino RunPod](https://www.runpod.io/pricing), consultato il
 2026-09-27, mostra H100 SXM a 3,49 USD/h, 125 GB RAM e 20 vCPU; storage
 container/volume running a 0,10 USD/GB/mese. Sono riferimenti pubblici,
-non un'offerta prenotata. Imporre compute ≤3,50 USD/h: 24 ore costano
-al più 84 USD, più circa 1,14 USD per 340 GB per 24 ore (mese di 720 ore).
-Il totale preventivato con imposte/extra deve comunque essere ≤110 USD;
+non un'offerta prenotata. Imporre compute ≤3,50 USD/h: 8 ore costano
+al più 28 USD, più circa 0,38 USD per 340 GB per 8 ore (mese di 720 ore).
+Il totale preventivato con imposte/extra deve comunque essere ≤40 USD;
 in caso contrario non creare il pod. Nessun network volume, disco idle,
 secondo pod, abbonamento o ricarica automatica incluso nella proposta.
 
-Usare **terminazione provider-side a 24 ore**, non soltanto `timeout`
+Usare **terminazione provider-side a 8 ore**, non soltanto `timeout`
 nel container. Verificare che la versione installata di `runpodctl`
 supporti `--terminate-after` e che la deadline sia realmente registrata;
 se manca, STOP, non sostituire con un timer locale. La
@@ -77,19 +85,19 @@ costare, come documentato nelle [opzioni storage](https://docs.runpod.io/pods/st
 
 | Fase seriale | Massimo |
 |---|---:|
-| Ambiente, build, controlli piccoli | 1 h |
-| Acquisizione dei due shard e hash durante il download | 1 h totale |
-| Ingest nativo, nuovo hash dei corpi e packed persistito | 1 h |
-| Pilot floating sui tre contesti e compilazione candidata | 4 h |
-| Replay intero completo da KV vuoto | 7 h |
-| Secondo replay indipendente da KV vuoto, stessa candidata | 7 h |
-| Tabelle, confronto, ledger, bundle e pubblicazione | 1 h |
-| Riserva per trasferimento log/stop | 2 h |
+| Ambiente, build, controlli piccoli | 45 min |
+| Acquisizione dei due shard e hash durante il download | 30 min totali |
+| Ingest nativo, nuovo hash dei corpi e packed persistito | 30 min |
+| Pilot floating sui tre contesti e compilazione candidata | 90 min |
+| Replay intero completo da KV vuoto | 120 min |
+| Secondo replay da KV vuoto, stessa candidata | 90 min |
+| Tabelle, confronto, ledger, bundle e pubblicazione | 45 min |
+| Riserva per trasferimento log/stop | 30 min |
 
-Totale massimo 24 h, incluse preparazione e download. Le deadline interne
+Totale massimo 8 h, incluse preparazione e download. Le deadline interne
 del pilot/replay non coprono tutti gli hash e la generazione tabelle:
 il timeout esterno copre l'intero comando. Nessuna fase parte se non ha
-il proprio budget residuo più almeno un'ora per conservare l'evidenza.
+il proprio budget residuo più almeno 30 minuti per conservare l'evidenza.
 Al primo errore si saltano le fasi successive e si pubblica il fallimento.
 
 ## Identità degli input
@@ -127,7 +135,7 @@ runpodctl pod create --image "$APPROVED_IMAGE_DIGEST" \
   --name c71-gamma-one-candidate --gpu-id "NVIDIA H100 80GB HBM3" \
   --gpu-count 1 --cloud-type SECURE --data-center-ids "$APPROVED_REGION" \
   --container-disk-in-gb 40 --volume-in-gb 300 \
-  --volume-mount-path /workspace --terminate-after 24h
+  --volume-mount-path /workspace --terminate-after 8h
 ```
 
 Il GPU ID va confrontato con `runpodctl gpu list`: se l'ID differisce,
@@ -155,7 +163,7 @@ export CARGO_TARGET_DIR="$ROOT/rust/target" CARGO_INCREMENTAL=0
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 RAYON_NUM_THREADS=1
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$ROOT/scripts"
-export CAMPAIGN_END_EPOCH=$((POD_CREATED_EPOCH + 23 * 3600))
+export CAMPAIGN_END_EPOCH=$((POD_CREATED_EPOCH + 8 * 3600 - 1800))
 ulimit -v 67108864
 run_step() {
   local seconds=$1 label=$2 code
@@ -182,9 +190,9 @@ upgrade non registrati; `pip freeze`, `rustc -Vv`, `cargo -V`, `uname -a`,
 quote/deadline, CPU/RAM/disco e SHA immagine vanno nei log.
 
 ```bash
-run_step 900 venv python3 -m venv .venv
-run_step 900 dependencies .venv/bin/python -m pip install numpy==2.5.1 pytest==9.1.1
-run_step 3600 build bash -c '
+run_step 300 venv python3 -m venv .venv
+run_step 300 dependencies .venv/bin/python -m pip install numpy==2.5.1 pytest==9.1.1
+run_step 1800 build bash -c '
   cd "$ROOT/rust"
   cargo fetch --locked
   cargo build --offline --locked -j 1 -p volta-pcs \
@@ -215,7 +223,7 @@ Download anonimo ove consentito; l'eventuale Secret è letto solo in
 memoria. Un solo tentativo, nessuna ripresa automatica di partial.
 
 ```bash
-run_step 3600 download .venv/bin/python - <<'PY'
+run_step 1800 download .venv/bin/python - <<'PY'
 import hashlib
 import os
 from pathlib import Path
@@ -251,7 +259,7 @@ for name, spec in SHARDS.items():
     partial.unlink()
     print(name, count, digest.hexdigest(), flush=True)
 PY
-run_step 3600 ingest .venv/bin/python scripts/c7_d126_gemma_weight_ingest.py pack \
+run_step 1800 ingest .venv/bin/python scripts/c7_d126_gemma_weight_ingest.py pack \
   --shard-dir "$SHARDS" --output "$PACKED" \
   --native-packer "$CARGO_TARGET_DIR/gemma31b_bf16_pack"
 export INGEST="$RUN/logs/ingest.stdout"
@@ -267,24 +275,24 @@ failure/partial senza ripararle in loco o cancellare l'evidenza.
 ### Pilot, tabelle e due replay interi
 
 ```bash
-run_step 14400 pilot .venv/bin/python scripts/c71_activation_pilot.py run \
+run_step 5400 pilot .venv/bin/python scripts/c71_activation_pilot.py run \
   --native "$NATIVE" --ingest-report "$INGEST" --packed "$PACKED" \
-  --output "$RUN/pilot" --timeout-seconds 13800
+  --output "$RUN/pilot" --timeout-seconds 5100
 export CANDIDATE="$RUN/pilot/candidate.json"
 chmod a-w "$CANDIDATE"
 run_step 60 recipes "$NATIVE" recipes "$CANDIDATE"
-run_step 1800 tables .venv/bin/python scripts/c71_calibrate.py tables \
+run_step 900 tables .venv/bin/python scripts/c71_calibrate.py tables \
   --native "$NATIVE" --candidate "$CANDIDATE" --output "$RUN/tables.bin"
 run_step 60 check-input "$NATIVE" check-input "$CANDIDATE" "$RUN/tables.bin"
-run_step 25200 integer-1 .venv/bin/python scripts/c71_calibrate.py run \
+run_step 7200 integer-1 .venv/bin/python scripts/c71_calibrate.py run \
   --native "$NATIVE" --candidate "$CANDIDATE" --ingest-report "$INGEST" \
   --packed "$PACKED" --output "$RUN/integer-1.json" \
-  --payload-bytes 8589934592 --timeout-seconds 24600
-run_step 25200 integer-2 .venv/bin/python scripts/c71_calibrate.py run \
+  --payload-bytes 8589934592 --timeout-seconds 6900
+run_step 5400 integer-2 .venv/bin/python scripts/c71_calibrate.py run \
   --native "$NATIVE" --candidate "$CANDIDATE" --ingest-report "$INGEST" \
   --packed "$PACKED" --output "$RUN/integer-2.json" \
-  --payload-bytes 8589934592 --timeout-seconds 24600
-run_step 1800 ledger .venv/bin/python scripts/c71_calibrate.py ledger \
+  --payload-bytes 8589934592 --timeout-seconds 5100
+run_step 900 ledger .venv/bin/python scripts/c71_calibrate.py ledger \
   --native "$NATIVE" --candidate "$CANDIDATE" --output "$RUN/ledger.json"
 ```
 

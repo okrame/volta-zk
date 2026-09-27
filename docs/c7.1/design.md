@@ -1549,7 +1549,10 @@ tre blocchi consecutivi con divisione diretta; il check CUDA a due colonne
 è compilato ma non eseguito. Supporta 2B quadrato e fattori base condivisi;
 il setup quadratico dei fattori è confinato alle fixture piccole.
 I due array twiddle, entrambi vivi nella pipeline, non ereditano il conto
-a una sola tabella del microbenchmark FFT isolato. Il confronto di confine
+a una sola tabella del microbenchmark FFT isolato. Il ledger remainder
+e il trace WHIR riservano ora 32B byte per le due tabelle di lunghezza 2B,
+ossia 64 MiB al cap iniziale 2^21; inizializzazione e runtime non sono
+gratuiti. Il confronto di confine
 ora esporta dal `Code` nativo coefficienti/pad originali, spettri del
 setup Newton e resti/righe attesi. Il C++ usa gli stessi spettri e scompone
 Fp3 in tre colonne base consecutive: non costruisce un altro modulo.

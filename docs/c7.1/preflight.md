@@ -125,8 +125,9 @@ La FFT quadrata 2048² già compilata è riusabile; l'harness espone ora
 anche inverse e normalizzazione fusa, compilate senza esecuzione GPU.
 Il riferimento a quattro FFT collega ora reverse/padding, prodotti
 spettrali e sottrazione del blocco basso su input piccoli. È controllo
-host e compilazione statica; input/pad originali e raccordo PCS/Fp3
-restano da collegare, senza esecuzione GPU.
+host e compilazione statica. Il confronto di confine usa ora fixture
+PCS/Fp3 con input/pad e spettri originali; il consumer vivo del prover
+e l'esecuzione GPU restano da collegare.
 
 Per N coefficienti base, arrotondati a blocchi, il nucleo sorgente paga
 **88N butterfly + 8N prodotti twiddle + 4N prodotti spettrali + 4N
@@ -282,7 +283,7 @@ Sono upper dei buffer nominati/cap proposti, non picchi misurati.
 | Suffix-first W, 15 round | C 2.848.456.704 + cache + scratch vivo | C rilasciata prima della seconda scansione; pesi/getter ancora da assegnare |
 | Seconda scansione linear W | B/L 50.331.648 + cache + scratch vivo | Rilascio prima PCS; linear A e vecchie A separati |
 | Commit PCS iniziale per coset | 6.197.215.896 | 5.739.381.472 nominati + cache + slot reader/hash 256 MiB + istogramma + output PCG 128 KiB + carry 64 B; restano 245.235.048 B |
-| Apertura per resti | 5.402.895.408 | Include output 2 GiB, alberi/fattori FFT, cache, metadata, reader/hash, PCG output e cap proof; dettagli sotto |
+| Apertura per resti | 5.436.449.840 | Include output 2 GiB, alberi/fattori FFT, entrambi i twiddle, cache, metadata, reader/hash, PCG output e cap proof; dettagli sotto |
 | Producer A/KV, WHIR successivo, PCG completo | Ignoto | Non assegnare a zero; nessun picco completo accreditato |
 
 Per l'apertura, un piano prudente conserva tutti i polinomi, reciproci e
@@ -290,11 +291,15 @@ due trasformate fisse di ciascun nodo dell'albero bilanciato, anche quelli
 non strettamente necessari: rispettivamente **402.653.176 / 369.098.752 /
 1.476.395.008 B**. Una colonna alla volta usa quattro workspace FFT da
 32 MiB, due livelli di resti da 16 MiB, un resto sorgente da 16 MiB,
-punti da 16 MiB, twiddle da 32 MiB e shift/spettro pad da 48 MiB. L'output selezionato da 2 GiB vive
+punti da 16 MiB, due tabelle twiddle da 32 MiB ciascuna e shift/spettro pad da 48 MiB. L'output selezionato da 2 GiB vive
 nel riuso dell'arena PCS, senza coset/frontier da 5,739 GB ancora vivi.
 Aggiungendo cache, slot metadata 128 MiB, reader/hash 256 MiB, istogramma,
 PCG output e **130.000.000 B di output proof**, i buffer nominati occupano
-**5.402.895.408 B**, lasciando 1.039.555.536 B prima degli altri stati.
+**5.436.449.840 B**, lasciando 1.006.001.104 B prima degli altri stati.
+Il conto ora include entrambe le direzioni twiddle vive nella pipeline
+a quattro FFT: +33.554.432 B rispetto alla singola tabella, anche nel
+trace WHIR condiviso. La loro inizializzazione scrive 67.108.864 B;
+generazione, copie e runtime restano lavoro da integrare, non costo zero.
 Gli slot e le FFT di grado inferiore richiedono ancora il port nativo;
 questa è una prenotazione analitica, non una traccia di malloc. La discesa
 multipunto con quattro FFT per nodo ha un upper di 248.034.361.344
@@ -404,8 +409,8 @@ h8 da 301.989.856 B finché S1 è stato interrogato, oltre alla cache iniziale
 W/tre A da 188.743.552 B. Con reader/hash 256 MiB, getter 64 MiB, scratch
 trie, output PCG, istogramma e cap proof, subtotal **6.195.259.192 B**,
 margine **247.191.752 B**. Dopo rilascio coset/frontiera, l'apertura usa
-il piano per resti, cache S1 e gli stessi slot: **5.775.778.832 B**,
-margine **666.672.112 B**. Una cache S1 h6 con questo workspace completo
+il piano per resti, cache S1 e gli stessi slot: **5.809.333.264 B**,
+margine **633.117.680 B**. Una cache S1 h6 con questo workspace completo
 non entra: un piano che omette spettri/prodotto-tree non prova il picco.
 
 Sono cap dei buffer nominati, non un picco completo: maschere e stati

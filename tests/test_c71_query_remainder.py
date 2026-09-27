@@ -60,6 +60,10 @@ def test_fixed_cap_block_remainder_matches_division_and_selected_rs_rows():
         assert budget['online_ffts_per_block_with_shared_fixed_transforms'] == 4
         assert budget['small_test_ffts_per_block'] == 4
         assert budget['source_passes'] == 1 and budget['native_or_runtime_upper'] is None
+        assert budget['twiddle_direction_tables'] == 2
+        assert budget['query_named_buffer_plan']['FFT_twiddles'] == 2 * budget['fixed_FFT_length'] * 8
+        assert budget['twiddle_initialization_write_bytes'] == 67_108_864
+        assert budget['query_named_peak_bytes'] == 5_436_449_840
 
 
 def test_split_private_pad_preserves_the_committed_polynomial():

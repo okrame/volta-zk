@@ -181,6 +181,13 @@ def test_remainder_geometry_counts_padding_and_base_limbs_once():
     assert a[0]["remainder_blocks_per_base_column"] == 65
     assert sum(row["remainder_butterflies"] for row in w) == 3_152_737_468_416
     assert sum(row["remainder_butterflies"] for row in a) == 1_593_688_457_216
+    for oracle in w + a:
+        for cap in (None, 1 << 17):
+            workspace = whir.remainder_workspace(oracle, cap)
+            assert workspace["twiddle_direction_tables"] == 2
+            assert workspace["buffers"]["twiddles"] == 2 * (2 * workspace["cap"]) * 8
+            assert workspace["twiddle_initialization_write_bytes"] == workspace["buffers"]["twiddles"]
+            assert workspace["bytes"] == sum(workspace["buffers"].values())
 
 
 def test_one_pass_rank_one_contraction_matches_seven_dense_prefix_rounds():
@@ -257,7 +264,7 @@ def test_a_s1_retention_opens_immutable_s1_before_in_place_fold():
     assert schedule["retained_S1_read_passes_through_S2_birth"] == 21
     assert schedule["S1_bytes"] == 3_221_225_472
     assert schedule["S2_bytes"] == 805_306_368
-    assert schedule["S1_query_named_workspace_bytes"] == 145_752_056
+    assert schedule["S1_query_named_workspace_bytes"] == 147_849_208
     assert schedule["S1_query_remainder_fp_butterflies"] == 29_104_275_456
     assert schedule["retained_S1_read_bytes_through_S2_birth"] == 67_645_734_912
     assert schedule["retained_state_read_passes_total"] == 80

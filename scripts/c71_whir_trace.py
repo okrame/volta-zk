@@ -222,7 +222,7 @@ def remainder_workspace(oracle, cap=None):
         "remainder_pingpong": 16 * cap,
         "source_remainder": 8 * cap,
         "points": 8 * cap,
-        "twiddles": 16 * cap,
+        "twiddles": 32 * cap,
         "pad_shift_and_spectrum": 24 * cap,
     }
     coefficient_rows = oracle["message_rows_per_column"] + oracle["randomness_rows_per_column"]
@@ -234,6 +234,8 @@ def remainder_workspace(oracle, cap=None):
         "bytes": sum(parts.values()),
         "cap": cap,
         "blocks_per_base_column": blocks,
+        "twiddle_direction_tables": 2,
+        "twiddle_initialization_write_bytes": 32 * cap,
         "rounded_base_cells": rounded,
         "fp_butterflies": rounded * 4 * log_fft,
         "fp_pointwise_products": rounded * 4,

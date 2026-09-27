@@ -1,11 +1,16 @@
 //! Reference expansion after F_EQ acceptance, with one monotone row cursor.
-//! The public EA seed is derived from verified F_EQ openings. Batch trie,
-//! global transcript/proof remain open; no dense pool is materialized here.
+//! The public EA seed is derived from verified F_EQ openings. Pointwise and
+//! bounded batch trie share one cursor; global transcript/proof remain open.
 use super::{Error, ReceiverPending, SenderPending};
 use crate::c71_ea_lpn::{acc, add_work, public_ea_row, punc_acc_borrowed, EaTerm, Work};
 use crate::c71_seed6::{equality::Accepted, Fp3Words};
 use volta_field::{Fp, Fp3};
 use zeroize::{Zeroize, Zeroizing};
+
+#[path = "trie.rs"]
+mod trie;
+
+pub(super) const BATCH: usize = 4096;
 
 struct Stream {
     nonce: [u8; 32],
@@ -45,6 +50,33 @@ impl Stream {
             public_ea_row(self.seed, row, self.domain, self.weight).map_err(|_| Error::Rejected)?;
         self.next = row + 1;
         Ok(result)
+    }
+
+    fn batch_terms(&mut self, count: usize) -> Result<(Vec<trie::Term>, Work), Error> {
+        if count == 0 || count > BATCH || count as u64 > self.limit - self.next {
+            return Err(Error::Rejected);
+        }
+        let first = self.next;
+        self.next = self.limit;
+        let mut terms = Vec::with_capacity(count * self.weight);
+        let mut work = Work::default();
+        for row in 0..count {
+            let (values, row_work) =
+                public_ea_row(self.seed, first + row as u64, self.domain, self.weight)
+                    .map_err(|_| Error::Rejected)?;
+            add_work(&mut work, row_work);
+            terms.extend(values.into_iter().map(|term| trie::Term {
+                index: term.index,
+                row,
+                coefficient: term.coefficient,
+            }));
+        }
+        terms.sort_unstable_by(|left, right| {
+            work.public_index_comparisons += 1;
+            left.index.cmp(&right.index)
+        });
+        self.next = first + count as u64;
+        Ok((terms, work))
     }
 }
 
@@ -124,6 +156,62 @@ impl Sender {
 
     pub(super) fn delta(&self) -> Fp3 {
         self.delta.fp3()
+    }
+
+    pub(super) fn next_batch(&mut self, count: usize) -> Result<Zeroizing<Vec<[u64; 3]>>, Error> {
+        let result = (|| {
+            let (terms, mut work) = self.stream.batch_terms(count)?;
+            let mut output = Zeroizing::new(vec![[0; 3]; count]);
+            let mut remaining = terms.as_slice();
+            while let Some(first) = remaining.first() {
+                let block = (first.index >> self.stream.height) as usize;
+                let boundary = remaining.partition_point(|term| {
+                    work.public_index_comparisons += 1;
+                    term.index >> self.stream.height == block as u64
+                });
+                let (queries, rest) = remaining.split_at(boundary);
+                remaining = rest;
+                let roots = self.roots[block];
+                let prefix = if block == 0 { Fp3::ZERO } else { self.roots[block - 1][1].fp3() };
+                let tree_work = trie::visit(
+                    self.stream.height,
+                    queries,
+                    roots[1].fp3() - prefix,
+                    prefix,
+                    |level, position, node| {
+                        if level == 0 {
+                            Ok((roots[0].fp3(), Work::default()))
+                        } else {
+                            crate::c71_ea_lpn::cggm_h(
+                                self.stream.nonce,
+                                block as u64,
+                                level as u32,
+                                position,
+                                node,
+                            )
+                        }
+                    },
+                    |term, value| {
+                        let words = output[term.row];
+                        let sum = Fp3Words(words).fp3() + value.mul_base(term.coefficient);
+                        output[term.row] = Fp3Words::from_fp3(sum).0;
+                    },
+                )
+                .map_err(|_| Error::Rejected)?;
+                add_work(&mut work, tree_work);
+                work.fp3_subtractions += 1;
+            }
+            work.fp3_by_fp_multiplications += terms.len() as u64;
+            work.fp3_additions += terms.len() as u64;
+            add_work(&mut self.work, work);
+            Ok(output)
+        })();
+        if result.is_err() {
+            self.stream.next = self.stream.limit;
+            self.delta.zeroize();
+            self.roots.zeroize();
+        }
+        result
     }
 
     pub(super) fn heap_bytes(&self) -> usize {
@@ -216,11 +304,121 @@ impl Receiver {
         8 * (self.alpha.capacity() + self.beta.capacity())
             + 24 * (self.keys.capacity() + self.prefix_tags.capacity())
     }
+
+    pub(super) fn next_batch(&mut self, count: usize) -> Result<Zeroizing<Vec<[u64; 4]>>, Error> {
+        let result = (|| {
+            let (terms, mut work) = self.stream.batch_terms(count)?;
+            let mut output = Zeroizing::new(vec![[0; 4]; count]);
+            let mut remaining = terms.as_slice();
+            while let Some(first) = remaining.first() {
+                let block = (first.index >> self.stream.height) as usize;
+                let boundary = remaining.partition_point(|term| {
+                    work.public_index_comparisons += 1;
+                    term.index >> self.stream.height == block as u64
+                });
+                let (queries, rest) = remaining.split_at(boundary);
+                remaining = rest;
+                let height = self.stream.height;
+                let words = &self.keys[block * (height + 1)..][..height + 1];
+                let mut on_path = [Fp3::ZERO; 20];
+                on_path[height] = words[height].fp3();
+                for level in (0..height).rev() {
+                    on_path[level] = on_path[level + 1] + words[level].fp3();
+                }
+                work.fp3_additions += height as u64;
+                let prefix = if block == 0 { Fp3::ZERO } else { self.prefix_tags[block - 1].fp3() };
+                let alpha = self.alpha[block];
+                let tree_work = trie::visit(
+                    height,
+                    queries,
+                    on_path[0],
+                    prefix,
+                    |level, position, node| {
+                        if position == alpha >> (height - level) {
+                            let left = if (alpha >> (height - level - 1)) & 1 == 0 {
+                                on_path[level + 1]
+                            } else {
+                                words[level].fp3()
+                            };
+                            Ok((left, Work::default()))
+                        } else {
+                            crate::c71_ea_lpn::cggm_h(
+                                self.stream.nonce,
+                                block as u64,
+                                level as u32,
+                                position,
+                                node,
+                            )
+                        }
+                    },
+                    |term, tag| {
+                        let omega = term.index & ((1 << height) - 1);
+                        let beta = if omega >= alpha {
+                            self.beta[block]
+                        } else if block > 0 {
+                            self.beta[block - 1]
+                        } else {
+                            0
+                        };
+                        let words = output[term.row];
+                        let value = Fp::new(words[0]) + Fp::new(beta) * term.coefficient;
+                        let tag = Fp3Words([words[1], words[2], words[3]]).fp3()
+                            + tag.mul_base(term.coefficient);
+                        output[term.row] =
+                            [value.value(), tag.c0.value(), tag.c1.value(), tag.c2.value()];
+                    },
+                )
+                .map_err(|_| Error::Rejected)?;
+                add_work(&mut work, tree_work);
+            }
+            work.fp3_by_fp_multiplications += terms.len() as u64;
+            work.fp3_additions += terms.len() as u64;
+            self.base_mul_add_pairs += terms.len() as u64;
+            add_work(&mut self.work, work);
+            Ok(output)
+        })();
+        if result.is_err() {
+            self.stream.next = self.stream.limit;
+            self.alpha.zeroize();
+            self.beta.zeroize();
+            self.keys.zeroize();
+            self.prefix_tags.zeroize();
+        }
+        result
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_seed6_batch_terms_preserve_global_rows_and_fixed_capacity() {
+        let mut stream = Stream::new([1; 32], [0x61; 32], 675, 19, 11).unwrap();
+        let first = stream.terms().unwrap().0;
+        assert_eq!(first, public_ea_row([0x61; 32], 0, 675 << 19, 11).unwrap().0);
+        let (terms, work) = stream.batch_terms(BATCH).unwrap();
+        assert_eq!(terms.len(), BATCH * 11);
+        assert_eq!(terms.capacity(), BATCH * 11);
+        assert_eq!(size_of::<trie::Term>(), 24);
+        assert_eq!(work.shake_calls, (2 * BATCH * 11) as u64);
+        assert!(terms.windows(2).all(|pair| pair[0].index <= pair[1].index));
+        for row in [0, 1, BATCH - 1] {
+            let expected = public_ea_row([0x61; 32], row as u64 + 1, 675 << 19, 11).unwrap().0;
+            let actual: Vec<_> = terms.iter().filter(|term| term.row == row).collect();
+            assert_eq!(actual.len(), 11);
+            for term in actual {
+                assert!(expected.iter().any(
+                    |other| other.index == term.index && other.coefficient == term.coefficient
+                ));
+            }
+        }
+        assert_eq!(stream.next, BATCH as u64 + 1);
+        for count in [0, BATCH + 1] {
+            assert!(stream.batch_terms(count).is_err());
+        }
+        println!("C71_SEED6_BATCH_TERMS rows={BATCH} terms={} native_term_bytes=24 heap_capacity_bytes={}", terms.len(), terms.capacity() * size_of::<trie::Term>());
+    }
 
     #[test]
     fn c71_seed6_expansion_stream_shape_capacity_and_sampler_stop() {

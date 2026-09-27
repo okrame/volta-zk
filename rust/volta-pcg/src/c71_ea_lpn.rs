@@ -23,6 +23,7 @@ pub struct Work {
     pub fp3_subtractions: u64,
     pub fp3_multiplications: u64,
     pub fp3_by_fp_multiplications: u64,
+    pub public_index_comparisons: u64,
     pub shake_object_bytes_peak: usize,
     pub codec_heap_capacity_bytes_peak: usize,
     pub recursive_frames_peak: usize,
@@ -449,6 +450,7 @@ pub(crate) fn add_work(total: &mut Work, add: Work) {
     total.fp3_subtractions += add.fp3_subtractions;
     total.fp3_multiplications += add.fp3_multiplications;
     total.fp3_by_fp_multiplications += add.fp3_by_fp_multiplications;
+    total.public_index_comparisons += add.public_index_comparisons;
     total.shake_object_bytes_peak = total.shake_object_bytes_peak.max(add.shake_object_bytes_peak);
     total.codec_heap_capacity_bytes_peak =
         total.codec_heap_capacity_bytes_peak.max(add.codec_heap_capacity_bytes_peak);

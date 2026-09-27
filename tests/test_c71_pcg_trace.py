@@ -256,7 +256,8 @@ def test_one_channel_setup_wire_and_added_payload():
     assert setup['successful_attempt_disk_bytes_each_role']==114
     assert setup['successful_attempt_syncs_each_role']==2
     assert setup['three_accepted_attempts_install_setup_total_disk_bytes_each_role']==503
-    assert setup['attempt_stream_extra_heap_bytes']==0
+    assert setup['attempt_stream_extra_heap_besides_generated_batch_bytes']==0
+    assert setup['attempt_stream_generated_batch_heap_upper']=={'sender':98304,'receiver':131072}
     assert setup['returned_Audit_and_owner_slot_retained_across_attempts']
     assert not setup['per_attempt_pool_and_acceptance_connected']
     reduced=trace.seed6_setup_trace(2,4,2)
@@ -265,6 +266,24 @@ def test_one_channel_setup_wire_and_added_payload():
     assert reduced['wire_bytes_both_directions']==390742
     assert reduced['post_seed_frames']==16
     assert not setup['durable_burn_or_authenticated_transport_credit']
+
+
+def test_native_batch_trie_payload_and_source_bounds():
+    batch=trace.seed6_batch_trace()
+    assert batch['sorted_term_heap_capacity_bytes']==1_081_344
+    assert batch['named_heap_peak_bytes']=={'sender':1_179_746,'receiver':1_212_514}
+    assert batch['union_trie_H_upper_each_role']==625722
+    assert batch['union_trie_H_upper_each_role']<trace.trie_nodes(4096)
+    caps=trace.report()['liveness_caps']
+    envelope=sum(caps[name] for name in ('prover_raw_batch_bytes','two_aligned_public_term_arrays_bytes','two_sparse_Fp3_frontiers_bytes_per_role','public_u32_histogram_bytes'))
+    assert batch['named_heap_peak_bytes']['receiver']+batch['named_recursive_value_slot_bytes']<envelope
+    assert batch['generation_never_crosses_burned_interval']
+    assert not batch['full_reservation_materialized']
+    assert not batch['complete_physical_peak']
+    assert trace.seed6_batch_trace(6,2,4,2)['public_EAGen_SHAKE_calls_each_role']==24
+    response=trace.response_trace(0,0,12)
+    assert response['receiver_PuncAcc_Fp3_additions_upper']==39*11*12
+    assert response['sender_global_prefix_Fp3_subtractions_upper']==132
 
 
 def test_consuming_tail_reservation_preserves_prefix_capacity():

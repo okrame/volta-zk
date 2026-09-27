@@ -324,6 +324,35 @@ def seed6_expansion_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
     }
 
 
+def seed6_batch_trace(rows=BATCH, blocks=TREES, height=HEIGHT, weight=WEIGHT):
+    pointwise=seed6_expansion_trace(blocks,height,weight)
+    if not 0 < rows <= min(BATCH,pointwise['capacity_base_rows']):
+        raise ValueError('outside native batch capacity')
+    terms=rows*weight
+    return {
+        'rows':rows, 'terms':terms, 'native_public_term_bytes':24,
+        'sorted_term_heap_capacity_bytes':24*terms,
+        'output_batch_heap_bytes':{'sender':24*rows,'receiver':32*rows},
+        'named_heap_peak_bytes':{role:24*terms+max(pointwise['EA_sampler_heap_bytes_upper'],width*rows+H_DOMAIN_BYTES)
+                                 for role,width in [('sender',24),('receiver',32)]},
+        'maximum_recursive_frames':height+1,
+        'named_recursive_value_slot_bytes':64<<10,
+        'recursive_slot_is_not_compiler_stack_bound':True,
+        'union_trie_H_upper_each_role':sum(min(blocks*(1<<level),terms) for level in range(1,height)),
+        'pointwise_H_upper_each_role':terms*(height-1),
+        'public_EAGen_SHAKE_calls_each_role':2*terms,
+        'source_public_sort_and_partition_comparisons_counted':True,
+        'canonical_sort_work_or_time_credit':False,
+        'old_batch_dropped_before_next_generation':True,
+        'generation_never_crosses_burned_interval':True,
+        'full_reservation_materialized':False,
+        'original_global_prefix_and_MAC_identity_checked':True,
+        'native_two_role_batch_connected_to_attempt_window':True,
+        'complete_physical_peak':False,
+        'scope':'CPU sorted depth-first trie; existing wider term/frontier envelope retained, no accelerator or hardware credit',
+    }
+
+
 def seed6_coin_trace(count=DOMAIN, header_bytes=9):
     """One transcript-bound native coin; sequential SHAKE, no dense U array."""
     if not 1 <= count <= DOMAIN or header_bytes not in (6,9):
@@ -482,10 +511,11 @@ def seed6_setup_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
         'successful_attempt_disk_bytes_each_role':2*57,
         'successful_attempt_syncs_each_role':2,
         'three_accepted_attempts_install_setup_total_disk_bytes_each_role':104+7*57,
-        'attempt_stream_extra_heap_bytes':0,
+        'attempt_stream_extra_heap_besides_generated_batch_bytes':0,
+        'attempt_stream_generated_batch_heap_upper':{'sender':24*BATCH,'receiver':32*BATCH},
         'attempt_stream_output_row_bytes':{'sender':24,'receiver':32},
         'attempt_stream_requires_exact_consumption_before_promotion':True,
-        'attempt_stream_scope':'pointwise reference; receipt is a test fixture, not a complete verifier',
+        'attempt_stream_scope':'bounded batch trie; receipt is a test fixture, not a complete verifier',
         'returned_Audit_and_owner_slot_retained_across_attempts':True,
         'private_path_rng_bytes_receiver':8*blocks,
         'beta_reuses_original_seed_value':True,
@@ -549,7 +579,9 @@ def response_trace(old_tokens, first_row, rows, fail_after_batches=None):
         'H_Fp_rejection_candidates_upper_per_role': 24*h_calls,
         'cGGM_right_child_Fp_subtractions_upper_per_role': 3*h_calls,
         'sender_Acc_Fp3_additions_upper': (HEIGHT+1)*terms,
-        'receiver_PuncAcc_Fp3_additions_upper': 2*HEIGHT*terms,
+        'receiver_PuncAcc_Fp3_additions_upper': (2*HEIGHT+1)*terms,
+        'sender_global_prefix_Fp3_subtractions_upper':sum(count*min(TREES,WEIGHT*take)
+                  for (take, _before, _complete, _after), count in transitions.items()),
         'EA_Fp3_by_public_Fp_multiplications_upper_per_role': terms,
         'EA_Fp3_accumulations_upper_per_role': terms,
         'logical_prover_output_bytes': 32*offset,
@@ -617,6 +649,7 @@ def report():
                 'path_guard_consumer': seed6_guard_trace(),
                 'guard_to_cggm_and_split_consumer':cggm,
                 'accepted_pointwise_expansion':seed6_expansion_trace(),
+                'accepted_batch_expansion':seed6_batch_trace(),
                 'one_channel_setup':setup,
                 'coin_tosses':{'split':seed6_coin_trace(),'equality':seed6_coin_trace(TREES,9)},
                 'two_key_equality_consumer':seed6_equality_trace(),
@@ -678,6 +711,8 @@ def report():
                 r['sender_Acc_Fp3_additions_upper'] for r in responses),
             'receiver_PuncAcc_Fp3_additions_upper': sum(
                 r['receiver_PuncAcc_Fp3_additions_upper'] for r in responses),
+            'sender_global_prefix_Fp3_subtractions_upper':sum(
+                r['sender_global_prefix_Fp3_subtractions_upper'] for r in responses),
             'EA_Fp3_by_public_Fp_multiplications_upper_per_role': WEIGHT*cursor,
             'EA_Fp3_accumulations_upper_per_role': WEIGHT*cursor,
             'logical_prover_output_bytes': 32*cursor,

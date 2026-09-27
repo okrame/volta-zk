@@ -44,7 +44,7 @@ impl<State> Once<'_, State> {
     fn consume<const WIDTH: usize, Value>(
         &mut self,
         full_fp3: usize,
-        next_row: fn(&mut State) -> Result<[u64; WIDTH], Error>,
+        next_batch: fn(&mut State, usize) -> Result<Zeroizing<Vec<[u64; WIDTH]>>, Error>,
         consumer: impl FnOnce(
             Attempt,
             &mut dyn Iterator<Item = io::Result<Zeroizing<[u64; WIDTH]>>>,
@@ -54,14 +54,28 @@ impl<State> Once<'_, State> {
         let result = self.store.attempt(self.capacity, full_fp3, |attempt, count| {
             let mut remaining = count;
             let mut failed = false;
+            let mut batch = Zeroizing::new(Vec::new());
+            let mut cursor = 0;
             let mut rows = std::iter::from_fn(|| {
                 if remaining == 0 || failed {
                     return None;
                 }
-                let result = next_row(state).map(Zeroizing::new).map_err(rejected);
-                failed = result.is_err();
+                if cursor == batch.len() {
+                    batch = Zeroizing::new(Vec::new());
+                    let take = remaining.min(expand::BATCH);
+                    match next_batch(state, take) {
+                        Ok(values) if values.len() == take => batch = values,
+                        _ => {
+                            failed = true;
+                            return Some(Err(invalid("Seed6 batch generation failed")));
+                        }
+                    }
+                    cursor = 0;
+                }
+                let value = Zeroizing::new(std::mem::replace(&mut batch[cursor], [0; WIDTH]));
+                cursor += 1;
                 remaining -= 1;
-                Some(result)
+                Some(Ok(value))
             });
             let result = consumer(attempt, &mut rows)?;
             if failed || remaining != 0 {
@@ -87,7 +101,7 @@ impl Once<'_, expand::Sender> {
         ) -> io::Result<(Value, Option<[u8; 32]>)>,
     ) -> io::Result<Value> {
         let delta = self.state.as_ref().ok_or_else(|| invalid("no live Seed6 state"))?.delta();
-        self.consume(full_fp3, expand::Sender::next_row, |attempt, rows| {
+        self.consume(full_fp3, expand::Sender::next_batch, |attempt, rows| {
             consumer(attempt, rows, delta)
         })
     }
@@ -102,7 +116,7 @@ impl Once<'_, expand::Receiver> {
             &mut dyn Iterator<Item = io::Result<Zeroizing<[u64; 4]>>>,
         ) -> io::Result<(Value, Option<[u8; 32]>)>,
     ) -> io::Result<Value> {
-        self.consume(full_fp3, expand::Receiver::next_row, consumer)
+        self.consume(full_fp3, expand::Receiver::next_batch, consumer)
     }
 }
 
@@ -585,7 +599,7 @@ mod tests {
 
     #[test]
     fn c71_seed6_attempt_window_burns_then_streams_and_stops_on_every_failure() {
-        for fault in 0..9 {
+        for fault in 0..10 {
             let path = journal_path("attempt-failure");
             let mut store = Lifetime::install(&path, model()).unwrap();
             let context = store.begin_seed6([1; 32], [2; 32], 6).unwrap();
@@ -603,14 +617,23 @@ mod tests {
                     6 => usize::MAX,
                     _ => 2,
                 };
-                let next: fn(&mut usize) -> Result<[u64; 1], Error> = if fault == 7 {
-                    |_| Err(Error::Rejected)
-                } else {
-                    |cursor: &mut usize| {
-                        *cursor += 1;
-                        Ok([*cursor as u64])
-                    }
-                };
+                let next: fn(&mut usize, usize) -> Result<Zeroizing<Vec<[u64; 1]>>, Error> =
+                    if fault == 7 {
+                        |_, _| Err(Error::Rejected)
+                    } else if fault == 9 {
+                        |_, _| Ok(Zeroizing::new(Vec::new()))
+                    } else {
+                        |cursor: &mut usize, count| {
+                            Ok(Zeroizing::new(
+                                (0..count)
+                                    .map(|_| {
+                                        *cursor += 1;
+                                        [*cursor as u64]
+                                    })
+                                    .collect(),
+                            ))
+                        }
+                    };
                 let result = setup.consume(count, next, |attempt, rows| {
                     assert_eq!((attempt.ordinal, attempt.first_base_row), (1, 0));
                     let bytes = std::fs::read(&path).unwrap();
@@ -630,7 +653,7 @@ mod tests {
                             }
                             Ok(((), if fault == 3 { None } else { Some([0; 32]) }))
                         }
-                        7 => {
+                        7 | 9 => {
                             assert!(rows.next().unwrap().is_err());
                             assert!(rows.next().is_none());
                             Ok(((), Some([9; 32])))
@@ -647,7 +670,7 @@ mod tests {
                 assert!(setup
                     .consume::<1, ()>(
                         1,
-                        |_| panic!("stopped state generated rows"),
+                        |_, _| panic!("stopped state generated rows"),
                         |_, _| panic!("stopped state reached consumer")
                     )
                     .is_err());
@@ -678,10 +701,16 @@ mod tests {
                 setup
                     .consume(
                         1,
-                        |cursor| {
-                            let row = *cursor;
-                            *cursor += 1;
-                            Ok([row as u64])
+                        |cursor, count| {
+                            Ok(Zeroizing::new(
+                                (0..count)
+                                    .map(|_| {
+                                        let row = *cursor;
+                                        *cursor += 1;
+                                        [row as u64]
+                                    })
+                                    .collect(),
+                            ))
                         },
                         |attempt, rows| {
                             assert_eq!(attempt.ordinal, ordinal);
@@ -704,6 +733,60 @@ mod tests {
         drop(store);
         assert!(Lifetime::open(&path, model()).is_err());
         std::fs::remove_file(path).unwrap();
-        println!("C71_SEED6_ATTEMPTS base_rows=9 disjoint_attempts=3 heap_window_bytes=0 row_generated_after_burn=true acceptance_fixture=true proof=false");
+        println!("C71_SEED6_ATTEMPTS base_rows=9 disjoint_attempts=3 full_reservation_materialized=false batch_cap=4096 row_generated_after_burn=true acceptance_fixture=true proof=false");
+    }
+
+    #[test]
+    fn c71_seed6_attempt_window_never_prefetches_the_next_reservation() {
+        let path = journal_path("batch-boundary");
+        let mut store = Lifetime::install(&path, model()).unwrap();
+        let context = store.begin_seed6([1; 32], [2; 32], 4104).unwrap();
+        {
+            let mut setup = Once {
+                store: &mut store,
+                session: context.session,
+                capacity: context.capacity,
+                state: Some((0usize, Vec::<usize>::new())),
+                audits: Default::default(),
+            };
+            for (ordinal, count) in [(1, 1367), (2, 1)] {
+                setup
+                    .consume(
+                        count,
+                        |(cursor, batches), count| {
+                            batches.push(count);
+                            Ok(Zeroizing::new(
+                                (0..count)
+                                    .map(|_| {
+                                        let row = *cursor;
+                                        *cursor += 1;
+                                        [row as u64]
+                                    })
+                                    .collect(),
+                            ))
+                        },
+                        |attempt, rows| {
+                            for index in 0..3 * count {
+                                assert_eq!(
+                                    *rows.next().unwrap()?,
+                                    [attempt.first_base_row + index as u64]
+                                );
+                            }
+                            assert!(rows.next().is_none());
+                            Ok(((), Some([ordinal; 32])))
+                        },
+                    )
+                    .unwrap();
+                let (cursor, batches) = setup.state.as_ref().unwrap();
+                if ordinal == 1 {
+                    assert_eq!((*cursor, batches.as_slice()), (4101, [4096, 5].as_slice()));
+                } else {
+                    assert_eq!((*cursor, batches.as_slice()), (4104, [4096, 5, 3].as_slice()));
+                }
+            }
+        }
+        drop(store);
+        assert!(Lifetime::open(&path, model()).is_err());
+        std::fs::remove_file(path).unwrap();
     }
 }

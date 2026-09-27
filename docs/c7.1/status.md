@@ -495,7 +495,7 @@ emettono alpha. Il ledger corregge il seed principale a 17.553 righe,
 incluse le 2.025 aggiuntive di F_EQ; il secondo ne usa 2.025. Il byte di
 direzione nel contesto aggiunge 4 B al budget dei due seed.
 Capacità native e rilasci sono censiti; allocator, stack crittografico,
-trasporto, lifecycle durevole completo, FS globale e trie batch restano aperti.
+trasporto, lifecycle durevole completo, FS globale e port accelerato restano aperti.
 I due seed ora richiedono il seal fresco prima di restituire valori/chiavi;
 la handshake v02 respinge la versione precedente prima degli OT. I 40 B
 per seed erano già nel budget: nessuna seconda contabilizzazione.
@@ -522,12 +522,18 @@ La geometria è legata alla handshake prima degli OT; il nonce deriva dai
 due seed sigillati. L'entry monouso ora riusa il journal B12: burn fsync
 prima di RNG, nessun retry/reopen e owner esclusivo fino al rilascio
 dello stato EA. Restano composizione ROM del seed, transcript del run,
-canale autenticato, trie batch e collegamento alla proof; non è ancora
+canale autenticato e collegamento alla proof; non è ancora
 il PCG canonico. Le riserve ora riusano le transizioni B12: burn dell'intero
 intervallo prima della prima riga, finestra streaming limitata e stop su
 errore/panic/esaurimento. La promozione viene dopo fsync, ma la ricevuta
 dei test è un fixture, non l'esito del verifier completo. Owner e Audit
 restano contati nelle tre risposte (+5.120 B allineati nel piano).
+Le finestre ora generano batch di al massimo 4.096 righe: ordinano i
+termini pubblici e condividono i cammini della trie, conservando i prefissi
+globali. Il confronto reale BAe a sei righe usa 41/36 SHAKE nei due ruoli
+anziché 60 sender puntuali. Il controllo al confine 4.096+5/3 non anticipa
+la riserva successiva. È esecuzione CPU ridotta, non port CUDA o costo
+canonico completo; sorting, stack compilato e wrapper della proof restano aperti.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 correzioni, coin e share ora attraversano due endpoint indipendenti tramite

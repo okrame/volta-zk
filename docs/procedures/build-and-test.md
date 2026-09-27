@@ -143,7 +143,7 @@ Il filtro `c71_seed6_equality_wire_rejects` verifica ordine, lunghezza
 e troncamenti prima di allocare o usare RNG. Il filtro
 `c71_seed6_equality_accepted_ea_seed` confronta SHAKE Python/Rust e binding
 delle aperture; la catena reale usa quel seed, non un parametro prefissato.
-Non accredita composizione ROM globale, trie batch o bridge alla proof.
+Non accredita composizione ROM globale o bridge alla proof.
 Il filtro `c71_seed6_one_channel` comprende tre test: setup reale 25+6
 righe su un solo socketpair fino a sei MAC EA, geometria invalida prima
 di I/O/RNG e discordanza ell prima degli OT. Stessi limiti 60 s/2 GiB,
@@ -159,6 +159,13 @@ non una proof. Aggiungere `c71_seed6_attempt_window` (due test) per tre
 intervalli ideali disgiunti e rifiuti: capacità invalida, consumo incompleto,
 errore/panic, errore del generatore ignorato e digest mancante/invalido.
 Il marker `C71_SEED6_ATTEMPTS` non accredita NoPeek o verifica completa.
+Il filtro `c71_seed6_attempt_window` comprende ora un terzo test per il
+confine 4.096+5/3 senza prefetch oltre riserva. Aggiungere `c71_seed6_trie`
+e `c71_seed6_batch_terms` (un test ciascuno): prefissi/duplicati h=1..6
+e soli termini pubblici per un batch canonico da 4.096 righe. La catena
+reale usa ora il batch da sei righe e stampa `C71_SEED6_BATCH` (41/36
+SHAKE); mantiene BAe globale e i rifiuti c/z. Stessi limiti seriali,
+nessun bootstrap canonico, benchmark hardware o GPU.
 Transcript globale, raccordo al wrapper e trasporto autenticato restano aperti. Ogni filtro
 resta entro 60 s/2 GiB, un worker/thread,
 senza rete esterna. Conservare anche i filtri `c71_seed6::guard::tests`,

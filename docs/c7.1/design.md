@@ -1304,7 +1304,13 @@ di beta/K(beta)/M(beta) includono i blocchi precedenti in tempo costante
 per termine. Il packing nelle tre basi Fp3 conserva la stessa identità.
 Il controllo reale produce sei righe e due MAC Fp3, confrontando anche
 BAe su due blocchi; il precedente fixture t=1 non rilevava l'omissione.
-Non è una proof positiva o il percorso canonico a trie batch.
+Non è una proof positiva. Il successivo percorso batch CPU condivide
+gli stessi prefissi tramite una visita depth-first sui termini ordinati,
+senza modificare H o la distribuzione EAGen. Il sender mantiene il primo
+split indipendente; il receiver ricostruisce i soli nodi sul puncture con
+chiavi sibling/leaf alternative, applicando H soltanto fuori cammino.
+Il confronto esaustivo con Acc/PuncAcc comprende puncture, duplicati e
+ogni prefisso fino a h=6; la catena reale conserva l'oracolo globale BAe.
 Il seed EA pubblico è ora SHAKE256 del prefisso F_EQ e delle due aperture
 verificate ordinate per ruolo, nel dominio `/accepted-EA/`; i blind da
 32 B erano già committati prima delle aperture. Nessun nuovo messaggio o

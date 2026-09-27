@@ -1725,7 +1725,7 @@ non accredita la liberazione di alias privati. Il massimo globale nominato
 resta quello della risposta, non un picco fisico completo.
 
 Questo chiude il percorso byte del setup ridotto, non autenticazione del
-canale, lifecycle completo, transcript del run, trie batch,
+canale, lifecycle completo, transcript del run, port accelerato,
 bridge al pool/proof canonico o composizione crittografica. Il modulo resta
 test-only; nessuna esecuzione canonica, GPU o spesa è autorizzata.
 
@@ -1779,16 +1779,53 @@ Seed6. I digest accettati sono **fixture**, non ricevute di una prova PCS/GKR:
 il consumer resta tenuto a Prepare NoPeek e verifica completa prima di
 restituirli. Il raccordo al wrapper composto è ancora aperto.
 
-La finestra non alloca heap proprio né materializza la riserva: mantiene
-un contatore/flag e una riga da 24/32 B, oltre ai costi EA puntuali già
-contati. Ogni tentativo accettato aggiunge 114 B disco e due fsync per ruolo;
+La finestra non materializza la riserva intera: mantiene contatore/flag,
+una riga da 24/32 B e ora un batch limitato a 4.096 righe, descritto sotto.
+Ogni tentativo accettato aggiunge 114 B disco e due fsync per ruolo;
 installazione, setup e tre accettazioni totalizzano 503 B e nove sync.
 Owner e Audit restano vivi durante le risposte: lo slot valori da 4.096 B
 e 896 B heap diventano persistenti nel piano (+5.120 B allineati), non
 sono liberati solo perché termina il setup. A O=300 la coda nominata
 diventa 276.291.840 B, 7.856.384 B oltre 256 MiB. È accounting di liveness,
-non picco fisico completo o costo fsync misurato; il percorso puntuale
-non eredita il conteggio di hash della futura trie batch.
+non picco fisico completo o costo fsync misurato. Il riferimento puntuale
+resta separato dal percorso batch ora implementato.
+
+### Trie batch nei due ruoli
+
+Il [raccordo EA](../../rust/volta-pcg/src/c71_seed6/expand.rs) genera fino
+a 4.096 righe della riserva corrente, ordina i termini pubblici per indice
+e visita una volta ogni nodo necessario con un [walker depth-first](../../rust/volta-pcg/src/c71_seed6/trie.rs).
+Non alloca un albero completo o un pool denso. Il sender usa `(k,offset-k)`
+alla radice; il receiver ricostruisce bottom-up il cammino modificato e
+applica H solo ai sottoalberi sibling. Ogni foglia emette l'accumulatore
+inclusivo più il prefisso degli alberi precedenti, per tutti i termini
+duplicati che la usano. Non cambia EAGen, il binding o il seed pubblico.
+
+I confronti esaustivi h=1..6 coprono ogni puncture/prefisso e query duplicate;
+il caso reale t=2,h=4,ell=2 conserva BAe globale e MAC/Fp3 originali.
+Per sei righe, il sender usa **41 SHAKE (17 H + 24 EAGen)**, il receiver
+36; il riferimento sender puntuale ne usava 60. Il test da 4.096 righe
+copre solo termini pubblici canonici, non un bootstrap canonico. Il test
+di lifetime attraversa 4.096+5 righe e poi una distinta riserva da tre,
+senza prefetch oltre il burn. Ogni batch precedente è distrutto prima
+di generare il successivo; errori o lunghezza errata non rilasciano righe.
+
+Il payload CPU nominato è **1.081.344 B** per 45.056 termini da 24 B,
+98.304/131.072 B di output sender/receiver e scratch del codec. I picchi
+heap nominati sono 1.179.746/1.212.514 B, senza allocator. La visita ha
+al massimo 20 frame; uno slot prudente da 64 KiB per valori ricorsivi
+non è una misura dello stack compilato. Questi payload rientrano nel più
+ampio envelope pubblico/frontier già prenotato: non si riduce il piano,
+né si accredita un alias fisico implementato o un port CUDA.
+
+L'upper H di un batch pieno è 625.722 per ruolo, escludendo la radice
+indipendente; il ledger mantiene l'upper prudente precedente 626.397.
+Il ledger corregge anche PuncAcc a `(2h+1)*termini` somme Fp3 e aggiunge
+le sottrazioni dei prefissi globali sender per albero visitato. I counter
+nativi comprendono confronti di sort/partizione e operazioni di campo;
+non ne deriva un costo canonico completo o service-rate H100. Sono ancora
+aperti sorting canonico, stack/erasure compilati, NoPeek e accettazione
+del wrapper PCS/GKR, composizione e picco fisico.
 
 
 ## Seed6: seal di completamento

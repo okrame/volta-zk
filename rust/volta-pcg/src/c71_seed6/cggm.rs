@@ -648,10 +648,12 @@ mod tests {
                 let delta = sender.delta();
                 let (mut packed_value, mut packed_tag, mut packed_key) =
                     (Fp3::ZERO, Fp3::ZERO, Fp3::ZERO);
+                let keys = sender.next_batch(6).unwrap();
+                let rows = receiver.next_batch(6).unwrap();
                 for row_index in 0..6 {
                     let basis = super::super::BASIS[row_index as usize % 3];
-                    let key = sender.next_row().unwrap();
-                    let row = receiver.next_row().unwrap();
+                    let key = keys[row_index as usize];
+                    let row = rows[row_index as usize];
                     let (terms, _) =
                         crate::c71_ea_lpn::public_ea_row(sender.binding, row_index, 32, 2).unwrap();
                     let expected = terms.iter().fold(Fp::ZERO, |sum, term| {
@@ -685,8 +687,9 @@ mod tests {
                 assert_eq!(receiver.base_mul_add_pairs, 12);
                 assert_eq!(sender.work.fp3_by_fp_multiplications, 12);
                 assert_eq!(receiver.work.fp3_by_fp_multiplications, 12);
-                assert_eq!(sender.work.shake_calls, 60);
-                assert!(receiver.work.shake_calls <= 60);
+                assert!(sender.work.shake_calls < 60);
+                assert!(receiver.work.shake_calls <= sender.work.shake_calls);
+                println!("C71_SEED6_BATCH rows=6 sender_SHAKE={} receiver_SHAKE={} sender_index_comparisons={} receiver_index_comparisons={} pointwise_sender_SHAKE=60 global_BAe=true", sender.work.shake_calls, receiver.work.shake_calls, sender.work.public_index_comparisons, receiver.work.public_index_comparisons);
                 for _ in 0..2 {
                     assert!(sender.next_row().is_err());
                     assert!(receiver.next_row().is_err());

@@ -290,8 +290,12 @@ la tree rigenera ancora ciascun sottoalbero separatamente.
 Il riferimento rifiuta più di 1.024 richieste prima del getter; il grado
 attivo è la potenza di due successiva alla cardinalità pubblica, con
 fattori X per il riempimento. Le query duplicate sono conservate.
-Setup e valutazione del resto sono quadratici nel cap ridotto; non sono
-il product/remainder tree del cap canonico 2^21. Resti, spettri, workspace
+Il modulo ora è costruito per prodotti FFT bilanciati e il reciproco con
+raddoppio di Newton, anziché con i due loop quadratici. Si conservano solo
+il livello corrente dei prodotti e gli intermedi del reciproco, non un
+albero completo per le valutazioni. Queste ultime restano quadratiche
+nel cap ridotto; non è il product/remainder tree del cap canonico 2^21.
+Resti, spettri, workspace
 DFT e righe di output si aggiungono ai buffer vivi del callback; nessuna
 source-uniformity completa, stima di picco o credito Lean ne segue.
 

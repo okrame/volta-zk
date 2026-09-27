@@ -146,10 +146,13 @@ Ripetere le regressioni native composed/streaming, W alterato e
 `c71_joint_inference_changed_last` per i proprietari W adattati.
 
 Per il riduttore nativo delle righe RS usare
-`c71_b12_query_remainder` e `c71_b12_full_sourcewise_chain`, separatamente
+`c71_b12_query_factors`, `c71_b12_query_remainder` e
+`c71_b12_full_sourcewise_chain`, separatamente
 entro 60 s/2 GiB, poi streaming integrato e il filtro reale W replay/A
-ordinata. Il primo confronta Horner originale e riduzione FFT per sorgenti
-base/extension, pad, query duplicate/ragged e cap; il secondo confronta
+ordinata. Il primo confronta prodotti bilanciati/reciproco Newton con un
+oracolo diretto, inclusi punti zero e ripetuti; il secondo confronta Horner
+originale e riduzione FFT per sorgenti base/extension, pad, query
+duplicate/ragged e cap; il terzo confronta
 il wire WHIR completo alle stesse monete e rifiuta un MAC finale diverso.
 Ripetere `tests/test_c71_query_remainder.py` come oracolo algebrico indipendente.
 Il cap ridotto e le chiamate per sottoalbero non sono una scansione unica

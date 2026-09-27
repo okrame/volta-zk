@@ -315,7 +315,7 @@ pub(in crate::c71_matrix) fn prove(
     if correlations.len() < count {
         return Err("gate-up prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let raw_point = s.bind(fs);
     let mut g = vec![Fp3::ZERO; s.cells.next_power_of_two()];
     let mut u = g.clone();
@@ -350,7 +350,7 @@ pub(in crate::c71_matrix) fn verify(
     if correlations.len() < count {
         return Err("gate-up verifier capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let raw_point = s.bind(fs);
     let raw = range::correct([proof.raw], delta, &mut rows)[0];
     record_values(fs, 0xd3, &[proof.raw]);

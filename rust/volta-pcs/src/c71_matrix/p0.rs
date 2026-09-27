@@ -94,7 +94,7 @@ fn prove_inner(
     if correlations.len() < count {
         return Err("B12 P0 prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let (mut point, mut rounds) = (Vec::new(), Vec::new());
     for round in 0..bits {
         let half = x.len() / 2;
@@ -206,7 +206,7 @@ fn verify_inner(
     {
         return Err("B12 P0 proof shape or capacity mismatch".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let mut point = Vec::new();
     for (round, wire) in proof.rounds.iter().enumerate() {
         let keys: Vec<_> =

@@ -151,6 +151,9 @@ l'eliminazione di tutti i buffer interni né un nuovo margine fisico.
 Il medesimo raccordo è ora [verificato per dispatcher e riduzione RNE](evidence.md#borrowed-rne-intervals),
 senza cambiare probe, ricette o richieste sulle A originali; passano
 anche accettazione e rifiuto terminale ridotti con Seed6.
+Il raccordo è esteso agli altri consumer numerici, EXP30/lookup e range/PCS:
+non raccolgono più un pool bulk interno. Restano le altre allocazioni di
+prova/sorgente e la verifica del picco completo, senza nuovo credito arena.
 
 Il [corpo del verifier canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
 ora implementa la schedule completa di security §3 con ricette comuni,

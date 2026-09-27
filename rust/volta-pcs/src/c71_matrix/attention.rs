@@ -137,7 +137,7 @@ pub(super) fn prove_qk(
     if correlations.len() < count {
         return Err("attention QK prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     s.bind(0, fs);
     let raw_point: Vec<_> = (0..g + e + t + k).map(|_| fs.fp3()).collect();
     let (rb, re, ri, rj) = (
@@ -212,7 +212,7 @@ pub(super) fn verify_qk(
     if correlations.len() < count {
         return Err("attention QK verifier capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     s.bind(0, fs);
     let raw_point: Vec<_> = (0..g + e + t + k).map(|_| fs.fp3()).collect();
     let (rb, re, ri, rj) = (
@@ -260,7 +260,7 @@ pub(super) fn prove_pv(
     if correlations.len() < count {
         return Err("attention PV prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     s.bind(1, fs);
     let raw_point: Vec<_> = (0..t + g + e + a).map(|_| fs.fp3()).collect();
     let (ri, rb, re, ra) = (
@@ -352,7 +352,7 @@ pub(super) fn verify_pv(
     if correlations.len() < count || proof.link.len() != t + k {
         return Err("attention PV proof shape or capacity differs".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     s.bind(1, fs);
     let raw_point: Vec<_> = (0..t + g + e + a).map(|_| fs.fp3()).collect();
     let (ri, rb, re, ra) = (

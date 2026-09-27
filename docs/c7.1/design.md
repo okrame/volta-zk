@@ -259,12 +259,22 @@ il burn dell'intera riserva e lo Stop definitivo appartengono al wrapper
 nativo/pool, non al consumo fisico dell'iteratore. Anche GKR e il byte
 endpoint sourcewise prendono ora in prestito i loro intervalli Auth/Key;
 anche il dispatcher delle tabelle RNE e la riduzione RNE riusano `Take`,
-senza copie della riserva complessiva o del singolo predicato. Statistic
-e gli altri componenti conservano ancora buffer di righe.
+senza copie della riserva complessiva o del singolo predicato. Il raccordo
+è esteso a EXP30/lookup, statistic/P0, range/linear, QK/PV, RoPE, gate-up
+e ripartizione KV: i consumer del percorso nativo ricevono intervalli lazy,
+non un pool bulk interno. Restano i Vec degli oracoli densi di confronto,
+dei wrapper ideali `cfg(test)`, del diagnostico standalone e dell'adapter
+B12 denso. Il percorso Seed6 lazy non passa da queste materializzazioni.
+I due helper condivisi del sumcheck di prodotto accettano il medesimo
+`ExactSizeIterator`; il diagnostico matrice può ancora passarvi il suo Vec.
 Il census GKR separa le righe logiche e il loro payload riservato dalla
 capacità heap posseduta dal kernel, ora zero per quell'intervallo. Storage
 del caller, workspace PCG e stato inline dell'iteratore non sono memoria
 gratuita né inclusi in quel solo campo; il picco completo resta aperto.
+Nel lookup `rows_backing_capacity_bytes` e `correlation_row_copy_bytes`
+sono zero per la copia bulk eliminata; cardinalità riservata/consumata e
+`auth_size_bytes` restano espliciti. Questo non azzera le mosse dei singoli
+Auth/Key, né cache, albero, transcript, proof, triple o altre allocazioni.
 RNE mantiene i medesimi probe, shift, byte originali, consumo sul successo
 e chiusura sulla stessa A. Il primo probe legge l'output prima di chiedere
 la propria riga; gli errori restano terminali nel wrapper già bruciato.

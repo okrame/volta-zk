@@ -838,7 +838,7 @@ fn prove_product(
     mut b: Vec<Fp3>,
     mut target: Auth,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> (Vec<[Fp3; 4]>, Vec<Fp3>, Auth, Fp3, Fp3) {
     assert_eq!(a.len(), b.len());
     assert!(a.len().is_power_of_two());
@@ -955,7 +955,7 @@ fn verify_product(
     mut target: Key,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<(Key, Vec<Fp3>), String> {
     let mut point = Vec::new();
     for (round, wire) in rounds.iter().enumerate() {

@@ -272,7 +272,7 @@ fn prove_from_getter(
     if correlations.len() < count {
         return Err("B12 range prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let mut histogram = vec![Fp3::ZERO; limit.len()];
     for i in 0..(1usize << bits) {
         let w = get(i);
@@ -380,7 +380,7 @@ pub(super) fn verify(
     {
         return Err("B12 range proof shape or capacity mismatch".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let histogram: Vec<_> =
         proof.histogram.iter().map(|&c| correct([c], delta, &mut rows)[0]).collect();
     record_values(fs, 0x41, &proof.histogram);

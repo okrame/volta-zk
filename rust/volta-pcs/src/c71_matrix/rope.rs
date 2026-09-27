@@ -217,7 +217,7 @@ pub(super) fn prove(
     if correlations.len() < count {
         return Err("RoPE prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let raw_point = s.bind(c, fs);
     let mut y = vec![Fp3::ZERO; 1 << c];
     let mut value = Fp3::ZERO;
@@ -254,7 +254,7 @@ pub(super) fn verify(
     if correlations.len() < count || proof.rounds.len() != c {
         return Err("RoPE proof shape or capacity differs".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let raw_point = s.bind(c, fs);
     let raw = range::correct([proof.raw], delta, &mut rows)[0];
     record_values(fs, 0xe1, &[proof.raw]);

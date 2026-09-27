@@ -81,7 +81,7 @@ pub(in super::super) fn prove(
     if correlations.len() < count {
         return Err("B12 RMS statistic prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let statistic_point = s.bind(r, fs);
     let value =
         eq(&statistic_point).iter().take(s.shape[0]).enumerate().fold(Fp3::ZERO, |v, (row, &a)| {
@@ -129,7 +129,7 @@ pub(in super::super) fn verify(
     if correlations.len() < count {
         return Err("B12 RMS statistic verifier capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let statistic_point = s.bind(r, fs);
     let original = range::correct([proof.statistic], delta, &mut rows)[0];
     record_values(fs, 0x91, &[proof.statistic]);

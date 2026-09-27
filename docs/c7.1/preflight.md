@@ -1984,12 +1984,21 @@ responsabile del burn completo e non può riutilizzare il suffisso non
 materializzato. Ora anche [GKR e il byte endpoint sourcewise](evidence.md#borrowed-gkr-and-byte-intervals) eliminano
 il Vec duplicato del loro intervallo. Il census distingue payload MAC
 riservato e heap posseduto; non azzera storage del caller, workspace PCG
-o stato inline. Restano statistic e altre riserve componenti: nessun
-nuovo margine arena o picco fisico viene attribuito.
+o stato inline. Nessun nuovo margine arena o picco fisico viene attribuito.
 Anche [dispatcher e riduzione RNE](evidence.md#borrowed-rne-intervals) ora passano intervalli in prestito:
 non espandono l'intera riserva delle tabelle prima del primo probe.
 Count, shift, richieste originali e PCS non cambiano; il burn rimane
 responsabilità del pool, non della materializzazione delle righe.
+Il raccordo è ora esteso ai consumer residui EXP30/lookup, statistic/P0,
+range/linear, QK/PV, RoPE, gate-up e KV. Non introduce un'altra API:
+riusa gli stessi iteratori a capacità esatta, con consumo sul successo
+invariato. Nel lookup i campi di backing/copia bulk diventano zero, mentre
+restano cardinalità e dimensione Auth; non comprendono PCG o stato inline.
+Oracoli densi, wrapper ideali dei test, diagnostico standalone e adapter
+B12 denso mantengono le proprie copie; Seed6 lazy non le attraversa.
+Le altre strutture di prova e sorgente non sono eliminate e gli indirizzi
+del piano arena non cambiano. È integrazione del pool lazy, non un nuovo
+census ABI né un'ammissione canonica.
 
 ## Seed6: seal di completamento
 

@@ -170,6 +170,17 @@ ordinata e full O0 late rejection. Ogni invocazione resta entro 60 s/2 GiB;
 il fixture table RNE osserva zero richieste all'iteratore prima del primo getter
 del probe e consumo esatto nei due ruoli sul successo.
 
+Per i consumer MAC residui usare separatamente `source_lookup_matches_dense`,
+`c71_b12_lookup_rejects`, `c71_b12_softmax_original`,
+`sourcewise_range_matches_dense`, `c71_b12_sourcewise_linear`,
+`c71_b12_rms_statistic`, `c71_b12_p0_matrix`, `c71_b12_attention_pv`,
+`c71_b12_attention_qk`, `c71_b12_rope_joint`, `c71_b12_gemma_gate_up_product`
+e `c71_b12_gemma_kv_original`. Ripetere native composed/streaming e Seed6
+partial, W replay/A ordinata e full O0 late rejection. Ogni filtro resta
+entro 60 s/2 GiB. Lookup controlla i getter prima di qualunque richiesta
+MAC e la stessa proof/FS/endpoint del denso; EXP30 controlla espansione
+non anticipata e consumo esatto, senza cambiare i fault sui byte originali.
+
 Per il raccordo del verifier canonico al medesimo pool lazy eseguire
 separatamente `c71_b12_native_registry` e `c71_b12_native_dispatch_canonical`.
 Con feature Seed6 il primo verifica anche shortage con setup 25+6 su

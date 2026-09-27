@@ -231,7 +231,7 @@ pub(in crate::c71_matrix) fn prove(
     if correlations.len() < count || s.segments.iter().any(|s| bits(s.bytes.live) > 34) {
         return Err("KV source exceeds D34 or prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let (forms, coefficients) = s.forms(requests, fs)?;
     let mut current =
         requests.iter().zip(coefficients).fold(Auth::ZERO, |v, (r, c)| v.add(r.original.scale(c)));
@@ -276,7 +276,7 @@ pub(in crate::c71_matrix) fn verify(
     {
         return Err("KV native source/proof shape or verifier capacity differs".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let (forms, coefficients) = s.forms(requests, fs)?;
     let mut current =
         requests.iter().zip(coefficients).fold(Key::ZERO, |v, (r, c)| v.add(r.original.scale(c)));

@@ -791,9 +791,7 @@ pub(super) fn prove_wide_counted(
     if correlations.len() < count {
         return Err("B12 lookup prover capacity exhausted".into());
     }
-    let reserved_rows = correlations.by_ref().take(count).collect::<Vec<_>>();
-    let rows_backing_capacity_bytes = reserved_rows.capacity() * core::mem::size_of::<Auth>();
-    let mut rows = reserved_rows.into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let (descriptor, alpha, bind_work) = s.bind(fs)?;
     let mut work = SourceWork::default();
     work.descriptor_capacity_bytes = descriptor.capacity_bytes();
@@ -803,7 +801,7 @@ pub(super) fn prove_wide_counted(
     work.binding_frame_logical_bytes = bind_work.frame_logical_bytes;
     work.binding_table_output_encoded_bytes = bind_work.table_output_encoded_bytes;
     work.attempt_encode_capacity_bytes = bind_work.attempt_encode_capacity_bytes;
-    work.rows_backing_capacity_bytes = rows_backing_capacity_bytes;
+    work.rows_backing_capacity_bytes = 0;
     work.dimensions_transient_capacity_bytes =
         descriptor.dimensions_work.coverage_outer_capacity_bytes
             + descriptor.dimensions_work.coverage_inner_capacity_bytes
@@ -817,7 +815,7 @@ pub(super) fn prove_wide_counted(
     work.declared_stack_is_complete = false;
     work.correlation_rows_reserved = count as u64;
     work.correlation_rows_consumed = count as u64;
-    work.correlation_row_copy_bytes = (count * core::mem::size_of::<Auth>()) as u64;
+    work.correlation_row_copy_bytes = 0;
     work.binding_frame_payload_write_bytes = work.binding_frame_logical_bytes as u64;
     work.auth_size_bytes = core::mem::size_of::<Auth>();
     work.triple_size_bytes = core::mem::size_of::<[Auth; 3]>();
@@ -1046,7 +1044,7 @@ pub(super) fn verify(
     if correlations.len() < count {
         return Err("B12 lookup verifier capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let (descriptor, alpha, _bind_work) = s.bind(fs)?;
     let bits = descriptor.bits;
     if !range::tree_shape(&proof.layers, bits, 0) {
@@ -1412,6 +1410,7 @@ mod tests {
         let auth: Vec<_> = (0..count)
             .map(|_| Auth::new(from_p3(rng.random::<E>()), from_p3(rng.random::<E>())))
             .collect();
+        let keys: Vec<_> = auth.iter().map(|row| Key::new(row.m + delta * row.x)).collect();
         let start = || Fs::new(b"lookup source dense identity", 100_000);
         let mut dense_fs = start();
         let mut dense_rows = auth.clone().into_iter();
@@ -1424,16 +1423,35 @@ mod tests {
         )
         .unwrap();
         let mut source_fs = start();
-        let mut source_rows = auth.into_iter();
+        let requested = std::cell::Cell::new(0);
+        let mut source_rows = auth.into_iter().inspect(|_| requested.set(requested.get() + 1));
         let (source, source_pending, work) = prove_wide_counted(
             &statement,
-            get,
-            |j| histogram[j],
+            |index| {
+                assert_eq!(requested.get(), 0);
+                get(index)
+            },
+            |index| {
+                assert_eq!(requested.get(), 0);
+                histogram[index]
+            },
             false,
             &mut source_fs,
             &mut source_rows,
         )
         .unwrap();
+        assert_eq!(requested.get(), count);
+        let mut verifier_fs = start();
+        let mut verifier_rows = keys.into_iter();
+        let verified =
+            verify(&statement, &source, delta, &mut verifier_fs, &mut verifier_rows).unwrap();
+        assert_eq!(verifier_rows.len(), 0);
+        assert_eq!(verified.point, source_pending.point);
+        assert_eq!(
+            verified.originals.map(|key| key.k),
+            source_pending.originals.map(|row| row.m + delta * row.x)
+        );
+        assert_eq!(verifier_fs.digest(), source_fs.digest());
         let mut dense_wire = Vec::new();
         dense.write(&mut dense_wire);
         let mut source_wire = Vec::new();
@@ -1462,7 +1480,7 @@ mod tests {
         assert_eq!(work.dimension_coverage_interval_visits, 4);
         assert_eq!(work.correlation_rows_reserved, count as u64);
         assert_eq!(work.correlation_rows_consumed, count as u64);
-        assert_eq!(work.correlation_row_copy_bytes, (count * 48) as u64);
+        assert_eq!(work.correlation_row_copy_bytes, 0);
         assert_eq!(
             work.cache_payload_write_bytes,
             (4 * positions.len() + 4 * histogram.len()) as u64
@@ -1472,7 +1490,7 @@ mod tests {
             ((4 * positions.len() + 4 * histogram.len()) * (2 + replay_repetitions)) as u64
         );
         assert_eq!(work.binding_frame_payload_write_bytes, work.binding_frame_logical_bytes as u64);
-        assert!(work.rows_backing_capacity_bytes >= count * 48);
+        assert_eq!(work.rows_backing_capacity_bytes, 0);
         assert_eq!(
             work.proof_logical_heap_bytes,
             range::tree_proof_logical_heap_bytes(descriptor.bits, 0)

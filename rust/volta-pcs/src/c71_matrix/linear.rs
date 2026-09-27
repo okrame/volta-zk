@@ -130,7 +130,7 @@ fn prove_dense_with_coins(
     if correlations.len() < required {
         return Err("B12 linear prover correlations exhausted".into());
     }
-    let mut reserved = correlations.by_ref().take(required).collect::<Vec<_>>().into_iter();
+    let mut reserved = correlations.by_ref().take(required);
     let (config, coefficients) =
         bind(model.domain, &model.root, attempt, layout, forms, targets.len(), fs)?;
     let target =
@@ -281,7 +281,7 @@ fn prove_sourcewise_with_coins(
     if correlations.len() < required {
         return Err("B12 linear prover correlations exhausted".into());
     }
-    let mut reserved = correlations.by_ref().take(required).collect::<Vec<_>>().into_iter();
+    let mut reserved = correlations.by_ref().take(required);
     let (config, coefficients) =
         bind(model.domain(), model.root(), attempt, layout, forms, targets.len(), fs)?;
     let target =
@@ -322,7 +322,7 @@ pub(super) fn verify(
     if correlations.len() < required || proof.rounds.len() != bits {
         return Err("B12 linear verifier correlations or round count mismatch".into());
     }
-    let mut reserved = correlations.by_ref().take(required).collect::<Vec<_>>().into_iter();
+    let mut reserved = correlations.by_ref().take(required);
     let (config, coefficients) = bind(domain, root, attempt, layout, forms, targets.len(), fs)?;
     let target = targets.iter().zip(&coefficients).fold(Key::ZERO, |s, (&x, &c)| s.add(x.scale(c)));
     let (target, point) = verify_product(&proof.rounds, target, delta, fs, &mut reserved)?;

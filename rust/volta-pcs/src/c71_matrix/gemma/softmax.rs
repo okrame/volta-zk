@@ -344,8 +344,27 @@ mod tests {
             let (mut forms, zb) = zeros(&mut fs);
             let mut targets = zb.iter().map(|&b| Auth::new(b, Fp3::ZERO)).collect::<Vec<_>>();
             let before_softmax = fs.requests();
-            let (proof, pending) =
-                sm.prove(&bytes, &context, &tables, read, &mut fs, &mut prows).unwrap();
+            let required = sm.required(&bytes, &context, &tables).unwrap();
+            let requested = std::cell::Cell::new(0);
+            let first_read = std::cell::Cell::new(false);
+            let mut lazy_rows = prows.by_ref().inspect(|_| requested.set(requested.get() + 1));
+            let (proof, pending) = sm
+                .prove(
+                    &bytes,
+                    &context,
+                    &tables,
+                    |source, row, col, byte| {
+                        if !first_read.replace(true) {
+                            assert!(requested.get() < required);
+                        }
+                        read(source, row, col, byte)
+                    },
+                    &mut fs,
+                    &mut lazy_rows,
+                )
+                .unwrap();
+            assert!(first_read.get());
+            assert_eq!(requested.get(), required);
             assert_eq!(fs.requests() - before_softmax, 2360);
             let (f, b, t) = sm.forms(&bytes, &pending).unwrap();
             forms.extend(f);
@@ -1071,7 +1090,7 @@ impl Softmax {
             &assignment,
             &support,
         );
-        let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+        let mut rows = correlations.by_ref().take(count);
         let view = self.bind(bytes, s, fs)?;
         let row_point = (0..self.row_bits()).map(|_| fs.fp3()).collect::<Vec<_>>();
         let mut triples = Vec::new();
@@ -1178,7 +1197,7 @@ impl Softmax {
             &assignment,
             &support,
         );
-        let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+        let mut rows = correlations.by_ref().take(count);
         let view = self.bind(bytes, s, fs)?;
         let point = (0..self.row_bits()).map(|_| fs.fp3()).collect::<Vec<_>>();
         let top = Key::new(delta * (Fp3::ONE - self.live_rows(&point)));

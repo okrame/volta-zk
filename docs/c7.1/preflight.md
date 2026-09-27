@@ -886,7 +886,7 @@ I timing del runner continuano a misurare solo FFT, non questa pipeline;
 fattori canonici, root/sali e picco completo restano aperti.
 Il check device deve passare prima di quei timing.
 
-Il confronto Rust→C++ ora usa coefficienti/pad del `Code` originale e
+Il [confronto Rust→C++](evidence.md#native-pcs-to-fft-remainder-boundary) ora usa coefficienti/pad del `Code` originale e
 spettri prodotti dal setup nativo, invece dei fattori quadratici del
 fixture autonomo. Le due colonne base o le sei componenti delle due
 colonne Fp3 conservano layout contiguo e ordine delle righe. Il test

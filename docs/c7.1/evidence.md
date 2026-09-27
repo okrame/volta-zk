@@ -2382,3 +2382,30 @@ Il timing del runner misura ancora FFT isolate, non il remainder;
 non sono collegati getter/pad originali, Fp3, fattori canonici o PCS.
 Nessuna esecuzione GPU, rate misurato o picco completo: Γ reale e gate
 pre-spesa restano aperti.
+
+## Native PCS to FFT remainder boundary
+
+Il [record su SHA pulita `de3533f`](../../benchmarks/results/c71-native-remainder-2026-09-27-de3533f805e9.json)
+conserva undici test Python/C++ e quattro test Rust, seriali entro
+60 s/2 GiB, più compilazione sm_90 e SASS dei tredici kernel senza
+stack/spill. Otto fixture esportano direttamente dal `Code` nativo
+coefficienti/pad, spettri Newton, resti e righe RS: due colonne base o
+sei componenti Fp3, B=2/8/32/128. Il C++ riusa quegli spettri e confronta
+il risultato della pipeline, senza ricostruire un modulo alternativo.
+
+Passano coda zero prima dei pad, pad nonzero, righe duplicate e punti
+zero di completamento; pad, fattori attivi, resti e righe alterati sono
+respinti, così come framing/cardinalità/elementi invalidi. B=128 ha un
+solo blocco parziale: i suoi fattori inutilizzati non sono una prova
+di lavoro spettrale. La parità WHIR sourcewise originale resta verificata.
+Il primo controllo preliminare partito prima del termine della build
+ha rifiutato correttamente zero test nel vecchio binario; il log è
+conservato e non costituisce evidenza del raccordo. Il run di record
+attende la build e non sovrappone compilazione e test.
+
+Il consumer CUDA accetta lo stesso formato limitato e usa la pipeline
+comune, ma non è stato eseguito. Materializzazione host completa,
+copie per blocco, due twiddle, spettri, risultati attesi e Horner finale
+del resto piccolo non sono gratuiti né l'adapter streaming canonico.
+Nessun cambiamento a protocollo Rust/MAC, credito GPU, picco completo,
+calibrazione Γ o gate pre-spesa.

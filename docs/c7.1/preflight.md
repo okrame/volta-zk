@@ -2968,6 +2968,11 @@ trial parziali, scale cambiate, riordino o un quarto tentativo. Il report
 completo contiene token, range di tutte le sorgenti e contatori dei tre
 trial solo dopo il loro successo; gli errori del replay e i timeout hanno
 record separati di fallimento, senza sovrascrivere risultati esistenti.
+Il wrapper conserva stdout/stderr anche parziali dopo un errore o timeout,
+distinguendo il codice del worker da quello del controllo. Un exit zero
+con JSON invalido, duplicato, non-oggetto o trial non completo produce
+un record di fallimento, non una conclusione positiva. Un report valido
+resta comunque `calibrated:false` e `credit:false`.
 Il limite del payload comprende KV precedente e cache di riga W, ma
 esclude ancora tabelle/descrittori, workspace interni e allocator: non è
 un limite del picco fisico completo. Il trasferimento finale conserva

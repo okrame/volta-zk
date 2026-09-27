@@ -154,19 +154,32 @@ def main() -> None:
                    str(args.packed), str(args.payload_bytes)]
         try:
             run = subprocess.run(command, capture_output=True, text=True, timeout=args.timeout_seconds)
-            exit_code = run.returncode
-            result = json.loads(run.stdout) if exit_code == 0 else {
-                "complete_integer_trial": False, "stderr": run.stderr,
-            }
-        except subprocess.TimeoutExpired:
+            exit_code = native_exit_code = run.returncode
+            result = {"complete_integer_trial": False, "stdout": run.stdout, "stderr": run.stderr}
+            if exit_code == 0:
+                try:
+                    decoded = ingest._json_no_duplicates(run.stdout, "native integer trial")
+                    if decoded.get("complete_integer_trial") is not True:
+                        raise ValueError("native report does not complete the integer trial")
+                except ValueError as error:
+                    exit_code = 1
+                    result["failure"] = str(error)
+                else:
+                    result = decoded
+            else:
+                result["failure"] = "native integer trial failed"
+        except subprocess.TimeoutExpired as error:
             exit_code = 124
-            result = {"complete_integer_trial": False, "stderr": "integer trial deadline exceeded"}
+            native_exit_code = None
+            result = {"complete_integer_trial": False, "failure": "integer trial deadline exceeded"}
+            for name, value in (("stdout", error.stdout), ("stderr", error.stderr)):
+                result[name] = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
         result.update(table_report, candidate_sha256=hashlib.sha256(candidate_body).hexdigest(),
                       packed_sha256=report["packed_sha256"],
                       native_sha256=ingest.stream_sha256(args.native)[0],
                       workload_sha256=hashlib.sha256((ingest.ROOT / "manifests/c7-d126-gemma31b-workload-v1.json").read_bytes()).hexdigest(),
                       tables_generated_by_certified_reference=True,
-                      packed_hash_checked=True, exit_code=exit_code,
+                      packed_hash_checked=True, exit_code=exit_code, native_exit_code=native_exit_code,
                       timeout_seconds=args.timeout_seconds, credit=False)
         with args.output.open("x") as sink:
             json.dump(result, sink, indent=2, sort_keys=True)

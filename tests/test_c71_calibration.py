@@ -153,8 +153,8 @@ def test_failed_table_generation_never_publishes(tmp_path, monkeypatch):
     assert not list(tmp_path.iterdir())
 
 
-@pytest.mark.parametrize("deadline", [False, True])
-def test_failed_trial_keeps_record_and_uses_frozen_candidate(tmp_path, monkeypatch, deadline):
+@pytest.mark.parametrize("outcome", ["exit", "timeout", "json", "array", "duplicate", "incomplete", "success"])
+def test_trial_output_keeps_record_and_uses_frozen_candidate(tmp_path, monkeypatch, outcome):
     candidate = tmp_path / "candidate.json"
     candidate.write_text("{}")
     report = tmp_path / "ingest.json"
@@ -169,20 +169,39 @@ def test_failed_trial_keeps_record_and_uses_frozen_candidate(tmp_path, monkeypat
     def failed(command, **_kwargs):
         candidate.write_text('{"changed":true}')
         assert Path(command[2]).read_text() == "{}"
-        if deadline:
-            raise subprocess.TimeoutExpired(command, 1)
-        return subprocess.CompletedProcess(command, 1, stdout="", stderr="fixture overflow")
+        if outcome == "timeout":
+            raise subprocess.TimeoutExpired(command, 1, output=b"trial prefix", stderr=b"fixture timeout prefix")
+        stdout = {
+            "exit": "trial prefix",
+            "json": '{"complete_integer_trial":',
+            "array": "[]",
+            "duplicate": '{"complete_integer_trial":false,"complete_integer_trial":true}',
+            "incomplete": '{"complete_integer_trial":false}',
+            "success": '{"complete_integer_trial":true}',
+        }[outcome]
+        return subprocess.CompletedProcess(command, int(outcome == "exit"), stdout=stdout, stderr="fixture overflow")
 
     monkeypatch.setattr(calibration.subprocess, "run", failed)
     monkeypatch.setattr(sys, "argv", ["c71_calibrate", "run", "--native", str(native),
                         "--candidate", str(candidate), "--output", str(output),
                         "--ingest-report", str(report), "--packed", str(tmp_path / "packed"),
                         "--payload-bytes", "100", "--timeout-seconds", "1"])
-    with pytest.raises(SystemExit) as stopped:
+    if outcome == "success":
         calibration.main()
+        code = 0
+    else:
+        with pytest.raises(SystemExit) as stopped:
+            calibration.main()
+        code = stopped.value.code
     result = json.loads(output.read_text())
-    assert result["exit_code"] == stopped.value.code == (124 if deadline else 1)
+    assert result["exit_code"] == code == (0 if outcome == "success" else 124 if outcome == "timeout" else 1)
+    assert result["native_exit_code"] == (None if outcome == "timeout" else int(outcome == "exit"))
+    if outcome != "success":
+        assert result["stdout"]
+        assert result["stderr"] == ("fixture timeout prefix" if outcome == "timeout" else "fixture overflow")
+        assert result["failure"]
     assert result["candidate_sha256"] == hashlib.sha256(b"{}").hexdigest()
-    assert not result["complete_integer_trial"] and not result["calibrated"]
+    assert result["complete_integer_trial"] is (outcome == "success")
+    assert not result["calibrated"] and not result["credit"]
     with pytest.raises(FileExistsError):
         calibration.main()

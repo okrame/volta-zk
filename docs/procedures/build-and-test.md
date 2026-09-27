@@ -43,6 +43,13 @@ the exact complete bounds with the additional caller resource envelope.
 They do not execute the full native verifier or Gemma. Mathematical/doc
 closure alone requires no Rust or Lean build; native refinement is separate.
 
+Per i record di fallimento dell'harness Γ usare
+`tests/test_c71_calibration.py -k 'trial_output or failed_table or weight_provenance'`
+entro 60 s/2 GiB. Sono controlli Python con worker simulato: conservano
+prefissi stdout/stderr, timeout, errori JSON e report incompleti, senza
+leggere pesi reali o richiedere una nuova build Rust. Anche il positivo
+del fixture conserva `calibrated:false` e `credit:false`.
+
 Per il consumer BMMA EXP30 eseguire `tests/test_c71_exp30_bmma.py`:
 sono oracoli CPU e controllo arena, senza prove canoniche né GPU. Il file
 `cuda/c71_exp30_bmma.cu` compila come C++ per il controllo host, oppure con

@@ -305,7 +305,7 @@ pub(super) fn prove_reduction(
     mut target: Auth,
     get_bytes: impl Fn(usize) -> [u8; 6],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Reduction, Deferred<Auth>), String> {
     let (rho, tau) = bind(s, fs)?;
     let recipe = Recipe::new(s.shift);
@@ -409,7 +409,7 @@ pub(super) fn prove(
     target: Auth,
     get_bytes: impl Fn(usize) -> [u8; 6],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
     if correlations.len() < required(s.output_point.len(), s.shift) {
         return Err("B12 RNE prover capacity exhausted".into());
@@ -431,7 +431,7 @@ pub(super) fn verify_reduction(
     proof: &Reduction,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<Deferred<Key>, String> {
     let (rho, tau) = bind(s, fs)?;
     let recipe = Recipe::new(s.shift);
@@ -513,7 +513,7 @@ pub(super) fn verify(
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<(Vec<Fp3>, Key), String> {
     if correlations.len() < required(s.output_point.len(), s.shift) {
         return Err("B12 RNE proof shape or capacity mismatch".into());

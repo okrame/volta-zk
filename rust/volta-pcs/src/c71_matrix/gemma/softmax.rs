@@ -1058,7 +1058,7 @@ impl Softmax {
         tables: &[lookup::Table<'_>],
         read: impl Fn(usize, usize, usize, usize) -> u8,
         fs: &mut Fs,
-        correlations: &mut std::vec::IntoIter<Auth>,
+        correlations: &mut impl ExactSizeIterator<Item = Auth>,
     ) -> Result<(Proof, Pending<Auth>), String> {
         let (programs, count) = self.prepare(bytes, s, tables)?;
         if correlations.len() < count {
@@ -1163,7 +1163,7 @@ impl Softmax {
         proof: &Proof,
         delta: Fp3,
         fs: &mut Fs,
-        correlations: &mut std::vec::IntoIter<Key>,
+        correlations: &mut impl ExactSizeIterator<Item = Key>,
     ) -> Result<Pending<Key>, String> {
         let (programs, count) = self.prepare(bytes, s, tables)?;
         if correlations.len() < count

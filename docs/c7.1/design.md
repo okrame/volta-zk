@@ -1368,6 +1368,13 @@ del prodotto cambia. Il lift B4/B5 respinto e i suoi controesempi restano
 nel modulo MAC, senza nuova ammissione. Questo evita una dipendenza
 circolare per il futuro bridge, non introduce produzione, fallback CPU,
 una nuova riduzione o un collegamento già positivo al verifier composto.
+Il corpo composto e i consumer range/lookup/GKR/PCS usano ora il trait
+standard `ExactSizeIterator` anziché il tipo concreto `Vec::IntoIter`.
+Restano i controlli `len` prima delle fasi e l'esaurimento esatto finale;
+non si sostituiscono con stime o si rimuovono validazioni. Questa scelta
+permette iteratori limitati/lazy senza una nuova interfaccia di pool.
+Non cambia algebra, ordine, transcript, riserva compilata o NoPeek;
+finché il wrapper non usa i pool Seed6, il positivo resta nel modello MAC ideale.
 Le coin dei test algebrici
 restano distinte dalla catena che esegue il protocollo nativo.
  Il getter numerico ridotto

@@ -752,7 +752,7 @@ pub(super) fn prove(
     read_query: impl Fn(usize) -> (i16, i16),
     read_histogram: impl Fn(usize) -> i32,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Pending<Auth>), String> {
     prove_wide_counted(
         s,
@@ -773,7 +773,7 @@ pub(super) fn prove_wide(
     read_query: impl Fn(usize) -> (i16, i32),
     read_histogram: impl Fn(usize) -> i32,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Pending<Auth>), String> {
     prove_wide_counted(s, read_query, read_histogram, true, fs, correlations)
         .map(|(proof, pending, _)| (proof, pending))
@@ -785,7 +785,7 @@ pub(super) fn prove_wide_counted(
     read_histogram: impl Fn(usize) -> i32,
     wide: bool,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Pending<Auth>, SourceWork), String> {
     let count = s.required()?;
     if correlations.len() < count {
@@ -961,7 +961,7 @@ fn prove_wide_dense_oracle(
     read_query: impl Fn(usize) -> (i16, i32),
     read_histogram: impl Fn(usize) -> i32,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Pending<Auth>), String> {
     let count = s.required()?;
     if correlations.len() < count {
@@ -1040,7 +1040,7 @@ pub(super) fn verify(
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<Pending<Key>, String> {
     let count = s.required()?;
     if correlations.len() < count {

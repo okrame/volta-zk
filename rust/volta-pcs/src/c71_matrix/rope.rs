@@ -210,7 +210,7 @@ pub(super) fn prove(
     s: &Statement<'_>,
     read: impl Fn(usize) -> ([u8; 6], i16),
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Pending<Auth>), String> {
     let (cells, c) = s.dimensions()?;
     let count = 3 * c + 2;
@@ -247,7 +247,7 @@ pub(super) fn verify(
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<Pending<Key>, String> {
     let (_, c) = s.dimensions()?;
     let count = 3 * c + 2;

@@ -285,7 +285,7 @@ pub(super) fn prove_sourcewise(
     original: Original<'_, Auth>,
     get_byte: impl Fn(usize) -> u8,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
     prove_sourcewise_impl(s, original, get_byte, fs, correlations, false, &[], 0)
 }
@@ -298,7 +298,7 @@ pub(super) fn prove_contracted(
     public_support: &[(u32, u32)],
     live_lanes: usize,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceWork), String> {
     if s.cell_point.len() > 7
         || s.live_cells != 1usize << s.cell_point.len()
@@ -314,7 +314,7 @@ fn prove_sourcewise_impl(
     original: Original<'_, Auth>,
     get_byte: impl Fn(usize) -> u8,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
     contracted: bool,
     public_support: &[(u32, u32)],
     live_lanes: usize,
@@ -432,7 +432,7 @@ pub(super) fn prove(
     original: Original<'_, Auth>,
     get_byte: impl Fn(usize) -> u8,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
     let (proof, point, original, _) = prove_sourcewise(s, original, get_byte, fs, correlations)?;
     Ok((proof, point, original))
@@ -444,7 +444,7 @@ fn prove_dense(
     original: Original<'_, Auth>,
     get_byte: impl Fn(usize) -> u8,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
     let (len, sum) = match &original {
         Original::Lanes(v) => (v.len(), false),
@@ -506,7 +506,7 @@ pub(super) fn verify(
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<(Vec<Fp3>, Key), String> {
     let (len, sum) = match &original {
         Original::Lanes(v) => (v.len(), false),

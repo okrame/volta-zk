@@ -203,7 +203,7 @@ impl Sources {
         tables: &[lookup::Table<'_>],
         read: impl Fn(usize, usize, usize, usize) -> u8,
         fs: &mut Fs,
-        rows: &mut std::vec::IntoIter<Auth>,
+        rows: &mut impl ExactSizeIterator<Item = Auth>,
     ) -> Result<(lookup::Proof, lookup::Pending<Auth>), String> {
         self.bind_lookup_context(s, tables, fs)?;
         let blocks = self.blocks();
@@ -248,7 +248,7 @@ impl Sources {
         proof: &lookup::Proof,
         delta: Fp3,
         fs: &mut Fs,
-        rows: &mut std::vec::IntoIter<Key>,
+        rows: &mut impl ExactSizeIterator<Item = Key>,
     ) -> Result<lookup::Pending<Key>, String> {
         self.bind_lookup_context(s, tables, fs)?;
         let blocks = self.blocks();

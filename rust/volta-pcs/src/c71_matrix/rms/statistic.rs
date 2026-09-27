@@ -74,7 +74,7 @@ pub(in super::super) fn prove(
     get_x: impl Fn(usize, usize) -> i16,
     get_s: impl Fn(usize) -> [u8; 6],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Pending<Auth>), String> {
     let [r, c] = s.dimensions()?;
     let count = s.required()?;
@@ -122,7 +122,7 @@ pub(in super::super) fn verify(
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<Pending<Key>, String> {
     let [r, c] = s.dimensions()?;
     let count = s.required()?;

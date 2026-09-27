@@ -411,7 +411,7 @@ fn c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs() {
     state.live = false;
     state.next_slot += 1;
     state.cursor += 3 * required;
-    let mut reserved = rows.by_ref().take(required).collect::<Vec<_>>().into_iter();
+    let mut reserved = rows.by_ref().take(required);
     let (certificate, receipt) =
         prove_schedule(&state, &p, &weights, &snapshot, &[], &statement, &header, &mut reserved)
             .unwrap();

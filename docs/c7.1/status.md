@@ -539,6 +539,10 @@ Il pool è ora accessibile da altri crate solo con la feature CPU opt-in
 esporre seed/Delta scelti dal caller. L'algebra Fp3 condivisa è spostata
 sotto MAC con reexport compatibili, evitando il ciclo PCG↔MAC. Il test
 esterno esegue transfer Fp3 originale; non è ancora la proof composta.
+Il corpo PCS/GKR ora accetta `ExactSizeIterator` invece di imporre
+`Vec::IntoIter`, mantenendo i controlli di capacità ed esaurimento. È il
+passaggio necessario per consumare il pool a batch senza raccogliere tutta
+la riserva; il raccordo diretto a Seed6 resta da completare.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 correzioni, coin e share ora attraversano due endpoint indipendenti tramite

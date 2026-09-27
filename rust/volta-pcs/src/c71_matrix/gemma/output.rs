@@ -166,7 +166,7 @@ impl Output {
         table: lookup::Table<'_>,
         read: impl Fn(usize, usize, usize, usize) -> u8,
         fs: &mut Fs,
-        rows: &mut std::vec::IntoIter<Auth>,
+        rows: &mut impl ExactSizeIterator<Item = Auth>,
     ) -> Result<(lookup::Proof, lookup::Pending<Auth>), String> {
         let view = self.bind(bytes, s, &table, fs)?;
         let (tiles, _) = self.layout(bytes)?;
@@ -207,7 +207,7 @@ impl Output {
         proof: &lookup::Proof,
         delta: Fp3,
         fs: &mut Fs,
-        rows: &mut std::vec::IntoIter<Key>,
+        rows: &mut impl ExactSizeIterator<Item = Key>,
     ) -> Result<lookup::Pending<Key>, String> {
         let view = self.bind(bytes, s, &table, fs)?;
         let blocks = self.blocks(bytes)?;

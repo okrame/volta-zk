@@ -149,7 +149,7 @@ fn suffix(live: usize, point: &[Fp3]) -> Vec<Cube> {
 
 pub(super) fn authenticate<const N: usize>(
     values: [Fp3; N],
-    rows: &mut std::vec::IntoIter<Auth>,
+    rows: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> ([Fp3; N], [Auth; N]) {
     let mut wire = [Fp3::ZERO; N];
     let auth = std::array::from_fn(|i| {
@@ -163,7 +163,7 @@ pub(super) fn authenticate<const N: usize>(
 pub(super) fn correct<const N: usize>(
     wire: [Fp3; N],
     delta: Fp3,
-    rows: &mut std::vec::IntoIter<Key>,
+    rows: &mut impl ExactSizeIterator<Item = Key>,
 ) -> [Key; N] {
     std::array::from_fn(|i| {
         c7_fp3_transfer_verifier(rows.next().unwrap(), delta, C7Fp3TransferCorrection::new(wire[i]))
@@ -204,7 +204,7 @@ pub(super) fn prove(
     live: usize,
     limit: impl Into<Alphabet>,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
     let weights: Vec<_> = model
         .polynomial()
@@ -238,7 +238,7 @@ pub(super) fn prove_sourcewise(
     limit: impl Into<Alphabet>,
     get: &impl Fn(usize) -> Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
     prove_from_getter(
         domain,
@@ -265,7 +265,7 @@ fn prove_from_getter(
     get: &impl Fn(usize) -> Fp3,
     sourcewise: bool,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
     let bits = bind(domain, root, attempt, layout, live, limit, fs)?;
     let count = required(bits, limit);
@@ -369,7 +369,7 @@ pub(super) fn verify(
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<([Vec<Cube>; 2], [Key; 2]), String> {
     let limit = limit.into();
     let bits = bind(domain, root, attempt, layout, live, limit, fs)?;
@@ -418,7 +418,7 @@ pub(super) fn prove_tree(
     point: Vec<Fp3>,
     claims: [Auth; 2],
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Auth>,
+    rows: &mut impl ExactSizeIterator<Item = Auth>,
     triples: &mut Vec<[Auth; 3]>,
 ) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2]) {
     prove_tree_with_first_weight(tree, point, claims, fs, rows, triples, None)
@@ -533,7 +533,7 @@ pub(super) fn prove_tree_sourcewise(
     claims: [Auth; 2],
     get: impl Fn(usize, usize) -> [Fp3; 4],
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Auth>,
+    rows: &mut impl ExactSizeIterator<Item = Auth>,
     triples: &mut Vec<[Auth; 3]>,
 ) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2], SourceTreeWork) {
     prove_tree_sourcewise_custom(
@@ -556,7 +556,7 @@ pub(super) fn prove_tree_sourcewise_custom(
     mut claims: [Auth; 2],
     get: impl Fn(usize, usize) -> [Fp3; 4],
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Auth>,
+    rows: &mut impl ExactSizeIterator<Item = Auth>,
     triples: &mut Vec<[Auth; 3]>,
     mut coefficients: impl FnMut(usize, &[Fp3], Fp3, &[Fp3]) -> Option<[Fp3; 4]>,
     mut terminal: impl FnMut(usize, &[Fp3]) -> Option<[Fp3; 4]>,
@@ -688,7 +688,7 @@ pub(super) fn prove_tree_with_first_weight(
     mut point: Vec<Fp3>,
     mut claims: [Auth; 2],
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Auth>,
+    rows: &mut impl ExactSizeIterator<Item = Auth>,
     triples: &mut Vec<[Auth; 3]>,
     mut first_weight: Option<Vec<Fp3>>,
 ) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2]) {
@@ -768,7 +768,7 @@ pub(super) fn verify_tree(
     claims: [Key; 2],
     delta: Fp3,
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Key>,
+    rows: &mut impl ExactSizeIterator<Item = Key>,
     triples: &mut Vec<[Key; 3]>,
 ) -> Result<(Vec<Fp3>, [Key; 2]), String> {
     verify_tree_with_first_weight(layers, point, claims, delta, fs, rows, triples, None)
@@ -780,7 +780,7 @@ pub(super) fn verify_tree_with_first_weight(
     mut claims: [Key; 2],
     delta: Fp3,
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Key>,
+    rows: &mut impl ExactSizeIterator<Item = Key>,
     triples: &mut Vec<[Key; 3]>,
     first_weight: Option<&dyn Fn(&[Fp3]) -> Fp3>,
 ) -> Result<(Vec<Fp3>, [Key; 2]), String> {

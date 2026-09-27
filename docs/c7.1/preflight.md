@@ -1859,6 +1859,16 @@ non una proof di inferenza. Sono invariati wire, heap dei pool e layout
 dei MAC; non si accredita un nuovo picco o runtime. Il wrapper PCS/GKR
 deve ancora usare questa interfaccia anziché il pool AES denso B12.
 
+Il corpo composto e i relativi consumer ora accettano
+`ExactSizeIterator<Item=Auth/Key>`, non richiedono `Vec::IntoIter`.
+È il trait standard minimo che conserva tutti i controlli di cardinalità
+prima delle fasi e l'esaurimento finale. Il positivo streaming O=0 usa
+un `Take` preso in prestito anziché copiare la riserva in un nuovo Vec;
+la sorgente del fixture resta ideale. Non cambiano algebra, FS, numero
+di MAC o conti canonici; nessuna riduzione del picco fisico è attribuita
+a questo cambio d'interfaccia. Restano packing da Seed6 e raccordo del
+wrapper, con Prepare precedente all'esposizione dei MAC inutilizzati.
+
 ## Seed6: seal di completamento
 
 Evidenza: [29 controlli Rust e 28 Python/C++ su SHA pulita](evidence.md#seed6-completion-seals).

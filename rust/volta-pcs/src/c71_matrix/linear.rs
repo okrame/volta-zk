@@ -110,7 +110,7 @@ pub(super) fn prove(
     forms: &[Vec<Cube>],
     targets: &[Auth],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(MatrixProof, blake3::Hash), String> {
     prove_dense_with_coins(model, attempt, layout, forms, targets, fs, correlations, None)
 }
@@ -123,7 +123,7 @@ fn prove_dense_with_coins(
     forms: &[Vec<Cube>],
     targets: &[Auth],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
     coins: Option<PcsCoins>,
 ) -> Result<(MatrixProof, blake3::Hash), String> {
     let required = 3 * model.domain.config()?.num_variables + 2;
@@ -193,7 +193,7 @@ fn prove_product_sourcewise(
     coefficients: &[Fp3],
     mut target: Auth,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> (Vec<[Fp3; 4]>, Vec<Fp3>, Auth, Fp3, Fp3) {
     let bits = model.domain().config().unwrap().num_variables;
     let mut point = Vec::with_capacity(bits);
@@ -261,7 +261,7 @@ pub(in crate::c71_matrix) fn prove_sourcewise(
     forms: &[Vec<Cube>],
     targets: &[Auth],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(MatrixProof, blake3::Hash), String> {
     prove_sourcewise_with_coins(model, attempt, layout, forms, targets, fs, correlations, None)
 }
@@ -274,7 +274,7 @@ fn prove_sourcewise_with_coins(
     forms: &[Vec<Cube>],
     targets: &[Auth],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
     coins: Option<PcsCoins>,
 ) -> Result<(MatrixProof, blake3::Hash), String> {
     let required = 3 * model.domain().config()?.num_variables + 2;
@@ -314,7 +314,7 @@ pub(super) fn verify(
     proof: &MatrixProof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<blake3::Hash, String> {
     let domain = domain.into();
     let bits = domain.config()?.num_variables;

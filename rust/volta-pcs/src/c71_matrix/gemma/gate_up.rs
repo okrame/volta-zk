@@ -309,7 +309,7 @@ pub(in crate::c71_matrix) fn prove(
     s: &Statement<'_>,
     read: impl Fn(usize) -> (i16, i16, [u8; 6]),
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Pending<Auth>), String> {
     let count = s.required()?;
     if correlations.len() < count {
@@ -344,7 +344,7 @@ pub(in crate::c71_matrix) fn verify(
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<Pending<Key>, String> {
     let count = s.required()?;
     if correlations.len() < count {

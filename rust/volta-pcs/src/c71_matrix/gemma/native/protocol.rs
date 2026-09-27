@@ -308,7 +308,7 @@ impl SourceModel<'_> {
         layout: [u8; 32],
         live: usize,
         fs: &mut Fs,
-        rows: &mut std::vec::IntoIter<Auth>,
+        rows: &mut impl ExactSizeIterator<Item = Auth>,
     ) -> Result<(range::Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
         match self {
             Self::Dense(m) => {
@@ -334,7 +334,7 @@ impl SourceModel<'_> {
         forms: &[Vec<Cube>],
         targets: &[Auth],
         fs: &mut Fs,
-        rows: &mut std::vec::IntoIter<Auth>,
+        rows: &mut impl ExactSizeIterator<Item = Auth>,
     ) -> Result<(MatrixProof, blake3::Hash), String> {
         match self {
             Self::Dense(m) => linear::prove(m, attempt, layout, forms, targets, fs, rows),
@@ -385,7 +385,7 @@ fn prove_schedule<S: Auxiliary>(
     old: &[S],
     s: &caller::P0Statement<'_>,
     header: &[u8],
-    rows: &mut std::vec::IntoIter<Auth>,
+    rows: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Vec<u8>, [u8; 32]), String> {
     let Body { mut fs, mut wire, bw, ba, openings } = prove_components(
         state,
@@ -467,7 +467,7 @@ fn prove_originals<S: Auxiliary>(
     s: &caller::P0Statement<'_>,
     requests: Vec<(bytes::RneRequest<Auth>, i32)>,
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Auth>,
+    rows: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Vec<u8>, Batch<Auth>), String> {
     let mut ba = Batch::new();
     let mut proofs = Vec::new();
@@ -510,7 +510,7 @@ fn verify_originals(
     mut body: &[u8],
     delta: Fp3,
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Key>,
+    rows: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<Batch<Key>, String> {
     let mut ba = Batch::new();
     let proofs = Vec::<rne::Proof>::read(&mut body)?;
@@ -538,7 +538,7 @@ fn verify_originals(
 
 // Both schedules run this exact numerical/GKR body. The test-only joint
 // variant changes only original-RNE byte checks, KV closure and final PCS.
-fn prove_components<S: Auxiliary>(
+fn prove_components<S: Auxiliary, Rows: ExactSizeIterator<Item = Auth>>(
     state: &State,
     p: &Profile,
     w: &Installed,
@@ -546,17 +546,17 @@ fn prove_components<S: Auxiliary>(
     old: &[S],
     s: &caller::P0Statement<'_>,
     header: &[u8],
-    rows: &mut std::vec::IntoIter<Auth>,
+    rows: &mut Rows,
     auxiliary_live: usize,
     rne_hook: impl FnOnce(
         Vec<(bytes::RneRequest<Auth>, i32)>,
         &mut Fs,
-        &mut std::vec::IntoIter<Auth>,
+        &mut Rows,
     ) -> Result<(Vec<u8>, Batch<Auth>), String>,
     kv_hook: impl FnOnce(
         &[kv::Request<Auth>],
         &mut Fs,
-        &mut std::vec::IntoIter<Auth>,
+        &mut Rows,
     ) -> Result<(Vec<u8>, Vec<kv::Opening<Auth>>), String>,
 ) -> Result<Body<Auth, Writer>, String> {
     let mut fs = Fs::new(header, 1_000_000);
@@ -742,7 +742,7 @@ fn verify_schedule(
     header: &[u8],
     certificate: &[u8],
     delta: Fp3,
-    rows: &mut std::vec::IntoIter<Key>,
+    rows: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<[u8; 32], String> {
     let Body { mut fs, mut wire, bw, ba, openings } = verify_components(
         p,
@@ -824,25 +824,25 @@ fn verify_schedule(
     wire.finish(&mut fs)
 }
 
-fn verify_components<'a>(
+fn verify_components<'a, Rows: ExactSizeIterator<Item = Key>>(
     p: &Profile,
     s: &caller::P0Statement<'_>,
     header: &[u8],
     certificate: &'a [u8],
     delta: Fp3,
-    rows: &mut std::vec::IntoIter<Key>,
+    rows: &mut Rows,
     auxiliary_range: (Domain, usize),
     rne_hook: impl FnOnce(
         Vec<(bytes::RneRequest<Key>, i32)>,
         &[u8],
         &mut Fs,
-        &mut std::vec::IntoIter<Key>,
+        &mut Rows,
     ) -> Result<Batch<Key>, String>,
     kv_hook: impl FnOnce(
         &[kv::Request<Key>],
         &[u8],
         &mut Fs,
-        &mut std::vec::IntoIter<Key>,
+        &mut Rows,
     ) -> Result<Vec<kv::Opening<Key>>, String>,
 ) -> Result<Body<Key, Reader<'a>>, String> {
     let mut fs = Fs::new(header, 1_000_000);

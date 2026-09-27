@@ -42,7 +42,7 @@ pub(super) fn prove(
     target: Auth,
     column_point: Option<&[Fp3]>,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, [Auth; 3]), String> {
     if x.len() != w.len() || !x.len().is_power_of_two() {
         return Err("B12 P0 compact source lengths differ".into());
@@ -72,7 +72,7 @@ pub(super) fn prove_public(
     target: Auth,
     public: Vec<Fp3>,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, [Auth; 3]), String> {
     if x.len() != w.len() || x.len() != public.len() || !x.len().is_power_of_two() {
         return Err("B12 P0 public-weight source lengths differ".into());
@@ -87,7 +87,7 @@ fn prove_inner(
     mut target: Auth,
     mut equality: Option<Vec<Fp3>>,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, [Auth; 3]), String> {
     let bits = x.len().ilog2() as usize;
     let count = required(bits, equality.is_some());
@@ -153,7 +153,7 @@ pub(super) fn verify(
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<(Vec<Fp3>, [Key; 3]), String> {
     bind(bits, column_point, fs)?;
     verify_inner(
@@ -181,7 +181,7 @@ pub(super) fn verify_public(
     delta: Fp3,
     public_at: impl Fn(&[Fp3]) -> Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<(Vec<Fp3>, [Key; 3]), String> {
     bind_public(bits, fs)?;
     verify_inner(bits, true, target, proof, delta, public_at, fs, correlations)
@@ -196,7 +196,7 @@ fn verify_inner(
     delta: Fp3,
     public_at: impl Fn(&[Fp3]) -> Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<(Vec<Fp3>, [Key; 3]), String> {
     let degree = if weighted { 3 } else { 2 };
     let count = required(bits, weighted);

@@ -171,7 +171,7 @@ pub(crate) fn prove(
     originals: &[[Auth; 8]],
     get: impl Fn(usize, usize) -> u8,
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Auth>,
+    rows: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
     let public = bind_batch(statements, fs)?;
     // ponytail: dense small experiment only; a streaming physical schedule is required for D34.
@@ -242,7 +242,7 @@ pub(crate) fn verify(
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Key>,
+    rows: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<(Vec<Fp3>, Key), String> {
     let public = bind_batch(statements, fs)?;
     if originals.len() != statements.len()

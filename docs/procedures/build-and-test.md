@@ -70,6 +70,14 @@ byte custom separatamente dai contatori scalari; il suo test Python è
 
 ## Rust and resource limits
 
+Il corpo nativo usa ora `ExactSizeIterator`: il positivo streaming passa
+un `Take` preso in prestito, senza raccogliere la riserva in un altro Vec.
+Per questo raccordo aggiungere i filtri separati `c71_b12_native_certificate`,
+`c71_b12_native_context`, `c71_b12_native_interrupted` e
+`c71_b12_native_exhaustion` alle regressioni streaming/composed seguenti.
+I controlli `.len()` e consumo esatto restano obbligatori; questo test
+ideale non sostituisce il collegamento ai pool reali.
+
 Per il raccordo streaming critico, dopo la build PCS mirata, eseguire
 separatamente `sourcewise_range_matches_dense_original_wire_and_mac`,
 `c71_b12_sourcewise_linear_matches_dense_wire_fs_point_and_original_mac`,

@@ -972,7 +972,7 @@ fn round_prove(
     coefficients: &[Fp3],
     target: &mut Auth,
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Auth>,
+    rows: &mut impl ExactSizeIterator<Item = Auth>,
     auth_capacity_peak: &std::cell::Cell<usize>,
 ) -> (Vec<Fp3>, Fp3) {
     let (mut wire, auth): (Vec<_>, Vec<_>) = coefficients
@@ -996,7 +996,7 @@ fn round_verify(
     target: &mut Key,
     delta: Fp3,
     fs: &mut Fs,
-    rows: &mut std::vec::IntoIter<Key>,
+    rows: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<Fp3, String> {
     let keys: Vec<_> =
         wire[..wire.len() - 1].iter().map(|&c| range::correct([c], delta, rows)[0]).collect();
@@ -1041,7 +1041,7 @@ fn prove_impl(
     s: &Statement<'_>,
     get_frame: &impl Fn(usize) -> [u8; 12],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
     sourcewise: bool,
     pattern_prefix: Option<usize>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
@@ -1503,7 +1503,7 @@ pub(in super::super) fn prove_sourcewise(
     s: &Statement<'_>,
     get_frame: impl Fn(usize) -> [u8; 12],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth, SourceProverWork), String> {
     prove_impl(s, &get_frame, fs, correlations, true, None)
 }
@@ -1512,7 +1512,7 @@ pub(in super::super) fn prove_patterns(
     s: &Statement<'_>,
     get_frame: impl Fn(usize) -> [u8; 12],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
     let (proof, point, original, _work) =
         prove_impl(s, &get_frame, fs, correlations, true, Some(5))?;
@@ -1527,7 +1527,7 @@ pub(in super::super) fn prove(
     s: &Statement<'_>,
     get_frame: impl Fn(usize) -> [u8; 12],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
     let (proof, point, original, _work) = prove_sourcewise(s, get_frame, fs, correlations)?;
     #[cfg(test)]
@@ -1542,7 +1542,7 @@ fn prove_dense(
     s: &Statement<'_>,
     get_frame: impl Fn(usize) -> [u8; 12],
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, Vec<Fp3>, Auth), String> {
     let (proof, point, original, _) = prove_impl(s, &get_frame, fs, correlations, false, None)?;
     Ok((proof, point, original))
@@ -1553,7 +1553,7 @@ pub(in super::super) fn verify(
     proof: &Proof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<(Vec<Fp3>, Key), String> {
     let widths = s.geometry()?;
     let count = s.required()?;

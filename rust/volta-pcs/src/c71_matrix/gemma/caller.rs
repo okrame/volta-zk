@@ -357,7 +357,7 @@ impl Plan {
         statement: &P0Statement<'_>,
         prepare: impl FnOnce(&[Vec<Fp3>]) -> Result<I, String>,
         fs: &mut Fs,
-        correlations: &mut std::vec::IntoIter<Auth>,
+        correlations: &mut impl ExactSizeIterator<Item = Auth>,
     ) -> Result<(Proof, PendingP0<Auth>), String> {
         if correlations.len() < self.p0_required() {
             return Err("Gemma P0 prover capacity exhausted".into());
@@ -417,7 +417,7 @@ impl Plan {
         proof: &Proof,
         delta: Fp3,
         fs: &mut Fs,
-        correlations: &mut std::vec::IntoIter<Key>,
+        correlations: &mut impl ExactSizeIterator<Item = Key>,
     ) -> Result<PendingP0<Key>, String> {
         if correlations.len() < self.p0_required()
             || proof.cohorts.len() != self.cohorts.len()

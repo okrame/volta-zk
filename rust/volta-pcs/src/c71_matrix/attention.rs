@@ -130,7 +130,7 @@ pub(super) fn prove_qk(
     query: impl Fn(usize, usize, usize) -> i16,
     key: impl Fn(usize, usize, usize) -> i16,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(QkProof, QkPending<Auth>), String> {
     let [t, k, g, e, a] = s.dimensions()?;
     let count = s.qk_required()?;
@@ -205,7 +205,7 @@ pub(super) fn verify_qk(
     proof: &QkProof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<QkPending<Key>, String> {
     let [t, k, g, e, a] = s.dimensions()?;
     let count = s.qk_required()?;
@@ -253,7 +253,7 @@ pub(super) fn prove_pv(
     probability: impl Fn(usize, usize, usize) -> i16,
     value: impl Fn(usize, usize, usize) -> i16,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Auth>,
+    correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(PvProof, PvPending<Auth>), String> {
     let [t, k, g, e, a] = s.dimensions()?;
     let count = s.pv_required()?;
@@ -345,7 +345,7 @@ pub(super) fn verify_pv(
     proof: &PvProof,
     delta: Fp3,
     fs: &mut Fs,
-    correlations: &mut std::vec::IntoIter<Key>,
+    correlations: &mut impl ExactSizeIterator<Item = Key>,
 ) -> Result<PvPending<Key>, String> {
     let [t, k, g, e, a] = s.dimensions()?;
     let count = s.pv_required()?;

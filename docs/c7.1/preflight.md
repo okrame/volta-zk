@@ -1989,7 +1989,7 @@ Anche [dispatcher e riduzione RNE](evidence.md#borrowed-rne-intervals) ora passa
 non espandono l'intera riserva delle tabelle prima del primo probe.
 Count, shift, richieste originali e PCS non cambiano; il burn rimane
 responsabilità del pool, non della materializzazione delle righe.
-Il raccordo è ora esteso ai consumer residui EXP30/lookup, statistic/P0,
+Il [raccordo verificato](evidence.md#borrowed-native-consumer-intervals) è ora esteso ai consumer residui EXP30/lookup, statistic/P0,
 range/linear, QK/PV, RoPE, gate-up e KV. Non introduce un'altra API:
 riusa gli stessi iteratori a capacità esatta, con consumo sul successo
 invariato. Nel lookup i campi di backing/copia bulk diventano zero, mentre

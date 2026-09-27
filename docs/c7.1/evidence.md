@@ -2170,4 +2170,19 @@ Le asserzioni equivalenti dei fixture sono corrette insieme: esaurimento
 sul successo, suffisso non espanso dopo rifiuto anticipato, senza modificare
 i controlli sugli originali o drenare artificialmente l'iteratore. Il burn
 dell'intero tentativo resta una proprietà del wrapper/pool, non di questi
-test componenti. La regressione completa aggiornata resta da registrare.
+test componenti.
+
+Il [record corretto su SHA pulita `184aefa`](../../benchmarks/results/c71-component-borrowed-2026-09-27-184aefae4e5b.json)
+conserva **25 test Rust in 24 invocazioni**, tutte entro 60 s/2 GiB, e
+check non-test B12/Seed6. Passano lookup ed EXP30, statistic/P0, range/linear,
+QK/PV, RoPE, gate-up, KV, RNE, byte, affine e argmax. Il test B12 fixed-run
+verifica il rifiuto del reopen dopo il tentativo falso, pur lasciando un
+suffisso non richiesto al consumer. Composed e streaming ideali passano.
+
+Seed6 reale accetta W replay/A ordinata O=0 ell=2 in 46,95 s e il fixture
+denso ell=11 rifiuta l'alterazione terminale in 50,10 s; passa anche il
+consumo parziale con burn. Nessun conto delle riserve o transcript cambia.
+Il lookup mantiene cardinalità e dimensione Auth, azzerando solo backing
+e copia bulk del proprio intervallo. Adapter B12 denso, diagnostici,
+workspace PCG e altri buffer restano distinti. Non è Γ reale, picco
+fisico completo o un nuovo GO H100.

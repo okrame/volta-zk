@@ -42,6 +42,7 @@ impl Pads {
 struct Code {
     get: Getter,
     len: usize,
+    live: usize,
     width: usize,
     height: usize,
     pads: Pads,
@@ -124,16 +125,16 @@ impl QueryFactors {
         Self { inverse: dft.dft(inverse), modulus: dft.dft(modulus) }
     }
 
-    fn remainder(
+    fn remainder<Coefficient: p3_field::ExtensionField<Goldilocks>>(
         &self,
-        high: &[E],
-        low: impl Fn(usize) -> E,
+        high: &[Coefficient],
+        low: impl Fn(usize) -> Coefficient,
         dft: &Radix2DFTSmallBatch<Goldilocks>,
-    ) -> Vec<E> {
+    ) -> Vec<Coefficient> {
         let cap = self.inverse.len() / 2;
         assert_eq!(high.len(), cap);
         let mut reversed: Vec<_> = high.iter().rev().copied().collect();
-        reversed.resize(2 * cap, E::ZERO);
+        reversed.resize(2 * cap, Coefficient::ZERO);
         let mut spectrum = dft.dft_algebra(reversed);
         for (value, &factor) in spectrum.iter_mut().zip(&self.inverse) {
             *value *= factor;
@@ -141,13 +142,55 @@ impl QueryFactors {
         let mut quotient = dft.idft_algebra(spectrum);
         quotient.truncate(cap);
         quotient.reverse();
-        quotient.resize(2 * cap, E::ZERO);
+        quotient.resize(2 * cap, Coefficient::ZERO);
         let mut spectrum = dft.dft_algebra(quotient);
         for (value, &factor) in spectrum.iter_mut().zip(&self.modulus) {
             *value *= factor;
         }
         let product = dft.idft_algebra(spectrum);
         (0..cap).map(|offset| low(offset) - product[offset]).collect()
+    }
+
+    fn monomial_spectrum(
+        &self,
+        exponent: usize,
+        dft: &Radix2DFTSmallBatch<Goldilocks>,
+    ) -> Vec<Goldilocks> {
+        assert!(exponent.is_power_of_two());
+        let cap = self.inverse.len() / 2;
+        let mut shift = if exponent < cap {
+            let mut values = vec![Goldilocks::ZERO; cap];
+            values[exponent] = Goldilocks::ONE;
+            values
+        } else {
+            let modulus = dft.idft(self.modulus.clone());
+            modulus[..cap].iter().map(|value| -*value).collect()
+        };
+        let mut degree = cap;
+        while degree < exponent {
+            let mut product = multiply_polynomials(shift.clone(), shift, dft);
+            product.resize(2 * cap, Goldilocks::ZERO);
+            shift = self.remainder(&product[cap..], |offset| product[offset], dft);
+            degree *= 2;
+        }
+        shift.resize(2 * cap, Goldilocks::ZERO);
+        dft.dft(shift)
+    }
+
+    fn shifted_remainder(
+        &self,
+        mut values: Vec<E>,
+        shift: &[Goldilocks],
+        dft: &Radix2DFTSmallBatch<Goldilocks>,
+    ) -> Vec<E> {
+        let cap = self.inverse.len() / 2;
+        values.resize(2 * cap, E::ZERO);
+        let mut spectrum = dft.dft_algebra(values);
+        for (value, &factor) in spectrum.iter_mut().zip(shift) {
+            *value *= factor;
+        }
+        let product = dft.idft_algebra(spectrum);
+        self.remainder(&product[cap..], |offset| product[offset], dft)
     }
 }
 
@@ -162,7 +205,11 @@ impl Code {
         let n = self.len / self.width;
         let pad = self.pads.len() / self.width;
         if j < n {
-            (self.get)(b * n + j)
+            if b * n + j < self.live {
+                (self.get)(b * n + j)
+            } else {
+                E::ZERO
+            }
         } else {
             assert!(j < n + pad);
             self.pads.get(b * pad + j - n)
@@ -214,15 +261,22 @@ impl Code {
         let factors = query_tree(&points, &dft);
         let root_factors = &factors.last().unwrap()[0];
         let coefficients = (self.len + self.pads.len()) / self.width;
+        let message_rows = self.len / self.width;
+        let pad_rows = self.pads.len() / self.width;
+        let pad_shift = (self.live < self.len && message_rows.is_power_of_two())
+            .then(|| root_factors.monomial_spectrum(message_rows, &dft));
         let mut values = vec![E::ZERO; indices.len() * self.width];
         for column in 0..self.width {
+            let active = self.live.saturating_sub(column * message_rows).min(message_rows);
+            let split = pad_shift.is_some() && active < message_rows;
+            let source_rows = if split { active } else { coefficients };
             let mut remainder = vec![E::ZERO; cap];
-            for block in (0..coefficients.div_ceil(cap)).rev() {
+            for block in (0..source_rows.div_ceil(cap)).rev() {
                 remainder = root_factors.remainder(
                     &remainder,
                     |offset| {
                         let index = block * cap + offset;
-                        if index < coefficients {
+                        if index < source_rows {
                             self.coefficient(column, index)
                         } else {
                             E::ZERO
@@ -230,6 +284,34 @@ impl Code {
                     },
                     &dft,
                 );
+            }
+            if split {
+                let mut pad = vec![E::ZERO; cap];
+                if pad_rows <= cap {
+                    for (offset, value) in pad.iter_mut().take(pad_rows).enumerate() {
+                        *value = self.pads.get(column * pad_rows + offset);
+                    }
+                } else {
+                    for block in (0..pad_rows.div_ceil(cap)).rev() {
+                        pad = root_factors.remainder(
+                            &pad,
+                            |offset| {
+                                let index = block * cap + offset;
+                                if index < pad_rows {
+                                    self.pads.get(column * pad_rows + index)
+                                } else {
+                                    E::ZERO
+                                }
+                            },
+                            &dft,
+                        );
+                    }
+                }
+                let correction =
+                    root_factors.shifted_remainder(pad, pad_shift.as_ref().unwrap(), &dft);
+                for (value, contribution) in remainder.iter_mut().zip(correction) {
+                    *value += contribution;
+                }
             }
             let mut remainders = vec![remainder];
             for level in factors[..factors.len() - 1].iter().rev() {
@@ -308,19 +390,32 @@ impl ReplayModel {
         seed: [u8; 32],
         salt_seed: [u8; 32],
         source: Getter,
+        live: usize,
     ) -> Result<Self, String> {
         let config = domain.config()?;
+        let len = 1usize << config.num_variables;
+        if live > len {
+            return Err("C71 replay live prefix exceeds original domain".into());
+        }
+        let source: Getter = Arc::new(move |index| {
+            assert!(index < len);
+            if index < live {
+                source(index)
+            } else {
+                E::ZERO
+            }
+        });
         let first = config.round_folding_factor(0);
         let mut rng = PrivateRng::from_seed(seed);
         let pads: Arc<[Goldilocks]> =
             (0..config.oracle_randomness[0] << first).map(|_| rng.random()).collect();
-        let len = 1usize << config.num_variables;
         let height = (len >> first) << config.starting_log_inv_rate;
         let mmcs = ObservedMmcs::new(Fs::new(b"C71 model setup, Delta independent", 0), salt_seed);
         let _extension = mmcs.clone();
         let (root, handle) = Code {
             get: source.clone(),
             len,
+            live,
             width: 1 << first,
             height,
             pads: Pads::Base(pads.clone()),
@@ -337,7 +432,8 @@ impl ReplayModel {
         salt_seed: [u8; 32],
         source: Getter,
     ) -> Result<Self, String> {
-        let model = Self::new(domain, seed, salt_seed, source)?;
+        let model =
+            Self::new(domain, seed, salt_seed, source, 1 << domain.config()?.num_variables)?;
         if root != model.root {
             return Err("C71 replay source changed the installed model root".into());
         }
@@ -556,6 +652,7 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
         Code {
             get,
             len: 1 << state.num_variables(),
+            live: 1 << state.num_variables(),
             width: 1 << folding,
             height,
             pads: Pads::Extension(randomness.to_vec()),
@@ -812,7 +909,8 @@ mod tests {
                 index % 251 + usize::from(index == 0 && source_changed.load(Ordering::Relaxed));
             E::from(Goldilocks::new(value as u64))
         });
-        let model = ReplayModel::new(Domain::Flat(10), [91; 32], [73; 32], source.clone()).unwrap();
+        let model = ReplayModel::new(Domain::Flat(10), [91; 32], [73; 32], source.clone(), 1 << 10)
+            .unwrap();
         let installed_reads = reads.load(Ordering::Relaxed);
         assert!(installed_reads > 0);
         for _ in 0..3 {
@@ -912,6 +1010,7 @@ mod tests {
                     original(index)
                 }),
                 len: 130,
+                live: 130,
                 width: 2,
                 height: 1024,
                 pads: if extension {
@@ -960,6 +1059,89 @@ mod tests {
     }
 
     #[test]
+    fn c71_b12_query_split_zero_tail_preserves_original_pad_and_rows() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        for extension in [false, true] {
+            for live in [0, 1, 63, 64, 65, 125, 128] {
+                for pad_rows in [3, 17] {
+                    let original = move |index: usize| {
+                        E::new(std::array::from_fn(|limb| {
+                            if limb == 0 || extension {
+                                Goldilocks::new(
+                                    (index * index + 11 * index + 7 + 101 * limb) as u64,
+                                )
+                            } else {
+                                Goldilocks::ZERO
+                            }
+                        }))
+                    };
+                    let pads: Vec<_> =
+                        (0..2 * pad_rows).map(|index| -original(index + 137)).collect();
+                    let reads = Arc::new(AtomicUsize::new(0));
+                    let counter = reads.clone();
+                    let code = Code {
+                        get: Arc::new(move |index| {
+                            assert!(index < live, "public zero tail must not read the source");
+                            counter.fetch_add(1, Ordering::Relaxed);
+                            original(index)
+                        }),
+                        len: 128,
+                        live,
+                        width: 2,
+                        height: 1024,
+                        pads: if extension {
+                            Pads::Extension(pads.clone())
+                        } else {
+                            Pads::Base(pads.iter().map(|value| limbs(value)[0]).collect())
+                        },
+                    };
+                    for cap in [1, 2, 4, 8, 32, 128] {
+                        let indices: Vec<_> = (0..cap).map(|index| 1023 - index / 2).collect();
+                        let expected: Vec<Vec<_>> = indices
+                            .iter()
+                            .map(|&index| {
+                                let point =
+                                    Goldilocks::two_adic_generator(10).exp_u64(index as u64);
+                                (0..2)
+                                    .flat_map(|column| {
+                                        let value = (0..64 + pad_rows).rev().fold(
+                                            E::ZERO,
+                                            |value, offset| {
+                                                value * point
+                                                    + if offset >= 64 {
+                                                        pads[column * pad_rows + offset - 64]
+                                                    } else if column * 64 + offset < live {
+                                                        original(column * 64 + offset)
+                                                    } else {
+                                                        E::ZERO
+                                                    }
+                                            },
+                                        );
+                                        limbs(&value)[..if extension { 3 } else { 1 }].to_vec()
+                                    })
+                                    .collect()
+                            })
+                            .collect();
+                        reads.store(0, Ordering::Relaxed);
+                        assert_eq!(code.rows(&indices).unwrap(), expected);
+                        assert_eq!(reads.load(Ordering::Relaxed), live);
+                    }
+                }
+            }
+        }
+        assert!(ReplayModel::new(
+            Domain::Flat(10),
+            [31; 32],
+            [43; 32],
+            Arc::new(|_| panic!("invalid prefix read")),
+            1025
+        )
+        .is_err());
+        println!("C71_SPLIT_PAD original_exponent=true zero_tail_reads=0 base_and_extension=true canonical_credit=false");
+    }
+
+    #[test]
     fn c71_b12_native_remainder_fft_vectors() {
         let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
         for extension in [false, true] {
@@ -976,6 +1158,7 @@ mod tests {
             let code = Code {
                 get: Arc::new(original),
                 len: 128,
+                live: 128,
                 width: 2,
                 height: 1024,
                 pads: if extension {

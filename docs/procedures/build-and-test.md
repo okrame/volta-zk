@@ -170,14 +170,18 @@ Ripetere le regressioni native composed/streaming, W alterato e
 
 Per il riduttore nativo delle righe RS usare
 `c71_b12_query_factors`, `c71_b12_query_remainder` e
+`c71_b12_query_split` per prefissi vivi vuoti/parziali/pieni, pad originali
+e conteggio delle letture prima del callback. Il prefisso proviene dai
+layout W/A posseduti; aggiungere la regressione `c71_b12_native_weight_replay`
+e conservare i positivi streaming/Seed6 seguenti. Eseguire anche
 `c71_b12_full_sourcewise_chain`, separatamente
 entro 60 s/2 GiB, poi streaming integrato e il filtro reale W replay/A
 ordinata. Il primo controlla le forme di tutti i livelli e confronta
 prodotto bilanciato/reciproco Newton della radice con un oracolo diretto,
 inclusi punti zero e ripetuti; il secondo confronta Horner originale
 con riduzione FFT e albero dei resti per sorgenti base/extension, pad, query
-duplicate/ragged e cap; il terzo confronta
-il wire WHIR completo alle stesse monete e rifiuta un MAC finale diverso.
+duplicate/ragged e cap. Il confronto WHIR usa
+il wire completo alle stesse monete e rifiuta un MAC finale diverso.
 Ripetere `tests/test_c71_query_remainder.py` come oracolo algebrico indipendente.
 Per il batch Merkle aggiungere `replay_tree`, entro gli stessi limiti:
 controlla una e due chiamate da al più 1.024 righe, root/sali/frontiera

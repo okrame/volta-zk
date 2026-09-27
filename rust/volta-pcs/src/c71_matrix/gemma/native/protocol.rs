@@ -425,6 +425,7 @@ impl Auxiliary for OrderedAux {
         prompt: u32,
     ) -> Result<Self, String> {
         let previous = old.iter().map(|snapshot| snapshot.reader.clone()).collect::<Vec<_>>();
+        let live = profile.bytes().live;
         let reader = ordered::Reader::prepare(profile, weights, &previous, prompt)?;
         ordered_work(&reader, "prepare_before_commit");
         let coins = fresh_pcs_coins()?;
@@ -438,6 +439,7 @@ impl Auxiliary for OrderedAux {
                     getter.byte_at(index).expect("immutable validated A byte"),
                 )))
             }),
+            live,
         )?
         .retain_first_fold();
         let snapshot = Self { reader, source };

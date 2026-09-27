@@ -139,6 +139,10 @@ prima della proof. Il [riduttore FFT e l'albero dei resti](evidence.md#native-qu
 [batch Merkle](evidence.md#batched-merkle-replay): una scansione sorgente per batch, riuso delle righe per hash e
 apertura, ordine/duplicati/sali originali. Il cap resta 1.024 righe;
 un'unione più grande richiede più batch, non una scansione canonica unica.
+Gli owner W/A iniziali forniscono il prefisso vivo del proprio layout;
+le colonne parziali/vuote separano gli zeri pubblici conservando i pad
+privati all'esponente originale. Il supporto non viene trasferito per
+ipotesi agli oracoli foldati.
 
 Le A ordinate usano [S1 trattenuto](evidence.md#ordered-a-retained-s1) dopo il rilascio del predecessore,
 con lease e capacità riservata invariati; W non seleziona retention.

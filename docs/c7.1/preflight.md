@@ -2076,6 +2076,18 @@ dell'albero multipunto. Coefficienti/intermedi Newton durante setup,
 resti padre/figli durante discesa, punti, workspace FFT e output sono
 memoria posseduta aggiuntiva, non riuso gratuito degli spettri della radice.
 Restano da trasferire al ledger fisico; nessuna memoria o tempo GPU è accreditato.
+Gli owner iniziali W/A dichiarano ora il prefisso vivo del layout prima
+di committare. Il getter posseduto e il callback RS escludono le letture
+del suffisso zero pubblico. Il callback separa il resto del payload vivo
+da `X^M * pad mod Z` nelle colonne parziali/vuote, con M originale e pad
+immutati; le colonne piene mantengono la riduzione contigua. Lo spettro
+dello shift è condiviso fra colonne, ricavato dal modulo e da quadrature
+modulari. Pad più lunghi del cap sono ridotti prima della correzione.
+Il riferimento con M non potenza di due non seleziona lo split.
+I successori foldati usano il dominio completo, senza assumere che il
+vecchio supporto zero sopravviva ai fold. Il cap di query resta 1.024;
+spettro shift, pad/resti intermedi E anche nelle colonne base e workspace
+si aggiungono agli altri buffer. Non è il picco o il rate canonico.
 Il caller conserva il batch di righe base insieme a sali/digest dei
 sottoalberi, query ordinate, output e cache superiore. Il campo
 `open_subtree_bytes_each` continua a descrivere solo sali/digest di un

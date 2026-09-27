@@ -324,6 +324,21 @@ PCS completa, un ledger canonico o un nuovo lemma Lean.
 Nella riduzione per blocchi, l'inverso della monica rovesciata e il suo
 spettro sono comuni alle colonne;
 ogni blocco usa solo la metà alta per il quoziente, evitando alias ciclici.
+Gli owner W/A iniziali passano ora il prefisso vivo del layout compilato
+prima del commitment. Il getter condiviso restituisce zero nel suffisso
+pubblico e il callback RS non lo legge. Nelle colonne parziali/vuote,
+con lunghezza messaggio M potenza di due, il resto separa payload vivo e
+`X^M * pad` usando gli stessi pad privati alle stesse posizioni originali.
+Lo spettro di `X^M mod Z` è calcolato una volta per batch e condiviso;
+non si spostano i pad alla fine del payload. Le colonne piene mantengono
+la riduzione contigua. I pad più lunghi del cap sono prima ridotti;
+il riferimento non-power-of-two conserva il percorso completo.
+Gli oracoli foldati mantengono l'intero supporto: non ereditano per ipotesi
+gli zeri del messaggio iniziale. Getter, root e wrapper restano legati
+agli owner originali, non a un supporto fornito nella proof.
+Spettro dello shift, polinomi temporanei e correzione dei pad si aggiungono
+agli altri stati vivi. Il riferimento usa ancora temporanei E anche per
+le colonne base; non trasferisce al codice il conto scalare canonico.
 Payload, coda zero e pad privati rimangono agli stessi offset contigui;
 il percorso extension conserva tutte e tre le componenti. La riduzione
 legge ogni coefficiente una volta per batch, non per apertura completa.

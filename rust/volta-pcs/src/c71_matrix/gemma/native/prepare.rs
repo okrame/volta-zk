@@ -59,6 +59,7 @@ impl Installed {
         let packed = Arc::new(packed);
         let original = packed.clone();
         let coins = fresh_pcs_coins()?;
+        let live = profile.plan.live;
         let model = b12::replay::ReplayModel::new(
             DOMAIN_W,
             coins.seed,
@@ -74,6 +75,7 @@ impl Installed {
                     .map_or(0, |offset| original[offset]);
                 to_p3(signed(i64::from(value)))
             }),
+            live,
         )?;
         Ok(Self { packed, model: WeightModel::Replay(model) })
     }

@@ -210,7 +210,7 @@ impl State {
     }
 }
 
-impl Prover {
+impl<S: Auxiliary> Prover<S> {
     fn from_pool(model: Installed, pool: &ProverCapacity<'_, '_>) -> Result<Self, String> {
         let state = State::from_pool(
             model.model.root.clone(),
@@ -218,7 +218,7 @@ impl Prover {
         )?;
         Ok(Self {
             state,
-            model,
+            model: Arc::new(model),
             accepted: Vec::new(),
             pending: None,
             #[cfg(test)]
@@ -258,22 +258,17 @@ impl Prover {
                 return Err("capacity exhausted before private preparation".into());
             }
             // No unused rows, keys or Delta are visible to Prepare.
-            let snapshot = Snapshot::prepare(p, &self.model, &self.accepted, prompt)?;
+            let snapshot = S::prepare(p.clone(), self.model.clone(), &self.accepted, prompt)?;
+            let tokens = snapshot.tokens();
             let acceptance = pool
                 .attempt(required, |a, mut rows| {
                     self.state.check_burn(&a).map_err(io_error)?;
                     let p = &self.state.profiles[self.state.next_slot];
-                    let s = p.context(
-                        &self.state.weight,
-                        &snapshot.source.root,
-                        &snapshot.tokens,
-                        attempt,
-                        &wg,
-                        &ag,
-                    );
+                    let s =
+                        p.context(&self.state.weight, snapshot.root(), &tokens, attempt, &wg, &ag);
                     let header = self
                         .state
-                        .header(&snapshot.source.root, snapshot.tokens, nonce, required)
+                        .header(snapshot.root(), tokens, nonce, required)
                         .map_err(io_error)?;
                     self.state.next_slot += 1;
                     self.state.cursor += 3 * required;
@@ -288,12 +283,8 @@ impl Prover {
                         &mut rows,
                     )
                     .map_err(io_error)?;
-                    let response = Response {
-                        root: snapshot.source.root.clone(),
-                        tokens: snapshot.tokens,
-                        nonce,
-                        certificate,
-                    };
+                    let response =
+                        Response { root: snapshot.root().clone(), tokens, nonce, certificate };
                     self.pending = Some((snapshot, receipt));
                     let acceptance = verify(&response).map_err(io_error)?;
                     self.check_acceptance(&acceptance).map_err(io_error)?;
@@ -482,7 +473,7 @@ mod tests {
                     let mut pool = store.prover_fixed_run(pc, [2; 32], [3; 32], 3).unwrap();
                     let mut pool = ProverCapacity::Dense(&mut pool);
                     assert_eq!(pool.remaining_fp3(), 1);
-                    let mut prover = Prover::from_pool(model, &pool).unwrap();
+                    let mut prover: Prover = Prover::from_pool(model, &pool).unwrap();
                     assert!(prover
                         .respond_with_pool(0, [4; 32], &mut pool, |_| panic!(
                             "capacity shortage emitted a certificate"

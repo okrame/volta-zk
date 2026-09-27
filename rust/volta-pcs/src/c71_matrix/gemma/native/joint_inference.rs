@@ -406,7 +406,9 @@ fn prove_joint(
     let mut current_batch = merge(bw, ba);
     let mut previous_batch = Batch::new();
     let mut corrections = Vec::new();
-    for (old, new) in links(p, slot.checked_sub(1).map(|i| &state.profiles[i]), &mut fs)? {
+    for (old, new) in
+        links(p, slot.checked_sub(1).map(|index| state.profiles[index].as_ref()), &mut fs)?
+    {
         let (c, a) = c7_fp3_transfer_prover(rows.next().unwrap(), dot(previous, &old));
         corrections.push(c.value());
         previous_batch.add(old, a);
@@ -487,7 +489,8 @@ fn verify_joint(
     if !openings.is_empty() {
         return Err("joint inference historical closure".into());
     }
-    let link_forms = links(p, slot.checked_sub(1).map(|i| &state.profiles[i]), &mut fs)?;
+    let link_forms =
+        links(p, slot.checked_sub(1).map(|index| state.profiles[index].as_ref()), &mut fs)?;
     let (corrections, frame) = wire.get::<Vec<Fp3>>(15)?;
     if corrections.len() != link_forms.len() {
         return Err("joint link cardinality".into());

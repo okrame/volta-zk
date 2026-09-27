@@ -1383,9 +1383,20 @@ riserva. Una riga mancante, fallita o non canonica interrompe l'iteratore
 infallibile con panic, intercettato dal confine terminale del journal:
 nessun valore sostitutivo né promozione. Prepare precede la riserva e non
 riceve MAC futuri. Il raccordo passa un O=0 completo ridotto con AES reale
-e Snapshot/A densi piccoli, distinto dai tre tentativi ideali e dal
-positivo ideale con reader ordinato. Non si trasferiscono bound canonici,
+e Snapshot/A densi piccoli ad ell=11; passa anche il reader ordinato
+con Seed6 reale ad ell=2 nella sola geometria ridotta t=4/h=19.
+Restano distinti dai tre tentativi ideali. Non si trasferiscono bound canonici,
 composizione ROM, canale autenticato o store non-rollbackabile dai soli test.
+Il preparatore interno ora usa lo stesso trait `Auxiliary` per Snapshot
+denso e reader ordinato: anche il proprietario pending/accepted è tipizzato
+sulla sorgente, senza una seconda macchina di accettazione. W e i profili
+immutabili sono condivisi con `Arc`, non copiati nel getter. Il nuovo
+preparatore ordinato valida entrambi i token prima del commitment, poi
+usa coin PCS freschi del sistema, separati dai MAC e dal seed EA.
+Rifiuta esplicitamente O>0 o predecessori non vuoti: non importa ricevute
+né inventa una continuazione. Il positivo runtime ordinato/Seed6 a ell=2
+verifica correttezza ridotta, non sostituisce ell=11 selezionato; gli owner Arc
+non danno credito al picco canonico o a un bound dello stack compilato.
 Le coin dei test algebrici
 restano distinte dalla catena che esegue il protocollo nativo.
  Il getter numerico ridotto

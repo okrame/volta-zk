@@ -156,8 +156,10 @@ verifica l'arresto per capacità insufficiente, senza pubblicare A né
 promuovere KV. Separatamente, il nuovo wrapper opt-in Seed6 completa
 **[un tentativo O=0 ridotto con AES reale](evidence.md#seed6-complete-reduced-native-proof)**,
 88.049 MAC Fp3 e promozione
-della stessa ricevuta nei due ruoli. Usa ancora Snapshot/A densi piccoli;
-non chiude il port canonico, il percorso ordinato reale o tre tentativi AES.
+della stessa ricevuta nei due ruoli, con Snapshot/A densi piccoli ed ell=11.
+Ora passa anche O=0 con reader ordinato e Seed6 reale a **ell=2**, senza
+Snapshot/A densi. È una geometria ridotta di correttezza, non il profilo
+canonico ell=11 o il run AES a tre tentativi.
 
 ## Next goal
 
@@ -549,8 +551,12 @@ passaggio necessario per consumare il pool a batch senza raccogliere tutta
 la riserva. Il wrapper interno ora seleziona il riferimento Seed6 opt-in
 e riusa Prepare/Verify e promozione B12 con packing lazy. Un tentativo
 O=0 ridotto passa con AES reale; alterare il completamento brucia tutta
-la riserva senza promuovere A/KV. Restano reader ordinato reale, run AES
+la riserva senza promuovere A/KV. Il reader ordinato passa ora con Seed6
+reale a ell=2 nel solo test ridotto O=0. Restano storia ordinata, run AES
 a tre tentativi e port canonico; nessun credito H100.
+Il preparatore ordinato O=0 ora usa l'owner pending/accepted comune, W e
+profili condivisi e coin PCS OS separati. O>0 fallisce esplicitamente;
+il positivo congiunto non trasferisce sicurezza canonica o picco fisico.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 correzioni, coin e share ora attraversano due endpoint indipendenti tramite

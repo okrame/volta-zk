@@ -78,6 +78,16 @@ Per questo raccordo aggiungere i filtri separati `c71_b12_native_certificate`,
 I controlli `.len()` e consumo esatto restano obbligatori; questo test
 ideale non sostituisce il collegamento ai pool reali.
 
+Per il preparatore ordinato comune aggiungere
+`c71_b12_native_ordered_prepare` e riusare il positivo streaming seguente:
+ora attraversa Prepare, pending e promozione originali, con coin PCS OS
+e MAC ideali; respinge la continuazione O>0 non implementata. Eseguire
+anche `c71_b12_native_consistent_inference`,
+`c71_b12_native_changed_predecessor` e `c71_joint_inference_changed_last`
+per gli owner W/profilo condivisi, sempre separatamente entro 60 s/2 GiB.
+Il raccordo reale negativo corto `c71_seed6_native_shortage` ora usa
+il tipo ordinato; il positivo reale O=0 mantiene Snapshot denso piccolo.
+
 Per il wrapper Seed6 compilare da `rust/`, con il profilo locale e un solo
 job, `cargo test --offline --locked -j 1 -p volta-pcs --features
 c71-seed6-reference --lib c71_seed6_native --no-run`. Il flag è un
@@ -92,6 +102,14 @@ grafo ridotto, geometria t=4/h=19/ell=11, main 107 + inverso 12 e
 264.147 righe base lazy, non un bootstrap denso né Gemma canonico.
 Vale lo stesso stop a 60 s/2 GiB: un timeout è un fallimento da conservare,
 non autorizza a estendere il limite o eseguire i tre tentativi completi.
+
+Il filtro `c71_seed6_native_ordered_o0_reduced_weight` collega invece
+il reader ordinato alla stessa proof e ai pool reali con ell=2, t=4/h=19,
+per un controllo di correttezza ridotto entro gli stessi limiti. Non
+cambia ell=11 del profilo canonico né dei test reali densi precedenti;
+nessun bound crittografico canonico si trasferisce da questa geometria.
+Non eseguire insieme i filtri `c71_seed6_native` con un unico timeout:
+ciascun positivo/rifiuto completo ha il proprio limite di 60 s.
 
 Per il raccordo streaming critico, dopo la build PCS mirata, eseguire
 separatamente `sourcewise_range_matches_dense_original_wire_and_mac`,

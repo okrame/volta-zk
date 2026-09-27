@@ -134,7 +134,7 @@ fn c71_seed6_native_shortage_stops_before_prepare_or_decode() {
         Geometry::new(2, 4, 2).unwrap(),
         binding,
         move |pool| {
-            let mut prover = Prover::from_pool(model, pool).unwrap();
+            let mut prover: Prover<OrderedAux> = Prover::from_pool(model, pool).unwrap();
             assert!(prover
                 .respond_with_pool(1, [83; 32], pool, |_| panic!("shortage emitted proof"))
                 .is_err());
@@ -162,15 +162,20 @@ fn c71_seed6_native_shortage_stops_before_prepare_or_decode() {
 
 #[test]
 fn c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals() {
-    full_o0(false);
+    full_o0::<Snapshot>(false, 11);
 }
 
 #[test]
 fn c71_seed6_native_full_o0_late_rejection_burns_without_promotion() {
-    full_o0(true);
+    full_o0::<Snapshot>(true, 11);
 }
 
-fn full_o0(reject: bool) {
+#[test]
+fn c71_seed6_native_ordered_o0_reduced_weight_complete_proof() {
+    full_o0::<OrderedAux>(false, 2);
+}
+
+fn full_o0<Source: Auxiliary>(reject: bool, weight: usize) {
     let profile = Profile::small(0).unwrap();
     let model = Installed::new(&profile, super::super::tests::weights(&profile)).unwrap();
     let root = model.model.root.clone();
@@ -179,10 +184,10 @@ fn full_o0(reject: bool) {
     let (response_sender, response_receiver) = std::sync::mpsc::sync_channel(0);
     let (acceptance_sender, acceptance_receiver) = std::sync::mpsc::sync_channel(0);
     let (prover_receipt, (verifier_receipt, bytes), counters, head) = pair(
-        Geometry::new(4, 19, 11).unwrap(),
+        Geometry::new(4, 19, weight).unwrap(),
         binding,
         move |pool| {
-            let mut prover = Prover::from_pool(model, pool).unwrap();
+            let mut prover: Prover<Source> = Prover::from_pool(model, pool).unwrap();
             let result = prover.respond_with_pool(1, [83; 32], pool, |response| {
                 response_sender.send(response.clone()).unwrap();
                 acceptance_receiver.recv_timeout(std::time::Duration::from_secs(45)).unwrap()
@@ -226,11 +231,12 @@ fn full_o0(reject: bool) {
     println!(
         "C71_SEED6_NATIVE {}",
         serde_json::json!({
-            "credit":false,"blocks":4,"height":19,"weight":11,
+            "credit":false,"blocks":4,"height":19,"weight":weight,
             "base_rows":264147,"original_mac_rows":88049,"certificate_bytes":bytes,
             "receipt":head,"accepted_attempts":usize::from(!reject),"OS_rng":true,
             "late_rejection":reject,
-            "scope":"one complete reduced O0 proof, optionally corrupted completion; dense Snapshot, real Seed6 bounded batches; not canonical, H100 or full fixed-run credit"
+            "source":std::any::type_name::<Source>(),
+            "scope":"one complete reduced O0 proof, optionally corrupted completion; real Seed6 bounded batches at the reported reduced geometry; not canonical security, H100 or full fixed-run credit"
         })
     );
 }

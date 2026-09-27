@@ -109,7 +109,13 @@ pub(super) fn fixture() -> (Prover, Verifier) {
         .collect::<Vec<_>>();
     let keys = rows.iter().map(|a| Key::new(a.m + delta * a.x)).collect::<Vec<_>>();
     (
-        Prover { state: ps, model, rows: rows.into_iter(), accepted: Vec::new(), pending: None },
+        Prover {
+            state: ps,
+            model: Arc::new(model),
+            rows: rows.into_iter(),
+            accepted: Vec::new(),
+            pending: None,
+        },
         Verifier { state: vs, delta, keys: keys.into_iter() },
     )
 }
@@ -306,7 +312,7 @@ fn c71_b12_native_consistent_inference_under_changed_w_cannot_replace_installed_
     let (mut prover, mut verifier) = fixture();
     // Compute all inference and GKR inputs consistently under another W,
     // while retaining the ORIGINAL committed W body/root for range and PCS.
-    prover.model.corrupt_weight(0, 0);
+    Arc::get_mut(&mut prover.model).unwrap().corrupt_weight(0, 0);
     let response = prover.prepare_response(0, [76; 32]).unwrap();
     assert!(verifier.verify_response(0, &response).is_err());
     assert_eq!(verifier.state.accepted.len(), 0);
@@ -354,72 +360,52 @@ fn c71_b12_native_changed_predecessor_final_kv_getter_cannot_promote_continuatio
     assert_eq!(prover.state.cursor, verifier.state.cursor);
 }
 
+#[test]
+fn c71_b12_native_ordered_prepare_owns_original_source_and_rejects_continuation() {
+    let profile = Arc::new(Profile::small(0).unwrap());
+    let model = Arc::new(Installed::new(&profile, weights(&profile)).unwrap());
+    let dense = Snapshot::prepare(&profile, &model, &[], 1).unwrap();
+    let prepared = OrderedAux::prepare(profile.clone(), model.clone(), &[], 1).unwrap();
+    assert_eq!(prepared.tokens(), dense.tokens);
+    assert_eq!(prepared.root().num_roots(), 1);
+    assert_ne!(prepared.root(), &model.model.root);
+    for index in 0..1usize << DOMAIN_A.config().unwrap().num_variables {
+        assert_eq!(
+            prepared.model().byte(index),
+            dense.source.weights.get(index).copied().unwrap_or(0) as u8,
+            "byte={index}"
+        );
+    }
+    assert!(OrderedAux::prepare(profile, model.clone(), &[], 2).is_err());
+    let next = Arc::new(Profile::small(1).unwrap());
+    assert!(OrderedAux::prepare(next.clone(), model.clone(), &[], 0).is_err());
+    assert!(OrderedAux::prepare(next, model, &[prepared], 0).is_err());
+}
+
 // Same mandatory runner/verifier, but A exists only behind ordered replay.
 #[test]
 fn c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs() {
-    use std::sync::Arc;
-    struct OrderedAux {
-        reader: Arc<ordered::Reader>,
-        source: b12::replay::ReplayModel,
-    }
-    impl Auxiliary for OrderedAux {
-        fn value(&self, _p: &Profile, id: usize, row: usize, col: usize) -> i64 {
-            self.reader.value(id, row, col).expect("immutable validated numerical reader")
-        }
-        fn model(&self) -> SourceModel<'_> {
-            SourceModel::Replay(&self.source)
-        }
-        fn phase_end(&self, phase: &str) {
-            eprintln!(
-                "C71_INTEGRATED_GETTER {}",
-                serde_json::json!({
-                "phase":phase,"work":self.reader.take_work().unwrap(),
-                "scope":"O0 reduced original numerical source; CPU work, not HBM or H100 time"})
-            );
-        }
-    }
     let (prover, mut verifier) = fixture();
-    let Prover { mut state, model, mut rows, .. } = prover;
-    let weights = Arc::new(model);
-    let p = Arc::new(Profile::small(0).unwrap());
-    let reader = ordered::Reader::prepare(p.clone(), weights.clone(), 1).unwrap();
-    eprintln!(
-        "C71_INTEGRATED_GETTER {}",
-        serde_json::json!({"phase":"prepare_before_commit",
-        "work":reader.take_work().unwrap()})
-    );
-    let getter = reader.clone();
-    // Deterministic private coins belong only to this ideal-MAC test fixture.
-    let source = b12::replay::ReplayModel::new(
-        DOMAIN_A,
-        [171; 32],
-        [172; 32],
-        Arc::new(move |i| {
-            E::from(Goldilocks::from_u64(u64::from(getter.byte_at(i).expect("original A byte"))))
-        }),
-    )
-    .unwrap();
-    let snapshot = OrderedAux { reader, source };
-    snapshot.phase_end("initial_commit_A");
-    let tokens = snapshot.reader.tokens();
-    let nonce = [173; 32];
-    let (wg, ag) = (gamma(&DOMAIN_W.config().unwrap()), gamma(&DOMAIN_A.config().unwrap()));
-    let attempt = state.attempt(nonce);
-    let statement = p.context(&state.weight, snapshot.source.root(), &tokens, attempt, &wg, &ag);
-    let required = p.required(&statement).unwrap();
-    let header = state.header(snapshot.source.root(), tokens, nonce, required).unwrap();
-    state.live = false;
-    state.next_slot += 1;
-    state.cursor += 3 * required;
-    let mut reserved = rows.by_ref().take(required);
-    let (certificate, receipt) =
-        prove_schedule(&state, &p, &weights, &snapshot, &[], &statement, &header, &mut reserved)
-            .unwrap();
-    assert_eq!(reserved.len(), 0);
-    let response = Response { root: snapshot.source.root().clone(), tokens, nonce, certificate };
+    let Prover { state, model, rows, .. } = prover;
+    let mut prover: Prover<OrderedAux> =
+        Prover { state, model, rows, accepted: Vec::new(), pending: None };
+    let before = prover.rows.len();
+    let response = prover.prepare_response(1, [173; 32]).unwrap();
+    let receipt = prover.pending.as_ref().unwrap().1;
+    let required = prover.state.cursor / 3;
+    assert_eq!(before - prover.rows.len(), required);
+    assert!(prover.accepted.is_empty());
     let accepted = verifier.verify_response(1, &response).unwrap();
     assert_eq!(accepted.receipt, receipt);
-    assert_eq!(state.cursor, verifier.state.cursor);
+    prover.promote(accepted).unwrap();
+    assert_eq!(prover.state.cursor, verifier.state.cursor);
+    assert!(prover.pending.is_none());
+    assert_eq!(prover.accepted.len(), 1);
+    let cursor = prover.state.cursor;
+    assert!(prover.prepare_response(0, [174; 32]).is_err());
+    assert!(!prover.state.live && prover.pending.is_none());
+    assert_eq!(prover.state.cursor, cursor);
+    assert_eq!(prover.accepted.len(), 1);
     eprintln!(
         "C71_INTEGRATED_POSITIVE {}",
         serde_json::json!({"credit":false,

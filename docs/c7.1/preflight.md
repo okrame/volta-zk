@@ -1906,6 +1906,28 @@ zero e nessuna promozione A/KV. Passano anche shortage prima di Prepare/
 decoding e consumo parziale senza ricevuta accettata. Il run positivo e
 quello negativo hanno installazioni indipendenti, non un retry del pool.
 
+Il wrapper può ora possedere sorgenti `Auxiliary` diverse usando la stessa
+macchina pending/accepted. Il reader ordinato O=0 non è più un tipo
+definito soltanto nel test: il suo Prepare condivide W/profilo immutabili
+tramite Arc, valida il replay prima della root e riusa `fresh_pcs_coins`
+con OS RNG, senza accesso ai MAC. Snapshot resta la rappresentazione del
+positivo Seed6 registrato sopra. Il preparatore ordinato respinge O>0 e
+predecessori non vuoti finché la continuazione non è collegata al registro.
+Condividere gli owner evita copie delle sorgenti, ma aggiunge metadati e
+refcount CPU; non è una misura del picco fisico né un risparmio canonico.
+Il positivo ordinato ideale ora attraversa Prepare, pending e promozione
+comuni, senza percorso speciale o coin PCS prefissati del test; il
+tentativo successivo O>0 termina senza modificare il predecessore accettato.
+Il confronto del nuovo Prepare controlla ogni byte contro Snapshot originale.
+
+Passa anche la proof congiunta con reader ordinato e Seed6 reale a
+t=4/h=19/**ell=2**: 264.147 righe base, 88.049 MAC Fp3 e ricevuta reale
+comune ai due journal, senza Snapshot/A densi. Il primo controllo termina
+in 47,32 s entro 60 s/2 GiB. I test reali densi e il profilo canonico
+mantengono ell=11: questo ridimensionamento serve soltanto al controllo
+CPU locale e non trasferisce il bound crittografico del profilo selezionato.
+Non è ancora O>0 ordinato, run AES a tre tentativi, Γ reale o picco completo.
+
 ## Seed6: seal di completamento
 
 Evidenza: [29 controlli Rust e 28 Python/C++ su SHA pulita](evidence.md#seed6-completion-seals).

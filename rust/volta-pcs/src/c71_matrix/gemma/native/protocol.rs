@@ -2,6 +2,7 @@
 use super::*;
 use kernel::wire::{self, Wire};
 use prepare::{Installed, Snapshot};
+use std::sync::Arc;
 
 #[path = "pool.rs"]
 pub(super) mod pool;
@@ -152,7 +153,7 @@ struct Accepted {
     receipt: [u8; 32],
 }
 struct State {
-    profiles: Vec<Profile>,
+    profiles: Vec<Arc<Profile>>,
     weight: C61Commitment,
     session: [u8; 32],
     epoch: u64,
@@ -173,7 +174,9 @@ impl State {
             return Err("invalid composed installation".into());
         }
         Ok(Self {
-            profiles: (0..3).map(Profile::small).collect::<Result<_, _>>()?,
+            profiles: (0..3)
+                .map(|slot| Profile::small(slot).map(Arc::new))
+                .collect::<Result<_, _>>()?,
             weight,
             session,
             epoch,
@@ -344,7 +347,15 @@ impl SourceModel<'_> {
         }
     }
 }
-trait Auxiliary {
+trait Auxiliary: Sized {
+    fn prepare(
+        profile: Arc<Profile>,
+        weights: Arc<Installed>,
+        old: &[Self],
+        prompt: u32,
+    ) -> Result<Self, String>;
+    fn root(&self) -> &C61Commitment;
+    fn tokens(&self) -> [u32; 2];
     fn phase_end(&self, _phase: &str) {}
     fn value(&self, p: &Profile, id: usize, row: usize, col: usize) -> i64;
     fn model(&self) -> SourceModel<'_>;
@@ -369,11 +380,86 @@ trait Auxiliary {
     }
 }
 impl Auxiliary for Snapshot {
+    fn prepare(
+        profile: Arc<Profile>,
+        weights: Arc<Installed>,
+        old: &[Self],
+        prompt: u32,
+    ) -> Result<Self, String> {
+        Snapshot::prepare(&profile, &weights, old, prompt)
+    }
+    fn root(&self) -> &C61Commitment {
+        &self.source.root
+    }
+    fn tokens(&self) -> [u32; 2] {
+        self.tokens
+    }
     fn value(&self, p: &Profile, id: usize, row: usize, col: usize) -> i64 {
         Snapshot::value(self, p, id, row, col)
     }
     fn model(&self) -> SourceModel<'_> {
         SourceModel::Dense(&self.source)
+    }
+}
+
+struct OrderedAux {
+    reader: Arc<ordered::Reader>,
+    source: b12::replay::ReplayModel,
+}
+
+fn ordered_work(_reader: &ordered::Reader, _phase: &str) {
+    #[cfg(test)]
+    eprintln!(
+        "C71_INTEGRATED_GETTER {}",
+        serde_json::json!({
+            "phase":_phase,"work":_reader.take_work().unwrap(),
+            "scope":"O0 reduced original numerical source; CPU work, not HBM or H100 time"
+        })
+    );
+}
+
+impl Auxiliary for OrderedAux {
+    fn prepare(
+        profile: Arc<Profile>,
+        weights: Arc<Installed>,
+        old: &[Self],
+        prompt: u32,
+    ) -> Result<Self, String> {
+        if !old.is_empty() {
+            return Err("ordered native continuation is not implemented".into());
+        }
+        let reader = ordered::Reader::prepare(profile, weights, prompt)?;
+        ordered_work(&reader, "prepare_before_commit");
+        let coins = fresh_pcs_coins()?;
+        let getter = reader.clone();
+        let source = b12::replay::ReplayModel::new(
+            DOMAIN_A,
+            coins.seed,
+            coins.salt_seed,
+            Arc::new(move |index| {
+                E::from(Goldilocks::from_u64(u64::from(
+                    getter.byte_at(index).expect("immutable validated A byte"),
+                )))
+            }),
+        )?;
+        let snapshot = Self { reader, source };
+        snapshot.phase_end("initial_commit_A");
+        Ok(snapshot)
+    }
+    fn root(&self) -> &C61Commitment {
+        self.source.root()
+    }
+    fn tokens(&self) -> [u32; 2] {
+        self.reader.tokens()
+    }
+    fn value(&self, _profile: &Profile, id: usize, row: usize, col: usize) -> i64 {
+        self.reader.value(id, row, col).expect("immutable validated numerical reader")
+    }
+    fn model(&self) -> SourceModel<'_> {
+        SourceModel::Replay(&self.source)
+    }
+    fn phase_end(&self, phase: &str) {
+        ordered_work(&self.reader, phase);
     }
 }
 
@@ -1030,13 +1116,13 @@ struct Verifier {
     #[cfg(test)]
     keys: std::vec::IntoIter<Key>,
 }
-struct Prover {
+struct Prover<S = Snapshot> {
     state: State,
-    model: Installed,
+    model: Arc<Installed>,
     #[cfg(test)]
     rows: std::vec::IntoIter<Auth>,
-    accepted: Vec<Snapshot>,
-    pending: Option<(Snapshot, [u8; 32])>,
+    accepted: Vec<S>,
+    pending: Option<(S, [u8; 32])>,
 }
 
 impl Verifier {
@@ -1090,7 +1176,7 @@ impl Verifier {
     }
 }
 
-impl Prover {
+impl<S: Auxiliary> Prover<S> {
     #[cfg(test)]
     fn prepare_response(&mut self, prompt: u32, nonce: [u8; 32]) -> Result<Response, String> {
         if !self.state.live || self.pending.is_some() {
@@ -1115,19 +1201,13 @@ impl Prover {
             if self.rows.len() < required {
                 return Err("capacity exhausted".into());
             }
-            let snapshot = Snapshot::prepare(p, &self.model, &self.accepted, prompt)?;
-            let s = p.context(
-                &state.weight,
-                &snapshot.source.root,
-                &snapshot.tokens,
-                attempt,
-                &wg,
-                &ag,
-            );
-            let header = state.header(&snapshot.source.root, snapshot.tokens, nonce, required)?;
+            let snapshot = S::prepare(p.clone(), self.model.clone(), &self.accepted, prompt)?;
+            let tokens = snapshot.tokens();
+            let s = p.context(&state.weight, snapshot.root(), &tokens, attempt, &wg, &ag);
+            let header = state.header(snapshot.root(), tokens, nonce, required)?;
             state.next_slot += 1;
             state.cursor += 3 * required;
-            let mut rows = self.rows.by_ref().take(required).collect::<Vec<_>>().into_iter();
+            let mut rows = self.rows.by_ref().take(required);
             let (certificate, receipt) = prove_schedule(
                 state,
                 p,
@@ -1138,12 +1218,7 @@ impl Prover {
                 &header,
                 &mut rows,
             )?;
-            let response = Response {
-                root: snapshot.source.root.clone(),
-                tokens: snapshot.tokens,
-                nonce,
-                certificate,
-            };
+            let response = Response { root: snapshot.root().clone(), tokens, nonce, certificate };
             self.pending = Some((snapshot, receipt));
             Ok(response)
         }));
@@ -1152,8 +1227,8 @@ impl Prover {
     fn check_acceptance(&self, accepted: &Acceptance) -> Result<(), String> {
         let (snapshot, receipt) = self.pending.as_ref().ok_or("Stop")?;
         if *receipt != accepted.receipt
-            || snapshot.source.root != accepted.root
-            || snapshot.tokens != accepted.tokens
+            || snapshot.root() != &accepted.root
+            || snapshot.tokens() != accepted.tokens
             || accepted.session != self.state.session
             || accepted.epoch != self.state.epoch
             || accepted.slot != self.accepted.len()

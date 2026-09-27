@@ -21,6 +21,11 @@ use std::sync::{Arc, Mutex};
 fn limbs(x: &E) -> &[Goldilocks] {
     <E as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(x)
 }
+fn base_coefficient(value: E) -> Goldilocks {
+    let coordinates = limbs(&value);
+    assert_eq!(&coordinates[1..], &[Goldilocks::ZERO; 2], "non-base replay coefficient");
+    coordinates[0]
+}
 enum Pads {
     Base(Arc<[Goldilocks]>),
     Extension(Vec<E>),
@@ -177,14 +182,14 @@ impl QueryFactors {
         dft.dft(shift)
     }
 
-    fn shifted_remainder(
+    fn shifted_remainder<Coefficient: p3_field::ExtensionField<Goldilocks>>(
         &self,
-        mut values: Vec<E>,
+        mut values: Vec<Coefficient>,
         shift: &[Goldilocks],
         dft: &Radix2DFTSmallBatch<Goldilocks>,
-    ) -> Vec<E> {
+    ) -> Vec<Coefficient> {
         let cap = self.inverse.len() / 2;
-        values.resize(2 * cap, E::ZERO);
+        values.resize(2 * cap, Coefficient::ZERO);
         let mut spectrum = dft.dft_algebra(values);
         for (value, &factor) in spectrum.iter_mut().zip(shift) {
             *value *= factor;
@@ -216,35 +221,59 @@ impl Code {
         }
     }
     fn coset(&self, c: usize, rows: usize) -> Result<Vec<u64>, String> {
-        let z = Goldilocks::two_adic_generator(self.height.ilog2() as usize).exp_u64(c as u64);
-        let mut values = vec![E::ZERO; rows * self.width];
-        for b in 0..self.width {
+        if self.base() {
+            self.coset_typed(c, rows, base_coefficient)
+        } else {
+            self.coset_typed(c, rows, std::convert::identity)
+        }
+    }
+    fn coset_typed<Coefficient: p3_field::ExtensionField<Goldilocks>>(
+        &self,
+        coset: usize,
+        rows: usize,
+        convert: impl Fn(E) -> Coefficient,
+    ) -> Result<Vec<u64>, String> {
+        let offset =
+            Goldilocks::two_adic_generator(self.height.ilog2() as usize).exp_u64(coset as u64);
+        let mut values = vec![Coefficient::ZERO; rows * self.width];
+        for column in 0..self.width {
             let mut power = Goldilocks::ONE;
-            for j in 0..(self.len + self.pads.len()) / self.width {
-                values[(j % rows) * self.width + b] += self.coefficient(b, j) * power;
-                power *= z;
+            for index in 0..(self.len + self.pads.len()) / self.width {
+                values[(index % rows) * self.width + column] +=
+                    convert(self.coefficient(column, index)) * power;
+                power *= offset;
             }
         }
         let encoded = Radix2DFTSmallBatch::<Goldilocks>::default()
             .dft_algebra_batch(DenseMatrix::new(values, self.width))
             .to_row_major_matrix();
         let mut cells = vec![0; rows * self.columns().max(4)];
-        for j in 0..rows {
-            for b in 0..self.width {
-                let x = encoded.values[j * self.width + b];
-                if self.base() {
-                    assert_eq!(&limbs(&x)[1..], &[Goldilocks::ZERO; 2]);
-                    cells[b * rows + j] = limbs(&x)[0].as_canonical_u64();
-                } else {
-                    for (k, v) in limbs(&x).iter().enumerate() {
-                        cells[(3 * b + k) * rows + j] = v.as_canonical_u64();
-                    }
+        for row in 0..rows {
+            for column in 0..self.width {
+                let coordinates =
+                    <Coefficient as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(
+                        &encoded.values[row * self.width + column],
+                    );
+                for (limb, value) in coordinates.iter().enumerate() {
+                    cells[(coordinates.len() * column + limb) * rows + row] =
+                        value.as_canonical_u64();
                 }
             }
         }
         Ok(cells)
     }
     fn rows(&self, indices: &[usize]) -> Result<Vec<Vec<Goldilocks>>, String> {
+        if self.base() {
+            self.rows_typed(indices, base_coefficient)
+        } else {
+            self.rows_typed(indices, std::convert::identity)
+        }
+    }
+    fn rows_typed<Coefficient: p3_field::ExtensionField<Goldilocks>>(
+        &self,
+        indices: &[usize],
+        convert: impl Fn(E) -> Coefficient,
+    ) -> Result<Vec<Vec<Goldilocks>>, String> {
         if indices.len() > replay_tree::MAX_REFERENCE_ROWS
             || indices.iter().any(|&index| index >= self.height)
         {
@@ -265,31 +294,31 @@ impl Code {
         let pad_rows = self.pads.len() / self.width;
         let pad_shift = (self.live < self.len && message_rows.is_power_of_two())
             .then(|| root_factors.monomial_spectrum(message_rows, &dft));
-        let mut values = vec![E::ZERO; indices.len() * self.width];
+        let mut values = vec![Coefficient::ZERO; indices.len() * self.width];
         for column in 0..self.width {
             let active = self.live.saturating_sub(column * message_rows).min(message_rows);
             let split = pad_shift.is_some() && active < message_rows;
             let source_rows = if split { active } else { coefficients };
-            let mut remainder = vec![E::ZERO; cap];
+            let mut remainder = vec![Coefficient::ZERO; cap];
             for block in (0..source_rows.div_ceil(cap)).rev() {
                 remainder = root_factors.remainder(
                     &remainder,
                     |offset| {
                         let index = block * cap + offset;
                         if index < source_rows {
-                            self.coefficient(column, index)
+                            convert(self.coefficient(column, index))
                         } else {
-                            E::ZERO
+                            Coefficient::ZERO
                         }
                     },
                     &dft,
                 );
             }
             if split {
-                let mut pad = vec![E::ZERO; cap];
+                let mut pad = vec![Coefficient::ZERO; cap];
                 if pad_rows <= cap {
                     for (offset, value) in pad.iter_mut().take(pad_rows).enumerate() {
-                        *value = self.pads.get(column * pad_rows + offset);
+                        *value = convert(self.pads.get(column * pad_rows + offset));
                     }
                 } else {
                     for block in (0..pad_rows.div_ceil(cap)).rev() {
@@ -298,9 +327,9 @@ impl Code {
                             |offset| {
                                 let index = block * cap + offset;
                                 if index < pad_rows {
-                                    self.pads.get(column * pad_rows + index)
+                                    convert(self.pads.get(column * pad_rows + index))
                                 } else {
-                                    E::ZERO
+                                    Coefficient::ZERO
                                 }
                             },
                             &dft,
@@ -336,12 +365,12 @@ impl Code {
             .chunks_exact(self.width)
             .map(|row| {
                 let mut output = Vec::with_capacity(self.columns());
-                for v in row {
-                    if self.base() {
-                        output.push(limbs(v)[0]);
-                    } else {
-                        output.extend_from_slice(limbs(v));
-                    }
+                for value in row {
+                    output.extend_from_slice(
+                        <Coefficient as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(
+                            value,
+                        ),
+                    );
                 }
                 output
             })
@@ -1056,6 +1085,24 @@ mod tests {
             assert_eq!(reads.load(Ordering::Relaxed), 0);
         }
         println!("C71_QUERY_REMAINDER base_and_extension=true original_pads=true one_source_read_per_batch=true canonical_credit=false");
+    }
+
+    #[test]
+    fn c71_b12_replay_base_rejects_extension_coefficients_before_encoding() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+
+        let code = Code {
+            get: Arc::new(|_| E::new([Goldilocks::ONE, Goldilocks::ONE, Goldilocks::ZERO])),
+            len: 8,
+            live: 8,
+            width: 2,
+            height: 64,
+            pads: Pads::Base(vec![Goldilocks::ONE; 2].into()),
+        };
+        assert!(catch_unwind(AssertUnwindSafe(|| code.coset(0, 8))).is_err());
+        assert!(catch_unwind(AssertUnwindSafe(|| code.rows(&[1, 2]))).is_err());
+        assert_eq!(std::mem::size_of::<Goldilocks>(), 8);
+        assert_eq!(std::mem::size_of::<E>(), 24);
     }
 
     #[test]

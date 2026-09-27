@@ -173,7 +173,10 @@ Per il riduttore nativo delle righe RS usare
 `c71_b12_query_split` per prefissi vivi vuoti/parziali/pieni, pad originali
 e conteggio delle letture prima del callback. Il prefisso proviene dai
 layout W/A posseduti; aggiungere la regressione `c71_b12_native_weight_replay`
-e conservare i positivi streaming/Seed6 seguenti. Eseguire anche
+e `c71_b12_replay_base` per il rifiuto di coefficienti extension nel
+percorso base tipizzato. I due panic catturati da questo fixture sono
+rifiuti attesi, non errori del run. Mantenere
+i positivi streaming/Seed6 seguenti. Eseguire anche
 `c71_b12_full_sourcewise_chain`, separatamente
 entro 60 s/2 GiB, poi streaming integrato e il filtro reale W replay/A
 ordinata. Il primo controlla le forme di tutti i livelli e confronta

@@ -337,8 +337,13 @@ Gli oracoli foldati mantengono l'intero supporto: non ereditano per ipotesi
 gli zeri del messaggio iniziale. Getter, root e wrapper restano legati
 agli owner originali, non a un supporto fornito nella proof.
 Spettro dello shift, polinomi temporanei e correzione dei pad si aggiungono
-agli altri stati vivi. Il riferimento usa ancora temporanei E anche per
-le colonne base; non trasferisce al codice il conto scalare canonico.
+agli altri stati vivi. Coset, resti, discesa multipunto e correzione pad
+usano ora Goldilocks da 8 B per le colonne base, mantenendo E da 24 B
+per i successori extension. Il getter conserva l'ABI E; la conversione
+base verifica che entrambe le altre coordinate siano zero prima
+dell'encoding, senza troncare coefficienti extension invalidi.
+Conversioni, copie di output e workspace DFT rimangono da contabilizzare
+nel picco completo; la sola tipizzazione non ammette il ledger fisico.
 Payload, coda zero e pad privati rimangono agli stessi offset contigui;
 il percorso extension conserva tutte e tre le componenti. La riduzione
 legge ogni coefficiente una volta per batch, non per apertura completa.

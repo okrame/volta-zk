@@ -2086,8 +2086,12 @@ modulari. Pad più lunghi del cap sono ridotti prima della correzione.
 Il riferimento con M non potenza di due non seleziona lo split.
 I successori foldati usano il dominio completo, senza assumere che il
 vecchio supporto zero sopravviva ai fold. Il cap di query resta 1.024;
-spettro shift, pad/resti intermedi E anche nelle colonne base e workspace
-si aggiungono agli altri buffer. Non è il picco o il rate canonico.
+spettro shift, pad/resti intermedi e workspace si aggiungono agli altri
+buffer. Coset e aperture iniziali usano ora temporanei Goldilocks da
+8 B, mentre il percorso extension mantiene E da 24 B. Il getter ritorna
+ancora E e la conversione base verifica le altre due coordinate; il
+controllo non è lavoro gratuito. Output e conversioni mantengono ordine
+e codec originali. Non è un picco completo o un rate canonico.
 Il caller conserva il batch di righe base insieme a sali/digest dei
 sottoalberi, query ordinate, output e cache superiore. Il campo
 `open_subtree_bytes_each` continua a descrivere solo sali/digest di un

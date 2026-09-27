@@ -1542,8 +1542,16 @@ normalizzazione 1/N, sia quadrata sia odd-log. Nel CUDA il prodotto per
 nessun nuovo array o passaggio globale. I controlli host confrontano DFT,
 roundtrip e transpose normalizzato su tile diagonali/fuori diagonale;
 non eseguono il device. Il forward conserva la propria aritmetica.
-Rimangono reverse/padding, prodotti spettrali, pipeline dei resti,
-scatter PCS e controllo GPU; nessun credito di picco o tempo completo.
+Il riferimento dei resti collega ora quattro trasformate, preparazione
+della sola metà alta invertita, due prodotti spettrali, reverse/pad del
+quoziente e sottrazione dal blocco basso. Il controllo host confronta
+tre blocchi consecutivi con divisione diretta; il check CUDA a due colonne
+è compilato ma non eseguito. Supporta 2B quadrato e fattori base condivisi;
+il setup quadratico dei fattori è confinato alle fixture piccole.
+I due array twiddle, entrambi vivi nella pipeline, non ereditano il conto
+a una sola tabella del microbenchmark FFT isolato. Restano fattori/input
+canonici, getter/pad originali, raccordo Fp3/PCS e controllo GPU; nessun
+credito di picco o tempo completo.
 Il [checkpoint RMS e il prover a memoria limitata](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
 conservano P/Y originali e S48 condiviso per riga: 2.023.511.878 B con
 descrittori, nello slot range riusato prima di RNE. Il caller costruisce

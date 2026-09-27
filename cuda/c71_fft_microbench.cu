@@ -11,6 +11,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -314,6 +315,86 @@ void normalize_host(std::vector<uint64_t>& values, size_t length) {
     for (auto& value : values) value = fp_mul(value, scale);
 }
 
+std::pair<std::vector<uint64_t>, std::vector<uint64_t>> remainder_factors(
+    const std::vector<uint64_t>& modulus, size_t side) {
+    const size_t cap = modulus.size() - 1;
+    std::vector<uint64_t> inverse(2 * cap);
+    inverse[0] = 1;
+    for (size_t degree = 1; degree < cap; ++degree) {
+        uint64_t sum = 0;
+        for (size_t offset = 1; offset <= degree; ++offset)
+            sum = fp_add(sum, fp_mul(modulus[cap - offset], inverse[degree - offset]));
+        inverse[degree] = fp_sub(0, sum);
+    }
+    auto spectrum = modulus;
+    spectrum.resize(2 * cap);
+    const uint64_t omega = root_of_unity(2 * cap);
+    five_pass_fft(inverse, side, omega);
+    five_pass_fft(spectrum, side, omega);
+    return {std::move(inverse), std::move(spectrum)};
+}
+
+std::vector<uint64_t> remainder_by_division(
+    const std::vector<uint64_t>& high, const std::vector<uint64_t>& low,
+    const std::vector<uint64_t>& modulus) {
+    const size_t cap = high.size();
+    auto values = low;
+    values.insert(values.end(), high.begin(), high.end());
+    for (size_t degree = values.size(); degree-- > cap;) {
+        const uint64_t leading = values[degree];
+        for (size_t offset = 0; offset <= cap; ++offset)
+            values[degree - cap + offset] = fp_sub(
+                values[degree - cap + offset], fp_mul(leading, modulus[offset]));
+    }
+    values.resize(cap);
+    return values;
+}
+
+std::vector<uint64_t> remainder_block_host(
+    const std::vector<uint64_t>& high, const std::vector<uint64_t>& low,
+    const std::pair<std::vector<uint64_t>, std::vector<uint64_t>>& factors,
+    size_t side) {
+    const size_t cap = high.size(), length = 2 * cap;
+    const uint64_t omega = root_of_unity(length), inverse = fp_pow(omega, P - 2);
+    std::vector<uint64_t> work(high.rbegin(), high.rend());
+    work.resize(length);
+    five_pass_fft(work, side, omega);
+    for (size_t index = 0; index < length; ++index)
+        work[index] = fp_mul(work[index], factors.first[index]);
+    five_pass_fft(work, side, inverse);
+    normalize_host(work, length);
+    std::reverse(work.begin(), work.begin() + cap);
+    std::fill(work.begin() + cap, work.end(), 0);
+    five_pass_fft(work, side, omega);
+    for (size_t index = 0; index < length; ++index)
+        work[index] = fp_mul(work[index], factors.second[index]);
+    five_pass_fft(work, side, inverse);
+    normalize_host(work, length);
+    work.resize(cap);
+    for (size_t index = 0; index < cap; ++index)
+        work[index] = fp_sub(low[index], work[index]);
+    return work;
+}
+
+bool remainder_host_check() {
+    for (size_t side : {2, 4, 8, 16}) {
+        const size_t cap = side * side / 2;
+        std::vector<uint64_t> modulus(cap + 1), high(cap), low(cap);
+        fill_host(modulus);
+        modulus[cap] = 1;
+        const auto factors = remainder_factors(modulus, side);
+        for (size_t block = 0; block < 3; ++block) {
+            for (size_t index = 0; index < cap; ++index)
+                low[index] = block == 0 && index >= cap / 2
+                    ? 0 : canonical(splitmix64(SEED + cap * block + index + 17));
+            const auto expected = remainder_by_division(high, low, modulus);
+            high = remainder_block_host(high, low, factors, side);
+            if (high != expected) return false;
+        }
+    }
+    return true;
+}
+
 int host_check(int log2_m, bool inverse = false) {
     if (log2_m < 1 || log2_m > 4) return 2;
     const size_t m = size_t{1} << log2_m;
@@ -339,6 +420,7 @@ int host_check(int log2_m, bool inverse = false) {
     const bool blocked_ok = blocked == direct;
     const bool field_ok = field_self_check() && index_self_check();
     const TileModelCheck tiles = tile_model_check();
+    const bool remainder_ok = remainder_host_check();
     std::cout << "{\"schema\":\"volta-c71-fft-microbench-v1\",\"mode\":\"host-check"
               << (inverse ? "-inverse\"" : "\"")
               << ",\"normalization\":{\"inverse\":" << (inverse ? "true" : "false")
@@ -346,6 +428,7 @@ int host_check(int log2_m, bool inverse = false) {
               << ",\"field_multiplications\":" << (inverse ? n : 0)
               << ",\"extra_global_passes\":0}"
               << ",\"roundtrip\":" << (roundtrip == input ? "true" : "false")
+              << ",\"block_remainder_vs_division\":" << (remainder_ok ? "true" : "false")
               << ",\"field\":{\"base_modulus\":" << P << ",\"generator\":" << GENERATOR
               << ",\"element_bytes\":8}"
               << ",\"input\":{\"generator\":\"splitmix64-v1\",\"seed\":\""
@@ -362,7 +445,7 @@ int host_check(int log2_m, bool inverse = false) {
               << (tiles.unique_coverage ? "true" : "false")
               << ",\"tile_pair_normalized_m64\":" << (tiles.normalized ? "true" : "false") << "}"
               << ",\"checksum\":\"" << hex64(checksum(blocked)) << "\"}\n";
-    return roundtrip == input && field_ok && root_ok && radix_ok && blocked_ok && tiles.plain && tiles.twiddled &&
+    return remainder_ok && roundtrip == input && field_ok && root_ok && radix_ok && blocked_ok && tiles.plain && tiles.twiddled &&
                    tiles.unique_coverage && tiles.normalized
         ? 0
         : 1;
@@ -388,6 +471,7 @@ int host_check_odd(int log2_m, bool inverse = false) {
     if (!inverse) normalize_host(roundtrip, n);
     const bool root_ok = fp_pow(omega, n) == 1 && fp_pow(omega, n / 2) == P - 1;
     const bool odd_ok = scattered == direct;
+    const bool remainder_ok = remainder_host_check();
     std::cout << "{\"schema\":\"volta-c71-fft-microbench-v1\",\"mode\":\"host-check-odd"
               << (inverse ? "-inverse\"" : "\"")
               << ",\"normalization\":{\"inverse\":" << (inverse ? "true" : "false")
@@ -395,6 +479,7 @@ int host_check_odd(int log2_m, bool inverse = false) {
               << ",\"field_multiplications\":" << (inverse ? n : 0)
               << ",\"extra_global_passes\":0}"
               << ",\"roundtrip\":" << (roundtrip == input ? "true" : "false")
+              << ",\"block_remainder_vs_division\":" << (remainder_ok ? "true" : "false")
               << ",\"input\":{\"log2_m\":" << log2_m << ",\"length\":" << n << "}"
               << ",\"algorithm\":{\"square_passes\":5,\"merge_passes\":1"
               << ",\"layout\":\"parity-scattered-input/natural-order-output\"}"
@@ -414,7 +499,7 @@ int host_check_odd(int log2_m, bool inverse = false) {
               << ",\"butterflies\":" << n * (2 * log2_m + 1) / 2
               << ",\"square_cross_multiplications\":" << n << "}"
               << ",\"checksum\":\"" << hex64(checksum(scattered)) << "\"}\n";
-    return root_ok && odd_ok && roundtrip == input ? 0 : 1;
+    return remainder_ok && root_ok && odd_ok && roundtrip == input ? 0 : 1;
 }
 
 #ifdef __CUDACC__
@@ -575,6 +660,115 @@ void launch_odd_fft(
     CUDA_CHECK(cudaGetLastError());
 }
 
+__global__ void remainder_high_kernel(
+    uint64_t* work, const uint64_t* high, size_t cap, size_t count) {
+    const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index >= count) return;
+    const size_t offset = index % (2 * cap), column = index / (2 * cap);
+    work[index] = offset < cap ? high[column * cap + cap - 1 - offset] : 0;
+}
+
+__global__ void remainder_factor_kernel(
+    uint64_t* work, const uint64_t* factor, size_t length, size_t count) {
+    const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index < count) work[index] = fp_mul(work[index], factor[index % length]);
+}
+
+__global__ void remainder_quotient_kernel(uint64_t* work, size_t cap, size_t count) {
+    const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index >= count) return;
+    const size_t offset = index % cap, base = 2 * (index - offset);
+    if (offset < cap / 2) {
+        const uint64_t value = work[base + offset];
+        work[base + offset] = work[base + cap - 1 - offset];
+        work[base + cap - 1 - offset] = value;
+    }
+    work[base + cap + offset] = 0;
+}
+
+__global__ void remainder_low_kernel(
+    uint64_t* remainder, const uint64_t* low, const uint64_t* product,
+    size_t cap, size_t count) {
+    const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index >= count) return;
+    const size_t offset = index % cap, base = 2 * (index - offset);
+    remainder[index] = fp_sub(low[index], product[base + offset]);
+}
+
+void launch_remainder_block(
+    uint64_t* work, uint64_t* remainder, const uint64_t* low,
+    const uint64_t* inverse_factor, const uint64_t* modulus_factor,
+    const uint64_t* forward_twiddles, const uint64_t* inverse_twiddles,
+    size_t side, int log2_side, size_t batch) {
+    const size_t length = side * side, cap = length / 2, count = length * batch;
+    remainder_high_kernel<<<(count + BLOCK - 1) / BLOCK, BLOCK>>>(work, remainder, cap, count);
+    CUDA_CHECK(cudaGetLastError());
+    launch_five_pass(work, forward_twiddles, side, log2_side, batch);
+    remainder_factor_kernel<<<(count + BLOCK - 1) / BLOCK, BLOCK>>>(
+        work, inverse_factor, length, count);
+    CUDA_CHECK(cudaGetLastError());
+    launch_five_pass(work, inverse_twiddles, side, log2_side, batch, 1, true);
+    remainder_quotient_kernel<<<(count / 2 + BLOCK - 1) / BLOCK, BLOCK>>>(work, cap, count / 2);
+    CUDA_CHECK(cudaGetLastError());
+    launch_five_pass(work, forward_twiddles, side, log2_side, batch);
+    remainder_factor_kernel<<<(count + BLOCK - 1) / BLOCK, BLOCK>>>(
+        work, modulus_factor, length, count);
+    CUDA_CHECK(cudaGetLastError());
+    launch_five_pass(work, inverse_twiddles, side, log2_side, batch, 1, true);
+    remainder_low_kernel<<<(count / 2 + BLOCK - 1) / BLOCK, BLOCK>>>(
+        remainder, low, work, cap, count / 2);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+bool gpu_remainder_correctness() {
+    constexpr int log2_side = 5;
+    constexpr size_t side = 1 << log2_side, length = side * side, cap = length / 2, batch = 2;
+    std::vector<uint64_t> modulus(cap + 1), high(batch * cap), low(batch * cap), got(batch * cap);
+    fill_host(modulus);
+    modulus[cap] = 1;
+    const auto factors = remainder_factors(modulus, side);
+    std::vector<uint64_t> forward(length), inverse(length);
+    const uint64_t omega = root_of_unity(length), reverse = fp_pow(omega, P - 2);
+    for (size_t index = 0; index < length; ++index) {
+        forward[index] = fp_pow(omega, index);
+        inverse[index] = fp_pow(reverse, index);
+    }
+    uint64_t* work = nullptr;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&work), (2 * batch + 4) * length * sizeof(uint64_t)));
+    uint64_t* remainder = work + batch * length;
+    uint64_t* low_block = remainder + batch * cap;
+    uint64_t* inverse_factor = low_block + batch * cap;
+    uint64_t* modulus_factor = inverse_factor + length;
+    uint64_t* forward_twiddles = modulus_factor + length;
+    uint64_t* inverse_twiddles = forward_twiddles + length;
+    CUDA_CHECK(cudaMemcpy(remainder, high.data(), high.size() * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(inverse_factor, factors.first.data(), length * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(modulus_factor, factors.second.data(), length * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(forward_twiddles, forward.data(), length * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(inverse_twiddles, inverse.data(), length * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    bool matched = true;
+    for (size_t block = 0; block < 3; ++block) {
+        for (size_t index = 0; index < low.size(); ++index)
+            low[index] = block == 0 && index % cap >= cap / 2
+                ? 0 : canonical(splitmix64(SEED + low.size() * block + index + 17));
+        std::vector<uint64_t> expected;
+        for (size_t column = 0; column < batch; ++column) {
+            const auto reduced = remainder_by_division(
+                {high.begin() + column * cap, high.begin() + (column + 1) * cap},
+                {low.begin() + column * cap, low.begin() + (column + 1) * cap}, modulus);
+            expected.insert(expected.end(), reduced.begin(), reduced.end());
+        }
+        CUDA_CHECK(cudaMemcpy(low_block, low.data(), low.size() * sizeof(uint64_t), cudaMemcpyHostToDevice));
+        launch_remainder_block(work, remainder, low_block, inverse_factor, modulus_factor,
+                               forward_twiddles, inverse_twiddles, side, log2_side, batch);
+        CUDA_CHECK(cudaMemcpy(got.data(), remainder, got.size() * sizeof(uint64_t), cudaMemcpyDeviceToHost));
+        matched = matched && got == expected;
+        high = std::move(expected);
+    }
+    CUDA_CHECK(cudaFree(work));
+    return matched;
+}
+
 template <typename Launch>
 double median_ms(int reps, Launch launch) {
     cudaEvent_t begin, end;
@@ -647,7 +841,7 @@ bool gpu_correctness(bool inverse = false) {
         got.data(), device_values, odd_n * sizeof(uint64_t), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaFree(device_twiddles));
     CUDA_CHECK(cudaFree(device_values));
-    return even_ok && got == want;
+    return even_ok && got == want && gpu_remainder_correctness();
 }
 
 std::string escape(const char* text) {
@@ -766,7 +960,7 @@ int gpu_bench(int log2_m, size_t batch, int reps, bool odd, bool inverse = false
               << (odd ? 4 * count / batch : 0) << "}"
               << ",\"rates\":{\"field_elements_per_second\":"
               << count / (fft_ms / 1000.0) << "}"
-              << ",\"correctness\":{\"small_cpu_gpu_natural_order\":true}"
+              << ",\"correctness\":{\"small_cpu_gpu_natural_order\":true,\"small_cpu_gpu_remainder\":true}"
               << ",\"sample_checksum\":\"" << hex64(checksum(sample)) << "\"}\n";
     return 0;
 }

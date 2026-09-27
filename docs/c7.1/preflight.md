@@ -123,8 +123,10 @@ fisso costano **quattro FFT di lunghezza 2B=2^22 per blocco**. Il test
 ora esegue proprio questi quattro transform, con due precalcoli condivisi.
 La FFT quadrata 2048² già compilata è riusabile; l'harness espone ora
 anche inverse e normalizzazione fusa, compilate senza esecuzione GPU.
-Reverse/padding, prodotti spettrali, packing e pipeline remainder CUDA
-restano da collegare.
+Il riferimento a quattro FFT collega ora reverse/padding, prodotti
+spettrali e sottrazione del blocco basso su input piccoli. È controllo
+host e compilazione statica; input/pad originali e raccordo PCS/Fp3
+restano da collegare, senza esecuzione GPU.
 
 Per N coefficienti base, arrotondati a blocchi, il nucleo sorgente paga
 **88N butterfly + 8N prodotti twiddle + 4N prodotti spettrali + 4N
@@ -792,7 +794,7 @@ Non esclude i 65 s, ma non giustifica una spesa H100.
 | Gate | Controllo minimo successivo | Stato |
 |---|---|---|
 | Algebra/endpoint | Adapter piccolo nativo con righe, pad, sali, root, codec e MAC identici; rifiuto delle alterazioni | Identità finite passate, refinement aperto |
-| CUDA | Compile/SASS; poi reader, inverse/remainder e pipeline hash rappresentativi con input piccolo | FFT ottimizzata e probe range compilati; reader e remainder CUDA mancanti |
+| CUDA | Compile/SASS; poi reader, inverse/remainder e pipeline hash rappresentativi con input piccolo | FFT/inversa, blocco remainder di riferimento e probe range compilati; reader e pipeline PCS completa mancanti |
 | A/KV | Trace getter immutabile per tutte le ricette e O=0/150/300, conteggio ricostruzioni e dipendenze | DAG condiviso e finestre censiti; getter numerico e slot 64 MiB ancora da verificare |
 | PCS completa | Tutti i 12 oracoli per catena, maschere, stati folded, source-uniformity e salt seek | Ancora aperto |
 | PCG | Trace AES/cGGM a batch, seed/state/OT, no pool bulk; costi di entrambi i ruoli | Upper componente soltanto |
@@ -867,8 +869,22 @@ controlla DFT e roundtrip; il modello del transpose verifica la scala
 anche fra tile distinti. Questi loop host non sono misure del layout GPU.
 Il check CPU/GPU del futuro runner CUDA verifica la direzione richiesta
 prima dei timing, ma non è stato eseguito. Compilazione sm_90 e SASS
-conservano i due kernel normalizzati separati; restano la pipeline dei
-resti e tutte le fasi PCS mancanti, senza nuovo lower/upper o GO H100.
+conservano i due kernel normalizzati separati, senza nuovo lower/upper
+o GO H100.
+
+La pipeline dei resti usa ora quattro trasformate di lunghezza 2B
+quadrata: inverte solo la metà alta, moltiplica per il reciproco,
+normalizza, inverte il quoziente troncato con coda zero, moltiplica per
+il modulo e sottrae il risultato dal blocco basso. Host e divisione
+diretta coincidono per B=2/8/32/128, tre blocchi consecutivi e primo blocco
+parziale. Il futuro check device usa B=512 e due colonne; non è eseguito.
+La sua singola allocazione nominata è 65.536 B: workspace, resto,
+blocco basso, due spettri fissi e due tabelle twiddle distinte. Queste
+ultime coesistono; non sono il conto a una tabella della FFT isolata.
+I fattori quadratici del fixture non sono il setup del cap canonico.
+I timing del runner continuano a misurare solo FFT, non questa pipeline;
+getter/pad originali, Fp3, fattori canonici, root/sali e picco completo
+restano aperti. Il check device deve passare prima di quei timing.
 
 L'audit dei percorsi nativi distingue tre incompatibilità/obblighi:
 

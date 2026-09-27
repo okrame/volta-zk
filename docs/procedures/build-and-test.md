@@ -84,7 +84,11 @@ più report GPU simulati (non esegue CUDA). Il comando host riproducibile è
 --timeout-seconds 60`; senza `--odd` mantiene il controllo quadrato.
 Aggiungere `--inverse` per l'inversa normalizzata, anche insieme a `--odd`.
 Il test host copre entrambe le direzioni, roundtrip e transpose normalizzato;
-i report GPU restano simulati. La compilazione statica locale usa
+i report GPU restano simulati. Copre anche il blocco remainder a quattro
+FFT contro divisione diretta, con tre blocchi e primo blocco parziale;
+ripetere `tests/test_c71_query_remainder.py` come oracolo indipendente.
+Il futuro controllo GPU richiede anche due colonne della stessa pipeline,
+ma i timing restano della sola FFT. La compilazione statica locale usa
 `/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -O3 -std=c++17 -arch=sm_90
 -Xptxas=-v cuda/c71_fft_microbench.cu -o OUTPUT` senza avviare il binario.
 Per il SASS aggiungere `toolkit/bin` a PATH, così `cuobjdump -sass OUTPUT`

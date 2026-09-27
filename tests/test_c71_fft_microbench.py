@@ -28,6 +28,11 @@ def test_host_square_and_odd_reports_match_the_existing_kernel(tmp_path):
                 [str(binary), f"--{mode}", str(log2_m)], text=True, timeout=30,
             ))
             fft.validate(report, mode, log2_m, 1)
+            assert report["block_remainder_vs_division"] is True
+            corrupted = copy.deepcopy(report)
+            corrupted["block_remainder_vs_division"] = False
+            with pytest.raises(SystemExit):
+                fft.validate(corrupted, mode, log2_m, 1)
             corrupted = copy.deepcopy(report)
             corrupted["input"]["length"] += 1
             with pytest.raises(SystemExit):
@@ -85,7 +90,7 @@ def test_simulated_gpu_reports_require_matching_mode_counts_and_timings(odd, inv
             "steps": ["transpose", "row-fft", "twiddle-transpose", "row-fft", "transpose"]
             + (["radix2-merge"] if odd else []),
         },
-        "correctness": {"small_cpu_gpu_natural_order": True},
+        "correctness": {"small_cpu_gpu_natural_order": True, "small_cpu_gpu_remainder": True},
         "allocation": {
             "requested_peak_bytes": 1024 if odd else 512,
             "values_bytes": 8 * count, "twiddle_bytes": 8 * length,
@@ -116,6 +121,10 @@ def test_simulated_gpu_reports_require_matching_mode_counts_and_timings(odd, inv
         },
     }
     fft.validate(report, mode, log2_m, batch)
+    corrupted = copy.deepcopy(report)
+    corrupted["correctness"]["small_cpu_gpu_remainder"] = False
+    with pytest.raises(SystemExit):
+        fft.validate(corrupted, mode, log2_m, batch)
     if inverse:
         corrupted = copy.deepcopy(report)
         del corrupted["normalization"]

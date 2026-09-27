@@ -132,6 +132,8 @@ def validate(kernel: dict, mode: str, log2_m: int, batch: int) -> None:
         raise SystemExit("FFT normalization differs")
     if not gpu and kernel.get("roundtrip", not inverse) is not True:
         raise SystemExit("FFT host roundtrip failed")
+    if not gpu and kernel.get("block_remainder_vs_division") is not True:
+        raise SystemExit("FFT host block remainder check failed")
     merge = {
         "value_read_bytes": 8 * count if odd else 0,
         "value_write_bytes": 8 * count if odd else 0,
@@ -184,7 +186,7 @@ def validate(kernel: dict, mode: str, log2_m: int, batch: int) -> None:
     }:
         raise SystemExit("FFT microbenchmark algorithm differs")
     expected_correctness = (
-        {"small_cpu_gpu_natural_order": True}
+        {"small_cpu_gpu_natural_order": True, "small_cpu_gpu_remainder": True}
         if gpu
         else {
             "field": True,

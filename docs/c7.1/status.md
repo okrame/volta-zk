@@ -154,7 +154,8 @@ MAC nativi, confronto del registro e promozione dopo il journal. Gli
 iteratori ideali sono confinati ai test. Il controllo reale a tre righe
 verifica l'arresto per capacità insufficiente, senza pubblicare A né
 promuovere KV. Separatamente, il nuovo wrapper opt-in Seed6 completa
-**un tentativo O=0 ridotto con AES reale**, 88.049 MAC Fp3 e promozione
+**[un tentativo O=0 ridotto con AES reale](evidence.md#seed6-complete-reduced-native-proof)**,
+88.049 MAC Fp3 e promozione
 della stessa ricevuta nei due ruoli. Usa ancora Snapshot/A densi piccoli;
 non chiude il port canonico, il percorso ordinato reale o tre tentativi AES.
 

@@ -1871,6 +1871,8 @@ a questo cambio d'interfaccia.
 
 ### Wrapper PCS/GKR Seed6
 
+Evidenza: [otto test Rust e 35 Python/C++](evidence.md#seed6-complete-reduced-native-proof).
+
 Il wrapper interno ora possiede due varianti esplicite del pool, senza
 duplicare la macchina di accettazione. `volta-pcs/c71-seed6-reference`
 abilita quella Seed6, mai come fallback. Il packing usa tre righe originali
@@ -1891,7 +1893,7 @@ Sono conti di sorgente, non istruzioni, HBM o tempo. Il primo controllo
 positivo O=0 usa t=4/h=19/ell=11, main 107 + inverso 12 e 264.147 righe
 base: 88.049 MAC Fp3 entrano nell'intera schedule originale; i due journal
 e i registri terminano con la stessa ricevuta. Il certificato misura
-circa 7,76 MB e il controllo locale termina in 49,90 s entro 60 s/2 GiB.
+circa 7,76 MB; il run positivo su SHA pulita termina in 50,11 s entro 60 s/2 GiB.
 Quel tempo riguarda entrambi i ruoli CPU, non un obiettivo H100.
 Il grafo rimane un layer/hidden2/prompt1+generato1 con Snapshot/A densi;
 non trasferisce sicurezza parametrica o credito del run completo a tre

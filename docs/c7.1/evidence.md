@@ -1887,3 +1887,29 @@ controlli `len`. La correzione usa il trait standard lungo il call graph,
 senza rimuovere controlli o cambiare transcript, algebra o riserva.
 Nessun nuovo conteggio canonico, riduzione del picco o credito AES composto;
 packing Seed6 e wrapper restano il prossimo raccordo locale.
+
+## Seed6 complete reduced native proof
+
+Il [record su SHA pulita `1e5294a`](../../benchmarks/results/c71-seed6-native-2026-09-27-1e5294ae1004.json) conserva
+**otto test Rust e 35 Python/C++**, seriali entro 60 s/2 GiB, e check
+non-test del percorso B12 ordinario. La feature PCS opt-in collega pool
+Seed6 e packing lazy alla macchina originale Prepare/Verify/journal:
+un O=0 completo usa OS RNG, main 107 + inverso 12, t=4/h=19/ell=11 e
+264.147 righe base, formando 88.049 MAC Fp3 originali. La stessa ricevuta
+del verifier completo compare in entrambi i journal e registri A/KV.
+
+Un secondo run indipendente altera l'ultimo byte del completamento:
+burn completo, head zero, nessuna promozione e stop in entrambi i ruoli.
+Positivo e rifiuto tardivo durano circa 50,11/50,10 s sulla CPU locale,
+non sono tempi H100. I controlli piccoli coprono packing, errore di pull,
+consumo parziale, shortage prima di Prepare/decoding; passano anche i
+controlli del pool denso e i tre tentativi ideali. Il ledger include
+operazioni/codec del packing e i relativi target parziali di throughput.
+
+Il grafo è ancora un layer/hidden2/prompt1+generato1 con Snapshot/A densi.
+Non è reader ordinato reale, run AES a tre tentativi, Gemma canonico o
+nuovo teorema compositivo; Γ reale e picco completo restano aperti.
+I journal precedono le rispettive promozioni, non un commit distribuito
+atomico. Il record conserva anche i controlli preliminari su tree sporco
+e dichiara l'overlap finale Python/compilazione preliminare; nessuna coppia
+di suite di test viene eseguita in parallelo nel run di record.

@@ -148,8 +148,9 @@ ridotti con Seed6. [GKR e byte endpoint](evidence.md#borrowed-gkr-and-byte-inter
 prestito, con parità wire/FS/MAC e regressioni Seed6 passate; il census
 separa heap posseduto e payload riservato. Non è
 l'eliminazione di tutti i buffer interni né un nuovo margine fisico.
-Il medesimo raccordo è ora applicato a dispatcher e riduzione RNE,
-senza cambiare probe, ricette o richieste sulle A originali.
+Il medesimo raccordo è ora [verificato per dispatcher e riduzione RNE](evidence.md#borrowed-rne-intervals),
+senza cambiare probe, ricette o richieste sulle A originali; passano
+anche accettazione e rifiuto terminale ridotti con Seed6.
 
 Il [corpo del verifier canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
 ora implementa la schedule completa di security §3 con ricette comuni,

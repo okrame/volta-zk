@@ -2133,3 +2133,25 @@ promozione. Passa anche il consumo parziale con burn. Le riserve non
 cambiano e un suffisso non espanso non è riutilizzabile. Restano storage
 del caller, workspace PCG, stato inline e buffer di statistic/lookup/RNE
 e altri componenti. Non è un picco completo, Γ reale o gate H100.
+
+## Borrowed RNE intervals
+
+Il [record su SHA pulita `3eacdf5`](../../benchmarks/results/c71-rne-borrowed-2026-09-27-3eacdf57d714.json)
+conserva dieci test Rust seriali entro 60 s/2 GiB e check non-test B12/Seed6.
+Dispatcher delle tabelle e riduzione RNE passano ora `Take` in prestito,
+senza nuovi Vec dell'intervallo. Il fixture table RNE osserva zero richieste
+all'iteratore prima della prima lettura del probe e consumo esatto sul
+successo nei due ruoli. Sono richieste osservate sull'iteratore del fixture,
+non una misura della generazione PCG.
+
+Passano ricette signed, ties/overflow, P0/RNE e RMS dispatcher con gli
+originali W/A, certificato e streaming integrato. Seed6 reale accetta W
+replay/A ordinata O=0 ell=2 in 46,75 s; il fixture denso ell=11 rifiuta
+l'alterazione terminale in 49,89 s. Passa anche il burn con consumo parziale.
+Il record conserva un comando check iniziale con nome feature inesistente,
+poi corretto a `c71-b12-pcs`; non era un errore del codice.
+
+Non cambiano ricette, shift, riserve compilate, transcript o PCS. Restano
+altri buffer componenti, storage del caller e workspace PCG; sul fallimento
+il suffisso non espanso rimane bruciato dal pool. Nessun nuovo credito
+di picco fisico, calibrazione reale o GO H100.

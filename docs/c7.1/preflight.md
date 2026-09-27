@@ -1986,7 +1986,7 @@ il Vec duplicato del loro intervallo. Il census distingue payload MAC
 riservato e heap posseduto; non azzera storage del caller, workspace PCG
 o stato inline. Restano statistic e altre riserve componenti: nessun
 nuovo margine arena o picco fisico viene attribuito.
-Anche dispatcher e riduzione RNE ora passano intervalli in prestito:
+Anche [dispatcher e riduzione RNE](evidence.md#borrowed-rne-intervals) ora passano intervalli in prestito:
 non espandono l'intera riserva delle tabelle prima del primo probe.
 Count, shift, richieste originali e PCS non cambiano; il burn rimane
 responsabilità del pool, non della materializzazione delle righe.

@@ -2223,3 +2223,25 @@ non l'albero completo per la valutazione multipunto: la valutazione
 finale resta quadratica e i sottoalberi vengono ancora rigenerati separati.
 Setup/FFT sono lavoro della prova; nessun credito canonico di memoria,
 tempo, NoPeek o calibrazione deriva da questi controlli ridotti.
+
+## Native query remainder tree
+
+Il [record su SHA pulita `ffda2ef`](../../benchmarks/results/c71-query-tree-2026-09-27-ffda2efa42c1.json)
+conserva cinque test Rust e tre Python, seriali entro 60 s/2 GiB, più
+check non-test B12/Seed6. Il callback scende ora nell'albero dei resti
+fino ai valori delle foglie, riusando il riduttore dei blocchi sorgente.
+Gli spettri di modulo/reciproco sono conservati per ogni nodo; gli oracoli
+controllano le forme dei livelli, i fattori della radice e tutte le righe
+base/extension contro Horner, inclusi cap 1.024, duplicati e query ragged.
+
+Passano parità wire/FS/MAC della catena WHIR, rifiuto dell'endpoint
+alterato, streaming ideale e O=0 W replay/A ordinata con Seed6 reale
+ell=2 in 47,79 s. La prima build fallita per tipo numerico ambiguo nel
+test è conservata; la correzione esplicita `usize` non cambia l'aritmetica.
+
+La valutazione finale non è più quadratica nel callback, ma ogni
+sottoalbero Merkle viene ancora rigenerato separatamente. Gli spettri
+di tutti i livelli, i temporanei Newton/FFT, i livelli dei resti e le
+righe di output sono memoria posseduta, non gli stessi soli buffer della
+radice. Cap canonico, scansione unica dell'apertura, picco fisico, Γ reale
+e pipeline GPU restano aperti; nessun nuovo credito hardware.

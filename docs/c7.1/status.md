@@ -139,7 +139,7 @@ originali, invece di valutare tutta la sorgente per ogni query. È un
 callback limitato a 1.024 richieste, non l'apertura canonica completa:
 i replay separati dei sottoalberi restano espliciti. Il
 [setup verificato](evidence.md#balanced-query-setup) riusa prodotti FFT bilanciati e reciproco Newton;
-la valutazione ora scende nell'albero dei resti, conservando gli spettri
+la [valutazione verificata](evidence.md#native-query-remainder-tree) ora scende nell'albero dei resti, conservando gli spettri
 di tutti i nodi senza aumentare il cap locale. Passano parità WHIR, streaming ideale e O=0 W replay/A ordinata
 con Seed6 reale, senza trasferire il ledger hardware.
 

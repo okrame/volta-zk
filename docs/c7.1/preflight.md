@@ -1978,7 +1978,7 @@ Il [callback RS del replay](evidence.md#native-fft-remainder-in-replay-openings)
 Horner sull'intera sorgente per ciascuna query. Il riferimento mantiene
 pad e ordine originali, batch fino a 1.024 richieste e una lettura di ogni
 coefficiente per batch. Il [setup verificato](evidence.md#balanced-query-setup) ora costruisce il modulo con prodotti
-FFT bilanciati e il reciproco con raddoppio di Newton. La valutazione
+FFT bilanciati e il reciproco con raddoppio di Newton. La [valutazione verificata](evidence.md#native-query-remainder-tree)
 ora scende nell'albero dei resti con lo stesso helper della riduzione
 sorgente. Il cap non cresce e la tree richiama il callback per sottoalbero
 e per le righe richieste. Non è quindi l'apertura canonica a una sola scansione,

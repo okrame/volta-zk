@@ -1934,7 +1934,7 @@ grezzo mantiene il dominio Boolean minimo; il reader PCS aggiunge il
 padding pubblico a D12. Non sono tre proof ordinate accettate, un run AES
 a tre tentativi, Γ reale o picco completo.
 
-Il verifier canonico ora riusa `VerifierCapacity`, incluso il packing lazy
+Il [verifier canonico](evidence.md#canonical-verifier-with-seed6-capacity) ora riusa `VerifierCapacity`, incluso il packing lazy
 Seed6, invece di imporre un pool denso e una seconda conversione di chiavi.
 Il suo corpo richiede ancora la riserva compilata esatta e l'esaurimento
 finale; il test del prefisso usa un Map senza Vec di chiavi. Il controllo

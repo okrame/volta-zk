@@ -1962,3 +1962,21 @@ la sua closure PCS aggiunge gli zeri pubblici già previsti dal reader.
 Non sono tre proof ordinate accettate né un run AES completo. Gli owner
 accettati conservano ancora cut/cache/PCS; Arc e KV condivisi non danno
 credito al picco fisico. Γ reale, ledger completo e gate H100 restano aperti.
+
+## Canonical verifier with Seed6 capacity
+
+Il [record su SHA pulita `a2fdf01`](../../benchmarks/results/c71-canonical-seed6-2026-09-27-a2fdf017cdd4.json)
+conserva sette test Rust in sei invocazioni seriali entro 60 s/2 GiB,
+più check non-test B12 e Seed6. Il verifier canonico riusa il medesimo
+adapter di capacità/packing del percorso ridotto, senza Vec obbligatorio
+di chiavi. Il controllo del prefisso O=0/150/300 usa un Map diagnostico
+lazy: contesto, framing e P0 incompleto sono respinti senza consumo.
+
+Il wrapper aggiunge setup reale Seed6 ridotto 25+6 e verifica lo shortage
+prima del decoding, con cursor/slot zero, journal `(1,0)`, head zero e
+retry/reopen respinti. Il controllo completo del registro termina in
+11,06 s; passa anche il precedente shortage denso B12. Le regressioni
+coprono packing, consumo incompleto e shortage del wrapper ridotto.
+Nessuna nuova promozione canonica è osservata; transcript, riserve e
+ledger del packing restano invariati. Non è Γ reale, run canonico positivo,
+picco fisico o gate H100.

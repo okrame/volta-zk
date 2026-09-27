@@ -452,7 +452,7 @@ budget di 14 s è escluso. Il nuovo budget candidato assegna 17 s al getter,
 
 Il checker nativo degli offset include finestre range 2 GiB/query 256 MiB,
 checkpoint, slot PCS/PCG, allocator e fence dichiarate. I massimi nominati
-sono **6.087.507.456 / 6.126.832.384 / 6.166.153.984 B**. Il minimo margine
+sono **6.087.512.576 / 6.126.837.504 / 6.166.159.104 B**. Il minimo margine
 è **276.291.840 B**, appena 7.856.384 B oltre i 256 MiB richiesti. Lo slab
 riserva sempre 6.442.450.944 B. Non sono picchi fisici completi: workspace
 numerici, hash in place salted, PCG/OT/Fp6 e runtime restano da verificare.
@@ -545,7 +545,7 @@ WHIR; S1 condiviso viene allocato solo dopo le query al predecessore.
 Il fold dei successori ora richiede il rilascio dell’handle precedente e
 conserva tutta la capacità S1. Il vecchio layout S3 2^24 è NO-GO con questa
 capacità; il cap 2^23 paga due letture S2 in più per apertura A e lascia
-invariato il massimo integrato nominato di 6.166.153.984 B. Il merge FFT
+il massimo integrato nominato, ora 6.166.159.104 B con owner/Audit persistenti. Il merge FFT
 odd-log è contato; scatter PCS e fence GPU restano da integrare.
 Il [checkpoint RMS](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
 usa 2.023.511.878 B con descrittori e riusa lo slot range prima di RNE;

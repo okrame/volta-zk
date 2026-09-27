@@ -1811,3 +1811,24 @@ Il ledger include 161 B su disco per ruolo, tre sync con installazione,
 un lock OS, un BLAKE3 da 201 B e 104 B heap temporanei, senza nuovo wire.
 Non-rollback e canale autenticato restano premesse del caller; riserve
 per tentativo, NoPeek/promozione, proof, picco completo e H100 sono aperti.
+
+## Bounded Seed6 attempt windows
+
+Il [record su SHA pulita `ec9c242`](../../benchmarks/results/c71-seed6-attempts-2026-09-27-ec9c242d486b.json) conserva
+**48 test Rust e 31 Python/C++**, eseguiti rigorosamente in seriale entro
+60 s/2 GiB; passa anche il check Rust non-test della libreria condivisa.
+Le finestre riusano le transizioni lifetime B12: burn prima delle righe,
+iteratore limitato senza Vec della riserva, digest promosso dopo fsync,
+stop su errori/panic, consumo incompleto, digest assente/invalido e terzo
+tentativo. Sono verificati tre intervalli ideali disgiunti e due reali
+Seed6 da tre righe. Le accettazioni sono fixture, non prove PCS/GKR.
+
+Il record preserva l'errore iniziale di compilazione della firma di un
+callback di test, corretto con il tipo fn esplicito. Dichiara anche che
+i primi check mirati Rust/Python si sono sovrapposti brevemente: non sono
+misure o run di riferimento; quelli registrati sono seriali su SHA pulita.
+Owner/Audit ora restano nel piano delle tre risposte: +5.120 B allineati,
+coda minima nominata 276.291.840 B. Le finestre aggiungono due record
+da 57 B e due fsync per accettazione, non wire o heap della riserva.
+Restano NoPeek/accettazione completa del wrapper, trie batch, composizione,
+picco fisico e Γ reale; nessuna readiness H100.

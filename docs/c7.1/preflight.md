@@ -1760,6 +1760,8 @@ credito compositivo o Lean.
 
 ### Riserve streaming per tentativo
 
+Evidenza: [48 test Rust e 31 Python/C++](evidence.md#bounded-seed6-attempt-windows).
+
 Le finestre EA riusano `Lifetime::attempt`, estratto dal pool denso B12
 senza cambiarne record, dominio o API pubblica. Il record 2 brucia l'intero
 intervallo di `3*full_fp3` righe e il relativo slot prima di generare la
@@ -1855,7 +1857,7 @@ FS. La prova softmax e la composizione ridotta restano controlli di regressione.
 Il massimo componente non è il picco fisico completo o un credito di tempo.
 Dopo il join del lookup sotto, i massimi nominati di questa catena sono
 2.082.995.968 / 3.370.001.152 / 3.851.690.752 B; il massimo integrato
-nominato resta 6.166.153.984 B.
+nominato aggiornato con owner/Audit persistenti è 6.166.159.104 B.
 Il tipo `Fn` non impone da solo immutabilità/NoPeek: il caller deve continuare
 a legare il reader ai byte originali fissati, senza accesso ai MAC non spesi.
 
@@ -2526,9 +2528,9 @@ in cache o fold in-place: destinazione e sorgente sono disgiunte.
 
 | O | Stato al checkpoint, B | Massimo dei due stati, B | Indirizzo massimo catena EXP30, B | Massimo di tutte le catene note, B |
 |---:|---:|---:|---:|---:|
-| 0 | 443.577.600 | 665.366.400 | 2.082.995.968 | 6.087.507.456 |
-| 150 | 1.324.857.600 | 1.987.286.400 | 3.370.001.152 | 6.126.832.384 |
-| 300 | 2.206.137.600 | 3.309.206.400 | 4.964.490.752 | 6.166.153.984 |
+| 0 | 443.577.600 | 665.366.400 | 2.082.995.968 | 6.087.512.576 |
+| 150 | 1.324.857.600 | 1.987.286.400 | 3.370.001.152 | 6.126.837.504 |
+| 300 | 2.206.137.600 | 3.309.206.400 | 4.964.490.752 | 6.166.159.104 |
 
 Il massimo globale nominato resta range A. Il margine peggiore è
 276.291.840 B, appena 7.856.384 B oltre i 256 MiB richiesti: non autorizza

@@ -296,7 +296,7 @@ nel riuso dell'arena PCS, senza coset/frontier da 5,739 GB ancora vivi.
 Aggiungendo cache, slot metadata 128 MiB, reader/hash 256 MiB, istogramma,
 PCG output e **130.000.000 B di output proof**, i buffer nominati occupano
 **5.436.449.840 B**, lasciando 1.006.001.104 B prima degli altri stati.
-Il conto ora include entrambe le direzioni twiddle vive nella pipeline
+Il [conto corretto](evidence.md#both-remainder-twiddle-directions-in-the-ledger) include entrambe le direzioni twiddle vive nella pipeline
 a quattro FFT: +33.554.432 B rispetto alla singola tabella, anche nel
 trace WHIR condiviso. La loro inizializzazione scrive 67.108.864 B;
 generazione, copie e runtime restano lavoro da integrare, non costo zero.

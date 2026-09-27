@@ -2409,3 +2409,22 @@ copie per blocco, due twiddle, spettri, risultati attesi e Horner finale
 del resto piccolo non sono gratuiti né l'adapter streaming canonico.
 Nessun cambiamento a protocollo Rust/MAC, credito GPU, picco completo,
 calibrazione Γ o gate pre-spesa.
+
+## Both remainder twiddle directions in the ledger
+
+Il [record su SHA pulita `6428331`](../../benchmarks/results/c71-twiddle-ledger-2026-09-27-642833192fbb.json)
+conserva 39 test Python/C++ e il trace ricalcolato, in processi seriali
+entro 60 s/2 GiB. Il remainder mantiene due tabelle di lunghezza 2B:
+il conto corretto è 32B byte, non 16B. La correzione entra sia nel piano
+isolato sia in tutti i workspace WHIR D34/D35, compresi gli opening B17.
+
+Al cap iniziale aggiunge 33.554.432 B: apertura isolata 5.436.449.840 B,
+subtotal con cache S1 5.809.333.264 B; il workspace S1 B17 diventa
+147.849.208 B. Le scritture delle due tabelle iniziali sono 67.108.864 B,
+senza assumerne gratuita la generazione o attribuire un tempo.
+
+Il checker host degli indirizzi conserva i massimi nominati del piano
+attivo a 512 replay: 6.087.512.576 / 6.126.837.504 / 6.166.159.104 B
+nei tre contesti. Il minimo margine resta 276.291.840 B, non un picco
+fisico completo: questa fase non determina il massimo complessivo.
+Nessuna GPU, nuova misura di throughput o chiusura dei gate Γ/PCS/runtime.

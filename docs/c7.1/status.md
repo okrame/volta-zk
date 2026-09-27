@@ -505,6 +505,9 @@ sono **6.087.512.576 / 6.126.837.504 / 6.166.159.104 B**. Il minimo margine
 è **276.291.840 B**, appena 7.856.384 B oltre i 256 MiB richiesti. Lo slab
 riserva sempre 6.442.450.944 B. Non sono picchi fisici completi: workspace
 numerici, hash in place salted, PCG/OT/Fp6 e runtime restano da verificare.
+La [correzione dei due twiddle remainder](evidence.md#both-remainder-twiddle-directions-in-the-ledger)
+aggiunge 32 MiB alla fase di apertura iniziale, senza cambiare quei
+massimi del piano; non chiude il picco fisico.
 
 Il [checkpoint locale](evidence.md#dag-condiviso-e-slot-reader-riusato) distingue
 conteggi di istanze/indirizzi virtuali, richieste logiche agli operandi e

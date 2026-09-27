@@ -2089,3 +2089,24 @@ resti, workspace DFT e output sono costi vivi, non scratch gratuito.
 Il diagnostic allocator della catena ridotta è conservato nel record,
 senza promuoverlo a picco canonico. Nessuna nuova riserva, garanzia Lean,
 calibrazione Γ, misura GPU o autorizzazione H100.
+
+## Borrowed RMS correlation intervals
+
+Il [record su SHA pulita `a93ae69`](../../benchmarks/results/c71-rms-borrowed-2026-09-27-a93ae69259a5.json)
+conserva sei test Rust seriali entro 60 s/2 GiB e check non-test B12/Seed6.
+Il dispatcher RMS usa un `Take` preso in prestito per Auth e Key, invece
+di raccogliere preventivamente un altro Vec dell'intera riserva.
+Il fixture P0/RMS/RNE/PCS originale verifica che il primo getter privato
+avvenga prima dell'espansione completa e che i due ruoli consumino tutte
+le 7.746 righe RMS previste sul successo. Restano le verifiche dei W/A
+originali e gli errori numerici del fixture.
+
+Passano tre accettazioni dense ideali, rifiuti del certificato, consumo
+Seed6 incompleto con burn e O=0 W replay/A ordinata con Seed6 reale ell=2
+in 47,90 s. La corruzione terminale del distinto fixture denso ell=11
+è respinta in 50,06 s senza promozione e con l'intero intervallo bruciato.
+
+Il burn non coincide con la materializzazione delle righe: un errore
+interno può lasciare un suffisso non espanso, mai riutilizzabile dal
+wrapper. I buffer interni GKR/statistic e gli altri componenti restano;
+nessun nuovo margine arena, picco completo, Γ calibrato o GO H100.

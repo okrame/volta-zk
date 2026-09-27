@@ -141,9 +141,10 @@ setup/valutazione quadratici e replay separati dei sottoalberi restano
 espliciti. Passano parità WHIR, streaming ideale e O=0 W replay/A ordinata
 con Seed6 reale, senza trasferire il ledger hardware.
 
-Il dispatcher RMS passa ora gli intervalli MAC in prestito in entrambi
+Il [dispatcher RMS](evidence.md#borrowed-rms-correlation-intervals) passa ora gli intervalli MAC in prestito in entrambi
 i ruoli, senza duplicare l'intera riserva prima delle statistiche. Il burn
-completo resta nel pool; non è l'eliminazione di tutti i buffer interni.
+completo resta nel pool; passano anche accettazione e rifiuto terminale
+ridotti con Seed6. Non è l'eliminazione di tutti i buffer interni.
 
 Il [corpo del verifier canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
 ora implementa la schedule completa di security §3 con ricette comuni,

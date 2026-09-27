@@ -1,3 +1,6 @@
+> Documento storico: descrive il proprio checkpoint, non le istruzioni correnti.
+> Per implementare usare il [design corrente](../c7.1/design.md); per la provenienza vedere la [mappa](README.md).
+
 # C7.1 — Goals and current status
 
 Aggiornato al 2026-09-27. [Design](design.md) · [Security](security.md) ·
@@ -9,7 +12,7 @@ prove e risultati dei test hanno ciascuno la propria sede nei link sopra.
 
 **Handoff locale concluso: piano della tranche Γ pronto per autorizzazione.**
 Il 2026-09-27 il proprietario ha chiesto di separare la calibrazione,
-prepararne il [piano operativo](../procedures/c71-calibration.md) e poi
+prepararne il [piano operativo](c71-calibration.md) e poi
 chiudere il goal locale per continuare su H100. Questo steering sostituisce
 il precedente criterio di chiusura del tracker, non i gate della prova.
 Il piano, ristretto su richiesta del proprietario, propone una campagna
@@ -699,7 +702,7 @@ Il lavoro locale pertinente è autorizzato dalle richieste del proprietario
 del 2026-09-10 e del 2026-09-11 sulla riduzione dei byte, ristrette dallo
 steering successivo su memoria globale e dall’aggiornamento esplicito
 a 65 s totali del proprietario. Il vecchio limite a 50 s non è più vigente.
-Si seguono le [procedure di build e test](../procedures/build-and-test.md):
+Si seguono le [procedure di build e test](build-and-test.md):
 build mirata con un job, test seriali limitati a 60 s/2 GiB e un worker Rayon.
 
 Restano fuori dal risultato acquisito: esecuzione Gemma completa, profilo

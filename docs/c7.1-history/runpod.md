@@ -1,7 +1,10 @@
+> Documento storico: descrive il proprio checkpoint, non le istruzioni correnti.
+> Per implementare usare il [design corrente](../c7.1/design.md); per la provenienza vedere la [mappa](README.md).
+
 # RunPod procedure
 
-Read [current authorization](../c7.1/status.md) and the relevant
-[C7.1 design](../c7.1/design.md) sections before provider work.
+Read [current authorization](status.md) and the relevant
+[C7.1 design](design.md) sections before provider work.
 There is currently no provider or spending authorization. Readiness and
 algorithm choices do not themselves authorize a pod or a production retry.
 The [separate calibration plan](c71-calibration.md) is an authorization

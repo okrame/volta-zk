@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # P5 run of record: GPT-2 small, prefill T=100, real HF weights, real PCS.
-# One-command entry point — see docs/prototype-status.md and
+# One-command entry point — see docs/c7.1-history/prototype-status.md and
 # docs/benchmark-plan.md for the schema/gates this run reports against.
 set -euo pipefail
 

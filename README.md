@@ -1,14 +1,12 @@
 # VOLTA-ZK
 
 Research prototype for designated-verifier proofs of fixed-point transformer
-inference using VOLE-MAC blind GKR. Current work is **C7.1 Gemma-31B**;
-see the current status for acquired results, their scope and the next goal.
+inference using VOLE-MAC blind GKR. Current documentation:
 
-- [Current status](docs/c7.1/status.md): evidence, open work and authorization.
-- [C7.1 design](docs/c7.1/design.md): current technical requirements.
-- [Documentation index](docs/README.md): procedures, reusable sources and history.
-- [Build and test procedures](docs/procedures/build-and-test.md) and
-  [RunPod procedures](docs/procedures/runpod.md): consult before execution.
+- [Design](docs/c7.1/design.md) and [specifications](docs/c7.1/specs.md).
+- [Security](docs/c7.1/security.md).
+- [Local tests](docs/c7.1/local-tests.md) and [RunPod tests](docs/c7.1/runpod-tests.md).
+- [History](docs/c7.1-history/README.md) and [documentation index](docs/README.md).
 
 The working wiki is editable; raw evidence and historical snapshots are
 immutable. Git preserves changes to the current summaries.
@@ -28,7 +26,7 @@ the optional CUDA backend.
 This repository is a paper artifact, not a production service or a stable
 library API. In particular, the default correlation provider is mock PCG and
 the measured real-PCG path is a setup cost model, not a production-grade
-two-party implementation. See [the status ledger](docs/prototype-status.md)
+two-party implementation. See [the status ledger](docs/c7.1-history/prototype-status.md)
 for the current claims, raw-run provenance, deviations and open security
 assumptions.
 

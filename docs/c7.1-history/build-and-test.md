@@ -1,6 +1,9 @@
+> Documento storico: descrive il proprio checkpoint, non le istruzioni correnti.
+> Per implementare usare il [design corrente](../c7.1/design.md); per la provenienza vedere la [mappa](README.md).
+
 # Build, test and generated artifacts
 
-Read [current status](../c7.1/status.md) first. This procedure explains
+Read [current status](status.md) first. This procedure explains
 how to run authorized work; it does not authorize a heavy build or E2E.
 
 ## Choose the check
@@ -439,7 +442,7 @@ Sono test composti con MAC ideali, non bootstrap AES delle 797.139 righe
 base equivalenti. Non avviare quest'ultimo sulla VM. Per le tabelle usare
 il filtro Python `native_small_profile`; dopo modifiche al codec PCS
 conservare anche i test campo/FS e salted/codec preesistenti.
-Vedi [perimetro ed evidenza](../c7.1/evidence.md#native-bounded-composition).
+Vedi [perimetro ed evidenza](evidence.md#native-bounded-composition).
 
 Il filtro `c71_b12_native_canonical` controlla il compilatore causale di
 tutte le sorgenti pinned a O=0/150/300, senza witness o domini densi.
@@ -620,7 +623,7 @@ separatamente `c71_b12_native_wire_limit`, `c71_b12_canonical_pcs_codec`,
 e le regressioni campo/FS e salted PCS indicate sotto. I cap canonici
 96/16 MiB non autorizzano witness o bootstrap dei domini D34/D35.
 
-The [current evidence ledger](../c7.1/evidence.md) distinguishes the final
+The [current evidence ledger](evidence.md) distinguishes the final
 profile from the individual component fixtures catalogued below. Intermediate
 D31/D33 source counts and partial target/cube totals describe those fixtures,
 not the final D34 auxiliary source. Mathematical composition is complete;
@@ -928,7 +931,7 @@ workspace before a protocol milestone checkpoint when authorized resources
 permit; otherwise state the validation gap. Heavy benchmarks and full-model
 E2E belong on authorized hardware, not the local VM. The owner's 2026-09-08
 exception allows a small synthetic CPU E2E on this VM, within the
-[bounded experiment contract](../c7.1-gemma31b-design.md#esperimento-ridotto-contratto-e-ambito-del-runner).
+[bounded experiment contract](c7.1-gemma31b-design.md#esperimento-ridotto-contratto-e-ambito-del-runner).
 It does not authorize a broad build, GPU/provider access or paid resources.
 
 Do not create per-crate, top-level or experimental Cargo targets. Remove the
@@ -972,7 +975,7 @@ only by the registered export/dump scripts and are not newly committed as model
 assets. Preserve existing tracked fixtures and evidence. The frozen GPT-2
 [quantization spec](../quantization-spec.md), `scripts/gpt2_fixed.py` and Rust
 forward must remain bit-identical when that baseline is touched. C7.1 requires
-its own [Gemma semantic/runtime correspondence](../c7.1/design.md#native-correspondence);
+its own [Gemma semantic/runtime correspondence](design.md#native-correspondence);
 GPT-2 golden success does not validate Gemma.
 
 Raw runs are new files under `benchmarks/results/<milestone>-<date>-<gitsha>.json`.

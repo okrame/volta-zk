@@ -1,3 +1,6 @@
+> Documento storico: descrive il proprio checkpoint, non le istruzioni correnti.
+> Per implementare usare il [design corrente](../c7.1/design.md); per la provenienza vedere la [mappa](README.md).
+
 # C7.1 — Evidence and validation
 
 [Status](status.md) · [Design](design.md) · [Security](security.md) · [Decisions](decisions.md)
@@ -92,7 +95,7 @@ Sono 79 controlli Python mirati. Non è stato eseguito un nuovo Rust E2E,
 una build Lean o un benchmark per la chiusura matematica. Non trasformare
 `conditional_mathematical_goal_complete` in ammissione del runtime o dell'hardware.
 I risultati e le derive complete restano collegati anche al
-[notebook congelato](../c7.1-gemma31b-design.md#b12-criterio-di-chiusura-composizione-completa-same-w).
+[notebook congelato](c7.1-gemma31b-design.md#b12-criterio-di-chiusura-composizione-completa-same-w).
 
 ## Streaming and authorized bootstrap screen
 
@@ -314,7 +317,7 @@ completi. Nessuna prova Gemma canonica valida, nuova sicurezza composta,
 esecuzione AES positiva o misura hardware. Il lower a O=300 supera
 ancora 35 MB: questa modifica da sola non basta per tutti i turni.
 
-Filtri riproducibili, con la [build mirata e i limiti usuali](../procedures/build-and-test.md):
+Filtri riproducibili, con la [build mirata e i limiti usuali](build-and-test.md):
 `c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs` e
 `c71_b12_rne_joint_bytes_canonical_geometry`, ciascuno con
 `--test-threads=1 --nocapture`, un worker Rayon, 60 s e 2 GiB.
@@ -366,7 +369,7 @@ screen/stato e regressioni `canonical_PCS_wire or native_wire_body or
 complete_fixed_run`. Tutti i test Rust usano un worker Rayon e 60 s/2 GiB,
 in serie, dopo la build mirata con un job. Il check Python sul prefisso
 è un'identità finita MAC/MLE, non una dimostrazione della sicurezza FS.
-Le [procedure](../procedures/build-and-test.md) riportano i filtri esatti.
+Le [procedure](build-and-test.md) riportano i filtri esatti.
 
 I campi `full_prover_work:null`, `full_work_nonincrease_verified:false` e
 `complete_security_proven:false` sono obbligatori per questo screen.
@@ -483,11 +486,11 @@ come dichiarato nel [design](design.md).
 
 ## Native component evidence
 
-Il [catalogo dei controlli nativi](../procedures/build-and-test.md#rust-and-resource-limits)
+Il [catalogo dei controlli nativi](build-and-test.md#rust-and-resource-limits)
 conserva filtri, casi negativi, dipendenze e limiti di esecuzione. I suoi
 conteggi intermedi descrivono le singole fixture o fasi della costruzione;
 non sono profili alternativi all'attuale composizione. Le derivazioni di
-ciascun port restano nel [notebook B12](../c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata).
+ciascun port restano nel [notebook B12](c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata).
 Questa tabella indica come usare l'evidenza, senza ricopiare ogni sottoconto.
 
 | Famiglia | Evidenza disponibile | Limite |
@@ -627,7 +630,7 @@ aritmetica condiviso. Il percorso composto ridotto conserva la propria
 verifica nel modello MAC ideale, senza credito AES o canonico completo.
 
 Validazione mirata: **5 test Rust passati** (i cinque filtri indicati nella
-[procedura](../procedures/build-and-test.md)) e **2 controlli Python passati**
+[procedura](build-and-test.md)) e **2 controlli Python passati**
 (`complete_fixed_run`/`native_small_profile`), con limiti seriali 60 s/2 GiB,
 un worker Rayon e build offline/locked a un job nel target canonico.
 Passa anche `cargo check --lib` senza `cfg(test)`; verificati formattazione,
@@ -865,10 +868,10 @@ del traffico fisico completo o del protocollo composto attuale.
 | B2 `de73f60` | [48×48](../../benchmarks/results/c71-b2-matrix48-20260908-de73f60.json), [128×128](../../benchmarks/results/c71-b2-matrix128-20260908-de73f60.json) | Due risposte matriciali e abort; tuple LPN piccole senza credito di sicurezza |
 | B3 `84ab36c` | [census48](../../benchmarks/results/c71-b3-census48-20260908-84ab36c.json), [census128](../../benchmarks/results/c71-b3-census128-20260908-84ab36c.json), [timing128 separato](../../benchmarks/results/c71-b3-timing128-20260908-84ab36c.json) | Operazioni native, heap/RSS e tempi separati; prodotti base e cubic sono viste sovrapposte, non sommabili |
 | B9 `fb6c787` | [3 righe](../../benchmarks/results/c71-b9-3-none-20260909-fb6c787.json), [32 righe](../../benchmarks/results/c71-b9-32-none-20260909-fb6c787.json), dieci fault nel budget | MR19/P-521 e COPE/Fp9→Fp3, nove frame e controlli dei due ruoli |
-| B11 `8197f42` | [Registro dei dodici casi e relativi link](../c7.1-gemma31b-design.md#b11-selezione-intermedia-aes-a-capacità-finita) | Capacità 180/207 e dieci fault, con AES reale; non il profilo B12 completo |
+| B11 `8197f42` | [Registro dei dodici casi e relativi link](c7.1-gemma31b-design.md#b11-selezione-intermedia-aes-a-capacità-finita) | Capacità 180/207 e dieci fault, con AES reale; non il profilo B12 completo |
 
-[Archivio risultati](../../benchmarks/results/) e
-[snapshot del ledger](../prototype-status-history-2026-09-10.md) conservano
+[Archivio risultati](../../benchmarks/results) e
+[snapshot del ledger](prototype-status-history-2026-09-10.md) conservano
 anche run sporchi, fallimenti socketpair e diagnosi precedenti. I nuovi run
 usano file nuovi; il riordino non corregge né sovrascrive questi record.
 
@@ -887,7 +890,7 @@ Il report default mantiene l'harness dei goal a step. `--research-screens`
 espone l'inventario storico, non ulteriori termini sommabili al risultato.
 Per un cambiamento solo documentale bastano link, coerenza e diff; i
 controlli sopra servono qui anche a verificare che il riordino conservi
-il contratto del diagnostico. Le [procedure](../procedures/build-and-test.md)
+il contratto del diagnostico. Le [procedure](build-and-test.md)
 restano l'autorità operativa per build, risorse e pulizia degli artefatti.
 
 ## Documentation reorganization validation
@@ -987,7 +990,7 @@ subito hash/prescan/cursori nel ledger: lower parziale con lettura leaf
 separata **47,497618 / 51,975184 / 56,751469 s**. Il piano nominato resta
 quello da 6.166.012.672 B massimi; scratch nativo/GPU non verificato non
 acquisisce credito. La 1.024 è chiusa; il combine non la riesamina.
-Le [procedure](../procedures/build-and-test.md#getter-e-hash-c71-ridotti)
+Le [procedure](build-and-test.md#getter-e-hash-c71-ridotti)
 registrano filtri mirati e limiti. Nessuna GPU, spill o spesa.
 
 
@@ -1020,7 +1023,7 @@ Il [codec PCG](../../rust/volta-pcg/src/c71_ea_lpn.rs) riproduce i vettori
 Python H/EAGen e rifiuta esaurimento o forme errate. H preserva slot XOF
 fissi di 64 B per componente. Il controllo esaustivo dei ruoli a profondità
 1–7 usa offset, primo split indipendente e patch della foglia noti al fixture: non prova OT,
-bridge Fp6 o composizione MAC. Le [procedure](../procedures/build-and-test.md#replay-whir-e-codec-cggm-ridotti)
+bridge Fp6 o composizione MAC. Le [procedure](build-and-test.md#replay-whir-e-codec-cggm-ridotti)
 conservano test piccoli e seriali. Nessun nuovo credito Lean o modifica
 a transcript, NoPeek, endpoint o trust model.
 

@@ -1,3 +1,6 @@
+> Documento storico: descrive il proprio checkpoint, non le istruzioni correnti.
+> Per implementare usare il [design corrente](../c7.1/design.md); per la provenienza vedere la [mappa](README.md).
+
 # C7.1 — PCS e stato persistente: candidata, non ammissione
 
 2026-09-11. [Stato](status.md) · [Design](design.md) · [Evidenza](evidence.md).

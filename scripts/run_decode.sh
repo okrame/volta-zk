@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # P6 run of record: GPT-2 small, prompt 100 + 50 greedy decode tokens,
 # authenticated KV cache, deferred stacked chunk proving, real PCS.
-# One-command entry point — see docs/prototype-status.md (P6).
+# One-command entry point — see docs/c7.1-history/prototype-status.md (P6).
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

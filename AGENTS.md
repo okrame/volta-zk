@@ -5,15 +5,15 @@ inference using VOLE-MAC blind GKR.
 
 ## Start here
 
-Read [current status](docs/c7.1/status.md), then the relevant sections of
-the [active design](docs/c7.1/design.md) and its linked security proof. Use
+Read the [active design](docs/c7.1/design.md), then the relevant sections of
+the [specifications](docs/c7.1/specs.md) and [security proof](docs/c7.1/security.md). Use
 the [documentation index](docs/README.md) for procedures, reusable evidence
 and history. Load historical material only when the task
 needs it; earlier milestones and their runbooks are not current authority.
 
-The owner's current instructions take precedence. Status records the active
-work, evidence and authorization; the active design defines the technical
-requirements. Resolve an actual conflict explicitly instead of importing an
+The owner's current instructions take precedence. The five active documents
+define the construction, implementation status, test procedures and authorization.
+Resolve an actual conflict explicitly instead of importing an
 old gate or treating an implementation choice as a new permission request.
 
 ## Working autonomously
@@ -27,17 +27,19 @@ resolved, without blocking independent authorized work.
 
 Preserve unrelated work. Use scoped commits for completed work. Run checks
 proportionate to the change; documentation edits need document checks, not
-protocol builds. Read [build and test procedures](docs/procedures/build-and-test.md)
-before compilation or artifact generation, and [RunPod procedures](docs/procedures/runpod.md)
+protocol builds. Read [local tests](docs/c7.1/local-tests.md)
+before compilation or artifact generation, and [RunPod tests](docs/c7.1/runpod-tests.md)
 before provider work. Local work stays small; E2E/heavy runs require authorized
 hardware and explicit spending approval.
 
 ## Living documentation and immutable evidence
 
-Status and the active design are editable summaries. Replace stale statements
+The five active documents are editable summaries. Replace stale statements
 when results, open issues, authorization or next actions change; Git preserves
 revisions. Record substantive decisions with their reason and evidence links.
-Do not append a diary of routine checks or duplicate the design in the status.
+Keep dated evidence and superseded decisions in `docs/c7.1-history`.
+Keep only design.md, specs.md, security.md, local-tests.md and runpod-tests.md
+in `docs/c7.1`; other repository entry points contain navigation only.
 Update affected documents together; there is no mandatory capsule word count.
 
 Raw benchmark records, research sources and frozen historical snapshots are

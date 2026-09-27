@@ -5878,7 +5878,7 @@ def b4_security_admission():
     return {
         "status": "reject_unchanged_B2_security_reuse", "credit": False,
         "security_admitted": False, "concrete_secure_profile": None,
-        "decision_source": "docs/c7.1-gemma31b-design.md#esito-b4-ammissione-di-sicurezza",
+        "decision_source": "docs/c7.1-history/c7.1-gemma31b-design.md#esito-b4-ammissione-di-sicurezza",
         "proximity": {
             "kind": "single query-term screen for actual enlarged RS codes, not complete soundness",
             "premise": "Johnson agreement <= 21/20*sqrt((message+randomness)/domain); ideal distinct draws",
@@ -5944,7 +5944,7 @@ def b5_alignment_admission():
     return {
         "status": "reject_unchecked_nine_sVOLE_as_active_Fp3_converter",
         "credit": False, "security_admitted": False, "repair_selected": None,
-        "decision_source": "docs/c7.1-gemma31b-design.md#esito-b5-esclusione-del-convertitore-non-verificato",
+        "decision_source": "docs/c7.1-history/c7.1-gemma31b-design.md#esito-b5-esclusione-del-convertitore-non-verificato",
         "scope": "this interface and validity-preserving linear postprocessing; not every nine-sVOLE repair or an E2E matrix forgery",
         "affine_residual": {
             "definitions": "X=x+c-z; e_i=sum_j altered_alignment[j,i]*u^j; b=M-t",
@@ -6060,7 +6060,7 @@ def b6_converter_comparison():
         "status": "reject_both_immediate_ports_pending_base_sVOLE_contract",
         "credit": False, "security_admitted": False, "port_selected": None,
         "next_candidate": "native_Fp3_base_sVOLE",
-        "decision_source": "docs/c7.1-gemma31b-design.md#esito-b6-confronto-dei-convertitori-e-confine-del-bootstrap",
+        "decision_source": "docs/c7.1-history/c7.1-gemma31b-design.md#esito-b6-confronto-dei-convertitori-e-confine-del-bootstrap",
         "reviewed_runtime_commit": "1424517",
         "paper": "sota/2020-0925-wolverine.md",
         "checked_ideal_interface": {
@@ -6122,7 +6122,7 @@ def b7_bootstrap_admission():
         "native_bootstrap_implemented": False, "integration_selected": False,
         "owner_stop": "one bounded B7; on failure stop this baseline, with no automatic replacement goal",
         "next_goal": None,
-        "decision_source": "docs/c7.1-gemma31b-design.md#esito-b7-fallimento-del-prerequisito-ot-e-stop-della-baseline",
+        "decision_source": "docs/c7.1-history/c7.1-gemma31b-design.md#esito-b7-fallimento-del-prerequisito-ot-e-stop-della-baseline",
         "reviewed_runtime_commit": "d4c5f91",
         "leakage_free_candidate_screen": {
             "target_field": "Fp3", "internal_field": "Fp9 = Fp[w]/(w^9-2), u=w^3",
@@ -6345,7 +6345,7 @@ def b10_composition_admission():
         "security_admitted": False, "production_runtime_admitted": False,
         "pool_PCS_integration_admitted": False, "lifecycle_contract_specified": True,
         "reviewed_runtime_commit": "f8e9a71",
-        "source": "docs/c7.1-gemma31b-design.md#b10-premesse-concrete-e-contratto-di-composizione",
+        "source": "docs/c7.1-history/c7.1-gemma31b-design.md#b10-premesse-concrete-e-contratto-di-composizione",
         "primitive_resources": {
             "required_advantages_unchanged": security["required_primitive_advantages"],
             "B8_sum_remains_conditional": security["sum_at_required_primitive_advantages"],
@@ -8374,7 +8374,7 @@ def b12_complete_fixed_run_composition(base):
     rows = sum(c['base_rows_upper_before_other_operators'] for c in base['cases'])
     return {
         'protocol': 'C71B12-Gemma-FixedRun-v1',
-        'source': 'docs/c7.1-fixed-run-composition.md',
+        'source': 'docs/c7.1/security.md',
         'base_composition': 'ordinary_KV_output_and_EXP30_composition',
         'scope': 'complete mathematical integer Gemma verifier from fresh installation; one uninterrupted run',
         'conditional_mathematical_goal_complete': True,
@@ -9006,7 +9006,7 @@ def b12_pcs_binding_assessment():
             row['ZK_bound_source'] = 'raw_P0_two_source_composition; larger joint forest upper bound'
     return {"status": "conditional_field_matrix_security_with_fixed_run_ZK",
         "credit": False, "security_admitted": False,
-        "source": "docs/c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata",
+        "source": "docs/c7.1-history/c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata",
         "affine_MCA": {"premise": "linear code over a field-vector alphabet; 3*radius_rows < minimum_distance",
             "uniform_field_error": "(radius_rows+1)/field_order",
             "applies_to_same_agreement_set_not_only_proximity": True,
@@ -9236,7 +9236,7 @@ def b12_lifetime_admission():
         "completion_scope": "mathematical protocol; no native, physical or production admission",
         "active_goal_scope": prototype_security_scope(),
         "production_runtime_admitted": False, "pool_PCS_integration_admitted": False,
-        "source": "docs/c7.1-gemma31b-design.md#b12-risorse-lifetime-e-vincolo-same-w",
+        "source": "docs/c7.1-history/c7.1-gemma31b-design.md#b12-risorse-lifetime-e-vincolo-same-w",
         "adversary": {"global_u64_work_including_preprocessing": work,
             "global_memory_and_advice_words": memory, "global_RO_queries": queries,
             "setup_attempts_including_failures_preparation_and_renewals": LIFETIME_ATTEMPTS,
@@ -9392,7 +9392,7 @@ def b11_local_repair_admission():
         "production_runtime_admitted": False, "pool_PCS_integration_admitted": False,
         "quantitatively_admissible_expansion_selected": None,
         "B11_positive_selection_complete": False,
-        "source": "docs/c7.1-gemma31b-design.md#b11-esito-del-test-di-riparazione-locale",
+        "source": "docs/c7.1-history/c7.1-gemma31b-design.md#b11-esito-del-test-di-riparazione-locale",
         "local_repairs": {
             "public_domain_separation": "same cardinality bound for every public context fixed before fresh seed sampling",
             "fresh_seed_every_use": "one recorded target epoch suffices; erasure does not erase the adversary's observation",
@@ -9616,7 +9616,7 @@ def baseline_budget():
                                for name in ("certificate_bytes", "weight_reads", "fp_products",
                                             "fp3_products", "peak_RSS_bytes", "setup_bytes",
                                             "setup_seconds", "prover_seconds", "verifier_seconds")},
-            "decision_source": "docs/c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto"},
+            "decision_source": "docs/c7.1-history/c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto"},
         "packed_weight_bytes": packed, "endpoint_cases_not_all_context_certificate_bound": cases,
         "complete_weight_reads": budget_sum({"P0": 1, "A4_fused_opening": 2,
                                              "remaining_caller_range_padding": None}, 4),
@@ -9655,7 +9655,7 @@ def baseline_budget():
                              "execution_limits": {"threads": 2, "RSS_bytes": 2*(1 << 30),
                                                   "seconds_per_case": 60},
                              "input_Fp_bytes_lower_bound": 8*(1 << 14),
-                             "contract": "docs/c7.1-gemma31b-design.md#10-goal-di-confronto-e-stop"},
+                             "contract": "docs/c7.1-history/c7.1-gemma31b-design.md#10-goal-di-confronto-e-stop"},
     }
 
 

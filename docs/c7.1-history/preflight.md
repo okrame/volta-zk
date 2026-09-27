@@ -1,7 +1,10 @@
+> Documento storico: descrive il proprio checkpoint, non le istruzioni correnti.
+> Per implementare usare il [design corrente](../c7.1/design.md); per la provenienza vedere la [mappa](README.md).
+
 # C7.1 — preflight locale, 2026-09-19
 
 **Preflight della prova H100: ancora aperto.** Lo steering del 2026-09-27
-separa la calibrazione in una [tranche con piano di autorizzazione](../procedures/c71-calibration.md)
+separa la calibrazione in una [tranche con piano di autorizzazione](c71-calibration.md)
 e chiude il goal locale sul relativo handoff, non sul raggiungimento dei
 gate sottostanti. Nessun download, macchina o spesa è autorizzato ora.
 Il gate pre-spesa della prova resta invariato; un upper H100 misurato
@@ -3165,7 +3168,7 @@ test costruisce esplicitamente lo stato finale per controllare il solo
 handoff, senza attribuirgli un forward numerico. Non si avvia ancora
 una spesa: mancano l'inizializzazione delle scale A sui pesi reali, il
 replay completo positivo e l'autorizzazione al
-[piano ora predisposto](../procedures/c71-calibration.md). Il CLI corrente
+[piano ora predisposto](c71-calibration.md). Il CLI corrente
 non esporta golden reali intermedi per un confronto Python/Rust completo;
 questo audit resta un gate del freeze, non è sostituito da due run Rust uguali.
 `calibrated:false` resta esplicito anche per un trial intero positivo:

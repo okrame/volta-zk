@@ -1,3 +1,6 @@
+> Documento storico: descrive il proprio checkpoint, non le istruzioni correnti.
+> Per implementare usare il [design corrente](../c7.1/design.md); per la provenienza vedere la [mappa](README.md).
+
 # C7.1 — Decisions, exclusions and preserved history
 
 [Status](status.md) · [Design](design.md) · [Security](security.md) · [Evidence](evidence.md)
@@ -14,7 +17,7 @@ preflight della prova e richiesto la chiusura del goal locale dopo un
 piano concreto per l'autorizzazione. Motivo: produrre il prerequisito
 numerico su hardware separatamente autorizzato, senza usare la sua assenza
 come permesso implicito di download, macchina o spesa. Il
-[piano](../procedures/c71-calibration.md) propone una sola campagna,
+[piano](c71-calibration.md) propone una sola campagna,
 ridotta dalla successiva richiesta del proprietario a **8 h massime**,
 con tetto di spesa proposto aggiornato a **40 USD**, hash pinned,
 replay O=0/150/300, stop e freeze
@@ -72,17 +75,17 @@ risparmio contabile viene promosso a verifica del lavoro o della sicurezza.
 
 | Step | Esito conservato e ragione | Fonte completa |
 |---|---|---|
-| B1 | Chiuso negativamente: riuso WHIR invariato non soddisfa il piccolo contratto C7.1; non esclusione della famiglia WHIR | [B1](../c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto) |
-| B2 | Port locale CPU/Fp3 funzionale e codec matriciale; tuple LPN diagnostiche senza ammissione di sicurezza | [B2](../c7.1-gemma31b-design.md#b2--port-locale-cpufp3-autorizzato) |
-| B3 | Censimento aritmetico/heap e tempi separati acquisiti; traffico fisico completo non misurato | [B3](../c7.1-gemma31b-design.md#b3--censimento-nativo-e-decisione-per-c71) |
-| B4 | Ammissione di sicurezza fallita per le premesse del percorso valutato | [B4](../c7.1-gemma31b-design.md#esito-b4-ammissione-di-sicurezza) |
-| B5 | Convertitore non verificato escluso; una validità MAC assunta non sostituisce il controllo richiesto | [B5](../c7.1-gemma31b-design.md#esito-b5-esclusione-del-convertitore-non-verificato) |
-| B6 | Confronto convertitori concluso; identificato il confine base-sVOLE da verificare in B7 | [B6](../c7.1-gemma31b-design.md#esito-b6-confronto-dei-convertitori-e-confine-del-bootstrap) |
-| B7 | Prerequisito OT fallito: la baseline valutata resta fermata. B8 non promuove quel runtime | [B7](../c7.1-gemma31b-design.md#esito-b7-fallimento-del-prerequisito-ot-e-stop-della-baseline) |
-| B8 | Selezione di costruzione componibile MR19/P-521 e Wolverine Fp9→Fp3; autorizzazione successiva distinta dalla baseline B7 | [B8](../c7.1-gemma31b-design.md#b8-bootstrap-componibile-selezionato) |
-| B9 | Componente nativo e controlli avversari acquisiti; premesse concrete e composizione ancora separate | [B9](../c7.1-gemma31b-design.md#b9-componente-nativo-e-confine-di-ammissione) |
-| B10 | Valutazione premesse/lifecycle conclusa senza ammissione; seed-search esclude il vantaggio PRG richiesto per GGM a 128 bit | [B10](../c7.1-gemma31b-design.md#b10-premesse-concrete-e-contratto-di-composizione) |
-| B11 | Riparazione locale 128-bit respinta; successivamente selezionato e concluso il profilo finito AES-256 condizionale | [Rifiuto](../c7.1-gemma31b-design.md#b11-esito-del-test-di-riparazione-locale), [selezione](../c7.1-gemma31b-design.md#b11-selezione-intermedia-aes-a-capacità-finita) |
+| B1 | Chiuso negativamente: riuso WHIR invariato non soddisfa il piccolo contratto C7.1; non esclusione della famiglia WHIR | [B1](c7.1-gemma31b-design.md#esito-b1-del-riuso-circoscritto) |
+| B2 | Port locale CPU/Fp3 funzionale e codec matriciale; tuple LPN diagnostiche senza ammissione di sicurezza | [B2](c7.1-gemma31b-design.md#b2--port-locale-cpufp3-autorizzato) |
+| B3 | Censimento aritmetico/heap e tempi separati acquisiti; traffico fisico completo non misurato | [B3](c7.1-gemma31b-design.md#b3--censimento-nativo-e-decisione-per-c71) |
+| B4 | Ammissione di sicurezza fallita per le premesse del percorso valutato | [B4](c7.1-gemma31b-design.md#esito-b4-ammissione-di-sicurezza) |
+| B5 | Convertitore non verificato escluso; una validità MAC assunta non sostituisce il controllo richiesto | [B5](c7.1-gemma31b-design.md#esito-b5-esclusione-del-convertitore-non-verificato) |
+| B6 | Confronto convertitori concluso; identificato il confine base-sVOLE da verificare in B7 | [B6](c7.1-gemma31b-design.md#esito-b6-confronto-dei-convertitori-e-confine-del-bootstrap) |
+| B7 | Prerequisito OT fallito: la baseline valutata resta fermata. B8 non promuove quel runtime | [B7](c7.1-gemma31b-design.md#esito-b7-fallimento-del-prerequisito-ot-e-stop-della-baseline) |
+| B8 | Selezione di costruzione componibile MR19/P-521 e Wolverine Fp9→Fp3; autorizzazione successiva distinta dalla baseline B7 | [B8](c7.1-gemma31b-design.md#b8-bootstrap-componibile-selezionato) |
+| B9 | Componente nativo e controlli avversari acquisiti; premesse concrete e composizione ancora separate | [B9](c7.1-gemma31b-design.md#b9-componente-nativo-e-confine-di-ammissione) |
+| B10 | Valutazione premesse/lifecycle conclusa senza ammissione; seed-search esclude il vantaggio PRG richiesto per GGM a 128 bit | [B10](c7.1-gemma31b-design.md#b10-premesse-concrete-e-contratto-di-composizione) |
+| B11 | Riparazione locale 128-bit respinta; successivamente selezionato e concluso il profilo finito AES-256 condizionale | [Rifiuto](c7.1-gemma31b-design.md#b11-esito-del-test-di-riparazione-locale), [selezione](c7.1-gemma31b-design.md#b11-selezione-intermedia-aes-a-capacità-finita) |
 | B12 | Goal matematico same-W/KV/ZK congiunta chiuso a `9e57199`; percorso nativo ridotto completo verificato con MAC ideali, port canonico/AES aperto | [Prova corrente](security.md), [evidenza nativa](evidence.md#native-bounded-composition), [prossimo lavoro](status.md#next-goal) |
 
 I vecchi limiti di commit e stop della fase B1 non si riapplicano come
@@ -135,7 +138,7 @@ selezionata. Nessuna di queste linee si riattiva per aggirare un costo ignoto.
 - Profilo ibrido INT16 GEMM con BF16/FP32 per non-lineari: non adottato.
   Richiede stesso checkpoint/dati/tokenizzazione, confronto qualità/costo e
   semantica provata di cast, RNE/FMA, subnormali, non-finiti e KV. Il
-  [controesempio FP32](../c7.1-gemma31b-design.md#2-identità-del-modello-e-pezzi-riutilizzabili)
+  [controesempio FP32](c7.1-gemma31b-design.md#2-identità-del-modello-e-pezzi-riutilizzabili)
   impedisce di trasferire RMS intera a riduzioni float diverse.
 - Due letture W, ottimizzazioni aritmetiche e diagnostiche GPU: opportunità
   documentate, non prerequisiti da anteporre al prossimo port e non spesa
@@ -163,24 +166,24 @@ Questo evita copie attive concorrenti e una rinomina a cascata dell'harness.
 
 | Documento precedente | Sede corrente / contenuto preservato |
 |---|---|
-| `prototype-status.md` | Ingresso compatibile verso [status](status.md), con tutti i vecchi anchor. Corpo integrale nel [nuovo snapshot](../prototype-status-history-2026-09-10.md) |
+| `prototype-status.md` | Ingresso compatibile verso [status](status.md), con tutti i vecchi anchor. Corpo integrale nel [nuovo snapshot](prototype-status-history-2026-09-10.md) |
 | `c7.1-fixed-run-composition.md`, §§1–6 | Testo integrale trasferito in [security](security.md), salvo percorsi dei link; vecchio file è solo navigazione compatibile |
 | `c7.1-gemma31b-design.md`, apertura e §§1–4 | Requisiti riconciliati in [design](design.md); vecchia prosa conservata integralmente nel notebook congelato |
 | Stesso notebook, §§5–6 | Derivazioni algebriche/FS storiche; il riuso corrente è esplicito in [design](design.md#assumptions-and-component-dependencies) e security |
 | Stesso notebook, §§7–9 | Contratto risorse corrente in design; conti, confronti CPU/GPU/OpenLLM/DeepProve e opzioni originali restano integralmente nel notebook |
 | Stesso notebook, §10 B1–B11 | Esiti sopra; derivazioni, mandati al momento della decisione e link dei record restano nel notebook |
 | Stesso notebook, §10 B12 fino alla chiusura | Dipendenze della prova e port componenti mappati in design/evidence; successione completa di correzioni e sottoconti nel notebook |
-| [G1 feasibility](../c7.1-feasibility.md) | Criteri, carrier, split-mask e controesempi di size; evidenza circoscritta, non gate attivo su tutto B12 |
-| [G2 committed MAC](../c7.1-committed-mac-opening.md) | Linea archiviata non selezionata; riuso NoPeek/FS esplicitamente delimitato sopra |
-| [A3 recursive RS](../c7.1-recursive-rs-opening.md) | Encoder/ricorsione, binding ideale, audit IBCS e costi/esclusioni |
-| [A4 paired RS](../c7.1-paired-rs-opening.md) | Arbitrary-fold, forme dyadic, riduzione a due visite e premesse di composizione |
-| [A5 wide hash](../c7.1-wide-hash-opening.md) | Parametri pubblici, ipotesi hash, trail, costi W/KV e liveness; non selezionato |
-| [W-cut witness](../c7.1-cut-witness.md) | Replay/P0/route, semantica RMS/Q30/GELU e conti condizionali; riuso numerico esplicito nel design |
-| [R1 requantization](../c7.1-requantization.md) | i16/byte, RNE esatta, range e riparazione del reader/PCS |
-| [R2 RNE indicators](../c7.1-rne-indicators.md) | Funzioni grado 7, P/S e sei byte, esclusioni di replay/arena |
-| [K1 KV transition](../c7.1-kv-transition.md) | Viste temporali, concat/prefix e MAC originali; la validità delle code è ora scaricata dal teorema composto |
-| [T1 attention products](../c7.1-attention-products.md) | QK/PV/GQA e Pi originale, riduzioni rettangolari e costi locali |
-| [R3 auxiliary witness](../c7.1-auxiliary-witness.md) | Estensioni di sorgente/reader/encoder e liveness progressiva; non sommare profili alternativi |
+| [G1 feasibility](c7.1-feasibility.md) | Criteri, carrier, split-mask e controesempi di size; evidenza circoscritta, non gate attivo su tutto B12 |
+| [G2 committed MAC](c7.1-committed-mac-opening.md) | Linea archiviata non selezionata; riuso NoPeek/FS esplicitamente delimitato sopra |
+| [A3 recursive RS](c7.1-recursive-rs-opening.md) | Encoder/ricorsione, binding ideale, audit IBCS e costi/esclusioni |
+| [A4 paired RS](c7.1-paired-rs-opening.md) | Arbitrary-fold, forme dyadic, riduzione a due visite e premesse di composizione |
+| [A5 wide hash](c7.1-wide-hash-opening.md) | Parametri pubblici, ipotesi hash, trail, costi W/KV e liveness; non selezionato |
+| [W-cut witness](c7.1-cut-witness.md) | Replay/P0/route, semantica RMS/Q30/GELU e conti condizionali; riuso numerico esplicito nel design |
+| [R1 requantization](c7.1-requantization.md) | i16/byte, RNE esatta, range e riparazione del reader/PCS |
+| [R2 RNE indicators](c7.1-rne-indicators.md) | Funzioni grado 7, P/S e sei byte, esclusioni di replay/arena |
+| [K1 KV transition](c7.1-kv-transition.md) | Viste temporali, concat/prefix e MAC originali; la validità delle code è ora scaricata dal teorema composto |
+| [T1 attention products](c7.1-attention-products.md) | QK/PV/GQA e Pi originale, riduzioni rettangolari e costi locali |
+| [R3 auxiliary witness](c7.1-auxiliary-witness.md) | Estensioni di sorgente/reader/encoder e liveness progressiva; non sommare profili alternativi |
 
 Gli undici dossier G1/G2/A3/A4/A5/W-cut/R1/R2/K1/T1/R3 restano byte-per-byte
 invariati. Il notebook conserva il corpo di `9e57199` con una sola avvertenza

@@ -1,0 +1,458 @@
+# C7.1 — test su RunPod
+
+[Design](design.md) · [Specifiche](specs.md) · [Sicurezza](security.md) ·
+[Test locali](local-tests.md) · [Archivio](../c7.1-history/README.md)
+
+## Stato e sequenza operativa
+
+Non è registrata un'autorizzazione a download dei pesi, creazione di pod,
+esecuzioni GPU o spesa. Il lavoro locale pertinente resta autorizzato.
+La calibrazione e il benchmark della prova sono due campagne distinte:
+un successo numerico non autorizza né dimostra il secondo.
+
+Il percorso operativo è: calibrare una candidata sui tre contesti;
+confrontare indipendentemente la semantica intera prima di congelare Γ;
+completare l'integrazione della prova e il conto delle risorse; proporre
+il minimo esperimento H100 con limiti e criteri verificabili.
+
+## Gestione del pod e del repository
+
+Usare [runpod_harness.sh](../../scripts/runpod_harness.sh) per la gestione
+del pod autorizzato. La creazione deve avere una deadline registrata
+presso il provider; un timer nel container non basta. Non sono impliciti
+retry, proroghe o una seconda macchina. Prima di compilare o generare
+artefatti eseguire `scripts/runpod_harness.sh git-preflight`.
+
+Sincronizzare repository ed evidenze piccole solo tramite Git HTTPS su
+`https://github.com/okrame/volta-zk.git`. Le sorgenti pubbliche si leggono
+anonimamente. Per pubblicare usare il Secret RunPod `VOLTA_GITHUB_TOKEN`,
+con scadenza e permesso Contents read/write limitato al repository.
+Non copiare credenziali dalla VM, non usare gh, Git SSH, SCP/rsync o
+archivi del repository. Token fuori da URL, configurazioni Git, comandi,
+cronologia e file; il wrapper usa askpass. Un eventuale Secret HF è
+separato e di sola lettura. Verificare la SHA pulita dopo ogni pull.
+
+```text
+scripts/runpod_harness.sh list
+scripts/runpod_harness.sh status POD_ID
+scripts/runpod_harness.sh pause POD_ID
+scripts/runpod_harness.sh delete POD_ID --confirm POD_ID
+```
+
+`pause` lascia storage fatturabile. `delete` termina il pod e distrugge
+i dati sul volume locale: prima verificare la pubblicazione delle evidenze
+piccole e l'eventuale conservazione dei dati in una destinazione autorizzata.
+Pesi e grandi artefatti restano sul pod; non vengono aggiunti a Git.
+La pubblicazione usa un branch unico tramite `git-push runpod/POD_ID/LABEL`.
+
+## Campagna di calibrazione
+
+La proposta è una campagna, una sola candidata Γ, una H100 SXM 80 GB,
+massimo 8 ore dalla creazione e 40 USD complessivi. La decisione di avvio
+deve fissare SHA pulita, immagine/container con digest, regione, offerta,
+costo totale e deadline del provider. Nessuna modifica delle scale o
+ripartenza è inclusa. Il completamento di tutti i test è l'obiettivo,
+non una deroga al limite di tempo.
+
+I programmi esistenti usano NumPy/BLAS CPU per l'inizializzatore e Rust
+CPU per il replay intero; non esiste una calibrazione CUDA completa.
+Un host CPU equivalente è l'alternativa meno costosa da concordare nella
+stessa decisione operativa. `nvidia-smi` non accelera questi comandi.
+Inferenza BF16, TF32 o Transformers non sostituisce la relazione intera.
+
+Il tempo completo non è misurato. L'inizializzatore conta
+13.390.420.377.600 prodotti di matrice e 26.782.043.904.000 B di letture W
+logiche, che non sono traffico fisico o tempi H100. Alla deadline si
+conserva il fallimento e si termina, senza dichiarare Γ calibrato.
+L'audit completo Python/Rust dei valori reali intermedi richiede ancora
+un adapter di esportazione: i comandi seguenti possono ottenere una
+candidata validata dal riferimento, non il congelamento definitivo.
+
+### Risorse e costo
+
+| Risorsa | Richiesta proposta / controllo prima del download |
+|---|---|
+| Compute | 1 H100 SXM 80 GB, almeno 20 vCPU e 125 GB RAM host; verificare l'offerta effettiva |
+| Software | Linux x86_64, Python ≥3.11, NumPy, pytest, Rust/Cargo, C/C++ build tools, Git, GNU timeout/time; versioni e immagine registrate |
+| Disco | Volume locale 300 GB montato in `/workspace`, container 40 GB; almeno 180 GB liberi prima del download |
+| Payload persistente | Shard 62.546.338.248 B + packed 61.394.690.560 B = 123.941.028.808 B |
+| Temporanei | Download direttamente in `.partial`, rinomina senza seconda copia; packed pubblicato atomicamente; nessuna seconda copia BF16/dequantizzata completa |
+| Memoria | Ingest nativo richiede 3.355.443.200 B operativi; trial con payload nominato ≤8 GiB; limite AS per processo 64 GiB; osservare anche RSS aggregato/cgroup e cache OS |
+| Numerica | Pilot: blocco W i16+f64 ≤27.525.120 B, KV finale f64 1.622.016.000 B; replay KV finale i16 405.504.000 B, più A viva, tabelle, workspace e runtime |
+
+Questi payload non sono un picco RSS completo. Stop per OOM, swap
+sostenuto, RSS aggregato >96 GiB o spazio libero <20 GB; non aumentare
+i budget per aggirare un fallimento. Il requisito legacy 256 GiB/400 GB
+del pack Python non si applica al `pack --native-packer`: non usare i
+subcomandi legacy `preflight`/`report` per ammettere questa macchina.
+Il pack nativo verifica già header, entrambi i corpi e output persistito.
+
+Verificare prezzo e disponibilità effettivi al momento dell'autorizzazione.
+Il limite proposto è compute ≤3,50 USD/h e costo totale ≤40 USD, inclusi
+disco, imposte e altri addebiti. Otto ore di compute possono quindi
+costare al più 28 USD; il preventivo dello storage deve rientrare nel
+residuo. Nessun network volume, disco lasciato inattivo, secondo pod,
+abbonamento o ricarica automatica è incluso nella proposta.
+
+Usare **terminazione provider-side a 8 ore**, non soltanto `timeout`
+nel container. Verificare che la versione installata di `runpodctl`
+supporti `--terminate-after` e che la deadline sia realmente registrata;
+se manca, STOP, non sostituire con un timer locale. La
+[documentazione CLI](https://docs.runpod.io/runpodctl/reference/runpodctl-pod)
+e la [procedura di gestione](#gestione-del-pod-e-del-repository) vanno ricontrollate all'autorizzazione.
+
+La terminazione distrugge il volume locale: pubblicare prima i piccoli
+artefatti, log e digest, e conservare eventuali dati privati solo su una
+destinazione separatamente autorizzata. Shard, packed, dump privati e
+tabelle grandi non vanno in Git. Il bundle Γ piccolo e le ricette
+consentono la ricostruzione; non promettono persistenza del packed.
+Non usare `pause` come chiusura economica: il volume continuerebbe a
+costare, come documentato nelle [opzioni storage](https://docs.runpod.io/pods/storage/types).
+
+### Tempi massimi, non stime di completamento
+
+| Fase seriale | Massimo |
+|---|---:|
+| Ambiente, build, controlli piccoli | 45 min |
+| Acquisizione dei due shard e hash durante il download | 30 min totali |
+| Ingest nativo, nuovo hash dei corpi e packed persistito | 30 min |
+| Pilot floating sui tre contesti e compilazione candidata | 90 min |
+| Replay intero completo da KV vuoto | 120 min |
+| Secondo replay da KV vuoto, stessa candidata | 90 min |
+| Tabelle, confronto, conto delle risorse, bundle e pubblicazione | 45 min |
+| Riserva per trasferimento log/stop | 30 min |
+
+Totale massimo 8 h, incluse preparazione e download. Le deadline interne
+del pilot/replay non coprono tutti gli hash e la generazione tabelle:
+il timeout esterno copre l'intero comando. Nessuna fase parte se non ha
+il proprio budget residuo più almeno 30 minuti per conservare l'evidenza.
+Al primo errore si saltano le fasi successive e si pubblica il fallimento.
+
+### Identità degli input
+
+Modello `google/gemma-4-31B`, revisione immutabile
+`5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89`, non `main`.
+I [metadati pinned](../../manifests/c7-d126-gemma31b-source-metadata-v1.json)
+e il [manifest dei terminali](../../manifests/c7-d126-gemma31b-terminals-v1.csv)
+definiscono header, offset, 772 tensori privati e scalari pubblici.
+
+| File | Byte | SHA-256 completo |
+|---|---:|---|
+| `model-00001-of-00002.safetensors` | 49.784.788.364 | `186fa361e76abbb5f48ffb3d9965181a5da33522e39c25eb75d7241da1637aac` |
+| `model-00002-of-00002.safetensors` | 12.761.549.884 | `b78ae8294981a6d674c47f2261d34240b7539bbeafb4f7d0525f6167946e6da0` |
+
+Workload: [manifest originale](../../manifests/c7-d126-gemma31b-workload-v1.json),
+SHA-256 `70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b`.
+Tre tentativi ordinati O=0/150/300: ogni volta 100 token prompt pinned,
+50 token generati dalla relazione intera; KV anche dell'ultimo token.
+Unica mappa 772 W + 1.435 A, embedding/head coerente, e_Pi=-14.
+Nessun dataset nuovo, teacher forcing dei token floating o certificazione
+di qualità generale. Accesso HF/licenza deve essere già valido; un
+401/403 ferma la fase, senza accettare licenze o cambiare checkpoint.
+
+### Comandi dopo autorizzazione esplicita
+
+Gli snippet seguenti **non sono stati eseguiti sui pesi reali**. I soli
+parametri da fissare all'autorizzazione sono offerta/regione, digest immagine con
+toolchain disponibile, SHA pulita del piano e `POD_CREATED_EPOCH` ricavato
+dal provider. Verificare i flag con la CLI realmente installata prima
+della creazione; mappare i Secret nel template, mai nei comandi/log.
+
+```bash
+runpodctl pod create --image "$APPROVED_IMAGE_DIGEST" \
+  --name c71-gamma-one-candidate --gpu-id "NVIDIA H100 80GB HBM3" \
+  --gpu-count 1 --cloud-type SECURE --data-center-ids "$APPROVED_REGION" \
+  --container-disk-in-gb 40 --volume-in-gb 300 \
+  --volume-mount-path /workspace --terminate-after 8h
+```
+
+Il GPU ID va confrontato con `runpodctl gpu list`: se l'ID differisce,
+selezionare l'ID SXM effettivo senza cambiare classe, prezzo o risorse.
+Nessuna chiamata al provider è necessaria per preparare questo documento.
+Checkout anonimo HTTPS, poi credenziale Git solo tramite Secret
+`VOLTA_GITHUB_TOKEN`, scoped al repository ed expiring; eventuale
+`HF_TOKEN` è un Secret separato con sola lettura, non copiato dalla VM.
+
+```bash
+set -euo pipefail
+set -C
+umask 077
+git clone https://github.com/okrame/volta-zk.git /workspace/volta-zk
+cd /workspace/volta-zk
+git checkout --detach "$APPROVED_SHA"
+scripts/runpod_harness.sh git-preflight
+export ROOT=$PWD
+export RUN=/workspace/c71-gamma-$(date -u +%Y%m%dT%H%M%SZ)
+mkdir "$RUN"
+mkdir "$RUN/logs" "$RUN/weights"
+export SHARDS="$RUN/weights"
+export PACKED="$SHARDS/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16"
+export CARGO_TARGET_DIR="$ROOT/rust/target" CARGO_INCREMENTAL=0
+export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 RAYON_NUM_THREADS=1
+export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$ROOT/scripts"
+export CAMPAIGN_END_EPOCH=$((POD_CREATED_EPOCH + 8 * 3600 - 1800))
+ulimit -v 67108864
+run_step() {
+  local seconds=$1 label=$2 code
+  shift 2
+  test $(( $(date +%s) + seconds )) -le "$CAMPAIGN_END_EPOCH"
+  test ! -e "$RUN/logs/$label.stdout"
+  date -u +%FT%TZ > "$RUN/logs/$label.start"
+  set +e
+  /usr/bin/time -v timeout -k 30s "${seconds}s" "$@" \
+    > "$RUN/logs/$label.stdout" 2> "$RUN/logs/$label.stderr"
+  code=$?
+  set -e
+  printf '%s\n' "$code" > "$RUN/logs/$label.exit"
+  date -u +%FT%TZ > "$RUN/logs/$label.end"
+  test "$code" -eq 0
+}
+```
+
+Non rilanciare lo stesso label/directory. Anche un timeout prima che il
+wrapper produca JSON conserva stdout, stderr ed exit code; non trattare
+un file vuoto/troncato come risultato. La deadline provider prevale sul
+controller locale. Preparare venv/toolchain nella fase ambiente, senza
+upgrade non registrati; `pip freeze`, `rustc -Vv`, `cargo -V`, `uname -a`,
+quote/deadline, CPU/RAM/disco e SHA immagine vanno nei log.
+
+```bash
+run_step 300 venv python3 -m venv .venv
+run_step 300 dependencies .venv/bin/python -m pip install numpy==2.5.1 pytest==9.1.1
+run_step 1800 build bash -c '
+  cd "$ROOT/rust"
+  cargo fetch --locked
+  cargo build --offline --locked -j 1 -p volta-pcs \
+    --features c71-b12-pcs --example c71_calibration
+  cd "$ROOT"
+  rustc --edition 2021 -O rust/volta-pcs/examples/gemma31b_bf16_pack.rs \
+    -o "$CARGO_TARGET_DIR/gemma31b_bf16_pack"
+'
+export NATIVE="$CARGO_TARGET_DIR/debug/examples/c71_calibration"
+export C71_CALIBRATION_BINARY="$NATIVE"
+run_step 60 describe "$NATIVE" describe
+run_step 60 pilot-plan .venv/bin/python scripts/c71_activation_pilot.py plan --native "$NATIVE"
+run_step 60 calibration-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py
+run_step 60 pilot-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_activation_pilot.py
+run_step 60 ingest-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c7_d126_gemma_native_bf16.py tests/test_c7_d126_gemma_weight_ingest.py
+```
+
+La venv e le versioni dei pacchetti devono essere predisposte nella fase
+ambiente; i comandi assumono `.venv/bin/python` con NumPy e pytest già
+verificati. Non copiare la venv locale o credenziali al pod. Una build
+priva delle dipendenze native non autorizza un altro pod:
+fermare nella fase ambiente. I controlli piccoli mantengono 60 s e un
+worker; non sostituiscono i trial reali. Non eseguire workspace E2E.
+
+### Download e ingest
+
+Download anonimo ove consentito; l'eventuale Secret è letto solo in
+memoria. Un solo tentativo, nessuna ripresa automatica di partial.
+
+```bash
+run_step 1800 download .venv/bin/python - <<'PY'
+import hashlib
+import os
+from pathlib import Path
+import urllib.parse
+import urllib.request
+from c7_d126_gemma_weight_ingest import MODEL, REVISION, SHARDS
+class SafeRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, url):
+        redirected = super().redirect_request(request, response, code, message, headers, url)
+        if redirected and urllib.parse.urlsplit(request.full_url).netloc != urllib.parse.urlsplit(url).netloc:
+            redirected.remove_header('Authorization')
+        return redirected
+opener = urllib.request.build_opener(SafeRedirect())
+for name, spec in SHARDS.items():
+    target = Path(os.environ['SHARDS']) / name
+    partial = target.with_suffix(target.suffix + '.partial')
+    assert not target.exists() and not partial.exists()
+    request = urllib.request.Request(f'https://huggingface.co/{MODEL}/resolve/{REVISION}/{name}')
+    if os.environ.get('HF_TOKEN'):
+        request.add_header('Authorization', 'Bearer ' + os.environ['HF_TOKEN'])
+    digest = hashlib.sha256()
+    count = 0
+    with opener.open(request, timeout=60) as source, partial.open('xb') as sink:
+        while chunk := source.read(4 * 1024**2):
+            count += len(chunk)
+            assert count <= spec['bytes']
+            digest.update(chunk)
+            sink.write(chunk)
+        sink.flush()
+        os.fsync(sink.fileno())
+    assert count == spec['bytes'] and digest.hexdigest() == spec['lfs_sha256']
+    os.link(partial, target)
+    partial.unlink()
+    print(name, count, digest.hexdigest(), flush=True)
+PY
+run_step 1800 ingest .venv/bin/python scripts/c7_d126_gemma_weight_ingest.py pack \
+  --shard-dir "$SHARDS" --output "$PACKED" \
+  --native-packer "$CARGO_TARGET_DIR/gemma31b_bf16_pack"
+export INGEST="$RUN/logs/ingest.stdout"
+chmod a-w "$SHARDS"/*.safetensors "$PACKED"
+```
+
+Successo: `PACKED_UNADMITTED`, `full_source_bodies_verified:true`, due
+hash completi esatti, 772 esponenti minimi RNE-fit, packed della lunghezza
+attesa e hash del file persistito. Il nome UNADMITTED è corretto: ingest
+non equivale a calibrazione o installazione crittografica. Preservare
+failure/partial senza ripararle in loco o cancellare l'evidenza.
+
+### Pilot, tabelle e due replay interi
+
+```bash
+run_step 5400 pilot .venv/bin/python scripts/c71_activation_pilot.py run \
+  --native "$NATIVE" --ingest-report "$INGEST" --packed "$PACKED" \
+  --output "$RUN/pilot" --timeout-seconds 5100
+export CANDIDATE="$RUN/pilot/candidate.json"
+chmod a-w "$CANDIDATE"
+run_step 60 recipes "$NATIVE" recipes "$CANDIDATE"
+run_step 900 tables .venv/bin/python scripts/c71_calibrate.py tables \
+  --native "$NATIVE" --candidate "$CANDIDATE" --output "$RUN/tables.bin"
+run_step 60 check-input "$NATIVE" check-input "$CANDIDATE" "$RUN/tables.bin"
+run_step 7200 integer-1 .venv/bin/python scripts/c71_calibrate.py run \
+  --native "$NATIVE" --candidate "$CANDIDATE" --ingest-report "$INGEST" \
+  --packed "$PACKED" --output "$RUN/integer-1.json" \
+  --payload-bytes 8589934592 --timeout-seconds 6900
+run_step 5400 integer-2 .venv/bin/python scripts/c71_calibrate.py run \
+  --native "$NATIVE" --candidate "$CANDIDATE" --ingest-report "$INGEST" \
+  --packed "$PACKED" --output "$RUN/integer-2.json" \
+  --payload-bytes 8589934592 --timeout-seconds 5100
+run_step 900 ledger .venv/bin/python scripts/c71_calibrate.py ledger \
+  --native "$NATIVE" --candidate "$CANDIDATE" --output "$RUN/ledger.json"
+```
+
+Le due invocazioni ripartono ciascuna da KV vuoto; all'interno collegano
+O=0/150/300 senza importare stato. Il secondo replay verifica
+riproducibilità del riferimento, **non** è una seconda implementazione
+indipendente. I 150 token floating non sono il golden intero. Una
+candidata che non compila o produce overflow/range failure richiede
+stop; una revisione delle scale comporta nuova candidata, nuova autorizzazione e
+ripartenza da O=0, mai riparazione del solo contesto fallito.
+
+### Validazione e congelamento del profilo
+
+Prima di congelare verificare, sui file persistiti e non sul solo exit 0:
+
+1. Identità shard/packed/ingest/workload/native e SHA pulita invarianti;
+   `pilot/report.json` completo, `success:true`, `candidate_compiles:true`.
+2. Stessa mappa W/A completa e stesse ricette nei tre contesti; tabelle
+   certificate rigenerate con Python, 24.414.870 B, SHA-256 identico fra
+   `tables`, entrambi i replay e conto delle risorse, più digest nativo coerente.
+3. Entrambi i report con `complete_integer_trial:true`, `exit_code:0`,
+   `native_exit_code:0`, `packed_hash_checked:true`,
+   `tables_generated_by_certified_reference:true`. Tre `responses`,
+   O=0/150/300, 150 token ciascuna, prefisso esatto dei 100 token pinned,
+   50 output validi; extents/copertura di ogni ID A e contatori completi.
+4. `responses` identiche fra i due replay, inclusi token, extents e lavoro;
+   nessun overflow, non-finito, saturazione, marker di errore o trial
+   parziale. Il controller deve avere assorbito l'ultimo token in KV;
+   non inferirlo dalla sola lunghezza della lista dei token.
+5. RNE/BF16, RMS/RNE numerici, LUT e routing hanno controlli della stessa
+   relazione intera Python/Rust, non uguaglianza col pilot floating.
+   **L'export di golden reali intermedi e un audit Python/Rust completo
+   del run non sono implementati dal CLI attuale.** Min/max e una seconda
+   esecuzione dello stesso Rust non li sostituiscono. Per il congelamento con
+   quel confronto completo manca un adapter di export/audit da sviluppare
+   e verificare separatamente: fermarsi a `candidate_integer_validated`,
+   non inventare un comando `freeze` né un report di bit-equality.
+
+Il piano conserva quindi due esiti distinti: bundle numerico riproducibile
+ottenibile con i comandi correnti, e **Γ ammesso/congelato** soltanto dopo
+il controllo indipendente richiesto dal [specifiche](specs.md#input-e-identità).
+Non si cambia un `calibrated:false` prodotto dai tool in `true` a mano.
+La futura ricevuta di congelamento deve referenziare il report di confronto,
+la copertura esatta e ogni assunzione residua; in sua assenza resta aperta.
+È un limite esplicito del passaggio di consegne, non un'autorizzazione ad allentare il gate.
+La prima autorizzazione può fermarsi al bundle numerico; non acquistare
+tempo GPU per «completare automaticamente il congelamento» con un tool assente.
+L'implementazione dell'export/audit è lavoro locale indipendente da
+eseguire prima di una campagna che prometta Γ definitivamente ammesso.
+
+Conservare in una nuova directory immutabile, senza aggiornare i manifest
+storici: candidata, descrizione ID, report ingest/pilot, ricette e digest
+tabelle, entrambi i report interi, eventuali golden/audit, conto delle risorse,
+toolchain/image/SHA, quote/deadline, comandi, stdout/stderr, exit, tempi,
+RSS e ricevuta di costo. Il manifest nuovo elenca path relativi, byte e
+SHA-256 di ciascun file; hash anche del manifest, scrittura esclusiva e
+lettura di verifica. Le tabelle possono essere rigenerate dai digest e
+ricette; i dump privati richiedono storage autorizzato e non entrano in Git.
+
+```bash
+find "$RUN" -path "$RUN/weights" -prune -o -type f -print0 \
+  | sort -z | xargs -0 sha256sum > /workspace/c71-gamma-files.sha256.partial
+test ! -e "$RUN/files.sha256"
+ln /workspace/c71-gamma-files.sha256.partial "$RUN/files.sha256"
+rm /workspace/c71-gamma-files.sha256.partial
+sha256sum --check "$RUN/files.sha256"
+```
+
+La lista viene scritta fuori da RUN e pubblicata senza overwrite:
+nessun digest di lista autoreferenziale è ammesso. Il bundle in Git usa
+solo la selezione piccola revisionata, non `git add "$RUN"`. Un record
+nuovo va in `benchmarks/results/c71-calibration-DATE-GITSHA.json`, con
+`git_dirty:false` riferito al codice eseguito, esito e digest degli output.
+Pubblicarlo secondo la procedura RunPod in un branch unico:
+
+```bash
+scripts/runpod_harness.sh git-push "runpod/$RUNPOD_POD_ID/c71-gamma"
+scripts/runpod_harness.sh delete "$RUNPOD_POD_ID" --confirm "$RUNPOD_POD_ID"
+```
+
+Prima del delete verificare dal remote il commit delle evidenze e
+l'eventuale destinazione autorizzata dei dati da conservare. Alla deadline
+la terminazione provider avviene comunque; non rinviarla per salvare un
+run incompleto. Al successo numerico, Γ e conto delle risorse vanno riportati al
+[preparazione dell’esperimento della prova](#esperimento-della-prova), che richiede ancora lavoro
+completo, picco con margine, lower congiunto e harness della prova. Questa
+campagna non misura prova/PCG, non emette certificati e non autorizza il
+benchmark della prova H100.
+
+## Esperimento della prova
+
+Questa fase non ha ancora un comando canonico completo pronto all'uso.
+L'esempio `c71_matrix` è un diagnostico e `c71_calibration` esegue il
+replay numerico: nessuno dei due è il benchmark della prova Gemma.
+Prima di proporre una spesa per la prova chiudere i seguenti requisiti:
+
+1. Audit della provenienza dei fork completato, incluso il delta
+   `merkle-tree/src/hiding_mmcs.rs` oggi non registrato;
+   Γ reale validato e congelato, con confronto indipendente documentato;
+   ricette, tabelle, layout e riserve ricompilati a O=0/150/300.
+2. Costruzione integrata corretta su input ridotti: preparatore, getter,
+   W installata, lookup/GKR/range/PCS, pool reale, framing e promozione
+   sullo stesso registro. I test componenti non sostituiscono questa verifica.
+3. Conto completo del lavoro, memoria allocata e riservata simultanea,
+   trasferimenti, PCG, replay, hash, FFT, proof e allocator. Almeno
+   256 MiB liberi nell'arena e 1 GiB globale; nessuno spill dinamico.
+4. Limite inferiore congiunto compatibile con 65 s in tutti i contesti.
+   Non serve conoscere in anticipo un limite superiore del tempo H100.
+   I valori parziali in specs non chiudono questo requisito.
+5. Harness e input del minimo esperimento, SHA pulita, fingerprint
+   hardware/toolchain, durata massima, costo e soglie di accettazione
+   o arresto verificabili, quindi autorizzazione di quella campagna.
+
+Gli esperimenti GPU devono confrontare prima i risultati con il riferimento
+host/nativo: FFT diretta/inversa, resti e P/Q nella base corretta, hash salato,
+range e operatori numerici. Poi si misurano le fasi rappresentative con i
+loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
+il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,
+senza un percorso CPU sostitutivo. La produzione usa PCG reale/AES.
+
+Il risultato completo richiede tre risposte valide del modello canonico,
+stesso W e storia KV, con tempi e byte completi del [contratto](design.md#contratto-delle-risorse).
+Registrare separatamente `T_inference`, `T_proof_only`, `T_response_total`,
+setup di sessione e caricamento globale, traffico nei due sensi, tutti i
+batch/replay, picchi allocati e riservati del prover e del verificatore.
+Non sottrarre il lavoro dipendente dalla risposta o attribuire overlap
+senza misura. Il limite inferiore dei byte delle continuazioni è già
+incompatibile con 40 MB per il codec corrente: riportare l'esito analitico
+ammesso, senza etichettarlo come successo misurato di quel requisito.
+
+Conservare nuovi record anche per timeout, errori numerici, esaurimento,
+fallimenti di verifica o risultati oltre i limiti. La SHA del codice
+eseguito deve essere pulita. I record non autorizzano nuovi tentativi;
+aggiornare i cinque documenti correnti solo quando cambia un fatto,
+collegando la nuova evidenza senza sovrascrivere quella precedente.

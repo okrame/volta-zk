@@ -19,7 +19,7 @@ const BASIS: [Fp3; 3] =
 /// B5 classifies the general affine residual and rejects this unchecked
 /// interface as an actively secure full-Fp3 correlation converter. Hashing,
 /// changing basis or repeating linear checks under the same Delta is no repair.
-/// See docs/c7.1-gemma31b-design.md, "Esito B5"; diagnostic use only.
+/// See docs/c7.1-history/c7.1-gemma31b-design.md, "Esito B5"; diagnostic use only.
 pub fn c7_fp3_lift_prover(rows: [[SubVole; 3]; 3]) -> ([Fp; 6], C7Fp3ProverAuthed) {
     let mut corrections = [Fp::ZERO; 6];
     let mut result = C7Fp3ProverAuthed::ZERO;

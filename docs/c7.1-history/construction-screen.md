@@ -1,3 +1,6 @@
+> Documento storico: descrive il proprio checkpoint, non le istruzioni correnti.
+> Per implementare usare il [design corrente](../c7.1/design.md); per la provenienza vedere la [mappa](README.md).
+
 # C7.1 — Screen di nuove famiglie
 
 2026-09-12 · [Contratto](design.md#owner-authorized-pcsstate-experiment) ·

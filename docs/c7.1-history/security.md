@@ -1,44 +1,44 @@
-# C7.1 — sicurezza
+> Documento storico: descrive il proprio checkpoint, non le istruzioni correnti.
+> Per implementare usare il [design corrente](../c7.1/design.md); per la provenienza vedere la [mappa](README.md).
 
-[Design](design.md) · [Specifiche](specs.md) · [Test locali](local-tests.md) ·
-[Test su RunPod](runpod-tests.md) · [Archivio](../c7.1-history/README.md)
+# C7.1 — Current security proof and reductions
 
-## Ambito e ipotesi
+[Status](status.md) · [Design](design.md) · [Evidence](evidence.md) · [Decisions](decisions.md)
 
-I §§1–6 definiscono e dimostrano la composizione matematica
-`C71B12-Gemma-FixedRun-v1` sul bootstrap B11/B12 originario. Il percorso
-efficiente Seed6 conserva la relazione di inferenza, ma richiede il
-trasferimento di sicurezza descritto nell'ultima sezione. La correttezza
-di test finiti e la corrispondenza generale del programma al protocollo
-sono risultati distinti.
+Dimostrazione matematica di `C71B12-Gemma-FixedRun-v1`, chiusa il
+2026-09-10 a `9e57199`. Questo è l'unico testo corrente dell'enunciato,
+dell'algoritmo matematico composto e della sua dimostrazione. Il testo dei
+sei paragrafi è trasferito integralmente dal precedente dossier di
+composizione; sono cambiati soltanto i percorsi dei link.
+Il [design](design.md#assumptions-and-component-dependencies) fissa le
+ipotesi primitive e le derivazioni componenti applicabili. I risultati
+nativi e i loro limiti sono nell'[evidenza](evidence.md).
 
-Il teorema richiede almeno 78 bit per ciascun vantaggio completo.
-Si lavora nel modello dell'oracolo casuale classico, con lavoro e memoria
-dell'avversario `T_A=M_A=2^80`, inclusi ambiente, preprocessing e advice,
-e `Q_A=2^64` query globali, inclusi candidati Fiat–Shamir scartati.
-Le riduzioni restano sotto `T_R=2^121`, `M_R=2^93`, `Q*=2^74`.
-A queste risorse si assumono vantaggio AES-256 PRP a quattro blocchi
-≤2^-128 e vantaggio DDH P-521 ≤2^-193. Sono ipotesi concrete dichiarate,
-non garanzie dedotte dai nomi delle primitive o dai loro test.
-Non si assume un setup onesto aggiuntivo.
+La [candidata P/S condivisa per RNE](design.md#experimental-shared-rne-byte-proofs)
+del 2026-09-11 cambia la schedule ed è un esperimento separato: i bound
+di questo documento non le sono trasferiti. Gli obblighi di composizione
+aperti sono dichiarati nel design; i sei paragrafi seguenti restano B12 v1.
 
-La riduzione PCS usa distanza del codice e accordo multiplo con
-`3*tau<d`, decodifica entro il raggio di unicità, Merkle salato e
-preimmagini differite, blocchi di monete Fiat–Shamir e chiusura scalare
-nel MAC originale. Non assume una congettura di decodifica a lista.
-I parametri sono in [specs](specs.md#pcs-e-ricostruzione-dei-valori).
-Le derivazioni componenti riutilizzate sono:
-
-| Risultato | Derivazione, applicata con i parametri correnti |
-|---|---|
-| Bootstrap reale → ideale e seal | [AES a capacità finita](../c7.1-history/c7.1-gemma31b-design.md#b11-selezione-intermedia-aes-a-capacità-finita), [risorse e seal](../c7.1-history/c7.1-gemma31b-design.md#b12-risorse-lifetime-e-vincolo-same-w), [setup unico](../c7.1-history/c7.1-gemma31b-design.md#b12-capacità-aes-iniziale-per-il-run-continuo); S=1 e M93 |
-| Unicità del messaggio PCS | [RS/Merkle e chiusura privata](../c7.1-history/c7.1-gemma31b-design.md#b12-pcs-unicità-del-messaggio-e-compilazione-privata) |
-| Privacy delle aperture su endpoint condivisi | [Traslazione congiunta](../c7.1-history/c7.1-gemma31b-design.md#b12-zk-del-consumer-claimless-nel-run-continuo), applicata nel §5 |
-
-Questi rimandi identificano derivazioni, non importano i profili intermedi
-o le istruzioni operative dell'archivio. Il conto eseguibile completo è
-`complete_fixed_run_composition` in
-[c7_1_gemma_plan.py](../../scripts/c7_1_gemma_plan.py).
+Il proprietario ha autorizzato il trust model esteso **B12 + EA-LPN-SL-reg\***
+per il goal di riduzione; il [bound preciso](design.md#assumptions-and-component-dependencies)
+è ora una premessa ammessa. Non è una dimostrazione della nuova composizione.
+Lo [screen del bootstrap fresco Dory](construction-screen.md#bootstrap-fresco-dory-alimentato-da-b11)
+è ancora esterno al teorema B12 v1: i conti seed non provano EA-LPN-SL. La
+candidata ROM realizza F_Rand con abort. Il confronto di digest F_EQ è
+respinto dal dizionario dei cammini; la sostituzione DDH/DLEQ è respinta
+per la perdita concreta dell'estrazione Schnorr. La nuova F_EQ usa invece
+due seed MAC Fp6 con ruoli opposti e apre share del prodotto mascherato
+`(Delta0+Delta1)*(wbar-vbar)`: non aggiunge un'ipotesi gruppo. Entrambe le
+chiavi precedono le correzioni degli input; una seconda coin precede i
+commitment role-bound e ogni apertura. Poiché B11 esclude la chiave zero,
+una share malevola fissata prima dell'apertura accetta sul mismatch con
+probabilità al più `1/(|Fp3|-1)`, inclusa la cancellazione delle chiavi;
+la vista di rifiuto
+ha distanza statistica al più `1/(|Fp3|-2)` fra due residui, con abort e burn.
+Mancano ancora trasferimento compositivo e codec nativi; il cGGM separato
+per nodo sostituisce la permutazione soltanto in una riduzione condizionale
+contro il receiver.
+La sostituzione reale→ideale del §5 continua a riguardare soltanto B11/B12.
 
 ## 1. Enunciato e oggetti fissati
 
@@ -169,9 +169,10 @@ algoritmo deterministico con la chiave DV e l'oracolo FS pubblico:
    rendere visibili i 50 token come verificati, impostare `live=true` se
    resta uno slot, altrimenti terminare con tre risposte accettate.
 
-Il framing esterno univoco è parte dell'algoritmo matematico. Il codice
-implementa codec e wrapper canonici interni; i controlli strutturali
-non costituiscono una verifica positiva dell'intero modello. Un errore restituisce al peer
+La verifica tratta tutto il certificato in memoria; il framing esterno
+univoco appena prescritto è parte dell'algoritmo matematico. I componenti
+nativi usano ancora trasporto interno: questo testo non dichiara già
+implementato un codec/wrapper Gemma completo. Un errore restituisce al peer
 solo `Stop`; i messaggi di errore dettagliati interni non sono wire.
 Una perdita del processo termina il run; non si invoca `reopen`.
 
@@ -216,7 +217,7 @@ stessa sorgente finale, non copie con layout precedenti all'estensione.
 
 Il conteggio è **775 target W**, **4.446 target A corrente**, **uno per
 ciascuna vecchia A**. BA si riconcilia con la tabella del
-[compilatore](../c7.1-history/c7.1-gemma31b-design.md#b12-profilo-numerico-comune-ricette-derivate-dai-produttori):
+[compilatore](c7.1-gemma31b-design.md#b12-profilo-numerico-comune-ricette-derivate-dai-produttori):
 1545+1264+410+964+3+3+2+240+1+3+5+4+2=4446. BW ha
 773+2=775. I range precedenti si ereditano esclusivamente dal registro;
 le aperture precedenti non ereditano tag o righe. W ha tre aperture,
@@ -323,7 +324,7 @@ dal funzionale dell'inferenza gli output pubblici o `Stop`; in quest'ultimo
 caso termina alla stessa boundary prima della prova. Non cerca W.
 
 Per ogni risposta completa prepara lo snapshot fittizio del
-[lemma zero-W](../c7.1-history/c7.1-gemma31b-design.md#b12-output-canonico-lm_head-softcap-e-decisioni-nella-stessa-a):
+[lemma zero-W](c7.1-gemma31b-design.md#b12-output-canonico-lm_head-softcap-e-decisioni-nella-stessa-a):
 hidden/raw/KV zero, D=0 ed E=2^30 su tutte le celle lookup, comprese
 quelle vietate; su ogni query viva Z=k*2^30 e Pi=RNE(2^14/k),
 k=O+t+1. Z è zero sulle query padded; Pi è zero sulle posizioni
@@ -430,7 +431,7 @@ larghezza ≤21504 e vocabolario 262144. Anche l'enumerazione delle matrici
 rettangolari e dei raw, con ≤2^12 operazioni u64 per operazione di campo,
 resta sotto 2^70; gli snapshot W e tre A richiedono <2^38 parole.
 Il costo maggiore, già ereditato, è quello di decoder, PCS e replay
-GKR densi. Per la composizione, anche visitare ≤2^19 cubi su ciascun dominio
+GKR densi. Per il nuovo glue, anche visitare ≤2^19 cubi su ciascun dominio
 ≤2^35, per nove aperture e con lo stesso fattore 2^12, usa <2^70
 operazioni. Lettura/hashing dei parametri pubblici e dei record, dispatch,
 registry e propagazione di key/forme stanno sotto l'ulteriore envelope.
@@ -448,63 +449,25 @@ di Γ e verificare che siano quelle attese non è costo zero nel protocollo.
 | Fatto usato | Evidenza e limite del trasferimento |
 |---|---|
 | Operazioni lineari preservano MAC originali | [`Mac.Valid.add/smul/sum`, `ofPublic_valid`](../../lean/VoltaZk/Mac.lean); applicati ai segni nativi k=m+Delta*x |
-| Correzioni e residui hanno simulazione sui prefissi | [`BlindSumcheck.realView_map_publicView`, `bsc_zeroBatch_perfect_zk`](../../lean/VoltaZk/BlindSumcheck.lean), batch prodotti/range B12 e [G2 §3.1](../c7.1-history/c7.1-committed-mac-opening.md#31-simulatore-ideale-fs-nessuna-programmazione-delloracolo); il §5 scarica shape, NoPeek e alias del caller |
+| Correzioni e residui hanno simulazione sui prefissi | [`BlindSumcheck.realView_map_publicView`, `bsc_zeroBatch_perfect_zk`](../../lean/VoltaZk/BlindSumcheck.lean), batch prodotti/range B12 e [G2 §3.1](c7.1-committed-mac-opening.md#31-simulatore-ideale-fs-nessuna-programmazione-delloracolo); il §5 scarica shape, NoPeek e alias del caller |
 | KV è append dei tail accettati | [`prefix_stability`, `accepted_append_tails_induction`](../../lean/VoltaZk/C7StatefulAlfc.lean); il §4 dimostra la premessa di validità delle code per questa relazione |
 | Unione eterogenea con Q globale | [`c7_gemma_gkr_heterogeneous_qfs_union_bound_once`](../../lean/VoltaZk/C7GemmaGKR.lean); i gradi sono quelli B12 ricontati, non il vecchio numeratore congelato |
 | Root → stesso messaggio → endpoint | Analisi RS/MCA/Merkle e invariante scalare nativo B12; nessun lemma Lean storico è presentato come dimostrazione del fork PCS |
 
-## Estensione Seed6 e obblighi residui
+G2 resta archiviato. Si riusano l'accoppiamento NoPeek, l'ordine sorgente
+prima delle richieste e l'induzione sulle sole promozioni accettate.
+Il [controesempio G2 sulla prima query FS](c7.1-committed-mac-opening.md#35-prima-query-fs-limite-del-coupling-e-riparazione-da-comporre)
+impedisce di trasferire un coupling interattivo come soundness FS: qui
+si usa il bound B12 sui prefissi, con candidati/preprocessing addebitati.
+L'esclusione G2 del replay generico e i suoi limiti fisici restano validi
+per quella costruzione; questo teorema non dichiara quattro letture W.
 
-Il trust model del percorso efficiente include la premessa autorizzata:
-
-```text
-Adv_EA-LPN-SL-reg*(675,70778880,353894400,11,Fp;
-                  T=2^121,M=2^93,one-leakage) <= 2^-80.
-```
-
-Non è un risultato empirico LPN né una conseguenza dell'ipotesi AES.
-Seed6 usa Fp6→Fp3, due seed a ruoli opposti, guard dei cammini, cGGM
-con oracoli separati per nodo, coin con commitment/apertura e F_EQ.
-Le identità implementate e la macchina monouso sono in
-[specs](specs.md#correlazioni-seed6); il [conto condizionale](../c7.1-history/construction-screen.md#seed-fp6-compressione-a-95-bit-nel-singolo-setup)
-rimane distinto dai bound completi dei §§1–6.
-
-Il guard impone `gamma*(gamma-beta)=0` sui MAC originali prima delle
-correzioni cGGM. Con beta nonzero estrae un cammino binario; il ramo beta
-zero ha una simulazione separata. Il bound ideale è `(t*h+1)/|Fp3|`.
-Il costruttore onesto campiona beta in Fp* senza abort osservabile.
-Il cGGM usa `left=H_D(x), right=x-H_D(x)` dopo uno split iniziale
-indipendente. La riduzione condizionale contro il receiver paga
-`Q_ROM/|Fp3|` per le query anticipate ai nodi nascosti.
-
-F_EQ autentica gli input con due chiavi fissate prima delle correzioni
-e apre solo share del prodotto `(Delta0+Delta1)*(wbar-vbar)`.
-Una seconda coin precede commitment e aperture ordinate per ruolo.
-Con chiavi B11 nonzero, una share malevola fissata prima dell'apertura
-accetta un mismatch con probabilità ≤`1/(|Fp3|-1)`; la distanza statistica
-fra viste di rifiuto è ≤`1/(|Fp3|-2)`, con abort e burn. Il seed EA
-derivato dalle aperture accettate richiede blind onesto fresco, binding
-dei commitment e nessun retry. L'analisi locale aggiunge un termine
-<2^-108; non costituisce una riduzione globale già conclusa.
-
-Restano da chiudere la composizione malevola di bootstrap/guard/cGGM/
-split/F_EQ/EA, il conto completo delle risorse della riduzione, e la
-corrispondenza dei codec e dei prefissi nativi all'esperimento matematico.
-La sostituzione reale→ideale del §5 riguarda ancora B11/B12.
-Canale autenticato e journal durevole non riportabile indietro sono
-premesse esterne; i socketpair dei test non le realizzano in distribuito.
-Nessun bound 82,93/91,02 viene attribuito alla composizione Seed6 completa.
-
-Per il programma canonico restano inoltre: Γ reale validato, preparatore
-e prover completi, correttezza dei getter su tutti gli operatori e alias,
-copertura dei MAC originali, verifica positiva e promozione dopo il
-journal. Le ottimizzazioni che conservano messaggi e polinomi devono
-preservare anche l'ordine delle letture prima delle correlazioni, detto
-NoPeek, e contabilizzare tutte le risorse. La parità ridotta di byte,
-transcript e MAC è un controllo necessario, non una prova generale Lean.
-
-I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
-dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo
-Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.
-La fattibilità a memoria e tempo limitati è verificata separatamente
-secondo [runpod-tests](runpod-tests.md).
+**Conclusione del goal matematico B12.** L'accettazione e il prover sono
+ora definiti insieme; same-W, storia KV e simulazione congiunta seguono
+dai §§4–5 per quella definizione, entro i due bound completi. Non resta
+«integrazione corretta» fra le ipotesi del teorema. Restano il port del
+wrapper/preparatore/codec nativi a questa definizione, la sua verifica,
+Γ reale e la fattibilità fisica. Le API dei singoli componenti continuano
+a restituire obblighi pendenti: il loro successo isolato non acquisisce
+l'ammissione del verificatore composto. Nessun nuovo risultato Lean,
+benchmark, E2E o credito di produzione è dichiarato.

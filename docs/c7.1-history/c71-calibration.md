@@ -1,10 +1,13 @@
+> Documento storico: descrive il proprio checkpoint, non le istruzioni correnti.
+> Per implementare usare il [design corrente](../c7.1/design.md); per la provenienza vedere la [mappa](README.md).
+
 # C7.1 — tranche separata di calibrazione Γ
 
 Piano del **2026-09-27**, richiesto dal proprietario. **Non autorizzato
 all'esecuzione:** nessun download dei pesi, pod, GPU o spesa è stato avviato.
 La preparazione di questo piano chiude il goal locale secondo lo steering
 del 2026-09-27; non significa «pronto per il benchmark della prova».
-Il [preflight della prova](../c7.1/preflight.md) resta NO-GO e distinto.
+Il [preflight della prova](preflight.md) resta NO-GO e distinto.
 
 ## Richiesta di autorizzazione proposta
 
@@ -333,7 +336,7 @@ Prima di congelare verificare, sui file persistiti e non sul solo exit 0:
 
 Il piano conserva quindi due esiti distinti: bundle numerico riproducibile
 ottenibile con i comandi correnti, e **Γ ammesso/congelato** soltanto dopo
-il controllo indipendente richiesto dal [preflight](../c7.1/preflight.md#real-calibrated-gamma).
+il controllo indipendente richiesto dal [preflight](preflight.md#real-calibrated-gamma).
 Non si cambia un `calibrated:false` prodotto dai tool in `true` a mano.
 La futura ricevuta di freeze deve referenziare il report di confronto,
 la copertura esatta e ogni assunzione residua; in sua assenza resta aperta.
@@ -377,7 +380,7 @@ Prima del delete verificare dal remote il commit delle evidenze e
 l'eventuale destinazione autorizzata dei dati da conservare. Alla deadline
 la terminazione provider avviene comunque; non rinviarla per salvare un
 run incompleto. Al successo numerico, Γ e ledger vanno riportati al
-[preflight della prova](../c7.1/preflight.md), che richiede ancora lavoro
+[preflight della prova](preflight.md), che richiede ancora lavoro
 completo, picco con margine, lower congiunto e harness della prova. Questa
 campagna non misura prova/PCG, non emette certificati e non autorizza il
 benchmark della prova H100.

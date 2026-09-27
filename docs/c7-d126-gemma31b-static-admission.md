@@ -1,7 +1,7 @@
 # C7 D126 Gemma-31B stacked static admission
 
 Historical design as of 2026-09-05. The owner opened C7.1 in
-[`c7.1-gemma31b-design.md`](c7.1-gemma31b-design.md); the original D126 status
+[`c7.1-gemma31b-design.md`](c7.1-history/c7.1-gemma31b-design.md); the original D126 status
 and requirements below are preserved as history, not current authority.
 
 **Status:** active design; the terminal declaration, pinned metadata/workload,

@@ -2312,3 +2312,25 @@ del Vec fino al rilascio dello stato: nessun credito da `truncate`.
 Questo buffer coesiste con cache iniziali e altri temporanei; guard a
 16 variabili, esposizioni e consumo MAC restano invariati. Non è
 ammissione del buffer canonico, tre accettazioni ordinate o Γ calibrato.
+
+## Factored Eq and streamed Pow
+
+Il [record su SHA pulita `2808bd3`](../../benchmarks/results/c71-eq-pow-2026-09-27-2808bd338006.json)
+conserva quattordici test Rust e tre Python, seriali entro 60 s/2 GiB,
+più check non-test B12/Seed6. Il residual state riusa le tabelle native
+`Poly::new_from_point` in forma fattorizzata e gli iteratori
+`shifted_powers`, senza esponenziare per ogni cella nei loop adattati.
+Il confronto denso copre coordinate Eq zero/uno, basi Pow zero/uno,
+termine a scala zero e sfide estese, con e senza retention.
+
+Passano lifecycle, cache iniziale, batch Merkle, righe RS e parità
+wire/FS/MAC WHIR D10 e A della storia numerica O=0/2/4. Il positivo
+streaming ideale termina in 12,36 s; O=0 W replay/A ordinata con Seed6
+reale ell=2 in 32,52 s. Non sono rate o upper della H100.
+
+Le due tabelle contengono `2^floor(d/2) + 2^ceil(d/2)` elementi Fp3,
+oltre ai metadata; le catture dei getter ne prolungano la vita. Tabelle
+e iteratori non sono inclusi nel solo `named_bytes` dello stato. Ordine
+delle letture, MAC, transcript e guard ridotti non cambiano; il getter
+retained mantiene il prefisso dinamico. Non è source-uniformity completa,
+picco fisico, calibrazione Γ o ammissione pre-spesa.

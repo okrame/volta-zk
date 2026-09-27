@@ -1971,8 +1971,8 @@ root alimenta binding, range simmetrico e PCS finale. La variante densa
 resta esplicita per le regressioni, non una fallback di produzione. Il
 packed CPU e il profilo catturato dal getter restano vivi e vanno contati:
 nessun risparmio canonico o picco fisico è accreditato dal solo raccordo.
-Il positivo ridotto O=0 W replay/A ordinata usa Seed6 reale ell=2 e termina
-in 47,56 s entro il limite locale; non è il run canonico o tre accettazioni.
+Il positivo ridotto O=0 W replay/A ordinata usa Seed6 reale ell=2 entro
+il limite locale; non è il run canonico o tre accettazioni.
 
 Il [modello replay verificato](evidence.md#retained-initial-replay-oracle) ora conserva cache superiore, offset/snapshot dei sali
 e pad iniziali invece di rifare il commitment all'inizio della proof.
@@ -1992,7 +1992,7 @@ promozioni e rilasci usano le lease esistenti. W non seleziona retention.
 Il Vec S1, le cache iniziali e gli altri temporanei vanno contati insieme;
 il guard ridotto a 16 variabili resta, senza nuovo margine o cap canonico.
 
-Il residual state riusa ora due tabelle Eq pubbliche bilanciate e gli
+Il [residual state verificato](evidence.md#factored-eq-and-streamed-pow) riusa ora due tabelle Eq pubbliche bilanciate e gli
 iteratori nativi `shifted_powers` negli aggiornamenti dei claim/cubici,
 evitando i prodotti di tutte le coordinate e le esponenziazioni per
 cella in quei loop. I lookup Eq non dividono per le coordinate; zero e
@@ -2016,7 +2016,7 @@ né il piano di memoria canonico. DFT e resti sono lavoro della prova;
 nessun nuovo lower/upper H100 sostituisce il ledger precedente.
 La catena WHIR D10 coincide con il backend originale a monete fissate;
 passano anche la proof streaming ideale e W replay/A ordinata con Seed6
-reale in 47,36 s. È correttezza ridotta, non una misura H100.
+reale entro il limite locale. È correttezza ridotta, non una misura H100.
 Il callback conserva ora gli spettri di modulo/reciproco di tutti i nodi
 dell'albero multipunto. Coefficienti/intermedi Newton durante setup,
 resti padre/figli durante discesa, punti, workspace FFT e output sono

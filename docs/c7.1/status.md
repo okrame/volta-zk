@@ -134,29 +134,19 @@ virtuale densa. Range simmetrico e chiusura W passano dall'adapter comune
 già usato per A. Il controllo usa t=4/h=19/ell=2; non è ancora
 installazione canonica, tre accettazioni reali o picco fisico.
 
-La [cache iniziale verificata](evidence.md#retained-initial-replay-oracle) conserva la tree Merkle e i pad di W/A;
-gli handle condividono la stessa tree senza rieseguire il commitment
-prima della proof. Le root storiche conservano ciascuna la propria
-cache; coin della proof, correlazioni e budget di esposizione non cambiano.
-Questo storage resta vivo e va incluso nel picco completo.
-Le A ordinate ora usano anche la [retention S1 verificata](evidence.md#ordered-a-retained-s1) del riferimento WHIR:
-materializzazione dopo il rilascio del predecessore, stessa capacità
-riservata fino al termine e lease originali. W non cambia; questo
-raccordo ridotto non ammette il buffer o la schedule canonica.
-Il residual state usa ora tabelle Eq fattorizzate e iteratori di potenze
-nei loop principali, riusando le primitive native. Restano il guard
-ridotto e il conto fisico dei temporanei, senza credito H100.
+Il percorso PCS conserva la [cache iniziale W/A e i pad](evidence.md#retained-initial-replay-oracle), senza rifare il commitment
+prima della proof. Il [riduttore FFT e l'albero dei resti](evidence.md#native-query-remainder-tree) alimentano i
+[batch Merkle](evidence.md#batched-merkle-replay): una scansione sorgente per batch, riuso delle righe per hash e
+apertura, ordine/duplicati/sali originali. Il cap resta 1.024 righe;
+un'unione più grande richiede più batch, non una scansione canonica unica.
 
-Le [righe PCS replay](evidence.md#native-fft-remainder-in-replay-openings) usano ora il riduttore FFT per blocchi con i pad
-originali, invece di valutare tutta la sorgente per ogni query. È un
-callback limitato a 1.024 richieste, non l'apertura canonica completa.
-Il [batch verificato](evidence.md#batched-merkle-replay) raggruppa i sottoalberi entro lo stesso cap e riusa le righe
-rigenerate per l'apertura, senza callback aggiuntivo; un'unione più grande
-richiede ancora più batch. Il
-[setup verificato](evidence.md#balanced-query-setup) riusa prodotti FFT bilanciati e reciproco Newton;
-la [valutazione verificata](evidence.md#native-query-remainder-tree) ora scende nell'albero dei resti, conservando gli spettri
-di tutti i nodi senza aumentare il cap locale. Passano parità WHIR, streaming ideale e O=0 W replay/A ordinata
-con Seed6 reale, senza trasferire il ledger hardware.
+Le A ordinate usano [S1 trattenuto](evidence.md#ordered-a-retained-s1) dopo il rilascio del predecessore,
+con lease e capacità riservata invariati; W non seleziona retention.
+Il [residual Eq/Pow](evidence.md#factored-eq-and-streamed-pow) riusa tabelle fattorizzate e iteratori nativi.
+Passano parità WHIR, streaming ideale e O=0 con W replay/A ordinata e
+Seed6 reale. Coin, MAC e budget di esposizione non cambiano. Cache delle
+root vive, S1, spettri, batch e temporanei restano da includere nel picco
+completo; guard ridotti e ledger hardware non sono promossi a canonici.
 
 Il [dispatcher RMS](evidence.md#borrowed-rms-correlation-intervals) passa ora gli intervalli MAC in prestito in entrambi
 i ruoli, senza duplicare l'intera riserva prima delle statistiche. Il burn

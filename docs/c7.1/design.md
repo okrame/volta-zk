@@ -293,6 +293,14 @@ immutabili; ogni sottoalbero aperto è ancora confrontato con la root
 memorizzata. La cache iniziale vive quanto W/A e si somma alle altre
 root attive; il rilascio delle generazioni foldate resta distinto.
 
+Le A del reader ordinato selezionano ora la retention S1 già verificata
+nel confronto WHIR: lo stato fissa il getter del primo fold, committa il
+successore e materializza il singolo Vec solo dopo apertura/rilascio del
+predecessore. I successivi fold richiedono le medesime lease e conservano
+la capacità S1 fino al termine; `truncate` non libera arena. W mantiene
+il percorso senza retention S1. È il raccordo del riferimento ridotto
+con guard a 16 variabili, non l'ammissione del buffer A canonico.
+
 Nella riduzione per blocchi, l'inverso della monica rovesciata e il suo
 spettro sono comuni alle colonne;
 ogni blocco usa solo la metà alta per il quoziente, evitando alias ciclici.

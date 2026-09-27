@@ -287,6 +287,7 @@ pub(in crate::c71_matrix) struct ReplayModel {
     source: Getter,
     tree: Arc<Tree>,
     pads: Arc<[Goldilocks]>,
+    retain_first: bool,
 }
 
 impl ReplayModel {
@@ -314,7 +315,7 @@ impl ReplayModel {
         }
         .commit(&mmcs.inner, None)?;
         let oracle = handle.downcast::<Oracle>().map_err(|_| "C71 initial replay handle type")?;
-        Ok(Self { domain, root, source, tree: oracle.tree, pads })
+        Ok(Self { domain, root, source, tree: oracle.tree, pads, retain_first: false })
     }
 
     pub(in crate::c71_matrix) fn new_checked(
@@ -333,6 +334,11 @@ impl ReplayModel {
 
     pub(in crate::c71_matrix) fn domain(&self) -> Domain {
         self.domain
+    }
+
+    pub(in crate::c71_matrix) fn retain_first_fold(mut self) -> Self {
+        self.retain_first = true;
+        self
     }
 
     pub(in crate::c71_matrix) fn root(&self) -> &C61Commitment {
@@ -396,7 +402,7 @@ pub(in crate::c71_matrix) fn prove_pcs_sourcewise_with_coins(
         extension: &extension,
         source: Mutex::new(Some(model.source.clone())),
         first: config.round_folding_factor(0),
-        retain_first: false,
+        retain_first: model.retain_first,
     };
     let mut rng = PrivateRng::from_seed(coins.seed);
     let proved = prover.prove_claimless_replay_with_oracle(
@@ -665,7 +671,7 @@ pub(in crate::c71_matrix) fn compare_source(
     census::mark("sourcewise_initial_commit").unwrap();
     let mut replay_fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
     replay_fs.set_phase(0x200);
-    let model = ReplayModel::new_checked(
+    let mut model = ReplayModel::new_checked(
         Domain::Flat(dimension),
         root.clone(),
         root_seed,
@@ -673,6 +679,9 @@ pub(in crate::c71_matrix) fn compare_source(
         source.clone(),
     )
     .unwrap();
+    if original.is_some() {
+        model = model.retain_first_fold();
+    }
     let mut initial_rng = PrivateRng::from_seed(root_seed);
     let first = config.round_folding_factor(0);
     let pads: Arc<[Goldilocks]> =
@@ -697,7 +706,7 @@ pub(in crate::c71_matrix) fn compare_source(
         extension: &extension,
         source: Mutex::new(Some(source)),
         first,
-        retain_first: original.is_some(),
+        retain_first: model.retain_first,
     };
     let output = engine
         .prove_claimless_replay_with_oracle(

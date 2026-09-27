@@ -438,7 +438,8 @@ impl Auxiliary for OrderedAux {
                     getter.byte_at(index).expect("immutable validated A byte"),
                 )))
             }),
-        )?;
+        )?
+        .retain_first_fold();
         let snapshot = Self { reader, source };
         snapshot.phase_end("initial_commit_A");
         Ok(snapshot)

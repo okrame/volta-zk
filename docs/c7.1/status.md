@@ -139,6 +139,10 @@ gli handle condividono la stessa tree senza rieseguire il commitment
 prima della proof. Le root storiche conservano ciascuna la propria
 cache; coin della proof, correlazioni e budget di esposizione non cambiano.
 Questo storage resta vivo e va incluso nel picco completo.
+Le A ordinate ora usano anche la retention S1 del riferimento WHIR:
+materializzazione dopo il rilascio del predecessore, stessa capacità
+riservata fino al termine e lease originali. W non cambia; questo
+raccordo ridotto non ammette il buffer o la schedule canonica.
 
 Le [righe PCS replay](evidence.md#native-fft-remainder-in-replay-openings) usano ora il riduttore FFT per blocchi con i pad
 originali, invece di valutare tutta la sorgente per ogni query. È un

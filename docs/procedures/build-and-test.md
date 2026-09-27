@@ -174,6 +174,9 @@ autenticati né una deroga al timeout del test ordinato a due risposte.
 Ripetere separatamente `c71_b12_ordered_sourcewise_o0`,
 `c71_b12_ordered_sourcewise_o2` e `c71_b12_ordered_sourcewise_o4` per
 la parità WHIR sulle sorgenti della storia numerica.
+Questi filtri verificano anche la retention S1 ora selezionata per A nel
+runner ordinato; aggiungere il confronto dei residual state
+`c71_b12_sourcewise_adaptive` per capacità trattenuta, coefficienti e sfide dei fold.
 
 Per gli intervalli RMS in prestito usare `c71_b12_gemma_rms_dispatch`:
 il fixture unisce P0/RMS/RNE e le PCS originali, osserva l'iteratore lazy

@@ -1984,6 +1984,14 @@ liberata dopo l'installazione. Il marker locale
 `prover_cached_initial_oracle` distingue questo percorso dalla
 rematerializzazione ancora presente nel riferimento denso.
 
+Il caller delle A ordinate ora seleziona la retention del primo fold,
+già confrontata con WHIR denso: materializza S1 solo dopo il rilascio
+dell'oracolo iniziale e conserva la sua capacità durante i fold seguenti.
+Il predecessore committato resta valido fino alla propria apertura;
+promozioni e rilasci usano le lease esistenti. W non seleziona retention.
+Il Vec S1, le cache iniziali e gli altri temporanei vanno contati insieme;
+il guard ridotto a 16 variabili resta, senza nuovo margine o cap canonico.
+
 Il [callback RS del replay](evidence.md#native-fft-remainder-in-replay-openings) ora usa riduzione FFT a blocchi invece di
 Horner sull'intera sorgente per ciascuna query. Il riferimento mantiene
 pad e ordine originali, batch fino a 1.024 richieste e una lettura di ogni

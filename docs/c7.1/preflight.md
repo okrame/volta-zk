@@ -1977,7 +1977,7 @@ in 47,56 s entro il limite locale; non è il run canonico o tre accettazioni.
 Il [callback RS del replay](evidence.md#native-fft-remainder-in-replay-openings) ora usa riduzione FFT a blocchi invece di
 Horner sull'intera sorgente per ciascuna query. Il riferimento mantiene
 pad e ordine originali, batch fino a 1.024 richieste e una lettura di ogni
-coefficiente per batch. Il setup ora costruisce il modulo con prodotti
+coefficiente per batch. Il [setup verificato](evidence.md#balanced-query-setup) ora costruisce il modulo con prodotti
 FFT bilanciati e il reciproco con raddoppio di Newton. Il cap non cresce;
 la valutazione finale resta quadratica, e la tree richiama il callback per sottoalbero e per le
 righe richieste. Non è quindi l'apertura canonica a una sola scansione,

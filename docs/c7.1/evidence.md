@@ -2204,3 +2204,22 @@ Il modo completo dispari prepara 2^21 elementi ×128, con valori/twiddle
 nominati di 2.164.260.864 B, non un picco fisico. Scatter PCS, root/sali/hash,
 resti, fence e harness completo restano aperti; nessuna proposta provider
 o autorizzazione di spesa deriva da questi controlli.
+
+## Balanced query setup
+
+Il [record su SHA pulita `b9c6ee0`](../../benchmarks/results/c71-balanced-query-2026-09-27-b9c6ee031c7e.json)
+conserva cinque test Rust e tre Python, seriali entro 60 s/2 GiB, più
+check non-test B12/Seed6. Il modulo delle query usa prodotti FFT
+bilanciati; il reciproco del modulo rovesciato usa raddoppio di Newton.
+Gli oracoli diretti verificano coefficienti e identità troncata fino a
+cap 1.024, con punti zero e ripetuti. Restano ordine, pad e una lettura
+per coefficiente nel callback; il limite pubblico non è aumentato.
+
+Passano righe base/extension contro Horner originale, parità completa
+wire/FS/MAC della catena WHIR, streaming ideale e O=0 W replay/A ordinata
+con Seed6 reale ell=2 in 46,57 s. Non è un tempo H100.
+Si conservano livello corrente dei prodotti e intermedi del reciproco,
+non l'albero completo per la valutazione multipunto: la valutazione
+finale resta quadratica e i sottoalberi vengono ancora rigenerati separati.
+Setup/FFT sono lavoro della prova; nessun credito canonico di memoria,
+tempo, NoPeek o calibrazione deriva da questi controlli ridotti.

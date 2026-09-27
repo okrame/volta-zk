@@ -138,7 +138,7 @@ Le [righe PCS replay](evidence.md#native-fft-remainder-in-replay-openings) usano
 originali, invece di valutare tutta la sorgente per ogni query. È un
 callback limitato a 1.024 richieste, non l'apertura canonica completa:
 valutazione finale quadratica e replay separati dei sottoalberi restano
-espliciti. Il setup ora riusa prodotti FFT bilanciati e reciproco Newton,
+espliciti. Il [setup verificato](evidence.md#balanced-query-setup) ora riusa prodotti FFT bilanciati e reciproco Newton,
 senza aumentare il cap locale. Passano parità WHIR, streaming ideale e O=0 W replay/A ordinata
 con Seed6 reale, senza trasferire il ledger hardware.
 

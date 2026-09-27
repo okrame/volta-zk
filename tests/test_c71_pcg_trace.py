@@ -259,6 +259,10 @@ def test_one_channel_setup_wire_and_added_payload():
     assert setup['attempt_stream_extra_heap_besides_generated_batch_bytes']==0
     assert setup['attempt_stream_generated_batch_heap_upper']=={'sender':98304,'receiver':131072}
     assert setup['returned_Audit_and_owner_slot_retained_across_attempts']
+    assert setup['journal_experimental_record_kind']==5
+    assert setup['public_role_pools_own_lifetime_and_use_OS_rng']
+    assert not setup['public_reference_is_production_or_GPU_fallback']
+    assert setup['guard_uses_shared_reexported_Fp3_algebra']
     assert not setup['per_attempt_pool_and_acceptance_connected']
     reduced=trace.seed6_setup_trace(2,4,2)
     assert (reduced['main_seed_rows'],reduced['inverse_seed_rows'])==(25,6)

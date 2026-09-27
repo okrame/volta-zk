@@ -12,6 +12,8 @@ mod fase_d;
 mod phase_b;
 mod production;
 
+pub mod c7_fp3;
+
 /// B9 component only: no production pool or PCS admission.
 #[cfg(feature = "c71-bootstrap")]
 pub mod c71_bootstrap;
@@ -24,8 +26,8 @@ pub mod c71_lifetime;
 #[cfg(feature = "c71-b11")]
 pub mod c71_ea_lpn;
 
-#[cfg(all(test, feature = "c71-b11"))]
-mod c71_seed6;
+#[cfg(all(feature = "c71-b11", any(test, feature = "c71-seed6-reference")))]
+pub mod c71_seed6;
 
 pub use fase_d::{
     BatchLiftReport, CanonicalBatchLift, FaseDCapacityReport, FaseDError, FaseDParams,

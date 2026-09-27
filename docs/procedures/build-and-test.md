@@ -170,6 +170,15 @@ Transcript globale, raccordo al wrapper e trasporto autenticato restano aperti. 
 resta entro 60 s/2 GiB, un worker/thread,
 senza rete esterna. Conservare anche i filtri `c71_seed6::guard::tests`,
 `c71_seed6_equality`, `c71_seed6_tail_reservation` e `c71_ea_lpn::tests`.
+Per l'API CPU opt-in compilare anche `cargo test --offline --locked -j 1
+-p volta-pcg --features c71-seed6-reference --test c71_seed6_reference --no-run`,
+con gli stessi env/target assoluto e un job. Eseguire il binario esterno
+con un thread, entro 60 s/2 GiB: OS RNG, socketpair e sei righe, non inferenza.
+Conservare `cargo check --offline --locked -j 1 -p volta-pcg --features
+c71-seed6-reference --lib` e la regressione MAC `cargo test --offline
+--locked -j 1 -p volta-mac --lib c7_fp3 --no-run`, poi il filtro `c7_fp3`
+nel relativo binario, seriale entro gli stessi limiti. Non cambia il
+percorso di produzione o l'autorizzazione alla spesa.
 Per il ledger usare `tests/test_c71_pcg_trace.py`, i controlli response/getter
 e `seed6_guard_cggm`/`native_offsets_margin_and_fenced_release` in
 `tests/test_c71_arena_plan.py`, con gli stessi limiti per processo.

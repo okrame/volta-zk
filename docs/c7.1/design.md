@@ -1296,7 +1296,7 @@ cammino/beta/tag receiver. Il primo split è indipendente; con la convenzione
 le tre maschere originali per blocco, poi le sole code alimentano F_EQ.
 F_EQ possiede root/chiavi pendenti e solo il successo restituisce la
 capacità consumata dal [raccordo EA puntuale](preflight.md#ea-puntuale-dopo-accettazione-f_eq).
-Questo componente test-only riusa Acc/PuncAcc ed EAGen, restituisce MAC
+Questo componente sperimentale riusa Acc/PuncAcc ed EAGen, restituisce MAC
 base uno alla volta e respinge riuso/esaurimento. Per ogni riga,
 `m-k=Delta*sum_j(chi_j*sum_i(beta_i*[j>=i*2^h+alpha_i]))`:
 l'accumulatore è globale, non separato per albero. Prefissi cumulativi
@@ -1346,7 +1346,8 @@ precedente, senza un nuovo teorema di composizione. L'entry monouso
 riusa `Lifetime`: record sperimentale 5 fsync prima di RNG/header/OT,
 capacità legata a modello/sessione/canale/epoch in dominio Seed6 e borrow
 esclusivo dell'owner finché vive lo stato EA. Retry, rinnovo B12 e reopen
-sono respinti anche dopo un setup fallito. Il tipo 5 è solo test;
+sono respinti anche dopo un setup fallito. Il tipo 5 è ammesso nei test
+o nella feature opt-in `c71-seed6-reference`, non nel B12 ordinario;
 il dominio e il record 4 B12 restano invariati. Sono controlli runtime
 ridotti, non un nuovo lemma Lean: autenticazione del canale e store
 non-rollbackabile restano premesse del caller. Le riserve riusano ora
@@ -1359,6 +1360,14 @@ NoPeek della preparazione e accettazione completa restano obblighi del
 wrapper PCS/GKR, non scaricati dai digest fixture dei test. Owner/Audit
 sono conservati nel piano delle tre risposte, senza credito di stack
 compilato o picco fisico completo.
+L'entry pubblica del riferimento CPU usa soltanto OS RNG e restituisce
+pool opachi distinti prover/verifier, senza costruttori di stato o override
+del seed EA. `volta-mac::c7_fp3` ri-esporta le stesse definizioni pure ora
+in `volta-pcg::c7_fp3`: nessuna formula, convenzione di segno o premessa
+del prodotto cambia. Il lift B4/B5 respinto e i suoi controesempi restano
+nel modulo MAC, senza nuova ammissione. Questo evita una dipendenza
+circolare per il futuro bridge, non introduce produzione, fallback CPU,
+una nuova riduzione o un collegamento già positivo al verifier composto.
 Le coin dei test algebrici
 restano distinte dalla catena che esegue il protocollo nativo.
  Il getter numerico ridotto

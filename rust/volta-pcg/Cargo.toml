@@ -7,6 +7,7 @@ license.workspace = true
 [features]
 c71-bootstrap = ["dep:p521", "dep:sha3", "dep:zeroize"]
 c71-b11 = ["c71-bootstrap", "dep:aes"]
+c71-seed6-reference = ["c71-b11"]
 
 [dependencies]
 volta-field = { workspace = true }

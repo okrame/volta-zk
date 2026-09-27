@@ -1348,7 +1348,7 @@ finché i gate di costruzione restano aperti.
 
 ## Seed6 reale streaming e workspace
 
-L'[adapter test-only](../../rust/volta-pcg/src/c71_seed6/real.rs) collega
+L'[adapter sperimentale](../../rust/volta-pcg/src/c71_seed6/real.rs) collega
 handshake `C71S6v02`, direction 0/1, MR19 384, COPE AES-256, check K6 e
 compressione. Ogni correzione usa un buffer da 3.072 B; ogni sfida 48 B.
 Il verifier riceve tutte le correzioni canoniche prima di inviare le sfide,
@@ -1521,7 +1521,7 @@ range; lo stack crittografico e il picco completo non sono certificati.
 
 Evidenza: [25 controlli Rust e 27 Python/C++ su SHA pulita](evidence.md#seed6-guard-to-cggm-and-split-equality).
 
-Il [raccordo test-only](../../rust/volta-pcg/src/c71_seed6/cggm.rs) consuma
+Il [raccordo sperimentale](../../rust/volta-pcg/src/c71_seed6/cggm.rs) consuma
 `GuardAccepted` prima di generare c. Il sender campiona c0 in Fp3 con il
 sampler limitato esistente, calcola `k=c0-K(r0)` e percorre `(k,K(beta)-k)`;
 il receiver possiede solo valori/tag, correzioni e cammino privato, mai
@@ -1611,7 +1611,7 @@ rimane NO-GO multiblocco: il controllo t=1 non rilevava l'omissione dei
 blocchi precedenti. Il difetto è riprodotto sulla seconda riga del fixture
 t=2 e ora corretto con prefissi globali e confronto diretto con BAe.
 
-Il [consumer test-only](../../rust/volta-pcg/src/c71_seed6/expand.rs) riusa
+Il [consumer sperimentale](../../rust/volta-pcg/src/c71_seed6/expand.rs) riusa
 EAGen e Acc/PuncAcc esistenti. F_EQ ora possiede lo stato cGGM pendente:
 solo `Accepted<State>` permette la conversione, mentre un rifiuto distrugge
 lo stato trattenuto. Dopo il successo il sender conserva k/Delta e i
@@ -1692,7 +1692,7 @@ I vettori EAGen con seed prefissato restano soltanto test del sampler.
 ## Setup Seed6 su un solo canale
 
 Evidenza: [37 test Rust e 31 Python/C++](evidence.md#one-channel-seed6-setup).
-Il [driver test-only](../../rust/volta-pcg/src/c71_seed6/setup.rs) esegue
+Il [driver sperimentale](../../rust/volta-pcg/src/c71_seed6/setup.rs) esegue
 su un unico canale: seed principale, seed inverso, riserva disgiunta,
 guard, prima coin/cGGM, split, F_EQ trasportata e conversione EA. Nessun
 ruolo riceve i segreti peer. t/h/ell/capacità entrano nel digest del
@@ -1726,8 +1726,9 @@ resta quello della risposta, non un picco fisico completo.
 
 Questo chiude il percorso byte del setup ridotto, non autenticazione del
 canale, lifecycle completo, transcript del run, port accelerato,
-bridge al pool/proof canonico o composizione crittografica. Il modulo resta
-test-only; nessuna esecuzione canonica, GPU o spesa è autorizzata.
+bridge al pool/proof canonico o composizione crittografica. Il modulo è
+disponibile soltanto nei test o nella feature CPU opt-in descritta sotto;
+nessuna esecuzione canonica, GPU o spesa è autorizzata.
 
 ### Journal monouso del setup
 
@@ -1736,7 +1737,8 @@ Evidenza: [46 test Rust e 31 Python/C++](evidence.md#one-use-seed6-setup-journal
 L'entry `sender_once/receiver_once` riusa il journal `Lifetime`, non un
 secondo formato o lock. Il record sperimentale 5 prenota l'intera capacità
 EA prima di RNG/header/OT, con write+fsync: dopo errore, drop o successo
-non sono disponibili retry, rinnovo B12 o reopen. È ammesso solo nei test,
+non sono disponibili retry, rinnovo B12 o reopen. È ammesso solo nei test
+o nella feature `c71-seed6-reference`,
 per capacità multiple di tre fino a 70.778.880 righe. L'output possiede
 un borrow esclusivo del journal insieme allo stato EA; non può sopravvivere
 al suo owner né estrarre pubblicamente uno stato riutilizzabile.
@@ -1829,6 +1831,31 @@ non ne deriva un costo canonico completo o service-rate H100. Sono ancora
 aperti sorting canonico, stack/erasure compilati, NoPeek e accettazione
 del wrapper PCS/GKR, composizione e picco fisico.
 
+
+### Interfaccia CPU opt-in e algebra MAC condivisa
+
+La feature `volta-pcg/c71-seed6-reference`, disabilitata per default,
+espone soltanto `prover`, `verifier`, geometria validata e pool opachi
+con contesto pubblico, diagnostici, stop e riserva limitata. I costruttori
+usano OS RNG; non accettano seed/Delta o stato EA del caller. Gli entry
+di produzione non la chiamano e non esiste fallback automatico dalla GPU.
+L'owner continua a fornire canale autenticato e store non-rollbackabile;
+il callback deve completare Prepare NoPeek e verifica prima di restituire
+la ricevuta. Il segno base è ancora `m=k+Delta*x`; MAC/PCS usano `-Delta`.
+
+L'algebra Fp3 pura (tipi, transfer e prodotto) viene spostata senza cambiare
+le formule in `volta-pcg::c7_fp3`, e ri-esportata dai percorsi MAC originali.
+La ragione è concreta: PCG non può dipendere da MAC, che già dipende da
+PCG. Non si duplicano formule né si aggiunge un trait di callback.
+I lift B4/B5 respinti e i relativi test restano nel modulo MAC e mantengono
+i loro limiti scientifici. Le API MAC precedenti continuano a funzionare.
+
+Un test d'integrazione compilato come crate esterno usa la nuova API con
+OS RNG, esegue setup reale 25+6, riserva tre righe e verifica packing e
+transfer originali Fp3, poi stop/reopen reject. La ricevuta è un fixture,
+non una proof di inferenza. Sono invariati wire, heap dei pool e layout
+dei MAC; non si accredita un nuovo picco o runtime. Il wrapper PCS/GKR
+deve ancora usare questa interfaccia anziché il pool AES denso B12.
 
 ## Seed6: seal di completamento
 

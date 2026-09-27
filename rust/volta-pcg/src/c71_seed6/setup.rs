@@ -14,10 +14,94 @@ use zeroize::Zeroizing;
 const DOMAIN: &[u8] = b"VOLTA-C71-Seed6-setup-v1";
 
 #[derive(Clone, Copy)]
-struct Geometry {
+pub struct Geometry {
     blocks: usize,
     height: usize,
     weight: usize,
+}
+
+pub struct ProverPool<'lifetime>(Once<'lifetime, expand::Receiver>);
+pub struct VerifierPool<'lifetime>(Once<'lifetime, expand::Sender>);
+
+pub fn prover<'lifetime>(
+    store: &'lifetime mut Lifetime,
+    channel: impl Read + Write,
+    session: [u8; 32],
+    binding: [u8; 32],
+    geometry: Geometry,
+) -> io::Result<ProverPool<'lifetime>> {
+    receiver_once(store, channel, session, binding, geometry, &mut rand::rngs::OsRng)
+        .map(ProverPool)
+}
+
+pub fn verifier<'lifetime>(
+    store: &'lifetime mut Lifetime,
+    channel: impl Read + Write,
+    session: [u8; 32],
+    binding: [u8; 32],
+    geometry: Geometry,
+) -> io::Result<VerifierPool<'lifetime>> {
+    sender_once(store, channel, session, binding, geometry, &mut rand::rngs::OsRng)
+        .map(VerifierPool)
+}
+
+impl ProverPool<'_> {
+    pub fn fixed_run_context(&self) -> io::Result<(ModelBinding, [u8; 32], Attempt)> {
+        self.0.fixed_run_context()
+    }
+
+    pub fn remaining_fp3(&self) -> usize {
+        self.0.store.remaining_fp3()
+    }
+
+    pub fn audits(&self) -> &[Audit; 3] {
+        &self.0.audits
+    }
+
+    pub fn stop(&mut self) {
+        self.0.stop();
+    }
+
+    pub fn attempt<Value>(
+        &mut self,
+        full_fp3: usize,
+        consumer: impl FnOnce(
+            Attempt,
+            &mut dyn Iterator<Item = io::Result<Zeroizing<[u64; 4]>>>,
+        ) -> io::Result<(Value, Option<[u8; 32]>)>,
+    ) -> io::Result<Value> {
+        self.0.attempt(full_fp3, consumer)
+    }
+}
+
+impl VerifierPool<'_> {
+    pub fn fixed_run_context(&self) -> io::Result<(ModelBinding, [u8; 32], Attempt)> {
+        self.0.fixed_run_context()
+    }
+
+    pub fn remaining_fp3(&self) -> usize {
+        self.0.store.remaining_fp3()
+    }
+
+    pub fn audits(&self) -> &[Audit; 3] {
+        &self.0.audits
+    }
+
+    pub fn stop(&mut self) {
+        self.0.stop();
+    }
+
+    pub fn attempt<Value>(
+        &mut self,
+        full_fp3: usize,
+        consumer: impl FnOnce(
+            Attempt,
+            &mut dyn Iterator<Item = io::Result<Zeroizing<[u64; 3]>>>,
+            volta_field::Fp3,
+        ) -> io::Result<(Value, Option<[u8; 32]>)>,
+    ) -> io::Result<Value> {
+        self.0.attempt(full_fp3, consumer)
+    }
 }
 
 struct Once<'lifetime, State> {
@@ -129,7 +213,15 @@ fn rejected(_: Error) -> io::Error {
 }
 
 impl Geometry {
-    fn capacity(self) -> io::Result<usize> {
+    pub fn new(blocks: usize, height: usize, weight: usize) -> io::Result<Self> {
+        let geometry = Self { blocks, height, weight };
+        if geometry.capacity()? % 3 != 0 {
+            return Err(invalid("incomplete Fp3 capacity"));
+        }
+        Ok(geometry)
+    }
+
+    pub fn capacity(self) -> io::Result<usize> {
         if self.blocks == 0
             || self.blocks > 675
             || self.height == 0

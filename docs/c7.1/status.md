@@ -534,6 +534,11 @@ globali. Il confronto reale BAe a sei righe usa 41/36 SHAKE nei due ruoli
 anziché 60 sender puntuali. Il controllo al confine 4.096+5/3 non anticipa
 la riserva successiva. È esecuzione CPU ridotta, non port CUDA o costo
 canonico completo; sorting, stack compilato e wrapper della proof restano aperti.
+Il pool è ora accessibile da altri crate solo con la feature CPU opt-in
+`c71-seed6-reference`: conserva owner, OS RNG e limiti di riserva, senza
+esporre seed/Delta scelti dal caller. L'algebra Fp3 condivisa è spostata
+sotto MAC con reexport compatibili, evitando il ciclo PCG↔MAC. Il test
+esterno esegue transfer Fp3 originale; non è ancora la proof composta.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 correzioni, coin e share ora attraversano due endpoint indipendenti tramite

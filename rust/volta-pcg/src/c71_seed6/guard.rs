@@ -3,17 +3,17 @@
 //! component does not implement the outer FS, seal, cGGM or F_EQ lifecycle.
 use super::real::{RealProverOutput, RealVerifierOutput};
 use crate::c71_ea_lpn::{sample_h_limbs, Work};
-use sha3::digest::{ExtendableOutput, Update, XofReader};
-use sha3::Shake256;
-use volta_field::{Fp, Fp3, P};
-use volta_mac::c7_fp3::{
+use crate::c7_fp3::{
     c7_fp3_product_batch_prover, c7_fp3_product_batch_verify, C7Fp3ProverAuthed as Auth,
     C7Fp3VerifierKey as Key,
 };
+use sha3::digest::{ExtendableOutput, Update, XofReader};
+use sha3::Shake256;
+use volta_field::{Fp, Fp3, P};
 use zeroize::Zeroize;
 
 #[path = "cggm.rs"]
-mod cggm;
+pub(in crate::c71_seed6) mod cggm;
 
 const BASIS: [Fp3; 3] =
     [Fp3::ONE, Fp3::new(Fp::ZERO, Fp::ONE, Fp::ZERO), Fp3::new(Fp::ZERO, Fp::ZERO, Fp::ONE)];
@@ -270,6 +270,7 @@ pub(super) fn corrections(
 
 /// Reduced integration check with the local sealed-prefix guard challenge.
 /// The outer global transcript and durable lifecycle remain separate.
+#[cfg(test)]
 pub(super) fn check_real_seed(prover: RealProverOutput, verifier: RealVerifierOutput) {
     let d = corrections(&prover, 2, &[17], &[2]).unwrap();
     let p = ProverGuard::freeze(prover, 1, 2, d.clone()).unwrap();

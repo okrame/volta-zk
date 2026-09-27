@@ -14,7 +14,7 @@ const DOMAIN: &[u8] = b"VOLTA-C71-Seed6-cggm-corrections-v1";
 mod expand;
 
 #[path = "setup.rs"]
-mod setup;
+pub(in crate::c71_seed6) mod setup;
 
 struct SenderPending {
     guard: GuardAccepted,
@@ -336,6 +336,7 @@ impl ReceiverPending {
     }
 }
 
+#[cfg(test)]
 pub(super) fn check_real(prover: ProverFinished, verifier: GuardAccepted) {
     let nonce = verifier.seed.binding;
     let (wire, sender) = verifier.cggm(nonce, &mut rand::thread_rng()).unwrap();

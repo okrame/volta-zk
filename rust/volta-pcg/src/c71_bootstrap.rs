@@ -54,7 +54,7 @@ pub(super) enum Suite {
     B11,
     #[cfg(feature = "c71-b11")]
     B12FixedRun,
-    #[cfg(all(test, feature = "c71-b11"))]
+    #[cfg(all(feature = "c71-b11", any(test, feature = "c71-seed6-reference")))]
     Seed6(u8),
 }
 type Result<T> = io::Result<T>;
@@ -82,7 +82,7 @@ impl Context {
             Suite::B11 => (b"C71B11v1", 2u32, 207, 9, OTS, None),
             #[cfg(feature = "c71-b11")]
             Suite::B12FixedRun => (b"C71B12F1", 3u32, MAX_FIXED_RUN_ROWS, 9, OTS, None),
-            #[cfg(all(test, feature = "c71-b11"))]
+            #[cfg(all(feature = "c71-b11", any(test, feature = "c71-seed6-reference")))]
             Suite::Seed6(direction) => {
                 if direction > 1 {
                     return Err(invalid("Seed6 direction differs"));

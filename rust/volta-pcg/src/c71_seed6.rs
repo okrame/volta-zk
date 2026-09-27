@@ -1,8 +1,8 @@
-//! Test-only native boundary for the selected C7.1 Fp6 seed candidate.
+//! Experimental CPU boundary for the selected C7.1 Fp6 seed candidate.
 //!
 //! This checks a complete K6 MAC relation with six independent mask rows and
 //! only then samples the E-linear compression map into Fp3. It deliberately
-//! has no production entry. The reduced real adapter binds a suite handshake,
+//! has no production entry. The opt-in real adapter binds a suite handshake,
 //! 384 MR19 OTs and streamed AES-COPE. Guard, opposite-role equality and
 //! journalled EA windows are connected locally; full proof composition is open.
 
@@ -10,6 +10,8 @@ mod coins;
 mod equality;
 mod guard;
 mod real;
+
+pub use guard::cggm::setup::{prover, verifier, Geometry, ProverPool, VerifierPool};
 
 use p521::elliptic_curve::subtle::ConstantTimeEq;
 use volta_field::{Fp, Fp3};

@@ -92,7 +92,7 @@ impl State {
                 self.setups = 1;
                 self.rows = count;
             }
-            #[cfg(test)]
+            #[cfg(any(test, feature = "c71-seed6-reference"))]
             5 if self.setups == 0
                 && self.attempts == 0
                 && setup == 1
@@ -318,7 +318,7 @@ impl Lifetime {
         )
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "c71-seed6-reference"))]
     pub(crate) fn begin_seed6(
         &mut self,
         session: Digest,

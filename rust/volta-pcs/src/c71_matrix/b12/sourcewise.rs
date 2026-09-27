@@ -53,7 +53,7 @@ impl PowerBlocks {
         }
     }
 
-    fn next(&self, amplitudes: &mut [E]) -> Vec<E> {
+    fn numerator(&self, amplitudes: &[E]) -> Vec<E> {
         assert_eq!(amplitudes.len(), self.advances.len());
         let mut numerators: Vec<_> = amplitudes.iter().map(|&scale| vec![scale]).collect();
         numerators.resize(self.denominators[0].len(), vec![E::ZERO]);
@@ -76,7 +76,11 @@ impl PowerBlocks {
         }
         let mut numerator = numerators.pop().unwrap();
         numerator.resize(2 * self.size, E::ZERO);
-        let mut spectrum = self.dft.dft_algebra(numerator);
+        numerator
+    }
+
+    fn next(&self, amplitudes: &mut [E]) -> Vec<E> {
+        let mut spectrum = self.dft.dft_algebra(self.numerator(amplitudes));
         for (value, &factor) in spectrum.iter_mut().zip(&self.inverse_spectrum) {
             *value *= factor;
         }
@@ -586,6 +590,63 @@ mod tests {
 
         assert!(catch_unwind(AssertUnwindSafe(|| stale_s1_getter(0))).is_err());
         s2.release().unwrap();
+    }
+
+    #[test]
+    fn c71_b12_native_power_fft_vectors() {
+        let terms: Vec<_> = (0..17)
+            .map(|index| {
+                let point = match index % 4 {
+                    0 => E::ZERO,
+                    1 => E::ONE,
+                    _ => E::new([
+                        Goldilocks::new(index + 3),
+                        Goldilocks::new(7),
+                        Goldilocks::new(11),
+                    ]),
+                };
+                let scale =
+                    E::new([Goldilocks::new(index + 13), Goldilocks::new(17), Goldilocks::new(19)]);
+                (point, scale)
+            })
+            .collect();
+        let planes = |values: &[E]| {
+            (0..3)
+                .flat_map(|limb| {
+                    values.iter().map(move |value| {
+                        <E as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(value)
+                            [limb]
+                            .as_canonical_u64()
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+        for side in [2_usize, 4, 8, 16] {
+            let size = side * side / 2;
+            let powers = PowerBlocks::new(&terms, size);
+            let mut amplitudes: Vec<_> = terms.iter().map(|&(_, scale)| scale).collect();
+            for block in 0..3 {
+                let numerator = powers.numerator(&amplitudes);
+                let values = powers.next(&mut amplitudes);
+                for (offset, value) in values.iter().enumerate() {
+                    let direct: E = terms
+                        .iter()
+                        .map(|&(point, scale)| {
+                            scale * point.exp_u64((block * size + offset) as u64)
+                        })
+                        .sum();
+                    assert_eq!(*value, direct);
+                }
+                println!(
+                    "C71_NATIVE_POWER {}",
+                    serde_json::json!({
+                        "side": side, "block": block, "basis": "v^3-v-1",
+                        "numerator": planes(&numerator), "inverse": planes(&powers.inverse_spectrum),
+                        "expected": planes(&values),
+                    })
+                );
+            }
+        }
     }
 
     #[test]

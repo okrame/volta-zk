@@ -108,6 +108,17 @@ autorizzazione GPU separata: compilarlo non autorizza ad avviarlo.
 Il riferimento materializza coefficienti, spettri e risultati piccoli;
 non esegue la PCS canonica né un getter streaming completo.
 
+Per il confine Pow P/Q compilare il filtro
+`c71_b12_native_power_fft_vectors` e impostare `C71_PCS_TEST_BINARY`
+al binario risultante. Eseguire `tests/test_c71_power_native.py`, insieme
+ai controlli remainder/FFT, entro 60 s/2 GiB. Il checker passa dodici
+fixture native al modo `--host-power-native`, con header
+`C71_POWER_P3_V1`: è la base nativa `v^3-v-1`, non la base MAC `u^3-2`.
+Controlla tre blocchi consecutivi, alterazioni e input malformati.
+`--gpu-power-native` è soltanto compilabile localmente, non autorizzato
+all'esecuzione. Ripetere i filtri rational/adaptive/WHIR/streaming;
+questa fixture non cambia cap o garanzie del protocollo.
+
 ## Rust and resource limits
 
 Il corpo nativo usa ora `ExactSizeIterator`: il positivo streaming passa

@@ -321,6 +321,22 @@ Il getter delle generazioni retained conserva la gestione dinamica del
 prefisso originale; questo raccordo non dimostra source-uniformity della
 PCS completa, un ledger canonico o un nuovo lemma Lean.
 
+Il confine P/Q Rust/C++ usa numeratori e spettri inversi prodotti da
+`PowerBlocks`, in tre piani di coordinate. Il tipo E nativo è
+`Fp[v]/(v^3-v-1)`, distinto dalla rappresentazione MAC `Fp[u]/(u^3-2)`:
+non si reinterpretano le coordinate con il moltiplicatore u già presente.
+Il prodotto pointwise dedicato in base v usa sei prodotti base; FFT e
+inversa normalizzata restano le stesse per ciascun piano. Il checker
+limitato a B=2/8/32/128 confronta tre blocchi consecutivi con il consumer
+nativo e la somma diretta delle potenze. Il modo CUDA corrispondente
+richiede un'autorizzazione di esecuzione separata.
+La sua allocazione nominata è `8*(2B)*8` byte: tre piani di lavoro,
+tre dello spettro inverso e due tabelle twiddle. Copia H2D tutti questi
+dati e D2H tutti i `3*(2B)` elementi, anche la metà non restituita dal
+consumer. Numeratore, spettro, atteso, twiddle e risultato host, setup
+nativo e runtime CUDA si aggiungono: non è il picco completo né una
+misura H100. Il setup/cap canonico e l'integrazione GPU restano aperti.
+
 Nella riduzione per blocchi, l'inverso della monica rovesciata e il suo
 spettro sono comuni alle colonne;
 ogni blocco usa solo la metà alta per il quoziente, evitando alias ciclici.

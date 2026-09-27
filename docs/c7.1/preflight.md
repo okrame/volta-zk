@@ -2055,6 +2055,17 @@ non sono compresi nel solo `named_bytes`. Il getter retained mantiene
 il prefisso dinamico. Guard a 16 variabili e blocco 256 non ammettono
 il cap canonico 2^21, source-uniformity completa o nuovi tempi/picchi.
 
+Il checker P/Q Rust/C++ ora accetta numeratori e spettri nativi in base
+`v^3-v-1`, non nella base MAC `u^3-2`. Dodici fixture coprono tre blocchi
+consecutivi a B=2/8/32/128; il prodotto pointwise usa sei prodotti base
+per elemento Fp3 e la normalizzazione altri tre per frequenza.
+Il modo CUDA usa le stesse FFT e un solo kernel di prodotto dedicato;
+compilarlo non equivale a eseguirlo. I buffer device nominati occupano
+`8*(2B)*8` byte, con entrambe le tabelle twiddle vive, più storage host,
+setup nativo e runtime. Il D2H comprende tutti i tre piani lunghi 2B,
+non solo il blocco utile. Nessun riuso/setup/cap canonico, picco completo
+o credito hardware deriva da questo confine ridotto.
+
 Il [callback RS del replay](evidence.md#native-fft-remainder-in-replay-openings) ora usa riduzione FFT a blocchi invece di
 Horner sull'intera sorgente per ciascuna query. Il riferimento mantiene
 pad e ordine originali, batch fino a 1.024 richieste e una lettura di ogni

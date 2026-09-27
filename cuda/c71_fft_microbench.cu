@@ -75,6 +75,24 @@ HD uint64_t fp_pow(uint64_t base, uint64_t exponent) {
     return out;
 }
 
+struct P3Value {
+    uint64_t c0, c1, c2;
+};
+
+HD inline P3Value p3_mul6(P3Value left, P3Value right) {
+    const uint64_t diagonal0 = fp_mul(left.c0, right.c0);
+    const uint64_t diagonal1 = fp_mul(left.c1, right.c1);
+    const uint64_t diagonal2 = fp_mul(left.c2, right.c2);
+    const uint64_t mixed01 = fp_sub(fp_sub(
+        fp_mul(fp_add(left.c0, left.c1), fp_add(right.c0, right.c1)), diagonal0), diagonal1);
+    const uint64_t mixed02 = fp_sub(fp_sub(
+        fp_mul(fp_add(left.c0, left.c2), fp_add(right.c0, right.c2)), diagonal0), diagonal2);
+    const uint64_t mixed12 = fp_sub(fp_sub(
+        fp_mul(fp_add(left.c1, left.c2), fp_add(right.c1, right.c2)), diagonal1), diagonal2);
+    return {fp_add(diagonal0, mixed12), fp_add(fp_add(mixed01, mixed12), diagonal2),
+            fp_add(fp_add(mixed02, diagonal1), diagonal2)};
+}
+
 HD inline uint64_t splitmix64(uint64_t x) {
     x += 0x9E37'79B9'7F4A'7C15ULL;
     x = (x ^ (x >> 30)) * 0xBF58'476D'1CE4'E5B9ULL;
@@ -400,22 +418,26 @@ bool remainder_host_check() {
 std::vector<uint64_t> remainder_columns_gpu(
     size_t side, size_t columns, size_t coefficients, const std::vector<uint64_t>& source,
     const std::pair<std::vector<uint64_t>, std::vector<uint64_t>>& factors);
+std::vector<uint64_t> power_block_gpu(
+    size_t side, const std::vector<uint64_t>& numerator,
+    const std::vector<uint64_t>& inverse_spectrum);
 #endif
 
+bool read_field(uint64_t& value) {
+    std::string token;
+    if (!(std::cin >> token)) return false;
+    const auto parsed = std::from_chars(token.data(), token.data() + token.size(), value);
+    return parsed.ec == std::errc{} && parsed.ptr == token.data() + token.size() && value < P;
+}
+
 int native_remainder_check(bool gpu = false) {
-    auto read = [](uint64_t& value) {
-        std::string token;
-        if (!(std::cin >> token)) return false;
-        const auto parsed = std::from_chars(token.data(), token.data() + token.size(), value);
-        return parsed.ec == std::errc{} && parsed.ptr == token.data() + token.size() && value < P;
-    };
     std::string schema;
     uint64_t side, columns, coefficients, queries;
     if (!(std::cin >> schema) || schema != "C71_REMAINDER_V1" ||
-        !read(side) || side < 2 || side > 16 || (side & (side - 1)) ||
-        !read(columns) || !columns || columns > 6 ||
-        !read(coefficients) || !coefficients || coefficients > 256 ||
-        !read(queries) || !queries || queries > side * side / 2) return 2;
+        !read_field(side) || side < 2 || side > 16 || (side & (side - 1)) ||
+        !read_field(columns) || !columns || columns > 6 ||
+        !read_field(coefficients) || !coefficients || coefficients > 256 ||
+        !read_field(queries) || !queries || queries > side * side / 2) return 2;
     const size_t cap = side * side / 2;
     std::pair<std::vector<uint64_t>, std::vector<uint64_t>> factors{
         std::vector<uint64_t>(2 * cap), std::vector<uint64_t>(2 * cap)};
@@ -423,7 +445,7 @@ int native_remainder_check(bool gpu = false) {
         expected(columns * cap), rows(queries * columns);
     for (auto* values : {&factors.first, &factors.second, &source, &points, &expected, &rows})
         for (auto& value : *values)
-            if (!read(value)) return 2;
+            if (!read_field(value)) return 2;
     if (std::cin >> schema) return 2;
     std::vector<uint64_t> result;
     if (gpu) {
@@ -458,6 +480,66 @@ int native_remainder_check(bool gpu = false) {
               << ",\"columns\":" << columns << ",\"coefficients_per_column\":" << coefficients
               << ",\"queries\":" << queries << ",\"native_remainder_and_rows\":"
               << (matched ? "true" : "false") << "}\n";
+    return matched ? 0 : 1;
+}
+
+std::vector<uint64_t> power_block_host(
+    size_t side, std::vector<uint64_t> values, const std::vector<uint64_t>& inverse_spectrum) {
+    const size_t length = side * side;
+    for (bool inverse : {false, true}) {
+        const uint64_t omega = fp_pow(root_of_unity(length), inverse ? P - 2 : 1);
+        for (size_t limb = 0; limb < 3; ++limb) {
+            std::vector<uint64_t> current(values.begin() + limb * length, values.begin() + (limb + 1) * length);
+            five_pass_fft(current, side, omega);
+            if (inverse) normalize_host(current, length);
+            std::copy(current.begin(), current.end(), values.begin() + limb * length);
+        }
+        if (!inverse)
+            for (size_t index = 0; index < length; ++index) {
+                const auto product = p3_mul6(
+                    {values[index], values[length + index], values[2 * length + index]},
+                    {inverse_spectrum[index], inverse_spectrum[length + index], inverse_spectrum[2 * length + index]});
+                values[index] = product.c0;
+                values[length + index] = product.c1;
+                values[2 * length + index] = product.c2;
+            }
+    }
+    return values;
+}
+
+int native_power_check(bool gpu = false) {
+    std::string schema;
+    uint64_t side;
+    if (!(std::cin >> schema) || schema != "C71_POWER_P3_V1" || !read_field(side)
+        || side < 2 || side > 16 || (side & (side - 1))) return 2;
+    const size_t length = side * side, cap = length / 2;
+    std::vector<uint64_t> numerator(3 * length), inverse(3 * length), expected(3 * cap);
+    for (auto* values : {&numerator, &inverse, &expected})
+        for (auto& value : *values)
+            if (!read_field(value)) return 2;
+    if (std::cin >> schema) return 2;
+    std::vector<uint64_t> result;
+    if (gpu) {
+#ifdef __CUDACC__
+        result = power_block_gpu(side, numerator, inverse);
+#else
+        return 2;
+#endif
+    } else {
+        result = power_block_host(side, numerator, inverse);
+    }
+    const auto basis_cube = p3_mul6({0, 1, 0}, {0, 0, 1});
+    bool matched = basis_cube.c0 == 1 && basis_cube.c1 == 1 && basis_cube.c2 == 0;
+    for (size_t limb = 0; limb < 3; ++limb)
+        for (size_t index = 0; index < cap; ++index)
+            matched = matched && result[limb * length + index] == expected[limb * cap + index];
+    std::cout << "{\"schema\":\"volta-c71-native-power-v1\",\"basis\":\"v^3-v-1\""
+              << ",\"gpu_execution\":" << (gpu ? "true" : "false") << ",\"credit\":false"
+              << ",\"cap\":" << cap << ",\"native_power_block\":" << (matched ? "true" : "false")
+              << ",\"pointwise_fp3_products\":" << length
+              << ",\"pointwise_base_products\":" << 6 * length
+              << ",\"inverse_normalization_base_products\":" << 3 * length
+              << ",\"planned_device_bytes\":" << 8 * length * sizeof(uint64_t) << "}\n";
     return matched ? 0 : 1;
 }
 
@@ -848,6 +930,46 @@ bool gpu_remainder_correctness() {
         == expected;
 }
 
+__global__ void power_factor_kernel(uint64_t* values, const uint64_t* factor, size_t length) {
+    const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index >= length) return;
+    const auto product = p3_mul6(
+        {values[index], values[length + index], values[2 * length + index]},
+        {factor[index], factor[length + index], factor[2 * length + index]});
+    values[index] = product.c0;
+    values[length + index] = product.c1;
+    values[2 * length + index] = product.c2;
+}
+
+std::vector<uint64_t> power_block_gpu(
+    size_t side, const std::vector<uint64_t>& numerator,
+    const std::vector<uint64_t>& inverse_spectrum) {
+    const size_t length = side * side;
+    const int log2_side = static_cast<int>(std::log2(side));
+    std::vector<uint64_t> forward(length), inverse(length), result(3 * length);
+    const uint64_t omega = root_of_unity(length), reverse = fp_pow(omega, P - 2);
+    for (size_t index = 0; index < length; ++index) {
+        forward[index] = fp_pow(omega, index);
+        inverse[index] = fp_pow(reverse, index);
+    }
+    uint64_t* values = nullptr;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&values), 8 * length * sizeof(uint64_t)));
+    uint64_t* factor = values + 3 * length;
+    uint64_t* forward_twiddles = factor + 3 * length;
+    uint64_t* inverse_twiddles = forward_twiddles + length;
+    CUDA_CHECK(cudaMemcpy(values, numerator.data(), numerator.size() * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(factor, inverse_spectrum.data(), inverse_spectrum.size() * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(forward_twiddles, forward.data(), length * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(inverse_twiddles, inverse.data(), length * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    launch_five_pass(values, forward_twiddles, side, log2_side, 3);
+    power_factor_kernel<<<(length + BLOCK - 1) / BLOCK, BLOCK>>>(values, factor, length);
+    CUDA_CHECK(cudaGetLastError());
+    launch_five_pass(values, inverse_twiddles, side, log2_side, 3, 1, true);
+    CUDA_CHECK(cudaMemcpy(result.data(), values, result.size() * sizeof(uint64_t), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaFree(values));
+    return result;
+}
+
 template <typename Launch>
 double median_ms(int reps, Launch launch) {
     cudaEvent_t begin, end;
@@ -1049,6 +1171,8 @@ int gpu_bench(int log2_m, size_t batch, int reps, bool odd, bool inverse = false
 }  // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--host-power-native")
+        return native_power_check();
     if (argc == 2 && std::string(argv[1]) == "--host-remainder-native")
         return native_remainder_check();
     if (argc == 3 && std::string(argv[1]) == "--host-check")
@@ -1060,6 +1184,8 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--host-check-odd-inverse")
         return host_check_odd(std::stoi(argv[2]), true);
 #ifdef __CUDACC__
+    if (argc == 2 && std::string(argv[1]) == "--gpu-power-native")
+        return native_power_check(true);
     if (argc == 2 && std::string(argv[1]) == "--gpu-remainder-native")
         return native_remainder_check(true);
     if (argc == 5 && std::string(argv[1]) == "--gpu")
@@ -1071,9 +1197,9 @@ int main(int argc, char** argv) {
     if (argc == 5 && std::string(argv[1]) == "--gpu-odd-inverse")
         return gpu_bench(std::stoi(argv[2]), std::stoull(argv[3]), std::stoi(argv[4]), true, true);
 #endif
-    std::cerr << "usage: " << argv[0] << " --host-check[-odd][-inverse] LOG2_M | --host-remainder-native < FIXTURE";
+    std::cerr << "usage: " << argv[0] << " --host-check[-odd][-inverse] LOG2_M | --host-remainder-native < FIXTURE | --host-power-native < FIXTURE";
 #ifdef __CUDACC__
-    std::cerr << " | --gpu[-odd][-inverse] LOG2_M BATCH REPS | --gpu-remainder-native < FIXTURE";
+    std::cerr << " | --gpu[-odd][-inverse] LOG2_M BATCH REPS | --gpu-remainder-native < FIXTURE | --gpu-power-native < FIXTURE";
 #endif
     std::cerr << "\n";
     return 2;

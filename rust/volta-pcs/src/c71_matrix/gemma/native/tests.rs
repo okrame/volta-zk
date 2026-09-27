@@ -361,7 +361,7 @@ fn c71_b12_native_changed_predecessor_final_kv_getter_cannot_promote_continuatio
 }
 
 #[test]
-fn c71_b12_native_ordered_prepare_owns_original_source_and_rejects_continuation() {
+fn c71_b12_native_ordered_prepare_owns_original_source_and_checks_history() {
     let profile = Arc::new(Profile::small(0).unwrap());
     let model = Arc::new(Installed::new(&profile, weights(&profile)).unwrap());
     let dense = Snapshot::prepare(&profile, &model, &[], 1).unwrap();
@@ -379,7 +379,16 @@ fn c71_b12_native_ordered_prepare_owns_original_source_and_rejects_continuation(
     assert!(OrderedAux::prepare(profile, model.clone(), &[], 2).is_err());
     let next = Arc::new(Profile::small(1).unwrap());
     assert!(OrderedAux::prepare(next.clone(), model.clone(), &[], 0).is_err());
-    assert!(OrderedAux::prepare(next, model, &[prepared], 0).is_err());
+    let expected = Snapshot::prepare(&next, &model, &[dense], 0).unwrap();
+    let continuation = OrderedAux::prepare(next, model, &[prepared], 0).unwrap();
+    assert_eq!(continuation.tokens(), expected.tokens);
+    for index in 0..1usize << DOMAIN_A.config().unwrap().num_variables {
+        assert_eq!(
+            continuation.model().byte(index),
+            expected.source.weights.get(index).copied().unwrap_or(0) as u8,
+            "continuation byte={index}"
+        );
+    }
 }
 
 // Same mandatory runner/verifier, but A exists only behind ordered replay.
@@ -402,7 +411,7 @@ fn c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs() {
     assert!(prover.pending.is_none());
     assert_eq!(prover.accepted.len(), 1);
     let cursor = prover.state.cursor;
-    assert!(prover.prepare_response(0, [174; 32]).is_err());
+    assert!(prover.prepare_response(2, [174; 32]).is_err());
     assert!(!prover.state.live && prover.pending.is_none());
     assert_eq!(prover.state.cursor, cursor);
     assert_eq!(prover.accepted.len(), 1);

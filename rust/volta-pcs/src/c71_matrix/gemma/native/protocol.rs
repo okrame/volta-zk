@@ -413,7 +413,7 @@ fn ordered_work(_reader: &ordered::Reader, _phase: &str) {
         "C71_INTEGRATED_GETTER {}",
         serde_json::json!({
             "phase":_phase,"work":_reader.take_work().unwrap(),
-            "scope":"O0 reduced original numerical source; CPU work, not HBM or H100 time"
+            "scope":"reduced original numerical source; CPU work, not HBM or H100 time"
         })
     );
 }
@@ -425,10 +425,8 @@ impl Auxiliary for OrderedAux {
         old: &[Self],
         prompt: u32,
     ) -> Result<Self, String> {
-        if !old.is_empty() {
-            return Err("ordered native continuation is not implemented".into());
-        }
-        let reader = ordered::Reader::prepare(profile, weights, prompt)?;
+        let previous = old.iter().map(|snapshot| snapshot.reader.clone()).collect::<Vec<_>>();
+        let reader = ordered::Reader::prepare(profile, weights, &previous, prompt)?;
         ordered_work(&reader, "prepare_before_commit");
         let coins = fresh_pcs_coins()?;
         let getter = reader.clone();

@@ -1393,8 +1393,11 @@ sulla sorgente, senza una seconda macchina di accettazione. W e i profili
 immutabili sono condivisi con `Arc`, non copiati nel getter. Il nuovo
 preparatore ordinato valida entrambi i token prima del commitment, poi
 usa coin PCS freschi del sistema, separati dai MAC e dal seed EA.
-Rifiuta esplicitamente O>0 o predecessori non vuoti: non importa ricevute
-né inventa una continuazione. Il positivo runtime ordinato/Seed6 a ell=2
+La continuazione legge i reader dal solo registro privato accettato e
+condivide tramite Arc i loro KV Frozen, non i cut/cache dei predecessori.
+Controlla cardinalità, ordine, root W e profilo semantico prima del replay;
+non importa ricevute o KV dal certificato. I controlli numerici O=0/2/4
+non sono tre proof ordinate accettate. Il positivo runtime ordinato/Seed6 a ell=2
 verifica correttezza ridotta, non sostituisce ell=11 selezionato; gli owner Arc
 non danno credito al picco canonico o a un bound dello stack compilato.
 Le coin dei test algebrici

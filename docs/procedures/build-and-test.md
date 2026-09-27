@@ -81,7 +81,12 @@ ideale non sostituisce il collegamento ai pool reali.
 Per il preparatore ordinato comune aggiungere
 `c71_b12_native_ordered_prepare` e riusare il positivo streaming seguente:
 ora attraversa Prepare, pending e promozione originali, con coin PCS OS
-e MAC ideali; respinge la continuazione O>0 non implementata. Eseguire
+e MAC ideali; respinge un prompt invalido senza cambiare il predecessore.
+Per la storia numerica aggiungere i filtri separati
+`c71_b12_ordered_reader_history`, `c71_b12_native_ordered_bytes` e
+`c71_b12_ordered_sourcewise_o0`, `c71_b12_ordered_sourcewise_o2`,
+`c71_b12_ordered_sourcewise_o4`. Confrontano O=0/2/4 e il padding D12,
+non tre proof ordinate accettate. Eseguire
 anche `c71_b12_native_consistent_inference`,
 `c71_b12_native_changed_predecessor` e `c71_joint_inference_changed_last`
 per gli owner W/profilo condivisi, sempre separatamente entro 60 s/2 GiB.
@@ -121,7 +126,8 @@ e `--test-threads=1` per filtro. Con `C71_INTEGRATED_TRACE=1 --nocapture`
 il positivo emette i contatori esistenti di GKR/lookup e i confini disgiunti
 del getter; `c71_response_trace.reduced_joint_trace` controlla il ledger.
 Non sono conteggi canonici completi, HBM o tempo H100. Il nuovo reader
-è O=0: il test storico a tre tentativi continua a coprire il percorso denso.
+ha storia numerica O=0/2/4; il test storico a tre tentativi continua a
+coprire il percorso denso, non tre accettazioni ordinate.
 Per il CUDA usare il controllo host preesistente, che ora verifica anche
 main-cell e fold/coeff MSB fusi, e compilazione statica `sm_90`; nessuna
 esecuzione GPU è autorizzata da questa procedura.

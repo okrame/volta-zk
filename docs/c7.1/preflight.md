@@ -1911,13 +1911,13 @@ macchina pending/accepted. Il reader ordinato O=0 non è più un tipo
 definito soltanto nel test: il suo Prepare condivide W/profilo immutabili
 tramite Arc, valida il replay prima della root e riusa `fresh_pcs_coins`
 con OS RNG, senza accesso ai MAC. Snapshot resta la rappresentazione del
-positivo Seed6 registrato sopra. Il preparatore ordinato respinge O>0 e
-predecessori non vuoti finché la continuazione non è collegata al registro.
+positivo Seed6 registrato sopra. La continuazione ora prende i reader dal
+proprio array accepted, senza importare root, KV o ricevute dal certificato.
 Condividere gli owner evita copie delle sorgenti, ma aggiunge metadati e
 refcount CPU; non è una misura del picco fisico né un risparmio canonico.
 Il positivo ordinato ideale ora attraversa Prepare, pending e promozione
 comuni, senza percorso speciale o coin PCS prefissati del test; il
-tentativo successivo O>0 termina senza modificare il predecessore accettato.
+tentativo successivo con prompt invalido termina senza modificare il predecessore accettato.
 Il confronto del nuovo Prepare controlla ogni byte contro Snapshot originale.
 
 Passa anche la [proof congiunta con reader ordinato e Seed6 reale](evidence.md#ordered-source-with-real-seed6) a
@@ -1926,7 +1926,13 @@ comune ai due journal, senza Snapshot/A densi. Il run su SHA pulita termina
 in 47,43 s entro 60 s/2 GiB. I test reali densi e il profilo canonico
 mantengono ell=11: questo ridimensionamento serve soltanto al controllo
 CPU locale e non trasferisce il bound crittografico del profilo selezionato.
-Non è ancora O>0 ordinato, run AES a tre tentativi, Γ reale o picco completo.
+La continuazione numerica O=2/4 condivide soltanto i KV Frozen dei reader
+precedenti; i loro owner accettati conservano ancora i propri cut/cache PCS.
+I controlli confrontano ogni byte D12 e tutti i KV, incluso il token finale,
+e respingono cardinalità, ordine e installazione W differenti. Il getter
+grezzo mantiene il dominio Boolean minimo; il reader PCS aggiunge il
+padding pubblico a D12. Non sono tre proof ordinate accettate, un run AES
+a tre tentativi, Γ reale o picco completo.
 
 ## Seed6: seal di completamento
 

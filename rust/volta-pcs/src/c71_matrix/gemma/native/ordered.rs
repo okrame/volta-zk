@@ -33,9 +33,9 @@ impl Work {
     }
 }
 
-/// Compact original K/V for the bounded replay check. Identities are trusted
-/// test inputs; this is not an acceptance receipt. A production adapter must
-/// obtain roots/KV from the accepted lifecycle, never import them from a proof.
+/// Compact original K/V, not an acceptance receipt. Runtime history comes
+/// from the native accepted owner. Component tests may construct diagnostic
+/// predecessors; there is no production import from a certificate.
 struct Frozen {
     tokens: [u32; 2],
     model_root: [u8; 32],
@@ -57,7 +57,7 @@ fn kv_ids(p: &Profile) -> [usize; 2] {
 fn replay(
     p: &Profile,
     w: &prepare::Installed,
-    old: &[Frozen],
+    old: &[Arc<Frozen>],
     tokens: [u32; 2],
     cuts: &BTreeMap<usize, Vec<i16>>,
     targets: &BTreeSet<usize>,
@@ -232,12 +232,13 @@ fn replay(
     Ok(work)
 }
 
-/// O=0 numerical source. Its identity and both causal tokens are fixed before
+/// Numerical source. Its identity and both causal tokens are fixed before
 /// a PCS/FS caller obtains any getter. The PCS model remains a separate owner.
 pub(super) struct Reader {
     profile: Arc<Profile>,
     weights: Arc<prepare::Installed>,
-    frozen: Frozen,
+    frozen: Arc<Frozen>,
+    old: Vec<Arc<Frozen>>,
     cuts: Cuts,
     row_cache: Mutex<Option<(usize, usize, Vec<i64>)>>,
     byte_cache: Mutex<(usize, [u8; 128])>,
@@ -248,11 +249,13 @@ impl Reader {
     pub(super) fn prepare(
         profile: Arc<Profile>,
         weights: Arc<prepare::Installed>,
+        old: &[Arc<Self>],
         prompt: u32,
     ) -> Result<Arc<Self>, String> {
-        if profile.old != 0 || prompt >= 2 {
-            return Err("ordered reader currently requires O=0 and a binary prompt".into());
+        if old.len() * TOKENS != profile.old || prompt >= 2 {
+            return Err("ordered reader history or binary prompt differs".into());
         }
+        let old = old.iter().map(|reader| reader.frozen.clone()).collect::<Vec<_>>();
         // Discover only from causal row-0 logits. Row 1 and Argmax are outside
         // this replay, so the provisional second token is never privately read
         // or checked.
@@ -262,7 +265,7 @@ impl Reader {
         let discovery_work = replay(
             &profile,
             &weights,
-            &[],
+            &old,
             [prompt, 0],
             &BTreeMap::new(),
             &targets,
@@ -287,7 +290,7 @@ impl Reader {
         let validation_work = replay(
             &profile,
             &weights,
-            &[],
+            &old,
             tokens,
             &BTreeMap::new(),
             &all_sources,
@@ -298,7 +301,7 @@ impl Reader {
         // only the internal Frozen/Cuts ownership nonce; the caller constructs
         // and owns the eventual ReplayModel/root.
         let (frozen, cuts, frozen_work) =
-            Frozen::prepare(&profile, &weights, &[], tokens, [0; 32])?;
+            Frozen::prepare(&profile, &weights, &old, tokens, [0; 32])?;
         let mut work = Work::default();
         work.absorb(discovery_work);
         work.absorb(validation_work);
@@ -306,7 +309,8 @@ impl Reader {
         Ok(Arc::new(Self {
             profile,
             weights,
-            frozen,
+            frozen: Arc::new(frozen),
+            old,
             cuts,
             row_cache: Mutex::new(None),
             byte_cache: Mutex::new((usize::MAX, [0; 128])),
@@ -339,7 +343,7 @@ impl Reader {
             let replay_work = replay(
                 &self.profile,
                 &self.weights,
-                &[],
+                &self.old,
                 self.frozen.tokens,
                 &self.cuts.values,
                 &targets,
@@ -381,7 +385,7 @@ impl Reader {
                 &self.cuts,
                 &self.profile,
                 &self.weights,
-                &[],
+                &self.old,
                 first,
                 &mut cache.1,
             )?;
@@ -396,7 +400,7 @@ impl Frozen {
     fn prepare(
         p: &Profile,
         w: &prepare::Installed,
-        old: &[Frozen],
+        old: &[Arc<Frozen>],
         tokens: [u32; 2],
         source_root: [u8; 32],
     ) -> Result<(Self, Cuts, Work), String> {
@@ -437,7 +441,7 @@ impl Frozen {
         cuts: &Cuts,
         p: &Profile,
         w: &prepare::Installed,
-        old: &[Frozen],
+        old: &[Arc<Frozen>],
         first: usize,
         output: &mut [u8],
     ) -> Result<Work, String> {
@@ -486,7 +490,7 @@ mod tests {
             .collect();
         let w = Arc::new(prepare::Installed::new(&p, packed).unwrap());
         let dense = prepare::Snapshot::prepare(&p, &w, &[], 1).unwrap();
-        let reader = Reader::prepare(p.clone(), w, 1).unwrap();
+        let reader = Reader::prepare(p.clone(), w, &[], 1).unwrap();
         assert_eq!(reader.tokens(), dense.tokens);
         for id in [p.output.output, p.gate[2], p.softmax.layers[0].pi] {
             let shape = &p.bytes().scalar.layout.sources[id];
@@ -501,6 +505,76 @@ mod tests {
             assert_eq!(reader.byte_at(index).unwrap(), expected, "byte={index}");
         }
         assert!(reader.byte_at(1usize << DOMAIN_A.config().unwrap().num_variables).is_err());
+    }
+
+    #[test]
+    fn c71_b12_ordered_reader_history_matches_snapshot_and_rejects_wrong_owners() {
+        let initial = Profile::small(0).unwrap();
+        let packed: Vec<_> = initial
+            .plan
+            .sources
+            .iter()
+            .flat_map(|source| {
+                (0..source.rows).flat_map(move |row| {
+                    (0..source.cols).map(move |column| i16::from(source.rows == 1 || row == column))
+                })
+            })
+            .collect();
+        let weights = Arc::new(prepare::Installed::new(&initial, packed.clone()).unwrap());
+        let other_model = Arc::new(prepare::Installed::new(&initial, packed).unwrap());
+        let mut dense = Vec::new();
+        let mut readers: Vec<Arc<Reader>> = Vec::new();
+        for slot in 0..3 {
+            let profile = Arc::new(Profile::small(slot).unwrap());
+            let prompt = (slot % 2) as u32;
+            let expected = prepare::Snapshot::prepare(&profile, &weights, &dense, prompt).unwrap();
+            let reader =
+                Reader::prepare(profile.clone(), weights.clone(), &readers, prompt).unwrap();
+            assert_eq!(reader.tokens(), expected.tokens);
+            for index in 0..1usize << DOMAIN_A.config().unwrap().num_variables {
+                assert_eq!(
+                    reader.byte_at(index).unwrap(),
+                    expected.source.weights.get(index).copied().unwrap_or(0) as u8,
+                    "slot={slot} byte={index}"
+                );
+            }
+            for id in kv_ids(&profile) {
+                for row in 0..TOKENS {
+                    for column in 0..profile.bytes().scalar.layout.sources[id].cols {
+                        assert_eq!(
+                            reader.value(id, row, column).unwrap(),
+                            expected.value(&profile, id, row, column)
+                        );
+                    }
+                }
+            }
+            assert_eq!(reader.old.len(), slot);
+            for (previous, owner) in reader.old.iter().zip(&readers) {
+                assert!(Arc::ptr_eq(previous, &owner.frozen));
+            }
+            if slot != 0 {
+                assert!(Reader::prepare(
+                    profile.clone(),
+                    weights.clone(),
+                    &readers[..slot - 1],
+                    prompt
+                )
+                .is_err());
+                assert!(Reader::prepare(profile.clone(), other_model.clone(), &readers, prompt)
+                    .is_err());
+            }
+            if slot == 2 {
+                let reordered = [readers[1].clone(), readers[0].clone()];
+                assert!(Reader::prepare(profile, weights.clone(), &reordered, prompt).is_err());
+            }
+            dense.push(expected);
+            readers.push(reader);
+        }
+        for (slot, reader) in readers.iter().enumerate() {
+            assert_eq!(Arc::strong_count(&reader.frozen), 3 - slot);
+            assert_eq!(reader.frozen.kv.values().map(Vec::len).sum::<usize>(), 8);
+        }
+        println!("C71_ORDERED_HISTORY contexts=0,2,4 original_bytes=true compact_KV_shared=true complete_accepted_run=false");
     }
 
     #[test]
@@ -523,12 +597,13 @@ mod tests {
             let (compact, mut cuts, _) =
                 Frozen::prepare(&p, &w, &frozen, original.tokens, original.source.root.roots()[0])
                     .unwrap();
+            let domain = p.bytes().live.next_power_of_two();
             for width in [1, 17, 128, 1024] {
                 let mut calls = 0;
                 let mut bytes = 0;
                 let (mut w_reads, mut a_reads, mut kv_reads, mut peak) = (0, 0, 0, 0);
-                for first in (0..1 << 12).step_by(width) {
-                    let mut output = vec![0; width.min((1 << 12) - first)];
+                for first in (0..domain).step_by(width) {
+                    let mut output = vec![0; width.min(domain - first)];
                     let work = compact.window(&cuts, &p, &w, &frozen, first, &mut output).unwrap();
                     for (i, &value) in output.iter().enumerate() {
                         assert_eq!(
@@ -548,6 +623,7 @@ mod tests {
                 assert_eq!(bytes, p.bytes().live);
                 eprintln!("ordered slot={slot} width={width} bytes={bytes} producer_rows={calls} W_reads={w_reads} A_reads={a_reads} KV_reads={kv_reads} named_peak={peak}");
             }
+            assert!(compact.window(&cuts, &p, &w, &frozen, domain, &mut [0]).is_err());
             assert!(compact.window(&cuts, &p, &w, &frozen, usize::MAX, &mut [0; 2]).is_err());
             assert!(compact
                 .window(
@@ -566,7 +642,7 @@ mod tests {
             assert_eq!(compact.kv.values().map(Vec::len).sum::<usize>(), 8);
             assert_eq!(cuts.values.values().map(Vec::len).sum::<usize>(), 8);
             dense.push(original);
-            frozen.push(compact);
+            frozen.push(Arc::new(compact));
         }
     }
     // Each invocation is independently bounded by the local 60s/2GiB runner.
@@ -615,6 +691,9 @@ mod tests {
                 // A single 128-byte original window. Never retains Snapshot or full A.
                 let cache = Mutex::new((usize::MAX, [0u8; 128]));
                 let source = Arc::new(move |i: usize| {
+                    if i >= p.bytes().live {
+                        return E::ZERO;
+                    }
                     let first = i / 128 * 128;
                     let mut cache = cache.lock().unwrap();
                     if cache.0 != first {
@@ -645,7 +724,7 @@ mod tests {
                 return;
             }
             originals.push(original);
-            accepted.push(current);
+            accepted.push(Arc::new(current));
         }
     }
     #[test]

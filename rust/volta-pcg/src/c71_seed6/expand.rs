@@ -1,6 +1,6 @@
 //! Reference expansion after F_EQ acceptance, with one monotone row cursor.
 //! The public EA seed is derived from verified F_EQ openings. Batch trie,
-//! global transcript/burn remain open; no dense pool is materialized here.
+//! global transcript/proof remain open; no dense pool is materialized here.
 use super::{Error, ReceiverPending, SenderPending};
 use crate::c71_ea_lpn::{acc, add_work, public_ea_row, punc_acc_borrowed, EaTerm, Work};
 use crate::c71_seed6::{equality::Accepted, Fp3Words};

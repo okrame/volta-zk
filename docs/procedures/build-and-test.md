@@ -154,8 +154,12 @@ Aggiungere `c71_seed6_journal` (due test) per burn prima di RNG,
 retry/reopen respinti e owner esclusivo durante il setup reale a sei righe.
 Conservare `c71_lifetime::tests` (otto test) per le transizioni B12 condivise;
 stessi limiti seriali, con socketpair locale. Il marker `C71_SEED6_JOURNAL`
-non accredita riserve per tentativo o proof. Transcript globale, lifecycle
-completo e trasporto autenticato restano aperti. Ogni filtro
+controlla ora anche due riserve reali da tre righe, con digest fixture,
+non una proof. Aggiungere `c71_seed6_attempt_window` (due test) per tre
+intervalli ideali disgiunti e rifiuti: capacità invalida, consumo incompleto,
+errore/panic, errore del generatore ignorato e digest mancante/invalido.
+Il marker `C71_SEED6_ATTEMPTS` non accredita NoPeek o verifica completa.
+Transcript globale, raccordo al wrapper e trasporto autenticato restano aperti. Ogni filtro
 resta entro 60 s/2 GiB, un worker/thread,
 senza rete esterna. Conservare anche i filtri `c71_seed6::guard::tests`,
 `c71_seed6_equality`, `c71_seed6_tail_reservation` e `c71_ea_lpn::tests`.

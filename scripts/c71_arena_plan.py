@@ -109,6 +109,9 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
     for old in (0,150,300):
         memory=response.integrated_memory(old,pcs,correlations,retained_A=retained)
         persistent=dict(memory['slots_bytes'],shared_roots=response.shared_roots(old))
+        transport=correlations['setup_once_before_all_responses']['native_seed6_real_adapter']['one_channel_setup']
+        persistent.update({'Seed6:setup_audits':transport['returned_Audit_heap_bytes_each_role'],
+                           'Seed6:setup_native_value_slot':transport['native_value_and_hash_slot_bytes']})
         if ordered_getter:
             persistent.update({name+'_lookup:proof':x['proof_requested_bytes']
                 for name,x in response.producer_lookup_trace(old).items()})
@@ -127,10 +130,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
         if old == 0:
             setup=correlations['setup_once_before_all_responses']['native_seed6_real_adapter']
             for main_role, inverse_role in [('prover','verifier'),('verifier','prover')]:
-                transport=setup['one_channel_setup']
-                events=[{'event':'bind_setup_geometry_and_reserve_returned_diagnostics',
-                    'allocate':{'Seed6:setup_audits':transport['returned_Audit_heap_bytes_each_role'],
-                                'Seed6:setup_native_value_slot':transport['native_value_and_hash_slot_bytes']}}]
+                events=[{'event':'bind_setup_geometry_with_retained_owner_and_diagnostics'}]
                 events += [{'event':'journal_setup_burn_before_rng',
                             'allocate':{'Seed6:journal_model':transport['journal_model_heap_temporary_bytes']}},
                            {'event':'journal_binding_model_release','free':['Seed6:journal_model']}]
@@ -370,7 +370,7 @@ def report(ordered_getter=False, reuse_reader_for_commit=False, exp30_bmma=False
             'snapshot':'native Snapshot stores Vec<Vec<i64>>; literal lift exceeds arena before byte packing',
             'RMS':'original P/S/Y plus byte LUT/coefficients included; bounded cell/index/replay checked on reduced proofs; public circuits, proof/correlation capacities, allocator and full getter workspace remain to join',
             'WHIR':'bounded sourcewise replay matches native D10 bytes and rejects dense fallbacks; canonical accelerated state/workspace not yet wired',
-            'PCG':'Seed6 OT/AES, guard, role-separated cGGM, split/F_EQ and two native coin envelopes included conservatively; full FS, crypto stack, transport, allocator and seal/burn lifecycle remain open',
+            'PCG':'Seed6 OT/AES, guard, cGGM, split/F_EQ, setup/attempt journal and retained owner/Audit slots included; full FS, crypto stack, authenticated transport, allocator and proof lifecycle remain open',
             'arena_checker_metadata_bytes':512*24,
             'global_unallocated_margin_required_bytes':1 << 30,
             'remaining_global_for_unverified_residents_after_margin':80_000_000_000-response.W_BYTES-450*response.KV_PER_TOKEN-response.ARENA-(1 << 30)},

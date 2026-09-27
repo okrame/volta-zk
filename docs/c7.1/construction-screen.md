@@ -1405,8 +1405,9 @@ attivo e il [preflight nativo](preflight.md#seed6-reale-streaming-e-workspace)
 usano **61.841.366 B**, inclusi anche i 27 B F_EQ/coin e i 45 B guard/split
 del framing nativo. I seal locali e il setup ridotto su un unico canale
 sono ora implementati, con burn del setup tramite il journal B12;
-restano transcript del run, autenticazione del canale e lifecycle durevole
-per tentativo. Le formule storiche di questa sezione non sono
+le finestre per tentativo riusano le transizioni durevoli B12. Restano
+transcript del run, autenticazione del canale e raccordo alla prova completa.
+Le formule storiche di questa sezione non sono
 retroattivamente risultati nativi.
 
 ## Screen dopo l'autorizzazione EA-LPN e ripiego sui byte

@@ -1220,8 +1220,8 @@ Richiede scatter senza reader e hash salted direttamente nelle celle
 del coset già consumate, prima di ripristinare lo slot dopo fence; roots
 e seed persistenti non si spostano. Il riuso è un obbligo nativo ancora
 aperto, non uno shrink assunto del workspace. Con finestre range 2 GiB e
-query A 256 MiB il massimo nominato è **6.166.153.984 B**, coda libera
-**276.296.960 B**: restano appena **7.861.504 B** oltre il margine obbligatorio
+query A 256 MiB il massimo nominato è **6.166.159.104 B**, coda libera
+**276.291.840 B**: restano appena **7.856.384 B** oltre il margine obbligatorio
 di 256 MiB. Qualunque scratch non assorbito negli slot va aggiunto prima
 di dichiarare fit fisico. I lower parziali con 512 replay sono
 47,498/51,975/56,751 s includendo la lettura hash separata, ma escludono
@@ -1343,8 +1343,16 @@ esclusivo dell'owner finché vive lo stato EA. Retry, rinnovo B12 e reopen
 sono respinti anche dopo un setup fallito. Il tipo 5 è solo test;
 il dominio e il record 4 B12 restano invariati. Sono controlli runtime
 ridotti, non un nuovo lemma Lean: autenticazione del canale e store
-non-rollbackabile restano premesse del caller, e riserve per tentativo,
-promozione e collegamento alla proof restano da integrare.
+non-rollbackabile restano premesse del caller. Le riserve riusano ora
+le stesse transizioni B12: record 2 fsync prima di generare qualunque
+riga, finestra limitata all'intervallo e record 3 fsync prima di promuovere
+la ricevuta. Consumo incompleto, errore anche ignorato, panic o assenza
+di ricevuta fermano lo stato e distruggono i segreti posseduti. Il terzo
+tentativo termina la capacità. Il consumer non riceve righe future;
+NoPeek della preparazione e accettazione completa restano obblighi del
+wrapper PCS/GKR, non scaricati dai digest fixture dei test. Owner/Audit
+sono conservati nel piano delle tre risposte, senza credito di stack
+compilato o picco fisico completo.
 Le coin dei test algebrici
 restano distinte dalla catena che esegue il protocollo nativo.
  Il getter numerico ridotto

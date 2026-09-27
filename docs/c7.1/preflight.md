@@ -759,12 +759,12 @@ Questi sono conteggi della schedule, non istruzioni o transazioni HBM.
 
 | O | High-water indirizzi apertura A, B | Massimo integrato nominato, B | Coda libera integrata, B |
 |---:|---:|---:|---:|
-| 0 | 5.945.986.816 | 6.087.507.456 | 354.943.488 |
-| 150 | 5.985.311.744 | 6.126.832.384 | 315.618.560 |
-| 300 | 6.024.633.344 | 6.166.153.984 | 276.296.960 |
+| 0 | 5.945.991.936 | 6.087.512.576 | 354.938.368 |
+| 150 | 5.985.316.864 | 6.126.837.504 | 315.613.440 |
+| 300 | 6.024.638.464 | 6.166.159.104 | 276.291.840 |
 
 Il massimo integrato resta il range. Il margine minimo nominato supera
-256 MiB di soli 7.861.504 B: allocator, fence GPU e workspace non ancora
+256 MiB di soli 7.856.384 B: allocator, fence GPU e workspace non ancora
 rifiniti non possono essere omessi. Le visite originali restano 574 per
 A corrente e 36 per ogni A storica, più il lavoro degli stati conservati.
 
@@ -952,14 +952,14 @@ non si assume che eliminare la prenotazione elimini il lavoro del reader.
 
 | O | Picco commit A nominato, B | Picco integrato nominato, B | Coda arena libera, B | Lower getter compute / banda, s | Lower congiunto parziale, s |
 |---:|---:|---:|---:|---:|---:|
-| 0 | 6.056.235.520 | 6.087.507.456 | 354.943.488 | 12,630 / 14,160 | 46,882 |
-| 150 | 6.095.560.448 | 6.126.832.384 | 315.618.560 | 13,626 / 15,275 | 51,360 |
-| 300 | 6.134.882.048 | 6.166.153.984 | 276.296.960 | 14,682 / 16,451 | 56,136 |
+| 0 | 6.056.240.640 | 6.087.512.576 | 354.938.368 | 12,630 / 14,160 | 46,882 |
+| 150 | 6.095.565.568 | 6.126.837.504 | 315.613.440 | 13,626 / 15,275 | 51,360 |
+| 300 | 6.134.887.168 | 6.166.159.104 | 276.291.840 | 14,682 / 16,451 | 56,136 |
 
 Il picco range include core conservativo W, finestra A 2 GiB e checkpoint,
 oltre a tutti gli slot/root/cache già nominati. Il checker C++ verifica
 allineamento 256 B, non sovrapposizione, fence dichiarate e ripristino del
-reader. **7.861.504 B** è lo spazio ulteriore al margine richiesto di
+reader. **7.856.384 B** è lo spazio ulteriore al margine richiesto di
 268.435.456 B nel caso peggiore. Nel getter slot da 64 MiB restano
 14.417.924 B dopo i 52.690.940 B di tensori; packing/correzioni devono
 rientrarvi o essere aggiunti al piano. L'arena riservata è sempre
@@ -1754,9 +1754,39 @@ I controlli ridotti coprono RNG fallito dopo burn, capacità invalidata
 prima del record, rifiuto retry/reopen e setup reale fino a sei MAC con
 owner vivo. Le regressioni del journal B12 conservano dominio e record 4.
 Il filesystem non dimostra non-rollbackabilità: una copia/reset esterna
-viola la premessa dell'owner. Non sono ancora collegati burn per tentativo,
-NoPeek, promozione della ricevuta e pool/proof; nessun nuovo credito
-compositivo o Lean.
+viola la premessa dell'owner. Il raccordo per tentativo seguente non chiude
+NoPeek, accettazione del verifier completo o pool/proof; nessun nuovo
+credito compositivo o Lean.
+
+### Riserve streaming per tentativo
+
+Le finestre EA riusano `Lifetime::attempt`, estratto dal pool denso B12
+senza cambiarne record, dominio o API pubblica. Il record 2 brucia l'intero
+intervallo di `3*full_fp3` righe e il relativo slot prima di generare la
+prima riga. Il callback riceve un iteratore limitato, non lo stato EA
+o un Vec della riserva; ogni riga posseduta usa `Zeroizing`. L'iteratore
+termina al confine della finestra. Consumo incompleto, errore del generatore
+anche ignorato dal callback, panic, conteggio invalido o digest invalido
+fermano il run senza promozione. L'assenza di digest conserva la semantica
+B12: il risultato locale può tornare, ma lo stato non è riutilizzabile.
+
+Solo il record 3 sincronizzato promuove l'head; il terzo tentativo
+accettato termina la capacità residua. I test usano tre intervalli ideali
+disgiunti e, separatamente, due intervalli reali da tre righe della catena
+Seed6. I digest accettati sono **fixture**, non ricevute di una prova PCS/GKR:
+il consumer resta tenuto a Prepare NoPeek e verifica completa prima di
+restituirli. Il raccordo al wrapper composto è ancora aperto.
+
+La finestra non alloca heap proprio né materializza la riserva: mantiene
+un contatore/flag e una riga da 24/32 B, oltre ai costi EA puntuali già
+contati. Ogni tentativo accettato aggiunge 114 B disco e due fsync per ruolo;
+installazione, setup e tre accettazioni totalizzano 503 B e nove sync.
+Owner e Audit restano vivi durante le risposte: lo slot valori da 4.096 B
+e 896 B heap diventano persistenti nel piano (+5.120 B allineati), non
+sono liberati solo perché termina il setup. A O=300 la coda nominata
+diventa 276.291.840 B, 7.856.384 B oltre 256 MiB. È accounting di liveness,
+non picco fisico completo o costo fsync misurato; il percorso puntuale
+non eredita il conteggio di hash della futura trie batch.
 
 
 ## Seed6: seal di completamento
@@ -1782,8 +1812,8 @@ e non attestano il nuovo ordine del completamento.
 
 Il seal fissa un identificatore fresco, **non un burn durevole**. L'entry
 monouso ora prenota entrambi i setup nel journal prima di RNG e impedisce
-retry anche su errore o withholding; burn per tentativo, transcript globale
-e proof restano da collegare. I test locali non conferiscono nuovo credito alla
+retry anche su errore o withholding; le finestre per tentativo ora riusano
+il journal, ma transcript globale e proof restano da collegare. I test locali non conferiscono nuovo credito alla
 riduzione composta, al picco fisico o all'H100.
 
 
@@ -2501,7 +2531,7 @@ in cache o fold in-place: destinazione e sorgente sono disgiunte.
 | 300 | 2.206.137.600 | 3.309.206.400 | 4.964.490.752 | 6.166.153.984 |
 
 Il massimo globale nominato resta range A. Il margine peggiore è
-276.296.960 B, appena 7.861.504 B oltre i 256 MiB richiesti: non autorizza
+276.291.840 B, appena 7.856.384 B oltre i 256 MiB richiesti: non autorizza
 workspace ulteriori impliciti. Cache E/Pi/Z, LUT byte originale e slot
 persistenti restano vivi; il checker nativo controlla indirizzi e fence.
 Il piano riserva anche feature/diagonali, supporti, scratch pubblico da

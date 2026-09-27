@@ -227,6 +227,76 @@ impl Lifetime {
         self.state.head
     }
 
+    pub(crate) fn fixed_run_context(
+        &self,
+        session: Digest,
+        capacity: Digest,
+    ) -> io::Result<(ModelBinding, Digest, Attempt)> {
+        let state = self.state;
+        if self.poisoned || !state.fixed_run || state.setups != 1 || state.attempts >= ROOT_SLOTS {
+            return Err(invalid("no live fixed-run capacity"));
+        }
+        Ok((
+            self.model,
+            session,
+            Attempt {
+                capacity,
+                setup: state.setups,
+                ordinal: state.attempts + 1,
+                predecessor: state.head,
+                first_base_row: state.used,
+            },
+        ))
+    }
+
+    pub(crate) fn remaining_fp3(&self) -> usize {
+        if self.poisoned {
+            0
+        } else {
+            ((self.state.rows - self.state.used) / 3) as usize
+        }
+    }
+
+    pub(crate) fn stop(&mut self) {
+        self.poisoned = true;
+    }
+
+    pub(crate) fn attempt<T>(
+        &mut self,
+        capacity: Digest,
+        full_fp3: usize,
+        consumer: impl FnOnce(Attempt, usize) -> io::Result<(T, Option<Digest>)>,
+    ) -> io::Result<T> {
+        let prior_head = self.state.head;
+        let outcome = (|| {
+            let count = full_fp3.checked_mul(3).ok_or_else(|| invalid("row count overflow"))?;
+            let state = self.state;
+            self.append(2, state.setups, state.used, count as u64, state.head)?;
+            let attempt = Attempt {
+                capacity,
+                setup: state.setups,
+                ordinal: self.state.attempts,
+                predecessor: state.head,
+                first_base_row: state.used,
+            };
+            let outcome =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| consumer(attempt, count)));
+            self.state.pending = false;
+            let (value, accepted) = outcome.map_err(|_| invalid("attempt panicked; burned"))??;
+            if let Some(digest) = accepted {
+                self.state.pending = true;
+                let result = self.append(3, state.setups, self.state.attempts, 0, digest);
+                self.state.pending = false;
+                result?;
+            }
+            Ok(value)
+        })();
+        if self.state.fixed_run && (outcome.is_err() || self.state.head == prior_head) {
+            self.stop();
+        }
+        outcome
+    }
+
     #[cfg(test)]
     fn begin(&mut self, session: Digest, channel: Digest, rows: usize) -> io::Result<Context> {
         self.begin_for(session, channel, rows, false)
@@ -401,34 +471,16 @@ impl<R: Zeroize + Copy> Pool<'_, R> {
     /// Public next-attempt identity, without access to unused correlations.
     /// A composed fixed-run consumer must compare this with its own registry.
     pub fn fixed_run_context(&self) -> io::Result<(ModelBinding, Digest, Attempt)> {
-        let s = self.store.state;
-        if self.store.poisoned || !s.fixed_run || s.setups != 1 || s.attempts >= ROOT_SLOTS {
-            return Err(invalid("no live fixed-run capacity"));
-        }
-        Ok((
-            self.store.model,
-            self.session,
-            Attempt {
-                capacity: self.capacity,
-                setup: s.setups,
-                ordinal: s.attempts + 1,
-                predecessor: s.head,
-                first_base_row: s.used,
-            },
-        ))
+        self.store.fixed_run_context(self.session, self.capacity)
     }
 
     pub fn remaining_fp3(&self) -> usize {
-        if self.store.poisoned {
-            0
-        } else {
-            ((self.store.state.rows - self.store.state.used) / 3) as usize
-        }
+        self.store.remaining_fp3()
     }
 
     /// Also terminate failures before reservation (profile, prompt, Prepare).
     pub fn stop(&mut self) {
-        self.store.poisoned = true;
+        self.store.stop();
         self.rows.zeroize();
         self.delta.zeroize();
     }
@@ -446,42 +498,16 @@ impl<R: Zeroize + Copy> Pool<'_, R> {
             Option<&[u64; 3]>,
         ) -> io::Result<(T, Option<Digest>)>,
     ) -> io::Result<T> {
-        let prior_head = self.store.state.head;
-        let outcome = (|| {
-            let count = full_fp3.checked_mul(3).ok_or_else(|| invalid("row count overflow"))?;
-            let state = self.store.state;
-            self.store.append(2, state.setups, state.used, count as u64, state.head)?;
-            let range = state.used as usize..state.used as usize + count;
-            let reserved = Zeroizing::new(self.rows[range.clone()].to_vec());
-            for row in &mut self.rows[range] {
+        let rows = &mut self.rows;
+        let delta = self.delta.as_deref();
+        self.store.attempt(self.capacity, full_fp3, |attempt, count| {
+            let range = attempt.first_base_row as usize..attempt.first_base_row as usize + count;
+            let reserved = Zeroizing::new(rows[range.clone()].to_vec());
+            for row in &mut rows[range] {
                 row.zeroize();
             }
-            let attempt = Attempt {
-                capacity: self.capacity,
-                setup: state.setups,
-                ordinal: self.store.state.attempts,
-                predecessor: state.head,
-                first_base_row: state.used,
-            };
-            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                consumer(attempt, reserved, self.delta.as_deref())
-            }));
-            // Even a caught panic or an IO error must not leave a pending promotion.
-            self.store.state.pending = false;
-            let (value, accepted) = outcome.map_err(|_| invalid("attempt panicked; burned"))??;
-            if let Some(digest) = accepted {
-                self.store.state.pending = true;
-                let result =
-                    self.store.append(3, state.setups, self.store.state.attempts, 0, digest);
-                self.store.state.pending = false;
-                result?;
-            }
-            Ok(value)
-        })();
-        if self.store.state.fixed_run && (outcome.is_err() || self.store.state.head == prior_head) {
-            self.store.poisoned = true;
-        }
-        outcome
+            consumer(attempt, reserved, delta)
+        })
     }
 }
 

@@ -3,8 +3,8 @@
 //! This checks a complete K6 MAC relation with six independent mask rows and
 //! only then samples the E-linear compression map into Fp3. It deliberately
 //! has no production entry. The reduced real adapter binds a suite handshake,
-//! 384 MR19 OTs and streamed AES-COPE. Outer one-use lifetime, guard and
-//! opposite-role composition remain open.
+//! 384 MR19 OTs and streamed AES-COPE. Guard, opposite-role equality and
+//! journalled EA windows are connected locally; full proof composition is open.
 
 mod coins;
 mod equality;

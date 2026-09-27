@@ -1,10 +1,11 @@
 //! One-channel reduced setup, through accepted EA state. The caller still
 //! owns the authenticated channel and non-rollbackable store. The one-use
-//! entry burns setup before RNG; per-attempt pool/proof integration is open.
+//! entry burns setup before RNG; attempt windows burn before row generation.
+//! NoPeek preparation and complete verifier acceptance remain caller duties.
 use super::super::{corrections, ProverGuard, VerifierGuard};
 use super::{expand, Error};
 use crate::c71_bootstrap::{random_bytes, recv, send, Audit, Context};
-use crate::c71_lifetime::Lifetime;
+use crate::c71_lifetime::{Attempt, Lifetime, ModelBinding};
 use crate::c71_seed6::{coins, equality, real};
 use rand::{CryptoRng, RngCore};
 use std::io::{self, Read, Write};
@@ -21,8 +22,88 @@ struct Geometry {
 
 struct Once<'lifetime, State> {
     store: &'lifetime mut Lifetime,
-    state: State,
+    session: [u8; 32],
+    capacity: [u8; 32],
+    state: Option<State>,
     audits: [Audit; 3],
+}
+
+impl<State> Once<'_, State> {
+    fn fixed_run_context(&self) -> io::Result<(ModelBinding, [u8; 32], Attempt)> {
+        if self.state.is_none() {
+            return Err(invalid("no live Seed6 state"));
+        }
+        self.store.fixed_run_context(self.session, self.capacity)
+    }
+
+    fn stop(&mut self) {
+        self.store.stop();
+        self.state.take();
+    }
+
+    fn consume<const WIDTH: usize, Value>(
+        &mut self,
+        full_fp3: usize,
+        next_row: fn(&mut State) -> Result<[u64; WIDTH], Error>,
+        consumer: impl FnOnce(
+            Attempt,
+            &mut dyn Iterator<Item = io::Result<Zeroizing<[u64; WIDTH]>>>,
+        ) -> io::Result<(Value, Option<[u8; 32]>)>,
+    ) -> io::Result<Value> {
+        let state = self.state.as_mut().ok_or_else(|| invalid("no live Seed6 state"))?;
+        let result = self.store.attempt(self.capacity, full_fp3, |attempt, count| {
+            let mut remaining = count;
+            let mut failed = false;
+            let mut rows = std::iter::from_fn(|| {
+                if remaining == 0 || failed {
+                    return None;
+                }
+                let result = next_row(state).map(Zeroizing::new).map_err(rejected);
+                failed = result.is_err();
+                remaining -= 1;
+                Some(result)
+            });
+            let result = consumer(attempt, &mut rows)?;
+            if failed || remaining != 0 {
+                return Err(invalid("incomplete or failed Seed6 reservation"));
+            }
+            Ok(result)
+        });
+        if result.is_err() || self.fixed_run_context().is_err() {
+            self.stop();
+        }
+        result
+    }
+}
+
+impl Once<'_, expand::Sender> {
+    fn attempt<Value>(
+        &mut self,
+        full_fp3: usize,
+        consumer: impl FnOnce(
+            Attempt,
+            &mut dyn Iterator<Item = io::Result<Zeroizing<[u64; 3]>>>,
+            volta_field::Fp3,
+        ) -> io::Result<(Value, Option<[u8; 32]>)>,
+    ) -> io::Result<Value> {
+        let delta = self.state.as_ref().ok_or_else(|| invalid("no live Seed6 state"))?.delta();
+        self.consume(full_fp3, expand::Sender::next_row, |attempt, rows| {
+            consumer(attempt, rows, delta)
+        })
+    }
+}
+
+impl Once<'_, expand::Receiver> {
+    fn attempt<Value>(
+        &mut self,
+        full_fp3: usize,
+        consumer: impl FnOnce(
+            Attempt,
+            &mut dyn Iterator<Item = io::Result<Zeroizing<[u64; 4]>>>,
+        ) -> io::Result<(Value, Option<[u8; 32]>)>,
+    ) -> io::Result<Value> {
+        self.consume(full_fp3, expand::Receiver::next_row, consumer)
+    }
 }
 
 fn invalid(message: &'static str) -> io::Error {
@@ -85,7 +166,7 @@ fn sender_once<'lifetime>(
 ) -> io::Result<Once<'lifetime, expand::Sender>> {
     let context = store.begin_seed6(session, binding, geometry.capacity()?)?;
     let (state, audits) = sender(channel, context, geometry, rng)?;
-    Ok(Once { store, state, audits })
+    Ok(Once { store, session, capacity: state.binding, state: Some(state), audits })
 }
 
 fn receiver_once<'lifetime>(
@@ -98,7 +179,7 @@ fn receiver_once<'lifetime>(
 ) -> io::Result<Once<'lifetime, expand::Receiver>> {
     let context = store.begin_seed6(session, binding, geometry.capacity()?)?;
     let (state, audits) = receiver(channel, context, geometry, rng)?;
-    Ok(Once { store, state, audits })
+    Ok(Once { store, session, capacity: state.binding, state: Some(state), audits })
 }
 
 fn nonce(main: [u8; 32], inverse: [u8; 32]) -> [u8; 32] {
@@ -436,9 +517,23 @@ mod tests {
                     setup.audits[2].sent_frames.len() + setup.audits[2].received_frames.len(),
                     16
                 );
-                let rows: Vec<_> = (0..6).map(|_| setup.state.next_row().unwrap()).collect();
-                assert!(setup.state.next_row().is_err());
-                (setup.state.binding, rows)
+                let mut rows = Vec::new();
+                for ordinal in 1..=2 {
+                    assert_eq!(setup.fixed_run_context().unwrap().2.ordinal, ordinal);
+                    setup
+                        .attempt(1, |attempt, reserved| {
+                            assert_eq!(attempt.first_base_row, 3 * (ordinal - 1));
+                            rows.extend(reserved.map(|row| *row.unwrap()));
+                            Ok(((), Some([ordinal as u8 + 10; 32])))
+                        })
+                        .unwrap();
+                }
+                assert_eq!(setup.store.counters(), (1, 2));
+                assert_eq!(setup.store.remaining_fp3(), 0);
+                assert_eq!(setup.store.accepted_head(), [12; 32]);
+                assert!(setup.attempt::<()>(1, |_, _| panic!("exhausted pool used")).is_err());
+                assert!(setup.state.is_none());
+                (setup.capacity, rows)
             };
             assert!(store.begin_seed6([1; 32], [2; 32], 6).is_err());
             drop(store);
@@ -460,19 +555,155 @@ mod tests {
             .unwrap();
             assert_eq!(setup.store.counters(), (1, 0));
             let (binding, rows) = peer.join().unwrap();
-            assert_eq!(setup.state.binding, binding);
-            for row in rows {
-                let key = setup.state.next_row().unwrap();
-                let key = Fp3::new(Fp::new(key[0]), Fp::new(key[1]), Fp::new(key[2]));
-                let tag = Fp3::new(Fp::new(row[1]), Fp::new(row[2]), Fp::new(row[3]));
-                assert_eq!(tag, key + setup.state.delta().mul_base(Fp::new(row[0])));
+            assert_eq!(setup.capacity, binding);
+            for (index, rows) in rows.chunks_exact(3).enumerate() {
+                setup
+                    .attempt(1, |attempt, reserved, delta| {
+                        assert_eq!(attempt.first_base_row, 3 * index as u64);
+                        for row in rows {
+                            let key = reserved.next().unwrap().unwrap();
+                            let key = Fp3::new(Fp::new(key[0]), Fp::new(key[1]), Fp::new(key[2]));
+                            let tag = Fp3::new(Fp::new(row[1]), Fp::new(row[2]), Fp::new(row[3]));
+                            assert_eq!(tag, key + delta.mul_base(Fp::new(row[0])));
+                        }
+                        assert!(reserved.next().is_none());
+                        Ok(((), Some([index as u8 + 11; 32])))
+                    })
+                    .unwrap();
             }
-            assert!(setup.state.next_row().is_err());
+            assert_eq!(setup.store.counters(), (1, 2));
+            assert_eq!(setup.store.accepted_head(), [12; 32]);
+            assert!(setup.attempt::<()>(1, |_, _, _| panic!("exhausted pool used")).is_err());
+            assert!(setup.state.is_none());
         }
         assert!(store.begin_seed6([1; 32], [2; 32], 6).is_err());
         drop(store);
         assert!(Lifetime::open(&path, model()).is_err());
         std::fs::remove_file(path).unwrap();
-        println!("C71_SEED6_JOURNAL record_kind=5 burn_before_RNG=true one_live_owner=true no_retry_or_reopen=true base_rows=6 per_attempt_pool=false");
+        println!("C71_SEED6_JOURNAL record_kind=5 burn_before_RNG=true one_live_owner=true no_retry_or_reopen=true base_rows=6 per_attempt_pool=true acceptance_fixture=true proof=false");
+    }
+
+    #[test]
+    fn c71_seed6_attempt_window_burns_then_streams_and_stops_on_every_failure() {
+        for fault in 0..9 {
+            let path = journal_path("attempt-failure");
+            let mut store = Lifetime::install(&path, model()).unwrap();
+            let context = store.begin_seed6([1; 32], [2; 32], 6).unwrap();
+            {
+                let mut setup = Once {
+                    store: &mut store,
+                    session: context.session,
+                    capacity: context.capacity,
+                    state: Some(0usize),
+                    audits: Default::default(),
+                };
+                let count = match fault {
+                    4 => 0,
+                    5 => 3,
+                    6 => usize::MAX,
+                    _ => 2,
+                };
+                let next: fn(&mut usize) -> Result<[u64; 1], Error> = if fault == 7 {
+                    |_| Err(Error::Rejected)
+                } else {
+                    |cursor: &mut usize| {
+                        *cursor += 1;
+                        Ok([*cursor as u64])
+                    }
+                };
+                let result = setup.consume(count, next, |attempt, rows| {
+                    assert_eq!((attempt.ordinal, attempt.first_base_row), (1, 0));
+                    let bytes = std::fs::read(&path).unwrap();
+                    assert_eq!(bytes.len(), 104 + 2 * 57);
+                    assert_eq!(bytes[161], 2);
+                    assert_eq!(u64::from_le_bytes(bytes[178..186].try_into().unwrap()), 6);
+                    match fault {
+                        0 => {
+                            rows.next().unwrap()?;
+                            Ok(((), Some([9; 32])))
+                        }
+                        1 => Err(invalid("consumer error")),
+                        2 => panic!("consumer panic"),
+                        3 | 8 => {
+                            for row in rows {
+                                row?;
+                            }
+                            Ok(((), if fault == 3 { None } else { Some([0; 32]) }))
+                        }
+                        7 => {
+                            assert!(rows.next().unwrap().is_err());
+                            assert!(rows.next().is_none());
+                            Ok(((), Some([9; 32])))
+                        }
+                        _ => panic!("invalid capacity reached consumer"),
+                    }
+                });
+                assert_eq!(result.is_ok(), fault == 3);
+                assert_eq!(setup.store.counters(), (1, u64::from(![4, 5, 6].contains(&fault))));
+                assert_eq!(setup.store.accepted_head(), [0; 32]);
+                assert_eq!(setup.store.remaining_fp3(), 0);
+                assert!(setup.state.is_none());
+                assert!(setup.fixed_run_context().is_err());
+                assert!(setup
+                    .consume::<1, ()>(
+                        1,
+                        |_| panic!("stopped state generated rows"),
+                        |_, _| panic!("stopped state reached consumer")
+                    )
+                    .is_err());
+            }
+            drop(store);
+            assert!(Lifetime::open(&path, model()).is_err());
+            std::fs::remove_file(path).unwrap();
+        }
+    }
+
+    #[test]
+    fn c71_seed6_attempt_window_three_disjoint_intervals_and_durable_heads() {
+        let path = journal_path("attempt-success");
+        let mut store = Lifetime::install(&path, model()).unwrap();
+        let context = store.begin_seed6([1; 32], [2; 32], 9).unwrap();
+        {
+            let mut setup = Once {
+                store: &mut store,
+                session: context.session,
+                capacity: context.capacity,
+                state: Some(0usize),
+                audits: Default::default(),
+            };
+            for ordinal in 1..=3 {
+                let next = setup.fixed_run_context().unwrap().2;
+                assert_eq!((next.ordinal, next.first_base_row), (ordinal, 3 * (ordinal - 1)));
+                assert_eq!(next.predecessor, [ordinal as u8 - 1; 32]);
+                setup
+                    .consume(
+                        1,
+                        |cursor| {
+                            let row = *cursor;
+                            *cursor += 1;
+                            Ok([row as u64])
+                        },
+                        |attempt, rows| {
+                            assert_eq!(attempt.ordinal, ordinal);
+                            for index in 0..3 {
+                                assert_eq!(*rows.next().unwrap()?, [3 * (ordinal - 1) + index]);
+                            }
+                            assert!(rows.next().is_none());
+                            Ok(((), Some([ordinal as u8; 32])))
+                        },
+                    )
+                    .unwrap();
+                assert_eq!(setup.store.accepted_head(), [ordinal as u8; 32]);
+                let bytes = std::fs::read(&path).unwrap();
+                assert_eq!(bytes.len(), 104 + (1 + 2 * ordinal as usize) * 57);
+                assert_eq!(&bytes[bytes.len() - 32..], &[ordinal as u8; 32]);
+            }
+            assert!(setup.state.is_none());
+            assert!(setup.fixed_run_context().is_err());
+        }
+        drop(store);
+        assert!(Lifetime::open(&path, model()).is_err());
+        std::fs::remove_file(path).unwrap();
+        println!("C71_SEED6_ATTEMPTS base_rows=9 disjoint_attempts=3 heap_window_bytes=0 row_generated_after_burn=true acceptance_fixture=true proof=false");
     }
 }

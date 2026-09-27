@@ -46,7 +46,8 @@ def test_lifetime_and_inplace_tail_release():
 
 
 def test_seed6_guard_cggm_and_split_remain_live_through_equality():
-    case=arena.report(ordered_getter=True,reuse_reader_for_commit=True)['cases'][0]
+    cases=arena.report(ordered_getter=True,reuse_reader_for_commit=True)['cases']
+    case=cases[0]
     for role,inverse,private in [('prover','verifier',329400),('verifier','prover',32400)]:
         plan=case['address_layouts'][f'Seed6_{role}_then_{inverse}_outer_pending']
         names=[event['event'] for event in plan['events']]
@@ -72,6 +73,11 @@ def test_seed6_guard_cggm_and_split_remain_live_through_equality():
         assert 'Seed6:guard_wire' not in live and 'Seed6:setup_paths_and_beta' not in live
         assert live['Seed6:setup_audits']>=896
         assert plan['fits_with_operational_margin']
+    for response in cases:
+        for plan in response['address_layouts'].values():
+            initial={name:size for name,_,size in plan['initial_allocations']}
+            assert initial['Seed6:setup_audits']>=896
+            assert initial['Seed6:setup_native_value_slot']>=4096
 
 
 def test_reader_release_never_moves_roots_and_row_digest_overwrite_is_disjoint():

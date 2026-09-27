@@ -226,7 +226,7 @@ passaggio sui byte autenticati. Passano l'oracolo algebrico ridotto, il
 confronto Fp3 con tutti i 256 byte della LUT nativa e il piano nominato
 con due buffer disgiunti. Il massimo indirizzo EXP30 resta
 2.082.995.968 / 3.370.001.152 / 4.964.490.752 B; il massimo delle catene
-note resta range A, con almeno 276.296.960 B non indirizzati. Non è il
+note resta range A, con almeno 276.291.840 B non indirizzati. Non è il
 picco fisico completo. Il margine stretto della fase range A non blocca
 gli sviluppi reversibili nella catena EXP30, che ha spazio distinto;
 i 256 MiB restano il criterio finale del piano integrato.
@@ -453,7 +453,7 @@ budget di 14 s è escluso. Il nuovo budget candidato assegna 17 s al getter,
 Il checker nativo degli offset include finestre range 2 GiB/query 256 MiB,
 checkpoint, slot PCS/PCG, allocator e fence dichiarate. I massimi nominati
 sono **6.087.507.456 / 6.126.832.384 / 6.166.153.984 B**. Il minimo margine
-è **276.296.960 B**, appena 7.861.504 B oltre i 256 MiB richiesti. Lo slab
+è **276.291.840 B**, appena 7.856.384 B oltre i 256 MiB richiesti. Lo slab
 riserva sempre 6.442.450.944 B. Non sono picchi fisici completi: workspace
 numerici, hash in place salted, PCG/OT/Fp6 e runtime restano da verificare.
 
@@ -522,8 +522,12 @@ La geometria è legata alla handshake prima degli OT; il nonce deriva dai
 due seed sigillati. L'entry monouso ora riusa il journal B12: burn fsync
 prima di RNG, nessun retry/reopen e owner esclusivo fino al rilascio
 dello stato EA. Restano composizione ROM del seed, transcript del run,
-canale autenticato, riserve durevoli per tentativo e promozione,
-trie batch e collegamento alla proof; non è ancora il PCG canonico.
+canale autenticato, trie batch e collegamento alla proof; non è ancora
+il PCG canonico. Le riserve ora riusano le transizioni B12: burn dell'intero
+intervallo prima della prima riga, finestra streaming limitata e stop su
+errore/panic/esaurimento. La promozione viene dopo fsync, ma la ricevuta
+dei test è un fixture, non l'esito del verifier completo. Owner e Audit
+restano contati nelle tre risposte (+5.120 B allineati nel piano).
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 correzioni, coin e share ora attraversano due endpoint indipendenti tramite

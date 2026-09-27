@@ -252,6 +252,12 @@ def test_one_channel_setup_wire_and_added_payload():
     assert setup['journal_model_heap_temporary_bytes']==104
     assert setup['journal_setup_record_syncs_each_role']==1
     assert setup['setup_burn_before_rng_and_live_owner_borrow']
+    assert setup['per_attempt_burn_bounded_stream_and_terminal_stop']
+    assert setup['successful_attempt_disk_bytes_each_role']==114
+    assert setup['successful_attempt_syncs_each_role']==2
+    assert setup['three_accepted_attempts_install_setup_total_disk_bytes_each_role']==503
+    assert setup['attempt_stream_extra_heap_bytes']==0
+    assert setup['returned_Audit_and_owner_slot_retained_across_attempts']
     assert not setup['per_attempt_pool_and_acceptance_connected']
     reduced=trace.seed6_setup_trace(2,4,2)
     assert (reduced['main_seed_rows'],reduced['inverse_seed_rows'])==(25,6)

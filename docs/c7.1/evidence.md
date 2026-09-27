@@ -2503,3 +2503,26 @@ Tipi più piccoli non eliminano conversioni, copie di output, workspace
 DFT, allineamento, allocator o altri stati vivi. Non cambiano cap,
 coin, sali, pad, root, wire/FS/MAC o numero di prove. È un raccordo
 nativo ridotto, non picco fisico completo, calibrazione Γ o GO pre-spesa.
+
+## Native P Q power FFT boundary
+
+Il [record su SHA pulita `d9094e9`](../../benchmarks/results/c71-native-power-2026-09-27-d9094e954537.json)
+conserva sei test Rust e dodici Python/C++, seriali entro 60 s/2 GiB,
+check non-test B12/Seed6 e compilazione statica di quattordici kernel
+sm_90 con SASS completo, senza stack o spill. Il nuovo prodotto usa
+36 registri; nessun kernel è stato eseguito sulla GPU.
+
+Dodici fixture esportano numeratore e spettro inverso del consumer P/Q
+nativo, tre blocchi per B=2/8/32/128. I risultati coincidono sia con
+il consumer Rust sia con le somme dirette. Le coordinate appartengono
+a `Fp[v]/(v^3-v-1)`, non alla base MAC `u^3-2`; il prodotto dedicato
+usa sei prodotti base. Alterazioni di numeratore, frequenza inversa
+attiva o risultato e input malformati sono respinti. Il parser canonico
+condiviso mantiene passati anche i controlli remainder originali.
+
+Passano parità adattiva e WHIR; streaming ideale termina in 12,48 s e
+W replay/A ordinata con Seed6 reale ell=2 in 32,78 s. Il checker CUDA
+nomina `8*(2B)*8` byte device e copia D2H tutti i tre piani lunghi 2B;
+setup, storage host e runtime sono aggiuntivi. Sono correttezza CPU e
+compilazione statica ridotte: nessun tempo H100, picco completo, cap
+canonico, riuso del setup fra sfide, Γ o nuovo lemma Lean.

@@ -1485,6 +1485,11 @@ cap 2^23 conserva il massimo integrato nominato, pagando due letture S2
 aggiuntive per A. Il merge FFT odd-log è censito separatamente: scatter PCS,
 fence GPU e picco fisico completo restano aperti. I confronti finiti
 non scaricano un nuovo refinement Lean. Restano NoPeek, endpoint e trust autorizzati.
+L'harness FFT riusa ora anche il kernel odd-log esistente tramite `--odd`:
+controlla separatamente formato host/GPU, sei passaggi, merge, twiddle e
+allocazioni. I report GPU simulati dei test non sono misure. La geometria
+componente completa è 2^21 × 128; non è un harness PCS integrato e non
+autorizza GPU o spesa. Il percorso quadrato rimane disponibile invariato.
 Il [checkpoint RMS e il prover a memoria limitata](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
 conservano P/Y originali e S48 condiviso per riga: 2.023.511.878 B con
 descrittori, nello slot range riusato prima di RNE. Il caller costruisce

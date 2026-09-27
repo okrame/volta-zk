@@ -841,8 +841,17 @@ il precedente lower FFT completo: il coset cambia kernel/layout.
 
 La FFT di lunghezza 2^21 può usare scatter iniziale per parità, due FFT
 quadrate da 2^20 e merge finale in place. Il test finito confronta questa
-identità con DFT in ordine naturale. **L'adapter CUDA dispari non è ancora
-implementato**: niente credito di tempo o root nativa dal test algebrico.
+identità con DFT in ordine naturale. L'adapter dispari è ora presente e
+[compilato per sm_90](evidence.md#whir-capacità-conservata-e-fft-odd-log):
+due trasformate quadrate e merge in-place, senza esecuzione GPU.
+Il [runner](../../scripts/run_c71_fft_microbench.py) espone ora `--odd`
+anche nel percorso host-only e valida il formato distinto, il merge,
+la tabella twiddle completa e i relativi conti. Il futuro modo CUDA
+dispari completo usa lunghezza 2^21, batch 128 e sette ripetizioni;
+il quick resta piccolo. È un input componente, non una proposta provider
+o autorizzazione a eseguirlo. Scatter dai coefficienti PCS, sali/hash,
+fence e catena completa restano da collegare: nessun credito di tempo
+o root nativa segue dai controlli host o dai report GPU simulati.
 La FFT quadrata esistente usa soltanto values e twiddle globali; i suoi
 transpose/row kernel usano shared memory, già distinta dall'HBM. Il trace
 non trasforma questo controllo nel workspace completo della PCS.

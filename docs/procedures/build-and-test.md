@@ -62,6 +62,7 @@ Per la contrazione della tree byte eseguire soltanto
 `tests/test_c71_byte_tree_contraction.py`, entro 60 s/2 GiB. Comprende
 oracolo algebrico e checker C++ di indirizzi/fence nei tre contesti.
 Non esegue una proof con la nuova tree, né inferenza o GPU.
+
 Per il confronto Fp3 aggiungere il filtro `c71_byte_node_contraction`
 alla build PCS mirata e usare il binario emesso da quella build, entro
 60 s/2 GiB con un worker Rayon e `--test-threads=1 --nocapture`.
@@ -75,6 +76,14 @@ Per il raccordo alla proof riusare `c71_b12_byte_functions`,
 Con `C71_INTEGRATED_TRACE=1`, `reduced_joint_trace` deve rilevare i round
 byte custom separatamente dai contatori scalari; il suo test Python è
 `tests/test_c71_response_trace.py -k reduced_joint`.
+
+Per il raccordo FFT odd-log usare `tests/test_c71_fft_microbench.py`, entro
+60 s/2 GiB. Compila il C++ host e controlla le lunghezze piccole contro DFT,
+più report GPU simulati (non esegue CUDA). Il comando host riproducibile è
+`python3 scripts/run_c71_fft_microbench.py --host-only --odd --host-log2-m 3
+--timeout-seconds 60`; senza `--odd` mantiene il controllo quadrato.
+Omettere `--host-only` seleziona CUDA e richiede autorizzazione separata:
+le variabili cloud del runner non costituiscono autorizzazione di spesa.
 
 ## Rust and resource limits
 

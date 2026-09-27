@@ -2334,3 +2334,28 @@ e iteratori non sono inclusi nel solo `named_bytes` dello stato. Ordine
 delle letture, MAC, transcript e guard ridotti non cambiano; il getter
 retained mantiene il prefisso dinamico. Non è source-uniformity completa,
 picco fisico, calibrazione Γ o ammissione pre-spesa.
+
+## Normalized inverse FFT harness
+
+Il [record su SHA pulita `0149350`](../../benchmarks/results/c71-fft-inverse-2026-09-27-014935002bd3.json)
+conserva sette test Python/C++, quattro invocazioni CLI host e la
+compilazione statica sm_90 con SASS completo, in processi seriali entro
+60 s/2 GiB. Sedici casi piccoli confrontano entrambe le direzioni,
+quadrate/dispari, con DFT e roundtrip. Il modello del transpose controlla
+anche la normalizzazione su tile diagonali e fuori diagonale. I test
+respingono scala/conteggi/timing errati e verificano nomi append-only.
+
+`--inverse` usa i twiddle della radice inversa nello stesso array.
+La normalizzazione 1/N aggiunge un prodotto base per elemento, fuso
+nell'ultimo transpose o merge CUDA, senza nuovo array o passaggio globale.
+Sono presenti nove kernel, zero stack/spill ptxas; le specializzazioni
+normalizzate usano 40 registri nel transpose e 23 nel merge. La correzione
+temporanea dell'header glibc già dichiarata è legata al digest originale.
+Il primo dump SASS fallito perché `nvdisasm` non era nel PATH è conservato;
+il dump pulito include il toolchain nel PATH, senza cambiare aritmetica.
+
+Nessuna esecuzione GPU: i report device dei test sono simulati. Il
+riferimento CPU normalizza con loop espliciti, non misura i passaggi GPU.
+Setup host di radici/scale, lanci e runtime non sono gratuiti. Restano
+reverse/padding, prodotti spettrali, pipeline dei resti e integrazione PCS;
+nessun nuovo rate, picco fisico o GO H100.

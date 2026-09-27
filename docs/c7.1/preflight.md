@@ -858,7 +858,7 @@ La FFT quadrata esistente usa soltanto values e twiddle globali; i suoi
 transpose/row kernel usano shared memory, già distinta dall'HBM. Il trace
 non trasforma questo controllo nel workspace completo della PCS.
 
-Il runner espone anche `--inverse`, combinabile con `--odd`, con nomi
+Il [runner verificato](evidence.md#normalized-inverse-fft-harness) espone anche `--inverse`, combinabile con `--odd`, con nomi
 di record distinti. Usa twiddle della radice inversa nello stesso array
 e normalizzazione 1/N fusa nell'ultimo transpose quadrato o nel merge
 dispari: N×batch prodotti base aggiuntivi, senza nuovo passaggio globale

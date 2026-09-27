@@ -122,7 +122,7 @@ I controlli locali usano righe sintetiche per 421 norme, 892 coppie RNE
 e tutte le relazioni affini nei tre contesti;
 il dispatcher per gli altri produttori è ora disponibile, ma resta il
 collegamento completo al Prepare/prover canonico.
-Il provider compatto P0 ora deriva inner, padding e route dai descrittori,
+Il [provider compatto P0](evidence.md#original-p0-compact-provider) ora deriva inner, padding e route dai descrittori,
 con reshape testa/token e selezione delle righe del tied head; il runner
 ridotto riusa questo corpo invece dei loop fissati a hidden=2. È controllato
 su sorgenti originali piccole, non l'esecuzione P0 sui pesi canonici.

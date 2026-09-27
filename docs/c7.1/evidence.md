@@ -1980,3 +1980,24 @@ coprono packing, consumo incompleto e shortage del wrapper ridotto.
 Nessuna nuova promozione canonica è osservata; transcript, riserve e
 ledger del packing restano invariati. Non è Γ reale, run canonico positivo,
 picco fisico o gate H100.
+
+## Original P0 compact provider
+
+Il [record su SHA pulita `df22d85`](../../benchmarks/results/c71-original-p0-compact-2026-09-27-df22d854da49.json)
+conserva sei test Rust seriali entro 60 s/2 GiB e check non-test matrix-only,
+B12 e Seed6. `Auxiliary::compact` usa gli originali C/X/W e i descrittori
+del verifier per inner, padding, reshape testa/token e selezione delle
+righe finali. Il preparatore nativo lo riusa al posto dei loop hidden=2;
+cardinalità dei punti, layout e forme non corrispondenti sono respinti.
+
+La proof P0 piccola con range e PCS W/A originali confronta ogni compact
+col precedente oracolo letterale, inclusi reshape a due teste e tied head.
+Un controllo separato con inner=3 verifica gli zeri di padding e rifiuta
+punti corti/lunghi e layout errato prima dei getter. Passano regressione W
+alterato, tre tentativi densi, O=0 ordinato ideale e O=0 ordinato/Seed6 ad
+ell=2 in 47,39 s. Non vengono eseguiti i cohort sui pesi canonici.
+
+Il provider non riceve MAC; resta il contratto NoPeek degli originali
+immutabili. Il runner ridotto conserva il Vec dei compact. Non è il piano
+P0 fisico a quattro letture, una nuova stima del picco o un lower completo;
+ledger canonico, Γ reale e gate H100 restano invariati/aperti.

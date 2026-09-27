@@ -1942,7 +1942,7 @@ reale del wrapper aggiunge lo shortage Seed6 25+6, senza estrarre una sola
 riga, decodificare una proof o promuovere stato. Questa integrazione non
 fornisce un certificato canonico positivo né un nuovo picco misurato.
 
-Il provider originale compatto P0 è condiviso col runner ridotto e non
+Il [provider originale compatto P0](evidence.md#original-p0-compact-provider) è condiviso col runner ridotto e non
 contiene più loop hidden=2. Deriva inner, forma delle sorgenti, padding,
 reshape testa/token e row-offset dal medesimo layout del verifier. Il
 confronto con il vecchio oracolo alimenta una proof P0 piccola con PCS W/A

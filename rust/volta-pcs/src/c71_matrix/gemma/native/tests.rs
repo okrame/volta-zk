@@ -361,6 +361,51 @@ fn c71_b12_native_changed_predecessor_final_kv_getter_cannot_promote_continuatio
 }
 
 #[test]
+fn c71_b12_native_ordered_two_attempts_keep_accepted_history_and_original_macs() {
+    let (prover, mut verifier) = fixture();
+    let Prover { state, model, rows, .. } = prover;
+    let mut prover: Prover<OrderedAux> =
+        Prover { state, model, rows, accepted: Vec::new(), pending: None };
+    let before = prover.rows.len();
+    for slot in 0..2 {
+        let prompt = slot as u32;
+        let response = prover.prepare_response(prompt, [181 + slot as u8; 32]).unwrap();
+        assert_eq!(prover.accepted.len(), slot);
+        let receipt = prover.pending.as_ref().unwrap().1;
+        let acceptance = verifier.verify_response(prompt, &response).unwrap();
+        assert_eq!(acceptance.receipt, receipt);
+        prover.promote(acceptance).unwrap();
+        assert!(prover.pending.is_none());
+        assert_eq!(prover.accepted.len(), slot + 1);
+        assert_eq!(prover.state.next_slot, slot + 1);
+        assert_eq!(prover.state.cursor, verifier.state.cursor);
+        for accepted_slot in 0..=slot {
+            assert_eq!(
+                prover.accepted[accepted_slot].root(),
+                &verifier.state.accepted[accepted_slot].root
+            );
+            assert_eq!(
+                prover.state.accepted[accepted_slot].receipt,
+                verifier.state.accepted[accepted_slot].receipt
+            );
+        }
+        eprintln!(
+            "C71_ORDERED_ACCEPTED_SLOT slot={slot} certificate_bytes={} base_cursor={}",
+            response.certificate.len(),
+            prover.state.cursor
+        );
+    }
+    let consumed = before - prover.rows.len();
+    assert_eq!(consumed * 3, prover.state.cursor);
+    let cursor = prover.state.cursor;
+    assert!(prover.prepare_response(2, [183; 32]).is_err());
+    assert!(!prover.state.live && prover.pending.is_none());
+    assert_eq!(prover.state.cursor, cursor);
+    assert_eq!(prover.accepted.len(), 2);
+    eprintln!("C71_ORDERED_TWO_ACCEPTED original_mac_rows={consumed} ideal_MAC=true snapshot_materialized=false dense_A_materialized=false canonical_credit=false");
+}
+
+#[test]
 fn c71_b12_native_ordered_prepare_owns_original_source_and_checks_history() {
     let profile = Arc::new(Profile::small(0).unwrap());
     let model = Arc::new(Installed::new(&profile, weights(&profile)).unwrap());

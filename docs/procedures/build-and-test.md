@@ -86,7 +86,11 @@ Per la storia numerica aggiungere i filtri separati
 `c71_b12_ordered_reader_history`, `c71_b12_native_ordered_bytes` e
 `c71_b12_ordered_sourcewise_o0`, `c71_b12_ordered_sourcewise_o2`,
 `c71_b12_ordered_sourcewise_o4`. Confrontano O=0/2/4 e il padding D12,
-non tre proof ordinate accettate. Eseguire
+non tre proof ordinate accettate.
+`c71_b12_native_ordered_two_attempts` ha superato il timeout locale di
+60 s dopo la prima accettazione ed è ora ignorato. Non eseguirlo con
+`--ignored` né aumentare il limite senza autorizzazione separata.
+Per le regressioni locali eseguire
 anche `c71_b12_native_consistent_inference`,
 `c71_b12_native_changed_predecessor` e `c71_joint_inference_changed_last`
 per gli owner W/profilo condivisi, sempre separatamente entro 60 s/2 GiB.

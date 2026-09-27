@@ -361,6 +361,7 @@ fn c71_b12_native_changed_predecessor_final_kv_getter_cannot_promote_continuatio
 }
 
 #[test]
+#[ignore = "exceeds local 60 s budget; requires separately authorized hardware/run"]
 fn c71_b12_native_ordered_two_attempts_keep_accepted_history_and_original_macs() {
     let (prover, mut verifier) = fixture();
     let Prover { state, model, rows, .. } = prover;

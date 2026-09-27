@@ -567,6 +567,9 @@ condivisi e coin PCS OS separati. La storia viene dai soli reader accettati,
 con KV Frozen condivisi e controlli di ordine/W/semantica. Il
 [confronto numerico O=0/2/4](evidence.md#ordered-numerical-history) non è
 un run di tre proof ordinate né un picco fisico.
+Il controllo completo ordinato O=0/2 supera il timeout locale di 60 s
+dopo la sola prima accettazione; il fallimento è conservato nello stesso
+ledger e non autorizza un limite maggiore o un run pesante.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 correzioni, coin e share ora attraversano due endpoint indipendenti tramite

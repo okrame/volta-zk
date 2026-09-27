@@ -1933,6 +1933,11 @@ e respingono cardinalità, ordine e installazione W differenti. Il getter
 grezzo mantiene il dominio Boolean minimo; il reader PCS aggiunge il
 padding pubblico a D12. Non sono tre proof ordinate accettate, un run AES
 a tre tentativi, Γ reale o picco completo.
+Il controllo end-to-end di due proof ordinate con MAC ideali è stato
+arrestato a 60 s dopo la prima accettazione. Il
+[record del timeout](evidence.md#ordered-numerical-history) conserva il
+prefisso; il test è ignorato localmente, senza estendere il limite e
+senza promuovere quel prefisso a una continuazione O=2 verificata.
 
 Il [verifier canonico](evidence.md#canonical-verifier-with-seed6-capacity) ora riusa `VerifierCapacity`, incluso il packing lazy
 Seed6, invece di imporre un pool denso e una seconda conversione di chiavi.

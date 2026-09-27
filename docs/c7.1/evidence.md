@@ -1942,6 +1942,16 @@ di compilazione nei due argomenti `Option<&Arc<Profile>>`, risolto con
 
 ## Ordered numerical history
 
+Il successivo [controllo completo a due tentativi su SHA pulita `d026986`](../../benchmarks/results/c71-ordered-two-2026-09-27-d026986418a1.json)
+è **fallito per timeout locale a 60,01 s**, exit 124. Il log conserva
+l'accettazione reale del verifier ideale per il solo slot O=0, con
+264.147 righe base e certificato da 7.739.529 B. Non contiene il marker
+finale a due accettazioni: non si accredita O=2 completo. Questo non è
+un rifiuto algebrico né un lower H100. Il limite non viene esteso; il
+test resta nel codice ma è ignorato sul percorso locale, in attesa di
+un run/hardware autorizzato separatamente. Nessun run a tre tentativi
+ordinati o AES viene dedotto da questo prefisso.
+
 Il [record su SHA pulita `7903bbf`](../../benchmarks/results/c71-ordered-history-2026-09-27-7903bbf7a07f.json)
 conserva dieci test Rust seriali entro 60 s/2 GiB e check non-test B12/
 Seed6. Il preparatore ordinato passa i predecessori del registro privato

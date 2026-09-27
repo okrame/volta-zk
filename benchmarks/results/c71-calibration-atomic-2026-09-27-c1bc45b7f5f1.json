@@ -1,0 +1,37 @@
+{
+  "milestone": "C7.1-calibration-atomic-publication",
+  "date": "2026-09-27",
+  "git_sha": "c1bc45b7f5f1a8286e65acbb1265312f0a56eb7b",
+  "git_dirty": false,
+  "credit": false,
+  "h100_preflight_ready": false,
+  "calibrated": false,
+  "gpu_execution": false,
+  "scope": "Twelve Python checks. Reuse the existing table publication sequence as a stdlib context manager for tables, candidate ledger and integer-trial reports: unpublished temporary, file fsync, exclusive hard link, directory fsync. Producer errors do not publish partial output; a racing publisher is not overwritten; temporary files are cleaned on ordinary exceptions. Includes all prior mocked native-output/provenance failure regressions. No real weights, native model execution, calibration or hardware credit.",
+  "limits": {
+    "timeout_seconds": 60,
+    "address_space_bytes": 2147483648,
+    "rayon_threads": 1,
+    "openblas_threads": 1,
+    "omp_threads": 1,
+    "serial": true,
+    "external_network": false
+  },
+  "source_sha256": {
+    "scripts/c71_calibrate.py": "3a977a33bb964470acaaa7f80ba7c87e25387af7afdcd70fcfdc593053ec3108",
+    "tests/test_c71_calibration.py": "ad7e49815482fcd8d770747e2d50b60dd336546420b411b083ed7079d83d010e"
+  },
+  "runs": [
+    {
+      "command": "ulimit -v 2097152; PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 timeout 60s pytest -q -p no:cacheprovider tests/test_c71_calibration.py -k 'trial_output or failed_table or weight_provenance or atomic_output'",
+      "exit_code": 0,
+      "tool_wall_time_seconds": 0.000002542,
+      "passed": true,
+      "stdout": "............                                                             [100%]\n12 passed, 2 deselected in 0.04s\n"
+    }
+  ],
+  "prior_evidence": [
+    "benchmarks/results/c71-calibration-failures-2026-09-27-b2697e49cfc1.json"
+  ],
+  "accounting_scope": "Same table/report payload format; no protocol, canonical reservation or resource-ledger change. This local publication check is not an anti-rollback store or distributed transaction. No Rust rebuild was needed for the Python-only change."
+}

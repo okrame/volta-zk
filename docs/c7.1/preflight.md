@@ -2973,7 +2973,7 @@ distinguendo il codice del worker da quello del controllo. Un exit zero
 con JSON invalido, duplicato, non-oggetto o trial non completo produce
 un record di fallimento, non una conclusione positiva. Un report valido
 resta comunque `calibrated:false` e `credit:false`.
-Tabelle e report JSON ora condividono la pubblicazione temporanea con
+Tabelle e report JSON ora [condividono la pubblicazione temporanea](evidence.md#calibration-failure-records) con
 fsync e link esclusivo: un errore non espone un report parziale e una
 pubblicazione concorrente non sostituisce il file già presente.
 Il limite del payload comprende KV precedente e cache di riga W, ma

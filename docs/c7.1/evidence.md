@@ -2027,3 +2027,11 @@ Il worker e la lettura W sono simulati nei casi del report. Anche il
 positivo finto conserva `calibrated:false` e `credit:false`: non è un
 trial numerico, Γ reale o autorizzazione all'esecuzione completa. Nessuna
 build Rust o modifica del ledger/protocollo è necessaria per questo fix.
+
+Il [record successivo `c1bc45b`](../../benchmarks/results/c71-calibration-atomic-2026-09-27-c1bc45b7f5f1.json)
+porta i controlli Python a dodici: tabelle, ledger candidato e report
+del trial riusano la stessa pubblicazione temporanea con fsync e hard link
+esclusivo. Sono verificati successo, errore del produttore e pubblicazione
+concorrente: niente file finale parziale, overwrite o temporanei residui
+dopo le normali eccezioni. Non è un journal anti-rollback o un commit
+distribuito; tutti i limiti di calibrazione e credito restano invariati.

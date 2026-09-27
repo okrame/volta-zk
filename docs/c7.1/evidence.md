@@ -1852,3 +1852,21 @@ Sono corretti i conti di somme PuncAcc e sottrazioni dei prefissi sender.
 Confronti di sort/partizione sono contati a sorgente, non convertiti in
 tempo canonico. Restano proof/NoPeek, composizione, CUDA, picco fisico
 e Γ reale; nessuna esecuzione o spesa H100.
+
+## Seed6 opt-in external role pools
+
+Il [record su SHA pulita `034e053`](../../benchmarks/results/c71-seed6-public-2026-09-27-034e053eb875.json) conserva
+**58 test Rust e 32 Python/C++**, seriali entro 60 s/2 GiB, e il check
+non-test della nuova feature `c71-seed6-reference`. Un crate esterno
+usa OS RNG e i pool opachi monouso: setup reale 25+6, burn, packing/transfer
+Fp3 originale e stop/reopen reject. La ricevuta è un fixture, non prova
+di inferenza. Il pubblico non può scegliere seed/Delta o estrarre stato EA.
+
+L'algebra pura è spostata byte per byte in PCG e ri-esportata da MAC,
+senza ciclo di dipendenze o formule duplicate. Passano le sei regressioni
+MAC, inclusi i controesempi B4/B5 che restano fallimenti delle costruzioni
+storiche. I costi wire/heap non cambiano. Il record conserva due errori
+iniziali di compilazione (cfg della suite e assert Debug nel test), entrambi
+corretti, e i warning di codice diagnostico non usato nella build reference.
+Non sono nuovi teoremi, credito GPU o produzione: il bridge PCS/GKR,
+Γ reale e picco completo restano aperti.

@@ -1834,6 +1834,8 @@ del wrapper PCS/GKR, composizione e picco fisico.
 
 ### Interfaccia CPU opt-in e algebra MAC condivisa
 
+Evidenza: [58 test Rust e 32 Python/C++](evidence.md#seed6-opt-in-external-role-pools).
+
 La feature `volta-pcg/c71-seed6-reference`, disabilitata per default,
 espone soltanto `prover`, `verifier`, geometria validata e pool opachi
 con contesto pubblico, diagnostici, stop e riserva limitata. I costruttori

@@ -67,9 +67,7 @@ fn replay(
     if old.len() * TOKENS != p.old
         || tokens.iter().any(|&t| t >= 2)
         || old.iter().enumerate().any(|(slot, s)| {
-            s.old != slot * TOKENS
-                || s.model_root != w.model.root.roots()[0]
-                || s.profile != p.digest
+            s.old != slot * TOKENS || s.model_root != w.root().roots()[0] || s.profile != p.digest
         })
     {
         return Err("ordered original source context differs".into());
@@ -417,7 +415,7 @@ impl Frozen {
                 values.entry(id).or_insert_with(Vec::new).extend(words);
                 Ok(())
             })?;
-        let model_root = w.model.root.roots()[0];
+        let model_root = w.root().roots()[0];
         let checkpoint = Cuts {
             owner: (source_root, model_root, p.digest, p.old, tokens),
             values: cuts.into_iter().map(|id| (id, values.remove(&id).unwrap())).collect(),
@@ -448,7 +446,7 @@ impl Frozen {
         if cuts.owner != (self.source_root, self.model_root, self.profile, self.old, self.tokens)
             || p.old != self.old
             || p.digest != self.profile
-            || w.model.root.roots()[0] != self.model_root
+            || w.root().roots()[0] != self.model_root
             || first
                 .checked_add(output.len())
                 .is_none_or(|end| end > p.bytes().live.next_power_of_two())

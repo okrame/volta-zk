@@ -85,7 +85,7 @@ fn c71_b12_native_prepare_covers_all_sources_and_absorbs_final_token() {
 pub(super) fn fixture() -> (Prover, Verifier) {
     let p = Profile::small(0).unwrap();
     let model = Installed::new(&p, weights(&p)).unwrap();
-    let state = || State::new(model.model.root.clone(), [31; 32], 1, [32; 32]).unwrap();
+    let state = || State::new(model.root().clone(), [31; 32], 1, [32; 32]).unwrap();
     let (ps, vs) = (state(), state());
     let mut count = 0;
     for slot in 0..3 {
@@ -414,7 +414,7 @@ fn c71_b12_native_ordered_prepare_owns_original_source_and_checks_history() {
     let prepared = OrderedAux::prepare(profile.clone(), model.clone(), &[], 1).unwrap();
     assert_eq!(prepared.tokens(), dense.tokens);
     assert_eq!(prepared.root().num_roots(), 1);
-    assert_ne!(prepared.root(), &model.model.root);
+    assert_ne!(prepared.root(), model.root());
     for index in 0..1usize << DOMAIN_A.config().unwrap().num_variables {
         assert_eq!(
             prepared.model().byte(index),

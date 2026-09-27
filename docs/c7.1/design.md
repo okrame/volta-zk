@@ -1420,6 +1420,16 @@ verifica correttezza ridotta, non sostituisce ell=11 selezionato; gli owner Arc
 non danno credito al picco canonico o a un bound dello stack compilato.
 Le coin dei test algebrici
 restano distinte dalla catena che esegue il protocollo nativo.
+L'installazione W ridotta può ora possedere un `ReplayModel` anziché il
+secondo Vec virtuale: il getter PCS e il lettore numerico condividono un
+solo packed immutabile tramite Arc. Il costruttore sourcewise valida forma
+e range simmetrico prima delle coin PCS OS; la mappa W originale fornisce
+gli zeri pubblici di padding. Range W usa l'alfabeto simmetrico, A quello
+byte; entrambi riusano chiusura lineare/WHIR e MAC originali. Il mutatore
+malizioso dei soli test effettua copy-on-write, senza alterare la sorgente
+già committata. Restano disponibili le fixture dense esplicite. La nuova
+variante trattiene ancora il packed CPU e metadati/profilo del getter:
+non è un lettore canonico da file, un port GPU o un picco fisico completo.
  Il getter numerico ridotto
 O=0/2/4 apre la root A originale con S1 condiviso allocato dopo le query
 al predecessore. Il fold in-place dei successori segue il rilascio esplicito

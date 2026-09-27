@@ -294,7 +294,7 @@ struct Body<T, W> {
 
 // The two source representations share the original numerical body and verifier.
 // Replay owns only immutable getter state; it closes in the same original MACs.
-enum SourceModel<'a> {
+pub(super) enum SourceModel<'a> {
     Dense(&'a Model),
     Replay(&'a b12::replay::ReplayModel),
 }
@@ -310,20 +310,19 @@ impl SourceModel<'_> {
         attempt: AttemptContext,
         layout: [u8; 32],
         live: usize,
+        alphabet: range::Alphabet,
         fs: &mut Fs,
         rows: &mut impl ExactSizeIterator<Item = Auth>,
     ) -> Result<(range::Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
         match self {
-            Self::Dense(m) => {
-                range::prove(m, attempt, layout, live, range::Alphabet::Byte, fs, rows)
-            }
+            Self::Dense(m) => range::prove(m, attempt, layout, live, alphabet, fs, rows),
             Self::Replay(m) => range::prove_sourcewise(
                 m.domain(),
                 m.root(),
                 attempt,
                 layout,
                 live,
-                range::Alphabet::Byte,
+                alphabet,
                 &|i| m.value(i),
                 fs,
                 rows,
@@ -500,15 +499,8 @@ fn prove_schedule<S: Auxiliary>(
     if openings.len() != old.len() {
         return Err("native historical closure census differs".into());
     }
-    let (proof, _) = linear::prove(
-        &w.model,
-        s.attempt,
-        p.plan.layout_digest,
-        &bw.forms,
-        &bw.targets,
-        &mut fs,
-        rows,
-    )?;
+    let (proof, _) =
+        w.source().close(s.attempt, p.plan.layout_digest, &bw.forms, &bw.targets, &mut fs, rows)?;
     wire.raw(15, &codec::encode_linear(DOMAIN_W, &proof).map_err(|e| e.to_string())?, &mut fs)?;
     for (i, o) in openings.into_iter().enumerate() {
         let (proof, _) = old[i].model().close(
@@ -790,8 +782,14 @@ fn prove_components<S: Auxiliary, Rows: ExactSizeIterator<Item = Auth>>(
     wire.put(12, &proof, &mut fs)?;
     let (f, b, t) = p.softmax.forms(p.bytes(), &pending)?;
     ba.extend(f, b, t, ashift)?;
-    let (proof, f, t) =
-        range::prove(&w.model, s.attempt, p.plan.layout_digest, p.plan.live, 32767, &mut fs, rows)?;
+    let (proof, f, t) = w.source().range(
+        s.attempt,
+        p.plan.layout_digest,
+        p.plan.live,
+        range::Alphabet::Symmetric(32767),
+        &mut fs,
+        rows,
+    )?;
     wire.put(13, &proof, &mut fs)?;
     for (f, t) in f.into_iter().zip(t) {
         bw.add(f, t);
@@ -801,6 +799,7 @@ fn prove_components<S: Auxiliary, Rows: ExactSizeIterator<Item = Auth>>(
         s.attempt,
         p.bytes().layout_digest,
         auxiliary_live,
+        range::Alphabet::Byte,
         &mut fs,
         rows,
     )?;

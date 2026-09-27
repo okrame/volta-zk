@@ -1,15 +1,81 @@
 //! Private preparation has no FS, DV key, correlation iterator or PCS seed input.
 use super::*;
+use std::sync::Arc;
+
+enum WeightModel {
+    Dense(Model),
+    Replay(b12::replay::ReplayModel),
+}
 
 pub(super) struct Installed {
-    packed: Vec<i16>,
-    pub(super) model: Model,
+    packed: Arc<Vec<i16>>,
+    model: WeightModel,
 }
 
 impl Installed {
     #[cfg(test)]
     pub(super) fn corrupt_weight(&mut self, index: usize, value: i16) {
-        self.packed[index] = value;
+        Arc::make_mut(&mut self.packed)[index] = value;
+    }
+
+    pub(super) fn root(&self) -> &C61Commitment {
+        match &self.model {
+            WeightModel::Dense(model) => &model.root,
+            WeightModel::Replay(model) => model.root(),
+        }
+    }
+
+    pub(super) fn source(&self) -> protocol::SourceModel<'_> {
+        match &self.model {
+            WeightModel::Dense(model) => protocol::SourceModel::Dense(model),
+            WeightModel::Replay(model) => protocol::SourceModel::Replay(model),
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn dense_model(&self) -> &Model {
+        match &self.model {
+            WeightModel::Dense(model) => model,
+            WeightModel::Replay(_) => panic!("dense W required by the joint diagnostic"),
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn release_retained(&mut self) {
+        if let WeightModel::Dense(model) = &mut self.model {
+            model.retained = None;
+        }
+    }
+
+    fn check_packed(profile: &Profile, packed: &[i16]) -> Result<(), String> {
+        if packed.len() != profile.plan.live || packed.iter().any(|&value| value == i16::MIN) {
+            return Err("private W layout or symmetric range differs".into());
+        }
+        Ok(())
+    }
+
+    pub(super) fn new_sourcewise(profile: Arc<Profile>, packed: Vec<i16>) -> Result<Self, String> {
+        Self::check_packed(&profile, &packed)?;
+        let packed = Arc::new(packed);
+        let original = packed.clone();
+        let coins = fresh_pcs_coins()?;
+        let model = b12::replay::ReplayModel::new(
+            DOMAIN_W,
+            coins.seed,
+            coins.salt_seed,
+            Arc::new(move |index| {
+                if index >= profile.plan.live {
+                    return E::ZERO;
+                }
+                let value = profile
+                    .plan
+                    .virtual_to_packed(index)
+                    .expect("immutable installed W layout")
+                    .map_or(0, |offset| original[offset]);
+                to_p3(signed(i64::from(value)))
+            }),
+        )?;
+        Ok(Self { packed, model: WeightModel::Replay(model) })
     }
 
     pub(super) fn new(p: &Profile, packed: Vec<i16>) -> Result<Self, String> {
@@ -21,27 +87,25 @@ impl Installed {
         packed: Vec<i16>,
         build: impl FnOnce(Vec<i16>) -> Result<Model, String>,
     ) -> Result<Self, String> {
-        if packed.len() != p.plan.live || packed.iter().any(|&x| x == i16::MIN) {
-            return Err("private W layout or symmetric range differs".into());
-        }
+        Self::check_packed(p, &packed)?;
         let values = (0..p.plan.live)
             .map(|i| p.plan.virtual_to_packed(i).map(|j| j.map_or(0, |j| packed[j])))
             .collect::<Result<_, _>>()?;
-        Ok(Self { packed, model: build(values)? })
+        Ok(Self { packed: Arc::new(packed), model: WeightModel::Dense(build(values)?) })
     }
 
     #[cfg(test)]
     pub(super) fn source_view(&self, root: C61Commitment) -> Self {
         Self {
             packed: self.packed.clone(),
-            model: Model {
+            model: WeightModel::Dense(Model {
                 domain: DOMAIN_W,
-                weights: self.model.weights.clone(),
+                weights: self.dense_model().weights.clone(),
                 root,
                 seed: [0; 32],
                 salt_seed: [0; 32],
                 retained: None,
-            },
+            }),
         }
     }
     pub(super) fn weight(&self, p: &Profile, id: usize, row: usize, col: usize) -> i64 {
@@ -413,7 +477,7 @@ impl Snapshot {
         let stop = || "private preparation Stop".to_string();
         if prompt >= 2
             || old.len() * TOKENS != p.old
-            || old.iter().any(|s| s.model_root != w.model.root.roots()[0])
+            || old.iter().any(|s| s.model_root != w.root().roots()[0])
         {
             return Err(stop());
         }
@@ -477,7 +541,7 @@ impl Snapshot {
             })
             .collect::<Result<Vec<_>, _>>()?;
         // C_A and its independent random coins exist only after every private check.
-        Ok(Self { values, tokens, source: build(encoded)?, model_root: w.model.root.roots()[0] })
+        Ok(Self { values, tokens, source: build(encoded)?, model_root: w.root().roots()[0] })
     }
 
     pub(super) fn compact(
@@ -517,6 +581,37 @@ pub(super) fn compact(
 #[cfg(test)]
 mod work_tests {
     use super::*;
+
+    #[test]
+    fn c71_b12_native_weight_replay_shares_packed_storage_and_keeps_committed_values() {
+        let profile = Arc::new(Profile::small(0).unwrap());
+        let packed: Vec<_> = (0..profile.plan.live).map(|index| (index % 7) as i16 - 3).collect();
+        let mut installed = Installed::new_sourcewise(profile.clone(), packed.clone()).unwrap();
+        assert_eq!(Arc::strong_count(&installed.packed), 2);
+        let WeightModel::Replay(source) = &installed.model else { panic!("expected replay W") };
+        let expected: Vec<_> = (0..profile.plan.live)
+            .map(|index| {
+                profile.plan.virtual_to_packed(index).unwrap().map_or(0, |offset| packed[offset])
+            })
+            .collect();
+        for index in 0..1usize << DOMAIN_W.config().unwrap().num_variables {
+            assert_eq!(
+                source.value(index),
+                signed(i64::from(expected.get(index).copied().unwrap_or(0)))
+            );
+        }
+        let root = installed.root().clone();
+        installed.corrupt_weight(0, 1);
+        assert_eq!(installed.weight(&profile, 0, 0, 0), 1);
+        assert_eq!(installed.root(), &root);
+        let WeightModel::Replay(source) = &installed.model else { panic!("expected replay W") };
+        assert_eq!(source.value(profile.plan.tensor_to_virtual(0, 0, 0).unwrap()), signed(-3));
+        assert!(Installed::new_sourcewise(profile.clone(), Vec::new()).is_err());
+        let mut invalid = packed;
+        invalid[0] = i16::MIN;
+        assert!(Installed::new_sourcewise(profile, invalid).is_err());
+        println!("C71_WEIGHT_REPLAY domain=D10 shared_packed=true dense_virtual_W=false canonical_credit=false");
+    }
 
     fn result_shape(p: &Profile, step: &Step) -> Vec<(usize, Vec<i64>)> {
         p.outputs(step)

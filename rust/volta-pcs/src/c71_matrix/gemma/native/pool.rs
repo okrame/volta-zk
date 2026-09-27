@@ -215,7 +215,7 @@ impl State {
 impl<S: Auxiliary> Prover<S> {
     fn from_pool(model: Installed, pool: &ProverCapacity<'_, '_>) -> Result<Self, String> {
         let state = State::from_pool(
-            model.model.root.clone(),
+            model.root().clone(),
             pool.fixed_run_context().map_err(|e| e.to_string())?,
         )?;
         Ok(Self {
@@ -453,7 +453,7 @@ mod tests {
         use volta_pcg::c71_lifetime::Lifetime;
         let p = Profile::small(0).unwrap();
         let model = Installed::new(&p, super::super::tests::weights(&p)).unwrap();
-        let root = model.model.root.clone();
+        let root = model.root().clone();
         let binding =
             ModelBinding { anchor: root.roots()[0], root: root.roots()[0], semantics: p.digest };
         let dir = std::env::temp_dir().join(format!(

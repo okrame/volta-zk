@@ -127,7 +127,7 @@ fn c71_seed6_native_partial_lazy_consumption_burns_without_acceptance() {
 fn c71_seed6_native_shortage_stops_before_prepare_or_decode() {
     let profile = Profile::small(0).unwrap();
     let model = Installed::new(&profile, super::super::tests::weights(&profile)).unwrap();
-    let root = model.model.root.clone();
+    let root = model.root().clone();
     let binding =
         ModelBinding { anchor: root.roots()[0], root: root.roots()[0], semantics: profile.digest };
     let (_, _, counters, head) = pair(
@@ -162,23 +162,34 @@ fn c71_seed6_native_shortage_stops_before_prepare_or_decode() {
 
 #[test]
 fn c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals() {
-    full_o0::<Snapshot>(false, 11);
+    full_o0::<Snapshot>(false, 11, false);
 }
 
 #[test]
 fn c71_seed6_native_full_o0_late_rejection_burns_without_promotion() {
-    full_o0::<Snapshot>(true, 11);
+    full_o0::<Snapshot>(true, 11, false);
 }
 
 #[test]
 fn c71_seed6_native_ordered_o0_reduced_weight_complete_proof() {
-    full_o0::<OrderedAux>(false, 2);
+    full_o0::<OrderedAux>(false, 2, false);
 }
 
-fn full_o0<Source: Auxiliary>(reject: bool, weight: usize) {
-    let profile = Profile::small(0).unwrap();
-    let model = Installed::new(&profile, super::super::tests::weights(&profile)).unwrap();
-    let root = model.model.root.clone();
+#[test]
+fn c71_seed6_native_replay_w_and_ordered_a_complete_o0_proof() {
+    full_o0::<OrderedAux>(false, 2, true);
+}
+
+fn full_o0<Source: Auxiliary>(reject: bool, weight: usize, replay_weights: bool) {
+    let profile = Arc::new(Profile::small(0).unwrap());
+    let packed = super::super::tests::weights(&profile);
+    let model = if replay_weights {
+        Installed::new_sourcewise(profile.clone(), packed)
+    } else {
+        Installed::new(&profile, packed)
+    }
+    .unwrap();
+    let root = model.root().clone();
     let binding =
         ModelBinding { anchor: root.roots()[0], root: root.roots()[0], semantics: profile.digest };
     let (response_sender, response_receiver) = std::sync::mpsc::sync_channel(0);
@@ -236,6 +247,7 @@ fn full_o0<Source: Auxiliary>(reject: bool, weight: usize) {
             "receipt":head,"accepted_attempts":usize::from(!reject),"OS_rng":true,
             "late_rejection":reject,
             "source":std::any::type_name::<Source>(),
+            "dense_virtual_W_materialized":!replay_weights,
             "scope":"one complete reduced O0 proof, optionally corrupted completion; real Seed6 bounded batches at the reported reduced geometry; not canonical security, H100 or full fixed-run credit"
         })
     );

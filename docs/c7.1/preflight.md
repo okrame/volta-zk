@@ -1955,6 +1955,14 @@ originali; inner=3 è controllato separatamente. Questo non esegue Gemma
 né implementa la schedule P0 fisica a quattro letture: il riferimento
 ridotto conserva il Vec dei compact, e il ledger canonico resta invariato.
 
+Il raccordo W sourcewise ora condivide il packed immutabile fra lettura
+numerica e `ReplayModel`, evitando il secondo Vec W virtuale nel riferimento
+ridotto. Installazione, coin OS e padding precedono il bootstrap; la stessa
+root alimenta binding, range simmetrico e PCS finale. La variante densa
+resta esplicita per le regressioni, non una fallback di produzione. Il
+packed CPU e il profilo catturato dal getter restano vivi e vanno contati:
+nessun risparmio canonico o picco fisico è accreditato dal solo raccordo.
+
 ## Seed6: seal di completamento
 
 Evidenza: [29 controlli Rust e 28 Python/C++ su SHA pulita](evidence.md#seed6-completion-seals).

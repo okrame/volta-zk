@@ -553,7 +553,7 @@ fn compare(changed_kv: bool) {
     let mut w =
         Installed::new_with_source(&profile, packed, |v| Model::new_with_retention(WD, v, true))
             .unwrap();
-    let mut state = State::new(w.model.root.clone(), [31; 32], 1, [32; 32]).unwrap();
+    let mut state = State::new(w.root().clone(), [31; 32], 1, [32; 32]).unwrap();
     let delta = signed(67);
     let mut rng = MatrixRng::from_seed([153; 32]);
     let count: usize = (0..3)
@@ -561,8 +561,8 @@ fn compare(changed_kv: bool) {
             let p = &state.profiles[slot];
             let g = gamma(&AD.config().unwrap());
             let s = p.context(
-                &w.model.root,
-                &w.model.root,
+                w.root(),
+                w.root(),
                 &[0, 0],
                 AttemptContext { slot: slot as u8, ..state.attempt([9; 32]) },
                 &g,
@@ -589,10 +589,9 @@ fn compare(changed_kv: bool) {
             accepted[0].corrupt_value(prev, kv_ids(prev)[0], 1, 0);
         }
         let p = &state.profiles[slot];
-        let mut snapshot = Snapshot::prepare_with_source(p, &w, &accepted, prompt, |v| {
-            view(v, w.model.root.clone())
-        })
-        .unwrap();
+        let mut snapshot =
+            Snapshot::prepare_with_source(p, &w, &accepted, prompt, |v| view(v, w.root().clone()))
+                .unwrap();
         assert_eq!(snapshot.tokens, baseline.tokens);
         if !changed_kv {
             assert_eq!(snapshot.source.weights, bp.accepted.last().unwrap().source.weights);
@@ -611,7 +610,7 @@ fn compare(changed_kv: bool) {
             }
         }
         let mut values = vec![0; 2 * W];
-        values[..w.model.weights.len()].copy_from_slice(&w.model.weights);
+        values[..w.dense_model().weights.len()].copy_from_slice(&w.dense_model().weights);
         values[W..W + snapshot.source.weights.len()].copy_from_slice(&snapshot.source.weights);
         let current = Model::new_with_retention(SD, values, true).unwrap();
         snapshot.source.root = current.root.clone();
@@ -625,7 +624,7 @@ fn compare(changed_kv: bool) {
             &w,
             &snapshot,
             &accepted,
-            previous.as_ref().unwrap_or(&w.model),
+            previous.as_ref().unwrap_or(w.dense_model()),
             &current,
             nonce,
             &mut reserved,
@@ -708,7 +707,7 @@ fn compare(changed_kv: bool) {
         accepted.push(snapshot);
         previous = Some(current);
         // Installation is exposed once. Keep numerical W, release its PCS cache.
-        w.model.retained = None;
+        w.release_retained();
     }
     assert!(rows.next().is_none() && keys.next().is_none() && !state.live);
     assert!(3 * count < bv.state.cursor);

@@ -128,6 +128,14 @@ nessun bound crittografico canonico si trasferisce da questa geometria.
 Non eseguire insieme i filtri `c71_seed6_native` con un unico timeout:
 ciascun positivo/rifiuto completo ha il proprio limite di 60 s.
 
+Per W replay aggiungere `c71_b12_native_weight_replay`, che confronta
+ogni valore D10, padding e immutabilità del packed committato. Il filtro
+separato `c71_seed6_native_replay_w_and_ordered_a` usa W replay e A ordinata
+nella proof O=0 con Seed6 t=4/h=19/ell=2, sempre entro 60 s/2 GiB e su soli
+socketpair locali. Non è lettura del checkpoint reale né modello canonico.
+Ripetere le regressioni native composed/streaming, W alterato e
+`c71_joint_inference_changed_last` per i proprietari W adattati.
+
 Per il raccordo del verifier canonico al medesimo pool lazy eseguire
 separatamente `c71_b12_native_registry` e `c71_b12_native_dispatch_canonical`.
 Con feature Seed6 il primo verifica anche shortage con setup 25+6 su

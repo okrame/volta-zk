@@ -139,7 +139,7 @@ gli handle condividono la stessa tree senza rieseguire il commitment
 prima della proof. Le root storiche conservano ciascuna la propria
 cache; coin della proof, correlazioni e budget di esposizione non cambiano.
 Questo storage resta vivo e va incluso nel picco completo.
-Le A ordinate ora usano anche la retention S1 del riferimento WHIR:
+Le A ordinate ora usano anche la [retention S1 verificata](evidence.md#ordered-a-retained-s1) del riferimento WHIR:
 materializzazione dopo il rilascio del predecessore, stessa capacità
 riservata fino al termine e lease originali. W non cambia; questo
 raccordo ridotto non ammette il buffer o la schedule canonica.

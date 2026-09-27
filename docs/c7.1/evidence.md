@@ -2290,3 +2290,25 @@ root attive e ai temporanei della prova. Non è rilascio di memoria né
 nuovo margine arena. Coin della proof, correlazioni e budget del wrapper
 non cambiano; le generazioni foldate conservano il rilascio esplicito.
 L'integrazione canonica, Γ reale, ledger e gate pre-spesa restano aperti.
+
+## Ordered A retained S1
+
+Il [record su SHA pulita `e3c9a10`](../../benchmarks/results/c71-ordered-s1-2026-09-27-e3c9a1024918.json)
+conserva quattordici test Rust e tre Python, seriali entro 60 s/2 GiB,
+più check non-test B12/Seed6. Il caller delle A ordinate seleziona ora
+lo stesso residual state con S1 trattenuto già usato nel confronto WHIR.
+W conserva il percorso senza retention; non cambia il protocollo.
+
+Il confronto adattivo verifica coefficienti, claim, sfide e capacità
+trattenuta; lifecycle e rifiuto dei getter stantii restano verificati.
+Passano la cache iniziale, batch Merkle, righe RS, wire/FS/MAC D10 e le
+PCS sulle A della storia numerica O=0/2/4. La proof streaming ideale
+termina in 12,53 s e O=0 W replay/A ordinata con Seed6 reale ell=2 in
+32,75 s. Sono controlli CPU ridotti, non throughput o upper H100.
+
+S1 è materializzato dopo apertura/rilascio del predecessore e condiviso
+con l'oracolo già committato. I fold successivi mantengono la capacità
+del Vec fino al rilascio dello stato: nessun credito da `truncate`.
+Questo buffer coesiste con cache iniziali e altri temporanei; guard a
+16 variabili, esposizioni e consumo MAC restano invariati. Non è
+ammissione del buffer canonico, tre accettazioni ordinate o Γ calibrato.

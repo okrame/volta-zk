@@ -1984,7 +1984,7 @@ liberata dopo l'installazione. Il marker locale
 `prover_cached_initial_oracle` distingue questo percorso dalla
 rematerializzazione ancora presente nel riferimento denso.
 
-Il caller delle A ordinate ora seleziona la retention del primo fold,
+Il [caller verificato delle A ordinate](evidence.md#ordered-a-retained-s1) ora seleziona la retention del primo fold,
 già confrontata con WHIR denso: materializza S1 solo dopo il rilascio
 dell'oracolo iniziale e conserva la sua capacità durante i fold seguenti.
 Il predecessore committato resta valido fino alla propria apertura;

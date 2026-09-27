@@ -137,7 +137,7 @@ installazione canonica, tre accettazioni reali o picco fisico.
 Le [righe PCS replay](evidence.md#native-fft-remainder-in-replay-openings) usano ora il riduttore FFT per blocchi con i pad
 originali, invece di valutare tutta la sorgente per ogni query. È un
 callback limitato a 1.024 richieste, non l'apertura canonica completa.
-La tree ora raggruppa i sottoalberi entro lo stesso cap e riusa le righe
+Il [batch verificato](evidence.md#batched-merkle-replay) raggruppa i sottoalberi entro lo stesso cap e riusa le righe
 rigenerate per l'apertura, senza callback aggiuntivo; un'unione più grande
 richiede ancora più batch. Il
 [setup verificato](evidence.md#balanced-query-setup) riusa prodotti FFT bilanciati e reciproco Newton;

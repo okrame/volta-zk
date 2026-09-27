@@ -1980,7 +1980,7 @@ pad e ordine originali, batch fino a 1.024 richieste e una lettura di ogni
 coefficiente per batch. Il [setup verificato](evidence.md#balanced-query-setup) ora costruisce il modulo con prodotti
 FFT bilanciati e il reciproco con raddoppio di Newton. La [valutazione verificata](evidence.md#native-query-remainder-tree)
 ora scende nell'albero dei resti con lo stesso helper della riduzione
-sorgente. Il cap non cresce: la tree raggruppa i sottoalberi richiesti
+sorgente. Il cap non cresce: il [batch verificato](evidence.md#batched-merkle-replay) raggruppa i sottoalberi richiesti
 in batch fino a 1.024 righe distinte e riusa quelle righe per gli indici
 dell'apertura, conservando ordine e duplicati. Non ripete il callback
 per ogni sottoalbero o per le sole query; un'unione oltre il cap richiede

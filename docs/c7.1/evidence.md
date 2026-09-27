@@ -2245,3 +2245,25 @@ di tutti i livelli, i temporanei Newton/FFT, i livelli dei resti e le
 righe di output sono memoria posseduta, non gli stessi soli buffer della
 radice. Cap canonico, scansione unica dell'apertura, picco fisico, Γ reale
 e pipeline GPU restano aperti; nessun nuovo credito hardware.
+
+## Batched Merkle replay
+
+Il [record su SHA pulita `2b8a2ae`](../../benchmarks/results/c71-replay-batch-2026-09-27-2b8a2ae7cc56.json)
+conserva otto test Rust e tre Python, seriali entro 60 s/2 GiB, più
+check non-test B12/Seed6. Le aperture raggruppano i sottoalberi richiesti
+in batch fino a 1.024 righe distinte; le stesse righe alimentano hash e
+output, senza callback aggiuntivo per le query. I fixture controllano
+una e due chiamate, ciascuna entro il cap, contro root, righe, sali e
+frontiera originali. Duplicati e ordine sono conservati; forme errate e
+valori alterati sono respinti. Query invalide e vuote non leggono righe.
+
+Passano i fattori e le righe base/extension, la catena WHIR con wire/FS/MAC
+identici e rifiuto dell'endpoint alterato. Il positivo streaming ideale
+termina in 14,85 s e O=0 W replay/A ordinata con Seed6 reale ell=2 in
+35,17 s. Sono durate CPU dei fixture, non throughput o upper H100.
+
+L'unione oltre il cap richiede ancora più batch. Batch di righe, copie
+dell'output, query ordinate, sali/digest dei sottoalberi e cache superiore
+coesistono; `open_subtree_bytes_each` non descrive tutto questo picco.
+Nessun cap canonico, credito arena o scansione unica dell'intera PCS
+è attribuito al raccordo ridotto; Γ e gate pre-spesa restano aperti.

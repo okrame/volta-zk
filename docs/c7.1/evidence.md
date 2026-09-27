@@ -2428,3 +2428,29 @@ attivo a 512 replay: 6.087.512.576 / 6.126.837.504 / 6.166.159.104 B
 nei tre contesti. Il minimo margine resta 276.291.840 B, non un picco
 fisico completo: questa fase non determina il massimo complessivo.
 Nessuna GPU, nuova misura di throughput o chiusura dei gate Γ/PCS/runtime.
+
+## Native blocked rational Pow residual
+
+Il [record su SHA pulita `e54bb61`](../../benchmarks/results/c71-rational-pow-2026-09-27-e54bb6178f6e.json)
+conserva quindici test Rust e undici Python/C++, seriali entro 60 s/2 GiB,
+più check non-test B12/Seed6. Il residuale genera ora le somme Pow come
+coefficienti di P/Q: prodotti bilanciati, reciproco Newton e convoluzione
+Fp3 condividono gli helper FFT del remainder RS. Il cap locale è 256;
+non viene materializzato un vettore di pesi grande quanto la sorgente.
+
+Il confronto diretto copre 0/1/3/5/17/513 termini, blocchi 1/2/8/32/256,
+tre blocchi consecutivi, basi estese/zero/uno/ripetute e scale nulle.
+La parità adattiva include più blocchi e retention, con stessi cubici,
+claim e sfide. Passano righe RS/pad originali, il confine C++/PCS e
+wire/FS/MAC WHIR, anche sulle A O=0/2/4. Streaming ideale termina in
+12,28 s e O=0 W replay/A ordinata con Seed6 reale ell=2 in 32,62 s:
+sono durate CPU ridotte, non rate o upper H100.
+
+Q e spettro inverso sono condivisi dai due lati di ogni cubico, ma il
+setup è ricostruito fra chiamate/round. Albero Q, numeratori temporanei,
+spettro, ampiezze, DFT, blocchi e tabelle Eq sono storage aggiuntivo al
+solo `named_bytes`. Guard a 16 variabili, maschere, getter e budget MAC
+non cambiano. Il cap canonico, riuso fra le due sfide, lavoro completo,
+picco fisico e Γ restano aperti; nessun nuovo credito Lean/GPU.
+La prima invocazione rustfmt con cwd errata non ha trovato i file;
+la formattazione corretta e una nuova build precedono il run di record.

@@ -2042,7 +2042,7 @@ Il Vec S1, le cache iniziali e gli altri temporanei vanno contati insieme;
 il guard ridotto a 16 variabili resta, senza nuovo margine o cap canonico.
 
 Il [residual state](evidence.md#factored-eq-and-streamed-pow) mantiene due tabelle Eq pubbliche bilanciate.
-Il consumer Pow usa ora blocchi P/Q di al più 256 elementi, con prodotti
+Il [consumer Pow](evidence.md#native-blocked-rational-pow-residual) usa ora blocchi P/Q di al più 256 elementi, con prodotti
 bilanciati e Newton negli stessi helper FFT usati dai resti RS, estesi
 a Fp3. I numeratori sono pesati dalle ampiezze correnti e troncati al
 blocco; le ampiezze avanzano senza rileggere la sorgente. I due lati del

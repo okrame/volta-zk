@@ -304,11 +304,19 @@ con guard a 16 variabili, non l'ammissione del buffer A canonico.
 Il residual state ora riusa `Poly::new_from_point` per fattorizzare Eq
 in due tabelle pubbliche da `2^floor(d/2) + 2^ceil(d/2)` elementi Fp3,
 anziché moltiplicare tutte le coordinate a ogni cella dei loop adattati.
-Le potenze negli aggiornamenti dei claim e nei cubici scorrono con
-`shifted_powers`, senza esponenziazione per cella. Vale anche con coordinate
-e basi zero/uno, senza divisioni. Le tabelle sono temporanei posseduti;
-quelle catturate da un getter vivono quanto il getter. Non sono incluse
-nel solo `named_bytes` dello stato né costituiscono un picco completo.
+Le potenze negli aggiornamenti dei claim e nei cubici sono ora generate
+da P/Q in blocchi di al più 256 elementi: prodotti bilanciati per
+Q e numeratori pesati, reciproco con Newton e convoluzione Fp3. Riusa
+gli helper FFT del resto RS, ora generici base/extension. Q(0)=1 evita
+inversioni delle basi, anche zero/uno o ripetute. I due lati del cubico
+condividono denominatori e spettro inverso nella stessa chiamata; le
+ampiezze avanzano di `x_i^B` fra blocchi. Non conserva il vettore completo
+dei pesi. Il setup viene ricostruito fra chiamate/round, non ancora riusato
+fra le due sfide adattive del piano canonico.
+Tabelle Eq, albero Q, spettro inverso, numeratori intermedi, ampiezze,
+workspace DFT e blocchi risultanti sono temporanei posseduti. Le tabelle
+catturate da un getter vivono quanto il getter. Questi temporanei non
+sono inclusi nel solo `named_bytes` dello stato né sono un picco completo.
 Il getter delle generazioni retained conserva la gestione dinamica del
 prefisso originale; questo raccordo non dimostra source-uniformity della
 PCS completa, un ledger canonico o un nuovo lemma Lean.
@@ -1278,8 +1286,9 @@ sumcheck denso resta chiuso. Il cap proposto getter 64 MiB e PCG output
 Il confronto con 90 s non modifica l'obiettivo autorizzato <=65 s.
 I trace locali coprono indirizzi di 3.471 sorgenti A, liveness dei tensori
 per producer, tutti gli stati/oracoli WHIR e PCG. Singleton iniziale e
-covettore Eq+Pow permettono contrazione e generazione a blocchi, ancora
-senza adapter nativo; il precompute reference finito non dimostra il
+covettore Eq+Pow permettono contrazione e generazione a blocchi, ora con
+un adapter nativo ridotto a blocchi da 256, non ancora quello canonico;
+il precompute reference finito non dimostra il
 vincolo uniforme per l'intero lavoro. La retention A fino al base case
 conserva il predecessore fino alla query e solo poi fa fold/fence:
 574 pass A corrente, 36 per storica, più letture e fold degli stati retained.

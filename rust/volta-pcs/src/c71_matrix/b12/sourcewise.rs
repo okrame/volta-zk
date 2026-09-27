@@ -1,6 +1,8 @@
 //! Bounded CPU reference for the sourcewise residual state. No dense fallback.
 //! The canonical fast Eq/Pow reducer must refine these same state transitions.
+use super::replay::{inverse_series, multiply_polynomials};
 use super::*;
+use p3_dft::TwoAdicSubgroupDft;
 use p3_multilinear_util::{point::Point, poly::Poly};
 use p3_sumcheck_c61::strategy::ResidualSumcheckProver;
 use std::sync::{
@@ -9,6 +11,83 @@ use std::sync::{
 };
 
 pub(in crate::c71_matrix) type Getter = Arc<dyn Fn(usize) -> E + Send + Sync>;
+
+const POWER_BLOCK_CAP: usize = 256;
+
+struct PowerBlocks {
+    size: usize,
+    denominators: Vec<Vec<Vec<E>>>,
+    inverse_spectrum: Vec<E>,
+    advances: Vec<E>,
+    dft: Radix2DFTSmallBatch<Goldilocks>,
+}
+
+impl PowerBlocks {
+    fn new(terms: &[(E, E)], size: usize) -> Self {
+        assert!(size.is_power_of_two() && size <= POWER_BLOCK_CAP);
+        let dft = Radix2DFTSmallBatch::default();
+        let mut leaves: Vec<_> = terms.iter().map(|&(point, _)| vec![E::ONE, -point]).collect();
+        leaves.resize(terms.len().next_power_of_two(), vec![E::ONE]);
+        let mut denominators = vec![leaves];
+        while denominators.last().unwrap().len() > 1 {
+            let level = denominators
+                .last()
+                .unwrap()
+                .chunks_exact(2)
+                .map(|pair| {
+                    let mut product = multiply_polynomials(pair[0].clone(), pair[1].clone(), &dft);
+                    product.truncate(size);
+                    product
+                })
+                .collect();
+            denominators.push(level);
+        }
+        let mut inverse = inverse_series(&denominators.last().unwrap()[0], size, &dft);
+        inverse.resize(2 * size, E::ZERO);
+        Self {
+            size,
+            denominators,
+            inverse_spectrum: dft.dft_algebra(inverse),
+            advances: terms.iter().map(|&(point, _)| point.exp_u64(size as u64)).collect(),
+            dft,
+        }
+    }
+
+    fn next(&self, amplitudes: &mut [E]) -> Vec<E> {
+        assert_eq!(amplitudes.len(), self.advances.len());
+        let mut numerators: Vec<_> = amplitudes.iter().map(|&scale| vec![scale]).collect();
+        numerators.resize(self.denominators[0].len(), vec![E::ZERO]);
+        for level in &self.denominators[..self.denominators.len() - 1] {
+            numerators = numerators
+                .chunks_exact(2)
+                .zip(level.chunks_exact(2))
+                .map(|(pair, factors)| {
+                    let mut left =
+                        multiply_polynomials(pair[0].clone(), factors[1].clone(), &self.dft);
+                    let right =
+                        multiply_polynomials(pair[1].clone(), factors[0].clone(), &self.dft);
+                    left.resize(left.len().max(right.len()).min(self.size), E::ZERO);
+                    for (value, contribution) in left.iter_mut().zip(right) {
+                        *value += contribution;
+                    }
+                    left
+                })
+                .collect();
+        }
+        let mut numerator = numerators.pop().unwrap();
+        numerator.resize(2 * self.size, E::ZERO);
+        let mut spectrum = self.dft.dft_algebra(numerator);
+        for (value, &factor) in spectrum.iter_mut().zip(&self.inverse_spectrum) {
+            *value *= factor;
+        }
+        let mut values = self.dft.idft_algebra(spectrum);
+        values.truncate(self.size);
+        for (amplitude, &advance) in amplitudes.iter_mut().zip(&self.advances) {
+            *amplitude *= advance;
+        }
+        values
+    }
+}
 
 fn equality(point: &[E], index: usize) -> E {
     point.iter().enumerate().fold(E::ONE, |v, (bit, &r)| {
@@ -274,11 +353,14 @@ impl State {
             stage.promote(&self.prefix)?;
         }
         let get = self.getter();
-        let mut powers: Vec<_> =
-            terms.iter().map(|&(point, scale)| point.shifted_powers(scale)).collect();
-        for i in 0..1 << self.num_variables() {
-            let delta: E = powers.iter_mut().map(|power| power.next().unwrap()).sum();
-            self.sum += get(i) * delta;
+        let length = 1 << self.num_variables();
+        let size = POWER_BLOCK_CAP.min(length);
+        let powers = PowerBlocks::new(terms, size);
+        let mut amplitudes: Vec<_> = terms.iter().map(|&(_, scale)| scale).collect();
+        for start in (0..length).step_by(size) {
+            for (offset, delta) in powers.next(&mut amplitudes).into_iter().enumerate() {
+                self.sum += get(start + offset) * delta;
+            }
         }
         self.powers.extend_from_slice(terms);
         Ok(())
@@ -339,21 +421,25 @@ impl ResidualSumcheckProver<Goldilocks, E> for State {
             let get = self.getter();
             let half = 1 << (self.num_variables() - 1);
             let equality = equality_lookup(&self.eq_point, self.eq_scale);
-            let mut powers: Vec<_> = self
+            let size = POWER_BLOCK_CAP.min(half);
+            let powers = PowerBlocks::new(&self.powers, size);
+            let mut low: Vec<_> = self.powers.iter().map(|&(_, scale)| scale).collect();
+            let mut high: Vec<_> = self
                 .powers
                 .iter()
-                .map(|&(point, scale)| (point.shifted_powers(scale), point.exp_u64(half as u64)))
+                .map(|&(point, scale)| scale * point.exp_u64(half as u64))
                 .collect();
-            for i in 0..half {
-                let (left, right) = (get(i), get(i + half));
-                let (mut left_weight, mut right_weight) = (equality(i), equality(i + half));
-                for (power, high) in &mut powers {
-                    let low = power.next().unwrap();
-                    left_weight += low;
-                    right_weight += low * *high;
+            for start in (0..half).step_by(size) {
+                let left_powers = powers.next(&mut low);
+                let right_powers = powers.next(&mut high);
+                for offset in 0..size {
+                    let index = start + offset;
+                    let (left, right) = (get(index), get(index + half));
+                    let left_weight = equality(index) + left_powers[offset];
+                    let right_weight = equality(index + half) + right_powers[offset];
+                    c0 += left * left_weight;
+                    c2 += (right - left) * (right_weight - left_weight);
                 }
-                c0 += left * left_weight;
-                c2 += (right - left) * (right_weight - left_weight);
             }
         }
         Ok((c0, c2))
@@ -503,8 +589,53 @@ mod tests {
     }
 
     #[test]
+    fn c71_b12_rational_power_blocks_match_direct_extension_powers() {
+        for count in [0, 1, 3, 5, 17, 513] {
+            let terms: Vec<_> = (0..count)
+                .map(|index| {
+                    let point = match index % 5 {
+                        0 => E::ZERO,
+                        1 | 2 => E::ONE,
+                        _ => E::new([
+                            Goldilocks::new(index as u64 + 3),
+                            Goldilocks::new(7),
+                            Goldilocks::new(11),
+                        ]),
+                    };
+                    let scale = if index % 4 == 3 {
+                        E::ZERO
+                    } else {
+                        E::from(Goldilocks::new(index as u64 + 13))
+                    };
+                    (point, scale)
+                })
+                .collect();
+            for size in [1, 2, 8, 32, POWER_BLOCK_CAP] {
+                let blocks = PowerBlocks::new(&terms, size);
+                let mut amplitudes: Vec<_> = terms.iter().map(|&(_, scale)| scale).collect();
+                for block in 0..3 {
+                    let expected: Vec<E> = (0..size)
+                        .map(|offset| {
+                            terms
+                                .iter()
+                                .map(|&(point, scale)| {
+                                    scale * point.exp_u64((block * size + offset) as u64)
+                                })
+                                .sum()
+                        })
+                        .collect();
+                    assert_eq!(blocks.next(&mut amplitudes), expected);
+                }
+            }
+        }
+        println!("C71_RATIONAL_POW base_and_extension=true blocks=3 block_cap=256 canonical_credit=false");
+    }
+
+    #[test]
     fn c71_b12_sourcewise_adaptive_rounds_match_dense_and_forbid_fallbacks() {
-        for (dimension, first, retain) in [(10, 1, false), (12, 7, false), (12, 7, true)] {
+        for (dimension, first, retain) in
+            [(10, 1, false), (12, 1, false), (12, 7, false), (12, 7, true)]
+        {
             let source: Getter =
                 Arc::new(|i| E::from(Goldilocks::new((i * i + 17 * i + 23) as u64)));
             let point: Vec<_> = (0..dimension)

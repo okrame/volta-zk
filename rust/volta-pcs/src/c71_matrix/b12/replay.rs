@@ -47,22 +47,46 @@ struct Code {
     pads: Pads,
 }
 
-fn multiply_polynomials(
-    mut left: Vec<Goldilocks>,
-    mut right: Vec<Goldilocks>,
+pub(super) fn multiply_polynomials<Coefficient: p3_field::ExtensionField<Goldilocks>>(
+    mut left: Vec<Coefficient>,
+    mut right: Vec<Coefficient>,
     dft: &Radix2DFTSmallBatch<Goldilocks>,
-) -> Vec<Goldilocks> {
+) -> Vec<Coefficient> {
     let length = left.len() + right.len() - 1;
     let size = length.next_power_of_two();
-    left.resize(size, Goldilocks::ZERO);
-    right.resize(size, Goldilocks::ZERO);
-    let mut spectrum = dft.dft(left);
-    for (value, factor) in spectrum.iter_mut().zip(dft.dft(right)) {
+    left.resize(size, Coefficient::ZERO);
+    right.resize(size, Coefficient::ZERO);
+    let mut spectrum = dft.dft_algebra(left);
+    for (value, factor) in spectrum.iter_mut().zip(dft.dft_algebra(right)) {
         *value *= factor;
     }
-    let mut product = dft.idft(spectrum);
+    let mut product = dft.idft_algebra(spectrum);
     product.truncate(length);
     product
+}
+
+pub(super) fn inverse_series<Coefficient: p3_field::ExtensionField<Goldilocks>>(
+    series: &[Coefficient],
+    length: usize,
+    dft: &Radix2DFTSmallBatch<Goldilocks>,
+) -> Vec<Coefficient> {
+    assert!(length.is_power_of_two());
+    assert_eq!(series[0], Coefficient::ONE);
+    let mut inverse = vec![Coefficient::ONE];
+    while inverse.len() < length {
+        let next = 2 * inverse.len();
+        let mut prefix = series[..series.len().min(next)].to_vec();
+        prefix.resize(next, Coefficient::ZERO);
+        let mut correction = multiply_polynomials(prefix, inverse.clone(), dft);
+        correction.truncate(next);
+        for value in &mut correction {
+            *value = -*value;
+        }
+        correction[0] += Coefficient::ONE + Coefficient::ONE;
+        inverse = multiply_polynomials(inverse, correction, dft);
+        inverse.truncate(next);
+    }
+    inverse
 }
 
 struct QueryFactors {
@@ -94,19 +118,7 @@ impl QueryFactors {
     fn new(mut modulus: Vec<Goldilocks>, dft: &Radix2DFTSmallBatch<Goldilocks>) -> Self {
         let cap = modulus.len() - 1;
         let reverse: Vec<_> = modulus.iter().rev().copied().collect();
-        let mut inverse = vec![Goldilocks::ONE];
-        while inverse.len() < cap {
-            let next = 2 * inverse.len();
-            let mut correction =
-                multiply_polynomials(reverse[..next].to_vec(), inverse.clone(), dft);
-            correction.truncate(next);
-            for value in &mut correction {
-                *value = -*value;
-            }
-            correction[0] += Goldilocks::ONE + Goldilocks::ONE;
-            inverse = multiply_polynomials(inverse, correction, dft);
-            inverse.truncate(next);
-        }
+        let mut inverse = inverse_series(&reverse, cap, dft);
         inverse.resize(2 * cap, Goldilocks::ZERO);
         modulus.resize(2 * cap, Goldilocks::ZERO);
         Self { inverse: dft.dft(inverse), modulus: dft.dft(modulus) }

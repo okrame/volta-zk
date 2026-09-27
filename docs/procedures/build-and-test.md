@@ -200,6 +200,12 @@ la parità WHIR sulle sorgenti della storia numerica.
 Questi filtri verificano anche la retention S1 ora selezionata per A nel
 runner ordinato; aggiungere il confronto dei residual state
 `c71_b12_sourcewise_adaptive` per capacità trattenuta, coefficienti e sfide dei fold.
+Per i blocchi Pow P/Q aggiungere `c71_b12_rational_power` e mantenere
+`c71_b12_query_factors`, `c71_b12_query_remainder`, la parità WHIR e il
+positivo streaming: prodotti/Newton sono condivisi fra campi base/Fp3.
+Ripetere anche il test Python `tests/test_c71_remainder_native.py` con
+`C71_PCS_TEST_BINARY` al nuovo binario. Il blocco nativo resta al più 256,
+non il cap canonico; nessun run completo o GPU segue da questi filtri.
 Il fixture include coordinate Eq zero/uno, basi Pow zero/uno e un termine
 con scala zero, contro il residual denso; ripeterlo per modifiche alle
 tabelle Eq fattorizzate o agli iteratori di potenze, insieme ai confronti

@@ -142,7 +142,9 @@ un'unione più grande richiede più batch, non una scansione canonica unica.
 
 Le A ordinate usano [S1 trattenuto](evidence.md#ordered-a-retained-s1) dopo il rilascio del predecessore,
 con lease e capacità riservata invariati; W non seleziona retention.
-Il [residual Eq/Pow](evidence.md#factored-eq-and-streamed-pow) riusa tabelle fattorizzate e iteratori nativi.
+Il residuale conserva [Eq fattorizzato](evidence.md#factored-eq-and-streamed-pow) e genera ora Pow con P/Q a blocchi ridotti,
+riusando prodotti FFT e Newton base/Fp3. Il setup non è ancora trattenuto
+fra le sfide adattive canoniche.
 Passano parità WHIR, streaming ideale e O=0 con W replay/A ordinata e
 Seed6 reale. Coin, MAC e budget di esposizione non cambiano. Cache delle
 root vive, S1, spettri, batch e temporanei restano da includere nel picco

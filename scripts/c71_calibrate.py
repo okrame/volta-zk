@@ -8,6 +8,7 @@ before a candidate can be frozen as calibrated Gamma.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -54,27 +55,33 @@ def table_chunks(recipes: dict):
                            for pair in plan.gemma_rope_q30_coefficients(family, position))
 
 
-def write_tables(recipes: dict, output: Path) -> dict:
+@contextmanager
+def atomic_output(output: Path):
     if os.path.lexists(output):
         raise FileExistsError(f"refusing to overwrite {output}")
-    digest = hashlib.sha256()
-    count = 0
     descriptor, name = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".partial", dir=output.parent)
     partial = Path(name)
     try:
         with os.fdopen(descriptor, "wb") as sink:
-            for chunk in table_chunks(recipes):
-                sink.write(chunk)
-                digest.update(chunk)
-                count += len(chunk)
-            if count != TABLE_BYTES:
-                raise ValueError("canonical public table byte count differs")
+            yield sink
             sink.flush()
             os.fsync(sink.fileno())
         os.link(partial, output)
         ingest._fsync_directory(output.parent)
     finally:
         partial.unlink(missing_ok=True)
+
+
+def write_tables(recipes: dict, output: Path) -> dict:
+    digest = hashlib.sha256()
+    count = 0
+    with atomic_output(output) as sink:
+        for chunk in table_chunks(recipes):
+            sink.write(chunk)
+            digest.update(chunk)
+            count += len(chunk)
+        if count != TABLE_BYTES:
+            raise ValueError("canonical public table byte count differs")
     return {"table_sha256": digest.hexdigest(), "table_bytes": count,
             "recipe_digest": recipes["recipe_digest"], "calibrated": False}
 
@@ -140,9 +147,8 @@ def main() -> None:
             result.update(table_report, candidate_sha256=hashlib.sha256(candidate_body).hexdigest(),
                           native_sha256=ingest.stream_sha256(args.native)[0],
                           tables_generated_by_certified_reference=True)
-            with args.output.open("x") as sink:
-                json.dump(result, sink, indent=2, sort_keys=True)
-                sink.write("\n")
+            with atomic_output(args.output) as sink:
+                sink.write((json.dumps(result, indent=2, sort_keys=True) + "\n").encode())
             print(json.dumps(result, indent=2, sort_keys=True))
             return
         candidate = ingest._json_no_duplicates(candidate_body, "calibration candidate")
@@ -181,9 +187,8 @@ def main() -> None:
                       tables_generated_by_certified_reference=True,
                       packed_hash_checked=True, exit_code=exit_code, native_exit_code=native_exit_code,
                       timeout_seconds=args.timeout_seconds, credit=False)
-        with args.output.open("x") as sink:
-            json.dump(result, sink, indent=2, sort_keys=True)
-            sink.write("\n")
+        with atomic_output(args.output) as sink:
+            sink.write((json.dumps(result, indent=2, sort_keys=True) + "\n").encode())
     print(json.dumps(result, indent=2, sort_keys=True))
     if exit_code:
         raise SystemExit(exit_code)

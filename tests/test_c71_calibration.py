@@ -205,3 +205,27 @@ def test_trial_output_keeps_record_and_uses_frozen_candidate(tmp_path, monkeypat
     assert not result["calibrated"] and not result["credit"]
     with pytest.raises(FileExistsError):
         calibration.main()
+
+
+@pytest.mark.parametrize("outcome", ["success", "failure", "race"])
+def test_atomic_output_never_publishes_partial_or_replaces_existing(tmp_path, outcome):
+    output = tmp_path / "report.json"
+    body = b'{"calibrated":false}\n'
+    if outcome == "success":
+        with calibration.atomic_output(output) as sink:
+            sink.write(body)
+            assert not output.exists()
+        assert output.read_bytes() == body
+        with pytest.raises(FileExistsError):
+            with calibration.atomic_output(output):
+                pytest.fail("existing output opened for replacement")
+    else:
+        with pytest.raises(RuntimeError if outcome == "failure" else FileExistsError):
+            with calibration.atomic_output(output) as sink:
+                sink.write(b"incomplete")
+                assert not output.exists()
+                if outcome == "failure":
+                    raise RuntimeError("report encoding failed")
+                output.write_bytes(body)
+        assert output.read_bytes() == body if outcome == "race" else not output.exists()
+    assert list(tmp_path.iterdir()) == ([output] if outcome != "failure" else [])

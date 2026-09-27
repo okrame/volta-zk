@@ -44,9 +44,10 @@ They do not execute the full native verifier or Gemma. Mathematical/doc
 closure alone requires no Rust or Lean build; native refinement is separate.
 
 Per i record di fallimento dell'harness Γ usare
-`tests/test_c71_calibration.py -k 'trial_output or failed_table or weight_provenance'`
+`tests/test_c71_calibration.py -k 'trial_output or failed_table or weight_provenance or atomic_output'`
 entro 60 s/2 GiB. Sono controlli Python con worker simulato: conservano
-prefissi stdout/stderr, timeout, errori JSON e report incompleti, senza
+prefissi stdout/stderr, timeout, errori JSON e report incompleti, con
+pubblicazione atomica e rifiuto dell'overwrite anche in caso di race, senza
 leggere pesi reali o richiedere una nuova build Rust. Anche il positivo
 del fixture conserva `calibrated:false` e `credit:false`.
 

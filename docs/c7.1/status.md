@@ -143,7 +143,7 @@ Gli [owner W/A iniziali](evidence.md#native-public-zero-tail-and-original-privat
 le colonne parziali/vuote separano gli zeri pubblici conservando i pad
 privati all'esponente originale. Il supporto non viene trasferito per
 ipotesi agli oracoli foldati.
-Coset/resti delle colonne base usano ora elementi da 8 B, con rifiuto
+[Coset/resti delle colonne base](evidence.md#base-typed-native-rs-cosets-and-remainders) usano ora elementi da 8 B, con rifiuto
 dei coefficienti extension invalidi; gli oracoli extension mantengono
 tre coordinate. Copie, conversioni e picco completo restano da chiudere.
 

@@ -2481,3 +2481,25 @@ fra colonne, ma correzione dei pad, intermedi e DFT sono lavoro e memoria
 aggiuntivi. Il riferimento usa ancora E nei temporanei delle colonne
 base; il ledger scalare canonico non è quindi un picco nativo verificato.
 Nessuna modifica a maschere/esposizioni, credito GPU, Γ o gate H100.
+
+## Base typed native RS cosets and remainders
+
+Il [record su SHA pulita `1544013`](../../benchmarks/results/c71-base-code-2026-09-27-1544013e976f.json)
+conserva diciannove test Rust e undici Python/C++, seriali entro
+60 s/2 GiB, più check non-test B12/Seed6. Coset, resti, correzione pad
+e discesa multipunto delle colonne base ora usano elementi Goldilocks
+da 8 B, non temporanei E da 24 B. Il percorso extension conserva tutte
+e tre le coordinate, condividendo gli stessi helper polinomiali.
+
+Il getter mantiene l'ABI E. La conversione base controlla entrambe le
+altre coordinate prima dell'encoding; due panic catturati verificano
+il rifiuto nel coset e nelle query, senza truncation silenziosa. Restano
+passati split pubblico/pad, ownership W, parità lineare, P/Q, WHIR e
+A O=0/2/4, insieme al confine C++/PCS. Streaming ideale termina in
+12,37 s; il positivo W replay/A ordinata con Seed6 reale ell=2 in
+32,63 s. Non sono misure o upper H100.
+
+Tipi più piccoli non eliminano conversioni, copie di output, workspace
+DFT, allineamento, allocator o altri stati vivi. Non cambiano cap,
+coin, sali, pad, root, wire/FS/MAC o numero di prove. È un raccordo
+nativo ridotto, non picco fisico completo, calibrazione Γ o GO pre-spesa.

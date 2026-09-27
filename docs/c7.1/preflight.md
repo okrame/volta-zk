@@ -2087,7 +2087,7 @@ Il riferimento con M non potenza di due non seleziona lo split.
 I successori foldati usano il dominio completo, senza assumere che il
 vecchio supporto zero sopravviva ai fold. Il cap di query resta 1.024;
 spettro shift, pad/resti intermedi e workspace si aggiungono agli altri
-buffer. Coset e aperture iniziali usano ora temporanei Goldilocks da
+buffer. [Coset e aperture iniziali](evidence.md#base-typed-native-rs-cosets-and-remainders) usano ora temporanei Goldilocks da
 8 B, mentre il percorso extension mantiene E da 24 B. Il getter ritorna
 ancora E e la conversione base verifica le altre due coordinate; il
 controllo non è lavoro gratuito. Output e conversioni mantengono ordine

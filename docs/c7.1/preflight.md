@@ -1992,6 +1992,15 @@ promozioni e rilasci usano le lease esistenti. W non seleziona retention.
 Il Vec S1, le cache iniziali e gli altri temporanei vanno contati insieme;
 il guard ridotto a 16 variabili resta, senza nuovo margine o cap canonico.
 
+Il residual state riusa ora due tabelle Eq pubbliche bilanciate e gli
+iteratori nativi `shifted_powers` negli aggiornamenti dei claim/cubici,
+evitando i prodotti di tutte le coordinate e le esponenziazioni per
+cella in quei loop. I lookup Eq non dividono per le coordinate; zero e
+uno restano ammessi. Tabelle temporanee, catture dei getter e stati
+degli iteratori sono memoria/lavoro della prova, oltre ai campi del solo
+stato. Il getter retained mantiene il prefisso dinamico: non è ancora
+l'adapter canonico completo o una nuova ammissione di memoria/tempo.
+
 Il [callback RS del replay](evidence.md#native-fft-remainder-in-replay-openings) ora usa riduzione FFT a blocchi invece di
 Horner sull'intera sorgente per ciascuna query. Il riferimento mantiene
 pad e ordine originali, batch fino a 1.024 richieste e una lettura di ogni

@@ -143,6 +143,9 @@ Le A ordinate ora usano anche la [retention S1 verificata](evidence.md#ordered-a
 materializzazione dopo il rilascio del predecessore, stessa capacità
 riservata fino al termine e lease originali. W non cambia; questo
 raccordo ridotto non ammette il buffer o la schedule canonica.
+Il residual state usa ora tabelle Eq fattorizzate e iteratori di potenze
+nei loop principali, riusando le primitive native. Restano il guard
+ridotto e il conto fisico dei temporanei, senza credito H100.
 
 Le [righe PCS replay](evidence.md#native-fft-remainder-in-replay-openings) usano ora il riduttore FFT per blocchi con i pad
 originali, invece di valutare tutta la sorgente per ogni query. È un

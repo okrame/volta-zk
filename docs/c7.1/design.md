@@ -301,6 +301,18 @@ la capacità S1 fino al termine; `truncate` non libera arena. W mantiene
 il percorso senza retention S1. È il raccordo del riferimento ridotto
 con guard a 16 variabili, non l'ammissione del buffer A canonico.
 
+Il residual state ora riusa `Poly::new_from_point` per fattorizzare Eq
+in due tabelle pubbliche da `2^floor(d/2) + 2^ceil(d/2)` elementi Fp3,
+anziché moltiplicare tutte le coordinate a ogni cella dei loop adattati.
+Le potenze negli aggiornamenti dei claim e nei cubici scorrono con
+`shifted_powers`, senza esponenziazione per cella. Vale anche con coordinate
+e basi zero/uno, senza divisioni. Le tabelle sono temporanei posseduti;
+quelle catturate da un getter vivono quanto il getter. Non sono incluse
+nel solo `named_bytes` dello stato né costituiscono un picco completo.
+Il getter delle generazioni retained conserva la gestione dinamica del
+prefisso originale; questo raccordo non dimostra source-uniformity della
+PCS completa, un ledger canonico o un nuovo lemma Lean.
+
 Nella riduzione per blocchi, l'inverso della monica rovesciata e il suo
 spettro sono comuni alle colonne;
 ogni blocco usa solo la metà alta per il quoziente, evitando alias ciclici.

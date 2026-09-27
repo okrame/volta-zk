@@ -16,6 +16,17 @@ fn equality(point: &[E], index: usize) -> E {
     })
 }
 
+fn equality_lookup(point: &[E], scale: E) -> impl Fn(usize) -> E {
+    let split = point.len() / 2;
+    let prefix = Poly::new_from_point(&point[..split], scale);
+    let suffix = Poly::new_from_point(&point[split..], E::ONE);
+    let suffix_bits = point.len() - split;
+    move |index| {
+        prefix.as_slice()[index >> suffix_bits]
+            * suffix.as_slice()[index & ((1 << suffix_bits) - 1)]
+    }
+}
+
 // One retained allocation. Logical folds never claim to free Vec capacity.
 // Only a consumed replay handle can release a committed generation.
 struct RetainedData {
@@ -175,14 +186,15 @@ impl State {
         });
         let mut prefix_acc = vec![E::ZERO; 1 << first_fold];
         let suffix = point.len() - first_fold;
+        let suffix_equality = equality_lookup(&point[first_fold..], E::ONE);
         for i in 0..1 << point.len() {
-            prefix_acc[i >> suffix] +=
-                source(i) * equality(&point[first_fold..], i & ((1 << suffix) - 1));
+            prefix_acc[i >> suffix] += source(i) * suffix_equality(i & ((1 << suffix) - 1));
         }
+        let prefix_equality = equality_lookup(&point[..first_fold], E::ONE);
         let sum = prefix_acc
             .iter()
             .enumerate()
-            .map(|(i, &v)| v * equality(&point[..first_fold], i))
+            .map(|(index, &value)| value * prefix_equality(index))
             .sum();
         if sum != target {
             return Err("sourcewise original claim differs".into());
@@ -211,9 +223,12 @@ impl State {
             return stage.getter(self.prefix.clone());
         }
         let (source, prefix, n) = (self.source.clone(), self.prefix.clone(), self.num_variables());
+        let prefix_equality = equality_lookup(&prefix, E::ONE);
         Arc::new(move |i| {
             assert!(i < 1 << n);
-            (0..1 << prefix.len()).map(|j| equality(&prefix, j) * source((j << n) | i)).sum()
+            (0..1 << prefix.len())
+                .map(|index| prefix_equality(index) * source((index << n) | i))
+                .sum()
         })
     }
 
@@ -259,9 +274,10 @@ impl State {
             stage.promote(&self.prefix)?;
         }
         let get = self.getter();
+        let mut powers: Vec<_> =
+            terms.iter().map(|&(point, scale)| point.shifted_powers(scale)).collect();
         for i in 0..1 << self.num_variables() {
-            let delta: E =
-                terms.iter().map(|&(point, scale)| scale * point.exp_u64(i as u64)).sum();
+            let delta: E = powers.iter_mut().map(|power| power.next().unwrap()).sum();
             self.sum += get(i) * delta;
         }
         self.powers.extend_from_slice(terms);
@@ -301,7 +317,8 @@ impl ResidualSumcheckProver<Goldilocks, E> for State {
             return Err("sourcewise MLE point".into());
         }
         let get = self.getter();
-        Ok((0..1 << self.num_variables()).map(|i| get(i) * equality(point.as_slice(), i)).sum())
+        let equality = equality_lookup(point.as_slice(), E::ONE);
+        Ok((0..1 << self.num_variables()).map(|index| get(index) * equality(index)).sum())
     }
     fn round_coefficients(&self) -> Result<(E, E), String> {
         if self.num_variables() == 0 {
@@ -310,20 +327,33 @@ impl ResidualSumcheckProver<Goldilocks, E> for State {
         let (mut c0, mut c2) = (E::ZERO, E::ZERO);
         if self.prefix_remaining > 0 {
             let half = self.prefix_acc.len() / 2;
+            let equality = equality_lookup(&self.eq_point[..self.prefix_remaining], self.eq_scale);
             for i in 0..half {
                 let (a, b) = (self.prefix_acc[i], self.prefix_acc[i + half]);
-                let x = self.eq_scale * equality(&self.eq_point[..self.prefix_remaining], i);
-                let y = self.eq_scale * equality(&self.eq_point[..self.prefix_remaining], i + half);
+                let x = equality(i);
+                let y = equality(i + half);
                 c0 += a * x;
                 c2 += (b - a) * (y - x);
             }
         } else {
             let get = self.getter();
             let half = 1 << (self.num_variables() - 1);
+            let equality = equality_lookup(&self.eq_point, self.eq_scale);
+            let mut powers: Vec<_> = self
+                .powers
+                .iter()
+                .map(|&(point, scale)| (point.shifted_powers(scale), point.exp_u64(half as u64)))
+                .collect();
             for i in 0..half {
-                let (a, b, x, y) = (get(i), get(i + half), self.weight(i), self.weight(i + half));
-                c0 += a * x;
-                c2 += (b - a) * (y - x);
+                let (left, right) = (get(i), get(i + half));
+                let (mut left_weight, mut right_weight) = (equality(i), equality(i + half));
+                for (power, high) in &mut powers {
+                    let low = power.next().unwrap();
+                    left_weight += low;
+                    right_weight += low * *high;
+                }
+                c0 += left * left_weight;
+                c2 += (right - left) * (right_weight - left_weight);
             }
         }
         Ok((c0, c2))
@@ -478,8 +508,14 @@ mod tests {
             let source: Getter =
                 Arc::new(|i| E::from(Goldilocks::new((i * i + 17 * i + 23) as u64)));
             let point: Vec<_> = (0..dimension)
-                .map(|i| {
-                    E::new([Goldilocks::new(i as u64 + 3), Goldilocks::new(7), Goldilocks::new(11)])
+                .map(|i| match i % 5 {
+                    0 => E::ZERO,
+                    1 => E::ONE,
+                    _ => E::new([
+                        Goldilocks::new(i as u64 + 3),
+                        Goldilocks::new(7),
+                        Goldilocks::new(11),
+                    ]),
                 })
                 .collect();
             let values: Vec<_> = (0..1 << dimension).map(|i| source(i)).collect();
@@ -504,6 +540,9 @@ mod tests {
                         (0..1 << state.num_variables()).map(|i| frozen(i)).collect();
                     assert_eq!(state.retained_bytes, 0);
                     let terms = [
+                        (E::ZERO, E::from(Goldilocks::new(17))),
+                        (E::ONE, E::from(Goldilocks::new(23))),
+                        (E::from(Goldilocks::new(29)), E::ZERO),
                         (E::from(Goldilocks::new(19)), E::from(Goldilocks::new(5))),
                         (
                             E::new([Goldilocks::new(3), Goldilocks::new(2), Goldilocks::new(1)]),

@@ -177,6 +177,10 @@ la parità WHIR sulle sorgenti della storia numerica.
 Questi filtri verificano anche la retention S1 ora selezionata per A nel
 runner ordinato; aggiungere il confronto dei residual state
 `c71_b12_sourcewise_adaptive` per capacità trattenuta, coefficienti e sfide dei fold.
+Il fixture include coordinate Eq zero/uno, basi Pow zero/uno e un termine
+con scala zero, contro il residual denso; ripeterlo per modifiche alle
+tabelle Eq fattorizzate o agli iteratori di potenze, insieme ai confronti
+WHIR/streaming/Seed6 già elencati.
 
 Per gli intervalli RMS in prestito usare `c71_b12_gemma_rms_dispatch`:
 il fixture unisce P0/RMS/RNE e le PCS originali, osserva l'iteratore lazy

@@ -1549,9 +1549,18 @@ tre blocchi consecutivi con divisione diretta; il check CUDA a due colonne
 è compilato ma non eseguito. Supporta 2B quadrato e fattori base condivisi;
 il setup quadratico dei fattori è confinato alle fixture piccole.
 I due array twiddle, entrambi vivi nella pipeline, non ereditano il conto
-a una sola tabella del microbenchmark FFT isolato. Restano fattori/input
-canonici, getter/pad originali, raccordo Fp3/PCS e controllo GPU; nessun
-credito di picco o tempo completo.
+a una sola tabella del microbenchmark FFT isolato. Il confronto di confine
+ora esporta dal `Code` nativo coefficienti/pad originali, spettri del
+setup Newton e resti/righe attesi. Il C++ usa gli stessi spettri e scompone
+Fp3 in tre colonne base consecutive: non costruisce un altro modulo.
+Il fixture conserva code zero, pad nonzero, query duplicate e punti zero
+di completamento. Il consumer host confronta resti e righe; quello CUDA
+riusa gli stessi quattro stadi, ma resta compilato senza esecuzione.
+L'input intero del fixture è materializzato su host; non è un getter
+canonico in streaming. La valutazione finale host è Horner sul resto
+piccolo, non l'albero multipunto GPU. Restano input/fattori canonici,
+adapter vivo PCS/CUDA e controllo GPU; nessun credito di picco o tempo
+completo e nessun trasferimento Lean aggiuntivo.
 Il [checkpoint RMS e il prover a memoria limitata](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
 conservano P/Y originali e S48 condiviso per riga: 2.023.511.878 B con
 descrittori, nello slot range riusato prima di RNE. Il caller costruisce

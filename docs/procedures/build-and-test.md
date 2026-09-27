@@ -97,6 +97,17 @@ glibc già dichiarata; non modificare gli header installati.
 Omettere `--host-only` seleziona CUDA e richiede autorizzazione separata:
 le variabili cloud del runner non costituiscono autorizzazione di spesa.
 
+Per il confine remainder Rust/C++ compilare il test PCS con filtro
+`c71_b12_native_remainder_fft_vectors` e impostare `C71_PCS_TEST_BINARY`
+al binario risultante; eseguire `tests/test_c71_remainder_native.py`
+entro 60 s/2 GiB. Il test richiama quel solo filtro con un thread,
+compila il C++ host e passa otto fixture originali al modo
+`--host-remainder-native` via stdin. Non usa CUDA. Il modo
+`--gpu-remainder-native` accetta lo stesso formato limitato, ma richiede
+autorizzazione GPU separata: compilarlo non autorizza ad avviarlo.
+Il riferimento materializza coefficienti, spettri e risultati piccoli;
+non esegue la PCS canonica né un getter streaming completo.
+
 ## Rust and resource limits
 
 Il corpo nativo usa ora `ExactSizeIterator`: il positivo streaming passa

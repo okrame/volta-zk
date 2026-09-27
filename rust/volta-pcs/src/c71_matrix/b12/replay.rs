@@ -948,6 +948,89 @@ mod tests {
     }
 
     #[test]
+    fn c71_b12_native_remainder_fft_vectors() {
+        let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
+        for extension in [false, true] {
+            let original = move |index: usize| {
+                E::new(std::array::from_fn(|limb| {
+                    if index % 64 >= 61 || (limb != 0 && !extension) {
+                        Goldilocks::ZERO
+                    } else {
+                        Goldilocks::new((index * index + 17 * index + 23 + 101 * limb) as u64)
+                    }
+                }))
+            };
+            let pads: Vec<_> = (0..6).map(|index| -original(index + 131)).collect();
+            let code = Code {
+                get: Arc::new(original),
+                len: 128,
+                width: 2,
+                height: 1024,
+                pads: if extension {
+                    Pads::Extension(pads)
+                } else {
+                    Pads::Base(pads.iter().map(|value| limbs(value)[0]).collect())
+                },
+            };
+            for side in [2_usize, 4, 8, 16] {
+                let cap = side * side / 2;
+                let mut indices: Vec<_> = (0..cap - usize::from(cap > 2))
+                    .map(|index| (1023 + 31 * index) % code.height)
+                    .collect();
+                indices[1] = indices[0];
+                let mut points: Vec<_> = indices
+                    .iter()
+                    .map(|&index| Goldilocks::two_adic_generator(10).exp_u64(index as u64))
+                    .collect();
+                points.resize(cap, Goldilocks::ZERO);
+                let tree = query_tree(&points, &dft);
+                let factors = &tree.last().unwrap()[0];
+                let coefficients = (code.len + code.pads.len()) / code.width;
+                let mut source = Vec::new();
+                let mut expected = Vec::new();
+                for column in 0..code.width {
+                    let mut remainder = vec![E::ZERO; cap];
+                    for block in (0..coefficients.div_ceil(cap)).rev() {
+                        remainder = factors.remainder(
+                            &remainder,
+                            |offset| {
+                                let index = block * cap + offset;
+                                if index < coefficients {
+                                    code.coefficient(column, index)
+                                } else {
+                                    E::ZERO
+                                }
+                            },
+                            &dft,
+                        );
+                    }
+                    for limb in 0..if extension { 3 } else { 1 } {
+                        source.extend((0..coefficients).map(|offset| {
+                            limbs(&code.coefficient(column, offset))[limb].as_canonical_u64()
+                        }));
+                        expected.extend(
+                            remainder.iter().map(|value| limbs(value)[limb].as_canonical_u64()),
+                        );
+                    }
+                }
+                let rows = code.rows(&indices).unwrap();
+                println!(
+                    "C71_NATIVE_REMAINDER {}",
+                    serde_json::json!({
+                        "side": side, "columns": code.columns(), "coefficients": coefficients,
+                        "queries": indices.len(), "extension": extension,
+                        "inverse": factors.inverse.iter().map(|value| value.as_canonical_u64()).collect::<Vec<_>>(),
+                        "modulus": factors.modulus.iter().map(|value| value.as_canonical_u64()).collect::<Vec<_>>(),
+                        "source": source, "expected": expected,
+                        "points": points[..indices.len()].iter().map(|value| value.as_canonical_u64()).collect::<Vec<_>>(),
+                        "rows": rows.iter().flatten().map(|value| value.as_canonical_u64()).collect::<Vec<_>>(),
+                    })
+                );
+            }
+        }
+    }
+
+    #[test]
     fn c71_b12_full_sourcewise_chain_matches_native_bytes() {
         let source: Getter = Arc::new(|i| E::from(Goldilocks::new((i * i + 17 * i + 23) as u64)));
         let values = (0..1024).map(|i| limbs(&source(i))[0]).collect();

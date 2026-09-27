@@ -883,8 +883,22 @@ blocco basso, due spettri fissi e due tabelle twiddle distinte. Queste
 ultime coesistono; non sono il conto a una tabella della FFT isolata.
 I fattori quadratici del fixture non sono il setup del cap canonico.
 I timing del runner continuano a misurare solo FFT, non questa pipeline;
-getter/pad originali, Fp3, fattori canonici, root/sali e picco completo
-restano aperti. Il check device deve passare prima di quei timing.
+fattori canonici, root/sali e picco completo restano aperti.
+Il check device deve passare prima di quei timing.
+
+Il confronto Rust→C++ ora usa coefficienti/pad del `Code` originale e
+spettri prodotti dal setup nativo, invece dei fattori quadratici del
+fixture autonomo. Le due colonne base o le sei componenti delle due
+colonne Fp3 conservano layout contiguo e ordine delle righe. Il test
+copre B=2/8/32/128, code zero, pad nonzero, duplicati e punti zero aggiunti;
+confronta sia il resto sia le righe native, e respinge input alterati.
+Il consumer CUDA dello stesso formato riusa la pipeline già compilata,
+ma non è eseguito. La sua allocazione nominata è `(2*C+4)*2B*8` B per
+C colonne base: entrambi i twiddle e gli spettri sono inclusi, non runtime
+o storage host. Nel fixture host rimangono l'intera sorgente, output
+attesi e input/output di controllo. Il consumer non è ancora chiamato
+dal prover, e Horner del resto piccolo non è il multipunto GPU canonico.
+Non accredita memoria, rate, una PCS CUDA completa o un nuovo lemma.
 
 L'audit dei percorsi nativi distingue tre incompatibilità/obblighi:
 

@@ -3,6 +3,7 @@
 #endif
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -395,6 +396,71 @@ bool remainder_host_check() {
     return true;
 }
 
+#ifdef __CUDACC__
+std::vector<uint64_t> remainder_columns_gpu(
+    size_t side, size_t columns, size_t coefficients, const std::vector<uint64_t>& source,
+    const std::pair<std::vector<uint64_t>, std::vector<uint64_t>>& factors);
+#endif
+
+int native_remainder_check(bool gpu = false) {
+    auto read = [](uint64_t& value) {
+        std::string token;
+        if (!(std::cin >> token)) return false;
+        const auto parsed = std::from_chars(token.data(), token.data() + token.size(), value);
+        return parsed.ec == std::errc{} && parsed.ptr == token.data() + token.size() && value < P;
+    };
+    std::string schema;
+    uint64_t side, columns, coefficients, queries;
+    if (!(std::cin >> schema) || schema != "C71_REMAINDER_V1" ||
+        !read(side) || side < 2 || side > 16 || (side & (side - 1)) ||
+        !read(columns) || !columns || columns > 6 ||
+        !read(coefficients) || !coefficients || coefficients > 256 ||
+        !read(queries) || !queries || queries > side * side / 2) return 2;
+    const size_t cap = side * side / 2;
+    std::pair<std::vector<uint64_t>, std::vector<uint64_t>> factors{
+        std::vector<uint64_t>(2 * cap), std::vector<uint64_t>(2 * cap)};
+    std::vector<uint64_t> source(columns * coefficients), points(queries),
+        expected(columns * cap), rows(queries * columns);
+    for (auto* values : {&factors.first, &factors.second, &source, &points, &expected, &rows})
+        for (auto& value : *values)
+            if (!read(value)) return 2;
+    if (std::cin >> schema) return 2;
+    std::vector<uint64_t> result;
+    if (gpu) {
+#ifdef __CUDACC__
+        result = remainder_columns_gpu(side, columns, coefficients, source, factors);
+#else
+        return 2;
+#endif
+    } else {
+        for (size_t column = 0; column < columns; ++column) {
+            std::vector<uint64_t> high(cap), low(cap);
+            for (size_t block = (coefficients + cap - 1) / cap; block-- > 0;) {
+                for (size_t offset = 0; offset < cap; ++offset) {
+                    const size_t index = block * cap + offset;
+                    low[offset] = index < coefficients ? source[column * coefficients + index] : 0;
+                }
+                high = remainder_block_host(high, low, factors, side);
+            }
+            result.insert(result.end(), high.begin(), high.end());
+        }
+    }
+    bool matched = result == expected;
+    for (size_t query = 0; query < queries; ++query)
+        for (size_t column = 0; column < columns; ++column) {
+            uint64_t value = 0;
+            for (size_t offset = cap; offset-- > 0;)
+                value = fp_add(fp_mul(value, points[query]), result[column * cap + offset]);
+            matched = matched && value == rows[query * columns + column];
+        }
+    std::cout << "{\"schema\":\"volta-c71-native-remainder-v1\",\"gpu_execution\":"
+              << (gpu ? "true" : "false") << ",\"cap\":" << cap
+              << ",\"columns\":" << columns << ",\"coefficients_per_column\":" << coefficients
+              << ",\"queries\":" << queries << ",\"native_remainder_and_rows\":"
+              << (matched ? "true" : "false") << "}\n";
+    return matched ? 0 : 1;
+}
+
 int host_check(int log2_m, bool inverse = false) {
     if (log2_m < 1 || log2_m > 4) return 2;
     const size_t m = size_t{1} << log2_m;
@@ -720,13 +786,12 @@ void launch_remainder_block(
     CUDA_CHECK(cudaGetLastError());
 }
 
-bool gpu_remainder_correctness() {
-    constexpr int log2_side = 5;
-    constexpr size_t side = 1 << log2_side, length = side * side, cap = length / 2, batch = 2;
-    std::vector<uint64_t> modulus(cap + 1), high(batch * cap), low(batch * cap), got(batch * cap);
-    fill_host(modulus);
-    modulus[cap] = 1;
-    const auto factors = remainder_factors(modulus, side);
+std::vector<uint64_t> remainder_columns_gpu(
+    size_t side, size_t columns, size_t coefficients, const std::vector<uint64_t>& source,
+    const std::pair<std::vector<uint64_t>, std::vector<uint64_t>>& factors) {
+    const size_t length = side * side, cap = length / 2;
+    const int log2_side = static_cast<int>(std::log2(side));
+    std::vector<uint64_t> low(columns * cap), got(columns * cap);
     std::vector<uint64_t> forward(length), inverse(length);
     const uint64_t omega = root_of_unity(length), reverse = fp_pow(omega, P - 2);
     for (size_t index = 0; index < length; ++index) {
@@ -734,39 +799,53 @@ bool gpu_remainder_correctness() {
         inverse[index] = fp_pow(reverse, index);
     }
     uint64_t* work = nullptr;
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&work), (2 * batch + 4) * length * sizeof(uint64_t)));
-    uint64_t* remainder = work + batch * length;
-    uint64_t* low_block = remainder + batch * cap;
-    uint64_t* inverse_factor = low_block + batch * cap;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&work), (2 * columns + 4) * length * sizeof(uint64_t)));
+    uint64_t* remainder = work + columns * length;
+    uint64_t* low_block = remainder + columns * cap;
+    uint64_t* inverse_factor = low_block + columns * cap;
     uint64_t* modulus_factor = inverse_factor + length;
     uint64_t* forward_twiddles = modulus_factor + length;
     uint64_t* inverse_twiddles = forward_twiddles + length;
-    CUDA_CHECK(cudaMemcpy(remainder, high.data(), high.size() * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset(remainder, 0, got.size() * sizeof(uint64_t)));
     CUDA_CHECK(cudaMemcpy(inverse_factor, factors.first.data(), length * sizeof(uint64_t), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(modulus_factor, factors.second.data(), length * sizeof(uint64_t), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(forward_twiddles, forward.data(), length * sizeof(uint64_t), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(inverse_twiddles, inverse.data(), length * sizeof(uint64_t), cudaMemcpyHostToDevice));
-    bool matched = true;
-    for (size_t block = 0; block < 3; ++block) {
-        for (size_t index = 0; index < low.size(); ++index)
-            low[index] = block == 0 && index % cap >= cap / 2
-                ? 0 : canonical(splitmix64(SEED + low.size() * block + index + 17));
-        std::vector<uint64_t> expected;
-        for (size_t column = 0; column < batch; ++column) {
-            const auto reduced = remainder_by_division(
-                {high.begin() + column * cap, high.begin() + (column + 1) * cap},
-                {low.begin() + column * cap, low.begin() + (column + 1) * cap}, modulus);
-            expected.insert(expected.end(), reduced.begin(), reduced.end());
-        }
+    for (size_t block = (coefficients + cap - 1) / cap; block-- > 0;) {
+        for (size_t column = 0; column < columns; ++column)
+            for (size_t offset = 0; offset < cap; ++offset) {
+                const size_t index = block * cap + offset;
+                low[column * cap + offset] = index < coefficients
+                    ? source[column * coefficients + index] : 0;
+            }
         CUDA_CHECK(cudaMemcpy(low_block, low.data(), low.size() * sizeof(uint64_t), cudaMemcpyHostToDevice));
         launch_remainder_block(work, remainder, low_block, inverse_factor, modulus_factor,
-                               forward_twiddles, inverse_twiddles, side, log2_side, batch);
-        CUDA_CHECK(cudaMemcpy(got.data(), remainder, got.size() * sizeof(uint64_t), cudaMemcpyDeviceToHost));
-        matched = matched && got == expected;
-        high = std::move(expected);
+                               forward_twiddles, inverse_twiddles, side, log2_side, columns);
     }
+    CUDA_CHECK(cudaMemcpy(got.data(), remainder, got.size() * sizeof(uint64_t), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaFree(work));
-    return matched;
+    return got;
+}
+
+bool gpu_remainder_correctness() {
+    constexpr size_t side = 32, cap = side * side / 2, columns = 2, coefficients = 5 * cap / 2;
+    std::vector<uint64_t> modulus(cap + 1), source(columns * coefficients), expected;
+    fill_host(modulus);
+    fill_host(source);
+    modulus[cap] = 1;
+    for (size_t column = 0; column < columns; ++column) {
+        std::vector<uint64_t> high(cap), low(cap);
+        for (size_t block = (coefficients + cap - 1) / cap; block-- > 0;) {
+            for (size_t offset = 0; offset < cap; ++offset) {
+                const size_t index = block * cap + offset;
+                low[offset] = index < coefficients ? source[column * coefficients + index] : 0;
+            }
+            high = remainder_by_division(high, low, modulus);
+        }
+        expected.insert(expected.end(), high.begin(), high.end());
+    }
+    return remainder_columns_gpu(side, columns, coefficients, source, remainder_factors(modulus, side))
+        == expected;
 }
 
 template <typename Launch>
@@ -970,6 +1049,8 @@ int gpu_bench(int log2_m, size_t batch, int reps, bool odd, bool inverse = false
 }  // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--host-remainder-native")
+        return native_remainder_check();
     if (argc == 3 && std::string(argv[1]) == "--host-check")
         return host_check(std::stoi(argv[2]));
     if (argc == 3 && std::string(argv[1]) == "--host-check-odd")
@@ -979,6 +1060,8 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::string(argv[1]) == "--host-check-odd-inverse")
         return host_check_odd(std::stoi(argv[2]), true);
 #ifdef __CUDACC__
+    if (argc == 2 && std::string(argv[1]) == "--gpu-remainder-native")
+        return native_remainder_check(true);
     if (argc == 5 && std::string(argv[1]) == "--gpu")
         return gpu_bench(std::stoi(argv[2]), std::stoull(argv[3]), std::stoi(argv[4]), false);
     if (argc == 5 && std::string(argv[1]) == "--gpu-odd")
@@ -988,9 +1071,9 @@ int main(int argc, char** argv) {
     if (argc == 5 && std::string(argv[1]) == "--gpu-odd-inverse")
         return gpu_bench(std::stoi(argv[2]), std::stoull(argv[3]), std::stoi(argv[4]), true, true);
 #endif
-    std::cerr << "usage: " << argv[0] << " --host-check[-odd][-inverse] LOG2_M";
+    std::cerr << "usage: " << argv[0] << " --host-check[-odd][-inverse] LOG2_M | --host-remainder-native < FIXTURE";
 #ifdef __CUDACC__
-    std::cerr << " | --gpu[-odd][-inverse] LOG2_M BATCH REPS";
+    std::cerr << " | --gpu[-odd][-inverse] LOG2_M BATCH REPS | --gpu-remainder-native < FIXTURE";
 #endif
     std::cerr << "\n";
     return 2;

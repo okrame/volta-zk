@@ -557,8 +557,9 @@ reale a ell=2 nel solo test ridotto O=0. La continuazione numerica O=2/4
 senza credito H100.
 Il preparatore ordinato usa l'owner pending/accepted comune, W e profili
 condivisi e coin PCS OS separati. La storia viene dai soli reader accettati,
-con KV Frozen condivisi e controlli di ordine/W/semantica. Il confronto
-numerico O=0/2/4 non è un run di tre proof ordinate né un picco fisico.
+con KV Frozen condivisi e controlli di ordine/W/semantica. Il
+[confronto numerico O=0/2/4](evidence.md#ordered-numerical-history) non è
+un run di tre proof ordinate né un picco fisico.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 correzioni, coin e share ora attraversano due endpoint indipendenti tramite

@@ -1926,7 +1926,7 @@ comune ai due journal, senza Snapshot/A densi. Il run su SHA pulita termina
 in 47,43 s entro 60 s/2 GiB. I test reali densi e il profilo canonico
 mantengono ell=11: questo ridimensionamento serve soltanto al controllo
 CPU locale e non trasferisce il bound crittografico del profilo selezionato.
-La continuazione numerica O=2/4 condivide soltanto i KV Frozen dei reader
+La [continuazione numerica O=2/4](evidence.md#ordered-numerical-history) condivide soltanto i KV Frozen dei reader
 precedenti; i loro owner accettati conservano ancora i propri cut/cache PCS.
 I controlli confrontano ogni byte D12 e tutti i KV, incluso il token finale,
 e respingono cardinalità, ordine e installazione W differenti. Il getter

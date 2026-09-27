@@ -1939,3 +1939,26 @@ con ell=2, non lo sostituisce al canonico; i metadati/refcount Arc non
 sono dichiarati gratuiti o un risparmio misurato. Conserva l'errore iniziale
 di compilazione nei due argomenti `Option<&Arc<Profile>>`, risolto con
 `as_ref` senza modificare le relazioni del fixture.
+
+## Ordered numerical history
+
+Il [record su SHA pulita `7903bbf`](../../benchmarks/results/c71-ordered-history-2026-09-27-7903bbf7a07f.json)
+conserva dieci test Rust seriali entro 60 s/2 GiB e check non-test B12/
+Seed6. Il preparatore ordinato passa i predecessori del registro privato
+al reader; questo condivide solo i KV Frozen immutabili. Il confronto
+O=0/2/4 copre tutti i byte D12, padding pubblico e KV del token finale.
+Cardinalità errata, riordino e altra installazione dello stesso plaintext W
+sono respinti. Passano inoltre le PCS originali nei tre contesti, Prepare,
+O=0 ordinato ideale, tre tentativi densi e il rifiuto del predecessore alterato.
+Il positivo ordinato/Seed6 O=0 ad ell=2 è ripetuto in 47,33 s.
+
+Il primo controllo ha rilevato un fixture storico non aggiornato: chiedeva
+D12 al getter grezzo dopo che `eebabdb` ne aveva limitato il dominio alla
+potenza di due minima dei byte vivi. Il record conserva il fallimento e
+collega le evidenze precedenti, anteriori a quel cambio. Il limite runtime
+resta invariato: il fixture verifica il dominio minimo e il rifiuto al bordo;
+la sua closure PCS aggiunge gli zeri pubblici già previsti dal reader.
+
+Non sono tre proof ordinate accettate né un run AES completo. Gli owner
+accettati conservano ancora cut/cache/PCS; Arc e KV condivisi non danno
+credito al picco fisico. Γ reale, ledger completo e gate H100 restano aperti.

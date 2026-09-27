@@ -2063,3 +2063,29 @@ non il packed né workspace FFT/hash. Il getter conserva anche metadata
 del profilo; non se ne presume la condivisione con i profili dello State
 né costo nullo. Non è reader file-backed canonico, Γ calibrato, port GPU,
 picco completo o GO H100.
+
+## Native FFT remainder in replay openings
+
+Il [record su SHA pulita `688ce4d`](../../benchmarks/results/c71-native-remainder-2026-09-27-688ce4de3e49.json)
+conserva sei test Rust e tre Python seriali entro 60 s/2 GiB, più check
+non-test B12 e Seed6. `Code::rows` ora usa la stessa riduzione a blocchi
+del precedente oracolo Python, con DFT/iDFT native e fattori comuni alle
+colonne. Payload e pad originali rimangono agli offset precedenti.
+
+Il nuovo controllo confronta le righe con Horner indipendente su colonne
+base e extension, inclusi pad privati negativi, blocco incompleto, query
+duplicate, ordine inverso e batch vuoto. Verifica una sola lettura del
+payload per callback e rifiuto pre-getter di dominio/cap invalidi.
+La catena WHIR D10 coincide byte per byte con il backend denso originale
+a monete fissate, incluso transcript e MAC terminale; il MAC alterato
+resta respinto. Passano linear/range sourcewise, O=0 streaming ideale e
+O=0 W replay/A ordinata con Seed6 reale ell=2 in 47,36 s.
+
+Il cap ridotto è 1.024 richieste; setup e valutazione del resto sono ancora
+quadratici in quel cap. La tree richiama il riduttore per ogni sottoalbero
+e per le righe finali: non è la singola scansione dell'apertura canonica,
+né il cap 2^21 con product/remainder tree bilanciato. Punti, spettri,
+resti, workspace DFT e output sono costi vivi, non scratch gratuito.
+Il diagnostic allocator della catena ridotta è conservato nel record,
+senza promuoverlo a picco canonico. Nessuna nuova riserva, garanzia Lean,
+calibrazione Γ, misura GPU o autorizzazione H100.

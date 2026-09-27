@@ -1965,7 +1965,7 @@ nessun risparmio canonico o picco fisico è accreditato dal solo raccordo.
 Il positivo ridotto O=0 W replay/A ordinata usa Seed6 reale ell=2 e termina
 in 47,56 s entro il limite locale; non è il run canonico o tre accettazioni.
 
-Il callback RS del replay ora usa riduzione FFT a blocchi invece di
+Il [callback RS del replay](evidence.md#native-fft-remainder-in-replay-openings) ora usa riduzione FFT a blocchi invece di
 Horner sull'intera sorgente per ciascuna query. Il riferimento mantiene
 pad e ordine originali, batch fino a 1.024 richieste e una lettura di ogni
 coefficiente per batch. Setup e valutazione finale sono ancora quadratici
@@ -1973,6 +1973,9 @@ nel piccolo cap; la tree richiama il callback per sottoalbero e per le
 righe richieste. Non è quindi l'apertura canonica a una sola scansione,
 né il piano di memoria canonico. DFT e resti sono lavoro della prova;
 nessun nuovo lower/upper H100 sostituisce il ledger precedente.
+La catena WHIR D10 coincide con il backend originale a monete fissate;
+passano anche la proof streaming ideale e W replay/A ordinata con Seed6
+reale in 47,36 s. È correttezza ridotta, non una misura H100.
 
 ## Seed6: seal di completamento
 

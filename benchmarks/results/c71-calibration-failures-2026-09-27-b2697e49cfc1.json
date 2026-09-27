@@ -1,0 +1,37 @@
+{
+  "milestone": "C7.1-calibration-failure-records",
+  "date": "2026-09-27",
+  "git_sha": "b2697e49cfc14d321d3bc5c4178bad1687fa2fd5",
+  "git_dirty": false,
+  "credit": false,
+  "h100_preflight_ready": false,
+  "calibrated": false,
+  "gpu_execution": false,
+  "scope": "Nine Python checks of the existing calibration wrapper: retain native stdout/stderr on failures and captured byte prefixes on timeout; reject malformed, non-object, duplicate-key or incomplete reports even on native exit zero; distinguish worker and wrapper exit codes. Successful mocked report remains calibrated:false and credit:false. Candidate snapshot, provenance early failure, no overwrite, and failed table publication regressions are retained. Native worker/weight validation are mocked in the report cases; no real model, native calibration run, hardware or spending credit.",
+  "limits": {
+    "timeout_seconds": 60,
+    "address_space_bytes": 2147483648,
+    "rayon_threads": 1,
+    "openblas_threads": 1,
+    "omp_threads": 1,
+    "serial": true,
+    "external_network": false
+  },
+  "source_sha256": {
+    "scripts/c71_calibrate.py": "524e25b8c7eeb6c1f4d059e22d28d24ccc5b9a6d9ffa5d5488b050edc0c3bc20",
+    "tests/test_c71_calibration.py": "0c43f2d1e432c56ed1f9b0501fe4e1498bbd6d0ea1b9549e83ef92b12e418fc3"
+  },
+  "runs": [
+    {
+      "command": "ulimit -v 2097152; PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 timeout 60s pytest -q -p no:cacheprovider tests/test_c71_calibration.py -k 'trial_output or failed_table or weight_provenance'",
+      "exit_code": 0,
+      "seconds": 0.000003792,
+      "passed": true,
+      "stdout": ".........                                                                [100%]\n9 passed, 2 deselected in 0.04s\n"
+    }
+  ],
+  "prior_evidence": [
+    "benchmarks/results/c71-calibration-fixed-run-inputs-2026-09-26-5e9d8ff3e827.json"
+  ],
+  "accounting_scope": "No protocol, canonical operation/reservation, resource ledger or calibration authorization change. No Rust rebuild: only Python failure handling and its mocked checks changed."
+}

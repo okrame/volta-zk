@@ -2011,3 +2011,19 @@ Il provider non riceve MAC; resta il contratto NoPeek degli originali
 immutabili. Il runner ridotto conserva il Vec dei compact. Non è il piano
 P0 fisico a quattro letture, una nuova stima del picco o un lower completo;
 ledger canonico, Γ reale e gate H100 restano invariati/aperti.
+
+## Calibration failure records
+
+Il [record su SHA pulita `b2697e4`](../../benchmarks/results/c71-calibration-failures-2026-09-27-b2697e49cfc1.json)
+conserva nove controlli Python seriali entro 60 s/2 GiB. Il wrapper Γ ora
+mantiene stdout/stderr del worker fallito e i prefissi catturati al timeout;
+il codice nativo resta distinto dal codice di rifiuto del wrapper. Exit zero
+con JSON invalido, non-oggetto, duplicato o trial incompleto produce un
+record di fallimento. Passano anche snapshot immutabile della candidata,
+provenienza respinta prima della lettura pesante e mancata pubblicazione
+delle tabelle fallite. I record esistenti non vengono sovrascritti.
+
+Il worker e la lettura W sono simulati nei casi del report. Anche il
+positivo finto conserva `calibrated:false` e `credit:false`: non è un
+trial numerico, Γ reale o autorizzazione all'esecuzione completa. Nessuna
+build Rust o modifica del ledger/protocollo è necessaria per questo fix.

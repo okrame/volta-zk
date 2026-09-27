@@ -326,10 +326,11 @@ mod tests {
             );
             if fault == 0 {
                 assert_eq!(result.unwrap(), digest);
+                assert!(vrows.next().is_none());
             } else {
                 assert!(result.is_err(), "false affine raw or detached X passed same source PCS");
+                assert!(vrows.len() > 0);
             }
-            assert!(vrows.next().is_none());
             let invalid = [Relation { raw: first, inputs: [(first + 1, 1 << 31), (first + 2, 0)] }];
             let mut fs = start();
             assert!(bytes.affine_zero_form(&plan, &context, &invalid, &mut fs).is_err());

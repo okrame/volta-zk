@@ -256,10 +256,11 @@ mod tests {
             );
             if fault == 0 {
                 assert_eq!(result.unwrap(), digest);
+                assert!(vrows.next().is_none());
             } else {
                 assert!(result.is_err(), "incorrect decision/slack passed original A PCS");
+                assert!(vrows.len() > 0);
             }
-            assert!(vrows.next().is_none());
             let mut fs = start();
             for (out, slack, offset) in
                 [(first, first, 1), (first, first + 1, 2), (usize::MAX, first + 1, 1)]

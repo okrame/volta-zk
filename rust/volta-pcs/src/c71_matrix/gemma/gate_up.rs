@@ -658,10 +658,11 @@ mod tests {
             );
             if fault == 2 {
                 assert!(result.is_err(), "swapped operands with equal product detached from A");
+                assert!(vrows.len() > 0);
             } else {
                 assert_eq!(result.unwrap(), digest);
+                assert!(vrows.next().is_none());
             }
-            assert!(vrows.next().is_none());
             let mut exhausted = vec![Auth::ZERO; s.required().unwrap() - 1].into_iter();
             let before = exhausted.len();
             assert!(prove(&s, |_| panic!("exhaustion read witness"), &mut start(), &mut exhausted)

@@ -2155,3 +2155,19 @@ Non cambiano ricette, shift, riserve compilate, transcript o PCS. Restano
 altri buffer componenti, storage del caller e workspace PCG; sul fallimento
 il suffisso non espanso rimane bruciato dal pool. Nessun nuovo credito
 di picco fisico, calibrazione reale o GO H100.
+
+## Borrowed native consumer intervals
+
+Il [primo record su SHA pulita `a1987db`](../../benchmarks/results/c71-component-borrowed-2026-09-27-a1987dbbb81c.json)
+conserva un successo e un fallimento: lookup sourcewise mantiene wire,
+FS e MAC del denso, ma il fixture negativo pretendeva l'esaurimento
+delle righe anche dopo il rifiuto di un originale staccato dalla PCS.
+Il rifiuto previsto avveniva; falliva la successiva asserzione di consumo.
+Il record conserva anche la prima build respinta dai due helper di prodotto
+ancora tipizzati `Vec::IntoIter`, poi adattati a `ExactSizeIterator`.
+
+Le asserzioni equivalenti dei fixture sono corrette insieme: esaurimento
+sul successo, suffisso non espanso dopo rifiuto anticipato, senza modificare
+i controlli sugli originali o drenare artificialmente l'iteratore. Il burn
+dell'intero tentativo resta una proprietà del wrapper/pool, non di questi
+test componenti. La regressione completa aggiornata resta da registrare.

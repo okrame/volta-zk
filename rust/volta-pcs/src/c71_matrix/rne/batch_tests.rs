@@ -316,9 +316,10 @@ fn c71_b12_rne_joint_bytes_valid_proofs_and_original_pcs() {
         );
         if fault == 2 {
             assert!(checked.is_err());
+            assert!(vrows.len() > 0);
         } else {
             assert_eq!(checked.unwrap(), digest);
+            assert!(vrows.next().is_none());
         }
-        assert!(vrows.next().is_none());
     }
 }

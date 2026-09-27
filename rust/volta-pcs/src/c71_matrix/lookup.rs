@@ -1293,10 +1293,11 @@ mod tests {
             );
             if fault == 2 {
                 assert_eq!(result.unwrap_err(), "C71 matrix sumcheck MAC rejected");
+                assert!(vrows.len() > 0);
             } else {
                 assert_eq!(result.unwrap(), digest);
+                assert!(vrows.next().is_none());
             }
-            assert!(vrows.next().is_none());
         }
         let root = C61Commitment::new(vec![[1; 32]]);
         let s = Statement {

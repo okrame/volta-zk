@@ -475,10 +475,11 @@ mod tests {
             );
             if fault == 2 {
                 assert!(result.is_err(), "changed Y and consistent raw detached from A");
+                assert!(vrows.len() > 0);
             } else {
                 assert_eq!(result.unwrap(), digest);
+                assert!(vrows.next().is_none());
             }
-            assert!(vrows.next().is_none());
             let mut exhausted = vec![Auth::ZERO; 16].into_iter();
             assert!(prove(&s, |_| panic!("exhaustion read witness"), &mut start(), &mut exhausted)
                 .is_err());

@@ -605,10 +605,11 @@ mod tests {
             );
             if fault == 2 || fault == 3 {
                 assert!(result.is_err(), "changed Pi/V with consistent raw detached from A");
+                assert!(vrows.len() > 0);
             } else {
                 assert_eq!(result.unwrap(), digest);
+                assert!(vrows.next().is_none());
             }
-            assert!(vrows.next().is_none());
             let mut exhausted = vec![Auth::ZERO; 29].into_iter();
             assert!(prove_pv(
                 &s,
@@ -817,10 +818,11 @@ mod tests {
             );
             if fault == 2 {
                 assert!(result.is_err(), "changed K and consistent raw detached from A");
+                assert!(vrows.len() > 0);
             } else {
                 assert_eq!(result.unwrap(), digest);
+                assert!(vrows.next().is_none());
             }
-            assert!(vrows.next().is_none());
             let mut exhausted = vec![Auth::ZERO; s.qk_required().unwrap() - 1].into_iter();
             let before = exhausted.len();
             assert!(prove_qk(

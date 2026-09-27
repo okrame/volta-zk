@@ -821,10 +821,11 @@ mod tests {
             );
             if fault == 2 {
                 assert_eq!(checked.unwrap_err(), "C71 matrix sumcheck MAC rejected");
+                assert!(vrows.len() > 0);
             } else {
                 assert_eq!(checked.unwrap(), digest);
+                assert!(vrows.next().is_none());
             }
-            assert!(vrows.next().is_none());
         }
     }
 }

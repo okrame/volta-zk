@@ -772,7 +772,7 @@ mod tests {
                             &mut rows,
                         );
                         assert_eq!(rejected.unwrap_err(), "C71 matrix sumcheck MAC rejected");
-                        assert!(rows.next().is_none()); // the whole attempt was reserved
+                        assert!(rows.len() > 0);
                         return Ok((None, None));
                     }
                     // Counterfactual verifier replays of ONE proof: no new prover

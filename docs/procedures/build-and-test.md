@@ -180,6 +180,12 @@ partial, W replay/A ordinata e full O0 late rejection. Ogni filtro resta
 entro 60 s/2 GiB. Lookup controlla i getter prima di qualunque richiesta
 MAC e la stessa proof/FS/endpoint del denso; EXP30 controlla espansione
 non anticipata e consumo esatto, senza cambiare i fault sui byte originali.
+Le asserzioni dei fixture dopo rifiuto anticipato non richiedono il consumo
+del suffisso bruciato: aggiungere `c71_b12_byte_functions`, `c71_b12_rne_ties`,
+`c71_b12_rne_joint_bytes`, `c71_b12_rms_joint_gkr`,
+`c71_b12_gemma_affine_zero`, `c71_b12_gemma_argmax_original` e
+`c71_b12_fixed_run_linear_batch`. L'ultimo usa socketpair locali e controlla
+anche il rifiuto del reopen dopo il secondo tentativo fallito.
 
 Per il raccordo del verifier canonico al medesimo pool lazy eseguire
 separatamente `c71_b12_native_registry` e `c71_b12_native_dispatch_canonical`.

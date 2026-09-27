@@ -82,6 +82,14 @@ Per il raccordo FFT odd-log usare `tests/test_c71_fft_microbench.py`, entro
 più report GPU simulati (non esegue CUDA). Il comando host riproducibile è
 `python3 scripts/run_c71_fft_microbench.py --host-only --odd --host-log2-m 3
 --timeout-seconds 60`; senza `--odd` mantiene il controllo quadrato.
+Aggiungere `--inverse` per l'inversa normalizzata, anche insieme a `--odd`.
+Il test host copre entrambe le direzioni, roundtrip e transpose normalizzato;
+i report GPU restano simulati. La compilazione statica locale usa
+`/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -O3 -std=c++17 -arch=sm_90
+-Xptxas=-v cuda/c71_fft_microbench.cu -o OUTPUT` senza avviare il binario.
+Per il SASS aggiungere `toolkit/bin` a PATH, così `cuobjdump -sass OUTPUT`
+trova anche `nvdisasm`. Conservare la provenienza della correzione locale
+glibc già dichiarata; non modificare gli header installati.
 Omettere `--host-only` seleziona CUDA e richiede autorizzazione separata:
 le variabili cloud del runner non costituiscono autorizzazione di spesa.
 

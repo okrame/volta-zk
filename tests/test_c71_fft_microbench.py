@@ -23,7 +23,7 @@ def test_host_square_and_odd_reports_match_the_existing_kernel(tmp_path):
         check=True, timeout=30,
     )
     for log2_m in range(1, 5):
-        for mode in ("host-check", "host-check-odd"):
+        for mode in ("host-check", "host-check-odd", "host-check-inverse", "host-check-odd-inverse"):
             report = json.loads(subprocess.check_output(
                 [str(binary), f"--{mode}", str(log2_m)], text=True, timeout=30,
             ))
@@ -32,7 +32,16 @@ def test_host_square_and_odd_reports_match_the_existing_kernel(tmp_path):
             corrupted["input"]["length"] += 1
             with pytest.raises(SystemExit):
                 fft.validate(corrupted, mode, log2_m, 1)
-            if mode.endswith("-odd"):
+            for field in ("scale", "field_multiplications", "extra_global_passes"):
+                corrupted = copy.deepcopy(report)
+                corrupted["normalization"][field] += 1
+                with pytest.raises(SystemExit):
+                    fft.validate(corrupted, mode, log2_m, 1)
+            corrupted = copy.deepcopy(report)
+            corrupted["roundtrip"] = False
+            with pytest.raises(SystemExit):
+                fft.validate(corrupted, mode, log2_m, 1)
+            if "-odd" in mode:
                 for section, field in (
                     ("merge", "twiddle_table_bytes"),
                     ("whole_fft", "value_read_write_bytes"),
@@ -42,17 +51,29 @@ def test_host_square_and_odd_reports_match_the_existing_kernel(tmp_path):
                     corrupted[section][field] = 0
                     with pytest.raises(SystemExit):
                         fft.validate(corrupted, mode, log2_m, 1)
+            else:
+                corrupted = copy.deepcopy(report)
+                corrupted["correctness"]["tile_pair_normalized_m64"] = False
+                with pytest.raises(SystemExit):
+                    fft.validate(corrupted, mode, log2_m, 1)
 
 
 @pytest.mark.parametrize("odd", [False, True])
-def test_simulated_gpu_reports_require_matching_mode_counts_and_timings(odd):
+@pytest.mark.parametrize("inverse", [False, True])
+def test_simulated_gpu_reports_require_matching_mode_counts_and_timings(odd, inverse):
     log2_m, batch = 2, 3
     length = 32 if odd else 16
     count = length * batch
-    mode = "cuda-odd" if odd else "cuda"
+    mode = ("cuda-odd" if odd else "cuda") + ("-inverse" if inverse else "")
     report = {
         "schema": fft.SCHEMA,
         "mode": mode,
+        "normalization": {
+            "inverse": inverse,
+            "scale": pow(length, 18_446_744_069_414_584_319, 18_446_744_069_414_584_321) if inverse else 1,
+            "field_multiplications": count if inverse else 0,
+            "extra_global_passes": 0,
+        },
         "field": {"base_modulus": 18_446_744_069_414_584_321, "generator": 7, "element_bytes": 8},
         "input": {
             "generator": "splitmix64-v1", "seed": fft.SEED, "log2_m": log2_m,
@@ -95,6 +116,11 @@ def test_simulated_gpu_reports_require_matching_mode_counts_and_timings(odd):
         },
     }
     fft.validate(report, mode, log2_m, batch)
+    if inverse:
+        corrupted = copy.deepcopy(report)
+        del corrupted["normalization"]
+        with pytest.raises(SystemExit):
+            fft.validate(corrupted, mode, log2_m, batch)
     with pytest.raises(SystemExit):
         fft.validate(report, "cuda" if odd else "cuda-odd", log2_m, batch)
     for section, field in (
@@ -102,6 +128,9 @@ def test_simulated_gpu_reports_require_matching_mode_counts_and_timings(odd):
         ("allocation", "twiddle_bytes"),
         ("odd_merge", "field_multiplications"),
         ("work", "butterflies"),
+        ("normalization", "scale"),
+        ("normalization", "field_multiplications"),
+        ("normalization", "extra_global_passes"),
     ):
         corrupted = copy.deepcopy(report)
         corrupted[section][field] += 1
@@ -113,7 +142,8 @@ def test_simulated_gpu_reports_require_matching_mode_counts_and_timings(odd):
         fft.validate(corrupted, mode, log2_m, batch)
 
 
-def test_host_only_odd_cli_and_distinct_immutable_result_names(tmp_path, monkeypatch):
+@pytest.mark.parametrize("inverse", [False, True])
+def test_host_only_odd_cli_and_distinct_immutable_result_names(tmp_path, monkeypatch, inverse):
     compiler = shutil.which("g++")
     if compiler is None:
         pytest.skip("g++ is required for the host reference check")
@@ -122,18 +152,19 @@ def test_host_only_odd_cli_and_distinct_immutable_result_names(tmp_path, monkeyp
             sys.executable, str(ROOT / "scripts/run_c71_fft_microbench.py"),
             "--host-only", "--odd", "--host-log2-m", "2",
             "--timeout-seconds", "30", "--cxx", compiler,
-        ],
+        ] + (["--inverse"] if inverse else []),
         text=True, timeout=40,
     )
     report = json.loads(output[output.index("{"):])
-    assert report["kernel"]["mode"] == "host-check-odd"
+    assert report["kernel"]["mode"] == "host-check-odd" + ("-inverse" if inverse else "")
     assert report["provenance"]["source_sha256"] == fft.source_sha256()
     assert fft.device_bytes(10, 128, odd=True) == 2_164_260_864
     assert fft.device_bytes(10, 128, odd=True) + (256 << 20) < fft.ARENA
     monkeypatch.setattr(fft, "RESULTS", tmp_path)
     even = fft.unique_result_path("2026-09-27", "test", False)
-    odd = fft.unique_result_path("2026-09-27", "test", False, odd=True)
+    odd = fft.unique_result_path("2026-09-27", "test", False, odd=True, inverse=inverse)
     assert even != odd
+    assert odd != fft.unique_result_path("2026-09-27", "test", False, odd=True, inverse=not inverse)
     odd.write_text("preserved")
-    assert fft.unique_result_path("2026-09-27", "test", False, odd=True) != odd
+    assert fft.unique_result_path("2026-09-27", "test", False, odd=True, inverse=inverse) != odd
     assert odd.read_text() == "preserved"

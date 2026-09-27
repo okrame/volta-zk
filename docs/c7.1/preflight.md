@@ -121,8 +121,10 @@ Il quoziente usa soltanto i B coefficienti alti invertiti: includere
 anche quelli bassi causa alias ciclico. Due convoluzioni con fattore
 fisso costano **quattro FFT di lunghezza 2B=2^22 per blocco**. Il test
 ora esegue proprio questi quattro transform, con due precalcoli condivisi.
-La FFT quadrata 2048² già compilata è riusabile; inverse, normalizzazione,
-packing e pipeline remainder CUDA restano da collegare.
+La FFT quadrata 2048² già compilata è riusabile; l'harness espone ora
+anche inverse e normalizzazione fusa, compilate senza esecuzione GPU.
+Reverse/padding, prodotti spettrali, packing e pipeline remainder CUDA
+restano da collegare.
 
 Per N coefficienti base, arrotondati a blocchi, il nucleo sorgente paga
 **88N butterfly + 8N prodotti twiddle + 4N prodotti spettrali + 4N
@@ -855,6 +857,18 @@ o root nativa segue dai controlli host o dai report GPU simulati.
 La FFT quadrata esistente usa soltanto values e twiddle globali; i suoi
 transpose/row kernel usano shared memory, già distinta dall'HBM. Il trace
 non trasforma questo controllo nel workspace completo della PCS.
+
+Il runner espone anche `--inverse`, combinabile con `--odd`, con nomi
+di record distinti. Usa twiddle della radice inversa nello stesso array
+e normalizzazione 1/N fusa nell'ultimo transpose quadrato o nel merge
+dispari: N×batch prodotti base aggiuntivi, senza nuovo passaggio globale
+o buffer. Il riferimento host normalizza esplicitamente i risultati e
+controlla DFT e roundtrip; il modello del transpose verifica la scala
+anche fra tile distinti. Questi loop host non sono misure del layout GPU.
+Il check CPU/GPU del futuro runner CUDA verifica la direzione richiesta
+prima dei timing, ma non è stato eseguito. Compilazione sm_90 e SASS
+conservano i due kernel normalizzati separati; restano la pipeline dei
+resti e tutte le fasi PCS mancanti, senza nuovo lower/upper o GO H100.
 
 L'audit dei percorsi nativi distingue tre incompatibilità/obblighi:
 

@@ -234,10 +234,12 @@ struct TileModelCheck {
     bool plain;
     bool twiddled;
     bool unique_coverage;
+    bool normalized;
 };
 
 std::pair<std::vector<uint64_t>, bool> tiled_transpose_model(
-    const std::vector<uint64_t>& input, size_t m, const std::vector<uint64_t>* twiddles) {
+    const std::vector<uint64_t>& input, size_t m, const std::vector<uint64_t>* twiddles,
+    uint64_t scale = 1) {
     std::vector<uint64_t> out = input;
     std::vector<uint8_t> writes(input.size());
     const size_t tiles = (m + 31) / 32;
@@ -259,6 +261,7 @@ std::pair<std::vector<uint64_t>, bool> tiled_transpose_model(
                         if (twiddles)
                             value = fp_mul(value, (*twiddles)[(tile_column * 32 + column) *
                                                               (tile_row * 32 + row)]);
+                        if (scale != 1) value = fp_mul(value, scale);
                         out[ar * m + ac] = value;
                         ++writes[ar * m + ac];
                     }
@@ -269,6 +272,7 @@ std::pair<std::vector<uint64_t>, bool> tiled_transpose_model(
                             if (twiddles)
                                 value = fp_mul(value, (*twiddles)[(tile_row * 32 + column) *
                                                                   (tile_column * 32 + row)]);
+                            if (scale != 1) value = fp_mul(value, scale);
                             out[br * m + bc] = value;
                             ++writes[br * m + bc];
                         }
@@ -293,31 +297,55 @@ TileModelCheck tile_model_check() {
         }
     const auto plain = tiled_transpose_model(input, m, nullptr);
     const auto twiddled = tiled_transpose_model(input, m, &twiddles);
+    const bool plain_ok = plain.first == plain_reference;
+    const uint64_t scale = fp_pow(n, P - 2);
+    for (auto& value : plain_reference) value = fp_mul(value, scale);
+    const auto normalized = tiled_transpose_model(input, m, nullptr, scale);
     return {
-        plain.first == plain_reference,
+        plain_ok,
         twiddled.first == twiddle_reference,
-        plain.second && twiddled.second,
+        plain.second && twiddled.second && normalized.second,
+        normalized.first == plain_reference,
     };
 }
 
-int host_check(int log2_m) {
+void normalize_host(std::vector<uint64_t>& values, size_t length) {
+    const uint64_t scale = fp_pow(length, P - 2);
+    for (auto& value : values) value = fp_mul(value, scale);
+}
+
+int host_check(int log2_m, bool inverse = false) {
     if (log2_m < 1 || log2_m > 4) return 2;
     const size_t m = size_t{1} << log2_m;
     const size_t n = m * m;
-    const uint64_t omega = root_of_unity(n);
+    const uint64_t omega = fp_pow(root_of_unity(n), inverse ? P - 2 : 1);
     std::vector<uint64_t> input(n);
     fill_host(input);
     auto radix = input;
     auto blocked = input;
     fft_radix2(radix, omega);
     five_pass_fft(blocked, m, omega);
-    const auto direct = dft(input, omega);
+    auto direct = dft(input, omega);
+    if (inverse) {
+        normalize_host(radix, n);
+        normalize_host(blocked, n);
+        normalize_host(direct, n);
+    }
+    auto roundtrip = blocked;
+    five_pass_fft(roundtrip, m, fp_pow(omega, P - 2));
+    if (!inverse) normalize_host(roundtrip, n);
     const bool root_ok = fp_pow(omega, n) == 1 && fp_pow(omega, n / 2) == P - 1;
     const bool radix_ok = radix == direct;
     const bool blocked_ok = blocked == direct;
     const bool field_ok = field_self_check() && index_self_check();
     const TileModelCheck tiles = tile_model_check();
-    std::cout << "{\"schema\":\"volta-c71-fft-microbench-v1\",\"mode\":\"host-check\""
+    std::cout << "{\"schema\":\"volta-c71-fft-microbench-v1\",\"mode\":\"host-check"
+              << (inverse ? "-inverse\"" : "\"")
+              << ",\"normalization\":{\"inverse\":" << (inverse ? "true" : "false")
+              << ",\"scale\":" << (inverse ? fp_pow(n, P - 2) : 1)
+              << ",\"field_multiplications\":" << (inverse ? n : 0)
+              << ",\"extra_global_passes\":0}"
+              << ",\"roundtrip\":" << (roundtrip == input ? "true" : "false")
               << ",\"field\":{\"base_modulus\":" << P << ",\"generator\":" << GENERATOR
               << ",\"element_bytes\":8}"
               << ",\"input\":{\"generator\":\"splitmix64-v1\",\"seed\":\""
@@ -331,26 +359,42 @@ int host_check(int log2_m) {
               << ",\"tile_pair_plain_m64\":" << (tiles.plain ? "true" : "false")
               << ",\"tile_pair_twiddle_m64\":" << (tiles.twiddled ? "true" : "false")
               << ",\"tile_pair_unique_coverage_m64\":"
-              << (tiles.unique_coverage ? "true" : "false") << "}"
+              << (tiles.unique_coverage ? "true" : "false")
+              << ",\"tile_pair_normalized_m64\":" << (tiles.normalized ? "true" : "false") << "}"
               << ",\"checksum\":\"" << hex64(checksum(blocked)) << "\"}\n";
-    return field_ok && root_ok && radix_ok && blocked_ok && tiles.plain && tiles.twiddled &&
-                   tiles.unique_coverage
+    return roundtrip == input && field_ok && root_ok && radix_ok && blocked_ok && tiles.plain && tiles.twiddled &&
+                   tiles.unique_coverage && tiles.normalized
         ? 0
         : 1;
 }
 
-int host_check_odd(int log2_m) {
+int host_check_odd(int log2_m, bool inverse = false) {
     if (log2_m < 1 || log2_m > 4) return 2;
     const size_t m = size_t{1} << log2_m, half = m * m, n = 2 * half;
-    const uint64_t omega = root_of_unity(n);
+    const uint64_t omega = fp_pow(root_of_unity(n), inverse ? P - 2 : 1);
     std::vector<uint64_t> input(n), scattered(n);
     fill_host(input);
     for (size_t i = 0; i < n; ++i) scattered[(i & 1) * half + i / 2] = input[i];
     odd_fft_parity_scattered(scattered, m, omega);
-    const auto direct = dft(input, omega);
+    auto direct = dft(input, omega);
+    if (inverse) {
+        normalize_host(scattered, n);
+        normalize_host(direct, n);
+    }
+    std::vector<uint64_t> roundtrip(n);
+    for (size_t index = 0; index < n; ++index)
+        roundtrip[(index & 1) * half + index / 2] = scattered[index];
+    odd_fft_parity_scattered(roundtrip, m, fp_pow(omega, P - 2));
+    if (!inverse) normalize_host(roundtrip, n);
     const bool root_ok = fp_pow(omega, n) == 1 && fp_pow(omega, n / 2) == P - 1;
     const bool odd_ok = scattered == direct;
-    std::cout << "{\"schema\":\"volta-c71-fft-microbench-v1\",\"mode\":\"host-check-odd\""
+    std::cout << "{\"schema\":\"volta-c71-fft-microbench-v1\",\"mode\":\"host-check-odd"
+              << (inverse ? "-inverse\"" : "\"")
+              << ",\"normalization\":{\"inverse\":" << (inverse ? "true" : "false")
+              << ",\"scale\":" << (inverse ? fp_pow(n, P - 2) : 1)
+              << ",\"field_multiplications\":" << (inverse ? n : 0)
+              << ",\"extra_global_passes\":0}"
+              << ",\"roundtrip\":" << (roundtrip == input ? "true" : "false")
               << ",\"input\":{\"log2_m\":" << log2_m << ",\"length\":" << n << "}"
               << ",\"algorithm\":{\"square_passes\":5,\"merge_passes\":1"
               << ",\"layout\":\"parity-scattered-input/natural-order-output\"}"
@@ -370,7 +414,7 @@ int host_check_odd(int log2_m) {
               << ",\"butterflies\":" << n * (2 * log2_m + 1) / 2
               << ",\"square_cross_multiplications\":" << n << "}"
               << ",\"checksum\":\"" << hex64(checksum(scattered)) << "\"}\n";
-    return root_ok && odd_ok ? 0 : 1;
+    return root_ok && odd_ok && roundtrip == input ? 0 : 1;
 }
 
 #ifdef __CUDACC__
@@ -394,9 +438,10 @@ __global__ void twiddle_init_kernel(uint64_t* twiddles, size_t n, uint64_t omega
     if (i < n) twiddles[i] = fp_pow(omega, i);
 }
 
-template <bool APPLY_TWIDDLE>
+template <bool APPLY_TWIDDLE, bool NORMALIZE = false>
 __global__ void tiled_transpose_kernel(
-    uint64_t* values, const uint64_t* twiddles, size_t m, size_t twiddle_stride) {
+    uint64_t* values, const uint64_t* twiddles, size_t m, size_t twiddle_stride,
+    uint64_t scale = 1) {
     __shared__ uint64_t tile_a[32][33];
     __shared__ uint64_t tile_b[32][33];
     const size_t tile_column = blockIdx.x, tile_row = blockIdx.y;
@@ -427,6 +472,7 @@ __global__ void tiled_transpose_kernel(
                 const size_t source_column = tile_row * 32 + lane;
                 value = fp_mul(value, twiddles[twiddle_stride * source_row * source_column]);
             }
+            if constexpr (NORMALIZE) value = fp_mul(value, scale);
             values[base + row_a * m + column_a] = value;
         }
         if (tile_row != tile_column) {
@@ -439,6 +485,7 @@ __global__ void tiled_transpose_kernel(
                     const size_t source_column = tile_column * 32 + lane;
                     value = fp_mul(value, twiddles[twiddle_stride * source_row * source_column]);
                 }
+                if constexpr (NORMALIZE) value = fp_mul(value, scale);
                 values[base + row_b * m + column_b] = value;
             }
         }
@@ -473,7 +520,7 @@ __global__ void row_fft_kernel(
 
 void launch_five_pass(
     uint64_t* values, const uint64_t* twiddles, size_t m, int log2_m, size_t batch,
-    size_t twiddle_stride = 1) {
+    size_t twiddle_stride = 1, bool inverse = false) {
     const size_t tiles = (m + 31) / 32;
     const dim3 grid(tiles, tiles, batch), threads(32, 8);
     tiled_transpose_kernel<false><<<grid, threads>>>(values, nullptr, m, twiddle_stride);
@@ -486,7 +533,11 @@ void launch_five_pass(
     row_fft_kernel<<<batch * m, BLOCK, m * sizeof(uint64_t)>>>(
         values, twiddles, m, log2_m, batch * m, twiddle_stride);
     CUDA_CHECK(cudaGetLastError());
-    tiled_transpose_kernel<false><<<grid, threads>>>(values, nullptr, m, twiddle_stride);
+    if (inverse)
+        tiled_transpose_kernel<false, true><<<grid, threads>>>(
+            values, nullptr, m, twiddle_stride, fp_pow(m * m, P - 2));
+    else
+        tiled_transpose_kernel<false><<<grid, threads>>>(values, nullptr, m, twiddle_stride);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -497,23 +548,30 @@ __global__ void odd_init_kernel(uint64_t* values, size_t n, size_t count) {
     values[base + (local & 1) * half + local / 2] = canonical(splitmix64(SEED + i));
 }
 
+template <bool NORMALIZE = false>
 __global__ void radix2_merge_kernel(
-    uint64_t* values, const uint64_t* twiddles, size_t half, size_t butterflies) {
+    uint64_t* values, const uint64_t* twiddles, size_t half, size_t butterflies,
+    uint64_t scale = 1) {
     const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
     if (i >= butterflies) return;
     const size_t k = i % half, base = 2 * (i - k);
     const uint64_t a = values[base + k];
     const uint64_t b = fp_mul(twiddles[k], values[base + half + k]);
-    values[base + k] = fp_add(a, b);
-    values[base + half + k] = fp_sub(a, b);
+    values[base + k] = NORMALIZE ? fp_mul(fp_add(a, b), scale) : fp_add(a, b);
+    values[base + half + k] = NORMALIZE ? fp_mul(fp_sub(a, b), scale) : fp_sub(a, b);
 }
 
 void launch_odd_fft(
-    uint64_t* values, const uint64_t* twiddles, size_t m, int log2_m, size_t batch) {
+    uint64_t* values, const uint64_t* twiddles, size_t m, int log2_m, size_t batch,
+    bool inverse = false) {
     const size_t half = m * m, butterflies = batch * half;
     launch_five_pass(values, twiddles, m, log2_m, 2 * batch, 2);
-    radix2_merge_kernel<<<(butterflies + BLOCK - 1) / BLOCK, BLOCK>>>(
-        values, twiddles, half, butterflies);
+    if (inverse)
+        radix2_merge_kernel<true><<<(butterflies + BLOCK - 1) / BLOCK, BLOCK>>>(
+            values, twiddles, half, butterflies, fp_pow(2 * half, P - 2));
+    else
+        radix2_merge_kernel<false><<<(butterflies + BLOCK - 1) / BLOCK, BLOCK>>>(
+            values, twiddles, half, butterflies);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -540,16 +598,17 @@ double median_ms(int reps, Launch launch) {
     return samples[samples.size() / 2];
 }
 
-bool gpu_correctness() {
+bool gpu_correctness(bool inverse = false) {
     // Exercise off-diagonal tile pairs as well as diagonal tiles before timing.
     constexpr int log2_m = 6;
     constexpr size_t m = 1 << log2_m, n = m * m, batch = 2;
-    const uint64_t omega = root_of_unity(n);
+    const uint64_t omega = fp_pow(root_of_unity(n), inverse ? P - 2 : 1);
     std::vector<uint64_t> input(batch * n), want(batch * n), got(batch * n), twiddle(n);
     fill_host(input);
     for (size_t b = 0; b < batch; ++b) {
         std::vector<uint64_t> current(input.begin() + b * n, input.begin() + (b + 1) * n);
         fft_radix2(current, omega);
+        if (inverse) normalize_host(current, n);
         std::copy(current.begin(), current.end(), want.begin() + b * n);
     }
     for (size_t i = 0; i < n; ++i) twiddle[i] = fp_pow(omega, i);
@@ -558,14 +617,14 @@ bool gpu_correctness() {
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&device_twiddles), twiddle.size() * sizeof(uint64_t)));
     CUDA_CHECK(cudaMemcpy(device_values, input.data(), input.size() * sizeof(uint64_t), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(device_twiddles, twiddle.data(), twiddle.size() * sizeof(uint64_t), cudaMemcpyHostToDevice));
-    launch_five_pass(device_values, device_twiddles, m, log2_m, batch);
+    launch_five_pass(device_values, device_twiddles, m, log2_m, batch, 1, inverse);
     CUDA_CHECK(cudaMemcpy(got.data(), device_values, got.size() * sizeof(uint64_t), cudaMemcpyDeviceToHost));
     const bool even_ok = got == want;
     CUDA_CHECK(cudaFree(device_twiddles));
     CUDA_CHECK(cudaFree(device_values));
 
     constexpr size_t odd_n = 2 * n;
-    const uint64_t odd_omega = root_of_unity(odd_n);
+    const uint64_t odd_omega = fp_pow(root_of_unity(odd_n), inverse ? P - 2 : 1);
     input.resize(odd_n);
     want.resize(odd_n);
     got.resize(odd_n);
@@ -575,6 +634,7 @@ bool gpu_correctness() {
     for (size_t i = 0; i < odd_n; ++i) scattered[(i & 1) * n + i / 2] = input[i];
     want = input;
     fft_radix2(want, odd_omega);
+    if (inverse) normalize_host(want, odd_n);
     for (size_t i = 0; i < odd_n; ++i) twiddle[i] = fp_pow(odd_omega, i);
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&device_values), odd_n * sizeof(uint64_t)));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&device_twiddles), odd_n * sizeof(uint64_t)));
@@ -582,7 +642,7 @@ bool gpu_correctness() {
         device_values, scattered.data(), odd_n * sizeof(uint64_t), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(
         device_twiddles, twiddle.data(), odd_n * sizeof(uint64_t), cudaMemcpyHostToDevice));
-    launch_odd_fft(device_values, device_twiddles, m, log2_m, 1);
+    launch_odd_fft(device_values, device_twiddles, m, log2_m, 1, inverse);
     CUDA_CHECK(cudaMemcpy(
         got.data(), device_values, odd_n * sizeof(uint64_t), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaFree(device_twiddles));
@@ -599,10 +659,10 @@ std::string escape(const char* text) {
     return out.str();
 }
 
-int gpu_bench(int log2_m, size_t batch, int reps, bool odd) {
+int gpu_bench(int log2_m, size_t batch, int reps, bool odd, bool inverse = false) {
     if (log2_m < 1 || log2_m > 12 || batch < 1 || batch > 1024 || reps < 1 || reps > 99)
         return 2;
-    if (!gpu_correctness()) {
+    if (!gpu_correctness(inverse)) {
         std::cerr << "small CPU/GPU FFT correctness check failed\n";
         return 1;
     }
@@ -629,7 +689,7 @@ int gpu_bench(int log2_m, size_t batch, int reps, bool odd) {
         std::chrono::steady_clock::now() - allocation_start).count();
     size_t free_after = 0;
     CUDA_CHECK(cudaMemGetInfo(&free_after, &total));
-    const uint64_t omega = root_of_unity(n);
+    const uint64_t omega = fp_pow(root_of_unity(n), inverse ? P - 2 : 1);
     const double initialize_ms = median_ms(reps, [&] {
         if (odd)
             odd_init_kernel<<<(count + BLOCK - 1) / BLOCK, BLOCK>>>(values, n, count);
@@ -643,9 +703,9 @@ int gpu_bench(int log2_m, size_t batch, int reps, bool odd) {
     });
     const double fft_ms = median_ms(reps, [&] {
         if (odd)
-            launch_odd_fft(values, twiddles, m, log2_m, batch);
+            launch_odd_fft(values, twiddles, m, log2_m, batch, inverse);
         else
-            launch_five_pass(values, twiddles, m, log2_m, batch);
+            launch_five_pass(values, twiddles, m, log2_m, batch, 1, inverse);
     });
     std::vector<uint64_t> sample(4);
     CUDA_CHECK(cudaMemcpy(sample.data(), values, 2 * sizeof(uint64_t), cudaMemcpyDeviceToHost));
@@ -660,7 +720,11 @@ int gpu_bench(int log2_m, size_t batch, int reps, bool odd) {
     CUDA_CHECK(cudaFree(values));
     std::cout << std::setprecision(12)
               << "{\"schema\":\"volta-c71-fft-microbench-v1\",\"mode\":\""
-              << (odd ? "cuda-odd" : "cuda") << "\""
+              << (odd ? "cuda-odd" : "cuda") << (inverse ? "-inverse\"" : "\"")
+              << ",\"normalization\":{\"inverse\":" << (inverse ? "true" : "false")
+              << ",\"scale\":" << (inverse ? fp_pow(n, P - 2) : 1)
+              << ",\"field_multiplications\":" << (inverse ? count : 0)
+              << ",\"extra_global_passes\":0}"
               << ",\"field\":{\"base_modulus\":" << P << ",\"generator\":" << GENERATOR
               << ",\"element_bytes\":8}"
               << ",\"input\":{\"generator\":\"splitmix64-v1\",\"seed\":\""
@@ -716,15 +780,23 @@ int main(int argc, char** argv) {
         return host_check(std::stoi(argv[2]));
     if (argc == 3 && std::string(argv[1]) == "--host-check-odd")
         return host_check_odd(std::stoi(argv[2]));
+    if (argc == 3 && std::string(argv[1]) == "--host-check-inverse")
+        return host_check(std::stoi(argv[2]), true);
+    if (argc == 3 && std::string(argv[1]) == "--host-check-odd-inverse")
+        return host_check_odd(std::stoi(argv[2]), true);
 #ifdef __CUDACC__
     if (argc == 5 && std::string(argv[1]) == "--gpu")
         return gpu_bench(std::stoi(argv[2]), std::stoull(argv[3]), std::stoi(argv[4]), false);
     if (argc == 5 && std::string(argv[1]) == "--gpu-odd")
         return gpu_bench(std::stoi(argv[2]), std::stoull(argv[3]), std::stoi(argv[4]), true);
+    if (argc == 5 && std::string(argv[1]) == "--gpu-inverse")
+        return gpu_bench(std::stoi(argv[2]), std::stoull(argv[3]), std::stoi(argv[4]), false, true);
+    if (argc == 5 && std::string(argv[1]) == "--gpu-odd-inverse")
+        return gpu_bench(std::stoi(argv[2]), std::stoull(argv[3]), std::stoi(argv[4]), true, true);
 #endif
-    std::cerr << "usage: " << argv[0] << " --host-check[-odd] LOG2_M";
+    std::cerr << "usage: " << argv[0] << " --host-check[-odd][-inverse] LOG2_M";
 #ifdef __CUDACC__
-    std::cerr << " | --gpu[-odd] LOG2_M BATCH REPS";
+    std::cerr << " | --gpu[-odd][-inverse] LOG2_M BATCH REPS";
 #endif
     std::cerr << "\n";
     return 2;

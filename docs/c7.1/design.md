@@ -1536,7 +1536,14 @@ L'harness FFT riusa ora anche il kernel odd-log esistente tramite `--odd`:
 controlla separatamente formato host/GPU, sei passaggi, merge, twiddle e
 allocazioni. I report GPU simulati dei test non sono misure. La geometria
 componente completa è 2^21 × 128; non è un harness PCS integrato e non
-autorizza GPU o spesa. Il percorso quadrato rimane disponibile invariato.
+autorizza GPU o spesa. `--inverse` seleziona ora la radice inversa e
+normalizzazione 1/N, sia quadrata sia odd-log. Nel CUDA il prodotto per
+1/N è fuso nell'ultimo transpose o merge: un prodotto base per elemento,
+nessun nuovo array o passaggio globale. I controlli host confrontano DFT,
+roundtrip e transpose normalizzato su tile diagonali/fuori diagonale;
+non eseguono il device. Il forward conserva la propria aritmetica.
+Rimangono reverse/padding, prodotti spettrali, pipeline dei resti,
+scatter PCS e controllo GPU; nessun credito di picco o tempo completo.
 Il [checkpoint RMS e il prover a memoria limitata](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)
 conservano P/Y originali e S48 condiviso per riga: 2.023.511.878 B con
 descrittori, nello slot range riusato prima di RNE. Il caller costruisce

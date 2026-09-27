@@ -112,14 +112,26 @@ def ptxas_report(stderr: str) -> dict:
 
 
 def validate(kernel: dict, mode: str, log2_m: int, batch: int) -> None:
-    if mode not in {"host-check", "host-check-odd", "cuda", "cuda-odd"}:
+    inverse = mode.endswith("-inverse")
+    base_mode = mode.removesuffix("-inverse")
+    if base_mode not in {"host-check", "host-check-odd", "cuda", "cuda-odd"}:
         raise SystemExit("unknown FFT microbenchmark mode")
-    odd = mode.endswith("-odd")
+    odd = base_mode.endswith("-odd")
     gpu = mode.startswith("cuda")
     n = 1 << (2 * log2_m + int(odd))
     if kernel.get("schema") != SCHEMA or kernel.get("mode") != mode:
         raise SystemExit("FFT microbenchmark schema or mode differs")
     count = n * batch if gpu else n
+    normalization = {
+        "inverse": inverse,
+        "scale": pow(n, 18_446_744_069_414_584_319, 18_446_744_069_414_584_321) if inverse else 1,
+        "field_multiplications": count if inverse else 0,
+        "extra_global_passes": 0,
+    }
+    if kernel.get("normalization", None if inverse else normalization) != normalization:
+        raise SystemExit("FFT normalization differs")
+    if not gpu and kernel.get("roundtrip", not inverse) is not True:
+        raise SystemExit("FFT host roundtrip failed")
     merge = {
         "value_read_bytes": 8 * count if odd else 0,
         "value_write_bytes": 8 * count if odd else 0,
@@ -128,7 +140,7 @@ def validate(kernel: dict, mode: str, log2_m: int, batch: int) -> None:
         "field_additions": count // 2 if odd else 0,
         "field_subtractions": count // 2 if odd else 0,
     }
-    if mode == "host-check-odd":
+    if base_mode == "host-check-odd":
         expected = {
             "input": {"log2_m": log2_m, "length": n},
             "algorithm": {
@@ -184,6 +196,8 @@ def validate(kernel: dict, mode: str, log2_m: int, batch: int) -> None:
             "tile_pair_unique_coverage_m64": True,
         }
     )
+    if not gpu and (inverse or "tile_pair_normalized_m64" in kernel.get("correctness", {})):
+        expected_correctness["tile_pair_normalized_m64"] = True
     if kernel.get("correctness") != expected_correctness:
         raise SystemExit("FFT microbenchmark correctness check failed")
     if gpu:
@@ -220,8 +234,9 @@ def validate(kernel: dict, mode: str, log2_m: int, batch: int) -> None:
             raise SystemExit("FFT microbenchmark merge or twiddle work census differs")
 
 
-def unique_result_path(date: str, sha: str, quick: bool, odd: bool = False) -> Path:
-    label = "c71-fft-microbench" + ("-odd" if odd else "") + ("-quick" if quick else "")
+def unique_result_path(date: str, sha: str, quick: bool, odd: bool = False, inverse: bool = False) -> Path:
+    label = ("c71-fft-microbench" + ("-odd" if odd else "")
+             + ("-inverse" if inverse else "") + ("-quick" if quick else ""))
     base = RESULTS / f"{label}-{date}-{sha}.json"
     if not base.exists():
         return base
@@ -236,6 +251,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host-only", action="store_true")
     parser.add_argument("--odd", action="store_true")
+    parser.add_argument("--inverse", action="store_true")
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--host-log2-m", type=int, choices=range(1, 5), default=3)
     parser.add_argument("--cxx", default=shutil.which("g++") or "g++")
@@ -247,7 +263,7 @@ def main() -> int:
         raise SystemExit("--timeout-seconds must be in [1, 3600]")
     provenance = {"source": str(SOURCE.relative_to(REPO)), "source_sha256": source_sha256()}
     if args.host_only:
-        mode = "host-check-odd" if args.odd else "host-check"
+        mode = ("host-check-odd" if args.odd else "host-check") + ("-inverse" if args.inverse else "")
         kernel, _ = compile_and_run(
             args.cxx, ["-O2", "-std=c++17", "-x", "c++"],
             [f"--{mode}", str(args.host_log2_m)], args.timeout_seconds,
@@ -264,17 +280,19 @@ def main() -> int:
     log2_m, batch, reps = (8, 8, 3) if args.quick else (10 if args.odd else 11, 128, 7)
     kernel, compiler_stderr = compile_and_run(
         args.nvcc, ["-O3", "-std=c++17", f"-arch={args.arch}", "-Xptxas=-v"],
-        ["--gpu-odd" if args.odd else "--gpu", str(log2_m), str(batch), str(reps)],
+        [("--gpu-odd" if args.odd else "--gpu") + ("-inverse" if args.inverse else ""),
+         str(log2_m), str(batch), str(reps)],
         args.timeout_seconds,
     )
     if dirty() or git("rev-parse", "HEAD") != clean_sha or source_sha256() != clean_source_sha:
         raise SystemExit("FFT sources or clean SHA changed during the run")
-    validate(kernel, "cuda-odd" if args.odd else "cuda", log2_m, batch)
+    mode = ("cuda-odd" if args.odd else "cuda") + ("-inverse" if args.inverse else "")
+    validate(kernel, mode, log2_m, batch)
     date = dt.date.today().isoformat()
     sha = clean_sha
     report = {
         "milestone": ("C7.1-five-pass-FFT-quick" if args.quick else "C7.1-five-pass-FFT")
-        + ("-odd" if args.odd else ""),
+        + ("-odd" if args.odd else "") + ("-inverse" if args.inverse else ""),
         "date": date,
         "git_sha": sha,
         "git_dirty": False,
@@ -296,7 +314,7 @@ def main() -> int:
         },
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
-    path = unique_result_path(date, sha[:12], args.quick, args.odd)
+    path = unique_result_path(date, sha[:12], args.quick, args.odd, args.inverse)
     with path.open("x") as output:
         json.dump(report, output, indent=2, sort_keys=True)
         output.write("\n")

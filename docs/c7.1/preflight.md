@@ -872,7 +872,7 @@ prima dei timing, ma non è stato eseguito. Compilazione sm_90 e SASS
 conservano i due kernel normalizzati separati, senza nuovo lower/upper
 o GO H100.
 
-La pipeline dei resti usa ora quattro trasformate di lunghezza 2B
+La [pipeline dei resti](evidence.md#four-fft-block-remainder-reference) usa ora quattro trasformate di lunghezza 2B
 quadrata: inverte solo la metà alta, moltiplica per il reciproco,
 normalizza, inverte il quoziente troncato con coda zero, moltiplica per
 il modulo e sottrae il risultato dal blocco basso. Host e divisione

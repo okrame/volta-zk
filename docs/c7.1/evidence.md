@@ -2359,3 +2359,26 @@ riferimento CPU normalizza con loop espliciti, non misura i passaggi GPU.
 Setup host di radici/scale, lanci e runtime non sono gratuiti. Restano
 reverse/padding, prodotti spettrali, pipeline dei resti e integrazione PCS;
 nessun nuovo rate, picco fisico o GO H100.
+
+## Four FFT block remainder reference
+
+Il [record su SHA pulita `ac76723`](../../benchmarks/results/c71-remainder-pipeline-2026-09-27-ac767234fbea.json)
+conserva dieci test Python/C++, quattro invocazioni CLI host e la
+compilazione statica sm_90 con SASS completo, seriali entro 60 s/2 GiB.
+Dodici blocchi host, con B=2/8/32/128, primo blocco parziale e resto
+propagato fra tre blocchi, coincidono con divisione monica indipendente.
+La pipeline collega quattro FFT, reverse/padding, prodotti per i due
+spettri fissi e sottrazione dal blocco basso. I report host e device
+rifiutano l'assenza del rispettivo controllo remainder.
+
+I tredici kernel compilati hanno zero stack/spill ptxas. I quattro nuovi
+stadi usano 16/22/18/18 registri; il check CUDA a B=512 e due colonne
+è compilato ma non eseguito. La sua allocazione nominata di 65.536 B
+comprende workspace, resto, blocco basso, due spettri e due tabelle
+twiddle vive insieme. Host, metadata e runtime sono ulteriori costi.
+
+Il setup quadratico dei fattori resta limitato ai fixture piccoli.
+Il timing del runner misura ancora FFT isolate, non il remainder;
+non sono collegati getter/pad originali, Fp3, fattori canonici o PCS.
+Nessuna esecuzione GPU, rate misurato o picco completo: Γ reale e gate
+pre-spesa restano aperti.

@@ -133,7 +133,9 @@ collega ora registro posseduto dal verifier, header locale e pool reale:
 burn prima del decoding, promozione solo dopo verifica completa e journal.
 Il profilo lega i corpi delle tabelle, senza certificarne i valori numerici.
 Il controllo reale a tre righe copre il rifiuto per capacità insufficiente
-senza promozione o riuso.
+senza promozione o riuso. Il wrapper canonico riusa ora lo stesso adapter
+di chiavi lazy Seed6 del ridotto e il corpo accetta iteratori a cardinalità
+esatta. Lo shortage Seed6 usa solo setup 25+6; non è accettazione canonica.
 
 **Il limite di trasporto canonico è ora 96 MiB, con 16 MiB per PCS D34/D35.**
 Il conteggio verificato dà un upper del corpo della risposta di 92,73 MB,

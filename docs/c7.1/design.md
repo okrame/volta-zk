@@ -351,6 +351,9 @@ con il layout effettivamente posseduto dal compilatore. Le 410 RNE consumano key
 originali; le 482 sonde, le 120 richieste K/V e i batch finali conservano
 le identità delle sorgenti. Sono implementati i confronti 775/4.446 target,
 una PCS per ogni sorgente, consumo esatto e framing finale con EOF.
+Anche questo corpo accetta `ExactSizeIterator`: la cardinalità compilata
+resta obbligatoria, senza imporre un Vec di chiavi. Il controllo del prefisso
+usa un Map lazy e verifica che contesto/P0 invalido non consumino righe.
 
 L'ordine implementato comprende frame 0–7 per forme/P0/RMS/RNE/GELU/gate/RoPE,
 8–127 per le coppie QK/PV dei 60 layer, 128 per KV, 129–130 per softcap/EXP30,
@@ -383,8 +386,9 @@ coerenti. `verify_response` rende immediatamente terminale lo stato,
 controlla prompt 100, token 150 nel vocabolario e freschezza di A, poi
 ricostruisce l'header `C71B12-Gemma-FixedRun-v1` dal registro ordinato.
 Il confronto del pool vincola seal, setup unico, slot, predecessore e
-cursor. `Pool::attempt` brucia la riserva prima del decoding; il wrapper
-compone le chiavi col segno nativo e passa al corpo soltanto segmenti
+cursor. Il wrapper riusa `VerifierCapacity` del percorso ridotto: pool B12
+denso oppure Seed6 CPU opt-in, stesso packing lazy e segno nativo.
+`attempt` brucia la riserva prima del decoding e passa al corpo soltanto segmenti
 ricostruiti dalle accettazioni locali più A corrente. Il successo del
 corpo genera `Acceptance`, aggiunta al registro solo dopo il journal.
 Errori e panic terminano stato e pool; il risultato esterno è solo `Stop`.
@@ -394,7 +398,8 @@ Il limite Fs interno è 2^42 richieste, ripreso come arresto operativo
 dall'envelope analitico di security §6, non come misura o dimostrazione
 del numero di draw del programma. Il percorso canonico usa ora 96 MiB
 complessivi e 16 MiB per PCS D34/D35, giustificati dal conteggio sotto.
-I controlli del registro e del rifiuto AES a tre righe non percorrono la
+I controlli del registro e del rifiuto AES a tre righe, più shortage Seed6
+con setup ridotto 25+6, non percorrono la
 promozione positiva; preparatore, prover, certificazione numerica e
 schedule fisico restano aperti.
 

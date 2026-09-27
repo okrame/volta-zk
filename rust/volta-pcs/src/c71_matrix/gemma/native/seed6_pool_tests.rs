@@ -4,7 +4,7 @@ use volta_pcg::{
     c71_seed6::{self, Geometry},
 };
 
-fn pair<ProverValue: Send, VerifierValue>(
+pub(in crate::c71_matrix::gemma::native) fn pair<ProverValue: Send, VerifierValue>(
     geometry: Geometry,
     binding: ModelBinding,
     prover: impl FnOnce(&mut ProverCapacity<'_, '_>) -> ProverValue + Send,

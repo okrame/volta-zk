@@ -116,6 +116,13 @@ nessun bound crittografico canonico si trasferisce da questa geometria.
 Non eseguire insieme i filtri `c71_seed6_native` con un unico timeout:
 ciascun positivo/rifiuto completo ha il proprio limite di 60 s.
 
+Per il raccordo del verifier canonico al medesimo pool lazy eseguire
+separatamente `c71_b12_native_registry` e `c71_b12_native_dispatch_canonical`.
+Con feature Seed6 il primo verifica anche shortage con setup 25+6 su
+socketpair locale; il marker `C71_CANONICAL_SEED6` non indica una proof
+canonica accettata. Il secondo usa chiavi diagnostiche lazy nel solo
+prefisso fino al rifiuto P0, non una riserva reale completa.
+
 Per il raccordo streaming critico, dopo la build PCS mirata, eseguire
 separatamente `sourcewise_range_matches_dense_original_wire_and_mac`,
 `c71_b12_sourcewise_linear_matches_dense_wire_fs_point_and_original_mac`,

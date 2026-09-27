@@ -6,7 +6,7 @@ use volta_pcg::c71_lifetime::{Attempt, ModelBinding, Pool};
 
 #[cfg(all(test, unix, feature = "c71-seed6-reference"))]
 #[path = "seed6_pool_tests.rs"]
-mod seed6_tests;
+pub(in crate::c71_matrix::gemma::native) mod seed6_tests;
 
 fn io_error(e: String) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, e)
@@ -64,13 +64,13 @@ fn read_triple<Row>(rows: &mut dyn Iterator<Item = io::Result<Row>>) -> [Row; 3]
     })
 }
 
-enum ProverCapacity<'borrow, 'lifetime> {
+pub(in crate::c71_matrix::gemma::native) enum ProverCapacity<'borrow, 'lifetime> {
     Dense(&'borrow mut Pool<'lifetime, [u64; 4]>),
     #[cfg(feature = "c71-seed6-reference")]
     Seed6(&'borrow mut volta_pcg::c71_seed6::ProverPool<'lifetime>),
 }
 
-enum VerifierCapacity<'borrow, 'lifetime> {
+pub(in crate::c71_matrix::gemma::native) enum VerifierCapacity<'borrow, 'lifetime> {
     Dense(&'borrow mut Pool<'lifetime, [u64; 3]>),
     #[cfg(feature = "c71-seed6-reference")]
     Seed6(&'borrow mut volta_pcg::c71_seed6::VerifierPool<'lifetime>),
@@ -130,7 +130,9 @@ impl ProverCapacity<'_, '_> {
 }
 
 impl VerifierCapacity<'_, '_> {
-    fn fixed_run_context(&self) -> io::Result<(ModelBinding, [u8; 32], Attempt)> {
+    pub(in crate::c71_matrix::gemma::native) fn fixed_run_context(
+        &self,
+    ) -> io::Result<(ModelBinding, [u8; 32], Attempt)> {
         match self {
             Self::Dense(pool) => pool.fixed_run_context(),
             #[cfg(feature = "c71-seed6-reference")]
@@ -138,7 +140,7 @@ impl VerifierCapacity<'_, '_> {
         }
     }
 
-    fn stop(&mut self) {
+    pub(in crate::c71_matrix::gemma::native) fn stop(&mut self) {
         match self {
             Self::Dense(pool) => pool.stop(),
             #[cfg(feature = "c71-seed6-reference")]
@@ -146,7 +148,7 @@ impl VerifierCapacity<'_, '_> {
         }
     }
 
-    fn attempt<Value>(
+    pub(in crate::c71_matrix::gemma::native) fn attempt<Value>(
         &mut self,
         count: usize,
         consumer: impl FnOnce(

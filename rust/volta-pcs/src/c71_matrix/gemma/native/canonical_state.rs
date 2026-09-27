@@ -1,9 +1,10 @@
 //! Internal canonical acceptance machine, conditional on valid public tables.
 //! No public admission API: numerical certification, positive composition and
 //! complete transport sizing remain prerequisites for the canonical runner.
+use super::super::protocol::pool::VerifierCapacity;
 use super::*;
 use std::io;
-use volta_pcg::c71_lifetime::{Attempt, ModelBinding, Pool};
+use volta_pcg::c71_lifetime::{Attempt, ModelBinding};
 
 pub(super) struct Public<'a> {
     pub(super) profiles: Vec<Canonical>,
@@ -182,7 +183,7 @@ impl<'a> Verifier<'a> {
     fn new(
         public: Public<'a>,
         weight: C61Commitment,
-        pool: &Pool<'_, [u64; 3]>,
+        pool: &VerifierCapacity<'_, '_>,
     ) -> Result<Self, String> {
         let context = pool.fixed_run_context().map_err(|e| e.to_string())?;
         let v = Self {
@@ -295,7 +296,7 @@ impl<'a> Verifier<'a> {
         &mut self,
         prompt: &[u32],
         r: &Response,
-        pool: &mut Pool<'_, [u64; 3]>,
+        pool: &mut VerifierCapacity<'_, '_>,
     ) -> Result<(), String> {
         if !self.live {
             pool.stop();
@@ -309,13 +310,11 @@ impl<'a> Verifier<'a> {
             let attempt = self.attempt(r.nonce);
             let required = self.public.required[slot];
             let acceptance = pool
-                .attempt(required, |a, base, delta| {
+                .attempt(required, |a, mut rows, delta| {
                     let error = |e| io::Error::new(io::ErrorKind::InvalidData, e);
                     self.check_burn(&a).map_err(error)?;
                     self.cursor += 3 * required;
                     self.next_slot += 1;
-                    let (delta, mut rows) =
-                        super::super::protocol::pool::keys(&base, delta).map_err(error)?;
                     let s = self.public.statement(slot, &self.weight, &r.root, &r.tokens, attempt);
                     let parts: Vec<_> = self
                         .accepted
@@ -380,6 +379,21 @@ impl<'a> Verifier<'a> {
 mod tests {
     use super::*;
     use volta_pcg::c71_lifetime::Lifetime;
+
+    fn reject_shortage(
+        public: Public<'_>,
+        weight: C61Commitment,
+        response: &Response,
+        pool: &mut VerifierCapacity<'_, '_>,
+    ) {
+        let mut verifier = Verifier::new(public, weight, pool).unwrap();
+        assert_eq!(verifier.verify_response(&[0; 100], response, pool), Err("Stop".into()));
+        assert!(!verifier.live && verifier.accepted.is_empty());
+        assert_eq!((verifier.next_slot, verifier.cursor), (0, 0));
+        assert!(pool.fixed_run_context().is_err());
+        assert!(pool.attempt::<()>(1, |_, _, _| panic!("reused stopped pool")).is_err());
+        assert_eq!(verifier.verify_response(&[0; 100], response, pool), Err("Stop".into()));
+    }
 
     #[test]
     fn c71_b12_native_registry_header_and_real_shortage_are_terminal() {
@@ -515,6 +529,25 @@ mod tests {
         v.accepted[0].tokens[149] = 0;
         v.accepted[0].receipt[0] ^= 1;
         assert_ne!(old, v.header(&[0; 100], &r).unwrap());
+        #[cfg(feature = "c71-seed6-reference")]
+        {
+            let (_, _, counters, head) = super::super::super::protocol::pool::seed6_tests::pair(
+                volta_pcg::c71_seed6::Geometry::new(2, 4, 2).unwrap(),
+                binding,
+                |_| (),
+                |pool| {
+                    reject_shortage(
+                        Public::compile(&[0; 772], &exponents, tables()).unwrap(),
+                        v.weight.clone(),
+                        &r,
+                        pool,
+                    );
+                },
+            );
+            assert_eq!(counters, (1, 0));
+            assert_eq!(head, [0; 32]);
+            println!("C71_CANONICAL_SEED6 shortage_before_decode=true canonical_acceptance=false");
+        }
         // Fresh real pool; never import the diagnostic history above.
         let dir = std::env::temp_dir().join(format!(
             "c71-canonical-registry-{}-{}",
@@ -537,14 +570,8 @@ mod tests {
             let mut store = Lifetime::install(&vp, binding).unwrap();
             {
                 let mut pool = store.verifier_fixed_run(vc, [2; 32], [3; 32], 3).unwrap();
-                let mut verifier = Verifier::new(v.public, v.weight, &pool).unwrap();
-                assert_eq!(verifier.verify_response(&[0; 100], &r, &mut pool), Err("Stop".into()));
-                assert!(!verifier.live && verifier.accepted.is_empty());
-                assert_eq!((verifier.next_slot, verifier.cursor), (0, 0));
-                assert!(pool.fixed_run_context().is_err());
+                reject_shortage(v.public, v.weight, &r, &mut VerifierCapacity::Dense(&mut pool));
                 assert_eq!(pool.remaining_fp3(), 0);
-                assert!(pool.attempt::<()>(1, |_, _, _| panic!("reused stopped pool")).is_err());
-                assert_eq!(verifier.verify_response(&[0; 100], &r, &mut pool), Err("Stop".into()));
             }
             assert_eq!(store.counters(), (1, 0));
             assert_eq!(store.accepted_head(), [0; 32]);

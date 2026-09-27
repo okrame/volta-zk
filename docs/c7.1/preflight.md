@@ -1934,6 +1934,14 @@ grezzo mantiene il dominio Boolean minimo; il reader PCS aggiunge il
 padding pubblico a D12. Non sono tre proof ordinate accettate, un run AES
 a tre tentativi, Γ reale o picco completo.
 
+Il verifier canonico ora riusa `VerifierCapacity`, incluso il packing lazy
+Seed6, invece di imporre un pool denso e una seconda conversione di chiavi.
+Il suo corpo richiede ancora la riserva compilata esatta e l'esaurimento
+finale; il test del prefisso usa un Map senza Vec di chiavi. Il controllo
+reale del wrapper aggiunge lo shortage Seed6 25+6, senza estrarre una sola
+riga, decodificare una proof o promuovere stato. Questa integrazione non
+fornisce un certificato canonico positivo né un nuovo picco misurato.
+
 ## Seed6: seal di completamento
 
 Evidenza: [29 controlli Rust e 28 Python/C++ su SHA pulita](evidence.md#seed6-completion-seals).

@@ -39,7 +39,7 @@ impl Canonical {
         certificate: &[u8],
         delta: Fp3,
         fs: &mut Fs,
-        rows: &mut std::vec::IntoIter<Key>,
+        rows: &mut impl ExactSizeIterator<Item = Key>,
     ) -> Result<[u8; 32], String> {
         let a = &self.sources.attention;
         let rope = &a.rope;
@@ -393,7 +393,7 @@ mod tests {
                 "canonical dispatcher reservation differs"
             );
             assert_eq!(fs.digest(), before);
-            let mut keys = vec![Key::new(Fp3::ZERO); required].into_iter();
+            let mut keys = (0..required).map(|_| Key::new(Fp3::ZERO));
             s.quantization[0] ^= 1;
             assert_eq!(
                 p.verify_body(&s, &tables, &parts, header, &[], Fp3::ONE, &mut fs, &mut keys)

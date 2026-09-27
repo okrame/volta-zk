@@ -9,6 +9,18 @@ impossibile. L'harness e gli identificatori dei goal esistenti restano invariati
 
 ## Goal dispositions
 
+Il **2026-09-27** il proprietario ha separato la calibrazione Γ dal
+preflight della prova e richiesto la chiusura del goal locale dopo un
+piano concreto per l'autorizzazione. Motivo: produrre il prerequisito
+numerico su hardware separatamente autorizzato, senza usare la sua assenza
+come permesso implicito di download, macchina o spesa. Il
+[piano](../procedures/c71-calibration.md) propone una sola campagna,
+24 h / 110 USD massimi, con hash pinned, replay O=0/150/300, stop e freeze
+condizionato all'audit; non è un GO. I comandi esistenti sono CPU anche
+su host H100; golden reali/audit completo Python/Rust restano mancanti.
+La chiusura del tracker riguarda il handoff richiesto, non una falsa
+chiusura dei gate Γ/ledger/picco/prova o una deroga ai 65 s.
+
 Il **2026-09-26** il proprietario ha scelto **Γ calibrato del modello reale**
 per il goal locale «C7.1 pronto per il minimo esperimento H100».
 Gli esponenti cambiano i circuiti RMS e le riserve: il fixture a scale zero

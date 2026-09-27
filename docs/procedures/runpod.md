@@ -1,9 +1,11 @@
 # RunPod procedure
 
-Read [current authorization](../prototype-status.md) and the relevant
-[C7.1 design](../c7.1-gemma31b-design.md) sections before provider work.
+Read [current authorization](../c7.1/status.md) and the relevant
+[C7.1 design](../c7.1/design.md) sections before provider work.
 There is currently no provider or spending authorization. Readiness and
 algorithm choices do not themselves authorize a pod or a production retry.
+The [separate calibration plan](c71-calibration.md) is an authorization
+proposal only, not permission to acquire weights or create a paid machine.
 
 ## Authorized pod lifecycle
 

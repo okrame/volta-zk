@@ -1,9 +1,11 @@
 # C7.1 — preflight locale, 2026-09-19
 
-**Traguardo locale attivo (2026-09-26): pronto per il minimo esperimento
-H100.** Il gate pre-spesa sotto è il criterio di achieved; un upper H100
-misurato entro 65 s non è richiesto per chiudere questo goal locale.
-Il lavoro continua senza GPU o spesa. Margine invariato: si interviene
+**Preflight della prova H100: ancora aperto.** Lo steering del 2026-09-27
+separa la calibrazione in una [tranche con piano di autorizzazione](../procedures/c71-calibration.md)
+e chiude il goal locale sul relativo handoff, non sul raggiungimento dei
+gate sottostanti. Nessun download, macchina o spesa è autorizzato ora.
+Il gate pre-spesa della prova resta invariato; un upper H100 misurato
+entro 65 s non è richiesto prima dell'esperimento. Margine invariato: si interviene
 su una coesistenza di buffer che sfora concretamente, senza riservare
 preventivamente ulteriore margine.
 
@@ -2909,7 +2911,7 @@ del recupero occupano 589.824 / 786.432 / 786.432 B, vivono con
 l’istogramma e sono rilasciate prima del fold dei figli: il massimo
 del piano non cambia. Restano lavoro/traffico congiunti e harness dei rate
 ignoti; il guard ridotto non viene promosso a esecuzione canonica.
-Gate di spesa **NO-GO**, goal locale in corso senza blocchi autorizzativi.
+Gate di spesa della prova **NO-GO**; il handoff della tranche Γ è separato.
 
 
 Il kernel `c71_byte_contract_coeff` riusa Fp3 originale e riduzione a
@@ -2955,7 +2957,7 @@ cambiano. Non è un upper, un lower completo o un GO alla spesa.
 
 La chiusura del ledger richiede il **Γ calibrato del modello reale**,
 selezionato dal proprietario il 2026-09-26. Il census RMS a scale zero
-non lo sostituisce. Il lavoro locale resta in corso; GPU e spesa non sono
+non lo sostituisce. Il lavoro locale leggero resta consentito; GPU e spesa non sono
 autorizzate.
 
 
@@ -3160,9 +3162,12 @@ un limite del picco fisico completo. Il trasferimento finale conserva
 I controlli locali esercitano il formato completo delle tabelle pubbliche
 su scale sintetiche e il trasferimento KV con righe sintetiche; il secondo
 test costruisce esplicitamente lo stato finale per controllare il solo
-handoff, senza attribuirgli un forward numerico. Non si propone ancora
+handoff, senza attribuirgli un forward numerico. Non si avvia ancora
 una spesa: mancano l'inizializzazione delle scale A sui pesi reali, il
-replay completo positivo e il relativo piano di esecuzione autorizzato.
+replay completo positivo e l'autorizzazione al
+[piano ora predisposto](../procedures/c71-calibration.md). Il CLI corrente
+non esporta golden reali intermedi per un confronto Python/Rust completo;
+questo audit resta un gate del freeze, non è sostituito da due run Rust uguali.
 `calibrated:false` resta esplicito anche per un trial intero positivo:
 freeze, confronto della relazione e trasferimento al ledger sono successivi.
 Il [record su SHA pulita 5e9d8ff](../../benchmarks/results/c71-calibration-fixed-run-inputs-2026-09-26-5e9d8ff3e827.json)

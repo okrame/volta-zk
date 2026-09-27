@@ -7,18 +7,26 @@ prove e risultati dei test hanno ciascuno la propria sede nei link sopra.
 
 ## Current result
 
-**Goal locale in corso: C7.1 pronto per il minimo esperimento H100.**
-Il proprietario ha confermato il 2026-09-26 che non occorre dimostrare
-i 65 s prima delle misure. La chiusura richiede costruzione integrata
-corretta su input ridotti, ledger completo senza costi omessi, picco
+**Handoff locale concluso: piano della tranche Γ pronto per autorizzazione.**
+Il 2026-09-27 il proprietario ha chiesto di separare la calibrazione,
+prepararne il [piano operativo](../procedures/c71-calibration.md) e poi
+chiudere il goal locale per continuare su H100. Questo steering sostituisce
+il precedente criterio di chiusura del tracker, non i gate della prova.
+Il piano propone una campagna fino a 24 h / 110 USD, non ancora approvata,
+con shard pinned, comandi, controlli, deadline e condizioni di freeze.
+I tool attuali usano CPU anche su host H100; manca ancora l'audit completo
+Python/Rust dei golden reali necessario al freeze ammesso. Nessun download,
+pod, esecuzione GPU o spesa è autorizzato da questa separazione.
+
+**Il preflight della prova H100 resta aperto, non GO.** Come confermato
+il 2026-09-26, non occorre dimostrare i 65 s prima delle misure. Servono
+costruzione integrata corretta su input ridotti, ledger completo senza costi omessi, picco
 pianificato con almeno 256 MiB liberi e lower congiunto compatibile
 con 65 s a O=0/150/300; poi harness/input, SHA pulita, comando,
 durata massima, costo e soglie verificabili per il minimo esperimento.
-Solo allora il goal locale è achieved e si presenta la proposta H100.
-Il lavoro locale è autorizzato e non è stalled; GPU e spesa restano
-subordinate a successiva autorizzazione. Il tracker automatico corrente
-conserva questo goal come attivo; i gate sottostanti restano il criterio
-di chiusura.
+La calibrazione non dimostra questi gate e il suo futuro GO non autorizza
+il benchmark della prova. Il lavoro locale leggero indipendente resta
+autorizzato; esecuzioni pesanti e spesa richiedono una decisione separata.
 Priorità all'integrazione; nessun nuovo census o ottimizzazione isolata
 salvo correttezza o impatto ≥16 MiB di picco / ≥0,5 s di tempo.
 
@@ -322,7 +330,7 @@ a scale zero la coda RMS dopo quattro round concessi gratis dà già
 70,268864 s: il solo trasferimento del prefisso EXP30 B=16 è NO-GO.
 Contatori completi,
 picco fisico e harness finale restano aperti. Il NO-GO scalare non si trasferisce
-alla contrazione. Il goal locale resta in corso.
+alla contrazione. Il preflight della prova resta aperto; il handoff Γ è separato.
 Nessun altro census ABI né cambiamento del protocollo è selezionato.
 
 **NO-GO del backend scalare fuso ora implementato:** per il circuito

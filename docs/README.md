@@ -22,6 +22,7 @@ this organization. The legacy status/design/composition paths still resolve.
 - [Build and test](procedures/build-and-test.md): toolchains, bounded checks,
   component filter catalog, artifacts and cleanup.
 - [RunPod](procedures/runpod.md): authorized provider work, spending and evidence.
+- [C7.1 calibration tranche](procedures/c71-calibration.md): proposed authorization, pinned acquisition, CPU pilot/replay, stop limits and conditional freeze; not a spending GO.
 - [C7.1 diagnostic](../scripts/c7_1_gemma_plan.py): existing goal harness and
   comparison budget; `--research-screens` is the historical, non-additive inventory.
 - [Evidence](c7.1/evidence.md): links to current code, tests and run records.

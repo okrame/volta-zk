@@ -1228,9 +1228,14 @@ congelati salvo errori da almeno 16 MiB di picco o 0,5 s; nuovi dettagli
 ABI non sono un gate autonomo. I contatori del riferimento scalare non
 sostituiscono il lavoro della schedule canonica a 512 replay.
 
-Dal 2026-09-26 il goal operativo locale è «C7.1 pronto per il minimo
-esperimento H100»: si chiude con i gate pre-spesa del preflight, non con
-la dimostrazione anticipata del tempo GPU. Il target finale rimane
+Il criterio tecnico del 2026-09-26 per il minimo esperimento della prova
+H100 resta nei gate pre-spesa, senza dimostrazione anticipata del tempo GPU.
+Il 2026-09-27 il proprietario ha separato la calibrazione in una
+[tranche da autorizzare](../procedures/c71-calibration.md) e chiesto di
+chiudere il goal locale con il piano e il handoff. Questa chiusura
+operativa non ammette Γ, il freeze o il benchmark della prova. Il replay
+disponibile è CPU; l'audit completo Python/Rust dei golden reali resta
+da collegare prima del freeze ammesso. Il target finale rimane
 T_inference + T_proof_only = T_response_total ≤65 s. Replay e autenticazione
 A/KV restano integralmente in T_proof_only. Nessun rilassamento di arena,
 margine, privacy, endpoint o trust model deriva da questa distinzione.

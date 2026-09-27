@@ -1978,17 +1978,20 @@ Il [callback RS del replay](evidence.md#native-fft-remainder-in-replay-openings)
 Horner sull'intera sorgente per ciascuna query. Il riferimento mantiene
 pad e ordine originali, batch fino a 1.024 richieste e una lettura di ogni
 coefficiente per batch. Il [setup verificato](evidence.md#balanced-query-setup) ora costruisce il modulo con prodotti
-FFT bilanciati e il reciproco con raddoppio di Newton. Il cap non cresce;
-la valutazione finale resta quadratica, e la tree richiama il callback per sottoalbero e per le
-righe richieste. Non è quindi l'apertura canonica a una sola scansione,
+FFT bilanciati e il reciproco con raddoppio di Newton. La valutazione
+ora scende nell'albero dei resti con lo stesso helper della riduzione
+sorgente. Il cap non cresce e la tree richiama il callback per sottoalbero
+e per le righe richieste. Non è quindi l'apertura canonica a una sola scansione,
 né il piano di memoria canonico. DFT e resti sono lavoro della prova;
 nessun nuovo lower/upper H100 sostituisce il ledger precedente.
 La catena WHIR D10 coincide con il backend originale a monete fissate;
 passano anche la proof streaming ideale e W replay/A ordinata con Seed6
 reale in 47,36 s. È correttezza ridotta, non una misura H100.
-Il nuovo setup conserva livello corrente, reciproco e temporanei FFT,
-non l'albero delle valutazioni multipunto. I suoi intermedi rimangono
-da trasferire al ledger fisico; nessuna memoria o tempo GPU è accreditato.
+Il callback conserva ora gli spettri di modulo/reciproco di tutti i nodi
+dell'albero multipunto. Coefficienti/intermedi Newton durante setup,
+resti padre/figli durante discesa, punti, workspace FFT e output sono
+memoria posseduta aggiuntiva, non riuso gratuito degli spettri della radice.
+Restano da trasferire al ledger fisico; nessuna memoria o tempo GPU è accreditato.
 
 Il [dispatcher RMS](evidence.md#borrowed-rms-correlation-intervals) non espande più preventivamente l'intera propria
 riserva Auth/Key in un Vec: passa un `Take` ai componenti originali.

@@ -65,35 +65,78 @@ fn multiply_polynomials(
     product
 }
 
-fn query_factors(points: &[Goldilocks]) -> (Vec<Goldilocks>, Vec<Goldilocks>) {
+struct QueryFactors {
+    inverse: Vec<Goldilocks>,
+    modulus: Vec<Goldilocks>,
+}
+
+fn query_tree(
+    points: &[Goldilocks],
+    dft: &Radix2DFTSmallBatch<Goldilocks>,
+) -> Vec<Vec<QueryFactors>> {
     assert!(points.len().is_power_of_two());
-    let cap = points.len();
-    let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
     let mut level: Vec<_> = points.iter().map(|&point| vec![-point, Goldilocks::ONE]).collect();
-    while level.len() > 1 {
+    let mut factors = Vec::new();
+    loop {
+        factors.push(level.iter().map(|modulus| QueryFactors::new(modulus.clone(), dft)).collect());
+        if level.len() == 1 {
+            return factors;
+        }
         let mut children = level.into_iter();
         level = Vec::with_capacity(children.len() / 2);
         while let Some(left) = children.next() {
-            level.push(multiply_polynomials(left, children.next().unwrap(), &dft));
+            level.push(multiply_polynomials(left, children.next().unwrap(), dft));
         }
     }
-    let mut modulus = level.pop().unwrap();
-    let reverse: Vec<_> = modulus.iter().rev().copied().collect();
-    let mut inverse = vec![Goldilocks::ONE];
-    while inverse.len() < cap {
-        let next = 2 * inverse.len();
-        let mut correction = multiply_polynomials(reverse[..next].to_vec(), inverse.clone(), &dft);
-        correction.truncate(next);
-        for value in &mut correction {
-            *value = -*value;
+}
+
+impl QueryFactors {
+    fn new(mut modulus: Vec<Goldilocks>, dft: &Radix2DFTSmallBatch<Goldilocks>) -> Self {
+        let cap = modulus.len() - 1;
+        let reverse: Vec<_> = modulus.iter().rev().copied().collect();
+        let mut inverse = vec![Goldilocks::ONE];
+        while inverse.len() < cap {
+            let next = 2 * inverse.len();
+            let mut correction =
+                multiply_polynomials(reverse[..next].to_vec(), inverse.clone(), dft);
+            correction.truncate(next);
+            for value in &mut correction {
+                *value = -*value;
+            }
+            correction[0] += Goldilocks::ONE + Goldilocks::ONE;
+            inverse = multiply_polynomials(inverse, correction, dft);
+            inverse.truncate(next);
         }
-        correction[0] += Goldilocks::ONE + Goldilocks::ONE;
-        inverse = multiply_polynomials(inverse, correction, &dft);
-        inverse.truncate(next);
+        inverse.resize(2 * cap, Goldilocks::ZERO);
+        modulus.resize(2 * cap, Goldilocks::ZERO);
+        Self { inverse: dft.dft(inverse), modulus: dft.dft(modulus) }
     }
-    inverse.resize(2 * cap, Goldilocks::ZERO);
-    modulus.resize(2 * cap, Goldilocks::ZERO);
-    (dft.dft(inverse), dft.dft(modulus))
+
+    fn remainder(
+        &self,
+        high: &[E],
+        low: impl Fn(usize) -> E,
+        dft: &Radix2DFTSmallBatch<Goldilocks>,
+    ) -> Vec<E> {
+        let cap = self.inverse.len() / 2;
+        assert_eq!(high.len(), cap);
+        let mut reversed: Vec<_> = high.iter().rev().copied().collect();
+        reversed.resize(2 * cap, E::ZERO);
+        let mut spectrum = dft.dft_algebra(reversed);
+        for (value, &factor) in spectrum.iter_mut().zip(&self.inverse) {
+            *value *= factor;
+        }
+        let mut quotient = dft.idft_algebra(spectrum);
+        quotient.truncate(cap);
+        quotient.reverse();
+        quotient.resize(2 * cap, E::ZERO);
+        let mut spectrum = dft.dft_algebra(quotient);
+        for (value, &factor) in spectrum.iter_mut().zip(&self.modulus) {
+            *value *= factor;
+        }
+        let product = dft.idft_algebra(spectrum);
+        (0..cap).map(|offset| low(offset) - product[offset]).collect()
+    }
 }
 
 impl Code {
@@ -149,48 +192,48 @@ impl Code {
         if indices.is_empty() {
             return Ok(Vec::new());
         }
-        // ponytail: quadratic final evaluation is capped at 1024 public points;
-        // the canonical query cap needs the balanced product/remainder tree.
         let root = Goldilocks::two_adic_generator(self.height.ilog2() as usize);
         let cap = indices.len().next_power_of_two();
         let mut points: Vec<_> = indices.iter().map(|&index| root.exp_u64(index as u64)).collect();
         points.resize(cap, Goldilocks::ZERO);
-        let (inverse, modulus) = query_factors(&points);
         let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
+        let factors = query_tree(&points, &dft);
+        let root_factors = &factors.last().unwrap()[0];
         let coefficients = (self.len + self.pads.len()) / self.width;
         let mut values = vec![E::ZERO; indices.len() * self.width];
         for column in 0..self.width {
             let mut remainder = vec![E::ZERO; cap];
             for block in (0..coefficients.div_ceil(cap)).rev() {
-                let mut high: Vec<_> = remainder.iter().rev().copied().collect();
-                high.resize(2 * cap, E::ZERO);
-                let mut spectrum = dft.dft_algebra(high);
-                for (value, &factor) in spectrum.iter_mut().zip(&inverse) {
-                    *value *= factor;
-                }
-                let mut quotient = dft.idft_algebra(spectrum);
-                quotient.truncate(cap);
-                quotient.reverse();
-                quotient.resize(2 * cap, E::ZERO);
-                let mut spectrum = dft.dft_algebra(quotient);
-                for (value, &factor) in spectrum.iter_mut().zip(&modulus) {
-                    *value *= factor;
-                }
-                let product = dft.idft_algebra(spectrum);
-                for (offset, value) in remainder.iter_mut().enumerate() {
-                    let index = block * cap + offset;
-                    *value = if index < coefficients {
-                        self.coefficient(column, index)
-                    } else {
-                        E::ZERO
-                    } - product[offset];
-                }
+                remainder = root_factors.remainder(
+                    &remainder,
+                    |offset| {
+                        let index = block * cap + offset;
+                        if index < coefficients {
+                            self.coefficient(column, index)
+                        } else {
+                            E::ZERO
+                        }
+                    },
+                    &dft,
+                );
             }
-            for (row, &point) in points[..indices.len()].iter().enumerate() {
-                values[row * self.width + column] = remainder
-                    .iter()
-                    .rev()
-                    .fold(E::ZERO, |value, &coefficient| value * point + coefficient);
+            let mut remainders = vec![remainder];
+            for level in factors[..factors.len() - 1].iter().rev() {
+                let mut children = Vec::with_capacity(level.len());
+                for (parent, pair) in remainders.into_iter().zip(level.chunks_exact(2)) {
+                    let half = parent.len() / 2;
+                    for factor in pair {
+                        children.push(factor.remainder(
+                            &parent[half..],
+                            |offset| parent[offset],
+                            &dft,
+                        ));
+                    }
+                }
+                remainders = children;
+            }
+            for (row, value) in remainders.into_iter().take(indices.len()).enumerate() {
+                values[row * self.width + column] = value[0];
             }
         }
         Ok(values
@@ -751,7 +794,7 @@ mod tests {
     #[test]
     fn c71_b12_query_factors_balanced_product_and_newton_match_direct_oracle() {
         let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
-        for cap in [1, 2, 4, 8, 32, 128, 1024] {
+        for cap in [1_usize, 2, 4, 8, 32, 128, 1024] {
             let points: Vec<_> = (0..cap)
                 .map(|index| Goldilocks::new(((index * index + 7 * index) % 19) as u64))
                 .collect();
@@ -764,7 +807,14 @@ mod tests {
                 }
                 expected = next;
             }
-            let (inverse, modulus) = query_factors(&points);
+            let factors = query_tree(&points, &dft);
+            assert_eq!(factors.len(), cap.ilog2() as usize + 1);
+            for (depth, level) in factors.iter().enumerate() {
+                assert_eq!(level.len(), cap >> depth);
+                assert!(level.iter().all(|factor| factor.inverse.len() == 2usize << depth));
+            }
+            let root = &factors.last().unwrap()[0];
+            let (inverse, modulus) = (root.inverse.clone(), root.modulus.clone());
             assert_eq!(inverse.len(), 2 * cap);
             assert_eq!(modulus.len(), 2 * cap);
             let inverse = dft.idft(inverse);

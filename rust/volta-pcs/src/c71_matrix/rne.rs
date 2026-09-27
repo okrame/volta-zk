@@ -314,7 +314,7 @@ pub(super) fn prove_reduction(
     if correlations.len() < count {
         return Err("B12 RNE prover capacity exhausted".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let mut f = eq(s.output_point);
     let mut g = eq(&rho);
     for i in 0..f.len() {
@@ -443,7 +443,7 @@ pub(super) fn verify_reduction(
     {
         return Err("B12 RNE proof shape or capacity mismatch".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let mut point = Vec::new();
     for (round, wire) in proof.rounds.iter().enumerate() {
         let a = range::correct(std::array::from_fn::<_, 8, _>(|i| wire[i]), delta, &mut rows);

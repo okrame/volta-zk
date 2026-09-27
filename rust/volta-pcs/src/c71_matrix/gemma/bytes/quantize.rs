@@ -143,7 +143,7 @@ impl Bytes {
             return Err("RNE table prover capacity exhausted".into());
         }
         self.bind_quantization(plan, s, pairs, fs)?;
-        let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+        let mut rows = correlations.by_ref().take(count);
         let (mut probes, mut reductions, mut pending) = (Vec::new(), Vec::new(), Vec::new());
         for (i, (p, (view, shape))) in
             pairs.iter().zip(self.quantized_shapes(plan, pairs)?).enumerate()
@@ -205,7 +205,7 @@ impl Bytes {
             return Err("RNE table proof shape or capacity differs".into());
         }
         self.bind_quantization(plan, s, pairs, fs)?;
-        let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+        let mut rows = correlations.by_ref().take(count);
         let mut pending = Vec::new();
         for (i, (p, (view, shape))) in
             pairs.iter().zip(self.quantized_shapes(plan, pairs)?).enumerate()

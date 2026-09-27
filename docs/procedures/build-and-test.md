@@ -162,6 +162,14 @@ denso O0. Ogni filtro resta entro 60 s/2 GiB. I controlli confrontano
 wire/FS/MAC con il riferimento denso e richiedono capacità heap zero
 soltanto per gli intervalli presi in prestito, non per l'intero prover.
 
+Per dispatcher/riduzione RNE aggiungere i filtri separati
+`c71_b12_gemma_table_rne`, `c71_b12_gemma_p0_rne`,
+`c71_b12_rne_recipes` e `c71_b12_rne_ties`, poi RMS dispatcher,
+native certificate/streaming e le regressioni Seed6 partial, W replay/A
+ordinata e full O0 late rejection. Ogni invocazione resta entro 60 s/2 GiB;
+il fixture table RNE osserva zero richieste all'iteratore prima del primo getter
+del probe e consumo esatto nei due ruoli sul successo.
+
 Per il raccordo del verifier canonico al medesimo pool lazy eseguire
 separatamente `c71_b12_native_registry` e `c71_b12_native_dispatch_canonical`.
 Con feature Seed6 il primo verifica anche shortage con setup 25+6 su

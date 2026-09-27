@@ -6,11 +6,11 @@ use super::{
     *,
 };
 
-pub(super) mod quantize;
 pub(super) mod affine;
-pub(super) mod kv;
 pub(super) mod argmax;
+pub(super) mod kv;
 pub(super) mod mask;
+pub(super) mod quantize;
 
 struct ByteTile {
     scalar: usize,
@@ -79,24 +79,31 @@ impl Bytes {
     /// Scatter the original biased bytes before a producer row is released.
     /// The dyadic layout and byte-plane order are the same as the PCS getter.
     pub(super) fn emit_row_bytes(
-        &self, id: usize, row: usize, words: &[i64], mut emit: impl FnMut(usize, u8),
+        &self,
+        id: usize,
+        row: usize,
+        words: &[i64],
+        mut emit: impl FnMut(usize, u8),
     ) -> Result<(), String> {
         let s = self.scalar.layout.sources.get(id).ok_or("unknown byte source")?;
         let width = self.widths[id];
         let bound = 1i64 << (8 * width - 1);
-        if row >= s.rows || words.len() != s.cols || words.iter().any(|&x| x < -bound || x >= bound) {
+        if row >= s.rows || words.len() != s.cols || words.iter().any(|&x| x < -bound || x >= bound)
+        {
             return Err("byte row shape or range differs".into());
         }
         for (index, t) in self.scalar.layout.tiles.iter().enumerate() {
-            if t.tensor != id || row < t.row || row >= t.row + t.rows { continue; }
+            if t.tensor != id || row < t.row || row >= t.row + t.rows {
+                continue;
+            }
             for &b in &self.by_scalar[index] {
                 let b = &self.tiles[b];
                 for c in 0..t.cols {
                     for j in 0..b.width {
                         let byte = b.first + j;
-                        let value = (words[t.col+c] as u64 >> (8*byte)) as u8
+                        let value = (words[t.col + c] as u64 >> (8 * byte)) as u8
                             ^ if byte + 1 == width { 128 } else { 0 };
-                        emit(b.offset + ((row-t.row)*t.cols+c)*b.width+j, value);
+                        emit(b.offset + ((row - t.row) * t.cols + c) * b.width + j, value);
                     }
                 }
             }
@@ -686,7 +693,13 @@ mod tests {
                     .unwrap();
             }
             let (quantized, byte_point, byte, quant_forms, quant_targets) = if table_probe {
+                let expanded = std::cell::Cell::new(0);
+                let first_read = std::cell::Cell::new(false);
+                let mut lazy_rows = prows.by_ref().inspect(|_| expanded.set(expanded.get() + 1));
                 let read = |source: usize, row: usize, col: usize, b: usize| {
+                    if !first_read.replace(true) {
+                        assert_eq!(expanded.get(), 0);
+                    }
                     let columns = bytes.scalar.layout.sources[source].cols;
                     let v = if source == 1 {
                         used[row * columns + col]
@@ -697,8 +710,10 @@ mod tests {
                     (word >> (8 * b)) as u8
                 };
                 let (proof, pending) = bytes
-                    .prove_table_rne(&plan, &statement, &pairs, read, &mut fs, &mut prows)
+                    .prove_table_rne(&plan, &statement, &pairs, read, &mut fs, &mut lazy_rows)
                     .unwrap();
+                assert!(first_read.get());
+                assert_eq!(expanded.get(), bytes.table_rne_required(&plan, &pairs).unwrap());
                 let (forms, shifts, targets) =
                     bytes.table_rne_forms(&plan, &pairs, &pending).unwrap();
                 let targets = targets
@@ -829,9 +844,22 @@ mod tests {
                         (vec![bytes.rne_form(&plan, output.source, &point)?], vec![byte])
                     }
                     QuantizedProof::Table(proof) => {
+                        let expanded = std::cell::Cell::new(0);
+                        let mut lazy_keys =
+                            vrows.by_ref().inspect(|_| expanded.set(expanded.get() + 1));
                         let pending = bytes.verify_table_rne(
-                            &plan, &statement, &pairs, proof, delta, &mut fs, &mut vrows,
+                            &plan,
+                            &statement,
+                            &pairs,
+                            proof,
+                            delta,
+                            &mut fs,
+                            &mut lazy_keys,
                         )?;
+                        assert_eq!(
+                            expanded.get(),
+                            bytes.table_rne_required(&plan, &pairs).unwrap()
+                        );
                         let (forms, shifts, targets) =
                             bytes.table_rne_forms(&plan, &pairs, &pending)?;
                         (

@@ -258,11 +258,16 @@ restano invariati. Un errore del componente può lasciare righe non espanse:
 il burn dell'intera riserva e lo Stop definitivo appartengono al wrapper
 nativo/pool, non al consumo fisico dell'iteratore. Anche GKR e il byte
 endpoint sourcewise prendono ora in prestito i loro intervalli Auth/Key;
-statistic e gli altri componenti conservano ancora buffer di righe.
+anche il dispatcher delle tabelle RNE e la riduzione RNE riusano `Take`,
+senza copie della riserva complessiva o del singolo predicato. Statistic
+e gli altri componenti conservano ancora buffer di righe.
 Il census GKR separa le righe logiche e il loro payload riservato dalla
 capacità heap posseduta dal kernel, ora zero per quell'intervallo. Storage
 del caller, workspace PCG e stato inline dell'iteratore non sono memoria
 gratuita né inclusi in quel solo campo; il picco completo resta aperto.
+RNE mantiene i medesimi probe, shift, byte originali, consumo sul successo
+e chiusura sulla stessa A. Il primo probe legge l'output prima di chiedere
+la propria riga; gli errori restano terminali nel wrapper già bruciato.
 
 Il callback delle righe RS ora riduce per blocchi il polinomio originale
 modulo il prodotto dei punti pubblici richiesti, riusando la DFT nativa.

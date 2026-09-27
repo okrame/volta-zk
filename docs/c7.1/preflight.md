@@ -2076,7 +2076,7 @@ dell'albero multipunto. Coefficienti/intermedi Newton durante setup,
 resti padre/figli durante discesa, punti, workspace FFT e output sono
 memoria posseduta aggiuntiva, non riuso gratuito degli spettri della radice.
 Restano da trasferire al ledger fisico; nessuna memoria o tempo GPU è accreditato.
-Gli owner iniziali W/A dichiarano ora il prefisso vivo del layout prima
+Gli [owner iniziali W/A](evidence.md#native-public-zero-tail-and-original-private-pad-split) dichiarano ora il prefisso vivo del layout prima
 di committare. Il getter posseduto e il callback RS escludono le letture
 del suffisso zero pubblico. Il callback separa il resto del payload vivo
 da `X^M * pad mod Z` nelle colonne parziali/vuote, con M originale e pad

@@ -2454,3 +2454,30 @@ non cambiano. Il cap canonico, riuso fra le due sfide, lavoro completo,
 picco fisico e Γ restano aperti; nessun nuovo credito Lean/GPU.
 La prima invocazione rustfmt con cwd errata non ha trovato i file;
 la formattazione corretta e una nuova build precedono il run di record.
+
+## Native public zero tail and original private pad split
+
+Il [record su SHA pulita `baa66d6`](../../benchmarks/results/c71-split-pad-2026-09-27-baa66d6a16cc.json)
+conserva diciotto test Rust e undici Python/C++, seriali entro 60 s/2 GiB,
+più check non-test B12/Seed6. Gli owner W/A iniziali forniscono il
+prefisso vivo del layout prima del commitment. Il callback RS evita
+le letture del suffisso pubblico, ma mantiene i pad a `X^M` con M
+originale: non li concatena al payload accorciato.
+
+Il confronto diretto copre sette prefissi vuoti/parziali/pieni, due
+lunghezze di pad e sei cap, sia base sia extension, con query ripetute.
+Ogni batch legge esattamente il prefisso vivo; il getter del fixture
+fallisce se interrogato oltre. Include colonne vuote, pad più lunghi
+del cap e cap maggiore di M. Un prefisso fuori dominio è rifiutato
+prima di leggere la sorgente. Passano ownership W, parità lineare,
+WHIR/root/pad, P/Q, A O=0/2/4 e confine C++/PCS. Streaming ideale passa
+in 12,42 s; O=0 con W replay/A ordinata e Seed6 reale ell=2 in 32,71 s.
+I panic lifecycle catturati restano rifiuti attesi, non fallimenti.
+
+Solo colonne iniziali parziali/vuote con M potenza di due usano lo split;
+quelle piene mantengono la riduzione contigua. Gli oracoli foldati non
+ereditano il vecchio supporto zero. Lo spettro dello shift è condiviso
+fra colonne, ma correzione dei pad, intermedi e DFT sono lavoro e memoria
+aggiuntivi. Il riferimento usa ancora E nei temporanei delle colonne
+base; il ledger scalare canonico non è quindi un picco nativo verificato.
+Nessuna modifica a maschere/esposizioni, credito GPU, Γ o gate H100.

@@ -256,9 +256,13 @@ per entrambi i ruoli, senza raccoglierlo in un secondo Vec prima della
 prima statistica. I controlli di capacità e consumo esatto sul successo
 restano invariati. Un errore del componente può lasciare righe non espanse:
 il burn dell'intera riserva e lo Stop definitivo appartengono al wrapper
-nativo/pool, non al consumo fisico dell'iteratore. I kernel interni GKR e
-statistic conservano ancora i propri buffer; questa rimozione non dichiara
-un percorso interamente privo di copie o un nuovo picco canonico.
+nativo/pool, non al consumo fisico dell'iteratore. Anche GKR e il byte
+endpoint sourcewise prendono ora in prestito i loro intervalli Auth/Key;
+statistic e gli altri componenti conservano ancora buffer di righe.
+Il census GKR separa le righe logiche e il loro payload riservato dalla
+capacità heap posseduta dal kernel, ora zero per quell'intervallo. Storage
+del caller, workspace PCG e stato inline dell'iteratore non sono memoria
+gratuita né inclusi in quel solo campo; il picco completo resta aperto.
 
 Il callback delle righe RS ora riduce per blocchi il polinomio originale
 modulo il prodotto dei punti pubblici richiesti, riusando la DFT nativa.

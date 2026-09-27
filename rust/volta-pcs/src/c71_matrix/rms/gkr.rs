@@ -536,7 +536,9 @@ pub(in super::super) fn work_census(
         "public_program_inner_vec_capacity_bytes":program_inner_capacity_bytes(programs),
         "canonical_shape_capacity_kind":"logical/requested; not runtime Vec capacity",
         "row_logical_elements":logical_rows,
-        "row_logical_heap_bytes":logical_rows*core::mem::size_of::<Auth>(),
+        "row_logical_heap_bytes":0,
+        "row_reserved_payload_bytes":logical_rows*core::mem::size_of::<Auth>(),
+        "row_storage":"borrowed exact-size interval; caller and PCG storage excluded",
         "gkr_proof_logical_heap_bytes":gkr_proof_logical_heap_bytes,
         "byte_proof_logical_heap_bytes":byte_proof_logical_heap_bytes,
         "proof_logical_heap_bytes":gkr_proof_logical_heap_bytes+byte_proof_logical_heap_bytes,
@@ -680,7 +682,7 @@ pub(in super::super) struct SourceCapacityWork {
 }
 
 const SOURCE_CAPACITY_EXCLUDED_OWNERS: [&str; 7] = [
-    "caller correlation IntoIter backing allocation",
+    "caller correlation storage and PCG iterator workspace",
     "caller program outer Vec and Circuit slots",
     "getter/checkpoint storage",
     "Fiat-Shamir/challenger storage",
@@ -1053,9 +1055,8 @@ fn prove_impl(
     if correlations.len() < count {
         return Err("B12 RMS prover capacity exhausted".into());
     }
-    let row_values = correlations.by_ref().take(count).collect::<Vec<_>>();
-    let row_capacity_bytes = row_values.capacity() * core::mem::size_of::<Auth>();
-    let mut rows = row_values.into_iter();
+    let mut rows = correlations.by_ref().take(count);
+    let row_capacity_bytes = 0;
     let (mut point, bind_work) = s.bind(fs);
     let cell_bits = point.len();
     let program_inner_capacity_bytes = program_inner_capacity_bytes(s.programs);
@@ -1571,7 +1572,7 @@ pub(in super::super) fn verify(
     {
         return Err("B12 RMS proof shape or capacity mismatch".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let (mut point, _) = s.bind(fs);
     let mut target = Key::new(delta * s.live_sourcewise(&point));
     let mut weights = vec![Fp3::ONE];
@@ -2219,9 +2220,23 @@ mod tests {
             let keys: Vec<_> = rows.iter().map(|a| Key::new(a.m + delta * a.x)).collect();
             let start = || Fs::new(b"joint exact RMS same-byte-root check", 100_000);
             let mut fs = start();
-            let mut prows = rows.clone().into_iter();
-            let (proof, point, original, source_work) =
-                prove_sourcewise(&statement, |i| used[i], &mut fs, &mut prows).unwrap();
+            let expanded = std::cell::Cell::new(0);
+            let first_frame = std::cell::Cell::new(false);
+            let mut prows = rows.clone().into_iter().inspect(|_| expanded.set(expanded.get() + 1));
+            let (proof, point, original, source_work) = prove_sourcewise(
+                &statement,
+                |index| {
+                    if !first_frame.replace(true) {
+                        assert!(expanded.get() < statement.required().unwrap());
+                    }
+                    used[index]
+                },
+                &mut fs,
+                &mut prows,
+            )
+            .unwrap();
+            assert!(first_frame.get());
+            assert_eq!(expanded.get(), statement.required().unwrap());
             assert_eq!(source_work.cell_rounds.len(), c * (widths.len() - 1));
             assert_eq!(
                 source_work.boolean_fold_masks,
@@ -2248,9 +2263,11 @@ mod tests {
                 <= (3 * (1 << 14) + 2 * programs.len()) * 24 + programs.len()));
             assert!(source_work.boolean_replay_heap_peak_bytes <= 2 * (1 << 14) * 8);
             let capacity = &source_work.capacity;
-            assert!(
-                capacity.row_capacity_bytes
-                    >= census["row_logical_heap_bytes"].as_u64().unwrap() as usize
+            assert_eq!(capacity.row_capacity_bytes, 0);
+            assert_eq!(census["row_logical_heap_bytes"], 0);
+            assert_eq!(
+                census["row_reserved_payload_bytes"],
+                statement.required().unwrap() * core::mem::size_of::<Auth>()
             );
             assert!(
                 capacity.proof_capacity_bytes
@@ -2278,14 +2295,7 @@ mod tests {
                 capacity.edge_capacity_bytes_peak,
                 source_work.edge_capacity_elements_peak * core::mem::size_of::<Edge>()
             );
-            assert!(
-                capacity.row_capacity_bytes
-                    >= statement.required().unwrap() * core::mem::size_of::<Auth>()
-            );
-            assert!(
-                capacity.byte_row_capacity_bytes
-                    >= byte_function::required(c + 4) * core::mem::size_of::<Auth>()
-            );
+            assert_eq!(capacity.byte_row_capacity_bytes, 0);
             assert!(capacity.widths_capacity_bytes > 0);
             assert!(capacity.round_auth_capacity_bytes_peak > 0);
             assert!(capacity.next_weights_transition_capacity_bytes_peak > 0);

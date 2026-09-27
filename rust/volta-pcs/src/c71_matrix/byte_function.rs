@@ -330,9 +330,8 @@ fn prove_sourcewise_impl(
     if correlations.len() < count {
         return Err("B12 byte-function prover capacity exhausted".into());
     }
-    let row_values = correlations.by_ref().take(count).collect::<Vec<_>>();
-    let row_capacity_bytes = row_values.capacity() * core::mem::size_of::<Auth>();
-    let mut rows = row_values.into_iter();
+    let mut rows = correlations.by_ref().take(count);
+    let row_capacity_bytes = 0;
     let (root, root_eq_capacity_peak_bytes) = match original {
         Original::Lanes(v) => {
             let (weights, peak) = eq_scaled_counted(&lane_point, Fp3::ONE);
@@ -518,7 +517,7 @@ pub(super) fn verify(
     if !range::tree_shape(&proof.layers, 8, point.len()) || correlations.len() < count {
         return Err("B12 byte-function proof shape or capacity mismatch".into());
     }
-    let mut rows = correlations.by_ref().take(count).collect::<Vec<_>>().into_iter();
+    let mut rows = correlations.by_ref().take(count);
     let root = match original {
         Original::Lanes(v) => {
             v.iter().zip(eq(&lane_point)).fold(Key::ZERO, |v, (&a, r)| v.add(a.scale(r)))
@@ -657,6 +656,7 @@ mod tests {
             }
             .unwrap();
             assert_eq!(source_work.lut_nodes, tables.len() * 256 * BYTE_TREE_NODES);
+            assert_eq!(source_work.row_capacity_bytes, 0);
             if live_cells == 4 {
                 assert_eq!(source_work.tree.custom_terminals, 8);
                 assert_eq!(source_work.tree.custom_rounds, (0..8).map(|l| 3 + l).sum::<u64>());

@@ -153,6 +153,15 @@ Ripetere composed, certificate e i filtri separati Seed6 partial, W replay/A
 ordinata e full O0 late rejection, entro 60 s/2 GiB ciascuno. L'errore di un
 componente non autorizza a riutilizzare la parte della riserva non espansa.
 
+Per gli intervalli interni GKR/byte eseguire separatamente
+`c71_b12_rms_joint_gkr`, `c71_b12_single_cell_sourcewise`,
+`c71_b12_replay_crosses_u64`, `c71_b12_byte_functions` e
+`c71_b12_pattern_prefix_four_rounds_original_wire_and_mac`, poi RMS dispatcher,
+streaming positivo, Seed6 partial, W replay/A ordinata e rifiuto terminale
+denso O0. Ogni filtro resta entro 60 s/2 GiB. I controlli confrontano
+wire/FS/MAC con il riferimento denso e richiedono capacità heap zero
+soltanto per gli intervalli presi in prestito, non per l'intero prover.
+
 Per il raccordo del verifier canonico al medesimo pool lazy eseguire
 separatamente `c71_b12_native_registry` e `c71_b12_native_dispatch_canonical`.
 Con feature Seed6 il primo verifica anche shortage con setup 25+6 su

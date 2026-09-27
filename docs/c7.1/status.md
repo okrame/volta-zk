@@ -144,7 +144,9 @@ con Seed6 reale, senza trasferire il ledger hardware.
 Il [dispatcher RMS](evidence.md#borrowed-rms-correlation-intervals) passa ora gli intervalli MAC in prestito in entrambi
 i ruoli, senza duplicare l'intera riserva prima delle statistiche. Il burn
 completo resta nel pool; passano anche accettazione e rifiuto terminale
-ridotti con Seed6. Non è l'eliminazione di tutti i buffer interni.
+ridotti con Seed6. GKR e byte endpoint ora riusano la stessa forma in
+prestito; il census separa heap posseduto e payload riservato. Non è
+l'eliminazione di tutti i buffer interni né un nuovo margine fisico.
 
 Il [corpo del verifier canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
 ora implementa la schedule completa di security §3 con ricette comuni,

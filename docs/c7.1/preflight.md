@@ -1792,6 +1792,8 @@ resta separato dal percorso batch ora implementato.
 
 ### Trie batch nei due ruoli
 
+Evidenza: [51 test Rust e 32 Python/C++](evidence.md#seed6-bounded-union-trie-batches).
+
 Il [raccordo EA](../../rust/volta-pcg/src/c71_seed6/expand.rs) genera fino
 a 4.096 righe della riserva corrente, ordina i termini pubblici per indice
 e visita una volta ogni nodo necessario con un [walker depth-first](../../rust/volta-pcg/src/c71_seed6/trie.rs).

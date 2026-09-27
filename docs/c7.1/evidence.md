@@ -1832,3 +1832,23 @@ coda minima nominata 276.291.840 B. Le finestre aggiungono due record
 da 57 B e due fsync per accettazione, non wire o heap della riserva.
 Restano NoPeek/accettazione completa del wrapper, trie batch, composizione,
 picco fisico e Γ reale; nessuna readiness H100.
+
+## Seed6 bounded union-trie batches
+
+Il [record su SHA pulita `c030524`](../../benchmarks/results/c71-seed6-batch-2026-09-27-c030524ce30f.json) conserva
+**51 test Rust e 32 Python/C++**, seriali entro 60 s/2 GiB; passa anche
+il check non-test del crate. Le finestre bruciate ora alimentano batch
+da al massimo 4.096 righe con termini ordinati e trie depth-first comune
+ai due ruoli. Il confronto esaustivo h=1..6 copre tutti i prefissi,
+puncture e duplicati; quello reale mantiene BAe globale, MAC/Fp3 e rifiuto
+c/z. Sei righe richiedono 41/36 SHAKE invece delle 60 sender puntuali.
+
+Il test canonico limitato verifica 45.056 termini pubblici (1.081.344 B),
+non un setup canonico. Il test 4.096+5/3 verifica che il prefetch non
+oltrepassi la riserva. I picchi heap nominati 1.179.746/1.212.514 B e lo
+slot ricorsivo da 64 KiB restano nell'envelope più ampio già prenotato,
+senza ridurre il piano o dichiarare stack/alias fisici verificati.
+Sono corretti i conti di somme PuncAcc e sottrazioni dei prefissi sender.
+Confronti di sort/partizione sono contati a sorgente, non convertiti in
+tempo canonico. Restano proof/NoPeek, composizione, CUDA, picco fisico
+e Γ reale; nessuna esecuzione o spesa H100.

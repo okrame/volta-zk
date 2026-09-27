@@ -1,0 +1,84 @@
+{
+  "compiler": "g++ (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+  "credit": false,
+  "date": "2026-09-27",
+  "future_component_only": {
+    "batch": 128,
+    "full_pcs": false,
+    "named_values_plus_twiddles_bytes": 2164260864,
+    "odd_length": 2097152,
+    "physical_peak": false,
+    "provider_proposal": false,
+    "repetitions": 7,
+    "spending_authorization": false
+  },
+  "git_dirty": false,
+  "git_sha": "5debdbd051b10b47e4c795ce33e6c5679bcbe74d",
+  "gpu_execution": false,
+  "h100_preflight_ready": false,
+  "limits": {
+    "address_space_bytes": 2147483648,
+    "external_network": false,
+    "timeout_seconds": 60,
+    "workers": 1
+  },
+  "milestone": "C7.1-odd-log-FFT-harness",
+  "prior_evidence": [
+    "benchmarks/results/c71-retained-capacity-2026-09-19-bfb274a1fcf2.json"
+  ],
+  "runs": [
+    {
+      "command": [
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_fft_microbench.py"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "seconds": 1.0280817542225122,
+      "stderr": "",
+      "stdout": "....                                                                     [100%]\n4 passed in 0.94s\n"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/run_c71_fft_microbench.py",
+        "--host-only",
+        "--host-log2-m",
+        "3",
+        "--timeout-seconds",
+        "60"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "seconds": 0.4583987216465175,
+      "stderr": "",
+      "stdout": "compile: /usr/bin/g++ -O2 -std=c++17 -x c++ /home/okrame/projects/volta-zk/cuda/c71_fft_microbench.cu -o /tmp/volta-c71-fft-m_mgwr89/c71_fft_microbench\nrun: /tmp/volta-c71-fft-m_mgwr89/c71_fft_microbench --host-check 3\n{\n  \"kernel\": {\n    \"algorithm\": {\n      \"layout\": \"natural-order\",\n      \"passes\": 5,\n      \"steps\": [\n        \"transpose\",\n        \"row-fft\",\n        \"twiddle-transpose\",\n        \"row-fft\",\n        \"transpose\"\n      ]\n    },\n    \"checksum\": \"0xc2ac5295bf17ecdf\",\n    \"correctness\": {\n      \"field\": true,\n      \"five_pass_vs_dft\": true,\n      \"primitive_root\": true,\n      \"radix2_vs_dft\": true,\n      \"tile_pair_plain_m64\": true,\n      \"tile_pair_twiddle_m64\": true,\n      \"tile_pair_unique_coverage_m64\": true\n    },\n    \"field\": {\n      \"base_modulus\": 18446744069414584321,\n      \"element_bytes\": 8,\n      \"generator\": 7\n    },\n    \"input\": {\n      \"generator\": \"splitmix64-v1\",\n      \"length\": 64,\n      \"log2_m\": 3,\n      \"seed\": \"0xc701ff7025020001\"\n    },\n    \"mode\": \"host-check\",\n    \"schema\": \"volta-c71-fft-microbench-v1\"\n  },\n  \"provenance\": {\n    \"source\": \"cuda/c71_fft_microbench.cu\",\n    \"source_sha256\": \"b7b2df3feea6a68d17d08c0c4c9e34c9ec31a13122d7b49f2c8301bca8e41ba3\"\n  }\n}\n"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/run_c71_fft_microbench.py",
+        "--host-only",
+        "--odd",
+        "--host-log2-m",
+        "3",
+        "--timeout-seconds",
+        "60"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "seconds": 0.4514133119955659,
+      "stderr": "",
+      "stdout": "compile: /usr/bin/g++ -O2 -std=c++17 -x c++ /home/okrame/projects/volta-zk/cuda/c71_fft_microbench.cu -o /tmp/volta-c71-fft-f9pom5p3/c71_fft_microbench\nrun: /tmp/volta-c71-fft-f9pom5p3/c71_fft_microbench --host-check-odd 3\n{\n  \"kernel\": {\n    \"algorithm\": {\n      \"layout\": \"parity-scattered-input/natural-order-output\",\n      \"merge_passes\": 1,\n      \"square_passes\": 5\n    },\n    \"checksum\": \"0x281f3bc47978ed10\",\n    \"correctness\": {\n      \"odd_adapter_vs_dft\": true,\n      \"primitive_root\": true\n    },\n    \"input\": {\n      \"length\": 128,\n      \"log2_m\": 3\n    },\n    \"merge\": {\n      \"additional_twiddle_initialization_write_bytes\": 512,\n      \"additional_twiddle_table_bytes_vs_square\": 512,\n      \"field_additions\": 64,\n      \"field_multiplications\": 64,\n      \"field_subtractions\": 64,\n      \"twiddle_read_bytes\": 512,\n      \"twiddle_table_bytes\": 1024,\n      \"value_read_bytes\": 1024,\n      \"value_write_bytes\": 1024\n    },\n    \"mode\": \"host-check-odd\",\n    \"schema\": \"volta-c71-fft-microbench-v1\",\n    \"whole_fft\": {\n      \"butterflies\": 448,\n      \"square_cross_multiplications\": 128,\n      \"twiddle_read_bytes\": 4608,\n      \"value_read_write_bytes\": 12288\n    }\n  },\n  \"provenance\": {\n    \"source\": \"cuda/c71_fft_microbench.cu\",\n    \"source_sha256\": \"b7b2df3feea6a68d17d08c0c4c9e34c9ec31a13122d7b49f2c8301bca8e41ba3\"\n  }\n}\n"
+    }
+  ],
+  "scope": "Connects the existing odd-log FFT adapter to the host/CUDA microbenchmark harness without changing CUDA arithmetic. Eight tiny host DFT checks cover square/odd log2_m 1..4; simulated CUDA reports check mode, input, allocation, merge, twiddle work and finite timings. Host CLI routing and append-only distinct result names are checked. No CUDA launch or new static CUDA build; earlier compilation evidence remains separately linked.",
+  "source_sha256": {
+    "cuda/c71_fft_microbench.cu": "b7b2df3feea6a68d17d08c0c4c9e34c9ec31a13122d7b49f2c8301bca8e41ba3",
+    "scripts/run_c71_fft_microbench.py": "2d330e1ac42b812d36a5d11607cb73e2f375c57ca0e9804c9347ac7763a36dd2",
+    "tests/test_c71_fft_microbench.py": "53fa789782e9c381cc3b7b61785239b43c573570983346992e19b58598f6246a"
+  }
+}

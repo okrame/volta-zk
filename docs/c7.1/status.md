@@ -618,7 +618,7 @@ conserva tutta la capacità S1. Il vecchio layout S3 2^24 è NO-GO con questa
 capacità; il cap 2^23 paga due letture S2 in più per apertura A e lascia
 il massimo integrato nominato, ora 6.166.159.104 B con owner/Audit persistenti. Il merge FFT
 odd-log è contato; scatter PCS e fence GPU restano da integrare.
-L'[harness FFT](../../scripts/run_c71_fft_microbench.py) ora espone il kernel
+L'[harness FFT verificato](evidence.md#fft-odd-harness) ora espone il kernel
 dispari già compilato e ne valida conti/formati anche in host-only; non
 è lancio GPU né harness della costruzione completa.
 Il [checkpoint RMS](preflight.md#rms-checkpoint-originale-e-coefficienti-gkr-a-memoria-limitata)

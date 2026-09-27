@@ -844,7 +844,7 @@ quadrate da 2^20 e merge finale in place. Il test finito confronta questa
 identità con DFT in ordine naturale. L'adapter dispari è ora presente e
 [compilato per sm_90](evidence.md#whir-capacità-conservata-e-fft-odd-log):
 due trasformate quadrate e merge in-place, senza esecuzione GPU.
-Il [runner](../../scripts/run_c71_fft_microbench.py) espone ora `--odd`
+Il [runner verificato](evidence.md#fft-odd-harness) espone ora `--odd`
 anche nel percorso host-only e valida il formato distinto, il merge,
 la tabella twiddle completa e i relativi conti. Il futuro modo CUDA
 dispari completo usa lunghezza 2^21, batch 128 e sette ripetizioni;

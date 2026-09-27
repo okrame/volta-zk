@@ -2186,3 +2186,21 @@ Il lookup mantiene cardinalità e dimensione Auth, azzerando solo backing
 e copia bulk del proprio intervallo. Adapter B12 denso, diagnostici,
 workspace PCG e altri buffer restano distinti. Non è Γ reale, picco
 fisico completo o un nuovo GO H100.
+
+## FFT odd harness
+
+Il [record su SHA pulita `5debdbd`](../../benchmarks/results/c71-fft-odd-harness-2026-09-27-5debdbd051b1.json)
+conserva quattro test Python/C++ e due comandi host del runner, ciascuno
+entro 60 s/2 GiB. Il runner riusa il kernel odd-log già presente, ora
+selezionabile con `--odd`; il C++/CUDA non cambia. I controlli eseguono
+otto confronti host con DFT, quadrati e dispari per log2_m=1..4, e
+respingono report con forma, conteggi, allocazioni o timing alterati.
+Il percorso CLI host-only e i nomi distinti append-only sono verificati.
+
+I report CUDA dei test sono simulati: nessuna GPU eseguita né nuova
+compilazione CUDA. Resta applicabile il precedente record statico
+[odd-log/retention](../../benchmarks/results/c71-retained-capacity-2026-09-19-bfb274a1fcf2.json).
+Il modo completo dispari prepara 2^21 elementi ×128, con valori/twiddle
+nominati di 2.164.260.864 B, non un picco fisico. Scatter PCS, root/sali/hash,
+resti, fence e harness completo restano aperti; nessuna proposta provider
+o autorizzazione di spesa deriva da questi controlli.

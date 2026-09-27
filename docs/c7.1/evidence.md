@@ -2108,5 +2108,28 @@ in 47,90 s. La corruzione terminale del distinto fixture denso ell=11
 
 Il burn non coincide con la materializzazione delle righe: un errore
 interno può lasciare un suffisso non espanso, mai riutilizzabile dal
-wrapper. I buffer interni GKR/statistic e gli altri componenti restano;
+wrapper. Questo record non elimina i buffer interni GKR/statistic e degli altri componenti;
 nessun nuovo margine arena, picco completo, Γ calibrato o GO H100.
+
+## Borrowed GKR and byte intervals
+
+Il [record su SHA pulita `616b121`](../../benchmarks/results/c71-gkr-borrowed-2026-09-27-616b121b9a70.json)
+conserva dieci test Rust seriali entro 60 s/2 GiB e check non-test B12/Seed6.
+Anche GKR e byte endpoint sourcewise prendono in prestito Auth/Key:
+non raccolgono un altro Vec della propria riserva. Il census mantiene
+`row_logical_elements` e separa `row_reserved_payload_bytes` dall'heap
+di righe posseduto dal kernel, ora zero. I record storici non cambiano.
+
+La prima lettura del frame originale precede l'espansione completa;
+il consumo sul successo resta quello compilato. Le prove sourcewise
+coincidono con le dense in wire, FS, punto e MAC originale, incluse una
+sola cella, 421 programmi/ID oltre 255, byte ragged/contratti e prefisso
+a pattern. Sono conservati i rifiuti per originali alterati e la chiusura
+sulle stesse PCS. Passano RMS dispatcher e streaming integrato ideale.
+
+Seed6 reale passa O=0 W replay/A ordinata ell=2 in 46,67 s; il diverso
+fixture denso ell=11 rifiuta la corruzione terminale in 50,21 s senza
+promozione. Passa anche il consumo parziale con burn. Le riserve non
+cambiano e un suffisso non espanso non è riutilizzabile. Restano storage
+del caller, workspace PCG, stato inline e buffer di statistic/lookup/RNE
+e altri componenti. Non è un picco completo, Γ reale o gate H100.

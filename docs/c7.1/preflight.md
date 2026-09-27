@@ -1981,7 +1981,7 @@ Il [dispatcher RMS](evidence.md#borrowed-rms-correlation-intervals) non espande 
 riserva Auth/Key in un Vec: passa un `Take` ai componenti originali.
 La cardinalità sul successo non cambia; su errore il wrapper resta
 responsabile del burn completo e non può riutilizzare il suffisso non
-materializzato. Ora anche GKR e il byte endpoint sourcewise eliminano
+materializzato. Ora anche [GKR e il byte endpoint sourcewise](evidence.md#borrowed-gkr-and-byte-intervals) eliminano
 il Vec duplicato del loro intervallo. Il census distingue payload MAC
 riservato e heap posseduto; non azzera storage del caller, workspace PCG
 o stato inline. Restano statistic e altre riserve componenti: nessun

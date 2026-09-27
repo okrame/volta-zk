@@ -1965,6 +1965,15 @@ nessun risparmio canonico o picco fisico è accreditato dal solo raccordo.
 Il positivo ridotto O=0 W replay/A ordinata usa Seed6 reale ell=2 e termina
 in 47,56 s entro il limite locale; non è il run canonico o tre accettazioni.
 
+Il callback RS del replay ora usa riduzione FFT a blocchi invece di
+Horner sull'intera sorgente per ciascuna query. Il riferimento mantiene
+pad e ordine originali, batch fino a 1.024 richieste e una lettura di ogni
+coefficiente per batch. Setup e valutazione finale sono ancora quadratici
+nel piccolo cap; la tree richiama il callback per sottoalbero e per le
+righe richieste. Non è quindi l'apertura canonica a una sola scansione,
+né il piano di memoria canonico. DFT e resti sono lavoro della prova;
+nessun nuovo lower/upper H100 sostituisce il ledger precedente.
+
 ## Seed6: seal di completamento
 
 Evidenza: [29 controlli Rust e 28 Python/C++ su SHA pulita](evidence.md#seed6-completion-seals).

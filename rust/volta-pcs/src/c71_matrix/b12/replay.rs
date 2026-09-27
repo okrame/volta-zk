@@ -46,6 +46,31 @@ struct Code {
     height: usize,
     pads: Pads,
 }
+
+fn query_factors(points: &[Goldilocks]) -> (Vec<Goldilocks>, Vec<Goldilocks>) {
+    let cap = points.len();
+    let mut modulus = vec![Goldilocks::ONE];
+    for &point in points {
+        let mut next = vec![Goldilocks::ZERO; modulus.len() + 1];
+        for (degree, &coefficient) in modulus.iter().enumerate() {
+            next[degree] -= coefficient * point;
+            next[degree + 1] += coefficient;
+        }
+        modulus = next;
+    }
+    let mut inverse = vec![Goldilocks::ZERO; cap];
+    inverse[0] = Goldilocks::ONE;
+    for degree in 1..cap {
+        inverse[degree] = -(1..=degree)
+            .map(|offset| modulus[cap - offset] * inverse[degree - offset])
+            .sum::<Goldilocks>();
+    }
+    inverse.resize(2 * cap, Goldilocks::ZERO);
+    modulus.resize(2 * cap, Goldilocks::ZERO);
+    let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
+    (dft.dft(inverse), dft.dft(modulus))
+}
+
 impl Code {
     fn base(&self) -> bool {
         matches!(self.pads, Pads::Base(_))
@@ -93,21 +118,54 @@ impl Code {
         Ok(cells)
     }
     fn rows(&self, indices: &[usize]) -> Result<Vec<Vec<Goldilocks>>, String> {
-        if indices.iter().any(|&i| i >= self.height) {
-            return Err("code query outside domain".into());
+        if indices.len() > 1024 || indices.iter().any(|&index| index >= self.height) {
+            return Err("code query outside domain or reference batch cap".into());
         }
-        // ponytail: batched Horner is bounded correctness evidence; the canonical
-        // one-pass schedule uses the independently checked remainder algorithm.
+        if indices.is_empty() {
+            return Ok(Vec::new());
+        }
+        // ponytail: quadratic setup/evaluation is capped at 1024 public points;
+        // the canonical query cap needs the balanced product/remainder tree.
         let root = Goldilocks::two_adic_generator(self.height.ilog2() as usize);
-        let points: Vec<_> = indices.iter().map(|&i| root.exp_u64(i as u64)).collect();
+        let cap = indices.len().next_power_of_two();
+        let mut points: Vec<_> = indices.iter().map(|&index| root.exp_u64(index as u64)).collect();
+        points.resize(cap, Goldilocks::ZERO);
+        let (inverse, modulus) = query_factors(&points);
+        let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
+        let coefficients = (self.len + self.pads.len()) / self.width;
         let mut values = vec![E::ZERO; indices.len() * self.width];
-        for b in 0..self.width {
-            for j in (0..(self.len + self.pads.len()) / self.width).rev() {
-                let coefficient = self.coefficient(b, j);
-                for (r, &x) in points.iter().enumerate() {
-                    let v = &mut values[r * self.width + b];
-                    *v = *v * x + coefficient;
+        for column in 0..self.width {
+            let mut remainder = vec![E::ZERO; cap];
+            for block in (0..coefficients.div_ceil(cap)).rev() {
+                let mut high: Vec<_> = remainder.iter().rev().copied().collect();
+                high.resize(2 * cap, E::ZERO);
+                let mut spectrum = dft.dft_algebra(high);
+                for (value, &factor) in spectrum.iter_mut().zip(&inverse) {
+                    *value *= factor;
                 }
+                let mut quotient = dft.idft_algebra(spectrum);
+                quotient.truncate(cap);
+                quotient.reverse();
+                quotient.resize(2 * cap, E::ZERO);
+                let mut spectrum = dft.dft_algebra(quotient);
+                for (value, &factor) in spectrum.iter_mut().zip(&modulus) {
+                    *value *= factor;
+                }
+                let product = dft.idft_algebra(spectrum);
+                for (offset, value) in remainder.iter_mut().enumerate() {
+                    let index = block * cap + offset;
+                    *value = if index < coefficients {
+                        self.coefficient(column, index)
+                    } else {
+                        E::ZERO
+                    } - product[offset];
+                }
+            }
+            for (row, &point) in points[..indices.len()].iter().enumerate() {
+                values[row * self.width + column] = remainder
+                    .iter()
+                    .rev()
+                    .fold(E::ZERO, |value, &coefficient| value * point + coefficient);
             }
         }
         Ok(values
@@ -664,6 +722,77 @@ pub(in crate::c71_matrix) fn compare_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_b12_query_remainder_matches_original_base_and_extension_rows() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        for extension in [false, true] {
+            let reads = Arc::new(AtomicUsize::new(0));
+            let counter = reads.clone();
+            let original = move |index: usize| {
+                E::new(std::array::from_fn(|limb| {
+                    if limb == 0 || extension {
+                        Goldilocks::new((index * index + 17 * index + 23 + limb) as u64)
+                    } else {
+                        Goldilocks::ZERO
+                    }
+                }))
+            };
+            let pads: Vec<_> = (0..6).map(|index| -original(index + 131)).collect();
+            let code = Code {
+                get: Arc::new(move |index| {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                    original(index)
+                }),
+                len: 130,
+                width: 2,
+                height: 1024,
+                pads: if extension {
+                    Pads::Extension(pads.clone())
+                } else {
+                    Pads::Base(pads.iter().map(|value| limbs(value)[0]).collect())
+                },
+            };
+            let root = Goldilocks::two_adic_generator(10);
+            for indices in [
+                vec![],
+                vec![0],
+                vec![1023, 0, 31],
+                vec![1, 1, 1, 7, 127],
+                (0..1024).rev().collect(),
+            ] {
+                let expected: Vec<Vec<_>> = indices
+                    .iter()
+                    .map(|&index| {
+                        let point = root.exp_u64(index as u64);
+                        (0..2)
+                            .flat_map(|column| {
+                                let value = (0..68).rev().fold(E::ZERO, |value, offset| {
+                                    value * point
+                                        + if offset < 65 {
+                                            original(column * 65 + offset)
+                                        } else {
+                                            pads[column * 3 + offset - 65]
+                                        }
+                                });
+                                limbs(&value)[..if extension { 3 } else { 1 }].to_vec()
+                            })
+                            .collect()
+                    })
+                    .collect();
+                reads.store(0, Ordering::Relaxed);
+                assert_eq!(code.rows(&indices).unwrap(), expected);
+                assert_eq!(reads.load(Ordering::Relaxed), if indices.is_empty() { 0 } else { 130 });
+            }
+            reads.store(0, Ordering::Relaxed);
+            assert!(code.rows(&[1024]).is_err());
+            assert!(code.rows(&vec![0; 1025]).is_err());
+            assert_eq!(reads.load(Ordering::Relaxed), 0);
+        }
+        println!("C71_QUERY_REMAINDER base_and_extension=true original_pads=true one_source_read_per_batch=true canonical_credit=false");
+    }
+
     #[test]
     fn c71_b12_full_sourcewise_chain_matches_native_bytes() {
         let source: Getter = Arc::new(|i| E::from(Goldilocks::new((i * i + 17 * i + 23) as u64)));

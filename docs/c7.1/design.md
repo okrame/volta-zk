@@ -251,11 +251,29 @@ conversioni tra tipi PCS spostano i payload senza roundtrip JSON. I test
 con monete fissate controllano transcript, wire e MAC; i punti di ingresso
 ordinari continuano a usare monete fresche da OsRng.
 
+Il callback delle righe RS ora riduce per blocchi il polinomio originale
+modulo il prodotto dei punti pubblici richiesti, riusando la DFT nativa.
+L'inverso della monica rovesciata e il suo spettro sono comuni alle colonne;
+ogni blocco usa solo la metà alta per il quoziente, evitando alias ciclici.
+Payload, coda zero e pad privati rimangono agli stessi offset contigui;
+il percorso extension conserva tutte e tre le componenti. La riduzione
+legge ogni coefficiente una volta per batch, non per apertura completa:
+la tree rigenera ancora ciascun sottoalbero separatamente.
+Il riferimento rifiuta più di 1.024 richieste prima del getter; il grado
+attivo è la potenza di due successiva alla cardinalità pubblica, con
+fattori X per il riempimento. Le query duplicate sono conservate.
+Setup e valutazione del resto sono quadratici nel cap ridotto; non sono
+il product/remainder tree del cap canonico 2^21. Resti, spettri, workspace
+DFT e righe di output si aggiungono ai buffer vivi del callback; nessuna
+source-uniformity completa, stima di picco o credito Lean ne segue.
+
 Il getter riceve soltanto indici e possiede W/cut/token già fissati, senza
 accesso a FS o correlazioni. Le celle pubbliche tra `live` e DOMAIN_A sono
 zero anche quando il dominio PCS eccede quello minimo del layout. Il
-profilo selezionato dal nuovo reader è esplicitamente O=0; storia A e
-real-PCG non acquisiscono credito dalla prova positiva. La rigenerazione
+reader ha storia numerica O=0/2/4; la proof ordinata positiva copre O=0,
+anche con W replay e Seed6 reale ell=2. Non sono tre accettazioni ordinate:
+il relativo tentativo locale a due risposte è fermato per timeout.
+La rigenerazione
 ricorsiva CPU è un riferimento di correttezza, non la schedule canonica
 512 replay. I contatori per fasi includono ogni replay in proof work;
 le callback annotate in GKR/lookup non addebitano una seconda copia del
@@ -1268,8 +1286,8 @@ root, aperture, coin, codec, transcript e chiusura affine/base-case.
 Il motore usa handle di replay perché l'interfaccia MMCS richiede riferimenti
 alle matrici. Il percorso sourcewise rifiuta fallback densi, mantiene solo
 Eq/Pow/sfide già fissate e libera ogni handle dopo l'ultimo consumer.
-Il getter è ancora un riferimento CPU; razionale/remainder, port numerico
-canonico e liveness fisica completa restano obblighi. Il cut della cache è
+Il getter è ancora un riferimento CPU; le schedule canoniche razionale/remainder,
+il port numerico e la liveness fisica completa restano obblighi. Il cut della cache è
 esplicito; l'ultimo coset riduce i digest in-place senza copia da 128 MiB.
 H/EAGen hanno equivalenza Rust/Python e un controllo esaustivo ridotto
 Acc/PuncAcc. Il riferimento ora riceve il primo split indipendente

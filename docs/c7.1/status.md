@@ -134,6 +134,12 @@ virtuale densa. Range simmetrico e chiusura W passano dall'adapter comune
 già usato per A. Il controllo usa t=4/h=19/ell=2; non è ancora
 installazione canonica, tre accettazioni reali o picco fisico.
 
+Le righe PCS replay usano ora il riduttore FFT per blocchi con i pad
+originali, invece di valutare tutta la sorgente per ogni query. È un
+callback limitato a 1.024 richieste, non l'apertura canonica completa:
+setup/valutazione quadratici e replay separati dei sottoalberi restano
+espliciti, senza trasferire il ledger hardware.
+
 Il [corpo del verifier canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
 ora implementa la schedule completa di security §3 con ricette comuni,
 MAC originali e PCS W/vecchie A/A corrente. I controlli locali coprono

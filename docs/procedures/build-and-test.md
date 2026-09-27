@@ -136,6 +136,16 @@ socketpair locali. Non è lettura del checkpoint reale né modello canonico.
 Ripetere le regressioni native composed/streaming, W alterato e
 `c71_joint_inference_changed_last` per i proprietari W adattati.
 
+Per il riduttore nativo delle righe RS usare
+`c71_b12_query_remainder` e `c71_b12_full_sourcewise_chain`, separatamente
+entro 60 s/2 GiB, poi streaming integrato e il filtro reale W replay/A
+ordinata. Il primo confronta Horner originale e riduzione FFT per sorgenti
+base/extension, pad, query duplicate/ragged e cap; il secondo confronta
+il wire WHIR completo alle stesse monete e rifiuta un MAC finale diverso.
+Ripetere `tests/test_c71_query_remainder.py` come oracolo algebrico indipendente.
+Il cap ridotto e le chiamate per sottoalbero non sono una scansione unica
+dell'oracolo canonico; non aumentare i limiti in caso di timeout.
+
 Per il raccordo del verifier canonico al medesimo pool lazy eseguire
 separatamente `c71_b12_native_registry` e `c71_b12_native_dispatch_canonical`.
 Con feature Seed6 il primo verifica anche shortage con setup 25+6 su

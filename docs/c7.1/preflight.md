@@ -1859,7 +1859,8 @@ non una proof di inferenza. Sono invariati wire, heap dei pool e layout
 dei MAC; non si accredita un nuovo picco o runtime. Il wrapper PCS/GKR
 deve ancora usare questa interfaccia anziché il pool AES denso B12.
 
-Il corpo composto e i relativi consumer ora accettano
+Il [record ridotto](evidence.md#native-exact-size-correlation-streams)
+controlla che il corpo composto e i relativi consumer ora accettino
 `ExactSizeIterator<Item=Auth/Key>`, non richiedono `Vec::IntoIter`.
 È il trait standard minimo che conserva tutti i controlli di cardinalità
 prima delle fasi e l'esaurimento finale. Il positivo streaming O=0 usa

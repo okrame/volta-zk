@@ -1870,3 +1870,20 @@ iniziali di compilazione (cfg della suite e assert Debug nel test), entrambi
 corretti, e i warning di codice diagnostico non usato nella build reference.
 Non sono nuovi teoremi, credito GPU o produzione: il bridge PCS/GKR,
 Γ reale e picco completo restano aperti.
+
+## Native exact-size correlation streams
+
+Il [record su SHA pulita `958d982`](../../benchmarks/results/c71-seed6-iterator-2026-09-27-958d982f8e97.json) conserva
+**otto test Rust e uno Python**, seriali entro 60 s/2 GiB. I consumer
+PCS/GKR condivisi accettano `ExactSizeIterator`; il positivo O=0 passa
+un `Take` preso in prestito senza raccogliere una seconda riserva Vec.
+Consuma ancora 88.049 MAC ideali; il verifier originale ricostruisce
+la stessa ricevuta. Passano tre tentativi densi, equivalenza sourcewise
+range/linear e rifiuti per framing, contesto, interruzione ed esaurimento.
+
+Il record conserva il primo errore di compilazione: un generico `Iterator`
+solo al livello superiore non soddisfaceva né i consumer concreti né i
+controlli `len`. La correzione usa il trait standard lungo il call graph,
+senza rimuovere controlli o cambiare transcript, algebra o riserva.
+Nessun nuovo conteggio canonico, riduzione del picco o credito AES composto;
+packing Seed6 e wrapper restano il prossimo raccordo locale.

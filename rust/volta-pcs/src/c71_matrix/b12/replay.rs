@@ -186,7 +186,9 @@ impl Code {
         Ok(cells)
     }
     fn rows(&self, indices: &[usize]) -> Result<Vec<Vec<Goldilocks>>, String> {
-        if indices.len() > 1024 || indices.iter().any(|&index| index >= self.height) {
+        if indices.len() > replay_tree::MAX_REFERENCE_ROWS
+            || indices.iter().any(|&index| index >= self.height)
+        {
             return Err("code query outside domain or reference batch cap".into());
         }
         if indices.is_empty() {

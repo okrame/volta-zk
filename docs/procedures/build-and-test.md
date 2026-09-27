@@ -156,8 +156,12 @@ con riduzione FFT e albero dei resti per sorgenti base/extension, pad, query
 duplicate/ragged e cap; il terzo confronta
 il wire WHIR completo alle stesse monete e rifiuta un MAC finale diverso.
 Ripetere `tests/test_c71_query_remainder.py` come oracolo algebrico indipendente.
-Il cap ridotto e le chiamate per sottoalbero non sono una scansione unica
-dell'oracolo canonico; non aumentare i limiti in caso di timeout.
+Per il batch Merkle aggiungere `replay_tree`, entro gli stessi limiti:
+controlla una e due chiamate da al più 1.024 righe, root/sali/frontiera
+identici al nativo, ordine/duplicati e rifiuto di forme o valori alterati.
+Cap e indici invalidi vengono rifiutati senza callback; l'apertura vuota
+non legge righe. Più batch non sono una scansione unica dell'oracolo
+canonico; non aumentare i limiti in caso di timeout.
 
 Per gli intervalli RMS in prestito usare `c71_b12_gemma_rms_dispatch`:
 il fixture unisce P0/RMS/RNE e le PCS originali, osserva l'iteratore lazy

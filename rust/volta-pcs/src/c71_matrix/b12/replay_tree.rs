@@ -17,6 +17,7 @@ use std::sync::Arc;
 const LEAF: &[u8] = b"volta-zk/c71/b12/merkle/leaf/v1\0";
 const SALTS: usize = 4;
 const MAX_REFERENCE_HEIGHT: usize = 1 << 18;
+pub(super) const MAX_REFERENCE_ROWS: usize = 1024;
 
 type Digest = [u8; 32];
 pub(super) type Commitment = MerkleCap<Goldilocks, Digest>;
@@ -168,22 +169,43 @@ impl Tree {
     }
 
     pub(super) fn open(&self, indices: &[usize]) -> Result<Opening, String> {
-        if indices.iter().any(|&index| index >= self.height) {
-            return Err("replay opening index out of bounds".into());
+        if self.cut > MAX_REFERENCE_ROWS
+            || indices.len() > MAX_REFERENCE_ROWS
+            || indices.iter().any(|&index| index >= self.height)
+        {
+            return Err("replay opening outside domain or reference batch cap".into());
         }
         let mut needed: Vec<_> = indices.iter().map(|&i| i / self.cut).collect();
         needed.sort_unstable();
         needed.dedup();
+        let mut queries: Vec<_> =
+            indices.iter().enumerate().map(|(position, &index)| (index, position)).collect();
+        queries.sort_unstable();
+        let mut cursor = 0;
+        let mut opened = vec![Vec::new(); indices.len()];
         let mut subtrees = BTreeMap::new();
-        for subtree in needed {
-            subtrees.insert(subtree, self.regenerate(subtree)?);
+        for batch in needed.chunks(MAX_REFERENCE_ROWS / self.cut) {
+            let batch_indices: Vec<_> = batch
+                .iter()
+                .flat_map(|&subtree| subtree * self.cut..(subtree + 1) * self.cut)
+                .collect();
+            let rows = (self.row)(&batch_indices)?;
+            if rows.len() != batch_indices.len()
+                || rows.iter().any(|row| row.len() != self.base_columns)
+            {
+                return Err("replay opening row shape differs".into());
+            }
+            for (&subtree, values) in batch.iter().zip(rows.chunks_exact(self.cut)) {
+                let start = subtree * self.cut;
+                while cursor < queries.len() && queries[cursor].0 < start + self.cut {
+                    let (index, position) = queries[cursor];
+                    opened[position] = vec![values[index - start].clone()];
+                    cursor += 1;
+                }
+                subtrees.insert(subtree, self.regenerate(subtree, values)?);
+            }
         }
 
-        let rows = (self.row)(indices)?;
-        if rows.len() != indices.len() || rows.iter().any(|row| row.len() != self.base_columns) {
-            return Err("replay opening row shape differs".into());
-        }
-        let opened = rows.into_iter().map(|row| vec![row]).collect();
         let salts = indices
             .iter()
             .map(|&i| vec![subtrees[&(i / self.cut)].salts[i % self.cut].to_vec()])
@@ -220,13 +242,10 @@ impl Tree {
         Ok((opened, (salts, PrunedMerklePaths { sibling_hashes: siblings })))
     }
 
-    fn regenerate(&self, subtree: usize) -> Result<Subtree, String> {
+    fn regenerate(&self, subtree: usize, rows: &[Vec<Goldilocks>]) -> Result<Subtree, String> {
         let mut rng = stream_at(&self.private_stream, self.subtree_offsets[subtree])?;
-        let start = subtree * self.cut;
         let mut salts = Vec::with_capacity(self.cut);
         let mut leaves = Vec::with_capacity(self.cut);
-        let indices: Vec<_> = (start..start + self.cut).collect();
-        let rows = (self.row)(&indices)?;
         if rows.len() != self.cut {
             return Err("replay subtree row count differs".into());
         }
@@ -235,7 +254,7 @@ impl Tree {
                 return Err("replay row width differs".into());
             }
             let salt: [Goldilocks; SALTS] = std::array::from_fn(|_| rng.random());
-            leaves.push(leaf_hash(&values, &salt));
+            leaves.push(leaf_hash(values, &salt));
             salts.push(salt);
         }
         let mut levels = vec![leaves];
@@ -308,63 +327,105 @@ mod tests {
 
     #[test]
     fn replay_tree_matches_native_root_rows_salts_and_pruned_frontier() {
-        let (height, columns, coset_rows) = (64, 2, 16);
-        let values: Arc<Vec<Goldilocks>> =
-            Arc::new((0..height * columns).map(|i| Goldilocks::new((17 * i + 3) as u64)).collect());
-        let native = mmcs([41; 32]);
-        let matrix = RowMajorMatrix::new(values.as_ref().clone(), columns);
-        let (expected_root, native_data) = native.commit_matrix(matrix);
+        for (height, coset_rows) in [(64, 16), (2048, 256)] {
+            let columns = 2;
+            let values: Arc<Vec<Goldilocks>> = Arc::new(
+                (0..height * columns).map(|i| Goldilocks::new((17 * i + 3) as u64)).collect(),
+            );
+            let native = mmcs([41; 32]);
+            let matrix = RowMajorMatrix::new(values.as_ref().clone(), columns);
+            let (expected_root, native_data) = native.commit_matrix(matrix);
 
-        let replay_mmcs = mmcs([41; 32]);
-        let row_values = values.clone();
-        let getter: Rows = Arc::new(move |indices| {
-            Ok(indices
-                .iter()
-                .map(|&r| row_values[r * columns..(r + 1) * columns].to_vec())
-                .collect())
-        });
-        let coset_values = values.clone();
-        let (root, tree) = Tree::commit(
-            &replay_mmcs,
-            height,
-            columns,
-            coset_rows,
-            16,
-            move |c| {
-                let q = height / coset_rows;
-                let mut cells = vec![0; coset_rows * columns.max(4)];
-                for col in 0..columns {
-                    for j in 0..coset_rows {
-                        cells[col * coset_rows + j] =
-                            coset_values[(c + q * j) * columns + col].as_canonical_u64();
+            let replay_mmcs = mmcs([41; 32]);
+            let row_values = values.clone();
+            let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let getter_calls = calls.clone();
+            let getter: Rows = Arc::new(move |indices| {
+                assert!(indices.len() <= MAX_REFERENCE_ROWS);
+                getter_calls.lock().unwrap().push(indices.to_vec());
+                Ok(indices
+                    .iter()
+                    .map(|&r| row_values[r * columns..(r + 1) * columns].to_vec())
+                    .collect())
+            });
+            let coset_values = values.clone();
+            let (root, mut tree) = Tree::commit(
+                &replay_mmcs,
+                height,
+                columns,
+                coset_rows,
+                16,
+                move |c| {
+                    let q = height / coset_rows;
+                    let mut cells = vec![0; coset_rows * columns.max(4)];
+                    for col in 0..columns {
+                        for j in 0..coset_rows {
+                            cells[col * coset_rows + j] =
+                                coset_values[(c + q * j) * columns + col].as_canonical_u64();
+                        }
                     }
-                }
-                Ok(cells)
-            },
-            getter,
-        )
-        .unwrap();
-        assert_eq!(root, expected_root);
-        assert_eq!(tree.geometry(), (64, 4, 16, 16));
-        assert_eq!(tree.work.leaf_hashes, height as u64);
-        assert_eq!(tree.work.node_hashes, (height - 1) as u64);
-        assert!(tree.memory.retained_digest_bytes < height * 32);
-
-        let indices = [37, 2, 37, 63, 16];
-        let got = tree.open(&indices).unwrap();
-        let expected = replay_mmcs.open_multi_batch(&indices, &native_data);
-        assert_eq!(got.0, expected.0);
-        assert_eq!(got.1 .0, expected.1 .0);
-        assert_eq!(got.1 .1.sibling_hashes, expected.1 .1.sibling_hashes);
-        replay_mmcs
-            .verify_multi_batch(
-                &root,
-                &[p3_matrix::Dimensions { width: columns, height }],
-                &indices,
-                &got.0,
-                &got.1,
+                    Ok(cells)
+                },
+                getter,
             )
             .unwrap();
+            assert_eq!(root, expected_root);
+            assert_eq!(tree.geometry(), (height, height / coset_rows, coset_rows, 16));
+            assert_eq!(tree.work.leaf_hashes, height as u64);
+            assert_eq!(tree.work.node_hashes, (height - 1) as u64);
+            assert!(tree.memory.retained_digest_bytes < height * 32);
+
+            let indices = if height == 64 {
+                vec![37, 2, 37, 63, 16]
+            } else {
+                (0..height).step_by(16).rev().chain([0, height - 1, 0]).collect()
+            };
+            let got = tree.open(&indices).unwrap();
+            let expected = replay_mmcs.open_multi_batch(&indices, &native_data);
+            assert_eq!(got.0, expected.0);
+            assert_eq!(got.1 .0, expected.1 .0);
+            assert_eq!(got.1 .1.sibling_hashes, expected.1 .1.sibling_hashes);
+            replay_mmcs
+                .verify_multi_batch(
+                    &root,
+                    &[p3_matrix::Dimensions { width: columns, height }],
+                    &indices,
+                    &got.0,
+                    &got.1,
+                )
+                .unwrap();
+            assert_eq!(calls.lock().unwrap().len(), height.div_ceil(MAX_REFERENCE_ROWS));
+            assert_eq!(
+                calls.lock().unwrap().iter().flatten().copied().collect::<Vec<_>>(),
+                (0..height).collect::<Vec<_>>()
+            );
+            assert!(tree.open(&[height]).is_err());
+            assert!(tree.open(&vec![0; MAX_REFERENCE_ROWS + 1]).is_err());
+            let empty = tree.open(&[]).unwrap();
+            assert!(empty.0.is_empty());
+            assert!(empty.1 .0.is_empty());
+            assert!(empty.1 .1.sibling_hashes.is_empty());
+            assert_eq!(calls.lock().unwrap().len(), height.div_ceil(MAX_REFERENCE_ROWS));
+            let original_rows = tree.row.clone();
+            for fault in 0..4 {
+                let original_rows = original_rows.clone();
+                tree.row = Arc::new(move |indices| {
+                    let mut rows = original_rows(indices)?;
+                    match fault {
+                        0 => {
+                            rows.pop();
+                        }
+                        1 => rows.push(rows[0].clone()),
+                        2 => {
+                            rows[0].pop();
+                        }
+                        _ => rows[0][0] = Goldilocks::new(999),
+                    }
+                    Ok(rows)
+                });
+                assert!(tree.open(&indices).is_err());
+            }
+        }
     }
 
     #[test]

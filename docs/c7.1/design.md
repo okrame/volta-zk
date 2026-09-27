@@ -285,8 +285,13 @@ L'inverso della monica rovesciata e il suo spettro sono comuni alle colonne;
 ogni blocco usa solo la metà alta per il quoziente, evitando alias ciclici.
 Payload, coda zero e pad privati rimangono agli stessi offset contigui;
 il percorso extension conserva tutte e tre le componenti. La riduzione
-legge ogni coefficiente una volta per batch, non per apertura completa:
-la tree rigenera ancora ciascun sottoalbero separatamente.
+legge ogni coefficiente una volta per batch, non per apertura completa.
+La tree raggruppa i sottoalberi richiesti in batch di al più 1.024 righe
+distinte e ricava da quelle stesse righe sia i digest sia le aperture,
+senza un secondo callback sui soli indici richiesti. Ordine e duplicati
+dell'apertura sono ripristinati dopo la rigenerazione; ogni radice di
+sottoalbero viene confrontata con la cache committata. Un'unione oltre
+il cap richiede ancora più scansioni, non una fallback densa.
 Il riferimento rifiuta più di 1.024 richieste prima del getter; il grado
 attivo è la potenza di due successiva alla cardinalità pubblica, con
 fattori X per il riempimento. Le query duplicate sono conservate.
@@ -299,7 +304,9 @@ di valutazione del callback ridotto, non l'ammissione del cap canonico 2^21.
 Gli spettri di tutti i livelli restano vivi insieme; durante setup e
 discesa coesistono rispettivamente coefficienti/intermedi Newton e
 livelli padre/figli dei resti. Punti, workspace DFT e righe di output
-si aggiungono ai buffer vivi del callback; nessuna
+si aggiungono ai buffer vivi del callback. Nel caller coesistono il batch
+di righe base, le copie delle righe effettivamente aperte, query ordinate,
+sali e digest dei sottoalberi e cache superiore; nessuna
 source-uniformity completa, stima di picco o credito Lean ne segue.
 
 Il getter riceve soltanto indici e possiede W/cut/token già fissati, senza

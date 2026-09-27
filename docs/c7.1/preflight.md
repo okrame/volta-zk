@@ -1980,8 +1980,11 @@ pad e ordine originali, batch fino a 1.024 richieste e una lettura di ogni
 coefficiente per batch. Il [setup verificato](evidence.md#balanced-query-setup) ora costruisce il modulo con prodotti
 FFT bilanciati e il reciproco con raddoppio di Newton. La [valutazione verificata](evidence.md#native-query-remainder-tree)
 ora scende nell'albero dei resti con lo stesso helper della riduzione
-sorgente. Il cap non cresce e la tree richiama il callback per sottoalbero
-e per le righe richieste. Non è quindi l'apertura canonica a una sola scansione,
+sorgente. Il cap non cresce: la tree raggruppa i sottoalberi richiesti
+in batch fino a 1.024 righe distinte e riusa quelle righe per gli indici
+dell'apertura, conservando ordine e duplicati. Non ripete il callback
+per ogni sottoalbero o per le sole query; un'unione oltre il cap richiede
+comunque più batch. Non è quindi l'apertura canonica a una sola scansione,
 né il piano di memoria canonico. DFT e resti sono lavoro della prova;
 nessun nuovo lower/upper H100 sostituisce il ledger precedente.
 La catena WHIR D10 coincide con il backend originale a monete fissate;
@@ -1992,6 +1995,10 @@ dell'albero multipunto. Coefficienti/intermedi Newton durante setup,
 resti padre/figli durante discesa, punti, workspace FFT e output sono
 memoria posseduta aggiuntiva, non riuso gratuito degli spettri della radice.
 Restano da trasferire al ledger fisico; nessuna memoria o tempo GPU è accreditato.
+Il caller conserva il batch di righe base insieme a sali/digest dei
+sottoalberi, query ordinate, output e cache superiore. Il campo
+`open_subtree_bytes_each` continua a descrivere solo sali/digest di un
+sottoalbero, non la memoria completa dell'apertura o del callback.
 
 Il [dispatcher RMS](evidence.md#borrowed-rms-correlation-intervals) non espande più preventivamente l'intera propria
 riserva Auth/Key in un Vec: passa un `Take` ai componenti originali.

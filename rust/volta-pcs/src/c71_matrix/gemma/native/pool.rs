@@ -4,6 +4,10 @@ use super::*;
 use std::io;
 use volta_pcg::c71_lifetime::{Attempt, ModelBinding, Pool};
 
+#[cfg(all(test, unix, feature = "c71-seed6-reference"))]
+#[path = "seed6_pool_tests.rs"]
+mod seed6_tests;
+
 fn io_error(e: String) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, e)
 }
@@ -13,19 +17,26 @@ fn field(words: [u64; 3]) -> Result<Fp3, String> {
     Fp3::from_bytes(&bytes).map_err(|e| e.to_string())
 }
 
+fn auth_triple(rows: [&[u64; 4]; 3]) -> Result<Auth, String> {
+    let basis = field([0, 1, 0])?;
+    let tag = |row: &[u64; 4]| field([row[1], row[2], row[3]]);
+    Ok(Auth::new(
+        field([rows[0][0], rows[1][0], rows[2][0]])?,
+        tag(rows[0])? + basis * tag(rows[1])? + basis * basis * tag(rows[2])?,
+    ))
+}
+
+fn key_triple(rows: [&[u64; 3]; 3]) -> Result<Key, String> {
+    let basis = field([0, 1, 0])?;
+    Ok(Key::new(field(*rows[0])? + basis * field(*rows[1])? + basis * basis * field(*rows[2])?))
+}
+
 fn auths(rows: &[[u64; 4]]) -> Result<std::vec::IntoIter<Auth>, String> {
     if rows.len() % 3 != 0 {
         return Err("incomplete native correlation triple".into());
     }
-    let u = field([0, 1, 0])?;
     rows.chunks_exact(3)
-        .map(|r| {
-            let tag = |r: [u64; 4]| field([r[1], r[2], r[3]]);
-            Ok(Auth::new(
-                field([r[0][0], r[1][0], r[2][0]])?,
-                tag(r[0])? + u * tag(r[1])? + u * u * tag(r[2])?,
-            ))
-        })
+        .map(|rows| auth_triple([&rows[0], &rows[1], &rows[2]]))
         .collect::<Result<Vec<_>, _>>()
         .map(Vec::into_iter)
 }
@@ -39,12 +50,126 @@ pub(in crate::c71_matrix::gemma::native) fn keys(
     }
     // B11 m=k+Delta*x becomes native k=m+(-Delta)*x in ALL consumers.
     let delta = Fp3::ZERO - field(*delta.ok_or("missing verifier Delta")?)?;
-    let u = field([0, 1, 0])?;
     let keys = rows
         .chunks_exact(3)
-        .map(|r| Ok(Key::new(field(r[0])? + u * field(r[1])? + u * u * field(r[2])?)))
+        .map(|rows| key_triple([&rows[0], &rows[1], &rows[2]]))
         .collect::<Result<Vec<_>, String>>()?;
     Ok((delta, keys.into_iter()))
+}
+
+#[cfg(feature = "c71-seed6-reference")]
+fn read_triple<Row>(rows: &mut dyn Iterator<Item = io::Result<Row>>) -> [Row; 3] {
+    std::array::from_fn(|_| {
+        rows.next().expect("incomplete Seed6 triple").expect("failed Seed6 row")
+    })
+}
+
+enum ProverCapacity<'borrow, 'lifetime> {
+    Dense(&'borrow mut Pool<'lifetime, [u64; 4]>),
+    #[cfg(feature = "c71-seed6-reference")]
+    Seed6(&'borrow mut volta_pcg::c71_seed6::ProverPool<'lifetime>),
+}
+
+enum VerifierCapacity<'borrow, 'lifetime> {
+    Dense(&'borrow mut Pool<'lifetime, [u64; 3]>),
+    #[cfg(feature = "c71-seed6-reference")]
+    Seed6(&'borrow mut volta_pcg::c71_seed6::VerifierPool<'lifetime>),
+}
+
+impl ProverCapacity<'_, '_> {
+    fn fixed_run_context(&self) -> io::Result<(ModelBinding, [u8; 32], Attempt)> {
+        match self {
+            Self::Dense(pool) => pool.fixed_run_context(),
+            #[cfg(feature = "c71-seed6-reference")]
+            Self::Seed6(pool) => pool.fixed_run_context(),
+        }
+    }
+
+    fn remaining_fp3(&self) -> usize {
+        match self {
+            Self::Dense(pool) => pool.remaining_fp3(),
+            #[cfg(feature = "c71-seed6-reference")]
+            Self::Seed6(pool) => pool.remaining_fp3(),
+        }
+    }
+
+    fn stop(&mut self) {
+        match self {
+            Self::Dense(pool) => pool.stop(),
+            #[cfg(feature = "c71-seed6-reference")]
+            Self::Seed6(pool) => pool.stop(),
+        }
+    }
+
+    fn attempt<Value>(
+        &mut self,
+        count: usize,
+        consumer: impl FnOnce(
+            Attempt,
+            &mut dyn ExactSizeIterator<Item = Auth>,
+        ) -> io::Result<(Value, Option<[u8; 32]>)>,
+    ) -> io::Result<Value> {
+        match self {
+            Self::Dense(pool) => pool.attempt(count, |attempt, base, delta| {
+                if delta.is_some() {
+                    return Err(io_error("prover received verifier state".into()));
+                }
+                consumer(attempt, &mut auths(&base).map_err(io_error)?)
+            }),
+            #[cfg(feature = "c71-seed6-reference")]
+            Self::Seed6(pool) => pool.attempt(count, |attempt, base| {
+                let mut rows = (0..count).map(|_| {
+                    let triple = read_triple(base);
+                    auth_triple(triple.each_ref().map(|row| &**row))
+                        .expect("noncanonical Seed6 correlation")
+                });
+                consumer(attempt, &mut rows)
+            }),
+        }
+    }
+}
+
+impl VerifierCapacity<'_, '_> {
+    fn fixed_run_context(&self) -> io::Result<(ModelBinding, [u8; 32], Attempt)> {
+        match self {
+            Self::Dense(pool) => pool.fixed_run_context(),
+            #[cfg(feature = "c71-seed6-reference")]
+            Self::Seed6(pool) => pool.fixed_run_context(),
+        }
+    }
+
+    fn stop(&mut self) {
+        match self {
+            Self::Dense(pool) => pool.stop(),
+            #[cfg(feature = "c71-seed6-reference")]
+            Self::Seed6(pool) => pool.stop(),
+        }
+    }
+
+    fn attempt<Value>(
+        &mut self,
+        count: usize,
+        consumer: impl FnOnce(
+            Attempt,
+            &mut dyn ExactSizeIterator<Item = Key>,
+            Fp3,
+        ) -> io::Result<(Value, Option<[u8; 32]>)>,
+    ) -> io::Result<Value> {
+        match self {
+            Self::Dense(pool) => pool.attempt(count, |attempt, base, delta| {
+                let (delta, mut rows) = keys(&base, delta).map_err(io_error)?;
+                consumer(attempt, &mut rows, delta)
+            }),
+            #[cfg(feature = "c71-seed6-reference")]
+            Self::Seed6(pool) => pool.attempt(count, |attempt, base, delta| {
+                let mut rows = (0..count).map(|_| {
+                    let triple = read_triple(base);
+                    key_triple(triple.each_ref().map(|row| &**row)).expect("noncanonical Seed6 key")
+                });
+                consumer(attempt, &mut rows, Fp3::ZERO - delta)
+            }),
+        }
+    }
 }
 
 impl State {
@@ -86,7 +211,7 @@ impl State {
 }
 
 impl Prover {
-    fn from_pool(model: Installed, pool: &Pool<'_, [u64; 4]>) -> Result<Self, String> {
+    fn from_pool(model: Installed, pool: &ProverCapacity<'_, '_>) -> Result<Self, String> {
         let state = State::from_pool(
             model.model.root.clone(),
             pool.fixed_run_context().map_err(|e| e.to_string())?,
@@ -107,7 +232,7 @@ impl Prover {
         &mut self,
         prompt: u32,
         nonce: [u8; 32],
-        pool: &mut Pool<'_, [u64; 4]>,
+        pool: &mut ProverCapacity<'_, '_>,
         verify: impl FnOnce(&Response) -> Result<Acceptance, String>,
     ) -> Result<(), String> {
         if !self.state.live || self.pending.is_some() {
@@ -135,11 +260,8 @@ impl Prover {
             // No unused rows, keys or Delta are visible to Prepare.
             let snapshot = Snapshot::prepare(p, &self.model, &self.accepted, prompt)?;
             let acceptance = pool
-                .attempt(required, |a, base, delta| {
+                .attempt(required, |a, mut rows| {
                     self.state.check_burn(&a).map_err(io_error)?;
-                    if delta.is_some() {
-                        return Err(io_error("prover received verifier state".into()));
-                    }
                     let p = &self.state.profiles[self.state.next_slot];
                     let s = p.context(
                         &self.state.weight,
@@ -155,7 +277,6 @@ impl Prover {
                         .map_err(io_error)?;
                     self.state.next_slot += 1;
                     self.state.cursor += 3 * required;
-                    let mut rows = auths(&base).map_err(io_error)?;
                     let (certificate, receipt) = prove_schedule(
                         &self.state,
                         p,
@@ -192,7 +313,7 @@ impl Prover {
 }
 
 impl Verifier {
-    fn from_pool(weight: C61Commitment, pool: &Pool<'_, [u64; 3]>) -> Result<Self, String> {
+    fn from_pool(weight: C61Commitment, pool: &VerifierCapacity<'_, '_>) -> Result<Self, String> {
         let state = State::from_pool(weight, pool.fixed_run_context().map_err(|e| e.to_string())?)?;
         Ok(Self {
             state,
@@ -206,7 +327,7 @@ impl Verifier {
         &mut self,
         prompt: u32,
         response: &Response,
-        pool: &mut Pool<'_, [u64; 3]>,
+        pool: &mut VerifierCapacity<'_, '_>,
     ) -> Result<Acceptance, String> {
         if !self.state.live {
             pool.stop();
@@ -233,7 +354,7 @@ impl Verifier {
             let header =
                 self.state.header(&response.root, response.tokens, response.nonce, required)?;
             let acceptance = pool
-                .attempt(required, |a, base, delta| {
+                .attempt(required, |a, mut rows, delta| {
                     self.state.check_burn(&a).map_err(io_error)?;
                     let p = &self.state.profiles[slot];
                     let s = p.context(
@@ -246,7 +367,6 @@ impl Verifier {
                     );
                     self.state.next_slot += 1;
                     self.state.cursor += 3 * required;
-                    let (delta, mut rows) = keys(&base, delta).map_err(io_error)?;
                     let receipt = verify_schedule(
                         &self.state,
                         p,
@@ -360,6 +480,7 @@ mod tests {
                 let mut store = Lifetime::install(&pp, binding).unwrap();
                 {
                     let mut pool = store.prover_fixed_run(pc, [2; 32], [3; 32], 3).unwrap();
+                    let mut pool = ProverCapacity::Dense(&mut pool);
                     assert_eq!(pool.remaining_fp3(), 1);
                     let mut prover = Prover::from_pool(model, &pool).unwrap();
                     assert!(prover
@@ -372,7 +493,7 @@ mod tests {
                     assert!(pool.fixed_run_context().is_err());
                     assert_eq!(pool.remaining_fp3(), 0);
                     assert!(pool
-                        .attempt::<()>(1, |_, _, _| panic!("stopped native pool reused"))
+                        .attempt::<()>(1, |_, _| panic!("stopped native pool reused"))
                         .is_err());
                 }
                 assert_eq!(store.counters(), (1, 0));
@@ -381,6 +502,7 @@ mod tests {
             let mut store = Lifetime::install(&vp, binding).unwrap();
             {
                 let mut pool = store.verifier_fixed_run(vc, [2; 32], [3; 32], 3).unwrap();
+                let mut pool = VerifierCapacity::Dense(&mut pool);
                 assert!(Verifier::from_pool(C61Commitment::new(vec![[99; 32]]), &pool).is_err());
                 let mut verifier = Verifier::from_pool(root, &pool).unwrap();
                 let response = Response {

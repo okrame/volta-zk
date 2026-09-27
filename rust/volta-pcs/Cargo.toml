@@ -7,6 +7,7 @@ license.workspace = true
 [features]
 default = []
 c71-b12-pcs = ["c71-cpu-matrix-reference", "volta-pcg/c71-b11"]
+c71-seed6-reference = ["c71-b12-pcs", "volta-pcg/c71-seed6-reference"]
 c71-work-census = ["c71-cpu-matrix-reference"]
 c71-cpu-matrix-reference = [
     "c61-p3-reference",

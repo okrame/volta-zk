@@ -153,7 +153,10 @@ ora alimenta il wrapper ridotto tramite riserve del pool reale, con segni
 MAC nativi, confronto del registro e promozione dopo il journal. Gli
 iteratori ideali sono confinati ai test. Il controllo reale a tre righe
 verifica l'arresto per capacità insufficiente, senza pubblicare A né
-promuovere KV. **Non è ancora un'esecuzione composta AES positiva.**
+promuovere KV. Separatamente, il nuovo wrapper opt-in Seed6 completa
+**un tentativo O=0 ridotto con AES reale**, 88.049 MAC Fp3 e promozione
+della stessa ricevuta nei due ruoli. Usa ancora Snapshot/A densi piccoli;
+non chiude il port canonico, il percorso ordinato reale o tre tentativi AES.
 
 ## Next goal
 
@@ -533,7 +536,7 @@ termini pubblici e condividono i cammini della trie, conservando i prefissi
 globali. Il confronto reale BAe a sei righe usa 41/36 SHAKE nei due ruoli
 anziché 60 sender puntuali. Il controllo al confine 4.096+5/3 non anticipa
 la riserva successiva. È esecuzione CPU ridotta, non port CUDA o costo
-canonico completo; sorting, stack compilato e wrapper della proof restano aperti.
+canonico completo; sorting canonico e stack compilato restano aperti.
 Il pool è ora accessibile da altri crate solo con la feature CPU opt-in
 `c71-seed6-reference`: conserva owner, OS RNG e limiti di riserva, senza
 esporre seed/Delta scelti dal caller. L'algebra Fp3 condivisa è spostata
@@ -542,7 +545,11 @@ esterno esegue transfer Fp3 originale; non è ancora la proof composta.
 Il corpo PCS/GKR ora accetta `ExactSizeIterator` invece di imporre
 `Vec::IntoIter`, mantenendo i controlli di capacità ed esaurimento. È il
 passaggio necessario per consumare il pool a batch senza raccogliere tutta
-la riserva; il raccordo diretto a Seed6 resta da completare.
+la riserva. Il wrapper interno ora seleziona il riferimento Seed6 opt-in
+e riusa Prepare/Verify e promozione B12 con packing lazy. Un tentativo
+O=0 ridotto passa con AES reale; alterare il completamento brucia tutta
+la riserva senza promuovere A/KV. Restano reader ordinato reale, run AES
+a tre tentativi e port canonico; nessun credito H100.
 Il [consumer F_EQ ridotto](preflight.md#f_eq-consumer-locale-dei-due-seed-opposti)
 usa i due seed a ruoli opposti e fissa commitment prima delle aperture;
 correzioni, coin e share ora attraversano due endpoint indipendenti tramite

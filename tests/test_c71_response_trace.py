@@ -48,6 +48,10 @@ def test_composed_trace_keeps_current_old_sources_memory_and_unknowns():
         assert not any(e['chain'].startswith('A') and e['event']=='base_case_open_all' for e in events)
         assert retained['memory']['known_peak_with_proposed_slots_bytes']<trace.ARENA
         assert c['fresh_session_setup_charged_to_proof_PCG_MAC']==(c['old_tokens']==0)
+        packing=c['phase_throughput_conditions_partial']['proof_PCG_MAC'][
+            'native_packing_operations_each_role_per_second']
+        assert packing['Fp3_multiplications_each_role']>1_900_000
+        assert packing['Fp3_additions_each_role']>1_270_000
     assert not r['cases'][-1]['retained_A_alternative']['deadline_excluded_under_same_conditions']
     assert r['online_verifier_challenge_round_trips']==0
 

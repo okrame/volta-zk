@@ -1366,15 +1366,26 @@ del seed EA. `volta-mac::c7_fp3` ri-esporta le stesse definizioni pure ora
 in `volta-pcg::c7_fp3`: nessuna formula, convenzione di segno o premessa
 del prodotto cambia. Il lift B4/B5 respinto e i suoi controesempi restano
 nel modulo MAC, senza nuova ammissione. Questo evita una dipendenza
-circolare per il futuro bridge, non introduce produzione, fallback CPU,
-una nuova riduzione o un collegamento già positivo al verifier composto.
+circolare per il bridge; da solo non introduce produzione, fallback CPU,
+una nuova riduzione o un collegamento positivo al verifier composto.
 Il corpo composto e i consumer range/lookup/GKR/PCS usano ora il trait
 standard `ExactSizeIterator` anziché il tipo concreto `Vec::IntoIter`.
 Restano i controlli `len` prima delle fasi e l'esaurimento esatto finale;
 non si sostituiscono con stime o si rimuovono validazioni. Questa scelta
 permette iteratori limitati/lazy senza una nuova interfaccia di pool.
 Non cambia algebra, ordine, transcript, riserva compilata o NoPeek;
-finché il wrapper non usa i pool Seed6, il positivo resta nel modello MAC ideale.
+Il wrapper interno ora seleziona esplicitamente pool denso B12 oppure
+Seed6 con la feature CPU opt-in PCS omonima, riusando la stessa macchina
+Prepare/Verify/journal/promozione. Il packing lazy usa tre righe originali,
+codec canonico e basi `(1,u,u²)`, con Delta negato solo al confine nativo.
+Range e Map standard conservano la cardinalità senza materializzare la
+riserva. Una riga mancante, fallita o non canonica interrompe l'iteratore
+infallibile con panic, intercettato dal confine terminale del journal:
+nessun valore sostitutivo né promozione. Prepare precede la riserva e non
+riceve MAC futuri. Il raccordo passa un O=0 completo ridotto con AES reale
+e Snapshot/A densi piccoli, distinto dai tre tentativi ideali e dal
+positivo ideale con reader ordinato. Non si trasferiscono bound canonici,
+composizione ROM, canale autenticato o store non-rollbackabile dai soli test.
 Le coin dei test algebrici
 restano distinte dalla catena che esegue il protocollo nativo.
  Il getter numerico ridotto

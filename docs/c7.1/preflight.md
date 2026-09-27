@@ -1856,8 +1856,8 @@ Un test d'integrazione compilato come crate esterno usa la nuova API con
 OS RNG, esegue setup reale 25+6, riserva tre righe e verifica packing e
 transfer originali Fp3, poi stop/reopen reject. La ricevuta è un fixture,
 non una proof di inferenza. Sono invariati wire, heap dei pool e layout
-dei MAC; non si accredita un nuovo picco o runtime. Il wrapper PCS/GKR
-deve ancora usare questa interfaccia anziché il pool AES denso B12.
+dei MAC; non si accredita un nuovo picco o runtime. Il solo test esterno
+non sostituisce il raccordo al wrapper PCS/GKR descritto di seguito.
 
 Il [record ridotto](evidence.md#native-exact-size-correlation-streams)
 controlla che il corpo composto e i relativi consumer ora accettino
@@ -1867,8 +1867,42 @@ prima delle fasi e l'esaurimento finale. Il positivo streaming O=0 usa
 un `Take` preso in prestito anziché copiare la riserva in un nuovo Vec;
 la sorgente del fixture resta ideale. Non cambiano algebra, FS, numero
 di MAC o conti canonici; nessuna riduzione del picco fisico è attribuita
-a questo cambio d'interfaccia. Restano packing da Seed6 e raccordo del
-wrapper, con Prepare precedente all'esposizione dei MAC inutilizzati.
+a questo cambio d'interfaccia.
+
+### Wrapper PCS/GKR Seed6
+
+Il wrapper interno ora possiede due varianti esplicite del pool, senza
+duplicare la macchina di accettazione. `volta-pcs/c71-seed6-reference`
+abilita quella Seed6, mai come fallback. Il packing usa tre righe originali
+e i medesimi helper del denso; `Range.map` conserva `ExactSizeIterator`
+senza Vec della riserva. Prepare termina prima del burn e dell'esposizione
+dei MAC inutilizzati. Errori di generazione, triple incomplete o codec
+non canonici causano panic nel consumer infallibile, intercettato dal
+journal che conserva il burn e termina il run. Solo Verify completo può
+produrre la ricevuta; i journal precedono le rispettive promozioni.
+
+Il ledger ora comprende per MAC Fp3 tre moltiplicazioni e due somme per
+ruolo, inclusa l'aritmetica della base costante; cinque/quattro decode
+canonici per prover/verifier e una negazione di Delta per tentativo.
+Il payload delle tre righe vive è 96/72 B e non aggiunge heap. I valori
+rientrano nello slot prudente preesistente, non in un bound dello stack
+compilato: nessuna riduzione del piano o nuovo credito di picco fisico.
+Sono conti di sorgente, non istruzioni, HBM o tempo. Il primo controllo
+positivo O=0 usa t=4/h=19/ell=11, main 107 + inverso 12 e 264.147 righe
+base: 88.049 MAC Fp3 entrano nell'intera schedule originale; i due journal
+e i registri terminano con la stessa ricevuta. Il certificato misura
+circa 7,76 MB e il controllo locale termina in 49,90 s entro 60 s/2 GiB.
+Quel tempo riguarda entrambi i ruoli CPU, non un obiettivo H100.
+Il grafo rimane un layer/hidden2/prompt1+generato1 con Snapshot/A densi;
+non trasferisce sicurezza parametrica o credito del run completo a tre
+tentativi, reader ordinato, modello canonico, Γ reale o picco fisico.
+Ogni ruolo promuove dopo il proprio journal: non si rivendicano commit
+atomico distribuito o fairness fra i due ruoli.
+Il controllo separato altera l'ultimo byte del completamento: entrambi
+i ruoli terminano dopo aver bruciato 264.147 righe, con head del journal
+zero e nessuna promozione A/KV. Passano anche shortage prima di Prepare/
+decoding e consumo parziale senza ricevuta accettata. Il run positivo e
+quello negativo hanno installazioni indipendenti, non un retry del pool.
 
 ## Seed6: seal di completamento
 

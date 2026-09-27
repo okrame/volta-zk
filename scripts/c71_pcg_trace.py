@@ -353,6 +353,27 @@ def seed6_batch_trace(rows=BATCH, blocks=TREES, height=HEIGHT, weight=WEIGHT):
     }
 
 
+def seed6_native_packing_trace(fp3_rows):
+    if fp3_rows < 0:
+        raise ValueError('nonnegative packed row count required')
+    return {
+        'Fp3_rows':fp3_rows,
+        'base_rows':3*fp3_rows,
+        'Fp3_multiplications_each_role':3*fp3_rows,
+        'Fp3_additions_each_role':2*fp3_rows,
+        'verifier_Delta_Fp3_subtractions_per_attempt':1,
+        'canonical_Fp3_decodes':{'prover':5*fp3_rows,'verifier':4*fp3_rows},
+        'canonical_codec_bytes':{'prover':120*fp3_rows,'verifier':96*fp3_rows},
+        'logical_base_row_read_bytes':{'prover':96*fp3_rows,'verifier':72*fp3_rows},
+        'named_live_input_triple_bytes':{'prover':96,'verifier':72},
+        'packed_output_value_bytes':{'prover':48,'verifier':24},
+        'extra_heap_bytes':0,
+        'full_reservation_materialized':False,
+        'counter_scope':'source calls including constant basis arithmetic/codec, not compiler instructions or HBM; input triple persists across batch boundaries',
+        'complete_physical_peak':False,
+    }
+
+
 def seed6_coin_trace(count=DOMAIN, header_bytes=9):
     """One transcript-bound native coin; sequential SHAKE, no dense U array."""
     if not 1 <= count <= DOMAIN or header_bytes not in (6,9):
@@ -477,7 +498,7 @@ def seed6_equality_trace(n=TREES):
 
 
 def seed6_setup_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
-    """One-use journalled setup, not the missing per-attempt pool/proof bridge."""
+    """One-use setup and bounded native wrapper; no canonical fixed-run credit."""
     expansion=seed6_expansion_trace(blocks,height,weight)
     main_rows,inverse_rows=blocks*(height+7)+3,3*blocks
     seed_wire=sum(seed6_real_trace(rows)['wire_bytes_both_directions_with_seal']
@@ -511,7 +532,8 @@ def seed6_setup_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
         'guard_uses_shared_reexported_Fp3_algebra':True,
         'setup_burn_before_rng_and_live_owner_borrow':True,
         'per_attempt_burn_bounded_stream_and_terminal_stop':True,
-        'per_attempt_pool_and_acceptance_connected':False,
+        'per_attempt_pool_and_acceptance_connected':True,
+        'canonical_or_three_attempts_acceptance_credit':False,
         'successful_attempt_disk_bytes_each_role':2*57,
         'successful_attempt_syncs_each_role':2,
         'three_accepted_attempts_install_setup_total_disk_bytes_each_role':104+7*57,
@@ -519,7 +541,7 @@ def seed6_setup_trace(blocks=TREES, height=HEIGHT, weight=WEIGHT):
         'attempt_stream_generated_batch_heap_upper':{'sender':24*BATCH,'receiver':32*BATCH},
         'attempt_stream_output_row_bytes':{'sender':24,'receiver':32},
         'attempt_stream_requires_exact_consumption_before_promotion':True,
-        'attempt_stream_scope':'bounded batch trie; receipt is a test fixture, not a complete verifier',
+        'attempt_stream_scope':'bounded batch trie; opt-in PCS wrapper has one reduced O0 positive with dense Snapshot; lower-level pool tests retain fixture receipts',
         'returned_Audit_and_owner_slot_retained_across_attempts':True,
         'private_path_rng_bytes_receiver':8*blocks,
         'beta_reuses_original_seed_value':True,
@@ -577,6 +599,7 @@ def response_trace(old_tokens, first_row, rows, fail_after_batches=None):
         'discarded_carry_on_abort': carry if aborted else 0,
         'final_carry': None if aborted else carry,
         'Fp3_correlations_consumed': consumed,
+        'native_Fp3_packing':seed6_native_packing_trace(consumed),
         'public_EA_terms_upper': terms,
         'independent_path_H_evaluations_upper_per_role': terms*HEIGHT,
         'union_trie_H_evaluations_upper_per_role': h_calls,

@@ -362,6 +362,13 @@ def report():
         setup=correlations['setup_once_before_all_responses']
         demands['proof_PCG_MAC']['fresh_session_setup_H_additional_per_role_if_first_response']=(
             setup['internal_cGGM_H_evaluations_upper_per_role_two_passes'] if slot==0 else 0)
+        packing=correlations['responses'][slot]['native_Fp3_packing']
+        demands['proof_PCG_MAC']['native_packing_operations_each_role_per_second']={
+            operation:packing[operation]/BUDGET_SECONDS['proof_PCG_MAC']
+            for operation in ('Fp3_multiplications_each_role','Fp3_additions_each_role')}
+        demands['proof_PCG_MAC']['native_packing_canonical_decode_bytes_per_second']={
+            role:count/BUDGET_SECONDS['proof_PCG_MAC']
+            for role,count in packing['canonical_codec_bytes'].items()}
         ranges=[screen.gram_window_budget(35,11,W_BYTES,24),
                 screen.gram_window_budget(34,10,routes['live_bytes'],24)]
         for key in ('fraction_merges_initial_and_replay',

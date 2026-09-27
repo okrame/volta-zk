@@ -78,6 +78,21 @@ Per questo raccordo aggiungere i filtri separati `c71_b12_native_certificate`,
 I controlli `.len()` e consumo esatto restano obbligatori; questo test
 ideale non sostituisce il collegamento ai pool reali.
 
+Per il wrapper Seed6 compilare da `rust/`, con il profilo locale e un solo
+job, `cargo test --offline --locked -j 1 -p volta-pcs --features
+c71-seed6-reference --lib c71_seed6_native --no-run`. Il flag è un
+riferimento CPU esplicito, non il percorso di produzione. Eseguire prima
+`c71_seed6_native_packing`, `c71_seed6_native_partial` e
+`c71_seed6_native_shortage`, separatamente entro 60 s/2 GiB. I due ultimi
+usano solo setup 25+6 e socketpair locali, non rete esterna. Regressione
+densa: `c71_b12_native_pool`, con gli stessi limiti.
+I filtri separati `c71_seed6_native_full_o0_proof` e
+`c71_seed6_native_full_o0_late_rejection` usano ciascuno un solo tentativo del
+grafo ridotto, geometria t=4/h=19/ell=11, main 107 + inverso 12 e
+264.147 righe base lazy, non un bootstrap denso né Gemma canonico.
+Vale lo stesso stop a 60 s/2 GiB: un timeout è un fallimento da conservare,
+non autorizza a estendere il limite o eseguire i tre tentativi completi.
+
 Per il raccordo streaming critico, dopo la build PCS mirata, eseguire
 separatamente `sourcewise_range_matches_dense_original_wire_and_mac`,
 `c71_b12_sourcewise_linear_matches_dense_wire_fs_point_and_original_mac`,

@@ -31,6 +31,21 @@ def test_abort_burns_full_reservation_and_discards_unpaired_rows():
     assert failed['final_carry'] is None
 
 
+def test_native_packing_counts_original_basis_arithmetic_and_codec():
+    packed = trace.seed6_native_packing_trace(88049)
+    assert packed['base_rows'] == 264147
+    assert packed['Fp3_multiplications_each_role'] == 264147
+    assert packed['Fp3_additions_each_role'] == 176098
+    assert packed['canonical_Fp3_decodes'] == {'prover':440245,'verifier':352196}
+    assert packed['named_live_input_triple_bytes'] == {'prover':96,'verifier':72}
+    assert packed['extra_heap_bytes'] == 0
+    assert not packed['full_reservation_materialized']
+    for response in trace.report()['responses']:
+        assert response['native_Fp3_packing']['base_rows'] == response['reserved_base_rows']
+    failed = trace.response_trace(0, 0, 3_814_605, fail_after_batches=1)
+    assert failed['native_Fp3_packing']['base_rows'] == 4095
+
+
 def test_distribution_free_trie_and_unknown_backend_costs():
     report = trace.report()
     assert trace.trie_nodes(4096) == 626_397
@@ -263,7 +278,8 @@ def test_one_channel_setup_wire_and_added_payload():
     assert setup['public_role_pools_own_lifetime_and_use_OS_rng']
     assert not setup['public_reference_is_production_or_GPU_fallback']
     assert setup['guard_uses_shared_reexported_Fp3_algebra']
-    assert not setup['per_attempt_pool_and_acceptance_connected']
+    assert setup['per_attempt_pool_and_acceptance_connected']
+    assert not setup['canonical_or_three_attempts_acceptance_credit']
     reduced=trace.seed6_setup_trace(2,4,2)
     assert (reduced['main_seed_rows'],reduced['inverse_seed_rows'])==(25,6)
     assert reduced['capacity_base_rows']==6

@@ -11,8 +11,8 @@ Tutte le risposte accettate devono usare gli stessi pesi W fissati
 all'installazione. Il verificatore apprende i token pubblici e l'esito;
 non riceve pesi, attivazioni o valori intermedi privati.
 
-Il modello è la parte testuale di `google/gemma-4-31B`, revisione
-`5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89`. La relazione usa la semantica
+Il modello è la parte testuale di `google/gemma-4-31B`, con
+[identità immutabile](specs.md#input-e-identità). La relazione usa la semantica
 intera in [specs](specs.md#semantica-numerica): arrotondamento al più vicino
 con pareggi al pari, rifiuto degli overflow e softmax `C71-SOFTMAX-EXP30-v1`.
 Il nome `gemma31b` nei percorsi del codice identifica questo checkpoint.
@@ -71,32 +71,17 @@ non trasferisce automaticamente i bound B12 al programma completo.
 
 ## Stato di implementazione e lavoro necessario
 
-| Parte | Risultato disponibile | Completamento necessario |
-|---|---|---|
-| Semantica e Γ | Compilatore canonico, dispatcher per righe, ingest W, inizializzatore delle scale A, tabelle certificate e replay CPU | Calibrazione reale, esportazione dei valori di riferimento intermedi e confronto indipendente Python/Rust prima del congelamento di Γ |
-| Composizione della prova | Tre tentativi su grafo ridotto con MAC ideali; O=0 ordinato con W ricostruita e AES Seed6 reale | Preparatore/prover canonici integrati e accettazione completa nei tre contesti reali |
-| Verificatore canonico | Ordine dei componenti, registro, riserve e codec implementati; controlli strutturali e rifiuti | Certificati canonici validi, trasporto dell'accettazione e verifica completa positiva |
-| PCS | Parità ridotta su root, byte, transcript e MAC; cache iniziale conservata, S1, resti e potenze a blocchi | Dimensioni canoniche, collegamento CUDA, costo di tutte le ricostruzioni e memoria simultanea |
-| H100 | Controlli host, analisi delle risorse e compilazioni statiche CUDA | Esecuzione GPU corretta e misure dell'intera risposta su Γ reale |
+La prova canonica completa non è pronta per una misura. Il riferimento
+di calibrazione è CPU, anche su un host H100, e manca il confronto
+indipendente sui valori reali. Lo [stato e l'ordine di lavoro](runpod-tests.md#stato-e-sequenza-operativa)
+identificano componenti disponibili, implementazioni mancanti e passaggi
+che richiedono autorizzazione. Il [contratto del confronto](specs.md#confronto-indipendente-da-implementare)
+definisce cosa completare prima di ammettere Γ.
 
-La prova canonica completa non è pronta per una misura. La calibrazione
-è una campagna separata proposta con limite di 8 ore e 40 USD, ancora
-da autorizzare. I programmi di calibrazione attuali lavorano su CPU anche
-su un host H100. La procedura e le condizioni di arresto sono in
-[runpod-tests](runpod-tests.md).
-
-La verifica corrente della provenienza del fork segnala inoltre una
-modifica non registrata in `merkle-tree/src/hiding_mmcs.rs`. Il fallimento
-precede questa riorganizzazione: va revisionato e registrato prima di
-dichiarare chiuso l'audit delle dipendenze; [dettagli e riproduzione](../c7.1-history/reorganization-audit.md#fallimento-preesistente-dellaudit-del-fork).
-
-Il passo operativo è produrre e validare Γ, completare i collegamenti
-canonici e ricompilare il conto delle risorse sulle sue ricette. Prima
-dell'esperimento della prova servono correttezza integrata su input ridotti,
-conto completo del lavoro, picco pianificato con margine e limite inferiore
-congiunto compatibile con 65 s. Non è richiesta una dimostrazione preventiva
-del tempo H100: i tempi mancanti si misurano nel minimo esperimento
-autorizzato. Si dà priorità all'integrazione; ulteriori ottimizzazioni isolate
+I criteri per il [primo esperimento della prova](runpod-tests.md#esperimento-della-prova)
+non richiedono una dimostrazione preventiva del tempo H100: i tempi
+mancanti si misurano nel minimo esperimento autorizzato.
+Si dà priorità all'integrazione; ulteriori ottimizzazioni isolate
 sono giustificate da correttezza o impatti di almeno 16 MiB o 0,5 s.
 
 ## Contratto delle risorse

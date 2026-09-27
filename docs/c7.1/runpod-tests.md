@@ -10,10 +10,24 @@ esecuzioni GPU o spesa. Il lavoro locale pertinente resta autorizzato.
 La calibrazione e il benchmark della prova sono due campagne distinte:
 un successo numerico non autorizza né dimostra il secondo.
 
-Il percorso operativo è: calibrare una candidata sui tre contesti;
-confrontare indipendentemente la semantica intera prima di congelare Γ;
-completare l'integrazione della prova e il conto delle risorse; proporre
-il minimo esperimento H100 con limiti e criteri verificabili.
+Leggere prima [design](design.md), poi le sezioni pertinenti di
+[specs](specs.md) e [security](security.md). Questa pagina definisce la
+sequenza operativa e lo stato delle implementazioni; [local-tests](local-tests.md)
+definisce i controlli piccoli. Non occorre recuperare istruzioni dall'archivio.
+
+| Ordine | Disponibile | Lavoro e condizione di uscita |
+|---|---|---|
+| 1. Preparare il confronto, localmente | Ingest W, inizializzatore delle scale, tabelle certificate e replay intero CPU | Implementare e testare l'[export e confronto indipendente](specs.md#confronto-indipendente-da-implementare). Senza questo, la campagna può produrre solo una candidata numericamente riproducibile, non Γ ammesso |
+| 2. Calibrare i pesi reali, dopo autorizzazione | Comandi CPU nelle sezioni seguenti; nessuna calibrazione CUDA completa | Una sola candidata, due replay e confronto indipendente nei tre contesti; soddisfare la [validazione](#validazione-e-congelamento-del-profilo), quindi fissare Γ e ricompilare il conto delle risorse |
+| 3. Integrare la prova, prima su input ridotti | Tre accettazioni con MAC ideali; O=0 ordinato con W ricostruita e AES Seed6 reale; registro e codec canonici con test strutturali e di rifiuto | Completare preparatore/prover canonici, getter, certificati validi e trasporto dell'accettazione; verificare tutte le componenti sullo stesso registro, non soltanto separatamente |
+| 4. Preparare l'esperimento GPU | Parità PCS ridotta, S1, resti e potenze a blocchi; controlli host e compilazioni statiche CUDA | Collegare CUDA alle dimensioni canoniche, completare contabilità simultanea e condizioni dell'[esperimento della prova](#esperimento-della-prova); ottenere l'autorizzazione per l'esperimento con confronto host/GPU e misure |
+| 5. Eseguire la prova completa | Nessun comando E2E canonico completo disponibile oggi | Solo dopo integrazione e autorizzazione: tre risposte canoniche verificate con stesso W e KV, misurando tutte le risorse; conservare anche gli esiti negativi |
+
+Le implementazioni locali dei punti 1 e 3 possono procedere indipendentemente;
+la loro validazione sui pesi reali richiede il punto 2. La calibrazione
+non implementa il prover e non chiude gli [obblighi di sicurezza Seed6](security.md#estensione-seed6-e-obblighi-residui).
+Un esperimento può misurare il prototipo senza attribuirgli una garanzia
+crittografica la cui composizione è ancora aperta.
 
 ## Gestione del pod e del repository
 
@@ -64,9 +78,9 @@ Il tempo completo non è misurato. L'inizializzatore conta
 13.390.420.377.600 prodotti di matrice e 26.782.043.904.000 B di letture W
 logiche, che non sono traffico fisico o tempi H100. Alla deadline si
 conserva il fallimento e si termina, senza dichiarare Γ calibrato.
-L'audit completo Python/Rust dei valori reali intermedi richiede ancora
-un adapter di esportazione: i comandi seguenti possono ottenere una
-candidata validata dal riferimento, non il congelamento definitivo.
+I comandi correnti coprono il punto 2 fino al replay numerico. Per una
+campagna che prometta Γ ammesso deve essere già completato il punto 1,
+con tempi e risorse del confronto inclusi nel medesimo limite.
 
 ### Risorse e costo
 
@@ -126,29 +140,18 @@ Totale massimo 8 h, incluse preparazione e download. Le deadline interne
 del pilot/replay non coprono tutti gli hash e la generazione tabelle:
 il timeout esterno copre l'intero comando. Nessuna fase parte se non ha
 il proprio budget residuo più almeno 30 minuti per conservare l'evidenza.
-Al primo errore si saltano le fasi successive e si pubblica il fallimento.
+Questi massimi non garantiscono il completamento: anche comandi accessori
+e passaggi manuali consumano la stessa finestra. Al primo errore si saltano
+le fasi successive e si pubblica il fallimento.
 
 ### Identità degli input
 
-Modello `google/gemma-4-31B`, revisione immutabile
-`5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89`, non `main`.
-I [metadati pinned](../../manifests/c7-d126-gemma31b-source-metadata-v1.json)
-e il [manifest dei terminali](../../manifests/c7-d126-gemma31b-terminals-v1.csv)
-definiscono header, offset, 772 tensori privati e scalari pubblici.
-
-| File | Byte | SHA-256 completo |
-|---|---:|---|
-| `model-00001-of-00002.safetensors` | 49.784.788.364 | `186fa361e76abbb5f48ffb3d9965181a5da33522e39c25eb75d7241da1637aac` |
-| `model-00002-of-00002.safetensors` | 12.761.549.884 | `b78ae8294981a6d674c47f2261d34240b7539bbeafb4f7d0525f6167946e6da0` |
-
-Workload: [manifest originale](../../manifests/c7-d126-gemma31b-workload-v1.json),
-SHA-256 `70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b`.
-Tre tentativi ordinati O=0/150/300: ogni volta 100 token prompt pinned,
-50 token generati dalla relazione intera; KV anche dell'ultimo token.
-Unica mappa 772 W + 1.435 A, embedding/head coerente, e_Pi=-14.
-Nessun dataset nuovo, teacher forcing dei token floating o certificazione
-di qualità generale. Accesso HF/licenza deve essere già valido; un
-401/403 ferma la fase, senza accettare licenze o cambiare checkpoint.
+Usare esclusivamente [checkpoint, shard, digest e workload delle specifiche](specs.md#input-e-identità),
+mai `main`. I comandi importano le stesse costanti da
+[c7_d126_gemma_weight_ingest.py](../../scripts/c7_d126_gemma_weight_ingest.py).
+Nessun dataset nuovo, imposizione dei token prodotti dal pilot floating
+o certificazione di qualità generale. Accesso HF/licenza deve essere già
+valido; un 401/403 ferma la fase, senza accettare licenze o cambiare checkpoint.
 
 ### Comandi dopo autorizzazione esplicita
 
@@ -218,9 +221,10 @@ upgrade non registrati; `pip freeze`, `rustc -Vv`, `cargo -V`, `uname -a`,
 quote/deadline, CPU/RAM/disco e SHA immagine vanno nei log.
 
 ```bash
-run_step 300 venv python3 -m venv .venv
+run_step 240 venv python3 -m venv .venv
 run_step 300 dependencies .venv/bin/python -m pip install numpy==2.5.1 pytest==9.1.1
 run_step 1800 build bash -c '
+  set -euo pipefail
   cd "$ROOT/rust"
   cargo fetch --locked
   cargo build --offline --locked -j 1 -p volta-pcs \
@@ -233,17 +237,18 @@ export NATIVE="$CARGO_TARGET_DIR/debug/examples/c71_calibration"
 export C71_CALIBRATION_BINARY="$NATIVE"
 run_step 60 describe "$NATIVE" describe
 run_step 60 pilot-plan .venv/bin/python scripts/c71_activation_pilot.py plan --native "$NATIVE"
-run_step 60 calibration-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py
-run_step 60 pilot-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_activation_pilot.py
-run_step 60 ingest-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c7_d126_gemma_native_bf16.py tests/test_c7_d126_gemma_weight_ingest.py
+(ulimit -v 2097152; run_step 60 calibration-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py)
+(ulimit -v 2097152; run_step 60 pilot-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_activation_pilot.py)
+(ulimit -v 2097152; run_step 60 native-ingest-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c7_d126_gemma_native_bf16.py)
+(ulimit -v 2097152; run_step 60 ingest-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c7_d126_gemma_weight_ingest.py)
 ```
 
 La venv e le versioni dei pacchetti devono essere predisposte nella fase
 ambiente; i comandi assumono `.venv/bin/python` con NumPy e pytest già
 verificati. Non copiare la venv locale o credenziali al pod. Una build
 priva delle dipendenze native non autorizza un altro pod:
-fermare nella fase ambiente. I controlli piccoli mantengono 60 s e un
-worker; non sostituiscono i trial reali. Non eseguire workspace E2E.
+fermare nella fase ambiente. I controlli piccoli mantengono 60 s / 2 GiB
+e un worker; non sostituiscono i trial reali. Non eseguire workspace E2E.
 
 ### Download e ingest
 
@@ -350,26 +355,21 @@ Prima di congelare verificare, sui file persistiti e non sul solo exit 0:
    nessun overflow, non-finito, saturazione, marker di errore o trial
    parziale. Il controller deve avere assorbito l'ultimo token in KV;
    non inferirlo dalla sola lunghezza della lista dei token.
-5. RNE/BF16, RMS/RNE numerici, LUT e routing hanno controlli della stessa
-   relazione intera Python/Rust, non uguaglianza col pilot floating.
-   **L'export di golden reali intermedi e un audit Python/Rust completo
-   del run non sono implementati dal CLI attuale.** Min/max e una seconda
-   esecuzione dello stesso Rust non li sostituiscono. Per il congelamento con
-   quel confronto completo manca un adapter di export/audit da sviluppare
-   e verificare separatamente: fermarsi a `candidate_integer_validated`,
-   non inventare un comando `freeze` né un report di bit-equality.
+5. Confronto indipendente completato secondo il
+   [contratto delle specifiche](specs.md#confronto-indipendente-da-implementare).
+   **Non disponibile nel CLI attuale**: min/max e un secondo replay Rust
+   non lo sostituiscono; non inventare un comando `freeze` o un confronto
+   bit per bit mai eseguito.
 
 Il piano conserva quindi due esiti distinti: bundle numerico riproducibile
 ottenibile con i comandi correnti, e **Γ ammesso/congelato** soltanto dopo
-il controllo indipendente richiesto dal [specifiche](specs.md#input-e-identità).
+tutti e cinque i controlli. «Candidata validata dal riferimento» descrive
+il primo esito: non è un campo JSON né una ricevuta di ammissione.
 Non si cambia un `calibrated:false` prodotto dai tool in `true` a mano.
 La futura ricevuta di congelamento deve referenziare il report di confronto,
 la copertura esatta e ogni assunzione residua; in sua assenza resta aperta.
-È un limite esplicito del passaggio di consegne, non un'autorizzazione ad allentare il gate.
 La prima autorizzazione può fermarsi al bundle numerico; non acquistare
 tempo GPU per «completare automaticamente il congelamento» con un tool assente.
-L'implementazione dell'export/audit è lavoro locale indipendente da
-eseguire prima di una campagna che prometta Γ definitivamente ammesso.
 
 Conservare in una nuova directory immutabile, senza aggiornare i manifest
 storici: candidata, descrizione ID, report ingest/pilot, ricette e digest
@@ -381,31 +381,57 @@ lettura di verifica. Le tabelle possono essere rigenerate dai digest e
 ricette; i dump privati richiedono storage autorizzato e non entrano in Git.
 
 ```bash
-find "$RUN" -path "$RUN/weights" -prune -o -type f -print0 \
-  | sort -z | xargs -0 sha256sum > /workspace/c71-gamma-files.sha256.partial
-test ! -e "$RUN/files.sha256"
-ln /workspace/c71-gamma-files.sha256.partial "$RUN/files.sha256"
-rm /workspace/c71-gamma-files.sha256.partial
-sha256sum --check "$RUN/files.sha256"
+.venv/bin/python - <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+root = Path(os.environ['RUN'])
+manifest = root / 'files.json'
+seal = root / 'files.json.sha256'
+assert not manifest.exists() and not seal.exists(), 'new bundle required'
+def describe(path):
+    with path.open('rb') as source:
+        digest = hashlib.file_digest(source, 'sha256').hexdigest()
+        size = os.fstat(source.fileno()).st_size
+    return {'path': path.relative_to(root).as_posix(), 'bytes': size, 'sha256': digest}
+files = [describe(path) for path in sorted(root.rglob('*'))
+         if path.is_file() and 'weights' not in path.relative_to(root).parts]
+with manifest.open('x') as sink:
+    json.dump(files, sink, indent=2, sort_keys=True)
+    sink.write('\n')
+with seal.open('x') as sink:
+    sink.write(describe(manifest)['sha256'] + '  files.json\n')
+assert json.loads(manifest.read_text()) == files
+assert all(describe(root / row['path']) == row for row in files)
+assert seal.read_text() == describe(manifest)['sha256'] + '  files.json\n'
+PY
 ```
 
-La lista viene scritta fuori da RUN e pubblicata senza overwrite:
-nessun digest di lista autoreferenziale è ammesso. Il bundle in Git usa
+Eseguire solo a produttori e log chiusi; dopo il manifest non modificare
+i file censiti. I pesi sono esclusi dalla lista e identificati dal report
+ingest. Il manifest non include se stesso né il proprio digest. Un errore
+lascia il bundle incompleto: non ripararlo sovrascrivendolo. Il bundle in Git usa
 solo la selezione piccola revisionata, non `git add "$RUN"`. Un record
 nuovo va in `benchmarks/results/c71-calibration-DATE-GITSHA.json`, con
 `git_dirty:false` riferito al codice eseguito, esito e digest degli output.
-Pubblicarlo secondo la procedura RunPod in un branch unico:
+Prima del push copiare nel repository soltanto la selezione piccola,
+controllare che non contenga segreti o valori privati, aggiungere i singoli
+file espliciti e creare un commit delle evidenze. `git-push` pubblica
+commit esistenti: non raccoglie automaticamente i file di RUN.
+Pubblicare secondo la procedura RunPod in un branch unico:
 
 ```bash
+scripts/runpod_harness.sh git-preflight
 scripts/runpod_harness.sh git-push "runpod/$RUNPOD_POD_ID/c71-gamma"
-scripts/runpod_harness.sh delete "$RUNPOD_POD_ID" --confirm "$RUNPOD_POD_ID"
 ```
 
-Prima del delete verificare dal remote il commit delle evidenze e
-l'eventuale destinazione autorizzata dei dati da conservare. Alla deadline
-la terminazione provider avviene comunque; non rinviarla per salvare un
-run incompleto. Al successo numerico, Γ e conto delle risorse vanno riportati al
-[preparazione dell’esperimento della prova](#esperimento-della-prova), che richiede ancora lavoro
+Verificare da un checkout remoto separato il commit e i file pubblicati,
+e l'eventuale destinazione autorizzata dei dati da conservare. Solo dopo
+eseguire il `delete` della [gestione pod](#gestione-del-pod-e-del-repository).
+Alla deadline la terminazione provider avviene comunque; non rinviarla
+per salvare un run incompleto. Dopo l'ammissione di Γ, portare il profilo
+e il conto delle risorse alla [preparazione dell'esperimento della prova](#esperimento-della-prova), che richiede ancora lavoro
 completo, picco con margine, lower congiunto e harness della prova. Questa
 campagna non misura prova/PCG, non emette certificati e non autorizza il
 benchmark della prova H100.
@@ -417,8 +443,8 @@ L'esempio `c71_matrix` è un diagnostico e `c71_calibration` esegue il
 replay numerico: nessuno dei due è il benchmark della prova Gemma.
 Prima di proporre una spesa per la prova chiudere i seguenti requisiti:
 
-1. Audit della provenienza dei fork completato, incluso il delta
-   `merkle-tree/src/hiding_mmcs.rs` oggi non registrato;
+1. Audit della provenienza dei fork completato, risolvendo il
+   [fallimento noto](local-tests.md#semantica-calibrazione-e-contabilità);
    Γ reale validato e congelato, con confronto indipendente documentato;
    ricette, tabelle, layout e riserve ricompilati a O=0/150/300.
 2. Costruzione integrata corretta su input ridotti: preparatore, getter,

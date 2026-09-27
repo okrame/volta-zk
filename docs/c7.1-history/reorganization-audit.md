@@ -100,3 +100,30 @@ nativi passati, separatamente dai quattro controlli documentali.
 I documenti congelati mantengono
 deliberatamente la base dei link originale, ricostruibile dalla mappa.
 Non si presenta la correzione dei link come un nuovo risultato di sicurezza.
+
+## Riesame del passaggio di consegne
+
+Seconda verifica del 2026-09-27, sulla riorganizzazione `cd17708`, richiesta
+per valutare la leggibilità operativa dal punto di vista dell'implementer H100.
+
+- Stato e ordine di lavoro concentrati in runpod-tests; identità e digest
+  degli input concentrati in specs. Il design rimanda alle sedi operative.
+- Esplicitato il contratto del confronto indipendente mancante, con punti
+  di integrazione nel codice, copertura e rifiuti da verificare. Nessun
+  nuovo comando di congelamento o E2E è presentato come già implementato.
+- Corretto lo snippet di build: la shell interna ora termina se `cargo
+  fetch` o `cargo build` fallisce, senza mascherare l'errore con `rustc`.
+  Test piccoli separati, ciascuno entro 60 s / 2 GiB.
+- Allineato il manifest alla descrizione: percorsi relativi, byte, digest,
+  hash del manifest, lettura di verifica e rifiuto della sovrascrittura.
+  Resi espliciti il commit delle evidenze e la verifica remota prima del
+  delete, che non segue più automaticamente lo snippet di push.
+
+`tests/test_c71_docs.py`: 7 test passati, entro 60 s / 2 GiB, con
+`PYTHONDONTWRITEBYTECODE=1` e cache pytest disabilitata. I nuovi controlli
+verificano identità degli input e due snippet eseguiti isolatamente con
+compilatori sostituiti da funzioni locali e file temporanei piccoli.
+`git diff --check` passato. Nessuna compilazione del protocollo, chiamata
+al provider, spesa o esecuzione su pesi reali in questo riesame.
+Resta aperto il fallimento del fork registrato sopra; questi sette test
+non sostituiscono l'evidenza numerica, crittografica o H100 mancante.

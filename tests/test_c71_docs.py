@@ -1,9 +1,13 @@
 """Check the current handoff and preservation of relocated historical prose."""
 import hashlib
+import json
+import os
 from pathlib import Path
 import re
 import ast
+import runpy
 import subprocess
+import sys
 from urllib.parse import unquote, urlsplit
 
 
@@ -96,3 +100,56 @@ def test_runpod_command_snippets_parse_without_execution():
         assert checked.returncode == 0, checked.stderr
         for python in re.findall(r"<<'PY'\n(.*?)\nPY(?:\n|$)", block, re.S):
             ast.parse(python)
+
+
+def test_documented_input_identities_match_ingest_and_workload():
+    ingest = runpy.run_path(str(ROOT / "scripts/c7_d126_gemma_weight_ingest.py"))
+    specs = (CURRENT / "specs.md").read_text()
+    for name in ("MODEL", "REVISION", "METADATA_SHA256"):
+        assert ingest[name] in specs
+    for name, shard in ingest["SHARDS"].items():
+        assert name in specs and shard["lfs_sha256"] in specs
+        assert f'{shard["bytes"]:,}'.replace(",", ".") in specs
+    workload = ROOT / "manifests/c7-d126-gemma31b-workload-v1.json"
+    assert hashlib.sha256(workload.read_bytes()).hexdigest() in specs
+
+
+def test_runpod_build_stops_on_each_cargo_failure(tmp_path):
+    body = (CURRENT / "runpod-tests.md").read_text()
+    build = re.search(r"run_step 1800 build bash -c '\n(.*?)\n'", body, re.S).group(1)
+    (tmp_path / "rust").mkdir()
+    # Replace compilers in this shell only: no build, downloads or provider calls.
+    stubs = ('cargo() { if [[ "$1" == "$FAIL_AT" ]]; then return 17; fi; };\n'
+             'rustc() { echo unexpected-later-command; };\n')
+    for failure in ("fetch", "build"):
+        run = subprocess.run(["bash", "-c", stubs + build], text=True,
+                             capture_output=True, timeout=5,
+                             env={**os.environ, "ROOT": str(tmp_path), "FAIL_AT": failure})
+        assert run.returncode == 17, run.stderr
+        assert "unexpected-later-command" not in run.stdout
+
+
+def test_runpod_manifest_records_relative_paths_sizes_hashes_and_refuses_overwrite(tmp_path):
+    body = (CURRENT / "runpod-tests.md").read_text()
+    snippets = re.findall(r"<<'PY'\n(.*?)\nPY(?:\n|$)", body, re.S)
+    script, = [snippet for snippet in snippets if "manifest = root / 'files.json'" in snippet]
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "weights").mkdir()
+    payloads = {"candidate.json": b"{}\n", "logs/a space.stdout": b"ok\n"}
+    for name, payload in payloads.items():
+        (tmp_path / name).write_bytes(payload)
+    (tmp_path / "weights/private.packed").write_bytes(b"exclude")
+    command = [sys.executable, "-c", script]
+    env = {**os.environ, "RUN": str(tmp_path)}
+    run = subprocess.run(command, env=env, capture_output=True, text=True, timeout=5)
+    assert run.returncode == 0, run.stderr
+    manifest = (tmp_path / "files.json").read_bytes()
+    assert json.loads(manifest) == [
+        {"path": name, "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
+        for name, payload in sorted(payloads.items())]
+    seal = (tmp_path / "files.json.sha256").read_bytes()
+    assert seal.decode() == hashlib.sha256(manifest).hexdigest() + "  files.json\n"
+    repeated = subprocess.run(command, env=env, capture_output=True, text=True, timeout=5)
+    assert repeated.returncode != 0 and "new bundle required" in repeated.stderr
+    assert (tmp_path / "files.json").read_bytes() == manifest
+    assert (tmp_path / "files.json.sha256").read_bytes() == seal

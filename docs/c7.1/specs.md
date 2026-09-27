@@ -17,6 +17,11 @@ Il [workload](../../manifests/c7-d126-gemma31b-workload-v1.json), SHA-256
 fissa i prompt dei tre tentativi O=0/150/300. Token speciali e template
 concorrono alla lunghezza; il test non aggiunge una tokenizzazione diversa.
 
+| Shard originale | Byte | SHA-256 completo |
+|---|---:|---|
+| `model-00001-of-00002.safetensors` | 49.784.788.364 | `186fa361e76abbb5f48ffb3d9965181a5da33522e39c25eb75d7241da1637aac` |
+| `model-00002-of-00002.safetensors` | 12.761.549.884 | `b78ae8294981a6d674c47f2261d34240b7539bbeafb4f7d0525f6167946e6da0` |
+
 Γ contiene le identità precedenti, una mappa di 772 esponenti W e 1.435
 esponenti semantici, le ricette numeriche, le tabelle certificate, i layout,
 i parametri PCS e i limiti pubblici. Gli esponenti sono in [-128,128].
@@ -125,6 +130,40 @@ d'ingest. La sola CLI Rust non certifica queste due proprietà.
 Lo storage offline non è l'arena della prova; workspace dei produttori
 e allocator restano distinti dai payload nominati. Confronto indipendente
 e congelamento seguono [runpod-tests](runpod-tests.md#validazione-e-congelamento-del-profilo).
+
+### Confronto indipendente da implementare
+
+Il CLI corrente restituisce token, intervalli, conteggi e picchi nominati,
+non i valori intermedi necessari a un confronto completo. Il componente
+mancante deve osservare l'esecuzione intera, senza cambiarne la semantica:
+
+- Collegare l'esportazione a `Trial::emit` in
+  [canonical_calibration.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs),
+  prima del rilascio delle righe; includere gli istogrammi e il padding
+  completati in `Trial::finish`, e KV finale in `fixed_run`.
+  Ogni dato deve identificare contesto, sorgente canonica e coordinate;
+  i conteggi attesi derivano dal profilo ricompilato, non dal dump.
+- Confrontare gli interi esatti con un calcolo Python indipendente,
+  riusando i riferimenti numerici della [semantica](#semantica-numerica)
+  e completando quelli mancanti. Coprire accumuli e arrotondamenti,
+  RMS, lookup, routing, padding, istogrammi, token e KV incluso l'ultimo
+  token. Rilanciare Rust o usare il pilot floating non è indipendenza.
+- Legare il report a candidata, packed, workload, tabelle e binari tramite
+  digest; dichiarare copertura attesa/ottenuta per sorgente nei tre contesti,
+  esito del confronto e primo errore. Confronti parziali, ID mancanti o
+  duplicati, coordinate errate, overflow e file troncati non ammettono Γ.
+- Elaborare per righe/blocchi con memoria e output limitati: nessuna A
+  canonica completa in RAM. I valori sono privati e restano fuori da Git
+  e dal transcript del protocollo; conservare solo evidenze piccole
+  revisionate. Tempo, disco e memoria del confronto vanno nel preventivo
+  della campagna, non in un prolungamento implicito.
+
+Prima dei pesi reali, verificare su input ridotti uguaglianza e rifiuto
+di valori alterati, omissioni, duplicazioni e troncamenti. Il punto
+d'ingresso CLI va aggiunto all'[esempio](../../rust/volta-pcs/examples/c71_calibration.rs)
+e al [wrapper](../../scripts/c71_calibrate.py) solo insieme a questi test
+e ai comandi aggiornati in runpod-tests. Questo è un contratto di lavoro
+da realizzare, non la descrizione di un comando già disponibile.
 
 ## Dati autenticati e stato
 

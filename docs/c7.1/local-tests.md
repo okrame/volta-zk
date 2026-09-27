@@ -39,6 +39,9 @@ applicare il limite in un subshell, così non vincola la compilazione:
 Il [controllo documentale](../../tests/test_c71_docs.py) verifica i cinque
 file operativi, i percorsi locali e le ancore, la mappa di migrazione,
 l'integrità delle copie congelate e i riferimenti ai test/codice.
+Controlla inoltre le identità degli input, la sintassi dei comandi RunPod,
+l'arresto della build su errore e il manifest su file temporanei piccoli,
+senza chiamare il provider o scaricare pesi.
 Le fonti congelate conservano i riferimenti originali secondo la
 [mappa storica](../c7.1-history/README.md#conservazione-e-mappa-dei-percorsi).
 

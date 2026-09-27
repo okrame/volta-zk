@@ -157,7 +157,7 @@ promuovere KV. Separatamente, il nuovo wrapper opt-in Seed6 completa
 **[un tentativo O=0 ridotto con AES reale](evidence.md#seed6-complete-reduced-native-proof)**,
 88.049 MAC Fp3 e promozione
 della stessa ricevuta nei due ruoli, con Snapshot/A densi piccoli ed ell=11.
-Ora passa anche O=0 con reader ordinato e Seed6 reale a **ell=2**, senza
+Ora passa anche [O=0 con reader ordinato e Seed6 reale](evidence.md#ordered-source-with-real-seed6) a **ell=2**, senza
 Snapshot/A densi. È una geometria ridotta di correttezza, non il profilo
 canonico ell=11 o il run AES a tre tentativi.
 
@@ -528,11 +528,11 @@ La geometria è legata alla handshake prima degli OT; il nonce deriva dai
 due seed sigillati. L'entry monouso ora riusa il journal B12: burn fsync
 prima di RNG, nessun retry/reopen e owner esclusivo fino al rilascio
 dello stato EA. Restano composizione ROM del seed, transcript del run,
-canale autenticato e collegamento alla proof; non è ancora
+canale autenticato e collegamento alla proof canonica; non è ancora
 il PCG canonico. Le riserve ora riusano le transizioni B12: burn dell'intero
 intervallo prima della prima riga, finestra streaming limitata e stop su
 errore/panic/esaurimento. La promozione viene dopo fsync, ma la ricevuta
-dei test è un fixture, non l'esito del verifier completo. Owner e Audit
+dei test del solo pool è un fixture, distinto dai positivi del wrapper completo. Owner e Audit
 restano contati nelle tre risposte (+5.120 B allineati nel piano).
 Le finestre ora generano batch di al massimo 4.096 righe: ordinano i
 termini pubblici e condividono i cammini della trie, conservando i prefissi

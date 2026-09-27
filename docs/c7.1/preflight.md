@@ -1920,10 +1920,10 @@ comuni, senza percorso speciale o coin PCS prefissati del test; il
 tentativo successivo O>0 termina senza modificare il predecessore accettato.
 Il confronto del nuovo Prepare controlla ogni byte contro Snapshot originale.
 
-Passa anche la proof congiunta con reader ordinato e Seed6 reale a
+Passa anche la [proof congiunta con reader ordinato e Seed6 reale](evidence.md#ordered-source-with-real-seed6) a
 t=4/h=19/**ell=2**: 264.147 righe base, 88.049 MAC Fp3 e ricevuta reale
-comune ai due journal, senza Snapshot/A densi. Il primo controllo termina
-in 47,32 s entro 60 s/2 GiB. I test reali densi e il profilo canonico
+comune ai due journal, senza Snapshot/A densi. Il run su SHA pulita termina
+in 47,43 s entro 60 s/2 GiB. I test reali densi e il profilo canonico
 mantengono ell=11: questo ridimensionamento serve soltanto al controllo
 CPU locale e non trasferisce il bound crittografico del profilo selezionato.
 Non è ancora O>0 ordinato, run AES a tre tentativi, Γ reale o picco completo.

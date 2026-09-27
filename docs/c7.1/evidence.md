@@ -1913,3 +1913,29 @@ I journal precedono le rispettive promozioni, non un commit distribuito
 atomico. Il record conserva anche i controlli preliminari su tree sporco
 e dichiara l'overlap finale Python/compilazione preliminare; nessuna coppia
 di suite di test viene eseguita in parallelo nel run di record.
+
+## Ordered source with real Seed6
+
+Il [record su SHA pulita `e9eab9c`](../../benchmarks/results/c71-ordered-seed6-2026-09-27-e9eab9c60538.json) conserva
+**dieci test Rust e uno Python**, seriali entro 60 s/2 GiB, e check
+non-test sia B12 ordinario sia reference Seed6. Lo stesso proprietario
+Prepare/pending/Verify/promozione ora gestisce Snapshot e reader ordinato;
+W/profili sono condivisi immutabilmente, le coin PCS vengono da OS RNG
+dopo la preparazione numerica. Il positivo ideale ordinato non usa più
+un percorso speciale del test; O>0 non implementato termina senza
+sostituire il predecessore già accettato. Il nuovo Prepare coincide
+byte per byte con la sorgente densa originale.
+
+Il positivo congiunto ordinato/Seed6 accetta una proof completa O=0
+con 88.049 MAC Fp3 e la stessa ricevuta nei due journal, senza Snapshot/A
+densi. Usa **t=4/h=19/ell=2**, esplicitamente ridotto per il controllo CPU,
+e termina in 47,43 s. Restano ell=11 per il profilo canonico e i controlli
+reali densi positivo/rifiuto tardivo, entrambi ripetuti. Passano inoltre
+shortage reale e regressioni W/KV/predecessore, incluso il fixture joint.
+
+Non sono credito crittografico del profilo canonico, run AES a tre tentativi,
+Γ reale, picco fisico o H100. Il record include il ledger PCG ridotto
+con ell=2, non lo sostituisce al canonico; i metadati/refcount Arc non
+sono dichiarati gratuiti o un risparmio misurato. Conserva l'errore iniziale
+di compilazione nei due argomenti `Option<&Arc<Profile>>`, risolto con
+`as_ref` senza modificare le relazioni del fixture.

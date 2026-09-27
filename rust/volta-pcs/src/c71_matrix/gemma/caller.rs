@@ -4,7 +4,9 @@
 use super::*;
 
 component_wire!(Proof { cohorts, products });
-use crate::c71_matrix::{p0, range, record_values, AttemptContext, Auth, C61Commitment, Fs, Key};
+use crate::c71_matrix::{
+    eq, p0, range, record_values, signed, AttemptContext, Auth, C61Commitment, Fs, Key,
+};
 
 pub(in crate::c71_matrix) struct P0Statement<'a> {
     pub weights: &'a C61Commitment,
@@ -66,6 +68,75 @@ pub(in crate::c71_matrix) struct Auxiliary {
 }
 
 impl Auxiliary {
+    pub fn compact(
+        &self,
+        plan: &Plan,
+        ordinal: usize,
+        point: &[Fp3],
+        weight: impl Fn(usize, usize, usize) -> i64,
+        value: impl Fn(usize, usize, usize) -> i64,
+    ) -> Result<Compact, String> {
+        let cohort = plan.cohorts.get(ordinal).ok_or("Gemma P0 compact cohort missing")?;
+        let output_source = self.layout.sources.get(ordinal).ok_or("Gemma P0 output missing")?;
+        if self.weight_layout != plan.layout_digest
+            || point.len() != bits(cohort.rows) + bits(cohort.columns)
+            || (output_source.rows, output_source.cols) != (cohort.rows, cohort.columns)
+        {
+            return Err("Gemma P0 compact layout or point differs".into());
+        }
+        let (row_point, column_point) = point.split_at(bits(cohort.rows));
+        let (row_weights, column_weights) = (eq(row_point), eq(column_point));
+        let output = (0..cohort.rows).fold(Fp3::ZERO, |total, row| {
+            total
+                + (0..cohort.columns).fold(Fp3::ZERO, |total, column| {
+                    total
+                        + row_weights[row]
+                            * column_weights[column]
+                            * signed(value(ordinal, row, column))
+                })
+        });
+        if cohort.kind == Kind::Lookup {
+            return Ok(Compact { output, x: Vec::new(), w: Vec::new() });
+        }
+        let route = plan.input_route(ordinal)?;
+        let input = *ordinal
+            .checked_sub(1)
+            .and_then(|index| self.input_sources.get(index))
+            .ok_or("Gemma P0 compact input missing")?;
+        let input_source = self.layout.sources.get(input).ok_or("Gemma P0 input source missing")?;
+        let weight_source =
+            plan.sources.get(cohort.tensor).ok_or("Gemma P0 weight source missing")?;
+        let norm = cohort.kind == Kind::Norm;
+        let inner = if norm { cohort.columns } else { cohort.inner };
+        if (input_source.rows, input_source.cols) != (route.rows, route.columns)
+            || (weight_source.rows, weight_source.cols)
+                != (if norm { 1 } else { cohort.columns }, inner)
+        {
+            return Err("Gemma P0 compact source shape differs".into());
+        }
+        let mut inputs = vec![Fp3::ZERO; inner.next_power_of_two()];
+        let mut weights = inputs.clone();
+        for column in 0..inner {
+            for row in 0..cohort.rows {
+                let index = row * inner + column;
+                inputs[column] += row_weights[row]
+                    * signed(value(
+                        input,
+                        route.row_offset + index / route.columns,
+                        index % route.columns,
+                    ));
+            }
+            weights[column] = if norm {
+                signed(weight(cohort.tensor, 0, column))
+            } else {
+                (0..cohort.columns).fold(Fp3::ZERO, |total, row| {
+                    total + column_weights[row] * signed(weight(cohort.tensor, row, column))
+                })
+            };
+        }
+        Ok(Compact { output, x: inputs, w: weights })
+    }
+
     pub fn forms<T>(&self, plan: &Plan, pending: &PendingP0<T>) -> Result<Vec<Vec<Cube>>, String> {
         if self.weight_layout != plan.layout_digest
             || pending.cuts.len() != plan.cohorts.len()
@@ -648,6 +719,95 @@ mod tests {
         assert_eq!(malformed_rows.len(), plan.p0_required());
     }
 
+    #[test]
+    fn c71_b12_gemma_compact_original_getters_pad_nonbinary_dimensions_and_reject_context() {
+        let sources = vec![
+            Source { name: "embedding".into(), rows: 5, cols: 3, packed_offset: 0 },
+            Source { name: "matrix".into(), rows: 5, cols: 3, packed_offset: 15 },
+        ];
+        let (tiles, live) = super::tiles(&sources);
+        let mut plan = Plan {
+            sources,
+            tiles,
+            live,
+            layout_digest: [63; 32],
+            cohorts: vec![
+                Cohort {
+                    layer: None,
+                    operation: "embedding_lookup".into(),
+                    tensor: 0,
+                    kind: Kind::Lookup,
+                    rows: 3,
+                    columns: 3,
+                    inner: 0,
+                    heads: 1,
+                    producer: (None, "token_input".into()),
+                    members: Vec::new(),
+                    cut_byte_offset: 0,
+                },
+                Cohort {
+                    layer: None,
+                    operation: "matrix".into(),
+                    tensor: 1,
+                    kind: Kind::Matrix,
+                    rows: 3,
+                    columns: 5,
+                    inner: 3,
+                    heads: 1,
+                    producer: (None, "embedding_lookup".into()),
+                    members: Vec::new(),
+                    cut_byte_offset: 0,
+                },
+            ],
+        };
+        let auxiliary = plan.auxiliary_layout().unwrap();
+        let point = vec![signed(2); bits(3) + bits(5)];
+        let weight = |id: usize, row: usize, column: usize| {
+            assert!(id == 1 && row < 5 && column < 3);
+            (row * 3 + column) as i64 - 7
+        };
+        let value = |id: usize, row: usize, column: usize| {
+            let source = &auxiliary.layout.sources[id];
+            assert!(row < source.rows && column < source.cols);
+            (id * 3 + row * 5 + column) as i64 - 11
+        };
+        let result = auxiliary.compact(&plan, 1, &point, weight, value).unwrap();
+        assert_eq!((result.x.len(), result.w.len()), (4, 4));
+        assert_eq!((result.x[3], result.w[3]), (Fp3::ZERO, Fp3::ZERO));
+        let (row_point, column_point) = point.split_at(bits(3));
+        let mut output = Fp3::ZERO;
+        for row in 0..3 {
+            for column in 0..5 {
+                output += eq_index(row_point, row)
+                    * eq_index(column_point, column)
+                    * signed(value(1, row, column));
+            }
+        }
+        assert_eq!(result.output, output);
+        for column in 0..3 {
+            assert_eq!(
+                result.x[column],
+                (0..3).fold(Fp3::ZERO, |total, row| total
+                    + eq_index(row_point, row)
+                        * signed(value(auxiliary.input_sources[0], row, column)))
+            );
+            assert_eq!(
+                result.w[column],
+                (0..5).fold(Fp3::ZERO, |total, row| total
+                    + eq_index(column_point, row) * signed(weight(1, row, column)))
+            );
+        }
+        let absent = |_, _, _| -> i64 { panic!("invalid context reached private source") };
+        assert!(auxiliary.compact(&plan, 2, &point, absent, absent).is_err());
+        assert!(auxiliary.compact(&plan, 1, &point[1..], absent, absent).is_err());
+        assert!(auxiliary.compact(&plan, 1, &[Fp3::ZERO; 6], absent, absent).is_err());
+        plan.layout_digest[0] ^= 1;
+        assert!(auxiliary.compact(&plan, 1, &point, absent, absent).is_err());
+        println!(
+            "C71_P0_COMPACT original_getters=true nonbinary_inner=3 canonical_execution=false"
+        );
+    }
+
     fn virtual_model(plan: &Plan, packed: &[i16]) -> Model {
         let mut values = vec![0; 1024];
         for (i, v) in values.iter_mut().enumerate().take(plan.live) {
@@ -818,48 +978,79 @@ mod tests {
                         .iter()
                         .enumerate()
                         .map(|(ordinal, c)| {
-                            let (r, s) = points[ordinal].split_at(bits(c.rows));
-                            let output =
-                                cuts[ordinal].iter().enumerate().fold(Fp3::ZERO, |z, (i, &v)| {
-                                    z + eq_index(r, i / c.columns)
-                                        * eq_index(s, i % c.columns)
-                                        * signed(i64::from(v))
-                                });
-                            if c.kind == Kind::Lookup {
-                                return Compact { output, x: Vec::new(), w: Vec::new() };
-                            }
-                            let route = plan.input_route(ordinal).unwrap();
-                            let source = plan
-                                .cohorts
-                                .iter()
-                                .position(|c| (c.layer, c.operation.clone()) == route.producer)
+                            let expected = (|| {
+                                let (r, s) = points[ordinal].split_at(bits(c.rows));
+                                let output = cuts[ordinal].iter().enumerate().fold(
+                                    Fp3::ZERO,
+                                    |z, (i, &v)| {
+                                        z + eq_index(r, i / c.columns)
+                                            * eq_index(s, i % c.columns)
+                                            * signed(i64::from(v))
+                                    },
+                                );
+                                if c.kind == Kind::Lookup {
+                                    return Compact { output, x: Vec::new(), w: Vec::new() };
+                                }
+                                let route = plan.input_route(ordinal).unwrap();
+                                let source = plan
+                                    .cohorts
+                                    .iter()
+                                    .position(|c| (c.layer, c.operation.clone()) == route.producer)
+                                    .unwrap();
+                                let inner =
+                                    if c.kind == Kind::Matrix { c.inner } else { c.columns };
+                                let mut x = vec![Fp3::ZERO; inner.next_power_of_two()];
+                                let mut w = x.clone();
+                                for k in 0..inner {
+                                    for row in 0..c.rows {
+                                        x[k] += eq_index(r, row)
+                                            * signed(i64::from(
+                                                cuts[source][route.row_offset * route.columns
+                                                    + row * inner
+                                                    + k],
+                                            ));
+                                    }
+                                    let source = &plan.sources[c.tensor];
+                                    for j in 0..source.rows {
+                                        let coefficient = if c.kind == Kind::Norm {
+                                            Fp3::ONE
+                                        } else {
+                                            eq_index(s, j)
+                                        };
+                                        w[k] += coefficient
+                                            * signed(i64::from(
+                                                packed[source.packed_offset + j * source.cols + k],
+                                            ));
+                                    }
+                                }
+                                Compact { output, x, w }
+                            })();
+                            let actual = auxiliary
+                                .compact(
+                                    &plan,
+                                    ordinal,
+                                    &points[ordinal],
+                                    |id, row, column| {
+                                        let source = &plan.sources[id];
+                                        i64::from(
+                                            packed
+                                                [source.packed_offset + row * source.cols + column],
+                                        )
+                                    },
+                                    |id, row, column| {
+                                        let source = &auxiliary.layout.sources[id];
+                                        i64::from(
+                                            auxiliary_packed
+                                                [source.packed_offset + row * source.cols + column],
+                                        )
+                                    },
+                                )
                                 .unwrap();
-                            let inner = if c.kind == Kind::Matrix { c.inner } else { c.columns };
-                            let mut x = vec![Fp3::ZERO; inner.next_power_of_two()];
-                            let mut w = x.clone();
-                            for k in 0..inner {
-                                for row in 0..c.rows {
-                                    x[k] += eq_index(r, row)
-                                        * signed(i64::from(
-                                            cuts[source][route.row_offset * route.columns
-                                                + row * inner
-                                                + k],
-                                        ));
-                                }
-                                let source = &plan.sources[c.tensor];
-                                for j in 0..source.rows {
-                                    let coefficient = if c.kind == Kind::Norm {
-                                        Fp3::ONE
-                                    } else {
-                                        eq_index(s, j)
-                                    };
-                                    w[k] += coefficient
-                                        * signed(i64::from(
-                                            packed[source.packed_offset + j * source.cols + k],
-                                        ));
-                                }
-                            }
-                            Compact { output, x, w }
+                            assert_eq!(
+                                (actual.output, &actual.x, &actual.w),
+                                (expected.output, &expected.x, &expected.w)
+                            );
+                            actual
                         })
                         .collect::<Vec<_>>())
                 },

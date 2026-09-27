@@ -341,6 +341,19 @@ né legge pesi reali. Le premesse del bound del verificatore non cambiano.
 
 ### Canonical verifier body
 
+Il preparatore compatto P0 del runner ridotto ora riusa
+`caller::Auxiliary::compact`, che deriva larghezze e route dai descrittori
+anziché assumere hidden=2. Valuta C originale, riduce X sulle righe e W
+sulle colonne, conserva padding zero fino alla potenza di due e applica
+il reshape testa/token e il row-offset del tied head. Non riceve MAC o
+randomness privata di prova; i punti sono quelli pubblici del caller P0.
+Layout, dimensione del punto e forme delle sorgenti sono controllati.
+Il confronto piccolo con PCS originali copre il reshape a due teste e
+le righe finali selezionate; un oracolo separato controlla inner=3.
+È il provider numerico comune di un cohort, non il Prepare/prover canonico
+completo né il piano fisico P0 a quattro letture. Il runner ridotto conserva
+ancora il Vec dei compact; nessun nuovo credito memoria/tempo deriva dal port.
+
 Il [corpo canonico](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
 esegue le chiamate di security §3 sui descrittori di `Canonical`, con un
 unico Fs costruito dal wrapper interno. Riusa `Reader` e `Batch` del percorso

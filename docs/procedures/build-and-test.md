@@ -123,6 +123,13 @@ socketpair locale; il marker `C71_CANONICAL_SEED6` non indica una proof
 canonica accettata. Il secondo usa chiavi diagnostiche lazy nel solo
 prefisso fino al rifiuto P0, non una riserva reale completa.
 
+Per il provider numerico P0 comune usare separatamente
+`c71_b12_gemma_compact_original_getters` e
+`c71_b12_gemma_caller_closes_selected_inputs`, poi le regressioni native
+streaming/composed. Il primo controlla padding e dimensioni non potenze
+di due, il secondo le PCS originali con reshape a teste e tied head.
+Non eseguono P0 sui pesi reali o l'intero modello canonico.
+
 Per il raccordo streaming critico, dopo la build PCS mirata, eseguire
 separatamente `sourcewise_range_matches_dense_original_wire_and_mac`,
 `c71_b12_sourcewise_linear_matches_dense_wire_fs_point_and_original_mac`,

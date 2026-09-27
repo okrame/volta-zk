@@ -496,45 +496,20 @@ pub(super) fn compact(
     points: &[Vec<Fp3>],
     value: impl Fn(usize, usize, usize) -> i64,
 ) -> Result<Vec<caller::Compact>, String> {
-    p.plan
-        .cohorts
+    if points.len() != p.plan.cohorts.len() {
+        return Err("Gemma P0 compact point census differs".into());
+    }
+    points
         .iter()
         .enumerate()
-        .zip(points)
-        .map(|((i, c), point)| {
-            let (r, s) = point.split_at(bits(c.rows));
-            let (er, es) = (eq(r), eq(s));
-            let output = (0..c.rows)
-                .map(|r| {
-                    (0..c.columns)
-                        .map(|s| er[r] * es[s] * signed(value(i, r, s)))
-                        .fold(Fp3::ZERO, |a, b| a + b)
-                })
-                .fold(Fp3::ZERO, |a, b| a + b);
-            if c.kind == Kind::Lookup {
-                return Ok(caller::Compact { output, x: Vec::new(), w: Vec::new() });
-            }
-            let route = p.plan.input_route(i)?;
-            let input = p.bytes().scalar.input_sources[i - 1];
-            let x = (0..2)
-                .map(|j| {
-                    (0..c.rows)
-                        .map(|r| er[r] * signed(value(input, r + route.row_offset, j)))
-                        .fold(Fp3::ZERO, |a, b| a + b)
-                })
-                .collect();
-            let weights = (0..2)
-                .map(|j| {
-                    if c.kind == Kind::Norm {
-                        signed(w.weight(p, c.tensor, 0, j))
-                    } else {
-                        (0..2)
-                            .map(|s| es[s] * signed(w.weight(p, c.tensor, s, j)))
-                            .fold(Fp3::ZERO, |a, b| a + b)
-                    }
-                })
-                .collect();
-            Ok(caller::Compact { output, x, w: weights })
+        .map(|(ordinal, point)| {
+            p.bytes().scalar.compact(
+                &p.plan,
+                ordinal,
+                point,
+                |id, row, column| w.weight(p, id, row, column),
+                &value,
+            )
         })
         .collect()
 }

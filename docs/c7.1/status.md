@@ -134,7 +134,7 @@ virtuale densa. Range simmetrico e chiusura W passano dall'adapter comune
 già usato per A. Il controllo usa t=4/h=19/ell=2; non è ancora
 installazione canonica, tre accettazioni reali o picco fisico.
 
-`ReplayModel` ora conserva la cache Merkle iniziale e i pad di W/A;
+La [cache iniziale verificata](evidence.md#retained-initial-replay-oracle) conserva la tree Merkle e i pad di W/A;
 gli handle condividono la stessa tree senza rieseguire il commitment
 prima della proof. Le root storiche conservano ciascuna la propria
 cache; coin della proof, correlazioni e budget di esposizione non cambiano.

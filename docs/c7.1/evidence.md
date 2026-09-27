@@ -2267,3 +2267,26 @@ dell'output, query ordinate, sali/digest dei sottoalberi e cache superiore
 coesistono; `open_subtree_bytes_each` non descrive tutto questo picco.
 Nessun cap canonico, credito arena o scansione unica dell'intera PCS
 è attribuito al raccordo ridotto; Γ e gate pre-spesa restano aperti.
+
+## Retained initial replay oracle
+
+Il [record su SHA pulita `54eff48`](../../benchmarks/results/c71-replay-retained-2026-09-27-54eff481956c.json)
+conserva tredici test Rust e tre Python, seriali entro 60 s/2 GiB, più
+check non-test B12/Seed6. `ReplayModel` conserva la tree iniziale e i pad,
+condividendo gli stessi oggetti fra handle senza riletture al momento
+della loro creazione. Il fixture verifica ownership, riproducibilità
+di righe/sali/frontiera e rifiuto di una sorgente alterata. Tre handle
+locali non costituiscono tre proof autenticate o nuove esposizioni ammesse.
+
+La parità WHIR D10 ora usa il medesimo modello/cache, confronta i pad
+originali e conserva wire/FS/MAC; passano anche i confronti sulle A
+della storia numerica O=0/2/4. Il test di lifecycle verifica ancora le
+generazioni foldate: i due panic catturati sono rifiuti attesi del fixture.
+Il positivo streaming ideale termina in 14,88 s; O=0 W replay/A ordinata
+con Seed6 reale ell=2 in 35,26 s. Sono durate CPU ridotte, non tempi H100.
+
+La cache e i pad restano vivi per ogni W/A posseduta, sommati alle altre
+root attive e ai temporanei della prova. Non è rilascio di memoria né
+nuovo margine arena. Coin della proof, correlazioni e budget del wrapper
+non cambiano; le generazioni foldate conservano il rilascio esplicito.
+L'integrazione canonica, Γ reale, ledger e gate pre-spesa restano aperti.

@@ -1974,7 +1974,7 @@ nessun risparmio canonico o picco fisico è accreditato dal solo raccordo.
 Il positivo ridotto O=0 W replay/A ordinata usa Seed6 reale ell=2 e termina
 in 47,56 s entro il limite locale; non è il run canonico o tre accettazioni.
 
-Il modello replay ora conserva cache superiore, offset/snapshot dei sali
+Il [modello replay verificato](evidence.md#retained-initial-replay-oracle) ora conserva cache superiore, offset/snapshot dei sali
 e pad iniziali invece di rifare il commitment all'inizio della proof.
 Gli handle condividono la tree; ogni apertura rigenera ancora i sottoalberi
 richiesti e controlla le loro root. Le coin della proof e le correlazioni

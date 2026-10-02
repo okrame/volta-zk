@@ -97,6 +97,8 @@ e `credit:false` restano corretti anche quando le fixture passano.
 Il parser della traccia completa la validazione strutturale; senza il
 produttore numerico Python sui valori reali non costituisce il confronto
 indipendente e non ammette Γ. Il
+[record degli operatori indipendenti](../../benchmarks/results/c71-independent-operators-2026-10-02-2ed8e2091515.json)
+limita esplicitamente la parità corrente alla fixture ridotta. Il
 [record pulito](../../benchmarks/results/c71-calibration-trace-2026-10-02-f47b22d7a4c5.json)
 conserva i test dell'export e dei rifiuti con questo limite esplicito. Il
 [record dei permessi](../../benchmarks/results/c71-calibration-trace-permissions-2026-10-02-a0f46bf8ca7f.json)

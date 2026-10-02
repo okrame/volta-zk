@@ -1,0 +1,37 @@
+{
+  "schema": "volta-c71-independent-operators-v1",
+  "date": "2026-10-02",
+  "git_commit": "2ed8e209151512f1f2d540f3950fd6d81a7d7422",
+  "git_dirty": false,
+  "credit": false,
+  "scope": "Independent Python integer operators and reduced exact-frame fixture; not the full-model driver, a real-checkpoint comparison, calibrated Gamma, GPU execution, or E2E proof.",
+  "operators": [
+    "exact matrix W@x using binary64 BLAS under an analytic absolute partial-sum bound below 2^53",
+    "signed i48 to symmetric-i16 RNE",
+    "affine",
+    "weighted and unweighted RMS",
+    "RoPE Q30 plus RNE",
+    "EXP30 softmax and ratio RNE",
+    "lowest-ID argmax with biased-u16 slack",
+    "signed original-width and u32 codecs"
+  ],
+  "checks": [
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration_oracle.py",
+      "exit_code": 0,
+      "tests_passed": 4
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration_trace.py",
+      "exit_code": 0,
+      "tests_passed": 8
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py",
+      "exit_code": 0,
+      "tests_passed": 7
+    }
+  ],
+  "full_model_driver_complete": false,
+  "verdict": "PASS_REDUCED_ONLY"
+}

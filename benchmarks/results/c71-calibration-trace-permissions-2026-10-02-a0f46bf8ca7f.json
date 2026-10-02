@@ -1,0 +1,39 @@
+{
+  "schema": "volta-c71-calibration-trace-permissions-v1",
+  "date": "2026-10-02",
+  "git_commit": "a0f46bf8ca7f8992ab2dfb72aa14fa7295e3a861",
+  "git_dirty": false,
+  "credit": false,
+  "corrects": "c71-calibration-trace-2026-10-02-f47b22d7a4c5.json",
+  "scope": "Private trace file permissions and publication behavior; not a full-model numeric comparison, calibrated Gamma, GPU execution, or E2E proof.",
+  "finding": "The original trace file inherited the process umask and could retain group/other read bits after atomic publication.",
+  "resolution": "Both the native create-new writer and the Python publication wrapper force mode 0600. The wrapper still removes staged partial output on timeout and rolls back a published trace if report publication fails.",
+  "checks": [
+    {
+      "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-b12-pcs --lib --no-run",
+      "exit_code": 0
+    },
+    {
+      "command": "rust/target/debug/deps/volta_pcs-cdd1f352d01f43ad c71_calibration_trace_codec_is_framed_and_fail_closed --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "tests_passed": 1,
+      "tests_filtered": 427
+    },
+    {
+      "command": "C71_CALIBRATION_BINARY=rust/target/debug/examples/c71_calibration .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py -k trace_mode",
+      "exit_code": 0,
+      "tests_passed": 2,
+      "tests_deselected": 14
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py",
+      "exit_code": 0,
+      "tests_passed": 7
+    },
+    {
+      "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-b12-pcs --example c71_calibration -- -D clippy::correctness -D clippy::suspicious",
+      "exit_code": 0
+    }
+  ],
+  "verdict": "PASS"
+}

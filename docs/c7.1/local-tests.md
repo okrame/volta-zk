@@ -97,7 +97,9 @@ Il parser della traccia completa la validazione strutturale; senza il
 produttore numerico Python sui valori reali non costituisce il confronto
 indipendente e non ammette Γ. Il
 [record pulito](../../benchmarks/results/c71-calibration-trace-2026-10-02-f47b22d7a4c5.json)
-conserva i test dell'export e dei rifiuti con questo limite esplicito.
+conserva i test dell'export e dei rifiuti con questo limite esplicito. Il
+[record dei permessi](../../benchmarks/results/c71-calibration-trace-permissions-2026-10-02-a0f46bf8ca7f.json)
+collega la correzione successiva che forza `0600` nel writer e nel wrapper.
 I report GPU simulati dei test FFT non sono misure CUDA.
 
 L'audit del fork censisce 96 sorgenti e 26 delta revisionati, inclusi

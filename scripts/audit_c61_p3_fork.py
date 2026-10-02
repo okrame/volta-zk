@@ -14,9 +14,11 @@ THIRD_PARTY = ROOT / "rust" / "third_party"
 MANIFEST = THIRD_PARTY / "C61_P3_UPSTREAM_SHA256SUMS"
 REVISION = "66e290615de1858f2f2f6a804158064c406cda1c"
 
-# Initial C7.1 B2 review at 2d949dc; B12 common-pad review: active design §10.
+# Initial C7.1 B2 review at 2d949dc; B12 common-pad and live salt-stream
+# reviews: active specs and rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs.
 # Pin content, not just filenames: a later edit requires another explicit review.
 REVIEWED_DELTAS = {
+    "merkle-tree/src/hiding_mmcs.rs": "96b60d03788ed158d744aeffbdbf74c836e49f7b1bd1d76c197c296ce94d73a4",
     "merkle-tree/src/merkle_tree.rs": "fbf4e1a5d2a35056ea7c791ed51c732f1157f8c760cd3b86d0f95752fb9ec10d",
     "sumcheck/src/strategy.rs": "f57d565614913fd4c73150c56947e48219239c360d41cdc826702c10f6545199",
     "sumcheck/src/zk/data.rs": "d232f1849fcfeba844b54892bb225fddca665dd5f18347b950ea710262ecda9e",
@@ -35,11 +37,11 @@ REVIEWED_DELTAS = {
     "whir/src/pcs/zk/code_switch.rs": "62c939f65cab7e951e820b322c2491e38b342f7921b156a8ecd4c706cba0a0d4",
     "whir/src/pcs/zk/committer.rs": "4c7c86c4ff3236d0aeae88c36ad33262646693914d3f1ba712237d5fa33077e7",
     "whir/src/pcs/zk/config.rs": "fe4c304e367f99ae5d9bba28c5bf1d10d87706420bdfc2c41cf152bd7fc05320",
-    "whir/src/pcs/zk/mod.rs": "3e7155de6df7f4c3b15c0f0bddc32d239f4b6fb2ae1debc3b0ec20e2ee36d69e",
+    "whir/src/pcs/zk/mod.rs": "13ec481db27c9db647ba2ec665ced70281cbe94d81aaeb49667b709bebb35e06",
     "whir/src/pcs/zk/proof.rs": "313dd6bb3b67e0504dc0d546c41c258be12a79d88a8af90f82700b0feb17c0a1",
-    "whir/src/pcs/zk/prover/data.rs": "91e2116a8d6d986e20cde36936e562755ee30951dd055388c1b11e2da62c11fa",
+    "whir/src/pcs/zk/prover/data.rs": "af84d5fcab44180ebcdb246f90a941e33ca50911ce5b0e408fbf3e938360ea6f",
     "whir/src/pcs/zk/prover/masks.rs": "dae258f8cd5e717d864b824daee062473b545b0be317e5df12ea831ad98488ba",
-    "whir/src/pcs/zk/prover/mod.rs": "07b24111703e3c6af8a3bc6417f3f7b8e40fd27977d39bdfa52d45933c101b10",
+    "whir/src/pcs/zk/prover/mod.rs": "be3ab299a30e9d15b42e93b37a5859f64949deaa29608816238be8d1e27aac45",
     "whir/src/pcs/zk/verifier/masks.rs": "6e808029b7eee32ea9e51db75c441df5a89461ead6b827311ae227b9e5e4cb21",
     "whir/src/pcs/zk/verifier/mod.rs": "8dcbab319ba34669d713cacd72b1a5e98cae49d89d627c46bd879b8229e792bd",
 }
@@ -106,6 +108,39 @@ def actual_sources() -> set[str]:
 
 
 def require_source_guards() -> None:
+    hiding_mmcs = (CRATES["merkle-tree"] / "src/hiding_mmcs.rs").read_text()
+    replay_tree = (ROOT / "rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs").read_text()
+    private_rng_calls = sum(
+        path.read_text().count(".with_private_rng(")
+        for path in (ROOT / "rust/volta-pcs/src").rglob("*.rs")
+    )
+    if hiding_mmcs.count("pub fn with_private_rng") != 1 or private_rng_calls != 1:
+        raise SystemExit("live salt-stream access must remain one reviewed replay-tree call")
+    if replay_tree.count(".with_private_rng(") != 1:
+        raise SystemExit("reviewed replay tree no longer owns the live salt-stream access")
+
+    replay_data = (CRATES["whir"] / "src/pcs/zk/prover/data.rs").read_text()
+    replay_prover = (CRATES["whir"] / "src/pcs/zk/prover/mod.rs").read_text()
+    replay_backend = (ROOT / "rust/volta-pcs/src/c71_matrix/b12/replay.rs").read_text()
+    if "pub struct ZkWhirReplayHandle(Box<dyn Any + Send + Sync>)" not in replay_data:
+        raise SystemExit("WHIR replay handle is no longer opaque prover-local ownership")
+    if replay_prover.count("oracle.release_replay(handle)?;") != 2:
+        raise SystemExit("WHIR replay handles must be released after rounds and base case")
+    for required in (
+        "ZkRoundData::Replay(initial_handle)",
+        "oracle.open_replay(handle, &stir_indexes, &batch.randomness)?",
+        "oracle.open_replay(handle, positions, &batch.randomness)",
+    ):
+        if required not in replay_prover:
+            raise SystemExit(f"WHIR replay lifecycle guard missing: {required}")
+    for required in (
+        "mmcs.bind(indices, &rows, &proof);",
+        "drop(tree); // no opening callback survives when the generation is released",
+        "lease.release()?;",
+    ):
+        if required not in replay_backend:
+            raise SystemExit(f"native WHIR replay guard missing: {required}")
+
     proof = (CRATES["whir"] / "src/pcs/zk/proof.rs").read_text()
     prover = (CRATES["whir"] / "src/pcs/zk/prover/mod.rs").read_text()
     verifier = (CRATES["whir"] / "src/pcs/zk/verifier/mod.rs").read_text()
@@ -233,8 +268,8 @@ def build_report() -> dict[str, object]:
         raise SystemExit(f"fork source census mismatch: missing={missing}, extra={extra}")
     if len(expected) != 96:
         raise SystemExit(f"upstream source census changed: expected 96, got {len(expected)}")
-    if len(ALLOWED_DELTAS) != 25:
-        raise SystemExit("reviewed C7.1 delta census must remain exactly 25 files")
+    if len(ALLOWED_DELTAS) != 26:
+        raise SystemExit("reviewed C7.1 delta census must remain exactly 26 files")
 
     changed: list[str] = []
     for relative, upstream_hash in sorted(expected.items()):
@@ -266,7 +301,7 @@ def build_report() -> dict[str, object]:
         "credit": False,
         "scope": "pinned source provenance and textual guards; not protocol security or native execution",
         "initial_reviewed_runtime_commit": "2d949dc",
-        "subsequent_review": "B12 common switch-mask pad; design §10; exact hashes in REVIEWED_DELTAS",
+        "subsequent_review": "B12 common switch-mask pad and live salt-stream replay; exact hashes in REVIEWED_DELTAS",
         "historical_manifest_source_files": 87,
         "merkle_dependency_source_files": 9,
         "reviewed_delta_content_pinned": True,
@@ -282,6 +317,8 @@ def build_report() -> dict[str, object]:
         "claimless_strict_codec_guards": True,
         "private_entropy_driver_source_guards": True,
         "durable_private_entropy_journal_source_guards": True,
+        "live_salt_stream_single_caller_guard": True,
+        "sourcewise_replay_lifecycle_guards": True,
         "verdict": "C71_PINNED_FORK_PROVENANCE_PASS",
     }
 

@@ -79,7 +79,7 @@ def test_b1_rejection_preserves_failed_preflight_and_unknown_complete_costs():
     reuse = result["whir_reuse_assessment"]
     provenance = reuse["provenance"]
     assert provenance["upstream_source_files"] == 96
-    assert provenance["modified_source_files"] == provenance["registered_deltas"] == 25
+    assert provenance["modified_source_files"] == provenance["registered_deltas"] == 26
     assert provenance["unregistered_deltas"] == []
     assert provenance["audit_error"] is None and provenance["source_guard_error"] is None
     stopped = result["B1_provenance_at_stop"]

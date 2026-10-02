@@ -1,0 +1,54 @@
+{
+  "schema": "volta-c71-oracle-plan-audit-v1",
+  "date": "2026-10-02",
+  "git_commit": "55423e496cfc201af66ccfd610a0f7b9e0acb122",
+  "git_dirty": false,
+  "credit": false,
+  "scope": "Canonical public operation-plan export and independent Python structural validation; not full numeric execution, a real-checkpoint comparison, calibrated Gamma, GPU execution, or an E2E proof.",
+  "plan": {
+    "schema": "volta-c71-calibration-oracle-plan-v1",
+    "json_bytes_for_zero_exponent_candidate": 4022568,
+    "contexts": [
+      {"old_tokens": 0, "sources": 3471, "weights": 772, "steps": 2328, "kv_sources": 120},
+      {"old_tokens": 150, "sources": 3471, "weights": 772, "steps": 2328, "kv_sources": 120},
+      {"old_tokens": 300, "sources": 3471, "weights": 772, "steps": 2328, "kv_sources": 120}
+    ],
+    "operator_kinds": [
+      "embedding", "matrix", "norm", "rne", "affine", "gelu", "gate",
+      "rope", "qk", "softmax", "pv", "softcap", "argmax"
+    ],
+    "validated_invariants": [
+      "duplicate-free JSON and exact status/context schemas",
+      "contiguous non-overlapping packed-W intervals covering 61394690560 bytes",
+      "contiguous unique source IDs and stable cross-context identities",
+      "single-producer topological DAG with complete source coverage",
+      "operator-specific keys, arities, references and canonical parameters",
+      "stable DAG across contexts except the canonical RoPE start position"
+    ]
+  },
+  "checks": [
+    {
+      "command": "CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2 timeout -k 5s 60s cargo clippy --offline --locked -j1 -p volta-pcs --features c71-b12-pcs --example c71_calibration -- -D clippy::correctness -D clippy::suspicious",
+      "exit_code": 0,
+      "note": "Only pre-existing lints outside the denied correctness and suspicious groups were emitted."
+    },
+    {
+      "command": "C71_CALIBRATION_BINARY=$PWD/rust/target/debug/examples/c71_calibration PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/scripts .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py tests/test_c71_calibration_oracle.py tests/test_c71_calibration_trace.py",
+      "exit_code": 0,
+      "tests_passed": 28
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/scripts .venv/bin/python - <oracle-plan census script>",
+      "exit_code": 0,
+      "stdout": "{\"bytes\": 4022568, \"contexts\": [{\"old_tokens\": 0, \"sources\": 3471, \"weights\": 772, \"steps\": 2328, \"kv_sources\": 120}, {\"old_tokens\": 150, \"sources\": 3471, \"weights\": 772, \"steps\": 2328, \"kv_sources\": 120}, {\"old_tokens\": 300, \"sources\": 3471, \"weights\": 772, \"steps\": 2328, \"kv_sources\": 120}]}"
+    }
+  ],
+  "non_code_failure": {
+    "command": "python3 -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py tests/test_c71_calibration_oracle.py tests/test_c71_calibration_trace.py",
+    "exit_code": 2,
+    "tests_collected": 0,
+    "reason": "The system Python lacks NumPy; the prescribed project .venv invocation above passed."
+  },
+  "full_model_driver_complete": false,
+  "verdict": "PASS_PLAN_ONLY"
+}

@@ -20,7 +20,7 @@ definisce i controlli piccoli. Non occorre recuperare istruzioni dall'archivio.
 
 | Ordine | Disponibile | Lavoro e condizione di uscita |
 |---|---|---|
-| 1. Preparare il confronto, localmente | Ingest W, inizializzatore delle scale, tabelle certificate, replay intero CPU, export `C71TRC01`, validatore strutturale e primitive indipendenti su fixture ridotta | Implementare e testare il [driver numerico indipendente completo](specs.md#confronto-indipendente-da-implementare). Senza questo, la campagna può produrre solo una candidata numericamente riproducibile, non Γ ammesso |
+| 1. Preparare il confronto, localmente | Ingest W, inizializzatore delle scale, tabelle certificate, replay intero CPU, export `C71TRC01`, piano pubblico canonico validato e primitive indipendenti su fixture ridotta | Implementare e testare il [driver numerico indipendente completo](specs.md#confronto-indipendente-da-implementare). Senza questo, la campagna può produrre solo una candidata numericamente riproducibile, non Γ ammesso |
 | 2. Calibrare i pesi reali, dopo autorizzazione | Comandi CPU nelle sezioni seguenti; nessuna calibrazione CUDA completa | Una sola candidata, due replay e confronto indipendente nei tre contesti; soddisfare la [validazione](#validazione-e-congelamento-del-profilo), quindi fissare Γ e ricompilare il conto delle risorse |
 | 3. Integrare la prova, prima su input ridotti | Tre accettazioni con MAC ideali; O=0 ordinato con W ricostruita e AES Seed6 reale; registro e codec canonici con test strutturali e di rifiuto | Completare preparatore/prover canonici, getter, certificati validi e trasporto dell'accettazione; verificare tutte le componenti sullo stesso registro, non soltanto separatamente |
 | 4. Preparare l'esperimento GPU | Parità PCS ridotta, S1, resti e potenze a blocchi; controlli host e compilazioni statiche CUDA | Collegare CUDA alle dimensioni canoniche, completare contabilità simultanea e condizioni dell'[esperimento della prova](#esperimento-della-prova); ottenere l'autorizzazione per l'esperimento con confronto host/GPU e misure |
@@ -365,8 +365,9 @@ Prima di congelare verificare, sui file persistiti e non sul solo exit 0:
    non inferirlo dalla sola lunghezza della lista dei token.
 5. Confronto indipendente completato secondo il
    [contratto delle specifiche](specs.md#confronto-indipendente-da-implementare).
-   L'export `C71TRC01` e il validatore strutturale sono disponibili; il
-   produttore numerico indipendente non lo è ancora. Min/max, censimenti
+   L'export `C71TRC01`, il validatore strutturale e il piano pubblico
+   canonico validato sono disponibili; il produttore numerico indipendente
+   non lo è ancora. Min/max, censimenti
    e un secondo replay Rust non lo sostituiscono; non inventare un comando
    `freeze` o un confronto bit per bit mai eseguito.
 

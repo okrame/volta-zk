@@ -80,7 +80,7 @@ limitato sopra. Impostare i due binari prima dei test che li richiedono.
 |---|---|
 | [test_c7_1_gemma_plan.py](../../tests/test_c7_1_gemma_plan.py), `-k 'B12 or canonical_PCS_wire or native_wire_body or complete_fixed_run or native_small_profile'` | Bound composti, parametri, conteggi del codec e tabelle del profilo ridotto |
 | [test_c7_1_baseline_budget.py](../../tests/test_c7_1_baseline_budget.py) e [test_c71_bootstrap.py](../../tests/test_c71_bootstrap.py), separati | Budget e bootstrap; non esecuzione canonica |
-| [test_c71_calibration.py](../../tests/test_c71_calibration.py) | Tabelle certificate, scale nonzero, input/provenienza, errori, timeout e pubblicazione atomica senza overwrite di report e traccia |
+| [test_c71_calibration.py](../../tests/test_c71_calibration.py) | Tabelle certificate, piano pubblico canonico e validazione fail-closed di DAG/layout W, scale nonzero, input/provenienza, errori, timeout e pubblicazione atomica senza overwrite di report e traccia |
 | [test_c71_calibration_oracle.py](../../tests/test_c71_calibration_oracle.py) | Primitive numeriche Python indipendenti, dot product BLAS esatto sotto bound, RMS/RNE/RoPE/softmax/argmax e codec |
 | [test_c71_calibration_trace.py](../../tests/test_c71_calibration_trace.py) | Framing `C71TRC01`, copertura e confronto esatto su fixture; rifiuto di alterazioni, omissioni, duplicazioni, coordinate errate e troncamenti |
 | [test_c71_activation_pilot.py](../../tests/test_c71_activation_pilot.py) | Inizializzatore delle scale su grafo piccolo, ID canonici e conservazione degli errori |
@@ -97,6 +97,8 @@ e `credit:false` restano corretti anche quando le fixture passano.
 Il parser della traccia completa la validazione strutturale; senza il
 produttore numerico Python sui valori reali non costituisce il confronto
 indipendente e non ammette Γ. Il
+[record del piano pubblico](../../benchmarks/results/c71-oracle-plan-2026-10-02-55423e496cfc.json)
+registra tre DAG canonici validati, ma non esecuzione numerica indipendente. Il
 [record degli operatori indipendenti](../../benchmarks/results/c71-independent-operators-2026-10-02-2ed8e2091515.json)
 limita esplicitamente la parità corrente alla fixture ridotta. Il
 [record pulito](../../benchmarks/results/c71-calibration-trace-2026-10-02-f47b22d7a4c5.json)

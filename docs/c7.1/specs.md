@@ -153,6 +153,15 @@ KV finale, censimenti, footer, EOF e SHA-256. Può anche confrontare ogni
 frame di dati con un flusso atteso; le fixture ridotte respingono valori alterati,
 omissioni, duplicazioni, coordinate errate e troncamenti.
 
+`c71_calibration oracle-plan CANDIDATE` esporta per O=0/150/300 sorgenti,
+codec, forme, layout e riferimenti W, sorgenti KV e il DAG topologico con
+parametri esatti dei 13 tipi di operatore. Il wrapper rifiuta chiavi JSON
+duplicate, intervalli W non contigui, ID o riferimenti fuori dominio,
+produttori doppi, copertura incompleta, parametri/arità non canonici e
+divergenze del DAG fra contesti. L'export dichiara
+`independent_numeric_execution_complete:false`: descrive il calcolo ma non
+lo esegue indipendentemente.
+
 Le primitive Python indipendenti e una fixture ridotta coprono matrice
 esatta sotto bound binary64, RNE, affine, RMS, RoPE, softmax, rapporto e
 argmax, e alimentano l'hook di confronto dei frame. Resta da implementare
@@ -180,6 +189,8 @@ La fixture ridotta produce gli interi attesi con
 [c71_calibration_oracle.py](../../scripts/c71_calibration_oracle.py), senza
 richiamare il replay Rust. Questa parità di operatori non sostituisce il
 driver completo, la sua esecuzione sui pesi reali o il conto delle risorse.
+Il [record del piano pubblico](../../benchmarks/results/c71-oracle-plan-2026-10-02-55423e496cfc.json)
+conserva censimenti e controlli fail-closed, con esito `PASS_PLAN_ONLY`.
 
 ## Dati autenticati e stato
 

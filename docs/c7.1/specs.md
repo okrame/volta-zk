@@ -174,7 +174,7 @@ streaming. Matrici, QK e PV usano binary64 soltanto dopo il bound assoluto
 `<2^53`; RMS usa il piccolo kernel C11 indipendente
 [c71_oracle_rms.c](../../scripts/c71_oracle_rms.c), con confronti esatti a
 192 bit. Il kernel viene compilato in una directory temporanea privata e il
-suo SHA-256 entra nel report.
+report registra SHA-256 di sorgente e shared object caricato.
 
 La modalità `trace` confronta ogni frame col driver e richiede
 `exact_comparison_complete:true` e `independent_oracle.complete:true` prima

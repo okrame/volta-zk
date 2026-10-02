@@ -366,7 +366,8 @@ Prima di congelare verificare, sui file persistiti e non sul solo exit 0:
 5. Confronto indipendente completato secondo il
    [contratto delle specifiche](specs.md#confronto-indipendente-da-implementare).
    L'export `C71TRC01`, il validatore strutturale e il piano pubblico
-   canonico validato sono disponibili; il produttore numerico indipendente
+   canonico validato sono disponibili; il wrapper lega inoltre le forme
+   specifiche di O=0/150/300 al piano. Il produttore numerico indipendente
    non lo è ancora. Min/max, censimenti
    e un secondo replay Rust non lo sostituiscono; non inventare un comando
    `freeze` o un confronto bit per bit mai eseguito.

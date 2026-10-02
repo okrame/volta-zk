@@ -99,6 +99,8 @@ produttore numerico Python sui valori reali non costituisce il confronto
 indipendente e non ammette Γ. Il
 [record del piano pubblico](../../benchmarks/results/c71-oracle-plan-2026-10-02-55423e496cfc.json)
 registra tre DAG canonici validati, ma non esecuzione numerica indipendente. Il
+[record delle forme per contesto](../../benchmarks/results/c71-trace-context-shapes-2026-10-02-b634e781795d.json)
+registra il binding esatto delle colonne attention variabili al piano canonico. Il
 [record degli operatori indipendenti](../../benchmarks/results/c71-independent-operators-2026-10-02-2ed8e2091515.json)
 limita esplicitamente la parità corrente alla fixture ridotta. Il
 [record pulito](../../benchmarks/results/c71-calibration-trace-2026-10-02-f47b22d7a4c5.json)

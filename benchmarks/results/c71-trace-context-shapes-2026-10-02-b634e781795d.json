@@ -1,0 +1,20 @@
+{
+  "schema": "volta-c71-trace-context-shapes-v1",
+  "date": "2026-10-02",
+  "git_commit": "b634e781795d1225c1be6cdac19f8b3c731ba022",
+  "git_dirty": false,
+  "credit": false,
+  "finding": "Canonical attention source column counts grow with O=0/150/300, but the trace validator required complete source descriptors to be identical across contexts and would reject a valid real trace at O=150.",
+  "resolution": "The wrapper now obtains the strictly validated canonical oracle plan and the trace validator compares each context metadata block exactly with its corresponding plan. Cross-context identity checks retain stable IDs, names, rows and codecs while allowing plan-bound columns.",
+  "checks": [
+    {
+      "command": "C71_CALIBRATION_BINARY=$PWD/rust/target/debug/examples/c71_calibration PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/scripts .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py tests/test_c71_calibration_trace.py",
+      "exit_code": 0,
+      "tests_passed": 25
+    }
+  ],
+  "regression": "A framed three-context fixture with changing source columns passes only against the matching oracle plan; a one-column plan mutation is rejected.",
+  "real_checkpoint_executed": false,
+  "full_model_driver_complete": false,
+  "verdict": "PASS_LOCAL_FIXTURE"
+}

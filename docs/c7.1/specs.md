@@ -161,6 +161,11 @@ produttori doppi, copertura incompleta, parametri/arità non canonici e
 divergenze del DAG fra contesti. L'export dichiara
 `independent_numeric_execution_complete:false`: descrive il calcolo ma non
 lo esegue indipendentemente.
+Il wrapper passa questo piano al validatore della traccia: le colonne delle
+sorgenti attention crescono col prefisso e devono coincidere col rispettivo
+contesto, mentre ID, nomi, righe e codec restano comuni. Il
+[record della correzione](../../benchmarks/results/c71-trace-context-shapes-2026-10-02-b634e781795d.json)
+conserva la regressione che avrebbe respinto una traccia reale valida a O=150.
 
 Le primitive Python indipendenti e una fixture ridotta coprono matrice
 esatta sotto bound binary64, RNE, affine, RMS, RoPE, softmax, rapporto e

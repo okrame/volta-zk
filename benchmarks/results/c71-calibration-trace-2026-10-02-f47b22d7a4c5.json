@@ -1,0 +1,55 @@
+{
+  "schema": "volta-c71-calibration-trace-check-v1",
+  "date": "2026-10-02",
+  "git_commit": "f47b22d7a4c5e91c9fdd3ee2844477bc941f21b6",
+  "git_dirty": false,
+  "credit": false,
+  "scope": "C71TRC01 export, strict structural validation and exact-frame comparison hook on reduced fixtures; not an independent full-model numeric comparison, calibrated Gamma, real checkpoint run, GPU execution, or E2E proof.",
+  "environment": {
+    "architecture": "aarch64",
+    "kernel": "Linux 6.12.94+deb13-arm64",
+    "python": "3.13.5",
+    "limits": "60 seconds, 2 GiB virtual memory, one test worker"
+  },
+  "properties": {
+    "trace_format": "C71TRC01",
+    "original_width_codecs": true,
+    "bounded_encoder_scratch_bytes": 65536,
+    "three_context_census": true,
+    "recipe_digest_binding": true,
+    "cross_context_metadata_equality": true,
+    "padding_histogram_tokens_and_final_kv_covered": true,
+    "exclusive_atomic_wrapper_publication": true,
+    "timeout_partial_trace_published": false,
+    "full_independent_numeric_producer": false
+  },
+  "checks": [
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration_trace.py",
+      "exit_code": 0,
+      "tests_passed": 7
+    },
+    {
+      "command": "C71_CALIBRATION_BINARY=rust/target/debug/examples/c71_calibration .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py -k trace_mode",
+      "exit_code": 0,
+      "tests_passed": 2,
+      "tests_deselected": 14
+    },
+    {
+      "command": "rust/target/debug/deps/volta_pcs-cdd1f352d01f43ad c71_calibration_trace_codec_is_framed_and_fail_closed --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "tests_passed": 1,
+      "tests_filtered": 427
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py",
+      "exit_code": 0,
+      "tests_passed": 7
+    },
+    {
+      "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-b12-pcs --example c71_calibration -- -D clippy::correctness -D clippy::suspicious",
+      "exit_code": 0
+    }
+  ],
+  "verdict": "PASS_STRUCTURAL_ONLY"
+}

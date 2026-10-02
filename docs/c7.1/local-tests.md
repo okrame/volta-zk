@@ -100,6 +100,9 @@ indipendente e non ammette Γ. Il
 conserva i test dell'export e dei rifiuti con questo limite esplicito. Il
 [record dei permessi](../../benchmarks/results/c71-calibration-trace-permissions-2026-10-02-a0f46bf8ca7f.json)
 collega la correzione successiva che forza `0600` nel writer e nel wrapper.
+Il [record del confine i16](../../benchmarks/results/c71-i16-marker-2026-10-02-69e597e7cbd2.json)
+verifica il rifiuto di −32768 salvo lo slack argmax biased-u16 previsto
+dalla specifica.
 I report GPU simulati dei test FFT non sono misure CUDA.
 
 L'audit del fork censisce 96 sorgenti e 26 delta revisionati, inclusi

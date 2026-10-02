@@ -1,0 +1,36 @@
+{
+  "schema": "volta-c71-i16-marker-check-v1",
+  "date": "2026-10-02",
+  "git_commit": "69e597e7cbd28e33396faab997c47a7df7ed840e",
+  "git_dirty": false,
+  "credit": false,
+  "scope": "Canonical producer and calibration-trace enforcement of the i16 overflow marker, including the protocol-defined biased-u16 argmax-slack exception; not a real-checkpoint replay or proof.",
+  "checks": [
+    {
+      "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-b12-pcs --lib --no-run",
+      "exit_code": 0
+    },
+    {
+      "command": "rust/target/debug/deps/volta_pcs-cdd1f352d01f43ad c71_b12_native_canonical_numeric_rows_original_routes --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "tests_passed": 1,
+      "tests_filtered": 427
+    },
+    {
+      "command": "rust/target/debug/deps/volta_pcs-cdd1f352d01f43ad c71_calibration_trace_codec_is_framed_and_fail_closed --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "tests_passed": 1,
+      "tests_filtered": 427
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration_trace.py",
+      "exit_code": 0,
+      "tests_passed": 8
+    },
+    {
+      "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-b12-pcs --example c71_calibration -- -D clippy::correctness -D clippy::suspicious",
+      "exit_code": 0
+    }
+  ],
+  "verdict": "PASS"
+}

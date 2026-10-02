@@ -82,6 +82,7 @@ limitato sopra. Impostare i due binari prima dei test che li richiedono.
 | [test_c7_1_baseline_budget.py](../../tests/test_c7_1_baseline_budget.py) e [test_c71_bootstrap.py](../../tests/test_c71_bootstrap.py), separati | Budget e bootstrap; non esecuzione canonica |
 | [test_c71_calibration.py](../../tests/test_c71_calibration.py) | Tabelle certificate, piano pubblico canonico e validazione fail-closed di DAG/layout W, scale nonzero, input/provenienza, errori, timeout e pubblicazione atomica senza overwrite di report e traccia |
 | [test_c71_calibration_oracle.py](../../tests/test_c71_calibration_oracle.py) | Primitive numeriche Python indipendenti, dot product BLAS esatto sotto bound, RMS/RNE/RoPE/softmax/argmax e codec |
+| [test_c71_calibration_oracle_driver.py](../../tests/test_c71_calibration_oracle_driver.py) | Schedulazione causale O=0/150/300, tutti i 13 tipi di operatore, RMS C esatto, lookup fail-closed e copertura completa su profilo ridotto |
 | [test_c71_calibration_trace.py](../../tests/test_c71_calibration_trace.py) | Framing `C71TRC01`, copertura e confronto esatto su fixture; rifiuto di alterazioni, omissioni, duplicazioni, coordinate errate e troncamenti |
 | [test_c71_activation_pilot.py](../../tests/test_c71_activation_pilot.py) | Inizializzatore delle scale su grafo piccolo, ID canonici e conservazione degli errori |
 | [test_c7_d126_gemma_native_bf16.py](../../tests/test_c7_d126_gemma_native_bf16.py) e [test_c7_d126_gemma_weight_ingest.py](../../tests/test_c7_d126_gemma_weight_ingest.py), separati | Hash degli stessi byte quantizzati, esponenti minimi, packed e rifiuti su shard piccoli |
@@ -94,9 +95,11 @@ limitato sopra. Impostare i due binari prima dei test che li richiedono.
 
 I test della calibrazione non leggono checkpoint reali. `calibrated:false`
 e `credit:false` restano corretti anche quando le fixture passano.
-Il parser della traccia completa la validazione strutturale; senza il
-produttore numerico Python sui valori reali non costituisce il confronto
-indipendente e non ammette Γ. Il
+Il parser della traccia completa la validazione strutturale e la modalità
+`trace` esegue il produttore indipendente; finché questo non passa sui pesi
+reali non ammette Γ. Il
+[record del driver](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
+registra l'implementazione e i controlli locali, non una misura completa. Il
 [record del piano pubblico](../../benchmarks/results/c71-oracle-plan-2026-10-02-55423e496cfc.json)
 registra tre DAG canonici validati, ma non esecuzione numerica indipendente. Il
 [record delle forme per contesto](../../benchmarks/results/c71-trace-context-shapes-2026-10-02-b634e781795d.json)

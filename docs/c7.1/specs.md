@@ -133,7 +133,7 @@ Lo storage offline non è l'arena della prova; workspace dei produttori
 e allocator restano distinti dai payload nominati. Confronto indipendente
 e congelamento seguono [runpod-tests](runpod-tests.md#validazione-e-congelamento-del-profilo).
 
-### Confronto indipendente da implementare
+### Confronto indipendente
 
 L'export dei valori è disponibile. `c71_calibration run-trace` e il modo
 `trace` del [wrapper](../../scripts/c71_calibrate.py) producono `C71TRC01`
@@ -142,8 +142,8 @@ rilascio, `Trial::finish` scrive padding e istogrammi, `fixed_run` scrive
 token e KV finale. I frame portano contesto, sorgente, coordinate, forma,
 ripetizione e codec originale da 1–8 byte; il padding è compatto. Il writer
 usa scratch limitato, un footer con censimenti e BLAKE3 e il wrapper pubblica
-la traccia privata con permessi `0600` solo dopo exit 0 e validazione,
-senza overwrite.
+la traccia privata con permessi `0600` solo dopo exit 0, validazione e
+confronto indipendente esatto, senza overwrite.
 
 [c71_calibration_trace.py](../../scripts/c71_calibration_trace.py) verifica
 in streaming framing, metadati senza chiavi duplicate, tre contesti,
@@ -167,13 +167,23 @@ contesto, mentre ID, nomi, righe e codec restano comuni. Il
 [record della correzione](../../benchmarks/results/c71-trace-context-shapes-2026-10-02-b634e781795d.json)
 conserva la regressione che avrebbe respinto una traccia reale valida a O=150.
 
-Le primitive Python indipendenti e una fixture ridotta coprono matrice
-esatta sotto bound binary64, RNE, affine, RMS, RoPE, softmax, rapporto e
-argmax, e alimentano l'hook di confronto dei frame. Resta da implementare
-il driver che applica queste primitive a tutti gli operatori del modello
-reale. La validazione strutturale della traccia,
-il confronto dei censimenti e un secondo replay Rust non ammettono Γ. Il
-componente mancante deve soddisfare questo contratto:
+Il [driver indipendente](../../scripts/c71_calibration_oracle_driver.py)
+applica il piano a tutti i 13 tipi di operatore, mantiene solo le righe vive
+e KV, ricostruisce padding, istogrammi e token e produce i frame attesi in
+streaming. Matrici, QK e PV usano binary64 soltanto dopo il bound assoluto
+`<2^53`; RMS usa il piccolo kernel C11 indipendente
+[c71_oracle_rms.c](../../scripts/c71_oracle_rms.c), con confronti esatti a
+192 bit. Il kernel viene compilato in una directory temporanea privata e il
+suo SHA-256 entra nel report.
+
+La modalità `trace` confronta ogni frame col driver e richiede
+`exact_comparison_complete:true` e `independent_oracle.complete:true` prima
+di pubblicare traccia e report. I test ridotti coprono i 13 operatori,
+schedulazione causale e rifiuti; l'audit del piano copre tutti i 3471 ID nei
+tre contesti. Il driver non è stato eseguito sui pesi reali e non ha ancora
+una misura completa di tempo/RSS. La validazione strutturale, il solo audit
+locale e un secondo replay Rust non ammettono Γ. L'esecuzione reale deve
+soddisfare questo contratto:
 
 - Confrontare gli interi esatti con un calcolo Python indipendente,
   riusando i riferimenti numerici della [semantica](#semantica-numerica)
@@ -190,10 +200,13 @@ componente mancante deve soddisfare questo contratto:
   revisionate. Tempo, disco e memoria del confronto vanno nel preventivo
   della campagna, non in un prolungamento implicito.
 
-La fixture ridotta produce gli interi attesi con
+Le fixture ridotte producono gli interi attesi con
 [c71_calibration_oracle.py](../../scripts/c71_calibration_oracle.py), senza
 richiamare il replay Rust. Questa parità di operatori non sostituisce il
-driver completo, la sua esecuzione sui pesi reali o il conto delle risorse.
+confronto completo sui pesi reali o il conto delle risorse. Il
+[record del driver](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
+ha esito `PASS_LOCAL_IMPLEMENTATION_ONLY` e lascia esplicitamente aperti
+runtime completo e ammissione di Γ.
 Il [record del piano pubblico](../../benchmarks/results/c71-oracle-plan-2026-10-02-55423e496cfc.json)
 conserva censimenti e controlli fail-closed, con esito `PASS_PLAN_ONLY`.
 

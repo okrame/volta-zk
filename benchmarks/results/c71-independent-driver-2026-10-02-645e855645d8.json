@@ -1,0 +1,48 @@
+{
+  "schema": "volta-c71-independent-driver-audit-v1",
+  "date": "2026-10-02",
+  "git_commit": "645e855645d8950a4e4cef9bd16fb5d7cfd67016",
+  "git_dirty": false,
+  "credit": false,
+  "scope": "Independent streaming execution of the canonical calibration plan and exact C71TRC01 frame comparison; locally exercised on bounded data and statically audited against the full public geometry, without real checkpoint weights.",
+  "implementation": {
+    "operator_kinds": 13,
+    "contexts": [0, 150, 300],
+    "full_activation_materialization": false,
+    "matrix_method": "blocked binary64 BLAS under a checked absolute partial-sum bound below 2^53",
+    "rms_method": "independent C11 batched exact RNE with 192-bit limb comparisons",
+    "rms_source_sha256": "1f02d60eea0db0f7b49bcb0bf899125de9d0da1ceef61c5af8a09684892ecabe",
+    "trace_publication_requires_exact_comparison": true,
+    "report_binds_canonical_plan_sha256": true
+  },
+  "checks": [
+    {
+      "command": "C71_CALIBRATION_BINARY=$PWD/rust/target/debug/examples/c71_calibration PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/scripts .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py tests/test_c71_calibration_oracle.py tests/test_c71_calibration_oracle_driver.py tests/test_c71_calibration_trace.py",
+      "exit_code": 0,
+      "tests_passed": 32
+    },
+    {
+      "command": "cc -std=c11 -O2 -Wall -Wextra -Werror -fanalyzer -c scripts/c71_oracle_rms.c -o /tmp/c71_oracle_rms.o",
+      "exit_code": 0
+    },
+    {
+      "command": "cc -std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer scripts/c71_oracle_rms.c /tmp/c71_rms_sanitize.c -o /tmp/c71_rms_sanitize && ASAN_OPTIONS=detect_leaks=0 /tmp/c71_rms_sanitize",
+      "exit_code": 0,
+      "note": "LeakSanitizer is disabled because it cannot run under the sandbox ptrace environment; AddressSanitizer and UndefinedBehaviorSanitizer completed."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$PWD/scripts .venv/bin/python - <canonical oracle-plan schedule audit>",
+      "exit_code": 0,
+      "stdout": "{\"contexts\": [{\"old_tokens\": 0, \"sources\": 3471, \"coverage_complete\": true}, {\"old_tokens\": 150, \"sources\": 3471, \"coverage_complete\": true}, {\"old_tokens\": 300, \"sources\": 3471, \"coverage_complete\": true}]}"
+    }
+  ],
+  "diagnostic_failures": [
+    "The first sanitizer harness used inconsistent hand-entered RMS coefficients and correctly returned a failure; the corrected coefficients came from the public recipe.",
+    "LeakSanitizer alone cannot run under the sandbox ptrace environment; the successful sanitizer command disables leak detection only."
+  ],
+  "real_checkpoint_executed": false,
+  "complete_runtime_measured": false,
+  "current_eight_hour_campaign_timing_closed": false,
+  "calibrated_gamma": false,
+  "verdict": "PASS_LOCAL_IMPLEMENTATION_ONLY"
+}

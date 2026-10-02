@@ -8,8 +8,11 @@
 Non è registrata un'autorizzazione a download dei pesi, creazione di pod,
 esecuzioni GPU o spesa. Il lavoro locale pertinente resta autorizzato.
 Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-02-9f8c8f597fbb.json)
-ha esito `NOT_READY`; non avviare la campagna provider sulla sola base dei
-controlli componenti passati.
+ha esito `NOT_READY`. Il successivo
+[record del driver indipendente](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
+chiude quel blocco locale, ma non il tempo della campagna né l'integrazione
+della prova; non avviare la campagna provider sulla sola base dei controlli
+locali passati.
 La calibrazione e il benchmark della prova sono due campagne distinte:
 un successo numerico non autorizza né dimostra il secondo.
 
@@ -20,7 +23,7 @@ definisce i controlli piccoli. Non occorre recuperare istruzioni dall'archivio.
 
 | Ordine | Disponibile | Lavoro e condizione di uscita |
 |---|---|---|
-| 1. Preparare il confronto, localmente | Ingest W, inizializzatore delle scale, tabelle certificate, replay intero CPU, export `C71TRC01`, piano pubblico canonico validato e primitive indipendenti su fixture ridotta | Implementare e testare il [driver numerico indipendente completo](specs.md#confronto-indipendente-da-implementare). Senza questo, la campagna può produrre solo una candidata numericamente riproducibile, non Γ ammesso |
+| 1. Preparare il confronto, localmente | Ingest W, inizializzatore delle scale, tabelle certificate, replay intero CPU, export `C71TRC01`, piano pubblico canonico e driver indipendente testato sui 13 operatori e sulla schedulazione completa | Eseguire e misurare il [confronto indipendente](specs.md#confronto-indipendente) sui pesi reali. Il runtime completo è ignoto e la finestra corrente di 8 ore non è ancora chiusa |
 | 2. Calibrare i pesi reali, dopo autorizzazione | Comandi CPU nelle sezioni seguenti; nessuna calibrazione CUDA completa | Una sola candidata, due replay e confronto indipendente nei tre contesti; soddisfare la [validazione](#validazione-e-congelamento-del-profilo), quindi fissare Γ e ricompilare il conto delle risorse |
 | 3. Integrare la prova, prima su input ridotti | Tre accettazioni con MAC ideali; O=0 ordinato con W ricostruita e AES Seed6 reale; registro e codec canonici con test strutturali e di rifiuto | Completare preparatore/prover canonici, getter, certificati validi e trasporto dell'accettazione; verificare tutte le componenti sullo stesso registro, non soltanto separatamente |
 | 4. Preparare l'esperimento GPU | Parità PCS ridotta, S1, resti e potenze a blocchi; controlli host e compilazioni statiche CUDA | Collegare CUDA alle dimensioni canoniche, completare contabilità simultanea e condizioni dell'[esperimento della prova](#esperimento-della-prova); ottenere l'autorizzazione per l'esperimento con confronto host/GPU e misure |
@@ -71,8 +74,9 @@ costo totale e deadline del provider. Nessuna modifica delle scale o
 ripartenza è inclusa. Il completamento di tutti i test è l'obiettivo,
 non una deroga al limite di tempo.
 
-I programmi esistenti usano NumPy/BLAS CPU per l'inizializzatore e Rust
-CPU per il replay intero; non esiste una calibrazione CUDA completa.
+I programmi esistenti usano NumPy/BLAS CPU per l'inizializzatore e il
+confronto indipendente, Rust CPU per il replay intero e un piccolo kernel C
+CPU per RMS; non esiste una calibrazione CUDA completa.
 Un host CPU equivalente è l'alternativa meno costosa da concordare nella
 stessa decisione operativa. `nvidia-smi` non accelera questi comandi.
 Inferenza BF16, TF32 o Transformers non sostituisce la relazione intera.
@@ -127,7 +131,7 @@ consentono la ricostruzione; non promettono persistenza del packed.
 Non usare `pause` come chiusura economica: il volume continuerebbe a
 costare, come documentato nelle [opzioni storage](https://docs.runpod.io/pods/storage/types).
 
-### Tempi massimi, non stime di completamento
+### Tempi massimi da richiudere prima dell'autorizzazione
 
 | Fase seriale | Massimo |
 |---|---:|
@@ -135,12 +139,16 @@ costare, come documentato nelle [opzioni storage](https://docs.runpod.io/pods/st
 | Acquisizione dei due shard e hash durante il download | 30 min totali |
 | Ingest nativo, nuovo hash dei corpi e packed persistito | 30 min |
 | Pilot floating sui tre contesti e compilazione candidata | 90 min |
-| Replay intero completo da KV vuoto | 120 min |
+| Primo replay, traccia e confronto indipendente da KV vuoto | **Da misurare**; il precedente limite di 120 min copriva solo il replay |
 | Secondo replay da KV vuoto, stessa candidata | 90 min |
-| Tabelle, confronto, conto delle risorse, bundle e pubblicazione | 45 min |
+| Ledger, conto delle risorse, bundle e pubblicazione | 45 min |
 | Riserva per trasferimento log/stop | 30 min |
 
-Totale massimo 8 h, incluse preparazione e download. Le deadline interne
+Il totale massimo di 8 h non è attualmente dimostrato perché il nuovo
+confronto è seriale al primo replay. Prima dell'autorizzazione fissare
+`TRACE_STEP_SECONDS` e `NATIVE_TRACE_TIMEOUT_SECONDS` con una misura o un
+preventivo conservativo e riallocare le altre fasi senza superare 8 h; in
+assenza, STOP. Le deadline interne
 del pilot/replay non coprono tutti gli hash e la generazione tabelle:
 il timeout esterno copre l'intero comando. Nessuna fase parte se non ha
 il proprio budget residuo più almeno 30 minuti per conservare l'evidenza.
@@ -159,10 +167,11 @@ valido; un 401/403 ferma la fase, senza accettare licenze o cambiare checkpoint.
 
 ### Comandi dopo autorizzazione esplicita
 
-Gli snippet seguenti **non sono stati eseguiti sui pesi reali**. I soli
-parametri da fissare all'autorizzazione sono offerta/regione, digest immagine con
-toolchain disponibile, SHA pulita del piano e `POD_CREATED_EPOCH` ricavato
-dal provider. Verificare i flag con la CLI realmente installata prima
+Gli snippet seguenti **non sono stati eseguiti sui pesi reali**. Prima
+dell'autorizzazione fissare offerta/regione, digest immagine con toolchain,
+SHA pulita, `POD_CREATED_EPOCH`, `TRACE_STEP_SECONDS`,
+`NATIVE_TRACE_TIMEOUT_SECONDS` e la riallocazione completa entro 8 ore.
+Verificare i flag con la CLI realmente installata prima
 della creazione; mappare i Secret nel template, mai nei comandi/log.
 
 ```bash
@@ -322,11 +331,12 @@ run_step 60 recipes "$NATIVE" recipes "$CANDIDATE"
 run_step 900 tables .venv/bin/python scripts/c71_calibrate.py tables \
   --native "$NATIVE" --candidate "$CANDIDATE" --output "$RUN/tables.bin"
 run_step 60 check-input "$NATIVE" check-input "$CANDIDATE" "$RUN/tables.bin"
-run_step 7200 integer-1 .venv/bin/python scripts/c71_calibrate.py trace \
+test -n "${TRACE_STEP_SECONDS:-}" && test -n "${NATIVE_TRACE_TIMEOUT_SECONDS:-}"
+run_step "$TRACE_STEP_SECONDS" integer-1 .venv/bin/python scripts/c71_calibrate.py trace \
   --native "$NATIVE" --candidate "$CANDIDATE" --ingest-report "$INGEST" \
   --packed "$PACKED" --output "$RUN/integer-1.json" \
   --trace-output "$RUN/integer-1.trace" \
-  --payload-bytes 8589934592 --timeout-seconds 6900
+  --payload-bytes 8589934592 --timeout-seconds "$NATIVE_TRACE_TIMEOUT_SECONDS"
 run_step 5400 integer-2 .venv/bin/python scripts/c71_calibrate.py run \
   --native "$NATIVE" --candidate "$CANDIDATE" --ingest-report "$INGEST" \
   --packed "$PACKED" --output "$RUN/integer-2.json" \
@@ -338,8 +348,9 @@ run_step 900 ledger .venv/bin/python scripts/c71_calibrate.py ledger \
 Le due invocazioni ripartono ciascuna da KV vuoto; all'interno collegano
 O=0/150/300 senza importare stato. Il secondo replay verifica
 riproducibilità del riferimento, **non** è una seconda implementazione
-indipendente. Il primo replay pubblica `C71TRC01` solo dopo exit 0 e
-validazione strutturale, con permessi `0600`; la traccia contiene valori privati e non entra
+indipendente. Il primo replay pubblica `C71TRC01` solo dopo exit 0,
+validazione strutturale e confronto esatto col driver indipendente, con
+permessi `0600`; la traccia contiene valori privati e non entra
 nel bundle Git. I 150 token floating non sono il golden intero. Una
 candidata che non compila o produce overflow/range failure richiede
 stop; una revisione delle scale comporta nuova candidata, nuova autorizzazione e
@@ -364,11 +375,11 @@ Prima di congelare verificare, sui file persistiti e non sul solo exit 0:
    parziale. Il controller deve avere assorbito l'ultimo token in KV;
    non inferirlo dalla sola lunghezza della lista dei token.
 5. Confronto indipendente completato secondo il
-   [contratto delle specifiche](specs.md#confronto-indipendente-da-implementare).
+   [contratto delle specifiche](specs.md#confronto-indipendente).
    L'export `C71TRC01`, il validatore strutturale e il piano pubblico
    canonico validato sono disponibili; il wrapper lega inoltre le forme
    specifiche di O=0/150/300 al piano. Il produttore numerico indipendente
-   non lo è ancora. Min/max, censimenti
+   è disponibile ma deve risultare `complete:true` sui pesi reali. Min/max, censimenti
    e un secondo replay Rust non lo sostituiscono; non inventare un comando
    `freeze` o un confronto bit per bit mai eseguito.
 

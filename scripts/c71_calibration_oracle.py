@@ -7,8 +7,13 @@ the canonical operation plan, weights, tables, liveness and frame order.
 """
 from __future__ import annotations
 
+import ctypes
 from fractions import Fraction
+import hashlib
+from pathlib import Path
 import struct
+import subprocess
+import tempfile
 
 import numpy as np
 
@@ -16,6 +21,7 @@ import c7_1_gemma_plan as reference
 
 
 I16_MIN, I16_MAX = -32767, 32767
+RMS_SOURCE = Path(__file__).with_name("c71_oracle_rms.c")
 
 
 def _symmetric_i16(values, label: str) -> np.ndarray:
@@ -131,3 +137,47 @@ def encode_u32(values) -> bytes:
     if any(type(value) is not int or not 0 <= value < 1 << 32 for value in values):
         raise ValueError("oracle u32 value differs")
     return struct.pack(f"<{len(values)}I", *values)
+
+
+def _rms_library():
+    source = RMS_SOURCE.read_bytes()
+    digest = hashlib.sha256(source).hexdigest()
+    directory = tempfile.TemporaryDirectory(prefix="volta-c71-oracle-rms-")
+    output = Path(directory.name) / f"{digest}.so"
+    subprocess.run(["cc", "-O3", "-shared", "-fPIC", "-std=c11",
+                    "-Wall", "-Wextra", "-Werror", str(RMS_SOURCE),
+                    "-o", str(output)], timeout=60, check=True, capture_output=True)
+    library = ctypes.CDLL(str(output))
+    function = library.c71_rms_batch
+    function.argtypes = [ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t,
+                         ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64,
+                         ctypes.c_uint64, ctypes.c_uint64,
+                         ctypes.POINTER(ctypes.c_int16)]
+    function.restype = ctypes.c_size_t
+    return directory, library, function, digest
+
+
+_RMS = None
+
+
+def rms_batch(products, statistic: int, columns: int, exponents) -> np.ndarray:
+    """Exact batched RMS RNE through the independent 192-bit C kernel."""
+    global _RMS
+    products = np.ascontiguousarray(products, dtype=np.int64).reshape(-1)
+    if len(exponents) != 3 or any(type(value) is not int for value in exponents):
+        raise ValueError("RMS exponents differ")
+    a, b, c = reference.rms_integer_coefficients(columns, *exponents)
+    denominator = b + c * int(statistic)
+    multiplier = reference.rms_row_multiplier(a, denominator)
+    if any(value < 0 or value >= 1 << 128 for value in (a, denominator)):
+        raise ValueError("RMS coefficient exceeds independent kernel")
+    if _RMS is None:
+        _RMS = _rms_library()
+    output = np.empty(products.size, dtype=np.int16)
+    failure = _RMS[2](products.ctypes.data_as(ctypes.POINTER(ctypes.c_int64)), products.size,
+                      a & ((1 << 64) - 1), a >> 64,
+                      denominator & ((1 << 64) - 1), denominator >> 64, multiplier,
+                      output.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)))
+    if failure:
+        raise ValueError(f"RMS output lane {failure - 1} differs")
+    return output

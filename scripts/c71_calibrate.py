@@ -19,6 +19,7 @@ import tempfile
 
 import c7_1_gemma_plan as plan
 import c7_d126_gemma_weight_ingest as ingest
+import c71_calibration_oracle_driver as oracle_driver
 import c71_calibration_trace as trace_codec
 
 
@@ -406,16 +407,23 @@ def main() -> None:
                         if decoded.get("complete_integer_trial") is not True:
                             raise ValueError("native report does not complete the integer trial")
                         if trace_path is not None:
-                            checked = trace_codec.validate(trace_path, oracle_plan=oracle_plan)
+                            independent = oracle_driver.Driver(
+                                oracle_plan, args.packed, tables)
+                            checked = trace_codec.validate(
+                                trace_path, expected_frames=independent.frames(),
+                                oracle_plan=oracle_plan)
                             native_trace = decoded.get("trace")
                             keys = ("format", "bytes", "records", "logical_words", "stored_words",
                                     "final_kv_sources", "blake3_before_footer")
                             if not isinstance(native_trace, dict) or any(
                                 native_trace.get(key) != checked.get(key) for key in keys
-                            ) or checked.get("recipe_digest") != recipes.get("recipe_digest"):
+                            ) or checked.get("recipe_digest") != recipes.get("recipe_digest") \
+                                    or checked.get("exact_comparison_complete") is not True \
+                                    or not independent.report or independent.report.get("complete") is not True:
                                 raise ValueError("native and independent trace censuses differ")
                             decoded["trace_validation"] = checked
-                    except ValueError as error:
+                            decoded["independent_oracle"] = independent.report
+                    except (ArithmeticError, OSError, subprocess.SubprocessError, ValueError) as error:
                         exit_code = 1
                         result["failure"] = str(error)
                     else:

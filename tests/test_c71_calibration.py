@@ -41,6 +41,7 @@ def test_certified_tables_match_native_input_and_scale_recipes(tmp_path):
     assert not oracle["independent_numeric_execution_complete"]
     assert [context["old_tokens"] for context in oracle["contexts"]] == [0, 150, 300]
     for context in oracle["contexts"]:
+        assert calibration.oracle_driver.Driver._audit_schedule(context)["coverage_complete"]
         assert context["schema"] == "volta-c71-calibration-oracle-plan-v1"
         assert context["recipe_digest"] == recipes["recipe_digest"]
         assert len(context["weights"]) == 772
@@ -273,20 +274,30 @@ def test_trace_mode_binds_native_and_independent_censuses(tmp_path, monkeypatch,
         "stored_words": 21, "final_kv_sources": 1,
         "blake3_before_footer": "11" * 32, "sha256": "22" * 32,
         "recipe_digest": "33" * 32,
-        "structural_validation_complete": True, "exact_comparison_complete": False,
+        "structural_validation_complete": True, "exact_comparison_complete": True,
     }
     monkeypatch.setattr(calibration, "native_recipes", lambda *_args: {"recipe_digest": "33" * 32})
     oracle_plan = {"contexts": []}
     monkeypatch.setattr(calibration, "native_oracle_plan", lambda *_args: oracle_plan)
+    independent_report = {"complete": True}
+
+    class Independent:
+        report = independent_report
+
+        def frames(self):
+            return iter(())
+
+    monkeypatch.setattr(calibration.oracle_driver, "Driver", lambda *_args: Independent())
     monkeypatch.setattr(calibration, "validate_weights", lambda *_args: None)
     monkeypatch.setattr(calibration, "write_tables", lambda *_args: {"calibrated": False})
     staged = None
 
-    def validate_trace(path, *, oracle_plan: dict):
+    def validate_trace(path, *, expected_frames, oracle_plan: dict):
         nonlocal staged
         staged = path
         assert path.parent.parent == tmp_path and path.name == "trace.bin"
         assert oracle_plan is not None
+        assert list(expected_frames) == []
         return census
 
     monkeypatch.setattr(calibration.trace_codec, "validate", validate_trace)
@@ -324,7 +335,8 @@ def test_trace_mode_binds_native_and_independent_censuses(tmp_path, monkeypatch,
         assert trace_output.stat().st_mode & 0o777 == 0o600
         assert result["trace_validation"] == census
         assert result["trace_validation"]["structural_validation_complete"]
-        assert not result["trace_validation"]["exact_comparison_complete"]
+        assert result["trace_validation"]["exact_comparison_complete"]
+        assert result["independent_oracle"] == independent_report
     else:
         assert not trace_output.exists()
         assert result["exit_code"] == 124 and not result["complete_integer_trial"]

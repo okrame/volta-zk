@@ -26,6 +26,19 @@ def test_rne_affine_and_rms_are_exact_at_signs_and_ties():
     assert output == [1, 1]
     weighted = oracle.rms([3, 4], [-2, 5], (0, 0, 0))
     assert weighted[1] == [-6, 20] and weighted[2] == [-2, 6]
+    products = np.array([-32767**2, -17, 0, 19, 32767**2], dtype=np.int64)
+    statistic = 3 * 32767**2
+    assert oracle.rms_batch(products, statistic, 3, [0, 0, 0]).tolist() == [
+        oracle.reference.rms_rne_i16(int(value), statistic, 3, 0, 0, 0)
+        for value in products
+    ]
+    rng = np.random.default_rng(71)
+    products = rng.integers(-32767**2, 32767**2 + 1, size=1000, dtype=np.int64)
+    statistic = 5376 * 32767**2
+    assert oracle.rms_batch(products, statistic, 5376, [0, 0, 0]).tolist() == [
+        oracle.reference.rms_rne_i16(int(value), statistic, 5376, 0, 0, 0)
+        for value in products
+    ]
 
 
 def test_rope_softmax_ratio_and_argmax_match_public_integer_recipes():
@@ -42,3 +55,31 @@ def test_original_codec_encoding_preserves_signed_values_and_rejects_overflow():
     assert oracle.encode_u32([0, 262143]).hex() == "00000000ffff0300"
     with pytest.raises(ValueError, match="exceeds codec"):
         oracle.encode_signed([128], 1)
+
+
+def test_rms_batch_matches_scalar_across_wide_public_coefficients():
+    rng = np.random.default_rng(7101)
+    checked = 0
+    for _ in range(80):
+        columns = int(rng.choice([64, 128, 256, 4096, 5376, 11008]))
+        exponents = [int(value) for value in rng.integers(-20, 21, size=3)]
+        try:
+            coefficients = oracle.reference.rms_integer_coefficients(columns, *exponents)
+        except ValueError:
+            continue
+        statistic = int(rng.integers(0, columns * 32767**2 + 1))
+        if max((*coefficients, coefficients[1] + coefficients[2] * statistic)) >= 1 << 128:
+            continue
+        products, expected = [], []
+        for value in rng.integers(-32767**2, 32767**2 + 1, size=32, dtype=np.int64):
+            try:
+                result = oracle.reference.rms_rne_i16(
+                    int(value), statistic, columns, *exponents)
+            except ValueError:
+                continue
+            products.append(int(value))
+            expected.append(result)
+        if products:
+            assert oracle.rms_batch(products, statistic, columns, exponents).tolist() == expected
+            checked += len(products)
+    assert checked >= 100

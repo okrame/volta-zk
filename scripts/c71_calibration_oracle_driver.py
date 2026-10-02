@@ -587,6 +587,6 @@ class Driver:
             "matrix_products": self.matrix_products,
             "oracle_plan_sha256": self.plan_sha256,
             "schedule_audit": self.schedule_audit,
-            "rms_kernel_sha256": hashlib.sha256(numeric.RMS_SOURCE.read_bytes()).hexdigest(),
+            "rms_kernel": numeric.rms_kernel_digests(),
             "elapsed_seconds": time.monotonic() - self.started,
         }

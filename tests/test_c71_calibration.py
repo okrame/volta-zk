@@ -257,7 +257,7 @@ def test_atomic_output_never_publishes_partial_or_replaces_existing(tmp_path, ou
     assert list(tmp_path.iterdir()) == ([output] if outcome != "failure" else [])
 
 
-@pytest.mark.parametrize("outcome", ["success", "timeout"])
+@pytest.mark.parametrize("outcome", ["success", "timeout", "comparison"])
 def test_trace_mode_binds_native_and_independent_censuses(tmp_path, monkeypatch, outcome):
     candidate = tmp_path / "candidate.json"
     candidate.write_text("{}")
@@ -298,6 +298,8 @@ def test_trace_mode_binds_native_and_independent_censuses(tmp_path, monkeypatch,
         assert path.parent.parent == tmp_path and path.name == "trace.bin"
         assert oracle_plan is not None
         assert list(expected_frames) == []
+        if outcome == "comparison":
+            raise ValueError("independent calibration value comparison differs")
         return census
 
     monkeypatch.setattr(calibration.trace_codec, "validate", validate_trace)
@@ -327,7 +329,7 @@ def test_trace_mode_binds_native_and_independent_censuses(tmp_path, monkeypatch,
     else:
         with pytest.raises(SystemExit) as stopped:
             calibration.main()
-        assert stopped.value.code == 124
+        assert stopped.value.code == (124 if outcome == "timeout" else 1)
     result = json.loads(output.read_text())
     assert staged is not None and not staged.exists()
     if outcome == "success":
@@ -339,4 +341,5 @@ def test_trace_mode_binds_native_and_independent_censuses(tmp_path, monkeypatch,
         assert result["independent_oracle"] == independent_report
     else:
         assert not trace_output.exists()
-        assert result["exit_code"] == 124 and not result["complete_integer_trial"]
+        assert result["exit_code"] == (124 if outcome == "timeout" else 1)
+        assert not result["complete_integer_trial"]

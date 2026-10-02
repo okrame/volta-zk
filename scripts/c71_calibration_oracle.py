@@ -154,7 +154,8 @@ def _rms_library():
                          ctypes.c_uint64, ctypes.c_uint64,
                          ctypes.POINTER(ctypes.c_int16)]
     function.restype = ctypes.c_size_t
-    return directory, library, function, digest
+    binary_digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    return directory, library, function, digest, binary_digest
 
 
 _RMS = None
@@ -181,3 +182,10 @@ def rms_batch(products, statistic: int, columns: int, exponents) -> np.ndarray:
     if failure:
         raise ValueError(f"RMS output lane {failure - 1} differs")
     return output
+
+
+def rms_kernel_digests() -> dict:
+    return {
+        "source_sha256": hashlib.sha256(RMS_SOURCE.read_bytes()).hexdigest(),
+        "shared_object_sha256": None if _RMS is None else _RMS[4],
+    }

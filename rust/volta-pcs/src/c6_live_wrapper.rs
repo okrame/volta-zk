@@ -836,7 +836,8 @@ pub fn materialize_production_c6_live_wrapper_roots_cuda(
         }),
     );
     commit_group(5, auxiliary_slots)?;
-    drop(commit_group);
+    #[allow(clippy::drop_non_drop)]
+    drop(commit_group); // Release its mutable cohort/metric borrows before reading them.
 
     let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
     let fixed = fix_production_c6_wrapper_commitments(
@@ -1010,7 +1011,8 @@ pub fn materialize_production_c61_native_live_wrapper_roots_cuda(
         }),
     );
     commit_group(3, auxiliary_slots)?;
-    drop(commit_group);
+    #[allow(clippy::drop_non_drop)]
+    drop(commit_group); // Release its mutable cohort/metric borrows before reading them.
 
     let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
     let fixed = fix_production_c61_native_wrapper_commitments(
@@ -1131,7 +1133,8 @@ pub fn materialize_production_c63_authenticated_sketch_live_wrapper_roots_cuda(
     )?;
     commit_group(0, residual_slots)?;
     commit_group(1, auxiliary_slots)?;
-    drop(commit_group);
+    #[allow(clippy::drop_non_drop)]
+    drop(commit_group); // Release its mutable cohort/metric borrows before reading them.
 
     let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
     let fixed = fix_production_c63_authenticated_sketch_wrapper_commitments(
@@ -1370,7 +1373,8 @@ pub fn finish_production_c62_native_live_wrapper_roots_cuda(
     )?;
     commit_group(2, residual_slots)?;
     commit_group(3, auxiliary_slots)?;
-    drop(commit_group);
+    #[allow(clippy::drop_non_drop)]
+    drop(commit_group); // Release its mutable cohort/metric borrows before reading them.
 
     let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect::<Vec<_>>();
     let fixed = fix_production_c61_native_wrapper_commitments(

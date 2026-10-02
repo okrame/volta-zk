@@ -730,7 +730,8 @@ impl<'a> Trial<'a> {
                 Ok(())
             },
         );
-        drop(state);
+        #[allow(clippy::drop_non_drop)]
+        drop(state); // End the mutable self borrow captured by the callbacks.
         self.work.weight_reads += wr.get();
         self.work.current_reads += ar.get();
         self.work.historical_kv_reads += old.get();

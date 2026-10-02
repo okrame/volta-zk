@@ -402,7 +402,6 @@ impl fmt::Display for AccelError {
 impl std::error::Error for AccelError {}
 
 #[repr(C)]
-#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Fp2Repr {
     pub c0: u64,

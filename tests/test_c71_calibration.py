@@ -276,14 +276,17 @@ def test_trace_mode_binds_native_and_independent_censuses(tmp_path, monkeypatch,
         "structural_validation_complete": True, "exact_comparison_complete": False,
     }
     monkeypatch.setattr(calibration, "native_recipes", lambda *_args: {"recipe_digest": "33" * 32})
+    oracle_plan = {"contexts": []}
+    monkeypatch.setattr(calibration, "native_oracle_plan", lambda *_args: oracle_plan)
     monkeypatch.setattr(calibration, "validate_weights", lambda *_args: None)
     monkeypatch.setattr(calibration, "write_tables", lambda *_args: {"calibrated": False})
     staged = None
 
-    def validate_trace(path):
+    def validate_trace(path, *, oracle_plan: dict):
         nonlocal staged
         staged = path
         assert path.parent.parent == tmp_path and path.name == "trace.bin"
+        assert oracle_plan is not None
         return census
 
     monkeypatch.setattr(calibration.trace_codec, "validate", validate_trace)

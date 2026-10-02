@@ -354,6 +354,8 @@ def main() -> None:
         snapshot = Path(temporary) / "candidate.json"
         snapshot.write_bytes(candidate_body)
         recipes = native_recipes(args.native, snapshot)
+        oracle_plan = (native_oracle_plan(args.native, snapshot, recipes)
+                       if args.mode == "trace" else None)
         if args.mode == "tables":
             result = write_tables(recipes, args.output)
             print(json.dumps(result, indent=2, sort_keys=True))
@@ -404,7 +406,7 @@ def main() -> None:
                         if decoded.get("complete_integer_trial") is not True:
                             raise ValueError("native report does not complete the integer trial")
                         if trace_path is not None:
-                            checked = trace_codec.validate(trace_path)
+                            checked = trace_codec.validate(trace_path, oracle_plan=oracle_plan)
                             native_trace = decoded.get("trace")
                             keys = ("format", "bytes", "records", "logical_words", "stored_words",
                                     "final_kv_sources", "blake3_before_footer")

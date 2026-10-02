@@ -14,7 +14,7 @@ import c71_calibration_trace as trace
 
 
 def _fixture(*, altered=False, omit=False, duplicate=False, bad_coordinate=False,
-             metadata_mismatch=False, overflow_marker=False):
+             metadata_mismatch=False, overflow_marker=False, variable_columns=False):
     body = bytearray(trace.MAGIC)
     expected = []
     records = logical = stored_total = 0
@@ -43,7 +43,8 @@ def _fixture(*, altered=False, omit=False, duplicate=False, bad_coordinate=False
                 {"id": 0, "name": "changed" if metadata_mismatch and context == 1 else "kv",
                  "rows": 1, "columns": 2, "codec_bytes": 2},
                 {"id": 1, "name": "hist", "rows": 1, "columns": 3, "codec_bytes": 4},
-                {"id": 2, "name": "padded", "rows": 8192, "columns": 1,
+                {"id": 2, "name": "padded", "rows": 8192,
+                 "columns": context + 1 if variable_columns else 1,
                  "codec_bytes": 2},
             ],
             "kv_sources": [0],
@@ -69,11 +70,14 @@ def _fixture(*, altered=False, omit=False, duplicate=False, bad_coordinate=False
             frame(trace.VALUES, context, 2, 0, 0, 1, 2, 1, value_payload, 2)
         frame(trace.HISTOGRAM, context, 4, 1, 0, 1, 3, 1,
               oracle.encode_u32([1, 2, 3]), 3)
+        padded_columns = context + 1 if variable_columns else 1
         for block in range(32):
-            frame(trace.VALUES, context, 2, 2, block * 256, 150, 1, 1,
-                  oracle.encode_signed([context] * 150, 2), 150)
+            frame(trace.VALUES, context, 2, 2, block * 256, 150, padded_columns, 1,
+                  oracle.encode_signed([context] * 150 * padded_columns, 2),
+                  150 * padded_columns)
         frame(trace.PADDING, context, 2, 2, 151 if bad_coordinate and context == 1 else 150,
-              106, 1, 32, oracle.encode_signed([0], 2), 32 * 106)
+              106, padded_columns, 32, oracle.encode_signed([0], 2),
+              32 * 106 * padded_columns)
         frame(trace.TOKENS, context, 4, trace.U32_MAX, 0, 1, 150, 1,
               oracle.encode_u32(list(range(150))), 150)
 
@@ -86,6 +90,20 @@ def _fixture(*, altered=False, omit=False, duplicate=False, bad_coordinate=False
     return bytes(body), expected
 
 
+def _oracle_plan(variable_columns=False):
+    return {"contexts": [{
+        "old_tokens": 150 * context,
+        "recipe_digest": "11" * 32,
+        "sources": [
+            {"id": 0, "name": "kv", "rows": 1, "columns": 2, "codec_bytes": 2},
+            {"id": 1, "name": "hist", "rows": 1, "columns": 3, "codec_bytes": 4},
+            {"id": 2, "name": "padded", "rows": 8192,
+             "columns": context + 1 if variable_columns else 1, "codec_bytes": 2},
+        ],
+        "kv_sources": [0],
+    } for context in range(3)]}
+
+
 def test_trace_structure_and_exact_frame_stream(tmp_path):
     body, expected = _fixture()
     path = tmp_path / "trace.bin"
@@ -95,6 +113,17 @@ def test_trace_structure_and_exact_frame_stream(tmp_path):
     assert report["exact_comparison_complete"]
     assert [row["old_tokens"] for row in report["contexts"]] == [0, 150, 300]
     assert report["final_kv_sources"] == 1
+
+
+def test_trace_context_columns_follow_validated_oracle_plan(tmp_path):
+    body, _ = _fixture(variable_columns=True)
+    path = tmp_path / "trace.bin"
+    path.write_bytes(body)
+    plan = _oracle_plan(variable_columns=True)
+    assert trace.validate(path, oracle_plan=plan)["structural_validation_complete"]
+    plan["contexts"][1]["sources"][2]["columns"] += 1
+    with pytest.raises(ValueError, match="differs from oracle plan"):
+        trace.validate(path, oracle_plan=plan)
 
 
 def test_trace_altered_value_needs_and_fails_independent_comparison(tmp_path):

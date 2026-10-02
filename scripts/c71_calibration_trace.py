@@ -56,7 +56,7 @@ def _frame_tuple(frame: dict, payload: bytes):
     )
 
 
-def validate(path: Path, expected_frames=None) -> dict:
+def validate(path: Path, expected_frames=None, oracle_plan=None) -> dict:
     """Validate one trace; optional expected frames make the comparison exact."""
     expected = iter(expected_frames) if expected_frames is not None else None
     sha256 = hashlib.sha256()
@@ -191,9 +191,25 @@ def validate(path: Path, expected_frames=None) -> dict:
                                for item in kv_sources)):
                     raise ValueError("calibration trace source bounds differ")
                 if contexts and (metadata["recipe_digest"] != contexts[0]["metadata"]["recipe_digest"]
-                                 or sources != contexts[0]["metadata"]["sources"]
+                                 or [(row["id"], row["name"], row["rows"], row["codec_bytes"])
+                                     for row in sources]
+                                 != [(row["id"], row["name"], row["rows"], row["codec_bytes"])
+                                     for row in contexts[0]["metadata"]["sources"]]
                                  or kv_sources != contexts[0]["metadata"]["kv_sources"]):
                     raise ValueError("calibration trace context metadata differs")
+                if oracle_plan is not None:
+                    try:
+                        expected_context = oracle_plan["contexts"][context]
+                        matches_plan = (
+                            metadata["old_tokens"] == expected_context["old_tokens"]
+                            and metadata["recipe_digest"] == expected_context["recipe_digest"]
+                            and sources == expected_context["sources"]
+                            and kv_sources == expected_context["kv_sources"]
+                        )
+                    except (IndexError, KeyError, TypeError) as error:
+                        raise ValueError("calibration trace oracle plan is malformed") from error
+                    if not matches_plan:
+                        raise ValueError("calibration trace metadata differs from oracle plan")
                 current = {"metadata": metadata, "shapes": shapes,
                            "coverage": [bytearray(r) for r, _, _ in shapes]}
                 contexts.append(current)

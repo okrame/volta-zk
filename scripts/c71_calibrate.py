@@ -226,6 +226,7 @@ def main() -> None:
             published_trace = False
             try:
                 if trace_path is not None and exit_code == 0:
+                    os.chmod(trace_path, 0o600)
                     os.link(trace_path, args.trace_output)
                     published_trace = True
                     ingest._fsync_directory(args.trace_output.parent)

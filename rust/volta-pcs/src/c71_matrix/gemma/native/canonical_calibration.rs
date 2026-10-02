@@ -5,6 +5,8 @@ use super::*;
 use std::cell::{Cell, RefCell};
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 const TRACE_MAGIC: &[u8; 8] = b"C71TRC01";
@@ -45,11 +47,11 @@ pub(super) struct Trace {
 
 impl Trace {
     pub(super) fn create(path: &Path) -> Result<Self, String> {
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)
-            .map_err(|error| error.to_string())?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let file = options.open(path).map_err(|error| error.to_string())?;
         let mut trace = Self {
             sink: BufWriter::new(file),
             path: path.to_path_buf(),
@@ -660,6 +662,11 @@ mod tests {
         trace.final_kv_sources = 1;
         let report = trace.finish().unwrap();
         let body = std::fs::read(&path).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
         assert_eq!(&body[..8], TRACE_MAGIC);
         assert_eq!(report.records, 2);
         assert_eq!(report.logical_words, 2);

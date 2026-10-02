@@ -293,6 +293,7 @@ def test_trace_mode_binds_native_and_independent_censuses(tmp_path, monkeypatch,
     assert staged is not None and not staged.exists()
     if outcome == "success":
         assert trace_output.read_bytes() == b"private fixture"
+        assert trace_output.stat().st_mode & 0o777 == 0o600
         assert result["trace_validation"] == census
         assert result["trace_validation"]["structural_validation_complete"]
         assert not result["trace_validation"]["exact_comparison_complete"]

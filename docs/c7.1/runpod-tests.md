@@ -336,7 +336,7 @@ Le due invocazioni ripartono ciascuna da KV vuoto; all'interno collegano
 O=0/150/300 senza importare stato. Il secondo replay verifica
 riproducibilità del riferimento, **non** è una seconda implementazione
 indipendente. Il primo replay pubblica `C71TRC01` solo dopo exit 0 e
-validazione strutturale; la traccia contiene valori privati e non entra
+validazione strutturale, con permessi `0600`; la traccia contiene valori privati e non entra
 nel bundle Git. I 150 token floating non sono il golden intero. Una
 candidata che non compila o produce overflow/range failure richiede
 stop; una revisione delle scale comporta nuova candidata, nuova autorizzazione e

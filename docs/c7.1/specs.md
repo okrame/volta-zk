@@ -140,7 +140,8 @@ rilascio, `Trial::finish` scrive padding e istogrammi, `fixed_run` scrive
 token e KV finale. I frame portano contesto, sorgente, coordinate, forma,
 ripetizione e codec originale da 1–8 byte; il padding è compatto. Il writer
 usa scratch limitato, un footer con censimenti e BLAKE3 e il wrapper pubblica
-la traccia solo dopo exit 0 e validazione, senza overwrite.
+la traccia privata con permessi `0600` solo dopo exit 0 e validazione,
+senza overwrite.
 
 [c71_calibration_trace.py](../../scripts/c71_calibration_trace.py) verifica
 in streaming framing, metadati senza chiavi duplicate, tre contesti,

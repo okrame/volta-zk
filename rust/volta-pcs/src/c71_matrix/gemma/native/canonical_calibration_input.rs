@@ -261,7 +261,7 @@ impl Tables {
 }
 
 pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
-    let usage = "usage: c71_calibration describe | recipes CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES";
+    let usage = "usage: c71_calibration describe | recipes CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES | run-trace CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE";
     let Some(mode) = arguments.first().map(String::as_str) else {
         return Err(usage.into());
     };
@@ -293,7 +293,8 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
     }
     if !((mode == "recipes" && arguments.len() == 2)
         || (matches!(mode, "check-input" | "ledger") && arguments.len() == 3)
-        || (mode == "run" && arguments.len() == 5))
+        || (mode == "run" && arguments.len() == 5)
+        || (mode == "run-trace" && arguments.len() == 6))
     {
         return Err(usage.into());
     }
@@ -390,11 +391,18 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
     let limit: usize = arguments[4].parse().map_err(|_| "invalid calibration payload budget")?;
     let packed = File::open(&arguments[3]).map_err(|error| error.to_string())?;
     let mut reader = calibration::PackedRows::new(&public.profiles[0].plan.sources, packed)?;
-    let responses = calibration::fixed_run(&public, &mut reader, limit)?;
+    let mut trace = if mode == "run-trace" {
+        Some(calibration::Trace::create(Path::new(&arguments[5]))?)
+    } else {
+        None
+    };
+    let responses = calibration::fixed_run(&public, &mut reader, limit, trace.as_mut())?;
+    let trace = trace.map(calibration::Trace::finish).transpose()?;
     Ok(serde_json::json!({
         "calibrated": false, "credit": false, "gpu_execution": false,
         "complete_integer_trial": true, "tables_numerically_certified_by_this_binary": false,
         "checkpoint_hash_verified_by_this_binary": false, "public_table_blake3": input.digest,
-        "responses": responses, "complete_physical_peak": false
+        "responses": responses, "trace": trace,
+        "independent_comparison_complete": false, "complete_physical_peak": false
     }))
 }

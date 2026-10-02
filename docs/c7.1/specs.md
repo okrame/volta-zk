@@ -133,16 +133,28 @@ e congelamento seguono [runpod-tests](runpod-tests.md#validazione-e-congelamento
 
 ### Confronto indipendente da implementare
 
-Il CLI corrente restituisce token, intervalli, conteggi e picchi nominati,
-non i valori intermedi necessari a un confronto completo. Il componente
-mancante deve osservare l'esecuzione intera, senza cambiarne la semantica:
+L'export dei valori è disponibile. `c71_calibration run-trace` e il modo
+`trace` del [wrapper](../../scripts/c71_calibrate.py) producono `C71TRC01`
+durante lo stesso replay intero: `Trial::emit` scrive le righe prima del
+rilascio, `Trial::finish` scrive padding e istogrammi, `fixed_run` scrive
+token e KV finale. I frame portano contesto, sorgente, coordinate, forma,
+ripetizione e codec originale da 1–8 byte; il padding è compatto. Il writer
+usa scratch limitato, un footer con censimenti e BLAKE3 e il wrapper pubblica
+la traccia solo dopo exit 0 e validazione, senza overwrite.
 
-- Collegare l'esportazione a `Trial::emit` in
-  [canonical_calibration.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs),
-  prima del rilascio delle righe; includere gli istogrammi e il padding
-  completati in `Trial::finish`, e KV finale in `fixed_run`.
-  Ogni dato deve identificare contesto, sorgente canonica e coordinate;
-  i conteggi attesi derivano dal profilo ricompilato, non dal dump.
+[c71_calibration_trace.py](../../scripts/c71_calibration_trace.py) verifica
+in streaming framing, metadati senza chiavi duplicate, tre contesti,
+geometrie e copertura completa delle sorgenti dichiarate, coerenza dei
+metadati fra contesti, digest delle ricette, padding, istogrammi, token,
+KV finale, censimenti, footer, EOF e SHA-256. Può anche confrontare ogni
+frame di dati con un flusso atteso; le fixture ridotte respingono valori alterati,
+omissioni, duplicazioni, coordinate errate e troncamenti.
+
+Resta da implementare il produttore Python che calcola indipendentemente
+tutti gli interi del modello reale. La validazione strutturale della traccia,
+il confronto dei censimenti e un secondo replay Rust non ammettono Γ. Il
+componente mancante deve soddisfare questo contratto:
+
 - Confrontare gli interi esatti con un calcolo Python indipendente,
   riusando i riferimenti numerici della [semantica](#semantica-numerica)
   e completando quelli mancanti. Coprire accumuli e arrotondamenti,
@@ -158,12 +170,9 @@ mancante deve osservare l'esecuzione intera, senza cambiarne la semantica:
   revisionate. Tempo, disco e memoria del confronto vanno nel preventivo
   della campagna, non in un prolungamento implicito.
 
-Prima dei pesi reali, verificare su input ridotti uguaglianza e rifiuto
-di valori alterati, omissioni, duplicazioni e troncamenti. Il punto
-d'ingresso CLI va aggiunto all'[esempio](../../rust/volta-pcs/examples/c71_calibration.rs)
-e al [wrapper](../../scripts/c71_calibrate.py) solo insieme a questi test
-e ai comandi aggiornati in runpod-tests. Questo è un contratto di lavoro
-da realizzare, non la descrizione di un comando già disponibile.
+Prima dei pesi reali occorre aggiungere una fixture ridotta in cui gli
+interi attesi siano prodotti dal calcolo indipendente, non ricavati dal
+writer Rust. L'hook di confronto esatto esiste; il produttore numerico no.
 
 ## Dati autenticati e stato
 

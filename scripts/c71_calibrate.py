@@ -8,7 +8,7 @@ before a candidate can be frozen as calibrated Gamma.
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import hashlib
 import json
 import os
@@ -19,6 +19,7 @@ import tempfile
 
 import c7_1_gemma_plan as plan
 import c7_d126_gemma_weight_ingest as ingest
+import c71_calibration_trace as trace_codec
 
 
 TABLE_BYTES = 24_414_870
@@ -105,7 +106,7 @@ def validate_weights(report: dict, candidate: dict, packed: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("tables", "ledger", "run"))
+    parser.add_argument("mode", choices=("tables", "ledger", "run", "trace"))
     parser.add_argument("--native", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -113,13 +114,25 @@ def main() -> None:
     parser.add_argument("--packed", type=Path)
     parser.add_argument("--payload-bytes", type=int)
     parser.add_argument("--timeout-seconds", type=int)
+    parser.add_argument("--trace-output", type=Path)
     args = parser.parse_args()
-    if args.mode == "run" and (args.ingest_report is None or args.packed is None
-                               or args.payload_bytes is None or args.payload_bytes <= 0
-                               or args.timeout_seconds is None or args.timeout_seconds <= 0):
-        parser.error("run requires --ingest-report, --packed, positive --payload-bytes and --timeout-seconds")
+    if args.mode in ("run", "trace") and (
+        args.ingest_report is None
+        or args.packed is None
+        or args.payload_bytes is None
+        or args.payload_bytes <= 0
+        or args.timeout_seconds is None
+        or args.timeout_seconds <= 0
+        or (args.mode == "trace" and args.trace_output is None)
+    ):
+        parser.error(
+            "run/trace require --ingest-report, --packed, positive --payload-bytes and "
+            "--timeout-seconds; trace also requires --trace-output"
+        )
     if os.path.lexists(args.output):
         raise FileExistsError(f"refusing to overwrite {args.output}")
+    if args.trace_output is not None and os.path.lexists(args.trace_output):
+        raise FileExistsError(f"refusing to overwrite {args.trace_output}")
     with args.candidate.open("rb") as source:
         candidate_body = source.read(1_048_577)
     if len(candidate_body) > 1_048_576:
@@ -156,39 +169,73 @@ def main() -> None:
         validate_weights(report, candidate, args.packed)
         tables = Path(temporary) / "tables.bin"
         table_report = write_tables(recipes, tables)
-        command = [str(args.native), "run", str(snapshot), str(tables),
-                   str(args.packed), str(args.payload_bytes)]
-        try:
-            run = subprocess.run(command, capture_output=True, text=True, timeout=args.timeout_seconds)
-            exit_code = native_exit_code = run.returncode
-            result = {"complete_integer_trial": False, "stdout": run.stdout, "stderr": run.stderr}
-            if exit_code == 0:
-                try:
-                    decoded = ingest._json_no_duplicates(run.stdout, "native integer trial")
-                    if decoded.get("complete_integer_trial") is not True:
-                        raise ValueError("native report does not complete the integer trial")
-                except ValueError as error:
-                    exit_code = 1
-                    result["failure"] = str(error)
+        trace_context = (tempfile.TemporaryDirectory(prefix=f".{args.trace_output.name}.",
+                                                     dir=args.trace_output.parent)
+                         if args.mode == "trace" else nullcontext(None))
+        with trace_context as trace_directory:
+            trace_path = Path(trace_directory) / "trace.bin" if trace_directory else None
+            native_mode = "run-trace" if args.mode == "trace" else "run"
+            command = [str(args.native), native_mode, str(snapshot), str(tables),
+                       str(args.packed), str(args.payload_bytes)]
+            if trace_path is not None:
+                command.append(str(trace_path))
+            try:
+                run = subprocess.run(command, capture_output=True, text=True,
+                                     timeout=args.timeout_seconds)
+                exit_code = native_exit_code = run.returncode
+                result = {"complete_integer_trial": False, "stdout": run.stdout,
+                          "stderr": run.stderr}
+                if exit_code == 0:
+                    try:
+                        decoded = ingest._json_no_duplicates(run.stdout, "native integer trial")
+                        if decoded.get("complete_integer_trial") is not True:
+                            raise ValueError("native report does not complete the integer trial")
+                        if trace_path is not None:
+                            checked = trace_codec.validate(trace_path)
+                            native_trace = decoded.get("trace")
+                            keys = ("format", "bytes", "records", "logical_words", "stored_words",
+                                    "final_kv_sources", "blake3_before_footer")
+                            if not isinstance(native_trace, dict) or any(
+                                native_trace.get(key) != checked.get(key) for key in keys
+                            ) or checked.get("recipe_digest") != recipes.get("recipe_digest"):
+                                raise ValueError("native and independent trace censuses differ")
+                            decoded["trace_validation"] = checked
+                    except ValueError as error:
+                        exit_code = 1
+                        result["failure"] = str(error)
+                    else:
+                        result = decoded
                 else:
-                    result = decoded
-            else:
-                result["failure"] = "native integer trial failed"
-        except subprocess.TimeoutExpired as error:
-            exit_code = 124
-            native_exit_code = None
-            result = {"complete_integer_trial": False, "failure": "integer trial deadline exceeded"}
-            for name, value in (("stdout", error.stdout), ("stderr", error.stderr)):
-                result[name] = value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
-        result.update(table_report, candidate_sha256=hashlib.sha256(candidate_body).hexdigest(),
-                      packed_sha256=report["packed_sha256"],
-                      native_sha256=ingest.stream_sha256(args.native)[0],
-                      workload_sha256=hashlib.sha256((ingest.ROOT / "manifests/c7-d126-gemma31b-workload-v1.json").read_bytes()).hexdigest(),
-                      tables_generated_by_certified_reference=True,
-                      packed_hash_checked=True, exit_code=exit_code, native_exit_code=native_exit_code,
-                      timeout_seconds=args.timeout_seconds, credit=False)
-        with atomic_output(args.output) as sink:
-            sink.write((json.dumps(result, indent=2, sort_keys=True) + "\n").encode())
+                    result["failure"] = "native integer trial failed"
+            except subprocess.TimeoutExpired as error:
+                exit_code = 124
+                native_exit_code = None
+                result = {"complete_integer_trial": False,
+                          "failure": "integer trial deadline exceeded"}
+                for name, value in (("stdout", error.stdout), ("stderr", error.stderr)):
+                    result[name] = (value.decode("utf-8", errors="replace")
+                                    if isinstance(value, bytes) else value or "")
+            result.update(table_report, candidate_sha256=hashlib.sha256(candidate_body).hexdigest(),
+                          packed_sha256=report["packed_sha256"],
+                          native_sha256=ingest.stream_sha256(args.native)[0],
+                          workload_sha256=hashlib.sha256((ingest.ROOT / "manifests/c7-d126-gemma31b-workload-v1.json").read_bytes()).hexdigest(),
+                          tables_generated_by_certified_reference=True,
+                          packed_hash_checked=True, exit_code=exit_code,
+                          native_exit_code=native_exit_code,
+                          timeout_seconds=args.timeout_seconds, credit=False)
+            published_trace = False
+            try:
+                if trace_path is not None and exit_code == 0:
+                    os.link(trace_path, args.trace_output)
+                    published_trace = True
+                    ingest._fsync_directory(args.trace_output.parent)
+                with atomic_output(args.output) as sink:
+                    sink.write((json.dumps(result, indent=2, sort_keys=True) + "\n").encode())
+            except BaseException:
+                if published_trace:
+                    args.trace_output.unlink()
+                    ingest._fsync_directory(args.trace_output.parent)
+                raise
     print(json.dumps(result, indent=2, sort_keys=True))
     if exit_code:
         raise SystemExit(exit_code)

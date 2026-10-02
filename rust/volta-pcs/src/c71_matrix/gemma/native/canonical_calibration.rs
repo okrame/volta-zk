@@ -3,7 +3,409 @@
 //! Observed integer ranges do not select or certify a calibrated Gamma.
 use super::*;
 use std::cell::{Cell, RefCell};
-use std::io::{Read, Seek, SeekFrom};
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
+
+const TRACE_MAGIC: &[u8; 8] = b"C71TRC01";
+const TRACE_FRAME_BYTES: usize = 48;
+const TRACE_CHUNK_BYTES: usize = 64 * 1024;
+const TRACE_METADATA: u8 = 1;
+const TRACE_VALUES: u8 = 2;
+const TRACE_HISTOGRAM: u8 = 3;
+const TRACE_PADDING: u8 = 4;
+const TRACE_TOKENS: u8 = 5;
+const TRACE_FINAL_KV: u8 = 6;
+const TRACE_FOOTER: u8 = 255;
+
+#[derive(serde::Serialize)]
+pub(super) struct TraceReport {
+    pub format: &'static str,
+    pub bytes: u64,
+    pub records: u64,
+    pub logical_words: u64,
+    pub stored_words: u64,
+    pub final_kv_sources: u64,
+    pub blake3_before_footer: String,
+    pub encoder_scratch_bytes: usize,
+}
+
+pub(super) struct Trace {
+    sink: BufWriter<File>,
+    path: PathBuf,
+    hasher: blake3::Hasher,
+    bytes: u64,
+    records: u64,
+    logical_words: u64,
+    stored_words: u64,
+    final_kv_sources: u64,
+    context: Option<u8>,
+    complete: bool,
+}
+
+impl Trace {
+    pub(super) fn create(path: &Path) -> Result<Self, String> {
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|error| error.to_string())?;
+        let mut trace = Self {
+            sink: BufWriter::new(file),
+            path: path.to_path_buf(),
+            hasher: blake3::Hasher::new(),
+            bytes: 0,
+            records: 0,
+            logical_words: 0,
+            stored_words: 0,
+            final_kv_sources: 0,
+            context: None,
+            complete: false,
+        };
+        trace.write(TRACE_MAGIC)?;
+        Ok(trace)
+    }
+
+    fn write(&mut self, body: &[u8]) -> Result<(), String> {
+        self.sink.write_all(body).map_err(|error| error.to_string())?;
+        self.hasher.update(body);
+        self.bytes = self
+            .bytes
+            .checked_add(body.len() as u64)
+            .ok_or("calibration trace byte count overflow")?;
+        Ok(())
+    }
+
+    fn header(
+        &mut self,
+        kind: u8,
+        context: u8,
+        codec: u8,
+        source: u32,
+        first: u64,
+        rows: u64,
+        columns: u64,
+        repeat: u64,
+        stored_words: u64,
+        logical_words: u64,
+    ) -> Result<(), String> {
+        let mut header = [0u8; TRACE_FRAME_BYTES];
+        header[0] = kind;
+        header[1] = context;
+        header[2] = codec;
+        header[4..8].copy_from_slice(&source.to_le_bytes());
+        for (offset, value) in
+            [(8, first), (16, rows), (24, columns), (32, repeat), (40, stored_words)]
+        {
+            header[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+        }
+        self.write(&header)?;
+        self.records = self.records.checked_add(1).ok_or("calibration trace record overflow")?;
+        self.stored_words = self
+            .stored_words
+            .checked_add(stored_words)
+            .ok_or("calibration trace stored-word overflow")?;
+        self.logical_words = self
+            .logical_words
+            .checked_add(logical_words)
+            .ok_or("calibration trace logical-word overflow")?;
+        Ok(())
+    }
+
+    fn bytes_frame(
+        &mut self,
+        kind: u8,
+        context: u8,
+        source: u32,
+        first: u64,
+        rows: u64,
+        columns: u64,
+        repeat: u64,
+        body: &[u8],
+        logical_words: u64,
+    ) -> Result<(), String> {
+        self.header(
+            kind,
+            context,
+            1,
+            source,
+            first,
+            rows,
+            columns,
+            repeat,
+            body.len() as u64,
+            logical_words,
+        )?;
+        self.write(body)
+    }
+
+    fn signed_frame(
+        &mut self,
+        kind: u8,
+        context: u8,
+        codec: usize,
+        source: usize,
+        first: usize,
+        rows: usize,
+        columns: usize,
+        repeat: usize,
+        values: &[i64],
+        logical_words: usize,
+    ) -> Result<(), String> {
+        let dense_words = rows.checked_mul(columns).ok_or("calibration trace shape overflow")?;
+        if !(1..=8).contains(&codec)
+            || (kind == TRACE_PADDING && values.len() != 1)
+            || (kind != TRACE_PADDING && values.len() != dense_words)
+        {
+            return Err("calibration trace signed-frame shape differs".into());
+        }
+        self.header(
+            kind,
+            context,
+            codec as u8,
+            source.try_into().map_err(|_| "calibration trace source overflow")?,
+            first as u64,
+            rows as u64,
+            columns as u64,
+            repeat as u64,
+            values.len() as u64,
+            logical_words as u64,
+        )?;
+        let words = (TRACE_CHUNK_BYTES / codec).max(1);
+        let mut encoded = Vec::with_capacity(words * codec);
+        for chunk in values.chunks(words) {
+            encoded.clear();
+            for &value in chunk {
+                if codec < 8 {
+                    let bound = (1i64 << (8 * codec - 1)) - 1;
+                    if value < -bound - 1 || value > bound {
+                        return Err("calibration trace value outside codec".into());
+                    }
+                }
+                encoded.extend_from_slice(&value.to_le_bytes()[..codec]);
+            }
+            self.write(&encoded)?;
+        }
+        Ok(())
+    }
+
+    fn begin_context(&mut self, slot: usize, profile: &Canonical) -> Result<(), String> {
+        if self.context.is_some() || slot >= 3 {
+            return Err("calibration trace context order differs".into());
+        }
+        let context = slot as u8;
+        let sources = &profile.bytes().scalar.layout.sources;
+        let metadata = serde_json::to_vec(&serde_json::json!({
+            "schema": "volta-c71-calibration-trace-context-v1",
+            "old_tokens": 150 * slot,
+            "recipe_digest": blake3::Hash::from_bytes(profile.recipes.digest).to_hex().to_string(),
+            "sources": sources.iter().enumerate().map(|(id, source)| serde_json::json!({
+                "id": id, "name": source.name, "rows": source.rows,
+                "columns": source.cols, "codec_bytes": profile.bytes().widths[id]
+            })).collect::<Vec<_>>(),
+            "kv_sources": profile.sources.attention.layers.iter()
+                .flat_map(|layer| [layer.k, layer.v]).collect::<BTreeSet<_>>(),
+            "padding_row_first": 150,
+            "padding_rows_per_block": 106,
+            "padding_repeat": 32,
+            "padding_row_stride": 256,
+            "tokens": 150
+        }))
+        .map_err(|error| error.to_string())?;
+        self.bytes_frame(TRACE_METADATA, context, u32::MAX, 0, 0, 0, 0, &metadata, 0)?;
+        self.context = Some(context);
+        Ok(())
+    }
+
+    fn values(
+        &mut self,
+        codec: usize,
+        source: usize,
+        first: usize,
+        rows: usize,
+        columns: usize,
+        values: &[i64],
+    ) -> Result<(), String> {
+        let context = self.context.ok_or("calibration trace context missing")?;
+        self.signed_frame(
+            TRACE_VALUES,
+            context,
+            codec,
+            source,
+            first,
+            rows,
+            columns,
+            1,
+            values,
+            values.len(),
+        )
+    }
+
+    fn padding(
+        &mut self,
+        codec: usize,
+        source: usize,
+        columns: usize,
+        value: i64,
+    ) -> Result<(), String> {
+        let context = self.context.ok_or("calibration trace context missing")?;
+        self.signed_frame(
+            TRACE_PADDING,
+            context,
+            codec,
+            source,
+            150,
+            106,
+            columns,
+            32,
+            &[value],
+            32 * 106 * columns,
+        )
+    }
+
+    fn histogram(&mut self, source: usize, values: &[u32]) -> Result<(), String> {
+        let context = self.context.ok_or("calibration trace context missing")?;
+        self.header(
+            TRACE_HISTOGRAM,
+            context,
+            4,
+            source.try_into().map_err(|_| "calibration trace source overflow")?,
+            0,
+            1,
+            values.len() as u64,
+            1,
+            values.len() as u64,
+            values.len() as u64,
+        )?;
+        let mut encoded = Vec::with_capacity(TRACE_CHUNK_BYTES);
+        for chunk in values.chunks(TRACE_CHUNK_BYTES / 4) {
+            encoded.clear();
+            for value in chunk {
+                encoded.extend_from_slice(&value.to_le_bytes());
+            }
+            self.write(&encoded)?;
+        }
+        Ok(())
+    }
+
+    fn end_context(&mut self, slot: usize, tokens: &[u32; 150]) -> Result<(), String> {
+        if self.context != Some(slot as u8) {
+            return Err("calibration trace context end differs".into());
+        }
+        self.header(
+            TRACE_TOKENS,
+            slot as u8,
+            4,
+            u32::MAX,
+            0,
+            1,
+            tokens.len() as u64,
+            1,
+            tokens.len() as u64,
+            tokens.len() as u64,
+        )?;
+        let mut encoded = Vec::with_capacity(tokens.len() * 4);
+        for token in tokens {
+            encoded.extend_from_slice(&token.to_le_bytes());
+        }
+        self.write(&encoded)?;
+        self.context = None;
+        Ok(())
+    }
+
+    fn final_kv(&mut self, history: &History, profile: &Canonical) -> Result<(), String> {
+        if self.context.is_some() || history.old != 450 {
+            return Err("calibration trace final KV state differs".into());
+        }
+        let kv: BTreeSet<_> =
+            profile.sources.attention.layers.iter().flat_map(|layer| [layer.k, layer.v]).collect();
+        for source in kv {
+            let columns = profile.bytes().scalar.layout.sources[source].cols;
+            let rows = history.rows.get(source).ok_or("calibration trace final KV missing")?;
+            if rows.len() != 450 || rows.iter().any(|row| row.len() != columns) {
+                return Err("calibration trace final KV shape differs".into());
+            }
+            let words = rows
+                .len()
+                .checked_mul(columns)
+                .ok_or("calibration trace final KV size overflow")?;
+            self.header(
+                TRACE_FINAL_KV,
+                2,
+                2,
+                source.try_into().map_err(|_| "calibration trace source overflow")?,
+                0,
+                rows.len() as u64,
+                columns as u64,
+                1,
+                words as u64,
+                words as u64,
+            )?;
+            let mut encoded = Vec::with_capacity(columns * 2);
+            for row in rows {
+                encoded.clear();
+                for value in row.iter() {
+                    encoded.extend_from_slice(&value.to_le_bytes());
+                }
+                self.write(&encoded)?;
+            }
+            self.final_kv_sources += 1;
+        }
+        Ok(())
+    }
+
+    pub(super) fn finish(mut self) -> Result<TraceReport, String> {
+        if self.context.is_some() || self.final_kv_sources == 0 {
+            return Err("calibration trace is incomplete".into());
+        }
+        let digest = *self.hasher.finalize().as_bytes();
+        let records = self.records;
+        let logical_words = self.logical_words;
+        let stored_words = self.stored_words;
+        let bytes_before_footer = self.bytes;
+        let mut footer = [0u8; TRACE_FRAME_BYTES];
+        footer[0] = TRACE_FOOTER;
+        footer[1] = u8::MAX;
+        footer[2] = 1;
+        footer[4..8].copy_from_slice(&u32::MAX.to_le_bytes());
+        for (offset, value) in [
+            (8, records),
+            (16, logical_words),
+            (24, stored_words),
+            (32, bytes_before_footer),
+            (40, digest.len() as u64),
+        ] {
+            footer[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+        }
+        self.sink.write_all(&footer).map_err(|error| error.to_string())?;
+        self.sink.write_all(&digest).map_err(|error| error.to_string())?;
+        self.sink.flush().map_err(|error| error.to_string())?;
+        self.sink.get_ref().sync_all().map_err(|error| error.to_string())?;
+        self.bytes = self
+            .bytes
+            .checked_add((TRACE_FRAME_BYTES + digest.len()) as u64)
+            .ok_or("calibration trace byte count overflow")?;
+        self.complete = true;
+        Ok(TraceReport {
+            format: "C71TRC01",
+            bytes: self.bytes,
+            records,
+            logical_words,
+            stored_words,
+            final_kv_sources: self.final_kv_sources,
+            blake3_before_footer: blake3::Hash::from_bytes(digest).to_hex().to_string(),
+            encoder_scratch_bytes: TRACE_CHUNK_BYTES,
+        })
+    }
+}
+
+impl Drop for Trace {
+    fn drop(&mut self) {
+        if !self.complete {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
 
 /// Row cache for an already validated immutable packed input. Length and
 /// symmetric codec checks do NOT verify the checkpoint or packed-file hash.
@@ -170,6 +572,7 @@ pub(super) fn fixed_run<R: Read + Seek>(
     public: &super::state::Public<'_>,
     reader: &mut PackedRows<'_, R>,
     payload_limit: usize,
+    mut trace: Option<&mut Trace>,
 ) -> Result<Vec<Response>, String> {
     if public.profiles.len() != 3
         || reader.sources.len() != public.profiles[0].plan.sources.len()
@@ -196,6 +599,9 @@ pub(super) fn fixed_run<R: Read + Seek>(
     let mut responses = Vec::with_capacity(3);
     for (slot, profile) in public.profiles.iter().enumerate() {
         history.check(profile)?;
+        if let Some(trace) = trace.as_deref_mut() {
+            trace.begin_context(slot, profile)?;
+        }
         let external = history.payload + reader.buffer.capacity();
         let budget =
             payload_limit.checked_sub(external).ok_or("calibration run budget exceeded")?;
@@ -211,10 +617,14 @@ pub(super) fn fixed_run<R: Read + Seek>(
                     &public.tables[slot],
                     &|id, row, column| weights.borrow_mut().get(id, row, column),
                     &|id, row, column| history.read(id, row, column),
+                    trace.as_deref_mut(),
                 )
                 .map_err(|error| format!("calibration O={} token={token}: {error}", slot * 150))?;
         }
-        trial.finish()?;
+        trial.finish(trace.as_deref_mut())?;
+        if let Some(trace) = trace.as_deref_mut() {
+            trace.end_context(slot, &tokens)?;
+        }
         history.append(&mut trial)?;
         let peak = trial.work.payload_plus_incoming_bundle_peak_bytes + external;
         responses.push(Response {
@@ -227,12 +637,40 @@ pub(super) fn fixed_run<R: Read + Seek>(
             named_peak_with_previous_kv_and_weight_row_bytes: peak,
         });
     }
+    if let Some(trace) = trace {
+        trace.final_kv(&history, &public.profiles[2])?;
+    }
     Ok(responses)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_calibration_trace_codec_is_framed_and_fail_closed() {
+        let suffix =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("c71-trace-{}-{suffix}.bin", std::process::id()));
+        let mut trace = Trace::create(&path).unwrap();
+        assert!(Trace::create(&path).is_err());
+        trace.bytes_frame(TRACE_METADATA, 0, u32::MAX, 0, 0, 0, 0, br#"{}"#, 0).unwrap();
+        trace.signed_frame(TRACE_VALUES, 0, 2, 0, 0, 1, 2, 1, &[-1, 2], 2).unwrap();
+        trace.final_kv_sources = 1;
+        let report = trace.finish().unwrap();
+        let body = std::fs::read(&path).unwrap();
+        assert_eq!(&body[..8], TRACE_MAGIC);
+        assert_eq!(report.records, 2);
+        assert_eq!(report.logical_words, 2);
+        assert_eq!(report.bytes as usize, body.len());
+        assert_eq!(body[body.len() - 80], TRACE_FOOTER);
+        std::fs::remove_file(&path).unwrap();
+
+        let partial = path.with_extension("partial");
+        drop(Trace::create(&partial).unwrap());
+        assert!(!partial.exists());
+    }
 
     #[test]
     fn c71_b12_native_canonical_calibration_three_context_kv_handoff() {
@@ -378,7 +816,7 @@ mod tests {
                 reader.borrow_mut().get(0, r, c)
             };
             for _ in 0..2 {
-                trial.token(&mut tokens, &tables, &weights, &absent).unwrap();
+                trial.token(&mut tokens, &tables, &weights, &absent, None).unwrap();
             }
             let columns = p.bytes().scalar.layout.sources[0].cols;
             assert_eq!(trial.extents[0].words, 2 * columns);
@@ -392,11 +830,11 @@ mod tests {
             assert_eq!(trial.work.producer_rows, 6);
             assert_eq!(trial.work.weight_reads, 2 * columns);
             assert_eq!(trial.work.historical_kv_reads, 0);
-            assert!(trial.finish().is_err()); // Never label a partial graph calibrated.
+            assert!(trial.finish(None).is_err()); // Never label a partial graph calibrated.
             let mut limited = Trial::new(&p, 1);
-            assert!(limited.token(&mut tokens, &tables, &weights, &absent).is_err());
+            assert!(limited.token(&mut tokens, &tables, &weights, &absent, None).is_err());
             let before = calls.get();
-            assert!(limited.token(&mut tokens, &tables, &weights, &absent).is_err());
+            assert!(limited.token(&mut tokens, &tables, &weights, &absent, None).is_err());
             assert_eq!(calls.get(), before); // fail closed, no retry after partial work
 
             let mut p = Canonical::compile(old / 150, &[0; 772], &scales).unwrap();
@@ -406,15 +844,18 @@ mod tests {
             let raw = p.sources.attention.rope.gate_up.products[0].raw;
             p.steps = vec![Producer::Gelu(0), Producer::Gate(0)];
             let mut look = Trial::new(&p, 16 << 20);
-            look.emit(prepare::Row {
-                values: vec![
-                    (x, 0, (0..cols).map(|j| (j % 3) as i64 - 1).collect()),
-                    (up, 0, vec![2; cols]),
-                ],
-                ..Default::default()
-            })
+            look.emit(
+                prepare::Row {
+                    values: vec![
+                        (x, 0, (0..cols).map(|j| (j % 3) as i64 - 1).collect()),
+                        (up, 0, vec![2; cols]),
+                    ],
+                    ..Default::default()
+                },
+                None,
+            )
             .unwrap();
-            look.token(&mut tokens, &tables, &absent, &absent).unwrap();
+            look.token(&mut tokens, &tables, &absent, &absent, None).unwrap();
             assert_eq!(look.histograms[&h].iter().map(|&n| n as usize).sum::<usize>(), cols);
             assert_eq!((look.extents[y].minimum, look.extents[y].maximum), (-1, 1));
             assert_eq!((look.extents[raw].minimum, look.extents[raw].maximum), (-2, 2));
@@ -435,13 +876,19 @@ mod tests {
                     (0..old + 150).map(|t| i64::from(t < live)).collect(),
                 ));
             }
-            pv.emit(prepare::Row { values, ..Default::default() }).unwrap();
-            pv.token(&mut tokens, &tables, &absent, &|id, t, c| {
-                assert_eq!(id, v);
-                assert!(t < old);
-                assert!(c < groups * lanes);
-                Ok(2)
-            })
+            pv.emit(prepare::Row { values, ..Default::default() }, None).unwrap();
+            pv.token(
+                &mut tokens,
+                &tables,
+                &absent,
+                &|id, t, c| {
+                    assert_eq!(id, v);
+                    assert!(t < old);
+                    assert!(c < groups * lanes);
+                    Ok(2)
+                },
+                None,
+            )
             .unwrap();
             assert_eq!(
                 (pv.extents[raw].minimum, pv.extents[raw].maximum),
@@ -576,7 +1023,7 @@ impl<'a> Trial<'a> {
             .ok_or("A row read before producer or after last consumer".into())
     }
 
-    fn emit(&mut self, out: prepare::Row) -> Result<(), String> {
+    fn emit(&mut self, out: prepare::Row, mut trace: Option<&mut Trace>) -> Result<(), String> {
         let p = self.profile;
         let sources = &p.bytes().scalar.layout.sources;
         let bundle = out.values.iter().map(|(_, _, v)| v.capacity() * 8).sum::<usize>()
@@ -616,6 +1063,16 @@ impl<'a> Trial<'a> {
             let source = &sources[id];
             if values.len() % source.cols != 0 || first + values.len() / source.cols > source.rows {
                 return Err("calibration row bundle shape differs".into());
+            }
+            if let Some(trace) = trace.as_deref_mut() {
+                trace.values(
+                    p.bytes().widths[id],
+                    id,
+                    first,
+                    values.len() / source.cols,
+                    source.cols,
+                    &values,
+                )?;
             }
             for &v in &values {
                 self.extents[id].add(v, 1);
@@ -690,6 +1147,7 @@ impl<'a> Trial<'a> {
         tables: &profile::Tables<'_>,
         weights: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
         previous: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
+        trace: Option<&mut Trace>,
     ) -> Result<(), String> {
         if self.failed || self.finished || self.next_token >= 150 {
             return Err("calibration trial stopped".into());
@@ -700,6 +1158,7 @@ impl<'a> Trial<'a> {
         let mut pending_tokens = *tokens;
         let (wr, ar, old, fresh) = (Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0));
         let state = RefCell::new(&mut *self);
+        let trace = RefCell::new(trace);
         let result = p.prepare_token(
             token,
             &mut pending_tokens,
@@ -724,7 +1183,7 @@ impl<'a> Trial<'a> {
                     state.borrow().read(id, t - p.sources.attention.rope.old, c)
                 }
             },
-            |out| state.borrow_mut().emit(out),
+            |out| state.borrow_mut().emit(out, trace.borrow_mut().as_deref_mut()),
             |step| {
                 state.borrow_mut().release_step(step);
                 Ok(())
@@ -748,7 +1207,7 @@ impl<'a> Trial<'a> {
 
     /// Finish all original sources, including virtual query padding and
     /// histogram zeros. This rejects partial/selected-stage test fixtures.
-    pub(super) fn finish(&mut self) -> Result<(), String> {
+    pub(super) fn finish(&mut self, mut trace: Option<&mut Trace>) -> Result<(), String> {
         if self.failed || self.finished || self.next_token != 150 {
             return Err("calibration trial incomplete/stopped".into());
         }
@@ -758,6 +1217,9 @@ impl<'a> Trial<'a> {
             if s.rows > 150 {
                 if let Some(v) = p.padding_word(id, 150, 0)? {
                     let count = 32 * 106 * s.cols;
+                    if let Some(trace) = trace.as_deref_mut() {
+                        trace.padding(p.bytes().widths[id], id, s.cols, v)?;
+                    }
                     self.extents[id].add(v, count);
                     self.work.public_padding_words += count;
                 }
@@ -771,6 +1233,9 @@ impl<'a> Trial<'a> {
                 self.work.public_padding_histogram_visits += count;
             }
             if let Some(h) = self.histograms.get(&id) {
+                if let Some(trace) = trace.as_deref_mut() {
+                    trace.histogram(id, h)?;
+                }
                 for &v in h {
                     self.extents[id].add(i64::from(v), 1);
                 }

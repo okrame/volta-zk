@@ -72,8 +72,10 @@ non trasferisce automaticamente i bound B12 al programma completo.
 ## Stato di implementazione e lavoro necessario
 
 La prova canonica completa non è pronta per una misura. Il riferimento
-di calibrazione è CPU, anche su un host H100, e manca il confronto
-indipendente sui valori reali. Lo [stato e l'ordine di lavoro](runpod-tests.md#stato-e-sequenza-operativa)
+di calibrazione è CPU, anche su un host H100. L'export completo e il
+validatore strutturale della traccia di calibrazione sono disponibili;
+manca ancora il calcolo numerico indipendente sui valori reali. Lo
+[stato e l'ordine di lavoro](runpod-tests.md#stato-e-sequenza-operativa)
 identificano componenti disponibili, implementazioni mancanti e passaggi
 che richiedono autorizzazione. Il [contratto del confronto](specs.md#confronto-indipendente-da-implementare)
 definisce cosa completare prima di ammettere Γ.

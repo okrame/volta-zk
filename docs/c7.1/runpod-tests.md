@@ -17,7 +17,7 @@ definisce i controlli piccoli. Non occorre recuperare istruzioni dall'archivio.
 
 | Ordine | Disponibile | Lavoro e condizione di uscita |
 |---|---|---|
-| 1. Preparare il confronto, localmente | Ingest W, inizializzatore delle scale, tabelle certificate e replay intero CPU | Implementare e testare l'[export e confronto indipendente](specs.md#confronto-indipendente-da-implementare). Senza questo, la campagna può produrre solo una candidata numericamente riproducibile, non Γ ammesso |
+| 1. Preparare il confronto, localmente | Ingest W, inizializzatore delle scale, tabelle certificate, replay intero CPU, export `C71TRC01` e validatore strutturale | Implementare e testare il [produttore numerico indipendente](specs.md#confronto-indipendente-da-implementare). Senza questo, la campagna può produrre solo una candidata numericamente riproducibile, non Γ ammesso |
 | 2. Calibrare i pesi reali, dopo autorizzazione | Comandi CPU nelle sezioni seguenti; nessuna calibrazione CUDA completa | Una sola candidata, due replay e confronto indipendente nei tre contesti; soddisfare la [validazione](#validazione-e-congelamento-del-profilo), quindi fissare Γ e ricompilare il conto delle risorse |
 | 3. Integrare la prova, prima su input ridotti | Tre accettazioni con MAC ideali; O=0 ordinato con W ricostruita e AES Seed6 reale; registro e codec canonici con test strutturali e di rifiuto | Completare preparatore/prover canonici, getter, certificati validi e trasporto dell'accettazione; verificare tutte le componenti sullo stesso registro, non soltanto separatamente |
 | 4. Preparare l'esperimento GPU | Parità PCS ridotta, S1, resti e potenze a blocchi; controlli host e compilazioni statiche CUDA | Collegare CUDA alle dimensioni canoniche, completare contabilità simultanea e condizioni dell'[esperimento della prova](#esperimento-della-prova); ottenere l'autorizzazione per l'esperimento con confronto host/GPU e misure |
@@ -90,9 +90,10 @@ con tempi e risorse del confronto inclusi nel medesimo limite.
 | Software | Linux x86_64, Python ≥3.11, NumPy, pytest, Rust/Cargo, C/C++ build tools, Git, GNU timeout/time; versioni e immagine registrate |
 | Disco | Volume locale 300 GB montato in `/workspace`, container 40 GB; almeno 180 GB liberi prima del download |
 | Payload persistente | Shard 62.546.338.248 B + packed 61.394.690.560 B = 123.941.028.808 B |
-| Temporanei | Download direttamente in `.partial`, rinomina senza seconda copia; packed pubblicato atomicamente; nessuna seconda copia BF16/dequantizzata completa |
+| Temporanei | Download direttamente in `.partial`, rinomina senza seconda copia; packed e traccia pubblicati atomicamente; nessuna seconda copia BF16/dequantizzata completa |
 | Memoria | Ingest nativo richiede 3.355.443.200 B operativi; trial con payload nominato ≤8 GiB; limite AS per processo 64 GiB; osservare anche RSS aggregato/cgroup e cache OS |
 | Numerica | Pilot: blocco W i16+f64 ≤27.525.120 B, KV finale f64 1.622.016.000 B; replay KV finale i16 405.504.000 B, più A viva, tabelle, workspace e runtime |
+| Traccia privata | Riservare 44 GB per il primo replay: limite conservativo da A nei codec originali, KV finale e framing; il padding è compattato. Resta fuori da Git e rientra nei limiti di disco e tempo |
 
 Questi payload non sono un picco RSS completo. Stop per OOM, swap
 sostenuto, RSS aggregato >96 GiB o spazio libero <20 GB; non aumentare
@@ -238,6 +239,7 @@ export C71_CALIBRATION_BINARY="$NATIVE"
 run_step 60 describe "$NATIVE" describe
 run_step 60 pilot-plan .venv/bin/python scripts/c71_activation_pilot.py plan --native "$NATIVE"
 (ulimit -v 2097152; run_step 60 calibration-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py)
+(ulimit -v 2097152; run_step 60 trace-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration_trace.py)
 (ulimit -v 2097152; run_step 60 pilot-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_activation_pilot.py)
 (ulimit -v 2097152; run_step 60 native-ingest-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c7_d126_gemma_native_bf16.py)
 (ulimit -v 2097152; run_step 60 ingest-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c7_d126_gemma_weight_ingest.py)
@@ -317,9 +319,10 @@ run_step 60 recipes "$NATIVE" recipes "$CANDIDATE"
 run_step 900 tables .venv/bin/python scripts/c71_calibrate.py tables \
   --native "$NATIVE" --candidate "$CANDIDATE" --output "$RUN/tables.bin"
 run_step 60 check-input "$NATIVE" check-input "$CANDIDATE" "$RUN/tables.bin"
-run_step 7200 integer-1 .venv/bin/python scripts/c71_calibrate.py run \
+run_step 7200 integer-1 .venv/bin/python scripts/c71_calibrate.py trace \
   --native "$NATIVE" --candidate "$CANDIDATE" --ingest-report "$INGEST" \
   --packed "$PACKED" --output "$RUN/integer-1.json" \
+  --trace-output "$RUN/integer-1.trace" \
   --payload-bytes 8589934592 --timeout-seconds 6900
 run_step 5400 integer-2 .venv/bin/python scripts/c71_calibrate.py run \
   --native "$NATIVE" --candidate "$CANDIDATE" --ingest-report "$INGEST" \
@@ -332,7 +335,9 @@ run_step 900 ledger .venv/bin/python scripts/c71_calibrate.py ledger \
 Le due invocazioni ripartono ciascuna da KV vuoto; all'interno collegano
 O=0/150/300 senza importare stato. Il secondo replay verifica
 riproducibilità del riferimento, **non** è una seconda implementazione
-indipendente. I 150 token floating non sono il golden intero. Una
+indipendente. Il primo replay pubblica `C71TRC01` solo dopo exit 0 e
+validazione strutturale; la traccia contiene valori privati e non entra
+nel bundle Git. I 150 token floating non sono il golden intero. Una
 candidata che non compila o produce overflow/range failure richiede
 stop; una revisione delle scale comporta nuova candidata, nuova autorizzazione e
 ripartenza da O=0, mai riparazione del solo contesto fallito.
@@ -357,9 +362,10 @@ Prima di congelare verificare, sui file persistiti e non sul solo exit 0:
    non inferirlo dalla sola lunghezza della lista dei token.
 5. Confronto indipendente completato secondo il
    [contratto delle specifiche](specs.md#confronto-indipendente-da-implementare).
-   **Non disponibile nel CLI attuale**: min/max e un secondo replay Rust
-   non lo sostituiscono; non inventare un comando `freeze` o un confronto
-   bit per bit mai eseguito.
+   L'export `C71TRC01` e il validatore strutturale sono disponibili; il
+   produttore numerico indipendente non lo è ancora. Min/max, censimenti
+   e un secondo replay Rust non lo sostituiscono; non inventare un comando
+   `freeze` o un confronto bit per bit mai eseguito.
 
 Il piano conserva quindi due esiti distinti: bundle numerico riproducibile
 ottenibile con i comandi correnti, e **Γ ammesso/congelato** soltanto dopo

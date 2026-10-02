@@ -80,7 +80,8 @@ limitato sopra. Impostare i due binari prima dei test che li richiedono.
 |---|---|
 | [test_c7_1_gemma_plan.py](../../tests/test_c7_1_gemma_plan.py), `-k 'B12 or canonical_PCS_wire or native_wire_body or complete_fixed_run or native_small_profile'` | Bound composti, parametri, conteggi del codec e tabelle del profilo ridotto |
 | [test_c7_1_baseline_budget.py](../../tests/test_c7_1_baseline_budget.py) e [test_c71_bootstrap.py](../../tests/test_c71_bootstrap.py), separati | Budget e bootstrap; non esecuzione canonica |
-| [test_c71_calibration.py](../../tests/test_c71_calibration.py) | Tabelle certificate, scale nonzero, input/provenienza, errori, timeout e pubblicazione senza overwrite |
+| [test_c71_calibration.py](../../tests/test_c71_calibration.py) | Tabelle certificate, scale nonzero, input/provenienza, errori, timeout e pubblicazione atomica senza overwrite di report e traccia |
+| [test_c71_calibration_trace.py](../../tests/test_c71_calibration_trace.py) | Framing `C71TRC01`, copertura e confronto esatto su fixture; rifiuto di alterazioni, omissioni, duplicazioni, coordinate errate e troncamenti |
 | [test_c71_activation_pilot.py](../../tests/test_c71_activation_pilot.py) | Inizializzatore delle scale su grafo piccolo, ID canonici e conservazione degli errori |
 | [test_c7_d126_gemma_native_bf16.py](../../tests/test_c7_d126_gemma_native_bf16.py) e [test_c7_d126_gemma_weight_ingest.py](../../tests/test_c7_d126_gemma_weight_ingest.py), separati | Hash degli stessi byte quantizzati, esponenti minimi, packed e rifiuti su shard piccoli |
 | [test_c71_query_remainder.py](../../tests/test_c71_query_remainder.py) | Identità algebriche dei resti, padding e query |
@@ -92,6 +93,9 @@ limitato sopra. Impostare i due binari prima dei test che li richiedono.
 
 I test della calibrazione non leggono checkpoint reali. `calibrated:false`
 e `credit:false` restano corretti anche quando le fixture passano.
+Il parser della traccia completa la validazione strutturale; senza il
+produttore numerico Python sui valori reali non costituisce il confronto
+indipendente e non ammette Γ.
 I report GPU simulati dei test FFT non sono misure CUDA.
 
 L'audit del fork censisce 96 sorgenti e 26 delta revisionati, inclusi
@@ -120,6 +124,7 @@ Eseguire un filtro alla volta:
 
 | Filtro, da eseguire separatamente | Risultato atteso e limite |
 |---|---|
+| `c71_calibration_trace_codec_is_framed_and_fail_closed` | Framing, digest terminale e rimozione dell'output incompleto su fixture ridotta |
 | `c71_b12_native_canonical` | DAG, forme, codec e righe canoniche sintetiche; nessun forward completo |
 | `c71_b12_native_registry` | Profilo posseduto, registro e rifiuto reale per capacità insufficiente |
 | `c71_b12_native_dispatch_canonical` | Riserva/contesto e rifiuto di P0 incompleto, non accettazione canonica |

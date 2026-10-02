@@ -229,3 +229,73 @@ def test_atomic_output_never_publishes_partial_or_replaces_existing(tmp_path, ou
                 output.write_bytes(body)
         assert output.read_bytes() == body if outcome == "race" else not output.exists()
     assert list(tmp_path.iterdir()) == ([output] if outcome != "failure" else [])
+
+
+@pytest.mark.parametrize("outcome", ["success", "timeout"])
+def test_trace_mode_binds_native_and_independent_censuses(tmp_path, monkeypatch, outcome):
+    candidate = tmp_path / "candidate.json"
+    candidate.write_text("{}")
+    report = tmp_path / "ingest.json"
+    report.write_text('{"packed_sha256":"fixture"}')
+    native = tmp_path / "native"
+    native.write_bytes(b"fixture")
+    packed = tmp_path / "packed"
+    packed.write_bytes(b"fixture")
+    output = tmp_path / "result.json"
+    trace_output = tmp_path / "trace.bin"
+    census = {
+        "format": "C71TRC01", "bytes": 100, "records": 9, "logical_words": 20,
+        "stored_words": 21, "final_kv_sources": 1,
+        "blake3_before_footer": "11" * 32, "sha256": "22" * 32,
+        "recipe_digest": "33" * 32,
+        "structural_validation_complete": True, "exact_comparison_complete": False,
+    }
+    monkeypatch.setattr(calibration, "native_recipes", lambda *_args: {"recipe_digest": "33" * 32})
+    monkeypatch.setattr(calibration, "validate_weights", lambda *_args: None)
+    monkeypatch.setattr(calibration, "write_tables", lambda *_args: {"calibrated": False})
+    staged = None
+
+    def validate_trace(path):
+        nonlocal staged
+        staged = path
+        assert path.parent.parent == tmp_path and path.name == "trace.bin"
+        return census
+
+    monkeypatch.setattr(calibration.trace_codec, "validate", validate_trace)
+
+    def completed(command, **_kwargs):
+        nonlocal staged
+        assert command[1] == "run-trace" and Path(command[-1]).parent.parent == tmp_path
+        staged = Path(command[-1])
+        staged.write_bytes(b"private fixture")
+        if outcome == "timeout":
+            raise subprocess.TimeoutExpired(command, 1, output=b"trace prefix")
+        return subprocess.CompletedProcess(
+            command, 0,
+            stdout=json.dumps({"complete_integer_trial": True, "trace": census}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(calibration.subprocess, "run", completed)
+    monkeypatch.setattr(sys, "argv", [
+        "c71_calibrate", "trace", "--native", str(native), "--candidate", str(candidate),
+        "--output", str(output), "--ingest-report", str(report), "--packed", str(packed),
+        "--payload-bytes", "100", "--timeout-seconds", "1",
+        "--trace-output", str(trace_output),
+    ])
+    if outcome == "success":
+        calibration.main()
+    else:
+        with pytest.raises(SystemExit) as stopped:
+            calibration.main()
+        assert stopped.value.code == 124
+    result = json.loads(output.read_text())
+    assert staged is not None and not staged.exists()
+    if outcome == "success":
+        assert trace_output.read_bytes() == b"private fixture"
+        assert result["trace_validation"] == census
+        assert result["trace_validation"]["structural_validation_complete"]
+        assert not result["trace_validation"]["exact_comparison_complete"]
+    else:
+        assert not trace_output.exists()
+        assert result["exit_code"] == 124 and not result["complete_integer_trial"]

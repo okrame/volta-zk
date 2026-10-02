@@ -9,6 +9,7 @@ import sys
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import c71_calibration_oracle as oracle
 import c71_calibration_trace as trace
 
 
@@ -56,8 +57,10 @@ def _fixture(*, altered=False, omit=False, duplicate=False, bad_coordinate=False
               compare=False)
         metadata_rows.append(metadata)
 
-        value_payload = struct.pack("<hh", -32768 if overflow_marker and context == 1 else context + 1,
-                                    -context - 1)
+        values = oracle.matrix([[1, 0], [0, 1]], [context + 1, -context - 1]).tolist()
+        if overflow_marker and context == 1:
+            values[0] = -32768
+        value_payload = oracle.encode_signed(values, 2)
         if altered and context == 1:
             value_payload = struct.pack("<hh", 99, -context - 1)
         if not (omit and context == 1):
@@ -65,17 +68,17 @@ def _fixture(*, altered=False, omit=False, duplicate=False, bad_coordinate=False
         if duplicate and context == 1:
             frame(trace.VALUES, context, 2, 0, 0, 1, 2, 1, value_payload, 2)
         frame(trace.HISTOGRAM, context, 4, 1, 0, 1, 3, 1,
-              struct.pack("<III", 1, 2, 3), 3)
+              oracle.encode_u32([1, 2, 3]), 3)
         for block in range(32):
             frame(trace.VALUES, context, 2, 2, block * 256, 150, 1, 1,
-                  struct.pack("<150h", *([context] * 150)), 150)
+                  oracle.encode_signed([context] * 150, 2), 150)
         frame(trace.PADDING, context, 2, 2, 151 if bad_coordinate and context == 1 else 150,
-              106, 1, 32, struct.pack("<h", 0), 32 * 106)
+              106, 1, 32, oracle.encode_signed([0], 2), 32 * 106)
         frame(trace.TOKENS, context, 4, trace.U32_MAX, 0, 1, 150, 1,
-              struct.pack("<150I", *range(150)), 150)
+              oracle.encode_u32(list(range(150))), 150)
 
     frame(trace.FINAL_KV, 2, 2, 0, 0, 450, 2, 1,
-          struct.pack("<900h", *([7] * 900)), 900)
+          oracle.encode_signed([7] * 900, 2), 900)
     before_footer = len(body)
     body.extend(trace.HEADER.pack(trace.FOOTER, 255, 1, 0, trace.U32_MAX, records,
                                   logical, stored_total, before_footer, 32))

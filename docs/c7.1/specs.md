@@ -153,8 +153,11 @@ KV finale, censimenti, footer, EOF e SHA-256. Può anche confrontare ogni
 frame di dati con un flusso atteso; le fixture ridotte respingono valori alterati,
 omissioni, duplicazioni, coordinate errate e troncamenti.
 
-Resta da implementare il produttore Python che calcola indipendentemente
-tutti gli interi del modello reale. La validazione strutturale della traccia,
+Le primitive Python indipendenti e una fixture ridotta coprono matrice
+esatta sotto bound binary64, RNE, affine, RMS, RoPE, softmax, rapporto e
+argmax, e alimentano l'hook di confronto dei frame. Resta da implementare
+il driver che applica queste primitive a tutti gli operatori del modello
+reale. La validazione strutturale della traccia,
 il confronto dei censimenti e un secondo replay Rust non ammettono Γ. Il
 componente mancante deve soddisfare questo contratto:
 
@@ -173,9 +176,10 @@ componente mancante deve soddisfare questo contratto:
   revisionate. Tempo, disco e memoria del confronto vanno nel preventivo
   della campagna, non in un prolungamento implicito.
 
-Prima dei pesi reali occorre aggiungere una fixture ridotta in cui gli
-interi attesi siano prodotti dal calcolo indipendente, non ricavati dal
-writer Rust. L'hook di confronto esatto esiste; il produttore numerico no.
+La fixture ridotta produce gli interi attesi con
+[c71_calibration_oracle.py](../../scripts/c71_calibration_oracle.py), senza
+richiamare il replay Rust. Questa parità di operatori non sostituisce il
+driver completo, la sua esecuzione sui pesi reali o il conto delle risorse.
 
 ## Dati autenticati e stato
 

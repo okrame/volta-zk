@@ -28,8 +28,221 @@ TABLE_BYTES = 24_414_870
 def native_recipes(native: Path, candidate: Path) -> dict:
     ingest._json_no_duplicates(candidate.read_bytes(), "calibration candidate")
     result = subprocess.run([str(native), "recipes", str(candidate)],
-                            capture_output=True, text=True, timeout=60, check=True)
-    return json.loads(result.stdout)
+                            capture_output=True, timeout=60, check=True)
+    return ingest._json_no_duplicates(result.stdout, "native calibration recipes")
+
+
+def _validate_step_parameters(kind: str, inputs: list[int], outputs: list[int],
+                              parameters: dict, old: int) -> None:
+    keys = {
+        "embedding": {"weight"},
+        "matrix": {"weight", "input_row_offset", "decision_only"},
+        "norm": {"heads", "columns", "weight", "recipe"},
+        "rne": {"shift"},
+        "affine": {"coefficients"},
+        "gelu": {"table", "histogram"},
+        "gate": set(),
+        "rope": {"family", "heads", "width", "position"},
+        "qk": {"groups", "repeats", "lanes"},
+        "softmax": {"table", "maximum", "difference", "exponential", "denominator",
+                    "probability", "histogram"},
+        "pv": {"groups", "repeats", "lanes"},
+        "softcap": {"table", "lower", "histogram"},
+        "argmax": {"token_offset"},
+    }
+    arities = {
+        "embedding": ({0}, 1), "matrix": ({1}, 1), "norm": ({1}, (2, 3)),
+        "rne": ({1}, 1), "affine": ({1, 2}, 1), "gelu": ({1}, 2),
+        "gate": ({2}, 1), "rope": ({1}, 1), "qk": ({2}, 1),
+        "softmax": ({1}, 6), "pv": ({2}, 1), "softcap": ({1}, 2),
+        "argmax": ({1}, 1),
+    }
+    output_arities = arities[kind][1]
+    if (set(parameters) != keys[kind] or len(inputs) not in arities[kind][0]
+            or len(outputs) not in ({output_arities} if isinstance(output_arities, int)
+                                    else set(output_arities))):
+        raise ValueError("native oracle plan operator shape differs")
+    integer = lambda value: type(value) is int
+    if kind in {"embedding", "matrix"} and not integer(parameters["weight"]):
+        raise ValueError("native oracle plan weight reference differs")
+    if kind == "matrix" and (not integer(parameters["input_row_offset"])
+                              or parameters["input_row_offset"] < 0
+                              or type(parameters["decision_only"]) is not bool):
+        raise ValueError("native oracle plan matrix parameters differ")
+    if kind == "norm" and (
+        any(not integer(parameters[key]) or parameters[key] <= 0 for key in ("heads", "columns"))
+        or (parameters["weight"] is not None and not integer(parameters["weight"]))
+        or not isinstance(parameters["recipe"], list) or len(parameters["recipe"]) != 3
+        or any(not integer(value) for value in parameters["recipe"])
+    ):
+        raise ValueError("native oracle plan norm parameters differ")
+    if kind == "rne" and not integer(parameters["shift"]):
+        raise ValueError("native oracle plan RNE parameters differ")
+    if kind == "affine" and (not isinstance(parameters["coefficients"], list)
+                              or len(parameters["coefficients"]) != 2
+                              or any(not integer(value) for value in parameters["coefficients"])):
+        raise ValueError("native oracle plan affine parameters differ")
+    if kind == "gelu" and (
+        not integer(parameters["table"]) or not 0 <= parameters["table"] < 60
+        or parameters["histogram"] not in outputs
+    ):
+        raise ValueError("native oracle plan GELU parameters differ")
+    if kind == "rope" and (
+        parameters["family"] not in (0, 1) or parameters["position"] != old
+        or any(not integer(parameters[key]) or parameters[key] <= 0
+               for key in ("heads", "width"))
+    ):
+        raise ValueError("native oracle plan RoPE parameters differ")
+    if kind in {"qk", "pv"} and any(
+        not integer(parameters[key]) or parameters[key] <= 0
+        for key in ("groups", "repeats", "lanes")
+    ):
+        raise ValueError("native oracle plan attention parameters differ")
+    if kind == "softmax" and (
+        not integer(parameters["table"]) or not 0 <= parameters["table"] < 60
+        or any(not integer(parameters[key]) for key in
+               ("maximum", "difference", "exponential", "denominator", "probability", "histogram"))
+        or {parameters[key] for key in ("maximum", "difference", "exponential", "denominator",
+                                       "probability", "histogram")} != set(outputs)
+    ):
+        raise ValueError("native oracle plan softmax parameters differ")
+    if kind == "softcap" and (parameters["table"] != 0 or parameters["lower"] != -32767
+                               or parameters["histogram"] not in outputs):
+        raise ValueError("native oracle plan softcap parameters differ")
+    if kind == "argmax" and parameters["token_offset"] != 100:
+        raise ValueError("native oracle plan argmax parameters differ")
+
+
+def _validate_oracle_plan(document: dict, recipes: dict) -> dict:
+    if (set(document) != {"calibrated", "contexts", "credit",
+                          "independent_numeric_execution_complete"}
+            or document["calibrated"] is not False
+            or document["credit"] is not False
+            or document["independent_numeric_execution_complete"] is not False):
+        raise ValueError("native oracle plan status differs")
+    contexts = document["contexts"]
+    if not isinstance(contexts, list) or len(contexts) != 3:
+        raise ValueError("native oracle plan contexts differ")
+    expected_kinds = {"embedding", "matrix", "norm", "rne", "affine", "gelu",
+                      "gate", "rope", "qk", "softmax", "pv", "softcap", "argmax"}
+    common_weights = common_sources = common_steps = None
+    for old, context in zip((0, 150, 300), contexts):
+        if (set(context) != {"schema", "old_tokens", "recipe_digest", "sources",
+                            "weights", "kv_sources", "steps", "decision_first",
+                            "decision_count", "tokens"}
+                or context["schema"] != "volta-c71-calibration-oracle-plan-v1"
+                or context["old_tokens"] != old
+                or context["recipe_digest"] != recipes.get("recipe_digest")
+                or (context["decision_first"], context["decision_count"], context["tokens"])
+                != (99, 50, 150)):
+            raise ValueError("native oracle plan context metadata differs")
+
+        weights = context["weights"]
+        if (not isinstance(weights, list) or len(weights) != 772
+                or [row.get("id") for row in weights] != list(range(772))
+                or len({row.get("name") for row in weights}) != 772):
+            raise ValueError("native oracle plan weights differ")
+        intervals = []
+        for row in weights:
+            if (set(row) != {"id", "name", "rows", "columns", "packed_offset"}
+                    or not isinstance(row["name"], str) or not row["name"]
+                    or any(type(row[key]) is not int or row[key] <= 0
+                           for key in ("rows", "columns"))
+                    or type(row["packed_offset"]) is not int or row["packed_offset"] < 0):
+                raise ValueError("native oracle plan weight descriptor differs")
+            intervals.append((row["packed_offset"],
+                              row["packed_offset"] + row["rows"] * row["columns"]))
+        cursor = 0
+        for begin, end in sorted(intervals):
+            if begin != cursor or end <= begin:
+                raise ValueError("native oracle plan packed weight layout differs")
+            cursor = end
+        if cursor * 2 != ingest.PACKED_BYTES:
+            raise ValueError("native oracle plan packed weight length differs")
+        if common_weights is None:
+            common_weights = weights
+        elif weights != common_weights:
+            raise ValueError("native oracle plan weights change between contexts")
+
+        sources = context["sources"]
+        if (not isinstance(sources, list) or len(sources) != 3471
+                or [row.get("id") for row in sources] != list(range(3471))
+                or len({row.get("name") for row in sources}) != 3471):
+            raise ValueError("native oracle plan sources differ")
+        for row in sources:
+            if (set(row) != {"id", "name", "rows", "columns", "codec_bytes"}
+                    or not isinstance(row["name"], str) or not row["name"]
+                    or any(type(row[key]) is not int or row[key] <= 0
+                           for key in ("rows", "columns"))
+                    or row["codec_bytes"] not in (2, 4, 6)):
+                raise ValueError("native oracle plan source descriptor differs")
+        source_identity = [(row["id"], row["name"], row["rows"], row["codec_bytes"])
+                           for row in sources]
+        if common_sources is None:
+            common_sources = source_identity
+        elif source_identity != common_sources:
+            raise ValueError("native oracle plan source identity changes between contexts")
+
+        kv_sources = context["kv_sources"]
+        if (not isinstance(kv_sources, list) or len(kv_sources) != 120
+                or kv_sources != sorted(set(kv_sources))
+                or any(type(source) is not int or not 0 <= source < len(sources)
+                       for source in kv_sources)):
+            raise ValueError("native oracle plan KV sources differ")
+        steps = context["steps"]
+        if not isinstance(steps, list) or len(steps) != 2328:
+            raise ValueError("native oracle plan step count differs")
+        produced = set()
+        kinds = set()
+        step_identity = []
+        for step in steps:
+            if set(step) != {"kind", "inputs", "outputs", "parameters"}:
+                raise ValueError("native oracle plan step shape differs")
+            kind, inputs, outputs, parameters = (step[key] for key in
+                                                  ("kind", "inputs", "outputs", "parameters"))
+            if (kind not in expected_kinds or not isinstance(inputs, list)
+                    or not isinstance(outputs, list) or not outputs
+                    or not isinstance(parameters, dict)
+                    or any(type(source) is not int or not 0 <= source < len(sources)
+                           for source in inputs + outputs)
+                    or len(set(inputs)) != len(inputs) or len(set(outputs)) != len(outputs)):
+                raise ValueError("native oracle plan step values differ")
+            if not set(inputs) <= produced or produced.intersection(outputs):
+                raise ValueError("native oracle plan is not a single-producer topological DAG")
+            _validate_step_parameters(kind, inputs, outputs, parameters, old)
+            for key in ("weight",):
+                if key in parameters and parameters[key] is not None \
+                        and not 0 <= parameters[key] < len(weights):
+                    raise ValueError("native oracle plan weight reference is outside W")
+            produced.update(outputs)
+            kinds.add(kind)
+            normalized = dict(parameters)
+            if kind == "rope":
+                if parameters.get("position") != old:
+                    raise ValueError("native oracle plan RoPE position differs")
+                normalized["position"] = 0
+            step_identity.append((kind, inputs, outputs, normalized))
+        if kinds != expected_kinds or produced != set(range(len(sources))):
+            raise ValueError("native oracle plan producer coverage differs")
+        if common_steps is None:
+            common_steps = step_identity
+        elif step_identity != common_steps:
+            raise ValueError("native oracle plan DAG changes between contexts")
+    return document
+
+
+def validate_oracle_plan(document: dict, recipes: dict) -> dict:
+    try:
+        return _validate_oracle_plan(document, recipes)
+    except (AttributeError, KeyError, TypeError) as error:
+        raise ValueError("native oracle plan has invalid JSON types") from error
+
+
+def native_oracle_plan(native: Path, candidate: Path, recipes: dict) -> dict:
+    result = subprocess.run([str(native), "oracle-plan", str(candidate)],
+                            capture_output=True, timeout=60, check=True)
+    document = ingest._json_no_duplicates(result.stdout, "native oracle plan")
+    return validate_oracle_plan(document, recipes)
 
 
 def table_chunks(recipes: dict):

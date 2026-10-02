@@ -36,6 +36,31 @@ def test_certified_tables_match_native_input_and_scale_recipes(tmp_path):
     assert recipes["gelu"] == [[0, 0]] * 60
     assert recipes["exp30"] == [0] * 60
     assert len(recipes["rms"]) == 421
+    oracle = calibration.native_oracle_plan(Path(binary), path, recipes)
+    assert not oracle["calibrated"] and not oracle["credit"]
+    assert not oracle["independent_numeric_execution_complete"]
+    assert [context["old_tokens"] for context in oracle["contexts"]] == [0, 150, 300]
+    for context in oracle["contexts"]:
+        assert context["schema"] == "volta-c71-calibration-oracle-plan-v1"
+        assert context["recipe_digest"] == recipes["recipe_digest"]
+        assert len(context["weights"]) == 772
+        assert [source["id"] for source in context["sources"]] == list(
+            range(len(context["sources"])))
+        produced = [source for step in context["steps"] for source in step["outputs"]]
+        assert sorted(produced) == list(range(len(context["sources"])))
+        assert {step["kind"] for step in context["steps"]} == {
+            "embedding", "matrix", "norm", "rne", "affine", "gelu", "gate",
+            "rope", "qk", "softmax", "pv", "softcap", "argmax",
+        }
+    altered = copy.deepcopy(oracle)
+    altered["contexts"][0]["steps"][0]["parameters"].clear()
+    with pytest.raises(ValueError, match="operator shape"):
+        calibration.validate_oracle_plan(altered, recipes)
+    altered = copy.deepcopy(oracle)
+    altered["contexts"][0]["steps"][1]["outputs"] = \
+        altered["contexts"][0]["steps"][0]["outputs"]
+    with pytest.raises(ValueError, match="single-producer"):
+        calibration.validate_oracle_plan(altered, recipes)
     tables = tmp_path / "tables.bin"
     report = calibration.write_tables(recipes, tables)
     assert report["table_bytes"] == tables.stat().st_size == 24_414_870

@@ -163,6 +163,141 @@ fn pilot_graph(profile: &Canonical) -> Result<serde_json::Value, String> {
     }))
 }
 
+fn oracle_plan(profile: &Canonical) -> Result<serde_json::Value, String> {
+    let attention = &profile.sources.attention;
+    let gate = &attention.rope.gate_up;
+    let norms = &gate.gelu.rms.norms;
+    let steps = profile
+        .steps
+        .iter()
+        .map(|producer| {
+            let (kind, parameters) = match producer {
+                Producer::Embedding => (
+                    "embedding",
+                    serde_json::json!({"weight": profile.plan.cohorts[0].tensor}),
+                ),
+                Producer::Matrix(index) => {
+                    let route = profile.plan.input_route(*index)?;
+                    (
+                        "matrix",
+                        serde_json::json!({
+                            "weight": profile.plan.cohorts[*index].tensor,
+                            "input_row_offset": route.row_offset,
+                            "decision_only": *index == profile.output.raw
+                        }),
+                    )
+                }
+                Producer::Norm(index) => {
+                    let norm = &norms[*index];
+                    (
+                        "norm",
+                        serde_json::json!({
+                            "heads": norm.heads, "columns": norm.columns,
+                            "weight": norm.cohort.map(|cohort| profile.plan.cohorts[cohort].tensor),
+                            "recipe": profile.recipes.rms[*index]
+                        }),
+                    )
+                }
+                Producer::Rne(pair) => {
+                    ("rne", serde_json::json!({"shift": pair.shift}))
+                }
+                Producer::Affine(index) => (
+                    "affine",
+                    serde_json::json!({
+                        "coefficients": profile.recipes.affine[*index].inputs.map(|(_, value)| value)
+                    }),
+                ),
+                Producer::Gelu(index) => (
+                    "gelu",
+                    serde_json::json!({
+                        "table": index, "histogram": gate.gelu.gelu[*index].histogram
+                    }),
+                ),
+                Producer::Gate(_) => ("gate", serde_json::json!({})),
+                Producer::Rope(index) => {
+                    let rotation = &attention.rope.rotations[*index];
+                    (
+                        "rope",
+                        serde_json::json!({
+                            "family": rotation.family, "heads": rotation.heads,
+                            "width": rotation.width, "position": attention.rope.old
+                        }),
+                    )
+                }
+                Producer::Qk(index) => {
+                    let layer = &attention.layers[*index];
+                    (
+                        "qk",
+                        serde_json::json!({
+                            "groups": layer.groups, "repeats": layer.repeats,
+                            "lanes": layer.lanes
+                        }),
+                    )
+                }
+                Producer::Softmax(index) => {
+                    let layer = &profile.softmax.layers[*index];
+                    (
+                        "softmax",
+                        serde_json::json!({
+                            "table": index, "maximum": layer.maximum,
+                            "difference": layer.difference, "exponential": layer.exponential,
+                            "denominator": layer.denominator, "probability": layer.pi,
+                            "histogram": layer.histogram
+                        }),
+                    )
+                }
+                Producer::Pv(index) => {
+                    let layer = &attention.layers[*index];
+                    (
+                        "pv",
+                        serde_json::json!({
+                            "groups": layer.groups, "repeats": layer.repeats,
+                            "lanes": layer.lanes
+                        }),
+                    )
+                }
+                Producer::Softcap => (
+                    "softcap",
+                    serde_json::json!({
+                        "table": 0, "lower": profile.output.lower,
+                        "histogram": profile.output.histogram
+                    }),
+                ),
+                Producer::Argmax => (
+                    "argmax",
+                    serde_json::json!({"token_offset": profile.output.token_offset}),
+                ),
+            };
+            let (inputs, outputs) = profile.ports(producer);
+            Ok(serde_json::json!({
+                "kind": kind, "inputs": inputs, "outputs": outputs,
+                "parameters": parameters
+            }))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(serde_json::json!({
+        "schema": "volta-c71-calibration-oracle-plan-v1",
+        "old_tokens": attention.rope.old,
+        "recipe_digest": blake3::Hash::from_bytes(profile.recipes.digest).to_hex().to_string(),
+        "sources": profile.bytes().scalar.layout.sources.iter().enumerate().map(|(id, source)|
+            serde_json::json!({
+                "id": id, "name": source.name, "rows": source.rows,
+                "columns": source.cols, "codec_bytes": profile.bytes().widths[id]
+            })).collect::<Vec<_>>(),
+        "weights": profile.plan.sources.iter().enumerate().map(|(id, source)|
+            serde_json::json!({
+                "id": id, "name": source.name, "rows": source.rows,
+                "columns": source.cols, "packed_offset": source.packed_offset
+            })).collect::<Vec<_>>(),
+        "kv_sources": attention.layers.iter()
+            .flat_map(|layer| [layer.k, layer.v]).collect::<BTreeSet<_>>(),
+        "steps": steps,
+        "decision_first": profile.plan.input_route(profile.output.raw)?.row_offset,
+        "decision_count": 50,
+        "tokens": 150
+    }))
+}
+
 fn profiles(path: &Path) -> Result<Vec<Canonical>, String> {
     let mut body = Vec::new();
     File::open(path)
@@ -261,7 +396,7 @@ impl Tables {
 }
 
 pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
-    let usage = "usage: c71_calibration describe | recipes CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES | run-trace CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE";
+    let usage = "usage: c71_calibration describe | recipes CANDIDATE | oracle-plan CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES | run-trace CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE";
     let Some(mode) = arguments.first().map(String::as_str) else {
         return Err(usage.into());
     };
@@ -291,7 +426,7 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
             "pilot": pilot_graph(&pilot)?
         }));
     }
-    if !((mode == "recipes" && arguments.len() == 2)
+    if !((matches!(mode, "recipes" | "oracle-plan") && arguments.len() == 2)
         || (matches!(mode, "check-input" | "ledger") && arguments.len() == 3)
         || (mode == "run" && arguments.len() == 5)
         || (mode == "run-trace" && arguments.len() == 6))
@@ -307,6 +442,13 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
             "gelu": first.recipes.gelu, "exp30": first.recipes.exp30,
             "softcap": first.recipes.softcap, "rms": first.recipes.rms, "rope_positions": 450,
             "table_bytes": 24_414_870
+        }));
+    }
+    if mode == "oracle-plan" {
+        return Ok(serde_json::json!({
+            "calibrated": false, "credit": false,
+            "independent_numeric_execution_complete": false,
+            "contexts": profiles.iter().map(oracle_plan).collect::<Result<Vec<_>, _>>()?
         }));
     }
     let input = Tables::read(Path::new(&arguments[2]))?;

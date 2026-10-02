@@ -1,0 +1,74 @@
+{
+  "schema": "volta-c71-dependency-audit-v1",
+  "date": "2026-10-02",
+  "git_commit": "dc79276f51b69254eeab23f2f76e2e4cf3ff071c",
+  "git_dirty": false,
+  "credit": false,
+  "scope": "Known dependency advisories and targeted Rust lints; not protocol security, canonical execution, GPU evidence, or a reproducible Python lock.",
+  "rust": {
+    "cargo_audit_version": "0.22.2",
+    "cargo_audit_archive_sha256": "c6603814ddaa45e51263dafd31c0ac98808f688d26f7395804f9670b0fd599dd",
+    "rustsec_database_commit": "117edb3bed98e9be112f277b7615eea3252e7c43",
+    "lockfile_dependencies": 169,
+    "vulnerabilities": 0,
+    "yanked": 0,
+    "warnings": [
+      {
+        "id": "RUSTSEC-2024-0436",
+        "package": "paste",
+        "version": "1.0.15",
+        "kind": "unmaintained",
+        "path": "pinned Plonky3 p3-field/p3-goldilocks dependency"
+      }
+    ],
+    "resolved": [
+      {
+        "id": "RUSTSEC-2026-0204",
+        "package": "crossbeam-epoch",
+        "from": "0.9.18",
+        "to": "0.9.20"
+      },
+      {
+        "package": "chacha20",
+        "from": "0.10.1",
+        "to": "0.10.2",
+        "reason": "0.10.1 was yanked"
+      }
+    ],
+    "report_sha256": "068ca1d61477fd566c4143fefbd68a16fbb198a2aaec54b956af0db437e83003"
+  },
+  "python_environment": {
+    "pip_audit_version": "2.10.1",
+    "installed_packages_scanned": 15,
+    "vulnerabilities": 0,
+    "local_updates": [
+      "pypdf 6.14.2 -> 6.19.0",
+      "urllib3 2.7.0 -> 2.8.0"
+    ],
+    "report_sha256": "123b0f882e33f3bc67e3e97d5018ad4f7f18929b4e419181ec4fac6ca952fa80",
+    "reproducibility": "The ignored local virtual environment is clean, but pyproject.toml has no complete pinned Python lock."
+  },
+  "checks": [
+    {
+      "command": "cargo audit --no-fetch --file rust/Cargo.lock --format json",
+      "exit_code": 0
+    },
+    {
+      "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib -- -D clippy::correctness -D clippy::suspicious",
+      "exit_code": 0
+    },
+    {
+      "command": "cargo clippy --offline --locked -j 1 -p volta-pcg --features c71-b11 --lib -- -D clippy::correctness -D clippy::suspicious",
+      "exit_code": 0
+    },
+    {
+      "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-b12-pcs --example c71_calibration -- -D clippy::correctness -D clippy::suspicious",
+      "exit_code": 0
+    },
+    {
+      "command": "pip-audit 2.10.1 --path .venv/lib/python3.13/site-packages --format json",
+      "exit_code": 0
+    }
+  ],
+  "verdict": "PASS_WITH_OPEN_MAINTENANCE_WARNING"
+}

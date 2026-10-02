@@ -101,6 +101,15 @@ nuovi caller della RNG privata o perdita di binding/rilascio falliscono
 chiuso. Il [record pulito](../../benchmarks/results/c71-fork-provenance-2026-10-02-4fbfbfb8afd0.json)
 conserva la revisione che ha risolto il precedente delta non registrato.
 
+L'[audit dipendenze pulito](../../benchmarks/results/c71-dependency-audit-2026-10-02-dc79276f51b6.json)
+usa RustSec `117edb3b` e pip-audit 2.10.1: zero vulnerabilità note e zero crate
+ritirate dopo gli aggiornamenti a `crossbeam-epoch 0.9.20` e
+`chacha20 0.10.2`; i lint `correctness` e `suspicious` passano sui tre
+target C7.1. Rimane l'avviso non-vulnerabilità `RUSTSEC-2024-0436` per
+`paste 1.0.15`, dipendenza del commit Plonky3 fissato. La venv locale
+ignorata è pulita dopo gli aggiornamenti registrati, ma `pyproject.toml`
+non costituisce ancora un lock Python completo e riproducibile.
+
 ## Controlli nativi della costruzione corrente
 
 Eseguire un filtro alla volta:

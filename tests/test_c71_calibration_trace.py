@@ -13,7 +13,7 @@ import c71_calibration_trace as trace
 
 
 def _fixture(*, altered=False, omit=False, duplicate=False, bad_coordinate=False,
-             metadata_mismatch=False):
+             metadata_mismatch=False, overflow_marker=False):
     body = bytearray(trace.MAGIC)
     expected = []
     records = logical = stored_total = 0
@@ -56,7 +56,8 @@ def _fixture(*, altered=False, omit=False, duplicate=False, bad_coordinate=False
               compare=False)
         metadata_rows.append(metadata)
 
-        value_payload = struct.pack("<hh", context + 1, -context - 1)
+        value_payload = struct.pack("<hh", -32768 if overflow_marker and context == 1 else context + 1,
+                                    -context - 1)
         if altered and context == 1:
             value_payload = struct.pack("<hh", 99, -context - 1)
         if not (omit and context == 1):
@@ -111,6 +112,7 @@ def test_trace_altered_value_needs_and_fails_independent_comparison(tmp_path):
         ({"duplicate": True}, "duplicates or misaddresses"),
         ({"bad_coordinate": True}, "padding frame differs"),
         ({"metadata_mismatch": True}, "context metadata differs"),
+        ({"overflow_marker": True}, "i16 overflow marker"),
     ],
 )
 def test_trace_rejects_omission_duplicate_and_bad_coordinate(tmp_path, options, message):

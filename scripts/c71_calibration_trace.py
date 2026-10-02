@@ -130,6 +130,14 @@ def validate(path: Path, expected_frames=None) -> dict:
             if kind == METADATA and payload_bytes > MAX_METADATA_BYTES:
                 raise ValueError("calibration trace metadata exceeds parser bound")
             payload = _read_exact(source, payload_bytes, "frame payload")
+            has_i16_minimum = codec == 2 and kind in (VALUES, PADDING, FINAL_KV) and any(
+                value == -32768 for (value,) in struct.iter_unpack("<h", payload)
+            )
+            if has_i16_minimum and not (
+                kind == VALUES and current is not None and source_id < len(current["metadata"]["sources"])
+                and current["metadata"]["sources"][source_id]["name"] == "U/global/argmax_slack"
+            ):
+                raise ValueError("calibration trace contains the i16 overflow marker")
             sha256.update(payload)
             byte_count += payload_bytes
             records += 1

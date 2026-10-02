@@ -37,8 +37,10 @@ Il confronto di un digest ricevuto non certifica i valori delle tabelle.
 
 ## Semantica numerica
 
-Un intero x con esponente e denota x·2^e. Gli output i16 ammessi sono
-[-32767,32767]; −32768 è un marcatore di overflow, mai un output valido.
+Un intero x con esponente e denota x·2^e. Gli output i16 ordinari ammessi
+sono [-32767,32767]; −32768 è un marcatore di overflow. L'unica eccezione
+è `U/global/argmax_slack`, che per contratto rappresenta una distanza u16
+come `s-32768` e quindi usa l'intero intervallo i16.
 RNE arrotonda al più vicino, scegliendo l'intero pari nei pareggi.
 Raw signed-48, statistiche e byte biased conservano i range e l'ordine
 del [layout byte](../../rust/volta-pcs/src/c71_matrix/gemma/bytes.rs).

@@ -902,7 +902,11 @@ impl Canonical {
             if values.is_empty()
                 || values.len() % s.cols != 0
                 || first.checked_add(values.len() / s.cols).is_none_or(|last| last > s.rows)
-                || values.iter().any(|&v| v < -bound || v >= bound)
+                || values.iter().any(|&v| {
+                    v < -bound
+                        || v >= bound
+                        || (b.widths[*id] == 2 && v == -32768 && *id != self.output.slack)
+                })
             {
                 return Err("canonical producer output shape/codec differs".into());
             }

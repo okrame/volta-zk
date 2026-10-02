@@ -7,6 +7,9 @@
 
 Non è registrata un'autorizzazione a download dei pesi, creazione di pod,
 esecuzioni GPU o spesa. Il lavoro locale pertinente resta autorizzato.
+Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-02-9f8c8f597fbb.json)
+ha esito `NOT_READY`; non avviare la campagna provider sulla sola base dei
+controlli componenti passati.
 La calibrazione e il benchmark della prova sono due campagne distinte:
 un successo numerico non autorizza né dimostra il secondo.
 

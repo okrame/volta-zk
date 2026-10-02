@@ -79,6 +79,9 @@ manca ancora il calcolo numerico indipendente sui valori reali. Lo
 identificano componenti disponibili, implementazioni mancanti e passaggi
 che richiedono autorizzazione. Il [contratto del confronto](specs.md#confronto-indipendente-da-implementare)
 definisce cosa completare prima di ammettere Γ.
+Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-02-9f8c8f597fbb.json)
+registra quindi `NOT_READY`: nessun download, pod, uso GPU o spesa è
+giustificato finché questi blocchi locali non sono chiusi.
 
 I criteri per il [primo esperimento della prova](runpod-tests.md#esperimento-della-prova)
 non richiedono una dimostrazione preventiva del tempo H100: i tempi

@@ -94,12 +94,12 @@ I test della calibrazione non leggono checkpoint reali. `calibrated:false`
 e `credit:false` restano corretti anche quando le fixture passano.
 I report GPU simulati dei test FFT non sono misure CUDA.
 
-Il test della baseline ha attualmente un fallimento preesistente:
-26 file del fork modificati contro 25 registrati; manca la revisione
-di `merkle-tree/src/hiding_mmcs.rs`. Eseguire
-`scripts/audit_c61_p3_fork.py` per il controllo diretto. Conservare
-l'esito negativo finché la revisione non è completata; non cambiare
-semplicemente il conteggio atteso. [Evidenza](../c7.1-history/reorganization-audit.md#fallimento-preesistente-dellaudit-del-fork).
+L'audit del fork censisce 96 sorgenti e 26 delta revisionati, inclusi
+l'accesso al flusso dei sali e il lifecycle del replay WHIR. Eseguire
+`scripts/audit_c61_p3_fork.py` per il controllo diretto: hash diversi,
+nuovi caller della RNG privata o perdita di binding/rilascio falliscono
+chiuso. Il [record pulito](../../benchmarks/results/c71-fork-provenance-2026-10-02-4fbfbfb8afd0.json)
+conserva la revisione che ha risolto il precedente delta non registrato.
 
 ## Controlli nativi della costruzione corrente
 

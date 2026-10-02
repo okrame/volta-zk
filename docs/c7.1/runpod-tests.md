@@ -443,8 +443,8 @@ L'esempio `c71_matrix` è un diagnostico e `c71_calibration` esegue il
 replay numerico: nessuno dei due è il benchmark della prova Gemma.
 Prima di proporre una spesa per la prova chiudere i seguenti requisiti:
 
-1. Audit della provenienza dei fork completato, risolvendo il
-   [fallimento noto](local-tests.md#semantica-calibrazione-e-contabilità);
+1. Audit della provenienza dei fork completato nel
+   [record pulito](../../benchmarks/results/c71-fork-provenance-2026-10-02-4fbfbfb8afd0.json);
    Γ reale validato e congelato, con confronto indipendente documentato;
    ricette, tabelle, layout e riserve ricompilati a O=0/150/300.
 2. Costruzione integrata corretta su input ridotti: preparatore, getter,

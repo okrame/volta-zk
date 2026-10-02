@@ -1,0 +1,43 @@
+{
+  "schema": "volta-c71-fork-provenance-v1",
+  "date": "2026-10-02",
+  "git_commit": "4fbfbfb8afd02ab683ff43a4882e192e0cb59063",
+  "git_dirty": false,
+  "credit": false,
+  "scope": "Pinned source provenance and replay lifecycle guards; not protocol security, canonical execution, or GPU evidence.",
+  "environment": {
+    "architecture": "aarch64",
+    "kernel": "Linux 6.12.94+deb13-arm64",
+    "python": "3.13.5",
+    "limits": "60 seconds, 2 GiB virtual memory, one worker"
+  },
+  "review": {
+    "upstream_revision": "66e290615de1858f2f2f6a804158064c406cda1c",
+    "upstream_source_files": 96,
+    "reviewed_delta_files": 26,
+    "newly_reviewed_files": {
+      "merkle-tree/src/hiding_mmcs.rs": "96b60d03788ed158d744aeffbdbf74c836e49f7b1bd1d76c197c296ce94d73a4",
+      "whir/src/pcs/zk/mod.rs": "13ec481db27c9db647ba2ec665ced70281cbe94d81aaeb49667b709bebb35e06",
+      "whir/src/pcs/zk/prover/data.rs": "af84d5fcab44180ebcdb246f90a941e33ca50911ce5b0e408fbf3e938360ea6f",
+      "whir/src/pcs/zk/prover/mod.rs": "be3ab299a30e9d15b42e93b37a5859f64949deaa29608816238be8d1e27aac45"
+    },
+    "live_salt_stream_single_caller_guard": true,
+    "sourcewise_replay_lifecycle_guards": true,
+    "all_other_source_files_byte_identical": true
+  },
+  "checks": [
+    {
+      "command": ".venv/bin/python scripts/audit_c61_p3_fork.py --json",
+      "exit_code": 0,
+      "seconds": 0,
+      "result": "C71_PINNED_FORK_PROVENANCE_PASS"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c7_1_baseline_budget.py",
+      "exit_code": 0,
+      "seconds": 6,
+      "tests_passed": 10
+    }
+  ],
+  "verdict": "PASS"
+}

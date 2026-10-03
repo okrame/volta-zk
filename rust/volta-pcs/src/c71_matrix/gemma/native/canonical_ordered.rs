@@ -229,8 +229,9 @@ impl Prepared {
         use_generation(active.as_ref().unwrap())
     }
 
-    /// Emit requested source rows in causal order. Public padding and complete
-    /// histograms are emitted once, from their original snapshot definitions.
+    /// Replay in topological producer order, all fixed rows before the next
+    /// consumer. Unlike initial generation, tokens and KV are already frozen.
+    /// Public padding/histograms are emitted once from the original snapshot.
     fn scan(
         &self,
         generation: &Generation,
@@ -275,35 +276,52 @@ impl Prepared {
         }
         let mut live: BTreeMap<(usize, usize), Vec<i64>> = BTreeMap::new();
         self.tables.with_slot(p.sources.attention.rope.old / 150, |tables| {
-            for token in 0..150 {
-                for &i in &needed {
-                    for row in p.rows_at_token(&p.steps[i], token)? {
-                        let out = p.prepare_row(
-                            &p.steps[i],
-                            row,
-                            self.tokens[token],
-                            tables,
-                            |id, r, c| self.weight(id, r, c),
-                            |id, r, c| {
-                                if let Some(v) = p.padding_word(id, r, c)? {
-                                    return Ok(v);
-                                }
-                                if let Some(v) = generation.cuts.get(&id) {
-                                    return v
-                                        .get(r * sources[id].cols + c)
-                                        .map(|&v| i64::from(v))
-                                        .ok_or("checkpoint address missing".into());
-                                }
-                                if !self.kv[id].is_empty() {
-                                    return self.tail(id, p.sources.attention.rope.old + r, c);
-                                }
-                                live.get(&(id, r))
-                                    .and_then(|v| v.get(c))
-                                    .copied()
-                                    .ok_or("getter read before producer/after release".into())
-                            },
-                            |id, r, c| self.tail(id, r, c),
-                        )?;
+            for &i in &needed {
+                let matrix = matches!(p.steps[i], Producer::Matrix(_));
+                for token in 0..if matrix { 1 } else { 150 } {
+                    let rows = if matrix { vec![0] } else { p.rows_at_token(&p.steps[i], token)? };
+                    for row in rows {
+                        let get = |id: usize, r: usize, c: usize| {
+                            if let Some(v) = p.padding_word(id, r, c)? {
+                                return Ok(v);
+                            }
+                            if let Some(v) = generation.cuts.get(&id) {
+                                return v
+                                    .get(r * sources[id].cols + c)
+                                    .map(|&v| i64::from(v))
+                                    .ok_or("checkpoint address missing".into());
+                            }
+                            if !self.kv[id].is_empty() {
+                                return self.tail(id, p.sources.attention.rope.old + r, c);
+                            }
+                            live.get(&(id, r))
+                                .and_then(|v| v.get(c))
+                                .copied()
+                                .ok_or("getter read before producer/after release".into())
+                        };
+                        let resident = live.values().map(|v| v.capacity() * 8).sum::<usize>();
+                        let out = if let Producer::Matrix(raw) = p.steps[i] {
+                            p.prepare_matrix_batch(
+                                raw,
+                                0,
+                                p.plan.cohorts[raw].rows,
+                                self.limit
+                                    .checked_sub(resident)
+                                    .ok_or("getter workspace budget exceeded")?,
+                                |id, r, c| self.weight(id, r, c),
+                                get,
+                            )?
+                        } else {
+                            p.prepare_row(
+                                &p.steps[i],
+                                row,
+                                self.tokens[token],
+                                tables,
+                                |id, r, c| self.weight(id, r, c),
+                                get,
+                                |id, r, c| self.tail(id, r, c),
+                            )?
+                        };
                         if let Some(next) = out.token {
                             if self.tokens.get(token + 1) != Some(&next) {
                                 return Err("getter generated a different token".into());
@@ -311,7 +329,6 @@ impl Prepared {
                         }
                         let incoming =
                             out.values.iter().map(|(_, _, v)| v.capacity() * 8).sum::<usize>();
-                        let resident = live.values().map(|v| v.capacity() * 8).sum::<usize>();
                         if resident + 2 * incoming > self.limit {
                             return Err("getter row workspace budget exceeded".into());
                         }
@@ -328,11 +345,11 @@ impl Prepared {
                             }
                         }
                     }
-                    live.retain(|(id, _), _| last[*id] != Some(i));
                 }
-                if !live.is_empty() {
-                    return Err("getter retained rows after final consumer".into());
-                }
+                live.retain(|(id, _), _| last[*id] != Some(i));
+            }
+            if !live.is_empty() {
+                return Err("getter retained rows after final consumer".into());
             }
             Ok::<_, String>(())
         })??;
@@ -554,6 +571,101 @@ mod tests {
             scales.insert(layer.score, 128);
         }
         Arc::new(Canonical::compile(0, &[0; 772], &scales).unwrap())
+    }
+
+    #[test]
+    fn c71_canonical_ordered_producer_batches_keep_rows_until_last_consumer() {
+        let p = profile();
+        let relation = &p.recipes.affine[0];
+        let pair = *p.recipes.residual.iter().find(|pair| pair.raw == relation.raw).unwrap();
+        let shape = &p.bytes().scalar.layout.sources[relation.raw];
+        assert_eq!(shape.rows, 150);
+        let value = |r: usize, c: usize| ((r * 7 + c) % 5) as i64 - 2;
+        let original: Vec<_> = (0..shape.rows)
+            .flat_map(|r| (0..shape.cols).map(move |c| value(r, c) as i16))
+            .collect();
+        let cuts = relation
+            .inputs
+            .iter()
+            .filter(|(_, coefficient)| *coefficient != 0)
+            .map(|&(id, _)| (id, original.clone()))
+            .collect();
+        let generation = Generation { owner: [9; 32], cuts, histograms: BTreeMap::new() };
+        let mut reader = Prepared {
+            profile: p.clone(),
+            tables: Arc::new(calibration_input::Tables::shape_fixture()),
+            weights: Arc::new(Vec::new()),
+            previous: Vec::new(),
+            tokens: [0; 150],
+            kv: vec![Vec::new(); p.bytes().widths.len()],
+            owner: [9; 32],
+            cache: Arc::new(Cache(Mutex::new(Some(generation)))),
+            limit: 16 << 20,
+            row_cache: Mutex::new(None),
+            byte_cache: Mutex::new((usize::MAX, [0; 128])),
+        };
+        let targets = [relation.raw, pair.output].into_iter().collect();
+        let coefficient = relation.inputs.iter().map(|(_, k)| k).sum::<i64>();
+        let mut visits = [0; 2];
+        reader
+            .with_generation(|g| {
+                reader.scan(g, &targets, |id, row, values| {
+                    let which = usize::from(id == pair.output);
+                    if which == 1 {
+                        assert_eq!(visits[0], 150, "all raw rows precede the RNE consumer");
+                    }
+                    assert_eq!(row, visits[which]);
+                    visits[which] += 1;
+                    for (col, &v) in values.iter().enumerate() {
+                        let raw = coefficient * value(row, col);
+                        let expected = if which == 0 {
+                            raw
+                        } else {
+                            i64::from(kernel::rne::integer(raw, pair.shift).unwrap())
+                        };
+                        assert_eq!(v, expected);
+                    }
+                    Ok(())
+                })
+            })
+            .unwrap();
+        assert_eq!(visits, [150, 150]);
+        reader.limit = 1 << 20;
+        assert!(reader
+            .with_generation(|g| reader.scan(g, &targets, |_, _, _| Ok(())))
+            .unwrap_err()
+            .contains("workspace budget"));
+        reader.limit = 16 << 20;
+        let mut calls = 0;
+        assert_eq!(
+            reader
+                .with_generation(|g| reader.scan(g, &targets, |_, _, _| {
+                    calls += 1;
+                    Err("batch consumer stopped".into())
+                }))
+                .unwrap_err(),
+            "batch consumer stopped"
+        );
+        assert_eq!(calls, 1);
+        // Actual canonical matrix geometry: budget fails BEFORE a huge batch,
+        // any original input access or W read. No malformed fixture is executed.
+        let raw = p.plan.cohorts.iter().position(|c| c.kind == Kind::Matrix).unwrap();
+        let input = p.bytes().scalar.input_sources[raw - 1];
+        let descriptor_only = Generation {
+            owner: [0; 32],
+            cuts: [(input, Vec::new())].into_iter().collect(),
+            histograms: BTreeMap::new(),
+        };
+        reader.limit = 1;
+        assert_eq!(
+            reader
+                .scan(&descriptor_only, &[raw].into_iter().collect(), |_, _, _| panic!(
+                    "unexpected output"
+                ))
+                .unwrap_err(),
+            "matrix batch workspace budget exceeded"
+        );
+        eprintln!("C71_PRODUCER_BATCH_REPLAY rows=150 producers=2 token_major=false gpu=false");
     }
 
     #[test]

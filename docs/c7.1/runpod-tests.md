@@ -62,7 +62,10 @@ del trasporto con tre corpi sintetici non conta come tre prove canoniche.
 Il commitment iniziale ora seleziona coset 2^22 e lo scanner A a 512
 ricostruzioni, con parità soltanto ridotta; il vecchio cap iniziale 2^18
 non descrive più questo percorso. Restano i workspace query/range e i
-kernel densi da adattare. Le prime query A leggono ora finestre originali
+kernel densi da adattare. Lo scanner CPU ricostruisce ora per producer,
+con righe vive fino all'ultimo consumer e GEMM a batch con letture W
+condivise. La schedule raggiunge PCS/range, ma non usa ancora gli handle
+residenti CUDA; non costituisce un forward GPU. Le prime query A leggono ora finestre originali
 fino a 256 MiB e non duplicano la matrice del risultato; la parità è
 soltanto ridotta e non chiude la contabilità fisica simultanea.
 Singleton, coset S1, OOD e retention sono ora collegati allo scanner
@@ -96,8 +99,8 @@ Questi controlli non abilitano il runner GPU o un pod.
 Il kernel denso i16 a quattro MMA INT8 è ora disponibile come componente
 compilabile, con modello host di split/frammenti e correzioni. W residente,
 fencing del flag e RNE sono ora collegati nello stesso owner/arena del
-range (ABI 2). La catena ridotta Rust/C usa un driver simulato; batching
-nel preparatore, identità W fra owner e commitment, lifecycle del runner
+range (ABI 2). La catena ridotta Rust/C usa un driver simulato; collegamento
+dei batch ai producer CUDA, identità W fra owner e commitment, lifecycle del runner
 e misure complete restano da collegare. Il vecchio GEMM CUDA scalare non viene presentato come
 questa implementazione o come una misura H100.
 

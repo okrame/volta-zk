@@ -13,6 +13,18 @@ pub(super) struct Row {
     pub(super) token: Option<u32>,
 }
 
+/// Public-address dense batch over original rows, never padded token rows.
+/// The same descriptor fixes CPU reconstruction and the native GEMM layout.
+pub(super) struct MatrixBatch {
+    pub input: usize,
+    pub input_first: usize,
+    pub tensor: usize,
+    pub weight_offset: usize,
+    pub rows: usize,
+    pub columns: usize,
+    pub inner: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -60,6 +72,28 @@ mod tests {
         let absent = |_, _, _| -> Result<i64, String> { panic!("unexpected producer read") };
         for slot in 0..3 {
             let p = Canonical::compile(slot, &[0; 772], &scales).unwrap();
+            let mut batches = 0;
+            for (raw, c) in p.plan.cohorts.iter().enumerate() {
+                if c.kind != Kind::Matrix {
+                    continue;
+                }
+                let batch = p.matrix_batch(raw, 0, c.rows).unwrap();
+                assert_eq!((batch.rows, batch.columns, batch.inner), (c.rows, c.columns, c.inner));
+                assert_eq!(batch.input, p.bytes().scalar.input_sources[raw - 1]);
+                assert_eq!(batch.input_first, p.plan.input_route(raw).unwrap().row_offset);
+                assert_eq!(batch.weight_offset, p.plan.sources[c.tensor].packed_offset);
+                assert_eq!(
+                    p.matrix_batch(raw, c.rows - 1, 1).unwrap().input_first,
+                    batch.input_first + c.rows - 1
+                );
+                for (first, rows) in
+                    [(0, 0), (0, 151), (c.rows, 1), (usize::MAX, 1), (1, usize::MAX)]
+                {
+                    assert!(p.matrix_batch(raw, first, rows).is_err());
+                }
+                batches += 1;
+            }
+            eprintln!("C71_MATRIX_BATCH_GEOMETRY slot={slot} batches={batches} execution=false");
             let rope = [
                 kernel::rope::Table { position: slot * 150, rows: &rope_local },
                 kernel::rope::Table { position: slot * 150, rows: &rope_global },
@@ -148,6 +182,73 @@ mod tests {
                     .unwrap();
                 assert_eq!(reads.get(), c.inner * c.columns);
                 assert!(raw.values[0].2.iter().all(|&v| v == 2 * c.inner as i64));
+                let input_reads = Cell::new(0usize);
+                reads.set(0);
+                let workspace = 3 * c.inner * 2 + 3 * c.columns * 16;
+                let batch = p
+                    .prepare_matrix_batch(
+                        id,
+                        147,
+                        3,
+                        workspace,
+                        |tensor, j, k| {
+                            assert_eq!(tensor, c.tensor);
+                            reads.set(reads.get() + 1);
+                            Ok((j as i64 % 5 - 2) * (k as i64 % 3 - 1))
+                        },
+                        |source, r, k| {
+                            assert_eq!(source, b.scalar.input_sources[id - 1]);
+                            input_reads.set(input_reads.get() + 1);
+                            Ok((r as i64 - 148) * (k as i64 % 3 - 1))
+                        },
+                    )
+                    .unwrap();
+                assert_eq!(reads.get(), c.inner * c.columns);
+                assert_eq!(input_reads.get(), 3 * c.inner);
+                assert_eq!((batch.values[0].0, batch.values[0].1), (id, 147));
+                let norm = (0..c.inner).map(|k| (k as i64 % 3 - 1).pow(2)).sum::<i64>();
+                for (r, values) in batch.values[0].2.chunks_exact(c.columns).enumerate() {
+                    for (j, &v) in values.iter().enumerate() {
+                        assert_eq!(v, (r as i64 - 1) * (j as i64 % 5 - 2) * norm);
+                    }
+                }
+                assert!(p.prepare_matrix_batch(id, 147, 3, workspace - 1, absent, absent).is_err());
+                assert!(p.prepare_matrix_batch(0, 0, 1, usize::MAX, absent, absent).is_err());
+                assert!(p
+                    .prepare_matrix_batch(id, 0, 1, usize::MAX, absent, |_, _, _| Ok(-32768))
+                    .is_err());
+                assert!(p
+                    .prepare_matrix_batch(
+                        id,
+                        0,
+                        1,
+                        usize::MAX,
+                        |_, _, _| Ok(-32768),
+                        |_, _, _| Ok(0)
+                    )
+                    .is_err());
+                assert_eq!(
+                    p.prepare_matrix_batch(id, 0, 1, usize::MAX, absent, |_, _, _| Err(
+                        "input failure".into()
+                    ))
+                    .err()
+                    .unwrap(),
+                    "input failure"
+                );
+                assert_eq!(
+                    p.prepare_matrix_batch(
+                        id,
+                        0,
+                        1,
+                        usize::MAX,
+                        |_, _, _| Err("weight failure".into()),
+                        |_, _, _| Ok(0)
+                    )
+                    .err()
+                    .unwrap(),
+                    "weight failure"
+                );
+                eprintln!("C71_MATRIX_BATCH_EXECUTED rows=3 first=147 inner={} columns={} W_reads={} workspace={workspace} gpu=false",c.inner,c.columns,reads.get());
                 let pair = *p.recipes.matrix.iter().find(|pair| pair.raw == id).unwrap();
                 let rounded = p
                     .prepare_row(
@@ -496,6 +597,100 @@ fn lookup_row(table: &lookup::Table<'_>, input: &[i64]) -> Result<(Vec<i64>, Vec
 }
 
 impl Canonical {
+    pub(super) fn matrix_batch(
+        &self,
+        raw: usize,
+        first: usize,
+        rows: usize,
+    ) -> Result<MatrixBatch, String> {
+        let c = self.plan.cohorts.get(raw).ok_or("matrix batch cohort missing")?;
+        if c.kind != Kind::Matrix
+            || c.heads != 1
+            || rows == 0
+            || rows > 150
+            || first.checked_add(rows).is_none_or(|end| end > c.rows)
+            || c.inner == 0
+            || c.inner > 21504
+            || c.columns == 0
+            || c.columns > 262144
+        {
+            return Err("matrix batch shape outside canonical dense bounds".into());
+        }
+        let b = self.bytes();
+        let input = *b
+            .scalar
+            .input_sources
+            .get(raw.checked_sub(1).ok_or("matrix batch input missing")?)
+            .ok_or("matrix batch input missing")?;
+        let x = b.scalar.layout.sources.get(input).ok_or("matrix batch source missing")?;
+        let y = b.scalar.layout.sources.get(raw).ok_or("matrix batch output missing")?;
+        let w = self.plan.sources.get(c.tensor).ok_or("matrix batch W missing")?;
+        let route = self.plan.input_route(raw)?;
+        let input_first = first.checked_add(route.row_offset).ok_or("matrix batch row overflow")?;
+        if b.widths[input] != 2
+            || b.widths[raw] != 6
+            || x.cols != c.inner
+            || (y.rows, y.cols) != (c.rows, c.columns)
+            || (w.rows, w.cols) != (c.columns, c.inner)
+            || input_first.checked_add(rows).is_none_or(|end| end > x.rows)
+        {
+            return Err("matrix batch original layout differs".into());
+        }
+        Ok(MatrixBatch {
+            input,
+            input_first,
+            tensor: c.tensor,
+            weight_offset: w.packed_offset,
+            rows,
+            columns: c.columns,
+            inner: c.inner,
+        })
+    }
+
+    /// Explicit CPU reference batch. Read each original W coefficient once,
+    /// applying it to all selected rows. No expanded W, rounding or zero shortcut.
+    /// Native execution must use resident handles, not download a Row as spill.
+    pub(super) fn prepare_matrix_batch(
+        &self,
+        raw: usize,
+        first: usize,
+        rows: usize,
+        workspace: usize,
+        weight: impl Fn(usize, usize, usize) -> Result<i64, String>,
+        get: impl Fn(usize, usize, usize) -> Result<i64, String>,
+    ) -> Result<Row, String> {
+        let batch = self.matrix_batch(raw, first, rows)?;
+        // Includes a second raw capacity for the scanner's row retention.
+        let input_words = batch.rows * batch.inner;
+        let output_words = batch.rows * batch.columns;
+        if input_words * 2 + output_words * 16 > workspace {
+            return Err("matrix batch workspace budget exceeded".into());
+        }
+        let mut x = Vec::with_capacity(input_words);
+        for row in 0..rows {
+            for k in 0..batch.inner {
+                let v = get(batch.input, batch.input_first + row, k)?;
+                if !(-32767..=32767).contains(&v) {
+                    return Err("matrix batch input outside symmetric i16".into());
+                }
+                x.push(v as i16);
+            }
+        }
+        let mut y = vec![0i64; output_words];
+        for j in 0..batch.columns {
+            for k in 0..batch.inner {
+                let w = weight(batch.tensor, j, k)?;
+                if !(-32767..=32767).contains(&w) {
+                    return Err("matrix batch weight outside symmetric i16".into());
+                }
+                for row in 0..rows {
+                    y[row * batch.columns + j] += i64::from(x[row * batch.inner + k]) * w;
+                }
+            }
+        }
+        Ok(Row { values: vec![(raw, first, y)], ..Row::default() })
+    }
+
     /// Padding INSIDE the original A rectangles is not root-domain zero.
     /// EXP30's lookup includes it: encoded D=1, E=2^30, Z=Pi=0.
     pub(super) fn padding_word(
@@ -685,19 +880,7 @@ impl Canonical {
                 ));
             }
             Producer::Matrix(i) => {
-                let c = &self.plan.cohorts[*i];
-                if row >= c.rows {
-                    return Err("canonical matrix row outside source".into());
-                }
-                let route = self.plan.input_route(*i)?;
-                let x = input(b.scalar.input_sources[i - 1], row + route.row_offset)?;
-                let mut y = vec![0; c.columns];
-                for (j, y) in y.iter_mut().enumerate() {
-                    for (k, &x) in x.iter().enumerate() {
-                        *y += x * w(c.tensor, j, k)?;
-                    }
-                }
-                out.values.push((*i, row, y));
+                return self.prepare_matrix_batch(*i, row, 1, usize::MAX, &weight, &get);
             }
             Producer::Norm(i) => {
                 let n = &rms.norms[*i];

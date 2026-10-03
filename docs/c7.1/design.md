@@ -159,8 +159,13 @@ L'owner del range ora gestisce anche W residente immutabile, il prodotto
 raw e il successivo RNE esatto nella stessa arena. Il flag device è letto
 dopo fence prima di rendere consumabile l'output, anche dal range signed.
 Compilazione sm_90, modello host e catena attraverso ABI Rust verificano
-soltanto componenti con driver simulato: il batching del preparatore,
+soltanto componenti con driver simulato: il batching CUDA del preparatore,
 l'owner condiviso dal runner e il ledger fisico completo restano aperti.
+Il getter CPU ora ricostruisce per operatore, mantenendo tutte le righe
+vive fino all'ultimo consumer. I prodotti matriciali usano batch contigui
+da 150 righe (50 per lm_head), lettura W condivisa e route originali;
+la generazione iniziale rimane token-causale. Questo collega la schedule
+del batch allo scanner PCS/range, non ancora agli handle GPU residenti.
 Non è acquisita una misura GPU. Il raffinamento PTX/CUDA all'intero signed-48 resta
 un obbligo aperto, non scaricato dai lemmi Lean o dai casi finiti host.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,

@@ -156,6 +156,8 @@ Eseguire un filtro alla volta:
 | `c71_b12_native_registry` | Profilo posseduto, registro e rifiuto reale per capacità insufficiente |
 | `c71_b12_native_dispatch_canonical` | Riserva/contesto e rifiuto di P0 incompleto, non accettazione canonica |
 | `c71_canonical_ordered_internal_padding_histogram_and_byte_window` | Padding interno, istogrammi, checkpoint, finestre byte e scansione per sorgente con copertura/errori su un operatore canonico sintetico; non preparazione Gemma completa |
+| `c71_canonical_ordered_producer_batches_keep_rows_until_last_consumer` | Due producer affine/RNE, 150 righe da checkpoint sintetico, ordine per operatore, input vivi fino al consumer e rifiuti budget/consumer; budget matrice canonica rifiutato prima delle letture |
+| `c71_b12_native_canonical_numeric_rows_original_routes` | Include geometrie batch di tutte le matrici nei tre contesti senza eseguirle; batch di tre righe v_source con W condiviso, input zero e segni misti, route lm_head e rifiuti preallocazione; non forward completo |
 | `c71_b12_range_window_permutation_and_intersections` | Permutazione MSB e intersezioni contro enumerazione D1–D7; rifiuti geometrici e descrittori delle 26 passate D34 senza allocare finestre canoniche |
 | `c71_b12_windowed_range` | Consumer canopy/Gram/retention A D10 e W signed D12: transcript e MAC originali, fold zero/uno/extension, reader alterato e errori a ogni passata; nessuna prova D34/D35 |
 | `c71_b12_windowed_native_byte`, `c71_b12_windowed_native_signed`, `c71_b12_windowed_native_failure`, separati | Prover Rust tramite ABI C e owner reale con driver/algebra host simulati: parità D10/D12, MAC originali, 44 finestre byte con errori e rifiuti di launch/fence/output/cleanup/libreria; non CUDA eseguito |

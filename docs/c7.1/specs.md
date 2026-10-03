@@ -423,6 +423,21 @@ scanner 512 volte secondo la geometria, non la finestra scalare da 128
 byte. Anche le prime query PCS usano il lettore a finestre descritto sopra;
 le riduzioni lineari del primo stato PCS usano ora lo scanner sorgente.
 Getter scalare e replay per riga restano nei consumer non convertiti.
+La ricostruzione di uno snapshot completo procede ora in ordine
+topologico dei producer: tutte le righe di un operatore precedono il
+consumer successivo, e solo allora si rilasciano i suoi ultimi input.
+Token e KV sono già immutabili; la preparazione iniziale e la rigenerazione
+dei checkpoint restano token-causali. Il batch matriciale comune a
+`prepare_row` e allo scanner valida input i16, raw i48, shape W e offset
+di selezione lm_head. Emette raw consecutivi senza RNE o pad aggiunti.
+Nel riferimento CPU legge ciascun coefficiente W una volta per batch e
+lo applica a tutte le righe, senza saltare gli input zero. Il budget prima
+di letture/allocazioni comprende input i16, output raw e una seconda
+capacità raw per il trasferimento nelle righe vive dello scanner.
+Questa capacità aggiuntiva e i payload delle altre righe sono controlli
+locali, non il picco simultaneo completo. Il descrittore espone anche
+l'offset packed W per il collegamento nativo, ancora da realizzare:
+il percorso GPU non deve scaricare questi `Vec` come spill dello stato.
 `Prepared::range_window` implementa il reader per
 finestre dyadic allineate, fino a 2 GiB, nell'ordine
 `[tail][prefisso folded][u Gram][sottoalbero]`. Seleziona le sorgenti
@@ -598,8 +613,8 @@ di flag per operazione; raw e RNE rimangono entrambi addebitati fino al rilascio
 Non scarica gli intermedi sullo host né rialloca W fra i batch.
 Il consumer range Rust controlla questa ABI; una catena ridotta Rust/C
 confronta RNE con `rne::integer`, poi la root range con gli stessi interi.
-Questa è integrazione di componenti, non un adapter del preparatore:
-batching dei producer, lifecycle comune del runner e conto simultaneo di
+Questa è integrazione di componenti, non un adapter CUDA del preparatore:
+collegamento della schedule batch ai producer residenti, lifecycle comune del runner e conto simultaneo di
 prover/verificatore/PCS/Seed6 restano da implementare.
 Il modello host dei frammenti non è esecuzione o verifica concorrente CUDA.
 

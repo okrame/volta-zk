@@ -563,6 +563,15 @@ il contratto di unicità dei byte originali resta quello dello scanner,
 non è dimostrato dal solo conteggio. Il controllo ridotto rende il getter
 originale inutilizzabile e confronta l'intera prova col percorso denso,
 ma non scarica il raffinamento dei produttori canonici, CUDA o Seed6.
+Lo scanner dello snapshot ora completa un producer su tutte le righe
+prima del successivo. Non usa token futuri per generarne di nuovi: token,
+KV e checkpoint sono già fissati, e ogni decisione ricostruita è confrontata
+con lo snapshot. Input/output raw, route lm_head, istogrammi e indici dei
+byte originali non cambiano. Il batch matriciale condivide solo letture
+degli stessi pesi: non arrotonda, non cambia i polinomi e non introduce
+MAC. Le barriere FS e NoPeek rimangono quelle dei consumer chiamanti.
+I controlli ridotti non provano la ricostruzione di tutto Gemma o il
+raffinamento GPU; la generazione iniziale rimane sequenziale e causale.
 
 Il [collegamento degli stadi PCS](../c7.1-history/canonical-pcs-stages.md)
 conserva polinomi, sali, codec e sfide. La cache di Q dipende dalle basi

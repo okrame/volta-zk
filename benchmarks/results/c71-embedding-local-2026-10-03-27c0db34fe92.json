@@ -1,0 +1,247 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-03",
+  "git_sha": "27c0db34fe92c0cdb34cccfc9e9488d4721b5e9d",
+  "git_dirty": false,
+  "milestone": "Resident embedding from original W via native D2D copies and ABI 3 traffic accounting",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "weights_downloaded": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-pointwise-local-2026-10-03-e8566ae6e395.json",
+  "changes": [
+    "Reuse one validated EmbeddingBatch descriptor between CPU reference and resident adapter, with original lookup cohort, W offset and source-zero geometry",
+    "Validate every public token and the complete W span before row-ordered native cudaMemcpyAsync D2D copies; publish only after successful fence",
+    "Require installed original W Arc/layout; no W host reread, device token upload, intermediate download or new embedding kernel",
+    "Append submitted D2D bytes to ABI 3 (152-byte Stats), preserving partial-copy counts on terminal failure; reject ABI 2 before context creation",
+    "Canonical dispatcher now handles Embedding, Matrix, RNE, Affine and Gate; other producers fail closed"
+  ],
+  "limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds_per_test_invocation": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "PYTHONDONTWRITEBYTECODE": 1
+  },
+  "coverage": {
+    "positive": "Three small resident batches [1,0], [0,0], [1] from original 46-word W: exact ordered raw observation through identity affine, RNE and signed range, plus original byte gather for two complete small embedding sources. Total submitted D2D 20 B, no H2D after W installation, zero embedding kernel launches, explicit release restores zero live capacity.",
+    "host": "C owner under UBSan additionally copies 1, 4 and 150 token rows from a two-row four-column W view and observes exact output order with a deferred fake driver.",
+    "negative": "Eight Rust embedding rejections, 17 C embedding rejections, three canonical invalid-token dispatch rejections before allocation/copy, and legacy ABI 2 rejection. Includes foreign/uninstalled W, invalid ID anywhere in list, empty/out-of-bounds rows, wrong output kind/shape, overwritten output, missing W, first/partial copy failure and fence error.",
+    "canonical_geometry": "Only descriptors for 150 rows and row 149 at vocabulary 262144, columns 5376 are checked in each of three slots. Full canonical W and output are not allocated or computed.",
+    "limitations": "5/13 resident producer types is an inventory, not a goal completion percentage. Fake-driver checks do not validate actual CUDA execution. Full scanner, original PCS/snapshot bindings, GPU proof composition, actual Gamma and physical accounting remain incomplete; CPU proof regressions are not proofs from the native dispatcher."
+  },
+  "build": {
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "working_directory": "rust",
+    "environment": {
+      "CARGO_TARGET_DIR": "/home/okrame/projects/volta-zk/rust/target",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_DEV_OPT_LEVEL": "2"
+    },
+    "binary": "rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+    "development_directory": "benchmarks/raw/c71-embedding-development-2026-10-03-4edcdbb",
+    "initial_development_crate_build_seconds": 193,
+    "cache_retained_until_goal_end": true,
+    "exit_code": 0,
+    "clean_revision_cargo_seconds": 0.07,
+    "final_development_crate_build_seconds": 196,
+    "provenance": "Final source built in development then unchanged for clean-revision cached confirmation",
+    "warnings": "25 lib-test warnings preserved"
+  },
+  "clippy": {
+    "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --tests -- -D clippy::correctness -D clippy::suspicious",
+    "working_directory": "rust",
+    "warnings": "235 lib-test warnings including 168 duplicates; not a security certification",
+    "exit_code": 0,
+    "clean_revision_cargo_seconds": 18.69
+  },
+  "cuda_static": {
+    "command": "/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC -Xptxas=-v cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_range_runtime.cpp -o libc71_embedding.so",
+    "toolkit": "12.9.1 / nvcc 12.9.86, existing toolkit reused",
+    "toolkit_provenance": "benchmarks/results/c71-local-cuda-static-2026-09-13-ef2cdabc1afa.json",
+    "exit_code": 0,
+    "required_export": "c71_dense_embedding",
+    "sass_identical_to_predecessor": true,
+    "sass_sha256": "40e0bb1faa2fa74daf1699c6621c77067d067a10e5f0a2dbf0b9e5c246231dd3",
+    "execution": false
+  },
+  "unexpected_test_failures": [
+    {
+      "log": "benchmarks/raw/c71-embedding-development-2026-10-03-4edcdbb/abi3-1.log",
+      "exit_code": 101,
+      "cause": "ABI assertions succeeded but Fixture::drop could not remove directory containing the new abi2-only.so test artifact",
+      "correction": "Remove the exact legacy fixture file after the ABI rejection assertion, before the existing directory cleanup"
+    }
+  ],
+  "tool_failures": [
+    {
+      "artifact": "kernels.sass",
+      "cause": "First cuobjdump invocation could not locate nvdisasm; diagnostic returned in tool output, partial SASS retained",
+      "correction": "Retry with existing toolkit bin on PATH, preserving full output separately in kernels-2.sass and cuobjdump-2.log"
+    }
+  ],
+  "raw_directory": "benchmarks/raw/c71-embedding-2026-10-03-27c0db3",
+  "remaining_local_work": [
+    "Implement eight resident producer types: Norm, Gelu, Rope, Qk, Softmax, Pv, Softcap, Argmax",
+    "Connect resident producers and byte gather to full canonical replay and original PCS/range consumers",
+    "Bind resident W to PCS installation and token IDs to snapshot/attempt lifecycle; integrate GPU PCS/EXP30/range/real-AES Seed6 and complete simultaneous CPU/HBM accounting",
+    "Verify complete canonical composition; retain explicit Seed6 obligations and known analytic continuation above 40 MB"
+  ],
+  "external_restrictions": "GPU, weight downloads, provider operations and spending remain unauthorized; RunPod hard stop unchanged. Remaining local implementation is not an external hardware blocker.",
+  "rust_checks": [
+    {
+      "filter": "c71_b12_gemma_gate_up_product_and_both_rne_keep_original_macs_in_one_ranged_source",
+      "passed": 1,
+      "harness_seconds": 1.91,
+      "exit_code": 0,
+      "log": "c71_b12_gemma_gate_up_product_and_both_rne_keep_original_macs_in_one_ranged_source.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_byte",
+      "passed": 1,
+      "harness_seconds": 2.84,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_byte.log"
+    },
+    {
+      "filter": "c71_canonical_ordered",
+      "passed": 2,
+      "harness_seconds": 0.83,
+      "exit_code": 0,
+      "log": "c71_canonical_ordered.log"
+    },
+    {
+      "filter": "c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs",
+      "passed": 1,
+      "harness_seconds": 0.66,
+      "exit_code": 0,
+      "log": "c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_abi3",
+      "passed": 1,
+      "harness_seconds": 0.86,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_abi3.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_signed",
+      "passed": 1,
+      "harness_seconds": 1.87,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_signed.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_failure",
+      "passed": 1,
+      "harness_seconds": 0.87,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_failure.log"
+    },
+    {
+      "filter": "c71_b12_gemma_affine_zero_target_and_rne_share_original_ragged_source_bytes",
+      "passed": 1,
+      "harness_seconds": 2.38,
+      "exit_code": 0,
+      "log": "c71_b12_gemma_affine_zero_target_and_rne_share_original_ragged_source_bytes.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_dense_chain",
+      "passed": 1,
+      "harness_seconds": 0.86,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_dense_chain.log"
+    },
+    {
+      "filter": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+      "passed": 1,
+      "harness_seconds": 12.37,
+      "exit_code": 0,
+      "log": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs.log"
+    },
+    {
+      "filter": "c71_canonical_resident",
+      "passed": 9,
+      "harness_seconds": 9.44,
+      "exit_code": 0,
+      "log": "c71_canonical_resident.log"
+    },
+    {
+      "filter": "c71_b12_native_canonical",
+      "passed": 5,
+      "harness_seconds": 6.41,
+      "exit_code": 0,
+      "log": "c71_b12_native_canonical.log"
+    }
+  ],
+  "python_checks": [
+    {
+      "file": "tests/test_c71_range_native.py",
+      "passed": 2,
+      "harness_seconds": 2.27,
+      "exit_code": 0,
+      "log": "test_c71_range_native.log"
+    },
+    {
+      "file": "tests/test_c71_docs.py",
+      "passed": 9,
+      "harness_seconds": 0.51,
+      "exit_code": 0,
+      "log": "test_c71_docs.log"
+    },
+    {
+      "file": "tests/test_c71_dense_i16.py",
+      "passed": 1,
+      "harness_seconds": 0.84,
+      "exit_code": 0,
+      "log": "test_c71_dense_i16.log"
+    }
+  ],
+  "sha256": {
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/build.log": "cc9491a44519747147246914c31d7a59d42c068558fe8e965af5853ef3d6e27c",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_b12_gemma_affine_zero_target_and_rne_share_original_ragged_source_bytes.log": "58e256c5c1e857bda5d51ee8cd557b039d4e5f443474c550b95e945cfdf81144",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs.log": "ebe84e9d67d75f9d902d101e6134bf127e9788fb24eb5203cf9686a5069bc8fc",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_b12_gemma_gate_up_product_and_both_rne_keep_original_macs_in_one_ranged_source.log": "2aa952ae006b217c4bfb14f2ee60d0a1a7904ebc0d38e894b5b6c2415e58289a",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_b12_native_canonical.log": "26383e13513f8dd03e1c3b3dc863d7c1288c72cbef9118cbf8338a5cdb3c0418",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs.log": "dc86a2b2954f9ae474a27d740714ac930450b264bc2a1397a2e02ecdcc2d7d59",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_b12_windowed_native_abi3.log": "3908a3b964c387284ca15640e9a1990a9f431764bb9154febf4774c3ff6974d9",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_b12_windowed_native_byte.log": "41ac02be677f6006d28009e6113b6384d08270c287073bf59dfd83433fbca8d6",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_b12_windowed_native_dense_chain.log": "f2a1a6bbc377d99d40d7fe7982922788c280b91c74ef3b157927e89133db5228",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_b12_windowed_native_failure.log": "d7abe1dc678cfca497d46e7038c4e6f545581c98b8ea075ebc9e2409019389dd",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_b12_windowed_native_signed.log": "f9e4ba19875b8001ca3b138d0945c515fac9da98c7dd04f51b628a5d24566305",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_canonical_ordered.log": "b63a67ffbcd3b2cde33773893a4b24d7a79b347172d5e77ca601c4dce170e616",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/c71_canonical_resident.log": "3296a8ca4dec514c2987c574f1064601894db34f63305f3957f8535855f389d9",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/clippy.log": "e0d8e29a45b17aa24952f91901c08db39bd5ca077a13b5dc2f7e2f26c2103fbc",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/cuobjdump-2.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/kernels-2.sass": "40e0bb1faa2fa74daf1699c6621c77067d067a10e5f0a2dbf0b9e5c246231dd3",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/kernels.sass": "ef767a0c3202913eedbb14917a0800ff52e75a9af079b67d63c9bbd26b1e1ec5",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/libc71_embedding.so": "7f758a5ae6196a3140002963c3470494aaaffacba1f413267f1e73b2695f54fe",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/nvcc.log": "672faaeee4a94ff29bbb6389657d18f29dad64a134d420ed432c5258c9188de6",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/symbols.log": "df9793e756d8698d4b764d085de069952520d1bfd3cf65c5706e3b76c85a3bdd",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/test_c71_dense_i16.log": "7ccf0fd814bf75a35db28acedc1714736804ec6b943ff25b8e07969d5631a02d",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/test_c71_docs.log": "c53df372efb7516cffa1b0acb8de284c98418806b68b0d1cb75bf43b67e0fc97",
+    "benchmarks/raw/c71-embedding-2026-10-03-27c0db3/test_c71_range_native.log": "932544fa02d1434b8f3ce776f86d8d951ca789b062f146cc8b0c95dd42c70959",
+    "rust/target/debug/deps/volta_pcs-1b032d88c9000486": "9db5aa30920feae0960f9e96912dba2a6f59c7c69778de471faf7d7c690ee755",
+    "benchmarks/raw/c71-embedding-development-2026-10-03-4edcdbb/abi3-1.log": "c0679cad372af5747caa8bee344c9486ac722bca30738bbb20a326f7c204c15f",
+    "benchmarks/raw/c71-embedding-development-2026-10-03-4edcdbb/build-1.log": "39330cd90621fd155c08460cf1d38024610f31fc51227cd0bb43e06e6ba3c306",
+    "benchmarks/raw/c71-embedding-development-2026-10-03-4edcdbb/build-2.log": "34309973c9022fab1e90ad50cc31eed646d5e32bff1feae9aff4c4db9f165a11",
+    "benchmarks/raw/c71-embedding-development-2026-10-03-4edcdbb/clippy-1.log": "758ea0269c10d612d4bc0c9d5ab0cf949f2ff2414a8218adadb493c3bad7639a",
+    "benchmarks/raw/c71-embedding-development-2026-10-03-4edcdbb/docs-1.log": "4605579a6817f0e04ac42cbfc95954c6188b9fdb1836958657d804117ac06483",
+    "benchmarks/raw/c71-embedding-development-2026-10-03-4edcdbb/host-1.log": "15d5e5a4ccd74fa29319af33c693ec14dc7036be41bb29448c4dfa40c62dca86",
+    "benchmarks/raw/c71-embedding-development-2026-10-03-4edcdbb/nvcc-1.log": "e52e13054a311b338bc0ac5088fdc30f9c62ffdf1fd5f262051a53ac8053c5b2",
+    "benchmarks/raw/c71-embedding-development-2026-10-03-4edcdbb/resident-1.log": "42f76b4508b79e28c3b40633261246fd81a40a4c49c29fd6231f5050d021c078"
+  },
+  "rust_command_template": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 FILTER --test-threads=1 --nocapture'",
+  "python_command_template": "env PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider FILE'",
+  "checks_additional": [
+    "rustfmt --check passed for three changed Rust files",
+    "git diff --check passed",
+    "Clean tree verified before and after final checks"
+  ]
+}

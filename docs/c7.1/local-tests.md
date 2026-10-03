@@ -328,6 +328,14 @@ e `--gpu-power-native` richiedono lo stesso controllo esplicito.
 
 ## Risultati e conservazione
 
+Il [record embedding residente](../../benchmarks/results/c71-embedding-local-2026-10-03-27c0db34fe92.json)
+registra 25 test Rust e 12 Python sulla revisione pulita, ABI 3, copie D2D
+ordinate dal W originale e rifiuti dopo copie parziali. Conserva il fallimento
+iniziale della pulizia della fixture ABI e il retry del disassemblatore.
+Il SASS resta invariato: embedding usa copie native, non un nuovo kernel.
+Cinque tipi di producer su tredici sono disponibili come componenti;
+non è una percentuale di completamento né una prova canonica o GPU.
+
 Per ogni verifica conservare SHA del codice, comando, exit code, numero
 di test, durata e limiti, distinguendo warning, rifiuti attesi e failure.
 I record di riferimento richiedono albero pulito e `git_dirty:false` e

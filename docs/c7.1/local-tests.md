@@ -215,6 +215,13 @@ conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
 
+Il [record del batching del preparatore](../../benchmarks/results/c71-producer-batch-local-2026-10-03-4e66ebb93705.json)
+conserva 11 test Rust e 9 Python sulla SHA pulita, build e lint
+`correctness`/`suspicious`. Esegue tre righe v_source sintetiche con
+22.020.096 letture W condivise e un replay affine/RNE da 150 righe;
+le 411 geometrie matriciali per contesto sono solo descrittori.
+La schedule è collegata allo scanner CPU, non ai buffer GPU residenti.
+
 Il test [test_c71_dense_i16.py](../../tests/test_c71_dense_i16.py), separato
 entro 60 s/2 GiB, compila con UBSan il modello host del kernel i16.
 Verifica 65.535 split, 40 matrici contro dot i128, mapping univoco dei

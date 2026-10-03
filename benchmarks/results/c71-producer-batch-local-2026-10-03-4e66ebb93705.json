@@ -1,0 +1,186 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-03",
+  "git_sha": "4e66ebb937051b733471f2cc1f9eb7dc73501f86",
+  "git_dirty": false,
+  "milestone": "canonical source scanner uses producer-major replay and shared-weight matrix batches",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "weights_downloaded": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-dense-owner-local-2026-10-03-d0fd644ed704.json",
+  "sources": [
+    "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prepare.rs",
+    "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_ordered.rs"
+  ],
+  "changes": [
+    "One MatrixBatch descriptor validates public cohort kind, heads, raw/input/W geometry, symmetric-i16 input codec, signed-i48 output codec and selected input row offset",
+    "Shared prepare_matrix_batch implementation serves scalar prepare_row with M=1 and the source scanner with all matrix rows; each W coefficient is fetched once per batch, including zero activation rows",
+    "Scanner traverses topological producer order, then all fixed token/head rows, keeping source rows through their final consumer; fixed KV/checkpoints and original padding/histograms retain the same owners",
+    "Initial numerical generation and checkpoint regeneration remain token-causal; no speculative generated token is consumed",
+    "Budget checked before matrix reads/allocations includes packed i16 batch, raw output and an additional raw capacity for scanner row retention; other live row capacities remain charged",
+    "No CUDA producer adapter, GPU execution, full physical ledger or new cryptographic statement is claimed"
+  ],
+  "limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds_per_test_invocation": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "PYTHONDONTWRITEBYTECODE": 1
+  },
+  "build": {
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "working_directory": "rust",
+    "environment": {
+      "CARGO_TARGET_DIR": "/home/okrame/projects/volta-zk/rust/target",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_DEV_OPT_LEVEL": "2"
+    },
+    "exit_code": 0,
+    "clean_revision_cargo_seconds": 0.06,
+    "development_crate_build_seconds": 191,
+    "binary": "rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+    "binary_sha256": "f6df281d75401576b3c0641ccd3fe2337b66c1d2bd2e8de323173536a121889f",
+    "provenance": "Same Rust sources built during development; no Rust edits before clean-revision cached confirmation",
+    "development_log": "benchmarks/raw/c71-producer-batch-development-2026-10-03-ba0883f/build.log",
+    "warnings": "25 volta-pcs lib-test warnings plus dependency warnings preserved",
+    "cache_retained_until_goal_end": true
+  },
+  "clippy": {
+    "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --tests -- -D clippy::correctness -D clippy::suspicious",
+    "working_directory": "rust",
+    "exit_code": 0,
+    "cargo_seconds": 16.54,
+    "warnings": "228 lib-test warnings, including 162 duplicates; style/dead-code warnings are not security certification",
+    "log": "clippy.log"
+  },
+  "rust_checks": [
+    {
+      "filter": "c71_b12_native_canonical",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_canonical --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 5,
+      "harness_seconds": 5.89,
+      "log": "rust-1.log"
+    },
+    {
+      "filter": "c71_canonical_ordered",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_canonical_ordered --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 2,
+      "harness_seconds": 0.78,
+      "log": "rust-2.log"
+    },
+    {
+      "filter": "c71_b12_native_rne_rows",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_rne_rows --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 0.72,
+      "log": "rust-3.log"
+    },
+    {
+      "filter": "c71_b12_native_affine_rows",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_affine_rows --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 0.56,
+      "log": "rust-4.log"
+    },
+    {
+      "filter": "c71_canonical_runner_transport_and_default_stop",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_canonical_runner_transport_and_default_stop --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 0,
+      "log": "rust-5.log"
+    },
+    {
+      "filter": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 12.3,
+      "log": "rust-6.log"
+    }
+  ],
+  "python_checks": [
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py",
+      "exit_code": 0,
+      "passed": 9,
+      "harness_seconds": 0.47,
+      "log": "docs.log"
+    }
+  ],
+  "coverage": {
+    "rust_total": 11,
+    "python_total": 9,
+    "matrix_geometry": {
+      "contexts": [
+        0,
+        150,
+        300
+      ],
+      "matrix_cohorts_each": 411,
+      "executed": false,
+      "checks": "Original input source, W packed offset, last-row selected route, empty/oversize/overflow batches, limits before allocations"
+    },
+    "matrix_execution": {
+      "operator": "layer 0 v_source",
+      "input": "synthetic integer callbacks, not checkpoint weights",
+      "rows": 3,
+      "first_row": 147,
+      "k": 5376,
+      "n": 4096,
+      "original_weight_callback_reads": 22020096,
+      "original_input_reads": 16128,
+      "named_batch_workspace_bytes": 228864,
+      "output_words": 12288,
+      "reference": "Closed-form exact dot product, positive/zero/negative rows and columns",
+      "rejections": "Workspace one byte short before any read, nonmatrix cohort, input/W -32768 even with zero activation, input/weight callback error propagation"
+    },
+    "scanner_execution": {
+      "producers": 2,
+      "rows_each": 150,
+      "operators": [
+        "affine",
+        "RNE"
+      ],
+      "input": "synthetic frozen checkpoint, no weights or full preparation",
+      "checks": "Every raw row precedes RNE; expected original integer values; last-consumer retention, insufficient workspace, immediate consumer failure; descriptor-only full matrix rejected before reads"
+    },
+    "regressions": "Canonical EXP30 internal padding, byte/range windows, row coverage, frozen histograms and checkpoints; three-context causal metadata and synthetic KV handoff; affine/RNE row tests; explicit runner rejection; reduced CPU integrated proof with original MACs",
+    "limitations": "The reduced integrated proof uses the small reference profile, not this full canonical scanner. No complete Gemma forward, D34/D35 execution, GPU adapter or three accepted canonical proofs. Source scan order is private and indices unchanged; finite checks are not a Lean refinement proof."
+  },
+  "checks_additional": [
+    "rustfmt --check on both modified Rust files passed",
+    "git diff --check passed"
+  ],
+  "unexpected_test_failures": [],
+  "raw_directory": "benchmarks/raw/c71-producer-batch-2026-10-03-4e66ebb93705",
+  "sha256": {
+    "build.log": "ba0acdeb242482671ac6bec8f9686979adc64218d209ed3cd5bd394176e60122",
+    "clippy.log": "69475b641b9dfee4ca5ac2a4f6825367d2cee6afa4c9c6014d45a98183ca6ac4",
+    "docs.log": "db84fbe475751225a641ab4263867733c5116910917e04bcbce5dd01cbd8b57e",
+    "rust-1.log": "0e6c7e328df7afdaec875339320689657d4358fb8ddec1f19bc69b05809c0c20",
+    "rust-2.log": "197c1bd46814ccde31ee4f0f34c5c2439a15837903f401d4160e376492690079",
+    "rust-3.log": "5c0c4b39332669253117356f17ae5a09f27027eb209f6ba8f48371877ad216e0",
+    "rust-4.log": "9f69fbb8dd4e45d3a4a2d28412588688ac6392b9c8f31186b4ccbd1ae64990a3",
+    "rust-5.log": "773131abb9005a8bc21fe8db2a6c469a0246af45b325fa8ffd05e282107e16a8",
+    "rust-6.log": "dc0fe90e6029def78c82dcc77ea6994fb8be62eb38388946567e27ef2162d1fd"
+  },
+  "remaining_local_work": [
+    "Connect canonical MatrixBatch input/output ownership to resident CUDA handles without intermediate host spill",
+    "Bind resident immutable W to committed W and share native lifecycle across the runner, not one owner per proof component",
+    "Port remaining preparation operators and connect GPU PCS/EXP30/range/real-AES Seed6; implement complete simultaneous CPU/HBM accounting",
+    "Complete canonical composition and keep Seed6 obligations explicit; analytic continuation above 40 MB remains a known negative"
+  ],
+  "external_restrictions": "GPU, checkpoint downloads, provider operations and spending remain unauthorized. RunPod hard stop unchanged; residual local work above is not a hardware blocker."
+}

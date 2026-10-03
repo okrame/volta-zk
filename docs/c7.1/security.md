@@ -572,6 +572,14 @@ La selezione di coset è una scelta fisica, non una nuova garanzia ZK o
 di memoria. Ammettere D35 nel riferimento CPU non prova l'esecuzione
 canonica, il limite temporale o la composizione Seed6.
 
+Il [gather range](../c7.1-history/canonical-range-gather.md) permuta solo
+indirizzi pubblici: prima coordinata MSB e bit del sottoalbero preservati.
+Il reader non riceve sfide, MAC o correlazioni e riusa gli stessi owner
+immutabili di checkpoint, istogrammi e byte biased. Le intersezioni delle
+tessere non dipendono da sfide future. I test controllano la bijezione
+finita e il confronto con gli originali; il reader non è ancora collegato
+alla prova range e non dimostra il raffinamento Gram o la schedule canonica.
+
 I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
 dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo
 Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.

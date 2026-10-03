@@ -156,6 +156,7 @@ Eseguire un filtro alla volta:
 | `c71_b12_native_registry` | Profilo posseduto, registro e rifiuto reale per capacità insufficiente |
 | `c71_b12_native_dispatch_canonical` | Riserva/contesto e rifiuto di P0 incompleto, non accettazione canonica |
 | `c71_canonical_ordered_internal_padding_histogram_and_byte_window` | Padding interno, istogrammi, checkpoint, finestre byte e scansione per sorgente con copertura/errori su un operatore canonico sintetico; non preparazione Gemma completa |
+| `c71_b12_range_window_permutation_and_intersections` | Permutazione MSB e intersezioni contro enumerazione D1–D7; rifiuti geometrici e descrittori delle 26 passate D34 senza allocare finestre canoniche |
 | `c71_acceptance_transport` | Completamento legato al certificato/ricevuta pendenti; alterazioni, troncamenti e Stop |
 | `c71_canonical_runner_transport_and_default_stop` | Framing della risposta, limiti prima dell'allocazione, contatori I/O e rifiuto del backend implicito; nessuna esecuzione canonica |
 | `c71_canonical_runner_packed_input` | Lettura packed senza seconda copia completa, endian, lunghezza e marcatore di overflow su quattro/sei byte |
@@ -255,6 +256,11 @@ riporta le durate già presenti negli stdout, senza sovrascrivere il record
 o attribuire una nuova esecuzione. D16 e geometrie extension grandi erano
 limiti di quella revisione; il [checkpoint successivo](../c7.1-history/canonical-pcs-stages.md)
 ne collega il supporto CPU, senza credito canonico, GPU o di picco fisico.
+Il [checkpoint del gather range](../c7.1-history/canonical-range-gather.md)
+descrive i controlli del nuovo reader riordinato. Il test dei byte biased
+copre anche il gather i48/i32/i16 e il test canonico dell'operatore copre
+checkpoint, istogrammi e padding. Nessuno dei due attesta un prover range
+Gram o una finestra di 2 GiB eseguita.
 Il [record degli stadi PCS](../../benchmarks/results/c71-pcs-stages-local-2026-10-03-cc5db06c1796.json)
 registra 32 test Rust, 18 Python e due rifiuti CLI sulla SHA pulita,
 inclusa la catena PCS D17, conservando gli errori di sviluppo. Una

@@ -381,6 +381,34 @@ impl Prepared {
         })
     }
 
+    /// Native range input gather, capped at the selected 2 GiB byte window.
+    /// The Gram/canopy prover must still schedule these windows at each FS
+    /// barrier; this reader alone does not implement the 26-pass range proof.
+    pub(super) fn range_window(
+        &self,
+        first: usize,
+        output: &mut [u8],
+        suffix: usize,
+        bottom: usize,
+    ) -> Result<(), String> {
+        let window = bytes::RangeWindow::new(34, first, output.len(), suffix, bottom)?;
+        if output.len() > self.limit {
+            return Err("canonical range window exceeds budget".into());
+        }
+        let targets: BTreeSet<_> =
+            self.profile.bytes().range_window_sources(&window)?.into_iter().collect();
+        output.fill(0); // flat suffix only; signed internal zero is emitted biased
+        if targets.is_empty() {
+            return Ok(());
+        }
+        self.scan_sources(&targets, &mut |index, byte| {
+            if let Some(offset) = window.offset(index) {
+                output[offset] = byte;
+            }
+            Ok(())
+        })
+    }
+
     /// Reconstruct every original source once for one PCS coset. The row
     /// bitmap checks coverage without an A-sized byte bitmap; the fixed tile
     /// map emits every byte of a covered row exactly once. Public flat padding
@@ -641,6 +669,33 @@ mod tests {
         assert_eq!(window, [1, 0, 1, 0, 1, 0, 1, 0]);
         for (offset, expected) in window.iter().enumerate() {
             assert_eq!(reader.byte_at(first + offset).unwrap(), *expected);
+        }
+        // Each transformed 8-byte window preserves a subtree while moving the
+        // next bit to the MSB. Exercise reconstructed, checkpoint and histogram
+        // sources without ever reading weights or a complete A.
+        for id in [difference, score, histogram] {
+            let shape = &b.scalar.layout.sources[id];
+            let mut original = usize::MAX;
+            b.emit_row_bytes(id, 0, &vec![0; shape.cols], |i, _| {
+                original = original.min(i);
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(original % 8, 0);
+            let mut expected = [0; 8];
+            reader.window(original, &mut expected).unwrap();
+            let ordered = ((original & 8) << 30) | ((original >> 4) << 3);
+            reader.range_window(ordered, &mut window, 1, 3).unwrap();
+            assert_eq!(window, expected);
+        }
+        // These windows contain only original flat padding. Neither requests
+        // an owner, so an absent generation/weights cannot be silently used.
+        reader.range_window((1usize << 34) - 8, &mut window, 1, 3).unwrap();
+        assert_eq!(window, [0; 8]);
+        window.fill(165);
+        for (first, suffix, bottom) in [(1, 1, 3), (0, 35, 0), (0, 0, 4)] {
+            assert!(reader.range_window(first, &mut window, suffix, bottom).is_err());
+            assert_eq!(window, [165; 8], "geometry rejected before touching output");
         }
         reader.window((1usize << 34) - 8, &mut window).unwrap();
         assert_eq!(window, [0; 8]);

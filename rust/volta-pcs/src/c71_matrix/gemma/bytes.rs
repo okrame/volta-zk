@@ -19,6 +19,65 @@ struct ByteTile {
     offset: usize,
 }
 
+/// One public dyadic range window in [tail][folded prefix][Gram u][subtree]
+/// order. Only addresses move: the original byte encoding/root is unchanged.
+pub(super) struct RangeWindow {
+    dimension: usize,
+    suffix: usize,
+    bottom: usize,
+    first: usize,
+    mask: usize,
+    value: usize,
+}
+
+impl RangeWindow {
+    pub(super) fn new(
+        dimension: usize,
+        first: usize,
+        length: usize,
+        suffix: usize,
+        bottom: usize,
+    ) -> Result<Self, String> {
+        if !(1..=35).contains(&dimension)
+            || bottom > dimension
+            || suffix > dimension - bottom
+            || !length.is_power_of_two()
+            || length > 1usize << 31
+            || length < 1usize << bottom
+            || first % length != 0
+            || first.checked_add(length).is_none_or(|end| end > 1usize << dimension)
+        {
+            return Err("range byte window geometry differs".into());
+        }
+        let mut window = Self { dimension, suffix, bottom, first, mask: 0, value: 0 };
+        // A dyadic ordered window fixes a subset of original address bits.
+        // Intersecting another dyadic tile needs only compatibility of those
+        // fixed bits, never enumeration of the full A domain.
+        window.mask = window.rotate((1 << dimension) - length, dimension - bottom - suffix);
+        window.value = window.rotate(first, dimension - bottom - suffix);
+        Ok(window)
+    }
+
+    fn rotate(&self, index: usize, suffix: usize) -> usize {
+        let upper = index >> self.bottom;
+        ((((upper & ((1 << suffix) - 1)) << (self.dimension - self.bottom - suffix))
+            | (upper >> suffix))
+            << self.bottom)
+            | (index & ((1 << self.bottom) - 1))
+    }
+
+    pub(super) fn offset(&self, original: usize) -> Option<usize> {
+        (original < 1 << self.dimension && original & self.mask == self.value)
+            .then(|| self.rotate(original, self.suffix) - self.first)
+    }
+
+    fn intersects(&self, first: usize, length: usize) -> bool {
+        debug_assert!(length.is_power_of_two() && first % length == 0);
+        debug_assert!(first + length <= 1 << self.dimension);
+        (first ^ self.value) & self.mask & !(length - 1) == 0
+    }
+}
+
 pub(in crate::c71_matrix) struct Bytes {
     pub scalar: Auxiliary,
     tiles: Vec<ByteTile>,
@@ -63,6 +122,22 @@ impl Plan {
 }
 
 impl Bytes {
+    /// The range gather selects producers by public tile/window intersections.
+    /// It does not ask the scalar getter for each permuted output address.
+    pub(super) fn range_window_sources(&self, window: &RangeWindow) -> Result<Vec<usize>, String> {
+        if self.live > 1 << window.dimension {
+            return Err("range byte layout exceeds window domain".into());
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        for b in &self.tiles {
+            let t = &self.scalar.layout.tiles[b.scalar];
+            if window.intersects(b.offset, t.rows * t.cols * b.width) {
+                ids.insert(t.tensor);
+            }
+        }
+        Ok(ids.into_iter().collect())
+    }
+
     /// Public source set for a contiguous original byte window, including
     /// partially intersected dyadic tiles. External padding has no producer.
     pub(super) fn window_sources(&self, first: usize, length: usize) -> Result<Vec<usize>, String> {
@@ -469,6 +544,93 @@ mod tests {
         Fs, Key, MatrixRng, Model, E,
     };
     use rand_010::{RngExt, SeedableRng};
+
+    #[test]
+    fn c71_b12_range_window_permutation_and_intersections() {
+        // Independent bit-by-bit oracle, including identity rotations and a
+        // window smaller than the unfixed prefix. No canonical byte allocation.
+        for dimension in 1..=7 {
+            let n = 1 << dimension;
+            for bottom in 0..=dimension {
+                for suffix in 0..=dimension - bottom {
+                    let order: Vec<_> = (bottom..bottom + suffix)
+                        .rev()
+                        .chain((bottom + suffix..dimension).rev())
+                        .chain((0..bottom).rev())
+                        .collect();
+                    let permuted: Vec<_> = (0..n)
+                        .map(|i| order.iter().fold(0, |v, bit| 2 * v + ((i >> bit) & 1)))
+                        .collect();
+                    for width in bottom..=dimension {
+                        let length = 1 << width;
+                        for first in (0..n).step_by(length) {
+                            let w =
+                                RangeWindow::new(dimension, first, length, suffix, bottom).unwrap();
+                            let mut covered = vec![false; length];
+                            for (i, &address) in permuted.iter().enumerate() {
+                                let expected = (first..first + length)
+                                    .contains(&address)
+                                    .then(|| address - first);
+                                assert_eq!(w.offset(i), expected);
+                                if let Some(j) = expected {
+                                    assert!(!std::mem::replace(&mut covered[j], true));
+                                }
+                            }
+                            assert!(covered.iter().all(|&x| x));
+                            assert_eq!(w.offset(n), None);
+                            for tile_bits in 0..=dimension {
+                                let size = 1 << tile_bits;
+                                for tile in (0..n).step_by(size) {
+                                    assert_eq!(
+                                        w.intersects(tile, size),
+                                        permuted[tile..tile + size]
+                                            .iter()
+                                            .any(|a| (first..first + length).contains(a))
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (dimension, first, length, suffix, bottom) in [
+            (0, 0, 1, 0, 0),
+            (36, 0, 1, 0, 0),
+            (7, 0, 0, 0, 0),
+            (7, 0, 3, 0, 0),
+            (7, 1, 8, 0, 0),
+            (7, 128, 8, 0, 0),
+            (7, usize::MAX - 7, 8, 0, 0),
+            (7, 0, 8, 8, 0),
+            (7, 0, 8, 0, 8),
+            (7, 0, 8, 0, 4),
+            (34, 0, 1 << 32, 0, 0),
+        ] {
+            assert!(RangeWindow::new(dimension, first, length, suffix, bottom).is_err());
+        }
+        // Every selected D34 window geometry fits the 2 GiB cap. Address-only
+        // check: constructing these descriptors allocates no byte buffers.
+        let widths: [&[usize]; 10] =
+            [&[], &[1], &[2], &[3], &[4], &[5], &[2, 4], &[3, 4], &[2, 2, 4], &[2, 3, 4]];
+        let mut passes = 1;
+        for (layer, widths) in widths.iter().enumerate() {
+            let m = 24 + layer;
+            let mut previous = 0;
+            for width in widths.iter().copied().chain([0]) {
+                let suffix = m - previous - width;
+                let bottom = 34 - m;
+                for first in (0..1usize << 34).step_by(1 << 31) {
+                    let w = RangeWindow::new(34, first, 1 << 31, suffix, bottom).unwrap();
+                    assert_eq!(w.mask.count_ones(), 3);
+                    assert_eq!(w.offset(w.value), Some(0));
+                }
+                previous += width;
+                passes += 1;
+            }
+        }
+        assert_eq!(passes, 26);
+    }
 
     #[test]
     fn c71_b12_gemma_p0_rne_uses_same_ragged_raw_cut_and_quantized_input_macs() {
@@ -1050,6 +1212,53 @@ mod tests {
         assert_eq!(addresses, (0..bytes.live).collect::<Vec<_>>());
         assert_eq!(bytes.virtual_to_packed(255).unwrap(), None);
         assert!(bytes.virtual_to_packed(256).is_err());
+        // Gather the SAME original bytes (i48/i32/i16) across several
+        // permuted windows, selecting each producer at most once per window.
+        for (suffix, bottom, length) in [(3, 1, 32), (4, 0, 16), (1, 6, 64), (0, 0, 256)] {
+            for first in (0..256).step_by(length) {
+                let window = RangeWindow::new(8, first, length, suffix, bottom).unwrap();
+                let targets = bytes.range_window_sources(&window).unwrap();
+                let expected_targets: std::collections::BTreeSet<_> = bytes
+                    .tiles
+                    .iter()
+                    .filter_map(|b| {
+                        let t = &bytes.scalar.layout.tiles[b.scalar];
+                        (b.offset..b.offset + t.rows * t.cols * b.width)
+                            .any(|i| window.offset(i).is_some())
+                            .then_some(t.tensor)
+                    })
+                    .collect();
+                assert_eq!(targets, expected_targets.into_iter().collect::<Vec<_>>());
+                let mut gathered = vec![0; length];
+                let mut seen = vec![false; length];
+                for id in targets {
+                    let source = &bytes.scalar.layout.sources[id];
+                    for row in 0..source.rows {
+                        bytes
+                            .emit_row_bytes(
+                                id,
+                                row,
+                                &scalar_values[id][row * source.cols..(row + 1) * source.cols],
+                                |i, v| {
+                                    if let Some(j) = window.offset(i) {
+                                        assert!(!std::mem::replace(&mut seen[j], true));
+                                        gathered[j] = i16::from(v);
+                                    }
+                                    Ok(())
+                                },
+                            )
+                            .unwrap();
+                    }
+                }
+                for (i, &v) in virtual_bytes.iter().enumerate().take(256) {
+                    if let Some(j) = window.offset(i) {
+                        assert_eq!(gathered[j], v);
+                        assert_eq!(seen[j], i < bytes.live);
+                    }
+                }
+            }
+        }
+        assert!(bytes.range_window_sources(&RangeWindow::new(7, 0, 128, 0, 0).unwrap()).is_err());
         let model = Model::new(32, virtual_bytes).unwrap();
         let attempt = AttemptContext {
             session: [1; 32],

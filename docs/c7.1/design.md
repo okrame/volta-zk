@@ -122,6 +122,13 @@ cap D16 con blocchi P/Q al più 2^21 e preparazione condivisa fra due fold,
 rilasciata prima del commitment successivo. Il
 [checkpoint degli stadi](../c7.1-history/canonical-pcs-stages.md)
 separa supporto CPU delle shape, parità ridotta e validazione completa.
+Il preparatore dispone anche del gather range in ordine
+`[tail][prefisso folded][u Gram][sottoalbero]`, con selezione dei producer
+per intersezione delle tessere e cap di 2 GiB. Il
+[checkpoint del gather](../c7.1-history/canonical-range-gather.md)
+è solo il reader: il prover range usa ancora la rigenerazione scalare.
+Restano da collegare canopy, Gram, retention e schedulazione delle 26 passate;
+la disponibilità delle finestre non attribuisce quei conteggi al runtime.
 Il bound di lavoro Eq/Pow dello screen rimane condizionale e non è
 trasferito automaticamente a questa implementazione.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,

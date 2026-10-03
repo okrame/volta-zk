@@ -423,7 +423,18 @@ scanner 512 volte secondo la geometria, non la finestra scalare da 128
 byte. Anche le prime query PCS usano il lettore a finestre descritto sopra;
 le riduzioni lineari del primo stato PCS usano ora lo scanner sorgente.
 Getter scalare e replay per riga restano in range e negli altri consumer
-non convertiti. Non realizzano ancora la finestra range da 2 GiB.
+non convertiti. `Prepared::range_window` implementa ora il reader per
+finestre dyadic allineate, fino a 2 GiB, nell'ordine
+`[tail][prefisso folded][u Gram][sottoalbero]`. Seleziona le sorgenti
+intersecando le maschere dei bit fissi delle tessere con quelle della
+finestra riordinata, quindi riusa `scan_sources` e la sua verifica di
+copertura. Non enumera il dominio per decidere i producer. Le finestre
+devono contenere interi sottoalberi; forme, overflow e budget sono
+controllati prima di toccare l'output. Un errore durante lo scan invalida
+l'output parziale. Nessun consumer range lo chiama ancora: canopy, Gram,
+retention e le 26 passate restano da integrare. I
+[controlli del gather](../c7.1-history/canonical-range-gather.md)
+non eseguono una finestra da 2 GiB o la prova D34.
 Il limite di preparazione controlla payload nominati, non il picco fisico
 complessivo. Coset, frontier/sali/cache Merkle, colonna FFT, due twiddle,
 potenze, bitmap, metadata, checkpoint e workspace numerico vanno contati

@@ -218,6 +218,11 @@ I record di riferimento richiedono albero pulito e `git_dirty:false` e
 vanno in nuovi file `benchmarks/results/<milestone>-<date>-<gitsha>.json`.
 Non riscrivere risultati precedenti, neppure per correggerli.
 
+Il [record del riferimento canonico CPU](../../benchmarks/results/c71-canonical-reference-local-2026-10-03-dfb0867c6010.json)
+conserva i controlli della pipeline, i limiti di copertura e i fallimenti
+di sviluppo separati dalle esecuzioni sulla revisione pulita. Non attesta
+certificati canonici validi o completamento del lavoro locale per H100.
+
 La verifica di questa riorganizzazione e gli eventuali fallimenti sono
 registrati nell'[audit documentale](../c7.1-history/reorganization-audit.md).
 Questa pagina contiene comandi e significato dei test; l'archivio conserva

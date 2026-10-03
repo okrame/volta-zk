@@ -1,0 +1,236 @@
+{
+  "schema": "volta-c71-canonical-reference-local-v1",
+  "recorded_at_utc": "2026-10-03 09:41:58 UTC",
+  "git_sha": "dfb0867c601097b43b4e21ac49bc0cf26f24aa12",
+  "git_dirty": false,
+  "implementation_sha": "c2b624090e404c3cb06a2077df907143d2d2f37b",
+  "baseline_readiness": "c71-h100-e2e-readiness-2026-10-03-fbd6141e7a1e.json",
+  "credit": false,
+  "readiness": "NOT_READY",
+  "all_local_work_complete": false,
+  "scope": "Canonical CPU reference implementation plus reduced local verification; not H100 admission.",
+  "environment": {
+    "kernel": "Linux 6.12.94+deb13-arm64 aarch64 GNU/Linux",
+    "rust_profile": "dev opt-level=2 debug=0 incremental=0 target-cpu=native",
+    "cargo_jobs": 1,
+    "rayon_workers": 1,
+    "omp_threads": 1,
+    "openblas_threads": 1,
+    "test_timeout_seconds": 60,
+    "kill_grace_seconds": 5,
+    "virtual_memory_limit_bytes": 2147483648,
+    "network": "Only kernel-owned Unix socketpairs; no external network."
+  },
+  "build": {
+    "clean_tree_cached_recheck": true,
+    "commands": [
+      "cargo test --offline --locked -j1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+      "cargo build --offline --locked -j1 -p volta-pcs --features c71-seed6-reference --example c71_canonical_reference",
+      "cargo check --offline --locked -j1 -p volta-pcs --features c71-b12-pcs --lib",
+      "cargo clippy --offline --locked -j1 -p volta-pcs --features c71-seed6-reference --lib -- -D clippy::correctness -D clippy::suspicious"
+    ],
+    "exit_codes": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "rust_test_binary_sha256": "8c89451202b9bcf9de9bf8a5e211927b432becd218a66c0d73221cde14af8c64",
+    "reference_binary_sha256": "3ab077cd5c00ae8e5a20eb098e2a4e5115932ddb38b302cacd726610c3b73750"
+  },
+  "implemented": {
+    "canonical_prover": "All 135/136/137 frames, original endpoint closures, W/current/history PCS; compiled, negative preflight tested, no positive canonical certificate.",
+    "ordered_canonical_getter": "Same numerical producer driver, one shared generation of 61 layer checkpoints, immutable KV, complete histograms, internal padding and external zero distinction; one canonical softmax fixture tested, no full canonical preparation executed.",
+    "canonical_registry": "Both role owners and promotion after durable completion, with capacity/context guards.",
+    "completion": "73-byte certificate-hash/FS-receipt binding on an authenticated dedicated channel; not itself channel authentication.",
+    "executable": "Explicit CPU-only reference with real Seed6 ell=11 and three attempts; framing/input/default-stop tests only. Heavy mode was not executed.",
+    "reduced_commitments": "Initial dense commitment data and original pads retained across openings."
+  },
+  "observed": {
+    "rust_tests_passed": 14,
+    "documentation_tests_passed": 9,
+    "cli_expected_rejections": 2,
+    "real_seed6_reduced_accepted_responses": 2,
+    "real_seed6_geometry": {
+      "t": 8,
+      "h": 19,
+      "ell": 2
+    },
+    "same_prover_and_verifier_registry": true,
+    "same_installed_w": true,
+    "reduced_certificate_body_bytes": [
+      7749929,
+      10942807
+    ],
+    "completion_transport_in_reduced_test": "Serialized completion over in-process mpsc; Seed6 setup over Unix socketpair. Canonical response wire framing separately unit-tested.",
+    "canonical_certificates_verified": 0,
+    "canonical_full_model_executions": 0,
+    "gpu_executions": 0,
+    "real_weights_read_or_downloaded": false,
+    "pod_actions": false,
+    "provider_spend": 0,
+    "complete_memory_accounting": false,
+    "complete_time_accounting": false,
+    "complete_communication_accounting": false
+  },
+  "tests": [
+    {
+      "selection": "c71_canonical_",
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_canonical_ --test-threads=1)",
+      "expected_exit_code": 0,
+      "exit_code": 0,
+      "passed": 3,
+      "seconds": 0.57,
+      "output": "\nrunning 3 tests\ntest c71_matrix::gemma::native::canonical::ordered::tests::c71_canonical_ordered_internal_padding_histogram_and_byte_window ... ok\ntest c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_packed_input_checks_before_installation ... ok\ntest c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_transport_and_default_stop ... ok\n\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 438 filtered out; finished in 0.57s\n\n"
+    },
+    {
+      "selection": "c71_acceptance_transport",
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_acceptance_transport --test-threads=1)",
+      "expected_exit_code": 0,
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::acceptance_transport::tests::c71_acceptance_transport_binds_pending_context_and_receipt ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 440 filtered out; finished in 0.00s\n\n"
+    },
+    {
+      "selection": "c71_b12_native_canonical",
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_canonical --test-threads=1)",
+      "expected_exit_code": 0,
+      "exit_code": 0,
+      "passed": 5,
+      "seconds": 5.66,
+      "output": "\nrunning 5 tests\ntest c71_matrix::gemma::native::canonical::calibration::tests::c71_b12_native_canonical_calibration_storage_release_and_ranges ... ok\ntest c71_matrix::gemma::native::canonical::calibration::tests::c71_b12_native_canonical_calibration_three_context_kv_handoff ... ok\ntest c71_matrix::gemma::native::canonical::prepare::tests::c71_b12_native_canonical_numeric_rows_original_routes ... ok\ntest c71_matrix::gemma::native::canonical::tests::c71_b12_native_canonical_all_sources_have_causal_producers_across_three_contexts ... ok\ntest c71_matrix::gemma::native::canonical::wire_tests::c71_b12_native_canonical_wire_body_geometry ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 436 filtered out; finished in 5.66s\n\n"
+    },
+    {
+      "selection": "c71_b12_native_dispatch_canonical",
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_dispatch_canonical --test-threads=1)",
+      "expected_exit_code": 0,
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 9.86,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::verify::tests::c71_b12_native_dispatch_canonical_preflight_and_public_prefix_reject_incomplete_p0 ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 440 filtered out; finished in 9.86s\n\n"
+    },
+    {
+      "selection": "c71_b12_retained_initial",
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_retained_initial --test-threads=1)",
+      "expected_exit_code": 0,
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 0.04,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_retained_initial_oracle_shares_cache_without_source_recommit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 440 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "selection": "c71_b12_native_registry",
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_registry --test-threads=1)",
+      "expected_exit_code": 0,
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 11.07,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::state::tests::c71_b12_native_registry_header_and_real_shortage_are_terminal ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 440 filtered out; finished in 11.07s\n\n"
+    },
+    {
+      "selection": "c71_seed6_native_full_o0_late_rejection",
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_seed6_native_full_o0_late_rejection --test-threads=1)",
+      "expected_exit_code": 0,
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 50.09,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::pool::seed6_tests::c71_seed6_native_full_o0_late_rejection_burns_without_promotion ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 440 filtered out; finished in 50.09s\n\n"
+    },
+    {
+      "selection": "c71_seed6_native_two_retained_dense",
+      "command": "set -o pipefail\n(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_seed6_native_two_retained_dense --nocapture --test-threads=1) 2>&1 | rg 'running|^test result|^C71_REAL_REDUCED|panicked|FAILED|^error'",
+      "expected_exit_code": 0,
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 51.8,
+      "output": "running 1 test\nC71_REAL_REDUCED accepted=1 bytes=7749929 canonical=false credit=false\nC71_REAL_REDUCED accepted=2 bytes=10942807 canonical=false credit=false\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 440 filtered out; finished in 51.80s\n"
+    },
+    {
+      "selection": "docs",
+      "command": "(ulimit -v 2097152; PYTHONDONTWRITEBYTECODE=1 timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py)",
+      "expected_exit_code": 0,
+      "exit_code": 0,
+      "passed": 9,
+      "seconds": 0.48,
+      "output": ".........                                                                [100%]\n9 passed in 0.48s\n"
+    },
+    {
+      "selection": "runner_default_stop",
+      "command": "(ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/examples/c71_canonical_reference)",
+      "expected_exit_code": 1,
+      "exit_code": 1,
+      "passed": null,
+      "seconds": null,
+      "output": "Stop: no admitted GPU runner; explicit heavy reference only: c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES\n"
+    },
+    {
+      "selection": "runner_gpu_rejected",
+      "command": "(ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/examples/c71_canonical_reference gpu)",
+      "expected_exit_code": 1,
+      "exit_code": 1,
+      "passed": null,
+      "seconds": null,
+      "output": "Stop: no admitted GPU runner; explicit heavy reference only: c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES\n"
+    }
+  ],
+  "development_failures_not_runs_of_record": {
+    "base_git_sha": "97b11b2ec6acfd837002991e04aa5c9634199697",
+    "git_dirty": true,
+    "exact_uncommitted_revision_not_retained": true,
+    "compilation_errors_corrected": [
+      "Domain lacked PartialEq for source identity checks",
+      "rows_at_token visibility",
+      "completion codec visibility across native modules"
+    ],
+    "attempts": [
+      {
+        "variant": "Seed6 geometry t=12/h=19/ell=2",
+        "exit_code": 101,
+        "result": "Rejected incomplete Fp3 capacity before setup."
+      },
+      {
+        "variant": "Seed6 t=8/h=19/ell=2 first sandbox run",
+        "exit_code": 101,
+        "result": "UnixStream::pair returned EPERM; no protocol result. Subsequent exception limited to local socketpairs."
+      },
+      {
+        "variant": "three reduced dense responses without retained initial commitments",
+        "exit_code": 124,
+        "timeout_seconds": 60,
+        "accepted_responses_logged": 2,
+        "certificate_body_bytes_logged": [
+          7735081,
+          10933847
+        ],
+        "three_response_credit": false
+      },
+      {
+        "variant": "three reduced dense responses with retained initial commitments",
+        "exit_code": 124,
+        "timeout_seconds": 60,
+        "accepted_responses_logged": 2,
+        "certificate_body_bytes_logged": [
+          7737385,
+          10947031
+        ],
+        "concurrent_compilation": true,
+        "three_response_credit": false
+      }
+    ]
+  },
+  "remaining_local_work": [
+    "Replace remaining canonical dense workspaces and CPU row/window replay with the specified bounded physical schedule.",
+    "Implement and integrate the 512-reconstruction canonical initial A commitment/getter path.",
+    "Integrate actual CUDA execution; no admitted GPU entry exists.",
+    "Complete simultaneous live memory accounting, phase timing and all communication including public setup/distribution.",
+    "Validate the full canonical prover/getter composition; positive canonical certificates have not been acquired."
+  ],
+  "external_requirements": [
+    "Authorized pinned checkpoint inputs and real calibrated Gamma with independent numerical comparison.",
+    "Authorized H100 execution for parity and complete measurements.",
+    "Verifiable provider deadline or explicitly authorized spending guard before any RunPod creation."
+  ],
+  "runpod_hard_stop_preserved": true,
+  "security": "No transfer of B12 numerical bounds to the full Seed6 composition; existing malicious-composition/runtime assumptions remain open."
+}

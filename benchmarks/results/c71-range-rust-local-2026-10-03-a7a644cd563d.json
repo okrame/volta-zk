@@ -1,0 +1,187 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-03",
+  "git_sha": "a7a644cd563d042644da79c447b7f4fe10d7e506",
+  "git_dirty": false,
+  "milestone": "resident range ABI connected to shared Rust proof callbacks",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "weights_downloaded": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-range-owner-local-2026-10-03-20d85df34158.json",
+  "changes": [
+    "Explicit Source.native configuration; native library ABI checked, original u8/i16 uploads sealed, Fp3 canonically marshalled rather than transmuted",
+    "Resident canopy/Gram/retention evaluator uses the existing proof body and fallible callbacks, not a second transcript or fresh endpoint MAC substitution",
+    "Scalar roots, cubic coefficients and terminals fenced before authentication; cleanup must succeed before a proof is returned; errors never select CPU",
+    "Typed buffer reinterpretation reuses native capacity; host originals are refilled only after upload fencing; partial owner statistics returned in Work.native",
+    "Existing deferred fake CUDA driver extended with host reference algebra for Rust/C ABI protocol parity; never a production backend"
+  ],
+  "limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds_per_test_invocation": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1
+  },
+  "build": {
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "working_directory": "rust",
+    "environment": {
+      "CARGO_TARGET_DIR": "/home/okrame/projects/volta-zk/rust/target",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_DEV_OPT_LEVEL": "2"
+    },
+    "exit_code": 0,
+    "clean_revision_cargo_seconds": 0.07,
+    "initial_cold_build_seconds": 281,
+    "provenance": "Initial build completed on these same Rust sources during development. Clean-revision cargo invocation confirmed the current cached artifact; no Rust source edits occurred between build and commit.",
+    "binary": "rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+    "binary_sha256": "02eddbe04ce057dbcb83241f76b626691dcb3eb781de02dc81d9ed4a25bcc231",
+    "cache_retained_until_goal_end": true,
+    "warnings": "25 volta-pcs lib-test warnings; dependency warnings retained in build.log"
+  },
+  "rust_checks": [
+    {
+      "filter": "c71_b12_windowed_native_byte",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_windowed_native_byte --test-threads=1 --nocapture' > benchmarks/raw/c71-range-rust-2026-10-03-a7a644c/rust-1.log 2>&1",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 2.52
+    },
+    {
+      "filter": "c71_b12_windowed_native_signed",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_windowed_native_signed --test-threads=1 --nocapture' > benchmarks/raw/c71-range-rust-2026-10-03-a7a644c/rust-2.log 2>&1",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 1.63
+    },
+    {
+      "filter": "c71_b12_windowed_native_failure",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_windowed_native_failure --test-threads=1 --nocapture' > benchmarks/raw/c71-range-rust-2026-10-03-a7a644c/rust-3.log 2>&1",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 0.66
+    },
+    {
+      "filter": "c71_b12_windowed_range",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_windowed_range --test-threads=1 --nocapture' > benchmarks/raw/c71-range-rust-2026-10-03-a7a644c/rust-4.log 2>&1",
+      "exit_code": 0,
+      "passed": 5,
+      "harness_seconds": 3.47
+    },
+    {
+      "filter": "c71_b12_native_windowed_range_dispatch",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_windowed_range_dispatch --test-threads=1 --nocapture' > benchmarks/raw/c71-range-rust-2026-10-03-a7a644c/rust-5.log 2>&1",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 0.04
+    },
+    {
+      "filter": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs --test-threads=1 --nocapture' > benchmarks/raw/c71-range-rust-2026-10-03-a7a644c/rust-6.log 2>&1",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 12.19
+    },
+    {
+      "filter": "c71_canonical_runner_transport_and_default_stop",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_canonical_runner_transport_and_default_stop --test-threads=1 --nocapture' > benchmarks/raw/c71-range-rust-2026-10-03-a7a644c/rust-7.log 2>&1",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 0
+    }
+  ],
+  "python_checks": [
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_range_native.py' > benchmarks/raw/c71-range-rust-2026-10-03-a7a644c/python-native.log 2>&1",
+      "exit_code": 0,
+      "passed": 2,
+      "pytest_seconds": 1.16,
+      "coverage": "37 host native-algebra cases and 13 rejected owner operations plus initialization/cleanup guards, fake deferred driver; no CUDA execution"
+    },
+    {
+      "command": "env PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py' > benchmarks/raw/c71-range-rust-2026-10-03-a7a644c/python-docs.log 2>&1",
+      "exit_code": 0,
+      "passed": 9,
+      "pytest_seconds": 0.49
+    }
+  ],
+  "lint": {
+    "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib -- -D clippy::correctness -D clippy::suspicious",
+    "exit_code": 0,
+    "initial_check_seconds": 22.82,
+    "clean_cached_check_seconds": 0.06,
+    "warning_note": "Non-blocking style/dead-code warnings remain (184 for volta-pcs); complete output preserved, no claim of warning-free lint."
+  },
+  "formatting": {
+    "command": "rustfmt --edition 2021 --check rust/volta-pcs/src/c71_matrix/range/windowed.rs rust/volta-pcs/src/c71_matrix/range/windowed/native.rs",
+    "exit_code": 0
+  },
+  "native_protocol_scope": {
+    "byte": {
+      "dimension": 10,
+      "live_counts": [
+        1,
+        731,
+        1024
+      ],
+      "source_passes": 22,
+      "host_window_bytes": 512,
+      "windows_per_proof": 44
+    },
+    "signed": {
+      "dimension": 12,
+      "live": 3001,
+      "source_passes": 29,
+      "host_window_bytes": 4096,
+      "values_include": [
+        -32767,
+        -1,
+        0,
+        1,
+        32767
+      ]
+    },
+    "fake_arena_bytes": 262144,
+    "gram_buckets": 3,
+    "positive_checks": "Byte-identical proof, FS digest, forms and target MACs against the dense Rust reference, verifier/PCS closure on the original commitment, altered final MAC rejected",
+    "failure_checks": "Launch, upload fence and noncanonical root output failures consume only histogram rows; all 44 reader failure positions terminate before completion; cleanup and unavailable library rejected",
+    "expected_stderr": "native range cleanup failed, reserved bytes: 0 (injected fence failure; successful free still reported as zero reservation)",
+    "integrated_cpu_regression": "O=0 reduced ordered-source/lookup/GKR/range/WHIR proof; ideal MAC, 7,737,865 certificate bytes and 88,049 original MAC rows. Uses the CPU configuration, not the new CUDA path."
+  },
+  "totals": {
+    "rust_passed": 11,
+    "python_passed": 11,
+    "unexpected_failures": 0
+  },
+  "artifacts": {
+    "directory": "benchmarks/raw/c71-range-rust-2026-10-03-a7a644c",
+    "ignored_local_files": true,
+    "sha256": {
+      "build.log": "cc9491a44519747147246914c31d7a59d42c068558fe8e965af5853ef3d6e27c",
+      "clippy.log": "83005e059ec9ddb94bc8e767fd595cc96d0aee3ace77faa2c6bfc5170b9aa093",
+      "python-docs.log": "4271b0d70d2afe45004c9a7514ebfc72f7f68dde0ab2ec96b5f19bb8243c6454",
+      "python-native.log": "159f188b87f52a332cab3254cf1e51b1a99acdcd9377f040637831b8c83e1eef",
+      "rust-1.log": "9a056a9ab0ff97afc353f4cee5b87b2667101deba0283499d4670f34b2911a29",
+      "rust-2.log": "38e07b7408f861f7b6003dbccb58581b4f1d06750648892107b91aaeb2b4e121",
+      "rust-3.log": "563df1c84720914fc8023ce18b387c829d76d3b9a75b391e196666d0e0b8a259",
+      "rust-4.log": "7c1d740f8157a3de870444ebfe5009ddf704a9c493d9c150f44d5349d7356305",
+      "rust-5.log": "ebcf2f43c136bab4ed46ab79172d8eb20330eb6ef4f8156eb5ab51b05e9094a5",
+      "rust-6.log": "c02ab64fe8e35c496c7123be974c794e9f1721e608d6dfdb53f426f14d93bdd6",
+      "rust-7.log": "9556f1e094bf2e63dba5174d98f98d0dc63ddc473035b4726152fe6d3c286a28"
+    }
+  },
+  "remaining": [
+    "The canonical runner still refuses implicit/GPU E2E admission. Native selection is programmatic on the range Source, not a complete GPU pipeline.",
+    "Real CUDA kernel execution/parity, races, driver error behavior and D34/D35 capacity/runtime are not established by the fake driver.",
+    "CUDA producers/dense numerical operators, PCS rest/multipoint workspaces and full simultaneous preparer/prover/verifier/PCS/Seed6 accounting remain local implementation work.",
+    "Owner ledger is not physical HBM peak or bus measurement; driver/context/staging/kernel shared/local overhead and failure-path aggregate metrics remain outside it.",
+    "Real Gamma and three canonical certificates are absent. Seed6 security obligations remain open and analytic continuation size already exceeds 40 MB.",
+    "No weights/GPU/provider/spending authorization; RunPod deadline or authorized spending-guard hard stop unchanged."
+  ]
+}

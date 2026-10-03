@@ -239,6 +239,10 @@ temporanea del medesimo owner, con simboli CUDA fittizi e algebra di
 riferimento, e la caricano nel prover Rust. Non caricano la libreria CUDA
 reale. Byte D10 usa finestre da 512 B, signed D12 da 4.096 B; l'arena
 simulata è di 262.144 B. I controlli non verificano kernel, D34/D35 o H100.
+Il [record del collegamento Rust](../../benchmarks/results/c71-range-rust-local-2026-10-03-a7a644cd563d.json)
+conserva undici test Rust e undici Python, build e lint sulla revisione
+pulita. Distingue la parità attraverso l'ABI dalle regressioni CPU integrate
+e conserva i log dei rifiuti iniettati. La cache di build è mantenuta.
 
 Per il controllo host della FFT:
 

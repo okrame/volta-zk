@@ -184,9 +184,11 @@ extern "C" cudaError_t c71_range_launch_groups(cudaStream_t stream,unsigned sign
     for(unsigned i=0;i<g.tail_bits;++i)
         if(g.tail_point[i].c0>=P || g.tail_point[i].c1>=P || g.tail_point[i].c2>=P) return cudaErrorInvalidValue;
     // Groups including children can slightly exceed the default 48 KiB.
+    // Keep the FUNCTION-wide limit constant across concurrent contexts; the
+    // actual per-launch shared request remains `shared` below.
     cudaError_t status=signed_words
-        ? cudaFuncSetAttribute(c71_range_groups_i16,cudaFuncAttributeMaxDynamicSharedMemorySize,int(shared))
-        : cudaFuncSetAttribute(c71_range_groups_u8,cudaFuncAttributeMaxDynamicSharedMemorySize,int(shared));
+        ? cudaFuncSetAttribute(c71_range_groups_i16,cudaFuncAttributeMaxDynamicSharedMemorySize,52224)
+        : cudaFuncSetAttribute(c71_range_groups_u8,cudaFuncAttributeMaxDynamicSharedMemorySize,52224);
     if(status!=cudaSuccess) return status;
     if(signed_words)
         c71_range_groups_i16<<<tails,256,shared,stream>>>(static_cast<const int16_t*>(input),tails,g,retained,h);

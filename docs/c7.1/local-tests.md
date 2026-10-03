@@ -219,6 +219,9 @@ La compilazione di `cuda/c71_range_native.cu` per sm_90 verifica i kernel
 e i launcher, non il collegamento al runner o il picco fisico. Il toolkit
 locale dispone del runtime statico: usare `--cudart static` per la libreria,
 non dedurre un errore dei kernel dall'assenza di `libcudart.so`.
+Il [checkpoint nativo](../c7.1-history/canonical-native-range-kernels.md)
+conserva esiti, errori degli strumenti, stack locale e artefatti compilati;
+non contiene esecuzioni GPU o prove canoniche.
 
 Per il controllo host della FFT:
 

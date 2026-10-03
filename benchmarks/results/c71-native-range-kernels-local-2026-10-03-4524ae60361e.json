@@ -1,0 +1,124 @@
+{
+  "schema": "volta-c71-native-range-kernels-local-v1",
+  "date": "2026-10-03",
+  "git_sha": "4524ae60361e359a5145e321a5361dad8121741b",
+  "git_dirty": false,
+  "baseline": "benchmarks/results/c71-signed-range-local-2026-10-03-ad9f5529d1ef.json",
+  "result": "PASS_HOST_ALGEBRA_AND_SM90_COMPILATION_ONLY",
+  "credit": false,
+  "readiness": false,
+  "implemented": [
+    "Bounded original-u8/signed-i16 subtree roots and upper-canopy merge kernels.",
+    "Private group contraction emits bounded Gram buckets or retained children, not a full lower fraction tree.",
+    "Native H bucket sums, H folding with distinct buffers, retained-child folding, cubic coefficients and bounded cubic reductions.",
+    "Checked root/group launch entry points, explicit stream and no CPU fallback; remaining owning adapter and Rust protocol connection are not implemented.",
+    "Function-wide dynamic-shared opt-in fixed at 52224 bytes across contexts; actual launch payload remains geometry-dependent."
+  ],
+  "environment": {
+    "platform": "Linux aarch64",
+    "host_compiler": "g++ (Debian 14.2.0-19) 14.2.0",
+    "nvcc": "12.9.86",
+    "architecture": "sm_90",
+    "runtime_link": "static",
+    "toolkit": "/tmp/c71-cuda-12.9.1/toolkit",
+    "toolkit_provenance": "Existing locally merged toolkit with the historical glibc math_functions.h compatibility patch; no download or toolkit modification this turn.",
+    "toolkit_baseline": "benchmarks/results/c71-local-cuda-static-2026-09-13-ef2cdabc1afa.json",
+    "one_compiler_job": true,
+    "single_test_process": true,
+    "rayon_workers": 1,
+    "omp_threads": 1,
+    "openblas_threads": 1,
+    "test_timeout_seconds": 60,
+    "kill_grace_seconds": 5,
+    "virtual_memory_limit_bytes": 2147483648,
+    "timing_caveat": "One small host test overlapped static compilation; CPU diagnostic durations, not GPU time."
+  },
+  "checks": [
+    {
+      "cmd": "PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_range_native.py'",
+      "chunk_id": "aba6f2",
+      "wall_time_seconds": 0.502216861,
+      "exit_code": 0,
+      "original_token_count": 25,
+      "output": ".                                                                        [100%]\n1 passed in 0.53s\n"
+    },
+    {
+      "cmd": "PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py'",
+      "chunk_id": "c218f6",
+      "wall_time_seconds": 0.442728406,
+      "exit_code": 0,
+      "original_token_count": 25,
+      "output": ".........                                                                [100%]\n9 passed in 0.49s\n"
+    }
+  ],
+  "compilation": {
+    "command": "/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC -Xptxas=-v cuda/c71_range_native.cu -o benchmarks/raw/c71-native-range-2026-10-03-4524ae60361e/libc71_range_native.so",
+    "exit_code": 0,
+    "seconds_wall": 1.91,
+    "stdout_stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'c71_range_h_coefficients' for 'sm_90'\nptxas info    : Function properties for c71_range_h_coefficients\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 79 registers, used 0 barriers\nptxas info    : Compile time = 111.637 ms\nptxas info    : Compiling entry function 'c71_range_reduce' for 'sm_90'\nptxas info    : Function properties for c71_range_reduce\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 39 registers, used 1 barriers, 24576 bytes smem\nptxas info    : Compile time = 5.797 ms\nptxas info    : Compiling entry function 'c71_range_coefficients' for 'sm_90'\nptxas info    : Function properties for c71_range_coefficients\n    216 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 104 registers, used 1 barriers, 216 bytes cumulative stack size, 24576 bytes smem\nptxas info    : Compile time = 154.420 ms\nptxas info    : Compiling entry function 'c71_range_child_fold' for 'sm_90'\nptxas info    : Function properties for c71_range_child_fold\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 54 registers, used 0 barriers\nptxas info    : Compile time = 37.596 ms\nptxas info    : Compiling entry function 'c71_range_h_fold' for 'sm_90'\nptxas info    : Function properties for c71_range_h_fold\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 40 registers, used 0 barriers\nptxas info    : Compile time = 24.915 ms\nptxas info    : Compiling entry function 'c71_range_h_sum' for 'sm_90'\nptxas info    : Function properties for c71_range_h_sum\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 32 registers, used 0 barriers\nptxas info    : Compile time = 6.173 ms\nptxas info    : Compiling entry function 'c71_range_groups_i16' for 'sm_90'\nptxas info    : Function properties for c71_range_groups_i16\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 101 registers, used 1 barriers\nptxas info    : Compile time = 169.414 ms\nptxas info    : Compiling entry function 'c71_range_groups_u8' for 'sm_90'\nptxas info    : Function properties for c71_range_groups_u8\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 101 registers, used 1 barriers\nptxas info    : Compile time = 160.900 ms\nptxas info    : Compiling entry function 'c71_range_canopy' for 'sm_90'\nptxas info    : Function properties for c71_range_canopy\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 70 registers, used 0 barriers\nptxas info    : Compile time = 21.033 ms\nptxas info    : Compiling entry function 'c71_range_roots_i16' for 'sm_90'\nptxas info    : Function properties for c71_range_roots_i16\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 66 registers, used 1 barriers\nptxas info    : Compile time = 32.618 ms\nptxas info    : Compiling entry function 'c71_range_roots_u8' for 'sm_90'\nptxas info    : Function properties for c71_range_roots_u8\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 66 registers, used 1 barriers\nptxas info    : Compile time = 32.250 ms\nreal 1.91\nuser 1.63\nsys 0.27\n"
+  },
+  "disassembly": {
+    "command": "env PATH=/tmp/c71-cuda-12.9.1/toolkit/bin:/usr/bin:/bin /tmp/c71-cuda-12.9.1/toolkit/bin/cuobjdump --dump-sass benchmarks/raw/c71-native-range-2026-10-03-4524ae60361e/libc71_range_native.so",
+    "exit_code": 0,
+    "kernel_count": 11,
+    "actually_executed_instructions": null
+  },
+  "static_resources": {
+    "max_dynamic_shared_payload_per_group_bytes": 52224,
+    "coefficient_reduction_static_shared_per_block_bytes": 24576,
+    "coefficient_local_stack_frame_bytes": 216,
+    "max_registers_reported": 104,
+    "reported_spill_load_bytes": 0,
+    "reported_spill_store_bytes": 0,
+    "physical_peak_measured": false,
+    "scope": "Compiler per-kernel metadata and checked group geometry, not a concurrent device-memory ledger or runtime."
+  },
+  "observed": {
+    "python_tests_passed": 10,
+    "host_algebra_cases": 37,
+    "largest_host_original_word_count": 2048,
+    "rust_proofs_in_this_record": 0,
+    "gpu_kernel_executions": 0,
+    "canonical_certificates_verified": 0,
+    "real_weights_read_or_downloaded": false,
+    "pod_actions": false,
+    "provider_spend": 0
+  },
+  "artifacts": {
+    "storage": "Preserved local artifacts under ignored benchmarks/raw; not included in Git. Do not overwrite.",
+    "sha256": {
+      "benchmarks/raw/c71-native-range-2026-10-03-4524ae60361e/compile.log": "714ce7bdc761b88e754db7f6e323aa83b98916d0551b900508e354a476fc17ee",
+      "benchmarks/raw/c71-native-range-2026-10-03-4524ae60361e/exports.txt": "dace9b503c6fbe145f1c58fbfec9ad2271543f176067c40898622aed592c6ba3",
+      "benchmarks/raw/c71-native-range-2026-10-03-4524ae60361e/kernels.sass": "9964f696f12932d0d92d9b56d50c50ba7b8ffb43fcd64090d1029bfae46d28c6",
+      "benchmarks/raw/c71-native-range-2026-10-03-4524ae60361e/libc71_range_native.so": "4ab92ecb15cfea2e4e2185c2937001065c758b4fd2476fff9aee664587af61f4"
+    },
+    "earlier_revision_artifacts": "benchmarks/raw/c71-native-range-2026-10-03-07e5dc23c191"
+  },
+  "failures_preserved": [
+    {
+      "phase": "development shared runtime link",
+      "exit_code": 1,
+      "detail": "sm_90 device compilation succeeded (11 kernels); shared runtime link failed: /usr/bin/ld: cannot find -lcudart. Existing toolkit has libcudart_static.a; retry uses --cudart static without downloads or toolkit edits.",
+      "resolution": "Use existing static runtime; no changes to arithmetic."
+    },
+    {
+      "exit_code": 127,
+      "error": "/usr/bin/time is unavailable; no compiler execution.",
+      "log": "benchmarks/raw/c71-native-range-2026-10-03-07e5dc23c191/compile.log"
+    },
+    {
+      "exit_code": 1,
+      "error": "cuobjdump could not find nvdisasm in its search path; library compilation had succeeded.",
+      "partial_output_preserved": "benchmarks/raw/c71-native-range-2026-10-03-07e5dc23c191/kernels.sass"
+    }
+  ],
+  "review_correction": "After the initial 07e5dc23c191 build, fixed cudaFuncSetAttribute's function-wide limit to a constant so different contexts cannot lower each other's opt-in. This was static review, not an observed GPU failure.",
+  "cache_authorization": "Owner explicitly authorized keeping rust/target until the current goal ends, on 2026-10-03. local-tests.md updated; no Rust rebuild was needed for this checkpoint.",
+  "remaining": [
+    "Implement resident buffer/stream owner, asynchronous error fencing and capacity/transfer ledger, then wire these kernels to Rust range callbacks and original MAC closure.",
+    "Validate actual CUDA execution against the same Rust proof transcript on authorized hardware; host algebra does not validate thread races or real kernel results.",
+    "Complete other CUDA consumers, canonical preparer and PCS/Seed6 integration and full simultaneous resource accounting.",
+    "No canonical readiness, no calibrated real Gamma and no three canonical certificates; Seed6 obligations and analytic continuation size failure above 40 MB remain.",
+    "RunPod deadline/spending hard stop and no-GPU/no-weights authorization limits remain in force."
+  ]
+}

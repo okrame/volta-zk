@@ -613,6 +613,11 @@ mod tests {
         // check: constructing these descriptors allocates no byte buffers.
         let widths: [&[usize]; 10] =
             [&[], &[1], &[2], &[3], &[4], &[5], &[2, 4], &[3, 4], &[2, 2, 4], &[2, 3, 4]];
+        for first in (0..1usize << 34).step_by(1 << 31) {
+            let w = RangeWindow::new(34, first, 1 << 31, 0, 0).unwrap();
+            assert_eq!(w.offset(first), Some(0));
+            assert_eq!(w.offset(first + (1 << 31) - 1), Some((1 << 31) - 1));
+        }
         let mut passes = 1;
         for (layer, widths) in widths.iter().enumerate() {
             let m = 24 + layer;

@@ -159,6 +159,9 @@ Eseguire un filtro alla volta:
 | `c71_acceptance_transport` | Completamento legato al certificato/ricevuta pendenti; alterazioni, troncamenti e Stop |
 | `c71_canonical_runner_transport_and_default_stop` | Framing della risposta, limiti prima dell'allocazione, contatori I/O e rifiuto del backend implicito; nessuna esecuzione canonica |
 | `c71_canonical_runner_packed_input` | Lettura packed senza seconda copia completa, endian, lunghezza e marcatore di overflow su quattro/sei byte |
+| `c71_canonical_runner_public_installation_and_request_framing` | Roundtrip dei dati pubblici, installazione e richieste; cap prima del corpo, troncamenti, slot/token errati; tabelle sintetiche, nessuna calibrazione |
+| `c71_canonical_runner_counted_socket_protocol_three_slots` | Conteggio effettivo di distribuzione pubblica e tre scambi sullo stesso socket; corpi sintetici, nessun certificato valido |
+| `c71_canonical_metrics_nested_failure_and_partial_io` | Fasi annidate/incomplete, I/O parziale e addebito del setup soltanto al primo tentativo |
 | `c71_b12_native_norm_rows`, `c71_b12_native_rne_rows`, `c71_b12_native_affine_rows` | Operatori interi sulle route canoniche, con input sintetici |
 | `c71_b12_native_prepare`, `c71_b12_native_composed` | Preparazione e tre accettazioni su grafo ridotto, MAC ideali |
 | `c71_b12_native_certificate`, `c71_b12_native_context`, `c71_b12_native_interrupted`, `c71_b12_native_exhaustion` | Framing, contesto, terminalità e capacità |

@@ -52,6 +52,13 @@ gli stessi formati della calibrazione. `PREPARATION_BYTES` non è un limite
 globale di memoria. Non eseguirlo sulla VM; un errore non autorizza retry,
 nuovi journal, proroghe o cambio di backend. Anche su un host H100 resta
 CPU. La sua disponibilità non chiude i punti 3–4 né l'hard stop provider.
+Il report del runner include ora fasi wall e traffico applicativo effettivo
+di entrambi i sensi, inclusi Γ/tabelle, installazione e richieste; setup e
+distribuzione sono addebitati alla prima risposta. In caso di errore gestito,
+stderr conserva `C71_RUN_METRICS`; per timeout/kill restano necessari i log
+esterni. Preparazione e inferenza sono ancora fuse e CPU-time, picchi per
+ruolo, capacità trattenute e HBM restano da implementare/misurare. Un test
+del trasporto con tre corpi sintetici non conta come tre prove canoniche.
 
 Prima di usare credenziali locali eseguire
 `scripts/runpod_harness.sh local-secret-preflight`. Un eventuale `.env`

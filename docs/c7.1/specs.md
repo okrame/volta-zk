@@ -366,10 +366,31 @@ Il [runner CPU esplicito](../../rust/volta-pcs/src/c71_matrix/gemma/native/canon
 collega preparazione, PCS W/A, Seed6 ell=11 e tre risposte sullo stesso
 registro mediante socketpair locali. Richiede input canonici e non è
 ammesso sulla VM di sviluppo. Non certifica numericamente le tabelle né
-la provenienza del packed. Registra durata completa, traffico dei canali
-nei due sensi e massimo RSS del processo che contiene entrambi i ruoli;
-non li presenta come contabilità HBM o comunicazione completa, perché
-la distribuzione iniziale dei parametri pubblici è fuori dai canali.
+la provenienza del packed. Trasmette ora candidata e tabelle esatte con
+`C71PUB01`, root W/identità/sessione con `C71INS01` e ciascuna richiesta
+con `C71REQ01`. Il verificatore ricompila un profilo proprio dai byte
+ricevuti prima dell'installazione. I cap precedono le allocazioni del
+decoder: candidata ≤1 MiB, tabelle esattamente 24.414.870 B, installazione
+136 B, richiesta 416 B. Il framing della risposta aggiunge 680 B al corpo;
+il completamento ne usa 73. Sono dati sul canale locale autenticato,
+non una nuova autenticazione crittografica del trasporto.
+
+[canonical_metrics.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_metrics.rs)
+conta i byte effettivamente letti/scritti dal lato V, separando
+distribuzione, installazione, Seed6 e ogni risposta. I primi tre gruppi
+sono addebitati una volta al primo tentativo, senza ammortamento.
+Il tempo parte prima della lettura di Γ; le fasi distinguono compilazione
+dei due ruoli, caricamento W, commitment W/A, preparazione, corpo della
+prova, attesa/decoding, verifica e completamento con journal. Gli intervalli
+wall sono annidati e i ruoli concorrenti: non si sommano per ottenere un
+tempo totale. La preparazione fonde inferenza, istogrammi e checkpoint;
+`inference_wall_ns` e `proof_only_wall_ns` restano `null`, con
+`phase_partition_complete:false`, finché questi costi non sono separati.
+Il costo dopo la preparazione non è presentato come tutta la prova.
+In caso di errore il runner emette su stderr `C71_RUN_METRICS` con fasi
+incomplete e traffico parziale, senza valori privati; un processo ucciso
+richiede comunque il log del controller. RSS/HWM sono dell'intero processo
+host con entrambi i ruoli, non picchi per fase, CPU-time o contabilità HBM.
 Il driver non offre un percorso GPU né un fallback di produzione.
 Rimangono locali l'adattamento dei kernel densi al piano a memoria
 limitata, il collegamento CUDA e la contabilità simultanea completa.

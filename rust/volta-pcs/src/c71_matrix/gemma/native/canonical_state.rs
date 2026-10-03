@@ -11,6 +11,9 @@ use std::io;
 use std::sync::Arc;
 use volta_pcg::c71_lifetime::{Attempt, ModelBinding};
 
+#[path = "canonical_metrics.rs"]
+mod metrics;
+
 #[cfg(all(unix, feature = "c71-seed6-reference"))]
 #[path = "canonical_runner.rs"]
 pub(in crate::c71_matrix) mod runner;
@@ -479,8 +482,9 @@ impl<'a> Prover<'a> {
         prompt: &[u32; 100],
         nonce: [u8; 32],
         pool: &mut ProverCapacity<'_, '_>,
+        measurements: &metrics::Measurements,
         exchange: impl FnOnce(&Response) -> Result<Vec<u8>, String>,
-    ) -> Result<(), String> {
+    ) -> Result<u64, String> {
         if !self.state.live {
             pool.stop();
             return Err("Stop".into());
@@ -496,6 +500,7 @@ impl<'a> Prover<'a> {
             let p = self.state.public.profiles[slot].clone();
             let old: Vec<_> = self.accepted.iter().map(|(a, _)| a.clone()).collect();
             // Prepare receives no transcript, correlations, Delta or PCS coins.
+            let phase = measurements.phase("prover", Some(slot), "preparation_including_inference");
             let snapshot = ordered::Prepared::prepare(
                 p.clone(),
                 self.tables.clone(),
@@ -505,6 +510,8 @@ impl<'a> Prover<'a> {
                 self.cache.clone(),
                 self.preparation_limit,
             )?;
+            let preparation_ns = phase.finish();
+            let phase = measurements.phase("prover", Some(slot), "commitment_a");
             let getter = snapshot.clone();
             let coins = fresh_pcs_coins()?;
             let current = b12::replay::ReplayModel::new(
@@ -519,6 +526,7 @@ impl<'a> Prover<'a> {
                 p.bytes().live,
             )?
             .retain_first_fold();
+            phase.finish();
             let mut response = Response {
                 root: current.root().clone(),
                 tokens: snapshot.tokens(),
@@ -527,6 +535,7 @@ impl<'a> Prover<'a> {
             };
             let header = self.state.header(prompt, &response)?;
             let attempt = self.state.attempt(nonce);
+            let phase = measurements.phase("prover", Some(slot), "proof_exchange_and_journal");
             let acceptance = pool
                 .attempt(required, |a, mut rows| {
                     let error = |e| io::Error::new(io::ErrorKind::InvalidData, e);
@@ -567,6 +576,7 @@ impl<'a> Prover<'a> {
                     let previous: Vec<_> =
                         self.accepted.iter().map(|(_, m)| SourceModel::Replay(m)).collect();
                     let mut fs = Fs::new(&header, 1usize << 42);
+                    let proof_phase = measurements.phase("prover", Some(slot), "proof_body");
                     let (certificate, receipt) = p
                         .prove_body(
                             &s,
@@ -609,7 +619,10 @@ impl<'a> Prover<'a> {
                             &mut rows,
                         )
                         .map_err(error)?;
+                    proof_phase.finish();
                     response.certificate = certificate;
+                    let exchange_phase =
+                        measurements.phase("prover", Some(slot), "exchange_and_completion");
                     let completion = exchange(&response).map_err(error)?;
                     if completion.len() != acceptance_transport::BYTES {
                         return Err(error("completion length differs".to_string()));
@@ -619,6 +632,7 @@ impl<'a> Prover<'a> {
                         *blake3::hash(&response.certificate).as_bytes(),
                         receipt,
                     )?;
+                    exchange_phase.finish();
                     Ok((
                         Acceptance {
                             root: response.root.clone(),
@@ -633,7 +647,8 @@ impl<'a> Prover<'a> {
             self.state.accepted.push(acceptance);
             self.accepted.push((snapshot, current));
             self.state.live = self.state.next_slot < 3;
-            Ok::<_, String>(())
+            phase.finish();
+            Ok::<_, String>(preparation_ns)
         }))
         .map_err(|_| "Stop".to_string())
         .and_then(|r| r);

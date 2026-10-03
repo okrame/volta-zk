@@ -308,6 +308,13 @@ pub(super) fn profiles(path: &Path) -> Result<Vec<Canonical>, String> {
     if body.len() > 1_048_576 {
         return Err("calibration candidate exceeds 1 MiB".into());
     }
+    profiles_from_bytes(&body)
+}
+
+pub(super) fn profiles_from_bytes(body: &[u8]) -> Result<Vec<Canonical>, String> {
+    if body.len() > 1_048_576 {
+        return Err("calibration candidate exceeds 1 MiB".into());
+    }
     let candidate: Candidate = serde_json::from_slice(&body).map_err(|error| error.to_string())?;
     let plan = super::super::super::compile()?;
     if candidate.weight_exponents_by_tensor.len() != plan.sources.len() {
@@ -338,6 +345,7 @@ pub(super) struct Tables {
 }
 
 impl Tables {
+    pub(super) const BYTES: usize = 60 * 65535 * 6 + 65535 * 2 + 450 * (128 + 64) * 8;
     #[cfg(test)]
     pub(super) fn shape_fixture() -> Self {
         let mut exp = vec![0; 65535];
@@ -396,7 +404,7 @@ impl Tables {
     }
 
     pub(super) fn read(path: &Path) -> Result<Self, String> {
-        let bytes = 60 * 65535 * 6 + 65535 * 2 + 450 * (128 + 64) * 8;
+        let bytes = Self::BYTES;
         let file = File::open(path).map_err(|error| error.to_string())?;
         if file.metadata().map_err(|error| error.to_string())?.len() != bytes as u64 {
             return Err("calibration public table byte length differs".into());
@@ -405,6 +413,13 @@ impl Tables {
         file.take(bytes as u64 + 1).read_to_end(&mut body).map_err(|error| error.to_string())?;
         if body.len() != bytes {
             return Err("calibration public tables changed length".into());
+        }
+        Self::from_bytes(&body)
+    }
+
+    pub(super) fn from_bytes(body: &[u8]) -> Result<Self, String> {
+        if body.len() != Self::BYTES {
+            return Err("calibration public table byte length differs".into());
         }
         let digest = blake3::hash(&body).to_hex().to_string();
         let mut offset = 0;

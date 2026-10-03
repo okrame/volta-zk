@@ -498,6 +498,11 @@ corrispondenza dei codec e dei prefissi nativi all'esperimento matematico.
 La sostituzione reale→ideale del §5 riguarda ancora B11/B12.
 Canale autenticato e journal durevole non riportabile indietro sono
 premesse esterne; i socketpair dei test non le realizzano in distribuito.
+Il runner CPU trasporta ora anche Γ/tabelle, installazione e richieste
+sui socketpair e ricompila Γ dal lato V. I nuovi record pubblici e i
+contatori locali non certificano le tabelle, non autenticano TCP e non
+chiudono il raffinamento della composizione Seed6. Le misure di fase sono
+diagnostici locali fuori dal transcript; non contengono valori privati.
 Nessun bound 82,93/91,02 viene attribuito alla composizione Seed6 completa.
 
 Le credenziali provider locali non fanno parte del protocollo. Il

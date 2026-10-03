@@ -89,7 +89,14 @@ registra `NOT_READY` per la prova E2E. Sono ora implementati il corpo del
 prover canonico, gli snapshot/getter CPU con padding e istogrammi, il
 trasporto del completamento e un eseguibile CPU esplicito per tre risposte
 sullo stesso registro. Non sono ancora acquisiti certificati canonici
-validi: il codice non conferisce readiness. Rimangono lavoro locale sul
+validi: il codice non conferisce readiness. Il runner registra ora fasi
+wall e traffico effettivo, inclusa la distribuzione di Γ/tabelle/root e
+le richieste. Il verificatore ricompila i dati ricevuti; installazione e
+setup sono addebitati alla prima risposta. Questi strumenti non sono una
+misura canonica acquisita né un conto completo di CPU/HBM. Il
+[checkpoint della strumentazione](../c7.1-history/canonical-runner-measurements.md)
+ne espone copertura e limiti, inclusa la separazione ancora aperta dei costi
+di inferenza e preparazione. Rimangono lavoro locale sul
 percorso GPU, sulla ricostruzione in 512 passaggi e sulla contabilità
 fisica simultanea; non sono blocchi risolvibili soltanto procurandosi H100.
 I dettagli e i limiti del riferimento sono nelle

@@ -7,7 +7,7 @@
 
 Non è registrata un'autorizzazione a download dei pesi, creazione di pod,
 esecuzioni GPU o spesa. Il lavoro locale pertinente resta autorizzato.
-Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-d14843b3e1fb.json)
+Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-5fba934b009f.json)
 ha esito `NOT_READY`: il driver indipendente chiude il precedente blocco
 locale, ma non il tempo della campagna né l'integrazione della prova. Non
 avviare la campagna provider sulla sola base dei controlli locali passati.
@@ -21,6 +21,8 @@ La [correzione ufficiale](https://github.com/runpod/runpodctl/commit/51ca7f0)
 dichiara che non esiste un sostituto finché il backend non applica la
 deadline. Non creare il pod H100 finché una deadline provider verificabile
 o un diverso limite di spesa autorizzato non chiude questo rischio.
+Il [record immutabile](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
+conserva la fonte upstream e i controlli locali.
 
 Leggere prima [design](design.md), poi le sezioni pertinenti di
 [specs](specs.md) e [security](security.md). Questa pagina definisce la

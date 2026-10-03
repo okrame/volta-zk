@@ -84,7 +84,7 @@ pesi reali e il suo tempo completo non è misurato. Lo
 identificano componenti disponibili, implementazioni mancanti e passaggi
 che richiedono autorizzazione. Il [contratto del confronto](specs.md#confronto-indipendente)
 definisce cosa completare prima di ammettere Γ.
-Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-d14843b3e1fb.json)
+Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-5fba934b009f.json)
 registra quindi `NOT_READY` per la prova E2E. Il
 [record del driver](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
 chiude l'assenza dell'implementazione locale, ma non convalida i pesi reali
@@ -100,6 +100,9 @@ La campagna H100 ha anche un hard stop operativo: dal CLI v2.12.0 Runpod ha
 rimosso le deadline automatiche perché il backend le ignorava. Finché non
 esiste un limite provider verificabile o un diverso controllo di spesa
 autorizzato, il runbook vieta la creazione del pod.
+Il [record della deadline](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
+conserva fonte, versione, controlli locali e decisione senza attribuire
+credito hardware o protocollare.
 
 I criteri per il [primo esperimento della prova](runpod-tests.md#esperimento-della-prova)
 non richiedono una dimostrazione preventiva del tempo H100: i tempi

@@ -1,0 +1,43 @@
+{
+  "schema": "volta-c71-runpod-deadline-audit-v1",
+  "date": "2026-10-03",
+  "git_commit": "5fba934b009f039605d919bb6086507266a84616",
+  "git_dirty": false,
+  "credit": false,
+  "scope": "Runpod control-plane cost guard for future authorized H100 campaigns",
+  "official_evidence": {
+    "removal_commit": "https://github.com/runpod/runpodctl/commit/51ca7f0",
+    "removal_release": "v2.12.0",
+    "current_cli_reference": "https://docs.runpod.io/runpodctl/reference/runpodctl-pod",
+    "latest_release_observed": "v2.14.0"
+  },
+  "finding": {
+    "status": "CONFIRMED",
+    "class": "INEFFECTIVE_PROVIDER_DEADLINE_AND_UNBOUNDED_BILLING_RISK",
+    "old_flags": [
+      "--stop-after",
+      "--terminate-after"
+    ],
+    "upstream_result": "The backend accepted both fields but did not act on them; pods remained running and billable past the requested deadline.",
+    "replacement_available": false
+  },
+  "local_remediation": {
+    "paid_pod_creation": "HARD_STOP",
+    "stale_create_command_removed": true,
+    "unsupported_list_output_flag_removed": true,
+    "current_list_command": "runpodctl pod list --all",
+    "regression_test": "tests/test_c71_docs.py::test_runpod_harness_uses_current_list_command"
+  },
+  "checks": {
+    "bash_syntax": "PASS",
+    "harness_self_test": "PASS",
+    "local_secret_preflight": "PASS",
+    "document_tests": "PASS_9"
+  },
+  "authorization": {
+    "provider_pod": false,
+    "gpu_execution": false,
+    "spend": false
+  },
+  "decision": "DO_NOT_CREATE_PAID_POD_UNTIL_PROVIDER_ENFORCES_A_READ_BACK_DEADLINE_OR_AN_ALTERNATIVE_SPENDING_GUARD_IS_EXPLICITLY_AUTHORIZED"
+}

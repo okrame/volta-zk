@@ -106,7 +106,7 @@ Il parser della traccia completa la validazione strutturale e la modalità
 reali non ammette Γ. Il
 [record del driver](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
 registra l'implementazione e i controlli locali, non una misura completa. Il
-[readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-d14843b3e1fb.json)
+[readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-5fba934b009f.json)
 registra `NOT_READY` per runtime della calibrazione e integrazione E2E. Il
 [record del piano pubblico](../../benchmarks/results/c71-oracle-plan-2026-10-02-55423e496cfc.json)
 registra tre DAG canonici validati, ma non esecuzione numerica indipendente. Il

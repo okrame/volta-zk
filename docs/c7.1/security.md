@@ -504,7 +504,9 @@ La deadline di spesa del provider è anch'essa esterna al protocollo.
 `runpodctl` v2.12.0 ha rimosso i relativi flag perché il backend li ignorava;
 il [runbook](runpod-tests.md#stato-e-sequenza-operativa) impone quindi un
 hard stop finché non esiste un limite provider verificabile o un diverso
-controllo di spesa autorizzato.
+controllo di spesa autorizzato; il
+[record](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
+non attribuisce credito al protocollo.
 
 Per il programma canonico restano inoltre: Γ reale validato, preparatore
 e prover completi, correttezza dei getter su tutti gli operatori e alias,

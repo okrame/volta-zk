@@ -2,6 +2,14 @@
 
 Checkpoint successivo alle [query a finestre](canonical-query-windows.md).
 Le istruzioni correnti restano nei [cinque documenti attivi](../c7.1/design.md).
+Il [record pulito 989efa7](../../benchmarks/results/c71-residual-scan-local-2026-10-03-989efa70c151.json)
+conserva 29 test Rust, 9 controlli documentali, due rifiuti CLI e build/lint
+passati. Il primo tentativo di compilazione aveva un bound `Field` senza
+import: corretto qualificandolo `p3_field::Field`, con errore conservato.
+Una [correzione collegata dei metadati](../../benchmarks/results/c71-residual-scan-metadata-correction-2026-10-03-989efa70c151.json)
+estrae le durate numeriche già presenti negli stdout: il parser del record
+le aveva lasciate `null`. Non modifica il record originale né ripete i test.
+`credit:false` e `readiness:false` rimangono espliciti.
 
 La schedule selezionata nel [preflight](preflight.md) prevede 35 passaggi
 S1 non-query: singleton, 32 coset, OOD e rigenerazione S1. Non è lecito

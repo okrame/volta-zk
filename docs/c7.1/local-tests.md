@@ -244,6 +244,14 @@ registra 24 test Rust, 9 Python e due rifiuti CLI sulla SHA pulita,
 inclusa la catena PCS D10 con reader byte, S1 e MAC originali. Conserva
 l'asserzione errata sul conteggio coset del fixture e la sua correzione;
 nessuna allocazione/esecuzione dei domini canonici o misura GPU.
+Il [record delle riduzioni sorgente](../../benchmarks/results/c71-residual-scan-local-2026-10-03-989efa70c151.json)
+conserva 29 test Rust, 9 Python e due rifiuti CLI sulla SHA pulita, con
+singleton/coset/OOD/retention e catena D10 senza getter originale scalare.
+Il primo errore di compilazione è conservato; la
+[correzione dei metadati](../../benchmarks/results/c71-residual-scan-metadata-correction-2026-10-03-989efa70c151.json)
+riporta le durate già presenti negli stdout, senza sovrascrivere il record
+o attribuire una nuova esecuzione. D16 e geometrie extension grandi restano
+limiti locali; nessun credito canonico, GPU o di picco fisico completo.
 
 La verifica di questa riorganizzazione e gli eventuali fallimenti sono
 registrati nell'[audit documentale](../c7.1-history/reorganization-audit.md).

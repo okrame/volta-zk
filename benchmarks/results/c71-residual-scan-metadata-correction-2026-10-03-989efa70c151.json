@@ -1,0 +1,94 @@
+{
+  "schema": "volta-c71-residual-scan-metadata-correction-v1",
+  "date": "2026-10-03",
+  "git_sha": "989efa70c151f2421a8436c5a6c4f63bc507acb7",
+  "git_dirty": false,
+  "corrects": "benchmarks/results/c71-residual-scan-local-2026-10-03-989efa70c151.json",
+  "reason": "The record writer's overescaped regular expression left numeric per-test duration fields null. The raw outputs already preserve the reported durations; no test result or code changed.",
+  "new_execution": false,
+  "provenance": "Same clean-code executions as the linked immutable record. Metadata extraction correction only.",
+  "credit": false,
+  "readiness": false,
+  "checks": [
+    {
+      "filter": "c71_b12_scattered",
+      "exit_code": 0,
+      "seconds_reported_by_test": 0.34
+    },
+    {
+      "filter": "c71_b12_query",
+      "exit_code": 0,
+      "seconds_reported_by_test": 1.91
+    },
+    {
+      "filter": "c71_b12_replay_base",
+      "exit_code": 0,
+      "seconds_reported_by_test": 0
+    },
+    {
+      "filter": "replay_tree",
+      "exit_code": 0,
+      "seconds_reported_by_test": 0.01
+    },
+    {
+      "filter": "c71_b12_retained",
+      "exit_code": 0,
+      "seconds_reported_by_test": 0.04
+    },
+    {
+      "filter": "c71_b12_sourcewise_adaptive",
+      "exit_code": 0,
+      "seconds_reported_by_test": 0.01
+    },
+    {
+      "filter": "c71_b12_rational_power",
+      "exit_code": 0,
+      "seconds_reported_by_test": 0.06
+    },
+    {
+      "filter": "c71_b12_full_sourcewise_chain",
+      "exit_code": 0,
+      "seconds_reported_by_test": 1.73
+    },
+    {
+      "filter": "c71_b12_ordered_sourcewise_o0",
+      "exit_code": 0,
+      "seconds_reported_by_test": 2.67
+    },
+    {
+      "filter": "c71_b12_ordered_sourcewise_o2",
+      "exit_code": 0,
+      "seconds_reported_by_test": 2.69
+    },
+    {
+      "filter": "c71_b12_ordered_sourcewise_o4",
+      "exit_code": 0,
+      "seconds_reported_by_test": 2.81
+    },
+    {
+      "filter": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+      "exit_code": 0,
+      "seconds_reported_by_test": 12.6
+    },
+    {
+      "filter": "c71_canonical_ordered",
+      "exit_code": 0,
+      "seconds_reported_by_test": 0.41
+    },
+    {
+      "filter": "c71_b12_native_canonical",
+      "exit_code": 0,
+      "seconds_reported_by_test": 6.01
+    },
+    {
+      "filter": "docs",
+      "exit_code": 0,
+      "seconds_reported_by_test": 0.48
+    },
+    {
+      "filter": "cli_rejections",
+      "exit_code": 0,
+      "seconds_reported_by_test": null
+    }
+  ]
+}

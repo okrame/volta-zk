@@ -1,0 +1,282 @@
+{
+  "schema": "volta-c71-residual-scan-local-v1",
+  "date": "2026-10-03",
+  "git_sha": "989efa70c151f2421a8436c5a6c4f63bc507acb7",
+  "git_dirty": false,
+  "baseline": "benchmarks/results/c71-query-windows-local-2026-10-03-fa8a1617a674.json",
+  "result": "PASS_LOCAL_SOURCE_SCATTER_REDUCTIONS_ONLY",
+  "credit": false,
+  "readiness": false,
+  "environment": {
+    "platform": "Linux aarch64",
+    "rustc": "1.96.1 (31fca3adb 2026-06-26)",
+    "profile": "dev opt-level=2 debug=0 incremental=0 target-cpu=native",
+    "cargo_jobs": 1,
+    "single_test_process": true,
+    "rayon_workers": 1,
+    "omp_threads": 1,
+    "openblas_threads": 1,
+    "test_timeout_seconds": 60,
+    "kill_grace_seconds": 5,
+    "virtual_memory_limit_bytes": 2147483648,
+    "network": "None; offline locked builds, no provider calls or external network.",
+    "timing_caveat": "Reduced tests overlapped the one-job runner build. Durations are local check diagnostics, not protocol performance or hardware measurements. Tool wait durations are not total process wall time."
+  },
+  "build": {
+    "working_directory": "rust",
+    "checks": [
+      {
+        "command": "source /home/okrame/.cargo/env && CARGO_TARGET_DIR=/home/okrame/projects/volta-zk/rust/target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2 cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 0.08
+      },
+      {
+        "command": "source /home/okrame/.cargo/env && CARGO_TARGET_DIR=/home/okrame/projects/volta-zk/rust/target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2 cargo build --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --example c71_canonical_reference",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 80
+      },
+      {
+        "command": "source /home/okrame/.cargo/env && CARGO_TARGET_DIR=/home/okrame/projects/volta-zk/rust/target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2 cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --example c71_canonical_reference -- -D clippy::correctness -D clippy::suspicious",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 23.91
+      }
+    ],
+    "warnings": "25 volta-pcs lib-test, 37 lib-build and 176 lib-clippy non-denied warnings remain. correctness/suspicious lints passed; this is not a warning-free build."
+  },
+  "binary_sha256": {
+    "test": "d40b65beb7daaff75b0d435aa25be2008208cfa272c043324376df36653490cc",
+    "runner": "5573bc44a3f76bdb5bfceb4e0da4f955a69dcf9c04d0c43a073a1c292e789370"
+  },
+  "implemented": [
+    "ReplayModel passes its immutable original base scanner and live prefix to the residual state; original flat zero padding is implicit.",
+    "Singleton prefix accumulator, MLE and padded OOD evaluations consume source-order linear contributions weighted by the already-fixed MSB fold prefix.",
+    "Extension cosets borrow the current residual state during commit and scatter into one native base-limb column-major buffer; the root retains only its existing folded getter.",
+    "One reusable base FFT column and both P3 twiddle tables serve base and extension cosets. The former full interleaved/row-major extension matrices are now test-only.",
+    "S1 retention scatters the same original contributions after the predecessor opening in the WHIR caller. A failed scan does not install partial S1 or discard pending source state.",
+    "After successful S1 retention the residual state drops its scanner and pending original references; historical root/snapshot owners remain. No physical checkpoint or GPU release claim.",
+    "The next fold is rejected while S1 retention is pending; no transcript barriers or PCS coins were moved."
+  ],
+  "observed": {
+    "rust_tests_passed": 29,
+    "python_tests_passed": 9,
+    "cli_expected_rejections": 2,
+    "canonical_certificates_verified": 0,
+    "canonical_full_model_executions": 0,
+    "canonical_full_domain_execution": false,
+    "reduced_ideal_mac_integrated_acceptances": 1,
+    "real_seed6_accepted_responses_in_this_record": 0,
+    "gpu_executions": 0,
+    "real_weights_read_or_downloaded": false,
+    "pod_actions": false,
+    "provider_spend": 0,
+    "complete_memory_accounting": false,
+    "complete_time_accounting": false
+  },
+  "residual_fixture": {
+    "dimension": 8,
+    "first_fold": 3,
+    "live_prefixes": [
+      0,
+      1,
+      127,
+      255,
+      256
+    ],
+    "emission_order": "k*73 mod 256, filtered to the live prefix",
+    "checks": [
+      "Singleton and initial MLE match dense original values.",
+      "First three sumcheck rounds match the native dense product prover, with zero, one and extension fold coins.",
+      "Padded OOD evaluations at zero, one and extension points match independent Horner with nonzero suffix.",
+      "Collecting repeated folded contributions gives the native folded message, with no scalar original getter calls.",
+      "Producer failure after all contributions leaves retained_bytes=0 and values=None; this is a unit-level state check, not authorization for a protocol retry.",
+      "Consumer errors stop at the first live emission.",
+      "Overlarge live prefix, out-of-domain/excess emissions, omissions and wrong original target are rejected.",
+      "After retention the residual does not scan the original source; retained Vec capacity remains reserved."
+    ]
+  },
+  "extension_coset_fixture": {
+    "original_dimension": 8,
+    "folded_length": 32,
+    "columns": 2,
+    "height": 256,
+    "rows": [
+      8,
+      16,
+      64
+    ],
+    "live_original_prefixes": [
+      0,
+      1,
+      129,
+      255,
+      256
+    ],
+    "checks": [
+      "Reverse-order original emission and zero/one/extension prefix weights match the independent dense interleaved encoder.",
+      "Three nonzero extension pads per column keep their original offsets after the full folded column.",
+      "Exactly one original scan per selected coset, across all columns; no scalar original getter.",
+      "Zero/oversized cosets and out-of-range coset indices are rejected."
+    ]
+  },
+  "full_pcs_chain_fixture": {
+    "dimension": 10,
+    "retained_s1": true,
+    "original_scalar_getter": "panics on any use; the full chain passes",
+    "original_mac_endpoint_preserved": true,
+    "wrong_endpoint_key_rejected": true,
+    "proof_codec_transcript_and_private_coin_parity": true,
+    "scanner_count_assertion": "initial_height/256 + 1 singleton + s1_height/min(256,s1_height) cosets + round[0].ood_samples + 1 retention",
+    "initial_query_reader": "Existing original-byte window path; not part of the non-query scan count.",
+    "canonical_35_passes_executed": false
+  },
+  "accounting_limits": {
+    "state_dimension_cap": 16,
+    "large_extension_geometry_still_rejected": true,
+    "no_full_extension_conversion_matrices_in_production": true,
+    "complete_physical_peak": false,
+    "retained_s1_capacity_released_by_truncate": false,
+    "checkpoint_or_gpu_release_proven": false,
+    "remaining_live_owners": "Coset, reusable FFT column, two twiddle tables, factored Eq/powers, Merkle frontier/salts/cache, original producer workspaces, retained S1, masks, verifier and Seed6 must be counted together."
+  },
+  "checks": [
+    {
+      "filter": "c71_b12_scattered",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_scattered --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 4 tests\ntest c71_matrix::b12::replay::tests::c71_b12_scattered_coset_original_pad_positions_and_failures ... ok\ntest c71_matrix::b12::replay::tests::c71_b12_scattered_extension_cosets_match_dense_original_pads ... ok\ntest c71_matrix::b12::replay::tests::c71_b12_scattered_initial_512_passes_matches_native_root_and_openings ... ok\ntest c71_matrix::b12::sourcewise::tests::c71_b12_scattered_residual_reductions_and_failed_retention ... ok\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 447 filtered out; finished in 0.34s\n\n"
+    },
+    {
+      "filter": "c71_b12_query",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_query --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 5 tests\ntest c71_matrix::b12::replay::tests::c71_b12_query_byte_windows_cross_columns_preserve_pads_and_fail_closed ... ok\ntest c71_matrix::b12::replay::tests::c71_b12_query_byte_windows_full_chain_original_mac_and_retained_s1 ... sourcewise observed D10 canonical_bytes=2285176\nsourcewise_allocator={\"coverage_instrumented\":false,\"expanded_array_DRAM_read_bytes\":null,\"expanded_array_DRAM_write_bytes\":null,\"heap_kind\":\"requested allocator layouts including reallocations; not memory-access traffic\",\"phases\":[{\"heap_allocated_bytes\":105343232,\"heap_freed_bytes\":101203296,\"heap_live_end_bytes\":4181650,\"heap_live_start_bytes\":41714,\"heap_peak_requested_bytes\":51264738,\"index\":0,\"name\":\"initialization\",\"rss_end_bytes\":30793728,\"rss_peak_bytes\":60309504,\"seconds\":0.506573055},{\"heap_allocated_bytes\":835424,\"heap_freed_bytes\":764760,\"heap_live_end_bytes\":4253232,\"heap_live_start_bytes\":4182568,\"heap_peak_requested_bytes\":4288248,\"index\":1,\"name\":\"sourcewise_initial_commit\",\"rss_end_bytes\":31186944,\"rss_peak_bytes\":31186944,\"seconds\":0.017819082},{\"heap_allocated_bytes\":259184168,\"heap_freed_bytes\":255412440,\"heap_live_end_bytes\":8025761,\"heap_live_start_bytes\":4254033,\"heap_peak_requested_bytes\":53584265,\"index\":2,\"name\":\"sourcewise_open_all_rounds\",\"rss_end_bytes\":63692800,\"rss_peak_bytes\":63692800,\"seconds\":0.787810587},{\"heap_allocated_bytes\":262804485,\"heap_freed_bytes\":256854405,\"heap_live_end_bytes\":13976643,\"heap_live_start_bytes\":8026563,\"heap_peak_requested_bytes\":79669792,\"index\":3,\"name\":\"codec_and_native_verifier\",\"rss_end_bytes\":94048256,\"rss_peak_bytes\":94048256,\"seconds\":0.101531829},{\"heap_allocated_bytes\":13478496,\"heap_freed_bytes\":13476640,\"heap_live_end_bytes\":13979300,\"heap_live_start_bytes\":13977444,\"heap_peak_requested_bytes\":15225100,\"index\":4,\"name\":\"verifier_pcs\",\"rss_end_bytes\":94113792,\"rss_peak_bytes\":94113792,\"seconds\":0.169004172},{\"heap_allocated_bytes\":13476276,\"heap_freed_bytes\":13476516,\"heap_live_end_bytes\":13979976,\"heap_live_start_bytes\":13980216,\"heap_peak_requested_bytes\":15227872,\"index\":5,\"name\":\"verifier_pcs\",\"rss_end_bytes\":94113792,\"rss_peak_bytes\":94113792,\"seconds\":0.168543627}],\"physical_traffic_admission_bound\":\"infinity\",\"rss_kind\":\"Linux VmHWM reset each phase; same process contains both roles\"}\nok\ntest c71_matrix::b12::replay::tests::c71_b12_query_factors_balanced_product_and_newton_match_direct_oracle ... ok\ntest c71_matrix::b12::replay::tests::c71_b12_query_remainder_matches_original_base_and_extension_rows ... C71_QUERY_REMAINDER base_and_extension=true original_pads=true one_source_read_per_batch=true canonical_credit=false\nok\ntest c71_matrix::b12::replay::tests::c71_b12_query_split_zero_tail_preserves_original_pad_and_rows ... C71_SPLIT_PAD original_exponent=true zero_tail_reads=0 base_and_extension=true canonical_credit=false\nok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 446 filtered out; finished in 1.91s\n\n"
+    },
+    {
+      "filter": "c71_b12_replay_base",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_replay_base --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_replay_base_rejects_extension_coefficients_before_encoding ... \nthread 'c71_matrix::b12::replay::tests::c71_b12_replay_base_rejects_extension_coefficients_before_encoding' (4) panicked at volta-pcs/src/c71_matrix/b12/replay.rs:39:5:\nassertion `left == right` failed: non-base replay coefficient\n  left: [1, 0]\n right: [0, 0]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread 'c71_matrix::b12::replay::tests::c71_b12_replay_base_rejects_extension_coefficients_before_encoding' (4) panicked at volta-pcs/src/c71_matrix/b12/replay.rs:39:5:\nassertion `left == right` failed: non-base replay coefficient\n  left: [1, 0]\n right: [0, 0]\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 450 filtered out; finished in 0.00s\n\n"
+    },
+    {
+      "filter": "replay_tree",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 replay_tree --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 4 tests\ntest c71_matrix::b12::replay_tree::tests::c71_b12_canonical_initial_geometry_selects_512_a_scans_without_allocation ... ok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_matches_native_root_rows_salts_and_pruned_frontier ... ok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_respects_mmcs_clone_fork ... ok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_uses_live_rng_cursor_and_rejects_bad_shapes ... ok\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 447 filtered out; finished in 0.01s\n\n"
+    },
+    {
+      "filter": "c71_b12_retained",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_retained --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 2 tests\ntest c71_matrix::b12::replay::tests::c71_b12_retained_initial_oracle_shares_cache_without_source_recommit ... ok\ntest c71_matrix::b12::sourcewise::tests::c71_b12_retained_lifecycle_rejects_reordering_and_preserves_storage ... \nthread 'c71_matrix::b12::sourcewise::tests::c71_b12_retained_lifecycle_rejects_reordering_and_preserves_storage' (5) panicked at volta-pcs/src/c71_matrix/b12/sourcewise.rs:164:13:\nstale, overlong or different retained getter\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread 'c71_matrix::b12::sourcewise::tests::c71_b12_retained_lifecycle_rejects_reordering_and_preserves_storage' (5) panicked at volta-pcs/src/c71_matrix/b12/sourcewise.rs:164:13:\nstale, overlong or different retained getter\nok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 449 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "filter": "c71_b12_sourcewise_adaptive",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_sourcewise_adaptive --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::sourcewise::tests::c71_b12_sourcewise_adaptive_rounds_match_dense_and_forbid_fallbacks ... sourcewise dimension=10 first=1 original_reads=14336 named_final_bytes=864\nsourcewise dimension=12 first=1 original_reads=65536 named_final_bytes=912\nsourcewise dimension=12 first=7 original_reads=40960 named_final_bytes=912\nsourcewise dimension=12 first=7 original_reads=12288 named_final_bytes=1488\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 450 filtered out; finished in 0.01s\n\n"
+    },
+    {
+      "filter": "c71_b12_rational_power",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_rational_power --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::sourcewise::tests::c71_b12_rational_power_blocks_match_direct_extension_powers ... C71_RATIONAL_POW base_and_extension=true blocks=3 block_cap=256 canonical_credit=false\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 450 filtered out; finished in 0.06s\n\n"
+    },
+    {
+      "filter": "c71_b12_full_sourcewise_chain",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_full_sourcewise_chain --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_full_sourcewise_chain_matches_native_bytes ... sourcewise observed D10 canonical_bytes=2289176\nsourcewise_allocator={\"coverage_instrumented\":false,\"expanded_array_DRAM_read_bytes\":null,\"expanded_array_DRAM_write_bytes\":null,\"heap_kind\":\"requested allocator layouts including reallocations; not memory-access traffic\",\"phases\":[{\"heap_allocated_bytes\":105343680,\"heap_freed_bytes\":101203744,\"heap_live_end_bytes\":4168546,\"heap_live_start_bytes\":28610,\"heap_peak_requested_bytes\":51251634,\"index\":0,\"name\":\"initialization\",\"rss_end_bytes\":27557888,\"rss_peak_bytes\":59731968,\"seconds\":0.488628972},{\"heap_allocated_bytes\":835424,\"heap_freed_bytes\":764760,\"heap_live_end_bytes\":4240128,\"heap_live_start_bytes\":4169464,\"heap_peak_requested_bytes\":4275144,\"index\":1,\"name\":\"sourcewise_initial_commit\",\"rss_end_bytes\":28016640,\"rss_peak_bytes\":28016640,\"seconds\":0.016964159},{\"heap_allocated_bytes\":259556544,\"heap_freed_bytes\":255784816,\"heap_live_end_bytes\":8012657,\"heap_live_start_bytes\":4240929,\"heap_peak_requested_bytes\":53558977,\"index\":2,\"name\":\"sourcewise_open_all_rounds\",\"rss_end_bytes\":63336448,\"rss_peak_bytes\":63336448,\"seconds\":0.781074123},{\"heap_allocated_bytes\":263212485,\"heap_freed_bytes\":257258405,\"heap_live_end_bytes\":13967539,\"heap_live_start_bytes\":8013459,\"heap_peak_requested_bytes\":79788688,\"index\":3,\"name\":\"codec_and_native_verifier\",\"rss_end_bytes\":93835264,\"rss_peak_bytes\":93835264,\"seconds\":0.099737899},{\"heap_allocated_bytes\":13478944,\"heap_freed_bytes\":13477088,\"heap_live_end_bytes\":13970196,\"heap_live_start_bytes\":13968340,\"heap_peak_requested_bytes\":15215996,\"index\":4,\"name\":\"verifier_pcs\",\"rss_end_bytes\":93966336,\"rss_peak_bytes\":93966336,\"seconds\":0.168580502},{\"heap_allocated_bytes\":13476724,\"heap_freed_bytes\":13476964,\"heap_live_end_bytes\":13970872,\"heap_live_start_bytes\":13971112,\"heap_peak_requested_bytes\":15218768,\"index\":5,\"name\":\"verifier_pcs\",\"rss_end_bytes\":93966336,\"rss_peak_bytes\":93966336,\"seconds\":0.168653794}],\"physical_traffic_admission_bound\":\"infinity\",\"rss_kind\":\"Linux VmHWM reset each phase; same process contains both roles\"}\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 450 filtered out; finished in 1.73s\n\n"
+    },
+    {
+      "filter": "c71_b12_ordered_sourcewise_o0",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_ordered_sourcewise_o0 --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::ordered::tests::c71_b12_ordered_sourcewise_o0 ... sourcewise observed D12 canonical_bytes=3180780\nsourcewise_allocator={\"coverage_instrumented\":false,\"expanded_array_DRAM_read_bytes\":null,\"expanded_array_DRAM_write_bytes\":null,\"heap_kind\":\"requested allocator layouts including reallocations; not memory-access traffic\",\"phases\":[{\"heap_allocated_bytes\":150105672,\"heap_freed_bytes\":144280912,\"heap_live_end_bytes\":11553570,\"heap_live_start_bytes\":5728810,\"heap_peak_requested_bytes\":76629618,\"index\":0,\"name\":\"initialization\",\"rss_end_bytes\":67768320,\"rss_peak_bytes\":86839296,\"seconds\":0.693134222},{\"heap_allocated_bytes\":45681688,\"heap_freed_bytes\":45611024,\"heap_live_end_bytes\":11625152,\"heap_live_start_bytes\":11554488,\"heap_peak_requested_bytes\":11671456,\"index\":1,\"name\":\"sourcewise_initial_commit\",\"rss_end_bytes\":68030464,\"rss_peak_bytes\":68030464,\"seconds\":0.066428378},{\"heap_allocated_bytes\":449196704,\"heap_freed_bytes\":444014840,\"heap_live_end_bytes\":16807817,\"heap_live_start_bytes\":11625953,\"heap_peak_requested_bytes\":80273649,\"index\":2,\"name\":\"sourcewise_open_all_rounds\",\"rss_end_bytes\":91533312,\"rss_peak_bytes\":91533312,\"seconds\":1.236997074},{\"heap_allocated_bytes\":394738292,\"heap_freed_bytes\":384561956,\"heap_live_end_bytes\":26984955,\"heap_live_start_bytes\":16808619,\"heap_peak_requested_bytes\":118710461,\"index\":3,\"name\":\"codec_and_native_verifier\",\"rss_end_bytes\":139206656,\"rss_peak_bytes\":139206656,\"seconds\":0.140652308},{\"heap_allocated_bytes\":18689456,\"heap_freed_bytes\":18687648,\"heap_live_end_bytes\":26987564,\"heap_live_start_bytes\":26985756,\"heap_peak_requested_bytes\":28578116,\"index\":4,\"name\":\"verifier_pcs\",\"rss_end_bytes\":139337728,\"rss_peak_bytes\":139337728,\"seconds\":0.23910974},{\"heap_allocated_bytes\":18687172,\"heap_freed_bytes\":18687460,\"heap_live_end_bytes\":26988192,\"heap_live_start_bytes\":26988480,\"heap_peak_requested_bytes\":28580840,\"index\":5,\"name\":\"verifier_pcs\",\"rss_end_bytes\":139337728,\"rss_peak_bytes\":139337728,\"seconds\":0.23635893}],\"physical_traffic_admission_bound\":\"infinity\",\"rss_kind\":\"Linux VmHWM reset each phase; same process contains both roles\"}\nordered_sourcewise O=0 windows_producerrows_W_A_KV_numerical=(1528, 104477, 117656, 294522, 0, RowWork { integer_additions: 108870, integer_subtractions: 24066, integer_multiplications: 132554, integer_comparisons: 607953, fp_additions: 0, fp_multiplications: 0, table_reads: 12224, divide_calls: 4584, opaque_rms_calls: 19864, opaque_rne_calls: 37436, opaque_affine_calls: 4966, result_logical_bytes: 2252272, result_capacity_bytes: 4067536, caller_transient_logical_bytes_upper: 48 })\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 450 filtered out; finished in 2.67s\n\n"
+    },
+    {
+      "filter": "c71_b12_ordered_sourcewise_o2",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_ordered_sourcewise_o2 --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::ordered::tests::c71_b12_ordered_sourcewise_o2 ... sourcewise observed D12 canonical_bytes=3180108\nsourcewise_allocator={\"coverage_instrumented\":false,\"expanded_array_DRAM_read_bytes\":null,\"expanded_array_DRAM_write_bytes\":null,\"heap_kind\":\"requested allocator layouts including reallocations; not memory-access traffic\",\"phases\":[{\"heap_allocated_bytes\":150106344,\"heap_freed_bytes\":144281584,\"heap_live_end_bytes\":15288962,\"heap_live_start_bytes\":9464202,\"heap_peak_requested_bytes\":80365010,\"index\":0,\"name\":\"initialization\",\"rss_end_bytes\":71516160,\"rss_peak_bytes\":90615808,\"seconds\":0.693448764},{\"heap_allocated_bytes\":44288536,\"heap_freed_bytes\":44217872,\"heap_live_end_bytes\":15360544,\"heap_live_start_bytes\":15289880,\"heap_peak_requested_bytes\":15407064,\"index\":1,\"name\":\"sourcewise_initial_commit\",\"rss_end_bytes\":71843840,\"rss_peak_bytes\":71843840,\"seconds\":0.066302335},{\"heap_allocated_bytes\":447583208,\"heap_freed_bytes\":442401344,\"heap_live_end_bytes\":20543209,\"heap_live_start_bytes\":15361345,\"heap_peak_requested_bytes\":84009041,\"index\":2,\"name\":\"sourcewise_open_all_rounds\",\"rss_end_bytes\":95383552,\"rss_peak_bytes\":95383552,\"seconds\":1.227865426},{\"heap_allocated_bytes\":394669748,\"heap_freed_bytes\":384494084,\"heap_live_end_bytes\":30719675,\"heap_live_start_bytes\":20544011,\"heap_peak_requested_bytes\":122423677,\"index\":3,\"name\":\"codec_and_native_verifier\",\"rss_end_bytes\":143314944,\"rss_peak_bytes\":143314944,\"seconds\":0.13772708},{\"heap_allocated_bytes\":18690128,\"heap_freed_bytes\":18688320,\"heap_live_end_bytes\":30722284,\"heap_live_start_bytes\":30720476,\"heap_peak_requested_bytes\":32312836,\"index\":4,\"name\":\"verifier_pcs\",\"rss_end_bytes\":143446016,\"rss_peak_bytes\":143446016,\"seconds\":0.235723592},{\"heap_allocated_bytes\":18687844,\"heap_freed_bytes\":18688132,\"heap_live_end_bytes\":30722912,\"heap_live_start_bytes\":30723200,\"heap_peak_requested_bytes\":32315560,\"index\":5,\"name\":\"verifier_pcs\",\"rss_end_bytes\":143446016,\"rss_peak_bytes\":143446016,\"seconds\":0.238735487}],\"physical_traffic_admission_bound\":\"infinity\",\"rss_kind\":\"Linux VmHWM reset each phase; same process contains both roles\"}\nordered_sourcewise O=2 windows_producerrows_W_A_KV_numerical=(1534, 100683, 110084, 324490, 23016, RowWork { integer_additions: 131568, integer_subtractions: 35660, integer_multiplications: 154580, integer_comparisons: 686723, fp_additions: 0, fp_multiplications: 0, table_reads: 17640, divide_calls: 10738, opaque_rms_calls: 19370, opaque_rne_calls: 36056, opaque_affine_calls: 5368, result_logical_bytes: 2425536, result_capacity_bytes: 4038032, caller_transient_logical_bytes_upper: 96 })\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 450 filtered out; finished in 2.69s\n\n"
+    },
+    {
+      "filter": "c71_b12_ordered_sourcewise_o4",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_ordered_sourcewise_o4 --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::ordered::tests::c71_b12_ordered_sourcewise_o4 ... sourcewise observed D12 canonical_bytes=3190604\nsourcewise_allocator={\"coverage_instrumented\":false,\"expanded_array_DRAM_read_bytes\":null,\"expanded_array_DRAM_write_bytes\":null,\"heap_kind\":\"requested allocator layouts including reallocations; not memory-access traffic\",\"phases\":[{\"heap_allocated_bytes\":150105952,\"heap_freed_bytes\":144281192,\"heap_live_end_bytes\":19025946,\"heap_live_start_bytes\":13201186,\"heap_peak_requested_bytes\":84101994,\"index\":0,\"name\":\"initialization\",\"rss_end_bytes\":75235328,\"rss_peak_bytes\":94248960,\"seconds\":0.700278019},{\"heap_allocated_bytes\":49932312,\"heap_freed_bytes\":49861648,\"heap_live_end_bytes\":19097528,\"heap_live_start_bytes\":19026864,\"heap_peak_requested_bytes\":19144056,\"index\":1,\"name\":\"sourcewise_initial_commit\",\"rss_end_bytes\":75497472,\"rss_peak_bytes\":75497472,\"seconds\":0.069617774},{\"heap_allocated_bytes\":455499564,\"heap_freed_bytes\":450317700,\"heap_live_end_bytes\":24280193,\"heap_live_start_bytes\":19098329,\"heap_peak_requested_bytes\":87746025,\"index\":2,\"name\":\"sourcewise_open_all_rounds\",\"rss_end_bytes\":99000320,\"rss_peak_bytes\":99000320,\"seconds\":1.309146196},{\"heap_allocated_bytes\":395740340,\"heap_freed_bytes\":385554180,\"heap_live_end_bytes\":34467155,\"heap_live_start_bytes\":24280995,\"heap_peak_requested_bytes\":126507029,\"index\":3,\"name\":\"codec_and_native_verifier\",\"rss_end_bytes\":146432000,\"rss_peak_bytes\":146432000,\"seconds\":0.128934935},{\"heap_allocated_bytes\":18689736,\"heap_freed_bytes\":18687928,\"heap_live_end_bytes\":34469764,\"heap_live_start_bytes\":34467956,\"heap_peak_requested_bytes\":36060316,\"index\":4,\"name\":\"verifier_pcs\",\"rss_end_bytes\":146563072,\"rss_peak_bytes\":146563072,\"seconds\":0.235367839},{\"heap_allocated_bytes\":18687452,\"heap_freed_bytes\":18687740,\"heap_live_end_bytes\":34470392,\"heap_live_start_bytes\":34470680,\"heap_peak_requested_bytes\":36063040,\"index\":5,\"name\":\"verifier_pcs\",\"rss_end_bytes\":146563072,\"rss_peak_bytes\":146563072,\"seconds\":0.236135136}],\"physical_traffic_admission_bound\":\"infinity\",\"rss_kind\":\"Linux VmHWM reset each phase; same process contains both roles\"}\nordered_sourcewise O=4 windows_producerrows_W_A_KV_numerical=(1727, 112629, 125866, 410612, 52192, RowWork { integer_additions: 183625, integer_subtractions: 53913, integer_multiplications: 209721, integer_comparisons: 881094, fp_additions: 0, fp_multiplications: 0, table_reads: 26862, divide_calls: 18997, opaque_rms_calls: 21873, opaque_rne_calls: 40293, opaque_affine_calls: 4990, result_logical_bytes: 2996328, result_capacity_bytes: 4976416, caller_transient_logical_bytes_upper: 144 })\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 450 filtered out; finished in 2.81s\n\n"
+    },
+    {
+      "filter": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs ... C71_INTEGRATED_GETTER {\"phase\":\"prepare_before_commit\",\"scope\":\"reduced original numerical source; CPU work, not HBM or H100 time\",\"work\":{\"emitted_bytes\":0,\"named_heap_peak\":288,\"numerical\":{\"caller_transient_logical_bytes_upper\":48,\"divide_calls\":7,\"fp_additions\":0,\"fp_multiplications\":0,\"integer_additions\":193,\"integer_comparisons\":1221,\"integer_multiplications\":233,\"integer_subtractions\":47,\"opaque_affine_calls\":20,\"opaque_rms_calls\":37,\"opaque_rne_calls\":82,\"result_capacity_bytes\":8128,\"result_logical_bytes\":4552,\"table_reads\":24},\"old_kv_reads\":0,\"original_scalar_reads\":606,\"producer_rows\":[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,2,2,2,2,1],\"weight_scalar_reads\":222}}\nC71_INTEGRATED_GETTER {\"phase\":\"initial_commit_A\",\"scope\":\"reduced original numerical source; CPU work, not HBM or H100 time\",\"work\":{\"emitted_bytes\":120576,\"named_heap_peak\":400,\"numerical\":{\"caller_transient_logical_bytes_upper\":48,\"divide_calls\":3072,\"fp_additions\":0,\"fp_multiplications\":0,\"integer_additions\":72960,\"integer_comparisons\":407424,\"integer_multiplications\":88832,\"integer_subtractions\":16128,\"opaque_affine_calls\":3328,\"opaque_rms_calls\":13312,\"opaque_rne_calls\":25088,\"result_capacity_bytes\":2725888,\"result_logical_bytes\":1509376,\"table_reads\":8192},\"old_kv_reads\":0,\"original_scalar_reads\":197376,\"producer_rows\":[768,512,0,2048,2048,2048,2048,2048,2048,2048,1792,1792,1792,2048,2048,2048,2048,2048,2048,2048,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1536,1280,512,512,512,0,512,512,256,256,128],\"weight_scalar_reads\":78848}}\nC71_LOOKUP_SOURCE_WORK {\"query_rows\":4,\"query_width\":4,\"table_rows\":5,\"work\":{\"attempt_context_size_bytes\":129,\"attempt_encode_capacity_bytes\":130,\"auth_size_bytes\":48,\"bind_work_size_bytes\":40,\"binding_frame_capacity_bytes\":1438,\"binding_frame_capacity_while_attempt_live_bytes\":1438,\"binding_frame_logical_bytes\":1438,\"binding_frame_payload_write_bytes\":1438,\"binding_table_output_encoded_bytes\":10,\"cache_histogram_reads\":60,\"cache_payload_read_bytes\":432,\"cache_payload_write_bytes\":36,\"cache_query_decodes\":48,\"compact_block_size_bytes\":32,\"correlation_row_copy_bytes\":0,\"correlation_rows_consumed\":58,\"correlation_rows_reserved\":58,\"declared_nested_stack_payload_lower_bound_bytes\":1056,\"declared_stack_is_complete\":false,\"declared_subtree_stack_bytes\":768,\"denominator_inversions\":1,\"denominator_zero_comparisons\":1,\"descriptor_capacity_bytes\":104,\"descriptor_row_calls\":201,\"descriptor_size_bytes\":104,\"dimension_block_visits\":6,\"dimension_coverage_interval_visits\":4,\"dimension_table_metadata_visits\":6,\"dimension_validation_passes\":2,\"dimension_work_size_bytes\":24,\"dimensions_transient_capacity_bytes\":96,\"endpoint_leaf_reads\":16,\"eq_scratch_capacity_bytes\":120,\"equality_multiplications\":30,\"equality_subtractions\":15,\"histogram_cache_capacity_bytes\":20,\"histogram_getter_calls\":5,\"layer_size_bytes\":216,\"leaf_builds\":16,\"named_heap_peak_bytes\":3812,\"named_heap_peak_is_complete\":false,\"owned_capacity_is_complete\":false,\"owned_heap_peak_bytes\":3932,\"owned_heap_peak_excludes_external\":true,\"pending_auth_size_bytes\":168,\"point_capacity_bytes\":96,\"point_logical_bytes\":96,\"proof_heap_capacity_bytes\":1584,\"proof_logical_heap_bytes\":1584,\"proof_size_bytes\":240,\"public_table_output_reads\":65,\"public_tag_scans\":5,\"query_cache_capacity_bytes\":16,\"query_cache_size_bytes\":32,\"query_getter_calls\":4,\"replay_leaf_reads\":160,\"replay_reductions\":62,\"rows_backing_capacity_bytes\":0,\"source_work_size_bytes\":616,\"tree\":{\"cubic_additions\":198,\"cubic_multiplications\":297,\"cubic_subtractions\":55,\"custom_rounds\":0,\"custom_terminals\":0,\"eq_weights_capacity_bytes\":96,\"equality_additions\":16,\"equality_multiplications\":140,\"equality_subtractions\":78,\"fold_additions\":196,\"fold_multiplications\":196,\"fold_subtractions\":0,\"getter_calls\":49,\"getter_scalar_values\":196,\"owned_regeneration_heap_peak_bytes\":264,\"prefix_terms\":49},\"tree_reductions\":15,\"triple_size_bytes\":144,\"triples_capacity_bytes\":1872,\"triples_logical_bytes\":1872,\"upper_tree_capacity_bytes\":72}}\nC71_LOOKUP_SOURCE_WORK {\"query_rows\":2,\"query_width\":4,\"table_rows\":9,\"work\":{\"attempt_context_size_bytes\":129,\"attempt_encode_capacity_bytes\":130,\"auth_size_bytes\":48,\"bind_work_size_bytes\":40,\"binding_frame_capacity_bytes\":1446,\"binding_frame_capacity_while_attempt_live_bytes\":1446,\"binding_frame_logical_bytes\":1446,\"binding_frame_payload_write_bytes\":1446,\"binding_table_output_encoded_bytes\":18,\"cache_histogram_reads\":108,\"cache_payload_read_bytes\":528,\"cache_payload_write_bytes\":44,\"cache_query_decodes\":24,\"compact_block_size_bytes\":32,\"correlation_row_copy_bytes\":0,\"correlation_rows_consumed\":58,\"correlation_rows_reserved\":58,\"declared_nested_stack_payload_lower_bound_bytes\":1056,\"declared_stack_is_complete\":false,\"declared_subtree_stack_bytes\":768,\"denominator_inversions\":1,\"denominator_zero_comparisons\":1,\"descriptor_capacity_bytes\":104,\"descriptor_row_calls\":203,\"descriptor_size_bytes\":104,\"dimension_block_visits\":6,\"dimension_coverage_interval_visits\":4,\"dimension_table_metadata_visits\":6,\"dimension_validation_passes\":2,\"dimension_work_size_bytes\":24,\"dimensions_transient_capacity_bytes\":96,\"endpoint_leaf_reads\":16,\"eq_scratch_capacity_bytes\":120,\"equality_multiplications\":30,\"equality_subtractions\":15,\"histogram_cache_capacity_bytes\":36,\"histogram_getter_calls\":9,\"layer_size_bytes\":216,\"leaf_builds\":16,\"named_heap_peak_bytes\":3820,\"named_heap_peak_is_complete\":false,\"owned_capacity_is_complete\":false,\"owned_heap_peak_bytes\":3940,\"owned_heap_peak_excludes_external\":true,\"pending_auth_size_bytes\":168,\"point_capacity_bytes\":96,\"point_logical_bytes\":96,\"proof_heap_capacity_bytes\":1584,\"proof_logical_heap_bytes\":1584,\"proof_size_bytes\":240,\"public_table_output_reads\":117,\"public_tag_scans\":9,\"query_cache_capacity_bytes\":8,\"query_cache_size_bytes\":32,\"query_getter_calls\":2,\"replay_leaf_reads\":160,\"replay_reductions\":62,\"rows_backing_capacity_bytes\":0,\"source_work_size_bytes\":616,\"tree\":{\"cubic_additions\":198,\"cubic_multiplications\":297,\"cubic_subtractions\":55,\"custom_rounds\":0,\"custom_terminals\":0,\"eq_weights_capacity_bytes\":96,\"equality_additions\":16,\"equality_multiplications\":140,\"equality_subtractions\":78,\"fold_additions\":196,\"fold_multiplications\":196,\"fold_subtractions\":0,\"getter_calls\":49,\"getter_scalar_values\":196,\"owned_regeneration_heap_peak_bytes\":264,\"prefix_terms\":49},\"tree_reductions\":15,\"triple_size_bytes\":144,\"triples_capacity_bytes\":1872,\"triples_logical_bytes\":1872,\"upper_tree_capacity_bytes\":72}}\nC71_MAXIMUM_SOURCE_WORK {\"checkpoint\":{\"source_byte_getter_calls\":6,\"base_field_products\":0,\"checkpoint_scalar_writes\":4,\"checkpoint_builds\":1,\"checkpoint_capacity_peak_bytes\":16},\"tree\":{\"custom_rounds\":0,\"custom_terminals\":0,\"getter_calls\":4,\"getter_scalar_values\":16,\"prefix_terms\":4,\"equality_multiplications\":7,\"equality_additions\":1,\"equality_subtractions\":4,\"cubic_multiplications\":27,\"cubic_additions\":18,\"cubic_subtractions\":5,\"fold_multiplications\":16,\"fold_additions\":16,\"fold_subtractions\":0,\"eq_weights_capacity_bytes\":48,\"owned_regeneration_heap_peak_bytes\":120}}\nC71_LOOKUP_SOURCE_WORK {\"query_rows\":4,\"query_width\":6,\"table_rows\":8,\"work\":{\"attempt_context_size_bytes\":129,\"attempt_encode_capacity_bytes\":130,\"auth_size_bytes\":48,\"bind_work_size_bytes\":40,\"binding_frame_capacity_bytes\":1429,\"binding_frame_capacity_while_attempt_live_bytes\":1429,\"binding_frame_logical_bytes\":1429,\"binding_frame_payload_write_bytes\":1429,\"binding_table_output_encoded_bytes\":32,\"cache_histogram_reads\":96,\"cache_payload_read_bytes\":672,\"cache_payload_write_bytes\":56,\"cache_query_decodes\":48,\"compact_block_size_bytes\":32,\"correlation_row_copy_bytes\":0,\"correlation_rows_consumed\":58,\"correlation_rows_reserved\":58,\"declared_nested_stack_payload_lower_bound_bytes\":1056,\"declared_stack_is_complete\":false,\"declared_subtree_stack_bytes\":768,\"denominator_inversions\":1,\"denominator_zero_comparisons\":1,\"descriptor_capacity_bytes\":72,\"descriptor_row_calls\":204,\"descriptor_size_bytes\":104,\"dimension_block_visits\":4,\"dimension_coverage_interval_visits\":2,\"dimension_table_metadata_visits\":6,\"dimension_validation_passes\":2,\"dimension_work_size_bytes\":24,\"dimensions_transient_capacity_bytes\":96,\"endpoint_leaf_reads\":16,\"eq_scratch_capacity_bytes\":120,\"equality_multiplications\":30,\"equality_subtractions\":15,\"histogram_cache_capacity_bytes\":32,\"histogram_getter_calls\":8,\"layer_size_bytes\":216,\"leaf_builds\":16,\"named_heap_peak_bytes\":3800,\"named_heap_peak_is_complete\":false,\"owned_capacity_is_complete\":false,\"owned_heap_peak_bytes\":3920,\"owned_heap_peak_excludes_external\":true,\"pending_auth_size_bytes\":168,\"point_capacity_bytes\":96,\"point_logical_bytes\":96,\"proof_heap_capacity_bytes\":1584,\"proof_logical_heap_bytes\":1584,\"proof_size_bytes\":240,\"public_table_output_reads\":104,\"public_tag_scans\":8,\"query_cache_capacity_bytes\":24,\"query_cache_size_bytes\":32,\"query_getter_calls\":4,\"replay_leaf_reads\":160,\"replay_reductions\":62,\"rows_backing_capacity_bytes\":0,\"source_work_size_bytes\":616,\"tree\":{\"cubic_additions\":198,\"cubic_multiplications\":297,\"cubic_subtractions\":55,\"custom_rounds\":0,\"custom_terminals\":0,\"eq_weights_capacity_bytes\":96,\"equality_additions\":16,\"equality_multiplications\":140,\"equality_subtractions\":78,\"fold_additions\":196,\"fold_multiplications\":196,\"fold_subtractions\":0,\"getter_calls\":49,\"getter_scalar_values\":196,\"owned_regeneration_heap_peak_bytes\":264,\"prefix_terms\":49},\"tree_reductions\":15,\"triple_size_bytes\":144,\"triples_capacity_bytes\":1872,\"triples_logical_bytes\":1872,\"upper_tree_capacity_bytes\":72}}\nC71_INTEGRATED_GETTER {\"phase\":\"producer_relations\",\"scope\":\"reduced original numerical source; CPU work, not HBM or H100 time\",\"work\":{\"emitted_bytes\":0,\"named_heap_peak\":272,\"numerical\":{\"caller_transient_logical_bytes_upper\":48,\"divide_calls\":524679,\"fp_additions\":0,\"fp_multiplications\":0,\"integer_additions\":12143919,\"integer_comparisons\":65074861,\"integer_multiplications\":15019611,\"integer_subtractions\":2390057,\"opaque_affine_calls\":427358,\"opaque_rms_calls\":2370678,\"opaque_rne_calls\":3691958,\"result_capacity_bytes\":442724000,\"result_logical_bytes\":242810944,\"table_reads\":1010414},\"old_kv_reads\":0,\"original_scalar_reads\":30816666,\"producer_rows\":[38840,38836,0,583002,466362,427522,427510,466362,427522,427510,388606,349766,349758,427482,388650,427482,388650,388630,349790,349786,349742,310890,310882,272042,272030,272010,233174,233158,194270,155430,155418,194252,155412,155400,116556,116548,77708,77696,77676,38840,38836,0,14,8,6,3,0],\"weight_scalar_reads\":12668680}}\nC71_INTEGRATED_GETTER {\"phase\":\"range_A\",\"scope\":\"reduced original numerical source; CPU work, not HBM or H100 time\",\"work\":{\"emitted_bytes\":596162,\"named_heap_peak\":400,\"numerical\":{\"caller_transient_logical_bytes_upper\":48,\"divide_calls\":14601,\"fp_additions\":0,\"fp_multiplications\":0,\"integer_additions\":343927,\"integer_comparisons\":1918660,\"integer_multiplications\":419163,\"integer_subtractions\":74303,\"opaque_affine_calls\":16032,\"opaque_rms_calls\":62534,\"opaque_rne_calls\":118156,\"result_capacity_bytes\":12831120,\"result_logical_bytes\":7111456,\"table_reads\":38272},\"old_kv_reads\":0,\"original_scalar_reads\":929880,\"producer_rows\":[3808,2636,0,9734,9734,9734,9734,9734,9734,9734,8416,8416,8416,9734,9734,9734,9734,9734,9734,9734,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,7098,5780,2490,2490,2490,0,2304,2304,986,986,327],\"weight_scalar_reads\":371260}}\nC71_INTEGRATED_GETTER {\"phase\":\"linear_A_and_WHIR\",\"scope\":\"reduced original numerical source; CPU work, not HBM or H100 time\",\"work\":{\"emitted_bytes\":636884,\"named_heap_peak\":400,\"numerical\":{\"caller_transient_logical_bytes_upper\":48,\"divide_calls\":15615,\"fp_additions\":0,\"fp_multiplications\":0,\"integer_additions\":367871,\"integer_comparisons\":2052179,\"integer_multiplications\":448335,\"integer_subtractions\":79531,\"opaque_affine_calls\":17126,\"opaque_rms_calls\":66892,\"opaque_rne_calls\":126374,\"result_capacity_bytes\":13724224,\"result_logical_bytes\":7606176,\"table_reads\":40948},\"old_kv_reads\":0,\"original_scalar_reads\":994558,\"producer_rows\":[4062,2816,0,10410,10410,10410,10410,10410,10410,10410,9002,9002,9002,10410,10410,10410,10410,10410,10410,10410,9002,9002,9002,9002,9002,9002,9002,9002,9002,9002,9002,9002,9002,9002,9002,9002,7594,6186,2654,2654,2654,0,2470,2470,1062,1062,358],\"weight_scalar_reads\":397104}}\nnative composed rejection: ordered reader history or binary prompt differs\nC71_INTEGRATED_POSITIVE {\"certificate_bytes\":7746249,\"credit\":false,\"dense_A_materialized\":false,\"original_mac_rows\":88049,\"receipt\":[32,241,174,66,5,109,182,104,123,221,220,245,244,55,90,216,89,140,203,224,220,9,41,149,118,147,239,224,26,206,139,85],\"scope\":\"O0 reduced; ideal MAC; canonical timing and complete PCG not admitted\",\"snapshot_materialized\":false}\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 450 filtered out; finished in 12.60s\n\n"
+    },
+    {
+      "filter": "c71_canonical_ordered",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_canonical_ordered --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::ordered::tests::c71_canonical_ordered_internal_padding_histogram_and_byte_window ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 450 filtered out; finished in 0.41s\n\n"
+    },
+    {
+      "filter": "c71_b12_native_canonical",
+      "command": "RAYON_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_canonical --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "\nrunning 5 tests\ntest c71_matrix::gemma::native::canonical::calibration::tests::c71_b12_native_canonical_calibration_storage_release_and_ranges ... C71_CALIBRATION_STORAGE {\"calibrated\":false,\"complete_physical_peak\":false,\"embedding\":{\"current_kv_reads\":0,\"current_reads\":21504,\"emitted_words\":32256,\"histogram_visits\":0,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":108544,\"payload_plus_incoming_bundle_peak_bytes\":151552,\"producer_rows\":6,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":10752},\"external_prior_KV_payload_bytes\":0,\"full_current_KV_payload_bytes\":135168000,\"full_histogram_payload_bytes\":31718940,\"full_model\":false,\"lookup\":{\"current_kv_reads\":0,\"current_reads\":64512,\"emitted_words\":86016,\"histogram_visits\":21504,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":778236,\"payload_plus_incoming_bundle_peak_bytes\":1122300,\"producer_rows\":3,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0},\"old_tokens\":0,\"pv\":{\"current_kv_reads\":8192,\"current_reads\":32,\"emitted_words\":17088,\"histogram_visits\":0,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":46592,\"payload_plus_incoming_bundle_peak_bytes\":117760,\"producer_rows\":2,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0}}\nC71_CALIBRATION_STORAGE {\"calibrated\":false,\"complete_physical_peak\":false,\"embedding\":{\"current_kv_reads\":0,\"current_reads\":21504,\"emitted_words\":32256,\"histogram_visits\":0,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":108544,\"payload_plus_incoming_bundle_peak_bytes\":151552,\"producer_rows\":6,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":10752},\"external_prior_KV_payload_bytes\":135168000,\"full_current_KV_payload_bytes\":135168000,\"full_histogram_payload_bytes\":31718940,\"full_model\":false,\"lookup\":{\"current_kv_reads\":0,\"current_reads\":64512,\"emitted_words\":86016,\"histogram_visits\":21504,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":778236,\"payload_plus_incoming_bundle_peak_bytes\":1122300,\"producer_rows\":3,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0},\"old_tokens\":150,\"pv\":{\"current_kv_reads\":8192,\"current_reads\":4832,\"emitted_words\":21888,\"histogram_visits\":0,\"historical_kv_reads\":1228800,\"named_payload_peak_bytes\":84992,\"payload_plus_incoming_bundle_peak_bytes\":194560,\"producer_rows\":2,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0}}\nC71_CALIBRATION_STORAGE {\"calibrated\":false,\"complete_physical_peak\":false,\"embedding\":{\"current_kv_reads\":0,\"current_reads\":21504,\"emitted_words\":32256,\"histogram_visits\":0,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":108544,\"payload_plus_incoming_bundle_peak_bytes\":151552,\"producer_rows\":6,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":10752},\"external_prior_KV_payload_bytes\":270336000,\"full_current_KV_payload_bytes\":135168000,\"full_histogram_payload_bytes\":31718940,\"full_model\":false,\"lookup\":{\"current_kv_reads\":0,\"current_reads\":64512,\"emitted_words\":86016,\"histogram_visits\":21504,\"historical_kv_reads\":0,\"named_payload_peak_bytes\":778236,\"payload_plus_incoming_bundle_peak_bytes\":1122300,\"producer_rows\":3,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0},\"old_tokens\":300,\"pv\":{\"current_kv_reads\":8192,\"current_reads\":9632,\"emitted_words\":26688,\"histogram_visits\":0,\"historical_kv_reads\":2457600,\"named_payload_peak_bytes\":123392,\"payload_plus_incoming_bundle_peak_bytes\":271360,\"producer_rows\":2,\"public_padding_histogram_visits\":0,\"public_padding_words\":0,\"weight_reads\":0}}\nok\ntest c71_matrix::gemma::native::canonical::calibration::tests::c71_b12_native_canonical_calibration_three_context_kv_handoff ... C71_CALIBRATION_HISTORY offsets=0/150/300 tokens=450 kv_bytes=405504000 handoff_only=true calibrated=false\nok\ntest c71_matrix::gemma::native::canonical::prepare::tests::c71_b12_native_canonical_numeric_rows_original_routes ... C71_CANONICAL_NUMERIC_ROWS offsets=0/150/300 calibrated=false full_model=false\nok\ntest c71_matrix::gemma::native::canonical::tests::c71_b12_native_canonical_all_sources_have_causal_producers_across_three_contexts ... ok\ntest c71_matrix::gemma::native::canonical::wire_tests::c71_b12_native_canonical_wire_body_geometry ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 446 filtered out; finished in 6.01s\n\n"
+    },
+    {
+      "filter": "docs",
+      "command": "PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 RAYON_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py'",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": ".........                                                                [100%]\n9 passed in 0.48s\n"
+    },
+    {
+      "filter": "cli_rejections",
+      "command": "(ulimit -v 2097152; PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s .venv/bin/python - <<'PY'\nimport json, subprocess\nbinary = 'rust/target/debug/examples/c71_canonical_reference'\nfor args in ([], ['gpu']):\n    run = subprocess.run([binary, *args], text=True, capture_output=True, timeout=5)\n    assert run.returncode == 1 and not run.stdout\n    lines = run.stderr.splitlines()\n    report = json.loads(next(line.removeprefix('C71_RUN_METRICS ') for line in lines if line.startswith('C71_RUN_METRICS ')))\n    assert report['complete'] is False and report['readiness'] is False and report['credit'] is False\n    m = report['measurements']\n    assert m['bytes_to_verifier'] == m['bytes_from_verifier'] == 0\n    assert not m['gpu_execution'] and not m['complete_physical_peak']\n    assert any('no admitted GPU runner' in line for line in lines)\nprint('2 expected CLI rejections, no channels or GPU, no readiness')\nPY\n)",
+      "exit_code": 0,
+      "seconds_reported_by_test": null,
+      "output": "2 expected CLI rejections, no channels or GPU, no readiness\n"
+    }
+  ],
+  "development_failures_not_runs_of_record": {
+    "base_git_sha": "794e711",
+    "git_dirty": true,
+    "compilation_failures": 1,
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "exit_code": 101,
+    "output": "warning: `volta-proto` (lib) generated 2 warnings\n   Compiling p3-blake3 v0.6.0 (https://github.com/Plonky3/Plonky3.git?rev=66e290615de1858f2f2f6a804158064c406cda1c#66e29061)\n   Compiling volta-pcs v0.0.0 (/home/okrame/projects/volta-zk/rust/volta-pcs)\nerror[E0405]: cannot find trait `Field` in this scope\n   --> volta-pcs/src/c71_matrix/b12/sourcewise.rs:113:31\n    |\n113 | pub(super) fn power_lookup<F: Field>(point: F, length: usize) -> impl Fn(usize) -> F {\n    |                               ^^^^^ not found in this scope\n\nwarning: unused import: `volta_mac::CorrelationStream`\n    --> volta-pcs/src/c63_authenticated_sketch.rs:2169:9\n     |\n2169 |     use volta_mac::CorrelationStream;\n     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n     |\n     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: unused imports: `C6_PERSISTENT_CACHE_CAPACITY_TOKENS`, `C6_PERSISTENT_CACHE_LAYERS`, `C6_PERSISTENT_CACHE_PADDED_LAYERS`, `C6_PERSISTENT_CACHE_PADDED_WIDTH`, `C6_PERSISTENT_CACHE_SLOT_CAPACITY`, and `C6_PERSISTENT_CACHE_WIDTH`\n  --> volta-pcs/src/c6_persistent_cache_blind.rs:32:5\n   |\n32 |     C6_PERSISTENT_CACHE_CAPACITY_TOKENS, C6_PERSISTENT_CACHE_FOLD_CAPACITY,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n33 |     C6_PERSISTENT_CACHE_LAYERS, C6_PERSISTENT_CACHE_PADDED_LAYERS,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n34 |     C6_PERSISTENT_CACHE_PADDED_WIDTH, C6_PERSISTENT_CACHE_SLOT_CAPACITY, C6_PERSISTENT_CACHE_WIDTH,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^\n\nFor more information about this error, try `rustc --explain E0405`.\nwarning: `volta-pcs` (lib test) generated 2 warnings\nerror: could not compile `volta-pcs` (lib test) due to 1 previous error; 2 warnings emitted\n",
+    "correction": "Qualified the shared factored-power helper bound as p3_field::Field. The corrected development build passed in 3m11s; all subsequent checks passed."
+  },
+  "remaining_local_work": [
+    "Canonical accelerated Eq/Pow preparation and folds beyond the D16 reference cap.",
+    "Large S1/S2/successor PCS geometries, with the selected coset schedule and simultaneous physical memory accounting.",
+    "Range two-GiB original-byte windows and remaining scalar/row consumers.",
+    "Bounded query-factor, remainder and multipoint workspaces; dense verifier/GKR replacements.",
+    "Exact CUDA integration and accounting across preparer/prover/verifier/PCS/Seed6.",
+    "Inference/proof phase partition, CPU-time and complete physical host/HBM measurements.",
+    "Full canonical positive composition and three accepted 100+50 responses on one registry."
+  ],
+  "external_requirements": [
+    "Owner authorization for real weights/calibration and H100 execution.",
+    "Provider deadline or explicitly authorized spending guard; no pod creation authorized."
+  ],
+  "unchanged_boundaries": [
+    "Continuation communication analytically exceeds 40,000,000 bytes.",
+    "Seed6 malicious composition/resource/codec refinement obligations remain open.",
+    "No canonical readiness from reduced fixtures, static counts, CPU timeout or compilation."
+  ]
+}

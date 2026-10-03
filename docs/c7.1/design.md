@@ -84,8 +84,18 @@ pesi reali e il suo tempo completo non è misurato. Lo
 identificano componenti disponibili, implementazioni mancanti e passaggi
 che richiedono autorizzazione. Il [contratto del confronto](specs.md#confronto-indipendente)
 definisce cosa completare prima di ammettere Γ.
-Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-fbd6141e7a1e.json)
-registra quindi `NOT_READY` per la prova E2E. Il
+Il [readiness audit v6 di partenza](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-fbd6141e7a1e.json)
+registra `NOT_READY` per la prova E2E. Sono ora implementati il corpo del
+prover canonico, gli snapshot/getter CPU con padding e istogrammi, il
+trasporto del completamento e un eseguibile CPU esplicito per tre risposte
+sullo stesso registro. Non sono ancora acquisiti certificati canonici
+validi: il codice non conferisce readiness. Rimangono lavoro locale sul
+percorso GPU, sulla ricostruzione in 512 passaggi e sulla contabilità
+fisica simultanea; non sono blocchi risolvibili soltanto procurandosi H100.
+I dettagli e i limiti del riferimento sono nelle
+[specifiche](specs.md#preparazione-e-prova-a-memoria-limitata). Il
+[checkpoint di implementazione](../c7.1-history/canonical-reference-implementation.md)
+conserva le decisioni e i fallimenti senza attribuire credito canonico. Il
 [record del driver](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
 chiude l'assenza dell'implementazione locale, ma non convalida i pesi reali
 né chiude la finestra temporale della campagna di calibrazione.

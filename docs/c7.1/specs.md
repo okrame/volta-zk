@@ -231,15 +231,25 @@ accettate in ordine. La [macchina matematica](security.md#2-preparatore-e-macchi
 definisce l'accettazione; il wrapper nativo brucia la riserva prima del
 decoding e registra il successo prima della promozione. Le correlazioni
 di ogni nuova apertura sono fresche anche quando la root è storica.
-La capacità `Acceptance` è interna: il suo trasporto distribuito sicuro
-deve ancora essere implementato. Canale autenticato e archivio del journal
-non riportabile a uno stato precedente sono premesse del chiamante.
+La capacità `Acceptance` resta interna. Il
+[record di completamento](../../rust/volta-pcs/src/c71_matrix/gemma/native/acceptance_transport.rs)
+usa 73 byte: dominio `C71ACC01`, esito, hash del certificato pendente e
+ricevuta FS. Non trasporta roots, token o storia da importare. V lo emette
+dopo il journal; P confronta entrambi i digest prima del proprio journal
+e della promozione. Errori di invio, troncamenti e differenze terminano il
+run. Il codec non autentica il mittente: canale autenticato dedicato e
+journal non riportabile indietro restano premesse del chiamante.
 
 ## Ordine e formato del certificato
 
 La [schedule completa](security.md#3-schedule-completa-e-destinazione-degli-endpoint)
 è implementata da
-[canonical_verify.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs).
+[canonical_verify.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_verify.rs)
+e dal corrispondente corpo CPU
+[canonical_prove.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prove.rs).
+Il prover controlla contesto, sorgenti originali e riserva prima dei callback
+privati; usa gli stessi operatori, frame e MAC del verificatore. Questo
+collegamento non è ancora una verifica positiva di certificati canonici.
 I target finali sono 775 per W, 4.446 per A corrente e uno per ogni A
 precedente. Nessun endpoint può restare privo della sua apertura originale.
 
@@ -331,6 +341,17 @@ tre colonne base per Fp3. Il percorso host è verificato; quello CUDA
 
 ## Preparazione e prova a memoria limitata
 
+[canonical_ordered.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_ordered.rs)
+implementa il riferimento CPU canonico: il driver numerico prepara tutti
+i token, conserva KV e istogrammi completi e cattura i 61 checkpoint di
+layer. Una sola generazione è condivisa fra A corrente e precedenti; la
+ricostruzione deve riprodurre token, KV e digest dello snapshot. Il getter
+risolve le dipendenze, rilascia le righe dopo l'ultimo uso e distingue il
+padding interno dall'assenza di celle nel dominio PCS. Non materializza A
+completa. Il limite di preparazione controlla payload nominati, non il
+picco fisico complessivo. La finestra CPU da 128 byte e i replay per riga
+**non implementano** le 512 ricostruzioni del piano seguente.
+
 [ordered.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/ordered.rs)
 è il riferimento ridotto: scopre i token dai logits, valida i produttori,
 conserva cut/KV immutabili e una finestra byte. La sua storia numerica
@@ -340,6 +361,18 @@ completato il primo e raggiunto `range_A` del secondo, poi ha superato il
 limite locale di 60 s; il [record negativo](../../benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json)
 non attribuisce copertura multi tentativo.
 La ricostruzione ricorsiva CPU non implementa la schedule canonica 512.
+
+Il [runner CPU esplicito](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_runner.rs)
+collega preparazione, PCS W/A, Seed6 ell=11 e tre risposte sullo stesso
+registro mediante socketpair locali. Richiede input canonici e non è
+ammesso sulla VM di sviluppo. Non certifica numericamente le tabelle né
+la provenienza del packed. Registra durata completa, traffico dei canali
+nei due sensi e massimo RSS del processo che contiene entrambi i ruoli;
+non li presenta come contabilità HBM o comunicazione completa, perché
+la distribuzione iniziale dei parametri pubblici è fuori dai canali.
+Il driver non offre un percorso GPU né un fallback di produzione.
+Rimangono locali l'adattamento dei kernel densi al piano a memoria
+limitata, il collegamento CUDA e la contabilità simultanea completa.
 
 Il piano canonico conserva 61 checkpoint di layer, 98.380.800 B per
 una generazione alla volta. Raw e output arrotondato sono distinti.

@@ -59,6 +59,8 @@ cargo test --offline --locked -j 1 -p volta-pcs \
   --features c71-seed6-reference --lib --no-run
 cargo build --offline --locked -j 1 -p volta-pcs \
   --features c71-b12-pcs --example c71_calibration
+cargo build --offline --locked -j 1 -p volta-pcs \
+  --features c71-seed6-reference --example c71_canonical_reference
 cd "$C71_ROOT"
 ```
 
@@ -153,6 +155,10 @@ Eseguire un filtro alla volta:
 | `c71_b12_native_canonical` | DAG, forme, codec e righe canoniche sintetiche; nessun forward completo |
 | `c71_b12_native_registry` | Profilo posseduto, registro e rifiuto reale per capacità insufficiente |
 | `c71_b12_native_dispatch_canonical` | Riserva/contesto e rifiuto di P0 incompleto, non accettazione canonica |
+| `c71_canonical_ordered_internal_padding_histogram_and_byte_window` | Padding interno, istogrammi, checkpoint e finestre byte su un operatore canonico sintetico; non preparazione Gemma completa |
+| `c71_acceptance_transport` | Completamento legato al certificato/ricevuta pendenti; alterazioni, troncamenti e Stop |
+| `c71_canonical_runner_transport_and_default_stop` | Framing della risposta, limiti prima dell'allocazione, contatori I/O e rifiuto del backend implicito; nessuna esecuzione canonica |
+| `c71_canonical_runner_packed_input` | Lettura packed senza seconda copia completa, endian, lunghezza e marcatore di overflow su quattro/sei byte |
 | `c71_b12_native_norm_rows`, `c71_b12_native_rne_rows`, `c71_b12_native_affine_rows` | Operatori interi sulle route canoniche, con input sintetici |
 | `c71_b12_native_prepare`, `c71_b12_native_composed` | Preparazione e tre accettazioni su grafo ridotto, MAC ideali |
 | `c71_b12_native_certificate`, `c71_b12_native_context`, `c71_b12_native_interrupted`, `c71_b12_native_exhaustion` | Framing, contesto, terminalità e capacità |
@@ -167,6 +173,7 @@ Eseguire un filtro alla volta:
 | `c71_b12_canonical_pcs_codec`, `c71_b12_native_canonical_wire_body` | Cap e roundtrip di corpi completi sintetici, senza verifica crittografica |
 | `c71_seed6_native_partial`, `c71_seed6_native_shortage` | Intervalli lazy, rifiuto prima della promozione e burn |
 | `c71_seed6_native_replay_w_and_ordered_a` | Un tentativo O=0 con AES reale, t=4/h=19/ell=2, W ricostruita e A ordinata |
+| `c71_seed6_native_two_retained_dense` | Due risposte numeriche ridotte sullo stesso registro, Seed6 t=8/h=19/ell=2 e completamento dopo i journal; non getter canonico né tre risposte |
 | `c71_seed6_native_full_o0_proof`, `c71_seed6_native_full_o0_late_rejection` | Un tentativo ridotto con A densa piccola, ell=11; positivo e rifiuto terminale |
 
 Per modifiche a operatori/GKR/lookup aggiungere i rispettivi test componenti
@@ -177,7 +184,10 @@ target/profilo, e verificare separatamente i filtri `c71_seed6_one_channel`,
 `c71_seed6_guard_cggm` e `c71_lifetime::tests`, sempre entro 60 s/2 GiB.
 
 `c71_b12_native_ordered_two_attempts` è ignorato dopo un timeout locale:
-non usare `--ignored` o un limite maggiore. Non eseguire l'intero filtro
+anche `c71_seed6_native_three_retained_dense` è ignorato dopo aver superato
+60 s con due accettazioni complete. Non usare `--ignored` o un limite
+maggiore e non attribuire al timeout copertura del terzo tentativo.
+Non eseguire l'intero filtro
 `c71_seed6_native` sotto un unico timeout. Le geometrie ridotte non
 trasferiscono i bound crittografici o il picco al profilo canonico ell=11.
 Un candidato separato con W ricostruita, A ordinata e pool Seed6 reale ha

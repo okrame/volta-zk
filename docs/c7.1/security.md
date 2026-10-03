@@ -173,6 +173,11 @@ Il framing esterno univoco è parte dell'algoritmo matematico. Il codice
 implementa codec e wrapper canonici interni; i controlli strutturali
 non costituiscono una verifica positiva dell'intero modello. Un errore restituisce al peer
 solo `Stop`; i messaggi di errore dettagliati interni non sono wire.
+Il [trasporto dell'accettazione](specs.md#dati-autenticati-e-stato) lega il
+completamento alla ricevuta e al certificato pendenti: non è un nuovo
+meccanismo di autenticazione. Nel runner CPU i due ruoli usano socketpair
+create localmente; un trasporto distribuito deve fornire la premessa di
+autenticazione, non sostituirla con il solo hash del certificato.
 Una perdita del processo termina il run; non si invoca `reopen`.
 
 ## 3. Schedule completa e destinazione degli endpoint
@@ -508,10 +513,13 @@ controllo di spesa autorizzato; il
 [record](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
 non attribuisce credito al protocollo.
 
-Per il programma canonico restano inoltre: Γ reale validato, preparatore
-e prover completi, correttezza dei getter su tutti gli operatori e alias,
-copertura dei MAC originali, verifica positiva e promozione dopo il
-journal. Le ottimizzazioni che conservano messaggi e polinomi devono
+Il [prover CPU](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prove.rs)
+e il [registro dei due ruoli](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state.rs)
+collegano ora la schedule e la promozione dopo i journal. Per il programma
+canonico restano Γ reale validato, verifica positiva dell'intera pipeline,
+correttezza dei getter su tutti gli operatori e alias e convalida della
+copertura dei MAC originali sui certificati prodotti. La presenza del
+codice non scarica questi obblighi. Le ottimizzazioni che conservano messaggi e polinomi devono
 preservare anche l'ordine delle letture prima delle correlazioni, detto
 NoPeek, e contabilizzare tutte le risorse. La parità ridotta di byte,
 transcript e MAC è un controllo necessario, non una prova generale Lean.

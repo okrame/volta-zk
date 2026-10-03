@@ -12,6 +12,7 @@ static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
 static bool fail_dense=false;
 static size_t fake_free=80000000000ULL;
 static unsigned allocations=0, frees=0, launches=0;
+static std::vector<uint8_t> expected_bytes;
 cudaError_t cudaSetDevice(int n) { return n==0?0:1; }
 cudaError_t cudaStreamCreateWithFlags(cudaStream_t* s,unsigned flags) {
     assert(flags==cudaStreamNonBlocking); *s=new FakeStream; return 0;
@@ -51,7 +52,14 @@ static Pair fraction(const void* input,unsigned kind,size_t first,size_t n,Fp3 a
     return merge(fraction(input,kind,first,n/2,alpha),fraction(input,kind,first+n/2,n/2,alpha));
 }
 extern "C" int c71_range_launch_roots(cudaStream_t s,unsigned kind,const void* input,size_t,unsigned bottom,Fp3 alpha,Pair* p,size_t n) {
-    return launch(s,[=] { for(size_t i=0;i<n;++i) p[i]=fraction(input,kind,i<<bottom,size_t{1}<<bottom,alpha); });
+    return launch(s,[=] {
+        if(!expected_bytes.empty()) {
+            assert(kind==0 && expected_bytes.size()==(n<<bottom));
+            assert(std::memcmp(input,expected_bytes.data(),expected_bytes.size())==0);
+            expected_bytes.clear();
+        }
+        for(size_t i=0;i<n;++i) p[i]=fraction(input,kind,i<<bottom,size_t{1}<<bottom,alpha);
+    });
 }
 extern "C" int c71_range_launch_groups(cudaStream_t s,unsigned kind,const void* input,size_t words,Group g,Children* p,size_t,Fp3* h,size_t) {
     return launch(s,[=] {
@@ -122,9 +130,27 @@ extern "C" int c71_dense_rne_launch(cudaStream_t s,const int64_t* raw,int16_t* o
         if(fail_dense) *failed=1;
     });
 }
+extern "C" int c71_byte_scatter_launch(cudaStream_t s,const void* input,unsigned kind,uint64_t input_count,
+    uint8_t* output,uint64_t output_count,uint32_t* failed,c71_byte::Tile t) {
+    assert(c71_byte::valid(t,kind,input_count,output_count));
+    return launch(s,[=] {
+        for(uint64_t i=0;i<t.rows*t.columns*t.width;++i) {
+            const uint64_t address=c71_byte::ordered(t.original_first+i,t);
+            if(address<t.window_first || address-t.window_first>=t.window_length) continue;
+            const uint64_t word=i/t.width, index=t.input_first+(word/t.columns)*t.input_stride+word%t.columns;
+            const int64_t value=kind==1?static_cast<const int16_t*>(input)[index]:static_cast<const int64_t*>(input)[index];
+            uint8_t byte=0;
+            if(!c71_byte::encode(value,t.signed_width,t.byte_first+i%t.width,byte)) *failed=1;
+            else output[address-t.window_first]=byte;
+        }
+    });
+}
 
 #ifdef C71_RANGE_FFI_TEST
 // Test library only; production exports neither error injection nor host math.
+extern "C" void c71_range_test_expect_bytes(const uint8_t* p,uint64_t n) {
+    assert(n && expected_bytes.empty()); expected_bytes.assign(p,p+n);
+}
 extern "C" void c71_range_test_failure(unsigned kind) {
     fail_launch=kind==1; fail_fence=kind==2; fail_free=kind==3; corrupt=kind==4;
 }
@@ -234,6 +260,93 @@ static void dense_checks() {
     assert(c71_range_close(c,&final) && final.cleanup_failed && final.weights_bytes==20 && final.arena_bytes==262144);
     fail_free=false;
 }
+static void byte_checks() {
+    // Independent biased addition, including both signed-48 and signed-32 ends.
+    for(unsigned width: {2u,4u,6u}) {
+        const int64_t bound=int64_t{1}<<(8*width-1);
+        for(int64_t value: {-bound,-bound+1,int64_t{-257},int64_t{-1},int64_t{0},int64_t{255},bound-1,bound}) {
+            for(unsigned lane=0;lane<width;++lane) {
+                uint8_t byte=99;
+                const bool valid=value>=-bound && value<bound && !(width==2 && value==INT16_MIN);
+                assert(c71_byte::encode(value,width,lane,byte)==valid);
+                if(valid) assert(byte==uint8_t(uint64_t(value+bound)>>(8*lane)));
+            }
+        }
+    }
+    const c71_byte::Tile base{0,4,2,4,32,0,128,0,2,2,7,2,1};
+    auto* c=create(); const auto input=dense_input(c), out=alloc(c,C71_BYTE_PENDING,128);
+    const auto before=stats(c);
+    assert(!c71_byte_begin(c,out));
+    assert(!c71_byte_scatter(c,input,&base,out));
+    assert(stats(c).fences==before.fences && stats(c).d2h_bytes==before.d2h_bytes);
+    // Producer lifetime ends before seal. Its reused allocation is ordered
+    // AFTER the queued scatter, not an input copy hidden in the gather.
+    assert(!c71_range_release(c,input));
+    const auto replacement=alloc(c,C71_I16,8);
+    const int16_t replacement_values[8]={99,99,99,99,99,99,99,99};
+    assert(!c71_range_upload(c,replacement,replacement_values,sizeof(replacement_values)));
+    assert(!c71_byte_seal(c,out));
+    assert(stats(c).d2h_bytes-before.d2h_bytes==4 && stats(c).h2d_bytes==before.h2d_bytes+16);
+    expected_bytes.assign(128,0);
+    const int16_t values[]={1,2,3,4,-1,-2,-3,-4};
+    for(unsigned i=0;i<16;++i) {
+        const unsigned original=32+i;
+        // Independent bit mapping: low subtree bit stays, next two move up.
+        unsigned address=original&1;
+        for(unsigned bit=1;bit<7;++bit) address|=((original>>bit)&1)<<(bit<3?bit+4:bit-2);
+        expected_bytes[address]=uint8_t((int(values[i/2])+32768)>>(8*(i%2)));
+    }
+    const auto root=alloc(c,C71_PAIR,1);
+    assert(!c71_range_roots(c,out,7,{19,2,3},root,0));
+    uint64_t limbs[6]; assert(!c71_range_read(c,root,limbs,6));
+    assert(expected_bytes.empty());
+    close(c);
+    for(unsigned test=0;test<19;++test) {
+        c=create(); const auto x=dense_input(c), pending=alloc(c,C71_BYTE_PENDING,128);
+        if(test!=1) assert(!c71_byte_begin(c,pending));
+        auto t=base; int status=0;
+        switch(test) {
+        case 0: { auto r=alloc(c,C71_PAIR,1); status=c71_range_roots(c,pending,7,{19,2,3},r,0); break; }
+        case 1: status=c71_byte_scatter(c,x,&t,pending); break;
+        case 2: status=c71_byte_begin(c,pending); break;
+        case 3: { auto empty=alloc(c,C71_I16,8); status=c71_byte_scatter(c,empty,&t,pending); break; }
+        case 4: t.signed_width=6; status=c71_byte_scatter(c,x,&t,pending); break;
+        case 5: t.original_first=UINT64_MAX; status=c71_byte_scatter(c,x,&t,pending); break;
+        case 6: t.input_stride=0; status=c71_byte_scatter(c,x,&t,pending); break;
+        case 7: t.input_first=UINT64_MAX; status=c71_byte_scatter(c,x,&t,pending); break;
+        case 8: t.dimension=36; status=c71_byte_scatter(c,x,&t,pending); break;
+        case 9: t.suffix=7; status=c71_byte_scatter(c,x,&t,pending); break;
+        case 10: t.bottom=8; status=c71_byte_scatter(c,x,&t,pending); break;
+        case 11: t.window_first=1; status=c71_byte_scatter(c,x,&t,pending); break;
+        case 12: t.window_length=64; status=c71_byte_scatter(c,x,&t,pending); break;
+        case 13: status=c71_byte_scatter(c,pending,&t,pending); break;
+        case 14: assert(!c71_byte_seal(c,pending)); status=c71_byte_scatter(c,x,&t,pending); break;
+        case 15: assert(!c71_byte_scatter(c,x,&t,pending)); fail_fence=true; status=c71_byte_seal(c,pending); fail_fence=false; break;
+        case 16: assert(!c71_byte_scatter(c,x,&t,pending)); corrupt=true; status=c71_byte_seal(c,pending); corrupt=false; break;
+        case 17: fail_launch=true; status=c71_byte_scatter(c,x,&t,pending); fail_launch=false; break;
+        case 18: {
+            const int16_t large[]={32767,32767,32767,32767};
+            assert(!c71_dense_weights_begin(c,4));
+            assert(!c71_dense_weights_upload(c,0,large,4)); assert(!c71_dense_weights_seal(c));
+            const auto in=alloc(c,C71_I16,4), raw=alloc(c,C71_I64,1);
+            assert(!c71_range_upload(c,in,large,sizeof(large)));
+            assert(!c71_dense_product(c,in,0,{1,1,4},raw));
+            const c71_byte::Tile narrow{0,1,1,1,0,0,128,0,4,4,7,0,0};
+            assert(!c71_byte_scatter(c,raw,&narrow,pending));
+            status=c71_byte_seal(c,pending); break; // actual device-codec flag
+        }
+        }
+        assert(status && stats(c).stopped);
+        const auto attempted=launches;
+        assert(c71_byte_seal(c,pending) && launches==attempted);
+        close(c);
+    }
+    // Releasing an unfinished window retires its flag too, without freeing arena.
+    c=create(); const auto pending=alloc(c,C71_BYTE_PENDING,128);
+    assert(!c71_byte_begin(c,pending)); assert(stats(c).live_capacity_bytes==512);
+    assert(!c71_range_release(c,pending)); assert(!stats(c).live_capacity_bytes);
+    close(c);
+}
 int main() {
     C71RangeContext* c=nullptr;
     assert(c71_range_runtime_abi()==2);
@@ -305,7 +418,8 @@ int main() {
     assert(c71_range_close(c,&final) && final.cleanup_failed && final.arena_bytes==262144);
     fail_free=false;
     dense_checks();
+    byte_checks();
     assert(allocations==frees);
-    std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":23,\"dense_batches\":2,\"dense_row_views\":1,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
+    std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":23,\"byte_rejections\":19,\"dense_batches\":2,\"dense_row_views\":1,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
 }
 #endif

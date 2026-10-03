@@ -628,10 +628,28 @@ sono clonabili e richiedono rilascio esplicito, o cleanup dell'intero owner.
 L'ABI 2 mantiene lo stesso layout, ma il loader richiede anche i simboli
 di vista/abort; una libreria precedente senza questi simboli è rifiutata.
 Il dispatcher rifiuta gli altri producer: non è un preparatore GPU completo
-né un fallback. Mancano gli operatori rimanenti, il gather byte nativo,
+né un fallback. Il gather byte nativo ora riusa `Bytes::resident_tiles`,
+le medesime tessere di `emit_row_bytes`, su blocchi originali residenti.
+`ByteWindow` seleziona sorgenti con le intersezioni pubbliche esistenti;
+le bitmap per riga rifiutano duplicati e copertura incompleta. Ogni blocco
+deve conservare layout, ricette, sorgente e shape. Il kernel in
+[c71_dense_i16.cu](../../cuda/c71_dense_i16.cu), con descrittore
+[c71_byte_gather.cuh](../../cuda/c71_byte_gather.cuh), applica il bias solo
+al byte alto e la permutazione `[tail][prefisso][u][sottoalbero]`.
+Suffix zero fornisce la stessa finestra in ordine originale. Gli input
+rimangono residenti; il codice enumera i byte dei soli segmenti di tessere
+selezionati, non l'intero dominio A, ma filtra ancora quelli fuori finestra.
+L'owner azzera il solo output, riserva un flag sticky per finestra e usa
+il tipo pending, rifiutato dal range. Il seal richiede copertura Rust,
+fence e flag valido prima di convertirlo in u8; scarica solo 4 B di stato.
+Il rilascio anticipato ritira anche il flag senza liberare l'arena. La
+copertura del layout è responsabilità del wrapper Rust fidato; l'ABI C
+controlla codec, accessi e stato del buffer, non certifica il DAG da sola.
+Il loader richiede anche i tre simboli begin/scatter/seal. Mancano ancora
+gli operatori rimanenti e il collegamento di questo gather al replay,
 lo scanner PCS/range interamente residente, il lifecycle comune del runner
 e il conto simultaneo di prover/verificatore/PCS/Seed6. Il ledger C non
-comprende i nuovi descrittori Rust o il picco fisico completo.
+comprende i descrittori/bitmap Rust o il picco fisico completo.
 Il modello host dei frammenti non è esecuzione o verifica concorrente CUDA.
 
 RMS usa P/Y originali e S48 condiviso per riga, con checkpoint da

@@ -14,6 +14,95 @@ pub(super) struct Rows {
     recipe: [u8; 32],
 }
 
+/// A pending window owns zero-filled external padding, but is NOT a range
+/// source until the original source rows are complete and device work fenced.
+pub(super) struct ByteWindow<'a> {
+    bytes: &'a bytes::Bytes,
+    recipe: [u8; 32],
+    window: bytes::RangeWindow,
+    length: usize,
+    seen: BTreeMap<usize, Vec<u64>>,
+    buffer: Buffer,
+}
+impl<'a> ByteWindow<'a> {
+    pub(super) fn new(
+        runtime: &mut Runtime,
+        b: &'a bytes::Bytes,
+        recipe: [u8; 32],
+        dimension: usize,
+        first: usize,
+        length: usize,
+        suffix: usize,
+        bottom: usize,
+    ) -> Result<Self, String> {
+        let window = match bytes::RangeWindow::new(dimension, first, length, suffix, bottom) {
+            Ok(w) => w,
+            Err(e) => return runtime.abort(e),
+        };
+        let sources = match b.range_window_sources(&window) {
+            Ok(s) => s,
+            Err(e) => return runtime.abort(e),
+        };
+        // Same row bitmap contract as the CPU scanner, not an A-sized bitmap.
+        let seen = sources
+            .into_iter()
+            .map(|id| (id, vec![0u64; b.scalar.layout.sources[id].rows.div_ceil(64)]))
+            .collect();
+        let buffer = runtime.byte_window(length)?;
+        Ok(Self { bytes: b, recipe, window, length, seen, buffer })
+    }
+
+    pub(super) fn sources(&self) -> impl Iterator<Item = usize> + '_ {
+        self.seen.keys().copied()
+    }
+
+    pub(super) fn append(&mut self, runtime: &mut Runtime, rows: &Rows) -> Result<(), String> {
+        let b = self.bytes;
+        let shape = b.scalar.layout.sources.get(rows.source);
+        if rows.layout != b.layout_digest
+            || rows.recipe != self.recipe
+            || rows.rows == 0
+            || shape.is_none_or(|s| {
+                s.cols != rows.columns
+                    || rows.first.checked_add(rows.rows).is_none_or(|end| end > s.rows)
+            })
+        {
+            return runtime.abort("resident byte block identity or shape differs");
+        }
+        let Some(seen) = self.seen.get_mut(&rows.source) else {
+            return runtime.abort("resident byte source not requested");
+        };
+        for r in rows.first..rows.first + rows.rows {
+            if seen[r / 64] & (1 << (r % 64)) != 0 {
+                return runtime.abort("duplicate resident byte row");
+            }
+            seen[r / 64] |= 1 << (r % 64);
+        }
+        if let Err(e) = b.resident_tiles(
+            &self.window,
+            self.length,
+            rows.source,
+            rows.first,
+            rows.rows,
+            |tile| runtime.scatter_bytes(&rows.buffer, &tile, &self.buffer),
+        ) {
+            return runtime.abort(e);
+        }
+        Ok(())
+    }
+
+    pub(super) fn finish(self, runtime: &mut Runtime) -> Result<Buffer, String> {
+        for (&id, seen) in &self.seen {
+            if seen.iter().map(|x| x.count_ones() as usize).sum::<usize>()
+                != self.bytes.scalar.layout.sources[id].rows
+            {
+                return runtime.abort("incomplete resident byte window");
+            }
+        }
+        runtime.seal_bytes(self.buffer)
+    }
+}
+
 fn install(runtime: &mut Runtime, plan: &Plan, weights: Arc<Vec<i16>>) -> Result<(), String> {
     let words = plan.sources.iter().try_fold(0usize, |end, s| {
         s.rows
@@ -152,6 +241,25 @@ impl Rows {
 }
 
 impl Canonical {
+    pub(super) fn native_byte_window(
+        &self,
+        runtime: &mut Runtime,
+        first: usize,
+        length: usize,
+        suffix: usize,
+        bottom: usize,
+    ) -> Result<ByteWindow<'_>, String> {
+        ByteWindow::new(
+            runtime,
+            self.bytes(),
+            self.recipes.digest,
+            34,
+            first,
+            length,
+            suffix,
+            bottom,
+        )
+    }
     pub(super) fn install_native_weights(
         &self,
         runtime: &mut Runtime,
@@ -200,6 +308,192 @@ impl Canonical {
 mod tests {
     use super::*;
     use kernel::range::windowed::native::tests::{fixture, Injection};
+
+    fn gather_layout() -> bytes::Bytes {
+        use crate::c71_matrix::gemma::{caller::Auxiliary, tiles, Source};
+        let sources = (0..3)
+            .map(|id| Source {
+                name: format!("gather/{id}"),
+                rows: 3,
+                cols: 3,
+                packed_offset: id * 9,
+            })
+            .collect::<Vec<_>>();
+        let (tiles, live) = tiles(&sources);
+        bytes::Bytes::new(
+            Auxiliary {
+                layout: Plan { sources, tiles, live, cohorts: Vec::new(), layout_digest: [11; 32] },
+                weight_layout: [12; 32],
+                input_sources: Vec::new(),
+            },
+            vec![6, 2, 4],
+        )
+        .unwrap()
+    }
+
+    fn gather_rows(
+        runtime: &mut Runtime,
+        b: &bytes::Bytes,
+        id: usize,
+        first: usize,
+        values: &[i16],
+    ) -> Rows {
+        let input = runtime.upload_signed(values).unwrap();
+        let raw = runtime
+            .product(&input, 0, 0, DenseShape { m: (values.len() / 3) as u32, n: 3, k: 3 })
+            .unwrap();
+        runtime.release_buffer(input).unwrap();
+        let buffer = if b.widths[id] == 2 {
+            let y = runtime.quantize(&raw, 0).unwrap();
+            runtime.release_buffer(raw).unwrap();
+            y
+        } else {
+            raw
+        };
+        Rows {
+            buffer,
+            source: id,
+            first,
+            rows: values.len() / 3,
+            columns: 3,
+            layout: b.layout_digest,
+            recipe: [7; 32],
+        }
+    }
+
+    #[test]
+    fn c71_canonical_resident_byte_windows_preserve_layout_and_order() {
+        let f = fixture(512);
+        let injection = Injection::new(&f.config);
+        let b = gather_layout();
+        let values = [-32767, -256, -1, 0, 1, 255, 256, 12345, 32767];
+        let mut runtime = Runtime::new(&f.config).unwrap();
+        runtime.install_weights(Arc::new(vec![1, 0, 0, 0, 1, 0, 0, 0, 1]), [12; 32]).unwrap();
+        let blocks = [
+            gather_rows(&mut runtime, &b, 0, 0, &values),
+            gather_rows(&mut runtime, &b, 1, 2, &values[6..]),
+            gather_rows(&mut runtime, &b, 1, 0, &values[..6]),
+            gather_rows(&mut runtime, &b, 2, 0, &values),
+        ];
+        let mut original = vec![0u8; 128];
+        for id in 0..3 {
+            for row in 0..3 {
+                let words =
+                    values[row * 3..row * 3 + 3].iter().map(|&x| i64::from(x)).collect::<Vec<_>>();
+                b.emit_row_bytes(id, row, &words, |i, x| {
+                    original[i] = x;
+                    Ok(())
+                })
+                .unwrap();
+            }
+        }
+        let before = runtime.stats().unwrap();
+        let alpha = Fp3::new(Fp::new(19), Fp::new(2), Fp::new(3));
+        let mut windows = 0;
+        for bottom in 0..=3 {
+            for suffix in 0..=7 - bottom {
+                for (first, length) in [(0, 128), (0, 32), (32, 32), (64, 32), (96, 32)] {
+                    let reference =
+                        bytes::RangeWindow::new(7, first, length, suffix, bottom).unwrap();
+                    let mut expected = vec![0u8; length];
+                    for (i, &x) in original.iter().enumerate() {
+                        if let Some(j) = reference.offset(i) {
+                            expected[j] = x;
+                        }
+                    }
+                    let mut window = ByteWindow::new(
+                        &mut runtime,
+                        &b,
+                        [7; 32],
+                        7,
+                        first,
+                        length,
+                        suffix,
+                        bottom,
+                    )
+                    .unwrap();
+                    let requested = window.sources().collect::<BTreeSet<_>>();
+                    for block in blocks.iter().rev().filter(|b| requested.contains(&b.source)) {
+                        window.append(&mut runtime, block).unwrap();
+                    }
+                    let sealed = window.finish(&mut runtime).unwrap();
+                    // Root equality alone cannot catch a byte permutation.
+                    injection.expect_bytes(&expected);
+                    let signed = expected.iter().map(|&v| i16::from(v)).collect::<Vec<_>>();
+                    assert_eq!(
+                        runtime.root_check(&sealed, alpha).unwrap(),
+                        expected_root(&signed, alpha)
+                    );
+                    runtime.release_buffer(sealed).unwrap();
+                    assert_eq!(
+                        runtime.stats().unwrap().live_capacity_bytes,
+                        before.live_capacity_bytes
+                    );
+                    windows += 1;
+                }
+            }
+        }
+        let after = runtime.stats().unwrap();
+        assert_eq!(after.h2d_bytes, before.h2d_bytes);
+        assert_eq!(after.d2h_bytes - before.d2h_bytes, windows * 52); // sticky flag + scalar root only
+        for block in blocks {
+            block.release(&mut runtime).unwrap();
+        }
+        assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+        runtime.close().unwrap();
+        eprintln!("C71_RESIDENT_BYTE_WINDOWS count={windows} codecs=6/2/4 max_bytes=128 exact_order=true intermediate_download_bytes=0 gpu=false");
+    }
+
+    #[test]
+    fn c71_canonical_resident_byte_rejections_are_terminal() {
+        let f = fixture(512);
+        let b = gather_layout();
+        for test in 0..9 {
+            let mut runtime = Runtime::new(&f.config).unwrap();
+            runtime.install_weights(Arc::new(vec![1, 0, 0, 0, 1, 0, 0, 0, 1]), [12; 32]).unwrap();
+            let mut block = gather_rows(&mut runtime, &b, 1, 0, &[1; 9]);
+            let mut window = ByteWindow::new(&mut runtime, &b, [7; 32], 7, 0, 128, 1, 1).unwrap();
+            let injection = Injection::new(&f.config);
+            match test {
+                0 => block.layout[0] ^= 1,
+                1 => block.recipe[0] ^= 1,
+                2 => block.first = usize::MAX,
+                3 => block.columns += 1,
+                4 => block.source = 100,
+                7 => injection.set(1),
+                _ => (),
+            }
+            let result = if test == 5 {
+                window.append(&mut runtime, &block).unwrap();
+                window.append(&mut runtime, &block)
+            } else if test == 6 {
+                window.append(&mut runtime, &block).unwrap();
+                window.finish(&mut runtime).map(|_| ())
+            } else if test == 8 {
+                runtime.root_check(&window.buffer, Fp3::ONE).map(|_| ())
+            } else {
+                window.append(&mut runtime, &block)
+            };
+            injection.set(0);
+            assert!(result.is_err(), "byte rejection {test}");
+            assert_eq!(runtime.stats().unwrap().stopped, 1);
+            assert!(runtime.byte_window(32).is_err());
+            runtime.close().unwrap();
+        }
+        // Empty external padding may seal, but still must fence and check flag.
+        for failure in [2, 4] {
+            let mut runtime = Runtime::new(&f.config).unwrap();
+            let window = ByteWindow::new(&mut runtime, &b, [7; 32], 8, 128, 128, 0, 0).unwrap();
+            assert_eq!(window.sources().count(), 0);
+            let injection = Injection::new(&f.config);
+            injection.set(failure);
+            assert!(window.finish(&mut runtime).is_err());
+            injection.set(0);
+            assert_eq!(runtime.stats().unwrap().stopped, 1);
+            runtime.close().unwrap();
+        }
+        eprintln!("C71_RESIDENT_BYTE_REJECTIONS count=11 terminal=true gpu=false");
+    }
 
     fn weights(plan: &Plan) -> Arc<Vec<i16>> {
         let count = plan.sources.iter().map(|s| s.packed_offset + s.rows * s.cols).max().unwrap();
@@ -366,6 +660,15 @@ mod tests {
         }
         let p = Canonical::compile(0, &[0; 772], &scales).unwrap();
         let mut runtime = Runtime::new(&f.config).unwrap();
+        let window = p.native_byte_window(&mut runtime, (1 << 34) - 128, 128, 0, 0).unwrap();
+        assert_eq!(window.sources().count(), 0);
+        let padding = window.finish(&mut runtime).unwrap();
+        Injection::new(&f.config).expect_bytes(&[0; 128]);
+        let alpha = signed(13);
+        assert_eq!(runtime.root_check(&padding, alpha).unwrap(), expected_root(&[0; 128], alpha));
+        runtime.release_buffer(padding).unwrap();
+        assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+        let launches = runtime.stats().unwrap().launches;
         let input = p.upload_native_rows(&mut runtime, 0, 149, &vec![1; 5376]).unwrap();
         let step = p.steps.iter().position(|step| matches!(step, Producer::Embedding)).unwrap();
         assert_eq!(
@@ -375,7 +678,7 @@ mod tests {
             "canonical native producer not implemented"
         );
         assert_eq!(runtime.stats().unwrap().stopped, 1);
-        assert_eq!(runtime.stats().unwrap().launches, 0);
+        assert_eq!(runtime.stats().unwrap().launches, launches);
         runtime.close().unwrap();
         let mut runtime = Runtime::new(&f.config).unwrap();
         assert!(p.install_native_weights(&mut runtime, Arc::new(vec![1, 2])).is_err());

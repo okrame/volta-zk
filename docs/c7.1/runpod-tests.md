@@ -65,8 +65,9 @@ non descrive più questo percorso. Restano i workspace query/range e i
 kernel densi da adattare. Lo scanner CPU ricostruisce ora per producer,
 con righe vive fino all'ultimo consumer e GEMM a batch con letture W
 condivise. La schedule raggiunge PCS/range. L'adapter Matrix/RNE ora usa
-gli handle residenti, ma mancano gli altri producer e il gather byte
-prima di collegarlo allo scanner completo; non costituisce un forward GPU.
+gli handle residenti e dispone di gather byte nativo con copertura delle
+righe e pubblicazione dopo fence. Mancano gli altri producer e il
+collegamento allo scanner/consumer completo; non costituisce un forward GPU.
 Le prime query A leggono ora finestre originali
 fino a 256 MiB e non duplicano la matrice del risultato; la parità è
 soltanto ridotta e non chiude la contabilità fisica simultanea.

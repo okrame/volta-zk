@@ -1,5 +1,6 @@
 #include <cuda_runtime.h>
 #include "c71_dense_i16.cuh"
+#include "c71_byte_gather.cuh"
 using namespace c71_dense;
 
 __device__ __forceinline__ void mma(int32_t (&d)[4],const uint32_t (&a)[4],const uint32_t (&b)[2]) {
@@ -89,5 +90,31 @@ extern "C" cudaError_t c71_dense_rne_launch(cudaStream_t stream,const int64_t* r
        !span(output,count*2,oe) || !span(failed,4,fe) || overlaps(raw,re,output,oe) ||
        overlaps(raw,re,failed,fe) || overlaps(output,oe,failed,fe)) return cudaErrorInvalidValue;
     c71_dense_rne<<<(count+255)/256,256,0,stream>>>(raw,output,count,shift,failed);
+    return cudaGetLastError();
+}
+
+extern "C" __global__ void c71_byte_scatter_kernel(const void* input,unsigned kind,
+    uint8_t* output,uint32_t* failed,c71_byte::Tile t) {
+    const uint64_t count=t.rows*t.columns*t.width;
+    for(uint64_t i=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;i<count;i+=uint64_t(gridDim.x)*blockDim.x) {
+        const uint64_t address=c71_byte::ordered(t.original_first+i,t);
+        if(address<t.window_first || address-t.window_first>=t.window_length) continue;
+        const uint64_t word=i/t.width, index=t.input_first+(word/t.columns)*t.input_stride+word%t.columns;
+        const int64_t value=kind==1?static_cast<const int16_t*>(input)[index]:static_cast<const int64_t*>(input)[index];
+        uint8_t byte=0;
+        if(!c71_byte::encode(value,t.signed_width,t.byte_first+i%t.width,byte)) atomicOr(failed,1u);
+        else output[address-t.window_first]=byte;
+    }
+}
+extern "C" cudaError_t c71_byte_scatter_launch(cudaStream_t stream,const void* input,unsigned kind,
+    uint64_t input_count,uint8_t* output,uint64_t output_count,uint32_t* failed,c71_byte::Tile t) {
+    uintptr_t ie,oe,fe;
+    if(!stream || !c71_byte::valid(t,kind,input_count,output_count) ||
+       reinterpret_cast<uintptr_t>(input)%(kind==1?2:8) || reinterpret_cast<uintptr_t>(failed)%4 ||
+       input_count>UINT64_MAX/(kind==1?2:8) ||
+       !span(input,input_count*(kind==1?2:8),ie) || !span(output,output_count,oe) || !span(failed,4,fe) ||
+       overlaps(input,ie,output,oe) || overlaps(input,ie,failed,fe) || overlaps(output,oe,failed,fe)) return cudaErrorInvalidValue;
+    const uint64_t blocks=(t.rows*t.columns*t.width+255)/256;
+    c71_byte_scatter_kernel<<<blocks>65535?65535:blocks,256,0,stream>>>(input,kind,output,failed,t);
     return cudaGetLastError();
 }

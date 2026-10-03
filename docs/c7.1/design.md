@@ -170,6 +170,12 @@ collega Matrix e RNE agli handle residenti: controlla sorgente, layout,
 ricette, righe selezionate e lo stesso owner Arc di W. Una vista di righe
 non copia o riduce la capacità del buffer padre. Gli altri producer sono
 rifiutati esplicitamente; lo scanner completo non usa ancora questi handle.
+Il gather residente ora riusa le tessere byte originali per finestre
+contigue o riordinate, con codec biased i16/i32/i48 e padding esterno zero.
+Una bitmap di righe impedisce duplicati o omissioni; la finestra resta
+non consumabile fino al fence e al controllo del flag device. Il controllo
+ridotto verifica anche l'ordine dei byte con driver simulato. Non è ancora
+collegato al replay completo o ai consumer PCS/range del runner GPU.
 Non è acquisita una misura GPU. Il raffinamento PTX/CUDA all'intero signed-48 resta
 un obbligo aperto, non scaricato dai lemmi Lean o dai casi finiti host.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,

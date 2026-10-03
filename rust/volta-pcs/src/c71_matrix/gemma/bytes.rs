@@ -141,6 +141,55 @@ impl Plan {
 }
 
 impl Bytes {
+    /// Native views of the SAME dyadic byte tiles used by emit_row_bytes.
+    /// Only intersecting public tiles are scheduled, never the flat A domain.
+    pub(super) fn resident_tiles(
+        &self,
+        window: &RangeWindow,
+        length: usize,
+        id: usize,
+        first: usize,
+        rows: usize,
+        mut emit: impl FnMut(crate::c71_matrix::range::windowed::native::ByteTile) -> Result<(), String>,
+    ) -> Result<(), String> {
+        use crate::c71_matrix::range::windowed::native::ByteTile;
+        let source = self.scalar.layout.sources.get(id).ok_or("resident byte source missing")?;
+        let end = first.checked_add(rows).ok_or("resident byte rows overflow")?;
+        if rows == 0 || end > source.rows {
+            return Err("resident byte rows outside source".into());
+        }
+        for &index in &self.by_source[id] {
+            let t = &self.scalar.layout.tiles[index];
+            let lo = first.max(t.row);
+            let hi = end.min(t.row + t.rows);
+            if lo >= hi {
+                continue;
+            }
+            for &index in &self.by_scalar[index] {
+                let b = &self.tiles[index];
+                if !window.intersects(b.offset, t.rows * t.cols * b.width) {
+                    continue;
+                }
+                emit(ByteTile {
+                    input_first: ((lo - first) * source.cols + t.col) as u64,
+                    input_stride: source.cols as u64,
+                    rows: (hi - lo) as u64,
+                    columns: t.cols as u64,
+                    original_first: (b.offset + (lo - t.row) * t.cols * b.width) as u64,
+                    window_first: window.first as u64,
+                    window_length: length as u64,
+                    byte_first: b.first as u32,
+                    width: b.width as u32,
+                    signed_width: self.widths[id] as u32,
+                    dimension: window.dimension as u32,
+                    suffix: window.suffix as u32,
+                    bottom: window.bottom as u32,
+                })?;
+            }
+        }
+        Ok(())
+    }
+
     /// The range gather selects producers by public tile/window intersections.
     /// It does not ask the scalar getter for each permuted output address.
     pub(super) fn range_window_sources(&self, window: &RangeWindow) -> Result<Vec<usize>, String> {

@@ -636,6 +636,15 @@ kernel ferma l'owner C. Questa identità locale non è il binding
 crittografico al commitment: il collegamento all'installazione PCS e il
 lifecycle degli snapshot/tentativi del preparatore completo restano da
 realizzare nel runner. Gli operatori assenti non vengono eseguiti su CPU.
+Il gather residente deriva indirizzi e bias dalle stesse tessere originali,
+senza vedere correlazioni o transcript. I controlli Rust richiedono una
+sola emissione di ogni riga delle sorgenti selezionate prima del seal;
+un buffer pending non entra nel range. Il flag sticky e il fence precedono
+la pubblicazione, inclusi gli errori asincroni. I test confrontano l'ordine
+esatto con lo scanner CPU: una root fraction-tree uguale non basterebbe,
+perché non rileverebbe una permutazione. Rimangono aperti la correttezza
+concorrente CUDA, il raffinamento generale del gather e il collegamento
+agli snapshot del runner; la copertura ridotta non li dimostra.
 Nessun output del
 componente da solo costituisce una prova accettabile.
 Il raffinamento di questa implementazione al prodotto intero del §4 non

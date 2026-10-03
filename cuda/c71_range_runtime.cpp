@@ -19,11 +19,13 @@ cudaError_t c71_range_launch_reduce(cudaStream_t,const Cubic*,size_t,Cubic*);
 cudaError_t c71_range_launch_h_coefficients(cudaStream_t,const Fp3*,unsigned,Round,Cubic*);
 cudaError_t c71_dense_i16_launch(cudaStream_t,const int16_t*,uint64_t,const int16_t*,uint64_t,int64_t*,uint64_t,uint32_t*,c71_dense::Shape);
 cudaError_t c71_dense_rne_launch(cudaStream_t,const int64_t*,int16_t*,uint64_t,int32_t,uint32_t*);
+cudaError_t c71_byte_scatter_launch(cudaStream_t,const void*,unsigned,uint64_t,uint8_t*,uint64_t,uint32_t*,c71_byte::Tile);
 }
 
 struct Buffer {
     uint64_t id=0, offset=0, capacity=0, count=0, initialized=0;
     uint32_t kind=0;
+    uint64_t flag=0;
 };
 struct C71RangeContext {
     int device=0;
@@ -36,9 +38,9 @@ struct C71RangeContext {
     const char* error="";
 };
 namespace {
-constexpr uint64_t sizes[]={1,2,48,96,24,96,8};
+constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
-                          uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n};
+                          uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31};
 std::atomic<uint64_t> next_handle{1};
 bool canonical(Fp3 a) { return a.c0<P && a.c1<P && a.c2<P; }
 bool power2(uint64_t n) { return n && !(n&(n-1)); }
@@ -132,7 +134,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
 }
 extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     if(!ready(c)) return -1;
-    if(!out || kind>C71_I64 || !count || count>caps[kind]) return fail(c,"range allocation shape");
+    if(!out || kind>C71_BYTE_PENDING || !count || count>caps[kind]) return fail(c,"range allocation shape");
     const uint64_t capacity=(count*sizes[kind]+255)&~uint64_t{255};
     Buffer* slot=nullptr;
     for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
@@ -157,6 +159,7 @@ extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,u
 extern "C" int c71_range_release(C71RangeContext* c,uint64_t id) {
     if(!ready(c)) return -1;
     auto* b=buffer(c,id); if(!b) return -1;
+    if(b->flag && c71_range_release(c,b->flag)) return -1;
     *b={}; ++c->stats.releases; recount(c);
     // No cudaFree: all prior/future uses are ordered on this owner stream.
     return 0;
@@ -362,4 +365,27 @@ extern "C" int c71_dense_quantize(C71RangeContext* c,uint64_t in,int32_t shift,u
     if(launched(c,c71_dense_rne_launch(c->stream,ptr<int64_t>(c,a),ptr<int16_t>(c,b),a->count,shift,
                                      ptr<uint32_t>(c,buffer(c,flag))))) return -1;
     return dense_complete(c,flag,b);
+}
+extern "C" int c71_byte_begin(C71RangeContext* c,uint64_t out) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out);
+    if(!b || b->kind!=C71_BYTE_PENDING || b->initialized || b->flag) return fail(c,"byte window already begun or wrong kind");
+    if(dense_flag(c,&b->flag)) return -1;
+    if(checked(c,cudaMemsetAsync(ptr<void>(c,b),0,b->count,c->stream))) return -1;
+    c->stats.zeroed_bytes+=b->count; return 0;
+}
+extern "C" int c71_byte_scatter(C71RangeContext* c,uint64_t in,const c71_byte::Tile* t,uint64_t out) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,in); auto* b=buffer(c,out);
+    if(!a || a->initialized!=a->count || !b || b->kind!=C71_BYTE_PENDING || !b->flag || !t ||
+       !c71_byte::valid(*t,a->kind,a->count,b->count)) return fail(c,"byte scatter source or window shape");
+    return launched(c,c71_byte_scatter_launch(c->stream,ptr<void>(c,a),a->kind,a->count,ptr<uint8_t>(c,b),b->count,
+                                              ptr<uint32_t>(c,buffer(c,b->flag)),*t));
+}
+extern "C" int c71_byte_seal(C71RangeContext* c,uint64_t out) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out);
+    if(!b || b->kind!=C71_BYTE_PENDING || !b->flag) return fail(c,"byte seal requires pending window");
+    if(dense_complete(c,b->flag,b)) return -1;
+    b->flag=0; b->kind=C71_U8; return 0;
 }

@@ -148,6 +148,23 @@ pub(in crate::c71_matrix) struct DenseShape {
     pub k: u32,
 }
 const _: () = assert!(size_of::<DenseShape>() == 12);
+#[repr(C)]
+pub(in crate::c71_matrix) struct ByteTile {
+    pub input_first: u64,
+    pub input_stride: u64,
+    pub rows: u64,
+    pub columns: u64,
+    pub original_first: u64,
+    pub window_first: u64,
+    pub window_length: u64,
+    pub byte_first: u32,
+    pub width: u32,
+    pub signed_width: u32,
+    pub dimension: u32,
+    pub suffix: u32,
+    pub bottom: u32,
+}
+const _: () = assert!(size_of::<ByteTile>() == 80);
 /// Opaque, non-cloneable resident allocation. Release through its runtime;
 /// dropping this descriptor alone does not release device capacity.
 pub(in crate::c71_matrix) struct Buffer {
@@ -196,6 +213,9 @@ api! {
     weights_seal: unsafe extern "C" fn(Raw)->i32 => "c71_dense_weights_seal",
     product: unsafe extern "C" fn(Raw,u64,u64,u64,DenseShape,u64)->i32 => "c71_dense_product_rows",
     quantize: unsafe extern "C" fn(Raw,u64,i32,u64)->i32 => "c71_dense_quantize",
+    byte_begin: unsafe extern "C" fn(Raw,u64)->i32 => "c71_byte_begin",
+    byte_scatter: unsafe extern "C" fn(Raw,u64,*const ByteTile,u64)->i32 => "c71_byte_scatter",
+    byte_seal: unsafe extern "C" fn(Raw,u64)->i32 => "c71_byte_seal",
 }
 pub(in crate::c71_matrix) struct Runtime {
     api: Api,
@@ -343,6 +363,32 @@ impl Runtime {
     pub(in crate::c71_matrix) fn release_buffer(&mut self, buffer: Buffer) -> Result<(), String> {
         self.release(buffer.id)
     }
+    pub(in crate::c71_matrix) fn byte_window(&mut self, count: usize) -> Result<Buffer, String> {
+        let id = self.alloc(7, count)?;
+        let status = unsafe { (self.api.byte_begin)(self.raw, id) };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 7, count })
+    }
+    pub(in crate::c71_matrix) fn scatter_bytes(
+        &mut self,
+        input: &Buffer,
+        tile: &ByteTile,
+        output: &Buffer,
+    ) -> Result<(), String> {
+        self.ready()?;
+        let status = unsafe { (self.api.byte_scatter)(self.raw, input.id, tile, output.id) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn seal_bytes(
+        &mut self,
+        mut output: Buffer,
+    ) -> Result<Buffer, String> {
+        self.ready()?;
+        let status = unsafe { (self.api.byte_seal)(self.raw, output.id) };
+        self.check(status)?;
+        output.kind = 0;
+        Ok(output)
+    }
     #[cfg(test)]
     pub(in crate::c71_matrix) fn root_check(
         &mut self,
@@ -350,8 +396,8 @@ impl Runtime {
         alpha: Fp3,
     ) -> Result<[Fp3; 2], String> {
         self.ready()?;
-        if input.kind != 1 || !input.count.is_power_of_two() || !(2..=2048).contains(&input.count) {
-            return self.abort("test root requires a small power-of-two signed block");
+        if input.kind > 1 || !input.count.is_power_of_two() || !(2..=2048).contains(&input.count) {
+            return self.abort("test root requires a small power-of-two original block");
         }
         let id = self.alloc(2, 1)?;
         let status = unsafe {
@@ -884,6 +930,15 @@ pub(in crate::c71_matrix) mod tests {
             let _ = &self.api;
             unsafe {
                 (self.call)(kind);
+            }
+        }
+        pub(in crate::c71_matrix) fn expect_bytes(&self, bytes: &[u8]) {
+            // Fake driver observes exact byte ORDER when roots consumes it.
+            // Production exports no array download or this assertion hook.
+            let call: unsafe extern "C" fn(*const u8, u64) =
+                unsafe { self.api.symbol(b"c71_range_test_expect_bytes\0") }.unwrap();
+            unsafe {
+                call(bytes.as_ptr(), bytes.len() as u64);
             }
         }
     }

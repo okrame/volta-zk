@@ -4,9 +4,10 @@
 #pragma once
 #include "c71_range_native.cuh"
 #include "c71_dense_i16.cuh"
+#include "c71_byte_gather.cuh"
 
 struct C71RangeContext;
-enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64 };
+enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64, C71_BYTE_PENDING };
 struct C71RangeStats {
     // Requested arena reservation, assigned aligned capacities, logical payload.
     // NOT driver/context/shared/stack overhead or the whole-pipeline GPU peak.
@@ -51,4 +52,10 @@ int c71_dense_product(C71RangeContext*,uint64_t input,uint64_t weight_offset,c71
 // Borrow complete input rows in place; the parent handle retains capacity.
 int c71_dense_product_rows(C71RangeContext*,uint64_t input,uint64_t first_row,uint64_t weight_offset,c71_dense::Shape,uint64_t output);
 int c71_dense_quantize(C71RangeContext*,uint64_t raw,int32_t shift,uint64_t output);
+// Pending windows cannot be read by range. The Rust layout owner verifies
+// unique/complete source-row coverage before seal; C enforces memory safety,
+// codec bounds and a sticky arithmetic flag, fenced once at publication.
+int c71_byte_begin(C71RangeContext*,uint64_t output);
+int c71_byte_scatter(C71RangeContext*,uint64_t input,const c71_byte::Tile*,uint64_t output);
+int c71_byte_seal(C71RangeContext*,uint64_t output);
 }

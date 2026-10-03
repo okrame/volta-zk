@@ -211,6 +211,15 @@ conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
 
+Il test [test_c71_range_native.py](../../tests/test_c71_range_native.py),
+eseguito separatamente con il limite 60 s/2 GiB sopra, compila un controllo
+host di 37 casi per root signed/byte, coefficienti cubici, Gram e fold.
+Usa al massimo 2.048 valori originali; non esegue CUDA o una prova Rust.
+La compilazione di `cuda/c71_range_native.cu` per sm_90 verifica i kernel
+e i launcher, non il collegamento al runner o il picco fisico. Il toolkit
+locale dispone del runtime statico: usare `--cudart static` per la libreria,
+non dedurre un errore dei kernel dall'assenza di `libcudart.so`.
+
 Per il controllo host della FFT:
 
 ```bash
@@ -289,8 +298,9 @@ test integrati; il cap 2^21 e i domini D34/D35 non sono eseguiti.
 La verifica di questa riorganizzazione e gli eventuali fallimenti sono
 registrati nell'[audit documentale](../c7.1-history/reorganization-audit.md).
 Questa pagina contiene comandi e significato dei test; l'archivio conserva
-gli esiti datati. Dopo il checkpoint e prima di terminare la sessione
-rimuovere la cache canonica `rust/target`, preservando fixture ed evidenze;
-conservarla richiede un'indicazione del proprietario. Non creare target
+gli esiti datati. Il proprietario ha autorizzato il 2026-10-03 a conservare
+la cache canonica `rust/target` fino alla fine del goal corrente, per evitare
+ricompilazioni complete a ogni checkpoint. Alla conclusione del goal rimuovere
+la cache, preservando fixture ed evidenze, salvo nuove istruzioni. Non creare target
 alternativi per singoli crate. `.cargo/config.toml` imposta
 `target-cpu=native`: i tempi CPU non si trasferiscono a un'altra macchina.

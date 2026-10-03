@@ -595,6 +595,12 @@ calcolato dal packed immutabile all'installazione, prima delle correlazioni,
 e riautenticato a ogni prova. Il suffisso zero appartiene allo stesso dominio
 del commitment. Il collegamento non aggiunge un lemma Lean né scarica gli
 obblighi aperti di raffinamento, composizione Seed6 o implementazione CUDA.
+I nuovi kernel range condividono la rappresentazione Fp3, ma il controllo
+host e il binario compilato non provano la loro esecuzione concorrente.
+Riduzioni CAS per limb, aliasing dei buffer, lifecycle e sincronizzazione
+degli errori prima dell'autenticazione restano obblighi dell'adapter CUDA.
+I kernel non hanno accesso a transcript o correlazioni e non sono ancora
+chiamati dal prover: non costituiscono una prova CUDA acquisita.
 
 I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
 dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo

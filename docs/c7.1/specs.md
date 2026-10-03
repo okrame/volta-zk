@@ -454,6 +454,20 @@ owner packed del commitment; rifiuta i16::MIN e geometrie errate.
 Questo collegamento CPU non implementa i kernel CUDA specializzati né
 conferma il conto fisico completo o i tempi dello screen storico.
 
+[c71_range_native.cu](../../cuda/c71_range_native.cu) avvia il port CUDA
+di questo evaluator con la stessa rappresentazione Fp3. I gruppi originali
+sono limitati a 2^11 valori; il payload shared dinamico massimo è 52.224 B,
+comprensivo dei figli per u. I root strided evitano sovrascritture fra thread
+durante la riduzione. H usa bucket limitati e somme modulari CAS per limb;
+i suoi fold usano buffer distinti, non la compattazione CPU in-place.
+Le riduzioni dei coefficienti richiedono 256 thread e 24.576 B shared.
+Il kernel coefficienti compilato usa inoltre stack locale, da contabilizzare.
+I launcher di root e gruppi controllano geometrie, capacità dichiarate e
+limb canonici, ma non costituiscono ancora un adapter con owner residenti.
+Gli errori asincroni devono essere sincronizzati prima che Rust autentichi
+un risultato. Non esiste ancora un collegamento di questi kernel al runner;
+nessun percorso GPU o fallback implicito viene abilitato da questo file.
+
 Il primo scan completo del commitment byte conserva 256 contatori u64,
 con il suffisso esterno aggiunto al bin zero; l'istogramma è installato
 solo dopo il successo di produttore e consumer. I successivi scan non

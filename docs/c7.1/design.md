@@ -139,6 +139,13 @@ producer/arithmetic work, memoria simultanea e verifica canonica del range;
 la riduzione delle rigenerazioni non è un tempo H100 o una nuova prova Lean.
 Il bound di lavoro Eq/Pow dello screen rimane condizionale e non è
 trasferito automaticamente a questa implementazione.
+Il port CUDA del range dispone ora di kernel nativi per canopy, gruppi
+Gram, retention, fold e coefficienti. Il relativo controllo host non
+esegue i kernel; compilazione sm_90 e parità dell'algebra non sostituiscono
+il collegamento Rust, gli owner residenti, il fencing prima dei MAC o la
+verifica GPU, ancora da completare. La riduzione H con CAS, Eq per indice
+e lo stack locale del kernel coefficienti richiedono contabilità e misura;
+non ereditano il tempo o i conteggi dello screen storico.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,
 sui kernel densi, sul percorso CUDA e sulla contabilità fisica simultanea.
 I percorsi PCS grandi non sono ancora eseguiti o misurati. Questi non sono

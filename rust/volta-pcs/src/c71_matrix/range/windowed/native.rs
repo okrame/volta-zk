@@ -165,6 +165,37 @@ pub(in crate::c71_matrix) struct RopeShape {
 }
 const _: () = assert!(size_of::<RopeShape>() == 16);
 #[repr(C)]
+pub(in crate::c71_matrix) struct RmsShape {
+    pub rows: u32,
+    pub heads: u32,
+    pub columns: u32,
+    pub weighted: u32,
+    pub coefficients: [u64; 6],
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(in crate::c71_matrix) struct AttentionShape {
+    pub rows: u32,
+    pub first: u32,
+    pub head: u32,
+    pub old: u32,
+    pub groups: u32,
+    pub lanes: u32,
+}
+impl AttentionShape {
+    fn valid(&self) -> bool {
+        (1..=150).contains(&self.rows)
+            && self.first < 150
+            && self.rows <= 150 - self.first
+            && self.head < 32
+            && [0, 150, 300].contains(&self.old)
+            && (1..=32).contains(&self.groups)
+            && 32 % self.groups == 0
+            && (1..=512).contains(&self.lanes)
+    }
+}
+const _: () = assert!(size_of::<RmsShape>() == 64 && size_of::<AttentionShape>() == 24);
+#[repr(C)]
 pub(in crate::c71_matrix) struct ByteTile {
     pub input_first: u64,
     pub input_stride: u64,
@@ -234,6 +265,12 @@ api! {
     pointwise: unsafe extern "C" fn(Raw,u64,u64,u64,u64,Pointwise,u64)->i32 => "c71_dense_pointwise",
     histogram_begin: unsafe extern "C" fn(Raw,u64)->i32 => "c71_histogram_begin",
     histogram_seal: unsafe extern "C" fn(Raw,u64)->i32 => "c71_histogram_seal",
+    histogram_padding: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_histogram_padding",
+    signed_append: unsafe extern "C" fn(Raw,u64,u64,u64,u64)->i32 => "c71_signed_append",
+    rms: unsafe extern "C" fn(Raw,u64,u64,u64,RmsShape,u64,u64,u64)->i32 => "c71_dense_rms",
+    qk: unsafe extern "C" fn(Raw,u64,u64,u64,AttentionShape,u64)->i32 => "c71_dense_qk",
+    pv: unsafe extern "C" fn(Raw,*const u64,*const u64,u64,AttentionShape,u64)->i32 => "c71_dense_pv",
+    softmax: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,AttentionShape,*const u64)->i32 => "c71_dense_softmax",
     lookup: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64)->i32 => "c71_dense_lookup",
     rope: unsafe extern "C" fn(Raw,u64,u64,u64,u64,RopeShape,u64)->i32 => "c71_dense_rope",
     argmax: unsafe extern "C" fn(Raw,u64,u64,u32,u32,u64,*mut u32)->i32 => "c71_dense_argmax",
@@ -449,6 +486,153 @@ impl Runtime {
             unsafe { (self.api.upload)(self.raw, id, bytes.as_ptr().cast(), bytes.len() as u64) };
         self.check(status)?;
         Ok(Buffer { id, kind: 0, count: bytes.len(), owner: self.owner.clone() })
+    }
+    fn allocate_buffer(&mut self, kind: u32, count: usize) -> Result<Buffer, String> {
+        Ok(Buffer { id: self.alloc(kind, count)?, kind, count, owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn signed_capacity(
+        &mut self,
+        count: usize,
+    ) -> Result<Buffer, String> {
+        self.allocate_buffer(1, count)
+    }
+    pub(in crate::c71_matrix) fn append_signed(
+        &mut self,
+        input: &Buffer,
+        first: usize,
+        count: usize,
+        output: &Buffer,
+    ) -> Result<(), String> {
+        self.require_buffer(input)?;
+        self.require_buffer(output)?;
+        let status = unsafe {
+            (self.api.signed_append)(self.raw, input.id, first as u64, count as u64, output.id)
+        };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn rms(
+        &mut self,
+        input: &Buffer,
+        first: usize,
+        weight_offset: usize,
+        shape: RmsShape,
+    ) -> Result<(Option<Buffer>, Buffer, Buffer), String> {
+        self.require_buffer(input)?;
+        if !(1..=150).contains(&shape.rows)
+            || !(1..=32).contains(&shape.heads)
+            || !(1..=5376).contains(&shape.columns)
+            || shape.weighted > 1
+        {
+            return self.abort("native RMS geometry differs");
+        }
+        let count = shape.rows as usize * shape.heads as usize * shape.columns as usize;
+        let product =
+            if shape.weighted != 0 { Some(self.allocate_buffer(6, count)?) } else { None };
+        let statistic = self.allocate_buffer(6, shape.rows as usize * shape.heads as usize)?;
+        let output = self.allocate_buffer(1, count)?;
+        let status = unsafe {
+            (self.api.rms)(
+                self.raw,
+                input.id,
+                first as u64,
+                weight_offset as u64,
+                shape,
+                product.as_ref().map_or(0, |buffer| buffer.id),
+                statistic.id,
+                output.id,
+            )
+        };
+        self.check(status)?;
+        Ok((product, statistic, output))
+    }
+    pub(in crate::c71_matrix) fn qk(
+        &mut self,
+        query: &Buffer,
+        first: usize,
+        keys: &Buffer,
+        shape: AttentionShape,
+    ) -> Result<Buffer, String> {
+        self.require_buffer(query)?;
+        self.require_buffer(keys)?;
+        if !shape.valid() {
+            return self.abort("native QK geometry differs");
+        }
+        let output = self.allocate_buffer(6, shape.rows as usize * (shape.old as usize + 150))?;
+        let status =
+            unsafe { (self.api.qk)(self.raw, query.id, first as u64, keys.id, shape, output.id) };
+        self.check(status)?;
+        Ok(output)
+    }
+    pub(in crate::c71_matrix) fn pv(
+        &mut self,
+        probabilities: &[(&Buffer, usize); 32],
+        values: &Buffer,
+        shape: AttentionShape,
+    ) -> Result<Buffer, String> {
+        self.require_buffer(values)?;
+        for (buffer, _) in probabilities {
+            self.require_buffer(buffer)?;
+        }
+        if !shape.valid() {
+            return self.abort("native PV geometry differs");
+        }
+        let output = self.allocate_buffer(6, shape.rows as usize * 32 * shape.lanes as usize)?;
+        let ids = probabilities.map(|(buffer, _)| buffer.id);
+        let starts = probabilities.map(|(_, first)| first as u64);
+        let status = unsafe {
+            (self.api.pv)(self.raw, ids.as_ptr(), starts.as_ptr(), values.id, shape, output.id)
+        };
+        self.check(status)?;
+        Ok(output)
+    }
+    pub(in crate::c71_matrix) fn softmax(
+        &mut self,
+        input: &Buffer,
+        first: usize,
+        table: &Buffer,
+        offset: usize,
+        histogram: &Buffer,
+        shape: AttentionShape,
+    ) -> Result<[Buffer; 5], String> {
+        for buffer in [input, table, histogram] {
+            self.require_buffer(buffer)?;
+        }
+        if !shape.valid() {
+            return self.abort("native softmax geometry differs");
+        }
+        let rows = shape.rows as usize;
+        let count = rows * (shape.old as usize + 150);
+        let outputs = [
+            self.allocate_buffer(1, rows)?,
+            self.allocate_buffer(1, count)?,
+            self.allocate_buffer(6, count)?,
+            self.allocate_buffer(6, rows)?,
+            self.allocate_buffer(1, count)?,
+        ];
+        let ids = outputs.each_ref().map(|buffer| buffer.id);
+        let status = unsafe {
+            (self.api.softmax)(
+                self.raw,
+                input.id,
+                first as u64,
+                table.id,
+                offset as u64,
+                histogram.id,
+                shape,
+                ids.as_ptr(),
+            )
+        };
+        self.check(status)?;
+        Ok(outputs)
+    }
+    pub(in crate::c71_matrix) fn histogram_padding(
+        &mut self,
+        histogram: &Buffer,
+        count: usize,
+    ) -> Result<(), String> {
+        self.require_buffer(histogram)?;
+        let status = unsafe { (self.api.histogram_padding)(self.raw, histogram.id, count as u64) };
+        self.check(status)
     }
     pub(in crate::c71_matrix) fn histogram(&mut self) -> Result<Buffer, String> {
         let id = self.alloc(8, 65535)?;
@@ -1178,6 +1362,78 @@ pub(in crate::c71_matrix) mod tests {
             );
             owner.close().unwrap();
             foreign.close().unwrap();
+        }
+    }
+    #[test]
+    fn c71_b12_windowed_native_attention_rejections_are_terminal() {
+        let mut fixture = fixture(512);
+        fixture.config.arena_bytes = 2 << 20;
+        let injection = Injection::new(&fixture.config);
+        for case in 0..10 {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let input = runtime.upload_signed(&[1; 32]).unwrap();
+            let tail = runtime.signed_capacity(150).unwrap();
+            if case != 2 {
+                runtime.append_signed(&input, 0, 2, &tail).unwrap();
+            }
+            let shape = AttentionShape { rows: 1, first: 1, head: 31, old: 0, groups: 1, lanes: 1 };
+            let result = match case {
+                0 | 1 => runtime
+                    .rms(
+                        &input,
+                        0,
+                        0,
+                        RmsShape {
+                            rows: 1,
+                            heads: 1,
+                            columns: 32,
+                            weighted: 0,
+                            coefficients: if case == 0 {
+                                [u64::MAX; 6]
+                            } else {
+                                [1_000_000_000_000, 0, 1, 0, 1, 0]
+                            },
+                        },
+                    )
+                    .map(|_| ()),
+                2 => runtime.qk(&input, 0, &tail, shape).map(|_| ()),
+                3 => {
+                    let (invalid, _) = runtime.argmax(&input, 0, 1, 32).unwrap();
+                    runtime.qk(&invalid, 0, &tail, shape).map(|_| ())
+                }
+                4..=5 | 8..=9 => {
+                    let mut scores = vec![0i16; 150];
+                    if case == 5 {
+                        scores[3] = 1;
+                    }
+                    let scores = runtime.upload_signed(&scores).unwrap();
+                    let table = vec![if case == 4 { 0i32 } else { 1 << 30 }; 65535];
+                    let table = runtime
+                        .upload_table(
+                            &table.iter().flat_map(|value| value.to_le_bytes()).collect::<Vec<_>>(),
+                        )
+                        .unwrap();
+                    let histogram = runtime.histogram().unwrap();
+                    if case >= 8 {
+                        injection.set(if case == 8 { 1 } else { 2 });
+                    }
+                    runtime.softmax(&scores, 0, &table, 0, &histogram, shape).map(|_| ())
+                }
+                6 => {
+                    let negative = runtime.upload_signed(&[-1; 150]).unwrap();
+                    runtime.pv(&[(&negative, 0); 32], &tail, shape).map(|_| ())
+                }
+                7 => {
+                    let histogram = runtime.histogram().unwrap();
+                    runtime.histogram_padding(&histogram, 100).unwrap();
+                    runtime.histogram_padding(&histogram, 100)
+                }
+                _ => unreachable!(),
+            };
+            injection.set(0);
+            assert!(result.is_err(), "attention rejection {case}");
+            assert_eq!(runtime.stats().unwrap().stopped, 1);
+            runtime.close().unwrap();
         }
     }
     impl Drop for Fixture {

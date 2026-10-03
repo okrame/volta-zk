@@ -221,10 +221,21 @@ conserva l'esito; il candidato non è mantenuto nella suite.
 ## CUDA e controlli statici
 
 `c71_canonical_resident_nonlinear_original_routes` confronta le route
-GELU, softcap, RoPE e argmax nei tre contesti con `prepare_row`, usando
+GELU, softcap, RoPE, argmax, Norm non ponderate ed EXP30 nei tre contesti con `prepare_row`, usando
 input e tabelle sintetici. Osserva l'ordine esatto di tutti gli output
 tramite il driver simulato; completa anche un istogramma GELU di 150 righe
-per contesto, controllando i conteggi non biased e la shape 1×65.535.
+per contesto e un istogramma EXP30 completo di 8.192 query (padding
+incluso), controllando i conteggi non biased e la shape 1×65.535.
+Le route selezionate attraversano `produce_native`; l'arena della fixture
+è 64 MiB e include tutte le tabelle pubbliche, non W canonica.
+Eseguire separatamente `c71_canonical_resident_rms_exact_u128_coefficients`
+(W ridotta, cinque larghezze fino a 5.376, coefficienti ponderati e non,
+overflow) e ciascuno dei filtri `c71_canonical_resident_attention_o0`,
+`c71_canonical_resident_attention_o150`, `c71_canonical_resident_attention_o300`
+(due famiglie QK/PV e code append-only con futuro non inizializzato).
+`c71_b12_windowed_native_attention_rejections_are_terminal` copre dieci
+rifiuti di coefficienti, overflow, prefisso incompleto, marker, tabella,
+score futuro, Pi negativa, padding ripetuto, launch e fence.
 Include rifiuti di duplicati, copertura incompleta, input/contesto e
 istogramma errati. `c71_b12_windowed_native_nonlinear_rejections_are_terminal`
 copre errori di span, tabelle, marker, seal, launch, fence, flag e copie

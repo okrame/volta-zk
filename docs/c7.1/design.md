@@ -166,10 +166,10 @@ vive fino all'ultimo consumer. I prodotti matriciali usano batch contigui
 da 150 righe (50 per lm_head), lettura W condivisa e route originali;
 la generazione iniziale rimane token-causale. Questo collega la schedule
 del batch allo scanner PCS/range. Un adapter del piano canonico ora
-collega Embedding, Matrix, RNE, Affine e Gate agli handle residenti: controlla sorgente, layout,
+collega tutti i 13 tipi di producer agli handle residenti: controlla sorgente, layout,
 ricette, righe selezionate e lo stesso owner Arc di W. Una vista di righe
-non copia o riduce la capacità del buffer padre. Gli altri producer sono
-rifiutati esplicitamente; lo scanner completo non usa ancora questi handle.
+non copia o riduce la capacità del buffer padre. Il dispatcher comune
+rifiuta arità e side input errati; lo scanner completo non usa ancora questi handle.
 Affine/Gate conservano il raw signed-48 prima della RNE; i coefficienti
 provengono dalle ricette originali e i termini zero non leggono buffer.
 Il controllo delle route nei tre contesti usa input sintetici, non Γ reale.
@@ -190,8 +190,14 @@ argmax, tramite un dispatcher nonlineare esplicito. Le tabelle pubbliche
 sono caricate una volta per owner di profilo, gli istogrammi conservano i
 conteggi originali e il seal richiede copertura unica di tutte le righe.
 RoPE conserva il raw Q30; argmax restituisce solo gli ID selezionati dopo
-il fence, mantenendo lo slack biased-u16 residente. Norm, QK, softmax e PV
-restano da collegare, insieme allo scanner completo e al runner. Il
+il fence, mantenendo lo slack biased-u16 residente. Norm usa ora coefficienti
+u128 e soglie quadrate esatte, con prodotti/statistiche originali; QK e PV
+usano dot product interi scalari e leggono soltanto KV causale. EXP30 produce
+massimo, differenze, esponenziali, denominatore e Pi originali, includendo
+il padding pubblico nell'istogramma. Le code KV sono append-only D2D;
+non conferiscono da sole autorità di promozione. Le route sono confrontate
+con riferimenti CPU su input sintetici nei tre contesti, non su W reale.
+Restano da collegare lo scanner completo e il runner. Il
 [checkpoint locale](../../benchmarks/results/c71-nonlinear-local-2026-10-04-870ec1faf05d.json)
 conserva la parità sintetica e un fallimento del test CPU di esaurimento
 dell'iteratore dopo rifiuto, senza attribuire credito alla prova completa. Il

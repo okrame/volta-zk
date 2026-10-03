@@ -64,9 +64,9 @@ ricostruzioni, con parità soltanto ridotta; il vecchio cap iniziale 2^18
 non descrive più questo percorso. Restano i workspace query/range e i
 kernel densi da adattare. Lo scanner CPU ricostruisce ora per producer,
 con righe vive fino all'ultimo consumer e GEMM a batch con letture W
-condivise. La schedule raggiunge PCS/range. L'adapter Embedding/Matrix/RNE/Affine/Gate ora usa
+condivise. La schedule raggiunge PCS/range. L'adapter dei 13 producer ora usa
 gli handle residenti e dispone di gather byte nativo con copertura delle
-righe e pubblicazione dopo fence. Mancano gli altri producer e il
+righe e pubblicazione dopo fence. Manca il
 collegamento allo scanner/consumer completo; non costituisce un forward GPU.
 Le prime query A leggono ora finestre originali
 fino a 256 MiB e non duplicano la matrice del risultato; la parità è
@@ -109,12 +109,15 @@ identità W fra owner e commitment PCS, lifecycle del runner
 e misure complete restano da collegare. Il vecchio GEMM CUDA scalare non viene presentato come
 questa implementazione o come una misura H100.
 
-Le route residenti GELU/softcap/RoPE/argmax ora condividono l'owner nativo,
-con tabelle pubbliche, istogrammi e slack residenti. Norm/QK/softmax/PV,
-scanner e integrazione della prova restano lavoro locale. Il diagnostico
+Le route residenti dei 13 producer ora condividono l'owner nativo,
+con tabelle pubbliche, istogrammi, code KV e slack residenti. Scanner,
+binding degli snapshot e integrazione della prova restano lavoro locale. Il diagnostico
 [c71_nonlinear_parity.cu](../../cuda/c71_nonlinear_parity.cu) confronta i
 kernel reali con risultati interi host su input sintetici: tutti i 65.535
-entry lookup, istogrammi, entrambe le famiglie RoPE e tie argmax fra warp.
+entry lookup, istogrammi, entrambe le famiglie RoPE, tie argmax fra warp,
+RMS esatta/overflow e QK→RNE→EXP30→PV nei tre contesti con futuro KV
+avvelenato. La geometria è sintetica e piccola: non misura le shape
+canoniche; QK/PV correnti sono scalari interi, non kernel MMA.
 Si compila localmente ma si esegue soltanto nell'esperimento autorizzato:
 
 ```bash

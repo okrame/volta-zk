@@ -62,6 +62,14 @@ int c71_dense_pointwise(C71RangeContext*,uint64_t x,uint64_t x_first,uint64_t y,
                         c71_dense::Pointwise,uint64_t output);
 int c71_histogram_begin(C71RangeContext*,uint64_t histogram);
 int c71_histogram_seal(C71RangeContext*,uint64_t histogram);
+int c71_histogram_padding(C71RangeContext*,uint64_t histogram,uint64_t count);
+int c71_signed_append(C71RangeContext*,uint64_t input,uint64_t first,uint64_t count,uint64_t output);
+int c71_dense_rms(C71RangeContext*,uint64_t input,uint64_t first,uint64_t weight_offset,c71_nonlinear::Rms,
+                  uint64_t product,uint64_t statistic,uint64_t output);
+int c71_dense_qk(C71RangeContext*,uint64_t query,uint64_t first,uint64_t keys,c71_nonlinear::Attention,uint64_t output);
+int c71_dense_pv(C71RangeContext*,const uint64_t* probabilities,const uint64_t* first,uint64_t values,c71_nonlinear::Attention,uint64_t output);
+int c71_dense_softmax(C71RangeContext*,uint64_t input,uint64_t first,uint64_t table,uint64_t table_byte_offset,
+                      uint64_t histogram,c71_nonlinear::Attention,const uint64_t* outputs);
 int c71_dense_lookup(C71RangeContext*,uint64_t input,uint64_t first,uint64_t table,uint64_t table_byte_offset,
                      uint64_t histogram,uint64_t output);
 int c71_dense_rope(C71RangeContext*,uint64_t input,uint64_t first,uint64_t table,uint64_t table_byte_offset,

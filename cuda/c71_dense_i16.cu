@@ -134,6 +134,139 @@ extern "C" __global__ void c71_byte_scatter_kernel(const void* input,unsigned ki
     }
 }
 
+extern "C" __global__ void c71_rms_kernel(const int16_t* input,const int16_t* weights,
+    int64_t* products,int64_t* statistics,int16_t* output,c71_nonlinear::Rms shape,uint32_t* failed) {
+    __shared__ uint64_t sums[256];
+    const uint64_t first=uint64_t(blockIdx.x)*shape.columns;
+    uint64_t sum=0;
+    for(unsigned column=threadIdx.x;column<shape.columns;column+=256) {
+        const int64_t value=input[first+column];
+        if(value==INT16_MIN) atomicOr(failed,1u);
+        sum+=value*value;
+    }
+    sums[threadIdx.x]=sum; __syncthreads();
+    for(unsigned stride=128;stride;stride/=2) {
+        if(threadIdx.x<stride) sums[threadIdx.x]+=sums[threadIdx.x+stride];
+        __syncthreads();
+    }
+    if(!threadIdx.x) statistics[blockIdx.x]=sums[0];
+    for(unsigned column=threadIdx.x;column<shape.columns;column+=256) {
+        const int16_t weight=shape.weighted?weights[column]:1;
+        const int64_t product=int64_t(input[first+column])*weight;
+        int16_t rounded;
+        if(weight==INT16_MIN || !c71_nonlinear::rms_round(shape,product,sums[0],rounded)) atomicOr(failed,1u);
+        else output[first+column]=rounded;
+        if(shape.weighted) products[first+column]=product;
+    }
+}
+extern "C" cudaError_t c71_rms_launch(cudaStream_t stream,const int16_t* input,const int16_t* weights,
+    int64_t* products,int64_t* statistics,int16_t* output,c71_nonlinear::Rms shape,uint32_t* failed) {
+    if(!stream || !input || !statistics || !output || !failed || !c71_nonlinear::valid(shape) ||
+        (shape.weighted && (!weights || !products))) return cudaErrorInvalidValue;
+    c71_rms_kernel<<<shape.rows*shape.heads,256,0,stream>>>(input,weights,products,statistics,output,shape,failed);
+    return cudaGetLastError();
+}
+extern "C" __global__ void c71_qk_kernel(const int16_t* query,const int16_t* keys,int64_t* output,
+    c71_nonlinear::Attention shape,uint32_t* failed) {
+    const unsigned columns=shape.old+150,group=shape.head/(32/shape.groups);
+    const uint64_t count=uint64_t(shape.rows)*columns;
+    for(uint64_t index=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;index<count;index+=uint64_t(gridDim.x)*blockDim.x) {
+        const unsigned row=index/columns,key=index%columns;
+        int64_t sum=0;
+        if(key<=shape.old+shape.first+row) for(unsigned lane=0;lane<shape.lanes;++lane) {
+            const int16_t left=query[(uint64_t(row)*32+shape.head)*shape.lanes+lane];
+            const int16_t right=keys[(uint64_t(key)*shape.groups+group)*shape.lanes+lane];
+            if(left==INT16_MIN || right==INT16_MIN) atomicOr(failed,1u);
+            sum+=int64_t(left)*right;
+        }
+        output[index]=sum;
+    }
+}
+extern "C" cudaError_t c71_qk_launch(cudaStream_t stream,const int16_t* query,const int16_t* keys,
+    int64_t* output,c71_nonlinear::Attention shape,uint32_t* failed) {
+    if(!stream || !query || !keys || !output || !failed || !c71_nonlinear::valid(shape)) return cudaErrorInvalidValue;
+    c71_qk_kernel<<<(uint64_t(shape.rows)*(shape.old+150)+255)/256,256,0,stream>>>(query,keys,output,shape,failed);
+    return cudaGetLastError();
+}
+struct C71PiPointers { const int16_t* heads[32]; };
+extern "C" __global__ void c71_pv_kernel(C71PiPointers probabilities,const int16_t* values,
+    int64_t* output,c71_nonlinear::Attention shape,uint32_t* failed) {
+    const unsigned columns=shape.old+150;
+    const uint64_t count=uint64_t(shape.rows)*32*shape.lanes;
+    for(uint64_t index=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;index<count;index+=uint64_t(gridDim.x)*blockDim.x) {
+        const unsigned lane=index%shape.lanes,head=index/shape.lanes%32,row=index/(32*shape.lanes),group=head/(32/shape.groups);
+        int64_t sum=0;
+        for(unsigned key=0;key<=shape.old+shape.first+row;++key) {
+            const int16_t probability=probabilities.heads[head][uint64_t(row)*columns+key];
+            const int16_t value=values[(uint64_t(key)*shape.groups+group)*shape.lanes+lane];
+            if(probability<0 || probability>16384 || value==INT16_MIN) atomicOr(failed,1u);
+            sum+=int64_t(probability)*value;
+        }
+        output[index]=sum;
+    }
+}
+extern "C" cudaError_t c71_pv_launch(cudaStream_t stream,const int16_t* const* probabilities,const int16_t* values,
+    int64_t* output,c71_nonlinear::Attention shape,uint32_t* failed) {
+    if(!stream || !probabilities || !values || !output || !failed || !c71_nonlinear::valid(shape)) return cudaErrorInvalidValue;
+    C71PiPointers pointers{};
+    for(unsigned head=0;head<32;++head) {
+        if(!probabilities[head]) return cudaErrorInvalidValue;
+        pointers.heads[head]=probabilities[head];
+    }
+    c71_pv_kernel<<<(uint64_t(shape.rows)*32*shape.lanes+255)/256,256,0,stream>>>(pointers,values,output,shape,failed);
+    return cudaGetLastError();
+}
+extern "C" __global__ void c71_softmax_kernel(const int16_t* scores,const int32_t* table,
+    int16_t* maximum,int16_t* difference,int64_t* exponential,int64_t* denominator,int16_t* probabilities,
+    unsigned long long* histogram,c71_nonlinear::Attention shape,uint32_t* failed) {
+    __shared__ int maxima[256];
+    __shared__ int64_t sums[256];
+    const unsigned columns=shape.old+150,live=shape.old+shape.first+blockIdx.x+1;
+    const uint64_t first=uint64_t(blockIdx.x)*columns;
+    int largest=INT16_MIN;
+    for(unsigned column=threadIdx.x;column<columns;column+=256) {
+        const int score=scores[first+column];
+        if(score==INT16_MIN || (column>=live && score!=0)) atomicOr(failed,1u);
+        if(column<live && score>largest) largest=score;
+    }
+    maxima[threadIdx.x]=largest; __syncthreads();
+    for(unsigned stride=128;stride;stride/=2) {
+        if(threadIdx.x<stride && maxima[threadIdx.x+stride]>maxima[threadIdx.x]) maxima[threadIdx.x]=maxima[threadIdx.x+stride];
+        __syncthreads();
+    }
+    if(!threadIdx.x) maximum[blockIdx.x]=maxima[0];
+    int64_t sum=0;
+    for(unsigned column=threadIdx.x;column<columns;column+=256) {
+        const int delta=column<live?maxima[0]-scores[first+column]:0;
+        exponential[first+column]=0;
+        if(delta<0 || delta>65534) { atomicOr(failed,1u); continue; }
+        const int32_t value=table[delta];
+        if(value<0 || value>(1<<30) || (delta==0 && value!=(1<<30))) { atomicOr(failed,1u); continue; }
+        difference[first+column]=int16_t(delta-32767); exponential[first+column]=value;
+        atomicAdd(histogram+delta,1ULL);
+        if(column<live) sum+=value;
+    }
+    sums[threadIdx.x]=sum; __syncthreads();
+    for(unsigned stride=128;stride;stride/=2) {
+        if(threadIdx.x<stride) sums[threadIdx.x]+=sums[threadIdx.x+stride];
+        __syncthreads();
+    }
+    const int64_t total=sums[0];
+    if(!threadIdx.x) denominator[blockIdx.x]=total;
+    if(total<(int64_t{1}<<30) || total>int64_t(live)*(1<<30)) { atomicOr(failed,1u); return; }
+    for(unsigned column=threadIdx.x;column<columns;column+=256)
+        probabilities[first+column]=column<live?c71_nonlinear::probability(int32_t(exponential[first+column]),total):0;
+}
+extern "C" cudaError_t c71_softmax_launch(cudaStream_t stream,const int16_t* scores,const int32_t* table,
+    int16_t* maximum,int16_t* difference,int64_t* exponential,int64_t* denominator,int16_t* probabilities,
+    int64_t* histogram,c71_nonlinear::Attention shape,uint32_t* failed) {
+    if(!stream || !scores || !table || !maximum || !difference || !exponential || !denominator || !probabilities || !histogram || !failed ||
+       !c71_nonlinear::valid(shape)) return cudaErrorInvalidValue;
+    c71_softmax_kernel<<<shape.rows,256,0,stream>>>(scores,table,maximum,difference,exponential,denominator,probabilities,
+        reinterpret_cast<unsigned long long*>(histogram),shape,failed);
+    return cudaGetLastError();
+}
+
 extern "C" __global__ void c71_lookup_kernel(const int16_t* input,const int16_t* table,
     int16_t* output,unsigned long long* histogram,uint64_t count,uint32_t* failed) {
     for(uint64_t i=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;i<count;i+=uint64_t(gridDim.x)*blockDim.x) {

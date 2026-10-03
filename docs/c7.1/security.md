@@ -635,7 +635,7 @@ di un altro contesto è rifiutato; anche un errore prima della chiamata al
 kernel ferma l'owner C. Questa identità locale non è il binding
 crittografico al commitment: il collegamento all'installazione PCS e il
 lifecycle degli snapshot/tentativi del preparatore completo restano da
-realizzare nel runner. Gli operatori assenti non vengono eseguiti su CPU.
+realizzare nel runner. Nessuna route nativa esegue fallback CPU.
 Affine/Gate usano ora le stesse identità intere e le porte originali anche
 nel dispatcher residente: coefficienti bounded, input simmetrici i16,
 nessuna lettura dei termini zero e raw distinto dall'output RNE. Non
@@ -661,6 +661,15 @@ il controllo del flag e il fence della copia. Quegli ID non sono ancora
 token verificati: la promozione resta subordinata all'intera prova e al
 journal. La parità host con driver simulato e la compilazione sm_90 non
 scaricano il raffinamento concorrente CUDA o il binding agli snapshot.
+Norm/QK/PV/EXP30 condividono ora quelle identità e il flag terminale.
+RMS conserva i coefficienti esatti e rifiuta l'overflow invece di clampare;
+QK/PV non leggono celle KV future. Le code append-only mantengono il
+prefisso inizializzato, ma `Tail::new` non verifica una ricevuta: il
+chiamante del runner deve derivare il predecessore dal registro accettato.
+L'istogramma EXP30 include una sola volta il padding pubblico e richiede
+copertura unica delle righe vive. I confronti CPU/GPU simulata non provano
+il raffinamento u128 PTX, lo schedule concorrente o il forward completo;
+non cambiano i MAC originali né la disciplina NoPeek.
 Il gather residente deriva indirizzi e bias dalle stesse tessere originali,
 senza vedere correlazioni o transcript. I controlli Rust richiedono una
 sola emissione di ogni riga delle sorgenti selezionate prima del seal;

@@ -26,6 +26,10 @@ cudaError_t c71_histogram_seal_launch(cudaStream_t,int64_t*,uint32_t*);
 cudaError_t c71_rope_launch(cudaStream_t,const int16_t*,const int32_t*,int64_t*,c71_nonlinear::Rope,uint32_t*);
 cudaError_t c71_argmax_select_launch(cudaStream_t,const int16_t*,uint32_t*,unsigned,unsigned,uint32_t*);
 cudaError_t c71_argmax_slack_launch(cudaStream_t,const int16_t*,const uint32_t*,int16_t*,unsigned,unsigned,uint32_t*);
+cudaError_t c71_rms_launch(cudaStream_t,const int16_t*,const int16_t*,int64_t*,int64_t*,int16_t*,c71_nonlinear::Rms,uint32_t*);
+cudaError_t c71_qk_launch(cudaStream_t,const int16_t*,const int16_t*,int64_t*,c71_nonlinear::Attention,uint32_t*);
+cudaError_t c71_pv_launch(cudaStream_t,const int16_t* const*,const int16_t*,int64_t*,c71_nonlinear::Attention,uint32_t*);
+cudaError_t c71_softmax_launch(cudaStream_t,const int16_t*,const int32_t*,int16_t*,int16_t*,int64_t*,int64_t*,int16_t*,int64_t*,c71_nonlinear::Attention,uint32_t*);
 }
 
 struct Buffer {
@@ -428,6 +432,117 @@ const unsigned char* nonlinear_table(C71RangeContext* c,uint64_t id,uint64_t off
     if(!full(t,C71_U8) || offset%alignment || offset>t->count || bytes>t->count-offset) { fail(c,"nonlinear table span"); return nullptr; }
     return ptr<unsigned char>(c,t)+offset;
 }
+Buffer* pending(C71RangeContext* context,uint64_t id,unsigned kind,uint64_t count) {
+    auto* output=buffer(context,id);
+    if(!output || output->kind!=kind || output->initialized || output->count!=count) {
+        fail(context,"numeric output shape"); return nullptr;
+    }
+    return output;
+}
+const int16_t* attention_tail(C71RangeContext* context,uint64_t id,c71_nonlinear::Attention shape) {
+    auto* input=buffer(context,id);
+    const uint64_t columns=uint64_t(shape.groups)*shape.lanes;
+    if(!input || input->kind!=C71_I16 || input->count!=(shape.old+150)*columns ||
+        input->initialized<(shape.old+shape.first+shape.rows)*columns) {
+        fail(context,"attention tail prefix incomplete"); return nullptr;
+    }
+    return ptr<int16_t>(context,input);
+}
+}
+extern "C" int c71_signed_append(C71RangeContext* context,uint64_t input,uint64_t first,uint64_t count,uint64_t output) {
+    if(!ready(context)) return -1;
+    auto* source=buffer(context,input); auto* target=buffer(context,output);
+    if(!source || !target || source==target || source->kind!=C71_I16 || target->kind!=C71_I16 || !count ||
+        first>source->initialized || count>source->initialized-first || count>target->count-target->initialized)
+        return fail(context,"signed append span or coverage");
+    if(checked(context,cudaMemcpyAsync(ptr<int16_t>(context,target)+target->initialized,ptr<int16_t>(context,source)+first,count*2,cudaMemcpyDeviceToDevice,context->stream))) return -1;
+    context->stats.d2d_bytes+=count*2;
+    if(fence(context)) return -1;
+    target->initialized+=count; return 0;
+}
+extern "C" int c71_dense_rms(C71RangeContext* context,uint64_t input,uint64_t first,uint64_t weight_offset,
+    c71_nonlinear::Rms shape,uint64_t product,uint64_t statistic,uint64_t output) {
+    if(!ready(context)) return -1;
+    if(!c71_nonlinear::valid(shape) || (!shape.weighted && (product || weight_offset))) return fail(context,"RMS geometry or coefficients");
+    const uint64_t count=uint64_t(shape.rows)*shape.heads*shape.columns;
+    auto* raw=shape.weighted?pending(context,product,C71_I64,count):nullptr;
+    auto* sums=pending(context,statistic,C71_I64,uint64_t(shape.rows)*shape.heads);
+    auto* rounded=pending(context,output,C71_I16,count);
+    const auto* values=nonlinear_input(context,input,first,count);
+    if(!sums || !rounded || !values || (shape.weighted && (!raw || raw==sums))) return fail(context,"RMS buffers differ");
+    if(shape.weighted && (!context->stats.weights_sealed || weight_offset>context->stats.weights_bytes/2 ||
+        shape.columns>context->stats.weights_bytes/2-weight_offset)) return fail(context,"RMS original W span");
+    uint64_t flag=0; if(dense_flag(context,&flag)) return -1;
+    if(launched(context,c71_rms_launch(context->stream,values,shape.weighted?context->weights+weight_offset:nullptr,
+        raw?ptr<int64_t>(context,raw):nullptr,ptr<int64_t>(context,sums),ptr<int16_t>(context,rounded),shape,ptr<uint32_t>(context,buffer(context,flag))))) return -1;
+    if(dense_complete(context,flag,rounded)) return -1;
+    sums->initialized=sums->count; if(raw) raw->initialized=raw->count; return 0;
+}
+extern "C" int c71_dense_qk(C71RangeContext* context,uint64_t query,uint64_t first,uint64_t keys,c71_nonlinear::Attention shape,uint64_t output) {
+    if(!ready(context)) return -1;
+    if(!c71_nonlinear::valid(shape)) return fail(context,"QK geometry");
+    auto* target=pending(context,output,C71_I64,uint64_t(shape.rows)*(shape.old+150));
+    const auto* left=nonlinear_input(context,query,first,uint64_t(shape.rows)*32*shape.lanes);
+    const auto* right=attention_tail(context,keys,shape);
+    if(!target || !left || !right) return -1;
+    uint64_t flag=0; if(dense_flag(context,&flag)) return -1;
+    if(launched(context,c71_qk_launch(context->stream,left,right,ptr<int64_t>(context,target),shape,ptr<uint32_t>(context,buffer(context,flag))))) return -1;
+    return dense_complete(context,flag,target);
+}
+extern "C" int c71_dense_pv(C71RangeContext* context,const uint64_t* probabilities,const uint64_t* first,uint64_t values,
+    c71_nonlinear::Attention shape,uint64_t output) {
+    if(!ready(context)) return -1;
+    uintptr_t end=0;
+    if(!c71_nonlinear::valid(shape) || !c71_dense::span(probabilities,256,end) || !c71_dense::span(first,256,end) ||
+       reinterpret_cast<uintptr_t>(probabilities)%8 || reinterpret_cast<uintptr_t>(first)%8) return fail(context,"PV geometry or input list");
+    auto* target=pending(context,output,C71_I64,uint64_t(shape.rows)*32*shape.lanes);
+    const auto* tail=attention_tail(context,values,shape);
+    if(!target || !tail) return -1;
+    const int16_t* pointers[32]{};
+    for(unsigned head=0;head<32;++head) {
+        pointers[head]=nonlinear_input(context,probabilities[head],first[head],uint64_t(shape.rows)*(shape.old+150));
+        if(!pointers[head]) return -1;
+    }
+    uint64_t flag=0; if(dense_flag(context,&flag)) return -1;
+    if(launched(context,c71_pv_launch(context->stream,pointers,tail,ptr<int64_t>(context,target),shape,ptr<uint32_t>(context,buffer(context,flag))))) return -1;
+    return dense_complete(context,flag,target);
+}
+extern "C" int c71_dense_softmax(C71RangeContext* context,uint64_t input,uint64_t first,uint64_t table,uint64_t table_offset,
+    uint64_t histogram,c71_nonlinear::Attention shape,const uint64_t* outputs) {
+    if(!ready(context)) return -1;
+    uintptr_t end=0;
+    if(!c71_nonlinear::valid(shape) || !c71_dense::span(outputs,40,end) || reinterpret_cast<uintptr_t>(outputs)%8)
+        return fail(context,"softmax geometry or outputs");
+    const uint64_t count=uint64_t(shape.rows)*(shape.old+150);
+    const unsigned kinds[]={C71_I16,C71_I16,C71_I64,C71_I64,C71_I16};
+    Buffer* targets[5]{};
+    for(unsigned index=0;index<5;++index) {
+        targets[index]=pending(context,outputs[index],kinds[index],index==0 || index==3?shape.rows:count);
+        if(!targets[index]) return -1;
+        for(unsigned previous=0;previous<index;++previous) if(targets[index]==targets[previous]) return fail(context,"softmax outputs alias");
+    }
+    auto* counts=buffer(context,histogram);
+    if(!full(counts,C71_HISTOGRAM_PENDING) || counts->count!=65535 || count>uint64_t(INT32_MAX)-counts->visits) return fail(context,"softmax histogram shape");
+    const auto* scores=nonlinear_input(context,input,first,count);
+    const auto* lookup=nonlinear_table(context,table,table_offset,65535*4,4);
+    if(!scores || !lookup) return -1;
+    uint64_t flag=0; if(dense_flag(context,&flag)) return -1;
+    if(launched(context,c71_softmax_launch(context->stream,scores,reinterpret_cast<const int32_t*>(lookup),
+        ptr<int16_t>(context,targets[0]),ptr<int16_t>(context,targets[1]),ptr<int64_t>(context,targets[2]),
+        ptr<int64_t>(context,targets[3]),ptr<int16_t>(context,targets[4]),ptr<int64_t>(context,counts),shape,ptr<uint32_t>(context,buffer(context,flag))))) return -1;
+    if(dense_complete(context,flag,targets[0])) return -1;
+    for(auto* target:targets) target->initialized=target->count;
+    counts->visits+=count; return 0;
+}
+extern "C" int c71_histogram_padding(C71RangeContext* context,uint64_t histogram,uint64_t count) {
+    if(!ready(context)) return -1;
+    auto* target=buffer(context,histogram);
+    if(!full(target,C71_HISTOGRAM_PENDING) || target->count!=65535 || target->visits || !count || count>INT32_MAX)
+        return fail(context,"histogram padding coverage");
+    if(checked(context,cudaMemcpyAsync(ptr<void>(context,target),&count,8,cudaMemcpyHostToDevice,context->stream))) return -1;
+    context->stats.h2d_bytes+=8;
+    if(fence(context)) return -1;
+    target->visits=count; return 0;
 }
 extern "C" int c71_histogram_begin(C71RangeContext* c,uint64_t id) {
     if(!ready(c)) return -1;

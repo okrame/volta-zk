@@ -232,6 +232,92 @@ extern "C" int c71_argmax_slack_launch(cudaStream_t stream,const int16_t* input,
     });
 }
 
+extern "C" int c71_rms_launch(cudaStream_t stream,const int16_t* input,const int16_t* weights,
+    int64_t* products,int64_t* statistics,int16_t* output,c71_nonlinear::Rms shape,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(unsigned row=0;row<shape.rows*shape.heads;++row) {
+            int64_t sum=0;
+            for(unsigned column=0;column<shape.columns;++column) {
+                const int64_t value=input[uint64_t(row)*shape.columns+column];
+                if(value==INT16_MIN) *failed=1;
+                sum+=value*value;
+            }
+            statistics[row]=sum;
+            for(unsigned column=0;column<shape.columns;++column) {
+                const auto index=uint64_t(row)*shape.columns+column;
+                const int16_t weight=shape.weighted?weights[column]:1;
+                const int64_t product=int64_t(input[index])*weight;
+                if(weight==INT16_MIN || !c71_nonlinear::rms_round(shape,product,sum,output[index])) *failed=1;
+                if(shape.weighted) products[index]=product;
+            }
+        }
+    });
+}
+extern "C" int c71_qk_launch(cudaStream_t stream,const int16_t* query,const int16_t* keys,int64_t* output,
+    c71_nonlinear::Attention shape,uint32_t* failed) {
+    return launch(stream,[=] {
+        const unsigned columns=shape.old+150,group=shape.head/(32/shape.groups);
+        for(unsigned row=0;row<shape.rows;++row) for(unsigned key=0;key<columns;++key) {
+            int64_t sum=0;
+            if(key<=shape.old+shape.first+row) for(unsigned lane=0;lane<shape.lanes;++lane) {
+                const int16_t left=query[(uint64_t(row)*32+shape.head)*shape.lanes+lane];
+                const int16_t right=keys[(uint64_t(key)*shape.groups+group)*shape.lanes+lane];
+                if(left==INT16_MIN || right==INT16_MIN) *failed=1;
+                sum+=int64_t(left)*right;
+            }
+            output[uint64_t(row)*columns+key]=sum;
+        }
+    });
+}
+extern "C" int c71_pv_launch(cudaStream_t stream,const int16_t* const* probabilities,const int16_t* values,
+    int64_t* output,c71_nonlinear::Attention shape,uint32_t* failed) {
+    std::vector<const int16_t*> pointers(probabilities,probabilities+32);
+    return launch(stream,[=] {
+        const unsigned columns=shape.old+150;
+        for(unsigned row=0;row<shape.rows;++row) for(unsigned head=0;head<32;++head) for(unsigned lane=0;lane<shape.lanes;++lane) {
+            int64_t sum=0;
+            for(unsigned key=0;key<=shape.old+shape.first+row;++key) {
+                const int16_t probability=pointers[head][uint64_t(row)*columns+key];
+                const int16_t value=values[(uint64_t(key)*shape.groups+head/(32/shape.groups))*shape.lanes+lane];
+                if(probability<0 || probability>16384 || value==INT16_MIN) *failed=1;
+                sum+=int64_t(probability)*value;
+            }
+            output[(uint64_t(row)*32+head)*shape.lanes+lane]=sum;
+        }
+    });
+}
+extern "C" int c71_softmax_launch(cudaStream_t stream,const int16_t* scores,const int32_t* table,
+    int16_t* maximum,int16_t* difference,int64_t* exponential,int64_t* denominator,int16_t* probabilities,
+    int64_t* histogram,c71_nonlinear::Attention shape,uint32_t* failed) {
+    return launch(stream,[=] {
+        const unsigned columns=shape.old+150;
+        for(unsigned row=0;row<shape.rows;++row) {
+            const uint64_t first=uint64_t(row)*columns;
+            const unsigned live=shape.old+shape.first+row+1;
+            int16_t largest=INT16_MIN;
+            for(unsigned column=0;column<columns;++column) {
+                const int16_t value=scores[first+column];
+                if(value==INT16_MIN || (column>=live && value!=0)) *failed=1;
+                if(column<live && value>largest) largest=value;
+            }
+            maximum[row]=largest; int64_t sum=0;
+            for(unsigned column=0;column<columns;++column) {
+                const int delta=column<live?int(largest)-scores[first+column]:0;
+                exponential[first+column]=0;
+                if(delta<0 || delta>65534) { *failed=1; continue; }
+                const int32_t value=table[delta];
+                if(value<0 || value>(1<<30) || (delta==0 && value!=(1<<30))) { *failed=1; continue; }
+                difference[first+column]=int16_t(delta-32767); exponential[first+column]=value; ++histogram[delta];
+                if(column<live) sum+=value;
+            }
+            denominator[row]=sum;
+            if(sum<(int64_t{1}<<30) || sum>int64_t(live)*(1<<30)) { *failed=1; continue; }
+            for(unsigned column=0;column<columns;++column)
+                probabilities[first+column]=column<live?c71_nonlinear::probability(int32_t(exponential[first+column]),sum):0;
+        }
+    });
+}
+
 #ifdef C71_RANGE_FFI_TEST
 // Test library only; production exports neither error injection nor host math.
 extern "C" void c71_range_test_expect_bytes(const uint8_t* p,uint64_t n) {

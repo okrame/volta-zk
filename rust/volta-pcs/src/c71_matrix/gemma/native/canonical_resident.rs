@@ -1,7 +1,9 @@
 //! Original source blocks through the shared native owner. No host-output
-//! download, transcript or CPU fallback. Full producer coverage remains open.
+//! download, transcript or CPU fallback.
 use super::*;
-use kernel::range::windowed::native::{Buffer, DenseShape, Pointwise, RopeShape, Runtime};
+use kernel::range::windowed::native::{
+    AttentionShape, Buffer, DenseShape, Pointwise, RmsShape, RopeShape, Runtime,
+};
 use std::sync::Arc;
 
 pub(super) struct Rows {
@@ -14,11 +16,21 @@ pub(super) struct Rows {
     recipe: [u8; 32],
 }
 
+pub(super) struct Inputs<'a> {
+    pub weights: &'a Arc<Vec<i16>>,
+    pub tables: &'a NonlinearTables,
+    pub rows: &'a [&'a Rows],
+    pub tokens: &'a [u32],
+    pub tail: Option<&'a Tail>,
+    pub histogram: Option<&'a mut Histogram>,
+}
+
 pub(super) struct NonlinearTables {
     buffer: Buffer,
     gelu: Vec<usize>,
     softcap: usize,
     rope: [usize; 2],
+    exp30: Vec<usize>,
     layout: [u8; 32],
     recipe: [u8; 32],
     old: usize,
@@ -33,16 +45,115 @@ pub(super) struct Histogram {
     recipe: [u8; 32],
 }
 
+pub(super) struct Tail {
+    buffer: Buffer,
+    source: usize,
+    old: usize,
+    prefix: usize,
+    columns: usize,
+    layout: [u8; 32],
+    recipe: [u8; 32],
+}
+
+impl Tail {
+    pub(super) fn new(
+        runtime: &mut Runtime,
+        plan: &Canonical,
+        source: usize,
+        previous: Option<(&Canonical, &Tail)>,
+    ) -> Result<Self, String> {
+        let old = plan.sources.attention.rope.old;
+        if !plan.sources.attention.layers.iter().any(|layer| layer.k == source || layer.v == source)
+        {
+            return runtime.abort("resident tail source is not canonical KV");
+        }
+        let columns = plan.bytes().scalar.layout.sources[source].cols;
+        match previous {
+            None if old == 0 => (),
+            Some((prior_plan, prior))
+                if prior.old + 150 == old
+                    && prior.prefix == old
+                    && prior.source == source
+                    && prior.columns == columns
+                    && prior.layout == prior_plan.bytes().layout_digest
+                    && prior.recipe == prior_plan.recipes.digest
+                    && prior.old == prior_plan.sources.attention.rope.old
+                    && prior_plan.plan.layout_digest == plan.plan.layout_digest =>
+            {
+                ()
+            }
+            _ => return runtime.abort("resident tail predecessor differs or is incomplete"),
+        }
+        let buffer = runtime.signed_capacity((old + 150) * columns)?;
+        if let Some((_, prior)) = previous {
+            runtime.append_signed(&prior.buffer, 0, old * columns, &buffer)?;
+        }
+        Ok(Self {
+            buffer,
+            source,
+            old,
+            prefix: old,
+            columns,
+            layout: plan.bytes().layout_digest,
+            recipe: plan.recipes.digest,
+        })
+    }
+
+    pub(super) fn append(
+        &mut self,
+        runtime: &mut Runtime,
+        plan: &Canonical,
+        rows: &Rows,
+    ) -> Result<(), String> {
+        if self.layout != plan.bytes().layout_digest
+            || self.recipe != plan.recipes.digest
+            || self.old != plan.sources.attention.rope.old
+            || rows.first != self.prefix - self.old
+            || rows.rows == 0
+            || rows.rows > self.old + 150 - self.prefix
+        {
+            return runtime.abort("resident KV append identity or causal coverage differs");
+        }
+        let offset =
+            rows.select(runtime, plan, self.source, rows.first, rows.rows, self.columns)?;
+        runtime.append_signed(&rows.buffer, offset, rows.rows * self.columns, &self.buffer)?;
+        self.prefix += rows.rows;
+        Ok(())
+    }
+
+    fn require(
+        &self,
+        runtime: &mut Runtime,
+        plan: &Canonical,
+        source: usize,
+        prefix: usize,
+    ) -> Result<(), String> {
+        if self.source != source
+            || self.old != plan.sources.attention.rope.old
+            || self.layout != plan.bytes().layout_digest
+            || self.recipe != plan.recipes.digest
+            || self.prefix < prefix
+        {
+            return runtime.abort("resident attention original KV prefix differs");
+        }
+        Ok(())
+    }
+
+    pub(super) fn release(self, runtime: &mut Runtime) -> Result<(), String> {
+        runtime.release_buffer(self.buffer)
+    }
+}
+
 impl NonlinearTables {
     pub(super) fn install(
         runtime: &mut Runtime,
         plan: &Canonical,
         tables: &profile::Tables<'_>,
     ) -> Result<Self, String> {
-        if tables.gelu.len() != 60 || tables.rope.len() != 2 {
+        if tables.gelu.len() != 60 || tables.exp30.len() != 60 || tables.rope.len() != 2 {
             return runtime.abort("resident nonlinear table count differs");
         }
-        let mut packed = Vec::with_capacity(61 * 65535 * 2 + 150 * 192 * 8 + 2);
+        let mut packed = Vec::with_capacity(61 * 65535 * 2 + 60 * 65535 * 4 + 150 * 192 * 8 + 2);
         let mut gelu = Vec::with_capacity(60);
         let mut softcap = 0;
         for (index, table) in tables.gelu.iter().chain(std::iter::once(tables.softcap)).enumerate()
@@ -67,6 +178,24 @@ impl NonlinearTables {
             }
         }
         packed.resize(packed.len().next_multiple_of(4), 0);
+        let mut exp30 = Vec::with_capacity(60);
+        for (index, table) in tables.exp30.iter().enumerate() {
+            let lookup::Outputs::I32(values) = table.outputs else {
+                return runtime.abort("resident EXP30 table type differs");
+            };
+            if table.profile as usize != index
+                || table.lower != -32767
+                || values.len() != 65535
+                || values[0] != 1 << 30
+                || values.iter().any(|value| !(0..=1 << 30).contains(value))
+            {
+                return runtime.abort("resident EXP30 table shape or range differs");
+            }
+            exp30.push(packed.len());
+            for value in values {
+                packed.extend_from_slice(&value.to_le_bytes());
+            }
+        }
         let mut rope = [0; 2];
         for (family, table) in tables.rope.iter().enumerate() {
             let pairs = if family == 0 { 128 } else { 64 };
@@ -89,6 +218,7 @@ impl NonlinearTables {
             gelu,
             softcap,
             rope,
+            exp30,
             layout: plan.bytes().layout_digest,
             recipe: plan.recipes.digest,
             old: plan.sources.attention.rope.old,
@@ -225,6 +355,28 @@ fn install(runtime: &mut Runtime, plan: &Plan, weights: Arc<Vec<i16>>) -> Result
 }
 
 impl Rows {
+    fn select(
+        &self,
+        runtime: &mut Runtime,
+        plan: &Canonical,
+        source: usize,
+        first: usize,
+        rows: usize,
+        columns: usize,
+    ) -> Result<usize, String> {
+        if self.layout != plan.bytes().layout_digest
+            || self.recipe != plan.recipes.digest
+            || self.source != source
+            || self.columns != columns
+            || rows == 0
+            || first < self.first
+            || first - self.first > self.rows
+            || rows > self.rows - (first - self.first)
+        {
+            return runtime.abort("resident selected original rows differ");
+        }
+        Ok((first - self.first) * columns)
+    }
     fn embedding(
         runtime: &mut Runtime,
         plan: &Plan,
@@ -435,6 +587,317 @@ impl Rows {
 }
 
 impl Canonical {
+    pub(super) fn produce_native(
+        &self,
+        runtime: &mut Runtime,
+        step: usize,
+        first: usize,
+        rows: usize,
+        inputs: Inputs<'_>,
+    ) -> Result<(Vec<Rows>, Vec<u32>), String> {
+        let Some(producer) = self.steps.get(step) else {
+            return runtime.abort("resident producer missing");
+        };
+        let uses_histogram =
+            matches!(producer, Producer::Gelu(_) | Producer::Softcap | Producer::Softmax(_));
+        let uses_tail = matches!(producer, Producer::Qk(_) | Producer::Pv(_));
+        if uses_histogram != inputs.histogram.is_some()
+            || uses_tail != inputs.tail.is_some()
+            || (!matches!(producer, Producer::Embedding) && !inputs.tokens.is_empty())
+        {
+            return runtime.abort("resident producer side inputs differ");
+        }
+        match producer {
+            Producer::Norm(_) if inputs.rows.len() == 1 => self
+                .prepare_native_norm(runtime, inputs.weights, step, first, rows, inputs.rows[0])
+                .map(|output| (output, Vec::new())),
+            Producer::Qk(_) if inputs.rows.len() == 1 => self
+                .prepare_native_qk(runtime, step, first, rows, inputs.rows[0], inputs.tail.unwrap())
+                .map(|output| (vec![output], Vec::new())),
+            Producer::Pv(_) if inputs.rows.len() == 32 => self
+                .prepare_native_pv(
+                    runtime,
+                    step,
+                    first,
+                    rows,
+                    inputs.rows.try_into().unwrap(),
+                    inputs.tail.unwrap(),
+                )
+                .map(|output| (vec![output], Vec::new())),
+            Producer::Softmax(_) if inputs.rows.len() == 1 => self
+                .prepare_native_softmax(
+                    runtime,
+                    inputs.tables,
+                    step,
+                    first,
+                    rows,
+                    inputs.rows[0],
+                    inputs.histogram.unwrap(),
+                )
+                .map(|output| (output, Vec::new())),
+            Producer::Gelu(_) | Producer::Softcap | Producer::Rope(_) | Producer::Argmax
+                if inputs.rows.len() == 1 =>
+            {
+                self.prepare_native_nonlinear_step(
+                    runtime,
+                    inputs.tables,
+                    step,
+                    first,
+                    rows,
+                    inputs.rows[0],
+                    inputs.histogram,
+                )
+                .map(|(output, tokens)| (vec![output], tokens))
+            }
+            Producer::Embedding
+            | Producer::Matrix(_)
+            | Producer::Rne(_)
+            | Producer::Affine(_)
+            | Producer::Gate(_) => self
+                .prepare_native_step(
+                    runtime,
+                    inputs.weights,
+                    step,
+                    first,
+                    rows,
+                    inputs.tokens,
+                    inputs.rows,
+                )
+                .map(|output| (vec![output], Vec::new())),
+            _ => runtime.abort("resident producer input arity differs"),
+        }
+    }
+
+    pub(super) fn prepare_native_qk(
+        &self,
+        runtime: &mut Runtime,
+        step: usize,
+        first: usize,
+        rows: usize,
+        query: &Rows,
+        keys: &Tail,
+    ) -> Result<Rows, String> {
+        let Some(Producer::Qk(index)) = self.steps.get(step) else {
+            return runtime.abort("resident QK producer differs");
+        };
+        if first / 256 >= 32 || rows == 0 || first % 256 >= 150 || rows > 150 - first % 256 {
+            return runtime.abort("resident QK causal rows differ");
+        }
+        let layer = &self.sources.attention.layers[*index];
+        let old = self.sources.attention.rope.old;
+        let offset = query.select(runtime, self, layer.q, first % 256, rows, 32 * layer.lanes)?;
+        keys.require(runtime, self, layer.k, old + first % 256 + rows)?;
+        let buffer = runtime.qk(
+            &query.buffer,
+            offset,
+            &keys.buffer,
+            AttentionShape {
+                rows: rows as u32,
+                first: (first % 256) as u32,
+                head: (first / 256) as u32,
+                old: old as u32,
+                groups: layer.groups as u32,
+                lanes: layer.lanes as u32,
+            },
+        )?;
+        Ok(Rows {
+            buffer,
+            source: layer.raw_score,
+            first,
+            rows,
+            columns: old + 150,
+            layout: self.bytes().layout_digest,
+            recipe: self.recipes.digest,
+        })
+    }
+
+    pub(super) fn prepare_native_pv(
+        &self,
+        runtime: &mut Runtime,
+        step: usize,
+        first: usize,
+        rows: usize,
+        probabilities: &[&Rows; 32],
+        values: &Tail,
+    ) -> Result<Rows, String> {
+        let Some(Producer::Pv(index)) = self.steps.get(step) else {
+            return runtime.abort("resident PV producer differs");
+        };
+        if first >= 150 || rows == 0 || rows > 150 - first {
+            return runtime.abort("resident PV causal rows differ");
+        }
+        let layer = &self.sources.attention.layers[*index];
+        let old = self.sources.attention.rope.old;
+        values.require(runtime, self, layer.v, old + first + rows)?;
+        let mut offsets = [0; 32];
+        for (head, input) in probabilities.iter().enumerate() {
+            offsets[head] =
+                input.select(runtime, self, layer.pi, head * 256 + first, rows, old + 150)?;
+        }
+        let inputs = std::array::from_fn(|head| (&probabilities[head].buffer, offsets[head]));
+        let buffer = runtime.pv(
+            &inputs,
+            &values.buffer,
+            AttentionShape {
+                rows: rows as u32,
+                first: first as u32,
+                head: 0,
+                old: old as u32,
+                groups: layer.groups as u32,
+                lanes: layer.lanes as u32,
+            },
+        )?;
+        Ok(Rows {
+            buffer,
+            source: layer.raw_output,
+            first,
+            rows,
+            columns: 32 * layer.lanes,
+            layout: self.bytes().layout_digest,
+            recipe: self.recipes.digest,
+        })
+    }
+
+    pub(super) fn prepare_native_norm(
+        &self,
+        runtime: &mut Runtime,
+        weights: &Arc<Vec<i16>>,
+        step: usize,
+        first: usize,
+        rows: usize,
+        input: &Rows,
+    ) -> Result<Vec<Rows>, String> {
+        let Some(Producer::Norm(index)) = self.steps.get(step) else {
+            return runtime.abort("resident RMS producer differs");
+        };
+        let norm = &self.sources.attention.rope.gate_up.gelu.rms.norms[*index];
+        if rows == 0
+            || rows > 150
+            || first.checked_add(rows).is_none_or(|end| end > norm.rows / norm.heads)
+        {
+            return runtime.abort("resident RMS row interval differs");
+        }
+        let selected =
+            input.select(runtime, self, norm.input, first, rows, norm.heads * norm.columns)?;
+        let [input_exponent, weight_exponent, output_exponent] = self.recipes.rms[*index];
+        let integer = match kernel::rms::Integer::new(
+            norm.columns,
+            input_exponent,
+            weight_exponent,
+            output_exponent,
+            norm.cohort.is_some(),
+        ) {
+            Ok(integer) => integer,
+            Err(error) => return runtime.abort(error),
+        };
+        let coefficients = integer.coefficients();
+        let weight_offset = if let Some(cohort) = norm.cohort {
+            runtime.require_weights(weights, self.plan.layout_digest)?;
+            self.plan.sources[self.plan.cohorts[cohort].tensor].packed_offset
+        } else {
+            0
+        };
+        let (product, statistic, output) = runtime.rms(
+            &input.buffer,
+            selected,
+            weight_offset,
+            RmsShape {
+                rows: rows as u32,
+                heads: norm.heads as u32,
+                columns: norm.columns as u32,
+                weighted: u32::from(norm.cohort.is_some()),
+                coefficients: std::array::from_fn(|limb| {
+                    (coefficients[limb / 2] >> (64 * (limb % 2))) as u64
+                }),
+            },
+        )?;
+        let block = |buffer, source, first, rows, columns| Rows {
+            buffer,
+            source,
+            first,
+            rows,
+            columns,
+            layout: self.bytes().layout_digest,
+            recipe: self.recipes.digest,
+        };
+        let mut result = Vec::with_capacity(3);
+        if let Some(product) = product {
+            result.push(block(
+                product,
+                norm.cohort.unwrap(),
+                first * norm.heads,
+                rows * norm.heads,
+                norm.columns,
+            ));
+        }
+        result.push(block(statistic, norm.statistic, first * norm.heads, rows * norm.heads, 1));
+        result.push(block(output, norm.output, first, rows, norm.heads * norm.columns));
+        Ok(result)
+    }
+
+    pub(super) fn prepare_native_softmax(
+        &self,
+        runtime: &mut Runtime,
+        tables: &NonlinearTables,
+        step: usize,
+        first: usize,
+        rows: usize,
+        input: &Rows,
+        histogram: &mut Histogram,
+    ) -> Result<Vec<Rows>, String> {
+        let Some(Producer::Softmax(index)) = self.steps.get(step) else {
+            return runtime.abort("resident softmax producer differs");
+        };
+        let layer = &self.softmax.layers[*index];
+        let columns = self.sources.attention.rope.old + 150;
+        if first / 256 >= 32
+            || rows == 0
+            || first % 256 >= 150
+            || rows > 150 - first % 256
+            || tables.layout != self.bytes().layout_digest
+            || tables.recipe != self.recipes.digest
+            || tables.old != self.sources.attention.rope.old
+            || histogram.layout != tables.layout
+            || histogram.recipe != tables.recipe
+            || histogram.source != layer.histogram
+            || histogram.output != layer.pi
+            || histogram.seen.len() != 8192
+            || histogram.seen[first..first + rows].iter().any(|seen| *seen)
+        {
+            return runtime.abort("resident softmax identity or row coverage differs");
+        }
+        let offset = input.select(runtime, self, layer.score, first, rows, columns)?;
+        let output = runtime.softmax(
+            &input.buffer,
+            offset,
+            &tables.buffer,
+            tables.exp30[*index],
+            &histogram.buffer,
+            AttentionShape {
+                rows: rows as u32,
+                first: (first % 256) as u32,
+                head: (first / 256) as u32,
+                old: tables.old as u32,
+                groups: 1,
+                lanes: 1,
+            },
+        )?;
+        histogram.seen[first..first + rows].fill(true);
+        Ok(output
+            .into_iter()
+            .zip([layer.maximum, layer.difference, layer.exponential, layer.denominator, layer.pi])
+            .map(|(buffer, source)| Rows {
+                buffer,
+                source,
+                first,
+                rows,
+                columns: self.bytes().scalar.layout.sources[source].cols,
+                layout: tables.layout,
+                recipe: tables.recipe,
+            })
+            .collect())
+    }
+
     fn native_lookup_sources(&self, step: usize) -> Option<(usize, usize, usize)> {
         match self.steps.get(step)? {
             Producer::Gelu(index) => {
@@ -443,6 +906,10 @@ impl Canonical {
             }
             Producer::Softcap => {
                 Some((self.output.input, self.output.output, self.output.histogram))
+            }
+            Producer::Softmax(index) => {
+                let layer = &self.softmax.layers[*index];
+                Some((layer.score, layer.pi, layer.histogram))
             }
             _ => None,
         }
@@ -454,13 +921,22 @@ impl Canonical {
         step: usize,
     ) -> Result<Histogram, String> {
         let Some((_, output, source)) = self.native_lookup_sources(step) else {
-            return runtime.abort("resident producer has no i16 lookup histogram");
+            return runtime.abort("resident producer has no lookup histogram");
         };
+        let buffer = runtime.histogram()?;
+        let mut seen = vec![false; self.bytes().scalar.layout.sources[output].rows];
+        if matches!(self.steps[step], Producer::Softmax(_)) {
+            runtime
+                .histogram_padding(&buffer, 32 * 106 * (self.sources.attention.rope.old + 150))?;
+            for (row, present) in seen.iter_mut().enumerate() {
+                *present = row % 256 >= 150;
+            }
+        }
         Ok(Histogram {
-            buffer: runtime.histogram()?,
+            buffer,
             source,
             output,
-            seen: vec![false; self.bytes().scalar.layout.sources[output].rows],
+            seen,
             layout: self.bytes().layout_digest,
             recipe: self.recipes.digest,
         })
@@ -751,11 +1227,305 @@ mod tests {
     }
 
     #[test]
+    fn c71_canonical_resident_rms_exact_u128_coefficients() {
+        let mut fixture = fixture(512);
+        fixture.config.arena_bytes = 4 << 20;
+        let injection = Injection::new(&fixture.config);
+        let mut accepted = 0;
+        let mut rejected = 0;
+        for weighted in [false, true] {
+            for columns in [1, 3, 32, 256, 5376] {
+                for (input_exponent, output_exponent) in [(0, 0), (-12, -10), (-30, 0), (0, -25)] {
+                    let Ok(integer) = kernel::rms::Integer::new(
+                        columns,
+                        input_exponent,
+                        0,
+                        output_exponent,
+                        weighted,
+                    ) else {
+                        continue;
+                    };
+                    let coefficients = integer.coefficients();
+                    let mut runtime = Runtime::new(&fixture.config).unwrap();
+                    let weights =
+                        (0..columns).map(|column| (column % 7) as i16 - 3).collect::<Vec<_>>();
+                    let packed = Arc::new([vec![9; 3], weights.clone()].concat());
+                    if weighted {
+                        runtime.install_weights(packed, [1; 32]).unwrap();
+                    }
+                    let values =
+                        (0..4 * columns).map(|index| (index % 9) as i16 - 4).collect::<Vec<_>>();
+                    let input = runtime.upload_signed(&values).unwrap();
+                    let reference = values
+                        .chunks_exact(columns)
+                        .map(|row| {
+                            integer.row(
+                                &row.iter().map(|&value| i64::from(value)).collect::<Vec<_>>(),
+                                weighted.then_some(weights.as_slice()),
+                            )
+                        })
+                        .collect::<Result<Vec<_>, _>>();
+                    let output = runtime.rms(
+                        &input,
+                        0,
+                        if weighted { 3 } else { 0 },
+                        RmsShape {
+                            rows: 2,
+                            heads: 2,
+                            columns: columns as u32,
+                            weighted: u32::from(weighted),
+                            coefficients: std::array::from_fn(|limb| {
+                                (coefficients[limb / 2] >> (64 * (limb % 2))) as u64
+                            }),
+                        },
+                    );
+                    match reference {
+                        Err(_) => {
+                            assert!(output.is_err());
+                            assert_eq!(runtime.stats().unwrap().stopped, 1);
+                            rejected += 1;
+                        }
+                        Ok(reference) => {
+                            let (product, statistic, rounded) = output.unwrap();
+                            let mut outputs = vec![
+                                (
+                                    statistic,
+                                    6,
+                                    reference.iter().map(|entry| entry.0).collect::<Vec<_>>(),
+                                ),
+                                (
+                                    rounded,
+                                    2,
+                                    reference
+                                        .iter()
+                                        .flat_map(|entry| entry.2.iter().copied())
+                                        .collect(),
+                                ),
+                            ];
+                            if let Some(product) = product {
+                                outputs.push((
+                                    product,
+                                    4,
+                                    reference
+                                        .iter()
+                                        .flat_map(|entry| entry.1.iter().copied())
+                                        .collect(),
+                                ));
+                            }
+                            for (buffer, width, expected) in outputs {
+                                let rows = Rows {
+                                    buffer,
+                                    source: 0,
+                                    first: 0,
+                                    rows: 1,
+                                    columns: expected.len(),
+                                    layout: [1; 32],
+                                    recipe: [1; 32],
+                                };
+                                check_nonlinear_words(
+                                    &mut runtime,
+                                    &injection,
+                                    &rows,
+                                    width,
+                                    &expected,
+                                );
+                                rows.release(&mut runtime).unwrap();
+                            }
+                            runtime.release_buffer(input).unwrap();
+                            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+                            accepted += 1;
+                        }
+                    }
+                    runtime.close().unwrap();
+                }
+            }
+        }
+        assert!(accepted >= 20 && rejected >= 5);
+        eprintln!(
+            "C71_RESIDENT_RMS accepted={accepted} rejected={rejected} max_columns=5376 gpu=false"
+        );
+    }
+
+    fn attention_routes(slot: usize) {
+        let mut fixture = fixture(512);
+        fixture.config.arena_bytes = 64 << 20;
+        let injection = Injection::new(&fixture.config);
+        let profiles = (0..=slot).map(nonlinear_profile).collect::<Vec<_>>();
+        let plan = &profiles[slot];
+        let mut runtime = Runtime::new(&fixture.config).unwrap();
+        let mut families = BTreeSet::new();
+        for (layer_index, layer) in plan.sources.attention.layers.iter().enumerate() {
+            if !families.insert((layer.groups, layer.lanes)) {
+                continue;
+            }
+            let sample = |source: usize, token: usize, column: usize| {
+                ((source + token * 3 + column * 7) % 5) as i16 - 2
+            };
+            let mut tails = Vec::new();
+            for source in [layer.k, layer.v] {
+                let mut previous: Option<Tail> = None;
+                for (index, profile) in profiles.iter().enumerate() {
+                    let mut tail = Tail::new(
+                        &mut runtime,
+                        profile,
+                        source,
+                        previous.as_ref().map(|tail| (&profiles[index - 1], tail)),
+                    )
+                    .unwrap();
+                    if let Some(previous) = previous {
+                        previous.release(&mut runtime).unwrap();
+                    }
+                    let count = if index == slot { 2 } else { 150 };
+                    let values = (0..count)
+                        .flat_map(|row| {
+                            (0..tail.columns)
+                                .map(move |column| sample(source, index * 150 + row, column))
+                        })
+                        .collect::<Vec<_>>();
+                    let rows =
+                        profile.upload_native_rows(&mut runtime, source, 0, &values).unwrap();
+                    tail.append(&mut runtime, profile, &rows).unwrap();
+                    rows.release(&mut runtime).unwrap();
+                    previous = Some(tail);
+                }
+                tails.push(previous.unwrap());
+            }
+            let query_values = (0..2)
+                .flat_map(|row| {
+                    (0..32 * layer.lanes).map(move |column| sample(layer.q, row, column))
+                })
+                .collect::<Vec<_>>();
+            let query = plan.upload_native_rows(&mut runtime, layer.q, 0, &query_values).unwrap();
+            let step = plan
+                .steps
+                .iter()
+                .position(|step| matches!(step, Producer::Qk(index) if *index == layer_index))
+                .unwrap();
+            let first = 31 * 256 + 1;
+            let before = runtime.stats().unwrap();
+            let raw =
+                plan.prepare_native_qk(&mut runtime, step, first, 1, &query, &tails[0]).unwrap();
+            let reference = plan
+                .prepare_row(
+                    &plan.steps[step],
+                    first,
+                    0,
+                    &profile::Tables {
+                        gelu: &[],
+                        exp30: &[],
+                        softcap: &lookup::Table {
+                            profile: 0,
+                            lower: 0,
+                            outputs: lookup::Outputs::I16(&[]),
+                        },
+                        rope: &[],
+                    },
+                    |_, _, _| panic!("QK W read"),
+                    |source, row, column| {
+                        assert_eq!(source, layer.q);
+                        Ok(i64::from(sample(source, row, column)))
+                    },
+                    |source, token, column| {
+                        assert_eq!(source, layer.k);
+                        assert!(token < slot * 150 + 2);
+                        Ok(i64::from(sample(source, token, column)))
+                    },
+                )
+                .unwrap();
+            assert_eq!(runtime.stats().unwrap().h2d_bytes, before.h2d_bytes);
+            check_nonlinear_words(&mut runtime, &injection, &raw, 6, &reference.values[0].2);
+            raw.release(&mut runtime).unwrap();
+            query.release(&mut runtime).unwrap();
+            let columns = slot * 150 + 150;
+            let probability = |head: usize, key: usize| ((head + key * 3) % 9) as i16;
+            let inputs = (0..32)
+                .map(|head| {
+                    plan.upload_native_rows(
+                        &mut runtime,
+                        layer.pi,
+                        head * 256 + 1,
+                        &(0..columns)
+                            .map(
+                                |key| if key < slot * 150 + 2 { probability(head, key) } else { 0 },
+                            )
+                            .collect::<Vec<_>>(),
+                    )
+                    .unwrap()
+                })
+                .collect::<Vec<_>>();
+            let step = plan
+                .steps
+                .iter()
+                .position(|step| matches!(step, Producer::Pv(index) if *index == layer_index))
+                .unwrap();
+            let raw = plan
+                .prepare_native_pv(
+                    &mut runtime,
+                    step,
+                    1,
+                    1,
+                    &std::array::from_fn(|head| &inputs[head]),
+                    &tails[1],
+                )
+                .unwrap();
+            let expected = (0..32)
+                .flat_map(|head| {
+                    (0..layer.lanes).map(move |lane| {
+                        (0..slot * 150 + 2)
+                            .map(|key| {
+                                i64::from(probability(head, key))
+                                    * i64::from(sample(
+                                        layer.v,
+                                        key,
+                                        head / layer.repeats * layer.lanes + lane,
+                                    ))
+                            })
+                            .sum::<i64>()
+                    })
+                })
+                .collect::<Vec<_>>();
+            check_nonlinear_words(&mut runtime, &injection, &raw, 6, &expected);
+            raw.release(&mut runtime).unwrap();
+            for input in inputs {
+                input.release(&mut runtime).unwrap();
+            }
+            for tail in tails {
+                tail.release(&mut runtime).unwrap();
+            }
+            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+        }
+        assert_eq!(families.len(), 2);
+        runtime.close().unwrap();
+        eprintln!("C71_RESIDENT_ATTENTION slot={slot} families=2 causal_query=1 head=31 PV_heads=32 gpu=false");
+    }
+    #[test]
+    fn c71_canonical_resident_attention_o0() {
+        attention_routes(0);
+    }
+    #[test]
+    fn c71_canonical_resident_attention_o150() {
+        attention_routes(1);
+    }
+    #[test]
+    fn c71_canonical_resident_attention_o300() {
+        attention_routes(2);
+    }
+
+    #[test]
     fn c71_canonical_resident_nonlinear_original_routes() {
         let mut fixture = fixture(512);
-        fixture.config.arena_bytes = 32 << 20;
+        fixture.config.arena_bytes = 64 << 20;
         let injection = Injection::new(&fixture.config);
         let values: Vec<i16> = (-32767..=32767).map(|value| (value / 2) as i16).collect();
+        let exponential_values: Vec<i32> =
+            (0..65535).map(|entry| (1 << 30) / (entry + 1)).collect();
+        let exp30: Vec<_> = (0..60)
+            .map(|profile| lookup::Table {
+                profile,
+                lower: -32767,
+                outputs: lookup::Outputs::I32(&exponential_values),
+            })
+            .collect();
         let gelu: Vec<_> = (0..60)
             .map(|profile| lookup::Table {
                 profile,
@@ -787,7 +1557,7 @@ mod tests {
                 rows: &rotations[family],
             });
             let public =
-                profile::Tables { gelu: &gelu, exp30: &[], softcap: &softcap, rope: &rope };
+                profile::Tables { gelu: &gelu, exp30: &exp30, softcap: &softcap, rope: &rope };
             let mut runtime = Runtime::new(&fixture.config).unwrap();
             let tables = NonlinearTables::install(&mut runtime, &plan, &public).unwrap();
             let baseline = runtime.stats().unwrap().live_capacity_bytes;
@@ -837,17 +1607,24 @@ mod tests {
                     )
                     .unwrap();
                 let before = runtime.stats().unwrap();
-                let (output, tokens) = plan
-                    .prepare_native_nonlinear_step(
+                let (mut outputs, tokens) = plan
+                    .produce_native(
                         &mut runtime,
-                        &tables,
                         index,
                         first,
                         1,
-                        &input,
-                        histogram.as_mut(),
+                        Inputs {
+                            weights: &Arc::new(Vec::new()),
+                            tables: &tables,
+                            rows: &[&input],
+                            tokens: &[],
+                            tail: None,
+                            histogram: histogram.as_mut(),
+                        },
                     )
                     .unwrap();
+                assert_eq!(outputs.len(), 1);
+                let output = outputs.pop().unwrap();
                 let after = runtime.stats().unwrap();
                 assert_eq!(after.h2d_bytes, before.h2d_bytes);
                 assert_eq!(after.d2h_bytes - before.d2h_bytes, if category == 3 { 8 } else { 4 });
@@ -906,6 +1683,180 @@ mod tests {
             assert!(counts[1] > 60);
             assert_eq!(&counts[2..], &[1, 1]);
             eprintln!("C71_NONLINEAR_ROUTES slot={slot} counts={counts:?} gpu=false");
+            let mut norm_count = 0;
+            let mut softmax_count = 0;
+            for (step_index, step) in plan.steps.iter().enumerate() {
+                if let Producer::Norm(index) = step {
+                    let norm = &plan.sources.attention.rope.gate_up.gelu.rms.norms[*index];
+                    if norm.cohort.is_some() {
+                        continue;
+                    }
+                    let values = (0..norm.heads * norm.columns)
+                        .map(|column| (column % 7) as i16 - 3)
+                        .collect::<Vec<_>>();
+                    let input =
+                        plan.upload_native_rows(&mut runtime, norm.input, 149, &values).unwrap();
+                    let reference = plan
+                        .prepare_row(
+                            step,
+                            149,
+                            0,
+                            &public,
+                            |_, _, _| panic!("unweighted W read"),
+                            |source, row, column| {
+                                assert_eq!((source, row), (norm.input, 149));
+                                Ok(i64::from(values[column]))
+                            },
+                            |_, _, _| panic!("RMS KV read"),
+                        )
+                        .unwrap();
+                    let (output, tokens) = plan
+                        .produce_native(
+                            &mut runtime,
+                            step_index,
+                            149,
+                            1,
+                            Inputs {
+                                weights: &Arc::new(Vec::new()),
+                                tables: &tables,
+                                rows: &[&input],
+                                tokens: &[],
+                                tail: None,
+                                histogram: None,
+                            },
+                        )
+                        .unwrap();
+                    assert!(tokens.is_empty());
+                    assert_eq!(output.len(), reference.values.len());
+                    for (rows, expected) in output.into_iter().zip(reference.values) {
+                        assert_eq!((rows.source, rows.first), (expected.0, expected.1));
+                        check_nonlinear_words(
+                            &mut runtime,
+                            &injection,
+                            &rows,
+                            plan.bytes().widths[rows.source] as u32,
+                            &expected.2,
+                        );
+                        rows.release(&mut runtime).unwrap();
+                    }
+                    input.release(&mut runtime).unwrap();
+                    norm_count += 1;
+                } else if let Producer::Softmax(index) = step {
+                    let layer = &plan.softmax.layers[*index];
+                    let columns = slot * 150 + 150;
+                    let sample = |row: usize, column: usize| {
+                        if column <= slot * 150 + row % 256 {
+                            ((row * 3 + column * 5) % 7) as i16 - 3
+                        } else {
+                            0
+                        }
+                    };
+                    let first = 31 * 256 + 149;
+                    let values =
+                        (0..columns).map(|column| sample(first, column)).collect::<Vec<_>>();
+                    let input =
+                        plan.upload_native_rows(&mut runtime, layer.score, first, &values).unwrap();
+                    let mut histogram = plan.native_histogram(&mut runtime, step_index).unwrap();
+                    let reference = plan
+                        .prepare_row(
+                            step,
+                            first,
+                            0,
+                            &public,
+                            |_, _, _| panic!("softmax W read"),
+                            |source, row, column| {
+                                assert_eq!((source, row), (layer.score, first));
+                                Ok(i64::from(values[column]))
+                            },
+                            |_, _, _| panic!("softmax KV read"),
+                        )
+                        .unwrap();
+                    let (outputs, tokens) = plan
+                        .produce_native(
+                            &mut runtime,
+                            step_index,
+                            first,
+                            1,
+                            Inputs {
+                                weights: &Arc::new(Vec::new()),
+                                tables: &tables,
+                                rows: &[&input],
+                                tokens: &[],
+                                tail: None,
+                                histogram: Some(&mut histogram),
+                            },
+                        )
+                        .unwrap();
+                    assert!(tokens.is_empty());
+                    for (rows, expected) in outputs.into_iter().zip(reference.values) {
+                        assert_eq!((rows.source, rows.first), (expected.0, expected.1));
+                        check_nonlinear_words(
+                            &mut runtime,
+                            &injection,
+                            &rows,
+                            plan.bytes().widths[rows.source] as u32,
+                            &expected.2,
+                        );
+                        rows.release(&mut runtime).unwrap();
+                    }
+                    input.release(&mut runtime).unwrap();
+                    if *index == 0 {
+                        let mut visits = vec![0i64; 65535];
+                        visits[0] = (32 * 106 * columns) as i64;
+                        for head in 0..32 {
+                            let count = if head == 31 { 149 } else { 150 };
+                            let values = (0..count)
+                                .flat_map(|row| {
+                                    (0..columns).map(move |column| sample(head * 256 + row, column))
+                                })
+                                .collect::<Vec<_>>();
+                            let input = plan
+                                .upload_native_rows(&mut runtime, layer.score, head * 256, &values)
+                                .unwrap();
+                            let outputs = plan
+                                .prepare_native_softmax(
+                                    &mut runtime,
+                                    &tables,
+                                    step_index,
+                                    head * 256,
+                                    count,
+                                    &input,
+                                    &mut histogram,
+                                )
+                                .unwrap();
+                            for output in outputs {
+                                output.release(&mut runtime).unwrap();
+                            }
+                            input.release(&mut runtime).unwrap();
+                            for row in 0..150 {
+                                let live = slot * 150 + row + 1;
+                                let maximum = (0..live)
+                                    .map(|column| sample(head * 256 + row, column))
+                                    .max()
+                                    .unwrap();
+                                for column in 0..columns {
+                                    let entry = if column < live {
+                                        i32::from(maximum)
+                                            - i32::from(sample(head * 256 + row, column))
+                                    } else {
+                                        0
+                                    };
+                                    visits[entry as usize] += 1;
+                                }
+                            }
+                        }
+                        let histogram = histogram.finish(&mut runtime).unwrap();
+                        check_nonlinear_words(&mut runtime, &injection, &histogram, 4, &visits);
+                        histogram.release(&mut runtime).unwrap();
+                    } else {
+                        runtime.release_buffer(histogram.buffer).unwrap();
+                    }
+                    softmax_count += 1;
+                }
+            }
+            assert_eq!((norm_count, softmax_count), (60, 60));
+            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, baseline);
+            eprintln!("C71_RESIDENT_NORM_SOFTMAX slot={slot} unweighted_norm={norm_count} softmax={softmax_count} padded_histogram_complete=true gpu=false");
             tables.release(&mut runtime).unwrap();
             assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
             runtime.close().unwrap();

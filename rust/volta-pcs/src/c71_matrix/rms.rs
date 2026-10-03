@@ -316,6 +316,9 @@ pub(super) struct Integer {
 }
 
 impl Integer {
+    pub fn coefficients(&self) -> [u128; 3] {
+        self.coefficients
+    }
     pub fn new(
         columns: usize,
         input_exponent: i32,

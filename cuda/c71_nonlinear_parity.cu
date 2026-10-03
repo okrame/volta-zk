@@ -10,6 +10,11 @@ extern "C" cudaError_t c71_histogram_seal_launch(cudaStream_t,int64_t*,uint32_t*
 extern "C" cudaError_t c71_rope_launch(cudaStream_t,const int16_t*,const int32_t*,int64_t*,c71_nonlinear::Rope,uint32_t*);
 extern "C" cudaError_t c71_argmax_select_launch(cudaStream_t,const int16_t*,uint32_t*,unsigned,unsigned,uint32_t*);
 extern "C" cudaError_t c71_argmax_slack_launch(cudaStream_t,const int16_t*,const uint32_t*,int16_t*,unsigned,unsigned,uint32_t*);
+extern "C" cudaError_t c71_rms_launch(cudaStream_t,const int16_t*,const int16_t*,int64_t*,int64_t*,int16_t*,c71_nonlinear::Rms,uint32_t*);
+extern "C" cudaError_t c71_qk_launch(cudaStream_t,const int16_t*,const int16_t*,int64_t*,c71_nonlinear::Attention,uint32_t*);
+extern "C" cudaError_t c71_pv_launch(cudaStream_t,const int16_t* const*,const int16_t*,int64_t*,c71_nonlinear::Attention,uint32_t*);
+extern "C" cudaError_t c71_softmax_launch(cudaStream_t,const int16_t*,const int32_t*,int16_t*,int16_t*,int64_t*,int64_t*,int16_t*,int64_t*,c71_nonlinear::Attention,uint32_t*);
+extern "C" cudaError_t c71_dense_rne_launch(cudaStream_t,const int64_t*,int16_t*,uint64_t,int32_t,uint32_t*);
 
 static void require(bool valid) { if(!valid) { std::fputs("C71 nonlinear parity failed\n",stderr); std::exit(1); } }
 static void check(cudaError_t status) { if(status!=cudaSuccess) { std::fprintf(stderr,"CUDA: %s\n",cudaGetErrorString(status)); std::exit(1); } }
@@ -79,6 +84,84 @@ int main() {
         check(cudaFree(raw)); check(cudaFree(device_coefficients)); ++rope_cases;
     }
 
+    auto* norm_weights=device<int16_t>(2);
+    auto* norm_product=device<int64_t>(4);
+    auto* norm_statistic=device<int64_t>(2);
+    upload(source,std::vector<int16_t>{1,1,-1,-1}); upload(norm_weights,std::vector<int16_t>{1,3}); reset();
+    c71_nonlinear::Rms norm{2,1,2,1,{1,0,2,0,1,0}};
+    check(c71_rms_launch(stream,source,norm_weights,norm_product,norm_statistic,output,norm,failed)); require(flag()==0);
+    require(read(output,4,stream)==std::vector<int16_t>({0,2,0,-2}));
+    require(read(norm_product,4,stream)==std::vector<int64_t>({1,3,-1,-3}));
+    require(read(norm_statistic,2,stream)==std::vector<int64_t>({2,2}));
+    upload(source,std::vector<int16_t>{3,4,-3,-4}); reset();
+    norm={2,1,2,0,{1000000,0,1,0,500000,0}};
+    check(c71_rms_launch(stream,source,nullptr,nullptr,norm_statistic,output,norm,failed)); require(flag()==0);
+    require(read(output,4,stream)==std::vector<int16_t>({1,1,-1,-1}));
+    norm={2,1,2,0,{1000000000000ULL,0,1,0,1,0}}; reset();
+    check(c71_rms_launch(stream,source,nullptr,nullptr,norm_statistic,output,norm,failed)); require(flag()!=0);
+    check(cudaFree(norm_weights)); check(cudaFree(norm_product)); check(cudaFree(norm_statistic));
+
+    for(unsigned old:{0u,150u,300u}) {
+        const c71_nonlinear::Attention shape{2,0,31,old,2,4};
+        const unsigned columns=old+150,count=2*columns;
+        input.resize(2*32*4);
+        for(size_t index=0;index<input.size();++index) input[index]=int16_t(int(index%3)-1);
+        std::vector<int16_t> history(columns*2*4,INT16_MIN);
+        for(unsigned key=0;key<old+2;++key) for(unsigned column=0;column<8;++column) history[key*8+column]=int16_t(int((key+column)%5)-2);
+        auto* tail=device<int16_t>(history.size()); upload(tail,history); upload(source,input);
+        auto* raw=device<int64_t>(count); reset();
+        check(c71_qk_launch(stream,source,tail,raw,shape,failed)); require(flag()==0);
+        const auto scores=read(raw,count,stream);
+        for(unsigned row=0;row<2;++row) for(unsigned key=0;key<columns;++key) {
+            int64_t expected=0;
+            if(key<=old+row) for(unsigned lane=0;lane<4;++lane) expected+=int64_t(input[(row*32+31)*4+lane])*history[key*8+4+lane];
+            require(scores[row*columns+key]==expected);
+        }
+        check(c71_dense_rne_launch(stream,raw,output,count,0,failed)); require(flag()==0);
+        auto* maxima=device<int16_t>(2); auto* differences=device<int16_t>(count);
+        auto* exponentials=device<int64_t>(count); auto* denominators=device<int64_t>(2);
+        auto* probabilities=device<int16_t>(count); auto* counts=device<int64_t>(65535);
+        std::vector<int32_t> exponent_table(65535);
+        for(unsigned entry=0;entry<65535;++entry) exponent_table[entry]=(1<<30)/(entry+1);
+        auto* exp_table=device<int32_t>(65535); upload(exp_table,exponent_table);
+        check(cudaMemsetAsync(counts,0,65535*8,stream)); reset();
+        check(c71_softmax_launch(stream,output,exp_table,maxima,differences,exponentials,denominators,probabilities,counts,shape,failed)); require(flag()==0);
+        const auto actual_maxima=read(maxima,2,stream),actual_differences=read(differences,count,stream),actual_probabilities=read(probabilities,count,stream);
+        const auto actual_exponentials=read(exponentials,count,stream),actual_denominators=read(denominators,2,stream);
+        std::vector<int64_t> visits(65535,0);
+        for(unsigned row=0;row<2;++row) {
+            const unsigned live=old+row+1;
+            const int64_t maximum=*std::max_element(scores.begin()+row*columns,scores.begin()+row*columns+live);
+            require(actual_maxima[row]==maximum); int64_t denominator=0;
+            for(unsigned column=0;column<columns;++column) {
+                const unsigned delta=column<live?unsigned(maximum-scores[row*columns+column]):0;
+                require(actual_differences[row*columns+column]==int(delta)-32767);
+                require(actual_exponentials[row*columns+column]==exponent_table[delta]);
+                ++visits[delta]; if(column<live) denominator+=exponent_table[delta];
+            }
+            require(actual_denominators[row]==denominator);
+            for(unsigned column=0;column<columns;++column) {
+                const int64_t numerator=16384*actual_exponentials[row*columns+column],quotient=numerator/denominator,remainder=numerator%denominator;
+                const int16_t expected=column<live?int16_t(quotient+(2*remainder>denominator || (2*remainder==denominator && (quotient&1)))):0;
+                require(actual_probabilities[row*columns+column]==expected);
+            }
+        }
+        require(read(counts,65535,stream)==visits);
+        const int16_t* head_probabilities[32]; std::fill(head_probabilities,head_probabilities+32,probabilities);
+        auto* product=device<int64_t>(256); reset();
+        check(c71_pv_launch(stream,head_probabilities,tail,product,shape,failed)); require(flag()==0);
+        const auto actual_product=read(product,256,stream);
+        for(unsigned row=0;row<2;++row) for(unsigned head=0;head<32;++head) for(unsigned lane=0;lane<4;++lane) {
+            int64_t expected=0;
+            for(unsigned key=0;key<=old+row;++key) expected+=int64_t(actual_probabilities[row*columns+key])*history[key*8+(head/16)*4+lane];
+            require(actual_product[(row*32+head)*4+lane]==expected);
+        }
+        std::vector<int16_t> invalid(scores.begin(),scores.end()); invalid[columns-1]=1; upload(output,invalid); reset();
+        check(c71_softmax_launch(stream,output,exp_table,maxima,differences,exponentials,denominators,probabilities,counts,shape,failed)); require(flag()!=0);
+        check(cudaFree(product)); check(cudaFree(exp_table)); check(cudaFree(counts)); check(cudaFree(probabilities));
+        check(cudaFree(denominators)); check(cudaFree(exponentials)); check(cudaFree(differences)); check(cudaFree(maxima)); check(cudaFree(raw)); check(cudaFree(tail));
+    }
+
     constexpr unsigned rows=3,columns=513;
     input.assign(rows*columns,-32767);
     input[511]=input[512]=32767;
@@ -100,5 +183,5 @@ int main() {
     check(c71_argmax_select_launch(stream,source,tokens,rows,columns,failed)); require(flag()!=0);
     check(cudaFree(tokens)); check(cudaFree(output)); check(cudaFree(source)); check(cudaFree(failed));
     check(cudaStreamDestroy(stream));
-    std::printf("C71_NONLINEAR_CUDA_PARITY {\"lookup_entries\":65535,\"rope_cases\":%u,\"argmax_rows\":3,\"rejections\":6,\"gpu_execution\":true,\"credit\":false}\n",rope_cases);
+    std::printf("C71_NONLINEAR_CUDA_PARITY {\"lookup_entries\":65535,\"rope_cases\":%u,\"argmax_rows\":3,\"rms_cases\":3,\"attention_contexts\":3,\"rejections\":10,\"gpu_execution\":true,\"credit\":false}\n",rope_cases);
 }

@@ -632,16 +632,17 @@ l'owner Rust e i relativi descrittori rimangono memoria host da censire.
 Il loader controlla ABI 3 prima di creare un contesto e richiede i simboli
 di vista/abort; la precedente ABI 2 da 144 B è rifiutata prima di leggere
 il nuovo ledger, che aggiunge `d2d_bytes`.
-Il dispatcher di base serve Embedding/Matrix/RNE/Affine/Gate; quello
-nonlineare serve GELU/softcap/RoPE/argmax. Norm/QK/softmax/PV restano
-assenti: non è un preparatore GPU completo né un fallback.
-`NonlinearTables` valida e carica tabelle i16 e due finestre RoPE alle
-posizioni assolute del contesto: 8.225.672 B logici, 8.225.792 B allineati
+`produce_native` collega tutti i 13 tipi di producer, riusando i dispatcher
+di base e nonlineare e le route Norm/QK/softmax/PV. Verifica arità, presenza
+esatta di coda/istogramma e assenza di token estranei all'embedding;
+non è ancora uno scanner o un preparatore GPU completo, né un fallback.
+`NonlinearTables` valida e carica tabelle i16, 60 EXP30 i32 e due finestre RoPE alle
+posizioni assolute del contesto: 23.954.072 B logici, 23.954.176 B allineati
 nella stessa arena. Il packing host temporaneo è ancora addebitabile,
 oltre alle tabelle pubbliche originali; non è spill privato. Layout,
 ricette, posizione e sorgente/righe dell'input sono controllati a ogni
 operazione. Ogni istogramma usa 524.280 B logici / 524.288 B riservati e
-una bitmap Rust di 150 B (50 per softcap); non è consumabile dal gather
+una bitmap Rust di 150 B (50 per softcap, 8.192 per EXP30); non è consumabile dal gather
 prima del seal completo. Le frequenze rimangono interi nonnegativi:
 il bias i32 appartiene esclusivamente al codec byte, come sul riferimento.
 GELU/softcap contano anche le ripetizioni, RoPE emette raw signed-48
@@ -654,6 +655,25 @@ raw, output, istogramma o slack privato viene scaricato. Un raw RoPE
 per la RNE se simultaneamente vivi. Questi subtotali non sostituiscono
 il conto completo: i 64 descrittori dell'owner richiedono ancora una
 schedule di rilascio/consolidamento per tutti gli istogrammi della risposta.
+RMS conserva prodotto ponderato opzionale, somma dei quadrati per testa e
+output i16. Usa gli stessi tre coefficienti u128 di `rms::Integer`, con
+envelope verificato prima del launch e confronto delle soglie quadrate
+senza floating point. La riduzione shared usa 2.048 B per CTA.
+QK/PV sono kernel scalari interi, non MMA: la loro prestazione va misurata.
+QK produce zero sui key futuri senza leggerli; PV legge solo il prefisso
+causale e le 32 Pi originali. `Tail` controlla sorgente/layout/ricette,
+predecessore completo e append consecutivo; il runtime verifica anche
+il prefisso device inizializzato. L'append copia D2D e fa fence prima di
+estendere il prefisso. Il runner deve ancora legare queste code alle
+sole accettazioni durevoli, senza trattenere copie cumulative superflue.
+EXP30 verifica score futuri zero, tabella E(0)=2^30 e range, accumula Z
+esatto e arrotonda Pi Q14 con pareggi al pari. La riduzione shared usa
+3.072 B per CTA. I 32×106 query di padding aggiungono pubblicamente
+`32*106*(O+150)` visite al bin zero una volta, con 8 B H2D e fence;
+le righe vive completano l'istogramma senza doppio conteggio. Il marcatore
+−32768 resta vietato agli input aritmetici. I test ponderati RMS usano W
+ridotta, non installano i 61 GB canonici; la parità delle route canoniche
+copre Norm non ponderate e le due famiglie attention nei tre contesti.
 Il gather byte nativo ora riusa `Bytes::resident_tiles`,
 le medesime tessere di `emit_row_bytes`, su blocchi originali residenti.
 `ByteWindow` seleziona sorgenti con le intersezioni pubbliche esistenti;
@@ -672,7 +692,7 @@ Il rilascio anticipato ritira anche il flag senza liberare l'arena. La
 copertura del layout è responsabilità del wrapper Rust fidato; l'ABI C
 controlla codec, accessi e stato del buffer, non certifica il DAG da sola.
 Il loader richiede anche i tre simboli begin/scatter/seal. Mancano ancora
-gli operatori rimanenti e il collegamento di questo gather al replay,
+il collegamento di questo gather al replay,
 lo scanner PCS/range interamente residente, il lifecycle comune del runner
 e il conto simultaneo di prover/verificatore/PCS/Seed6. Il ledger C non
 comprende i descrittori/bitmap Rust o il picco fisico completo.
@@ -701,12 +721,12 @@ non misura il traffico fisico del bus. Stack host degli ID, overhead del
 runtime e tempi restano nel conto globale da completare. Il chiamante
 del runner dovrà fornire gli ID dello snapshot causale fissato; l'adapter
 non prova da solo quella provenienza. Il loader richiede anche il simbolo
-embedding. Restano otto tipi di producer e l'integrazione completa.
+embedding. Resta l'integrazione completa dello scanner e del runner.
 Il codec byte condiviso accetta l'intero intervallo signed della propria
 larghezza, incluso −32768 per `U/global/argmax_slack`: la prima versione
 del gather rifiutava erroneamente questa cella valida. Il rifiuto del
 marcatore resta nei confini aritmetici e nell'upload signed ordinario;
-il producer argmax residente resta da implementare.
+il producer argmax residente produce quello slack senza upload signed.
 Il modello host dei frammenti non è esecuzione o verifica concorrente CUDA.
 
 RMS usa P/Y originali e S48 condiviso per riga, con checkpoint da

@@ -1,0 +1,250 @@
+{
+  "schema": "volta-c71-initial-scan-local-v1",
+  "date": "2026-10-03",
+  "git_sha": "83d366ccbc5ce228393bbedf0289597023555f7d",
+  "git_dirty": false,
+  "baseline": "benchmarks/results/c71-runner-measurements-local-2026-10-03-187a0b9dc9ce.json",
+  "result": "PASS_LOCAL_INITIAL_SCAN_REFINEMENT_ONLY",
+  "credit": false,
+  "readiness": false,
+  "environment": {
+    "platform": "Linux aarch64",
+    "rustc": "1.96.1 (31fca3adb 2026-06-26)",
+    "profile": "dev opt-level=2 debug=0 incremental=0 target-cpu=native",
+    "cargo_jobs": 1,
+    "single_test_process": true,
+    "rayon_workers": 1,
+    "omp_threads": 1,
+    "openblas_threads": 1,
+    "test_timeout_seconds": 60,
+    "kill_grace_seconds": 5,
+    "virtual_memory_limit_bytes": 2147483648,
+    "network": "None. Offline locked builds, no provider or external network calls.",
+    "timing_caveat": "Some reduced tests overlapped the one-job runner build. Durations are local check diagnostics, not protocol or hardware benchmarks."
+  },
+  "build": {
+    "working_directory": "rust",
+    "checks": [
+      {
+        "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 0.09
+      },
+      {
+        "command": "cargo build --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --example c71_canonical_reference",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 81
+      },
+      {
+        "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --example c71_canonical_reference -- -D clippy::correctness -D clippy::suspicious",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 23.47
+      }
+    ],
+    "warnings": "Non-denied warnings remain: 25 volta-pcs lib-test, 36 lib-build and 175 lib-clippy warnings. correctness/suspicious lint levels passed."
+  },
+  "binary_sha256": {
+    "test": "9c7b60a446d8b66311585af343b70c176a441956649c64e70a530f8dfe51c9a2",
+    "runner": "7b0a29729eeee7eafd07652c4380da10e22c87fbfe4a51d2f75ea40ae3e5122d"
+  },
+  "implemented": [
+    "Canonical initial A commitment uses a full causal original-source scan per coset instead of invoking the 128-byte scalar getter per coefficient.",
+    "Source-row coverage bitmaps and per-source tile indices preserve original biased-byte layout; consumer errors propagate immediately.",
+    "Only selected large initial W/A geometry is admitted: 128 base columns, 2^22 coset rows and 2^12 Merkle cut.",
+    "Base cosets scatter directly into one column-major buffer; one FFT column is reused without a full row-major copy.",
+    "Both P3 twiddle tables are retained across cosets; factored powers preserve original pad positions and nonmonotone producer order.",
+    "Query batch policy is shared between Code and Tree: reduced cap 1024 retained, selected large initial cap 2^21 connected but not exercised."
+  ],
+  "observed": {
+    "rust_tests_passed": 23,
+    "python_tests_passed": 9,
+    "cli_expected_rejections": 2,
+    "canonical_certificates_verified": 0,
+    "canonical_full_model_executions": 0,
+    "reduced_ideal_mac_integrated_acceptances": 1,
+    "real_seed6_accepted_responses_in_this_record": 0,
+    "gpu_executions": 0,
+    "real_weights_read_or_downloaded": false,
+    "pod_actions": false,
+    "provider_spend": 0,
+    "complete_memory_accounting": false,
+    "complete_time_accounting": false,
+    "canonical_full_domain_execution": false
+  },
+  "reduced_initial_fixture": {
+    "dimension": 14,
+    "live_coefficients": 16371,
+    "external_zero_coefficients": 13,
+    "source_scan_count": 512,
+    "source_coefficient_emissions": 8381952,
+    "scalar_getter_calls_during_commit": 0,
+    "source_emission_order": "Reversed original coefficient indices.",
+    "reference": "Independent native HidingWhirProver dense commitment with the same private pad and salt seeds.",
+    "root_equal": true,
+    "opened_indices": [
+      131071,
+      0,
+      11,
+      0
+    ],
+    "opening_verifies": true,
+    "source_scans_after_openings": 512,
+    "no_canonical_or_hardware_credit": true
+  },
+  "targeted_component_checks": [
+    "Odd/even shuffled emission order, rows 16/32/64/128, nonzero original pads and live prefix shorter than the message; equality with the original coset encoder.",
+    "Reject omitted coefficients, out-of-live emission, source error and invalid coset geometry.",
+    "Reduced byte partition emits each i16/i32/i48 byte once and equals the independent virtual-to-packed address map; consumer error stops after one byte.",
+    "Canonical synthetic softmax operator scans frozen score checkpoint, D/E/Z/Pi and complete histogram, including public internal padding; coverage and error propagation.",
+    "Retained initial root/cache, Merkle salts and RNG fork/seek, query remainders/zero-tail split, original MACs, full reduced sourcewise WHIR transcript and ordered reduced O=0 pipeline.",
+    "Canonical metadata/row fixtures for three contexts; no full-model numerical execution."
+  ],
+  "static_geometry_no_large_allocation": {
+    "a": {
+      "dimension": 34,
+      "height": 2147483648,
+      "base_columns": 128,
+      "coset_rows": 4194304,
+      "scans": 512,
+      "merkle_cut": 4096
+    },
+    "w": {
+      "dimension": 35,
+      "height": 4294967296,
+      "base_columns": 128,
+      "coset_rows": 4194304,
+      "scans": 1024,
+      "merkle_cut": 4096
+    },
+    "coset_payload_bytes": 4294967296,
+    "fft_column_payload_bytes": 33554432,
+    "paired_twiddle_payload_bytes": 67108848,
+    "resource_note": "Analytic payloads only, not a simultaneous physical peak. Excludes source workspace, metadata/capacity, power tables, row coverage, checkpoint/KV/histograms, Merkle frontier/salts/cache and other owners. Both twiddles remain live across cosets; power tables are dropped before the FFT column is allocated.",
+    "rejected_without_domain_allocation": [
+      "A with 2^21 coset rows (1024 reconstructions)",
+      "W with nonselected coset rows",
+      "height 2^30 / 12 columns",
+      "height 2^33 / 128 columns",
+      "height 2^31 / 384 extension limbs"
+    ]
+  },
+  "checks": [
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_scattered --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 2 tests\ntest c71_matrix::b12::replay::tests::c71_b12_scattered_coset_original_pad_positions_and_failures ... ok\ntest c71_matrix::b12::replay::tests::c71_b12_scattered_initial_512_passes_matches_native_root_and_openings ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 445 filtered out; finished in 0.33s\n\n",
+      "controller_elapsed_seconds": 0.351
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 replay_tree --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 4 tests\ntest c71_matrix::b12::replay_tree::tests::c71_b12_canonical_initial_geometry_selects_512_a_scans_without_allocation ... ok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_matches_native_root_rows_salts_and_pruned_frontier ... ok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_respects_mmcs_clone_fork ... ok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_uses_live_rng_cursor_and_rejects_bad_shapes ... ok\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 443 filtered out; finished in 0.01s\n\n",
+      "controller_elapsed_seconds": 0.055
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_retained_initial --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_retained_initial_oracle_shares_cache_without_source_recommit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 446 filtered out; finished in 0.04s\n\n",
+      "controller_elapsed_seconds": 0.08
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_query_remainder --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_query_remainder_matches_original_base_and_extension_rows ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 446 filtered out; finished in 0.02s\n\n",
+      "controller_elapsed_seconds": 0.064
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_query_split --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_query_split_zero_tail_preserves_original_pad_and_rows ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 446 filtered out; finished in 0.03s\n\n",
+      "controller_elapsed_seconds": 0.111
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_replay_base --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_replay_base_rejects_extension_coefficients_before_encoding ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 446 filtered out; finished in 0.00s\n\n",
+      "controller_elapsed_seconds": 0.049
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_streaming --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 3 tests\ntest c71_matrix::b12::streaming::tests::c71_b12_streaming_hash_matches_native_salts_roots_and_seek ... ok\ntest c71_matrix::b12::streaming::tests::c71_b12_streaming_sampler_rejection_consumes_variable_offsets ... ok\ntest c71_matrix::b12::streaming::tests::c71_b12_streaming_strided_cosets_match_native_root ... ok\n\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 444 filtered out; finished in 0.00s\n\n",
+      "controller_elapsed_seconds": 0.044
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_canonical_ordered --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::ordered::tests::c71_canonical_ordered_internal_padding_histogram_and_byte_window ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 446 filtered out; finished in 0.42s\n\n",
+      "controller_elapsed_seconds": 0.44
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::bytes::tests::c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 446 filtered out; finished in 0.68s\n\n",
+      "controller_elapsed_seconds": 0.702
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_full_sourcewise_chain --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_full_sourcewise_chain_matches_native_bytes ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 446 filtered out; finished in 1.75s\n\n",
+      "controller_elapsed_seconds": 1.771
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_ordered_sourcewise_o0 --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::ordered::tests::c71_b12_ordered_sourcewise_o0 ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 446 filtered out; finished in 2.68s\n\n",
+      "controller_elapsed_seconds": 2.698
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 446 filtered out; finished in 12.53s\n\n",
+      "controller_elapsed_seconds": 12.553
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_canonical --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 5 tests\ntest c71_matrix::gemma::native::canonical::calibration::tests::c71_b12_native_canonical_calibration_storage_release_and_ranges ... ok\ntest c71_matrix::gemma::native::canonical::calibration::tests::c71_b12_native_canonical_calibration_three_context_kv_handoff ... ok\ntest c71_matrix::gemma::native::canonical::prepare::tests::c71_b12_native_canonical_numeric_rows_original_routes ... ok\ntest c71_matrix::gemma::native::canonical::tests::c71_b12_native_canonical_all_sources_have_causal_producers_across_three_contexts ... ok\ntest c71_matrix::gemma::native::canonical::wire_tests::c71_b12_native_canonical_wire_body_geometry ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 442 filtered out; finished in 6.24s\n\n",
+      "controller_elapsed_seconds": 6.283
+    },
+    {
+      "command": "(ulimit -v 2097152; PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 RAYON_NUM_THREADS=1 timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py)",
+      "exit_code": 0,
+      "output": ".........                                                                [100%]\n9 passed in 0.49s\n",
+      "controller_elapsed_seconds": 0.658
+    },
+    {
+      "command": "(ulimit -v 2097152; PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s .venv/bin/python - <<'PY'\nimport json, subprocess\nbinary = 'rust/target/debug/examples/c71_canonical_reference'\nfor args in ([], ['gpu']):\n    run = subprocess.run([binary, *args], text=True, capture_output=True, timeout=5)\n    assert run.returncode == 1 and not run.stdout\n    lines = run.stderr.splitlines()\n    report = json.loads(next(line.removeprefix('C71_RUN_METRICS ') for line in lines if line.startswith('C71_RUN_METRICS ')))\n    assert report['complete'] is False and report['readiness'] is False and report['credit'] is False\n    m = report['measurements']\n    assert m['bytes_to_verifier'] == m['bytes_from_verifier'] == 0\n    assert not m['gpu_execution'] and not m['complete_physical_peak']\n    assert any('no admitted GPU runner' in line for line in lines)\nprint('2 expected CLI rejections, no channels or GPU, no readiness')\nPY\n)",
+      "exit_code": 0,
+      "output": "2 expected CLI rejections, no channels or GPU, no readiness\n",
+      "controller_elapsed_seconds": 0.088
+    }
+  ],
+  "development_failures_not_runs_of_record": {
+    "base_git_short_sha": "62e73e1",
+    "git_dirty": true,
+    "failures": [
+      {
+        "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_query_remainder --test-threads=1)",
+        "exit_code": 101,
+        "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_query_remainder_matches_original_base_and_extension_rows ... FAILED\n\nfailures:\n\n---- c71_matrix::b12::replay::tests::c71_b12_query_remainder_matches_original_base_and_extension_rows stdout ----\n\nthread 'c71_matrix::b12::replay::tests::c71_b12_query_remainder_matches_original_base_and_extension_rows' (5) panicked at volta-pcs/src/c71_matrix/b12/replay.rs:1309:13:\nassertion failed: code.rows(&vec![0; 1025]).is_err()\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    c71_matrix::b12::replay::tests::c71_b12_query_remainder_matches_original_base_and_extension_rows\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 446 filtered out; finished in 0.02s\n\n",
+        "controller_elapsed_seconds": 0.066
+      }
+    ],
+    "correction": "The initial edit enlarged Code's query cap even for small reference trees. Shared height-dependent batch policy now preserves the reduced 1024-row rejection; the existing regression and all clean-tree checks pass.",
+    "build_failures": 0
+  },
+  "remaining_local_work": [
+    "Range and initial-query window schedule; scalar/row regeneration is still used outside the initial A commitment.",
+    "Sourcewise State::new still rejects more than 16 variables; canonical Eq/Pow preparation and large extension S1/S2 oracle replay are not implemented.",
+    "Dense GKR/verifier/intermediate structures and all remaining simultaneous workspace/capacity accounting.",
+    "Exact CUDA integration and a fail-closed production runner.",
+    "Complete inference/proof phase partition, CPU-time, per-role memory, simultaneous host/HBM measurement and physical reservation/release.",
+    "Canonical positive composition and three valid certificates on the same registry; Seed6 security refinement obligations remain open.",
+    "Real-Gamma recount of RMS/circuits/correlations; known analytic continuation traffic already exceeds 40 MB."
+  ],
+  "external_conditions": [
+    "Real weights acquisition/calibration and H100 execution require explicit owner authorization.",
+    "RunPod hard stop remains until a verified provider deadline or an explicitly authorized spending guard is available."
+  ]
+}

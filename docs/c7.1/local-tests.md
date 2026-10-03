@@ -232,7 +232,12 @@ Il [record della strumentazione](../../benchmarks/results/c71-runner-measurement
 registra separatamente 9 test Rust, 10 Python e due rifiuti CLI sulla SHA
 pulita, con contatori di tre scambi sintetici e rifiuto per capacità reale.
 Non è un'esecuzione di tre prove. Conserva inoltre il riscontro statico
-del cap 2^18 del replay, incompatibile con i commitment iniziali D34/D35.
+del cap 2^18 del replay nella revisione registrata.
+Il [record dello scanner iniziale](../../benchmarks/results/c71-initial-scan-local-2026-10-03-83d366ccbc5c.json)
+conserva 23 test Rust, 9 Python e due rifiuti CLI sulla revisione pulita
+che sostituisce quel limite con la geometria iniziale scelta. Include
+la regressione del cap query trovata e corretta durante lo sviluppo.
+La parità a 512 passaggi è D14; D34/D35 e picco completo non sono eseguiti.
 
 La verifica di questa riorganizzazione e gli eventuali fallimenti sono
 registrati nell'[audit documentale](../c7.1-history/reorganization-audit.md).

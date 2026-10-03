@@ -4,6 +4,12 @@ Checkpoint locale successivo alla
 [strumentazione del runner](canonical-runner-measurements.md).
 Le istruzioni correnti sono nei [cinque documenti attivi](../c7.1/design.md).
 Non modifica protocollo, autorizzazioni, bound Seed6 o obiettivi di risorse.
+Il [record sulla SHA pulita 83d366c](../../benchmarks/results/c71-initial-scan-local-2026-10-03-83d366ccbc5c.json)
+conserva 23 test Rust, 9 controlli documentali, due rifiuti CLI, build e
+lint. Conserva separatamente la regressione di sviluppo del cap query:
+l'aumento iniziale ammetteva oltre 1.024 righe anche nei domini piccoli;
+la policy condivisa ora mantiene quel rifiuto. Tutti i controlli della
+revisione pulita passano, con `credit:false` e `readiness:false`.
 
 Il precedente commitment richiamava il getter scalare di ogni coefficiente;
 per A questo selezionava finestre da 128 byte e ripeteva la ricostruzione

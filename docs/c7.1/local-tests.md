@@ -229,6 +229,10 @@ non dedurre un errore dei kernel dall'assenza di `libcudart.so`.
 Il [checkpoint nativo](../c7.1-history/canonical-native-range-kernels.md)
 conserva esiti, errori degli strumenti, stack locale e artefatti compilati;
 non contiene esecuzioni GPU o prove canoniche.
+Il [record dell'owner residente](../../benchmarks/results/c71-range-owner-local-2026-10-03-20d85df34158.json)
+aggiunge undici test Python, controllo UBSan del driver simulato e link
+kernel/runtime sulla SHA pulita. Il SASS dei kernel è invariato; il nuovo
+owner non è ancora collegato ai callback Rust o verificato su GPU.
 
 Per il controllo host della FFT:
 

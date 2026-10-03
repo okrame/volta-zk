@@ -1,0 +1,106 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-03",
+  "git_sha": "20d85df34158df05914544e0bbcf7d242c9b97c6",
+  "git_dirty": false,
+  "milestone": "native range resident stream and arena owner",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "weights_downloaded": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-native-range-kernels-local-2026-10-03-4524ae60361e.json",
+  "changes": [
+    "Explicit device, nonblocking private stream and one fixed CUDA arena; at most 64 typed, globally unique handles",
+    "Initialized-prefix checks, aligned retained capacity, first-fit reuse ordered on the same stream, no per-buffer cudaMalloc/free",
+    "Root/terminal/cubic output publication only after successful fence and canonical-limb checks; all errors permanently stop the owner",
+    "Requested arena, assigned capacity/peak, logical payload, submitted copy/zero bytes and launch/fence attempts; conservative failed cleanup",
+    "Native launch wrappers for canopy, H, child folds and coefficient reductions; no GPU runner admission"
+  ],
+  "test_environment": {
+    "address_space_kib": 2097152,
+    "timeout_seconds": 60,
+    "kill_grace_seconds": 5,
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "RAYON_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "test_processes_at_once": 1
+  },
+  "checks": [
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_range_native.py",
+      "exit_code": 0,
+      "passed": 2,
+      "pytest_seconds": 0.91,
+      "coverage": "Existing 37 host algebra cases plus real owner linked to deferred fake CUDA driver; 13 terminal rejection cases, coefficient scratch lifetime, H/retention, source types, partial root append, no output publication after fence or canonical-limb failure",
+      "max_host_algebra_original_words": 2048,
+      "max_fake_arena_bytes": 262144
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py",
+      "exit_code": 0,
+      "passed": 9,
+      "pytest_seconds": 0.47
+    },
+    {
+      "command": "g++ -std=c++17 -O1 -g -fsanitize=undefined -fno-sanitize-recover=all -Wall -Wextra -Werror -I tests/cuda_stub -I cuda cuda/c71_range_runtime.cpp tests/c71_range_runtime_host.cpp -o benchmarks/raw/c71-range-owner-2026-10-03-20d85df34158/owner-ubsan",
+      "exit_code": 0,
+      "execution": "timeout -k 5s 60s benchmarks/raw/c71-range-owner-2026-10-03-20d85df34158/owner-ubsan under the address-space limit above",
+      "execution_exit_code": 0,
+      "undefined_behavior_reports": 0,
+      "compile_and_execution_tool_seconds": 0.302856286,
+      "report": {"rejections": 13, "max_arena_bytes": 262144, "gpu_execution": false, "credit": false}
+    },
+    {
+      "command": "/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC -Xptxas=-v cuda/c71_range_native.cu cuda/c71_range_runtime.cpp -o benchmarks/raw/c71-range-owner-2026-10-03-20d85df34158/libc71_range_native.so",
+      "exit_code": 0,
+      "shell_real_seconds": 1.76,
+      "shell_user_seconds": 1.67,
+      "shell_sys_seconds": 0.08,
+      "compiled_kernels": 11,
+      "max_registers_reported": 104,
+      "coefficient_local_stack_bytes_per_thread": 216,
+      "max_static_shared_bytes_per_block": 24576,
+      "max_group_dynamic_shared_payload_bytes": 52224,
+      "spill_load_bytes_reported": 0,
+      "spill_store_bytes_reported": 0,
+      "sass_unchanged_from_predecessor": true,
+      "note": "Compiler metadata, not physical simultaneous GPU accounting. No library was loaded or kernel executed. Existing local toolkit/static runtime; no download or toolkit changes."
+    }
+  ],
+  "additional_clean_check": {
+    "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_range_native.py tests/test_c71_docs.py",
+    "exit_code": 0,
+    "passed": 11,
+    "pytest_seconds": 1.38,
+    "note": "Same checks also rerun separately above; not 11 additional distinct tests."
+  },
+  "artifacts": {
+    "directory": "benchmarks/raw/c71-range-owner-2026-10-03-20d85df34158",
+    "ignored_local_files": true,
+    "sha256": {
+      "compile.log": "9e91a7c56083068ea808d8c949b02302f0edcbdf211661c44fc053f2de657963",
+      "exports.txt": "5370f18d94b980e598bab994194a87aa70d427199ee2433874c0b88f2d6eb58f",
+      "kernels.sass": "9964f696f12932d0d92d9b56d50c50ba7b8ffb43fcd64090d1029bfae46d28c6",
+      "libc71_range_native.so": "1242852028c4d36a589c847d81ad4ae7d31e401527d1569c253bcef3f7e6d4d9",
+      "owner-ubsan": "1be7ca09eccf4aa72c1cdef4dbf5b37eabcec043305ed12db41499de8d49f618"
+    }
+  },
+  "failures": {
+    "unexpected_development_failures": [],
+    "expected_rejections": "13 poisoned-owner cases, invalid creation budgets/device, and injected cudaFree failure with conservative retained reservation",
+    "prior_failures": "Preserved in the linked predecessor, not erased by this record"
+  },
+  "not_proved": [
+    "Rust callback integration, actual FS/MAC fencing and original PCS closure using this owner",
+    "GPU arithmetic parity, races, real CUDA error propagation, runtime or physical peak",
+    "Canonical D34/D35 allocations/execution, simultaneous preparer/prover/verifier/PCS/Seed6 accounting",
+    "Driver/context/runtime staging and kernel shared/local memory are outside this owner ledger",
+    "Complete dense/EXP30/PCS GPU integration, real Gamma calibration and three canonical certificates",
+    "Seed6 outstanding security assumptions remain; analytic continuation size already exceeds 40 MB",
+    "RunPod deadline/spending hard stop and absence of GPU/weights/spending authorization remain"
+  ],
+  "next_local_action": "Bind this native owner to the existing fallible Rust range evaluator callbacks without duplicating FS/MAC logic or enabling an implicit backend"
+}

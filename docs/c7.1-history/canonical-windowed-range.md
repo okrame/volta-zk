@@ -48,6 +48,25 @@ non cambiano.
 
 ## Risorse e confini
 
+Il [record locale](../../benchmarks/results/c71-windowed-range-local-2026-10-03-0c3807f2fecb.json)
+conserva 28 test Rust, 11 Python, build di libreria/runner, lint
+correctness/suspicious e due rifiuti CLI attesi sulla revisione pulita
+`0c3807f2fecb`. Non sono stati osservati test o build falliti durante questo
+checkpoint; rimangono warning non bloccanti e parte dell'output dei lint
+è stata troncata dal tool.
+
+I positivi del nuovo range sono D10, con prefissi vivi 1/731/1.024 e
+chiusura PCS sul commitment originale. Il dispatch del runner è esercitato
+con getter scalare inutilizzabile. Le finestre eseguite sono al più
+1.024 byte, non 2 GiB. Un reader che scambia due valori conserva histogram
+e range ma viene rifiutato dalla PCS originale. Gli errori dopo la scrittura
+del reader sono iniettati in tutte le 22 passate ridotte. I confronti
+dei coefficienti includono sfide zero, uno ed extension e finestre di
+512 byte. La regressione delle 512 scansioni D14 verifica anche il nuovo
+istogramma senza passate aggiuntive. La prova integrata ridotta già
+esistente usa ancora il suo range scalare: è una regressione della routine
+condivisa, non un certificato completo che esercita il nuovo range A.
+
 Non viene creato un albero completo D34 o un Eq(N) completo. I livelli
 canopy terminano dopo il loro ultimo uso; H è rilasciata prima di allocare
 i figli trattenuti. Le capacità dei figli rimangono dopo `truncate` e sono

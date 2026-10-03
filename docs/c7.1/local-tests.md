@@ -267,6 +267,11 @@ Gram o una finestra di 2 GiB eseguita. Il
 registra 15 test Rust, 11 Python e i lint di correttezza; distingue le
 208 finestre D34 controllate solo come descrittori dalle finestre piccole
 eseguite, al massimo 256 byte nel gather.
+Il [record del consumer range A](../../benchmarks/results/c71-windowed-range-local-2026-10-03-0c3807f2fecb.json)
+registra 28 test Rust, 11 Python, build/lint e due rifiuti CLI sulla SHA
+pulita. Include parità D10, chiusura sui MAC originali, reader alterato
+e errori a ogni passata ridotta. Le finestre del consumer eseguite sono
+al più 1.024 byte; le 26 passate D34 sono selezionate, non eseguite.
 Il [record degli stadi PCS](../../benchmarks/results/c71-pcs-stages-local-2026-10-03-cc5db06c1796.json)
 registra 32 test Rust, 18 Python e due rifiuti CLI sulla SHA pulita,
 inclusa la catena PCS D17, conservando gli errori di sviluppo. Una

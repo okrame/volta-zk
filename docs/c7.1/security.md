@@ -543,6 +543,16 @@ sono confrontati col commitment denso indipendente a monete fissate su
 dominio piccolo. Non è una prova per tutti i produttori canonici, del
 raffinamento CUDA o della composizione Seed6; non cambia i bound dichiarati.
 
+Lo stesso contratto immutabile vale per il
+[lettore a finestre delle query](../c7.1-history/canonical-query-windows.md).
+Il reader emette solo byte originali; il codice PCS conserva padding
+esterno, posizioni dei pad privati e ordine dei resti. Nessuna finestra
+diventa un nuovo commitment o una nuova autenticazione. Il callback
+non riceve coin PCS o correlazioni. Il confronto ridotto della catena
+controlla transcript, codec, S1 trattenuto e chiusura sugli stessi MAC;
+un reader alterato è rifiutato dal root già fissato. Questi controlli
+non attestano la composizione canonica o un nuovo lemma generale.
+
 I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
 dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo
 Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.

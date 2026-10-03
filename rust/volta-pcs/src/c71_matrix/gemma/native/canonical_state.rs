@@ -514,6 +514,7 @@ impl<'a> Prover<'a> {
             let phase = measurements.phase("prover", Some(slot), "commitment_a");
             let getter = snapshot.clone();
             let scanner = snapshot.clone();
+            let windows = snapshot.clone();
             let coins = fresh_pcs_coins()?;
             let current = b12::replay::ReplayModel::new_scanned(
                 Domain::Flat(34),
@@ -525,6 +526,7 @@ impl<'a> Prover<'a> {
                     )))
                 }),
                 Arc::new(move |emit| scanner.scan_original(emit)),
+                Arc::new(move |first, output| windows.window(first, output)),
                 p.bytes().live,
             )?
             .retain_first_fold();

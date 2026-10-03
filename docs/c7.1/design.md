@@ -103,7 +103,14 @@ La geometria iniziale W usa gli stessi coset e 1.024 passaggi. La parità
 è controllata soltanto su domini piccoli; nessuna esecuzione D34/D35.
 Il [checkpoint del collegamento](../c7.1-history/canonical-initial-scan.md)
 documenta la sostituzione del precedente cap 2^18 e le copie eliminate.
-Rimangono lavoro locale sulle query/range e sugli stadi PCS successivi
+Le prime query A usano ora finestre originali fino a 256 MiB, condivise
+fra colonne all'interno del batch, senza trattenere un buffer per ogni
+root storico. L'output delle query non duplica più una matrice intera
+durante la conversione dei limb. Il
+[checkpoint delle query](../c7.1-history/canonical-query-windows.md)
+distingue questo collegamento CPU dai limiti ancora aperti.
+Rimangono lavoro locale sui workspace dei resti/multipunto, sul range
+e sugli stadi PCS successivi
 (lo stato sourcewise rifiuta ancora dimensioni oltre D16), sui kernel
 densi, sul percorso CUDA e sulla contabilità fisica simultanea. Non sono
 blocchi risolvibili soltanto procurandosi H100, né il collegamento CPU

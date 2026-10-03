@@ -172,6 +172,7 @@ Eseguire un filtro alla volta:
 | `c71_b12_query_factors`, `c71_b12_query_remainder`, `c71_b12_query_split` | Prodotti bilanciati, Newton, resti, zeri pubblici e pad originali |
 | `c71_b12_replay_base`, `replay_tree`, `c71_b12_retained_initial` | Storage base/extension, batch Merkle e commitment iniziale conservato |
 | `c71_b12_scattered` | 512 scansioni D14, root/aperture contro commitment nativo indipendente; ordine non monotono, pad originali e rifiuti del consumer |
+| `c71_b12_query_byte_windows` | Riuso della finestra fra colonne, prefissi vivi e pad originali contro Horner, errori/shape; catena PCS D10 con transcript e MAC originali, S1 trattenuto |
 | `c71_b12_canonical_initial_geometry` | Selezione W/A 2^22 e rifiuto di geometrie escluse prima di allocazioni/sali; nessuna esecuzione D34/D35 |
 | `c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs` | Partizione byte per sorgente contro mapping packed indipendente, i16/i32/i48, errori e MAC originali su profilo ridotto |
 | `c71_b12_rational_power`, `c71_b12_sourcewise_adaptive`, `c71_b12_full_sourcewise_chain` | Eq/Pow, stato trattenuto e catena WHIR con transcript originale |

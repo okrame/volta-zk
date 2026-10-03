@@ -26,6 +26,11 @@ pub(in crate::c71_matrix) type BaseScan = Arc<
         + Send
         + Sync,
 >;
+/// Original A bytes only, before public flat padding or private PCS pads.
+/// Like BaseScan, this trusted reader must agree with the immutable getter.
+pub(in crate::c71_matrix) type ByteWindow =
+    Arc<dyn Fn(usize, &mut [u8]) -> Result<(), String> + Send + Sync>;
+const QUERY_BYTE_WINDOW: usize = 1 << 28;
 fn limbs(x: &E) -> &[Goldilocks] {
     <E as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(x)
 }
@@ -55,6 +60,7 @@ impl Pads {
 struct Code {
     get: Getter,
     scan: Option<BaseScan>,
+    window: Option<ByteWindow>,
     len: usize,
     live: usize,
     width: usize,
@@ -373,6 +379,15 @@ impl Code {
         if indices.is_empty() {
             return Ok(Vec::new());
         }
+        let message_rows = self.len / self.width;
+        if self.window.is_some() && (!self.base() || !message_rows.is_power_of_two()) {
+            return Err("byte query reader requires dyadic base columns".into());
+        }
+        // One opening-local reader, never retained by each historical A root.
+        // Two original columns reproduce the selected 256 MiB A window at D34;
+        // reduced geometries exercise the same cross-column reuse.
+        let window_len = (2 * message_rows).min(QUERY_BYTE_WINDOW);
+        let (mut window_first, mut bytes) = (usize::MAX, Vec::<u8>::new());
         let root = Goldilocks::two_adic_generator(self.height.ilog2() as usize);
         let cap = indices.len().next_power_of_two();
         let mut points: Vec<_> = indices.iter().map(|&index| root.exp_u64(index as u64)).collect();
@@ -381,23 +396,46 @@ impl Code {
         let factors = query_tree(&points, &dft);
         let root_factors = &factors.last().unwrap()[0];
         let coefficients = (self.len + self.pads.len()) / self.width;
-        let message_rows = self.len / self.width;
         let pad_rows = self.pads.len() / self.width;
         let pad_shift = (self.live < self.len && message_rows.is_power_of_two())
             .then(|| root_factors.monomial_spectrum(message_rows, &dft));
-        let mut values = vec![Coefficient::ZERO; indices.len() * self.width];
+        // Write native base limbs directly into the only returned matrix. The
+        // former Coefficient matrix duplicated up to 2 GiB at the initial cap.
+        let mut values = vec![vec![Goldilocks::ZERO; self.columns()]; indices.len()];
         for column in 0..self.width {
             let active = self.live.saturating_sub(column * message_rows).min(message_rows);
             let split = pad_shift.is_some() && active < message_rows;
             let source_rows = if split { active } else { coefficients };
             let mut remainder = vec![Coefficient::ZERO; cap];
             for block in (0..source_rows.div_ceil(cap)).rev() {
+                if let Some(read) = &self.window {
+                    if block * cap < active {
+                        let first = column * message_rows + block * cap;
+                        let start = first / window_len * window_len;
+                        let end = column * message_rows + ((block + 1) * cap).min(active);
+                        if end > start + window_len {
+                            return Err("query block crosses byte window".into());
+                        }
+                        if window_first != start {
+                            bytes.resize(window_len.min(self.live - start), 0);
+                            bytes.fill(0);
+                            read(start, &mut bytes)?;
+                            window_first = start;
+                        }
+                    }
+                }
                 remainder = root_factors.remainder(
                     &remainder,
                     |offset| {
                         let index = block * cap + offset;
                         if index < source_rows {
-                            convert(self.coefficient(column, index))
+                            if self.window.is_some() && index < active {
+                                convert(E::from(Goldilocks::from_u8(
+                                    bytes[column * message_rows + index - window_first],
+                                )))
+                            } else {
+                                convert(self.coefficient(column, index))
+                            }
                         } else {
                             Coefficient::ZERO
                         }
@@ -449,23 +487,15 @@ impl Code {
                 remainders = children;
             }
             for (row, value) in remainders.into_iter().take(indices.len()).enumerate() {
-                values[row * self.width + column] = value[0];
+                let limbs =
+                    <Coefficient as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(
+                        &value[0],
+                    );
+                values[row][column * limbs.len()..(column + 1) * limbs.len()]
+                    .copy_from_slice(limbs);
             }
         }
-        Ok(values
-            .chunks_exact(self.width)
-            .map(|row| {
-                let mut output = Vec::with_capacity(self.columns());
-                for value in row {
-                    output.extend_from_slice(
-                        <Coefficient as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(
-                            value,
-                        ),
-                    );
-                }
-                output
-            })
-            .collect())
+        Ok(values)
     }
     fn commit(
         self,
@@ -523,9 +553,10 @@ impl ReplayModel {
         salt_seed: [u8; 32],
         source: Getter,
         scan: BaseScan,
+        window: ByteWindow,
         live: usize,
     ) -> Result<Self, String> {
-        Self::new_source(domain, seed, salt_seed, source, Some(scan), live)
+        Self::new_source(domain, seed, salt_seed, source, Some((scan, window)), live)
     }
 
     fn new_source(
@@ -533,7 +564,7 @@ impl ReplayModel {
         seed: [u8; 32],
         salt_seed: [u8; 32],
         source: Getter,
-        scan: Option<BaseScan>,
+        readers: Option<(BaseScan, ByteWindow)>,
         live: usize,
     ) -> Result<Self, String> {
         let config = domain.config()?;
@@ -556,9 +587,12 @@ impl ReplayModel {
         let height = (len >> first) << config.starting_log_inv_rate;
         let mmcs = ObservedMmcs::new(Fs::new(b"C71 model setup, Delta independent", 0), salt_seed);
         let _extension = mmcs.clone();
+        let (scan, window) =
+            readers.map_or((None, None), |(scan, window)| (Some(scan), Some(window)));
         let (root, handle) = Code {
             get: source.clone(),
             scan,
+            window,
             len,
             live,
             width: 1 << first,
@@ -797,6 +831,7 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
         Code {
             get,
             scan: None,
+            window: None,
             len: 1 << state.num_variables(),
             live: 1 << state.num_variables(),
             width: 1 << folding,
@@ -881,6 +916,7 @@ pub(in crate::c71_matrix) fn compare_source(
     source: Getter,
     values: Vec<Goldilocks>,
     original: Option<&Model>,
+    readers: Option<(BaseScan, ByteWindow)>,
 ) {
     use rand_010::RngExt;
     assert!((10..=12).contains(&dimension));
@@ -926,14 +962,16 @@ pub(in crate::c71_matrix) fn compare_source(
     census::mark("sourcewise_initial_commit").unwrap();
     let mut replay_fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
     replay_fs.set_phase(0x200);
-    let mut model = ReplayModel::new_checked(
+    let mut model = ReplayModel::new_source(
         Domain::Flat(dimension),
-        root.clone(),
         root_seed,
         salt_seed,
         source.clone(),
+        readers,
+        1 << dimension,
     )
     .unwrap();
+    assert_eq!(root, *model.root());
     if original.is_some() {
         model = model.retain_first_fold();
     }
@@ -1043,7 +1081,7 @@ mod tests {
 
     #[test]
     fn c71_b12_scattered_initial_512_passes_matches_native_root_and_openings() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
         let dimension = 14;
         let config = config(dimension).unwrap();
         let live = (1 << dimension) - 13;
@@ -1051,6 +1089,8 @@ mod tests {
         let scans = Arc::new(AtomicUsize::new(0));
         let visits = Arc::new(AtomicUsize::new(0));
         let gets = Arc::new(AtomicUsize::new(0));
+        let windows = Arc::new(AtomicUsize::new(0));
+        let changed = Arc::new(AtomicBool::new(false));
         let (s, v, g) = (scans.clone(), visits.clone(), gets.clone());
         let source: Getter = Arc::new(move |i| {
             g.fetch_add(1, Ordering::Relaxed);
@@ -1065,12 +1105,25 @@ mod tests {
             }
             Ok(())
         });
+        let (w, altered) = (windows.clone(), changed.clone());
+        let window: ByteWindow = Arc::new(move |first, bytes| {
+            w.fetch_add(1, Ordering::Relaxed);
+            assert_eq!((first, bytes.len()), (0, live));
+            for (i, byte) in bytes.iter_mut().enumerate() {
+                *byte = original(first + i).as_canonical_u64() as u8;
+            }
+            if altered.load(Ordering::Relaxed) {
+                bytes[0] ^= 1;
+            }
+            Ok(())
+        });
         let model = ReplayModel::new_scanned(
             Domain::Flat(dimension),
             [91; 32],
             [73; 32],
             source,
             scan,
+            window,
             live,
         )
         .unwrap();
@@ -1105,6 +1158,22 @@ mod tests {
             .unwrap();
         assert_eq!(rows[1], rows[3]);
         assert_eq!(scans.load(Ordering::Relaxed), 512, "openings must not recommit the source");
+        assert_eq!(windows.load(Ordering::Relaxed), 1, "reuse the window across both columns");
+        assert_eq!(
+            gets.load(Ordering::Relaxed),
+            0,
+            "initial queries must not regenerate scalar windows"
+        );
+        changed.store(true, Ordering::Relaxed);
+        assert!(
+            model.tree.open(&indices).is_err(),
+            "a changed original window must fail the retained Merkle root"
+        );
+        assert_eq!(
+            windows.load(Ordering::Relaxed),
+            2,
+            "no window allocation is cached in the retained tree"
+        );
     }
 
     #[test]
@@ -1112,6 +1181,7 @@ mod tests {
         let dft = Radix2DFTSmallBatch::default();
         let live = 117;
         let mut code = Code {
+            window: None,
             get: Arc::new(|i| E::from(Goldilocks::new((i * 7 + 9) as u64))),
             scan: Some(Arc::new(move |emit| {
                 // Deliberately nonmonotone: causal order is not flat order.
@@ -1241,6 +1311,125 @@ mod tests {
     }
 
     #[test]
+    fn c71_b12_query_byte_windows_full_chain_original_mac_and_retained_s1() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let byte = |i: usize| ((i * 37 + i / 11) % 256) as u8;
+        let original = Model::new(32, (0..1024).map(|i| i16::from(byte(i))).collect()).unwrap();
+        let scans = Arc::new(AtomicUsize::new(0));
+        let windows = Arc::new(AtomicUsize::new(0));
+        let (s, w) = (scans.clone(), windows.clone());
+        let scan: BaseScan = Arc::new(move |emit| {
+            s.fetch_add(1, Ordering::Relaxed);
+            for i in (0..1024).rev() {
+                emit(i, Goldilocks::from_u8(byte(i)))?;
+            }
+            Ok(())
+        });
+        let window: ByteWindow = Arc::new(move |first, out| {
+            w.fetch_add(1, Ordering::Relaxed);
+            assert_eq!((first, out.len()), (0, 1024));
+            for (i, value) in out.iter_mut().enumerate() {
+                *value = byte(first + i);
+            }
+            Ok(())
+        });
+        compare_source(
+            10,
+            Arc::new(move |i| E::from(Goldilocks::from_u8(byte(i)))),
+            (0..1024).map(|i| Goldilocks::from_u8(byte(i))).collect(),
+            Some(&original),
+            Some((scan, window)),
+        );
+        let configuration = config(10).unwrap();
+        let height =
+            (1024 >> configuration.round_folding_factor(0)) << configuration.starting_log_inv_rate;
+        assert_eq!(scans.load(Ordering::Relaxed), height / 256);
+        assert!(windows.load(Ordering::Relaxed) > 0);
+    }
+
+    #[test]
+    fn c71_b12_query_byte_windows_cross_columns_preserve_pads_and_fail_closed() {
+        let original = |i: usize| ((i * 19 + i / 17) % 251) as u8;
+        let pads: Arc<[Goldilocks]> = (0..48).map(|i| -Goldilocks::new(1000 + i)).collect();
+        let root = Goldilocks::two_adic_generator(11);
+        for live in [0, 1, 127, 128, 129, 511, 517, 900, 1024] {
+            let requests = Arc::new(Mutex::new(Vec::new()));
+            let log = requests.clone();
+            let mut code = Code {
+                get: Arc::new(|_| panic!("byte query used scalar source")),
+                scan: None,
+                window: Some(Arc::new(move |first, bytes| {
+                    log.lock().unwrap().push((first, bytes.len()));
+                    assert!(first + bytes.len() <= live);
+                    for (i, value) in bytes.iter_mut().enumerate() {
+                        *value = original(first + i);
+                    }
+                    Ok(())
+                })),
+                len: 1024,
+                live,
+                width: 8,
+                height: 2048,
+                pads: Pads::Base(pads.clone()),
+            };
+            for indices in [vec![], vec![0], vec![17, 2047, 17], (0..512).rev().collect()] {
+                requests.lock().unwrap().clear();
+                let expected: Vec<Vec<_>> = indices
+                    .iter()
+                    .map(|&index| {
+                        let point = root.exp_u64(index as u64);
+                        (0..8)
+                            .map(|column| {
+                                (0..134).rev().fold(Goldilocks::ZERO, |value, j| {
+                                    value * point
+                                        + if j >= 128 {
+                                            pads[column * 6 + j - 128]
+                                        } else if column * 128 + j < live {
+                                            Goldilocks::from_u8(original(column * 128 + j))
+                                        } else {
+                                            Goldilocks::ZERO
+                                        }
+                                })
+                            })
+                            .collect()
+                    })
+                    .collect();
+                assert_eq!(code.rows(&indices).unwrap(), expected);
+                let expected_requests: Vec<_> = if indices.is_empty() {
+                    Vec::new()
+                } else {
+                    (0..live).step_by(256).map(|i| (i, 256.min(live - i))).collect()
+                };
+                assert_eq!(*requests.lock().unwrap(), expected_requests);
+            }
+            requests.lock().unwrap().clear();
+            assert!(code.rows(&[2048]).is_err());
+            assert!(code.rows(&vec![0; 1025]).is_err());
+            assert!(requests.lock().unwrap().is_empty());
+            if live == 1024 {
+                let log = requests.clone();
+                code.window = Some(Arc::new(move |first, bytes| {
+                    log.lock().unwrap().push((first, bytes.len()));
+                    if first == 256 {
+                        return Err("window reconstruction failed".into());
+                    }
+                    for (i, value) in bytes.iter_mut().enumerate() {
+                        *value = original(first + i);
+                    }
+                    Ok(())
+                }));
+                assert_eq!(code.rows(&[0, 31]), Err("window reconstruction failed".into()));
+                assert_eq!(*requests.lock().unwrap(), [(0, 256), (256, 256)]);
+                code.len = 1040;
+                assert!(code.rows(&[0]).is_err(), "non-dyadic byte columns rejected");
+                code.len = 1024;
+                code.pads = Pads::Extension(vec![E::ONE; 48]);
+                assert!(code.rows(&[0]).is_err(), "byte reader cannot encode extension sources");
+            }
+        }
+    }
+
+    #[test]
     fn c71_b12_query_remainder_matches_original_base_and_extension_rows() {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1259,6 +1448,7 @@ mod tests {
             let pads: Vec<_> = (0..6).map(|index| -original(index + 131)).collect();
             let code = Code {
                 scan: None,
+                window: None,
                 get: Arc::new(move |index| {
                     counter.fetch_add(1, Ordering::Relaxed);
                     original(index)
@@ -1318,6 +1508,7 @@ mod tests {
 
         let code = Code {
             scan: None,
+            window: None,
             get: Arc::new(|_| E::new([Goldilocks::ONE, Goldilocks::ONE, Goldilocks::ZERO])),
             len: 8,
             live: 8,
@@ -1360,6 +1551,7 @@ mod tests {
                     let counter = reads.clone();
                     let code = Code {
                         scan: None,
+                        window: None,
                         get: Arc::new(move |index| {
                             assert!(index < live, "public zero tail must not read the source");
                             counter.fetch_add(1, Ordering::Relaxed);
@@ -1436,6 +1628,7 @@ mod tests {
             let pads: Vec<_> = (0..6).map(|index| -original(index + 131)).collect();
             let code = Code {
                 scan: None,
+                window: None,
                 get: Arc::new(original),
                 len: 128,
                 live: 128,
@@ -1509,6 +1702,6 @@ mod tests {
     fn c71_b12_full_sourcewise_chain_matches_native_bytes() {
         let source: Getter = Arc::new(|i| E::from(Goldilocks::new((i * i + 17 * i + 23) as u64)));
         let values = (0..1024).map(|i| limbs(&source(i))[0]).collect();
-        compare_source(10, source, values, None);
+        compare_source(10, source, values, None, None);
     }
 }

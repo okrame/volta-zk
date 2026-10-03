@@ -62,8 +62,11 @@ del trasporto con tre corpi sintetici non conta come tre prove canoniche.
 Il commitment iniziale ora seleziona coset 2^22 e lo scanner A a 512
 ricostruzioni, con parità soltanto ridotta; il vecchio cap iniziale 2^18
 non descrive più questo percorso. Restano il limite D16 dello stato
-sourcewise, gli oracoli extension grandi, query/range e kernel densi da
-adattare. Nessuna esecuzione W/D35 o A/D34 è acquisita. Il
+sourcewise, gli oracoli extension grandi, i workspace query/range e i
+kernel densi da adattare. Le prime query A leggono ora finestre originali
+fino a 256 MiB e non duplicano la matrice del risultato; la parità è
+soltanto ridotta e non chiude la contabilità fisica simultanea.
+Nessuna esecuzione W/D35 o A/D34 è acquisita. Il
 [checkpoint del collegamento](../c7.1-history/canonical-initial-scan.md)
 non ammette il comando CPU come campagna H100 né cambia le autorizzazioni.
 

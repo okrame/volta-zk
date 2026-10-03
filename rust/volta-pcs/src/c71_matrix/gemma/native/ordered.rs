@@ -714,6 +714,7 @@ mod tests {
                     source,
                     expected,
                     Some(&original.source),
+                    None,
                 );
                 eprintln!(
                     "ordered_sourcewise O={} windows_producerrows_W_A_KV_numerical={:?}",

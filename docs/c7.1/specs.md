@@ -315,8 +315,8 @@ I sottoalberi delle query sono raggruppati fino a 1.024 righe nel riferimento
 piccolo e 2^21 nel percorso iniziale canonico; le query pubbliche restano
 al più 1.024. Le stesse righe alimentano hash e aperture, ripristinando
 ordine e duplicati. Il limite grande è collegato ma non eseguito: resti,
-strutture intermedie e rigenerazione delle query CPU non costituiscono
-ancora la pipeline canonica a workspace limitato.
+albero dei fattori, strutture intermedie e multipunto CPU non costituiscono
+ancora la pipeline canonica GPU a workspace limitato.
 
 Il coset base accumula `(indice originale, valore)` in un unico buffer
 column-major, indipendentemente dall'ordine causale dei produttori.
@@ -335,6 +335,21 @@ produce le valutazioni. Gli owner iniziali forniscono il prefisso vivo
 del layout. Si separano payload, zeri pubblici e `X^M*pad` alle posizioni
 originali; i pad non vengono spostati. Gli oracoli successivi al fold
 mantengono l'intero supporto, senza ereditare zeri non dimostrati.
+
+Le query della A originale ricostruiscono ora finestre byte di due
+colonne, con cap 256 MiB: il caso D34 ha colonne da 2^27 byte. I blocchi
+di ogni colonna sono consumati high-to-low nella stessa finestra già
+prodotta, inclusa la seconda colonna. Il callback legge soltanto il
+prefisso vivo; zeri esterni e pad PCS sono aggiunti dal codice dei resti.
+Il buffer appartiene al singolo batch di apertura, non agli snapshot
+storici. Una ricostruzione fallita interrompe il batch; valori alterati
+non possono aprire il root Merkle conservato. Le finestre del preparatore
+usano ora gli stessi controlli di copertura per riga dello scanner iniziale.
+L'output è scritto direttamente nei limb base restituiti all'albero,
+senza una matrice `Coefficient` completa aggiuntiva. Al cap iniziale ciò
+rimuove una copia nominale da 2 GiB, non dimostra il picco completo.
+Il [checkpoint delle query](../c7.1-history/canonical-query-windows.md)
+separa le verifiche ridotte dal lavoro restante sui workspace.
 
 Coset, resti e correzione dei pad di colonne base usano elementi da 8 B;
 quelli extension da 24 B. La conversione base rifiuta coordinate extension
@@ -376,8 +391,9 @@ sorgente; propaga subito gli errori del consumer. Padding interno biased,
 istogrammi, KV e checkpoint sono emessi dai loro owner immutabili; il
 suffisso esterno rimane zero pubblico. Il commitment A chiama questo
 scanner 512 volte secondo la geometria, non la finestra scalare da 128
-byte. La finestra e i replay per riga restano usati da altri consumer:
-non realizzano le finestre range/query del piano seguente.
+byte. Anche le prime query PCS usano il lettore a finestre descritto sopra;
+getter scalare e replay per riga restano negli altri consumer, inclusi
+range e stato sourcewise. Non realizzano ancora la finestra range da 2 GiB.
 Il limite di preparazione controlla payload nominati, non il picco fisico
 complessivo. Coset, frontier/sali/cache Merkle, colonna FFT, due twiddle,
 potenze, bitmap, metadata, checkpoint e workspace numerico vanno contati

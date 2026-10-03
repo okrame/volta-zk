@@ -373,15 +373,11 @@ impl Prepared {
         if targets.is_empty() {
             return Ok(());
         }
-        self.with_generation(|generation| {
-            self.scan(generation, &targets, |id, row, words| {
-                b.emit_row_bytes(id, row, words, |index, byte| {
-                    if index >= first && index - first < output.len() {
-                        output[index - first] = byte;
-                    }
-                    Ok(())
-                })
-            })
+        self.scan_sources(&targets, &mut |index, byte| {
+            if index >= first && index - first < output.len() {
+                output[index - first] = byte;
+            }
+            Ok(())
         })
     }
 
@@ -394,13 +390,13 @@ impl Prepared {
         emit: &mut dyn FnMut(usize, Goldilocks) -> Result<(), String>,
     ) -> Result<(), String> {
         let targets = (0..self.profile.bytes().widths.len()).collect();
-        self.scan_sources(&targets, emit)
+        self.scan_sources(&targets, &mut |index, byte| emit(index, Goldilocks::from_u8(byte)))
     }
 
     fn scan_sources(
         &self,
         targets: &BTreeSet<usize>,
-        emit: &mut dyn FnMut(usize, Goldilocks) -> Result<(), String>,
+        emit: &mut dyn FnMut(usize, u8) -> Result<(), String>,
     ) -> Result<(), String> {
         let b = self.profile.bytes();
         let mut seen: BTreeMap<usize, Vec<u64>> = targets
@@ -418,9 +414,7 @@ impl Prepared {
                     return Err("duplicate or out-of-range scanned row".into());
                 }
                 bits[row / 64] |= 1 << (row % 64);
-                b.emit_row_bytes(id, row, words, |index, value| {
-                    emit(index, Goldilocks::from_u64(u64::from(value)))
-                })
+                b.emit_row_bytes(id, row, words, &mut *emit)
             })
         })?;
         for (&id, bits) in &seen {
@@ -609,9 +603,8 @@ mod tests {
             .sum();
         let mut emitted = 0;
         reader
-            .scan_sources(&scan_targets, &mut |index, value| {
+            .scan_sources(&scan_targets, &mut |index, _| {
                 assert!(index < b.live);
-                assert!(value.as_canonical_u64() <= 255);
                 emitted += 1;
                 Ok(())
             })

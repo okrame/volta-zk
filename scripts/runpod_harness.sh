@@ -21,10 +21,9 @@ usage:
 pause  = stop the pod, release its GPU, preserve its volume (storage still bills)
 delete = permanently terminate the pod and its non-network-volume data
 
-Create every paid pod with a provider-side deadline:
-  runpodctl pod create ... --stop-after 2h
-or, when no pod-local state must survive:
-  runpodctl pod create ... --terminate-after 2h
+HARD STOP: runpodctl v2.12.0 removed the provider deadline flags because the
+backend ignored them. Do not create a paid pod until a provider-enforced,
+read-back deadline or an independently authorized spending guard exists.
 
 git-preflight must pass before builds or generated artifacts. It requires a
 RunPod Secret mapped to VOLTA_GITHUB_TOKEN with repository Contents read/write.
@@ -92,7 +91,7 @@ case "$action" in
   list)
     [[ $# -eq 0 ]] || die "list takes no arguments"
     runpodctl_ready
-    runpodctl pod list --all --output=table
+    runpodctl pod list --all
     ;;
   status)
     id=$(pod_id "$@")

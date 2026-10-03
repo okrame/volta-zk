@@ -119,6 +119,27 @@ def test_runpod_harness_rejects_exposed_local_env(tmp_path):
     assert accepted.returncode == 0, accepted.stderr
 
 
+def test_runpod_harness_uses_current_list_command(tmp_path):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    harness = scripts / "runpod_harness.sh"
+    harness.write_bytes((ROOT / "scripts/runpod_harness.sh").read_bytes())
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    args_file = tmp_path / "args"
+    runpodctl = bindir / "runpodctl"
+    runpodctl.write_text('#!/bin/sh\nprintf "%s\\n" "$*" > "$RUNPODCTL_ARGS"\n')
+    runpodctl.chmod(0o755)
+    env = os.environ | {
+        "PATH": f"{bindir}:{os.environ['PATH']}",
+        "RUNPODCTL_ARGS": str(args_file),
+    }
+    listed = subprocess.run(["bash", str(harness), "list"], env=env,
+                            capture_output=True, text=True, timeout=5)
+    assert listed.returncode == 0, listed.stderr
+    assert args_file.read_text() == "pod list --all\n"
+
+
 def test_documented_input_identities_match_ingest_and_workload():
     ingest = runpy.run_path(str(ROOT / "scripts/c7_d126_gemma_weight_ingest.py"))
     specs = (CURRENT / "specs.md").read_text()

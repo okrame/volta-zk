@@ -20,7 +20,9 @@ e qui non cambia il loro enunciato.
 
 Il controllo documentale include anche il preflight dei permessi del file
 locale `.env`: una fixture `0644` deve fallire e `0600` deve passare, senza
-leggere o stampare il valore di alcuna credenziale.
+leggere o stampare il valore di alcuna credenziale. Una CLI Runpod fittizia
+verifica inoltre che `list` usi soltanto il comando corrente
+`runpodctl pod list --all`.
 
 Dalla radice del repository:
 

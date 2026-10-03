@@ -96,6 +96,10 @@ registro e non è stato mantenuto come test lento duplicato.
 Il [controllo delle credenziali locali](../../benchmarks/results/c71-local-secret-permissions-2026-10-03-d14843b3e1fb.json)
 ha inoltre corretto il `.env` ignorato a `0600` e aggiunto un preflight che
 non carica né stampa valori segreti.
+La campagna H100 ha anche un hard stop operativo: dal CLI v2.12.0 Runpod ha
+rimosso le deadline automatiche perché il backend le ignorava. Finché non
+esiste un limite provider verificabile o un diverso controllo di spesa
+autorizzato, il runbook vieta la creazione del pod.
 
 I criteri per il [primo esperimento della prova](runpod-tests.md#esperimento-della-prova)
 non richiedono una dimostrazione preventiva del tempo H100: i tempi

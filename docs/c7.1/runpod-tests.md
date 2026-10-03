@@ -14,6 +14,14 @@ avviare la campagna provider sulla sola base dei controlli locali passati.
 La calibrazione e il benchmark della prova sono due campagne distinte:
 un successo numerico non autorizza né dimostra il secondo.
 
+**Hard stop provider (3 ottobre 2026).** `runpodctl` v2.12.0 ha rimosso
+`--stop-after` e `--terminate-after`: il backend li accettava ma non li
+eseguiva, quindi il pod restava attivo e fatturabile oltre la scadenza.
+La [correzione ufficiale](https://github.com/runpod/runpodctl/commit/51ca7f0)
+dichiara che non esiste un sostituto finché il backend non applica la
+deadline. Non creare il pod H100 finché una deadline provider verificabile
+o un diverso limite di spesa autorizzato non chiude questo rischio.
+
 Leggere prima [design](design.md), poi le sezioni pertinenti di
 [specs](specs.md) e [security](security.md). Questa pagina definisce la
 sequenza operativa e lo stato delle implementazioni; [local-tests](local-tests.md)
@@ -42,8 +50,9 @@ rilevato il 3 ottobre 2026 è stato corretto da `0664` a `0600`.
 ## Gestione del pod e del repository
 
 Usare [runpod_harness.sh](../../scripts/runpod_harness.sh) per la gestione
-del pod autorizzato. La creazione deve avere una deadline registrata
-presso il provider; un timer nel container non basta. Non sono impliciti
+di un eventuale pod autorizzato. Il harness permette ispezione e chiusura,
+ma non rende affidabile una deadline. Un timer nel container o un processo
+locale non è un limite provider e non sblocca l'hard stop. Non sono impliciti
 retry, proroghe o una seconda macchina. Prima di compilare o generare
 artefatti eseguire `scripts/runpod_harness.sh git-preflight`.
 
@@ -74,8 +83,9 @@ La pubblicazione usa un branch unico tramite `git-push runpod/POD_ID/LABEL`.
 La proposta è una campagna, una sola candidata Γ, una H100 SXM 80 GB,
 massimo 8 ore dalla creazione e 40 USD complessivi. La decisione di avvio
 deve fissare SHA pulita, immagine/container con digest, regione, offerta,
-costo totale e deadline del provider. Nessuna modifica delle scale o
-ripartenza è inclusa. Il completamento di tutti i test è l'obiettivo,
+costo totale e deadline del provider. La proposta non è avviabile con il
+CLI/provider corrente perché tale deadline manca. Nessuna modifica delle
+scale o ripartenza è inclusa. Il completamento di tutti i test è l'obiettivo,
 non una deroga al limite di tempo.
 
 I programmi esistenti usano NumPy/BLAS CPU per l'inizializzatore e il
@@ -120,12 +130,13 @@ costare al più 28 USD; il preventivo dello storage deve rientrare nel
 residuo. Nessun network volume, disco lasciato inattivo, secondo pod,
 abbonamento o ricarica automatica è incluso nella proposta.
 
-Usare **terminazione provider-side a 8 ore**, non soltanto `timeout`
-nel container. Verificare che la versione installata di `runpodctl`
-supporti `--terminate-after` e che la deadline sia realmente registrata;
-se manca, STOP, non sostituire con un timer locale. La
-[documentazione CLI](https://docs.runpod.io/runpodctl/reference/runpodctl-pod)
-e la [procedura di gestione](#gestione-del-pod-e-del-repository) vanno ricontrollate all'autorizzazione.
+È richiesta **terminazione provider-side a 8 ore**, non soltanto `timeout`
+nel container. La [documentazione CLI corrente](https://docs.runpod.io/runpodctl/reference/runpodctl-pod)
+non espone una deadline e la release v2.12.0 ha rimosso i vecchi flag perché
+inefficaci. In assenza di un nuovo controllo provider leggibile e provato,
+STOP: non installare una vecchia CLI e non sostituire il requisito con un
+timer locale. Ricontrollare la documentazione e la
+[procedura di gestione](#gestione-del-pod-e-del-repository) all'autorizzazione.
 
 La terminazione distrugge il volume locale: pubblicare prima i piccoli
 artefatti, log e digest, e conservare eventuali dati privati solo su una
@@ -169,7 +180,7 @@ Nessun dataset nuovo, imposizione dei token prodotti dal pilot floating
 o certificazione di qualità generale. Accesso HF/licenza deve essere già
 valido; un 401/403 ferma la fase, senza accettare licenze o cambiare checkpoint.
 
-### Comandi dopo autorizzazione esplicita
+### Comandi dopo autorizzazione esplicita e risoluzione dell'hard stop
 
 Gli snippet seguenti **non sono stati eseguiti sui pesi reali**. Prima
 dell'autorizzazione fissare offerta/regione, digest immagine con toolchain,
@@ -177,13 +188,13 @@ SHA pulita, `POD_CREATED_EPOCH`, `TRACE_STEP_SECONDS`,
 `NATIVE_TRACE_TIMEOUT_SECONDS` e la riallocazione completa entro 8 ore.
 Verificare i flag con la CLI realmente installata prima
 della creazione; mappare i Secret nel template, mai nei comandi/log.
+Non esiste oggi un comando di creazione ammesso da questo runbook.
 
 ```bash
-runpodctl pod create --image "$APPROVED_IMAGE_DIGEST" \
-  --name c71-gamma-one-candidate --gpu-id "NVIDIA H100 80GB HBM3" \
-  --gpu-count 1 --cloud-type SECURE --data-center-ids "$APPROVED_REGION" \
-  --container-disk-in-gb 40 --volume-in-gb 300 \
-  --volume-mount-path /workspace --terminate-after 8h
+runpodctl version
+runpodctl pod create --help
+# STOP: approvare un comando solo quando espone una deadline provider
+# verificabile; il CLI corrente non la offre.
 ```
 
 Il GPU ID va confrontato con `runpodctl gpu list`: se l'ID differisce,
@@ -455,8 +466,9 @@ scripts/runpod_harness.sh git-push "runpod/$RUNPOD_POD_ID/c71-gamma"
 Verificare da un checkout remoto separato il commit e i file pubblicati,
 e l'eventuale destinazione autorizzata dei dati da conservare. Solo dopo
 eseguire il `delete` della [gestione pod](#gestione-del-pod-e-del-repository).
-Alla deadline la terminazione provider avviene comunque; non rinviarla
-per salvare un run incompleto. Dopo l'ammissione di Γ, portare il profilo
+Quando l'hard stop sarà risolto, la terminazione provider dovrà avvenire
+comunque alla deadline; non rinviarla per salvare un run incompleto. Dopo
+l'ammissione di Γ, portare il profilo
 e il conto delle risorse alla [preparazione dell'esperimento della prova](#esperimento-della-prova), che richiede ancora lavoro
 completo, picco con margine, lower congiunto e harness della prova. Questa
 campagna non misura prova/PCG, non emette certificati e non autorizza il

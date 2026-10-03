@@ -76,6 +76,25 @@ impl RangeWindow {
         debug_assert!(first + length <= 1 << self.dimension);
         (first ^ self.value) & self.mask & !(length - 1) == 0
     }
+
+    /// Enumerate only requested cells of a dyadic tile, in original order.
+    /// Free-bit subset iteration skips the tile's unrequested packed values.
+    pub(super) fn intersection(
+        &self,
+        first: usize,
+        length: usize,
+    ) -> impl Iterator<Item = (usize, usize)> + '_ {
+        let free = (length - 1) & !self.mask;
+        let base = first | (self.value & (length - 1));
+        std::iter::successors(self.intersects(first, length).then_some(0usize), move |&s| {
+            let next = s.wrapping_sub(free) & free;
+            (next != 0).then_some(next)
+        })
+        .map(move |s| {
+            let original = base | s;
+            (original, self.rotate(original, self.suffix) - self.first)
+        })
+    }
 }
 
 pub(in crate::c71_matrix) struct Bytes {
@@ -581,6 +600,13 @@ mod tests {
                             for tile_bits in 0..=dimension {
                                 let size = 1 << tile_bits;
                                 for tile in (0..n).step_by(size) {
+                                    let expected: Vec<_> = (tile..tile + size)
+                                        .filter_map(|i| w.offset(i).map(|j| (i, j)))
+                                        .collect();
+                                    assert_eq!(
+                                        w.intersection(tile, size).collect::<Vec<_>>(),
+                                        expected
+                                    );
                                     assert_eq!(
                                         w.intersects(tile, size),
                                         permuted[tile..tile + size]
@@ -635,6 +661,80 @@ mod tests {
             }
         }
         assert_eq!(passes, 26);
+    }
+
+    #[test]
+    fn c71_b12_signed_range_windows_gather_original_ragged_packed_and_padding() {
+        let sources = vec![
+            Source { name: "ragged".into(), rows: 5, cols: 3, packed_offset: 0 },
+            Source { name: "square".into(), rows: 3, cols: 3, packed_offset: 15 },
+            Source { name: "norm".into(), rows: 1, cols: 3, packed_offset: 24 },
+        ];
+        let (tiles, live) = super::super::tiles(&sources);
+        let plan = Plan { sources, tiles, live, cohorts: Vec::new(), layout_digest: [0; 32] };
+        let packed: Vec<_> = (0..live)
+            .map(|i| {
+                if i == 0 {
+                    -32767
+                } else if i == 26 {
+                    32767
+                } else {
+                    i as i16 - 13
+                }
+            })
+            .collect();
+        for bottom in 0..=6 {
+            for suffix in 0..=6 - bottom {
+                let order: Vec<_> = (bottom..bottom + suffix)
+                    .rev()
+                    .chain((bottom + suffix..6).rev())
+                    .chain((0..bottom).rev())
+                    .collect();
+                let mut expected = vec![0; 64];
+                for i in 0..live {
+                    let target = order.iter().fold(0, |v, bit| 2 * v + ((i >> bit) & 1));
+                    expected[target] = packed[plan.virtual_to_packed(i).unwrap().unwrap()];
+                }
+                for width in bottom..=6 {
+                    let mut out = vec![i16::MIN; 1 << width];
+                    for first in (0..64).step_by(out.len()) {
+                        plan.range_window(6, &packed, first, &mut out, suffix, bottom).unwrap();
+                        assert_eq!(out, expected[first..first + out.len()]);
+                    }
+                }
+            }
+        }
+        let mut out = [17; 8];
+        assert!(plan.range_window(6, &packed[..26], 0, &mut out, 0, 0).is_err());
+        assert_eq!(out, [17; 8]);
+        assert!(plan.range_window(4, &packed, 0, &mut out, 0, 0).is_err());
+        assert_eq!(out, [17; 8]);
+        assert!(plan.range_window(6, &packed, 1, &mut out, 0, 0).is_err());
+        assert_eq!(out, [17; 8]);
+        let mut invalid = packed;
+        invalid[0] = i16::MIN;
+        assert!(plan.range_window(6, &invalid, 0, &mut [0; 64], 0, 0).is_err());
+        // Enumerate public D35 windows without allocating their word payload.
+        let widths: [&[usize]; 11] =
+            [&[], &[1], &[2], &[3], &[4], &[5], &[2, 4], &[3, 4], &[3, 5], &[2, 3, 4], &[2, 3, 5]];
+        let mut passes = 1;
+        for (gap, widths) in widths.iter().enumerate() {
+            let layer = 24 + gap;
+            let mut prefix = 0;
+            for width in widths.iter().copied().chain([0]) {
+                for first in (0..1usize << 35).step_by(1 << 27) {
+                    let w =
+                        RangeWindow::new(35, first, 1 << 27, layer - prefix - width, 35 - layer)
+                            .unwrap();
+                    assert_eq!(w.mask.count_ones(), 8);
+                    let (original, target) = w.intersection(0, 1 << 35).next().unwrap();
+                    assert_eq!(w.offset(original), Some(target));
+                }
+                prefix += width;
+                passes += 1;
+            }
+        }
+        assert_eq!(passes, 29);
     }
 
     #[test]

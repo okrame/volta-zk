@@ -1,21 +1,59 @@
-//! Original-byte canopy/Gram range evaluator. CPU reference; the same private
+//! Original-value canopy/Gram range evaluator. CPU reference; the same private
 //! arithmetic still needs exact CUDA integration and a complete physical ledger.
 use super::*;
 use crate::c71_matrix::gemma::eq_index;
 use std::{cell::RefCell, sync::Arc};
 
-pub(in crate::c71_matrix) type Reader =
-    Arc<dyn Fn(usize, usize, usize, &mut [u8]) -> Result<(), String> + Send + Sync>;
+pub(in crate::c71_matrix) type Reader<T = u8> =
+    Arc<dyn Fn(usize, usize, usize, &mut [T]) -> Result<(), String> + Send + Sync>;
 
-pub(in crate::c71_matrix) struct Source {
-    pub histogram: [u64; 256], // full original domain, including external zero suffix
-    pub read: Reader,          // suffix bits, subtree bits, first ordered byte, output
+pub(in crate::c71_matrix) struct Source<T = u8> {
+    pub alphabet: Alphabet,
+    pub histogram: Vec<u64>, // full original domain, including external zero suffix
+    pub read: Reader<T>,     // suffix bits, subtree bits, first ordered value, output
+}
+
+impl Source<i16> {
+    /// One installation scan of the same immutable packed storage. Counts can
+    /// be reused; every proof still authenticates them with fresh rows.
+    pub(in crate::c71_matrix) fn signed(
+        bits: usize,
+        packed: &[i16],
+        read: Reader<i16>,
+    ) -> Result<Self, String> {
+        if !(1..=35).contains(&bits) || packed.len() > 1usize << bits {
+            return Err("range signed source shape differs".into());
+        }
+        let mut histogram = allocate(65535, 0u64)?;
+        for &value in packed {
+            if value == i16::MIN {
+                return Err("range signed source outside symmetric alphabet".into());
+            }
+            histogram[(i64::from(value) + 32767) as usize] += 1;
+        }
+        histogram[32767] += (1u64 << bits) - packed.len() as u64;
+        Ok(Self { alphabet: Alphabet::Symmetric(i16::MAX), histogram, read })
+    }
+}
+
+impl<T> Source<T> {
+    fn geometry(&self, bits: usize) -> (usize, usize, &'static [&'static [usize]]) {
+        let (cut, cap, windows): (_, _, &[_]) = match self.alphabet {
+            Alphabet::Byte => (10, 1usize << 31, &WINDOWS),
+            // Selected W cut=11/m24, not the superseded cut=10/m25 plan.
+            // 256 MiB staging; no second packed W or full virtual W allocation.
+            Alphabet::Symmetric(_) => (11, 1usize << 27, &W_WINDOWS),
+        };
+        (bits.saturating_sub(cut).max(1).min(bits - 1), cap, windows)
+    }
 }
 
 // Selected compositions, indexed by the number of folds before retention.
 // Addresses use only completed prefixes; no future challenge enters a reader.
 const WINDOWS: [&[usize]; 10] =
     [&[], &[1], &[2], &[3], &[4], &[5], &[2, 4], &[3, 4], &[2, 2, 4], &[2, 3, 4]];
+const W_WINDOWS: [&[usize]; 11] =
+    [&[], &[1], &[2], &[3], &[4], &[5], &[2, 4], &[3, 4], &[3, 5], &[2, 3, 4], &[2, 3, 5]];
 
 #[derive(Default, Debug, serde::Serialize)]
 pub(in crate::c71_matrix) struct Work {
@@ -35,9 +73,9 @@ fn allocate<T: Clone>(length: usize, value: T) -> Result<Vec<T>, String> {
     Ok(v)
 }
 
-fn fraction(bytes: &[u8], alpha: Fp3) -> [Fp3; 2] {
+fn fraction<T: Copy + Into<i64>>(bytes: &[T], alpha: Fp3) -> [Fp3; 2] {
     if bytes.len() == 1 {
-        return [Fp3::ONE, alpha - signed(i64::from(bytes[0]))];
+        return [Fp3::ONE, alpha - signed(bytes[0].into())];
     }
     let half = bytes.len() / 2;
     let [p, q] = fraction(&bytes[..half], alpha);
@@ -45,8 +83,8 @@ fn fraction(bytes: &[u8], alpha: Fp3) -> [Fp3; 2] {
     [p * s + r * q, q * s]
 }
 
-struct Evaluator<'a> {
-    source: &'a Source,
+struct Evaluator<'a, T> {
+    source: &'a Source<T>,
     bits: usize,
     retained: usize,
     window: usize,
@@ -60,15 +98,18 @@ struct Evaluator<'a> {
     work: Work,
 }
 
-impl<'a> Evaluator<'a> {
-    fn new(source: &'a Source, bits: usize, alpha: Fp3, window: usize) -> Result<Self, String> {
-        if !(1..=34).contains(&bits)
+impl<'a, T: Copy + Default + Into<i64>> Evaluator<'a, T> {
+    fn new(source: &'a Source<T>, bits: usize, alpha: Fp3, window: usize) -> Result<Self, String> {
+        if !(1..=35).contains(&bits)
             || !window.is_power_of_two()
             || window > (1usize << bits).min(1 << 31)
         {
             return Err("range evaluator shape differs".into());
         }
-        let retained = bits.saturating_sub(10).max(1).min(bits - 1);
+        let (retained, cap, _) = source.geometry(bits);
+        if window > cap {
+            return Err("range window exceeds staging cap".into());
+        }
         let cut = bits - retained;
         if window < 1 << cut {
             return Err("range window splits initial subtree".into());
@@ -89,8 +130,8 @@ impl<'a> Evaluator<'a> {
         };
         let mut level = allocate(1 << retained, [Fp3::ZERO; 2])?;
         {
-            let mut bytes = allocate(window, 0u8)?;
-            e.sample_heap(bytes.capacity() + level.capacity() * 48);
+            let mut bytes = allocate(window, T::default())?;
+            e.sample_heap(bytes.capacity() * core::mem::size_of::<T>() + level.capacity() * 48);
             e.work.source_passes += 1;
             for first in (0..1usize << bits).step_by(window) {
                 e.read(0, 0, first, &mut bytes)?;
@@ -130,11 +171,11 @@ impl<'a> Evaluator<'a> {
         suffix: usize,
         bottom: usize,
         first: usize,
-        bytes: &mut [u8],
+        bytes: &mut [T],
     ) -> Result<(), String> {
         (self.source.read)(suffix, bottom, first, bytes)?;
         self.work.byte_windows += 1;
-        self.work.requested_bytes += bytes.len() as u64;
+        self.work.requested_bytes += core::mem::size_of_val(bytes) as u64;
         Ok(())
     }
 
@@ -177,8 +218,10 @@ impl<'a> Evaluator<'a> {
         let length = 1 << width;
         let group = 1 << (prefix.len() + width);
         let mut bucket = allocate(length, [Fp3::ZERO; 4])?;
-        let mut bytes = allocate(self.window, 0u8)?;
-        self.sample_heap(extra + bucket.capacity() * 96 + bytes.capacity());
+        let mut bytes = allocate(self.window, T::default())?;
+        self.sample_heap(
+            extra + bucket.capacity() * 96 + bytes.capacity() * core::mem::size_of::<T>(),
+        );
         self.work.source_passes += 1;
         for first in (0..1usize << self.bits).step_by(self.window) {
             self.read(suffix, bottom, first, &mut bytes)?;
@@ -269,7 +312,7 @@ impl<'a> Evaluator<'a> {
         if self.gram.is_empty() || prefix.len() == self.gram_end {
             self.gram = Vec::new();
             let mut start = 0;
-            let width = *WINDOWS[gap]
+            let width = *self.source.geometry(self.bits).2[gap]
                 .iter()
                 .find(|&&w| {
                     let here = start == prefix.len();
@@ -347,25 +390,28 @@ impl<'a> Evaluator<'a> {
     }
 }
 
-pub(in crate::c71_matrix) fn prove(
+pub(in crate::c71_matrix) fn prove<T: Copy + Default + Into<i64>>(
     domain: Domain,
     root: &C61Commitment,
     attempt: AttemptContext,
     layout: [u8; 32],
     live: usize,
-    source: &Source,
+    source: &Source<T>,
     fs: &mut Fs,
     correlations: &mut impl ExactSizeIterator<Item = Auth>,
 ) -> Result<(Proof, [Vec<Cube>; 2], [Auth; 2], Work), String> {
     let bits = domain.config()?.num_variables;
-    if bits > 34
+    let alphabet = source.alphabet;
+    if !(1..=35).contains(&bits)
+        || !matches!(alphabet, Alphabet::Byte | Alphabet::Symmetric(i16::MAX))
+        || source.histogram.len() != alphabet.len()
         || source.histogram.iter().try_fold(0u64, |sum, &n| sum.checked_add(n))
             != Some(1u64 << bits)
     {
-        return Err("range original byte histogram differs".into());
+        return Err("range original histogram differs".into());
     }
-    let bits = bind(domain, root, attempt, layout, live, Alphabet::Byte, fs)?;
-    let count = required(bits, Alphabet::Byte);
+    let bits = bind(domain, root, attempt, layout, live, alphabet, fs)?;
+    let count = required(bits, alphabet);
     if correlations.len() < count {
         return Err("B12 range prover capacity exhausted".into());
     }
@@ -379,9 +425,10 @@ pub(in crate::c71_matrix) fn prove(
         })
         .unzip();
     record_values(fs, 0x41, &histogram);
-    let (alpha, inverse, rho) = challenges(bits, Alphabet::Byte, fs)?;
+    let (alpha, inverse, rho) = challenges(bits, alphabet, fs)?;
     let h = authed.iter().zip(&inverse).fold(Auth::ZERO, |s, (&a, &d)| s.add(a.scale(d)));
-    let mut evaluator = Evaluator::new(source, bits, alpha, (1usize << bits).min(1 << 31))?;
+    let mut evaluator =
+        Evaluator::new(source, bits, alpha, (1usize << bits).min(source.geometry(bits).1))?;
     let [p, q] = evaluator.canopy.pop().ok_or("range canopy root missing")?[0];
     if q == Fp3::ZERO {
         return Err("B12 range witness pole".into());
@@ -444,7 +491,7 @@ pub(in crate::c71_matrix) mod tests {
             }
             Ok(())
         });
-        (Source { histogram, read }, original)
+        (Source { alphabet: Alphabet::Byte, histogram: histogram.to_vec(), read }, original)
     }
 
     fn context() -> AttemptContext {
@@ -463,115 +510,160 @@ pub(in crate::c71_matrix) mod tests {
 
     #[test]
     fn c71_b12_windowed_range_complete_transcript_and_original_mac() {
-        let domain = Domain::Flat(10);
-        let count = required(10, Alphabet::Byte);
         for live in [1, 731, 1024] {
             let (source, values) = source(10, live);
-            let model =
-                Model::new_in(domain, values[..live].iter().map(|&v| i16::from(v)).collect())
-                    .unwrap();
-            let fresh = || Fs::new(b"windowed range original MAC", 100_000);
-            let all_rows = rows(count + 32);
-            let (mut df, mut wf) = (fresh(), fresh());
-            let (mut dr, mut wr) = (all_rows.clone().into_iter(), all_rows.clone().into_iter());
-            let (dense, forms, targets) = super::super::prove(
-                &model,
-                context(),
-                [9; 32],
-                live,
-                Alphabet::Byte,
-                &mut df,
-                &mut dr,
-            )
-            .unwrap();
-            let (windowed, actual_forms, actual_targets, work) =
-                prove(domain, &model.root, context(), [9; 32], live, &source, &mut wf, &mut wr)
-                    .unwrap();
-            let (mut a, mut b) = (Vec::new(), Vec::new());
-            dense.write(&mut a);
-            windowed.write(&mut b);
-            assert_eq!(a, b);
-            assert_eq!(df.digest(), wf.digest());
-            for (a, b) in targets.iter().zip(actual_targets) {
-                assert_eq!((a.x, a.m), (b.x, b.m));
-            }
-            for (a, b) in forms.iter().flatten().zip(actual_forms.iter().flatten()) {
-                assert_eq!(
-                    (a.offset, &a.point, a.coefficient),
-                    (b.offset, &b.point, b.coefficient)
-                );
-            }
-            assert_eq!(work.source_passes, 22);
-            assert_eq!(work.gram_windows, 12);
-            assert_eq!(work.retained_levels, 9);
-            assert_eq!(work.requested_bytes, 22 * 1024);
-            assert_eq!(dr.len(), 32);
-            assert_eq!(wr.len(), 32);
+            parity(10, live, source, values[..live].iter().map(|&v| i16::from(v)).collect(), 22);
+        }
+    }
 
-            // Close the new range's targets on the ORIGINAL dense commitment,
-            // not a fresh authentication of the gathered values.
-            let (pcs, digest) = linear::prove(
-                &model,
-                context(),
-                [9; 32],
-                &actual_forms,
-                &actual_targets,
-                &mut wf,
-                &mut wr,
-            )
-            .unwrap();
-            let delta = signed(29);
-            let keys: Vec<_> = all_rows.iter().map(|a| Key::new(a.m + delta * a.x)).collect();
-            let (mut vf, mut vr) = (fresh(), keys.clone().into_iter());
-            let (f, t) = verify(
-                domain,
-                &model.root,
-                context(),
-                [9; 32],
-                live,
-                Alphabet::Byte,
-                &windowed,
-                delta,
-                &mut vf,
-                &mut vr,
-            )
-            .unwrap();
-            let before = vf.clone();
-            assert_eq!(
-                linear::verify(
-                    domain,
-                    &model.root,
-                    context(),
-                    [9; 32],
-                    &f,
-                    &t,
-                    &pcs,
-                    delta,
-                    &mut vf,
-                    &mut vr
-                )
-                .unwrap(),
-                digest
-            );
-            assert_eq!(vf.digest(), wf.digest());
-            assert_eq!(wr.len(), 0);
-            assert_eq!(vr.len(), 0);
-            let mut wrong = t;
-            wrong[0] = Key::new(wrong[0].k + Fp3::ONE);
-            assert!(linear::verify(
+    fn parity<T: Copy + Default + Into<i64>>(
+        bits: usize,
+        live: usize,
+        source: Source<T>,
+        values: Vec<i16>,
+        passes: u64,
+    ) {
+        let domain = Domain::Flat(bits);
+        let alphabet = source.alphabet;
+        let count = required(bits, alphabet);
+        let pcs_rows = 3 * bits + 2;
+        let model = Model::new_in(domain, values).unwrap();
+        let fresh = || Fs::new(b"windowed range original MAC", 100_000);
+        let all_rows = rows(count + pcs_rows);
+        let (mut df, mut wf) = (fresh(), fresh());
+        let (mut dr, mut wr) = (all_rows.clone().into_iter(), all_rows.clone().into_iter());
+        let (dense, forms, targets) =
+            super::super::prove(&model, context(), [9; 32], live, alphabet, &mut df, &mut dr)
+                .unwrap();
+        let (windowed, actual_forms, actual_targets, work) =
+            prove(domain, &model.root, context(), [9; 32], live, &source, &mut wf, &mut wr)
+                .unwrap();
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        dense.write(&mut a);
+        windowed.write(&mut b);
+        assert_eq!(a, b);
+        assert_eq!(df.digest(), wf.digest());
+        for (a, b) in targets.iter().zip(actual_targets) {
+            assert_eq!((a.x, a.m), (b.x, b.m));
+        }
+        for (a, b) in forms.iter().flatten().zip(actual_forms.iter().flatten()) {
+            assert_eq!((a.offset, &a.point, a.coefficient), (b.offset, &b.point, b.coefficient));
+        }
+        assert_eq!(work.source_passes, passes);
+        assert_eq!(work.gram_windows, passes - bits as u64);
+        assert_eq!(work.retained_levels, bits as u64 - 1);
+        assert_eq!(work.requested_bytes, passes * (1 << bits) * core::mem::size_of::<T>() as u64);
+        assert_eq!(dr.len(), pcs_rows);
+        assert_eq!(wr.len(), pcs_rows);
+
+        // Close the new range's targets on the ORIGINAL dense commitment,
+        // not a fresh authentication of the gathered values.
+        let (pcs, digest) = linear::prove(
+            &model,
+            context(),
+            [9; 32],
+            &actual_forms,
+            &actual_targets,
+            &mut wf,
+            &mut wr,
+        )
+        .unwrap();
+        let delta = signed(29);
+        let keys: Vec<_> = all_rows.iter().map(|a| Key::new(a.m + delta * a.x)).collect();
+        let (mut vf, mut vr) = (fresh(), keys.clone().into_iter());
+        let (f, t) = verify(
+            domain,
+            &model.root,
+            context(),
+            [9; 32],
+            live,
+            alphabet,
+            &windowed,
+            delta,
+            &mut vf,
+            &mut vr,
+        )
+        .unwrap();
+        let before = vf.clone();
+        assert_eq!(
+            linear::verify(
                 domain,
                 &model.root,
                 context(),
                 [9; 32],
                 &f,
-                &wrong,
+                &t,
                 &pcs,
                 delta,
-                &mut before.clone(),
-                &mut keys[count..].to_vec().into_iter()
+                &mut vf,
+                &mut vr
             )
-            .is_err());
+            .unwrap(),
+            digest
+        );
+        assert_eq!(vf.digest(), wf.digest());
+        assert_eq!(wr.len(), 0);
+        assert_eq!(vr.len(), 0);
+        let mut wrong = t;
+        wrong[0] = Key::new(wrong[0].k + Fp3::ONE);
+        assert!(linear::verify(
+            domain,
+            &model.root,
+            context(),
+            [9; 32],
+            &f,
+            &wrong,
+            &pcs,
+            delta,
+            &mut before.clone(),
+            &mut keys[count..].to_vec().into_iter()
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn c71_b12_windowed_range_signed_transcript_original_mac_and_geometry() {
+        let bits = 12;
+        let live = 3001;
+        let values: Vec<_> = (0..live).map(|i| [-32767, -1, 0, 1, 32767][i % 5]).collect();
+        let original = values.clone();
+        let source = Source::signed(
+            bits,
+            &values,
+            Arc::new(move |suffix, bottom, first, out| {
+                let high = bits - bottom - suffix;
+                for (j, v) in out.iter_mut().enumerate() {
+                    let i = first + j;
+                    let top = i >> bottom;
+                    let address = (((top & ((1 << high) - 1)) << suffix) | (top >> high)) << bottom
+                        | (i & ((1 << bottom) - 1));
+                    *v = original.get(address).copied().unwrap_or(0);
+                }
+                Ok(())
+            }),
+        )
+        .unwrap();
+        assert_eq!(source.histogram[0], 601);
+        assert_eq!(source.histogram[65534], 600);
+        assert_eq!(source.histogram[32767], 600 + 4096 - live as u64);
+        let (retained, cap, windows) = source.geometry(35);
+        assert_eq!((retained, cap), (24, 1 << 27));
+        assert_eq!(1 + windows.iter().map(|w| 1 + w.len()).sum::<usize>(), 29);
+        // D35 scheduling arithmetic only; never allocate a canonical buffer.
+        for (gap, widths) in windows.iter().enumerate() {
+            let layer = retained + gap;
+            let mut prefix = 0;
+            for width in widths.iter().copied().chain([0]) {
+                assert!(prefix + width <= layer);
+                assert!(cap >= 1 << (35 - layer));
+                prefix += width;
+            }
         }
+        for (bad_bits, packed) in [(0, vec![]), (36, vec![]), (1, vec![0; 3]), (12, vec![i16::MIN])]
+        {
+            assert!(Source::signed(bad_bits, &packed, source.read.clone()).is_err());
+        }
+        parity(bits, live, source, values, 29);
     }
 
     #[test]
@@ -720,7 +812,8 @@ pub(in crate::c71_matrix) mod tests {
             let counter = calls.clone();
             let original = source.read.clone();
             let source = Source {
-                histogram: source.histogram,
+                alphabet: source.alphabet,
+                histogram: source.histogram.clone(),
                 read: Arc::new(move |s, b, f, out| {
                     original(s, b, f, out)?;
                     if counter.fetch_add(1, Ordering::Relaxed) + 1 == fail {

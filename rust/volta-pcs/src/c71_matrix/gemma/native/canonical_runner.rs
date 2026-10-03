@@ -334,6 +334,7 @@ fn run(
     let phase = measurements.phase("prover", None, "installation_w_commitment");
     let coins = fresh_pcs_coins()?;
     let (p, original) = (public.profiles[0].clone(), weights.clone());
+    let (range_profile, range_packed) = (public.profiles[0].clone(), weights.clone());
     let installed = b12::replay::ReplayModel::new(
         Domain::Flat(35),
         coins.seed,
@@ -347,6 +348,12 @@ fn run(
             )
         }),
         public.profiles[0].plan.live,
+    )?
+    .with_signed_range_reader(
+        &weights,
+        Arc::new(move |suffix, bottom, first, out| {
+            range_profile.plan.range_window(35, &range_packed, first, out, suffix, bottom)
+        }),
     )?;
     let root = installed.root().clone();
     let binding = public.binding(&root)?;

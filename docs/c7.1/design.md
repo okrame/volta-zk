@@ -130,8 +130,11 @@ per intersezione delle tessere e cap di 2 GiB. Il
 il riferimento CPU collega canopy, Gram e retention allo stesso reader.
 Il primo scan PCS conserva l'istogramma byte; il range non aggiunge uno
 scan per ricostruirlo. D34 seleziona 26 passate dopo l'istogramma, ma non
-è eseguito: la parità completa resta ridotta. W e i consumer non convertiti
-mantengono il riferimento precedente. Mancano CUDA, conto completo dei
+è eseguito: la parità completa resta ridotta. Lo stesso motore ora serve
+anche W signed, dal packed originale: cut=11/m24, 29 passate selezionate,
+staging di 256 MiB e istogramma privato calcolato all'installazione.
+Non ripristina il piano W cut=10/m25 escluso per memoria. Gli altri consumer
+non convertiti mantengono il riferimento precedente. Mancano CUDA, conto completo dei
 producer/arithmetic work, memoria simultanea e verifica canonica del range;
 la riduzione delle rigenerazioni non è un tempo H100 o una nuova prova Lean.
 Il bound di lavoro Eq/Pow dello screen rimane condizionale e non è

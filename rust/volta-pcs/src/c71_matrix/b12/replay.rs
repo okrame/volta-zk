@@ -596,6 +596,7 @@ pub(in crate::c71_matrix) struct ReplayModel {
     pads: Arc<[Goldilocks]>,
     retain_first: bool,
     pub(in crate::c71_matrix) range_bytes: Option<super::super::range::windowed::Source>,
+    pub(in crate::c71_matrix) range_words: Option<super::super::range::windowed::Source<i16>>,
     byte_histogram: Arc<Mutex<Option<[u64; 256]>>>,
 }
 
@@ -700,6 +701,7 @@ impl ReplayModel {
             pads,
             retain_first: false,
             range_bytes: None,
+            range_words: None,
             byte_histogram,
         })
     }
@@ -737,7 +739,24 @@ impl ReplayModel {
             .lock()
             .map_err(|_| "range histogram cache poisoned")?
             .ok_or("range requires a completed original byte scan")?;
-        self.range_bytes = Some(super::super::range::windowed::Source { histogram, read });
+        self.range_bytes = Some(super::super::range::windowed::Source {
+            alphabet: super::super::range::Alphabet::Byte,
+            histogram: histogram.to_vec(),
+            read,
+        });
+        Ok(self)
+    }
+
+    pub(in crate::c71_matrix) fn with_signed_range_reader(
+        mut self,
+        packed: &[i16],
+        read: super::super::range::windowed::Reader<i16>,
+    ) -> Result<Self, String> {
+        self.range_words = Some(super::super::range::windowed::Source::signed(
+            self.domain.config()?.num_variables,
+            packed,
+            read,
+        )?);
         Ok(self)
     }
 

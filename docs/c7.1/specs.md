@@ -422,8 +422,8 @@ suffisso esterno rimane zero pubblico. Il commitment A chiama questo
 scanner 512 volte secondo la geometria, non la finestra scalare da 128
 byte. Anche le prime query PCS usano il lettore a finestre descritto sopra;
 le riduzioni lineari del primo stato PCS usano ora lo scanner sorgente.
-Getter scalare e replay per riga restano nel range W e negli altri consumer
-non convertiti. `Prepared::range_window` implementa il reader per
+Getter scalare e replay per riga restano nei consumer non convertiti.
+`Prepared::range_window` implementa il reader per
 finestre dyadic allineate, fino a 2 GiB, nell'ordine
 `[tail][prefisso folded][u Gram][sottoalbero]`. Seleziona le sorgenti
 intersecando le maschere dei bit fissi delle tessere con quelle della
@@ -440,6 +440,19 @@ tuple di quattro figli in D34. Il buffer byte è al più 2 GiB. H termina
 prima della retention, i livelli canopy consumati sono rilasciati e
 `truncate` dei figli non ne libera la capacità. Le uguaglianze vengono
 calcolate per indice, senza un Eq(N) denso. È ancora aritmetica CPU.
+
+Il medesimo motore serve W signed, senza bias: `Plan::range_window`
+enumera solo l'intersezione fra tessera e finestra permutata, legge dal
+packed originale condiviso e inserisce il suffisso zero pubblico.
+Conserva cut=11/m24 e le composizioni Gram W selezionate (29 passate D35),
+con staging al più 2^27 parole i16, ossia 256 MiB. Il piano cut=10/m25
+precedente non viene riammesso. L'istogramma di 65.535 contatori u64
+(524.280 byte logici) è calcolato una volta all'installazione, nella fase
+`installation_w_commitment`, e include il padding nel bin 32.767.
+I contatori sono riusati, le righe MAC no. Il reader condivide lo stesso
+owner packed del commitment; rifiuta i16::MIN e geometrie errate.
+Questo collegamento CPU non implementa i kernel CUDA specializzati né
+conferma il conto fisico completo o i tempi dello screen storico.
 
 Il primo scan completo del commitment byte conserva 256 contatori u64,
 con il suffisso esterno aggiunto al bin zero; l'istogramma è installato

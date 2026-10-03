@@ -10,7 +10,7 @@ use linear::Cube;
 
 pub(super) mod windowed;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Alphabet {
     Symmetric(i16),
     Byte,

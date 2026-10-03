@@ -58,6 +58,8 @@ impl Installed {
         Self::check_packed(&profile, &packed)?;
         let packed = Arc::new(packed);
         let original = packed.clone();
+        let range_packed = packed.clone();
+        let range_profile = profile.clone();
         let coins = fresh_pcs_coins()?;
         let live = profile.plan.live;
         let model = b12::replay::ReplayModel::new(
@@ -76,6 +78,19 @@ impl Installed {
                 to_p3(signed(i64::from(value)))
             }),
             live,
+        )?
+        .with_signed_range_reader(
+            &packed,
+            Arc::new(move |suffix, bottom, first, out| {
+                range_profile.plan.range_window(
+                    DOMAIN_W.config()?.num_variables,
+                    &range_packed,
+                    first,
+                    out,
+                    suffix,
+                    bottom,
+                )
+            }),
         )?;
         Ok(Self { packed, model: WeightModel::Replay(model) })
     }
@@ -593,8 +608,9 @@ mod work_tests {
         let profile = Arc::new(Profile::small(0).unwrap());
         let packed: Vec<_> = (0..profile.plan.live).map(|index| (index % 7) as i16 - 3).collect();
         let mut installed = Installed::new_sourcewise(profile.clone(), packed.clone()).unwrap();
-        assert_eq!(Arc::strong_count(&installed.packed), 2);
+        assert_eq!(Arc::strong_count(&installed.packed), 3);
         let WeightModel::Replay(source) = &installed.model else { panic!("expected replay W") };
+        assert_eq!(source.range_words.as_ref().unwrap().histogram.iter().sum::<u64>(), 1024);
         let expected: Vec<_> = (0..profile.plan.live)
             .map(|index| {
                 profile.plan.virtual_to_packed(index).unwrap().map_or(0, |offset| packed[offset])

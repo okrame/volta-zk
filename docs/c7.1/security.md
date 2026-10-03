@@ -589,6 +589,13 @@ nel commitment originale, prima delle correlazioni, e autenticato con le
 righe fresche del range. Errori di scan/callback non producono una prova
 alternativa e restano terminali per il runner.
 
+Il range W riusa questa stessa fraction tree su parole signed originali;
+il gather riordina indirizzi, non valori o bias. L'istogramma privato è
+calcolato dal packed immutabile all'installazione, prima delle correlazioni,
+e riautenticato a ogni prova. Il suffisso zero appartiene allo stesso dominio
+del commitment. Il collegamento non aggiunge un lemma Lean né scarica gli
+obblighi aperti di raffinamento, composizione Seed6 o implementazione CUDA.
+
 I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
 dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo
 Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.

@@ -8,18 +8,18 @@ use crate::{
 };
 use std::collections::BTreeMap;
 
+pub(super) mod attention;
 pub(super) mod bytes;
 pub(super) mod caller;
-pub(super) mod rms;
-pub(super) mod gelu;
 pub(super) mod gate_up;
-pub(super) mod rope;
-pub(super) mod attention;
-pub(super) mod residual;
-pub(super) mod output;
-pub(super) mod softmax;
-pub(super) mod profile;
+pub(super) mod gelu;
 pub(super) mod native;
+pub(super) mod output;
+pub(super) mod profile;
+pub(super) mod residual;
+pub(super) mod rms;
+pub(super) mod rope;
+pub(super) mod softmax;
 
 #[derive(Clone, Debug)]
 pub(super) struct Source {
@@ -299,6 +299,39 @@ pub(super) fn eq_index(point: &[Fp3], index: usize) -> Fp3 {
 }
 
 impl Plan {
+    /// Gather signed originals from the one packed W, with the root's public
+    /// zero suffix. No whole-tile scan or per-cell layout binary search.
+    pub(super) fn range_window(
+        &self,
+        dimension: usize,
+        packed: &[i16],
+        first: usize,
+        out: &mut [i16],
+        suffix: usize,
+        bottom: usize,
+    ) -> Result<(), String> {
+        let window = bytes::RangeWindow::new(dimension, first, out.len(), suffix, bottom)?;
+        if packed.len() != self.live || self.live > 1usize << dimension || out.len() > 1 << 27 {
+            return Err("W range window layout or staging cap differs".into());
+        }
+        out.fill(0);
+        for tile in &self.tiles {
+            let source = &self.sources[tile.tensor];
+            for (original, target) in window.intersection(tile.offset, tile.rows * tile.cols) {
+                let local = original - tile.offset;
+                let value = packed[source.packed_offset
+                    + (tile.row + local / tile.cols) * source.cols
+                    + tile.col
+                    + local % tile.cols];
+                if value == i16::MIN {
+                    return Err("W range word outside symmetric alphabet".into());
+                }
+                out[target] = value;
+            }
+        }
+        Ok(())
+    }
+
     /// Canonical scalar address in the existing packed file; None is ONLY
     /// the root's public zero suffix, not an out-of-domain access.
     pub fn virtual_to_packed(&self, index: usize) -> Result<Option<usize>, String> {

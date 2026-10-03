@@ -78,8 +78,10 @@ Il [gather range](../c7.1-history/canonical-range-gather.md) alimenta ora il
 [consumer CPU range A](../c7.1-history/canonical-windowed-range.md), con
 canopy/Gram/retention e istogramma raccolto nel primo scan PCS. La parità
 è ridotta: nessuna finestra canonica di 2 GiB o prova range D34 è stata
-eseguita. Portare il consumer su CUDA, completare il conto simultaneo e
-convertire il range W rimane lavoro locale, non una dipendenza dall'H100.
+eseguita. Il range W ora riusa il motore CPU sul packed signed originale,
+con cut=11/m24 e staging limitato a 256 MiB. Portare entrambi i consumer
+su CUDA e completare il conto simultaneo rimane lavoro locale, non una
+dipendenza dall'H100.
 Nessuna esecuzione W/D35 o A/D34 è acquisita. Il
 [checkpoint del collegamento](../c7.1-history/canonical-initial-scan.md)
 non ammette il comando CPU come campagna H100 né cambia le autorizzazioni.

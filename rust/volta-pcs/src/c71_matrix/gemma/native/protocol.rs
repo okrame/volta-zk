@@ -339,6 +339,25 @@ impl SourceModel<'_> {
                 )?;
                 Ok((proof, forms, targets))
             }
+            Self::Replay(m)
+                if matches!(alphabet, range::Alphabet::Symmetric(_)) && m.range_words.is_some() =>
+            {
+                let source = m.range_words.as_ref().unwrap();
+                if source.alphabet != alphabet {
+                    return Err("installed W range alphabet differs".into());
+                }
+                let (proof, forms, targets, _) = range::windowed::prove(
+                    m.domain(),
+                    m.root(),
+                    attempt,
+                    layout,
+                    live,
+                    source,
+                    fs,
+                    rows,
+                )?;
+                Ok((proof, forms, targets))
+            }
             Self::Replay(m) => range::prove_sourcewise(
                 m.domain(),
                 m.root(),

@@ -34,7 +34,9 @@ C71_BYTE_HD inline uint64_t ordered(uint64_t original,Tile t) {
 }
 C71_BYTE_HD inline bool encode(int64_t value,unsigned signed_width,unsigned lane,uint8_t& byte) {
     const int64_t bound=int64_t{1}<<(8*signed_width-1);
-    if(value < -bound || value>=bound || (signed_width==2 && value==INT16_MIN)) return false;
+    // The byte codec includes argmax's biased-u16 slack. Ordinary arithmetic
+    // rejects INT16_MIN at its own boundary, not in this shared byte encoder.
+    if(value < -bound || value>=bound) return false;
     byte=uint8_t(uint64_t(value)>>(8*lane)) ^ (lane+1==signed_width?128:0);
     return true;
 }

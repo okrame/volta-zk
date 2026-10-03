@@ -52,6 +52,9 @@ int c71_dense_product(C71RangeContext*,uint64_t input,uint64_t weight_offset,c71
 // Borrow complete input rows in place; the parent handle retains capacity.
 int c71_dense_product_rows(C71RangeContext*,uint64_t input,uint64_t first_row,uint64_t weight_offset,c71_dense::Shape,uint64_t output);
 int c71_dense_quantize(C71RangeContext*,uint64_t raw,int32_t shift,uint64_t output);
+// Zero affine terms have handle/offset zero and never read an input.
+int c71_dense_pointwise(C71RangeContext*,uint64_t x,uint64_t x_first,uint64_t y,uint64_t y_first,
+                        c71_dense::Pointwise,uint64_t output);
 // Pending windows cannot be read by range. The Rust layout owner verifies
 // unique/complete source-row coverage before seal; C enforces memory safety,
 // codec bounds and a sticky arithmetic flag, fenced once at publication.

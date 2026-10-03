@@ -11,7 +11,10 @@ pub(in crate::c71_matrix) struct Relation {
 }
 
 impl Bytes {
-    fn affine_shape(&self, r: &Relation) -> Result<&Source, String> {
+    pub(in crate::c71_matrix::gemma) fn affine_shape(
+        &self,
+        r: &Relation,
+    ) -> Result<&Source, String> {
         let raw = self.scalar.layout.sources.get(r.raw).ok_or("affine raw source missing")?;
         if self.widths.get(r.raw) != Some(&6) || raw.rows == 0 || raw.cols == 0 {
             return Err("affine raw codec or shape differs".into());

@@ -13,6 +13,20 @@ constexpr unsigned max_k=21504, max_m=150, max_n=262144;
 static_assert(uint64_t(max_k)*128*128 < uint64_t{1}<<31);
 static_assert(uint64_t(max_k)*32767*32767 < uint64_t{1}<<47);
 struct Shape { uint32_t m,n,k; };
+struct Pointwise { int64_t a,b; uint32_t multiply; };
+static_assert(sizeof(Pointwise)==24);
+C71_DENSE_HD inline bool valid_pointwise(Pointwise op) {
+    return op.multiply<=1 && op.a>=-(int64_t{1}<<30) && op.a<=(int64_t{1}<<30) &&
+        op.b>=-(int64_t{1}<<30) && op.b<=(int64_t{1}<<30) &&
+        (!op.multiply || (op.a==1 && op.b==1));
+}
+C71_DENSE_HD inline bool pointwise(int16_t x,int16_t y,Pointwise op,int64_t& out) {
+    if(!valid_pointwise(op) || ((op.multiply || op.a) && x==INT16_MIN) ||
+       ((op.multiply || op.b) && y==INT16_MIN)) return false;
+    // Two bounded linear terms fit signed-48; gate fits signed-32.
+    out=op.multiply?int64_t(x)*y:op.a*x+op.b*y;
+    return true;
+}
 inline bool valid(Shape s,uint64_t a_words,uint64_t w_words,uint64_t out_values) {
     return s.m && s.m<=max_m && s.n && s.n<=max_n && s.k && s.k<=max_k &&
         uint64_t(s.m)*s.k<=a_words && uint64_t(s.n)*s.k<=w_words && uint64_t(s.m)*s.n<=out_values;

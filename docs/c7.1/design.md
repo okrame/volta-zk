@@ -166,12 +166,17 @@ vive fino all'ultimo consumer. I prodotti matriciali usano batch contigui
 da 150 righe (50 per lm_head), lettura W condivisa e route originali;
 la generazione iniziale rimane token-causale. Questo collega la schedule
 del batch allo scanner PCS/range. Un adapter del piano canonico ora
-collega Matrix e RNE agli handle residenti: controlla sorgente, layout,
+collega Matrix, RNE, Affine e Gate agli handle residenti: controlla sorgente, layout,
 ricette, righe selezionate e lo stesso owner Arc di W. Una vista di righe
 non copia o riduce la capacità del buffer padre. Gli altri producer sono
 rifiutati esplicitamente; lo scanner completo non usa ancora questi handle.
+Affine/Gate conservano il raw signed-48 prima della RNE; i coefficienti
+provengono dalle ricette originali e i termini zero non leggono buffer.
+Il controllo delle route nei tre contesti usa input sintetici, non Γ reale.
 Il gather residente ora riusa le tessere byte originali per finestre
 contigue o riordinate, con codec biased i16/i32/i48 e padding esterno zero.
+Il codec byte ammette anche −32768 per lo slack argmax; i confini degli
+operatori aritmetici ordinari continuano a rifiutare quel marcatore.
 Una bitmap di righe impedisce duplicati o omissioni; la finestra resta
 non consumabile fino al fence e al controllo del flag device. Il controllo
 ridotto verifica anche l'ordine dei byte con driver simulato. Non è ancora

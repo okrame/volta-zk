@@ -16,5 +16,5 @@ def test_dense_i16_fragment_model(tmp_path):
     )
     result = subprocess.run([str(binary)], check=True, capture_output=True, text=True, timeout=20)
     report = json.loads(result.stdout.removeprefix("C71_DENSE_I16_HOST "))
-    assert report == {"matrix_cases": 40, "split_values": 65535, "max_k_executed": 21504,
+    assert report == {"matrix_cases": 40, "pointwise_cases": 216, "split_values": 65535, "max_k_executed": 21504,
                       "gpu_execution": False, "credit": False}

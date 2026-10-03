@@ -64,7 +64,7 @@ ricostruzioni, con parità soltanto ridotta; il vecchio cap iniziale 2^18
 non descrive più questo percorso. Restano i workspace query/range e i
 kernel densi da adattare. Lo scanner CPU ricostruisce ora per producer,
 con righe vive fino all'ultimo consumer e GEMM a batch con letture W
-condivise. La schedule raggiunge PCS/range. L'adapter Matrix/RNE ora usa
+condivise. La schedule raggiunge PCS/range. L'adapter Matrix/RNE/Affine/Gate ora usa
 gli handle residenti e dispone di gather byte nativo con copertura delle
 righe e pubblicazione dopo fence. Mancano gli altri producer e il
 collegamento allo scanner/consumer completo; non costituisce un forward GPU.

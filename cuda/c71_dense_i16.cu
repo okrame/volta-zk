@@ -93,6 +93,32 @@ extern "C" cudaError_t c71_dense_rne_launch(cudaStream_t stream,const int64_t* r
     return cudaGetLastError();
 }
 
+extern "C" __global__ void c71_dense_pointwise_kernel(const int16_t* x,const int16_t* y,
+    int64_t* output,uint64_t count,Pointwise op,uint32_t* failed) {
+    const uint64_t i=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i<count) {
+        const int16_t a=(op.multiply || op.a)?x[i]:0, b=(op.multiply || op.b)?y[i]:0;
+        int64_t value=0;
+        if(!pointwise(a,b,op,value)) atomicOr(failed,1u);
+        else output[i]=value;
+    }
+}
+extern "C" cudaError_t c71_dense_pointwise_launch(cudaStream_t stream,const int16_t* x,const int16_t* y,
+    int64_t* output,uint64_t count,Pointwise op,uint32_t* failed) {
+    uintptr_t oe,fe;
+    if(!stream || !valid_pointwise(op) || !count || count>uint64_t(max_m)*max_n ||
+       reinterpret_cast<uintptr_t>(output)%8 || reinterpret_cast<uintptr_t>(failed)%4 ||
+       !span(output,count*8,oe) || !span(failed,4,fe) || overlaps(output,oe,failed,fe)) return cudaErrorInvalidValue;
+    const int16_t* inputs[]={x,y}; const bool used[]={op.multiply || op.a,op.multiply || op.b};
+    for(unsigned j=0;j<2;++j) {
+        uintptr_t end;
+        if(used[j] ? (reinterpret_cast<uintptr_t>(inputs[j])%2 || !span(inputs[j],count*2,end) ||
+           overlaps(inputs[j],end,output,oe) || overlaps(inputs[j],end,failed,fe)) : inputs[j]!=nullptr) return cudaErrorInvalidValue;
+    }
+    c71_dense_pointwise_kernel<<<(count+255)/256,256,0,stream>>>(x,y,output,count,op,failed);
+    return cudaGetLastError();
+}
+
 extern "C" __global__ void c71_byte_scatter_kernel(const void* input,unsigned kind,
     uint8_t* output,uint32_t* failed,c71_byte::Tile t) {
     const uint64_t count=t.rows*t.columns*t.width;

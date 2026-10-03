@@ -636,6 +636,11 @@ kernel ferma l'owner C. Questa identità locale non è il binding
 crittografico al commitment: il collegamento all'installazione PCS e il
 lifecycle degli snapshot/tentativi del preparatore completo restano da
 realizzare nel runner. Gli operatori assenti non vengono eseguiti su CPU.
+Affine/Gate usano ora le stesse identità intere e le porte originali anche
+nel dispatcher residente: coefficienti bounded, input simmetrici i16,
+nessuna lettura dei termini zero e raw distinto dall'output RNE. Non
+aggiungono autenticazioni, forme o sfide. I confronti finiti con raw CPU
+e aritmetica i128 non scaricano il raffinamento CUDA generale.
 Il gather residente deriva indirizzi e bias dalle stesse tessere originali,
 senza vedere correlazioni o transcript. I controlli Rust richiedono una
 sola emissione di ogni riga delle sorgenti selezionate prima del seal;
@@ -645,6 +650,9 @@ esatto con lo scanner CPU: una root fraction-tree uguale non basterebbe,
 perché non rileverebbe una permutazione. Rimangono aperti la correttezza
 concorrente CUDA, il raffinamento generale del gather e il collegamento
 agli snapshot del runner; la copertura ridotta non li dimostra.
+Il codec byte conserva anche −32768 quando rappresenta lo slack u16
+biased di argmax. Non lo ammette come input aritmetico ordinario: quella
+restrizione appartiene al producer, non alla codifica byte condivisa.
 Nessun output del
 componente da solo costituisce una prova accettabile.
 Il raffinamento di questa implementazione al prodotto intero del §4 non

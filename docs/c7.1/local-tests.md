@@ -164,6 +164,7 @@ Eseguire un filtro alla volta:
 | `c71_b12_windowed_native_dense_chain` | Stesso owner ABI 2: W installato una volta, prodotto raw, RNE per 13 shift contro Rust e root range signed senza download intermedio; driver host simulato, nessun preparatore canonico |
 | `c71_canonical_resident` | Adapter condiviso Matrix/RNE su profilo ridotto con vista di riga e owner W originale; 14 rifiuti di identità/shape/driver/contesto e due rifiuti del dispatcher canonico incompleto; solo driver host simulato |
 | `c71_canonical_resident_byte` | Gather dalle tessere originali i48/i32/i16, ordine byte esatto, padding, blocchi fuori ordine, copertura e rifiuti terminali; driver simulato, non scanner GPU completo |
+| `c71_canonical_resident_pointwise` | Route Affine/Gate nei tre contesti, righe selezionate da buffer residenti, raw CPU identici prima della RNE, termini zero assenti, coefficienti estremi e 12 rifiuti terminali; input sintetici e driver simulato |
 | `c71_b12_signed_range_windows_gather_original_ragged_packed_and_padding` | Gather W signed, tessere ragged, estremi ±32767, padding, input invalidi e soli descrittori delle finestre D35 |
 | `c71_b12_native_windowed_range_dispatch`, `c71_b12_range_histogram_scan_errors` | Dispatch range A senza getter scalare, istogramma dal commitment e fallimenti del primo scan senza sorgente installata |
 | `c71_acceptance_transport` | Completamento legato al certificato/ricevuta pendenti; alterazioni, troncamenti e Stop |
@@ -242,6 +243,8 @@ La schedule è collegata allo scanner CPU, non ai buffer GPU residenti.
 
 Il test [test_c71_dense_i16.py](../../tests/test_c71_dense_i16.py), separato
 entro 60 s/2 GiB, compila con UBSan il modello host del kernel i16.
+Controlla anche 216 casi pointwise con riferimento i128 indipendente,
+coefficienti fino a ±2^30, termini zero e marcatore i16 rifiutato.
 Verifica 65.535 split, 40 matrici contro dot i128, mapping univoco dei
 frammenti, somme dei lane, bordi/padding, marcatore −32768 e guardie dei
 buffer. K massimo eseguito è 21.504 su una matrice 1x1, non una proiezione
@@ -271,6 +274,8 @@ che errori di fence/limb non pubblichino output e conserva il fallimento
 di cleanup. Aggiunge due batch prodotto/RNE/range sullo stesso W di 20 B,
 23 rifiuti densi, una vista della seconda riga e cleanup W/arena sotto UBSan.
 Il gather aggiunge 19 rifiuti, estremi dei tre codec, ordine dei byte,
+incluso −32768 nel codec byte (lo slack argmax), e il pointwise aggiunge
+14 rifiuti di shape/handle/coefficiente/driver. Verifica inoltre
 finestra pending non consumabile e rilascio del flag; conta capacità simultanee
 e copie, senza scaricare matrici intermedie. Il driver simulato non esegue
 o convalida i kernel CUDA. Il link dell'owner ABI 2 richiede anche

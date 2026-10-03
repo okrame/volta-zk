@@ -149,6 +149,13 @@ pub(in crate::c71_matrix) struct DenseShape {
 }
 const _: () = assert!(size_of::<DenseShape>() == 12);
 #[repr(C)]
+pub(in crate::c71_matrix) struct Pointwise {
+    pub a: i64,
+    pub b: i64,
+    pub multiply: u32,
+}
+const _: () = assert!(size_of::<Pointwise>() == 24);
+#[repr(C)]
 pub(in crate::c71_matrix) struct ByteTile {
     pub input_first: u64,
     pub input_stride: u64,
@@ -213,6 +220,7 @@ api! {
     weights_seal: unsafe extern "C" fn(Raw)->i32 => "c71_dense_weights_seal",
     product: unsafe extern "C" fn(Raw,u64,u64,u64,DenseShape,u64)->i32 => "c71_dense_product_rows",
     quantize: unsafe extern "C" fn(Raw,u64,i32,u64)->i32 => "c71_dense_quantize",
+    pointwise: unsafe extern "C" fn(Raw,u64,u64,u64,u64,Pointwise,u64)->i32 => "c71_dense_pointwise",
     byte_begin: unsafe extern "C" fn(Raw,u64)->i32 => "c71_byte_begin",
     byte_scatter: unsafe extern "C" fn(Raw,u64,*const ByteTile,u64)->i32 => "c71_byte_scatter",
     byte_seal: unsafe extern "C" fn(Raw,u64)->i32 => "c71_byte_seal",
@@ -359,6 +367,19 @@ impl Runtime {
         let status = unsafe { (self.api.quantize)(self.raw, raw.id, shift, id) };
         self.check(status)?;
         Ok(Buffer { id, kind: 1, count: raw.count })
+    }
+    pub(in crate::c71_matrix) fn pointwise(
+        &mut self,
+        inputs: [Option<(&Buffer, usize)>; 2],
+        count: usize,
+        op: Pointwise,
+    ) -> Result<Buffer, String> {
+        self.ready()?;
+        let id = self.alloc(6, count)?;
+        let [x, y] = inputs.map(|input| input.map_or((0, 0), |(b, first)| (b.id, first as u64)));
+        let status = unsafe { (self.api.pointwise)(self.raw, x.0, x.1, y.0, y.1, op, id) };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 6, count })
     }
     pub(in crate::c71_matrix) fn release_buffer(&mut self, buffer: Buffer) -> Result<(), String> {
         self.release(buffer.id)
@@ -939,6 +960,13 @@ pub(in crate::c71_matrix) mod tests {
                 unsafe { self.api.symbol(b"c71_range_test_expect_bytes\0") }.unwrap();
             unsafe {
                 call(bytes.as_ptr(), bytes.len() as u64);
+            }
+        }
+        pub(in crate::c71_matrix) fn expect_raw(&self, values: &[i64]) {
+            let call: unsafe extern "C" fn(*const i64, u64) =
+                unsafe { self.api.symbol(b"c71_range_test_expect_raw\0") }.unwrap();
+            unsafe {
+                call(values.as_ptr(), values.len() as u64);
             }
         }
     }

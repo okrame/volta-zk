@@ -13,6 +13,7 @@ static bool fail_dense=false;
 static size_t fake_free=80000000000ULL;
 static unsigned allocations=0, frees=0, launches=0;
 static std::vector<uint8_t> expected_bytes;
+static std::vector<int64_t> expected_raw;
 cudaError_t cudaSetDevice(int n) { return n==0?0:1; }
 cudaError_t cudaStreamCreateWithFlags(cudaStream_t* s,unsigned flags) {
     assert(flags==cudaStreamNonBlocking); *s=new FakeStream; return 0;
@@ -126,6 +127,10 @@ extern "C" int c71_dense_i16_launch(cudaStream_t s,const int16_t* x,uint64_t nx,
 extern "C" int c71_dense_rne_launch(cudaStream_t s,const int64_t* raw,int16_t* out,uint64_t count,
     int32_t shift,uint32_t* failed) {
     return launch(s,[=] {
+        if(!expected_raw.empty()) {
+            assert(expected_raw.size()==count && std::memcmp(raw,expected_raw.data(),count*8)==0);
+            expected_raw.clear();
+        }
         for(uint64_t i=0;i<count;++i) if(!c71_dense::quantize(raw[i],shift,out[i])) *failed=1;
         if(fail_dense) *failed=1;
     });
@@ -145,11 +150,24 @@ extern "C" int c71_byte_scatter_launch(cudaStream_t s,const void* input,unsigned
         }
     });
 }
+extern "C" int c71_dense_pointwise_launch(cudaStream_t s,const int16_t* x,const int16_t* y,
+    int64_t* output,uint64_t count,c71_dense::Pointwise op,uint32_t* failed) {
+    assert(c71_dense::valid_pointwise(op));
+    return launch(s,[=] {
+        for(uint64_t i=0;i<count;++i) {
+            const int16_t a=(op.multiply || op.a)?x[i]:0, b=(op.multiply || op.b)?y[i]:0;
+            if(!c71_dense::pointwise(a,b,op,output[i])) *failed=1;
+        }
+    });
+}
 
 #ifdef C71_RANGE_FFI_TEST
 // Test library only; production exports neither error injection nor host math.
 extern "C" void c71_range_test_expect_bytes(const uint8_t* p,uint64_t n) {
     assert(n && expected_bytes.empty()); expected_bytes.assign(p,p+n);
+}
+extern "C" void c71_range_test_expect_raw(const int64_t* p,uint64_t n) {
+    assert(n && expected_raw.empty()); expected_raw.assign(p,p+n);
 }
 extern "C" void c71_range_test_failure(unsigned kind) {
     fail_launch=kind==1; fail_fence=kind==2; fail_free=kind==3; corrupt=kind==4;
@@ -260,6 +278,48 @@ static void dense_checks() {
     assert(c71_range_close(c,&final) && final.cleanup_failed && final.weights_bytes==20 && final.arena_bytes==262144);
     fail_free=false;
 }
+static void pointwise_checks() {
+    auto* c=create(); const auto x=dense_input(c);
+    const c71_dense::Pointwise ops[]={{3,-2,0},{1,1,1},{0,2,0},{3,0,0},{0,0,0}};
+    for(const auto op:ops) {
+        const auto raw=alloc(c,C71_I64,4), y=alloc(c,C71_I16,4), root=alloc(c,C71_PAIR,1);
+        const auto before=stats(c);
+        assert(!c71_dense_pointwise(c,op.a?x:0,op.a?4:0,op.b?x:0,0,op,raw));
+        assert(!c71_dense_quantize(c,raw,0,y));
+        int16_t expected[4];
+        for(int i=0;i<4;++i) expected[i]=op.multiply?-(i+1)*(i+1):int16_t(-op.a*(i+1)+op.b*(i+1));
+        const auto reference=fraction(expected,1,0,4,{19,2,3});
+        assert(!c71_range_roots(c,y,2,{19,2,3},root,0));
+        uint64_t limbs[6]; assert(!c71_range_read(c,root,limbs,6));
+        assert(std::memcmp(limbs,&reference,sizeof(reference))==0);
+        assert(stats(c).h2d_bytes==before.h2d_bytes && stats(c).d2h_bytes-before.d2h_bytes==56);
+        assert(!c71_range_release(c,root) && !c71_range_release(c,y) && !c71_range_release(c,raw));
+    }
+    close(c);
+    for(unsigned test=0;test<14;++test) {
+        c=create(); const auto x=dense_input(c),raw=alloc(c,C71_I64,4); int status=0;
+        switch(test) {
+        case 0: status=c71_dense_pointwise(c,x,UINT64_MAX,x,0,{1,1,0},raw); break;
+        case 1: status=c71_dense_pointwise(c,x,6,x,0,{1,1,0},raw); break;
+        case 2: status=c71_dense_pointwise(c,x,0,x,0,{INT64_MIN,1,0},raw); break;
+        case 3: status=c71_dense_pointwise(c,x,0,x,0,{1,1,2},raw); break;
+        case 4: status=c71_dense_pointwise(c,x,0,x,0,{0,1,1},raw); break;
+        case 5: status=c71_dense_pointwise(c,x,0,x,0,{0,1,0},raw); break;
+        case 6: status=c71_dense_pointwise(c,0,0,x,0,{1,1,0},raw); break;
+        case 7: status=c71_dense_pointwise(c,x,0,x,0,{1,1,0},x); break;
+        case 8: { auto empty=alloc(c,C71_I16,4); status=c71_dense_pointwise(c,empty,0,x,0,{1,1,0},raw); break; }
+        case 9: assert(!c71_dense_pointwise(c,x,0,x,0,{1,1,0},raw)); status=c71_dense_pointwise(c,x,0,x,0,{1,1,0},raw); break;
+        case 10: fail_launch=true; status=c71_dense_pointwise(c,x,0,x,0,{1,1,0},raw); fail_launch=false; break;
+        case 11: fail_fence=true; status=c71_dense_pointwise(c,x,0,x,0,{1,1,0},raw); fail_fence=false; break;
+        case 12: corrupt=true; status=c71_dense_pointwise(c,x,0,x,0,{1,1,0},raw); corrupt=false; break;
+        case 13: { auto* other=create(); auto foreign=dense_input(other); status=c71_dense_pointwise(c,foreign,0,x,0,{1,1,0},raw); close(other); break; }
+        }
+        assert(status && stats(c).stopped);
+        const auto attempts=launches;
+        assert(c71_dense_pointwise(c,x,0,x,0,{1,1,0},raw) && launches==attempts);
+        close(c);
+    }
+}
 static void byte_checks() {
     // Independent biased addition, including both signed-48 and signed-32 ends.
     for(unsigned width: {2u,4u,6u}) {
@@ -267,7 +327,7 @@ static void byte_checks() {
         for(int64_t value: {-bound,-bound+1,int64_t{-257},int64_t{-1},int64_t{0},int64_t{255},bound-1,bound}) {
             for(unsigned lane=0;lane<width;++lane) {
                 uint8_t byte=99;
-                const bool valid=value>=-bound && value<bound && !(width==2 && value==INT16_MIN);
+                const bool valid=value>=-bound && value<bound;
                 assert(c71_byte::encode(value,width,lane,byte)==valid);
                 if(valid) assert(byte==uint8_t(uint64_t(value+bound)>>(8*lane)));
             }
@@ -418,8 +478,9 @@ int main() {
     assert(c71_range_close(c,&final) && final.cleanup_failed && final.arena_bytes==262144);
     fail_free=false;
     dense_checks();
+    pointwise_checks();
     byte_checks();
     assert(allocations==frees);
-    std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":23,\"byte_rejections\":19,\"dense_batches\":2,\"dense_row_views\":1,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
+    std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":23,\"byte_rejections\":19,\"pointwise_rejections\":14,\"dense_batches\":2,\"dense_row_views\":1,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
 }
 #endif

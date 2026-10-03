@@ -650,6 +650,23 @@ gli operatori rimanenti e il collegamento di questo gather al replay,
 lo scanner PCS/range interamente residente, il lifecycle comune del runner
 e il conto simultaneo di prover/verificatore/PCS/Seed6. Il ledger C non
 comprende i descrittori/bitmap Rust o il picco fisico completo.
+Il dispatcher collega anche tutte le ricette `Affine` e i prodotti `Gate`:
+riusa `Bytes::affine_shape` per codec, geometrie e coefficienti e richiede
+gli input originali nell'ordine delle porte non nulle. Le viste selezionano
+righe contigue all'interno di ciascun buffer padre, senza copie. Un kernel
+pointwise esegue R=aX+bY oppure R=XY, con input simmetrici i16 e output
+i64 contenente il signed-48 originale. I coefficienti sono limitati a
+±2^30: le due somme di prodotti non possono uscire da signed-48; il gate
+è entro signed-32. Zero coefficienti richiedono handle assenti e non
+caricano valori. Raw e output RNE rimangono distinti e addebitati;
+fence/flag precedono la pubblicazione, come per Matrix.
+Il loader ABI 2 richiede anche `c71_dense_pointwise`. Questo non aggiunge
+una prova GPU o il supporto degli altri nove tipi di producer.
+Il codec byte condiviso accetta l'intero intervallo signed della propria
+larghezza, incluso −32768 per `U/global/argmax_slack`: la prima versione
+del gather rifiutava erroneamente questa cella valida. Il rifiuto del
+marcatore resta nei confini aritmetici e nell'upload signed ordinario;
+il producer argmax residente resta da implementare.
 Il modello host dei frammenti non è esecuzione o verifica concorrente CUDA.
 
 RMS usa P/Y originali e S48 condiviso per riga, con checkpoint da

@@ -1,7 +1,7 @@
 //! Original source blocks through the shared native owner. No host-output
 //! download, transcript or CPU fallback. Full producer coverage remains open.
 use super::*;
-use kernel::range::windowed::native::{Buffer, DenseShape, Runtime};
+use kernel::range::windowed::native::{Buffer, DenseShape, Pointwise, Runtime};
 use std::sync::Arc;
 
 pub(super) struct Rows {
@@ -122,6 +122,70 @@ fn install(runtime: &mut Runtime, plan: &Plan, weights: Arc<Vec<i16>>) -> Result
 }
 
 impl Rows {
+    fn pointwise(
+        runtime: &mut Runtime,
+        b: &bytes::Bytes,
+        recipe: [u8; 32],
+        relation: &bytes::affine::Relation,
+        multiply: bool,
+        first: usize,
+        rows: usize,
+        inputs: &[&Rows],
+    ) -> Result<Self, String> {
+        let shape = match b.affine_shape(relation) {
+            Ok(shape) => shape,
+            Err(e) => return runtime.abort(e),
+        };
+        if rows == 0
+            || first.checked_add(rows).is_none_or(|end| end > shape.rows)
+            || inputs.len() != relation.inputs.iter().filter(|(_, c)| *c != 0).count()
+            || (multiply && relation.inputs.iter().any(|(_, c)| *c != 1))
+        {
+            return runtime.abort("resident pointwise rows or operands differ");
+        }
+        let mut selected = [None, None];
+        let mut next = 0;
+        for (j, &(source, coefficient)) in relation.inputs.iter().enumerate() {
+            if coefficient == 0 {
+                continue;
+            }
+            let input = inputs[next];
+            next += 1;
+            if input.layout != b.layout_digest
+                || input.recipe != recipe
+                || input.source != source
+                || input.columns != shape.cols
+                || first < input.first
+                || first - input.first > input.rows
+                || rows > input.rows - (first - input.first)
+            {
+                return runtime.abort("resident pointwise original input differs");
+            }
+            selected[j] = Some((&input.buffer, (first - input.first) * shape.cols));
+        }
+        let Some(count) = rows.checked_mul(shape.cols) else {
+            return runtime.abort("resident pointwise size overflow");
+        };
+        let buffer = runtime.pointwise(
+            selected,
+            count,
+            Pointwise {
+                a: relation.inputs[0].1,
+                b: relation.inputs[1].1,
+                multiply: u32::from(multiply),
+            },
+        )?;
+        Ok(Self {
+            buffer,
+            source: relation.raw,
+            first,
+            rows,
+            columns: shape.cols,
+            layout: b.layout_digest,
+            recipe,
+        })
+    }
+
     fn upload(
         runtime: &mut Runtime,
         b: &bytes::Bytes,
@@ -283,10 +347,10 @@ impl Canonical {
         step: usize,
         first: usize,
         rows: usize,
-        input: &Rows,
+        inputs: &[&Rows],
     ) -> Result<Rows, String> {
         match self.steps.get(step) {
-            Some(Producer::Matrix(raw)) => input.matrix(
+            Some(Producer::Matrix(raw)) if inputs.len() == 1 => inputs[0].matrix(
                 runtime,
                 &self.plan,
                 self.bytes(),
@@ -296,8 +360,36 @@ impl Canonical {
                 first,
                 rows,
             ),
-            Some(Producer::Rne(pair)) => {
-                input.rne(runtime, self.bytes(), self.recipes.digest, *pair, first, rows)
+            Some(Producer::Rne(pair)) if inputs.len() == 1 => {
+                inputs[0].rne(runtime, self.bytes(), self.recipes.digest, *pair, first, rows)
+            }
+            Some(Producer::Affine(i)) => Rows::pointwise(
+                runtime,
+                self.bytes(),
+                self.recipes.digest,
+                &self.recipes.affine[*i],
+                false,
+                first,
+                rows,
+                inputs,
+            ),
+            Some(Producer::Gate(i)) => {
+                let gu = &self.sources.attention.rope.gate_up;
+                let product = &gu.products[*i];
+                let relation = bytes::affine::Relation {
+                    raw: product.raw,
+                    inputs: [(gu.gelu.gelu[*i].output, 1), (product.up, 1)],
+                };
+                Rows::pointwise(
+                    runtime,
+                    self.bytes(),
+                    self.recipes.digest,
+                    &relation,
+                    true,
+                    first,
+                    rows,
+                    inputs,
+                )
             }
             _ => runtime.abort("canonical native producer not implemented"),
         }
@@ -499,6 +591,197 @@ mod tests {
         let count = plan.sources.iter().map(|s| s.packed_offset + s.rows * s.cols).max().unwrap();
         Arc::new((0..count).map(|i| (i % 5) as i16 - 2).collect())
     }
+    #[test]
+    fn c71_canonical_resident_pointwise_all_dispatch_routes() {
+        let mut f = fixture(512);
+        f.config.arena_bytes = 8 << 20;
+        let plan = crate::c71_matrix::gemma::compile().unwrap();
+        let (sources, output, softmax) = plan.softmax_sources_at(0).unwrap();
+        let mut scales: BTreeMap<_, _> =
+            profile::Recipes::exponent_sources(&sources, &output, &softmax)
+                .into_iter()
+                .map(|id| (id, 0))
+                .collect();
+        for layer in &softmax.layers {
+            scales.insert(layer.pi, -14);
+        }
+        let injection = Injection::new(&f.config);
+        for slot in 0..3 {
+            let p = Canonical::compile(slot, &[0; 772], &scales).unwrap();
+            let b = p.bytes();
+            let mut runtime = Runtime::new(&f.config).unwrap();
+            let mut counts = [0, 0];
+            for (index, step) in p.steps.iter().enumerate() {
+                let (relation, multiply) = match step {
+                    Producer::Affine(i) => (
+                        bytes::affine::Relation {
+                            raw: p.recipes.affine[*i].raw,
+                            inputs: p.recipes.affine[*i].inputs,
+                        },
+                        false,
+                    ),
+                    Producer::Gate(i) => {
+                        let gu = &p.sources.attention.rope.gate_up;
+                        (
+                            bytes::affine::Relation {
+                                raw: gu.products[*i].raw,
+                                inputs: [(gu.gelu.gelu[*i].output, 1), (gu.products[*i].up, 1)],
+                            },
+                            true,
+                        )
+                    }
+                    _ => continue,
+                };
+                let shape = &b.scalar.layout.sources[relation.raw];
+                let first = shape.rows - 1;
+                assert!(first > 0);
+                let value = |source: usize, row: usize, col: usize| {
+                    ((source + row * 3 + col * 5) % 3) as i16 - 1
+                };
+                let mut operands = Vec::new();
+                let mut reference = [vec![0i64; shape.cols], vec![0i64; shape.cols]];
+                for (j, &(source, coefficient)) in relation.inputs.iter().enumerate() {
+                    if coefficient == 0 {
+                        continue;
+                    }
+                    let values = (first - 1..=first)
+                        .flat_map(|r| (0..shape.cols).map(move |c| value(source, r, c)))
+                        .collect::<Vec<_>>();
+                    operands.push(
+                        p.upload_native_rows(&mut runtime, source, first - 1, &values).unwrap(),
+                    );
+                    reference[j] =
+                        (0..shape.cols).map(|c| i64::from(value(source, first, c))).collect();
+                }
+                let expected = if multiply {
+                    reference[0]
+                        .iter()
+                        .zip(&reference[1])
+                        .map(|(&x, &y)| (i128::from(x) * i128::from(y)) as i64)
+                        .collect::<Vec<_>>()
+                } else {
+                    b.prepare_affine_row(&relation, [&reference[0], &reference[1]]).unwrap()
+                };
+                let refs = operands.iter().collect::<Vec<_>>();
+                let before = runtime.stats().unwrap();
+                let raw = p
+                    .prepare_native_step(
+                        &mut runtime,
+                        &Arc::new(Vec::new()),
+                        index,
+                        first,
+                        1,
+                        &refs,
+                    )
+                    .unwrap();
+                let rne = p
+                    .steps
+                    .iter()
+                    .position(|s| matches!(s,Producer::Rne(pair) if pair.raw==relation.raw))
+                    .unwrap();
+                injection.expect_raw(&expected);
+                let rounded = p
+                    .prepare_native_step(
+                        &mut runtime,
+                        &Arc::new(Vec::new()),
+                        rne,
+                        first,
+                        1,
+                        &[&raw],
+                    )
+                    .unwrap();
+                let after = runtime.stats().unwrap();
+                assert_eq!(after.h2d_bytes, before.h2d_bytes);
+                assert_eq!(after.d2h_bytes - before.d2h_bytes, 8);
+                raw.release(&mut runtime).unwrap();
+                rounded.release(&mut runtime).unwrap();
+                for input in operands {
+                    input.release(&mut runtime).unwrap();
+                }
+                assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+                counts[usize::from(multiply)] += 1;
+            }
+            assert_eq!(counts[1], 60);
+            assert_eq!(counts[0], p.recipes.affine.len());
+            assert_eq!(runtime.stats().unwrap().weights_bytes, 0);
+            runtime.close().unwrap();
+            eprintln!("C71_RESIDENT_POINTWISE slot={slot} affine={} gate={} selected_rows=1 exact_raw=true gpu=false",counts[0],counts[1]);
+        }
+    }
+
+    #[test]
+    fn c71_canonical_resident_pointwise_zero_terms_bounds_and_rejections() {
+        let f = fixture(512);
+        // Extend the existing ragged layout with a second ordinary i16 source.
+        let b = gather_layout().append(vec![("pointwise/Y".into(), 3, 3, 2)]).unwrap();
+        let mut runtime = Runtime::new(&f.config).unwrap();
+        let x = Rows::upload(&mut runtime, &b, [7; 32], 1, 0, &[1, -2, 3, -4, 5, -6, 7, -8, 9])
+            .unwrap();
+        let y = Rows::upload(&mut runtime, &b, [7; 32], 3, 0, &[-9, 8, -7, 6, -5, 4, -3, 2, -1])
+            .unwrap();
+        let injection = Injection::new(&f.config);
+        for (a, coefficient) in [(0, 0), (0, -2), (3, 0), (1 << 30, -(1 << 30))] {
+            let relation = bytes::affine::Relation { raw: 0, inputs: [(1, a), (3, coefficient)] };
+            let mut inputs = Vec::new();
+            if a != 0 {
+                inputs.push(&x);
+            }
+            if coefficient != 0 {
+                inputs.push(&y);
+            }
+            let raw = Rows::pointwise(&mut runtime, &b, [7; 32], &relation, false, 1, 1, &inputs)
+                .unwrap();
+            let expected = [-4, 5, -6]
+                .into_iter()
+                .zip([6, -5, 4])
+                .map(|(x, y)| a * x + coefficient * y)
+                .collect::<Vec<_>>();
+            injection.expect_raw(&expected);
+            let output = runtime.quantize(&raw.buffer, 48).unwrap();
+            runtime.release_buffer(output).unwrap();
+            raw.release(&mut runtime).unwrap();
+        }
+        x.release(&mut runtime).unwrap();
+        y.release(&mut runtime).unwrap();
+        runtime.close().unwrap();
+        for test in 0..12 {
+            let mut runtime = Runtime::new(&f.config).unwrap();
+            let mut x = Rows::upload(&mut runtime, &b, [7; 32], 1, 0, &[1; 9]).unwrap();
+            let y = Rows::upload(&mut runtime, &b, [7; 32], 3, 0, &[1; 9]).unwrap();
+            let mut relation = bytes::affine::Relation { raw: 0, inputs: [(1, 1), (3, 1)] };
+            let mut first = 1;
+            match test {
+                0 => x.source = 3,
+                1 => x.recipe[0] ^= 1,
+                2 => x.layout[0] ^= 1,
+                3 => x.first = 2,
+                4 => relation.inputs[0].1 = 1 << 31,
+                5 => first = usize::MAX,
+                6 => relation.raw = 2, // i32, not raw i48
+                9 => injection.set(1),
+                10 => injection.set(2),
+                11 => injection.set(4),
+                _ => (),
+            }
+            let inputs = if test == 7 {
+                vec![&x]
+            } else if test == 8 {
+                vec![&x, &y, &x]
+            } else {
+                vec![&x, &y]
+            };
+            assert!(
+                Rows::pointwise(&mut runtime, &b, [7; 32], &relation, false, first, 1, &inputs)
+                    .is_err(),
+                "pointwise rejection {test}"
+            );
+            injection.set(0);
+            assert_eq!(runtime.stats().unwrap().stopped, 1);
+            assert!(runtime.upload_signed(&[0]).is_err());
+            runtime.close().unwrap();
+        }
+        eprintln!("C71_RESIDENT_POINTWISE_REJECTIONS count=12 terminal=true gpu=false");
+    }
     fn expected_root(values: &[i16], alpha: Fp3) -> [Fp3; 2] {
         let denominators: Vec<_> = values.iter().map(|&x| alpha - signed(i64::from(x))).collect();
         let q = denominators.iter().fold(Fp3::ONE, |a, &b| a * b);
@@ -672,7 +955,7 @@ mod tests {
         let input = p.upload_native_rows(&mut runtime, 0, 149, &vec![1; 5376]).unwrap();
         let step = p.steps.iter().position(|step| matches!(step, Producer::Embedding)).unwrap();
         assert_eq!(
-            p.prepare_native_step(&mut runtime, &Arc::new(Vec::new()), step, 149, 1, &input)
+            p.prepare_native_step(&mut runtime, &Arc::new(Vec::new()), step, 149, 1, &[&input])
                 .err()
                 .unwrap(),
             "canonical native producer not implemented"

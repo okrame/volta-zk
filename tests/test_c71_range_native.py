@@ -30,5 +30,5 @@ def test_native_range_owner_with_deferred_fake_driver(tmp_path):
     )
     result = subprocess.run([str(binary)], check=True, capture_output=True, text=True, timeout=10)
     report = json.loads(result.stdout.removeprefix("C71_RANGE_OWNER_HOST "))
-    assert report == {"rejections": 13, "dense_rejections": 23, "byte_rejections": 19, "dense_batches": 2, "dense_row_views": 1, "max_arena_bytes": 262144,
+    assert report == {"rejections": 13, "dense_rejections": 23, "byte_rejections": 19, "pointwise_rejections": 14, "dense_batches": 2, "dense_row_views": 1, "max_arena_bytes": 262144,
                       "gpu_execution": False, "credit": False}

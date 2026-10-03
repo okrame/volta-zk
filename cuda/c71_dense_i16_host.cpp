@@ -92,6 +92,24 @@ static bool model(const std::vector<int16_t>& x,const std::vector<int16_t>& w,Sh
 }
 int main() {
     unsigned cases=0;
+    unsigned pointwise_cases=0;
+    for(int x: {-32768,-32767,-1,0,1,32767}) for(int y: {-32768,-32767,-1,0,1,32767}) {
+        for(const Pointwise op: {Pointwise{3,-2,0},Pointwise{1LL<<30,-(1LL<<30),0},
+            Pointwise{0,0,0},Pointwise{0,1,0},Pointwise{1,0,0},Pointwise{1,1,1}}) {
+            int64_t value=123;
+            const bool valid=(!(op.a || op.multiply) || x!=-32768) && (!(op.b || op.multiply) || y!=-32768);
+            assert(pointwise(int16_t(x),int16_t(y),op,value)==valid);
+            if(valid) {
+                const __int128 expected=op.multiply?__int128(x)*y:__int128(op.a)*x+__int128(op.b)*y;
+                assert(value==expected && expected>=-(__int128{1}<<47) && expected<(__int128{1}<<47));
+            } else assert(value==123);
+            ++pointwise_cases;
+        }
+    }
+    for(const Pointwise op: {Pointwise{INT64_MIN,0,0},Pointwise{INT64_MAX,0,0},Pointwise{0,1LL<<31,0},Pointwise{1,1,2},Pointwise{0,1,1}}) {
+        int64_t value=123;
+        assert(!pointwise(1,1,op,value) && value==123);
+    }
     for(int v=-32768;v<=32767;++v) for(int shift=-16;shift<=49;++shift) check_rne(v,shift);
     const int64_t wide[]={INT64_MIN,INT64_MAX,-(int64_t{1}<<47)-1,-(int64_t{1}<<47),
         -(int64_t{1}<<47)+1,(int64_t{1}<<47)-1,int64_t{1}<<47};
@@ -145,5 +163,5 @@ int main() {
     assert(!valid_buffers(a,16,b,16,c,16,reinterpret_cast<uint32_t*>(c),{2,2,8}));
     assert(!valid_buffers(a,16,b,16,reinterpret_cast<int64_t*>(reinterpret_cast<unsigned char*>(c)+2),16,&failed,{2,2,8}));
     assert(!valid_buffers(reinterpret_cast<int16_t*>(UINTPTR_MAX-7),16,b,16,c,16,&failed,{2,2,8}));
-    std::printf("C71_DENSE_I16_HOST {\"matrix_cases\":%u,\"split_values\":65535,\"max_k_executed\":21504,\"gpu_execution\":false,\"credit\":false}\n",cases);
+    std::printf("C71_DENSE_I16_HOST {\"matrix_cases\":%u,\"pointwise_cases\":%u,\"split_values\":65535,\"max_k_executed\":21504,\"gpu_execution\":false,\"credit\":false}\n",cases,pointwise_cases);
 }

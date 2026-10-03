@@ -19,6 +19,7 @@ cudaError_t c71_range_launch_reduce(cudaStream_t,const Cubic*,size_t,Cubic*);
 cudaError_t c71_range_launch_h_coefficients(cudaStream_t,const Fp3*,unsigned,Round,Cubic*);
 cudaError_t c71_dense_i16_launch(cudaStream_t,const int16_t*,uint64_t,const int16_t*,uint64_t,int64_t*,uint64_t,uint32_t*,c71_dense::Shape);
 cudaError_t c71_dense_rne_launch(cudaStream_t,const int64_t*,int16_t*,uint64_t,int32_t,uint32_t*);
+cudaError_t c71_dense_pointwise_launch(cudaStream_t,const int16_t*,const int16_t*,int64_t*,uint64_t,c71_dense::Pointwise,uint32_t*);
 cudaError_t c71_byte_scatter_launch(cudaStream_t,const void*,unsigned,uint64_t,uint8_t*,uint64_t,uint32_t*,c71_byte::Tile);
 }
 
@@ -364,6 +365,28 @@ extern "C" int c71_dense_quantize(C71RangeContext* c,uint64_t in,int32_t shift,u
     uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
     if(launched(c,c71_dense_rne_launch(c->stream,ptr<int64_t>(c,a),ptr<int16_t>(c,b),a->count,shift,
                                      ptr<uint32_t>(c,buffer(c,flag))))) return -1;
+    return dense_complete(c,flag,b);
+}
+extern "C" int c71_dense_pointwise(C71RangeContext* c,uint64_t x,uint64_t x_first,uint64_t y,uint64_t y_first,
+    c71_dense::Pointwise op,uint64_t out) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out);
+    if(!b || b->kind!=C71_I64 || b->initialized || !c71_dense::valid_pointwise(op)) return fail(c,"pointwise output or coefficients");
+    const uint64_t handles[]={x,y}, first[]={x_first,y_first};
+    const bool used[]={op.multiply || op.a,op.multiply || op.b};
+    const int16_t* inputs[]={nullptr,nullptr};
+    for(unsigned j=0;j<2;++j) {
+        if(!used[j]) {
+            if(handles[j] || first[j]) return fail(c,"pointwise zero term must be absent");
+            continue;
+        }
+        auto* a=buffer(c,handles[j]);
+        if(!full(a,C71_I16) || first[j]>a->count || b->count>a->count-first[j]) return fail(c,"pointwise original input span");
+        inputs[j]=ptr<int16_t>(c,a)+first[j];
+    }
+    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    if(launched(c,c71_dense_pointwise_launch(c->stream,inputs[0],inputs[1],ptr<int64_t>(c,b),b->count,op,
+                                           ptr<uint32_t>(c,buffer(c,flag))))) return -1;
     return dense_complete(c,flag,b);
 }
 extern "C" int c71_byte_begin(C71RangeContext* c,uint64_t out) {

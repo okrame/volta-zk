@@ -1,0 +1,195 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-03",
+  "git_sha": "d0fd644ed7049dd6cdef9e5b36bbaf3e2b666529",
+  "git_dirty": false,
+  "milestone": "resident immutable W and exact dense/RNE/range chain in one native arena",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "weights_downloaded": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-dense-i16-local-2026-10-03-dacbd64425f1.json",
+  "implementation": {
+    "commits": [
+      "1ef36098d57bf8805c82642e85e7eedfa4f2a1a8",
+      "d0fd644ed7049dd6cdef9e5b36bbaf3e2b666529"
+    ],
+    "abi": 2,
+    "stats_bytes": 144,
+    "weights": "One global allocation <=61,394,690,560 B outside the shared temporary arena; contiguous uploads <=256 MiB, symmetric-i16 validation, fence before host refill, complete coverage then immutable seal",
+    "admission": "W + arena requested reservations below 80,000,000,000 minus 1 GiB; cudaMemGetInfo checks >=1 GiB free before/after W allocation; not a concurrency guarantee or complete peak measurement",
+    "temporaries": "Typed i16 and i64 handles share the existing range arena. Raw and rounded buffers retain distinct aligned capacities; 256 B flag slot remains charged through fence and 4 B download",
+    "publication": "Product/RNE outputs become initialized only after successful launch, flag transfer and fence; every error permanently stops the context; no CPU fallback",
+    "cleanup": "Failed frees retain W and/or arena byte counts in final ABI stats; peak_reserved_bytes sums both reservations",
+    "rne": "Signed-48 raw, symmetric +/-32767 output, ties to even; shift >=48 returns zero, shift <=-15 requires raw zero. Magnitude shifts/masks for positive shifts, no clamp, no negative signed shift",
+    "not_implemented": "Canonical producer batching, shared runner lifecycle and binding the resident W owner to the committed W"
+  },
+  "limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds_per_test_invocation": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "PYTHONDONTWRITEBYTECODE": 1
+  },
+  "build": {
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "working_directory": "rust",
+    "environment": {
+      "CARGO_TARGET_DIR": "/home/okrame/projects/volta-zk/rust/target",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_DEV_OPT_LEVEL": "2"
+    },
+    "exit_code": 0,
+    "clean_revision_cargo_seconds": 0.04,
+    "development_crate_build_seconds": 191,
+    "binary": "rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+    "binary_sha256": "1376707975134d618626bb7575e6d9e202458c59def40a1c2c4abd7415d84146",
+    "provenance": "Rust sources unchanged between successful development build and clean checkpoints; host fixture dynamically recompiles current C++ owner and headers for each Rust invocation",
+    "cache_retained_until_goal_end": true,
+    "warnings": "25 volta-pcs lib-test warnings plus dependency warnings retained in build.log"
+  },
+  "cuda_build": {
+    "command": "/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC -Xptxas=-v cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_range_runtime.cpp -o benchmarks/raw/c71-dense-owner-2026-10-03-d0fd644ed704/libc71_dense_range.so",
+    "toolkit_provenance": "benchmarks/results/c71-local-cuda-static-2026-09-13-ef2cdabc1afa.json",
+    "exit_code": 0,
+    "shell_real_seconds": 2.18,
+    "dense_registers": 56,
+    "rne_registers": 16,
+    "dense_and_rne_stack_bytes": 0,
+    "dense_and_rne_spill_bytes": 0,
+    "range_max_local_stack_bytes": 216,
+    "range_max_dynamic_shared_payload_bytes": 52224,
+    "range_coefficients_static_shared_bytes": 24576,
+    "inspection": "cuobjdump and nm only. Four static IMMA.16832.S8.S8 instructions; RNE now shifts/masks without the prior reciprocal helpers. Dense owner exports present. No CUDA load or launch."
+  },
+  "rust_checks": [
+    {
+      "filter": "c71_b12_windowed_native_dense_chain",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_windowed_native_dense_chain --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 0.66,
+      "log": "rust-1.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_byte",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_windowed_native_byte --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 2.59,
+      "log": "rust-2.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_signed",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_windowed_native_signed --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 1.68,
+      "log": "rust-3.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_failure",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_windowed_native_failure --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 0.73,
+      "log": "rust-4.log"
+    },
+    {
+      "filter": "c71_b12_rne_",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_rne_ --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 4,
+      "harness_seconds": 6.55,
+      "log": "rust-5.log"
+    },
+    {
+      "filter": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+      "command": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 12.25,
+      "log": "rust-6.log"
+    }
+  ],
+  "python_checks": [
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_dense_i16.py",
+      "exit_code": 0,
+      "passed": 1,
+      "harness_seconds": 0.78,
+      "log": "python-1.log"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_range_native.py",
+      "exit_code": 0,
+      "passed": 2,
+      "harness_seconds": 1.67,
+      "log": "python-2.log"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py",
+      "exit_code": 0,
+      "passed": 9,
+      "harness_seconds": 0.47,
+      "log": "python-3.log"
+    }
+  ],
+  "coverage": {
+    "rust_total": 9,
+    "python_total": 12,
+    "host_dense": "65,535 signed split values, 40 matrix cases, maximal K=21,504 only on 1x1 outputs; original dot reference uses i128",
+    "host_rne": "All raw i16 values at shifts -16..49, i64/signed-48 boundaries, extrema of shift, wide ties +/-1; independent signed i128 Euclidean division reference; UBSan",
+    "owner": "UBSan deferred fake driver, 13 range rejections + 19 dense rejections, two product/RNE/range batches, W=20 B installed once including sentinel offset, arena=262,144 B; no repeat W upload or intermediate download, retained-capacity peak includes flag",
+    "rust_dense_chain": "13 shift values checked against rne::integer, then root range against original quantized integers; no MAC/proof in this component chain",
+    "regressions": "Existing reduced D10/D12 range proofs through fake native ABI, reader/launch/fence/output/cleanup failures; four RNE component/geometry tests and one integrated CPU O0 proof with original MACs",
+    "limits": "No CUDA kernel execution, races or full canonical shape; fake driver math is scalar reference, not MMA. CPU integrated proof is reduced and does not exercise new dense owner."
+  },
+  "development_events": [
+    {
+      "event": "Build started from repository root using --manifest-path rust/Cargo.toml, therefore did not use rust/.cargo/config.toml target-cpu=native. Intentionally interrupted live session with SIGINT (exit 130); restarted from rust, then completed in 3m11s",
+      "log": "benchmarks/raw/c71-dense-owner-development-2026-10-03-b597a73/build.log",
+      "corrected_log": "benchmarks/raw/c71-dense-owner-development-2026-10-03-b597a73/build-native.log"
+    },
+    {
+      "event": "Initial integer RNE division compiled via CUDA reciprocal helpers. No numeric mismatch was observed; replaced power-of-two division/modulo with explicit unsigned shifts/masks, retaining the same independent host tests",
+      "earlier_clean_revision": "1ef36098d57bf8805c82642e85e7eedfa4f2a1a8",
+      "earlier_raw": "benchmarks/raw/c71-dense-owner-2026-10-03-1ef36098d57b"
+    }
+  ],
+  "unexpected_test_failures": [],
+  "checks_additional": [
+    "rustfmt --check on modified Rust file passed",
+    "git diff --check passed"
+  ],
+  "raw_directory": "benchmarks/raw/c71-dense-owner-2026-10-03-d0fd644ed704",
+  "sha256": {
+    "build.log": "a77b5131a4cdd0ceee3fa54e7602f124bb755513f90df07151e6b0cd6888b155",
+    "kernels.sass": "8ca53223b3177e189535fe1df3cb0e68b77406f9fd3a3058327a856c74efc2e1",
+    "libc71_dense_range.so": "93cb93b757a2739177c9a8913b3ca7ed67c988dc823aac81d7b236328b8e0907",
+    "nvcc.log": "eb24878fb13dd9b0bcb690acf3052a56dff9d9890b94aea219c04df146f77292",
+    "python-1.log": "fedceb118a93f8e9bed4f5b262246c28f6bfdace0d13713f5045fa2fb6554486",
+    "python-2.log": "e76066469127e4212b524f33b0ffeba3bacf942bac7b35a99e3d9bd6149678f2",
+    "python-3.log": "db84fbe475751225a641ab4263867733c5116910917e04bcbce5dd01cbd8b57e",
+    "rust-1.log": "a635e624be0294dc9f58ba17b363cf122a26a166064a6053157d5c73e1ea96a4",
+    "rust-2.log": "ca7d8797ddd3e43809b2798a80eb83da6dc8bd5f2ae2d09ec93501190b766297",
+    "rust-3.log": "8e0648bb790cefb60ca320b97e34fc05d35297ec09ce70f60a72d60bd970cc5e",
+    "rust-4.log": "bef03dd2898b76994c6a0df8b65afc13faabf9d2312e25ee4cc442d2a70ae842",
+    "rust-5.log": "829ae7c07832ccb6c6f612d61604d6694cb552a0fda0776df3873a3696ea9754",
+    "rust-6.log": "30a7d52833e791907adbefdcf0a72b16d0da16ef97055d6a2e9b14e51dcf125e",
+    "symbols.log": "6f729d3048942bce90a2477dd467e87b47ed9bcfda041924d86b3ed8ce135561"
+  },
+  "remaining_local_work": [
+    "Canonical producer batches, non-dense operators and CUDA calibration/replay adaptation",
+    "Shared owner lifecycle and identity binding across preparation, W commitment and range, not one allocation per component proof",
+    "Complete GPU EXP30/PCS/real-AES Seed6 integration and simultaneous physical accounting including host owners, runtime and retained workspaces",
+    "Seed6 security obligations remain open; canonical accepted certificates still 0/3; known analytic continuation exceeds 40 MB"
+  ],
+  "external_restrictions": "No authorization for GPU, weights, provider or spending. RunPod hard stop unchanged; remaining local implementation is not a hardware blocker."
+}

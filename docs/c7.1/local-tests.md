@@ -225,6 +225,10 @@ GEMM o inference complete.
 Il [record locale](../../benchmarks/results/c71-dense-i16-local-2026-10-03-dacbd64425f1.json)
 conserva 10 controlli passati, hash degli artefatti e quattro istruzioni
 IMMA statiche nel SASS; nessuna misura GPU o certificato canonico.
+Il [record dell'owner condiviso](../../benchmarks/results/c71-dense-owner-local-2026-10-03-d0fd644ed704.json)
+aggiunge 9 test Rust e 12 Python sulla revisione pulita, W residente,
+RNE e range nello stesso contesto; conserva anche la build interrotta
+per correggere la directory e la semplificazione delle divisioni RNE.
 
 Il test [test_c71_range_native.py](../../tests/test_c71_range_native.py),
 eseguito separatamente con il limite 60 s/2 GiB sopra, compila un controllo

@@ -122,6 +122,33 @@ fn install(runtime: &mut Runtime, plan: &Plan, weights: Arc<Vec<i16>>) -> Result
 }
 
 impl Rows {
+    fn embedding(
+        runtime: &mut Runtime,
+        plan: &Plan,
+        b: &bytes::Bytes,
+        recipe: [u8; 32],
+        weights: &Arc<Vec<i16>>,
+        first: usize,
+        tokens: &[u32],
+    ) -> Result<Self, String> {
+        let batch = match prepare::EmbeddingBatch::new(plan, b, first, tokens) {
+            Ok(batch) => batch,
+            Err(e) => return runtime.abort(e),
+        };
+        runtime.require_weights(weights, plan.layout_digest)?;
+        let buffer =
+            runtime.embedding(batch.weight_offset, batch.vocabulary, batch.columns, tokens)?;
+        Ok(Self {
+            buffer,
+            source: 0,
+            first,
+            rows: tokens.len(),
+            columns: batch.columns,
+            layout: b.layout_digest,
+            recipe,
+        })
+    }
+
     fn pointwise(
         runtime: &mut Runtime,
         b: &bytes::Bytes,
@@ -347,9 +374,27 @@ impl Canonical {
         step: usize,
         first: usize,
         rows: usize,
+        tokens: &[u32],
         inputs: &[&Rows],
     ) -> Result<Rows, String> {
+        if !matches!(self.steps.get(step), Some(Producer::Embedding)) && !tokens.is_empty() {
+            return runtime.abort("unexpected native producer token input");
+        }
         match self.steps.get(step) {
+            Some(Producer::Embedding) => {
+                if !inputs.is_empty() || tokens.len() != rows {
+                    return runtime.abort("native embedding input arity");
+                }
+                Rows::embedding(
+                    runtime,
+                    &self.plan,
+                    self.bytes(),
+                    self.recipes.digest,
+                    weights,
+                    first,
+                    tokens,
+                )
+            }
             Some(Producer::Matrix(raw)) if inputs.len() == 1 => inputs[0].matrix(
                 runtime,
                 &self.plan,
@@ -592,6 +637,191 @@ mod tests {
         Arc::new((0..count).map(|i| (i % 5) as i16 - 2).collect())
     }
     #[test]
+    fn c71_canonical_resident_embedding_original_w_chain() {
+        let f = fixture(512);
+        let p = Profile::small(0).unwrap();
+        let w = weights(&p.plan);
+        let mut runtime = Runtime::new(&f.config).unwrap();
+        install(&mut runtime, &p.plan, w.clone()).unwrap();
+        let injection = Injection::new(&f.config);
+        let alpha = Fp3::new(Fp::new(19), Fp::new(2), Fp::new(3));
+        for (first, tokens) in [(0, vec![1, 0]), (0, vec![0, 0]), (1, vec![1])] {
+            let before = runtime.stats().unwrap();
+            let embedding =
+                Rows::embedding(&mut runtime, &p.plan, p.bytes(), p.digest, &w, first, &tokens)
+                    .unwrap();
+            let after = runtime.stats().unwrap();
+            assert_eq!(after.d2d_bytes - before.d2d_bytes, (tokens.len() * 2 * 2) as u64);
+            assert_eq!(
+                (after.h2d_bytes, after.d2h_bytes, after.launches),
+                (before.h2d_bytes, before.d2h_bytes, before.launches)
+            );
+            assert_eq!(after.allocations - before.allocations, 1);
+            let batch = prepare::EmbeddingBatch::new(&p.plan, p.bytes(), first, &tokens).unwrap();
+            let expected = tokens
+                .iter()
+                .flat_map(|&t| {
+                    w[batch.weight_offset + t as usize * 2
+                        ..batch.weight_offset + t as usize * 2 + 2]
+                        .iter()
+                        .copied()
+                })
+                .collect::<Vec<_>>();
+            let raw = Rows::pointwise(
+                &mut runtime,
+                p.bytes(),
+                p.digest,
+                &p.affine[0],
+                false,
+                first,
+                tokens.len(),
+                &[&embedding],
+            )
+            .unwrap();
+            injection.expect_raw(&expected.iter().map(|&x| i64::from(x)).collect::<Vec<_>>());
+            let output = raw
+                .rne(&mut runtime, p.bytes(), p.digest, p.residual[0], first, tokens.len())
+                .unwrap();
+            assert_eq!(
+                runtime.root_check(&output.buffer, alpha).unwrap(),
+                expected_root(&expected, alpha)
+            );
+            raw.release(&mut runtime).unwrap();
+            output.release(&mut runtime).unwrap();
+            if tokens.len() == 2 {
+                let mut addresses = Vec::new();
+                let mut expected_bytes = Vec::new();
+                for row in 0..2 {
+                    let values = expected[row * 2..row * 2 + 2]
+                        .iter()
+                        .map(|&x| i64::from(x))
+                        .collect::<Vec<_>>();
+                    p.bytes()
+                        .emit_row_bytes(0, row, &values, |i, v| {
+                            addresses.push(i);
+                            expected_bytes.push(v);
+                            Ok(())
+                        })
+                        .unwrap();
+                }
+                assert!(addresses.windows(2).all(|a| a[1] == a[0] + 1));
+                let mut window =
+                    ByteWindow::new(&mut runtime, p.bytes(), p.digest, 12, addresses[0], 8, 0, 0)
+                        .unwrap();
+                assert_eq!(window.sources().collect::<Vec<_>>(), vec![0]);
+                window.append(&mut runtime, &embedding).unwrap();
+                let bytes = window.finish(&mut runtime).unwrap();
+                injection.expect_bytes(&expected_bytes);
+                let values = expected_bytes.iter().map(|&x| i16::from(x)).collect::<Vec<_>>();
+                assert_eq!(
+                    runtime.root_check(&bytes, alpha).unwrap(),
+                    expected_root(&values, alpha)
+                );
+                runtime.release_buffer(bytes).unwrap();
+            }
+            embedding.release(&mut runtime).unwrap();
+            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+            assert_eq!(runtime.stats().unwrap().h2d_bytes, before.h2d_bytes);
+        }
+        assert_eq!(runtime.stats().unwrap().d2d_bytes, 20);
+        runtime.close().unwrap();
+        eprintln!("C71_RESIDENT_EMBEDDING batches=3 copied_bytes=20 h2d_after_W=0 kernels_for_embedding=0 exact_order=true gpu=false");
+    }
+
+    #[test]
+    fn c71_canonical_resident_embedding_rejections_and_canonical_metadata() {
+        let f = fixture(512);
+        let p = Profile::small(0).unwrap();
+        let w = weights(&p.plan);
+        let injection = Injection::new(&f.config);
+        for test in 0..8 {
+            let mut runtime = Runtime::new(&f.config).unwrap();
+            if test != 4 {
+                install(&mut runtime, &p.plan, w.clone()).unwrap();
+            }
+            let mut tokens = vec![0, 1];
+            let mut first = 0;
+            let mut selected = w.clone();
+            match test {
+                0 => tokens.clear(),
+                1 => tokens[1] = 2,
+                2 => first = 1,
+                3 => selected = Arc::new((*w).clone()),
+                5 => injection.set(5),
+                6 => injection.set(6),
+                7 => injection.set(2),
+                _ => (),
+            }
+            assert!(
+                Rows::embedding(
+                    &mut runtime,
+                    &p.plan,
+                    p.bytes(),
+                    p.digest,
+                    &selected,
+                    first,
+                    &tokens
+                )
+                .is_err(),
+                "embedding rejection {test}"
+            );
+            injection.set(0);
+            let stopped = runtime.stats().unwrap();
+            assert_eq!(stopped.stopped, 1);
+            assert_eq!(
+                stopped.d2d_bytes,
+                match test {
+                    6 => 4,
+                    7 => 8,
+                    _ => 0,
+                }
+            );
+            assert!(runtime.embedding(0, 2, 2, &[0]).is_err());
+            assert_eq!(runtime.stats().unwrap().d2d_bytes, stopped.d2d_bytes);
+            runtime.close().unwrap();
+        }
+        let plan = crate::c71_matrix::gemma::compile().unwrap();
+        let (sources, output, softmax) = plan.softmax_sources_at(0).unwrap();
+        let mut scales: BTreeMap<_, _> =
+            profile::Recipes::exponent_sources(&sources, &output, &softmax)
+                .into_iter()
+                .map(|id| (id, 0))
+                .collect();
+        for layer in &softmax.layers {
+            scales.insert(layer.pi, -14);
+        }
+        for slot in 0..3 {
+            let p = Canonical::compile(slot, &[0; 772], &scales).unwrap();
+            for (first, tokens) in [(0, vec![262143; 150]), (149, vec![0])] {
+                let batch =
+                    prepare::EmbeddingBatch::new(&p.plan, p.bytes(), first, &tokens).unwrap();
+                assert_eq!((batch.vocabulary, batch.columns), (262144, 5376));
+                assert_eq!(
+                    batch.weight_offset,
+                    p.plan.sources[p.plan.cohorts[0].tensor].packed_offset
+                );
+            }
+            let step = p.steps.iter().position(|s| matches!(s, Producer::Embedding)).unwrap();
+            let mut runtime = Runtime::new(&f.config).unwrap();
+            assert!(p
+                .prepare_native_step(
+                    &mut runtime,
+                    &Arc::new(Vec::new()),
+                    step,
+                    149,
+                    1,
+                    &[262144],
+                    &[]
+                )
+                .is_err());
+            assert_eq!(runtime.stats().unwrap().allocations, 0);
+            assert_eq!(runtime.stats().unwrap().d2d_bytes, 0);
+            assert_eq!(runtime.stats().unwrap().stopped, 1);
+            runtime.close().unwrap();
+        }
+        eprintln!("C71_RESIDENT_EMBEDDING_REJECTIONS count=8 canonical_invalid_token_cases=3 canonical_geometry_only=true gpu=false");
+    }
+    #[test]
     fn c71_canonical_resident_pointwise_all_dispatch_routes() {
         let mut f = fixture(512);
         f.config.arena_bytes = 8 << 20;
@@ -671,6 +901,7 @@ mod tests {
                         index,
                         first,
                         1,
+                        &[],
                         &refs,
                     )
                     .unwrap();
@@ -687,6 +918,7 @@ mod tests {
                         rne,
                         first,
                         1,
+                        &[],
                         &[&raw],
                     )
                     .unwrap();
@@ -953,11 +1185,19 @@ mod tests {
         assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
         let launches = runtime.stats().unwrap().launches;
         let input = p.upload_native_rows(&mut runtime, 0, 149, &vec![1; 5376]).unwrap();
-        let step = p.steps.iter().position(|step| matches!(step, Producer::Embedding)).unwrap();
+        let step = p.steps.iter().position(|step| matches!(step, Producer::Norm(_))).unwrap();
         assert_eq!(
-            p.prepare_native_step(&mut runtime, &Arc::new(Vec::new()), step, 149, 1, &[&input])
-                .err()
-                .unwrap(),
+            p.prepare_native_step(
+                &mut runtime,
+                &Arc::new(Vec::new()),
+                step,
+                149,
+                1,
+                &[],
+                &[&input]
+            )
+            .err()
+            .unwrap(),
             "canonical native producer not implemented"
         );
         assert_eq!(runtime.stats().unwrap().stopped, 1);

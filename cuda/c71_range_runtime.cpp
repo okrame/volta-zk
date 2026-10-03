@@ -95,7 +95,7 @@ int download(C71RangeContext* c,const Buffer* b,void* out,size_t bytes) {
 }
 }
 
-extern "C" uint32_t c71_range_runtime_abi() { return 2; }
+extern "C" uint32_t c71_range_runtime_abi() { return 3; }
 extern "C" int c71_range_abort(C71RangeContext* c) { return fail(c,"native caller aborted"); }
 extern "C" const char* c71_range_error(const C71RangeContext* c) { return c?c->error:"null range context"; }
 extern "C" int c71_range_stats(const C71RangeContext* c,C71RangeStats* out) {
@@ -366,6 +366,28 @@ extern "C" int c71_dense_quantize(C71RangeContext* c,uint64_t in,int32_t shift,u
     if(launched(c,c71_dense_rne_launch(c->stream,ptr<int64_t>(c,a),ptr<int16_t>(c,b),a->count,shift,
                                      ptr<uint32_t>(c,buffer(c,flag))))) return -1;
     return dense_complete(c,flag,b);
+}
+extern "C" int c71_dense_embedding(C71RangeContext* c,uint64_t offset,uint32_t vocabulary,uint32_t columns,
+    const uint32_t* tokens,uint32_t rows,uint64_t out) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out); uintptr_t end=0;
+    const uint64_t words=uint64_t(vocabulary)*columns;
+    if(!b || b->kind!=C71_I16 || b->initialized || !c->stats.weights_sealed ||
+       !rows || rows>150 || !columns || columns>21504 || !vocabulary || vocabulary>262144 ||
+       b->count!=uint64_t(rows)*columns || offset>c->stats.weights_bytes/2 ||
+       words>c->stats.weights_bytes/2-offset || reinterpret_cast<uintptr_t>(tokens)%4 ||
+       !c71_dense::span(tokens,uint64_t(rows)*4,end)) return fail(c,"embedding shape or unsealed W");
+    uint32_t ids[150]; std::memcpy(ids,tokens,rows*4);
+    for(uint32_t i=0;i<rows;++i) if(ids[i]>=vocabulary) return fail(c,"embedding token outside vocabulary");
+    // IDs and the W span are all checked before submitting any copy. Keep
+    // repeated IDs in original token order. One stream orders every row copy.
+    for(uint32_t i=0;i<rows;++i) {
+        if(checked(c,cudaMemcpyAsync(ptr<int16_t>(c,b)+uint64_t(i)*columns,
+            c->weights+offset+uint64_t(ids[i])*columns,columns*2,cudaMemcpyDeviceToDevice,c->stream))) return -1;
+        c->stats.d2d_bytes+=columns*2;
+    }
+    if(fence(c)) return -1;
+    b->initialized=b->count; return 0;
 }
 extern "C" int c71_dense_pointwise(C71RangeContext* c,uint64_t x,uint64_t x_first,uint64_t y,uint64_t y_first,
     c71_dense::Pointwise op,uint64_t out) {

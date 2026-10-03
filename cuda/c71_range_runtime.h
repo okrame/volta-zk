@@ -18,8 +18,9 @@ struct C71RangeStats {
     // W is global immutable storage, OUTSIDE the one temporary arena.
     // Retained on failed free; peak sums actual W + arena reservations.
     uint64_t weights_bytes, weights_loaded_bytes, weights_sealed, peak_reserved_bytes;
+    uint64_t d2d_bytes;
 };
-static_assert(sizeof(C71RangeStats)==144);
+static_assert(sizeof(C71RangeStats)==152);
 
 extern "C" {
 uint32_t c71_range_runtime_abi();
@@ -48,6 +49,9 @@ int c71_range_read(C71RangeContext*,uint64_t input,uint64_t* limbs,uint32_t coun
 int c71_dense_weights_begin(C71RangeContext*,uint64_t words);
 int c71_dense_weights_upload(C71RangeContext*,uint64_t first,const int16_t*,uint64_t words);
 int c71_dense_weights_seal(C71RangeContext*);
+// Public token IDs select original W rows; no host W read or new kernel.
+int c71_dense_embedding(C71RangeContext*,uint64_t weight_offset,uint32_t vocabulary,uint32_t columns,
+                        const uint32_t* tokens,uint32_t rows,uint64_t output);
 int c71_dense_product(C71RangeContext*,uint64_t input,uint64_t weight_offset,c71_dense::Shape,uint64_t output);
 // Borrow complete input rows in place; the parent handle retains capacity.
 int c71_dense_product_rows(C71RangeContext*,uint64_t input,uint64_t first_row,uint64_t weight_offset,c71_dense::Shape,uint64_t output);

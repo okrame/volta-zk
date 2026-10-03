@@ -641,6 +641,14 @@ nel dispatcher residente: coefficienti bounded, input simmetrici i16,
 nessuna lettura dei termini zero e raw distinto dall'output RNE. Non
 aggiungono autenticazioni, forme o sfide. I confronti finiti con raw CPU
 e aritmetica i128 non scaricano il raffinamento CUDA generale.
+L'embedding residente copia le righe del W originale sigillato secondo
+gli ID pubblici, preservando ordine e ripetizioni. La lista completa e
+lo span W sono controllati prima delle copie, con output non consumabile
+finché il fence non riesce. Copie parziali ed errori asincroni fermano
+definitivamente l'owner. L'ABI 3 è verificata prima di leggere il ledger
+esteso; una libreria ABI 2 non viene accettata. Resta aperto il binding
+degli ID allo snapshot/tentativo del runner, come quello di W alla PCS;
+la parità ridotta non costituisce una nuova garanzia crittografica.
 Il gather residente deriva indirizzi e bias dalle stesse tessere originali,
 senza vedere correlazioni o transcript. I controlli Rust richiedono una
 sola emissione di ogni riga delle sorgenti selezionate prima del seal;

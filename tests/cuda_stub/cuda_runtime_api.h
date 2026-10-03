@@ -6,7 +6,7 @@ using cudaStream_t=FakeStream*;
 using cudaError_t=int;
 constexpr int cudaSuccess=0, cudaErrorInvalidValue=1;
 constexpr unsigned cudaStreamNonBlocking=1;
-enum cudaMemcpyKind { cudaMemcpyHostToDevice, cudaMemcpyDeviceToHost };
+enum cudaMemcpyKind { cudaMemcpyHostToDevice, cudaMemcpyDeviceToHost, cudaMemcpyDeviceToDevice };
 cudaError_t cudaSetDevice(int);
 cudaError_t cudaStreamCreateWithFlags(cudaStream_t*,unsigned);
 cudaError_t cudaStreamSynchronize(cudaStream_t);

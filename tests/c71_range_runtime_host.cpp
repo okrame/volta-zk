@@ -10,6 +10,7 @@ using namespace c71_range;
 struct FakeStream { std::vector<std::function<void()>> pending; };
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
 static bool fail_dense=false;
+static int copy_fail_after=-1;
 static size_t fake_free=80000000000ULL;
 static unsigned allocations=0, frees=0, launches=0;
 static std::vector<uint8_t> expected_bytes;
@@ -30,6 +31,10 @@ cudaError_t cudaFree(void* p) {
     ++frees; delete[] static_cast<unsigned char*>(p); return fail_free?1:0;
 }
 cudaError_t cudaMemcpyAsync(void* d,const void* s,size_t n,cudaMemcpyKind kind,cudaStream_t stream) {
+    if(kind==cudaMemcpyDeviceToDevice) {
+        if(copy_fail_after==0) return 1;
+        if(copy_fail_after>0) --copy_fail_after;
+    }
     stream->pending.push_back([=] { std::memcpy(d,s,n); if(kind==cudaMemcpyDeviceToHost && corrupt) {
         if(n>=8) *static_cast<uint64_t*>(d)=P; else *static_cast<uint32_t*>(d)=1;
     } });
@@ -171,6 +176,7 @@ extern "C" void c71_range_test_expect_raw(const int64_t* p,uint64_t n) {
 }
 extern "C" void c71_range_test_failure(unsigned kind) {
     fail_launch=kind==1; fail_fence=kind==2; fail_free=kind==3; corrupt=kind==4;
+    copy_fail_after=kind==5?0:kind==6?1:-1;
 }
 #else
 
@@ -277,6 +283,58 @@ static void dense_checks() {
     c=create(); install(c); fail_free=true; C71RangeStats final{};
     assert(c71_range_close(c,&final) && final.cleanup_failed && final.weights_bytes==20 && final.arena_bytes==262144);
     fail_free=false;
+}
+static void embedding_checks() {
+    auto* c=create(); install(c);
+    for(unsigned rows: {1u,4u,150u}) {
+        std::vector<uint32_t> ids(rows);
+        for(unsigned i=0;i<rows;++i) ids[i]=(i%3==0)?1:0;
+        const auto out=alloc(c,C71_I16,rows*4);
+        const auto before=stats(c);
+        assert(!c71_dense_embedding(c,2,2,4,ids.data(),rows,out));
+        auto after=stats(c);
+        assert(after.d2d_bytes-before.d2d_bytes==rows*8);
+        assert(after.h2d_bytes==before.h2d_bytes && after.d2h_bytes==before.d2h_bytes);
+        assert(after.launches==before.launches && after.allocations==before.allocations);
+        assert(after.fences==before.fences+1);
+        for(auto token:ids) for(int j=0;j<4;++j) expected_raw.push_back(token?4-j:j+1);
+        const auto raw=alloc(c,C71_I64,rows*4), rounded=alloc(c,C71_I16,rows*4);
+        assert(!c71_dense_pointwise(c,out,0,0,0,{1,0,0},raw));
+        assert(!c71_dense_quantize(c,raw,0,rounded)); // exact ordered observation
+        assert(expected_raw.empty());
+        assert(!c71_range_release(c,raw) && !c71_range_release(c,rounded) && !c71_range_release(c,out));
+        assert(stats(c).live_capacity_bytes==0);
+    }
+    close(c);
+    for(unsigned test=0;test<17;++test) {
+        c=create(); if(test!=0) install(c);
+        const auto out=alloc(c,C71_I16,8);
+        uint32_t tokens[]={0,1}; int status=0;
+        switch(test) {
+        case 0: status=c71_dense_embedding(c,2,2,4,tokens,2,out); break;
+        case 1: tokens[1]=2; status=c71_dense_embedding(c,2,2,4,tokens,2,out); assert(!stats(c).d2d_bytes); break;
+        case 2: tokens[0]=UINT32_MAX; status=c71_dense_embedding(c,2,2,4,tokens,2,out); break;
+        case 3: status=c71_dense_embedding(c,UINT64_MAX,2,4,tokens,2,out); break;
+        case 4: status=c71_dense_embedding(c,3,2,4,tokens,2,out); break;
+        case 5: status=c71_dense_embedding(c,2,0,4,tokens,2,out); break;
+        case 6: status=c71_dense_embedding(c,2,2,0,tokens,2,out); break;
+        case 7: status=c71_dense_embedding(c,2,2,4,tokens,0,out); break;
+        case 8: status=c71_dense_embedding(c,2,2,4,tokens,151,out); break;
+        case 9: status=c71_dense_embedding(c,2,2,4,tokens,1,out); break;
+        case 10: status=c71_dense_embedding(c,2,2,4,nullptr,2,out); break;
+        case 11: assert(!c71_dense_embedding(c,2,2,4,tokens,2,out)); status=c71_dense_embedding(c,2,2,4,tokens,2,out); break;
+        case 12: { auto raw=alloc(c,C71_I64,8); status=c71_dense_embedding(c,2,2,4,tokens,2,raw); break; }
+        case 13: copy_fail_after=0; status=c71_dense_embedding(c,2,2,4,tokens,2,out); copy_fail_after=-1; assert(!stats(c).d2d_bytes); break;
+        case 14: copy_fail_after=1; status=c71_dense_embedding(c,2,2,4,tokens,2,out); copy_fail_after=-1; assert(stats(c).d2d_bytes==8); break;
+        case 15: fail_fence=true; status=c71_dense_embedding(c,2,2,4,tokens,2,out); fail_fence=false; assert(stats(c).d2d_bytes==16); break;
+        case 16: { auto* other=create(); auto foreign=alloc(other,C71_I16,8); status=c71_dense_embedding(c,2,2,4,tokens,2,foreign); close(other); break; }
+        }
+        assert(status && stats(c).stopped);
+        const auto before=stats(c);
+        assert(c71_dense_embedding(c,2,2,4,tokens,2,out));
+        assert(stats(c).d2d_bytes==before.d2d_bytes && stats(c).launches==before.launches);
+        close(c);
+    }
 }
 static void pointwise_checks() {
     auto* c=create(); const auto x=dense_input(c);
@@ -409,7 +467,7 @@ static void byte_checks() {
 }
 int main() {
     C71RangeContext* c=nullptr;
-    assert(c71_range_runtime_abi()==2);
+    assert(c71_range_runtime_abi()==3);
     assert(c71_range_create(0,6442451200ULL,256,&c) && !c && !allocations);
     assert(c71_range_create(0,512,512,&c) && !c && !allocations);
     assert(c71_range_create(1,512,256,&c) && c);
@@ -478,9 +536,10 @@ int main() {
     assert(c71_range_close(c,&final) && final.cleanup_failed && final.arena_bytes==262144);
     fail_free=false;
     dense_checks();
+    embedding_checks();
     pointwise_checks();
     byte_checks();
     assert(allocations==frees);
-    std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":23,\"byte_rejections\":19,\"pointwise_rejections\":14,\"dense_batches\":2,\"dense_row_views\":1,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
+    std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":23,\"byte_rejections\":19,\"pointwise_rejections\":14,\"embedding_rejections\":17,\"dense_batches\":2,\"dense_row_views\":1,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
 }
 #endif

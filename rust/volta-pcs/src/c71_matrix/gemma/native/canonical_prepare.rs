@@ -25,6 +25,48 @@ pub(super) struct MatrixBatch {
     pub inner: usize,
 }
 
+pub(super) struct EmbeddingBatch {
+    pub tensor: usize,
+    pub weight_offset: usize,
+    pub vocabulary: usize,
+    pub columns: usize,
+}
+impl EmbeddingBatch {
+    pub(super) fn new(
+        plan: &Plan,
+        b: &bytes::Bytes,
+        first: usize,
+        tokens: &[u32],
+    ) -> Result<Self, String> {
+        let c = plan.cohorts.first().ok_or("embedding cohort missing")?;
+        let w = plan.sources.get(c.tensor).ok_or("embedding W missing")?;
+        let output = b.scalar.layout.sources.first().ok_or("embedding source missing")?;
+        if b.scalar.weight_layout != plan.layout_digest
+            || c.kind != Kind::Lookup
+            || c.operation != "embedding_lookup"
+            || c.heads != 1
+            || b.widths.first() != Some(&2)
+            || (output.rows, output.cols) != (c.rows, c.columns)
+            || w.cols != c.columns
+            || !(1..=21504).contains(&w.cols)
+            || !(1..=262144).contains(&w.rows)
+            || tokens.is_empty()
+            || tokens.len() > 150
+            || first.checked_add(tokens.len()).is_none_or(|end| end > c.rows)
+            || tokens.iter().any(|&token| token as usize >= w.rows)
+            || w.rows.checked_mul(w.cols).and_then(|n| w.packed_offset.checked_add(n)).is_none()
+        {
+            return Err("embedding original shape, token or rows differ".into());
+        }
+        Ok(Self {
+            tensor: c.tensor,
+            weight_offset: w.packed_offset,
+            vocabulary: w.rows,
+            columns: w.cols,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -878,15 +920,12 @@ impl Canonical {
         let mut out = Row::default();
         match step {
             Producer::Embedding => {
-                if row >= 150 {
-                    return Err("canonical token row outside response".into());
-                }
-                let tensor = self.plan.cohorts[0].tensor;
+                let batch = EmbeddingBatch::new(&self.plan, b, row, &[token])?;
                 out.values.push((
                     0,
                     row,
-                    (0..sources[0].cols)
-                        .map(|c| w(tensor, token as usize, c))
+                    (0..batch.columns)
+                        .map(|c| w(batch.tensor, token as usize, c))
                         .collect::<Result<_, _>>()?,
                 ));
             }

@@ -608,7 +608,7 @@ W è una sola allocazione globale esterna all'arena, caricata in ordine con
 finestre ≤256 MiB e poi sigillata senza sostituzioni o puntatori esportati.
 Il cap è 61.394.690.560 B; l'ammissione controlla ≥1 GiB libero prima/dopo
 l'allocazione, non promette assenza di allocazioni concorrenti esterne.
-Il ledger ABI 2 (144 B) separa W e arena, somma le prenotazioni nel picco
+Il ledger ABI 3 (152 B) separa W e arena, somma le prenotazioni nel picco
 e conserva i byte non liberati su errore di cleanup. Conta anche i 4 B
 di flag per operazione; raw e RNE rimangono entrambi addebitati fino al rilascio.
 Non scarica gli intermedi sullo host né rialloca W fra i batch.
@@ -625,8 +625,9 @@ del buffer padre, senza upload/copia o rilascio implicito della capacità.
 RNE consuma un intero blocco raw compatibile e restituisce un nuovo handle;
 gli errori di metadati Rust fermano anche il contesto C. Gli handle non
 sono clonabili e richiedono rilascio esplicito, o cleanup dell'intero owner.
-L'ABI 2 mantiene lo stesso layout, ma il loader richiede anche i simboli
-di vista/abort; una libreria precedente senza questi simboli è rifiutata.
+Il loader controlla ABI 3 prima di creare un contesto e richiede i simboli
+di vista/abort; la precedente ABI 2 da 144 B è rifiutata prima di leggere
+il nuovo ledger, che aggiunge `d2d_bytes`.
 Il dispatcher rifiuta gli altri producer: non è un preparatore GPU completo
 né un fallback. Il gather byte nativo ora riusa `Bytes::resident_tiles`,
 le medesime tessere di `emit_row_bytes`, su blocchi originali residenti.
@@ -660,8 +661,22 @@ i64 contenente il signed-48 originale. I coefficienti sono limitati a
 è entro signed-32. Zero coefficienti richiedono handle assenti e non
 caricano valori. Raw e output RNE rimangono distinti e addebitati;
 fence/flag precedono la pubblicazione, come per Matrix.
-Il loader ABI 2 richiede anche `c71_dense_pointwise`. Questo non aggiunge
-una prova GPU o il supporto degli altri nove tipi di producer.
+Il loader ABI 3 richiede anche `c71_dense_pointwise`.
+L'embedding riusa lo stesso descrittore validato dal riferimento CPU:
+cohort lookup originale, codec i16, vocabolario, colonne, intervallo di
+righe e ID token. Richiede la stessa Arc W installata e il suo layout.
+`c71_dense_embedding` verifica tutti gli ID e l'intero span W prima della
+prima copia, conserva una lista locale di al più 150 ID e accoda una
+`cudaMemcpyAsync` D2D per riga sullo stream privato. Mantiene ordine e
+ripetizioni; pubblica l'output solo dopo fence riuscito. W è già stato
+validato come i16 simmetrico all'installazione: nessun calcolo o nuovo
+kernel, copia W host, upload token device o download intermedio. Il ledger
+conta i byte D2D sottoposti con successo anche prima di un errore parziale;
+non misura il traffico fisico del bus. Stack host degli ID, overhead del
+runtime e tempi restano nel conto globale da completare. Il chiamante
+del runner dovrà fornire gli ID dello snapshot causale fissato; l'adapter
+non prova da solo quella provenienza. Il loader richiede anche il simbolo
+embedding. Restano otto tipi di producer e l'integrazione completa.
 Il codec byte condiviso accetta l'intero intervallo signed della propria
 larghezza, incluso −32768 per `U/global/argmax_slack`: la prima versione
 del gather rifiutava erroneamente questa cella valida. Il rifiuto del

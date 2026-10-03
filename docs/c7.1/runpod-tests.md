@@ -64,7 +64,7 @@ ricostruzioni, con parità soltanto ridotta; il vecchio cap iniziale 2^18
 non descrive più questo percorso. Restano i workspace query/range e i
 kernel densi da adattare. Lo scanner CPU ricostruisce ora per producer,
 con righe vive fino all'ultimo consumer e GEMM a batch con letture W
-condivise. La schedule raggiunge PCS/range. L'adapter Matrix/RNE/Affine/Gate ora usa
+condivise. La schedule raggiunge PCS/range. L'adapter Embedding/Matrix/RNE/Affine/Gate ora usa
 gli handle residenti e dispone di gather byte nativo con copertura delle
 righe e pubblicazione dopo fence. Mancano gli altri producer e il
 collegamento allo scanner/consumer completo; non costituisce un forward GPU.
@@ -102,7 +102,7 @@ Questi controlli non abilitano il runner GPU o un pod.
 Il kernel denso i16 a quattro MMA INT8 è ora disponibile come componente
 compilabile, con modello host di split/frammenti e correzioni. W residente,
 fencing del flag e RNE sono ora collegati nello stesso owner/arena del
-range (ABI 2). L'adapter Rust dei batch valida route del piano e identità
+range (ABI 3, con copie embedding D2D conteggiate). L'adapter Rust dei batch valida route del piano e identità
 dell'owner Arc W, senza copie della vista input o download degli intermedi.
 La catena ridotta Rust/C usa un driver simulato; copertura dei producer,
 identità W fra owner e commitment PCS, lifecycle del runner

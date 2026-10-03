@@ -37,6 +37,7 @@ pub(in crate::c71_matrix) struct Stats {
     pub weights_loaded_bytes: u64,
     pub weights_sealed: u64,
     pub peak_reserved_bytes: u64,
+    pub d2d_bytes: u64,
 }
 
 // Fp3 itself has Rust layout. Marshal canonical limbs, never transmute it.
@@ -79,7 +80,7 @@ struct Round {
     bits: u32,
 }
 const _: () =
-    assert!(size_of::<Stats>() == 144 && size_of::<Group>() == 1760 && size_of::<Round>() == 896);
+    assert!(size_of::<Stats>() == 152 && size_of::<Group>() == 1760 && size_of::<Round>() == 896);
 
 // Same POSIX loader pattern as volta-accel's existing CUDA backend, but a
 // separate ABI: the legacy accelerator uses Fp2, never this native Fp3.
@@ -188,7 +189,7 @@ macro_rules! api {
                 // SAFETY: fixed C ABI types below mirror c71_range_runtime.h.
                 unsafe {
                     let abi: unsafe extern "C" fn() -> u32 = library.symbol(b"c71_range_runtime_abi\0")?;
-                    if abi() != 2 { return Err("native range ABI differs".into()); }
+                    if abi() != 3 { return Err("native range ABI differs".into()); }
                     Ok(Self { $($field: library.symbol(concat!($name, "\0").as_bytes())?,)* _library: library })
                 }
             }
@@ -218,6 +219,7 @@ api! {
     weights_begin: unsafe extern "C" fn(Raw,u64)->i32 => "c71_dense_weights_begin",
     weights_upload: unsafe extern "C" fn(Raw,u64,*const i16,u64)->i32 => "c71_dense_weights_upload",
     weights_seal: unsafe extern "C" fn(Raw)->i32 => "c71_dense_weights_seal",
+    embedding: unsafe extern "C" fn(Raw,u64,u32,u32,*const u32,u32,u64)->i32 => "c71_dense_embedding",
     product: unsafe extern "C" fn(Raw,u64,u64,u64,DenseShape,u64)->i32 => "c71_dense_product_rows",
     quantize: unsafe extern "C" fn(Raw,u64,i32,u64)->i32 => "c71_dense_quantize",
     pointwise: unsafe extern "C" fn(Raw,u64,u64,u64,u64,Pointwise,u64)->i32 => "c71_dense_pointwise",
@@ -309,6 +311,38 @@ impl Runtime {
             return self.abort("native W owner or layout differs");
         }
         Ok(())
+    }
+    pub(in crate::c71_matrix) fn embedding(
+        &mut self,
+        weight_offset: usize,
+        vocabulary: usize,
+        columns: usize,
+        tokens: &[u32],
+    ) -> Result<Buffer, String> {
+        self.ready()?;
+        if tokens.is_empty()
+            || tokens.len() > 150
+            || !(1..=262144).contains(&vocabulary)
+            || !(1..=21504).contains(&columns)
+            || tokens.iter().any(|&t| t as usize >= vocabulary)
+        {
+            return self.abort("native embedding geometry or token differs");
+        }
+        let count = tokens.len() * columns;
+        let id = self.alloc(1, count)?;
+        let status = unsafe {
+            (self.api.embedding)(
+                self.raw,
+                weight_offset as u64,
+                vocabulary as u32,
+                columns as u32,
+                tokens.as_ptr(),
+                tokens.len() as u32,
+                id,
+            )
+        };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 1, count })
     }
     pub(in crate::c71_matrix) fn upload_signed(
         &mut self,
@@ -805,6 +839,33 @@ impl<'a, T: Word> Evaluator<'a, T> {
 #[cfg(test)]
 pub(in crate::c71_matrix) mod tests {
     use super::*;
+    #[test]
+    fn c71_b12_windowed_native_abi3_rejects_legacy_stats() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let f = fixture(512);
+        let path = f.directory.join("abi2-only.so");
+        let mut compiler = Command::new("g++")
+            .args(["-shared", "-fPIC", "-x", "c++", "-", "-o"])
+            .arg(&path)
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        compiler
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(b"extern \"C\" unsigned c71_range_runtime_abi() { return 2; }\n")
+            .unwrap();
+        assert!(compiler.wait().unwrap().success());
+        let mut config = f.config.clone();
+        config.library = path;
+        assert_eq!(Runtime::new(&config).err().unwrap(), "native range ABI differs");
+        std::fs::remove_file(&config.library).unwrap();
+        let mut runtime = Runtime::new(&f.config).unwrap();
+        assert_eq!(runtime.stats().unwrap().d2d_bytes, 0);
+        runtime.close().unwrap();
+    }
     #[test]
     fn c71_b12_windowed_native_dense_chain() {
         #[repr(C)]

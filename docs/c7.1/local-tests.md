@@ -161,10 +161,12 @@ Eseguire un filtro alla volta:
 | `c71_b12_range_window_permutation_and_intersections` | Permutazione MSB e intersezioni contro enumerazione D1–D7; rifiuti geometrici e descrittori delle 26 passate D34 senza allocare finestre canoniche |
 | `c71_b12_windowed_range` | Consumer canopy/Gram/retention A D10 e W signed D12: transcript e MAC originali, fold zero/uno/extension, reader alterato e errori a ogni passata; nessuna prova D34/D35 |
 | `c71_b12_windowed_native_byte`, `c71_b12_windowed_native_signed`, `c71_b12_windowed_native_failure`, separati | Prover Rust tramite ABI C e owner reale con driver/algebra host simulati: parità D10/D12, MAC originali, 44 finestre byte con errori e rifiuti di launch/fence/output/cleanup/libreria; non CUDA eseguito |
-| `c71_b12_windowed_native_dense_chain` | Stesso owner ABI 2: W installato una volta, prodotto raw, RNE per 13 shift contro Rust e root range signed senza download intermedio; driver host simulato, nessun preparatore canonico |
+| `c71_b12_windowed_native_dense_chain` | Stesso owner ABI 3: W installato una volta, prodotto raw, RNE per 13 shift contro Rust e root range signed senza download intermedio; driver host simulato, nessun preparatore canonico |
+| `c71_b12_windowed_native_abi3_rejects_legacy_stats` | Rifiuto di una libreria host ABI 2 prima di creare l'owner o leggere il ledger esteso |
 | `c71_canonical_resident` | Adapter condiviso Matrix/RNE su profilo ridotto con vista di riga e owner W originale; 14 rifiuti di identità/shape/driver/contesto e due rifiuti del dispatcher canonico incompleto; solo driver host simulato |
 | `c71_canonical_resident_byte` | Gather dalle tessere originali i48/i32/i16, ordine byte esatto, padding, blocchi fuori ordine, copertura e rifiuti terminali; driver simulato, non scanner GPU completo |
 | `c71_canonical_resident_pointwise` | Route Affine/Gate nei tre contesti, righe selezionate da buffer residenti, raw CPU identici prima della RNE, termini zero assenti, coefficienti estremi e 12 rifiuti terminali; input sintetici e driver simulato |
+| `c71_canonical_resident_embedding` | Catena ridotta W→embedding→Affine/RNE→range e byte gather, ordine e ripetizioni dei token, D2D conteggiato, 8 rifiuti e metadati canonici nei tre contesti; driver simulato |
 | `c71_b12_signed_range_windows_gather_original_ragged_packed_and_padding` | Gather W signed, tessere ragged, estremi ±32767, padding, input invalidi e soli descrittori delle finestre D35 |
 | `c71_b12_native_windowed_range_dispatch`, `c71_b12_range_histogram_scan_errors` | Dispatch range A senza getter scalare, istogramma dal commitment e fallimenti del primo scan senza sorgente installata |
 | `c71_acceptance_transport` | Completamento legato al certificato/ricevuta pendenti; alterazioni, troncamenti e Stop |
@@ -287,7 +289,10 @@ incluso −32768 nel codec byte (lo slack argmax), e il pointwise aggiunge
 14 rifiuti di shape/handle/coefficiente/driver. Verifica inoltre
 finestra pending non consumabile e rilascio del flag; conta capacità simultanee
 e copie, senza scaricare matrici intermedie. Il driver simulato non esegue
-o convalida i kernel CUDA. Il link dell'owner ABI 2 richiede anche
+o convalida i kernel CUDA. L'embedding aggiunge copie D2D per batch di
+1, 4 e 150 token, osservazione dell'ordine esatto e 17 rifiuti, inclusi
+token invalidi prima della prima copia ed errori dopo copie parziali.
+Il link dell'owner ABI 3 richiede anche
 `cuda/c71_dense_i16.cu`; Rust rifiuta librerie della precedente ABI.
 Il toolkit
 locale dispone del runtime statico: usare `--cudart static` per la libreria,

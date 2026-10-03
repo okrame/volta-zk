@@ -4,6 +4,7 @@ set -euo pipefail
 
 origin_url=https://github.com/okrame/volta-zk.git
 script_path=$(realpath "$0")
+repo_root=$(realpath "$(dirname "$script_path")/..")
 
 usage() {
   cat <<'EOF'
@@ -12,6 +13,7 @@ usage:
   scripts/runpod_harness.sh status POD_ID
   scripts/runpod_harness.sh pause POD_ID
   scripts/runpod_harness.sh delete POD_ID --confirm POD_ID
+  scripts/runpod_harness.sh local-secret-preflight
   scripts/runpod_harness.sh git-preflight
   scripts/runpod_harness.sh git-push runpod/POD_ID/LABEL
   scripts/runpod_harness.sh self-test
@@ -53,6 +55,15 @@ pod_id() {
 
 runpodctl_ready() {
   command -v runpodctl >/dev/null || die "runpodctl is not installed"
+}
+
+local_secret_preflight() {
+  local file="$repo_root/.env"
+  [[ ! -e $file ]] && return
+  [[ -f $file && ! -L $file && -O $file ]] || \
+    die ".env must be a regular file owned by the current user"
+  [[ -z $(find "$file" -maxdepth 0 -perm /077 -print) ]] || \
+    die ".env must not be readable, writable or executable by group/others (use chmod 600)"
 }
 
 git_with_token() {
@@ -100,6 +111,11 @@ case "$action" in
     runpodctl_ready
     runpodctl pod delete "$id"
     ;;
+  local-secret-preflight)
+    [[ $# -eq 0 ]] || die "local-secret-preflight takes no arguments"
+    local_secret_preflight
+    printf 'Local secret-file permissions passed.\n'
+    ;;
   git-preflight)
     [[ $# -eq 0 ]] || die "git-preflight takes no arguments"
     [[ -n ${VOLTA_GITHUB_TOKEN:-} ]] || die "VOLTA_GITHUB_TOKEN is not set"
@@ -133,6 +149,7 @@ case "$action" in
     [[ $(pod_id abc123) == abc123 ]]
     RUNPOD_POD_ID=abc123 valid_runpod_branch runpod/abc123/c7-result
     ! RUNPOD_POD_ID=abc123 valid_runpod_branch runpod/wrong/c7-result
+    local_secret_preflight
     echo "runpod harness self-test passed"
     ;;
   *)

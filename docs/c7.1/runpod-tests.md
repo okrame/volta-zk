@@ -33,6 +33,12 @@ non implementa il prover e non chiude gli [obblighi di sicurezza Seed6](security
 Un esperimento può misurare il prototipo senza attribuirgli una garanzia
 crittografica la cui composizione è ancora aperta.
 
+Prima di usare credenziali locali eseguire
+`scripts/runpod_harness.sh local-secret-preflight`. Un eventuale `.env`
+deve essere un file regolare posseduto dall'utente e avere permessi `0600`;
+il controllo non lo carica e non stampa nomi o valori. Il `.env` locale
+rilevato il 3 ottobre 2026 è stato corretto da `0664` a `0600`.
+
 ## Gestione del pod e del repository
 
 Usare [runpod_harness.sh](../../scripts/runpod_harness.sh) per la gestione

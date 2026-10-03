@@ -18,6 +18,10 @@ di consegne e il codice sono pertinenti anche i gruppi numerici e nativi
 seguenti. Non occorre ricompilare Lean: i milestone formali sono congelati
 e qui non cambia il loro enunciato.
 
+Il controllo documentale include anche il preflight dei permessi del file
+locale `.env`: una fixture `0644` deve fallire e `0600` deve passare, senza
+leggere o stampare il valore di alcuna credenziale.
+
 Dalla radice del repository:
 
 ```bash

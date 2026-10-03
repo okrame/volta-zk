@@ -102,6 +102,23 @@ def test_runpod_command_snippets_parse_without_execution():
             ast.parse(python)
 
 
+def test_runpod_harness_rejects_exposed_local_env(tmp_path):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    harness = scripts / "runpod_harness.sh"
+    harness.write_bytes((ROOT / "scripts/runpod_harness.sh").read_bytes())
+    local_env = tmp_path / ".env"
+    local_env.write_text("RUNPOD_API_KEY=fixture-not-a-secret\n")
+    local_env.chmod(0o644)
+    rejected = subprocess.run(["bash", str(harness), "local-secret-preflight"],
+                              capture_output=True, text=True, timeout=5)
+    assert rejected.returncode != 0 and "chmod 600" in rejected.stderr
+    local_env.chmod(0o600)
+    accepted = subprocess.run(["bash", str(harness), "local-secret-preflight"],
+                              capture_output=True, text=True, timeout=5)
+    assert accepted.returncode == 0, accepted.stderr
+
+
 def test_documented_input_identities_match_ingest_and_workload():
     ingest = runpy.run_path(str(ROOT / "scripts/c7_d126_gemma_weight_ingest.py"))
     specs = (CURRENT / "specs.md").read_text()

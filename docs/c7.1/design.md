@@ -116,10 +116,17 @@ barriere FS. Il coset extension usa direttamente limb base column-major,
 senza matrici complete di conversione; il
 [checkpoint delle riduzioni](../c7.1-history/canonical-residual-scan.md)
 ne delimita la parità ridotta, non una misura canonica.
-Rimangono lavoro locale sui workspace dei resti/multipunto, sul range
-e sugli stadi PCS successivi
-(lo stato sourcewise rifiuta ancora dimensioni oltre D16), sui kernel
-densi, sul percorso CUDA e sulla contabilità fisica simultanea. Non sono
+Il riferimento ora collega anche la geometria canonica degli stadi PCS:
+S1 2^24, S2 2^22, successori al più 2^23. Il residuale supera il precedente
+cap D16 con blocchi P/Q al più 2^21 e preparazione condivisa fra due fold,
+rilasciata prima del commitment successivo. Il
+[checkpoint degli stadi](../c7.1-history/canonical-pcs-stages.md)
+separa supporto CPU delle shape, parità ridotta e validazione completa.
+Il bound di lavoro Eq/Pow dello screen rimane condizionale e non è
+trasferito automaticamente a questa implementazione.
+Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,
+sui kernel densi, sul percorso CUDA e sulla contabilità fisica simultanea.
+I percorsi PCS grandi non sono ancora eseguiti o misurati. Questi non sono
 blocchi risolvibili soltanto procurandosi H100, né il collegamento CPU
 costituisce il getter GPU completo entro i limiti dichiarati.
 I dettagli e i limiti del riferimento sono nelle

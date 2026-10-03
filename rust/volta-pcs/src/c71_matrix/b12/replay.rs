@@ -7,7 +7,9 @@ use super::{
 use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_dft::TwoAdicSubgroupDft;
 use p3_field::TwoAdicField;
-use p3_matrix::{dense::DenseMatrix, extension::FlatMatrixView, Matrix};
+#[cfg(test)]
+use p3_matrix::Matrix;
+use p3_matrix::{dense::DenseMatrix, extension::FlatMatrixView};
 use p3_sumcheck_c61::strategy::ResidualSumcheckProver;
 use p3_whir_c61::pcs::{
     proof::{QueryOpenings, SharedProofOpening},
@@ -563,7 +565,7 @@ impl Code {
         let base = self.base();
         let code = Arc::new(self);
         let rowcode = code.clone();
-        let (rows, cut) = replay_tree::initial_geometry(code.height, code.columns())?;
+        let (rows, cut) = replay_tree::geometry(code.height, code.columns())?;
         // Both P3 twiddle tables remain allocated across all cosets.
         let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
         let (root, tree) = Tree::commit(
@@ -984,7 +986,7 @@ pub(in crate::c71_matrix) fn compare_source(
     readers: Option<(BaseScan, ByteWindow)>,
 ) {
     use rand_010::RngExt;
-    assert!((10..=12).contains(&dimension));
+    assert!((10..=17).contains(&dimension));
     assert_eq!(values.len(), 1 << dimension);
     census::start().unwrap();
     let config = config(dimension).unwrap();
@@ -1037,7 +1039,7 @@ pub(in crate::c71_matrix) fn compare_source(
     )
     .unwrap();
     assert_eq!(root, *model.root());
-    if original.is_some() {
+    if original.is_some() || model.scan.is_some() {
         model = model.retain_first_fold();
     }
     let mut initial_rng = PrivateRng::from_seed(root_seed);
@@ -1144,6 +1146,30 @@ pub(in crate::c71_matrix) fn compare_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_b12_full_sourcewise_chain_d17_scanned_retained_original_mac() {
+        let value = |i: usize| ((i * 37 + i / 11) % 251) as u8;
+        let scan: BaseScan = Arc::new(move |emit| {
+            for i in (0..1 << 17).rev() {
+                emit(i, Goldilocks::from_u8(value(i)))?;
+            }
+            Ok(())
+        });
+        let window: ByteWindow = Arc::new(move |first, out| {
+            for (offset, byte) in out.iter_mut().enumerate() {
+                *byte = value(first + offset);
+            }
+            Ok(())
+        });
+        compare_source(
+            17,
+            Arc::new(|_| panic!("D17 scanned chain used original scalar getter")),
+            (0..1 << 17).map(|i| Goldilocks::from_u8(value(i))).collect(),
+            None,
+            Some((scan, window)),
+        );
+    }
 
     #[test]
     fn c71_b12_scattered_initial_512_passes_matches_native_root_and_openings() {

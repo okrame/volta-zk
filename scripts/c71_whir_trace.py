@@ -915,7 +915,10 @@ def later_covector_schedule(dimension):
         "prefix_fold": "a_i <- a_i*(1-r+r*x_i^(2^(m-1))); x_i unchanged",
         "eq_term": "generate independently from its remaining tensor coordinates in O(source cells)",
         "work_class_conditional": "c_source*N + P(q,h), with fixed B=2^21 and D34/D35 caps",
-        "native_implementation_present": False,
+        "native_implementation_present": True,
+        "native_implementation_scope": "CPU blocked P/Q, cached across two folds; not this complete physical ledger",
+        "native_full_domain_validated": False,
+        "cuda_pipeline_integrated": False,
         "excluded_work": (
             "optimized Q/product-tree and Newton arithmetic, tensor-Eq generation, source "
             "folding/getter, hashing and allocator traffic; the separate schoolbook/recurrence "

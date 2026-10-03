@@ -306,13 +306,17 @@ sono freschi. W numerica e getter PCS condividono un solo packed immutabile.
 L'[albero Merkle](../../rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs)
 conserva la geometria ridotta fino ad altezza 2^18. Per le sole colonne
 iniziali W/A ammette ora altezze 2^32/2^31, 128 colonne base, coset 2^22
-e taglio Merkle 2^12: rispettivamente 1.024/512 passaggi. Geometrie grandi
-diverse, inclusi i coset A che causerebbero 1.024 ricostruzioni, falliscono
+e taglio Merkle 2^12: rispettivamente 1.024/512 passaggi. Gli stadi extension
+grandi hanno 12 colonne base: S1 usa coset 2^24, S2 2^22, S3 e successori
+al più 2^23, sempre con taglio 2^12. Le altezze dei due profili nativi
+determinano lo stadio; i test le ricavano dalla configurazione WHIR.
+Geometrie grandi diverse, inclusi S3 a 2^24 e i coset A che causerebbero
+1.024 ricostruzioni, falliscono
 prima dell'allocazione o del consumo dei sali. Questo sostituisce il
 precedente rifiuto iniziale registrato nel
 [checkpoint della strumentazione](../../benchmarks/results/c71-runner-measurements-local-2026-10-03-187a0b9dc9ce.json).
 I sottoalberi delle query sono raggruppati fino a 1.024 righe nel riferimento
-piccolo e 2^21 nel percorso iniziale canonico; le query pubbliche restano
+piccolo e 2^21 nei percorsi canonici grandi; le query pubbliche restano
 al più 1.024. Le stesse righe alimentano hash e aperture, ripristinando
 ordine e duplicati. Il limite grande è collegato ma non eseguito: resti,
 albero dei fattori, strutture intermedie e multipunto CPU non costituiscono
@@ -361,7 +365,7 @@ confine Rust/C++ sono parte del contratto.
 
 Il [residuale](../../rust/volta-pcs/src/c71_matrix/b12/sourcewise.rs)
 fattorizza Eq e genera i pesi Pow tramite P/Q e FFT, in blocchi nativi
-al più 256. Gestisce punti zero/uno e scale zero. Per la sorgente A con
+al più 2^21. Gestisce punti zero/uno e scale zero. Per la sorgente A con
 scanner, singleton, valutazioni MLE, coset S1, OOD e rigenerazione S1
 accumulano mappe lineari in ordine sorgente: ogni byte contribuisce
 all'indice folded con il peso Eq del prefisso MSB già fissato. Non sono
@@ -378,11 +382,19 @@ legge S1 e non richiama lo scanner originale. Ciò non prova il rilascio
 fisico di checkpoint o degli altri owner che conservano gli snapshot.
 Il [checkpoint delle riduzioni](../c7.1-history/canonical-residual-scan.md)
 conserva il confronto ridotto con transcript e MAC originali.
-La preparazione P/Q
-non è ancora trattenuta fra tutte le sfide adattive canoniche. `State::new`
-rifiuta punti con più di 16 coordinate; il replay grande degli oracoli
-extension S1/S2 non è implementato. Questi sono limiti software ancora
-aperti, non dipendenze hardware.
+Q, spettro inverso, avanzamenti e twiddle sono ora trattenuti fra le due
+sfide adattive: fold e scaling modificano le ampiezze, non le basi. Dopo
+il secondo fold lo stato elimina tale owner prima del nuovo commitment;
+le nuove basi invalidano sempre la preparazione precedente. Un blocco
+finale più corto usa soltanto il prefisso della serie già preparata.
+`State::new` ammette fino a D35, con prefisso iniziale al più sette bit
+oltre D16, senza allocare Eq o sorgenti complete. Il conto `named_bytes`
+include capacità e descrittori dei vettori P/Q trattenuti e un upper dei
+payload dei due twiddle; non è un picco fisico, non include tutto il
+workspace temporaneo né allocator/runtime. Il
+[checkpoint degli stadi](../c7.1-history/canonical-pcs-stages.md)
+documenta geometrie e lifecycle. Le shape canoniche non sono eseguite,
+la contabilità completa e il collegamento CUDA restano lavoro locale.
 Per A ordinata S1 rimane allocato; il predecessore viene interrogato e
 rilasciato prima di modificare lo stato successivo. W non seleziona S1.
 

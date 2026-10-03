@@ -155,7 +155,9 @@ def test_whir_trace_covers_native_geometry_and_fails_closed():
             14_539_536_648 if dimension == 35 else 12_633_300_552
         )
         assert not reference["optimized_product_tree_or_Newton_credit"]
-        assert not later["native_implementation_present"]
+        assert later["native_implementation_present"]
+        assert not later["native_full_domain_validated"]
+        assert not later["cuda_pipeline_integrated"]
 
         names = [event["event"] for event in report["events"]]
         initial_commit = report["events"][names.index("commit_data_0")]

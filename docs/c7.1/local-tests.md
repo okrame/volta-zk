@@ -174,6 +174,8 @@ Eseguire un filtro alla volta:
 | `c71_b12_scattered` | 512 scansioni iniziali D14; coset extension contro percorso denso, singleton/MLE/OOD e retention con prefissi vivi e ordine non monotono; errori del consumer/produttore senza S1 parziale |
 | `c71_b12_query_byte_windows` | Finestre fra colonne, prefissi vivi e pad contro Horner, errori/shape; catena PCS D10 con transcript e MAC originali, S1 trattenuto, getter scalare originale vietato e scansioni contate per fase |
 | `c71_b12_canonical_initial_geometry` | Selezione W/A 2^22 e rifiuto di geometrie escluse prima di allocazioni/sali; nessuna esecuzione D34/D35 |
+| `c71_b12_canonical_extension_geometry`, `c71_b12_sourcewise_geometry` | Tutti gli stadi dei profili D34/D35 senza allocarli, rifiuto di S3 2^24; cache Q/inverso riusata attraverso fold/scaling e rilasciata dopo due round |
+| `c71_b12_full_sourcewise_chain_d17` | Parità PCS completa D17 con primo fold a sette bit, scanner, retention, transcript e MAC originali; non modello canonico o Seed6 reale |
 | `c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs` | Partizione byte per sorgente contro mapping packed indipendente, i16/i32/i48, errori e MAC originali su profilo ridotto |
 | `c71_b12_rational_power`, `c71_b12_sourcewise_adaptive`, `c71_b12_full_sourcewise_chain` | Eq/Pow, stato trattenuto e catena WHIR con transcript originale |
 | `c71_b12_ordered_sourcewise_o0`, `c71_b12_ordered_sourcewise_o2`, `c71_b12_ordered_sourcewise_o4` | Storia numerica e parità PCS su A originali; non tre accettazioni ordinate |
@@ -250,8 +252,9 @@ singleton/coset/OOD/retention e catena D10 senza getter originale scalare.
 Il primo errore di compilazione è conservato; la
 [correzione dei metadati](../../benchmarks/results/c71-residual-scan-metadata-correction-2026-10-03-989efa70c151.json)
 riporta le durate già presenti negli stdout, senza sovrascrivere il record
-o attribuire una nuova esecuzione. D16 e geometrie extension grandi restano
-limiti locali; nessun credito canonico, GPU o di picco fisico completo.
+o attribuire una nuova esecuzione. D16 e geometrie extension grandi erano
+limiti di quella revisione; il [checkpoint successivo](../c7.1-history/canonical-pcs-stages.md)
+ne collega il supporto CPU, senza credito canonico, GPU o di picco fisico.
 
 La verifica di questa riorganizzazione e gli eventuali fallimenti sono
 registrati nell'[audit documentale](../c7.1-history/reorganization-audit.md).

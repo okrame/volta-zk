@@ -1,5 +1,5 @@
-//! Bounded CPU reference for the sourcewise residual state. No dense fallback.
-//! The canonical fast Eq/Pow reducer must refine these same state transitions.
+//! Blocked CPU sourcewise residual state. No dense original-source fallback.
+//! Canonical geometry support is not admission of CPU timings or a GPU backend.
 use super::replay::{inverse_series, multiply_polynomials, BaseScan};
 use super::*;
 use p3_dft::TwoAdicSubgroupDft;
@@ -7,12 +7,23 @@ use p3_multilinear_util::{point::Point, poly::Poly};
 use p3_sumcheck_c61::strategy::ResidualSumcheckProver;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc, RwLock,
+    Arc, OnceLock, RwLock,
 };
 
 pub(in crate::c71_matrix) type Getter = Arc<dyn Fn(usize) -> E + Send + Sync>;
 
-const POWER_BLOCK_CAP: usize = 256;
+const POWER_BLOCK_CAP: usize = 1 << 21;
+
+fn geometry(dimension: usize, first_fold: usize) -> Result<(), String> {
+    if !(1..=35).contains(&dimension)
+        || first_fold == 0
+        || first_fold > dimension
+        || (dimension > 16 && first_fold > 7)
+    {
+        return Err("sourcewise geometry exceeds bounded prefix/state domain".into());
+    }
+    Ok(())
+}
 
 struct PowerBlocks {
     size: usize,
@@ -90,6 +101,25 @@ impl PowerBlocks {
             *amplitude *= advance;
         }
         values
+    }
+
+    // Retained coefficient capacities/descriptors and an upper for both P3
+    // twiddle payloads. Not allocator/runtime overhead or transient FFT peak.
+    fn named_bytes(&self) -> usize {
+        self.denominators.capacity() * size_of::<Vec<Vec<E>>>()
+            + self
+                .denominators
+                .iter()
+                .map(|level| {
+                    level.capacity() * size_of::<Vec<E>>()
+                        + level
+                            .iter()
+                            .map(|values| values.capacity() * size_of::<E>())
+                            .sum::<usize>()
+                })
+                .sum::<usize>()
+            + (self.inverse_spectrum.capacity() + self.advances.capacity()) * size_of::<E>()
+            + 16 * (2 * self.size).max(4)
     }
 }
 
@@ -246,6 +276,8 @@ pub(super) struct State {
     eq_point: Vec<E>,
     eq_scale: E,
     powers: Vec<(E, E)>,
+    power_blocks: OnceLock<PowerBlocks>,
+    power_rounds_remaining: usize,
     prefix_acc: Vec<E>,
     prefix_remaining: usize,
     sum: E,
@@ -266,11 +298,7 @@ impl State {
         target: E,
         retain_first: bool,
     ) -> Result<Self, String> {
-        // This executable comparison is deliberately bounded. The full resource
-        // ledger must price the accelerated Eq/Pow adapter before lifting it.
-        if !(1..=16).contains(&point.len()) || first_fold == 0 || first_fold > point.len() {
-            return Err("bounded sourcewise geometry".into());
-        }
+        geometry(point.len(), first_fold)?;
         if scan.as_ref().is_some_and(|(_, live)| *live > 1 << point.len()) {
             return Err("sourcewise scan live prefix exceeds domain".into());
         }
@@ -308,6 +336,8 @@ impl State {
             eq_point: point.to_vec(),
             eq_scale: E::ONE,
             powers: Vec::new(),
+            power_blocks: OnceLock::new(),
+            power_rounds_remaining: 0,
             prefix_acc: Vec::new(),
             prefix_remaining: first_fold,
             sum: target,
@@ -433,6 +463,8 @@ impl State {
         } else if let Some(stage) = &self.retained {
             stage.promote(&self.prefix)?;
         }
+        // Never overlap an old Q/inverse/DFT owner with the new claim's setup.
+        self.power_blocks.take();
         let get = self.getter();
         let length = 1 << self.num_variables();
         let size = POWER_BLOCK_CAP.min(length);
@@ -444,6 +476,7 @@ impl State {
             }
         }
         self.powers.extend_from_slice(terms);
+        self.power_rounds_remaining = 2.min(self.num_variables());
         Ok(())
     }
 
@@ -451,6 +484,7 @@ impl State {
         self.retained_bytes
             + 24 * (self.prefix.capacity() + self.eq_point.capacity() + self.prefix_acc.capacity())
             + 48 * self.powers.capacity()
+            + self.power_blocks.get().map_or(0, PowerBlocks::named_bytes)
     }
 }
 
@@ -507,7 +541,11 @@ impl ResidualSumcheckProver<Goldilocks, E> for State {
             let half = 1 << (self.num_variables() - 1);
             let equality = equality_lookup(&self.eq_point, self.eq_scale);
             let size = POWER_BLOCK_CAP.min(half);
-            let powers = PowerBlocks::new(&self.powers, size);
+            // Prefix folds/scaling change amplitudes, never the bases of Q.
+            // For a smaller final block the cached inverse remains valid;
+            // only its required prefix is consumed (there is just one block).
+            let powers = self.power_blocks.get_or_init(|| PowerBlocks::new(&self.powers, size));
+            debug_assert!(size <= powers.size);
             let mut low: Vec<_> = self.powers.iter().map(|&(_, scale)| scale).collect();
             let mut high: Vec<_> = self
                 .powers
@@ -557,6 +595,12 @@ impl ResidualSumcheckProver<Goldilocks, E> for State {
             }
         }
         self.prefix.push(r);
+        if self.power_rounds_remaining > 0 {
+            self.power_rounds_remaining -= 1;
+            if self.power_rounds_remaining == 0 {
+                self.power_blocks.take();
+            }
+        }
         if self.retain_first && self.prefix_remaining == 0 {
             // Bind S1 now, but allocate only after the original A opening.
             // The frozen getter is shared with the S1 root, so subsequent
@@ -605,6 +649,64 @@ mod tests {
         product_polynomial::ProductPolynomial,
         strategy::{SumcheckProver, VariableOrder},
     };
+
+    #[test]
+    fn c71_b12_sourcewise_geometry_and_power_cache_lifetime() {
+        assert_eq!(POWER_BLOCK_CAP, 1 << 21);
+        for dimension in 1..=35 {
+            geometry(dimension, 7.min(dimension)).unwrap();
+        }
+        for (dimension, first) in [(0, 1), (36, 7), (17, 8), (10, 11), (34, 0)] {
+            assert!(geometry(dimension, first).is_err());
+        }
+        // No canonical source or allocation is executed by the shape checks.
+        let source: Getter = Arc::new(|i| E::from(Goldilocks::new((i * 13 + 7) as u64)));
+        let point = vec![E::from(Goldilocks::new(19)); 12];
+        let target = Poly::new((0..4096).map(|i| source(i)).collect::<Vec<_>>())
+            .eval_ext::<Goldilocks>(&Point::new(point.clone()));
+        let mut state = State::new(source, None, &point, 7, target, false).unwrap();
+        for _ in 0..7 {
+            let (c0, c2) = state.round_coefficients().unwrap();
+            state.fold_round_with_coefficients(c0, c2, E::from(Goldilocks::new(23))).unwrap();
+        }
+        state
+            .add_powers(&[
+                (E::ZERO, E::ONE),
+                (E::ONE, E::ONE),
+                (E::from(Goldilocks::new(29)), E::ONE),
+            ])
+            .unwrap();
+        assert!(state.power_blocks.get().is_none());
+        let before = state.named_bytes();
+        let (c0, c2) = state.round_coefficients().unwrap();
+        let cached = state.power_blocks.get().unwrap();
+        let address = cached.inverse_spectrum.as_ptr();
+        let size = cached.size;
+        assert_eq!(state.named_bytes(), before + cached.named_bytes());
+        state.fold_round_with_coefficients(c0, c2, E::from(Goldilocks::new(31))).unwrap();
+        state.scale_weights_and_claim(E::from(Goldilocks::new(37))).unwrap();
+        assert_eq!(state.power_blocks.get().unwrap().inverse_spectrum.as_ptr(), address);
+        assert_eq!(state.power_blocks.get().unwrap().size, size);
+        let get = state.getter();
+        let values = (0..1 << state.num_variables()).map(|i| get(i)).collect();
+        let weights = (0..1 << state.num_variables()).map(|i| state.weight(i)).collect();
+        let dense: SumcheckProver<Goldilocks, E> = SumcheckProver::new(
+            ProductPolynomial::new_unpacked(
+                VariableOrder::Prefix,
+                Poly::new(values),
+                Poly::new(weights),
+            ),
+            state.sum,
+        );
+        let (c0, c2) = state.round_coefficients().unwrap();
+        assert_eq!((c0, c2), ResidualSumcheckProver::round_coefficients(&dense).unwrap());
+        assert_eq!(state.power_blocks.get().unwrap().inverse_spectrum.as_ptr(), address);
+        state.fold_round_with_coefficients(c0, c2, E::ONE).unwrap();
+        assert!(state.power_blocks.get().is_none());
+        state.add_powers(&[(E::from(Goldilocks::new(41)), E::ONE)]).unwrap();
+        let _ = state.round_coefficients().unwrap();
+        assert_eq!(state.power_blocks.get().unwrap().advances.len(), 4);
+    }
 
     #[test]
     fn c71_b12_scattered_residual_reductions_and_failed_retention() {
@@ -880,7 +982,7 @@ mod tests {
                     (point, scale)
                 })
                 .collect();
-            for size in [1, 2, 8, 32, POWER_BLOCK_CAP] {
+            for size in [1, 2, 8, 32, 256, 1024] {
                 let blocks = PowerBlocks::new(&terms, size);
                 let mut amplitudes: Vec<_> = terms.iter().map(|&(_, scale)| scale).collect();
                 for block in 0..3 {
@@ -898,7 +1000,7 @@ mod tests {
                 }
             }
         }
-        println!("C71_RATIONAL_POW base_and_extension=true blocks=3 block_cap=256 canonical_credit=false");
+        println!("C71_RATIONAL_POW base_and_extension=true blocks=3 tested_cap=1024 configured_cap=2097152 canonical_credit=false");
     }
 
     #[test]

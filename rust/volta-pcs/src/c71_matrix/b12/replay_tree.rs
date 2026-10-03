@@ -28,9 +28,9 @@ pub(super) fn query_batch_rows(height: usize) -> usize {
     }
 }
 
-/// Existing small reference geometry, or the selected initial W/A geometry.
-/// Later large extension oracles still require their separate S1/S2 schedule.
-pub(super) fn initial_geometry(height: usize, columns: usize) -> Result<(usize, usize), String> {
+/// Selected W/A schedule. Heights distinguish S1, S2 and successors; all
+/// extension stages have four native Fp3 columns, hence twelve base limbs.
+pub(super) fn geometry(height: usize, columns: usize) -> Result<(usize, usize), String> {
     if height < 16 || !height.is_power_of_two() || columns == 0 {
         return Err("initial replay geometry differs".into());
     }
@@ -38,10 +38,14 @@ pub(super) fn initial_geometry(height: usize, columns: usize) -> Result<(usize, 
         let rows = 256.min(height);
         return Ok((rows, (height / rows).max(16)));
     }
-    if ![1usize << 31, 1usize << 32].contains(&height) || columns != 128 {
-        return Err("large replay requires the selected initial W/A geometry".into());
-    }
-    Ok((1 << 22, 1 << 12))
+    let log_rows = match (height.ilog2(), columns) {
+        (31 | 32, 128) => 22, // initial W/A: 1024/512 scans
+        (29 | 30, 12) => 24,  // S1, before retaining A
+        (27 | 28, 12) => 22,  // S2, full S1 capacity is still live
+        (19..=26, 12) => 23,  // S3+: the excluded 2^24 never returns
+        _ => return Err("large replay requires the selected W/A stage geometry".into()),
+    };
+    Ok((height.min(1 << log_rows), 1 << 12))
 }
 
 type Digest = [u8; 32];
@@ -104,10 +108,8 @@ impl Tree {
         {
             return Err("replay tree geometry differs".into());
         }
-        if height > MAX_REFERENCE_HEIGHT
-            && initial_geometry(height, base_columns)? != (coset_rows, cut)
-        {
-            return Err("canonical initial replay schedule differs".into());
+        if height > MAX_REFERENCE_HEIGHT && geometry(height, base_columns)? != (coset_rows, cut) {
+            return Err("canonical replay stage schedule differs".into());
         }
         let cosets = height / coset_rows;
         if !cosets.is_power_of_two() || !cut.is_power_of_two() || cut < cosets || cut > height {
@@ -360,7 +362,7 @@ mod tests {
     #[test]
     fn c71_b12_canonical_initial_geometry_selects_512_a_scans_without_allocation() {
         for (height, passes) in [(1usize << 31, 512), (1usize << 32, 1024)] {
-            let (rows, cut) = initial_geometry(height, 128).unwrap();
+            let (rows, cut) = geometry(height, 128).unwrap();
             assert_eq!(rows, 1 << 22);
             assert_eq!(height / rows, passes);
             assert_eq!(cut, 4096);
@@ -380,9 +382,51 @@ mod tests {
             .is_err());
         }
         assert_eq!(query_batch_rows(1 << 18), 1024);
-        assert!(initial_geometry(1 << 30, 12).is_err());
-        assert!(initial_geometry(1 << 33, 128).is_err());
-        assert!(initial_geometry(1 << 31, 384).is_err());
+        assert!(geometry(1 << 31, 12).is_err());
+        assert!(geometry(1 << 33, 128).is_err());
+        assert!(geometry(1 << 31, 384).is_err());
+    }
+
+    #[test]
+    fn c71_b12_canonical_extension_geometry_tracks_every_native_stage_without_allocation() {
+        for dimension in [34, 35] {
+            let config = super::super::config(dimension).unwrap();
+            let mut remaining = dimension - config.round_folding_factor(0);
+            for round in 0..config.n_rounds() {
+                let fold = config.round_folding_factor(round + 1);
+                let height = config.inv_rate(round) * (1usize << (remaining - fold));
+                let columns = 3 << fold;
+                let (rows, cut) = geometry(height, columns).unwrap();
+                if height > MAX_REFERENCE_HEIGHT {
+                    let cap = match round {
+                        0 => 1 << 24,
+                        1 => 1 << 22,
+                        _ => 1 << 23,
+                    };
+                    assert_eq!(rows, height.min(cap));
+                    assert_eq!(cut, 4096);
+                    assert_eq!(columns, 12);
+                    assert_eq!(query_batch_rows(height), 1 << 21);
+                    // Reject a different physical schedule before invoking any
+                    // producer, allocating the domain or sampling private salts.
+                    let rejected = if round >= 2 { 1 << 24 } else { rows / 2 };
+                    assert!(Tree::commit(
+                        &mmcs([1; 32]),
+                        height,
+                        columns,
+                        rejected,
+                        cut,
+                        |_| panic!("invalid stage read source"),
+                        Arc::new(|_| panic!("invalid stage read rows")),
+                    )
+                    .is_err());
+                }
+                remaining -= fold;
+            }
+        }
+        for (height, columns) in [(1 << 30, 128), (1 << 31, 12), (1 << 29, 384)] {
+            assert!(geometry(height, columns).is_err());
+        }
     }
 
     #[test]

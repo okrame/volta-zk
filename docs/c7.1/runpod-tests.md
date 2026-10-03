@@ -61,8 +61,7 @@ ruolo, capacità trattenute e HBM restano da implementare/misurare. Un test
 del trasporto con tre corpi sintetici non conta come tre prove canoniche.
 Il commitment iniziale ora seleziona coset 2^22 e lo scanner A a 512
 ricostruzioni, con parità soltanto ridotta; il vecchio cap iniziale 2^18
-non descrive più questo percorso. Restano il limite D16 dello stato
-sourcewise, gli oracoli extension grandi, i workspace query/range e i
+non descrive più questo percorso. Restano i workspace query/range e i
 kernel densi da adattare. Le prime query A leggono ora finestre originali
 fino a 256 MiB e non duplicano la matrice del risultato; la parità è
 soltanto ridotta e non chiude la contabilità fisica simultanea.
@@ -70,8 +69,11 @@ Singleton, coset S1, OOD e retention sono ora collegati allo scanner
 originale con barriere FS separate; il coset extension evita le matrici
 complete di conversione. Il
 [checkpoint delle riduzioni](../c7.1-history/canonical-residual-scan.md)
-non rimuove D16 né ammette le geometrie extension canoniche: Eq/Pow,
-workspace, CUDA e memoria simultanea rimangono lavoro locale.
+è seguito dal [collegamento degli stadi](../c7.1-history/canonical-pcs-stages.md):
+geometrie S1/S2/successori e stato fino a D35 sono disponibili nel
+riferimento CPU, con P/Q condiviso fra due fold e rilasciato prima dei
+commitment. Il supporto delle shape non è un esperimento canonico.
+Workspace, CUDA e memoria simultanea rimangono lavoro locale.
 Nessuna esecuzione W/D35 o A/D34 è acquisita. Il
 [checkpoint del collegamento](../c7.1-history/canonical-initial-scan.md)
 non ammette il comando CPU come campagna H100 né cambia le autorizzazioni.

@@ -564,6 +564,14 @@ non è dimostrato dal solo conteggio. Il controllo ridotto rende il getter
 originale inutilizzabile e confronta l'intera prova col percorso denso,
 ma non scarica il raffinamento dei produttori canonici, CUDA o Seed6.
 
+Il [collegamento degli stadi PCS](../c7.1-history/canonical-pcs-stages.md)
+conserva polinomi, sali, codec e sfide. La cache di Q dipende dalle basi
+Pow già fissate: le due sfide cambiano solo le ampiezze del numeratore.
+La cache termina al secondo fold e non riusa monete o correlazioni.
+La selezione di coset è una scelta fisica, non una nuova garanzia ZK o
+di memoria. Ammettere D35 nel riferimento CPU non prova l'esecuzione
+canonica, il limite temporale o la composizione Seed6.
+
 I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
 dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo
 Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.

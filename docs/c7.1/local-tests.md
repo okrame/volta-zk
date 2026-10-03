@@ -260,7 +260,11 @@ Il [checkpoint del gather range](../c7.1-history/canonical-range-gather.md)
 descrive i controlli del nuovo reader riordinato. Il test dei byte biased
 copre anche il gather i48/i32/i16 e il test canonico dell'operatore copre
 checkpoint, istogrammi e padding. Nessuno dei due attesta un prover range
-Gram o una finestra di 2 GiB eseguita.
+Gram o una finestra di 2 GiB eseguita. Il
+[record pulito](../../benchmarks/results/c71-range-gather-local-2026-10-03-0e61ef0826a5.json)
+registra 15 test Rust, 11 Python e i lint di correttezza; distingue le
+208 finestre D34 controllate solo come descrittori dalle finestre piccole
+eseguite, al massimo 256 byte nel gather.
 Il [record degli stadi PCS](../../benchmarks/results/c71-pcs-stages-local-2026-10-03-cc5db06c1796.json)
 registra 32 test Rust, 18 Python e due rifiuti CLI sulla SHA pulita,
 inclusa la catena PCS D17, conservando gli errori di sviluppo. Una

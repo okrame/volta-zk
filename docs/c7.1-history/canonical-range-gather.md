@@ -31,6 +31,12 @@ copertura invalida l'output parziale e viene propagato.
 
 ## Controlli e limiti
 
+Il [record locale](../../benchmarks/results/c71-range-gather-local-2026-10-03-0e61ef0826a5.json)
+registra 15 test Rust e 11 Python, build e lint correctness/suspicious
+sulla revisione pulita `0e61ef0826a5`. Nessun test/build fallito in questo
+checkpoint; rimangono warning non bloccanti. Conserva anche la verifica
+precedente e l'aggiunta test-only dei descrittori della passata iniziale.
+
 Il confronto bit-per-bit enumera D1–D7, tutte le geometrie ammesse,
 ogni indirizzo e ogni intervallo dyadic. Controlla copertura unica,
 ordine e selezione delle tessere contro un oracle per enumerazione.

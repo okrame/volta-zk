@@ -479,8 +479,19 @@ Errori di shape, handle, CUDA o fence fermano definitivamente il contesto.
 Il ledger conta prenotazione richiesta, capacità assegnate/picco, payload,
 byte copy/zero sottoposti e tentativi di launch/fence. Non misura il bus
 né driver, context, staging CUDA, stack/shared o il picco dell'intera prova.
-Non esiste ancora un collegamento di questi kernel al prover Rust/runner;
-nessun percorso GPU o fallback implicito viene abilitato da questi file.
+Il [consumer Rust](../../rust/volta-pcs/src/c71_matrix/range/windowed/native.rs)
+collega l'ABI nativa al corpo di prova range condiviso. `Source.native`
+seleziona esplicitamente libreria locale fidata, device, arena/riserva,
+finestra originale e bucket H. L'ABI è controllata prima di creare l'owner;
+la rappresentazione Rust Fp3 non viene reinterpretata: si copiano i limb
+canonici tramite strutture C. Solo u8/i16 implementano il tipo di upload.
+L'owner vive fino alla fine della prova range; il cleanup riuscito è
+richiesto prima di restituire la prova. Gli errori non selezionano CPU.
+Canopy e figli condividono lo stesso buffer nativo quando cambia la vista;
+H usa fold distinti, rilasciati in ordine sullo stream. Le finestre host
+vengono riusate solo dopo il fence di upload. `Work.native` espone il ledger
+parziale dell'owner, non una misura fisica completa. Il runner conserva
+la configurazione CPU esplicita precedente e non ammette ancora GPU E2E.
 
 Il primo scan completo del commitment byte conserva 256 contatori u64,
 con il suffisso esterno aggiunto al bin zero; l'istogramma è installato

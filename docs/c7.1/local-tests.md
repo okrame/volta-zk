@@ -158,6 +158,7 @@ Eseguire un filtro alla volta:
 | `c71_canonical_ordered_internal_padding_histogram_and_byte_window` | Padding interno, istogrammi, checkpoint, finestre byte e scansione per sorgente con copertura/errori su un operatore canonico sintetico; non preparazione Gemma completa |
 | `c71_b12_range_window_permutation_and_intersections` | Permutazione MSB e intersezioni contro enumerazione D1–D7; rifiuti geometrici e descrittori delle 26 passate D34 senza allocare finestre canoniche |
 | `c71_b12_windowed_range` | Consumer canopy/Gram/retention A D10 e W signed D12: transcript e MAC originali, fold zero/uno/extension, reader alterato e errori a ogni passata; nessuna prova D34/D35 |
+| `c71_b12_windowed_native_byte`, `c71_b12_windowed_native_signed`, `c71_b12_windowed_native_failure`, separati | Prover Rust tramite ABI C e owner reale con driver/algebra host simulati: parità D10/D12, MAC originali, 44 finestre byte con errori e rifiuti di launch/fence/output/cleanup/libreria; non CUDA eseguito |
 | `c71_b12_signed_range_windows_gather_original_ragged_packed_and_padding` | Gather W signed, tessere ragged, estremi ±32767, padding, input invalidi e soli descrittori delle finestre D35 |
 | `c71_b12_native_windowed_range_dispatch`, `c71_b12_range_histogram_scan_errors` | Dispatch range A senza getter scalare, istogramma dal commitment e fallimenti del primo scan senza sorgente installata |
 | `c71_acceptance_transport` | Completamento legato al certificato/ricevuta pendenti; alterazioni, troncamenti e Stop |
@@ -232,7 +233,12 @@ non contiene esecuzioni GPU o prove canoniche.
 Il [record dell'owner residente](../../benchmarks/results/c71-range-owner-local-2026-10-03-20d85df34158.json)
 aggiunge undici test Python, controllo UBSan del driver simulato e link
 kernel/runtime sulla SHA pulita. Il SASS dei kernel è invariato; il nuovo
-owner non è ancora collegato ai callback Rust o verificato su GPU.
+owner in quella revisione non era ancora collegato ai callback Rust.
+I filtri `c71_b12_windowed_native_*` compilano ora una libreria host
+temporanea del medesimo owner, con simboli CUDA fittizi e algebra di
+riferimento, e la caricano nel prover Rust. Non caricano la libreria CUDA
+reale. Byte D10 usa finestre da 512 B, signed D12 da 4.096 B; l'arena
+simulata è di 262.144 B. I controlli non verificano kernel, D34/D35 o H100.
 
 Per il controllo host della FFT:
 

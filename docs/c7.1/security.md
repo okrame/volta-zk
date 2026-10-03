@@ -601,11 +601,14 @@ L'owner nativo rifiuta alias nei fold H/canopy, handle ritirati o di un
 altro contesto e input parziali; scarica solo output piccoli dopo fencing
 e controllo canonico. Il test con driver differito verifica anche che un
 errore asincrono non pubblichi output e che il contesto resti fermato.
-Non è una prova della concorrenza CUDA. Riduzioni CAS per limb, integrazione
-del lifecycle e sincronizzazione prima dell'autenticazione nel prover Rust
-restano obblighi aperti dell'adapter.
-I kernel non hanno accesso a transcript o correlazioni e non sono ancora
-chiamati dal prover: non costituiscono una prova CUDA acquisita.
+Il collegamento Rust usa ora quel fencing nei callback del prover range
+comune, prima dell'autenticazione e delle successive sfide FS. I test
+attraversano l'ABI con driver host differito e chiudono i target sugli
+stessi MAC originali; includono errori di reader, launch, fence, output e
+cleanup, senza continuazione CPU. La libreria è codice locale fidato,
+non un input fornito dal certificato. I kernel non vedono transcript o
+correlazioni. Questi controlli non provano la concorrenza CUDA, la correttezza
+delle riduzioni CAS reali o l'esecuzione GPU: restano obblighi da verificare.
 
 I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
 dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo

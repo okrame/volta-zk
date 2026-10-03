@@ -87,9 +87,12 @@ Nessuna esecuzione W/D35 o A/D34 è acquisita. Il
 non ammette il comando CPU come campagna H100 né cambia le autorizzazioni.
 I kernel range e l'owner nativo di stream/arena sono compilabili insieme;
 ledger, capacità trattenute ed errori asincroni dell'owner hanno controlli
-con driver simulato. Il collegamento Rust al prover, la contabilità fisica
-simultanea e la verifica GPU rimangono lavoro locale/esperimento da completare,
-non risultati di quei controlli. Non abilitano il runner GPU o un pod.
+con driver simulato. Il consumer Rust è ora collegato ai callback range
+con selezione esplicita della libreria, senza fallback. La parità locale
+attraverso l'ABI usa algebra host simulata, non i kernel GPU. Integrazione
+del runner complessivo, altri consumer CUDA e contabilità simultanea restano
+lavoro locale; la verifica GPU richiede l'esperimento autorizzato.
+Questi controlli non abilitano il runner GPU o un pod.
 
 Prima di usare credenziali locali eseguire
 `scripts/runpod_harness.sh local-secret-preflight`. Un eventuale `.env`

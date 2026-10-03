@@ -4,6 +4,26 @@ use super::*;
 use crate::c71_matrix::gemma::eq_index;
 use std::{cell::RefCell, sync::Arc};
 
+mod native;
+pub(in crate::c71_matrix) use native::Config as NativeConfig;
+
+mod word {
+    pub trait Sealed {}
+    impl Sealed for u8 {}
+    impl Sealed for i16 {}
+}
+pub(in crate::c71_matrix) trait Word:
+    word::Sealed + Copy + Default + Into<i64>
+{
+    const KIND: u32;
+}
+impl Word for u8 {
+    const KIND: u32 = 0;
+}
+impl Word for i16 {
+    const KIND: u32 = 1;
+}
+
 pub(in crate::c71_matrix) type Reader<T = u8> =
     Arc<dyn Fn(usize, usize, usize, &mut [T]) -> Result<(), String> + Send + Sync>;
 
@@ -11,6 +31,7 @@ pub(in crate::c71_matrix) struct Source<T = u8> {
     pub alphabet: Alphabet,
     pub histogram: Vec<u64>, // full original domain, including external zero suffix
     pub read: Reader<T>,     // suffix bits, subtree bits, first ordered value, output
+    pub native: Option<NativeConfig>, // explicit opt-in; errors never select CPU
 }
 
 impl Source<i16> {
@@ -32,7 +53,7 @@ impl Source<i16> {
             histogram[(i64::from(value) + 32767) as usize] += 1;
         }
         histogram[32767] += (1u64 << bits) - packed.len() as u64;
-        Ok(Self { alphabet: Alphabet::Symmetric(i16::MAX), histogram, read })
+        Ok(Self { alphabet: Alphabet::Symmetric(i16::MAX), histogram, read, native: None })
     }
 }
 
@@ -64,6 +85,7 @@ pub(in crate::c71_matrix) struct Work {
     pub gram_windows: u64,
     pub retained_levels: u64,
     pub named_evaluator_heap_peak_bytes: usize,
+    pub native: Option<native::Stats>,
 }
 
 fn allocate<T: Clone>(length: usize, value: T) -> Result<Vec<T>, String> {
@@ -390,7 +412,44 @@ impl<'a, T: Copy + Default + Into<i64>> Evaluator<'a, T> {
     }
 }
 
-pub(in crate::c71_matrix) fn prove<T: Copy + Default + Into<i64>>(
+enum ActiveEvaluator<'a, T> {
+    Cpu(Evaluator<'a, T>),
+    Native(native::Evaluator<'a, T>),
+}
+impl<T: Word> ActiveEvaluator<'_, T> {
+    fn root(&mut self) -> Result<[Fp3; 2], String> {
+        match self {
+            Self::Cpu(e) => Ok(e.canopy.pop().ok_or("range canopy root missing")?[0]),
+            Self::Native(e) => e.root(),
+        }
+    }
+    fn coefficients(
+        &mut self,
+        l: usize,
+        p: &[Fp3],
+        lambda: Fp3,
+        prefix: &[Fp3],
+    ) -> Result<[Fp3; 4], String> {
+        match self {
+            Self::Cpu(e) => e.coefficients(l, p, lambda, prefix),
+            Self::Native(e) => e.coefficients(l, p, lambda, prefix),
+        }
+    }
+    fn terminal(&mut self, l: usize, prefix: &[Fp3]) -> Result<[Fp3; 4], String> {
+        match self {
+            Self::Cpu(e) => e.terminal(l, prefix),
+            Self::Native(e) => e.terminal(l, prefix),
+        }
+    }
+    fn finish(self) -> Result<Work, String> {
+        match self {
+            Self::Cpu(e) => Ok(e.work),
+            Self::Native(e) => e.finish(),
+        }
+    }
+}
+
+pub(in crate::c71_matrix) fn prove<T: Word>(
     domain: Domain,
     root: &C61Commitment,
     attempt: AttemptContext,
@@ -427,9 +486,18 @@ pub(in crate::c71_matrix) fn prove<T: Copy + Default + Into<i64>>(
     record_values(fs, 0x41, &histogram);
     let (alpha, inverse, rho) = challenges(bits, alphabet, fs)?;
     let h = authed.iter().zip(&inverse).fold(Auth::ZERO, |s, (&a, &d)| s.add(a.scale(d)));
-    let mut evaluator =
-        Evaluator::new(source, bits, alpha, (1usize << bits).min(source.geometry(bits).1))?;
-    let [p, q] = evaluator.canopy.pop().ok_or("range canopy root missing")?[0];
+    let mut evaluator = match &source.native {
+        Some(config) => {
+            ActiveEvaluator::Native(native::Evaluator::new(source, bits, alpha, config)?)
+        }
+        None => ActiveEvaluator::Cpu(Evaluator::new(
+            source,
+            bits,
+            alpha,
+            (1usize << bits).min(source.geometry(bits).1),
+        )?),
+    };
+    let [p, q] = evaluator.root()?;
     if q == Fp3::ZERO {
         return Err("B12 range witness pole".into());
     }
@@ -452,7 +520,7 @@ pub(in crate::c71_matrix) fn prove<T: Copy + Default + Into<i64>>(
         },
         |l, prefix| evaluator.borrow_mut().terminal(l, prefix).map(Some),
     )?;
-    let work = evaluator.into_inner().work;
+    let work = evaluator.into_inner().finish()?;
     let leaf_tag = claims[0].m;
     record_values(fs, 0x46, &[leaf_tag]);
     let products = prove_products(&triples, rows.next().unwrap(), fs);
@@ -491,7 +559,10 @@ pub(in crate::c71_matrix) mod tests {
             }
             Ok(())
         });
-        (Source { alphabet: Alphabet::Byte, histogram: histogram.to_vec(), read }, original)
+        (
+            Source { alphabet: Alphabet::Byte, histogram: histogram.to_vec(), read, native: None },
+            original,
+        )
     }
 
     fn context() -> AttemptContext {
@@ -516,13 +587,7 @@ pub(in crate::c71_matrix) mod tests {
         }
     }
 
-    fn parity<T: Copy + Default + Into<i64>>(
-        bits: usize,
-        live: usize,
-        source: Source<T>,
-        values: Vec<i16>,
-        passes: u64,
-    ) {
+    fn parity<T: Word>(bits: usize, live: usize, source: Source<T>, values: Vec<i16>, passes: u64) {
         let domain = Domain::Flat(bits);
         let alphabet = source.alphabet;
         let count = required(bits, alphabet);
@@ -553,6 +618,17 @@ pub(in crate::c71_matrix) mod tests {
         assert_eq!(work.gram_windows, passes - bits as u64);
         assert_eq!(work.retained_levels, bits as u64 - 1);
         assert_eq!(work.requested_bytes, passes * (1 << bits) * core::mem::size_of::<T>() as u64);
+        if source.native.is_some() {
+            let stats = work.native.as_ref().unwrap();
+            assert_eq!(
+                (stats.arena_bytes, stats.live_capacity_bytes, stats.cleanup_failed),
+                (0, 0, 0)
+            );
+            assert!(stats.peak_capacity_bytes > 0 && stats.fences > 0 && stats.d2h_bytes > 48);
+            assert_eq!(stats.h2d_bytes, work.requested_bytes);
+        } else {
+            assert!(work.native.is_none());
+        }
         assert_eq!(dr.len(), pcs_rows);
         assert_eq!(wr.len(), pcs_rows);
 
@@ -664,6 +740,134 @@ pub(in crate::c71_matrix) mod tests {
             assert!(Source::signed(bad_bits, &packed, source.read.clone()).is_err());
         }
         parity(bits, live, source, values, 29);
+    }
+
+    #[test]
+    fn c71_b12_windowed_native_byte_transcript_original_mac() {
+        let fixture = native::tests::fixture(512);
+        for live in [1, 731, 1024] {
+            let (mut source, values) = source(10, live);
+            source.native = Some(fixture.config.clone());
+            parity(10, live, source, values[..live].iter().map(|&v| i16::from(v)).collect(), 22);
+        }
+    }
+
+    #[test]
+    fn c71_b12_windowed_native_signed_transcript_original_mac() {
+        let fixture = native::tests::fixture(2048);
+        let values: Vec<i16> = (0..3001).map(|i| [-32767, -1, 0, 1, 32767][i % 5]).collect();
+        let original = values.clone();
+        let mut source = Source::signed(
+            12,
+            &values,
+            Arc::new(move |suffix, bottom, first, out| {
+                let high = 12 - bottom - suffix;
+                for (j, v) in out.iter_mut().enumerate() {
+                    let i = first + j;
+                    let top = i >> bottom;
+                    let address = (((top & ((1 << high) - 1)) << suffix) | (top >> high)) << bottom
+                        | (i & ((1 << bottom) - 1));
+                    *v = original.get(address).copied().unwrap_or(0);
+                }
+                Ok(())
+            }),
+        )
+        .unwrap();
+        source.native = Some(fixture.config.clone());
+        parity(12, 3001, source, values, 29);
+    }
+
+    #[test]
+    fn c71_b12_windowed_native_failure_before_authentication() {
+        let fixture = native::tests::fixture(512);
+        let (mut source, values) = source(10, 731);
+        source.native = Some(fixture.config.clone());
+        let model =
+            Model::new_in(Domain::Flat(10), values[..731].iter().map(|&v| i16::from(v)).collect())
+                .unwrap();
+        let count = required(10, Alphabet::Byte);
+        // Keep this exact test library loaded while setting its driver fault.
+        let injection = native::tests::Injection::new(&fixture.config);
+        for fault in [1, 2, 4] {
+            injection.set(fault);
+            let mut rows = rows(count).into_iter();
+            assert!(prove(
+                model.domain,
+                &model.root,
+                context(),
+                [9; 32],
+                731,
+                &source,
+                &mut Fs::new(b"native failed", 100_000),
+                &mut rows
+            )
+            .is_err());
+            // Only histogram rows consumed: neither a root nor a later MAC.
+            assert_eq!(rows.len(), count - 256);
+        }
+        injection.set(0);
+        let original = source.read.clone();
+        for fail in 1..=44 {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let counter = calls.clone();
+            let read = original.clone();
+            source.read = Arc::new(move |s, b, f, out| {
+                read(s, b, f, out)?;
+                if counter.fetch_add(1, Ordering::Relaxed) + 1 == fail {
+                    Err("native reader failed".into())
+                } else {
+                    Ok(())
+                }
+            });
+            let mut rows = rows(count).into_iter();
+            assert_eq!(
+                prove(
+                    model.domain,
+                    &model.root,
+                    context(),
+                    [9; 32],
+                    731,
+                    &source,
+                    &mut Fs::new(b"native reader failed", 100_000),
+                    &mut rows
+                )
+                .err()
+                .unwrap(),
+                "native reader failed"
+            );
+            assert_eq!(calls.load(Ordering::Relaxed), fail);
+            assert!(rows.len() > 0);
+        }
+        source.read = original;
+        injection.set(3);
+        assert!(prove(
+            model.domain,
+            &model.root,
+            context(),
+            [9; 32],
+            731,
+            &source,
+            &mut Fs::new(b"native cleanup failed", 100_000),
+            &mut rows(count).into_iter()
+        )
+        .err()
+        .unwrap()
+        .contains("cleanup failed"));
+        injection.set(0);
+        source.native.as_mut().unwrap().library = fixture.config.library.with_extension("missing");
+        assert!(prove(
+            model.domain,
+            &model.root,
+            context(),
+            [9; 32],
+            731,
+            &source,
+            &mut Fs::new(b"native missing", 100_000),
+            &mut rows(count).into_iter()
+        )
+        .err()
+        .unwrap()
+        .contains("unavailable"));
     }
 
     #[test]
@@ -814,6 +1018,7 @@ pub(in crate::c71_matrix) mod tests {
             let source = Source {
                 alphabet: source.alphabet,
                 histogram: source.histogram.clone(),
+                native: None,
                 read: Arc::new(move |s, b, f, out| {
                     original(s, b, f, out)?;
                     if counter.fetch_add(1, Ordering::Relaxed) + 1 == fail {

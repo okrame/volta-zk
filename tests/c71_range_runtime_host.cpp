@@ -32,21 +32,75 @@ cudaError_t cudaMemsetAsync(void* p,int x,size_t n,cudaStream_t s) {
     s->pending.push_back([=] { std::memset(p,x,n); }); return 0;
 }
 const char* cudaGetErrorString(cudaError_t) { return "injected CUDA failure"; }
-static int launch(cudaStream_t s,void* p,size_t n) {
+static int launch(cudaStream_t s,std::function<void()> operation) {
     ++launches; if(fail_launch) return 1;
-    s->pending.push_back([=] { std::memset(p,0,n); }); return 0;
+    s->pending.push_back(std::move(operation)); return 0;
 }
-extern "C" int c71_range_launch_roots(cudaStream_t s,unsigned,const void*,size_t,unsigned,Fp3,Pair* p,size_t n) { return launch(s,p,n*sizeof(*p)); }
-extern "C" int c71_range_launch_groups(cudaStream_t s,unsigned,const void*,size_t words,Group g,Children* p,size_t,Fp3* h,size_t n) {
-    return g.width?launch(s,h,n*sizeof(*h)):launch(s,p+g.first_tail,(words>>(g.bottom+g.prefix_bits))*sizeof(*p));
+// Host arithmetic for cross-language protocol parity. This executes neither
+// CUDA kernels nor their thread scheduling; it is never a production fallback.
+static Pair fraction(const void* input,unsigned kind,size_t first,size_t n,Fp3 alpha) {
+    if(n==1) {
+        const int64_t x=kind?static_cast<const int16_t*>(input)[first]:static_cast<const uint8_t*>(input)[first];
+        return {{1,0,0},sub(alpha,integer(x))};
+    }
+    return merge(fraction(input,kind,first,n/2,alpha),fraction(input,kind,first+n/2,n/2,alpha));
 }
-extern "C" int c71_range_launch_canopy(cudaStream_t s,const Pair*,Pair* p,size_t n) { return launch(s,p,n*sizeof(*p)); }
-extern "C" int c71_range_launch_h_sum(cudaStream_t s,const Fp3*,Fp3* p,unsigned n,unsigned) { return launch(s,p,n*sizeof(*p)); }
-extern "C" int c71_range_launch_h_fold(cudaStream_t s,const Fp3*,Fp3* p,unsigned n,Fp3) { return launch(s,p,n*n*sizeof(*p)); }
-extern "C" int c71_range_launch_child_fold(cudaStream_t s,Children* p,size_t n,Fp3) { return launch(s,p,n*sizeof(*p)); }
-extern "C" int c71_range_launch_coefficients(cudaStream_t s,const Children*,size_t half,Round,Cubic* p) { return launch(s,p,((half+255)/256)*sizeof(*p)); }
-extern "C" int c71_range_launch_reduce(cudaStream_t s,const Cubic*,size_t n,Cubic* p) { return launch(s,p,((n+255)/256)*sizeof(*p)); }
-extern "C" int c71_range_launch_h_coefficients(cudaStream_t s,const Fp3*,unsigned,Round,Cubic* p) { return launch(s,p,sizeof(*p)); }
+extern "C" int c71_range_launch_roots(cudaStream_t s,unsigned kind,const void* input,size_t,unsigned bottom,Fp3 alpha,Pair* p,size_t n) {
+    return launch(s,[=] { for(size_t i=0;i<n;++i) p[i]=fraction(input,kind,i<<bottom,size_t{1}<<bottom,alpha); });
+}
+extern "C" int c71_range_launch_groups(cudaStream_t s,unsigned kind,const void* input,size_t words,Group g,Children* p,size_t,Fp3* h,size_t) {
+    return launch(s,[=] {
+        const size_t length=size_t{1}<<g.width, subtree=size_t{1}<<g.bottom, old_count=size_t{1}<<g.prefix_bits;
+        for(size_t t=0;t<words/(length*subtree*old_count);++t) {
+            Children bucket[32]{};
+            for(size_t u=0;u<length;++u) for(size_t old=0;old<old_count;++old) {
+                const size_t first=((t*old_count+old)*length+u)*subtree;
+                const auto a=fraction(input,kind,first,subtree/2,g.alpha), b=fraction(input,kind,first+subtree/2,subtree/2,g.alpha);
+                const Fp3 child[]={a.p,a.q,b.p,b.q},weight=equality(g.prefix,g.prefix_bits,old);
+                for(unsigned j=0;j<4;++j) bucket[u].v[j]=add(bucket[u].v[j],mul6(weight,child[j]));
+            }
+            const size_t tail=g.first_tail+t;
+            if(!g.width) p[tail]=bucket[0];
+            else for(size_t u=0;u<length;++u) for(size_t v=0;v<length;++v) {
+                auto& cell=h[(tail%g.buckets)*length*length+u*length+v];
+                cell=add(cell,gram(bucket[u],bucket[v],g.lambda,equality(g.tail_point,g.tail_bits,tail)));
+            }
+        }
+    });
+}
+extern "C" int c71_range_launch_canopy(cudaStream_t s,const Pair* a,Pair* p,size_t n) {
+    return launch(s,[=] { for(size_t i=0;i<n;++i) p[i]=merge(a[2*i],a[2*i+1]); });
+}
+extern "C" int c71_range_launch_h_sum(cudaStream_t s,const Fp3* a,Fp3* p,unsigned n,unsigned buckets) {
+    return launch(s,[=] { for(unsigned i=0;i<n;++i) { p[i]={}; for(unsigned b=0;b<buckets;++b) p[i]=add(p[i],a[b*n+i]); } });
+}
+extern "C" int c71_range_launch_h_fold(cudaStream_t s,const Fp3* a,Fp3* p,unsigned half,Fp3 r) {
+    return launch(s,[=] { const unsigned n=2*half; for(unsigned i=0;i<half;++i) for(unsigned j=0;j<half;++j)
+        p[i*half+j]=fold(fold(a[i*n+j],a[i*n+j+half],r),fold(a[(i+half)*n+j],a[(i+half)*n+j+half],r),r); });
+}
+extern "C" int c71_range_launch_child_fold(cudaStream_t s,Children* p,size_t n,Fp3 r) {
+    return launch(s,[=] { for(size_t i=0;i<n;++i) p[i]=fold(p[i],p[i+n],r); });
+}
+extern "C" int c71_range_launch_coefficients(cudaStream_t s,const Children* a,size_t half,Round r,Cubic* p) {
+    return launch(s,[=] { for(size_t i=0;i<half;++i) {
+        if(i%256==0) p[i/256]={};
+        p[i/256]=sum(p[i/256],coefficients(a[i],a[i+half],r.lambda,
+            mul6(r.prefix_equality,equality(r.point,r.bits,i)),mul6(r.prefix_equality,equality(r.point,r.bits,i+half))));
+    } });
+}
+extern "C" int c71_range_launch_reduce(cudaStream_t s,const Cubic* a,size_t n,Cubic* p) {
+    return launch(s,[=] { for(size_t i=0;i<n;++i) { if(i%256==0) p[i/256]={}; p[i/256]=sum(p[i/256],a[i]); } });
+}
+extern "C" int c71_range_launch_h_coefficients(cudaStream_t s,const Fp3* a,unsigned half,Round r,Cubic* p) {
+    return launch(s,[=] { *p=h_coefficients(a,half,r); });
+}
+
+#ifdef C71_RANGE_FFI_TEST
+// Test library only; production exports neither error injection nor host math.
+extern "C" void c71_range_test_failure(unsigned kind) {
+    fail_launch=kind==1; fail_fence=kind==2; fail_free=kind==3; corrupt=kind==4;
+}
+#else
 
 static C71RangeContext* create(uint64_t bytes=262144) {
     C71RangeContext* c=nullptr; assert(!c71_range_create(0,bytes,256,&c)); return c;
@@ -136,3 +190,4 @@ int main() {
     assert(allocations==frees);
     std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
 }
+#endif

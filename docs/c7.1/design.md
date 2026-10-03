@@ -134,8 +134,9 @@ scan per ricostruirlo. D34 seleziona 26 passate dopo l'istogramma, ma non
 anche W signed, dal packed originale: cut=11/m24, 29 passate selezionate,
 staging di 256 MiB e istogramma privato calcolato all'installazione.
 Non ripristina il piano W cut=10/m25 escluso per memoria. Gli altri consumer
-non convertiti mantengono il riferimento precedente. Mancano CUDA, conto completo dei
-producer/arithmetic work, memoria simultanea e verifica canonica del range;
+non convertiti mantengono il riferimento precedente. Rimangono il port CUDA
+dei producer, il conto completo del lavoro aritmetico, la memoria simultanea
+e la verifica canonica del range;
 la riduzione delle rigenerazioni non è un tempo H100 o una nuova prova Lean.
 Il bound di lavoro Eq/Pow dello screen rimane condizionale e non è
 trasferito automaticamente a questa implementazione.
@@ -144,8 +145,11 @@ Gram, retention, fold e coefficienti. Il relativo controllo host non
 esegue i kernel. Un owner nativo ora gestisce stream privato, arena fissa,
 handle tipizzati, capacità trattenute e fencing prima della pubblicazione
 degli output; errori e cleanup sono verificati con driver simulato.
-Compilazione sm_90 e controlli host non sostituiscono il collegamento Rust,
-il fencing integrato prima dei MAC o la verifica GPU, ancora da completare.
+Il consumer Rust ora può selezionare esplicitamente questo owner sulle
+stesse sorgenti byte/signed. Root, cubiche e terminali passano ai callback
+fallibili del prover esistente: nessun secondo transcript o fallback CPU.
+La parità ridotta usa una libreria host con driver simulato; non esegue
+CUDA. Il runner GPU completo e la verifica sui kernel reali restano aperti.
 La riduzione H con CAS, Eq per indice
 e lo stack locale del kernel coefficienti richiedono contabilità e misura;
 non ereditano il tempo o i conteggi dello screen storico.

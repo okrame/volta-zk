@@ -740,6 +740,7 @@ impl ReplayModel {
             .map_err(|_| "range histogram cache poisoned")?
             .ok_or("range requires a completed original byte scan")?;
         self.range_bytes = Some(super::super::range::windowed::Source {
+            native: None,
             alphabet: super::super::range::Alphabet::Byte,
             histogram: histogram.to_vec(),
             read,

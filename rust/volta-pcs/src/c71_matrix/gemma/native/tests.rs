@@ -2,6 +2,79 @@ use super::*;
 use rand_010::RngExt;
 
 #[test]
+fn c71_b12_native_windowed_range_dispatch_uses_original_scan_histogram() {
+    let domain = Domain::Flat(10);
+    let live = 731;
+    let (source, values) = range::windowed::tests::source(10, live);
+    let model =
+        Model::new_in(domain, values[..live].iter().map(|&v| i16::from(v)).collect()).unwrap();
+    let scan_values = values.clone();
+    let query_values = values.clone();
+    let replay = b12::replay::ReplayModel::new_scanned(
+        domain,
+        model.seed,
+        model.salt_seed,
+        Arc::new(|_| panic!("scalar original range getter used")),
+        Arc::new(move |emit| {
+            for i in (0..live).rev() {
+                emit(i, Goldilocks::from_u8(scan_values[i]))?;
+            }
+            Ok(())
+        }),
+        Arc::new(move |first, out| {
+            out.copy_from_slice(&query_values[first..first + out.len()]);
+            Ok(())
+        }),
+        live,
+    )
+    .unwrap()
+    .with_range_reader(source.read.clone())
+    .unwrap();
+    assert_eq!(replay.root(), &model.root);
+    assert_eq!(replay.range_bytes.as_ref().unwrap().histogram, source.histogram);
+    let context = AttemptContext {
+        session: [1; 32],
+        capacity: [2; 32],
+        slot: 0,
+        predecessor: [0; 32],
+        nonce: [3; 32],
+    };
+    let all_rows: Vec<_> = (0..range::required(10, range::Alphabet::Byte))
+        .map(|i| Auth::new(signed(i as i64 + 1), signed(7 * i as i64 + 3)))
+        .collect();
+    let fresh = || Fs::new(b"windowed range dispatch", 100_000);
+    let (mut dense_fs, mut replay_fs) = (fresh(), fresh());
+    let (dense, _, dense_targets) = SourceModel::Dense(&model)
+        .range(
+            context,
+            [9; 32],
+            live,
+            range::Alphabet::Byte,
+            &mut dense_fs,
+            &mut all_rows.clone().into_iter(),
+        )
+        .unwrap();
+    let (routed, _, targets) = SourceModel::Replay(&replay)
+        .range(
+            context,
+            [9; 32],
+            live,
+            range::Alphabet::Byte,
+            &mut replay_fs,
+            &mut all_rows.into_iter(),
+        )
+        .unwrap();
+    let (mut a, mut b) = (Vec::new(), Vec::new());
+    dense.write(&mut a);
+    routed.write(&mut b);
+    assert_eq!(a, b);
+    assert_eq!(dense_fs.digest(), replay_fs.digest());
+    for (a, b) in dense_targets.iter().zip(targets) {
+        assert_eq!((a.x, a.m), (b.x, b.m));
+    }
+}
+
+#[test]
 fn c71_b12_native_wire_limit_includes_completion_record() {
     for canonical in [false, true] {
         let cap = if canonical { wire::CANONICAL_MAX_BYTES } else { wire::MAX_BYTES };

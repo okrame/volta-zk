@@ -595,6 +595,8 @@ pub(in crate::c71_matrix) struct ReplayModel {
     tree: Arc<Tree>,
     pads: Arc<[Goldilocks]>,
     retain_first: bool,
+    pub(in crate::c71_matrix) range_bytes: Option<super::super::range::windowed::Source>,
+    byte_histogram: Arc<Mutex<Option<[u64; 256]>>>,
 }
 
 impl ReplayModel {
@@ -650,6 +652,33 @@ impl ReplayModel {
         let _extension = mmcs.clone();
         let (scan, window) =
             readers.map_or((None, None), |(scan, window)| (Some(scan), Some(window)));
+        let byte_histogram = Arc::new(Mutex::new(None));
+        let scan = scan.map(|scan| {
+            let cached = byte_histogram.clone();
+            Arc::new(move |emit: &mut dyn FnMut(usize, Goldilocks) -> Result<(), String>| {
+                let mut cached = cached.lock().map_err(|_| "range histogram cache poisoned")?;
+                if cached.is_some() {
+                    return scan(emit);
+                }
+                let mut h = [0u64; 256];
+                let mut count = 0;
+                scan(&mut |i, value| {
+                    let byte = value.as_canonical_u64();
+                    if i >= live || byte >= 256 || count >= live {
+                        return Err("original byte scan shape or alphabet differs".into());
+                    }
+                    h[byte as usize] += 1;
+                    count += 1;
+                    emit(i, value)
+                })?;
+                if count != live {
+                    return Err("original byte histogram scan incomplete".into());
+                }
+                h[0] += (len - live) as u64;
+                *cached = Some(h); // no partial histogram after either callback fails
+                Ok(())
+            }) as BaseScan
+        });
         let (root, handle) = Code {
             get: source.clone(),
             scan: scan.clone(),
@@ -670,6 +699,8 @@ impl ReplayModel {
             tree: oracle.tree,
             pads,
             retain_first: false,
+            range_bytes: None,
+            byte_histogram,
         })
     }
 
@@ -695,6 +726,19 @@ impl ReplayModel {
     pub(in crate::c71_matrix) fn retain_first_fold(mut self) -> Self {
         self.retain_first = true;
         self
+    }
+
+    pub(in crate::c71_matrix) fn with_range_reader(
+        mut self,
+        read: super::super::range::windowed::Reader,
+    ) -> Result<Self, String> {
+        let histogram = self
+            .byte_histogram
+            .lock()
+            .map_err(|_| "range histogram cache poisoned")?
+            .ok_or("range requires a completed original byte scan")?;
+        self.range_bytes = Some(super::super::range::windowed::Source { histogram, read });
+        Ok(self)
     }
 
     pub(in crate::c71_matrix) fn root(&self) -> &C61Commitment {
@@ -1148,6 +1192,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn c71_b12_range_histogram_scan_errors_do_not_install_a_source() {
+        for fault in 0..4 {
+            let result = ReplayModel::new_scanned(
+                Domain::Flat(10),
+                [71; 32],
+                [73; 32],
+                Arc::new(|_| panic!("scalar scan fallback")),
+                Arc::new(move |emit| {
+                    emit(0, Goldilocks::from_u8(7))?;
+                    match fault {
+                        0 => Ok(()),                             // incomplete
+                        1 => emit(2, Goldilocks::ZERO),          // index outside live prefix
+                        2 => emit(1, Goldilocks::from_u64(256)), // non-byte
+                        _ => Err("source failed after contribution".into()),
+                    }
+                }),
+                Arc::new(|_, _| panic!("query reader before successful commitment")),
+                2,
+            );
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
     fn c71_b12_full_sourcewise_chain_d17_scanned_retained_original_mac() {
         let value = |i: usize| ((i * 37 + i / 11) % 251) as u8;
         let scan: BaseScan = Arc::new(move |emit| {
@@ -1221,6 +1289,12 @@ mod tests {
         .unwrap();
         assert_eq!(scans.load(Ordering::Relaxed), 512);
         assert_eq!(visits.load(Ordering::Relaxed), 512 * live);
+        let mut histogram = [0u64; 256];
+        for i in 0..live {
+            histogram[original(i).as_canonical_u64() as usize] += 1;
+        }
+        histogram[0] += ((1 << dimension) - live) as u64;
+        assert_eq!(*model.byte_histogram.lock().unwrap(), Some(histogram));
         assert_eq!(
             gets.load(Ordering::Relaxed),
             0,

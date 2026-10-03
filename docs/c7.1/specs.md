@@ -422,8 +422,8 @@ suffisso esterno rimane zero pubblico. Il commitment A chiama questo
 scanner 512 volte secondo la geometria, non la finestra scalare da 128
 byte. Anche le prime query PCS usano il lettore a finestre descritto sopra;
 le riduzioni lineari del primo stato PCS usano ora lo scanner sorgente.
-Getter scalare e replay per riga restano in range e negli altri consumer
-non convertiti. `Prepared::range_window` implementa ora il reader per
+Getter scalare e replay per riga restano nel range W e negli altri consumer
+non convertiti. `Prepared::range_window` implementa il reader per
 finestre dyadic allineate, fino a 2 GiB, nell'ordine
 `[tail][prefisso folded][u Gram][sottoalbero]`. Seleziona le sorgenti
 intersecando le maschere dei bit fissi delle tessere con quelle della
@@ -431,8 +431,32 @@ finestra riordinata, quindi riusa `scan_sources` e la sua verifica di
 copertura. Non enumera il dominio per decidere i producer. Le finestre
 devono contenere interi sottoalberi; forme, overflow e budget sono
 controllati prima di toccare l'output. Un errore durante lo scan invalida
-l'output parziale. Nessun consumer range lo chiama ancora: canopy, Gram,
-retention e le 26 passate restano da integrare. I
+l'output parziale. Il consumer CPU
+[range/windowed.rs](../../rust/volta-pcs/src/c71_matrix/range/windowed.rs)
+è ora collegato al range A canonico tramite `SourceModel::range`.
+Conserva il canopy sopra un taglio di dieci bit; i livelli inferiori
+usano le composizioni Gram selezionate e trattengono al massimo 2^24
+tuple di quattro figli in D34. Il buffer byte è al più 2 GiB. H termina
+prima della retention, i livelli canopy consumati sono rilasciati e
+`truncate` dei figli non ne libera la capacità. Le uguaglianze vengono
+calcolate per indice, senza un Eq(N) denso. È ancora aritmetica CPU.
+
+Il primo scan completo del commitment byte conserva 256 contatori u64,
+con il suffisso esterno aggiunto al bin zero; l'istogramma è installato
+solo dopo il successo di produttore e consumer. I successivi scan non
+lo ricostruiscono, quindi le 512 ricostruzioni iniziali non aumentano.
+Il contratto interno di immutabilità/unicità resta quello dello scanner;
+il conteggio da solo non prova l'unicità. Un reader range viene installato
+solo con un istogramma completo. Questi contatori e la loro copia nella
+sorgente range restano capacità vive da contare. Il reader non vede monete
+o correlazioni; i callback aritmetici fallibili interrompono il protocollo
+prima dell'autenticazione successiva. Non esiste fallback scalare su errore.
+
+Il [checkpoint del consumer](../c7.1-history/canonical-windowed-range.md)
+distingue le passate eseguite su input ridotti dalle 26 selezionate per
+D34. Il ledger interno misura passate, byte richiesti, merge e payload
+nominati dell'evaluator, non il lavoro completo del preparatore o il
+picco fisico con PCS/Seed6/verificatore. I
 [controlli del gather](../c7.1-history/canonical-range-gather.md)
 non eseguono una finestra da 2 GiB o la prova D34.
 Il limite di preparazione controlla payload nominati, non il picco fisico

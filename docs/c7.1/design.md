@@ -126,9 +126,14 @@ Il preparatore dispone anche del gather range in ordine
 `[tail][prefisso folded][u Gram][sottoalbero]`, con selezione dei producer
 per intersezione delle tessere e cap di 2 GiB. Il
 [checkpoint del gather](../c7.1-history/canonical-range-gather.md)
-è solo il reader: il prover range usa ancora la rigenerazione scalare.
-Restano da collegare canopy, Gram, retention e schedulazione delle 26 passate;
-la disponibilità delle finestre non attribuisce quei conteggi al runtime.
+è seguito dal [consumer range A](../c7.1-history/canonical-windowed-range.md):
+il riferimento CPU collega canopy, Gram e retention allo stesso reader.
+Il primo scan PCS conserva l'istogramma byte; il range non aggiunge uno
+scan per ricostruirlo. D34 seleziona 26 passate dopo l'istogramma, ma non
+è eseguito: la parità completa resta ridotta. W e i consumer non convertiti
+mantengono il riferimento precedente. Mancano CUDA, conto completo dei
+producer/arithmetic work, memoria simultanea e verifica canonica del range;
+la riduzione delle rigenerazioni non è un tempo H100 o una nuova prova Lean.
 Il bound di lavoro Eq/Pow dello screen rimane condizionale e non è
 trasferito automaticamente a questa implementazione.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,

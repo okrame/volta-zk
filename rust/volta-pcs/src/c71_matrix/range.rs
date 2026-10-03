@@ -8,6 +8,8 @@ component_wire!(Layer { rounds, split });
 component_wire!(Proof { histogram, roots, layers, leaf_tag, products });
 use linear::Cube;
 
+pub(super) mod windowed;
+
 #[derive(Clone, Copy)]
 pub(super) enum Alphabet {
     Symmetric(i16),
@@ -552,8 +554,8 @@ pub(super) fn prove_tree_sourcewise(
 // Optional private evaluators replace arithmetic only; authentication and FS stay here.
 pub(super) fn prove_tree_sourcewise_custom(
     bits: usize,
-    mut point: Vec<Fp3>,
-    mut claims: [Auth; 2],
+    point: Vec<Fp3>,
+    claims: [Auth; 2],
     get: impl Fn(usize, usize) -> [Fp3; 4],
     fs: &mut Fs,
     rows: &mut impl ExactSizeIterator<Item = Auth>,
@@ -561,6 +563,32 @@ pub(super) fn prove_tree_sourcewise_custom(
     mut coefficients: impl FnMut(usize, &[Fp3], Fp3, &[Fp3]) -> Option<[Fp3; 4]>,
     mut terminal: impl FnMut(usize, &[Fp3]) -> Option<[Fp3; 4]>,
 ) -> (Vec<Layer>, Vec<Fp3>, [Auth; 2], SourceTreeWork) {
+    try_prove_tree_sourcewise_custom(
+        bits,
+        point,
+        claims,
+        get,
+        fs,
+        rows,
+        triples,
+        |l, point, lambda, prefix| Ok(coefficients(l, point, lambda, prefix)),
+        |l, point| Ok(terminal(l, point)),
+    )
+    .expect("infallible private evaluator")
+}
+
+// A failed reader must stop before the next authentication or FS challenge.
+fn try_prove_tree_sourcewise_custom(
+    bits: usize,
+    mut point: Vec<Fp3>,
+    mut claims: [Auth; 2],
+    get: impl Fn(usize, usize) -> [Fp3; 4],
+    fs: &mut Fs,
+    rows: &mut impl ExactSizeIterator<Item = Auth>,
+    triples: &mut Vec<[Auth; 3]>,
+    mut coefficients: impl FnMut(usize, &[Fp3], Fp3, &[Fp3]) -> Result<Option<[Fp3; 4]>, String>,
+    mut terminal: impl FnMut(usize, &[Fp3]) -> Result<Option<[Fp3; 4]>, String>,
+) -> Result<(Vec<Layer>, Vec<Fp3>, [Auth; 2], SourceTreeWork), String> {
     let mut layers = Vec::with_capacity(bits);
     triples.reserve_exact(3 * bits);
     let mut work = SourceTreeWork::default();
@@ -579,7 +607,7 @@ pub(super) fn prove_tree_sourcewise_custom(
             let current = original >> round;
             let half = current / 2;
             let mut c = [Fp3::ZERO; 4];
-            if let Some(value) = coefficients(l, &point, lambda, &next_point) {
+            if let Some(value) = coefficients(l, &point, lambda, &next_point)? {
                 c = value;
                 work.custom_rounds += 1;
             } else {
@@ -641,7 +669,7 @@ pub(super) fn prove_tree_sourcewise_custom(
                 .max((point.capacity() + next_point.capacity()) * core::mem::size_of::<Fp3>());
             rounds.push(wire);
         }
-        let folded = if let Some(value) = terminal(l, &next_point) {
+        let folded = if let Some(value) = terminal(l, &next_point)? {
             work.custom_terminals += 1;
             value
         } else {
@@ -677,7 +705,7 @@ pub(super) fn prove_tree_sourcewise_custom(
         point = next_point;
         layers.push(Layer { rounds, split });
     }
-    (layers, point, claims, work)
+    Ok((layers, point, claims, work))
 }
 
 // A public multilinear first-layer weight can combine original point claims.

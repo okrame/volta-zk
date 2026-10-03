@@ -577,8 +577,17 @@ indirizzi pubblici: prima coordinata MSB e bit del sottoalbero preservati.
 Il reader non riceve sfide, MAC o correlazioni e riusa gli stessi owner
 immutabili di checkpoint, istogrammi e byte biased. Le intersezioni delle
 tessere non dipendono da sfide future. I test controllano la bijezione
-finita e il confronto con gli originali; il reader non è ancora collegato
-alla prova range e non dimostra il raffinamento Gram o la schedule canonica.
+finita e il confronto con gli originali. Il
+[consumer range A](../c7.1-history/canonical-windowed-range.md) collega ora
+quel reader alla prova CPU, riusando l'autenticazione e l'ordine FS della
+fraction tree. La matrice privata H contrae i prodotti dei quattro figli
+solo sul tail pubblico; i fold di entrambe le coordinate di H usano le
+sfide già emesse. Non sostituisce gli endpoint originali con nuovi MAC.
+La sua identità algebrica e la parità ridotta non sono un lemma Lean
+generale o una validazione D34/CUDA/Seed6. L'istogramma privato è raccolto
+nel commitment originale, prima delle correlazioni, e autenticato con le
+righe fresche del range. Errori di scan/callback non producono una prova
+alternativa e restano terminali per il runner.
 
 I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
 dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo

@@ -515,6 +515,7 @@ impl<'a> Prover<'a> {
             let getter = snapshot.clone();
             let scanner = snapshot.clone();
             let windows = snapshot.clone();
+            let range_windows = snapshot.clone();
             let coins = fresh_pcs_coins()?;
             let current = b12::replay::ReplayModel::new_scanned(
                 Domain::Flat(34),
@@ -529,7 +530,10 @@ impl<'a> Prover<'a> {
                 Arc::new(move |first, output| windows.window(first, output)),
                 p.bytes().live,
             )?
-            .retain_first_fold();
+            .retain_first_fold()
+            .with_range_reader(Arc::new(move |suffix, bottom, first, out| {
+                range_windows.range_window(first, out, suffix, bottom)
+            }))?;
             phase.finish();
             let mut response = Response {
                 root: current.root().clone(),

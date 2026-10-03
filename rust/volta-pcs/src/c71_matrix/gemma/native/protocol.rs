@@ -324,6 +324,21 @@ impl SourceModel<'_> {
     ) -> Result<(range::Proof, [Vec<Cube>; 2], [Auth; 2]), String> {
         match self {
             Self::Dense(m) => range::prove(m, attempt, layout, live, alphabet, fs, rows),
+            Self::Replay(m)
+                if matches!(alphabet, range::Alphabet::Byte) && m.range_bytes.is_some() =>
+            {
+                let (proof, forms, targets, _) = range::windowed::prove(
+                    m.domain(),
+                    m.root(),
+                    attempt,
+                    layout,
+                    live,
+                    m.range_bytes.as_ref().unwrap(),
+                    fs,
+                    rows,
+                )?;
+                Ok((proof, forms, targets))
+            }
             Self::Replay(m) => range::prove_sourcewise(
                 m.domain(),
                 m.root(),

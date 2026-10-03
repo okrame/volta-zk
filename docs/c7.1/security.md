@@ -610,6 +610,17 @@ non un input fornito dal certificato. I kernel non vedono transcript o
 correlazioni. Questi controlli non provano la concorrenza CUDA, la correttezza
 delle riduzioni CAS reali o l'esecuzione GPU: restano obblighi da verificare.
 
+Il kernel denso i16 conserva la somma di prodotti interi mediante split
+signed a due byte, quattro prodotti INT8 e correzioni affini esatte;
+il cap K limita tutti i prefissi degli accumulatori int32. Non introduce
+cast float, saturazione, nuovi MAC o un RNE diverso. Il modello host
+verifica split, frammenti, somme lane e padding contro dot product i128.
+Non prova l'esecuzione PTX o lo schedule concorrente. Il collegamento del
+flag di overflow al lifecycle terminale del preparatore è ancora aperto;
+nessun output del componente da solo costituisce una prova accettabile.
+Il raffinamento di questa implementazione al prodotto intero del §4 non
+è un nuovo lemma Lean acquisito.
+
 I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
 dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo
 Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.

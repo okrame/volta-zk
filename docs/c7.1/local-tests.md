@@ -212,6 +212,14 @@ conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
 
+Il test [test_c71_dense_i16.py](../../tests/test_c71_dense_i16.py), separato
+entro 60 s/2 GiB, compila con UBSan il modello host del kernel i16.
+Verifica 65.535 split, 40 matrici contro dot i128, mapping univoco dei
+frammenti, somme dei lane, bordi/padding, marcatore −32768 e guardie dei
+buffer. K massimo eseguito è 21.504 su una matrice 1x1, non una proiezione
+canonica. La compilazione sm_90 di `cuda/c71_dense_i16.cu` non esegue GPU,
+non verifica l'owner mancante e non misura GEMM o inference complete.
+
 Il test [test_c71_range_native.py](../../tests/test_c71_range_native.py),
 eseguito separatamente con il limite 60 s/2 GiB sopra, compila un controllo
 host di 37 casi per root signed/byte, coefficienti cubici, Gram e fold.

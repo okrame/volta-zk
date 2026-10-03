@@ -568,6 +568,25 @@ Nel commitment A il coset è 2^22, con 512 ricostruzioni; lo slot reader
 del riuso. S2 è 2^22 e i successori al più 2^23. La capacità S1 resta
 riservata fino all'ultimo consumer: `truncate` non la libera.
 
+Il [kernel denso i16](../../cuda/c71_dense_i16.cu) implementa il prodotto
+intero selezionato nel [preflight storico](../c7.1-history/preflight.md):
+`x=256*h+l+128`, quattro dot INT8 signed e correzione mediante le somme
+originali delle righe. X e W restano row-major `[M,K]` e `[N,K]`, senza
+trasporre o espandere globalmente W. Ogni warp usa MMA densa m16n8k32,
+quattro warp per CTA e output 16x32; i frammenti seguono le
+[coordinate PTX NVIDIA](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-16832).
+K≤21.504, M≤150 e N≤262.144; ogni accumulatore INT8 ha modulo al più
+352.321.536, senza saturazione. La ricomposizione i64 usa anche il padding
+K a multipli di 32, che deve annullarsi esattamente per originali zero.
+Il risultato raw precede lo stesso RNE, che non è fuso o sostituito qui.
+Il launcher verifica shape, capacità dichiarate, allineamento e alias
+scrivibili; consente alias fra input di sola lettura. Il marcatore −32768
+imposta un errore device sticky. L'owner deve inizializzarlo e, dopo fence,
+verificarlo prima di usare qualsiasi output. Il launcher non alloca,
+non sincronizza e non abilita un fallback. Owner di W residente, batching
+dei producer, collegamento Rust e conto simultaneo restano da implementare.
+Il modello host dei frammenti non è esecuzione o verifica concorrente CUDA.
+
 RMS usa P/Y originali e S48 condiviso per riga, con checkpoint da
 2.023.511.878 B comprensivo dei descrittori. GKR ricostruisce gli
 assegnamenti Booleani; l'endpoint byte usa LUT pubbliche anziché alberi

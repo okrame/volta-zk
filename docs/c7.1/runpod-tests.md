@@ -93,6 +93,11 @@ attraverso l'ABI usa algebra host simulata, non i kernel GPU. Integrazione
 del runner complessivo, altri consumer CUDA e contabilità simultanea restano
 lavoro locale; la verifica GPU richiede l'esperimento autorizzato.
 Questi controlli non abilitano il runner GPU o un pod.
+Il kernel denso i16 a quattro MMA INT8 è ora disponibile come componente
+compilabile, con modello host di split/frammenti e correzioni. W residente,
+owner/fence del flag, batching nel preparatore e misure complete restano
+da collegare; il vecchio GEMM CUDA scalare non viene presentato come
+questa implementazione o come una misura H100.
 
 Prima di usare credenziali locali eseguire
 `scripts/runpod_harness.sh local-secret-preflight`. Un eventuale `.env`

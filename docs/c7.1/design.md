@@ -153,6 +153,12 @@ CUDA. Il runner GPU completo e la verifica sui kernel reali restano aperti.
 La riduzione H con CAS, Eq per indice
 e lo stack locale del kernel coefficienti richiedono contabilità e misura;
 non ereditano il tempo o i conteggi dello screen storico.
+Per i producer matriciali esiste ora un kernel i16 a quattro MMA INT8,
+con correzioni affini e ricomposizione i64, sul W packed originale.
+Compilazione sm_90 e modello host dei frammenti verificano soltanto il
+componente: non è collegato al preparatore o al ledger residente e non
+ha una misura GPU. Il raffinamento PTX/CUDA all'intero signed-48 resta
+un obbligo aperto, non scaricato dai lemmi Lean o dai casi finiti host.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,
 sui kernel densi, sul percorso CUDA e sulla contabilità fisica simultanea.
 I percorsi PCS grandi non sono ancora eseguiti o misurati. Questi non sono

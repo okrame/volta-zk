@@ -96,12 +96,18 @@ setup sono addebitati alla prima risposta. Questi strumenti non sono una
 misura canonica acquisita né un conto completo di CPU/HBM. Il
 [checkpoint della strumentazione](../c7.1-history/canonical-runner-measurements.md)
 ne espone copertura e limiti, inclusa la separazione ancora aperta dei costi
-di inferenza e preparazione. Rimangono lavoro locale sul
-percorso GPU, sulla ricostruzione in 512 passaggi e sulla contabilità
-fisica simultanea; non sono blocchi risolvibili soltanto procurandosi H100.
-Il commitment iniziale raggiunge ancora il limite di geometria del replay
-ridotto, descritto nelle [specifiche PCS](specs.md#pcs-e-ricostruzione-dei-valori):
-il riferimento CPU non può oggi completare neppure l'installazione W/D35.
+di inferenza e preparazione. Il commitment iniziale A collega ora una
+scansione causale completa per coset: geometria 2^22, quindi 512
+ricostruzioni, senza callback scalare per ogni byte durante il commitment.
+La geometria iniziale W usa gli stessi coset e 1.024 passaggi. La parità
+è controllata soltanto su domini piccoli; nessuna esecuzione D34/D35.
+Il [checkpoint del collegamento](../c7.1-history/canonical-initial-scan.md)
+documenta la sostituzione del precedente cap 2^18 e le copie eliminate.
+Rimangono lavoro locale sulle query/range e sugli stadi PCS successivi
+(lo stato sourcewise rifiuta ancora dimensioni oltre D16), sui kernel
+densi, sul percorso CUDA e sulla contabilità fisica simultanea. Non sono
+blocchi risolvibili soltanto procurandosi H100, né il collegamento CPU
+costituisce il getter GPU completo entro i limiti dichiarati.
 I dettagli e i limiti del riferimento sono nelle
 [specifiche](specs.md#preparazione-e-prova-a-memoria-limitata). Il
 [checkpoint di implementazione](../c7.1-history/canonical-reference-implementation.md)

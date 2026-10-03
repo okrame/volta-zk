@@ -513,8 +513,9 @@ impl<'a> Prover<'a> {
             let preparation_ns = phase.finish();
             let phase = measurements.phase("prover", Some(slot), "commitment_a");
             let getter = snapshot.clone();
+            let scanner = snapshot.clone();
             let coins = fresh_pcs_coins()?;
-            let current = b12::replay::ReplayModel::new(
+            let current = b12::replay::ReplayModel::new_scanned(
                 Domain::Flat(34),
                 coins.seed,
                 coins.salt_seed,
@@ -523,6 +524,7 @@ impl<'a> Prover<'a> {
                         getter.byte_at(i).expect("immutable canonical A"),
                     )))
                 }),
+                Arc::new(move |emit| scanner.scan_original(emit)),
                 p.bytes().live,
             )?
             .retain_first_fold();

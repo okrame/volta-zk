@@ -23,6 +23,7 @@ pub(in crate::c71_matrix) struct Bytes {
     pub scalar: Auxiliary,
     tiles: Vec<ByteTile>,
     by_scalar: Vec<Vec<usize>>,
+    by_source: Vec<Vec<usize>>,
     pub(super) widths: Vec<usize>,
     packed_offsets: Vec<usize>,
     pub live: usize,
@@ -83,7 +84,7 @@ impl Bytes {
         id: usize,
         row: usize,
         words: &[i64],
-        mut emit: impl FnMut(usize, u8),
+        mut emit: impl FnMut(usize, u8) -> Result<(), String>,
     ) -> Result<(), String> {
         let s = self.scalar.layout.sources.get(id).ok_or("unknown byte source")?;
         let width = self.widths[id];
@@ -92,8 +93,9 @@ impl Bytes {
         {
             return Err("byte row shape or range differs".into());
         }
-        for (index, t) in self.scalar.layout.tiles.iter().enumerate() {
-            if t.tensor != id || row < t.row || row >= t.row + t.rows {
+        for &index in &self.by_source[id] {
+            let t = &self.scalar.layout.tiles[index];
+            if row < t.row || row >= t.row + t.rows {
                 continue;
             }
             for &b in &self.by_scalar[index] {
@@ -103,7 +105,7 @@ impl Bytes {
                         let byte = b.first + j;
                         let value = (words[t.col + c] as u64 >> (8 * byte)) as u8
                             ^ if byte + 1 == width { 128 } else { 0 };
-                        emit(b.offset + ((row - t.row) * t.cols + c) * b.width + j, value);
+                        emit(b.offset + ((row - t.row) * t.cols + c) * b.width + j, value)?;
                     }
                 }
             }
@@ -172,6 +174,10 @@ impl Bytes {
         });
         let mut offset = 0;
         let mut by_scalar = vec![Vec::new(); scalar.layout.tiles.len()];
+        let mut by_source = vec![Vec::new(); scalar.layout.sources.len()];
+        for (index, tile) in scalar.layout.tiles.iter().enumerate() {
+            by_source[tile.tensor].push(index);
+        }
         for (i, tile) in tiles.iter_mut().enumerate() {
             let original = &scalar.layout.tiles[tile.scalar];
             let size = original.rows * original.cols * tile.width;
@@ -197,6 +203,7 @@ impl Bytes {
             scalar,
             tiles,
             by_scalar,
+            by_source,
             widths,
             packed_offsets,
             live,
@@ -997,6 +1004,41 @@ mod tests {
             scalar_values.push(values);
         }
         assert_eq!(packed.len(), bytes.live);
+        let mut scattered = vec![None; bytes.live];
+        for (id, source) in bytes.scalar.layout.sources.iter().enumerate() {
+            for row in 0..source.rows {
+                bytes
+                    .emit_row_bytes(
+                        id,
+                        row,
+                        &scalar_values[id][row * source.cols..(row + 1) * source.cols],
+                        |index, value| {
+                            assert!(
+                                scattered[index].replace(value).is_none(),
+                                "byte emitted twice"
+                            );
+                            let (address, xor) = bytes.virtual_to_packed(index)?.unwrap();
+                            assert_eq!(value, packed[address] ^ xor);
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+            }
+        }
+        assert!(scattered.iter().all(Option::is_some));
+        let mut calls = 0;
+        assert!(bytes
+            .emit_row_bytes(
+                0,
+                0,
+                &scalar_values[0][..bytes.scalar.layout.sources[0].cols],
+                |_, _| {
+                    calls += 1;
+                    Err("consumer stopped".into())
+                }
+            )
+            .is_err());
+        assert_eq!(calls, 1, "consumer errors must stop before the next byte");
         let mut virtual_bytes = vec![0; 1024];
         let mut addresses = Vec::new();
         for (i, value) in virtual_bytes.iter_mut().enumerate().take(bytes.live) {

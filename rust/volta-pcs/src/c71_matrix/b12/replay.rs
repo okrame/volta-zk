@@ -18,6 +18,14 @@ use p3_whir_c61::pcs::{
 };
 use rand_010::RngExt;
 use std::sync::{Arc, Mutex};
+
+/// Trusted immutable source: emit each live coefficient exactly once, in any
+/// order, with the same value as the original getter. No PCS coins are exposed.
+pub(in crate::c71_matrix) type BaseScan = Arc<
+    dyn Fn(&mut dyn FnMut(usize, Goldilocks) -> Result<(), String>) -> Result<(), String>
+        + Send
+        + Sync,
+>;
 fn limbs(x: &E) -> &[Goldilocks] {
     <E as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(x)
 }
@@ -46,6 +54,7 @@ impl Pads {
 }
 struct Code {
     get: Getter,
+    scan: Option<BaseScan>,
     len: usize,
     live: usize,
     width: usize,
@@ -220,12 +229,94 @@ impl Code {
             self.pads.get(b * pad + j - n)
         }
     }
-    fn coset(&self, c: usize, rows: usize) -> Result<Vec<u64>, String> {
+    fn coset(
+        &self,
+        c: usize,
+        rows: usize,
+        dft: &Radix2DFTSmallBatch<Goldilocks>,
+    ) -> Result<Vec<u64>, String> {
         if self.base() {
-            self.coset_typed(c, rows, base_coefficient)
+            self.coset_base(c, rows, dft)
         } else {
             self.coset_typed(c, rows, std::convert::identity)
         }
+    }
+
+    /// One original-source scan per coset, independent of producer emission
+    /// order. There is one coset buffer, one reusable FFT column and P3's two
+    /// twiddle tables; never a second full coset or a dense original source.
+    fn coset_base(
+        &self,
+        coset: usize,
+        rows: usize,
+        dft: &Radix2DFTSmallBatch<Goldilocks>,
+    ) -> Result<Vec<u64>, String> {
+        if !rows.is_power_of_two() || rows > self.height || coset >= self.height / rows {
+            return Err("base coset geometry differs".into());
+        }
+        let Pads::Base(pads) = &self.pads else {
+            return Err("base coset requires base pads".into());
+        };
+        let n = self.len / self.width;
+        let pad = pads.len() / self.width;
+        let offset =
+            Goldilocks::two_adic_generator(self.height.ilog2() as usize).exp_u64(coset as u64);
+        // Factor powers into two small tables, including the original pad
+        // positions n..n+pad. A shuffled producer must not advance one global
+        // power cursor or shift pads next to the live (unpadded) prefix.
+        let bits = (n + pad).next_power_of_two().ilog2() as usize;
+        let low_bits = bits / 2;
+        let low: Vec<_> = offset.powers().take(1 << low_bits).collect();
+        let high: Vec<_> =
+            offset.exp_u64(1 << low_bits).powers().take(1 << (bits - low_bits)).collect();
+        let power = |i: usize| low[i & (low.len() - 1)] * high[i >> low_bits];
+        let mut cells = vec![0; rows * self.width.max(4)];
+        let mut count = 0usize;
+        let mut emit = |index: usize, value: Goldilocks| -> Result<(), String> {
+            if index >= self.live {
+                return Err("base scan emitted outside live original source".into());
+            }
+            count = count.checked_add(1).ok_or("base scan count overflow")?;
+            if count > self.live {
+                return Err("base scan emitted too many coefficients".into());
+            }
+            let (column, j) = (index / n, index % n);
+            let target = &mut cells[column * rows + j % rows];
+            *target = (Goldilocks::new(*target) + value * power(j)).as_canonical_u64();
+            Ok(())
+        };
+        if let Some(scan) = &self.scan {
+            scan(&mut emit)?;
+        } else {
+            for index in 0..self.live {
+                emit(index, base_coefficient((self.get)(index)))?;
+            }
+        }
+        if count != self.live {
+            return Err("base scan omitted original coefficients".into());
+        }
+        for column in 0..self.width {
+            for j in 0..pad {
+                let index = n + j;
+                let target = &mut cells[column * rows + index % rows];
+                *target = (Goldilocks::new(*target) + pads[column * pad + j] * power(index))
+                    .as_canonical_u64();
+            }
+        }
+        drop((low, high));
+        let mut column = vec![Goldilocks::ZERO; rows];
+        for values in cells.chunks_exact_mut(rows).take(self.width) {
+            for (out, &value) in column.iter_mut().zip(values.iter()) {
+                *out = Goldilocks::new(value);
+            }
+            // dft_batch owns and transforms this one column in place; avoid
+            // to_row_major_matrix(), which would copy an already-owned matrix.
+            column = dft.dft_batch(DenseMatrix::new_col(column)).values;
+            for (out, value) in values.iter_mut().zip(&column) {
+                *out = value.as_canonical_u64();
+            }
+        }
+        Ok(cells)
     }
     fn coset_typed<Coefficient: p3_field::ExtensionField<Goldilocks>>(
         &self,
@@ -274,7 +365,7 @@ impl Code {
         indices: &[usize],
         convert: impl Fn(E) -> Coefficient,
     ) -> Result<Vec<Vec<Goldilocks>>, String> {
-        if indices.len() > replay_tree::MAX_REFERENCE_ROWS
+        if indices.len() > replay_tree::query_batch_rows(self.height)
             || indices.iter().any(|&index| index >= self.height)
         {
             return Err("code query outside domain or reference batch cap".into());
@@ -384,14 +475,16 @@ impl Code {
         let base = self.base();
         let code = Arc::new(self);
         let rowcode = code.clone();
-        let rows = 256.min(code.height);
+        let (rows, cut) = replay_tree::initial_geometry(code.height, code.columns())?;
+        // Both P3 twiddle tables remain allocated across all cosets.
+        let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
         let (root, tree) = Tree::commit(
             mmcs,
             code.height,
             code.columns(),
             rows,
-            (code.height / rows).max(16),
-            |c| code.coset(c, rows),
+            cut,
+            |c| code.coset(c, rows, &dft),
             Arc::new(move |indices| rowcode.rows(indices)),
         )?;
         let lease = state.map(State::replay_lease).transpose()?.flatten();
@@ -421,6 +514,28 @@ impl ReplayModel {
         source: Getter,
         live: usize,
     ) -> Result<Self, String> {
+        Self::new_source(domain, seed, salt_seed, source, None, live)
+    }
+
+    pub(in crate::c71_matrix) fn new_scanned(
+        domain: Domain,
+        seed: [u8; 32],
+        salt_seed: [u8; 32],
+        source: Getter,
+        scan: BaseScan,
+        live: usize,
+    ) -> Result<Self, String> {
+        Self::new_source(domain, seed, salt_seed, source, Some(scan), live)
+    }
+
+    fn new_source(
+        domain: Domain,
+        seed: [u8; 32],
+        salt_seed: [u8; 32],
+        source: Getter,
+        scan: Option<BaseScan>,
+        live: usize,
+    ) -> Result<Self, String> {
         let config = domain.config()?;
         let len = 1usize << config.num_variables;
         if live > len {
@@ -443,6 +558,7 @@ impl ReplayModel {
         let _extension = mmcs.clone();
         let (root, handle) = Code {
             get: source.clone(),
+            scan,
             len,
             live,
             width: 1 << first,
@@ -680,6 +796,7 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
         let get = state.getter();
         Code {
             get,
+            scan: None,
             len: 1 << state.num_variables(),
             live: 1 << state.num_variables(),
             width: 1 << folding,
@@ -925,6 +1042,113 @@ mod tests {
     use super::*;
 
     #[test]
+    fn c71_b12_scattered_initial_512_passes_matches_native_root_and_openings() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let dimension = 14;
+        let config = config(dimension).unwrap();
+        let live = (1 << dimension) - 13;
+        let original = move |i: usize| Goldilocks::new(((i * 19 + i / 17) % 251) as u64);
+        let scans = Arc::new(AtomicUsize::new(0));
+        let visits = Arc::new(AtomicUsize::new(0));
+        let gets = Arc::new(AtomicUsize::new(0));
+        let (s, v, g) = (scans.clone(), visits.clone(), gets.clone());
+        let source: Getter = Arc::new(move |i| {
+            g.fetch_add(1, Ordering::Relaxed);
+            assert!(i < live);
+            E::from(original(i))
+        });
+        let scan: BaseScan = Arc::new(move |emit| {
+            s.fetch_add(1, Ordering::Relaxed);
+            for i in (0..live).rev() {
+                emit(i, original(i))?;
+                v.fetch_add(1, Ordering::Relaxed);
+            }
+            Ok(())
+        });
+        let model = ReplayModel::new_scanned(
+            Domain::Flat(dimension),
+            [91; 32],
+            [73; 32],
+            source,
+            scan,
+            live,
+        )
+        .unwrap();
+        assert_eq!(scans.load(Ordering::Relaxed), 512);
+        assert_eq!(visits.load(Ordering::Relaxed), 512 * live);
+        assert_eq!(
+            gets.load(Ordering::Relaxed),
+            0,
+            "commit must use one scan, not scalar regeneration"
+        );
+        let dft = Radix2DFTSmallBatch::default();
+        let mut fs = Fs::new(b"independent dense commitment", request_limit(&config));
+        let native = ObservedMmcs::new(fs.clone(), [73; 32]);
+        let prover = HidingWhirProver::new(&config, &dft, &native);
+        let values = (0..1 << dimension)
+            .map(|i| if i < live { original(i) } else { Goldilocks::ZERO })
+            .collect();
+        let (expected, _) =
+            prover.commit(Poly::new(values), &mut fs, &mut PrivateRng::from_seed([91; 32]));
+        assert_eq!(&expected, model.root());
+        let indices = [131071, 0, 11, 0];
+        let (rows, proof) = model.tree.open(&indices).unwrap();
+        native
+            .inner
+            .verify_multi_batch(
+                model.root(),
+                &[p3_matrix::Dimensions { width: 2, height: 1 << 17 }],
+                &indices,
+                &rows,
+                &proof,
+            )
+            .unwrap();
+        assert_eq!(rows[1], rows[3]);
+        assert_eq!(scans.load(Ordering::Relaxed), 512, "openings must not recommit the source");
+    }
+
+    #[test]
+    fn c71_b12_scattered_coset_original_pad_positions_and_failures() {
+        let dft = Radix2DFTSmallBatch::default();
+        let live = 117;
+        let mut code = Code {
+            get: Arc::new(|i| E::from(Goldilocks::new((i * 7 + 9) as u64))),
+            scan: Some(Arc::new(move |emit| {
+                // Deliberately nonmonotone: causal order is not flat order.
+                for parity in [1, 0] {
+                    for i in (parity..live).step_by(2) {
+                        emit(i, Goldilocks::new((i * 7 + 9) as u64))?;
+                    }
+                }
+                Ok(())
+            })),
+            len: 128,
+            live,
+            width: 2,
+            height: 1024,
+            pads: Pads::Base((0..14).map(|i| Goldilocks::new((1000 + i) as u64)).collect()),
+        };
+        for rows in [16, 32, 64, 128] {
+            for c in [0, 1, 1024 / rows - 1] {
+                assert_eq!(
+                    code.coset_base(c, rows, &dft).unwrap(),
+                    code.coset_typed(c, rows, base_coefficient).unwrap()
+                );
+            }
+        }
+        for fault in 0..3 {
+            code.scan = Some(Arc::new(move |emit| match fault {
+                0 => Ok(()),
+                1 => emit(live, Goldilocks::ZERO),
+                _ => Err("source reconstruction failed".into()),
+            }));
+            assert!(code.coset_base(0, 16, &dft).is_err());
+        }
+        assert!(code.coset_base(64, 16, &dft).is_err());
+        assert!(code.coset_base(0, 15, &dft).is_err());
+    }
+
+    #[test]
     fn c71_b12_retained_initial_oracle_shares_cache_without_source_recommit() {
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -1034,6 +1258,7 @@ mod tests {
             };
             let pads: Vec<_> = (0..6).map(|index| -original(index + 131)).collect();
             let code = Code {
+                scan: None,
                 get: Arc::new(move |index| {
                     counter.fetch_add(1, Ordering::Relaxed);
                     original(index)
@@ -1092,6 +1317,7 @@ mod tests {
         use std::panic::{catch_unwind, AssertUnwindSafe};
 
         let code = Code {
+            scan: None,
             get: Arc::new(|_| E::new([Goldilocks::ONE, Goldilocks::ONE, Goldilocks::ZERO])),
             len: 8,
             live: 8,
@@ -1099,7 +1325,12 @@ mod tests {
             height: 64,
             pads: Pads::Base(vec![Goldilocks::ONE; 2].into()),
         };
-        assert!(catch_unwind(AssertUnwindSafe(|| code.coset(0, 8))).is_err());
+        assert!(catch_unwind(AssertUnwindSafe(|| code.coset(
+            0,
+            8,
+            &Radix2DFTSmallBatch::default()
+        )))
+        .is_err());
         assert!(catch_unwind(AssertUnwindSafe(|| code.rows(&[1, 2]))).is_err());
         assert_eq!(std::mem::size_of::<Goldilocks>(), 8);
         assert_eq!(std::mem::size_of::<E>(), 24);
@@ -1128,6 +1359,7 @@ mod tests {
                     let reads = Arc::new(AtomicUsize::new(0));
                     let counter = reads.clone();
                     let code = Code {
+                        scan: None,
                         get: Arc::new(move |index| {
                             assert!(index < live, "public zero tail must not read the source");
                             counter.fetch_add(1, Ordering::Relaxed);
@@ -1203,6 +1435,7 @@ mod tests {
             };
             let pads: Vec<_> = (0..6).map(|index| -original(index + 131)).collect();
             let code = Code {
+                scan: None,
                 get: Arc::new(original),
                 len: 128,
                 live: 128,

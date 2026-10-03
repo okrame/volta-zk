@@ -1,6 +1,7 @@
 //! Canonical numerical snapshots and source-ordered byte reconstruction.
 //! No dense A, correlations, transcript or PCS coins in preparation. This CPU
-//! reference does not implement/admit the accelerator's 512-reconstruction plan.
+//! reference supplies one complete source scan per initial commit coset.
+//! Exact CUDA execution and physical resource admission remain separate.
 use super::*;
 use std::sync::{Arc, Mutex};
 
@@ -378,9 +379,58 @@ impl Prepared {
                     if index >= first && index - first < output.len() {
                         output[index - first] = byte;
                     }
+                    Ok(())
                 })
             })
         })
+    }
+
+    /// Reconstruct every original source once for one PCS coset. The row
+    /// bitmap checks coverage without an A-sized byte bitmap; the fixed tile
+    /// map emits every byte of a covered row exactly once. Public flat padding
+    /// is omitted and supplied as zero by the PCS, never as biased signed zero.
+    pub(super) fn scan_original(
+        &self,
+        emit: &mut dyn FnMut(usize, Goldilocks) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let targets = (0..self.profile.bytes().widths.len()).collect();
+        self.scan_sources(&targets, emit)
+    }
+
+    fn scan_sources(
+        &self,
+        targets: &BTreeSet<usize>,
+        emit: &mut dyn FnMut(usize, Goldilocks) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let b = self.profile.bytes();
+        let mut seen: BTreeMap<usize, Vec<u64>> = targets
+            .iter()
+            .map(|&id| {
+                let source = b.scalar.layout.sources.get(id).ok_or("unknown scanned source")?;
+                Ok((id, vec![0; source.rows.div_ceil(64)]))
+            })
+            .collect::<Result<_, String>>()?;
+        self.with_generation(|generation| {
+            self.scan(generation, targets, |id, row, words| {
+                let source = b.scalar.layout.sources.get(id).ok_or("unknown emitted source")?;
+                let bits = seen.get_mut(&id).ok_or("unexpected emitted source")?;
+                if row >= source.rows || bits[row / 64] & (1u64 << (row % 64)) != 0 {
+                    return Err("duplicate or out-of-range scanned row".into());
+                }
+                bits[row / 64] |= 1 << (row % 64);
+                b.emit_row_bytes(id, row, words, |index, value| {
+                    emit(index, Goldilocks::from_u64(u64::from(value)))
+                })
+            })
+        })?;
+        for (&id, bits) in &seen {
+            if bits.iter().map(|v| v.count_ones() as usize).sum::<usize>()
+                != b.scalar.layout.sources[id].rows
+            {
+                return Err("incomplete original source scan".into());
+            }
+        }
+        Ok(())
     }
 
     pub(super) fn value(&self, id: usize, row: usize, col: usize) -> Result<i64, String> {
@@ -541,10 +591,41 @@ mod tests {
                 })
             })
             .unwrap();
-        for id in targets {
+        for &id in &targets {
             let shape = &reader.profile.bytes().scalar.layout.sources[id];
             assert_eq!(words[&id], shape.rows * shape.cols);
         }
+        // Include the frozen checkpoint, all synthesized internal padding and
+        // the frozen histogram in the exact same byte-emission path as PCS.
+        let mut scan_targets = targets.clone();
+        scan_targets.insert(score);
+        let b = reader.profile.bytes();
+        let expected: usize = scan_targets
+            .iter()
+            .map(|&id| {
+                let shape = &b.scalar.layout.sources[id];
+                shape.rows * shape.cols * b.widths[id]
+            })
+            .sum();
+        let mut emitted = 0;
+        reader
+            .scan_sources(&scan_targets, &mut |index, value| {
+                assert!(index < b.live);
+                assert!(value.as_canonical_u64() <= 255);
+                emitted += 1;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(emitted, expected);
+        let mut calls = 0;
+        assert_eq!(
+            reader.scan_sources(&scan_targets, &mut |_, _| {
+                calls += 1;
+                Err("stop consumer".into())
+            }),
+            Err("stop consumer".into())
+        );
+        assert_eq!(calls, 1);
         assert_eq!(reader.value(difference, 255, 0).unwrap(), -32767);
         assert_eq!(reader.byte(difference, 255, 0, 0).unwrap(), 1);
         assert_eq!(reader.byte(difference, 255, 0, 1).unwrap(), 0);
@@ -559,6 +640,7 @@ mod tests {
             .bytes()
             .emit_row_bytes(difference, 0, &[-32767; 150], |i, _| {
                 first = first.min(i);
+                Ok(())
             })
             .unwrap();
         let mut window = [0; 8];

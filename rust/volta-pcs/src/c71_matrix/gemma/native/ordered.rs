@@ -463,6 +463,7 @@ impl Frozen {
                         output[index - first] = value;
                         writes += 1;
                     }
+                    Ok(())
                 })
             })?;
         work.emitted_bytes = writes;

@@ -304,19 +304,29 @@ non ricostruisce il commitment iniziale. Le sue monete successive e i MAC
 sono freschi. W numerica e getter PCS condividono un solo packed immutabile.
 
 L'[albero Merkle](../../rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs)
-raggruppa sottoalberi in batch di al più 1.024 righe distinte. Le stesse
-righe alimentano hash e aperture, ripristinando ordine e duplicati.
-Più batch implicano più scansioni della sorgente; il limite nativo 1.024
-non equivale al cap canonico pianificato di 2^21.
-Inoltre `Code::commit` usa ancora coset da 256 righe e `Tree::commit`
-rifiuta altezze maggiori di 2^18. I profili iniziali richiedono 2^32
-righe per W/D35 e 2^31 per A/D34: il runner corrente fallirebbe già al
-commitment W dopo il caricamento. È una incompatibilità locale accertata
-per ispezione del codice, non un timeout o un limite hardware. Il percorso
-di commitment canonico va implementato; alzare il solo cap non realizza
-lo schedule scelto. Il
-[record della strumentazione](../../benchmarks/results/c71-runner-measurements-local-2026-10-03-187a0b9dc9ce.json)
-conserva anche questo riscontro statico senza esecuzione D34/D35.
+conserva la geometria ridotta fino ad altezza 2^18. Per le sole colonne
+iniziali W/A ammette ora altezze 2^32/2^31, 128 colonne base, coset 2^22
+e taglio Merkle 2^12: rispettivamente 1.024/512 passaggi. Geometrie grandi
+diverse, inclusi i coset A che causerebbero 1.024 ricostruzioni, falliscono
+prima dell'allocazione o del consumo dei sali. Questo sostituisce il
+precedente rifiuto iniziale registrato nel
+[checkpoint della strumentazione](../../benchmarks/results/c71-runner-measurements-local-2026-10-03-187a0b9dc9ce.json).
+I sottoalberi delle query sono raggruppati fino a 1.024 righe nel riferimento
+piccolo e 2^21 nel percorso iniziale canonico; le query pubbliche restano
+al più 1.024. Le stesse righe alimentano hash e aperture, ripristinando
+ordine e duplicati. Il limite grande è collegato ma non eseguito: resti,
+strutture intermedie e rigenerazione delle query CPU non costituiscono
+ancora la pipeline canonica a workspace limitato.
+
+Il coset base accumula `(indice originale, valore)` in un unico buffer
+column-major, indipendentemente dall'ordine causale dei produttori.
+Potenze fattorizzate in due tabelle piccole mantengono i pad alle posizioni
+originali, oltre la lunghezza completa della colonna, non oltre il solo
+prefisso vivo. Una colonna FFT viene riusata senza copia di un'intera
+matrice; entrambi i twiddle P3 rimangono allocati fra coset. Lo scanner A
+non riceve monete PCS, sfide o correlazioni. Il getter scalare resta per
+W packed e per i consumer non ancora convertiti. Le regressioni e i limiti
+sono nel [checkpoint](../c7.1-history/canonical-initial-scan.md).
 
 Per il prodotto Z dei punti richiesti, i coefficienti sorgente vengono
 ridotti a blocchi modulo Z. Prodotti FFT bilanciati costruiscono Z;
@@ -337,7 +347,10 @@ confine Rust/C++ sono parte del contratto.
 Il [residuale](../../rust/volta-pcs/src/c71_matrix/b12/sourcewise.rs)
 fattorizza Eq e genera i pesi Pow tramite P/Q e FFT, in blocchi nativi
 al più 256. Gestisce punti zero/uno e scale zero. La preparazione P/Q
-non è ancora trattenuta fra tutte le sfide adattive canoniche.
+non è ancora trattenuta fra tutte le sfide adattive canoniche. `State::new`
+rifiuta punti con più di 16 coordinate; il replay grande degli oracoli
+extension S1/S2 non è implementato. Questi sono limiti software ancora
+aperti, non dipendenze hardware.
 Per A ordinata S1 rimane allocato; il predecessore viene interrogato e
 rilasciato prima di modificare lo stato successivo. W non seleziona S1.
 
@@ -357,9 +370,19 @@ layer. Una sola generazione è condivisa fra A corrente e precedenti; la
 ricostruzione deve riprodurre token, KV e digest dello snapshot. Il getter
 risolve le dipendenze, rilascia le righe dopo l'ultimo uso e distingue il
 padding interno dall'assenza di celle nel dominio PCS. Non materializza A
-completa. Il limite di preparazione controlla payload nominati, non il
-picco fisico complessivo. La finestra CPU da 128 byte e i replay per riga
-**non implementano** le 512 ricostruzioni del piano seguente.
+completa. `scan_original` emette ogni sorgente richiesta una volta per
+coset, con bitmap di copertura delle righe e indice delle tessere per
+sorgente; propaga subito gli errori del consumer. Padding interno biased,
+istogrammi, KV e checkpoint sono emessi dai loro owner immutabili; il
+suffisso esterno rimane zero pubblico. Il commitment A chiama questo
+scanner 512 volte secondo la geometria, non la finestra scalare da 128
+byte. La finestra e i replay per riga restano usati da altri consumer:
+non realizzano le finestre range/query del piano seguente.
+Il limite di preparazione controlla payload nominati, non il picco fisico
+complessivo. Coset, frontier/sali/cache Merkle, colonna FFT, due twiddle,
+potenze, bitmap, metadata, checkpoint e workspace numerico vanno contati
+simultaneamente con gli altri owner; il subtotal Merkle non li include
+tutti. Non è una misura GPU né una verifica delle shape complete.
 
 [ordered.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/ordered.rs)
 è il riferimento ridotto: scopre i token dai logits, valida i produttori,

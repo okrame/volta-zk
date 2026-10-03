@@ -531,6 +531,18 @@ transcript e MAC è un controllo necessario, non una prova generale Lean.
 Il [controllo locale a due tentativi con Seed6 reale](../../benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json)
 è scaduto durante il secondo tentativo e non scarica questo obbligo.
 
+Il [collegamento dello scanner iniziale](../c7.1-history/canonical-initial-scan.md)
+riordina soltanto l'accumulazione degli stessi coefficienti originali:
+non cambia polinomio, posizioni dei pad, sali o messaggi. Lo scanner non
+riceve monete PCS né correlazioni; il contratto interno richiede una sola
+emissione per coefficiente e valori identici al getter immutabile. La
+copertura delle righe canoniche e la partizione fissa delle tessere
+supportano questo contratto; il solo contatore di emissioni nel coset
+non prova l'unicità degli indici di uno scanner arbitrario. Root e aperture
+sono confrontati col commitment denso indipendente a monete fissate su
+dominio piccolo. Non è una prova per tutti i produttori canonici, del
+raffinamento CUDA o della composizione Seed6; non cambia i bound dichiarati.
+
 I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
 dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo
 Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.

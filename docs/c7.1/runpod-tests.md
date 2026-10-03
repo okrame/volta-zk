@@ -59,10 +59,13 @@ stderr conserva `C71_RUN_METRICS`; per timeout/kill restano necessari i log
 esterni. Preparazione e inferenza sono ancora fuse e CPU-time, picchi per
 ruolo, capacità trattenute e HBM restano da implementare/misurare. Un test
 del trasporto con tre corpi sintetici non conta come tre prove canoniche.
-Il commitment iniziale usa ancora il replay ridotto con cap di altezza
-2^18, incompatibile con W/D35 e A/D34. Il comando CPU si arresterebbe
-all'installazione W: questo adattamento software deve precedere qualunque
-tentativo completo, anche su hardware autorizzato.
+Il commitment iniziale ora seleziona coset 2^22 e lo scanner A a 512
+ricostruzioni, con parità soltanto ridotta; il vecchio cap iniziale 2^18
+non descrive più questo percorso. Restano il limite D16 dello stato
+sourcewise, gli oracoli extension grandi, query/range e kernel densi da
+adattare. Nessuna esecuzione W/D35 o A/D34 è acquisita. Il
+[checkpoint del collegamento](../c7.1-history/canonical-initial-scan.md)
+non ammette il comando CPU come campagna H100 né cambia le autorizzazioni.
 
 Prima di usare credenziali locali eseguire
 `scripts/runpod_harness.sh local-secret-preflight`. Un eventuale `.env`

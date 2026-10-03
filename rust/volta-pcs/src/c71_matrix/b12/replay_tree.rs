@@ -18,6 +18,31 @@ const LEAF: &[u8] = b"volta-zk/c71/b12/merkle/leaf/v1\0";
 const SALTS: usize = 4;
 const MAX_REFERENCE_HEIGHT: usize = 1 << 18;
 pub(super) const MAX_REFERENCE_ROWS: usize = 1024;
+pub(super) const CANONICAL_QUERY_ROWS: usize = 1 << 21;
+
+pub(super) fn query_batch_rows(height: usize) -> usize {
+    if height > MAX_REFERENCE_HEIGHT {
+        CANONICAL_QUERY_ROWS
+    } else {
+        MAX_REFERENCE_ROWS
+    }
+}
+
+/// Existing small reference geometry, or the selected initial W/A geometry.
+/// Later large extension oracles still require their separate S1/S2 schedule.
+pub(super) fn initial_geometry(height: usize, columns: usize) -> Result<(usize, usize), String> {
+    if height < 16 || !height.is_power_of_two() || columns == 0 {
+        return Err("initial replay geometry differs".into());
+    }
+    if height <= MAX_REFERENCE_HEIGHT {
+        let rows = 256.min(height);
+        return Ok((rows, (height / rows).max(16)));
+    }
+    if ![1usize << 31, 1usize << 32].contains(&height) || columns != 128 {
+        return Err("large replay requires the selected initial W/A geometry".into());
+    }
+    Ok((1 << 22, 1 << 12))
+}
 
 type Digest = [u8; 32];
 pub(super) type Commitment = MerkleCap<Goldilocks, Digest>;
@@ -39,6 +64,8 @@ pub(super) struct ReplayMemory {
     pub salt_offset_bytes: usize,
     pub rng_snapshot_bytes: usize,
     pub peak_coset_bytes: usize,
+    // Merkle-only subtotal, excluding the source/FFT callback, top cache and
+    // other live owners. This is not a complete simultaneous physical peak.
     pub peak_commit_scratch_bytes: usize,
     pub open_subtree_bytes_each: usize,
 }
@@ -69,7 +96,6 @@ impl Tree {
         row: Rows,
     ) -> Result<(Commitment, Self), String> {
         if height < 16
-            || height > MAX_REFERENCE_HEIGHT
             || !height.is_power_of_two()
             || coset_rows == 0
             || !coset_rows.is_power_of_two()
@@ -77,6 +103,11 @@ impl Tree {
             || base_columns == 0
         {
             return Err("replay tree geometry differs".into());
+        }
+        if height > MAX_REFERENCE_HEIGHT
+            && initial_geometry(height, base_columns)? != (coset_rows, cut)
+        {
+            return Err("canonical initial replay schedule differs".into());
         }
         let cosets = height / coset_rows;
         if !cosets.is_power_of_two() || !cut.is_power_of_two() || cut < cosets || cut > height {
@@ -169,7 +200,8 @@ impl Tree {
     }
 
     pub(super) fn open(&self, indices: &[usize]) -> Result<Opening, String> {
-        if self.cut > MAX_REFERENCE_ROWS
+        let batch_cap = query_batch_rows(self.height);
+        if self.cut > batch_cap
             || indices.len() > MAX_REFERENCE_ROWS
             || indices.iter().any(|&index| index >= self.height)
         {
@@ -184,7 +216,7 @@ impl Tree {
         let mut cursor = 0;
         let mut opened = vec![Vec::new(); indices.len()];
         let mut subtrees = BTreeMap::new();
-        for batch in needed.chunks(MAX_REFERENCE_ROWS / self.cut) {
+        for batch in needed.chunks(batch_cap / self.cut) {
             let batch_indices: Vec<_> = batch
                 .iter()
                 .flat_map(|&subtree| subtree * self.cut..(subtree + 1) * self.cut)
@@ -324,6 +356,34 @@ mod tests {
     use super::*;
     use crate::c71_matrix::b12::mmcs;
     use p3_matrix::dense::RowMajorMatrix;
+
+    #[test]
+    fn c71_b12_canonical_initial_geometry_selects_512_a_scans_without_allocation() {
+        for (height, passes) in [(1usize << 31, 512), (1usize << 32, 1024)] {
+            let (rows, cut) = initial_geometry(height, 128).unwrap();
+            assert_eq!(rows, 1 << 22);
+            assert_eq!(height / rows, passes);
+            assert_eq!(cut, 4096);
+            assert_eq!(rows * 128 * 8, 4 << 30);
+            assert_eq!(query_batch_rows(height), 1 << 21);
+            // The superseded A/1024 reconstruction shape is rejected before
+            // salt sampling, source calls or any large allocation.
+            assert!(Tree::commit(
+                &mmcs([1; 32]),
+                height,
+                128,
+                1 << 21,
+                cut,
+                |_| panic!("invalid schedule must not read the source"),
+                Arc::new(|_| panic!("invalid schedule must not open rows"))
+            )
+            .is_err());
+        }
+        assert_eq!(query_batch_rows(1 << 18), 1024);
+        assert!(initial_geometry(1 << 30, 12).is_err());
+        assert!(initial_geometry(1 << 33, 128).is_err());
+        assert!(initial_geometry(1 << 31, 384).is_err());
+    }
 
     #[test]
     fn replay_tree_matches_native_root_rows_salts_and_pruned_frontier() {

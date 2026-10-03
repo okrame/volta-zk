@@ -216,6 +216,15 @@ conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
 
+Il [record dell'adapter residente](../../benchmarks/results/c71-resident-adapter-local-2026-10-03-c8254c74b41e.json)
+conserva 15 test Rust e 12 Python sulla SHA pulita, build e lint
+`correctness`/`suspicious`. Collega Matrix/RNE all'owner nativo su un
+profilo ridotto, incluse viste di riga senza copie e 14 rifiuti terminali;
+il dispatcher canonico rifiuta operatori mancanti e W incompleta.
+La libreria sm_90 esporta abort e viste di riga; SASS invariato rispetto
+all'owner condiviso. Driver simulato, nessuna esecuzione GPU, nessuno
+scanner canonico interamente residente e nessun certificato canonico.
+
 Il [record del batching del preparatore](../../benchmarks/results/c71-producer-batch-local-2026-10-03-4e66ebb93705.json)
 conserva 11 test Rust e 9 Python sulla SHA pulita, build e lint
 `correctness`/`suspicious`. Esegue tre righe v_source sintetiche con

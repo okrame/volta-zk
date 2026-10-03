@@ -1,0 +1,195 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-03",
+  "git_sha": "c8254c74b41eb760f87423433a22348d134d188e",
+  "git_dirty": false,
+  "milestone": "Canonical Matrix/RNE adapter to the shared resident native owner with zero-copy input row views",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "weights_downloaded": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-producer-batch-local-2026-10-03-4e66ebb93705.json",
+  "changes": [
+    "Canonical MatrixBatch validation shared by CPU producer and native adapter",
+    "Opaque non-cloneable resident row blocks bind source, row interval, A layout and recipe digest; resident weights require the original Arc identity and layout",
+    "Matrix row views borrow original input allocation without copying it or dropping its capacity from accounting; raw signed-48 output stays resident through RNE",
+    "Explicit caller abort poisons both Rust and C owner, including metadata failures before a launch; unsupported canonical steps fail closed",
+    "ABI 2 statistics layout unchanged; loader additionally requires abort and row-view exports, rejecting an older library missing these symbols"
+  ],
+  "limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds_per_test_invocation": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "PYTHONDONTWRITEBYTECODE": 1
+  },
+  "build": {
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "working_directory": "rust",
+    "environment": {
+      "CARGO_TARGET_DIR": "/home/okrame/projects/volta-zk/rust/target",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_DEV_OPT_LEVEL": "2"
+    },
+    "exit_code": 0,
+    "clean_revision_cargo_seconds": 0.06,
+    "development_crate_build_seconds": 192,
+    "binary": "rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+    "provenance": "Same Rust sources built during development, no Rust edits before clean-revision cached confirmation",
+    "development_log": "benchmarks/raw/c71-resident-adapter-development-2026-10-03-5991c70/build.log",
+    "warnings": "25 volta-pcs lib-test warnings preserved",
+    "cache_retained_until_goal_end": true
+  },
+  "clippy": {
+    "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --tests -- -D clippy::correctness -D clippy::suspicious",
+    "working_directory": "rust",
+    "exit_code": 0,
+    "cargo_seconds": 16.63,
+    "warnings": "231 lib-test warnings, including 165 duplicates; not a security certification"
+  },
+  "rust_checks": [
+    {
+      "filter": "c71_canonical_resident",
+      "passed": 3,
+      "harness_seconds": 2.32,
+      "exit_code": 0,
+      "log": "c71_canonical_resident.log"
+    },
+    {
+      "filter": "c71_b12_native_canonical",
+      "passed": 5,
+      "harness_seconds": 5.82,
+      "exit_code": 0,
+      "log": "c71_b12_native_canonical.log"
+    },
+    {
+      "filter": "c71_canonical_ordered",
+      "passed": 2,
+      "harness_seconds": 0.78,
+      "exit_code": 0,
+      "log": "c71_canonical_ordered.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_byte",
+      "passed": 1,
+      "harness_seconds": 2.64,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_byte.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_signed",
+      "passed": 1,
+      "harness_seconds": 1.69,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_signed.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_failure",
+      "passed": 1,
+      "harness_seconds": 0.75,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_failure.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_dense_chain",
+      "passed": 1,
+      "harness_seconds": 0.67,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_dense_chain.log"
+    },
+    {
+      "filter": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+      "passed": 1,
+      "harness_seconds": 12.46,
+      "exit_code": 0,
+      "log": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs.log"
+    }
+  ],
+  "rust_command_template": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 FILTER --test-threads=1 --nocapture'",
+  "python_checks": [
+    {
+      "file": "tests/test_c71_range_native.py",
+      "passed": 2,
+      "harness_seconds": 1.67,
+      "exit_code": 0,
+      "log": "test_c71_range_native.log"
+    },
+    {
+      "file": "tests/test_c71_dense_i16.py",
+      "passed": 1,
+      "harness_seconds": 0.78,
+      "exit_code": 0,
+      "log": "test_c71_dense_i16.log"
+    },
+    {
+      "file": "tests/test_c71_docs.py",
+      "passed": 9,
+      "harness_seconds": 0.49,
+      "exit_code": 0,
+      "log": "test_c71_docs.log"
+    }
+  ],
+  "python_command_template": "env PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider FILE'",
+  "coverage": {
+    "positive": "Reduced Profile::small uses the same adapter as Canonical: W has 46 i16 words, 2x2x2 product and second-row 1x2x2 view, followed by exact RNE and range root checks using deferred fake driver. No intermediate array download; each chain reads two 4-byte flags and a 48-byte root.",
+    "negative": "14 terminal adapter rejections cover source/layout/recipe/coverage/W identity/driver/fence/flag/input bounds/MIN/RNE overflow/RNE interval/foreign owner/short W. Two additional canonical metadata cases reject unimplemented embedding and incomplete W before GPU work.",
+    "host_owner": "UBSan fake-driver test covers 13 range and 23 dense rejections, two dense batches and one input-row view; maximum arena 262144 bytes.",
+    "limitations": "No complete canonical positive forward or resident source scanner. Reduced integrated proof regression remains CPU/small-profile and does not certify the new adapter. Arc identity is not cryptographic W commitment binding or snapshot lifecycle binding. Runtime C statistics exclude Rust metadata."
+  },
+  "cuda_static": {
+    "command": "/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC -Xptxas=-v cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_range_runtime.cpp -o libc71_resident.so",
+    "toolkit": "12.9.1 / nvcc 12.9.86, reused existing toolkit",
+    "toolkit_provenance": "benchmarks/results/c71-local-cuda-static-2026-09-13-ef2cdabc1afa.json",
+    "exit_code": 0,
+    "wall_seconds": 2.49,
+    "sass_identical_to": "benchmarks/raw/c71-dense-owner-2026-10-03-d0fd644ed704/kernels.sass",
+    "required_exports": [
+      "c71_range_abort",
+      "c71_dense_product_rows"
+    ],
+    "dense_registers": 56,
+    "rne_registers": 16,
+    "spill_bytes": 0,
+    "execution": false
+  },
+  "checks_additional": [
+    "rustfmt --check passed for canonical_prepare, canonical_resident, windowed and windowed/native",
+    "git diff --check passed",
+    "clean worktree at start and end of final checks"
+  ],
+  "unexpected_test_failures": [],
+  "raw_directory": "benchmarks/raw/c71-resident-adapter-2026-10-03-c8254c74b41e",
+  "sha256": {
+    "build.log": "ba0acdeb242482671ac6bec8f9686979adc64218d209ed3cd5bd394176e60122",
+    "c71_b12_native_canonical.log": "3b5b819474f79d6df2e50133703692d30e624cfff420be0926a54665c6bf3e11",
+    "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs.log": "496d9adc5418e00a2a328da15bb5a9670fb37495e478bd50d610f42629d72367",
+    "c71_b12_windowed_native_byte.log": "7b10a1e42b0d92628a0d503faf053123f9d953cdab1aee92b0c0fb0a6fdc113a",
+    "c71_b12_windowed_native_dense_chain.log": "9d86a346528113b768c3fbec8ea54cff82f3fbfa9f2083aa20fb18bb8298d42a",
+    "c71_b12_windowed_native_failure.log": "328d6bc57f0e67e09124b4d197b77ccfd2cdc800e28aa5ce5886d3c86415a8ac",
+    "c71_b12_windowed_native_signed.log": "dd0aea24ba19b851ed57245c20cfb2a8f1d5c4d7e55b87a3e19c5f4a2fb188ac",
+    "c71_canonical_ordered.log": "3f5296008770f5a8950cd37f0833cbe80fbfb40836173c222cdeceea9799c0de",
+    "c71_canonical_resident.log": "3418bfcbe0d832c17a27d735a0c13b5f855364c7c7d0e01ea432b0e25ff19161",
+    "clippy.log": "6406a8ef32241c3452fee197494437ae00482a059dcc0ea48b01d7c625caed71",
+    "kernels.sass": "8ca53223b3177e189535fe1df3cb0e68b77406f9fd3a3058327a856c74efc2e1",
+    "libc71_resident.so": "0936c4f132010ec42107b40ff11d3fb5aea485948c7967486d7ae41aee80545b",
+    "nvcc.log": "095db0182806508d8450aa06793a698e2b116b025964e21137234ef2026aabb4",
+    "symbols.log": "35d6a77ba5f7c3b4ea42216874ad169ea5c74dddbd8eaf37fb753f9ca5752e92",
+    "test_c71_dense_i16.log": "fedceb118a93f8e9bed4f5b262246c28f6bfdace0d13713f5045fa2fb6554486",
+    "test_c71_docs.log": "4271b0d70d2afe45004c9a7514ebfc72f7f68dde0ab2ec96b5f19bb8243c6454",
+    "test_c71_range_native.log": "e76066469127e4212b524f33b0ffeba3bacf942bac7b35a99e3d9bd6149678f2",
+    "volta_pcs-1b032d88c9000486": "9d1c5790d3d9e8c8440c0cf714e7ac88119047346b21541cfafbc3d21ab8b0c5"
+  },
+  "remaining_local_work": [
+    "Connect this partial Matrix/RNE adapter to the full resident canonical source scanner, remaining producers and byte gather without host spill",
+    "Bind original W owner to the PCS commitment and enforce snapshot/attempt lifecycle across preparation, proof and runner",
+    "Integrate GPU PCS/EXP30/range/real-AES Seed6 and complete simultaneous CPU/HBM capacity and traffic accounting",
+    "Validate complete canonical composition; Seed6 obligations remain open and analytic continuation above 40 MB remains a known negative"
+  ],
+  "external_restrictions": "No GPU, weight downloads, provider operations or spending authorized. RunPod hard stop unchanged. Residual local implementation is not a hardware blocker."
+}

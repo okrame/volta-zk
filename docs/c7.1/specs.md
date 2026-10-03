@@ -335,6 +335,10 @@ tre colonne base per Fp3. Il percorso host è verificato; quello CUDA
 è il riferimento ridotto: scopre i token dai logits, valida i produttori,
 conserva cut/KV immutabili e una finestra byte. La sua storia numerica
 copre O=0/2/4; il positivo con prova ordinata e Seed6 copre O=0.
+Un candidato con due tentativi ordinati sullo stesso pool Seed6 reale ha
+completato il primo e raggiunto `range_A` del secondo, poi ha superato il
+limite locale di 60 s; il [record negativo](../../benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json)
+non attribuisce copertura multi tentativo.
 La ricostruzione ricorsiva CPU non implementa la schedule canonica 512.
 
 Il piano canonico conserva 61 checkpoint di layer, 98.380.800 B per

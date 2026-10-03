@@ -7,7 +7,7 @@
 
 Non è registrata un'autorizzazione a download dei pesi, creazione di pod,
 esecuzioni GPU o spesa. Il lavoro locale pertinente resta autorizzato.
-Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-02-02bc02ae1dc5.json)
+Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-262e89febe2c.json)
 ha esito `NOT_READY`: il driver indipendente chiude il precedente blocco
 locale, ma non il tempo della campagna né l'integrazione della prova. Non
 avviare la campagna provider sulla sola base dei controlli locali passati.
@@ -23,7 +23,7 @@ definisce i controlli piccoli. Non occorre recuperare istruzioni dall'archivio.
 |---|---|---|
 | 1. Preparare il confronto, localmente | Ingest W, inizializzatore delle scale, tabelle certificate, replay intero CPU, export `C71TRC01`, piano pubblico canonico e driver indipendente testato sui 13 operatori e sulla schedulazione completa | Eseguire e misurare il [confronto indipendente](specs.md#confronto-indipendente) sui pesi reali. Il runtime completo è ignoto e la finestra corrente di 8 ore non è ancora chiusa |
 | 2. Calibrare i pesi reali, dopo autorizzazione | Comandi CPU nelle sezioni seguenti; nessuna calibrazione CUDA completa | Una sola candidata, due replay e confronto indipendente nei tre contesti; soddisfare la [validazione](#validazione-e-congelamento-del-profilo), quindi fissare Γ e ricompilare il conto delle risorse |
-| 3. Integrare la prova, prima su input ridotti | Tre accettazioni con MAC ideali; O=0 ordinato con W ricostruita e AES Seed6 reale; registro e codec canonici con test strutturali e di rifiuto | Completare preparatore/prover canonici, getter, certificati validi e trasporto dell'accettazione; verificare tutte le componenti sullo stesso registro, non soltanto separatamente |
+| 3. Integrare la prova, prima su input ridotti | Tre accettazioni con MAC ideali; O=0 ordinato con W ricostruita e AES Seed6 reale; registro e codec canonici con test strutturali e di rifiuto. Il candidato a due tentativi reali ha superato 60 s durante il secondo | Completare preparatore/prover canonici, getter, certificati validi e trasporto dell'accettazione; verificare tutte le componenti sullo stesso registro, non soltanto separatamente |
 | 4. Preparare l'esperimento GPU | Parità PCS ridotta, S1, resti e potenze a blocchi; controlli host e compilazioni statiche CUDA | Collegare CUDA alle dimensioni canoniche, completare contabilità simultanea e condizioni dell'[esperimento della prova](#esperimento-della-prova); ottenere l'autorizzazione per l'esperimento con confronto host/GPU e misure |
 | 5. Eseguire la prova completa | Nessun comando E2E canonico completo disponibile oggi | Solo dopo integrazione e autorizzazione: tre risposte canoniche verificate con stesso W e KV, misurando tutte le risorse; conservare anche gli esiti negativi |
 

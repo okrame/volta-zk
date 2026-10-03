@@ -1,0 +1,69 @@
+{
+  "schema": "volta-c71-reduced-real-two-attempts-v1",
+  "date": "2026-10-03",
+  "base_git_commit": "262e89febe2c0d725369ce2661c1c397806ff268",
+  "git_dirty": true,
+  "credit": false,
+  "candidate_retained": false,
+  "candidate_patch_sha256": "701c75232fa9bc5cbc9faab116a838dbc74ec55d76341e31aee2cb08b1e19f69",
+  "candidate_source_sha256": "0788aa1f742e9c509762b655f9553a75c26e8ef47027c651b54d61b3db44a837",
+  "binary_sha256": "e76cecd7686bbcb23db09ad1c4dad271834de4e4362f821105a27edde78b5847",
+  "prior_evidence": "benchmarks/results/c71-ordered-two-2026-09-27-d026986418a1.json",
+  "authorization": {
+    "weight_download": false,
+    "provider_pod": false,
+    "gpu_execution": false,
+    "spend": false
+  },
+  "scope": {
+    "profile": "Profile::small(0)",
+    "attempts": 2,
+    "height": 19,
+    "weight": 2,
+    "real_seed6": true,
+    "replay_W": true,
+    "ordered_A": true,
+    "same_pool_and_registry": true,
+    "canonical_gemma31b": false,
+    "security_or_h100_credit": false
+  },
+  "limits": {
+    "address_space_bytes": 2147483648,
+    "timeout_seconds": 60,
+    "test_threads": 1,
+    "cargo_jobs": 1,
+    "incremental": false,
+    "dev_debug": 0,
+    "dev_opt_level": 2,
+    "external_network": false
+  },
+  "build": {
+    "command": "CARGO_TARGET_DIR=/home/okrame/projects/volta-zk/rust/target CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2 cargo test --offline --locked -j1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "exit_code": 0,
+    "elapsed_seconds": 172,
+    "warnings_preexisting": true
+  },
+  "runs": [
+    {
+      "blocks": 4,
+      "exit_code": 101,
+      "elapsed_seconds": 33.83,
+      "result": "FAIL_CAPACITY_EXHAUSTED_BEFORE_SECOND_PRIVATE_PREPARATION",
+      "interpretation": "four reduced blocks cover only one complete attempt"
+    },
+    {
+      "blocks": 8,
+      "command": "(ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_matrix::gemma::native::protocol::pool::seed6_tests::c71_seed6_native_two_ordered_attempts_share_real_pool_and_registry --exact --nocapture --test-threads=1)",
+      "exit_code": 124,
+      "elapsed_seconds_lower_bound": 60,
+      "result": "TIMEOUT",
+      "first_attempt_completed": true,
+      "second_attempt_observed_through": "range_A",
+      "second_attempt_completed": false,
+      "evidence_of_shared_history": "second attempt reported nonzero old_kv_reads after the first accepted attempt"
+    }
+  ],
+  "decision": "DO_NOT_RETAIN_SLOW_DUPLICATE_TEST",
+  "same_registry_reduced_real_pool_integration_complete": false,
+  "h100_e2e_readiness_changed": false
+}

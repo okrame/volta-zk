@@ -84,11 +84,15 @@ pesi reali e il suo tempo completo non è misurato. Lo
 identificano componenti disponibili, implementazioni mancanti e passaggi
 che richiedono autorizzazione. Il [contratto del confronto](specs.md#confronto-indipendente)
 definisce cosa completare prima di ammettere Γ.
-Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-02-02bc02ae1dc5.json)
+Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-262e89febe2c.json)
 registra quindi `NOT_READY` per la prova E2E. Il
 [record del driver](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
 chiude l'assenza dell'implementazione locale, ma non convalida i pesi reali
 né chiude la finestra temporale della campagna di calibrazione.
+Il [tentativo ridotto con pool reale](../../benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json)
+ha completato una risposta e raggiunto il range A della seconda, ma è stato
+terminato al limite locale di 60 s; non dimostra due promozioni sullo stesso
+registro e non è stato mantenuto come test lento duplicato.
 
 I criteri per il [primo esperimento della prova](runpod-tests.md#esperimento-della-prova)
 non richiedono una dimostrazione preventiva del tempo H100: i tempi

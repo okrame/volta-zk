@@ -100,7 +100,7 @@ Il parser della traccia completa la validazione strutturale e la modalità
 reali non ammette Γ. Il
 [record del driver](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
 registra l'implementazione e i controlli locali, non una misura completa. Il
-[readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-02-02bc02ae1dc5.json)
+[readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-262e89febe2c.json)
 registra `NOT_READY` per runtime della calibrazione e integrazione E2E. Il
 [record del piano pubblico](../../benchmarks/results/c71-oracle-plan-2026-10-02-55423e496cfc.json)
 registra tre DAG canonici validati, ma non esecuzione numerica indipendente. Il
@@ -174,6 +174,11 @@ target/profilo, e verificare separatamente i filtri `c71_seed6_one_channel`,
 non usare `--ignored` o un limite maggiore. Non eseguire l'intero filtro
 `c71_seed6_native` sotto un unico timeout. Le geometrie ridotte non
 trasferiscono i bound crittografici o il picco al profilo canonico ell=11.
+Un candidato separato con W ricostruita, A ordinata e pool Seed6 reale ha
+completato il primo tentativo e raggiunto `range_A` del secondo con otto
+blocchi, ma è scaduto a 60 s. Il
+[record negativo](../../benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json)
+conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
 

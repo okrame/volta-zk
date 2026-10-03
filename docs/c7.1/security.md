@@ -502,6 +502,8 @@ journal. Le ottimizzazioni che conservano messaggi e polinomi devono
 preservare anche l'ordine delle letture prima delle correlazioni, detto
 NoPeek, e contabilizzare tutte le risorse. La parità ridotta di byte,
 transcript e MAC è un controllo necessario, non una prova generale Lean.
+Il [controllo locale a due tentativi con Seed6 reale](../../benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json)
+è scaduto durante il secondo tentativo e non scarica questo obbligo.
 
 I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
 dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo

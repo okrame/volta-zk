@@ -1,0 +1,113 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-04",
+  "git_sha": "facc742ede525143ec239cb1fb8ecbd1bce3f242",
+  "git_dirty": false,
+  "milestone": "Shared KV450 prefixes, physically checked append offsets, bounded 512-descriptor native owner",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "calibrated": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-shared-range-local-2026-10-04-b6639a3fc3ad.json",
+  "changes": [
+    "Tail contexts share one fixed 450-token i16 buffer; creating a continuation allocates no device buffer and copies no earlier prefix",
+    "c71_signed_append_at requires the caller's expected physical initialized offset before D2D, so stale/forked continuations fail before copying",
+    "Historical Tail metadata keeps its logical old/prefix/context, while QK/PV read only the requested causal prefix even after later tokens are initialized",
+    "Sharing/releasing an Arc<Buffer> checks Runtime identity; physical release occurs only with the last descriptor",
+    "Native owner has 512 fixed descriptors, counted in host_owner_bytes, rather than 64; descriptor exhaustion remains terminal"
+  ],
+  "coverage": {
+    "prefixes": "One synthetic canonical K source across all three contexts, no continuation allocation/D2D, historical QK after all 450 tokens initialized, exact outputs versus integer expectations, and release only at the last shared view.",
+    "negative": "A second continuation of the same completed 150-token predecessor is rejected after the first appends, with no D2D increase; common runtime stops. Not a substitute for accepted-registry authorization.",
+    "descriptors": "512 simultaneous one-byte logical allocations, capacities 512*256=131072 bytes, release and reuse; the 513th allocation stops the owner without growing its 262144-byte arena.",
+    "regressions": "All resident operator/gather tests, both attention families at O0/O150/O300, RMS and EXP30; shared and standalone byte/signed native range transcript/original-MAC parity and failures. Deferred host driver only."
+  },
+  "local_limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "PYTHONDONTWRITEBYTECODE": 1
+  },
+  "tests": {
+    "rust_passed": 22,
+    "python_passed": 11,
+    "failed": 0,
+    "filters": [
+      "c71_canonical_resident",
+      "c71_b12_windowed_native_descriptor_capacity",
+      "c71_b12_windowed_native_attention",
+      "c71_b12_windowed_native_shared",
+      "c71_b12_windowed_native_byte",
+      "c71_b12_windowed_native_signed",
+      "c71_b12_windowed_native_failure"
+    ],
+    "rust_seconds": [
+      21.4,
+      1.17,
+      1.09,
+      3.56,
+      3.03,
+      2.11,
+      1.15
+    ],
+    "python_files": [
+      "tests/test_c71_docs.py",
+      "tests/test_c71_range_native.py"
+    ],
+    "python_seconds": 3.08,
+    "log_directory": "benchmarks/raw/c71-kv-prefix-clean-2026-10-04-facc742"
+  },
+  "build": {
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "working_directory": "rust",
+    "CARGO_TARGET_DIR": "/home/okrame/projects/volta-zk/rust/target",
+    "CARGO_INCREMENTAL": 0,
+    "CARGO_PROFILE_DEV_DEBUG": 0,
+    "CARGO_PROFILE_DEV_OPT_LEVEL": 2,
+    "development_seconds": 196,
+    "exit_code": 0,
+    "warnings": 25,
+    "cache_retained": true
+  },
+  "clippy": {
+    "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --tests -- -D clippy::correctness -D clippy::suspicious",
+    "exit_code": 0,
+    "seconds": 16.98,
+    "warnings": 241
+  },
+  "cuda": {
+    "architecture": "sm_90",
+    "version": "12.9.86",
+    "library_compiled": true,
+    "executed": false,
+    "library_sha256": "948d0dd2b08d78b48d8b3b729c02e10489e55bf04e1404daf72b383ed88c8b28",
+    "new_required_symbol": "c71_signed_append_at",
+    "abi": 3,
+    "stats_bytes": 152,
+    "kernels": "No kernel arithmetic changes; shared-tail span and append guards are in the host runtime. Older libraries without the checked append symbol fail during API loading."
+  },
+  "memory_and_traffic": {
+    "complete_physical_ledger": false,
+    "tail_capacity": "450*columns*2 bytes per original KV source, 256-byte aligned, charged inside the existing arena. Do not add KV to arena reservation a second time or omit its used capacity.",
+    "continuation_device_allocations": 0,
+    "continuation_prefix_d2d_bytes": 0,
+    "append_traffic": "Only new rows, two bytes per cell, one fence before initialized-prefix advancement.",
+    "native_descriptor_cap": 512,
+    "host_descriptor_payload_bytes": 32768,
+    "fixture_arena_bytes": 8388608,
+    "scope": "The KV prefix test covers one canonical K source, not all model KV simultaneously. Complete CPU/PCS/Seed6/HBM capacities and runtime overhead remain to be reconciled."
+  },
+  "remaining": [
+    "Native causal inference and complete replay scanner",
+    "Common runner and original PCS/GKR consumers",
+    "Durable accepted-registry authorization and promotion at all three contexts",
+    "Complete simultaneous resource ledger and prepared complete-run H100 measurement",
+    "Earlier unrelated CPU output-head iterator-exhaustion failure remains preserved, not claimed fixed"
+  ]
+}

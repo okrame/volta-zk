@@ -204,6 +204,9 @@ massimo, differenze, esponenziali, denominatore e Pi originali, includendo
 il padding pubblico nell'istogramma. Le code KV condividono una capacità
 fissa per 450 token, senza copia dei prefissi precedenti; l'append D2D
 verifica l'offset fisico atteso e rifiuta una continuazione duplicata.
+Il [checkpoint dei prefissi](../../benchmarks/results/c71-kv-prefix-local-2026-10-04-facc742ede52.json)
+conserva il controllo dei tre contesti su una capacità condivisa, il
+rilascio e il rifiuto dei fork, con 22 test Rust e 11 Python passati.
 Non conferiscono da sole autorità di promozione. Le route sono confrontate
 con riferimenti CPU su input sintetici nei tre contesti, non su W reale.
 Il [checkpoint RMS/attention](../../benchmarks/results/c71-attention-local-2026-10-04-85e77ea66b6f.json)

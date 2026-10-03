@@ -223,6 +223,11 @@ conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
 
+Il [checkpoint KV condivisa](../../benchmarks/results/c71-kv-prefix-local-2026-10-04-facc742ede52.json)
+registra 22 test Rust e 11 Python passati, build/lint e compilazione sm_90;
+verifica i prefissi storici, il fork rifiutato prima del D2D e il cap di
+512 descrittori. Non esegue tutte le code canoniche o CUDA reale.
+
 Il [checkpoint range condiviso](../../benchmarks/results/c71-shared-range-local-2026-10-04-b6639a3fc3ad.json)
 registra 25 test Rust e 11 Python passati sulla SHA pulita, build/lint e
 due prove D10 sul medesimo owner senza H2D aggiuntivo delle sorgenti;

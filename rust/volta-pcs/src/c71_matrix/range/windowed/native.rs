@@ -296,7 +296,7 @@ api! {
     histogram_begin: unsafe extern "C" fn(Raw,u64)->i32 => "c71_histogram_begin",
     histogram_seal: unsafe extern "C" fn(Raw,u64)->i32 => "c71_histogram_seal",
     histogram_padding: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_histogram_padding",
-    signed_append: unsafe extern "C" fn(Raw,u64,u64,u64,u64)->i32 => "c71_signed_append",
+    signed_append: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64)->i32 => "c71_signed_append_at",
     rms: unsafe extern "C" fn(Raw,u64,u64,u64,RmsShape,u64,u64,u64)->i32 => "c71_dense_rms",
     qk: unsafe extern "C" fn(Raw,u64,u64,u64,AttentionShape,u64)->i32 => "c71_dense_qk",
     pv: unsafe extern "C" fn(Raw,*const u64,*const u64,u64,AttentionShape,u64)->i32 => "c71_dense_pv",
@@ -559,11 +559,19 @@ impl Runtime {
         first: usize,
         count: usize,
         output: &Buffer,
+        output_first: usize,
     ) -> Result<(), String> {
         self.require_buffer(input)?;
         self.require_buffer(output)?;
         let status = unsafe {
-            (self.api.signed_append)(self.raw, input.id, first as u64, count as u64, output.id)
+            (self.api.signed_append)(
+                self.raw,
+                input.id,
+                first as u64,
+                count as u64,
+                output.id,
+                output_first as u64,
+            )
         };
         self.check(status)
     }
@@ -794,6 +802,23 @@ impl Runtime {
     pub(in crate::c71_matrix) fn release_buffer(&mut self, buffer: Buffer) -> Result<(), String> {
         self.require_buffer(&buffer)?;
         self.release(buffer.id)
+    }
+    pub(in crate::c71_matrix) fn share_buffer(
+        &mut self,
+        buffer: &Arc<Buffer>,
+    ) -> Result<Arc<Buffer>, String> {
+        self.require_buffer(buffer)?;
+        Ok(buffer.clone())
+    }
+    pub(in crate::c71_matrix) fn release_shared_buffer(
+        &mut self,
+        buffer: Arc<Buffer>,
+    ) -> Result<(), String> {
+        self.require_buffer(&buffer)?;
+        match Arc::try_unwrap(buffer) {
+            Ok(buffer) => self.release_buffer(buffer),
+            Err(_) => Ok(()),
+        }
     }
     pub(in crate::c71_matrix) fn byte_window(&mut self, count: usize) -> Result<Buffer, String> {
         let id = self.alloc(7, count)?;
@@ -1515,7 +1540,7 @@ pub(in crate::c71_matrix) mod tests {
             let input = runtime.upload_signed(&[1; 32]).unwrap();
             let tail = runtime.signed_capacity(150).unwrap();
             if case != 2 {
-                runtime.append_signed(&input, 0, 2, &tail).unwrap();
+                runtime.append_signed(&input, 0, 2, &tail, 0).unwrap();
             }
             let shape = AttentionShape { rows: 1, first: 1, head: 31, old: 0, groups: 1, lanes: 1 };
             let result = match case {
@@ -1576,6 +1601,24 @@ pub(in crate::c71_matrix) mod tests {
             assert_eq!(runtime.stats().unwrap().stopped, 1);
             runtime.close().unwrap();
         }
+    }
+    #[test]
+    fn c71_b12_windowed_native_descriptor_capacity_is_bounded() {
+        let fixture = fixture(512);
+        let mut runtime = Runtime::new(&fixture.config).unwrap();
+        let buffers = (0..512).map(|_| runtime.alloc(0, 1).unwrap()).collect::<Vec<_>>();
+        let stats = runtime.stats().unwrap();
+        assert_eq!((stats.logical_bytes, stats.live_capacity_bytes), (512, 512 * 256));
+        assert!(stats.host_owner_bytes >= 512 * 64);
+        for buffer in buffers {
+            runtime.release(buffer).unwrap();
+        }
+        for _ in 0..512 {
+            runtime.alloc(0, 1).unwrap();
+        }
+        assert!(runtime.alloc(0, 1).is_err());
+        assert_eq!(runtime.stats().unwrap().stopped, 1);
+        runtime.close().unwrap();
     }
     impl Drop for Fixture {
         fn drop(&mut self) {

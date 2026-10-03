@@ -113,7 +113,9 @@ e misure complete restano da collegare. Il vecchio GEMM CUDA scalare non viene p
 questa implementazione o come una misura H100.
 
 Le route residenti dei 13 producer ora condividono l'owner nativo,
-con tabelle pubbliche, istogrammi, code KV e slack residenti. Scanner,
+con tabelle pubbliche, istogrammi, code KV e slack residenti.
+Le code condividono una capacità per 450 token senza copie cumulative;
+la promozione resta compito del registro del runner. Scanner,
 binding degli snapshot e integrazione della prova restano lavoro locale. Il diagnostico
 [c71_nonlinear_parity.cu](../../cuda/c71_nonlinear_parity.cu) confronta i
 kernel reali con risultati interi host su input sintetici: tutti i 65.535

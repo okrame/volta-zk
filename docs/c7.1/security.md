@@ -676,6 +676,11 @@ RMS conserva i coefficienti esatti e rifiuta l'overflow invece di clampare;
 QK/PV non leggono celle KV future. Le code append-only mantengono il
 prefisso inizializzato, ma `Tail::new` non verifica una ricevuta: il
 chiamante del runner deve derivare il predecessore dal registro accettato.
+I prefissi condividono la stessa capacità da 450 token: soltanto la coda
+non inizializzata può cambiare. Il controllo dell'offset fisico atteso
+rifiuta una seconda append da un predecessore ormai superato, prima di
+qualsiasi copia. Le viste storiche conservano il proprio limite logico;
+QK/PV continuano a non leggere key futuri, anche se ormai inizializzati.
 L'istogramma EXP30 include una sola volta il padding pubblico e richiede
 copertura unica delle righe vive. I confronti CPU/GPU simulata non provano
 il raffinamento u128 PTX, lo schedule concorrente o il forward completo;

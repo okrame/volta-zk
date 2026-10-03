@@ -44,7 +44,7 @@ struct C71RangeContext {
     unsigned char* arena=nullptr;
     int16_t* weights=nullptr;
     uint64_t usable=0;
-    Buffer buffers[64]{};
+    Buffer buffers[512]{};
     C71RangeStats stats{};
     const char* error="";
 };
@@ -150,7 +150,7 @@ extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,u
     Buffer* slot=nullptr;
     for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
     if(!slot || capacity>c->usable) return fail(c,"range arena exhausted");
-    // ponytail: first-fit scan of at most 64 descriptors; use a free list only
+    // ponytail: first-fit scan of at most 512 descriptors; use a free list only
     // if the resident evaluator actually needs more simultaneous buffers.
     uint64_t offset=0;
     for(;;) {
@@ -442,18 +442,18 @@ Buffer* pending(C71RangeContext* context,uint64_t id,unsigned kind,uint64_t coun
 const int16_t* attention_tail(C71RangeContext* context,uint64_t id,c71_nonlinear::Attention shape) {
     auto* input=buffer(context,id);
     const uint64_t columns=uint64_t(shape.groups)*shape.lanes;
-    if(!input || input->kind!=C71_I16 || input->count!=(shape.old+150)*columns ||
+    if(!input || input->kind!=C71_I16 || input->count<(shape.old+150)*columns || input->count>450*columns ||
         input->initialized<(shape.old+shape.first+shape.rows)*columns) {
         fail(context,"attention tail prefix incomplete"); return nullptr;
     }
     return ptr<int16_t>(context,input);
 }
 }
-extern "C" int c71_signed_append(C71RangeContext* context,uint64_t input,uint64_t first,uint64_t count,uint64_t output) {
+extern "C" int c71_signed_append_at(C71RangeContext* context,uint64_t input,uint64_t first,uint64_t count,uint64_t output,uint64_t output_first) {
     if(!ready(context)) return -1;
     auto* source=buffer(context,input); auto* target=buffer(context,output);
     if(!source || !target || source==target || source->kind!=C71_I16 || target->kind!=C71_I16 || !count ||
-        first>source->initialized || count>source->initialized-first || count>target->count-target->initialized)
+        first>source->initialized || count>source->initialized-first || output_first!=target->initialized || count>target->count-target->initialized)
         return fail(context,"signed append span or coverage");
     if(checked(context,cudaMemcpyAsync(ptr<int16_t>(context,target)+target->initialized,ptr<int16_t>(context,source)+first,count*2,cudaMemcpyDeviceToDevice,context->stream))) return -1;
     context->stats.d2d_bytes+=count*2;

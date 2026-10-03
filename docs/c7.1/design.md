@@ -201,8 +201,10 @@ il fence, mantenendo lo slack biased-u16 residente. Norm usa ora coefficienti
 u128 e soglie quadrate esatte, con prodotti/statistiche originali; QK e PV
 usano dot product interi scalari e leggono soltanto KV causale. EXP30 produce
 massimo, differenze, esponenziali, denominatore e Pi originali, includendo
-il padding pubblico nell'istogramma. Le code KV sono append-only D2D;
-non conferiscono da sole autorità di promozione. Le route sono confrontate
+il padding pubblico nell'istogramma. Le code KV condividono una capacità
+fissa per 450 token, senza copia dei prefissi precedenti; l'append D2D
+verifica l'offset fisico atteso e rifiuta una continuazione duplicata.
+Non conferiscono da sole autorità di promozione. Le route sono confrontate
 con riferimenti CPU su input sintetici nei tre contesti, non su W reale.
 Il [checkpoint RMS/attention](../../benchmarks/results/c71-attention-local-2026-10-04-85e77ea66b6f.json)
 registra 22 test Rust e 12 Python passati, con compilazione sm_90 e

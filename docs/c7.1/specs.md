@@ -667,8 +667,9 @@ device allineato per gli ID. Il seal istogramma scarica altri 4 B. Nessun
 raw, output, istogramma o slack privato viene scaricato. Un raw RoPE
 150×32×512 usa 19.660.800 B, oltre a 4.915.200 B di input e altrettanti
 per la RNE se simultaneamente vivi. Questi subtotali non sostituiscono
-il conto completo: i 64 descrittori dell'owner richiedono ancora una
-schedule di rilascio/consolidamento per tutti gli istogrammi della risposta.
+il conto completo. L'owner dispone ora di 512 descrittori fissi, conteggiati
+in `host_owner_bytes`; l'esaurimento resta terminale. La schedule deve
+ancora censire tutti gli istogrammi, checkpoint e workspace simultanei.
 RMS conserva prodotto ponderato opzionale, somma dei quadrati per testa e
 output i16. Usa gli stessi tre coefficienti u128 di `rms::Integer`, con
 envelope verificato prima del launch e confronto delle soglie quadrate
@@ -676,10 +677,18 @@ senza floating point. La riduzione shared usa 2.048 B per CTA.
 QK/PV sono kernel scalari interi, non MMA: la loro prestazione va misurata.
 QK produce zero sui key futuri senza leggerli; PV legge solo il prefisso
 causale e le 32 Pi originali. `Tail` controlla sorgente/layout/ricette,
-predecessore completo e append consecutivo; il runtime verifica anche
-il prefisso device inizializzato. L'append copia D2D e fa fence prima di
-estendere il prefisso. Il runner deve ancora legare queste code alle
-sole accettazioni durevoli, senza trattenere copie cumulative superflue.
+predecessore completo e append consecutivo. Una sola capacità i16 per
+450 token è condivisa dai tre prefissi; il passaggio di contesto non copia
+né rialloca KV. L'append copia soltanto le nuove righe D2D e fa fence
+prima di estendere il prefisso. `c71_signed_append_at` confronta anche il
+prefisso device con l'offset atteso: una seconda continuazione dello stesso
+prefisso fallisce prima della copia, non sovrascrive né accoda fuori posto.
+Il loader richiede questo nuovo simbolo, rifiutando le librerie precedenti
+che espongono soltanto l'append senza offset. I prefissi storici rimangono
+leggibili con la propria maschera causale anche dopo il completamento
+del terzo. L'ultimo descrittore condiviso rilascia il buffer; ogni condivisione
+e rilascio verifica l'owner Rust. Il runner deve ancora legare la creazione
+della continuazione alle sole accettazioni durevoli.
 EXP30 verifica score futuri zero, tabella E(0)=2^30 e range, accumula Z
 esatto e arrotonda Pi Q14 con pareggi al pari. La riduzione shared usa
 3.072 B per CTA. I 32×106 query di padding aggiungono pubblicamente
@@ -844,6 +853,13 @@ col turno e non si ammortizza il setup su risposte future.
 | Budget candidato | 1,5 s inferenza, 17 s getter, 46,5 s resto; obiettivi da verificare |
 | Materiale persistente | Riferimento ≤2,10×W=128.928.850.176 B; l'eccezione per materiale globale riutilizzabile non aumenta HBM o arena |
 | Verificatore CPU quattro core | Riferimento 6,4–8,2 s da verificare per il percorso completo |
+
+La tabella è il piano analitico, non il ledger dell'implementazione nativa.
+Le code native da 450 token riservano attualmente capacità **dentro**
+l'arena, già conteggiata da `live_capacity_bytes`: non sommare ancora KV
+alla prenotazione arena nel picco fisico, né ometterlo dallo spazio usato.
+Il loro ciclo completo evita copie cumulative dei tre prefissi; non chiude
+il conto degli altri temporanei o la riconciliazione con questo piano.
 
 I conteggi eseguibili sono in [arena](../../scripts/c71_arena_plan.py),
 [response](../../scripts/c71_response_trace.py), [WHIR](../../scripts/c71_whir_trace.py),

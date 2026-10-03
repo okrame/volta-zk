@@ -46,7 +46,7 @@ pub(super) struct Histogram {
 }
 
 pub(super) struct Tail {
-    buffer: Buffer,
+    buffer: Arc<Buffer>,
     source: usize,
     old: usize,
     prefix: usize,
@@ -84,10 +84,10 @@ impl Tail {
             }
             _ => return runtime.abort("resident tail predecessor differs or is incomplete"),
         }
-        let buffer = runtime.signed_capacity((old + 150) * columns)?;
-        if let Some((_, prior)) = previous {
-            runtime.append_signed(&prior.buffer, 0, old * columns, &buffer)?;
-        }
+        let buffer = match previous {
+            None => Arc::new(runtime.signed_capacity(450 * columns)?),
+            Some((_, prior)) => runtime.share_buffer(&prior.buffer)?,
+        };
         Ok(Self {
             buffer,
             source,
@@ -116,7 +116,13 @@ impl Tail {
         }
         let offset =
             rows.select(runtime, plan, self.source, rows.first, rows.rows, self.columns)?;
-        runtime.append_signed(&rows.buffer, offset, rows.rows * self.columns, &self.buffer)?;
+        runtime.append_signed(
+            &rows.buffer,
+            offset,
+            rows.rows * self.columns,
+            &self.buffer,
+            self.prefix * self.columns,
+        )?;
         self.prefix += rows.rows;
         Ok(())
     }
@@ -140,7 +146,7 @@ impl Tail {
     }
 
     pub(super) fn release(self, runtime: &mut Runtime) -> Result<(), String> {
-        runtime.release_buffer(self.buffer)
+        runtime.release_shared_buffer(self.buffer)
     }
 }
 
@@ -1497,6 +1503,95 @@ mod tests {
         assert_eq!(families.len(), 2);
         runtime.close().unwrap();
         eprintln!("C71_RESIDENT_ATTENTION slot={slot} families=2 causal_query=1 head=31 PV_heads=32 gpu=false");
+    }
+
+    #[test]
+    fn c71_canonical_resident_kv_shared_prefixes_and_fork_rejection() {
+        let mut fixture = fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        let injection = Injection::new(&fixture.config);
+        let profiles = (0..3).map(nonlinear_profile).collect::<Vec<_>>();
+        let source = profiles[0].sources.attention.layers[0].k;
+        for fork in [false, true] {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let mut tails: Vec<Tail> = Vec::new();
+            for slot in 0..if fork { 2 } else { 3 } {
+                let before = runtime.stats().unwrap();
+                let mut tail = Tail::new(
+                    &mut runtime,
+                    &profiles[slot],
+                    source,
+                    tails.last().map(|prior| (&profiles[slot - 1], prior)),
+                )
+                .unwrap();
+                let after = runtime.stats().unwrap();
+                if slot != 0 {
+                    assert_eq!(after.allocations, before.allocations);
+                    assert_eq!(after.d2d_bytes, before.d2d_bytes);
+                }
+                let count = if fork && slot == 1 { 1 } else { 150 };
+                let input = profiles[slot]
+                    .upload_native_rows(
+                        &mut runtime,
+                        source,
+                        0,
+                        &vec![slot as i16 + 1; count * tail.columns],
+                    )
+                    .unwrap();
+                tail.append(&mut runtime, &profiles[slot], &input).unwrap();
+                input.release(&mut runtime).unwrap();
+                tails.push(tail);
+            }
+            if fork {
+                let mut duplicate =
+                    Tail::new(&mut runtime, &profiles[1], source, Some((&profiles[0], &tails[0])))
+                        .unwrap();
+                let input = profiles[1]
+                    .upload_native_rows(&mut runtime, source, 0, &vec![7; duplicate.columns])
+                    .unwrap();
+                let before = runtime.stats().unwrap();
+                assert!(duplicate.append(&mut runtime, &profiles[1], &input).is_err());
+                let after = runtime.stats().unwrap();
+                assert_eq!(after.d2d_bytes, before.d2d_bytes);
+                assert_eq!(after.stopped, 1);
+            } else {
+                for (slot, plan) in profiles.iter().enumerate() {
+                    let layer = &plan.sources.attention.layers[0];
+                    let query = plan
+                        .upload_native_rows(&mut runtime, layer.q, 149, &vec![1; 32 * layer.lanes])
+                        .unwrap();
+                    let step =
+                        plan.steps.iter().position(|step| matches!(step, Producer::Qk(0))).unwrap();
+                    let output = plan
+                        .prepare_native_qk(
+                            &mut runtime,
+                            step,
+                            31 * 256 + 149,
+                            1,
+                            &query,
+                            &tails[slot],
+                        )
+                        .unwrap();
+                    let expected = (0..(slot + 1) * 150)
+                        .map(|key| ((key / 150 + 1) * layer.lanes) as i64)
+                        .collect::<Vec<_>>();
+                    check_nonlinear_words(&mut runtime, &injection, &output, 6, &expected);
+                    output.release(&mut runtime).unwrap();
+                    query.release(&mut runtime).unwrap();
+                }
+                let capacity = runtime.stats().unwrap().live_capacity_bytes;
+                assert_eq!(capacity, (450 * tails[0].columns * 2).next_multiple_of(256) as u64);
+                let count = tails.len();
+                for (index, tail) in tails.into_iter().enumerate() {
+                    tail.release(&mut runtime).unwrap();
+                    assert_eq!(
+                        runtime.stats().unwrap().live_capacity_bytes,
+                        if index + 1 == count { 0 } else { capacity }
+                    );
+                }
+            }
+            runtime.close().unwrap();
+        }
     }
     #[test]
     fn c71_canonical_resident_attention_o0() {

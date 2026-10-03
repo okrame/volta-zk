@@ -63,7 +63,7 @@ int c71_dense_pointwise(C71RangeContext*,uint64_t x,uint64_t x_first,uint64_t y,
 int c71_histogram_begin(C71RangeContext*,uint64_t histogram);
 int c71_histogram_seal(C71RangeContext*,uint64_t histogram);
 int c71_histogram_padding(C71RangeContext*,uint64_t histogram,uint64_t count);
-int c71_signed_append(C71RangeContext*,uint64_t input,uint64_t first,uint64_t count,uint64_t output);
+int c71_signed_append_at(C71RangeContext*,uint64_t input,uint64_t first,uint64_t count,uint64_t output,uint64_t output_first);
 int c71_dense_rms(C71RangeContext*,uint64_t input,uint64_t first,uint64_t weight_offset,c71_nonlinear::Rms,
                   uint64_t product,uint64_t statistic,uint64_t output);
 int c71_dense_qk(C71RangeContext*,uint64_t query,uint64_t first,uint64_t keys,c71_nonlinear::Attention,uint64_t output);

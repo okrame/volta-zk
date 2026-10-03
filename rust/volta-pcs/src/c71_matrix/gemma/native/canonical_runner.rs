@@ -206,6 +206,20 @@ pub fn command(args: &[String]) -> Result<serde_json::Value, String> {
     let measurements = Measurements::new();
     let phase = measurements.phase("coordinator", None, "command_total");
     let result = measured_command(args, &measurements);
+    measurements.resource("before_native_cleanup", None, serde_json::Value::Null);
+    let cleanup = measurements.close_native(result.is_err());
+    measurements.resource(
+        "native_cleanup",
+        None,
+        serde_json::json!({
+            "success": cleanup.is_ok(), "final_stats": cleanup.as_ref().ok()
+        }),
+    );
+    let result = result.and_then(|mut output| {
+        output["native_cleanup"] =
+            serde_json::to_value(cleanup?).map_err(|error| error.to_string())?;
+        Ok(output)
+    });
     if result.is_ok() {
         phase.finish();
     } else {
@@ -236,12 +250,23 @@ fn measured_command(
     args: &[String],
     measurements: &Measurements,
 ) -> Result<serde_json::Value, String> {
-    if args.len() != 6 || args[0] != "reference-cpu" {
-        return Err("Stop: no admitted GPU runner; explicit heavy reference only: c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES".into());
-    }
+    let native = match (args.first().map(String::as_str), args.len()) {
+        (Some("reference-cpu"), 6) => None,
+        (Some("experiment-cuda"), 8) => Some(kernel::range::windowed::native::Config::new(
+            args[6].clone().into(), args[7].parse().map_err(|_| "invalid CUDA device")?,
+            6_442_450_944, 256 * 1024 * 1024, 1 << 31, 32,
+        )),
+        _ => return Err("Stop: explicit backend required: c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES; or experiment-cuda with LIBRARY DEVICE appended".into()),
+    };
     let limit: usize = args[5].parse().map_err(|_| "invalid preparation budget")?;
     if limit < 98_380_800 {
         return Err("preparation budget below layer checkpoints".into());
+    }
+    if native.is_some() && !(1usize << 31..=6_174_015_488).contains(&limit) {
+        return Err(
+            "native preparation budget must cover the 2 GiB range window within the arena reserve"
+                .into(),
+        );
     }
     rayon::ThreadPoolBuilder::new().num_threads(1).build_global().map_err(|e| e.to_string())?;
     let initialization = measurements.phase("coordinator", None, "global_initialization");
@@ -282,6 +307,14 @@ fn measured_command(
         calibration_input::profiles_from_bytes(&vcandidate)?.into_iter().map(Arc::new).collect();
     let vinput = calibration_input::Tables::from_bytes(&vtable_bytes)?;
     drop((vcandidate, vtable_bytes));
+    measurements.resource(
+        "public_table_owners",
+        None,
+        serde_json::json!({
+            "prover_capacity_bytes": input.capacity_bytes(),
+            "verifier_capacity_bytes": vinput.capacity_bytes()
+        }),
+    );
     phase.finish();
     let cells = profiles[0].plan.sources.iter().map(|s| s.rows * s.cols).sum();
     let directory = Path::new(&args[4]);
@@ -312,6 +345,7 @@ fn measured_command(
                 limit,
                 measurements,
                 packed_digest,
+                native.clone(),
             )
         })
     })
@@ -326,16 +360,32 @@ fn run(
     limit: usize,
     measurements: &Measurements,
     packed_digest: String,
+    native_config: Option<kernel::range::windowed::native::Config>,
 ) -> Result<serde_json::Value, String> {
     let geometry = Geometry::new(675, 19, 11).map_err(|e| e.to_string())?;
     if public.required.iter().sum::<usize>() * 3 > geometry.capacity().map_err(|e| e.to_string())? {
         return Err("canonical Seed6 capacity insufficient".into());
     }
+    let native = if let Some(config) = native_config {
+        let phase = measurements.phase("prover", None, "native_global_residency");
+        let session = resident::Session::new(
+            public.profiles.clone(),
+            input.clone(),
+            weights.clone(),
+            config,
+            limit,
+        )?;
+        measurements.native(session.clone());
+        phase.finish();
+        Some(session)
+    } else {
+        None
+    };
     let phase = measurements.phase("prover", None, "installation_w_commitment");
     let coins = fresh_pcs_coins()?;
     let (p, original) = (public.profiles[0].clone(), weights.clone());
     let (range_profile, range_packed) = (public.profiles[0].clone(), weights.clone());
-    let installed = b12::replay::ReplayModel::new(
+    let mut installed = b12::replay::ReplayModel::new(
         Domain::Flat(35),
         coins.seed,
         coins.salt_seed,
@@ -355,6 +405,10 @@ fn run(
             range_profile.plan.range_window(35, &range_packed, first, out, suffix, bottom)
         }),
     )?;
+    if let Some(session) = &native {
+        installed.range_words.as_mut().ok_or("native W range source missing")?.native =
+            Some(session.weight_range_config()?);
+    }
     let root = installed.root().clone();
     let binding = public.binding(&root)?;
     phase.finish();
@@ -387,6 +441,7 @@ fn run(
     let session_phase = measurements.phase("coordinator", None, "session_and_responses");
     let responses = std::thread::scope(|scope| -> Result<_, String> {
         let pstore_ref = &mut pstore;
+        let native = native.clone();
         let peer = scope.spawn(move || -> Result<_, String> {
             let phase = measurements.phase("prover", None, "seed6_setup");
             let mut pool = c71_seed6::prover(pstore_ref, pcg_p, session, channel_binding, geometry)
@@ -394,7 +449,8 @@ fn run(
             phase.finish();
             let mut capacity = ProverCapacity::Seed6(&mut pool);
             let phase = measurements.phase("prover", None, "registry_initialization");
-            let mut p = Prover::new(public, weights, installed, input, limit, &capacity)?;
+            let mut p =
+                Prover::new(public, weights, installed, input, limit, &capacity, native.clone())?;
             phase.finish();
             let mut responses = Vec::new();
             for slot in 0..3 {
@@ -406,7 +462,7 @@ fn run(
                 phase.finish();
                 let phase = measurements.phase("prover", Some(slot), "response_total");
                 let mut body_bytes = 0;
-                let preparation_ns = p.respond_authenticated(
+                let (preparation_ns, inference_ns) = p.respond_authenticated(
                     &request,
                     rand::random(),
                     &mut capacity,
@@ -423,8 +479,10 @@ fn run(
                 responses.push(serde_json::json!({"slot": slot, "response_wall_ns": response_ns,
                     "preparation_including_inference_wall_ns": preparation_ns,
                     "post_preparation_wall_ns": response_ns - preparation_ns,
-                    "inference_wall_ns": null, "proof_only_wall_ns": null,
-                    "phase_partition_complete": false,
+                    "inference_wall_ns": inference_ns,
+                    "proof_only_wall_ns": inference_ns.map(|inference| response_ns - inference),
+                    "phase_partition_complete": inference_ns.is_some(),
+                    "partition_scope": "inference includes mandatory KV/checkpoint/histogram capture and fences; remainder includes preparation allocation/table setup, replay, proof, exchange, verification wait and journals; no overlapped interval subtraction",
                     "certificate_body_bytes": body_bytes, "accepted": true}));
             }
             capacity.stop();
@@ -470,7 +528,12 @@ fn run(
     {
         return Err("canonical role journals differ".into());
     }
-    Ok(serde_json::json!({"credit": false, "readiness": false, "gpu_execution": false,
+    let native_stats = native.as_ref().map(|session| session.stats()).transpose()?;
+    Ok(serde_json::json!({"credit": false, "readiness": false, "gpu_execution": native.is_some(),
+        "backend": if native.is_some() { "cuda-producers-range-cpu-protocol" } else { "reference-cpu" },
+        "native_cumulative": native_stats,
+        "cpu_phases": ["public validation and table packing", "W PCS commitment and bounded 256 MiB W range gather/upload", "PCS FFT/Merkle/query/remainder and source contractions", "non-range GKR and original MAC arithmetic", "Seed6 real AES setup and expansion", "proof encoding, verifier and durable journals", "bounded original A row/byte staging for CPU protocol consumers"],
+        "gpu_phases": if native.is_some() { vec!["all 13 inference and replay producers", "resident A byte gather", "range canopy/Gram/fold/reductions"] } else { vec![] },
         "canonical_certificates_verified": 3, "tables_numerically_certified": false,
         "checkpoint_provenance_verified": false, "packed_blake3": packed_digest,
         "responses": responses,
@@ -483,7 +546,7 @@ mod tests {
     use super::*;
     #[test]
     fn c71_canonical_runner_transport_and_default_stop() {
-        assert!(command(&[]).unwrap_err().contains("no admitted GPU"));
+        assert!(command(&[]).unwrap_err().contains("explicit backend required"));
         assert!(command(&["gpu".into()]).is_err());
         let r = Response {
             root: C61Commitment::new(vec![[1; 32]]),

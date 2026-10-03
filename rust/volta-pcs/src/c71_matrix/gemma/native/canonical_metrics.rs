@@ -43,11 +43,52 @@ pub(super) struct Measurements {
     started: Instant,
     phases: Mutex<Vec<serde_json::Value>>,
     channels: Mutex<Vec<(&'static str, Option<usize>, Traffic)>>,
+    native: Mutex<Option<Arc<super::resident::Session>>>,
+    resources: Mutex<Vec<serde_json::Value>>,
 }
 
 impl Measurements {
     pub(super) fn new() -> Self {
-        Self { started: Instant::now(), phases: Mutex::default(), channels: Mutex::default() }
+        Self {
+            started: Instant::now(),
+            phases: Mutex::default(),
+            channels: Mutex::default(),
+            native: Mutex::default(),
+            resources: Mutex::default(),
+        }
+    }
+
+    pub(super) fn native(&self, session: Arc<super::resident::Session>) {
+        *self.native.lock().unwrap() = Some(session);
+    }
+
+    pub(super) fn resource(
+        &self,
+        name: &'static str,
+        slot: Option<usize>,
+        values: serde_json::Value,
+    ) {
+        self.resources.lock().unwrap().push(serde_json::json!({
+            "phase": name, "slot": slot, "elapsed_ns": self.elapsed_ns(),
+            "values": values, "simultaneous": self.sample()
+        }));
+    }
+
+    fn sample(&self) -> serde_json::Value {
+        serde_json::json!({"host_process": memory(),
+            "native": self.native.lock().unwrap().as_ref().map(|session| session.census())})
+    }
+
+    pub(super) fn close_native(
+        &self,
+        failed: bool,
+    ) -> Result<Option<super::kernel::range::windowed::native::Stats>, String> {
+        let native = self.native.lock().unwrap();
+        let Some(session) = native.as_ref() else { return Ok(None) };
+        if failed {
+            session.stop();
+        }
+        session.close().map(Some)
     }
 
     pub(super) fn phase(
@@ -56,7 +97,16 @@ impl Measurements {
         slot: Option<usize>,
         name: &'static str,
     ) -> Phase<'_> {
-        Phase { measurements: self, role, slot, name, start_ns: self.elapsed_ns(), complete: false }
+        let start_resources = self.sample();
+        Phase {
+            measurements: self,
+            role,
+            slot,
+            name,
+            start_ns: self.elapsed_ns(),
+            complete: false,
+            start_resources,
+        }
     }
 
     fn elapsed_ns(&self) -> u64 {
@@ -113,9 +163,10 @@ impl Measurements {
             "response_charges": response_charges,
             "timing_scope": "nested wall intervals; roles overlap, do not sum",
             "traffic_scope": "actual application bytes at verifier boundary, including public distribution; excludes OS framing and executable provisioning",
-            "complete_physical_peak": false, "gpu_execution": false,
+            "complete_physical_peak": false, "gpu_backend_selected": self.native.lock().unwrap().is_some(),
+            "resource_samples": self.resources.lock().unwrap().clone(),
             "process_memory": memory(),
-            "memory_scope": "process-wide host RSS/HWM, both roles; no per-role peak, retained-capacity census or HBM measurement"
+            "memory_scope": "phase-boundary process RSS/HWM and shared native ledger; both roles coexist; samples are not continuous peaks; busy native samples are skipped; external GPU/process monitor required"
         })
     }
 }
@@ -136,6 +187,7 @@ pub(super) struct Phase<'a> {
     name: &'static str,
     start_ns: u64,
     complete: bool,
+    start_resources: serde_json::Value,
 }
 
 impl Phase<'_> {
@@ -151,7 +203,8 @@ impl Drop for Phase<'_> {
         self.measurements.phases.lock().unwrap().push(serde_json::json!({
             "role": self.role, "slot": self.slot, "phase": self.name,
             "start_ns": self.start_ns, "end_ns": end_ns,
-            "wall_ns": end_ns - self.start_ns, "complete": self.complete
+            "wall_ns": end_ns - self.start_ns, "complete": self.complete,
+            "start_resources": self.start_resources, "end_resources": self.measurements.sample()
         }));
     }
 }

@@ -34,7 +34,7 @@ pub(super) struct Prepared {
 }
 
 impl Canonical {
-    fn checkpoint_ids(&self) -> Result<BTreeSet<usize>, String> {
+    pub(super) fn checkpoint_ids(&self) -> Result<BTreeSet<usize>, String> {
         let ids: BTreeSet<_> = self
             .sources
             .operations

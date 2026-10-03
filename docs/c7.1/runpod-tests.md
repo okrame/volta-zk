@@ -5,125 +5,57 @@
 
 ## Stato e sequenza operativa
 
+Il runner locale `experiment-cuda` collega inferenza/replay dei 13 producer,
+owner comune, range residente, PCS/GKR CPU, verifica e promozione per
+O=0/150/300. È pronto per il **primo esperimento autorizzato**, non già
+validato sulla H100. Nessun certificato canonico, tempo completo o
+rispetto dei target è acquisito. Il readiness audit storico
+[NOT_READY](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-fbd6141e7a1e.json)
+resta immutabile, ma non descrive l'assenza attuale del codice del runner.
+
 Non è registrata un'autorizzazione a download dei pesi, creazione di pod,
 esecuzioni GPU o spesa. Il lavoro locale pertinente resta autorizzato.
-Il [readiness audit v6 di partenza](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-fbd6141e7a1e.json)
-ha esito `NOT_READY`. Il riferimento CPU ora collega prover canonico,
-getter e registro, ma non dispone di certificati canonici validi acquisiti
-né dell'esecuzione a memoria limitata su GPU. Non
-avviare la campagna provider sulla sola base dei controlli locali passati.
-La calibrazione e il benchmark della prova sono due campagne distinte:
-un successo numerico non autorizza né dimostra il secondo.
+Calibrazione e misura della prova sono campagne distinte; un successo
+numerico non autorizza né dimostra la seconda.
 
 **Hard stop provider (3 ottobre 2026).** `runpodctl` v2.12.0 ha rimosso
-`--stop-after` e `--terminate-after`: il backend li accettava ma non li
-eseguiva, quindi il pod restava attivo e fatturabile oltre la scadenza.
+`--stop-after` e `--terminate-after`: il backend li ignorava.
 La [correzione ufficiale](https://github.com/runpod/runpodctl/commit/51ca7f0)
-dichiara che non esiste un sostituto finché il backend non applica la
-deadline. Non creare il pod H100 finché una deadline provider verificabile
-o un diverso limite di spesa autorizzato non chiude questo rischio.
+non offre un sostituto. Non creare il pod finché una deadline provider
+verificabile o un diverso limite di spesa autorizzato non chiude il rischio.
 Il [record immutabile](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
-conserva la fonte upstream e i controlli locali.
+conserva fonte e controlli locali. Questo stop non blocca l'integrazione
+locale e non trasforma la parità hardware in prerequisito locale.
 
-Leggere prima [design](design.md), poi le sezioni pertinenti di
-[specs](specs.md) e [security](security.md). Questa pagina definisce la
-sequenza operativa e lo stato delle implementazioni; [local-tests](local-tests.md)
-definisce i controlli piccoli. Non occorre recuperare istruzioni dall'archivio.
+| Passaggio | Stato e condizione di uscita |
+|---|---|
+| Preparazione locale | 13 producer CUDA, scanner, registro e runner misto implementati; compilazione sm_90, schedule canonica e test numerici/protocollo ridotti. Nessun W reale o dominio D34/D35 eseguito localmente |
+| Calibrazione autorizzata | Driver indipendente disponibile; confronto sui pesi reali, due replay e Γ validato da acquisire. I comandi CPU seguenti non sono il benchmark della prova |
+| Primo esperimento della prova | Parità dei kernel reali, smoke fail-closed e tre tentativi O=0/150/300 sul runner misto; raccogliere tempi, memoria/trasferimenti e anche timeout/rifiuti |
+| Valutazione | Distinguere risultato misurato, obiettivi mancati e assunzioni aperte. Nessun risultato locale promette 65 s, 40 MB o picco fisico completo |
 
-| Ordine | Disponibile | Lavoro e condizione di uscita |
-|---|---|---|
-| 1. Preparare il confronto, localmente | Ingest W, inizializzatore delle scale, tabelle certificate, replay intero CPU, export `C71TRC01`, piano pubblico canonico e driver indipendente testato sui 13 operatori e sulla schedulazione completa | Eseguire e misurare il [confronto indipendente](specs.md#confronto-indipendente) sui pesi reali. Il runtime completo è ignoto e la finestra corrente di 8 ore non è ancora chiusa |
-| 2. Calibrare i pesi reali, dopo autorizzazione | Comandi CPU nelle sezioni seguenti; nessuna calibrazione CUDA completa | Una sola candidata, due replay e confronto indipendente nei tre contesti; soddisfare la [validazione](#validazione-e-congelamento-del-profilo), quindi fissare Γ e ricompilare il conto delle risorse |
-| 3. Integrare la prova, prima su input ridotti | Prover e getter CPU canonici collegati al registro e al completamento autenticato dal canale; test ridotti e controlli canonici di rifiuto | Acquisire certificati canonici validi e verificare tutte le componenti sullo stesso registro; i test ridotti non provano la correttezza del percorso completo |
-| 4. Preparare l'esperimento GPU | Parità PCS ridotta, S1, resti e potenze a blocchi; controlli host e compilazioni statiche CUDA | Collegare CUDA alle dimensioni canoniche, completare contabilità simultanea e condizioni dell'[esperimento della prova](#esperimento-della-prova); ottenere l'autorizzazione per l'esperimento con confronto host/GPU e misure |
-| 5. Eseguire la prova completa | Eseguibile CPU esplicito di riferimento; nessun runner GPU ammesso | Solo dopo integrazione e autorizzazione: tre risposte canoniche verificate con stesso W e KV, misurando tutte le risorse; conservare anche gli esiti negativi |
+Il comando di riferimento rimane
+`c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES`.
+Il comando GPU e il monitor sono nella
+[procedura dell'esperimento](#esperimento-della-prova).
+Entrambi usano prompt pinned e journal nuovi, senza ripristino/sovrascrittura.
+`PREPARATION_BYTES` non è un limite globale. Non eseguirli sulla VM locale.
+Errore o timeout non autorizza retry, nuovi journal, proroga o fallback.
 
-Le implementazioni locali dei punti 1 e 3 possono procedere indipendentemente;
-la loro validazione sui pesi reali richiede il punto 2. La calibrazione
-non implementa il prover e non chiude gli [obblighi di sicurezza Seed6](security.md#estensione-seed6-e-obblighi-residui).
-Un esperimento può misurare il prototipo senza attribuirgli una garanzia
-crittografica la cui composizione è ancora aperta.
+La [contabilità](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
+espone W host/device, arena e suoi payload, staging e fasi CPU residue.
+I contatori CUDA sono cumulativi sullo stesso owner e non si sommano.
+RSS/HWM riguarda i due ruoli nello stesso processo. Il report distingue
+inferenza con cattura dello stato dal resto della risposta e conserva
+`C71_RUN_METRICS` su errore gestito; timeout/kill richiedono log esterni.
+`complete_physical_peak:false` non nasconde lo scratch ancora CPU.
 
-Il comando `c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED
-NEW_JOURNAL_DIRECTORY PREPARATION_BYTES` è un riferimento CPU pesante,
-non il comando della campagna H100. Usa il prompt pinned per tre risposte,
-crea journal nuovi e non li ripristina o sovrascrive. Input e tabelle hanno
-gli stessi formati della calibrazione. `PREPARATION_BYTES` non è un limite
-globale di memoria. Non eseguirlo sulla VM; un errore non autorizza retry,
-nuovi journal, proroghe o cambio di backend. Anche su un host H100 resta
-CPU. La sua disponibilità non chiude i punti 3–4 né l'hard stop provider.
-Il report del runner include ora fasi wall e traffico applicativo effettivo
-di entrambi i sensi, inclusi Γ/tabelle, installazione e richieste; setup e
-distribuzione sono addebitati alla prima risposta. In caso di errore gestito,
-stderr conserva `C71_RUN_METRICS`; per timeout/kill restano necessari i log
-esterni. Preparazione e inferenza sono ancora fuse e CPU-time, picchi per
-ruolo, capacità trattenute e HBM restano da implementare/misurare. Un test
-del trasporto con tre corpi sintetici non conta come tre prove canoniche.
-Il commitment iniziale ora seleziona coset 2^22 e lo scanner A a 512
-ricostruzioni, con parità soltanto ridotta; il vecchio cap iniziale 2^18
-non descrive più questo percorso. Restano i workspace query/range e i
-kernel densi da adattare. Lo scanner CPU ricostruisce ora per producer,
-con righe vive fino all'ultimo consumer e GEMM a batch con letture W
-condivise. La schedule raggiunge PCS/range. L'adapter dei 13 producer ora usa
-gli handle residenti e dispone di gather byte nativo con copertura delle
-righe e pubblicazione dopo fence. Manca il
-collegamento allo scanner/consumer completo; non costituisce un forward GPU.
-Le prime query A leggono ora finestre originali
-fino a 256 MiB e non duplicano la matrice del risultato; la parità è
-soltanto ridotta e non chiude la contabilità fisica simultanea.
-Singleton, coset S1, OOD e retention sono ora collegati allo scanner
-originale con barriere FS separate; il coset extension evita le matrici
-complete di conversione. Il
-[checkpoint delle riduzioni](../c7.1-history/canonical-residual-scan.md)
-è seguito dal [collegamento degli stadi](../c7.1-history/canonical-pcs-stages.md):
-geometrie S1/S2/successori e stato fino a D35 sono disponibili nel
-riferimento CPU, con P/Q condiviso fra due fold e rilasciato prima dei
-commitment. Il supporto delle shape non è un esperimento canonico.
-Workspace, CUDA e memoria simultanea rimangono lavoro locale.
-Il [gather range](../c7.1-history/canonical-range-gather.md) alimenta ora il
-[consumer CPU range A](../c7.1-history/canonical-windowed-range.md), con
-canopy/Gram/retention e istogramma raccolto nel primo scan PCS. La parità
-è ridotta: nessuna finestra canonica di 2 GiB o prova range D34 è stata
-eseguita. Il range W ora riusa il motore CPU sul packed signed originale,
-con cut=11/m24 e staging limitato a 256 MiB. Portare entrambi i consumer
-su CUDA e completare il conto simultaneo rimane lavoro locale, non una
-dipendenza dall'H100.
-Nessuna esecuzione W/D35 o A/D34 è acquisita. Il
-[checkpoint del collegamento](../c7.1-history/canonical-initial-scan.md)
-non ammette il comando CPU come campagna H100 né cambia le autorizzazioni.
-I kernel range e l'owner nativo di stream/arena sono compilabili insieme;
-ledger, capacità trattenute ed errori asincroni dell'owner hanno controlli
-con driver simulato. Il consumer Rust è ora collegato ai callback range
-con selezione esplicita della libreria, senza fallback. La parità locale
-include il gather residente sullo stesso owner del produttore, preservando
-W e sorgenti dopo il range senza seconda arena o upload delle finestre.
-Lo scanner canonico deve ancora fornire quelle finestre. La parità
-attraverso l'ABI usa algebra host simulata, non i kernel GPU. Integrazione
-del runner complessivo, altri consumer CUDA e contabilità simultanea restano
-lavoro locale; la verifica GPU richiede l'esperimento autorizzato.
-Questi controlli non abilitano il runner GPU o un pod.
-Il kernel denso i16 a quattro MMA INT8 è ora disponibile come componente
-compilabile, con modello host di split/frammenti e correzioni. W residente,
-fencing del flag e RNE sono ora collegati nello stesso owner/arena del
-range (ABI 3, con copie embedding D2D conteggiate). L'adapter Rust dei batch valida route del piano e identità
-dell'owner Arc W, senza copie della vista input o download degli intermedi.
-La catena ridotta Rust/C usa un driver simulato; copertura dei producer,
-identità W fra owner e commitment PCS, lifecycle del runner
-e misure complete restano da collegare. Il vecchio GEMM CUDA scalare non viene presentato come
-questa implementazione o come una misura H100.
-
-Le route residenti dei 13 producer ora condividono l'owner nativo,
-con tabelle pubbliche, istogrammi, code KV e slack residenti.
-Le code condividono una capacità per 450 token senza copie cumulative;
-la promozione resta compito del registro del runner. Scanner,
-binding degli snapshot e integrazione della prova restano lavoro locale. Il diagnostico
-[c71_nonlinear_parity.cu](../../cuda/c71_nonlinear_parity.cu) confronta i
-kernel reali con risultati interi host su input sintetici: tutti i 65.535
-entry lookup, istogrammi, entrambe le famiglie RoPE, tie argmax fra warp,
-RMS esatta/overflow e QK→RNE→EXP30→PV nei tre contesti con futuro KV
-avvelenato. La geometria è sintetica e piccola: non misura le shape
-canoniche; QK/PV correnti sono scalari interi, non kernel MMA.
-Si compila localmente ma si esegue soltanto nell'esperimento autorizzato:
+Il diagnostico [c71_nonlinear_parity.cu](../../cuda/c71_nonlinear_parity.cu)
+confronta kernel reali con interi host: dense MMA su tre shape (ragged e
+K=21504), Affine/Gate, tutti i 65.535 entry lookup, istogrammi, entrambe
+le famiglie RoPE, argmax/tie, RMS/overflow e QK→RNE→EXP30→PV nei tre
+contesti con futuro KV avvelenato. QK/PV sono interi scalari, non MMA.
+Si compila localmente; si esegue soltanto nel primo esperimento autorizzato:
 
 ```bash
 nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
@@ -132,12 +64,24 @@ nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
 timeout -k 5s 60s /tmp/c71_nonlinear_parity
 ```
 
-Richiede un device compute capability 9; errori CUDA o differenze terminano
-con exit nonzero. Conservare stdout/stderr, SHA e fingerprint hardware.
-Il report `credit:false` non è una prova canonica o un tempo completo;
-questa parità è un controllo del primo esperimento, non un requisito
-hardware da soddisfare sulla VM locale.
+Richiede compute capability 9; errore CUDA o differenza termina con exit
+nonzero. Conservare stdout/stderr, digest del binario, SHA e fingerprint.
+È parità sintetica `credit:false`, non un forward canonico o un benchmark.
+Il test seguente è ignorato nelle suite locali e usa **la libreria reale**,
+non il driver simulato: verifica gather residente→range/GKR→PCS sui MAC
+originali due volte nello stesso owner, poi range signed, contro transcript
+CPU ridotti. Eseguirlo sulla H100 dopo aver impostato il binario appena
+compilato e `LIBRARY` alla libreria CUDA della stessa SHA:
 
+```bash
+C71_NATIVE_PARITY_LIBRARY="$LIBRARY" timeout -k 5s 60s "$C71_PCS_TEST_BINARY" \
+  c71_b12_windowed_native_hardware_parity_explicit --ignored --test-threads=1 --nocapture
+```
+
+Non richiede pesi reali; la sua disponibilità non dichiara già passata
+la parità hardware. Il test locale equivalente usa lo stesso helper con
+driver host simulato e non viene contato come esecuzione GPU.
+Le procedure delle sezioni seguenti regolano soltanto campagne autorizzate.
 Prima di usare credenziali locali eseguire
 `scripts/runpod_harness.sh local-secret-preflight`. Un eventuale `.env`
 deve essere un file regolare posseduto dall'utente e avere permessi `0600`;
@@ -566,41 +510,83 @@ eseguire il `delete` della [gestione pod](#gestione-del-pod-e-del-repository).
 Quando l'hard stop sarà risolto, la terminazione provider dovrà avvenire
 comunque alla deadline; non rinviarla per salvare un run incompleto. Dopo
 l'ammissione di Γ, portare il profilo
-e il conto delle risorse alla [preparazione dell'esperimento della prova](#esperimento-della-prova), che richiede ancora lavoro
-completo, picco con margine, lower congiunto e harness della prova. Questa
+e il conto delle risorse alla [preparazione dell'esperimento della prova](#esperimento-della-prova), distinta dalla
+campagna numerica. Questa
 campagna non misura prova/PCG, non emette certificati e non autorizza il
 benchmark della prova H100.
 
 ## Esperimento della prova
 
-Questa fase non ha ancora un comando canonico completo pronto all'uso.
-L'esempio `c71_matrix` è un diagnostico e `c71_calibration` esegue il
-replay numerico: nessuno dei due è il benchmark della prova Gemma.
-Prima di proporre una spesa per la prova chiudere i seguenti requisiti:
+Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi
+`c71_matrix` e `c71_calibration` non lo sostituiscono. L'esperimento usa
+la pipeline mista dichiarata, senza presentare la PCS CPU come GPU.
+Prima dell'avvio servono SHA pulita, input/tabelle e identità fissati,
+hardware/toolchain, durata/costo/limiti di memoria approvati e risoluzione
+dell'hard stop provider. La calibrazione reale validata serve per una
+pretesa sul profilo canonico; un profilo solo strutturale deve essere
+etichettato diagnostico e non produce quella pretesa.
 
-1. Audit della provenienza dei fork completato nel
-   [record pulito](../../benchmarks/results/c71-fork-provenance-2026-10-02-4fbfbfb8afd0.json);
-   Γ reale validato e congelato, con confronto indipendente documentato;
-   ricette, tabelle, layout e riserve ricompilati a O=0/150/300.
-2. Costruzione integrata corretta su input ridotti: preparatore, getter,
-   W installata, lookup/GKR/range/PCS, pool reale, framing e promozione
-   sullo stesso registro. I test componenti non sostituiscono questa verifica.
-3. Conto completo del lavoro, memoria allocata e riservata simultanea,
-   trasferimenti, PCG, replay, hash, FFT, proof e allocator. Almeno
-   256 MiB liberi nell'arena e 1 GiB globale; nessuno spill dinamico.
-4. Limite inferiore congiunto compatibile con 65 s in tutti i contesti.
-   Non serve conoscere in anticipo un limite superiore del tempo H100.
-   I valori parziali in specs non chiudono questo requisito.
-5. Harness e input del minimo esperimento, SHA pulita, fingerprint
-   hardware/toolchain, durata massima, costo e soglie di accettazione
-   o arresto verificabili, quindi autorizzazione di quella campagna.
+Per istruzione del proprietario, parità hardware, tempo H100 e picco fisico
+si verificano **nel primo esperimento**, non sono gate locali. Il vecchio
+gate di compatibilità preventiva con 65 s non blocca questo esperimento
+diagnostico: misurare e conservare anche il mancato target. Rimangono
+invariati NoPeek, MAC originali, margine arena 256 MiB, margine globale
+1 GiB e stop su esaurimento senza spill dinamico.
 
-Gli esperimenti GPU devono confrontare prima i risultati con il riferimento
-host/nativo: FFT diretta/inversa, resti e P/Q nella base corretta, hash salato,
-range e operatori numerici. Poi si misurano le fasi rappresentative con i
+Gli esperimenti GPU confrontano prima gli operatori con il diagnostico
+di parità sopra e il range con il riferimento host/nativo. FFT, resti/PQ
+e hash salato sono ancora CPU in questo runner; non rivendicare la loro
+accelerazione. Poi si misurano le fasi rappresentative con i
 loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
 il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,
 senza un percorso CPU sostitutivo. La produzione usa PCG reale/AES.
+
+Comando sul solo hardware autorizzato, dopo build e parità. Impostare
+`APPROVED_SHA`, `PROOF_SECONDS`, `CANDIDATE`, `TABLES`, `PACKED`, `LIBRARY`
+e `RUN` (directory nuova sotto `benchmarks/raw`). Il device logico è 0;
+fissare prima `CUDA_VISIBLE_DEVICES` all'UUID autorizzato. I limiti di
+durata del processo non sostituiscono il controllo di spesa provider.
+
+```bash
+set -euo pipefail
+set -C
+umask 077
+test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
+test -z "$(git status --porcelain --untracked-files=all)"
+test "$PROOF_SECONDS" -gt 0
+mkdir "$RUN"
+nvidia-smi -q > "$RUN/hardware.txt"
+nvcc --version > "$RUN/nvcc.txt"
+rustc -vV > "$RUN/rustc.txt"
+sha256sum "$LIBRARY" rust/target/debug/examples/c71_canonical_reference \
+  > "$RUN/executables.sha256"
+nvidia-smi --query-gpu=timestamp,uuid,memory.total,memory.used,memory.free,utilization.gpu \
+  --format=csv -l 1 > "$RUN/gpu.csv" 2> "$RUN/gpu-monitor.stderr" &
+MONITOR_PID=$!
+trap 'kill "$MONITOR_PID" 2>/dev/null || true; wait "$MONITOR_PID" 2>/dev/null || true' EXIT
+set +e
+/usr/bin/time -v -o "$RUN/process-time.txt" \
+  timeout -k 5s "$PROOF_SECONDS" \
+  rust/target/debug/examples/c71_canonical_reference experiment-cuda \
+  "$CANDIDATE" "$TABLES" "$PACKED" "$RUN/journals" 2147483648 "$LIBRARY" 0 \
+  > "$RUN/runner.json" 2> "$RUN/runner.stderr"
+STATUS=$?
+set -e
+printf '%s\n' "$STATUS" > "$RUN/exit-code.txt"
+exit "$STATUS"
+```
+
+Il monitor nvidia-smi osserva il device intero, non attribuisce memoria a
+un ruolo; un monitor fallito invalida la misura HBM, non autorizza una
+stima nulla. `time -v` registra CPU-time/RSS del processo con entrambi i
+ruoli. Il timeout registra un fallimento anche se manca JSON finale.
+Al primo errore numerico, parity, verifica, OOM o timeout non proseguire.
+Una conclusione positiva richiede `canonical_certificates_verified:3`,
+tre `accepted:true`, ledger/cleanup validi e stesso head dei journal.
+I report mantengono `credit:false` e le assunzioni aperte: non sono
+certificazione automatica di Γ o del target. Pubblicare un nuovo record
+`benchmarks/results/c71-cuda-experiment-DATE-GITSHA.json` con comandi,
+exit code, fingerprint, digest dei log e limiti; mai sovrascrivere evidenza.
 
 Il risultato completo richiede tre risposte valide del modello canonico,
 stesso W e storia KV, con tempi e byte completi del [contratto](design.md#contratto-delle-risorse).

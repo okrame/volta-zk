@@ -761,9 +761,13 @@ pub(in crate::c71_matrix) mod tests {
 
     #[test]
     fn c71_b12_windowed_native_shared_resident_transcript_original_mac() {
-        use std::sync::Mutex;
         let fixture = native::tests::fixture(512);
-        let runtime = Arc::new(Mutex::new(native::Runtime::new(&fixture.config).unwrap()));
+        shared_native_parity(fixture.config.clone());
+    }
+
+    fn shared_native_parity(config: native::Config) {
+        use std::sync::Mutex;
+        let runtime = Arc::new(Mutex::new(native::Runtime::new(&config).unwrap()));
         let (_, values) = source(10, 731);
         let words = values.iter().map(|&value| i16::from(value)).collect::<Vec<_>>();
         let original = {
@@ -772,9 +776,7 @@ pub(in crate::c71_matrix) mod tests {
             Arc::new(owner.upload_signed(&words).unwrap())
         };
         let before = runtime.lock().unwrap().stats().unwrap();
-        let config = fixture
-            .config
-            .clone()
+        let config = config
             .with_resident(
                 runtime.clone(),
                 Arc::new(move |owner, suffix, bottom, first, count| {
@@ -876,6 +878,10 @@ pub(in crate::c71_matrix) mod tests {
     #[test]
     fn c71_b12_windowed_native_signed_transcript_original_mac() {
         let fixture = native::tests::fixture(2048);
+        signed_native_parity(fixture.config.clone());
+    }
+
+    fn signed_native_parity(config: native::Config) {
         let values: Vec<i16> = (0..3001).map(|i| [-32767, -1, 0, 1, 32767][i % 5]).collect();
         let original = values.clone();
         let mut source = Source::signed(
@@ -894,8 +900,20 @@ pub(in crate::c71_matrix) mod tests {
             }),
         )
         .unwrap();
-        source.native = Some(fixture.config.clone());
+        source.native = Some(config);
         parity(12, 3001, source, values, 29);
+    }
+
+    #[test]
+    #[ignore = "explicit authorized GPU experiment; requires C71_NATIVE_PARITY_LIBRARY"]
+    fn c71_b12_windowed_native_hardware_parity_explicit() {
+        let library = std::env::var_os("C71_NATIVE_PARITY_LIBRARY")
+            .expect("explicit native CUDA library required");
+        let config = native::Config::new(library.into(), 0, 512 << 20, 256 << 20, 512, 3);
+        shared_native_parity(config.clone());
+        let mut signed = config;
+        signed.window_words = 2048;
+        signed_native_parity(signed);
     }
 
     #[test]

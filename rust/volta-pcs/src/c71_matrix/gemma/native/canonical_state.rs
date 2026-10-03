@@ -424,16 +424,43 @@ impl<'a> Registry<'a> {
     }
 }
 
-/// Internal CPU composition. This is not GPU admission or a numerical
-/// certificate. The dense component kernels still need a bounded device plan.
+#[derive(Clone)]
+enum Snapshot {
+    Cpu(Arc<ordered::Prepared>),
+    Native(Arc<resident::Prepared>),
+}
+
+macro_rules! snapshot_read {
+    ($name:ident($($argument:ident: $kind:ty),*) -> $output:ty) => {
+        fn $name(&self, $($argument: $kind),*) -> $output {
+            match self {
+                Self::Cpu(prepared) => prepared.$name($($argument),*),
+                Self::Native(prepared) => prepared.$name($($argument),*),
+            }
+        }
+    };
+}
+
+impl Snapshot {
+    snapshot_read!(tokens() -> [u32; 150]);
+    snapshot_read!(weight(source: usize, row: usize, column: usize) -> Result<i64, String>);
+    snapshot_read!(value(source: usize, row: usize, column: usize) -> Result<i64, String>);
+    snapshot_read!(tail(source: usize, token: usize, column: usize) -> Result<i64, String>);
+    snapshot_read!(byte(source: usize, row: usize, column: usize, byte: usize) -> Result<u8, String>);
+    snapshot_read!(byte_at(index: usize) -> Result<u8, String>);
+    snapshot_read!(window(first: usize, output: &mut [u8]) -> Result<(), String>);
+    snapshot_read!(scan_original(emit: &mut dyn FnMut(usize, Goldilocks) -> Result<(), String>) -> Result<(), String>);
+}
+
 struct Prover<'a> {
     state: Registry<'a>,
     weights: Arc<Vec<i16>>,
     weight: b12::replay::ReplayModel,
     tables: Arc<calibration_input::Tables>,
     cache: Arc<ordered::Cache>,
-    accepted: Vec<(Arc<ordered::Prepared>, b12::replay::ReplayModel)>,
+    accepted: Vec<(Snapshot, b12::replay::ReplayModel)>,
     preparation_limit: usize,
+    native: Option<Arc<resident::Session>>,
 }
 
 impl<'a> Prover<'a> {
@@ -444,6 +471,7 @@ impl<'a> Prover<'a> {
         tables: Arc<calibration_input::Tables>,
         preparation_limit: usize,
         pool: &ProverCapacity<'_, '_>,
+        native: Option<Arc<resident::Session>>,
     ) -> Result<Self, String> {
         if weight.domain() != Domain::Flat(35)
             || weights.len()
@@ -461,6 +489,9 @@ impl<'a> Prover<'a> {
         if identity != public.digest {
             return Err("preparer public table identity differs".into());
         }
+        if let Some(session) = &native {
+            session.require_identity(&public.profiles, &tables, &weights)?;
+        }
         let state = Registry::from_context(
             public,
             weight.root().clone(),
@@ -474,6 +505,7 @@ impl<'a> Prover<'a> {
             cache: Arc::default(),
             accepted: Vec::new(),
             preparation_limit,
+            native,
         })
     }
 
@@ -484,7 +516,7 @@ impl<'a> Prover<'a> {
         pool: &mut ProverCapacity<'_, '_>,
         measurements: &metrics::Measurements,
         exchange: impl FnOnce(&Response) -> Result<Vec<u8>, String>,
-    ) -> Result<u64, String> {
+    ) -> Result<(u64, Option<u64>), String> {
         if !self.state.live {
             pool.stop();
             return Err("Stop".into());
@@ -498,26 +530,41 @@ impl<'a> Prover<'a> {
                 return Err("invalid nonce or capacity before preparation".into());
             }
             let p = self.state.public.profiles[slot].clone();
-            let old: Vec<_> = self.accepted.iter().map(|(a, _)| a.clone()).collect();
             // Prepare receives no transcript, correlations, Delta or PCS coins.
             let phase = measurements.phase("prover", Some(slot), "preparation_including_inference");
-            let snapshot = ordered::Prepared::prepare(
-                p.clone(),
-                self.tables.clone(),
-                self.weights.clone(),
-                &old,
-                prompt,
-                self.cache.clone(),
-                self.preparation_limit,
-            )?;
+            let snapshot = if let Some(session) = &self.native {
+                Snapshot::Native(session.prepare(slot, prompt)?)
+            } else {
+                let old = self
+                    .accepted
+                    .iter()
+                    .map(|(snapshot, _)| match snapshot {
+                        Snapshot::Cpu(prepared) => Ok(prepared.clone()),
+                        Snapshot::Native(_) => Err("canonical backend changed within session"),
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Snapshot::Cpu(ordered::Prepared::prepare(
+                    p.clone(),
+                    self.tables.clone(),
+                    self.weights.clone(),
+                    &old,
+                    prompt,
+                    self.cache.clone(),
+                    self.preparation_limit,
+                )?)
+            };
             let preparation_ns = phase.finish();
+            let inference_ns = match &snapshot {
+                Snapshot::Native(prepared) => Some(prepared.inference_ns()),
+                Snapshot::Cpu(_) => None,
+            };
             let phase = measurements.phase("prover", Some(slot), "commitment_a");
             let getter = snapshot.clone();
             let scanner = snapshot.clone();
             let windows = snapshot.clone();
             let range_windows = snapshot.clone();
             let coins = fresh_pcs_coins()?;
-            let current = b12::replay::ReplayModel::new_scanned(
+            let mut current = b12::replay::ReplayModel::new_scanned(
                 Domain::Flat(34),
                 coins.seed,
                 coins.salt_seed,
@@ -531,9 +578,20 @@ impl<'a> Prover<'a> {
                 p.bytes().live,
             )?
             .retain_first_fold()
-            .with_range_reader(Arc::new(move |suffix, bottom, first, out| {
-                range_windows.range_window(first, out, suffix, bottom)
-            }))?;
+            .with_range_reader(Arc::new(
+                move |suffix, bottom, first, out| match &range_windows {
+                    Snapshot::Cpu(prepared) => prepared.range_window(first, out, suffix, bottom),
+                    Snapshot::Native(_) => Err("native range cannot use host fallback".into()),
+                },
+            ))?;
+            if let Snapshot::Native(prepared) = &snapshot {
+                current.range_bytes.as_mut().ok_or("native A range source missing")?.native =
+                    Some(prepared.range_config()?);
+            }
+            measurements.resource("retained_pcs_sources", Some(slot), serde_json::json!({
+                "weight": self.weight.retained_census(), "current": current.retained_census(),
+                "previous": self.accepted.iter().map(|(_, model)| model.retained_census()).collect::<Vec<_>>()
+            }));
             phase.finish();
             let mut response = Response {
                 root: current.root().clone(),
@@ -652,16 +710,22 @@ impl<'a> Prover<'a> {
                 })
                 .map_err(|e| e.to_string())?;
             // Durable success on both sides precedes promotion of numerical KV.
+            if let Snapshot::Native(prepared) = &snapshot {
+                prepared.promote()?;
+            }
             self.state.accepted.push(acceptance);
             self.accepted.push((snapshot, current));
             self.state.live = self.state.next_slot < 3;
             phase.finish();
-            Ok::<_, String>(preparation_ns)
+            Ok::<_, String>((preparation_ns, inference_ns))
         }))
         .map_err(|_| "Stop".to_string())
         .and_then(|r| r);
         if result.is_err() {
             pool.stop();
+            if let Some(session) = &self.native {
+                session.stop();
+            }
         }
         result.map_err(|_| "Stop".into())
     }

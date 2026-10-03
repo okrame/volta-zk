@@ -601,6 +601,23 @@ pub(in crate::c71_matrix) struct ReplayModel {
 }
 
 impl ReplayModel {
+    pub(in crate::c71_matrix) fn retained_census(&self) -> serde_json::Value {
+        let memory = &self.tree.memory;
+        serde_json::json!({
+            "domain_log2": self.domain.config().expect("validated domain").num_variables,
+            "retained_merkle_digest_bytes": memory.retained_digest_bytes,
+            "retained_salt_offset_bytes": memory.salt_offset_bytes,
+            "retained_rng_bytes": memory.rng_snapshot_bytes,
+            "retained_pcs_pad_bytes": self.pads.len() * size_of::<Goldilocks>(),
+            "retained_range_histogram_capacity_bytes": self.range_bytes.as_ref().map_or(0, |source| source.histogram.capacity() * 8)
+                + self.range_words.as_ref().map_or(0, |source| source.histogram.capacity() * 8),
+            "initial_coset_bytes": memory.peak_coset_bytes,
+            "initial_merkle_scratch_bytes": memory.peak_commit_scratch_bytes,
+            "query_subtree_bytes_each": memory.open_subtree_bytes_each,
+            "retained_s1_policy": self.retain_first,
+            "scope": "Merkle/pad payloads, not total host capacity; initial scratch includes coset and is no longer live; S1 is retained only within active sequential PCS chain, not by this snapshot; FFT/cache/query/sourcewise temporaries excluded"
+        })
+    }
     pub(in crate::c71_matrix) fn new(
         domain: Domain,
         seed: [u8; 32],

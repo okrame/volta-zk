@@ -460,6 +460,17 @@ extern "C" int c71_signed_append_at(C71RangeContext* context,uint64_t input,uint
     if(fence(context)) return -1;
     target->initialized+=count; return 0;
 }
+extern "C" int c71_original_read(C71RangeContext* context,uint64_t input,uint32_t kind,uint64_t first,uint64_t count,void* output) {
+    if(!ready(context)) return -1;
+    auto* source=buffer(context,input); uintptr_t end=0;
+    if(!source || (kind!=C71_U8 && kind!=C71_I16 && kind!=C71_I64) || source->kind!=kind ||
+        !count || count>268435456/sizes[kind] || first>source->initialized || count>source->initialized-first ||
+        reinterpret_cast<uintptr_t>(output)%sizes[kind] || !c71_dense::span(output,count*sizes[kind],end))
+        return fail(context,"original read kind, span or capacity");
+    if(checked(context,cudaMemcpyAsync(output,ptr<unsigned char>(context,source)+first*sizes[kind],count*sizes[kind],cudaMemcpyDeviceToHost,context->stream))) return -1;
+    context->stats.d2h_bytes+=count*sizes[kind];
+    return fence(context);
+}
 extern "C" int c71_dense_rms(C71RangeContext* context,uint64_t input,uint64_t first,uint64_t weight_offset,
     c71_nonlinear::Rms shape,uint64_t product,uint64_t statistic,uint64_t output) {
     if(!ready(context)) return -1;
@@ -617,9 +628,9 @@ extern "C" int c71_byte_begin(C71RangeContext* c,uint64_t out) {
 extern "C" int c71_byte_scatter(C71RangeContext* c,uint64_t in,const c71_byte::Tile* t,uint64_t out) {
     if(!ready(c)) return -1;
     auto* a=buffer(c,in); auto* b=buffer(c,out);
-    if(!a || a->initialized!=a->count || !b || b->kind!=C71_BYTE_PENDING || !b->flag || !t ||
-       !c71_byte::valid(*t,a->kind,a->count,b->count)) return fail(c,"byte scatter source or window shape");
-    return launched(c,c71_byte_scatter_launch(c->stream,ptr<void>(c,a),a->kind,a->count,ptr<uint8_t>(c,b),b->count,
+    if(!a || !a->initialized || !b || b->kind!=C71_BYTE_PENDING || !b->flag || !t ||
+       !c71_byte::valid(*t,a->kind,a->initialized,b->count)) return fail(c,"byte scatter source or window shape");
+    return launched(c,c71_byte_scatter_launch(c->stream,ptr<void>(c,a),a->kind,a->initialized,ptr<uint8_t>(c,b),b->count,
                                               ptr<uint32_t>(c,buffer(c,b->flag)),*t));
 }
 extern "C" int c71_byte_seal(C71RangeContext* c,uint64_t out) {

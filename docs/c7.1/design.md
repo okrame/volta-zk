@@ -71,188 +71,78 @@ non trasferisce automaticamente i bound B12 al programma completo.
 
 ## Stato di implementazione e lavoro necessario
 
-La prova canonica completa non è pronta per una misura. Il riferimento
-di calibrazione è CPU, anche su un host H100. L'export completo e il
-validatore strutturale della traccia di calibrazione sono disponibili.
-La CLI esporta anche il piano pubblico esatto dei 13 tipi di operatore e
-il wrapper ne valida DAG, riferimenti e layout W. Il driver indipendente
-esegue quel piano a memoria limitata e la modalità `trace` richiede ora la
-parità esatta di ogni frame prima della pubblicazione. I test locali coprono
-tutti gli operatori e l'intera schedulazione canonica; manca l'esecuzione sui
-pesi reali e il suo tempo completo non è misurato. Lo
-[stato e l'ordine di lavoro](runpod-tests.md#stato-e-sequenza-operativa)
-identificano componenti disponibili, implementazioni mancanti e passaggi
-che richiedono autorizzazione. Il [contratto del confronto](specs.md#confronto-indipendente)
-definisce cosa completare prima di ammettere Γ.
-Il [readiness audit v6 di partenza](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-fbd6141e7a1e.json)
-registra `NOT_READY` per la prova E2E. Sono ora implementati il corpo del
-prover canonico, gli snapshot/getter CPU con padding e istogrammi, il
-trasporto del completamento e un eseguibile CPU esplicito per tre risposte
-sullo stesso registro. Non sono ancora acquisiti certificati canonici
-validi: il codice non conferisce readiness. Il runner registra ora fasi
-wall e traffico effettivo, inclusa la distribuzione di Γ/tabelle/root e
-le richieste. Il verificatore ricompila i dati ricevuti; installazione e
-setup sono addebitati alla prima risposta. Questi strumenti non sono una
-misura canonica acquisita né un conto completo di CPU/HBM. Il
-[checkpoint della strumentazione](../c7.1-history/canonical-runner-measurements.md)
-ne espone copertura e limiti, inclusa la separazione ancora aperta dei costi
-di inferenza e preparazione. Il commitment iniziale A collega ora una
-scansione causale completa per coset: geometria 2^22, quindi 512
-ricostruzioni, senza callback scalare per ogni byte durante il commitment.
-La geometria iniziale W usa gli stessi coset e 1.024 passaggi. La parità
-è controllata soltanto su domini piccoli; nessuna esecuzione D34/D35.
-Il [checkpoint del collegamento](../c7.1-history/canonical-initial-scan.md)
-documenta la sostituzione del precedente cap 2^18 e le copie eliminate.
-Le prime query A usano ora finestre originali fino a 256 MiB, condivise
-fra colonne all'interno del batch, senza trattenere un buffer per ogni
-root storico. L'output delle query non duplica più una matrice intera
-durante la conversione dei limb. Il
-[checkpoint delle query](../c7.1-history/canonical-query-windows.md)
-distingue questo collegamento CPU dai limiti ancora aperti.
-Lo stesso scanner alimenta ora il singleton PCS, i coset S1, l'OOD e
-la rigenerazione di S1, accumulando contributi lineari dai byte originali
-senza getter scalare per cella. Ogni passaggio resta separato dalle
-barriere FS. Il coset extension usa direttamente limb base column-major,
-senza matrici complete di conversione; il
-[checkpoint delle riduzioni](../c7.1-history/canonical-residual-scan.md)
-ne delimita la parità ridotta, non una misura canonica.
-Il riferimento ora collega anche la geometria canonica degli stadi PCS:
-S1 2^24, S2 2^22, successori al più 2^23. Il residuale supera il precedente
-cap D16 con blocchi P/Q al più 2^21 e preparazione condivisa fra due fold,
-rilasciata prima del commitment successivo. Il
-[checkpoint degli stadi](../c7.1-history/canonical-pcs-stages.md)
-separa supporto CPU delle shape, parità ridotta e validazione completa.
-Il preparatore dispone anche del gather range in ordine
-`[tail][prefisso folded][u Gram][sottoalbero]`, con selezione dei producer
-per intersezione delle tessere e cap di 2 GiB. Il
-[checkpoint del gather](../c7.1-history/canonical-range-gather.md)
-è seguito dal [consumer range A](../c7.1-history/canonical-windowed-range.md):
-il riferimento CPU collega canopy, Gram e retention allo stesso reader.
-Il primo scan PCS conserva l'istogramma byte; il range non aggiunge uno
-scan per ricostruirlo. D34 seleziona 26 passate dopo l'istogramma, ma non
-è eseguito: la parità completa resta ridotta. Lo stesso motore ora serve
-anche W signed, dal packed originale: cut=11/m24, 29 passate selezionate,
-staging di 256 MiB e istogramma privato calcolato all'installazione.
-Non ripristina il piano W cut=10/m25 escluso per memoria. Gli altri consumer
-non convertiti mantengono il riferimento precedente. Rimangono il port CUDA
-dei producer, il conto completo del lavoro aritmetico, la memoria simultanea
-e la verifica canonica del range;
-la riduzione delle rigenerazioni non è un tempo H100 o una nuova prova Lean.
-Il bound di lavoro Eq/Pow dello screen rimane condizionale e non è
-trasferito automaticamente a questa implementazione.
-Il port CUDA del range dispone ora di kernel nativi per canopy, gruppi
-Gram, retention, fold e coefficienti. Il relativo controllo host non
-esegue i kernel. Un owner nativo ora gestisce stream privato, arena fissa,
-handle tipizzati, capacità trattenute e fencing prima della pubblicazione
-degli output; errori e cleanup sono verificati con driver simulato.
-Il consumer Rust ora può selezionare esplicitamente questo owner sulle
-stesse sorgenti byte/signed. Root, cubiche e terminali passano ai callback
-fallibili del prover esistente: nessun secondo transcript o fallback CPU.
-La parità ridotta usa una libreria host con driver simulato; non esegue
-CUDA. Il runner GPU completo e la verifica sui kernel reali restano aperti.
-Il range può anche consumare finestre già residenti sullo stesso owner
-del produttore: lock esclusivo, nessuna seconda arena/upload, rilascio dei
-temporanei prima di restituire la prova e arresto comune su errore. Il
-collegamento al replay canonico e alla promozione rimane da completare.
-Il [checkpoint dell'owner condiviso](../../benchmarks/results/c71-shared-range-local-2026-10-04-b6639a3fc3ad.json)
-conserva 25 test Rust e 11 Python passati e la chiusura PCS ridotta sui
-MAC originali, senza attribuire esecuzione CUDA o certificati canonici.
-La riduzione H con CAS, Eq per indice
-e lo stack locale del kernel coefficienti richiedono contabilità e misura;
-non ereditano il tempo o i conteggi dello screen storico.
-Per i producer matriciali esiste ora un kernel i16 a quattro MMA INT8,
-con correzioni affini e ricomposizione i64, sul W packed originale.
-L'owner del range ora gestisce anche W residente immutabile, il prodotto
-raw e il successivo RNE esatto nella stessa arena. Il flag device è letto
-dopo fence prima di rendere consumabile l'output, anche dal range signed.
-Compilazione sm_90, modello host e catena attraverso ABI Rust verificano
-soltanto componenti con driver simulato: il batching CUDA del preparatore,
-l'owner condiviso dal runner e il ledger fisico completo restano aperti.
-Il getter CPU ora ricostruisce per operatore, mantenendo tutte le righe
-vive fino all'ultimo consumer. I prodotti matriciali usano batch contigui
-da 150 righe (50 per lm_head), lettura W condivisa e route originali;
-la generazione iniziale rimane token-causale. Questo collega la schedule
-del batch allo scanner PCS/range. Un adapter del piano canonico ora
-collega tutti i 13 tipi di producer agli handle residenti: controlla sorgente, layout,
-ricette, righe selezionate e lo stesso owner Arc di W. Una vista di righe
-non copia o riduce la capacità del buffer padre. Il dispatcher comune
-rifiuta arità e side input errati; lo scanner completo non usa ancora questi handle.
-Affine/Gate conservano il raw signed-48 prima della RNE; i coefficienti
-provengono dalle ricette originali e i termini zero non leggono buffer.
-Il controllo delle route nei tre contesti usa input sintetici, non Γ reale.
-L'embedding seleziona righe del medesimo W sigillato tramite copie D2D
-ordinate, con token e shape verificati prima della prima copia e fence
-prima della pubblicazione. Non carica W una seconda volta e non richiede
-un kernel aggiuntivo; il ledger ABI 3 conta anche questi byte D2D.
-Il gather residente ora riusa le tessere byte originali per finestre
-contigue o riordinate, con codec biased i16/i32/i48 e padding esterno zero.
-Il codec byte ammette anche −32768 per lo slack argmax; i confini degli
-operatori aritmetici ordinari continuano a rifiutare quel marcatore.
-Una bitmap di righe impedisce duplicati o omissioni; la finestra resta
-non consumabile fino al fence e al controllo del flag device. Il controllo
-ridotto verifica anche l'ordine dei byte con driver simulato. Non è ancora
-collegato al replay completo o ai consumer PCS/range del runner GPU.
-Sono inoltre collegati come componenti residenti GELU, softcap, RoPE e
-argmax, tramite un dispatcher nonlineare esplicito. Le tabelle pubbliche
-sono caricate una volta per owner di profilo, gli istogrammi conservano i
-conteggi originali e il seal richiede copertura unica di tutte le righe.
-RoPE conserva il raw Q30; argmax restituisce solo gli ID selezionati dopo
-il fence, mantenendo lo slack biased-u16 residente. Norm usa ora coefficienti
-u128 e soglie quadrate esatte, con prodotti/statistiche originali; QK e PV
-usano dot product interi scalari e leggono soltanto KV causale. EXP30 produce
-massimo, differenze, esponenziali, denominatore e Pi originali, includendo
-il padding pubblico nell'istogramma. Le code KV condividono una capacità
-fissa per 450 token, senza copia dei prefissi precedenti; l'append D2D
-verifica l'offset fisico atteso e rifiuta una continuazione duplicata.
-Il [checkpoint dei prefissi](../../benchmarks/results/c71-kv-prefix-local-2026-10-04-facc742ede52.json)
-conserva il controllo dei tre contesti su una capacità condivisa, il
-rilascio e il rifiuto dei fork, con 22 test Rust e 11 Python passati.
-Non conferiscono da sole autorità di promozione. Le route sono confrontate
-con riferimenti CPU su input sintetici nei tre contesti, non su W reale.
-Il [checkpoint RMS/attention](../../benchmarks/results/c71-attention-local-2026-10-04-85e77ea66b6f.json)
-registra 22 test Rust e 12 Python passati, con compilazione sm_90 e
-diagnostico H100 esteso, non eseguito. Restano da collegare lo scanner
-completo e il runner. Il
-[checkpoint locale](../../benchmarks/results/c71-nonlinear-local-2026-10-04-870ec1faf05d.json)
-conserva la parità sintetica e un fallimento del test CPU di esaurimento
-dell'iteratore dopo rifiuto, senza attribuire credito alla prova completa. Il
-diagnostico CUDA di parità per questi nuovi kernel è compilato per sm_90;
-la sua esecuzione H100 resta parte dell'esperimento autorizzato.
-Non è acquisita una misura GPU. Il raffinamento PTX/CUDA all'intero signed-48 resta
-un obbligo aperto, non scaricato dai lemmi Lean o dai casi finiti host.
-Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,
-sui kernel densi, sul percorso CUDA e sulla contabilità fisica simultanea.
-I percorsi PCS grandi non sono ancora eseguiti o misurati. Questi non sono
-blocchi risolvibili soltanto procurandosi H100, né il collegamento CPU
-costituisce il getter GPU completo entro i limiti dichiarati.
-I dettagli e i limiti del riferimento sono nelle
-[specifiche](specs.md#preparazione-e-prova-a-memoria-limitata). Il
-[checkpoint di implementazione](../c7.1-history/canonical-reference-implementation.md)
-conserva le decisioni e i fallimenti senza attribuire credito canonico. Il
-[record del driver](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
-chiude l'assenza dell'implementazione locale, ma non convalida i pesi reali
-né chiude la finestra temporale della campagna di calibrazione.
-Il [tentativo ridotto con pool reale](../../benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json)
-ha completato una risposta e raggiunto il range A della seconda, ma è stato
-terminato al limite locale di 60 s; non dimostra due promozioni sullo stesso
-registro e non è stato mantenuto come test lento duplicato.
-Il [controllo delle credenziali locali](../../benchmarks/results/c71-local-secret-permissions-2026-10-03-d14843b3e1fb.json)
-ha inoltre corretto il `.env` ignorato a `0600` e aggiunto un preflight che
-non carica né stampa valori segreti.
-La campagna H100 ha anche un hard stop operativo: dal CLI v2.12.0 Runpod ha
-rimosso le deadline automatiche perché il backend le ignorava. Finché non
-esiste un limite provider verificabile o un diverso controllo di spesa
-autorizzato, il runbook vieta la creazione del pod.
-Il [record della deadline](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
-conserva fonte, versione, controlli locali e decisione senza attribuire
-credito hardware o protocollare.
+Il runner esplicito `experiment-cuda` collega ora tutti i 13 producer,
+inferenza token-causale, replay A, PCS/range/GKR, verifica e promozione
+per O=0/150/300. È un prototipo **misto GPU/CPU pronto per il primo
+esperimento autorizzato**, non un risultato H100 acquisito né un rispetto
+dimostrato dei target. La parità hardware e i tempi appartengono a quel
+primo esperimento, non sono prerequisiti da soddisfare sulla VM locale.
 
-I criteri per il [primo esperimento della prova](runpod-tests.md#esperimento-della-prova)
-non richiedono una dimostrazione preventiva del tempo H100: i tempi
-mancanti si misurano nel minimo esperimento autorizzato.
-Si dà priorità all'integrazione; ulteriori ottimizzazioni isolate
-sono giustificate da correttezza o impatti di almeno 16 MiB o 0,5 s.
+[canonical_device.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs)
+possiede la sessione numerica: stessa Arc W del commitment, un runtime
+con stream/arena, tabelle, una generazione di checkpoint/istogrammi e KV
+append-only con capacità condivisa per 450 token. Il preparatore non
+riceve transcript, correlazioni o monete PCS. I getter/scanner leggono
+quegli originali o li rigenerano dalle stesse ricette/tabelle e token.
+Le viste storiche conservano il limite causale. Il registro autorizza il
+predecessore; la promozione numerica segue completamento verificato e
+journal durevoli su entrambi i ruoli. Errori, panic o CUDA assente sono
+terminali: nessun fallback di inferenza, retry o seconda arena.
 
+Matrix usa quattro MMA INT8 con correzioni e raw i64; Norm usa soglie
+quadrate u128 esatte; QK/PV sono attualmente dot product interi scalari,
+non MMA. RNE, Affine/Gate, embedding, GELU/softcap, RoPE, EXP30 e argmax
+usano originali e codec canonici. Il gather A produce finestre residenti
+per il range sullo stesso owner. Restano **esplicitamente CPU** PCS
+FFT/Merkle/query/resti e contrazioni, GKR non-range/MAC, Seed6 reale AES,
+codec, verificatore e journal. Le righe/finestre originali richieste da
+questi consumer sono scaricate in staging bounded; non si tratta di una
+PCS GPU o di assenza assoluta di D2H. Il gather range W rimane CPU,
+con upload signed per finestre fino a 256 MiB. La
+[contabilità del percorso misto](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
+distingue payload, capacità riservate, trasferimenti e picchi da misurare.
+
+Il runner registra wall annidati, traffico applicativo nei due sensi,
+census simultanei ai confini delle fasi, ledger cumulativo CUDA e RSS/HWM
+dell'intero processo. Non sommare picchi o contatori cumulativi. Nel backend
+nativo l'intervallo di inferenza include cattura KV/checkpoint/istogrammi;
+il resto della risposta include replay/prova e attesa della verifica.
+Monitor esterni restano necessari per CPU-time, campionamento HBM e kill.
+Non sono acquisiti certificati canonici, forward su W reale o misure D34/D35.
+
+I checkpoint [RMS/attention](../../benchmarks/results/c71-attention-local-2026-10-04-85e77ea66b6f.json),
+[range condiviso](../../benchmarks/results/c71-shared-range-local-2026-10-04-b6639a3fc3ad.json)
+e [prefissi KV](../../benchmarks/results/c71-kv-prefix-local-2026-10-04-facc742ede52.json)
+conservano componenti locali verificati, non credito GPU. Il
+[precedente fallimento CPU](../../benchmarks/results/c71-nonlinear-local-2026-10-04-870ec1faf05d.json)
+nell'asserzione di esaurimento dopo rifiuto resta un fallimento distinto.
+Il [tentativo Seed6 ridotto](../../benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json)
+ha completato una risposta ma superato 60 s nella seconda: non dimostra
+due promozioni. Il readiness audit storico `NOT_READY` non viene riscritto
+o interpretato come divieto dell'integrazione locale ora completata.
+
+La calibrazione resta CPU. Export completo, piano pubblico e
+[driver indipendente](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
+sono implementati e testati sui 13 operatori/schedule, ma confronto sui
+pesi reali, Γ numericamente validato e tempo completo sono ancora da
+acquisire nella campagna autorizzata. La prova non certifica di per sé
+provenienza W, qualità del modello o correttezza delle tabelle.
+
+**Premesse residue.** I lemmi Lean giustificano le identità richiamate in
+[security](security.md), non l'implementazione CUDA, la schedulazione,
+il gather, l'immutabilità fisica o la composizione Seed6. Il replay nativo
+assume determinismo dei kernel corretti su W/tabelle sigillati, token
+fissati e prefissi KV originali; controlla token rigenerati e copertura,
+ma non conserva un digest privato di tutta A per confrontare ogni replay.
+La PCS/MAC continua a terminare negli originali. Test finiti, driver
+simulato e compilazione sm_90 non scaricano queste premesse.
+
+L'hard stop RunPod riguarda soltanto il provider: deadline rimosse perché
+inefficaci e nessuna autorizzazione corrente a pod/download/GPU/spesa.
+Occorre un limite provider verificabile o un diverso controllo di spesa
+autorizzato prima dell'avvio; non impedisce preparazione e test locali.
+[RunPod tests](runpod-tests.md#esperimento-della-prova) contiene il comando
+del primo esperimento, confronti hardware, misure e condizioni di stop.
 ## Contratto delle risorse
 
 | Quantità | Requisito |

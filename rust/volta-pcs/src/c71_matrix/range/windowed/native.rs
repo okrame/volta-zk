@@ -29,6 +29,16 @@ pub(in crate::c71_matrix) struct Config {
 }
 
 impl Config {
+    pub(in crate::c71_matrix) fn new(
+        library: PathBuf,
+        device: i32,
+        arena_bytes: u64,
+        reserve_bytes: u64,
+        window_words: usize,
+        buckets: u32,
+    ) -> Self {
+        Self { library, device, arena_bytes, reserve_bytes, window_words, buckets, resident: None }
+    }
     pub(in crate::c71_matrix) fn with_resident(
         mut self,
         runtime: Arc<Mutex<Runtime>>,
@@ -297,6 +307,7 @@ api! {
     histogram_seal: unsafe extern "C" fn(Raw,u64)->i32 => "c71_histogram_seal",
     histogram_padding: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_histogram_padding",
     signed_append: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64)->i32 => "c71_signed_append_at",
+    original_read: unsafe extern "C" fn(Raw,u64,u32,u64,u64,*mut c_void)->i32 => "c71_original_read",
     rms: unsafe extern "C" fn(Raw,u64,u64,u64,RmsShape,u64,u64,u64)->i32 => "c71_dense_rms",
     qk: unsafe extern "C" fn(Raw,u64,u64,u64,AttentionShape,u64)->i32 => "c71_dense_qk",
     pv: unsafe extern "C" fn(Raw,*const u64,*const u64,u64,AttentionShape,u64)->i32 => "c71_dense_pv",
@@ -574,6 +585,70 @@ impl Runtime {
             )
         };
         self.check(status)
+    }
+    pub(in crate::c71_matrix) fn download_bytes(
+        &mut self,
+        input: &Buffer,
+        first: usize,
+        output: &mut [u8],
+    ) -> Result<(), String> {
+        self.require_buffer(input)?;
+        let status = unsafe {
+            (self.api.original_read)(
+                self.raw,
+                input.id,
+                0,
+                first as u64,
+                output.len() as u64,
+                output.as_mut_ptr().cast(),
+            )
+        };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn download_words(
+        &mut self,
+        input: &Buffer,
+        first: usize,
+        output: &mut [i64],
+    ) -> Result<(), String> {
+        self.require_buffer(input)?;
+        if output.is_empty() || output.len() > 262144 {
+            return self.abort("original row staging size differs");
+        }
+        match input.kind {
+            1 => {
+                let mut words = vec![0i16; output.len()];
+                let status = unsafe {
+                    (self.api.original_read)(
+                        self.raw,
+                        input.id,
+                        1,
+                        first as u64,
+                        words.len() as u64,
+                        words.as_mut_ptr().cast(),
+                    )
+                };
+                self.check(status)?;
+                for (out, value) in output.iter_mut().zip(words) {
+                    *out = i64::from(value);
+                }
+                Ok(())
+            }
+            6 => {
+                let status = unsafe {
+                    (self.api.original_read)(
+                        self.raw,
+                        input.id,
+                        6,
+                        first as u64,
+                        output.len() as u64,
+                        output.as_mut_ptr().cast(),
+                    )
+                };
+                self.check(status)
+            }
+            _ => self.abort("original row staging kind differs"),
+        }
     }
     pub(in crate::c71_matrix) fn rms(
         &mut self,
@@ -1619,6 +1694,48 @@ pub(in crate::c71_matrix) mod tests {
         assert!(runtime.alloc(0, 1).is_err());
         assert_eq!(runtime.stats().unwrap().stopped, 1);
         runtime.close().unwrap();
+    }
+    #[test]
+    fn c71_b12_windowed_native_original_staging_is_bounded_and_fenced() {
+        let fixture = fixture(512);
+        let injection = Injection::new(&fixture.config);
+        for fault in 0..5 {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let input = runtime.upload_signed(&[1, -2, 3, -4]).unwrap();
+            let tail = runtime.signed_capacity(12).unwrap();
+            runtime.append_signed(&input, 0, 4, &tail, 0).unwrap();
+            let mut words = [0i64; 4];
+            if fault == 0 {
+                let before = runtime.stats().unwrap();
+                runtime.download_words(&tail, 0, &mut words).unwrap();
+                assert_eq!(words, [1, -2, 3, -4]);
+                assert_eq!(runtime.stats().unwrap().d2h_bytes - before.d2h_bytes, 8);
+                let raw = runtime
+                    .pointwise(
+                        [Some((&input, 0)), None],
+                        4,
+                        Pointwise { a: 1 << 30, b: 0, multiply: 0 },
+                    )
+                    .unwrap();
+                runtime.download_words(&raw, 0, &mut words).unwrap();
+                assert_eq!(words, [1 << 30, -2 << 30, 3 << 30, -4 << 30]);
+            } else {
+                if fault >= 3 {
+                    injection.set(if fault == 3 { 2 } else { 7 });
+                }
+                let result = if fault == 1 {
+                    runtime.download_words(&tail, 1, &mut words)
+                } else if fault == 2 {
+                    runtime.download_bytes(&tail, 0, &mut [0; 8])
+                } else {
+                    runtime.download_words(&tail, 0, &mut words)
+                };
+                injection.set(0);
+                assert!(result.is_err());
+                assert_eq!(runtime.stats().unwrap().stopped, 1);
+            }
+            runtime.close().unwrap();
+        }
     }
     impl Drop for Fixture {
         fn drop(&mut self) {

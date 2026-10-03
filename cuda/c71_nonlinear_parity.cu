@@ -1,4 +1,5 @@
 #include "c71_nonlinear.cuh"
+#include "c71_dense_i16.cuh"
 #include <cuda_runtime.h>
 #include <algorithm>
 #include <cstdio>
@@ -15,6 +16,8 @@ extern "C" cudaError_t c71_qk_launch(cudaStream_t,const int16_t*,const int16_t*,
 extern "C" cudaError_t c71_pv_launch(cudaStream_t,const int16_t* const*,const int16_t*,int64_t*,c71_nonlinear::Attention,uint32_t*);
 extern "C" cudaError_t c71_softmax_launch(cudaStream_t,const int16_t*,const int32_t*,int16_t*,int16_t*,int64_t*,int64_t*,int16_t*,int64_t*,c71_nonlinear::Attention,uint32_t*);
 extern "C" cudaError_t c71_dense_rne_launch(cudaStream_t,const int64_t*,int16_t*,uint64_t,int32_t,uint32_t*);
+extern "C" cudaError_t c71_dense_i16_launch(cudaStream_t,const int16_t*,uint64_t,const int16_t*,uint64_t,int64_t*,uint64_t,uint32_t*,c71_dense::Shape);
+extern "C" cudaError_t c71_dense_pointwise_launch(cudaStream_t,const int16_t*,const int16_t*,int64_t*,uint64_t,c71_dense::Pointwise,uint32_t*);
 
 static void require(bool valid) { if(!valid) { std::fputs("C71 nonlinear parity failed\n",stderr); std::exit(1); } }
 static void check(cudaError_t status) { if(status!=cudaSuccess) { std::fprintf(stderr,"CUDA: %s\n",cudaGetErrorString(status)); std::exit(1); } }
@@ -36,6 +39,34 @@ int main() {
     auto* failed=device<uint32_t>(1);
     auto reset=[&] { check(cudaMemsetAsync(failed,0,4,stream)); };
     auto flag=[&] { return read(failed,1,stream)[0]; };
+    for(const auto shape: {c71_dense::Shape{1,17,33},c71_dense::Shape{17,35,65},c71_dense::Shape{2,7,21504}}) {
+        std::vector<int16_t> activations(size_t(shape.m)*shape.k),weights(size_t(shape.n)*shape.k);
+        const int16_t extremes[]={-32767,-256,-129,-128,-1,0,1,127,128,255,256,32767};
+        for(size_t index=0;index<activations.size();++index) activations[index]=extremes[(index*7+1)%12];
+        for(size_t index=0;index<weights.size();++index) weights[index]=extremes[(index*5+3)%12];
+        auto* left=device<int16_t>(activations.size()); auto* right=device<int16_t>(weights.size());
+        auto* product=device<int64_t>(size_t(shape.m)*shape.n);
+        upload(left,activations); upload(right,weights); reset();
+        check(c71_dense_i16_launch(stream,left,activations.size(),right,weights.size(),product,size_t(shape.m)*shape.n,failed,shape));
+        require(flag()==0); const auto actual=read(product,size_t(shape.m)*shape.n,stream);
+        for(unsigned row=0;row<shape.m;++row) for(unsigned column=0;column<shape.n;++column) {
+            int64_t expected=0;
+            for(unsigned inner=0;inner<shape.k;++inner) expected+=int64_t(activations[size_t(row)*shape.k+inner])*weights[size_t(column)*shape.k+inner];
+            require(actual[size_t(row)*shape.n+column]==expected);
+        }
+        check(cudaFree(left)); check(cudaFree(right)); check(cudaFree(product));
+    }
+    {
+        const std::vector<int16_t> left={-32767,-256,-1,0,1,255,32767},right={32767,1,-1,7,-1,128,-32767};
+        auto* first=device<int16_t>(left.size()); auto* second=device<int16_t>(right.size());
+        auto* product=device<int64_t>(left.size()); upload(first,left); upload(second,right);
+        for(const auto operation: {c71_dense::Pointwise{17,-29,0},c71_dense::Pointwise{0,0,1}}) {
+            reset(); check(c71_dense_pointwise_launch(stream,first,second,product,left.size(),operation,failed)); require(flag()==0);
+            const auto actual=read(product,left.size(),stream);
+            for(size_t index=0;index<left.size();++index) require(actual[index]==(operation.multiply?int64_t(left[index])*right[index]:17*int64_t(left[index])-29*int64_t(right[index])));
+        }
+        check(cudaFree(first)); check(cudaFree(second)); check(cudaFree(product));
+    }
     std::vector<int16_t> input(2*65535),table(65535);
     for(size_t index=0;index<table.size();++index) {
         table[index]=int16_t((int(index)-32767)/2);
@@ -183,5 +214,5 @@ int main() {
     check(c71_argmax_select_launch(stream,source,tokens,rows,columns,failed)); require(flag()!=0);
     check(cudaFree(tokens)); check(cudaFree(output)); check(cudaFree(source)); check(cudaFree(failed));
     check(cudaStreamDestroy(stream));
-    std::printf("C71_NONLINEAR_CUDA_PARITY {\"lookup_entries\":65535,\"rope_cases\":%u,\"argmax_rows\":3,\"rms_cases\":3,\"attention_contexts\":3,\"rejections\":10,\"gpu_execution\":true,\"credit\":false}\n",rope_cases);
+    std::printf("C71_NONLINEAR_CUDA_PARITY {\"dense_cases\":3,\"pointwise_cases\":2,\"lookup_entries\":65535,\"rope_cases\":%u,\"argmax_rows\":3,\"rms_cases\":3,\"attention_contexts\":3,\"rejections\":10,\"gpu_execution\":true,\"credit\":false}\n",rope_cases);
 }

@@ -1,10 +1,14 @@
-//! Original source blocks through the shared native owner. No host-output
-//! download, transcript or CPU fallback.
+//! Original source blocks through the shared native owner. Producers receive
+//! no transcript or correlations; CPU consumers use explicit bounded staging.
 use super::*;
 use kernel::range::windowed::native::{
     AttentionShape, Buffer, DenseShape, Pointwise, RmsShape, RopeShape, Runtime,
 };
 use std::sync::Arc;
+
+#[path = "canonical_device.rs"]
+mod device;
+pub(super) use device::{Prepared, Session};
 
 pub(super) struct Rows {
     buffer: Buffer,
@@ -308,23 +312,43 @@ impl<'a> ByteWindow<'a> {
         {
             return runtime.abort("resident byte block identity or shape differs");
         }
-        let Some(seen) = self.seen.get_mut(&rows.source) else {
+        self.append_original(runtime, rows.source, rows.first, rows.rows, &rows.buffer, 0)
+    }
+
+    fn append_original(
+        &mut self,
+        runtime: &mut Runtime,
+        source: usize,
+        first: usize,
+        count: usize,
+        input: &Buffer,
+        offset: usize,
+    ) -> Result<(), String> {
+        let b = self.bytes;
+        let Some(shape) = b.scalar.layout.sources.get(source) else {
+            return runtime.abort("resident byte source missing");
+        };
+        if count == 0 || first.checked_add(count).is_none_or(|end| end > shape.rows) {
+            return runtime.abort("resident byte source rows differ");
+        }
+        let Some(seen) = self.seen.get_mut(&source) else {
             return runtime.abort("resident byte source not requested");
         };
-        for r in rows.first..rows.first + rows.rows {
+        for r in first..first + count {
             if seen[r / 64] & (1 << (r % 64)) != 0 {
                 return runtime.abort("duplicate resident byte row");
             }
             seen[r / 64] |= 1 << (r % 64);
         }
-        if let Err(e) = b.resident_tiles(
-            &self.window,
-            self.length,
-            rows.source,
-            rows.first,
-            rows.rows,
-            |tile| runtime.scatter_bytes(&rows.buffer, &tile, &self.buffer),
-        ) {
+        if let Err(e) =
+            b.resident_tiles(&self.window, self.length, source, first, count, |mut tile| {
+                tile.input_first = tile
+                    .input_first
+                    .checked_add(offset as u64)
+                    .ok_or("resident byte offset overflow")?;
+                runtime.scatter_bytes(input, &tile, &self.buffer)
+            })
+        {
             return runtime.abort(e);
         }
         Ok(())
@@ -1179,7 +1203,7 @@ mod tests {
     use super::*;
     use kernel::range::windowed::native::tests::{fixture, Injection};
 
-    fn nonlinear_profile(slot: usize) -> Canonical {
+    pub(super) fn nonlinear_profile(slot: usize) -> Canonical {
         let plan = crate::c71_matrix::gemma::compile().unwrap();
         let (sources, output, softmax) = plan.softmax_sources_at(0).unwrap();
         let mut scales: BTreeMap<_, _> =
@@ -2143,6 +2167,46 @@ mod tests {
         assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
         runtime.close().unwrap();
         eprintln!("C71_RESIDENT_BYTE_WINDOWS count={windows} codecs=6/2/4 max_bytes=128 exact_order=true intermediate_download_bytes=0 gpu=false");
+    }
+
+    #[test]
+    fn c71_canonical_resident_byte_window_reads_initialized_tail_slice() {
+        let fixture = fixture(512);
+        let bytes = gather_layout();
+        let mut runtime = Runtime::new(&fixture.config).unwrap();
+        runtime.install_weights(Arc::new(vec![1, 0, 0, 0, 1, 0, 0, 0, 1]), [12; 32]).unwrap();
+        let values = [-32767, -256, -1, 0, 1, 255, 256, 12345, 32767];
+        let input = runtime.upload_signed(&values).unwrap();
+        let tail = runtime.signed_capacity(27).unwrap();
+        runtime.append_signed(&input, 0, 9, &tail, 0).unwrap();
+        runtime.append_signed(&input, 0, 9, &tail, 9).unwrap();
+        let mut window = ByteWindow::new(&mut runtime, &bytes, [7; 32], 7, 0, 128, 0, 0).unwrap();
+        for source in [0, 2] {
+            let rows = gather_rows(&mut runtime, &bytes, source, 0, &values);
+            window.append(&mut runtime, &rows).unwrap();
+            rows.release(&mut runtime).unwrap();
+        }
+        window.append_original(&mut runtime, 1, 0, 3, &tail, 9).unwrap();
+        let output = window.finish(&mut runtime).unwrap();
+        let mut observed = [0; 128];
+        runtime.download_bytes(&output, 0, &mut observed).unwrap();
+        let mut expected = [0; 128];
+        for source in 0..3 {
+            for row in 0..3 {
+                let words = values[row * 3..row * 3 + 3]
+                    .iter()
+                    .map(|&word| i64::from(word))
+                    .collect::<Vec<_>>();
+                bytes
+                    .emit_row_bytes(source, row, &words, |index, byte| {
+                        expected[index] = byte;
+                        Ok(())
+                    })
+                    .unwrap();
+            }
+        }
+        assert_eq!(observed, expected);
+        runtime.close().unwrap();
     }
 
     #[test]

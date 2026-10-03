@@ -393,8 +393,9 @@ include capacità e descrittori dei vettori P/Q trattenuti e un upper dei
 payload dei due twiddle; non è un picco fisico, non include tutto il
 workspace temporaneo né allocator/runtime. Il
 [checkpoint degli stadi](../c7.1-history/canonical-pcs-stages.md)
-documenta geometrie e lifecycle. Le shape canoniche non sono eseguite,
-la contabilità completa e il collegamento CUDA restano lavoro locale.
+documenta geometrie e lifecycle. Le shape canoniche non sono eseguite;
+nel runner misto queste fasi PCS restano CPU, con replay CUDA e conto
+simultaneo esplicito nella sezione dedicata.
 Per A ordinata S1 rimane allocato; il predecessore viene interrogato e
 rilasciato prima di modificare lo stato successivo. W non seleziona S1.
 
@@ -557,7 +558,7 @@ limite locale di 60 s; il [record negativo](../../benchmarks/results/c71-real-tw
 non attribuisce copertura multi tentativo.
 La ricostruzione ricorsiva CPU non implementa la schedule canonica 512.
 
-Il [runner CPU esplicito](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_runner.rs)
+Il [runner esplicito](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_runner.rs)
 collega preparazione, PCS W/A, Seed6 ell=11 e tre risposte sullo stesso
 registro mediante socketpair locali. Richiede input canonici e non è
 ammesso sulla VM di sviluppo. Non certifica numericamente le tabelle né
@@ -578,17 +579,65 @@ Il tempo parte prima della lettura di Γ; le fasi distinguono compilazione
 dei due ruoli, caricamento W, commitment W/A, preparazione, corpo della
 prova, attesa/decoding, verifica e completamento con journal. Gli intervalli
 wall sono annidati e i ruoli concorrenti: non si sommano per ottenere un
-tempo totale. La preparazione fonde inferenza, istogrammi e checkpoint;
-`inference_wall_ns` e `proof_only_wall_ns` restano `null`, con
-`phase_partition_complete:false`, finché questi costi non sono separati.
-Il costo dopo la preparazione non è presentato come tutta la prova.
+tempo totale. Nel backend CPU inferenza e preparazione restano fuse.
+Nel backend CUDA `inference_wall_ns` misura il loop causale, inclusa
+cattura KV/checkpoint/istogrammi e fence; `proof_only_wall_ns` è il resto
+dell'intera risposta, inclusi allocazione/tabelle, replay, prova, attesa
+verifica e journal. Non sottrae preparazione dipendente dalla risposta.
 In caso di errore il runner emette su stderr `C71_RUN_METRICS` con fasi
 incomplete e traffico parziale, senza valori privati; un processo ucciso
 richiede comunque il log del controller. RSS/HWM sono dell'intero processo
-host con entrambi i ruoli, non picchi per fase, CPU-time o contabilità HBM.
-Il driver non offre un percorso GPU né un fallback di produzione.
-Rimangono locali l'adattamento dei kernel densi al piano a memoria
-limitata, il collegamento CUDA e la contabilità simultanea completa.
+host con entrambi i ruoli. I campioni ai confini di fase non sono picchi
+per ruolo; CPU-time e HBM osservata richiedono il monitor esterno.
+
+### Runner CUDA sperimentale e conto simultaneo
+
+La CLI seleziona soltanto `reference-cpu` oppure `experiment-cuda`; la
+seconda aggiunge `LIBRARY DEVICE` agli stessi cinque argomenti di input.
+Richiede `c71-seed6-reference`, PCG reale AES e libreria ABI 3 con tutti i
+simboli aggiornati. Nessun fallback se libreria, GPU, simboli o fence
+falliscono. `PREPARATION_BYTES` è fra 2 GiB e 6.174.015.488 B, non un limite
+del processo. Lo scanner nativo usa righe fino all'ultimo consumer, batch
+derivati dalle shape (anche 149 righe della Norm finale), padding pubblico
+e conteggi originali. La copertura completa precede il seal di ogni finestra.
+
+| Owner/fase simultanea | Capacità o payload e collocazione |
+|---|---|
+| W immutabile | 61.394.690.560 B host, stessa Arc per PCS e upload; altrettanti B device separati dall'arena, senza copia W aggiuntiva per snapshot |
+| Arena CUDA | 6.442.450.944 B riservati una volta; almeno 256 MiB esclusi dall'allocatore; W+arena = 67.837.141.504 B, oltre runtime/driver/stack device |
+| Stato numerico nell'arena | KV450 405.504.000 B unici, checkpoint di una generazione 98.380.800 B, 121 istogrammi i64 63.437.880 B, tabelle packed 23.954.072 B; subtotal payload 591.276.752 B, non da aggiungere nuovamente all'arena |
+| Replay GPU e range A | Raw i64 e output i16 distinti, input vivi, flag/bitmap/descrittori; finestra A fino a 2 GiB, canopy/Gram/fold vivono nella stessa arena con lo stato numerico. Il ledger misura live/peak allineati e rifiuta esaurimento/frammentazione, non rialloca o spilla |
+| Range W | Staging host signed fino a 256 MiB, gather CPU e H2D, consumer nello stesso runtime; nessuna seconda arena o seconda W packed |
+| PCS iniziale CPU | W e stato GPU restano vivi; coset base 2^22×128×8 = 4.294.967.296 B, più colonna FFT, due twiddle, cache Merkle/sali/pad, hash e metadati. Non è workspace GPU |
+| PCS A successiva CPU | S1 trattenuto solo nella catena PCS attiva (2^27×24 = 3.221.225.472 B), non tre copie negli snapshot; coset S1 2^24×12×8 = 1.610.612.736 B, poi S2 2^22×12×8 con S1 ancora vivo; P/Q, query/resti/FFT e predecessore sono ulteriori temporanei CPU |
+| Originali A per consumer CPU | Una riga i64 fino a 2 MiB, eventuale staging i16 fino a 512 KiB; query byte fino a 256 MiB con corrispondente finestra device; cache di una riga e 128 B per snapshot. Nessuna A completa host trattenuta |
+| Altri owner host | Due copie delle tabelle pubbliche e dei profili, Seed6 dei due ruoli, MAC/GKR, buffer proof/framing, query/cache e allocator; coesistono con W e workspace, non sono coperti dal solo ledger CUDA |
+
+Le tabelle riportano simultaneità e dimensioni nominate, **non un picco
+completo certificato**. Il report include capacità host W/tabelle,
+payload GPU unici, Merkle/pad/istogrammi delle PCS correnti e precedenti,
+RSS/HWM ai confini di fase, contatori cumulativi H2D/D2H/D2D, allocazioni,
+rilasci, launch e fence. Il lock non bloccante salta un campione nativo
+occupato: non attribuire quei contatori a un'altra fase. I delta si
+ottengono sottraendo campioni dello stesso owner; picchi e riserva non
+si sommano. `complete_physical_peak:false` resta corretto fino alla misura
+esterna di processo/device; contesto CUDA, stack, allocator, scratch FFT
+e CPU Seed6/GKR non diventano zero perché esclusi dal subtotal.
+
+`c71_original_read` permette staging bounded soltanto di prefissi già
+inizializzati, controlla tipo/span, contabilizza D2H e sincronizza prima
+del consumo. Il gather accetta viste nei prefissi KV, non celle future.
+Questi byte non passano al verificatore. Il range A resta residente;
+PCS FFT/Merkle/resti/contrazioni, GKR non-range, MAC, PCG, codec e verifica
+restano CPU dichiarati, non fallback impliciti. La rigenerazione di una
+generazione storica rilascia quella precedente e riusa KV450 originale;
+una copia D2D della sola slice corrente serve quando un consumer ordinario
+richiede KV come matrice. Tutte le copie sono addebitate.
+
+Il test locale della schedule copre 150 token e tutti i 13 tipi nei tre
+contesti senza caricare W; il test numerico dello scanner è ridotto.
+Non è una prova completa, né una misura D34/D35 o H100. Il primo esperimento
+deve misurare anche gli eventuali superamenti dei target, non nasconderli.
 
 Il piano canonico conserva 61 checkpoint di layer, 98.380.800 B per
 una generazione alla volta. Raw e output arrotondato sono distinti.
@@ -687,7 +736,7 @@ Il loader richiede questo nuovo simbolo, rifiutando le librerie precedenti
 che espongono soltanto l'append senza offset. I prefissi storici rimangono
 leggibili con la propria maschera causale anche dopo il completamento
 del terzo. L'ultimo descrittore condiviso rilascia il buffer; ogni condivisione
-e rilascio verifica l'owner Rust. Il runner deve ancora legare la creazione
+e rilascio verifica l'owner Rust. Il runner lega ora la creazione
 della continuazione alle sole accettazioni durevoli.
 EXP30 verifica score futuri zero, tabella E(0)=2^30 e range, accumula Z
 esatto e arrotonda Pi Q14 con pareggi al pari. La riduzione shared usa
@@ -714,10 +763,9 @@ fence e flag valido prima di convertirlo in u8; scarica solo 4 B di stato.
 Il rilascio anticipato ritira anche il flag senza liberare l'arena. La
 copertura del layout è responsabilità del wrapper Rust fidato; l'ABI C
 controlla codec, accessi e stato del buffer, non certifica il DAG da sola.
-Il loader richiede anche i tre simboli begin/scatter/seal. Mancano ancora
-il collegamento di questo gather al replay,
-lo scanner PCS/range interamente residente, il lifecycle comune del runner
-e il conto simultaneo di prover/verificatore/PCS/Seed6. Il ledger C non
+Il loader richiede anche i tre simboli begin/scatter/seal. Il gather è
+collegato al replay e al range sul lifecycle comune del runner; i consumer
+PCS ancora CPU ricevono staging bounded esplicito. Il ledger C non
 comprende i descrittori/bitmap Rust o il picco fisico completo.
 Il dispatcher collega anche tutte le ricette `Affine` e i prodotti `Gate`:
 riusa `Bytes::affine_shape` per codec, geometrie e coefficienti e richiede
@@ -741,10 +789,10 @@ validato come i16 simmetrico all'installazione: nessun calcolo o nuovo
 kernel, copia W host, upload token device o download intermedio. Il ledger
 conta i byte D2D sottoposti con successo anche prima di un errore parziale;
 non misura il traffico fisico del bus. Stack host degli ID, overhead del
-runtime e tempi restano nel conto globale da completare. Il chiamante
-del runner dovrà fornire gli ID dello snapshot causale fissato; l'adapter
+runtime e tempi restano nel conto globale da misurare. Il chiamante
+del runner fornisce gli ID dello snapshot causale fissato; l'adapter
 non prova da solo quella provenienza. Il loader richiede anche il simbolo
-embedding. Resta l'integrazione completa dello scanner e del runner.
+embedding. Questo binding software non sostituisce la parità hardware.
 Il codec byte condiviso accetta l'intero intervallo signed della propria
 larghezza, incluso −32768 per `U/global/argmax_slack`: la prima versione
 del gather rifiutava erroneamente questa cella valida. Il rifiuto del

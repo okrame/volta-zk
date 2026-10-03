@@ -346,6 +346,23 @@ pub(super) struct Tables {
 
 impl Tables {
     pub(super) const BYTES: usize = 60 * 65535 * 6 + 65535 * 2 + 450 * (128 + 64) * 8;
+    pub(super) fn capacity_bytes(&self) -> usize {
+        self.gelu.iter().map(|values| values.capacity() * size_of::<i16>()).sum::<usize>()
+            + self.exp30.iter().map(|values| values.capacity() * size_of::<i32>()).sum::<usize>()
+            + self.softcap.capacity() * size_of::<i16>()
+            + self
+                .rope
+                .iter()
+                .flatten()
+                .map(|values| values.capacity() * size_of::<[i32; 2]>())
+                .sum::<usize>()
+            + (self.gelu.capacity()
+                + self.exp30.capacity()
+                + self.rope.iter().map(Vec::capacity).sum::<usize>())
+                * size_of::<Vec<u8>>()
+            + self.digest.capacity()
+            + size_of::<Self>()
+    }
     #[cfg(test)]
     pub(super) fn shape_fixture() -> Self {
         let mut exp = vec![0; 65535];
@@ -357,6 +374,12 @@ impl Tables {
             rope: [vec![Vec::new(); 450], vec![Vec::new(); 450]],
             digest: String::new(),
         }
+    }
+    #[cfg(test)]
+    pub(super) fn resident_fixture() -> Self {
+        let mut tables = Self::shape_fixture();
+        tables.rope = [vec![vec![[1 << 30, 0]; 128]; 450], vec![vec![[1 << 30, 0]; 64]; 450]];
+        tables
     }
     pub(super) fn with_slot<T>(
         &self,

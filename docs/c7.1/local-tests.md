@@ -81,6 +81,51 @@ esplicito; non abilita un fallback CPU nel percorso di produzione.
 
 ## Semantica, calibrazione e contabilità
 
+### Collegamento del runner CUDA
+
+Il checkpoint comprende `canonical_device`, staging originale fenced,
+gather su prefissi KV inizializzati, metriche e selezione esplicita del
+backend. Dopo la build mirata, eseguire separatamente i filtri seguenti
+con il limite 60 s / 2 GiB e `--test-threads=1 --nocapture`:
+
+```text
+c71_canonical_device_
+c71_canonical_resident
+c71_b12_windowed_native_original_staging
+c71_b12_windowed_native_shared
+c71_b12_windowed_native_byte
+c71_b12_windowed_native_signed
+c71_b12_windowed_native_failure
+c71_canonical_metrics_
+c71_canonical_runner_
+c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs
+```
+
+La schedule usa tutti i 150 token nei tre contesti, controlla input vivi,
+KV causale, checkpoint, 50 decisioni e batch equivalenti (Norm finale:
+149 righe, non 150), senza W reale. Lo scanner numerico locale copre una
+catena Affine/RNE, getter/cache e finestre originali, non l'intero forward.
+I test range condiviso chiudono su PCS/MAC originali ridotti. Le socketpair
+del test runner richiedono l'eccezione locale se il sandbox le vieta;
+nessuna connessione esterna. Mantenere i log del rifiuto sandbox distinti
+da quelli della successiva esecuzione autorizzata.
+
+Compilare inoltre libreria completa e diagnostico senza eseguirli:
+
+```bash
+nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC \
+  cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_range_runtime.cpp \
+  -o /tmp/libc71_device_runner.so
+nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
+  cuda/c71_nonlinear_parity.cu cuda/c71_dense_i16.cu -o /tmp/c71_device_parity
+```
+
+I controlli Python pertinenti sono `tests/test_c71_docs.py`,
+`tests/test_c71_dense_i16.py` e `tests/test_c71_range_native.py`, con i
+limiti sopra. La parità hardware e il tempo completo sono controlli del
+primo esperimento H100 autorizzato, non condizioni locali impossibili.
+Conservare la cache Cargo fino al completamento dell'integrazione.
+
 Eseguire separatamente ogni riga della tabella con il comando pytest
 limitato sopra. Impostare i due binari prima dei test che li richiedono.
 

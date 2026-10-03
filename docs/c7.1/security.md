@@ -643,9 +643,10 @@ L'adapter del piano ora vincola ogni prodotto alla stessa Arc W installata
 e al layout, e ogni blocco a sorgente, righe, layout A e ricette. Un handle
 di un altro contesto è rifiutato; anche un errore prima della chiamata al
 kernel ferma l'owner C. Questa identità locale non è il binding
-crittografico al commitment: il collegamento all'installazione PCS e il
-lifecycle degli snapshot/tentativi del preparatore completo restano da
-realizzare nel runner. Nessuna route nativa esegue fallback CPU.
+crittografico al commitment: il runner usa ora la stessa Arc W per PCS e
+runtime e lega gli snapshot al registro dei tentativi. Il raffinamento
+di quel collegamento resta una premessa di implementazione, non un nuovo
+teorema acquisito. Nessuna route nativa esegue fallback CPU.
 Affine/Gate usano ora le stesse identità intere e le porte originali anche
 nel dispatcher residente: coefficienti bounded, input simmetrici i16,
 nessuna lettura dei termini zero e raw distinto dall'output RNE. Non
@@ -656,8 +657,8 @@ gli ID pubblici, preservando ordine e ripetizioni. La lista completa e
 lo span W sono controllati prima delle copie, con output non consumabile
 finché il fence non riesce. Copie parziali ed errori asincroni fermano
 definitivamente l'owner. L'ABI 3 è verificata prima di leggere il ledger
-esteso; una libreria ABI 2 non viene accettata. Resta aperto il binding
-degli ID allo snapshot/tentativo del runner, come quello di W alla PCS;
+esteso; una libreria ABI 2 non viene accettata. Il runner fornisce gli ID
+fissati dal preparatore e la W originale installata nella PCS;
 la parità ridotta non costituisce una nuova garanzia crittografica.
 Il controllo di appartenenza del buffer comprende ora l'identità del
 runtime Rust anche fra copie separate della libreria: un handle numerico
@@ -692,13 +693,32 @@ un buffer pending non entra nel range. Il flag sticky e il fence precedono
 la pubblicazione, inclusi gli errori asincroni. I test confrontano l'ordine
 esatto con lo scanner CPU: una root fraction-tree uguale non basterebbe,
 perché non rileverebbe una permutazione. Rimangono aperti la correttezza
-concorrente CUDA, il raffinamento generale del gather e il collegamento
+concorrente CUDA e il raffinamento generale del gather e del collegamento
 agli snapshot del runner; la copertura ridotta non li dimostra.
 Il codec byte conserva anche −32768 quando rappresenta lo slack u16
 biased di argmax. Non lo ammette come input aritmetico ordinario: quella
 restrizione appartiene al producer, non alla codifica byte condivisa.
 Nessun output del
 componente da solo costituisce una prova accettabile.
+Il runner CUDA riceve soltanto profili/tabelle/W pubblicamente fissati e
+prompt nel preparatore. La scansione successiva seleziona sorgenti/finestre,
+non passa sfide, correlazioni o monete PCS ai producer. Per la rigenerazione
+storica si assume determinismo dei kernel corretti sugli stessi input:
+si controllano token pubblici e copertura, non un digest di tutta A.
+Le code originali KV rimangono append-only; le viste precedenti non leggono
+la coda futura. La PCS originale e le aperture MAC non vengono sostituite
+da un nuovo commitment o MAC sui dati rigenerati. Queste sono premesse
+esplicite di raffinamento nel design, non conseguenze di soli test finiti.
+
+Il consumer CPU può ricevere una riga o finestra privata bounded mediante
+`c71_original_read`, dopo controllo di prefisso inizializzato e fence.
+È memoria del prover, non un messaggio al verificatore o una nuova fuga
+autorizzata. I report includono solo contatori/shape pubbliche e tempi.
+Il runner ferma l'owner numerico anche su errore della prova CPU. La
+promozione numerica segue il successo di `pool.attempt`, che comprende
+ricezione del completamento atteso e journal durevole; non segue un ACK
+generico. Nessun metodo di promozione può riattivare un runtime fermato.
+
 Il raffinamento di questa implementazione al prodotto intero del §4 non
 è un nuovo lemma Lean acquisito.
 

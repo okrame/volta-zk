@@ -1,0 +1,95 @@
+{
+  "schema": "volta-c71-h100-e2e-readiness-v6",
+  "date": "2026-10-03",
+  "git_commit": "fbd6141e7a1ed1297f17361f126770214ae2aded",
+  "git_dirty": false,
+  "credit": false,
+  "supersedes": "benchmarks/results/c71-h100-e2e-readiness-2026-10-03-5fba934b009f.json",
+  "authorization": {
+    "weight_download": false,
+    "provider_pod": false,
+    "gpu_execution": false,
+    "spend": false
+  },
+  "completed_local_checks": {
+    "fork_provenance": "benchmarks/results/c71-fork-provenance-2026-10-02-4fbfbfb8afd0.json",
+    "dependency_audit": "benchmarks/results/c71-dependency-audit-2026-10-02-dc79276f51b6.json",
+    "calibration_trace": "benchmarks/results/c71-calibration-trace-2026-10-02-f47b22d7a4c5.json",
+    "private_trace_permissions": "benchmarks/results/c71-calibration-trace-permissions-2026-10-02-a0f46bf8ca7f.json",
+    "i16_marker_boundary": "benchmarks/results/c71-i16-marker-2026-10-02-69e597e7cbd2.json",
+    "oracle_plan": "benchmarks/results/c71-oracle-plan-2026-10-02-55423e496cfc.json",
+    "context_specific_trace_shapes": "benchmarks/results/c71-trace-context-shapes-2026-10-02-b634e781795d.json",
+    "independent_driver": "benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json",
+    "local_secret_permissions": "benchmarks/results/c71-local-secret-permissions-2026-10-03-d14843b3e1fb.json",
+    "runpod_deadline_audit": "benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json",
+    "current_head_rust_lints": {
+      "toolchain": "rustc 1.96.1; clippy 0.1.96",
+      "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib -- -D clippy::correctness -D clippy::suspicious",
+      "exit_code": 0,
+      "interpretation": "Correctness and suspicious lint groups pass. Other emitted warnings are maintenance/style debt and provide no protocol credit."
+    },
+    "current_head_script_syntax": {
+      "bash_runpod_harness": "PASS",
+      "python_calibration_modules": "PASS"
+    },
+    "dependency_audit_applicability": {
+      "cargo_lock_changed_since_audit": false,
+      "fresh_cargo_audit_available_locally": false,
+      "interpretation": "The recorded zero-vulnerability RustSec result still covers the unchanged lockfile; no newer database was fetched."
+    }
+  },
+  "source_boundary_review": {
+    "canonical_verifier_body": "IMPLEMENTED_INTERNAL",
+    "canonical_acceptance_registry": "IMPLEMENTED_INTERNAL_FAIL_CLOSED",
+    "canonical_numeric_calibration": "IMPLEMENTED_UNRUN_ON_REAL_WEIGHTS",
+    "canonical_prover": "MISSING",
+    "canonical_ordered_A_getter": "MISSING",
+    "canonical_preparer_prover_verifier_command": "MISSING",
+    "reduced_ordered_getter_reusable_as_canonical_runtime": false,
+    "reason": "The reduced CPU replay has different domains and batching; the canonical contract also needs histogram and internal padding reconstruction, 61 checkpoints, 512 initial A reconstructions, and the planned large-row PCS schedule.",
+    "partial_getter_scaffold_added": false,
+    "review_result": "NO_NEW_REPRODUCIBLE_LOCAL_SECURITY_DEFECT_FOUND; NOT_A_SECURITY_PROOF"
+  },
+  "latest_negative_check": {
+    "record": "benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json",
+    "result": "TIMEOUT_AFTER_FIRST_ACCEPTANCE_AND_SECOND_RANGE_A",
+    "candidate_retained": false,
+    "interpretation": "Local CPU timeout only; no H100 runtime inference."
+  },
+  "provider_safety": {
+    "runpodctl_current_deadline_flag": "MISSING_SINCE_V2_12_0",
+    "previous_deadline_backend_behavior": "ACCEPTED_BUT_NOT_ENFORCED",
+    "read_back_deadline": "MISSING",
+    "alternative_authorized_spending_guard": "MISSING",
+    "provider_campaign_allowed_now": false
+  },
+  "calibration": {
+    "weight_ingest": "IMPLEMENTED_UNRUN_ON_REAL_WEIGHTS",
+    "floating_scale_initializer": "IMPLEMENTED_UNRUN_ON_REAL_WEIGHTS",
+    "integer_cpu_replay": "IMPLEMENTED_UNRUN_ON_REAL_WEIGHTS",
+    "private_full_trace_export": "IMPLEMENTED_STRUCTURALLY_TESTED",
+    "independent_full_model_numeric_producer": "IMPLEMENTED_LOCALLY_UNRUN_ON_REAL_WEIGHTS",
+    "exact_trace_publication_gate": "IMPLEMENTED_FAIL_CLOSED",
+    "cuda_calibration": "MISSING_NOT_REQUIRED_BY_CURRENT_CPU_REFERENCE",
+    "complete_runtime_and_rss_measurement": "MISSING",
+    "eight_hour_serial_campaign_budget": "OPEN_AFTER_ADDING_INDEPENDENT_COMPARISON",
+    "gamma_admissible_now": false,
+    "h100_campaign_ready_now": false
+  },
+  "e2e_proof": {
+    "canonical_complete_command": "MISSING",
+    "same_registry_reduced_integration_with_real_pool": "INCOMPLETE_LOCAL_TIMEOUT",
+    "complete_simultaneous_resource_accounting": "MISSING",
+    "joint_lower_bound_compatible_with_65_seconds": "UNRESOLVED",
+    "real_gamma": "MISSING",
+    "real_gemma31b_e2e_ready_now": false
+  },
+  "known_non_vulnerability_maintenance": [
+    "RUSTSEC-2024-0436 paste 1.0.15 is unmaintained through the pinned Plonky3 revision",
+    "The Python environment has no complete reproducible dependency lock",
+    "The strict all-warning Clippy gate is not clean because of existing style, API-shape and dead-code warnings"
+  ],
+  "decision": "DO_NOT_START_PROVIDER_CAMPAIGN",
+  "next_local_blocker": "Implement the complete canonical prover, ordered A getter and one runnable canonical preparer/prover/verifier command, then complete simultaneous resource accounting. Real calibration runtime and Gamma require an explicitly authorized campaign, independently blocked until a provider-enforced read-back deadline or another explicitly authorized spending guard exists.",
+  "verdict": "NOT_READY"
+}

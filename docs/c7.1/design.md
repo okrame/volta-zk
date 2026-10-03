@@ -84,7 +84,7 @@ pesi reali e il suo tempo completo non è misurato. Lo
 identificano componenti disponibili, implementazioni mancanti e passaggi
 che richiedono autorizzazione. Il [contratto del confronto](specs.md#confronto-indipendente)
 definisce cosa completare prima di ammettere Γ.
-Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-5fba934b009f.json)
+Il [readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-fbd6141e7a1e.json)
 registra quindi `NOT_READY` per la prova E2E. Il
 [record del driver](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
 chiude l'assenza dell'implementazione locale, ma non convalida i pesi reali

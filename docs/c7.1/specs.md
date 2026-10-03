@@ -462,11 +462,25 @@ durante la riduzione. H usa bucket limitati e somme modulari CAS per limb;
 i suoi fold usano buffer distinti, non la compattazione CPU in-place.
 Le riduzioni dei coefficienti richiedono 256 thread e 24.576 B shared.
 Il kernel coefficienti compilato usa inoltre stack locale, da contabilizzare.
-I launcher di root e gruppi controllano geometrie, capacità dichiarate e
-limb canonici, ma non costituiscono ancora un adapter con owner residenti.
-Gli errori asincroni devono essere sincronizzati prima che Rust autentichi
-un risultato. Non esiste ancora un collegamento di questi kernel al runner;
-nessun percorso GPU o fallback implicito viene abilitato da questo file.
+L'[owner nativo](../../cuda/c71_range_runtime.cpp) usa device esplicito,
+stream privato e una sola arena, senza malloc per buffer o spill host.
+I 64 descrittori hanno handle monouso, tipi, copertura inizializzata e
+capacità allineate a 256 B. Il fold riduce la lunghezza, non la capacità;
+il release ritira l'handle, non libera l'arena, riusabile in ordine sullo
+stesso stream. Solo `cudaFree` riuscito azzera la prenotazione nel report
+di chiusura; un errore di cleanup resta esplicito e conservativo.
+Il chiamante serializza ogni contesto e include arena e riserva nel budget
+globale: il cap locale 6.442.450.944 B non autorizza arene concorrenti.
+Le fixture piccole scelgono una riserva ridotta; il percorso canonico dovrà
+garantire almeno 256 MiB e la contabilità con gli altri owner.
+Upload e download sono fenced; solo root/terminali e quattro coefficienti
+possono tornare all'host, dopo il successo e il controllo dei limb.
+Errori di shape, handle, CUDA o fence fermano definitivamente il contesto.
+Il ledger conta prenotazione richiesta, capacità assegnate/picco, payload,
+byte copy/zero sottoposti e tentativi di launch/fence. Non misura il bus
+né driver, context, staging CUDA, stack/shared o il picco dell'intera prova.
+Non esiste ancora un collegamento di questi kernel al prover Rust/runner;
+nessun percorso GPU o fallback implicito viene abilitato da questi file.
 
 Il primo scan completo del commitment byte conserva 256 contatori u64,
 con il suffisso esterno aggiunto al bin zero; l'istogramma è installato

@@ -141,9 +141,12 @@ Il bound di lavoro Eq/Pow dello screen rimane condizionale e non è
 trasferito automaticamente a questa implementazione.
 Il port CUDA del range dispone ora di kernel nativi per canopy, gruppi
 Gram, retention, fold e coefficienti. Il relativo controllo host non
-esegue i kernel; compilazione sm_90 e parità dell'algebra non sostituiscono
-il collegamento Rust, gli owner residenti, il fencing prima dei MAC o la
-verifica GPU, ancora da completare. La riduzione H con CAS, Eq per indice
+esegue i kernel. Un owner nativo ora gestisce stream privato, arena fissa,
+handle tipizzati, capacità trattenute e fencing prima della pubblicazione
+degli output; errori e cleanup sono verificati con driver simulato.
+Compilazione sm_90 e controlli host non sostituiscono il collegamento Rust,
+il fencing integrato prima dei MAC o la verifica GPU, ancora da completare.
+La riduzione H con CAS, Eq per indice
 e lo stack locale del kernel coefficienti richiedono contabilità e misura;
 non ereditano il tempo o i conteggi dello screen storico.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,

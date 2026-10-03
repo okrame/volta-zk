@@ -85,9 +85,11 @@ dipendenza dall'H100.
 Nessuna esecuzione W/D35 o A/D34 è acquisita. Il
 [checkpoint del collegamento](../c7.1-history/canonical-initial-scan.md)
 non ammette il comando CPU come campagna H100 né cambia le autorizzazioni.
-I kernel range nativi CUDA sono compilabili separatamente; il loro adapter
-Rust con storage residente, ledger e gestione degli errori asincroni rimane
-lavoro locale. Non abilitano ancora il runner GPU e non autorizzano un pod.
+I kernel range e l'owner nativo di stream/arena sono compilabili insieme;
+ledger, capacità trattenute ed errori asincroni dell'owner hanno controlli
+con driver simulato. Il collegamento Rust al prover, la contabilità fisica
+simultanea e la verifica GPU rimangono lavoro locale/esperimento da completare,
+non risultati di quei controlli. Non abilitano il runner GPU o un pod.
 
 Prima di usare credenziali locali eseguire
 `scripts/runpod_harness.sh local-secret-preflight`. Un eventuale `.env`

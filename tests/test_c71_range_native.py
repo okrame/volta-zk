@@ -17,3 +17,17 @@ def test_native_range_host_algebra_and_bounded_groups(tmp_path):
     report = json.loads(result.stdout.removeprefix("C71_NATIVE_RANGE_HOST "))
     assert report == {"cases": 37, "max_original_words": 2048,
                       "max_shared_payload_bytes": 52224, "gpu_execution": False, "credit": False}
+
+
+def test_native_range_owner_with_deferred_fake_driver(tmp_path):
+    binary = tmp_path / "native-range-owner"
+    subprocess.run(
+        ["g++", "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+         "-I", str(ROOT / "tests/cuda_stub"), "-I", str(ROOT / "cuda"),
+         str(ROOT / "cuda/c71_range_runtime.cpp"), str(ROOT / "tests/c71_range_runtime_host.cpp"),
+         "-o", str(binary)], check=True, timeout=30,
+    )
+    result = subprocess.run([str(binary)], check=True, capture_output=True, text=True, timeout=10)
+    report = json.loads(result.stdout.removeprefix("C71_RANGE_OWNER_HOST "))
+    assert report == {"rejections": 13, "max_arena_bytes": 262144,
+                      "gpu_execution": False, "credit": False}

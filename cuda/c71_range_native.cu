@@ -196,3 +196,34 @@ extern "C" cudaError_t c71_range_launch_groups(cudaStream_t stream,unsigned sign
         c71_range_groups_u8<<<tails,256,shared,stream>>>(static_cast<const uint8_t*>(input),tails,g,retained,h);
     return cudaGetLastError();
 }
+
+// Internal resident-owner launchers. The owner checks typed handles, coverage,
+// aliasing and canonical coins; these launchers never fence or allocate.
+extern "C" cudaError_t c71_range_launch_canopy(cudaStream_t s,const Pair* a,Pair* b,size_t n) {
+    c71_range_canopy<<<(n+255)/256,256,0,s>>>(a,b,n);
+    return cudaGetLastError();
+}
+extern "C" cudaError_t c71_range_launch_h_sum(cudaStream_t s,const Fp3* a,Fp3* b,unsigned cells,unsigned buckets) {
+    c71_range_h_sum<<<(cells+255)/256,256,0,s>>>(a,b,cells,buckets);
+    return cudaGetLastError();
+}
+extern "C" cudaError_t c71_range_launch_h_fold(cudaStream_t s,const Fp3* a,Fp3* b,unsigned half,Fp3 r) {
+    c71_range_h_fold<<<(half*half+255)/256,256,0,s>>>(a,b,half,r);
+    return cudaGetLastError();
+}
+extern "C" cudaError_t c71_range_launch_child_fold(cudaStream_t s,Children* a,size_t half,Fp3 r) {
+    c71_range_child_fold<<<(half+255)/256,256,0,s>>>(a,half,r);
+    return cudaGetLastError();
+}
+extern "C" cudaError_t c71_range_launch_coefficients(cudaStream_t s,const Children* a,size_t half,Round r,Cubic* b) {
+    c71_range_coefficients<<<(half+255)/256,256,0,s>>>(a,half,r,b);
+    return cudaGetLastError();
+}
+extern "C" cudaError_t c71_range_launch_reduce(cudaStream_t s,const Cubic* a,size_t n,Cubic* b) {
+    c71_range_reduce<<<(n+255)/256,256,0,s>>>(a,n,b);
+    return cudaGetLastError();
+}
+extern "C" cudaError_t c71_range_launch_h_coefficients(cudaStream_t s,const Fp3* a,unsigned half,Round r,Cubic* b) {
+    c71_range_h_coefficients<<<1,1,0,s>>>(a,half,r,b);
+    return cudaGetLastError();
+}

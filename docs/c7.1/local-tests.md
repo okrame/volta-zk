@@ -216,7 +216,14 @@ eseguito separatamente con il limite 60 s/2 GiB sopra, compila un controllo
 host di 37 casi per root signed/byte, coefficienti cubici, Gram e fold.
 Usa al massimo 2.048 valori originali; non esegue CUDA o una prova Rust.
 La compilazione di `cuda/c71_range_native.cu` per sm_90 verifica i kernel
-e i launcher, non il collegamento al runner o il picco fisico. Il toolkit
+e i launcher, non il collegamento al runner o il picco fisico. Compilare
+insieme `cuda/c71_range_runtime.cpp` per includere l'owner residente.
+Lo stesso test Python compila anche il runtime con un driver CUDA fittizio
+differito: arena massima 262.144 B, ritenzione della capacità, riuso,
+riduzione dei coefficienti, H/retention e 13 rifiuti terminali. Verifica
+che errori di fence/limb non pubblichino output e conserva il fallimento
+di cleanup. Il driver simulato non esegue o convalida i kernel CUDA.
+Il toolkit
 locale dispone del runtime statico: usare `--cudart static` per la libreria,
 non dedurre un errore dei kernel dall'assenza di `libcudart.so`.
 Il [checkpoint nativo](../c7.1-history/canonical-native-range-kernels.md)

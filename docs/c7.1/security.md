@@ -597,8 +597,13 @@ del commitment. Il collegamento non aggiunge un lemma Lean né scarica gli
 obblighi aperti di raffinamento, composizione Seed6 o implementazione CUDA.
 I nuovi kernel range condividono la rappresentazione Fp3, ma il controllo
 host e il binario compilato non provano la loro esecuzione concorrente.
-Riduzioni CAS per limb, aliasing dei buffer, lifecycle e sincronizzazione
-degli errori prima dell'autenticazione restano obblighi dell'adapter CUDA.
+L'owner nativo rifiuta alias nei fold H/canopy, handle ritirati o di un
+altro contesto e input parziali; scarica solo output piccoli dopo fencing
+e controllo canonico. Il test con driver differito verifica anche che un
+errore asincrono non pubblichi output e che il contesto resti fermato.
+Non è una prova della concorrenza CUDA. Riduzioni CAS per limb, integrazione
+del lifecycle e sincronizzazione prima dell'autenticazione nel prover Rust
+restano obblighi aperti dell'adapter.
 I kernel non hanno accesso a transcript o correlazioni e non sono ancora
 chiamati dal prover: non costituiscono una prova CUDA acquisita.
 

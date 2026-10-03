@@ -66,6 +66,12 @@ sourcewise, gli oracoli extension grandi, i workspace query/range e i
 kernel densi da adattare. Le prime query A leggono ora finestre originali
 fino a 256 MiB e non duplicano la matrice del risultato; la parità è
 soltanto ridotta e non chiude la contabilità fisica simultanea.
+Singleton, coset S1, OOD e retention sono ora collegati allo scanner
+originale con barriere FS separate; il coset extension evita le matrici
+complete di conversione. Il
+[checkpoint delle riduzioni](../c7.1-history/canonical-residual-scan.md)
+non rimuove D16 né ammette le geometrie extension canoniche: Eq/Pow,
+workspace, CUDA e memoria simultanea rimangono lavoro locale.
 Nessuna esecuzione W/D35 o A/D34 è acquisita. Il
 [checkpoint del collegamento](../c7.1-history/canonical-initial-scan.md)
 non ammette il comando CPU come campagna H100 né cambia le autorizzazioni.

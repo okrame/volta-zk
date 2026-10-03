@@ -109,6 +109,13 @@ root storico. L'output delle query non duplica più una matrice intera
 durante la conversione dei limb. Il
 [checkpoint delle query](../c7.1-history/canonical-query-windows.md)
 distingue questo collegamento CPU dai limiti ancora aperti.
+Lo stesso scanner alimenta ora il singleton PCS, i coset S1, l'OOD e
+la rigenerazione di S1, accumulando contributi lineari dai byte originali
+senza getter scalare per cella. Ogni passaggio resta separato dalle
+barriere FS. Il coset extension usa direttamente limb base column-major,
+senza matrici complete di conversione; il
+[checkpoint delle riduzioni](../c7.1-history/canonical-residual-scan.md)
+ne delimita la parità ridotta, non una misura canonica.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range
 e sugli stadi PCS successivi
 (lo stato sourcewise rifiuta ancora dimensioni oltre D16), sui kernel

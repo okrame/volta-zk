@@ -1,6 +1,6 @@
 //! Bounded CPU reference for the sourcewise residual state. No dense fallback.
 //! The canonical fast Eq/Pow reducer must refine these same state transitions.
-use super::replay::{inverse_series, multiply_polynomials};
+use super::replay::{inverse_series, multiply_polynomials, BaseScan};
 use super::*;
 use p3_dft::TwoAdicSubgroupDft;
 use p3_multilinear_util::{point::Point, poly::Poly};
@@ -108,6 +108,14 @@ fn equality_lookup(point: &[E], scale: E) -> impl Fn(usize) -> E {
         prefix.as_slice()[index >> suffix_bits]
             * suffix.as_slice()[index & ((1 << suffix_bits) - 1)]
     }
+}
+
+pub(super) fn power_lookup<F: p3_field::Field>(point: F, length: usize) -> impl Fn(usize) -> F {
+    let bits = length.next_power_of_two().ilog2() as usize;
+    let low_bits = bits / 2;
+    let low: Vec<_> = point.powers().take(1 << low_bits).collect();
+    let high: Vec<_> = point.exp_u64(1 << low_bits).powers().take(1 << (bits - low_bits)).collect();
+    move |i| low[i & (low.len() - 1)] * high[i >> low_bits]
 }
 
 // One retained allocation. Logical folds never claim to free Vec capacity.
@@ -232,6 +240,7 @@ impl Retained {
 /// Root-owned immutable original getter; folds are transcript-fixed descriptors.
 pub(super) struct State {
     source: Getter,
+    scan: Option<BaseScan>,
     dimension: usize,
     prefix: Vec<E>,
     eq_point: Vec<E>,
@@ -251,6 +260,7 @@ pub(super) struct State {
 impl State {
     pub(super) fn new(
         source: Getter,
+        scan: Option<(BaseScan, usize)>,
         point: &[E],
         first_fold: usize,
         target: E,
@@ -261,20 +271,62 @@ impl State {
         if !(1..=16).contains(&point.len()) || first_fold == 0 || first_fold > point.len() {
             return Err("bounded sourcewise geometry".into());
         }
+        if scan.as_ref().is_some_and(|(_, live)| *live > 1 << point.len()) {
+            return Err("sourcewise scan live prefix exceeds domain".into());
+        }
         let source_reads = Arc::new(AtomicU64::new(0));
         let reads = source_reads.clone();
         let source: Getter = Arc::new(move |i| {
             reads.fetch_add(1, Ordering::Relaxed);
             source(i)
         });
+        // The trusted original scanner owns uniqueness/immutability. Check its
+        // domain, count and error on every pass without a dense bitset of A.
+        let scan = scan.map(|(scan, live)| {
+            let reads = source_reads.clone();
+            Arc::new(move |emit: &mut dyn FnMut(usize, Goldilocks) -> Result<(), String>| {
+                let mut count = 0;
+                scan(&mut |index, value| {
+                    if index >= live || count == live {
+                        return Err("sourcewise scan outside live prefix or excess emission".into());
+                    }
+                    count += 1;
+                    reads.fetch_add(1, Ordering::Relaxed);
+                    emit(index, value)
+                })?;
+                if count != live {
+                    return Err("sourcewise scan omitted original coefficients".into());
+                }
+                Ok(())
+            }) as BaseScan
+        });
+        let mut state = Self {
+            source,
+            scan,
+            dimension: point.len(),
+            prefix: Vec::new(),
+            eq_point: point.to_vec(),
+            eq_scale: E::ONE,
+            powers: Vec::new(),
+            prefix_acc: Vec::new(),
+            prefix_remaining: first_fold,
+            sum: target,
+            source_reads,
+            retain_first,
+            retained_bytes: 0,
+            pending_retention: None,
+            retained: None,
+            retained_reads: Arc::new(AtomicU64::new(0)),
+        };
         let mut prefix_acc = vec![E::ZERO; 1 << first_fold];
         let suffix = point.len() - first_fold;
         let suffix_equality = equality_lookup(&point[first_fold..], E::ONE);
-        for i in 0..1 << point.len() {
-            prefix_acc[i >> suffix] += source(i) * suffix_equality(i & ((1 << suffix) - 1));
-        }
+        state.visit(&mut |i, value| {
+            prefix_acc[i >> suffix] += value * suffix_equality(i & ((1 << suffix) - 1));
+            Ok(())
+        })?;
         let prefix_equality = equality_lookup(&point[..first_fold], E::ONE);
-        let sum = prefix_acc
+        let sum: E = prefix_acc
             .iter()
             .enumerate()
             .map(|(index, &value)| value * prefix_equality(index))
@@ -282,23 +334,50 @@ impl State {
         if sum != target {
             return Err("sourcewise original claim differs".into());
         }
-        Ok(Self {
-            source,
-            dimension: point.len(),
-            prefix: Vec::new(),
-            eq_point: point.to_vec(),
-            eq_scale: E::ONE,
-            powers: Vec::new(),
-            prefix_acc,
-            prefix_remaining: first_fold,
-            sum,
-            source_reads,
-            retain_first,
-            retained_bytes: 0,
-            pending_retention: None,
-            retained: None,
-            retained_reads: Arc::new(AtomicU64::new(0)),
-        })
+        state.prefix_acc = prefix_acc;
+        Ok(state)
+    }
+
+    /// Scatter a linear functional of the current fold. Before retention the
+    /// same folded index has one contribution per original prefix; it is NOT
+    /// a stream of distinct folded values. Each call is one separate FS phase.
+    pub(super) fn visit(
+        &self,
+        emit: &mut dyn FnMut(usize, E) -> Result<(), String>,
+    ) -> Result<(), String> {
+        if self.retained.is_some() && self.pending_retention.is_none() {
+            let get = self.getter();
+            for i in 0..1 << self.num_variables() {
+                emit(i, get(i))?;
+            }
+            return Ok(());
+        }
+        let (source, prefix, n) = match &self.pending_retention {
+            Some((source, prefix, n)) => (source, prefix, *n),
+            None => (&self.source, &self.prefix, self.num_variables()),
+        };
+        let equality = equality_lookup(prefix, E::ONE);
+        let mut original = |i, value| emit(i & ((1 << n) - 1), value * equality(i >> n));
+        if let Some(scan) = &self.scan {
+            scan(&mut |i, value| original(i, E::from(value)))
+        } else {
+            for i in 0..1 << (n + prefix.len()) {
+                original(i, source(i))?;
+            }
+            Ok(())
+        }
+    }
+
+    pub(super) fn padded_ood(&self, point: E, suffix: &[E]) -> Result<E, String> {
+        let length = 1 << self.num_variables();
+        let power = power_lookup(point, length);
+        let mut value =
+            suffix.iter().rev().fold(E::ZERO, |v, &x| v * point + x) * point.exp_u64(length as u64);
+        self.visit(&mut |index, contribution| {
+            value += contribution * power(index);
+            Ok(())
+        })?;
+        Ok(value)
     }
 
     pub(super) fn getter(&self) -> Getter {
@@ -335,24 +414,22 @@ impl State {
         }
         // Called only after the predecessor's opening/release in WHIR.
         // The already-committed S1 oracle shares this immutable-value slot.
-        if let Some((source, prefix, n)) = self.pending_retention.take() {
-            // Read original A in address order, evaluating each window once.
-            // This is the same j-ordered sum for every S1 cell as getter().
-            let mut values = vec![E::ZERO; 1 << n];
-            for j in 0..1 << prefix.len() {
-                let weight = equality(&prefix, j);
-                for (i, value) in values.iter_mut().enumerate() {
-                    *value += weight * source((j << n) | i);
-                }
-            }
-            self.retained_bytes = values.capacity() * std::mem::size_of::<E>();
+        if self.pending_retention.is_some() {
+            let mut values = vec![E::ZERO; 1 << self.num_variables()];
+            self.visit(&mut |i, value| {
+                values[i] += value;
+                Ok(())
+            })?;
             let stage = self.retained.as_ref().ok_or("retained holder missing")?;
             let mut data = stage.data.write().map_err(|_| "retained lock poisoned")?;
             if data.values.is_some() {
                 return Err("S1 retained twice".into());
             }
+            self.retained_bytes = values.capacity() * std::mem::size_of::<E>();
             data.values = Some(values);
             data.fallback = None; // original A/cuts no longer captured by this stage
+            self.pending_retention = None;
+            self.scan = None;
         } else if let Some(stage) = &self.retained {
             stage.promote(&self.prefix)?;
         }
@@ -402,9 +479,13 @@ impl ResidualSumcheckProver<Goldilocks, E> for State {
         if point.num_variables() != self.num_variables() {
             return Err("sourcewise MLE point".into());
         }
-        let get = self.getter();
         let equality = equality_lookup(point.as_slice(), E::ONE);
-        Ok((0..1 << self.num_variables()).map(|index| get(index) * equality(index)).sum())
+        let mut value = E::ZERO;
+        self.visit(&mut |index, contribution| {
+            value += contribution * equality(index);
+            Ok(())
+        })?;
+        Ok(value)
     }
     fn round_coefficients(&self) -> Result<(E, E), String> {
         if self.num_variables() == 0 {
@@ -451,6 +532,9 @@ impl ResidualSumcheckProver<Goldilocks, E> for State {
     fn fold_round_with_coefficients(&mut self, c0: E, c2: E, r: E) -> Result<(), String> {
         if self.num_variables() == 0 {
             return Err("sourcewise exhausted".into());
+        }
+        if self.pending_retention.is_some() {
+            return Err("S1 must be retained before the next fold".into());
         }
         let half = 1 << (self.num_variables() - 1);
         self.sum = c0 * (E::ONE - r) + (self.sum - c0) * r + c2 * r * (r - E::ONE);
@@ -521,6 +605,131 @@ mod tests {
         product_polynomial::ProductPolynomial,
         strategy::{SumcheckProver, VariableOrder},
     };
+
+    #[test]
+    fn c71_b12_scattered_residual_reductions_and_failed_retention() {
+        use std::sync::atomic::AtomicBool;
+        for live in [0, 1, 127, 255, 256] {
+            let source = |i: usize| Goldilocks::new((i * 37 + 11) as u64);
+            let values: Vec<_> =
+                (0..256).map(|i| if i < live { E::from(source(i)) } else { E::ZERO }).collect();
+            let point: Vec<_> = (0..8)
+                .map(|i| match i % 3 {
+                    0 => E::ZERO,
+                    1 => E::ONE,
+                    _ => E::new([Goldilocks::new(i + 3), Goldilocks::new(5), Goldilocks::new(7)]),
+                })
+                .collect();
+            let weights: Vec<_> = (0..256).map(|i| equality(&point, i)).collect();
+            let target = values.iter().zip(&weights).map(|(&x, &y)| x * y).sum();
+            let fail = Arc::new(AtomicBool::new(false));
+            let scans = Arc::new(AtomicU64::new(0));
+            let (f, s) = (fail.clone(), scans.clone());
+            let scan: BaseScan = Arc::new(move |emit| {
+                s.fetch_add(1, Ordering::Relaxed);
+                for k in 0..256 {
+                    let i = k * 73 % 256;
+                    if i < live {
+                        emit(i, source(i))?;
+                    }
+                }
+                if f.load(Ordering::Relaxed) {
+                    return Err("injected scan failure after contributions".into());
+                }
+                Ok(())
+            });
+            let get: Getter = Arc::new(|_| panic!("scattered residual used scalar original"));
+            let mut state = State::new(get, Some((scan, live)), &point, 3, target, true).unwrap();
+            assert_eq!(scans.load(Ordering::Relaxed), 1);
+            assert_eq!(state.eval(&Point::new(point)).unwrap(), target);
+            let mut dense: SumcheckProver<Goldilocks, E> = SumcheckProver::new(
+                ProductPolynomial::new_unpacked(
+                    VariableOrder::Prefix,
+                    Poly::new(values),
+                    Poly::new(weights),
+                ),
+                target,
+            );
+            for round in 0..3 {
+                let (c0, c2) = state.round_coefficients().unwrap();
+                assert_eq!((c0, c2), ResidualSumcheckProver::round_coefficients(&dense).unwrap());
+                let r = [
+                    E::ZERO,
+                    E::ONE,
+                    E::new([Goldilocks::new(3), Goldilocks::new(5), Goldilocks::new(7)]),
+                ][round];
+                state.fold_round_with_coefficients(c0, c2, r).unwrap();
+                ResidualSumcheckProver::fold_round_with_coefficients(&mut dense, c0, c2, r)
+                    .unwrap();
+            }
+            assert!(state.fold_round_with_coefficients(E::ZERO, E::ZERO, E::ONE).is_err());
+            let expected = dense.evals();
+            let suffix = [E::ONE, -E::ONE, E::from(Goldilocks::new(17))];
+            for r in [
+                E::ZERO,
+                E::ONE,
+                E::new([Goldilocks::new(19), Goldilocks::new(23), Goldilocks::new(29)]),
+            ] {
+                let reference = expected
+                    .as_slice()
+                    .iter()
+                    .chain(&suffix)
+                    .rev()
+                    .fold(E::ZERO, |v, &x| v * r + x);
+                assert_eq!(state.padded_ood(r, &suffix).unwrap(), reference);
+            }
+            let mut collected = vec![E::ZERO; 32];
+            state
+                .visit(&mut |i, x| {
+                    collected[i] += x;
+                    Ok(())
+                })
+                .unwrap();
+            assert_eq!(collected, expected.as_slice());
+            let mut emissions = 0;
+            let error = state.visit(&mut |_, _| {
+                emissions += 1;
+                Err("consumer failed".into())
+            });
+            assert_eq!(emissions, usize::from(live != 0));
+            assert_eq!(error.is_err(), live != 0);
+            fail.store(true, Ordering::Relaxed);
+            assert!(state.add_powers(&[]).is_err());
+            assert!(state.pending_retention.is_some());
+            assert_eq!(state.retained_bytes, 0);
+            assert!(state.retained.as_ref().unwrap().data.read().unwrap().values.is_none());
+            fail.store(false, Ordering::Relaxed);
+            state.add_powers(&[]).unwrap();
+            let count = scans.load(Ordering::Relaxed);
+            assert!(state.scan.is_none());
+            assert!(state.pending_retention.is_none());
+            assert_eq!(state.evals().unwrap(), expected);
+            assert_eq!(
+                state.padded_ood(E::ONE, &suffix).unwrap(),
+                collected.iter().chain(&suffix).copied().sum()
+            );
+            assert_eq!(scans.load(Ordering::Relaxed), count);
+            assert_eq!(state.retained_bytes, 32 * 24);
+        }
+        let point = [E::ONE; 8];
+        let get: Getter = Arc::new(|_| panic!("invalid scanner used scalar original"));
+        let wrong: BaseScan = Arc::new(|emit| emit(0, Goldilocks::ONE));
+        assert!(
+            State::new(get.clone(), Some((wrong.clone(), 257)), &point, 3, E::ZERO, true).is_err()
+        );
+        assert!(
+            State::new(get.clone(), Some((wrong.clone(), 0)), &point, 3, E::ZERO, true).is_err()
+        );
+        assert!(
+            State::new(get.clone(), Some((wrong.clone(), 2)), &point, 3, E::ZERO, true).is_err()
+        );
+        assert!(State::new(get.clone(), Some((wrong, 1)), &point, 3, E::ONE, true).is_err());
+        let excess: BaseScan = Arc::new(|emit| {
+            emit(0, Goldilocks::ONE)?;
+            emit(0, Goldilocks::ONE)
+        });
+        assert!(State::new(get, Some((excess, 1)), &point, 3, E::ZERO, true).is_err());
+    }
 
     #[test]
     fn c71_b12_retained_lifecycle_rejects_reordering_and_preserves_storage() {
@@ -713,7 +922,7 @@ mod tests {
             let values: Vec<_> = (0..1 << dimension).map(|i| source(i)).collect();
             let weights: Vec<_> = (0..1 << dimension).map(|i| equality(&point, i)).collect();
             let target = values.iter().zip(&weights).map(|(&x, &y)| x * y).sum();
-            let mut state = State::new(source, &point, first, target, retain).unwrap();
+            let mut state = State::new(source, None, &point, first, target, retain).unwrap();
             let mut dense: SumcheckProver<Goldilocks, E> = SumcheckProver::new(
                 ProductPolynomial::new_unpacked(
                     VariableOrder::Prefix,

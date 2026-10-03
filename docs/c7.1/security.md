@@ -553,6 +553,17 @@ controlla transcript, codec, S1 trattenuto e chiusura sugli stessi MAC;
 un reader alterato è rifiutato dal root già fissato. Questi controlli
 non attestano la composizione canonica o un nuovo lemma generale.
 
+Le [riduzioni S1 sourcewise](../c7.1-history/canonical-residual-scan.md)
+spostano soltanto somme e prodotti lineari: il peso Eq usa esclusivamente
+il prefisso già fissato e l'indice originale. I contributi duplicati a
+un indice folded sono sommati, non reinterpretati come nuove sorgenti.
+Singleton, ogni coset, OOD e retention rimangono passaggi separati.
+Gli errori del produttore/consumer si propagano prima di installare S1;
+il contratto di unicità dei byte originali resta quello dello scanner,
+non è dimostrato dal solo conteggio. Il controllo ridotto rende il getter
+originale inutilizzabile e confronta l'intera prova col percorso denso,
+ma non scarica il raffinamento dei produttori canonici, CUDA o Seed6.
+
 I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
 dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo
 Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.

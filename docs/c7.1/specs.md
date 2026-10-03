@@ -361,7 +361,24 @@ confine Rust/C++ sono parte del contratto.
 
 Il [residuale](../../rust/volta-pcs/src/c71_matrix/b12/sourcewise.rs)
 fattorizza Eq e genera i pesi Pow tramite P/Q e FFT, in blocchi nativi
-al più 256. Gestisce punti zero/uno e scale zero. La preparazione P/Q
+al più 256. Gestisce punti zero/uno e scale zero. Per la sorgente A con
+scanner, singleton, valutazioni MLE, coset S1, OOD e rigenerazione S1
+accumulano mappe lineari in ordine sorgente: ogni byte contribuisce
+all'indice folded con il peso Eq del prefisso MSB già fissato. Non sono
+valori folded distinti: più contributi allo stesso indice si sommano.
+Il suffisso pubblico zero non richiede emissioni. L'OOD usa potenze
+fattorizzate, mantenendo i pad dopo la lunghezza completa del messaggio.
+Non si fondono scansioni attraverso root/OOD o altre sfide FS.
+Il coset extension accumula direttamente tre colonne base per elemento
+nativo, riusando la colonna FFT e i due twiddle; non alloca una seconda
+matrice intera interleaved/row-major. Il vecchio percorso denso resta
+solo come oracolo di test. Una scansione fallita non installa S1 parziale;
+il fold successivo richiede prima la retention. Dopo questa, il residuale
+legge S1 e non richiama lo scanner originale. Ciò non prova il rilascio
+fisico di checkpoint o degli altri owner che conservano gli snapshot.
+Il [checkpoint delle riduzioni](../c7.1-history/canonical-residual-scan.md)
+conserva il confronto ridotto con transcript e MAC originali.
+La preparazione P/Q
 non è ancora trattenuta fra tutte le sfide adattive canoniche. `State::new`
 rifiuta punti con più di 16 coordinate; il replay grande degli oracoli
 extension S1/S2 non è implementato. Questi sono limiti software ancora
@@ -392,8 +409,9 @@ istogrammi, KV e checkpoint sono emessi dai loro owner immutabili; il
 suffisso esterno rimane zero pubblico. Il commitment A chiama questo
 scanner 512 volte secondo la geometria, non la finestra scalare da 128
 byte. Anche le prime query PCS usano il lettore a finestre descritto sopra;
-getter scalare e replay per riga restano negli altri consumer, inclusi
-range e stato sourcewise. Non realizzano ancora la finestra range da 2 GiB.
+le riduzioni lineari del primo stato PCS usano ora lo scanner sorgente.
+Getter scalare e replay per riga restano in range e negli altri consumer
+non convertiti. Non realizzano ancora la finestra range da 2 GiB.
 Il limite di preparazione controlla payload nominati, non il picco fisico
 complessivo. Coset, frontier/sali/cache Merkle, colonna FFT, due twiddle,
 potenze, bitmap, metadata, checkpoint e workspace numerico vanno contati

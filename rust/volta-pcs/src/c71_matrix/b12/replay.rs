@@ -2,7 +2,7 @@
 use super::*;
 use super::{
     replay_tree::Tree,
-    sourcewise::{Getter, Lease, State},
+    sourcewise::{power_lookup, Getter, Lease, State},
 };
 use p3_commit::{ExtensionMmcs, Mmcs};
 use p3_dft::TwoAdicSubgroupDft;
@@ -240,11 +240,12 @@ impl Code {
         c: usize,
         rows: usize,
         dft: &Radix2DFTSmallBatch<Goldilocks>,
+        state: Option<&State>,
     ) -> Result<Vec<u64>, String> {
         if self.base() {
             self.coset_base(c, rows, dft)
         } else {
-            self.coset_typed(c, rows, std::convert::identity)
+            self.coset_extension(c, rows, dft, state)
         }
     }
 
@@ -270,12 +271,7 @@ impl Code {
         // Factor powers into two small tables, including the original pad
         // positions n..n+pad. A shuffled producer must not advance one global
         // power cursor or shift pads next to the live (unpadded) prefix.
-        let bits = (n + pad).next_power_of_two().ilog2() as usize;
-        let low_bits = bits / 2;
-        let low: Vec<_> = offset.powers().take(1 << low_bits).collect();
-        let high: Vec<_> =
-            offset.exp_u64(1 << low_bits).powers().take(1 << (bits - low_bits)).collect();
-        let power = |i: usize| low[i & (low.len() - 1)] * high[i >> low_bits];
+        let power = power_lookup(offset, n + pad);
         let mut cells = vec![0; rows * self.width.max(4)];
         let mut count = 0usize;
         let mut emit = |index: usize, value: Goldilocks| -> Result<(), String> {
@@ -309,9 +305,71 @@ impl Code {
                     .as_canonical_u64();
             }
         }
-        drop((low, high));
+        drop(power);
+        Self::fft_columns(&mut cells, rows, self.width, dft);
+        Ok(cells)
+    }
+
+    fn coset_extension(
+        &self,
+        coset: usize,
+        rows: usize,
+        dft: &Radix2DFTSmallBatch<Goldilocks>,
+        state: Option<&State>,
+    ) -> Result<Vec<u64>, String> {
+        if !rows.is_power_of_two() || rows > self.height || coset >= self.height / rows {
+            return Err("extension coset geometry differs".into());
+        }
+        if self.base() || state.is_some_and(|state| 1 << state.num_variables() != self.len) {
+            return Err("extension coset source differs".into());
+        }
+        let n = self.len / self.width;
+        let pad = self.pads.len() / self.width;
+        let offset =
+            Goldilocks::two_adic_generator(self.height.ilog2() as usize).exp_u64(coset as u64);
+        let power = power_lookup(offset, n + pad);
+        // The destination is already native base-limb, column-major storage.
+        // Scatter original contributions into it; no dense folded S1 or full
+        // row-major conversion copy is needed before its predecessor opens.
+        let mut cells = vec![0; rows * self.columns().max(4)];
+        let mut add = |column: usize, j: usize, value: E| {
+            for (limb, &value) in limbs(&(value * power(j))).iter().enumerate() {
+                let target = &mut cells[(column * 3 + limb) * rows + j % rows];
+                *target = (Goldilocks::new(*target) + value).as_canonical_u64();
+            }
+        };
+        let mut emit = |index, value| {
+            if index >= self.live {
+                return Err("extension contribution outside source".into());
+            }
+            add(index / n, index % n, value);
+            Ok(())
+        };
+        if let Some(state) = state {
+            state.visit(&mut emit)?;
+        } else {
+            for i in 0..self.live {
+                emit(i, (self.get)(i))?;
+            }
+        }
+        for column in 0..self.width {
+            for j in 0..pad {
+                add(column, n + j, self.pads.get(column * pad + j));
+            }
+        }
+        drop(power);
+        Self::fft_columns(&mut cells, rows, self.columns(), dft);
+        Ok(cells)
+    }
+
+    fn fft_columns(
+        cells: &mut [u64],
+        rows: usize,
+        columns: usize,
+        dft: &Radix2DFTSmallBatch<Goldilocks>,
+    ) {
         let mut column = vec![Goldilocks::ZERO; rows];
-        for values in cells.chunks_exact_mut(rows).take(self.width) {
+        for values in cells.chunks_exact_mut(rows).take(columns) {
             for (out, &value) in column.iter_mut().zip(values.iter()) {
                 *out = Goldilocks::new(value);
             }
@@ -322,8 +380,8 @@ impl Code {
                 *out = value.as_canonical_u64();
             }
         }
-        Ok(cells)
     }
+    #[cfg(test)]
     fn coset_typed<Coefficient: p3_field::ExtensionField<Goldilocks>>(
         &self,
         coset: usize,
@@ -514,7 +572,7 @@ impl Code {
             code.columns(),
             rows,
             cut,
-            |c| code.coset(c, rows, &dft),
+            |c| code.coset(c, rows, &dft, state),
             Arc::new(move |indices| rowcode.rows(indices)),
         )?;
         let lease = state.map(State::replay_lease).transpose()?.flatten();
@@ -531,6 +589,7 @@ pub(in crate::c71_matrix) struct ReplayModel {
     domain: Domain,
     root: C61Commitment,
     source: Getter,
+    scan: Option<(BaseScan, usize)>,
     tree: Arc<Tree>,
     pads: Arc<[Goldilocks]>,
     retain_first: bool,
@@ -591,7 +650,7 @@ impl ReplayModel {
             readers.map_or((None, None), |(scan, window)| (Some(scan), Some(window)));
         let (root, handle) = Code {
             get: source.clone(),
-            scan,
+            scan: scan.clone(),
             window,
             len,
             live,
@@ -601,7 +660,15 @@ impl ReplayModel {
         }
         .commit(&mmcs.inner, None)?;
         let oracle = handle.downcast::<Oracle>().map_err(|_| "C71 initial replay handle type")?;
-        Ok(Self { domain, root, source, tree: oracle.tree, pads, retain_first: false })
+        Ok(Self {
+            domain,
+            root,
+            source,
+            scan: scan.map(|scan| (scan, live)),
+            tree: oracle.tree,
+            pads,
+            retain_first: false,
+        })
     }
 
     pub(in crate::c71_matrix) fn new_checked(
@@ -688,6 +755,7 @@ pub(in crate::c71_matrix) fn prove_pcs_sourcewise_with_coins(
         base: &base,
         extension: &extension,
         source: Mutex::new(Some(model.source.clone())),
+        scan: model.scan.clone(),
         first: config.round_folding_factor(0),
         retain_first: model.retain_first,
     };
@@ -758,6 +826,7 @@ struct Backend<'a> {
     base: &'a ObservedMmcs,
     extension: &'a ObservedMmcs,
     source: Mutex<Option<Getter>>,
+    scan: Option<(BaseScan, usize)>,
     first: usize,
     retain_first: bool,
 }
@@ -780,6 +849,7 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
         let mut source = self.source.lock().map_err(|_| "source lock poisoned")?;
         let state = State::new(
             source.as_ref().ok_or("source already consumed")?.clone(),
+            self.scan.clone(),
             claims[0].0.as_slice(),
             self.first,
             target,
@@ -847,12 +917,7 @@ impl<'a> ZkWhirOracleCommitter<Goldilocks, E, &'a ObservedMmcs> for Backend<'a> 
         point: E,
         suffix: &[E],
     ) -> Result<Option<E>, String> {
-        let get = state.getter();
-        let mut v = suffix.iter().rev().fold(E::ZERO, |v, &x| v * point + x);
-        for i in (0..1 << state.num_variables()).rev() {
-            v = v * point + get(i);
-        }
-        Ok(Some(v))
+        state.padded_ood(point, suffix).map(Some)
     }
     fn accumulate_round_claim_from_sumcheck(
         &self,
@@ -998,6 +1063,7 @@ pub(in crate::c71_matrix) fn compare_source(
         base: &base,
         extension: &extension,
         source: Mutex::new(Some(source)),
+        scan: model.scan.clone(),
         first,
         retain_first: model.retain_first,
     };
@@ -1335,7 +1401,7 @@ mod tests {
         });
         compare_source(
             10,
-            Arc::new(move |i| E::from(Goldilocks::from_u8(byte(i)))),
+            Arc::new(|_| panic!("scanned full chain used original scalar getter")),
             (0..1024).map(|i| Goldilocks::from_u8(byte(i))).collect(),
             Some(&original),
             Some((scan, window)),
@@ -1343,8 +1409,97 @@ mod tests {
         let configuration = config(10).unwrap();
         let height =
             (1024 >> configuration.round_folding_factor(0)) << configuration.starting_log_inv_rate;
-        assert_eq!(scans.load(Ordering::Relaxed), height / 256);
+        let s1_height = configuration.inv_rate(0)
+            * (1024
+                >> (configuration.round_folding_factor(0) + configuration.round_folding_factor(1)));
+        // Initial root, singleton, each S1 coset, OOD, then retention. No
+        // pass is fused across a transcript barrier and later stages use S1.
+        assert_eq!(
+            scans.load(Ordering::Relaxed),
+            height / 256
+                + 1
+                + s1_height / 256.min(s1_height)
+                + configuration.round_parameters[0].ood_samples
+                + 1
+        );
         assert!(windows.load(Ordering::Relaxed) > 0);
+    }
+
+    #[test]
+    fn c71_b12_scattered_extension_cosets_match_dense_original_pads() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let prefix =
+            [E::ZERO, E::ONE, E::new([Goldilocks::new(3), Goldilocks::new(5), Goldilocks::new(7)])];
+        let point = vec![E::from(Goldilocks::new(11)); 8];
+        let dft = Radix2DFTSmallBatch::default();
+        for live in [0, 1, 129, 255, 256] {
+            let byte = |i: usize| Goldilocks::new((i * 19 + i / 3) as u64);
+            let mut folded: Vec<_> =
+                (0..256).map(|i| if i < live { E::from(byte(i)) } else { E::ZERO }).collect();
+            let target =
+                Poly::new(folded.clone()).eval_ext::<Goldilocks>(&Point::new(point.clone()));
+            let scans = Arc::new(AtomicUsize::new(0));
+            let s = scans.clone();
+            let scan: BaseScan = Arc::new(move |emit| {
+                s.fetch_add(1, Ordering::Relaxed);
+                for i in (0..live).rev() {
+                    emit(i, byte(i))?;
+                }
+                Ok(())
+            });
+            let mut state = State::new(
+                Arc::new(|_| panic!("S1 coset used original scalar getter")),
+                Some((scan, live)),
+                &point,
+                3,
+                target,
+                true,
+            )
+            .unwrap();
+            for r in prefix {
+                let (c0, c2) = state.round_coefficients().unwrap();
+                state.fold_round_with_coefficients(c0, c2, r).unwrap();
+                let half = folded.len() / 2;
+                for i in 0..half {
+                    let a = folded[i];
+                    folded[i] = a + r * (folded[i + half] - a);
+                }
+                folded.truncate(half);
+            }
+            let code = Code {
+                get: Arc::new(move |i| folded[i]),
+                scan: None,
+                window: None,
+                len: 32,
+                live: 32,
+                width: 2,
+                height: 256,
+                pads: Pads::Extension(
+                    (0..6)
+                        .map(|i| {
+                            E::new([
+                                Goldilocks::new(i + 13),
+                                Goldilocks::new(i + 17),
+                                Goldilocks::new(i + 19),
+                            ])
+                        })
+                        .collect(),
+                ),
+            };
+            for rows in [8, 16, 64] {
+                for c in [0, 1, code.height / rows - 1] {
+                    let before = scans.load(Ordering::Relaxed);
+                    assert_eq!(
+                        code.coset(c, rows, &dft, Some(&state)).unwrap(),
+                        code.coset_typed(c, rows, std::convert::identity).unwrap(),
+                    );
+                    assert_eq!(scans.load(Ordering::Relaxed), before + 1);
+                }
+            }
+            assert!(code.coset(0, 0, &dft, Some(&state)).is_err());
+            assert!(code.coset(32, 8, &dft, Some(&state)).is_err());
+            assert!(code.coset(0, 512, &dft, Some(&state)).is_err());
+        }
     }
 
     #[test]
@@ -1519,7 +1674,8 @@ mod tests {
         assert!(catch_unwind(AssertUnwindSafe(|| code.coset(
             0,
             8,
-            &Radix2DFTSmallBatch::default()
+            &Radix2DFTSmallBatch::default(),
+            None
         )))
         .is_err());
         assert!(catch_unwind(AssertUnwindSafe(|| code.rows(&[1, 2]))).is_err());

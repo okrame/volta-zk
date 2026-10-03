@@ -495,6 +495,12 @@ Canale autenticato e journal durevole non riportabile indietro sono
 premesse esterne; i socketpair dei test non le realizzano in distribuito.
 Nessun bound 82,93/91,02 viene attribuito alla composizione Seed6 completa.
 
+Le credenziali provider locali non fanno parte del protocollo. Il
+[preflight dei permessi](../../benchmarks/results/c71-local-secret-permissions-2026-10-03-d14843b3e1fb.json)
+rifiuta `.env` non regolare, non posseduto dall'utente o con qualunque bit
+di gruppo/altri; non legge né registra i valori. Il file locale rilevato è
+ignorato da Git ed è stato portato da `0664` a `0600`.
+
 Per il programma canonico restano inoltre: Γ reale validato, preparatore
 e prover completi, correttezza dei getter su tutti gli operatori e alias,
 copertura dei MAC originali, verifica positiva e promozione dopo il

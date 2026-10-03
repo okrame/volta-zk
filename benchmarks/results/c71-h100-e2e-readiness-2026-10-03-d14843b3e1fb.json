@@ -1,0 +1,58 @@
+{
+  "schema": "volta-c71-h100-e2e-readiness-v4",
+  "date": "2026-10-03",
+  "git_commit": "d14843b3e1fb1ba808c8d1af81191114a830a103",
+  "git_dirty": false,
+  "credit": false,
+  "supersedes": "benchmarks/results/c71-h100-e2e-readiness-2026-10-03-262e89febe2c.json",
+  "authorization": {
+    "weight_download": false,
+    "provider_pod": false,
+    "gpu_execution": false,
+    "spend": false
+  },
+  "completed_local_checks": {
+    "fork_provenance": "benchmarks/results/c71-fork-provenance-2026-10-02-4fbfbfb8afd0.json",
+    "dependency_audit": "benchmarks/results/c71-dependency-audit-2026-10-02-dc79276f51b6.json",
+    "calibration_trace": "benchmarks/results/c71-calibration-trace-2026-10-02-f47b22d7a4c5.json",
+    "private_trace_permissions": "benchmarks/results/c71-calibration-trace-permissions-2026-10-02-a0f46bf8ca7f.json",
+    "i16_marker_boundary": "benchmarks/results/c71-i16-marker-2026-10-02-69e597e7cbd2.json",
+    "oracle_plan": "benchmarks/results/c71-oracle-plan-2026-10-02-55423e496cfc.json",
+    "context_specific_trace_shapes": "benchmarks/results/c71-trace-context-shapes-2026-10-02-b634e781795d.json",
+    "independent_driver": "benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json",
+    "local_secret_permissions": "benchmarks/results/c71-local-secret-permissions-2026-10-03-d14843b3e1fb.json"
+  },
+  "latest_negative_check": {
+    "record": "benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json",
+    "result": "TIMEOUT_AFTER_FIRST_ACCEPTANCE_AND_SECOND_RANGE_A",
+    "candidate_retained": false
+  },
+  "calibration": {
+    "weight_ingest": "IMPLEMENTED_UNRUN_ON_REAL_WEIGHTS",
+    "floating_scale_initializer": "IMPLEMENTED_UNRUN_ON_REAL_WEIGHTS",
+    "integer_cpu_replay": "IMPLEMENTED_UNRUN_ON_REAL_WEIGHTS",
+    "private_full_trace_export": "IMPLEMENTED_STRUCTURALLY_TESTED",
+    "independent_full_model_numeric_producer": "IMPLEMENTED_LOCALLY_UNRUN_ON_REAL_WEIGHTS",
+    "exact_trace_publication_gate": "IMPLEMENTED_FAIL_CLOSED",
+    "cuda_calibration": "MISSING_NOT_REQUIRED_BY_CURRENT_CPU_REFERENCE",
+    "complete_runtime_and_rss_measurement": "MISSING",
+    "eight_hour_serial_campaign_budget": "OPEN_AFTER_ADDING_INDEPENDENT_COMPARISON",
+    "gamma_admissible_now": false,
+    "h100_campaign_ready_now": false
+  },
+  "e2e_proof": {
+    "canonical_complete_command": "MISSING",
+    "same_registry_reduced_integration_with_real_pool": "INCOMPLETE_LOCAL_TIMEOUT",
+    "complete_simultaneous_resource_accounting": "MISSING",
+    "joint_lower_bound_compatible_with_65_seconds": "UNRESOLVED",
+    "real_gamma": "MISSING",
+    "real_gemma31b_e2e_ready_now": false
+  },
+  "known_non_vulnerability_maintenance": [
+    "RUSTSEC-2024-0436 paste 1.0.15 is unmaintained through the pinned Plonky3 revision",
+    "The Python environment has no complete reproducible dependency lock"
+  ],
+  "decision": "DO_NOT_START_PROVIDER_CAMPAIGN",
+  "next_local_blocker": "Implement the missing canonical prover and one runnable canonical preparer/prover/verifier command, then complete simultaneous resource accounting. The reduced real-pool two-attempt candidate exceeds the local 60-second budget; real calibration runtime and Gamma still require an explicitly authorized campaign.",
+  "verdict": "NOT_READY"
+}

@@ -1,0 +1,203 @@
+{
+  "schema": "volta-c71-runner-measurements-local-v1",
+  "date": "2026-10-03",
+  "git_sha": "187a0b9dc9ce14a438e6d82e30fdea4c102a85cf",
+  "git_dirty": false,
+  "baseline": "benchmarks/results/c71-canonical-reference-local-2026-10-03-dfb0867c6010.json",
+  "result": "PASS_LOCAL_INSTRUMENTATION_ONLY",
+  "credit": false,
+  "readiness": false,
+  "environment": {
+    "platform": "Linux aarch64",
+    "rustc": "1.96.1 (31fca3adb 2026-06-26)",
+    "profile": "dev opt-level=2 debug=0 incremental=0 target-cpu=native",
+    "cargo_jobs": 1,
+    "rayon_workers": 1,
+    "omp_threads": 1,
+    "openblas_threads": 1,
+    "test_timeout_seconds": 60,
+    "kill_grace_seconds": 5,
+    "virtual_memory_limit_bytes": 2147483648,
+    "network": "Only local kernel-owned Unix socketpairs; no external network."
+  },
+  "build": {
+    "git_sha": "187a0b9dc9ce14a438e6d82e30fdea4c102a85cf",
+    "git_dirty": false,
+    "checks": [
+      {
+        "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 0.07
+      },
+      {
+        "command": "cargo build --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --example c71_canonical_reference --example c71_calibration",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 0.04
+      },
+      {
+        "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib -- -D clippy::correctness -D clippy::suspicious",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 23.4
+      }
+    ],
+    "warnings": "Existing and non-denied warnings remain; 176 volta-pcs warnings in clippy. correctness/suspicious lint levels pass."
+  },
+  "binary_sha256": {
+    "test": "5643080c507f49c014cdd2b174a56c249b74c97cfc0fabaa593a7089f095a56f",
+    "runner": "12da767d251bfdc1e4b65b75f18355c0ec436745a736bc165404c32c9db0500c",
+    "calibration": "86eaa916021caf7771ebb61673b4fec655407a8ea62b25fcd0cc110c45c521ab"
+  },
+  "implemented": [
+    "Actual public candidate/table, W-root/context and request framing over the counted local transport; verifier recompiles received public inputs.",
+    "Nested wall intervals starting before public input reading, separating preparation, commitments, proof body, exchange, decoding, verification, setup and role initialization.",
+    "Per-phase/response application traffic in both directions, initial public/installation/Seed6 traffic charged only to response 0.",
+    "Structured incomplete local metrics on handled CLI/run errors; public lengths checked before body allocation, partial I/O counters preserved.",
+    "Prover owns and drops its response socket on failure so peer I/O observes disconnect."
+  ],
+  "observed": {
+    "rust_tests_passed": 9,
+    "python_tests_passed": 10,
+    "cli_expected_rejections": 2,
+    "canonical_certificates_verified": 0,
+    "canonical_full_model_executions": 0,
+    "real_seed6_accepted_responses_in_this_record": 0,
+    "gpu_executions": 0,
+    "real_weights_read_or_downloaded": false,
+    "pod_actions": false,
+    "provider_spend": 0,
+    "complete_memory_accounting": false,
+    "complete_time_accounting": false,
+    "complete_canonical_communication_measured": false
+  },
+  "socket_fixture": {
+    "certificate_bodies_are_synthetic": true,
+    "valid_certificates": 0,
+    "body_bytes": [
+      3,
+      4,
+      5
+    ],
+    "public_candidate_bytes": 2,
+    "public_table_bytes": 24414870,
+    "public_frame_overhead_bytes": 24,
+    "installation_bytes": 136,
+    "request_bytes_each": 416,
+    "response_frame_overhead_bytes": 680,
+    "completion_bytes_each": 73,
+    "initial_bytes_to_verifier": 24415032,
+    "total_bytes_to_verifier": 24417084,
+    "total_bytes_from_verifier": 1467,
+    "response_charges_both_directions": [
+      24416204,
+      1173,
+      1174
+    ],
+    "same_socket": true,
+    "no_registry_acceptance_claim": true
+  },
+  "checks": [
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_canonical_ --skip c71_canonical_runner_counted_socket --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 5 tests\ntest c71_matrix::gemma::native::canonical::ordered::tests::c71_canonical_ordered_internal_padding_histogram_and_byte_window ... ok\ntest c71_matrix::gemma::native::canonical::state::metrics::tests::c71_canonical_metrics_nested_failure_and_partial_io ... ok\ntest c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_packed_input_checks_before_installation ... ok\ntest c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_public_installation_and_request_framing ... ok\ntest c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_transport_and_default_stop ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 439 filtered out; finished in 0.56s\n\n",
+      "controller_elapsed_seconds": 0.612
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_acceptance_transport --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::acceptance_transport::tests::c71_acceptance_transport_binds_pending_context_and_receipt ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 443 filtered out; finished in 0.00s\n\n",
+      "controller_elapsed_seconds": 0.043
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_registry --test-threads=1)",
+      "exit_code": 101,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::state::tests::c71_b12_native_registry_header_and_real_shortage_are_terminal ... FAILED\n\nfailures:\n\n---- c71_matrix::gemma::native::canonical::state::tests::c71_b12_native_registry_header_and_real_shortage_are_terminal stdout ----\n\nthread 'c71_matrix::gemma::native::canonical::state::tests::c71_b12_native_registry_header_and_real_shortage_are_terminal' (5) panicked at volta-pcs/src/c71_matrix/gemma/native/seed6_pool_tests.rs:22:76:\ncalled `Result::unwrap()` on an `Err` value: Os { code: 1, kind: PermissionDenied, message: \"Operation not permitted\" }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    c71_matrix::gemma::native::canonical::state::tests::c71_b12_native_registry_header_and_real_shortage_are_terminal\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 443 filtered out; finished in 2.69s\n\n",
+      "controller_elapsed_seconds": 2.716
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_canonical_runner_counted_socket --test-threads=1)",
+      "local_socketpair_exception": true,
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::state::runner::tests::c71_canonical_runner_counted_socket_protocol_three_slots ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 443 filtered out; finished in 0.01s\n\n",
+      "controller_elapsed_seconds": 3.102
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_registry --test-threads=1)",
+      "local_socketpair_exception": true,
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::state::tests::c71_b12_native_registry_header_and_real_shortage_are_terminal ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 443 filtered out; finished in 11.10s\n\n",
+      "controller_elapsed_seconds": 13.529
+    },
+    {
+      "command": "(ulimit -v 2097152; PYTHONDONTWRITEBYTECODE=1 C71_CALIBRATION_BINARY=/home/okrame/projects/volta-zk/rust/target/debug/examples/c71_calibration OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 RAYON_NUM_THREADS=1 timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py -k certified_tables_match_native_input_and_scale_recipes)",
+      "exit_code": 0,
+      "output": ".                                                                        [100%]\n1 passed, 16 deselected in 9.09s\n",
+      "controller_elapsed_seconds": 9.236
+    },
+    {
+      "command": "(ulimit -v 2097152; PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 RAYON_NUM_THREADS=1 timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py)",
+      "exit_code": 0,
+      "output": ".........                                                                [100%]\n9 passed in 0.48s\n",
+      "controller_elapsed_seconds": 0.587
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_dispatch_canonical --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::verify::tests::c71_b12_native_dispatch_canonical_preflight_and_public_prefix_reject_incomplete_p0 ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 443 filtered out; finished in 9.85s\n\n",
+      "controller_elapsed_seconds": 9.873
+    },
+    {
+      "command": "(ulimit -v 2097152; PYTHONDONTWRITEBYTECODE=1 timeout -k 5s 60s .venv/bin/python - <<'PY'\nimport json, subprocess\nbinary = 'rust/target/debug/examples/c71_canonical_reference'\nfor args in ([], ['gpu']):\n    run = subprocess.run([binary, *args], text=True, capture_output=True, timeout=5)\n    assert run.returncode == 1 and not run.stdout\n    lines = run.stderr.splitlines()\n    report = json.loads(next(line.removeprefix('C71_RUN_METRICS ') for line in lines if line.startswith('C71_RUN_METRICS ')))\n    assert report['complete'] is False and report['readiness'] is False and report['credit'] is False\n    m = report['measurements']\n    assert m['bytes_to_verifier'] == m['bytes_from_verifier'] == 0\n    assert m['phases'][0]['phase'] == 'command_total' and m['phases'][0]['complete'] is False\n    assert not m['gpu_execution'] and not m['complete_physical_peak']\n    assert any('no admitted GPU runner' in line for line in lines)\nprint('2 expected CLI rejections, structured incomplete metrics, no channels or GPU')\nPY\n)",
+      "exit_code": 0,
+      "output": "2 expected CLI rejections, structured incomplete metrics, no channels or GPU\n",
+      "controller_elapsed_seconds": 0.106
+    }
+  ],
+  "development_failures_not_runs_of_record": {
+    "base_git_sha": "2a9216b",
+    "git_dirty": true,
+    "compilation_errors_corrected": [
+      "Two references to removed shared profiles binding in runner installation; changed to owned public profiles.",
+      "Test assert_eq required Debug on opaque ModelBinding; equality assertion avoids exposing/debugging private context."
+    ],
+    "interrupted_build": {
+      "exit_code": 130,
+      "reason": "Build accidentally launched from repository root without rust/.cargo/config.toml; interrupted and rebuilt from rust/ with target-cpu=native."
+    },
+    "socketpair_denial": {
+      "exit_code": 101,
+      "error": "EPERM in sandbox; passed with exception limited to local socketpairs."
+    }
+  },
+  "source_inspection": {
+    "kind": "static implementation incompatibility, no canonical execution",
+    "code_revision": "187a0b9dc9ce14a438e6d82e30fdea4c102a85cf",
+    "sources": [
+      "rust/volta-pcs/src/c71_matrix/b12/replay.rs:Code::commit",
+      "rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs:Tree::commit",
+      "rust/volta-pcs/src/c71_matrix/b12.rs:config"
+    ],
+    "initial_replay_coset_rows": 256,
+    "maximum_reference_tree_height": 262144,
+    "canonical_tree_heights": {
+      "W_D35": 4294967296,
+      "A_D34": 2147483648
+    },
+    "consequence": "Current canonical runner reaches a deterministic geometry rejection at initial W commitment if inputs load. The canonical initial commitment path is not implemented; lifting the cap alone is not the selected 512-reconstruction schedule."
+  },
+  "remaining_local_work": [
+    "Implement the canonical initial W/A commitments beyond the reduced replay-tree geometry; integrate A at 512 reconstructions with retained S1, checkpoints, padding and histograms.",
+    "Replace remaining dense prover/verifier/GKR/PCS workspaces and per-row/window CPU regeneration with the selected bounded physical schedule.",
+    "Integrate exact CUDA, including selected EXP30/byte alternatives; retain explicit unavailable-GPU failure.",
+    "Separate inference and witness/checkpoint preparation timing; add CPU time, kernel/subphase and simultaneous retained-capacity accounting for preparer, both roles, PCS and Seed6.",
+    "Validate the complete canonical composition: no positive canonical certificates have been acquired."
+  ],
+  "external_requirements": [
+    "Authorized pinned weights and real Gamma calibration with independent numeric comparison.",
+    "Authorized H100 execution for full parity and resource measurements.",
+    "Verifiable provider deadline or an explicitly authorized spending guard before RunPod creation."
+  ],
+  "security": "Seed6 malicious-composition/reduction/runtime obligations remain open; no transfer of B12 numerical security bounds.",
+  "known_communication_failure": "Current canonical continuation codec analytically exceeds 40,000,000 bytes; instrumentation does not change the codec or count this as a measured certificate.",
+  "runpod_hard_stop_preserved": true
+}

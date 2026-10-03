@@ -308,6 +308,15 @@ raggruppa sottoalberi in batch di al più 1.024 righe distinte. Le stesse
 righe alimentano hash e aperture, ripristinando ordine e duplicati.
 Più batch implicano più scansioni della sorgente; il limite nativo 1.024
 non equivale al cap canonico pianificato di 2^21.
+Inoltre `Code::commit` usa ancora coset da 256 righe e `Tree::commit`
+rifiuta altezze maggiori di 2^18. I profili iniziali richiedono 2^32
+righe per W/D35 e 2^31 per A/D34: il runner corrente fallirebbe già al
+commitment W dopo il caricamento. È una incompatibilità locale accertata
+per ispezione del codice, non un timeout o un limite hardware. Il percorso
+di commitment canonico va implementato; alzare il solo cap non realizza
+lo schedule scelto. Il
+[record della strumentazione](../../benchmarks/results/c71-runner-measurements-local-2026-10-03-187a0b9dc9ce.json)
+conserva anche questo riscontro statico senza esecuzione D34/D35.
 
 Per il prodotto Z dei punti richiesti, i coefficienti sorgente vengono
 ridotti a blocchi modulo Z. Prodotti FFT bilanciati costruiscono Z;

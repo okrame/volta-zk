@@ -99,6 +99,9 @@ ne espone copertura e limiti, inclusa la separazione ancora aperta dei costi
 di inferenza e preparazione. Rimangono lavoro locale sul
 percorso GPU, sulla ricostruzione in 512 passaggi e sulla contabilità
 fisica simultanea; non sono blocchi risolvibili soltanto procurandosi H100.
+Il commitment iniziale raggiunge ancora il limite di geometria del replay
+ridotto, descritto nelle [specifiche PCS](specs.md#pcs-e-ricostruzione-dei-valori):
+il riferimento CPU non può oggi completare neppure l'installazione W/D35.
 I dettagli e i limiti del riferimento sono nelle
 [specifiche](specs.md#preparazione-e-prova-a-memoria-limitata). Il
 [checkpoint di implementazione](../c7.1-history/canonical-reference-implementation.md)

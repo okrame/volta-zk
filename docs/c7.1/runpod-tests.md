@@ -59,6 +59,10 @@ stderr conserva `C71_RUN_METRICS`; per timeout/kill restano necessari i log
 esterni. Preparazione e inferenza sono ancora fuse e CPU-time, picchi per
 ruolo, capacità trattenute e HBM restano da implementare/misurare. Un test
 del trasporto con tre corpi sintetici non conta come tre prove canoniche.
+Il commitment iniziale usa ancora il replay ridotto con cap di altezza
+2^18, incompatibile con W/D35 e A/D34. Il comando CPU si arresterebbe
+all'installazione W: questo adattamento software deve precedere qualunque
+tentativo completo, anche su hardware autorizzato.
 
 Prima di usare credenziali locali eseguire
 `scripts/runpod_harness.sh local-secret-preflight`. Un eventuale `.env`

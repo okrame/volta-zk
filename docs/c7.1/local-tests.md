@@ -225,6 +225,11 @@ Il [record del riferimento canonico CPU](../../benchmarks/results/c71-canonical-
 conserva i controlli della pipeline, i limiti di copertura e i fallimenti
 di sviluppo separati dalle esecuzioni sulla revisione pulita. Non attesta
 certificati canonici validi o completamento del lavoro locale per H100.
+Il [record della strumentazione](../../benchmarks/results/c71-runner-measurements-local-2026-10-03-187a0b9dc9ce.json)
+registra separatamente 9 test Rust, 10 Python e due rifiuti CLI sulla SHA
+pulita, con contatori di tre scambi sintetici e rifiuto per capacità reale.
+Non è un'esecuzione di tre prove. Conserva inoltre il riscontro statico
+del cap 2^18 del replay, incompatibile con i commitment iniziali D34/D35.
 
 La verifica di questa riorganizzazione e gli eventuali fallimenti sono
 registrati nell'[audit documentale](../c7.1-history/reorganization-audit.md).

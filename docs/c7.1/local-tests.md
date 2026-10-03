@@ -273,6 +273,12 @@ registra 28 test Rust, 11 Python, build/lint e due rifiuti CLI sulla SHA
 pulita. Include parità D10, chiusura sui MAC originali, reader alterato
 e errori a ogni passata ridotta. Le finestre del consumer eseguite sono
 al più 1.024 byte; le 26 passate D34 sono selezionate, non eseguite.
+Il [checkpoint signed W](../c7.1-history/canonical-signed-range.md) aggiunge
+dieci test Rust mirati e nove Python sulla SHA pulita, con parità D12,
+MAC originali e una prova integrata ridotta che usa il nuovo range W.
+Il massimo buffer signed eseguito è 8.192 byte; le finestre D35 da
+256 MiB restano non eseguite. Il record conserva l'errore iniziale della
+fixture PCS e distingue la provenienza delle due build.
 Il [record degli stadi PCS](../../benchmarks/results/c71-pcs-stages-local-2026-10-03-cc5db06c1796.json)
 registra 32 test Rust, 18 Python e due rifiuti CLI sulla SHA pulita,
 inclusa la catena PCS D17, conservando gli errori di sviluppo. Una

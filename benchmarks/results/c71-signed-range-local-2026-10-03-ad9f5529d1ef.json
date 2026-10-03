@@ -1,0 +1,191 @@
+{
+  "schema": "volta-c71-signed-range-local-v1",
+  "date": "2026-10-03",
+  "git_sha": "ad9f5529d1ef6ca7f9747a8969024dd4165f2dee",
+  "git_dirty": false,
+  "baseline": "benchmarks/results/c71-windowed-range-local-2026-10-03-0c3807f2fecb.json",
+  "result": "PASS_LOCAL_SIGNED_W_RANGE_ORIGINAL_MAC_AND_REDUCED_INTEGRATION_ONLY",
+  "credit": false,
+  "readiness": false,
+  "environment": {
+    "platform": "Linux aarch64",
+    "cargo_jobs": 1,
+    "profile": "dev opt-level=2 debug=0 incremental=0 target-cpu=native",
+    "single_test_process": true,
+    "rayon_workers": 1,
+    "omp_threads": 1,
+    "openblas_threads": 1,
+    "test_timeout_seconds": 60,
+    "kill_grace_seconds": 5,
+    "virtual_memory_limit_bytes": 2147483648,
+    "network": "None; offline locked builds.",
+    "timing_caveat": "Diagnostic CPU durations, not H100 runtime or full-size bounds."
+  },
+  "build": {
+    "clean_lib_test": {
+      "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+      "exit_code": 0,
+      "seconds_reported_by_cargo": 196
+    },
+    "runner_provenance": "Built during development. The only subsequent Rust edit before this clean revision was the cfg(test) fixture row count (32 -> 3*bits+2); production runner source was unchanged. Not a clean-tree runner rebuild.",
+    "warnings": "25 volta-pcs lib-test and 37 library warnings remain; some build output was truncated. No lint rerun in this targeted checkpoint."
+  },
+  "binary_sha256": {
+    "test": "f51329eacce544f6cf52867f139c8b68c7bdfcd93d85d6490e0a24cd2f278676",
+    "runner": "f8a15d114dfd7762ee98278031440e7282fcee1029af47c26e0c19e841d98e46"
+  },
+  "implemented": [
+    "Same canopy/Gram/retention engine for original u8 A and signed i16 W; no duplicate protocol or scalar range fallback for installed readers.",
+    "Packed W window gather enumerates requested dyadic intersections, preserves original signed values and external public zero padding; no full virtual W copy.",
+    "One immutable W histogram at installation, including external zero padding; fresh histogram MAC rows per proof. Canonical runner installation phase includes the histogram pass.",
+    "Canonical W selects cut=11/m24, selected Gram compositions and 256 MiB staging; does not restore the superseded cut=10/m25 plan.",
+    "Both canonical runner and reduced sourcewise Installed attach the reader to the same packed storage. Existing original PCS and FS endpoint logic is reused."
+  ],
+  "observed": {
+    "rust_tests_passed": 10,
+    "python_tests_passed": 9,
+    "cli_expected_rejections": 2,
+    "new_signed_range_plus_original_pcs_positive_cases": 1,
+    "existing_byte_range_plus_original_pcs_positive_cases": 3,
+    "reduced_ideal_mac_integrated_acceptances_using_new_W_range": 1,
+    "canonical_certificates_verified": 0,
+    "canonical_full_model_executions": 0,
+    "gpu_executions": 0,
+    "real_weights_read_or_downloaded": false,
+    "pod_actions": false,
+    "provider_spend": 0,
+    "complete_memory_accounting": false
+  },
+  "executed_range_geometry": {
+    "signed_domain_bits": 12,
+    "signed_live_words": 3001,
+    "signed_max_window_words": 4096,
+    "signed_max_window_bytes": 8192,
+    "signed_passes": 29,
+    "signed_requested_bytes": 237568,
+    "signed_gram_windows": 17,
+    "signed_retained_levels": 11,
+    "byte_domain_bits": 10,
+    "byte_max_window_bytes": 1024,
+    "gather_oracle_domain_bits": 6,
+    "intersection_oracle_domain_bits_max": 7,
+    "integrated_W_domain_bits": 10,
+    "integrated_A_domain_bits": 12
+  },
+  "selected_not_executed": {
+    "W_domain_bits": 35,
+    "W_retained_bits": 24,
+    "W_cut_bits": 11,
+    "W_passes": 29,
+    "W_staging_cap_bytes": 268435456,
+    "W_histogram_logical_bytes": 524280,
+    "A_domain_bits": 34,
+    "A_passes": 26,
+    "full_domain_or_canonical_buffer_allocated": false,
+    "D35_checks": "Window descriptors and schedule arithmetic only; no canonical word buffer or proof."
+  },
+  "tests": [
+    {
+      "filter": "c71_b12_windowed_range",
+      "cmd": "PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s /home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_windowed_range --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "output": "\nrunning 5 tests\ntest c71_matrix::range::windowed::tests::c71_b12_windowed_range_complete_transcript_and_original_mac ... ok\ntest c71_matrix::range::windowed::tests::c71_b12_windowed_range_gram_zero_one_and_extension_folds ... ok\ntest c71_matrix::range::windowed::tests::c71_b12_windowed_range_permuted_values_fail_original_pcs ... ok\ntest c71_matrix::range::windowed::tests::c71_b12_windowed_range_reader_errors_are_terminal_before_next_authentication ... ok\ntest c71_matrix::range::windowed::tests::c71_b12_windowed_range_signed_transcript_original_mac_and_geometry ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 458 filtered out; finished in 3.53s\n\n"
+    },
+    {
+      "filter": "c71_b12_range_window_permutation_and_intersections",
+      "cmd": "PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s /home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_range_window_permutation_and_intersections --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::bytes::tests::c71_b12_range_window_permutation_and_intersections ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 462 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "filter": "c71_b12_signed_range_windows_gather_original_ragged_packed_and_padding",
+      "cmd": "PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s /home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_signed_range_windows_gather_original_ragged_packed_and_padding --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::bytes::tests::c71_b12_signed_range_windows_gather_original_ragged_packed_and_padding ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 462 filtered out; finished in 0.00s\n\n"
+    },
+    {
+      "filter": "c71_b12_native_weight_replay",
+      "cmd": "PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s /home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_weight_replay --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::prepare::work_tests::c71_b12_native_weight_replay_shares_packed_storage_and_keeps_committed_values ... C71_WEIGHT_REPLAY domain=D10 shared_packed=true dense_virtual_W=false canonical_credit=false\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 462 filtered out; finished in 0.02s\n\n"
+    },
+    {
+      "filter": "c71_b12_native_windowed_range_dispatch",
+      "cmd": "PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s /home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_windowed_range_dispatch --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_windowed_range_dispatch_uses_original_scan_histogram ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 462 filtered out; finished in 0.04s\n\n"
+    },
+    {
+      "filter": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+      "cmd": "PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s /home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs --test-threads=1 --nocapture'",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs ... C71_INTEGRATED_GETTER {\"phase\":\"prepare_before_commit\",\"scope\":\"reduced original numerical source; CPU work, not HBM or H100 time\",\"work\":{\"emitted_bytes\":0,\"named_heap_peak\":288,\"numerical\":{\"caller_transient_logical_bytes_upper\":48,\"divide_calls\":7,\"fp_additions\":0,\"fp_multiplications\":0,\"integer_additions\":193,\"integer_comparisons\":1221,\"integer_multiplications\":233,\"integer_subtractions\":47,\"opaque_affine_calls\":20,\"opaque_rms_calls\":37,\"opaque_rne_calls\":82,\"result_capacity_bytes\":8128,\"result_logical_bytes\":4552,\"table_reads\":24},\"old_kv_reads\":0,\"original_scalar_reads\":606,\"producer_rows\":[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,2,2,2,2,1],\"weight_scalar_reads\":222}}\nC71_INTEGRATED_GETTER {\"phase\":\"initial_commit_A\",\"scope\":\"reduced original numerical source; CPU work, not HBM or H100 time\",\"work\":{\"emitted_bytes\":120576,\"named_heap_peak\":400,\"numerical\":{\"caller_transient_logical_bytes_upper\":48,\"divide_calls\":3072,\"fp_additions\":0,\"fp_multiplications\":0,\"integer_additions\":72960,\"integer_comparisons\":407424,\"integer_multiplications\":88832,\"integer_subtractions\":16128,\"opaque_affine_calls\":3328,\"opaque_rms_calls\":13312,\"opaque_rne_calls\":25088,\"result_capacity_bytes\":2725888,\"result_logical_bytes\":1509376,\"table_reads\":8192},\"old_kv_reads\":0,\"original_scalar_reads\":197376,\"producer_rows\":[768,512,0,2048,2048,2048,2048,2048,2048,2048,1792,1792,1792,2048,2048,2048,2048,2048,2048,2048,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1792,1536,1280,512,512,512,0,512,512,256,256,128],\"weight_scalar_reads\":78848}}\nC71_LOOKUP_SOURCE_WORK {\"query_rows\":4,\"query_width\":4,\"table_rows\":5,\"work\":{\"attempt_context_size_bytes\":129,\"attempt_encode_capacity_bytes\":130,\"auth_size_bytes\":48,\"bind_work_size_bytes\":40,\"binding_frame_capacity_bytes\":1438,\"binding_frame_capacity_while_attempt_live_bytes\":1438,\"binding_frame_logical_bytes\":1438,\"binding_frame_payload_write_bytes\":1438,\"binding_table_output_encoded_bytes\":10,\"cache_histogram_reads\":60,\"cache_payload_read_bytes\":432,\"cache_payload_write_bytes\":36,\"cache_query_decodes\":48,\"compact_block_size_bytes\":32,\"correlation_row_copy_bytes\":0,\"correlation_rows_consumed\":58,\"correlation_rows_reserved\":58,\"declared_nested_stack_payload_lower_bound_bytes\":1056,\"declared_stack_is_complete\":false,\"declared_subtree_stack_bytes\":768,\"denominator_inversions\":1,\"denominator_zero_comparisons\":1,\"descriptor_capacity_bytes\":104,\"descriptor_row_calls\":201,\"descriptor_size_bytes\":104,\"dimension_block_visits\":6,\"dimension_coverage_interval_visits\":4,\"dimension_table_metadata_visits\":6,\"dimension_validation_passes\":2,\"dimension_work_size_bytes\":24,\"dimensions_transient_capacity_bytes\":96,\"endpoint_leaf_reads\":16,\"eq_scratch_capacity_bytes\":120,\"equality_multiplications\":30,\"equality_subtractions\":15,\"histogram_cache_capacity_bytes\":20,\"histogram_getter_calls\":5,\"layer_size_bytes\":216,\"leaf_builds\":16,\"named_heap_peak_bytes\":3812,\"named_heap_peak_is_complete\":false,\"owned_capacity_is_complete\":false,\"owned_heap_peak_bytes\":3932,\"owned_heap_peak_excludes_external\":true,\"pending_auth_size_bytes\":168,\"point_capacity_bytes\":96,\"point_logical_bytes\":96,\"proof_heap_capacity_bytes\":1584,\"proof_logical_heap_bytes\":1584,\"proof_size_bytes\":240,\"public_table_output_reads\":65,\"public_tag_scans\":5,\"query_cache_capacity_bytes\":16,\"query_cache_size_bytes\":32,\"query_getter_calls\":4,\"replay_leaf_reads\":160,\"replay_reductions\":62,\"rows_backing_capacity_bytes\":0,\"source_work_size_bytes\":616,\"tree\":{\"cubic_additions\":198,\"cubic_multiplications\":297,\"cubic_subtractions\":55,\"custom_rounds\":0,\"custom_terminals\":0,\"eq_weights_capacity_bytes\":96,\"equality_additions\":16,\"equality_multiplications\":140,\"equality_subtractions\":78,\"fold_additions\":196,\"fold_multiplications\":196,\"fold_subtractions\":0,\"getter_calls\":49,\"getter_scalar_values\":196,\"owned_regeneration_heap_peak_bytes\":264,\"prefix_terms\":49},\"tree_reductions\":15,\"triple_size_bytes\":144,\"triples_capacity_bytes\":1872,\"triples_logical_bytes\":1872,\"upper_tree_capacity_bytes\":72}}\nC71_LOOKUP_SOURCE_WORK {\"query_rows\":2,\"query_width\":4,\"table_rows\":9,\"work\":{\"attempt_context_size_bytes\":129,\"attempt_encode_capacity_bytes\":130,\"auth_size_bytes\":48,\"bind_work_size_bytes\":40,\"binding_frame_capacity_bytes\":1446,\"binding_frame_capacity_while_attempt_live_bytes\":1446,\"binding_frame_logical_bytes\":1446,\"binding_frame_payload_write_bytes\":1446,\"binding_table_output_encoded_bytes\":18,\"cache_histogram_reads\":108,\"cache_payload_read_bytes\":528,\"cache_payload_write_bytes\":44,\"cache_query_decodes\":24,\"compact_block_size_bytes\":32,\"correlation_row_copy_bytes\":0,\"correlation_rows_consumed\":58,\"correlation_rows_reserved\":58,\"declared_nested_stack_payload_lower_bound_bytes\":1056,\"declared_stack_is_complete\":false,\"declared_subtree_stack_bytes\":768,\"denominator_inversions\":1,\"denominator_zero_comparisons\":1,\"descriptor_capacity_bytes\":104,\"descriptor_row_calls\":203,\"descriptor_size_bytes\":104,\"dimension_block_visits\":6,\"dimension_coverage_interval_visits\":4,\"dimension_table_metadata_visits\":6,\"dimension_validation_passes\":2,\"dimension_work_size_bytes\":24,\"dimensions_transient_capacity_bytes\":96,\"endpoint_leaf_reads\":16,\"eq_scratch_capacity_bytes\":120,\"equality_multiplications\":30,\"equality_subtractions\":15,\"histogram_cache_capacity_bytes\":36,\"histogram_getter_calls\":9,\"layer_size_bytes\":216,\"leaf_builds\":16,\"named_heap_peak_bytes\":3820,\"named_heap_peak_is_complete\":false,\"owned_capacity_is_complete\":false,\"owned_heap_peak_bytes\":3940,\"owned_heap_peak_excludes_external\":true,\"pending_auth_size_bytes\":168,\"point_capacity_bytes\":96,\"point_logical_bytes\":96,\"proof_heap_capacity_bytes\":1584,\"proof_logical_heap_bytes\":1584,\"proof_size_bytes\":240,\"public_table_output_reads\":117,\"public_tag_scans\":9,\"query_cache_capacity_bytes\":8,\"query_cache_size_bytes\":32,\"query_getter_calls\":2,\"replay_leaf_reads\":160,\"replay_reductions\":62,\"rows_backing_capacity_bytes\":0,\"source_work_size_bytes\":616,\"tree\":{\"cubic_additions\":198,\"cubic_multiplications\":297,\"cubic_subtractions\":55,\"custom_rounds\":0,\"custom_terminals\":0,\"eq_weights_capacity_bytes\":96,\"equality_additions\":16,\"equality_multiplications\":140,\"equality_subtractions\":78,\"fold_additions\":196,\"fold_multiplications\":196,\"fold_subtractions\":0,\"getter_calls\":49,\"getter_scalar_values\":196,\"owned_regeneration_heap_peak_bytes\":264,\"prefix_terms\":49},\"tree_reductions\":15,\"triple_size_bytes\":144,\"triples_capacity_bytes\":1872,\"triples_logical_bytes\":1872,\"upper_tree_capacity_bytes\":72}}\nC71_MAXIMUM_SOURCE_WORK {\"checkpoint\":{\"source_byte_getter_calls\":6,\"base_field_products\":0,\"checkpoint_scalar_writes\":4,\"checkpoint_builds\":1,\"checkpoint_capacity_peak_bytes\":16},\"tree\":{\"custom_rounds\":0,\"custom_terminals\":0,\"getter_calls\":4,\"getter_scalar_values\":16,\"prefix_terms\":4,\"equality_multiplications\":7,\"equality_additions\":1,\"equality_subtractions\":4,\"cubic_multiplications\":27,\"cubic_additions\":18,\"cubic_subtractions\":5,\"fold_multiplications\":16,\"fold_additions\":16,\"fold_subtractions\":0,\"eq_weights_capacity_bytes\":48,\"owned_regeneration_heap_peak_bytes\":120}}\nC71_LOOKUP_SOURCE_WORK {\"query_rows\":4,\"query_width\":6,\"table_rows\":8,\"work\":{\"attempt_context_size_bytes\":129,\"attempt_encode_capacity_bytes\":130,\"auth_size_bytes\":48,\"bind_work_size_bytes\":40,\"binding_frame_capacity_bytes\":1429,\"binding_frame_capacity_while_attempt_live_bytes\":1429,\"binding_frame_logical_bytes\":1429,\"binding_frame_payload_write_bytes\":1429,\"binding_table_output_encoded_bytes\":32,\"cache_histogram_reads\":96,\"cache_payload_read_bytes\":672,\"cache_payload_write_bytes\":56,\"cache_query_decodes\":48,\"compact_block_size_bytes\":32,\"correlation_row_copy_bytes\":0,\"correlation_rows_consumed\":58,\"correlation_rows_reserved\":58,\"declared_nested_stack_payload_lower_bound_bytes\":1056,\"declared_stack_is_complete\":false,\"declared_subtree_stack_bytes\":768,\"denominator_inversions\":1,\"denominator_zero_comparisons\":1,\"descriptor_capacity_bytes\":72,\"descriptor_row_calls\":204,\"descriptor_size_bytes\":104,\"dimension_block_visits\":4,\"dimension_coverage_interval_visits\":2,\"dimension_table_metadata_visits\":6,\"dimension_validation_passes\":2,\"dimension_work_size_bytes\":24,\"dimensions_transient_capacity_bytes\":96,\"endpoint_leaf_reads\":16,\"eq_scratch_capacity_bytes\":120,\"equality_multiplications\":30,\"equality_subtractions\":15,\"histogram_cache_capacity_bytes\":32,\"histogram_getter_calls\":8,\"layer_size_bytes\":216,\"leaf_builds\":16,\"named_heap_peak_bytes\":3800,\"named_heap_peak_is_complete\":false,\"owned_capacity_is_complete\":false,\"owned_heap_peak_bytes\":3920,\"owned_heap_peak_excludes_external\":true,\"pending_auth_size_bytes\":168,\"point_capacity_bytes\":96,\"point_logical_bytes\":96,\"proof_heap_capacity_bytes\":1584,\"proof_logical_heap_bytes\":1584,\"proof_size_bytes\":240,\"public_table_output_reads\":104,\"public_tag_scans\":8,\"query_cache_capacity_bytes\":24,\"query_cache_size_bytes\":32,\"query_getter_calls\":4,\"replay_leaf_reads\":160,\"replay_reductions\":62,\"rows_backing_capacity_bytes\":0,\"source_work_size_bytes\":616,\"tree\":{\"cubic_additions\":198,\"cubic_multiplications\":297,\"cubic_subtractions\":55,\"custom_rounds\":0,\"custom_terminals\":0,\"eq_weights_capacity_bytes\":96,\"equality_additions\":16,\"equality_multiplications\":140,\"equality_subtractions\":78,\"fold_additions\":196,\"fold_multiplications\":196,\"fold_subtractions\":0,\"getter_calls\":49,\"getter_scalar_values\":196,\"owned_regeneration_heap_peak_bytes\":264,\"prefix_terms\":49},\"tree_reductions\":15,\"triple_size_bytes\":144,\"triples_capacity_bytes\":1872,\"triples_logical_bytes\":1872,\"upper_tree_capacity_bytes\":72}}\nC71_INTEGRATED_GETTER {\"phase\":\"producer_relations\",\"scope\":\"reduced original numerical source; CPU work, not HBM or H100 time\",\"work\":{\"emitted_bytes\":0,\"named_heap_peak\":272,\"numerical\":{\"caller_transient_logical_bytes_upper\":48,\"divide_calls\":524679,\"fp_additions\":0,\"fp_multiplications\":0,\"integer_additions\":12143919,\"integer_comparisons\":65074861,\"integer_multiplications\":15019611,\"integer_subtractions\":2390057,\"opaque_affine_calls\":427358,\"opaque_rms_calls\":2370678,\"opaque_rne_calls\":3691958,\"result_capacity_bytes\":442724000,\"result_logical_bytes\":242810944,\"table_reads\":1010414},\"old_kv_reads\":0,\"original_scalar_reads\":30816666,\"producer_rows\":[38840,38836,0,583002,466362,427522,427510,466362,427522,427510,388606,349766,349758,427482,388650,427482,388650,388630,349790,349786,349742,310890,310882,272042,272030,272010,233174,233158,194270,155430,155418,194252,155412,155400,116556,116548,77708,77696,77676,38840,38836,0,14,8,6,3,0],\"weight_scalar_reads\":12668680}}\nC71_INTEGRATED_GETTER {\"phase\":\"range_A\",\"scope\":\"reduced original numerical source; CPU work, not HBM or H100 time\",\"work\":{\"emitted_bytes\":596162,\"named_heap_peak\":400,\"numerical\":{\"caller_transient_logical_bytes_upper\":48,\"divide_calls\":14601,\"fp_additions\":0,\"fp_multiplications\":0,\"integer_additions\":343927,\"integer_comparisons\":1918660,\"integer_multiplications\":419163,\"integer_subtractions\":74303,\"opaque_affine_calls\":16032,\"opaque_rms_calls\":62534,\"opaque_rne_calls\":118156,\"result_capacity_bytes\":12831120,\"result_logical_bytes\":7111456,\"table_reads\":38272},\"old_kv_reads\":0,\"original_scalar_reads\":929880,\"producer_rows\":[3808,2636,0,9734,9734,9734,9734,9734,9734,9734,8416,8416,8416,9734,9734,9734,9734,9734,9734,9734,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,8416,7098,5780,2490,2490,2490,0,2304,2304,986,986,327],\"weight_scalar_reads\":371260}}\nC71_INTEGRATED_GETTER {\"phase\":\"linear_A_and_WHIR\",\"scope\":\"reduced original numerical source; CPU work, not HBM or H100 time\",\"work\":{\"emitted_bytes\":635000,\"named_heap_peak\":400,\"numerical\":{\"caller_transient_logical_bytes_upper\":48,\"divide_calls\":15567,\"fp_additions\":0,\"fp_multiplications\":0,\"integer_additions\":366731,\"integer_comparisons\":2045813,\"integer_multiplications\":446947,\"integer_subtractions\":79279,\"opaque_affine_calls\":17074,\"opaque_rms_calls\":66684,\"opaque_rne_calls\":125982,\"result_capacity_bytes\":13681632,\"result_logical_bytes\":7582592,\"table_reads\":40820},\"old_kv_reads\":0,\"original_scalar_reads\":991474,\"producer_rows\":[4050,2808,0,10378,10378,10378,10378,10378,10378,10378,8974,8974,8974,10378,10378,10378,10378,10378,10378,10378,8974,8974,8974,8974,8974,8974,8974,8974,8974,8974,8974,8974,8974,8974,8974,8974,7570,6166,2646,2646,2646,0,2462,2462,1058,1058,356],\"weight_scalar_reads\":395872}}\nnative composed rejection: ordered reader history or binary prompt differs\nC71_INTEGRATED_POSITIVE {\"certificate_bytes\":7732169,\"credit\":false,\"dense_A_materialized\":false,\"original_mac_rows\":88049,\"receipt\":[101,90,42,112,129,71,23,118,222,46,54,165,224,26,63,70,100,202,59,23,147,119,107,58,89,121,161,25,193,12,187,0],\"scope\":\"O0 reduced; ideal MAC; canonical timing and complete PCG not admitted\",\"snapshot_materialized\":false}\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 462 filtered out; finished in 12.33s\n\n"
+    }
+  ],
+  "python_checks": [
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py'",
+      "exit_code": 0,
+      "passed": 9,
+      "seconds_reported": 0.52
+    }
+  ],
+  "cli_checks": [
+    {
+      "arguments": [],
+      "exit_code": 1,
+      "output": "C71_RUN_METRICS {\"complete\":false,\"credit\":false,\"measurements\":{\"bytes_from_verifier\":0,\"bytes_to_verifier\":0,\"channels\":[],\"complete_physical_peak\":false,\"gpu_execution\":false,\"memory_scope\":\"process-wide host RSS/HWM, both roles; no per-role peak, retained-capacity census or HBM measurement\",\"phases\":[{\"complete\":false,\"end_ns\":43500,\"phase\":\"command_total\",\"role\":\"coordinator\",\"slot\":null,\"start_ns\":125,\"wall_ns\":43375}],\"process_memory\":[\"VmHWM:\\t    3088 kB\",\"VmRSS:\\t    3088 kB\"],\"response_charges\":[{\"includes_initial_distribution_installation_and_setup\":true,\"observed_bytes_both_directions\":0,\"observed_bytes_from_verifier\":0,\"observed_bytes_to_verifier\":0,\"response_channel_registered\":false,\"slot\":0},{\"includes_initial_distribution_installation_and_setup\":false,\"observed_bytes_both_directions\":0,\"observed_bytes_from_verifier\":0,\"observed_bytes_to_verifier\":0,\"response_channel_registered\":false,\"slot\":1},{\"includes_initial_distribution_installation_and_setup\":false,\"observed_bytes_both_directions\":0,\"observed_bytes_from_verifier\":0,\"observed_bytes_to_verifier\":0,\"response_channel_registered\":false,\"slot\":2}],\"timing_scope\":\"nested wall intervals; roles overlap, do not sum\",\"total_wall_ns\":499211,\"traffic_scope\":\"actual application bytes at verifier boundary, including public distribution; excludes OS framing and executable provisioning\"},\"readiness\":false}\nStop: no admitted GPU runner; explicit heavy reference only: c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES\n"
+    },
+    {
+      "arguments": [
+        "gpu"
+      ],
+      "exit_code": 1,
+      "output": "C71_RUN_METRICS {\"complete\":false,\"credit\":false,\"measurements\":{\"bytes_from_verifier\":0,\"bytes_to_verifier\":0,\"channels\":[],\"complete_physical_peak\":false,\"gpu_execution\":false,\"memory_scope\":\"process-wide host RSS/HWM, both roles; no per-role peak, retained-capacity census or HBM measurement\",\"phases\":[{\"complete\":false,\"end_ns\":1583,\"phase\":\"command_total\",\"role\":\"coordinator\",\"slot\":null,\"start_ns\":41,\"wall_ns\":1542}],\"process_memory\":[\"VmHWM:\\t    3076 kB\",\"VmRSS:\\t    3076 kB\"],\"response_charges\":[{\"includes_initial_distribution_installation_and_setup\":true,\"observed_bytes_both_directions\":0,\"observed_bytes_from_verifier\":0,\"observed_bytes_to_verifier\":0,\"response_channel_registered\":false,\"slot\":0},{\"includes_initial_distribution_installation_and_setup\":false,\"observed_bytes_both_directions\":0,\"observed_bytes_from_verifier\":0,\"observed_bytes_to_verifier\":0,\"response_channel_registered\":false,\"slot\":1},{\"includes_initial_distribution_installation_and_setup\":false,\"observed_bytes_both_directions\":0,\"observed_bytes_from_verifier\":0,\"observed_bytes_to_verifier\":0,\"response_channel_registered\":false,\"slot\":2}],\"timing_scope\":\"nested wall intervals; roles overlap, do not sum\",\"total_wall_ns\":34542,\"traffic_scope\":\"actual application bytes at verifier boundary, including public distribution; excludes OS framing and executable provisioning\"},\"readiness\":false}\nStop: no admitted GPU runner; explicit heavy reference only: c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES\n"
+    }
+  ],
+  "development": [
+    {
+      "kind": "planning_probe",
+      "exit_code": 1,
+      "error": "ModuleNotFoundError: No module named 'c7_1_gemma_plan'",
+      "resolution": "Repeated with PYTHONPATH=scripts; selected W compositions and 29 passes confirmed."
+    },
+    {
+      "kind": "lib_test_build",
+      "exit_code": 0,
+      "seconds_reported_by_cargo": 290,
+      "tree": "development"
+    },
+    {
+      "kind": "test",
+      "filter": "c71_b12_windowed_range",
+      "exit_code": 101,
+      "passed": 4,
+      "failed": 1,
+      "seconds_reported": 2.98,
+      "error": "D12 signed test reached original linear PCS with only 32 rows: B12 linear prover correlations exhausted.",
+      "resolution": "Fixture now reserves 3*bits+2 rows (38 for D12); protocol implementation unchanged."
+    },
+    {
+      "kind": "test",
+      "filter": "c71_b12_signed_range_windows_gather_original_ragged_packed_and_padding",
+      "exit_code": 0,
+      "passed": 1,
+      "seconds_reported": 0
+    },
+    {
+      "kind": "runner_build",
+      "exit_code": 0,
+      "seconds_reported_by_cargo": 80,
+      "tree": "Started before commit; only subsequent source edit was the cfg(test) PCS-row fixture correction."
+    }
+  ],
+  "remaining": [
+    "Exact CUDA end-to-end integration and fail-closed production backend.",
+    "Remaining dense consumers and verifier structures; full simultaneous CPU/HBM/capacity ledger, including reader, preparer, PCS and Seed6.",
+    "Real Gamma calibration and three valid canonical responses on one registry, after separate hardware/spending authorization.",
+    "Seed6 composition/refinement obligations remain open; known analytic continuation traffic above 40 MB remains negative.",
+    "RunPod hard stop still requires verified provider deadline or explicitly authorized spending guard."
+  ]
+}

@@ -81,7 +81,9 @@ impl Installed {
     }
 
     pub(super) fn new(p: &Profile, packed: Vec<i16>) -> Result<Self, String> {
-        Self::new_with_source(p, packed, |values| Model::new_in(DOMAIN_W, values))
+        // Tiny CPU reference: keep the original commitment data and pads.
+        // Reopening W must not rebuild its initial oracle for every response.
+        Self::new_with_source(p, packed, |values| Model::new_with_retention(DOMAIN_W, values, true))
     }
 
     pub(super) fn new_with_source(
@@ -466,7 +468,9 @@ impl Snapshot {
         old: &[Snapshot],
         prompt: u32,
     ) -> Result<Self, String> {
-        Self::prepare_with_source(p, w, old, prompt, |values| Model::new_in(DOMAIN_A, values))
+        Self::prepare_with_source(p, w, old, prompt, |values| {
+            Model::new_with_retention(DOMAIN_A, values, true)
+        })
     }
 
     pub(super) fn prepare_with_source(

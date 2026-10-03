@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 
 // The verifier's expected public tables. Cost/shape validation does not
 // certify their numerical contents; they are never read from a proof.
+#[derive(Clone, Copy)]
 pub(in crate::c71_matrix) struct Tables<'a> {
     pub gelu: &'a [crate::c71_matrix::lookup::Table<'a>],
     pub exp30: &'a [crate::c71_matrix::lookup::Table<'a>],

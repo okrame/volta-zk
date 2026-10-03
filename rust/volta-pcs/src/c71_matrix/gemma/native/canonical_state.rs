@@ -1,13 +1,22 @@
 //! Internal canonical acceptance machine, conditional on valid public tables.
 //! No public admission API: numerical certification, positive composition and
 //! complete transport sizing remain prerequisites for the canonical runner.
-use super::super::protocol::pool::VerifierCapacity;
+use super::super::protocol::{
+    acceptance_transport,
+    pool::{ProverCapacity, VerifierCapacity},
+    SourceModel,
+};
 use super::*;
 use std::io;
+use std::sync::Arc;
 use volta_pcg::c71_lifetime::{Attempt, ModelBinding};
 
+#[cfg(all(unix, feature = "c71-seed6-reference"))]
+#[path = "canonical_runner.rs"]
+pub(in crate::c71_matrix) mod runner;
+
 pub(super) struct Public<'a> {
-    pub(super) profiles: Vec<Canonical>,
+    pub(super) profiles: Vec<Arc<Canonical>>,
     pub(super) tables: [profile::Tables<'a>; 3],
     digest: [u8; 32],
     pub(super) required: [usize; 3],
@@ -29,6 +38,13 @@ impl<'a> Public<'a> {
 
     pub(super) fn from_profiles(
         profiles: Vec<Canonical>,
+        tables: [profile::Tables<'a>; 3],
+    ) -> Result<Self, String> {
+        Self::from_shared(profiles.into_iter().map(Arc::new).collect(), tables)
+    }
+
+    fn from_shared(
+        profiles: Vec<Arc<Canonical>>,
         tables: [profile::Tables<'a>; 3],
     ) -> Result<Self, String> {
         if profiles.len() != 3
@@ -168,7 +184,7 @@ struct Acceptance {
     receipt: [u8; 32],
 }
 
-struct Verifier<'a> {
+struct Registry<'a> {
     public: Public<'a>,
     weight: C61Commitment,
     session: [u8; 32],
@@ -179,13 +195,22 @@ struct Verifier<'a> {
     live: bool,
 }
 
-impl<'a> Verifier<'a> {
+type Verifier<'a> = Registry<'a>;
+
+impl<'a> Registry<'a> {
     fn new(
         public: Public<'a>,
         weight: C61Commitment,
         pool: &VerifierCapacity<'_, '_>,
     ) -> Result<Self, String> {
-        let context = pool.fixed_run_context().map_err(|e| e.to_string())?;
+        Self::from_context(public, weight, pool.fixed_run_context().map_err(|e| e.to_string())?)
+    }
+
+    fn from_context(
+        public: Public<'a>,
+        weight: C61Commitment,
+        context: (ModelBinding, [u8; 32], Attempt),
+    ) -> Result<Self, String> {
         let v = Self {
             public,
             weight,
@@ -364,6 +389,250 @@ impl<'a> Verifier<'a> {
             // the only promotion path; no history/receipt is imported from P.
             self.accepted.push(acceptance);
             self.live = self.next_slot < 3;
+            Ok::<_, String>(())
+        }))
+        .map_err(|_| "Stop".to_string())
+        .and_then(|r| r);
+        if result.is_err() {
+            pool.stop();
+        }
+        result.map_err(|_| "Stop".into())
+    }
+
+    /// The caller authenticates and dedicates the transport to this session.
+    /// Completion is emitted only after the verifier's durable acceptance.
+    fn verify_authenticated(
+        &mut self,
+        prompt: &[u32],
+        r: &Response,
+        pool: &mut VerifierCapacity<'_, '_>,
+        channel: &mut impl io::Write,
+    ) -> Result<(), String> {
+        let result = self.verify_response(prompt, r, pool);
+        let completion = result.as_ref().ok().map(|_| {
+            (*blake3::hash(&r.certificate).as_bytes(), self.accepted.last().unwrap().receipt)
+        });
+        if acceptance_transport::send(channel, completion).is_err() {
+            self.live = false;
+            pool.stop();
+            return Err("Stop".into());
+        }
+        result
+    }
+}
+
+/// Internal CPU composition. This is not GPU admission or a numerical
+/// certificate. The dense component kernels still need a bounded device plan.
+struct Prover<'a> {
+    state: Registry<'a>,
+    weights: Arc<Vec<i16>>,
+    weight: b12::replay::ReplayModel,
+    tables: Arc<calibration_input::Tables>,
+    cache: Arc<ordered::Cache>,
+    accepted: Vec<(Arc<ordered::Prepared>, b12::replay::ReplayModel)>,
+    preparation_limit: usize,
+}
+
+impl<'a> Prover<'a> {
+    fn new(
+        public: Public<'a>,
+        weights: Arc<Vec<i16>>,
+        weight: b12::replay::ReplayModel,
+        tables: Arc<calibration_input::Tables>,
+        preparation_limit: usize,
+        pool: &ProverCapacity<'_, '_>,
+    ) -> Result<Self, String> {
+        if weight.domain() != Domain::Flat(35)
+            || weights.len()
+                != public.profiles[0].plan.sources.iter().map(|s| s.rows * s.cols).sum::<usize>()
+        {
+            return Err("canonical W installation differs".into());
+        }
+        let identity = tables.with_slot(0, |t0| {
+            tables.with_slot(1, |t1| {
+                tables.with_slot(2, |t2| {
+                    Public::from_shared(public.profiles.clone(), [*t0, *t1, *t2]).map(|p| p.digest)
+                })
+            })
+        })????;
+        if identity != public.digest {
+            return Err("preparer public table identity differs".into());
+        }
+        let state = Registry::from_context(
+            public,
+            weight.root().clone(),
+            pool.fixed_run_context().map_err(|e| e.to_string())?,
+        )?;
+        Ok(Self {
+            state,
+            weights,
+            weight,
+            tables,
+            cache: Arc::default(),
+            accepted: Vec::new(),
+            preparation_limit,
+        })
+    }
+
+    fn respond_authenticated(
+        &mut self,
+        prompt: &[u32; 100],
+        nonce: [u8; 32],
+        pool: &mut ProverCapacity<'_, '_>,
+        exchange: impl FnOnce(&Response) -> Result<Vec<u8>, String>,
+    ) -> Result<(), String> {
+        if !self.state.live {
+            pool.stop();
+            return Err("Stop".into());
+        }
+        self.state.live = false;
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.state.check_pool(pool.fixed_run_context().map_err(|e| e.to_string())?)?;
+            let slot = self.state.next_slot;
+            let required = self.state.public.required[slot];
+            if nonce == [0; 32] || pool.remaining_fp3() < required {
+                return Err("invalid nonce or capacity before preparation".into());
+            }
+            let p = self.state.public.profiles[slot].clone();
+            let old: Vec<_> = self.accepted.iter().map(|(a, _)| a.clone()).collect();
+            // Prepare receives no transcript, correlations, Delta or PCS coins.
+            let snapshot = ordered::Prepared::prepare(
+                p.clone(),
+                self.tables.clone(),
+                self.weights.clone(),
+                &old,
+                prompt,
+                self.cache.clone(),
+                self.preparation_limit,
+            )?;
+            let getter = snapshot.clone();
+            let coins = fresh_pcs_coins()?;
+            let current = b12::replay::ReplayModel::new(
+                Domain::Flat(34),
+                coins.seed,
+                coins.salt_seed,
+                Arc::new(move |i| {
+                    E::from(Goldilocks::from_u64(u64::from(
+                        getter.byte_at(i).expect("immutable canonical A"),
+                    )))
+                }),
+                p.bytes().live,
+            )?
+            .retain_first_fold();
+            let mut response = Response {
+                root: current.root().clone(),
+                tokens: snapshot.tokens(),
+                nonce,
+                certificate: Vec::new(),
+            };
+            let header = self.state.header(prompt, &response)?;
+            let attempt = self.state.attempt(nonce);
+            let acceptance = pool
+                .attempt(required, |a, mut rows| {
+                    let error = |e| io::Error::new(io::ErrorKind::InvalidData, e);
+                    self.state.check_burn(&a).map_err(error)?;
+                    self.state.cursor += 3 * required;
+                    self.state.next_slot += 1;
+                    let s = self.state.public.statement(
+                        slot,
+                        &self.state.weight,
+                        &response.root,
+                        &response.tokens,
+                        attempt,
+                    );
+                    let parts: Vec<_> = self
+                        .state
+                        .accepted
+                        .iter()
+                        .enumerate()
+                        .map(|(i, a)| kv::Segment {
+                            root: &a.root,
+                            profile: &self.state.public.ag,
+                            bytes: self.state.public.profiles[i].bytes(),
+                            model: self.state.weight.roots()[0],
+                            quantization: s.quantization,
+                            tokens: 150,
+                            receipt: a.receipt,
+                        })
+                        .chain([kv::Segment {
+                            root: &response.root,
+                            profile: &self.state.public.ag,
+                            bytes: p.bytes(),
+                            model: self.state.weight.roots()[0],
+                            quantization: s.quantization,
+                            tokens: 150,
+                            receipt: [0; 32],
+                        }])
+                        .collect();
+                    let previous: Vec<_> =
+                        self.accepted.iter().map(|(_, m)| SourceModel::Replay(m)).collect();
+                    let mut fs = Fs::new(&header, 1usize << 42);
+                    let (certificate, receipt) = p
+                        .prove_body(
+                            &s,
+                            &self.state.public.tables[slot],
+                            &parts,
+                            &header,
+                            SourceModel::Replay(&self.weight),
+                            SourceModel::Replay(&current),
+                            &previous,
+                            |points| {
+                                points
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, point)| {
+                                        p.bytes().scalar.compact(
+                                            &p.plan,
+                                            i,
+                                            point,
+                                            |id, r, c| {
+                                                snapshot
+                                                    .weight(id, r, c)
+                                                    .expect("immutable canonical W")
+                                            },
+                                            |id, r, c| {
+                                                snapshot
+                                                    .value(id, r, c)
+                                                    .expect("immutable canonical A")
+                                            },
+                                        )
+                                    })
+                                    .collect()
+                            },
+                            |id, r, c, b| {
+                                snapshot.byte(id, r, c, b).expect("immutable canonical A byte")
+                            },
+                            |id, r, c| {
+                                snapshot.tail(id, r, c).expect("original canonical KV") as i16
+                            },
+                            &mut fs,
+                            &mut rows,
+                        )
+                        .map_err(error)?;
+                    response.certificate = certificate;
+                    let completion = exchange(&response).map_err(error)?;
+                    if completion.len() != acceptance_transport::BYTES {
+                        return Err(error("completion length differs".to_string()));
+                    }
+                    acceptance_transport::receive(
+                        &mut &completion[..],
+                        *blake3::hash(&response.certificate).as_bytes(),
+                        receipt,
+                    )?;
+                    Ok((
+                        Acceptance {
+                            root: response.root.clone(),
+                            tokens: response.tokens,
+                            receipt,
+                        },
+                        Some(receipt),
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+            // Durable success on both sides precedes promotion of numerical KV.
+            self.state.accepted.push(acceptance);
+            self.accepted.push((snapshot, current));
+            self.state.live = self.state.next_slot < 3;
             Ok::<_, String>(())
         }))
         .map_err(|_| "Stop".to_string())

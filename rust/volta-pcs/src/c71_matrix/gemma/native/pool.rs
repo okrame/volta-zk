@@ -77,7 +77,9 @@ pub(in crate::c71_matrix::gemma::native) enum VerifierCapacity<'borrow, 'lifetim
 }
 
 impl ProverCapacity<'_, '_> {
-    fn fixed_run_context(&self) -> io::Result<(ModelBinding, [u8; 32], Attempt)> {
+    pub(in crate::c71_matrix::gemma::native) fn fixed_run_context(
+        &self,
+    ) -> io::Result<(ModelBinding, [u8; 32], Attempt)> {
         match self {
             Self::Dense(pool) => pool.fixed_run_context(),
             #[cfg(feature = "c71-seed6-reference")]
@@ -85,7 +87,7 @@ impl ProverCapacity<'_, '_> {
         }
     }
 
-    fn remaining_fp3(&self) -> usize {
+    pub(in crate::c71_matrix::gemma::native) fn remaining_fp3(&self) -> usize {
         match self {
             Self::Dense(pool) => pool.remaining_fp3(),
             #[cfg(feature = "c71-seed6-reference")]
@@ -93,7 +95,7 @@ impl ProverCapacity<'_, '_> {
         }
     }
 
-    fn stop(&mut self) {
+    pub(in crate::c71_matrix::gemma::native) fn stop(&mut self) {
         match self {
             Self::Dense(pool) => pool.stop(),
             #[cfg(feature = "c71-seed6-reference")]
@@ -101,7 +103,7 @@ impl ProverCapacity<'_, '_> {
         }
     }
 
-    fn attempt<Value>(
+    pub(in crate::c71_matrix::gemma::native) fn attempt<Value>(
         &mut self,
         count: usize,
         consumer: impl FnOnce(
@@ -237,6 +239,49 @@ impl<S: Auxiliary> Prover<S> {
         pool: &mut ProverCapacity<'_, '_>,
         verify: impl FnOnce(&Response) -> Result<Acceptance, String>,
     ) -> Result<(), String> {
+        self.respond_with_pool_exchange(prompt, nonce, pool, |response, _| verify(response))
+    }
+
+    /// The transport must authenticate V and dedicate the channel to this run.
+    /// The decoded completion is tied to this exact pending certificate; it
+    /// cannot supply roots, tokens or historical entries to the registry.
+    fn respond_authenticated(
+        &mut self,
+        prompt: u32,
+        nonce: [u8; 32],
+        pool: &mut ProverCapacity<'_, '_>,
+        exchange: impl FnOnce(&Response) -> Result<Vec<u8>, String>,
+    ) -> Result<(), String> {
+        let (session, epoch, slot) = (self.state.session, self.state.epoch, self.state.next_slot);
+        self.respond_with_pool_exchange(prompt, nonce, pool, |response, receipt| {
+            let completion = exchange(response)?;
+            if completion.len() != acceptance_transport::BYTES {
+                return Err("Stop".into());
+            }
+            acceptance_transport::receive(
+                &mut &completion[..],
+                *blake3::hash(&response.certificate).as_bytes(),
+                receipt,
+            )
+            .map_err(|_| "Stop")?;
+            Ok(Acceptance {
+                root: response.root.clone(),
+                tokens: response.tokens,
+                receipt,
+                session,
+                epoch,
+                slot,
+            })
+        })
+    }
+
+    fn respond_with_pool_exchange(
+        &mut self,
+        prompt: u32,
+        nonce: [u8; 32],
+        pool: &mut ProverCapacity<'_, '_>,
+        verify: impl FnOnce(&Response, [u8; 32]) -> Result<Acceptance, String>,
+    ) -> Result<(), String> {
         if !self.state.live || self.pending.is_some() {
             pool.stop();
             self.stop();
@@ -288,7 +333,7 @@ impl<S: Auxiliary> Prover<S> {
                     let response =
                         Response { root: snapshot.root().clone(), tokens, nonce, certificate };
                     self.pending = Some((snapshot, receipt));
-                    let acceptance = verify(&response).map_err(io_error)?;
+                    let acceptance = verify(&response, receipt).map_err(io_error)?;
                     self.check_acceptance(&acceptance).map_err(io_error)?;
                     Ok((acceptance, Some(receipt)))
                 })
@@ -306,6 +351,28 @@ impl<S: Auxiliary> Prover<S> {
 }
 
 impl Verifier {
+    /// Called only on an authenticated dedicated transport. Success is encoded
+    /// after verify_with_pool has durably journaled and promoted acceptance.
+    fn verify_authenticated(
+        &mut self,
+        prompt: u32,
+        response: &Response,
+        pool: &mut VerifierCapacity<'_, '_>,
+        channel: &mut impl io::Write,
+    ) -> Result<(), String> {
+        let accepted = self.verify_with_pool(prompt, response, pool);
+        let completion = accepted
+            .as_ref()
+            .ok()
+            .map(|a| (*blake3::hash(&response.certificate).as_bytes(), a.receipt));
+        if acceptance_transport::send(channel, completion).is_err() {
+            self.state.live = false;
+            pool.stop();
+            return Err("Stop".into());
+        }
+        accepted.map(|_| ())
+    }
+
     fn from_pool(weight: C61Commitment, pool: &VerifierCapacity<'_, '_>) -> Result<Self, String> {
         let state = State::from_pool(weight, pool.fixed_run_context().map_err(|e| e.to_string())?)?;
         Ok(Self {

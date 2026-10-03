@@ -4,6 +4,8 @@ use kernel::wire::{self, Wire};
 use prepare::{Installed, Snapshot};
 use std::sync::Arc;
 
+#[path = "acceptance_transport.rs"]
+pub(super) mod acceptance_transport;
 #[path = "pool.rs"]
 pub(super) mod pool;
 
@@ -77,7 +79,7 @@ impl Writer {
         self.count += 1;
         Ok(())
     }
-    fn put<P: Wire>(&mut self, kind: u16, proof: &P, fs: &mut Fs) -> Result<(), String> {
+    pub(super) fn put<P: Wire>(&mut self, kind: u16, proof: &P, fs: &mut Fs) -> Result<(), String> {
         let mut bytes = Vec::new();
         proof.write(&mut bytes);
         self.raw(kind, &bytes, fs)
@@ -299,13 +301,19 @@ pub(super) enum SourceModel<'a> {
     Replay(&'a b12::replay::ReplayModel),
 }
 impl SourceModel<'_> {
-    fn byte(&self, index: usize) -> u8 {
+    pub(super) fn identity(&self) -> (Domain, &C61Commitment) {
+        match self {
+            Self::Dense(m) => (m.domain, &m.root),
+            Self::Replay(m) => (m.domain(), m.root()),
+        }
+    }
+    pub(super) fn byte(&self, index: usize) -> u8 {
         match self {
             Self::Dense(m) => m.weights.get(index).copied().unwrap_or(0) as u8,
             Self::Replay(m) => m.value(index).c0.value() as u8,
         }
     }
-    fn range(
+    pub(super) fn range(
         &self,
         attempt: AttemptContext,
         layout: [u8; 32],
@@ -329,7 +337,7 @@ impl SourceModel<'_> {
             ),
         }
     }
-    fn close(
+    pub(super) fn close(
         &self,
         attempt: AttemptContext,
         layout: [u8; 32],

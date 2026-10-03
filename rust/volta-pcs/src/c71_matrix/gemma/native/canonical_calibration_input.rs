@@ -298,7 +298,7 @@ fn oracle_plan(profile: &Canonical) -> Result<serde_json::Value, String> {
     }))
 }
 
-fn profiles(path: &Path) -> Result<Vec<Canonical>, String> {
+pub(super) fn profiles(path: &Path) -> Result<Vec<Canonical>, String> {
     let mut body = Vec::new();
     File::open(path)
         .map_err(|error| error.to_string())?
@@ -329,7 +329,7 @@ fn profiles(path: &Path) -> Result<Vec<Canonical>, String> {
         .collect()
 }
 
-struct Tables {
+pub(super) struct Tables {
     gelu: Vec<Vec<i16>>,
     exp30: Vec<Vec<i32>>,
     softcap: Vec<i16>,
@@ -338,7 +338,64 @@ struct Tables {
 }
 
 impl Tables {
-    fn read(path: &Path) -> Result<Self, String> {
+    #[cfg(test)]
+    pub(super) fn shape_fixture() -> Self {
+        let mut exp = vec![0; 65535];
+        exp[0] = 1 << 30;
+        Self {
+            gelu: vec![vec![0; 65535]; 60],
+            exp30: vec![exp; 60],
+            softcap: vec![0; 65535],
+            rope: [vec![Vec::new(); 450], vec![Vec::new(); 450]],
+            digest: String::new(),
+        }
+    }
+    pub(super) fn with_slot<T>(
+        &self,
+        slot: usize,
+        use_tables: impl FnOnce(&profile::Tables<'_>) -> T,
+    ) -> Result<T, String> {
+        if slot >= 3 {
+            return Err("table slot outside fixed run".into());
+        }
+        let gelu: Vec<_> = self
+            .gelu
+            .iter()
+            .enumerate()
+            .map(|(i, v)| lookup::Table {
+                profile: i as u8,
+                lower: -32767,
+                outputs: lookup::Outputs::I16(v),
+            })
+            .collect();
+        let exp30: Vec<_> = self
+            .exp30
+            .iter()
+            .enumerate()
+            .map(|(i, v)| lookup::Table {
+                profile: i as u8,
+                lower: -32767,
+                outputs: lookup::Outputs::I32(v),
+            })
+            .collect();
+        let softcap = lookup::Table {
+            profile: 0,
+            lower: -32767,
+            outputs: lookup::Outputs::I16(&self.softcap),
+        };
+        let rope = [0, 1].map(|family| kernel::rope::Table {
+            position: slot * 150,
+            rows: &self.rope[family][slot * 150..(slot + 1) * 150],
+        });
+        Ok(use_tables(&profile::Tables {
+            gelu: &gelu,
+            exp30: &exp30,
+            softcap: &softcap,
+            rope: &rope,
+        }))
+    }
+
+    pub(super) fn read(path: &Path) -> Result<Self, String> {
         let bytes = 60 * 65535 * 6 + 65535 * 2 + 450 * (128 + 64) * 8;
         let file = File::open(path).map_err(|error| error.to_string())?;
         if file.metadata().map_err(|error| error.to_string())?.len() != bytes as u64 {

@@ -45,6 +45,8 @@ pub use census::self_check;
 pub use diagnostic::{preflight, run};
 #[cfg(feature = "c71-b12-pcs")]
 pub use gemma::native::canonical::calibration_input::command as calibration;
+#[cfg(all(unix, feature = "c71-seed6-reference"))]
+pub use gemma::native::canonical::state::runner::command as canonical_reference;
 
 use crate::c61_whir_reference::C61Commitment;
 #[cfg(not(feature = "c71-b12-pcs"))]
@@ -551,7 +553,7 @@ struct Model {
     retained: Option<std::sync::Arc<HidingWhirProverData<Goldilocks, E, ObservedMmcs>>>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Domain {
     Matrix(usize),
     #[cfg(feature = "c71-b12-pcs")]

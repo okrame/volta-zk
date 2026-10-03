@@ -843,6 +843,18 @@ mod tests {
             let before = calls.get();
             assert!(limited.token(&mut tokens, &tables, &weights, &absent, None).is_err());
             assert_eq!(calls.get(), before); // fail closed, no retry after partial work
+            let mut observed = Trial::new(&p, 16 << 20);
+            let original_tokens = tokens;
+            assert!(observed
+                .token_observed(&mut tokens, &tables, &weights, &absent, None, |_| Err(
+                    "checkpoint sink failed".into()
+                ))
+                .is_err());
+            assert_eq!(tokens, original_tokens);
+            let before = calls.get();
+            assert!(observed.token(&mut tokens, &tables, &weights, &absent, None).is_err());
+            assert_eq!(calls.get(), before);
+            assert!(observed.into_retained().is_err());
 
             let mut p = Canonical::compile(old / 150, &[0; 772], &scales).unwrap();
             let g = &p.sources.attention.rope.gate_up.gelu.gelu[0];
@@ -1156,6 +1168,20 @@ impl<'a> Trial<'a> {
         previous: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
         trace: Option<&mut Trace>,
     ) -> Result<(), String> {
+        self.token_observed(tokens, tables, weights, previous, trace, |_| Ok(()))
+    }
+
+    /// Observe validated numerical row bundles before their last consumer
+    /// releases them. No correlations, challenges or keys enter this path.
+    pub(super) fn token_observed(
+        &mut self,
+        tokens: &mut [u32; 150],
+        tables: &profile::Tables<'_>,
+        weights: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
+        previous: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
+        trace: Option<&mut Trace>,
+        mut observe: impl FnMut(&prepare::Row) -> Result<(), String>,
+    ) -> Result<(), String> {
         if self.failed || self.finished || self.next_token >= 150 {
             return Err("calibration trial stopped".into());
         }
@@ -1190,7 +1216,10 @@ impl<'a> Trial<'a> {
                     state.borrow().read(id, t - p.sources.attention.rope.old, c)
                 }
             },
-            |out| state.borrow_mut().emit(out, trace.borrow_mut().as_deref_mut()),
+            |out| {
+                observe(&out)?;
+                state.borrow_mut().emit(out, trace.borrow_mut().as_deref_mut())
+            },
             |step| {
                 state.borrow_mut().release_step(step);
                 Ok(())
@@ -1254,5 +1283,14 @@ impl<'a> Trial<'a> {
         self.finished = true;
         self.failed = false;
         Ok(())
+    }
+
+    pub(super) fn into_retained(
+        self,
+    ) -> Result<(Vec<Vec<Box<[i16]>>>, BTreeMap<usize, Vec<u32>>, Work), String> {
+        if self.failed || !self.finished || self.next_token != 150 {
+            return Err("cannot retain incomplete canonical preparation".into());
+        }
+        Ok((self.kv, self.histograms, self.work))
     }
 }

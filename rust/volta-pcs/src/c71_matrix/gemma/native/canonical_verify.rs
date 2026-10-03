@@ -5,7 +5,7 @@ use super::super::protocol::{Batch, Reader};
 use super::*;
 
 impl Canonical {
-    fn public_forms(
+    pub(super) fn public_forms(
         &self,
         s: &caller::P0Statement<'_>,
         fs: &mut Fs,
@@ -391,6 +391,61 @@ mod tests {
                 )
                 .unwrap_err(),
                 "canonical dispatcher reservation differs"
+            );
+            assert_eq!(fs.digest(), before);
+            // The matching prover must reject before touching its immutable
+            // source, sampling FS, or consuming rows. Fake roots test guards
+            // only; no D34/D35 commitment is constructed on the local VM.
+            let model = |domain, root| Model {
+                domain,
+                weights: Vec::new(),
+                seed: [0; 32],
+                salt_seed: [0; 32],
+                root,
+                retained: None,
+            };
+            let wm = model(Domain::Flat(35), w.clone());
+            let am: Vec<_> = roots.iter().map(|r| model(Domain::Flat(34), r.clone())).collect();
+            use super::super::super::protocol::SourceModel;
+            let previous: Vec<_> = am[..slot].iter().map(SourceModel::Dense).collect();
+            let mut auths = Vec::new().into_iter();
+            assert_eq!(
+                p.prove_body(
+                    &s,
+                    &tables,
+                    &parts,
+                    header,
+                    SourceModel::Dense(&wm),
+                    SourceModel::Dense(&am[slot]),
+                    &previous,
+                    |_| panic!("preflight read compact witness"),
+                    |_, _, _, _| panic!("preflight read A"),
+                    |_, _, _| panic!("preflight read KV"),
+                    &mut fs,
+                    &mut auths
+                )
+                .unwrap_err(),
+                "canonical prover reservation differs"
+            );
+            assert_eq!(fs.digest(), before);
+            let bad_w = model(Domain::Flat(34), w.clone());
+            assert_eq!(
+                p.prove_body(
+                    &s,
+                    &tables,
+                    &parts,
+                    header,
+                    SourceModel::Dense(&bad_w),
+                    SourceModel::Dense(&am[slot]),
+                    &previous,
+                    |_| panic!("preflight read compact witness"),
+                    |_, _, _, _| panic!("preflight read A"),
+                    |_, _, _| panic!("preflight read KV"),
+                    &mut fs,
+                    &mut auths
+                )
+                .unwrap_err(),
+                "canonical prover context differs"
             );
             assert_eq!(fs.digest(), before);
             let mut keys = (0..required).map(|_| Key::new(Fp3::ZERO));

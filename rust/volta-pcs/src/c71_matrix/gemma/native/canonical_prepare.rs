@@ -537,7 +537,11 @@ impl Canonical {
 
     /// Expand one causal token into the original producer row addresses.
     /// Query padding is supplied by padding_word/padding_histogram, not replay.
-    fn rows_at_token(&self, step: &Producer, token: usize) -> Result<Vec<usize>, String> {
+    pub(super) fn rows_at_token(
+        &self,
+        step: &Producer,
+        token: usize,
+    ) -> Result<Vec<usize>, String> {
         if token >= 150 {
             return Err("canonical token outside fixed response".into());
         }

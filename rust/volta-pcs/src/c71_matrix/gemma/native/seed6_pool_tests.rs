@@ -180,6 +180,71 @@ fn c71_seed6_native_replay_w_and_ordered_a_complete_o0_proof() {
     full_o0::<OrderedAux>(false, 2, true);
 }
 
+#[test]
+#[ignore = "three-response CPU run exceeded 60 s after two accepts; no multi-three credit"]
+fn c71_seed6_native_three_retained_dense_responses_same_registry() {
+    retained_responses(3);
+}
+
+#[test]
+fn c71_seed6_native_two_retained_dense_responses_same_registry() {
+    retained_responses(2);
+}
+
+fn retained_responses(count: usize) {
+    // Full reduced numerical/proof schedule with real correlations. Dense tiny
+    // snapshots keep this a CPU integration check, not canonical getter credit.
+    let profile = Profile::small(0).unwrap();
+    let model = Installed::new(&profile, super::super::tests::weights(&profile)).unwrap();
+    let root = model.root().clone();
+    let binding =
+        ModelBinding { anchor: root.roots()[0], root: root.roots()[0], semantics: profile.digest };
+    let (send, receive) = std::sync::mpsc::sync_channel(0);
+    let (reply, replies) = std::sync::mpsc::sync_channel(0);
+    let (prover_head, verifier_head, counters, head) = pair(
+        Geometry::new(8, 19, 2).unwrap(),
+        binding,
+        move |pool| {
+            let mut prover: Prover<Snapshot> = Prover::from_pool(model, pool).unwrap();
+            for slot in 0..count {
+                prover
+                    .respond_authenticated(1, [83 + slot as u8; 32], pool, |response| {
+                        send.send(response.clone()).map_err(|e| e.to_string())?;
+                        replies
+                            .recv_timeout(std::time::Duration::from_secs(45))
+                            .map_err(|e| e.to_string())
+                    })
+                    .unwrap();
+                assert_eq!(prover.accepted.len(), slot + 1);
+                assert!(prover.pending.is_none());
+            }
+            assert_eq!(prover.state.live, count < 3);
+            prover.state.accepted.last().unwrap().receipt
+        },
+        |pool| {
+            let mut verifier = Verifier::from_pool(root, pool).unwrap();
+            for slot in 0..count {
+                let response = receive.recv_timeout(std::time::Duration::from_secs(45)).unwrap();
+                let mut completion = Vec::new();
+                let accepted = verifier.verify_authenticated(1, &response, pool, &mut completion);
+                assert!(accepted.is_ok());
+                assert_eq!(verifier.state.accepted.len(), slot + 1);
+                reply.send(completion).unwrap();
+                eprintln!(
+                    "C71_REAL_REDUCED accepted={} bytes={} canonical=false credit=false",
+                    slot + 1,
+                    response.certificate.len()
+                );
+            }
+            assert_eq!(verifier.state.live, count < 3);
+            verifier.state.accepted.last().unwrap().receipt
+        },
+    );
+    assert_eq!(prover_head, verifier_head);
+    assert_eq!(head, verifier_head);
+    assert_eq!(counters, (1, count as u64));
+}
+
 fn full_o0<Source: Auxiliary>(reject: bool, weight: usize, replay_weights: bool) {
     let profile = Arc::new(Profile::small(0).unwrap());
     let packed = super::super::tests::weights(&profile);

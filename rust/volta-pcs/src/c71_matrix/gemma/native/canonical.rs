@@ -7,10 +7,14 @@ use std::collections::{BTreeSet, VecDeque};
 mod calibration;
 #[path = "canonical_calibration_input.rs"]
 pub(in crate::c71_matrix) mod calibration_input;
+#[path = "canonical_ordered.rs"]
+mod ordered;
 #[path = "canonical_prepare.rs"]
 mod prepare;
+#[path = "canonical_prove.rs"]
+mod prove;
 #[path = "canonical_state.rs"]
-mod state;
+pub(in crate::c71_matrix) mod state;
 #[path = "canonical_verify.rs"]
 mod verify;
 #[cfg(test)]

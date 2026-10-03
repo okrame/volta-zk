@@ -3,6 +3,12 @@
 Checkpoint locale successivo allo
 [scanner del commitment iniziale](canonical-initial-scan.md).
 Le istruzioni correnti rimangono nei [cinque documenti attivi](../c7.1/design.md).
+Il [record sulla revisione pulita fa8a161](../../benchmarks/results/c71-query-windows-local-2026-10-03-fa8a1617a674.json)
+conserva 24 test Rust, 9 controlli documentali, due rifiuti CLI, build e
+lint passati. Conserva anche il fallimento di sviluppo: il nuovo fixture
+D10 assumeva 32 coset anziché i 64 della configurazione effettiva; ora
+il conteggio atteso è derivato dai parametri PCS. `credit:false` e
+`readiness:false` rimangono espliciti.
 
 Le query precedenti chiamavano il getter scalare durante ogni blocco di
 resto polinomiale. Per A ciò riattivava finestre da 128 byte, incompatibili

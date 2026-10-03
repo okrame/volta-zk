@@ -1,0 +1,249 @@
+{
+  "schema": "volta-c71-query-windows-local-v1",
+  "date": "2026-10-03",
+  "git_sha": "fa8a1617a67493904823a23bcd002ca7629169e8",
+  "git_dirty": false,
+  "baseline": "benchmarks/results/c71-initial-scan-local-2026-10-03-83d366ccbc5c.json",
+  "result": "PASS_LOCAL_INITIAL_QUERY_WINDOWS_ONLY",
+  "credit": false,
+  "readiness": false,
+  "environment": {
+    "platform": "Linux aarch64",
+    "rustc": "1.96.1 (31fca3adb 2026-06-26)",
+    "profile": "dev opt-level=2 debug=0 incremental=0 target-cpu=native",
+    "cargo_jobs": 1,
+    "single_test_process": true,
+    "rayon_workers": 1,
+    "omp_threads": 1,
+    "openblas_threads": 1,
+    "test_timeout_seconds": 60,
+    "kill_grace_seconds": 5,
+    "virtual_memory_limit_bytes": 2147483648,
+    "network": "None; offline locked builds, no provider or external network calls.",
+    "timing_caveat": "Some reduced tests overlapped the one-job runner build. Durations are local check diagnostics, not protocol or hardware benchmarks."
+  },
+  "build": {
+    "working_directory": "rust",
+    "checks": [
+      {
+        "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 0.07
+      },
+      {
+        "command": "cargo build --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --example c71_canonical_reference",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 81
+      },
+      {
+        "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --example c71_canonical_reference -- -D clippy::correctness -D clippy::suspicious",
+        "exit_code": 0,
+        "seconds_reported_by_cargo": 23.48
+      }
+    ],
+    "warnings": "Non-denied warnings remain: 25 volta-pcs lib-test, 36 lib-build and 175 lib-clippy warnings. correctness/suspicious lint levels passed."
+  },
+  "binary_sha256": {
+    "test": "f0162cf92e4cd5fa9142b33465f730350680919009eeffeee71bdcbe7dcda488",
+    "runner": "4f20ccac5fd213b2a6d0ae988f0b3d42ad0b572146834db5c1eeb7b2060f2ae4"
+  },
+  "implemented": [
+    "Initial A query remainders read original byte windows directly from the canonical prepared snapshot; scalar 128-byte regeneration is not used for those queries.",
+    "One opening-batch-local window covers two original columns at D34, capped at 256 MiB, preserving high-to-low blocks and cross-column reuse.",
+    "Only the live original prefix is requested from the reader; external zero suffix and private pads retain their original PCS positions.",
+    "Canonical byte windows now use the same source-row coverage checks as the initial full-source scanner.",
+    "Reader errors terminate the query batch. A changed byte window fails opening against the retained Merkle root.",
+    "Base/extension query values are written directly into the returned native base-limb matrix, eliminating the separate full Coefficient matrix."
+  ],
+  "observed": {
+    "rust_tests_passed": 24,
+    "python_tests_passed": 9,
+    "cli_expected_rejections": 2,
+    "canonical_certificates_verified": 0,
+    "canonical_full_model_executions": 0,
+    "canonical_full_domain_execution": false,
+    "new_windowed_pcs_chain_verified": {
+      "dimension": 10,
+      "retained_s1": true,
+      "ideal_original_macs": true,
+      "byte_and_transcript_parity": true,
+      "wrong_endpoint_key_rejected": true
+    },
+    "reduced_ideal_mac_integrated_acceptances": 1,
+    "real_seed6_accepted_responses_in_this_record": 0,
+    "gpu_executions": 0,
+    "real_weights_read_or_downloaded": false,
+    "pod_actions": false,
+    "provider_spend": 0,
+    "complete_memory_accounting": false,
+    "complete_time_accounting": false
+  },
+  "query_window_fixture": {
+    "original_length": 1024,
+    "columns": 8,
+    "original_bytes_per_column": 128,
+    "window_bytes": 256,
+    "live_prefixes": [
+      0,
+      1,
+      127,
+      128,
+      129,
+      511,
+      517,
+      900,
+      1024
+    ],
+    "queries": [
+      [],
+      [
+        0
+      ],
+      [
+        17,
+        2047,
+        17
+      ],
+      "511..0"
+    ],
+    "reference": "Independent Horner evaluation of the original column polynomial including six nonzero private pads per column.",
+    "checks": [
+      "Each necessary original window is reconstructed once per batch, reused across both columns; final partial window never requests beyond live.",
+      "Scalar source callback panics if used; all byte-window query cases complete without calling it.",
+      "Empty/live-prefix-zero cases, duplicates, blocks larger than a source column, full and partial source columns.",
+      "Out-of-domain/excess queries and byte readers on non-dyadic or extension columns are rejected.",
+      "Reader failure on the second window returns an error without reading later windows."
+    ]
+  },
+  "retained_initial_fixture": {
+    "dimension": 14,
+    "initial_scans": 512,
+    "scalar_getter_calls_during_commit_and_first_open": 0,
+    "first_open_original_window_calls": 1,
+    "changed_reader_rejected": true,
+    "original_window_calls_after_failed_second_open": 2,
+    "note": "The immutable tree holds the reader callback, not the opening-local byte Vec. This is not a measured RSS or GPU release."
+  },
+  "static_resource_changes": {
+    "canonical_a_dimension": 34,
+    "columns": 128,
+    "original_bytes_per_column": 134217728,
+    "query_window_cap_bytes": 268435456,
+    "query_row_cap": 2097152,
+    "duplicate_coefficient_matrix_payload_removed_bytes": 2147483648,
+    "memory_credit": false,
+    "remaining_owners": "Returned row matrix and row descriptors, polynomial factors/remainders, both twiddle tables, Merkle salts/cache/subtrees, checkpoints/KV/histograms, reconstruction workspace and all other prover/verifier/Seed6 owners.",
+    "note": "Analytic payload removal only. Full dimensions were not allocated or executed; allocator retention and physical simultaneous host/HBM peak remain unmeasured."
+  },
+  "checks": [
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_query --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 5 tests\ntest c71_matrix::b12::replay::tests::c71_b12_query_byte_windows_cross_columns_preserve_pads_and_fail_closed ... ok\ntest c71_matrix::b12::replay::tests::c71_b12_query_byte_windows_full_chain_original_mac_and_retained_s1 ... ok\ntest c71_matrix::b12::replay::tests::c71_b12_query_factors_balanced_product_and_newton_match_direct_oracle ... ok\ntest c71_matrix::b12::replay::tests::c71_b12_query_remainder_matches_original_base_and_extension_rows ... ok\ntest c71_matrix::b12::replay::tests::c71_b12_query_split_zero_tail_preserves_original_pad_and_rows ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 444 filtered out; finished in 1.91s\n\n",
+      "controller_elapsed_seconds": 1.95
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_scattered --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 2 tests\ntest c71_matrix::b12::replay::tests::c71_b12_scattered_coset_original_pad_positions_and_failures ... ok\ntest c71_matrix::b12::replay::tests::c71_b12_scattered_initial_512_passes_matches_native_root_and_openings ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 447 filtered out; finished in 0.34s\n\n",
+      "controller_elapsed_seconds": 0.366
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_replay_base --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_replay_base_rejects_extension_coefficients_before_encoding ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 448 filtered out; finished in 0.00s\n\n",
+      "controller_elapsed_seconds": 0.046
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 replay_tree --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 4 tests\ntest c71_matrix::b12::replay_tree::tests::c71_b12_canonical_initial_geometry_selects_512_a_scans_without_allocation ... ok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_matches_native_root_rows_salts_and_pruned_frontier ... ok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_respects_mmcs_clone_fork ... ok\ntest c71_matrix::b12::replay_tree::tests::replay_tree_uses_live_rng_cursor_and_rejects_bad_shapes ... ok\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 445 filtered out; finished in 0.01s\n\n",
+      "controller_elapsed_seconds": 0.056
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_retained_initial --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_retained_initial_oracle_shares_cache_without_source_recommit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 448 filtered out; finished in 0.04s\n\n",
+      "controller_elapsed_seconds": 0.084
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_full_sourcewise_chain --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::b12::replay::tests::c71_b12_full_sourcewise_chain_matches_native_bytes ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 448 filtered out; finished in 1.78s\n\n",
+      "controller_elapsed_seconds": 1.8
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_canonical_ordered --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::canonical::ordered::tests::c71_canonical_ordered_internal_padding_histogram_and_byte_window ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 448 filtered out; finished in 0.42s\n\n",
+      "controller_elapsed_seconds": 0.464
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_ordered_sourcewise_o0 --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::ordered::tests::c71_b12_ordered_sourcewise_o0 ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 448 filtered out; finished in 2.70s\n\n",
+      "controller_elapsed_seconds": 2.73
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_ordered_sourcewise_o2 --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::ordered::tests::c71_b12_ordered_sourcewise_o2 ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 448 filtered out; finished in 2.69s\n\n",
+      "controller_elapsed_seconds": 2.727
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_ordered_sourcewise_o4 --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::ordered::tests::c71_b12_ordered_sourcewise_o4 ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 448 filtered out; finished in 2.70s\n\n",
+      "controller_elapsed_seconds": 2.732
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 1 test\ntest c71_matrix::gemma::native::protocol::tests::c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 448 filtered out; finished in 12.64s\n\n",
+      "controller_elapsed_seconds": 12.659
+    },
+    {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_canonical --test-threads=1)",
+      "exit_code": 0,
+      "output": "\nrunning 5 tests\ntest c71_matrix::gemma::native::canonical::calibration::tests::c71_b12_native_canonical_calibration_storage_release_and_ranges ... ok\ntest c71_matrix::gemma::native::canonical::calibration::tests::c71_b12_native_canonical_calibration_three_context_kv_handoff ... ok\ntest c71_matrix::gemma::native::canonical::prepare::tests::c71_b12_native_canonical_numeric_rows_original_routes ... ok\ntest c71_matrix::gemma::native::canonical::tests::c71_b12_native_canonical_all_sources_have_causal_producers_across_three_contexts ... ok\ntest c71_matrix::gemma::native::canonical::wire_tests::c71_b12_native_canonical_wire_body_geometry ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 444 filtered out; finished in 6.12s\n\n",
+      "controller_elapsed_seconds": 6.154
+    },
+    {
+      "command": "(ulimit -v 2097152; PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 RAYON_NUM_THREADS=1 timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py)",
+      "exit_code": 0,
+      "output": ".........                                                                [100%]\n9 passed in 0.51s\n",
+      "controller_elapsed_seconds": 0.663
+    },
+    {
+      "command": "(ulimit -v 2097152; PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s .venv/bin/python - <<'PY'\nimport json, subprocess\nbinary = 'rust/target/debug/examples/c71_canonical_reference'\nfor args in ([], ['gpu']):\n    run = subprocess.run([binary, *args], text=True, capture_output=True, timeout=5)\n    assert run.returncode == 1 and not run.stdout\n    lines = run.stderr.splitlines()\n    report = json.loads(next(line.removeprefix('C71_RUN_METRICS ') for line in lines if line.startswith('C71_RUN_METRICS ')))\n    assert report['complete'] is False and report['readiness'] is False and report['credit'] is False\n    m = report['measurements']\n    assert m['bytes_to_verifier'] == m['bytes_from_verifier'] == 0\n    assert not m['gpu_execution'] and not m['complete_physical_peak']\n    assert any('no admitted GPU runner' in line for line in lines)\nprint('2 expected CLI rejections, no channels or GPU, no readiness')\nPY\n)",
+      "exit_code": 0,
+      "output": "2 expected CLI rejections, no channels or GPU, no readiness\n",
+      "controller_elapsed_seconds": 0.066
+    }
+  ],
+  "development_failures_not_runs_of_record": {
+    "base_git_sha": "83926ee",
+    "git_dirty": true,
+    "compilation_failures": 0,
+    "failure": {
+      "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_query_byte_windows --test-threads=1 --nocapture)",
+      "exit_code": 101,
+      "output": "\nrunning 2 tests\ntest c71_matrix::b12::replay::tests::c71_b12_query_byte_windows_cross_columns_preserve_pads_and_fail_closed ... ok\ntest c71_matrix::b12::replay::tests::c71_b12_query_byte_windows_full_chain_original_mac_and_retained_s1 ... sourcewise observed D10 canonical_bytes=2289752\nsourcewise_allocator={\"coverage_instrumented\":false,\"expanded_array_DRAM_read_bytes\":null,\"expanded_array_DRAM_write_bytes\":null,\"heap_kind\":\"requested allocator layouts including reallocations; not memory-access traffic\",\"phases\":[{\"heap_allocated_bytes\":105342448,\"heap_freed_bytes\":101202512,\"heap_live_end_bytes\":4181036,\"heap_live_start_bytes\":41100,\"heap_peak_requested_bytes\":51264124,\"index\":0,\"name\":\"initialization\",\"rss_end_bytes\":30789632,\"rss_peak_bytes\":60461056,\"seconds\":0.493780778},{\"heap_allocated_bytes\":835424,\"heap_freed_bytes\":764760,\"heap_live_end_bytes\":4252618,\"heap_live_start_bytes\":4181954,\"heap_peak_requested_bytes\":4287634,\"index\":1,\"name\":\"sourcewise_initial_commit\",\"rss_end_bytes\":30920704,\"rss_peak_bytes\":30961664,\"seconds\":0.016697692},{\"heap_allocated_bytes\":261448416,\"heap_freed_bytes\":257676688,\"heap_live_end_bytes\":8025147,\"heap_live_start_bytes\":4253419,\"heap_peak_requested_bytes\":53583651,\"index\":2,\"name\":\"sourcewise_open_all_rounds\",\"rss_end_bytes\":63447040,\"rss_peak_bytes\":63447040,\"seconds\":0.765648226},{\"heap_allocated_bytes\":263271237,\"heap_freed_bytes\":257316581,\"heap_live_end_bytes\":13980605,\"heap_live_start_bytes\":8025949,\"heap_peak_requested_bytes\":79820186,\"index\":3,\"name\":\"codec_and_native_verifier\",\"rss_end_bytes\":93753344,\"rss_peak_bytes\":93753344,\"seconds\":0.115491757},{\"heap_allocated_bytes\":13477712,\"heap_freed_bytes\":13475856,\"heap_live_end_bytes\":13983262,\"heap_live_start_bytes\":13981406,\"heap_peak_requested_bytes\":15229062,\"index\":4,\"name\":\"verifier_pcs\",\"rss_end_bytes\":93818880,\"rss_peak_bytes\":93818880,\"seconds\":0.170153865},{\"heap_allocated_bytes\":13475492,\"heap_freed_bytes\":13475732,\"heap_live_end_bytes\":13983938,\"heap_live_start_bytes\":13984178,\"heap_peak_requested_bytes\":15231834,\"index\":5,\"name\":\"verifier_pcs\",\"rss_end_bytes\":93818880,\"rss_peak_bytes\":93818880,\"seconds\":0.162634107}],\"physical_traffic_admission_bound\":\"infinity\",\"rss_kind\":\"Linux VmHWM reset each phase; same process contains both roles\"}\n\nthread 'c71_matrix::b12::replay::tests::c71_b12_query_byte_windows_full_chain_original_mac_and_retained_s1' (6) panicked at volta-pcs/src/c71_matrix/b12/replay.rs:1343:9:\nassertion `left == right` failed\n  left: 64\n right: 32\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    c71_matrix::b12::replay::tests::c71_b12_query_byte_windows_full_chain_original_mac_and_retained_s1\n\ntest result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 447 filtered out; finished in 1.83s\n\n",
+      "cause": "The added full-chain fixture incorrectly expected 32 initial cosets for D10. All byte/transcript/MAC parity assertions had completed; the final count assertion observed 64.",
+      "correction": "Expected coset count is now derived from the actual PCS starting rate and folding factor. The corrected fixture passes on the clean revision."
+    },
+    "build_note": "The first build started before the full-chain fixture was added; rebuilt before running that fixture and again after correcting its count."
+  },
+  "remaining_local_work": [
+    "Range windows and other scalar/row consumers; sourcewise State::new still rejects dimensions above D16.",
+    "Canonical Eq/Pow and large extension S1/S2 replay, full polynomial-factor/multipoint workspace accounting and remaining dense GKR/verifier structures.",
+    "Exact CUDA integration, fail-closed production runner and simultaneous preparer/prover/verifier/PCS/Seed6 resource accounting.",
+    "Inference/proof phase partition, CPU-time and complete physical host/HBM measurements.",
+    "Complete canonical composition and three valid certificates on the same registry; Seed6 security refinement remains open.",
+    "RMS/circuit/correlation recount with real Gamma; analytic continuation communication already exceeds 40 MB."
+  ],
+  "external_conditions": [
+    "Real weights acquisition/calibration and H100 execution require explicit owner authorization.",
+    "RunPod creation remains stopped without a verified provider deadline or an explicitly authorized spending guard."
+  ]
+}

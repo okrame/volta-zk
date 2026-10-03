@@ -239,6 +239,11 @@ conserva 23 test Rust, 9 Python e due rifiuti CLI sulla revisione pulita
 che sostituisce quel limite con la geometria iniziale scelta. Include
 la regressione del cap query trovata e corretta durante lo sviluppo.
 La parità a 512 passaggi è D14; D34/D35 e picco completo non sono eseguiti.
+Il [record delle query a finestre](../../benchmarks/results/c71-query-windows-local-2026-10-03-fa8a1617a674.json)
+registra 24 test Rust, 9 Python e due rifiuti CLI sulla SHA pulita,
+inclusa la catena PCS D10 con reader byte, S1 e MAC originali. Conserva
+l'asserzione errata sul conteggio coset del fixture e la sua correzione;
+nessuna allocazione/esecuzione dei domini canonici o misura GPU.
 
 La verifica di questa riorganizzazione e gli eventuali fallimenti sono
 registrati nell'[audit documentale](../c7.1-history/reorganization-audit.md).

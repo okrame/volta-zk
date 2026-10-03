@@ -12,6 +12,7 @@ cudaError_t cudaStreamCreateWithFlags(cudaStream_t*,unsigned);
 cudaError_t cudaStreamSynchronize(cudaStream_t);
 cudaError_t cudaStreamDestroy(cudaStream_t);
 cudaError_t cudaMalloc(void**,size_t);
+cudaError_t cudaMemGetInfo(size_t*,size_t*);
 cudaError_t cudaFree(void*);
 cudaError_t cudaMemcpyAsync(void*,const void*,size_t,cudaMemcpyKind,cudaStream_t);
 cudaError_t cudaMemsetAsync(void*,int,size_t,cudaStream_t);

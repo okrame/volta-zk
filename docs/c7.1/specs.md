@@ -578,13 +578,29 @@ quattro warp per CTA e output 16x32; i frammenti seguono le
 K≤21.504, M≤150 e N≤262.144; ogni accumulatore INT8 ha modulo al più
 352.321.536, senza saturazione. La ricomposizione i64 usa anche il padding
 K a multipli di 32, che deve annullarsi esattamente per originali zero.
-Il risultato raw precede lo stesso RNE, che non è fuso o sostituito qui.
+Il risultato raw precede un kernel RNE separato che conserva tutte le
+classi di `rne::integer`: raw signed-48, pareggi al pari, output simmetrico
+±32767, shift ≥48 a zero e shift ≤−15 ammesso solo per raw zero. Non clampa.
 Il launcher verifica shape, capacità dichiarate, allineamento e alias
 scrivibili; consente alias fra input di sola lettura. Il marcatore −32768
 imposta un errore device sticky. L'owner deve inizializzarlo e, dopo fence,
 verificarlo prima di usare qualsiasi output. Il launcher non alloca,
-non sincronizza e non abilita un fallback. Owner di W residente, batching
-dei producer, collegamento Rust e conto simultaneo restano da implementare.
+non sincronizza e non abilita un fallback. L'owner di stream/arena del range
+ora collega prodotto e RNE tramite handle distinti; gli output restano
+non inizializzati fino a fence e flag valido, e ogni errore ferma il contesto.
+W è una sola allocazione globale esterna all'arena, caricata in ordine con
+finestre ≤256 MiB e poi sigillata senza sostituzioni o puntatori esportati.
+Il cap è 61.394.690.560 B; l'ammissione controlla ≥1 GiB libero prima/dopo
+l'allocazione, non promette assenza di allocazioni concorrenti esterne.
+Il ledger ABI 2 (144 B) separa W e arena, somma le prenotazioni nel picco
+e conserva i byte non liberati su errore di cleanup. Conta anche i 4 B
+di flag per operazione; raw e RNE rimangono entrambi addebitati fino al rilascio.
+Non scarica gli intermedi sullo host né rialloca W fra i batch.
+Il consumer range Rust controlla questa ABI; una catena ridotta Rust/C
+confronta RNE con `rne::integer`, poi la root range con gli stessi interi.
+Questa è integrazione di componenti, non un adapter del preparatore:
+batching dei producer, lifecycle comune del runner e conto simultaneo di
+prover/verificatore/PCS/Seed6 restano da implementare.
 Il modello host dei frammenti non è esecuzione o verifica concorrente CUDA.
 
 RMS usa P/Y originali e S48 condiviso per riga, con checkpoint da

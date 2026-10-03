@@ -70,3 +70,24 @@ extern "C" cudaError_t c71_dense_i16_launch(cudaStream_t stream,const int16_t* x
     c71_dense_i16_mma<<<dim3((s.n+31)/32,(s.m+15)/16),128,0,stream>>>(x,w,out,failed,s);
     return cudaGetLastError();
 }
+
+extern "C" __global__ void c71_dense_rne(const int64_t* raw,int16_t* output,uint64_t count,
+                                        int32_t shift,uint32_t* failed) {
+    const uint64_t i=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i<count) {
+        int16_t y=0;
+        if(!quantize(raw[i],shift,y)) atomicOr(failed,1u);
+        else output[i]=y;
+    }
+}
+extern "C" cudaError_t c71_dense_rne_launch(cudaStream_t stream,const int64_t* raw,int16_t* output,
+    uint64_t count,int32_t shift,uint32_t* failed) {
+    uintptr_t re,oe,fe;
+    if(!stream || !count || count>uint64_t(max_m)*max_n ||
+       reinterpret_cast<uintptr_t>(raw)%8 || reinterpret_cast<uintptr_t>(output)%2 ||
+       reinterpret_cast<uintptr_t>(failed)%4 || !span(raw,count*8,re) ||
+       !span(output,count*2,oe) || !span(failed,4,fe) || overlaps(raw,re,output,oe) ||
+       overlaps(raw,re,failed,fe) || overlaps(output,oe,failed,fe)) return cudaErrorInvalidValue;
+    c71_dense_rne<<<(count+255)/256,256,0,stream>>>(raw,output,count,shift,failed);
+    return cudaGetLastError();
+}

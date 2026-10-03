@@ -95,8 +95,10 @@ lavoro locale; la verifica GPU richiede l'esperimento autorizzato.
 Questi controlli non abilitano il runner GPU o un pod.
 Il kernel denso i16 a quattro MMA INT8 è ora disponibile come componente
 compilabile, con modello host di split/frammenti e correzioni. W residente,
-owner/fence del flag, batching nel preparatore e misure complete restano
-da collegare; il vecchio GEMM CUDA scalare non viene presentato come
+fencing del flag e RNE sono ora collegati nello stesso owner/arena del
+range (ABI 2). La catena ridotta Rust/C usa un driver simulato; batching
+nel preparatore, identità W fra owner e commitment, lifecycle del runner
+e misure complete restano da collegare. Il vecchio GEMM CUDA scalare non viene presentato come
 questa implementazione o come una misura H100.
 
 Prima di usare credenziali locali eseguire

@@ -33,6 +33,10 @@ pub(in crate::c71_matrix) struct Stats {
     pub host_owner_bytes: u64,
     pub stopped: u64,
     pub cleanup_failed: u64,
+    pub weights_bytes: u64,
+    pub weights_loaded_bytes: u64,
+    pub weights_sealed: u64,
+    pub peak_reserved_bytes: u64,
 }
 
 // Fp3 itself has Rust layout. Marshal canonical limbs, never transmute it.
@@ -75,7 +79,7 @@ struct Round {
     bits: u32,
 }
 const _: () =
-    assert!(size_of::<Stats>() == 112 && size_of::<Group>() == 1760 && size_of::<Round>() == 896);
+    assert!(size_of::<Stats>() == 144 && size_of::<Group>() == 1760 && size_of::<Round>() == 896);
 
 // Same POSIX loader pattern as volta-accel's existing CUDA backend, but a
 // separate ABI: the legacy accelerator uses Fp2, never this native Fp3.
@@ -146,7 +150,7 @@ macro_rules! api {
                 // SAFETY: fixed C ABI types below mirror c71_range_runtime.h.
                 unsafe {
                     let abi: unsafe extern "C" fn() -> u32 = library.symbol(b"c71_range_runtime_abi\0")?;
-                    if abi() != 1 { return Err("native range ABI differs".into()); }
+                    if abi() != 2 { return Err("native range ABI differs".into()); }
                     Ok(Self { $($field: library.symbol(concat!($name, "\0").as_bytes())?,)* _library: library })
                 }
             }
@@ -236,8 +240,8 @@ impl Runtime {
         let status = unsafe { (self.api.close)(raw, &mut stats) };
         if status != 0 || stats.cleanup_failed != 0 {
             return Err(format!(
-                "native range cleanup failed, reserved bytes: {}",
-                stats.arena_bytes
+                "native cleanup failed, arena bytes: {}, W bytes: {}",
+                stats.arena_bytes, stats.weights_bytes
             ));
         }
         Ok(stats)
@@ -563,6 +567,82 @@ impl<'a, T: Word> Evaluator<'a, T> {
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
+    #[test]
+    fn c71_b12_windowed_native_dense_chain() {
+        #[repr(C)]
+        struct Shape {
+            m: u32,
+            n: u32,
+            k: u32,
+        }
+        let fixture = fixture(512);
+        for shift in [i32::MIN, -15, -14, -1, 0, 1, 2, 3, 15, 31, 47, 48, i32::MAX] {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            // Test the real C owner via the same loader as the range prover.
+            // Only the device driver/launch algebra is simulated, not the ABI.
+            unsafe {
+                let library = &runtime.api._library;
+                let begin: unsafe extern "C" fn(Raw, u64) -> i32 =
+                    library.symbol(b"c71_dense_weights_begin\0").unwrap();
+                let upload: unsafe extern "C" fn(Raw, u64, *const i16, u64) -> i32 =
+                    library.symbol(b"c71_dense_weights_upload\0").unwrap();
+                let seal: unsafe extern "C" fn(Raw) -> i32 =
+                    library.symbol(b"c71_dense_weights_seal\0").unwrap();
+                let product: unsafe extern "C" fn(Raw, u64, u64, Shape, u64) -> i32 =
+                    library.symbol(b"c71_dense_product\0").unwrap();
+                let quantize: unsafe extern "C" fn(Raw, u64, i32, u64) -> i32 =
+                    library.symbol(b"c71_dense_quantize\0").unwrap();
+                let weights: [i16; 8] = [1, 2, 3, 4, 4, 3, 2, 1];
+                assert_eq!(begin(runtime.raw, 8), 0);
+                assert_eq!(upload(runtime.raw, 0, weights.as_ptr(), 8), 0);
+                assert_eq!(seal(runtime.raw), 0);
+                let x = runtime.alloc(1, 8).unwrap();
+                let input: [i16; 8] = [1, 2, 3, 4, -1, -2, -3, -4];
+                assert_eq!((runtime.api.upload)(runtime.raw, x, input.as_ptr().cast(), 16), 0);
+                let raw = runtime.alloc(6, 4).unwrap();
+                let y = runtime.alloc(1, 4).unwrap();
+                assert_eq!(product(runtime.raw, x, 0, Shape { m: 2, n: 2, k: 4 }, raw), 0);
+                let expected: Result<Vec<_>, _> = [30, 20, -30, -20]
+                    .into_iter()
+                    .map(|raw| crate::c71_matrix::rne::integer(raw, shift))
+                    .collect();
+                let status = quantize(runtime.raw, raw, shift, y);
+                if let Ok(expected) = expected {
+                    runtime.check(status).unwrap();
+                    let root = runtime.alloc(2, 1).unwrap();
+                    let alpha = Fp3::new(Fp::new(19), Fp::new(2), Fp::new(3));
+                    assert_eq!((runtime.api.roots)(runtime.raw, y, 2, alpha.into(), root, 0), 0);
+                    let [p, q] = runtime.read::<2>(root).unwrap();
+                    let denominators: Vec<_> = expected
+                        .iter()
+                        .map(|&v| alpha - crate::c71_matrix::signed(i64::from(v)))
+                        .collect();
+                    let product = denominators.iter().fold(Fp3::ONE, |a, &b| a * b);
+                    let numerator = (0..4)
+                        .map(|i| {
+                            denominators
+                                .iter()
+                                .enumerate()
+                                .filter(|(j, _)| *j != i)
+                                .map(|(_, v)| *v)
+                                .fold(Fp3::ONE, |a, b| a * b)
+                        })
+                        .fold(Fp3::ZERO, |a, b| a + b);
+                    assert_eq!([p, q], [numerator, product]);
+                } else {
+                    assert!(runtime.check(status).is_err());
+                    assert!(runtime.alloc(1, 1).is_err());
+                }
+            }
+            let stats = runtime.close().unwrap();
+            assert_eq!(stats.weights_bytes, 0);
+            assert_eq!(stats.arena_bytes, 0);
+            assert_eq!(stats.weights_loaded_bytes, 16);
+            assert_eq!(stats.weights_sealed, 1);
+            assert_eq!(stats.peak_reserved_bytes, fixture.config.arena_bytes + 16);
+            assert_eq!(stats.h2d_bytes, 32);
+        }
+    }
     pub(in crate::c71_matrix) struct Fixture {
         pub config: Config,
         directory: PathBuf,

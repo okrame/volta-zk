@@ -57,5 +57,23 @@ C71_DENSE_HD inline int64_t compose(int32_t hh,int32_t hl,int32_t lh,int32_t ll,
     return 65536*int64_t(hh)+256*(int64_t(hl)+lh)+ll+
         128*(int64_t(sum_a)+sum_w)-16384*int64_t(padded_k);
 }
+// Same signed-48 / symmetric-i16 classes as c71_matrix::rne::integer.
+// Magnitude arithmetic avoids implementation-defined negative shifts and
+// C++ undefined signed left shifts. Publish only on success, never clamp.
+C71_DENSE_HD inline bool quantize(int64_t raw,int32_t shift,int16_t& output) {
+    if(raw<-(int64_t{1}<<47) || raw>=(int64_t{1}<<47)) return false;
+    int64_t y=0;
+    if(shift>=48) y=0;
+    else if(shift<=-15) { if(raw) return false; }
+    else if(shift<=0) y=raw*(int64_t{1}<<-shift);
+    else {
+        const int64_t magnitude=raw<0?-raw:raw, d=int64_t{1}<<shift;
+        const int64_t q=magnitude/d, r=magnitude%d;
+        const int64_t rounded=q+(r>d-r || (r==d-r && (q&1)));
+        y=raw<0?-rounded:rounded;
+    }
+    if(y<-32767 || y>32767) return false;
+    output=int16_t(y); return true;
+}
 }
 #undef C71_DENSE_HD

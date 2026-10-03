@@ -615,9 +615,15 @@ signed a due byte, quattro prodotti INT8 e correzioni affini esatte;
 il cap K limita tutti i prefissi degli accumulatori int32. Non introduce
 cast float, saturazione, nuovi MAC o un RNE diverso. Il modello host
 verifica split, frammenti, somme lane e padding contro dot product i128.
-Non prova l'esecuzione PTX o lo schedule concorrente. Il collegamento del
-flag di overflow al lifecycle terminale del preparatore è ancora aperto;
-nessun output del componente da solo costituisce una prova accettabile.
+Non prova l'esecuzione PTX o lo schedule concorrente. L'owner ora rifiuta
+W parziale/riscritto e non pubblica handle inizializzati per prodotto/RNE
+finché il flag non è valido dopo fence. Gli errori sono terminali nello
+stesso contesto del range. Il RNE separato mantiene signed-48 e ±32767;
+la parità host usa una divisione i128 indipendente e il riferimento Rust.
+Il binding del packed residente al W impegnato e il lifecycle terminale
+del preparatore completo restano da collegare nel runner; il puntatore W
+privato dell'owner non dimostra da solo tale identità. Nessun output del
+componente da solo costituisce una prova accettabile.
 Il raffinamento di questa implementazione al prodotto intero del §4 non
 è un nuovo lemma Lean acquisito.
 

@@ -8,6 +8,23 @@
 #include <vector>
 using namespace c71_dense;
 static int byte_at(uint32_t x,unsigned b) { const unsigned v=(x>>(8*b))&255; return v<128?int(v):int(v)-256; }
+static void check_rne(int64_t raw,int32_t shift) {
+    bool ok=raw>=-(int64_t{1}<<47) && raw<(int64_t{1}<<47);
+    __int128 y=0;
+    if(shift>=48) y=0;
+    else if(shift<=-15) ok=ok && raw==0;
+    else if(shift<=0) y=__int128(raw)*(int64_t{1}<<-shift);
+    else {
+        const int64_t d=int64_t{1}<<shift;
+        __int128 q=__int128(raw)/d,r=__int128(raw)%d;
+        if(r<0) { --q; r+=d; }
+        y=q+(2*r>d || (2*r==d && q%2!=0));
+    }
+    ok=ok && y>=-32767 && y<=32767;
+    int16_t result=123;
+    assert(quantize(raw,shift,result)==ok);
+    assert(ok?result==y:result==123);
+}
 
 static bool model(const std::vector<int16_t>& x,const std::vector<int16_t>& w,Shape s,std::vector<int64_t>& out) {
     bool failed=false;
@@ -75,6 +92,18 @@ static bool model(const std::vector<int16_t>& x,const std::vector<int16_t>& w,Sh
 }
 int main() {
     unsigned cases=0;
+    for(int v=-32768;v<=32767;++v) for(int shift=-16;shift<=49;++shift) check_rne(v,shift);
+    const int64_t wide[]={INT64_MIN,INT64_MAX,-(int64_t{1}<<47)-1,-(int64_t{1}<<47),
+        -(int64_t{1}<<47)+1,(int64_t{1}<<47)-1,int64_t{1}<<47};
+    for(auto raw:wide) {
+        for(int shift=-16;shift<=49;++shift) check_rne(raw,shift);
+        check_rne(raw,INT32_MIN); check_rne(raw,INT32_MAX);
+    }
+    for(int shift=1;shift<48;++shift) for(int q:{-32768,-32767,-3,-2,-1,0,1,2,3,32766,32767})
+        for(int delta:{-1,0,1}) {
+            const __int128 raw=__int128(q)*(int64_t{1}<<shift)+(int64_t{1}<<(shift-1))+delta;
+            if(raw>=INT64_MIN && raw<=INT64_MAX) check_rne(int64_t(raw),shift);
+        }
     for(int v=-32767;v<=32767;++v) {
         assert(high(int16_t(v))>=-128 && high(int16_t(v))<=127);
         assert(low(int16_t(v))>=-128 && low(int16_t(v))<=127);

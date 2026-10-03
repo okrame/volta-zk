@@ -155,9 +155,13 @@ e lo stack locale del kernel coefficienti richiedono contabilità e misura;
 non ereditano il tempo o i conteggi dello screen storico.
 Per i producer matriciali esiste ora un kernel i16 a quattro MMA INT8,
 con correzioni affini e ricomposizione i64, sul W packed originale.
-Compilazione sm_90 e modello host dei frammenti verificano soltanto il
-componente: non è collegato al preparatore o al ledger residente e non
-ha una misura GPU. Il raffinamento PTX/CUDA all'intero signed-48 resta
+L'owner del range ora gestisce anche W residente immutabile, il prodotto
+raw e il successivo RNE esatto nella stessa arena. Il flag device è letto
+dopo fence prima di rendere consumabile l'output, anche dal range signed.
+Compilazione sm_90, modello host e catena attraverso ABI Rust verificano
+soltanto componenti con driver simulato: il batching del preparatore,
+l'owner condiviso dal runner e il ledger fisico completo restano aperti.
+Non è acquisita una misura GPU. Il raffinamento PTX/CUDA all'intero signed-48 resta
 un obbligo aperto, non scaricato dai lemmi Lean o dai casi finiti host.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,
 sui kernel densi, sul percorso CUDA e sulla contabilità fisica simultanea.

@@ -9,6 +9,8 @@
 using namespace c71_range;
 struct FakeStream { std::vector<std::function<void()>> pending; };
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
+static bool fail_dense=false;
+static size_t fake_free=80000000000ULL;
 static unsigned allocations=0, frees=0, launches=0;
 cudaError_t cudaSetDevice(int n) { return n==0?0:1; }
 cudaError_t cudaStreamCreateWithFlags(cudaStream_t* s,unsigned flags) {
@@ -21,11 +23,14 @@ cudaError_t cudaStreamSynchronize(cudaStream_t s) {
 }
 cudaError_t cudaStreamDestroy(cudaStream_t s) { assert(s->pending.empty()); delete s; return 0; }
 cudaError_t cudaMalloc(void** p,size_t n) { ++allocations; *p=new unsigned char[n]; return 0; }
+cudaError_t cudaMemGetInfo(size_t* free,size_t* total) { *free=fake_free; *total=80000000000ULL; return 0; }
 cudaError_t cudaFree(void* p) {
     ++frees; delete[] static_cast<unsigned char*>(p); return fail_free?1:0;
 }
 cudaError_t cudaMemcpyAsync(void* d,const void* s,size_t n,cudaMemcpyKind kind,cudaStream_t stream) {
-    stream->pending.push_back([=] { std::memcpy(d,s,n); if(kind==cudaMemcpyDeviceToHost && corrupt) *static_cast<uint64_t*>(d)=P; });
+    stream->pending.push_back([=] { std::memcpy(d,s,n); if(kind==cudaMemcpyDeviceToHost && corrupt) {
+        if(n>=8) *static_cast<uint64_t*>(d)=P; else *static_cast<uint32_t*>(d)=1;
+    } });
     return 0;
 }
 cudaError_t cudaMemsetAsync(void* p,int x,size_t n,cudaStream_t s) {
@@ -94,6 +99,29 @@ extern "C" int c71_range_launch_reduce(cudaStream_t s,const Cubic* a,size_t n,Cu
 extern "C" int c71_range_launch_h_coefficients(cudaStream_t s,const Fp3* a,unsigned half,Round r,Cubic* p) {
     return launch(s,[=] { *p=h_coefficients(a,half,r); });
 }
+extern "C" int c71_dense_i16_launch(cudaStream_t s,const int16_t* x,uint64_t nx,const int16_t* w,uint64_t nw,
+    int64_t* out,uint64_t no,uint32_t* failed,c71_dense::Shape shape) {
+    assert(c71_dense::valid_buffers(x,nx,w,nw,out,no,failed,shape));
+    return launch(s,[=] {
+        for(unsigned i=0;i<shape.m;++i) for(unsigned j=0;j<shape.n;++j) {
+            int64_t sum=0;
+            for(unsigned k=0;k<shape.k;++k) {
+                const auto a=x[size_t(i)*shape.k+k], b=w[size_t(j)*shape.k+k];
+                if(a==INT16_MIN || b==INT16_MIN) *failed=1;
+                sum+=int64_t(a)*b;
+            }
+            out[size_t(i)*shape.n+j]=sum;
+        }
+        if(fail_dense) *failed=1;
+    });
+}
+extern "C" int c71_dense_rne_launch(cudaStream_t s,const int64_t* raw,int16_t* out,uint64_t count,
+    int32_t shift,uint32_t* failed) {
+    return launch(s,[=] {
+        for(uint64_t i=0;i<count;++i) if(!c71_dense::quantize(raw[i],shift,out[i])) *failed=1;
+        if(fail_dense) *failed=1;
+    });
+}
 
 #ifdef C71_RANGE_FFI_TEST
 // Test library only; production exports neither error injection nor host math.
@@ -109,7 +137,7 @@ static uint64_t alloc(C71RangeContext* c,unsigned kind,uint64_t n) {
     uint64_t id=0; assert(!c71_range_alloc(c,kind,n,&id)); return id;
 }
 static C71RangeStats stats(C71RangeContext* c) { C71RangeStats s{}; assert(!c71_range_stats(c,&s)); return s; }
-static void close(C71RangeContext* c) { C71RangeStats s{}; assert(!c71_range_close(c,&s)); assert(!s.arena_bytes && !s.cleanup_failed); }
+static void close(C71RangeContext* c) { C71RangeStats s{}; assert(!c71_range_close(c,&s)); assert(!s.arena_bytes && !s.weights_bytes && !s.cleanup_failed); }
 static uint64_t roots(C71RangeContext* c,unsigned kind=0,unsigned n=2048) {
     const auto in=alloc(c,kind,2*n), out=alloc(c,C71_PAIR,n);
     std::vector<int16_t> data(2*n,3);
@@ -117,9 +145,85 @@ static uint64_t roots(C71RangeContext* c,unsigned kind=0,unsigned n=2048) {
     assert(!c71_range_roots(c,in,1,{5,2,3},out,0));
     assert(!c71_range_release(c,in)); return out;
 }
+static void install(C71RangeContext* c) {
+    const int16_t w[]={123,321, 1,2,3,4, 4,3,2,1};
+    assert(!c71_dense_weights_begin(c,10));
+    assert(!c71_dense_weights_upload(c,0,w,3));
+    assert(!c71_dense_weights_upload(c,3,w+3,7));
+    assert(!c71_dense_weights_seal(c));
+}
+static uint64_t dense_input(C71RangeContext* c) {
+    const auto x=alloc(c,C71_I16,8);
+    const int16_t values[]={1,2,3,4,-1,-2,-3,-4};
+    assert(!c71_range_upload(c,x,values,sizeof(values))); return x;
+}
+static void dense_checks() {
+    auto* c=create(); install(c); const auto x=dense_input(c);
+    const auto before=stats(c);
+    assert(before.weights_bytes==20 && before.weights_loaded_bytes==20 && before.weights_sealed);
+    assert(before.peak_reserved_bytes==before.arena_bytes+20);
+    // Two batches, original W offset after a sentinel prefix. W is never
+    // copied again; output stays device-resident into RNE and signed range.
+    for(unsigned batch=0;batch<2;++batch) {
+        const auto raw=alloc(c,C71_I64,4), y=alloc(c,C71_I16,4), root=alloc(c,C71_PAIR,1);
+        assert(!c71_dense_product(c,x,2,{2,2,4},raw));
+        assert(!c71_dense_quantize(c,raw,2,y));
+        assert(!c71_range_roots(c,y,2,{19,2,3},root,0));
+        uint64_t limbs[6]{}; assert(!c71_range_read(c,root,limbs,6));
+        const int16_t expected[]={8,5,-8,-5}; // 30/4 ties to even, 20/4 exact.
+        const auto reference=fraction(expected,1,0,4,{19,2,3});
+        assert(std::memcmp(limbs,&reference,sizeof(reference))==0);
+        assert(!c71_range_release(c,root) && !c71_range_release(c,y) && !c71_range_release(c,raw));
+        assert(stats(c).h2d_bytes==before.h2d_bytes);
+        assert(stats(c).live_capacity_bytes==before.live_capacity_bytes);
+        assert(stats(c).peak_capacity_bytes>=before.live_capacity_bytes+4*256);
+    }
+    assert(stats(c).d2h_bytes-before.d2h_bytes==2*(8+48));
+    close(c);
+    for(unsigned test=0;test<19;++test) {
+        c=create(); int status=0;
+        if(test<6) {
+            const int16_t w[]={1,2,3,4};
+            switch(test) {
+            case 0: status=c71_dense_weights_begin(c,61394690560ULL/2+1); break;
+            case 1: fake_free=uint64_t{1}<<30; status=c71_dense_weights_begin(c,4); fake_free=80000000000ULL; break;
+            case 2: assert(!c71_dense_weights_begin(c,4)); status=c71_dense_weights_seal(c); break;
+            case 3: assert(!c71_dense_weights_begin(c,4)); status=c71_dense_weights_upload(c,1,w,3); break;
+            case 4: { const int16_t bad=INT16_MIN; assert(!c71_dense_weights_begin(c,1)); status=c71_dense_weights_upload(c,0,&bad,1); break; }
+            case 5: assert(!c71_dense_weights_begin(c,4)); status=c71_dense_weights_begin(c,4); break;
+            }
+        } else {
+            install(c); const auto x=dense_input(c), raw=alloc(c,C71_I64,4), y=alloc(c,C71_I16,4);
+            switch(test) {
+            case 6: status=c71_dense_weights_upload(c,0,nullptr,1); break;
+            case 7: status=c71_dense_product(c,x,UINT64_MAX,{2,2,4},raw); break;
+            case 8: status=c71_dense_product(c,x,2,{3,2,4},raw); break;
+            case 9: status=c71_dense_product(c,x,2,{2,2,4},x); break;
+            case 10: status=c71_dense_quantize(c,raw,2,y); break;
+            case 11: fail_launch=true; status=c71_dense_product(c,x,2,{2,2,4},raw); fail_launch=false; break;
+            case 12: fail_fence=true; status=c71_dense_product(c,x,2,{2,2,4},raw); fail_fence=false; break;
+            case 13: fail_dense=true; status=c71_dense_product(c,x,2,{2,2,4},raw); fail_dense=false; break;
+            case 14: assert(!c71_dense_product(c,x,2,{2,2,4},raw)); status=c71_dense_quantize(c,raw,-15,y); break;
+            case 15: assert(!c71_dense_product(c,x,2,{2,2,4},raw)); status=c71_dense_product(c,x,2,{2,2,4},raw); break;
+            case 16: assert(!c71_dense_product(c,x,2,{2,2,4},raw)); fail_fence=true;
+                status=c71_dense_quantize(c,raw,2,y); fail_fence=false; break;
+            case 17: status=c71_dense_weights_seal(c); break;
+            case 18: status=c71_dense_product(c,y,2,{2,2,4},raw); break;
+            }
+        }
+        const auto attempts=launches;
+        assert(status && stats(c).stopped && *c71_range_error(c));
+        uint64_t ignored=0; assert(c71_range_alloc(c,C71_I16,1,&ignored));
+        assert(c71_dense_weights_seal(c) && launches==attempts);
+        close(c);
+    }
+    c=create(); install(c); fail_free=true; C71RangeStats final{};
+    assert(c71_range_close(c,&final) && final.cleanup_failed && final.weights_bytes==20 && final.arena_bytes==262144);
+    fail_free=false;
+}
 int main() {
     C71RangeContext* c=nullptr;
-    assert(c71_range_runtime_abi()==1);
+    assert(c71_range_runtime_abi()==2);
     assert(c71_range_create(0,6442451200ULL,256,&c) && !c && !allocations);
     assert(c71_range_create(0,512,512,&c) && !c && !allocations);
     assert(c71_range_create(1,512,256,&c) && c);
@@ -187,7 +291,8 @@ int main() {
     c=create(); fail_free=true;
     assert(c71_range_close(c,&final) && final.cleanup_failed && final.arena_bytes==262144);
     fail_free=false;
+    dense_checks();
     assert(allocations==frees);
-    std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
+    std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":19,\"dense_batches\":2,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
 }
 #endif

@@ -2,6 +2,13 @@
 
 Segue le [riduzioni sorgente](canonical-residual-scan.md); le istruzioni
 correnti restano nei [cinque documenti attivi](../c7.1/design.md).
+Il [record pulito cc5db06](../../benchmarks/results/c71-pcs-stages-local-2026-10-03-cc5db06c1796.json)
+conserva 32 test Rust, 18 Python, due rifiuti CLI e build/lint passati.
+Preserva il tipo `Vec` omesso nel test Rust e le due asserzioni Python
+fallite durante lo sviluppo, poi corrette. La
+[correzione collegata del cap testato](../../benchmarks/results/c71-pcs-stages-block-cap-correction-2026-10-03-cc5db06c1796.json)
+distingue 1.024 nei confronti diretti da 2.048 nei test integrati D12;
+non modifica risultati o output e non aggiunge esecuzioni.
 
 Il replay seleziona ora la schedule completa degli oracoli W/A: iniziali
 con 128 colonne base e coset 2^22; extension con quattro colonne Fp3,

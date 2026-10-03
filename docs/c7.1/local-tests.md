@@ -255,6 +255,12 @@ riporta le durate già presenti negli stdout, senza sovrascrivere il record
 o attribuire una nuova esecuzione. D16 e geometrie extension grandi erano
 limiti di quella revisione; il [checkpoint successivo](../c7.1-history/canonical-pcs-stages.md)
 ne collega il supporto CPU, senza credito canonico, GPU o di picco fisico.
+Il [record degli stadi PCS](../../benchmarks/results/c71-pcs-stages-local-2026-10-03-cc5db06c1796.json)
+registra 32 test Rust, 18 Python e due rifiuti CLI sulla SHA pulita,
+inclusa la catena PCS D17, conservando gli errori di sviluppo. Una
+[correzione collegata](../../benchmarks/results/c71-pcs-stages-block-cap-correction-2026-10-03-cc5db06c1796.json)
+distingue il blocco 1.024 dei confronti diretti dal massimo 2.048 dei
+test integrati; il cap 2^21 e i domini D34/D35 non sono eseguiti.
 
 La verifica di questa riorganizzazione e gli eventuali fallimenti sono
 registrati nell'[audit documentale](../c7.1-history/reorganization-audit.md).

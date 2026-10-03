@@ -1,0 +1,24 @@
+{
+  "schema": "volta-c71-pcs-stages-block-cap-correction-v1",
+  "date": "2026-10-03",
+  "git_sha": "cc5db06c17961af1c68df0bab7dd0dad03732ce6",
+  "git_dirty": false,
+  "corrects": "benchmarks/results/c71-pcs-stages-local-2026-10-03-cc5db06c1796.json",
+  "new_execution": false,
+  "credit": false,
+  "readiness": false,
+  "reason": "The original record reported the maximum direct power-oracle comparison block (1024) as the maximum across all tests. Reduced D12 proofs and the adaptive D12/first-fold-1 case also execute add_powers at length 2048.",
+  "effective_power_checks": {
+    "configured_block_cap": 2097152,
+    "largest_direct_power_comparison_block": 1024,
+    "largest_block_executed": 2048,
+    "maximum_is_derived_from_executed_test_shapes_not_a_new_runtime_counter": true
+  },
+  "derivation": [
+    "sourcewise.rs adaptive test includes D12 with first_fold=1; add_powers uses min(2^21, 2^(12-1))=2048.",
+    "ordered.rs calls compare_source at D12, and native.rs fixes reduced DOMAIN_A to D12.",
+    "The new D17 proof uses first_fold=7, so its largest power-claim block is 1024.",
+    "Direct rational-power comparisons stop at 1024; canonical geometry tests do not instantiate or execute D34/D35 states."
+  ],
+  "unchanged": "All commands, raw outputs, pass/fail results, binary hashes, configured canonical cap and no-readiness limits remain those of the linked immutable record."
+}

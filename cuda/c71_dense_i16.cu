@@ -1,6 +1,7 @@
 #include <cuda_runtime.h>
 #include "c71_dense_i16.cuh"
 #include "c71_byte_gather.cuh"
+#include "c71_nonlinear.cuh"
 using namespace c71_dense;
 
 __device__ __forceinline__ void mma(int32_t (&d)[4],const uint32_t (&a)[4],const uint32_t (&b)[2]) {
@@ -131,6 +132,95 @@ extern "C" __global__ void c71_byte_scatter_kernel(const void* input,unsigned ki
         if(!c71_byte::encode(value,t.signed_width,t.byte_first+i%t.width,byte)) atomicOr(failed,1u);
         else output[address-t.window_first]=byte;
     }
+}
+
+extern "C" __global__ void c71_lookup_kernel(const int16_t* input,const int16_t* table,
+    int16_t* output,unsigned long long* histogram,uint64_t count,uint32_t* failed) {
+    for(uint64_t i=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;i<count;i+=uint64_t(gridDim.x)*blockDim.x) {
+        int16_t y; uint32_t entry;
+        if(!c71_nonlinear::lookup(input[i],table,y,entry)) atomicOr(failed,1u);
+        else { output[i]=y; atomicAdd(histogram+entry,1ULL); }
+    }
+}
+extern "C" cudaError_t c71_lookup_launch(cudaStream_t stream,const int16_t* input,const int16_t* table,
+    int16_t* output,int64_t* histogram,uint64_t count,uint32_t* failed) {
+    if(!stream || !input || !table || !output || !histogram || !failed || !count || count>uint64_t(max_m)*max_n) return cudaErrorInvalidValue;
+    c71_lookup_kernel<<<(count+255)/256>65535?65535:(count+255)/256,256,0,stream>>>(input,table,output,reinterpret_cast<unsigned long long*>(histogram),count,failed);
+    return cudaGetLastError();
+}
+extern "C" __global__ void c71_histogram_seal_kernel(int64_t* histogram,uint32_t* failed) {
+    const unsigned i=blockIdx.x*blockDim.x+threadIdx.x;
+    if(i<65535) {
+        const int64_t n=histogram[i];
+        if(n<0 || n>INT32_MAX) atomicOr(failed,1u);
+    }
+}
+extern "C" cudaError_t c71_histogram_seal_launch(cudaStream_t stream,int64_t* histogram,uint32_t* failed) {
+    if(!stream || !histogram || !failed) return cudaErrorInvalidValue;
+    c71_histogram_seal_kernel<<<256,256,0,stream>>>(histogram,failed); return cudaGetLastError();
+}
+extern "C" __global__ void c71_rope_kernel(const int16_t* input,const int32_t* coefficients,
+    int64_t* output,c71_nonlinear::Rope s,uint32_t* failed) {
+    const uint64_t count=uint64_t(s.rows)*s.heads*s.width/2;
+    for(uint64_t i=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;i<count;i+=uint64_t(gridDim.x)*blockDim.x) {
+        const unsigned half=s.width/2,j=i%half,row=i/(s.heads*half);
+        const uint64_t first=(i/half)*s.width+j,second=first+half;
+        const int32_t c=j<s.pairs?coefficients[(row*s.pairs+j)*2]:1<<30;
+        const int32_t sin=j<s.pairs?coefficients[(row*s.pairs+j)*2+1]:0;
+        int64_t a,b;
+        if(!c71_nonlinear::rotate(input[first],input[second],c,sin,a,b)) atomicOr(failed,1u);
+        else { output[first]=a; output[second]=b; }
+    }
+}
+extern "C" cudaError_t c71_rope_launch(cudaStream_t stream,const int16_t* input,const int32_t* coefficients,
+    int64_t* output,c71_nonlinear::Rope s,uint32_t* failed) {
+    if(!stream || !input || !coefficients || !output || !failed || !c71_nonlinear::valid(s)) return cudaErrorInvalidValue;
+    const uint64_t count=uint64_t(s.rows)*s.heads*s.width/2;
+    c71_rope_kernel<<<(count+255)/256,256,0,stream>>>(input,coefficients,output,s,failed); return cudaGetLastError();
+}
+extern "C" __global__ void c71_argmax_kernel(const int16_t* input,uint32_t* tokens,
+    unsigned columns,uint32_t* failed) {
+    __shared__ int maxima[256]; __shared__ unsigned indices[256];
+    const auto* row=input+uint64_t(blockIdx.x)*columns;
+    int maximum=INT16_MIN; unsigned best=UINT32_MAX;
+    for(unsigned j=threadIdx.x;j<columns;j+=blockDim.x) {
+        const int value=row[j];
+        if(value==INT16_MIN) atomicOr(failed,1u);
+        if(value>maximum || (value==maximum && j<best)) { maximum=value; best=j; }
+    }
+    maxima[threadIdx.x]=maximum; indices[threadIdx.x]=best; __syncthreads();
+    for(unsigned stride=128;stride;stride/=2) {
+        if(threadIdx.x<stride) {
+            const unsigned other=threadIdx.x+stride;
+            if(maxima[other]>maxima[threadIdx.x] || (maxima[other]==maxima[threadIdx.x] && indices[other]<indices[threadIdx.x])) {
+                maxima[threadIdx.x]=maxima[other]; indices[threadIdx.x]=indices[other];
+            }
+        }
+        __syncthreads();
+    }
+    if(!threadIdx.x) tokens[blockIdx.x]=indices[0];
+}
+extern "C" __global__ void c71_argmax_slack_kernel(const int16_t* input,const uint32_t* tokens,
+    int16_t* output,unsigned rows,unsigned columns,uint32_t* failed) {
+    const uint64_t count=uint64_t(rows)*columns;
+    for(uint64_t i=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;i<count;i+=uint64_t(gridDim.x)*blockDim.x) {
+        const unsigned row=i/columns,j=i%columns,best=tokens[row]; int16_t value;
+        if(best>=columns || !c71_nonlinear::slack(input[uint64_t(row)*columns+best],input[i],j,best,value)) atomicOr(failed,1u);
+        else output[i]=value;
+    }
+}
+extern "C" cudaError_t c71_argmax_select_launch(cudaStream_t stream,const int16_t* input,uint32_t* tokens,
+    unsigned rows,unsigned columns,uint32_t* failed) {
+    if(!stream || !input || !tokens || !failed || !rows || rows>150 || !columns || columns>262144) return cudaErrorInvalidValue;
+    c71_argmax_kernel<<<rows,256,0,stream>>>(input,tokens,columns,failed);
+    return cudaGetLastError();
+}
+extern "C" cudaError_t c71_argmax_slack_launch(cudaStream_t stream,const int16_t* input,const uint32_t* tokens,
+    int16_t* output,unsigned rows,unsigned columns,uint32_t* failed) {
+    if(!stream || !input || !tokens || !output || !failed || !rows || rows>150 || !columns || columns>262144) return cudaErrorInvalidValue;
+    const uint64_t blocks=(uint64_t(rows)*columns+255)/256;
+    c71_argmax_slack_kernel<<<blocks>65535?65535:blocks,256,0,stream>>>(input,tokens,output,rows,columns,failed);
+    return cudaGetLastError();
 }
 extern "C" cudaError_t c71_byte_scatter_launch(cudaStream_t stream,const void* input,unsigned kind,
     uint64_t input_count,uint8_t* output,uint64_t output_count,uint32_t* failed,c71_byte::Tile t) {

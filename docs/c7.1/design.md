@@ -185,6 +185,15 @@ Una bitmap di righe impedisce duplicati o omissioni; la finestra resta
 non consumabile fino al fence e al controllo del flag device. Il controllo
 ridotto verifica anche l'ordine dei byte con driver simulato. Non è ancora
 collegato al replay completo o ai consumer PCS/range del runner GPU.
+Sono inoltre collegati come componenti residenti GELU, softcap, RoPE e
+argmax, tramite un dispatcher nonlineare esplicito. Le tabelle pubbliche
+sono caricate una volta per owner di profilo, gli istogrammi conservano i
+conteggi originali e il seal richiede copertura unica di tutte le righe.
+RoPE conserva il raw Q30; argmax restituisce solo gli ID selezionati dopo
+il fence, mantenendo lo slack biased-u16 residente. Norm, QK, softmax e PV
+restano da collegare, insieme allo scanner completo e al runner. Il
+diagnostico CUDA di parità per questi nuovi kernel è pronto da compilare
+sulla H100; la sua esecuzione resta parte dell'esperimento autorizzato.
 Non è acquisita una misura GPU. Il raffinamento PTX/CUDA all'intero signed-48 resta
 un obbligo aperto, non scaricato dai lemmi Lean o dai casi finiti host.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,

@@ -5,9 +5,10 @@
 #include "c71_range_native.cuh"
 #include "c71_dense_i16.cuh"
 #include "c71_byte_gather.cuh"
+#include "c71_nonlinear.cuh"
 
 struct C71RangeContext;
-enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64, C71_BYTE_PENDING };
+enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64, C71_BYTE_PENDING, C71_HISTOGRAM_PENDING };
 struct C71RangeStats {
     // Requested arena reservation, assigned aligned capacities, logical payload.
     // NOT driver/context/shared/stack overhead or the whole-pipeline GPU peak.
@@ -59,6 +60,15 @@ int c71_dense_quantize(C71RangeContext*,uint64_t raw,int32_t shift,uint64_t outp
 // Zero affine terms have handle/offset zero and never read an input.
 int c71_dense_pointwise(C71RangeContext*,uint64_t x,uint64_t x_first,uint64_t y,uint64_t y_first,
                         c71_dense::Pointwise,uint64_t output);
+int c71_histogram_begin(C71RangeContext*,uint64_t histogram);
+int c71_histogram_seal(C71RangeContext*,uint64_t histogram);
+int c71_dense_lookup(C71RangeContext*,uint64_t input,uint64_t first,uint64_t table,uint64_t table_byte_offset,
+                     uint64_t histogram,uint64_t output);
+int c71_dense_rope(C71RangeContext*,uint64_t input,uint64_t first,uint64_t table,uint64_t table_byte_offset,
+                   c71_nonlinear::Rope,uint64_t output);
+// Only public selected token IDs leave the owner; slack remains resident.
+int c71_dense_argmax(C71RangeContext*,uint64_t input,uint64_t first,uint32_t rows,uint32_t columns,
+                     uint64_t output,uint32_t* public_tokens);
 // Pending windows cannot be read by range. The Rust layout owner verifies
 // unique/complete source-row coverage before seal; C enforces memory safety,
 // codec bounds and a sticky arithmetic flag, fenced once at publication.

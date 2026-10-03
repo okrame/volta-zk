@@ -625,11 +625,36 @@ del buffer padre, senza upload/copia o rilascio implicito della capacità.
 RNE consuma un intero blocco raw compatibile e restituisce un nuovo handle;
 gli errori di metadati Rust fermano anche il contesto C. Gli handle non
 sono clonabili e richiedono rilascio esplicito, o cleanup dell'intero owner.
+Ogni descrittore trattiene inoltre l'identità `Arc` del runtime Rust:
+handle numerici coincidenti di due copie distinte della libreria non
+rendono trasferibili i buffer. Il controllo precede consumo e rilascio;
+l'owner Rust e i relativi descrittori rimangono memoria host da censire.
 Il loader controlla ABI 3 prima di creare un contesto e richiede i simboli
 di vista/abort; la precedente ABI 2 da 144 B è rifiutata prima di leggere
 il nuovo ledger, che aggiunge `d2d_bytes`.
-Il dispatcher rifiuta gli altri producer: non è un preparatore GPU completo
-né un fallback. Il gather byte nativo ora riusa `Bytes::resident_tiles`,
+Il dispatcher di base serve Embedding/Matrix/RNE/Affine/Gate; quello
+nonlineare serve GELU/softcap/RoPE/argmax. Norm/QK/softmax/PV restano
+assenti: non è un preparatore GPU completo né un fallback.
+`NonlinearTables` valida e carica tabelle i16 e due finestre RoPE alle
+posizioni assolute del contesto: 8.225.672 B logici, 8.225.792 B allineati
+nella stessa arena. Il packing host temporaneo è ancora addebitabile,
+oltre alle tabelle pubbliche originali; non è spill privato. Layout,
+ricette, posizione e sorgente/righe dell'input sono controllati a ogni
+operazione. Ogni istogramma usa 524.280 B logici / 524.288 B riservati e
+una bitmap Rust di 150 B (50 per softcap); non è consumabile dal gather
+prima del seal completo. Le frequenze rimangono interi nonnegativi:
+il bias i32 appartiene esclusivamente al codec byte, come sul riferimento.
+GELU/softcap contano anche le ripetizioni, RoPE emette raw signed-48
+con coppie mancanti identità Q30 e argmax applica il tie-break all'ID minimo.
+Il solo slack ammette −32768. Per batch nonlineare si scaricano 4 B di
+flag, più 4 B per token argmax; quest'ultimo usa due fence e un temporaneo
+device allineato per gli ID. Il seal istogramma scarica altri 4 B. Nessun
+raw, output, istogramma o slack privato viene scaricato. Un raw RoPE
+150×32×512 usa 19.660.800 B, oltre a 4.915.200 B di input e altrettanti
+per la RNE se simultaneamente vivi. Questi subtotali non sostituiscono
+il conto completo: i 64 descrittori dell'owner richiedono ancora una
+schedule di rilascio/consolidamento per tutti gli istogrammi della risposta.
+Il gather byte nativo ora riusa `Bytes::resident_tiles`,
 le medesime tessere di `emit_row_bytes`, su blocchi originali residenti.
 `ByteWindow` seleziona sorgenti con le intersezioni pubbliche esistenti;
 le bitmap per riga rifiutano duplicati e copertura incompleta. Ogni blocco

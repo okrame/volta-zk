@@ -1,7 +1,7 @@
 //! Original source blocks through the shared native owner. No host-output
 //! download, transcript or CPU fallback. Full producer coverage remains open.
 use super::*;
-use kernel::range::windowed::native::{Buffer, DenseShape, Pointwise, Runtime};
+use kernel::range::windowed::native::{Buffer, DenseShape, Pointwise, RopeShape, Runtime};
 use std::sync::Arc;
 
 pub(super) struct Rows {
@@ -12,6 +12,109 @@ pub(super) struct Rows {
     columns: usize,
     layout: [u8; 32],
     recipe: [u8; 32],
+}
+
+pub(super) struct NonlinearTables {
+    buffer: Buffer,
+    gelu: Vec<usize>,
+    softcap: usize,
+    rope: [usize; 2],
+    layout: [u8; 32],
+    recipe: [u8; 32],
+    old: usize,
+}
+
+pub(super) struct Histogram {
+    buffer: Buffer,
+    source: usize,
+    output: usize,
+    seen: Vec<bool>,
+    layout: [u8; 32],
+    recipe: [u8; 32],
+}
+
+impl NonlinearTables {
+    pub(super) fn install(
+        runtime: &mut Runtime,
+        plan: &Canonical,
+        tables: &profile::Tables<'_>,
+    ) -> Result<Self, String> {
+        if tables.gelu.len() != 60 || tables.rope.len() != 2 {
+            return runtime.abort("resident nonlinear table count differs");
+        }
+        let mut packed = Vec::with_capacity(61 * 65535 * 2 + 150 * 192 * 8 + 2);
+        let mut gelu = Vec::with_capacity(60);
+        let mut softcap = 0;
+        for (index, table) in tables.gelu.iter().chain(std::iter::once(tables.softcap)).enumerate()
+        {
+            let lookup::Outputs::I16(values) = table.outputs else {
+                return runtime.abort("resident lookup table type differs");
+            };
+            if values.len() != 65535
+                || values.contains(&i16::MIN)
+                || table.lower != -32767
+                || table.profile as usize != if index == 60 { 0 } else { index }
+            {
+                return runtime.abort("resident lookup table shape or range differs");
+            }
+            if index == 60 {
+                softcap = packed.len();
+            } else {
+                gelu.push(packed.len());
+            }
+            for value in values {
+                packed.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        packed.resize(packed.len().next_multiple_of(4), 0);
+        let mut rope = [0; 2];
+        for (family, table) in tables.rope.iter().enumerate() {
+            let pairs = if family == 0 { 128 } else { 64 };
+            if table.position != plan.sources.attention.rope.old
+                || table.rows.len() != 150
+                || table.rows.iter().any(|row| {
+                    row.len() != pairs
+                        || row.iter().flatten().any(|value| !(-(1 << 30)..=1 << 30).contains(value))
+                })
+            {
+                return runtime.abort("resident RoPE absolute table window differs");
+            }
+            rope[family] = packed.len();
+            for value in table.rows.iter().flatten().flatten() {
+                packed.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        Ok(Self {
+            buffer: runtime.upload_table(&packed)?,
+            gelu,
+            softcap,
+            rope,
+            layout: plan.bytes().layout_digest,
+            recipe: plan.recipes.digest,
+            old: plan.sources.attention.rope.old,
+        })
+    }
+
+    pub(super) fn release(self, runtime: &mut Runtime) -> Result<(), String> {
+        runtime.release_buffer(self.buffer)
+    }
+}
+
+impl Histogram {
+    pub(super) fn finish(self, runtime: &mut Runtime) -> Result<Rows, String> {
+        if self.seen.iter().any(|seen| !seen) {
+            return runtime.abort("incomplete resident lookup histogram");
+        }
+        Ok(Rows {
+            buffer: runtime.seal_histogram(self.buffer)?,
+            source: self.source,
+            first: 0,
+            rows: 1,
+            columns: 65535,
+            layout: self.layout,
+            recipe: self.recipe,
+        })
+    }
 }
 
 /// A pending window owns zero-filled external padding, but is NOT a range
@@ -332,6 +435,154 @@ impl Rows {
 }
 
 impl Canonical {
+    fn native_lookup_sources(&self, step: usize) -> Option<(usize, usize, usize)> {
+        match self.steps.get(step)? {
+            Producer::Gelu(index) => {
+                let gelu = &self.sources.attention.rope.gate_up.gelu.gelu[*index];
+                Some((gelu.input, gelu.output, gelu.histogram))
+            }
+            Producer::Softcap => {
+                Some((self.output.input, self.output.output, self.output.histogram))
+            }
+            _ => None,
+        }
+    }
+
+    pub(super) fn native_histogram(
+        &self,
+        runtime: &mut Runtime,
+        step: usize,
+    ) -> Result<Histogram, String> {
+        let Some((_, output, source)) = self.native_lookup_sources(step) else {
+            return runtime.abort("resident producer has no i16 lookup histogram");
+        };
+        Ok(Histogram {
+            buffer: runtime.histogram()?,
+            source,
+            output,
+            seen: vec![false; self.bytes().scalar.layout.sources[output].rows],
+            layout: self.bytes().layout_digest,
+            recipe: self.recipes.digest,
+        })
+    }
+
+    pub(super) fn prepare_native_nonlinear_step(
+        &self,
+        runtime: &mut Runtime,
+        tables: &NonlinearTables,
+        step: usize,
+        first: usize,
+        rows: usize,
+        input: &Rows,
+        histogram: Option<&mut Histogram>,
+    ) -> Result<(Rows, Vec<u32>), String> {
+        let (source, output) = match self.steps.get(step) {
+            Some(Producer::Gelu(_)) | Some(Producer::Softcap) => {
+                let (source, output, _) = self.native_lookup_sources(step).unwrap();
+                (source, output)
+            }
+            Some(Producer::Rope(index)) => {
+                let rotation = &self.sources.attention.rope.rotations[*index];
+                (
+                    self.sources.attention.rope.gate_up.gelu.rms.norms[rotation.norm].output,
+                    rotation.raw,
+                )
+            }
+            Some(Producer::Argmax) => (self.output.output, self.output.slack),
+            _ => return runtime.abort("resident nonlinear producer differs"),
+        };
+        let shape = &self.bytes().scalar.layout.sources[output];
+        if tables.layout != self.bytes().layout_digest
+            || tables.recipe != self.recipes.digest
+            || tables.old != self.sources.attention.rope.old
+            || input.layout != tables.layout
+            || input.recipe != tables.recipe
+            || input.source != source
+            || input.columns != shape.cols
+            || rows == 0
+            || rows > 150
+            || first < input.first
+            || first - input.first > input.rows
+            || rows > input.rows - (first - input.first)
+            || first.checked_add(rows).is_none_or(|end| end > shape.rows)
+        {
+            return runtime.abort("resident nonlinear original input or table identity differs");
+        }
+        let offset = (first - input.first) * shape.cols;
+        let (buffer, tokens) = match &self.steps[step] {
+            Producer::Gelu(_) | Producer::Softcap => {
+                let Some(histogram) = histogram else {
+                    return runtime.abort("resident lookup histogram missing");
+                };
+                let (_, _, expected_histogram) = self.native_lookup_sources(step).unwrap();
+                if histogram.layout != tables.layout
+                    || histogram.recipe != tables.recipe
+                    || histogram.source != expected_histogram
+                    || histogram.output != output
+                    || histogram.seen.len() != shape.rows
+                    || histogram.seen[first..first + rows].iter().any(|seen| *seen)
+                {
+                    return runtime.abort("resident lookup histogram identity or duplicate rows");
+                }
+                let table_offset = match &self.steps[step] {
+                    Producer::Gelu(index) => tables.gelu[*index],
+                    _ => tables.softcap,
+                };
+                let buffer = runtime.lookup(
+                    &input.buffer,
+                    offset,
+                    rows * shape.cols,
+                    &tables.buffer,
+                    table_offset,
+                    &histogram.buffer,
+                )?;
+                histogram.seen[first..first + rows].fill(true);
+                (buffer, Vec::new())
+            }
+            Producer::Rope(index) => {
+                if histogram.is_some() {
+                    return runtime.abort("unexpected resident RoPE histogram");
+                }
+                let rotation = &self.sources.attention.rope.rotations[*index];
+                let pairs = if rotation.family == 0 { 128 } else { 64 };
+                (
+                    runtime.rope(
+                        &input.buffer,
+                        offset,
+                        &tables.buffer,
+                        tables.rope[rotation.family] + first * pairs * 8,
+                        RopeShape {
+                            rows: rows as u32,
+                            heads: rotation.heads as u32,
+                            width: rotation.width as u32,
+                            pairs: pairs as u32,
+                        },
+                    )?,
+                    Vec::new(),
+                )
+            }
+            Producer::Argmax => {
+                if histogram.is_some() {
+                    return runtime.abort("unexpected resident argmax histogram");
+                }
+                runtime.argmax(&input.buffer, offset, rows, shape.cols)?
+            }
+            _ => unreachable!(),
+        };
+        Ok((
+            Rows {
+                buffer,
+                source: output,
+                first,
+                rows,
+                columns: shape.cols,
+                layout: tables.layout,
+                recipe: tables.recipe,
+            },
+            tokens,
+        ))
+    }
+
     pub(super) fn native_byte_window(
         &self,
         runtime: &mut Runtime,
@@ -445,6 +696,273 @@ impl Canonical {
 mod tests {
     use super::*;
     use kernel::range::windowed::native::tests::{fixture, Injection};
+
+    fn nonlinear_profile(slot: usize) -> Canonical {
+        let plan = crate::c71_matrix::gemma::compile().unwrap();
+        let (sources, output, softmax) = plan.softmax_sources_at(0).unwrap();
+        let mut scales: BTreeMap<_, _> =
+            profile::Recipes::exponent_sources(&sources, &output, &softmax)
+                .into_iter()
+                .map(|id| (id, 0))
+                .collect();
+        for layer in &softmax.layers {
+            scales.insert(layer.pi, -14);
+        }
+        Canonical::compile(slot, &[0; 772], &scales).unwrap()
+    }
+
+    fn check_nonlinear_words(
+        runtime: &mut Runtime,
+        injection: &Injection,
+        rows: &Rows,
+        width: u32,
+        expected: &[i64],
+    ) {
+        use kernel::range::windowed::native::ByteTile;
+        assert_eq!(rows.rows * rows.columns, expected.len());
+        let window = runtime.byte_window(128).unwrap();
+        injection.expect_raw(expected);
+        runtime
+            .scatter_bytes(
+                &rows.buffer,
+                &ByteTile {
+                    input_first: 0,
+                    input_stride: expected.len() as u64,
+                    rows: 1,
+                    columns: expected.len() as u64,
+                    original_first: 0,
+                    window_first: 0,
+                    window_length: 128,
+                    byte_first: 0,
+                    width,
+                    signed_width: width,
+                    dimension: (expected.len() * width as usize)
+                        .max(128)
+                        .next_power_of_two()
+                        .ilog2(),
+                    suffix: 0,
+                    bottom: 0,
+                },
+                &window,
+            )
+            .unwrap();
+        let window = runtime.seal_bytes(window).unwrap();
+        runtime.release_buffer(window).unwrap();
+    }
+
+    #[test]
+    fn c71_canonical_resident_nonlinear_original_routes() {
+        let mut fixture = fixture(512);
+        fixture.config.arena_bytes = 32 << 20;
+        let injection = Injection::new(&fixture.config);
+        let values: Vec<i16> = (-32767..=32767).map(|value| (value / 2) as i16).collect();
+        let gelu: Vec<_> = (0..60)
+            .map(|profile| lookup::Table {
+                profile,
+                lower: -32767,
+                outputs: lookup::Outputs::I16(&values),
+            })
+            .collect();
+        let softcap =
+            lookup::Table { profile: 0, lower: -32767, outputs: lookup::Outputs::I16(&values) };
+        for slot in 0..3 {
+            let plan = nonlinear_profile(slot);
+            let rotations = [128, 64].map(|pairs| {
+                (0..150)
+                    .map(|row| {
+                        (0..pairs)
+                            .map(|pair| {
+                                if (row + slot * 150 + pair) % 2 == 0 {
+                                    [0, 1 << 30]
+                                } else {
+                                    [1 << 30, 0]
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>()
+            });
+            let rope = [0, 1].map(|family| kernel::rope::Table {
+                position: slot * 150,
+                rows: &rotations[family],
+            });
+            let public =
+                profile::Tables { gelu: &gelu, exp30: &[], softcap: &softcap, rope: &rope };
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let tables = NonlinearTables::install(&mut runtime, &plan, &public).unwrap();
+            let baseline = runtime.stats().unwrap().live_capacity_bytes;
+            let mut counts = [0; 4];
+            for (index, step) in plan.steps.iter().enumerate() {
+                let (source, category) = match step {
+                    Producer::Gelu(index) => {
+                        (plan.sources.attention.rope.gate_up.gelu.gelu[*index].input, 0)
+                    }
+                    Producer::Rope(index) => {
+                        let rotation = &plan.sources.attention.rope.rotations[*index];
+                        (
+                            plan.sources.attention.rope.gate_up.gelu.rms.norms[rotation.norm]
+                                .output,
+                            1,
+                        )
+                    }
+                    Producer::Softcap => (plan.output.input, 2),
+                    Producer::Argmax => (plan.output.output, 3),
+                    _ => continue,
+                };
+                let shape = &plan.bytes().scalar.layout.sources[source];
+                let first = shape.rows - 1;
+                let sample =
+                    |row: usize, column: usize| ((row + column * 7 + slot * 3) % 9) as i16 - 4;
+                let input_values = (first - 1..=first)
+                    .flat_map(|row| (0..shape.cols).map(move |column| sample(row, column)))
+                    .collect::<Vec<_>>();
+                let input = plan
+                    .upload_native_rows(&mut runtime, source, first - 1, &input_values)
+                    .unwrap();
+                let mut histogram = plan
+                    .native_lookup_sources(index)
+                    .map(|_| plan.native_histogram(&mut runtime, index).unwrap());
+                let reference = plan
+                    .prepare_row(
+                        step,
+                        first,
+                        0,
+                        &public,
+                        |_, _, _| panic!("nonlinear W read"),
+                        |id, row, column| {
+                            assert_eq!(id, source);
+                            Ok(i64::from(sample(row, column)))
+                        },
+                        |_, _, _| panic!("nonlinear KV read"),
+                    )
+                    .unwrap();
+                let before = runtime.stats().unwrap();
+                let (output, tokens) = plan
+                    .prepare_native_nonlinear_step(
+                        &mut runtime,
+                        &tables,
+                        index,
+                        first,
+                        1,
+                        &input,
+                        histogram.as_mut(),
+                    )
+                    .unwrap();
+                let after = runtime.stats().unwrap();
+                assert_eq!(after.h2d_bytes, before.h2d_bytes);
+                assert_eq!(after.d2h_bytes - before.d2h_bytes, if category == 3 { 8 } else { 4 });
+                assert_eq!(tokens, reference.token.into_iter().collect::<Vec<_>>());
+                assert_eq!(
+                    (output.source, output.first),
+                    (reference.values[0].0, reference.values[0].1)
+                );
+                check_nonlinear_words(
+                    &mut runtime,
+                    &injection,
+                    &output,
+                    plan.bytes().widths[output.source] as u32,
+                    &reference.values[0].2,
+                );
+                if let Some(mut histogram) = histogram {
+                    if category == 0 && counts[0] == 0 {
+                        let prefix = (0..first)
+                            .flat_map(|row| (0..shape.cols).map(move |column| sample(row, column)))
+                            .collect::<Vec<_>>();
+                        let prefix_input =
+                            plan.upload_native_rows(&mut runtime, source, 0, &prefix).unwrap();
+                        let (prefix_output, _) = plan
+                            .prepare_native_nonlinear_step(
+                                &mut runtime,
+                                &tables,
+                                index,
+                                0,
+                                first,
+                                &prefix_input,
+                                Some(&mut histogram),
+                            )
+                            .unwrap();
+                        let mut visits = vec![0i64; 65535];
+                        for row in 0..shape.rows {
+                            for column in 0..shape.cols {
+                                visits[(i32::from(sample(row, column)) + 32767) as usize] += 1;
+                            }
+                        }
+                        let histogram = histogram.finish(&mut runtime).unwrap();
+                        assert_eq!((histogram.rows, histogram.columns), (1, 65535));
+                        check_nonlinear_words(&mut runtime, &injection, &histogram, 4, &visits);
+                        histogram.release(&mut runtime).unwrap();
+                        prefix_output.release(&mut runtime).unwrap();
+                        prefix_input.release(&mut runtime).unwrap();
+                    } else {
+                        runtime.release_buffer(histogram.buffer).unwrap();
+                    }
+                }
+                output.release(&mut runtime).unwrap();
+                input.release(&mut runtime).unwrap();
+                assert_eq!(runtime.stats().unwrap().live_capacity_bytes, baseline);
+                counts[category] += 1;
+            }
+            assert_eq!(counts[0], 60);
+            assert!(counts[1] > 60);
+            assert_eq!(&counts[2..], &[1, 1]);
+            eprintln!("C71_NONLINEAR_ROUTES slot={slot} counts={counts:?} gpu=false");
+            tables.release(&mut runtime).unwrap();
+            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+            runtime.close().unwrap();
+            if slot == 0 {
+                let index =
+                    plan.steps.iter().position(|step| matches!(step, Producer::Gelu(0))).unwrap();
+                let source = plan.native_lookup_sources(index).unwrap().0;
+                let columns = plan.bytes().scalar.layout.sources[source].cols;
+                for case in 0..6 {
+                    let mut runtime = Runtime::new(&fixture.config).unwrap();
+                    let mut tables =
+                        NonlinearTables::install(&mut runtime, &plan, &public).unwrap();
+                    let mut input = plan
+                        .upload_native_rows(&mut runtime, source, 0, &vec![1; columns])
+                        .unwrap();
+                    let mut histogram = plan.native_histogram(&mut runtime, index).unwrap();
+                    match case {
+                        2 => input.recipe[0] ^= 1,
+                        3 => tables.old += 150,
+                        4 => histogram.output += 1,
+                        _ => (),
+                    }
+                    let result = if case == 0 {
+                        histogram.finish(&mut runtime).map(|_| ())
+                    } else {
+                        if case == 1 {
+                            let (output, _) = plan
+                                .prepare_native_nonlinear_step(
+                                    &mut runtime,
+                                    &tables,
+                                    index,
+                                    0,
+                                    1,
+                                    &input,
+                                    Some(&mut histogram),
+                                )
+                                .unwrap();
+                            output.release(&mut runtime).unwrap();
+                        }
+                        plan.prepare_native_nonlinear_step(
+                            &mut runtime,
+                            &tables,
+                            index,
+                            0,
+                            1,
+                            &input,
+                            if case == 5 { None } else { Some(&mut histogram) },
+                        )
+                        .map(|_| ())
+                    };
+                    assert!(result.is_err(), "canonical nonlinear rejection {case}");
+                    assert_eq!(runtime.stats().unwrap().stopped, 1);
+                    runtime.close().unwrap();
+                }
+            }
+        }
+    }
 
     fn gather_layout() -> bytes::Bytes {
         use crate::c71_matrix::gemma::{caller::Auxiliary, tiles, Source};

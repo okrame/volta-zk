@@ -109,6 +109,27 @@ identità W fra owner e commitment PCS, lifecycle del runner
 e misure complete restano da collegare. Il vecchio GEMM CUDA scalare non viene presentato come
 questa implementazione o come una misura H100.
 
+Le route residenti GELU/softcap/RoPE/argmax ora condividono l'owner nativo,
+con tabelle pubbliche, istogrammi e slack residenti. Norm/QK/softmax/PV,
+scanner e integrazione della prova restano lavoro locale. Il diagnostico
+[c71_nonlinear_parity.cu](../../cuda/c71_nonlinear_parity.cu) confronta i
+kernel reali con risultati interi host su input sintetici: tutti i 65.535
+entry lookup, istogrammi, entrambe le famiglie RoPE e tie argmax fra warp.
+Si compila localmente ma si esegue soltanto nell'esperimento autorizzato:
+
+```bash
+nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
+  cuda/c71_nonlinear_parity.cu cuda/c71_dense_i16.cu \
+  -o /tmp/c71_nonlinear_parity
+timeout -k 5s 60s /tmp/c71_nonlinear_parity
+```
+
+Richiede un device compute capability 9; errori CUDA o differenze terminano
+con exit nonzero. Conservare stdout/stderr, SHA e fingerprint hardware.
+Il report `credit:false` non è una prova canonica o un tempo completo;
+questa parità è un controllo del primo esperimento, non un requisito
+hardware da soddisfare sulla VM locale.
+
 Prima di usare credenziali locali eseguire
 `scripts/runpod_harness.sh local-secret-preflight`. Un eventuale `.env`
 deve essere un file regolare posseduto dall'utente e avere permessi `0600`;

@@ -157,6 +157,14 @@ pub(in crate::c71_matrix) struct Pointwise {
 }
 const _: () = assert!(size_of::<Pointwise>() == 24);
 #[repr(C)]
+pub(in crate::c71_matrix) struct RopeShape {
+    pub rows: u32,
+    pub heads: u32,
+    pub width: u32,
+    pub pairs: u32,
+}
+const _: () = assert!(size_of::<RopeShape>() == 16);
+#[repr(C)]
 pub(in crate::c71_matrix) struct ByteTile {
     pub input_first: u64,
     pub input_stride: u64,
@@ -179,6 +187,7 @@ pub(in crate::c71_matrix) struct Buffer {
     id: u64,
     kind: u32,
     count: usize,
+    owner: Arc<()>,
 }
 macro_rules! api {
     ($($field:ident: $ty:ty => $name:literal),* $(,)?) => {
@@ -223,6 +232,11 @@ api! {
     product: unsafe extern "C" fn(Raw,u64,u64,u64,DenseShape,u64)->i32 => "c71_dense_product_rows",
     quantize: unsafe extern "C" fn(Raw,u64,i32,u64)->i32 => "c71_dense_quantize",
     pointwise: unsafe extern "C" fn(Raw,u64,u64,u64,u64,Pointwise,u64)->i32 => "c71_dense_pointwise",
+    histogram_begin: unsafe extern "C" fn(Raw,u64)->i32 => "c71_histogram_begin",
+    histogram_seal: unsafe extern "C" fn(Raw,u64)->i32 => "c71_histogram_seal",
+    lookup: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64)->i32 => "c71_dense_lookup",
+    rope: unsafe extern "C" fn(Raw,u64,u64,u64,u64,RopeShape,u64)->i32 => "c71_dense_rope",
+    argmax: unsafe extern "C" fn(Raw,u64,u64,u32,u32,u64,*mut u32)->i32 => "c71_dense_argmax",
     byte_begin: unsafe extern "C" fn(Raw,u64)->i32 => "c71_byte_begin",
     byte_scatter: unsafe extern "C" fn(Raw,u64,*const ByteTile,u64)->i32 => "c71_byte_scatter",
     byte_seal: unsafe extern "C" fn(Raw,u64)->i32 => "c71_byte_seal",
@@ -232,11 +246,13 @@ pub(in crate::c71_matrix) struct Runtime {
     raw: Raw,
     stopped: bool,
     weights: Option<(Arc<Vec<i16>>, [u8; 32])>,
+    owner: Arc<()>,
 }
 impl Runtime {
     pub(in crate::c71_matrix) fn new(config: &Config) -> Result<Self, String> {
         let api = Api::load(&config.library)?;
-        let mut s = Self { api, raw: ptr::null_mut(), stopped: false, weights: None };
+        let mut s =
+            Self { api, raw: ptr::null_mut(), stopped: false, weights: None, owner: Arc::new(()) };
         // SAFETY: owned pointer output; on error Drop also closes partial owners.
         let status = unsafe {
             (s.api.create)(config.device, config.arena_bytes, config.reserve_bytes, &mut s.raw)
@@ -253,6 +269,13 @@ impl Runtime {
         } else {
             Ok(())
         }
+    }
+    fn require_buffer(&mut self, buffer: &Buffer) -> Result<(), String> {
+        self.ready()?;
+        if !Arc::ptr_eq(&self.owner, &buffer.owner) {
+            return self.abort("native buffer belongs to another runtime");
+        }
+        Ok(())
     }
     pub(in crate::c71_matrix) fn abort<T>(
         &mut self,
@@ -342,7 +365,7 @@ impl Runtime {
             )
         };
         self.check(status)?;
-        Ok(Buffer { id, kind: 1, count })
+        Ok(Buffer { id, kind: 1, count, owner: self.owner.clone() })
     }
     pub(in crate::c71_matrix) fn upload_signed(
         &mut self,
@@ -353,7 +376,7 @@ impl Runtime {
             (self.api.upload)(self.raw, id, values.as_ptr().cast(), size_of_val(values) as u64)
         };
         self.check(status)?;
-        Ok(Buffer { id, kind: 1, count: values.len() })
+        Ok(Buffer { id, kind: 1, count: values.len(), owner: self.owner.clone() })
     }
     pub(in crate::c71_matrix) fn product(
         &mut self,
@@ -363,6 +386,7 @@ impl Runtime {
         shape: DenseShape,
     ) -> Result<Buffer, String> {
         self.ready()?;
+        self.require_buffer(input)?;
         if input.kind != 1
             || shape.m == 0
             || shape.m > 150
@@ -386,7 +410,7 @@ impl Runtime {
             )
         };
         self.check(status)?;
-        Ok(Buffer { id, kind: 6, count })
+        Ok(Buffer { id, kind: 6, count, owner: self.owner.clone() })
     }
     pub(in crate::c71_matrix) fn quantize(
         &mut self,
@@ -394,13 +418,14 @@ impl Runtime {
         shift: i32,
     ) -> Result<Buffer, String> {
         self.ready()?;
+        self.require_buffer(raw)?;
         if raw.kind != 6 {
             return self.abort("native RNE requires raw i64");
         }
         let id = self.alloc(1, raw.count)?;
         let status = unsafe { (self.api.quantize)(self.raw, raw.id, shift, id) };
         self.check(status)?;
-        Ok(Buffer { id, kind: 1, count: raw.count })
+        Ok(Buffer { id, kind: 1, count: raw.count, owner: self.owner.clone() })
     }
     pub(in crate::c71_matrix) fn pointwise(
         &mut self,
@@ -409,20 +434,131 @@ impl Runtime {
         op: Pointwise,
     ) -> Result<Buffer, String> {
         self.ready()?;
+        for (buffer, _) in inputs.iter().flatten() {
+            self.require_buffer(buffer)?;
+        }
         let id = self.alloc(6, count)?;
         let [x, y] = inputs.map(|input| input.map_or((0, 0), |(b, first)| (b.id, first as u64)));
         let status = unsafe { (self.api.pointwise)(self.raw, x.0, x.1, y.0, y.1, op, id) };
         self.check(status)?;
-        Ok(Buffer { id, kind: 6, count })
+        Ok(Buffer { id, kind: 6, count, owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn upload_table(&mut self, bytes: &[u8]) -> Result<Buffer, String> {
+        let id = self.alloc(0, bytes.len())?;
+        let status =
+            unsafe { (self.api.upload)(self.raw, id, bytes.as_ptr().cast(), bytes.len() as u64) };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 0, count: bytes.len(), owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn histogram(&mut self) -> Result<Buffer, String> {
+        let id = self.alloc(8, 65535)?;
+        let status = unsafe { (self.api.histogram_begin)(self.raw, id) };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 8, count: 65535, owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn seal_histogram(
+        &mut self,
+        mut buffer: Buffer,
+    ) -> Result<Buffer, String> {
+        self.require_buffer(&buffer)?;
+        let status = unsafe { (self.api.histogram_seal)(self.raw, buffer.id) };
+        self.check(status)?;
+        buffer.kind = 6;
+        Ok(buffer)
+    }
+    pub(in crate::c71_matrix) fn lookup(
+        &mut self,
+        input: &Buffer,
+        first: usize,
+        count: usize,
+        table: &Buffer,
+        offset: usize,
+        histogram: &Buffer,
+    ) -> Result<Buffer, String> {
+        self.ready()?;
+        for buffer in [input, table, histogram] {
+            self.require_buffer(buffer)?;
+        }
+        let id = self.alloc(1, count)?;
+        let status = unsafe {
+            (self.api.lookup)(
+                self.raw,
+                input.id,
+                first as u64,
+                table.id,
+                offset as u64,
+                histogram.id,
+                id,
+            )
+        };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 1, count, owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn rope(
+        &mut self,
+        input: &Buffer,
+        first: usize,
+        table: &Buffer,
+        offset: usize,
+        shape: RopeShape,
+    ) -> Result<Buffer, String> {
+        self.ready()?;
+        self.require_buffer(input)?;
+        self.require_buffer(table)?;
+        if !(1..=150).contains(&shape.rows)
+            || !(1..=32).contains(&shape.heads)
+            || !(2..=512).contains(&shape.width)
+            || shape.width % 2 != 0
+            || shape.pairs == 0
+            || shape.pairs > shape.width / 2
+        {
+            return self.abort("native RoPE geometry differs");
+        }
+        let count = shape.rows as usize * shape.heads as usize * shape.width as usize;
+        let id = self.alloc(6, count)?;
+        let status = unsafe {
+            (self.api.rope)(self.raw, input.id, first as u64, table.id, offset as u64, shape, id)
+        };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 6, count, owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn argmax(
+        &mut self,
+        input: &Buffer,
+        first: usize,
+        rows: usize,
+        columns: usize,
+    ) -> Result<(Buffer, Vec<u32>), String> {
+        self.require_buffer(input)?;
+        if !(1..=150).contains(&rows) || !(1..=262144).contains(&columns) {
+            return self.abort("native argmax geometry differs");
+        }
+        let count = rows * columns;
+        let id = self.alloc(1, count)?;
+        let mut tokens = vec![0; rows];
+        let status = unsafe {
+            (self.api.argmax)(
+                self.raw,
+                input.id,
+                first as u64,
+                rows as u32,
+                columns as u32,
+                id,
+                tokens.as_mut_ptr(),
+            )
+        };
+        self.check(status)?;
+        Ok((Buffer { id, kind: 1, count, owner: self.owner.clone() }, tokens))
     }
     pub(in crate::c71_matrix) fn release_buffer(&mut self, buffer: Buffer) -> Result<(), String> {
+        self.require_buffer(&buffer)?;
         self.release(buffer.id)
     }
     pub(in crate::c71_matrix) fn byte_window(&mut self, count: usize) -> Result<Buffer, String> {
         let id = self.alloc(7, count)?;
         let status = unsafe { (self.api.byte_begin)(self.raw, id) };
         self.check(status)?;
-        Ok(Buffer { id, kind: 7, count })
+        Ok(Buffer { id, kind: 7, count, owner: self.owner.clone() })
     }
     pub(in crate::c71_matrix) fn scatter_bytes(
         &mut self,
@@ -430,7 +566,8 @@ impl Runtime {
         tile: &ByteTile,
         output: &Buffer,
     ) -> Result<(), String> {
-        self.ready()?;
+        self.require_buffer(input)?;
+        self.require_buffer(output)?;
         let status = unsafe { (self.api.byte_scatter)(self.raw, input.id, tile, output.id) };
         self.check(status)
     }
@@ -438,7 +575,7 @@ impl Runtime {
         &mut self,
         mut output: Buffer,
     ) -> Result<Buffer, String> {
-        self.ready()?;
+        self.require_buffer(&output)?;
         let status = unsafe { (self.api.byte_seal)(self.raw, output.id) };
         self.check(status)?;
         output.kind = 0;
@@ -450,7 +587,7 @@ impl Runtime {
         input: &Buffer,
         alpha: Fp3,
     ) -> Result<[Fp3; 2], String> {
-        self.ready()?;
+        self.require_buffer(input)?;
         if input.kind > 1 || !input.count.is_power_of_two() || !(2..=2048).contains(&input.count) {
             return self.abort("test root requires a small power-of-two original block");
         }
@@ -945,6 +1082,103 @@ pub(in crate::c71_matrix) mod tests {
     pub(in crate::c71_matrix) struct Fixture {
         pub config: Config,
         directory: PathBuf,
+    }
+    #[test]
+    fn c71_b12_windowed_native_nonlinear_rejections_are_terminal() {
+        let mut fixture = fixture(512);
+        fixture.config.arena_bytes = 2 << 20;
+        let injection = Injection::new(&fixture.config);
+        for case in 0..12 {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let input = runtime.upload_signed(&[0, 1, 2, 3]).unwrap();
+            let table_values = vec![if case == 2 { i16::MIN } else { 0 }; 65535];
+            let table = runtime
+                .upload_table(
+                    &table_values.iter().flat_map(|value| value.to_le_bytes()).collect::<Vec<_>>(),
+                )
+                .unwrap();
+            let mut histogram = runtime.histogram().unwrap();
+            if case == 3 {
+                histogram = runtime.seal_histogram(histogram).unwrap();
+            }
+            let result = match case {
+                0..=3 => runtime
+                    .lookup(
+                        &input,
+                        if case == 0 { usize::MAX } else { 0 },
+                        4,
+                        &table,
+                        usize::from(case == 1),
+                        &histogram,
+                    )
+                    .map(|_| ()),
+                4 | 5 => {
+                    let coefficients = runtime
+                        .upload_table(
+                            &[i32::MAX, 0]
+                                .into_iter()
+                                .flat_map(|value| value.to_le_bytes())
+                                .collect::<Vec<_>>(),
+                        )
+                        .unwrap();
+                    runtime
+                        .rope(
+                            &input,
+                            0,
+                            &coefficients,
+                            0,
+                            RopeShape {
+                                rows: 1,
+                                heads: 1,
+                                width: if case == 5 { u32::MAX } else { 4 },
+                                pairs: 1,
+                            },
+                        )
+                        .map(|_| ())
+                }
+                6 => {
+                    let (slack, _) = runtime.argmax(&input, 0, 1, 4).unwrap();
+                    runtime.argmax(&slack, 0, 1, 4).map(|_| ())
+                }
+                _ => {
+                    injection.set([1, 2, 4, 7, 8][case - 7]);
+                    runtime.argmax(&input, 0, 1, 4).map(|_| ())
+                }
+            };
+            injection.set(0);
+            assert!(result.is_err(), "nonlinear rejection {case}");
+            assert_eq!(runtime.stats().unwrap().stopped, 1);
+            assert!(runtime.upload_signed(&[0]).is_err());
+            runtime.close().unwrap();
+        }
+        eprintln!("C71_NONLINEAR_REJECTIONS count=12 terminal=true gpu=false");
+    }
+    #[test]
+    fn c71_b12_windowed_native_distinct_libraries_reject_colliding_handles() {
+        let first = fixture(512);
+        let second = fixture(512);
+        for release in [false, true] {
+            let mut owner = Runtime::new(&first.config).unwrap();
+            let mut foreign = Runtime::new(&second.config).unwrap();
+            let original = owner.upload_signed(&[1, 2]).unwrap();
+            let other = foreign.upload_signed(&[3, 4]).unwrap();
+            assert_eq!(original.id, other.id);
+            let before = foreign.stats().unwrap();
+            if release {
+                assert!(foreign.release_buffer(original).is_err());
+            } else {
+                assert!(foreign.argmax(&original, 0, 1, 2).is_err());
+                owner.release_buffer(original).unwrap();
+            }
+            let after = foreign.stats().unwrap();
+            assert_eq!(after.stopped, 1);
+            assert_eq!(
+                (after.allocations, after.releases, after.launches),
+                (before.allocations, before.releases, before.launches)
+            );
+            owner.close().unwrap();
+            foreign.close().unwrap();
+        }
     }
     impl Drop for Fixture {
         fn drop(&mut self) {

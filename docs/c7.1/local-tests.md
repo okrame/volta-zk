@@ -220,6 +220,30 @@ conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
 
+`c71_canonical_resident_nonlinear_original_routes` confronta le route
+GELU, softcap, RoPE e argmax nei tre contesti con `prepare_row`, usando
+input e tabelle sintetici. Osserva l'ordine esatto di tutti gli output
+tramite il driver simulato; completa anche un istogramma GELU di 150 righe
+per contesto, controllando i conteggi non biased e la shape 1×65.535.
+Include rifiuti di duplicati, copertura incompleta, input/contesto e
+istogramma errati. `c71_b12_windowed_native_nonlinear_rejections_are_terminal`
+copre errori di span, tabelle, marker, seal, launch, fence, flag e copie
+D2H. Eseguire i due filtri separatamente con i limiti locali consueti.
+`c71_b12_windowed_native_distinct_libraries_reject_colliding_handles`
+carica due copie distinte della libreria simulata, forza handle uguali e
+verifica il rifiuto prima di consumo/rilascio sul runtime sbagliato.
+Il diagnostico [CUDA](../../cuda/c71_nonlinear_parity.cu) è compilabile
+localmente; il comando di esecuzione è nei [test H100](runpod-tests.md).
+Non sostituire questi controlli host alla parità hardware.
+
+Il controllo aggiuntivo `c71_b12_gemma_output_head_rne_softcap_and_public_argmax_share_original_a`
+ha rilevato un fallimento nell'asserzione `vrows.next().is_none()` dopo
+il rifiuto di una decisione tie alterata. Il test e `linear::verify`
+non sono modificati da questo port: l'iteratore preso in prestito può
+restare parzialmente consumato su errore. Questo esito resta negativo,
+senza attribuire copertura al successivo caso simulatore; non allenta
+il burn dell'intera riserva imposto dal registro prima della verifica.
+
 Il [record Affine/Gate residente](../../benchmarks/results/c71-pointwise-local-2026-10-03-e8566ae6e395.json)
 conserva 22 test Rust e 12 Python sulla SHA pulita, build/lint e libreria
 sm_90. Verifica 181 route Affine e 60 Gate per ciascuno dei tre contesti,
@@ -333,8 +357,9 @@ registra 25 test Rust e 12 Python sulla revisione pulita, ABI 3, copie D2D
 ordinate dal W originale e rifiuti dopo copie parziali. Conserva il fallimento
 iniziale della pulizia della fixture ABI e il retry del disassemblatore.
 Il SASS resta invariato: embedding usa copie native, non un nuovo kernel.
-Cinque tipi di producer su tredici sono disponibili come componenti;
-non è una percentuale di completamento né una prova canonica o GPU.
+Quella revisione disponeva di cinque tipi di producer su tredici; le nuove
+route nonlineari ne aggiungono quattro. Questo inventario non è una
+percentuale di completamento né una prova canonica o GPU.
 
 Per ogni verifica conservare SHA del codice, comando, exit code, numero
 di test, durata e limiti, distinguendo warning, rifiuti attesi e failure.

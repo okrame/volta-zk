@@ -21,12 +21,18 @@ cudaError_t c71_dense_i16_launch(cudaStream_t,const int16_t*,uint64_t,const int1
 cudaError_t c71_dense_rne_launch(cudaStream_t,const int64_t*,int16_t*,uint64_t,int32_t,uint32_t*);
 cudaError_t c71_dense_pointwise_launch(cudaStream_t,const int16_t*,const int16_t*,int64_t*,uint64_t,c71_dense::Pointwise,uint32_t*);
 cudaError_t c71_byte_scatter_launch(cudaStream_t,const void*,unsigned,uint64_t,uint8_t*,uint64_t,uint32_t*,c71_byte::Tile);
+cudaError_t c71_lookup_launch(cudaStream_t,const int16_t*,const int16_t*,int16_t*,int64_t*,uint64_t,uint32_t*);
+cudaError_t c71_histogram_seal_launch(cudaStream_t,int64_t*,uint32_t*);
+cudaError_t c71_rope_launch(cudaStream_t,const int16_t*,const int32_t*,int64_t*,c71_nonlinear::Rope,uint32_t*);
+cudaError_t c71_argmax_select_launch(cudaStream_t,const int16_t*,uint32_t*,unsigned,unsigned,uint32_t*);
+cudaError_t c71_argmax_slack_launch(cudaStream_t,const int16_t*,const uint32_t*,int16_t*,unsigned,unsigned,uint32_t*);
 }
 
 struct Buffer {
     uint64_t id=0, offset=0, capacity=0, count=0, initialized=0;
     uint32_t kind=0;
     uint64_t flag=0;
+    uint64_t visits=0;
 };
 struct C71RangeContext {
     int device=0;
@@ -39,9 +45,9 @@ struct C71RangeContext {
     const char* error="";
 };
 namespace {
-constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1};
+constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
-                          uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31};
+                          uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535};
 std::atomic<uint64_t> next_handle{1};
 bool canonical(Fp3 a) { return a.c0<P && a.c1<P && a.c2<P; }
 bool power2(uint64_t n) { return n && !(n&(n-1)); }
@@ -135,7 +141,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
 }
 extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     if(!ready(c)) return -1;
-    if(!out || kind>C71_BYTE_PENDING || !count || count>caps[kind]) return fail(c,"range allocation shape");
+    if(!out || kind>C71_HISTOGRAM_PENDING || !count || count>caps[kind]) return fail(c,"range allocation shape");
     const uint64_t capacity=(count*sizes[kind]+255)&~uint64_t{255};
     Buffer* slot=nullptr;
     for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
@@ -410,6 +416,80 @@ extern "C" int c71_dense_pointwise(C71RangeContext* c,uint64_t x,uint64_t x_firs
     if(launched(c,c71_dense_pointwise_launch(c->stream,inputs[0],inputs[1],ptr<int64_t>(c,b),b->count,op,
                                            ptr<uint32_t>(c,buffer(c,flag))))) return -1;
     return dense_complete(c,flag,b);
+}
+namespace {
+const int16_t* nonlinear_input(C71RangeContext* c,uint64_t id,uint64_t first,uint64_t count) {
+    auto* a=buffer(c,id);
+    if(!full(a,C71_I16) || first>a->count || count>a->count-first) { fail(c,"nonlinear input span"); return nullptr; }
+    return ptr<int16_t>(c,a)+first;
+}
+const unsigned char* nonlinear_table(C71RangeContext* c,uint64_t id,uint64_t offset,uint64_t bytes,unsigned alignment) {
+    auto* t=buffer(c,id);
+    if(!full(t,C71_U8) || offset%alignment || offset>t->count || bytes>t->count-offset) { fail(c,"nonlinear table span"); return nullptr; }
+    return ptr<unsigned char>(c,t)+offset;
+}
+}
+extern "C" int c71_histogram_begin(C71RangeContext* c,uint64_t id) {
+    if(!ready(c)) return -1;
+    auto* h=buffer(c,id);
+    if(!h || h->kind!=C71_HISTOGRAM_PENDING || h->initialized || h->count!=65535) return fail(c,"histogram initialization shape");
+    if(checked(c,cudaMemsetAsync(ptr<void>(c,h),0,h->count*8,c->stream))) return -1;
+    c->stats.zeroed_bytes+=h->count*8; h->initialized=h->count; return 0;
+}
+extern "C" int c71_histogram_seal(C71RangeContext* c,uint64_t id) {
+    if(!ready(c)) return -1;
+    auto* h=buffer(c,id);
+    if(!full(h,C71_HISTOGRAM_PENDING) || h->count!=65535) return fail(c,"histogram seal shape");
+    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    if(launched(c,c71_histogram_seal_launch(c->stream,ptr<int64_t>(c,h),ptr<uint32_t>(c,buffer(c,flag))))) return -1;
+    if(dense_complete(c,flag,h)) return -1;
+    h->kind=C71_I64; return 0;
+}
+extern "C" int c71_dense_lookup(C71RangeContext* c,uint64_t in,uint64_t first,uint64_t table,uint64_t offset,uint64_t hist,uint64_t out) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out); auto* h=buffer(c,hist);
+    if(!b || b->kind!=C71_I16 || b->initialized || b->count>uint64_t(c71_dense::max_m)*c71_dense::max_n ||
+       !full(h,C71_HISTOGRAM_PENDING) || h->count!=65535 || b->count>uint64_t(INT32_MAX)-h->visits) return fail(c,"lookup output or histogram shape");
+    const auto* x=nonlinear_input(c,in,first,b->count);
+    const auto* t=nonlinear_table(c,table,offset,65535*2,2);
+    if(!x || !t) return -1;
+    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    if(launched(c,c71_lookup_launch(c->stream,x,reinterpret_cast<const int16_t*>(t),ptr<int16_t>(c,b),ptr<int64_t>(c,h),b->count,ptr<uint32_t>(c,buffer(c,flag))))) return -1;
+    if(dense_complete(c,flag,b)) return -1;
+    h->visits+=b->count; return 0;
+}
+extern "C" int c71_dense_rope(C71RangeContext* c,uint64_t in,uint64_t first,uint64_t table,uint64_t offset,c71_nonlinear::Rope s,uint64_t out) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out);
+    const uint64_t count=uint64_t(s.rows)*s.heads*s.width;
+    if(!b || b->kind!=C71_I64 || b->initialized || !c71_nonlinear::valid(s) || b->count!=count) return fail(c,"RoPE output shape");
+    const auto* x=nonlinear_input(c,in,first,count);
+    const auto* t=nonlinear_table(c,table,offset,uint64_t(s.rows)*s.pairs*8,4);
+    if(!x || !t) return -1;
+    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    if(launched(c,c71_rope_launch(c->stream,x,reinterpret_cast<const int32_t*>(t),ptr<int64_t>(c,b),s,ptr<uint32_t>(c,buffer(c,flag))))) return -1;
+    return dense_complete(c,flag,b);
+}
+extern "C" int c71_dense_argmax(C71RangeContext* c,uint64_t in,uint64_t first,uint32_t rows,uint32_t columns,uint64_t out,uint32_t* public_tokens) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out); uintptr_t end=0;
+    if(!rows || rows>150 || !columns || columns>262144 || !b || b->kind!=C71_I16 || b->initialized ||
+       b->count!=uint64_t(rows)*columns || reinterpret_cast<uintptr_t>(public_tokens)%4 ||
+       !c71_dense::span(public_tokens,rows*4,end)) return fail(c,"argmax output shape");
+    const auto* x=nonlinear_input(c,in,first,b->count); if(!x) return -1;
+    uint64_t flag=0,tokens=0;
+    if(dense_flag(c,&flag) || c71_range_alloc(c,C71_U8,rows*4,&tokens)) return -1;
+    auto* t=buffer(c,tokens); auto* f=buffer(c,flag);
+    if(launched(c,c71_argmax_select_launch(c->stream,x,ptr<uint32_t>(c,t),rows,columns,ptr<uint32_t>(c,f))) ||
+       launched(c,c71_argmax_slack_launch(c->stream,x,ptr<uint32_t>(c,t),ptr<int16_t>(c,b),rows,columns,ptr<uint32_t>(c,f)))) return -1;
+    if(dense_complete(c,flag,b)) return -1;
+    uint32_t staged[150]{};
+    if(checked(c,cudaMemcpyAsync(staged,ptr<void>(c,t),rows*4,cudaMemcpyDeviceToHost,c->stream))) return -1;
+    c->stats.d2h_bytes+=rows*4;
+    if(fence(c)) return -1;
+    for(unsigned i=0;i<rows;++i) if(staged[i]>=columns) return fail(c,"argmax token outside vocabulary");
+    if(c71_range_release(c,tokens)) return -1;
+    b->initialized=b->count; std::memcpy(public_tokens,staged,rows*4); return 0;
 }
 extern "C" int c71_byte_begin(C71RangeContext* c,uint64_t out) {
     if(!ready(c)) return -1;

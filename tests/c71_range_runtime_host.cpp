@@ -11,6 +11,7 @@ struct FakeStream { std::vector<std::function<void()>> pending; };
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
 static bool fail_dense=false;
 static int copy_fail_after=-1;
+static int download_fail_after=-1;
 static size_t fake_free=80000000000ULL;
 static unsigned allocations=0, frees=0, launches=0;
 static std::vector<uint8_t> expected_bytes;
@@ -31,6 +32,10 @@ cudaError_t cudaFree(void* p) {
     ++frees; delete[] static_cast<unsigned char*>(p); return fail_free?1:0;
 }
 cudaError_t cudaMemcpyAsync(void* d,const void* s,size_t n,cudaMemcpyKind kind,cudaStream_t stream) {
+    if(kind==cudaMemcpyDeviceToHost) {
+        if(download_fail_after==0) return 1;
+        if(download_fail_after>0) --download_fail_after;
+    }
     if(kind==cudaMemcpyDeviceToDevice) {
         if(copy_fail_after==0) return 1;
         if(copy_fail_after>0) --copy_fail_after;
@@ -144,6 +149,14 @@ extern "C" int c71_byte_scatter_launch(cudaStream_t s,const void* input,unsigned
     uint8_t* output,uint64_t output_count,uint32_t* failed,c71_byte::Tile t) {
     assert(c71_byte::valid(t,kind,input_count,output_count));
     return launch(s,[=] {
+        if(!expected_raw.empty()) {
+            assert(expected_raw.size()==input_count);
+            for(uint64_t index=0;index<input_count;++index) {
+                const int64_t value=kind==1?static_cast<const int16_t*>(input)[index]:static_cast<const int64_t*>(input)[index];
+                assert(value==expected_raw[index]);
+            }
+            expected_raw.clear();
+        }
         for(uint64_t i=0;i<t.rows*t.columns*t.width;++i) {
             const uint64_t address=c71_byte::ordered(t.original_first+i,t);
             if(address<t.window_first || address-t.window_first>=t.window_length) continue;
@@ -166,6 +179,59 @@ extern "C" int c71_dense_pointwise_launch(cudaStream_t s,const int16_t* x,const 
     });
 }
 
+extern "C" int c71_lookup_launch(cudaStream_t stream,const int16_t* input,const int16_t* table,
+    int16_t* output,int64_t* histogram,uint64_t count,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(uint64_t index=0;index<count;++index) {
+            int16_t value; uint32_t entry;
+            if(!c71_nonlinear::lookup(input[index],table,value,entry)) *failed=1;
+            else { output[index]=value; ++histogram[entry]; }
+        }
+    });
+}
+extern "C" int c71_histogram_seal_launch(cudaStream_t stream,int64_t* histogram,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(unsigned entry=0;entry<65535;++entry) {
+            if(histogram[entry]<0 || histogram[entry]>INT32_MAX) *failed=1;
+        }
+    });
+}
+extern "C" int c71_rope_launch(cudaStream_t stream,const int16_t* input,const int32_t* coefficients,
+    int64_t* output,c71_nonlinear::Rope shape,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(unsigned row=0;row<shape.rows;++row) for(unsigned head=0;head<shape.heads;++head)
+            for(unsigned pair=0;pair<shape.width/2;++pair) {
+                const auto first=(uint64_t(row)*shape.heads+head)*shape.width+pair,second=first+shape.width/2;
+                const int32_t cosine=pair<shape.pairs?coefficients[(row*shape.pairs+pair)*2]:1<<30;
+                const int32_t sine=pair<shape.pairs?coefficients[(row*shape.pairs+pair)*2+1]:0;
+                if(!c71_nonlinear::rotate(input[first],input[second],cosine,sine,output[first],output[second])) *failed=1;
+            }
+    });
+}
+extern "C" int c71_argmax_select_launch(cudaStream_t stream,const int16_t* input,uint32_t* tokens,
+    unsigned rows,unsigned columns,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(unsigned row=0;row<rows;++row) {
+            unsigned best=0;
+            for(unsigned column=0;column<columns;++column) {
+                if(input[uint64_t(row)*columns+column]==INT16_MIN) *failed=1;
+                if(input[uint64_t(row)*columns+column]>input[uint64_t(row)*columns+best]) best=column;
+            }
+            tokens[row]=best;
+        }
+    });
+}
+extern "C" int c71_argmax_slack_launch(cudaStream_t stream,const int16_t* input,const uint32_t* tokens,
+    int16_t* output,unsigned rows,unsigned columns,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(unsigned row=0;row<rows;++row) for(unsigned column=0;column<columns;++column) {
+            const auto index=uint64_t(row)*columns+column;
+            if(tokens[row]>=columns || !c71_nonlinear::slack(input[uint64_t(row)*columns+tokens[row]],
+                input[index],column,tokens[row],output[index])) *failed=1;
+        }
+    });
+}
+
 #ifdef C71_RANGE_FFI_TEST
 // Test library only; production exports neither error injection nor host math.
 extern "C" void c71_range_test_expect_bytes(const uint8_t* p,uint64_t n) {
@@ -177,6 +243,7 @@ extern "C" void c71_range_test_expect_raw(const int64_t* p,uint64_t n) {
 extern "C" void c71_range_test_failure(unsigned kind) {
     fail_launch=kind==1; fail_fence=kind==2; fail_free=kind==3; corrupt=kind==4;
     copy_fail_after=kind==5?0:kind==6?1:-1;
+    download_fail_after=kind==7?0:kind==8?1:-1;
 }
 #else
 

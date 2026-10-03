@@ -649,6 +649,18 @@ definitivamente l'owner. L'ABI 3 è verificata prima di leggere il ledger
 esteso; una libreria ABI 2 non viene accettata. Resta aperto il binding
 degli ID allo snapshot/tentativo del runner, come quello di W alla PCS;
 la parità ridotta non costituisce una nuova garanzia crittografica.
+Il controllo di appartenenza del buffer comprende ora l'identità del
+runtime Rust anche fra copie separate della libreria: un handle numerico
+coincidente non autorizza consumo o rilascio sul contesto sbagliato.
+Le nuove route GELU/softcap/RoPE/argmax leggono soltanto input originali
+e tabelle pubbliche, senza vedere correlazioni o transcript, senza nuovi
+MAC. Gli istogrammi restano pending fino alla copertura unica completa;
+il loro valore è il conteggio originale, non un conteggio già biased.
+Argmax mantiene lo slack privato e pubblica gli ID al chiamante solo dopo
+il controllo del flag e il fence della copia. Quegli ID non sono ancora
+token verificati: la promozione resta subordinata all'intera prova e al
+journal. La parità host con driver simulato e la compilazione sm_90 non
+scaricano il raffinamento concorrente CUDA o il binding agli snapshot.
 Il gather residente deriva indirizzi e bias dalle stesse tessere originali,
 senza vedere correlazioni o transcript. I controlli Rust richiedono una
 sola emissione di ogni riga delle sorgenti selezionate prima del seal;

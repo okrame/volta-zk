@@ -218,6 +218,15 @@ conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
 
+Il [record Affine/Gate residente](../../benchmarks/results/c71-pointwise-local-2026-10-03-e8566ae6e395.json)
+conserva 22 test Rust e 12 Python sulla SHA pulita, build/lint e libreria
+sm_90. Verifica 181 route Affine e 60 Gate per ciascuno dei tre contesti,
+una sola riga sintetica selezionata per operazione, raw CPU identico e RNE
+originale: non sono forward completi. L'arena della fixture è 8 MiB,
+senza W caricato. Il record corregge anche il rifiuto errato di −32768
+nel solo codec byte condiviso. Il kernel pointwise usa 18 registri,
+senza stack o spill; nessuna esecuzione GPU o certificato canonico.
+
 Il [record del gather residente](../../benchmarks/results/c71-byte-resident-local-2026-10-03-2f6d017b1c93.json)
 conserva 18 test Rust e 12 Python sulla SHA pulita, build/lint e libreria
 sm_90. Verifica 130 finestre sintetiche fino a 128 byte, codec i48/i32/i16,

@@ -1,0 +1,236 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-03",
+  "git_sha": "e8566ae6e395b559ce4a28592fbcd5cb773d528e",
+  "git_dirty": false,
+  "milestone": "Resident canonical Affine/Gate producers and correction of the full signed byte codec",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "weights_downloaded": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-byte-resident-local-2026-10-03-2f6d017b1c93.json",
+  "changes": [
+    "Canonical dispatcher now serves Matrix, RNE, Affine and Gate; pointwise inputs derive from original recipe/source ports, not a caller-chosen arithmetic relation",
+    "Reuse Bytes::affine_shape for raw/input codecs, identical geometry and coefficient envelope; select original resident row spans without copies",
+    "One pointwise kernel computes bounded integer aX+bY or XY into original signed-48 raw storage; raw and subsequent RNE storage stay separately charged",
+    "Zero affine coefficients require absent handles and cause no input loads; launch/fence/arithmetic failures poison the same native owner",
+    "ABI 2 loader additionally requires c71_dense_pointwise; no alternate transcript or CPU fallback"
+  ],
+  "codec_correction": {
+    "corrects": "benchmarks/results/c71-byte-resident-local-2026-10-03-2f6d017b1c93.json",
+    "issue": "The first native byte encoder rejected -32768 even though the argmax biased-u16 slack legitimately uses the full i16 range",
+    "change": "Byte encoding now accepts the full signed range of its width. Ordinary signed upload, dense/pointwise arithmetic and RNE still reject the i16 overflow marker",
+    "scope": "Host boundary test covers -32768 -> biased bytes 0,0. Resident argmax producer and full-run integration remain unimplemented"
+  },
+  "limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds_per_test_invocation": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "PYTHONDONTWRITEBYTECODE": 1
+  },
+  "build": {
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "working_directory": "rust",
+    "environment": {
+      "CARGO_TARGET_DIR": "/home/okrame/projects/volta-zk/rust/target",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_DEV_OPT_LEVEL": "2"
+    },
+    "exit_code": 0,
+    "clean_revision_cargo_seconds": 0.08,
+    "development_crate_build_seconds": 195,
+    "binary": "rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+    "provenance": "Final Rust sources built once in development and unchanged before clean-revision cached confirmation",
+    "development_directory": "benchmarks/raw/c71-pointwise-development-2026-10-03-349ea1a",
+    "warnings": "25 volta-pcs lib-test warnings preserved",
+    "cache_retained_until_goal_end": true
+  },
+  "clippy": {
+    "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --tests -- -D clippy::correctness -D clippy::suspicious",
+    "working_directory": "rust",
+    "exit_code": 0,
+    "clean_revision_cargo_seconds": 0.07,
+    "development_cargo_seconds": 16.87,
+    "warnings": "234 lib-test warnings, including 167 duplicates; not a security certification"
+  },
+  "rust_checks": [
+    {
+      "filter": "c71_canonical_resident",
+      "passed": 7,
+      "harness_seconds": 6.49,
+      "exit_code": 0,
+      "log": "c71_canonical_resident.log"
+    },
+    {
+      "filter": "c71_canonical_ordered",
+      "passed": 2,
+      "harness_seconds": 0.78,
+      "exit_code": 0,
+      "log": "c71_canonical_ordered.log"
+    },
+    {
+      "filter": "c71_b12_native_canonical",
+      "passed": 5,
+      "harness_seconds": 5.88,
+      "exit_code": 0,
+      "log": "c71_b12_native_canonical.log"
+    },
+    {
+      "filter": "c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs",
+      "passed": 1,
+      "harness_seconds": 0.66,
+      "exit_code": 0,
+      "log": "c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs.log"
+    },
+    {
+      "filter": "c71_b12_gemma_affine_zero_target_and_rne_share_original_ragged_source_bytes",
+      "passed": 1,
+      "harness_seconds": 2.35,
+      "exit_code": 0,
+      "log": "c71_b12_gemma_affine_zero_target_and_rne_share_original_ragged_source_bytes.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_byte",
+      "passed": 1,
+      "harness_seconds": 2.76,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_byte.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_signed",
+      "passed": 1,
+      "harness_seconds": 1.8,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_signed.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_failure",
+      "passed": 1,
+      "harness_seconds": 0.84,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_failure.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_dense_chain",
+      "passed": 1,
+      "harness_seconds": 0.78,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_dense_chain.log"
+    },
+    {
+      "filter": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+      "passed": 1,
+      "harness_seconds": 12.27,
+      "exit_code": 0,
+      "log": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs.log"
+    },
+    {
+      "filter": "c71_b12_gemma_gate_up_product_and_both_rne_keep_original_macs_in_one_ranged_source",
+      "passed": 1,
+      "harness_seconds": 1.85,
+      "exit_code": 0,
+      "log": "gate-proof.log"
+    }
+  ],
+  "rust_command_template": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 FILTER --test-threads=1 --nocapture'",
+  "python_checks": [
+    {
+      "file": "tests/test_c71_range_native.py",
+      "passed": 2,
+      "harness_seconds": 1.98,
+      "exit_code": 0,
+      "log": "test_c71_range_native.log"
+    },
+    {
+      "file": "tests/test_c71_dense_i16.py",
+      "passed": 1,
+      "harness_seconds": 0.79,
+      "exit_code": 0,
+      "log": "test_c71_dense_i16.log"
+    },
+    {
+      "file": "tests/test_c71_docs.py",
+      "passed": 9,
+      "harness_seconds": 0.51,
+      "exit_code": 0,
+      "log": "test_c71_docs.log"
+    }
+  ],
+  "python_command_template": "env PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider FILE'",
+  "coverage": {
+    "canonical_dispatch": {
+      "slots": [
+        0,
+        1,
+        2
+      ],
+      "affine_routes_per_slot": 181,
+      "gate_routes_per_slot": 60,
+      "total_raw_operations": 723,
+      "selected_rows_per_operation": 1,
+      "host_fixture_arena_bytes": 8388608,
+      "weights_loaded_bytes": 0
+    },
+    "positive": "Each canonical pointwise route selects its last source row from a two-row resident block, emits raw compared exactly with CPU affine / i128 gate reference by a fake-driver hook, then runs its original RNE recipe. Gamma uses zero-scale fixtures except Pi=-14; inputs are synthetic, not inference values. No H2D between prepared input and output; each raw/RNE pair downloads two 4-byte flags. Explicit release restores zero live capacity.",
+    "extra": "Ragged 3x3 fixture distinguishes selected row values and tests both-zero, first-zero, second-zero affine terms and coefficients +/-2^30. Existing 130 byte-window and Matrix/RNE adapter checks remain green.",
+    "negative": "12 Rust pointwise rejections cover original identities, row coverage, raw codec, coefficient bounds, arity and injected launch/fence/flag errors. C owner adds 14 pointwise rejections; previous 13 range, 23 dense and 19 byte rejection cases remain.",
+    "host_math": "216 affine/gate boundary combinations compared with independent i128 arithmetic under UBSan, plus invalid coefficient/mode cases. Ordinary active INT16_MIN operands rejected; zero terms do not read them.",
+    "limitations": "Resident operation types 4/13 is a component inventory, not a goal completion percentage. No full native scanner or full forward/proof. CPU affine/gate MAC/PCS proof regressions do not constitute proofs produced by the new native dispatcher. No actual calibrated Gamma, GPU execution, complete physical ledger or canonical certificates."
+  },
+  "cuda_static": {
+    "command": "/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC -Xptxas=-v cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_range_runtime.cpp -o libc71_pointwise.so",
+    "toolkit": "12.9.1 / nvcc 12.9.86, existing toolkit reused",
+    "toolkit_provenance": "benchmarks/results/c71-local-cuda-static-2026-09-13-ef2cdabc1afa.json",
+    "exit_code": 0,
+    "wall_seconds": 2.49,
+    "required_export": "c71_dense_pointwise",
+    "pointwise_registers": 18,
+    "pointwise_stack_bytes": 0,
+    "pointwise_spill_bytes": 0,
+    "execution": false
+  },
+  "checks_additional": [
+    "rustfmt --check passed for all three changed Rust files",
+    "git diff --check passed",
+    "Clean tree confirmed before and after final checks"
+  ],
+  "unexpected_test_failures": [],
+  "raw_directory": "benchmarks/raw/c71-pointwise-2026-10-03-e8566ae6e395",
+  "sha256": {
+    "build.log": "6d95c80f43be6e59ba659a7fda642d6ce929309151aeb679874ef8acb18b7a05",
+    "c71_b12_gemma_affine_zero_target_and_rne_share_original_ragged_source_bytes.log": "eec304c81f84079719630f45fef649f193c76f8790e71144f9f1dca27253b42d",
+    "c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs.log": "eed21db406b5695aaae54302252b8aba6884eb412ea068140841498818b6e850",
+    "c71_b12_native_canonical.log": "cc29af9d355b1ddce1fc7d9afb4f45f018c4c113d371e08e3c766e3948e3da14",
+    "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs.log": "0199a1f19cf0a34f11cd9874c5572e605992762b6baee26e1ae6eb6f039c2717",
+    "c71_b12_windowed_native_byte.log": "438aa655af2b7833bf4157f627df8521b61f9c6b47cb2e3a7ec84c52aa96614e",
+    "c71_b12_windowed_native_dense_chain.log": "753a575390ae5801ef06de8f78626ff73e213b4cde4ae3967563b5444cfc9855",
+    "c71_b12_windowed_native_failure.log": "7e51b9c0358dfa34422141eefac4501c5e9a5ab7a4033afe57e8107d54f9bdde",
+    "c71_b12_windowed_native_signed.log": "3d8d5ff9f952f34541242a982587d62f78ae576c7fb2c8e44b511af44376b12b",
+    "c71_canonical_ordered.log": "1d634b64255c11e6f703641292c87e28479cd8d9c957b1c3739df00b881a235e",
+    "c71_canonical_resident.log": "df2b60c8d21d3a1192b2eb7ee92b5e317f4c26ba80b16c3b99872e5180723681",
+    "clippy.log": "97f23c63fc46586311b0cd5e6179434942798c0f38a4f85ccaa63f87f753e969",
+    "gate-proof.log": "5e4b50beaebd1f867039b4e9bd17a0a836d3b2e5709ca6c94cb99d7f882c81b1",
+    "kernels.sass": "40e0bb1faa2fa74daf1699c6621c77067d067a10e5f0a2dbf0b9e5c246231dd3",
+    "libc71_pointwise.so": "ebe93987b45b4c71139a1ab8da61effb2cd6a0015926cb3093a1196da91b6e66",
+    "nvcc.log": "7d66f1a16e6f72b98c05036efc2bc384b94549ae0d37826935b1dd4c985f50e9",
+    "symbols.log": "a396844d8c3ebcd0b87eb1b9f90c9f060195677d92040777ce03cfc1b450314d",
+    "test_c71_dense_i16.log": "ac0988b070cfb8585ee6cce3a7e8654f43da14bf7e316bc0b9277c6ad43db855",
+    "test_c71_docs.log": "c53df372efb7516cffa1b0acb8de284c98418806b68b0d1cb75bf43b67e0fc97",
+    "test_c71_range_native.log": "41cd37382a67245e88f3eef44d011af42b4983ce1c563ba57b155223c8a4be70",
+    "volta_pcs-1b032d88c9000486": "6aa12a79376b0deed9ad50739d9d8fa49448b2d3c707289042fe808b16abd43f"
+  },
+  "remaining_local_work": [
+    "Implement nine remaining producer types: Embedding, Norm, Gelu, Rope, Qk, Softmax, Pv, Softcap, Argmax",
+    "Connect resident producers and byte gather to full canonical replay and original PCS/range consumers",
+    "Bind resident W to PCS installation and snapshot/attempt lifecycle, integrate GPU PCS/EXP30/range/real-AES Seed6 and complete simultaneous CPU/HBM accounting",
+    "Verify complete canonical composition; retain explicit Seed6 obligations and known analytic continuation above 40 MB"
+  ],
+  "external_restrictions": "GPU, weight downloads, provider operations and spending remain unauthorized; RunPod hard stop unchanged. Remaining local implementation is not an external hardware blocker."
+}

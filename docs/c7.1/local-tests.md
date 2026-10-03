@@ -217,6 +217,13 @@ conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
 
+Il [record del gather residente](../../benchmarks/results/c71-byte-resident-local-2026-10-03-2f6d017b1c93.json)
+conserva 18 test Rust e 12 Python sulla SHA pulita, build/lint e libreria
+sm_90. Verifica 130 finestre sintetiche fino a 128 byte, codec i48/i32/i16,
+ordine esatto e 11 rifiuti Rust. L'entry point canonico esegue solo 128 byte
+di padding esterno D34, non un replay completo. Il kernel gather compilato
+usa 32 registri, senza stack o spill; nessuna esecuzione CUDA acquisita.
+
 Il [record dell'adapter residente](../../benchmarks/results/c71-resident-adapter-local-2026-10-03-c8254c74b41e.json)
 conserva 15 test Rust e 12 Python sulla SHA pulita, build e lint
 `correctness`/`suspicious`. Collega Matrix/RNE all'owner nativo su un

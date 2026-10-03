@@ -1,0 +1,221 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-03",
+  "git_sha": "2f6d017b1c9328c202f02460faaac89504ec20f0",
+  "git_dirty": false,
+  "milestone": "Resident biased-byte windows from original producer tiles, with coverage and fenced publication",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "weights_downloaded": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-resident-adapter-local-2026-10-03-c8254c74b41e.json",
+  "changes": [
+    "Bytes::resident_tiles reuses the original dyadic byte layout; ByteWindow selects public intersecting source tiles and checks layout/recipe/source/shape and unique complete row coverage",
+    "Native gather reads resident i16 or i64 producer blocks, preserves biased i16/i32/i48 bytes and range address rotation, and zero-fills only the external padding",
+    "Pending output is rejected by range; one sticky arithmetic flag per window is fenced and checked before the handle becomes u8",
+    "Input release/reuse remains ordered on the original stream; pending output release also retires its flag without claiming arena deallocation",
+    "Canonical exposes the same window adapter for D34 metadata; full resident replay and PCS/range consumer integration remain open"
+  ],
+  "limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds_per_test_invocation": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "PYTHONDONTWRITEBYTECODE": 1
+  },
+  "build": {
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "working_directory": "rust",
+    "environment": {
+      "CARGO_TARGET_DIR": "/home/okrame/projects/volta-zk/rust/target",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_DEV_OPT_LEVEL": "2"
+    },
+    "exit_code": 0,
+    "clean_revision_cargo_seconds": 0.07,
+    "development_crate_build_seconds": [
+      193,
+      193
+    ],
+    "binary": "rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+    "provenance": "Final Rust sources built in development build-2, unchanged before clean-revision cached confirmation; build-1 predates formatting and the canonical external-padding check",
+    "development_directory": "benchmarks/raw/c71-byte-resident-development-2026-10-03-c8f9c28",
+    "warnings": "25 volta-pcs lib-test warnings preserved",
+    "cache_retained_until_goal_end": true
+  },
+  "clippy": {
+    "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --tests -- -D clippy::correctness -D clippy::suspicious",
+    "working_directory": "rust",
+    "exit_code": 0,
+    "clean_revision_cargo_seconds": 0.08,
+    "development_cargo_seconds": 17.3,
+    "warnings": "233 lib-test warnings, including 166 duplicates; style/dead-code warnings are not security certification"
+  },
+  "rust_checks": [
+    {
+      "filter": "c71_canonical_resident",
+      "passed": 5,
+      "harness_seconds": 4.06,
+      "exit_code": 0,
+      "log": "c71_canonical_resident.log"
+    },
+    {
+      "filter": "c71_canonical_ordered",
+      "passed": 2,
+      "harness_seconds": 0.8,
+      "exit_code": 0,
+      "log": "c71_canonical_ordered.log"
+    },
+    {
+      "filter": "c71_b12_native_canonical",
+      "passed": 5,
+      "harness_seconds": 5.87,
+      "exit_code": 0,
+      "log": "c71_b12_native_canonical.log"
+    },
+    {
+      "filter": "c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs",
+      "passed": 1,
+      "harness_seconds": 0.66,
+      "exit_code": 0,
+      "log": "c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_byte",
+      "passed": 1,
+      "harness_seconds": 2.68,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_byte.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_signed",
+      "passed": 1,
+      "harness_seconds": 1.76,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_signed.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_failure",
+      "passed": 1,
+      "harness_seconds": 0.79,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_failure.log"
+    },
+    {
+      "filter": "c71_b12_windowed_native_dense_chain",
+      "passed": 1,
+      "harness_seconds": 0.74,
+      "exit_code": 0,
+      "log": "c71_b12_windowed_native_dense_chain.log"
+    },
+    {
+      "filter": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+      "passed": 1,
+      "harness_seconds": 12.28,
+      "exit_code": 0,
+      "log": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs.log"
+    }
+  ],
+  "rust_command_template": "env RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 FILTER --test-threads=1 --nocapture'",
+  "python_checks": [
+    {
+      "file": "tests/test_c71_range_native.py",
+      "passed": 2,
+      "harness_seconds": 1.84,
+      "exit_code": 0,
+      "log": "test_c71_range_native.log"
+    },
+    {
+      "file": "tests/test_c71_dense_i16.py",
+      "passed": 1,
+      "harness_seconds": 0.78,
+      "exit_code": 0,
+      "log": "test_c71_dense_i16.log"
+    },
+    {
+      "file": "tests/test_c71_docs.py",
+      "passed": 9,
+      "harness_seconds": 0.48,
+      "exit_code": 0,
+      "log": "test_c71_docs.log"
+    }
+  ],
+  "python_command_template": "env PYTHONDONTWRITEBYTECODE=1 RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 bash -c 'ulimit -v 2097152; timeout -k 5s 60s .venv/bin/python -m pytest -q -p no:cacheprovider FILE'",
+  "coverage": {
+    "resident_windows": 130,
+    "max_executed_window_bytes": 128,
+    "codecs": [
+      6,
+      2,
+      4
+    ],
+    "positive": "Three synthetic 3x3 source shapes, original dyadic tiles, signed boundary-like values, identity product and RNE through the shared owner. Split/out-of-order row blocks, all tested window permutations compared byte-for-byte by a deferred fake-driver observation hook and by scalar fraction-tree root. Root equality alone is permutation-invariant and would be insufficient.",
+    "transfers": "After resident producers are prepared, 130 windows add no H2D and no intermediate array D2H; each downloads a 4-byte flag and a 48-byte scalar root. Per-window release restores baseline live capacity.",
+    "canonical_metadata": "Actual Canonical adapter executes only a 128-byte all-external-padding window at the end of D34, with no W loaded; unsupported embedding and incomplete W remain rejected.",
+    "negative": "11 Rust gather rejections cover wrong layout/recipe/rows/columns/source, duplicate/missing rows, pending input use, launch/fence/flag failure. Existing 14 Matrix/RNE adapter rejections and canonical negative checks remain green.",
+    "host_owner": "UBSan tests 19 gather rejections, independent biased-addition codec boundaries, exact byte order, deferred scatter before source release/reuse, pending flag cleanup; previous 13 range and 23 dense rejections remain. Maximum arena 262144 bytes.",
+    "limitations": "The integration proof regression is CPU/small-profile, not a proof consuming this new ByteWindow. No full canonical positive forward, full resident scanner, kernel execution, or complete physical accounting. Kernel enumerates bytes of selected row/tile spans and filters addresses outside the window; not a proven optimal gather workload."
+  },
+  "cuda_static": {
+    "command": "/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC -Xptxas=-v cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_range_runtime.cpp -o libc71_bytes.so",
+    "toolkit": "12.9.1 / nvcc 12.9.86, existing toolkit reused",
+    "toolkit_provenance": "benchmarks/results/c71-local-cuda-static-2026-09-13-ef2cdabc1afa.json",
+    "exit_code": 0,
+    "wall_seconds": 2.46,
+    "required_exports": [
+      "c71_byte_begin",
+      "c71_byte_scatter",
+      "c71_byte_seal"
+    ],
+    "gather_registers": 32,
+    "gather_stack_bytes": 0,
+    "gather_spill_bytes": 0,
+    "dense_registers": 56,
+    "rne_registers": 16,
+    "execution": false
+  },
+  "checks_additional": [
+    "rustfmt --check passed on the three modified Rust files",
+    "git diff --check passed",
+    "Clean tree confirmed before and after final checks"
+  ],
+  "unexpected_test_failures": [],
+  "development_incidents": [
+    "An initial rustfmt command used a root-relative path from the rust directory and reported file missing; Cargo still completed. The later formatting check identified the newly added wrapper signature; formatting was applied before build-2. No failed protocol/unit test or timeout."
+  ],
+  "raw_directory": "benchmarks/raw/c71-byte-resident-2026-10-03-2f6d017b1c93",
+  "sha256": {
+    "build.log": "cc9491a44519747147246914c31d7a59d42c068558fe8e965af5853ef3d6e27c",
+    "c71_b12_gemma_biased_bytes_open_original_i48_i32_i16_macs.log": "cc7035f1c6d8d9f71162d0abcd965bb852cd1bce64944441e5d3037a932a030e",
+    "c71_b12_native_canonical.log": "94ee76ff4a400e969e51911983680e685392ff1552b2fa6d0cbe6a8db6ee8331",
+    "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs.log": "9842df53d5b39d015d2d26161964d157c8a1364c5cea0d9be66ed9b2487a68fb",
+    "c71_b12_windowed_native_byte.log": "dc98b63988564a5b967f702e57d3228816f77eeb589e56f8105a1190e443cfe5",
+    "c71_b12_windowed_native_dense_chain.log": "4d4fd7d94bb7185c41f201ab0d090dad0147cb37418f707375643a753852e579",
+    "c71_b12_windowed_native_failure.log": "84e20c78385395d5db15311b844a4b11b751e949f011aceed8f2c5bb852e4cc5",
+    "c71_b12_windowed_native_signed.log": "78699f2e785aa07843fab260658c2ca62a4c55fd0580296cda44f3fe3338ba23",
+    "c71_canonical_ordered.log": "8ea7c6820597b9fc2bdd769ff2275c620ea75be2ee355c8e3d926e501f053d72",
+    "c71_canonical_resident.log": "b2f4c1d5b14e2401b6e4f8a98572d9bdcb102d267c9f4d5e71d790cb18227273",
+    "clippy.log": "04d0d69d446aea976d45537919ea9b24efbf3125d2ded6f5664eeb92cac4e8e1",
+    "kernels.sass": "7be89eda476118116ce379d83e4f21662c5823304c81c7688b09bd279842a178",
+    "libc71_bytes.so": "894170561607c29b9d1788c3a2098f887dbdc22bd9e97d4cc88c8a0f37d0a0e9",
+    "nvcc.log": "bb3dc10002e120e5038939b8caac4396cbaab492f90d3a9f68bf4409b84390f7",
+    "symbols.log": "dd006251a9567698c49cacd820a1a2e85292ecf231bb8934c7fd53454898275a",
+    "test_c71_dense_i16.log": "fedceb118a93f8e9bed4f5b262246c28f6bfdace0d13713f5045fa2fb6554486",
+    "test_c71_docs.log": "9324d7f9c3371c89ada765dc1a020c1a71c806c73430afb70866285c94b13b80",
+    "test_c71_range_native.log": "ef2ded53ad68c38ba562aa65a30236b1ea428a2a0b327c2d38fb364af823fdaa",
+    "volta_pcs-1b032d88c9000486": "f9ef9a6fc6c80de749dbe7c84fe86487a63737976eccef3d376ac7be17ac9a05"
+  },
+  "remaining_local_work": [
+    "Implement remaining resident producers and connect ByteWindow to full canonical replay and the original PCS/range consumers",
+    "Bind resident W to PCS installation and enforce snapshot/attempt lifecycle through the runner",
+    "Integrate GPU PCS/EXP30/range/real-AES Seed6 and complete simultaneous CPU/HBM accounting including Rust coverage bitmaps and metadata",
+    "Verify complete canonical composition; Seed6 obligations stay explicit and analytic continuation above 40 MB remains a known negative"
+  ],
+  "external_restrictions": "GPU, weight downloads, provider operations and spending remain unauthorized; RunPod hard stop unchanged. Remaining local implementation is not an external hardware blocker."
+}

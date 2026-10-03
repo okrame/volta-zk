@@ -1,0 +1,83 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-03",
+  "git_sha": "dacbd64425f1a1ad2ba75acfea8e9ccf86d3c70e",
+  "git_dirty": false,
+  "milestone": "exact signed i16 dense Tensor Core primitive, not producer integration",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "weights_downloaded": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-range-rust-local-2026-10-03-a7a644cd563d.json",
+  "sources": ["cuda/c71_dense_i16.cuh", "cuda/c71_dense_i16.cu", "cuda/c71_dense_i16_host.cpp", "tests/test_c71_dense_i16.py"],
+  "arithmetic": {
+    "split": "x = 256*h + l + 128, signed int8 h/l",
+    "composition": "65536*HH + 256*(HL+LH) + LL + 128*(sumX+sumW) - 16384*paddedK",
+    "fragment_reference": "https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#warp-level-matrix-fragment-mma-16832",
+    "input_layout": "X[M,K] and W[N,K], original row-major i16, no global repack",
+    "max_shape": [150, 262144, 21504],
+    "max_abs_int8_accumulator": 352321536,
+    "rounding": "none; original producer RNE remains separate and unchanged",
+    "invalid_input": "-32768 sets a sticky flag; caller must initialize, fence and check before any consumer",
+    "guards": "shape, declared capacities, alignment, pointer span overflow, no output/error/input overlap; read-only input alias permitted"
+  },
+  "build": {
+    "command": "/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC -Xptxas=-v cuda/c71_dense_i16.cu -o benchmarks/raw/c71-dense-i16-2026-10-03-dacbd64425f1/libc71_dense_i16.so",
+    "toolkit_provenance": "benchmarks/results/c71-local-cuda-static-2026-09-13-ef2cdabc1afa.json",
+    "exit_code": 0,
+    "shell_real_seconds": 0.47,
+    "registers": 56,
+    "stack_bytes": 0,
+    "spill_store_bytes": 0,
+    "spill_load_bytes": 0,
+    "barriers": 0,
+    "sass_static_imma_16832_s8_s8_instructions": 4,
+    "export": "c71_dense_i16_launch",
+    "execution": "compile and cuobjdump/nm inspection only, no CUDA loading or launch"
+  },
+  "limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds_per_test_invocation": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "PYTHONDONTWRITEBYTECODE": 1
+  },
+  "checks": [
+    {"command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_dense_i16.py", "exit_code": 0, "passed": 1, "harness_seconds": 0.69},
+    {"command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py", "exit_code": 0, "passed": 9, "harness_seconds": 0.48}
+  ],
+  "host_model": {
+    "compiler_flags": "g++ -std=c++17 -O2 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all",
+    "split_values": 65535,
+    "matrix_cases": 40,
+    "reference": "independent original-i16 dot products accumulated in __int128",
+    "patterns": ["zero", "both -32767", "32767 times -32767", "mixed boundary values"],
+    "shapes": [[1,1,1],[1,1,31],[3,7,32],[9,9,33],[17,35,65],[33,17,127],[1,1,5376],[1,1,21503],[1,1,21504],[150,9,3]],
+    "max_k_executed": 21504,
+    "max_shape_descriptor_only": true,
+    "limitations": "Host fragment/shuffle arithmetic model, not execution of the CUDA kernel, scheduling, race validation, Lean refinement or canonical inference"
+  },
+  "raw_directory": "benchmarks/raw/c71-dense-i16-2026-10-03-dacbd64425f1",
+  "sha256": {
+    "compile.log": "8119a5efae1c0ad4c37eea3e9f946858a58bdb7111dcf1d50c1d1642dbed8aa1",
+    "dense.sass": "69470efb8a5ad18a2c523c0b75fd07849efd032a3ce7e53b9942fd069cd53fc7",
+    "docs-test.log": "9324d7f9c3371c89ada765dc1a020c1a71c806c73430afb70866285c94b13b80",
+    "host-test.log": "3b48e0860dc023141693c4f77181cda5b340fb20a1a3707eedab872d4f8fa2ba",
+    "libc71_dense_i16.so": "3bc71e2ac471db54ab5341f57bff156027c7511d3717794fe9859bd2ca1dc3b0",
+    "symbols.log": "1f4a176c36bfeaafb95176cd9ca8c52630f9f49dc73ec1a3d6ac696e7cc073fa"
+  },
+  "failures": [],
+  "remaining_local_work": [
+    "Resident shared W owner, bounded producer batch adapter, terminal flag handling, and Rust integration",
+    "Complete GPU pipeline including EXP30, PCS and real/AES Seed6; no legacy scalar fallback",
+    "Simultaneous physical resource accounting across preparation, prover, verifier, PCS and correlations",
+    "Seed6 proof obligations remain open; analytic continuation above 40 MB remains a known negative"
+  ],
+  "external_restrictions": "No GPU, weights, pods or spending authorized. RunPod hard stop unchanged. Canonical validation remains 0/3; local work above is not an external blocker.",
+  "rust_cache": "Retained until goal end under explicit owner authorization; no Rust source change or Rust rebuild in this checkpoint"
+}

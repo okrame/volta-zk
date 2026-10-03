@@ -219,6 +219,9 @@ frammenti, somme dei lane, bordi/padding, marcatore −32768 e guardie dei
 buffer. K massimo eseguito è 21.504 su una matrice 1x1, non una proiezione
 canonica. La compilazione sm_90 di `cuda/c71_dense_i16.cu` non esegue GPU,
 non verifica l'owner mancante e non misura GEMM o inference complete.
+Il [record locale](../../benchmarks/results/c71-dense-i16-local-2026-10-03-dacbd64425f1.json)
+conserva 10 controlli passati, hash degli artefatti e quattro istruzioni
+IMMA statiche nel SASS; nessuna misura GPU o certificato canonico.
 
 Il test [test_c71_range_native.py](../../tests/test_c71_range_native.py),
 eseguito separatamente con il limite 60 s/2 GiB sopra, compila un controllo

@@ -618,6 +618,16 @@ cleanup, senza continuazione CPU. La libreria è codice locale fidato,
 non un input fornito dal certificato. I kernel non vedono transcript o
 correlazioni. Questi controlli non provano la concorrenza CUDA, la correttezza
 delle riduzioni CAS reali o l'esecuzione GPU: restano obblighi da verificare.
+Il consumer range può ora trattenere il lock esclusivo dell'owner condiviso
+per l'intera prova. `Runtime` è trasferibile fra thread, non condivisibile
+senza mutex: il contesto CUDA seleziona il device a ogni operazione e al
+cleanup, i simboli della libreria rimangono validi fino al drop e nessun
+puntatore device viene esportato. Il reader residente opera sul medesimo
+runtime già bloccato, senza riacquisirlo e senza ricevere sfide o MAC.
+Il guard ferma l'owner su errore, panic o uscita senza finalizzazione;
+la finalizzazione preserva la capacità delle sorgenti e W. La parità
+ridotta chiude ancora sugli originali, non su MAC nuovi dei byte ricostruiti.
+Questo collegamento non costituisce il lifecycle completo degli snapshot.
 
 Il kernel denso i16 conserva la somma di prodotti interi mediante split
 signed a due byte, quattro prodotti INT8 e correzioni affini esatte;

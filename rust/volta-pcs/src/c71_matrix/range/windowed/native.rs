@@ -3,8 +3,19 @@
 use super::*;
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::mem::{size_of, size_of_val};
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::ptr;
+use std::sync::{Mutex, MutexGuard};
+
+pub(in crate::c71_matrix) type ResidentReader =
+    Arc<dyn Fn(&mut Runtime, usize, usize, usize, usize) -> Result<Buffer, String> + Send + Sync>;
+
+#[derive(Clone)]
+struct Resident {
+    runtime: Arc<Mutex<Runtime>>,
+    read: ResidentReader,
+}
 
 #[derive(Clone)]
 pub(in crate::c71_matrix) struct Config {
@@ -14,6 +25,25 @@ pub(in crate::c71_matrix) struct Config {
     pub reserve_bytes: u64,
     pub window_words: usize,
     pub buckets: u32,
+    resident: Option<Resident>,
+}
+
+impl Config {
+    pub(in crate::c71_matrix) fn with_resident(
+        mut self,
+        runtime: Arc<Mutex<Runtime>>,
+        read: ResidentReader,
+    ) -> Result<Self, String> {
+        {
+            let mut owner = runtime.lock().map_err(|_| "native owner poisoned")?;
+            owner.require_configuration(&self)?;
+            if self.resident.is_some() {
+                return owner.abort("native resident reader replacement");
+            }
+        }
+        self.resident = Some(Resident { runtime, read });
+        Ok(self)
+    }
 }
 
 #[repr(C)]
@@ -284,12 +314,30 @@ pub(in crate::c71_matrix) struct Runtime {
     stopped: bool,
     weights: Option<(Arc<Vec<i16>>, [u8; 32])>,
     owner: Arc<()>,
+    configuration: (PathBuf, i32, u64, u64),
 }
+
+unsafe impl Send for Runtime {}
+
 impl Runtime {
     pub(in crate::c71_matrix) fn new(config: &Config) -> Result<Self, String> {
+        if config.resident.is_some() {
+            return Err("resident configuration cannot create a second native owner".into());
+        }
         let api = Api::load(&config.library)?;
-        let mut s =
-            Self { api, raw: ptr::null_mut(), stopped: false, weights: None, owner: Arc::new(()) };
+        let mut s = Self {
+            api,
+            raw: ptr::null_mut(),
+            stopped: false,
+            weights: None,
+            owner: Arc::new(()),
+            configuration: (
+                config.library.clone(),
+                config.device,
+                config.arena_bytes,
+                config.reserve_bytes,
+            ),
+        };
         // SAFETY: owned pointer output; on error Drop also closes partial owners.
         let status = unsafe {
             (s.api.create)(config.device, config.arena_bytes, config.reserve_bytes, &mut s.raw)
@@ -306,6 +354,15 @@ impl Runtime {
         } else {
             Ok(())
         }
+    }
+    fn require_configuration(&mut self, config: &Config) -> Result<(), String> {
+        self.ready()?;
+        if self.configuration
+            != (config.library.clone(), config.device, config.arena_bytes, config.reserve_bytes)
+        {
+            return self.abort("native shared configuration differs");
+        }
+        Ok(())
     }
     fn require_buffer(&mut self, buffer: &Buffer) -> Result<(), String> {
         self.ready()?;
@@ -848,9 +905,70 @@ impl Drop for Runtime {
     }
 }
 
+enum Owner<'a> {
+    Owned(Runtime),
+    Shared { runtime: MutexGuard<'a, Runtime>, capacity: u64, finished: bool },
+}
+
+impl Deref for Owner<'_> {
+    type Target = Runtime;
+    fn deref(&self) -> &Runtime {
+        match self {
+            Self::Owned(runtime) => runtime,
+            Self::Shared { runtime, .. } => runtime,
+        }
+    }
+}
+
+impl DerefMut for Owner<'_> {
+    fn deref_mut(&mut self) -> &mut Runtime {
+        match self {
+            Self::Owned(runtime) => runtime,
+            Self::Shared { runtime, .. } => runtime,
+        }
+    }
+}
+
+impl<'a> Owner<'a> {
+    fn new(config: &'a Config) -> Result<Self, String> {
+        match &config.resident {
+            None => Ok(Self::Owned(Runtime::new(config)?)),
+            Some(resident) => {
+                let mut runtime = resident.runtime.lock().map_err(|_| "native owner poisoned")?;
+                runtime.require_configuration(config)?;
+                let capacity = runtime.stats()?.live_capacity_bytes;
+                Ok(Self::Shared { runtime, capacity, finished: false })
+            }
+        }
+    }
+
+    fn finish(&mut self) -> Result<Stats, String> {
+        match self {
+            Self::Owned(runtime) => runtime.close(),
+            Self::Shared { runtime, capacity, finished } => {
+                let stats = runtime.stats()?;
+                if stats.stopped != 0 || stats.live_capacity_bytes != *capacity {
+                    return runtime.abort("shared range changed retained source capacity");
+                }
+                *finished = true;
+                Ok(stats)
+            }
+        }
+    }
+}
+
+impl Drop for Owner<'_> {
+    fn drop(&mut self) {
+        if let Self::Shared { runtime, finished: false, .. } = self {
+            let _ = runtime.abort::<()>("shared range did not finish");
+        }
+    }
+}
+
 pub(super) struct Evaluator<'a, T> {
     source: &'a Source<T>,
-    runtime: Runtime,
+    runtime: Owner<'a>,
+    resident_read: Option<ResidentReader>,
     bits: usize,
     retained: usize,
     window: usize,
@@ -869,7 +987,7 @@ impl<'a, T: Word> Evaluator<'a, T> {
         source: &'a Source<T>,
         bits: usize,
         alpha: Fp3,
-        config: &Config,
+        config: &'a Config,
     ) -> Result<Self, String> {
         if !(1..=35).contains(&bits) {
             return Err("native range dimension differs".into());
@@ -887,7 +1005,8 @@ impl<'a, T: Word> Evaluator<'a, T> {
         }
         let mut e = Self {
             source,
-            runtime: Runtime::new(config)?,
+            runtime: Owner::new(config)?,
+            resident_read: config.resident.as_ref().map(|resident| resident.read.clone()),
             bits,
             retained,
             window,
@@ -899,7 +1018,7 @@ impl<'a, T: Word> Evaluator<'a, T> {
             gram: None,
             gram_end: 0,
             folded: 0,
-            work: Work::default(),
+            work: Work { native_shared: config.resident.is_some(), ..Work::default() },
         };
         let mut n = 1 << retained;
         let level = e.runtime.alloc(2, n)?;
@@ -937,6 +1056,25 @@ impl<'a, T: Word> Evaluator<'a, T> {
         bottom: usize,
         mut emit: impl FnMut(&mut Runtime, u64, usize) -> Result<(), String>,
     ) -> Result<(), String> {
+        if let Some(read) = self.resident_read.clone() {
+            self.work.named_evaluator_heap_peak_bytes = self
+                .work
+                .named_evaluator_heap_peak_bytes
+                .max(self.canopy.capacity() * size_of::<u64>() + size_of::<Self>());
+            self.work.source_passes += 1;
+            for first in (0..1usize << self.bits).step_by(self.window) {
+                let input = read(&mut self.runtime, suffix, bottom, first, self.window)?;
+                self.runtime.require_buffer(&input)?;
+                if input.kind != T::KIND || input.count != self.window {
+                    return self.runtime.abort("resident range window kind or size differs");
+                }
+                self.work.byte_windows += 1;
+                self.work.requested_bytes += (self.window * size_of::<T>()) as u64;
+                emit(&mut self.runtime, input.id, first)?;
+                self.runtime.release_buffer(input)?;
+            }
+            return Ok(());
+        }
         let mut words = allocate(self.window, T::default())?;
         let id = self.runtime.alloc(T::KIND, self.window)?;
         self.work.named_evaluator_heap_peak_bytes = self.work.named_evaluator_heap_peak_bytes.max(
@@ -1152,7 +1290,10 @@ impl<'a, T: Word> Evaluator<'a, T> {
         self.runtime.read(self.children.unwrap())
     }
     pub(super) fn finish(mut self) -> Result<Work, String> {
-        self.work.native = Some(self.runtime.close()?);
+        for id in self.canopy.drain(..).chain(self.children.take()).chain(self.gram.take()) {
+            self.runtime.release(id)?;
+        }
+        self.work.native = Some(self.runtime.finish()?);
         Ok(self.work)
     }
 }
@@ -1484,6 +1625,7 @@ pub(in crate::c71_matrix) mod tests {
                 reserve_bytes: 256,
                 window_words,
                 buckets: 3,
+                resident: None,
             },
             directory,
         }

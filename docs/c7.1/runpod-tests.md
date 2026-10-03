@@ -95,6 +95,9 @@ I kernel range e l'owner nativo di stream/arena sono compilabili insieme;
 ledger, capacità trattenute ed errori asincroni dell'owner hanno controlli
 con driver simulato. Il consumer Rust è ora collegato ai callback range
 con selezione esplicita della libreria, senza fallback. La parità locale
+include il gather residente sullo stesso owner del produttore, preservando
+W e sorgenti dopo il range senza seconda arena o upload delle finestre.
+Lo scanner canonico deve ancora fornire quelle finestre. La parità
 attraverso l'ABI usa algebra host simulata, non i kernel GPU. Integrazione
 del runner complessivo, altri consumer CUDA e contabilità simultanea restano
 lavoro locale; la verifica GPU richiede l'esperimento autorizzato.

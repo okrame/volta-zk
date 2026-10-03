@@ -86,6 +86,7 @@ pub(in crate::c71_matrix) struct Work {
     pub retained_levels: u64,
     pub named_evaluator_heap_peak_bytes: usize,
     pub native: Option<native::Stats>,
+    pub native_shared: bool,
 }
 
 fn allocate<T: Clone>(length: usize, value: T) -> Result<Vec<T>, String> {
@@ -620,12 +621,18 @@ pub(in crate::c71_matrix) mod tests {
         assert_eq!(work.requested_bytes, passes * (1 << bits) * core::mem::size_of::<T>() as u64);
         if source.native.is_some() {
             let stats = work.native.as_ref().unwrap();
-            assert_eq!(
-                (stats.arena_bytes, stats.live_capacity_bytes, stats.cleanup_failed),
-                (0, 0, 0)
-            );
+            if work.native_shared {
+                assert!(stats.arena_bytes > 0 && stats.live_capacity_bytes > 0);
+                assert_eq!((stats.stopped, stats.cleanup_failed), (0, 0));
+                assert!(stats.h2d_bytes < work.requested_bytes);
+            } else {
+                assert_eq!(
+                    (stats.arena_bytes, stats.live_capacity_bytes, stats.cleanup_failed),
+                    (0, 0, 0)
+                );
+                assert_eq!(stats.h2d_bytes, work.requested_bytes);
+            }
             assert!(stats.peak_capacity_bytes > 0 && stats.fences > 0 && stats.d2h_bytes > 48);
-            assert_eq!(stats.h2d_bytes, work.requested_bytes);
         } else {
             assert!(work.native.is_none());
         }
@@ -749,6 +756,120 @@ pub(in crate::c71_matrix) mod tests {
             let (mut source, values) = source(10, live);
             source.native = Some(fixture.config.clone());
             parity(10, live, source, values[..live].iter().map(|&v| i16::from(v)).collect(), 22);
+        }
+    }
+
+    #[test]
+    fn c71_b12_windowed_native_shared_resident_transcript_original_mac() {
+        use std::sync::Mutex;
+        let fixture = native::tests::fixture(512);
+        let runtime = Arc::new(Mutex::new(native::Runtime::new(&fixture.config).unwrap()));
+        let (_, values) = source(10, 731);
+        let words = values.iter().map(|&value| i16::from(value)).collect::<Vec<_>>();
+        let original = {
+            let mut owner = runtime.lock().unwrap();
+            owner.install_weights(Arc::new(vec![1, 2, 3]), [9; 32]).unwrap();
+            Arc::new(owner.upload_signed(&words).unwrap())
+        };
+        let before = runtime.lock().unwrap().stats().unwrap();
+        let config = fixture
+            .config
+            .clone()
+            .with_resident(
+                runtime.clone(),
+                Arc::new(move |owner, suffix, bottom, first, count| {
+                    let output = owner.byte_window(count)?;
+                    owner.scatter_bytes(
+                        &original,
+                        &native::ByteTile {
+                            input_first: 0,
+                            input_stride: 1024,
+                            rows: 1,
+                            columns: 1024,
+                            original_first: 0,
+                            window_first: first as u64,
+                            window_length: count as u64,
+                            byte_first: 0,
+                            width: 1,
+                            signed_width: 2,
+                            dimension: 10,
+                            suffix: suffix as u32,
+                            bottom: bottom as u32,
+                        },
+                        &output,
+                    )?;
+                    owner.seal_bytes(output)
+                }),
+            )
+            .unwrap();
+        assert!(native::Runtime::new(&config).is_err());
+        for _ in 0..2 {
+            let (mut source, _) = source(10, 731);
+            source.read = Arc::new(|_, _, _, _| panic!("resident proof called host reader"));
+            source.native = Some(config.clone());
+            parity(10, 731, source, words[..731].to_vec(), 22);
+            let after = runtime.lock().unwrap().stats().unwrap();
+            assert_eq!(after.h2d_bytes, before.h2d_bytes);
+            assert_eq!(after.weights_bytes, before.weights_bytes);
+            assert_eq!(after.arena_bytes, before.arena_bytes);
+            assert_eq!(after.live_capacity_bytes, before.live_capacity_bytes);
+            assert_eq!(after.allocations - before.allocations, after.releases - before.releases);
+        }
+        drop(config);
+        runtime.lock().unwrap().close().unwrap();
+    }
+
+    #[test]
+    fn c71_b12_windowed_native_shared_failures_stop_common_owner() {
+        use std::sync::Mutex;
+        let fixture = native::tests::fixture(512);
+        for fault in 0..5 {
+            let runtime = Arc::new(Mutex::new(native::Runtime::new(&fixture.config).unwrap()));
+            let (mut source, values) = source(10, 731);
+            let mut config = fixture
+                .config
+                .clone()
+                .with_resident(
+                    runtime.clone(),
+                    Arc::new(move |owner, _, _, _, count| match fault {
+                        0 => Err("resident reader failed".into()),
+                        1 => owner.byte_window(count),
+                        2 => owner.upload_signed(&vec![0; count]),
+                        _ => {
+                            let output = owner.byte_window(count / 2)?;
+                            owner.seal_bytes(output)
+                        }
+                    }),
+                )
+                .unwrap();
+            if fault == 4 {
+                config.reserve_bytes += 256;
+            }
+            source.read = Arc::new(|_, _, _, _| panic!("failed resident reader fell back"));
+            source.native = Some(config);
+            let model = Model::new_in(
+                Domain::Flat(10),
+                values[..731].iter().map(|&value| i16::from(value)).collect(),
+            )
+            .unwrap();
+            let count = required(10, Alphabet::Byte);
+            let mut correlations = rows(count).into_iter();
+            assert!(prove(
+                model.domain,
+                &model.root,
+                context(),
+                [9; 32],
+                731,
+                &source,
+                &mut Fs::new(b"shared range failed", 100_000),
+                &mut correlations
+            )
+            .is_err());
+            assert_eq!(correlations.len(), count - 256);
+            let mut owner = runtime.lock().unwrap();
+            assert_eq!(owner.stats().unwrap().stopped, 1);
+            assert!(owner.upload_signed(&[1]).is_err());
+            owner.close().unwrap();
         }
     }
 

@@ -501,12 +501,26 @@ seleziona esplicitamente libreria locale fidata, device, arena/riserva,
 finestra originale e bucket H. L'ABI è controllata prima di creare l'owner;
 la rappresentazione Rust Fp3 non viene reinterpretata: si copiano i limb
 canonici tramite strutture C. Solo u8/i16 implementano il tipo di upload.
-L'owner vive fino alla fine della prova range; il cleanup riuscito è
-richiesto prima di restituire la prova. Gli errori non selezionano CPU.
+Il percorso standalone possiede l'owner fino alla fine della prova range;
+il cleanup riuscito è richiesto prima di restituire la prova. Il percorso
+`Config::with_resident` prende invece lo stesso `Arc<Mutex<Runtime>>` del
+produttore e un reader di finestre residenti: non crea una seconda arena
+e non chiama il reader host. Libreria/device/arena/riserva devono coincidere
+con l'owner originale, anche dopo modifiche alla configurazione.
+Il reader riceve soltanto geometria pubblica e runtime, restituisce un
+buffer originale sigillato del tipo/dimensione esatti; il consumer lo
+rilascia dopo ogni finestra. Tutti i temporanei range sono rilasciati a
+fine prova, senza chiudere W o sorgenti trattenute. La capacità viva deve
+tornare al valore d'ingresso. Un reader fallito, errore o uscita incompleta
+ferma il runtime condiviso; non seleziona CPU.
 Canopy e figli condividono lo stesso buffer nativo quando cambia la vista;
 H usa fold distinti, rilasciati in ordine sullo stream. Le finestre host
 vengono riusate solo dopo il fence di upload. `Work.native` espone il ledger
-parziale dell'owner, non una misura fisica completa. Il runner conserva
+parziale dell'owner, non una misura fisica completa. Con `native_shared:true`
+è cumulativo dalla creazione dell'owner, non un delta per prova; il chiamante
+deve registrare i confini di fase senza sommare ripetutamente i picchi.
+Il test ridotto collega gather residente, range/GKR e PCS sui MAC originali
+due volte sullo stesso owner, senza nuovo H2D delle sorgenti. Il runner conserva
 la configurazione CPU esplicita precedente e non ammette ancora GPU E2E.
 
 Il primo scan completo del commitment byte conserva 256 contatori u64,

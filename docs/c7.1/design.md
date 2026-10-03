@@ -150,6 +150,10 @@ stesse sorgenti byte/signed. Root, cubiche e terminali passano ai callback
 fallibili del prover esistente: nessun secondo transcript o fallback CPU.
 La parità ridotta usa una libreria host con driver simulato; non esegue
 CUDA. Il runner GPU completo e la verifica sui kernel reali restano aperti.
+Il range può anche consumare finestre già residenti sullo stesso owner
+del produttore: lock esclusivo, nessuna seconda arena/upload, rilascio dei
+temporanei prima di restituire la prova e arresto comune su errore. Il
+collegamento al replay canonico e alla promozione rimane da completare.
 La riduzione H con CAS, Eq per indice
 e lo stack locale del kernel coefficienti richiedono contabilità e misura;
 non ereditano il tempo o i conteggi dello screen storico.

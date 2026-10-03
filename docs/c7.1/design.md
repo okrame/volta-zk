@@ -197,7 +197,10 @@ massimo, differenze, esponenziali, denominatore e Pi originali, includendo
 il padding pubblico nell'istogramma. Le code KV sono append-only D2D;
 non conferiscono da sole autorità di promozione. Le route sono confrontate
 con riferimenti CPU su input sintetici nei tre contesti, non su W reale.
-Restano da collegare lo scanner completo e il runner. Il
+Il [checkpoint RMS/attention](../../benchmarks/results/c71-attention-local-2026-10-04-85e77ea66b6f.json)
+registra 22 test Rust e 12 Python passati, con compilazione sm_90 e
+diagnostico H100 esteso, non eseguito. Restano da collegare lo scanner
+completo e il runner. Il
 [checkpoint locale](../../benchmarks/results/c71-nonlinear-local-2026-10-04-870ec1faf05d.json)
 conserva la parità sintetica e un fallimento del test CPU di esaurimento
 dell'iteratore dopo rifiuto, senza attribuire credito alla prova completa. Il

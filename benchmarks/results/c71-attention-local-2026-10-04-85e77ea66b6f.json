@@ -1,0 +1,136 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-04",
+  "git_sha": "85e77ea66b6fb2126e8db4f41ad325517cef056c",
+  "git_dirty": false,
+  "milestone": "Resident exact RMS and causal QK/EXP30/PV; common dispatcher for all 13 producer types",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "calibrated": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-nonlinear-local-2026-10-04-870ec1faf05d.json",
+  "coverage": {
+    "rms": "Independent Rust Integer comparison: 30 accepted cases and 5 rejected overflows, weighted/unweighted, columns 1/3/32/256/5376. Small original W fixture, no canonical W allocation.",
+    "canonical": "546 prior nonlinear selected rows plus 180 unweighted Norm and 180 EXP30 selected rows across O=0/150/300. Shared produce_native dispatcher; synthetic inputs and tables, not complete forward.",
+    "attention": "QK head31/query1 and PV all32heads for both canonical attention families at each context. Complete predecessor tails and two appended current tokens, no future KV reads. QK compared with prepare_row; PV with independent integer sums.",
+    "histograms": "One full GELU and one full EXP30 histogram per context, including 32*106 padded query rows, all 65535 counts checked in exact order via fake-driver observation.",
+    "rejections": "Ten new terminal cases covering u128 envelope, output overflow, incomplete KV, signed marker, E0, future score, negative Pi, duplicate padding, launch and fence. Prior resident/native rejection tests retained.",
+    "regressions": "D10/D12 native range transcript and original MAC parity; reduced CPU ideal-MAC streaming lookup/GKR/WHIR positive. This is not resident producers integrated with PCS."
+  },
+  "local_limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "PYTHONDONTWRITEBYTECODE": 1
+  },
+  "tests": {
+    "rust_passed": 22,
+    "python_passed": 12,
+    "failed": 0,
+    "rust_filters": [
+      "c71_canonical_resident",
+      "c71_b12_windowed_native_attention",
+      "c71_b12_windowed_native_nonlinear",
+      "c71_b12_windowed_native_dense_chain",
+      "c71_b12_windowed_native_distinct",
+      "c71_b12_windowed_native_byte",
+      "c71_b12_windowed_native_signed",
+      "c71_b12_windowed_native_failure",
+      "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs"
+    ],
+    "python_files": [
+      "tests/test_c71_docs.py",
+      "tests/test_c71_dense_i16.py",
+      "tests/test_c71_range_native.py"
+    ],
+    "rust_seconds": [
+      19.26,
+      1.07,
+      1.07,
+      1.09,
+      2.14,
+      3.04,
+      2.11,
+      1.14,
+      12.25
+    ],
+    "python_seconds": 3.94,
+    "log_directory": "benchmarks/raw/c71-attention-clean-2026-10-04-85e77ea",
+    "preserved_failure": "The earlier unchanged CPU output-head negative-path iterator-exhaustion assertion remains recorded in the predecessor evidence. It was not rerun or claimed fixed here."
+  },
+  "build": {
+    "working_directory": "rust",
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "target": "/home/okrame/projects/volta-zk/rust/target",
+    "incremental": 0,
+    "debug": 0,
+    "opt_level": 2,
+    "cache_retained": true,
+    "development_seconds": 197,
+    "clean_cached_seconds": 0.07,
+    "warnings": 25,
+    "exit_code": 0
+  },
+  "clippy": {
+    "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --tests -- -D clippy::correctness -D clippy::suspicious",
+    "seconds": 17.22,
+    "warnings": 239,
+    "exit_code": 0
+  },
+  "cuda": {
+    "version": "12.9.86",
+    "architecture": "sm_90",
+    "library_compiled": true,
+    "diagnostic_compiled": true,
+    "executed": false,
+    "library_sha256": "ced79f1d545038ff51853f671f0e7c72d6f92c9d71f028d9483c8aabd2b2e314",
+    "diagnostic_sha256": "66b199b11e4f82278e1f9ae9b8daa36cef3ef424150cca79f03256c0bdeb5180",
+    "kernel_resources": {
+      "rms": {
+        "registers": 37,
+        "shared_bytes": 2048
+      },
+      "qk": {
+        "registers": 32,
+        "shared_bytes": 0
+      },
+      "pv": {
+        "registers": 27,
+        "shared_bytes": 0
+      },
+      "softmax": {
+        "registers": 30,
+        "shared_bytes": 3072
+      }
+    },
+    "new_kernel_stack_and_spill_bytes": 0,
+    "diagnostic": "Existing lookup/RoPE/argmax cases plus three RMS checks and QK->RNE->EXP30->PV at three contexts, poisoned future KV, exact outputs/histograms and ten total rejection checks. Prepared for authorized H100 experiment, not executed locally."
+  },
+  "memory_and_traffic": {
+    "complete_physical_ledger": false,
+    "fixture_table_arena_bytes": 67108864,
+    "packed_tables_logical_bytes": 23954072,
+    "packed_tables_reserved_bytes": 23954176,
+    "histogram_logical_bytes": 524280,
+    "histogram_reserved_bytes": 524288,
+    "exp30_row_bitmap_bytes": 8192,
+    "public_padding_h2d_bytes_per_histogram": 8,
+    "device_flag_d2h_bytes_per_operation": 4,
+    "private_intermediate_download_bytes": 0,
+    "tail": "Append-only original i16, D2D count and fence before initialized-prefix advancement. Current Tail predecessor construction copies earlier prefix; runner must eliminate redundant cumulative retention and authorize predecessors from accepted registry.",
+    "remaining": "64 native descriptors insufficient for full simultaneous histogram/tail/checkpoint retention. Need shared runner lifetime, complete CPU/PCS/Seed6/HBM capacities and all staging/transfers. QK/PV use scalar integer dots, not MMA; performance unmeasured."
+  },
+  "remaining_work": [
+    "Resident inference and replay scanner using common dispatcher",
+    "Common runtime lifetime with PCS/range/GKR and accepted snapshots",
+    "Durable promotion at O=0/150/300 in GPU runner",
+    "Complete simultaneous resource and transfer census",
+    "H100 measurement of prepared parity harness and complete runner after authorization"
+  ]
+}

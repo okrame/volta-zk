@@ -220,6 +220,10 @@ conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
 
+Il [checkpoint RMS/attention](../../benchmarks/results/c71-attention-local-2026-10-04-85e77ea66b6f.json)
+registra 22 test Rust e 12 Python passati sulla SHA pulita, build/lint e
+compilazione sm_90 del runtime e del diagnostico, senza esecuzione CUDA.
+
 `c71_canonical_resident_nonlinear_original_routes` confronta le route
 GELU, softcap, RoPE, argmax, Norm non ponderate ed EXP30 nei tre contesti con `prepare_row`, usando
 input e tabelle sintetici. Osserva l'ordine esatto di tutti gli output

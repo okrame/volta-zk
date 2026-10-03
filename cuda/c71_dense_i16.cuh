@@ -67,9 +67,11 @@ C71_DENSE_HD inline bool quantize(int64_t raw,int32_t shift,int16_t& output) {
     else if(shift<=-15) { if(raw) return false; }
     else if(shift<=0) y=raw*(int64_t{1}<<-shift);
     else {
-        const int64_t magnitude=raw<0?-raw:raw, d=int64_t{1}<<shift;
-        const int64_t q=magnitude/d, r=magnitude%d;
-        const int64_t rounded=q+(r>d-r || (r==d-r && (q&1)));
+        const uint64_t magnitude=uint64_t(raw<0?-raw:raw), d=uint64_t{1}<<shift;
+        // The denominator is a power of two. Spell out integer shifts/masks
+        // so nvcc need not lower generic division through reciprocal helpers.
+        const uint64_t q=magnitude>>shift, r=magnitude&(d-1);
+        const int64_t rounded=int64_t(q+(r>d-r || (r==d-r && (q&1))));
         y=raw<0?-rounded:rounded;
     }
     if(y<-32767 || y>32767) return false;

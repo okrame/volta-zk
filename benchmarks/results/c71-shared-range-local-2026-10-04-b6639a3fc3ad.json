@@ -1,0 +1,94 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-04",
+  "git_sha": "b6639a3fc3ad44823cc0dc0d03137362bc52b872",
+  "git_dirty": false,
+  "milestone": "Resident byte gather through range/GKR on the producer's native owner, with original-MAC PCS closure",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "calibrated": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-attention-local-2026-10-04-85e77ea66b6f.json",
+  "changes": [
+    "Config::with_resident binds the original library/device/arena/reserve and the shared Mutex<Runtime>; second-owner creation from resident configuration is rejected",
+    "The range reader receives public geometry and the already-locked runtime, returns a sealed typed Buffer, and never receives FS challenges or correlations",
+    "Resident windows bypass host Reader/upload; evaluator releases its windows, canopy, children and Gram buffers while preserving W and retained source capacity",
+    "Shared guard aborts the common runtime on unfinished/error/unwind paths; no fallback. Successful finish leaves the runtime available for the next consumer",
+    "Work.native_shared distinguishes cumulative live-owner Stats from standalone closed-owner Stats"
+  ],
+  "coverage": {
+    "positive": "Two D10 byte-range proofs with a retained original i16 source and a GPU byte-gather route on the same owner/W. Exact wire/transcript/forms/targets match CPU dense reference, and PCS opens the original MAC targets. Fake deferred driver/algebra, not CUDA execution.",
+    "traffic": "H2D bytes unchanged across both proofs; no host Reader invocation, no second arena or W install. Allocation/release deltas balance, retained live capacity and W unchanged.",
+    "negative": "Five cases: reader error, pending buffer, wrong kind, wrong length, changed reserve configuration. Every case stops the common runtime before root authentication; only 256 histogram rows consumed. Existing native reader/launch/fence failure regressions retained.",
+    "limitations": "This connects the resident-window interface to the range/GKR prover, not the complete canonical producer replay scanner or three-response GPU runner. PCS in the reduced test remains CPU/ideal-MAC. Runtime Send relies on exclusive mutex ownership, process-local library lifetime and CUDA device reselection, not a claim of concurrent CUDA validation."
+  },
+  "local_limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "PYTHONDONTWRITEBYTECODE": 1
+  },
+  "tests": {
+    "rust_passed": 25,
+    "python_passed": 11,
+    "failed": 0,
+    "filters": [
+      "c71_b12_windowed_native_shared",
+      "c71_b12_windowed_native_byte",
+      "c71_b12_windowed_native_signed",
+      "c71_b12_windowed_native_failure",
+      "c71_b12_windowed_range",
+      "c71_canonical_resident",
+      "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs"
+    ],
+    "rust_seconds": [
+      3.58,
+      3.02,
+      2.12,
+      1.15,
+      3.5,
+      19.23,
+      12.46
+    ],
+    "python_files": [
+      "tests/test_c71_docs.py",
+      "tests/test_c71_range_native.py"
+    ],
+    "python_seconds": 3.13,
+    "log_directory": "benchmarks/raw/c71-shared-range-clean-2026-10-04-b6639a3",
+    "earlier_failure": "The unrelated CPU output-head iterator-exhaustion failure remains preserved in the nonlinear predecessor; not claimed fixed or rerun."
+  },
+  "build": {
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "working_directory": "rust",
+    "CARGO_TARGET_DIR": "/home/okrame/projects/volta-zk/rust/target",
+    "CARGO_INCREMENTAL": 0,
+    "CARGO_PROFILE_DEV_DEBUG": 0,
+    "CARGO_PROFILE_DEV_OPT_LEVEL": 2,
+    "development_final_seconds": 196,
+    "clean_cached_seconds": 0.06,
+    "warnings": 25,
+    "exit_code": 0,
+    "cache_retained": true
+  },
+  "clippy": {
+    "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --tests -- -D clippy::correctness -D clippy::suspicious",
+    "seconds": 17.1,
+    "warnings": 241,
+    "exit_code": 0
+  },
+  "cuda": "CUDA sources and ABI unchanged from the attention checkpoint. Host driver is rebuilt by each fixture. No new hardware execution or timing credited.",
+  "remaining": [
+    "Complete causal native inference and resident replay scanner",
+    "Connect GPU snapshots to the canonical PCS/GKR scalar and scan consumers",
+    "Bind accepted KV continuation and durable promotion in the common three-response runner",
+    "Census simultaneous CPU/PCS/Seed6/HBM/staging capacities and transfers; shared cumulative Stats are not a physical peak",
+    "Run prepared parity and measurement harnesses in the first authorized H100 experiment"
+  ]
+}

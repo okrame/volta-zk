@@ -154,6 +154,9 @@ Il range può anche consumare finestre già residenti sullo stesso owner
 del produttore: lock esclusivo, nessuna seconda arena/upload, rilascio dei
 temporanei prima di restituire la prova e arresto comune su errore. Il
 collegamento al replay canonico e alla promozione rimane da completare.
+Il [checkpoint dell'owner condiviso](../../benchmarks/results/c71-shared-range-local-2026-10-04-b6639a3fc3ad.json)
+conserva 25 test Rust e 11 Python passati e la chiusura PCS ridotta sui
+MAC originali, senza attribuire esecuzione CUDA o certificati canonici.
 La riduzione H con CAS, Eq per indice
 e lo stack locale del kernel coefficienti richiedono contabilità e misura;
 non ereditano il tempo o i conteggi dello screen storico.

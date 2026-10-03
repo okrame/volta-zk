@@ -221,6 +221,11 @@ conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
 
+Il [checkpoint range condiviso](../../benchmarks/results/c71-shared-range-local-2026-10-04-b6639a3fc3ad.json)
+registra 25 test Rust e 11 Python passati sulla SHA pulita, build/lint e
+due prove D10 sul medesimo owner senza H2D aggiuntivo delle sorgenti;
+algebra/driver simulati, PCS ridotta sui MAC originali, non runner completo.
+
 Il [checkpoint RMS/attention](../../benchmarks/results/c71-attention-local-2026-10-04-85e77ea66b6f.json)
 registra 22 test Rust e 12 Python passati sulla SHA pulita, build/lint e
 compilazione sm_90 del runtime e del diagnostico, senza esecuzione CUDA.

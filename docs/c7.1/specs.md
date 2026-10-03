@@ -436,8 +436,9 @@ di letture/allocazioni comprende input i16, output raw e una seconda
 capacità raw per il trasferimento nelle righe vive dello scanner.
 Questa capacità aggiuntiva e i payload delle altre righe sono controlli
 locali, non il picco simultaneo completo. Il descrittore espone anche
-l'offset packed W per il collegamento nativo, ancora da realizzare:
-il percorso GPU non deve scaricare questi `Vec` come spill dello stato.
+l'offset packed W. Il nuovo adapter Matrix/RNE usa questo descrittore
+sugli handle nativi, ma lo scanner complessivo rimane CPU: il percorso
+GPU non deve scaricare questi `Vec` come spill dello stato.
 `Prepared::range_window` implementa il reader per
 finestre dyadic allineate, fino a 2 GiB, nell'ordine
 `[tail][prefisso folded][u Gram][sottoalbero]`. Seleziona le sorgenti
@@ -613,9 +614,24 @@ di flag per operazione; raw e RNE rimangono entrambi addebitati fino al rilascio
 Non scarica gli intermedi sullo host né rialloca W fra i batch.
 Il consumer range Rust controlla questa ABI; una catena ridotta Rust/C
 confronta RNE con `rne::integer`, poi la root range con gli stessi interi.
-Questa è integrazione di componenti, non un adapter CUDA del preparatore:
-collegamento della schedule batch ai producer residenti, lifecycle comune del runner e conto simultaneo di
-prover/verificatore/PCS/Seed6 restano da implementare.
+L'[adapter residente](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_resident.rs)
+collega ora i passi Matrix/RNE selezionati dal piano canonico allo stesso
+runtime Rust. W viene installato dalla medesima `Arc<Vec<i16>>` immutabile:
+lunghezza packed e digest del layout sono controllati, poi ogni prodotto
+richiede lo stesso owner Arc, non soltanto byte uguali. I blocchi opachi
+portano ID sorgente, primo indice di riga, dimensioni, layout A e digest
+delle ricette. La selezione delle righe passa al launcher come vista
+del buffer padre, senza upload/copia o rilascio implicito della capacità.
+RNE consuma un intero blocco raw compatibile e restituisce un nuovo handle;
+gli errori di metadati Rust fermano anche il contesto C. Gli handle non
+sono clonabili e richiedono rilascio esplicito, o cleanup dell'intero owner.
+L'ABI 2 mantiene lo stesso layout, ma il loader richiede anche i simboli
+di vista/abort; una libreria precedente senza questi simboli è rifiutata.
+Il dispatcher rifiuta gli altri producer: non è un preparatore GPU completo
+né un fallback. Mancano gli operatori rimanenti, il gather byte nativo,
+lo scanner PCS/range interamente residente, il lifecycle comune del runner
+e il conto simultaneo di prover/verificatore/PCS/Seed6. Il ledger C non
+comprende i nuovi descrittori Rust o il picco fisico completo.
 Il modello host dei frammenti non è esecuzione o verifica concorrente CUDA.
 
 RMS usa P/Y originali e S48 condiviso per riga, con checkpoint da

@@ -162,6 +162,7 @@ Eseguire un filtro alla volta:
 | `c71_b12_windowed_range` | Consumer canopy/Gram/retention A D10 e W signed D12: transcript e MAC originali, fold zero/uno/extension, reader alterato e errori a ogni passata; nessuna prova D34/D35 |
 | `c71_b12_windowed_native_byte`, `c71_b12_windowed_native_signed`, `c71_b12_windowed_native_failure`, separati | Prover Rust tramite ABI C e owner reale con driver/algebra host simulati: parità D10/D12, MAC originali, 44 finestre byte con errori e rifiuti di launch/fence/output/cleanup/libreria; non CUDA eseguito |
 | `c71_b12_windowed_native_dense_chain` | Stesso owner ABI 2: W installato una volta, prodotto raw, RNE per 13 shift contro Rust e root range signed senza download intermedio; driver host simulato, nessun preparatore canonico |
+| `c71_canonical_resident` | Adapter condiviso Matrix/RNE su profilo ridotto con vista di riga e owner W originale; 14 rifiuti di identità/shape/driver/contesto e due rifiuti del dispatcher canonico incompleto; solo driver host simulato |
 | `c71_b12_signed_range_windows_gather_original_ragged_packed_and_padding` | Gather W signed, tessere ragged, estremi ±32767, padding, input invalidi e soli descrittori delle finestre D35 |
 | `c71_b12_native_windowed_range_dispatch`, `c71_b12_range_histogram_scan_errors` | Dispatch range A senza getter scalare, istogramma dal commitment e fallimenti del primo scan senza sorgente installata |
 | `c71_acceptance_transport` | Completamento legato al certificato/ricevuta pendenti; alterazioni, troncamenti e Stop |
@@ -251,7 +252,7 @@ differito: arena massima 262.144 B, ritenzione della capacità, riuso,
 riduzione dei coefficienti, H/retention e 13 rifiuti terminali. Verifica
 che errori di fence/limb non pubblichino output e conserva il fallimento
 di cleanup. Aggiunge due batch prodotto/RNE/range sullo stesso W di 20 B,
-19 rifiuti densi e cleanup W/arena sotto UBSan; conta capacità simultanee
+23 rifiuti densi, una vista della seconda riga e cleanup W/arena sotto UBSan; conta capacità simultanee
 e copie, senza scaricare matrici intermedie. Il driver simulato non esegue
 o convalida i kernel CUDA. Il link dell'owner ABI 2 richiede anche
 `cuda/c71_dense_i16.cu`; Rust rifiuta librerie della precedente ABI.

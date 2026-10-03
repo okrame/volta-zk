@@ -165,7 +165,11 @@ Il getter CPU ora ricostruisce per operatore, mantenendo tutte le righe
 vive fino all'ultimo consumer. I prodotti matriciali usano batch contigui
 da 150 righe (50 per lm_head), lettura W condivisa e route originali;
 la generazione iniziale rimane token-causale. Questo collega la schedule
-del batch allo scanner PCS/range, non ancora agli handle GPU residenti.
+del batch allo scanner PCS/range. Un adapter del piano canonico ora
+collega Matrix e RNE agli handle residenti: controlla sorgente, layout,
+ricette, righe selezionate e lo stesso owner Arc di W. Una vista di righe
+non copia o riduce la capacità del buffer padre. Gli altri producer sono
+rifiutati esplicitamente; lo scanner completo non usa ancora questi handle.
 Non è acquisita una misura GPU. Il raffinamento PTX/CUDA all'intero signed-48 resta
 un obbligo aperto, non scaricato dai lemmi Lean o dai casi finiti host.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,

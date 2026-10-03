@@ -141,6 +141,20 @@ impl Drop for Library {
     }
 }
 type Raw = *mut c_void;
+#[repr(C)]
+pub(in crate::c71_matrix) struct DenseShape {
+    pub m: u32,
+    pub n: u32,
+    pub k: u32,
+}
+const _: () = assert!(size_of::<DenseShape>() == 12);
+/// Opaque, non-cloneable resident allocation. Release through its runtime;
+/// dropping this descriptor alone does not release device capacity.
+pub(in crate::c71_matrix) struct Buffer {
+    id: u64,
+    kind: u32,
+    count: usize,
+}
 macro_rules! api {
     ($($field:ident: $ty:ty => $name:literal),* $(,)?) => {
         struct Api { $($field: $ty,)* _library: Library }
@@ -161,6 +175,8 @@ api! {
     create: unsafe extern "C" fn(i32,u64,u64,*mut Raw)->i32 => "c71_range_create",
     close: unsafe extern "C" fn(Raw,*mut Stats)->i32 => "c71_range_close",
     error: unsafe extern "C" fn(Raw)->*const c_char => "c71_range_error",
+    abort: unsafe extern "C" fn(Raw)->i32 => "c71_range_abort",
+    stats: unsafe extern "C" fn(Raw,*mut Stats)->i32 => "c71_range_stats",
     alloc: unsafe extern "C" fn(Raw,u32,u64,*mut u64)->i32 => "c71_range_alloc",
     release: unsafe extern "C" fn(Raw,u64)->i32 => "c71_range_release",
     upload: unsafe extern "C" fn(Raw,u64,*const c_void,u64)->i32 => "c71_range_upload",
@@ -175,16 +191,22 @@ api! {
     coefficients: unsafe extern "C" fn(Raw,u64,*const Round,*mut Field)->i32 => "c71_range_runtime_coefficients",
     h_coefficients: unsafe extern "C" fn(Raw,u64,*const Round,*mut Field)->i32 => "c71_range_runtime_h_coefficients",
     read: unsafe extern "C" fn(Raw,u64,*mut u64,u32)->i32 => "c71_range_read",
+    weights_begin: unsafe extern "C" fn(Raw,u64)->i32 => "c71_dense_weights_begin",
+    weights_upload: unsafe extern "C" fn(Raw,u64,*const i16,u64)->i32 => "c71_dense_weights_upload",
+    weights_seal: unsafe extern "C" fn(Raw)->i32 => "c71_dense_weights_seal",
+    product: unsafe extern "C" fn(Raw,u64,u64,u64,DenseShape,u64)->i32 => "c71_dense_product_rows",
+    quantize: unsafe extern "C" fn(Raw,u64,i32,u64)->i32 => "c71_dense_quantize",
 }
-struct Runtime {
+pub(in crate::c71_matrix) struct Runtime {
     api: Api,
     raw: Raw,
     stopped: bool,
+    weights: Option<(Arc<Vec<i16>>, [u8; 32])>,
 }
 impl Runtime {
-    fn new(config: &Config) -> Result<Self, String> {
+    pub(in crate::c71_matrix) fn new(config: &Config) -> Result<Self, String> {
         let api = Api::load(&config.library)?;
-        let mut s = Self { api, raw: ptr::null_mut(), stopped: false };
+        let mut s = Self { api, raw: ptr::null_mut(), stopped: false, weights: None };
         // SAFETY: owned pointer output; on error Drop also closes partial owners.
         let status = unsafe {
             (s.api.create)(config.device, config.arena_bytes, config.reserve_bytes, &mut s.raw)
@@ -194,6 +216,151 @@ impl Runtime {
             return Err("native range returned null owner".into());
         }
         Ok(s)
+    }
+    fn ready(&self) -> Result<(), String> {
+        if self.stopped || self.raw.is_null() {
+            Err("native runtime stopped or closed".into())
+        } else {
+            Ok(())
+        }
+    }
+    pub(in crate::c71_matrix) fn abort<T>(
+        &mut self,
+        message: impl Into<String>,
+    ) -> Result<T, String> {
+        if !self.raw.is_null() {
+            unsafe {
+                (self.api.abort)(self.raw);
+            }
+        }
+        self.stopped = true;
+        Err(message.into())
+    }
+    pub(in crate::c71_matrix) fn stats(&self) -> Result<Stats, String> {
+        let mut stats = Stats::default();
+        let status = unsafe { (self.api.stats)(self.raw, &mut stats) };
+        if status != 0 {
+            return Err("native stats unavailable".into());
+        }
+        Ok(stats)
+    }
+    pub(in crate::c71_matrix) fn install_weights(
+        &mut self,
+        weights: Arc<Vec<i16>>,
+        layout: [u8; 32],
+    ) -> Result<(), String> {
+        self.ready()?;
+        if self.weights.is_some() || layout == [0; 32] {
+            return self.abort("native W identity or replacement");
+        }
+        let status = unsafe { (self.api.weights_begin)(self.raw, weights.len() as u64) };
+        self.check(status)?;
+        for (i, chunk) in weights.chunks(1 << 27).enumerate() {
+            let status = unsafe {
+                (self.api.weights_upload)(
+                    self.raw,
+                    (i as u64) << 27,
+                    chunk.as_ptr(),
+                    chunk.len() as u64,
+                )
+            };
+            self.check(status)?;
+        }
+        let status = unsafe { (self.api.weights_seal)(self.raw) };
+        self.check(status)?;
+        self.weights = Some((weights, layout));
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn require_weights(
+        &mut self,
+        weights: &Arc<Vec<i16>>,
+        layout: [u8; 32],
+    ) -> Result<(), String> {
+        self.ready()?;
+        if !self.weights.as_ref().is_some_and(|(w, l)| Arc::ptr_eq(w, weights) && *l == layout) {
+            return self.abort("native W owner or layout differs");
+        }
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn upload_signed(
+        &mut self,
+        values: &[i16],
+    ) -> Result<Buffer, String> {
+        let id = self.alloc(1, values.len())?;
+        let status = unsafe {
+            (self.api.upload)(self.raw, id, values.as_ptr().cast(), size_of_val(values) as u64)
+        };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 1, count: values.len() })
+    }
+    pub(in crate::c71_matrix) fn product(
+        &mut self,
+        input: &Buffer,
+        first_row: usize,
+        weight_offset: usize,
+        shape: DenseShape,
+    ) -> Result<Buffer, String> {
+        self.ready()?;
+        if input.kind != 1
+            || shape.m == 0
+            || shape.m > 150
+            || shape.n == 0
+            || shape.n > 262144
+            || shape.k == 0
+            || shape.k > 21504
+        {
+            return self.abort("native dense shape or input kind");
+        }
+        let count = shape.m as usize * shape.n as usize;
+        let id = self.alloc(6, count)?;
+        let status = unsafe {
+            (self.api.product)(
+                self.raw,
+                input.id,
+                first_row as u64,
+                weight_offset as u64,
+                shape,
+                id,
+            )
+        };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 6, count })
+    }
+    pub(in crate::c71_matrix) fn quantize(
+        &mut self,
+        raw: &Buffer,
+        shift: i32,
+    ) -> Result<Buffer, String> {
+        self.ready()?;
+        if raw.kind != 6 {
+            return self.abort("native RNE requires raw i64");
+        }
+        let id = self.alloc(1, raw.count)?;
+        let status = unsafe { (self.api.quantize)(self.raw, raw.id, shift, id) };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 1, count: raw.count })
+    }
+    pub(in crate::c71_matrix) fn release_buffer(&mut self, buffer: Buffer) -> Result<(), String> {
+        self.release(buffer.id)
+    }
+    #[cfg(test)]
+    pub(in crate::c71_matrix) fn root_check(
+        &mut self,
+        input: &Buffer,
+        alpha: Fp3,
+    ) -> Result<[Fp3; 2], String> {
+        self.ready()?;
+        if input.kind != 1 || !input.count.is_power_of_two() || !(2..=2048).contains(&input.count) {
+            return self.abort("test root requires a small power-of-two signed block");
+        }
+        let id = self.alloc(2, 1)?;
+        let status = unsafe {
+            (self.api.roots)(self.raw, input.id, input.count.ilog2(), alpha.into(), id, 0)
+        };
+        self.check(status)?;
+        let value = self.read::<2>(id)?;
+        self.release(id)?;
+        Ok(value)
     }
     fn check(&mut self, status: i32) -> Result<(), String> {
         if status == 0 && !self.stopped {
@@ -210,16 +377,19 @@ impl Runtime {
         Err(format!("native range stopped: {message}"))
     }
     fn alloc(&mut self, kind: u32, count: usize) -> Result<u64, String> {
+        self.ready()?;
         let mut id = 0;
         let status = unsafe { (self.api.alloc)(self.raw, kind, count as u64, &mut id) };
         self.check(status)?;
         Ok(id)
     }
     fn release(&mut self, id: u64) -> Result<(), String> {
+        self.ready()?;
         let status = unsafe { (self.api.release)(self.raw, id) };
         self.check(status)
     }
     fn read<const N: usize>(&mut self, id: u64) -> Result<[Fp3; N], String> {
+        self.ready()?;
         assert!(N == 2 || N == 4);
         let mut raw = [Field::default(); N];
         let status =
@@ -231,13 +401,14 @@ impl Runtime {
         }
         Ok(out)
     }
-    fn close(&mut self) -> Result<Stats, String> {
+    pub(in crate::c71_matrix) fn close(&mut self) -> Result<Stats, String> {
         let raw = std::mem::replace(&mut self.raw, ptr::null_mut());
         if raw.is_null() {
             return Ok(Stats::default());
         }
         let mut stats = Stats::default();
         let status = unsafe { (self.api.close)(raw, &mut stats) };
+        self.weights = None;
         if status != 0 || stats.cleanup_failed != 0 {
             return Err(format!(
                 "native cleanup failed, arena bytes: {}, W bytes: {}",
@@ -565,7 +736,7 @@ impl<'a, T: Word> Evaluator<'a, T> {
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+pub(in crate::c71_matrix) mod tests {
     use super::*;
     #[test]
     fn c71_b12_windowed_native_dense_chain() {

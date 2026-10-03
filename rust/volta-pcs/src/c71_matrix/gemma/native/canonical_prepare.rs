@@ -596,14 +596,15 @@ fn lookup_row(table: &lookup::Table<'_>, input: &[i64]) -> Result<(Vec<i64>, Vec
     Ok((values, entries))
 }
 
-impl Canonical {
-    pub(super) fn matrix_batch(
-        &self,
+impl MatrixBatch {
+    pub(super) fn new(
+        plan: &Plan,
+        b: &bytes::Bytes,
         raw: usize,
         first: usize,
         rows: usize,
     ) -> Result<MatrixBatch, String> {
-        let c = self.plan.cohorts.get(raw).ok_or("matrix batch cohort missing")?;
+        let c = plan.cohorts.get(raw).ok_or("matrix batch cohort missing")?;
         if c.kind != Kind::Matrix
             || c.heads != 1
             || rows == 0
@@ -616,7 +617,6 @@ impl Canonical {
         {
             return Err("matrix batch shape outside canonical dense bounds".into());
         }
-        let b = self.bytes();
         let input = *b
             .scalar
             .input_sources
@@ -624,8 +624,8 @@ impl Canonical {
             .ok_or("matrix batch input missing")?;
         let x = b.scalar.layout.sources.get(input).ok_or("matrix batch source missing")?;
         let y = b.scalar.layout.sources.get(raw).ok_or("matrix batch output missing")?;
-        let w = self.plan.sources.get(c.tensor).ok_or("matrix batch W missing")?;
-        let route = self.plan.input_route(raw)?;
+        let w = plan.sources.get(c.tensor).ok_or("matrix batch W missing")?;
+        let route = plan.input_route(raw)?;
         let input_first = first.checked_add(route.row_offset).ok_or("matrix batch row overflow")?;
         if b.widths[input] != 2
             || b.widths[raw] != 6
@@ -645,6 +645,17 @@ impl Canonical {
             columns: c.columns,
             inner: c.inner,
         })
+    }
+}
+
+impl Canonical {
+    pub(super) fn matrix_batch(
+        &self,
+        raw: usize,
+        first: usize,
+        rows: usize,
+    ) -> Result<MatrixBatch, String> {
+        MatrixBatch::new(&self.plan, self.bytes(), raw, first, rows)
     }
 
     /// Explicit CPU reference batch. Read each original W coefficient once,

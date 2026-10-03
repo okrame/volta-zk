@@ -11,6 +11,8 @@ pub(in crate::c71_matrix) mod calibration_input;
 mod ordered;
 #[path = "canonical_prepare.rs"]
 mod prepare;
+#[path = "canonical_resident.rs"]
+mod resident;
 #[path = "canonical_prove.rs"]
 mod prove;
 #[path = "canonical_state.rs"]

@@ -179,8 +179,17 @@ static void dense_checks() {
         assert(stats(c).peak_capacity_bytes>=before.live_capacity_bytes+4*256);
     }
     assert(stats(c).d2h_bytes-before.d2h_bytes==2*(8+48));
+    const auto selected_raw=alloc(c,C71_I64,2), selected_y=alloc(c,C71_I16,2), selected_root=alloc(c,C71_PAIR,1);
+    assert(!c71_dense_product_rows(c,x,1,2,{1,2,4},selected_raw));
+    assert(!c71_dense_quantize(c,selected_raw,2,selected_y));
+    assert(!c71_range_roots(c,selected_y,1,{19,2,3},selected_root,0));
+    uint64_t selected_limbs[6]{}; assert(!c71_range_read(c,selected_root,selected_limbs,6));
+    const int16_t selected_expected[]={-8,-5};
+    const auto selected_reference=fraction(selected_expected,1,0,2,{19,2,3});
+    assert(std::memcmp(selected_limbs,&selected_reference,sizeof(selected_reference))==0);
+    assert(stats(c).h2d_bytes==before.h2d_bytes);
     close(c);
-    for(unsigned test=0;test<19;++test) {
+    for(unsigned test=0;test<23;++test) {
         c=create(); int status=0;
         if(test<6) {
             const int16_t w[]={1,2,3,4};
@@ -209,6 +218,10 @@ static void dense_checks() {
                 status=c71_dense_quantize(c,raw,2,y); fail_fence=false; break;
             case 17: status=c71_dense_weights_seal(c); break;
             case 18: status=c71_dense_product(c,y,2,{2,2,4},raw); break;
+            case 19: status=c71_dense_product_rows(c,x,UINT64_MAX,2,{2,2,4},raw); break;
+            case 20: status=c71_dense_product_rows(c,x,1,2,{2,2,4},raw); break;
+            case 21: status=c71_dense_product_rows(c,x,1,2,{1,2,4},raw); break; // output shape
+            case 22: status=c71_range_abort(c); break;
             }
         }
         const auto attempts=launches;
@@ -293,6 +306,6 @@ int main() {
     fail_free=false;
     dense_checks();
     assert(allocations==frees);
-    std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":19,\"dense_batches\":2,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
+    std::puts("C71_RANGE_OWNER_HOST {\"rejections\":13,\"dense_rejections\":23,\"dense_batches\":2,\"dense_row_views\":1,\"max_arena_bytes\":262144,\"gpu_execution\":false,\"credit\":false}");
 }
 #endif

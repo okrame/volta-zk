@@ -4,7 +4,7 @@ use super::*;
 use crate::c71_matrix::gemma::eq_index;
 use std::{cell::RefCell, sync::Arc};
 
-mod native;
+pub(in crate::c71_matrix) mod native;
 pub(in crate::c71_matrix) use native::Config as NativeConfig;
 
 mod word {

@@ -93,6 +93,7 @@ int download(C71RangeContext* c,const Buffer* b,void* out,size_t bytes) {
 }
 
 extern "C" uint32_t c71_range_runtime_abi() { return 2; }
+extern "C" int c71_range_abort(C71RangeContext* c) { return fail(c,"native caller aborted"); }
 extern "C" const char* c71_range_error(const C71RangeContext* c) { return c?c->error:"null range context"; }
 extern "C" int c71_range_stats(const C71RangeContext* c,C71RangeStats* out) {
     if(!c || !out) return -1;
@@ -332,18 +333,25 @@ int dense_complete(C71RangeContext* c,uint64_t flag,Buffer* output) {
     output->initialized=output->count; return 0;
 }
 }
-extern "C" int c71_dense_product(C71RangeContext* c,uint64_t in,uint64_t offset,c71_dense::Shape s,uint64_t out) {
+extern "C" int c71_dense_product_rows(C71RangeContext* c,uint64_t in,uint64_t first_row,uint64_t offset,c71_dense::Shape s,uint64_t out) {
     if(!ready(c)) return -1;
     auto* a=buffer(c,in); auto* b=buffer(c,out);
     const uint64_t nw=uint64_t(s.n)*s.k;
     if(!full(a,C71_I16) || !b || b->kind!=C71_I64 || b->initialized || !c->stats.weights_sealed ||
        offset>c->stats.weights_bytes/2 || nw>c->stats.weights_bytes/2-offset ||
-       !c71_dense::valid(s,a->count,nw,b->count) || a->count!=uint64_t(s.m)*s.k || b->count!=uint64_t(s.m)*s.n)
+       !c71_dense::valid(s,a->count,nw,b->count) || a->count%s.k || first_row>a->count/s.k ||
+       s.m>a->count/s.k-first_row || b->count!=uint64_t(s.m)*s.n)
         return fail(c,"dense product shape or unsealed W");
     uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
-    if(launched(c,c71_dense_i16_launch(c->stream,ptr<int16_t>(c,a),a->count,c->weights+offset,nw,
+    if(launched(c,c71_dense_i16_launch(c->stream,ptr<int16_t>(c,a)+first_row*s.k,uint64_t(s.m)*s.k,c->weights+offset,nw,
                                      ptr<int64_t>(c,b),b->count,ptr<uint32_t>(c,buffer(c,flag)),s))) return -1;
     return dense_complete(c,flag,b);
+}
+extern "C" int c71_dense_product(C71RangeContext* c,uint64_t in,uint64_t offset,c71_dense::Shape s,uint64_t out) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,in);
+    if(!a || a->count!=uint64_t(s.m)*s.k) return fail(c,"dense whole-input shape");
+    return c71_dense_product_rows(c,in,0,offset,s,out);
 }
 extern "C" int c71_dense_quantize(C71RangeContext* c,uint64_t in,int32_t shift,uint64_t out) {
     if(!ready(c)) return -1;

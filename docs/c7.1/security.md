@@ -629,9 +629,14 @@ W parziale/riscritto e non pubblica handle inizializzati per prodotto/RNE
 finché il flag non è valido dopo fence. Gli errori sono terminali nello
 stesso contesto del range. Il RNE separato mantiene signed-48 e ±32767;
 la parità host usa una divisione i128 indipendente e il riferimento Rust.
-Il binding del packed residente al W impegnato e il lifecycle terminale
-del preparatore completo restano da collegare nel runner; il puntatore W
-privato dell'owner non dimostra da solo tale identità. Nessun output del
+L'adapter del piano ora vincola ogni prodotto alla stessa Arc W installata
+e al layout, e ogni blocco a sorgente, righe, layout A e ricette. Un handle
+di un altro contesto è rifiutato; anche un errore prima della chiamata al
+kernel ferma l'owner C. Questa identità locale non è il binding
+crittografico al commitment: il collegamento all'installazione PCS e il
+lifecycle degli snapshot/tentativi del preparatore completo restano da
+realizzare nel runner. Gli operatori assenti non vengono eseguiti su CPU.
+Nessun output del
 componente da solo costituisce una prova accettabile.
 Il raffinamento di questa implementazione al prodotto intero del §4 non
 è un nuovo lemma Lean acquisito.

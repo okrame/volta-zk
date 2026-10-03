@@ -352,6 +352,12 @@ e `--gpu-power-native` richiedono lo stesso controllo esplicito.
 
 ## Risultati e conservazione
 
+Il [checkpoint nonlineare](../../benchmarks/results/c71-nonlinear-local-2026-10-04-870ec1faf05d.json)
+registra 22 test Rust e 12 Python passati sulla SHA pulita, il fallimento
+CPU softcap/argmax descritto sopra, build/lint e compilazione sm_90.
+Conserva le correzioni del bias istogramma e dell'identità degli owner,
+senza attestare scanner completo, esecuzione CUDA o runner H100 pronto.
+
 Il [record embedding residente](../../benchmarks/results/c71-embedding-local-2026-10-03-27c0db34fe92.json)
 registra 25 test Rust e 12 Python sulla revisione pulita, ABI 3, copie D2D
 ordinate dal W originale e rifiuti dopo copie parziali. Conserva il fallimento

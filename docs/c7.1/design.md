@@ -192,8 +192,11 @@ conteggi originali e il seal richiede copertura unica di tutte le righe.
 RoPE conserva il raw Q30; argmax restituisce solo gli ID selezionati dopo
 il fence, mantenendo lo slack biased-u16 residente. Norm, QK, softmax e PV
 restano da collegare, insieme allo scanner completo e al runner. Il
-diagnostico CUDA di parità per questi nuovi kernel è pronto da compilare
-sulla H100; la sua esecuzione resta parte dell'esperimento autorizzato.
+[checkpoint locale](../../benchmarks/results/c71-nonlinear-local-2026-10-04-870ec1faf05d.json)
+conserva la parità sintetica e un fallimento del test CPU di esaurimento
+dell'iteratore dopo rifiuto, senza attribuire credito alla prova completa. Il
+diagnostico CUDA di parità per questi nuovi kernel è compilato per sm_90;
+la sua esecuzione H100 resta parte dell'esperimento autorizzato.
 Non è acquisita una misura GPU. Il raffinamento PTX/CUDA all'intero signed-48 resta
 un obbligo aperto, non scaricato dai lemmi Lean o dai casi finiti host.
 Rimangono lavoro locale sui workspace dei resti/multipunto, sul range,

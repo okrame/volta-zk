@@ -1,0 +1,194 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-04",
+  "timezone": "Europe/Rome",
+  "git_sha": "870ec1faf05dba8f3c2ea9ca062a5823c4c7e097",
+  "git_dirty": false,
+  "milestone": "Resident GELU, softcap, RoPE and argmax; exact histograms; Rust buffer ownership across distinct native libraries",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "calibrated": false,
+  "provider_calls": false,
+  "spend": 0,
+  "predecessor": "benchmarks/results/c71-embedding-local-2026-10-03-27c0db34fe92.json",
+  "changes": [
+    "Complete the pre-existing uncommitted nonlinear CUDA work through native ABI and Rust canonical routes, preserving original input/layout/recipe identity",
+    "Pack validated public i16 lookup and absolute RoPE tables once in the common arena; no private intermediate download",
+    "Preserve nonnegative histogram counts, apply bias only in the original byte codec, reject duplicate or incomplete rows before seal",
+    "Fence argmax arithmetic before copying public token IDs, then fence the token copy before publication; retain original slack on device",
+    "Bind every Rust Buffer to its Runtime by Arc identity, including consumption, sealing and release across libraries with colliding numeric handles",
+    "Add a standalone sm_90 CUDA parity diagnostic for the first authorized H100 experiment; do not execute it on the development VM"
+  ],
+  "limits": {
+    "address_space_kib": 2097152,
+    "timeout_seconds_per_test_invocation": 60,
+    "kill_grace_seconds": 5,
+    "test_processes_at_once": 1,
+    "RAYON_NUM_THREADS": 1,
+    "OMP_NUM_THREADS": 1,
+    "OPENBLAS_NUM_THREADS": 1,
+    "PYTHONDONTWRITEBYTECODE": 1
+  },
+  "coverage": {
+    "canonical_routes": "546 selected rows: 60 GELU, 120 RoPE, one softcap and one argmax per O=0/150/300. Exact full output order compared with prepare_row on synthetic inputs/tables, with selected input row views; not full forward passes or real Gamma.",
+    "histograms": "One full 150-row GELU histogram per context, all 65535 counts checked in order through fake-driver observation and resident byte scatter. Counts retain the CPU source encoding.",
+    "rejections": "Six canonical identity/coverage cases, twelve ABI arithmetic/span/table/driver/copy cases, and two cross-library handle collision cases. Errors are terminal.",
+    "regressions": "Resident embedding/matrix/RNE/affine/gate/gather, native D10/D12 range transcript and original MAC parity; reduced CPU streaming lookup/GKR/WHIR positive with ideal MACs.",
+    "integrated_positive": {
+      "certificate_bytes": 7761321,
+      "original_mac_rows": 88049,
+      "scope": "O0 reduced, ideal MAC, CPU protocol; not native producer-to-protocol integration"
+    },
+    "hardware_prepared": "c71_nonlinear_parity.cu: all 65535 lookup entries twice, exact counts, RoPE families 64/128 including omitted identity pairs, cross-warp argmax ties and six arithmetic rejections; compiled, not executed."
+  },
+  "memory_and_traffic": {
+    "complete_physical_ledger": false,
+    "fixture_arena_bytes": 33554432,
+    "table_logical_bytes": 8225672,
+    "table_aligned_bytes": 8225792,
+    "histogram_logical_bytes": 524280,
+    "histogram_aligned_bytes": 524288,
+    "lookup_row_coverage_bytes": [
+      150,
+      50
+    ],
+    "host_table_packing_capacity_bytes": 8225672,
+    "device_flag_download_per_operation_bytes": 4,
+    "argmax_token_download_bytes_per_row": 4,
+    "argmax_fences": 2,
+    "private_intermediate_download_bytes": 0,
+    "limits": "The 64 native descriptors still require histogram consolidation/release planning. Rust owner/metadata, CPU proof/PCS/Seed6 state, HBM context/shared/stack, full simultaneous buffers and all transfers remain to be counted together."
+  },
+  "build": {
+    "command": "cargo test --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+    "working_directory": "rust",
+    "environment": {
+      "CARGO_TARGET_DIR": "/home/okrame/projects/volta-zk/rust/target",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_DEV_OPT_LEVEL": "2"
+    },
+    "exit_code": 0,
+    "cached_seconds": 0.1,
+    "warnings": 25,
+    "log": "benchmarks/raw/c71-nonlinear-clean-2026-10-04-870ec1f/build.log",
+    "cache_retained": true,
+    "development": "Initial invocation from repository root missed rust/.cargo/config.toml and built a second artifact hash in the same canonical target (4m27s). Corrected working directory used target-cpu=native (3m21s); final owner fix rebuilt only the target crate (3m22s). No cache deletion or alternate target directory."
+  },
+  "clippy": {
+    "command": "cargo clippy --offline --locked -j 1 -p volta-pcs --features c71-seed6-reference --lib --tests -- -D clippy::correctness -D clippy::suspicious",
+    "working_directory": "rust",
+    "exit_code": 0,
+    "cached_seconds": 0.08,
+    "warnings": 237,
+    "log": "benchmarks/raw/c71-nonlinear-clean-2026-10-04-870ec1f/clippy.log"
+  },
+  "cuda_static": {
+    "library_command": "/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC -Xptxas=-v cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_range_runtime.cpp -o /tmp/libc71_nonlinear.so",
+    "parity_command": "/tmp/c71-cuda-12.9.1/toolkit/bin/nvcc -std=c++17 -O2 -arch=sm_90 --cudart static cuda/c71_nonlinear_parity.cu cuda/c71_dense_i16.cu -o /tmp/c71_nonlinear_parity",
+    "exit_codes": [
+      0,
+      0
+    ],
+    "toolkit": "Existing 12.9.1 toolkit, nvcc 12.9.86",
+    "execution": false,
+    "library_sha256": "05495019a522674b7f31d0eb5715f3d4ce14812e17936559e925dcd166a1e592",
+    "parity_binary_sha256": "10466356be2602f084c919adf6756b4907bff71f62c82112410d435fb737f7d2",
+    "sass_sha256": "2d1fc13a4d2ae4577c0b02efdaf8202e92f6487b3b44b8accc68c7ffb45d6e74",
+    "new_kernel_registers": {
+      "lookup": 20,
+      "histogram_seal": 8,
+      "rope": 30,
+      "argmax_select": 17,
+      "argmax_slack": 20
+    },
+    "new_kernel_stack_and_spills_bytes": 0,
+    "argmax_shared_bytes": 2048,
+    "provenance": "Built before the code commit with unchanged final CUDA sources. SASS extraction first failed to locate nvdisasm; succeeded with the existing toolkit bin directory on PATH. Both artifacts preserved under the development raw directory."
+  },
+  "tests": [
+    {
+      "command": "rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_canonical_resident --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "passed": 10,
+      "seconds": 11.58,
+      "log": "benchmarks/raw/c71-nonlinear-clean-2026-10-04-870ec1f/c71_canonical_resident.log"
+    },
+    {
+      "command": "rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_windowed_native --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "passed": 7,
+      "seconds": 10.45,
+      "log": "benchmarks/raw/c71-nonlinear-clean-2026-10-04-870ec1f/c71_b12_windowed_native.log"
+    },
+    {
+      "command": "rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_lookup --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 2.12,
+      "log": "benchmarks/raw/c71-nonlinear-clean-2026-10-04-870ec1f/c71_b12_lookup.log"
+    },
+    {
+      "command": "rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_rope --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 1.64,
+      "log": "benchmarks/raw/c71-nonlinear-clean-2026-10-04-870ec1f/c71_b12_rope.log"
+    },
+    {
+      "command": "rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_gemma_gelu --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 1.01,
+      "log": "benchmarks/raw/c71-nonlinear-clean-2026-10-04-870ec1f/c71_b12_gemma_gelu.log"
+    },
+    {
+      "command": "rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_gemma_argmax --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 2.25,
+      "log": "benchmarks/raw/c71-nonlinear-clean-2026-10-04-870ec1f/c71_b12_gemma_argmax.log"
+    },
+    {
+      "command": "rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs --test-threads=1 --nocapture",
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 12.22,
+      "log": "benchmarks/raw/c71-nonlinear-clean-2026-10-04-870ec1f/c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs.log"
+    }
+  ],
+  "python": {
+    "command": ".venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_docs.py tests/test_c71_range_native.py tests/test_c71_dense_i16.py",
+    "exit_code": 0,
+    "passed": 12,
+    "seconds": 3.6,
+    "log": "benchmarks/raw/c71-nonlinear-clean-2026-10-04-870ec1f/python-tests.log"
+  },
+  "failures": [
+    {
+      "command": "rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_b12_gemma_output_head_rne_softcap_and_public_argmax_share_original_a --test-threads=1 --nocapture",
+      "exit_code": 101,
+      "passed": 0,
+      "failed": 1,
+      "seconds": 2.53,
+      "log": "benchmarks/raw/c71-nonlinear-clean-2026-10-04-870ec1f/output-failure.log",
+      "cause": "Assertion vrows.next().is_none() in unchanged output.rs:532 after rejected tie decision. Borrowed correlations in unchanged linear::verify are not fully consumed on rejection. The fixture requires exhaustion even after an error; no change to the session's up-front reserve burn.",
+      "disposition": "Preserved, not suppressed or fixed in this port. No coverage claimed for the subsequent simulator case."
+    }
+  ],
+  "development_corrections": [
+    "Removed the pre-existing unfinished histogram seal subtraction of 2^31: CPU sources store original counts and their byte emitter applies the bias.",
+    "Changed argmax to fence the arithmetic flag before enqueuing token D2H, avoiding a pending stack-buffer destination if the later copy fails.",
+    "Extended the buffer-owner check after identifying numeric handle collisions across distinct shared-library copies."
+  ],
+  "remaining": [
+    "Norm, QK, EXP30 softmax and PV resident producers",
+    "Complete GPU inference, immutable snapshots, causal KV history, replay and gather dispatch",
+    "Common lifecycle through PCS/range/GKR and three verified promotions with real AES correlations",
+    "Complete simultaneous memory/transfer ledger and phase CPU inventory for the integrated runner",
+    "Complete H100 experiment runner and representative measurements; actual hardware parity and timings belong to the authorized experiment"
+  ],
+  "goal_status": "active",
+  "development_logs": "benchmarks/raw/c71-nonlinear-development-2026-10-03-2a03411"
+}

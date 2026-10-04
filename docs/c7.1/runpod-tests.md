@@ -45,8 +45,13 @@ compatibilità, parità e nuove misure fisiche.
 **Esito acquisito.** La build mirata è passata; il [primo FAIL](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json)
 resta conservato. Il [trial corretto su SHA pulita `d3c2fa95`](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json)
 passa parità operatori sintetici e pipeline ridotta sui MAC originali.
-I test piccoli della calibrazione e i due hash degli shard sono verificati;
-ingestione in corso, Γ ammesso e diagnostica O=0/150/300 ancora aperti.
+I test piccoli e l'[ingestione reale](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2fa95eaf7.json) sono PASS; Γ ammesso e
+diagnostica O=0/150/300 restano aperti. Il pilot readonly-mmap a otto
+worker CPU è in corso dopo tre trial interrotti per throughput, tutti
+conservati con exit 130 e nessuna candidata riutilizzata. I 29 controlli
+numerici del nuovo trial passano. Un controllo documentale sul pod è
+FAIL per fonti bibliografiche ignorate da Git mancanti: il log è conservato,
+i nove controlli completi dei documenti passano sulla VM con quelle fonti.
 Il massimo RSS+HBM campionato della parità è 734.404.608 B, con margine
 campionato 5.708.046.336 B sul tetto; picco fisico completo e margine
 canonico restano **non verificati**. I bundle del primo FAIL e del PASS
@@ -54,6 +59,10 @@ sono verificati nella destinazione autorizzata, circa 103 MB complessivi,
 senza pesi o tracce private. La pausa per macOS è revocata; il controllo
 di arresto è attivo. Il proprietario ha preautorizzato i trial successivi
 entro la scadenza originale, senza importare stato terminale o correlazioni.
+L'ingestione ha massimo host RSS campionato 2.868.514.816 B, zero HBM,
+e durata 463,77 s: sono misure offline, non tempo o arena della prova.
+Shard e packed restano sul pod; identità, scale e log sono verificati
+fuori dal pod nel bundle `ingest-20261004T185500Z/` (circa 257 KB).
 
 | Passaggio | Stato e condizione di uscita |
 |---|---|

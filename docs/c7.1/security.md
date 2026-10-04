@@ -740,6 +740,11 @@ raffinamento completo Gemma. Nessun journal o certificato canonico è
 acquisito; NoPeek, endpoint MAC originali e obblighi di raffinamento
 rimangono invariati. La preautorizzazione dei trial non permette riuso
 delle correlazioni monouso o prosecuzione di uno stato terminale.
+L'[ingestione completa](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2fa95eaf7.json) verifica identità e conversione dei pesi;
+non sostituisce Γ valido, confronto indipendente o installazione
+autenticata. Il pilot con mapping readonly e blocchi CPU paralleli
+mantiene l'ordine causale; la lettura fisica non concede credito NoPeek
+o di raffinamento oltre al contratto già dichiarato.
 
 ### Riduzione dei temporanei e confine del claim
 

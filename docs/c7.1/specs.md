@@ -873,6 +873,11 @@ campioni non verificano picco completo, capacità trattenute o riserva
 fisica canonica. O=0/150/300 non è ancora misurato. La correzione della
 fixture Gate conserva il contratto del launcher; ricette, semantica,
 endpoint, MAC e transcript della costruzione rimangono invariati.
+L'[ingestione reale PASS](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2fa95eaf7.json) lega entrambi i corpi pinned, i 772
+esponenti minimi e l'hash packed `1a88da14…1ac8dac8`; non ammette Γ.
+Il mapping readonly del pilot conserva W immutabile, distinto dai
+temporanei: non sottrarre la lunghezza del file al RSS senza censirne
+la residenza. I campioni offline non dimostrano l'arena della prova.
 
 ## Correlazioni Seed6
 

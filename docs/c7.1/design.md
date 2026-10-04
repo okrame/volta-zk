@@ -163,8 +163,12 @@ il [primo FAIL](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-0
 La correzione `{1,1,1}` è confermata sulla H100: [parità operatori e MAC originali PASS](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json)
 su SHA pulita `d3c2fa95`. Sono controlli sintetici ridotti, `credit:false`.
 Il massimo congiunto campionato della parità è 734.404.608 B; non verifica
-il picco canonico o il margine arena. Entrambi gli shard pinned sono
-verificati, con ingestione in corso; Γ ammesso e O=0/150/300 restano aperti.
+il picco canonico o il margine arena. L'[ingestione reale è PASS](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2fa95eaf7.json):
+772 scale W minime, packed esatto verificato, conservato solo sul pod.
+Il pilot con W mappato readonly e otto worker CPU è in corso; Γ ammesso
+e O=0/150/300 restano aperti. Mapping e parallelismo non cambiano
+aritmetica dei blocchi o ordine causale; i trial precedenti interrotti
+per throughput sono conservati con exit 130, senza riuso del loro KV.
 I bundle immutabili verificati in `artifact/c7.1-pod/` occupano circa
 103 MB e conservano anche i fallimenti, senza pesi o profilo calibrato.
 I trial successivi sono preautorizzati entro le 6 ore originali, con file

@@ -530,6 +530,10 @@ piccoli della calibrazione passano sul pod; il linker richiede affinità
 a un core entro 2 GiB AS su questo host con 224 CPU visibili. Il fallimento
 senza affinità è conservato. La cache Cargo resta disponibile
 finché il goal diagnostico è attivo.
+La regressione del pilot confronta byte, contatori e causalità tra
+blocchi seriali/paralleli e tra sorgenti streamed/mappate readonly;
+la parte a due thread si esegue sul pod, mantenendo i controlli locali
+a un thread. L'[ingestione reale PASS](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2fa95eaf7.json) è evidenza distinta dalle fixture.
 
 ## Budget simultaneo e rilascio dei workspace
 

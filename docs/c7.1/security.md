@@ -510,13 +510,15 @@ Le credenziali provider locali non fanno parte del protocollo. Il
 rifiuta `.env` non regolare, non posseduto dall'utente o con qualunque bit
 di gruppo/altri; non legge né registra i valori. Il file locale rilevato è
 ignorato da Git ed è stato portato da `0664` a `0600`.
-La deadline di spesa del provider è anch'essa esterna al protocollo.
-`runpodctl` v2.12.0 ha rimosso i relativi flag perché il backend li ignorava;
-il [runbook](runpod-tests.md#stato-e-sequenza-operativa) impone quindi un
-hard stop finché non esiste un limite provider verificabile o un diverso
-controllo di spesa autorizzato; il
-[record](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
-non attribuisce credito al protocollo.
+Il termine massimo e lo spegnimento del provider sono esterni al protocollo.
+Il [runbook](runpod-tests.md#stato-e-sequenza-operativa) registra la campagna
+H100 autorizzata del 4 ottobre, entro 6 ore, con arresto a carico dell'agente;
+non richiede preventivo economico. Il
+[record storico](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
+conserva il fallimento dei flag di deadline ignorati, senza attribuire
+credito al protocollo. Il bundle esterno è limitato a 10 GB: ricreare e
+verificare il packed su un nuovo pod non autorizza riuso di correlazioni,
+journal o KV, né modifica NoPeek, MAC originali o trust model.
 
 Il [prover CPU](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prove.rs)
 e il [registro dei due ruoli](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state.rs)

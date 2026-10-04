@@ -148,12 +148,16 @@ ma non conserva un digest privato di tutta A per confrontare ogni replay.
 La PCS/MAC continua a terminare negli originali. Test finiti, driver
 simulato e compilazione sm_90 non scaricano queste premesse.
 
-L'hard stop RunPod riguarda soltanto il provider: deadline rimosse perché
-inefficaci e nessuna autorizzazione corrente a pod/download/GPU/spesa.
-Occorre un limite provider verificabile o un diverso controllo di spesa
-autorizzato prima dell'avvio; non impedisce preparazione e test locali.
-[RunPod tests](runpod-tests.md#esperimento-della-prova) contiene il comando
-del primo esperimento, confronti hardware, misure e condizioni di stop.
+La campagna H100 del 4 ottobre è autorizzata sul pod `z3h2njpctmduix`
+per il primo checkpoint diagnostico, con termine massimo di 6 ore e
+spegnimento gestito dall'agente. Non è richiesto un preventivo economico.
+Il bundle esterno in `artifact/c7.1-pod/` è limitato a 10 GB complessivi:
+shard e packed vengono ricreati sul pod, mentre calibrazione completata,
+ricette, tabelle e identità restano riutilizzabili con i controlli del
+[runbook](runpod-tests.md#stato-e-sequenza-operativa). La nuova H100 richiede
+comunque parità e misure fisiche; l'autorizzazione non concede credito
+numerico o protocollo a fasi non completate.
+
 ## Contratto delle risorse
 
 | Quantità | Requisito |

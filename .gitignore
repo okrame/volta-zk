@@ -33,3 +33,6 @@ rust/target/
 # large weight artifacts (reproducible via scripts/export_gpt2.py)
 benchmarks/weights/model.safetensors
 benchmarks/weights/gpt2s-q.bin
+
+# Authorized off-pod C7.1 bundles (maximum 10 GB; never commit private artifacts)
+artifact/c7.1-pod/

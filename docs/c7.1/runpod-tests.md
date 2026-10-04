@@ -13,22 +13,34 @@ rispetto dei target è acquisito. Il readiness audit storico
 [NOT_READY](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-fbd6141e7a1e.json)
 resta immutabile, ma non descrive l'assenza attuale del codice del runner.
 
-Questo documento non autorizza spesa. L'istruzione corrente del proprietario
-fissa pod, fasi autorizzate, durata/spesa, controllo economico e destinazione
-degli artefatti; può includere calibrazione e prova nella stessa campagna.
+Questo documento non autorizza campagne. L'istruzione corrente del proprietario
+fissa pod, fasi autorizzate, durata massima, responsabilità di spegnimento
+e destinazione degli artefatti; può includere calibrazione e prova nella stessa campagna.
 Il successo numerico non dimostra la prova né estende l'autorizzazione.
-Su un pod già noleggiato si verifica il controllo di spesa concordato,
+Su un pod già noleggiato si verificano termine e possibilità di spegnimento,
 senza richiedere una nuova creazione o ripetere un'autorizzazione valida.
 
-**Hard stop provider (3 ottobre 2026).** `runpodctl` v2.12.0 ha rimosso
-`--stop-after` e `--terminate-after`: il backend li ignorava.
-La [correzione ufficiale](https://github.com/runpod/runpodctl/commit/51ca7f0)
-non offriva un sostituto. Prima del lavoro a pagamento serve una deadline
-provider verificabile o un diverso controllo di spesa esplicitamente
-autorizzato, anche gestito dal proprietario con termine e responsabilità
-registrati. Un timeout del processo non è un controllo della spesa provider.
-Il [record immutabile](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
-conserva fonte e controlli locali; non blocca il lavoro locale autorizzato.
+**Controllo temporale.** Non è richiesto un preventivo economico, una tariffa
+oraria o una ricevuta di costo. Registrare il termine massimo autorizzato e
+chi spegne il pod; verificare l'accesso al comando/API di arresto e confermare
+lo stato finale dal provider. Un timeout del processo non spegne il pod.
+I flag `--stop-after`/`--terminate-after` rimossi da `runpodctl` restano
+inaffidabili: il [record storico](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
+conserva quel fallimento, senza imporre un nuovo gate economico.
+
+**Campagna corrente (4 ottobre 2026).** Pod `z3h2njpctmduix`, H100;
+ambiente, parità CUDA, download necessari, calibrazione e diagnostica
+O=0/150/300 autorizzati. Il lavoro iniziato alle 17:07:53 UTC termina
+entro le 23:07:53 UTC (6 h), senza proroga; almeno gli ultimi 30 minuti
+sono riservati a salvataggio e chiusura. Lo spegnimento è gestito dall'agente.
+La destinazione esterna autorizzata è
+`/home/okrame/projects/volta-zk/artifact/c7.1-pod/`, con **tetto complessivo
+10.000.000.000 B**. Conservare calibrazione verificata, ricette/tabelle,
+identità/hash, codice/ambiente, report, log e manifest; non copiarvi shard,
+packed o tracce grandi. I pesi vengono ricreati sul pod a ogni campagna e
+verificati contro le stesse identità. La calibrazione completata resta
+riutilizzabile secondo i controlli sotto; una nuova H100 richiede comunque
+compatibilità, parità e nuove misure fisiche.
 
 | Passaggio | Stato e condizione di uscita |
 |---|---|
@@ -98,16 +110,22 @@ il controllo non lo carica e non stampa nomi o valori.
 
 Usare [runpod_harness.sh](../../scripts/runpod_harness.sh) per la gestione
 di un eventuale pod autorizzato. Il harness permette ispezione e chiusura,
-ma non sostituisce il controllo di spesa concordato sopra. Non sono impliciti
+ma non sostituisce il termine massimo e la responsabilità di arresto sopra. Non sono impliciti
 retry, proroghe o una seconda macchina. Prima di compilare o generare
-artefatti eseguire `scripts/runpod_harness.sh git-preflight`.
+artefatti eseguire `scripts/runpod_harness.sh git-preflight`, oppure verificare
+lettura/scrittura Git HTTPS dalla VM, pubblicare la SHA su un branch unico
+e verificare dal pod il checkout anonimo pulito di quella stessa SHA.
+Questa alternativa conserva le credenziali sulla VM e pubblica le evidenze
+piccole dalla VM dopo il trasferimento del bundle autorizzato.
 
 Sincronizzare repository ed evidenze piccole solo tramite Git HTTPS su
 `https://github.com/okrame/volta-zk.git`. Le sorgenti pubbliche si leggono
-anonimamente. Per pubblicare usare il Secret RunPod `VOLTA_GITHUB_TOKEN`,
+anonimamente. Per pubblicare dal pod usare il Secret RunPod `VOLTA_GITHUB_TOKEN`,
 con scadenza e permesso Contents read/write limitato al repository.
 Non copiare credenziali dalla VM, non usare gh, Git SSH, SCP/rsync o
-archivi del repository. Token fuori da URL, configurazioni Git, comandi,
+archivi del repository per sincronizzare il codice. Il bundle autorizzato
+può essere trasferito via SSH alla destinazione persistente entro il suo
+tetto; le evidenze piccole revisionate sono poi pubblicate tramite Git HTTPS. Token fuori da URL, configurazioni Git, comandi,
 cronologia e file; il wrapper usa askpass. Un eventuale Secret HF è
 separato e di sola lettura. Verificare la SHA pulita dopo ogni pull.
 
@@ -130,7 +148,7 @@ La pubblicazione usa un branch unico tramite `git-push runpod/POD_ID/LABEL`.
 La procedura valuta una sola candidata Γ. Registrare SHA pulita,
 immagine/container con digest, hardware e limiti autorizzati. Nessuna
 modifica delle scale o ripartenza è inclusa; il completamento dei test
-non deroga ai limiti di tempo e spesa.
+non deroga al termine massimo.
 
 I programmi esistenti usano NumPy/BLAS CPU per l'inizializzatore e il
 confronto indipendente, Rust CPU per il replay intero e un piccolo kernel C
@@ -147,14 +165,14 @@ L'ammissione di Γ richiede tutti i controlli della
 [validazione](#validazione-e-congelamento-del-profilo), incluso il confronto
 indipendente; tempo e risorse del confronto rientrano nella campagna.
 
-### Risorse e costo
+### Risorse
 
 | Risorsa | Richiesta proposta / controllo prima del download |
 |---|---|
 | Compute | 1 H100 SXM 80 GB, almeno 20 vCPU e 125 GB RAM host; verificare l'offerta effettiva |
 | Software | Linux x86_64, Python ≥3.11, NumPy, pytest, Rust/Cargo, C/C++ build tools, Git, GNU timeout/time; versioni e immagine registrate |
 | Disco | Volume locale 300 GB montato in `/workspace`, container 40 GB; almeno 180 GB liberi prima del download |
-| Payload persistente | Shard 62.546.338.248 B + packed 61.394.690.560 B = 123.941.028.808 B |
+| Payload sul pod | Shard 62.546.338.248 B + packed 61.394.690.560 B = 123.941.028.808 B |
 | Temporanei | Download direttamente in `.partial`, rinomina senza seconda copia; packed e traccia pubblicati atomicamente; nessuna seconda copia BF16/dequantizzata completa |
 | Memoria | Ingest nativo richiede 3.355.443.200 B operativi; trial con payload nominato ≤8 GiB; limite AS per processo 64 GiB; osservare anche RSS aggregato/cgroup e cache OS |
 | Numerica | Pilot: blocco W i16+f64 ≤27.525.120 B, KV finale f64 1.622.016.000 B; replay KV finale i16 405.504.000 B, più A viva, tabelle, workspace e runtime |
@@ -172,7 +190,7 @@ Il pack nativo verifica già header, entrambi i corpi e output persistito.
 
 Registrare il termine complessivo autorizzato in `AUTHORIZED_END_EPOCH`.
 I timeout degli snippet sono massimi per fase, non una stima del tempo
-completo né un'autorizzazione di spesa. Fissare `TRACE_STEP_SECONDS` e
+completo né un'autorizzazione a prolungare la campagna. Fissare `TRACE_STEP_SECONDS` e
 `NATIVE_TRACE_TIMEOUT_SECONDS` includendo il confronto indipendente,
 ancora non misurato sui pesi reali. Ogni fase deve rientrare nel tempo
 residuo, con almeno 30 minuti riservati a conservazione e chiusura.
@@ -239,7 +257,7 @@ wrapper produca JSON conserva stdout, stderr ed exit code; non trattare
 un file vuoto/troncato come risultato. Il termine autorizzato prevale sul
 controller locale. Preparare venv/toolchain nella fase ambiente, senza
 upgrade non registrati; `pip freeze`, `rustc -Vv`, `cargo -V`, `uname -a`,
-quote/deadline, CPU/RAM/disco e SHA immagine vanno nei log.
+termine/responsabile di arresto, CPU/RAM/disco e SHA immagine vanno nei log.
 
 ```bash
 run_step 240 venv python3 -m venv .venv
@@ -402,8 +420,8 @@ esatta e ogni assunzione residua; in sua assenza l'ammissione resta aperta.
 Conservare in una nuova directory immutabile, senza aggiornare i manifest
 storici: candidata, descrizione ID, report ingest/pilot, ricette e digest
 tabelle, entrambi i report interi, eventuali golden/audit, conto delle risorse,
-toolchain/image/SHA, quote/deadline, comandi, stdout/stderr, exit, tempi,
-RSS e ricevuta di costo. Il manifest nuovo elenca path relativi, byte e
+toolchain/image/SHA, termine e arresto verificato, comandi, stdout/stderr,
+exit, tempi e RSS. Il manifest nuovo elenca path relativi, byte e
 SHA-256 di ciascun file; hash anche del manifest, scrittura esclusiva e
 lettura di verifica. Le tabelle possono essere rigenerate dai digest e
 ricette; i dump privati richiedono storage autorizzato e non entrano in Git.
@@ -469,7 +487,9 @@ dalla destinazione persistente e confrontare modello/packed, workload,
 provenienza: si possono saltare le fasi numeriche già validate se codice
 e ambiente pertinenti sono invariati, oppure dopo una verifica documentata
 dell'impatto delle differenze. Un bundle parziale conserva solo il credito
-delle fasi completate. Hash e ricette non conservano da soli il packed.
+delle fasi completate. Hash e ricette non conservano da soli il packed: nella campagna corrente
+si conservano identità ed esponenti, si ricreano i pesi sul nuovo pod e si
+richiede nuovamente il confronto esatto dell'hash packed con quello validato.
 Sulla nuova H100 verificare ambiente e parità; picchi fisici e tempi
 richiedono nuove misure. Correlazioni monouso, journal e KV di sessione
 non sono cache da importare nella nuova esecuzione.
@@ -515,7 +535,7 @@ parità, entro il budget residuo con la riserva di chiusura. Impostare
 `APPROVED_SHA`, `PROOF_SECONDS`, `CANDIDATE`, `TABLES`, `PACKED`, `LIBRARY`
 e `RUN` (directory nuova sotto `benchmarks/raw`). Il device logico è 0;
 fissare prima `CUDA_VISIBLE_DEVICES` all'UUID autorizzato. I limiti di
-durata del processo non sostituiscono il controllo di spesa provider.
+durata del processo non sostituiscono lo spegnimento entro il termine massimo.
 
 ```bash
 set -euo pipefail

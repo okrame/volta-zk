@@ -13,19 +13,22 @@ rispetto dei target è acquisito. Il readiness audit storico
 [NOT_READY](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-fbd6141e7a1e.json)
 resta immutabile, ma non descrive l'assenza attuale del codice del runner.
 
-Non è registrata un'autorizzazione a download dei pesi, creazione di pod,
-esecuzioni GPU o spesa. Il lavoro locale pertinente resta autorizzato.
-Calibrazione e misura della prova sono campagne distinte; un successo
-numerico non autorizza né dimostra la seconda.
+Questo documento non autorizza spesa. L'istruzione corrente del proprietario
+fissa pod, fasi autorizzate, durata/spesa, controllo economico e destinazione
+degli artefatti; può includere calibrazione e prova nella stessa campagna.
+Il successo numerico non dimostra la prova né estende l'autorizzazione.
+Su un pod già noleggiato si verifica il controllo di spesa concordato,
+senza richiedere una nuova creazione o ripetere un'autorizzazione valida.
 
 **Hard stop provider (3 ottobre 2026).** `runpodctl` v2.12.0 ha rimosso
 `--stop-after` e `--terminate-after`: il backend li ignorava.
 La [correzione ufficiale](https://github.com/runpod/runpodctl/commit/51ca7f0)
-non offre un sostituto. Non creare il pod finché una deadline provider
-verificabile o un diverso limite di spesa autorizzato non chiude il rischio.
+non offriva un sostituto. Prima del lavoro a pagamento serve una deadline
+provider verificabile o un diverso controllo di spesa esplicitamente
+autorizzato, anche gestito dal proprietario con termine e responsabilità
+registrati. Un timeout del processo non è un controllo della spesa provider.
 Il [record immutabile](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
-conserva fonte e controlli locali. Questo stop non blocca l'integrazione
-locale e non trasforma la parità hardware in prerequisito locale.
+conserva fonte e controlli locali; non blocca il lavoro locale autorizzato.
 
 | Passaggio | Stato e condizione di uscita |
 |---|---|
@@ -33,6 +36,10 @@ locale e non trasforma la parità hardware in prerequisito locale.
 | Calibrazione autorizzata | Driver indipendente disponibile; confronto sui pesi reali, due replay e Γ validato da acquisire. I comandi CPU seguenti non sono il benchmark della prova |
 | Primo esperimento della prova | Parità dei kernel reali, smoke fail-closed e tre tentativi O=0/150/300 sul runner misto; raccogliere tempi, memoria/trasferimenti e anche timeout/rifiuti |
 | Valutazione | Distinguere risultato misurato, obiettivi mancati e assunzioni aperte. Nessun risultato locale promette 65 s, 40 MB o picco fisico completo |
+
+Il checkpoint preliminare registra PASS, FAIL o INCOMPLETO per ciascuna
+fase richiesta, con copertura e limiti. Un bundle salvato non rende PASS
+una calibrazione fallita; una misura parziale non chiude il picco completo.
 
 Il comando di riferimento rimane
 `c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES`.
@@ -85,15 +92,13 @@ Le procedure delle sezioni seguenti regolano soltanto campagne autorizzate.
 Prima di usare credenziali locali eseguire
 `scripts/runpod_harness.sh local-secret-preflight`. Un eventuale `.env`
 deve essere un file regolare posseduto dall'utente e avere permessi `0600`;
-il controllo non lo carica e non stampa nomi o valori. Il `.env` locale
-rilevato il 3 ottobre 2026 è stato corretto da `0664` a `0600`.
+il controllo non lo carica e non stampa nomi o valori.
 
 ## Gestione del pod e del repository
 
 Usare [runpod_harness.sh](../../scripts/runpod_harness.sh) per la gestione
 di un eventuale pod autorizzato. Il harness permette ispezione e chiusura,
-ma non rende affidabile una deadline. Un timer nel container o un processo
-locale non è un limite provider e non sblocca l'hard stop. Non sono impliciti
+ma non sostituisce il controllo di spesa concordato sopra. Non sono impliciti
 retry, proroghe o una seconda macchina. Prima di compilare o generare
 artefatti eseguire `scripts/runpod_harness.sh git-preflight`.
 
@@ -116,18 +121,16 @@ scripts/runpod_harness.sh delete POD_ID --confirm POD_ID
 `pause` lascia storage fatturabile. `delete` termina il pod e distrugge
 i dati sul volume locale: prima verificare la pubblicazione delle evidenze
 piccole e l'eventuale conservazione dei dati in una destinazione autorizzata.
-Pesi e grandi artefatti restano sul pod; non vengono aggiunti a Git.
+Pesi e grandi artefatti non vanno in Git; per conservarli dopo la chiusura
+serve la destinazione persistente autorizzata.
 La pubblicazione usa un branch unico tramite `git-push runpod/POD_ID/LABEL`.
 
 ## Campagna di calibrazione
 
-La proposta è una campagna, una sola candidata Γ, una H100 SXM 80 GB,
-massimo 8 ore dalla creazione e 40 USD complessivi. La decisione di avvio
-deve fissare SHA pulita, immagine/container con digest, regione, offerta,
-costo totale e deadline del provider. La proposta non è avviabile con il
-CLI/provider corrente perché tale deadline manca. Nessuna modifica delle
-scale o ripartenza è inclusa. Il completamento di tutti i test è l'obiettivo,
-non una deroga al limite di tempo.
+La procedura valuta una sola candidata Γ. Registrare SHA pulita,
+immagine/container con digest, hardware e limiti autorizzati. Nessuna
+modifica delle scale o ripartenza è inclusa; il completamento dei test
+non deroga ai limiti di tempo e spesa.
 
 I programmi esistenti usano NumPy/BLAS CPU per l'inizializzatore e il
 confronto indipendente, Rust CPU per il replay intero e un piccolo kernel C
@@ -140,9 +143,9 @@ Il tempo completo non è misurato. L'inizializzatore conta
 13.390.420.377.600 prodotti di matrice e 26.782.043.904.000 B di letture W
 logiche, che non sono traffico fisico o tempi H100. Alla deadline si
 conserva il fallimento e si termina, senza dichiarare Γ calibrato.
-I comandi correnti coprono il punto 2 fino al replay numerico. Per una
-campagna che prometta Γ ammesso deve essere già completato il punto 1,
-con tempi e risorse del confronto inclusi nel medesimo limite.
+L'ammissione di Γ richiede tutti i controlli della
+[validazione](#validazione-e-congelamento-del-profilo), incluso il confronto
+indipendente; tempo e risorse del confronto rientrano nella campagna.
 
 ### Risorse e costo
 
@@ -157,60 +160,25 @@ con tempi e risorse del confronto inclusi nel medesimo limite.
 | Numerica | Pilot: blocco W i16+f64 ≤27.525.120 B, KV finale f64 1.622.016.000 B; replay KV finale i16 405.504.000 B, più A viva, tabelle, workspace e runtime |
 | Traccia privata | Riservare 44 GB per il primo replay: limite conservativo da A nei codec originali, KV finale e framing; il padding è compattato. Resta fuori da Git e rientra nei limiti di disco e tempo |
 
-Questi payload non sono un picco RSS completo. Stop per OOM, swap
+Questi limiti riguardano la calibrazione offline, non il budget dei
+temporanei della prova. I payload non sono un picco RSS completo. Stop per OOM, swap
 sostenuto, RSS aggregato >96 GiB o spazio libero <20 GB; non aumentare
 i budget per aggirare un fallimento. Il requisito legacy 256 GiB/400 GB
 del pack Python non si applica al `pack --native-packer`: non usare i
 subcomandi legacy `preflight`/`report` per ammettere questa macchina.
 Il pack nativo verifica già header, entrambi i corpi e output persistito.
 
-Verificare prezzo e disponibilità effettivi al momento dell'autorizzazione.
-Il limite proposto è compute ≤3,50 USD/h e costo totale ≤40 USD, inclusi
-disco, imposte e altri addebiti. Otto ore di compute possono quindi
-costare al più 28 USD; il preventivo dello storage deve rientrare nel
-residuo. Nessun network volume, disco lasciato inattivo, secondo pod,
-abbonamento o ricarica automatica è incluso nella proposta.
+### Budget delle fasi
 
-È richiesta **terminazione provider-side a 8 ore**, non soltanto `timeout`
-nel container. La [documentazione CLI corrente](https://docs.runpod.io/runpodctl/reference/runpodctl-pod)
-non espone una deadline e la release v2.12.0 ha rimosso i vecchi flag perché
-inefficaci. In assenza di un nuovo controllo provider leggibile e provato,
-STOP: non installare una vecchia CLI e non sostituire il requisito con un
-timer locale. Ricontrollare la documentazione e la
-[procedura di gestione](#gestione-del-pod-e-del-repository) all'autorizzazione.
-
-La terminazione distrugge il volume locale: pubblicare prima i piccoli
-artefatti, log e digest, e conservare eventuali dati privati solo su una
-destinazione separatamente autorizzata. Shard, packed, dump privati e
-tabelle grandi non vanno in Git. Il bundle Γ piccolo e le ricette
-consentono la ricostruzione; non promettono persistenza del packed.
-Non usare `pause` come chiusura economica: il volume continuerebbe a
-costare, come documentato nelle [opzioni storage](https://docs.runpod.io/pods/storage/types).
-
-### Tempi massimi da richiudere prima dell'autorizzazione
-
-| Fase seriale | Massimo |
-|---|---:|
-| Ambiente, build, controlli piccoli | 45 min |
-| Acquisizione dei due shard e hash durante il download | 30 min totali |
-| Ingest nativo, nuovo hash dei corpi e packed persistito | 30 min |
-| Pilot floating sui tre contesti e compilazione candidata | 90 min |
-| Primo replay, traccia e confronto indipendente da KV vuoto | **Da misurare**; il precedente limite di 120 min copriva solo il replay |
-| Secondo replay da KV vuoto, stessa candidata | 90 min |
-| Ledger, conto delle risorse, bundle e pubblicazione | 45 min |
-| Riserva per trasferimento log/stop | 30 min |
-
-Il totale massimo di 8 h non è attualmente dimostrato perché il nuovo
-confronto è seriale al primo replay. Prima dell'autorizzazione fissare
-`TRACE_STEP_SECONDS` e `NATIVE_TRACE_TIMEOUT_SECONDS` con una misura o un
-preventivo conservativo e riallocare le altre fasi senza superare 8 h; in
-assenza, STOP. Le deadline interne
-del pilot/replay non coprono tutti gli hash e la generazione tabelle:
-il timeout esterno copre l'intero comando. Nessuna fase parte se non ha
-il proprio budget residuo più almeno 30 minuti per conservare l'evidenza.
-Questi massimi non garantiscono il completamento: anche comandi accessori
-e passaggi manuali consumano la stessa finestra. Al primo errore si saltano
-le fasi successive e si pubblica il fallimento.
+Registrare il termine complessivo autorizzato in `AUTHORIZED_END_EPOCH`.
+I timeout degli snippet sono massimi per fase, non una stima del tempo
+completo né un'autorizzazione di spesa. Fissare `TRACE_STEP_SECONDS` e
+`NATIVE_TRACE_TIMEOUT_SECONDS` includendo il confronto indipendente,
+ancora non misurato sui pesi reali. Ogni fase deve rientrare nel tempo
+residuo, con almeno 30 minuti riservati a conservazione e chiusura.
+I timeout esterni coprono anche hash e generazione tabelle. Al primo
+errore si saltano le fasi successive e si pubblica il fallimento;
+la chiusura concordata non si rinvia per completare o salvare un run.
 
 ### Identità degli input
 
@@ -224,26 +192,9 @@ valido; un 401/403 ferma la fase, senza accettare licenze o cambiare checkpoint.
 ### Comandi dopo autorizzazione esplicita e risoluzione dell'hard stop
 
 Gli snippet seguenti **non sono stati eseguiti sui pesi reali**. Prima
-dell'autorizzazione fissare offerta/regione, digest immagine con toolchain,
-SHA pulita, `POD_CREATED_EPOCH`, `TRACE_STEP_SECONDS`,
-`NATIVE_TRACE_TIMEOUT_SECONDS` e la riallocazione completa entro 8 ore.
-Verificare i flag con la CLI realmente installata prima
-della creazione; mappare i Secret nel template, mai nei comandi/log.
-Non esiste oggi un comando di creazione ammesso da questo runbook.
-
-```bash
-runpodctl version
-runpodctl pod create --help
-# STOP: approvare un comando solo quando espone una deadline provider
-# verificabile; il CLI corrente non la offre.
-```
-
-Il GPU ID va confrontato con `runpodctl gpu list`: se l'ID differisce,
-selezionare l'ID SXM effettivo senza cambiare classe, prezzo o risorse.
-Nessuna chiamata al provider è necessaria per preparare questo documento.
-Checkout anonimo HTTPS, poi credenziale Git solo tramite Secret
-`VOLTA_GITHUB_TOKEN`, scoped al repository ed expiring; eventuale
-`HF_TOKEN` è un Secret separato con sola lettura, non copiato dalla VM.
+fissare `APPROVED_SHA`, `AUTHORIZED_END_EPOCH`, `TRACE_STEP_SECONDS` e
+`NATIVE_TRACE_TIMEOUT_SECONDS`. Usare il pod autorizzato e i Secret della
+[procedura di gestione](#gestione-del-pod-e-del-repository).
 
 ```bash
 set -euo pipefail
@@ -263,7 +214,8 @@ export CARGO_TARGET_DIR="$ROOT/rust/target" CARGO_INCREMENTAL=0
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 RAYON_NUM_THREADS=1
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$ROOT/scripts"
-export CAMPAIGN_END_EPOCH=$((POD_CREATED_EPOCH + 8 * 3600 - 1800))
+test "${AUTHORIZED_END_EPOCH:?termine autorizzato richiesto}" -gt "$(date +%s)"
+export CAMPAIGN_END_EPOCH=$((AUTHORIZED_END_EPOCH - 1800))
 ulimit -v 67108864
 run_step() {
   local seconds=$1 label=$2 code
@@ -284,7 +236,7 @@ run_step() {
 
 Non rilanciare lo stesso label/directory. Anche un timeout prima che il
 wrapper produca JSON conserva stdout, stderr ed exit code; non trattare
-un file vuoto/troncato come risultato. La deadline provider prevale sul
+un file vuoto/troncato come risultato. Il termine autorizzato prevale sul
 controller locale. Preparare venv/toolchain nella fase ambiente, senza
 upgrade non registrati; `pip freeze`, `rustc -Vv`, `cargo -V`, `uname -a`,
 quote/deadline, CPU/RAM/disco e SHA immagine vanno nei log.
@@ -444,10 +396,8 @@ ottenibile con i comandi correnti, e **Γ ammesso/congelato** soltanto dopo
 tutti e cinque i controlli. «Candidata validata dal riferimento» descrive
 il primo esito: non è un campo JSON né una ricevuta di ammissione.
 Non si cambia un `calibrated:false` prodotto dai tool in `true` a mano.
-La futura ricevuta di congelamento deve referenziare il report di confronto,
-la copertura esatta e ogni assunzione residua; in sua assenza resta aperta.
-La prima autorizzazione può fermarsi al bundle numerico; non acquistare
-tempo GPU per «completare automaticamente il congelamento» con un tool assente.
+La ricevuta di ammissione deve referenziare i cinque controlli, la copertura
+esatta e ogni assunzione residua; in sua assenza l'ammissione resta aperta.
 
 Conservare in una nuova directory immutabile, senza aggiornare i manifest
 storici: candidata, descrizione ID, report ingest/pilot, ricette e digest
@@ -504,16 +454,25 @@ scripts/runpod_harness.sh git-preflight
 scripts/runpod_harness.sh git-push "runpod/$RUNPOD_POD_ID/c71-gamma"
 ```
 
-Verificare da un checkout remoto separato il commit e i file pubblicati,
-e l'eventuale destinazione autorizzata dei dati da conservare. Solo dopo
-eseguire il `delete` della [gestione pod](#gestione-del-pod-e-del-repository).
-Quando l'hard stop sarà risolto, la terminazione provider dovrà avvenire
-comunque alla deadline; non rinviarla per salvare un run incompleto. Dopo
-l'ammissione di Γ, portare il profilo
-e il conto delle risorse alla [preparazione dell'esperimento della prova](#esperimento-della-prova), distinta dalla
-campagna numerica. Questa
-campagna non misura prova/PCG, non emette certificati e non autorizza il
-benchmark della prova H100.
+Alla chiusura della campagna, verificare da un checkout remoto separato
+il commit e i file pubblicati, e la destinazione autorizzata dei dati da
+conservare, prima del `delete` della [gestione pod](#gestione-del-pod-e-del-repository).
+Resta vincolante il termine concordato, anche se il salvataggio è incompleto.
+Dopo l'ammissione di Γ, portare profilo e conto delle risorse
+all'[esperimento della prova](#esperimento-della-prova) se già autorizzato
+e compatibile con il budget residuo. La calibrazione non misura prova/PCG
+e non emette certificati.
+
+Per riusare il bundle in una nuova campagna, verificarne manifest e hash
+dalla destinazione persistente e confrontare modello/packed, workload,
+Γ, tabelle e ricette con le identità validate. Registrare il record di
+provenienza: si possono saltare le fasi numeriche già validate se codice
+e ambiente pertinenti sono invariati, oppure dopo una verifica documentata
+dell'impatto delle differenze. Un bundle parziale conserva solo il credito
+delle fasi completate. Hash e ricette non conservano da soli il packed.
+Sulla nuova H100 verificare ambiente e parità; picchi fisici e tempi
+richiedono nuove misure. Correlazioni monouso, journal e KV di sessione
+non sono cache da importare nella nuova esecuzione.
 
 ## Esperimento della prova
 
@@ -551,7 +510,8 @@ loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
 il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,
 senza un percorso CPU sostitutivo. La produzione usa PCG reale/AES.
 
-Comando sul solo hardware autorizzato, dopo build e parità. Impostare
+Comando sul solo hardware autorizzato, dopo ammissione di Γ, build e
+parità, entro il budget residuo con la riserva di chiusura. Impostare
 `APPROVED_SHA`, `PROOF_SECONDS`, `CANDIDATE`, `TABLES`, `PACKED`, `LIBRARY`
 e `RUN` (directory nuova sotto `benchmarks/raw`). Il device logico è 0;
 fissare prima `CUDA_VISIBLE_DEVICES` all'UUID autorizzato. I limiti di

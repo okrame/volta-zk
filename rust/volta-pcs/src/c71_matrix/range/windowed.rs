@@ -761,8 +761,10 @@ pub(in crate::c71_matrix) mod tests {
 
     #[test]
     fn c71_b12_windowed_native_shared_resident_transcript_original_mac() {
+        let _budget = crate::c71_matrix::census::Budget::new(&Arc::new(Vec::new())).unwrap();
         let fixture = native::tests::fixture(512);
         shared_native_parity(fixture.config.clone());
+        println!("C71_TEMPORARY_ALLOCATIONS {}", crate::c71_matrix::census::simultaneous());
     }
 
     fn shared_native_parity(config: native::Config) {
@@ -991,7 +993,7 @@ pub(in crate::c71_matrix) mod tests {
         )
         .err()
         .unwrap()
-        .contains("cleanup failed"));
+        .contains("injected CUDA failure"));
         injection.set(0);
         source.native.as_mut().unwrap().library = fixture.config.library.with_extension("missing");
         assert!(prove(

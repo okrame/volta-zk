@@ -41,6 +41,7 @@ impl<T: Write> Write for Counted<T> {
 
 pub(super) struct Measurements {
     started: Instant,
+    budget: Mutex<Option<crate::c71_matrix::census::Budget>>,
     phases: Mutex<Vec<serde_json::Value>>,
     channels: Mutex<Vec<(&'static str, Option<usize>, Traffic)>>,
     native: Mutex<Option<Arc<super::resident::Session>>>,
@@ -51,11 +52,17 @@ impl Measurements {
     pub(super) fn new() -> Self {
         Self {
             started: Instant::now(),
+            budget: Mutex::default(),
             phases: Mutex::default(),
             channels: Mutex::default(),
             native: Mutex::default(),
             resources: Mutex::default(),
         }
+    }
+
+    pub(super) fn budget(&self, weights: &Arc<Vec<i16>>) -> Result<(), String> {
+        *self.budget.lock().unwrap() = Some(crate::c71_matrix::census::Budget::new(weights)?);
+        Ok(())
     }
 
     pub(super) fn native(&self, session: Arc<super::resident::Session>) {
@@ -76,6 +83,7 @@ impl Measurements {
 
     fn sample(&self) -> serde_json::Value {
         serde_json::json!({"host_process": memory(),
+            "joint_allocations": crate::c71_matrix::census::simultaneous(),
             "native": self.native.lock().unwrap().as_ref().map(|session| session.census())})
     }
 
@@ -166,7 +174,8 @@ impl Measurements {
             "complete_physical_peak": false, "gpu_backend_selected": self.native.lock().unwrap().is_some(),
             "resource_samples": self.resources.lock().unwrap().clone(),
             "process_memory": memory(),
-            "memory_scope": "phase-boundary process RSS/HWM and shared native ledger; both roles coexist; samples are not continuous peaks; busy native samples are skipped; external GPU/process monitor required"
+            "joint_allocations": crate::c71_matrix::census::simultaneous(),
+            "memory_scope": "joint host allocator/native reservation counter covers both roles and realloc overlap; W packed alone is exempt; RSS/HWM and native phase samples remain diagnostics; physical runtime allowance requires external process/device measurement"
         })
     }
 }

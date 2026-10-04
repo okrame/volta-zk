@@ -1139,6 +1139,119 @@ mod tests {
     }
 
     #[test]
+    fn c71_canonical_device_allocation_geometry_without_canonical_buffers() {
+        let align = |n: usize| n.div_ceil(256) * 256;
+        for slot in 0..3 {
+            let plan = super::super::tests::nonlinear_profile(slot);
+            let sources = &plan.bytes().scalar.layout.sources;
+            let cuts: BTreeSet<_> = plan.checkpoint_ids().unwrap().into_iter().collect();
+            let kv: BTreeSet<_> =
+                plan.sources.attention.layers.iter().flat_map(|layer| [layer.k, layer.v]).collect();
+            let histograms: BTreeSet<_> = plan
+                .steps
+                .iter()
+                .flat_map(|p| plan.ports(p).1)
+                .filter(|&id| (sources[id].rows, sources[id].cols) == (1, 65535))
+                .collect();
+            let frozen: BTreeSet<_> = cuts.iter().chain(&kv).chain(&histograms).copied().collect();
+            let kv_bytes: usize = kv.iter().map(|&id| align(450 * sources[id].cols * 2)).sum();
+            let cut_bytes: usize =
+                cuts.iter().map(|&id| align(sources[id].rows * sources[id].cols * 2)).sum();
+            let histogram_bytes = histograms.len() * align(65535 * 8);
+            let tables = align(23_954_072);
+            let persistent = kv_bytes + cut_bytes + histogram_bytes + tables;
+            let mut last = BTreeMap::new();
+            for (step, producer) in plan.steps.iter().enumerate() {
+                for source in plan.ports(producer).0 {
+                    last.insert(source, step);
+                }
+            }
+            let mut live = BTreeMap::<(usize, usize), usize>::new();
+            let mut peak = 0;
+            // Upper envelope for ANY pruned replay: all producer outputs and
+            // all duplicate replay histograms are charged, including frozen
+            // outputs before release. Uses the production batches/ports/codec.
+            for (step, producer) in plan.steps.iter().enumerate() {
+                for (first, count) in batches(&plan, step).unwrap() {
+                    for (source, _) in input_keys(&plan, step, first).unwrap() {
+                        if kv.contains(&source)
+                            && !cuts.contains(&source)
+                            && !live.keys().any(|&(id, _)| id == source)
+                        {
+                            live.insert((source, 0), align(150 * sources[source].cols * 2));
+                        }
+                    }
+                    let outputs: Vec<_> = plan
+                        .ports(producer)
+                        .1
+                        .into_iter()
+                        .filter(|id| !histograms.contains(id))
+                        .map(|id| {
+                            (
+                                id,
+                                align(
+                                    count
+                                        * sources[id].cols
+                                        * if plan.bytes().widths[id] == 2 { 2 } else { 8 },
+                                ),
+                            )
+                        })
+                        .collect();
+                    let transient = live.values().sum::<usize>()
+                        + outputs.iter().map(|(_, n)| n).sum::<usize>();
+                    peak = peak.max(transient);
+                    for (source, size) in outputs {
+                        if !frozen.contains(&source)
+                            && last.get(&source).is_some_and(|&end| end > step)
+                        {
+                            assert!(live.insert((source, first), size).is_none());
+                        }
+                    }
+                }
+                live.retain(|(source, _), _| last.get(source).is_some_and(|&end| end > step));
+            }
+            assert!(live.is_empty());
+            assert_eq!(kv_bytes, 405_504_000);
+            assert_eq!(cut_bytes, 98_380_800);
+            assert_eq!(histograms.len(), 121);
+            // Public padding has one output and at most one i16 input of ones.
+            let padding = sources
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.rows > 150)
+                .filter_map(|(id, s)| {
+                    plan.padding_word(id, 150, 0).unwrap().map(|value| {
+                        let width = if plan.bytes().widths[id] == 2 {
+                            2
+                        } else if value == 0 {
+                            8
+                        } else {
+                            10
+                        };
+                        align(106 * s.cols * width)
+                    })
+                })
+                .max()
+                .unwrap_or(0);
+            let working = (peak + histogram_bytes).max(padding) + 1024; // flags/public argmax IDs
+            let upper = persistent + working;
+            assert!(upper < 1 << 30);
+            println!(
+                "C71_DEVICE_ALLOCATION_GEOMETRY {}",
+                serde_json::json!({
+                    "slot":slot, "old_tokens":150*slot, "kv_capacity_bytes":kv_bytes,
+                    "checkpoint_capacity_bytes":cut_bytes, "histogram_capacity_bytes":histogram_bytes,
+                    "table_capacity_bytes":tables, "persistent_device_bytes":persistent,
+                    "replay_upper_bytes_including_persistent":upper,
+                    "duplicate_histograms_included":true, "geometry_only":true,
+                    "gpu_execution":false, "credit":false,
+                    "host_allocations_at_geometry": kernel::census::simultaneous()
+                })
+            );
+        }
+    }
+
+    #[test]
     fn c71_canonical_device_replay_original_rows_windows_and_failure() {
         let mut fixture = fixture(512);
         fixture.config.arena_bytes = 64 << 20;

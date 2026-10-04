@@ -334,7 +334,7 @@ extern "C" void c71_range_test_failure(unsigned kind) {
 #else
 
 static C71RangeContext* create(uint64_t bytes=262144) {
-    C71RangeContext* c=nullptr; assert(!c71_range_create(0,bytes,256,&c)); return c;
+    C71RangeContext* c=nullptr; assert(!c71_range_create(0,bytes,256,nullptr,&c)); return c;
 }
 static uint64_t alloc(C71RangeContext* c,unsigned kind,uint64_t n) {
     uint64_t id=0; assert(!c71_range_alloc(c,kind,n,&id)); return id;
@@ -434,7 +434,7 @@ static void dense_checks() {
         close(c);
     }
     c=create(); install(c); fail_free=true; C71RangeStats final{};
-    assert(c71_range_close(c,&final) && final.cleanup_failed && final.weights_bytes==20 && final.arena_bytes==262144);
+    assert(c71_range_close(c,&final) && final.cleanup_failed && final.weights_bytes==20 && final.arena_bytes==0);
     fail_free=false;
 }
 static void embedding_checks() {
@@ -612,18 +612,42 @@ static void byte_checks() {
         assert(c71_byte_seal(c,pending) && launches==attempted);
         close(c);
     }
-    // Releasing an unfinished window retires its flag too, without freeing arena.
+    // Releasing an unfinished window frees its flag and capacity after a fence.
     c=create(); const auto pending=alloc(c,C71_BYTE_PENDING,128);
     assert(!c71_byte_begin(c,pending)); assert(stats(c).live_capacity_bytes==512);
     assert(!c71_range_release(c,pending)); assert(!stats(c).live_capacity_bytes);
     close(c);
 }
+static uint64_t joint_live=0, joint_limit=uint64_t{1}<<20;
+static int joint_account(int64_t delta) {
+    if(delta>0 && uint64_t(delta)>joint_limit-joint_live) return -1;
+    if(delta>=0) joint_live+=uint64_t(delta); else joint_live-=uint64_t(-delta);
+    return 0;
+}
+static void joint_budget_checks() {
+    C71RangeContext* c=nullptr;
+    assert(!c71_range_create(0,262144,256,joint_account,&c));
+    const auto owner=stats(c).host_owner_bytes;
+    assert(joint_live==owner && !stats(c).arena_bytes);
+    joint_limit=owner+256;
+    const auto a=alloc(c,C71_U8,17);
+    assert(joint_live==owner+256 && stats(c).arena_bytes==256);
+    assert(!c71_range_release(c,a));
+    assert(joint_live==owner && !stats(c).arena_bytes);
+    alloc(c,C71_U8,17);
+    const auto before=allocations;
+    uint64_t denied=0;
+    assert(c71_range_alloc(c,C71_U8,1,&denied));
+    assert(!denied && allocations==before && stats(c).stopped);
+    close(c);
+    assert(joint_live==0);
+}
 int main() {
     C71RangeContext* c=nullptr;
-    assert(c71_range_runtime_abi()==3);
-    assert(c71_range_create(0,6442451200ULL,256,&c) && !c && !allocations);
-    assert(c71_range_create(0,512,512,&c) && !c && !allocations);
-    assert(c71_range_create(1,512,256,&c) && c);
+    assert(c71_range_runtime_abi()==4);
+    assert(c71_range_create(0,6442451200ULL,256,nullptr,&c) && !c && !allocations);
+    assert(c71_range_create(0,512,512,nullptr,&c) && !c && !allocations);
+    assert(c71_range_create(1,512,256,nullptr,&c) && c);
     C71RangeStats final{}; assert(c71_range_close(c,&final) && final.cleanup_failed);
     c=create(); const auto a=roots(c); const auto root=alloc(c,C71_PAIR,1024);
     assert(!c71_range_runtime_canopy(c,a,root));
@@ -638,8 +662,8 @@ int main() {
     after=stats(c); assert(after.live_capacity_bytes==before.live_capacity_bytes && after.logical_bytes<before.logical_bytes);
     uint64_t limbs[12]; assert(!c71_range_read(c,a,limbs,12));
     assert(!c71_range_release(c,a) && !c71_range_release(c,root));
-    after=stats(c); assert(!after.live_capacity_bytes && after.arena_bytes==262144 && !frees);
-    close(c); assert(allocations==1 && frees==1);
+    after=stats(c); assert(!after.live_capacity_bytes && !after.arena_bytes && frees);
+    close(c); assert(allocations==frees);
 
     // Both source types, append coverage, H and retention, scalar root fencing.
     for(unsigned kind=0;kind<2;++kind) {
@@ -685,9 +709,10 @@ int main() {
         assert(c71_range_runtime_canopy(c,id,id) && launches==initial_launches);
         close(c);
     }
-    c=create(); fail_free=true;
-    assert(c71_range_close(c,&final) && final.cleanup_failed && final.arena_bytes==262144);
+    c=create(); alloc(c,C71_U8,1); fail_free=true;
+    assert(c71_range_close(c,&final) && final.cleanup_failed && final.arena_bytes==256);
     fail_free=false;
+    joint_budget_checks();
     dense_checks();
     embedding_checks();
     pointwise_checks();

@@ -148,8 +148,8 @@ pub(super) fn power_lookup<F: p3_field::Field>(point: F, length: usize) -> impl 
     move |i| low[i & (low.len() - 1)] * high[i >> low_bits]
 }
 
-// One retained allocation. Logical folds never claim to free Vec capacity.
-// Only a consumed replay handle can release a committed generation.
+// One retained generation. Only a consumed replay handle permits folding
+// and shrinking its capacity; committed predecessors remain immutable.
 struct RetainedData {
     fallback: Option<Getter>,
     values: Option<Vec<E>>,
@@ -232,7 +232,7 @@ impl Retained {
         }
         Ok(Lease { stage: self.clone(), prefix: prefix.to_vec() })
     }
-    fn promote(&self, prefix: &[E]) -> Result<(), String> {
+    fn promote(&self, prefix: &[E]) -> Result<usize, String> {
         let mut data = self.data.write().map_err(|_| "retained lock poisoned")?;
         if prefix.len() > data.variables || prefix == data.applied {
             return Err("overlong or non-advancing retained promotion".into());
@@ -256,14 +256,18 @@ impl Retained {
                 let a = values[i];
                 values[i] = a + r * (values[i + half] - a);
             }
-            values.truncate(half); // capacity stays reserved until State is dropped
+            values.truncate(half); // no capacity credit until the shrink below
             interpolations += half as u64;
         }
+        // Account a possible old+new allocation during shrink (at most 1.5x
+        // the predecessor, 1.25x for the canonical two-bit fold). No spill.
+        values.shrink_to_fit();
+        let capacity_bytes = values.capacity() * size_of::<E>();
         data.fold_interpolations += interpolations;
         data.applied = prefix.to_vec();
         data.current = 1;
         data.successor = None;
-        Ok(())
+        Ok(capacity_bytes)
     }
 }
 
@@ -461,7 +465,7 @@ impl State {
             self.pending_retention = None;
             self.scan = None;
         } else if let Some(stage) = &self.retained {
-            stage.promote(&self.prefix)?;
+            self.retained_bytes = stage.promote(&self.prefix)?;
         }
         // Never overlap an old Q/inverse/DFT owner with the new claim's setup.
         self.power_blocks.take();
@@ -834,7 +838,7 @@ mod tests {
     }
 
     #[test]
-    fn c71_b12_retained_lifecycle_rejects_reordering_and_preserves_storage() {
+    fn c71_b12_retained_lifecycle_rejects_reordering_and_releases_capacity() {
         use std::panic::{catch_unwind, AssertUnwindSafe};
 
         let keepalive = Arc::new(());
@@ -848,7 +852,7 @@ mod tests {
 
         let mut values = Vec::with_capacity(16);
         values.extend((0..8).map(|i| E::from(Goldilocks::new(i + 1))));
-        let reserved = values.capacity();
+        assert_eq!(values.capacity(), 16);
         let stage = Arc::new(Retained {
             data: RwLock::new(RetainedData {
                 fallback: Some(fallback),
@@ -896,7 +900,7 @@ mod tests {
         assert_eq!(before, after);
         let data = stage.data.read().unwrap();
         assert_eq!(data.values.as_ref().unwrap().len(), 4);
-        assert_eq!(data.values.as_ref().unwrap().capacity(), reserved);
+        assert_eq!(data.values.as_ref().unwrap().capacity(), 4);
         drop(data);
 
         assert!(catch_unwind(AssertUnwindSafe(|| stale_s1_getter(0))).is_err());

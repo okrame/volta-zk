@@ -9,6 +9,7 @@ use super::streaming::{
 use super::{Goldilocks, HidingMmcs, PrivateRng};
 use p3_commit::Mmcs;
 use p3_field::PrimeField64;
+use p3_matrix::dense::DenseMatrix;
 use p3_merkle_tree::{MerkleCap, PrunedMerklePaths};
 use rand_010::RngExt;
 use std::collections::BTreeMap;
@@ -18,13 +19,31 @@ const LEAF: &[u8] = b"volta-zk/c71/b12/merkle/leaf/v1\0";
 const SALTS: usize = 4;
 const MAX_REFERENCE_HEIGHT: usize = 1 << 18;
 pub(super) const MAX_REFERENCE_ROWS: usize = 1024;
-pub(super) const CANONICAL_QUERY_ROWS: usize = 1 << 21;
+pub(super) const CANONICAL_QUERY_ROWS: usize = 1 << 20;
 
 pub(super) fn query_batch_rows(height: usize) -> usize {
     if height > MAX_REFERENCE_HEIGHT {
         CANONICAL_QUERY_ROWS
     } else {
         MAX_REFERENCE_ROWS
+    }
+}
+
+/// Preserve the initial source-scan count while bounding the Merkle frontier.
+/// Reduced cases use the same four-coset initial path, with tiny allocations.
+pub(super) fn coset_group_size(height: usize, columns: usize) -> usize {
+    if height <= MAX_REFERENCE_HEIGHT {
+        if columns % 3 != 0 && (256..=1 << 16).contains(&height) {
+            4
+        } else {
+            1
+        }
+    } else if columns == 128 {
+        4
+    } else if height >= 1 << 27 {
+        2
+    } else {
+        1
     }
 }
 
@@ -35,13 +54,13 @@ pub(super) fn geometry(height: usize, columns: usize) -> Result<(usize, usize), 
         return Err("initial replay geometry differs".into());
     }
     if height <= MAX_REFERENCE_HEIGHT {
-        let rows = 256.min(height);
+        let rows = 256.min(height) / coset_group_size(height, columns);
         return Ok((rows, (height / rows).max(16)));
     }
     let log_rows = match (height.ilog2(), columns) {
-        (31 | 32, 128) => 22, // initial W/A: 1024/512 scans
-        (29 | 30, 12) => 24,  // S1, before retaining A
-        (27 | 28, 12) => 22,  // S2, full S1 capacity is still live
+        (31 | 32, 128) => 20, // four cosets per scan: W/A still 1024/512 scans
+        (29 | 30, 12) => 23,  // two cosets per scan, before retaining A
+        (27 | 28, 12) => 21,  // paired S2 cosets while full S1 capacity is live
         (19..=26, 12) => 23,  // S3+: the excluded 2^24 never returns
         _ => return Err("large replay requires the selected W/A stage geometry".into()),
     };
@@ -52,7 +71,8 @@ type Digest = [u8; 32];
 pub(super) type Commitment = MerkleCap<Goldilocks, Digest>;
 pub(super) type MultiProof = <HidingMmcs as Mmcs<Goldilocks>>::MultiProof;
 pub(super) type Opening = (Vec<Vec<Vec<Goldilocks>>>, MultiProof);
-pub(super) type Rows = Arc<dyn Fn(&[usize]) -> Result<Vec<Vec<Goldilocks>>, String> + Send + Sync>;
+pub(super) type Rows =
+    Arc<dyn Fn(&[usize]) -> Result<DenseMatrix<Goldilocks>, String> + Send + Sync>;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct ReplayWork {
@@ -96,7 +116,7 @@ impl Tree {
         base_columns: usize,
         coset_rows: usize,
         cut: usize,
-        coset: impl Fn(usize) -> Result<Vec<u64>, String>,
+        mut coset: impl FnMut(usize) -> Result<Vec<u64>, String>,
         row: Rows,
     ) -> Result<(Commitment, Self), String> {
         if height < 16
@@ -215,40 +235,14 @@ impl Tree {
         let mut queries: Vec<_> =
             indices.iter().enumerate().map(|(position, &index)| (index, position)).collect();
         queries.sort_unstable();
-        let mut cursor = 0;
-        let mut opened = vec![Vec::new(); indices.len()];
-        let mut subtrees = BTreeMap::new();
-        for batch in needed.chunks(batch_cap / self.cut) {
-            let batch_indices: Vec<_> = batch
-                .iter()
-                .flat_map(|&subtree| subtree * self.cut..(subtree + 1) * self.cut)
-                .collect();
-            let rows = (self.row)(&batch_indices)?;
-            if rows.len() != batch_indices.len()
-                || rows.iter().any(|row| row.len() != self.base_columns)
-            {
-                return Err("replay opening row shape differs".into());
-            }
-            for (&subtree, values) in batch.iter().zip(rows.chunks_exact(self.cut)) {
-                let start = subtree * self.cut;
-                while cursor < queries.len() && queries[cursor].0 < start + self.cut {
-                    let (index, position) = queries[cursor];
-                    opened[position] = vec![values[index - start].clone()];
-                    cursor += 1;
-                }
-                subtrees.insert(subtree, self.regenerate(subtree, values)?);
-            }
-        }
-
-        let salts = indices
-            .iter()
-            .map(|&i| vec![subtrees[&(i / self.cut)].salts[i % self.cut].to_vec()])
-            .collect();
-
+        // Fix the native pruned-proof order first. Keep only requested paths,
+        // never all regenerated subtrees (up to batch_count * 96 * cut bytes).
+        let cut_log = self.cut.ilog2() as usize;
         let mut frontier = indices.to_vec();
         frontier.sort_unstable();
         frontier.dedup();
         let mut siblings = Vec::new();
+        let mut paths = BTreeMap::<usize, Vec<(usize, usize, usize)>>::new();
         for level in 0..self.height.ilog2() as usize {
             let mut parents = Vec::with_capacity(frontier.len());
             let mut i = 0;
@@ -262,28 +256,76 @@ impl Tree {
                 } else {
                     true
                 };
-                if !has_left {
-                    siblings.push(self.digest_at(level, left, &subtrees));
-                }
-                if !has_right {
-                    siblings.push(self.digest_at(level, right, &subtrees));
+                for missing in [(!has_left).then_some(left), (!has_right).then_some(right)]
+                    .into_iter()
+                    .flatten()
+                {
+                    if level < cut_log {
+                        let leaf = missing << level;
+                        paths.entry(leaf / self.cut).or_default().push((
+                            level,
+                            (leaf % self.cut) >> level,
+                            siblings.len(),
+                        ));
+                        siblings.push([0; 32]);
+                    } else {
+                        siblings.push(self.top[level - cut_log][missing]);
+                    }
                 }
                 parents.push(parent);
                 i += usize::from(has_left) + usize::from(has_right);
             }
             frontier = parents;
         }
+        let mut cursor = 0;
+        let mut opened = vec![Vec::new(); indices.len()];
+        let mut salts = vec![Vec::new(); indices.len()];
+        for batch in needed.chunks(batch_cap / self.cut) {
+            let batch_indices: Vec<_> = batch
+                .iter()
+                .flat_map(|&subtree| subtree * self.cut..(subtree + 1) * self.cut)
+                .collect();
+            let rows = (self.row)(&batch_indices)?;
+            if rows.values.len() != batch_indices.len() * self.base_columns
+                || rows.width != self.base_columns
+            {
+                return Err("replay opening row shape differs".into());
+            }
+            for (&subtree, values) in
+                batch.iter().zip(rows.values.chunks_exact(self.cut * self.base_columns))
+            {
+                let regenerated = self.regenerate(subtree, values)?;
+                let start = subtree * self.cut;
+                while cursor < queries.len() && queries[cursor].0 < start + self.cut {
+                    let (index, position) = queries[cursor];
+                    opened[position] = vec![values[(index - start) * self.base_columns
+                        ..(index - start + 1) * self.base_columns]
+                        .to_vec()];
+                    salts[position] = vec![regenerated.salts[index - start].to_vec()];
+                    cursor += 1;
+                }
+                if let Some(requested) = paths.remove(&subtree) {
+                    for (level, local, position) in requested {
+                        siblings[position] = regenerated.levels[level][local];
+                    }
+                }
+                // `regenerated` is dropped before the next subtree allocation.
+            }
+        }
+        if !paths.is_empty() || cursor != queries.len() {
+            return Err("replay pruned path coverage differs".into());
+        }
         Ok((opened, (salts, PrunedMerklePaths { sibling_hashes: siblings })))
     }
 
-    fn regenerate(&self, subtree: usize, rows: &[Vec<Goldilocks>]) -> Result<Subtree, String> {
+    fn regenerate(&self, subtree: usize, rows: &[Goldilocks]) -> Result<Subtree, String> {
         let mut rng = stream_at(&self.private_stream, self.subtree_offsets[subtree])?;
         let mut salts = Vec::with_capacity(self.cut);
         let mut leaves = Vec::with_capacity(self.cut);
-        if rows.len() != self.cut {
+        if rows.len() != self.cut * self.base_columns {
             return Err("replay subtree row count differs".into());
         }
-        for values in rows {
+        for values in rows.chunks_exact(self.base_columns) {
             if values.len() != self.base_columns {
                 return Err("replay row width differs".into());
             }
@@ -305,19 +347,6 @@ impl Tree {
             return Err("replayed subtree does not match committed cache".into());
         }
         Ok(Subtree { salts, levels })
-    }
-
-    fn digest_at(&self, level: usize, index: usize, subtrees: &BTreeMap<usize, Subtree>) -> Digest {
-        let cut_log = self.cut.ilog2() as usize;
-        if level < cut_log {
-            let leaves_per_node = 1usize << level;
-            let leaf = index * leaves_per_node;
-            let subtree = leaf / self.cut;
-            let local = (leaf % self.cut) / leaves_per_node;
-            subtrees[&subtree].levels[level][local]
-        } else {
-            self.top[level - cut_log][index]
-        }
     }
 
     pub(super) fn geometry(&self) -> (usize, usize, usize, usize) {
@@ -363,11 +392,12 @@ mod tests {
     fn c71_b12_canonical_initial_geometry_selects_512_a_scans_without_allocation() {
         for (height, passes) in [(1usize << 31, 512), (1usize << 32, 1024)] {
             let (rows, cut) = geometry(height, 128).unwrap();
-            assert_eq!(rows, 1 << 22);
-            assert_eq!(height / rows, passes);
+            allocation_geometry(height, 128);
+            assert_eq!(rows, 1 << 20);
+            assert_eq!(height / rows / coset_group_size(height, 128), passes);
             assert_eq!(cut, 4096);
-            assert_eq!(rows * 128 * 8, 4 << 30);
-            assert_eq!(query_batch_rows(height), 1 << 21);
+            assert_eq!(rows * coset_group_size(height, 128) * 128 * 8, 4 << 30);
+            assert_eq!(query_batch_rows(height), 1 << 20);
             // The superseded A/1024 reconstruction shape is rejected before
             // salt sampling, source calls or any large allocation.
             assert!(Tree::commit(
@@ -387,6 +417,28 @@ mod tests {
         assert!(geometry(1 << 31, 384).is_err());
     }
 
+    fn allocation_geometry(height: usize, columns: usize) {
+        let (rows, cut) = geometry(height, columns).unwrap();
+        let group = coset_group_size(height, columns);
+        let queries = query_batch_rows(height);
+        println!(
+            "C71_PCS_ALLOCATION_GEOMETRY {}",
+            serde_json::json!({
+                "height":height, "columns":columns, "coset_rows":rows, "group":group,
+                "source_scans":height / rows / group,
+                "pending_and_current_coset_capacity_bytes":group * rows * columns.max(4) * 8,
+                "frontier_capacity_bytes":rows * (height / rows).ilog2() as usize * 32,
+                "salt_cursors_capacity_bytes":rows * 8,
+                "fft_column_and_twiddle_upper_bytes":3 * rows * 8,
+                "retained_root_and_salt_offset_bytes":(2 * height / cut - 1) * 32 + height / cut * 8,
+                "query_batch_rows":queries,
+                "query_matrix_capacity_bytes":queries * columns * 8,
+                "query_factor_capacity_bytes":32 * queries * (queries.ilog2() as usize + 1),
+                "geometry_only":true, "credit":false
+            })
+        );
+    }
+
     #[test]
     fn c71_b12_canonical_extension_geometry_tracks_every_native_stage_without_allocation() {
         for dimension in [34, 35] {
@@ -397,16 +449,27 @@ mod tests {
                 let height = config.inv_rate(round) * (1usize << (remaining - fold));
                 let columns = 3 << fold;
                 let (rows, cut) = geometry(height, columns).unwrap();
+                allocation_geometry(height, columns);
+                println!(
+                    "C71_PCS_CHAIN_STAGE {}",
+                    serde_json::json!({
+                        "dimension":dimension, "round":round, "height":height,
+                        "retained_capacity_at_commit_bytes": if dimension == 34 && round > 0 {
+                            24usize << (remaining + config.round_folding_factor(round))
+                        } else { 0 },
+                        "geometry_only":true, "credit":false
+                    })
+                );
                 if height > MAX_REFERENCE_HEIGHT {
                     let cap = match round {
-                        0 => 1 << 24,
-                        1 => 1 << 22,
+                        0 => 1 << 23,
+                        1 => 1 << 21,
                         _ => 1 << 23,
                     };
                     assert_eq!(rows, height.min(cap));
                     assert_eq!(cut, 4096);
                     assert_eq!(columns, 12);
-                    assert_eq!(query_batch_rows(height), 1 << 21);
+                    assert_eq!(query_batch_rows(height), 1 << 20);
                     // Reject a different physical schedule before invoking any
                     // producer, allocating the domain or sampling private salts.
                     let rejected = if round >= 2 { 1 << 24 } else { rows / 2 };
@@ -447,10 +510,13 @@ mod tests {
             let getter: Rows = Arc::new(move |indices| {
                 assert!(indices.len() <= MAX_REFERENCE_ROWS);
                 getter_calls.lock().unwrap().push(indices.to_vec());
-                Ok(indices
-                    .iter()
-                    .map(|&r| row_values[r * columns..(r + 1) * columns].to_vec())
-                    .collect())
+                Ok(DenseMatrix::new(
+                    indices
+                        .iter()
+                        .flat_map(|&r| row_values[r * columns..(r + 1) * columns].iter().copied())
+                        .collect(),
+                    columns,
+                ))
             });
             let coset_values = values.clone();
             let (root, mut tree) = Tree::commit(
@@ -517,13 +583,13 @@ mod tests {
                     let mut rows = original_rows(indices)?;
                     match fault {
                         0 => {
-                            rows.pop();
+                            rows.values.truncate(rows.values.len() - rows.width);
                         }
-                        1 => rows.push(rows[0].clone()),
+                        1 => rows.values.extend_from_within(..rows.width),
                         2 => {
-                            rows[0].pop();
+                            rows.width -= 1;
                         }
-                        _ => rows[0][0] = Goldilocks::new(999),
+                        _ => rows.values[0] = Goldilocks::new(999),
                     }
                     Ok(rows)
                 });
@@ -536,10 +602,13 @@ mod tests {
     fn replay_tree_uses_live_rng_cursor_and_rejects_bad_shapes() {
         let mmcs = mmcs([9; 32]);
         let row: Rows = Arc::new(|indices| {
-            Ok(indices
-                .iter()
-                .map(|&i| vec![Goldilocks::new(i as u64), Goldilocks::new(7)])
-                .collect())
+            Ok(DenseMatrix::new(
+                indices
+                    .iter()
+                    .flat_map(|&i| [Goldilocks::new(i as u64), Goldilocks::new(7)])
+                    .collect(),
+                2,
+            ))
         });
         let make = || vec![0; 16 * 4];
         assert!(Tree::commit(&mmcs, 64, 2, 16, 16, |_| Ok(make()), row.clone()).is_ok());
@@ -557,7 +626,10 @@ mod tests {
         let original = mmcs([5; 32]);
         let fork = original.clone();
         let row: Rows = Arc::new(|indices| {
-            Ok(indices.iter().map(|_| vec![Goldilocks::new(11), Goldilocks::new(13)]).collect())
+            Ok(DenseMatrix::new(
+                indices.iter().flat_map(|_| [Goldilocks::new(11), Goldilocks::new(13)]).collect(),
+                2,
+            ))
         });
         let cells = || {
             let mut result = vec![0; 16 * 4];

@@ -77,6 +77,7 @@ impl Canonical {
         wire.raw(0, &[], fs)?;
         let (proof, p0) = self.plan.prove_p0(s, compact, fs, rows)?;
         wire.put(1, &proof, fs)?;
+        drop(proof);
         bw.forms = p0.weight_forms.clone();
         bw.targets = p0.weights.clone();
         let (f, bias) = b.forms(&self.plan, &p0)?;
@@ -92,9 +93,11 @@ impl Canonical {
         )?;
         let (proof, norms) = rms.prove_rms(s, &self.recipes.rms, &read, fs, rows)?;
         wire.put(2, &proof, fs)?;
+        drop(proof);
         let (f, bias, t) = rms.rms_forms(&norms)?;
         ba.extend(f, bias, t, shift)?;
         let requests = self.recipes.original_rne(&self.plan, &self.sources, &p0, &norms)?;
+        drop((p0, norms));
         let mut proofs = Vec::with_capacity(requests.len());
         for (r, rounding) in requests {
             let rs = rne::Statement {
@@ -123,13 +126,16 @@ impl Canonical {
             proofs.push(proof);
         }
         wire.put(3, &proofs, fs)?;
+        drop(proofs); // encoded once; no RNE proof capacity across later PCS/GKR phases
         let pairs = self.recipes.table_pairs(&self.plan)?;
         let (proof, pending) = b.prove_table_rne(&self.plan, s, &pairs, &read, fs, rows)?;
         wire.put(4, &proof, fs)?;
+        drop(proof);
         let (f, bias, t) = b.table_rne_forms(&self.plan, &pairs, &pending)?;
         ba.extend(f, bias, t, shift)?;
         let (proof, pending) = g.prove_lookup(s, tables.gelu, &read, fs, rows)?;
         wire.put(5, &proof, fs)?;
+        drop(proof);
         let (f, bias) = g.forms(&pending.point)?;
         ba.extend(f.into(), bias.into(), pending.originals.into(), shift)?;
         let statement = gu.statement(s, fs)?;
@@ -148,6 +154,7 @@ impl Canonical {
             rows,
         )?;
         wire.put(6, &proof, fs)?;
+        drop(proof);
         let (f, bias) = gu.forms(&pending.raw_point, &pending.input_point)?;
         ba.extend(f.into(), bias.into(), pending.originals.into(), shift)?;
         let statement = rope.statement(s, tables.rope, fs)?;
@@ -163,6 +170,7 @@ impl Canonical {
             rows,
         )?;
         wire.put(7, &proof, fs)?;
+        drop(proof);
         let (f, bias) = rope.forms(&pending.raw_point, &pending.input_point)?;
         ba.extend(f.into(), bias.into(), pending.originals.into(), shift)?;
         let mut requests = Vec::with_capacity(120);
@@ -177,6 +185,7 @@ impl Canonical {
                 rows,
             )?;
             wire.put(8 + 2 * layer as u16, &proof, fs)?;
+            drop(proof);
             let (f, bias, t, k) = a.qk_routes(layer, &q)?;
             ba.extend(f.into(), bias.into(), t.into(), shift)?;
             let (proof, v) = kernel::attention::prove_pv(
@@ -188,13 +197,16 @@ impl Canonical {
                 rows,
             )?;
             wire.put(9 + 2 * layer as u16, &proof, fs)?;
+            drop(proof);
             let (f, bias, t, v) = a.pv_routes(layer, &v)?;
             ba.extend(f.into(), bias.into(), t.into(), shift)?;
             requests.extend([k, v]);
         }
         let (proof, mut openings) =
             kv::prove(&ks, &requests, |i, j| previous[i].byte(j), fs, rows)?;
+        drop(requests);
         wire.put(128, &proof, fs)?;
+        drop(proof);
         let opening = openings.pop().ok_or("canonical current KV opening missing")?;
         ba.add(opening.form, opening.original);
         let (proof, pending) = self.output.prove_lookup(
@@ -210,10 +222,12 @@ impl Canonical {
             rows,
         )?;
         wire.put(129, &proof, fs)?;
+        drop(proof);
         let (f, bias) = self.output.forms(b, &pending.point)?;
         ba.extend(f.into(), bias.into(), pending.originals.into(), shift)?;
         let (proof, pending) = self.softmax.prove(b, s, tables.exp30, &read, fs, rows)?;
         wire.put(130, &proof, fs)?;
+        drop(proof);
         let (f, bias, t) = self.softmax.forms(b, &pending)?;
         ba.extend(f, bias, t, shift)?;
         for (kind, model, layout, live, alphabet, batch) in [
@@ -230,6 +244,7 @@ impl Canonical {
             let (proof, forms, targets) =
                 model.range(s.attempt, layout, live, alphabet, fs, rows)?;
             wire.put(kind, &proof, fs)?;
+            drop(proof);
             for (f, t) in forms.into_iter().zip(targets) {
                 batch.add(f, t);
             }
@@ -244,6 +259,7 @@ impl Canonical {
             &codec::encode_linear(Domain::Flat(35), &proof).map_err(|e| e.to_string())?,
             fs,
         )?;
+        drop((proof, bw));
         for (i, opening) in openings.into_iter().enumerate() {
             let (proof, _) = previous[i].close(
                 s.attempt,
@@ -258,6 +274,7 @@ impl Canonical {
                 &codec::encode_linear(Domain::Flat(34), &proof).map_err(|e| e.to_string())?,
                 fs,
             )?;
+            drop(proof);
         }
         let (proof, _) =
             current.close(s.attempt, b.layout_digest, &ba.forms, &ba.targets, fs, rows)?;
@@ -266,6 +283,7 @@ impl Canonical {
             &codec::encode_linear(Domain::Flat(34), &proof).map_err(|e| e.to_string())?,
             fs,
         )?;
+        drop((proof, ba));
         if rows.len() != 0 {
             return Err("canonical prover reservation was not consumed exactly".into());
         }

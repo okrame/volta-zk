@@ -269,7 +269,7 @@ macro_rules! api {
                 // SAFETY: fixed C ABI types below mirror c71_range_runtime.h.
                 unsafe {
                     let abi: unsafe extern "C" fn() -> u32 = library.symbol(b"c71_range_runtime_abi\0")?;
-                    if abi() != 3 { return Err("native range ABI differs".into()); }
+                    if abi() != 4 { return Err("native range ABI differs".into()); }
                     Ok(Self { $($field: library.symbol(concat!($name, "\0").as_bytes())?,)* _library: library })
                 }
             }
@@ -277,7 +277,7 @@ macro_rules! api {
     }
 }
 api! {
-    create: unsafe extern "C" fn(i32,u64,u64,*mut Raw)->i32 => "c71_range_create",
+    create: unsafe extern "C" fn(i32,u64,u64,extern "C" fn(i64)->i32,*mut Raw)->i32 => "c71_range_create",
     close: unsafe extern "C" fn(Raw,*mut Stats)->i32 => "c71_range_close",
     error: unsafe extern "C" fn(Raw)->*const c_char => "c71_range_error",
     abort: unsafe extern "C" fn(Raw)->i32 => "c71_range_abort",
@@ -351,7 +351,8 @@ impl Runtime {
         };
         // SAFETY: owned pointer output; on error Drop also closes partial owners.
         let status = unsafe {
-            (s.api.create)(config.device, config.arena_bytes, config.reserve_bytes, &mut s.raw)
+            (s.api.create)(config.device, config.arena_bytes, config.reserve_bytes,
+                crate::c71_matrix::census::external, &mut s.raw)
         };
         s.check(status)?;
         if s.raw.is_null() {
@@ -1402,7 +1403,7 @@ impl<'a, T: Word> Evaluator<'a, T> {
 pub(in crate::c71_matrix) mod tests {
     use super::*;
     #[test]
-    fn c71_b12_windowed_native_abi3_rejects_legacy_stats() {
+    fn c71_b12_windowed_native_abi4_rejects_legacy_stats() {
         use std::io::Write;
         use std::process::{Command, Stdio};
         let f = fixture(512);
@@ -1500,7 +1501,7 @@ pub(in crate::c71_matrix) mod tests {
             assert_eq!(stats.arena_bytes, 0);
             assert_eq!(stats.weights_loaded_bytes, 16);
             assert_eq!(stats.weights_sealed, 1);
-            assert_eq!(stats.peak_reserved_bytes, fixture.config.arena_bytes + 16);
+            assert_eq!(stats.peak_reserved_bytes, stats.peak_capacity_bytes + 16);
             assert_eq!(stats.h2d_bytes, 32);
         }
     }

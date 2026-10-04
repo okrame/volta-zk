@@ -97,6 +97,7 @@ impl Canonical {
         let (proof, frame) = reader.get(1)?;
         let p0 = self.plan.verify_p0(s, &proof, delta, fs, rows)?;
         Reader::record(fs, frame);
+        drop(proof);
         bw.forms = p0.weight_forms.clone();
         bw.targets = p0.weights.clone();
         let (f, bias) = b.forms(&self.plan, &p0)?;
@@ -113,11 +114,13 @@ impl Canonical {
         let (proof, frame) = reader.get(2)?;
         let norms = rms.verify_rms(s, &self.recipes.rms, &proof, delta, fs, rows)?;
         Reader::record(fs, frame);
+        drop(proof);
         let (f, bias, t) = rms.rms_forms(&norms)?;
         ba.extend(f, bias, t, shift)?;
 
         let (proofs, frame) = reader.get::<Vec<rne::Proof>>(3)?;
         let requests = self.recipes.original_rne(&self.plan, &self.sources, &p0, &norms)?;
+        drop((p0, norms));
         if proofs.len() != requests.len() {
             return Err("canonical original RNE cardinality differs".into());
         }
@@ -139,23 +142,27 @@ impl Canonical {
         let (proof, frame) = reader.get(4)?;
         let pending = b.verify_table_rne(&self.plan, s, &pairs, &proof, delta, fs, rows)?;
         Reader::record(fs, frame);
+        drop(proof);
         let (f, bias, t) = b.table_rne_forms(&self.plan, &pairs, &pending)?;
         ba.extend(f, bias, t, shift)?;
         let (proof, frame) = reader.get(5)?;
         let pending = g.verify_lookup(s, tables.gelu, &proof, delta, fs, rows)?;
         Reader::record(fs, frame);
+        drop(proof);
         let (f, bias) = g.forms(&pending.point)?;
         ba.extend(f.into(), bias.into(), pending.originals.into(), shift)?;
         let (proof, frame) = reader.get(6)?;
         let statement = gu.statement(s, fs)?;
         let pending = gate_up::verify(&statement, &proof, delta, fs, rows)?;
         Reader::record(fs, frame);
+        drop(proof);
         let (f, bias) = gu.forms(&pending.raw_point, &pending.input_point)?;
         ba.extend(f.into(), bias.into(), pending.originals.into(), shift)?;
         let (proof, frame) = reader.get(7)?;
         let statement = rope.statement(s, tables.rope, fs)?;
         let pending = kernel::rope::verify(&statement, &proof, delta, fs, rows)?;
         Reader::record(fs, frame);
+        drop(proof);
         let (f, bias) = rope.forms(&pending.raw_point, &pending.input_point)?;
         ba.extend(f.into(), bias.into(), pending.originals.into(), shift)?;
 
@@ -165,11 +172,13 @@ impl Canonical {
             let statement = a.statement(s, layer, fs)?;
             let q = kernel::attention::verify_qk(&statement, &proof, delta, fs, rows)?;
             Reader::record(fs, frame);
+            drop(proof);
             let (f, bias, t, k) = a.qk_routes(layer, &q)?;
             ba.extend(f.into(), bias.into(), t.into(), shift)?;
             let (proof, frame) = reader.get(9 + 2 * layer as u16)?;
             let v = kernel::attention::verify_pv(&statement, &proof, delta, fs, rows)?;
             Reader::record(fs, frame);
+            drop(proof);
             let (f, bias, t, v) = a.pv_routes(layer, &v)?;
             ba.extend(f.into(), bias.into(), t.into(), shift)?;
             kv_requests.extend([k, v]);
@@ -177,6 +186,8 @@ impl Canonical {
         let (proof, frame) = reader.get(128)?;
         let mut openings = kv::verify(&ks, &kv_requests, &proof, delta, fs, rows)?;
         Reader::record(fs, frame);
+        drop(proof);
+        drop(kv_requests);
         let current = openings.pop().ok_or("canonical current KV opening missing")?;
         ba.add(current.form, current.original);
         let (proof, frame) = reader.get(129)?;
@@ -194,11 +205,13 @@ impl Canonical {
             rows,
         )?;
         Reader::record(fs, frame);
+        drop(proof);
         let (f, bias) = self.output.forms(b, &pending.point)?;
         ba.extend(f.into(), bias.into(), pending.originals.into(), shift)?;
         let (proof, frame) = reader.get(130)?;
         let pending = self.softmax.verify(b, s, tables.exp30, &proof, delta, fs, rows)?;
         Reader::record(fs, frame);
+        drop(proof);
         let (f, bias, t) = self.softmax.forms(b, &pending)?;
         ba.extend(f, bias, t, shift)?;
         for (kind, domain, root, layout, live, alphabet, batch) in [
@@ -226,6 +239,7 @@ impl Canonical {
                 domain, root, s.attempt, layout, live, alphabet, &proof, delta, fs, rows,
             )?;
             Reader::record(fs, frame);
+            drop(proof);
             for (f, t) in forms.into_iter().zip(targets) {
                 batch.add(f, t);
             }
@@ -251,6 +265,8 @@ impl Canonical {
             rows,
         )?;
         Reader::record(fs, frame);
+        drop(proof);
+        drop(bw);
         for (i, opening) in openings.into_iter().enumerate() {
             let (body, frame) = reader.raw(134 + i as u16)?;
             let proof = codec::decode_linear(Domain::Flat(34), body).map_err(|e| e.to_string())?;
@@ -267,6 +283,7 @@ impl Canonical {
                 rows,
             )?;
             Reader::record(fs, frame);
+            drop(proof);
         }
         let (body, frame) = reader.raw(134 + u16::from(s.attempt.slot))?;
         let proof = codec::decode_linear(Domain::Flat(34), body).map_err(|e| e.to_string())?;
@@ -283,6 +300,7 @@ impl Canonical {
             rows,
         )?;
         Reader::record(fs, frame);
+        drop(proof);
         if rows.len() != 0 {
             return Err("canonical reservation was not consumed exactly".into());
         }

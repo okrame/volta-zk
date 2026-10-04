@@ -112,41 +112,65 @@ pub(super) fn inverse_series<Coefficient: p3_field::ExtensionField<Goldilocks>>(
     inverse
 }
 
-struct QueryFactors {
+struct QueryFactors<'a> {
+    inverse: &'a [Goldilocks],
+    modulus: &'a [Goldilocks],
+}
+
+struct QueryLevel {
     inverse: Vec<Goldilocks>,
     modulus: Vec<Goldilocks>,
+    factor_len: usize,
+}
+impl QueryLevel {
+    fn len(&self) -> usize {
+        self.inverse.len() / self.factor_len
+    }
+    fn factor(&self, index: usize) -> QueryFactors<'_> {
+        let range = index * self.factor_len..(index + 1) * self.factor_len;
+        QueryFactors { inverse: &self.inverse[range.clone()], modulus: &self.modulus[range] }
+    }
 }
 
-fn query_tree(
-    points: &[Goldilocks],
-    dft: &Radix2DFTSmallBatch<Goldilocks>,
-) -> Vec<Vec<QueryFactors>> {
+fn query_tree(points: &[Goldilocks], dft: &Radix2DFTSmallBatch<Goldilocks>) -> Vec<QueryLevel> {
     assert!(points.len().is_power_of_two());
-    let mut level: Vec<_> = points.iter().map(|&point| vec![-point, Goldilocks::ONE]).collect();
+    // Two contiguous spectra per level; no allocation retained per leaf.
+    let mut level: Vec<_> = points.iter().flat_map(|&point| [-point, Goldilocks::ONE]).collect();
+    let mut degree = 1;
     let mut factors = Vec::new();
     loop {
-        factors.push(level.iter().map(|modulus| QueryFactors::new(modulus.clone(), dft)).collect());
-        if level.len() == 1 {
+        let mut spectra = QueryLevel {
+            inverse: Vec::with_capacity(2 * points.len()),
+            modulus: Vec::with_capacity(2 * points.len()),
+            factor_len: 2 * degree,
+        };
+        for polynomial in level.chunks_exact(degree + 1) {
+            let reverse: Vec<_> = polynomial.iter().rev().copied().collect();
+            let mut inverse = inverse_series(&reverse, degree, dft);
+            inverse.resize(2 * degree, Goldilocks::ZERO);
+            let mut modulus = polynomial.to_vec();
+            modulus.resize(2 * degree, Goldilocks::ZERO);
+            spectra.inverse.extend(dft.dft(inverse));
+            spectra.modulus.extend(dft.dft(modulus));
+        }
+        factors.push(spectra);
+        if degree == points.len() {
             return factors;
         }
-        let mut children = level.into_iter();
-        level = Vec::with_capacity(children.len() / 2);
-        while let Some(left) = children.next() {
-            level.push(multiply_polynomials(left, children.next().unwrap(), dft));
+        let mut next = Vec::with_capacity(points.len() + points.len() / (2 * degree));
+        for pair in level.chunks_exact(2 * (degree + 1)) {
+            next.extend(multiply_polynomials(
+                pair[..degree + 1].to_vec(),
+                pair[degree + 1..].to_vec(),
+                dft,
+            ));
         }
+        level = next;
+        degree *= 2;
     }
 }
 
-impl QueryFactors {
-    fn new(mut modulus: Vec<Goldilocks>, dft: &Radix2DFTSmallBatch<Goldilocks>) -> Self {
-        let cap = modulus.len() - 1;
-        let reverse: Vec<_> = modulus.iter().rev().copied().collect();
-        let mut inverse = inverse_series(&reverse, cap, dft);
-        inverse.resize(2 * cap, Goldilocks::ZERO);
-        modulus.resize(2 * cap, Goldilocks::ZERO);
-        Self { inverse: dft.dft(inverse), modulus: dft.dft(modulus) }
-    }
-
+impl QueryFactors<'_> {
     fn remainder<Coefficient: p3_field::ExtensionField<Goldilocks>>(
         &self,
         high: &[Coefficient],
@@ -158,7 +182,7 @@ impl QueryFactors {
         let mut reversed: Vec<_> = high.iter().rev().copied().collect();
         reversed.resize(2 * cap, Coefficient::ZERO);
         let mut spectrum = dft.dft_algebra(reversed);
-        for (value, &factor) in spectrum.iter_mut().zip(&self.inverse) {
+        for (value, &factor) in spectrum.iter_mut().zip(self.inverse) {
             *value *= factor;
         }
         let mut quotient = dft.idft_algebra(spectrum);
@@ -166,7 +190,7 @@ impl QueryFactors {
         quotient.reverse();
         quotient.resize(2 * cap, Coefficient::ZERO);
         let mut spectrum = dft.dft_algebra(quotient);
-        for (value, &factor) in spectrum.iter_mut().zip(&self.modulus) {
+        for (value, &factor) in spectrum.iter_mut().zip(self.modulus) {
             *value *= factor;
         }
         let product = dft.idft_algebra(spectrum);
@@ -185,7 +209,7 @@ impl QueryFactors {
             values[exponent] = Goldilocks::ONE;
             values
         } else {
-            let modulus = dft.idft(self.modulus.clone());
+            let modulus = dft.idft(self.modulus.to_vec());
             modulus[..cap].iter().map(|value| -*value).collect()
         };
         let mut degree = cap;
@@ -251,65 +275,13 @@ impl Code {
         }
     }
 
-    /// One original-source scan per coset, independent of producer emission
-    /// order. There is one coset buffer, one reusable FFT column and P3's two
-    /// twiddle tables; never a second full coset or a dense original source.
     fn coset_base(
         &self,
         coset: usize,
         rows: usize,
         dft: &Radix2DFTSmallBatch<Goldilocks>,
     ) -> Result<Vec<u64>, String> {
-        if !rows.is_power_of_two() || rows > self.height || coset >= self.height / rows {
-            return Err("base coset geometry differs".into());
-        }
-        let Pads::Base(pads) = &self.pads else {
-            return Err("base coset requires base pads".into());
-        };
-        let n = self.len / self.width;
-        let pad = pads.len() / self.width;
-        let offset =
-            Goldilocks::two_adic_generator(self.height.ilog2() as usize).exp_u64(coset as u64);
-        // Factor powers into two small tables, including the original pad
-        // positions n..n+pad. A shuffled producer must not advance one global
-        // power cursor or shift pads next to the live (unpadded) prefix.
-        let power = power_lookup(offset, n + pad);
-        let mut cells = vec![0; rows * self.width.max(4)];
-        let mut count = 0usize;
-        let mut emit = |index: usize, value: Goldilocks| -> Result<(), String> {
-            if index >= self.live {
-                return Err("base scan emitted outside live original source".into());
-            }
-            count = count.checked_add(1).ok_or("base scan count overflow")?;
-            if count > self.live {
-                return Err("base scan emitted too many coefficients".into());
-            }
-            let (column, j) = (index / n, index % n);
-            let target = &mut cells[column * rows + j % rows];
-            *target = (Goldilocks::new(*target) + value * power(j)).as_canonical_u64();
-            Ok(())
-        };
-        if let Some(scan) = &self.scan {
-            scan(&mut emit)?;
-        } else {
-            for index in 0..self.live {
-                emit(index, base_coefficient((self.get)(index)))?;
-            }
-        }
-        if count != self.live {
-            return Err("base scan omitted original coefficients".into());
-        }
-        for column in 0..self.width {
-            for j in 0..pad {
-                let index = n + j;
-                let target = &mut cells[column * rows + index % rows];
-                *target = (Goldilocks::new(*target) + pads[column * pad + j] * power(index))
-                    .as_canonical_u64();
-            }
-        }
-        drop(power);
-        Self::fft_columns(&mut cells, rows, self.width, dft);
-        Ok(cells)
+        Ok(self.coset_group(coset, rows, 1, dft, None)?.pop().unwrap())
     }
 
     fn coset_extension(
@@ -319,49 +291,84 @@ impl Code {
         dft: &Radix2DFTSmallBatch<Goldilocks>,
         state: Option<&State>,
     ) -> Result<Vec<u64>, String> {
-        if !rows.is_power_of_two() || rows > self.height || coset >= self.height / rows {
-            return Err("extension coset geometry differs".into());
-        }
-        if self.base() || state.is_some_and(|state| 1 << state.num_variables() != self.len) {
-            return Err("extension coset source differs".into());
+        Ok(self.coset_group(coset, rows, 1, dft, state)?.pop().unwrap())
+    }
+
+    /// A bounded group shares ONE original scan. Each coset keeps its own
+    /// original evaluation point and padding; no new source, coin or MAC.
+    /// Smaller FFTs/frontiers trade for `count` field accumulations per emitted
+    /// coefficient. The pending cosets stay charged until hashed and dropped.
+    fn coset_group(
+        &self,
+        first: usize,
+        rows: usize,
+        count: usize,
+        dft: &Radix2DFTSmallBatch<Goldilocks>,
+        state: Option<&State>,
+    ) -> Result<Vec<Vec<u64>>, String> {
+        if !rows.is_power_of_two()
+            || rows > self.height
+            || !matches!(count, 1 | 2 | 4)
+            || first.checked_add(count).is_none_or(|end| end > self.height / rows)
+            || state.is_some_and(|state| self.base() || 1 << state.num_variables() != self.len)
+        {
+            return Err("coset group geometry differs".into());
         }
         let n = self.len / self.width;
         let pad = self.pads.len() / self.width;
-        let offset =
-            Goldilocks::two_adic_generator(self.height.ilog2() as usize).exp_u64(coset as u64);
-        let power = power_lookup(offset, n + pad);
-        // The destination is already native base-limb, column-major storage.
-        // Scatter original contributions into it; no dense folded S1 or full
-        // row-major conversion copy is needed before its predecessor opens.
-        let mut cells = vec![0; rows * self.columns().max(4)];
+        let root = Goldilocks::two_adic_generator(self.height.ilog2() as usize);
+        let powers: Vec<_> = (first..first + count)
+            .map(|coset| power_lookup(root.exp_u64(coset as u64), n + pad))
+            .collect();
+        let mut group: Vec<_> = (0..count).map(|_| vec![0; rows * self.columns().max(4)]).collect();
         let mut add = |column: usize, j: usize, value: E| {
-            for (limb, &value) in limbs(&(value * power(j))).iter().enumerate() {
-                let target = &mut cells[(column * 3 + limb) * rows + j % rows];
-                *target = (Goldilocks::new(*target) + value).as_canonical_u64();
+            for (cells, power) in group.iter_mut().zip(&powers) {
+                if self.base() {
+                    let target = &mut cells[column * rows + j % rows];
+                    *target = (Goldilocks::new(*target) + base_coefficient(value) * power(j))
+                        .as_canonical_u64();
+                } else {
+                    for (limb, &value) in limbs(&(value * power(j))).iter().enumerate() {
+                        let target = &mut cells[(column * 3 + limb) * rows + j % rows];
+                        *target = (Goldilocks::new(*target) + value).as_canonical_u64();
+                    }
+                }
             }
         };
+        let mut emitted = 0usize;
         let mut emit = |index, value| {
             if index >= self.live {
-                return Err("extension contribution outside source".into());
+                return Err("coset contribution outside live source".into());
+            }
+            emitted = emitted.checked_add(1).ok_or("coset emission count overflow")?;
+            if self.base() && emitted > self.live {
+                return Err("base scan emitted too many coefficients".into());
             }
             add(index / n, index % n, value);
             Ok(())
         };
         if let Some(state) = state {
             state.visit(&mut emit)?;
+        } else if self.base() && self.scan.is_some() {
+            self.scan.as_ref().unwrap()(&mut |index, value| emit(index, E::from(value)))?;
         } else {
-            for i in 0..self.live {
-                emit(i, (self.get)(i))?;
+            for index in 0..self.live {
+                emit(index, (self.get)(index))?;
             }
+        }
+        if self.base() && emitted != self.live {
+            return Err("base scan omitted original coefficients".into());
         }
         for column in 0..self.width {
             for j in 0..pad {
                 add(column, n + j, self.pads.get(column * pad + j));
             }
         }
-        drop(power);
-        Self::fft_columns(&mut cells, rows, self.columns(), dft);
-        Ok(cells)
+        drop(powers);
+        for cells in &mut group {
+            Self::fft_columns(cells, rows, self.columns(), dft);
+        }
+        Ok(group)
     }
 
     fn fft_columns(
@@ -419,7 +426,7 @@ impl Code {
         }
         Ok(cells)
     }
-    fn rows(&self, indices: &[usize]) -> Result<Vec<Vec<Goldilocks>>, String> {
+    fn rows(&self, indices: &[usize]) -> Result<DenseMatrix<Goldilocks>, String> {
         if self.base() {
             self.rows_typed(indices, base_coefficient)
         } else {
@@ -430,14 +437,14 @@ impl Code {
         &self,
         indices: &[usize],
         convert: impl Fn(E) -> Coefficient,
-    ) -> Result<Vec<Vec<Goldilocks>>, String> {
+    ) -> Result<DenseMatrix<Goldilocks>, String> {
         if indices.len() > replay_tree::query_batch_rows(self.height)
             || indices.iter().any(|&index| index >= self.height)
         {
             return Err("code query outside domain or reference batch cap".into());
         }
         if indices.is_empty() {
-            return Ok(Vec::new());
+            return Ok(DenseMatrix::new(Vec::new(), self.columns()));
         }
         let message_rows = self.len / self.width;
         if self.window.is_some() && (!self.base() || !message_rows.is_power_of_two()) {
@@ -454,14 +461,14 @@ impl Code {
         points.resize(cap, Goldilocks::ZERO);
         let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
         let factors = query_tree(&points, &dft);
-        let root_factors = &factors.last().unwrap()[0];
+        let root_factors = factors.last().unwrap().factor(0);
         let coefficients = (self.len + self.pads.len()) / self.width;
         let pad_rows = self.pads.len() / self.width;
         let pad_shift = (self.live < self.len && message_rows.is_power_of_two())
             .then(|| root_factors.monomial_spectrum(message_rows, &dft));
         // Write native base limbs directly into the only returned matrix. The
         // former Coefficient matrix duplicated up to 2 GiB at the initial cap.
-        let mut values = vec![vec![Goldilocks::ZERO; self.columns()]; indices.len()];
+        let mut values = vec![Goldilocks::ZERO; self.columns() * indices.len()];
         for column in 0..self.width {
             let active = self.live.saturating_sub(column * message_rows).min(message_rows);
             let split = pad_shift.is_some() && active < message_rows;
@@ -531,13 +538,13 @@ impl Code {
                     *value += contribution;
                 }
             }
-            let mut remainders = vec![remainder];
+            let mut remainders = remainder;
             for level in factors[..factors.len() - 1].iter().rev() {
-                let mut children = Vec::with_capacity(level.len());
-                for (parent, pair) in remainders.into_iter().zip(level.chunks_exact(2)) {
-                    let half = parent.len() / 2;
-                    for factor in pair {
-                        children.push(factor.remainder(
+                let half = level.factor_len / 2;
+                let mut children = Vec::with_capacity(cap);
+                for (index, parent) in remainders.chunks_exact(2 * half).enumerate() {
+                    for child in 0..2 {
+                        children.extend(level.factor(2 * index + child).remainder(
                             &parent[half..],
                             |offset| parent[offset],
                             &dft,
@@ -549,13 +556,14 @@ impl Code {
             for (row, value) in remainders.into_iter().take(indices.len()).enumerate() {
                 let limbs =
                     <Coefficient as BasedVectorSpace<Goldilocks>>::as_basis_coefficients_slice(
-                        &value[0],
+                        &value,
                     );
-                values[row][column * limbs.len()..(column + 1) * limbs.len()]
+                values[row * self.columns() + column * limbs.len()
+                    ..row * self.columns() + (column + 1) * limbs.len()]
                     .copy_from_slice(limbs);
             }
         }
-        Ok(values)
+        Ok(DenseMatrix::new(values, self.columns()))
     }
     fn commit(
         self,
@@ -566,17 +574,28 @@ impl Code {
         let code = Arc::new(self);
         let rowcode = code.clone();
         let (rows, cut) = replay_tree::geometry(code.height, code.columns())?;
+        let group = replay_tree::coset_group_size(code.height, code.columns());
+        let mut pending = Vec::new().into_iter();
         // Both P3 twiddle tables remain allocated across all cosets.
         let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
-        let (root, tree) = Tree::commit(
+        let (root, mut tree) = Tree::commit(
             mmcs,
             code.height,
             code.columns(),
             rows,
             cut,
-            |c| code.coset(c, rows, &dft, state),
+            |c| {
+                if let Some(cells) = pending.next() {
+                    return Ok(cells);
+                }
+                pending = code.coset_group(c, rows, group, &dft, state)?.into_iter();
+                Ok(pending.next().unwrap())
+            },
             Arc::new(move |indices| rowcode.rows(indices)),
         )?;
+        let pending_bytes = (group - 1) * rows * code.columns().max(4) * size_of::<u64>();
+        tree.memory.peak_coset_bytes += pending_bytes;
+        tree.memory.peak_commit_scratch_bytes += pending_bytes;
         let lease = state.map(State::replay_lease).transpose()?.flatten();
         Ok((root, ZkWhirReplayHandle::new(Oracle { tree: Arc::new(tree), base, lease })))
     }
@@ -1409,6 +1428,26 @@ mod tests {
                 );
             }
         }
+        // Four smaller cosets share one scan, including shuffled originals and
+        // private pads. Their values equal four independent dense encodings.
+        let scans = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let calls = scans.clone();
+        let original_scan = code.scan.clone().unwrap();
+        code.scan = Some(Arc::new(move |emit| {
+            calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            original_scan(emit)
+        }));
+        for count in [1, 2, 4] {
+            let before = scans.load(std::sync::atomic::Ordering::Relaxed);
+            let group = code.coset_group(3, 16, count, &dft, None).unwrap();
+            assert_eq!(scans.load(std::sync::atomic::Ordering::Relaxed), before + 1);
+            assert_eq!(group.len(), count);
+            for (i, cells) in group.iter().enumerate() {
+                assert_eq!(*cells, code.coset_typed(3 + i, 16, base_coefficient).unwrap());
+            }
+        }
+        assert!(code.coset_group(63, 16, 2, &dft, None).is_err());
+        assert!(code.coset_group(0, 16, 3, &dft, None).is_err());
         for fault in 0..3 {
             code.scan = Some(Arc::new(move |emit| match fault {
                 0 => Ok(()),
@@ -1490,10 +1529,10 @@ mod tests {
             assert_eq!(factors.len(), cap.ilog2() as usize + 1);
             for (depth, level) in factors.iter().enumerate() {
                 assert_eq!(level.len(), cap >> depth);
-                assert!(level.iter().all(|factor| factor.inverse.len() == 2usize << depth));
+                assert_eq!(level.factor_len, 2usize << depth);
             }
-            let root = &factors.last().unwrap()[0];
-            let (inverse, modulus) = (root.inverse.clone(), root.modulus.clone());
+            let root = factors.last().unwrap().factor(0);
+            let (inverse, modulus) = (root.inverse.to_vec(), root.modulus.to_vec());
             assert_eq!(inverse.len(), 2 * cap);
             assert_eq!(modulus.len(), 2 * cap);
             let inverse = dft.idft(inverse);
@@ -1686,7 +1725,10 @@ mod tests {
                             .collect()
                     })
                     .collect();
-                assert_eq!(code.rows(&indices).unwrap(), expected);
+                assert_eq!(
+                    code.rows(&indices).unwrap().values,
+                    expected.into_iter().flatten().collect::<Vec<_>>()
+                );
                 let expected_requests: Vec<_> = if indices.is_empty() {
                     Vec::new()
                 } else {
@@ -1783,7 +1825,10 @@ mod tests {
                     })
                     .collect();
                 reads.store(0, Ordering::Relaxed);
-                assert_eq!(code.rows(&indices).unwrap(), expected);
+                assert_eq!(
+                    code.rows(&indices).unwrap().values,
+                    expected.into_iter().flatten().collect::<Vec<_>>()
+                );
                 assert_eq!(reads.load(Ordering::Relaxed), if indices.is_empty() { 0 } else { 130 });
             }
             reads.store(0, Ordering::Relaxed);
@@ -1888,7 +1933,10 @@ mod tests {
                             })
                             .collect();
                         reads.store(0, Ordering::Relaxed);
-                        assert_eq!(code.rows(&indices).unwrap(), expected);
+                        assert_eq!(
+                            code.rows(&indices).unwrap().values,
+                            expected.into_iter().flatten().collect::<Vec<_>>()
+                        );
                         assert_eq!(reads.load(Ordering::Relaxed), live);
                     }
                 }
@@ -1945,7 +1993,7 @@ mod tests {
                     .collect();
                 points.resize(cap, Goldilocks::ZERO);
                 let tree = query_tree(&points, &dft);
-                let factors = &tree.last().unwrap()[0];
+                let factors = tree.last().unwrap().factor(0);
                 let coefficients = (code.len + code.pads.len()) / code.width;
                 let mut source = Vec::new();
                 let mut expected = Vec::new();
@@ -1984,7 +2032,7 @@ mod tests {
                         "modulus": factors.modulus.iter().map(|value| value.as_canonical_u64()).collect::<Vec<_>>(),
                         "source": source, "expected": expected,
                         "points": points[..indices.len()].iter().map(|value| value.as_canonical_u64()).collect::<Vec<_>>(),
-                        "rows": rows.iter().flatten().map(|value| value.as_canonical_u64()).collect::<Vec<_>>(),
+                        "rows": rows.values.iter().map(|value| value.as_canonical_u64()).collect::<Vec<_>>(),
                     })
                 );
             }

@@ -305,9 +305,10 @@ sono freschi. W numerica e getter PCS condividono un solo packed immutabile.
 
 L'[albero Merkle](../../rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs)
 conserva la geometria ridotta fino ad altezza 2^18. Per le sole colonne
-iniziali W/A ammette ora altezze 2^32/2^31, 128 colonne base, coset 2^22
-e taglio Merkle 2^12: rispettivamente 1.024/512 passaggi. Gli stadi extension
-grandi hanno 12 colonne base: S1 usa coset 2^24, S2 2^22, S3 e successori
+iniziali W/A ammette altezze 2^32/2^31, 128 colonne base, gruppi di quattro
+coset 2^20 per scan e taglio Merkle 2^12: rispettivamente 1.024/512 scan.
+Gli stadi extension grandi hanno 12 colonne base: S1 usa coppie di coset
+2^23, S2 coppie 2^21, S3 e successori
 al più 2^23, sempre con taglio 2^12. Le altezze dei due profili nativi
 determinano lo stadio; i test le ricavano dalla configurazione WHIR.
 Geometrie grandi diverse, inclusi S3 a 2^24 e i coset A che causerebbero
@@ -316,11 +317,17 @@ prima dell'allocazione o del consumo dei sali. Questo sostituisce il
 precedente rifiuto iniziale registrato nel
 [checkpoint della strumentazione](../../benchmarks/results/c71-runner-measurements-local-2026-10-03-187a0b9dc9ce.json).
 I sottoalberi delle query sono raggruppati fino a 1.024 righe nel riferimento
-piccolo e 2^21 nei percorsi canonici grandi; le query pubbliche restano
+piccolo e 2^20 in tutti gli oracoli canonici grandi;
+le query pubbliche restano
 al più 1.024. Le stesse righe alimentano hash e aperture, ripristinando
 ordine e duplicati. Il limite grande è collegato ma non eseguito: resti,
-albero dei fattori, strutture intermedie e multipunto CPU non costituiscono
-ancora la pipeline canonica GPU a workspace limitato.
+albero dei fattori e matrice restituita sono buffer contigui. Ogni livello
+usa due spettri piatti; i resti discendono in due buffer contigui. La
+rigenerazione conserva un solo sottoalbero e copia soltanto i path richiesti.
+Questi restano algoritmi CPU, conteggiati nel budget comune. Il cap delle
+query iniziali dimezzato può raddoppiare i batch: nessun credito di lavoro
+gratis. I punti dei claim GKR/PCS e i loro vettori rilasciano la capacità
+eccedente appena aggiunti al batch, preservando ordine e MAC.
 
 Il coset base accumula `(indice originale, valore)` in un unico buffer
 column-major, indipendentemente dall'ordine causale dei produttori.
@@ -480,16 +487,18 @@ i suoi fold usano buffer distinti, non la compattazione CPU in-place.
 Le riduzioni dei coefficienti richiedono 256 thread e 24.576 B shared.
 Il kernel coefficienti compilato usa inoltre stack locale, da contabilizzare.
 L'[owner nativo](../../cuda/c71_range_runtime.cpp) usa device esplicito,
-stream privato e una sola arena, senza malloc per buffer o spill host.
-I 64 descrittori hanno handle monouso, tipi, copertura inizializzata e
-capacità allineate a 256 B. Il fold riduce la lunghezza, non la capacità;
-il release ritira l'handle, non libera l'arena, riusabile in ordine sullo
-stesso stream. Solo `cudaFree` riuscito azzera la prenotazione nel report
-di chiusura; un errore di cleanup resta esplicito e conservativo.
-Il chiamante serializza ogni contesto e include arena e riserva nel budget
-globale: il cap locale 6.442.450.944 B non autorizza arene concorrenti.
-Le fixture piccole scelgono una riserva ridotta; il percorso canonico dovrà
-garantire almeno 256 MiB e la contabilità con gli altri owner.
+stream privato e un solo budget, senza spill. I 512 descrittori hanno
+handle monouso, tipi, copertura inizializzata e capacità allineate a 256 B.
+ABI 4 sostituisce lo slab prenotato con `cudaMalloc` per capacità viva:
+`release` attende il fence e libera fisicamente il buffer. Un fold logico
+conserva la capacità fino a quel release. Il callback di ammissione comune
+precede ogni allocazione nativa e conta anche l'owner C++; il rilascio
+scarica il conto solo dopo `cudaFree` riuscito. Una free fallita conserva
+il debito ed evita di ritentare sul puntatore di proprietà incerta.
+`arena_bytes` ora è la somma delle prenotazioni vive, non il cap configurato.
+Le fixture piccole possono passare un callback nullo; il loader Rust
+collega sempre il census comune. Il runner canonico impone il tetto
+congiunto sotto; il limite locale dell'owner non autorizza arene aggiuntive.
 Upload e download sono fenced; solo root/terminali e quattro coefficienti
 possono tornare all'host, dopo il successo e il controllo dei limb.
 Errori di shape, handle, CUDA o fence fermano definitivamente il contesto.
@@ -594,40 +603,51 @@ per ruolo; CPU-time e HBM osservata richiedono il monitor esterno.
 
 La CLI seleziona soltanto `reference-cpu` oppure `experiment-cuda`; la
 seconda aggiunge `LIBRARY DEVICE` agli stessi cinque argomenti di input.
-Richiede `c71-seed6-reference`, PCG reale AES e libreria ABI 3 con tutti i
+Richiede `c71-seed6-reference`, PCG reale AES e libreria ABI 4 con tutti i
 simboli aggiornati. Nessun fallback se libreria, GPU, simboli o fence
-falliscono. `PREPARATION_BYTES` è fra 2 GiB e 6.174.015.488 B, non un limite
+falliscono. `PREPARATION_BYTES` è fra 1 GiB e 6.174.015.488 B, non un limite
 del processo. Lo scanner nativo usa righe fino all'ultimo consumer, batch
 derivati dalle shape (anche 149 righe della Norm finale), padding pubblico
 e conteggi originali. La copertura completa precede il seal di ogni finestra.
 
 | Owner/fase simultanea | Capacità o payload e collocazione |
 |---|---|
-| W immutabile | 61.394.690.560 B host, stessa Arc per PCS e upload; altrettanti B device separati dall'arena, senza copia W aggiuntiva per snapshot |
-| Arena CUDA | 6.442.450.944 B riservati una volta; almeno 256 MiB esclusi dall'allocatore; W+arena = 67.837.141.504 B, oltre runtime/driver/stack device |
-| Stato numerico nell'arena | KV450 405.504.000 B unici, checkpoint di una generazione 98.380.800 B, 121 istogrammi i64 63.437.880 B, tabelle packed 23.954.072 B; subtotal payload 591.276.752 B, non da aggiungere nuovamente all'arena |
-| Replay GPU e range A | Raw i64 e output i16 distinti, input vivi, flag/bitmap/descrittori; finestra A fino a 2 GiB, canopy/Gram/fold vivono nella stessa arena con lo stato numerico. Il ledger misura live/peak allineati e rifiuta esaurimento/frammentazione, non rialloca o spilla |
-| Range W | Staging host signed fino a 256 MiB, gather CPU e H2D, consumer nello stesso runtime; nessuna seconda arena o seconda W packed |
-| PCS iniziale CPU | W e stato GPU restano vivi; coset base 2^22×128×8 = 4.294.967.296 B, più colonna FFT, due twiddle, cache Merkle/sali/pad, hash e metadati. Non è workspace GPU |
-| PCS A successiva CPU | S1 trattenuto solo nella catena PCS attiva (2^27×24 = 3.221.225.472 B), non tre copie negli snapshot; coset S1 2^24×12×8 = 1.610.612.736 B, poi S2 2^22×12×8 con S1 ancora vivo; P/Q, query/resti/FFT e predecessore sono ulteriori temporanei CPU |
-| Originali A per consumer CPU | Una riga i64 fino a 2 MiB, eventuale staging i16 fino a 512 KiB; query byte fino a 256 MiB con corrispondente finestra device; cache di una riga e 128 B per snapshot. Nessuna A completa host trattenuta |
-| Altri owner host | Due copie delle tabelle pubbliche e dei profili, Seed6 dei due ruoli, MAC/GKR, buffer proof/framing, query/cache e allocator; coesistono con W e workspace, non sono coperti dal solo ledger CUDA |
+| W immutabile esclusa | 61.394.690.560 B host e device; la stessa Arc host resta viva fino al teardown del budget |
+| Contatore comune | Ogni layout Rust, incluse capacità/reallocazioni dei due ruoli, più owner C++ e prenotazioni CUDA allineate; picco aggiornato all'allocazione, non solo ai confini di fase |
+| Massimo congiunto ammesso | 5.905.580.032 B di allocazioni; allocazioni oltre il tetto falliscono prima della prenotazione |
+| Riserva fisica esplicita | 268.435.456 B per allocator/mapping, capacità libere trattenute, stack, socket, driver/runtime CUDA e stack kernel; sufficienza ancora da misurare |
+| Massimo analitico condizionato | 6.174.015.488 B = tetto allocazioni + riserva; margine 268.435.456 B sul contratto |
+| Stato device persistente | KV450 405.504.000 B + checkpoint 98.380.800 B + 121 istogrammi allineati 63.438.848 B + tabelle allineate 23.954.176 B = 591.277.824 B |
+| Replay device | Upper derivato da porte, batch e ultimi consumer: 785.789.696 B **incluso** lo stato persistente, copie KV e istogrammi duplicati; niente somma di massimi separati |
+| PCS iniziale host | Quattro coset 2^20×128×8 = 4.294.967.296 B insieme, inclusi quelli in attesa; frontier W/A 402.653.184 / 369.098.752 B, cursori sali 8.388.608 B; FFT, radici, pad, potenze e stato device restano conteggiati |
+| PCS S1/S2 | S1: due coset 2^23×12×8; S2: due coset 2^21×12×8 con S1 da 3.221.225.472 B vivo. Dopo il rilascio del predecessore si applica il fold e `shrink_to_fit`; anche l'eventuale sovrapposizione vecchio+nuovo del realloc è addebitata |
+| Aperture PCS | Matrice contigua; fattori 32×q×(log2(q)+1) B, q≤2^20; due livelli di resti, FFT, staging e un solo sottoalbero rigenerato; nessun Vec per riga/fattore trattenuto |
+| Range/staging | Range A ≤1 GiB device nel runner; query A ≤256 MiB host più ≤256 MiB device; W staging signed ≤256 MiB; padding pubblico signed host ≤55.574.528 B; ogni copia vive nel medesimo conto |
+| GKR, Seed6 e altro host | Compact RMS, EXP30/lookup, contrazioni, MAC originali, Seed6 reale dei due ruoli, tabelle/profili, certificati/codec e metadati passano dallo stesso allocatore; nessuno slot figurativo li rende gratuiti |
 
-Le tabelle riportano simultaneità e dimensioni nominate, **non un picco
-completo certificato**. Il report include capacità host W/tabelle,
-payload GPU unici, Merkle/pad/istogrammi delle PCS correnti e precedenti,
-RSS/HWM ai confini di fase, contatori cumulativi H2D/D2H/D2D, allocazioni,
-rilasci, launch e fence. Il lock non bloccante salta un campione nativo
-occupato: non attribuire quei contatori a un'altra fase. I delta si
-ottengono sottraendo campioni dello stesso owner; picchi e riserva non
-si sommano. `complete_physical_peak:false` resta corretto fino alla misura
-esterna di processo/device; contesto CUDA, stack, allocator, scratch FFT
-e CPU Seed6/GKR non diventano zero perché esclusi dal subtotal.
+Il [ledger eseguibile](../../scripts/c71_temporary_ledger.py) riconcilia
+le emissioni delle geometrie di produzione con i picchi effettivi dei test
+ridotti. I subtotal nominati servono a controllare le dimensioni; non sono
+picchi canonici misurati né una prova di completamento. L'autorità sul
+massimo delle allocazioni è [census.rs](../../rust/volta-pcs/src/c71_matrix/census.rs),
+con callback dall'owner CUDA: copre anche costi non nominati nella tabella.
+Non sommare due volte stato device, root, picchi o contatori cumulativi.
+
+La policy Linux/glibc fissa la soglia mmap a 128 KiB e al più due arene,
+impedendo l'aumento adattivo della soglia dopo le FFT. Una prova locale
+controlla il ritorno della prenotazione mmap di uno scratch da 16 MiB.
+La contabilità dei layout non misura stack, arrotondamenti fisici o contesto
+CUDA: questi devono entrare nella riserva dichiarata. Per questo
+`physical_runtime_allowance_verified:false` e `complete_physical_peak:false`
+restano corretti; il controllo H100 richiede anche zero rifiuti di budget,
+completamento verificato e margine fisico, non soltanto un contatore basso.
 
 `c71_original_read` permette staging bounded soltanto di prefissi già
 inizializzati, controlla tipo/span, contabilizza D2H e sincronizza prima
 del consumo. Il gather accetta viste nei prefissi KV, non celle future.
 Questi byte non passano al verificatore. Il range A resta residente;
+La finestra range A del runner scende da 2 GiB a 1 GiB: cambia il numero
+di finestre, non gli originali né la geometria del range.
 PCS FFT/Merkle/resti/contrazioni, GKR non-range, MAC, PCG, codec e verifica
 restano CPU dichiarati, non fallback impliciti. La rigenerazione di una
 generazione storica rilascia quella precedente e riusa KV450 originale;
@@ -638,20 +658,13 @@ Il test locale della schedule copre 150 token e tutti i 13 tipi nei tre
 contesti senza caricare W; il test numerico dello scanner è ridotto.
 Non è una prova completa, né una misura D34/D35 o H100. Il primo esperimento
 deve misurare anche gli eventuali superamenti dei target, non nasconderli.
-In particolare, riserva CUDA più coset CPU iniziale sono già
-10.737.418.240 B: il percorso misto non è un'implementazione conforme al
-contratto finale di 6.442.450.944 B per **tutti** i temporanei. Non
-riclassificare lo scratch CPU dipendente dalla risposta come modello
-globale. Il [checkpoint del runner](../../benchmarks/results/c71-device-runner-local-2026-10-04-1ec6720bb494.json)
-conserva questo limite insieme a test, digest e assunzioni di raffinamento.
-
-Il piano canonico conserva 61 checkpoint di layer, 98.380.800 B per
-una generazione alla volta. Raw e output arrotondato sono distinti.
-Range usa finestre da 2 GiB, le prime query A finestre da 256 MiB.
-Nel commitment A il coset è 2^22, con 512 ricostruzioni; lo slot reader
-è riusato per hash salato nelle celle già consumate, con fence prima
-del riuso. S2 è 2^22 e i successori al più 2^23. La capacità S1 resta
-riservata fino all'ultimo consumer: `truncate` non la libera.
+Il [checkpoint precedente](../../benchmarks/results/c71-device-runner-local-2026-10-04-1ec6720bb494.json)
+resta immutabile e conserva la violazione da 10.737.418.240 B. Il codice
+corrente la rimuove mediante rilascio fisico e frontier più piccole. I
+61 checkpoint restano una sola generazione. Il raggruppamento mantiene
+512 ricostruzioni A, pagando quattro accumulazioni iniziali per coefficiente;
+S1 e S2 ne pagano due. Il conto del lavoro deve includerle: nessun trasferimento
+a setup globale, nessun credito automatico ai tempi precedenti.
 
 Il [kernel denso i16](../../cuda/c71_dense_i16.cu) implementa il prodotto
 intero selezionato nel [preflight storico](../c7.1-history/preflight.md):
@@ -677,7 +690,7 @@ W è una sola allocazione globale esterna all'arena, caricata in ordine con
 finestre ≤256 MiB e poi sigillata senza sostituzioni o puntatori esportati.
 Il cap è 61.394.690.560 B; l'ammissione controlla ≥1 GiB libero prima/dopo
 l'allocazione, non promette assenza di allocazioni concorrenti esterne.
-Il ledger ABI 3 (152 B) separa W e arena, somma le prenotazioni nel picco
+Il ledger ABI 4 (152 B) separa W e arena, somma le prenotazioni nel picco
 e conserva i byte non liberati su errore di cleanup. Conta anche i 4 B
 di flag per operazione; raw e RNE rimangono entrambi addebitati fino al rilascio.
 Non scarica gli intermedi sullo host né rialloca W fra i batch.
@@ -698,7 +711,7 @@ Ogni descrittore trattiene inoltre l'identità `Arc` del runtime Rust:
 handle numerici coincidenti di due copie distinte della libreria non
 rendono trasferibili i buffer. Il controllo precede consumo e rilascio;
 l'owner Rust e i relativi descrittori rimangono memoria host da censire.
-Il loader controlla ABI 3 prima di creare un contesto e richiede i simboli
+Il loader controlla ABI 4 prima di creare un contesto e richiede i simboli
 di vista/abort; la precedente ABI 2 da 144 B è rifiutata prima di leggere
 il nuovo ledger, che aggiunge `d2d_bytes`.
 `produce_native` collega tutti i 13 tipi di producer, riusando i dispatcher
@@ -766,7 +779,7 @@ selezionati, non l'intero dominio A, ma filtra ancora quelli fuori finestra.
 L'owner azzera il solo output, riserva un flag sticky per finestra e usa
 il tipo pending, rifiutato dal range. Il seal richiede copertura Rust,
 fence e flag valido prima di convertirlo in u8; scarica solo 4 B di stato.
-Il rilascio anticipato ritira anche il flag senza liberare l'arena. La
+Il rilascio anticipato ritira e libera fisicamente anche il flag dopo fence. La
 copertura del layout è responsabilità del wrapper Rust fidato; l'ABI C
 controlla codec, accessi e stato del buffer, non certifica il DAG da sola.
 Il loader richiede anche i tre simboli begin/scatter/seal. Il gather è
@@ -783,7 +796,7 @@ i64 contenente il signed-48 originale. I coefficienti sono limitati a
 è entro signed-32. Zero coefficienti richiedono handle assenti e non
 caricano valori. Raw e output RNE rimangono distinti e addebitati;
 fence/flag precedono la pubblicazione, come per Matrix.
-Il loader ABI 3 richiede anche `c71_dense_pointwise`.
+Il loader ABI 4 richiede anche `c71_dense_pointwise`.
 L'embedding riusa lo stesso descrittore validato dal riferimento CPU:
 cohort lookup originale, codec i16, vocabolario, colonne, intervallo di
 righe e ID token. Richiede la stessa Arc W installata e il suo layout.
@@ -900,20 +913,17 @@ col turno e non si ammortizza il setup su risposte future.
 | Voce del piano | Quantità e interpretazione |
 |---|---|
 | KV originale i16 | 901.120 B/token; 405.504.000 B per 450 token, coda pendente inclusa |
-| W + KV450 + arena | 68.242.645.504 B; residenti/runtime ignoti ancora esclusi |
-| Massimi nominati dell'arena a O=0/150/300 | 6.087.512.576 / 6.126.837.504 / 6.166.159.104 B |
-| Minimo spazio libero nel piano | 276.291.840 B: solo 7.856.384 B oltre il margine richiesto di 256 MiB |
-| Ultimo conto parziale congiunto, primitive con riporti | 45,267005 / 52,813136 / 60,657831 s; non tempi misurati né limiti superiori |
-| Budget candidato | 1,5 s inferenza, 17 s getter, 46,5 s resto; obiettivi da verificare |
-| Materiale persistente | Riferimento ≤2,10×W=128.928.850.176 B; l'eccezione per materiale globale riutilizzabile non aumenta HBM o arena |
-| Verificatore CPU quattro core | Riferimento 6,4–8,2 s da verificare per il percorso completo |
+| Temporanei, allocazioni congiunte host/device | ≤5.905.580.032 B imposti dal codice |
+| Runtime/allocator/stack non misurati dai layout | 268.435.456 B espliciti, da verificare fisicamente |
+| Massimo ammesso con riserva / margine | 6.174.015.488 / 268.435.456 B |
+| W device + massimo con riserva (upper conservativo) | 67.568.706.048 B; attribuisce conservativamente al device anche i byte host |
+| Tempo e lavoro | Nessun nuovo upper completo: i tempi dei vecchi screen non incorporano questa implementazione |
 
-La tabella è il piano analitico, non il ledger dell'implementazione nativa.
-Le code native da 450 token riservano attualmente capacità **dentro**
-l'arena, già conteggiata da `live_capacity_bytes`: non sommare ancora KV
-alla prenotazione arena nel picco fisico, né ometterlo dallo spazio usato.
-Il loro ciclo completo evita copie cumulative dei tre prefissi; non chiude
-il conto degli altri temporanei o la riconciliazione con questo piano.
+I massimi 6.087.512.576 / 6.126.837.504 / 6.166.159.104 B e i tempi
+45,267005 / 52,813136 / 60,657831 s appartengono al piano precedente,
+con slot non dimostrati e primitive diverse. Restano nei record storici;
+non sostituiscono il ledger del runner misto. KV e tabelle sono inclusi
+nel conto temporaneo corrente, mai aggiunti nuovamente al picco CUDA.
 
 I conteggi eseguibili sono in [arena](../../scripts/c71_arena_plan.py),
 [response](../../scripts/c71_response_trace.py), [WHIR](../../scripts/c71_whir_trace.py),

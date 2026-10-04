@@ -524,14 +524,17 @@ Il [checkpoint locale](../../benchmarks/results/c71-device-runner-local-2026-10-
 conserva la SHA eseguibile e i digest. Usare le
 [build mirate](local-tests.md#compilazione-mirata) e la
 [build della libreria CUDA](local-tests.md#collegamento-del-runner-cuda).
-Lo scratch CPU esplicito rende il prototipo non conforme al contratto
-finale dell'arena unica: questo esperimento diagnostico ne misura il costo,
-non lo ammette come risultato conforme né nasconde memoria esterna.
-Prima dell'avvio servono SHA pulita, input/tabelle e identità fissati,
-hardware/toolchain, durata/costo/limiti di memoria approvati e risoluzione
-dell'hard stop provider. La calibrazione reale validata serve per una
-pretesa sul profilo canonico; un profilo solo strutturale deve essere
-etichettato diagnostico e non produce quella pretesa.
+La campagna segue la riduzione locale del budget comune descritta nelle
+[specifiche](specs.md#runner-cuda-sperimentale-e-conto-simultaneo). Il limite
+imposto alle allocazioni è 5.905.580.032 B; la riserva fisica dichiarata è
+256 MiB e il margine richiesto altri 256 MiB. Prima di concedere credito,
+misurare insieme host e device durante O=0/150/300: includere capacità
+libere trattenute, context/driver, stack kernel, staging e socket. Richiedere
+zero rifiuti di allocazione, completamento/verifica/promozione e overhead
+entro la riserva; un abort al tetto non è una prova che il caso canonico
+rientra. La parità CUDA, i tempi e il traffico completi restano verifiche
+fisiche. Il raggruppamento dei coset introduce accumulazioni aggiuntive:
+non riusare i vecchi upper temporali o dare credito al lavoro non crescente.
 
 Per istruzione del proprietario, parità hardware, tempo H100 e picco fisico
 si verificano **nel primo esperimento**, non sono gate locali. Il vecchio

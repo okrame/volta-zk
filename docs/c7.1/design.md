@@ -73,10 +73,15 @@ non trasferisce automaticamente i bound B12 al programma completo.
 
 Il runner esplicito `experiment-cuda` collega ora tutti i 13 producer,
 inferenza token-causale, replay A, PCS/range/GKR, verifica e promozione
-per O=0/150/300. È un prototipo **misto GPU/CPU pronto per il primo
-esperimento autorizzato**, non un risultato H100 acquisito né un rispetto
-dimostrato dei target. La parità hardware e i tempi appartengono a quel
-primo esperimento, non sono prerequisiti da soddisfare sulla VM locale.
+per O=0/150/300. È un prototipo **misto GPU/CPU**. L'istruzione del
+4 ottobre antepone alla campagna H100 la riduzione locale dei temporanei:
+owner CUDA a rilascio fisico, coset raggruppati, aperture contigue e S1
+ridimensionato, con un contatore comune alle allocazioni dei due ruoli.
+Il massimo ammesso dal contatore è 5.905.580.032 B; aggiungendo la riserva
+esplicita di 256 MiB per runtime/allocator/stack si ottengono
+6.174.015.488 B e 256 MiB di margine sul tetto. Questa riserva è ancora
+un'ipotesi fisica da verificare, non una misura H100. Un limite che rifiuta
+allocazioni non dimostra da solo il completamento del caso canonico.
 
 [canonical_device.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs)
 possiede la sessione numerica: stessa Arc W del commitment, un runtime
@@ -174,14 +179,25 @@ Memoria aggiuntiva esterna può contenere solo materiale globale del modello,
 riutilizzabile senza crescita con le sessioni. Nessuno spill dinamico.
 Quattro letture W sono un obiettivo di ottimizzazione, non un limite rigido.
 
-Il runner misto sperimentale **non soddisfa ancora il contratto dell'arena
-unica per tutti i temporanei**: conserva scratch di protocollo CPU fuori
-dall'arena CUDA. Durante il commitment A, la sola riserva GPU più il coset
-CPU vale 10.737.418.240 B, prima degli altri workspace. La scelta riusa la
-PCS verificata e rende espliciti i trasferimenti invece di fingere una PCS
-GPU; non allenta il target finale o nasconde memoria come materiale globale.
-È un limite noto del prototipo da registrare nel primo esperimento, distinto
-dallo spill dinamico o da un fallback di inferenza, che restano vietati.
+Il precedente subtotal 10.737.418.240 B (slab CUDA più coset host) è
+superato nel codice: non esiste più una prenotazione CUDA fissa di 6 GiB.
+Il budget comune comprende PCS, GKR, Seed6, staging, prove, entrambi i
+ruoli e tutte le capacità Rust trattenute, oltre ai buffer CUDA allineati.
+Si esclude soltanto il payload W packed immutabile. Le allocazioni grandi
+host usano una soglia glibc mmap fissa, evitando che i workspace liberati
+rimangano nei successivi picchi come grandi cache dell'allocatore.
+Il [conto corrente](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
+separa limite imposto, subtotal derivati dalle shape, test ridotti e
+riserva fisica. Il [checkpoint locale](../c7.1-history/temporary-memory-2026-10-04.md)
+conserva decisioni, limiti e fallimenti. Nessuna riclassificazione dello scratch della risposta.
+
+I gruppi di coset mantengono 512 scan iniziali A e 1.024 W, ma eseguono
+quattro accumulazioni di campo per coefficiente iniziale (due per S1/S2),
+con FFT più piccole. Il lavoro extra è della prova: non eredita i tempi
+analitici precedenti e non dà credito al requisito di lavoro non crescente.
+Restano invariati protocollo, transcript, monete e MAC; non è introdotto
+un lemma Lean di raffinamento dell'allocatore o dei kernel. Le assunzioni
+numeriche/formali già aperte restano quelle della sezione sicurezza.
 
 ## Uso dei documenti
 

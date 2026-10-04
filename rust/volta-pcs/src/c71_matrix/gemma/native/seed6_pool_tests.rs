@@ -162,7 +162,9 @@ fn c71_seed6_native_shortage_stops_before_prepare_or_decode() {
 
 #[test]
 fn c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals() {
+    let _budget = kernel::census::Budget::new(&Arc::new(Vec::new())).unwrap();
     full_o0::<Snapshot>(false, 11, false);
+    println!("C71_TEMPORARY_ALLOCATIONS {}", kernel::census::simultaneous());
 }
 
 #[test]

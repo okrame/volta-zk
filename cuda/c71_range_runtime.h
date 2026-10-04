@@ -8,9 +8,11 @@
 #include "c71_nonlinear.cuh"
 
 struct C71RangeContext;
+using C71RangeAccount = int (*)(int64_t);
 enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64, C71_BYTE_PENDING, C71_HISTOGRAM_PENDING };
 struct C71RangeStats {
-    // Requested arena reservation, assigned aligned capacities, logical payload.
+    // ABI 4: actual live device reservations (released after fence), aligned
+    // capacities and logical payload. create() sets a budget, not a slab.
     // NOT driver/context/shared/stack overhead or the whole-pipeline GPU peak.
     uint64_t arena_bytes, live_capacity_bytes, peak_capacity_bytes, logical_bytes;
     // Submitted copy/zero bytes and attempted launches/fences, not a bus meter.
@@ -25,7 +27,7 @@ static_assert(sizeof(C71RangeStats)==152);
 
 extern "C" {
 uint32_t c71_range_runtime_abi();
-int c71_range_create(int device,uint64_t arena_bytes,uint64_t reserve_bytes,C71RangeContext** out);
+int c71_range_create(int device,uint64_t arena_bytes,uint64_t reserve_bytes,C71RangeAccount account,C71RangeContext** out);
 int c71_range_close(C71RangeContext* context,C71RangeStats* final_stats);
 const char* c71_range_error(const C71RangeContext* context);
 int c71_range_stats(const C71RangeContext* context,C71RangeStats* stats);

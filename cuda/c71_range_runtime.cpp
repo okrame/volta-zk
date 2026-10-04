@@ -33,15 +33,18 @@ cudaError_t c71_softmax_launch(cudaStream_t,const int16_t*,const int32_t*,int16_
 }
 
 struct Buffer {
-    uint64_t id=0, offset=0, capacity=0, count=0, initialized=0;
+    uint64_t id=0;
+    void* allocation=nullptr;
+    uint64_t capacity=0, count=0, initialized=0;
     uint32_t kind=0;
     uint64_t flag=0;
     uint64_t visits=0;
+    bool release_failed=false;
 };
 struct C71RangeContext {
+    C71RangeAccount account=nullptr;
     int device=0;
     cudaStream_t stream=nullptr;
-    unsigned char* arena=nullptr;
     int16_t* weights=nullptr;
     uint64_t usable=0;
     Buffer buffers[512]{};
@@ -70,7 +73,8 @@ Buffer* buffer(C71RangeContext* c,uint64_t id) {
     fail(c,"unknown or retired range handle"); return nullptr;
 }
 template<class T> T* ptr(C71RangeContext* c,const Buffer* b) {
-    return reinterpret_cast<T*>(c->arena+b->offset);
+    (void)c;
+    return static_cast<T*>(b->allocation);
 }
 bool full(const Buffer* b,uint32_t kind) {
     return b && b->kind==kind && b->initialized==b->count;
@@ -88,6 +92,9 @@ void recount(C71RangeContext* c) {
         c->stats.logical_bytes+=b.count*sizes[b.kind];
     }
     c->stats.peak_capacity_bytes=std::max(c->stats.peak_capacity_bytes,c->stats.live_capacity_bytes);
+    c->stats.arena_bytes=c->stats.live_capacity_bytes;
+    c->stats.peak_reserved_bytes=std::max(c->stats.peak_reserved_bytes,
+        c->stats.arena_bytes+c->stats.weights_bytes);
 }
 bool valid_round(const Round* r,unsigned max_bits) {
     if(!r || !r->bits || r->bits>max_bits || !canonical(r->lambda) || !canonical(r->prefix_equality)) return false;
@@ -105,25 +112,26 @@ int download(C71RangeContext* c,const Buffer* b,void* out,size_t bytes) {
 }
 }
 
-extern "C" uint32_t c71_range_runtime_abi() { return 3; }
+extern "C" uint32_t c71_range_runtime_abi() { return 4; }
 extern "C" int c71_range_abort(C71RangeContext* c) { return fail(c,"native caller aborted"); }
 extern "C" const char* c71_range_error(const C71RangeContext* c) { return c?c->error:"null range context"; }
 extern "C" int c71_range_stats(const C71RangeContext* c,C71RangeStats* out) {
     if(!c || !out) return -1;
     *out=c->stats; return 0;
 }
-extern "C" int c71_range_create(int device,uint64_t bytes,uint64_t reserve,C71RangeContext** out) {
+extern "C" int c71_range_create(int device,uint64_t bytes,uint64_t reserve,C71RangeAccount account,C71RangeContext** out) {
     if(!out) return -1;
     *out=nullptr;
     if(device<0 || !bytes || bytes>6442450944ULL || bytes%256 || !reserve || reserve%256 || reserve>=bytes) return -1;
+    if(account && account(sizeof(C71RangeContext))) return -1;
     auto* c=new(std::nothrow) C71RangeContext;
-    if(!c) return -1;
+    if(!c) { if(account) account(-int64_t(sizeof(C71RangeContext))); return -1; }
+    c->account=account;
     c->device=device; c->usable=bytes-reserve; c->stats.host_owner_bytes=sizeof(*c);
     // On an initialization error return the stopped owner for diagnostics/close.
     *out=c;
     if(checked(c,cudaSetDevice(device)) || checked(c,cudaStreamCreateWithFlags(&c->stream,cudaStreamNonBlocking))) return -1;
-    if(checked(c,cudaMalloc(reinterpret_cast<void**>(&c->arena),bytes))) return -1;
-    c->stats.arena_bytes=bytes; c->stats.peak_reserved_bytes=bytes; return 0;
+    return 0; // Budget only: idle device capacity must not coexist with host PCS.
 }
 extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
     if(!c || !out) return -1;
@@ -134,14 +142,19 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
             if(checked(c,cudaFree(c->weights))) error=true;
             else c->stats.weights_bytes=0;
         }
-        if(c->arena) {
-            if(checked(c,cudaFree(c->arena))) error=true;
-            else { c->stats.arena_bytes=0; c->stats.live_capacity_bytes=0; c->stats.logical_bytes=0; }
+        for(auto& b:c->buffers) if(b.id) {
+            // A failed cudaFree has uncertain ownership. Never submit the same
+            // pointer again; keep its entire capacity in the failure ledger.
+            if(b.release_failed || checked(c,cudaFree(b.allocation))) error=true;
+            else { if(c->account) c->account(-int64_t(b.capacity)); b={}; }
         }
+        recount(c);
         if(c->stream && checked(c,cudaStreamDestroy(c->stream))) error=true;
     }
     c->stats.cleanup_failed=error;
-    *out=c->stats; delete c; return error?-1:0;
+    *out=c->stats;
+    if(c->account) c->account(-int64_t(sizeof(*c)));
+    delete c; return error?-1:0;
 }
 extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     if(!ready(c)) return -1;
@@ -149,30 +162,30 @@ extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,u
     const uint64_t capacity=(count*sizes[kind]+255)&~uint64_t{255};
     Buffer* slot=nullptr;
     for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
-    if(!slot || capacity>c->usable) return fail(c,"range arena exhausted");
-    // ponytail: first-fit scan of at most 512 descriptors; use a free list only
-    // if the resident evaluator actually needs more simultaneous buffers.
-    uint64_t offset=0;
-    for(;;) {
-        if(offset>c->usable-capacity) return fail(c,"range arena exhausted");
-        uint64_t next=offset;
-        for(const auto& b:c->buffers) if(b.id && offset<b.offset+b.capacity && b.offset<offset+capacity)
-            next=std::max(next,b.offset+b.capacity);
-        if(next==offset) break;
-        offset=next;
-    }
+    if(!slot || capacity>c->usable || c->stats.arena_bytes>c->usable-capacity)
+        return fail(c,"range arena exhausted");
     uint64_t id=next_handle.load();
     do { if(id==UINT64_MAX) return fail(c,"range handle exhaustion"); }
     while(!next_handle.compare_exchange_weak(id,id+1));
-    *slot={id,offset,capacity,count,0,kind}; *out=id;
+    void* allocation=nullptr;
+    if(c->account && c->account(int64_t(capacity))) return fail(c,"joint temporary budget exhausted");
+    if(checked(c,cudaMalloc(&allocation,capacity))) {
+        if(c->account) c->account(-int64_t(capacity));
+        return -1;
+    }
+    *slot={id,allocation,capacity,count,0,kind}; *out=id;
     ++c->stats.allocations; recount(c); return 0;
 }
 extern "C" int c71_range_release(C71RangeContext* c,uint64_t id) {
     if(!ready(c)) return -1;
     auto* b=buffer(c,id); if(!b) return -1;
     if(b->flag && c71_range_release(c,b->flag)) return -1;
+    // Actual release, not a logical Vec-style truncation or a retained pool.
+    // Fence even on the deferred test driver; a failure keeps capacity charged.
+    if(fence(c)) return -1;
+    if(checked(c,cudaFree(b->allocation))) { b->release_failed=true; return -1; }
+    if(c->account) c->account(-int64_t(b->capacity));
     *b={}; ++c->stats.releases; recount(c);
-    // No cudaFree: all prior/future uses are ordered on this owner stream.
     return 0;
 }
 extern "C" int c71_range_upload(C71RangeContext* c,uint64_t id,const void* input,uint64_t bytes) {
@@ -304,7 +317,7 @@ extern "C" int c71_dense_weights_begin(C71RangeContext* c,uint64_t words) {
         return fail(c,"dense W device margin exhausted");
     if(checked(c,cudaMalloc(reinterpret_cast<void**>(&c->weights),bytes))) return -1;
     c->stats.weights_bytes=bytes;
-    c->stats.peak_reserved_bytes=c->stats.arena_bytes+bytes;
+    c->stats.peak_reserved_bytes=std::max(c->stats.peak_reserved_bytes,c->stats.arena_bytes+bytes);
     // Recheck after allocation; other device users are outside this owner's
     // control. This is an admission check, not a whole-pipeline peak meter.
     if(checked(c,cudaMemGetInfo(&free,&total))) return -1;

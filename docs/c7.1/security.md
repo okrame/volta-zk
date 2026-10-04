@@ -656,7 +656,7 @@ L'embedding residente copia le righe del W originale sigillato secondo
 gli ID pubblici, preservando ordine e ripetizioni. La lista completa e
 lo span W sono controllati prima delle copie, con output non consumabile
 finché il fence non riesce. Copie parziali ed errori asincroni fermano
-definitivamente l'owner. L'ABI 3 è verificata prima di leggere il ledger
+definitivamente l'owner. L'ABI 4 è verificata prima di leggere il ledger
 esteso; una libreria ABI 2 non viene accettata. Il runner fornisce gli ID
 fissati dal preparatore e la W originale installata nella PCS;
 la parità ridotta non costituisce una nuova garanzia crittografica.
@@ -730,3 +730,22 @@ dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo
 Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.
 La fattibilità a memoria e tempo limitati è verificata separatamente
 secondo [runpod-tests](runpod-tests.md).
+
+### Riduzione dei temporanei e confine del claim
+
+Il budget congiunto e i rilasci non cambiano enunciato o distribuzione
+crittografica: il gruppo valuta gli stessi coset nei punti originali, i
+pad mantengono gli indici originali e Merkle usa lo stesso stream di sali.
+Le aperture contigue conservano ordine, duplicati e path potati. S1 può
+essere ridimensionato solo dopo consumo/rilascio del predecessore e
+registrazione del successore: non si modifica un oracolo ancora apribile.
+I test ridotti confrontano byte, root, sali, transcript e MAC originali.
+Preparatore, scan e gather non ricevono monete PCS, transcript o Seed6.
+
+Il contatore comprende entrambi i ruoli e le capacità mantenute, compreso
+old+new durante realloc. Il rifiuto di allocazione o una free/fence CUDA
+fallita è terminale; non produce promozione, spill o fallback. Soltanto W
+packed è esclusa. La riserva fisica di 256 MiB non è un lemma Lean né
+una misura: il bound complessivo è condizionato alla sua sufficienza su
+H100. Non trasferire i risultati locali a parità CUDA o completezza
+canonica; le ipotesi formali/compositive già aperte restano in vigore.

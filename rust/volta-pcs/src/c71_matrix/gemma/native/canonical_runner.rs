@@ -254,7 +254,7 @@ fn measured_command(
         (Some("reference-cpu"), 6) => None,
         (Some("experiment-cuda"), 8) => Some(kernel::range::windowed::native::Config::new(
             args[6].clone().into(), args[7].parse().map_err(|_| "invalid CUDA device")?,
-            6_442_450_944, 256 * 1024 * 1024, 1 << 31, 32,
+            6_442_450_944, 256 * 1024 * 1024, 1 << 30, 32,
         )),
         _ => return Err("Stop: explicit backend required: c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES; or experiment-cuda with LIBRARY DEVICE appended".into()),
     };
@@ -262,9 +262,9 @@ fn measured_command(
     if limit < 98_380_800 {
         return Err("preparation budget below layer checkpoints".into());
     }
-    if native.is_some() && !(1usize << 31..=6_174_015_488).contains(&limit) {
+    if native.is_some() && !(1usize << 30..=6_174_015_488).contains(&limit) {
         return Err(
-            "native preparation budget must cover the 2 GiB range window within the arena reserve"
+            "native preparation budget must cover the 1 GiB range window within the arena reserve"
                 .into(),
         );
     }
@@ -332,6 +332,9 @@ fn measured_command(
             }
             let phase = measurements.phase("prover", None, "load_packed_w");
             let (weights, packed_digest) = packed(Path::new(&args[3]), cells)?;
+            if native.is_some() {
+                measurements.budget(&weights)?;
+            }
             phase.finish();
             use std::os::unix::fs::DirBuilderExt;
             std::fs::DirBuilder::new().mode(0o700).create(directory).map_err(|e| e.to_string())?;

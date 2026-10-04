@@ -30,7 +30,13 @@ impl<T: Copy> Batch<T> {
     pub(super) fn new() -> Self {
         Self { forms: Vec::new(), targets: Vec::new() }
     }
-    pub(super) fn add(&mut self, form: Vec<Cube>, target: T) {
+    pub(super) fn add(&mut self, mut form: Vec<Cube>, target: T) {
+        // Claims survive GKR through PCS. Release construction slack now,
+        // including every point, without changing the ordered original form.
+        for cube in &mut form {
+            cube.point.shrink_to_fit();
+        }
+        form.shrink_to_fit();
         self.forms.push(form);
         self.targets.push(target);
     }
@@ -1514,4 +1520,30 @@ impl Profile {
             kv::Request { source: value, point: v.v_point.clone(), original: v.originals[2] },
         ])
     }
+}
+
+#[cfg(test)]
+#[test]
+fn c71_original_claim_batch_releases_construction_capacity() {
+    let mut point = Vec::with_capacity(1024);
+    point.extend([Fp3::ONE, Fp3::ZERO]);
+    let mut form = Vec::with_capacity(128);
+    form.push(Cube { offset: 4, point, coefficient: Fp3::ONE });
+    let mut batch = Batch::new();
+    batch.add(form, Fp3::ONE);
+    assert_eq!(batch.forms[0].capacity(), 1);
+    assert_eq!(batch.forms[0][0].point.capacity(), 2);
+    assert_eq!(batch.forms[0][0].point, [Fp3::ONE, Fp3::ZERO]);
+    assert_eq!(batch.forms[0][0].offset, 4);
+    assert_eq!(batch.targets, [Fp3::ONE]);
+    println!(
+        "C71_CLAIM_ALLOCATION_GEOMETRY {}",
+        serde_json::json!({
+            "cube_bytes": size_of::<Cube>(), "field_bytes":size_of::<Fp3>(),
+            "vector_bytes":size_of::<Vec<Cube>>(), "auth_bytes":size_of::<Auth>(),
+            "max_cubes_per_root":kernel::linear::MAX_CUBES,
+            "max_targets_per_root":kernel::linear::MAX_TARGETS,
+            "construction_capacity_released":true, "credit":false
+        })
+    );
 }

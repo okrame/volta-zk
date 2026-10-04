@@ -179,6 +179,11 @@ insieme i blocchi vivi: otto worker hanno payload W massimo dichiarato
 verificata sul pod prima del nuovo trial; non è accelerazione CUDA né
 ammissione di Γ. La scelta è motivata dal throughput del primo pilot
 seriale sui pesi reali, incompatibile con il suo timeout.
+Il packed regolare è ora mappato in sola lettura, senza una copia W
+dequantizzata completa; i buffer in memoria delle fixture restano streamed.
+Registrare la mappa W immutabile da 61.394.690.560 B separatamente da
+scratch e KV: RSS totale include le pagine W residenti e non è l'arena.
+Il limite AS di 64 GiB e gli stop su RSS aggregato/swap restano invariati.
 Un host CPU equivalente è l'alternativa meno costosa da concordare nella
 stessa decisione operativa. `nvidia-smi` non accelera questi comandi.
 Inferenza BF16, TF32 o Transformers non sostituisce la relazione intera.

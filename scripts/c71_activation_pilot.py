@@ -11,8 +11,10 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 import hashlib
+import io
 import json
 import math
+import mmap
 from pathlib import Path
 import subprocess
 import threading
@@ -92,6 +94,13 @@ class PackedWeights:
             raise ValueError("pilot weight exponent names differ")
         if any(type(value) is not int or not -128 <= value <= 128 for value in exponents.values()):
             raise ValueError("pilot weight exponent outside native envelope")
+        self.mapping = None
+        try:
+            descriptor = source.fileno()
+        except (AttributeError, io.UnsupportedOperation):
+            pass
+        else:
+            self.mapping = mmap.mmap(descriptor, 0, access=mmap.ACCESS_READ)
 
     def block(self, tensor, first, count):
         if not 0 <= tensor < len(self.descriptors):
@@ -100,13 +109,19 @@ class PackedWeights:
         if first < 0 or count <= 0 or first + count > descriptor["rows"]:
             raise ValueError("pilot weight row outside tensor")
         columns = descriptor["columns"]
-        with self.read_lock:
-            self.source.seek(2 * (descriptor["packed_offset"] + first * columns))
-            body = calibration.ingest._read_exact(self.source, 2 * count * columns, "pilot W")
-            self.bytes_read += len(body)
-        values = np.frombuffer(body, dtype="<i2").reshape(count, columns)
+        offset = 2 * (descriptor["packed_offset"] + first * columns)
+        if self.mapping is None:
+            with self.read_lock:
+                self.source.seek(offset)
+                body = calibration.ingest._read_exact(self.source, 2 * count * columns, "pilot W")
+            values = np.frombuffer(body, dtype="<i2").reshape(count, columns)
+        else:
+            values = np.frombuffer(self.mapping, dtype="<i2", count=count * columns,
+                                   offset=offset).reshape(count, columns)
         if np.any(values == -32768):
             raise ValueError("pilot weight outside symmetric i16")
+        with self.read_lock:
+            self.bytes_read += 2 * count * columns
         converted = values.astype(np.float64)
         np.ldexp(converted, self.exponents[descriptor["name"]], out=converted)
         return converted
@@ -319,6 +334,8 @@ def main():
         workload = json.loads(workload_body)
         with args.packed.open("rb") as source, np.errstate(over="raise", invalid="raise", divide="raise"):
             reader = PackedWeights(source, description["weight_sources"], weights)
+            result.update(weight_access="readonly_mmap" if reader.mapping is not None else "stream",
+                          immutable_weight_mapping_bytes=len(reader.mapping) if reader.mapping is not None else 0)
             executor = (ThreadPoolExecutor(max_workers=args.matrix_workers)
                         if args.matrix_workers > 1 else nullcontext(None))
             with executor as pool:

@@ -97,24 +97,34 @@ def test_complete_small_pilot_retains_causal_kv_and_absorbs_final_token():
     assert repeated[0] == candidate and repeated[1]["responses"] == result["responses"]
 
 
-def test_parallel_matrix_blocks_and_causal_pilot_match_serial_exactly():
+def test_parallel_matrix_blocks_and_causal_pilot_match_serial_exactly(tmp_path):
     descriptor = dict(id=0, name="ragged", rows=257, columns=129, packed_offset=0)
     body = np.random.default_rng(71).integers(-32767, 32768, (257, 129), dtype=np.int16).tobytes()
     matrix_description = dict(weight_sources=[descriptor], pilot=dict(steps=[], kv_sources=[]))
     step = dict(operation="matrix", inputs=[1], parameters=dict(weight=0))
-    def evaluate(pool):
-        weights = pilot.PackedWeights(io.BytesIO(body), [descriptor], {"ragged": -13})
+    def evaluate(pool, source=None):
+        weights = pilot.PackedWeights(source if source is not None else io.BytesIO(body),
+                                     [descriptor], {"ragged": -13})
         runner = pilot.Pilot(matrix_description, weights, time.monotonic() + 10, pool)
         runner.current[1] = np.arange(129, dtype=np.float64) / 16
         return runner.evaluate(step, 0, 0), runner.matrix_scalar_products, weights.bytes_read
     serial = evaluate(None)
     description, weights = small_inputs()
     serial_trial = pilot.Pilot(description, weights, time.monotonic() + 10).run([0])
+    packed = tmp_path / "readonly.i16"
+    packed.write_bytes(body)
+    with packed.open("rb") as source:
+        mapped_serial = evaluate(None, source)
     with ThreadPoolExecutor(max_workers=2) as pool:
         parallel = evaluate(pool)
+        with packed.open("rb") as source:
+            mapped_parallel = evaluate(pool, source)
         parallel_trial = pilot.Pilot(description, small_inputs()[1], time.monotonic() + 10, pool).run([0])
     assert parallel[0].tobytes() == serial[0].tobytes()
     assert parallel[1:] == serial[1:] == (257 * 129, len(body))
+    for mapped in (mapped_serial, mapped_parallel):
+        assert mapped[0].tobytes() == serial[0].tobytes() and mapped[1:] == serial[1:]
+    assert packed.read_bytes() == body
     assert parallel_trial == serial_trial
 
 

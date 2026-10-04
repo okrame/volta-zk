@@ -158,6 +158,19 @@ ricette, tabelle e identità restano riutilizzabili con i controlli del
 comunque parità e misure fisiche; l'autorizzazione non concede credito
 numerico o protocollo a fasi non completate.
 
+**Primo checkpoint H100 (4 ottobre).** La build mirata sulla SHA pulita
+`d4abed66` è passata; la prima parità CUDA è **FAIL**, exit 1 con
+`CUDA: invalid argument`: [evidenza](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json). Il picco congiunto
+campionato del diagnostico abortito è 99.942.400 B, non il massimo fisico
+canonico né una verifica del margine arena. Calibrazione, parità integrata
+sui MAC originali e O=0/150/300 non sono stati avviati. La revisione locale
+`65b5fe7` corregge un Gate invalido della fixture, da `{0,0,1}` a
+`{1,1,1}`, con due controlli host passati; la conferma hardware è aperta.
+Il bundle del primo FAIL è verificato in `artifact/c7.1-pod/` (circa 100 MB),
+con codice, eseguibili, ambiente, log, campioni fisici e manifest; nessun
+peso o profilo calibrato. Il nuovo trial richiede l'eccezione autorizzata
+allo stop del runbook; il limite originale di 6 ore resta invariato.
+
 ## Contratto delle risorse
 
 | Quantità | Requisito |

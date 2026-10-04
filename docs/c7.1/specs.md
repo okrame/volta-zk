@@ -865,6 +865,15 @@ Il burn copre però anche il suffisso non espanso dopo un rifiuto.
 Proof, cache, iteratori, output, conversioni e allocator restano memoria
 da contare anche quando la copia della riserva è eliminata.
 
+Il [primo checkpoint H100](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json) conserva il fallimento della
+parità del 4 ottobre sulla SHA `d4abed66`, prima di calibrazione e runner
+canonico. Il massimo campionato RSS+HBM è 99.942.400 B; HWM host da GNU
+time è separatamente 111.943.680 B. Non sommare i massimi separati o
+dedurre da questi dati il picco completo, le capacità trattenute o la
+sufficienza della riserva fisica. Nessuna misura per O=0/150/300 è acquisita.
+La correzione locale della fixture Gate conserva il contratto del launcher;
+non cambia ricette, semantica, endpoint, MAC o transcript della costruzione.
+
 ## Correlazioni Seed6
 
 Il riferimento matematico B12 usa `C71B12F1`, suite 3, un setup AES,

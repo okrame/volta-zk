@@ -733,6 +733,12 @@ Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.
 La fattibilità a memoria e tempo limitati è verificata separatamente
 secondo [runpod-tests](runpod-tests.md).
 
+Il [primo diagnostico H100](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json) è fallito prima della
+pipeline canonica. I due controlli host della correzione Gate nella
+fixture non concedono parità CUDA o credito ai bound B12/Seed6. Non sono
+stati generati correlazioni, journal, KV o certificati canonici; NoPeek,
+endpoint MAC originali e obblighi di raffinamento rimangono invariati.
+
 ### Riduzione dei temporanei e confine del claim
 
 Il budget congiunto e i rilasci non cambiano enunciato o distribuzione

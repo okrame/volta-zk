@@ -519,6 +519,14 @@ la cache, preservando fixture ed evidenze, salvo nuove istruzioni. Non creare ta
 alternativi per singoli crate. `.cargo/config.toml` imposta
 `target-cpu=native`: i tempi CPU non si trasferiscono a un'altra macchina.
 
+Il [primo checkpoint H100](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json) distingue la build riuscita
+sul pod dal FAIL della parità CUDA. `tests/test_c71_dense_i16.py` comprende
+ora anche un controllo che legge i due casi pointwise del diagnostico e
+li valida contro il contratto C++ reale del launcher: il precedente Gate
+`{0,0,1}` è invalido, `{1,1,1}` è ammesso. I due test host passano con
+60 s / 2 GiB; non è un nuovo trial GPU. La cache Cargo resta disponibile
+finché il goal diagnostico è attivo.
+
 ## Budget simultaneo e rilascio dei workspace
 
 Compilare la stessa lib con `c71-seed6-reference`; eseguire un filtro per

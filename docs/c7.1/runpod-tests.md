@@ -42,6 +42,20 @@ verificati contro le stesse identità. La calibrazione completata resta
 riutilizzabile secondo i controlli sotto; una nuova H100 richiede comunque
 compatibilità, parità e nuove misure fisiche.
 
+**Esito acquisito.** Il [primo trial di parità](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json) sulla SHA
+pulita `d4abed66` è **FAIL**, exit 1, `CUDA: invalid argument`.
+La build mirata è passata. Il primo bundle immutabile verificato è
+`artifact/c7.1-pod/first-failure-20261004T174606Z/`, circa 100 MB, con
+manifest, codice Git, eseguibili, ambiente e log; non contiene pesi,
+calibrazione o tracce private. Il massimo RSS+HBM campionato è
+99.942.400 B, con margine campionato 6.342.508.544 B sul tetto; picco
+fisico completo e margine canonico restano **non verificati**. Le fasi
+dipendenti non sono partite. Una correzione della fixture Gate è pronta
+nel commit `65b5fe7`, verificata solo su host; il nuovo trial attende
+l'autorizzazione esplicita all'eccezione di retry entro la scadenza originale.
+La pausa temporaneamente richiesta per aggiornare macOS è stata revocata:
+il pod continua e il controllo locale di spegnimento è stato riattivato.
+
 | Passaggio | Stato e condizione di uscita |
 |---|---|
 | Preparazione locale | 13 producer CUDA, scanner, registro e runner misto implementati; compilazione sm_90, schedule canonica e test numerici/protocollo ridotti. Nessun W reale o dominio D34/D35 eseguito localmente |

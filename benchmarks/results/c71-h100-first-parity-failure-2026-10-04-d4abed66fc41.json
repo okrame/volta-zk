@@ -1,0 +1,52 @@
+{
+  "arena_cap_bytes": 6442450944,
+  "bundle_bytes": 100267011,
+  "bundle_manifest_sha256": "376d7859451e439ca3a2196ed5cdbfe9600a9b2476f2e7f58a6649e9d11c3c3b",
+  "bundle_path": "/home/okrame/projects/volta-zk/artifact/c7.1-pod/first-failure-20261004T174606Z",
+  "bundle_verified_files": 40,
+  "canonical_arena_margin_bytes": null,
+  "code_bundle": "code-d4abed66.bundle; generated locally from public Git commit, not used to sync the pod.",
+  "code_git_sha": "d4abed66fc41d685889b8f54676390cba716a66c",
+  "complete_physical_peak": false,
+  "coverage": {
+    "O_0_150_300": "NOT_RUN",
+    "calibration": "NOT_STARTED",
+    "cuda_operator_parity": "FAIL",
+    "cuda_original_mac_parity": "NOT_RUN_AFTER_FAILURE",
+    "targeted_build": "PASS",
+    "weights_download": "NOT_STARTED"
+  },
+  "credit": false,
+  "error": "CUDA: invalid argument",
+  "fixture_issue_identified_statically": {
+    "corrected_commit": "65b5fe74d95a9c92a3496b2214ecda449611b389",
+    "hardware_retrial": "NOT_RUN; owner approval pending",
+    "original": "Pointwise{0,0,1}",
+    "valid_gate": "Pointwise{1,1,1}"
+  },
+  "git_dirty": false,
+  "inputs": "Only anonymous HEAD of first pinned shard; no source body or packed created.",
+  "observed_sample_margin_bytes": 6342508544,
+  "prior_pause_snapshot": "preflight-20261004T170753Z; pause cancelled by subsequent owner instruction",
+  "process_hwm_host_bytes": 111943680,
+  "required_margin_bytes": 268435456,
+  "snapshot_utc": "2026-10-04T17:50:25Z",
+  "status": "FAIL",
+  "summary": {
+    "command": [
+      "/workspace/c71-checkpoint-20261004T170753Z/c71_device_parity"
+    ],
+    "exit_code": 1,
+    "label": "cuda-operator-parity",
+    "physical_complete_peak": false,
+    "resource_failure": null,
+    "sampled_host_rss_peak_bytes": 76873728,
+    "sampled_joint_peak_bytes": 99942400,
+    "sampled_whole_gpu_peak_bytes": 23068672,
+    "samples": 3,
+    "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+    "sampling_target_seconds": 0.2,
+    "start_unix_seconds": 1791135966.9659019,
+    "wall_seconds": 0.7491475753486156
+  }
+}

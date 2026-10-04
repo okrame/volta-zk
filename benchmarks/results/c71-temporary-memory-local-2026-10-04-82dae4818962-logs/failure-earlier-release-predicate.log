@@ -1,0 +1,19 @@
+
+running 1 test
+test c71_matrix::range::windowed::tests::c71_b12_windowed_native_failure_before_authentication ... native cleanup failed, arena bytes: 0, W bytes: 0
+native cleanup failed, arena bytes: 768, W bytes: 0
+
+thread 'c71_matrix::range::windowed::tests::c71_b12_windowed_native_failure_before_authentication' (32) panicked at volta-pcs/src/c71_matrix/range/windowed.rs:982:9:
+assertion failed: prove(model.domain, &model.root, context(), [9; 32], 731, &source,
+                &mut Fs::new(b"native cleanup failed", 100_000),
+                &mut rows(count).into_iter()).err().unwrap().contains("cleanup failed")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    c71_matrix::range::windowed::tests::c71_b12_windowed_native_failure_before_authentication
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 495 filtered out; finished in 1.21s
+

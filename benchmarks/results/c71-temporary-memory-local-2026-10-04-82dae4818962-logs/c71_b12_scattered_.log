@@ -1,0 +1,9 @@
+
+running 4 tests
+test c71_matrix::b12::replay::tests::c71_b12_scattered_coset_original_pad_positions_and_failures ... ok
+test c71_matrix::b12::replay::tests::c71_b12_scattered_extension_cosets_match_dense_original_pads ... ok
+test c71_matrix::b12::replay::tests::c71_b12_scattered_initial_512_passes_matches_native_root_and_openings ... ok
+test c71_matrix::b12::sourcewise::tests::c71_b12_scattered_residual_reductions_and_failed_retention ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 494 filtered out; finished in 0.37s
+

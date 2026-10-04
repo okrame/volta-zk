@@ -1,0 +1,6 @@
+
+running 1 test
+test c71_matrix::gemma::native::canonical::state::metrics::tests::c71_canonical_metrics_nested_failure_and_partial_io ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 497 filtered out; finished in 0.00s
+

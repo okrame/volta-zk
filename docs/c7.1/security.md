@@ -749,3 +749,8 @@ packed è esclusa. La riserva fisica di 256 MiB non è un lemma Lean né
 una misura: il bound complessivo è condizionato alla sua sufficienza su
 H100. Non trasferire i risultati locali a parità CUDA o completezza
 canonica; le ipotesi formali/compositive già aperte restano in vigore.
+
+Il [record locale a SHA pulita 82dae48](../../benchmarks/results/c71-temporary-memory-local-2026-10-04-82dae4818962.json) conserva 41 test Rust
+e 11 Python passati, build lib/runner/sm_90, ledger, hash e fallimenti
+intermedi. Un test GPU resta intenzionalmente ignorato. Non acquisisce
+W reale, esecuzione canonica o conformità fisica H100.

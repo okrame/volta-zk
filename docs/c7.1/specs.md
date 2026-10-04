@@ -948,3 +948,8 @@ annidati che moltiplichino i thread. Si contano decoding, hash, campo,
 GKR/PCS, PCG, MAC e aggiornamento dello stato; registrare tempo CPU e
 wall, RSS, affinità e backend AES. Non richiede W, una GPU o un servizio
 remoto. Tempi di CPU differenti non sono intercambiabili.
+
+Il [record locale a SHA pulita 82dae48](../../benchmarks/results/c71-temporary-memory-local-2026-10-04-82dae4818962.json) conserva 41 test Rust
+e 11 Python passati, build lib/runner/sm_90, ledger, hash e fallimenti
+intermedi. Un test GPU resta intenzionalmente ignorato. Non acquisisce
+W reale, esecuzione canonica o conformità fisica H100.

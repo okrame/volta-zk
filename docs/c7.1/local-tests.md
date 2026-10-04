@@ -552,3 +552,8 @@ la directory a [c71_temporary_ledger.py](../../scripts/c71_temporary_ledger.py).
 Il report include esplicitamente la riserva fisica non ancora misurata.
 Un run di record parte dal commit di implementazione pulito; i record
 precedenti, inclusi fallimenti e filtri vuoti, non vanno sovrascritti.
+
+Il [record locale a SHA pulita 82dae48](../../benchmarks/results/c71-temporary-memory-local-2026-10-04-82dae4818962.json) conserva 41 test Rust
+e 11 Python passati, build lib/runner/sm_90, ledger, hash e fallimenti
+intermedi. Un test GPU resta intenzionalmente ignorato. Non acquisisce
+W reale, esecuzione canonica o conformità fisica H100.

@@ -1,0 +1,41 @@
+F..........                                                              [100%]
+=================================== FAILURES ===================================
+___________ test_current_handoff_structure_links_and_code_references ___________
+
+    def test_current_handoff_structure_links_and_code_references():
+        assert {p.name for p in CURRENT.iterdir()} == {
+            "design.md", "specs.md", "security.md", "local-tests.md", "runpod-tests.md"}
+        assert not list((ROOT / "docs").glob("c7.1-*.md"))
+        assert not (ROOT / "docs/procedures/c71-calibration.md").exists()
+        failures = []
+        frozen = {"c7.1-gemma31b-design.md", "prototype-status-history-2026-09-07.md",
+                  "prototype-status-history-2026-09-10.md"}
+        files = [*CURRENT.glob("*.md"),
+                 *(p for p in HISTORY.glob("*.md") if p.name not in frozen), ROOT / "AGENTS.md",
+                 ROOT / "README.md", ROOT / "docs/README.md"]
+        for path in files:
+            body = path.read_text()
+            for target in LINK.findall(body):
+                url = urlsplit(target)
+                if url.scheme or url.netloc:
+                    continue
+                dest = (path.parent / unquote(url.path)).resolve() if url.path else path
+                if not dest.exists():
+                    failures.append(f"{path.relative_to(ROOT)}: missing {target}")
+                elif url.fragment and dest.suffix == ".md" and unquote(url.fragment) not in anchors(dest.read_text()):
+                    failures.append(f"{path.relative_to(ROOT)}: missing anchor {target}")
+        assert not failures, "\n".join(failures)
+        # Native filters in the runbook must still select a function in the source.
+        rust = "\n".join(p.read_text() for folder in ("volta-pcs", "volta-pcg")
+                         for p in (ROOT / "rust" / folder / "src").rglob("*.rs"))
+        names = re.findall(r"fn\s+(\w+)\s*\(", rust)
+        filters = re.findall(r"`((?:c71_|sourcewise_)[a-zA-Z0-9_]+)`", (CURRENT / "local-tests.md").read_text())
+>       assert all(any(name.startswith(f) for name in names) for f in filters), filters
+E       AssertionError: ['c71_b12_native_registry_header_and_real_shortage', 'c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_...amed_and_fail_closed', 'c71_b12_native_canonical', 'c71_b12_native_registry', 'c71_b12_native_dispatch_canonical', ...]
+E       assert False
+E        +  where False = all(<generator object test_current_handoff_structure_links_and_code_references.<locals>.<genexpr> at 0xffffb70f67a0>)
+
+tests/test_c71_docs.py:67: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_c71_docs.py::test_current_handoff_structure_links_and_code_references
+1 failed, 10 passed in 3.24s

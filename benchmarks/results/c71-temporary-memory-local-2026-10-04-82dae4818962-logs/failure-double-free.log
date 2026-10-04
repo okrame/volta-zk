@@ -1,0 +1,13 @@
+
+running 13 tests
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_abi4_rejects_legacy_stats ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_attention_rejections_are_terminal ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_dense_chain ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_descriptor_capacity_is_bounded ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_distinct_libraries_reject_colliding_handles ... ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_nonlinear_rejections_are_terminal ... C71_NONLINEAR_REJECTIONS count=12 terminal=true gpu=false
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_windowed_native_original_staging_is_bounded_and_fenced ... ok
+test c71_matrix::range::windowed::tests::c71_b12_windowed_native_byte_transcript_original_mac ... ok
+test c71_matrix::range::windowed::tests::c71_b12_windowed_native_failure_before_authentication ... native cleanup failed, arena bytes: 0, W bytes: 0
+free(): double free detected in tcache 2

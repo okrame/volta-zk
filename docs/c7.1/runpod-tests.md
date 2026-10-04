@@ -613,3 +613,8 @@ fallimenti di verifica o risultati oltre i limiti. La SHA del codice
 eseguito deve essere pulita. I record non autorizzano nuovi tentativi;
 aggiornare i cinque documenti correnti solo quando cambia un fatto,
 collegando la nuova evidenza senza sovrascrivere quella precedente.
+
+Il [record locale a SHA pulita 82dae48](../../benchmarks/results/c71-temporary-memory-local-2026-10-04-82dae4818962.json) conserva 41 test Rust
+e 11 Python passati, build lib/runner/sm_90, ledger, hash e fallimenti
+intermedi. Un test GPU resta intenzionalmente ignorato. Non acquisisce
+W reale, esecuzione canonica o conformità fisica H100.

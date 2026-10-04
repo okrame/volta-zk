@@ -744,7 +744,12 @@ L'[ingestione completa](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2
 non sostituisce Γ valido, confronto indipendente o installazione
 autenticata. Il pilot con mapping readonly e blocchi CPU paralleli
 mantiene l'ordine causale; la lettura fisica non concede credito NoPeek
-o di raffinamento oltre al contratto già dichiarato.
+o di raffinamento oltre al contratto già dichiarato. Il [checkpoint finale](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json)
+è INCOMPLETO: il timeout del pilot non produce Γ ammesso, tabelle
+certificate, replay indipendenti o certificati canonici. Nessuna delle
+premesse B12/EA-LPN-SL-reg* o di raffinamento aperte è scaricata da queste
+misure. Il bundle consente riuso della provenienza e delle scale W,
+non importazione di stato terminale o correlazioni.
 
 ### Riduzione dei temporanei e confine del claim
 

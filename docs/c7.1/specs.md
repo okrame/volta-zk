@@ -877,7 +877,12 @@ L'[ingestione reale PASS](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3
 esponenti minimi e l'hash packed `1a88da14…1ac8dac8`; non ammette Γ.
 Il mapping readonly del pilot conserva W immutabile, distinto dai
 temporanei: non sottrarre la lunghezza del file al RSS senza censirne
-la residenza. I campioni offline non dimostrano l'arena della prova.
+la residenza. I campioni offline non dimostrano l'arena della prova. Il [checkpoint finale](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json)
+registra timeout del pilot senza candidata: Γ e i tre contesti canonici
+non sono acquisiti. RSS+HBM campionato massimo 62.255.046.656 B include W;
+la lettura smaps puntuale distingue W residente e 732.696.576 B non-W di
+un processo, senza chiudere picco globale o capacità trattenute. I 29
+campioni HBM non nulli restano non attribuiti; non sommare massimi separati.
 
 ## Correlazioni Seed6
 

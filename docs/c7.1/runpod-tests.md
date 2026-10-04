@@ -42,27 +42,42 @@ verificati contro le stesse identità. La calibrazione completata resta
 riutilizzabile secondo i controlli sotto; una nuova H100 richiede comunque
 compatibilità, parità e nuove misure fisiche.
 
-**Esito acquisito.** La build mirata è passata; il [primo FAIL](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json)
-resta conservato. Il [trial corretto su SHA pulita `d3c2fa95`](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json)
-passa parità operatori sintetici e pipeline ridotta sui MAC originali.
-I test piccoli e l'[ingestione reale](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2fa95eaf7.json) sono PASS; Γ ammesso e
-diagnostica O=0/150/300 restano aperti. Il pilot readonly-mmap a otto
-worker CPU è in corso dopo tre trial interrotti per throughput, tutti
-conservati con exit 130 e nessuna candidata riutilizzata. I 29 controlli
-numerici del nuovo trial passano. Un controllo documentale sul pod è
-FAIL per fonti bibliografiche ignorate da Git mancanti: il log è conservato,
-i nove controlli completi dei documenti passano sulla VM con quelle fonti.
-Il massimo RSS+HBM campionato della parità è 734.404.608 B, con margine
-campionato 5.708.046.336 B sul tetto; picco fisico completo e margine
-canonico restano **non verificati**. I bundle del primo FAIL e del PASS
-sono verificati nella destinazione autorizzata, circa 103 MB complessivi,
-senza pesi o tracce private. La pausa per macOS è revocata; il controllo
-di arresto è attivo. Il proprietario ha preautorizzato i trial successivi
-entro la scadenza originale, senza importare stato terminale o correlazioni.
-L'ingestione ha massimo host RSS campionato 2.868.514.816 B, zero HBM,
-e durata 463,77 s: sono misure offline, non tempo o arena della prova.
-Shard e packed restano sul pod; identità, scale e log sono verificati
-fuori dal pod nel bundle `ingest-20261004T185500Z/` (circa 257 KB).
+**Primo checkpoint concluso: [INCOMPLETO](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json), `credit:false`.**
+Ambiente operativo/build, parità sintetica CUDA e pipeline ridotta sui MAC
+originali sono PASS. Il primo FAIL della fixture e i tre pilot interrotti
+(exit 130) sono conservati. L'ingestione reale è PASS: 772 scale W,
+packed verificato; 463,77 s e massimo RSS campionato 2.868.514.816 B,
+misure offline. I 29 controlli numerici sull'ultimo codice passano;
+il FAIL documentale nel checkout pod privo delle fonti ignorate da Git
+resta distinto dai nove controlli documentali PASS sulla VM.
+Il pilot readonly-mmap/otto worker termina per deadline interna 5.100 s,
+exit 1, wall 5.153,79 s, senza candidata. Γ, tabelle/ricette certificate,
+confronto indipendente, due replay interi e O=0/150/300 sono **non acquisiti**.
+Tempi di inferenza/prova/somma e byte dei certificati restano nulli.
+
+Il massimo congiunto campionato è 62.255.046.656 B inclusa W immutabile;
+il picco temporaneo canonico e il margine sul tetto 6.442.450.944 B sono
+**non verificati**. Una singola lettura smaps misura 732.696.576 B di
+RSS non-W più HBM in un processo: non è il massimo globale né un census
+di tutte le capacità trattenute. Il picco campionato della sola parità
+è 734.404.608 B (margine campionato 5.708.046.336 B), senza credito canonico.
+Conservare i 29 campioni HBM non nulli del pilot CPU, massimo 556.793.856 B,
+la cui attribuzione resta aperta; nessun claim di calibrazione GPU.
+Il digest dell'immagine effettivamente in esecuzione non è disponibile.
+
+**Conservazione e arresto completati.** Dieci bundle immutabili nella
+destinazione autorizzata occupano complessivamente 106.904.206 B; manifest,
+byte e hash sono verificati. `campaign-20261004T170753Z/RESUME.md` descrive
+riuso, invalidazione e controlli della nuova H100. Codice Git recuperabile
+anche offline e checkout pubblico separato verificati; shard/packed non
+sono stati copiati. Riutilizzabili identità/scale W e prove di componente,
+non una calibrazione A inesistente. Il pod è stato arrestato dall'agente
+tramite API, confermato `EXITED` e `runtime:null` alle 21:01:31 UTC,
+dopo 3 h 53 min, prima del termine 23:07:53 UTC; il guard è disattivato.
+La campagna è chiusa: una nuova H100 richiede una nuova autorizzazione,
+compatibilità e misure fisiche. Prima della diagnostica completare il
+pilot e tutti i cinque controlli di ammissione, senza riuso di KV terminale,
+journal o correlazioni monouso.
 
 | Passaggio | Stato e condizione di uscita |
 |---|---|
@@ -520,7 +535,8 @@ scripts/runpod_harness.sh git-push "runpod/$RUNPOD_POD_ID/c71-gamma"
 
 Alla chiusura della campagna, verificare da un checkout remoto separato
 il commit e i file pubblicati, e la destinazione autorizzata dei dati da
-conservare, prima del `delete` della [gestione pod](#gestione-del-pod-e-del-repository).
+conservare, prima dell’arresto della [gestione pod](#gestione-del-pod-e-del-repository);
+il `delete` è distinto e richiede che i dati da conservare siano già verificati.
 Resta vincolante il termine concordato, anche se il salvataggio è incompleto.
 Dopo l'ammissione di Γ, portare profilo e conto delle risorse
 all'[esperimento della prova](#esperimento-della-prova) se già autorizzato

@@ -528,12 +528,15 @@ li valida contro il contratto C++ reale del launcher: il precedente Gate
 60 s / 2 GiB; restano controlli host distinti dai due trial GPU. I test
 piccoli della calibrazione passano sul pod; il linker richiede affinità
 a un core entro 2 GiB AS su questo host con 224 CPU visibili. Il fallimento
-senza affinità è conservato. La cache Cargo resta disponibile
-finché il goal diagnostico è attivo.
+senza affinità è conservato. Il goal diagnostico è concluso; la cache locale Cargo è rimossa
+alla chiusura, preservando binari ed evidenze nel bundle privato.
 La regressione del pilot confronta byte, contatori e causalità tra
 blocchi seriali/paralleli e tra sorgenti streamed/mappate readonly;
 la parte a due thread si esegue sul pod, mantenendo i controlli locali
-a un thread. L'[ingestione reale PASS](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2fa95eaf7.json) è evidenza distinta dalle fixture.
+a un thread. L'[ingestione reale PASS](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2fa95eaf7.json) è evidenza distinta dalle fixture. Il [checkpoint finale](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json)
+conserva i 29 controlli numerici PASS sulla H100 e il timeout del pilot
+reale. I controlli documentali locali verificano il nuovo handoff;
+nessuna compilazione o rigenerazione pesi è necessaria sulla VM.
 
 ## Budget simultaneo e rilascio dei workspace
 

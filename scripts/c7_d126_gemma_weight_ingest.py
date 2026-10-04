@@ -495,7 +495,14 @@ def minimum_weight_exponent(max_abs_bits: int) -> int:
 
 
 def _read_exact(source, length: int, label: str) -> bytes:
-    body = bytearray()
+    if length <= 0:
+        return b""
+    first = source.read(length)
+    if not first:
+        raise IngestError(f"{label}: truncated source")
+    if len(first) == length:
+        return bytes(first)
+    body = bytearray(first)
     while len(body) < length:
         chunk = source.read(length - len(body))
         if not chunk:

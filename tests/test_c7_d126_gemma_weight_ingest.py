@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +21,22 @@ def load_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_exact_reads_preserve_full_and_fragmented_bodies_and_reject_eof():
+    module = load_module()
+    class Fragmented(io.BytesIO):
+        def read(self, length):
+            return super().read(min(length, 2))
+    for reader in (io.BytesIO, Fragmented):
+        source = reader(b"abcdefgh")
+        assert module._read_exact(source, 5, "fixture") == b"abcde"
+        assert module._read_exact(source, 3, "fixture") == b"fgh"
+        assert module._read_exact(source, 0, "fixture") == b""
+        with pytest.raises(module.IngestError, match="fixture: truncated"):
+            module._read_exact(source, 1, "fixture")
+        with pytest.raises(module.IngestError, match="fixture: truncated"):
+            module._read_exact(reader(b"abc"), 4, "fixture")
 
 
 def tiny_shard(tmp_path: Path, tensors: list[tuple[str, bytes]]):

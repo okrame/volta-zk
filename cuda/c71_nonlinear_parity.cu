@@ -60,7 +60,7 @@ int main() {
         const std::vector<int16_t> left={-32767,-256,-1,0,1,255,32767},right={32767,1,-1,7,-1,128,-32767};
         auto* first=device<int16_t>(left.size()); auto* second=device<int16_t>(right.size());
         auto* product=device<int64_t>(left.size()); upload(first,left); upload(second,right);
-        for(const auto operation: {c71_dense::Pointwise{17,-29,0},c71_dense::Pointwise{0,0,1}}) {
+        for(const auto operation: {c71_dense::Pointwise{17,-29,0},c71_dense::Pointwise{1,1,1}}) {
             reset(); check(c71_dense_pointwise_launch(stream,first,second,product,left.size(),operation,failed)); require(flag()==0);
             const auto actual=read(product,left.size(),stream);
             for(size_t index=0;index<left.size();++index) require(actual[index]==(operation.multiply?int64_t(left[index])*right[index]:17*int64_t(left[index])-29*int64_t(right[index])));

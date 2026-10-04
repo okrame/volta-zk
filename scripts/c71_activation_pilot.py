@@ -8,11 +8,14 @@ can validate it. It is neither BF16 model equivalence nor a proof benchmark.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 import hashlib
 import json
 import math
 from pathlib import Path
 import subprocess
+import threading
 import time
 
 import numpy as np
@@ -41,7 +44,7 @@ def exponent_for_maximum(maximum: float) -> int:
         exponent += 1
 
 
-def work_plan(description):
+def work_plan(description, matrix_workers=1):
     graph = description["pilot"]
     tensors = description["weight_sources"]
     reads = products = block_cells = 0
@@ -63,6 +66,8 @@ def work_plan(description):
     return dict(calibrated=False, credit=False, floating_initialization_only=True,
                 logical_weight_read_bytes=reads, matrix_scalar_products=products,
                 weight_block_i16_plus_f64_payload_bytes=10 * block_cells,
+                matrix_workers=matrix_workers,
+                simultaneous_weight_blocks_payload_bytes=10 * block_cells * matrix_workers,
                 final_f64_kv_payload_bytes=8 * kv * graph["responses"] * graph["tokens_per_response"],
                 physical_disk_bytes=None, complete_physical_peak=None, runtime_seconds=None)
 
@@ -73,6 +78,7 @@ class PackedWeights:
         self.descriptors = descriptors
         self.exponents = exponents
         self.bytes_read = 0
+        self.read_lock = threading.Lock()
         expected = 0
         for descriptor in sorted(descriptors, key=lambda value: value["packed_offset"]):
             if (descriptor["packed_offset"] != expected or descriptor["rows"] <= 0
@@ -94,23 +100,25 @@ class PackedWeights:
         if first < 0 or count <= 0 or first + count > descriptor["rows"]:
             raise ValueError("pilot weight row outside tensor")
         columns = descriptor["columns"]
-        self.source.seek(2 * (descriptor["packed_offset"] + first * columns))
-        body = calibration.ingest._read_exact(self.source, 2 * count * columns, "pilot W")
+        with self.read_lock:
+            self.source.seek(2 * (descriptor["packed_offset"] + first * columns))
+            body = calibration.ingest._read_exact(self.source, 2 * count * columns, "pilot W")
+            self.bytes_read += len(body)
         values = np.frombuffer(body, dtype="<i2").reshape(count, columns)
         if np.any(values == -32768):
             raise ValueError("pilot weight outside symmetric i16")
-        self.bytes_read += len(body)
         converted = values.astype(np.float64)
         np.ldexp(converted, self.exponents[descriptor["name"]], out=converted)
         return converted
 
 
 class Pilot:
-    def __init__(self, description, weights, deadline):
+    def __init__(self, description, weights, deadline, matrix_executor=None):
         self.description = description
         self.graph = description["pilot"]
         self.weights = weights
         self.deadline = deadline
+        self.matrix_executor = matrix_executor
         self.current = {}
         self.history = {source: [] for source in self.graph["kv_sources"]}
         self.extents = {}
@@ -141,11 +149,17 @@ class Pilot:
             tensor = parameters["weight"]
             rows = self.weights.descriptors[tensor]["rows"]
             result = np.empty(rows, dtype=np.float64)
-            for first in range(0, rows, 128):
+            def multiply(first):
                 self.check_deadline()
                 count = min(128, rows - first)
-                result[first:first + count] = self.weights.block(tensor, first, count) @ inputs[0]
-                self.matrix_scalar_products += count * inputs[0].size
+                with np.errstate(over="raise", invalid="raise", divide="raise"):
+                    return first, self.weights.block(tensor, first, count) @ inputs[0]
+            blocks = range(0, rows, 128)
+            products = (map(multiply, blocks) if self.matrix_executor is None
+                        else self.matrix_executor.map(multiply, blocks))
+            for first, values in products:
+                result[first:first + len(values)] = values
+                self.matrix_scalar_products += len(values) * inputs[0].size
             return result
         if operation == "norm":
             values = inputs[0].reshape(parameters["heads"], parameters["columns"])
@@ -276,11 +290,14 @@ def main():
     parser.add_argument("--packed", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--timeout-seconds", type=int)
+    parser.add_argument("--matrix-workers", type=int, default=1)
     args = parser.parse_args()
+    if not 1 <= args.matrix_workers <= 20:
+        parser.error("--matrix-workers must be between 1 and 20")
     description = json.loads(subprocess.run([str(args.native), "describe"], capture_output=True,
                                             text=True, timeout=60, check=True).stdout)
     if args.mode == "plan":
-        print(json.dumps(work_plan(description), indent=2, sort_keys=True))
+        print(json.dumps(work_plan(description, args.matrix_workers), indent=2, sort_keys=True))
         return
     if (args.timeout_seconds is None or args.timeout_seconds <= 0 or args.ingest_report is None
             or args.packed is None or args.output is None):
@@ -293,7 +310,7 @@ def main():
         workload_body = (calibration.ingest.ROOT / "manifests/c7-d126-gemma31b-workload-v1.json").read_bytes()
         result.update(ingest_report_sha256=hashlib.sha256(report_body).hexdigest(),
                       native_sha256=calibration.ingest.stream_sha256(args.native)[0],
-                      numpy_version=np.__version__, planned_work=work_plan(description),
+                      numpy_version=np.__version__, planned_work=work_plan(description, args.matrix_workers),
                       workload_sha256=hashlib.sha256(workload_body).hexdigest(),
                       timeout_seconds=args.timeout_seconds)
         weights = report["weight_exponents_by_tensor"]
@@ -302,8 +319,11 @@ def main():
         workload = json.loads(workload_body)
         with args.packed.open("rb") as source, np.errstate(over="raise", invalid="raise", divide="raise"):
             reader = PackedWeights(source, description["weight_sources"], weights)
-            pilot = Pilot(description, reader, time.monotonic() + args.timeout_seconds)
-            candidate, observations = pilot.run(workload["prompt"]["token_ids"])
+            executor = (ThreadPoolExecutor(max_workers=args.matrix_workers)
+                        if args.matrix_workers > 1 else nullcontext(None))
+            with executor as pool:
+                pilot = Pilot(description, reader, time.monotonic() + args.timeout_seconds, pool)
+                candidate, observations = pilot.run(workload["prompt"]["token_ids"])
         result.update(observations, complete=True)
         candidate_path = args.output / "candidate.json"
         candidate_body = json.dumps(candidate, indent=2, sort_keys=True) + "\n"

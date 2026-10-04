@@ -1,4 +1,5 @@
 import copy
+from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
 import hashlib
 import io
@@ -94,6 +95,27 @@ def test_complete_small_pilot_retains_causal_kv_and_absorbs_final_token():
     assert weights.bytes_read == before
     repeated = pilot.Pilot(description, small_inputs()[1], time.monotonic() + 10).run([0])
     assert repeated[0] == candidate and repeated[1]["responses"] == result["responses"]
+
+
+def test_parallel_matrix_blocks_and_causal_pilot_match_serial_exactly():
+    descriptor = dict(id=0, name="ragged", rows=257, columns=129, packed_offset=0)
+    body = np.random.default_rng(71).integers(-32767, 32768, (257, 129), dtype=np.int16).tobytes()
+    matrix_description = dict(weight_sources=[descriptor], pilot=dict(steps=[], kv_sources=[]))
+    step = dict(operation="matrix", inputs=[1], parameters=dict(weight=0))
+    def evaluate(pool):
+        weights = pilot.PackedWeights(io.BytesIO(body), [descriptor], {"ragged": -13})
+        runner = pilot.Pilot(matrix_description, weights, time.monotonic() + 10, pool)
+        runner.current[1] = np.arange(129, dtype=np.float64) / 16
+        return runner.evaluate(step, 0, 0), runner.matrix_scalar_products, weights.bytes_read
+    serial = evaluate(None)
+    description, weights = small_inputs()
+    serial_trial = pilot.Pilot(description, weights, time.monotonic() + 10).run([0])
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        parallel = evaluate(pool)
+        parallel_trial = pilot.Pilot(description, small_inputs()[1], time.monotonic() + 10, pool).run([0])
+    assert parallel[0].tobytes() == serial[0].tobytes()
+    assert parallel[1:] == serial[1:] == (257 * 129, len(body))
+    assert parallel_trial == serial_trial
 
 
 def test_operator_routes_weighted_rms_groups_and_global_rope():

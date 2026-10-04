@@ -170,6 +170,15 @@ completamento dei test non deroga al termine massimo.
 I programmi esistenti usano NumPy/BLAS CPU per l'inizializzatore e il
 confronto indipendente, Rust CPU per il replay intero e un piccolo kernel C
 CPU per RMS; non esiste una calibrazione CUDA completa.
+Il pilot supporta `--matrix-workers` (1–20, default 1): i blocchi da 128
+righe sono indipendenti, letture e contatori sono sincronizzati, gli
+output sono consumati nello stesso ordine e KV resta seriale e causale.
+Registrare il numero di worker, mantenere BLAS/OMP a un thread e misurare
+insieme i blocchi vivi: otto worker hanno payload W massimo dichiarato
+220.200.960 B, oltre al resto del pilot. La parità seriale/parallela va
+verificata sul pod prima del nuovo trial; non è accelerazione CUDA né
+ammissione di Γ. La scelta è motivata dal throughput del primo pilot
+seriale sui pesi reali, incompatibile con il suo timeout.
 Un host CPU equivalente è l'alternativa meno costosa da concordare nella
 stessa decisione operativa. `nvidia-smi` non accelera questi comandi.
 Inferenza BF16, TF32 o Transformers non sostituisce la relazione intera.

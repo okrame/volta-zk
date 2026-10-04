@@ -125,6 +125,14 @@ I controlli Python pertinenti sono `tests/test_c71_docs.py`,
 limiti sopra. La parità hardware e il tempo completo sono controlli del
 primo esperimento H100 autorizzato, non condizioni locali impossibili.
 Conservare la cache Cargo fino al completamento dell'integrazione.
+Il [checkpoint su SHA pulita](../../benchmarks/results/c71-device-runner-local-2026-10-04-1ec6720bb494.json)
+registra 38 test Rust e 12 Python passati, oltre a build e Clippy con
+warning. Sono inclusi anche `c71_b12_native_registry_header_and_real_shortage`
+e `c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals`,
+ognuno nei limiti locali. Conserva il precedente errore della schedule
+(150 invece di 149 righe finali, corretto) e il rifiuto sandbox delle
+socketpair, poi verificato con eccezione locale. Non cancella il fallimento
+CPU storico dell'asserzione di esaurimento dopo rifiuto PCS.
 
 Eseguire separatamente ogni riga della tabella con il comando pytest
 limitato sopra. Impostare i due binari prima dei test che li richiedono.

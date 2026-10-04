@@ -520,6 +520,13 @@ benchmark della prova H100.
 Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi
 `c71_matrix` e `c71_calibration` non lo sostituiscono. L'esperimento usa
 la pipeline mista dichiarata, senza presentare la PCS CPU come GPU.
+Il [checkpoint locale](../../benchmarks/results/c71-device-runner-local-2026-10-04-1ec6720bb494.json)
+conserva la SHA eseguibile e i digest. Usare le
+[build mirate](local-tests.md#compilazione-mirata) e la
+[build della libreria CUDA](local-tests.md#collegamento-del-runner-cuda).
+Lo scratch CPU esplicito rende il prototipo non conforme al contratto
+finale dell'arena unica: questo esperimento diagnostico ne misura il costo,
+non lo ammette come risultato conforme né nasconde memoria esterna.
 Prima dell'avvio servono SHA pulita, input/tabelle e identità fissati,
 hardware/toolchain, durata/costo/limiti di memoria approvati e risoluzione
 dell'hard stop provider. La calibrazione reale validata serve per una

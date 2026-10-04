@@ -638,6 +638,12 @@ Il test locale della schedule copre 150 token e tutti i 13 tipi nei tre
 contesti senza caricare W; il test numerico dello scanner è ridotto.
 Non è una prova completa, né una misura D34/D35 o H100. Il primo esperimento
 deve misurare anche gli eventuali superamenti dei target, non nasconderli.
+In particolare, riserva CUDA più coset CPU iniziale sono già
+10.737.418.240 B: il percorso misto non è un'implementazione conforme al
+contratto finale di 6.442.450.944 B per **tutti** i temporanei. Non
+riclassificare lo scratch CPU dipendente dalla risposta come modello
+globale. Il [checkpoint del runner](../../benchmarks/results/c71-device-runner-local-2026-10-04-1ec6720bb494.json)
+conserva questo limite insieme a test, digest e assunzioni di raffinamento.
 
 Il piano canonico conserva 61 checkpoint di layer, 98.380.800 B per
 una generazione alla volta. Raw e output arrotondato sono distinti.

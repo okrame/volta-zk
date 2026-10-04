@@ -110,6 +110,12 @@ il resto della risposta include replay/prova e attesa della verifica.
 Monitor esterni restano necessari per CPU-time, campionamento HBM e kill.
 Non sono acquisiti certificati canonici, forward su W reale o misure D34/D35.
 
+Il [checkpoint pulito del runner](../../benchmarks/results/c71-device-runner-local-2026-10-04-1ec6720bb494.json)
+registra build Rust/eseguibile e CUDA sm_90, 38 test Rust e 12 Python
+passati; il test hardware esplicito è ignorato localmente. Include
+anche una prova CPU ridotta con Seed6/AES e promozione dopo journal,
+non tre certificati canonici GPU. Clippy termina con warning, non è lint-clean.
+
 I checkpoint [RMS/attention](../../benchmarks/results/c71-attention-local-2026-10-04-85e77ea66b6f.json),
 [range condiviso](../../benchmarks/results/c71-shared-range-local-2026-10-04-b6639a3fc3ad.json)
 e [prefissi KV](../../benchmarks/results/c71-kv-prefix-local-2026-10-04-facc742ede52.json)
@@ -167,6 +173,15 @@ sessione hanno voci distinte; non vi si nasconde lavoro della risposta.
 Memoria aggiuntiva esterna può contenere solo materiale globale del modello,
 riutilizzabile senza crescita con le sessioni. Nessuno spill dinamico.
 Quattro letture W sono un obiettivo di ottimizzazione, non un limite rigido.
+
+Il runner misto sperimentale **non soddisfa ancora il contratto dell'arena
+unica per tutti i temporanei**: conserva scratch di protocollo CPU fuori
+dall'arena CUDA. Durante il commitment A, la sola riserva GPU più il coset
+CPU vale 10.737.418.240 B, prima degli altri workspace. La scelta riusa la
+PCS verificata e rende espliciti i trasferimenti invece di fingere una PCS
+GPU; non allenta il target finale o nasconde memoria come materiale globale.
+È un limite noto del prototipo da registrare nel primo esperimento, distinto
+dallo spill dinamico o da un fallback di inferenza, che restano vietati.
 
 ## Uso dei documenti
 

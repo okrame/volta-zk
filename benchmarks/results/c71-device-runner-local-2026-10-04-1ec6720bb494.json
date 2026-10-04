@@ -1,0 +1,228 @@
+{
+  "schema": "c71-local-evidence-v1",
+  "date": "2026-10-04",
+  "git_sha": "1ec6720bb4942b2e630ca6e1db0788785ce8a31d",
+  "git_dirty": false,
+  "milestone": "Canonical CUDA inference/replay on one owner, explicit mixed CPU/GPU three-response runner and resource telemetry",
+  "credit": false,
+  "gpu_execution": false,
+  "canonical_certificates": 0,
+  "calibrated": false,
+  "provider_calls": false,
+  "spend": 0,
+  "readiness_scope": "Software ready for the first authorized H100 diagnostic experiment; not hardware validation, target admission or a complete canonical proof result.",
+  "predecessor": "benchmarks/results/c71-kv-prefix-local-2026-10-04-facc742ede52.json",
+  "changes": [
+    "Session installs the identical original W Arc used by the PCS, owns the single native stream/arena and seals public tables.",
+    "All 13 GPU producer routes drive the 150-token causal schedule and bounded producer replay at O=0/150/300; final Norm has 149 rows.",
+    "One retained generation of checkpoints/histograms and shared append-only KV450; historical generations regenerate with fixed tokens and original causal KV, without cumulative KV copies.",
+    "Original A scan/getter/window callbacks reach the existing PCS and non-range GKR through bounded fenced CPU staging. Resident A range gathers use the same owner without a second arena or host window upload.",
+    "W range gathers remain CPU with bounded 256 MiB signed staging/upload into the same native range owner.",
+    "Native continuation requires previous numerical promotion; registry calls promotion only after verified completion and durable pool.attempt journals. Stopped runtime cannot promote.",
+    "Explicit experiment-cuda CLI, no unavailable-CUDA inference fallback; shared owner stops on preparation/replay/proof failure and is closed on command completion/failure.",
+    "Phase-boundary simultaneous resource samples, cumulative native traffic/peaks, retained PCS payload census, host RSS/HWM, inference/materialization interval and response remainder.",
+    "Compiled hardware operator parity now includes ragged/max-K MMA dense and Affine/Gate; an explicitly ignored real-library test reuses shared/signed range transcript and original-MAC parity helpers."
+  ],
+  "tests": {
+    "rust_passed": 38,
+    "python_passed": 12,
+    "failed": 0,
+    "hardware_test_ignored": 1,
+    "filters": [
+      {
+        "filter": "c71_canonical_device_",
+        "passed": 2,
+        "seconds": 3.18
+      },
+      {
+        "filter": "c71_canonical_resident",
+        "passed": 16,
+        "seconds": 22.74
+      },
+      {
+        "filter": "c71_b12_windowed_native_",
+        "passed": 12,
+        "ignored": 1,
+        "seconds": 18.69
+      },
+      {
+        "filter": "c71_canonical_metrics_",
+        "passed": 1,
+        "seconds": 0
+      },
+      {
+        "filter": "c71_canonical_runner_",
+        "passed": 4,
+        "seconds": 0.02,
+        "local_socketpair_exception": true
+      },
+      {
+        "filter": "c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs",
+        "passed": 1,
+        "seconds": 12.55
+      },
+      {
+        "filter": "c71_b12_native_registry_header_and_real_shortage",
+        "passed": 1,
+        "seconds": 11.46,
+        "local_socketpair_exception": true
+      },
+      {
+        "filter": "c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals",
+        "passed": 1,
+        "seconds": 50.67,
+        "local_socketpair_exception": true
+      }
+    ],
+    "python_files": [
+      "tests/test_c71_docs.py",
+      "tests/test_c71_dense_i16.py",
+      "tests/test_c71_range_native.py"
+    ],
+    "python_seconds": [
+      0.49,
+      0.79,
+      2.59
+    ],
+    "coverage": "Full public canonical schedule and batch equivalence without W arithmetic; all native operators on synthetic inputs; reduced numeric replay/getters/windows; initialized KV-slice gather; staged-copy/fence failures; reduced range/PCS original MAC parity; CPU reduced real-AES Seed6 positive journal promotion. Not one complete native canonical three-response proof.",
+    "local_limits": {
+      "address_space_kib": 2097152,
+      "timeout_seconds": 60,
+      "kill_grace_seconds": 5,
+      "test_processes_at_once": 1,
+      "RAYON_NUM_THREADS": 1,
+      "OMP_NUM_THREADS": 1,
+      "OPENBLAS_NUM_THREADS": 1,
+      "PYTHONDONTWRITEBYTECODE": 1
+    }
+  },
+  "build": {
+    "working_directory": "rust",
+    "CARGO_TARGET_DIR": "/home/okrame/projects/volta-zk/rust/target",
+    "CARGO_INCREMENTAL": 0,
+    "CARGO_PROFILE_DEV_DEBUG": 0,
+    "CARGO_PROFILE_DEV_OPT_LEVEL": 2,
+    "commands": [
+      "cargo test --offline --locked -j1 -p volta-pcs --features c71-seed6-reference --lib --no-run",
+      "cargo build --offline --locked -j1 -p volta-pcs --features c71-seed6-reference --example c71_canonical_reference"
+    ],
+    "clean_seconds": [
+      223,
+      81
+    ],
+    "exit_codes": [
+      0,
+      0
+    ],
+    "warnings": [
+      26,
+      38
+    ],
+    "cache_retained": true
+  },
+  "clippy": {
+    "command": "cargo clippy --offline --locked -j1 -p volta-pcs --features c71-seed6-reference --lib --tests",
+    "exit_code": 0,
+    "seconds": 23.29,
+    "warnings_lib_test": 243,
+    "warning_free": false,
+    "note": "Includes existing warnings and two new style warnings (unused mut and a one-element test loop); no -D warnings claim."
+  },
+  "cuda": {
+    "toolkit": "12.9.86",
+    "architecture": "sm_90",
+    "execution": false,
+    "commands": [
+      "nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC -Xptxas=-v cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_range_runtime.cpp -o /tmp/libc71_device_runner_clean.so",
+      "nvcc -std=c++17 -O2 -arch=sm_90 --cudart static cuda/c71_nonlinear_parity.cu cuda/c71_dense_i16.cu -o /tmp/c71_device_parity_clean"
+    ],
+    "exit_codes": [
+      0,
+      0
+    ],
+    "abi": 3,
+    "stats_bytes": 152,
+    "hardware_parity_status": "Compiled/prepared, intentionally not executed locally. First authorized H100 experiment runs operator diagnostic and c71_b12_windowed_native_hardware_parity_explicit with the real library."
+  },
+  "artifact_sha256": {
+    "rust/target/debug/deps/volta_pcs-1b032d88c9000486": "ed00b2ad8fb5a1448e7d901f101926a9d38ac940f056844254c21fdb1f32ed74",
+    "rust/target/debug/examples/c71_canonical_reference": "0a73ea7f894de9b6ada6d30fea1f0b7e39553c7b28308d942211d1b5dca904d9",
+    "/tmp/libc71_device_runner_clean.so": "5bd31477e80c7c7123c94de536b046616ed1c654587a53e38285c85717df9c44",
+    "/tmp/c71_device_parity_clean": "01235c018e52308484911440e0d7c98962660c74b1f6ef28ea349b7867971ba9"
+  },
+  "resource_census": {
+    "scope": "Implementation-derived named capacities and phase coexistence, not a measured complete physical peak.",
+    "gpu_w_bytes": 61394690560,
+    "gpu_arena_reserved_bytes": 6442450944,
+    "gpu_w_plus_arena_bytes": 67837141504,
+    "gpu_arena_minimum_margin_bytes": 268435456,
+    "gpu_global_minimum_free_bytes": 1073741824,
+    "gpu_kv450_unique_payload_bytes": 405504000,
+    "gpu_checkpoint_generation_payload_bytes": 98380800,
+    "gpu_histogram_generation_payload_bytes": 63437880,
+    "gpu_public_tables_payload_bytes": 23954072,
+    "gpu_retained_payload_subtotal_bytes": 591276752,
+    "cpu_initial_coset_bytes": 4294967296,
+    "cpu_active_a_s1_bytes": 3221225472,
+    "gpu_arena_plus_cpu_initial_coset_lower_bound_bytes": 10737418240,
+    "host_w_and_gpu_w_are_distinct_allocations": true,
+    "complete_physical_peak": false,
+    "literal_all_temporaries_single_arena_contract_satisfied": false,
+    "explanation": "The experimental mixed backend deliberately retains CPU protocol scratch outside the CUDA arena. During A commitment the GPU reservation plus CPU coset alone exceeds the final 6.442 GB all-temporaries contract. This is a disclosed resource limitation, not dynamic inference spill, a new target or a reason to block local integration. GPU reservation/payload subtotals must not be double-counted; cumulative samples must not be summed.",
+    "cpu_phases": [
+      "public validation/table packing",
+      "W PCS and bounded signed W-range gather/upload",
+      "PCS FFT/Merkle/query/remainder and source contractions",
+      "non-range GKR and original MAC arithmetic",
+      "real AES Seed6 setup/expansion",
+      "proof codecs, verifier, journals",
+      "bounded original A staging"
+    ],
+    "remaining_measurements": [
+      "actual H100 parity and end-to-end time",
+      "simultaneous host/device/allocator/CUDA stack physical peaks",
+      "canonical complete certificates and real-model numerical validation"
+    ],
+    "refinement_assumptions": [
+      "deterministic correct native kernels on sealed W/tables, fixed tokens and immutable causal KV",
+      "complete original source coverage and correct layout/codec",
+      "existing open Seed6/runtime refinement premises; no new Lean theorem or hardware credit"
+    ]
+  },
+  "preserved_failures": [
+    {
+      "log": "benchmarks/raw/c71-device-runner-development-2026-10-04-29408ce/device-tests1.log",
+      "result": "1 pass, 1 failure",
+      "cause": "Initial replay batching incorrectly used 150 rows for the final 149-row Norm; fixed by deriving count from producer shape, then full three-context schedule passes."
+    },
+    {
+      "log": "benchmarks/raw/c71-device-runner-development-2026-10-04-29408ce/c71_canonical_runner_-test2.log",
+      "result": "3 pass, 1 sandbox failure",
+      "cause": "Unix socketpair EPERM; clean four-test rerun uses approved local-only socket exception."
+    },
+    {
+      "record": "benchmarks/results/c71-nonlinear-local-2026-10-04-870ec1faf05d.json",
+      "result": "Unrelated earlier CPU output-head iterator-exhaustion assertion failure after negative PCS rejection remains unchanged; not rerun or claimed fixed."
+    }
+  ],
+  "raw_log_sha256": {
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/artifacts.sha256": "00550d91369fd25352f47ac6713df5d0d74c9be8479a772836713401415b39fa",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/build-example.log": "92d03529b4b13f9f15f0ef39f6cef6e3a135e14b130b8aaf68de857a5cc62fc8",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/build-tests.log": "e6677e31e398d90b33f3d332e2bb643e9990737dd84d614211147aaf8afc338d",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/c71_b12_native_registry_header_and_real_shortage.log": "10188ecf8b5a351f2aec46952de0d2243bfc025941dc99a0892b464203fc99dd",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs.log": "173bc00949060391115427cf63670bfc71483babac99af0b15f34fc6bd15ecb1",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/c71_b12_windowed_native_.log": "cefb7a40074cc35042685c9a353a77f5a0e56b024f0d3490aebca90cf5f2f19f",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/c71_canonical_device_.log": "9d1b2bbb30a7ac8db76ff48a80da47ca6ade9afef9e3ad32696cfbfc736d9f76",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/c71_canonical_metrics_.log": "8f9213dfa196f4ed237ebe0424fa63677ceb85a0c4dde61e0246f61c9681296f",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/c71_canonical_resident.log": "275704bb5da935840710c05c1e717f25dbbd34c53638f7fb64eeb1eb51c32985",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/c71_canonical_runner_.log": "14035f18d708c0894ddc3272c8b7c31beecb393bc247c83d625cafbbdba192cf",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals.log": "184005e8c4697315d0f450eb75987c53526ada0e32e3eaf38969a79de6602829",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/clippy.log": "c63440c10fbed3471e8701bd4bca525287c0a37787218a45769845e03afc5a92",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/git-sha.txt": "baa215fa49d5fbffcdefa0a4e580d560a08c215808147590694e188ad3c3cfbf",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/nvcc.log": "c0509bebf95cc36df8090ea43dea577fa1f61381d214c3b717fc7b802dbc3902",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/parity-nvcc.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/test_c71_dense_i16.log": "ac0988b070cfb8585ee6cce3a7e8654f43da14bf7e316bc0b9277c6ad43db855",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/test_c71_docs.log": "4271b0d70d2afe45004c9a7514ebfc72f7f68dde0ab2ec96b5f19bb8243c6454",
+    "benchmarks/raw/c71-device-runner-clean-2026-10-04-1ec6720/test_c71_range_native.log": "eb2c56f13514f03d432cc0ee76d9da7d022031f3da3f4550bc77cb6aa77475ec"
+  }
+}

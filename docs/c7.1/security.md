@@ -709,6 +709,9 @@ Le code originali KV rimangono append-only; le viste precedenti non leggono
 la coda futura. La PCS originale e le aperture MAC non vengono sostituite
 da un nuovo commitment o MAC sui dati rigenerati. Queste sono premesse
 esplicite di raffinamento nel design, non conseguenze di soli test finiti.
+Il [record locale del collegamento](../../benchmarks/results/c71-device-runner-local-2026-10-04-1ec6720bb494.json)
+non attribuisce credito hardware, proof completa o conformità al target
+di memoria; nessuno di questi limiti autorizza modifiche a NoPeek o ai MAC.
 
 Il consumer CPU può ricevere una riga o finestra privata bounded mediante
 `c71_original_read`, dopo controllo di prefisso inizializzato e fence.

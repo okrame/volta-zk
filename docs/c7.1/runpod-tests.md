@@ -73,7 +73,10 @@ Il comando GPU e il monitor sono nella
 [procedura dell'esperimento](#esperimento-della-prova).
 Entrambi usano prompt pinned e journal nuovi, senza ripristino/sovrascrittura.
 `PREPARATION_BYTES` non è un limite globale. Non eseguirli sulla VM locale.
-Errore o timeout non autorizza retry, nuovi journal, proroga o fallback.
+Errore o timeout termina il singolo run; retry e nuovi journal richiedono
+autorizzazione corrente. I successivi trial sono preautorizzati in questa
+campagna, sempre da O=0 e senza riuso delle correlazioni. Nessuna proroga
+o fallback è inclusa.
 
 La [contabilità](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
 espone W host/device, arena e suoi payload, staging e fasi CPU residue.
@@ -209,7 +212,8 @@ completo né un'autorizzazione a prolungare la campagna. Fissare `TRACE_STEP_SEC
 ancora non misurato sui pesi reali. Ogni fase deve rientrare nel tempo
 residuo, con almeno 30 minuti riservati a conservazione e chiusura.
 I timeout esterni coprono anche hash e generazione tabelle. Al primo
-errore si saltano le fasi successive e si pubblica il fallimento;
+errore si saltano le fasi dipendenti di quel trial e si conserva il fallimento;
+un trial successivo preautorizzato richiede nuovi file e prerequisiti risolti;
 la chiusura concordata non si rinvia per completare o salvare un run.
 
 ### Identità degli input
@@ -302,7 +306,10 @@ ambiente; i comandi assumono `.venv/bin/python` con NumPy e pytest già
 verificati. Non copiare la venv locale o credenziali al pod. Una build
 priva delle dipendenze native non autorizza un altro pod:
 fermare nella fase ambiente. I controlli piccoli mantengono 60 s / 2 GiB
-e un worker; non sostituiscono i trial reali. Non eseguire workspace E2E.
+e un worker. Su questo host a 224 CPU visibili, il linker LLVM dei piccoli
+test Rust richiede anche affinità a un solo core (`taskset -c CPU`): senza
+questa, la creazione dei thread fallisce sotto il limite AS. Il trial
+fallito resta conservato; l'affinità non aumenta il budget; non sostituiscono i trial reali. Non eseguire workspace E2E.
 
 ### Download e ingest
 
@@ -393,8 +400,10 @@ validazione strutturale e confronto esatto col driver indipendente, con
 permessi `0600`; la traccia contiene valori privati e non entra
 nel bundle Git. I 150 token floating non sono il golden intero. Una
 candidata che non compila o produce overflow/range failure richiede
-stop; una revisione delle scale comporta nuova candidata, nuova autorizzazione e
-ripartenza da O=0, mai riparazione del solo contesto fallito.
+stop per quel trial; una revisione delle scale comporta nuova candidata e
+ripartenza da O=0, mai riparazione del solo contesto fallito. La preautorizzazione
+corrente copre i nuovi trial entro gli stessi limiti, senza cambiare la relazione,
+il trust model o i requisiti di validazione.
 
 ### Validazione e congelamento del profilo
 
@@ -584,7 +593,9 @@ Il monitor nvidia-smi osserva il device intero, non attribuisce memoria a
 un ruolo; un monitor fallito invalida la misura HBM, non autorizza una
 stima nulla. `time -v` registra CPU-time/RSS del processo con entrambi i
 ruoli. Il timeout registra un fallimento anche se manca JSON finale.
-Al primo errore numerico, parity, verifica, OOM o timeout non proseguire.
+Al primo errore numerico, parity, verifica, OOM o timeout non proseguire
+il run fallito. La preautorizzazione dei trial successivi non permette
+prosecuzione/importazione dello stato terminale o riuso di correlazioni.
 Una conclusione positiva richiede `canonical_certificates_verified:3`,
 tre `accepted:true`, ledger/cleanup validi e stesso head dei journal.
 I report mantengono `credit:false` e le assunzioni aperte: non sono
@@ -604,7 +615,8 @@ ammesso, senza etichettarlo come successo misurato di quel requisito.
 
 Conservare nuovi record anche per timeout, errori numerici, esaurimento,
 fallimenti di verifica o risultati oltre i limiti. La SHA del codice
-eseguito deve essere pulita. I record non autorizzano nuovi tentativi;
+eseguito deve essere pulita. I record non autorizzano nuovi tentativi; la preautorizzazione corrente
+del proprietario copre i successivi trial entro il termine originale;
 aggiornare i cinque documenti correnti solo quando cambia un fatto,
 collegando la nuova evidenza senza sovrascrivere quella precedente.
 

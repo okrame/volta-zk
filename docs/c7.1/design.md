@@ -168,8 +168,9 @@ sui MAC originali e O=0/150/300 non sono stati avviati. La revisione locale
 `{1,1,1}`, con due controlli host passati; la conferma hardware è aperta.
 Il bundle del primo FAIL è verificato in `artifact/c7.1-pod/` (circa 100 MB),
 con codice, eseguibili, ambiente, log, campioni fisici e manifest; nessun
-peso o profilo calibrato. Il nuovo trial richiede l'eccezione autorizzata
-allo stop del runbook; il limite originale di 6 ore resta invariato.
+peso o profilo calibrato. Il proprietario ha preautorizzato i trial successivi: il diagnostico corretto
+e il test integrato hardware sui MAC originali sono PASS. Calibrazione e
+O=0/150/300 restano da completare; il limite originale di 6 ore è invariato.
 
 ## Contratto delle risorse
 

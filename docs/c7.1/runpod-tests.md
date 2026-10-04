@@ -42,19 +42,18 @@ verificati contro le stesse identità. La calibrazione completata resta
 riutilizzabile secondo i controlli sotto; una nuova H100 richiede comunque
 compatibilità, parità e nuove misure fisiche.
 
-**Esito acquisito.** Il [primo trial di parità](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json) sulla SHA
-pulita `d4abed66` è **FAIL**, exit 1, `CUDA: invalid argument`.
-La build mirata è passata. Il primo bundle immutabile verificato è
-`artifact/c7.1-pod/first-failure-20261004T174606Z/`, circa 100 MB, con
-manifest, codice Git, eseguibili, ambiente e log; non contiene pesi,
-calibrazione o tracce private. Il massimo RSS+HBM campionato è
-99.942.400 B, con margine campionato 6.342.508.544 B sul tetto; picco
-fisico completo e margine canonico restano **non verificati**. Le fasi
-dipendenti non sono partite. Una correzione della fixture Gate è pronta
-nel commit `65b5fe7`, verificata solo su host; il nuovo trial attende
-l'autorizzazione esplicita all'eccezione di retry entro la scadenza originale.
-La pausa temporaneamente richiesta per aggiornare macOS è stata revocata:
-il pod continua e il controllo locale di spegnimento è stato riattivato.
+**Esito acquisito.** La build mirata è passata; il [primo FAIL](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json)
+resta conservato. Il [trial corretto su SHA pulita `d3c2fa95`](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json)
+passa parità operatori sintetici e pipeline ridotta sui MAC originali.
+I test piccoli della calibrazione e i due hash degli shard sono verificati;
+ingestione in corso, Γ ammesso e diagnostica O=0/150/300 ancora aperti.
+Il massimo RSS+HBM campionato della parità è 734.404.608 B, con margine
+campionato 5.708.046.336 B sul tetto; picco fisico completo e margine
+canonico restano **non verificati**. I bundle del primo FAIL e del PASS
+sono verificati nella destinazione autorizzata, circa 103 MB complessivi,
+senza pesi o tracce private. La pausa per macOS è revocata; il controllo
+di arresto è attivo. Il proprietario ha preautorizzato i trial successivi
+entro la scadenza originale, senza importare stato terminale o correlazioni.
 
 | Passaggio | Stato e condizione di uscita |
 |---|---|
@@ -162,10 +161,11 @@ La pubblicazione usa un branch unico tramite `git-push runpod/POD_ID/LABEL`.
 
 ## Campagna di calibrazione
 
-La procedura valuta una sola candidata Γ. Registrare SHA pulita,
-immagine/container con digest, hardware e limiti autorizzati. Nessuna
-modifica delle scale o ripartenza è inclusa; il completamento dei test
-non deroga al termine massimo.
+Ogni trial valuta una sola candidata Γ. Registrare SHA pulita,
+immagine/container con digest, hardware e limiti autorizzati. Una revisione
+delle scale richiede un nuovo trial da O=0 con tutti i controlli; i trial
+successivi sono preautorizzati nella campagna corrente, senza proroga. Il
+completamento dei test non deroga al termine massimo.
 
 I programmi esistenti usano NumPy/BLAS CPU per l'inizializzatore e il
 confronto indipendente, Rust CPU per il replay intero e un piccolo kernel C

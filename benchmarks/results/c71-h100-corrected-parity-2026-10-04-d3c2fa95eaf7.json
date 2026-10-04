@@ -1,0 +1,252 @@
+{
+  "authorized_deadline_utc": "2026-10-04T23:07:53Z",
+  "bundle_manifest_sha256": "1573fff6c977a0be0e387a7c15039c2a7e4b49f2612b1fa8115aeacb9cae8886",
+  "bundle_path": "/home/okrame/projects/volta-zk/artifact/c7.1-pod/parity-pass-20261004T184600Z",
+  "bundle_payload_bytes": 2140738,
+  "bundle_verified_files": 106,
+  "calibration_status": "INGEST_RUNNING at record creation; no candidate admitted",
+  "canonical_arena_margin_bytes": null,
+  "canonical_physical_peak_bytes": null,
+  "code_git_sha": "d3c2fa95eaf7bfe7c8f3170c019e76d6feff90b9",
+  "complete_physical_peak": false,
+  "coverage_missing": [
+    "admitted calibration",
+    "independent complete integer comparison",
+    "two complete integer replays",
+    "O=0/150/300 canonical certificates",
+    "inference/proof/total timings and proof bytes",
+    "complete physical joint arena and retained-capacity coverage"
+  ],
+  "credit": false,
+  "cuda_coverage": {
+    "argmax_rows": 3,
+    "attention_contexts": 3,
+    "credit": false,
+    "dense_cases": 3,
+    "gpu_execution": true,
+    "lookup_entries": 65535,
+    "pointwise_cases": 2,
+    "rejections": 10,
+    "rms_cases": 3,
+    "rope_cases": 2
+  },
+  "download": "Both pinned shard bodies verified; 62,546,338,248 bytes retained only on pod. See closed log in bundle.",
+  "git_dirty": false,
+  "original_mac_parity": {
+    "scope": "resident gather -> range/GKR -> PCS twice on same owner, then signed range, compared with reduced CPU transcripts",
+    "tests_filtered": 497,
+    "tests_passed": 1
+  },
+  "preserved_setup_failure": "native-ingest-checks and native-fixture-build-as2g failed during LLVM linking: Resource temporarily unavailable on 224 visible CPUs within 2 GiB AS. taskset one-core retry passed with unchanged AS and 60-second limits.",
+  "prior_failure": "c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json",
+  "reused_binary_source_sha": "d4abed66fc41d685889b8f54676390cba716a66c",
+  "sampled_parity_joint_peak_bytes": 734404608,
+  "sampled_parity_margin_bytes": 5708046336,
+  "scope": "Corrected synthetic CUDA operators and reduced original-MAC pipeline; calibration prerequisites and pinned source download. Canonical checkpoint remains incomplete.",
+  "small_checks": {
+    "calibration": 17,
+    "ingest": 14,
+    "native_ingest_one_core": 5,
+    "pilot": 8,
+    "trace": 9
+  },
+  "status": "PASS",
+  "summaries": {
+    "calibration-checks": {
+      "command": [
+        "bash",
+        "-c",
+        "ulimit -v 2097152; exec .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration.py"
+      ],
+      "exit_code": 0,
+      "label": "calibration-checks",
+      "physical_complete_peak": false,
+      "resource_failure": null,
+      "sampled_host_rss_peak_bytes": 230359040,
+      "sampled_joint_peak_bytes": 230359040,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 141,
+      "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+      "sampling_target_seconds": 0.2,
+      "start_unix_seconds": 1791138366.3890598,
+      "wall_seconds": 28.39080635085702
+    },
+    "cuda-operator-parity-corrected": {
+      "command": [
+        "/workspace/c71-checkpoint-20261004T170753Z/c71_device_parity-corrected"
+      ],
+      "exit_code": 0,
+      "label": "cuda-operator-parity-corrected",
+      "physical_complete_peak": false,
+      "resource_failure": null,
+      "sampled_host_rss_peak_bytes": 76984320,
+      "sampled_joint_peak_bytes": 100052992,
+      "sampled_whole_gpu_peak_bytes": 23068672,
+      "samples": 3,
+      "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+      "sampling_target_seconds": 0.2,
+      "start_unix_seconds": 1791138263.3966475,
+      "wall_seconds": 0.7847928702831268
+    },
+    "cuda-original-mac-parity": {
+      "command": [
+        "/workspace/volta-zk/rust/target/debug/deps/volta_pcs-c3c000ed1bc60c59",
+        "c71_b12_windowed_native_hardware_parity_explicit",
+        "--ignored",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "label": "cuda-original-mac-parity",
+      "physical_complete_peak": false,
+      "resource_failure": null,
+      "sampled_host_rss_peak_bytes": 179707904,
+      "sampled_joint_peak_bytes": 734404608,
+      "sampled_whole_gpu_peak_bytes": 554696704,
+      "samples": 19,
+      "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+      "sampling_target_seconds": 0.2,
+      "start_unix_seconds": 1791138264.2265966,
+      "wall_seconds": 3.8418437466025352
+    },
+    "download": {
+      "command": [
+        "/workspace/c71-venv/bin/python",
+        "/workspace/c71-checkpoint-20261004T170753Z/download.py"
+      ],
+      "exit_code": 0,
+      "label": "download",
+      "physical_complete_peak": false,
+      "resource_failure": null,
+      "sampled_host_rss_peak_bytes": 36421632,
+      "sampled_joint_peak_bytes": 36421632,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 4017,
+      "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+      "sampling_target_seconds": 0.2,
+      "start_unix_seconds": 1791138677.2743814,
+      "wall_seconds": 808.3208619467914
+    },
+    "ingest-checks": {
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "bash",
+        "-c",
+        "ulimit -v 2097152; exec .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c7_d126_gemma_weight_ingest.py"
+      ],
+      "exit_code": 0,
+      "label": "ingest-checks",
+      "physical_complete_peak": false,
+      "resource_failure": null,
+      "sampled_host_rss_peak_bytes": 40009728,
+      "sampled_joint_peak_bytes": 40009728,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 2,
+      "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+      "sampling_target_seconds": 0.2,
+      "start_unix_seconds": 1791138599.6786325,
+      "wall_seconds": 0.4016210064291954
+    },
+    "native-fixture-build-as2g": {
+      "command": [
+        "bash",
+        "-c",
+        "ulimit -v 2097152; exec rustc --edition 2021 -O /workspace/volta-zk/rust/volta-pcs/examples/gemma31b_bf16_fixture.rs -o /workspace/volta-zk/rust/target/bf16-fixture-diagnostic"
+      ],
+      "exit_code": 1,
+      "label": "native-fixture-build-as2g",
+      "physical_complete_peak": false,
+      "resource_failure": null,
+      "sampled_host_rss_peak_bytes": 233213952,
+      "sampled_joint_peak_bytes": 233213952,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 2,
+      "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+      "sampling_target_seconds": 0.2,
+      "start_unix_seconds": 1791138519.5752873,
+      "wall_seconds": 0.40142983198165894
+    },
+    "native-ingest-checks": {
+      "command": [
+        "bash",
+        "-c",
+        "ulimit -v 2097152; exec .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c7_d126_gemma_native_bf16.py"
+      ],
+      "exit_code": 1,
+      "label": "native-ingest-checks",
+      "physical_complete_peak": false,
+      "resource_failure": null,
+      "sampled_host_rss_peak_bytes": 268677120,
+      "sampled_joint_peak_bytes": 268677120,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 4,
+      "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+      "sampling_target_seconds": 0.2,
+      "start_unix_seconds": 1791138396.5213528,
+      "wall_seconds": 0.8016615249216557
+    },
+    "native-ingest-checks-one-core": {
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "bash",
+        "-c",
+        "ulimit -v 2097152; exec .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c7_d126_gemma_native_bf16.py"
+      ],
+      "exit_code": 0,
+      "label": "native-ingest-checks-one-core",
+      "physical_complete_peak": false,
+      "resource_failure": null,
+      "sampled_host_rss_peak_bytes": 253685760,
+      "sampled_joint_peak_bytes": 253685760,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 5,
+      "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+      "sampling_target_seconds": 0.2,
+      "start_unix_seconds": 1791138598.625288,
+      "wall_seconds": 1.00162323564291
+    },
+    "pilot-checks": {
+      "command": [
+        "bash",
+        "-c",
+        "ulimit -v 2097152; exec .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_activation_pilot.py"
+      ],
+      "exit_code": 0,
+      "label": "pilot-checks",
+      "physical_complete_peak": false,
+      "resource_failure": null,
+      "sampled_host_rss_peak_bytes": 126795776,
+      "sampled_joint_peak_bytes": 126795776,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 5,
+      "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+      "sampling_target_seconds": 0.2,
+      "start_unix_seconds": 1791138395.478335,
+      "wall_seconds": 1.001620426774025
+    },
+    "trace-checks": {
+      "command": [
+        "bash",
+        "-c",
+        "ulimit -v 2097152; exec .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c71_calibration_trace.py"
+      ],
+      "exit_code": 0,
+      "label": "trace-checks",
+      "physical_complete_peak": false,
+      "resource_failure": null,
+      "sampled_host_rss_peak_bytes": 83873792,
+      "sampled_joint_peak_bytes": 83873792,
+      "sampled_whole_gpu_peak_bytes": 0,
+      "samples": 3,
+      "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+      "sampling_target_seconds": 0.2,
+      "start_unix_seconds": 1791138394.828236,
+      "wall_seconds": 0.6015185452997684
+    }
+  },
+  "trial_preauthorization": "All subsequent trials within original deadline; each starts fresh with new files and no terminal protocol state/correlation reuse."
+}

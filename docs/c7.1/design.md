@@ -158,19 +158,17 @@ ricette, tabelle e identità restano riutilizzabili con i controlli del
 comunque parità e misure fisiche; l'autorizzazione non concede credito
 numerico o protocollo a fasi non completate.
 
-**Primo checkpoint H100 (4 ottobre).** La build mirata sulla SHA pulita
-`d4abed66` è passata; la prima parità CUDA è **FAIL**, exit 1 con
-`CUDA: invalid argument`: [evidenza](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json). Il picco congiunto
-campionato del diagnostico abortito è 99.942.400 B, non il massimo fisico
-canonico né una verifica del margine arena. Calibrazione, parità integrata
-sui MAC originali e O=0/150/300 non sono stati avviati. La revisione locale
-`65b5fe7` corregge un Gate invalido della fixture, da `{0,0,1}` a
-`{1,1,1}`, con due controlli host passati; la conferma hardware è aperta.
-Il bundle del primo FAIL è verificato in `artifact/c7.1-pod/` (circa 100 MB),
-con codice, eseguibili, ambiente, log, campioni fisici e manifest; nessun
-peso o profilo calibrato. Il proprietario ha preautorizzato i trial successivi: il diagnostico corretto
-e il test integrato hardware sui MAC originali sono PASS. Calibrazione e
-O=0/150/300 restano da completare; il limite originale di 6 ore è invariato.
+**Checkpoint H100 in corso (4 ottobre).** La build mirata è passata;
+il [primo FAIL](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json), causato dal Gate invalido della fixture, resta conservato.
+La correzione `{1,1,1}` è confermata sulla H100: [parità operatori e MAC originali PASS](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json)
+su SHA pulita `d3c2fa95`. Sono controlli sintetici ridotti, `credit:false`.
+Il massimo congiunto campionato della parità è 734.404.608 B; non verifica
+il picco canonico o il margine arena. Entrambi gli shard pinned sono
+verificati, con ingestione in corso; Γ ammesso e O=0/150/300 restano aperti.
+I bundle immutabili verificati in `artifact/c7.1-pod/` occupano circa
+103 MB e conservano anche i fallimenti, senza pesi o profilo calibrato.
+I trial successivi sono preautorizzati entro le 6 ore originali, con file
+nuovi e senza riuso di stato terminale o correlazioni.
 
 ## Contratto delle risorse
 

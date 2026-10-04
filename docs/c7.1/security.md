@@ -733,11 +733,13 @@ Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.
 La fattibilità a memoria e tempo limitati è verificata separatamente
 secondo [runpod-tests](runpod-tests.md).
 
-Il [primo diagnostico H100](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json) è fallito prima della
-pipeline canonica. I due controlli host della correzione Gate nella
-fixture non concedono parità CUDA o credito ai bound B12/Seed6. Non sono
-stati generati correlazioni, journal, KV o certificati canonici; NoPeek,
-endpoint MAC originali e obblighi di raffinamento rimangono invariati.
+Il [primo FAIL H100](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json) precede la pipeline canonica;
+il [trial corretto PASS](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json) verifica operatori sintetici e transcript
+ridotti sui MAC originali. Non concede credito ai bound B12/Seed6 o al
+raffinamento completo Gemma. Nessun journal o certificato canonico è
+acquisito; NoPeek, endpoint MAC originali e obblighi di raffinamento
+rimangono invariati. La preautorizzazione dei trial non permette riuso
+delle correlazioni monouso o prosecuzione di uno stato terminale.
 
 ### Riduzione dei temporanei e confine del claim
 

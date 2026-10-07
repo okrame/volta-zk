@@ -365,6 +365,8 @@ scegliere `trace --oracle-workers N`, misurare lo screen con confronto
 esatto e ripetere `tests/test_c71_calibration_oracle.py` sul pod con
 `C71_ORACLE_TEST_WORKERS=N`; i test locali restano a un worker.
 Registrare compilatore/runtime OpenMP, numero worker e memoria fisica.
+Il driver emette su stderr contesto, token completati, prodotti, frame e
+tempo trascorso; non emette valori intermedi privati.
 BLAS/OMP/Rayon restano a un thread; il solo dot C11 riceve esplicitamente N.
 
 `profile-matrix PACKED CUDA_LIBRARY` aggiunge il confronto esatto col

@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import struct
+import sys
 import time
 
 import numpy as np
@@ -389,6 +390,11 @@ class Driver:
                 tokens[token + 1] = next_token
             if any(current[source] for source in range(len(sources)) if source not in kv_sources):
                 raise ValueError("oracle live activation survived its final consumer")
+            print(json.dumps(dict(phase="independent_exact_comparison", context=old,
+                                  completed_tokens=old + token + 1,
+                                  elapsed_seconds=time.monotonic() - self.started,
+                                  matrix_scalar_products=self.matrix_products,
+                                  frames=self.frame_count)), file=sys.stderr, flush=True)
 
         padding = self._padding(context)
         histogram_padding = 32 * 106 * (old + 150)

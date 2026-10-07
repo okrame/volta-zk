@@ -137,7 +137,11 @@ indipendente restano obbligatori, con uguaglianza esatta.
 Il driver indipendente usa un dot C11 i16→i64 distinto dal codice Rust/CUDA;
 uno screen su W reale e input sintetico misura 0,0464 s per 115.605.504
 prodotti. L'extrapolazione di circa 90 minuti copre solo le matrici del
-workload completo, non certifica il tempo totale. Export completo e
+workload completo, non certifica il tempo totale. Lo
+[screen parallelo](../../benchmarks/results/c71-independent-parallel-screen-2026-10-07-09abc940.json)
+con 8 worker passa lo stesso confronto esatto in 0,0184 s; la stima
+matriciale scende a circa 35,5 min, con 50–75 min allocati al confronto
+completo non ancora misurato. Export completo e
 [driver indipendente](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
 coprono i 13 producer; Il [pilot completo](../../benchmarks/results/c71-full-pilot-2026-10-07-ec8a147.json)
 ha completato 450 token in 853,58 s (wall esterno 928,84 s) e prodotto

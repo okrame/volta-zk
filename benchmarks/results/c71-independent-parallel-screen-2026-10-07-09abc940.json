@@ -1,0 +1,99 @@
+{
+  "calibrated": false,
+  "credit": false,
+  "git_dirty": false,
+  "git_sha": "09abc9406d0bbf08a867f170091b8bc773c0895f",
+  "notes": [
+    "Synthetic inputs on one real-W maximum-K projection; no candidate, tables, frame production or complete comparison.",
+    "Runs overlap the separate native integer replay. Timings include contention; per-process RSS is not aggregate host usage.",
+    "OpenMP parallelizes independent C11 rows only. Each signed i64 sum order is unchanged; invalid markers are OR-reduced. Independent kernel shares no Rust/CUDA producer.",
+    "Existing full replay remains unchanged; subsequent trace comparison uses the selected independent CPU worker count."
+  ],
+  "parallel_tests": {
+    "passed": 8,
+    "workers": 8
+  },
+  "private_bundle": "oracle-parallel-20261007T134500Z",
+  "remaining_estimate": {
+    "combined_trace_outer_timeout_seconds": 6600,
+    "compute_stop_utc": "2026-10-07T16:34:46Z",
+    "independent_complete_minutes": [
+      50,
+      75
+    ],
+    "independent_matrix_only_seconds": 2129.1389869792124,
+    "native_trace_minutes": [
+      10,
+      20
+    ],
+    "other_work_included": "Native W load and tables, nonmatrix producers, exact trace encoding/comparison and I/O. Estimates, not measured complete results."
+  },
+  "screens": [
+    {
+      "columns": 21504,
+      "complete_integer_trial": false,
+      "credit": false,
+      "exact_reference_equal": true,
+      "independent_oracle_complete": false,
+      "kernel_init_seconds": 0.11837516725063324,
+      "matrix_only_extrapolated_full_seconds": 5342.814901045391,
+      "matrix_scalar_products": 115605504,
+      "matrix_workers": 1,
+      "packed_hash_checked": false,
+      "profile_only": true,
+      "rows": 5376,
+      "synthetic_input": true,
+      "wall_seconds": 0.046126917004585266
+    },
+    {
+      "columns": 21504,
+      "complete_integer_trial": false,
+      "credit": false,
+      "exact_reference_equal": true,
+      "independent_oracle_complete": false,
+      "kernel_init_seconds": 0.10580545291304588,
+      "matrix_only_extrapolated_full_seconds": 2785.4563395891873,
+      "matrix_scalar_products": 115605504,
+      "matrix_workers": 2,
+      "packed_hash_checked": false,
+      "profile_only": true,
+      "rows": 5376,
+      "synthetic_input": true,
+      "wall_seconds": 0.0240480937063694
+    },
+    {
+      "columns": 21504,
+      "complete_integer_trial": false,
+      "credit": false,
+      "exact_reference_equal": true,
+      "independent_oracle_complete": false,
+      "kernel_init_seconds": 0.13224774599075317,
+      "matrix_only_extrapolated_full_seconds": 3188.957719930581,
+      "matrix_scalar_products": 115605504,
+      "matrix_workers": 4,
+      "packed_hash_checked": false,
+      "profile_only": true,
+      "rows": 5376,
+      "synthetic_input": true,
+      "wall_seconds": 0.0275317020714283
+    },
+    {
+      "columns": 21504,
+      "complete_integer_trial": false,
+      "credit": false,
+      "exact_reference_equal": true,
+      "independent_oracle_complete": false,
+      "kernel_init_seconds": 0.1167200542986393,
+      "matrix_only_extrapolated_full_seconds": 2129.1389869792124,
+      "matrix_scalar_products": 115605504,
+      "matrix_workers": 8,
+      "packed_hash_checked": false,
+      "profile_only": true,
+      "rows": 5376,
+      "synthetic_input": true,
+      "wall_seconds": 0.018381811678409576
+    }
+  ],
+  "selected_workers": 8,
+  "status": "MATRIX_SCREENS_PASS_GAMMA_UNADMITTED"
+}

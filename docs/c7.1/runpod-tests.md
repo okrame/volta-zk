@@ -343,6 +343,11 @@ Tabelle separate fino a 600 s e ledger fino a 300 s. I timeout comprendono
 hash e preparazione; non si sommano oltre il tempo residuo. Eventuale
 O=0/150/300 solo dopo tutti i controlli Γ e con budget residuo esplicito;
 nessuna proroga della riserva finale di almeno 30 minuti.
+Dopo gli screen esatti a 1/2/4/8 worker si sceglie 8 per il driver C11:
+35,5 min estrapolati per le sole matrici, stima completa 50–75 min.
+Il replay nativo senza traccia viene eseguito per primo, per rilevare
+subito gli overflow; poi replay con traccia e confronto, timeout esterno
+fino a 6.600 s, sempre entro lo stop computazionale concordato.
 
 
 Per stimare il costo del replay prima di disporre della candidata,

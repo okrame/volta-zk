@@ -195,6 +195,8 @@ def test_trial_output_keeps_record_and_uses_frozen_candidate(tmp_path, monkeypat
     def failed(command, **_kwargs):
         candidate.write_text('{"changed":true}')
         assert Path(command[2]).read_text() == "{}"
+        _kwargs["stderr"].write("fixture timeout prefix" if outcome == "timeout" else "fixture overflow")
+        _kwargs["stderr"].flush()
         if outcome == "timeout":
             raise subprocess.TimeoutExpired(command, 1, output=b"trial prefix", stderr=b"fixture timeout prefix")
         stdout = {
@@ -226,6 +228,9 @@ def test_trial_output_keeps_record_and_uses_frozen_candidate(tmp_path, monkeypat
         assert result["stdout"]
         assert result["stderr"] == ("fixture timeout prefix" if outcome == "timeout" else "fixture overflow")
         assert result["failure"]
+    native_log = output.with_name(output.name + ".native.stderr")
+    assert native_log.read_text() == ("fixture timeout prefix" if outcome == "timeout" else "fixture overflow")
+    assert native_log.stat().st_mode & 0o777 == 0o600
     assert result["candidate_sha256"] == hashlib.sha256(b"{}").hexdigest()
     assert result["complete_integer_trial"] is (outcome == "success")
     assert not result["calibrated"] and not result["credit"]
@@ -287,7 +292,11 @@ def test_trace_mode_binds_native_and_independent_censuses(tmp_path, monkeypatch,
         def frames(self):
             return iter(())
 
-    monkeypatch.setattr(calibration.oracle_driver, "Driver", lambda *_args: Independent())
+    def independent_driver(*_args, matrix_workers):
+        assert matrix_workers == 8
+        return Independent()
+
+    monkeypatch.setattr(calibration.oracle_driver, "Driver", independent_driver)
     monkeypatch.setattr(calibration, "validate_weights", lambda *_args: None)
     monkeypatch.setattr(calibration, "write_tables", lambda *_args: {"calibrated": False})
     staged = None
@@ -322,7 +331,7 @@ def test_trace_mode_binds_native_and_independent_censuses(tmp_path, monkeypatch,
         "c71_calibrate", "trace", "--native", str(native), "--candidate", str(candidate),
         "--output", str(output), "--ingest-report", str(report), "--packed", str(packed),
         "--payload-bytes", "100", "--timeout-seconds", "1",
-        "--trace-output", str(trace_output),
+        "--trace-output", str(trace_output), "--oracle-workers", "8",
     ])
     if outcome == "success":
         calibration.main()

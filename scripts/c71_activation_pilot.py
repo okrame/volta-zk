@@ -132,19 +132,22 @@ class PackedWeights:
             self.bytes_read += 2 * count * columns
             self.block_read_validate_seconds += time.monotonic() - started
         started = time.monotonic()
-        if out is None:
-            converted = values.astype(np.float64)
-        else:
-            if out.shape != values.shape or out.dtype != np.float64 or not out.flags.c_contiguous:
-                raise ValueError("pilot conversion workspace differs")
-            np.copyto(out, values, casting="unsafe")
-            converted = out
+        if out is not None and (out.shape != values.shape or out.dtype != np.float64
+                                or not out.flags.c_contiguous):
+            raise ValueError("pilot conversion workspace differs")
         exponent = self.exponents[descriptor["name"]]
         if self.scaling == "ldexp":
+            if out is None:
+                converted = values.astype(np.float64)
+            else:
+                np.copyto(out, values, casting="unsafe")
+                converted = out
             np.ldexp(converted, exponent, out=converted)
         else:
             # i16 * 2**e, e in [-128,128], is exactly representable in binary64.
-            converted *= math.ldexp(1.0, exponent)
+            # Explicit dtype fuses exact widening and scaling into one pass.
+            converted = np.multiply(values, math.ldexp(1.0, exponent),
+                                    dtype=np.float64, out=out)
         with self.read_lock:
             self.block_convert_seconds += time.monotonic() - started
         return converted

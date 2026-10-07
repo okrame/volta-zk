@@ -146,7 +146,10 @@ Permette confronti bit per bit del flusso completo sul prefisso misurato;
 non è un commitment del protocollo né evidenza sui token non eseguiti.
 L'opzione CPU `--weight-scaling multiply` sostituisce soltanto la scala
 del blocco W con moltiplicazione per `2**e`; `ldexp` resta il riferimento
-selezionabile e il default. Tutti gli i16 simmetrici con e in [-128,128]
+selezionabile e il default. La conversione i16→f64 e la moltiplicazione
+usano ora un solo passaggio NumPy con dtype f64 esplicito, anche con
+scratch riutilizzato; non viene cambiato il dot successivo.
+Tutti gli i16 simmetrici con e in [-128,128]
 sono dyadic esattamente rappresentabili in binary64, senza subnormalità
 o overflow. La fixture esaustiva confronta i 16.842.495 casi e il prefisso
 causale ridotto; il guadagno e la parità sul workload reale vanno misurati.

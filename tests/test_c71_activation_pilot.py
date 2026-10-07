@@ -328,15 +328,23 @@ def test_profile_stops_at_fixed_causal_work_without_candidate():
 
 
 def test_multiply_weight_scaling_matches_complete_legal_domain_and_causal_profile():
-    values = np.arange(-32767, 32768, dtype=np.float64)
+    values = np.arange(-32767, 32768, dtype=np.int16)
+    output = np.empty(values.shape, dtype=np.float64)
     for exponent in range(-128, 129):
-        assert (values * math.ldexp(1.0, exponent)).tobytes() == np.ldexp(values, exponent).tobytes()
+        expected = np.ldexp(values.astype(np.float64), exponent).tobytes()
+        assert np.multiply(values, math.ldexp(1.0, exponent), dtype=np.float64).tobytes() == expected
+        assert np.multiply(values, math.ldexp(1.0, exponent), dtype=np.float64, out=output) is output
+        assert output.tobytes() == expected
     description, weights = small_inputs()
     reference = pilot.Pilot(description, weights, time.monotonic() + 10).run([0], profile_tokens=6)
     _, optimized = small_inputs()
     optimized.scaling = "multiply"
     actual = pilot.Pilot(description, optimized, time.monotonic() + 10).run([0], profile_tokens=6)
     assert actual == reference
+    _, optimized = small_inputs()
+    optimized.scaling = "multiply"
+    reused = pilot.Pilot(description, optimized, time.monotonic() + 10, reuse_matrix_buffer=True)
+    assert reused.run([0], profile_tokens=6) == reference
     optimized.source.getbuffer()[:2] = b"\x00\x80"
     with pytest.raises(ValueError, match="symmetric i16"):
         optimized.block(0, 0, 1)

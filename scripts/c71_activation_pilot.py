@@ -15,6 +15,7 @@ import io
 import json
 import math
 import mmap
+import os
 from pathlib import Path
 import subprocess
 import threading
@@ -80,6 +81,8 @@ class PackedWeights:
         self.descriptors = descriptors
         self.exponents = exponents
         self.bytes_read = 0
+        self.block_read_validate_seconds = 0.0
+        self.block_convert_seconds = 0.0
         self.read_lock = threading.Lock()
         expected = 0
         for descriptor in sorted(descriptors, key=lambda value: value["packed_offset"]):
@@ -103,6 +106,7 @@ class PackedWeights:
             self.mapping = mmap.mmap(descriptor, 0, access=mmap.ACCESS_READ)
 
     def block(self, tensor, first, count):
+        started = time.monotonic()
         if not 0 <= tensor < len(self.descriptors):
             raise ValueError("pilot weight tensor missing")
         descriptor = self.descriptors[tensor]
@@ -122,18 +126,29 @@ class PackedWeights:
             raise ValueError("pilot weight outside symmetric i16")
         with self.read_lock:
             self.bytes_read += 2 * count * columns
+            self.block_read_validate_seconds += time.monotonic() - started
+        started = time.monotonic()
         converted = values.astype(np.float64)
         np.ldexp(converted, self.exponents[descriptor["name"]], out=converted)
+        with self.read_lock:
+            self.block_convert_seconds += time.monotonic() - started
         return converted
 
 
 class Pilot:
-    def __init__(self, description, weights, deadline, matrix_executor=None):
+    def __init__(self, description, weights, deadline, matrix_executor=None, progress=None):
         self.description = description
         self.graph = description["pilot"]
         self.weights = weights
         self.deadline = deadline
         self.matrix_executor = matrix_executor
+        self.progress = progress
+        self.started_at = time.monotonic()
+        self.last_progress = -math.inf
+        self.location = dict(context=None, token_index=None, step_index=None, operation=None)
+        self.operator_timings = {}
+        self.completed_tokens = 0
+        self.matrix_dot_seconds = 0.0
         self.current = {}
         self.history = {source: [] for source in self.graph["kv_sources"]}
         self.extents = {}
@@ -154,6 +169,28 @@ class Pilot:
         if time.monotonic() >= self.deadline:
             raise TimeoutError("activation pilot deadline exceeded")
 
+    def metrics(self):
+        elapsed = time.monotonic() - self.started_at
+        return dict(**self.location, elapsed_seconds=elapsed, completed_tokens=self.completed_tokens,
+                    tokens_per_second=self.completed_tokens / elapsed if elapsed else 0,
+                    matrix_scalar_products=self.matrix_scalar_products,
+                    matrix_products_per_second=self.matrix_scalar_products / elapsed if elapsed else 0,
+                    weight_read_bytes=self.weights.bytes_read,
+                    block_read_validate_worker_seconds=self.weights.block_read_validate_seconds,
+                    block_convert_worker_seconds=self.weights.block_convert_seconds,
+                    matrix_dot_worker_seconds=self.matrix_dot_seconds,
+                    history_payload_bytes=self.history_bytes,
+                    retained_payload_peak_bytes=self.retained_bytes_peak,
+                    complete_physical_peak=False)
+
+    def emit_progress(self, state, force=False):
+        now = time.monotonic()
+        if self.progress is not None and (force or now - self.last_progress >= 1):
+            self.progress.write(json.dumps(dict(state=state, **self.metrics()), sort_keys=True) + "\n")
+            self.progress.flush()
+            os.fsync(self.progress.fileno())
+            self.last_progress = now
+
     def evaluate(self, step, token, position):
         operation = step["operation"]
         parameters = step["parameters"]
@@ -168,13 +205,18 @@ class Pilot:
                 self.check_deadline()
                 count = min(128, rows - first)
                 with np.errstate(over="raise", invalid="raise", divide="raise"):
-                    return first, self.weights.block(tensor, first, count) @ inputs[0]
+                    block = self.weights.block(tensor, first, count)
+                    started = time.monotonic()
+                    values = block @ inputs[0]
+                    return first, values, time.monotonic() - started
             blocks = range(0, rows, 128)
             products = (map(multiply, blocks) if self.matrix_executor is None
                         else self.matrix_executor.map(multiply, blocks))
-            for first, values in products:
+            for first, values, seconds in products:
                 result[first:first + len(values)] = values
                 self.matrix_scalar_products += len(values) * inputs[0].size
+                self.matrix_dot_seconds += seconds
+                self.emit_progress("matrix_block")
             return result
         if operation == "norm":
             values = inputs[0].reshape(parameters["heads"], parameters["columns"])
@@ -246,10 +288,24 @@ class Pilot:
                 self.coefficients.clear()
                 decision = None
                 for step_index, step in enumerate(self.graph["steps"]):
+                    self.location = dict(context=slot * tokens_per_response, token_index=index,
+                                         step_index=step_index, operation=step["operation"])
+                    self.emit_progress("before_operator")
                     self.check_deadline()
                     active = first <= index < first + count
                     if not step["parameters"].get("decision_only", False) or active:
-                        value = self.evaluate(step, tokens[index], position)
+                        started = time.monotonic()
+                        timing = self.operator_timings.setdefault(str(step_index), dict(
+                            operation=step["operation"], calls=0, failures=0, wall_seconds=0.0))
+                        try:
+                            value = self.evaluate(step, tokens[index], position)
+                        except BaseException:
+                            timing["failures"] += 1
+                            raise
+                        else:
+                            timing["calls"] += 1
+                        finally:
+                            timing["wall_seconds"] += time.monotonic() - started
                         output = step["output"]
                         if output is None:
                             if decision is not None:
@@ -277,6 +333,8 @@ class Pilot:
                     raise ValueError("pilot causal decision or last-consumer release differs")
                 if decision is not None:
                     tokens[index + 1] = decision
+                self.completed_tokens += 1
+                self.emit_progress("token_complete", force=True)
             responses.append(tokens)
         expected = {source["id"] for source in self.description["activation_sources"]}
         if set(self.extents) != expected:
@@ -319,6 +377,8 @@ def main():
         parser.error("run needs --ingest-report, --packed, --output and positive --timeout-seconds")
     args.output.mkdir(mode=0o700)
     result = dict(calibrated=False, floating_initialization_only=True, complete=False, credit=False)
+    pilot = None
+    progress = open(args.output / "progress.jsonl", "x", opener=lambda path, flags: os.open(path, flags, 0o600))
     try:
         report_body = args.ingest_report.read_bytes()
         report = calibration.ingest._json_no_duplicates(report_body, "weight ingest report")
@@ -339,7 +399,7 @@ def main():
             executor = (ThreadPoolExecutor(max_workers=args.matrix_workers)
                         if args.matrix_workers > 1 else nullcontext(None))
             with executor as pool:
-                pilot = Pilot(description, reader, time.monotonic() + args.timeout_seconds, pool)
+                pilot = Pilot(description, reader, time.monotonic() + args.timeout_seconds, pool, progress)
                 candidate, observations = pilot.run(workload["prompt"]["token_ids"])
         result.update(observations, complete=True)
         candidate_path = args.output / "candidate.json"
@@ -357,7 +417,11 @@ def main():
     else:
         result["success"] = True
     finally:
-        with (args.output / "report.json").open("x") as sink:
+        if pilot is not None:
+            pilot.emit_progress("complete" if result.get("success") else "failed", force=True)
+            result.update(progress=pilot.metrics(), operator_timings=pilot.operator_timings)
+        progress.close()
+        with open(args.output / "report.json", "x", opener=lambda path, flags: os.open(path, flags, 0o600)) as sink:
             json.dump(result, sink, indent=2, sort_keys=True)
             sink.write("\n")
 

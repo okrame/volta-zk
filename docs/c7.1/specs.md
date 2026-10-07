@@ -130,6 +130,13 @@ tempi e lavoro completato anche su errore, senza valori W/A/KV o ragioni
 private nel transcript; le prescrizioni sono nel
 [runbook](runpod-tests.md#accelerazione-dellinizializzatore).
 
+Il pilot salva ora `progress.jsonl` privato, flush/fsync a ogni token e
+al primo confine operatore/blocco dopo un secondo. Il report finale
+conserva anche su errore tempi per ID operatore e contatori parziali;
+un kill conserva solo i campioni già scritti. Lettura/validazione,
+conversione W e dot espongono secondi-worker cumulativi, che possono
+sovrapporsi e non vanno sommati al wall. Non è ancora una misura sul pod.
+
 [canonical_calibration.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs)
 esegue invece gli operatori interi: legge W packed con una cache di riga,
 conserva solo le righe A vive, raccoglie intervalli e istogrammi e mantiene

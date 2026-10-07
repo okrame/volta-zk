@@ -175,6 +175,13 @@ trial deve aggiungere avanzamento e tempi per operatore, dimostrare un
 miglioramento misurato e pianificare anche replay e confronto indipendente
 nel tempo residuo. Questi miglioramenti sono obiettivi, non risultati acquisiti.
 
+L'affidamento del 7 ottobre autorizza la nuova campagna sul medesimo pod
+con i limiti del [runbook](runpod-tests.md#stato-e-sequenza-operativa).
+La preparazione locale aggiunge telemetria persistente al pilot CPU per
+localizzare il timeout: contesto/token/operatore, lavoro e tempi separati
+di lettura, conversione e prodotto. Restano da misurare il costo dominante
+e il miglioramento prima del trial lungo; nessuna nuova ammissione Γ.
+
 ## Contratto delle risorse
 
 | Quantità | Requisito |

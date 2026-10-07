@@ -74,6 +74,16 @@ poi [diagnostica O=0/150/300](#esperimento-della-prova) se il tempo residuo
 lo permette. Un prerequisito mancante lascia aperte le fasi dipendenti;
 conservare sempre esito e copertura anche in caso di FAIL/INCOMPLETO.
 
+**Affidamento del 7 ottobre 2026.** Il proprietario ha autorizzato la
+riattivazione del solo `z3h2njpctmduix`, download, accelerazione e trial
+del presente runbook, con sei ore dalla riattivazione e almeno 30 minuti
+di chiusura, arresto API a carico dell'agent e nessuna proroga. Codice ed
+evidenze pubblicabili vanno su un nuovo branch
+`runpod/z3h2njpctmduix/c71-calibration-<data>` via Git HTTPS. La preparazione
+locale precede la riattivazione; la nuova deadline va registrata all'avvio.
+Verificati localmente i dieci manifest storici e 304 file censiti:
+106.904.206 B totali, entro il tetto cumulativo di 10.000.000.000 B.
+
 | Passaggio | Stato e condizione di uscita |
 |---|---|
 | Preparazione locale | 13 producer CUDA, scanner, registro e runner misto implementati; compilazione sm_90, schedule canonica e test numerici/protocollo ridotti. Nessun W reale o dominio D34/D35 eseguito localmente |
@@ -312,8 +322,8 @@ valido; un 401/403 ferma la fase, senza accettare licenze o cambiare checkpoint.
 
 Build mirata, download e ingestione nativa hanno evidenze PASS sui pesi
 reali; pilot completo, tabelle/replay e ammissione restano aperti.
-Gli snippet documentano il riferimento corrente: non implementano ancora
-avanzamento o un nuovo backend accelerato. Prima
+Gli snippet documentano il riferimento CPU; il pilot salva ora avanzamento
+privato e tempi per operatore, ma non incorpora ancora un nuovo backend accelerato. Prima
 fissare `APPROVED_SHA`, `AUTHORIZED_END_EPOCH`, `TRACE_STEP_SECONDS` e
 `NATIVE_TRACE_TIMEOUT_SECONDS`. Usare il pod autorizzato e una delle
 alternative Git HTTPS della

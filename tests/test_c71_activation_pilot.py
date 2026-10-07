@@ -262,6 +262,20 @@ def test_pilot_cli_preserves_provenance_and_never_overwrites(tmp_path, monkeypat
     assert result["workload_sha256"] == hashlib.sha256(workload.read_bytes()).hexdigest()
     assert result["ingest_report_sha256"] == hashlib.sha256(ingest.read_bytes()).hexdigest()
     assert result["packed_hash_checked"]
+    progress = output / "progress.jsonl"
+    events = [json.loads(line) for line in progress.read_text().splitlines()]
+    assert events and events[-1]["state"] == ("complete" if failure is None else "failed")
+    assert progress.stat().st_mode & 0o777 == 0o600
+    assert (output / "report.json").stat().st_mode & 0o777 == 0o600
+    assert events[-1]["completed_tokens"] == (0 if failure == "timeout" else 6)
+    assert events[-1]["context"] == (0 if failure == "timeout" else 4)
+    assert all(not {"extents", "responses", "minimum", "maximum", "values"} & event.keys()
+               for event in events)
+    assert result["progress"]["weight_read_bytes"] == events[-1]["weight_read_bytes"]
+    if failure != "timeout":
+        timings = result["operator_timings"]
+        assert timings["3"]["calls"] == 6 and timings["12"]["calls"] == 3
+        assert all(row["wall_seconds"] >= 0 and row["failures"] == 0 for row in timings.values())
     candidate = output / "candidate.json"
     assert candidate.exists() == (failure != "timeout")
     if candidate.exists():
@@ -271,3 +285,18 @@ def test_pilot_cli_preserves_provenance_and_never_overwrites(tmp_path, monkeypat
     with pytest.raises(FileExistsError):
         pilot.main()
     assert (output / "report.json").read_bytes() == before
+
+
+def test_progress_preserves_partial_operator_failure(tmp_path):
+    description, weights = small_inputs()
+    description["pilot"]["steps"][3]["parameters"]["weight"] = 99
+    with (tmp_path / "progress.jsonl").open("x") as sink:
+        runner = pilot.Pilot(description, weights, time.monotonic() + 10, progress=sink)
+        with pytest.raises(IndexError):
+            runner.run([0])
+        runner.emit_progress("failed", force=True)
+    events = [json.loads(line) for line in (tmp_path / "progress.jsonl").read_text().splitlines()]
+    assert events[-1]["step_index"] == 3 and events[-1]["operation"] == "matrix"
+    assert events[-1]["completed_tokens"] == 0 and events[-1]["weight_read_bytes"] > 0
+    assert runner.operator_timings["3"]["failures"] == 1
+    assert runner.operator_timings["2"]["calls"] == 1

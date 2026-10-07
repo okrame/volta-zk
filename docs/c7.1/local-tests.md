@@ -367,7 +367,11 @@ alternativi per singoli crate. `.cargo/config.toml` imposta
 La regressione del pilot confronta byte, contatori e causalità tra
 blocchi seriali/paralleli e tra sorgenti streamed/mappate readonly;
 la parte a due thread si esegue sul pod, mantenendo i controlli locali
-a un thread. Per questa revisione documentale bastano i controlli dei documenti.
+a un thread. I controlli CLI verificano inoltre avanzamento parziale,
+tempi per operatore, file privati 0600 e conservazione su timeout/errore.
+Senza binario locale compatibile, la selezione `-k 'not parallel and not native_pilot'`
+copre queste fixture; le due esclusioni restano da eseguire sul pod,
+senza attribuire loro credito locale.
 Nella prossima sessione, analisi del pilot e fixture ridotte restano locali
 entro i limiti sopra; misure sui pesi reali, prove parallele e qualsiasi
 esecuzione CUDA si svolgono sul pod autorizzato. L'accelerazione richiede

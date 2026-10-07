@@ -121,16 +121,26 @@ conferma operatori sintetici e MAC originali, senza certificati canonici.
 I fallimenti e le revisioni precedenti restano nei
 [record originali](../../benchmarks/results/) e nell'[archivio](../c7.1-history/README.md).
 
-La calibrazione implementata usa CPU. Questa descrizione non vieta
-l'accelerazione dell'inizializzatore su CPU o H100 nella prossima sessione
-autorizzata: prima misurare tempi/memoria e verificare il percorso modificato
-contro il riferimento, secondo il [runbook](runpod-tests.md#accelerazione-dellinizializzatore).
-Export completo, piano pubblico e
+La calibrazione offline dispone ora di pilot FP64 CPU/H100, matrici intere
+Rust CPU/CUDA e driver indipendente C11/Python. Il prefisso reale di due
+token O=0 passa da 73,26 s CPU a 30,65 s con conversione C11 e due worker,
+e a 3,19 s con cuBLAS FP64. Il wall esterno H100 è 80,25 s, inclusi hash
+e caricamento globale W; questi costi non scompaiono dal conto completo.
+Il confronto FP64 su ogni matrice del prefisso soddisfa il bound dichiarato
+e conserva scale osservate/token, ma **non è bitwise**. La riduzione FP64
+è una premessa numerica dell'inizializzatore, non un lemma Lean di
+raffinamento né ammissione Γ. Le fixture e il prefisso non dimostrano
+l'equivalenza sull'intero workload. Il replay intero e il confronto
+indipendente restano obbligatori, con uguaglianza esatta.
+
+Il driver indipendente usa un dot C11 i16→i64 distinto dal codice Rust/CUDA;
+uno screen su W reale e input sintetico misura 0,0464 s per 115.605.504
+prodotti. L'extrapolazione di circa 90 minuti copre solo le matrici del
+workload completo, non certifica il tempo totale. Export completo e
 [driver indipendente](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
-sono implementati e testati sui 13 operatori/schedule, ma confronto sui
-pesi reali, Γ numericamente validato e tempo completo sono ancora da
-acquisire in una nuova campagna autorizzata. La prova non certifica di per sé
-provenienza W, qualità del modello o correttezza delle tabelle.
+coprono i 13 producer; Γ numericamente validato, due replay completi e
+confronto indipendente sui pesi reali restano da acquisire. La prova non
+certifica provenienza W, qualità del modello o correttezza delle tabelle.
 
 **Premesse residue.** I lemmi Lean giustificano le identità richiamate in
 [security](security.md), non l'implementazione CUDA, la schedulazione,
@@ -175,16 +185,20 @@ trial deve aggiungere avanzamento e tempi per operatore, dimostrare un
 miglioramento misurato e pianificare anche replay e confronto indipendente
 nel tempo residuo. Questi miglioramenti sono obiettivi, non risultati acquisiti.
 
-L'affidamento del 7 ottobre autorizza la nuova campagna sul medesimo pod
-con i limiti del [runbook](runpod-tests.md#stato-e-sequenza-operativa).
-La preparazione locale aggiunge telemetria persistente al pilot CPU per
-localizzare il timeout: contesto/token/operatore, lavoro e tempi separati
-di lettura, conversione e prodotto. Restano da misurare il costo dominante
-e il miglioramento prima del trial lungo; nessuna nuova ammissione Γ.
-Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
-conserva otto fixture del pilot e nove controlli documentali PASS su SHA
-pulita, oltre alla verifica dei bundle; esclude parità parallela, esecuzione
-GPU, W reale e misure fisiche della nuova campagna.
+La campagna del 7 ottobre usa la singola H100 del pod `wgteo4z5mndiof`,
+attivato manualmente dall'owner dopo l'indisponibilità del pod precedente.
+L'inizio conservativo è 11:04:46 UTC: stop computazionale 16:34:46,
+arresto indipendente 16:59:46, termine inderogabile 17:04:46 UTC.
+L'owner ha autorizzato esplicitamente l'eccezione AS per i soli processi
+CUDA; CPU AS 64 GiB, limiti fisici e durata restano invariati.
+La nuova ingestione ha verificato entrambi gli shard e il packed completo.
+Il massimo RSS+HBM campionato del confronto FP64 è 124.434.452.480 B,
+incluse le due copie W; HBM 62.605.230.080 B, margine campionato
+17.394.769.920 B sul tetto di 80 GB. Non è un picco fisico completo né
+un risultato sull'arena della prova. I bundle chiusi preparazione,
+prefissi e kernel sono verificati; nessuna candidata completa è ancora
+ammessa. Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
+resta evidenza della sola preparazione precedente.
 
 ## Contratto delle risorse
 

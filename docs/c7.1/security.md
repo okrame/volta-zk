@@ -104,6 +104,14 @@ ricompilati dal verifier, non oggetti `Sources` o `Recipes` importati dal
 certificato. Nei confronti di stato si conservano le identità complete;
 i digest sono nomi nel transcript, non una fonte di autorità separata.
 
+L'accelerazione offline FP64 può cambiare l'ordine delle somme: il bound
+numerico verificato su fixture/prefissi non implica uguaglianza bitwise
+né sostituisce l'ammissione intera. I kernel C11 indipendenti e Rust/CUDA
+hanno controlli di overflow/marker e confronti finiti; non esiste un lemma
+Lean che raffini queste implementazioni. Il driver C11 non condivide il
+kernel matriciale Rust/CUDA né i suoi risultati; il confronto completo
+resta esatto su tutti i frame, e precede qualsiasi bootstrap o prova.
+
 ## 2. Preparatore e macchina di accettazione
 
 **Preparatore onesto.** `Prepare(W, Γ, accepted_private_KV, prompt)` esegue

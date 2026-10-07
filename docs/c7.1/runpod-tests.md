@@ -238,11 +238,9 @@ delle scale richiede un nuovo trial da O=0 con tutti i controlli. I trial
 successivi dipendono dall'autorizzazione della nuova sessione, non dal
 record del 4 ottobre. Il completamento dei test non deroga al termine massimo.
 
-I programmi esistenti usano NumPy/BLAS CPU per l'inizializzatore e il
-confronto indipendente, Rust CPU per il replay intero e un piccolo kernel C
-CPU per RMS; non esiste ancora una calibrazione CUDA completa. Questo è
-lo stato dell'implementazione, non un vincolo che vieta di accelerare
-l'inizializzatore sulla H100 autorizzata.
+I programmi includono pilot NumPy/BLAS CPU o cuBLAS FP64 H100, replay
+intero Rust CPU o matrici CUDA esplicite e driver indipendente Python/C11.
+La disponibilità dei backend non costituisce una calibrazione completa.
 Il pilot supporta `--matrix-workers` (1–20, default 1): i blocchi da 128
 righe sono indipendenti, letture e contatori sono sincronizzati, gli
 output sono consumati nello stesso ordine e KV resta seriale e causale.
@@ -256,7 +254,8 @@ Il packed regolare è ora mappato in sola lettura, senza una copia W
 dequantizzata completa; i buffer in memoria delle fixture restano streamed.
 Registrare la mappa W immutabile da 61.394.690.560 B separatamente da
 scratch e KV: RSS totale include le pagine W residenti e non è l'arena.
-Il limite AS di 64 GiB e gli stop su RSS aggregato/swap restano invariati.
+Il limite AS CPU di 64 GiB e gli stop su RSS aggregato/swap restano invariati;
+la sola eccezione CUDA è quella esplicitamente concessa dall’owner.
 Un host CPU separato non è incluso nell'affidamento dello stesso pod.
 Inferenza BF16, TF32 o Transformers non sostituisce la relazione intera.
 
@@ -329,6 +328,23 @@ Il pack nativo verifica già header, entrambi i corpi e output persistito.
 
 ### Budget delle fasi
 
+Piano del 7 ottobre, fissato prima del pilot completo: pilot FP64 15–20 min,
+tabelle/check/hash 5–10 min, due replay CUDA 10–20 min ciascuno, confronto
+indipendente 90–110 min, ledger/congelamento circa 5 min. Lo screen CUDA
+su W reale e input sintetico coincide esattamente coi due riferimenti CPU:
+0,00267 s per 115.605.504 prodotti, oltre a 113,49 s di caricamento W.
+Il solo costo matriciale extrapolato è circa 309 s per replay CUDA;
+operatori residui, cattura traccia, tabelle e I/O restano stime.
+Il confronto C11 extrapolato costa circa 90 min solo per le matrici.
+Queste stime non garantiscono il completamento: limite esterno pilot
+1.200 s, primo replay/confronto fino a 7.800 s, secondo replay fino a
+1.200 s, ridotti se necessario per lo stop computazionale 16:34:46 UTC.
+Tabelle separate fino a 600 s e ledger fino a 300 s. I timeout comprendono
+hash e preparazione; non si sommano oltre il tempo residuo. Eventuale
+O=0/150/300 solo dopo tutti i controlli Γ e con budget residuo esplicito;
+nessuna proroga della riserva finale di almeno 30 minuti.
+
+
 Per stimare il costo del replay prima di disporre della candidata,
 `c71_calibration profile-matrix PACKED` misura una proiezione con K massimo
 su W reale e input i16 sintetico alternato agli estremi. Eseguire solo sul
@@ -339,7 +355,8 @@ separati e uguaglianza esatta, e dichiara `credit:false`,
 scale, tabelle, causalità o Γ. L'extrapolazione dei prodotti è una stima
 parziale; aggiungere tabelle, altri operatori, I/O traccia e driver indipendente.
 Lo [screen del driver indipendente](../../scripts/c71_profile_oracle_matrix.py)
-usa la stessa shape e il kernel matriciale Python invariato; richiede
+usa la stessa shape e il kernel indipendente C11, confrontabile col
+precedente BLAS con `--compare-reference`; richiede
 `NATIVE PACKED`, un solo thread BLAS e AS 64 GiB per il mapping readonly W.
 Non istanzia un'esecuzione indipendente completa e non genera frame.
 `profile-matrix PACKED CUDA_LIBRARY` aggiunge il confronto esatto col
@@ -377,7 +394,7 @@ valido; un 401/403 ferma la fase, senza accettare licenze o cambiare checkpoint.
 Build mirata, download e ingestione nativa hanno evidenze PASS sui pesi
 reali; pilot completo, tabelle/replay e ammissione restano aperti.
 Gli snippet documentano il riferimento CPU; il pilot salva ora avanzamento
-privato e tempi per operatore, ma non incorpora ancora un nuovo backend accelerato. Prima
+privato e tempi per operatore e offre il backend FP64 H100 descritto sopra. Prima
 fissare `APPROVED_SHA`, `AUTHORIZED_END_EPOCH`, `TRACE_STEP_SECONDS` e
 `NATIVE_TRACE_TIMEOUT_SECONDS`. Usare il pod autorizzato e una delle
 alternative Git HTTPS della

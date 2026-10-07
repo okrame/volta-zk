@@ -175,31 +175,7 @@ impl Response {
 }
 
 fn packed(path: &Path, cells: usize) -> Result<(Arc<Vec<i16>>, String), String> {
-    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    if file.metadata().map_err(|e| e.to_string())?.len() != (2 * cells) as u64 {
-        return Err("canonical packed W length differs".into());
-    }
-    let mut words = Vec::new();
-    words.try_reserve_exact(cells).map_err(|e| e.to_string())?;
-    let mut h = blake3::Hasher::new();
-    let mut chunk = [0; 65536];
-    while words.len() < cells {
-        let count = (2 * (cells - words.len())).min(chunk.len());
-        file.read_exact(&mut chunk[..count]).map_err(|e| e.to_string())?;
-        h.update(&chunk[..count]);
-        for bytes in chunk[..count].chunks_exact(2) {
-            let word = i16::from_le_bytes(bytes.try_into().unwrap());
-            if word == i16::MIN {
-                return Err("canonical W contains overflow marker".into());
-            }
-            words.push(word);
-        }
-    }
-    if file.read(&mut chunk[..1]).map_err(|e| e.to_string())? != 0 {
-        return Err("canonical W changed length".into());
-    }
-    // Arc<Vec<_>> transfers ownership without a second full-size W allocation.
-    Ok((Arc::new(words), h.finalize().to_hex().to_string()))
+    super::super::calibration::read_packed(path, cells)
 }
 
 pub fn command(args: &[String]) -> Result<serde_json::Value, String> {

@@ -8,6 +8,7 @@ use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const TRACE_MAGIC: &[u8; 8] = b"C71TRC01";
 const TRACE_FRAME_BYTES: usize = 48;
@@ -421,6 +422,97 @@ pub(super) struct PackedRows<'a, R> {
     pub completed_row_bytes: usize,
 }
 
+pub(super) fn read_packed(path: &Path, cells: usize) -> Result<(Arc<Vec<i16>>, String), String> {
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    if file.metadata().map_err(|e| e.to_string())?.len() != (2 * cells) as u64 {
+        return Err("canonical packed W length differs".into());
+    }
+    let mut words = Vec::new();
+    words.try_reserve_exact(cells).map_err(|e| e.to_string())?;
+    let mut h = blake3::Hasher::new();
+    let mut chunk = [0; 65536];
+    while words.len() < cells {
+        let count = (2 * (cells - words.len())).min(chunk.len());
+        file.read_exact(&mut chunk[..count]).map_err(|e| e.to_string())?;
+        h.update(&chunk[..count]);
+        for bytes in chunk[..count].chunks_exact(2) {
+            let word = i16::from_le_bytes(bytes.try_into().unwrap());
+            if word == i16::MIN {
+                return Err("canonical W contains overflow marker".into());
+            }
+            words.push(word);
+        }
+    }
+    if file.read(&mut chunk[..1]).map_err(|e| e.to_string())? != 0 {
+        return Err("canonical W changed length".into());
+    }
+    // Arc<Vec<_>> transfers ownership without a second full-size W allocation.
+    Ok((Arc::new(words), h.finalize().to_hex().to_string()))
+}
+
+/// Offline calibration reuses the production integer matrix owner/kernel only.
+/// All other producers, trace framing and causal state remain in Trial.
+pub(super) struct MatrixDevice {
+    runtime: RefCell<kernel::range::windowed::native::Runtime>,
+    pub host_weight_capacity_bytes: usize,
+    pub load_seconds: f64,
+}
+
+impl MatrixDevice {
+    pub(super) fn new(
+        plan: &Plan,
+        packed: &std::path::Path,
+        library: &std::path::Path,
+    ) -> Result<Self, String> {
+        use kernel::range::windowed::native::{Config, Runtime};
+        let started = std::time::Instant::now();
+        let cells = plan.sources.iter().map(|s| s.rows * s.cols).sum();
+        let (weights, _) = read_packed(packed, cells)?;
+        let host_weight_capacity_bytes = weights.capacity() * 2;
+        let mut runtime =
+            Runtime::new(&Config::new(library.to_owned(), 0, 64 << 20, 1 << 30, 1 << 14, 128))?;
+        runtime.install_weights(weights, plan.layout_digest)?;
+        Ok(Self {
+            runtime: RefCell::new(runtime),
+            host_weight_capacity_bytes,
+            load_seconds: started.elapsed().as_secs_f64(),
+        })
+    }
+
+    pub(super) fn dot(
+        &self,
+        batch: &prepare::MatrixBatch,
+        input: &[i16],
+    ) -> Result<Vec<i64>, String> {
+        use kernel::range::windowed::native::DenseShape;
+        if batch.rows != 1 || input.len() != batch.inner {
+            return Err("calibration CUDA matrix shape differs".into());
+        }
+        let mut runtime = self.runtime.borrow_mut();
+        let values = runtime.upload_signed(input)?;
+        let product = runtime.product(
+            &values,
+            0,
+            batch.weight_offset,
+            DenseShape { m: 1, n: batch.columns as u32, k: batch.inner as u32 },
+        )?;
+        let mut output = vec![0; batch.columns];
+        runtime.download_words(&product, 0, &mut output)?;
+        runtime.release_buffer(product)?;
+        runtime.release_buffer(values)?;
+        Ok(output)
+    }
+
+    pub(super) fn close(&self) -> Result<serde_json::Value, String> {
+        let mut runtime = self.runtime.borrow_mut();
+        let before = runtime.stats()?;
+        let after = runtime.close()?;
+        Ok(serde_json::json!({"host_weight_capacity_bytes": self.host_weight_capacity_bytes,
+            "load_seconds": self.load_seconds, "before_close": before, "after_close": after,
+            "complete_physical_peak": false}))
+    }
+}
+
 impl<'a, R: Read + Seek> PackedRows<'a, R> {
     pub(super) fn new(sources: &'a [Source], mut input: R) -> Result<Self, String> {
         let mut end: usize = 0;
@@ -617,6 +709,7 @@ pub(super) fn fixed_run<R: Read + Seek>(
     reader: &mut PackedRows<'_, R>,
     payload_limit: usize,
     mut trace: Option<&mut Trace>,
+    device: Option<&MatrixDevice>,
 ) -> Result<Vec<Response>, String> {
     if public.profiles.len() != 3
         || reader.sources.len() != public.profiles[0].plan.sources.len()
@@ -663,7 +756,10 @@ pub(super) fn fixed_run<R: Read + Seek>(
                     &|id, row, column| history.read(id, row, column),
                     trace.as_deref_mut(),
                     |_| Ok(()),
-                    Some(&|batch, input| weights.borrow_mut().matrix_dot(batch, input)),
+                    Some(&|batch, input| match device {
+                        Some(device) => device.dot(batch, input),
+                        None => weights.borrow_mut().matrix_dot(batch, input),
+                    }),
                 )
                 .map_err(|error| format!("calibration O={} token={token}: {error}", slot * 150))?;
         }

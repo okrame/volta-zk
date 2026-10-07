@@ -180,6 +180,15 @@ conserva solo le righe A vive, raccoglie intervalli e istogrammi e mantiene
 KV i16 causale. Rilascia ogni riga dopo l'ultimo consumer; trasferisce KV
 al contesto successivo solo dopo tutti i 150 token e la copertura di ogni
 sorgente, inclusi padding e istogrammi.
+L'opzione offline `--matrix-library` del wrapper sceglie esplicitamente
+`run-cuda`/`run-trace-cuda`: solo i prodotti raw interi usano l'owner e il
+kernel MMA i16 esistenti. Input, output raw, RNE, altri producer, copertura
+e trace restano quelli del replay; il driver C/Python indipendente non
+richiama CUDA. W packed host è caricata una volta con il reader condiviso
+del runner e installata immutabilmente; capacità host/device, caricamento,
+trasferimenti e cleanup sono registrati separatamente. L'arena di questo
+screen offline è 64 MiB, non l'arena canonica della prova. Errori non
+selezionano il percorso CPU: terminano il trial e chiudono l'owner.
 [canonical_calibration_input.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration_input.rs)
 implementa l'interfaccia nativa da file; il wrapper Python genera le
 tabelle certificate e verifica l'hash del packed contro il report

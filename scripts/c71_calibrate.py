@@ -8,6 +8,7 @@ before a candidate can be frozen as calibrated Gamma.
 from __future__ import annotations
 
 import argparse
+import resource
 from contextlib import contextmanager, nullcontext
 import hashlib
 import json
@@ -329,7 +330,10 @@ def main() -> None:
     parser.add_argument("--payload-bytes", type=int)
     parser.add_argument("--timeout-seconds", type=int)
     parser.add_argument("--trace-output", type=Path)
+    parser.add_argument("--matrix-library", type=Path)
     args = parser.parse_args()
+    if args.matrix_library is not None and args.mode not in ("run", "trace"):
+        parser.error("--matrix-library only applies to integer run/trace")
     if args.mode in ("run", "trace") and (
         args.ingest_report is None
         or args.packed is None
@@ -391,13 +395,25 @@ def main() -> None:
         with trace_context as trace_directory:
             trace_path = Path(trace_directory) / "trace.bin" if trace_directory else None
             native_mode = "run-trace" if args.mode == "trace" else "run"
+            if args.matrix_library is not None:
+                native_mode += "-cuda"
             command = [str(args.native), native_mode, str(snapshot), str(tables),
                        str(args.packed), str(args.payload_bytes)]
             if trace_path is not None:
                 command.append(str(trace_path))
+            if args.matrix_library is not None:
+                command.append(str(args.matrix_library))
             try:
+                def cuda_address_space():
+                    # Explicit owner-approved CUDA exception; CPU parent keeps
+                    # its 64 GiB soft AS cap through the independent comparison.
+                    _, hard = resource.getrlimit(resource.RLIMIT_AS)
+                    if hard != resource.RLIM_INFINITY:
+                        raise ValueError("CUDA child needs unlimited hard AS with bounded CPU soft AS")
+                    resource.setrlimit(resource.RLIMIT_AS, (hard, hard))
                 run = subprocess.run(command, capture_output=True, text=True,
-                                     timeout=args.timeout_seconds)
+                                     timeout=args.timeout_seconds,
+                                     preexec_fn=cuda_address_space if args.matrix_library else None)
                 exit_code = native_exit_code = run.returncode
                 result = {"complete_integer_trial": False, "stdout": run.stdout,
                           "stderr": run.stderr}
@@ -446,6 +462,8 @@ def main() -> None:
                           packed_hash_checked=True, exit_code=exit_code,
                           native_exit_code=native_exit_code,
                           timeout_seconds=args.timeout_seconds, credit=False)
+            if args.matrix_library is not None:
+                result["matrix_library_sha256"] = ingest.stream_sha256(args.matrix_library)[0]
             published_trace = False
             try:
                 if trace_path is not None and exit_code == 0:

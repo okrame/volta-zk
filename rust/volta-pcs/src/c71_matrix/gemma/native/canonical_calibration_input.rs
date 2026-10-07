@@ -491,12 +491,12 @@ impl Tables {
 }
 
 pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
-    let usage = "usage: c71_calibration describe | profile-matrix PACKED | recipes CANDIDATE | oracle-plan CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES | run-trace CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE";
+    let usage = "usage: c71_calibration describe | profile-matrix PACKED [CUDA_LIBRARY] | recipes CANDIDATE | oracle-plan CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES | run-trace CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE | run-cuda CANDIDATE TABLES PACKED PAYLOAD_BYTES CUDA_LIBRARY | run-trace-cuda CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE CUDA_LIBRARY";
     let Some(mode) = arguments.first().map(String::as_str) else {
         return Err(usage.into());
     };
     if (mode == "describe" && arguments.len() == 1)
-        || (mode == "profile-matrix" && arguments.len() == 2)
+        || (mode == "profile-matrix" && matches!(arguments.len(), 2 | 3))
     {
         let plan = super::super::super::compile()?;
         let (sources, output, softmax) = plan.softmax_sources_at(0)?;
@@ -556,13 +556,32 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
             if blocked != output.values[0].2 {
                 return Err("blocked integer matrix differs from scalar reference".into());
             }
+            let mut cuda = serde_json::Value::Null;
+            if arguments.len() == 3 {
+                let device = calibration::MatrixDevice::new(
+                    &pilot.plan,
+                    Path::new(&arguments[1]),
+                    Path::new(&arguments[2]),
+                )?;
+                let started = std::time::Instant::now();
+                let actual = device.dot(&batch, &input);
+                let seconds = started.elapsed().as_secs_f64();
+                let metrics = device.close()?;
+                if actual? != blocked {
+                    return Err("CUDA integer matrix differs from both CPU references".into());
+                }
+                cuda = serde_json::json!({"wall_seconds": seconds,
+                    "exact_reference_equal": true, "resources": metrics});
+            }
             return Ok(serde_json::json!({"credit": false, "calibrated": false,
                 "profile_only": true, "complete_integer_trial": false,
                 "packed_hash_checked": false, "synthetic_input": true,
                 "rows": batch.columns, "columns": batch.inner,
                 "matrix_scalar_products": reads.get(), "wall_seconds": elapsed,
                 "blocked_wall_seconds": blocked_elapsed, "exact_reference_equal": true,
-                "matrix_evaluations": 2, "total_matrix_scalar_products": 2 * reads.get(),
+                "matrix_evaluations": if cuda.is_null() { 2 } else { 3 },
+                "total_matrix_scalar_products": (if cuda.is_null() { 2 } else { 3 }) * reads.get(),
+                "cuda_matrix": cuda,
                 "packed_row_loads": reader.borrow().row_loads,
                 "packed_row_bytes": reader.borrow().completed_row_bytes}));
         }
@@ -582,7 +601,9 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
     if !((matches!(mode, "recipes" | "oracle-plan") && arguments.len() == 2)
         || (matches!(mode, "check-input" | "ledger") && arguments.len() == 3)
         || (mode == "run" && arguments.len() == 5)
-        || (mode == "run-trace" && arguments.len() == 6))
+        || (mode == "run-trace" && arguments.len() == 6)
+        || (mode == "run-cuda" && arguments.len() == 6)
+        || (mode == "run-trace-cuda" && arguments.len() == 7))
     {
         return Err(usage.into());
     }
@@ -686,15 +707,31 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
     let limit: usize = arguments[4].parse().map_err(|_| "invalid calibration payload budget")?;
     let packed = File::open(&arguments[3]).map_err(|error| error.to_string())?;
     let mut reader = calibration::PackedRows::new(&public.profiles[0].plan.sources, packed)?;
-    let mut trace = if mode == "run-trace" {
+    let mut trace = if matches!(mode, "run-trace" | "run-trace-cuda") {
         Some(calibration::Trace::create(Path::new(&arguments[5]))?)
     } else {
         None
     };
-    let responses = calibration::fixed_run(&public, &mut reader, limit, trace.as_mut())?;
+    let device = if mode.ends_with("-cuda") {
+        Some(calibration::MatrixDevice::new(
+            &public.profiles[0].plan,
+            Path::new(&arguments[3]),
+            Path::new(arguments.last().unwrap()),
+        )?)
+    } else {
+        None
+    };
+    let responses =
+        calibration::fixed_run(&public, &mut reader, limit, trace.as_mut(), device.as_ref());
+    let cuda_metrics = device.as_ref().map(calibration::MatrixDevice::close).transpose()?;
+    if let Some(metrics) = &cuda_metrics {
+        eprintln!("C71_CALIBRATION_CUDA_METRICS {metrics}");
+    }
+    let responses = responses?;
     let trace = trace.map(calibration::Trace::finish).transpose()?;
     Ok(serde_json::json!({
-        "calibrated": false, "credit": false, "gpu_execution": false,
+        "calibrated": false, "credit": false, "gpu_execution": device.is_some(),
+        "cuda_matrix": cuda_metrics,
         "complete_integer_trial": true, "tables_numerically_certified_by_this_binary": false,
         "checkpoint_hash_verified_by_this_binary": false, "public_table_blake3": input.digest,
         "responses": responses, "trace": trace,

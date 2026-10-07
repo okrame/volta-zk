@@ -335,6 +335,13 @@ Lo [screen del driver indipendente](../../scripts/c71_profile_oracle_matrix.py)
 usa la stessa shape e il kernel matriciale Python invariato; richiede
 `NATIVE PACKED`, un solo thread BLAS e AS 64 GiB per il mapping readonly W.
 Non istanzia un'esecuzione indipendente completa e non genera frame.
+`profile-matrix PACKED CUDA_LIBRARY` aggiunge il confronto esatto col
+kernel intero H100 e include caricamento/installazione W nei contatori.
+È uno screen GPU autorizzato, entro 300 s e limiti fisici consueti;
+l'eccezione AS concessa vale solo per i processi CUDA. Per un replay con
+`--matrix-library`, avviare il wrapper CPU con `ulimit -S -v 67108864`
+e hard limit AS illimitato: il wrapper rimuove il soft cap soltanto nel
+figlio CUDA, mentre il confronto indipendente resta sotto 64 GiB.
 
 Registrare il nuovo termine autorizzato in `AUTHORIZED_END_EPOCH`, entro
 6 ore dalla riattivazione. Non riusare epoch, UUID o guard della campagna

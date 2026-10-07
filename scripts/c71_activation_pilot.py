@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
+import ctypes
 import hashlib
 import io
 import json
@@ -21,6 +22,7 @@ import subprocess
 import struct
 import threading
 import time
+import sys
 
 import numpy as np
 
@@ -77,10 +79,17 @@ def work_plan(description, matrix_workers=1):
 
 
 class PackedWeights:
-    def __init__(self, source, descriptors, exponents, scaling="ldexp"):
+    def __init__(self, source, descriptors, exponents, scaling="ldexp", conversion_library=None):
         if scaling not in ("ldexp", "multiply"):
             raise ValueError("unknown pilot weight scaling")
         self.scaling = scaling
+        self.converter = None
+        if conversion_library is not None:
+            if sys.byteorder != "little" or scaling != "multiply":
+                raise ValueError("native pilot conversion requires little-endian multiply scaling")
+            self.converter = ctypes.CDLL(str(conversion_library)).c71_pilot_convert
+            self.converter.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+            self.converter.restype = ctypes.c_int
         self.source = source
         self.descriptors = descriptors
         self.exponents = exponents
@@ -126,7 +135,7 @@ class PackedWeights:
         else:
             values = np.frombuffer(self.mapping, dtype="<i2", count=count * columns,
                                    offset=offset).reshape(count, columns)
-        if np.any(values == -32768):
+        if self.converter is None and np.any(values == -32768):
             raise ValueError("pilot weight outside symmetric i16")
         with self.read_lock:
             self.bytes_read += 2 * count * columns
@@ -136,7 +145,11 @@ class PackedWeights:
                                 or not out.flags.c_contiguous):
             raise ValueError("pilot conversion workspace differs")
         exponent = self.exponents[descriptor["name"]]
-        if self.scaling == "ldexp":
+        if self.converter is not None:
+            converted = np.empty(values.shape, dtype=np.float64) if out is None else out
+            if self.converter(values.ctypes.data, converted.ctypes.data, values.size, exponent):
+                raise ValueError("pilot weight outside symmetric i16")
+        elif self.scaling == "ldexp":
             if out is None:
                 converted = values.astype(np.float64)
             else:
@@ -414,6 +427,7 @@ def main():
     parser.add_argument("--profile-tokens", type=int)
     parser.add_argument("--weight-scaling", choices=("ldexp", "multiply"), default="ldexp")
     parser.add_argument("--reuse-matrix-buffer", action="store_true")
+    parser.add_argument("--conversion-library", type=Path)
     args = parser.parse_args()
     if not 1 <= args.matrix_workers <= 20:
         parser.error("--matrix-workers must be between 1 and 20")
@@ -442,12 +456,16 @@ def main():
                       weight_scaling=args.weight_scaling,
                       reuse_matrix_buffer=args.reuse_matrix_buffer,
                       timeout_seconds=args.timeout_seconds)
+        if args.conversion_library is not None:
+            result.update(conversion_library_sha256=calibration.ingest.stream_sha256(args.conversion_library)[0],
+                          conversion_includes_validation=True)
         weights = report["weight_exponents_by_tensor"]
         calibration.validate_weights(report, {"weight_exponents_by_tensor": weights}, args.packed)
         result.update(packed_sha256=report["packed_sha256"], packed_hash_checked=True)
         workload = json.loads(workload_body)
         with args.packed.open("rb") as source, np.errstate(over="raise", invalid="raise", divide="raise"):
-            reader = PackedWeights(source, description["weight_sources"], weights, args.weight_scaling)
+            reader = PackedWeights(source, description["weight_sources"], weights, args.weight_scaling,
+                                   args.conversion_library)
             result.update(weight_access="readonly_mmap" if reader.mapping is not None else "stream",
                           immutable_weight_mapping_bytes=len(reader.mapping) if reader.mapping is not None else 0)
             executor = (ThreadPoolExecutor(max_workers=args.matrix_workers)

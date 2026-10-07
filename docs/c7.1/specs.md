@@ -160,6 +160,13 @@ il picco delle capacità trattenute; otto worker trattengono al più
 176.160.768 B di scratch, da contare con KV, mapping W e resto del processo.
 La verifica ridotta include code ragged e riuso seriale/parallelo;
 nessun guadagno è implicito nella sola eliminazione delle allocazioni.
+Il convertitore offline opzionale [C11](../../scripts/c71_pilot_convert.c)
+fonde controllo del marcatore, conversione esatta e scala in un passaggio;
+`--conversion-library` richiede `multiply` e host little-endian. Il dot e
+gli altri operatori restano gli stessi. Il report registra il digest
+della libreria; in questa modalità il tempo di validazione è compreso
+in conversione, non nel contatore di lettura. Il controllo UBSan confronta
+l'intero dominio legale, output causali e rifiuto del marcatore.
 
 [canonical_calibration.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs)
 esegue invece gli operatori interi: legge W packed con una cache di riga,

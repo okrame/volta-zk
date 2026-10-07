@@ -366,3 +366,33 @@ def test_reused_conversion_buffer_preserves_live_values_and_full_profile():
     weights.source.getbuffer()[:2] = b"\x00\x80"
     with pytest.raises(ValueError, match="symmetric i16"):
         weights.block(0, 0, 1, out=output)
+
+
+def test_native_conversion_complete_domain_causal_outputs_and_invalid_marker(tmp_path):
+    library = tmp_path / "convert.so"
+    source = Path(pilot.__file__).with_name("c71_pilot_convert.c")
+    subprocess.run(["cc", "-std=c11", "-O3", "-march=native", "-shared", "-fPIC",
+                    "-fsanitize=undefined", "-fno-sanitize-recover=all", str(source),
+                    "-lm", "-o", str(library)], check=True, timeout=30)
+    descriptor = dict(name="all", rows=1, columns=65535, packed_offset=0)
+    values = np.arange(-32767, 32768, dtype="<i2")
+    native = pilot.PackedWeights(io.BytesIO(values.tobytes()), [descriptor], {"all": 0},
+                                 "multiply", library)
+    output = np.empty((1, values.size), dtype=np.float64)
+    for exponent in range(-128, 129):
+        native.exponents["all"] = exponent
+        assert native.block(0, 0, 1, out=output) is output
+        assert output.tobytes() == np.ldexp(values.astype(np.float64), exponent).tobytes()
+    description, weights = small_inputs()
+    reference = pilot.Pilot(description, weights, time.monotonic() + 10).run([0], profile_tokens=6)
+    _, weights = small_inputs()
+    weights = pilot.PackedWeights(weights.source, weights.descriptors, weights.exponents,
+                                   "multiply", library)
+    actual = pilot.Pilot(description, weights, time.monotonic() + 10, reuse_matrix_buffer=True)
+    assert actual.run([0], profile_tokens=6) == reference
+    weights.source.getbuffer()[:2] = b"\x00\x80"
+    with pytest.raises(ValueError, match="symmetric i16"):
+        weights.block(0, 0, 1)
+    with pytest.raises(ValueError, match="little-endian multiply"):
+        pilot.PackedWeights(weights.source, weights.descriptors, weights.exponents,
+                            "ldexp", library)

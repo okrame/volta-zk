@@ -181,6 +181,10 @@ La preparazione locale aggiunge telemetria persistente al pilot CPU per
 localizzare il timeout: contesto/token/operatore, lavoro e tempi separati
 di lettura, conversione e prodotto. Restano da misurare il costo dominante
 e il miglioramento prima del trial lungo; nessuna nuova ammissione Γ.
+Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
+conserva otto fixture del pilot e nove controlli documentali PASS su SHA
+pulita, oltre alla verifica dei bundle; esclude parità parallela, esecuzione
+GPU, W reale e misure fisiche della nuova campagna.
 
 ## Contratto delle risorse
 

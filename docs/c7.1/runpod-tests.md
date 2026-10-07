@@ -276,6 +276,13 @@ conversioni W, lavoro completato, trasferimenti e memoria simultanea.
 Registrare backend, worker e librerie; confrontare configurazioni su input
 e lavoro identici. Un microbenchmark sintetico non è una previsione del
 tempo completo: esplicitare extrapolazioni e quota di lavoro non misurata.
+Per il pilot FP64 H100 compilare `cuda/c71_pilot_f64.cu` con `nvcc -O3
+-std=c++17 -arch=sm_90 --shared -Xcompiler -fPIC --cudart static -lcublas`.
+Eseguire prima la fixture `test_cuda_pilot_fp64_causal_and_ragged_parity`
+con `C71_PILOT_CUDA_LIBRARY` esplicita, poi il prefisso reale con
+`--cuda-library ... --compare-cuda-matrices`, infine lo stesso prefisso
+senza confronto per il timing. Registrare digest, cuBLAS, scale/token e
+scarti FP64 privati; la parità numerica non va chiamata bitwise se differisce.
 Il report del 4 ottobre non conserva token/operatore raggiunti al timeout;
 quei dati non possono essere ricostruiti dai soli campioni RSS.
 Per confrontare prefissi identici usare il modo `profile --profile-tokens N`

@@ -168,12 +168,13 @@ class PackedWeights:
 
 class Pilot:
     def __init__(self, description, weights, deadline, matrix_executor=None, progress=None,
-                 reuse_matrix_buffer=False):
+                 reuse_matrix_buffer=False, cuda_matrices=None):
         self.description = description
         self.graph = description["pilot"]
         self.weights = weights
         self.deadline = deadline
         self.matrix_executor = matrix_executor
+        self.cuda_matrices = cuda_matrices
         self.progress = progress
         self.started_at = time.monotonic()
         self.last_progress = -math.inf
@@ -238,6 +239,10 @@ class Pilot:
         if operation == "matrix":
             tensor = parameters["weight"]
             rows = self.weights.descriptors[tensor]["rows"]
+            if self.cuda_matrices is not None:
+                result = self.cuda_matrices.matrix(tensor, inputs[0])
+                self.matrix_scalar_products += rows * inputs[0].size
+                return result
             result = np.empty(rows, dtype=np.float64)
             def multiply(first):
                 self.check_deadline()
@@ -428,9 +433,15 @@ def main():
     parser.add_argument("--weight-scaling", choices=("ldexp", "multiply"), default="ldexp")
     parser.add_argument("--reuse-matrix-buffer", action="store_true")
     parser.add_argument("--conversion-library", type=Path)
+    parser.add_argument("--cuda-library", type=Path)
+    parser.add_argument("--compare-cuda-matrices", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.matrix_workers <= 20:
         parser.error("--matrix-workers must be between 1 and 20")
+    if args.cuda_library is not None and (args.matrix_workers != 1 or args.conversion_library is not None):
+        parser.error("CUDA matrices require one worker and no CPU conversion library")
+    if args.compare_cuda_matrices and (args.cuda_library is None or args.mode != "profile"):
+        parser.error("CUDA comparisons require profile mode and --cuda-library")
     if (args.mode == "profile") != (args.profile_tokens is not None):
         parser.error("only profile requires --profile-tokens")
     description = json.loads(subprocess.run([str(args.native), "describe"], capture_output=True,
@@ -444,6 +455,7 @@ def main():
     args.output.mkdir(mode=0o700)
     result = dict(calibrated=False, floating_initialization_only=True, complete=False, credit=False)
     pilot = None
+    cuda_matrices = None
     progress = open(args.output / "progress.jsonl", "x", opener=lambda path, flags: os.open(path, flags, 0o600))
     try:
         report_body = args.ingest_report.read_bytes()
@@ -466,13 +478,18 @@ def main():
         with args.packed.open("rb") as source, np.errstate(over="raise", invalid="raise", divide="raise"):
             reader = PackedWeights(source, description["weight_sources"], weights, args.weight_scaling,
                                    args.conversion_library)
+            if args.cuda_library is not None:
+                from c71_activation_pilot_cuda import CudaMatrices
+                result.update(cuda_library_sha256=calibration.ingest.stream_sha256(args.cuda_library)[0],
+                              matrix_backend="cuda-cublas-fp64")
+                cuda_matrices = CudaMatrices(args.cuda_library, reader, args.compare_cuda_matrices)
             result.update(weight_access="readonly_mmap" if reader.mapping is not None else "stream",
                           immutable_weight_mapping_bytes=len(reader.mapping) if reader.mapping is not None else 0)
             executor = (ThreadPoolExecutor(max_workers=args.matrix_workers)
                         if args.matrix_workers > 1 else nullcontext(None))
             with executor as pool:
                 pilot = Pilot(description, reader, time.monotonic() + args.timeout_seconds, pool, progress,
-                              args.reuse_matrix_buffer)
+                              args.reuse_matrix_buffer, cuda_matrices)
                 candidate, observations = pilot.run(workload["prompt"]["token_ids"], args.profile_tokens)
         if args.mode == "profile":
             result.update(observations, complete=False, success=True)
@@ -493,6 +510,14 @@ def main():
     else:
         result["success"] = True
     finally:
+        cleanup_error = None
+        if cuda_matrices is not None:
+            result["cuda_metrics"] = cuda_matrices.metrics()
+            try:
+                cuda_matrices.close()
+            except Exception as error:
+                result.update(success=False, error=str(error))
+                cleanup_error = error
         if pilot is not None:
             pilot.emit_progress("complete" if result.get("success") else "failed", force=True)
             result.update(progress=pilot.metrics(), operator_timings=pilot.operator_timings)
@@ -500,6 +525,8 @@ def main():
         with open(args.output / "report.json", "x", opener=lambda path, flags: os.open(path, flags, 0o600)) as sink:
             json.dump(result, sink, indent=2, sort_keys=True)
             sink.write("\n")
+        if cleanup_error is not None:
+            raise cleanup_error
 
 
 if __name__ == "__main__":

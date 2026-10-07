@@ -396,3 +396,38 @@ def test_native_conversion_complete_domain_causal_outputs_and_invalid_marker(tmp
     with pytest.raises(ValueError, match="little-endian multiply"):
         pilot.PackedWeights(weights.source, weights.descriptors, weights.exponents,
                             "ldexp", library)
+
+
+@pytest.mark.skipif(not os.environ.get("C71_PILOT_CUDA_LIBRARY"), reason="explicit authorized H100 only")
+def test_cuda_pilot_fp64_causal_and_ragged_parity():
+    from c71_activation_pilot_cuda import CudaMatrices
+    library = Path(os.environ["C71_PILOT_CUDA_LIBRARY"])
+    description, weights = small_inputs()
+    expected = pilot.Pilot(description, weights, time.monotonic() + 30).run([0])
+    _, weights = small_inputs()
+    gpu = CudaMatrices(library, weights, compare=True)
+    try:
+        actual = pilot.Pilot(description, weights, time.monotonic() + 30, cuda_matrices=gpu).run([0])
+        assert actual[0] == expected[0] and actual[1]["responses"] == expected[1]["responses"]
+        assert gpu.metrics()["comparison_max_error_ratio"] <= 1
+    finally:
+        gpu.close()
+    with pytest.raises(ValueError, match="closed"):
+        gpu.matrix(0, np.ones(2))
+    for rows, columns in ((257, 129), (3, 21504)):
+        descriptor = dict(name="ragged", rows=rows, columns=columns, packed_offset=0)
+        values = np.random.default_rng(71).integers(-32767, 32768, (rows, columns), dtype=np.int16)
+        weights = pilot.PackedWeights(io.BytesIO(values.tobytes()), [descriptor], {"ragged": -17})
+        gpu = CudaMatrices(library, weights, compare=True)
+        try:
+            output = gpu.matrix(0, np.sin(np.arange(columns, dtype=np.float64)))
+            assert output.shape == (rows,) and gpu.metrics()["comparison_max_error_ratio"] <= 1
+            with pytest.raises(RuntimeError, match="no fallback"):
+                gpu.matrix(0, np.full(columns, np.nan))
+            with pytest.raises(RuntimeError, match="no fallback"):
+                gpu.matrix(0, np.zeros(columns))
+        finally:
+            gpu.close()
+    weights.source.getbuffer()[:2] = b"\x00\x80"
+    with pytest.raises(RuntimeError, match="no fallback"):
+        CudaMatrices(library, weights)

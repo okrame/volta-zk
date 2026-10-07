@@ -119,7 +119,7 @@ dequantizzata, DAG nativo e KV causale floating per proporre una sola
 mappa A sui tre contesti, con un bit di margine sugli estremi osservati.
 Questo calcolo approssimato inizializza le scale; non certifica Γ.
 Il percorso corrente è CPU/binary64; un backend accelerato è lavoro da
-implementare e verificare, non una calibrazione GPU già disponibile.
+verificare sul workload reale, non una calibrazione GPU già acquisita.
 Confrontare il percorso modificato col riferimento su input fissati,
 preservando aritmetica, copertura, ordine causale e rifiuto dei non-finiti.
 Registrare backend, configurazione e digest numerici pertinenti. Una
@@ -167,6 +167,19 @@ gli altri operatori restano gli stessi. Il report registra il digest
 della libreria; in questa modalità il tempo di validazione è compreso
 in conversione, non nel contatore di lettura. Il controllo UBSan confronta
 l'intero dominio legale, output causali e rifiuto del marcatore.
+Il backend floating opzionale [H100 FP64](../../cuda/c71_pilot_f64.cu),
+selezionato con `--cuda-library` e un worker, conserva una W i16 residente
+e converte blocchi da 128 righe prima di cuBLAS DGEMV. Norm, nonlineari,
+attention, KV e schedule restano CPU. Non usa BF16/TF32; l'ordine delle
+somme FP64 può differire dal BLAS CPU e non implica parità bit per bit.
+`profile --compare-cuda-matrices` confronta ogni dot a input identici
+entro `4*K*epsilon*sum(abs(w*x))`, registra anche uguaglianza bitwise e
+lavoro extra del confronto. Verificare separatamente scale osservate e
+token, poi misurare senza confronto. Questi check non ammettono Γ.
+Il report privato separa upload/installazione W, conversione, GEMV, D2H,
+traffico nei due sensi, W host/device e workspace posseduti; contesto e
+allocazioni interne della libreria richiedono ancora misura fisica.
+Errori CUDA, valori non-finiti e cleanup fallito sono terminali, senza fallback.
 
 [canonical_calibration.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs)
 esegue invece gli operatori interi: legge W packed con un buffer di al più

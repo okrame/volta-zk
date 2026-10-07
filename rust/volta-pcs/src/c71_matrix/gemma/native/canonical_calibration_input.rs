@@ -491,11 +491,13 @@ impl Tables {
 }
 
 pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
-    let usage = "usage: c71_calibration describe | recipes CANDIDATE | oracle-plan CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES | run-trace CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE";
+    let usage = "usage: c71_calibration describe | profile-matrix PACKED | recipes CANDIDATE | oracle-plan CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES | run-trace CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE";
     let Some(mode) = arguments.first().map(String::as_str) else {
         return Err(usage.into());
     };
-    if mode == "describe" && arguments.len() == 1 {
+    if (mode == "describe" && arguments.len() == 1)
+        || (mode == "profile-matrix" && arguments.len() == 2)
+    {
         let plan = super::super::super::compile()?;
         let (sources, output, softmax) = plan.softmax_sources_at(0)?;
         let bytes = &sources.attention.rope.gate_up.gelu.rms.bytes;
@@ -508,6 +510,39 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
             exponents.insert(layer.pi, -14);
         }
         let pilot = Canonical::compile(0, &[0; 772], &exponents)?;
+        if mode == "profile-matrix" {
+            // Offline screen for phase planning: actual W, synthetic i16 input.
+            // No candidate, tables, causal inference or admission is produced.
+            let raw = pilot.plan.cohorts.iter().enumerate()
+                .filter(|(_, cohort)| cohort.kind == Kind::Matrix)
+                .max_by_key(|(_, cohort)| cohort.inner)
+                .map(|(id, _)| id).ok_or("matrix profile has no matrix")?;
+            let batch = pilot.matrix_batch(raw, 0, 1)?;
+            let reader = std::cell::RefCell::new(calibration::PackedRows::new(
+                &pilot.plan.sources, File::open(&arguments[1]).map_err(|e| e.to_string())?,
+            )?);
+            let reads = std::cell::Cell::new(0usize);
+            let started = std::time::Instant::now();
+            let output = pilot.prepare_matrix_batch(raw, 0, 1, 8 << 20,
+                |id, row, col| {
+                    reads.set(reads.get() + 1);
+                    reader.borrow_mut().get(id, row, col)
+                }, |_, _, col| Ok(if col % 2 == 0 { 32767 } else { -32767 }))?;
+            let elapsed = started.elapsed().as_secs_f64();
+            if output.values.len() != 1 || output.values[0].2.len() != batch.columns
+                || reads.get() != batch.columns * batch.inner
+            {
+                return Err("matrix profile coverage differs".into());
+            }
+            std::hint::black_box(&output);
+            return Ok(serde_json::json!({"credit": false, "calibrated": false,
+                "profile_only": true, "complete_integer_trial": false,
+                "packed_hash_checked": false, "synthetic_input": true,
+                "rows": batch.columns, "columns": batch.inner,
+                "matrix_scalar_products": reads.get(), "wall_seconds": elapsed,
+                "packed_row_loads": reader.borrow().row_loads,
+                "packed_row_bytes": reader.borrow().completed_row_bytes}));
+        }
         return Ok(serde_json::json!({
             "calibrated": false,
             "weight_sources": plan.sources.iter().enumerate().map(|(id, source)| serde_json::json!({

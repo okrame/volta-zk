@@ -317,6 +317,15 @@ Il pack nativo verifica già header, entrambi i corpi e output persistito.
 
 ### Budget delle fasi
 
+Per stimare il costo del replay prima di disporre della candidata,
+`c71_calibration profile-matrix PACKED` misura una proiezione con K massimo
+su W reale e input i16 sintetico alternato agli estremi. Eseguire solo sul
+pod autorizzato, entro 60 s/2 GiB, con packed già verificato dall'ingest.
+Usa il kernel e il reader del replay CPU e dichiara `credit:false`,
+`packed_hash_checked:false`, `complete_integer_trial:false`: non valida
+scale, tabelle, causalità o Γ. L'extrapolazione dei prodotti è una stima
+parziale; aggiungere tabelle, altri operatori, I/O traccia e driver indipendente.
+
 Registrare il nuovo termine autorizzato in `AUTHORIZED_END_EPOCH`, entro
 6 ore dalla riattivazione. Non riusare epoch, UUID o guard della campagna
 precedente: riconfigurare copie nuove dei monitor e verificarne l'arresto.

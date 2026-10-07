@@ -407,6 +407,17 @@ errore si saltano le fasi dipendenti di quel trial e si conserva il fallimento;
 un trial successivo preautorizzato richiede nuovi file e prerequisiti risolti;
 la chiusura concordata non si rinvia per completare o salvare un run.
 
+Il prefisso del nuovo replay a righe KV misura circa 2,48 s/token. Il suo
+budget iniziale (960 s nativi / 1.200 s esterni) non coprirebbe 450 token
+più caricamento: l'agent interrompe il prefisso, ne conserva l'evidenza e
+riparte da KV vuoto. Il piano aggiornato assegna fino a 1.500 s esterni /
+1.350 s nativi al replay senza traccia, poi fino a 6.300 s esterni al replay
+con traccia e confronto (50–75 min stimati per il confronto C11 a 8 worker),
+più fino a 300 s per il ledger e 5 min per i controlli di ammissione.
+Ogni lancio è ridotto al residuo prima delle 16:34:46 UTC; la deadline
+complessiva e i budget fisici restano invariati. Diagnostica solo dopo
+ammissione e soltanto se rimane tempo sufficiente; nessuna proroga.
+
 ### Identità degli input
 
 Usare esclusivamente [checkpoint, shard, digest e workload delle specifiche](specs.md#input-e-identità),

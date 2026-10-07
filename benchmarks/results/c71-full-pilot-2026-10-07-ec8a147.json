@@ -1,0 +1,88 @@
+{
+  "calibrated": false,
+  "candidate_compiles": true,
+  "complete_floating_pilot": true,
+  "context_completions": [
+    {
+      "completed_tokens": 150,
+      "context": 0,
+      "elapsed_seconds": 242.63167617470026,
+      "history_payload_bytes": 540672000
+    },
+    {
+      "completed_tokens": 300,
+      "context": 150,
+      "elapsed_seconds": 528.5935880057514,
+      "history_payload_bytes": 1081344000
+    },
+    {
+      "completed_tokens": 450,
+      "context": 300,
+      "elapsed_seconds": 846.0498109124601,
+      "history_payload_bytes": 1622016000
+    }
+  ],
+  "contexts": [
+    0,
+    150,
+    300
+  ],
+  "credit": false,
+  "cuda_library_sha256": "8c4dc8cb44499319970e88c74cff2fef8b6debcaaaf7fcebe03f72c6b4c991bf",
+  "cuda_metrics": {
+    "conversion_seconds": 160.54156020144063,
+    "d2h_bytes": 15539404800,
+    "device_weight_bytes": 61394690560,
+    "device_workspace_bytes": 30581760,
+    "download_seconds": 151.5007439116021,
+    "gemv_seconds": 244.20461435901268,
+    "h2d_bytes": 73722933760,
+    "initialization_seconds": 20.94188179448247,
+    "upload_seconds": 23.565006845000166
+  },
+  "date": "2026-10-07",
+  "final_f64_kv_payload_bytes": 1622016000,
+  "final_token_absorbed_in_all_contexts": true,
+  "git_dirty": false,
+  "git_sha": "ec8a147b3df85a092b8e02b410afaf6d90302a8c",
+  "hbm_sampled_margin_to_80000000000_bytes": 17394769920,
+  "immutable_host_weight_mapping_bytes": 61394690560,
+  "limits": "Offline calibration; excludes protocol arena or complete physical peak claims.",
+  "logical_weight_read_bytes": 26782043904000,
+  "matrix_scalar_products": 13390420377600,
+  "missing": [
+    "Two complete integer replays",
+    "Complete independent comparison",
+    "All five Gamma admission checks",
+    "Conditional O=0/150/300 protocol diagnostics"
+  ],
+  "native_build_commit": "d2b77f2a24f5effa90763fff91333165ab56fb38",
+  "native_sha256": "3acc78cc9186ffe50f332ef899abd38d538e394e0d34e4ec7bb85ac96feb254e",
+  "notes": [
+    "Full pilot is an initializer, not exact integer inference or Gamma admission.",
+    "FP64 finite equivalence tests cover two real O=0 tokens and reduced fixtures; full CPU/GPU bitwise equivalence was not measured.",
+    "No emitted private intermediate values or digests; candidate and extrema are retained only in the private bundle."
+  ],
+  "outer_wall_seconds": 928.8389153257012,
+  "packed_sha256": "1a88da14c15d24133d0df40ff2a3acdbc54e7b91634a8304e787a5701ac8dac8",
+  "physical": {
+    "physical_complete_peak": false,
+    "sampled_host_rss_peak_bytes": 63518220288,
+    "sampled_joint_peak_bytes": 125709283328,
+    "sampled_whole_gpu_peak_bytes": 62605230080,
+    "samples": 4638,
+    "sampling_limit": "Sampled lower bound; RSS may double count shared pages; includes whole GPU runtime/context. Does not by itself prove every transient peak or retained-capacity coverage.",
+    "sampling_target_seconds": 0.2
+  },
+  "pilot_elapsed_seconds": 853.5763717517257,
+  "private_bundle": "pilot-complete-20261007T133500Z",
+  "retained_pilot_payload_peak_bytes": 1622605824,
+  "schema": "volta-c71-full-floating-pilot-v1",
+  "status": "PILOT_PASS_GAMMA_UNADMITTED",
+  "tokens_per_context": [
+    150,
+    150,
+    150
+  ],
+  "workload_sha256": "70875c659be2b2bc0079a954233da639fe1584136c17f8fb353b589454a5d62b"
+}

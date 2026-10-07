@@ -139,7 +139,9 @@ uno screen su W reale e input sintetico misura 0,0464 s per 115.605.504
 prodotti. L'extrapolazione di circa 90 minuti copre solo le matrici del
 workload completo, non certifica il tempo totale. Export completo e
 [driver indipendente](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
-coprono i 13 producer; Γ numericamente validato, due replay completi e
+coprono i 13 producer; Il [pilot completo](../../benchmarks/results/c71-full-pilot-2026-10-07-ec8a147.json)
+ha completato 450 token in 853,58 s (wall esterno 928,84 s) e prodotto
+una candidata compilabile. Γ numericamente validato, due replay completi e
 confronto indipendente sui pesi reali restano da acquisire. La prova non
 certifica provenienza W, qualità del modello o correttezza delle tabelle.
 
@@ -193,12 +195,13 @@ arresto indipendente 16:59:46, termine inderogabile 17:04:46 UTC.
 L'owner ha autorizzato esplicitamente l'eccezione AS per i soli processi
 CUDA; CPU AS 64 GiB, limiti fisici e durata restano invariati.
 La nuova ingestione ha verificato entrambi gli shard e il packed completo.
-Il massimo RSS+HBM campionato del confronto FP64 è 124.434.452.480 B,
+Il massimo RSS+HBM campionato del pilot completo è 125.709.283.328 B,
 incluse le due copie W; HBM 62.605.230.080 B, margine campionato
 17.394.769.920 B sul tetto di 80 GB. Non è un picco fisico completo né
 un risultato sull'arena della prova. I bundle chiusi preparazione,
-prefissi e kernel sono verificati; nessuna candidata completa è ancora
-ammessa. Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
+prefissi, kernel e pilot completo sono verificati. La candidata floating
+compila e le tabelle certificate passano il controllo nativo degli input;
+il replay intero senza traccia è in corso, Γ non è ancora ammesso. Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
 resta evidenza della sola preparazione precedente.
 
 ## Contratto delle risorse

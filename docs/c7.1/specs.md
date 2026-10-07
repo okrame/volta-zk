@@ -118,6 +118,17 @@ byte BF16 sottoposti a hash e pubblica il packed atomicamente.
 dequantizzata, DAG nativo e KV causale floating per proporre una sola
 mappa A sui tre contesti, con un bit di margine sugli estremi osservati.
 Questo calcolo approssimato inizializza le scale; non certifica Γ.
+Il percorso corrente è CPU/binary64; un backend accelerato è lavoro da
+implementare e verificare, non una calibrazione GPU già disponibile.
+Confrontare il percorso modificato col riferimento su input fissati,
+preservando aritmetica, copertura, ordine causale e rifiuto dei non-finiti.
+Registrare backend, configurazione e digest numerici pertinenti. Una
+parità ridotta o un guadagno di throughput non sostituisce i cinque
+controlli di [ammissione](runpod-tests.md#validazione-e-congelamento-del-profilo).
+La telemetria offline conserva contesto, indice del token, operatore,
+tempi e lavoro completato anche su errore, senza valori W/A/KV o ragioni
+private nel transcript; le prescrizioni sono nel
+[runbook](runpod-tests.md#accelerazione-dellinizializzatore).
 
 [canonical_calibration.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs)
 esegue invece gli operatori interi: legge W packed con una cache di riga,
@@ -197,7 +208,7 @@ soddisfare questo contratto:
 - Elaborare per righe/blocchi con memoria e output limitati: nessuna A
   canonica completa in RAM. I valori sono privati e restano fuori da Git
   e dal transcript del protocollo; conservare solo evidenze piccole
-  revisionate. Tempo, disco e memoria del confronto vanno nel preventivo
+  revisionate. Tempo, disco e memoria del confronto vanno nel piano
   della campagna, non in un prolungamento implicito.
 
 Le fixture ridotte producono gli interi attesi con
@@ -865,24 +876,11 @@ Il burn copre però anche il suffisso non espanso dopo un rifiuto.
 Proof, cache, iteratori, output, conversioni e allocator restano memoria
 da contare anche quando la copia della riserva è eliminata.
 
-Il [primo FAIL H100](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json) resta immutabile; il
-[trial corretto](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json) passa operatori sintetici e confronto ridotto
-sui MAC originali. Il massimo campionato RSS+HBM di questi controlli è
-734.404.608 B. HWM host e massimi HBM separati non si sommano; questi
-campioni non verificano picco completo, capacità trattenute o riserva
-fisica canonica. O=0/150/300 non è ancora misurato. La correzione della
-fixture Gate conserva il contratto del launcher; ricette, semantica,
-endpoint, MAC e transcript della costruzione rimangono invariati.
-L'[ingestione reale PASS](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2fa95eaf7.json) lega entrambi i corpi pinned, i 772
-esponenti minimi e l'hash packed `1a88da14…1ac8dac8`; non ammette Γ.
-Il mapping readonly del pilot conserva W immutabile, distinto dai
-temporanei: non sottrarre la lunghezza del file al RSS senza censirne
-la residenza. I campioni offline non dimostrano l'arena della prova. Il [checkpoint finale](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json)
-registra timeout del pilot senza candidata: Γ e i tre contesti canonici
-non sono acquisiti. RSS+HBM campionato massimo 62.255.046.656 B include W;
-la lettura smaps puntuale distingue W residente e 732.696.576 B non-W di
-un processo, senza chiudere picco globale o capacità trattenute. I 29
-campioni HBM non nulli restano non attribuiti; non sommare massimi separati.
+Lo [stato H100](runpod-tests.md#stato-e-sequenza-operativa) distingue
+parità ridotte PASS e calibrazione incompleta. Il mapping W readonly è
+materiale globale immutabile; non sottrarre la lunghezza del packed dal
+RSS senza misurarne la residenza. Nessun campione offline chiude l'arena
+canonica o tutte le capacità trattenute.
 
 ## Correlazioni Seed6
 
@@ -938,11 +936,10 @@ col turno e non si ammortizza il setup su risposte future.
 | W device + massimo con riserva (upper conservativo) | 67.568.706.048 B; attribuisce conservativamente al device anche i byte host |
 | Tempo e lavoro | Nessun nuovo upper completo: i tempi dei vecchi screen non incorporano questa implementazione |
 
-I massimi 6.087.512.576 / 6.126.837.504 / 6.166.159.104 B e i tempi
-45,267005 / 52,813136 / 60,657831 s appartengono al piano precedente,
-con slot non dimostrati e primitive diverse. Restano nei record storici;
-non sostituiscono il ledger del runner misto. KV e tabelle sono inclusi
-nel conto temporaneo corrente, mai aggiunti nuovamente al picco CUDA.
+I picchi e i tempi degli screen precedenti appartengono a primitive e
+premesse diverse, conservate nei record storici. Non sono upper applicabili
+al runner misto corrente. KV e tabelle sono già nel conto temporaneo,
+mai aggiunti una seconda volta al picco CUDA.
 
 I conteggi eseguibili sono in [arena](../../scripts/c71_arena_plan.py),
 [response](../../scripts/c71_response_trace.py), [WHIR](../../scripts/c71_whir_trace.py),
@@ -960,15 +957,11 @@ stato PCG/OT/Fp6, runtime e allocator simultaneamente vivi. Il conto
 fisico completo è aperto; un costo ignoto non vale zero. I tre contesti
 devono essere ricontati con Γ reale tramite `c71_calibrate.py ledger`.
 Il benchmark della prova richiede anche integrazione canonica, input,
-SHA pulita, durata/costo e soglie dichiarate in [runpod-tests](runpod-tests.md).
+SHA pulita, durata autorizzata, arresto e soglie dichiarate in
+[runpod-tests](runpod-tests.md), senza requisito di preventivo economico.
 
 Il verificatore usa al massimo quattro worker complessivi, senza pool
 annidati che moltiplichino i thread. Si contano decoding, hash, campo,
 GKR/PCS, PCG, MAC e aggiornamento dello stato; registrare tempo CPU e
 wall, RSS, affinità e backend AES. Non richiede W, una GPU o un servizio
 remoto. Tempi di CPU differenti non sono intercambiabili.
-
-Il [record locale a SHA pulita 82dae48](../../benchmarks/results/c71-temporary-memory-local-2026-10-04-82dae4818962.json) conserva 41 test Rust
-e 11 Python passati, build lib/runner/sm_90, ledger, hash e fallimenti
-intermedi. Un test GPU resta intenzionalmente ignorato. Non acquisisce
-W reale, esecuzione canonica o conformità fisica H100.

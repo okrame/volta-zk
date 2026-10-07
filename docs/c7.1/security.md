@@ -90,7 +90,10 @@ dalla prova:
 - i profili PCS flat D35/D34, alphabet/range/padding, capacità iniziale,
   ordine di verifica definito sotto e limiti pubblici dei kernel.
 
-Si prepara e valida Γ **prima di W, bootstrap e prova**. Le tabelle sono
+Si prepara e valida Γ **prima dell'installazione autenticata di W,
+del bootstrap e della prova**. La lettura dei pesi per la calibrazione
+offline precede quell'installazione e non usa correlazioni di sessione.
+Le tabelle sono
 quelle attese dal verifier, derivate dalle ricette certificate; confrontare
 un digest fornito dal prover non certifica una tabella. Il teorema è
 parametrico in Γ valido; scegliere/calibrare Γ del checkpoint reale non
@@ -505,251 +508,95 @@ chiudono il raffinamento della composizione Seed6. Le misure di fase sono
 diagnostici locali fuori dal transcript; non contengono valori privati.
 Nessun bound 82,93/91,02 viene attribuito alla composizione Seed6 completa.
 
-Le credenziali provider locali non fanno parte del protocollo. Il
-[preflight dei permessi](../../benchmarks/results/c71-local-secret-permissions-2026-10-03-d14843b3e1fb.json)
-rifiuta `.env` non regolare, non posseduto dall'utente o con qualunque bit
-di gruppo/altri; non legge né registra i valori. Il file locale rilevato è
-ignorato da Git ed è stato portato da `0664` a `0600`.
-Il termine massimo e lo spegnimento del provider sono esterni al protocollo.
-Il [runbook](runpod-tests.md#stato-e-sequenza-operativa) registra la campagna
-H100 autorizzata del 4 ottobre, entro 6 ore, con arresto a carico dell'agente;
-non richiede preventivo economico. Il
-[record storico](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
-conserva il fallimento dei flag di deadline ignorati, senza attribuire
-credito al protocollo. Il bundle esterno è limitato a 10 GB: ricreare e
-verificare il packed su un nuovo pod non autorizza riuso di correlazioni,
-journal o KV, né modifica NoPeek, MAC originali o trust model.
+### Obblighi del runner implementato
+
+Le credenziali provider, la durata della campagna e lo spegnimento sono
+esterni al protocollo; la procedura corrente è nel
+[runbook](runpod-tests.md#stato-e-sequenza-operativa). Il riuso di input o
+binari non autorizza riuso di correlazioni, journal o KV terminale.
 
 Il [prover CPU](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prove.rs)
-e il [registro dei due ruoli](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state.rs)
-collegano ora la schedule e la promozione dopo i journal. Per il programma
-canonico restano Γ reale validato, verifica positiva dell'intera pipeline,
-correttezza dei getter su tutti gli operatori e alias e convalida della
-copertura dei MAC originali sui certificati prodotti. La presenza del
-codice non scarica questi obblighi. Le ottimizzazioni che conservano messaggi e polinomi devono
-preservare anche l'ordine delle letture prima delle correlazioni, detto
-NoPeek, e contabilizzare tutte le risorse. La parità ridotta di byte,
-transcript e MAC è un controllo necessario, non una prova generale Lean.
-Il [controllo locale a due tentativi con Seed6 reale](../../benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json)
-è scaduto durante il secondo tentativo e non scarica questo obbligo.
+e il [registro](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state.rs)
+collegano schedule, verifica e promozione dopo journal durevoli. Il runner
+misto conserva gli stessi messaggi, polinomi e MAC originali. La presenza
+del codice e i test finiti non sono un lemma Lean di raffinamento o una
+prova della composizione Seed6. Restano da verificare Γ reale, pipeline
+canonica positiva, getter su tutti gli operatori/alias e copertura dei MAC
+originali nei certificati prodotti.
 
-Il [collegamento dello scanner iniziale](../c7.1-history/canonical-initial-scan.md)
-riordina soltanto l'accumulazione degli stessi coefficienti originali:
-non cambia polinomio, posizioni dei pad, sali o messaggi. Lo scanner non
-riceve monete PCS né correlazioni; il contratto interno richiede una sola
-emissione per coefficiente e valori identici al getter immutabile. La
-copertura delle righe canoniche e la partizione fissa delle tessere
-supportano questo contratto; il solo contatore di emissioni nel coset
-non prova l'unicità degli indici di uno scanner arbitrario. Root e aperture
-sono confrontati col commitment denso indipendente a monete fissate su
-dominio piccolo. Non è una prova per tutti i produttori canonici, del
-raffinamento CUDA o della composizione Seed6; non cambia i bound dichiarati.
+Scanner e reader emettono soltanto valori dello snapshot immutabile,
+senza monete PCS o correlazioni. Lo scanner richiede una sola emissione
+per coefficiente; il conteggio totale non dimostra unicità degli indici.
+Padding, pad privati, sali e ordine dei resti sono preservati. Le riduzioni
+S1 usano Eq sul prefisso già fissato e sull'indice originale, sommando i
+contributi folded senza creare nuove sorgenti. Singleton, coset, OOD e
+retention restano distinti; errori impediscono l'installazione di stato
+parziale. Il batching del replay condivide letture W, non arrotondamenti,
+polinomi o nuove autenticazioni. La cache Q termina al secondo fold e
+non riusa monete o correlazioni.
 
-Lo stesso contratto immutabile vale per il
-[lettore a finestre delle query](../c7.1-history/canonical-query-windows.md).
-Il reader emette solo byte originali; il codice PCS conserva padding
-esterno, posizioni dei pad privati e ordine dei resti. Nessuna finestra
-diventa un nuovo commitment o una nuova autenticazione. Il callback
-non riceve coin PCS o correlazioni. Il confronto ridotto della catena
-controlla transcript, codec, S1 trattenuto e chiusura sugli stessi MAC;
-un reader alterato è rifiutato dal root già fissato. Questi controlli
-non attestano la composizione canonica o un nuovo lemma generale.
+Il gather range permuta solo indirizzi pubblici, preservando MSB e bit
+del sottoalbero. Il reader restituisce i byte originali nello stesso
+ordine dello scanner, con il bias previsto: una root uguale non dimostra
+questa proprietà. L'istogramma originale è fissato prima delle correlazioni
+e autenticato nel range. Le contrazioni H operano sul tail pubblico e i
+fold usano le sfide già emesse, secondo la fraction tree; nessuna finestra
+diventa un nuovo commitment o MAC. W signed usa gli stessi originali,
+con suffisso zero nel medesimo dominio. I dettagli sono nelle
+[specifiche](specs.md#preparazione-e-prova-a-memoria-limitata).
 
-Le [riduzioni S1 sourcewise](../c7.1-history/canonical-residual-scan.md)
-spostano soltanto somme e prodotti lineari: il peso Eq usa esclusivamente
-il prefisso già fissato e l'indice originale. I contributi duplicati a
-un indice folded sono sommati, non reinterpretati come nuove sorgenti.
-Singleton, ogni coset, OOD e retention rimangono passaggi separati.
-Gli errori del produttore/consumer si propagano prima di installare S1;
-il contratto di unicità dei byte originali resta quello dello scanner,
-non è dimostrato dal solo conteggio. Il controllo ridotto rende il getter
-originale inutilizzabile e confronta l'intera prova col percorso denso,
-ma non scarica il raffinamento dei produttori canonici, CUDA o Seed6.
-Lo scanner dello snapshot ora completa un producer su tutte le righe
-prima del successivo. Non usa token futuri per generarne di nuovi: token,
-KV e checkpoint sono già fissati, e ogni decisione ricostruita è confrontata
-con lo snapshot. Input/output raw, route lm_head, istogrammi e indici dei
-byte originali non cambiano. Il batch matriciale condivide solo letture
-degli stessi pesi: non arrotonda, non cambia i polinomi e non introduce
-MAC. Le barriere FS e NoPeek rimangono quelle dei consumer chiamanti.
-I controlli ridotti non provano la ricostruzione di tutto Gemma o il
-raffinamento GPU; la generazione iniziale rimane sequenziale e causale.
+Il kernel denso conserva il prodotto intero con split signed, quattro
+MMA INT8 e correzioni esatte, accumuli bounded e raw i64; RNE, Norm u128,
+lookup, EXP30, RoPE e argmax mantengono la semantica selezionata e rifiutano
+overflow. I test host e la parità CUDA ridotta non provano il raffinamento
+concorrente generale dei kernel o il forward Gemma completo. Il codec
+byte ammette −32768 per lo slack argmax biased-u16, senza ammetterlo come
+input aritmetico ordinario.
 
-Il [collegamento degli stadi PCS](../c7.1-history/canonical-pcs-stages.md)
-conserva polinomi, sali, codec e sfide. La cache di Q dipende dalle basi
-Pow già fissate: le due sfide cambiano solo le ampiezze del numeratore.
-La cache termina al secondo fold e non riusa monete o correlazioni.
-La selezione di coset è una scelta fisica, non una nuova garanzia ZK o
-di memoria. Ammettere D35 nel riferimento CPU non prova l'esecuzione
-canonica, il limite temporale o la composizione Seed6.
+L'owner valida ABI, identità del runtime, handle, span, shape e alias;
+handle coincidenti di librerie o contesti distinti non autorizzano consumo.
+Un solo lock governa l'owner durante il range; il reader residente non
+riacquisisce quel lock e non riceve transcript o MAC. Output e istogrammi
+restano pending fino a copertura completa, fence e flag validi. W parziale
+o riscritta, errori asincroni, cleanup/free fallita o uscita senza
+finalizzazione sono terminali, senza fallback o nuova arena. La libreria
+è codice locale fidato, non un oggetto fornito dal certificato.
 
-Il [gather range](../c7.1-history/canonical-range-gather.md) permuta solo
-indirizzi pubblici: prima coordinata MSB e bit del sottoalbero preservati.
-Il reader non riceve sfide, MAC o correlazioni e riusa gli stessi owner
-immutabili di checkpoint, istogrammi e byte biased. Le intersezioni delle
-tessere non dipendono da sfide future. I test controllano la bijezione
-finita e il confronto con gli originali. Il
-[consumer range A](../c7.1-history/canonical-windowed-range.md) collega ora
-quel reader alla prova CPU, riusando l'autenticazione e l'ordine FS della
-fraction tree. La matrice privata H contrae i prodotti dei quattro figli
-solo sul tail pubblico; i fold di entrambe le coordinate di H usano le
-sfide già emesse. Non sostituisce gli endpoint originali con nuovi MAC.
-La sua identità algebrica e la parità ridotta non sono un lemma Lean
-generale o una validazione D34/CUDA/Seed6. L'istogramma privato è raccolto
-nel commitment originale, prima delle correlazioni, e autenticato con le
-righe fresche del range. Errori di scan/callback non producono una prova
-alternativa e restano terminali per il runner.
+W numerica e PCS condividono la stessa Arc immutabile installata; quel
+collegamento di implementazione resta da raffinare al binding matematico.
+KV usa una sola capacità per 450 token; viste storiche non leggono celle
+future, anche già inizializzate. Il registro determina il predecessore,
+non il costruttore della vista. Append fuori ordine o fork sono rifiutati
+prima delle copie. I token argmax non sono accettati prima dell'intera
+prova: la promozione segue verifica, completamento legato al certificato
+e journal durevoli di entrambi i ruoli, mai un ACK generico.
 
-Il range W riusa questa stessa fraction tree su parole signed originali;
-il gather riordina indirizzi, non valori o bias. L'istogramma privato è
-calcolato dal packed immutabile all'installazione, prima delle correlazioni,
-e riautenticato a ogni prova. Il suffisso zero appartiene allo stesso dominio
-del commitment. Il collegamento non aggiunge un lemma Lean né scarica gli
-obblighi aperti di raffinamento, composizione Seed6 o implementazione CUDA.
-I nuovi kernel range condividono la rappresentazione Fp3, ma il controllo
-host e il binario compilato non provano la loro esecuzione concorrente.
-L'owner nativo rifiuta alias nei fold H/canopy, handle ritirati o di un
-altro contesto e input parziali; scarica solo output piccoli dopo fencing
-e controllo canonico. Il test con driver differito verifica anche che un
-errore asincrono non pubblichi output e che il contesto resti fermato.
-Il collegamento Rust usa ora quel fencing nei callback del prover range
-comune, prima dell'autenticazione e delle successive sfide FS. I test
-attraversano l'ABI con driver host differito e chiudono i target sugli
-stessi MAC originali; includono errori di reader, launch, fence, output e
-cleanup, senza continuazione CPU. La libreria è codice locale fidato,
-non un input fornito dal certificato. I kernel non vedono transcript o
-correlazioni. Questi controlli non provano la concorrenza CUDA, la correttezza
-delle riduzioni CAS reali o l'esecuzione GPU: restano obblighi da verificare.
-Il consumer range può ora trattenere il lock esclusivo dell'owner condiviso
-per l'intera prova. `Runtime` è trasferibile fra thread, non condivisibile
-senza mutex: il contesto CUDA seleziona il device a ogni operazione e al
-cleanup, i simboli della libreria rimangono validi fino al drop e nessun
-puntatore device viene esportato. Il reader residente opera sul medesimo
-runtime già bloccato, senza riacquisirlo e senza ricevere sfide o MAC.
-Il guard ferma l'owner su errore, panic o uscita senza finalizzazione;
-la finalizzazione preserva la capacità delle sorgenti e W. La parità
-ridotta chiude ancora sugli originali, non su MAC nuovi dei byte ricostruiti.
-Questo collegamento non costituisce il lifecycle completo degli snapshot.
+La rigenerazione assume determinismo dei kernel corretti su W/tabelle
+sigillati, token fissati e prefissi KV originali. Si controllano token e
+copertura, ma non un digest privato di tutta A confrontato a ogni replay.
+Il replay per producer completo ricostruisce uno snapshot già fissato;
+la generazione iniziale resta causale. Questo è un obbligo esplicito di
+implementazione, non una conseguenza della sola parità finita.
 
-Il kernel denso i16 conserva la somma di prodotti interi mediante split
-signed a due byte, quattro prodotti INT8 e correzioni affini esatte;
-il cap K limita tutti i prefissi degli accumulatori int32. Non introduce
-cast float, saturazione, nuovi MAC o un RNE diverso. Il modello host
-verifica split, frammenti, somme lane e padding contro dot product i128.
-Non prova l'esecuzione PTX o lo schedule concorrente. L'owner ora rifiuta
-W parziale/riscritto e non pubblica handle inizializzati per prodotto/RNE
-finché il flag non è valido dopo fence. Gli errori sono terminali nello
-stesso contesto del range. Il RNE separato mantiene signed-48 e ±32767;
-la parità host usa una divisione i128 indipendente e il riferimento Rust.
-L'adapter del piano ora vincola ogni prodotto alla stessa Arc W installata
-e al layout, e ogni blocco a sorgente, righe, layout A e ricette. Un handle
-di un altro contesto è rifiutato; anche un errore prima della chiamata al
-kernel ferma l'owner C. Questa identità locale non è il binding
-crittografico al commitment: il runner usa ora la stessa Arc W per PCS e
-runtime e lega gli snapshot al registro dei tentativi. Il raffinamento
-di quel collegamento resta una premessa di implementazione, non un nuovo
-teorema acquisito. Nessuna route nativa esegue fallback CPU.
-Affine/Gate usano ora le stesse identità intere e le porte originali anche
-nel dispatcher residente: coefficienti bounded, input simmetrici i16,
-nessuna lettura dei termini zero e raw distinto dall'output RNE. Non
-aggiungono autenticazioni, forme o sfide. I confronti finiti con raw CPU
-e aritmetica i128 non scaricano il raffinamento CUDA generale.
-L'embedding residente copia le righe del W originale sigillato secondo
-gli ID pubblici, preservando ordine e ripetizioni. La lista completa e
-lo span W sono controllati prima delle copie, con output non consumabile
-finché il fence non riesce. Copie parziali ed errori asincroni fermano
-definitivamente l'owner. L'ABI 4 è verificata prima di leggere il ledger
-esteso; una libreria ABI 2 non viene accettata. Il runner fornisce gli ID
-fissati dal preparatore e la W originale installata nella PCS;
-la parità ridotta non costituisce una nuova garanzia crittografica.
-Il controllo di appartenenza del buffer comprende ora l'identità del
-runtime Rust anche fra copie separate della libreria: un handle numerico
-coincidente non autorizza consumo o rilascio sul contesto sbagliato.
-Le nuove route GELU/softcap/RoPE/argmax leggono soltanto input originali
-e tabelle pubbliche, senza vedere correlazioni o transcript, senza nuovi
-MAC. Gli istogrammi restano pending fino alla copertura unica completa;
-il loro valore è il conteggio originale, non un conteggio già biased.
-Argmax mantiene lo slack privato e pubblica gli ID al chiamante solo dopo
-il controllo del flag e il fence della copia. Quegli ID non sono ancora
-token verificati: la promozione resta subordinata all'intera prova e al
-journal. La parità host con driver simulato e la compilazione sm_90 non
-scaricano il raffinamento concorrente CUDA o il binding agli snapshot.
-Norm/QK/PV/EXP30 condividono ora quelle identità e il flag terminale.
-RMS conserva i coefficienti esatti e rifiuta l'overflow invece di clampare;
-QK/PV non leggono celle KV future. Le code append-only mantengono il
-prefisso inizializzato, ma `Tail::new` non verifica una ricevuta: il
-chiamante del runner deve derivare il predecessore dal registro accettato.
-I prefissi condividono la stessa capacità da 450 token: soltanto la coda
-non inizializzata può cambiare. Il controllo dell'offset fisico atteso
-rifiuta una seconda append da un predecessore ormai superato, prima di
-qualsiasi copia. Le viste storiche conservano il proprio limite logico;
-QK/PV continuano a non leggere key futuri, anche se ormai inizializzati.
-L'istogramma EXP30 include una sola volta il padding pubblico e richiede
-copertura unica delle righe vive. I confronti CPU/GPU simulata non provano
-il raffinamento u128 PTX, lo schedule concorrente o il forward completo;
-non cambiano i MAC originali né la disciplina NoPeek.
-Il gather residente deriva indirizzi e bias dalle stesse tessere originali,
-senza vedere correlazioni o transcript. I controlli Rust richiedono una
-sola emissione di ogni riga delle sorgenti selezionate prima del seal;
-un buffer pending non entra nel range. Il flag sticky e il fence precedono
-la pubblicazione, inclusi gli errori asincroni. I test confrontano l'ordine
-esatto con lo scanner CPU: una root fraction-tree uguale non basterebbe,
-perché non rileverebbe una permutazione. Rimangono aperti la correttezza
-concorrente CUDA e il raffinamento generale del gather e del collegamento
-agli snapshot del runner; la copertura ridotta non li dimostra.
-Il codec byte conserva anche −32768 quando rappresenta lo slack u16
-biased di argmax. Non lo ammette come input aritmetico ordinario: quella
-restrizione appartiene al producer, non alla codifica byte condivisa.
-Nessun output del
-componente da solo costituisce una prova accettabile.
-Il runner CUDA riceve soltanto profili/tabelle/W pubblicamente fissati e
-prompt nel preparatore. La scansione successiva seleziona sorgenti/finestre,
-non passa sfide, correlazioni o monete PCS ai producer. Per la rigenerazione
-storica si assume determinismo dei kernel corretti sugli stessi input:
-si controllano token pubblici e copertura, non un digest di tutta A.
-Le code originali KV rimangono append-only; le viste precedenti non leggono
-la coda futura. La PCS originale e le aperture MAC non vengono sostituite
-da un nuovo commitment o MAC sui dati rigenerati. Queste sono premesse
-esplicite di raffinamento nel design, non conseguenze di soli test finiti.
-Il [record locale del collegamento](../../benchmarks/results/c71-device-runner-local-2026-10-04-1ec6720bb494.json)
-non attribuisce credito hardware, proof completa o conformità al target
-di memoria; nessuno di questi limiti autorizza modifiche a NoPeek o ai MAC.
+I consumer CPU possono leggere righe/finestre private bounded mediante
+`c71_original_read`, dopo controllo del prefisso e fence. Sono staging
+del prover, non messaggi al verificatore. Tutte le copie e capacità
+trattenute entrano nel conto delle risorse. Il runner ferma l'owner anche
+su errore della prova CPU; nessuna promozione riattiva uno stato fermato.
 
-Il consumer CPU può ricevere una riga o finestra privata bounded mediante
-`c71_original_read`, dopo controllo di prefisso inizializzato e fence.
-È memoria del prover, non un messaggio al verificatore o una nuova fuga
-autorizzata. I report includono solo contatori/shape pubbliche e tempi.
-Il runner ferma l'owner numerico anche su errore della prova CPU. La
-promozione numerica segue il successo di `pool.attempt`, che comprende
-ricezione del completamento atteso e journal durevole; non segue un ACK
-generico. Nessun metodo di promozione può riattivare un runtime fermato.
+Il [checkpoint H100](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json)
+verifica parità sintetica e percorso ridotto sui MAC originali, ma lascia
+aperti Γ e certificati canonici. Accelerare il pilot CPU o introdurne un
+backend H100 resta ricerca offline di una candidata: tutti i cinque
+[controlli di ammissione](runpod-tests.md#validazione-e-congelamento-del-profilo)
+sono necessari. Conservare l'indipendenza del driver numerico intero.
 
-Il raffinamento di questa implementazione al prodotto intero del §4 non
-è un nuovo lemma Lean acquisito.
-
-I lemmi Lean in §6 giustificano le specifiche identità indicate. Non
-dimostrano il fork PCS, il wrapper Rust, CUDA o il raffinamento completo
-Gemma. Tempi e accessi fisici restano fuori dalla vista ZK matematica.
-La fattibilità a memoria e tempo limitati è verificata separatamente
-secondo [runpod-tests](runpod-tests.md).
-
-Il [primo FAIL H100](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json) precede la pipeline canonica;
-il [trial corretto PASS](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json) verifica operatori sintetici e transcript
-ridotti sui MAC originali. Non concede credito ai bound B12/Seed6 o al
-raffinamento completo Gemma. Nessun journal o certificato canonico è
-acquisito; NoPeek, endpoint MAC originali e obblighi di raffinamento
-rimangono invariati. La preautorizzazione dei trial non permette riuso
-delle correlazioni monouso o prosecuzione di uno stato terminale.
-L'[ingestione completa](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2fa95eaf7.json) verifica identità e conversione dei pesi;
-non sostituisce Γ valido, confronto indipendente o installazione
-autenticata. Il pilot con mapping readonly e blocchi CPU paralleli
-mantiene l'ordine causale; la lettura fisica non concede credito NoPeek
-o di raffinamento oltre al contratto già dichiarato. Il [checkpoint finale](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json)
-è INCOMPLETO: il timeout del pilot non produce Γ ammesso, tabelle
-certificate, replay indipendenti o certificati canonici. Nessuna delle
-premesse B12/EA-LPN-SL-reg* o di raffinamento aperte è scaricata da queste
-misure. Il bundle consente riuso della provenienza e delle scale W,
-non importazione di stato terminale o correlazioni.
+Avanzamento e tempi sono telemetria locale di laboratorio, fuori dal
+transcript e senza nuovi messaggi al verificatore. I report pubblici
+contengono solo la selezione revisionata di contatori/shape e tempi;
+non espongono W/A/KV, intermedi o ragioni private di arresto. Tempi e
+accessi fisici restano fuori dal claim ZK matematico. Le ipotesi B12,
+EA-LPN-SL-reg* e di raffinamento aperte non sono scaricate da queste misure.
 
 ### Riduzione dei temporanei e confine del claim
 
@@ -769,8 +616,3 @@ packed è esclusa. La riserva fisica di 256 MiB non è un lemma Lean né
 una misura: il bound complessivo è condizionato alla sua sufficienza su
 H100. Non trasferire i risultati locali a parità CUDA o completezza
 canonica; le ipotesi formali/compositive già aperte restano in vigore.
-
-Il [record locale a SHA pulita 82dae48](../../benchmarks/results/c71-temporary-memory-local-2026-10-04-82dae4818962.json) conserva 41 test Rust
-e 11 Python passati, build lib/runner/sm_90, ledger, hash e fallimenti
-intermedi. Un test GPU resta intenzionalmente ignorato. Non acquisisce
-W reale, esecuzione canonica o conformità fisica H100.

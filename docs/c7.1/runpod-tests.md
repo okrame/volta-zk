@@ -7,11 +7,10 @@
 
 Il runner locale `experiment-cuda` collega inferenza/replay dei 13 producer,
 owner comune, range residente, PCS/GKR CPU, verifica e promozione per
-O=0/150/300. È pronto per il **primo esperimento autorizzato**, non già
-validato sulla H100. Nessun certificato canonico, tempo completo o
-rispetto dei target è acquisito. Il readiness audit storico
-[NOT_READY](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-fbd6141e7a1e.json)
-resta immutabile, ma non descrive l'assenza attuale del codice del runner.
+O=0/150/300. L'esperimento canonico richiede ancora Γ ammesso e
+autorizzazione hardware valida. Nessun certificato canonico, tempo completo
+o rispetto dei target è acquisito. Gli audit delle revisioni precedenti
+restano nei record storici e non introducono gate concorrenti.
 
 Questo documento non autorizza campagne. L'istruzione corrente del proprietario
 fissa pod, fasi autorizzate, durata massima, responsabilità di spegnimento
@@ -28,56 +27,52 @@ I flag `--stop-after`/`--terminate-after` rimossi da `runpodctl` restano
 inaffidabili: il [record storico](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
 conserva quel fallimento, senza imporre un nuovo gate economico.
 
-**Campagna corrente (4 ottobre 2026).** Pod `z3h2njpctmduix`, H100;
-ambiente, parità CUDA, download necessari, calibrazione e diagnostica
-O=0/150/300 autorizzati. Il lavoro iniziato alle 17:07:53 UTC termina
-entro le 23:07:53 UTC (6 h), senza proroga; almeno gli ultimi 30 minuti
-sono riservati a salvataggio e chiusura. Lo spegnimento è gestito dall'agente.
-La destinazione esterna autorizzata è
+**Ultima campagna, conclusa il 4 ottobre 2026.** Pod `z3h2njpctmduix`, H100;
+inizio 17:07:53 UTC, termine autorizzato 23:07:53 UTC. L'arresto è stato
+gestito dall'agente e verificato alle 21:01:31 UTC. La vecchia deadline,
+il guard e la preautorizzazione dei trial sono evidenza storica e non
+vanno riutilizzati per avviare una nuova sessione.
+
+**Conservazione.** La destinazione esterna autorizzata è
 `/home/okrame/projects/volta-zk/artifact/c7.1-pod/`, con **tetto complessivo
 10.000.000.000 B**. Conservare calibrazione verificata, ricette/tabelle,
 identità/hash, codice/ambiente, report, log e manifest; non copiarvi shard,
-packed o tracce grandi. I pesi vengono ricreati sul pod a ogni campagna e
-verificati contro le stesse identità. La calibrazione completata resta
+packed o tracce grandi. Verificare eventuali pesi presenti sul pod e
+ricrearli se mancanti o incompatibili, confrontando le identità complete.
+La calibrazione completata resta
 riutilizzabile secondo i controlli sotto; una nuova H100 richiede comunque
 compatibilità, parità e nuove misure fisiche.
 
-**Primo checkpoint concluso: [INCOMPLETO](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json), `credit:false`.**
-Ambiente operativo/build, parità sintetica CUDA e pipeline ridotta sui MAC
-originali sono PASS. Il primo FAIL della fixture e i tre pilot interrotti
-(exit 130) sono conservati. L'ingestione reale è PASS: 772 scale W,
-packed verificato; 463,77 s e massimo RSS campionato 2.868.514.816 B,
-misure offline. I 29 controlli numerici sull'ultimo codice passano;
-il FAIL documentale nel checkout pod privo delle fonti ignorate da Git
-resta distinto dai nove controlli documentali PASS sulla VM.
-Il pilot readonly-mmap/otto worker termina per deadline interna 5.100 s,
-exit 1, wall 5.153,79 s, senza candidata. Γ, tabelle/ricette certificate,
-confronto indipendente, due replay interi e O=0/150/300 sono **non acquisiti**.
-Tempi di inferenza/prova/somma e byte dei certificati restano nulli.
+**Ultimo esito: [INCOMPLETO](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json), `credit:false`.**
+Ambiente/build, parità sintetica CUDA e percorso ridotto sui MAC originali,
+ingestione reale e 29 controlli numerici sono PASS. Il pilot readonly-mmap
+con otto worker termina per timeout interno di 5.100 s (wall 5.153,79 s),
+senza candidata: Γ, tabelle/ricette certificate, confronto indipendente,
+due replay interi e O=0/150/300 non sono acquisiti. Tempi canonici e byte
+dei certificati restano nulli. Il massimo RSS+HBM campionato è
+62.255.046.656 B inclusa W; picco temporaneo completo e margine canonico
+non verificati. Digest dell'immagine effettiva e attribuzione di 29 campioni
+HBM non nulli restano aperti. Tutti i fallimenti sono conservati nei record
+collegati e nei dieci bundle verificati, 106.904.206 B alla chiusura,
+senza shard/packed. La ripresa è descritta in
+`artifact/c7.1-pod/campaign-20261004T170753Z/RESUME.md` dalla radice del repo.
 
-Il massimo congiunto campionato è 62.255.046.656 B inclusa W immutabile;
-il picco temporaneo canonico e il margine sul tetto 6.442.450.944 B sono
-**non verificati**. Una singola lettura smaps misura 732.696.576 B di
-RSS non-W più HBM in un processo: non è il massimo globale né un census
-di tutte le capacità trattenute. Il picco campionato della sola parità
-è 734.404.608 B (margine campionato 5.708.046.336 B), senza credito canonico.
-Conservare i 29 campioni HBM non nulli del pilot CPU, massimo 556.793.856 B,
-la cui attribuzione resta aperta; nessun claim di calibrazione GPU.
-Il digest dell'immagine effettivamente in esecuzione non è disponibile.
-
-**Conservazione e arresto completati.** Dieci bundle immutabili nella
-destinazione autorizzata occupano complessivamente 106.904.206 B; manifest,
-byte e hash sono verificati. `campaign-20261004T170753Z/RESUME.md` descrive
-riuso, invalidazione e controlli della nuova H100. Codice Git recuperabile
-anche offline e checkout pubblico separato verificati; shard/packed non
-sono stati copiati. Riutilizzabili identità/scale W e prove di componente,
-non una calibrazione A inesistente. Il pod è stato arrestato dall'agente
-tramite API, confermato `EXITED` e `runtime:null` alle 21:01:31 UTC,
-dopo 3 h 53 min, prima del termine 23:07:53 UTC; il guard è disattivato.
-La campagna è chiusa: una nuova H100 richiede una nuova autorizzazione,
-compatibilità e misure fisiche. Prima della diagnostica completare il
-pilot e tutti i cinque controlli di ammissione, senza riuso di KV terminale,
-journal o correlazioni monouso.
+**Prossima sessione.** L'istruzione di affidamento deve autorizzare la
+riattivazione del pod, le modifiche per accelerare l'inizializzatore,
+download, calibrazione e diagnostica condizionata all'ammissione di Γ.
+Quando quell'istruzione è ricevuta, i trial previsti sono coperti senza
+una nuova conferma per ciascuno. Analizzare codice ed evidenze localmente
+prima della riattivazione; i limiti locali restano quelli di
+[local-tests](local-tests.md#limiti-e-ambiente).
+Registrare una nuova deadline di 6 ore dalla riattivazione, inclusi
+ambiente, verifiche e salvataggio, con almeno 30 minuti di riserva;
+l'agent gestisce l'arresto e ne verifica lo stato dal provider.
+Nessuna proroga, seconda macchina o modifica del trust model è implicita.
+L'ordine è [accelerazione misurata](#accelerazione-dellinizializzatore),
+[cinque controlli di ammissione](#validazione-e-congelamento-del-profilo),
+poi [diagnostica O=0/150/300](#esperimento-della-prova) se il tempo residuo
+lo permette. Un prerequisito mancante lascia aperte le fasi dipendenti;
+conservare sempre esito e copertura anche in caso di FAIL/INCOMPLETO.
 
 | Passaggio | Stato e condizione di uscita |
 |---|---|
@@ -97,9 +92,9 @@ Il comando GPU e il monitor sono nella
 Entrambi usano prompt pinned e journal nuovi, senza ripristino/sovrascrittura.
 `PREPARATION_BYTES` non è un limite globale. Non eseguirli sulla VM locale.
 Errore o timeout termina il singolo run; retry e nuovi journal richiedono
-autorizzazione corrente. I successivi trial sono preautorizzati in questa
-campagna, sempre da O=0 e senza riuso delle correlazioni. Nessuna proroga
-o fallback è inclusa.
+autorizzazione della nuova sessione, sempre da O=0 e senza riuso delle
+correlazioni o di stato terminale. Non riavviare il run fallito; un nuovo
+trial ha file e journal nuovi. Nessuna proroga o fallback è inclusa.
 
 La [contabilità](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
 espone W host/device, arena e suoi payload, staging e fasi CPU residue.
@@ -114,7 +109,8 @@ confronta kernel reali con interi host: dense MMA su tre shape (ragged e
 K=21504), Affine/Gate, tutti i 65.535 entry lookup, istogrammi, entrambe
 le famiglie RoPE, argmax/tie, RMS/overflow e QK→RNE→EXP30→PV nei tre
 contesti con futuro KV avvelenato. QK/PV sono interi scalari, non MMA.
-Si compila localmente; si esegue soltanto nel primo esperimento autorizzato:
+Compilare localmente se il toolkit è disponibile, altrimenti sul pod;
+eseguire sulla H100 autorizzata e ripetere la parità alla nuova sessione:
 
 ```bash
 nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
@@ -129,8 +125,9 @@ nonzero. Conservare stdout/stderr, digest del binario, SHA e fingerprint.
 Il test seguente è ignorato nelle suite locali e usa **la libreria reale**,
 non il driver simulato: verifica gather residente→range/GKR→PCS sui MAC
 originali due volte nello stesso owner, poi range signed, contro transcript
-CPU ridotti. Eseguirlo sulla H100 dopo aver impostato il binario appena
-compilato e `LIBRARY` alla libreria CUDA della stessa SHA:
+CPU ridotti. Impostare binario e `LIBRARY` a build verificate e compatibili
+con le sorgenti numeriche correnti, registrando la SHA di ciascuna build;
+le sole modifiche documentali non impongono ricompilazione. Eseguire:
 
 ```bash
 C71_NATIVE_PARITY_LIBRARY="$LIBRARY" timeout -k 5s 60s "$C71_PCS_TEST_BINARY" \
@@ -149,9 +146,18 @@ il controllo non lo carica e non stampa nomi o valori.
 ## Gestione del pod e del repository
 
 Usare [runpod_harness.sh](../../scripts/runpod_harness.sh) per la gestione
-di un eventuale pod autorizzato. Il harness permette ispezione e chiusura,
-ma non sostituisce il termine massimo e la responsabilità di arresto sopra. Non sono impliciti
-retry, proroghe o una seconda macchina. Prima di compilare o generare
+di un eventuale pod autorizzato. Il harness permette ispezione e chiusura;
+non ha un comando di riattivazione. L'agent può usare le API RunPod
+`podResume`/`podStop` per il pod autorizzato e rileggere stato, hardware
+ed endpoint dopo la riattivazione: UUID, IP e porta precedenti non sono
+garantiti. La [documentazione API](https://docs.runpod.io/sdks/graphql/manage-pods)
+descrive queste operazioni. Registrare l'istante di riattivazione e
+attivare il nuovo controllo di deadline, senza spostare l'inizio al primo SSH.
+Il messaggio storico `HARD STOP` nell'help del harness riguarda la creazione
+di pod a pagamento senza controllo della durata; non impone un gate
+economico aggiuntivo alla riattivazione esplicitamente autorizzata con
+deadline e arresto verificabile. Non sono impliciti proroghe o una seconda
+macchina. Prima di compilare o generare
 artefatti eseguire `scripts/runpod_harness.sh git-preflight`, oppure verificare
 lettura/scrittura Git HTTPS dalla VM, pubblicare la SHA su un branch unico
 e verificare dal pod il checkout anonimo pulito di quella stessa SHA.
@@ -163,9 +169,12 @@ Sincronizzare repository ed evidenze piccole solo tramite Git HTTPS su
 anonimamente. Per pubblicare dal pod usare il Secret RunPod `VOLTA_GITHUB_TOKEN`,
 con scadenza e permesso Contents read/write limitato al repository.
 Non copiare credenziali dalla VM, non usare gh, Git SSH, SCP/rsync o
-archivi del repository per sincronizzare il codice. Il bundle autorizzato
-può essere trasferito via SSH alla destinazione persistente entro il suo
-tetto; le evidenze piccole revisionate sono poi pubblicate tramite Git HTTPS. Token fuori da URL, configurazioni Git, comandi,
+archivi del repository per sincronizzare il codice. Si possono trasferire
+via SSH gli artefatti selezionati: report/scale e binari compatibili verso
+il pod, evidenze chiuse verso la destinazione persistente entro il tetto.
+Questo riuso non trasferisce un checkout o credenziali; conservare digest
+e SHA di build dei binari, distinti dalla SHA corrente. Le evidenze piccole
+revisionate sono poi pubblicate tramite Git HTTPS. Token fuori da URL, configurazioni Git, comandi,
 cronologia e file; il wrapper usa askpass. Un eventuale Secret HF è
 separato e di sola lettura. Verificare la SHA pulita dopo ogni pull.
 
@@ -176,24 +185,31 @@ scripts/runpod_harness.sh pause POD_ID
 scripts/runpod_harness.sh delete POD_ID --confirm POD_ID
 ```
 
-`pause` lascia storage fatturabile. `delete` termina il pod e distrugge
-i dati sul volume locale: prima verificare la pubblicazione delle evidenze
-piccole e l'eventuale conservazione dei dati in una destinazione autorizzata.
-Pesi e grandi artefatti non vanno in Git; per conservarli dopo la chiusura
-serve la destinazione persistente autorizzata.
-La pubblicazione usa un branch unico tramite `git-push runpod/POD_ID/LABEL`.
+`pause` arresta il pod e libera la GPU; il disco del container è effimero,
+mentre un volume persistente sopravvive allo stop. Nel checkpoint precedente
+`volumeInGb:0` e `/workspace` sul filesystem overlay non davano persistenza
+ai pesi. Verificare i mount effettivi; non dedurre persistenza dal solo nome
+`/workspace`. `delete` è distinto dall'arresto, distrugge i dati del volume
+locale e non è incluso nella sola autorizzazione di riattivazione/arresto.
+I tipi di storage sono descritti nelle
+[specifiche RunPod](https://docs.runpod.io/pods/storage/types).
+Pesi e grandi artefatti non vanno in Git. Pubblicare codice ed evidenze
+piccole solo se autorizzati, su un branch unico come
+`runpod/POD_ID/c71-calibration-DATE`, senza force-push.
 
 ## Campagna di calibrazione
 
 Ogni trial valuta una sola candidata Γ. Registrare SHA pulita,
 immagine/container con digest, hardware e limiti autorizzati. Una revisione
-delle scale richiede un nuovo trial da O=0 con tutti i controlli; i trial
-successivi sono preautorizzati nella campagna corrente, senza proroga. Il
-completamento dei test non deroga al termine massimo.
+delle scale richiede un nuovo trial da O=0 con tutti i controlli. I trial
+successivi dipendono dall'autorizzazione della nuova sessione, non dal
+record del 4 ottobre. Il completamento dei test non deroga al termine massimo.
 
 I programmi esistenti usano NumPy/BLAS CPU per l'inizializzatore e il
 confronto indipendente, Rust CPU per il replay intero e un piccolo kernel C
-CPU per RMS; non esiste una calibrazione CUDA completa.
+CPU per RMS; non esiste ancora una calibrazione CUDA completa. Questo è
+lo stato dell'implementazione, non un vincolo che vieta di accelerare
+l'inizializzatore sulla H100 autorizzata.
 Il pilot supporta `--matrix-workers` (1–20, default 1): i blocchi da 128
 righe sono indipendenti, letture e contatori sono sincronizzati, gli
 output sono consumati nello stesso ordine e KV resta seriale e causale.
@@ -208,8 +224,7 @@ dequantizzata completa; i buffer in memoria delle fixture restano streamed.
 Registrare la mappa W immutabile da 61.394.690.560 B separatamente da
 scratch e KV: RSS totale include le pagine W residenti e non è l'arena.
 Il limite AS di 64 GiB e gli stop su RSS aggregato/swap restano invariati.
-Un host CPU equivalente è l'alternativa meno costosa da concordare nella
-stessa decisione operativa. `nvidia-smi` non accelera questi comandi.
+Un host CPU separato non è incluso nell'affidamento dello stesso pod.
 Inferenza BF16, TF32 o Transformers non sostituisce la relazione intera.
 
 Il tempo completo non è misurato. L'inizializzatore conta
@@ -220,13 +235,41 @@ L'ammissione di Γ richiede tutti i controlli della
 [validazione](#validazione-e-congelamento-del-profilo), incluso il confronto
 indipendente; tempo e risorse del confronto rientrano nella campagna.
 
+### Accelerazione dell'inizializzatore
+
+Il prossimo trial risolve il timeout osservato, anziché ripetere il pilot
+invariato. Prima del run completo misurare tempi per operatore e token,
+conversioni W, lavoro completato, trasferimenti e memoria simultanea.
+Registrare backend, worker e librerie; confrontare configurazioni su input
+e lavoro identici. Un microbenchmark sintetico non è una previsione del
+tempo completo: esplicitare extrapolazioni e quota di lavoro non misurata.
+Il report del 4 ottobre non conserva token/operatore raggiunti al timeout;
+quei dati non possono essere ricostruiti dai soli campioni RSS.
+
+Ottimizzare il costo dominante su CPU o H100, verificando il percorso
+modificato contro il riferimento numerico su input fissati: valori,
+scale risultanti, ordine causale e rifiuti. Conservare il riferimento
+necessario a questi confronti e l'indipendenza del driver intero.
+Non sostituire la relazione intera con inferenza BF16/TF32/Transformers.
+La parità del pilot non concede ammissione di Γ né credito alla prova.
+Prima del trial lungo documentare il miglioramento misurato e il piano
+di tempo per inizializzazione, tabelle, entrambi i replay, confronto
+indipendente, diagnostica e chiusura, entro la stessa deadline.
+
+La telemetria locale salva contesto, indice del token e operatore dello
+schedule pubblico, tempi e contatori anche su errore/timeout, in file
+nuovi con permessi privati; non salva W/A/KV o intermedi nei log pubblici.
+Non inviare avanzamento o ragioni private di arresto al verificatore e
+non aggiungere messaggi al transcript. I report pubblicati contengono
+solo la selezione revisionata secondo [security](security.md).
+
 ### Risorse
 
 | Risorsa | Richiesta proposta / controllo prima del download |
 |---|---|
 | Compute | 1 H100 SXM 80 GB, almeno 20 vCPU e 125 GB RAM host; verificare l'offerta effettiva |
 | Software | Linux x86_64, Python ≥3.11, NumPy, pytest, Rust/Cargo, C/C++ build tools, Git, GNU timeout/time; versioni e immagine registrate |
-| Disco | Volume locale 300 GB montato in `/workspace`, container 40 GB; almeno 180 GB liberi prima del download |
+| Disco | Verificare filesystem, mount e capacità effettivi; almeno 180 GB liberi prima di un download completo, spazio per shard/packed/traccia e ≥20 GB di riserva. La proposta storica 300 GB volume + 40 GB container non è un gate per il pod esistente |
 | Payload sul pod | Shard 62.546.338.248 B + packed 61.394.690.560 B = 123.941.028.808 B |
 | Temporanei | Download direttamente in `.partial`, rinomina senza seconda copia; packed e traccia pubblicati atomicamente; nessuna seconda copia BF16/dequantizzata completa |
 | Memoria | Ingest nativo richiede 3.355.443.200 B operativi; trial con payload nominato ≤8 GiB; limite AS per processo 64 GiB; osservare anche RSS aggregato/cgroup e cache OS |
@@ -243,7 +286,9 @@ Il pack nativo verifica già header, entrambi i corpi e output persistito.
 
 ### Budget delle fasi
 
-Registrare il termine complessivo autorizzato in `AUTHORIZED_END_EPOCH`.
+Registrare il nuovo termine autorizzato in `AUTHORIZED_END_EPOCH`, entro
+6 ore dalla riattivazione. Non riusare epoch, UUID o guard della campagna
+precedente: riconfigurare copie nuove dei monitor e verificarne l'arresto.
 I timeout degli snippet sono massimi per fase, non una stima del tempo
 completo né un'autorizzazione a prolungare la campagna. Fissare `TRACE_STEP_SECONDS` e
 `NATIVE_TRACE_TIMEOUT_SECONDS` includendo il confronto indipendente,
@@ -263,12 +308,18 @@ Nessun dataset nuovo, imposizione dei token prodotti dal pilot floating
 o certificazione di qualità generale. Accesso HF/licenza deve essere già
 valido; un 401/403 ferma la fase, senza accettare licenze o cambiare checkpoint.
 
-### Comandi dopo autorizzazione esplicita e risoluzione dell'hard stop
+### Comandi per un trial autorizzato
 
-Gli snippet seguenti **non sono stati eseguiti sui pesi reali**. Prima
+Build mirata, download e ingestione nativa hanno evidenze PASS sui pesi
+reali; pilot completo, tabelle/replay e ammissione restano aperti.
+Gli snippet documentano il riferimento corrente: non implementano ancora
+avanzamento o un nuovo backend accelerato. Prima
 fissare `APPROVED_SHA`, `AUTHORIZED_END_EPOCH`, `TRACE_STEP_SECONDS` e
-`NATIVE_TRACE_TIMEOUT_SECONDS`. Usare il pod autorizzato e i Secret della
-[procedura di gestione](#gestione-del-pod-e-del-repository).
+`NATIVE_TRACE_TIMEOUT_SECONDS`. Usare il pod autorizzato e una delle
+alternative Git HTTPS della
+[procedura di gestione](#gestione-del-pod-e-del-repository). Il clone e i
+percorsi weights seguenti assumono un ambiente nuovo: con file esistenti
+applicare prima il riuso verificato, senza sovrascrivere checkout o run.
 
 ```bash
 set -euo pipefail
@@ -277,9 +328,11 @@ umask 077
 git clone https://github.com/okrame/volta-zk.git /workspace/volta-zk
 cd /workspace/volta-zk
 git checkout --detach "$APPROVED_SHA"
-scripts/runpod_harness.sh git-preflight
+# Il preflight Git HTTPS dalla VM con checkout anonimo verificato sul pod
+# è l'alternativa al Secret VOLTA_GITHUB_TOKEN, descritta sopra.
 export ROOT=$PWD
-export RUN=/workspace/c71-gamma-$(date -u +%Y%m%dT%H%M%SZ)
+export CAMPAIGN_LABEL=$(date -u +%Y%m%d-%H%M%S)
+export RUN=/workspace/c71-gamma-$CAMPAIGN_LABEL
 mkdir "$RUN"
 mkdir "$RUN/logs" "$RUN/weights"
 export SHARDS="$RUN/weights"
@@ -314,6 +367,12 @@ un file vuoto/troncato come risultato. Il termine autorizzato prevale sul
 controller locale. Preparare venv/toolchain nella fase ambiente, senza
 upgrade non registrati; `pip freeze`, `rustc -Vv`, `cargo -V`, `uname -a`,
 termine/responsabile di arresto, CPU/RAM/disco e SHA immagine vanno nei log.
+Se l'immagine effettivamente in esecuzione non espone un digest, registrare
+la lacuna; non sostituirlo con quello di un tag risolto altrove.
+Questi snippet registrano durata/HWM, non il census fisico completo:
+affiancare monitor congiunto RSS dell'albero/HBM, cgroup/swap, spazio libero
+e capacità trattenute. Verificare che l'arresto del monitor termini anche
+i sottoprocessi/gruppi della sessione, inclusi quelli creati da `timeout`.
 
 ```bash
 run_step 240 venv python3 -m venv .venv
@@ -351,8 +410,11 @@ fallito resta conservato; l'affinità non aumenta il budget; non sostituiscono i
 
 ### Download e ingest
 
-Download anonimo ove consentito; l'eventuale Secret è letto solo in
-memoria. Un solo tentativo, nessuna ripresa automatica di partial.
+Prima verificare file esistenti e input del bundle secondo il
+[riuso](#riuso-del-bundle). Download anonimo ove consentito; l'eventuale
+Secret è letto solo in memoria. Ogni tentativo usa file nuovi, senza
+ripresa automatica di partial; un nuovo trial preautorizzato non sovrascrive
+il fallimento precedente.
 
 ```bash
 run_step 1800 download .venv/bin/python - <<'PY'
@@ -406,6 +468,12 @@ failure/partial senza ripararle in loco o cancellare l'evidenza.
 
 ### Pilot, tabelle e due replay interi
 
+Il comando pilot sotto è la baseline CPU seriale (`--matrix-workers` ha
+default 1), non la scelta obbligatoria per il nuovo trial. Usare il percorso
+e la configurazione accelerati dopo i confronti e le misure sopra.
+I timeout 5.400/5.100 s sono massimi di esempio; allocare tempi compatibili
+con tutte le fasi residue, senza estendere la deadline complessiva.
+
 ```bash
 run_step 5400 pilot .venv/bin/python scripts/c71_activation_pilot.py run \
   --native "$NATIVE" --ingest-report "$INGEST" --packed "$PACKED" \
@@ -440,8 +508,8 @@ nel bundle Git. I 150 token floating non sono il golden intero. Una
 candidata che non compila o produce overflow/range failure richiede
 stop per quel trial; una revisione delle scale comporta nuova candidata e
 ripartenza da O=0, mai riparazione del solo contesto fallito. La preautorizzazione
-corrente copre i nuovi trial entro gli stessi limiti, senza cambiare la relazione,
-il trust model o i requisiti di validazione.
+esplicita della nuova sessione copre i trial previsti entro gli stessi limiti,
+senza cambiare relazione, trust model o requisiti di validazione.
 
 ### Validazione e congelamento del profilo
 
@@ -485,10 +553,17 @@ toolchain/image/SHA, termine e arresto verificato, comandi, stdout/stderr,
 exit, tempi e RSS. Il manifest nuovo elenca path relativi, byte e
 SHA-256 di ciascun file; hash anche del manifest, scrittura esclusiva e
 lettura di verifica. Le tabelle possono essere rigenerate dai digest e
-ricette; i dump privati richiedono storage autorizzato e non entrano in Git.
+ricette; i dump privati restano sul pod e non entrano in Git o nel bundle
+esterno della campagna limitato a 10 GB.
+
+Preparare `EXPORT` come directory nuova contenente soltanto la selezione
+da conservare fuori dal pod: file chiusi, senza shard, packed o tracce
+grandi. Controllarne la dimensione rispetto allo spazio residuo del tetto
+complessivo di `artifact/c7.1-pod/`. Il manifest seguente riguarda questa
+selezione, non l'intero RUN con la traccia privata.
 
 ```bash
-.venv/bin/python - <<'PY'
+RUN="${EXPORT:?directory di export selezionata richiesta}" .venv/bin/python - <<'PY'
 import hashlib
 import json
 import os
@@ -526,11 +601,13 @@ Prima del push copiare nel repository soltanto la selezione piccola,
 controllare che non contenga segreti o valori privati, aggiungere i singoli
 file espliciti e creare un commit delle evidenze. `git-push` pubblica
 commit esistenti: non raccoglie automaticamente i file di RUN.
-Pubblicare secondo la procedura RunPod in un branch unico:
+Pubblicare secondo la procedura Git HTTPS scelta. Con Secret sul pod,
+il comando è il seguente; con il preflight alternativo, commit e push
+si eseguono dalla VM verso lo stesso branch autorizzato:
 
 ```bash
 scripts/runpod_harness.sh git-preflight
-scripts/runpod_harness.sh git-push "runpod/$RUNPOD_POD_ID/c71-gamma"
+scripts/runpod_harness.sh git-push "runpod/$RUNPOD_POD_ID/c71-calibration-$CAMPAIGN_LABEL"
 ```
 
 Alla chiusura della campagna, verificare da un checkout remoto separato
@@ -543,15 +620,26 @@ all'[esperimento della prova](#esperimento-della-prova) se già autorizzato
 e compatibile con il budget residuo. La calibrazione non misura prova/PCG
 e non emette certificati.
 
+### Riuso del bundle
+
 Per riusare il bundle in una nuova campagna, verificarne manifest e hash
 dalla destinazione persistente e confrontare modello/packed, workload,
 Γ, tabelle e ricette con le identità validate. Registrare il record di
 provenienza: si possono saltare le fasi numeriche già validate se codice
 e ambiente pertinenti sono invariati, oppure dopo una verifica documentata
 dell'impatto delle differenze. Un bundle parziale conserva solo il credito
-delle fasi completate. Hash e ricette non conservano da soli il packed: nella campagna corrente
-si conservano identità ed esponenti, si ricreano i pesi sul nuovo pod e si
-richiede nuovamente il confronto esatto dell'hash packed con quello validato.
+delle fasi completate. Il bundle del 4 ottobre conserva identità ed
+esponenti W, ma nessuna candidata o Γ ammesso. Trasferire solo ciò che
+serve: report/scale per controllare la rigenerazione e binari se compatibili
+con CPU/ISA, ABI CUDA, librerie e codice numerico pertinente. Altrimenti
+ricompilare; un binario riutilizzato mantiene la SHA originale di build.
+Hash e ricette non conservano da soli il packed. Sui nuovi file verificare
+nuovamente corpi shard e hash packed/esponenti; sullo stesso pod verificare
+i file esistenti prima di saltare download/ingest.
+Cambiare modello, byte W, workload, semantica, scale, tabelle o ricette
+invalida l'ammissione pertinente. Cambiamenti numerici o d'ambiente
+richiedono verifica documentata dell'impatto; sole note o percorsi dei
+file non cambiano gli input numerici.
 Sulla nuova H100 verificare ambiente e parità; picchi fisici e tempi
 richiedono nuove misure. Correlazioni monouso, journal e KV di sessione
 non sono cache da importare nella nuova esecuzione.
@@ -654,12 +742,7 @@ ammesso, senza etichettarlo come successo misurato di quel requisito.
 
 Conservare nuovi record anche per timeout, errori numerici, esaurimento,
 fallimenti di verifica o risultati oltre i limiti. La SHA del codice
-eseguito deve essere pulita. I record non autorizzano nuovi tentativi; la preautorizzazione corrente
-del proprietario copre i successivi trial entro il termine originale;
+eseguito deve essere pulita. L'istruzione del proprietario autorizza i trial
+della nuova sessione entro la sua deadline; i record storici non la sostituiscono.
 aggiornare i cinque documenti correnti solo quando cambia un fatto,
 collegando la nuova evidenza senza sovrascrivere quella precedente.
-
-Il [record locale a SHA pulita 82dae48](../../benchmarks/results/c71-temporary-memory-local-2026-10-04-82dae4818962.json) conserva 41 test Rust
-e 11 Python passati, build lib/runner/sm_90, ledger, hash e fallimenti
-intermedi. Un test GPU resta intenzionalmente ignorato. Non acquisisce
-W reale, esecuzione canonica o conformità fisica H100.

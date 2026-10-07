@@ -65,8 +65,9 @@ cd "$C71_ROOT"
 ```
 
 Impostare `C71_PCS_TEST_BINARY` al percorso assoluto dell'eseguibile
-`volta_pcs-…` appena stampato da Cargo, non a un vecchio binario scelto
-per nome. Impostare:
+`volta_pcs-…` stampato da Cargo, oppure riusato con digest, SHA di build
+e compatibilità verificati secondo il [runbook](runpod-tests.md#riuso-del-bundle).
+Il solo nome del file non ne dimostra la provenienza. Impostare:
 
 ```bash
 export C71_CALIBRATION_BINARY="$CARGO_TARGET_DIR/debug/examples/c71_calibration"
@@ -110,7 +111,8 @@ del test runner richiedono l'eccezione locale se il sandbox le vieta;
 nessuna connessione esterna. Mantenere i log del rifiuto sandbox distinti
 da quelli della successiva esecuzione autorizzata.
 
-Compilare inoltre libreria completa e diagnostico senza eseguirli:
+Se il toolkit è disponibile, compilare libreria completa e diagnostico
+senza eseguirli; altrimenti la build CUDA si svolge sul pod autorizzato:
 
 ```bash
 nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC \
@@ -124,16 +126,8 @@ I controlli Python pertinenti sono `tests/test_c71_docs.py`,
 `tests/test_c71_dense_i16.py` e `tests/test_c71_range_native.py`, con i
 limiti sopra. La parità hardware e il tempo completo sono controlli del
 primo esperimento H100 autorizzato, non condizioni locali impossibili.
-Conservare la cache Cargo fino al completamento dell'integrazione.
-Il [checkpoint su SHA pulita](../../benchmarks/results/c71-device-runner-local-2026-10-04-1ec6720bb494.json)
-registra 38 test Rust e 12 Python passati, oltre a build e Clippy con
-warning. Sono inclusi anche `c71_b12_native_registry_header_and_real_shortage`
-e `c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals`,
-ognuno nei limiti locali. Conserva il precedente errore della schedule
-(150 invece di 149 righe finali, corretto) e il rifiuto sandbox delle
-socketpair, poi verificato con eccezione locale. Non cancella il fallimento
-CPU storico dell'asserzione di esaurimento dopo rifiuto PCS.
-
+La policy della cache Cargo è descritta nella sezione
+[provenienza](#risultati-e-conservazione).
 Eseguire separatamente ogni riga della tabella con il comando pytest
 limitato sopra. Impostare i due binari prima dei test che li richiedono.
 
@@ -158,24 +152,9 @@ I test della calibrazione non leggono checkpoint reali. `calibrated:false`
 e `credit:false` restano corretti anche quando le fixture passano.
 Il parser della traccia completa la validazione strutturale e la modalità
 `trace` esegue il produttore indipendente; finché questo non passa sui pesi
-reali non ammette Γ. Il
-[record del driver](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
-registra l'implementazione e i controlli locali, non una misura completa. Il
-[readiness audit corrente](../../benchmarks/results/c71-h100-e2e-readiness-2026-10-03-fbd6141e7a1e.json)
-registra `NOT_READY` per runtime della calibrazione e integrazione E2E. Il
-[record del piano pubblico](../../benchmarks/results/c71-oracle-plan-2026-10-02-55423e496cfc.json)
-registra tre DAG canonici validati, ma non esecuzione numerica indipendente. Il
-[record delle forme per contesto](../../benchmarks/results/c71-trace-context-shapes-2026-10-02-b634e781795d.json)
-registra il binding esatto delle colonne attention variabili al piano canonico. Il
-[record degli operatori indipendenti](../../benchmarks/results/c71-independent-operators-2026-10-02-2ed8e2091515.json)
-limita esplicitamente la parità corrente alla fixture ridotta. Il
-[record pulito](../../benchmarks/results/c71-calibration-trace-2026-10-02-f47b22d7a4c5.json)
-conserva i test dell'export e dei rifiuti con questo limite esplicito. Il
-[record dei permessi](../../benchmarks/results/c71-calibration-trace-permissions-2026-10-02-a0f46bf8ca7f.json)
-collega la correzione successiva che forza `0600` nel writer e nel wrapper.
-Il [record del confine i16](../../benchmarks/results/c71-i16-marker-2026-10-02-69e597e7cbd2.json)
-verifica il rifiuto di −32768 salvo lo slack argmax biased-u16 previsto
-dalla specifica.
+reali non ammette Γ. Il driver completo e i piani pubblici sono implementati e verificati su
+fixture ridotte; confronto sui pesi reali e Γ ammesso restano aperti nel
+[checkpoint H100](runpod-tests.md#stato-e-sequenza-operativa).
 I report GPU simulati dei test FFT non sono misure CUDA.
 
 L'audit del fork censisce 96 sorgenti e 26 delta revisionati, inclusi
@@ -268,27 +247,8 @@ maggiore e non attribuire al timeout copertura del terzo tentativo.
 Non eseguire l'intero filtro
 `c71_seed6_native` sotto un unico timeout. Le geometrie ridotte non
 trasferiscono i bound crittografici o il picco al profilo canonico ell=11.
-Un candidato separato con W ricostruita, A ordinata e pool Seed6 reale ha
-completato il primo tentativo e raggiunto `range_A` del secondo con otto
-blocchi, ma è scaduto a 60 s. Il
-[record negativo](../../benchmarks/results/c71-real-two-attempts-2026-10-03-262e89febe2c.json)
-conserva l'esito; il candidato non è mantenuto nella suite.
 
 ## CUDA e controlli statici
-
-Il [checkpoint KV condivisa](../../benchmarks/results/c71-kv-prefix-local-2026-10-04-facc742ede52.json)
-registra 22 test Rust e 11 Python passati, build/lint e compilazione sm_90;
-verifica i prefissi storici, il fork rifiutato prima del D2D e il cap di
-512 descrittori. Non esegue tutte le code canoniche o CUDA reale.
-
-Il [checkpoint range condiviso](../../benchmarks/results/c71-shared-range-local-2026-10-04-b6639a3fc3ad.json)
-registra 25 test Rust e 11 Python passati sulla SHA pulita, build/lint e
-due prove D10 sul medesimo owner senza H2D aggiuntivo delle sorgenti;
-algebra/driver simulati, PCS ridotta sui MAC originali, non runner completo.
-
-Il [checkpoint RMS/attention](../../benchmarks/results/c71-attention-local-2026-10-04-85e77ea66b6f.json)
-registra 22 test Rust e 12 Python passati sulla SHA pulita, build/lint e
-compilazione sm_90 del runtime e del diagnostico, senza esecuzione CUDA.
 
 `c71_canonical_resident_nonlinear_original_routes` confronta le route
 GELU, softcap, RoPE, argmax, Norm non ponderate ed EXP30 nei tre contesti con `prepare_row`, usando
@@ -325,38 +285,6 @@ restare parzialmente consumato su errore. Questo esito resta negativo,
 senza attribuire copertura al successivo caso simulatore; non allenta
 il burn dell'intera riserva imposto dal registro prima della verifica.
 
-Il [record Affine/Gate residente](../../benchmarks/results/c71-pointwise-local-2026-10-03-e8566ae6e395.json)
-conserva 22 test Rust e 12 Python sulla SHA pulita, build/lint e libreria
-sm_90. Verifica 181 route Affine e 60 Gate per ciascuno dei tre contesti,
-una sola riga sintetica selezionata per operazione, raw CPU identico e RNE
-originale: non sono forward completi. L'arena della fixture è 8 MiB,
-senza W caricato. Il record corregge anche il rifiuto errato di −32768
-nel solo codec byte condiviso. Il kernel pointwise usa 18 registri,
-senza stack o spill; nessuna esecuzione GPU o certificato canonico.
-
-Il [record del gather residente](../../benchmarks/results/c71-byte-resident-local-2026-10-03-2f6d017b1c93.json)
-conserva 18 test Rust e 12 Python sulla SHA pulita, build/lint e libreria
-sm_90. Verifica 130 finestre sintetiche fino a 128 byte, codec i48/i32/i16,
-ordine esatto e 11 rifiuti Rust. L'entry point canonico esegue solo 128 byte
-di padding esterno D34, non un replay completo. Il kernel gather compilato
-usa 32 registri, senza stack o spill; nessuna esecuzione CUDA acquisita.
-
-Il [record dell'adapter residente](../../benchmarks/results/c71-resident-adapter-local-2026-10-03-c8254c74b41e.json)
-conserva 15 test Rust e 12 Python sulla SHA pulita, build e lint
-`correctness`/`suspicious`. Collega Matrix/RNE all'owner nativo su un
-profilo ridotto, incluse viste di riga senza copie e 14 rifiuti terminali;
-il dispatcher canonico rifiuta operatori mancanti e W incompleta.
-La libreria sm_90 esporta abort e viste di riga; SASS invariato rispetto
-all'owner condiviso. Driver simulato, nessuna esecuzione GPU, nessuno
-scanner canonico interamente residente e nessun certificato canonico.
-
-Il [record del batching del preparatore](../../benchmarks/results/c71-producer-batch-local-2026-10-03-4e66ebb93705.json)
-conserva 11 test Rust e 9 Python sulla SHA pulita, build e lint
-`correctness`/`suspicious`. Esegue tre righe v_source sintetiche con
-22.020.096 letture W condivise e un replay affine/RNE da 150 righe;
-le 411 geometrie matriciali per contesto sono solo descrittori.
-La schedule è collegata allo scanner CPU, non ai buffer GPU residenti.
-
 Il test [test_c71_dense_i16.py](../../tests/test_c71_dense_i16.py), separato
 entro 60 s/2 GiB, compila con UBSan il modello host del kernel i16.
 Controlla anche 216 casi pointwise con riferimento i128 indipendente,
@@ -368,14 +296,6 @@ canonica. Verifica inoltre RNE su tutti gli i16 per shift −16..49, estremi
 i64/signed-48 e pareggi ±1, contro divisione i128 indipendente sotto UBSan.
 La compilazione sm_90 di `cuda/c71_dense_i16.cu` non esegue GPU né misura
 GEMM o inference complete.
-Il [record locale](../../benchmarks/results/c71-dense-i16-local-2026-10-03-dacbd64425f1.json)
-conserva 10 controlli passati, hash degli artefatti e quattro istruzioni
-IMMA statiche nel SASS; nessuna misura GPU o certificato canonico.
-Il [record dell'owner condiviso](../../benchmarks/results/c71-dense-owner-local-2026-10-03-d0fd644ed704.json)
-aggiunge 9 test Rust e 12 Python sulla revisione pulita, W residente,
-RNE e range nello stesso contesto; conserva anche la build interrotta
-per correggere la directory e la semplificazione delle divisioni RNE.
-
 Il test [test_c71_range_native.py](../../tests/test_c71_range_native.py),
 eseguito separatamente con il limite 60 s/2 GiB sopra, compila un controllo
 host di 37 casi per root signed/byte, coefficienti cubici, Gram e fold.
@@ -399,26 +319,13 @@ o convalida i kernel CUDA. L'embedding aggiunge copie D2D per batch di
 token invalidi prima della prima copia ed errori dopo copie parziali.
 Il link dell'owner ABI 4 richiede anche
 `cuda/c71_dense_i16.cu`; Rust rifiuta librerie della precedente ABI.
-Il toolkit
-locale dispone del runtime statico: usare `--cudart static` per la libreria,
+Con un toolkit dotato di runtime statico usare `--cudart static` per la libreria;
 non dedurre un errore dei kernel dall'assenza di `libcudart.so`.
-Il [checkpoint nativo](../c7.1-history/canonical-native-range-kernels.md)
-conserva esiti, errori degli strumenti, stack locale e artefatti compilati;
-non contiene esecuzioni GPU o prove canoniche.
-Il [record dell'owner residente](../../benchmarks/results/c71-range-owner-local-2026-10-03-20d85df34158.json)
-aggiunge undici test Python, controllo UBSan del driver simulato e link
-kernel/runtime sulla SHA pulita. Il SASS dei kernel è invariato; il nuovo
-owner in quella revisione non era ancora collegato ai callback Rust.
 I filtri `c71_b12_windowed_native_*` compilano ora una libreria host
 temporanea del medesimo owner, con simboli CUDA fittizi e algebra di
 riferimento, e la caricano nel prover Rust. Non caricano la libreria CUDA
 reale. Byte D10 usa finestre da 512 B, signed D12 da 4.096 B; l'arena
 simulata è di 262.144 B. I controlli non verificano kernel, D34/D35 o H100.
-Il [record del collegamento Rust](../../benchmarks/results/c71-range-rust-local-2026-10-03-a7a644cd563d.json)
-conserva undici test Rust e undici Python, build e lint sulla revisione
-pulita. Distingue la parità attraverso l'ABI dalle regressioni CPU integrate
-e conserva i log dei rifiuti iniettati. La cache di build è mantenuta.
-
 Per il controllo host della FFT:
 
 ```bash
@@ -433,110 +340,39 @@ e `--gpu-power-native` richiedono lo stesso controllo esplicito.
 
 ## Risultati e conservazione
 
-Il [checkpoint nonlineare](../../benchmarks/results/c71-nonlinear-local-2026-10-04-870ec1faf05d.json)
-registra 22 test Rust e 12 Python passati sulla SHA pulita, il fallimento
-CPU softcap/argmax descritto sopra, build/lint e compilazione sm_90.
-Conserva le correzioni del bias istogramma e dell'identità degli owner,
-senza attestare scanner completo, esecuzione CUDA o runner H100 pronto.
-
-Il [record embedding residente](../../benchmarks/results/c71-embedding-local-2026-10-03-27c0db34fe92.json)
-registra 25 test Rust e 12 Python sulla revisione pulita, ABI 4, copie D2D
-ordinate dal W originale e rifiuti dopo copie parziali. Conserva il fallimento
-iniziale della pulizia della fixture ABI e il retry del disassemblatore.
-Il SASS resta invariato: embedding usa copie native, non un nuovo kernel.
-Quella revisione disponeva di cinque tipi di producer su tredici; le nuove
-route nonlineari ne aggiungono quattro. Questo inventario non è una
-percentuale di completamento né una prova canonica o GPU.
-
 Per ogni verifica conservare SHA del codice, comando, exit code, numero
 di test, durata e limiti, distinguendo warning, rifiuti attesi e failure.
 I record di riferimento richiedono albero pulito e `git_dirty:false` e
 vanno in nuovi file `benchmarks/results/<milestone>-<date>-<gitsha>.json`.
 Non riscrivere risultati precedenti, neppure per correggerli.
 
-Il [record del riferimento canonico CPU](../../benchmarks/results/c71-canonical-reference-local-2026-10-03-dfb0867c6010.json)
-conserva i controlli della pipeline, i limiti di copertura e i fallimenti
-di sviluppo separati dalle esecuzioni sulla revisione pulita. Non attesta
-certificati canonici validi o completamento del lavoro locale per H100.
-Il [record della strumentazione](../../benchmarks/results/c71-runner-measurements-local-2026-10-03-187a0b9dc9ce.json)
-registra separatamente 9 test Rust, 10 Python e due rifiuti CLI sulla SHA
-pulita, con contatori di tre scambi sintetici e rifiuto per capacità reale.
-Non è un'esecuzione di tre prove. Conserva inoltre il riscontro statico
-del cap 2^18 del replay nella revisione registrata.
-Il [record dello scanner iniziale](../../benchmarks/results/c71-initial-scan-local-2026-10-03-83d366ccbc5c.json)
-conserva 23 test Rust, 9 Python e due rifiuti CLI sulla revisione pulita
-che sostituisce quel limite con la geometria iniziale scelta. Include
-la regressione del cap query trovata e corretta durante lo sviluppo.
-La parità a 512 passaggi è D14; D34/D35 e picco completo non sono eseguiti.
-Il [record delle query a finestre](../../benchmarks/results/c71-query-windows-local-2026-10-03-fa8a1617a674.json)
-registra 24 test Rust, 9 Python e due rifiuti CLI sulla SHA pulita,
-inclusa la catena PCS D10 con reader byte, S1 e MAC originali. Conserva
-l'asserzione errata sul conteggio coset del fixture e la sua correzione;
-nessuna allocazione/esecuzione dei domini canonici o misura GPU.
-Il [record delle riduzioni sorgente](../../benchmarks/results/c71-residual-scan-local-2026-10-03-989efa70c151.json)
-conserva 29 test Rust, 9 Python e due rifiuti CLI sulla SHA pulita, con
-singleton/coset/OOD/retention e catena D10 senza getter originale scalare.
-Il primo errore di compilazione è conservato; la
-[correzione dei metadati](../../benchmarks/results/c71-residual-scan-metadata-correction-2026-10-03-989efa70c151.json)
-riporta le durate già presenti negli stdout, senza sovrascrivere il record
-o attribuire una nuova esecuzione. D16 e geometrie extension grandi erano
-limiti di quella revisione; il [checkpoint successivo](../c7.1-history/canonical-pcs-stages.md)
-ne collega il supporto CPU, senza credito canonico, GPU o di picco fisico.
-Il [checkpoint del gather range](../c7.1-history/canonical-range-gather.md)
-descrive i controlli del nuovo reader riordinato. Il test dei byte biased
-copre anche il gather i48/i32/i16 e il test canonico dell'operatore copre
-checkpoint, istogrammi e padding. Nessuno dei due attesta un prover range
-Gram o una finestra di 2 GiB eseguita. Il
-[record pulito](../../benchmarks/results/c71-range-gather-local-2026-10-03-0e61ef0826a5.json)
-registra 15 test Rust, 11 Python e i lint di correttezza; distingue le
-208 finestre D34 controllate solo come descrittori dalle finestre piccole
-eseguite, al massimo 256 byte nel gather.
-Il [record del consumer range A](../../benchmarks/results/c71-windowed-range-local-2026-10-03-0c3807f2fecb.json)
-registra 28 test Rust, 11 Python, build/lint e due rifiuti CLI sulla SHA
-pulita. Include parità D10, chiusura sui MAC originali, reader alterato
-e errori a ogni passata ridotta. Le finestre del consumer eseguite sono
-al più 1.024 byte; le 26 passate D34 sono selezionate, non eseguite.
-Il [checkpoint signed W](../c7.1-history/canonical-signed-range.md) aggiunge
-dieci test Rust mirati e nove Python sulla SHA pulita, con parità D12,
-MAC originali e una prova integrata ridotta che usa il nuovo range W.
-Il massimo buffer signed eseguito è 8.192 byte; le finestre D35 da
-256 MiB restano non eseguite. Il record conserva l'errore iniziale della
-fixture PCS e distingue la provenienza delle due build.
-Il [record degli stadi PCS](../../benchmarks/results/c71-pcs-stages-local-2026-10-03-cc5db06c1796.json)
-registra 32 test Rust, 18 Python e due rifiuti CLI sulla SHA pulita,
-inclusa la catena PCS D17, conservando gli errori di sviluppo. Una
-[correzione collegata](../../benchmarks/results/c71-pcs-stages-block-cap-correction-2026-10-03-cc5db06c1796.json)
-distingue il blocco 1.024 dei confronti diretti dal massimo 2.048 dei
-test integrati; il cap 2^20 e i domini D34/D35 non sono eseguiti.
+Le cronache di build, i conteggi dei checkpoint intermedi e i fallimenti
+sono nei [record originali](../../benchmarks/results/) e
+nell'[archivio](../c7.1-history/README.md). Il
+[checkpoint H100 del 4 ottobre](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json)
+è l'evidenza più recente: parità operatori/MAC e ingestione PASS,
+29 controlli numerici PASS, pilot reale terminato per timeout; nessun Γ
+ammesso o certificato canonico. Il fallimento CPU della fixture softcap/argmax
+sopra resta distinto dal FAIL iniziale CUDA corretto nella campagna H100.
 
-La verifica di questa riorganizzazione e gli eventuali fallimenti sono
-registrati nell'[audit documentale](../c7.1-history/reorganization-audit.md).
 Questa pagina contiene comandi e significato dei test; l'archivio conserva
-gli esiti datati. Il proprietario ha autorizzato il 2026-10-03 a conservare
-la cache canonica `rust/target` fino alla fine del goal corrente, per evitare
-ricompilazioni complete a ogni checkpoint. Alla conclusione del goal rimuovere
-la cache, preservando fixture ed evidenze, salvo nuove istruzioni. Non creare target
+gli esiti datati. La cache canonica `rust/target`, conservata durante il
+goal diagnostico del 4 ottobre, è stata rimossa alla sua conclusione.
+Per un nuovo goal usare lo stesso target per le build mirate necessarie,
+conservarlo fino alla conclusione e poi rimuoverlo preservando fixture ed
+evidenze, salvo istruzioni diverse del proprietario. Non creare target
 alternativi per singoli crate. `.cargo/config.toml` imposta
 `target-cpu=native`: i tempi CPU non si trasferiscono a un'altra macchina.
 
-Il [primo FAIL H100](../../benchmarks/results/c71-h100-first-parity-failure-2026-10-04-d4abed66fc41.json) distingue build e parità;
-il [trial corretto](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json) conferma sulla H100 operatori sintetici e
-percorso ridotto sui MAC originali. `tests/test_c71_dense_i16.py` comprende
-ora anche un controllo che legge i due casi pointwise del diagnostico e
-li valida contro il contratto C++ reale del launcher: il precedente Gate
-`{0,0,1}` è invalido, `{1,1,1}` è ammesso. I due test host passano con
-60 s / 2 GiB; restano controlli host distinti dai due trial GPU. I test
-piccoli della calibrazione passano sul pod; il linker richiede affinità
-a un core entro 2 GiB AS su questo host con 224 CPU visibili. Il fallimento
-senza affinità è conservato. Il goal diagnostico è concluso; la cache locale Cargo è rimossa
-alla chiusura, preservando binari ed evidenze nel bundle privato.
 La regressione del pilot confronta byte, contatori e causalità tra
 blocchi seriali/paralleli e tra sorgenti streamed/mappate readonly;
 la parte a due thread si esegue sul pod, mantenendo i controlli locali
-a un thread. L'[ingestione reale PASS](../../benchmarks/results/c71-h100-ingest-2026-10-04-d3c2fa95eaf7.json) è evidenza distinta dalle fixture. Il [checkpoint finale](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json)
-conserva i 29 controlli numerici PASS sulla H100 e il timeout del pilot
-reale. I controlli documentali locali verificano il nuovo handoff;
-nessuna compilazione o rigenerazione pesi è necessaria sulla VM.
+a un thread. Per questa revisione documentale bastano i controlli dei documenti.
+Nella prossima sessione, analisi del pilot e fixture ridotte restano locali
+entro i limiti sopra; misure sui pesi reali, prove parallele e qualsiasi
+esecuzione CUDA si svolgono sul pod autorizzato. L'accelerazione richiede
+confronti col riferimento su dati fissati, errori e ordine causale, poi
+misure rappresentative sul pod; non autorizza un pilot completo sulla VM.
 
 ## Budget simultaneo e rilascio dei workspace
 
@@ -571,8 +407,3 @@ la directory a [c71_temporary_ledger.py](../../scripts/c71_temporary_ledger.py).
 Il report include esplicitamente la riserva fisica non ancora misurata.
 Un run di record parte dal commit di implementazione pulito; i record
 precedenti, inclusi fallimenti e filtri vuoti, non vanno sovrascritti.
-
-Il [record locale a SHA pulita 82dae48](../../benchmarks/results/c71-temporary-memory-local-2026-10-04-82dae4818962.json) conserva 41 test Rust
-e 11 Python passati, build lib/runner/sm_90, ledger, hash e fallimenti
-intermedi. Un test GPU resta intenzionalmente ignorato. Non acquisisce
-W reale, esecuzione canonica o conformità fisica H100.

@@ -217,7 +217,12 @@ completi da KV vuoto e il confronto indipendente sui pesi reali. Il
 [prefisso intero successivo](../../benchmarks/results/c71-integer-prefix-stopped-2026-10-07-d00a6b6.json)
 è interrotto dall’agent dopo 107 token / 266,00 s per correggere la
 stima del budget: nuovo trial da KV vuoto, 1.350 s nativi / 1.500 s
-esterni, senza cambiare deadline o cap fisici. Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
+esterni, senza cambiare deadline o cap fisici. Il
+[replay completo](../../benchmarks/results/c71-one-integer-replay-2026-10-07-868a3e8.json)
+è PASS sui 450 token: copertura esatta dei 3.471 ID A in ciascun contesto,
+tabelle coerenti col ledger delle risorse, chiusura CUDA senza errori. Il
+secondo replay con traccia e confronto indipendente a 8 worker è in corso;
+Γ resta non ammesso finché non sono chiusi tutti e cinque i controlli. Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
 resta evidenza della sola preparazione precedente.
 
 ## Contratto delle risorse

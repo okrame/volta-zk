@@ -92,6 +92,11 @@ provider implica avvio alle 11:05:46 UTC; si applica prudenzialmente
 11:04:46 UTC: fine trial 16:34:46, guard stop 16:59:46, termine massimo
 17:04:46 UTC del 7 ottobre. Il guard locale API è attivo; l'arresto finale
 va comunque verificato. Nessun credito numerico deriva dall'avvio.
+Il proprietario ha inoltre consentito la rimozione del solo cap AS per
+i processi CUDA: limiti fisici, pod unico e deadline restano invariati.
+Il cap CPU resta 64 GiB. I fallimenti CUDA sotto AS 2 GiB sono conservati;
+la parità sul pod è poi passata anche entro AS 64 GiB. I 2 GiB dei
+controlli locali non costituivano il cap della calibrazione RunPod.
 
 [c71_campaign_measure.py](../../scripts/c71_campaign_measure.py) riusa
 il monitor corretto del bundle storico con deadline e UUID obbligatori
@@ -321,7 +326,8 @@ Per stimare il costo del replay prima di disporre della candidata,
 `c71_calibration profile-matrix PACKED` misura una proiezione con K massimo
 su W reale e input i16 sintetico alternato agli estremi. Eseguire solo sul
 pod autorizzato, entro 60 s/2 GiB, con packed già verificato dall'ingest.
-Usa il kernel e il reader del replay CPU e dichiara `credit:false`,
+Confronta kernel scalare e lettura/dot a blocchi del replay CPU, con tempi
+separati e uguaglianza esatta, e dichiara `credit:false`,
 `packed_hash_checked:false`, `complete_integer_trial:false`: non valida
 scale, tabelle, causalità o Γ. L'extrapolazione dei prodotti è una stima
 parziale; aggiungere tabelle, altri operatori, I/O traccia e driver indipendente.

@@ -513,33 +513,56 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
         if mode == "profile-matrix" {
             // Offline screen for phase planning: actual W, synthetic i16 input.
             // No candidate, tables, causal inference or admission is produced.
-            let raw = pilot.plan.cohorts.iter().enumerate()
+            let raw = pilot
+                .plan
+                .cohorts
+                .iter()
+                .enumerate()
                 .filter(|(_, cohort)| cohort.kind == Kind::Matrix)
                 .max_by_key(|(_, cohort)| cohort.inner)
-                .map(|(id, _)| id).ok_or("matrix profile has no matrix")?;
+                .map(|(id, _)| id)
+                .ok_or("matrix profile has no matrix")?;
             let batch = pilot.matrix_batch(raw, 0, 1)?;
             let reader = std::cell::RefCell::new(calibration::PackedRows::new(
-                &pilot.plan.sources, File::open(&arguments[1]).map_err(|e| e.to_string())?,
+                &pilot.plan.sources,
+                File::open(&arguments[1]).map_err(|e| e.to_string())?,
             )?);
             let reads = std::cell::Cell::new(0usize);
             let started = std::time::Instant::now();
-            let output = pilot.prepare_matrix_batch(raw, 0, 1, 8 << 20,
+            let output = pilot.prepare_matrix_batch(
+                raw,
+                0,
+                1,
+                8 << 20,
                 |id, row, col| {
                     reads.set(reads.get() + 1);
                     reader.borrow_mut().get(id, row, col)
-                }, |_, _, col| Ok(if col % 2 == 0 { 32767 } else { -32767 }))?;
+                },
+                |_, _, col| Ok(if col % 2 == 0 { 32767 } else { -32767 }),
+            )?;
             let elapsed = started.elapsed().as_secs_f64();
-            if output.values.len() != 1 || output.values[0].2.len() != batch.columns
+            if output.values.len() != 1
+                || output.values[0].2.len() != batch.columns
                 || reads.get() != batch.columns * batch.inner
             {
                 return Err("matrix profile coverage differs".into());
             }
             std::hint::black_box(&output);
+            let input: Vec<i16> =
+                (0..batch.inner).map(|col| if col % 2 == 0 { 32767 } else { -32767 }).collect();
+            let started = std::time::Instant::now();
+            let blocked = reader.borrow_mut().matrix_dot(&batch, &input)?;
+            let blocked_elapsed = started.elapsed().as_secs_f64();
+            if blocked != output.values[0].2 {
+                return Err("blocked integer matrix differs from scalar reference".into());
+            }
             return Ok(serde_json::json!({"credit": false, "calibrated": false,
                 "profile_only": true, "complete_integer_trial": false,
                 "packed_hash_checked": false, "synthetic_input": true,
                 "rows": batch.columns, "columns": batch.inner,
                 "matrix_scalar_products": reads.get(), "wall_seconds": elapsed,
+                "blocked_wall_seconds": blocked_elapsed, "exact_reference_equal": true,
+                "matrix_evaluations": 2, "total_matrix_scalar_products": 2 * reads.get(),
                 "packed_row_loads": reader.borrow().row_loads,
                 "packed_row_bytes": reader.borrow().completed_row_bytes}));
         }

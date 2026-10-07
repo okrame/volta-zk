@@ -169,7 +169,13 @@ in conversione, non nel contatore di lettura. Il controllo UBSan confronta
 l'intero dominio legale, output causali e rifiuto del marcatore.
 
 [canonical_calibration.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs)
-esegue invece gli operatori interi: legge W packed con una cache di riga,
+esegue invece gli operatori interi: legge W packed con un buffer di al più
+128 righe (5.505.024 B canonici), contato nella capacità esterna del trial.
+Per le matrici legge blocchi contigui, valida tutti gli i16 e applica dot
+Rust i16→i64 su slice, eliminando callback e seek per coefficiente/riga;
+le somme parziali restano bounded e gli originali raw/RNE sono invariati.
+Il kernel scalare resta come riferimento e lo screen lo confronta esattamente.
+Gli altri operatori usano ancora la cache di riga. Il replay
 conserva solo le righe A vive, raccoglie intervalli e istogrammi e mantiene
 KV i16 causale. Rilascia ogni riga dopo l'ultimo consumer; trasferisce KV
 al contesto successivo solo dopo tutti i 150 token e la copertura di ogni

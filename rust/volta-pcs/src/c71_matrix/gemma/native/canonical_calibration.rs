@@ -446,7 +446,7 @@ impl<'a, R: Read + Seek> PackedRows<'a, R> {
             .map(|s| s.cols)
             .max()
             .unwrap()
-            .checked_mul(2)
+            .checked_mul(2 * 128)
             .ok_or("packed W row overflow")?;
         Ok(Self {
             sources,
@@ -477,6 +477,48 @@ impl<'a, R: Read + Seek> PackedRows<'a, R> {
             self.row = Some((id, row));
         }
         Ok(i64::from(i16::from_le_bytes([self.buffer[2 * col], self.buffer[2 * col + 1]])))
+    }
+
+    pub(super) fn matrix_dot(
+        &mut self,
+        batch: &prepare::MatrixBatch,
+        input: &[i16],
+    ) -> Result<Vec<i64>, String> {
+        self.row = None;
+        let source = self.sources.get(batch.tensor).ok_or("packed matrix tensor missing")?;
+        if batch.rows != 1
+            || batch.columns != source.rows
+            || batch.inner != source.cols
+            || batch.weight_offset != source.packed_offset
+            || input.len() != source.cols
+            || input.contains(&i16::MIN)
+            || (source.cols as u128) * 32767u128.pow(2) >= 1u128 << 63
+        {
+            return Err("packed matrix shape/input/bound differs".into());
+        }
+        self.input
+            .seek(SeekFrom::Start(2 * source.packed_offset as u64))
+            .map_err(|e| e.to_string())?;
+        let mut output = Vec::with_capacity(source.rows);
+        for first in (0..source.rows).step_by(128) {
+            let rows = (source.rows - first).min(128);
+            let body = &mut self.buffer[..rows * source.cols * 2];
+            self.input.read_exact(body).map_err(|e| e.to_string())?;
+            self.row_loads += rows;
+            self.completed_row_bytes += body.len();
+            if body.chunks_exact(2).any(|b| i16::from_le_bytes([b[0], b[1]]) == i16::MIN) {
+                return Err("packed W outside symmetric i16".into());
+            }
+            for row in body.chunks_exact(2 * source.cols) {
+                output.push(
+                    row.chunks_exact(2)
+                        .zip(input)
+                        .map(|(w, &x)| i64::from(i16::from_le_bytes([w[0], w[1]])) * i64::from(x))
+                        .sum(),
+                );
+            }
+        }
+        Ok(output)
     }
 }
 
@@ -614,12 +656,14 @@ pub(super) fn fixed_run<R: Read + Seek>(
         let weights = RefCell::new(&mut *reader);
         for token in 0..150 {
             trial
-                .token(
+                .token_observed_matrix(
                     &mut tokens,
                     &public.tables[slot],
                     &|id, row, column| weights.borrow_mut().get(id, row, column),
                     &|id, row, column| history.read(id, row, column),
                     trace.as_deref_mut(),
+                    |_| Ok(()),
+                    Some(&|batch, input| weights.borrow_mut().matrix_dot(batch, input)),
                 )
                 .map_err(|error| format!("calibration O={} token={token}: {error}", slot * 150))?;
         }
@@ -648,6 +692,55 @@ pub(super) fn fixed_run<R: Read + Seek>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_b12_native_calibration_block_matrix_matches_i128_and_rejects_invalid() {
+        for (rows, columns) in [(257, 129), (3, 21504)] {
+            let sources = [Source { name: "matrix".into(), rows, cols: columns, packed_offset: 0 }];
+            let words: Vec<i16> =
+                (0..rows * columns).map(|i| ((i * 37 % 65535) as i32 - 32767) as i16).collect();
+            let input: Vec<i16> =
+                (0..columns).map(|i| if i % 2 == 0 { -32767 } else { 32767 }).collect();
+            let bytes = words.iter().flat_map(|w| w.to_le_bytes()).collect::<Vec<_>>();
+            let mut reader = PackedRows::new(&sources, std::io::Cursor::new(bytes)).unwrap();
+            let batch = prepare::MatrixBatch {
+                input: 0,
+                input_first: 0,
+                tensor: 0,
+                weight_offset: 0,
+                rows: 1,
+                columns: rows,
+                inner: columns,
+            };
+            let expected: Vec<i64> = words
+                .chunks_exact(columns)
+                .map(|row| {
+                    row.iter()
+                        .zip(&input)
+                        .map(|(&w, &x)| i128::from(w) * i128::from(x))
+                        .sum::<i128>() as i64
+                })
+                .collect();
+            assert_eq!(reader.matrix_dot(&batch, &input).unwrap(), expected);
+            assert_eq!(reader.row_loads, rows);
+            assert_eq!(reader.completed_row_bytes, rows * columns * 2);
+            assert!(reader.row.is_none());
+            assert_eq!(
+                reader.get(0, rows - 1, columns - 1).unwrap(),
+                i64::from(*words.last().unwrap())
+            );
+            assert_eq!(reader.matrix_dot(&batch, &input).unwrap(), expected);
+            assert!(reader.matrix_dot(&batch, &input[..columns - 1]).is_err());
+            let mut invalid = input.clone();
+            invalid[0] = i16::MIN;
+            assert!(reader.matrix_dot(&batch, &invalid).is_err());
+            reader.input.get_mut()[2..4].copy_from_slice(&i16::MIN.to_le_bytes());
+            assert!(reader.matrix_dot(&batch, &input).is_err());
+            assert!(reader.row.is_none());
+            reader.input.get_mut().truncate(1);
+            assert!(reader.matrix_dot(&batch, &input).is_err());
+        }
+    }
 
     #[test]
     fn c71_calibration_trace_codec_is_framed_and_fail_closed() {
@@ -1180,7 +1273,20 @@ impl<'a> Trial<'a> {
         weights: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
         previous: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
         trace: Option<&mut Trace>,
+        observe: impl FnMut(&prepare::Row) -> Result<(), String>,
+    ) -> Result<(), String> {
+        self.token_observed_matrix(tokens, tables, weights, previous, trace, observe, None)
+    }
+
+    fn token_observed_matrix(
+        &mut self,
+        tokens: &mut [u32; 150],
+        tables: &profile::Tables<'_>,
+        weights: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
+        previous: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
+        trace: Option<&mut Trace>,
         mut observe: impl FnMut(&prepare::Row) -> Result<(), String>,
+        matrix: Option<&dyn Fn(&prepare::MatrixBatch, &[i16]) -> Result<Vec<i64>, String>>,
     ) -> Result<(), String> {
         if self.failed || self.finished || self.next_token >= 150 {
             return Err("calibration trial stopped".into());
@@ -1192,28 +1298,48 @@ impl<'a> Trial<'a> {
         let (wr, ar, old, fresh) = (Cell::new(0), Cell::new(0), Cell::new(0), Cell::new(0));
         let state = RefCell::new(&mut *self);
         let trace = RefCell::new(trace);
-        let result = p.prepare_token(
+        let weight = |id, r, c| {
+            wr.set(wr.get() + 1);
+            weights(id, r, c)
+        };
+        let get = |id, r, c| {
+            ar.set(ar.get() + 1);
+            state.borrow().read(id, r, c)
+        };
+        let tail = |id, t, c| {
+            if t > p.sources.attention.rope.old + token {
+                return Err("calibration future KV read".into());
+            }
+            if t < p.sources.attention.rope.old {
+                old.set(old.get() + 1);
+                previous(id, t, c)
+            } else {
+                fresh.set(fresh.get() + 1);
+                state.borrow().read(id, t - p.sources.attention.rope.old, c)
+            }
+        };
+        let result = p.prepare_token_with(
             token,
             &mut pending_tokens,
-            tables,
-            &|id, r, c| {
-                wr.set(wr.get() + 1);
-                weights(id, r, c)
-            },
-            &|id, r, c| {
-                ar.set(ar.get() + 1);
-                state.borrow().read(id, r, c)
-            },
-            &|id, t, c| {
-                if t > p.sources.attention.rope.old + token {
-                    return Err("calibration future KV read".into());
-                }
-                if t < p.sources.attention.rope.old {
-                    old.set(old.get() + 1);
-                    previous(id, t, c)
+            |step, row, emitted_token| {
+                if let (Producer::Matrix(raw), Some(matrix)) = (step, matrix) {
+                    let batch = p.matrix_batch(*raw, row, 1)?;
+                    let mut input = Vec::with_capacity(batch.inner);
+                    for column in 0..batch.inner {
+                        let value = get(batch.input, batch.input_first, column)?;
+                        if !(-32767..=32767).contains(&value) {
+                            return Err("calibration matrix input outside symmetric i16".into());
+                        }
+                        input.push(value as i16);
+                    }
+                    let output = matrix(&batch, &input)?;
+                    if output.len() != batch.columns {
+                        return Err("calibration matrix output length differs".into());
+                    }
+                    wr.set(wr.get() + batch.columns * batch.inner);
+                    Ok(prepare::Row { values: vec![(*raw, row, output)], ..Default::default() })
                 } else {
-                    fresh.set(fresh.get() + 1);
-                    state.borrow().read(id, t - p.sources.attention.rope.old, c)
+                    p.prepare_row(step, row, emitted_token, tables, &weight, &get, &tail)
                 }
             },
             |out| {

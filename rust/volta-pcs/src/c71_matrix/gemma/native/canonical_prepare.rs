@@ -832,6 +832,23 @@ impl Canonical {
         weight: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
         get: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
         tail: &dyn Fn(usize, usize, usize) -> Result<i64, String>,
+        emit: impl FnMut(Row) -> Result<(), String>,
+        after_step: impl FnMut(usize) -> Result<(), String>,
+    ) -> Result<(), String> {
+        self.prepare_token_with(
+            token_index,
+            tokens,
+            |step, row, token| self.prepare_row(step, row, token, tables, weight, get, tail),
+            emit,
+            after_step,
+        )
+    }
+
+    pub(super) fn prepare_token_with(
+        &self,
+        token_index: usize,
+        tokens: &mut [u32; 150],
+        mut produce: impl FnMut(&Producer, usize, u32) -> Result<Row, String>,
         mut emit: impl FnMut(Row) -> Result<(), String>,
         mut after_step: impl FnMut(usize) -> Result<(), String>,
     ) -> Result<(), String> {
@@ -839,8 +856,7 @@ impl Canonical {
         let mut next = None;
         for (step_index, step) in self.steps.iter().enumerate() {
             for row in self.rows_at_token(step, token_index)? {
-                let result = self
-                    .prepare_row(step, row, token, tables, weight, get, tail)
+                let result = produce(step, row, token)
                     .map_err(|error| format!("producer={step_index} row={row}: {error}"))?;
                 if let Some(t) = result.token {
                     if next.replace(t).is_some() {

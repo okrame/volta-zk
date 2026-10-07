@@ -952,7 +952,8 @@ Proof, cache, iteratori, output, conversioni e allocator restano memoria
 da contare anche quando la copia della riserva è eliminata.
 
 Lo [stato H100](runpod-tests.md#stato-e-sequenza-operativa) distingue
-parità ridotte PASS e calibrazione incompleta. Il mapping W readonly è
+parità ridotte PASS, Γ ammesso dopo due replay e confronto indipendente
+completi, e prova canonica ancora da verificare. Il mapping W readonly è
 materiale globale immutabile; non sottrarre la lunghezza del packed dal
 RSS senza misurarne la residenza. Nessun campione offline chiude l'arena
 canonica o tutte le capacità trattenute.

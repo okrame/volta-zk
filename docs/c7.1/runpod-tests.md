@@ -7,10 +7,23 @@
 
 Il runner locale `experiment-cuda` collega inferenza/replay dei 13 producer,
 owner comune, range residente, PCS/GKR CPU, verifica e promozione per
-O=0/150/300. L'esperimento canonico richiede ancora Γ ammesso e
-autorizzazione hardware valida. Nessun certificato canonico, tempo completo
+O=0/150/300. Γ è ammesso per il workload pinned dal
+[record del 7 ottobre](../../benchmarks/results/c71-gamma-admission-2026-10-07-868a3e8.json).
+L'esperimento canonico richiede autorizzazione hardware valida. Nessun certificato canonico, tempo completo
 o rispetto dei target è acquisito. Gli audit delle revisioni precedenti
 restano nei record storici e non introducono gate concorrenti.
+
+**Campagna del 7 ottobre chiusa: [diagnostica INCOMPLETA](../../benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json), Γ PASS.**
+Il tentativo `experiment-cuda` termina con exit 124 dopo 2.461,09 s,
+senza report nativo completo, journal o certificati; l'indagine colloca
+il lavoro nel commitment iniziale W, prima di Seed6 e dell'inferenza.
+Il pod è verificato `EXITED`, `runtime:null` alle 16:37:26 UTC; guard
+cancellato dopo tale controllo. Report, indagine, screen XOF locale e
+istruzioni di ripresa sono in `artifact/c7.1-pod/campaign-20261007T163602Z/`.
+Il massimo campionato della campagna è 126.148.050.944 B RSS+HBM e
+290.287.030.272 B cgroup+HBM; il secondo include cache dei file.
+Margine sul massimo host del cgroup: 22.930.219.008 B; margine HBM
+campionato: 17.394.769.920 B. Picco completo e arena canonica non verificati.
 
 Questo documento non autorizza campagne. L'istruzione corrente del proprietario
 fissa pod, fasi autorizzate, durata massima, responsabilità di spegnimento
@@ -27,7 +40,7 @@ I flag `--stop-after`/`--terminate-after` rimossi da `runpodctl` restano
 inaffidabili: il [record storico](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
 conserva quel fallimento, senza imporre un nuovo gate economico.
 
-**Ultima campagna, conclusa il 4 ottobre 2026.** Pod `z3h2njpctmduix`, H100;
+**Campagna precedente, conclusa il 4 ottobre 2026.** Pod `z3h2njpctmduix`, H100;
 inizio 17:07:53 UTC, termine autorizzato 23:07:53 UTC. L'arresto è stato
 gestito dall'agente e verificato alle 21:01:31 UTC. La vecchia deadline,
 il guard e la preautorizzazione dei trial sono evidenza storica e non
@@ -43,7 +56,7 @@ La calibrazione completata resta
 riutilizzabile secondo i controlli sotto; una nuova H100 richiede comunque
 compatibilità, parità e nuove misure fisiche.
 
-**Ultimo esito: [INCOMPLETO](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json), `credit:false`.**
+**Esito precedente: [INCOMPLETO](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json), `credit:false`.**
 Ambiente/build, parità sintetica CUDA e percorso ridotto sui MAC originali,
 ingestione reale e 29 controlli numerici sono PASS. Il pilot readonly-mmap
 con otto worker termina per timeout interno di 5.100 s (wall 5.153,79 s),
@@ -57,9 +70,10 @@ collegati e nei dieci bundle verificati, 106.904.206 B alla chiusura,
 senza shard/packed. La ripresa è descritta in
 `artifact/c7.1-pod/campaign-20261004T170753Z/RESUME.md` dalla radice del repo.
 
-**Prossima sessione.** L'istruzione di affidamento deve autorizzare la
-riattivazione del pod, le modifiche per accelerare l'inizializzatore,
-download, calibrazione e diagnostica condizionata all'ammissione di Γ.
+**Prossima sessione.** Una nuova istruzione di affidamento deve autorizzare
+hardware, download e fasi da eseguire. Γ già ammesso è riutilizzabile solo
+dopo i [controlli delle identità e dell'ambiente](#riuso-del-bundle);
+modifiche che lo invalidano richiedono nuova calibrazione prima della prova.
 Quando quell'istruzione è ricevuta, i trial previsti sono coperti senza
 una nuova conferma per ciascuno. Analizzare codice ed evidenze localmente
 prima della riattivazione; i limiti locali restano quelli di
@@ -68,7 +82,8 @@ Registrare una nuova deadline di 6 ore dalla riattivazione, inclusi
 ambiente, verifiche e salvataggio, con almeno 30 minuti di riserva;
 l'agent gestisce l'arresto e ne verifica lo stato dal provider.
 Nessuna proroga, seconda macchina o modifica del trust model è implicita.
-L'ordine è [accelerazione misurata](#accelerazione-dellinizializzatore),
+Quando serve una nuova calibrazione, l'ordine è
+[accelerazione misurata](#accelerazione-dellinizializzatore),
 [cinque controlli di ammissione](#validazione-e-congelamento-del-profilo),
 poi [diagnostica O=0/150/300](#esperimento-della-prova) se il tempo residuo
 lo permette. Un prerequisito mancante lascia aperte le fasi dipendenti;
@@ -90,8 +105,17 @@ H100 `GPU-1bca9a1c-3fba-8ea6-75a2-c5e656c6a6cd`, stesso modello CPU
 Xeon 8480+, `/workspace` inizialmente vuoto su overlay. Il primo uptime
 provider implica avvio alle 11:05:46 UTC; si applica prudenzialmente
 11:04:46 UTC: fine trial 16:34:46, guard stop 16:59:46, termine massimo
-17:04:46 UTC del 7 ottobre. Il guard locale API è attivo; l'arresto finale
-va comunque verificato. Nessun credito numerico deriva dall'avvio.
+17:04:46 UTC del 7 ottobre. Il guard locale API era attivo; l'arresto finale
+è stato verificato come riportato sopra. Nessun credito numerico deriva dall'avvio.
+Durante la diagnostica l'owner ha autorizzato 15 minuti aggiuntivi, poi
+ulteriore tempo per indagare l'installazione. Si applica prudenzialmente
+una proroga complessiva di 30 minuti: stop computazionale massimo
+17:04:46, guard 17:29:46, termine 17:34:46 UTC. Il guard precedente è
+stato sostituito solo dopo la verifica di quello nuovo. Il timeout del
+singolo tentativo diagnostico resta però 2.458 s: l'indagine ha rilevato
+un costo di installazione molto maggiore del tempo residuo, senza una
+stima attendibile di completamento. La proroga non va consumata in attesa
+priva di nuova evidenza e non autorizza un'altra macchina.
 Il proprietario ha inoltre consentito la rimozione del solo cap AS per
 i processi CUDA: limiti fisici, pod unico e deadline restano invariati.
 Il cap CPU resta 64 GiB. I fallimenti CUDA sotto AS 2 GiB sono conservati;
@@ -110,7 +134,7 @@ Entrambi i programmi arrivano sul pod esclusivamente tramite Git HTTPS.
 | Passaggio | Stato e condizione di uscita |
 |---|---|
 | Preparazione locale | 13 producer CUDA, scanner, registro e runner misto implementati; compilazione sm_90, schedule canonica e test numerici/protocollo ridotti. Nessun W reale o dominio D34/D35 eseguito localmente |
-| Calibrazione autorizzata | Driver indipendente disponibile; confronto sui pesi reali, due replay e Γ validato da acquisire. I comandi CPU seguenti non sono il benchmark della prova |
+| Calibrazione autorizzata | PASS sui pesi reali: due replay identici, confronto indipendente completo, 450 token e 120 sorgenti KV finali. Γ ammesso; nessun credito al benchmark della prova |
 | Primo esperimento della prova | Parità dei kernel reali, smoke fail-closed e tre tentativi O=0/150/300 sul runner misto; raccogliere tempi, memoria/trasferimenti e anche timeout/rifiuti |
 | Valutazione | Distinguere risultato misurato, obiettivi mancati e assunzioni aperte. Nessun risultato locale promette 65 s, 40 MB o picco fisico completo |
 
@@ -360,6 +384,14 @@ Dopo gli screen esatti a 1/2/4/8 worker si sceglie 8 per il driver C11:
 Il replay nativo senza traccia viene eseguito per primo, per rilevare
 subito gli overflow; poi replay con traccia e confronto, timeout esterno
 fino a 6.600 s, sempre entro lo stop computazionale concordato.
+
+Esito misurato del 7 ottobre: replay senza traccia 1.434,71 s esterni;
+replay con traccia e confronto 3.324,18 s esterni, di cui 1.819,70 s del
+driver indipendente a 8 worker. Due replay identici e tutti e cinque i
+controlli Γ sono PASS. La traccia privata misura 40.827.296.903 B e resta
+sul pod; il bundle esterno conserva report, censimenti e digest. La
+diagnostica successiva usa una directory nuova, AES reale e il residuo
+fino allo stop computazionale, senza riuso di KV o correlazioni.
 
 
 Per stimare il costo del replay prima di disporre della candidata,

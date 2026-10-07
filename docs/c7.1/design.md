@@ -113,7 +113,7 @@ dell'intero processo. Non sommare picchi o contatori cumulativi. Nel backend
 nativo l'intervallo di inferenza include cattura KV/checkpoint/istogrammi;
 il resto della risposta include replay/prova e attesa della verifica.
 Monitor esterni restano necessari per CPU-time, campionamento HBM e kill.
-Non sono acquisiti certificati canonici, forward su W reale o misure D34/D35.
+Non sono acquisiti certificati canonici o misure D34/D35 della prova.
 
 Il codice del runner è compilato e verificato su componenti ridotti;
 la [parità H100](../../benchmarks/results/c71-h100-corrected-parity-2026-10-04-d3c2fa95eaf7.json)
@@ -140,14 +140,46 @@ prodotti. L'extrapolazione di circa 90 minuti copre solo le matrici del
 workload completo, non certifica il tempo totale. Lo
 [screen parallelo](../../benchmarks/results/c71-independent-parallel-screen-2026-10-07-09abc940.json)
 con 8 worker passa lo stesso confronto esatto in 0,0184 s; la stima
-matriciale scende a circa 35,5 min, con 50–75 min allocati al confronto
-completo non ancora misurato. Export completo e
+matriciale scende a circa 35,5 min, con 50–75 min inizialmente stimati per
+il confronto completo. Export completo e
 [driver indipendente](../../benchmarks/results/c71-independent-driver-2026-10-02-645e855645d8.json)
 coprono i 13 producer; Il [pilot completo](../../benchmarks/results/c71-full-pilot-2026-10-07-ec8a147.json)
 ha completato 450 token in 853,58 s (wall esterno 928,84 s) e prodotto
-una candidata compilabile. Γ numericamente validato, due replay completi e
-confronto indipendente sui pesi reali restano da acquisire. La prova non
+una candidata compilabile. Il [record di ammissione](../../benchmarks/results/c71-gamma-admission-2026-10-07-868a3e8.json)
+chiude tutti e cinque i controlli: due replay interi con `responses`
+identiche, 450 token, 3.471 sorgenti per contesto e confronto indipendente
+completo in 1.819,70 s. Sono confrontate anche le 120 sorgenti KV finali,
+ciascuna con 450 righe. Γ è ammesso per queste identità e questo workload;
+la [diagnostica della prova](../../benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json)
+è invece INCOMPLETA: timeout di 2.458 s, wall 2.461,09 s, prima delle
+risposte, senza journal o certificati. L'installazione del commitment W
+è CPU: 1.024 scansioni complete, circa 62,87 TB di letture logiche, oltre
+alla generazione seriale dei sali, FFT e Merkle. Non è tempo d'inferenza.
+Il commitment è condiviso dalle tre risposte, ma la CLI lo ricostruisce
+a ogni avvio; non esiste ripresa persistente della sua costruzione parziale.
+Il replay con traccia e confronto richiede 3.324,18 s complessivi.
+Il massimo campionato della fase è 124.576.788.480 B RSS+HBM;
+cgroup+HBM raggiunge 288.165.568.512 B includendo la cache dei file.
+Nessuno dei due conti chiude il picco completo o l'arena della prova. La prova non
 certifica provenienza W, qualità del modello o correttezza delle tabelle.
+
+La campagna è chiusa: pod `wgteo4z5mndiof` verificato `EXITED`,
+`runtime:null` alle 16:37:26 UTC, guard cancellato dopo la verifica.
+Il massimo RSS+HBM campionato dell'intera campagna è 126.148.050.944 B;
+cgroup+HBM 290.287.030.272 B include cache dei file e altri processi.
+Il picco host del cgroup è 228.069.777.408 B su 250.999.996.416 B;
+HBM massimo campionato 62.605.230.080 B su 80 GB. Nessun OOM o swap,
+ma picco simultaneo completo e margine dell'arena canonica restano aperti.
+Ripresa e indagine sono in `artifact/c7.1-pod/campaign-20261007T163602Z/`.
+
+Il prossimo intervento deve rendere durevoli avanzamento e tempi di
+salt prescan, scansioni raggruppate W, FFT e Merkle, e misurare questi
+kernel separatamente. Uno screen preliminare locale ARM, con tree non
+pulito e senza credito H100, trova il solo XOF BLAKE3 5,45–5,86× più
+rapido con buffer di 4 KiB e byte/seek identici. Non è una modifica alla
+prova: restano da verificare l'integrazione completa del RNG e il costo
+delle 1.024 scansioni. Valutare poi letture W contigue senza ricerca del
+tile per coefficiente, preservando ordine virtuale, sali, root e NoPeek.
 
 **Premesse residue.** I lemmi Lean giustificano le identità richiamate in
 [security](security.md), non l'implementazione CUDA, la schedulazione,
@@ -178,7 +210,7 @@ sui MAC originali sono PASS; il primo FAIL della fixture è conservato nel
 record precedente. L'ingestione reale verifica 772 scale W minime e il
 packed esatto. Il pilot CPU readonly-mmap a otto worker, su SHA pulita
 `e3f08e93`, termina con exit 1 per deadline interna di 5.100 s
-(wall monitor 5.153,79 s), senza candidata. Γ non è ammesso: confronto
+(wall monitor 5.153,79 s), senza candidata. A quel checkpoint Γ non era ammesso: confronto
 indipendente, replay interi e O=0/150/300 non sono stati eseguiti.
 Il massimo RSS+HBM campionato è 62.255.046.656 B, comprensivo di W;
 non chiude picco fisico, capacità trattenute o margine dell'arena canonica.
@@ -186,16 +218,18 @@ Il bundle esterno verificato occupa 106.904.206 B, conserva codice,
 identità/scale W, ambiente, report e fallimenti, ma nessuna calibrazione
 A verificata o pesi grandi. Il pod è stato arrestato dall'agente via API
 alle 21:01:31 UTC: `EXITED`, `runtime:null`, entro le sei ore.
-Il prossimo passo è completare l'inizializzatore e i cinque controlli
-numerici di ammissione prima di tentare la diagnostica canonica. Il prossimo
-trial deve aggiungere avanzamento e tempi per operatore, dimostrare un
-miglioramento misurato e pianificare anche replay e confronto indipendente
-nel tempo residuo. Questi miglioramenti sono obiettivi, non risultati acquisiti.
+Quel timeout ha motivato telemetria, accelerazione misurata e pianificazione
+congiunta delle fasi nella campagna successiva descritta sotto.
 
 La campagna del 7 ottobre usa la singola H100 del pod `wgteo4z5mndiof`,
 attivato manualmente dall'owner dopo l'indisponibilità del pod precedente.
-L'inizio conservativo è 11:04:46 UTC: stop computazionale 16:34:46,
-arresto indipendente 16:59:46, termine inderogabile 17:04:46 UTC.
+L'inizio conservativo è 11:04:46 UTC: stop computazionale iniziale 16:34:46,
+arresto indipendente iniziale 16:59:46, termine iniziale 17:04:46 UTC.
+L'owner ha successivamente autorizzato altro tempo per indagare
+l'installazione: proroga complessiva applicata di 30 minuti, termine
+massimo 17:34:46 UTC con 30 minuti riservati alla chiusura. Il tentativo
+diagnostico mantiene il proprio timeout di 2.458 s; la proroga non implica
+prolungare un'attesa che non fornisce ulteriori misure utili.
 L'owner ha autorizzato esplicitamente l'eccezione AS per i soli processi
 CUDA; CPU AS 64 GiB, limiti fisici e durata restano invariati.
 La nuova ingestione ha verificato entrambi gli shard e il packed completo.
@@ -203,26 +237,21 @@ Il massimo RSS+HBM campionato del pilot completo è 125.709.283.328 B,
 incluse le due copie W; HBM 62.605.230.080 B, margine campionato
 17.394.769.920 B sul tetto di 80 GB. Non è un picco fisico completo né
 un risultato sull'arena della prova. I bundle chiusi preparazione,
-prefissi, kernel e pilot completo sono verificati. La candidata floating
-compila e le tabelle certificate passano il controllo nativo degli input;
-il [primo replay intero](../../benchmarks/results/c71-integer-timeout-correction-2026-10-07-ec8a147.json)
-termina per timeout nativo di 1.080 s (wall 1.173,79 s), senza report
-nativo completo: Γ non è
-ammesso. Il percorso offline successivo prende in prestito le righe KV
+prefissi, kernel e pilot completo sono verificati. Il
+[timeout intero iniziale](../../benchmarks/results/c71-integer-timeout-correction-2026-10-07-ec8a147.json)
+di 1.080 s nativi (wall 1.173,79 s) resta conservato, come il
+[prefisso interrotto dall’agent](../../benchmarks/results/c71-integer-prefix-stopped-2026-10-07-d00a6b6.json)
+dopo 107 token per correggere il budget. Ogni nuovo trial è partito da KV
+vuoto. Il percorso offline successivo prende in prestito le righe KV
 i16 già validate per QK/PV. Il
 [confronto ridotto](../../benchmarks/results/c71-attention-row-parity-2026-10-07-f1f300c4.json)
 passa 36 casi esatti e i rifiuti, in 0,050 s contro 2,186 s del produttore
-originale; 17 test CLI corretti sono PASS. Restano due nuovi replay
-completi da KV vuoto e il confronto indipendente sui pesi reali. Il
-[prefisso intero successivo](../../benchmarks/results/c71-integer-prefix-stopped-2026-10-07-d00a6b6.json)
-è interrotto dall’agent dopo 107 token / 266,00 s per correggere la
-stima del budget: nuovo trial da KV vuoto, 1.350 s nativi / 1.500 s
-esterni, senza cambiare deadline o cap fisici. Il
+originale; 17 test CLI corretti sono PASS. Il
 [replay completo](../../benchmarks/results/c71-one-integer-replay-2026-10-07-868a3e8.json)
 è PASS sui 450 token: copertura esatta dei 3.471 ID A in ciascun contesto,
 tabelle coerenti col ledger delle risorse, chiusura CUDA senza errori. Il
-secondo replay con traccia e confronto indipendente a 8 worker è in corso;
-Γ resta non ammesso finché non sono chiusi tutti e cinque i controlli. Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
+secondo replay con traccia e confronto indipendente a 8 worker è anch’esso
+PASS e completa l'ammissione Γ descritta sopra. Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
 resta evidenza della sola preparazione precedente.
 
 ## Contratto delle risorse

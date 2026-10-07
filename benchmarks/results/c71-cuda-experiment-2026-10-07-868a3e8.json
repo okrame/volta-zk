@@ -1,0 +1,140 @@
+{
+  "binary_build_commit": "e6c8ca22af2f2e6f5788a3219542036d82928dd5",
+  "binary_sha256": "3c8989a44e81d464fd4cf03535c69fd84699d462bc2e95001b2b143eaa7bd7bf",
+  "canonical_certificates_verified": 0,
+  "certificate_bytes": null,
+  "cpu_percent": 100,
+  "credit": false,
+  "diagnostic_cgroup_hbm_joint_peak_bytes": 290287030272,
+  "diagnostic_cgroup_peak_bytes": 228053901312,
+  "diagnostic_sampled_peaks": {
+    "sampled_host_rss_peak_bytes": 63914016768,
+    "sampled_joint_peak_bytes": 126148050944,
+    "sampled_whole_gpu_peak_bytes": 62502469632
+  },
+  "durable_installation_completed": false,
+  "exit_code": 124,
+  "extension": {
+    "applied_maximum_extra_seconds": 1800,
+    "compute_deadline_utc": "2026-10-07T17:04:46Z",
+    "diagnostic_process_timeout_extended": false,
+    "provider_deadline_utc": "2026-10-07T17:34:46Z",
+    "reason": "Owner allowed more installation investigation; further idle waiting was not justified by observed first-group population and the 1024-scan work. Original process timeout retained; provider stopped early."
+  },
+  "followup_local_xof_screen": {
+    "architecture": "aarch64",
+    "boundary_rejection_predicate_fixture": true,
+    "buffer_bytes": 4096,
+    "classification": "preliminary local component screen; not H100 or clean run-of-record",
+    "credit": false,
+    "exact_candidate_comparisons": 262144,
+    "git_dirty": true,
+    "harness_sha256": "294dc7f06eac6b557f5f316b46c1f600b7d1752353a87c525dab1d48f515f389",
+    "integrated_production_rng_parity_proven": false,
+    "library": "blake3 1.8.5, existing Cargo.lock dependency, targeted offline optimized build",
+    "natural_rejections_observed": 0,
+    "scope": "Preliminary local ARM XOF-only screen. Not a clean run-of-record, H100 measure, full PCS speedup or installation ETA. Byte stream, candidate decisions and logical seek positions checked; full PrivateRng clone/lifetime integration remains future work.",
+    "seek_positions_checked": 12,
+    "speedup_max": 5.864163988447887,
+    "speedup_min": 5.44763104003788
+  },
+  "gamma_admitted_before_launch": true,
+  "gamma_record": "c71-gamma-admission-2026-10-07-868a3e8.json",
+  "git_dirty": false,
+  "git_sha": "868a3e8147cf1b9083457093b3350e295e6e14c1",
+  "inference_seconds": null,
+  "initial_commitment_work": {
+    "accepted_salt_samples_before_first_group": 17179869184,
+    "accepted_salt_xof_bytes": 137438953472,
+    "backend": "CPU",
+    "classification": "analytic work census, not measured completion or disk traffic",
+    "complete_weight_scans": 1024,
+    "cosets": 4096,
+    "cosets_per_group": 4,
+    "encoded_cells_per_leaf": 128,
+    "logical_weight_read_bytes": 62868163133440,
+    "merkle_leaves": 4294967296,
+    "packed_i16_coefficients": 30697345280,
+    "reuse": "Once per installation/run, shared by three responses; current CLI rebuilds at each invocation and has no durable cross-CLI cache.",
+    "scalar_source_visits": 31434081566720,
+    "source_references": [
+      "rust/volta-pcs/src/c71_matrix/b12.rs:21",
+      "rust/volta-pcs/src/c71_matrix/b12/replay.rs:674",
+      "rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs:34",
+      "rust/volta-pcs/src/c71_matrix/b12/streaming.rs:84"
+    ],
+    "source_to_coset_contributions": 125736326266880
+  },
+  "journal_files": 0,
+  "native_complete_report_available": false,
+  "phase_finding": "Initial W cryptographic commitment before Seed6 and response inference. Source ordering, empty journals and allocation geometry support this; no sampled instruction pointer or exact grouped-scan counter is available.",
+  "phase_progress_not_measured": [
+    "exact_group_index",
+    "subphase_times",
+    "completion_percentage",
+    "finish_eta"
+  ],
+  "private_closeout_bundle": "campaign-20261007T163602Z",
+  "private_report_bundle": "proof-diagnostic-20261007T163451Z",
+  "proof_including_all_replays_seconds": null,
+  "provider_shutdown": {
+    "desired_status": "EXITED",
+    "pod_id": "wgteo4z5mndiof",
+    "runtime": null,
+    "verified_utc": "2026-10-07T16:37:26.708660+00:00"
+  },
+  "remaining": [
+    "Canonical O=0/150/300 inference/proof/certificates",
+    "Full simultaneous physical peak and canonical arena margin",
+    "Effective image digest",
+    "General implementation refinement and existing Seed6 assumptions"
+  ],
+  "resource_failure": null,
+  "resources": {
+    "campaign_sampled_peaks": {
+      "cgroup_memory_current_bytes": {
+        "bytes": 228053901312,
+        "csv": "artifact/c7.1-pod/proof-diagnostic-20261007T163451Z/logs/proof-diagnostic.memory.csv",
+        "sample_unix_seconds": 1791390843.430998
+      },
+      "cgroup_plus_hbm_bytes": {
+        "bytes": 290287030272,
+        "csv": "artifact/c7.1-pod/proof-diagnostic-20261007T163451Z/logs/proof-diagnostic.memory.csv",
+        "sample_unix_seconds": 1791390606.5543516
+      },
+      "host_tree_rss_bytes": {
+        "bytes": 63914016768,
+        "csv": "artifact/c7.1-pod/proof-diagnostic-20261007T163451Z/logs/proof-diagnostic.memory.csv",
+        "sample_unix_seconds": 1791390841.6285295
+      },
+      "sampled_joint_bytes": {
+        "bytes": 126148050944,
+        "csv": "artifact/c7.1-pod/proof-diagnostic-20261007T163451Z/logs/proof-diagnostic.memory.csv",
+        "sample_unix_seconds": 1791390605.9667392
+      },
+      "whole_gpu_used_bytes": {
+        "bytes": 62605230080,
+        "csv": "artifact/c7.1-pod/pilot-complete-20261007T133500Z/logs/pilot-fp64-full.memory.csv",
+        "sample_unix_seconds": 1791379806.1917205
+      }
+    },
+    "complete_physical_peak": false,
+    "hbm_limit_bytes": 80000000000,
+    "hbm_margin_to_sampled_peak_bytes": 17394769920,
+    "host_cgroup_kernel_peak_bytes": 228069777408,
+    "host_cgroup_limit_bytes": 250999996416,
+    "host_margin_to_kernel_peak_bytes": 22930219008,
+    "oom_events": 0,
+    "rss_margin_to_sampled_peak_bytes": 39165198336,
+    "rss_stop_bytes": 103079215104,
+    "scope": "Whole campaign; RSS+HBM is distinct from cgroup+HBM including file cache and other pod processes. Kernel host peak is not a simultaneous full host/device peak. No canonical proof arena credit.",
+    "swap_bytes": 0
+  },
+  "response_total_seconds": null,
+  "schema": "volta-c71-cuda-diagnostic-v1",
+  "status": "INCOMPLETE",
+  "system_seconds": 46.0,
+  "timeout_seconds": 2458,
+  "user_seconds": 2415.66,
+  "wall_seconds": 2461.091446187347
+}

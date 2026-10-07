@@ -1,0 +1,161 @@
+{
+  "admission_checks_passed": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "cgroup_limit_bytes": 250999996416,
+  "complete_integer_replays": 2,
+  "complete_physical_peak": false,
+  "coverage": [
+    {
+      "old_tokens": 0,
+      "source_words": 3646354972,
+      "sources": 3471,
+      "tokens": 150
+    },
+    {
+      "old_tokens": 150,
+      "source_words": 4014994972,
+      "sources": 3471,
+      "tokens": 150
+    },
+    {
+      "old_tokens": 300,
+      "source_words": 4383634972,
+      "sources": 3471,
+      "tokens": 150
+    }
+  ],
+  "credit": false,
+  "failed_checker_reason": "Additional review assertion initially equated numeric frames with structural records, omitting the three metadata records; corrected after inspecting both implementations. Original failed checker preserved.",
+  "first_replay_record": "c71-one-integer-replay-2026-10-07-868a3e8.json",
+  "gamma_admitted": true,
+  "git_dirty": false,
+  "git_sha": "868a3e8147cf1b9083457093b3350e295e6e14c1",
+  "independent_oracle": {
+    "complete": true,
+    "contexts": 3,
+    "elapsed_seconds": 1819.6976001113653,
+    "frames": 7367037,
+    "logical_words": 12247737366,
+    "matrix_kernel": "independent-c11-i16-i64",
+    "matrix_products": 13390420377600,
+    "matrix_workers": 8,
+    "rms_kernel": {
+      "shared_object_sha256": "36d68c261df3772784acd21a8d03a07172e6f0bd3a4f24cdf1dcd4f8b37c6d7e",
+      "source_sha256": "405f8fb1701011fb53da1ebc2b25c8faf66ddd2f3c51b9e8cfe18c651a5f9d6e"
+    },
+    "schedule_audit": [
+      {
+        "coverage_complete": true,
+        "sources": 3471
+      },
+      {
+        "coverage_complete": true,
+        "sources": 3471
+      },
+      {
+        "coverage_complete": true,
+        "sources": 3471
+      }
+    ]
+  },
+  "large_trace_exported": false,
+  "matrix_library_build_commit": "e6c8ca22",
+  "matrix_library_sha256": "5971912cde30c1a58da915977224b190229925e98309e5593c66b7a7315a1480",
+  "native_build_commit": "f1f300c4",
+  "native_sha256": "4b3090f8e47f639465b10fa20e8106be115652a15b21e9164143c4aede0cee4d",
+  "numeric_frame_census_note": "Structural records include three context metadata records; the independent numeric frame counter excludes those. Logical-word counts agree exactly.",
+  "physical_scope": "Offline calibration; cgroup includes filesystem cache and other pod processes. RSS and cgroup are distinct accounts. No proof arena or complete peak credit.",
+  "private_admission_bundle": "gamma-admission-20261007T155133Z",
+  "private_failed_checker_bundle": "gamma-admission-20261007T155043Z",
+  "private_report_bundle": "integer-trace-20261007T155021Z",
+  "raw_tool_flags_preserved": true,
+  "responses_exactly_equal": true,
+  "sampled_cgroup_hbm_joint_peak_bytes": 288165568512,
+  "sampled_cgroup_margin_bytes": 24783249408,
+  "sampled_cgroup_peak_bytes": 226216747008,
+  "sampled_hbm_margin_to_80GB_bytes": 17495433216,
+  "sampled_hbm_peak_bytes": 62504566784,
+  "sampled_host_rss_peak_bytes": 62165327872,
+  "sampled_rss_hbm_joint_peak_bytes": 124576788480,
+  "schema": "volta-c71-gamma-admission-public-v1",
+  "scope": "Pinned real weights, candidate, recipes, tables and O=0/150/300 workload. This finite execution check does not establish a general refinement theorem or protocol performance.",
+  "second_replay_and_comparison_wall_seconds": 3324.1828652769327,
+  "second_replay_cuda": {
+    "after_close": {
+      "allocations": 553950,
+      "arena_bytes": 0,
+      "cleanup_failed": 0,
+      "d2d_bytes": 0,
+      "d2h_bytes": 15540143400,
+      "fences": 1108130,
+      "h2d_bytes": 64476751360,
+      "host_owner_bytes": 37064,
+      "launches": 184650,
+      "live_capacity_bytes": 0,
+      "logical_bytes": 0,
+      "peak_capacity_bytes": 2108160,
+      "peak_reserved_bytes": 61396798720,
+      "releases": 553950,
+      "stopped": 0,
+      "weights_bytes": 0,
+      "weights_loaded_bytes": 61394690560,
+      "weights_sealed": 1,
+      "zeroed_bytes": 738600
+    },
+    "before_close": {
+      "allocations": 553950,
+      "arena_bytes": 0,
+      "cleanup_failed": 0,
+      "d2d_bytes": 0,
+      "d2h_bytes": 15540143400,
+      "fences": 1108129,
+      "h2d_bytes": 64476751360,
+      "host_owner_bytes": 37064,
+      "launches": 184650,
+      "live_capacity_bytes": 0,
+      "logical_bytes": 0,
+      "peak_capacity_bytes": 2108160,
+      "peak_reserved_bytes": 61396798720,
+      "releases": 553950,
+      "stopped": 0,
+      "weights_bytes": 61394690560,
+      "weights_loaded_bytes": 61394690560,
+      "weights_sealed": 1,
+      "zeroed_bytes": 738600
+    },
+    "complete_physical_peak": false,
+    "host_weight_capacity_bytes": 61394690560,
+    "load_seconds": 90.432152754
+  },
+  "status": "PASS_GAMMA_ADMITTED",
+  "trace": {
+    "bytes": 40827296903,
+    "contexts": [
+      {
+        "old_tokens": 0,
+        "sources": 3471
+      },
+      {
+        "old_tokens": 150,
+        "sources": 3471
+      },
+      {
+        "old_tokens": 300,
+        "sources": 3471
+      }
+    ],
+    "exact_comparison_complete": true,
+    "final_kv_sources": 120,
+    "format": "C71TRC01",
+    "logical_words": 12247737366,
+    "records": 7367040,
+    "stored_words": 11331457147,
+    "structural_validation_complete": true
+  },
+  "weights_exported": false
+}

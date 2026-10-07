@@ -592,12 +592,15 @@ del prover, non messaggi al verificatore. Tutte le copie e capacità
 trattenute entrano nel conto delle risorse. Il runner ferma l'owner anche
 su errore della prova CPU; nessuna promozione riattiva uno stato fermato.
 
-Il [checkpoint H100](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json)
-verifica parità sintetica e percorso ridotto sui MAC originali, ma lascia
-aperti Γ e certificati canonici. Accelerare il pilot CPU o introdurne un
-backend H100 resta ricerca offline di una candidata: tutti i cinque
-[controlli di ammissione](runpod-tests.md#validazione-e-congelamento-del-profilo)
-sono necessari. Conservare l'indipendenza del driver numerico intero.
+Il [checkpoint H100 del 4 ottobre](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json)
+verifica parità sintetica e percorso ridotto sui MAC originali. Il
+[record del 7 ottobre](../../benchmarks/results/c71-gamma-admission-2026-10-07-868a3e8.json)
+chiude tutti i cinque controlli di ammissione Γ sui pesi reali: due replay
+identici e confronto C11/Python indipendente completo, incluso KV finale.
+È una verifica finita delle identità e del workload pinned; non dimostra
+un raffinamento generale Rust/CUDA, la composizione Seed6 o i certificati
+canonici. Accelerare il pilot floating, da solo, resta inizializzazione
+offline; conservare l'indipendenza del driver numerico intero.
 
 Avanzamento e tempi sono telemetria locale di laboratorio, fuori dal
 transcript e senza nuovi messaggi al verificatore. I report pubblici

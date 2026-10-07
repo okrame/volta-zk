@@ -491,11 +491,11 @@ impl Tables {
 }
 
 pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
-    let usage = "usage: c71_calibration describe | profile-matrix PACKED [CUDA_LIBRARY] | recipes CANDIDATE | oracle-plan CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES | run-trace CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE | run-cuda CANDIDATE TABLES PACKED PAYLOAD_BYTES CUDA_LIBRARY | run-trace-cuda CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE CUDA_LIBRARY";
+    let usage = "usage: c71_calibration describe | profile-attention | profile-matrix PACKED [CUDA_LIBRARY] | recipes CANDIDATE | oracle-plan CANDIDATE | check-input CANDIDATE TABLES | ledger CANDIDATE TABLES | run CANDIDATE TABLES PACKED PAYLOAD_BYTES | run-trace CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE | run-cuda CANDIDATE TABLES PACKED PAYLOAD_BYTES CUDA_LIBRARY | run-trace-cuda CANDIDATE TABLES PACKED PAYLOAD_BYTES TRACE CUDA_LIBRARY";
     let Some(mode) = arguments.first().map(String::as_str) else {
         return Err(usage.into());
     };
-    if (mode == "describe" && arguments.len() == 1)
+    if (matches!(mode, "describe" | "profile-attention") && arguments.len() == 1)
         || (mode == "profile-matrix" && matches!(arguments.len(), 2 | 3))
     {
         let plan = super::super::super::compile()?;
@@ -510,6 +510,9 @@ pub fn command(arguments: &[String]) -> Result<serde_json::Value, String> {
             exponents.insert(layer.pi, -14);
         }
         let pilot = Canonical::compile(0, &[0; 772], &exponents)?;
+        if mode == "profile-attention" {
+            return calibration::profile_attention(&exponents);
+        }
         if mode == "profile-matrix" {
             // Offline screen for phase planning: actual W, synthetic i16 input.
             // No candidate, tables, causal inference or admission is produced.

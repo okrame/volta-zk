@@ -326,6 +326,18 @@ del pack Python non si applica al `pack --native-packer`: non usare i
 subcomandi legacy `preflight`/`report` per ammettere questa macchina.
 Il pack nativo verifica già header, entrambi i corpi e output persistito.
 
+Il replay matriciale CUDA del primo trial del 7 ottobre termina per
+limite esterno di 1.200 s: preservare il FAIL, senza ammissione Γ o riuso
+KV. La lettura intera per coefficiente dell'attenzione CPU resta costosa.
+Il percorso offline successivo usa righe KV i16 già validate, sommando
+QK/PV nello stesso ordine per output; non crea una nuova copia KV.
+`c71_calibration profile-attention` confronta esattamente le due geometrie,
+O=0/150/300 e query 0/149 col produttore originale, con rifiuti di query
+future/padding, marker KV e workspace. Eseguire prima del nuovo trial,
+sul pod entro 60 s/2 GiB. Lo screen è sintetico e non ammette Γ.
+Il wrapper conserva stderr nativo in un file esclusivo `OUTPUT.native.stderr`,
+consultabile durante il replay e conservato anche dopo il timeout.
+
 ### Budget delle fasi
 
 Piano del 7 ottobre, fissato prima del pilot completo: pilot FP64 15–20 min,

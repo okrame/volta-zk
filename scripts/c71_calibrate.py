@@ -414,12 +414,16 @@ def main() -> None:
                     if hard != resource.RLIM_INFINITY:
                         raise ValueError("CUDA child needs unlimited hard AS with bounded CPU soft AS")
                     resource.setrlimit(resource.RLIMIT_AS, (hard, hard))
-                run = subprocess.run(command, capture_output=True, text=True,
-                                     timeout=args.timeout_seconds,
-                                     preexec_fn=cuda_address_space if args.matrix_library else None)
+                native_log = args.output.with_name(args.output.name + ".native.stderr")
+                with open(native_log, "x+", opener=lambda path, flags: os.open(path, flags, 0o600)) as sink:
+                    run = subprocess.run(command, stdout=subprocess.PIPE, stderr=sink, text=True,
+                                         timeout=args.timeout_seconds,
+                                         preexec_fn=cuda_address_space if args.matrix_library else None)
+                    sink.seek(0)
+                    native_stderr_body = sink.read()
                 exit_code = native_exit_code = run.returncode
                 result = {"complete_integer_trial": False, "stdout": run.stdout,
-                          "stderr": run.stderr}
+                          "stderr": native_stderr_body}
                 if exit_code == 0:
                     try:
                         decoded = ingest._json_no_duplicates(run.stdout, "native integer trial")
@@ -454,7 +458,7 @@ def main() -> None:
                 native_exit_code = None
                 result = {"complete_integer_trial": False,
                           "failure": "integer trial deadline exceeded"}
-                for name, value in (("stdout", error.stdout), ("stderr", error.stderr)):
+                for name, value in (("stdout", error.stdout), ("stderr", native_log.read_text())):
                     result[name] = (value.decode("utf-8", errors="replace")
                                     if isinstance(value, bytes) else value or "")
             result.update(table_report, candidate_sha256=hashlib.sha256(candidate_body).hexdigest(),

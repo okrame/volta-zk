@@ -1040,3 +1040,11 @@ annidati che moltiplichino i thread. Si contano decoding, hash, campo,
 GKR/PCS, PCG, MAC e aggiornamento dello stato; registrare tempo CPU e
 wall, RSS, affinità e backend AES. Non richiede W, una GPU o un servizio
 remoto. Tempi di CPU differenti non sono intercambiabili.
+
+Il replay offline può prendere in prestito le righe originali KV i16 per
+QK/PV, con limite causale verificato a ogni riga, marker rifiutati e
+workspace contato nel picco del bundle entrante. Gli output interi e
+l'ordine delle somme per output restano quelli del produttore originale;
+le letture logiche mantengono lo stesso censimento. Non cambia il runner
+della prova. Lo screen `profile-attention` confronta entrambi i percorsi;
+solo il confronto indipendente completo può chiudere il trial reale.

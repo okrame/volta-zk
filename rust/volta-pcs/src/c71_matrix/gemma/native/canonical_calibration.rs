@@ -736,6 +736,7 @@ pub(super) fn fixed_run<R: Read + Seek>(
     }
     let mut history = History::new(&public.profiles[0])?;
     let mut responses = Vec::with_capacity(3);
+    let started = std::time::Instant::now();
     for (slot, profile) in public.profiles.iter().enumerate() {
         history.check(profile)?;
         if let Some(trace) = trace.as_deref_mut() {
@@ -762,8 +763,15 @@ pub(super) fn fixed_run<R: Read + Seek>(
                         Some(device) => device.dot(batch, input),
                         None => weights.borrow_mut().matrix_dot(batch, input),
                     }),
+                    Some(&history),
                 )
                 .map_err(|error| format!("calibration O={} token={token}: {error}", slot * 150))?;
+            eprintln!(
+                "C71_CALIBRATION_PROGRESS context={} completed_tokens={} elapsed_seconds={:.6}",
+                slot * 150,
+                slot * 150 + token + 1,
+                started.elapsed().as_secs_f64()
+            );
         }
         trial.finish(trace.as_deref_mut())?;
         if let Some(trace) = trace.as_deref_mut() {
@@ -785,6 +793,119 @@ pub(super) fn fixed_run<R: Read + Seek>(
         trace.final_kv(&history, &public.profiles[2])?;
     }
     Ok(responses)
+}
+
+/// Reduced CPU equivalence screen, including both attention geometries,
+/// historical prefixes, final absorption position, and terminal rejections.
+pub(super) fn profile_attention(
+    scales: &BTreeMap<usize, i32>,
+) -> Result<serde_json::Value, String> {
+    let base = Canonical::compile(0, &[0; 772], scales)?;
+    let mut reference_seconds = 0.0;
+    let mut borrowed_seconds = 0.0;
+    let mut comparisons = 0;
+    for slot in 0..3 {
+        let p = Canonical::compile(slot, &[0; 772], scales)?;
+        let mut history = History::new(&base)?;
+        history.old = slot * 150;
+        let empty = lookup::Table { profile: 0, lower: 0, outputs: lookup::Outputs::I16(&[]) };
+        let tables = profile::Tables { gelu: &[], exp30: &[], softcap: &empty, rope: &[] };
+        for layer in [0, 5] {
+            let l = &p.sources.attention.layers[layer];
+            let mut trial = Trial::new(&p, 32 << 20);
+            for id in [l.k, l.v] {
+                let cols = p.bytes().scalar.layout.sources[id].cols;
+                let values = |t: usize| {
+                    (0..cols)
+                        .map(|c| if (t + c) % 2 == 0 { 32767 } else { -32767 })
+                        .collect::<Vec<i16>>()
+                        .into_boxed_slice()
+                };
+                history.rows[id] = (0..history.old).map(values).collect();
+                trial.kv[id] = (history.old..history.old + 150).map(values).collect();
+            }
+            for query in [0, 149] {
+                trial.current[l.q].insert(
+                    query,
+                    (0..32 * l.lanes).map(|c| if c % 3 == 0 { -32767 } else { 32767 }).collect(),
+                );
+                for head in 0..32 {
+                    trial.current[l.pi].insert(
+                        head * 256 + query,
+                        (0..history.old + 150)
+                            .map(|t| if t <= history.old + query { 16384 } else { 0 })
+                            .collect(),
+                    );
+                }
+                for (step, row) in [
+                    (Producer::Qk(layer), query),
+                    (Producer::Qk(layer), 31 * 256 + query),
+                    (Producer::Pv(layer), query),
+                ] {
+                    let start = std::time::Instant::now();
+                    let expected = p.prepare_row(
+                        &step,
+                        row,
+                        0,
+                        &tables,
+                        |_, _, _| Err("unexpected W read".into()),
+                        |id, r, c| trial.read(id, r, c),
+                        |id, t, c| {
+                            if t < history.old {
+                                history.read(id, t, c)
+                            } else {
+                                trial.read(id, t - history.old, c)
+                            }
+                        },
+                    )?;
+                    reference_seconds += start.elapsed().as_secs_f64();
+                    let start = std::time::Instant::now();
+                    let (actual, reads, old_reads, fresh_reads) =
+                        trial.attention_row(&step, row, query, &history)?;
+                    borrowed_seconds += start.elapsed().as_secs_f64();
+                    if actual.values != expected.values || actual.histogram != expected.histogram {
+                        return Err("borrowed attention differs from original producer".into());
+                    }
+                    let lanes =
+                        if matches!(step, Producer::Qk(_)) { l.lanes } else { 32 * l.lanes };
+                    let expected_reads = if matches!(step, Producer::Qk(_)) {
+                        l.lanes
+                    } else {
+                        32 * (history.old + query + 1)
+                    };
+                    if (reads, old_reads, fresh_reads)
+                        != (expected_reads, lanes * history.old, lanes * (query + 1))
+                    {
+                        return Err("borrowed attention work census differs".into());
+                    }
+                    comparisons += 1;
+                }
+            }
+            if trial.attention_row(&Producer::Qk(layer), 150, 149, &history).is_ok()
+                || trial.attention_row(&Producer::Pv(layer), 1, 0, &history).is_ok()
+            {
+                return Err("borrowed attention accepted future/padding query".into());
+            }
+            let id = l.k;
+            if history.old == 0 {
+                trial.kv[id][0][0] = i16::MIN;
+            } else {
+                history.rows[id][0][0] = i16::MIN;
+            }
+            if trial.attention_row(&Producer::Qk(layer), 0, 0, &history).is_ok() {
+                return Err("borrowed attention accepted KV marker".into());
+            }
+            trial.payload_limit = 1;
+            if trial.attention_row(&Producer::Pv(layer), 0, 0, &history).is_ok() {
+                return Err("borrowed attention bypassed workspace cap".into());
+            }
+        }
+    }
+    Ok(serde_json::json!({"credit":false,"calibrated":false,"profile_only":true,
+        "real_weights":false,"complete_integer_trial":false,"exact_reference_equal":true,
+        "comparisons":comparisons,"reference_seconds":reference_seconds,
+        "borrowed_seconds":borrowed_seconds,"contexts":[0,150,300],"queries":[0,149],
+        "rejections":["padding query","future query","KV marker","workspace cap"]}))
 }
 
 #[cfg(test)]
@@ -1344,6 +1465,102 @@ impl<'a> Trial<'a> {
         Ok(())
     }
 
+    /// Offline replay only: borrow original validated i16 KV rows. No new KV
+    /// copy, changed product order, padding reads, or future-prefix access.
+    fn attention_row(
+        &mut self,
+        step: &Producer,
+        row: usize,
+        token: usize,
+        history: &History,
+    ) -> Result<(prepare::Row, usize, usize, usize), String> {
+        let a = &self.profile.sources.attention;
+        let (index, query) = match step {
+            Producer::Qk(i) => (*i, row % 256),
+            Producer::Pv(i) => (*i, row),
+            _ => return Err("calibration attention producer differs".into()),
+        };
+        let l = &a.layers[index];
+        let old = a.rope.old;
+        if token >= 150 || query != token || history.old != old || l.lanes > 512 {
+            return Err("calibration attention causal prefix differs".into());
+        }
+        let live = old + query + 1;
+        let workspace = match step {
+            Producer::Qk(_) => (l.lanes + old + 150) * 8,
+            Producer::Pv(_) => 32 * l.lanes * 8,
+            _ => unreachable!(),
+        };
+        let peak = self.live_payload + workspace;
+        if peak > self.payload_limit {
+            return Err("calibration attention workspace exceeds budget".into());
+        }
+        self.work.payload_plus_incoming_bundle_peak_bytes =
+            self.work.payload_plus_incoming_bundle_peak_bytes.max(peak);
+        let kv_row = |id: usize, t: usize, group: usize| -> Result<&[i16], String> {
+            if t >= live || !self.kv_sources.contains(&id) {
+                return Err("calibration attention KV read outside causal prefix".into());
+            }
+            let values = if t < old {
+                history.rows.get(id).and_then(|r| r.get(t))
+            } else {
+                self.kv.get(id).and_then(|r| r.get(t - old))
+            }
+            .ok_or("calibration attention KV row missing")?;
+            values
+                .get(group * l.lanes..(group + 1) * l.lanes)
+                .ok_or_else(|| "calibration attention KV head outside row".into())
+        };
+        let mut out = prepare::Row::default();
+        let (reads, products) = match step {
+            Producer::Qk(_) => {
+                let head = row / 256;
+                if head >= 32 {
+                    return Err("calibration QK head outside source".into());
+                }
+                let q = (0..l.lanes)
+                    .map(|c| self.read(l.q, query, head * l.lanes + c))
+                    .collect::<Result<Vec<_>, _>>()?;
+                if q.iter().any(|v| !(-32767..=32767).contains(v)) {
+                    return Err("calibration QK input outside symmetric i16".into());
+                }
+                let mut values = vec![0; old + 150];
+                for (t, output) in values[..live].iter_mut().enumerate() {
+                    let key = kv_row(l.k, t, head / l.repeats)?;
+                    if key.contains(&i16::MIN) {
+                        return Err("calibration KV marker".into());
+                    }
+                    *output = q.iter().zip(key).map(|(&q, &k)| q * i64::from(k)).sum();
+                }
+                out.values.push((l.raw_score, row, values));
+                (l.lanes, l.lanes)
+            }
+            Producer::Pv(_) => {
+                let mut values = vec![0; 32 * l.lanes];
+                for head in 0..32 {
+                    let output = &mut values[head * l.lanes..(head + 1) * l.lanes];
+                    for t in 0..live {
+                        let pi = self.read(l.pi, head * 256 + query, t)?;
+                        if !(-32767..=32767).contains(&pi) {
+                            return Err("calibration PV input outside symmetric i16".into());
+                        }
+                        let value = kv_row(l.v, t, head / l.repeats)?;
+                        if value.contains(&i16::MIN) {
+                            return Err("calibration KV marker".into());
+                        }
+                        for (y, &v) in output.iter_mut().zip(value) {
+                            *y += pi * i64::from(v);
+                        }
+                    }
+                }
+                out.values.push((l.raw_output, row, values));
+                (32 * live, 32 * l.lanes)
+            }
+            _ => unreachable!(),
+        };
+        Ok((out, reads, products * old, products * (query + 1)))
+    }
+
     fn release_step(&mut self, step: usize) {
         for &id in &self.release[step] {
             self.live_payload -= self.current[id].values().map(|v| v.capacity() * 8).sum::<usize>();
@@ -1373,7 +1590,7 @@ impl<'a> Trial<'a> {
         trace: Option<&mut Trace>,
         observe: impl FnMut(&prepare::Row) -> Result<(), String>,
     ) -> Result<(), String> {
-        self.token_observed_matrix(tokens, tables, weights, previous, trace, observe, None)
+        self.token_observed_matrix(tokens, tables, weights, previous, trace, observe, None, None)
     }
 
     fn token_observed_matrix(
@@ -1385,6 +1602,7 @@ impl<'a> Trial<'a> {
         trace: Option<&mut Trace>,
         mut observe: impl FnMut(&prepare::Row) -> Result<(), String>,
         matrix: Option<&dyn Fn(&prepare::MatrixBatch, &[i16]) -> Result<Vec<i64>, String>>,
+        history_rows: Option<&History>,
     ) -> Result<(), String> {
         if self.failed || self.finished || self.next_token >= 150 {
             return Err("calibration trial stopped".into());
@@ -1436,6 +1654,15 @@ impl<'a> Trial<'a> {
                     }
                     wr.set(wr.get() + batch.columns * batch.inner);
                     Ok(prepare::Row { values: vec![(*raw, row, output)], ..Default::default() })
+                } else if let (Some(history), Producer::Qk(_) | Producer::Pv(_)) =
+                    (history_rows, step)
+                {
+                    let (out, current_reads, previous_reads, fresh_reads) =
+                        state.borrow_mut().attention_row(step, row, token, history)?;
+                    ar.set(ar.get() + current_reads);
+                    old.set(old.get() + previous_reads);
+                    fresh.set(fresh.get() + fresh_reads);
+                    Ok(out)
                 } else {
                     p.prepare_row(step, row, emitted_token, tables, &weight, &get, &tail)
                 }

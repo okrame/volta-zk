@@ -77,7 +77,10 @@ def work_plan(description, matrix_workers=1):
 
 
 class PackedWeights:
-    def __init__(self, source, descriptors, exponents):
+    def __init__(self, source, descriptors, exponents, scaling="ldexp"):
+        if scaling not in ("ldexp", "multiply"):
+            raise ValueError("unknown pilot weight scaling")
+        self.scaling = scaling
         self.source = source
         self.descriptors = descriptors
         self.exponents = exponents
@@ -130,7 +133,12 @@ class PackedWeights:
             self.block_read_validate_seconds += time.monotonic() - started
         started = time.monotonic()
         converted = values.astype(np.float64)
-        np.ldexp(converted, self.exponents[descriptor["name"]], out=converted)
+        exponent = self.exponents[descriptor["name"]]
+        if self.scaling == "ldexp":
+            np.ldexp(converted, exponent, out=converted)
+        else:
+            # i16 * 2**e, e in [-128,128], is exactly representable in binary64.
+            converted *= math.ldexp(1.0, exponent)
         with self.read_lock:
             self.block_convert_seconds += time.monotonic() - started
         return converted
@@ -381,6 +389,7 @@ def main():
     parser.add_argument("--timeout-seconds", type=int)
     parser.add_argument("--matrix-workers", type=int, default=1)
     parser.add_argument("--profile-tokens", type=int)
+    parser.add_argument("--weight-scaling", choices=("ldexp", "multiply"), default="ldexp")
     args = parser.parse_args()
     if not 1 <= args.matrix_workers <= 20:
         parser.error("--matrix-workers must be between 1 and 20")
@@ -406,13 +415,14 @@ def main():
                       native_sha256=calibration.ingest.stream_sha256(args.native)[0],
                       numpy_version=np.__version__, planned_work=work_plan(description, args.matrix_workers),
                       workload_sha256=hashlib.sha256(workload_body).hexdigest(),
+                      weight_scaling=args.weight_scaling,
                       timeout_seconds=args.timeout_seconds)
         weights = report["weight_exponents_by_tensor"]
         calibration.validate_weights(report, {"weight_exponents_by_tensor": weights}, args.packed)
         result.update(packed_sha256=report["packed_sha256"], packed_hash_checked=True)
         workload = json.loads(workload_body)
         with args.packed.open("rb") as source, np.errstate(over="raise", invalid="raise", divide="raise"):
-            reader = PackedWeights(source, description["weight_sources"], weights)
+            reader = PackedWeights(source, description["weight_sources"], weights, args.weight_scaling)
             result.update(weight_access="readonly_mmap" if reader.mapping is not None else "stream",
                           immutable_weight_mapping_bytes=len(reader.mapping) if reader.mapping is not None else 0)
             executor = (ThreadPoolExecutor(max_workers=args.matrix_workers)

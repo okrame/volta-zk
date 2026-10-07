@@ -320,3 +320,18 @@ def test_profile_stops_at_fixed_causal_work_without_candidate():
         runner.run([0])
     with pytest.raises(ValueError, match="outside workload"):
         pilot.Pilot(description, small_inputs()[1], time.monotonic() + 10).run([0], profile_tokens=7)
+
+
+def test_multiply_weight_scaling_matches_complete_legal_domain_and_causal_profile():
+    values = np.arange(-32767, 32768, dtype=np.float64)
+    for exponent in range(-128, 129):
+        assert (values * math.ldexp(1.0, exponent)).tobytes() == np.ldexp(values, exponent).tobytes()
+    description, weights = small_inputs()
+    reference = pilot.Pilot(description, weights, time.monotonic() + 10).run([0], profile_tokens=6)
+    _, optimized = small_inputs()
+    optimized.scaling = "multiply"
+    actual = pilot.Pilot(description, optimized, time.monotonic() + 10).run([0], profile_tokens=6)
+    assert actual == reference
+    optimized.source.getbuffer()[:2] = b"\x00\x80"
+    with pytest.raises(ValueError, match="symmetric i16"):
+        optimized.block(0, 0, 1)

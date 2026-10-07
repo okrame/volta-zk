@@ -144,6 +144,12 @@ Il report privato del profilo include SHA-256 degli output binary64
 little-endian, con framing di posizione, ID operatore e lunghezza.
 Permette confronti bit per bit del flusso completo sul prefisso misurato;
 non è un commitment del protocollo né evidenza sui token non eseguiti.
+L'opzione CPU `--weight-scaling multiply` sostituisce soltanto la scala
+del blocco W con moltiplicazione per `2**e`; `ldexp` resta il riferimento
+selezionabile e il default. Tutti gli i16 simmetrici con e in [-128,128]
+sono dyadic esattamente rappresentabili in binary64, senza subnormalità
+o overflow. La fixture esaustiva confronta i 16.842.495 casi e il prefisso
+causale ridotto; il guadagno e la parità sul workload reale vanno misurati.
 
 [canonical_calibration.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs)
 esegue invece gli operatori interi: legge W packed con una cache di riga,

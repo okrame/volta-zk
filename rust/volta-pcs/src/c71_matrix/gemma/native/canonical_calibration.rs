@@ -466,11 +466,13 @@ impl MatrixDevice {
     ) -> Result<Self, String> {
         use kernel::range::windowed::native::{Config, Runtime};
         let started = std::time::Instant::now();
+        // reserve_bytes is inside this 64 MiB workspace budget. The existing
+        // W installer separately enforces at least 1 GiB of free device HBM.
+        let mut runtime =
+            Runtime::new(&Config::new(library.to_owned(), 0, 64 << 20, 1 << 20, 1 << 14, 128))?;
         let cells = plan.sources.iter().map(|s| s.rows * s.cols).sum();
         let (weights, _) = read_packed(packed, cells)?;
         let host_weight_capacity_bytes = weights.capacity() * 2;
-        let mut runtime =
-            Runtime::new(&Config::new(library.to_owned(), 0, 64 << 20, 1 << 30, 1 << 14, 128))?;
         runtime.install_weights(weights, plan.layout_digest)?;
         Ok(Self {
             runtime: RefCell::new(runtime),

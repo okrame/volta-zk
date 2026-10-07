@@ -84,6 +84,24 @@ locale precede la riattivazione; la nuova deadline va registrata all'avvio.
 Verificati localmente i dieci manifest storici e 304 file censiti:
 106.904.206 B totali, entro il tetto cumulativo di 10.000.000.000 B.
 
+Il proprietario ha poi attivato manualmente `wgteo4z5mndiof` e fornito
+il nuovo endpoint SSH: questo è il solo pod della campagna corrente.
+H100 `GPU-1bca9a1c-3fba-8ea6-75a2-c5e656c6a6cd`, stesso modello CPU
+Xeon 8480+, `/workspace` inizialmente vuoto su overlay. Il primo uptime
+provider implica avvio alle 11:05:46 UTC; si applica prudenzialmente
+11:04:46 UTC: fine trial 16:34:46, guard stop 16:59:46, termine massimo
+17:04:46 UTC del 7 ottobre. Il guard locale API è attivo; l'arresto finale
+va comunque verificato. Nessun credito numerico deriva dall'avvio.
+
+[c71_campaign_measure.py](../../scripts/c71_campaign_measure.py) riusa
+il monitor corretto del bundle storico con deadline e UUID obbligatori
+da `AUTHORIZED_END_EPOCH` e `CUDA_VISIBLE_DEVICES`, senza costanti di
+sessioni precedenti. Il self-check copre RSS e kill dei gruppi nella
+sessione; le misure campionate restano un limite inferiore del picco.
+[c71_download_weights.py](../../scripts/c71_download_weights.py) usa
+`SHARDS` come directory nuova e conserva l'hash completo degli shard pinned.
+Entrambi i programmi arrivano sul pod esclusivamente tramite Git HTTPS.
+
 | Passaggio | Stato e condizione di uscita |
 |---|---|
 | Preparazione locale | 13 producer CUDA, scanner, registro e runner misto implementati; compilazione sm_90, schedule canonica e test numerici/protocollo ridotti. Nessun W reale o dominio D34/D35 eseguito localmente |

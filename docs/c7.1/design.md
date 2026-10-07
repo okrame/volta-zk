@@ -205,7 +205,12 @@ incluse le due copie W; HBM 62.605.230.080 B, margine campionato
 un risultato sull'arena della prova. I bundle chiusi preparazione,
 prefissi, kernel e pilot completo sono verificati. La candidata floating
 compila e le tabelle certificate passano il controllo nativo degli input;
-il replay intero senza traccia è in corso, Γ non è ancora ammesso. Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
+il [primo replay intero](../../benchmarks/results/c71-integer-timeout-correction-2026-10-07-ec8a147.json)
+termina per timeout nativo di 1.080 s (wall 1.173,79 s), senza report
+nativo completo: Γ non è
+ammesso. Il percorso offline successivo prende in prestito le righe KV
+i16 già validate per QK/PV; richiede prima confronto esatto col produttore
+originale, poi due nuovi replay da KV vuoto e confronto indipendente. Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
 resta evidenza della sola preparazione precedente.
 
 ## Contratto delle risorse

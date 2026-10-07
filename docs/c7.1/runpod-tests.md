@@ -327,7 +327,7 @@ subcomandi legacy `preflight`/`report` per ammettere questa macchina.
 Il pack nativo verifica già header, entrambi i corpi e output persistito.
 
 Il replay matriciale CUDA del primo trial del 7 ottobre termina per
-limite esterno di 1.200 s: preservare il FAIL, senza ammissione Γ o riuso
+limite nativo di 1.080 s (wall 1.173,79 s, cap esterno 1.200 s): preservare il FAIL, senza ammissione Γ o riuso
 KV. La lettura intera per coefficiente dell'attenzione CPU resta costosa.
 Il percorso offline successivo usa righe KV i16 già validate, sommando
 QK/PV nello stesso ordine per output; non crea una nuova copia KV.

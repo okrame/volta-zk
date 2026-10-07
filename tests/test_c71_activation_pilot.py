@@ -313,6 +313,9 @@ def test_profile_stops_at_fixed_causal_work_without_candidate():
     assert runner.operator_timings["3"]["calls"] == 3
     assert runner.operator_timings["12"]["calls"] == 2
     assert runner.location["context"] == 2 and runner.location["token_index"] == 0
+    repeated = pilot.Pilot(description, small_inputs()[1], time.monotonic() + 10).run([0], profile_tokens=3)[1]
+    assert len(report["numeric_output_sha256"]) == 64
+    assert report["numeric_output_sha256"] == repeated["numeric_output_sha256"]
     with pytest.raises(ValueError, match="already used"):
         runner.run([0])
     with pytest.raises(ValueError, match="outside workload"):

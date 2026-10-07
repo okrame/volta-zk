@@ -18,6 +18,7 @@ import mmap
 import os
 from pathlib import Path
 import subprocess
+import struct
 import threading
 import time
 
@@ -275,6 +276,7 @@ class Pilot:
         if self.started:
             raise ValueError("activation pilot already used; discard its partial state")
         self.started = True
+        value_digest = hashlib.sha256() if profile_tokens is not None else None
         tokens_per_response = self.graph["tokens_per_response"]
         if profile_tokens is not None and not 1 <= profile_tokens <= tokens_per_response * self.graph["responses"]:
             raise ValueError("pilot profile token count outside workload")
@@ -329,6 +331,10 @@ class Pilot:
                             self.current[output] = value
                             retained = self.history_bytes + sum(row.nbytes for row in self.current.values())
                             self.retained_bytes_peak = max(self.retained_bytes_peak, retained)
+                        if value_digest is not None:
+                            body = np.asarray(value, dtype="<f8").tobytes()
+                            value_digest.update(struct.pack("<QQQ", position, step_index, len(body)))
+                            value_digest.update(body)
                     for source in self.release[step_index]:
                         self.current.pop(source, None)
                 if active != (decision is not None) or self.current:
@@ -340,6 +346,7 @@ class Pilot:
                 if self.completed_tokens == profile_tokens:
                     return None, dict(profile_only=True, candidate_produced=False,
                                       planned_profile_tokens=profile_tokens,
+                                      numeric_output_sha256=value_digest.hexdigest(),
                                       **self.observations(responses + [tokens[:index + 1]]))
             responses.append(tokens)
         expected = {source["id"] for source in self.description["activation_sources"]}

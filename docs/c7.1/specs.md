@@ -140,6 +140,10 @@ Il modo `profile --profile-tokens N` esegue un prefisso causale fissato
 del medesimo workload per confronti a lavoro uguale. Conserva osservazioni
 private e metriche, ma restituisce `complete:false`, `profile_only:true`
 e nessuna candidata; non sostituisce il modo `run` completo.
+Il report privato del profilo include SHA-256 degli output binary64
+little-endian, con framing di posizione, ID operatore e lunghezza.
+Permette confronti bit per bit del flusso completo sul prefisso misurato;
+non è un commitment del protocollo né evidenza sui token non eseguiti.
 
 [canonical_calibration.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs)
 esegue invece gli operatori interi: legge W packed con una cache di riga,

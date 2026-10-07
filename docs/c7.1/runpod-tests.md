@@ -325,6 +325,10 @@ Usa il kernel e il reader del replay CPU e dichiara `credit:false`,
 `packed_hash_checked:false`, `complete_integer_trial:false`: non valida
 scale, tabelle, causalità o Γ. L'extrapolazione dei prodotti è una stima
 parziale; aggiungere tabelle, altri operatori, I/O traccia e driver indipendente.
+Lo [screen del driver indipendente](../../scripts/c71_profile_oracle_matrix.py)
+usa la stessa shape e il kernel matriciale Python invariato; richiede
+`NATIVE PACKED`, un solo thread BLAS e AS 64 GiB per il mapping readonly W.
+Non istanzia un'esecuzione indipendente completa e non genera frame.
 
 Registrare il nuovo termine autorizzato in `AUTHORIZED_END_EPOCH`, entro
 6 ore dalla riattivazione. Non riusare epoch, UUID o guard della campagna

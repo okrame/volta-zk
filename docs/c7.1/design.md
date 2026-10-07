@@ -121,7 +121,8 @@ conferma operatori sintetici e MAC originali, senza certificati canonici.
 I fallimenti e le revisioni precedenti restano nei
 [record originali](../../benchmarks/results/) e nell'[archivio](../c7.1-history/README.md).
 
-La calibrazione offline dispone ora di pilot FP64 CPU/H100, matrici intere
+La [misura dei prefissi](../../benchmarks/results/c71-acceleration-prefixes-2026-10-07-d2b77f2a.json)
+conserva il confronto dei backend. La calibrazione offline dispone ora di pilot FP64 CPU/H100, matrici intere
 Rust CPU/CUDA e driver indipendente C11/Python. Il prefisso reale di due
 token O=0 passa da 73,26 s CPU a 30,65 s con conversione C11 e due worker,
 e a 3,19 s con cuBLAS FP64. Il wall esterno H100 è 80,25 s, inclusi hash

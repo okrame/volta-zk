@@ -300,3 +300,20 @@ def test_progress_preserves_partial_operator_failure(tmp_path):
     assert events[-1]["completed_tokens"] == 0 and events[-1]["weight_read_bytes"] > 0
     assert runner.operator_timings["3"]["failures"] == 1
     assert runner.operator_timings["2"]["calls"] == 1
+
+
+def test_profile_stops_at_fixed_causal_work_without_candidate():
+    description, weights = small_inputs()
+    runner = pilot.Pilot(description, weights, time.monotonic() + 10)
+    candidate, report = runner.run([0], profile_tokens=3)
+    assert candidate is None and report["profile_only"] and not report["candidate_produced"]
+    assert not report["calibrated"]
+    assert runner.completed_tokens == 3 and len(runner.history[4]) == 3
+    assert [len(tokens) for tokens in report["responses"]] == [2, 1]
+    assert runner.operator_timings["3"]["calls"] == 3
+    assert runner.operator_timings["12"]["calls"] == 2
+    assert runner.location["context"] == 2 and runner.location["token_index"] == 0
+    with pytest.raises(ValueError, match="already used"):
+        runner.run([0])
+    with pytest.raises(ValueError, match="outside workload"):
+        pilot.Pilot(description, small_inputs()[1], time.monotonic() + 10).run([0], profile_tokens=7)

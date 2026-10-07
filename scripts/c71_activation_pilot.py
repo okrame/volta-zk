@@ -271,11 +271,13 @@ class Pilot:
             return int(np.argmax(inputs[0]))
         raise ValueError(f"unknown pilot operation: {operation}")
 
-    def run(self, prompt):
+    def run(self, prompt, profile_tokens=None):
         if self.started:
             raise ValueError("activation pilot already used; discard its partial state")
         self.started = True
         tokens_per_response = self.graph["tokens_per_response"]
+        if profile_tokens is not None and not 1 <= profile_tokens <= tokens_per_response * self.graph["responses"]:
+            raise ValueError("pilot profile token count outside workload")
         first = self.graph["decision_first"]
         count = self.graph["decision_count"]
         if len(prompt) != first + 1 or first + count + 1 != tokens_per_response:
@@ -335,6 +337,10 @@ class Pilot:
                     tokens[index + 1] = decision
                 self.completed_tokens += 1
                 self.emit_progress("token_complete", force=True)
+                if self.completed_tokens == profile_tokens:
+                    return None, dict(profile_only=True, candidate_produced=False,
+                                      planned_profile_tokens=profile_tokens,
+                                      **self.observations(responses + [tokens[:index + 1]]))
             responses.append(tokens)
         expected = {source["id"] for source in self.description["activation_sources"]}
         if set(self.extents) != expected:
@@ -347,7 +353,10 @@ class Pilot:
         exponents.update(self.description["fixed_pi_exponents"])
         if any(not -128 <= exponent <= 128 for exponent in exponents.values()):
             raise ValueError("pilot activation scale exceeds the native envelope")
-        return dict(weight_exponents_by_tensor=self.weights.exponents, activation_exponents_by_source=exponents), dict(
+        return dict(weight_exponents_by_tensor=self.weights.exponents, activation_exponents_by_source=exponents), self.observations(responses)
+
+    def observations(self, responses):
+        return dict(
             calibrated=False, integer_replay_required=True, floating_initialization_only=True,
             responses=responses, extents=self.extents, weight_read_bytes=self.weights.bytes_read,
             matrix_scalar_products=self.matrix_scalar_products, history_payload_bytes=self.history_bytes,
@@ -357,16 +366,19 @@ class Pilot:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("plan", "run"))
+    parser.add_argument("mode", choices=("plan", "profile", "run"))
     parser.add_argument("--native", type=Path, required=True)
     parser.add_argument("--ingest-report", type=Path)
     parser.add_argument("--packed", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--timeout-seconds", type=int)
     parser.add_argument("--matrix-workers", type=int, default=1)
+    parser.add_argument("--profile-tokens", type=int)
     args = parser.parse_args()
     if not 1 <= args.matrix_workers <= 20:
         parser.error("--matrix-workers must be between 1 and 20")
+    if (args.mode == "profile") != (args.profile_tokens is not None):
+        parser.error("only profile requires --profile-tokens")
     description = json.loads(subprocess.run([str(args.native), "describe"], capture_output=True,
                                             text=True, timeout=60, check=True).stdout)
     if args.mode == "plan":
@@ -400,7 +412,10 @@ def main():
                         if args.matrix_workers > 1 else nullcontext(None))
             with executor as pool:
                 pilot = Pilot(description, reader, time.monotonic() + args.timeout_seconds, pool, progress)
-                candidate, observations = pilot.run(workload["prompt"]["token_ids"])
+                candidate, observations = pilot.run(workload["prompt"]["token_ids"], args.profile_tokens)
+        if args.mode == "profile":
+            result.update(observations, complete=False, success=True)
+            return
         result.update(observations, complete=True)
         candidate_path = args.output / "candidate.json"
         candidate_body = json.dumps(candidate, indent=2, sort_keys=True) + "\n"

@@ -136,6 +136,10 @@ conserva anche su errore tempi per ID operatore e contatori parziali;
 un kill conserva solo i campioni già scritti. Lettura/validazione,
 conversione W e dot espongono secondi-worker cumulativi, che possono
 sovrapporsi e non vanno sommati al wall. Non è ancora una misura sul pod.
+Il modo `profile --profile-tokens N` esegue un prefisso causale fissato
+del medesimo workload per confronti a lavoro uguale. Conserva osservazioni
+private e metriche, ma restituisce `complete:false`, `profile_only:true`
+e nessuna candidata; non sostituisce il modo `run` completo.
 
 [canonical_calibration.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs)
 esegue invece gli operatori interi: legge W packed con una cache di riga,

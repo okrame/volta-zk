@@ -273,6 +273,9 @@ e lavoro identici. Un microbenchmark sintetico non è una previsione del
 tempo completo: esplicitare extrapolazioni e quota di lavoro non misurata.
 Il report del 4 ottobre non conserva token/operatore raggiunti al timeout;
 quei dati non possono essere ricostruiti dai soli campioni RSS.
+Per confrontare prefissi identici usare il modo `profile --profile-tokens N`
+con gli stessi altri argomenti di `run`, in directory nuove. Il profilo
+finisce dopo aver assorbito N token; non produce candidata e non ammette Γ.
 
 Ottimizzare il costo dominante su CPU o H100, verificando il percorso
 modificato contro il riferimento numerico su input fissati: valori,

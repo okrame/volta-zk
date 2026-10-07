@@ -1,0 +1,54 @@
+{
+  "calibrated": false,
+  "cli_checks": {
+    "corrected": {
+      "failed": 0,
+      "passed": 17
+    },
+    "initial": {
+      "failed": 8,
+      "passed": 9,
+      "reason": "Mocks still returned captured stderr and rejected the new matrix_workers keyword. Production error semantics unchanged; updated fixtures write the actual stderr sink and assert worker forwarding."
+    }
+  },
+  "component_speedup": 43.41971589042858,
+  "credit": false,
+  "date": "2026-10-07",
+  "git_dirty": false,
+  "git_sha": "f1f300c4da5d85afbc688a9dd3d606196236f200",
+  "native_binary_sha256": "4b3090f8e47f639465b10fa20e8106be115652a15b21e9164143c4aede0cee4d",
+  "notes": [
+    "Synthetic bounded CPU test; no real weights, candidate trial, or Gamma credit.",
+    "Borrow original validated i16 KV rows, preserve per-output summation order and logical read census; fail closed on future/padding query, marker and workspace cap.",
+    "No retained KV copy or change to protocol runner; new temporary QK scratch is counted with the incoming bundle peak.",
+    "Two new complete real-weight native replays and independent full comparison remain required after previous timeout."
+  ],
+  "private_bundle": "attention-parity-20261007T141000Z",
+  "screen": {
+    "borrowed_seconds": 0.05035057399999999,
+    "calibrated": false,
+    "comparisons": 36,
+    "complete_integer_trial": false,
+    "contexts": [
+      0,
+      150,
+      300
+    ],
+    "credit": false,
+    "exact_reference_equal": true,
+    "profile_only": true,
+    "queries": [
+      0,
+      149
+    ],
+    "real_weights": false,
+    "reference_seconds": 2.1862076179999996,
+    "rejections": [
+      "padding query",
+      "future query",
+      "KV marker",
+      "workspace cap"
+    ]
+  },
+  "status": "ATTENTION_ROW_PARITY_PASS_GAMMA_UNADMITTED"
+}

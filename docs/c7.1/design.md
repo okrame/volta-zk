@@ -209,8 +209,11 @@ il [primo replay intero](../../benchmarks/results/c71-integer-timeout-correction
 termina per timeout nativo di 1.080 s (wall 1.173,79 s), senza report
 nativo completo: Γ non è
 ammesso. Il percorso offline successivo prende in prestito le righe KV
-i16 già validate per QK/PV; richiede prima confronto esatto col produttore
-originale, poi due nuovi replay da KV vuoto e confronto indipendente. Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
+i16 già validate per QK/PV. Il
+[confronto ridotto](../../benchmarks/results/c71-attention-row-parity-2026-10-07-f1f300c4.json)
+passa 36 casi esatti e i rifiuti, in 0,050 s contro 2,186 s del produttore
+originale; 17 test CLI corretti sono PASS. Restano due nuovi replay
+completi da KV vuoto e il confronto indipendente sui pesi reali. Il [record locale](../../benchmarks/results/c71-pilot-telemetry-2026-10-07-831eae0cec6c.json)
 resta evidenza della sola preparazione precedente.
 
 ## Contratto delle risorse

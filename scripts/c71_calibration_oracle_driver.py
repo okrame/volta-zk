@@ -128,6 +128,13 @@ class Driver:
 
     def _matrix(self, identifier: int, values) -> np.ndarray:
         weight = self._weight(identifier)
+        output = numeric.matrix_i16(weight, values)
+        self.matrix_products += weight.size
+        return output
+
+    def _matrix_blas(self, identifier: int, values) -> np.ndarray:
+        """Retained exact-binary64 reference for parity and timing screens."""
+        weight = self._weight(identifier)
         values = np.asarray(values, dtype=np.int64).reshape(-1)
         if weight.shape[1] != values.size or np.any(values < -32767) or np.any(values > 32767):
             raise ValueError("oracle matrix input shape/range differs")
@@ -588,5 +595,6 @@ class Driver:
             "oracle_plan_sha256": self.plan_sha256,
             "schedule_audit": self.schedule_audit,
             "rms_kernel": numeric.rms_kernel_digests(),
+            "matrix_kernel": "independent-c11-i16-i64",
             "elapsed_seconds": time.monotonic() - self.started,
         }

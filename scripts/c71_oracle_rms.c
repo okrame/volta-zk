@@ -1,6 +1,29 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Independent integer dot: every possible partial sum fits signed i64.
+ * No floating conversion, Rust producer, or GPU implementation is reused. */
+int c71_matrix_i16(const int16_t *restrict weights, const int16_t *restrict input,
+                   int64_t *restrict output, size_t rows, size_t columns) {
+    if (!weights || !input || !output || !rows || !columns
+        || columns > INT64_MAX / (INT64_C(32768) * 32767)
+        || rows > SIZE_MAX / columns)
+        return 1;
+    for (size_t k = 0; k < columns; ++k)
+        if (input[k] == INT16_MIN) return 1;
+    unsigned invalid = 0;
+    for (size_t row = 0; row < rows; ++row) {
+        int64_t sum = 0;
+        for (size_t k = 0; k < columns; ++k) {
+            int16_t value = weights[row * columns + k];
+            invalid |= value == INT16_MIN;
+            sum += (int64_t)value * input[k];
+        }
+        output[row] = sum;
+    }
+    return invalid != 0;
+}
+
 typedef struct {
     uint64_t limb[3];
 } u192;

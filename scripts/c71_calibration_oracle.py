@@ -144,7 +144,7 @@ def _rms_library():
     digest = hashlib.sha256(source).hexdigest()
     directory = tempfile.TemporaryDirectory(prefix="volta-c71-oracle-rms-")
     output = Path(directory.name) / f"{digest}.so"
-    subprocess.run(["cc", "-O3", "-shared", "-fPIC", "-std=c11",
+    subprocess.run(["cc", "-O3", "-march=native", "-shared", "-fPIC", "-std=c11",
                     "-Wall", "-Wextra", "-Werror", str(RMS_SOURCE),
                     "-o", str(output)], timeout=60, check=True, capture_output=True)
     library = ctypes.CDLL(str(output))
@@ -154,11 +154,35 @@ def _rms_library():
                          ctypes.c_uint64, ctypes.c_uint64,
                          ctypes.POINTER(ctypes.c_int16)]
     function.restype = ctypes.c_size_t
+    library.c71_matrix_i16.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+                                       ctypes.c_size_t, ctypes.c_size_t]
+    library.c71_matrix_i16.restype = ctypes.c_int
     binary_digest = hashlib.sha256(output.read_bytes()).hexdigest()
     return directory, library, function, digest, binary_digest
 
 
 _RMS = None
+
+
+def matrix_i16(weight, values) -> np.ndarray:
+    """Independent C11 exact integer dot without a dequantized weight copy."""
+    global _RMS
+    weight = np.asarray(weight)
+    values = _symmetric_i16(values, "matrix input")
+    if (weight.dtype != np.dtype("int16") or weight.ndim != 2
+            or not weight.flags.c_contiguous or values.ndim != 1
+            or weight.shape[1] != values.size or not weight.size):
+        raise ValueError("native oracle matrix shape/dtype differs")
+    if weight.shape[1] * 32767**2 >= 1 << 63:
+        raise ValueError("native oracle matrix i64 bound exceeded")
+    values = np.ascontiguousarray(values, dtype=np.int16)
+    output = np.empty(weight.shape[0], dtype=np.int64)
+    if _RMS is None:
+        _RMS = _rms_library()
+    if _RMS[1].c71_matrix_i16(weight.ctypes.data, values.ctypes.data, output.ctypes.data,
+                             *weight.shape):
+        raise ValueError("native oracle matrix outside symmetric i16")
+    return output
 
 
 def rms_batch(products, statistic: int, columns: int, exponents) -> np.ndarray:

@@ -219,10 +219,15 @@ conserva la regressione che avrebbe respinto una traccia reale valida a O=150.
 Il [driver indipendente](../../scripts/c71_calibration_oracle_driver.py)
 applica il piano a tutti i 13 tipi di operatore, mantiene solo le righe vive
 e KV, ricostruisce padding, istogrammi e token e produce i frame attesi in
-streaming. Matrici, QK e PV usano binary64 soltanto dopo il bound assoluto
-`<2^53`; RMS usa il piccolo kernel C11 indipendente
+streaming. Le matrici usano ora un dot C11 indipendente i16→i64 con
+bound assoluto di ogni somma parziale `<2^63`, controllo del marcatore
+e senza W dequantizzata; il riferimento BLAS binary64 con bound `<2^53`
+resta per confronti esatti. QK e PV usano binary64 entro lo stesso bound.
+RMS usa il piccolo kernel C11 indipendente
 [c71_oracle_rms.c](../../scripts/c71_oracle_rms.c), con confronti esatti a
-192 bit. Il kernel viene compilato in una directory temporanea privata e il
+192 bit; lo stesso file ospita il dot intero, senza codice del producer Rust
+o CUDA. La libreria è compilata con `-O3 -march=native` in una directory
+temporanea privata e il
 report registra SHA-256 di sorgente e shared object caricato.
 
 La modalità `trace` confronta ogni frame col driver e richiede

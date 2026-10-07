@@ -247,7 +247,11 @@ conserva la regressione che avrebbe respinto una traccia reale valida a O=150.
 Il [driver indipendente](../../scripts/c71_calibration_oracle_driver.py)
 applica il piano a tutti i 13 tipi di operatore, mantiene solo le righe vive
 e KV, ricostruisce padding, istogrammi e token e produce i frame attesi in
-streaming. Le matrici usano ora un dot C11 indipendente i16→i64 con
+streaming. Il numero esplicito di worker del dot indipendente è 1–20;
+OpenMP divide soltanto le righe, senza cambiare l’ordine delle somme i64
+di ciascuna riga, e combina i marker mediante OR. Default e test locali
+restano seriali; il report conserva i worker scelti e i digest C11.
+Le matrici usano ora un dot C11 indipendente i16→i64 con
 bound assoluto di ogni somma parziale `<2^63`, controllo del marcatore
 e senza W dequantizzata; il riferimento BLAS binary64 con bound `<2^53`
 resta per confronti esatti. QK e PV usano binary64 entro lo stesso bound.

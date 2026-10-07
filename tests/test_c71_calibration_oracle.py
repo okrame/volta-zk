@@ -42,20 +42,25 @@ def test_rne_affine_and_rms_are_exact_at_signs_and_ties():
 
 
 def test_integer_matrix_kernel_matches_python_and_blas_at_canonical_widths():
+    import os
+    workers = int(os.environ.get("C71_ORACLE_TEST_WORKERS", "1"))
     rng = np.random.default_rng(71)
-    for columns in (1, 3, 129, 5376, 21504):
-        weight = rng.integers(-32767, 32768, size=(3, columns), dtype=np.int16)
+    for rows, columns in ((3, 1), (3, 3), (257, 129), (3, 5376), (3, 21504)):
+        weight = rng.integers(-32767, 32768, size=(rows, columns), dtype=np.int16)
         values = rng.integers(-32767, 32768, size=columns, dtype=np.int16)
         weight[0] = 32767
         values[::2] = -32767
         expected = [sum(int(a) * int(b) for a, b in zip(row, values)) for row in weight]
-        actual = oracle.matrix_i16(weight, values)
+        actual = oracle.matrix_i16(weight, values, workers)
         assert actual.tolist() == expected == oracle.matrix(weight, values).tolist()
+    for bad_workers in (0, 21):
+        with pytest.raises(ValueError, match="workers"):
+            oracle.matrix_i16(weight, values, bad_workers)
     for target in (weight, values):
         saved = target.flat[-1]
         target.flat[-1] = -32768
         with pytest.raises(ValueError, match="symmetric i16"):
-            oracle.matrix_i16(weight, values)
+            oracle.matrix_i16(weight, values, workers)
         target.flat[-1] = saved
     with pytest.raises(ValueError, match="shape/dtype"):
         oracle.matrix_i16(weight[:, ::2], values[::2])

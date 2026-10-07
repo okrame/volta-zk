@@ -358,7 +358,15 @@ Lo [screen del driver indipendente](../../scripts/c71_profile_oracle_matrix.py)
 usa la stessa shape e il kernel indipendente C11, confrontabile col
 precedente BLAS con `--compare-reference`; richiede
 `NATIVE PACKED`, un solo thread BLAS e AS 64 GiB per il mapping readonly W.
-Non istanzia un'esecuzione indipendente completa e non genera frame.
+Non istanzia un'esecuzione indipendente completa e non genera frame. Lo screen
+accetta `--workers 1..20`: il kernel C11 usa OpenMP solo per righe
+indipendenti, con somme i64 immutate e riduzione OR dei marker. Prima di
+scegliere `trace --oracle-workers N`, misurare lo screen con confronto
+esatto e ripetere `tests/test_c71_calibration_oracle.py` sul pod con
+`C71_ORACLE_TEST_WORKERS=N`; i test locali restano a un worker.
+Registrare compilatore/runtime OpenMP, numero worker e memoria fisica.
+BLAS/OMP/Rayon restano a un thread; il solo dot C11 riceve esplicitamente N.
+
 `profile-matrix PACKED CUDA_LIBRARY` aggiunge il confronto esatto col
 kernel intero H100 e include caricamento/installazione W nei contatori.
 È uno screen GPU autorizzato, entro 300 s e limiti fisici consueti;

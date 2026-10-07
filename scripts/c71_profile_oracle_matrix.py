@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline timing screen of the unchanged independent integer matrix kernel.
+"""Offline timing screen of the independent integer matrix kernel.
 
 Actual immutable W must already be verified by ingest. Synthetic alternating
 i16 inputs, no tables/causal run/candidate/admission; only use on the authorized
@@ -23,6 +23,7 @@ def main():
     parser.add_argument("native", type=Path)
     parser.add_argument("packed", type=Path)
     parser.add_argument("--compare-reference", action="store_true")
+    parser.add_argument("--workers", type=int, choices=range(1, 21), default=1)
     args = parser.parse_args()
     if args.packed.stat().st_size != PACKED_BYTES:
         raise ValueError("matrix screen packed byte length differs")
@@ -32,6 +33,7 @@ def main():
     driver.weights = description["weight_sources"]
     driver.packed = np.memmap(args.packed, dtype="<i2", mode="r")
     driver.matrix_products = 0
+    driver.matrix_workers = args.workers
     matrices = [s["parameters"]["weight"] for s in description["pilot"]["steps"]
                 if s["operation"] == "matrix"]
     identifier = max(reversed(matrices), key=lambda i: driver.weights[i]["columns"])
@@ -54,7 +56,7 @@ def main():
                           independent_oracle_complete=False, packed_hash_checked=False,
                           synthetic_input=True, rows=source["rows"], columns=source["columns"],
                           matrix_scalar_products=products, wall_seconds=elapsed,
-                          kernel_init_seconds=kernel_init_seconds,
+                          kernel_init_seconds=kernel_init_seconds, matrix_workers=args.workers,
                           exact_reference_equal=comparison)))
 
 

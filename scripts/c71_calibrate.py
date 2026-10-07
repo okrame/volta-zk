@@ -331,7 +331,10 @@ def main() -> None:
     parser.add_argument("--timeout-seconds", type=int)
     parser.add_argument("--trace-output", type=Path)
     parser.add_argument("--matrix-library", type=Path)
+    parser.add_argument("--oracle-workers", type=int, choices=range(1, 21), default=1)
     args = parser.parse_args()
+    if args.oracle_workers != 1 and args.mode != "trace":
+        parser.error("--oracle-workers only applies to trace comparison")
     if args.matrix_library is not None and args.mode not in ("run", "trace"):
         parser.error("--matrix-library only applies to integer run/trace")
     if args.mode in ("run", "trace") and (
@@ -424,7 +427,7 @@ def main() -> None:
                             raise ValueError("native report does not complete the integer trial")
                         if trace_path is not None:
                             independent = oracle_driver.Driver(
-                                oracle_plan, args.packed, tables)
+                                oracle_plan, args.packed, tables, matrix_workers=args.oracle_workers)
                             checked = trace_codec.validate(
                                 trace_path, expected_frames=independent.frames(),
                                 oracle_plan=oracle_plan)

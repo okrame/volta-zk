@@ -96,7 +96,10 @@ def _encode_signed(values, width: int, *, allow_i16_minimum=False) -> bytes:
 
 
 class Driver:
-    def __init__(self, oracle_plan: dict, packed: Path, tables: Path, prompt=None):
+    def __init__(self, oracle_plan: dict, packed: Path, tables: Path, prompt=None, matrix_workers=1):
+        if type(matrix_workers) is not int or not 1 <= matrix_workers <= 20:
+            raise ValueError("oracle matrix workers outside 1..20")
+        self.matrix_workers = matrix_workers
         self.plan = oracle_plan
         self.weights = oracle_plan["contexts"][0]["weights"]
         if packed.stat().st_size != ingest.PACKED_BYTES:
@@ -128,7 +131,7 @@ class Driver:
 
     def _matrix(self, identifier: int, values) -> np.ndarray:
         weight = self._weight(identifier)
-        output = numeric.matrix_i16(weight, values)
+        output = numeric.matrix_i16(weight, values, self.matrix_workers)
         self.matrix_products += weight.size
         return output
 
@@ -596,5 +599,6 @@ class Driver:
             "schedule_audit": self.schedule_audit,
             "rms_kernel": numeric.rms_kernel_digests(),
             "matrix_kernel": "independent-c11-i16-i64",
+            "matrix_workers": self.matrix_workers,
             "elapsed_seconds": time.monotonic() - self.started,
         }

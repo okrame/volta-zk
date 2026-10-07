@@ -145,7 +145,7 @@ def _rms_library():
     directory = tempfile.TemporaryDirectory(prefix="volta-c71-oracle-rms-")
     output = Path(directory.name) / f"{digest}.so"
     subprocess.run(["cc", "-O3", "-march=native", "-shared", "-fPIC", "-std=c11",
-                    "-Wall", "-Wextra", "-Werror", str(RMS_SOURCE),
+                    "-Wall", "-Wextra", "-Werror", "-fopenmp", str(RMS_SOURCE),
                     "-o", str(output)], timeout=60, check=True, capture_output=True)
     library = ctypes.CDLL(str(output))
     function = library.c71_rms_batch
@@ -155,7 +155,7 @@ def _rms_library():
                          ctypes.POINTER(ctypes.c_int16)]
     function.restype = ctypes.c_size_t
     library.c71_matrix_i16.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
-                                       ctypes.c_size_t, ctypes.c_size_t]
+                                       ctypes.c_size_t, ctypes.c_size_t, ctypes.c_int]
     library.c71_matrix_i16.restype = ctypes.c_int
     binary_digest = hashlib.sha256(output.read_bytes()).hexdigest()
     return directory, library, function, digest, binary_digest
@@ -164,9 +164,11 @@ def _rms_library():
 _RMS = None
 
 
-def matrix_i16(weight, values) -> np.ndarray:
+def matrix_i16(weight, values, workers=1) -> np.ndarray:
     """Independent C11 exact integer dot without a dequantized weight copy."""
     global _RMS
+    if type(workers) is not int or not 1 <= workers <= 20:
+        raise ValueError("oracle matrix workers outside 1..20")
     weight = np.asarray(weight)
     values = _symmetric_i16(values, "matrix input")
     if (weight.dtype != np.dtype("int16") or weight.ndim != 2
@@ -180,7 +182,7 @@ def matrix_i16(weight, values) -> np.ndarray:
     if _RMS is None:
         _RMS = _rms_library()
     if _RMS[1].c71_matrix_i16(weight.ctypes.data, values.ctypes.data, output.ctypes.data,
-                             *weight.shape):
+                             *weight.shape, workers):
         raise ValueError("native oracle matrix outside symmetric i16")
     return output
 

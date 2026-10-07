@@ -102,10 +102,11 @@ def test_parallel_matrix_blocks_and_causal_pilot_match_serial_exactly(tmp_path):
     body = np.random.default_rng(71).integers(-32767, 32768, (257, 129), dtype=np.int16).tobytes()
     matrix_description = dict(weight_sources=[descriptor], pilot=dict(steps=[], kv_sources=[]))
     step = dict(operation="matrix", inputs=[1], parameters=dict(weight=0))
-    def evaluate(pool, source=None):
+    def evaluate(pool, source=None, reuse=False):
         weights = pilot.PackedWeights(source if source is not None else io.BytesIO(body),
                                      [descriptor], {"ragged": -13})
-        runner = pilot.Pilot(matrix_description, weights, time.monotonic() + 10, pool)
+        runner = pilot.Pilot(matrix_description, weights, time.monotonic() + 10, pool,
+                             reuse_matrix_buffer=reuse)
         runner.current[1] = np.arange(129, dtype=np.float64) / 16
         return runner.evaluate(step, 0, 0), runner.matrix_scalar_products, weights.bytes_read
     serial = evaluate(None)
@@ -119,13 +120,17 @@ def test_parallel_matrix_blocks_and_causal_pilot_match_serial_exactly(tmp_path):
         parallel = evaluate(pool)
         with packed.open("rb") as source:
             mapped_parallel = evaluate(pool, source)
+        reused_parallel = evaluate(pool, reuse=True)
         parallel_trial = pilot.Pilot(description, small_inputs()[1], time.monotonic() + 10, pool).run([0])
+        reused_trial = pilot.Pilot(description, small_inputs()[1], time.monotonic() + 10, pool,
+                                   reuse_matrix_buffer=True).run([0])
     assert parallel[0].tobytes() == serial[0].tobytes()
     assert parallel[1:] == serial[1:] == (257 * 129, len(body))
-    for mapped in (mapped_serial, mapped_parallel):
+    for mapped in (mapped_serial, mapped_parallel, reused_parallel):
         assert mapped[0].tobytes() == serial[0].tobytes() and mapped[1:] == serial[1:]
     assert packed.read_bytes() == body
     assert parallel_trial == serial_trial
+    assert reused_trial == serial_trial
 
 
 def test_operator_routes_weighted_rms_groups_and_global_rope():
@@ -335,3 +340,21 @@ def test_multiply_weight_scaling_matches_complete_legal_domain_and_causal_profil
     optimized.source.getbuffer()[:2] = b"\x00\x80"
     with pytest.raises(ValueError, match="symmetric i16"):
         optimized.block(0, 0, 1)
+
+
+def test_reused_conversion_buffer_preserves_live_values_and_full_profile():
+    description, weights = small_inputs()
+    reference = pilot.Pilot(description, weights, time.monotonic() + 10).run([0], profile_tokens=6)
+    _, weights = small_inputs()
+    runner = pilot.Pilot(description, weights, time.monotonic() + 10, reuse_matrix_buffer=True)
+    assert runner.run([0], profile_tokens=6) == reference
+    assert runner.matrix_scratch_capacity_bytes == 32
+    assert runner.metrics()["retained_matrix_scratch_peak_bytes"] == 32
+    output = np.empty((1, 2), dtype=np.float64)
+    assert weights.block(0, 0, 1, out=output) is output
+    np.testing.assert_array_equal(output, [[1, 2]])
+    with pytest.raises(ValueError, match="workspace differs"):
+        weights.block(0, 0, 1, out=np.empty((2, 1)))
+    weights.source.getbuffer()[:2] = b"\x00\x80"
+    with pytest.raises(ValueError, match="symmetric i16"):
+        weights.block(0, 0, 1, out=output)

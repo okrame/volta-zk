@@ -109,7 +109,7 @@ class PackedWeights:
         else:
             self.mapping = mmap.mmap(descriptor, 0, access=mmap.ACCESS_READ)
 
-    def block(self, tensor, first, count):
+    def block(self, tensor, first, count, out=None):
         started = time.monotonic()
         if not 0 <= tensor < len(self.descriptors):
             raise ValueError("pilot weight tensor missing")
@@ -132,7 +132,13 @@ class PackedWeights:
             self.bytes_read += 2 * count * columns
             self.block_read_validate_seconds += time.monotonic() - started
         started = time.monotonic()
-        converted = values.astype(np.float64)
+        if out is None:
+            converted = values.astype(np.float64)
+        else:
+            if out.shape != values.shape or out.dtype != np.float64 or not out.flags.c_contiguous:
+                raise ValueError("pilot conversion workspace differs")
+            np.copyto(out, values, casting="unsafe")
+            converted = out
         exponent = self.exponents[descriptor["name"]]
         if self.scaling == "ldexp":
             np.ldexp(converted, exponent, out=converted)
@@ -145,7 +151,8 @@ class PackedWeights:
 
 
 class Pilot:
-    def __init__(self, description, weights, deadline, matrix_executor=None, progress=None):
+    def __init__(self, description, weights, deadline, matrix_executor=None, progress=None,
+                 reuse_matrix_buffer=False):
         self.description = description
         self.graph = description["pilot"]
         self.weights = weights
@@ -158,6 +165,11 @@ class Pilot:
         self.operator_timings = {}
         self.completed_tokens = 0
         self.matrix_dot_seconds = 0.0
+        self.reuse_matrix_buffer = reuse_matrix_buffer
+        self.matrix_scratch = threading.local()
+        self.matrix_scratch_capacity_bytes = 0
+        self.matrix_scratch_cells = max((min(128, row["rows"]) * row["columns"]
+                                         for row in weights.descriptors), default=0)
         self.current = {}
         self.history = {source: [] for source in self.graph["kv_sources"]}
         self.extents = {}
@@ -188,6 +200,7 @@ class Pilot:
                     block_read_validate_worker_seconds=self.weights.block_read_validate_seconds,
                     block_convert_worker_seconds=self.weights.block_convert_seconds,
                     matrix_dot_worker_seconds=self.matrix_dot_seconds,
+                    retained_matrix_scratch_peak_bytes=self.matrix_scratch_capacity_bytes,
                     history_payload_bytes=self.history_bytes,
                     retained_payload_peak_bytes=self.retained_bytes_peak,
                     complete_physical_peak=False)
@@ -214,7 +227,14 @@ class Pilot:
                 self.check_deadline()
                 count = min(128, rows - first)
                 with np.errstate(over="raise", invalid="raise", divide="raise"):
-                    block = self.weights.block(tensor, first, count)
+                    scratch = None
+                    if self.reuse_matrix_buffer:
+                        if not hasattr(self.matrix_scratch, "values"):
+                            self.matrix_scratch.values = np.empty(self.matrix_scratch_cells, dtype=np.float64)
+                            with self.weights.read_lock:
+                                self.matrix_scratch_capacity_bytes += self.matrix_scratch.values.nbytes
+                        scratch = self.matrix_scratch.values[:count * inputs[0].size].reshape(count, -1)
+                    block = self.weights.block(tensor, first, count, out=scratch)
                     started = time.monotonic()
                     values = block @ inputs[0]
                     return first, values, time.monotonic() - started
@@ -390,6 +410,7 @@ def main():
     parser.add_argument("--matrix-workers", type=int, default=1)
     parser.add_argument("--profile-tokens", type=int)
     parser.add_argument("--weight-scaling", choices=("ldexp", "multiply"), default="ldexp")
+    parser.add_argument("--reuse-matrix-buffer", action="store_true")
     args = parser.parse_args()
     if not 1 <= args.matrix_workers <= 20:
         parser.error("--matrix-workers must be between 1 and 20")
@@ -416,6 +437,7 @@ def main():
                       numpy_version=np.__version__, planned_work=work_plan(description, args.matrix_workers),
                       workload_sha256=hashlib.sha256(workload_body).hexdigest(),
                       weight_scaling=args.weight_scaling,
+                      reuse_matrix_buffer=args.reuse_matrix_buffer,
                       timeout_seconds=args.timeout_seconds)
         weights = report["weight_exponents_by_tensor"]
         calibration.validate_weights(report, {"weight_exponents_by_tensor": weights}, args.packed)
@@ -428,7 +450,8 @@ def main():
             executor = (ThreadPoolExecutor(max_workers=args.matrix_workers)
                         if args.matrix_workers > 1 else nullcontext(None))
             with executor as pool:
-                pilot = Pilot(description, reader, time.monotonic() + args.timeout_seconds, pool, progress)
+                pilot = Pilot(description, reader, time.monotonic() + args.timeout_seconds, pool, progress,
+                              args.reuse_matrix_buffer)
                 candidate, observations = pilot.run(workload["prompt"]["token_ids"], args.profile_tokens)
         if args.mode == "profile":
             result.update(observations, complete=False, success=True)

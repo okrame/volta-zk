@@ -150,6 +150,13 @@ selezionabile e il default. Tutti gli i16 simmetrici con e in [-128,128]
 sono dyadic esattamente rappresentabili in binary64, senza subnormalità
 o overflow. La fixture esaustiva confronta i 16.842.495 casi e il prefisso
 causale ridotto; il guadagno e la parità sul workload reale vanno misurati.
+`--reuse-matrix-buffer` conserva un solo scratch f64 per worker, al più
+128×21.504 celle canoniche, e converte con `copyto` prima dello stesso
+dot. Embedding e Norm conservano output indipendenti. Il contatore espone
+il picco delle capacità trattenute; otto worker trattengono al più
+176.160.768 B di scratch, da contare con KV, mapping W e resto del processo.
+La verifica ridotta include code ragged e riuso seriale/parallelo;
+nessun guadagno è implicito nella sola eliminazione delle allocazioni.
 
 [canonical_calibration.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_calibration.rs)
 esegue invece gli operatori interi: legge W packed con una cache di riga,

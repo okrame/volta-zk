@@ -176,6 +176,11 @@ confrontati dal test Tree separato. Il filtro
 ignored perché il test combinato D15 riferimento/prover/doppia verifica
 supera 60 s; non eseguirlo con `--ignored` o limite esteso. Conservare
 timeout e prefissi JSONL come failure, non conteggiare uno skip come pass.
+Il [record pulito Tree](../../benchmarks/results/c71-crypto-w-tree-local-2026-10-08-6b3535856cc5.json)
+conserva nove selezioni Rust (12 test) e nove controlli documentali passati.
+Il test `UnixStream::pair` ha richiesto l'eccezione locale al sandbox;
+EPERM originale e retry positivo sono entrambi conservati. RSS massimo
+test/descendenti 206.602.240 B; compiler O0 2.464.067.584 B separato.
 Il [record pulito del componente](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
 ha sette selezioni Rust e venti controlli Python positivi, tra cui
 regressioni FFT/resti/potenze Fp3, mapping e replay originali. I 77

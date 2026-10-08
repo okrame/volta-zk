@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_native_weight_geometry_and_resource_envelope",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.001979425083845854,
+  "max_rss_bytes": 9646080,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.001064,
+  "system_s": 0.000748,
+  "log": "/tmp/c71-w-tree-checked-3-20261008.log"
+}

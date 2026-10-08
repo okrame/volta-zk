@@ -789,6 +789,11 @@ Parità base/Fp3 e byte di prova sono controllati, senza cache di righe in
 produzione. Il confronto composto D15 usa una tabella di riferimento
 da 16 MiB soltanto nel test e verifica transcript/MAC/seek originali;
 la prova non cached resta oltre il limite locale di 60 s.
+Il [record pulito Tree](../../benchmarks/results/c71-crypto-w-tree-local-2026-10-08-6b3535856cc5.json)
+lega binario, sorgenti, log e conto del componente. La fixture W osserva
+2.699.776 B di capacità native e zero arena viva al termine; D2H 4.328 B
+di soli flag/cache digest. Budget applicato anche a host e tabella di test.
+Non attribuire queste dimensioni ridotte al pinned o al picco completo.
 
 La CLI seleziona soltanto `reference-cpu` oppure `experiment-cuda`; la
 seconda aggiunge `LIBRARY DEVICE` agli stessi cinque argomenti di input.

@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_query_byte_windows_full_chain",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 44.64206275483593,
+  "max_rss_bytes": 106618880,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 44.567649,
+  "system_s": 0.056058,
+  "log": "/tmp/c71-w-tree-clean-rust-7-20261008.log"
+}

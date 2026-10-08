@@ -55,6 +55,11 @@ da 16 MiB; il test distinto Tree confronta il getter effettivo. Il D15
 non cached supera ancora 60 s locali ed è un obbligo prestazionale aperto.
 Il conto W corregge con nuova evidenza il secondo flag simultaneo (+256 B);
 non modifica i record precedenti e non concede credito di picco completo.
+Il [record pulito Tree](../../benchmarks/results/c71-crypto-w-tree-local-2026-10-08-6b3535856cc5.json)
+conserva la selezione del runner e tutta la provenienza locale; dodici
+test Rust e nove Python positivi. Il [receipt](../c7.1-history/crypto-w-tree-evidence-2026-10-08.md)
+delimita le fixture e i fallimenti. A→PCS, confronto Tensor Core e costi
+residui di sampler/aperture/prova restano lavoro del goal locale.
 
 Percorso principale: preparazione locale → autorizzazione della nuova
 campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle

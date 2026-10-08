@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::b12::replay::tests::c71_b12_query_small_remainders_exact_fp3_and_cost ... C71_QUERY_SMALL_REMAINDERS {"credit":false,"exact_fp3_cases":1792,"gpu_execution":false,"same_binary_comparison":true,"scope":"four lowest levels for a 128-column/1024-point CPU opening batch","timings":[{"cap":1,"direct_seconds":0.010299417,"former_four_fft_seconds":0.392993166,"iterations":131072},{"cap":2,"direct_seconds":0.007419698,"former_four_fft_seconds":0.340713783,"iterations":65536},{"cap":4,"direct_seconds":0.099376494,"former_four_fft_seconds":0.316464599,"iterations":32768},{"cap":8,"direct_seconds":0.103028842,"former_four_fft_seconds":0.312955044,"iterations":16384}]}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 513 filtered out; finished in 1.59s
+

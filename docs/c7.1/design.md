@@ -231,6 +231,11 @@ sono scelte implementative modificabili. Alternative richiedono
 equivalenza verificata, ordine di sali/pad/root e MAC originali preservato,
 NoPeek e nuovo conto completo di lavoro, memoria e capacità simultanee.
 I parametri crittografici e i vincoli di sicurezza/risorse restano invariati.
+Il [record pulito Tree W](../../benchmarks/results/c71-crypto-w-tree-local-2026-10-08-6b3535856cc5.json)
+conserva 12 test Rust e nove Python positivi, 94 artefatti e otto esiti
+negativi distinti, incluso il replay non cached oltre deadline. RSS massimo
+test/descendenti 206.602.240 B; compiler 2.464.067.584 B separato.
+Root/transcript locali non concedono tempi, picco fisico o parità H100.
 I fallimenti delle geometrie escluse restano validi per le loro premesse;
 riaprirle richiede risolvere e verificare la causa dell'esclusione.
 La [decisione dell'8 ottobre](../c7.1-history/operating-rules-2026-10-08.md)

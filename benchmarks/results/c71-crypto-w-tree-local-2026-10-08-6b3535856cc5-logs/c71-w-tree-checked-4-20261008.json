@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_query_small_remainders_exact_fp3_and_cost",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 1.595529553014785,
+  "max_rss_bytes": 17248256,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 1.59509,
+  "system_s": 0.0,
+  "log": "/tmp/c71-w-tree-checked-4-20261008.log"
+}

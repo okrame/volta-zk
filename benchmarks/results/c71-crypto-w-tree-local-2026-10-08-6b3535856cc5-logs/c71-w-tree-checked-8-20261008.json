@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_canonical_runner",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 101,
+  "wall_s": 0.013336471747606993,
+  "max_rss_bytes": 62533632,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.005036,
+  "system_s": 0.008048999999999999,
+  "log": "/tmp/c71-w-tree-checked-8-20261008.log"
+}

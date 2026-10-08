@@ -656,6 +656,10 @@ Errori di identità, geometria, copertura o CUDA arrestano l'owner comune
 senza fallback; il callback numerico non riceve monete PCS. La divisione
 diretta per piccoli divisori monici usa le stesse basi Fp3 e coefficienti;
 non introduce sfide, MAC o un lemma di raffinamento dell'implementazione.
+Il [record pulito Tree](../../benchmarks/results/c71-crypto-w-tree-local-2026-10-08-6b3535856cc5.json)
+conserva parità, otto arresti senza getter/fallback e prefissi durevoli
+dei timeout; non considera il test ignored un pass. La fixture composta
+usa MAC ideal già fissati; il runner mantiene il PCG reale AES originale.
 Il [record pulito accumuli/FFT](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
 conserva tutti i confronti del componente, 24 arresti e i 33 generatori
 Goldilocks originali, incluso il dominio 2^32. Non estende credito,

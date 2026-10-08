@@ -637,8 +637,8 @@ device precedono la pubblicazione. Nessun cambiamento a NoPeek, MAC,
 PCG AES o correlazioni; i producer non ricevono nuove monete. La parità
 del codice host condiviso non dimostra il raffinamento CUDA. La fixture
 strided ricompone il frontier con lo stesso seek dei sali e confronta
-root dei sottoalberi e root naturale; l'import della catena nel Tree
-canonico richiede ancora integrazione e parità delle aperture/transcript.
+root dei sottoalberi e root naturale. L'import nel Tree W è ora
+selezionato dal backend CUDA, sul medesimo owner/Arc/layout originali.
 Il [passo accumuli/FFT W](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
 verifica come componente la composizione dei prodotti signed esatti,
 pad originali, FFT e foglie/Merkle, con modulo i128 indipendente e
@@ -646,8 +646,16 @@ parità Rust/C++ condivisa. La base Goldilocks è originale; non converte
 le basi Fp3 PCS/MAC. Bound signed <2^87, riduzione, mapping, lifecycle
 e scheduling restano privi di lemma Lean di raffinamento CUDA; gli
 arresti per alias, copertura, owner, binding, launch/fence/flag e i test
-finiti non ne costituiscono una prova generale. Import nel Tree,
-aperture/transcript e parità hardware restano da verificare.
+finiti non ne costituiscono una prova generale. Il
+[passo Tree](../c7.1-history/crypto-w-tree-2026-10-08.md) confronta root,
+pad, sali, aperture e lavoro con getter originale; il test composto
+verifica l'intera prova serializzata, transcript/RNG e MAC originali con
+una tabella di righe iniziali soltanto nella fixture. Non prova i tempi
+del replay non cached, che supera 60 s locali, né parità hardware.
+Errori di identità, geometria, copertura o CUDA arrestano l'owner comune
+senza fallback; il callback numerico non riceve monete PCS. La divisione
+diretta per piccoli divisori monici usa le stesse basi Fp3 e coefficienti;
+non introduce sfide, MAC o un lemma di raffinamento dell'implementazione.
 Il [record pulito accumuli/FFT](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
 conserva tutti i confronti del componente, 24 arresti e i 33 generatori
 Goldilocks originali, incluso il dominio 2^32. Non estende credito,

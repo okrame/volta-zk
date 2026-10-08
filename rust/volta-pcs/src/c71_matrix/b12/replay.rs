@@ -22,6 +22,16 @@ use rand_010::RngExt;
 use std::sync::{Arc, Mutex};
 use crate::c71_matrix::progress::Span;
 use serde_json::json;
+use crate::c71_matrix::range::windowed::native as device;
+
+/// The installation's same sealed W/owner and trusted original public layout.
+/// This carries no challenge, correlation or numerical-producer interface.
+pub(in crate::c71_matrix) struct NativeWeights {
+    pub runtime: Arc<Mutex<device::Runtime>>,
+    pub weights: Arc<Vec<i16>>,
+    pub layout: [u8; 32],
+    pub tiles: Vec<device::WeightTile>,
+}
 
 /// Trusted immutable source: emit each live coefficient exactly once, in any
 /// order, with the same value as the original getter. No PCS coins are exposed.
@@ -181,6 +191,34 @@ impl QueryFactors<'_> {
     ) -> Vec<Coefficient> {
         let cap = self.inverse.len() / 2;
         assert_eq!(high.len(), cap);
+        // The leaves of every product tree divide by x-a. Recover a from
+        // its two-point spectrum and avoid four FFTs for one field value.
+        if cap == 1 {
+            let point = Goldilocks::ONE - self.modulus[0];
+            return vec![low(0) + high[0] * point];
+        }
+        if cap == 2 {
+            // For x²+m1*x+m0, DC and Nyquist recover m0,m1 exactly.
+            let half = Goldilocks::new(0x7fffffff80000001);
+            let m0 = (self.modulus[0] + self.modulus[2]) * half - Goldilocks::ONE;
+            let m1 = (self.modulus[0] - self.modulus[2]) * half;
+            let q0 = high[0] - high[1] * m1;
+            return vec![low(0) - q0 * m0, low(1) - high[1] * m0 - q0 * m1];
+        }
+        if cap <= 8 {
+            let modulus = dft.idft(self.modulus.to_vec());
+            let mut high = high.to_vec();
+            let mut remainder: Vec<_> = (0..cap).map(low).collect();
+            for degree in (0..cap).rev() {
+                let quotient = high[degree];
+                for (j, &coefficient) in modulus[..cap].iter().enumerate() {
+                    let index = degree + j;
+                    if index < cap { remainder[index] -= quotient * coefficient; }
+                    else { high[index - cap] -= quotient * coefficient; }
+                }
+            }
+            return remainder;
+        }
         let mut reversed: Vec<_> = high.iter().rev().copied().collect();
         reversed.resize(2 * cap, Coefficient::ZERO);
         let mut spectrum = dft.dft_algebra(reversed);
@@ -487,7 +525,9 @@ impl Code {
         let root_factors = factors.last().unwrap().factor(0);
         let coefficients = (self.len + self.pads.len()) / self.width;
         let pad_rows = self.pads.len() / self.width;
-        let pad_shift = (self.live < self.len && message_rows.is_power_of_two())
+        // Splitting saves the large public zero suffix. When the message
+        // fits in one query block it instead adds four unnecessary FFTs.
+        let pad_shift = (self.live < self.len && message_rows.is_power_of_two() && message_rows > cap)
             .then(|| root_factors.monomial_spectrum(message_rows, &dft));
         // Write native base limbs directly into the only returned matrix. The
         // former Coefficient matrix duplicated up to 2 GiB at the initial cap.
@@ -624,6 +664,143 @@ impl Code {
         let lease = state.map(State::replay_lease).transpose()?.flatten();
         Ok((root, ZkWhirReplayHandle::new(Oracle { tree: Arc::new(tree), base, lease })))
     }
+
+    fn commit_native_weights(self, mmcs: &HidingMmcs, native: NativeWeights)
+        -> Result<(replay_tree::Commitment, ZkWhirReplayHandle), String> {
+        let mut runtime = native.runtime.lock().map_err(|_| "native W owner poisoned")?;
+        let result = (|| {
+            if !self.base() || self.width != 128 || self.live != native.weights.len() ||
+                !self.len.is_power_of_two() || self.scan.is_some() || self.window.is_some() {
+                return runtime.abort("native W original source or shape differs");
+            }
+            let (rows, cut) = replay_tree::native_weight_geometry(self.height)?;
+            let cosets = self.height / rows;
+            let n = self.len / 128;
+            let pad = self.pads.len() / 128;
+            if n < rows || n / rows > 256 || pad == 0 || pad > 1536 || self.pads.len() != 128 * pad {
+                return runtime.abort("native W signed accumulation or pad bound differs");
+            }
+            let code = Arc::new(self);
+            let rowcode = code.clone();
+            let (root, tree) = Tree::commit_resident_weights(mmcs, code.height,
+                Arc::new(move |indices| rowcode.rows(indices)), |stream, current| {
+                let before = runtime.stats()?;
+                let tiles = runtime.pcs_weight_tiles(&native.weights, native.layout, &native.tiles)?;
+                let pads = runtime.pcs_words(code.pads.len())?;
+                // Only bounded original PCS pads are uploaded. Source W stays
+                // sealed/resident and does not pass through the scalar getter.
+                let pad_words: Vec<_> = (0..code.pads.len())
+                    .map(|i| base_coefficient(code.pads.get(i)).as_canonical_u64()).collect();
+                runtime.pcs_upload(&pads, 0, &pad_words)?;
+                drop(pad_words);
+                let twiddles = runtime.pcs_fft_twiddles(rows.ilog2() as usize)?;
+                let groups = cosets / 32;
+                let frontier = runtime.pcs_frontier(rows, groups)?;
+                let group_rows = 32 * rows;
+                let band = 65536.min(group_rows);
+                let salt_buffer = runtime.pcs_words(4 * band)?;
+                let mut salt_words = vec![0; 4 * band];
+                let mut top = Vec::new();
+                let mut work = replay_tree::ReplayWork::default();
+                let mut source_visits = 0u64;
+                let mut phase = Span::start("pcs_w_resident", json!({"height": code.height,
+                    "rows": rows, "cosets": cosets, "groups": groups, "columns": 128,
+                    "columns_in_ring": 8, "columns_per_fft": 4, "cosets_per_scan": 32}))?;
+                for group in 0..groups {
+                    let mut shape = device::WeightShape { message_rows: n as u64, rows: rows as u64,
+                        pad_rows: pad as u32, cosets: cosets as u32, first_coset: (32 * group) as u32,
+                        first_column: 0, slots: 0 };
+                    let (low, high) = runtime.pcs_coset_powers(shape)?;
+                    let ring = runtime.pcs_ring(rows)?;
+                    let mut fill = |runtime: &mut device::Runtime, column: usize, slots| -> Result<(), String> {
+                        shape.first_column = column as u32; shape.slots = slots;
+                        runtime.pcs_weight_columns(&tiles, &pads, &low, &high, &twiddles, &ring, shape)?;
+                        let first = column * n;
+                        source_visits += code.live.min(first + 4 * n).saturating_sub(first) as u64;
+                        phase.checkpoint(|| json!({"completed_groups": group, "active_first_coset": 32 * group,
+                            "completed_columns_in_group": column + 4, "source_visits": source_visits,
+                            "source_to_coset_contributions": source_visits * 32, "native": runtime.stats().ok()}))
+                    };
+                    fill(&mut runtime, 0, 0)?; fill(&mut runtime, 4, 4)?;
+                    let mut roots = runtime.pcs_hash_start(&ring)?;
+                    for first in (4..=116).step_by(8) {
+                        fill(&mut runtime, first + 4, 0)?;
+                        runtime.pcs_hash_step(&ring, &roots, first)?;
+                        if first < 116 { fill(&mut runtime, first + 8, 4)?; }
+                    }
+                    fill(&mut runtime, 124, 0)?;
+                    runtime.release_buffer(low)?; runtime.release_buffer(high)?;
+                    for first in (0..group_rows).step_by(band) {
+                        for local in 0..band {
+                            let row = (first + local) % rows;
+                            let mut rng = stream.snapshot_at(current[row])?;
+                            for col in 0..4 {
+                                let value: Goldilocks = rng.random();
+                                salt_words[col * band + local] = value.as_canonical_u64();
+                            }
+                            work.salt_candidate_bytes += rng.position() - current[row];
+                            current[row] = rng.position();
+                        }
+                        runtime.pcs_upload(&salt_buffer, 0, &salt_words)?;
+                        runtime.pcs_hash_finish(&ring, &salt_buffer, &mut roots, first)?;
+                        phase.checkpoint(|| json!({"completed_groups": group, "completed_salt_leaves_in_group": first + band,
+                            "salt_candidate_bytes": work.salt_candidate_bytes, "native": runtime.stats().ok()}))?;
+                    }
+                    runtime.release_buffer(ring)?; // Merkle outputs never overlap the ring
+                    for _ in 0..5 {
+                        let next = runtime.pcs_nodes_strided(&roots, rows)?;
+                        runtime.release_buffer(roots)?; roots = next;
+                    }
+                    runtime.pcs_merge_group(&frontier, &roots, group)?;
+                    work.leaf_hashes += group_rows as u64;
+                    work.node_hashes += (group_rows - rows) as u64;
+                    // Consecutive group binary frontier: one merge per set bit.
+                    work.node_hashes += rows as u64 * group.trailing_ones() as u64;
+                    work.coset_cells += (group_rows * 128) as u64;
+                    if group + 1 == groups {
+                        let mut count = rows;
+                        while count > code.height / cut {
+                            let next = runtime.pcs_nodes(&roots)?;
+                            runtime.release_buffer(roots)?; roots = next; count /= 2;
+                            work.node_hashes += count as u64;
+                        }
+                        loop {
+                            top.push(runtime.pcs_digests(&roots, 0, count)?);
+                            if count == 1 { break; }
+                            let next = runtime.pcs_nodes(&roots)?;
+                            runtime.release_buffer(roots)?; roots = next; count /= 2;
+                            work.node_hashes += count as u64;
+                        }
+                    }
+                    runtime.release_buffer(roots)?;
+                    phase.checkpoint(|| json!({"completed_groups": group + 1, "leaf_hashes": work.leaf_hashes,
+                        "node_hashes": work.node_hashes, "native": runtime.stats().ok()}))?;
+                }
+                runtime.release_buffer(frontier)?;
+                runtime.release_buffer(pads)?; runtime.release_buffer(twiddles)?;
+                runtime.release_buffer(tiles)?; runtime.release_buffer(salt_buffer)?;
+                let after = runtime.stats()?;
+                if source_visits != code.live as u64 * groups as u64 {
+                    return runtime.abort("resident W column coverage differs");
+                }
+                phase.finish(json!({"completed_groups": groups, "source_visits": source_visits,
+                    "equivalent_source_scans": groups, "logical_source_bytes": source_visits * 2,
+                    "ordinary_signed_products": source_visits * 32,
+                    "pad_field_products": code.pads.len() as u64 * cosets as u64,
+                    "fft_base_cells": code.height as u64 * 128,
+                    "analytic_fft_butterflies": code.height as u64 * 64 * rows.ilog2() as u64,
+                    "leaf_hashes": work.leaf_hashes, "node_hashes": work.node_hashes,
+                    "native_h2d_bytes": after.h2d_bytes - before.h2d_bytes,
+                    "native_d2h_bytes": after.d2h_bytes - before.d2h_bytes,
+                    "native_launches": after.launches - before.launches,
+                    "native_fences": after.fences - before.fences, "native": after}))?;
+                Ok((top, work, after.peak_capacity_bytes as usize))
+            })?;
+            Ok((root, ZkWhirReplayHandle::new(Oracle { tree: Arc::new(tree), base: true, lease: None })))
+        })();
+        if let Err(error) = &result { let _ = runtime.abort::<()>(error); }
+        result
+    }
 }
 
 /// Immutable base-field source behind one already committed flat oracle.
@@ -657,9 +834,10 @@ impl ReplayModel {
                 + self.range_words.as_ref().map_or(0, |source| source.histogram.capacity() * 8),
             "initial_coset_bytes": memory.peak_coset_bytes,
             "initial_merkle_scratch_bytes": memory.peak_commit_scratch_bytes,
+            "initial_native_peak_capacity_bytes": memory.native_peak_capacity_bytes,
             "query_subtree_bytes_each": memory.open_subtree_bytes_each,
             "retained_s1_policy": self.retain_first,
-            "scope": "Merkle/pad payloads, not total host capacity; initial scratch includes coset and is no longer live; S1 is retained only within active sequential PCS chain, not by this snapshot; FFT/cache/query/sourcewise temporaries excluded"
+            "scope": "Merkle/pad payloads, not total host capacity; initial scratch includes coset and is no longer live; native high-water includes all buffers on the common owner, separately from this Merkle payload; S1 is retained only within active sequential PCS chain, not by this snapshot; other FFT/cache/query/sourcewise temporaries excluded"
         })
     }
     pub(in crate::c71_matrix) fn new(
@@ -669,7 +847,7 @@ impl ReplayModel {
         source: Getter,
         live: usize,
     ) -> Result<Self, String> {
-        Self::new_source(domain, seed, salt_seed, source, None, live)
+        Self::new_source(domain, seed, salt_seed, source, None, live, None)
     }
 
     pub(in crate::c71_matrix) fn new_scanned(
@@ -681,7 +859,19 @@ impl ReplayModel {
         window: ByteWindow,
         live: usize,
     ) -> Result<Self, String> {
-        Self::new_source(domain, seed, salt_seed, source, Some((scan, window)), live)
+        Self::new_source(domain, seed, salt_seed, source, Some((scan, window)), live, None)
+    }
+
+    pub(in crate::c71_matrix) fn new_native_weights(
+        domain: Domain, seed: [u8; 32], salt_seed: [u8; 32], source: Getter,
+        live: usize, native: NativeWeights,
+    ) -> Result<Self, String> {
+        let owner = native.runtime.clone();
+        let result = Self::new_source(domain, seed, salt_seed, source, None, live, Some(native));
+        if let Err(error) = &result {
+            if let Ok(mut runtime) = owner.lock() { let _ = runtime.abort::<()>(error); }
+        }
+        result
     }
 
     fn new_source(
@@ -691,6 +881,7 @@ impl ReplayModel {
         source: Getter,
         readers: Option<(BaseScan, ByteWindow)>,
         live: usize,
+        native: Option<NativeWeights>,
     ) -> Result<Self, String> {
         let config = domain.config()?;
         let len = 1usize << config.num_variables;
@@ -741,7 +932,7 @@ impl ReplayModel {
                 Ok(())
             }) as BaseScan
         });
-        let (root, handle) = Code {
+        let code = Code {
             get: source.clone(),
             scan: scan.clone(),
             window,
@@ -750,8 +941,12 @@ impl ReplayModel {
             width: 1 << first,
             height,
             pads: Pads::Base(pads.clone()),
-        }
-        .commit(&mmcs.inner, None)?;
+        };
+        let (root, handle) = if let Some(native) = native {
+            code.commit_native_weights(&mmcs.inner, native)?
+        } else {
+            code.commit(&mmcs.inner, None)?
+        };
         let oracle = handle.downcast::<Oracle>().map_err(|_| "C71 initial replay handle type")?;
         Ok(Self {
             domain,
@@ -1110,6 +1305,13 @@ pub(in crate::c71_matrix) fn compare_source(
     original: Option<&Model>,
     readers: Option<(BaseScan, ByteWindow)>,
 ) {
+    compare_source_with_native(dimension, source, values, original, readers, None, false);
+}
+#[cfg(test)]
+fn compare_source_with_native(
+    dimension: usize, source: Getter, values: Vec<Goldilocks>, original: Option<&Model>,
+    readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeWeights>, fixture_initial_rows: bool,
+) {
     use rand_010::RngExt;
     assert!((10..=17).contains(&dimension));
     assert_eq!(values.len(), 1 << dimension);
@@ -1141,7 +1343,19 @@ pub(in crate::c71_matrix) fn compare_source(
     let root_mmcs = ObservedMmcs::new(fs.clone(), salt_seed);
     let root_prover = HidingWhirProver::new(&config, &dft, &root_mmcs);
     let mut root_rng = PrivateRng::from_seed(root_seed);
+    let phase = Span::start("sourcewise_reference_commitment", json!({"domain_log2": dimension})).unwrap();
     let (root, data) = root_prover.commit(witness, &mut fs, &mut root_rng);
+    phase.finish(json!({"complete_reference": true})).unwrap();
+    // Isolate the changed native commitment/Tree/proof boundary without
+    // repeating the unchanged CPU query evaluator for every initial leaf.
+    // This bounded eager table is test-only and charged by the joint budget;
+    // the separate Tree test exercises the production opening getter.
+    let fixture_rows = fixture_initial_rows.then(|| {
+        assert!(native.is_some());
+        let matrices = root_mmcs.get_matrices(&data.merkle);
+        assert_eq!(matrices.len(), 1);
+        Arc::new(matrices[0].clone())
+    });
     if let Some(original) = original {
         assert_eq!(root, original.root);
     }
@@ -1149,21 +1363,33 @@ pub(in crate::c71_matrix) fn compare_source(
     let proof_mmcs = ObservedMmcs::new(fs.clone(), [83; 32]);
     let reference = HidingWhirProver::new(&config, &dft, &proof_mmcs);
     let mut rng = PrivateRng::from_seed([101; 32]);
+    let phase = Span::start("sourcewise_reference_proof", json!({"domain_log2": dimension})).unwrap();
     let result = reference.prove_claimless(data, &claims, to_p3(mask.x), &mut fs, &mut rng);
+    phase.finish(json!({"complete_reference": true})).unwrap();
 
     census::mark("sourcewise_initial_commit").unwrap();
     let mut replay_fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
     replay_fs.set_phase(0x200);
+    let live = native.as_ref().map_or(1 << dimension, |native| native.weights.len());
     let mut model = ReplayModel::new_source(
         Domain::Flat(dimension),
         root_seed,
         salt_seed,
         source.clone(),
         readers,
-        1 << dimension,
+        live,
+        native,
     )
     .unwrap();
     assert_eq!(root, *model.root());
+    if let Some(rows) = fixture_rows {
+        let payload = rows.values.len() * size_of::<Goldilocks>();
+        Arc::get_mut(&mut model.tree).unwrap().fixture_rows(Arc::new(move |indices| {
+            Ok(DenseMatrix::new(indices.iter().flat_map(|&i|
+                rows.values[i * rows.width..(i + 1) * rows.width].iter().copied()).collect(), rows.width))
+        }));
+        eprintln!("C71_NATIVE_W_CHAIN_FIXTURE initial_reference_rows_bytes={payload} production_cache=false");
+    }
     if original.is_some() || model.scan.is_some() {
         model = model.retain_first_fold();
     }
@@ -1621,6 +1847,89 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn c71_b12_query_small_remainders_exact_fp3_and_cost() {
+        use std::hint::black_box;
+        let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
+        // Independent monic long division, in all three original Fp3 limbs.
+        let mut cases = 0;
+        for points in [vec![Goldilocks::ZERO], vec![-Goldilocks::ONE],
+            vec![Goldilocks::ZERO, Goldilocks::ZERO],
+            vec![Goldilocks::new(7), Goldilocks::new(11)],
+            vec![-Goldilocks::ONE, Goldilocks::ONE],
+            vec![Goldilocks::ZERO, Goldilocks::ONE, -Goldilocks::ONE, Goldilocks::new(11)],
+            (0..8).map(|i| Goldilocks::new((i % 3) as u64)).collect()] {
+            let tree = query_tree(&points, &dft);
+            let factor = tree.last().unwrap().factor(0);
+            let cap = points.len();
+            let mut divisor = vec![Goldilocks::ONE];
+            for &point in &points {
+                let mut next = vec![Goldilocks::ZERO; divisor.len() + 1];
+                for (i, &value) in divisor.iter().enumerate() {
+                    next[i] -= value * point;
+                    next[i + 1] += value;
+                }
+                divisor = next;
+            }
+            for seed in 0..256 {
+                let values: Vec<_> = (0..2 * cap).map(|i| E::new([
+                    Goldilocks::new((seed * 7919 + i * 31) as u64),
+                    -Goldilocks::new((seed + i + 1) as u64),
+                    Goldilocks::new((seed * seed + i * i + 7) as u64),
+                ])).collect();
+                let mut expected = values.clone();
+                for degree in (cap..2 * cap).rev() {
+                    let quotient = expected[degree];
+                    for j in 0..=cap { expected[degree - cap + j] -= quotient * divisor[j]; }
+                }
+                assert_eq!(factor.remainder(&values[cap..], |i| values[i], &dft), expected[..cap]);
+                cases += 1;
+            }
+        }
+        // Same compiler, inputs and scopes. Reproduce the former four-FFT
+        // path solely in this benchmark, without a production selector.
+        let mut timings = Vec::new();
+        for cap in [1_usize, 2, 4, 8] {
+            let points: Vec<_> = (0..cap).map(|i| Goldilocks::new((7 + i * 19) as u64)).collect();
+            let tree = query_tree(&points, &dft);
+            let factor = tree.last().unwrap().factor(0);
+            let high: Vec<_> = (0..cap).map(|i| -Goldilocks::new((127 + i * 7919) as u64)).collect();
+            let low: Vec<_> = (0..cap).map(|i| Goldilocks::new((3 + i * 31) as u64)).collect();
+            let mut sums = Vec::new();
+            let mut seconds = Vec::new();
+            let iterations = 128 * 1024 / cap;
+            for direct in [false, true] {
+                let start = std::time::Instant::now();
+                let mut sum = Goldilocks::ZERO;
+                for _ in 0..iterations {
+                    let high = black_box(&high);
+                    let values = if direct { factor.remainder(high, |i| low[i], &dft) } else {
+                        let mut reversed: Vec<_> = high.iter().rev().copied().collect();
+                        reversed.resize(2 * cap, Goldilocks::ZERO);
+                        let mut spectrum = dft.dft_algebra(reversed);
+                        for (value, &f) in spectrum.iter_mut().zip(factor.inverse) { *value *= f; }
+                        let mut quotient = dft.idft_algebra(spectrum);
+                        quotient.truncate(cap); quotient.reverse();
+                        quotient.resize(2 * cap, Goldilocks::ZERO);
+                        let mut spectrum = dft.dft_algebra(quotient);
+                        for (value, &f) in spectrum.iter_mut().zip(factor.modulus) { *value *= f; }
+                        let product = dft.idft_algebra(spectrum);
+                        (0..cap).map(|i| low[i] - product[i]).collect()
+                    };
+                    sum += black_box(values)[0];
+                }
+                seconds.push(start.elapsed().as_secs_f64()); sums.push(sum);
+            }
+            assert_eq!(sums[0], sums[1]);
+            timings.push(json!({"cap": cap, "iterations": iterations,
+                "former_four_fft_seconds": seconds[0], "direct_seconds": seconds[1]}));
+        }
+        println!("C71_QUERY_SMALL_REMAINDERS {}", json!({"exact_fp3_cases": cases,
+            "timings": timings, "same_binary_comparison": true,
+            "scope": "four lowest levels for a 128-column/1024-point CPU opening batch",
+            "gpu_execution": false, "credit": false}));
     }
 
     #[test]
@@ -2153,6 +2462,174 @@ mod tests {
     runtime.release_buffer(salt_buffer).unwrap();
     runtime.release_buffer(ring).unwrap();
         states
+    }
+
+    fn native_weight_source_fixture(dimension: usize, config: &device::Config)
+        -> (NativeWeights, Getter, Arc<std::sync::atomic::AtomicU64>) {
+        assert!((15..=17).contains(&dimension));
+        let n = (1 << dimension) / 128;
+        let weights = Arc::new((0..96 * n).map(|i| match i % 8 {
+            0 => 0, 1 => 32767, 2 => -32767, 3 => 1, 4 => -1,
+            _ => (((i * 19 + i / 96 * 23) % 65535) as i32 - 32767) as i16,
+        }).collect::<Vec<_>>());
+        let mut runtime = device::Runtime::new(config).unwrap();
+        runtime.install_weights(weights.clone(), [17; 32]).unwrap();
+        let original = weights.clone();
+        let calls = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let counter = calls.clone();
+        let get: Getter = Arc::new(move |i| {
+            counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if i >= 96 * n { return E::ZERO; }
+            let address = if i < 64 * n { i / 64 * 96 + i % 64 }
+                else { let local = i - 64 * n; local / 32 * 96 + 64 + local % 32 };
+            let x = i64::from(original[address]);
+            E::from(if x < 0 { -Goldilocks::new((-x) as u64) } else { Goldilocks::new(x as u64) })
+        });
+        (NativeWeights { runtime: Arc::new(Mutex::new(runtime)), weights, layout: [17; 32], tiles: vec![
+            device::WeightTile { first: 0, count: (64 * n) as u64, packed_first: 0, packed_stride: 96, columns: 64 },
+            device::WeightTile { first: (64 * n) as u64, count: (32 * n) as u64, packed_first: 64, packed_stride: 96, columns: 32 },
+        ] }, get, calls)
+    }
+
+    #[test]
+    fn c71_b12_native_weight_tree_exact_roots_openings_and_work() {
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        let (native, get, calls) = native_weight_source_fixture(15, &fixture.config);
+        let owner = native.runtime.clone();
+        let live = native.weights.len();
+        let _budget = crate::c71_matrix::census::Budget::new(&native.weights).unwrap();
+        let path = std::env::temp_dir().join(format!("c71-native-w-tree-{}-{}.jsonl",
+            std::process::id(), rand::random::<u64>()));
+        let recording = crate::c71_matrix::progress::Recording::start(&path).unwrap();
+        let started = std::time::Instant::now();
+        let model = ReplayModel::new_native_weights(Domain::Flat(15), [91; 32], [73; 32],
+            get.clone(), live, native).unwrap();
+        let native_s = started.elapsed().as_secs_f64();
+        let native_census = crate::c71_matrix::census::simultaneous();
+        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+        drop(recording);
+        let events: Vec<serde_json::Value> = std::fs::read_to_string(&path).unwrap().lines()
+            .map(|line| serde_json::from_str(line).unwrap()).collect();
+        std::fs::remove_file(&path).unwrap();
+        let end = events.iter().find(|r| r["event"]["phase"] == "pcs_w_resident" && r["event"]["complete"] == true).unwrap();
+        let height = model.tree.geometry().0;
+        let (rows, cut) = replay_tree::native_weight_geometry(height).unwrap();
+        let groups = height / rows / 32;
+        assert_eq!(end["event"]["work"]["source_visits"], (live * groups) as u64);
+        assert_eq!(end["event"]["work"]["equivalent_source_scans"], groups);
+        let stats = owner.lock().unwrap().stats().unwrap();
+        assert_eq!(stats.arena_bytes, 0);
+        assert_eq!(stats.d2h_bytes, (132 * groups + (2 * height / cut - 1) * 32) as u64);
+        let started = std::time::Instant::now();
+        let reference = ReplayModel::new(Domain::Flat(15), [91; 32], [73; 32], get, live).unwrap();
+        let reference_s = started.elapsed().as_secs_f64();
+        assert_eq!(model.root, reference.root);
+        assert_eq!(model.pads, reference.pads);
+        assert_eq!(model.tree.work, reference.tree.work);
+        let indices = [0, height - 1, 257, 255, 256, height / 2, 0, 257];
+        assert_eq!(serde_json::to_vec(&model.tree.open(&indices).unwrap()).unwrap(),
+            serde_json::to_vec(&reference.tree.open(&indices).unwrap()).unwrap());
+        println!("C71_NATIVE_W_TREE_LOCAL {}", json!({"domain_log2": 15,
+            "native_geometry": model.tree.geometry(), "reference_geometry": reference.tree.geometry(),
+            "native_commitment_host_s": native_s, "reference_commitment_o0_s": reference_s,
+            "native": stats, "cache": model.retained_census(), "source_visits": live * groups,
+            "durable_records": events.len(), "census": crate::c71_matrix::census::simultaneous(),
+            "native_commitment_census": native_census,
+            "different_compiler_optimization_no_speedup_claim": true, "gpu_execution": false, "credit": false}));
+        owner.lock().unwrap().close().unwrap();
+    }
+
+    #[test]
+    fn c71_b12_native_weight_composed_full_chain_original_mac_and_transcript() {
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        let (native, get, _) = native_weight_source_fixture(15, &fixture.config);
+        let owner = native.runtime.clone();
+        let _budget = crate::c71_matrix::census::Budget::new(&native.weights).unwrap();
+        // Preserve the durable prefix on the local deadline; it identifies
+        // which unchanged proof phase still needs acceleration.
+        let path = std::env::temp_dir().join(format!("c71-native-w-chain-{}-{}.jsonl",
+            std::process::id(), rand::random::<u64>()));
+        let _recording = crate::c71_matrix::progress::Recording::start(&path).unwrap();
+        eprintln!("C71_NATIVE_W_CHAIN_PROGRESS {}", path.display());
+        let values = (0..1 << 15).map(|i| base_coefficient(get(i))).collect();
+        compare_source_with_native(15, get, values, None, None, Some(native), true);
+        let stats = owner.lock().unwrap().close().unwrap();
+        assert_eq!(stats.arena_bytes, 0);
+        assert_eq!(stats.stopped, 0);
+    }
+
+    #[test]
+    #[ignore = "D15 reference/prover/dual verification with CPU opening replay exceeds the local 60 s limit"]
+    fn c71_b12_native_weight_uncached_full_chain_performance_obligation() {
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        let (native, get, _) = native_weight_source_fixture(15, &fixture.config);
+        let owner = native.runtime.clone();
+        let _budget = crate::c71_matrix::census::Budget::new(&native.weights).unwrap();
+        let values = (0..1 << 15).map(|i| base_coefficient(get(i))).collect();
+        compare_source_with_native(15, get, values, None, None, Some(native), false);
+        owner.lock().unwrap().close().unwrap();
+    }
+
+    #[test]
+    fn c71_b12_native_weight_tree_fail_closed_without_scalar_fallback() {
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        let injection = device::tests::Injection::new(&fixture.config);
+        for fault in 0..8 {
+            let (mut native, get, calls) = native_weight_source_fixture(15, &fixture.config);
+            let owner = native.runtime.clone();
+            let _budget = crate::c71_matrix::census::Budget::new(&native.weights).unwrap();
+            let mut live = native.weights.len();
+            let mut domain = Domain::Flat(15);
+            match fault {
+                0 => native.layout = [18; 32],
+                1 => native.weights = Arc::new(native.weights.as_ref().clone()),
+                2 => { native.tiles.pop(); },
+                3 => live -= 1,
+                4 => { domain = Domain::Flat(10); live = 1024; },
+                5 => injection.set(1),
+                6 => injection.set(2),
+                7 => injection.set(9),
+                _ => unreachable!(),
+            }
+            assert!(ReplayModel::new_native_weights(domain, [91; 32], [73; 32], get, live, native).is_err());
+            assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+            assert_eq!(owner.lock().unwrap().stats().unwrap().stopped, 1);
+            injection.set(0);
+            let stats = owner.lock().unwrap().close().unwrap();
+            assert_eq!(stats.arena_bytes, 0);
+            assert_eq!(stats.cleanup_failed, 0);
+        }
+        println!("C71_NATIVE_W_TREE_REJECTIONS {{\"cases\":8,\"scalar_fallback_calls\":0,\"gpu_execution\":false,\"credit\":false}}");
+    }
+
+    #[test]
+    fn c71_b12_native_weight_geometry_and_resource_envelope() {
+        let (rows, cut) = replay_tree::native_weight_geometry(1 << 32).unwrap();
+        assert_eq!((rows, cut), (1 << 20, 4096));
+        // A keeps its existing four-coset schedule, independently of W.
+        let (a_rows, _) = replay_tree::geometry(1 << 31, 128).unwrap();
+        assert_eq!((1usize << 31) / a_rows / replay_tree::coset_group_size(1 << 31, 128), 512);
+        let parts = json!({"ring": rows * 32 * 8 * 8, "cv": rows * 32 * 32,
+            "low_powers": rows * 32 * 8, "high_powers": 257 * 32 * 8,
+            "twiddles": rows * 8, "pads": 128 * 1536 * 8, "frontier": rows * 7 * 32,
+            "salt_band": 65536 * 4 * 8, "weight_and_hash_flags": 2 * 256,
+            "tiles": (3156 * 40 + 255) & !255});
+        let device = parts.as_object().unwrap().values().map(|v| v.as_u64().unwrap()).sum::<u64>();
+        assert_eq!(device, 3_736_793_344);
+        let named_host = 2 * rows * 8 + (2 * rows - 1) * 32 + 2 * 128 * 1536 * 8
+            + 65536 * 4 * 8 + 3156 * 40 + 37064;
+        let envelope = device + named_host as u64 + 785_789_696;
+        assert!(envelope < crate::c71_matrix::census::PAYLOAD_LIMIT);
+        println!("C71_NATIVE_W_RESOURCE_ENVELOPE {}", json!({"rows": rows, "cut": cut,
+            "groups": 128, "device_parts": parts, "device_component_bytes": device,
+            "named_host_payload_bytes": named_host, "component_plus_device_replay_upper_bytes": envelope,
+            "remaining_payload_for_other_host_owners_bytes": crate::c71_matrix::census::PAYLOAD_LIMIT - envelope,
+            "scope": "geometry screen before other host owners; their actual capacities are charged by the joint counter",
+            "geometry_only": true, "gpu_execution": false, "credit": false}));
     }
 
     #[test]

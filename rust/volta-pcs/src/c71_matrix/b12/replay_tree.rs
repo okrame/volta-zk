@@ -69,6 +69,23 @@ pub(super) fn geometry(height: usize, columns: usize) -> Result<(usize, usize), 
     Ok((height.min(1 << log_rows), 1 << 12))
 }
 
+/// W only: square in-place FFTs, 32 cosets per original scan. The generic
+/// CPU/A schedule above remains separate and keeps its reconstruction count.
+pub(super) fn native_weight_geometry(height: usize) -> Result<(usize, usize), String> {
+    if !height.is_power_of_two() || !(256..=1usize << 32).contains(&height) {
+        return Err("native W tree height differs".into());
+    }
+    let log_rows = height.ilog2().saturating_sub(6).min(20) & !1;
+    let rows = 1usize << log_rows;
+    let cosets = height / rows;
+    let cut = if height > MAX_REFERENCE_HEIGHT { 1 << 12 }
+        else { (height / 64).clamp(16, MAX_REFERENCE_ROWS).max(cosets) };
+    if rows < 4 || !(64..=4096).contains(&cosets) || cut < cosets || cut > query_batch_rows(height) {
+        return Err("native W tree schedule exceeds bounded capacities".into());
+    }
+    Ok((rows, cut))
+}
+
 type Digest = [u8; 32];
 pub(super) type Commitment = MerkleCap<Goldilocks, Digest>;
 pub(super) type MultiProof = <HidingMmcs as Mmcs<Goldilocks>>::MultiProof;
@@ -93,6 +110,9 @@ pub(super) struct ReplayMemory {
     // Merkle-only subtotal, excluding the source/FFT callback, top cache and
     // other live owners. This is not a complete simultaneous physical peak.
     pub peak_commit_scratch_bytes: usize,
+    // Native owner high-water, including powers/FFT/pads and existing native
+    // owners. Not a complete host/device or physical high-water.
+    pub native_peak_capacity_bytes: usize,
     pub open_subtree_bytes_each: usize,
 }
 
@@ -140,20 +160,8 @@ impl Tree {
         let physical_columns = base_columns.max(4);
         let mut phase = Span::start("pcs_commitment", json!({"height": height,
             "base_columns": base_columns, "coset_rows": coset_rows, "cosets": cosets, "cut": cut}))?;
-        let mut starts = vec![0; coset_rows];
-        let mut subtree_offsets = vec![0; height / cut];
-        let (private_stream, prescan_bytes) = mmcs.with_private_rng(|rng| {
-            let snapshot = clone_stream(rng);
-            let scanned = prepare_offsets(rng, cosets, &mut starts, |leaf, offset| {
-                if leaf % cut == 0 {
-                    subtree_offsets[leaf / cut] = offset;
-                }
-            });
-            (snapshot, scanned)
-        });
-        let prescan_bytes = prescan_bytes?;
-
-        let mut current = starts;
+        let (private_stream, mut current, subtree_offsets, prescan_bytes) =
+            prepare_salts(mmcs, height, coset_rows, cut)?;
         let mut frontier = vec![[0; 32]; coset_rows * cosets.ilog2() as usize];
         let mut cut_roots = Vec::with_capacity(height / cut);
         let mut work = ReplayWork { salt_candidate_bytes: prescan_bytes, ..Default::default() };
@@ -207,6 +215,7 @@ impl Tree {
             peak_commit_scratch_bytes: physical_columns * coset_rows * size_of::<u64>()
                 + frontier.len() * size_of::<Digest>()
                 + current.len() * size_of::<u64>(),
+            native_peak_capacity_bytes: 0,
             open_subtree_bytes_each: (2 * cut - 1) * size_of::<Digest>()
                 + cut * SALTS * size_of::<Goldilocks>(),
         };
@@ -230,6 +239,52 @@ impl Tree {
                 memory,
             },
         ))
+    }
+
+    /// The trusted resident builder returns only the bounded digest cache.
+    /// Coins/offsets and the original opening getter stay owned by this Tree.
+    pub(super) fn commit_resident_weights(
+        mmcs: &HidingMmcs, height: usize, row: Rows,
+        build: impl FnOnce(&PrivateRng, &mut [u64])
+            -> Result<(Vec<Vec<Digest>>, ReplayWork, usize), String>,
+    ) -> Result<(Commitment, Self), String> {
+        let (coset_rows, cut) = native_weight_geometry(height)?;
+        let cosets = height / coset_rows;
+        let phase = Span::start("pcs_commitment", json!({"height": height, "base_columns": 128,
+            "coset_rows": coset_rows, "cosets": cosets, "cut": cut, "native_weights": true}))?;
+        let (private_stream, mut current, subtree_offsets, prescan_bytes) =
+            prepare_salts(mmcs, height, coset_rows, cut)?;
+        let (top, mut work, peak) = build(&private_stream, &mut current)?;
+        let roots = height / cut;
+        if top.len() != roots.ilog2() as usize + 1 ||
+            top.iter().enumerate().any(|(i, level)| level.len() != roots >> i) ||
+            work.leaf_hashes != height as u64 || work.node_hashes != height as u64 - 1 ||
+            work.coset_cells != height as u64 * 128 || work.salt_candidate_bytes != prescan_bytes ||
+            current.last().copied() != Some(private_stream.position() + prescan_bytes) {
+            return Err("resident W cache coverage or work differs".into());
+        }
+        work.salt_candidate_bytes += prescan_bytes;
+        let root = top.last().unwrap()[0];
+        let groups = cosets / 32;
+        let group_rows = coset_rows * 32;
+        let memory = ReplayMemory {
+            retained_digest_bytes: top.iter().map(|level| level.len() * 32).sum(),
+            salt_offset_bytes: subtree_offsets.len() * size_of::<u64>(),
+            rng_snapshot_bytes: size_of::<PrivateRng>(),
+            peak_coset_bytes: group_rows * 8 * size_of::<u64>(),
+            peak_commit_scratch_bytes: group_rows * (64 + 32)
+                + coset_rows * groups.ilog2() as usize * 32 + current.len() * 8
+                + group_rows.min(65536) * 32 + 256,
+            native_peak_capacity_bytes: peak,
+            open_subtree_bytes_each: (2 * cut - 1) * size_of::<Digest>()
+                + cut * SALTS * size_of::<Goldilocks>(),
+        };
+        phase.finish(json!({"completed_cosets": cosets, "leaf_hashes": work.leaf_hashes,
+            "node_hashes": work.node_hashes, "salt_candidate_bytes": work.salt_candidate_bytes,
+            "coset_cells": work.coset_cells, "retained_digest_bytes": memory.retained_digest_bytes,
+            "retained_salt_offset_bytes": memory.salt_offset_bytes, "native_peak_capacity_bytes": peak}))?;
+        Ok((MerkleCap::from(vec![root]), Self { height, base_columns: 128, coset_rows,
+            cosets, cut, row, private_stream, subtree_offsets, top, work, memory }))
     }
 
     pub(super) fn open(&self, indices: &[usize]) -> Result<Opening, String> {
@@ -370,6 +425,11 @@ impl Tree {
     pub(super) fn geometry(&self) -> (usize, usize, usize, usize) {
         (self.height, self.cosets, self.coset_rows, self.cut)
     }
+
+    #[cfg(test)]
+    pub(super) fn fixture_rows(&mut self, row: Rows) {
+        self.row = row;
+    }
 }
 
 struct Subtree {
@@ -379,6 +439,20 @@ struct Subtree {
 
 fn clone_stream(rng: &PrivateRng) -> PrivateRng {
     rng.snapshot_at(rng.position()).expect("live committed private stream")
+}
+
+fn prepare_salts(mmcs: &HidingMmcs, height: usize, rows: usize, cut: usize)
+    -> Result<(PrivateRng, Vec<u64>, Vec<u64>, u64), String> {
+    let mut starts = vec![0; rows];
+    let mut offsets = vec![0; height / cut];
+    let (stream, scanned) = mmcs.with_private_rng(|rng| {
+        let snapshot = clone_stream(rng);
+        let scanned = prepare_offsets(rng, height / rows, &mut starts, |leaf, position| {
+            if leaf % cut == 0 { offsets[leaf / cut] = position; }
+        });
+        (snapshot, scanned)
+    });
+    Ok((stream, starts, offsets, scanned?))
 }
 
 fn stream_at(original: &PrivateRng, offset: u64) -> Result<PrivateRng, String> {

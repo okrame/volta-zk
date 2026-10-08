@@ -23,13 +23,14 @@ autorizzazione. I controlli telemetria/XOF sono in
 la prima integrazione conserva la geometria W/A corrente.
 
 Il [primo checkpoint locale](../../benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json)
-ha telemetria/XOF integrati e parità ridotte positive. Il prossimo lavoro
-locale è W residente e la candidata a blocchi, poi A→PCS; il goal è ancora
+ha telemetria/XOF integrati e parità ridotte positive. Il lavoro locale
+successivo ha integrato W residente; prosegue con A→PCS e confronti esatti,
+mentre il goal è ancora
 attivo e non autorizza riattivazione, nuovi pod o una campagna.
 
 Il [passo hash W](../c7.1-history/crypto-w-hash-2026-10-08.md) prepara
 foglie incrementali e Merkle GPU nello stesso owner, con sali a finestre.
-Prima di selezionarlo nel runner occorrono Tree W e lifecycle/aperture
+Il runner CUDA seleziona ora la catena nel Tree W, con lifecycle/aperture
 integrati e parità locale. Il frontier strided è verificato come
 componente condiviso, senza esecuzione CUDA. Nella campagna autorizzata compilare anche
 `cuda/c71_pcs_hash.cu`; librerie antecedenti prive dei simboli PCS sono
@@ -38,15 +39,22 @@ Il [checkpoint pulito W hash](../../benchmarks/results/c71-crypto-w-hash-local-2
 conserva root naturali/strided, sali e arresti verificati localmente.
 Il [passo accumuli/FFT](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
 prepara e verifica la catena W→accumuli→FFT→hash/Merkle nelle fixture:
-128 colonne/32 coset, pad originali e rifiuti terminali. Il prossimo
-passo locale è Tree W, aperture/transcript e conto congiunto, poi A→PCS.
+128 colonne/32 coset, pad originali e rifiuti terminali. Il
+passo [Tree W](../c7.1-history/crypto-w-tree-2026-10-08.md) integra la
+catena nel runner CUDA, poi si prosegue con A→PCS.
 Nella futura build aggiungere anche `cuda/c71_pcs_weight.cu`; le FFT
 riusano `cuda/c71_fft.cuh`. Restano da verificare compilazione sm_90,
 parità hardware, picchi fisici e tempi. Nessun riavvio hardware finché
 il goal locale non è pronto e hardware/durata nuovamente autorizzati.
 Il [record locale pulito](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
 verifica componenti e arresti con driver simulato; non compila CUDA,
-non misura H100 e non seleziona ancora il nuovo Tree W nel runner.
+non misura H100. W CUDA seleziona 128 scansioni (analitiche sul pinned),
+il riferimento CPU resta a 1.024 e A resta a 512 ricostruzioni. La parità
+composta completa usa soltanto nel test una tabella di righe di riferimento
+da 16 MiB; il test distinto Tree confronta il getter effettivo. Il D15
+non cached supera ancora 60 s locali ed è un obbligo prestazionale aperto.
+Il conto W corregge con nuova evidenza il secondo flag simultaneo (+256 B);
+non modifica i record precedenti e non concede credito di picco completo.
 
 Percorso principale: preparazione locale → autorizzazione della nuova
 campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle

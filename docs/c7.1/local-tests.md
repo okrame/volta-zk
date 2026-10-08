@@ -159,8 +159,23 @@ modulo signed i128 indipendente sotto UBSan. La build mirata può usare
 locale mantenendo le dipendenze O2, cache e un job; conservare anche le
 build fallite e distinguere RSS compiler dai test 60 s / 2 GiB AS.
 I tempi Rust O0/C++ O2 non sono un rapporto di accelerazione. Il driver
-simulato non compila o esegue CUDA; Tree/transcript del nuovo commitment
-restano verifiche del successivo passo locale, hardware del pod autorizzato.
+simulato non compila o esegue CUDA; hardware resta una verifica del pod
+autorizzato. Per il [passo Tree W](../c7.1-history/crypto-w-tree-2026-10-08.md)
+eseguire separatamente `c71_b12_native_weight_tree_exact_roots_openings_and_work`,
+`c71_b12_native_weight_composed_full_chain_original_mac_and_transcript`,
+`c71_b12_native_weight_tree_fail_closed_without_scalar_fallback`,
+`c71_b12_native_weight_geometry_and_resource_envelope`,
+`c71_b12_query_small_remainders_exact_fp3_and_cost`,
+`c71_b12_query_remainder`, `c71_b12_query_split_zero_tail`,
+`c71_b12_query_byte_windows_full_chain` e `c71_canonical_runner`.
+Il confronto composto D15 usa una tabella di righe iniziali del riferimento
+da 16 MiB, conteggiata nel budget e assente in produzione; verifica l'intera
+prova, MAC e transcript. Root/aperture/lavoro del getter effettivo sono
+confrontati dal test Tree separato. Il filtro
+`c71_b12_native_weight_uncached_full_chain_performance_obligation` è
+ignored perché il test combinato D15 riferimento/prover/doppia verifica
+supera 60 s; non eseguirlo con `--ignored` o limite esteso. Conservare
+timeout e prefissi JSONL come failure, non conteggiare uno skip come pass.
 Il [record pulito del componente](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
 ha sette selezioni Rust e venti controlli Python positivi, tra cui
 regressioni FFT/resti/potenze Fp3, mapping e replay originali. I 77

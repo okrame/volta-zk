@@ -374,20 +374,21 @@ fn run(
     let coins = fresh_pcs_coins()?;
     let (p, original) = (public.profiles[0].clone(), weights.clone());
     let (range_profile, range_packed) = (public.profiles[0].clone(), weights.clone());
-    let mut installed = b12::replay::ReplayModel::new(
-        Domain::Flat(35),
-        coins.seed,
-        coins.salt_seed,
-        Arc::new(move |i| {
-            to_p3(
-                p.plan
-                    .virtual_to_packed(i)
-                    .expect("compiled W layout")
-                    .map_or(Fp3::ZERO, |offset| signed(i64::from(original[offset]))),
-            )
-        }),
-        public.profiles[0].plan.live,
-    )?
+    let source = Arc::new(move |i| {
+        to_p3(
+            p.plan
+                .virtual_to_packed(i)
+                .expect("compiled W layout")
+                .map_or(Fp3::ZERO, |offset| signed(i64::from(original[offset]))),
+        )
+    });
+    let live = public.profiles[0].plan.live;
+    let mut installed = if let Some(session) = &native {
+        b12::replay::ReplayModel::new_native_weights(
+            Domain::Flat(35), coins.seed, coins.salt_seed, source, live, session.weight_pcs()?)?
+    } else {
+        b12::replay::ReplayModel::new(Domain::Flat(35), coins.seed, coins.salt_seed, source, live)?
+    }
     .with_signed_range_reader(
         &weights,
         Arc::new(move |suffix, bottom, first, out| {
@@ -519,10 +520,11 @@ fn run(
     }
     let native_stats = native.as_ref().map(|session| session.stats()).transpose()?;
     Ok(serde_json::json!({"credit": false, "readiness": false, "gpu_execution": native.is_some(),
-        "backend": if native.is_some() { "cuda-producers-range-cpu-protocol" } else { "reference-cpu" },
+        "backend": if native.is_some() { "cuda-producers-range-w-pcs-cpu-protocol" } else { "reference-cpu" },
+        "w_commitment_backend": if native.is_some() { "resident-cuda-32-coset-8-column" } else { "reference-cpu-four-coset" },
         "native_cumulative": native_stats,
-        "cpu_phases": ["public validation and table packing", "W PCS commitment and bounded 256 MiB W range gather/upload", "PCS FFT/Merkle/query/remainder and source contractions", "non-range GKR and original MAC arithmetic", "Seed6 real AES setup and expansion", "proof encoding, verifier and durable journals", "bounded original A row/byte staging for CPU protocol consumers"],
-        "gpu_phases": if native.is_some() { vec!["all 13 inference and replay producers", "resident A byte gather", "range canopy/Gram/fold/reductions"] } else { vec![] },
+        "cpu_phases": ["public validation and table packing", "PCS private coins and salt sampling; bounded 256 MiB W range gather/upload", "PCS openings/remainders/source contractions; A and extension FFT/Merkle; reference-cpu W commitment", "non-range GKR and original MAC arithmetic", "Seed6 real AES setup and expansion", "proof encoding, verifier and durable journals", "bounded original A row/byte staging for CPU protocol consumers"],
+        "gpu_phases": if native.is_some() { vec!["initial W signed accumulation/finite FFT/incremental BLAKE3/Merkle", "all 13 inference and replay producers", "resident A byte gather", "range canopy/Gram/fold/reductions"] } else { vec![] },
         "canonical_certificates_verified": 3, "tables_numerically_certified": false,
         "checkpoint_provenance_verified": false, "packed_blake3": packed_digest,
         "responses": responses,

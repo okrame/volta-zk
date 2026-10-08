@@ -97,11 +97,12 @@ Matrix usa quattro MMA INT8 con correzioni e raw i64; Norm usa soglie
 quadrate u128 esatte; QK/PV sono attualmente dot product interi scalari,
 non MMA. RNE, Affine/Gate, embedding, GELU/softcap, RoPE, EXP30 e argmax
 usano originali e codec canonici. Il gather A produce finestre residenti
-per il range sullo stesso owner. Restano **esplicitamente CPU** PCS
-FFT/Merkle/query/resti e contrazioni, GKR non-range/MAC, Seed6 reale AES,
+per il range sullo stesso owner. Il commitment iniziale W usa accumuli,
+FFT e hash/Merkle residenti. Restano **esplicitamente CPU** monete/sali PCS,
+PCS A e extension, query/resti e contrazioni, GKR non-range/MAC, Seed6 reale AES,
 codec, verificatore e journal. Le righe/finestre originali richieste da
 questi consumer sono scaricate in staging bounded; non si tratta di una
-PCS GPU o di assenza assoluta di D2H. Il gather range W rimane CPU,
+PCS interamente GPU o di assenza assoluta di D2H. Il gather range W rimane CPU,
 con upload signed per finestre fino a 256 MiB. La
 [contabilità del percorso misto](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
 distingue payload, capacità riservate, trasferimenti e picchi da misurare.
@@ -185,8 +186,7 @@ Il [passo W hash](../c7.1-history/crypto-w-hash-2026-10-08.md) aggiunge
 compressione BLAKE3 condivisa e operazioni GPU di foglia incrementale e
 Merkle nello stesso owner. CV da 32 B/foglia, mezzo blocco pendente nel
 ring, sali a finestre e pubblicazione dopo controllo terminale. Il
-runner non seleziona ancora questi kernel per il commitment: manca
-il collegamento della catena accumuli/FFT/hash al Tree canonico. Il merge strided a gruppi
+collegamento al Tree è ora selezionato per W in `experiment-cuda`. Il merge strided a gruppi
 ricompone l'ordine naturale con un frontier di sette livelli per 128
 gruppi di 32 coset, da verificare anche con gli accumuli residenti. La
 schedule A rimane separata; nessuna ricostruzione aggiuntiva è introdotta.
@@ -196,7 +196,7 @@ Il [record locale pulito hash W](../../benchmarks/results/c71-crypto-w-hash-loca
 ha cinque test Rust e undici controlli Python positivi, UBSan e 27
 rifiuti terminali verificati. Picco congiunto della fixture 9.361.975 B,
 RSS massimo dei test/compilatori discendenti 193.908.736 B. Non è un
-tempo o picco H100; scansioni W/A selezionate ancora 1.024/512.
+tempo o picco H100; quel record precede l'integrazione nel Tree.
 
 Il [componente accumuli/FFT W](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
 collega nelle fixture W sigillato, accumuli interi esatti, FFT esistente
@@ -205,9 +205,16 @@ i digest su tre geometrie con 32 coset/128 colonne, inclusi 256
 contributi e 1.536 pad; 24 rifiuti terminali e modulo i128 indipendente
 su 526.336 prefissi. Il conto candidato comprende potenze basse da
 256 MiB, twiddle da 8 MiB e pad originali, senza duplicare il ring.
-Il runner non lo seleziona ancora: mancano Tree W, aperture/transcript
-e conto congiunto della schedule integrata. La riduzione a 128 scansioni
-rimane analitica; confronto Tensor Core e A→PCS aperti. Nessun credito
+Il [passo Tree W](../c7.1-history/crypto-w-tree-2026-10-08.md) integra
+la schedule nel runner CUDA: stessi getter/monete/pad, root e aperture
+ridotte esatte, con contatori host/device congiunti. Il confronto completo
+di transcript/MAC usa una tabella di righe iniziali di riferimento da
+16 MiB soltanto nella fixture; il test distinto di aperture esercita il
+getter di produzione. Il D15 non cached supera ancora 60 s locali ed è
+conservato come obbligo prestazionale, senza credito di completamento.
+128 scansioni W sono ora la schedule selezionata CUDA, ancora analitica
+per il workload pinned; A conserva 512 ricostruzioni. Tensor Core, A→PCS
+e accelerazione delle aperture restano aperti. Nessun credito
 CUDA/H100 o nuova autorizzazione hardware. La somma signed <2^87 e
 la sua riduzione sono identità controllate localmente, senza lemma Lean
 di raffinamento dell'implementazione o dello scheduling CUDA.
@@ -218,7 +225,8 @@ congiunto ridotto 5.983.714 B; RSS massimo test/descendenti 235.655.168 B,
 compiler O0 2.465.947.648 B separato. Preserva anche build/fixture fallite
 e correzioni; nessun risultato completo W o H100 è acquisito.
 
-Le geometrie fisiche attuali (quattro coset, 1.024 scansioni W e 512 A)
+Le geometrie fisiche attuali (W CUDA 32 coset/otto colonne e 128 scansioni;
+riferimento CPU W quattro coset/1.024; A quattro coset/512)
 sono scelte implementative modificabili. Alternative richiedono
 equivalenza verificata, ordine di sali/pad/root e MAC originali preservato,
 NoPeek e nuovo conto completo di lavoro, memoria e capacità simultanee.
@@ -279,7 +287,7 @@ separa limite imposto, subtotal derivati dalle shape, test ridotti e
 riserva fisica. Il [checkpoint locale](../c7.1-history/temporary-memory-2026-10-04.md)
 conserva decisioni, limiti e fallimenti. Nessuna riclassificazione dello scratch della risposta.
 
-I gruppi di coset mantengono 512 scan iniziali A e 1.024 W, ma eseguono
+I gruppi CPU mantengono 512 scan iniziali A e 1.024 W, ma eseguono
 quattro accumulazioni di campo per coefficiente iniziale (due per S1/S2),
 con FFT più piccole. Il lavoro extra è della prova: non eredita i tempi
 analitici precedenti e non dà credito al requisito di lavoro non crescente.

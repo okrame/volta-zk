@@ -395,8 +395,10 @@ sono freschi. W numerica e getter PCS condividono un solo packed immutabile.
 
 L'[albero Merkle](../../rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs)
 conserva la geometria ridotta fino ad altezza 2^18. Per le sole colonne
-iniziali W/A ammette altezze 2^32/2^31, 128 colonne base, gruppi di quattro
-coset 2^20 per scan e taglio Merkle 2^12: rispettivamente 1.024/512 scan.
+iniziali W/A ammette altezze 2^32/2^31, 128 colonne base e taglio Merkle
+2^12. Il riferimento CPU usa quattro coset 2^20 per scan (W 1.024/A 512);
+W CUDA usa gruppi di 32 coset e ring di otto colonne (128 scan). A
+conserva la geometria indipendente a quattro coset e 512 ricostruzioni.
 Gli stadi extension grandi hanno 12 colonne base: S1 usa coppie di coset
 2^23, S2 coppie 2^21, S3 e successori
 al più 2^23, sempre con taglio 2^12. Le altezze dei due profili nativi
@@ -738,7 +740,8 @@ dopo l'ultima banda e il controllo del flag è ammessa la lettura di
 digest, fino a 64 MiB; nessun valore base/CV lascia l'owner attraverso
 questa API. Il nodo salato C7.1 usa due compressioni BLAKE3, la foglia
 128 colonne ne usa 18. Il launcher non crea un allocatore o uno stream.
-Questa preparazione non sostituisce ancora il commitment CPU del runner.
+Il commitment iniziale W del runner CUDA usa ora questa catena residente;
+il riferimento CPU e le altre fasi PCS rimangono separati.
 Il [passo accumuli/FFT](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
 aggiunge tile W e potenze tipizzate, legati a W sigillato/Arc/layout e
 gruppo dei coset. Un warp condivide un coefficiente fra 32 coset;
@@ -748,13 +751,17 @@ Le FFT in-place riusano i cinque passaggi esistenti sullo stream comune.
 Alias pad/ring e low/high, input incompleti, potenze di un altro gruppo,
 errori CUDA e flag terminali falliscono chiuso. I cinque nuovi simboli
 PCS sono obbligatori; non si esportano download di valori PCS. Tre
-fixture da 128 colonne verificano valori, foglie e livelli Merkle, senza
-ancora importare il nuovo commitment nel Tree canonico.
+fixture da 128 colonne verificano valori, foglie e livelli Merkle. Il
+[passo Tree](../c7.1-history/crypto-w-tree-2026-10-08.md) importa i digest
+nel cache originale: stesso prescan/seek dei sali, `cut=4096`, root e
+rigenerazione delle aperture. Scarica solo i livelli superiori limitati
+(67.108.832 B canonici) e flag, nessun valore intermedio W.
 Il [record pulito](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
 lega sorgenti, binario, log e limiti; sette test Rust e venti controlli
 Python positivi. Payload congiunto ridotto 5.983.714 B, picco capacità
 native 1.719.040 B e owner host 37.064 B. Il componente resta separato
-da tempo/picco completo e dalla schedule selezionata W/A 1.024/512.
+da tempo/picco completo. La schedule CUDA W selezionata è 128 scansioni,
+mentre A conserva 512; nessuna ricostruzione A è introdotta dal blocco W.
 La riduzione per gruppi usa stride delle righe per unire coset fratelli;
 un frontier pending accetta solo gruppi consecutivi e non è leggibile.
 Con 4.096 coset raggruppati per 32, il frontier è 2^20×7×32 =
@@ -767,6 +774,21 @@ Budget host/device attivo, senza W esentato nelle fixture. Il massimo
 payload osservato è 9.361.975 B, con zero rifiuti nelle parità; il solo
 scratch hash nativo massimo è 395.520 B, owner host 37.064 B separato.
 Gli output delle fixture non sono misure di un commitment W completo.
+
+Il conto W corretto comprende due flag simultanei: 3.736.793.344 B
+device per ring/CV/potenze/twiddle/pad/frontier/sali/tile/flag. Il subtotal
+precedente era inferiore di 256 B e resta immutabile. I payload host
+nominati sono 89.292.232 B; con l'upper device replay di 785.789.696 B
+si ottiene un envelope conservativo di 4.611.875.272 B, prima degli altri
+owner host censiti dal budget. Non è un picco fisico né un'ammissione
+del percorso completo. `initial_native_peak_capacity_bytes` riporta il
+massimo storico dell'owner comune, non si somma al suo ledger cumulativo.
+Le aperture CPU dividono direttamente per divisori monici di grado ≤8;
+evitano lo shift separato dei pad quando il messaggio entra in un batch.
+Parità base/Fp3 e byte di prova sono controllati, senza cache di righe in
+produzione. Il confronto composto D15 usa una tabella di riferimento
+da 16 MiB soltanto nel test e verifica transcript/MAC/seek originali;
+la prova non cached resta oltre il limite locale di 60 s.
 
 La CLI seleziona soltanto `reference-cpu` oppure `experiment-cuda`; la
 seconda aggiunge `LIBRARY DEVICE` agli stessi cinque argomenti di input.
@@ -786,7 +808,8 @@ e conteggi originali. La copertura completa precede il seal di ogni finestra.
 | Massimo analitico condizionato | 6.174.015.488 B = tetto allocazioni + riserva; margine 268.435.456 B sul contratto |
 | Stato device persistente | KV450 405.504.000 B + checkpoint 98.380.800 B + 121 istogrammi allineati 63.438.848 B + tabelle allineate 23.954.176 B = 591.277.824 B |
 | Replay device | Upper derivato da porte, batch e ultimi consumer: 785.789.696 B **incluso** lo stato persistente, copie KV e istogrammi duplicati; niente somma di massimi separati |
-| PCS iniziale host | Quattro coset 2^20×128×8 = 4.294.967.296 B insieme, inclusi quelli in attesa; frontier W/A 402.653.184 / 369.098.752 B, cursori sali 8.388.608 B; FFT, radici, pad, potenze e stato device restano conteggiati |
+| PCS iniziale CPU/A | Quattro coset 2^20×128×8 = 4.294.967.296 B insieme, inclusi quelli in attesa; frontier W riferimento/A 402.653.184 / 369.098.752 B, cursori sali 8.388.608 B; FFT, radici, pad, potenze e stato device restano conteggiati |
+| PCS iniziale W CUDA | Ring otto colonne/32 coset 2.147.483.648 B, CV 1.073.741.824 B e frontier 234.881.024 B; subtotal device completo del componente 3.736.793.344 B, senza sommare la schedule CPU alternativa |
 | PCS S1/S2 | S1: due coset 2^23×12×8; S2: due coset 2^21×12×8 con S1 da 3.221.225.472 B vivo. Dopo il rilascio del predecessore si applica il fold e `shrink_to_fit`; anche l'eventuale sovrapposizione vecchio+nuovo del realloc è addebitata |
 | Aperture PCS | Matrice contigua; fattori 32×q×(log2(q)+1) B, q≤2^20; due livelli di resti, FFT, staging e un solo sottoalbero rigenerato; nessun Vec per riga/fattore trattenuto |
 | Range/staging | Range A ≤1 GiB device nel runner; query A ≤256 MiB host più ≤256 MiB device; W staging signed ≤256 MiB; padding pubblico signed host ≤55.574.528 B; ogni copia vive nel medesimo conto |
@@ -815,7 +838,8 @@ del consumo. Il gather accetta viste nei prefissi KV, non celle future.
 Questi byte non passano al verificatore. Il range A resta residente;
 La finestra range A del runner scende da 2 GiB a 1 GiB: cambia il numero
 di finestre, non gli originali né la geometria del range.
-PCS FFT/Merkle/resti/contrazioni, GKR non-range, MAC, PCG, codec e verifica
+PCS A/extension FFT/Merkle, monete/sali, aperture/resti/contrazioni,
+GKR non-range, MAC, PCG, codec e verifica
 restano CPU dichiarati, non fallback impliciti. La rigenerazione di una
 generazione storica rilascia quella precedente e riusa KV450 originale;
 una copia D2D della sola slice corrente serve quando un consumer ordinario

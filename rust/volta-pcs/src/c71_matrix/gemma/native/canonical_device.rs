@@ -551,6 +551,13 @@ impl Session {
             }),
         )
     }
+    pub(in crate::c71_matrix) fn weight_pcs(&self) -> Result<kernel::b12::replay::NativeWeights, String> {
+        let layout = self.profiles[0].plan.layout_digest;
+        self.runtime.lock().map_err(|_| "native W owner poisoned")?
+            .require_weights(&self.weights, layout)?;
+        Ok(kernel::b12::replay::NativeWeights { runtime: self.runtime.clone(),
+            weights: self.weights.clone(), layout, tiles: self.profiles[0].plan.pcs_weight_tiles() })
+    }
 }
 
 fn batches(plan: &Canonical, step: usize) -> Result<Vec<(usize, usize)>, String> {

@@ -1,0 +1,491 @@
+{
+  "architecture": "aarch64",
+  "authorized_socket_retry": {
+    "command": "(ulimit -v 2097152; RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout -k 5s 60s rust/target/debug/deps/volta_pcs-1b032d88c9000486 c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals --test-threads=1 --nocapture)",
+    "exit_code": 0,
+    "log": "seed6-local-socket-authorized.log",
+    "max_rss_bytes": null,
+    "passed": 1,
+    "seconds_from_test_harness": 50.29
+  },
+  "budget_check": {
+    "command": [
+      "timeout",
+      "-k",
+      "5s",
+      "60s",
+      "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+      "c71_temporary_budget_",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "exit_code": 0,
+    "max_rss_bytes": 8957952,
+    "wall_seconds": 0.002616428304463625
+  },
+  "build_provenance": {
+    "clean_cargo_revalidation_exit_code": 0,
+    "example_binary_sha256": "373596201cc56089180ad0ccf13c9103d4421b79825920d586621cf84d6cff7e",
+    "example_build_exit_code": 0,
+    "fixture_build_failure": {
+      "cause": "Test called Result::unwrap on an opaque replay handle without Debug",
+      "correction": "Convert the downcast error to Option only in the fixture; production handle remains opaque.",
+      "exit_code": 101
+    },
+    "initial_build_checkout_sha": "47135ca736319c7758fe57310bb9bc29e7ff0816",
+    "initial_build_dirty": true,
+    "new_dependencies": false,
+    "reuse": "Built from these source contents before scoped commit; targeted offline/locked Cargo revalidation and all recorded Rust checks ran on the clean source commit. No H100 binary provenance claim.",
+    "source_content_commit": "04ab8ed1c4ce9c64d0ada7527eccfba14635134b",
+    "test_binary_sha256": "56a482d8df25193d0c782ee4652670bd027b099cfe38b04e5b8ab30f035f4d1b"
+  },
+  "campaign_authorized": false,
+  "canonical_certificates_verified": 0,
+  "credit": false,
+  "document_checks": {
+    "exit_code": 0,
+    "passed": 9,
+    "seconds_from_test_harness": 0.53
+  },
+  "files": [
+    {
+      "bytes": 314,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/budget.json",
+      "sha256": "4598b049b2d215c89c2474516cb7964318fe403c5453b73735c864701416ef54"
+    },
+    {
+      "bytes": 232,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/budget.log",
+      "sha256": "e850112a98422a9789d7abd0b7a943ccd5118ab79f7859b67215ad1f07727a31"
+    },
+    {
+      "bytes": 14054,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/build-clean-revalidation.log",
+      "sha256": "8a9ec6fb0b413a542053b7a9d6f99f981481df20d31d4525768a8815a3264f97"
+    },
+    {
+      "bytes": 19343,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/build-example.log",
+      "sha256": "ff7ea3e9bcb02194cd126a040e17e20647fec6384d0a25c566dacd50c22a663c"
+    },
+    {
+      "bytes": 8221,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/build-fixture-failed.log",
+      "sha256": "54c53e1cf594cd94d81a53fb33206cf05fdd2b49a80947411c04a05fb4c69230"
+    },
+    {
+      "bytes": 14133,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/build-fixture-fixed.log",
+      "sha256": "ff0b7e0b6a5ce68d4af67d103047e9bf0d174fd73d17491513ebd772e3a77a6d"
+    },
+    {
+      "bytes": 493,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/c71_b12_durable_telemetry_.log",
+      "sha256": "aa7162d42a632f772dac851428345dea4c323100ef8d0e35dad5f73f7115470c"
+    },
+    {
+      "bytes": 2285,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/c71_b12_full_sourcewise_chain_d17_scanned_retained_original_mac.log",
+      "sha256": "44c1db12621d490bcebba4ccd573660d011f5b062fe933ab705aee94c27d28f6"
+    },
+    {
+      "bytes": 2253,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/c71_b12_full_sourcewise_chain_matches_native_bytes.log",
+      "sha256": "35a383994eb7985d9329ca4543640129b8b907666c5b511252577151b21a7f71"
+    },
+    {
+      "bytes": 1104,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/c71_b12_private_coins_.log",
+      "sha256": "ff0a1f4583464c51f7132398b2878c46c046e38490f5d85d43b71a1438813ce7"
+    },
+    {
+      "bytes": 1333,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/c71_b12_streaming_.log",
+      "sha256": "b3fc1c78d0203802b5b0e4cc08bb1eb278713c4e06d90787aeaa6e42af9c47b0"
+    },
+    {
+      "bytes": 239,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/c71_canonical_metrics_.log",
+      "sha256": "54d8663ec4e070b23989bef1e22f93e0abf1ffa5009273e490e07faf8c54cc9b"
+    },
+    {
+      "bytes": 208,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/c71_progress_durable_.log",
+      "sha256": "d559b5f0e49991f4122513d9a80a54320b7217773318ce88e8f76e6c1bff05d9"
+    },
+    {
+      "bytes": 837,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals.log",
+      "sha256": "2ddc16b4169158352f67f002d6b1575c1dbe963db3ccc8da6e8d5d0657417061"
+    },
+    {
+      "bytes": 98,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/docs.log",
+      "sha256": "a14914756c778ccbc89808363fcd2d5ba8027db266eee366a311024d2abd9ab4"
+    },
+    {
+      "bytes": 2108,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/fork-audit.log",
+      "sha256": "851b41673ca97780e9d2eafb494990ee3f2987be1c91239bf048b224c2e88724"
+    },
+    {
+      "bytes": 418,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/replay_tree_.log",
+      "sha256": "7b27f6a801505da8c83dd47ef309d6fc5a6d2379b54f8f8d21e0a2ff0fce9afd"
+    },
+    {
+      "bytes": 9354,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/seed6-local-socket-authorized.log",
+      "sha256": "c7478f7bea7cfe6f2a8edb6b3b6aaeda308e2ebf7cd9559f09c1918932e98d5f"
+    },
+    {
+      "bytes": 5005,
+      "path": "benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce-logs/tests.json",
+      "sha256": "c0b6e3a4039259fcf04dfc4f3e22751e6bb91f2541dbe080c5c19e7a04ab2e5d"
+    }
+  ],
+  "fork_audit": {
+    "all_other_source_files_byte_identical": true,
+    "allowed_modified_source_file_count": 26,
+    "allowed_modified_source_files": [
+      "merkle-tree/src/hiding_mmcs.rs",
+      "merkle-tree/src/merkle_tree.rs",
+      "sumcheck/src/strategy.rs",
+      "sumcheck/src/zk/data.rs",
+      "sumcheck/src/zk/mod.rs",
+      "sumcheck/src/zk/prover/mod.rs",
+      "sumcheck/src/zk/prover/residual.rs",
+      "sumcheck/src/zk/prover/zk_prover.rs",
+      "sumcheck/src/zk/verifier.rs",
+      "whir/src/fiat_shamir/domain_separator.rs",
+      "whir/src/fiat_shamir/pattern.rs",
+      "whir/src/lib.rs",
+      "whir/src/parameters/whir.rs",
+      "whir/src/pcs/zk/base_case/mod.rs",
+      "whir/src/pcs/zk/base_case/prover.rs",
+      "whir/src/pcs/zk/base_case/verifier.rs",
+      "whir/src/pcs/zk/code_switch.rs",
+      "whir/src/pcs/zk/committer.rs",
+      "whir/src/pcs/zk/config.rs",
+      "whir/src/pcs/zk/mod.rs",
+      "whir/src/pcs/zk/proof.rs",
+      "whir/src/pcs/zk/prover/data.rs",
+      "whir/src/pcs/zk/prover/masks.rs",
+      "whir/src/pcs/zk/prover/mod.rs",
+      "whir/src/pcs/zk/verifier/masks.rs",
+      "whir/src/pcs/zk/verifier/mod.rs"
+    ],
+    "claimless_adapter_statement_guards": true,
+    "claimless_source_guards": true,
+    "claimless_strict_codec_guards": true,
+    "crate_local_target_directories_absent": true,
+    "credit": false,
+    "durable_private_entropy_journal_source_guards": true,
+    "generated_library_lockfiles_absent": true,
+    "historical_manifest_source_files": 87,
+    "initial_reviewed_runtime_commit": "2d949dc",
+    "live_salt_stream_single_caller_guard": true,
+    "merkle_dependency_source_files": 9,
+    "private_entropy_driver_source_guards": true,
+    "profile": "C7.1-p3-fork-provenance-v3",
+    "reviewed_delta_content_pinned": true,
+    "scope": "pinned source provenance and textual guards; not protocol security or native execution",
+    "sourcewise_replay_lifecycle_guards": true,
+    "subsequent_review": "B12 common switch-mask pad and live salt-stream replay; exact hashes in REVIEWED_DELTAS",
+    "upstream_revision": "66e290615de1858f2f2f6a804158064c406cda1c",
+    "upstream_source_files": 96,
+    "verdict": "C71_PINNED_FORK_PROVENANCE_PASS"
+  },
+  "gamma_admission": "c71-gamma-admission-2026-10-07-868a3e8.json",
+  "gamma_impact": "Only laboratory telemetry and byte-identical private XOF buffering; numerical producers, model/workload, scales/tables/recipes unchanged. Hardware parity remains required.",
+  "git_dirty": false,
+  "git_sha": "04ab8ed1c4ce9c64d0ada7527eccfba14635134b",
+  "goal_status": "active",
+  "h100_speedup_claimed": false,
+  "limits": {
+    "address_space_bytes": 2147483648,
+    "rayon_workers": 1,
+    "test_threads": 1,
+    "wall_seconds": 60
+  },
+  "owner_baseline": "9033c64",
+  "prior_diagnostic": "c71-cuda-experiment-2026-10-07-868a3e8.json",
+  "remaining": [
+    "GPU resident W scan/coset accumulation, finite FFT and canonical salted Merkle on the common owner",
+    "Verify 32-coset column blocks and compact hash state with exact reduced parity and complete simultaneous budget; keep A scans non-increasing",
+    "Compare ordinary exact integer accumulation and exact limb Tensor Core path on fixed inputs",
+    "Connect resident A producers to PCS without per-row D2H; optimize openings/GKR/range/QK/PV and synchronization from measured profiles",
+    "Prepare representative hardware checks and quantify remaining full-path costs before closing the local goal"
+  ],
+  "resources": {
+    "complete_physical_peak": false,
+    "cuda_executed": false,
+    "joint_allocation_reduced_seed6": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 0,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 21051,
+      "native_reservation_bytes": 0,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 384866146,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 21776,
+      "temporary_payload_peak_bytes": 116430690
+    },
+    "retained_rng_buffer_bytes": 0,
+    "retained_rng_struct_bytes": 144,
+    "rss_peak_serial_checks_bytes": 134553600,
+    "sequential_sample_buffer_bytes_each": 4096,
+    "strided_leaf_rng_buffer_bytes": 0,
+    "telemetry_event_history_retained": false,
+    "whole_hardware_peak_measured": false
+  },
+  "sandbox_socket_failure_preserved": true,
+  "schema": "volta-c71-crypto-preparation-local-v1",
+  "seed6_reduced": {
+    "OS_rng": true,
+    "accepted_attempts": 1,
+    "base_rows": 264147,
+    "blocks": 4,
+    "certificate_bytes": 7752361,
+    "credit": false,
+    "dense_virtual_W_materialized": true,
+    "height": 19,
+    "late_rejection": false,
+    "original_mac_rows": 88049,
+    "receipt": [
+      43,
+      20,
+      173,
+      14,
+      19,
+      194,
+      249,
+      222,
+      219,
+      189,
+      61,
+      161,
+      62,
+      212,
+      38,
+      26,
+      135,
+      226,
+      69,
+      133,
+      207,
+      16,
+      208,
+      20,
+      146,
+      72,
+      135,
+      203,
+      116,
+      219,
+      60,
+      80
+    ],
+    "scope": "one complete reduced O0 proof, optionally corrupted completion; real Seed6 bounded batches at the reported reduced geometry; not canonical security, H100 or full fixed-run credit",
+    "source": "volta_pcs::c71_matrix::gemma::native::prepare::Snapshot",
+    "weight": 11
+  },
+  "sequential_rust_checks": [
+    {
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_b12_private_coins_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "filter": "c71_b12_private_coins_",
+      "max_rss_bytes": 9035776,
+      "passed": 3,
+      "system_seconds": 0.004023,
+      "user_seconds": 0.08158399999999999,
+      "wall_seconds": 0.08631607703864574
+    },
+    {
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_progress_durable_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "filter": "c71_progress_durable_",
+      "max_rss_bytes": 8916992,
+      "passed": 1,
+      "system_seconds": 0.002446,
+      "user_seconds": 0.0008889999999999999,
+      "wall_seconds": 0.0037273908965289593
+    },
+    {
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_b12_durable_telemetry_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "filter": "c71_b12_durable_telemetry_",
+      "max_rss_bytes": 9060352,
+      "passed": 1,
+      "system_seconds": 0.008275,
+      "user_seconds": 0.017412,
+      "wall_seconds": 0.02611002791672945
+    },
+    {
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_b12_streaming_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "filter": "c71_b12_streaming_",
+      "max_rss_bytes": 8921088,
+      "passed": 3,
+      "system_seconds": 0.0,
+      "user_seconds": 0.004441,
+      "wall_seconds": 0.004822729155421257
+    },
+    {
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "replay_tree_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "filter": "replay_tree_",
+      "max_rss_bytes": 9105408,
+      "passed": 3,
+      "system_seconds": 0.0,
+      "user_seconds": 0.007571,
+      "wall_seconds": 0.007930492982268333
+    },
+    {
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_canonical_metrics_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "filter": "c71_canonical_metrics_",
+      "max_rss_bytes": 8921088,
+      "passed": 1,
+      "system_seconds": 0.0,
+      "user_seconds": 0.002139,
+      "wall_seconds": 0.0024803848937153816
+    },
+    {
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_b12_full_sourcewise_chain_matches_native_bytes",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "filter": "c71_b12_full_sourcewise_chain_matches_native_bytes",
+      "max_rss_bytes": 93970432,
+      "passed": 1,
+      "system_seconds": 0.084849,
+      "user_seconds": 1.504531,
+      "wall_seconds": 1.5901308399625123
+    },
+    {
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_b12_full_sourcewise_chain_d17_scanned_retained_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "filter": "c71_b12_full_sourcewise_chain_d17_scanned_retained_original_mac",
+      "max_rss_bytes": 134553600,
+      "passed": 1,
+      "system_seconds": 0.07224,
+      "user_seconds": 9.023068,
+      "wall_seconds": 9.099732853006572
+    },
+    {
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 101,
+      "filter": "c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals",
+      "max_rss_bytes": 13049856,
+      "passed": 0,
+      "system_seconds": 0.0037099999999999998,
+      "user_seconds": 0.012093999999999999,
+      "wall_seconds": 0.016283819917589426
+    }
+  ],
+  "starting_checkout": "47135ca736319c7758fe57310bb9bc29e7ff0816",
+  "status": "PASS_LOCAL_STAGE_1",
+  "telemetry_component": {
+    "credit": false,
+    "durable_records": 60,
+    "leaf_hashes": 512,
+    "log_bytes": 50131,
+    "scope": "reduced 128-column commitment and duplicate openings; no H100 credit",
+    "source_visits": 8000,
+    "with_recording_seconds": 0.012552179,
+    "without_recording_seconds": 0.010981464
+  },
+  "xof_component": {
+    "buffer_bytes": 4096,
+    "buffered_seconds": 0.003101763,
+    "credit": false,
+    "samples_per_mode": 262144,
+    "scope": "local sequential Goldilocks sampler; not H100 or whole PCS",
+    "speedup": 5.949088308810183,
+    "unbuffered_seconds": 0.018452662
+  }
+}

@@ -1,0 +1,15 @@
+
+running 1 test
+test c71_matrix::gemma::native::protocol::pool::seed6_tests::c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals ... 
+thread 'c71_matrix::gemma::native::protocol::pool::seed6_tests::c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals' (40) panicked at volta-pcs/src/c71_matrix/gemma/native/seed6_pool_tests.rs:22:76:
+called `Result::unwrap()` on an `Err` value: Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    c71_matrix::gemma::native::protocol::pool::seed6_tests::c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 502 filtered out; finished in 0.01s
+

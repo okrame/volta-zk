@@ -1,0 +1,183 @@
+{
+  "git_sha": "04ab8ed1c4ce9c64d0ada7527eccfba14635134b",
+  "git_dirty": false,
+  "limits": {
+    "wall_seconds": 60,
+    "address_space_bytes": 2147483648,
+    "rayon_workers": 1,
+    "test_threads": 1
+  },
+  "checks": [
+    {
+      "filter": "c71_b12_private_coins_",
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_b12_private_coins_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.08631607703864574,
+      "user_seconds": 0.08158399999999999,
+      "system_seconds": 0.004023,
+      "max_rss_bytes": 9035776,
+      "passed": 3
+    },
+    {
+      "filter": "c71_progress_durable_",
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_progress_durable_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.0037273908965289593,
+      "user_seconds": 0.0008889999999999999,
+      "system_seconds": 0.002446,
+      "max_rss_bytes": 8916992,
+      "passed": 1
+    },
+    {
+      "filter": "c71_b12_durable_telemetry_",
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_b12_durable_telemetry_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.02611002791672945,
+      "user_seconds": 0.017412,
+      "system_seconds": 0.008275,
+      "max_rss_bytes": 9060352,
+      "passed": 1
+    },
+    {
+      "filter": "c71_b12_streaming_",
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_b12_streaming_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.004822729155421257,
+      "user_seconds": 0.004441,
+      "system_seconds": 0.0,
+      "max_rss_bytes": 8921088,
+      "passed": 3
+    },
+    {
+      "filter": "replay_tree_",
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "replay_tree_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.007930492982268333,
+      "user_seconds": 0.007571,
+      "system_seconds": 0.0,
+      "max_rss_bytes": 9105408,
+      "passed": 3
+    },
+    {
+      "filter": "c71_canonical_metrics_",
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_canonical_metrics_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.0024803848937153816,
+      "user_seconds": 0.002139,
+      "system_seconds": 0.0,
+      "max_rss_bytes": 8921088,
+      "passed": 1
+    },
+    {
+      "filter": "c71_b12_full_sourcewise_chain_matches_native_bytes",
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_b12_full_sourcewise_chain_matches_native_bytes",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 1.5901308399625123,
+      "user_seconds": 1.504531,
+      "system_seconds": 0.084849,
+      "max_rss_bytes": 93970432,
+      "passed": 1
+    },
+    {
+      "filter": "c71_b12_full_sourcewise_chain_d17_scanned_retained_original_mac",
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_b12_full_sourcewise_chain_d17_scanned_retained_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 9.099732853006572,
+      "user_seconds": 9.023068,
+      "system_seconds": 0.07224,
+      "max_rss_bytes": 134553600,
+      "passed": 1
+    },
+    {
+      "filter": "c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals",
+      "command": [
+        "timeout",
+        "-k",
+        "5s",
+        "60s",
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+        "c71_seed6_native_full_o0_proof_promotes_same_receipt_after_role_journals",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 101,
+      "wall_seconds": 0.016283819917589426,
+      "user_seconds": 0.012093999999999999,
+      "system_seconds": 0.0037099999999999998,
+      "max_rss_bytes": 13049856,
+      "passed": 0
+    }
+  ]
+}

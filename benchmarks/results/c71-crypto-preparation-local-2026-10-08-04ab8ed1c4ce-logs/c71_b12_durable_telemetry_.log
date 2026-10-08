@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::b12::replay::tests::c71_b12_durable_telemetry_exact_commitment_and_openings ... C71_PCS_TELEMETRY_COMPONENT {"credit":false,"durable_records":60,"leaf_hashes":512,"log_bytes":50131,"scope":"reduced 128-column commitment and duplicate openings; no H100 credit","source_visits":8000,"with_recording_seconds":0.012552179,"without_recording_seconds":0.010981464}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 502 filtered out; finished in 0.02s
+

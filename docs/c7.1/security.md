@@ -623,6 +623,10 @@ MAC originali; non ne segue un nuovo lemma Lean di raffinamento. Il
 JSONL privato durevole non abilita resume, importazione di ricevute o
 riuso di correlazioni; errori e timeout mantengono terminalità.
 
+La [parità locale del primo checkpoint](../../benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json)
+copre questi invarianti e un positivo Seed6/AES ridotto; le premesse
+aperte di composizione e raffinamento rimangono quelle dichiarate sopra.
+
 ### Riduzione dei temporanei e confine del claim
 
 Il budget congiunto e i rilasci non cambiano enunciato o distribuzione

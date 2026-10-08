@@ -22,6 +22,11 @@ autorizzazione. I controlli telemetria/XOF sono in
 [local-tests](local-tests.md#controlli-nativi-della-costruzione-corrente);
 la prima integrazione conserva la geometria W/A corrente.
 
+Il [primo checkpoint locale](../../benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json)
+ha telemetria/XOF integrati e parità ridotte positive. Il prossimo lavoro
+locale è W residente e la candidata a blocchi, poi A→PCS; il goal è ancora
+attivo e non autorizza riattivazione, nuovi pod o una campagna.
+
 Percorso principale: preparazione locale → autorizzazione della nuova
 campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle
 fasi ottimizzate → esperimento O=0/150/300 → conservazione e arresto.

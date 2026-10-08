@@ -1,0 +1,15 @@
+{
+  "command": [
+    "timeout",
+    "-k",
+    "5s",
+    "60s",
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-1b032d88c9000486",
+    "c71_temporary_budget_",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 0.002616428304463625,
+  "max_rss_bytes": 8957952
+}

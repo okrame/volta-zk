@@ -719,6 +719,14 @@ sequenziale. Sampler, dominio, ordine dei byte e separazione delle monete
 rimangono invariati; nessuna Clone pubblica. Buffer, file/serializzazione
 e metadata sono temporanei conteggiati, con overhead fisico nella riserva.
 
+Il [record pulito](../../benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json)
+conserva stream/cap, sali/root/aperture, due catene WHIR esatte, costo del
+log, guard del budget e prova Seed6 reale O=0 ridotta. Snapshot trattenuto
+144 B senza buffer; buffer sequenziale 4.096 B; picco allocato congiunto
+del positivo ridotto 116.430.690 B. I 60 record della fixture occupano
+50.131 B su disco, scritti senza storia in memoria. Le shape W/A iniziali
+restano 1.024/512 scan; nessuna allocazione D34/D35 è stata eseguita.
+
 ### Runner CUDA sperimentale e conto simultaneo
 
 La CLI seleziona soltanto `reference-cpu` oppure `experiment-cuda`; la

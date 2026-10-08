@@ -156,8 +156,15 @@ di eventuali modifiche; la calibrazione si ripete quando l'ammissione
 pertinente è invalidata. Le priorità sono telemetria durevole di sali,
 scansioni, FFT e Merkle, poi ottimizzazione del percorso PCS e delle
 ricostruzioni A sulla H100, con parità esatta e conto completo dei costi.
-Lo screen XOF locale mostra 5,45–5,86× con buffer di 4 KiB: è una misura
-di componente ARM, su tree non pulito, senza credito H100 o integrazione RNG.
+Il [checkpoint locale telemetria/XOF](../../benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json)
+integra il buffering da 4 KiB: 5,95× sul sampler Goldilocks ARM, parità
+di stream/seek/snapshot/cap e catene WHIR ridotte con transcript/MAC
+originali. La fixture PCS aggiunge 1,57 ms per 60 record durevoli.
+Il positivo Seed6/AES ridotto termina in 50,29 s, con picco congiunto
+contato 116.430.690 B e nessun rifiuto. Sono componenti locali, non
+prestazioni H100, prova canonica o picco fisico completo. La
+[decisione e i prossimi passi](../c7.1-history/crypto-preparation-2026-10-08.md)
+distinguono questo primo checkpoint dall'intero goal ancora attivo.
 
 Il goal dell'8 ottobre prepara **l'intero percorso crittografico H100**
 in locale: telemetria/XOF, commitment W residente, blocchi di colonne e

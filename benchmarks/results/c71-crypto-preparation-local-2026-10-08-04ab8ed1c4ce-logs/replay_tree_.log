@@ -1,0 +1,8 @@
+
+running 3 tests
+test c71_matrix::b12::replay_tree::tests::replay_tree_matches_native_root_rows_salts_and_pruned_frontier ... ok
+test c71_matrix::b12::replay_tree::tests::replay_tree_respects_mmcs_clone_fork ... ok
+test c71_matrix::b12::replay_tree::tests::replay_tree_uses_live_rng_cursor_and_rejects_bad_shapes ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 500 filtered out; finished in 0.01s
+

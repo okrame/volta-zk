@@ -198,6 +198,14 @@ valori, sali, padding, aperture duplicate e visite a 128 colonne, e misura
 il costo della registrazione. WHIR ridotto conserva transcript e MAC
 originali. Sono screen locali `credit:false`, senza credito H100.
 
+Il [checkpoint pulito](../../benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json)
+conserva 16 test Rust positivi inclusi guard budget e Seed6/AES ridotto,
+9 controlli documentali e audit delle 96 sorgenti del fork. Il rifiuto
+sandbox della socketpair precede il protocollo e resta nel proprio log;
+il retry con sola eccezione locale passa entro 60 s / 2 GiB. Il massimo
+RSS osservato nei filtri seriali è 134.553.600 B; per il retry AES resta
+disponibile il census congiunto, non un nuovo RSS/HBM completo.
+
 Eseguire un filtro alla volta:
 
 ```bash

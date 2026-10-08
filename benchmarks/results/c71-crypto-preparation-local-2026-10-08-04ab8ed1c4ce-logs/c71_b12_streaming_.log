@@ -1,0 +1,13 @@
+
+running 3 tests
+test c71_matrix::b12::streaming::tests::c71_b12_streaming_hash_matches_native_salts_roots_and_seek ... stream_hash columns=4 rows=16 work=HashWork { field_reads: 64, digest_word_writes: 64, salt_candidate_bytes: 512, hash_input_bytes: 1536, blake3_compressions: 32 } hasher_state=1920 rng_state=144
+stream_hash columns=7 rows=16 work=HashWork { field_reads: 112, digest_word_writes: 64, salt_candidate_bytes: 512, hash_input_bytes: 1920, blake3_compressions: 32 } hasher_state=1920 rng_state=144
+stream_hash columns=128 rows=16 work=HashWork { field_reads: 2048, digest_word_writes: 64, salt_candidate_bytes: 512, hash_input_bytes: 17408, blake3_compressions: 288 } hasher_state=1920 rng_state=144
+stream_hash columns=384 rows=16 work=HashWork { field_reads: 6144, digest_word_writes: 64, salt_candidate_bytes: 512, hash_input_bytes: 50176, blake3_compressions: 832 } hasher_state=1920 rng_state=144
+ok
+test c71_matrix::b12::streaming::tests::c71_b12_streaming_sampler_rejection_consumes_variable_offsets ... ok
+test c71_matrix::b12::streaming::tests::c71_b12_streaming_strided_cosets_match_native_root ... strided_hash height=128 cosets=8 prescan_bytes=4096 replay_bytes=4096 frontier_bytes=1536 offsets_bytes=256
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 500 filtered out; finished in 0.00s
+

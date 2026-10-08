@@ -1,0 +1,16 @@
+
+running 3 tests
+test c71_matrix::b12::tests::c71_b12_private_coins_buffered_component_benchmark ... C71_XOF_COMPONENT {"buffer_bytes":4096,"buffered_seconds":0.003101763,"credit":false,"samples_per_mode":262144,"scope":"local sequential Goldilocks sampler; not H100 or whole PCS","speedup":5.949088308810183,"unbuffered_seconds":0.018452662}
+ok
+test c71_matrix::b12::tests::c71_b12_private_coins_buffered_seek_snapshot_and_boundaries ... 
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_buffered_seek_snapshot_and_boundaries' (11) panicked at volta-pcs/src/c71_matrix/b12.rs:108:14:
+B12 private coin stream exhausted; burn the attempt
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+ok
+test c71_matrix::b12::tests::c71_b12_private_coins_replay_stream_and_fail_closed ... 
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_replay_stream_and_fail_closed' (12) panicked at volta-pcs/src/c71_matrix/b12.rs:108:14:
+B12 private coin stream exhausted; burn the attempt
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 500 filtered out; finished in 0.08s
+

@@ -97,6 +97,30 @@ impl PrivateRng {
         reader.set_position(offset); // reader.position() can be ahead of the logical cursor
         Ok(Self { reader, remaining: (1 << 40) - offset, buffer: None, cursor: 4096 })
     }
+
+    /// The same four StandardUniform Goldilocks samples, in candidate order.
+    /// A short XOF fill recomputes its 64-byte block; batch only candidates
+    /// still needed, without consuming a word beyond the fourth accepted salt.
+    fn salts4(&mut self) -> [Goldilocks; 4] {
+        use rand_010::Rng;
+        let mut salts = [Goldilocks::ZERO; 4];
+        let mut accepted = 0;
+        let mut bytes = [0; 32];
+        while accepted < salts.len() {
+            // Exhaust whole candidates first. With fewer than eight bytes
+            // left the ordinary read panics at the same cursor as random().
+            let count = (salts.len() - accepted).min((self.remaining / 8) as usize).max(1);
+            self.fill_bytes(&mut bytes[..8 * count]);
+            for word in bytes[..8 * count].chunks_exact(8) {
+                let candidate = u64::from_le_bytes(word.try_into().unwrap());
+                if candidate < Goldilocks::ORDER_U64 {
+                    salts[accepted] = Goldilocks::new(candidate);
+                    accepted += 1;
+                }
+            }
+        }
+        salts
+    }
 }
 
 impl rand_010::TryRng for PrivateRng {
@@ -468,6 +492,143 @@ mod tests {
                 assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| replay.next_u32())).is_err());
             }
         }
+    }
+
+    #[test]
+    fn c71_b12_private_coins_salts4_forced_rejection_and_exhaustion() {
+        use rand_010::{Rng, RngExt};
+        // Test-only tape in the sampler's existing buffer. The independent
+        // oracle remains the pinned StandardUniform implementation.
+        fn tape(words: &[u64], tail: u64) -> PrivateRng {
+            let mut rng = PrivateRng::from_seed([29; 32]);
+            let bytes = 8 * words.len();
+            rng.remaining = bytes as u64 + tail;
+            rng.reader.set_position((1 << 40) - tail);
+            rng.cursor = 4096 - bytes;
+            for (out, value) in rng.buffer.as_mut().unwrap()[rng.cursor..]
+                .chunks_exact_mut(8).zip(words)
+            {
+                out.copy_from_slice(&value.to_le_bytes());
+            }
+            rng
+        }
+        for rejected in [Goldilocks::ORDER_U64, Goldilocks::ORDER_U64 + 1, u64::MAX] {
+            for position in 0..4 {
+                let mut words = vec![0, 1, 2, Goldilocks::ORDER_U64 - 1, 71];
+                words.insert(position, rejected);
+                let (mut actual, mut expected) = (tape(&words, 0), tape(&words, 0));
+                let salts: [Goldilocks; 4] = std::array::from_fn(|_| expected.random());
+                assert_eq!(actual.salts4(), salts);
+                assert_eq!(actual.remaining, 8); // the fifth accepted word is untouched
+                assert_eq!(actual.position(), expected.position());
+                assert_eq!(actual.reader.position(), expected.reader.position());
+                assert_eq!(actual.next_u64(), 71);
+                assert_eq!(expected.next_u64(), 71);
+            }
+        }
+        let words = [Goldilocks::ORDER_U64, 0, u64::MAX, 1,
+            Goldilocks::ORDER_U64 + 1, 2, Goldilocks::ORDER_U64, 3];
+        let (mut actual, mut expected) = (tape(&words, 0), tape(&words, 0));
+        let salts: [Goldilocks; 4] = std::array::from_fn(|_| expected.random());
+        assert_eq!(actual.salts4(), salts);
+        assert_eq!(actual.position(), 1 << 40);
+        assert_eq!(actual.position(), expected.position());
+        // A shortened final batch consumes every available whole candidate,
+        // including rejections, before failing on the next eight-byte read.
+        for words in [&[][..], &[1][..], &[1, 2, 3][..], &words[..7]] {
+            for tail in 0..8 {
+                let (mut actual, mut expected) = (tape(words, tail), tape(words, tail));
+                assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| actual.salts4())).is_err());
+                assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    std::array::from_fn::<Goldilocks, 4, _>(|_| expected.random())
+                })).is_err());
+                assert_eq!(actual.remaining, tail);
+                assert_eq!(actual.position(), expected.position());
+                assert_eq!(actual.reader.position(), expected.reader.position());
+            }
+        }
+    }
+
+    #[test]
+    fn c71_b12_private_coins_salts4_seek_refill_and_stream_parity() {
+        use rand_010::{Rng, RngExt};
+        let original = PrivateRng::from_seed([41; 32]);
+        for offset in [0, 1, 7, 8, 24, 40, 56, 63, 64, 4088, 4095, 4096, 4097, (1 << 40) - 32] {
+            for buffered in [false, true] {
+                let mut actual = if buffered { PrivateRng::replay_at([41; 32], offset).unwrap() }
+                    else { original.snapshot_at(offset).unwrap() };
+                let mut expected = original.snapshot_at(offset).unwrap();
+                let groups = if offset == (1 << 40) - 32 { 1 } else { 160 };
+                for _ in 0..groups {
+                    let salts: [Goldilocks; 4] = std::array::from_fn(|_| expected.random());
+                    assert_eq!(actual.salts4(), salts);
+                    assert_eq!(actual.position(), expected.position());
+                    assert!(actual.reader.position() <= 1 << 40);
+                    if actual.remaining != 0 {
+                        // Seeking from a partially prefetched buffer still
+                        // resumes at the last consumed candidate byte.
+                        let mut snapshot = actual.snapshot_at(actual.position()).unwrap();
+                        let mut reference = expected.snapshot_at(expected.position()).unwrap();
+                        assert_eq!(snapshot.next_u64(), reference.next_u64());
+                    }
+                }
+                if actual.remaining == 0 {
+                    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| actual.salts4())).is_err());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn c71_b12_private_coins_salts4_component_benchmark() {
+        use rand_010::RngExt;
+        use std::{hint::black_box, time::Instant};
+        let original = PrivateRng::from_seed([73; 32]);
+        let leaves = 65_536usize;
+        let (rows, cosets, repetitions) = (2048usize, 4096usize, 3usize);
+        let offset = |i: usize| 32 * ((i % rows) * cosets + i / rows) as u64;
+        let mut candidate_bytes = 0;
+        for i in 0..leaves {
+            let mut actual = original.snapshot_at(offset(i)).unwrap();
+            let mut expected = original.snapshot_at(offset(i)).unwrap();
+            let salts: [Goldilocks; 4] = std::array::from_fn(|_| expected.random());
+            assert_eq!(actual.salts4(), salts);
+            assert_eq!(actual.position(), expected.position());
+            candidate_bytes += actual.position() - offset(i);
+        }
+        let mut schedules = Vec::new();
+        for strided in [false, true] {
+            let mut seconds = [Vec::new(), Vec::new()];
+            for repetition in 0..repetitions {
+                // Alternate the order; every mode uses this same binary,
+                // source stream and number of accepted salts.
+                for batched in [repetition % 2 == 0, repetition % 2 != 0] {
+                    let mut sequential = PrivateRng::from_seed([73; 32]);
+                    let start = Instant::now();
+                    for i in 0..leaves {
+                        let mut snapshot;
+                        let rng = if strided {
+                            snapshot = original.snapshot_at(offset(i)).unwrap();
+                            &mut snapshot
+                        } else { &mut sequential };
+                        let salts: [Goldilocks; 4] = if batched { rng.salts4() }
+                            else { std::array::from_fn(|_| rng.random()) };
+                        let _ = black_box(salts);
+                    }
+                    seconds[usize::from(batched)].push(start.elapsed().as_secs_f64());
+                }
+            }
+            schedules.push(serde_json::json!({"strided": strided,
+                "ordinary_seconds": seconds[0], "salts4_seconds": seconds[1]}));
+        }
+        println!("C71_XOF_SALTS4_COMPONENT {}", serde_json::json!({
+            "credit": false, "gpu_execution": false, "same_binary": true,
+            "leaf_pairs_checked": leaves, "accepted_salts_per_mode": 4 * leaves,
+            "parity_candidate_bytes": candidate_bytes, "repetitions": repetitions,
+            "strided_rows": rows, "strided_cosets": cosets, "stack_batch_bytes": 32,
+            "schedules": schedules,
+            "scope": "local sequential and strided sampler; not H100 or whole PCS"
+        }));
     }
 
     #[test]

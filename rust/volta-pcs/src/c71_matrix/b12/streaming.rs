@@ -39,6 +39,8 @@ fn leaves_in_place(
         if row % subtree == 0 {
             offsets[row / subtree] = salts.position();
         }
+        // The sequential reader already buffers 4 KiB. The local benchmark
+        // favors ordinary sampling here; salts4 is for strided snapshots.
         std::array::from_fn(|_| salts.random())
     })?;
     work.salt_candidate_bytes = salts.position() - first;
@@ -134,7 +136,7 @@ pub(super) fn strided_leaves_in_place(
         // Same private stream/root only. Clone the XOF state, never fork coins
         // or rehash the seed for every leaf. No heap allocation is needed.
         let mut salt = original_stream.snapshot_at(current[row]).expect("checked salt offset");
-        let result = std::array::from_fn(|_| salt.random());
+        let result = salt.salts4();
         candidates += salt.position() - current[row];
         current[row] = salt.position();
         result

@@ -9,6 +9,8 @@ I controlli locali usano input piccoli, un solo processo di test per volta,
 un worker Rayon e 60 s / 2 GiB per invocazione. La compilazione è mirata,
 con un solo job, nel target assoluto `rust/target`, senza incremental.
 Non eseguire il workspace completo, i pesi reali o i domini PCS D34/D35.
+Questi limiti sono locali; quelli CPU/CUDA RunPod sono nel
+[runbook](runpod-tests.md#autorizzazione-e-limiti).
 Un timeout è un esito negativo da conservare, non un permesso di estensione.
 Un filtro che esegue zero test non fornisce una verifica.
 
@@ -152,9 +154,9 @@ I test della calibrazione non leggono checkpoint reali. `calibrated:false`
 e `credit:false` restano corretti anche quando le fixture passano.
 Il parser della traccia completa la validazione strutturale e la modalità
 `trace` esegue il produttore indipendente; finché questo non passa sui pesi
-reali non ammette Γ. Il driver completo e i piani pubblici sono implementati e verificati su
-fixture ridotte; confronto sui pesi reali e Γ ammesso restano aperti nel
-[checkpoint H100](runpod-tests.md#stato-e-sequenza-operativa).
+reali non ammette Γ. Il confronto indipendente sui pesi reali e Γ ammesso sono acquisiti nel
+[checkpoint H100](runpod-tests.md#stato-e-sequenza-operativa); le fixture
+locali restano verifiche ridotte e non ereditano quel credito.
 I report GPU simulati dei test FFT non sono misure CUDA.
 
 L'audit del fork censisce 96 sorgenti e 26 delta revisionati, inclusi
@@ -346,19 +348,14 @@ I record di riferimento richiedono albero pulito e `git_dirty:false` e
 vanno in nuovi file `benchmarks/results/<milestone>-<date>-<gitsha>.json`.
 Non riscrivere risultati precedenti, neppure per correggerli.
 
-Le cronache di build, i conteggi dei checkpoint intermedi e i fallimenti
-sono nei [record originali](../../benchmarks/results/) e
-nell'[archivio](../c7.1-history/README.md). Il
-[checkpoint H100 del 4 ottobre](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json)
-è l'evidenza più recente: parità operatori/MAC e ingestione PASS,
-29 controlli numerici PASS, pilot reale terminato per timeout; nessun Γ
-ammesso o certificato canonico. Il fallimento CPU della fixture softcap/argmax
-sopra resta distinto dal FAIL iniziale CUDA corretto nella campagna H100.
+Lo [stato corrente](design.md#risultati-attuali-e-prossime-ottimizzazioni)
+registra Γ ammesso e diagnostica della prova incompleta al 7 ottobre.
+Le cronache, i fallimenti e i conteggi dei checkpoint restano nei
+[record originali](../../benchmarks/results/) e nell'[archivio](../c7.1-history/README.md).
+I fallimenti delle fixture rimangono distinti dalle successive correzioni.
 
 Questa pagina contiene comandi e significato dei test; l'archivio conserva
-gli esiti datati. La cache canonica `rust/target`, conservata durante il
-goal diagnostico del 4 ottobre, è stata rimossa alla sua conclusione.
-Per un nuovo goal usare lo stesso target per le build mirate necessarie,
+gli esiti datati. Usare la cache canonica `rust/target` per le build mirate,
 conservarlo fino alla conclusione e poi rimuoverlo preservando fixture ed
 evidenze, salvo istruzioni diverse del proprietario. Non creare target
 alternativi per singoli crate. `.cargo/config.toml` imposta
@@ -372,7 +369,7 @@ tempi per operatore, file privati 0600 e conservazione su timeout/errore.
 Senza binario locale compatibile, la selezione `-k 'not parallel and not native_pilot'`
 copre queste fixture; le due esclusioni restano da eseguire sul pod,
 senza attribuire loro credito locale.
-Nella prossima sessione, analisi del pilot e fixture ridotte restano locali
+Analisi del codice e fixture ridotte restano locali
 entro i limiti sopra; misure sui pesi reali, prove parallele e qualsiasi
 esecuzione CUDA si svolgono sul pod autorizzato. L'accelerazione richiede
 confronti col riferimento su dati fissati, errori e ordine causale, poi

@@ -520,8 +520,14 @@ Nessun bound 82,93/91,02 viene attribuito alla composizione Seed6 completa.
 
 Le credenziali provider, la durata della campagna e lo spegnimento sono
 esterni al protocollo; la procedura corrente è nel
-[runbook](runpod-tests.md#stato-e-sequenza-operativa). Il riuso di input o
-binari non autorizza riuso di correlazioni, journal o KV terminale.
+[runbook](runpod-tests.md#autorizzazione-e-limiti). Una campagna autorizzata
+comprende più trial indipendenti nel proprio ambito: ciascuno riparte da
+O=0 con nuove correlazioni e journal. Ciò non riprende un
+esperimento crittografico terminato. Il riuso di input o binari non
+autorizza riuso di correlazioni, journal o KV terminale.
+Le ottimizzazioni della schedule conservano distribuzioni, NoPeek,
+endpoint MAC originali e ordine del transcript; i numeri di scansioni
+dell'implementazione corrente non sono parametri di sicurezza.
 
 Il [prover CPU](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_prove.rs)
 e il [registro](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state.rs)

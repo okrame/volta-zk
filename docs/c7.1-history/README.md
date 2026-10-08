@@ -17,6 +17,12 @@ valgono soltanto per il checkpoint che descrivono.
 - [Catalogo dei test precedente](build-and-test.md): include esperimenti non selezionati.
   Per i test correnti usare [local-tests](../c7.1/local-tests.md).
 
+## Campagne recenti e decisioni operative
+
+- [Decisioni dell'8 ottobre 2026](operating-rules-2026-10-08.md): nuova autorità operativa, ritenzione e geometrie ottimizzabili.
+- [Ritenzione degli artefatti](artifact-retention-2026-10-08.md): inventario verificato e rimozioni autorizzate.
+- [Runbook alla chiusura del 7 ottobre](runpod-tests-2026-10-07.md) e [design dello stesso checkpoint](design-2026-10-07.md): cronache, stime e autorizzazioni storiche; non istruzioni per nuove campagne.
+
 ## Conservazione e mappa dei percorsi
 
 Origine della migrazione: commit `5b293bc9f9b976ba4b6fc9e6a612fdbaf42b6fdb`. I file qui archiviati mantengono

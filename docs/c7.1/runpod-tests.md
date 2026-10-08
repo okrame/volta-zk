@@ -5,200 +5,130 @@
 
 ## Stato e sequenza operativa
 
-Il runner locale `experiment-cuda` collega inferenza/replay dei 13 producer,
-owner comune, range residente, PCS/GKR CPU, verifica e promozione per
-O=0/150/300. Γ è ammesso per il workload pinned dal
-[record del 7 ottobre](../../benchmarks/results/c71-gamma-admission-2026-10-07-868a3e8.json).
-L'esperimento canonico richiede autorizzazione hardware valida. Nessun certificato canonico, tempo completo
-o rispetto dei target è acquisito. Gli audit delle revisioni precedenti
-restano nei record storici e non introducono gate concorrenti.
+Γ è **ammesso** per le identità pinned dal
+[record del 7 ottobre](../../benchmarks/results/c71-gamma-admission-2026-10-07-868a3e8.json):
+due replay interi identici, confronto indipendente completo, 450 token,
+3.471 sorgenti A per contesto e 120 sorgenti KV finali da 450 righe.
+La [diagnostica della prova](../../benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json)
+è **INCOMPLETA**, exit 124 dopo 2.461,09 s nel commitment W, prima delle
+risposte. Nessun certificato canonico o tempo completo della prova è acquisito.
+Il runner `experiment-cuda` è misto: inferenza/replay/range GPU, PCS/GKR
+non-range/Seed6/verifica CPU. Le [risorse misurate e le priorità](design.md#risultati-attuali-e-prossime-ottimizzazioni)
+sono riassunte nel design. La campagna precedente è chiusa e il pod è spento.
 
-**Campagna del 7 ottobre chiusa: [diagnostica INCOMPLETA](../../benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json), Γ PASS.**
-Il tentativo `experiment-cuda` termina con exit 124 dopo 2.461,09 s,
-senza report nativo completo, journal o certificati; l'indagine colloca
-il lavoro nel commitment iniziale W, prima di Seed6 e dell'inferenza.
-Il pod è verificato `EXITED`, `runtime:null` alle 16:37:26 UTC; guard
-cancellato dopo tale controllo. Report, indagine, screen XOF locale e
-istruzioni di ripresa sono in `artifact/c7.1-pod/campaign-20261007T163602Z/`.
-Il massimo campionato della campagna è 126.148.050.944 B RSS+HBM e
-290.287.030.272 B cgroup+HBM; il secondo include cache dei file.
-Margine sul massimo host del cgroup: 22.930.219.008 B; margine HBM
-campionato: 17.394.769.920 B. Picco completo e arena canonica non verificati.
+Percorso principale: preparazione locale → autorizzazione della nuova
+campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle
+fasi ottimizzate → esperimento O=0/150/300 → conservazione e arresto.
+La [calibrazione](#campagna-di-calibrazione) è un ramo condizionale,
+necessario quando l'ammissione pertinente viene invalidata. Le misure
+ridotte indipendenti possono precederla; la prova completa richiede Γ ammesso.
+Cronache, pod, deadline, proroghe e stime superate sono nel
+[runbook storico](../c7.1-history/runpod-tests-2026-10-07.md).
 
-Questo documento non autorizza campagne. L'istruzione corrente del proprietario
-fissa pod, fasi autorizzate, durata massima, responsabilità di spegnimento
-e destinazione degli artefatti; può includere calibrazione e prova nella stessa campagna.
-Il successo numerico non dimostra la prova né estende l'autorizzazione.
-Su un pod già noleggiato si verificano termine e possibilità di spegnimento,
-senza richiedere una nuova creazione o ripetere un'autorizzazione valida.
+## Autorizzazione e limiti
 
-**Controllo temporale.** Non è richiesto un preventivo economico, una tariffa
-oraria o una ricevuta di costo. Registrare il termine massimo autorizzato e
-chi spegne il pod; verificare l'accesso al comando/API di arresto e confermare
-lo stato finale dal provider. Un timeout del processo non spegne il pod.
-I flag `--stop-after`/`--terminate-after` rimossi da `runpodctl` restano
-inaffidabili: il [record storico](../../benchmarks/results/c71-runpod-deadline-audit-2026-10-03-5fba934b009f.json)
-conserva quel fallimento, senza imporre un nuovo gate economico.
+Regole permanenti approvate dal proprietario l'8 ottobre 2026;
+[motivazione e decisioni](../c7.1-history/operating-rules-2026-10-08.md).
+Questo documento non avvia una campagna a pagamento. L'istruzione corrente
+fissa hardware, ambito, durata propria della campagna e riserva di chiusura.
+L'agent registra deadline e responsabile dello spegnimento dall'avvio
+provider, verifica l'accesso all'arresto API e predispone un guard indipendente.
+Non spostare l'inizio al primo SSH. Non serve un preventivo economico.
+Su un pod già autorizzato verificare i limiti senza chiedere nuova conferma.
+Le durate storiche, incluse le sei ore, non sono default della nuova campagna.
 
-**Campagna precedente, conclusa il 4 ottobre 2026.** Pod `z3h2njpctmduix`, H100;
-inizio 17:07:53 UTC, termine autorizzato 23:07:53 UTC. L'arresto è stato
-gestito dall'agente e verificato alle 21:01:31 UTC. La vecchia deadline,
-il guard e la preautorizzazione dei trial sono evidenza storica e non
-vanno riutilizzati per avviare una nuova sessione.
+Una campagna autorizzata comprende correzioni, microbenchmark e nuovi trial
+entro gli stessi hardware, ambito e termine. Dopo un fallimento, chiudere
+il run, conservarne l'esito, risolverne i prerequisiti e usare file/journal
+nuovi, KV iniziale vuoto e correlazioni fresche. Non riprendere lo stato
+terminale. Ulteriore durata, altro hardware, diverso ambito o trust model
+richiedono una nuova decisione; nessuna conferma per ogni trial già coperto.
 
-**Conservazione.** La destinazione esterna autorizzata è
-`/home/okrame/projects/volta-zk/artifact/c7.1-pod/`, con **tetto complessivo
-10.000.000.000 B**. Conservare calibrazione verificata, ricette/tabelle,
-identità/hash, codice/ambiente, report, log e manifest; non copiarvi shard,
-packed o tracce grandi. Verificare eventuali pesi presenti sul pod e
-ricrearli se mancanti o incompatibili, confrontando le identità complete.
-La calibrazione completata resta
-riutilizzabile secondo i controlli sotto; una nuova H100 richiede comunque
-compatibilità, parità e nuove misure fisiche.
-
-**Esito precedente: [INCOMPLETO](../../benchmarks/results/c71-h100-diagnostic-checkpoint-2026-10-04-e3f08e939eef.json), `credit:false`.**
-Ambiente/build, parità sintetica CUDA e percorso ridotto sui MAC originali,
-ingestione reale e 29 controlli numerici sono PASS. Il pilot readonly-mmap
-con otto worker termina per timeout interno di 5.100 s (wall 5.153,79 s),
-senza candidata: Γ, tabelle/ricette certificate, confronto indipendente,
-due replay interi e O=0/150/300 non sono acquisiti. Tempi canonici e byte
-dei certificati restano nulli. Il massimo RSS+HBM campionato è
-62.255.046.656 B inclusa W; picco temporaneo completo e margine canonico
-non verificati. Digest dell'immagine effettiva e attribuzione di 29 campioni
-HBM non nulli restano aperti. Tutti i fallimenti sono conservati nei record
-collegati e nei dieci bundle verificati, 106.904.206 B alla chiusura,
-senza shard/packed. La ripresa è descritta in
-`artifact/c7.1-pod/campaign-20261004T170753Z/RESUME.md` dalla radice del repo.
-
-**Prossima sessione.** Una nuova istruzione di affidamento deve autorizzare
-hardware, download e fasi da eseguire. Γ già ammesso è riutilizzabile solo
-dopo i [controlli delle identità e dell'ambiente](#riuso-del-bundle);
-modifiche che lo invalidano richiedono nuova calibrazione prima della prova.
-Quando quell'istruzione è ricevuta, i trial previsti sono coperti senza
-una nuova conferma per ciascuno. Analizzare codice ed evidenze localmente
-prima della riattivazione; i limiti locali restano quelli di
-[local-tests](local-tests.md#limiti-e-ambiente).
-Registrare una nuova deadline di 6 ore dalla riattivazione, inclusi
-ambiente, verifiche e salvataggio, con almeno 30 minuti di riserva;
-l'agent gestisce l'arresto e ne verifica lo stato dal provider.
-Nessuna proroga, seconda macchina o modifica del trust model è implicita.
-Quando serve una nuova calibrazione, l'ordine è
-[accelerazione misurata](#accelerazione-dellinizializzatore),
-[cinque controlli di ammissione](#validazione-e-congelamento-del-profilo),
-poi [diagnostica O=0/150/300](#esperimento-della-prova) se il tempo residuo
-lo permette. Un prerequisito mancante lascia aperte le fasi dipendenti;
-conservare sempre esito e copertura anche in caso di FAIL/INCOMPLETO.
-
-**Affidamento del 7 ottobre 2026.** Il proprietario ha autorizzato la
-riattivazione del solo `z3h2njpctmduix`, download, accelerazione e trial
-del presente runbook, con sei ore dalla riattivazione e almeno 30 minuti
-di chiusura, arresto API a carico dell'agent e nessuna proroga. Codice ed
-evidenze pubblicabili vanno su un nuovo branch
-`runpod/z3h2njpctmduix/c71-calibration-<data>` via Git HTTPS. La preparazione
-locale precede la riattivazione; la nuova deadline va registrata all'avvio.
-Verificati localmente i dieci manifest storici e 304 file censiti:
-106.904.206 B totali, entro il tetto cumulativo di 10.000.000.000 B.
-
-Il proprietario ha poi attivato manualmente `wgteo4z5mndiof` e fornito
-il nuovo endpoint SSH: questo è il solo pod della campagna corrente.
-H100 `GPU-1bca9a1c-3fba-8ea6-75a2-c5e656c6a6cd`, stesso modello CPU
-Xeon 8480+, `/workspace` inizialmente vuoto su overlay. Il primo uptime
-provider implica avvio alle 11:05:46 UTC; si applica prudenzialmente
-11:04:46 UTC: fine trial 16:34:46, guard stop 16:59:46, termine massimo
-17:04:46 UTC del 7 ottobre. Il guard locale API era attivo; l'arresto finale
-è stato verificato come riportato sopra. Nessun credito numerico deriva dall'avvio.
-Durante la diagnostica l'owner ha autorizzato 15 minuti aggiuntivi, poi
-ulteriore tempo per indagare l'installazione. Si applica prudenzialmente
-una proroga complessiva di 30 minuti: stop computazionale massimo
-17:04:46, guard 17:29:46, termine 17:34:46 UTC. Il guard precedente è
-stato sostituito solo dopo la verifica di quello nuovo. Il timeout del
-singolo tentativo diagnostico resta però 2.458 s: l'indagine ha rilevato
-un costo di installazione molto maggiore del tempo residuo, senza una
-stima attendibile di completamento. La proroga non va consumata in attesa
-priva di nuova evidenza e non autorizza un'altra macchina.
-Il proprietario ha inoltre consentito la rimozione del solo cap AS per
-i processi CUDA: limiti fisici, pod unico e deadline restano invariati.
-Il cap CPU resta 64 GiB. I fallimenti CUDA sotto AS 2 GiB sono conservati;
-la parità sul pod è poi passata anche entro AS 64 GiB. I 2 GiB dei
-controlli locali non costituivano il cap della calibrazione RunPod.
-
-[c71_campaign_measure.py](../../scripts/c71_campaign_measure.py) riusa
-il monitor corretto del bundle storico con deadline e UUID obbligatori
-da `AUTHORIZED_END_EPOCH` e `CUDA_VISIBLE_DEVICES`, senza costanti di
-sessioni precedenti. Il self-check copre RSS e kill dei gruppi nella
-sessione; le misure campionate restano un limite inferiore del picco.
-[c71_download_weights.py](../../scripts/c71_download_weights.py) usa
-`SHARDS` come directory nuova e conserva l'hash completo degli shard pinned.
-Entrambi i programmi arrivano sul pod esclusivamente tramite Git HTTPS.
-
-| Passaggio | Stato e condizione di uscita |
+| Ambiente | Limite e controllo |
 |---|---|
-| Preparazione locale | 13 producer CUDA, scanner, registro e runner misto implementati; compilazione sm_90, schedule canonica e test numerici/protocollo ridotti. Nessun W reale o dominio D34/D35 eseguito localmente |
-| Calibrazione autorizzata | PASS sui pesi reali: due replay identici, confronto indipendente completo, 450 token e 120 sorgenti KV finali. Γ ammesso; nessun credito al benchmark della prova |
-| Primo esperimento della prova | Parità dei kernel reali, smoke fail-closed e tre tentativi O=0/150/300 sul runner misto; raccogliere tempi, memoria/trasferimenti e anche timeout/rifiuti |
-| Valutazione | Distinguere risultato misurato, obiettivi mancati e assunzioni aperte. Nessun risultato locale promette 65 s, 40 MB o picco fisico completo |
+| Controlli locali | 60 s / 2 GiB AS per invocazione, un worker; compilazione mirata secondo [local-tests](local-tests.md#limiti-e-ambiente) |
+| Processi CPU RunPod | AS 64 GiB; monitorare anche RSS aggregato, cgroup, swap e disco |
+| Processi CUDA RunPod | Nessun cap AS; monitoraggio e arresto al superamento dei limiti fisici, dell'arena o della deadline |
+| Prova canonica | Arena comune e margini del [contratto](design.md#contratto-delle-risorse), con conto simultaneo host/device |
+| Calibrazione offline | Limiti fisici della sezione [risorse](#risorse), distinti dall'arena della prova |
 
-Il checkpoint preliminare registra PASS, FAIL o INCOMPLETO per ciascuna
-fase richiesta, con copertura e limiti. Un bundle salvato non rende PASS
-una calibrazione fallita; una misura parziale non chiude il picco completo.
+L'assenza del cap virtuale CUDA non rimuove alcun limite fisico. Per wrapper
+CPU che generano figli CUDA impostare solo il soft cap CPU a 64 GiB, con
+hard AS illimitato: il wrapper rimuove il soft cap soltanto nel figlio CUDA.
+Il confronto indipendente resta CPU sotto 64 GiB. Controllare `ulimit -H -v`
+prima del lancio; se è già limitato, predisporre una nuova shell dal launcher
+corretto. Le eccezioni AS non richiedono una nuova approvazione per campagna.
 
-Il comando di riferimento rimane
-`c71_canonical_reference reference-cpu CANDIDATE TABLES PACKED NEW_JOURNAL_DIRECTORY PREPARATION_BYTES`.
-Il comando GPU e il monitor sono nella
-[procedura dell'esperimento](#esperimento-della-prova).
-Entrambi usano prompt pinned e journal nuovi, senza ripristino/sovrascrittura.
-`PREPARATION_BYTES` non è un limite globale. Non eseguirli sulla VM locale.
-Errore o timeout termina il singolo run; retry e nuovi journal richiedono
-autorizzazione della nuova sessione, sempre da O=0 e senza riuso delle
-correlazioni o di stato terminale. Non riavviare il run fallito; un nuovo
-trial ha file e journal nuovi. Nessuna proroga o fallback è inclusa.
+Monitorare l'albero processi, HBM, cgroup/swap e disco; i campioni non sono
+un picco completo. [c71_campaign_measure.py](../../scripts/c71_campaign_measure.py)
+richiede `AUTHORIZED_END_EPOCH` e UUID in `CUDA_VISIBLE_DEVICES`; il suo
+arresto deve raggiungere i gruppi figli. Il timeout di un processo non spegne
+il pod. Verificare lo stato finale dal provider entro la deadline, anche
+se il salvataggio è incompleto. I vecchi flag provider di deadline non
+sono un meccanismo affidabile di arresto.
 
-La [contabilità](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
-espone W host/device, arena e suoi payload, staging e fasi CPU residue.
-I contatori CUDA sono cumulativi sullo stesso owner e non si sommano.
-RSS/HWM riguarda i due ruoli nello stesso processo. Il report distingue
-inferenza con cattura dello stato dal resto della risposta e conserva
-`C71_RUN_METRICS` su errore gestito; timeout/kill richiedono log esterni.
-`complete_physical_peak:false` non nasconde lo scratch ancora CPU.
+Codice ed evidenze piccole pubblicabili sono **preautorizzati al push Git
+HTTPS su un branch dedicato** al task/campagna, senza conferme per commit.
+Revisionare il contenuto prima del push; niente segreti, pesi, A/KV o dump
+privati. Niente force-push o merge implicito. Questa autorizzazione alla
+pubblicazione non autorizza nuovo hardware o durata.
 
-Il diagnostico [c71_nonlinear_parity.cu](../../cuda/c71_nonlinear_parity.cu)
-confronta kernel reali con interi host: dense MMA su tre shape (ragged e
-K=21504), Affine/Gate, tutti i 65.535 entry lookup, istogrammi, entrambe
-le famiglie RoPE, argmax/tie, RMS/overflow e QK→RNE→EXP30→PV nei tre
-contesti con futuro KV avvelenato. QK/PV sono interi scalari, non MMA.
-Compilare localmente se il toolkit è disponibile, altrimenti sul pod;
-eseguire sulla H100 autorizzata e ripetere la parità alla nuova sessione:
+## Conservazione e pulizia degli artefatti
 
-```bash
-nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
-  cuda/c71_nonlinear_parity.cu cuda/c71_dense_i16.cu \
-  -o /tmp/c71_nonlinear_parity
-timeout -k 5s 60s /tmp/c71_nonlinear_parity
-```
+La destinazione persistente è `/home/okrame/projects/volta-zk/artifact/c7.1-pod/`,
+con tetto complessivo **10.000.000.000 B**, non per campagna. Prima di nuovi
+export inventariare i file e rimuovere copie obsolete/ridondanti non più
+necessarie. Conservare input per il riuso di Γ, ricette/tabelle, ricevute,
+report, manifest/hash, provenienza e testimonianze uniche dei fallimenti.
+Shard, packed e tracce grandi restano fuori dal bundle e da Git.
 
-Richiede compute capability 9; errore CUDA o differenza termina con exit
-nonzero. Conservare stdout/stderr, digest del binario, SHA e fingerprint.
-È parità sintetica `credit:false`, non un forward canonico o un benchmark.
-Il test seguente è ignorato nelle suite locali e usa **la libreria reale**,
-non il driver simulato: verifica gather residente→range/GKR→PCS sui MAC
-originali due volte nello stesso owner, poi range signed, contro transcript
-CPU ridotti. Impostare binario e `LIBRARY` a build verificate e compatibili
-con le sorgenti numeriche correnti, registrando la SHA di ciascuna build;
-le sole modifiche documentali non impongono ricompilazione. Eseguire:
+La pulizia è autorizzata per copie del codice già verificate in Git,
+binari intermedi superati e ricostruibili, cache e duplicati verificati.
+Un bundle vecchio può contenere materiale ancora necessario: controllare
+le dipendenze prima di cancellare. Per ogni rimozione registrare prima
+path, byte, hash, motivo e sostituto/provenienza in una nuova ricevuta di
+ritenzione; verificare il sostituto prima dell'unlink. Lasciare invariati
+manifest storici e record benchmark: il manifest resta la fotografia
+originale, la ricevuta distingue esplicitamente file ritirati da corruzioni.
+Il controllo di riuso deve verificare tutti i file necessari ancora presenti;
+un file necessario mancante blocca quel riuso finché ripristinato e verificato.
+Non cancellare evidenza unica o input di Γ soltanto perché datati.
+La [pulizia dell'8 ottobre](../c7.1-history/artifact-retention-2026-10-08.md)
+ha recuperato 88.395.165 B; la ricevuta è
+`retention-20261008T080649Z/`, necessaria per verificare i bundle storici.
 
-```bash
-C71_NATIVE_PARITY_LIBRARY="$LIBRARY" timeout -k 5s 60s "$C71_PCS_TEST_BINARY" \
-  c71_b12_windowed_native_hardware_parity_explicit --ignored --test-threads=1 --nocapture
-```
+## Riuso del bundle
 
-Non richiede pesi reali; la sua disponibilità non dichiara già passata
-la parità hardware. Il test locale equivalente usa lo stesso helper con
-driver host simulato e non viene contato come esecuzione GPU.
-Le procedure delle sezioni seguenti regolano soltanto campagne autorizzate.
-Prima di usare credenziali locali eseguire
-`scripts/runpod_harness.sh local-secret-preflight`. Un eventuale `.env`
-deve essere un file regolare posseduto dall'utente e avere permessi `0600`;
-il controllo non lo carica e non stampa nomi o valori.
+Per riusare il bundle in una nuova campagna, verificarne manifest, hash
+ed eventuali ricevute di ritenzione dalla destinazione persistente e confrontare modello/packed, workload,
+Γ, tabelle e ricette con le identità validate. Registrare il record di
+provenienza: si possono saltare le fasi numeriche già validate se codice
+e ambiente pertinenti sono invariati, oppure dopo una verifica documentata
+dell'impatto delle differenze. Un bundle parziale conserva solo il credito
+delle fasi completate. Trasferire solo ciò che
+serve: report/scale per controllare la rigenerazione e binari se compatibili
+con CPU/ISA, ABI CUDA, librerie e codice numerico pertinente. Altrimenti
+ricompilare; un binario riutilizzato mantiene la SHA originale di build.
+Hash e ricette non conservano da soli il packed. Sui nuovi file verificare
+nuovamente corpi shard e hash packed/esponenti; sullo stesso pod verificare
+i file esistenti prima di saltare download/ingest.
+Cambiare modello, byte W, workload, semantica, scale, tabelle o ricette
+invalida l'ammissione pertinente. Cambiamenti numerici o d'ambiente
+richiedono verifica documentata dell'impatto; sole note o percorsi dei
+file non cambiano gli input numerici.
+Sulla nuova H100 verificare ambiente e parità; picchi fisici e tempi
+richiedono nuove misure. Correlazioni monouso, journal e KV di sessione
+non sono cache da importare nella nuova esecuzione.
+
+Il punto di partenza corrente è `campaign-20261007T163602Z/RESUME.md`:
+`gamma-admission-20261007T155133Z/` contiene la ricevuta e il verificatore;
+`pilot-complete`, `integer-complete`, `integer-trace` e `ledger` del 7 ottobre
+contengono candidata, due replay, confronto indipendente e ricette.
+Le tabelle certificate restano in
+`integer-timeout-20261007T140500Z/tables-fp64-full.bin`: il nome storico
+del bundle non ne invalida l'uso documentato nella ricevuta Γ.
+Il RESUME storico descrive lo stato alla chiusura; per autorizzazioni,
+limiti e pulizia prevalgono le regole correnti sopra.
 
 ## Gestione del pod e del repository
 
@@ -210,12 +140,7 @@ ed endpoint dopo la riattivazione: UUID, IP e porta precedenti non sono
 garantiti. La [documentazione API](https://docs.runpod.io/sdks/graphql/manage-pods)
 descrive queste operazioni. Registrare l'istante di riattivazione e
 attivare il nuovo controllo di deadline, senza spostare l'inizio al primo SSH.
-Il messaggio storico `HARD STOP` nell'help del harness riguarda la creazione
-di pod a pagamento senza controllo della durata; non impone un gate
-economico aggiuntivo alla riattivazione esplicitamente autorizzata con
-deadline e arresto verificabile. Non sono impliciti proroghe o una seconda
-macchina. Prima di compilare o generare
-artefatti eseguire `scripts/runpod_harness.sh git-preflight`, oppure verificare
+Prima di compilare o generare artefatti sul pod eseguire `scripts/runpod_harness.sh git-preflight`, oppure verificare
 lettura/scrittura Git HTTPS dalla VM, pubblicare la SHA su un branch unico
 e verificare dal pod il checkout anonimo pulito di quella stessa SHA.
 Questa alternativa conserva le credenziali sulla VM e pubblica le evidenze
@@ -225,7 +150,7 @@ Sincronizzare repository ed evidenze piccole solo tramite Git HTTPS su
 `https://github.com/okrame/volta-zk.git`. Le sorgenti pubbliche si leggono
 anonimamente. Per pubblicare dal pod usare il Secret RunPod `VOLTA_GITHUB_TOKEN`,
 con scadenza e permesso Contents read/write limitato al repository.
-Non copiare credenziali dalla VM, non usare gh, Git SSH, SCP/rsync o
+Non copiare credenziali dalla VM al pod, non usare gh, Git SSH, SCP/rsync o
 archivi del repository per sincronizzare il codice. Si possono trasferire
 via SSH gli artefatti selezionati: report/scale e binari compatibili verso
 il pod, evidenze chiuse verso la destinazione persistente entro il tetto.
@@ -243,212 +168,216 @@ scripts/runpod_harness.sh delete POD_ID --confirm POD_ID
 ```
 
 `pause` arresta il pod e libera la GPU; il disco del container è effimero,
-mentre un volume persistente sopravvive allo stop. Nel checkpoint precedente
-`volumeInGb:0` e `/workspace` sul filesystem overlay non davano persistenza
-ai pesi. Verificare i mount effettivi; non dedurre persistenza dal solo nome
+mentre un volume persistente sopravvive allo stop. Verificare i mount effettivi; non dedurre persistenza dal solo nome
 `/workspace`. `delete` è distinto dall'arresto, distrugge i dati del volume
 locale e non è incluso nella sola autorizzazione di riattivazione/arresto.
 I tipi di storage sono descritti nelle
 [specifiche RunPod](https://docs.runpod.io/pods/storage/types).
-Pesi e grandi artefatti non vanno in Git. Pubblicare codice ed evidenze
-piccole solo se autorizzati, su un branch unico come
-`runpod/POD_ID/c71-calibration-DATE`, senza force-push.
+Pesi e grandi artefatti non vanno in Git. Pubblicare codice ed evidenze piccole revisionate su un branch dedicato
+come `runpod/POD_ID/c71-TASK-DATE` secondo la preautorizzazione sopra,
+senza force-push. Per preparazione locale è ammesso un branch dedicato al task.
+
+## Parità e misure rappresentative
+
+Il diagnostico [c71_nonlinear_parity.cu](../../cuda/c71_nonlinear_parity.cu)
+confronta kernel reali con interi host: dense MMA su tre shape (ragged e
+K=21504), Affine/Gate, tutti i 65.535 entry lookup, istogrammi, entrambe
+le famiglie RoPE, argmax/tie, RMS/overflow e QK→RNE→EXP30→PV nei tre
+contesti con futuro KV avvelenato. QK/PV sono interi scalari, non MMA.
+Compilare localmente se il toolkit è disponibile, altrimenti sul pod;
+eseguire sulla H100 autorizzata e ripetere la parità alla nuova sessione:
+
+```bash
+nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
+  cuda/c71_nonlinear_parity.cu cuda/c71_dense_i16.cu \
+  -o /tmp/c71_nonlinear_parity
+(test "$(ulimit -H -v)" = unlimited; ulimit -S -v unlimited;
+ timeout -k 5s 60s /tmp/c71_nonlinear_parity)
+```
+
+Richiede compute capability 9; errore CUDA o differenza termina con exit
+nonzero. Conservare stdout/stderr, digest del binario, SHA e fingerprint.
+È parità sintetica `credit:false`, non un forward canonico o un benchmark.
+Il test seguente è ignorato nelle suite locali e usa **la libreria reale**,
+non il driver simulato: verifica gather residente→range/GKR→PCS sui MAC
+originali due volte nello stesso owner, poi range signed, contro transcript
+CPU ridotti. Impostare binario e `LIBRARY` a build verificate e compatibili
+con le sorgenti numeriche correnti, registrando la SHA di ciascuna build;
+le sole modifiche documentali non impongono ricompilazione. Eseguire:
+
+```bash
+(test "$(ulimit -H -v)" = unlimited; ulimit -S -v unlimited;
+ C71_NATIVE_PARITY_LIBRARY="$LIBRARY" timeout -k 5s 60s "$C71_PCS_TEST_BINARY" \
+   c71_b12_windowed_native_hardware_parity_explicit --ignored --test-threads=1 --nocapture)
+```
+
+Non richiede pesi reali; la sua disponibilità non dichiara già passata
+la parità hardware. Il test locale equivalente usa lo stesso helper con
+driver host simulato e non viene contato come esecuzione GPU.
+Misurare sali, scansioni, accumuli, FFT, Merkle, aperture, GKR e Seed6
+separatamente, poi con gli stati simultaneamente vivi. La telemetria
+privata è fuori dal transcript; conservare contatori e log anche su timeout.
+I cambi di geometria sono ammessi con parità e conto completo secondo il
+[design](design.md#risultati-attuali-e-prossime-ottimizzazioni).
+Prima di usare credenziali eseguire `scripts/runpod_harness.sh local-secret-preflight`;
+un eventuale `.env` deve essere regolare, posseduto dall'utente e `0600`.
+
+## Esperimento della prova
+
+Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi
+`c71_matrix` e `c71_calibration` non lo sostituiscono. L'esperimento usa
+la pipeline mista dichiarata, senza presentare la PCS CPU come GPU.
+Usare le
+[build mirate](local-tests.md#compilazione-mirata) e la
+[build della libreria CUDA](local-tests.md#collegamento-del-runner-cuda).
+La campagna rispetta il budget comune descritto nelle
+[specifiche](specs.md#runner-cuda-sperimentale-e-conto-simultaneo). Il limite
+imposto alle allocazioni è 5.905.580.032 B; la riserva fisica dichiarata è
+256 MiB e il margine richiesto altri 256 MiB. Prima di concedere credito,
+misurare insieme host e device durante O=0/150/300: includere capacità
+libere trattenute, context/driver, stack kernel, staging e socket. Richiedere
+zero rifiuti di allocazione, completamento/verifica/promozione e overhead
+entro la riserva; un abort al tetto non è una prova che il caso canonico
+rientra. La parità CUDA, i tempi e il traffico completi restano verifiche
+fisiche. Il raggruppamento dei coset introduce accumulazioni aggiuntive:
+non riusare i vecchi upper temporali o dare credito al lavoro non crescente.
+
+Parità hardware, tempo H100 e picco fisico si verificano nella campagna
+autorizzata, con parità prima della prova completa; non sono gate locali. Il target di 65 s non è un gate preventivo per l'esperimento
+diagnostico: misurare e conservare anche il mancato target. Rimangono
+invariati NoPeek, MAC originali, margine arena 256 MiB, margine globale
+1 GiB e stop su esaurimento senza spill dinamico.
+
+Gli esperimenti GPU confrontano prima gli operatori con il diagnostico
+di parità sopra e il range con il riferimento host/nativo. FFT, resti/PQ
+e hash salato sono ancora CPU in questo runner; non rivendicare la loro
+accelerazione. Poi si misurano le fasi rappresentative con i
+loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
+il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,
+senza un percorso CPU sostitutivo. La produzione usa PCG reale/AES.
+
+Comando sul solo hardware autorizzato, dopo ammissione di Γ, build e
+parità, entro il budget residuo con la riserva di chiusura. Impostare
+`APPROVED_SHA`, `PROOF_SECONDS`, `CANDIDATE`, `TABLES`, `PACKED`, `LIBRARY`
+e `RUN` (directory nuova sotto `benchmarks/raw`). Il device logico è 0;
+fissare prima `CUDA_VISIBLE_DEVICES` all'UUID autorizzato,
+`AUTHORIZED_END_EPOCH` e `CLOSE_RESERVE_SECONDS` dalla campagna. I limiti di
+durata del processo non sostituiscono lo spegnimento entro il termine massimo.
+
+```bash
+set -euo pipefail
+set -C
+umask 077
+test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
+test -z "$(git status --porcelain --untracked-files=all)"
+test "$PROOF_SECONDS" -gt 0
+test "${CLOSE_RESERVE_SECONDS:?riserva concordata richiesta}" -gt 0
+test $(( $(date +%s) + PROOF_SECONDS )) -le \
+  $(( ${AUTHORIZED_END_EPOCH:?deadline richiesta} - CLOSE_RESERVE_SECONDS ))
+mkdir "$RUN"
+nvidia-smi -q > "$RUN/hardware.txt"
+nvcc --version > "$RUN/nvcc.txt"
+rustc -vV > "$RUN/rustc.txt"
+sha256sum "$LIBRARY" rust/target/debug/examples/c71_canonical_reference \
+  > "$RUN/executables.sha256"
+nvidia-smi --query-gpu=timestamp,uuid,memory.total,memory.used,memory.free,utilization.gpu \
+  --format=csv -l 1 > "$RUN/gpu.csv" 2> "$RUN/gpu-monitor.stderr" &
+MONITOR_PID=$!
+trap 'kill "$MONITOR_PID" 2>/dev/null || true; wait "$MONITOR_PID" 2>/dev/null || true' EXIT
+test "$(ulimit -H -v)" = unlimited
+ulimit -S -v unlimited
+set +e
+/usr/bin/time -v -o "$RUN/process-time.txt" \
+  timeout -k 5s "$PROOF_SECONDS" \
+  rust/target/debug/examples/c71_canonical_reference experiment-cuda \
+  "$CANDIDATE" "$TABLES" "$PACKED" "$RUN/journals" 2147483648 "$LIBRARY" 0 \
+  > "$RUN/runner.json" 2> "$RUN/runner.stderr"
+STATUS=$?
+set -e
+printf '%s\n' "$STATUS" > "$RUN/exit-code.txt"
+exit "$STATUS"
+```
+
+Il monitor nvidia-smi osserva il device intero, non attribuisce memoria a
+un ruolo; un monitor fallito invalida la misura HBM, non autorizza una
+stima nulla. `time -v` registra CPU-time/RSS del processo con entrambi i
+ruoli. Il timeout registra un fallimento anche se manca JSON finale.
+Al primo errore numerico, parity, verifica, OOM o timeout non proseguire
+il run fallito. La preautorizzazione dei trial successivi non permette
+prosecuzione/importazione dello stato terminale o riuso di correlazioni.
+Una conclusione positiva richiede `canonical_certificates_verified:3`,
+tre `accepted:true`, ledger/cleanup validi e stesso head dei journal.
+I report mantengono `credit:false` e le assunzioni aperte: non sono
+certificazione automatica di Γ o del target. Pubblicare un nuovo record
+`benchmarks/results/c71-cuda-experiment-DATE-GITSHA.json` con comandi,
+exit code, fingerprint, digest dei log e limiti; mai sovrascrivere evidenza.
+
+Il risultato completo richiede tre risposte valide del modello canonico,
+stesso W e storia KV, con tempi e byte completi del [contratto](design.md#contratto-delle-risorse).
+Registrare separatamente `T_inference`, `T_proof_only`, `T_response_total`,
+setup di sessione e caricamento globale, traffico nei due sensi, tutti i
+batch/replay, picchi allocati e riservati del prover e del verificatore.
+Non sottrarre il lavoro dipendente dalla risposta o attribuire overlap
+senza misura. Il limite inferiore dei byte delle continuazioni è già
+incompatibile con 40 MB per il codec corrente: riportare l'esito analitico
+ammesso, senza etichettarlo come successo misurato di quel requisito.
+
+Conservare nuovi record anche per timeout, errori numerici, esaurimento,
+fallimenti di verifica o risultati oltre i limiti. La SHA del codice
+eseguito deve essere pulita. L'istruzione del proprietario autorizza i trial
+della nuova sessione entro la sua deadline; i record storici non la sostituiscono.
+Aggiornare i cinque documenti correnti solo quando cambia un fatto,
+collegando la nuova evidenza senza sovrascrivere quella precedente.
 
 ## Campagna di calibrazione
 
-Ogni trial valuta una sola candidata Γ. Registrare SHA pulita,
-immagine/container con digest, hardware e limiti autorizzati. Una revisione
-delle scale richiede un nuovo trial da O=0 con tutti i controlli. I trial
-successivi dipendono dall'autorizzazione della nuova sessione, non dal
-record del 4 ottobre. Il completamento dei test non deroga al termine massimo.
-
-I programmi includono pilot NumPy/BLAS CPU o cuBLAS FP64 H100, replay
-intero Rust CPU o matrici CUDA esplicite e driver indipendente Python/C11.
-La disponibilità dei backend non costituisce una calibrazione completa.
-Il pilot supporta `--matrix-workers` (1–20, default 1): i blocchi da 128
-righe sono indipendenti, letture e contatori sono sincronizzati, gli
-output sono consumati nello stesso ordine e KV resta seriale e causale.
-Registrare il numero di worker, mantenere BLAS/OMP a un thread e misurare
-insieme i blocchi vivi: otto worker hanno payload W massimo dichiarato
-220.200.960 B, oltre al resto del pilot. La parità seriale/parallela va
-verificata sul pod prima del nuovo trial; non è accelerazione CUDA né
-ammissione di Γ. La scelta è motivata dal throughput del primo pilot
-seriale sui pesi reali, incompatibile con il suo timeout.
-Il packed regolare è ora mappato in sola lettura, senza una copia W
-dequantizzata completa; i buffer in memoria delle fixture restano streamed.
-Registrare la mappa W immutabile da 61.394.690.560 B separatamente da
-scratch e KV: RSS totale include le pagine W residenti e non è l'arena.
-Il limite AS CPU di 64 GiB e gli stop su RSS aggregato/swap restano invariati;
-la sola eccezione CUDA è quella esplicitamente concessa dall’owner.
-Un host CPU separato non è incluso nell'affidamento dello stesso pod.
-Inferenza BF16, TF32 o Transformers non sostituisce la relazione intera.
-
-Il tempo completo non è misurato. L'inizializzatore conta
-13.390.420.377.600 prodotti di matrice e 26.782.043.904.000 B di letture W
-logiche, che non sono traffico fisico o tempi H100. Alla deadline si
-conserva il fallimento e si termina, senza dichiarare Γ calibrato.
-L'ammissione di Γ richiede tutti i controlli della
-[validazione](#validazione-e-congelamento-del-profilo), incluso il confronto
-indipendente; tempo e risorse del confronto rientrano nella campagna.
+Seguire questo ramo solo quando Γ manca o l'ammissione pertinente viene
+invalidata secondo il [riuso](#riuso-del-bundle). I cinque controlli sotto
+sono già PASS per gli input pinned del 7 ottobre. Un nuovo trial valuta
+una sola candidata; modificare scale o semantica richiede nuovi controlli,
+partendo da O=0. Un altro host CPU non è implicito nell'hardware autorizzato.
 
 ### Accelerazione dell'inizializzatore
 
-Il prossimo trial risolve il timeout osservato, anziché ripetere il pilot
-invariato. Prima del run completo misurare tempi per operatore e token,
-conversioni W, lavoro completato, trasferimenti e memoria simultanea.
-Registrare backend, worker e librerie; confrontare configurazioni su input
-e lavoro identici. Un microbenchmark sintetico non è una previsione del
-tempo completo: esplicitare extrapolazioni e quota di lavoro non misurata.
-Per il pilot FP64 H100 compilare `cuda/c71_pilot_f64.cu` con `nvcc -O3
--std=c++17 -arch=sm_90 --shared -Xcompiler -fPIC --cudart static -lcublas`.
-Eseguire prima la fixture `test_cuda_pilot_fp64_causal_and_ragged_parity`
-con `C71_PILOT_CUDA_LIBRARY` esplicita, poi il prefisso reale con
-`--cuda-library ... --compare-cuda-matrices`, infine lo stesso prefisso
-senza confronto per il timing. Registrare digest, cuBLAS, scale/token e
-scarti FP64 privati; la parità numerica non va chiamata bitwise se differisce.
-Il report del 4 ottobre non conserva token/operatore raggiunti al timeout;
-quei dati non possono essere ricostruiti dai soli campioni RSS.
-Per confrontare prefissi identici usare il modo `profile --profile-tokens N`
-con gli stessi altri argomenti di `run`, in directory nuove. Il profilo
-finisce dopo aver assorbito N token; non produce candidata e non ammette Γ.
-
-Ottimizzare il costo dominante su CPU o H100, verificando il percorso
-modificato contro il riferimento numerico su input fissati: valori,
-scale risultanti, ordine causale e rifiuti. Conservare il riferimento
-necessario a questi confronti e l'indipendenza del driver intero.
-Non sostituire la relazione intera con inferenza BF16/TF32/Transformers.
-La parità del pilot non concede ammissione di Γ né credito alla prova.
-Prima del trial lungo documentare il miglioramento misurato e il piano
-di tempo per inizializzazione, tabelle, entrambi i replay, confronto
-indipendente, diagnostica e chiusura, entro la stessa deadline.
-
-La telemetria locale salva contesto, indice del token e operatore dello
-schedule pubblico, tempi e contatori anche su errore/timeout, in file
-nuovi con permessi privati; non salva W/A/KV o intermedi nei log pubblici.
-Non inviare avanzamento o ragioni private di arresto al verificatore e
-non aggiungere messaggi al transcript. I report pubblicati contengono
-solo la selezione revisionata secondo [security](security.md).
+Sono disponibili pilot NumPy/BLAS CPU e cuBLAS FP64 H100, replay intero
+Rust CPU/CUDA e confronto indipendente Python/C11. Per modificarli misurare
+prefissi identici (`profile --profile-tokens N`), valori, scale/token,
+causalità, rifiuti e risorse. La parità FP64 non va chiamata bitwise quando
+ci sono differenze; l'ammissione richiede replay e confronto interi esatti.
+Per build e fixture usare [specs](specs.md#calibrazione-prima-dellinstallazione)
+e [local-tests](local-tests.md#semantica-calibrazione-e-contabilità).
+`profile-matrix` e `profile-attention` sono screen; worker del pilot e del
+confronto indipendente vanno scelti con confronto esatto, memoria e tempi.
+BLAS/OMP/Rayon restano a un thread salvo il pool esplicito misurato.
+Conservare progressi privati anche su errore, senza valori W/A/KV nei log
+pubblici o nuovi messaggi al verificatore. La prova non usa BF16/TF32.
 
 ### Risorse
 
-| Risorsa | Richiesta proposta / controllo prima del download |
+| Risorsa | Controllo prima del download/run |
 |---|---|
-| Compute | 1 H100 SXM 80 GB, almeno 20 vCPU e 125 GB RAM host; verificare l'offerta effettiva |
-| Software | Linux x86_64, Python ≥3.11, NumPy, pytest, Rust/Cargo, C/C++ build tools, Git, GNU timeout/time; versioni e immagine registrate |
-| Disco | Verificare filesystem, mount e capacità effettivi; almeno 180 GB liberi prima di un download completo, spazio per shard/packed/traccia e ≥20 GB di riserva. La proposta storica 300 GB volume + 40 GB container non è un gate per il pod esistente |
-| Payload sul pod | Shard 62.546.338.248 B + packed 61.394.690.560 B = 123.941.028.808 B |
-| Temporanei | Download direttamente in `.partial`, rinomina senza seconda copia; packed e traccia pubblicati atomicamente; nessuna seconda copia BF16/dequantizzata completa |
-| Memoria | Ingest nativo richiede 3.355.443.200 B operativi; trial con payload nominato ≤8 GiB; limite AS per processo 64 GiB; osservare anche RSS aggregato/cgroup e cache OS |
-| Numerica | Pilot: blocco W i16+f64 ≤27.525.120 B, KV finale f64 1.622.016.000 B; replay KV finale i16 405.504.000 B, più A viva, tabelle, workspace e runtime |
-| Traccia privata | Riservare 44 GB per il primo replay: limite conservativo da A nei codec originali, KV finale e framing; il padding è compattato. Resta fuori da Git e rientra nei limiti di disco e tempo |
+| Compute | Singola H100 80 GB; per calibrazione almeno 20 vCPU e 125 GB RAM host, verificati sul pod autorizzato |
+| Software | Linux x86_64, Python ≥3.11, NumPy, pytest, Rust/Cargo, C/C++, CUDA, Git, timeout/time; registrare versioni e immagine effettiva |
+| Disco | Almeno 180 GB liberi prima del download completo e ≥20 GB di riserva; verificare mount e persistenza |
+| Pesi | Shard 62.546.338.248 B + packed 61.394.690.560 B; nessuna seconda copia dequantizzata completa |
+| Memoria offline | Ingest nativo 3.355.443.200 B operativi, payload nominato del trial ≤8 GiB; AS CPU/CUDA secondo le regole sopra |
+| Traccia privata | Riservare 44 GB quando serve un nuovo confronto completo; fuori da Git e dal bundle esterno |
 
-Questi limiti riguardano la calibrazione offline, non il budget dei
-temporanei della prova. I payload non sono un picco RSS completo. Stop per OOM, swap
-sostenuto, RSS aggregato >96 GiB o spazio libero <20 GB; non aumentare
-i budget per aggirare un fallimento. Il requisito legacy 256 GiB/400 GB
-del pack Python non si applica al `pack --native-packer`: non usare i
-subcomandi legacy `preflight`/`report` per ammettere questa macchina.
-Il pack nativo verifica già header, entrambi i corpi e output persistito.
-
-Il replay matriciale CUDA del primo trial del 7 ottobre termina per
-limite nativo di 1.080 s (wall 1.173,79 s, cap esterno 1.200 s): preservare il FAIL, senza ammissione Γ o riuso
-KV. La lettura intera per coefficiente dell'attenzione CPU resta costosa.
-Il percorso offline successivo usa righe KV i16 già validate, sommando
-QK/PV nello stesso ordine per output; non crea una nuova copia KV.
-`c71_calibration profile-attention` confronta esattamente le due geometrie,
-O=0/150/300 e query 0/149 col produttore originale, con rifiuti di query
-future/padding, marker KV e workspace. Eseguire prima del nuovo trial,
-sul pod entro 60 s/2 GiB. Lo screen è sintetico e non ammette Γ.
-Il wrapper conserva stderr nativo in un file esclusivo `OUTPUT.native.stderr`,
-consultabile durante il replay e conservato anche dopo il timeout.
+Stop per OOM, swap sostenuto, RSS aggregato >96 GiB, spazio libero <20 GB
+o deadline. Questi limiti della calibrazione non sostituiscono l'arena
+comune della prova. Contare W residente separatamente dai temporanei,
+misurando anche cgroup/cache OS e HBM. Il pack nativo verifica header,
+corpi shard e output persistito; i requisiti del pack Python legacy non
+si applicano a `pack --native-packer`.
 
 ### Budget delle fasi
 
-Piano del 7 ottobre, fissato prima del pilot completo: pilot FP64 15–20 min,
-tabelle/check/hash 5–10 min, due replay CUDA 10–20 min ciascuno, confronto
-indipendente 90–110 min, ledger/congelamento circa 5 min. Lo screen CUDA
-su W reale e input sintetico coincide esattamente coi due riferimenti CPU:
-0,00267 s per 115.605.504 prodotti, oltre a 113,49 s di caricamento W.
-Il solo costo matriciale extrapolato è circa 309 s per replay CUDA;
-operatori residui, cattura traccia, tabelle e I/O restano stime.
-Il confronto C11 extrapolato costa circa 90 min solo per le matrici.
-Queste stime non garantiscono il completamento: limite esterno pilot
-1.200 s, primo replay/confronto fino a 7.800 s, secondo replay fino a
-1.200 s, ridotti se necessario per lo stop computazionale 16:34:46 UTC.
-Tabelle separate fino a 600 s e ledger fino a 300 s. I timeout comprendono
-hash e preparazione; non si sommano oltre il tempo residuo. Eventuale
-O=0/150/300 solo dopo tutti i controlli Γ e con budget residuo esplicito;
-nessuna proroga della riserva finale di almeno 30 minuti.
-Dopo gli screen esatti a 1/2/4/8 worker si sceglie 8 per il driver C11:
-35,5 min estrapolati per le sole matrici, stima completa 50–75 min.
-Il replay nativo senza traccia viene eseguito per primo, per rilevare
-subito gli overflow; poi replay con traccia e confronto, timeout esterno
-fino a 6.600 s, sempre entro lo stop computazionale concordato.
-
-Esito misurato del 7 ottobre: replay senza traccia 1.434,71 s esterni;
-replay con traccia e confronto 3.324,18 s esterni, di cui 1.819,70 s del
-driver indipendente a 8 worker. Due replay identici e tutti e cinque i
-controlli Γ sono PASS. La traccia privata misura 40.827.296.903 B e resta
-sul pod; il bundle esterno conserva report, censimenti e digest. La
-diagnostica successiva usa una directory nuova, AES reale e il residuo
-fino allo stop computazionale, senza riuso di KV o correlazioni.
-
-
-Per stimare il costo del replay prima di disporre della candidata,
-`c71_calibration profile-matrix PACKED` misura una proiezione con K massimo
-su W reale e input i16 sintetico alternato agli estremi. Eseguire solo sul
-pod autorizzato, entro 60 s/2 GiB, con packed già verificato dall'ingest.
-Confronta kernel scalare e lettura/dot a blocchi del replay CPU, con tempi
-separati e uguaglianza esatta, e dichiara `credit:false`,
-`packed_hash_checked:false`, `complete_integer_trial:false`: non valida
-scale, tabelle, causalità o Γ. L'extrapolazione dei prodotti è una stima
-parziale; aggiungere tabelle, altri operatori, I/O traccia e driver indipendente.
-Lo [screen del driver indipendente](../../scripts/c71_profile_oracle_matrix.py)
-usa la stessa shape e il kernel indipendente C11, confrontabile col
-precedente BLAS con `--compare-reference`; richiede
-`NATIVE PACKED`, un solo thread BLAS e AS 64 GiB per il mapping readonly W.
-Non istanzia un'esecuzione indipendente completa e non genera frame. Lo screen
-accetta `--workers 1..20`: il kernel C11 usa OpenMP solo per righe
-indipendenti, con somme i64 immutate e riduzione OR dei marker. Prima di
-scegliere `trace --oracle-workers N`, misurare lo screen con confronto
-esatto e ripetere `tests/test_c71_calibration_oracle.py` sul pod con
-`C71_ORACLE_TEST_WORKERS=N`; i test locali restano a un worker.
-Registrare compilatore/runtime OpenMP, numero worker e memoria fisica.
-Il driver emette su stderr contesto, token completati, prodotti, frame e
-tempo trascorso; non emette valori intermedi privati.
-BLAS/OMP/Rayon restano a un thread; il solo dot C11 riceve esplicitamente N.
-
-`profile-matrix PACKED CUDA_LIBRARY` aggiunge il confronto esatto col
-kernel intero H100 e include caricamento/installazione W nei contatori.
-È uno screen GPU autorizzato, entro 300 s e limiti fisici consueti;
-l'eccezione AS concessa vale solo per i processi CUDA. Per un replay con
-`--matrix-library`, avviare il wrapper CPU con `ulimit -S -v 67108864`
-e hard limit AS illimitato: il wrapper rimuove il soft cap soltanto nel
-figlio CUDA, mentre il confronto indipendente resta sotto 64 GiB.
-
-Registrare il nuovo termine autorizzato in `AUTHORIZED_END_EPOCH`, entro
-6 ore dalla riattivazione. Non riusare epoch, UUID o guard della campagna
-precedente: riconfigurare copie nuove dei monitor e verificarne l'arresto.
-I timeout degli snippet sono massimi per fase, non una stima del tempo
-completo né un'autorizzazione a prolungare la campagna. Fissare `TRACE_STEP_SECONDS` e
-`NATIVE_TRACE_TIMEOUT_SECONDS` includendo il confronto indipendente,
-ancora non misurato sui pesi reali. Ogni fase deve rientrare nel tempo
-residuo, con almeno 30 minuti riservati a conservazione e chiusura.
-I timeout esterni coprono anche hash e generazione tabelle. Al primo
-errore si saltano le fasi dipendenti di quel trial e si conserva il fallimento;
-un trial successivo preautorizzato richiede nuovi file e prerequisiti risolti;
-la chiusura concordata non si rinvia per completare o salvare un run.
-
-Il prefisso del nuovo replay a righe KV misura circa 2,48 s/token. Il suo
-budget iniziale (960 s nativi / 1.200 s esterni) non coprirebbe 450 token
-più caricamento: l'agent interrompe il prefisso, ne conserva l'evidenza e
-riparte da KV vuoto. Il piano aggiornato assegna fino a 1.500 s esterni /
-1.350 s nativi al replay senza traccia, poi fino a 6.300 s esterni al replay
-con traccia e confronto (50–75 min stimati per il confronto C11 a 8 worker),
-più fino a 300 s per il ledger e 5 min per i controlli di ammissione.
-Ogni lancio è ridotto al residuo prima delle 16:34:46 UTC; la deadline
-complessiva e i budget fisici restano invariati. Diagnostica solo dopo
-ammissione e soltanto se rimane tempo sufficiente; nessuna proroga.
+Ripartire la durata autorizzata fra ambiente, eventuale download/ingest,
+pilot, tabelle, due replay, confronto indipendente, ledger, eventuale
+prova e chiusura. Misure precedenti e stime non sono timeout obbligatori.
+Ogni fase deve rientrare nel tempo residuo prima della riserva di chiusura;
+al primo errore saltare le fasi dipendenti e conservare il fallimento.
+Nuovi trial sono coperti dalle regole della campagna, senza riuso di stato.
 
 ### Identità degli input
 
@@ -461,16 +390,11 @@ valido; un 401/403 ferma la fase, senza accettare licenze o cambiare checkpoint.
 
 ### Comandi per un trial autorizzato
 
-Build mirata, download e ingestione nativa hanno evidenze PASS sui pesi
-reali; pilot completo, tabelle/replay e ammissione restano aperti.
-Gli snippet documentano il riferimento CPU; il pilot salva ora avanzamento
-privato e tempi per operatore e offre il backend FP64 H100 descritto sopra. Prima
-fissare `APPROVED_SHA`, `AUTHORIZED_END_EPOCH`, `TRACE_STEP_SECONDS` e
-`NATIVE_TRACE_TIMEOUT_SECONDS`. Usare il pod autorizzato e una delle
-alternative Git HTTPS della
-[procedura di gestione](#gestione-del-pod-e-del-repository). Il clone e i
-percorsi weights seguenti assumono un ambiente nuovo: con file esistenti
-applicare prima il riuso verificato, senza sovrascrivere checkout o run.
+Gli snippet sono esempi per la calibrazione condizionale; i timeout sono
+massimi da adattare alla finestra autorizzata. Il percorso principale di
+riuso salta le fasi già valide. Per un ambiente nuovo impostare `APPROVED_SHA`,
+`AUTHORIZED_END_EPOCH` e `CLOSE_RESERVE_SECONDS` dalla campagna corrente.
+Riutilizzare un checkout esistente soltanto dopo verifica, senza sovrascrivere.
 
 ```bash
 set -euo pipefail
@@ -485,7 +409,7 @@ export ROOT=$PWD
 export CAMPAIGN_LABEL=$(date -u +%Y%m%d-%H%M%S)
 export RUN=/workspace/c71-gamma-$CAMPAIGN_LABEL
 mkdir "$RUN"
-mkdir "$RUN/logs" "$RUN/weights"
+mkdir "$RUN/logs"
 export SHARDS="$RUN/weights"
 export PACKED="$SHARDS/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16"
 export CARGO_TARGET_DIR="$ROOT/rust/target" CARGO_INCREMENTAL=0
@@ -493,8 +417,10 @@ export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=2
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 RAYON_NUM_THREADS=1
 export PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$ROOT/scripts"
 test "${AUTHORIZED_END_EPOCH:?termine autorizzato richiesto}" -gt "$(date +%s)"
-export CAMPAIGN_END_EPOCH=$((AUTHORIZED_END_EPOCH - 1800))
-ulimit -v 67108864
+test "${CLOSE_RESERVE_SECONDS:?riserva di chiusura concordata richiesta}" -gt 0
+export CAMPAIGN_END_EPOCH=$((AUTHORIZED_END_EPOCH - CLOSE_RESERVE_SECONDS))
+test "$(ulimit -H -v)" = unlimited
+ulimit -S -v 67108864
 run_step() {
   local seconds=$1 label=$2 code
   shift 2
@@ -549,61 +475,20 @@ run_step 60 pilot-plan .venv/bin/python scripts/c71_activation_pilot.py plan --n
 (ulimit -v 2097152; run_step 60 ingest-checks .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_c7_d126_gemma_weight_ingest.py)
 ```
 
-La venv e le versioni dei pacchetti devono essere predisposte nella fase
-ambiente; i comandi assumono `.venv/bin/python` con NumPy e pytest già
-verificati. Non copiare la venv locale o credenziali al pod. Una build
-priva delle dipendenze native non autorizza un altro pod:
-fermare nella fase ambiente. I controlli piccoli mantengono 60 s / 2 GiB
-e un worker. Su questo host a 224 CPU visibili, il linker LLVM dei piccoli
-test Rust richiede anche affinità a un solo core (`taskset -c CPU`): senza
-questa, la creazione dei thread fallisce sotto il limite AS. Il trial
-fallito resta conservato; l'affinità non aumenta il budget; non sostituiscono i trial reali. Non eseguire workspace E2E.
+Le versioni sono esempi riproducibili della campagna precedente; registrare
+quelle effettive, senza upgrade impliciti. I piccoli controlli restano
+60 s / 2 GiB; se il linker vede molti core, limitarne l'affinità a un core
+per rispettare l'AS. Nessun workspace E2E sulla VM locale.
 
 ### Download e ingest
 
-Prima verificare file esistenti e input del bundle secondo il
-[riuso](#riuso-del-bundle). Download anonimo ove consentito; l'eventuale
-Secret è letto solo in memoria. Ogni tentativo usa file nuovi, senza
-ripresa automatica di partial; un nuovo trial preautorizzato non sovrascrive
-il fallimento precedente.
+Verificare prima i file esistenti. Con shard assenti usare una directory
+`SHARDS` nuova: lo script crea la directory, scrive `.partial`, verifica
+gli hash pinned e pubblica senza sovrascrivere. Un 401/403 ferma la fase;
+nessuna accettazione implicita di licenze o cambio di checkpoint.
 
 ```bash
-run_step 1800 download .venv/bin/python - <<'PY'
-import hashlib
-import os
-from pathlib import Path
-import urllib.parse
-import urllib.request
-from c7_d126_gemma_weight_ingest import MODEL, REVISION, SHARDS
-class SafeRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, request, response, code, message, headers, url):
-        redirected = super().redirect_request(request, response, code, message, headers, url)
-        if redirected and urllib.parse.urlsplit(request.full_url).netloc != urllib.parse.urlsplit(url).netloc:
-            redirected.remove_header('Authorization')
-        return redirected
-opener = urllib.request.build_opener(SafeRedirect())
-for name, spec in SHARDS.items():
-    target = Path(os.environ['SHARDS']) / name
-    partial = target.with_suffix(target.suffix + '.partial')
-    assert not target.exists() and not partial.exists()
-    request = urllib.request.Request(f'https://huggingface.co/{MODEL}/resolve/{REVISION}/{name}')
-    if os.environ.get('HF_TOKEN'):
-        request.add_header('Authorization', 'Bearer ' + os.environ['HF_TOKEN'])
-    digest = hashlib.sha256()
-    count = 0
-    with opener.open(request, timeout=60) as source, partial.open('xb') as sink:
-        while chunk := source.read(4 * 1024**2):
-            count += len(chunk)
-            assert count <= spec['bytes']
-            digest.update(chunk)
-            sink.write(chunk)
-        sink.flush()
-        os.fsync(sink.fileno())
-    assert count == spec['bytes'] and digest.hexdigest() == spec['lfs_sha256']
-    os.link(partial, target)
-    partial.unlink()
-    print(name, count, digest.hexdigest(), flush=True)
-PY
+run_step 1800 download .venv/bin/python scripts/c71_download_weights.py
 run_step 1800 ingest .venv/bin/python scripts/c7_d126_gemma_weight_ingest.py pack \
   --shard-dir "$SHARDS" --output "$PACKED" \
   --native-packer "$CARGO_TARGET_DIR/gemma31b_bf16_pack"
@@ -611,11 +496,8 @@ export INGEST="$RUN/logs/ingest.stdout"
 chmod a-w "$SHARDS"/*.safetensors "$PACKED"
 ```
 
-Successo: `PACKED_UNADMITTED`, `full_source_bodies_verified:true`, due
-hash completi esatti, 772 esponenti minimi RNE-fit, packed della lunghezza
-attesa e hash del file persistito. Il nome UNADMITTED è corretto: ingest
-non equivale a calibrazione o installazione crittografica. Preservare
-failure/partial senza ripararle in loco o cancellare l'evidenza.
+`PACKED_UNADMITTED` con corpi/hash verificati è l'esito corretto dell'ingest:
+non è ancora ammissione Γ. Conservare gli esiti dei tentativi interrotti.
 
 ### Pilot, tabelle e due replay interi
 
@@ -703,9 +585,9 @@ tabelle, entrambi i report interi, eventuali golden/audit, conto delle risorse,
 toolchain/image/SHA, termine e arresto verificato, comandi, stdout/stderr,
 exit, tempi e RSS. Il manifest nuovo elenca path relativi, byte e
 SHA-256 di ciascun file; hash anche del manifest, scrittura esclusiva e
-lettura di verifica. Le tabelle possono essere rigenerate dai digest e
+lettura di verifica. Conservare le tabelle utili al riuso o verificarne la rigenerazione dalle
 ricette; i dump privati restano sul pod e non entrano in Git o nel bundle
-esterno della campagna limitato a 10 GB.
+esterno, soggetto al tetto cumulativo di 10 GB e alla pulizia sopra.
 
 Preparare `EXPORT` come directory nuova contenente soltanto la selezione
 da conservare fuori dal pod: file chiusi, senza shard, packed o tracce
@@ -770,130 +652,3 @@ Dopo l'ammissione di Γ, portare profilo e conto delle risorse
 all'[esperimento della prova](#esperimento-della-prova) se già autorizzato
 e compatibile con il budget residuo. La calibrazione non misura prova/PCG
 e non emette certificati.
-
-### Riuso del bundle
-
-Per riusare il bundle in una nuova campagna, verificarne manifest e hash
-dalla destinazione persistente e confrontare modello/packed, workload,
-Γ, tabelle e ricette con le identità validate. Registrare il record di
-provenienza: si possono saltare le fasi numeriche già validate se codice
-e ambiente pertinenti sono invariati, oppure dopo una verifica documentata
-dell'impatto delle differenze. Un bundle parziale conserva solo il credito
-delle fasi completate. Il bundle del 4 ottobre conserva identità ed
-esponenti W, ma nessuna candidata o Γ ammesso. Trasferire solo ciò che
-serve: report/scale per controllare la rigenerazione e binari se compatibili
-con CPU/ISA, ABI CUDA, librerie e codice numerico pertinente. Altrimenti
-ricompilare; un binario riutilizzato mantiene la SHA originale di build.
-Hash e ricette non conservano da soli il packed. Sui nuovi file verificare
-nuovamente corpi shard e hash packed/esponenti; sullo stesso pod verificare
-i file esistenti prima di saltare download/ingest.
-Cambiare modello, byte W, workload, semantica, scale, tabelle o ricette
-invalida l'ammissione pertinente. Cambiamenti numerici o d'ambiente
-richiedono verifica documentata dell'impatto; sole note o percorsi dei
-file non cambiano gli input numerici.
-Sulla nuova H100 verificare ambiente e parità; picchi fisici e tempi
-richiedono nuove misure. Correlazioni monouso, journal e KV di sessione
-non sono cache da importare nella nuova esecuzione.
-
-## Esperimento della prova
-
-Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi
-`c71_matrix` e `c71_calibration` non lo sostituiscono. L'esperimento usa
-la pipeline mista dichiarata, senza presentare la PCS CPU come GPU.
-Il [checkpoint locale](../../benchmarks/results/c71-device-runner-local-2026-10-04-1ec6720bb494.json)
-conserva la SHA eseguibile e i digest. Usare le
-[build mirate](local-tests.md#compilazione-mirata) e la
-[build della libreria CUDA](local-tests.md#collegamento-del-runner-cuda).
-La campagna segue la riduzione locale del budget comune descritta nelle
-[specifiche](specs.md#runner-cuda-sperimentale-e-conto-simultaneo). Il limite
-imposto alle allocazioni è 5.905.580.032 B; la riserva fisica dichiarata è
-256 MiB e il margine richiesto altri 256 MiB. Prima di concedere credito,
-misurare insieme host e device durante O=0/150/300: includere capacità
-libere trattenute, context/driver, stack kernel, staging e socket. Richiedere
-zero rifiuti di allocazione, completamento/verifica/promozione e overhead
-entro la riserva; un abort al tetto non è una prova che il caso canonico
-rientra. La parità CUDA, i tempi e il traffico completi restano verifiche
-fisiche. Il raggruppamento dei coset introduce accumulazioni aggiuntive:
-non riusare i vecchi upper temporali o dare credito al lavoro non crescente.
-
-Per istruzione del proprietario, parità hardware, tempo H100 e picco fisico
-si verificano **nel primo esperimento**, non sono gate locali. Il vecchio
-gate di compatibilità preventiva con 65 s non blocca questo esperimento
-diagnostico: misurare e conservare anche il mancato target. Rimangono
-invariati NoPeek, MAC originali, margine arena 256 MiB, margine globale
-1 GiB e stop su esaurimento senza spill dinamico.
-
-Gli esperimenti GPU confrontano prima gli operatori con il diagnostico
-di parità sopra e il range con il riferimento host/nativo. FFT, resti/PQ
-e hash salato sono ancora CPU in questo runner; non rivendicare la loro
-accelerazione. Poi si misurano le fasi rappresentative con i
-loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
-il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,
-senza un percorso CPU sostitutivo. La produzione usa PCG reale/AES.
-
-Comando sul solo hardware autorizzato, dopo ammissione di Γ, build e
-parità, entro il budget residuo con la riserva di chiusura. Impostare
-`APPROVED_SHA`, `PROOF_SECONDS`, `CANDIDATE`, `TABLES`, `PACKED`, `LIBRARY`
-e `RUN` (directory nuova sotto `benchmarks/raw`). Il device logico è 0;
-fissare prima `CUDA_VISIBLE_DEVICES` all'UUID autorizzato. I limiti di
-durata del processo non sostituiscono lo spegnimento entro il termine massimo.
-
-```bash
-set -euo pipefail
-set -C
-umask 077
-test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
-test -z "$(git status --porcelain --untracked-files=all)"
-test "$PROOF_SECONDS" -gt 0
-mkdir "$RUN"
-nvidia-smi -q > "$RUN/hardware.txt"
-nvcc --version > "$RUN/nvcc.txt"
-rustc -vV > "$RUN/rustc.txt"
-sha256sum "$LIBRARY" rust/target/debug/examples/c71_canonical_reference \
-  > "$RUN/executables.sha256"
-nvidia-smi --query-gpu=timestamp,uuid,memory.total,memory.used,memory.free,utilization.gpu \
-  --format=csv -l 1 > "$RUN/gpu.csv" 2> "$RUN/gpu-monitor.stderr" &
-MONITOR_PID=$!
-trap 'kill "$MONITOR_PID" 2>/dev/null || true; wait "$MONITOR_PID" 2>/dev/null || true' EXIT
-set +e
-/usr/bin/time -v -o "$RUN/process-time.txt" \
-  timeout -k 5s "$PROOF_SECONDS" \
-  rust/target/debug/examples/c71_canonical_reference experiment-cuda \
-  "$CANDIDATE" "$TABLES" "$PACKED" "$RUN/journals" 2147483648 "$LIBRARY" 0 \
-  > "$RUN/runner.json" 2> "$RUN/runner.stderr"
-STATUS=$?
-set -e
-printf '%s\n' "$STATUS" > "$RUN/exit-code.txt"
-exit "$STATUS"
-```
-
-Il monitor nvidia-smi osserva il device intero, non attribuisce memoria a
-un ruolo; un monitor fallito invalida la misura HBM, non autorizza una
-stima nulla. `time -v` registra CPU-time/RSS del processo con entrambi i
-ruoli. Il timeout registra un fallimento anche se manca JSON finale.
-Al primo errore numerico, parity, verifica, OOM o timeout non proseguire
-il run fallito. La preautorizzazione dei trial successivi non permette
-prosecuzione/importazione dello stato terminale o riuso di correlazioni.
-Una conclusione positiva richiede `canonical_certificates_verified:3`,
-tre `accepted:true`, ledger/cleanup validi e stesso head dei journal.
-I report mantengono `credit:false` e le assunzioni aperte: non sono
-certificazione automatica di Γ o del target. Pubblicare un nuovo record
-`benchmarks/results/c71-cuda-experiment-DATE-GITSHA.json` con comandi,
-exit code, fingerprint, digest dei log e limiti; mai sovrascrivere evidenza.
-
-Il risultato completo richiede tre risposte valide del modello canonico,
-stesso W e storia KV, con tempi e byte completi del [contratto](design.md#contratto-delle-risorse).
-Registrare separatamente `T_inference`, `T_proof_only`, `T_response_total`,
-setup di sessione e caricamento globale, traffico nei due sensi, tutti i
-batch/replay, picchi allocati e riservati del prover e del verificatore.
-Non sottrarre il lavoro dipendente dalla risposta o attribuire overlap
-senza misura. Il limite inferiore dei byte delle continuazioni è già
-incompatibile con 40 MB per il codec corrente: riportare l'esito analitico
-ammesso, senza etichettarlo come successo misurato di quel requisito.
-
-Conservare nuovi record anche per timeout, errori numerici, esaurimento,
-fallimenti di verifica o risultati oltre i limiti. La SHA del codice
-eseguito deve essere pulita. L'istruzione del proprietario autorizza i trial
-della nuova sessione entro la sua deadline; i record storici non la sostituiscono.
-aggiornare i cinque documenti correnti solo quando cambia un fatto,
-collegando la nuova evidenza senza sovrascrivere quella precedente.

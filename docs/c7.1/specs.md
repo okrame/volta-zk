@@ -118,8 +118,11 @@ byte BF16 sottoposti a hash e pubblica il packed atomicamente.
 dequantizzata, DAG nativo e KV causale floating per proporre una sola
 mappa A sui tre contesti, con un bit di margine sugli estremi osservati.
 Questo calcolo approssimato inizializza le scale; non certifica Γ.
-Il percorso corrente è CPU/binary64; un backend accelerato è lavoro da
-verificare sul workload reale, non una calibrazione GPU già acquisita.
+Sono disponibili il riferimento CPU/binary64 e il backend cuBLAS FP64
+H100. Γ è ammesso per il workload pinned dal
+[record del 7 ottobre](../../benchmarks/results/c71-gamma-admission-2026-10-07-868a3e8.json).
+Si riusa dopo i controlli del [runbook](runpod-tests.md#riuso-del-bundle);
+questa procedura di calibrazione è necessaria quando Γ viene invalidato.
 Confrontare il percorso modificato col riferimento su input fissati,
 preservando aritmetica, copertura, ordine causale e rifiuto dei non-finiti.
 Registrare backend, configurazione e digest numerici pertinenti. Una
@@ -397,10 +400,12 @@ Gli stadi extension grandi hanno 12 colonne base: S1 usa coppie di coset
 2^23, S2 coppie 2^21, S3 e successori
 al più 2^23, sempre con taglio 2^12. Le altezze dei due profili nativi
 determinano lo stadio; i test le ricavano dalla configurazione WHIR.
-Geometrie grandi diverse, inclusi S3 a 2^24 e i coset A che causerebbero
-1.024 ricostruzioni, falliscono
-prima dell'allocazione o del consumo dei sali. Questo sostituisce il
-precedente rifiuto iniziale registrato nel
+Il codice corrente rifiuta prima di allocazioni/sali geometrie grandi
+diverse, inclusi S3 a 2^24 e i coset A che causerebbero 1.024 ricostruzioni.
+La schedule è modificabile secondo il [design](design.md#risultati-attuali-e-prossime-ottimizzazioni):
+prima di aggiornare i guard servono parità esatta e conto completo delle
+risorse; una geometria già esclusa richiede risolverne la causa.
+Il percorso corrente sostituisce il precedente rifiuto iniziale registrato nel
 [checkpoint della strumentazione](../../benchmarks/results/c71-runner-measurements-local-2026-10-03-187a0b9dc9ce.json).
 I sottoalberi delle query sono raggruppati fino a 1.024 righe nel riferimento
 piccolo e 2^20 in tutti gli oracoli canonici grandi;

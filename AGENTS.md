@@ -48,6 +48,17 @@ immutable. New runs use new files under
 clean tree and `git_dirty: false`. Preserve failures and provenance. Correct a
 record through a linked new record, never by overwriting the old result.
 
+The owner-approved [operating rules](docs/c7.1/runpod-tests.md#autorizzazione-e-limiti)
+set each paid campaign's own duration and cover fresh trials within its scope.
+CPU RunPod processes use AS 64 GiB; CUDA processes have no AS cap but retain
+physical/arena/deadline stops. Reviewed code and publishable evidence may be
+pushed over Git HTTPS to a dedicated branch without per-commit approval.
+This does not authorize new paid hardware, additional time, force-push or merge.
+The owner permits removal of obsolete/redundant private artifacts under
+`artifact/c7.1-pod`, following the [retention procedure](docs/c7.1/runpod-tests.md#conservazione-e-pulizia-degli-artefatti).
+Keep required Gamma inputs and unique evidence. Preserve original manifests;
+record retired files, hashes, reasons and replacement provenance in a new receipt.
+
 ## Scientific boundaries
 
 Distinguish targets, analytic screens, component checks and measured complete

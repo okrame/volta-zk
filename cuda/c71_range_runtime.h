@@ -113,6 +113,13 @@ int c71_pcs_ring_zero(C71RangeContext*,uint64_t output);
 // then the existing finite FFT on four columns. Only arithmetic flag D2H.
 int c71_pcs_weight(C71RangeContext*,uint64_t tiles,uint64_t pads,uint64_t low,uint64_t high,
     uint64_t twiddles,uint64_t ring,c71_pcs::WeightShape);
+// Explicit comparison hook, never the default. SAME admission, original W,
+// stream, finite FFT and terminal flag/publication guard as ordinary W.
+int c71_pcs_weight_tensor(C71RangeContext*,uint64_t tiles,uint64_t pads,uint64_t low,uint64_t high,
+    uint64_t twiddles,uint64_t ring,c71_pcs::WeightShape);
+// Diagnostic equality of distinct completed PCS base arrays, bit-for-bit and
+// canonical. Read-only inputs; only the terminal flag leaves the GPU.
+int c71_pcs_compare_words(C71RangeContext*,uint64_t left,uint64_t right);
 // One original reconstruction fills ALL 128 columns over four cosets. Two
 // 64-column buffers fit the existing per-allocation cap; neither is readable
 // while pending. Optional byte counts are fused into the first reconstruction.

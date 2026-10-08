@@ -21,6 +21,10 @@ __global__ void powers(uint64_t* low,uint64_t* high,c71_pcs::WeightShape s,uint6
         high[i]=c71_pcs::power(omega,uint64_t(s.first_coset+lane)*(i/32)*s.rows);
     }
 }
+__global__ void compare_words(const uint64_t* left,const uint64_t* right,uint64_t count,uint32_t* failed) {
+    const uint64_t i=uint64_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i<count && (left[i]>=P || right[i]>=P || left[i]!=right[i])) atomicOr(failed,1u);
+}
 __global__ void accumulate(const int16_t* weights,const c71_pcs::WeightTile* tiles,
     uint64_t tile_count,uint64_t live,const uint64_t* pads,const uint64_t* low,
     const uint64_t* high,uint64_t* ring,c71_pcs::WeightShape s,uint32_t* failed) {
@@ -51,6 +55,13 @@ __global__ void accumulate(const int16_t* weights,const c71_pcs::WeightTile* til
     ring[(s.slots+task/s.rows)*32*s.rows+uint64_t(lane)*s.rows+row]=
         fp_mul(result,low[uint64_t(lane)*s.rows+row]);
 }
+}
+extern "C" cudaError_t c71_pcs_compare_words_launch(cudaStream_t stream,const uint64_t* left,
+    const uint64_t* right,uint64_t count,uint32_t* failed) {
+    if(!stream || !left || !right || left==right || !failed || !count || count>(uint64_t{1}<<28))
+        return cudaErrorInvalidValue;
+    compare_words<<<unsigned((count+255)/256),256,0,stream>>>(left,right,count,failed);
+    return cudaGetLastError();
 }
 extern "C" cudaError_t c71_pcs_powers_launch(cudaStream_t stream,uint64_t* low,
     uint64_t* high,c71_pcs::WeightShape shape) {

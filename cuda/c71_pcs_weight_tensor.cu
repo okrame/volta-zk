@@ -110,7 +110,8 @@ __global__ void accumulate(const int16_t* weights,const c71_pcs::WeightTile* til
 
 // SAME pointer/shape contract as c71_pcs_weight_launch. A future comparison
 // hook must use the existing owner's borrowed handles/stream and sticky flag,
-// validate capacities/public tiles, then fence/check BEFORE FFT/hash. This
+// validate capacities/public tiles and fence/check BEFORE publishing to hash.
+// The owner's existing finite FFT and terminal flag guard remain shared. This
 // launcher alone is not a new owner and does not certify pointer provenance.
 extern "C" cudaError_t c71_pcs_weight_tensor_launch(cudaStream_t stream,const int16_t* weights,
     const c71_pcs::WeightTile* tiles,uint64_t tile_count,uint64_t live,const uint64_t* pads,

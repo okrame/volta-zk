@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include "c71_fft.cuh"
+#include "c71_pcs_weight_tensor.cuh"
 using namespace c71_range;
 struct FakeStream { std::vector<std::function<void()>> pending; };
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
@@ -20,6 +21,8 @@ static unsigned allocations=0, frees=0, launches=0;
 static std::vector<uint8_t> expected_bytes;
 static std::vector<int64_t> expected_raw;
 static std::vector<uint64_t> expected_pcs;
+static std::vector<uint64_t> recorded_pcs;
+static bool record_pcs=false;
 cudaError_t cudaSetDevice(int n) { return n==0?0:1; }
 cudaError_t cudaStreamCreateWithFlags(cudaStream_t* s,unsigned flags) {
     assert(flags==cudaStreamNonBlocking); *s=new FakeStream; return 0;
@@ -111,6 +114,39 @@ extern "C" int c71_pcs_weight_launch(cudaStream_t stream,const int16_t* weights,
         if(fail_dense) *failed=1;
     });
 }
+extern "C" int c71_pcs_weight_tensor_launch(cudaStream_t stream,const int16_t* weights,const c71_pcs::WeightTile* tiles,
+    uint64_t tile_count,uint64_t live,const uint64_t* pads,const uint64_t* low,const uint64_t* high,
+    uint64_t* ring,c71_pcs::WeightShape s,uint32_t* failed) {
+    // Deferred HOST digit arithmetic, not MMA/PTX, GPU timing or W traffic.
+    // Independent fragment/layout parity lives in pcs_weight_tensor_host.cpp.
+    return launch(stream,[=] {
+        for(unsigned column=0;column<4;++column) for(unsigned lane=0;lane<32;++lane) for(uint64_t row=0;row<s.rows;++row) {
+            int32_t original_sum=0; int64_t dots[4]{};
+            for(uint64_t q=0;q<s.message_rows/s.rows;++q) {
+                const uint64_t index=uint64_t(s.first_column+column)*s.message_rows+q*s.rows+row;
+                if(index>=live) break;
+                const int16_t value=weights[c71_pcs::packed_address(tiles,tile_count,index,live)];
+                if(value==INT16_MIN) { *failed=1; continue; }
+                original_sum+=value;
+                for(unsigned limb=0;limb<4;++limb) dots[limb]+=int64_t(value)*c71_pcs_tensor::digit(high[q*32+lane],limb);
+            }
+            c71_pcs::SignedWide sum;
+            for(unsigned limb=0;limb<4;++limb) if(!c71_pcs_tensor::add_dot(sum,dots[limb],original_sum,limb)) *failed=1;
+            uint64_t value=sum.residue();
+            for(uint64_t j=row;j<s.pad_rows;j+=s.rows) value=fp_add(value,
+                fp_mul(pads[uint64_t(s.first_column+column)*s.pad_rows+j],high[((s.message_rows+j)/s.rows)*32+lane]));
+            ring[(s.slots+column)*32*s.rows+lane*s.rows+row]=fp_mul(value,low[lane*s.rows+row]);
+        }
+        if(fail_dense) *failed=1;
+    });
+}
+extern "C" int c71_pcs_compare_words_launch(cudaStream_t stream,const uint64_t* left,const uint64_t* right,
+    uint64_t count,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(uint64_t i=0;i<count;++i) if(left[i]>=P || right[i]>=P || left[i]!=right[i]) *failed=1;
+        if(fail_dense) *failed=1;
+    });
+}
 extern "C" int c71_pcs_fft_launch(cudaStream_t stream,uint64_t* values,const uint64_t* twiddles,
     unsigned log_rows,unsigned batch,unsigned* attempted) {
     *attempted+=5;
@@ -121,6 +157,7 @@ extern "C" int c71_pcs_fft_launch(cudaStream_t stream,uint64_t* values,const uin
             c71_fft::five_pass_fft(current,side,twiddles[1]);
             std::copy(current.begin(),current.end(),values+b*rows);
         }
+        if(record_pcs) recorded_pcs.insert(recorded_pcs.end(),values,values+batch*rows);
         if(!expected_pcs.empty()) {
             assert(expected_pcs.size()>=batch*rows && expected_pcs.size()%(batch*rows)==0);
             assert(std::memcmp(values,expected_pcs.data(),batch*rows*8)==0);
@@ -460,6 +497,18 @@ extern "C" void c71_range_test_expect_raw(const int64_t* p,uint64_t n) {
 }
 extern "C" void c71_range_test_expect_pcs(const uint64_t* p,uint64_t n) {
     assert(n && expected_pcs.empty()); expected_pcs.assign(p,p+n);
+}
+extern "C" void c71_range_test_pcs_record(unsigned mode) {
+    if(mode==0) { assert(!record_pcs && recorded_pcs.empty() && expected_pcs.empty()); record_pcs=true; }
+    else if(mode==1) {
+        assert(record_pcs && !recorded_pcs.empty() && expected_pcs.empty());
+        record_pcs=false; expected_pcs.swap(recorded_pcs);
+    } else {
+        assert(mode==2 && !record_pcs && recorded_pcs.empty() && expected_pcs.empty());
+        // Release private fixture capacity before the next geometry; it is
+        // never a production PCS cache or part of the device arena.
+        std::vector<uint64_t>().swap(recorded_pcs); std::vector<uint64_t>().swap(expected_pcs);
+    }
 }
 extern "C" void c71_range_test_failure(unsigned kind) {
     fail_launch=kind==1; fail_fence=kind==2; fail_free=kind==3; corrupt=kind==4;

@@ -365,6 +365,8 @@ api! {
     pcs_twiddles: unsafe extern "C" fn(Raw,u64,u32)->i32 => "c71_pcs_twiddles",
     pcs_zero: unsafe extern "C" fn(Raw,u64)->i32 => "c71_pcs_ring_zero",
     pcs_weight: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,WeightShape)->i32 => "c71_pcs_weight",
+    pcs_weight_tensor: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,WeightShape)->i32 => "c71_pcs_weight_tensor",
+    pcs_compare_words: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_pcs_compare_words",
     pcs_source_powers: unsafe extern "C" fn(Raw,u64,u64,PcsSourceShape)->i32 => "c71_pcs_source_powers",
     pcs_source_begin: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,PcsSourceShape)->i32 => "c71_pcs_source_begin",
     pcs_source_tile: unsafe extern "C" fn(Raw,u64,*const PcsSourceTile)->i32 => "c71_pcs_source_tile",
@@ -567,6 +569,20 @@ impl Runtime {
         low: &Buffer, high: &Buffer, twiddles: &Buffer, ring: &Buffer, shape: WeightShape) -> Result<(), String> {
         for input in [tiles, pads, low, high, twiddles, ring] { self.require_buffer(input)?; }
         let status = unsafe { (self.api.pcs_weight)(self.raw, tiles.id, pads.id, low.id, high.id, twiddles.id, ring.id, shape) };
+        self.check(status)
+    }
+    /// Explicit comparison only; the runner keeps ordinary accumulation.
+    /// Same owner, source/powers, finite FFT and publication guard in C.
+    pub(in crate::c71_matrix) fn pcs_weight_columns_tensor(&mut self, tiles: &Buffer, pads: &Buffer,
+        low: &Buffer, high: &Buffer, twiddles: &Buffer, ring: &Buffer, shape: WeightShape) -> Result<(), String> {
+        for input in [tiles, pads, low, high, twiddles, ring] { self.require_buffer(input)?; }
+        let status = unsafe { (self.api.pcs_weight_tensor)(self.raw, tiles.id, pads.id, low.id, high.id, twiddles.id, ring.id, shape) };
+        self.check(status)
+    }
+    /// Diagnostic bitwise comparison; no source words are downloaded.
+    pub(in crate::c71_matrix) fn pcs_compare_words(&mut self, left: &Buffer, right: &Buffer) -> Result<(), String> {
+        self.require_buffer(left)?; self.require_buffer(right)?;
+        let status = unsafe { (self.api.pcs_compare_words)(self.raw, left.id, right.id) };
         self.check(status)
     }
     pub(in crate::c71_matrix) fn pcs_upload(
@@ -1890,6 +1906,209 @@ pub(in crate::c71_matrix) mod tests {
         runtime.close().unwrap();
     }
     #[test]
+    fn c71_b12_native_weight_tensor_owner_fft_hash_parity() {
+        let mut fixture = fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        let injection = Injection::new(&fixture.config);
+        for (n, rows, pad) in [(4usize, 4usize, 11usize), (64, 16, 17), (1024, 4, 1536)] {
+            let weights = Arc::new((0..96 * n).map(|i| match i % 7 {
+                0 => 0, 1 => 32767, 2 => -32767, 3 => 1, 4 => -1,
+                _ => ((i * 179 % 65535) as i32 - 32767) as i16,
+            }).collect::<Vec<_>>());
+            let _budget = census::Budget::new(&weights).unwrap();
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            runtime.install_weights(weights.clone(), [27; 32]).unwrap();
+            let tiles = runtime.pcs_weight_tiles(&weights, [27; 32], &[
+                WeightTile { first: 0, count: (64 * n) as u64, packed_first: 0, packed_stride: 96, columns: 64 },
+                WeightTile { first: (64 * n) as u64, count: (32 * n) as u64, packed_first: 64, packed_stride: 96, columns: 32 },
+            ]).unwrap();
+            let pads = runtime.pcs_words(128 * pad).unwrap();
+            let words: Vec<_> = (0..128 * pad).map(|i| if i % 4 == 0 { Goldilocks::ORDER_U64 - 1 }
+                else { (i * 1231 + 13) as u64 }).collect();
+            runtime.pcs_upload(&pads, 0, &words).unwrap();
+            let twiddles = runtime.pcs_fft_twiddles(rows.ilog2() as usize).unwrap();
+            let ring = runtime.pcs_ring(rows).unwrap();
+            let shape = WeightShape { message_rows: n as u64, rows: rows as u64,
+                pad_rows: pad as u32, cosets: 64, first_coset: 32, first_column: 0, slots: 0 };
+            let (low, high) = runtime.pcs_coset_powers(shape).unwrap();
+            let group_rows = 32 * rows;
+            let salts = runtime.pcs_words(4 * group_rows).unwrap();
+            let salt_words: Vec<_> = (0..4 * group_rows).map(|i| (i * 9871 + 71) as u64).collect();
+            runtime.pcs_upload(&salts, 0, &salt_words).unwrap();
+            let mut ordinary = Vec::new();
+            let mut ordinary_work = None;
+            let mut elapsed = [0.0; 2];
+            for tensor in [false, true] {
+                // The observer is PRIVATE TEST memory. It records ordinary
+                // post-FFT fields and compares the tensor submission in order;
+                // production has no such field download/cache. Existing Rust
+                // polynomial parity checks independently cover ordinary W.
+                injection.pcs_record(u32::from(tensor));
+                let before = runtime.stats().unwrap();
+                let started = std::time::Instant::now();
+                let fill = |runtime: &mut Runtime, column: usize, slots| {
+                    let shape = WeightShape { first_column: column as u32, slots, ..shape };
+                    if tensor { runtime.pcs_weight_columns_tensor(&tiles, &pads, &low, &high, &twiddles, &ring, shape) }
+                    else { runtime.pcs_weight_columns(&tiles, &pads, &low, &high, &twiddles, &ring, shape) }.unwrap();
+                };
+                fill(&mut runtime, 0, 0);
+                fill(&mut runtime, 4, 4);
+                let mut states = runtime.pcs_hash_start(&ring).unwrap();
+                for first in (4..=116).step_by(8) {
+                    fill(&mut runtime, first + 4, 0);
+                    runtime.pcs_hash_step(&ring, &states, first).unwrap();
+                    if first < 116 { fill(&mut runtime, first + 8, 4); }
+                }
+                fill(&mut runtime, 124, 0);
+                runtime.pcs_hash_finish(&ring, &salts, &mut states, 0).unwrap();
+                let after_hash = runtime.stats().unwrap();
+                assert_eq!(after_hash.d2h_bytes - before.d2h_bytes, 132); // flags only
+                let mut levels = vec![runtime.pcs_digests(&states, 0, group_rows).unwrap()];
+                let mut current = states;
+                while current.count > 1 {
+                    let stride = if current.count > rows { rows } else { 1 };
+                    let next = runtime.pcs_nodes_strided(&current, stride).unwrap();
+                    levels.push(runtime.pcs_digests(&next, 0, next.count).unwrap());
+                    runtime.release_buffer(current).unwrap(); current = next;
+                }
+                runtime.release_buffer(current).unwrap();
+                let after = runtime.stats().unwrap();
+                elapsed[usize::from(tensor)] = started.elapsed().as_secs_f64();
+                let work = (after.launches - before.launches, after.fences - before.fences,
+                    after.d2h_bytes - before.d2h_bytes, after.live_capacity_bytes,
+                    after.host_owner_bytes, after.peak_capacity_bytes);
+                assert_eq!(after.stopped, 0);
+                if tensor { assert_eq!(levels, ordinary); assert_eq!(Some(work), ordinary_work); injection.pcs_record(2); }
+                else { ordinary = levels; ordinary_work = Some(work); }
+            }
+            for buffer in [tiles, pads, twiddles, ring, low, high, salts] { runtime.release_buffer(buffer).unwrap(); }
+            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+            let stats = runtime.close().unwrap();
+            assert_eq!(stats.cleanup_failed, 0);
+            println!("C71_PCS_TENSOR_OWNER {}", serde_json::json!({"message_rows":n,"coset_rows":rows,
+                "pad_rows":pad,"cosets":32,"columns":128,"original_w_bytes":weights.len()*2,
+                "fixture_post_fft_observer_bytes":128*32*rows*8,"all_fft_values_equal":true,
+                "all_leaf_node_digests_equal":true,"ordinary_host_s":elapsed[0],"tensor_host_s":elapsed[1],
+                "native_capacity_peak_bytes":stats.peak_capacity_bytes,"host_owner_bytes":stats.host_owner_bytes,
+                "gpu_execution":false,"tensor_core_execution":false,"credit":false}));
+        }
+    }
+    #[test]
+    fn c71_b12_native_weight_tensor_owner_rejections_and_fail_closed() {
+        let fixture = fixture(512);
+        let injection = Injection::new(&fixture.config);
+        let weights = Arc::new(vec![2i16; 1024]);
+        let _budget = census::Budget::new(&weights).unwrap();
+        for fault in 0..12 {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            runtime.install_weights(weights.clone(), [17; 32]).unwrap();
+            let tiles = runtime.pcs_weight_tiles(&weights, [17; 32], &[
+                WeightTile { first: 0, count: 1024, packed_first: 0, packed_stride: 1, columns: 1 },
+            ]).unwrap();
+            let pads = runtime.pcs_words(1024).unwrap(); runtime.pcs_upload(&pads, 0, &[3; 1024]).unwrap();
+            let twiddles = runtime.pcs_fft_twiddles(2).unwrap();
+            let ring = runtime.pcs_ring(4).unwrap();
+            let mut shape = WeightShape { message_rows: 8, rows: 4, pad_rows: 8, cosets: 256,
+                first_coset: 0, first_column: 0, slots: 0 };
+            let (low, high) = runtime.pcs_coset_powers(shape).unwrap();
+            let result = match fault {
+                0 => {
+                    let mut other = Runtime::new(&fixture.config).unwrap(); let foreign = other.pcs_ring(4).unwrap();
+                    runtime.pcs_weight_columns_tensor(&tiles, &pads, &low, &high, &twiddles, &foreign, shape)
+                }
+                1 => {
+                    let wrong = runtime.upload_signed(&[3; 1024]).unwrap();
+                    runtime.pcs_weight_columns_tensor(&tiles, &wrong, &low, &high, &twiddles, &ring, shape)
+                }
+                2 => runtime.pcs_weight_columns_tensor(&tiles, &pads, &low, &low, &twiddles, &ring, shape),
+                3 => runtime.pcs_weight_columns_tensor(&tiles, &ring, &low, &high, &twiddles, &ring, shape),
+                4 => { shape.first_coset=32;
+                    runtime.pcs_weight_columns_tensor(&tiles, &pads, &low, &high, &twiddles, &ring, shape) }
+                5 => {
+                    let incomplete = runtime.pcs_words(1024).unwrap();
+                    runtime.pcs_weight_columns_tensor(&tiles, &pads, &low, &high, &twiddles, &incomplete, shape)
+                }
+                6 => {
+                    let incomplete = runtime.pcs_words(1024).unwrap();
+                    runtime.pcs_weight_columns_tensor(&tiles, &incomplete, &low, &high, &twiddles, &ring, shape)
+                }
+                7 => { shape.message_rows=2048;
+                    runtime.pcs_weight_columns_tensor(&tiles, &pads, &low, &high, &twiddles, &ring, shape) }
+                8..=10 => { injection.set([1,2,9][fault-8]);
+                    runtime.pcs_weight_columns_tensor(&tiles, &pads, &low, &high, &twiddles, &ring, shape) }
+                11 => {
+                    let retired = runtime.pcs_words(1).unwrap(); let id = retired.id; runtime.release_buffer(retired).unwrap();
+                    let stale = Buffer { id, kind:9, count:1, owner:runtime.owner.clone() };
+                    runtime.pcs_weight_columns_tensor(&tiles, &pads, &low, &high, &twiddles, &stale, shape)
+                }
+                _ => unreachable!(),
+            };
+            assert!(result.is_err(), "tensor fault {fault}");
+            let stopped = runtime.stats().unwrap(); assert_eq!(stopped.stopped, 1);
+            assert!(runtime.pcs_weight_columns(&tiles, &pads, &low, &high, &twiddles, &ring, shape).is_err());
+            assert_eq!(runtime.stats().unwrap().launches, stopped.launches);
+            injection.set(0);
+            let stats = runtime.close().unwrap(); assert_eq!(stats.live_capacity_bytes, 0); assert_eq!(stats.cleanup_failed, 0);
+        }
+        println!("C71_PCS_TENSOR_OWNER_REJECTIONS {{\"cases\":12,\"gpu_execution\":false,\"tensor_core_execution\":false,\"credit\":false}}");
+    }
+    #[test]
+    fn c71_b12_native_weight_tensor_symbol_is_mandatory() {
+        let legacy = fixture_library(512, Some("c71_pcs_weight_tensor"));
+        let error = Runtime::new(&legacy.config).err().unwrap();
+        assert!(error.contains("c71_pcs_weight_tensor"), "{error}");
+    }
+    #[test]
+    fn c71_b12_native_pcs_compare_words_exact_and_terminal() {
+        let fixture = fixture(128);
+        let injection = Injection::new(&fixture.config);
+        for fault in 0..11 {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let words = [0,1,Goldilocks::ORDER_U64-1,Goldilocks::ORDER_U64-2,256,1<<32,19,31];
+            let left = runtime.pcs_words(8).unwrap(); runtime.pcs_upload(&left,0,&words).unwrap();
+            let right = runtime.pcs_words(8).unwrap();
+            let mut rhs = words; if fault==1 { rhs[7]+=1; }
+            runtime.pcs_upload(&right,0,&rhs).unwrap();
+            let before = runtime.stats().unwrap();
+            let result = match fault {
+                0 | 1 => runtime.pcs_compare_words(&left,&right),
+                2 => runtime.pcs_compare_words(&left,&left),
+                3 => {
+                    let mut other=Runtime::new(&fixture.config).unwrap(); let foreign=other.pcs_words(8).unwrap();
+                    other.pcs_upload(&foreign,0,&words).unwrap(); runtime.pcs_compare_words(&left,&foreign)
+                }
+                4 => { let wrong=runtime.upload_signed(&[1;8]).unwrap(); runtime.pcs_compare_words(&left,&wrong) }
+                5 => { let incomplete=runtime.pcs_words(8).unwrap(); runtime.pcs_compare_words(&left,&incomplete) }
+                6 => {
+                    let short=runtime.pcs_words(7).unwrap(); runtime.pcs_upload(&short,0,&words[..7]).unwrap();
+                    runtime.pcs_compare_words(&left,&short)
+                }
+                7..=9 => { injection.set([1,2,9][fault-7]); runtime.pcs_compare_words(&left,&right) }
+                10 => runtime.pcs_upload(&right,0,&[Goldilocks::ORDER_U64]),
+                _ => unreachable!(),
+            };
+            let after=runtime.stats().unwrap();
+            if fault==0 {
+                result.unwrap(); assert_eq!(after.d2h_bytes-before.d2h_bytes,4);
+                assert_eq!(after.launches-before.launches,1); assert_eq!(after.live_capacity_bytes,before.live_capacity_bytes);
+                runtime.pcs_compare_words(&right,&left).unwrap(); // both arrays remained unchanged/full
+                runtime.release_buffer(left).unwrap(); runtime.release_buffer(right).unwrap();
+            } else {
+                assert!(result.is_err(),"comparison fault {fault}"); assert_eq!(after.stopped,1);
+                assert!(runtime.pcs_compare_words(&left,&right).is_err());
+                assert_eq!(runtime.stats().unwrap().launches,after.launches);
+            }
+            injection.set(0); let final_stats=runtime.close().unwrap();
+            assert_eq!(final_stats.arena_bytes,0); assert_eq!(final_stats.cleanup_failed,0);
+        }
+        println!("C71_PCS_COMPARE_WORDS {{\"positive\":1,\"terminal_rejections\":10,\"field_downloads\":0,\"gpu_execution\":false,\"credit\":false}}");
+    }
+    #[test]
+    fn c71_b12_native_pcs_compare_words_symbol_is_mandatory() {
+        let legacy=fixture_library(128,Some("c71_pcs_compare_words"));
+        let error=Runtime::new(&legacy.config).err().unwrap(); assert!(error.contains("c71_pcs_compare_words"),"{error}");
+    }
+    #[test]
     fn c71_b12_native_weight_rejections_and_fail_closed() {
         let fixture = fixture(512);
         let injection = Injection::new(&fixture.config);
@@ -2268,6 +2487,9 @@ pub(in crate::c71_matrix) mod tests {
         }
     }
     pub(in crate::c71_matrix) fn fixture(window_words: usize) -> Fixture {
+        fixture_library(window_words, None)
+    }
+    fn fixture_library(window_words: usize, missing_symbol: Option<&str>) -> Fixture {
         let nonce =
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
         let directory =
@@ -2276,9 +2498,10 @@ pub(in crate::c71_matrix) mod tests {
         let library = directory.join("range-host-fixture.so");
         let root =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
-        let result = std::process::Command::new("g++")
-            .current_dir(root)
-            .args([
+        let mut compiler = std::process::Command::new("g++");
+        compiler.current_dir(root);
+        if let Some(symbol)=missing_symbol { compiler.arg(format!("-D{symbol}={symbol}_unavailable")); }
+        let result = compiler.args([
                 "-std=c++17",
                 "-O2",
                 "-Wall",
@@ -2352,6 +2575,10 @@ pub(in crate::c71_matrix) mod tests {
             let call: unsafe extern "C" fn(*const u64, u64) =
                 unsafe { self.api.symbol(b"c71_range_test_expect_pcs\0") }.unwrap();
             unsafe { call(values.as_ptr(), values.len() as u64); }
+        }
+        fn pcs_record(&self, mode: u32) {
+            let call: unsafe extern "C" fn(u32) = unsafe { self.api.symbol(b"c71_range_test_pcs_record\0") }.unwrap();
+            unsafe { call(mode); }
         }
     }
 }

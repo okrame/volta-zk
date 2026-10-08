@@ -27,6 +27,9 @@ cudaError_t c71_pcs_merge_launch(cudaStream_t,c71_pcs::Hash32*,c71_pcs::Hash32*,
 cudaError_t c71_pcs_powers_launch(cudaStream_t,uint64_t*,uint64_t*,c71_pcs::WeightShape);
 cudaError_t c71_pcs_weight_launch(cudaStream_t,const int16_t*,const c71_pcs::WeightTile*,uint64_t,uint64_t,
     const uint64_t*,const uint64_t*,const uint64_t*,uint64_t*,c71_pcs::WeightShape,uint32_t*);
+cudaError_t c71_pcs_weight_tensor_launch(cudaStream_t,const int16_t*,const c71_pcs::WeightTile*,uint64_t,uint64_t,
+    const uint64_t*,const uint64_t*,const uint64_t*,uint64_t*,c71_pcs::WeightShape,uint32_t*);
+cudaError_t c71_pcs_compare_words_launch(cudaStream_t,const uint64_t*,const uint64_t*,uint64_t,uint32_t*);
 cudaError_t c71_pcs_fft_launch(cudaStream_t,uint64_t*,const uint64_t*,unsigned,unsigned,unsigned*);
 cudaError_t c71_pcs_twiddles_launch(cudaStream_t,uint64_t*,unsigned);
 cudaError_t c71_pcs_source_powers_launch(cudaStream_t,uint64_t*,uint64_t*,c71_pcs::SourceShape);
@@ -813,8 +816,9 @@ extern "C" int c71_pcs_ring_zero(C71RangeContext* c,uint64_t out) {
     if(checked(c,cudaMemsetAsync(ptr<void>(c,b),0,b->count*8,c->stream))) return -1;
     c->stats.zeroed_bytes+=b->count*8; b->initialized=b->count; return 0;
 }
-extern "C" int c71_pcs_weight(C71RangeContext* c,uint64_t tiles,uint64_t pads,uint64_t low,
-    uint64_t high,uint64_t twiddles,uint64_t ring,c71_pcs::WeightShape s) {
+namespace {
+int pcs_weight(C71RangeContext* c,uint64_t tiles,uint64_t pads,uint64_t low,
+    uint64_t high,uint64_t twiddles,uint64_t ring,c71_pcs::WeightShape s,bool tensor) {
     if(!ready(c)) return -1;
     auto* t=buffer(c,tiles); auto* p=buffer(c,pads); auto* a=buffer(c,low);
     auto* b=buffer(c,high); auto* w=buffer(c,twiddles); auto* out=buffer(c,ring);
@@ -826,7 +830,8 @@ extern "C" int c71_pcs_weight(C71RangeContext* c,uint64_t tiles,uint64_t pads,ui
        !full(w,C71_PCS_POWERS) || w->count!=s.rows || w->visits!=((uint64_t{1}<<63)|s.rows) ||
        !full(out,C71_PCS_BASE) || out->count!=8*32*s.rows) return fail(c,"PCS resident W inputs or geometry");
     uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
-    if(launched(c,c71_pcs_weight_launch(c->stream,c->weights,ptr<c71_pcs::WeightTile>(c,t),t->count,t->visits,
+    const auto accumulate=tensor?c71_pcs_weight_tensor_launch:c71_pcs_weight_launch;
+    if(launched(c,accumulate(c->stream,c->weights,ptr<c71_pcs::WeightTile>(c,t),t->count,t->visits,
         ptr<uint64_t>(c,p),ptr<uint64_t>(c,a),ptr<uint64_t>(c,b),ptr<uint64_t>(c,out),s,ptr<uint32_t>(c,buffer(c,flag))))) return -1;
     unsigned log_rows=0; while((uint64_t{1}<<log_rows)<s.rows) ++log_rows;
     unsigned attempted=0;
@@ -835,6 +840,25 @@ extern "C" int c71_pcs_weight(C71RangeContext* c,uint64_t tiles,uint64_t pads,ui
     c->stats.launches+=attempted;
     if(checked(c,error)) return -1;
     return dense_complete(c,flag,out);
+}
+}
+extern "C" int c71_pcs_weight(C71RangeContext* c,uint64_t tiles,uint64_t pads,uint64_t low,
+    uint64_t high,uint64_t twiddles,uint64_t ring,c71_pcs::WeightShape s) {
+    return pcs_weight(c,tiles,pads,low,high,twiddles,ring,s,false);
+}
+extern "C" int c71_pcs_weight_tensor(C71RangeContext* c,uint64_t tiles,uint64_t pads,uint64_t low,
+    uint64_t high,uint64_t twiddles,uint64_t ring,c71_pcs::WeightShape s) {
+    return pcs_weight(c,tiles,pads,low,high,twiddles,ring,s,true);
+}
+extern "C" int c71_pcs_compare_words(C71RangeContext* c,uint64_t left,uint64_t right) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,left); auto* b=buffer(c,right);
+    if(a==b || !full(a,C71_PCS_BASE) || !full(b,C71_PCS_BASE) || a->count!=b->count)
+        return fail(c,"PCS word comparison type, coverage, count or alias");
+    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    if(launched(c,c71_pcs_compare_words_launch(c->stream,ptr<uint64_t>(c,a),ptr<uint64_t>(c,b),a->count,
+        ptr<uint32_t>(c,buffer(c,flag))))) return -1;
+    return dense_complete(c,flag,a); // a is already full; its words stay read-only
 }
 
 extern "C" int c71_pcs_source_powers(C71RangeContext* c,uint64_t low,uint64_t high,c71_pcs::SourceShape s) {

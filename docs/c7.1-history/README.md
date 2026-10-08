@@ -20,6 +20,7 @@ valgono soltanto per il checkpoint che descrivono.
 ## Campagne recenti e decisioni operative
 
 - [Consumer PCS A residente dell'8 ottobre](crypto-a-source-2026-10-08.md): codec, quattro coset, FFT/hash, risorse e limiti del componente locale.
+- [Evidenze del consumer A](crypto-a-source-evidence-2026-10-08.md): record pulito e regressioni dell'owner/Tree W, senza integrazione A o campagna.
 - [Decisioni dell'8 ottobre 2026](operating-rules-2026-10-08.md): nuova autorità operativa, ritenzione e geometrie ottimizzabili.
 - [Ritenzione degli artefatti](artifact-retention-2026-10-08.md): inventario verificato e rimozioni autorizzate.
 - [Runbook alla chiusura del 7 ottobre](runpod-tests-2026-10-07.md) e [design dello stesso checkpoint](design-2026-10-07.md): cronache, stime e autorizzazioni storiche; non istruzioni per nuove campagne.

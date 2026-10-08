@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_canonical_resident_byte",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 14.361705300863832,
+  "max_rss_bytes": 217423872,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 14.184059,
+  "system_s": 0.17343599999999998,
+  "log": "/tmp/c71-a-source-clean-byte-gather-20261008-01.log"
+}

@@ -691,6 +691,9 @@ Parità su tre geometrie e 28 rifiuti con driver simulato non sono una prova
 dei CAS o del scheduling CUDA, né una PCS A integrata o un nuovo lemma
 Lean. Rimangono tutte le premesse di determinismo/immutabilità, B12 e
 Seed6 già dichiarate; PCG AES, correlazioni monouso e NoPeek sono invariati.
+Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
+conserva codec/campi/digest, errori terminali e regressioni W, senza credito
+di composizione del Tree A o di esecuzione CUDA.
 
 Il contatore comprende entrambi i ruoli e le capacità mantenute, compreso
 old+new durante realloc. Il rifiuto di allocazione o una free/fence CUDA

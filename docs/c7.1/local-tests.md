@@ -196,6 +196,12 @@ Merkle strided sono esatti. Per regressioni del refactoring byte eseguire
 `c71_b12_native_weight_tree` e il conto W aggiornato. I tempi Rust O0/C++
 O2 non giustificano uno speedup. Il Tree/runner A non seleziona ancora
 queste primitive; parità CUDA e conto simultaneo completo restano aperti.
+Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
+conserva 13 test Rust/undici Python, 62 artefatti e due errori preliminari;
+RSS massimo test/compilatori discendenti 247.549.952 B, build completa
+preliminare 2.482.995.200 B separata. Il check Cargo pulito riusa lo stesso
+binario, con provenance e digest dichiarati. Ogni test è entro 60 s/2 GiB,
+un worker e processi seriali. Nessun test ignored è contato come pass.
 Il [record pulito del componente](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
 ha sette selezioni Rust e venti controlli Python positivi, tra cui
 regressioni FFT/resti/potenze Fp3, mapping e replay originali. I 77

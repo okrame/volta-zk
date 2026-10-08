@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_native_source_four_cosets_fft_hash_original_bytes",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 5.004578975960612,
+  "max_rss_bytes": 217378816,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 4.906629,
+  "system_s": 0.09647,
+  "log": "/tmp/c71-a-source-component-20261008-01.log"
+}

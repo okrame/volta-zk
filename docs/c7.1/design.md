@@ -237,6 +237,10 @@ negativi distinti, incluso il replay non cached oltre deadline. RSS massimo
 test/descendenti 206.602.240 B; compiler 2.464.067.584 B separato.
 Root/transcript locali non concedono tempi, picco fisico o parità H100.
 Il [componente A residente](../c7.1-history/crypto-a-source-2026-10-08.md)
+ha un [record pulito](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
+con 13 test Rust e undici Python positivi, 62 artefatti e due errori di
+fixture conservati; massimo RSS test/descendenti 247.549.952 B.
+Il componente
 prepara il consumer PCS degli originali numerici: descrittori senza finestre
 range, accumuli di byte biased su quattro coset e tutte le 128 colonne,
 pad/FFT finiti e foglie/Merkle con le primitive W. L'istogramma byte è

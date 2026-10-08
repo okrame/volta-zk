@@ -72,6 +72,9 @@ L'owner host cresce di 88 B; lo screen candidato A lascia 326.710.016 B
 per gli altri owner host, prima della verifica del budget simultaneo
 integrato e del picco fisico. Nessun credito H100 o autorizzazione di
 hardware/durata segue da questi controlli.
+Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
+e il [receipt](../c7.1-history/crypto-a-source-evidence-2026-10-08.md)
+conservano provenienza, regressioni W e limiti del componente.
 
 Percorso principale: preparazione locale → autorizzazione della nuova
 campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle

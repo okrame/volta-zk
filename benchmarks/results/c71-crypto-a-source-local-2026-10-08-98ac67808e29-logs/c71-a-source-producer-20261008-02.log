@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::gemma::native::canonical::resident::device::tests::c71_canonical_device_replay_original_rows_windows_and_failure ... C71_PCS_SOURCE_STREAM {"credit":false,"d2h_flag_bytes":8,"gpu_execution":false,"launches":2,"native_peak_capacity_bytes":33631232,"original_bytes":6451200,"original_rows_downloaded":0,"reconstructions":1,"source_h2d_bytes":0,"tiles":36}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 514 filtered out; finished in 7.00s
+

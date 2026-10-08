@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::b12::replay::tests::c71_b12_native_weight_geometry_and_resource_envelope ... C71_NATIVE_W_RESOURCE_ENVELOPE {"component_plus_device_replay_upper_bytes":4611875360,"credit":false,"cut":4096,"device_component_bytes":3736793344,"device_parts":{"cv":1073741824,"frontier":234881024,"high_powers":65792,"low_powers":268435456,"pads":1572864,"ring":2147483648,"salt_band":2097152,"tiles":126464,"twiddles":8388608,"weight_and_hash_flags":512},"geometry_only":true,"gpu_execution":false,"groups":128,"named_host_payload_bytes":89292320,"remaining_payload_for_other_host_owners_bytes":1293704672,"rows":1048576,"scope":"geometry screen before other host owners; their actual capacities are charged by the joint counter"}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 517 filtered out; finished in 0.00s
+

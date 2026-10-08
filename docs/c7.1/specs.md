@@ -822,6 +822,11 @@ device 785.789.696 B e host nominati 49.846.528 B, l'envelope conservativo
 storici; il budget addebita tutte le capacità effettive. Il componente
 non è ancora collegato al Tree/runner A, che mantiene la PCS CPU.
 I tempi della fixture Rust O0/C++ O2 non sono un confronto di speedup.
+Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
+conserva log, contatori, binario e sorgenti del componente e regressioni W.
+Il payload congiunto ridotto massimo è 4.965.787 B; nessun rifiuto nelle
+parità. Cargo pulito riusa il binario identico della build preliminare
+O0; le due provenienze sono esplicite, senza credito di nuova compilazione.
 
 La CLI seleziona soltanto `reference-cpu` oppure `experiment-cuda`; la
 seconda aggiunge `LIBRARY DEVICE` agli stessi cinque argomenti di input.

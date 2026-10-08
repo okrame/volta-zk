@@ -1,0 +1,21 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_range_native.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 6.2600374380126595,
+  "max_rss_bytes": 247549952,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 6.142317,
+  "system_s": 0.09235499999999999,
+  "log": "/tmp/c71-a-source-clean-python-owner-20261008-01.log"
+}

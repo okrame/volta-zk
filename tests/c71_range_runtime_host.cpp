@@ -723,10 +723,10 @@ static void joint_budget_checks() {
 }
 int main() {
     // Original P3 66e2906 Goldilocks generator, including canonical 2^32.
-    uint64_t root=0x185629dcda58878cULL;
+    uint64_t two_adic_root=0x185629dcda58878cULL;
     for(int bits=32;bits>=0;--bits) {
-        assert(c71_pcs::power(7,(P-1)/(uint64_t{1}<<bits))==root);
-        root=fp_mul(root,root);
+        assert(c71_pcs::power(7,(P-1)/(uint64_t{1}<<bits))==two_adic_root);
+        two_adic_root=fp_mul(two_adic_root,two_adic_root);
     }
     // Independent signed i128 modulo reference, including every prefix and
     // the 256-product bound used by the resident W kernel.

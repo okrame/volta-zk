@@ -22,7 +22,11 @@ C71_A_HD inline bool valid(SourceShape s) {
         power_two(s.rows) && s.rows>=4 && s.rows<=(uint64_t{1}<<20) && (s.rows&0x5555555555555555ULL) &&
         s.message_rows>=s.rows && s.message_rows/s.rows<=128 && s.live && s.live<=128*s.message_rows &&
         s.pad_rows && s.pad_rows<=1536 && power_two(s.cosets) && s.cosets>=4 && s.cosets<=4096 &&
-        s.rows*s.cosets==16*s.message_rows && s.first_coset%4==0 && s.first_coset<=s.cosets-4;
+        // Reduced original PCS profiles have a larger rate when the fixed
+        // 1536 private pad rows dominate. The Tree supplies that exact H;
+        // canonical A still uses H=16*n. Do not change its row/scan schedule.
+        s.rows*s.cosets>=16*s.message_rows && s.message_rows+s.pad_rows<=s.rows*s.cosets &&
+        s.first_coset%4==0 && s.first_coset<=s.cosets-4;
 }
 inline bool valid(SourceTile t,unsigned kind,uint64_t words,uint64_t live) {
     return (kind==1 || kind==6) && (kind==1 ? t.signed_width==2 : (t.signed_width==4 || t.signed_width==6)) &&

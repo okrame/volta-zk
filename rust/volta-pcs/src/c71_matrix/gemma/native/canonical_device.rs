@@ -610,6 +610,28 @@ fn public_padding(
     })
 }
 
+fn record_scan_rows(
+    runtime: &mut Runtime, seen: &mut BTreeMap<usize, Vec<bool>>,
+    source: usize, first: usize, count: usize,
+) -> Result<(), String> {
+    let coverage = seen.get_mut(&source).ok_or("native scan emitted unexpected source")?;
+    if count == 0
+        || first.checked_add(count).is_none_or(|end| end > coverage.len())
+        || coverage[first..first + count].iter().any(|&covered| covered)
+    {
+        return runtime.abort("native scan duplicated or invalid rows");
+    }
+    coverage[first..first + count].fill(true);
+    Ok(())
+}
+
+fn complete_scan_rows(runtime: &mut Runtime, seen: &BTreeMap<usize, Vec<bool>>) -> Result<(), String> {
+    if seen.values().any(|rows| rows.iter().any(|&covered| !covered)) {
+        return runtime.abort("native scan omitted rows");
+    }
+    Ok(())
+}
+
 impl Prepared {
     pub(in crate::c71_matrix) fn inference_ns(&self) -> u64 {
         self.inference_ns
@@ -793,22 +815,11 @@ impl Prepared {
             state,
             targets,
             &mut |runtime, source, first, count, input, offset| {
-                let coverage =
-                    seen.get_mut(&source).ok_or("native scan emitted unexpected source")?;
-                if count == 0
-                    || first.checked_add(count).is_none_or(|end| end > coverage.len())
-                    || coverage[first..first + count].iter().any(|&covered| covered)
-                {
-                    return runtime.abort("native scan duplicated or invalid rows");
-                }
-                coverage[first..first + count].fill(true);
+                record_scan_rows(runtime, &mut seen, source, first, count)?;
                 emit(runtime, source, first, count, input, offset)
             },
         )?;
-        if seen.values().any(|rows| rows.iter().any(|&covered| !covered)) {
-            return runtime.abort("native scan omitted rows");
-        }
-        Ok(())
+        complete_scan_rows(runtime, &seen)
     }
 
     fn window_native(
@@ -884,6 +895,15 @@ impl Prepared {
             return runtime.abort(error);
         }
         Ok(())
+    }
+
+    pub(in crate::c71_matrix) fn source_pcs(self: &Arc<Self>) -> kernel::b12::replay::NativeSource {
+        let prepared = self.clone();
+        kernel::b12::replay::NativeSource {
+            runtime: self.session.runtime.clone(),
+            live: self.session.profiles[self.slot].bytes().live,
+            scan: Arc::new(move |emit| prepared.scan_pcs_original(emit)),
+        }
     }
 
     /// One original A reconstruction feeds resident tiles to the PCS sink.
@@ -1070,6 +1090,35 @@ impl Prepared {
 mod tests {
     use super::*;
     use kernel::range::windowed::native::tests::fixture;
+
+    #[test]
+    fn c71_canonical_device_original_scan_coverage_rejects_duplicate_and_omitted_rows() {
+        let fixture = fixture(8);
+        for fault in 0..3 {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let mut seen = BTreeMap::from([(7, vec![false; 4])]);
+            record_scan_rows(&mut runtime, &mut seen, 7, 0, 2).unwrap();
+            let result = match fault {
+                0 => record_scan_rows(&mut runtime, &mut seen, 7, 1, 1),
+                1 => complete_scan_rows(&mut runtime, &seen),
+                _ => {
+                    record_scan_rows(&mut runtime, &mut seen, 7, 2, 2).unwrap();
+                    complete_scan_rows(&mut runtime, &seen)
+                }
+            };
+            if fault < 2 {
+                assert!(result.unwrap_err().contains(if fault == 0 { "duplicated" } else { "omitted" }));
+                assert_eq!(seen[&7], vec![true, true, false, false]);
+                assert_eq!(runtime.stats().unwrap().stopped, 1);
+                assert!(runtime.upload_signed(&[0]).is_err());
+                assert_eq!(runtime.stats().unwrap().allocations, 0);
+            } else {
+                result.unwrap();
+                assert_eq!(runtime.stats().unwrap().stopped, 0);
+            }
+            assert_eq!(runtime.close().unwrap().arena_bytes, 0);
+        }
+    }
 
     #[test]
     fn c71_canonical_device_schedule_all_producers_three_contexts() {

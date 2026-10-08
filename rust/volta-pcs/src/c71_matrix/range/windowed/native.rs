@@ -1653,7 +1653,9 @@ pub(in crate::c71_matrix) mod tests {
                 0 => runtime.pcs_source_begin(&low, &low, shape, true).map(|_| ()),
                 1 => runtime.pcs_source_powers(PcsSourceShape { rows: 3, ..shape }).map(|_| ()),
                 19 => runtime.pcs_source_begin(&low, &high, PcsSourceShape { first_coset: 4, ..shape }, false).map(|_| ()),
-                23 => runtime.pcs_source_powers(PcsSourceShape { cosets: 32, ..shape }).map(|_| ()),
+                // Larger rates are needed by reduced original PCS profiles
+                // with fixed pads; a rate below sixteen is still excluded.
+                23 => runtime.pcs_source_powers(PcsSourceShape { cosets: 8, ..shape }).map(|_| ()),
                 _ => {
                     let (mut values, mut histogram) = runtime.pcs_source_begin(&low, &high, shape, true).unwrap();
                     match fault {

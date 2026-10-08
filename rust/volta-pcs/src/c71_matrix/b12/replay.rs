@@ -33,6 +33,22 @@ pub(in crate::c71_matrix) struct NativeWeights {
     pub tiles: Vec<device::WeightTile>,
 }
 
+/// Trusted canonical adapter: partition the original flat byte prefix once,
+/// using the numerical producer's same owner. The C ABI validates spans and
+/// byte count; uniqueness is guaranteed by the adapter's source-row coverage.
+/// The producer sees original buffers/layout only, never PCS coins.
+pub(in crate::c71_matrix) struct NativeSource {
+    pub runtime: Arc<Mutex<device::Runtime>>,
+    pub live: usize,
+    pub scan: Arc<dyn Fn(&mut dyn FnMut(&mut device::Runtime, &device::Buffer,
+        device::PcsSourceTile) -> Result<(), String>) -> Result<(), String> + Send + Sync>,
+}
+
+enum NativeInitial {
+    Weights(NativeWeights),
+    Source(NativeSource),
+}
+
 /// Trusted immutable source: emit each live coefficient exactly once, in any
 /// order, with the same value as the original getter. No PCS coins are exposed.
 pub(in crate::c71_matrix) type BaseScan = Arc<
@@ -665,6 +681,156 @@ impl Code {
         Ok((root, ZkWhirReplayHandle::new(Oracle { tree: Arc::new(tree), base, lease })))
     }
 
+    fn commit_native_source(self, mmcs: &HidingMmcs, native: NativeSource)
+        -> Result<(replay_tree::Commitment, ZkWhirReplayHandle, [u64; 256]), String> {
+        let owner = native.runtime.clone();
+        let result = (|| {
+            if !self.base() || self.width != 128 || !self.len.is_power_of_two() ||
+                self.scan.is_none() || self.window.is_none() || self.live == 0 || self.live != native.live {
+                return Err("native A original source or code geometry differs".into());
+            }
+            let (rows, cut) = replay_tree::native_source_geometry(self.height)?;
+            let cosets = self.height / rows;
+            let n = self.len / 128;
+            let pad = self.pads.len() / 128;
+            if n < rows || n > 1 << 27 || n / rows > 128 || pad == 0 || pad > 1536 ||
+                self.pads.len() != 128 * pad {
+                return Err("native A accumulation or pad bound differs".into());
+            }
+            let code = Arc::new(self);
+            let rowcode = code.clone();
+            let mut histogram = [0u64; 256];
+            let (root, tree) = Tree::commit_resident_source(mmcs, code.height,
+                Arc::new(move |indices| rowcode.rows(indices)), |stream, current| {
+                let mut runtime = owner.lock().map_err(|_| "native A owner poisoned")?;
+                let before = runtime.stats()?;
+                let pads = runtime.pcs_words(code.pads.len())?;
+                let pad_words: Vec<_> = (0..code.pads.len())
+                    .map(|i| base_coefficient(code.pads.get(i)).as_canonical_u64()).collect();
+                runtime.pcs_upload(&pads, 0, &pad_words)?;
+                drop(pad_words);
+                let twiddles = runtime.pcs_fft_twiddles(rows.ilog2() as usize)?;
+                let groups = cosets / 4;
+                let frontier = runtime.pcs_frontier(rows, groups)?;
+                let group_rows = 4 * rows;
+                let band = 65536.min(group_rows);
+                let salt_buffer = runtime.pcs_words(4 * band)?;
+                let mut salt_words = vec![0; 4 * band];
+                let mut top = Vec::new();
+                let mut work = replay_tree::ReplayWork::default();
+                let mut source_visits = 0u64;
+                let mut phase = Span::start("pcs_a_resident", json!({"height": code.height,
+                    "rows": rows, "cosets": cosets, "groups": groups, "columns": 128,
+                    "cosets_per_reconstruction": 4, "live_source": code.live}))?;
+                for group in 0..groups {
+                    let shape = device::PcsSourceShape { message_rows: n as u64, rows: rows as u64,
+                        live: code.live as u64, pad_rows: pad as u32, cosets: cosets as u32,
+                        first_coset: (4 * group) as u32 };
+                    let (low, high) = runtime.pcs_source_powers(shape)?;
+                    let (mut values, mut counts) = runtime.pcs_source_begin(&low, &high, shape, group == 0)?;
+                    // The producer acquires this same owner itself. Never hold
+                    // its mutex while calling it, and consume borrowed inputs
+                    // on its stream before the producer retires each buffer.
+                    drop(runtime);
+                    let mut emitted = 0u64;
+                    (native.scan)(&mut |runtime, input, tile| {
+                        runtime.pcs_source_tile(input, tile)?;
+                        let bytes = tile.rows.checked_mul(tile.columns)
+                            .and_then(|v| v.checked_mul(u64::from(tile.width)))
+                            .ok_or("native A byte coverage overflow")?;
+                        emitted = emitted.checked_add(bytes).ok_or("native A scan count overflow")?;
+                        phase.checkpoint(|| json!({"completed_groups": group,
+                            "active_first_coset": 4 * group, "original_bytes_in_group": emitted,
+                            "source_visits": source_visits + emitted, "native": runtime.stats().ok()}))
+                    })?;
+                    runtime = owner.lock().map_err(|_| "native A owner poisoned")?;
+                    // Only a successful complete trusted scanner may publish.
+                    // Count alone is not a uniqueness guard: the canonical
+                    // adapter rejects duplicate/omitted original source rows.
+                    if emitted != code.live as u64 { return runtime.abort("native A scanner coverage differs"); }
+                    runtime.pcs_source_finish(&mut values, counts.as_mut(), &pads, &twiddles)?;
+                    source_visits += emitted;
+                    if let Some(counts) = counts {
+                        let mut words = [0i64; 256];
+                        runtime.download_words(&counts, 0, &mut words)?;
+                        if words.iter().any(|&v| v < 0) || words.iter().map(|&v| v as u64).sum::<u64>() != emitted {
+                            return runtime.abort("native A original byte histogram differs");
+                        }
+                        for (out, value) in histogram.iter_mut().zip(words) { *out = value as u64; }
+                        histogram[0] += (code.len - code.live) as u64;
+                        runtime.release_buffer(counts)?;
+                    }
+                    runtime.release_buffer(low)?; runtime.release_buffer(high)?;
+                    let mut roots = runtime.pcs_full_hash_begin(group_rows)?;
+                    for first in (0..group_rows).step_by(band) {
+                        for local in 0..band {
+                            let row = (first + local) % rows;
+                            let mut rng = stream.snapshot_at(current[row])?;
+                            for (col, value) in rng.salts4().into_iter().enumerate() {
+                                salt_words[col * band + local] = value.as_canonical_u64();
+                            }
+                            work.salt_candidate_bytes += rng.position() - current[row];
+                            current[row] = rng.position();
+                        }
+                        runtime.pcs_upload(&salt_buffer, 0, &salt_words)?;
+                        runtime.pcs_full_hash_band(&values, &salt_buffer, &mut roots, first)?;
+                        phase.checkpoint(|| json!({"completed_groups": group,
+                            "completed_salt_leaves_in_group": first + band,
+                            "salt_candidate_bytes": work.salt_candidate_bytes, "native": runtime.stats().ok()}))?;
+                    }
+                    for value in values { runtime.release_buffer(value)?; }
+                    for _ in 0..2 {
+                        let next = runtime.pcs_nodes_strided(&roots, rows)?;
+                        runtime.release_buffer(roots)?; roots = next;
+                    }
+                    runtime.pcs_merge_group(&frontier, &roots, group)?;
+                    work.leaf_hashes += group_rows as u64;
+                    work.node_hashes += (group_rows - rows) as u64;
+                    work.node_hashes += rows as u64 * group.trailing_ones() as u64;
+                    work.coset_cells += (group_rows * 128) as u64;
+                    if group + 1 == groups {
+                        let mut count = rows;
+                        while count > code.height / cut {
+                            let next = runtime.pcs_nodes(&roots)?;
+                            runtime.release_buffer(roots)?; roots = next; count /= 2;
+                            work.node_hashes += count as u64;
+                        }
+                        loop {
+                            top.push(runtime.pcs_digests(&roots, 0, count)?);
+                            if count == 1 { break; }
+                            let next = runtime.pcs_nodes(&roots)?;
+                            runtime.release_buffer(roots)?; roots = next; count /= 2;
+                            work.node_hashes += count as u64;
+                        }
+                    }
+                    runtime.release_buffer(roots)?;
+                    phase.checkpoint(|| json!({"completed_groups": group + 1,
+                        "source_visits": source_visits, "leaf_hashes": work.leaf_hashes,
+                        "node_hashes": work.node_hashes, "native": runtime.stats().ok()}))?;
+                }
+                runtime.release_buffer(frontier)?; runtime.release_buffer(pads)?;
+                runtime.release_buffer(twiddles)?; runtime.release_buffer(salt_buffer)?;
+                let after = runtime.stats()?;
+                phase.finish(json!({"completed_groups": groups, "source_visits": source_visits,
+                    "source_reconstructions": groups, "source_to_coset_contributions": source_visits * 4,
+                    "pad_field_products": code.pads.len() as u64 * cosets as u64,
+                    "fft_base_cells": code.height as u64 * 128,
+                    "analytic_fft_butterflies": code.height as u64 * 64 * rows.ilog2() as u64,
+                    "leaf_hashes": work.leaf_hashes, "node_hashes": work.node_hashes,
+                    "native_h2d_bytes": after.h2d_bytes - before.h2d_bytes,
+                    "native_d2h_bytes": after.d2h_bytes - before.d2h_bytes,
+                    "native_launches": after.launches - before.launches,
+                    "native_fences": after.fences - before.fences, "native": after}))?;
+                Ok((top, work, after.peak_capacity_bytes as usize))
+            })?;
+            Ok((root, ZkWhirReplayHandle::new(Oracle { tree: Arc::new(tree), base: true, lease: None }), histogram))
+        })();
+        if let Err(error) = &result {
+            if let Ok(mut runtime) = owner.lock() { let _ = runtime.abort::<()>(error); }
+        }
+        result
+    }
+
     fn commit_native_weights(self, mmcs: &HidingMmcs, native: NativeWeights)
         -> Result<(replay_tree::Commitment, ZkWhirReplayHandle), String> {
         let mut runtime = native.runtime.lock().map_err(|_| "native W owner poisoned")?;
@@ -734,8 +900,7 @@ impl Code {
                         for local in 0..band {
                             let row = (first + local) % rows;
                             let mut rng = stream.snapshot_at(current[row])?;
-                            for col in 0..4 {
-                                let value: Goldilocks = rng.random();
+                            for (col, value) in rng.salts4().into_iter().enumerate() {
                                 salt_words[col * band + local] = value.as_canonical_u64();
                             }
                             work.salt_candidate_bytes += rng.position() - current[row];
@@ -867,7 +1032,21 @@ impl ReplayModel {
         live: usize, native: NativeWeights,
     ) -> Result<Self, String> {
         let owner = native.runtime.clone();
-        let result = Self::new_source(domain, seed, salt_seed, source, None, live, Some(native));
+        let result = Self::new_source(domain, seed, salt_seed, source, None, live,
+            Some(NativeInitial::Weights(native)));
+        if let Err(error) = &result {
+            if let Ok(mut runtime) = owner.lock() { let _ = runtime.abort::<()>(error); }
+        }
+        result
+    }
+
+    pub(in crate::c71_matrix) fn new_native_source(
+        domain: Domain, seed: [u8; 32], salt_seed: [u8; 32], source: Getter,
+        scan: BaseScan, window: ByteWindow, live: usize, native: NativeSource,
+    ) -> Result<Self, String> {
+        let owner = native.runtime.clone();
+        let result = Self::new_source(domain, seed, salt_seed, source, Some((scan, window)), live,
+            Some(NativeInitial::Source(native)));
         if let Err(error) = &result {
             if let Ok(mut runtime) = owner.lock() { let _ = runtime.abort::<()>(error); }
         }
@@ -881,7 +1060,7 @@ impl ReplayModel {
         source: Getter,
         readers: Option<(BaseScan, ByteWindow)>,
         live: usize,
-        native: Option<NativeWeights>,
+        native: Option<NativeInitial>,
     ) -> Result<Self, String> {
         let config = domain.config()?;
         let len = 1usize << config.num_variables;
@@ -942,10 +1121,14 @@ impl ReplayModel {
             height,
             pads: Pads::Base(pads.clone()),
         };
-        let (root, handle) = if let Some(native) = native {
-            code.commit_native_weights(&mmcs.inner, native)?
-        } else {
-            code.commit(&mmcs.inner, None)?
+        let (root, handle) = match native {
+            Some(NativeInitial::Weights(native)) => code.commit_native_weights(&mmcs.inner, native)?,
+            Some(NativeInitial::Source(native)) => {
+                let (root, handle, h) = code.commit_native_source(&mmcs.inner, native)?;
+                *byte_histogram.lock().map_err(|_| "range histogram cache poisoned")? = Some(h);
+                (root, handle)
+            }
+            None => code.commit(&mmcs.inner, None)?,
         };
         let oracle = handle.downcast::<Oracle>().map_err(|_| "C71 initial replay handle type")?;
         Ok(Self {
@@ -1312,6 +1495,14 @@ fn compare_source_with_native(
     dimension: usize, source: Getter, values: Vec<Goldilocks>, original: Option<&Model>,
     readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeWeights>, fixture_initial_rows: bool,
 ) {
+    compare_source_with_resident(dimension, source, values, original, readers,
+        native.map(NativeInitial::Weights), fixture_initial_rows);
+}
+#[cfg(test)]
+fn compare_source_with_resident(
+    dimension: usize, source: Getter, values: Vec<Goldilocks>, original: Option<&Model>,
+    readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeInitial>, fixture_initial_rows: bool,
+) {
     use rand_010::RngExt;
     assert!((10..=17).contains(&dimension));
     assert_eq!(values.len(), 1 << dimension);
@@ -1370,7 +1561,9 @@ fn compare_source_with_native(
     census::mark("sourcewise_initial_commit").unwrap();
     let mut replay_fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
     replay_fs.set_phase(0x200);
-    let live = native.as_ref().map_or(1 << dimension, |native| native.weights.len());
+    let live = native.as_ref().map_or(1 << dimension, |native| match native {
+        NativeInitial::Weights(w) => w.weights.len(), NativeInitial::Source(a) => a.live,
+    });
     let mut model = ReplayModel::new_source(
         Domain::Flat(dimension),
         root_seed,
@@ -2538,6 +2731,222 @@ mod tests {
             "native_commitment_census": native_census,
             "different_compiler_optimization_no_speedup_claim": true, "gpu_execution": false, "credit": false}));
         owner.lock().unwrap().close().unwrap();
+    }
+
+    struct NativeSourceFixture {
+        native: NativeSource,
+        get: Getter,
+        scan: BaseScan,
+        window: ByteWindow,
+        bytes: Arc<Vec<u8>>,
+        input: Arc<device::Buffer>,
+        weights: Arc<Vec<i16>>,
+        get_calls: Arc<std::sync::atomic::AtomicU64>,
+        cpu_scans: Arc<std::sync::atomic::AtomicU64>,
+        reconstructions: Arc<std::sync::atomic::AtomicU64>,
+    }
+
+    fn native_source_fixture(config: &device::Config) -> NativeSourceFixture {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let words: Vec<i16> = (0..96 * 16).map(|i| match i % 8 {
+            0 => 0, 1 => 32767, 2 => -32767, 3 => 1, 4 => -1,
+            _ => (((i * 19 + i / 96 * 23) % 65535) as i32 - 32767) as i16,
+        }).collect();
+        let mut bytes: Vec<_> = words.iter().flat_map(|&v|
+            (i32::from(v) + 32768).to_le_bytes()[..2].to_vec()).collect();
+        // Original i48 layout splits low four and high two byte planes.
+        // Nonzero byte_first is independent of the emitted tile width.
+        for (first, width) in [(0, 4), (4, 2)] {
+            for &word in &words {
+                let encoded = ((i64::from(word) * (1 << 30)) + (1 << 47)).to_le_bytes();
+                bytes.extend_from_slice(&encoded[first..first + width]);
+            }
+        }
+        let bytes = Arc::new(bytes);
+        let live = bytes.len();
+        let weights = Arc::new(vec![0i16; 512]);
+        let mut runtime = device::Runtime::new(config).unwrap();
+        runtime.install_weights(weights.clone(), [17; 32]).unwrap();
+        let input = Arc::new(runtime.upload_signed(&words).unwrap());
+        let raw = Arc::new(runtime.pointwise([Some((&input, 0)), None], words.len(),
+            device::Pointwise { a: 1 << 30, b: 0, multiply: 0 }).unwrap());
+        let runtime = Arc::new(Mutex::new(runtime));
+        let reconstructions = Arc::new(AtomicU64::new(0));
+        let owner = runtime.clone();
+        let buffer = input.clone();
+        let counter = reconstructions.clone();
+        let native = NativeSource { runtime, live, scan: Arc::new(move |emit| {
+            counter.fetch_add(1, Ordering::Relaxed);
+            let mut runtime = owner.lock().map_err(|_| "fixture source owner poisoned")?;
+            for (input, first, width, byte_first, signed_width) in [
+                (&buffer, 0, 2, 0, 2), (&raw, 3072, 4, 0, 6), (&raw, 9216, 2, 4, 6),
+            ] {
+                for row in [48, 0] {
+                    emit(&mut runtime, input, device::PcsSourceTile { input_first: row * 16,
+                        input_stride: 16, rows: 48, columns: 16, original_first: first + row * 16 * width,
+                        byte_first, width: width as u32, signed_width })?;
+                }
+            }
+            Ok(())
+        }) };
+        let get_calls = Arc::new(AtomicU64::new(0));
+        let original = bytes.clone();
+        let counter = get_calls.clone();
+        let get: Getter = Arc::new(move |i| {
+            counter.fetch_add(1, Ordering::Relaxed);
+            E::from(Goldilocks::from_u8(original.get(i).copied().unwrap_or(0)))
+        });
+        let cpu_scans = Arc::new(AtomicU64::new(0));
+        let original = bytes.clone();
+        let counter = cpu_scans.clone();
+        let scan: BaseScan = Arc::new(move |emit| {
+            counter.fetch_add(1, Ordering::Relaxed);
+            for (i, &v) in original.iter().enumerate() { emit(i, Goldilocks::from_u8(v))?; }
+            Ok(())
+        });
+        let original = bytes.clone();
+        let window: ByteWindow = Arc::new(move |first, out| {
+            out.copy_from_slice(&original[first..first + out.len()]); Ok(())
+        });
+        NativeSourceFixture { native, get, scan, window, bytes, input, weights,
+            get_calls, cpu_scans, reconstructions }
+    }
+
+    #[test]
+    fn c71_b12_native_source_tree_exact_roots_openings_histogram_and_work() {
+        use std::sync::atomic::Ordering;
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        let f = native_source_fixture(&fixture.config);
+        let owner = f.native.runtime.clone();
+        let _budget = crate::c71_matrix::census::Budget::new(&f.weights).unwrap();
+        let before = owner.lock().unwrap().stats().unwrap();
+        let path = std::env::temp_dir().join(format!("c71-native-a-tree-{}-{}.jsonl",
+            std::process::id(), rand::random::<u64>()));
+        let recording = crate::c71_matrix::progress::Recording::start(&path).unwrap();
+        let started = std::time::Instant::now();
+        let model = ReplayModel::new_native_source(Domain::Flat(15), [91; 32], [73; 32],
+            f.get.clone(), f.scan.clone(), f.window.clone(), f.bytes.len(), f.native).unwrap();
+        let native_s = started.elapsed().as_secs_f64();
+        let native_census = crate::c71_matrix::census::simultaneous();
+        assert_eq!(f.get_calls.load(Ordering::Relaxed), 0);
+        assert_eq!(f.cpu_scans.load(Ordering::Relaxed), 0);
+        drop(recording);
+        let events: Vec<serde_json::Value> = std::fs::read_to_string(&path).unwrap().lines()
+            .map(|line| serde_json::from_str(line).unwrap()).collect();
+        std::fs::remove_file(&path).unwrap();
+        let end = events.iter().find(|r| r["event"]["phase"] == "pcs_a_resident" && r["event"]["complete"] == true).unwrap();
+        let height = model.tree.geometry().0;
+        let (rows, cut) = replay_tree::native_source_geometry(height).unwrap();
+        let groups = height / rows / 4;
+        assert_eq!(f.reconstructions.load(Ordering::Relaxed), groups as u64);
+        assert_eq!(end["event"]["work"]["source_visits"], (f.bytes.len() * groups) as u64);
+        assert_eq!(end["event"]["work"]["source_reconstructions"], groups);
+        let mut histogram = [0u64; 256];
+        for &byte in f.bytes.iter() { histogram[byte as usize] += 1; }
+        histogram[0] += ((1 << 15) - f.bytes.len()) as u64;
+        assert_eq!(*model.byte_histogram.lock().unwrap(), Some(histogram));
+        let stats = owner.lock().unwrap().stats().unwrap();
+        assert_eq!(stats.arena_bytes, before.arena_bytes);
+        // Original words stay resident: only flags, one 256-bin histogram
+        // and the bounded digest cache leave the owner during this commit.
+        assert_eq!(stats.d2h_bytes - before.d2h_bytes,
+            (8 * groups + 2048 + (2 * height / cut - 1) * 32) as u64);
+        let started = std::time::Instant::now();
+        let reference = ReplayModel::new_scanned(Domain::Flat(15), [91; 32], [73; 32],
+            f.get, f.scan, f.window, f.bytes.len()).unwrap();
+        let reference_s = started.elapsed().as_secs_f64();
+        assert_eq!(model.root, reference.root);
+        assert_eq!(model.pads, reference.pads);
+        assert_eq!(model.tree.geometry(), reference.tree.geometry());
+        assert_eq!(model.tree.work, reference.tree.work);
+        assert_eq!(*model.byte_histogram.lock().unwrap(), *reference.byte_histogram.lock().unwrap());
+        let indices = [0, height - 1, 257, 255, 256, height / 2, 0, 257];
+        assert_eq!(serde_json::to_vec(&model.tree.open(&indices).unwrap()).unwrap(),
+            serde_json::to_vec(&reference.tree.open(&indices).unwrap()).unwrap());
+        println!("C71_NATIVE_A_TREE_LOCAL {}", json!({"domain_log2": 15,
+            "native_geometry": model.tree.geometry(), "reference_geometry": reference.tree.geometry(),
+            "native_commitment_host_s": native_s, "reference_commitment_o0_s": reference_s,
+            "native": stats, "cache": model.retained_census(), "source_visits": f.bytes.len() * groups,
+            "reconstructions": groups, "initial_cpu_scans": 0, "initial_scalar_getter_calls": 0,
+            "durable_records": events.len(), "census": crate::c71_matrix::census::simultaneous(),
+            "native_commitment_census": native_census, "fixture_original_upload_before_commit": true,
+            "different_compiler_optimization_no_speedup_claim": true, "gpu_execution": false, "credit": false}));
+        owner.lock().unwrap().close().unwrap();
+    }
+
+    #[test]
+    fn c71_b12_native_source_composed_full_chain_original_mac_and_transcript() {
+        native_source_chain(true);
+    }
+
+    #[test]
+    #[ignore = "D15 A uncached reference/prover/dual verification exceeds the local 60 s limit"]
+    fn c71_b12_native_source_uncached_full_chain_performance_obligation() {
+        native_source_chain(false);
+    }
+
+    fn native_source_chain(fixture_initial_rows: bool) {
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        let f = native_source_fixture(&fixture.config);
+        let owner = f.native.runtime.clone();
+        let _budget = crate::c71_matrix::census::Budget::new(&f.weights).unwrap();
+        let path = std::env::temp_dir().join(format!("c71-native-a-chain-{}-{}.jsonl",
+            std::process::id(), rand::random::<u64>()));
+        let _recording = crate::c71_matrix::progress::Recording::start(&path).unwrap();
+        eprintln!("C71_NATIVE_A_CHAIN_PROGRESS {}", path.display());
+        let values = (0..1 << 15).map(|i| base_coefficient((f.get)(i))).collect();
+        compare_source_with_resident(15, f.get, values, None, Some((f.scan, f.window)),
+            Some(NativeInitial::Source(f.native)), fixture_initial_rows);
+        assert_eq!(f.reconstructions.load(std::sync::atomic::Ordering::Relaxed), 64);
+        let stats = owner.lock().unwrap().close().unwrap();
+        assert_eq!(stats.arena_bytes, 0);
+        assert_eq!(stats.stopped, 0);
+    }
+
+    #[test]
+    fn c71_b12_native_source_tree_fail_closed_without_scalar_fallback() {
+        let mut fixture = device::tests::fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        let injection = device::tests::Injection::new(&fixture.config);
+        for fault in 0..8 {
+            let mut f = native_source_fixture(&fixture.config);
+            let owner = f.native.runtime.clone();
+            let _budget = crate::c71_matrix::census::Budget::new(&f.weights).unwrap();
+            let mut live = f.bytes.len();
+            let mut domain = Domain::Flat(15);
+            match fault {
+                0 => live -= 1,
+                1 => { domain = Domain::Flat(10); live = 1024; f.native.live = live; },
+                2 => f.native.scan = Arc::new(|_| Err("fixture scanner failure".into())),
+                3 => f.native.scan = Arc::new(|_| Ok(())),
+                4 => {
+                    let buffer = f.input.clone(); let owner = owner.clone();
+                    f.native.scan = Arc::new(move |emit| {
+                        let mut runtime = owner.lock().unwrap();
+                        emit(&mut runtime, &buffer, device::PcsSourceTile { input_first: 0,
+                            input_stride: 16, rows: 48, columns: 16, original_first: 0,
+                            byte_first: 0, width: 2, signed_width: 2 })?;
+                        Err("fixture sink interrupted after half source".into())
+                    });
+                }
+                5 => injection.set(1),
+                6 => injection.set(2),
+                7 => injection.set(9),
+                _ => unreachable!(),
+            }
+            assert!(ReplayModel::new_native_source(domain, [91; 32], [73; 32],
+                f.get, f.scan, f.window, live, f.native).is_err());
+            assert_eq!(f.get_calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+            assert_eq!(f.cpu_scans.load(std::sync::atomic::Ordering::Relaxed), 0);
+            assert_eq!(owner.lock().unwrap().stats().unwrap().stopped, 1);
+            injection.set(0);
+            let stats = owner.lock().unwrap().close().unwrap();
+            assert_eq!(stats.arena_bytes, 0);
+            assert_eq!(stats.cleanup_failed, 0);
+        }
+        println!("C71_NATIVE_A_TREE_REJECTIONS {{\"cases\":8,\"scalar_fallback_calls\":0,\"gpu_execution\":false,\"credit\":false}}");
     }
 
     #[test]

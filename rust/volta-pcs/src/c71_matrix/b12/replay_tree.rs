@@ -260,10 +260,28 @@ impl Tree {
         build: impl FnOnce(&PrivateRng, &mut [u64])
             -> Result<(Vec<Vec<Digest>>, ReplayWork, usize), String>,
     ) -> Result<(Commitment, Self), String> {
-        let (coset_rows, cut) = native_weight_geometry(height)?;
+        Self::commit_resident(mmcs, height, row, true, build)
+    }
+
+    pub(super) fn commit_resident_source(
+        mmcs: &HidingMmcs, height: usize, row: Rows,
+        build: impl FnOnce(&PrivateRng, &mut [u64])
+            -> Result<(Vec<Vec<Digest>>, ReplayWork, usize), String>,
+    ) -> Result<(Commitment, Self), String> {
+        Self::commit_resident(mmcs, height, row, false, build)
+    }
+
+    fn commit_resident(
+        mmcs: &HidingMmcs, height: usize, row: Rows, weights: bool,
+        build: impl FnOnce(&PrivateRng, &mut [u64])
+            -> Result<(Vec<Vec<Digest>>, ReplayWork, usize), String>,
+    ) -> Result<(Commitment, Self), String> {
+        let (coset_rows, cut) = if weights { native_weight_geometry(height)? }
+            else { native_source_geometry(height)? };
         let cosets = height / coset_rows;
         let phase = Span::start("pcs_commitment", json!({"height": height, "base_columns": 128,
-            "coset_rows": coset_rows, "cosets": cosets, "cut": cut, "native_weights": true}))?;
+            "coset_rows": coset_rows, "cosets": cosets, "cut": cut, "native_weights": weights,
+            "native_source": !weights}))?;
         let (private_stream, mut current, subtree_offsets, prescan_bytes) =
             prepare_salts(mmcs, height, coset_rows, cut)?;
         let (top, mut work, peak) = build(&private_stream, &mut current)?;
@@ -273,18 +291,19 @@ impl Tree {
             work.leaf_hashes != height as u64 || work.node_hashes != height as u64 - 1 ||
             work.coset_cells != height as u64 * 128 || work.salt_candidate_bytes != prescan_bytes ||
             current.last().copied() != Some(private_stream.position() + prescan_bytes) {
-            return Err("resident W cache coverage or work differs".into());
+            return Err("resident cache coverage or work differs".into());
         }
         work.salt_candidate_bytes += prescan_bytes;
         let root = top.last().unwrap()[0];
-        let groups = cosets / 32;
-        let group_rows = coset_rows * 32;
+        let groups = cosets / if weights { 32 } else { 4 };
+        let group_rows = height / groups;
+        let physical_columns = if weights { 8 } else { 128 };
         let memory = ReplayMemory {
             retained_digest_bytes: top.iter().map(|level| level.len() * 32).sum(),
             salt_offset_bytes: subtree_offsets.len() * size_of::<u64>(),
             rng_snapshot_bytes: size_of::<PrivateRng>(),
-            peak_coset_bytes: group_rows * 8 * size_of::<u64>(),
-            peak_commit_scratch_bytes: group_rows * (64 + 32)
+            peak_coset_bytes: group_rows * physical_columns * size_of::<u64>(),
+            peak_commit_scratch_bytes: group_rows * (physical_columns * 8 + 32)
                 + coset_rows * groups.ilog2() as usize * 32 + current.len() * 8
                 + group_rows.min(65536) * 32 + 256,
             native_peak_capacity_bytes: peak,

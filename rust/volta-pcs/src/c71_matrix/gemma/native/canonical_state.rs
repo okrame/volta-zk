@@ -564,19 +564,22 @@ impl<'a> Prover<'a> {
             let windows = snapshot.clone();
             let range_windows = snapshot.clone();
             let coins = fresh_pcs_coins()?;
-            let mut current = b12::replay::ReplayModel::new_scanned(
-                Domain::Flat(34),
-                coins.seed,
-                coins.salt_seed,
-                Arc::new(move |i| {
-                    E::from(Goldilocks::from_u64(u64::from(
-                        getter.byte_at(i).expect("immutable canonical A"),
-                    )))
-                }),
-                Arc::new(move |emit| scanner.scan_original(emit)),
-                Arc::new(move |first, output| windows.window(first, output)),
-                p.bytes().live,
-            )?
+            let source: Arc<dyn Fn(usize) -> E + Send + Sync> = Arc::new(move |i| {
+                E::from(Goldilocks::from_u64(u64::from(
+                    getter.byte_at(i).expect("immutable canonical A"),
+                )))
+            });
+            let scan: b12::replay::BaseScan = Arc::new(move |emit| scanner.scan_original(emit));
+            let window: b12::replay::ByteWindow = Arc::new(move |first, output| windows.window(first, output));
+            let mut current = match &snapshot {
+                Snapshot::Cpu(_) => b12::replay::ReplayModel::new_scanned(
+                    Domain::Flat(34), coins.seed, coins.salt_seed, source, scan, window, p.bytes().live,
+                ),
+                Snapshot::Native(prepared) => b12::replay::ReplayModel::new_native_source(
+                    Domain::Flat(34), coins.seed, coins.salt_seed, source, scan, window, p.bytes().live,
+                    prepared.source_pcs(),
+                ),
+            }?
             .retain_first_fold()
             .with_range_reader(Arc::new(
                 move |suffix, bottom, first, out| match &range_windows {

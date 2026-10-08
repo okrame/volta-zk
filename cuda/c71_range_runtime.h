@@ -7,11 +7,13 @@
 #include "c71_byte_gather.cuh"
 #include "c71_nonlinear.cuh"
 #include "c71_pcs_hash.cuh"
+#include "c71_pcs_weight.cuh"
 
 struct C71RangeContext;
 using C71RangeAccount = int (*)(int64_t);
 enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64, C71_BYTE_PENDING, C71_HISTOGRAM_PENDING,
-    C71_PCS_BASE, C71_PCS_HASH_PENDING, C71_PCS_DIGEST, C71_PCS_FRONTIER_PENDING };
+    C71_PCS_BASE, C71_PCS_HASH_PENDING, C71_PCS_DIGEST, C71_PCS_FRONTIER_PENDING,
+    C71_PCS_WEIGHT_TILES, C71_PCS_POWERS };
 struct C71RangeStats {
     // ABI 4: actual live device reservations (released after fence), aligned
     // capacities and logical payload. create() sets a budget, not a slab.
@@ -102,6 +104,14 @@ int c71_pcs_leaf_finish(C71RangeContext*,uint64_t ring,uint64_t salts,uint64_t s
 int c71_pcs_nodes(C71RangeContext*,uint64_t input,uint64_t output,uint64_t rows);
 int c71_pcs_frontier_begin(C71RangeContext*,uint64_t frontier,uint64_t rows,uint32_t groups);
 int c71_pcs_merge_group(C71RangeContext*,uint64_t frontier,uint64_t roots,uint32_t group);
+int c71_pcs_tiles_upload(C71RangeContext*,uint64_t output,const c71_pcs::WeightTile*,uint64_t count);
+int c71_pcs_powers(C71RangeContext*,uint64_t low,uint64_t high,c71_pcs::WeightShape);
+int c71_pcs_twiddles(C71RangeContext*,uint64_t output,uint32_t log_rows);
+int c71_pcs_ring_zero(C71RangeContext*,uint64_t output);
+// Fused host submission: signed-wide original accumulation, private pads,
+// then the existing finite FFT on four columns. Only arithmetic flag D2H.
+int c71_pcs_weight(C71RangeContext*,uint64_t tiles,uint64_t pads,uint64_t low,uint64_t high,
+    uint64_t twiddles,uint64_t ring,c71_pcs::WeightShape);
 // Bounded digest publication only; no base values or intermediate CV spill.
 int c71_pcs_read_digests(C71RangeContext*,uint64_t input,uint64_t first,uint64_t count,void* output);
 }

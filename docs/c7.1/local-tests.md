@@ -119,6 +119,7 @@ senza eseguirli; altrimenti la build CUDA si svolge sul pod autorizzato:
 ```bash
 nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC \
   cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_pcs_hash.cu \
+  cuda/c71_pcs_weight.cu \
   cuda/c71_range_runtime.cpp \
   -o /tmp/libc71_device_runner.so
 nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
@@ -146,6 +147,20 @@ errato sono separati dalle misure pulite; usare sempre `cd rust` per
 caricare anche `rust/.cargo/config.toml` e riusare i flag/cache corretti.
 La policy della cache Cargo è descritta nella sezione
 [provenienza](#risultati-e-conservazione).
+Per [accumuli/FFT W](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
+eseguire separatamente `c71_b12_native_weight_columns_exact_signed_pads_fft_hash`
+e `c71_b12_native_weight_rejections_and_fail_closed`, poi il mapping
+`c71_b12_gemma_layout_matches_packed_addresses_and_physical_tensor_mles`.
+La prima fixture confronta ogni valore di 128 colonne su 32 coset, pad
+originali, foglie e livelli Merkle strided; la seconda verifica 24 arresti.
+`test_c71_range_native.py` confronta anche 526.336 prefissi di dot con
+modulo signed i128 indipendente sotto UBSan. La build mirata può usare
+`--config profile.dev.package.volta-pcs.opt-level=0` per il solo crate
+locale mantenendo le dipendenze O2, cache e un job; conservare anche le
+build fallite e distinguere RSS compiler dai test 60 s / 2 GiB AS.
+I tempi Rust O0/C++ O2 non sono un rapporto di accelerazione. Il driver
+simulato non compila o esegue CUDA; Tree/transcript del nuovo commitment
+restano verifiche del successivo passo locale, hardware del pod autorizzato.
 Eseguire separatamente ogni riga della tabella con il comando pytest
 limitato sopra. Impostare i due binari prima dei test che li richiedono.
 

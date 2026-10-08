@@ -252,6 +252,18 @@ pub(in crate::c71_matrix) struct ByteTile {
     pub bottom: u32,
 }
 const _: () = assert!(size_of::<ByteTile>() == 80);
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub(in crate::c71_matrix) struct WeightTile {
+    pub first: u64, pub count: u64, pub packed_first: u64, pub packed_stride: u64, pub columns: u64,
+}
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub(in crate::c71_matrix) struct WeightShape {
+    pub message_rows: u64, pub rows: u64, pub pad_rows: u32, pub cosets: u32,
+    pub first_coset: u32, pub first_column: u32, pub slots: u32,
+}
+const _: () = assert!(size_of::<WeightTile>() == 40 && size_of::<WeightShape>() == 40);
 /// Opaque, non-cloneable resident allocation. Release through its runtime;
 /// dropping this descriptor alone does not release device capacity.
 pub(in crate::c71_matrix) struct Buffer {
@@ -326,6 +338,11 @@ api! {
     pcs_frontier: unsafe extern "C" fn(Raw,u64,u64,u32)->i32 => "c71_pcs_frontier_begin",
     pcs_merge: unsafe extern "C" fn(Raw,u64,u64,u32)->i32 => "c71_pcs_merge_group",
     pcs_read: unsafe extern "C" fn(Raw,u64,u64,u64,*mut c_void)->i32 => "c71_pcs_read_digests",
+    pcs_tiles: unsafe extern "C" fn(Raw,u64,*const WeightTile,u64)->i32 => "c71_pcs_tiles_upload",
+    pcs_powers: unsafe extern "C" fn(Raw,u64,u64,WeightShape)->i32 => "c71_pcs_powers",
+    pcs_twiddles: unsafe extern "C" fn(Raw,u64,u32)->i32 => "c71_pcs_twiddles",
+    pcs_zero: unsafe extern "C" fn(Raw,u64)->i32 => "c71_pcs_ring_zero",
+    pcs_weight: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,WeightShape)->i32 => "c71_pcs_weight",
 }
 pub(in crate::c71_matrix) struct Runtime {
     api: Api,
@@ -484,6 +501,46 @@ impl Runtime {
     pub(in crate::c71_matrix) fn pcs_words(&mut self, count: usize) -> Result<Buffer, String> {
         let id = self.alloc(9, count)?;
         Ok(Buffer { id, kind: 9, count, owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn pcs_weight_tiles(&mut self, weights: &Arc<Vec<i16>>, layout: [u8; 32], tiles: &[WeightTile]) -> Result<Buffer, String> {
+        self.require_weights(weights, layout)?;
+        let id = self.alloc(13, tiles.len())?;
+        let status = unsafe { (self.api.pcs_tiles)(self.raw, id, tiles.as_ptr(), tiles.len() as u64) };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 13, count: tiles.len(), owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn pcs_coset_powers(&mut self, shape: WeightShape) -> Result<(Buffer, Buffer), String> {
+        // C validates the shape before kernels. Bound counts before host math.
+        if shape.rows < 4 || shape.rows > 1 << 20 || shape.message_rows > 1 << 28 || shape.pad_rows > 1536 {
+            return self.abort("native PCS power capacity differs");
+        }
+        let low_count = 32 * shape.rows as usize;
+        let high_count = 32 * (shape.message_rows + u64::from(shape.pad_rows)).div_ceil(shape.rows) as usize;
+        let low = self.allocate_buffer(14, low_count)?;
+        let high = self.allocate_buffer(14, high_count)?;
+        let status = unsafe { (self.api.pcs_powers)(self.raw, low.id, high.id, shape) };
+        self.check(status)?;
+        Ok((low, high))
+    }
+    pub(in crate::c71_matrix) fn pcs_fft_twiddles(&mut self, log_rows: usize) -> Result<Buffer, String> {
+        if !(2..=20).contains(&log_rows) || log_rows % 2 != 0 { return self.abort("native PCS FFT shape differs"); }
+        let output = self.allocate_buffer(14, 1 << log_rows)?;
+        let status = unsafe { (self.api.pcs_twiddles)(self.raw, output.id, log_rows as u32) };
+        self.check(status)?;
+        Ok(output)
+    }
+    pub(in crate::c71_matrix) fn pcs_ring(&mut self, rows: usize) -> Result<Buffer, String> {
+        if rows == 0 || rows > 1 << 20 { return self.abort("native PCS ring capacity differs"); }
+        let output = self.pcs_words(8 * 32 * rows)?;
+        let status = unsafe { (self.api.pcs_zero)(self.raw, output.id) };
+        self.check(status)?;
+        Ok(output)
+    }
+    pub(in crate::c71_matrix) fn pcs_weight_columns(&mut self, tiles: &Buffer, pads: &Buffer,
+        low: &Buffer, high: &Buffer, twiddles: &Buffer, ring: &Buffer, shape: WeightShape) -> Result<(), String> {
+        for input in [tiles, pads, low, high, twiddles, ring] { self.require_buffer(input)?; }
+        let status = unsafe { (self.api.pcs_weight)(self.raw, tiles.id, pads.id, low.id, high.id, twiddles.id, ring.id, shape) };
+        self.check(status)
     }
     pub(in crate::c71_matrix) fn pcs_upload(
         &mut self, output: &Buffer, first: usize, values: &[u64],
@@ -1653,6 +1710,67 @@ pub(in crate::c71_matrix) mod tests {
         runtime.close().unwrap();
     }
     #[test]
+    fn c71_b12_native_weight_rejections_and_fail_closed() {
+        let fixture = fixture(512);
+        let injection = Injection::new(&fixture.config);
+        let weights = Arc::new(vec![2i16; 1024]);
+        let _budget = census::Budget::new(&weights).unwrap();
+        let tile = WeightTile { first: 0, count: 1024, packed_first: 0, packed_stride: 1, columns: 1 };
+        for fault in 0..24 {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            runtime.install_weights(weights.clone(), [17; 32]).unwrap();
+            let tiles = runtime.pcs_weight_tiles(&weights, [17; 32], &[tile]).unwrap();
+            let pads = runtime.pcs_words(1024).unwrap();
+            runtime.pcs_upload(&pads, 0, &vec![3; 1024]).unwrap();
+            let twiddles = runtime.pcs_fft_twiddles(2).unwrap();
+            let ring = runtime.pcs_ring(4).unwrap();
+            let mut shape = WeightShape { message_rows: 8, rows: 4, pad_rows: 8, cosets: 256,
+                first_coset: 0, first_column: 0, slots: 0 };
+            let (low, high) = runtime.pcs_coset_powers(shape).unwrap();
+            let failed = match fault {
+                0..=9 | 18 => {
+                    match fault {
+                        0 => shape.message_rows = 3, 1 => shape.rows = 8, 2 => shape.rows = 0,
+                        3 => shape.slots = 8, 4 => shape.first_column = 126, 5 => shape.cosets = 16,
+                        6 => shape.first_coset = 1, 7 => shape.first_coset = 256,
+                        8 => shape.pad_rows = 1537, 9 => shape.message_rows = 4,
+                        18 => shape.first_coset = 32, _ => unreachable!(),
+                    }
+                    runtime.pcs_weight_columns(&tiles, &pads, &low, &high, &twiddles, &ring, shape).is_err()
+                }
+                10 => runtime.pcs_weight_columns(&tiles, &pads, &low, &low, &twiddles, &ring, shape).is_err(),
+                11 => runtime.pcs_weight_columns(&tiles, &ring, &low, &high, &twiddles, &ring, shape).is_err(),
+                12 => runtime.pcs_weight_tiles(&Arc::new(weights.as_ref().clone()), [17; 32], &[tile]).is_err(),
+                13 => runtime.pcs_weight_tiles(&weights, [18; 32], &[tile]).is_err(),
+                14 => runtime.pcs_weight_tiles(&weights, [17; 32], &[WeightTile { first: 1, ..tile }]).is_err(),
+                15 => runtime.pcs_weight_tiles(&weights, [17; 32], &[WeightTile { packed_stride: 2, ..tile }]).is_err(),
+                16 => {
+                    let incomplete = runtime.pcs_words(1024).unwrap();
+                    runtime.pcs_weight_columns(&tiles, &incomplete, &low, &high, &twiddles, &ring, shape).is_err()
+                }
+                17 => {
+                    let incomplete = runtime.pcs_words(1024).unwrap();
+                    runtime.pcs_weight_columns(&tiles, &pads, &low, &high, &twiddles, &incomplete, shape).is_err()
+                }
+                19..=21 => {
+                    injection.set([1, 2, 9][fault - 19]);
+                    runtime.pcs_weight_columns(&tiles, &pads, &low, &high, &twiddles, &ring, shape).is_err()
+                }
+                22 => runtime.pcs_fft_twiddles(3).is_err(),
+                23 => runtime.pcs_upload(&pads, 0, &[Goldilocks::ORDER_U64]).is_err(),
+                _ => unreachable!(),
+            };
+            assert!(failed, "fault {fault}");
+            assert_eq!(runtime.stats().unwrap().stopped, 1, "fault {fault}");
+            assert!(runtime.pcs_ring(4).is_err());
+            injection.set(0);
+            let stats = runtime.close().unwrap();
+            assert_eq!(stats.live_capacity_bytes, 0);
+            assert_eq!(stats.cleanup_failed, 0);
+        }
+        println!("C71_NATIVE_W_REJECTIONS {{\"cases\":24,\"gpu_execution\":false,\"credit\":false}}");
+    }
+    #[test]
     fn c71_b12_windowed_native_dense_chain() {
         #[repr(C)]
         struct Shape {
@@ -2047,6 +2165,13 @@ pub(in crate::c71_matrix) mod tests {
             unsafe {
                 call(values.as_ptr(), values.len() as u64);
             }
+        }
+        pub(in crate::c71_matrix) fn expect_pcs(&self, values: &[u64]) {
+            // Test-only observer after the shared finite FFT; production
+            // still has no field-value download for resident PCS buffers.
+            let call: unsafe extern "C" fn(*const u64, u64) =
+                unsafe { self.api.symbol(b"c71_range_test_expect_pcs\0") }.unwrap();
+            unsafe { call(values.as_ptr(), values.len() as u64); }
         }
     }
 }

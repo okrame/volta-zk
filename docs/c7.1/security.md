@@ -637,8 +637,17 @@ device precedono la pubblicazione. Nessun cambiamento a NoPeek, MAC,
 PCG AES o correlazioni; i producer non ricevono nuove monete. La parità
 del codice host condiviso non dimostra il raffinamento CUDA. La fixture
 strided ricompone il frontier con lo stesso seek dei sali e confronta
-root dei sottoalberi e root naturale; accumuli/FFT e import nel Tree
-canonico richiedono ancora integrazione e parità.
+root dei sottoalberi e root naturale; l'import della catena nel Tree
+canonico richiede ancora integrazione e parità delle aperture/transcript.
+Il [passo accumuli/FFT W](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
+verifica come componente la composizione dei prodotti signed esatti,
+pad originali, FFT e foglie/Merkle, con modulo i128 indipendente e
+parità Rust/C++ condivisa. La base Goldilocks è originale; non converte
+le basi Fp3 PCS/MAC. Bound signed <2^87, riduzione, mapping, lifecycle
+e scheduling restano privi di lemma Lean di raffinamento CUDA; gli
+arresti per alias, copertura, owner, binding, launch/fence/flag e i test
+finiti non ne costituiscono una prova generale. Import nel Tree,
+aperture/transcript e parità hardware restano da verificare.
 Il [record pulito](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
 conserva parità, contabilità congiunta, UBSan e 27 arresti. Non scarica
 le ipotesi B12, Seed6 o di raffinamento generale CUDA già dichiarate.

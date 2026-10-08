@@ -24,6 +24,11 @@ cudaError_t c71_byte_scatter_launch(cudaStream_t,const void*,unsigned,uint64_t,u
 cudaError_t c71_pcs_hash_launch(cudaStream_t,unsigned,const uint64_t*,const uint64_t*,c71_pcs::Hash32*,uint64_t,uint64_t,uint64_t,unsigned,uint32_t*);
 cudaError_t c71_pcs_nodes_launch(cudaStream_t,const c71_pcs::Hash32*,c71_pcs::Hash32*,uint64_t,uint64_t);
 cudaError_t c71_pcs_merge_launch(cudaStream_t,c71_pcs::Hash32*,c71_pcs::Hash32*,uint64_t,unsigned,unsigned);
+cudaError_t c71_pcs_powers_launch(cudaStream_t,uint64_t*,uint64_t*,c71_pcs::WeightShape);
+cudaError_t c71_pcs_weight_launch(cudaStream_t,const int16_t*,const c71_pcs::WeightTile*,uint64_t,uint64_t,
+    const uint64_t*,const uint64_t*,const uint64_t*,uint64_t*,c71_pcs::WeightShape,uint32_t*);
+cudaError_t c71_pcs_fft_launch(cudaStream_t,uint64_t*,const uint64_t*,unsigned,unsigned,unsigned*);
+cudaError_t c71_pcs_twiddles_launch(cudaStream_t,uint64_t*,unsigned);
 cudaError_t c71_lookup_launch(cudaStream_t,const int16_t*,const int16_t*,int16_t*,int64_t*,uint64_t,uint32_t*);
 cudaError_t c71_histogram_seal_launch(cudaStream_t,int64_t*,uint32_t*);
 cudaError_t c71_rope_launch(cudaStream_t,const int16_t*,const int32_t*,int64_t*,c71_nonlinear::Rope,uint32_t*);
@@ -55,10 +60,10 @@ struct C71RangeContext {
     const char* error="";
 };
 namespace {
-constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32};
+constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
                           uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535,
-                          uint64_t{1}<<28,uint64_t{1}<<25,uint64_t{1}<<25,uint64_t{1}<<25};
+                          uint64_t{1}<<28,uint64_t{1}<<25,uint64_t{1}<<25,uint64_t{1}<<25,65536,uint64_t{1}<<25};
 std::atomic<uint64_t> next_handle{1};
 bool canonical(Fp3 a) { return a.c0<P && a.c1<P && a.c2<P; }
 bool power2(uint64_t n) { return n && !(n&(n-1)); }
@@ -162,7 +167,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
 }
 extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     if(!ready(c)) return -1;
-    if(!out || kind>C71_PCS_FRONTIER_PENDING || !count || count>caps[kind]) return fail(c,"range allocation shape");
+    if(!out || kind>C71_PCS_POWERS || !count || count>caps[kind]) return fail(c,"range allocation shape");
     const uint64_t capacity=(count*sizes[kind]+255)&~uint64_t{255};
     Buffer* slot=nullptr;
     for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
@@ -742,4 +747,73 @@ extern "C" int c71_pcs_merge_group(C71RangeContext* c,uint64_t in,uint64_t roots
     if(launched(c,c71_pcs_merge_launch(c->stream,ptr<c71_pcs::Hash32>(c,a),ptr<c71_pcs::Hash32>(c,b),
         b->count,group,unsigned(a->visits>>32)))) return -1;
     ++a->visits; return 0;
+}
+extern "C" int c71_pcs_tiles_upload(C71RangeContext* c,uint64_t out,const c71_pcs::WeightTile* tiles,uint64_t count) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out);
+    if(!c->stats.weights_sealed || !b || b->kind!=C71_PCS_WEIGHT_TILES || b->initialized ||
+       !tiles || count!=b->count) return fail(c,"PCS W tiles shape or replacement");
+    const uint64_t live=c->stats.weights_bytes/2;
+    uint64_t covered=0;
+    for(uint64_t i=0;i<count;++i) {
+        const auto t=tiles[i];
+        if(t.first!=covered || !power2(t.count) || !power2(t.columns) || t.columns>t.count ||
+           t.count>live-covered || t.packed_stride<t.columns || t.packed_first>live ||
+           t.columns>live-t.packed_first || t.count/t.columns-1>(live-t.packed_first-t.columns)/t.packed_stride)
+            return fail(c,"PCS W tile coverage or packed span");
+        covered+=t.count;
+    }
+    if(covered!=live) return fail(c,"PCS W tiles incomplete");
+    if(checked(c,cudaMemcpyAsync(ptr<void>(c,b),tiles,count*sizeof(*tiles),cudaMemcpyHostToDevice,c->stream))) return -1;
+    c->stats.h2d_bytes+=count*sizeof(*tiles);
+    if(fence(c)) return -1;
+    b->initialized=count; b->visits=live; return 0;
+}
+extern "C" int c71_pcs_powers(C71RangeContext* c,uint64_t low,uint64_t high,c71_pcs::WeightShape s) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,low); auto* b=buffer(c,high);
+    if(!c71_pcs::valid(s) || !a || !b || a==b || a->kind!=C71_PCS_POWERS || b->kind!=C71_PCS_POWERS ||
+       a->initialized || b->initialized || a->count!=32*s.rows || b->count!=32*c71_pcs::high_rows(s))
+        return fail(c,"PCS coset power geometry or state");
+    if(launched(c,c71_pcs_powers_launch(c->stream,ptr<uint64_t>(c,a),ptr<uint64_t>(c,b),s))) return -1;
+    a->initialized=a->count; b->initialized=b->count;
+    a->visits=b->visits=(uint64_t(s.cosets)<<32)|s.first_coset; return 0;
+}
+extern "C" int c71_pcs_twiddles(C71RangeContext* c,uint64_t out,uint32_t log_rows) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out);
+    if(!b || b->kind!=C71_PCS_POWERS || b->initialized || log_rows<2 || log_rows>20 || log_rows%2 ||
+       b->count!=(uint64_t{1}<<log_rows)) return fail(c,"PCS FFT twiddle geometry or state");
+    if(launched(c,c71_pcs_twiddles_launch(c->stream,ptr<uint64_t>(c,b),log_rows))) return -1;
+    b->initialized=b->count; b->visits=(uint64_t{1}<<63)|b->count; return 0;
+}
+extern "C" int c71_pcs_ring_zero(C71RangeContext* c,uint64_t out) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out);
+    if(!b || b->kind!=C71_PCS_BASE || b->initialized) return fail(c,"PCS ring initialization state");
+    if(checked(c,cudaMemsetAsync(ptr<void>(c,b),0,b->count*8,c->stream))) return -1;
+    c->stats.zeroed_bytes+=b->count*8; b->initialized=b->count; return 0;
+}
+extern "C" int c71_pcs_weight(C71RangeContext* c,uint64_t tiles,uint64_t pads,uint64_t low,
+    uint64_t high,uint64_t twiddles,uint64_t ring,c71_pcs::WeightShape s) {
+    if(!ready(c)) return -1;
+    auto* t=buffer(c,tiles); auto* p=buffer(c,pads); auto* a=buffer(c,low);
+    auto* b=buffer(c,high); auto* w=buffer(c,twiddles); auto* out=buffer(c,ring);
+    const uint64_t binding=(uint64_t(s.cosets)<<32)|s.first_coset;
+    if(!c71_pcs::valid(s) || a==b || p==out || !c->stats.weights_sealed || !full(t,C71_PCS_WEIGHT_TILES) ||
+       t->visits!=c->stats.weights_bytes/2 || t->visits>128*s.message_rows ||
+       !full(p,C71_PCS_BASE) || p->count!=128*s.pad_rows || !full(a,C71_PCS_POWERS) || a->count!=32*s.rows ||
+       !full(b,C71_PCS_POWERS) || b->count!=32*c71_pcs::high_rows(s) || a->visits!=binding || b->visits!=binding ||
+       !full(w,C71_PCS_POWERS) || w->count!=s.rows || w->visits!=((uint64_t{1}<<63)|s.rows) ||
+       !full(out,C71_PCS_BASE) || out->count!=8*32*s.rows) return fail(c,"PCS resident W inputs or geometry");
+    uint64_t flag=0; if(dense_flag(c,&flag)) return -1;
+    if(launched(c,c71_pcs_weight_launch(c->stream,c->weights,ptr<c71_pcs::WeightTile>(c,t),t->count,t->visits,
+        ptr<uint64_t>(c,p),ptr<uint64_t>(c,a),ptr<uint64_t>(c,b),ptr<uint64_t>(c,out),s,ptr<uint32_t>(c,buffer(c,flag))))) return -1;
+    unsigned log_rows=0; while((uint64_t{1}<<log_rows)<s.rows) ++log_rows;
+    unsigned attempted=0;
+    const auto error=c71_pcs_fft_launch(c->stream,ptr<uint64_t>(c,out)+s.slots*32*s.rows,
+        ptr<uint64_t>(c,w),log_rows,4*32,&attempted);
+    c->stats.launches+=attempted;
+    if(checked(c,error)) return -1;
+    return dense_complete(c,flag,out);
 }

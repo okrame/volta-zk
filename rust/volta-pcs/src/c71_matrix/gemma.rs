@@ -1,7 +1,7 @@
 //! Pinned native W layout/P0 routes. Reuse the validated frontend and DAG;
 //! do not inherit their historical protocol or runtime-admission flags.
 
-use super::{linear::Cube, Fp3};
+use super::{linear::Cube, range, Fp3};
 use crate::{
     c7_gemma_frontend::compile_pinned_gemma31b_frontend,
     gemma31b_qspec_dag::declared_gemma31b_qspec_dag,
@@ -299,6 +299,16 @@ pub(super) fn eq_index(point: &[Fp3], index: usize) -> Fp3 {
 }
 
 impl Plan {
+    pub(super) fn pcs_weight_tiles(&self) -> Vec<range::windowed::native::WeightTile> {
+        self.tiles.iter().map(|tile| {
+            let source = &self.sources[tile.tensor];
+            range::windowed::native::WeightTile {
+                first: tile.offset as u64, count: (tile.rows * tile.cols) as u64,
+                packed_first: (source.packed_offset + tile.row * source.cols + tile.col) as u64,
+                packed_stride: source.cols as u64, columns: tile.cols as u64,
+            }
+        }).collect()
+    }
     /// Gather signed originals from the one packed W, with the root's public
     /// zero suffix. No whole-tile scan or per-cell layout binary search.
     pub(super) fn range_window(
@@ -463,6 +473,12 @@ mod tests {
         let (tiles, live) = tiles(&sources);
         let plan = Plan { sources, tiles, live, cohorts: Vec::new(), layout_digest: [0; 32] };
         assert_eq!(live, 33);
+        for tile in plan.pcs_weight_tiles() {
+            for local in 0..tile.count {
+                assert_eq!(plan.virtual_to_packed((tile.first + local) as usize).unwrap(),
+                    Some((tile.packed_first + local / tile.columns * tile.packed_stride + local % tile.columns) as usize));
+            }
+        }
         let value = |i| signed((13 * i as i64 + 7) % 31 - 15);
         let virtual_w: Vec<_> =
             (0..64).map(|i| plan.virtual_to_packed(i).unwrap().map_or(Fp3::ZERO, value)).collect();

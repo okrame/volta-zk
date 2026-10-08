@@ -2156,6 +2156,131 @@ mod tests {
     }
 
     #[test]
+    fn c71_b12_native_weight_columns_exact_signed_pads_fft_hash() {
+        use crate::c71_matrix::range::windowed::native::{Runtime, WeightShape, WeightTile, tests::{fixture, Injection}};
+        use super::super::streaming::{digest, hash_rows_in_place, node_hash};
+        let mut fixture = fixture(512);
+        fixture.config.arena_bytes = 8 << 20;
+        let injection = Injection::new(&fixture.config);
+        for (n, rows, cosets, pad, first_coset) in [
+            (64, 4, 256, 6, 32),
+            (256, 16, 256, 35, 224),
+            (4096, 16, 4096, 1536, 4032),
+        ] {
+            let weights = Arc::new((0..96 * n).map(|i| match i % 8 {
+                0 => 0, 1 => 32767, 2 => -32767, 3 => 1, 4 => -1,
+                _ => (((i * 19 + (i / 96) * 23) % 65535) as i32 - 32767) as i16,
+            }).collect::<Vec<i16>>());
+            let _budget = crate::c71_matrix::census::Budget::new(&weights).unwrap();
+            let original = weights.clone();
+            let get: Getter = Arc::new(move |i| {
+                if i >= 96 * n { return E::ZERO; }
+                let packed = if i < 64 * n { (i / 64) * 96 + i % 64 }
+                    else { let local = i - 64 * n; (local / 32) * 96 + 64 + local % 32 };
+                let signed = i64::from(original[packed]);
+                E::from(if signed < 0 { -Goldilocks::new((-signed) as u64) }
+                    else { Goldilocks::new(signed as u64) })
+            });
+            let mut rng = PrivateRng::from_seed([112; 32]);
+            let pads: Arc<[Goldilocks]> = (0..128 * pad).map(|_| rng.random()).collect();
+            let code = Code { get, scan: None, window: None, len: 128 * n,
+                live: 96 * n, width: 128, height: rows * cosets, pads: Pads::Base(pads.clone()) };
+            let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
+            let started = std::time::Instant::now();
+            let reference: Vec<_> = (first_coset..first_coset + 32)
+                .map(|c| code.coset_base(c, rows, &dft).unwrap()).collect();
+            let reference_s = started.elapsed().as_secs_f64();
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            runtime.install_weights(weights.clone(), [17; 32]).unwrap();
+            let tiles = runtime.pcs_weight_tiles(&weights, [17; 32], &[
+                WeightTile { first: 0, count: (64 * n) as u64, packed_first: 0, packed_stride: 96, columns: 64 },
+                WeightTile { first: (64 * n) as u64, count: (32 * n) as u64, packed_first: 64, packed_stride: 96, columns: 32 },
+            ]).unwrap();
+            let pad_buffer = runtime.pcs_words(pads.len()).unwrap();
+            runtime.pcs_upload(&pad_buffer, 0, &pads.iter().map(|x| x.as_canonical_u64()).collect::<Vec<_>>()).unwrap();
+            let twiddles = runtime.pcs_fft_twiddles(rows.ilog2() as usize).unwrap();
+            let ring = runtime.pcs_ring(rows).unwrap();
+            let mut shape = WeightShape { message_rows: n as u64, rows: rows as u64,
+                pad_rows: pad as u32, cosets: cosets as u32, first_coset: first_coset as u32,
+                first_column: 0, slots: 0 };
+            let (low, high) = runtime.pcs_coset_powers(shape).unwrap();
+            let before = runtime.stats().unwrap();
+            let started = std::time::Instant::now();
+            let mut fill = |runtime: &mut Runtime, column: usize, slots| {
+                shape.slots = slots;
+                shape.first_column = column as u32;
+                let mut expected = Vec::with_capacity(4 * 32 * rows);
+                for column in shape.first_column as usize..shape.first_column as usize + 4 {
+                    for values in &reference {
+                        expected.extend_from_slice(&values[column * rows..(column + 1) * rows]);
+                    }
+                }
+                injection.expect_pcs(&expected);
+                runtime.pcs_weight_columns(&tiles, &pad_buffer, &low, &high, &twiddles, &ring, shape).unwrap();
+            };
+            fill(&mut runtime, 0, 0);
+            fill(&mut runtime, 4, 4);
+            let mut states = runtime.pcs_hash_start(&ring).unwrap();
+            for first in (4..=116).step_by(8) {
+                fill(&mut runtime, first + 4, 0);
+                runtime.pcs_hash_step(&ring, &states, first).unwrap();
+                if first < 116 { fill(&mut runtime, first + 8, 4); }
+            }
+            fill(&mut runtime, 124, 0);
+            let scan_stats = runtime.stats().unwrap();
+            assert_eq!(scan_stats.d2h_bytes - before.d2h_bytes, 128); // 32 terminal flags, no field downloads
+            assert_eq!(scan_stats.launches - before.launches, 32 * 6 + 16); // scan/FFT + leaf start/steps
+            let group_rows = 32 * rows;
+            let band = 64.min(group_rows);
+            let salt_buffer = runtime.pcs_words(4 * band).unwrap();
+            let mut salt_rng = PrivateRng::from_seed([73; 32]);
+            let natural_salts: Vec<[Goldilocks; 4]> = (0..rows * cosets)
+                .map(|_| std::array::from_fn(|_| salt_rng.random())).collect();
+            let salt = |leaf: usize| natural_salts[leaf % rows * cosets + first_coset + leaf / rows];
+            for first in (0..group_rows).step_by(band) {
+                let words: Vec<_> = (0..4).flat_map(|col| (first..first + band)
+                    .map(move |leaf| salt(leaf)[col].as_canonical_u64())).collect();
+                runtime.pcs_upload(&salt_buffer, 0, &words).unwrap();
+                runtime.pcs_hash_finish(&ring, &salt_buffer, &mut states, first).unwrap();
+            }
+            let after = runtime.stats().unwrap();
+            assert_eq!(after.d2h_bytes - before.d2h_bytes, 132); // flags only, including completed hash
+            assert_eq!(after.launches - before.launches, 32 * 6 + 16 + (group_rows / band) as u64);
+            assert_eq!(after.stopped, 0);
+            let native_s = started.elapsed().as_secs_f64();
+            for buffer in [ring, low, high, twiddles, pad_buffer, tiles, salt_buffer] { runtime.release_buffer(buffer).unwrap(); }
+            let mut expected = vec![0; 128 * group_rows];
+            for column in 0..128 {
+                for (lane, values) in reference.iter().enumerate() {
+                    expected[column * group_rows + lane * rows..column * group_rows + (lane + 1) * rows]
+                        .copy_from_slice(&values[column * rows..(column + 1) * rows]);
+                }
+            }
+            hash_rows_in_place(&mut expected, group_rows, 128, salt).unwrap();
+            let mut expected: Vec<_> = (0..group_rows).map(|row| digest(&expected, group_rows, row)).collect();
+            assert_eq!(runtime.pcs_digests(&states, 0, group_rows).unwrap(), expected);
+            while expected.len() > rows {
+                expected = (0..expected.len() / 2).map(|i| {
+                    let left = 2 * (i / rows) * rows + i % rows;
+                    node_hash(expected[left], expected[left + rows])
+                }).collect();
+                let next = runtime.pcs_nodes_strided(&states, rows).unwrap();
+                runtime.release_buffer(states).unwrap();
+                states = next;
+                assert_eq!(runtime.pcs_digests(&states, 0, expected.len()).unwrap(), expected);
+            }
+            eprintln!("C71_NATIVE_W_COLUMNS_LOCAL {}", json!({"message_rows": n, "rows": rows,
+                "cosets_in_group": 32, "pads_per_column": pad, "tested_columns": 128,
+                "native_host_accum_fft_hash_s": native_s, "reference_accum_fft_s": reference_s,
+                "comparison_scope": "different stages and Rust O0/C++ O2; no speedup comparison", "stats": runtime.stats().unwrap(),
+                "census": crate::c71_matrix::census::simultaneous(),
+                "gpu_execution": false, "credit": false}));
+            runtime.release_buffer(states).unwrap();
+            runtime.close().unwrap();
+        }
+    }
+
+    #[test]
     fn c71_b12_native_incremental_hash_exact_roots_and_salt_bands() {
         use crate::c71_matrix::range::windowed::native::{Runtime, tests::fixture};
         use super::super::streaming::{digest, hash_rows_in_place, node_hash};

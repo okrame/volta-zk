@@ -739,6 +739,17 @@ digest, fino a 64 MiB; nessun valore base/CV lascia l'owner attraverso
 questa API. Il nodo salato C7.1 usa due compressioni BLAKE3, la foglia
 128 colonne ne usa 18. Il launcher non crea un allocatore o uno stream.
 Questa preparazione non sostituisce ancora il commitment CPU del runner.
+Il [passo accumuli/FFT](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
+aggiunge tile W e potenze tipizzate, legati a W sigillato/Arc/layout e
+gruppo dei coset. Un warp condivide un coefficiente fra 32 coset;
+fino a 256 prodotti signed i16×u64 si accumulano esattamente in 128 bit,
+con unica riduzione Goldilocks, prima dei pad di campo originali.
+Le FFT in-place riusano i cinque passaggi esistenti sullo stream comune.
+Alias pad/ring e low/high, input incompleti, potenze di un altro gruppo,
+errori CUDA e flag terminali falliscono chiuso. I cinque nuovi simboli
+PCS sono obbligatori; non si esportano download di valori PCS. Tre
+fixture da 128 colonne verificano valori, foglie e livelli Merkle, senza
+ancora importare il nuovo commitment nel Tree canonico.
 La riduzione per gruppi usa stride delle righe per unire coset fratelli;
 un frontier pending accetta solo gruppi consecutivi e non è leggibile.
 Con 4.096 coset raggruppati per 32, il frontier è 2^20×7×32 =

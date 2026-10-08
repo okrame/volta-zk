@@ -185,8 +185,8 @@ Il [passo W hash](../c7.1-history/crypto-w-hash-2026-10-08.md) aggiunge
 compressione BLAKE3 condivisa e operazioni GPU di foglia incrementale e
 Merkle nello stesso owner. CV da 32 B/foglia, mezzo blocco pendente nel
 ring, sali a finestre e pubblicazione dopo controllo terminale. Il
-runner non seleziona ancora questi kernel per il commitment: mancano
-accumuli/FFT W e collegamento al Tree canonico. Il merge strided a gruppi
+runner non seleziona ancora questi kernel per il commitment: manca
+il collegamento della catena accumuli/FFT/hash al Tree canonico. Il merge strided a gruppi
 ricompone l'ordine naturale con un frontier di sette livelli per 128
 gruppi di 32 coset, da verificare anche con gli accumuli residenti. La
 schedule A rimane separata; nessuna ricostruzione aggiuntiva è introdotta.
@@ -197,6 +197,20 @@ ha cinque test Rust e undici controlli Python positivi, UBSan e 27
 rifiuti terminali verificati. Picco congiunto della fixture 9.361.975 B,
 RSS massimo dei test/compilatori discendenti 193.908.736 B. Non è un
 tempo o picco H100; scansioni W/A selezionate ancora 1.024/512.
+
+Il [componente accumuli/FFT W](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
+collega nelle fixture W sigillato, accumuli interi esatti, FFT esistente
+in-place e hash/Merkle incrementali. Parità campo per campo e di tutti
+i digest su tre geometrie con 32 coset/128 colonne, inclusi 256
+contributi e 1.536 pad; 24 rifiuti terminali e modulo i128 indipendente
+su 526.336 prefissi. Il conto candidato comprende potenze basse da
+256 MiB, twiddle da 8 MiB e pad originali, senza duplicare il ring.
+Il runner non lo seleziona ancora: mancano Tree W, aperture/transcript
+e conto congiunto della schedule integrata. La riduzione a 128 scansioni
+rimane analitica; confronto Tensor Core e A→PCS aperti. Nessun credito
+CUDA/H100 o nuova autorizzazione hardware. La somma signed <2^87 e
+la sua riduzione sono identità controllate localmente, senza lemma Lean
+di raffinamento dell'implementazione o dello scheduling CUDA.
 
 Le geometrie fisiche attuali (quattro coset, 1.024 scansioni W e 512 A)
 sono scelte implementative modificabili. Alternative richiedono

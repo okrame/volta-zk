@@ -6,6 +6,9 @@
 #include <cstring>
 #include <functional>
 #include <vector>
+#include <algorithm>
+#include <cmath>
+#include "c71_fft.cuh"
 using namespace c71_range;
 struct FakeStream { std::vector<std::function<void()>> pending; };
 static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
@@ -16,6 +19,7 @@ static size_t fake_free=80000000000ULL;
 static unsigned allocations=0, frees=0, launches=0;
 static std::vector<uint8_t> expected_bytes;
 static std::vector<int64_t> expected_raw;
+static std::vector<uint64_t> expected_pcs;
 cudaError_t cudaSetDevice(int n) { return n==0?0:1; }
 cudaError_t cudaStreamCreateWithFlags(cudaStream_t* s,unsigned flags) {
     assert(flags==cudaStreamNonBlocking); *s=new FakeStream; return 0;
@@ -81,6 +85,48 @@ extern "C" int c71_pcs_merge_launch(cudaStream_t stream,c71_pcs::Hash32* frontie
     c71_pcs::Hash32* roots,uint64_t rows,unsigned group,unsigned levels) {
     return launch(stream,[=] { for(uint64_t row=0;row<rows;++row)
         c71_pcs::merge_group(frontier,roots,rows,row,group,levels); });
+}
+extern "C" int c71_pcs_powers_launch(cudaStream_t stream,uint64_t* low,uint64_t* high,c71_pcs::WeightShape s) {
+    return launch(stream,[=] {
+        const uint64_t omega=c71_pcs::power(7,(P-1)/(s.rows*s.cosets));
+        for(unsigned lane=0;lane<32;++lane) {
+            for(uint64_t row=0;row<s.rows;++row) low[lane*s.rows+row]=c71_pcs::power(omega,(s.first_coset+lane)*row);
+            for(uint64_t q=0;q<c71_pcs::high_rows(s);++q) high[q*32+lane]=c71_pcs::power(omega,(s.first_coset+lane)*q*s.rows);
+        }
+    });
+}
+extern "C" int c71_pcs_twiddles_launch(cudaStream_t stream,uint64_t* output,unsigned log_rows) {
+    return launch(stream,[=] {
+        const uint64_t rows=uint64_t{1}<<log_rows,root=c71_pcs::power(7,(P-1)/rows);
+        for(uint64_t row=0;row<rows;++row) output[row]=c71_pcs::power(root,row);
+    });
+}
+extern "C" int c71_pcs_weight_launch(cudaStream_t stream,const int16_t* weights,const c71_pcs::WeightTile* tiles,
+    uint64_t tile_count,uint64_t live,const uint64_t* pads,const uint64_t* low,const uint64_t* high,
+    uint64_t* ring,c71_pcs::WeightShape s,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(unsigned column=0;column<4;++column) for(unsigned lane=0;lane<32;++lane) for(uint64_t row=0;row<s.rows;++row)
+            ring[(s.slots+column)*32*s.rows+lane*s.rows+row]=c71_pcs::accumulate(
+                weights,tiles,tile_count,live,pads,low,high,s,s.first_column+column,row,lane);
+        if(fail_dense) *failed=1;
+    });
+}
+extern "C" int c71_pcs_fft_launch(cudaStream_t stream,uint64_t* values,const uint64_t* twiddles,
+    unsigned log_rows,unsigned batch,unsigned* attempted) {
+    *attempted+=5;
+    return launch(stream,[=] {
+        const size_t rows=size_t{1}<<log_rows, side=size_t{1}<<(log_rows/2);
+        for(unsigned b=0;b<batch;++b) {
+            std::vector<uint64_t> current(values+b*rows,values+(b+1)*rows);
+            c71_fft::five_pass_fft(current,side,twiddles[1]);
+            std::copy(current.begin(),current.end(),values+b*rows);
+        }
+        if(!expected_pcs.empty()) {
+            assert(expected_pcs.size()==batch*rows);
+            assert(std::memcmp(values,expected_pcs.data(),batch*rows*8)==0);
+            expected_pcs.clear();
+        }
+    });
 }
 // Host arithmetic for cross-language protocol parity. This executes neither
 // CUDA kernels nor their thread scheduling; it is never a production fallback.
@@ -354,6 +400,9 @@ extern "C" void c71_range_test_expect_bytes(const uint8_t* p,uint64_t n) {
 }
 extern "C" void c71_range_test_expect_raw(const int64_t* p,uint64_t n) {
     assert(n && expected_raw.empty()); expected_raw.assign(p,p+n);
+}
+extern "C" void c71_range_test_expect_pcs(const uint64_t* p,uint64_t n) {
+    assert(n && expected_pcs.empty()); expected_pcs.assign(p,p+n);
 }
 extern "C" void c71_range_test_failure(unsigned kind) {
     fail_launch=kind==1; fail_fence=kind==2; fail_free=kind==3; corrupt=kind==4;
@@ -673,6 +722,35 @@ static void joint_budget_checks() {
     assert(joint_live==0);
 }
 int main() {
+    // Original P3 66e2906 Goldilocks generator, including canonical 2^32.
+    uint64_t root=0x185629dcda58878cULL;
+    for(int bits=32;bits>=0;--bits) {
+        assert(c71_pcs::power(7,(P-1)/(uint64_t{1}<<bits))==root);
+        root=fp_mul(root,root);
+    }
+    // Independent signed i128 modulo reference, including every prefix and
+    // the 256-product bound used by the resident W kernel.
+    uint64_t random=0x53c71a28b79d024fULL;
+    for(unsigned test=0;test<2056;++test) {
+        c71_pcs::SignedWide dot{};
+        __int128 exact=0;
+        for(unsigned k=0;k<256;++k) {
+            random^=random<<13; random^=random>>7; random^=random<<17;
+            int16_t weight=int16_t(int(random%65535)-32767);
+            uint64_t factor=random>=P ? random-P : random;
+            if(test<8) {
+                const int16_t edges[]={-32767,32767,0,1,-1,32767,-32767,1};
+                weight=edges[test];
+                factor=(test==0 || test==1) ? P-1 : (k%3 ? P-1 : 0);
+                if(test>=5 && k%2) weight=int16_t(-weight);
+            }
+            dot.add(weight,factor);
+            exact+=__int128(weight)*factor;
+            __int128 residue=exact%__int128(P);
+            if(residue<0) residue+=P;
+            assert(dot.residue()==uint64_t(residue));
+        }
+    }
     C71RangeContext* c=nullptr;
     assert(c71_range_runtime_abi()==4);
     assert(c71_range_create(0,6442451200ULL,256,nullptr,&c) && !c && !allocations);

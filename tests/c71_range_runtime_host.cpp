@@ -122,10 +122,67 @@ extern "C" int c71_pcs_fft_launch(cudaStream_t stream,uint64_t* values,const uin
             std::copy(current.begin(),current.end(),values+b*rows);
         }
         if(!expected_pcs.empty()) {
-            assert(expected_pcs.size()==batch*rows);
+            assert(expected_pcs.size()>=batch*rows && expected_pcs.size()%(batch*rows)==0);
             assert(std::memcmp(values,expected_pcs.data(),batch*rows*8)==0);
-            expected_pcs.clear();
+            expected_pcs.erase(expected_pcs.begin(),expected_pcs.begin()+batch*rows);
         }
+    });
+}
+extern "C" int c71_pcs_source_powers_launch(cudaStream_t stream,uint64_t* low,uint64_t* high,c71_pcs::SourceShape s) {
+    return launch(stream,[=] {
+        const auto omega=c71_pcs::power(7,(P-1)/(s.rows*s.cosets));
+        for(unsigned lane=0;lane<4;++lane) {
+            for(uint64_t row=0;row<s.rows;++row) low[lane*s.rows+row]=c71_pcs::power(omega,(s.first_coset+lane)*row);
+            for(uint64_t q=0;q<c71_pcs::high_rows(s);++q) high[q*4+lane]=c71_pcs::power(omega,(s.first_coset+lane)*q*s.rows);
+        }
+    });
+}
+extern "C" int c71_pcs_source_tile_launch(cudaStream_t stream,const void* input,unsigned kind,c71_pcs::SourceTile t,
+    const uint64_t* high,uint64_t* first,uint64_t* second,uint64_t* counts,c71_pcs::SourceShape s,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(uint64_t i=0;i<t.rows*t.columns;++i) {
+            const auto address=t.input_first+(i/t.columns)*t.input_stride+i%t.columns;
+            const int64_t word=kind==1?static_cast<const int16_t*>(input)[address]:static_cast<const int64_t*>(input)[address];
+            for(unsigned j=0;j<t.width;++j) {
+                uint8_t byte=0;
+                if(!c71_byte::encode(word,t.signed_width,t.byte_first+j,byte)) { *failed=1; continue; }
+                const auto index=t.original_first+i*t.width+j, within=index%s.message_rows;
+                const unsigned column=unsigned(index/s.message_rows);
+                auto* out=(column<64?first:second)+uint64_t(column%64)*4*s.rows;
+                for(unsigned lane=0;lane<4;++lane) {
+                    auto& value=out[uint64_t(lane)*s.rows+within%s.rows];
+                    value=fp_add(value,fp_mul(byte,high[(within/s.rows)*4+lane]));
+                }
+                if(counts) ++counts[byte];
+            }
+        }
+        if(fail_dense) *failed=1;
+    });
+}
+extern "C" int c71_pcs_source_pad_launch(cudaStream_t stream,uint64_t* values,const uint64_t* pads,
+    const uint64_t* low,const uint64_t* high,c71_pcs::SourceShape s,unsigned first_column,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(unsigned column=0;column<64;++column) for(unsigned lane=0;lane<4;++lane) for(uint64_t row=0;row<s.rows;++row) {
+            const auto index=uint64_t(column)*4*s.rows+uint64_t(lane)*s.rows+row;
+            values[index]=c71_pcs::padded(values[index],pads,low,high,s,first_column+column,row,lane);
+        }
+        if(fail_dense) *failed=1;
+    });
+}
+extern "C" int c71_pcs_full_leaves_launch(cudaStream_t stream,const uint64_t* first,const uint64_t* second,
+    const uint64_t* salts,c71_pcs::Hash32* out,uint64_t rows,uint64_t begin,uint64_t count,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(uint64_t i=0;i<count;++i) {
+            const uint64_t row=begin+i;
+            auto cv=c71_pcs::leaf_start(first,rows,row);
+            for(unsigned column=4;column<=116;column+=8) {
+                const auto* pending=(column<64?first:second)+uint64_t(column%64)*rows;
+                const auto* next=(column+4<64?first:second)+uint64_t((column+4)%64)*rows;
+                cv=c71_pcs::leaf_step(cv,pending,next,rows,row,column);
+            }
+            out[row]=c71_pcs::leaf_finish(cv,second+60*rows,salts,rows,row,count,i);
+        }
+        if(fail_dense) *failed=1;
     });
 }
 // Host arithmetic for cross-language protocol parity. This executes neither

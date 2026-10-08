@@ -29,6 +29,13 @@ cudaError_t c71_pcs_weight_launch(cudaStream_t,const int16_t*,const c71_pcs::Wei
     const uint64_t*,const uint64_t*,const uint64_t*,uint64_t*,c71_pcs::WeightShape,uint32_t*);
 cudaError_t c71_pcs_fft_launch(cudaStream_t,uint64_t*,const uint64_t*,unsigned,unsigned,unsigned*);
 cudaError_t c71_pcs_twiddles_launch(cudaStream_t,uint64_t*,unsigned);
+cudaError_t c71_pcs_source_powers_launch(cudaStream_t,uint64_t*,uint64_t*,c71_pcs::SourceShape);
+cudaError_t c71_pcs_source_tile_launch(cudaStream_t,const void*,unsigned,c71_pcs::SourceTile,const uint64_t*,
+    uint64_t*,uint64_t*,uint64_t*,c71_pcs::SourceShape,uint32_t*);
+cudaError_t c71_pcs_source_pad_launch(cudaStream_t,uint64_t*,const uint64_t*,const uint64_t*,const uint64_t*,
+    c71_pcs::SourceShape,unsigned,uint32_t*);
+cudaError_t c71_pcs_full_leaves_launch(cudaStream_t,const uint64_t*,const uint64_t*,const uint64_t*,
+    c71_pcs::Hash32*,uint64_t,uint64_t,uint64_t,uint32_t*);
 cudaError_t c71_lookup_launch(cudaStream_t,const int16_t*,const int16_t*,int16_t*,int64_t*,uint64_t,uint32_t*);
 cudaError_t c71_histogram_seal_launch(cudaStream_t,int64_t*,uint32_t*);
 cudaError_t c71_rope_launch(cudaStream_t,const int16_t*,const int32_t*,int64_t*,c71_nonlinear::Rope,uint32_t*);
@@ -58,12 +65,19 @@ struct C71RangeContext {
     Buffer buffers[512]{};
     C71RangeStats stats{};
     const char* error="";
+    // At most one pending source reconstruction on this owner. Numeric
+    // producers borrow their original buffers; this record contains no coins.
+    struct {
+        c71_pcs::SourceShape shape{};
+        uint64_t values[2]{}, low=0, high=0, histogram=0, bytes=0;
+    } source;
 };
 namespace {
-constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8};
+constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
                           uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535,
-                          uint64_t{1}<<28,uint64_t{1}<<25,uint64_t{1}<<25,uint64_t{1}<<25,65536,uint64_t{1}<<25};
+                          uint64_t{1}<<28,uint64_t{1}<<25,uint64_t{1}<<25,uint64_t{1}<<25,65536,uint64_t{1}<<25,
+                          uint64_t{1}<<28,256};
 std::atomic<uint64_t> next_handle{1};
 bool canonical(Fp3 a) { return a.c0<P && a.c1<P && a.c2<P; }
 bool power2(uint64_t n) { return n && !(n&(n-1)); }
@@ -167,7 +181,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
 }
 extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     if(!ready(c)) return -1;
-    if(!out || kind>C71_PCS_POWERS || !count || count>caps[kind]) return fail(c,"range allocation shape");
+    if(!out || kind>C71_PCS_BYTE_COUNTS_PENDING || !count || count>caps[kind]) return fail(c,"range allocation shape");
     const uint64_t capacity=(count*sizes[kind]+255)&~uint64_t{255};
     Buffer* slot=nullptr;
     for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
@@ -816,4 +830,97 @@ extern "C" int c71_pcs_weight(C71RangeContext* c,uint64_t tiles,uint64_t pads,ui
     c->stats.launches+=attempted;
     if(checked(c,error)) return -1;
     return dense_complete(c,flag,out);
+}
+
+extern "C" int c71_pcs_source_powers(C71RangeContext* c,uint64_t low,uint64_t high,c71_pcs::SourceShape s) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,low); auto* b=buffer(c,high);
+    if(!c71_pcs::valid(s) || !a || !b || a==b || a->kind!=C71_PCS_POWERS || b->kind!=C71_PCS_POWERS ||
+       a->initialized || b->initialized || a->count!=4*s.rows || b->count!=4*c71_pcs::high_rows(s))
+        return fail(c,"PCS source coset powers or state");
+    if(launched(c,c71_pcs_source_powers_launch(c->stream,ptr<uint64_t>(c,a),ptr<uint64_t>(c,b),s))) return -1;
+    a->initialized=a->count; b->initialized=b->count;
+    a->visits=b->visits=(uint64_t(s.cosets)<<32)|s.first_coset; return 0;
+}
+extern "C" int c71_pcs_source_begin(C71RangeContext* c,uint64_t first,uint64_t second,uint64_t low,
+    uint64_t high,uint64_t histogram,c71_pcs::SourceShape s) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,first); auto* b=buffer(c,second);
+    auto* l=buffer(c,low); auto* h=buffer(c,high);
+    auto* counts=histogram?buffer(c,histogram):nullptr;
+    const uint64_t binding=(uint64_t(s.cosets)<<32)|s.first_coset;
+    if(!c71_pcs::valid(s) || c->source.values[0] || !a || !b || a==b || a->flag || b->flag ||
+       a->kind!=C71_PCS_SOURCE_PENDING || b->kind!=C71_PCS_SOURCE_PENDING || a->initialized || b->initialized ||
+       a->count!=256*s.rows || b->count!=a->count || l==h || !full(l,C71_PCS_POWERS) || !full(h,C71_PCS_POWERS) ||
+       l->count!=4*s.rows || h->count!=4*c71_pcs::high_rows(s) || l->visits!=binding || h->visits!=binding ||
+       (histogram && (!counts || counts->kind!=C71_PCS_BYTE_COUNTS_PENDING || counts->initialized || counts->count!=256 || s.first_coset)))
+        return fail(c,"PCS source begin geometry, powers or state");
+    if(dense_flag(c,&a->flag)) return -1;
+    for(auto* out: {a,b,counts}) if(out) {
+        if(checked(c,cudaMemsetAsync(ptr<void>(c,out),0,out->count*8,c->stream))) return -1;
+        c->stats.zeroed_bytes+=out->count*8;
+    }
+    c->source={s,{first,second},low,high,histogram,0}; return 0;
+}
+extern "C" int c71_pcs_source_tile(C71RangeContext* c,uint64_t original,const c71_pcs::SourceTile* tile) {
+    if(!ready(c)) return -1;
+    auto* input=buffer(c,original);
+    const auto s=c->source.shape;
+    if(!c->source.values[0] || !input || (input->kind!=C71_I16 && input->kind!=C71_I64) || input->initialized!=input->count ||
+       !tile || !c71_pcs::valid(*tile,input->kind,input->count,s.live)) return fail(c,"PCS original source tile or state");
+    const uint64_t bytes=tile->rows*tile->columns*tile->width;
+    if(bytes>s.live-c->source.bytes) return fail(c,"PCS source byte coverage exceeds live prefix");
+    auto* a=buffer(c,c->source.values[0]); auto* b=buffer(c,c->source.values[1]);
+    auto* high=buffer(c,c->source.high); auto* counts=c->source.histogram?buffer(c,c->source.histogram):nullptr;
+    if(!a || !b || a->kind!=C71_PCS_SOURCE_PENDING || b->kind!=C71_PCS_SOURCE_PENDING || !a->flag ||
+       !full(high,C71_PCS_POWERS) || (c->source.histogram && !counts)) return fail(c,"PCS source inputs retired or published");
+    if(launched(c,c71_pcs_source_tile_launch(c->stream,ptr<void>(c,input),input->kind,*tile,
+        ptr<uint64_t>(c,high),ptr<uint64_t>(c,a),ptr<uint64_t>(c,b),counts?ptr<uint64_t>(c,counts):nullptr,s,
+        ptr<uint32_t>(c,buffer(c,a->flag))))) return -1;
+    c->source.bytes+=bytes; return 0;
+}
+extern "C" int c71_pcs_source_finish(C71RangeContext* c,uint64_t first,uint64_t second,uint64_t histogram,uint64_t pads,uint64_t twiddles) {
+    if(!ready(c)) return -1;
+    const auto s=c->source.shape;
+    if(!c->source.values[0] || c->source.bytes!=s.live || first!=c->source.values[0] || second!=c->source.values[1] ||
+       histogram!=c->source.histogram) return fail(c,"PCS original source coverage or output binding differs");
+    auto* a=buffer(c,c->source.values[0]); auto* b=buffer(c,c->source.values[1]);
+    auto* l=buffer(c,c->source.low); auto* h=buffer(c,c->source.high);
+    auto* p=buffer(c,pads); auto* w=buffer(c,twiddles);
+    auto* counts=c->source.histogram?buffer(c,c->source.histogram):nullptr;
+    if(!a || !b || a->kind!=C71_PCS_SOURCE_PENDING || b->kind!=C71_PCS_SOURCE_PENDING || !a->flag || p==a || p==b ||
+       !full(l,C71_PCS_POWERS) || !full(h,C71_PCS_POWERS) || !full(p,C71_PCS_BASE) || p->count!=128*s.pad_rows ||
+       !full(w,C71_PCS_POWERS) || w->count!=s.rows || w->visits!=((uint64_t{1}<<63)|s.rows) ||
+       (c->source.histogram && (!counts || counts->kind!=C71_PCS_BYTE_COUNTS_PENDING))) return fail(c,"PCS source final inputs or state");
+    unsigned log_rows=0; while((uint64_t{1}<<log_rows)<s.rows) ++log_rows;
+    for(unsigned half=0;half<2;++half) {
+        auto* out=half?b:a;
+        if(launched(c,c71_pcs_source_pad_launch(c->stream,ptr<uint64_t>(c,out),ptr<uint64_t>(c,p),ptr<uint64_t>(c,l),
+            ptr<uint64_t>(c,h),s,64*half,ptr<uint32_t>(c,buffer(c,a->flag))))) return -1;
+        unsigned attempted=0;
+        const auto error=c71_pcs_fft_launch(c->stream,ptr<uint64_t>(c,out),ptr<uint64_t>(c,w),log_rows,256,&attempted);
+        c->stats.launches+=attempted;
+        if(checked(c,error)) return -1;
+    }
+    if(dense_complete(c,a->flag,a)) return -1;
+    a->flag=0; a->kind=b->kind=C71_PCS_BASE; b->initialized=b->count;
+    if(counts) { counts->kind=C71_I64; counts->initialized=counts->count; }
+    c->source={}; return 0;
+}
+extern "C" int c71_pcs_full_leaves(C71RangeContext* c,uint64_t first,uint64_t second,uint64_t salts,
+    uint64_t output,uint64_t begin,uint64_t count) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,first); auto* b=buffer(c,second); auto* s=buffer(c,salts); auto* out=buffer(c,output);
+    if(!full(a,C71_PCS_BASE) || !full(b,C71_PCS_BASE) || a==b || !full(s,C71_PCS_BASE) || !out ||
+       out->kind!=C71_PCS_HASH_PENDING || !count || begin>out->count || count>out->count-begin ||
+       a->count!=64*out->count || b->count!=a->count || s->count!=4*count || begin!=out->visits ||
+       (begin==0 ? (out->flag || out->initialized) : (!out->flag || out->initialized!=begin)))
+        return fail(c,"PCS full leaf geometry, state or salt coverage");
+    if(!begin && dense_flag(c,&out->flag)) return -1;
+    if(launched(c,c71_pcs_full_leaves_launch(c->stream,ptr<uint64_t>(c,a),ptr<uint64_t>(c,b),ptr<uint64_t>(c,s),
+        ptr<c71_pcs::Hash32>(c,out),out->count,begin,count,ptr<uint32_t>(c,buffer(c,out->flag))))) return -1;
+    out->initialized+=count; out->visits+=count;
+    if(begin+count!=out->count) return 0;
+    if(dense_complete(c,out->flag,out)) return -1;
+    out->flag=0; out->kind=C71_PCS_DIGEST; return 0;
 }

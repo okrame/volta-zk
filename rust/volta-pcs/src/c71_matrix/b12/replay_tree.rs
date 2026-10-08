@@ -86,6 +86,18 @@ pub(super) fn native_weight_geometry(height: usize) -> Result<(usize, usize), St
     Ok((rows, cut))
 }
 
+/// A preserves four cosets and every column per reconstruction. Keep the
+/// original row geometry; reject reduced profiles with rows > message rows.
+pub(super) fn native_source_geometry(height: usize) -> Result<(usize, usize), String> {
+    let (rows, cut) = geometry(height, 128)?;
+    let cosets = height / rows;
+    if rows < 4 || rows > 1 << 20 || rows.ilog2() % 2 != 0 || rows > height / 16 ||
+        !(8..=4096).contains(&cosets) || cut < cosets || cut > query_batch_rows(height) {
+        return Err("native A tree schedule exceeds bounded capacities".into());
+    }
+    Ok((rows, cut))
+}
+
 type Digest = [u8; 32];
 pub(super) type Commitment = MerkleCap<Goldilocks, Digest>;
 pub(super) type MultiProof = <HidingMmcs as Mmcs<Goldilocks>>::MultiProof;

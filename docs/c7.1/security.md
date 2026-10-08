@@ -677,6 +677,21 @@ registrazione del successore: non si modifica un oracolo ancora apribile.
 I test ridotti confrontano byte, root, sali, transcript e MAC originali.
 Preparatore, scan e gather non ricevono monete PCS, transcript o Seed6.
 
+Il [consumer A residente](../c7.1-history/crypto-a-source-2026-10-08.md)
+usa gli stessi byte biased degli originali numerici. Ordine fisico delle
+emissioni e somme modulari non modificano i coefficienti Goldilocks;
+pad, generatori, sali e encoding delle foglie sono originali. Il producer
+riceve solo un sink di buffer/tessere, senza monete PCS, transcript o
+correlazioni. Gli accumuli e conteggi pending non sono leggibili, e solo
+copertura, FFT e flag completi permettono pubblicazione. Errori del sink,
+shape, owner, codec o CUDA arrestano l'owner comune. A rimane riapribile
+nei prefissi accettati; la promozione non ne vieta il replay storico.
+L'istogramma privato è fuso nel primo replay, senza nuovi MAC o scansioni.
+Parità su tre geometrie e 28 rifiuti con driver simulato non sono una prova
+dei CAS o del scheduling CUDA, né una PCS A integrata o un nuovo lemma
+Lean. Rimangono tutte le premesse di determinismo/immutabilità, B12 e
+Seed6 già dichiarate; PCG AES, correlazioni monouso e NoPeek sono invariati.
+
 Il contatore comprende entrambi i ruoli e le capacità mantenute, compreso
 old+new durante realloc. Il rifiuto di allocazione o una free/fence CUDA
 fallita è terminale; non produce promozione, spill o fallback. Soltanto W

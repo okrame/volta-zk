@@ -778,8 +778,8 @@ Gli output delle fixture non sono misure di un commitment W completo.
 Il conto W corretto comprende due flag simultanei: 3.736.793.344 B
 device per ring/CV/potenze/twiddle/pad/frontier/sali/tile/flag. Il subtotal
 precedente era inferiore di 256 B e resta immutabile. I payload host
-nominati sono 89.292.232 B; con l'upper device replay di 785.789.696 B
-si ottiene un envelope conservativo di 4.611.875.272 B, prima degli altri
+nominati sono ora 89.292.320 B; con l'upper device replay di 785.789.696 B
+si ottiene un envelope conservativo di 4.611.875.360 B, prima degli altri
 owner host censiti dal budget. Non è un picco fisico né un'ammissione
 del percorso completo. `initial_native_peak_capacity_bytes` riporta il
 massimo storico dell'owner comune, non si somma al suo ledger cumulativo.
@@ -794,6 +794,34 @@ lega binario, sorgenti, log e conto del componente. La fixture W osserva
 2.699.776 B di capacità native e zero arena viva al termine; D2H 4.328 B
 di soli flag/cache digest. Budget applicato anche a host e tabella di test.
 Non attribuire queste dimensioni ridotte al pinned o al picco completo.
+
+Il [consumer A residente](../c7.1-history/crypto-a-source-2026-10-08.md)
+aggiunge cinque simboli obbligatori all'ABI 4 e
+`cuda/c71_pcs_source.cu`. `SourceTile`/`SourceShape` misurano 56/40 B;
+kind 15/16 distinguono accumuli pending e conteggi byte pending. Una
+transazione fissa da 88 B per owner collega due buffer da 64 colonne,
+potenze e istogramma opzionale: l'owner host passa da 37.064 a 37.152 B.
+Le quattro accumulazioni modulari esatte consumano ogni byte originale
+una volta per ricostruzione, in qualunque ordine di emissione, con tutte
+le 128 colonne residenti. Il codec riusa bias e byte plane del gather;
+nessuna riga originale è scaricata dal nuovo scanner. Copertura completa,
+pad originali, FFT finita e flag precedono la conversione a valori base.
+L'istogramma fuso del primo gruppo pubblica solo 256 conteggi privati
+(2.048 B), senza ricostruzione aggiuntiva. La foglia completa riusa le
+18 compressioni B12 attraverso i due buffer; digest pending non leggibili
+fino a tutte le bande di sali e fence finale. C garantisce span, stato e
+conteggio; l'owner Rust delle tessere garantisce unicità e coordinate.
+
+La geometria A conserva quattro coset e R=2^20: 512 ricostruzioni sul
+pinned. Valori 4.294.967.296 B, frontier 301.989.888 B, twiddle 8.388.608 B,
+pad 1.572.864 B e banda sali 2.097.152 B rimangono comuni alle fasi.
+Potenze/conteggi/flag portano l'accumulo a 4.642.576.672 B; dopo il loro
+rilascio, digest e flag portano l'hash a 4.743.233.792 B. Con upper replay
+device 785.789.696 B e host nominati 49.846.528 B, l'envelope conservativo
+è 5.578.870.016 B, prima degli altri owner host. Non sommare fasi o picchi
+storici; il budget addebita tutte le capacità effettive. Il componente
+non è ancora collegato al Tree/runner A, che mantiene la PCS CPU.
+I tempi della fixture Rust O0/C++ O2 non sono un confronto di speedup.
 
 La CLI seleziona soltanto `reference-cpu` oppure `experiment-cuda`; la
 seconda aggiunge `LIBRARY DEVICE` agli stessi cinque argomenti di input.

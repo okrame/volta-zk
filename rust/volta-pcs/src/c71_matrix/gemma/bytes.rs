@@ -153,6 +153,31 @@ impl Bytes {
         mut emit: impl FnMut(crate::c71_matrix::range::windowed::native::ByteTile) -> Result<(), String>,
     ) -> Result<(), String> {
         use crate::c71_matrix::range::windowed::native::ByteTile;
+        self.resident_tile_fields(id, first, rows,
+            |start, size| window.intersects(start, size), |t| emit(ByteTile {
+                input_first: t.input_first, input_stride: t.input_stride,
+                rows: t.rows, columns: t.columns, original_first: t.original_first,
+                window_first: window.first as u64, window_length: length as u64,
+                byte_first: t.byte_first, width: t.width, signed_width: t.signed_width,
+                dimension: window.dimension as u32, suffix: window.suffix as u32,
+                bottom: window.bottom as u32,
+            }))
+    }
+
+    /// PCS source metadata, without a range window or original-value download.
+    pub(super) fn resident_original_tiles(
+        &self, id: usize, first: usize, rows: usize,
+        emit: impl FnMut(crate::c71_matrix::range::windowed::native::PcsSourceTile) -> Result<(), String>,
+    ) -> Result<(), String> {
+        self.resident_tile_fields(id, first, rows, |_, _| true, emit)
+    }
+
+    fn resident_tile_fields(
+        &self, id: usize, first: usize, rows: usize,
+        mut selected: impl FnMut(usize, usize) -> bool,
+        mut emit: impl FnMut(crate::c71_matrix::range::windowed::native::PcsSourceTile) -> Result<(), String>,
+    ) -> Result<(), String> {
+        use crate::c71_matrix::range::windowed::native::PcsSourceTile;
         let source = self.scalar.layout.sources.get(id).ok_or("resident byte source missing")?;
         let end = first.checked_add(rows).ok_or("resident byte rows overflow")?;
         if rows == 0 || end > source.rows {
@@ -167,23 +192,18 @@ impl Bytes {
             }
             for &index in &self.by_scalar[index] {
                 let b = &self.tiles[index];
-                if !window.intersects(b.offset, t.rows * t.cols * b.width) {
+                if !selected(b.offset, t.rows * t.cols * b.width) {
                     continue;
                 }
-                emit(ByteTile {
+                emit(PcsSourceTile {
                     input_first: ((lo - first) * source.cols + t.col) as u64,
                     input_stride: source.cols as u64,
                     rows: (hi - lo) as u64,
                     columns: t.cols as u64,
                     original_first: (b.offset + (lo - t.row) * t.cols * b.width) as u64,
-                    window_first: window.first as u64,
-                    window_length: length as u64,
                     byte_first: b.first as u32,
                     width: b.width as u32,
                     signed_width: self.widths[id] as u32,
-                    dimension: window.dimension as u32,
-                    suffix: window.suffix as u32,
-                    bottom: window.bottom as u32,
                 })?;
             }
         }
@@ -612,6 +632,63 @@ mod tests {
         Fs, Key, MatrixRng, Model, E,
     };
     use rand_010::{RngExt, SeedableRng};
+
+    #[test]
+    fn c71_b12_pcs_resident_source_tiles_original_biased_bytes() {
+        let sources = vec![
+            Source { name: "i16".into(), rows: 5, cols: 3, packed_offset: 0 },
+            Source { name: "i32".into(), rows: 3, cols: 5, packed_offset: 15 },
+            Source { name: "i48".into(), rows: 1, cols: 7, packed_offset: 30 },
+        ];
+        let (tiles, live) = super::super::tiles(&sources);
+        let bytes = Bytes::new(Auxiliary {
+            layout: Plan { sources, tiles, live, cohorts: Vec::new(), layout_digest: [37; 32] },
+            weight_layout: [19; 32], input_sources: Vec::new(),
+        }, vec![2, 4, 6]).unwrap();
+        let mut expected = std::collections::BTreeMap::new();
+        let mut observed = std::collections::BTreeMap::new();
+        for (id, source) in bytes.scalar.layout.sources.iter().enumerate() {
+            let width = bytes.widths[id];
+            let bound = 1i64 << (8 * width - 1);
+            let values: Vec<_> = (0..source.rows * source.cols)
+                .map(|i| [-bound, -bound + 1, -257, -1, 0, 255, bound - 1][i % 7]).collect();
+            for row in 0..source.rows {
+                bytes.emit_row_bytes(id, row, &values[row * source.cols..(row + 1) * source.cols],
+                    &mut |index, byte| { assert!(expected.insert(index, byte).is_none()); Ok(()) }).unwrap();
+            }
+            // Ragged, reverse-order batches with a nonzero input view offset.
+            for first in (0..source.rows).step_by(2).rev() {
+                let rows = 2.min(source.rows - first);
+                let mut input = vec![0i64; 3];
+                input.extend_from_slice(&values[first * source.cols..(first + rows) * source.cols]);
+                bytes.resident_original_tiles(id, first, rows, |mut tile| {
+                    tile.input_first += 3;
+                    assert_eq!(tile.signed_width as usize, width);
+                    for row in 0..tile.rows {
+                        for column in 0..tile.columns {
+                            let word = input[(tile.input_first + row * tile.input_stride + column) as usize];
+                            // Independent addition of the signed bias, rather
+                            // than the producer's high-byte XOR implementation.
+                            let encoded = (word + bound).to_le_bytes();
+                            for j in 0..tile.width {
+                                let index = tile.original_first + (row * tile.columns + column) * u64::from(tile.width) + u64::from(j);
+                                let byte = encoded[(tile.byte_first + j) as usize];
+                                assert!(observed.insert(index as usize, byte).is_none());
+                            }
+                        }
+                    }
+                    Ok(())
+                }).unwrap();
+            }
+        }
+        assert_eq!(observed, expected);
+        assert_eq!(observed.len(), bytes.live);
+        assert_eq!(observed.keys().copied().collect::<Vec<_>>(), (0..bytes.live).collect::<Vec<_>>());
+        for (id, first, rows) in [(3, 0, 1), (0, 0, 0), (0, 4, 2), (0, usize::MAX, 2)] {
+            assert!(bytes.resident_original_tiles(id, first, rows, |_| panic!("invalid source emitted")).is_err());
+        }
+        assert_eq!(bytes.resident_original_tiles(0, 0, 1, |_| Err("sink stopped".into())).unwrap_err(), "sink stopped");
+    }
 
     #[test]
     fn c71_b12_range_window_permutation_and_intersections() {

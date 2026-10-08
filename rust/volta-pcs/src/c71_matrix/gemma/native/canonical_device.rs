@@ -886,6 +886,36 @@ impl Prepared {
         Ok(())
     }
 
+    /// One original A reconstruction feeds resident tiles to the PCS sink.
+    /// The numerical scanner receives no PCS coins, points or coefficients.
+    pub(in crate::c71_matrix) fn scan_pcs_original(
+        &self,
+        emit: &mut dyn FnMut(&mut Runtime, &Buffer,
+            kernel::range::windowed::native::PcsSourceTile) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let targets = (0..self.session.profiles[self.slot].bytes().widths.len()).collect();
+        self.scan_pcs_sources(&targets, emit)
+    }
+
+    fn scan_pcs_sources(
+        &self, targets: &BTreeSet<usize>,
+        emit: &mut dyn FnMut(&mut Runtime, &Buffer,
+            kernel::range::windowed::native::PcsSourceTile) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let (mut runtime, mut state) = self.session.lock()?;
+        let plan = &self.session.profiles[self.slot];
+        let result = self.scan(&mut runtime, &mut state, targets,
+            |runtime, source, first, count, input, offset| {
+                plan.bytes().resident_original_tiles(source, first, count, |mut tile| {
+                    tile.input_first = tile.input_first.checked_add(offset as u64)
+                        .ok_or("native PCS source offset overflow")?;
+                    emit(runtime, input, tile)
+                })
+            });
+        if let Err(error) = result { return runtime.abort(error); }
+        Ok(())
+    }
+
     pub(in crate::c71_matrix) fn scan_original(
         &self,
         emit: &mut dyn FnMut(usize, Goldilocks) -> Result<(), String>,
@@ -1331,6 +1361,33 @@ mod tests {
                 .sum::<i64>()
         };
         let targets = [relation.raw, pair.output].into_iter().collect();
+        let before_pcs = session.stats().unwrap();
+        let mut resident_bytes = 0u64;
+        let mut resident_tiles = 0u64;
+        prepared.scan_pcs_sources(&targets, &mut |_, _, tile| {
+            assert_eq!(tile.input_stride, columns as u64);
+            assert!([2, 6].contains(&tile.signed_width));
+            resident_bytes += tile.rows * tile.columns * u64::from(tile.width);
+            resident_tiles += 1;
+            Ok(())
+        }).unwrap();
+        let after_pcs = session.stats().unwrap();
+        assert_eq!(resident_bytes, (150 * columns * (6 + 2)) as u64);
+        assert!(resident_tiles > 0);
+        assert_eq!(after_pcs.h2d_bytes, before_pcs.h2d_bytes);
+        // Only bounded producer error flags cross the device boundary. A
+        // download of any original row would exceed this launch-based bound.
+        let pcs_d2h = after_pcs.d2h_bytes - before_pcs.d2h_bytes;
+        assert!(pcs_d2h > 0 && pcs_d2h % 4 == 0);
+        assert!(pcs_d2h <= 4 * (after_pcs.launches - before_pcs.launches));
+        println!("C71_PCS_SOURCE_STREAM {}", serde_json::json!({
+            "original_bytes":resident_bytes, "tiles":resident_tiles,
+            "reconstructions":1, "original_rows_downloaded":0,
+            "d2h_flag_bytes":pcs_d2h, "source_h2d_bytes":0,
+            "launches":after_pcs.launches-before_pcs.launches,
+            "native_peak_capacity_bytes":after_pcs.peak_capacity_bytes,
+            "gpu_execution":false, "credit":false
+        }));
         let mut observed = 0;
         {
             let (mut runtime, mut state) = session.lock().unwrap();
@@ -1391,6 +1448,13 @@ mod tests {
             assert_eq!(byte, expected[&(first + offset)]);
         }
         prepared.promote().unwrap();
+        let mut rejected_tiles = 0;
+        let error = prepared.scan_pcs_sources(&targets, &mut |_, _, _| {
+            rejected_tiles += 1;
+            Err("injected PCS sink failure".into())
+        }).unwrap_err();
+        assert!(error.contains("injected PCS sink failure"));
+        assert_eq!(rejected_tiles, 1);
         assert!(prepared.scan_original(&mut |_, _| Ok(())).is_err());
         assert_eq!(session.stats().unwrap().stopped, 1);
         assert!(prepared.promote().is_err());

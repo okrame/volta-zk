@@ -252,6 +252,28 @@ pub(in crate::c71_matrix) struct ByteTile {
     pub bottom: u32,
 }
 const _: () = assert!(size_of::<ByteTile>() == 80);
+/// Original biased bytes of a resident scalar tile. Unlike ByteTile this
+/// has no range permutation/window: PCS consumes the original flat layout.
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub(in crate::c71_matrix) struct PcsSourceTile {
+    pub input_first: u64,
+    pub input_stride: u64,
+    pub rows: u64,
+    pub columns: u64,
+    pub original_first: u64,
+    pub byte_first: u32,
+    pub width: u32,
+    pub signed_width: u32,
+}
+const _: () = assert!(size_of::<PcsSourceTile>() == 56);
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub(in crate::c71_matrix) struct PcsSourceShape {
+    pub message_rows: u64, pub rows: u64, pub live: u64,
+    pub pad_rows: u32, pub cosets: u32, pub first_coset: u32,
+}
+const _: () = assert!(size_of::<PcsSourceShape>() == 40);
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub(in crate::c71_matrix) struct WeightTile {
@@ -343,6 +365,11 @@ api! {
     pcs_twiddles: unsafe extern "C" fn(Raw,u64,u32)->i32 => "c71_pcs_twiddles",
     pcs_zero: unsafe extern "C" fn(Raw,u64)->i32 => "c71_pcs_ring_zero",
     pcs_weight: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64,WeightShape)->i32 => "c71_pcs_weight",
+    pcs_source_powers: unsafe extern "C" fn(Raw,u64,u64,PcsSourceShape)->i32 => "c71_pcs_source_powers",
+    pcs_source_begin: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,PcsSourceShape)->i32 => "c71_pcs_source_begin",
+    pcs_source_tile: unsafe extern "C" fn(Raw,u64,*const PcsSourceTile)->i32 => "c71_pcs_source_tile",
+    pcs_source_finish: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64)->i32 => "c71_pcs_source_finish",
+    pcs_full_leaves: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64,u64)->i32 => "c71_pcs_full_leaves",
 }
 pub(in crate::c71_matrix) struct Runtime {
     api: Api,
@@ -548,6 +575,56 @@ impl Runtime {
         self.require_buffer(output)?;
         let status = unsafe { (self.api.pcs_upload)(self.raw, output.id, first as u64, values.as_ptr(), values.len() as u64) };
         self.check(status)
+    }
+    pub(in crate::c71_matrix) fn pcs_source_powers(&mut self, shape: PcsSourceShape) -> Result<(Buffer, Buffer), String> {
+        if shape.rows < 4 || shape.rows > 1 << 20 || shape.message_rows > 1 << 27 || shape.pad_rows > 1536 {
+            return self.abort("native PCS source power capacity differs");
+        }
+        let low = self.allocate_buffer(14, 4 * shape.rows as usize)?;
+        let high = self.allocate_buffer(14, 4 * (shape.message_rows + u64::from(shape.pad_rows)).div_ceil(shape.rows) as usize)?;
+        let status = unsafe { (self.api.pcs_source_powers)(self.raw, low.id, high.id, shape) };
+        self.check(status)?;
+        Ok((low, high))
+    }
+    pub(in crate::c71_matrix) fn pcs_source_begin(&mut self, low: &Buffer, high: &Buffer,
+        shape: PcsSourceShape, with_histogram: bool) -> Result<([Buffer; 2], Option<Buffer>), String> {
+        self.require_buffer(low)?; self.require_buffer(high)?;
+        if shape.rows < 4 || shape.rows > 1 << 20 { return self.abort("native PCS source capacity differs"); }
+        let values = [self.allocate_buffer(15, 256 * shape.rows as usize)?, self.allocate_buffer(15, 256 * shape.rows as usize)?];
+        let histogram = if with_histogram { Some(self.allocate_buffer(16, 256)?) } else { None };
+        let status = unsafe { (self.api.pcs_source_begin)(self.raw, values[0].id, values[1].id, low.id, high.id,
+            histogram.as_ref().map_or(0, |h| h.id), shape) };
+        self.check(status)?;
+        Ok((values, histogram))
+    }
+    pub(in crate::c71_matrix) fn pcs_source_tile(&mut self, input: &Buffer, tile: PcsSourceTile) -> Result<(), String> {
+        self.require_buffer(input)?;
+        let status = unsafe { (self.api.pcs_source_tile)(self.raw, input.id, &tile) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn pcs_source_finish(&mut self, values: &mut [Buffer; 2], histogram: Option<&mut Buffer>,
+        pads: &Buffer, twiddles: &Buffer) -> Result<(), String> {
+        for input in [pads, twiddles, &values[0], &values[1]] { self.require_buffer(input)?; }
+        if let Some(h) = histogram.as_ref() { self.require_buffer(h)?; }
+        let status = unsafe { (self.api.pcs_source_finish)(self.raw, values[0].id, values[1].id,
+            histogram.as_ref().map_or(0, |h| h.id), pads.id, twiddles.id) };
+        self.check(status)?;
+        for value in values { value.kind = 9; }
+        if let Some(h) = histogram { h.kind = 6; }
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn pcs_full_hash_begin(&mut self, rows: usize) -> Result<Buffer, String> {
+        self.allocate_buffer(10, rows)
+    }
+    pub(in crate::c71_matrix) fn pcs_full_hash_band(&mut self, values: &[Buffer; 2], salts: &Buffer,
+        states: &mut Buffer, first: usize) -> Result<(), String> {
+        for input in [salts, states, &values[0], &values[1]] { self.require_buffer(input)?; }
+        if salts.kind != 9 || salts.count % 4 != 0 { return self.abort("native PCS full leaf salt shape differs"); }
+        let count = salts.count / 4;
+        let status = unsafe { (self.api.pcs_full_leaves)(self.raw, values[0].id, values[1].id, salts.id, states.id, first as u64, count as u64) };
+        self.check(status)?;
+        if first.checked_add(count) == Some(states.count) { states.kind = 11; }
+        Ok(())
     }
     pub(in crate::c71_matrix) fn pcs_hash_start(&mut self, ring: &Buffer) -> Result<Buffer, String> {
         self.require_buffer(ring)?;
@@ -1558,6 +1635,107 @@ impl<'a, T: Word> Evaluator<'a, T> {
 #[cfg(test)]
 pub(in crate::c71_matrix) mod tests {
     use super::*;
+    #[test]
+    fn c71_b12_native_source_pending_coverage_owner_and_failure() {
+        let fixture = fixture(128);
+        let injection = Injection::new(&fixture.config);
+        for fault in 0..28 {
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let input = runtime.upload_signed(&[32767; 64]).unwrap();
+            let shape = PcsSourceShape { message_rows: 4, rows: 4, live: 128, pad_rows: 3, cosets: 16, first_coset: 0 };
+            let tile = PcsSourceTile { input_first: 0, input_stride: 8, rows: 8, columns: 8,
+                original_first: 0, byte_first: 0, width: 2, signed_width: 2 };
+            let pads = runtime.pcs_words(128 * 3).unwrap();
+            runtime.pcs_upload(&pads, 0, &[7; 128 * 3]).unwrap();
+            let twiddles = runtime.pcs_fft_twiddles(2).unwrap();
+            let (low, high) = runtime.pcs_source_powers(shape).unwrap();
+            let result = match fault {
+                0 => runtime.pcs_source_begin(&low, &low, shape, true).map(|_| ()),
+                1 => runtime.pcs_source_powers(PcsSourceShape { rows: 3, ..shape }).map(|_| ()),
+                19 => runtime.pcs_source_begin(&low, &high, PcsSourceShape { first_coset: 4, ..shape }, false).map(|_| ()),
+                23 => runtime.pcs_source_powers(PcsSourceShape { cosets: 32, ..shape }).map(|_| ()),
+                _ => {
+                    let (mut values, mut histogram) = runtime.pcs_source_begin(&low, &high, shape, true).unwrap();
+                    match fault {
+                        2 => runtime.pcs_source_tile(&input, PcsSourceTile { signed_width: 6, ..tile }),
+                        3 => runtime.pcs_source_tile(&input, PcsSourceTile { width: 3, ..tile }),
+                        4 => runtime.pcs_source_tile(&input, PcsSourceTile { byte_first: 3, ..tile }),
+                        5 => runtime.pcs_source_tile(&input, PcsSourceTile { original_first: u64::MAX, ..tile }),
+                        6 => runtime.pcs_source_tile(&input, PcsSourceTile { input_stride: 0, ..tile }),
+                        7 => runtime.pcs_source_tile(&input, PcsSourceTile { input_first: u64::MAX, ..tile }),
+                        8 => runtime.pcs_source_tile(&input, PcsSourceTile { rows: u64::MAX, ..tile }),
+                        9 => { runtime.pcs_source_tile(&input, tile).unwrap(); runtime.pcs_source_tile(&input, tile) },
+                        10 => runtime.pcs_source_finish(&mut values, histogram.as_mut(), &pads, &twiddles),
+                        11 => runtime.download_words(&values[0], 0, &mut [0; 1]),
+                        12 => {
+                            let salts = runtime.pcs_words(32).unwrap(); runtime.pcs_upload(&salts, 0, &[1; 32]).unwrap();
+                            let mut states = runtime.pcs_full_hash_begin(16).unwrap();
+                            runtime.pcs_full_hash_band(&values, &salts, &mut states, 0)
+                        },
+                        13 => {
+                            runtime.pcs_source_tile(&input, tile).unwrap(); values.swap(0, 1);
+                            runtime.pcs_source_finish(&mut values, histogram.as_mut(), &pads, &twiddles)
+                        },
+                        14 => {
+                            runtime.pcs_source_tile(&input, tile).unwrap();
+                            runtime.pcs_source_finish(&mut values, None, &pads, &twiddles)
+                        },
+                        15 => {
+                            let mut other = Runtime::new(&fixture.config).unwrap();
+                            let foreign = other.upload_signed(&[1; 64]).unwrap();
+                            runtime.pcs_source_tile(&foreign, tile)
+                        },
+                        16 | 18 => {
+                            runtime.pcs_source_tile(&input, tile).unwrap();
+                            injection.set(if fault == 16 { 9 } else { 2 });
+                            runtime.pcs_source_finish(&mut values, histogram.as_mut(), &pads, &twiddles)
+                        },
+                        17 => { injection.set(1); runtime.pcs_source_tile(&input, tile) },
+                        20 => {
+                            runtime.pcs_source_tile(&input, tile).unwrap();
+                            let wrong = runtime.pcs_words(1).unwrap(); runtime.pcs_upload(&wrong, 0, &[1]).unwrap();
+                            runtime.pcs_source_finish(&mut values, histogram.as_mut(), &wrong, &twiddles)
+                        },
+                        21 => { let pending = runtime.allocate_buffer(1, 64).unwrap(); runtime.pcs_source_tile(&pending, tile) },
+                        22 => runtime.pcs_source_begin(&low, &high, shape, false).map(|_| ()),
+                        24..=26 => {
+                            runtime.pcs_source_tile(&input, tile).unwrap();
+                            runtime.pcs_source_finish(&mut values, histogram.as_mut(), &pads, &twiddles).unwrap();
+                            let band = if fault == 26 {16} else {8};
+                            let salts = runtime.pcs_words(4 * band).unwrap(); runtime.pcs_upload(&salts, 0, &vec![1; 4 * band]).unwrap();
+                            let mut states = runtime.pcs_full_hash_begin(16).unwrap();
+                            if fault == 26 { injection.set(9); }
+                            let status = runtime.pcs_full_hash_band(&values, &salts, &mut states, 0);
+                            if fault == 26 { status } else {
+                                status.unwrap();
+                                if fault == 24 { runtime.pcs_full_hash_band(&values, &salts, &mut states, 0) }
+                                else { runtime.pcs_digests(&states, 0, 1).map(|_| ()) }
+                            }
+                        },
+                        27 => {
+                            let raw = runtime.pointwise([Some((&input, 0)), None], 64,
+                                Pointwise { a: 1 << 30, b: 0, multiply: 0 }).unwrap();
+                            runtime.pcs_source_tile(&raw, PcsSourceTile { signed_width: 4, ..tile }).unwrap();
+                            runtime.pcs_source_finish(&mut values, histogram.as_mut(), &pads, &twiddles)
+                        },
+                        _ => unreachable!(),
+                    }
+                }
+            };
+            assert!(result.is_err(), "fault {fault} published a source");
+            let before = runtime.stats().unwrap();
+            assert_eq!(before.stopped, 1);
+            assert!(runtime.pcs_source_tile(&input, tile).is_err());
+            let after = runtime.stats().unwrap();
+            assert_eq!(after.launches, before.launches);
+            assert_eq!(after.allocations, before.allocations);
+            assert_eq!(after.h2d_bytes, before.h2d_bytes);
+            injection.set(0);
+            assert_eq!(runtime.close().unwrap().arena_bytes, 0);
+        }
+        println!("C71_PCS_SOURCE_REJECTIONS {{\"cases\":28,\"terminal\":true,\"gpu_execution\":false,\"credit\":false}}");
+    }
+
     #[test]
     fn c71_b12_native_incremental_hash_rejections_and_fail_closed() {
         let f = fixture(512);

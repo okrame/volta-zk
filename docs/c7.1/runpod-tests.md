@@ -61,6 +61,18 @@ test Rust e nove Python positivi. Il [receipt](../c7.1-history/crypto-w-tree-evi
 delimita le fixture e i fallimenti. A→PCS, confronto Tensor Core e costi
 residui di sampler/aperture/prova restano lavoro del goal locale.
 
+Il [componente A residente](../c7.1-history/crypto-a-source-2026-10-08.md)
+prepara scanner, accumuli su quattro coset/tutte le colonne, istogramma
+fuso, pad/FFT e foglie complete senza download di righe. Tre geometrie
+e 28 arresti sono verificati con driver host; non è ancora selezionato
+nel Tree/runner A e non modifica le 512 ricostruzioni di produzione.
+La nuova build completa deve includere anche `cuda/c71_pcs_source.cu`:
+assenza dei cinque nuovi simboli è terminale, anche per un owner W.
+L'owner host cresce di 88 B; lo screen candidato A lascia 326.710.016 B
+per gli altri owner host, prima della verifica del budget simultaneo
+integrato e del picco fisico. Nessun credito H100 o autorizzazione di
+hardware/durata segue da questi controlli.
+
 Percorso principale: preparazione locale → autorizzazione della nuova
 campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle
 fasi ottimizzate → esperimento O=0/150/300 → conservazione e arresto.

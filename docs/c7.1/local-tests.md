@@ -119,7 +119,7 @@ senza eseguirli; altrimenti la build CUDA si svolge sul pod autorizzato:
 ```bash
 nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC \
   cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_pcs_hash.cu \
-  cuda/c71_pcs_weight.cu \
+  cuda/c71_pcs_weight.cu cuda/c71_pcs_source.cu \
   cuda/c71_range_runtime.cpp \
   -o /tmp/libc71_device_runner.so
 nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
@@ -181,6 +181,21 @@ conserva nove selezioni Rust (12 test) e nove controlli documentali passati.
 Il test `UnixStream::pair` ha richiesto l'eccezione locale al sandbox;
 EPERM originale e retry positivo sono entrambi conservati. RSS massimo
 test/descendenti 206.602.240 B; compiler O0 2.464.067.584 B separato.
+Per il [componente A](../c7.1-history/crypto-a-source-2026-10-08.md),
+eseguire il filtro `c71_b12_native_source_` (tre test: campi/FFT/hash,
+geometria/risorse e 28 errori terminali), poi
+`c71_b12_pcs_resident_source_tiles_original_biased_bytes` e
+`c71_canonical_device_replay_original_rows_windows_and_failure`.
+La fixture di producer usa solo Affine/RNE, non l'intera ricostruzione A:
+6.451.200 byte, 36 tessere, otto byte di flag e nessuna riga scaricata.
+Il componente confronta tutte le 128 colonne nei quattro coset, tre
+geometrie e fino a 1.536 pad/128 contributi; istogramma e due livelli
+Merkle strided sono esatti. Per regressioni del refactoring byte eseguire
+`c71_b12_range_window_permutation_and_intersections` e
+`c71_canonical_resident_byte`; per l'owner comune ripetere il filtro
+`c71_b12_native_weight_tree` e il conto W aggiornato. I tempi Rust O0/C++
+O2 non giustificano uno speedup. Il Tree/runner A non seleziona ancora
+queste primitive; parità CUDA e conto simultaneo completo restano aperti.
 Il [record pulito del componente](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
 ha sette selezioni Rust e venti controlli Python positivi, tra cui
 regressioni FFT/resti/potenze Fp3, mapping e replay originali. I 77

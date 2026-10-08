@@ -236,6 +236,19 @@ conserva 12 test Rust e nove Python positivi, 94 artefatti e otto esiti
 negativi distinti, incluso il replay non cached oltre deadline. RSS massimo
 test/descendenti 206.602.240 B; compiler 2.464.067.584 B separato.
 Root/transcript locali non concedono tempi, picco fisico o parità H100.
+Il [componente A residente](../c7.1-history/crypto-a-source-2026-10-08.md)
+prepara il consumer PCS degli originali numerici: descrittori senza finestre
+range, accumuli di byte biased su quattro coset e tutte le 128 colonne,
+pad/FFT finiti e foglie/Merkle con le primitive W. L'istogramma byte è
+fuso nella prima ricostruzione. Parità ridotta di tutti i campi/digest su
+tre geometrie e 28 rifiuti terminali; il passaggio producer→sink non
+scarica righe originali. **Non è ancora selezionato nel Tree/runner A**:
+512 ricostruzioni e PCS A CPU rimangono lo stato di produzione. Il conto
+candidato è 5.578.870.016 B con upper device replay e host nominati,
+prima degli altri owner host; restano 326.710.016 B nel payload imposto,
+senza ammissione del picco completo. La VM non compila o esegue CUDA.
+Lo stato fisso della transazione A aumenta di 88 B l'owner host comune;
+la nuova stima W è 4.611.875.360 B, senza modificare i record precedenti.
 I fallimenti delle geometrie escluse restano validi per le loro premesse;
 riaprirle richiede risolvere e verificare la causa dell'esclusione.
 La [decisione dell'8 ottobre](../c7.1-history/operating-rules-2026-10-08.md)

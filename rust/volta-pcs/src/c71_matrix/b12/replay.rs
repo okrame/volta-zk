@@ -2621,7 +2621,7 @@ mod tests {
         let device = parts.as_object().unwrap().values().map(|v| v.as_u64().unwrap()).sum::<u64>();
         assert_eq!(device, 3_736_793_344);
         let named_host = 2 * rows * 8 + (2 * rows - 1) * 32 + 2 * 128 * 1536 * 8
-            + 65536 * 4 * 8 + 3156 * 40 + 37064;
+            + 65536 * 4 * 8 + 3156 * 40 + 37152;
         let envelope = device + named_host as u64 + 785_789_696;
         assert!(envelope < crate::c71_matrix::census::PAYLOAD_LIMIT);
         println!("C71_NATIVE_W_RESOURCE_ENVELOPE {}", json!({"rows": rows, "cut": cut,
@@ -2630,6 +2630,167 @@ mod tests {
             "remaining_payload_for_other_host_owners_bytes": crate::c71_matrix::census::PAYLOAD_LIMIT - envelope,
             "scope": "geometry screen before other host owners; their actual capacities are charged by the joint counter",
             "geometry_only": true, "gpu_execution": false, "credit": false}));
+    }
+
+    #[test]
+    fn c71_b12_native_source_geometry_and_resource_envelope() {
+        let (rows, cut) = replay_tree::native_source_geometry(1 << 31).unwrap();
+        assert_eq!((rows, cut), (1 << 20, 4096));
+        let groups = (1usize << 31) / rows / 4;
+        assert_eq!(groups, 512);
+        for height in [1024, 2048, 1 << 15, 1 << 17, 1 << 18, 1usize << 31] {
+            let (r, _) = replay_tree::native_source_geometry(height).unwrap();
+            let (cpu_r, _) = replay_tree::geometry(height, 128).unwrap();
+            assert!(height / r / 4 <= height / cpu_r / replay_tree::coset_group_size(height, 128));
+        }
+        assert!(replay_tree::native_source_geometry(512).is_err());
+        let common = json!({"values":128 * 4 * rows * 8,"frontier":rows * groups.ilog2() as usize * 32,
+            "twiddles":rows * 8,"pads":128 * 1536 * 8,"salt_band":65536 * 4 * 8});
+        let common_bytes = common.as_object().unwrap().values().map(|v| v.as_u64().unwrap()).sum::<u64>();
+        let accumulation = common_bytes + (4 * rows * 8 + 129 * 4 * 8 + 256 * 8 + 256) as u64;
+        let hashing = common_bytes + (4 * rows * 32 + 256) as u64;
+        let named_host = (2 * ((1usize << 31) / cut) - 1) * 32 + rows * 8
+            + ((1usize << 31) / cut) * 8 + 128 * 1536 * 8 + 65536 * 4 * 8 + 256 * 8 + 37152;
+        let envelope = accumulation.max(hashing) + 785_789_696 + named_host as u64;
+        assert!(envelope < crate::c71_matrix::census::PAYLOAD_LIMIT);
+        println!("C71_NATIVE_A_RESOURCE_ENVELOPE {}", json!({"rows":rows,"cut":cut,"groups":groups,
+            "cosets_per_reconstruction":4,"columns_per_reconstruction":128,
+            "common_device_parts":common,"device_accumulation_phase_bytes":accumulation,
+            "device_hash_phase_bytes":hashing,"named_host_bytes":named_host,
+            "component_plus_device_replay_upper_bytes":envelope,
+            "remaining_payload_for_other_host_owners_bytes":crate::c71_matrix::census::PAYLOAD_LIMIT-envelope,
+            "scope":"phase envelope before other host owners; no full pipeline/physical memory claim",
+            "geometry_only":true,"gpu_execution":false,"credit":false}));
+    }
+
+    #[test]
+    fn c71_b12_native_source_four_cosets_fft_hash_original_bytes() {
+        use device::{PcsSourceShape, PcsSourceTile, Pointwise, Runtime};
+        use device::tests::{fixture, Injection};
+        use super::super::streaming::{digest, hash_rows_in_place, node_hash};
+        let mut fixture = fixture(128);
+        fixture.config.arena_bytes = 8 << 20;
+        let injection = Injection::new(&fixture.config);
+        let weights = Arc::new(Vec::new());
+        let _budget = crate::c71_matrix::census::Budget::new(&weights).unwrap();
+        for (n, rows, pad, first_coset) in [(8, 4, 3, 0), (32, 16, 35, 28), (512, 4, 1536, 2044)] {
+            let cosets = 16 * n / rows;
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let mut originals = Vec::new();
+            let mut original_bytes = Vec::new();
+            for (id, (base_rows, columns, width)) in [(3, 5, 2), (5, 7, 4), (9, 11, 6)].into_iter().enumerate() {
+                let source_rows = base_rows * (n / 8);
+                let stride = columns + 2;
+                let words: Vec<i16> = (0..3 + source_rows * stride).map(|i|
+                    [-32767, -257, -1, 0, 255, 32767][(i + id) % 6]).collect();
+                let input = runtime.upload_signed(&words).unwrap();
+                let coefficient = match width { 2 => 1, 4 => 1 << 14, _ => 1 << 30 };
+                let output = if width == 2 { input } else {
+                    let raw = runtime.pointwise([Some((&input, 0)), None], words.len(),
+                        Pointwise { a: coefficient, b: 0, multiply: 0 }).unwrap();
+                    runtime.release_buffer(input).unwrap();
+                    raw
+                };
+                let first = original_bytes.len();
+                for row in 0..source_rows {
+                    for column in 0..columns {
+                        let word = i64::from(words[3 + row * stride + column]) * coefficient;
+                        let biased = (word + (1i64 << (8 * width - 1))).to_le_bytes();
+                        original_bytes.extend_from_slice(&biased[..width]);
+                    }
+                }
+                originals.push((output, first, source_rows, columns, stride, width));
+            }
+            let original_bytes = Arc::new(original_bytes);
+            let original = original_bytes.clone();
+            let get: Getter = Arc::new(move |i| E::from(Goldilocks::from_u8(original.get(i).copied().unwrap_or(0))));
+            let mut rng = PrivateRng::from_seed([112; 32]);
+            let pads: Arc<[Goldilocks]> = (0..128 * pad).map(|_| rng.random()).collect();
+            let code = Code { get, scan: None, window: None, len: 128 * n, live: original_bytes.len(),
+                width: 128, height: rows * cosets, pads: Pads::Base(pads.clone()) };
+            let dft = Radix2DFTSmallBatch::<Goldilocks>::default();
+            let started = std::time::Instant::now();
+            let reference: Vec<_> = (first_coset..first_coset + 4).map(|c| code.coset_base(c, rows, &dft).unwrap()).collect();
+            let reference_s = started.elapsed().as_secs_f64();
+            let mut expected = Vec::with_capacity(128 * 4 * rows);
+            for column in 0..128 {
+                for values in &reference { expected.extend_from_slice(&values[column * rows..(column + 1) * rows]); }
+            }
+            let shape = PcsSourceShape { message_rows: n as u64, rows: rows as u64, live: code.live as u64,
+                pad_rows: pad as u32, cosets: cosets as u32, first_coset: first_coset as u32 };
+            let pad_buffer = runtime.pcs_words(pads.len()).unwrap();
+            runtime.pcs_upload(&pad_buffer, 0, &pads.iter().map(|x| x.as_canonical_u64()).collect::<Vec<_>>()).unwrap();
+            let twiddles = runtime.pcs_fft_twiddles(rows.ilog2() as usize).unwrap();
+            let (low, high) = runtime.pcs_source_powers(shape).unwrap();
+            let before = runtime.stats().unwrap();
+            let started = std::time::Instant::now();
+            let (mut values, mut histogram) = runtime.pcs_source_begin(&low, &high, shape, first_coset == 0).unwrap();
+            let mut tiles = 0;
+            for (input, first, source_rows, columns, stride, width) in originals {
+                for row in (0..source_rows).step_by(3).rev() {
+                    runtime.pcs_source_tile(&input, PcsSourceTile {
+                        input_first: (3 + row * stride) as u64, input_stride: stride as u64,
+                        rows: 3.min(source_rows - row) as u64, columns: columns as u64,
+                        original_first: (first + row * columns * width) as u64,
+                        byte_first: 0, width: width as u32, signed_width: width as u32,
+                    }).unwrap();
+                    tiles += 1;
+                }
+                // Deferred driver must consume the borrowed input before release.
+                runtime.release_buffer(input).unwrap();
+            }
+            injection.expect_pcs(&expected);
+            runtime.pcs_source_finish(&mut values, histogram.as_mut(), &pad_buffer, &twiddles).unwrap();
+            assert_eq!(runtime.stats().unwrap().d2h_bytes - before.d2h_bytes, 4);
+            if let Some(h) = histogram.take() {
+                let mut counts = [0i64; 256];
+                runtime.download_words(&h, 0, &mut counts).unwrap();
+                let mut expected_counts = [0i64; 256];
+                for &byte in original_bytes.iter() { expected_counts[byte as usize] += 1; }
+                assert_eq!(counts, expected_counts);
+                runtime.release_buffer(h).unwrap();
+            }
+            let accumulated_s = started.elapsed().as_secs_f64();
+            let group_rows = 4 * rows;
+            let band = 8.min(group_rows);
+            let salt_buffer = runtime.pcs_words(4 * band).unwrap();
+            let mut salt_rng = PrivateRng::from_seed([73; 32]);
+            let natural_salts: Vec<[Goldilocks; 4]> = (0..rows * cosets).map(|_| std::array::from_fn(|_| salt_rng.random())).collect();
+            let salt = |leaf: usize| natural_salts[leaf % rows * cosets + first_coset + leaf / rows];
+            let mut roots = runtime.pcs_full_hash_begin(group_rows).unwrap();
+            for first in (0..group_rows).step_by(band) {
+                let words: Vec<_> = (0..4).flat_map(|col| (first..first + band).map(move |leaf| salt(leaf)[col].as_canonical_u64())).collect();
+                runtime.pcs_upload(&salt_buffer, 0, &words).unwrap();
+                runtime.pcs_full_hash_band(&values, &salt_buffer, &mut roots, first).unwrap();
+            }
+            let after = runtime.stats().unwrap();
+            assert_eq!(after.d2h_bytes - before.d2h_bytes, 8 + if first_coset == 0 { 2048 } else { 0 });
+            assert_eq!(after.h2d_bytes - before.h2d_bytes, (4 * group_rows * 8) as u64);
+            assert_eq!(after.launches - before.launches, tiles + 12 + (group_rows / band) as u64);
+            hash_rows_in_place(&mut expected, group_rows, 128, salt).unwrap();
+            let mut expected: Vec<_> = (0..group_rows).map(|row| digest(&expected, group_rows, row)).collect();
+            assert_eq!(runtime.pcs_digests(&roots, 0, group_rows).unwrap(), expected);
+            for buffer in values { runtime.release_buffer(buffer).unwrap(); }
+            for _ in 0..2 {
+                let next = runtime.pcs_nodes_strided(&roots, rows).unwrap();
+                runtime.release_buffer(roots).unwrap(); roots = next;
+                expected = (0..expected.len() / 2).map(|i| {
+                    let left = 2 * (i / rows) * rows + i % rows;
+                    node_hash(expected[left], expected[left + rows])
+                }).collect();
+                assert_eq!(runtime.pcs_digests(&roots, 0, expected.len()).unwrap(), expected);
+            }
+            for buffer in [roots, low, high, twiddles, pad_buffer, salt_buffer] { runtime.release_buffer(buffer).unwrap(); }
+            assert_eq!(runtime.stats().unwrap().live_capacity_bytes, 0);
+            println!("C71_PCS_SOURCE_COMPONENT {}", json!({"message_rows":n,"coset_rows":rows,"pad_rows":pad,
+                "first_coset":first_coset,"original_bytes":code.live,"cosets_per_reconstruction":4,"reconstructions":1,
+                "tiles":tiles,"reference_accumulation_fft_s":reference_s,"native_host_accumulation_fft_s":accumulated_s,
+                "native_capacity_peak_bytes":after.peak_capacity_bytes,"source_d2h_bytes":0,
+                "histogram_d2h_bytes":if first_coset==0 {2048}else{0},"d2h_flag_bytes":8,
+                "native_owner_host_bytes":after.host_owner_bytes,"gpu_execution":false,"credit":false,
+                "resource_census":crate::c71_matrix::census::simultaneous()}));
+            runtime.close().unwrap();
+        }
     }
 
     #[test]

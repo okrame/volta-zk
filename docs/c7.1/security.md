@@ -615,6 +615,14 @@ non espongono W/A/KV, intermedi o ragioni private di arresto. Tempi e
 accessi fisici restano fuori dal claim ZK matematico. Le ipotesi B12,
 EA-LPN-SL-reg* e di raffinamento aperte non sono scaricate da queste misure.
 
+Il buffering mantiene lo stream privato B12, rejection sampling e cap
+monouso 2^40. Seek/snapshot usano il cursore logico, non quello fisico
+dopo prefetch; il replay strided non copia buffer o crea nuove monete.
+Le fixture confrontano confini/cap, sali/root/aperture e transcript sui
+MAC originali; non ne segue un nuovo lemma Lean di raffinamento. Il
+JSONL privato durevole non abilita resume, importazione di ricevute o
+riuso di correlazioni; errori e timeout mantengono terminalità.
+
 ### Riduzione dei temporanei e confine del claim
 
 Il budget congiunto e i rilasci non cambiano enunciato o distribuzione

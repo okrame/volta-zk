@@ -16,6 +16,12 @@ Il runner `experiment-cuda` è misto: inferenza/replay/range GPU, PCS/GKR
 non-range/Seed6/verifica CPU. Le [risorse misurate e le priorità](design.md#risultati-attuali-e-prossime-ottimizzazioni)
 sono riassunte nel design. La campagna precedente è chiusa e il pod è spento.
 
+Il goal locale dell'8 ottobre prepara l'intero percorso crittografico e
+si conclude prima della campagna H100. Hardware e durata richiedono nuova
+autorizzazione. I controlli telemetria/XOF sono in
+[local-tests](local-tests.md#controlli-nativi-della-costruzione-corrente);
+la prima integrazione conserva la geometria W/A corrente.
+
 Percorso principale: preparazione locale → autorizzazione della nuova
 campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle
 fasi ottimizzate → esperimento O=0/150/300 → conservazione e arresto.
@@ -302,6 +308,10 @@ Il monitor nvidia-smi osserva il device intero, non attribuisce memoria a
 un ruolo; un monitor fallito invalida la misura HBM, non autorizza una
 stima nulla. `time -v` registra CPU-time/RSS del processo con entrambi i
 ruoli. Il timeout registra un fallimento anche se manca JSON finale.
+Conservare anche `$RUN/journals.progress.jsonl`, privato e durevole, con
+fasi, avanzamento, lavoro, traffico e campioni congiunti. Un'ultima riga
+troncata resta nel file originale e si esclude dalla lettura. Il log non
+misura il picco fisico HBM/bus né abilita il riuso dello stato.
 Al primo errore numerico, parity, verifica, OOM o timeout non proseguire
 il run fallito. La preautorizzazione dei trial successivi non permette
 prosecuzione/importazione dello stato terminale o riuso di correlazioni.

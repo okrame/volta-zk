@@ -14,6 +14,8 @@ use p3_merkle_tree::{MerkleCap, PrunedMerklePaths};
 use rand_010::RngExt;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use crate::c71_matrix::progress::Span;
+use serde_json::json;
 
 const LEAF: &[u8] = b"volta-zk/c71/b12/merkle/leaf/v1\0";
 const SALTS: usize = 4;
@@ -136,6 +138,8 @@ impl Tree {
             return Err("replay coset count differs".into());
         }
         let physical_columns = base_columns.max(4);
+        let mut phase = Span::start("pcs_commitment", json!({"height": height,
+            "base_columns": base_columns, "coset_rows": coset_rows, "cosets": cosets, "cut": cut}))?;
         let mut starts = vec![0; coset_rows];
         let mut subtree_offsets = vec![0; height / cut];
         let (private_stream, prescan_bytes) = mmcs.with_private_rng(|rng| {
@@ -181,6 +185,9 @@ impl Tree {
                 }
                 cut_roots.extend((0..live).map(|j| digest(&cells, coset_rows, j)));
             }
+            phase.checkpoint(|| json!({"completed_cosets": c + 1, "total_cosets": cosets,
+                "leaf_hashes": work.leaf_hashes, "node_hashes": work.node_hashes,
+                "salt_candidate_bytes": work.salt_candidate_bytes, "coset_cells": work.coset_cells}))?;
         }
 
         let mut top = vec![cut_roots];
@@ -203,6 +210,10 @@ impl Tree {
             open_subtree_bytes_each: (2 * cut - 1) * size_of::<Digest>()
                 + cut * SALTS * size_of::<Goldilocks>(),
         };
+        phase.finish(json!({"completed_cosets": cosets, "leaf_hashes": work.leaf_hashes,
+            "node_hashes": work.node_hashes, "salt_candidate_bytes": work.salt_candidate_bytes,
+            "coset_cells": work.coset_cells, "retained_digest_bytes": memory.retained_digest_bytes,
+            "retained_salt_offset_bytes": memory.salt_offset_bytes}))?;
         Ok((
             MerkleCap::from(vec![root]),
             Self {
@@ -278,6 +289,9 @@ impl Tree {
             frontier = parents;
         }
         let mut cursor = 0;
+        let mut phase = Span::start("pcs_opening", json!({"height": self.height,
+            "query_rows": indices.len(), "unique_subtrees": needed.len(), "batch_cap": batch_cap}))?;
+        let mut batches = 0;
         let mut opened = vec![Vec::new(); indices.len()];
         let mut salts = vec![Vec::new(); indices.len()];
         for batch in needed.chunks(batch_cap / self.cut) {
@@ -311,10 +325,14 @@ impl Tree {
                 }
                 // `regenerated` is dropped before the next subtree allocation.
             }
+            batches += 1;
+            phase.checkpoint(|| json!({"completed_queries": cursor, "completed_batches": batches}))?;
         }
         if !paths.is_empty() || cursor != queries.len() {
             return Err("replay pruned path coverage differs".into());
         }
+        phase.finish(json!({"completed_queries": cursor, "completed_batches": batches,
+            "regenerated_leaves": needed.len() * self.cut}))?;
         Ok((opened, (salts, PrunedMerklePaths { sibling_hashes: siblings })))
     }
 
@@ -360,16 +378,12 @@ struct Subtree {
 }
 
 fn clone_stream(rng: &PrivateRng) -> PrivateRng {
-    PrivateRng { reader: rng.reader.clone(), remaining: rng.remaining }
+    rng.snapshot_at(rng.position()).expect("live committed private stream")
 }
 
 fn stream_at(original: &PrivateRng, offset: u64) -> Result<PrivateRng, String> {
-    if offset >= 1 << 40 {
-        return Err("private coin offset exhausted".into());
-    }
-    let mut rng = clone_stream(original);
-    rng.reader.set_position(offset);
-    rng.remaining = (1 << 40) - offset;
+    let mut rng = original.snapshot_at(offset)?;
+    rng.buffer = Some(Box::new([0; 4096])); // sequential subtree reconstruction
     Ok(rng)
 }
 

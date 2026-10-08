@@ -179,6 +179,13 @@ fn packed(path: &Path, cells: usize) -> Result<(Arc<Vec<i16>>, String), String> 
 }
 
 pub fn command(args: &[String]) -> Result<serde_json::Value, String> {
+    // A new, private sibling of the journal directory survives timeout/kill.
+    // Existing output is never overwritten or used to resume a session.
+    let _progress = match (args.first().map(String::as_str), args.len()) {
+        (Some("reference-cpu"), 6) | (Some("experiment-cuda"), 8) =>
+            Some(kernel::progress::Recording::start(&Path::new(&args[4]).with_extension("progress.jsonl"))?),
+        _ => None,
+    };
     let measurements = Measurements::new();
     let phase = measurements.phase("coordinator", None, "command_total");
     let result = measured_command(args, &measurements);
@@ -196,12 +203,15 @@ pub fn command(args: &[String]) -> Result<serde_json::Value, String> {
             serde_json::to_value(cleanup?).map_err(|error| error.to_string())?;
         Ok(output)
     });
+    let result = result.and_then(|output| { kernel::progress::check()?; Ok(output) });
     if result.is_ok() {
         phase.finish();
     } else {
         drop(phase);
     }
     let report = measurements.report();
+    kernel::progress::emit(serde_json::json!({"kind": "command_result", "complete": result.is_ok(),
+        "measurements": report}))?;
     match result {
         Ok(mut output) => {
             output["measurements"] = report;

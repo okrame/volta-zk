@@ -15,6 +15,7 @@ mod b12;
 // Public byte functions; returned original source MAC still needs the shared PCS.
 mod byte_function;
 mod census;
+mod progress;
 mod diagnostic;
 #[cfg(feature = "c71-b12-pcs")]
 #[allow(dead_code)] // Native pinned W layout and P0 routes; full Gemma runtime remains open.

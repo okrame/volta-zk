@@ -269,8 +269,9 @@ La modalità `trace` confronta ogni frame col driver e richiede
 `exact_comparison_complete:true` e `independent_oracle.complete:true` prima
 di pubblicare traccia e report. I test ridotti coprono i 13 operatori,
 schedulazione causale e rifiuti; l'audit del piano copre tutti i 3471 ID nei
-tre contesti. Il driver non è stato eseguito sui pesi reali e non ha ancora
-una misura completa di tempo/RSS. La validazione strutturale, il solo audit
+tre contesti. Il confronto completo sui pesi reali è acquisito nel
+[record di ammissione](../../benchmarks/results/c71-gamma-admission-2026-10-07-868a3e8.json),
+con wall indipendente di 1.819,70 s. La validazione strutturale, il solo audit
 locale e un secondo replay Rust non ammettono Γ. L'esecuzione reale deve
 soddisfare questo contratto:
 
@@ -689,6 +690,34 @@ incomplete e traffico parziale, senza valori privati; un processo ucciso
 richiede comunque il log del controller. RSS/HWM sono dell'intero processo
 host con entrambi i ruoli. I campioni ai confini di fase non sono picchi
 per ruolo; CPU-time e HBM osservata richiedono il monitor esterno.
+
+### Telemetria durevole del percorso crittografico
+
+[progress.rs](../../rust/volta-pcs/src/c71_matrix/progress.rs) scrive JSONL
+privato `0600`, creazione esclusiva, fsync iniziale di file/directory e di
+ogni record. Il runner crea un file fratello del journal: `journals`
+produce `journals.progress.jsonl`, prima della lettura di Γ. Un nuovo run
+richiede nomi nuovi. Non è un journal crittografico né uno stato di resume.
+Errori I/O impediscono un esito positivo; i callback PCS li propagano.
+Su kill si conserva il prefisso completo e l'eventuale ultima riga troncata;
+l'assenza di una fine non è un successo.
+
+Si registrano fasi dei due ruoli, traffico applicativo cumulativo, owner
+comune, sali, scansioni/accumuli, FFT, hash foglie, merge, resti e aperture.
+Progressi al più ogni secondo, controllati ogni 65.536 visite/righe o per
+colonna/coset. Wall annidati, picchi e contatori cumulativi non si sommano.
+I butterfly FFT sono un censimento analitico, non istruzioni misurate.
+RSS/HWM sono del processo; HBM/bus/picco fisico richiedono monitor esterno.
+Nessun seed, pad, sale, W/A/KV o motivo privato nei record; pubblicare solo
+la selezione revisionata. Il JSONL non è conservato interamente in RAM.
+
+`PrivateRng` usa 4.096 B heap per sampler sequenziale, nel conto comune.
+Cursore logico e cap 2^40 contano i byte richiesti; l'ultimo refill non
+supera il cap. Snapshot ricrea lo stesso XOF al cursore logico senza copia
+del buffer. Replay strided senza buffer; un buffer per sottoalbero
+sequenziale. Sampler, dominio, ordine dei byte e separazione delle monete
+rimangono invariati; nessuna Clone pubblica. Buffer, file/serializzazione
+e metadata sono temporanei conteggiati, con overhead fisico nella riserva.
 
 ### Runner CUDA sperimentale e conto simultaneo
 

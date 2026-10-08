@@ -291,6 +291,7 @@ fn begin(name: &'static str) -> Result<(), String> {
 }
 
 pub(super) fn mark(name: &'static str) -> Result<(), String> {
+    super::progress::emit(json!({"kind": "mark", "phase": name}))?;
     let previous = CURRENT.lock().unwrap().take();
     if let Some(phase) = previous {
         close(phase)?;

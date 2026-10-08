@@ -75,10 +75,14 @@ impl Measurements {
         slot: Option<usize>,
         values: serde_json::Value,
     ) {
-        self.resources.lock().unwrap().push(serde_json::json!({
+        let record = serde_json::json!({
             "phase": name, "slot": slot, "elapsed_ns": self.elapsed_ns(),
             "values": values, "simultaneous": self.sample()
-        }));
+        });
+        let _ = crate::c71_matrix::progress::emit(
+            serde_json::json!({"kind": "resources", "sample": record}),
+        );
+        self.resources.lock().unwrap().push(record);
     }
 
     fn sample(&self) -> serde_json::Value {
@@ -106,6 +110,10 @@ impl Measurements {
         name: &'static str,
     ) -> Phase<'_> {
         let start_resources = self.sample();
+        let _ = crate::c71_matrix::progress::emit(serde_json::json!({
+            "kind": "start", "role": role, "slot": slot, "phase": name,
+            "resources": start_resources, "channels": self.traffic_snapshot()
+        }));
         Phase {
             measurements: self,
             role,
@@ -125,6 +133,19 @@ impl Measurements {
         let traffic = Traffic::default();
         self.channels.lock().unwrap().push((name, slot, traffic.clone()));
         traffic
+    }
+
+    fn traffic_snapshot(&self) -> Vec<serde_json::Value> {
+        self.channels
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(name, slot, traffic)| {
+                let (sent, received) = traffic.bytes();
+                serde_json::json!({"phase": name, "slot": slot,
+                "bytes_to_verifier": received, "bytes_from_verifier": sent})
+            })
+            .collect()
     }
 
     pub(super) fn report(&self) -> serde_json::Value {
@@ -209,12 +230,16 @@ impl Phase<'_> {
 impl Drop for Phase<'_> {
     fn drop(&mut self) {
         let end_ns = self.measurements.elapsed_ns();
-        self.measurements.phases.lock().unwrap().push(serde_json::json!({
+        let record = serde_json::json!({
             "role": self.role, "slot": self.slot, "phase": self.name,
             "start_ns": self.start_ns, "end_ns": end_ns,
             "wall_ns": end_ns - self.start_ns, "complete": self.complete,
             "start_resources": self.start_resources, "end_resources": self.measurements.sample()
+        });
+        let _ = crate::c71_matrix::progress::emit(serde_json::json!({
+            "kind": "end", "phase_record": record, "channels": self.measurements.traffic_snapshot()
         }));
+        self.measurements.phases.lock().unwrap().push(record);
     }
 }
 

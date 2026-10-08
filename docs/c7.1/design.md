@@ -159,6 +159,21 @@ ricostruzioni A sulla H100, con parità esatta e conto completo dei costi.
 Lo screen XOF locale mostra 5,45–5,86× con buffer di 4 KiB: è una misura
 di componente ARM, su tree non pulito, senza credito H100 o integrazione RNG.
 
+Il goal dell'8 ottobre prepara **l'intero percorso crittografico H100**
+in locale: telemetria/XOF, commitment W residente, blocchi di colonne e
+accumuli esatti, producer A collegati alla PCS, quindi aperture/GKR/range/
+attention/sincronizzazioni secondo il profilo. Baseline `9033c64`;
+`47135ca` aggiunge sole istruzioni documentali. Il goal si conclude quando
+codice, parità ridotte, screen e procedure sono pronti, prima della nuova
+campagna. Hardware e durata richiedono nuova autorizzazione.
+
+La prima integrazione usa buffering sequenziale XOF da 4 KiB e
+[telemetria durevole](specs.md#telemetria-durevole-del-percorso-crittografico).
+Replay per foglia senza buffer; snapshot/seek al cursore logico. Geometrie,
+scansioni W/A e parametri crittografici rimangono quelli correnti in questa
+modifica. Γ mantiene le identità ammesse: producer, scale, tabelle, ricette,
+W e workload non sono toccati da telemetria e buffering.
+
 Le geometrie fisiche attuali (quattro coset, 1.024 scansioni W e 512 A)
 sono scelte implementative modificabili. Alternative richiedono
 equivalenza verificata, ordine di sali/pad/root e MAC originali preservato,

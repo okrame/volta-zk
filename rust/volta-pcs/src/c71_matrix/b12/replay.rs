@@ -20,6 +20,8 @@ use p3_whir_c61::pcs::{
 };
 use rand_010::RngExt;
 use std::sync::{Arc, Mutex};
+use crate::c71_matrix::progress::Span;
+use serde_json::json;
 
 /// Trusted immutable source: emit each live coefficient exactly once, in any
 /// order, with the same value as the original getter. No PCS coins are exposed.
@@ -336,6 +338,11 @@ impl Code {
             }
         };
         let mut emitted = 0usize;
+        let mut phase = Span::start("pcs_source_accumulation", json!({
+            "height": self.height, "first_coset": first, "cosets_in_group": count,
+            "rows": rows, "base_columns": self.columns(), "live_source": self.live,
+            "base": self.base(), "ordered_scan": self.scan.is_some()
+        }))?;
         let mut emit = |index, value| {
             if index >= self.live {
                 return Err("coset contribution outside live source".into());
@@ -345,6 +352,10 @@ impl Code {
                 return Err("base scan emitted too many coefficients".into());
             }
             add(index / n, index % n, value);
+            if emitted % 65536 == 0 {
+                phase.checkpoint(|| json!({"source_visits": emitted,
+                    "source_to_coset_contributions": emitted as u64 * count as u64}))?;
+            }
             Ok(())
         };
         if let Some(state) = state {
@@ -364,9 +375,12 @@ impl Code {
                 add(column, n + j, self.pads.get(column * pad + j));
             }
         }
+        phase.finish(json!({"source_visits": emitted, "source_scans": 1,
+            "source_to_coset_contributions": emitted as u64 * count as u64,
+            "pad_to_coset_contributions": self.pads.len() as u64 * count as u64}))?;
         drop(powers);
         for cells in &mut group {
-            Self::fft_columns(cells, rows, self.columns(), dft);
+            Self::fft_columns(cells, rows, self.columns(), dft)?;
         }
         Ok(group)
     }
@@ -376,9 +390,10 @@ impl Code {
         rows: usize,
         columns: usize,
         dft: &Radix2DFTSmallBatch<Goldilocks>,
-    ) {
+    ) -> Result<(), String> {
         let mut column = vec![Goldilocks::ZERO; rows];
-        for values in cells.chunks_exact_mut(rows).take(columns) {
+        let mut phase = Span::start("pcs_fft", json!({"rows": rows, "columns": columns}))?;
+        for (index, values) in cells.chunks_exact_mut(rows).take(columns).enumerate() {
             for (out, &value) in column.iter_mut().zip(values.iter()) {
                 *out = Goldilocks::new(value);
             }
@@ -388,7 +403,12 @@ impl Code {
             for (out, value) in values.iter_mut().zip(&column) {
                 *out = value.as_canonical_u64();
             }
+            phase.checkpoint(|| json!({"completed_columns": index + 1, "total_columns": columns}))?;
         }
+        phase.finish(json!({"completed_columns": columns,
+            "transformed_base_cells": rows as u64 * columns as u64,
+            "analytic_radix2_butterflies": rows as u64 / 2 * rows.ilog2() as u64 * columns as u64,
+            "host_copy_bytes": rows as u64 * columns as u64 * 16}))
     }
     #[cfg(test)]
     fn coset_typed<Coefficient: p3_field::ExtensionField<Goldilocks>>(
@@ -446,6 +466,9 @@ impl Code {
         if indices.is_empty() {
             return Ok(DenseMatrix::new(Vec::new(), self.columns()));
         }
+        let mut phase = Span::start("pcs_query_remainders", json!({"height": self.height,
+            "query_rows": indices.len(), "columns": self.width, "base": self.base(),
+            "original_byte_windows": self.window.is_some()}))?;
         let message_rows = self.len / self.width;
         if self.window.is_some() && (!self.base() || !message_rows.is_power_of_two()) {
             return Err("byte query reader requires dyadic base columns".into());
@@ -562,7 +585,9 @@ impl Code {
                     ..row * self.columns() + (column + 1) * limbs.len()]
                     .copy_from_slice(limbs);
             }
+            phase.checkpoint(|| json!({"completed_columns": column + 1, "total_columns": self.width}))?;
         }
+        phase.finish(json!({"completed_columns": self.width, "output_base_cells": values.len()}))?;
         Ok(DenseMatrix::new(values, self.columns()))
     }
     fn commit(
@@ -1246,6 +1271,52 @@ pub(in crate::c71_matrix) fn compare_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_b12_durable_telemetry_exact_commitment_and_openings() {
+        use crate::c71_matrix::progress::{Recording, check};
+        let path = std::env::temp_dir().join(format!("c71-pcs-progress-{}-{}.jsonl",
+            std::process::id(), rand::random::<u64>()));
+        let run = || {
+            let mut rng = PrivateRng::from_seed([65; 32]);
+            let code = Code {
+                get: Arc::new(|i| E::from(Goldilocks::new((i * 7919) as u64))),
+                scan: None, window: None, len: 4096, live: 4000, width: 128, height: 512,
+                pads: Pads::Base((0..1024).map(|_| rng.random()).collect()),
+            };
+            let (root, oracle) = code.commit(&mmcs([37; 32]), None).unwrap();
+            let oracle = oracle.downcast::<Oracle>().ok().unwrap();
+            let opening = oracle.tree.open(&[511, 2, 2, 0, 200]).unwrap();
+            (root, serde_json::to_value(opening).unwrap(), oracle.tree.work)
+        };
+        let started = std::time::Instant::now();
+        let expected = run();
+        let without = started.elapsed().as_secs_f64();
+        let recording = Recording::start(&path).unwrap();
+        let started = std::time::Instant::now();
+        let actual = run();
+        let with = started.elapsed().as_secs_f64();
+        check().unwrap();
+        drop(recording);
+        assert_eq!(actual, expected); // pads, values, root, salts, order and duplicate paths
+        let content = std::fs::read_to_string(&path).unwrap();
+        let events: Vec<serde_json::Value> = content.lines()
+            .map(|line| serde_json::from_str(line).unwrap()).collect();
+        let visits: u64 = events.iter().filter(|r| r["event"]["phase"] == "pcs_source_accumulation"
+            && r["event"]["kind"] == "end")
+            .map(|r| r["event"]["work"]["source_visits"].as_u64().unwrap()).sum();
+        assert_eq!(visits, 8000); // two scans, four cosets each; no extra source replay
+        for phase in ["pcs_salt_prescan", "pcs_source_accumulation", "pcs_fft", "pcs_leaf_hash",
+            "pcs_merkle_merge", "pcs_commitment", "pcs_query_remainders", "pcs_opening"] {
+            assert!(events.iter().any(|r| r["event"]["phase"] == phase && r["event"]["complete"] == true), "{phase}");
+        }
+        println!("C71_PCS_TELEMETRY_COMPONENT {}", json!({"credit": false,
+            "without_recording_seconds": without, "with_recording_seconds": with,
+            "durable_records": events.len(), "log_bytes": content.len(),
+            "source_visits": visits, "leaf_hashes": actual.2.leaf_hashes,
+            "scope": "reduced 128-column commitment and duplicate openings; no H100 credit"}));
+        std::fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn c71_b12_range_histogram_scan_errors_do_not_install_a_source() {

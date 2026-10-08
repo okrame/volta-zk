@@ -177,6 +177,27 @@ non costituisce ancora un lock Python completo e riproducibile.
 
 ## Controlli nativi della costruzione corrente
 
+Per telemetria/XOF eseguire separatamente, con 60 s / 2 GiB, un worker e
+`--test-threads=1 --nocapture`:
+
+```text
+c71_b12_private_coins_
+c71_progress_durable_
+c71_b12_durable_telemetry_
+c71_b12_streaming_
+replay_tree_
+c71_canonical_metrics_
+c71_b12_full_sourcewise_chain
+```
+
+XOF confronta fill/u32/u64, seek e snapshot fra refill, ultimo refill/cap;
+il benchmark usa 262.144 campioni Goldilocks per modo. Il JSONL verifica
+prefisso leggibile prima della chiusura, permessi, no overwrite, fine
+incompleta e errore I/O persistente. PCS confronta esattamente root,
+valori, sali, padding, aperture duplicate e visite a 128 colonne, e misura
+il costo della registrazione. WHIR ridotto conserva transcript e MAC
+originali. Sono screen locali `credit:false`, senza credito H100.
+
 Eseguire un filtro alla volta:
 
 ```bash

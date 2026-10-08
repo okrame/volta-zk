@@ -62,6 +62,10 @@ pub(super) fn config(h: usize) -> Result<ZkWhirConfig<E, Goldilocks, Fs>, String
 pub(super) struct PrivateRng {
     reader: blake3::OutputReader,
     remaining: u64,
+    // Only sequential samplers buffer. Strided leaf replay uses the same XOF
+    // at its logical cursor without allocating/refilling 4 KiB for 32 bytes.
+    buffer: Option<Box<[u8; 4096]>>,
+    cursor: usize,
 }
 
 impl SeedableRng for PrivateRng {
@@ -70,7 +74,8 @@ impl SeedableRng for PrivateRng {
         let mut hash = blake3::Hasher::new();
         hash.update(b"volta-zk/c71/b12/private-coins/v1\0");
         hash.update(&seed);
-        Self { reader: hash.finalize_xof(), remaining: 1 << 40 }
+        Self { reader: hash.finalize_xof(), remaining: 1 << 40,
+            buffer: Some(Box::new([0; 4096])), cursor: 4096 }
     }
 }
 
@@ -85,6 +90,13 @@ impl PrivateRng {
         Ok(rng)
     }
     fn position(&self) -> u64 { (1 << 40)-self.remaining }
+
+    fn snapshot_at(&self, offset: u64) -> Result<Self, String> {
+        if offset >= 1 << 40 { return Err("private coin offset exhausted".into()); }
+        let mut reader = self.reader.clone();
+        reader.set_position(offset); // reader.position() can be ahead of the logical cursor
+        Ok(Self { reader, remaining: (1 << 40) - offset, buffer: None, cursor: 4096 })
+    }
 }
 
 impl rand_010::TryRng for PrivateRng {
@@ -94,7 +106,28 @@ impl rand_010::TryRng for PrivateRng {
             .remaining
             .checked_sub(bytes.len() as u64)
             .expect("B12 private coin stream exhausted; burn the attempt");
-        self.reader.fill(bytes);
+        let Some(buffer) = self.buffer.as_mut() else {
+            self.reader.fill(bytes);
+            return Ok(());
+        };
+        let mut output = bytes;
+        while !output.is_empty() {
+            if self.cursor == buffer.len() {
+                if output.len() >= buffer.len() {
+                    self.reader.fill(output);
+                    break;
+                }
+                // Never prefetch beyond the finite stream, including on a
+                // partial last refill. Only requested bytes consume capacity.
+                let available = ((1u64 << 40) - self.reader.position()).min(buffer.len() as u64);
+                self.cursor = buffer.len() - available as usize;
+                self.reader.fill(&mut buffer[self.cursor..]);
+            }
+            let count = output.len().min(buffer.len() - self.cursor);
+            output[..count].copy_from_slice(&buffer[self.cursor..self.cursor + count]);
+            self.cursor += count;
+            output = &mut output[count..];
+        }
         Ok(())
     }
     fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
@@ -399,6 +432,69 @@ mod tests {
         assert!(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| split.next_u64())).is_err()
         );
+    }
+
+    #[test]
+    fn c71_b12_private_coins_buffered_seek_snapshot_and_boundaries() {
+        use rand_010::Rng;
+        let seed = [19; 32];
+        let mut rng = PrivateRng::from_seed(seed);
+        let mut reference = rng.snapshot_at(0).unwrap();
+        for size in [0, 4, 8, 1, 4080, 8, 4096, 7, 8193, 4095, 32] {
+            let mut actual = vec![0; size];
+            let mut expected = vec![0; size];
+            rng.fill_bytes(&mut actual);
+            reference.fill_bytes(&mut expected);
+            assert_eq!(actual, expected);
+            assert_eq!(rng.position(), reference.reader.position());
+            // A snapshot continues at the logical cursor even inside a refill.
+            let mut snapshot = rng.snapshot_at(rng.position()).unwrap();
+            let mut expected = reference.snapshot_at(reference.position()).unwrap();
+            assert_eq!(snapshot.next_u64(), expected.next_u64());
+        }
+        for offset in [0, 1, 7, 8, 63, 64, 4095, 4096, 4097, (1 << 40) - 17] {
+            let mut replay = PrivateRng::replay_at(seed, offset).unwrap();
+            let mut reference = rng.snapshot_at(offset).unwrap();
+            let mut actual = [0; 17];
+            let mut expected = [0; 17];
+            replay.fill_bytes(&mut actual);
+            reference.fill_bytes(&mut expected);
+            assert_eq!(actual, expected);
+            assert_eq!(replay.position(), offset + 17);
+            assert!(replay.reader.position() <= 1 << 40);
+            if offset == (1 << 40) - 17 {
+                assert_eq!(replay.remaining, 0);
+                replay.fill_bytes(&mut []);
+                assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| replay.next_u32())).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn c71_b12_private_coins_buffered_component_benchmark() {
+        use rand_010::{Rng, RngExt};
+        use std::{hint::black_box, time::Instant};
+        let samples = 262_144;
+        let mut seconds = Vec::new();
+        for buffered in [false, true] {
+            let mut rng = PrivateRng::from_seed([73; 32]);
+            if !buffered { rng = rng.snapshot_at(0).unwrap(); }
+            let mut expected = rng.snapshot_at(0).unwrap();
+            for _ in 0..samples {
+                assert_eq!(rng.random::<Goldilocks>(), expected.random::<Goldilocks>());
+            }
+            assert_eq!(rng.position(), expected.position());
+            let started = Instant::now();
+            for _ in 0..samples { let _ = black_box(rng.random::<Goldilocks>()); }
+            seconds.push(started.elapsed().as_secs_f64());
+            black_box(rng.next_u64());
+        }
+        println!("C71_XOF_COMPONENT {}", serde_json::json!({
+            "credit": false, "samples_per_mode": samples, "buffer_bytes": 4096,
+            "unbuffered_seconds": seconds[0], "buffered_seconds": seconds[1],
+            "speedup": seconds[0] / seconds[1],
+            "scope": "local sequential Goldilocks sampler; not H100 or whole PCS"
+        }));
     }
 
     #[test]

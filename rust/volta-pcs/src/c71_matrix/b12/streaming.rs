@@ -1,6 +1,8 @@
 //! CPU refinement of consumed-coset hashing; no CUDA/service-rate credit.
 use super::*;
 use rand_010::RngExt;
+use crate::c71_matrix::progress::Span;
+use serde_json::json;
 
 const LEAF: &[u8] = b"volta-zk/c71/b12/merkle/leaf/v1\0";
 const NODE: &[u8] = b"volta-zk/c71/b12/merkle/node/v1\0";
@@ -53,6 +55,7 @@ pub(super) fn hash_rows_in_place(
         return Err("consumed coset shape differs".into());
     }
     let mut work = HashWork::default();
+    let mut phase = Span::start("pcs_leaf_hash", json!({"rows": rows, "columns": columns}))?;
     for row in 0..rows {
         let mut hash = blake3::Hasher::new();
         hash.update(LEAF);
@@ -70,12 +73,17 @@ pub(super) fn hash_rows_in_place(
         for (col, word) in digest.as_bytes().chunks_exact(8).enumerate() {
             cells[col * rows + row] = u64::from_le_bytes(word.try_into().unwrap());
         }
+        if (row + 1) % 65536 == 0 {
+            phase.checkpoint(|| json!({"completed_leaves": row + 1, "total_leaves": rows}))?;
+        }
     }
     let length = LEAF.len() + 8 * (columns + 4);
     work.field_reads = rows * columns;
     work.digest_word_writes = 4 * rows;
     work.hash_input_bytes = rows * length;
     work.blake3_compressions = rows * compressions(length);
+    phase.finish(json!({"completed_leaves": rows, "field_reads": work.field_reads,
+        "hash_input_bytes": work.hash_input_bytes, "blake3_compressions": work.blake3_compressions}))?;
     Ok(work)
 }
 
@@ -92,6 +100,7 @@ pub(super) fn prepare_offsets(
     }
     let rows = cosets.checked_mul(starts.len()).ok_or("salt prescan overflow")?;
     let first = rng.position();
+    let mut phase = Span::start("pcs_salt_prescan", json!({"leaves": rows, "cosets": cosets}))?;
     for row in 0..rows {
         if row % cosets == 0 {
             starts[row / cosets] = rng.position();
@@ -100,7 +109,13 @@ pub(super) fn prepare_offsets(
         for _ in 0..4 {
             let _: Goldilocks = rng.random();
         }
+        if (row + 1) % 65536 == 0 {
+            phase.checkpoint(|| json!({"completed_leaves": row + 1, "total_leaves": rows,
+                "accepted_salts": 4 * (row + 1), "candidate_bytes": rng.position() - first}))?;
+        }
     }
+    phase.finish(json!({"completed_leaves": rows, "accepted_salts": 4 * rows,
+        "candidate_bytes": rng.position() - first}))?;
     Ok(rng.position() - first)
 }
 
@@ -118,11 +133,7 @@ pub(super) fn strided_leaves_in_place(
     let mut work = hash_rows_in_place(cells, rows, columns, |row| {
         // Same private stream/root only. Clone the XOF state, never fork coins
         // or rehash the seed for every leaf. No heap allocation is needed.
-        let mut salt = PrivateRng {
-            reader: original_stream.reader.clone(),
-            remaining: (1 << 40) - current[row],
-        };
-        salt.reader.set_position(current[row]);
+        let mut salt = original_stream.snapshot_at(current[row]).expect("checked salt offset");
         let result = std::array::from_fn(|_| salt.random());
         candidates += salt.position() - current[row];
         current[row] = salt.position();
@@ -165,6 +176,8 @@ pub(super) fn merge_coset(
     }
     let levels = cosets.ilog2() as usize;
     let mut nodes = 0;
+    let mut phase = Span::start("pcs_merkle_merge", json!({"rows": rows, "coset": coset,
+        "cosets": cosets}))?;
     for row in 0..rows {
         let mut value = digest(cells, rows, row);
         let mut level = 0;
@@ -178,7 +191,11 @@ pub(super) fn merge_coset(
         } else {
             frontier[row * levels + level] = value;
         }
+        if (row + 1) % 65536 == 0 {
+            phase.checkpoint(|| json!({"completed_rows": row + 1, "nodes": nodes}))?;
+        }
     }
+    phase.finish(json!({"completed_rows": rows, "nodes": nodes}))?;
     Ok(nodes)
 }
 

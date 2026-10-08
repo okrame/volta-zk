@@ -1,0 +1,74 @@
+[
+  {
+    "name": "c71_b12_native_incremental_hash_exact_roots_and_salt_bands",
+    "exit_code": 0,
+    "elapsed_seconds": 2.338872628286481,
+    "user_seconds": 2.261108,
+    "system_seconds": 0.076399,
+    "max_rss_bytes": 168718336,
+    "log": "c71_b12_native_incremental_hash_exact_roots_and_salt_bands.log",
+    "address_space_limit_bytes": 2147483648,
+    "deadline_seconds": 60,
+    "workers": 1
+  },
+  {
+    "name": "c71_b12_native_incremental_hash_coset_frontier_and_natural_root",
+    "exit_code": 0,
+    "elapsed_seconds": 2.4888329869136214,
+    "user_seconds": 2.418071,
+    "system_seconds": 0.068676,
+    "max_rss_bytes": 168177664,
+    "log": "c71_b12_native_incremental_hash_coset_frontier_and_natural_root.log",
+    "address_space_limit_bytes": 2147483648,
+    "deadline_seconds": 60,
+    "workers": 1
+  },
+  {
+    "name": "c71_b12_native_incremental_hash_rejections_and_fail_closed",
+    "exit_code": 0,
+    "elapsed_seconds": 2.150187424849719,
+    "user_seconds": 2.119594,
+    "system_seconds": 0.029316,
+    "max_rss_bytes": 168644608,
+    "log": "c71_b12_native_incremental_hash_rejections_and_fail_closed.log",
+    "address_space_limit_bytes": 2147483648,
+    "deadline_seconds": 60,
+    "workers": 1
+  },
+  {
+    "name": "c71_b12_windowed_native_abi4_rejects_legacy_stats",
+    "exit_code": 0,
+    "elapsed_seconds": 2.1698816400021315,
+    "user_seconds": 2.119448,
+    "system_seconds": 0.049450999999999995,
+    "max_rss_bytes": 168701952,
+    "log": "c71_b12_windowed_native_abi4_rejects_legacy_stats.log",
+    "address_space_limit_bytes": 2147483648,
+    "deadline_seconds": 60,
+    "workers": 1
+  },
+  {
+    "name": "c71_canonical_device_replay_original_rows_windows_and_failure",
+    "exit_code": 0,
+    "elapsed_seconds": 2.406216146890074,
+    "user_seconds": 2.352117,
+    "system_seconds": 0.053099,
+    "max_rss_bytes": 168673280,
+    "log": "c71_canonical_device_replay_original_rows_windows_and_failure.log",
+    "address_space_limit_bytes": 2147483648,
+    "deadline_seconds": 60,
+    "workers": 1
+  },
+  {
+    "name": "docs-and-owner",
+    "exit_code": 0,
+    "elapsed_seconds": 3.5328907216899097,
+    "user_seconds": 3.361005,
+    "system_seconds": 0.11988599999999999,
+    "max_rss_bytes": 193908736,
+    "log": "docs-and-owner.log",
+    "address_space_limit_bytes": 2147483648,
+    "deadline_seconds": 60,
+    "workers": 1
+  }
+]

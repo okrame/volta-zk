@@ -93,3 +93,18 @@ coprono anche gruppi saltati/duplicati, lettura del frontier incompleto,
 stride zero, owner estraneo e fallimento del merge. Ogni test resta
 entro 60 s / 2 GiB AS, un worker; RSS include anche i processi compiler
 discendenti e non coincide con il solo payload della fixture.
+
+## Evidenza pulita
+
+Commit sorgente `0bf5814bf9c4f3e50004ed4ac7984ca00ede9fce`, tree pulito;
+[record e hash dei log](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json).
+Cinque selezioni Rust positive, nove controlli documentali e due test
+host owner; cinque geometrie hash 1..4.096 foglie, tre geometrie di
+coset/gruppi e 27 casi negativi. UBSan senza recovery, Budget comune
+attivo per le parità, zero rifiuti e nessuna esenzione W nella fixture.
+Picco congiunto 9.361.975 B; capacità native hash 395.520 B; owner C++
+37.064 B; massimo RSS di processo/test e discendenti 193.908.736 B.
+Il record conserva anche i log di sviluppo, la prova esatta di estrazione
+BLAKE3 e una build cancellata (exit 130) da cwd errato. La rivalidazione
+pulita usa `rust/.cargo/config.toml`, flag nativi e cache corrente.
+Nessuna parità hardware, compilazione CUDA o misura canonica è acquisita.

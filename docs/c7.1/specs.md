@@ -745,6 +745,12 @@ Con 4.096 coset raggruppati per 32, il frontier è 2^20×7×32 =
 234.881.024 B. Il ring viene rilasciato prima degli output Merkle,
 che hanno capacità separate. Il conto della schedule CPU corrente resta
 distinto e non si somma a questo candidato.
+Il [record del componente](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
+riporta capacità e trasferimenti effettivamente contati dall'owner e
+Budget host/device attivo, senza W esentato nelle fixture. Il massimo
+payload osservato è 9.361.975 B, con zero rifiuti nelle parità; il solo
+scratch hash nativo massimo è 395.520 B, owner host 37.064 B separato.
+Gli output delle fixture non sono misure di un commitment W completo.
 
 La CLI seleziona soltanto `reference-cpu` oppure `experiment-cuda`; la
 seconda aggiunge `LIBRARY DEVICE` agli stessi cinque argomenti di input.

@@ -192,6 +192,11 @@ gruppi di 32 coset, da verificare anche con gli accumuli residenti. La
 schedule A rimane separata; nessuna ricostruzione aggiuntiva è introdotta.
 Il subtotal 2 GiB valori + 1 GiB CV non comprende FFT, potenze, sali,
 frontier/cache, owner residente, host e riserva fisica.
+Il [record locale pulito hash W](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
+ha cinque test Rust e undici controlli Python positivi, UBSan e 27
+rifiuti terminali verificati. Picco congiunto della fixture 9.361.975 B,
+RSS massimo dei test/compilatori discendenti 193.908.736 B. Non è un
+tempo o picco H100; scansioni W/A selezionate ancora 1.024/512.
 
 Le geometrie fisiche attuali (quattro coset, 1.024 scansioni W e 512 A)
 sono scelte implementative modificabili. Alternative richiedono

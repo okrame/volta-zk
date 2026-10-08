@@ -639,6 +639,9 @@ del codice host condiviso non dimostra il raffinamento CUDA. La fixture
 strided ricompone il frontier con lo stesso seek dei sali e confronta
 root dei sottoalberi e root naturale; accumuli/FFT e import nel Tree
 canonico richiedono ancora integrazione e parità.
+Il [record pulito](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
+conserva parità, contabilità congiunta, UBSan e 27 arresti. Non scarica
+le ipotesi B12, Seed6 o di raffinamento generale CUDA già dichiarate.
 
 Il budget congiunto e i rilasci non cambiano enunciato o distribuzione
 crittografica: il gruppo valuta gli stessi coset nei punti originali, i

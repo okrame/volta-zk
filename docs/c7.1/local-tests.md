@@ -138,6 +138,12 @@ naturale/strided, frontier di gruppi e rifiuti
 di tipo/ordine/copertura/owner/budget/launch/fence/aritmetica. Restano
 `gpu_execution:false`; il [conto del nuovo scratch](../c7.1-history/crypto-w-hash-2026-10-08.md)
 non è un picco completo W o una misura H100.
+Il [record pulito del componente W](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
+conserva cinque selezioni Rust positive, nove controlli documentali e
+due controlli host dell'owner, limiti AS/deadline/RSS per invocazione,
+Budget attivo e UBSan. I log di sviluppo e una build annullata da cwd
+errato sono separati dalle misure pulite; usare sempre `cd rust` per
+caricare anche `rust/.cargo/config.toml` e riusare i flag/cache corretti.
 La policy della cache Cargo è descritta nella sezione
 [provenienza](#risultati-e-conservazione).
 Eseguire separatamente ogni riga della tabella con il comando pytest

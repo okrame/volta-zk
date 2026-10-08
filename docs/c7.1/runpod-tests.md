@@ -34,6 +34,10 @@ integrati e parità locale. Il frontier strided è verificato come
 componente condiviso, senza esecuzione CUDA. Nella campagna autorizzata compilare anche
 `cuda/c71_pcs_hash.cu`; librerie antecedenti prive dei simboli PCS sono
 rifiutate. La parità host non è esecuzione CUDA o misura H100.
+Il [checkpoint pulito W hash](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
+conserva root naturali/strided, sali e arresti verificati localmente.
+Resta un componente: il prossimo passo è W accumuli/FFT e Tree, poi
+A→PCS, senza riavviare hardware finché il goal locale non è pronto.
 
 Percorso principale: preparazione locale → autorizzazione della nuova
 campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle

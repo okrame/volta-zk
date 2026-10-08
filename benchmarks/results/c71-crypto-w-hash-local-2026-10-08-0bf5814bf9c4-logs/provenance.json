@@ -1,0 +1,9 @@
+{
+  "source_git_sha": "0bf5814bf9c4f3e50004ed4ac7984ca00ede9fce",
+  "git_dirty": false,
+  "platform": "Linux-6.12.94+deb13-arm64-aarch64-with-glibc2.41",
+  "machine": "aarch64",
+  "baseline": "9033c64",
+  "cuda_toolkit_available": false,
+  "gpu_execution": false
+}

@@ -1,0 +1,23 @@
+{
+  "command": [
+    "env",
+    "C71_PCS_TEST_BINARY=/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_power_native.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.9078104039654136,
+  "max_rss_bytes": 152342528,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.854269,
+  "system_s": 0.038578999999999995,
+  "log": "/tmp/c71-w-scan-fft-power-configured-20261008.log"
+}

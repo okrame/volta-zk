@@ -44,6 +44,9 @@ Nella futura build aggiungere anche `cuda/c71_pcs_weight.cu`; le FFT
 riusano `cuda/c71_fft.cuh`. Restano da verificare compilazione sm_90,
 parità hardware, picchi fisici e tempi. Nessun riavvio hardware finché
 il goal locale non è pronto e hardware/durata nuovamente autorizzati.
+Il [record locale pulito](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
+verifica componenti e arresti con driver simulato; non compila CUDA,
+non misura H100 e non seleziona ancora il nuovo Tree W nel runner.
 
 Percorso principale: preparazione locale → autorizzazione della nuova
 campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle

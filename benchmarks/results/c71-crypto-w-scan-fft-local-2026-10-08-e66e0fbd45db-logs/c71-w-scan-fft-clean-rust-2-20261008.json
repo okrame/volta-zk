@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_gemma_layout_matches_packed_addresses_and_physical_tensor_mles",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.0023842724040150642,
+  "max_rss_bytes": 13385728,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.002189,
+  "system_s": 0.0,
+  "log": "/tmp/c71-w-scan-fft-clean-rust-2-20261008.log"
+}

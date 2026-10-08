@@ -1,0 +1,1069 @@
+{
+  "schema": "c71-crypto-w-scan-fft-local-v1",
+  "date": "2026-10-08",
+  "status": "PASS_LOCAL_W_ACCUM_FFT_HASH_COMPONENTS",
+  "credit": false,
+  "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+  "git_dirty": false,
+  "baseline": "9033c64",
+  "prior_local_stage": "c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json",
+  "canonical_diagnostic": "c71-cuda-experiment-2026-10-07-868a3e8.json",
+  "goal_status": "active",
+  "goal_complete": false,
+  "provenance": {
+    "machine": "aarch64",
+    "platform": "Linux-6.12.94+deb13-arm64-aarch64-with-glibc2.41",
+    "cuda_toolkit_available": false,
+    "cuda_compilation": false,
+    "gpu_execution": false,
+    "new_hardware_authorized": false,
+    "source_commits": [
+      "085c527c7ce5669b0ae50efab75911e65229371f",
+      "e66e0fbd45db1d3e76709519c151087f7c8a361b"
+    ]
+  },
+  "build": {
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "-j",
+      "1",
+      "-p",
+      "volta-pcs",
+      "--features",
+      "c71-seed6-reference",
+      "--lib",
+      "--no-run",
+      "--config",
+      "profile.dev.package.volta-pcs.opt-level=0"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk/rust",
+    "exit_code": 0,
+    "wall_s": 0.07107952330261469,
+    "max_rss_bytes": 52846592,
+    "as_limit_mib": null,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 0.037801999999999995,
+    "system_s": 0.033354,
+    "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-build-20261008.log",
+    "target_dir": "rust/target",
+    "incremental": false,
+    "debug": 0,
+    "dependency_opt_level": 2,
+    "volta_pcs_opt_level": 0,
+    "rustflags": "-C target-cpu=native from rust/.cargo/config.toml",
+    "cache_reuse": "same Rust source built before source commit; clean offline/locked revalidation; C++ owner rebuilt with UBSan inside each native fixture",
+    "development_build": {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 0,
+      "wall_s": 33.750882908236235,
+      "max_rss_bytes": 2465947648,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 29.912529,
+      "system_s": 3.860805,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-build-composed-20261008.log"
+    }
+  },
+  "binary": {
+    "path": "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "bytes": 88629376,
+    "sha256": "88bcf450c0b6019c16d299ec913e0da4402d9f58b703ed500ea73c82d62f9312"
+  },
+  "tests": [
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_columns_exact_signed_pads_fft_hash",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 4.5486510917544365,
+      "max_rss_bytes": 206520320,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 4.507488,
+      "system_s": 0.039851,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-0-20261008.log",
+      "kind": "rust",
+      "passed": 1,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_rejections_and_fail_closed",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 2.423765956889838,
+      "max_rss_bytes": 206417920,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 2.392759,
+      "system_s": 0.030347,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-1-20261008.log",
+      "kind": "rust",
+      "passed": 1,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_gemma_layout_matches_packed_addresses_and_physical_tensor_mles",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.002155934926122427,
+      "max_rss_bytes": 13385728,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.001979,
+      "system_s": 0.0,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-2-20261008.log",
+      "kind": "rust",
+      "passed": 1,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_gemma_pinned_dag_compiles_all_original_p0_weight_forms",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.19817501911893487,
+      "max_rss_bytes": 48762880,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.18537599999999999,
+      "system_s": 0.012044,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-3-20261008.log",
+      "kind": "rust",
+      "passed": 1,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_incremental_hash_coset_frontier_and_natural_root",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 2.4851141651161015,
+      "max_rss_bytes": 206573568,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 2.45254,
+      "system_s": 0.031692,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-4-20261008.log",
+      "kind": "rust",
+      "passed": 1,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_windowed_native_abi4_rejects_legacy_stats",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 2.4571644896641374,
+      "max_rss_bytes": 206442496,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 2.387762,
+      "system_s": 0.068632,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-5-20261008.log",
+      "kind": "rust",
+      "passed": 1,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_canonical_device_replay_original_rows_windows_and_failure",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 4.028023703955114,
+      "max_rss_bytes": 206405632,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 4.002184,
+      "system_s": 0.024755,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-6-20261008.log",
+      "kind": "rust",
+      "passed": 1,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    },
+    {
+      "command": [
+        "env",
+        "C71_PCS_TEST_BINARY=/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_docs.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.5680517121218145,
+      "max_rss_bytes": 57769984,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.528477,
+      "system_s": 0.040063,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-docs-20261008.log",
+      "kind": "python",
+      "passed": 9,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    },
+    {
+      "command": [
+        "env",
+        "C71_PCS_TEST_BINARY=/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_range_native.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 3.3423031978309155,
+      "max_rss_bytes": 235655168,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 3.220622,
+      "system_s": 0.071974,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-owner-20261008.log",
+      "kind": "python",
+      "passed": 2,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    },
+    {
+      "command": [
+        "env",
+        "C71_PCS_TEST_BINARY=/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_fft_microbench.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 2.399207595270127,
+      "max_rss_bytes": 152383488,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 2.2687559999999998,
+      "system_s": 0.09196599999999999,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-fft-20261008.log",
+      "kind": "python",
+      "passed": 7,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    },
+    {
+      "command": [
+        "env",
+        "C71_PCS_TEST_BINARY=/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_remainder_native.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.9276341046206653,
+      "max_rss_bytes": 152510464,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.897666,
+      "system_s": 0.024364999999999998,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-remainder-20261008.log",
+      "kind": "python",
+      "passed": 1,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    },
+    {
+      "command": [
+        "env",
+        "C71_PCS_TEST_BINARY=/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_power_native.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.8958400012925267,
+      "max_rss_bytes": 152313856,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.862661,
+      "system_s": 0.032212,
+      "log": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-power-20261008.log",
+      "kind": "python",
+      "passed": 1,
+      "source_git_sha": "e66e0fbd45db1d3e76709519c151087f7c8a361b",
+      "git_dirty": false
+    }
+  ],
+  "totals": {
+    "rust_tests_passed": 7,
+    "python_checks_passed": 20,
+    "signed_i128_prefix_comparisons": 526336,
+    "signed_dot_sequences": 2056,
+    "original_two_adic_generators_checked": 33,
+    "terminal_w_rejection_cases": 24,
+    "max_test_and_child_rss_bytes": 235655168,
+    "max_build_compiler_rss_bytes": 2465947648,
+    "temporary_payload_peak_bytes": 5983714,
+    "native_component_peak_capacity_bytes": 1719040,
+    "host_owner_bytes": 37064,
+    "denied_allocations_in_parity": 0
+  },
+  "component_measurements": [
+    {
+      "census": {
+        "denied_allocations": 0,
+        "enforced": true,
+        "excluded_packed_w_capacity_bytes": 12288,
+        "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+        "host_layout_bytes": 346473,
+        "native_reservation_bytes": 37320,
+        "operational_margin_required_bytes": 268435456,
+        "payload_limit_bytes": 5905580032,
+        "peak_plus_runtime_allowance_bytes": 268815810,
+        "physical_runtime_allowance_verified": false,
+        "runtime_allowance_bytes": 268435456,
+        "temporary_live_bytes": 372230,
+        "temporary_payload_peak_bytes": 380354
+      },
+      "comparison_scope": "different stages and Rust O0/C++ O2; no speedup comparison",
+      "cosets_in_group": 32,
+      "credit": false,
+      "gpu_execution": false,
+      "message_rows": 64,
+      "native_host_accum_fft_hash_s": 0.004004534,
+      "pads_per_column": 6,
+      "reference_accum_fft_s": 0.028174949,
+      "rows": 4,
+      "stats": {
+        "allocations": 46,
+        "arena_bytes": 256,
+        "cleanup_failed": 0,
+        "d2d_bytes": 0,
+        "d2h_bytes": 8196,
+        "fences": 89,
+        "h2d_bytes": 22608,
+        "host_owner_bytes": 37064,
+        "launches": 217,
+        "live_capacity_bytes": 256,
+        "logical_bytes": 128,
+        "peak_capacity_bytes": 26880,
+        "peak_reserved_bytes": 39168,
+        "releases": 45,
+        "stopped": 0,
+        "weights_bytes": 12288,
+        "weights_loaded_bytes": 12288,
+        "weights_sealed": 1,
+        "zeroed_bytes": 8324
+      },
+      "tested_columns": 128
+    },
+    {
+      "census": {
+        "denied_allocations": 0,
+        "enforced": true,
+        "excluded_packed_w_capacity_bytes": 49152,
+        "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+        "host_layout_bytes": 1298441,
+        "native_reservation_bytes": 37576,
+        "operational_margin_required_bytes": 268435456,
+        "payload_limit_bytes": 5905580032,
+        "peak_plus_runtime_allowance_bytes": 269767394,
+        "physical_runtime_allowance_verified": false,
+        "runtime_allowance_bytes": 268435456,
+        "temporary_live_bytes": 1287590,
+        "temporary_payload_peak_bytes": 1331938
+      },
+      "comparison_scope": "different stages and Rust O0/C++ O2; no speedup comparison",
+      "cosets_in_group": 32,
+      "credit": false,
+      "gpu_execution": false,
+      "message_rows": 256,
+      "native_host_accum_fft_hash_s": 0.01452204,
+      "pads_per_column": 35,
+      "reference_accum_fft_s": 0.111840286,
+      "rows": 16,
+      "stats": {
+        "allocations": 46,
+        "arena_bytes": 512,
+        "cleanup_failed": 0,
+        "d2d_bytes": 0,
+        "d2h_bytes": 32388,
+        "fences": 95,
+        "h2d_bytes": 101456,
+        "host_owner_bytes": 37064,
+        "launches": 223,
+        "live_capacity_bytes": 512,
+        "logical_bytes": 512,
+        "peak_capacity_bytes": 96768,
+        "peak_reserved_bytes": 145920,
+        "releases": 45,
+        "stopped": 0,
+        "weights_bytes": 49152,
+        "weights_loaded_bytes": 49152,
+        "weights_sealed": 1,
+        "zeroed_bytes": 32900
+      },
+      "tested_columns": 128
+    },
+    {
+      "census": {
+        "denied_allocations": 0,
+        "enforced": true,
+        "excluded_packed_w_capacity_bytes": 786432,
+        "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+        "host_layout_bytes": 5538825,
+        "native_reservation_bytes": 37576,
+        "operational_margin_required_bytes": 268435456,
+        "payload_limit_bytes": 5905580032,
+        "peak_plus_runtime_allowance_bytes": 274419170,
+        "physical_runtime_allowance_verified": false,
+        "runtime_allowance_bytes": 268435456,
+        "temporary_live_bytes": 4790694,
+        "temporary_payload_peak_bytes": 5983714
+      },
+      "comparison_scope": "different stages and Rust O0/C++ O2; no speedup comparison",
+      "cosets_in_group": 32,
+      "credit": false,
+      "gpu_execution": false,
+      "message_rows": 4096,
+      "native_host_accum_fft_hash_s": 0.093367795,
+      "pads_per_column": 1536,
+      "reference_accum_fft_s": 1.8566870629999999,
+      "rows": 16,
+      "stats": {
+        "allocations": 46,
+        "arena_bytes": 512,
+        "cleanup_failed": 0,
+        "d2d_bytes": 0,
+        "d2h_bytes": 32388,
+        "fences": 95,
+        "h2d_bytes": 2375760,
+        "host_owner_bytes": 37064,
+        "launches": 223,
+        "live_capacity_bytes": 512,
+        "logical_bytes": 512,
+        "peak_capacity_bytes": 1719040,
+        "peak_reserved_bytes": 2505472,
+        "releases": 45,
+        "stopped": 0,
+        "weights_bytes": 786432,
+        "weights_loaded_bytes": 786432,
+        "weights_sealed": 1,
+        "zeroed_bytes": 32900
+      },
+      "tested_columns": 128
+    }
+  ],
+  "arithmetic": {
+    "columns": 128,
+    "cosets_in_group": 32,
+    "max_signed_original_products_per_dot": 256,
+    "signed_bound": "abs(sum) < 2^87",
+    "private_pad_representation": "original canonical Goldilocks, same indices n+j",
+    "field_and_hash_validation": "all values against Rust Code::coset_base; every group leaf and all strided Merkle levels; natural-order salt mapping",
+    "d2h_before_digest_reads_each_group_bytes": 132,
+    "field_values_downloaded": 0,
+    "timing_comparison_is_speedup": false,
+    "timing_scope": "Rust O0 accumulation+FFT vs shared C++ O2 accumulation+FFT+hash; no GPU timing",
+    "host_ubsan": true,
+    "host_ubsan_recovery": false
+  },
+  "canonical_candidate_analytic": {
+    "selected_in_runner": false,
+    "message_rows": 268435456,
+    "rows": 1048576,
+    "cosets": 4096,
+    "groups": 128,
+    "equivalent_W_scans": 128,
+    "logical_W_read_bytes": 7858520391680,
+    "ordinary_signed_original_products": 125736326266880,
+    "private_pad_field_products": 805306368,
+    "ring_bytes": 2147483648,
+    "cv_bytes": 1073741824,
+    "low_powers_bytes": 268435456,
+    "high_powers_bytes": 65792,
+    "fft_twiddle_bytes": 8388608,
+    "fft_full_ring_scratch_bytes": 0,
+    "frontier_bytes": 234881024,
+    "device_component_subtotal_bytes": 3736793088,
+    "named_host_payload_subtotal_bytes": 89292232,
+    "conservative_component_sum_across_phases_bytes": 3826085320,
+    "component_plus_existing_device_replay_upper_bytes": 4611875016,
+    "joint_payload_limit_bytes": 5905580032,
+    "runtime_allowance_bytes": 268435456,
+    "operational_margin_bytes": 268435456,
+    "complete_simultaneous_accounting": false,
+    "excluded_from_subtotal": [
+      "host Plan/profiles/tables and container capacity/headers",
+      "other active owners",
+      "driver/stack/spill and physical peak"
+    ],
+    "physical_bandwidth_measured": false,
+    "measured_H100_W_scans": false
+  },
+  "unchanged_selected_path": {
+    "W_initial_scans": 1024,
+    "A_initial_reconstructions_per_response": 512,
+    "Gamma_inputs_or_numerical_producers_changed": false,
+    "PCG": "real AES",
+    "protocol_or_MAC_changes": false,
+    "NoPeek_or_one_time_correlations_changed": false
+  },
+  "preserved_failures": [
+    {
+      "name": "O2 build with AS 2 GiB",
+      "exit_code": 101,
+      "classification": "compiler allocation limit, not protocol execution"
+    },
+    {
+      "name": "O2 build without AS",
+      "exit_code": 124,
+      "classification": "60 second deadline, not protocol execution"
+    },
+    {
+      "name": "Python remainder/power before C71_PCS_TEST_BINARY",
+      "exit_code": 1,
+      "classification": "fixture environment missing; configured retries passed"
+    },
+    {
+      "name": "source 085c527 owner C++ check",
+      "exit_code": 1,
+      "classification": "test-only variable-name collision; fixed by e66e0fb and clean rerun passed"
+    }
+  ],
+  "remaining": [
+    "import in canonical W Tree and original PCS lifecycle",
+    "openings and full transcript parity using new W commitment",
+    "complete simultaneous resource account and reduced representative commitment benchmark",
+    "ordinary integer versus exact Tensor Core limb comparison",
+    "resident A to PCS without row downloads and without increasing reconstructions",
+    "openings/GKR/range/QK/PV/synchronization profile and useful TMA/fusion/graphs",
+    "separately authorized CUDA compilation, hardware parity and H100 campaign"
+  ],
+  "source_hashes": [
+    {
+      "path": "cuda/c71_pcs_weight.cuh",
+      "bytes": 4054,
+      "sha256": "ed6ee86c659d5cf9b2cbc4b11986de84ef52e91e7a1f6d5c40b0a2c31d63df02"
+    },
+    {
+      "path": "cuda/c71_pcs_weight.cu",
+      "bytes": 4549,
+      "sha256": "c0f0635f052951a4227cbd71680955826a148d6e184d93a6141f4a07e4df21e7"
+    },
+    {
+      "path": "cuda/c71_fft.cuh",
+      "bytes": 8925,
+      "sha256": "a2cf90d7723e55b4e133c2f1d28f1b6e3a8addf61a7ecb44d577fc9447cec4b8"
+    },
+    {
+      "path": "cuda/c71_fft_microbench.cu",
+      "bytes": 49405,
+      "sha256": "d72a479c305ef6396017c67828b8845806d63e37367e1084a7e9f88b8cc54bda"
+    },
+    {
+      "path": "cuda/c71_range_runtime.h",
+      "bytes": 8676,
+      "sha256": "20d97b7f68a6edfd9c878dbdd8f64674848807bacfe1c303549a63c4ad357c78"
+    },
+    {
+      "path": "cuda/c71_range_runtime.cpp",
+      "bytes": 49835,
+      "sha256": "80697a1010c2566c49ace7b55ef958e680e52ad548b70787fcdd589610e5afa7"
+    },
+    {
+      "path": "tests/c71_range_runtime_host.cpp",
+      "bytes": 46596,
+      "sha256": "e7e3c89c81e06097394b401d260d7f096d27f00c2a64b8351c526d7aa5182e1d"
+    },
+    {
+      "path": "rust/volta-pcs/src/c71_matrix/b12/replay.rs",
+      "bytes": 104824,
+      "sha256": "fcf42952c3e12826abf82ecf76ce82b6fc7da02a4eb073f4ce11e413540dcf98"
+    },
+    {
+      "path": "rust/volta-pcs/src/c71_matrix/gemma.rs",
+      "bytes": 22551,
+      "sha256": "e2a28119831973c6888546ed7391e5f85d69599a9ac3ad0280a5e88df29e17d9"
+    },
+    {
+      "path": "rust/volta-pcs/src/c71_matrix/range/windowed/native.rs",
+      "bytes": 88296,
+      "sha256": "0b80ccc6f0790d29d814f4c3ff1c0d7c5cfee90b032f42084c4847a76b56f69c"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-build-checked-20261008.log",
+      "bytes": 14133,
+      "sha256": "f42e1e1df3809d060a9a0493a18a19a17ce333107d9a944c911a9491b561a5f6"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-build-composed-20261008.log",
+      "bytes": 14133,
+      "sha256": "764fa1a3a18fb52f16a4a155e3a203afc650cc4c219a2ab95379952ee2f66d42"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-build-first-20261008.log",
+      "bytes": 21227,
+      "sha256": "84350cd6cd2a397cbdd43c7052b72f59222d5d59ab2d97fd012f5184af2dd857"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-build-light-20261008.log",
+      "bytes": 14133,
+      "sha256": "736ee67701255ecbd097ef5c219cddd77dbcd147fa18a1bc8c4783239f00bc24"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-build-second-20261008.log",
+      "bytes": 13870,
+      "sha256": "6c987038bc47402bcc40ed1e892de9ecce70e8a8e6494c309abcbb1290b1e21b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-build-20261008.log",
+      "bytes": 14054,
+      "sha256": "49934dbdc2f67ea955d63de32936d30f1d89bdbbe809c72a86849a88d4e63c41"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-python-docs-20261008.log",
+      "bytes": 98,
+      "sha256": "9f97bb226299f07535cd455323489a2330604d563a8773b883eb9a0f9a8b1bbd"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-python-owner-20261008.log",
+      "bytes": 6026,
+      "sha256": "c038f294e2e68eb35d93839964970ed52ece418cf10a46d203405c48f2894f9d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-0-20261008.log",
+      "bytes": 3863,
+      "sha256": "0a3ebd0b30a2af6b8d35cfbfbe94780e6129a989d31befaee678e843c0a809ea"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-1-20261008.log",
+      "bytes": 293,
+      "sha256": "1e43a44fa8c03e7ded69ce397b40a833f4304a675af48e7f5af69f45037c2384"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-2-20261008.log",
+      "bytes": 223,
+      "sha256": "439525159d693b3ae160e1f55dbbfef468a28b0121d80ecdfdd70ff4872a6ccb"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-3-20261008.log",
+      "bytes": 215,
+      "sha256": "5fbb314efcff8dbe1954624c6b4b2d6cbcf0c9a347c10416b1c91c6cf1364bee"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-4-20261008.log",
+      "bytes": 3730,
+      "sha256": "28d4120d668ac2b9a4b09278333aafd2c2621bc869459d7706ac654d059fb73d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-5-20261008.log",
+      "bytes": 220,
+      "sha256": "54475d7d2289130bddfe8c78f04e7ed9b3a29797dc8753fa807d63804d298b47"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-6-20261008.log",
+      "bytes": 251,
+      "sha256": "68cd6597825e849085cf81ba82f1ffe4c8e269cbb526de637a7344967fdc6126"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-build-20261008.log",
+      "bytes": 14054,
+      "sha256": "22aa5484eeb499633b378043a7d57c60b1171b370508b3d46a8c4fc45ae1d409"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-docs-20261008.log",
+      "bytes": 98,
+      "sha256": "9324d7f9c3371c89ada765dc1a020c1a71c806c73430afb70866285c94b13b80"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-fft-20261008.log",
+      "bytes": 98,
+      "sha256": "b110b1f5ad14114f3e892bf1add67cabc76a68aa8702e6d0811205eb456ac346"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-owner-20261008.log",
+      "bytes": 98,
+      "sha256": "52c9d921a383833533857f18811efe02aa0bedc1658a71aca28488da8b34df88"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-power-20261008.log",
+      "bytes": 98,
+      "sha256": "f110ea65f6d33cdc6322b155f056abd01a7abd63e18b0f61e05569402024ad9d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-remainder-20261008.log",
+      "bytes": 98,
+      "sha256": "ec3c61992e3bb1a5aac88c5f3c5619a6eccaa445b8e776896e3c8c676f9f6278"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-0-20261008.log",
+      "bytes": 3863,
+      "sha256": "05094484d4f1af765ba7be56806cc5fbcec4b7e9ef10701ad9a42ebab75089f9"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-1-20261008.log",
+      "bytes": 293,
+      "sha256": "961182daf55888e29f0c4a73053f112d08dc1e66a9b5556b5e8ba7cb5b37f0d2"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-2-20261008.log",
+      "bytes": 223,
+      "sha256": "439525159d693b3ae160e1f55dbbfef468a28b0121d80ecdfdd70ff4872a6ccb"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-3-20261008.log",
+      "bytes": 215,
+      "sha256": "5fbb314efcff8dbe1954624c6b4b2d6cbcf0c9a347c10416b1c91c6cf1364bee"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-4-20261008.log",
+      "bytes": 3730,
+      "sha256": "fbf2df88dff5b1d03d124af1c270b38cd89c4ab151a8a0196be5f1b0a867658f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-5-20261008.log",
+      "bytes": 220,
+      "sha256": "54475d7d2289130bddfe8c78f04e7ed9b3a29797dc8753fa807d63804d298b47"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-6-20261008.log",
+      "bytes": 251,
+      "sha256": "82a5e5ebc0ac6bb722340682ad53f4eea3db613c4584a6a85332e6ef58f6d857"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-composed-first-20261008.log",
+      "bytes": 3856,
+      "sha256": "9ecba013ffb457808b0da5bb00c2298306b44aa99037faf5df7f889d287622e7"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-docs-first-20261008.log",
+      "bytes": 98,
+      "sha256": "c53df372efb7516cffa1b0acb8de284c98418806b68b0d1cb75bf43b67e0fc97"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-fft-first-20261008.log",
+      "bytes": 98,
+      "sha256": "81bc27b92edaff899e1c0e3d88aaab4ec0dee4ed4b22d6f3b1beabecfa191ecf"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-layout-first-20261008.log",
+      "bytes": 223,
+      "sha256": "439525159d693b3ae160e1f55dbbfef468a28b0121d80ecdfdd70ff4872a6ccb"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-owner-fuzz-20261008.log",
+      "bytes": 98,
+      "sha256": "700e038b703fc9b725fedd78b3bebb21c6267ea55e25984bf15a13b153da1c92"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-owner-generator-fixed-20261008.log",
+      "bytes": 98,
+      "sha256": "6d7618f781443660afa1e4fbd8b92d25a08bdc5806eea6d6358d540c2b229fe1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-parity-first-20261008.log",
+      "bytes": 2180,
+      "sha256": "b9be3a3d64fb47a4bb4a3c74c158d5b223f8a5c4846c008383939bd59993aeef"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-power-configured-20261008.log",
+      "bytes": 98,
+      "sha256": "1d4a11fc90a7086c182cc06bc43bebeb59a36928082944ef103c86041aa4cf49"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-power-first-20261008.log",
+      "bytes": 879,
+      "sha256": "24c22adce9f3d0c655f8e59bfc78cfc57e880085031bc75b0d83196b80fcdcde"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-rejections-first-20261008.log",
+      "bytes": 293,
+      "sha256": "13d47ab9796127069110e1f400e82080907af9367c8b7b53c13981630e193afa"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-remainder-configured-20261008.log",
+      "bytes": 98,
+      "sha256": "073b1bbed3fedd224b758a734fc16517c5bf3d17bd10f69d131ecd1b1c9690ca"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-remainder-first-20261008.log",
+      "bytes": 903,
+      "sha256": "3a69d622c43dd277705d5fab15d4d0e388905f8baebf1944445d8f2028f309d1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-build-checked-20261008.json",
+      "bytes": 559,
+      "sha256": "fe9e0cc329c47bebaf9861edbd2f8fda1aa35cde3f491aa1be190fa27e68ae90"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-build-composed-20261008.json",
+      "bytes": 561,
+      "sha256": "b2f1c229c9bc598ea731c1465e63bfcbe0459cb0821684ff3d1adb78cf4beae6"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-build-20261008.json",
+      "bytes": 568,
+      "sha256": "3832e449c29b1b508d4d546208050eab1a7947b2ee3958c7341a5a41315d42a7"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-python-docs-20261008.json",
+      "bytes": 576,
+      "sha256": "d27d240ab855d1eb132dcbeb7dfb0cb46617d2a712e01217374a295c5e2e5eef"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-python-owner-20261008.json",
+      "bytes": 564,
+      "sha256": "ce1eb82b307d28a9fbe1940e5a1abfa54fa96960b8f9c42971acda7495918e9a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-0-20261008.json",
+      "bytes": 483,
+      "sha256": "f596fd146095b96654bf2644354e190cd4cf9d96d4b9eaee220235915b203325"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-1-20261008.json",
+      "bytes": 475,
+      "sha256": "9cb1623aa09b75e30fded9cc1a42a0118292bfa9b95df121d2c052f7bfad6f44"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-2-20261008.json",
+      "bytes": 484,
+      "sha256": "8ea9e22964ce059e75fdc3897b1a61b583e4614ca802ab9ea9d8e41ffb1d1dfc"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-3-20261008.json",
+      "bytes": 491,
+      "sha256": "e65b81de6da4fe590c25ac97f013640c2719f715efe65a6cb999bd12f93c89e0"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-4-20261008.json",
+      "bytes": 478,
+      "sha256": "bf838edb324a2f6dd8df509f389290e1207bcb80f60179c0d036d8ce75eddc7e"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-5-20261008.json",
+      "bytes": 466,
+      "sha256": "99de4b4d06b3fb4a6eb040b961bbbd744d8dd4149d53521e4ca342cbb08c2f5b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-rust-6-20261008.json",
+      "bytes": 487,
+      "sha256": "d730189708dca072ae29ad44a250b66ddfbba673ff41da775fc013c2aa99cdfa"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-build-20261008.json",
+      "bytes": 571,
+      "sha256": "f22983b46bf1ced432f213613c52cf9b7e5316012b1c4da429fb8b363184b0c1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-docs-20261008.json",
+      "bytes": 557,
+      "sha256": "e6ac020f362047aeca15354cb0558304f2eedf422b8e666083502271d3537a02"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-fft-20261008.json",
+      "bytes": 587,
+      "sha256": "00000a8ef64ac32f3af065a63d2d7c8b3e496878df07c02833b9060adb1553ca"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-owner-20261008.json",
+      "bytes": 567,
+      "sha256": "2176fdb7f33a160a2ca2def2ba7cdce7d896155bcb4452d919c8b22df14aedd5"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-power-20261008.json",
+      "bytes": 567,
+      "sha256": "3dceb5d7d7696358fcab03f08283b822d075d4eff18816f7ee27b8fab4e40769"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-python-remainder-20261008.json",
+      "bytes": 587,
+      "sha256": "729ec824f94cf0e486cfa5d4152249fdee7be220fa83556bbeab3669148f2d4a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-0-20261008.json",
+      "bytes": 476,
+      "sha256": "64173e5df4f705691855d800bc45a7c887f004366ea5530a6bd33ef28c0b3ef6"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-1-20261008.json",
+      "bytes": 467,
+      "sha256": "b8d239f4659edf887193837da1f5e475188c884ee5f58ff42dc3117e0879c497"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-2-20261008.json",
+      "bytes": 486,
+      "sha256": "129b2d98d6c6a7c0459a6d5f43997033f8b0825841c2793bccdb17df9ac1eb51"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-3-20261008.json",
+      "bytes": 493,
+      "sha256": "57a7191dd14f82ad1354ee3f5c8449513d77b075ff3f4b99bc2689240362e4f0"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-4-20261008.json",
+      "bytes": 482,
+      "sha256": "5d8679557fe8553c645a6d97309ae14ad4d3b325135cebdcafad7af3ecda1fd4"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-5-20261008.json",
+      "bytes": 469,
+      "sha256": "8ff83c418f47d4afaaca3f4c57bef8bc0d330ca800c5c6a02aea29706a2824d7"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-clean-v2-rust-6-20261008.json",
+      "bytes": 480,
+      "sha256": "137e333a33cb84f402622fc2a8d9d95a24fa4d077fc3a14a7f9eebf08cdcac60"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-composed-first-20261008.json",
+      "bytes": 473,
+      "sha256": "a3f3902566fa7e550f3aa14f971929f9019d2e29180260eb0fd46687f4696d22"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-docs-first-20261008.json",
+      "bytes": 440,
+      "sha256": "2decfef26241f163dd86fcff16983f9f0cb9ab271b93de644b2f71219a025c92"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-fft-first-20261008.json",
+      "bytes": 437,
+      "sha256": "08a2a856e43cc1b992f06c927b5e5b348c616c19cf43f3b755b8a9a1bbb6c64a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-layout-first-20261008.json",
+      "bytes": 497,
+      "sha256": "b406d50493cd7f19e930b31857103eb46111a01e55cefb0b776fa50a4c0126d1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-owner-fuzz-20261008.json",
+      "bytes": 447,
+      "sha256": "2f052e89887936a48f0f865a037fd5f4786463410ada30eb5d1968a9229cba24"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-owner-generator-fixed-20261008.json",
+      "bytes": 448,
+      "sha256": "f60b23820ba58140f5ac722884149de467a475ca90d7f9c283ef24a5bab0b57d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-power-configured-20261008.json",
+      "bytes": 574,
+      "sha256": "44c3320c1b4394e000a3f47d1fafec38c4a279436dbd61d3d64f076a0d5ae7bf"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-power-first-20261008.json",
+      "bytes": 449,
+      "sha256": "b7f3d6623c2dd191548d46ca6dd06e092bdcf41658b6e2912a30134f271c46ed"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-rejections-first-20261008.json",
+      "bytes": 468,
+      "sha256": "5735722a3d787065c2d896d4ab99e264980aaddc8a880c6fe7cef9d2b32807ae"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-remainder-configured-20261008.json",
+      "bytes": 570,
+      "sha256": "1ff81ba6ea307d1d84cfea6145b92efe973dade3c9d071cdaac05d7ae2615d85"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-w-scan-fft-remainder-first-20261008.json",
+      "bytes": 446,
+      "sha256": "0c4752efb567ffe5d0c622c5e2f60440e49c1a76cf5e8b7b4040143523459631"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db-logs/c71-local-check-20261008.py",
+      "bytes": 1448,
+      "sha256": "ab78b46d0e49e9a15b170ad0adac2346905d548a12111dd6060628988a4b0bc1"
+    }
+  ]
+}

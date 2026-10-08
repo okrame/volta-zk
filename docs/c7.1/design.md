@@ -211,6 +211,12 @@ rimane analitica; confronto Tensor Core e A→PCS aperti. Nessun credito
 CUDA/H100 o nuova autorizzazione hardware. La somma signed <2^87 e
 la sua riduzione sono identità controllate localmente, senza lemma Lean
 di raffinamento dell'implementazione o dello scheduling CUDA.
+Il [record pulito accumuli/FFT W](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
+conserva sette selezioni Rust e venti controlli Python positivi, parità
+di tutti i valori/foglie/livelli dei gruppi e 24 arresti. Picco payload
+congiunto ridotto 5.983.714 B; RSS massimo test/descendenti 235.655.168 B,
+compiler O0 2.465.947.648 B separato. Preserva anche build/fixture fallite
+e correzioni; nessun risultato completo W o H100 è acquisito.
 
 Le geometrie fisiche attuali (quattro coset, 1.024 scansioni W e 512 A)
 sono scelte implementative modificabili. Alternative richiedono

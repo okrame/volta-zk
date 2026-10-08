@@ -648,6 +648,10 @@ e scheduling restano privi di lemma Lean di raffinamento CUDA; gli
 arresti per alias, copertura, owner, binding, launch/fence/flag e i test
 finiti non ne costituiscono una prova generale. Import nel Tree,
 aperture/transcript e parità hardware restano da verificare.
+Il [record pulito accumuli/FFT](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
+conserva tutti i confronti del componente, 24 arresti e i 33 generatori
+Goldilocks originali, incluso il dominio 2^32. Non estende credito,
+trust model o lemmi ai kernel GPU o alla PCS integrata.
 Il [record pulito](../../benchmarks/results/c71-crypto-w-hash-local-2026-10-08-0bf5814bf9c4.json)
 conserva parità, contabilità congiunta, UBSan e 27 arresti. Non scarica
 le ipotesi B12, Seed6 o di raffinamento generale CUDA già dichiarate.

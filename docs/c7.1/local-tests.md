@@ -161,6 +161,13 @@ build fallite e distinguere RSS compiler dai test 60 s / 2 GiB AS.
 I tempi Rust O0/C++ O2 non sono un rapporto di accelerazione. Il driver
 simulato non compila o esegue CUDA; Tree/transcript del nuovo commitment
 restano verifiche del successivo passo locale, hardware del pod autorizzato.
+Il [record pulito del componente](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
+ha sette selezioni Rust e venti controlli Python positivi, tra cui
+regressioni FFT/resti/potenze Fp3, mapping e replay originali. I 77
+artefatti conservano log/runner e fallimenti precedenti distinti:
+AS/deadline delle build, environment delle fixture e collisione di nome
+nel check C++ poi corretta. Max RSS test/descendenti 235.655.168 B;
+compiler della build mirata 2.465.947.648 B separato, un job.
 Eseguire separatamente ogni riga della tabella con il comando pytest
 limitato sopra. Impostare i due binari prima dei test che li richiedono.
 

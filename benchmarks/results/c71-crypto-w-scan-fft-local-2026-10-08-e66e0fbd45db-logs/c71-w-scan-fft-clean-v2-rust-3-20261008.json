@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_gemma_pinned_dag_compiles_all_original_p0_weight_forms",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.19817501911893487,
+  "max_rss_bytes": 48762880,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.18537599999999999,
+  "system_s": 0.012044,
+  "log": "/tmp/c71-w-scan-fft-clean-v2-rust-3-20261008.log"
+}

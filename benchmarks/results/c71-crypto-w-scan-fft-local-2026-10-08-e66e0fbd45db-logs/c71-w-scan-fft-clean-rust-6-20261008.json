@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_canonical_device_replay_original_rows_windows_and_failure",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 4.047604595776647,
+  "max_rss_bytes": 206422016,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 3.9896789999999998,
+  "system_s": 0.056802,
+  "log": "/tmp/c71-w-scan-fft-clean-rust-6-20261008.log"
+}

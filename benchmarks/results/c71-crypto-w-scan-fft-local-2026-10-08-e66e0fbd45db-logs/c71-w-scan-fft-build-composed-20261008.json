@@ -1,0 +1,28 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--no-run",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 33.750882908236235,
+  "max_rss_bytes": 2465947648,
+  "as_limit_mib": null,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 29.912529,
+  "system_s": 3.860805,
+  "log": "/tmp/c71-w-scan-fft-build-composed-20261008.log"
+}

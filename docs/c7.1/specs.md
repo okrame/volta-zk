@@ -750,6 +750,11 @@ errori CUDA e flag terminali falliscono chiuso. I cinque nuovi simboli
 PCS sono obbligatori; non si esportano download di valori PCS. Tre
 fixture da 128 colonne verificano valori, foglie e livelli Merkle, senza
 ancora importare il nuovo commitment nel Tree canonico.
+Il [record pulito](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
+lega sorgenti, binario, log e limiti; sette test Rust e venti controlli
+Python positivi. Payload congiunto ridotto 5.983.714 B, picco capacità
+native 1.719.040 B e owner host 37.064 B. Il componente resta separato
+da tempo/picco completo e dalla schedule selezionata W/A 1.024/512.
 La riduzione per gruppi usa stride delle righe per unire coset fratelli;
 un frontier pending accetta solo gruppi consecutivi e non è leggibile.
 Con 4.096 coset raggruppati per 32, il frontier è 2^20×7×32 =

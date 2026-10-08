@@ -1,0 +1,16 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+___________ test_native_rational_power_blocks_cross_the_fft_boundary ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-okrame/pytest-490/test_native_rational_power_blo0')
+
+    def test_native_rational_power_blocks_cross_the_fft_boundary(tmp_path):
+        native = os.environ.get("C71_PCS_TEST_BINARY")
+>       assert native, "build volta-pcs tests and set C71_PCS_TEST_BINARY"
+E       AssertionError: build volta-pcs tests and set C71_PCS_TEST_BINARY
+E       assert None
+
+tests/test_c71_power_native.py:21: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_c71_power_native.py::test_native_rational_power_blocks_cross_the_fft_boundary
+1 failed in 0.01s

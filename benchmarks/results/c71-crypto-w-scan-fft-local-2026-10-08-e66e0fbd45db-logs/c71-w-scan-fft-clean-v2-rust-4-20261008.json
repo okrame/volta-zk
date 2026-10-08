@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_native_incremental_hash_coset_frontier_and_natural_root",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 2.4851141651161015,
+  "max_rss_bytes": 206573568,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 2.45254,
+  "system_s": 0.031692,
+  "log": "/tmp/c71-w-scan-fft-clean-v2-rust-4-20261008.log"
+}

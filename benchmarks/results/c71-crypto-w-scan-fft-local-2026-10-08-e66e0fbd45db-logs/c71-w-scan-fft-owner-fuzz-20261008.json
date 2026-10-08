@@ -1,0 +1,21 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_range_native.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 3.442743927706033,
+  "max_rss_bytes": 237490176,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 3.253003,
+  "system_s": 0.16486299999999998,
+  "log": "/tmp/c71-w-scan-fft-owner-fuzz-20261008.log"
+}

@@ -1,0 +1,16 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______ test_native_base_and_extension_remainders_cross_the_fft_boundary _______
+
+tmp_path = PosixPath('/tmp/pytest-of-okrame/pytest-489/test_native_base_and_extension0')
+
+    def test_native_base_and_extension_remainders_cross_the_fft_boundary(tmp_path):
+        native = os.environ.get("C71_PCS_TEST_BINARY")
+>       assert native, "build volta-pcs tests and set C71_PCS_TEST_BINARY"
+E       AssertionError: build volta-pcs tests and set C71_PCS_TEST_BINARY
+E       assert None
+
+tests/test_c71_remainder_native.py:22: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_c71_remainder_native.py::test_native_base_and_extension_remainders_cross_the_fft_boundary
+1 failed in 0.01s

@@ -1,0 +1,21 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_power_native.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 1,
+  "wall_s": 0.08858150104060769,
+  "max_rss_bytes": 27557888,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.08011599999999999,
+  "system_s": 0.007921,
+  "log": "/tmp/c71-w-scan-fft-power-first-20261008.log"
+}

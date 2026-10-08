@@ -1,0 +1,1176 @@
+{
+  "schema": "c71-crypto-preparation-local-v1",
+  "date": "2026-10-08",
+  "recorded_at_utc": "2026-10-08T19:32:55.223397+00:00",
+  "status": "PASS_LOCAL_RESIDENT_A_TREE_AND_EXACT_TENSOR_CANDIDATE",
+  "credit": false,
+  "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+  "git_dirty": false,
+  "baseline": "9033c64",
+  "canonical_diagnostic": "benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json",
+  "prior_stage": "benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json",
+  "goal_status": "active",
+  "goal_complete": false,
+  "readiness": {
+    "A_initial_Tree_and_CUDA_runner_selected": true,
+    "A_reconstructions_pinned": 512,
+    "A_composed_fixture_reference_rows_bytes": 16777216,
+    "uncached_A_full_chain_complete": false,
+    "Tensor_Core_candidate_selected": false,
+    "Tensor_Core_comparison_hook_integrated": false,
+    "GPU_XOF_implemented": false,
+    "H100_campaign_authorized": false
+  },
+  "provenance": {
+    "platform": "Linux-6.12.94+deb13-arm64-aarch64-with-glibc2.41",
+    "machine": "aarch64",
+    "gpu_execution": false,
+    "cuda_compilation": false,
+    "native_fixture": "deferred fake driver and common C++ owner; g++ O2 UBSan, Rust root O0 dependencies O2",
+    "code_commits": [
+      "c0e65b7",
+      "b9460b1",
+      "3a5e9df",
+      "2603bbb"
+    ],
+    "inputs_sha256": {
+      "cuda/c71_pcs_source.cuh": "fb2bfb4b9f5f49852e8274f796cf6ad82b86c70a2cf84686d38bf9bcbd3f8db3",
+      "cuda/c71_pcs_weight_tensor.cu": "d8af4aa50b837ef5bafccb9b74e9618128df24e83d35e672bdd5d963544c388f",
+      "cuda/c71_pcs_weight_tensor.cuh": "99a3e52e20e1d4d2392f8315be3b80281002811ed504cc6175d9bbbd83b10dec",
+      "cuda/c71_range_runtime.cpp": "7ff0903fe23b419a98acb59c195be0142f44fadabb0b1548e5707090604a2dd8",
+      "rust/volta-pcs/src/c71_matrix/b12.rs": "ad70933216526cb8ec5b026d7a9d126b2b471f2e66abe4973ca271f30b96b921",
+      "rust/volta-pcs/src/c71_matrix/b12/replay.rs": "36ce9afe4a5a8d0f910a2dac917f900a1a4ce57f7da83f5161d4659a11af1b11",
+      "rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs": "5da957d6ccaf251317291ffab8f73da28a44fe1e632e936150db4ba94d4c6f15",
+      "rust/volta-pcs/src/c71_matrix/b12/streaming.rs": "8a5d3299d14210b70eddbac13781b326a4b32dd32fdf156c1764155ff2c62e95",
+      "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs": "c4b56e80dd8521a265e90a38d5450a98a73eb768927b94f02d4ff5c9d26aaf1e",
+      "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_state.rs": "d8224505935f53594af65ca8d41d290b76f4070b3065095613f529017e25a694",
+      "rust/volta-pcs/src/c71_matrix/range/windowed/native.rs": "2bfc436bbbaac8e8be4cbae6234d7121262574b8b6093ccaf71a2102aece11a8",
+      "tests/c71_pcs_weight_tensor_host.cpp": "a6b5bfeac454f4a6287e5b3ac77223868d11d4794a162ec69c09f4a80f2ca54d",
+      "tests/c71_range_runtime_host.cpp": "611f74a86d167cb040f98702d02cc39149bd40f8bda7c7b8657b61f092f75f35",
+      "tests/test_c71_pcs_tensor.py": "42291e6ba2fd06b10f166301aefd0bf078c3cc5be23b6c8b6083ad7d1291f2b1"
+    },
+    "gamma_identities_unchanged": true
+  },
+  "build": {
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "-j",
+      "1",
+      "-p",
+      "volta-pcs",
+      "--features",
+      "c71-seed6-reference",
+      "--lib",
+      "--no-run",
+      "--config",
+      "profile.dev.package.volta-pcs.opt-level=0"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk/rust",
+    "exit_code": 0,
+    "wall_s": 0.16403960529714823,
+    "max_rss_bytes": 52891648,
+    "as_limit_mib": null,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 0.08062899999999999,
+    "system_s": 0.08344299999999999,
+    "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-build-20261008-01.log",
+    "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+    "git_dirty": false,
+    "passed": 0,
+    "kind": "build",
+    "warm_cargo_reused_identical_binary": true
+  },
+  "preliminary_full_build": {
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "-j",
+      "1",
+      "-p",
+      "volta-pcs",
+      "--features",
+      "c71-seed6-reference",
+      "--lib",
+      "--no-run",
+      "--config",
+      "profile.dev.package.volta-pcs.opt-level=0"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk/rust",
+    "exit_code": 0,
+    "wall_s": 57.015810082200915,
+    "max_rss_bytes": 2474213376,
+    "as_limit_mib": null,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 50.568366,
+    "system_s": 6.470179,
+    "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-05.log",
+    "git_dirty": true,
+    "record_run": false,
+    "scope": "full targeted build before source commits; clean Cargo reuses same binary"
+  },
+  "binary": {
+    "path": "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "bytes": 89478984,
+    "sha256": "47a23b72083a281b7975c6d6858ed07575994bdc4619826b6a3febda253eb39f"
+  },
+  "checks": [
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_composed_full_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 50.24009752320126,
+      "max_rss_bytes": 217444352,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 50.018263,
+      "system_s": 0.211555,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_chain-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_canonical_device_original_scan_coverage_rejects_duplicate_and_omitted_rows",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 4.826304895803332,
+      "max_rss_bytes": 217436160,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 4.760446,
+      "system_s": 0.06437799999999999,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_coverage-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_pending_coverage_owner_and_failure",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 4.809967202600092,
+      "max_rss_bytes": 217403392,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 4.769691,
+      "system_s": 0.038322999999999996,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_failure-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_four_cosets_fft_hash_original_bytes",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 4.978474346920848,
+      "max_rss_bytes": 217419776,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 4.937588,
+      "system_s": 0.039535999999999995,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_math-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_geometry_and_resource_envelope",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.0031816340051591396,
+      "max_rss_bytes": 10301440,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.0011639999999999999,
+      "system_s": 0.001758,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_resource-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_tree",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 27.013991460669786,
+      "max_rss_bytes": 217436160,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 26.810429,
+      "system_s": 0.198067,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_tree-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 2,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 0,
+      "wall_s": 0.16403960529714823,
+      "max_rss_bytes": 52891648,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.08062899999999999,
+      "system_s": 0.08344299999999999,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-build-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 0,
+      "kind": "build",
+      "warm_cargo_reused_identical_binary": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_docs.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 1.0180255556479096,
+      "max_rss_bytes": 58023936,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.961654,
+      "system_s": 0.057089,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-docs-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 9,
+      "kind": "python"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_range_native.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 6.427913551684469,
+      "max_rss_bytes": 250183680,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 6.234136,
+      "system_s": 0.11649,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-owner-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 2,
+      "kind": "python"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_canonical_device_replay_original_rows_windows_and_failure",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 7.555399018805474,
+      "max_rss_bytes": 217423872,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 7.455788,
+      "system_s": 0.09797399999999999,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-producer-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_private_coins_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.5986521486192942,
+      "max_rss_bytes": 15466496,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.5901989999999999,
+      "system_s": 0.007958,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-salts-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 6,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_pcs_tensor.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 2.018124284222722,
+      "max_rss_bytes": 123371520,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 1.9725329999999999,
+      "system_s": 0.036413999999999995,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-tensor-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 1,
+      "kind": "python"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_composed_full_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 51.72827672213316,
+      "max_rss_bytes": 217436160,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 51.52111,
+      "system_s": 0.193078,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-w_chain-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_geometry_and_resource_envelope",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.004255093168467283,
+      "max_rss_bytes": 9846784,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.002591,
+      "system_s": 0.00125,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-w_resource-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_tree",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 26.904687279835343,
+      "max_rss_bytes": 217640960,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 26.779283,
+      "system_s": 0.11954999999999999,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-w_tree-20261008-01.log",
+      "source_git_sha": "2603bbb04013fa8909702164dd76ae74d79646ff",
+      "git_dirty": false,
+      "passed": 2,
+      "kind": "rust"
+    }
+  ],
+  "passed_rust": 18,
+  "passed_python": 12,
+  "max_test_descendant_rss_bytes": 250183680,
+  "A_tree": {
+    "cache": {
+      "domain_log2": 15,
+      "initial_coset_bytes": 262144,
+      "initial_merkle_scratch_bytes": 291584,
+      "initial_native_peak_capacity_bytes": 1879808,
+      "query_subtree_bytes_each": 24544,
+      "retained_merkle_digest_bytes": 4064,
+      "retained_pcs_pad_bytes": 1572864,
+      "retained_range_histogram_capacity_bytes": 0,
+      "retained_rng_bytes": 144,
+      "retained_s1_policy": false,
+      "retained_salt_offset_bytes": 512,
+      "scope": "Merkle/pad payloads, not total host capacity; initial scratch includes coset and is no longer live; native high-water includes all buffers on the common owner, separately from this Merkle payload; S1 is retained only within active sequential PCS chain, not by this snapshot; other FFT/cache/query/sourcewise temporaries excluded"
+    },
+    "census": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 1024,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 3244185,
+      "native_reservation_bytes": 52512,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 273266167,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 3296398,
+      "temporary_payload_peak_bytes": 4830711
+    },
+    "credit": false,
+    "different_compiler_optimization_no_speedup_claim": true,
+    "domain_log2": 15,
+    "durable_records": 6,
+    "fixture_original_upload_before_commit": true,
+    "gpu_execution": false,
+    "initial_cpu_scans": 0,
+    "initial_scalar_getter_calls": 0,
+    "native": {
+      "allocations": 590,
+      "arena_bytes": 15360,
+      "cleanup_failed": 0,
+      "d2d_bytes": 0,
+      "d2h_bytes": 6628,
+      "fences": 663,
+      "h2d_bytes": 2101248,
+      "host_owner_bytes": 37152,
+      "launches": 1480,
+      "live_capacity_bytes": 15360,
+      "logical_bytes": 15360,
+      "peak_capacity_bytes": 1879808,
+      "peak_reserved_bytes": 1880832,
+      "releases": 588,
+      "stopped": 0,
+      "weights_bytes": 1024,
+      "weights_loaded_bytes": 1024,
+      "weights_sealed": 1,
+      "zeroed_bytes": 16779780
+    },
+    "native_commitment_census": {
+      "denied_allocations": 0,
+      "enforced": true,
+      "excluded_packed_w_capacity_bytes": 1024,
+      "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+      "host_layout_bytes": 1619737,
+      "native_reservation_bytes": 52512,
+      "operational_margin_required_bytes": 268435456,
+      "payload_limit_bytes": 5905580032,
+      "peak_plus_runtime_allowance_bytes": 273263609,
+      "physical_runtime_allowance_verified": false,
+      "runtime_allowance_bytes": 268435456,
+      "temporary_live_bytes": 1671950,
+      "temporary_payload_peak_bytes": 4828153
+    },
+    "native_commitment_host_s": 0.881839565,
+    "native_geometry": [
+      16384,
+      256,
+      64,
+      256
+    ],
+    "reconstructions": 64,
+    "reference_commitment_o0_s": 6.175306083,
+    "reference_geometry": [
+      16384,
+      256,
+      64,
+      256
+    ],
+    "source_visits": 786432
+  },
+  "A_resource_geometry": {
+    "columns_per_reconstruction": 128,
+    "common_device_parts": {
+      "frontier": 301989888,
+      "pads": 1572864,
+      "salt_band": 2097152,
+      "twiddles": 8388608,
+      "values": 4294967296
+    },
+    "component_plus_device_replay_upper_bytes": 5578870016,
+    "cosets_per_reconstruction": 4,
+    "credit": false,
+    "cut": 4096,
+    "device_accumulation_phase_bytes": 4642576672,
+    "device_hash_phase_bytes": 4743233792,
+    "geometry_only": true,
+    "gpu_execution": false,
+    "groups": 512,
+    "named_host_bytes": 49846528,
+    "remaining_payload_for_other_host_owners_bytes": 326710016,
+    "rows": 1048576,
+    "scope": "phase envelope before other host owners; no full pipeline/physical memory claim"
+  },
+  "W_resource_geometry": {
+    "component_plus_device_replay_upper_bytes": 4611875360,
+    "credit": false,
+    "cut": 4096,
+    "device_component_bytes": 3736793344,
+    "device_parts": {
+      "cv": 1073741824,
+      "frontier": 234881024,
+      "high_powers": 65792,
+      "low_powers": 268435456,
+      "pads": 1572864,
+      "ring": 2147483648,
+      "salt_band": 2097152,
+      "tiles": 126464,
+      "twiddles": 8388608,
+      "weight_and_hash_flags": 512
+    },
+    "geometry_only": true,
+    "gpu_execution": false,
+    "groups": 128,
+    "named_host_payload_bytes": 89292320,
+    "remaining_payload_for_other_host_owners_bytes": 1293704672,
+    "rows": 1048576,
+    "scope": "geometry screen before other host owners; their actual capacities are charged by the joint counter"
+  },
+  "salt_sampler": {
+    "accepted_salts_per_mode": 262144,
+    "credit": false,
+    "gpu_execution": false,
+    "leaf_pairs_checked": 65536,
+    "parity_candidate_bytes": 2097152,
+    "repetitions": 3,
+    "same_binary": true,
+    "schedules": [
+      {
+        "ordinary_seconds": [
+          0.018404089,
+          0.018368839,
+          0.018330964
+        ],
+        "salts4_seconds": [
+          0.022071349,
+          0.021922432,
+          0.021936891
+        ],
+        "strided": false
+      },
+      {
+        "ordinary_seconds": [
+          0.042148443,
+          0.042258485,
+          0.042163902
+        ],
+        "salts4_seconds": [
+          0.029171452,
+          0.029213951,
+          0.029187243
+        ],
+        "strided": true
+      }
+    ],
+    "scope": "local sequential and strided sampler; not H100 or whole PCS",
+    "stack_batch_bytes": 32,
+    "strided_cosets": 4096,
+    "strided_rows": 2048
+  },
+  "salt_mean_component_ratios": {
+    "False": 0.8357853837740347,
+    "True": 1.4453238057920506
+  },
+  "salt_selection": "batch only unbuffered strided snapshots; buffered sequential regression not selected",
+  "tensor_candidate": {
+    "digit_values": 65536,
+    "digit_checks": 262144,
+    "canonical_edges": 11,
+    "dot_cases": 28,
+    "dot_outputs": 14336,
+    "max_k": 256,
+    "pcs_cases": 8,
+    "source_scans": 8,
+    "w_loads": 5808,
+    "pcs_outputs": 720896,
+    "mma": 3968,
+    "high_loads": 74496,
+    "prefix_checks": 42467328,
+    "shared_bytes": 8448,
+    "rejections": 5,
+    "gpu_execution": false,
+    "credit": false
+  },
+  "failure_records": [
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 101,
+      "wall_s": 12.05553881637752,
+      "max_rss_bytes": 1510162432,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 11.493269,
+      "system_s": 0.551925,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-02.log",
+      "git_dirty": true,
+      "record_run": false
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_composed_full_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 124,
+      "wall_s": 60.00435046013445,
+      "max_rss_bytes": 217583616,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 59.808606,
+      "system_s": 0.182749,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-chain-20261008-01.log",
+      "git_dirty": true,
+      "record_run": false
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_pending_coverage_owner_and_failure",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 101,
+      "wall_s": 4.840542847756296,
+      "max_rss_bytes": 217415680,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 4.754643,
+      "system_s": 0.083952,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-component-20261008-01.log",
+      "git_dirty": true,
+      "record_run": false
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_tree_exact_roots_openings_histogram_and_work",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 101,
+      "wall_s": 4.886444224976003,
+      "max_rss_bytes": 217432064,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 4.786998,
+      "system_s": 0.097746,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-exact-20261008-01.log",
+      "git_dirty": true,
+      "record_run": false
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_tree_exact_roots_openings_histogram_and_work",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 101,
+      "wall_s": 4.962598875164986,
+      "max_rss_bytes": 217444352,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 4.841785,
+      "system_s": 0.118361,
+      "log": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-exact-20261008-02.log",
+      "git_dirty": true,
+      "record_run": false
+    }
+  ],
+  "durable_traces": [
+    {
+      "source_log": "c71-a-tree-chain-20261008-02.log",
+      "artifact": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-native-a-chain-4-11329216766675205400.jsonl",
+      "records": 295
+    },
+    {
+      "source_log": "c71-a-tree-clean-a_chain-20261008-01.log",
+      "artifact": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-native-a-chain-57-15970561349221715656.jsonl",
+      "records": 295
+    },
+    {
+      "source_log": "c71-a-tree-clean-w_chain-20261008-01.log",
+      "artifact": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-native-w-chain-189-2697294258594670691.jsonl",
+      "records": 296
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-01.json",
+      "bytes": 560,
+      "sha256": "5bbdaef89f5581e65d958ecf64c6d962faeefc2dbd62750bd4ea03afed4f01a9"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-01.log",
+      "bytes": 14142,
+      "sha256": "0f14d1ec5000bb782f3c9057d6ac7a337f4eafc838f13c8d6fa9c17506b48043"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-02.json",
+      "bytes": 552,
+      "sha256": "c4feef63d987f3577bd875a90ec4dbedd63b94cfca7f6cbb4676bb71bf5ab4c4"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-02.log",
+      "bytes": 8018,
+      "sha256": "c65ad651ba1981c0691c2bb4502bb1f81358ddea4ec417a30fb97fb5d9d0943b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-03.json",
+      "bytes": 550,
+      "sha256": "828f94d8a22199614349dee98e45b8f7f042e00b63b4604fc695623bd4d08b3b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-03.log",
+      "bytes": 14448,
+      "sha256": "5de6c6b1b2189ef0aa0bbaaa09cf01f61ecc44485e8632821908e9b80e4e12bb"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-04.json",
+      "bytes": 550,
+      "sha256": "5474e4e3c6cf161359a86fa76e4ac35bf5bc49286cad5051bb635870c1b412a9"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-04.log",
+      "bytes": 14142,
+      "sha256": "4f97843f4793f4a9be7f60af7fe58d70e9c9b01cb77253a5b84d0bcdc4c2f71d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-05.json",
+      "bytes": 551,
+      "sha256": "f5429527b3b96f30163f698f1707deb766e95488be4d00917450a880d9cc4238"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-build-20261008-05.log",
+      "bytes": 14142,
+      "sha256": "fe02ebef617b6b56b8aaea2bac6a646dde105a78565c5812f8579a67bb9fd0c7"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-chain-20261008-01.json",
+      "bytes": 511,
+      "sha256": "a47c080dba850073f640ee06574af891dfbd4c0bf65b1d2ab5871e7d043d5567"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-chain-20261008-01.log",
+      "bytes": 127,
+      "sha256": "dc70d8fc1d311be4973595358626efdf68c308adee967a366e74f9bea645df15"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-chain-20261008-02.json",
+      "bytes": 510,
+      "sha256": "190bcff3f3f4ccd32144333d46993d9379fb14f4c94479fa57afb7b94745ed96"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-chain-20261008-02.log",
+      "bytes": 2464,
+      "sha256": "9ec34a5187214899eae0153522f8e76d0c3d3a3b2c9bb8cc4ee783065b393831"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_chain-20261008-01.json",
+      "bytes": 517,
+      "sha256": "32e15bf703cd7a31321508df5bd4b73faf41caf0fd6ed06d84da38a5c410a135"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_chain-20261008-01.log",
+      "bytes": 2465,
+      "sha256": "0e58a4744d234ec3378791bb8198ca89c24be344463a99cf0469310e229937fd"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_coverage-20261008-01.json",
+      "bytes": 539,
+      "sha256": "a5eb41c0a7046232b524cd800b6246bd1ba84b99ccd67e58b8d3744e874c57c8"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_coverage-20261008-01.log",
+      "bytes": 268,
+      "sha256": "24c1309173b33c4125f25aa72e1572b012745cb5d1e73d8686be9d8ad93a595f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_failure-20261008-01.json",
+      "bytes": 517,
+      "sha256": "1981f3f55299609ffe42d954df5b4c325eebb65ccdc987692b2a2dbe7b23dbfc"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_failure-20261008-01.log",
+      "bytes": 319,
+      "sha256": "60796564c95c49ba358de34100b7a9231764471d9cdaff548fff2349254c6f0c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_math-20261008-01.json",
+      "bytes": 515,
+      "sha256": "a99fdc05e81704b9af25af852bcc6996b4c832a94b909514a99be1191bf24ee6"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_math-20261008-01.log",
+      "bytes": 3053,
+      "sha256": "98afbd1c16cddb3f4f73016790b9c0a51d5347a20e909503000619a16fb419be"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_resource-20261008-01.json",
+      "bytes": 518,
+      "sha256": "1b44b9fd014b1cced65cecee557932f90b6dd76d5e55a3f03f128b386ae0e46c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_resource-20261008-01.log",
+      "bytes": 835,
+      "sha256": "56c33fc857f66826cb9bd58d87034c3d844f6cae27e0891e456b24462dfe050a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_tree-20261008-01.json",
+      "bytes": 474,
+      "sha256": "f0de33bd49f5601d586c80fba58af98aad2ad91e0c4d7c4731255884c33c7028"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-a_tree-20261008-01.log",
+      "bytes": 3040,
+      "sha256": "bc6b61f01eba97a41369d7e719ddcb5d845ad64e75c0b1f1b658c2fc49baf906"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-build-20261008-01.json",
+      "bytes": 577,
+      "sha256": "1dad0ece95b170990829bc23ea04a69c2a382f980dfd8cff44a060663bffb7dd"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-build-20261008-01.log",
+      "bytes": 14063,
+      "sha256": "a76b5f11bb4f2dd8e322d29b23145ff49f457021e91faa5138522319b87006df"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-docs-20261008-01.json",
+      "bytes": 468,
+      "sha256": "c22621e6b15938714c5fd00485ab592af87595e7ccd240a145129ed5583a169b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-docs-20261008-01.log",
+      "bytes": 28,
+      "sha256": "92ff99d77783026e519357db6293211361166aeb2566d47e230f524a7208fbed"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-owner-20261008-01.json",
+      "bytes": 476,
+      "sha256": "569016229b341a4ac694c5eaa58cad7525cff99a78205d983c21edfa1d977720"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-owner-20261008-01.log",
+      "bytes": 21,
+      "sha256": "650e9535fb1c9f2c215bd72e555704624adf050652a0193fb2bafa87adb90cd1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-producer-20261008-01.json",
+      "bytes": 520,
+      "sha256": "ef9809448c7c4b8c1f547635c5afb2e6c6b520b1a5a8e9677e033629e4d87df9"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-producer-20261008-01.log",
+      "bytes": 488,
+      "sha256": "42aff749c57915f9a9e0bc8ad16772c74e32651e0016dd78f0fdace4854f93e2"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-salts-20261008-01.json",
+      "bytes": 477,
+      "sha256": "58e689ed77fa9dd0fef41c9ac812bdb0a6f1d40f0a0dc22c81ffebe042dc69de"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-salts-20261008-01.log",
+      "bytes": 15510,
+      "sha256": "be42a39efa3e16864995c79824e58f2e6bc83ef1d95901f1f83fba89259f9075"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-tensor-20261008-01.json",
+      "bytes": 498,
+      "sha256": "8ee631ea84631dbea2ccaddcdf9bc50fb24ff258c2a5fffd91e9ee2da40546ea"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-tensor-20261008-01.log",
+      "bytes": 347,
+      "sha256": "29df9e1e3995b1159d568d0c480d48852adf28f8d4611b9845ee45f1aa81cd0f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-w_chain-20261008-01.json",
+      "bytes": 516,
+      "sha256": "eacc1d72d86bb2e1f684448db50ccdd3c50ae09f6eddb12b121fcf429bb42465"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-w_chain-20261008-01.log",
+      "bytes": 2465,
+      "sha256": "4e4a5353ea9a0b8bd994fc6ea844e54e692ecf5328200f64d47f730fe5f2ff7a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-w_resource-20261008-01.json",
+      "bytes": 502,
+      "sha256": "9f6bd574cff0042f7c6ed2e1dd2c57a3b2b579580812e0875f4f95d569ed22df"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-w_resource-20261008-01.log",
+      "bytes": 847,
+      "sha256": "0c3c1869650909f786db29f00a4550881b02ff32eef457d4c68ae59806c17001"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-w_tree-20261008-01.json",
+      "bytes": 485,
+      "sha256": "4b068bd022ec28b59f580ece16521203230530fb583f4f20830c177181895389"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-w_tree-20261008-01.log",
+      "bytes": 2898,
+      "sha256": "95e4c8d66b33b19a904558b37f5b14abf40431f21aeb30d304e568dc091adaa5"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-component-20261008-01.json",
+      "bytes": 501,
+      "sha256": "c522b5c090dfce96c0d2e61245e22d36faada8fd6ff8caf1ae187dc8b42902f2"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-component-20261008-01.log",
+      "bytes": 654,
+      "sha256": "b31ebae4a2122f2d6bf29c15d2d00a20759a187220983e57a4bd02e5a47ba205"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-component-20261008-02.json",
+      "bytes": 500,
+      "sha256": "b558f4d7e4a30472bbf844e0e2141a64fd2b8dcb03b66c5d68bab6b8cc0615b2"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-component-20261008-02.log",
+      "bytes": 319,
+      "sha256": "e2436f5d6064cb337f269601522f2544ab7d43b89a5a76bfde6a672d14fa747c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-coverage-20261008-01.json",
+      "bytes": 520,
+      "sha256": "f0c7418fc5190eca8c0ae4ff411e1023f19abfd3acbb08f49e7d5000166c5f75"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-coverage-20261008-01.log",
+      "bytes": 268,
+      "sha256": "eb1c3adcd1f73a9cffed92a68ec7d30ebba17372491ad8603e8cc0e038afe85c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-exact-20261008-01.json",
+      "bytes": 507,
+      "sha256": "a7ae55f7e2ed46d87ef25df3ee5cfba5b7c92fd5b9ae58abe82ecf5bcb5b2c72"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-exact-20261008-01.log",
+      "bytes": 706,
+      "sha256": "6b024099aea090487a4fbe376c98c978d9ed93e937fe760e0ef6ba32ee0d608e"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-exact-20261008-02.json",
+      "bytes": 507,
+      "sha256": "87cc04595eaaf7912defc40c615762f1adf4aa999d8efc4c51c5174af84d6a02"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-exact-20261008-02.log",
+      "bytes": 711,
+      "sha256": "3b79b058f6f9ef1ffff3603a49670c5aeb006ef5eac8ba1813add4dc05f39ad9"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-exact-20261008-03.json",
+      "bytes": 506,
+      "sha256": "85f1b7939fa048c06ff5b505af814b30fdec4d041078fac551d1e891d639dc61"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-exact-20261008-03.log",
+      "bytes": 2829,
+      "sha256": "31674a3600d009efdc9b0c704363eb4acf70252ad403e2bb8195b65583eea164"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-negative-20261008-01.json",
+      "bytes": 504,
+      "sha256": "959766ac32f17528be2ec9cebbf0aac5b94fc586307f6146aad43da5f4b93d4f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-negative-20261008-01.log",
+      "bytes": 325,
+      "sha256": "ea769ed9b2462dd60d37e10b14299cc8e31dc908792d46503512c5712cd5cc34"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-owner-20261008-01.json",
+      "bytes": 461,
+      "sha256": "3b7752ab8410da0f6c9f6bd61d0b58e9246e2abdc9e526bb82f17ad6dbfe45dc"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-owner-20261008-01.log",
+      "bytes": 98,
+      "sha256": "1b4dbf8f9ca8ef28455fbe0bf26ec7f4fc8d68a5313e39da09caf3086bf82122"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-tensor-20261008-01.json",
+      "bytes": 471,
+      "sha256": "b9793c00f8cdb23231698621cc2d83f7d372639b023b9019dc675c17c545c588"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-tensor-20261008-01.log",
+      "bytes": 98,
+      "sha256": "6f0e4c5979bb6c93bb9c33007392463b515f20db05c7b4ee31835204e04e5557"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-xof-20261008-01.json",
+      "bytes": 466,
+      "sha256": "07b85670490be24ae9910cbba32de1df1714976da7cb5e78a61837f9445e6914"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-xof-20261008-01.log",
+      "bytes": 14463,
+      "sha256": "3829d968b96b94f300530c31ece7a33cf144ba21a33b5f5bf06d44ee2d1b9c69"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-local-check-20261008.py",
+      "bytes": 1448,
+      "sha256": "ab78b46d0e49e9a15b170ad0adac2346905d548a12111dd6060628988a4b0bc1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-a-tree-clean-suite-20261008-01.py",
+      "bytes": 2236,
+      "sha256": "e79313cbe3b829b8dcef95811a69994656e3ac5ef601c8ef3c278f91f5acd919"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-native-a-chain-4-11329216766675205400.jsonl",
+      "bytes": 259453,
+      "sha256": "7a0c7bb4a3e6783c0543dc30811336cb8aded43bbdb4712a99e47c6c4fc59b97"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-native-a-chain-57-15970561349221715656.jsonl",
+      "bytes": 259453,
+      "sha256": "a6f344b7e84a0a918ff8586c96716901d71bad0544fb6a958e8fa36653a72357"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013-logs/c71-native-w-chain-189-2697294258594670691.jsonl",
+      "bytes": 260767,
+      "sha256": "c8e7db4905d0149f78869fd214186e1ebdc1b0dcbf2118c75c9e346fa6000d8d"
+    }
+  ],
+  "residuals": [
+    "CPU salt prescan/replay, query/remainders and sourcewise S1",
+    "linear closure D*2^D model.value calls including public zero suffix",
+    "GKR/range active branch profiling and QK/PV scalar products",
+    "Tensor owner comparison hook, CUDA compilation/performance, TMA/fusion/Graphs assessment",
+    "complete simultaneous other-host-owner and physical peak on pinned workload"
+  ],
+  "limitations": [
+    "Composed full-chain W/A fixtures use bounded eager initial reference rows; separate Tree tests use production getters. No eager table in production.",
+    "A uncached D15 timed out at local60s; preserved and ignored as obligation, never passed by skip.",
+    "32 cosets/128 W scans and four cosets/512 A reconstructions are analytic at canonical size; no D34/D35 allocation.",
+    "NativeSource C ABI validates counts/span; canonical source-row adapter guarantees partition, tested for overlap/omission.",
+    "Canonical A H=16n unchanged; reduced fixed-pad profiles permit their larger original H.",
+    "No GPU execution or CUDA compilation; finite parity does not discharge Lean refinement or physical memory assumptions."
+  ]
+}

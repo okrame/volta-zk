@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_canonical_device_original_scan_coverage_rejects_duplicate_and_omitted_rows",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 4.894396509043872,
+  "max_rss_bytes": 217407488,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 4.767529,
+  "system_s": 0.125125,
+  "log": "/tmp/c71-a-tree-coverage-20261008-01.log"
+}

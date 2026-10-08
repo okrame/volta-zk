@@ -1,0 +1,21 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_pcs_tensor.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 3.521356684155762,
+  "max_rss_bytes": 123248640,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 3.298182,
+  "system_s": 0.18959499999999999,
+  "log": "/tmp/c71-a-tree-tensor-20261008-01.log"
+}

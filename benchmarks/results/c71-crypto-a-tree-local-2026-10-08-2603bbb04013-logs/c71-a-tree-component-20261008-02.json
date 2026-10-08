@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_native_source_pending_coverage_owner_and_failure",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 5.0572787639684975,
+  "max_rss_bytes": 217419776,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 4.907408,
+  "system_s": 0.147348,
+  "log": "/tmp/c71-a-tree-component-20261008-02.log"
+}

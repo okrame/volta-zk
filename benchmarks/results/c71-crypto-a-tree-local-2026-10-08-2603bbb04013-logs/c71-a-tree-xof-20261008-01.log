@@ -1,0 +1,208 @@
+
+running 3 tests
+test c71_matrix::b12::tests::c71_b12_private_coins_salts4_component_benchmark ... C71_XOF_SALTS4_COMPONENT {"accepted_salts_per_mode":262144,"credit":false,"gpu_execution":false,"leaf_pairs_checked":65536,"parity_candidate_bytes":2097152,"repetitions":3,"same_binary":true,"schedules":[{"ordinary_seconds":[0.018828299,0.018775631,0.019008801],"salts4_seconds":[0.022021718,0.022034301,0.022056844],"strided":false},{"ordinary_seconds":[0.044090394,0.044092311,0.044131603],"salts4_seconds":[0.02942411,0.029397277,0.029356735],"strided":true}],"scope":"local sequential and strided sampler; not H100 or whole PCS","stack_batch_bytes":32,"strided_cosets":4096,"strided_rows":2048}
+ok
+test c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion ... 
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_forced_rejection_and_exhaustion' (6) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+ok
+test c71_matrix::b12::tests::c71_b12_private_coins_salts4_seek_refill_and_stream_parity ... 
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_seek_refill_and_stream_parity' (7) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+
+thread 'c71_matrix::b12::tests::c71_b12_private_coins_salts4_seek_refill_and_stream_parity' (7) panicked at volta-pcs/src/c71_matrix/b12.rs:132:14:
+B12 private coin stream exhausted; burn the attempt
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 522 filtered out; finished in 0.43s
+

@@ -12,8 +12,8 @@ due replay interi identici, confronto indipendente completo, 450 token,
 La [diagnostica della prova](../../benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json)
 è **INCOMPLETA**, exit 124 dopo 2.461,09 s nel commitment W, prima delle
 risposte. Nessun certificato canonico o tempo completo della prova è acquisito.
-Il runner `experiment-cuda` è misto: inferenza/replay/range GPU, PCS/GKR
-non-range/Seed6/verifica CPU. Le [risorse misurate e le priorità](design.md#risultati-attuali-e-prossime-ottimizzazioni)
+Il runner `experiment-cuda` è misto: inferenza/replay/range e commitment
+iniziali W/A GPU; sali/PCS successive/GKR non-range/Seed6/verifica CPU. Le [risorse misurate e le priorità](design.md#risultati-attuali-e-prossime-ottimizzazioni)
 sono riassunte nel design. La campagna precedente è chiusa e il pod è spento.
 
 Il goal locale dell'8 ottobre prepara l'intero percorso crittografico e
@@ -24,7 +24,7 @@ la prima integrazione conserva la geometria W/A corrente.
 
 Il [primo checkpoint locale](../../benchmarks/results/c71-crypto-preparation-local-2026-10-08-04ab8ed1c4ce.json)
 ha telemetria/XOF integrati e parità ridotte positive. Il lavoro locale
-successivo ha integrato W residente; prosegue con A→PCS e confronti esatti,
+successivo ha integrato W/A residenti; prosegue con i confronti esatti,
 mentre il goal è ancora
 attivo e non autorizza riattivazione, nuovi pod o una campagna.
 
@@ -41,7 +41,7 @@ Il [passo accumuli/FFT](../c7.1-history/crypto-w-scan-fft-2026-10-08.md)
 prepara e verifica la catena W→accumuli→FFT→hash/Merkle nelle fixture:
 128 colonne/32 coset, pad originali e rifiuti terminali. Il
 passo [Tree W](../c7.1-history/crypto-w-tree-2026-10-08.md) integra la
-catena nel runner CUDA, poi si prosegue con A→PCS.
+catena nel runner CUDA; il passo A successivo è descritto sotto.
 Nella futura build aggiungere anche `cuda/c71_pcs_weight.cu`; le FFT
 riusano `cuda/c71_fft.cuh`. Restano da verificare compilazione sm_90,
 parità hardware, picchi fisici e tempi. Nessun riavvio hardware finché
@@ -58,14 +58,14 @@ non modifica i record precedenti e non concede credito di picco completo.
 Il [record pulito Tree](../../benchmarks/results/c71-crypto-w-tree-local-2026-10-08-6b3535856cc5.json)
 conserva la selezione del runner e tutta la provenienza locale; dodici
 test Rust e nove Python positivi. Il [receipt](../c7.1-history/crypto-w-tree-evidence-2026-10-08.md)
-delimita le fixture e i fallimenti. A→PCS, confronto Tensor Core e costi
+delimita le fixture e i fallimenti. Il Tree A è ora integrato sotto; confronto Tensor Core e costi
 residui di sampler/aperture/prova restano lavoro del goal locale.
 
 Il [componente A residente](../c7.1-history/crypto-a-source-2026-10-08.md)
 prepara scanner, accumuli su quattro coset/tutte le colonne, istogramma
 fuso, pad/FFT e foglie complete senza download di righe. Tre geometrie
-e 28 arresti sono verificati con driver host; non è ancora selezionato
-nel Tree/runner A e non modifica le 512 ricostruzioni di produzione.
+e 28 arresti sono verificati con driver host; il passo successivo lo
+seleziona nel Tree/runner A senza modificare le 512 ricostruzioni.
 La nuova build completa deve includere anche `cuda/c71_pcs_source.cu`:
 assenza dei cinque nuovi simboli è terminale, anche per un owner W.
 L'owner host cresce di 88 B; lo screen candidato A lascia 326.710.016 B
@@ -75,6 +75,19 @@ hardware/durata segue da questi controlli.
 Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
 e il [receipt](../c7.1-history/crypto-a-source-evidence-2026-10-08.md)
 conservano provenienza, regressioni W e limiti del componente.
+
+Il [Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) è selezionato nel runner CUDA e il
+[record pulito](../../benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json) ha 18 test Rust/12 Python positivi. Prova
+composta W/A con cache iniziale solo nella fixture, getter effettivi
+verificati separatamente e timeout uncached A conservato. Sali strided
+batched e un fence duplicato sono ottimizzati con parità locale. La
+candidata limb16 è separata, emulata contro i128, non selezionata: il
+confronto GPU richiede il futuro hook dell'owner e la compilazione sm_90.
+Mancano GPU XOF, query/S1/closure lineari, profilo GKR/range/QK/PV e
+conto simultaneo completo. Il goal resta attivo: non riattivare pod
+o hardware. Γ resta riutilizzabile dopo i controlli normali di identità;
+la campagna futura misurerà separatamente installazione, setup,
+inferenza, prova e verifica, dopo nuova autorizzazione di hardware/durata.
 
 Percorso principale: preparazione locale → autorizzazione della nuova
 campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle
@@ -286,7 +299,8 @@ un eventuale `.env` deve essere regolare, posseduto dall'utente e `0600`.
 
 Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi
 `c71_matrix` e `c71_calibration` non lo sostituiscono. L'esperimento usa
-la pipeline mista dichiarata, senza presentare la PCS CPU come GPU.
+la pipeline mista dichiarata, distinguendo commitment iniziali residenti
+da sampler, aperture e PCS successive CPU.
 Usare le
 [build mirate](local-tests.md#compilazione-mirata) e la
 [build della libreria CUDA](local-tests.md#collegamento-del-runner-cuda).

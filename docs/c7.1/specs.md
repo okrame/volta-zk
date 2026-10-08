@@ -819,11 +819,36 @@ Potenze/conteggi/flag portano l'accumulo a 4.642.576.672 B; dopo il loro
 rilascio, digest e flag portano l'hash a 4.743.233.792 B. Con upper replay
 device 785.789.696 B e host nominati 49.846.528 B, l'envelope conservativo
 è 5.578.870.016 B, prima degli altri owner host. Non sommare fasi o picchi
-storici; il budget addebita tutte le capacità effettive. Il componente
-non è ancora collegato al Tree/runner A, che mantiene la PCS CPU.
+storici; il budget addebita tutte le capacità effettive. Il componente è ora collegato al Tree/runner A CUDA; il riferimento CPU
+mantiene il consumer precedente.
 I tempi della fixture Rust O0/C++ O2 non sono un confronto di speedup.
 Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
 conserva log, contatori, binario e sorgenti del componente e regressioni W.
+Il [passo Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) conserva la geometria originale e importa
+il cache di digest con controllo H foglie/H−1 nodi/128H celle e cursori
+dei sali. Il C ABI valida conteggio/span; unicità e partizione sono la
+precondizione del Prepared concreto, con negativi di righe duplicate/
+omesse. Width è il numero di byte emessi, indipendente da byte_first;
+i piani i48 4+2 sono confrontati nel Tree. I ridotti dominati dai pad
+ammettono il loro H originale maggiore di 16n; il canonico A resta 16n.
+La prova composta usa solo nella fixture 16 MiB di righe iniziali del
+riferimento; root/aperture del getter effettivo sono verificate a parte.
+Il [nuovo record](../../benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json) conserva 18 test Rust/12 Python, fallimenti e
+tracce durevoli. L'uncached A D15 supera 60 s e rimane ignored/obbligo.
+
+`PrivateRng::salts4` legge esattamente i candidati mancanti, filtra in
+ordine e conserva rejection/cap/seek. È selezionato solo nei snapshot
+strided; tre rep nello stesso binario danno rapporto 1,445, senza credito
+GPU. Il sampler sequenziale mantiene il buffering da 4 KiB originale.
+Il rilascio del flag dopo il fence valido non ripete la sincronizzazione,
+senza modificare la release pubblica o le free-failure terminali.
+La [candidata Tensor Core](../../cuda/c71_pcs_weight_tensor.cu) separata
+usa quattro limb16 biased, dot INT8 pack/compose esatto e correzione
+32768·sum_W; somma signed <2^87 e 8.448 B shared, nessun nuovo buffer
+globale. Il test host emula fragment/shuffle e confronta signed i128/%p;
+non compila CUDA o verifica le guardie kernel. Mancano hook dell'owner
+per il confronto, registri/spill e prestazioni H100.
+
 Il payload congiunto ridotto massimo è 4.965.787 B; nessun rifiuto nelle
 parità. Cargo pulito riusa il binario identico della build preliminare
 O0; le due provenienze sono esplicite, senza credito di nuova compilazione.
@@ -876,7 +901,8 @@ del consumo. Il gather accetta viste nei prefissi KV, non celle future.
 Questi byte non passano al verificatore. Il range A resta residente;
 La finestra range A del runner scende da 2 GiB a 1 GiB: cambia il numero
 di finestre, non gli originali né la geometria del range.
-PCS A/extension FFT/Merkle, monete/sali, aperture/resti/contrazioni,
+I commitment iniziali W/A sono residenti. PCS extension FFT/Merkle,
+monete/sali, aperture/resti/contrazioni,
 GKR non-range, MAC, PCG, codec e verifica
 restano CPU dichiarati, non fallback impliciti. La rigenerazione di una
 generazione storica rilascia quella precedente e riusa KV450 originale;

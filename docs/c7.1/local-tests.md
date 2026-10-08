@@ -194,14 +194,39 @@ Merkle strided sono esatti. Per regressioni del refactoring byte eseguire
 `c71_b12_range_window_permutation_and_intersections` e
 `c71_canonical_resident_byte`; per l'owner comune ripetere il filtro
 `c71_b12_native_weight_tree` e il conto W aggiornato. I tempi Rust O0/C++
-O2 non giustificano uno speedup. Il Tree/runner A non seleziona ancora
-queste primitive; parità CUDA e conto simultaneo completo restano aperti.
+O2 non giustificano uno speedup. Il Tree/runner A CUDA seleziona ora queste primitive nel passo seguente;
+parità CUDA e conto simultaneo completo restano aperti.
 Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
 conserva 13 test Rust/undici Python, 62 artefatti e due errori preliminari;
 RSS massimo test/compilatori discendenti 247.549.952 B, build completa
 preliminare 2.482.995.200 B separata. Il check Cargo pulito riusa lo stesso
 binario, con provenance e digest dichiarati. Ogni test è entro 60 s/2 GiB,
 un worker e processi seriali. Nessun test ignored è contato come pass.
+Per il [Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) eseguire separatamente i filtri:
+
+```text
+c71_b12_native_source_tree
+c71_b12_native_source_composed_full_chain_original_mac_and_transcript
+c71_canonical_device_original_scan_coverage_rejects_duplicate_and_omitted_rows
+c71_b12_private_coins_
+```
+
+Il primo filtro confronta root/aperture/istogramma/lavoro e otto arresti.
+Il confronto composto usa 16 MiB di righe iniziali del riferimento solo
+nella fixture, come W. `c71_b12_native_source_uncached_full_chain_performance_obligation`
+è ignored dopo timeout a 60 s; non eseguire con `--ignored` o limite
+esteso e non contare lo skip come pass. Ripetere le tre componenti A
+in filtri separati: il filtro complessivo `c71_b12_native_source_` ora
+include anche il Tree/prova e può superare il limite locale.
+`tests/test_c71_pcs_tensor.py` confronta l'emulazione fragment/shuffle
+limb16 con modulo signed i128 indipendente, 720.896 output PCS e tutti
+i digit16. Non compila CUDA, testa guardie kernel o seleziona la candidata.
+Il [record pulito Tree A](../../benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json) conserva 18 test Rust/12 Python,
+69 artefatti, cinque negativi preliminari e tre tracce durevoli. RSS
+massimo test/compilatori discendenti 250.183.680 B; build completa
+preliminare 57,02 s/2.474.213.376 B separata. Cargo pulito è un riuso
+identico con digest, non una nuova compilazione completa.
+
 Il [record pulito del componente](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
 ha sette selezioni Rust e venti controlli Python positivi, tra cui
 regressioni FFT/resti/potenze Fp3, mapping e replay originali. I 77

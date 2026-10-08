@@ -97,9 +97,9 @@ Matrix usa quattro MMA INT8 con correzioni e raw i64; Norm usa soglie
 quadrate u128 esatte; QK/PV sono attualmente dot product interi scalari,
 non MMA. RNE, Affine/Gate, embedding, GELU/softcap, RoPE, EXP30 e argmax
 usano originali e codec canonici. Il gather A produce finestre residenti
-per il range sullo stesso owner. Il commitment iniziale W usa accumuli,
+per il range sullo stesso owner. I commitment iniziali W/A usano accumuli,
 FFT e hash/Merkle residenti. Restano **esplicitamente CPU** monete/sali PCS,
-PCS A e extension, query/resti e contrazioni, GKR non-range/MAC, Seed6 reale AES,
+extension PCS, query/resti e contrazioni, GKR non-range/MAC, Seed6 reale AES,
 codec, verificatore e journal. Le righe/finestre originali richieste da
 questi consumer sono scaricate in staging bounded; non si tratta di una
 PCS interamente GPU o di assenza assoluta di D2H. Il gather range W rimane CPU,
@@ -177,7 +177,8 @@ campagna. Hardware e durata richiedono nuova autorizzazione.
 
 La prima integrazione usa buffering sequenziale XOF da 4 KiB e
 [telemetria durevole](specs.md#telemetria-durevole-del-percorso-crittografico).
-Replay per foglia senza buffer; snapshot/seek al cursore logico. Geometrie,
+Snapshot strided senza buffer da 4 KiB; snapshot/seek al cursore logico.
+Il nuovo batch esatto dei quattro sali è descritto nel passo Tree A. Geometrie,
 scansioni W/A e parametri crittografici rimangono quelli correnti in questa
 modifica. Γ mantiene le identità ammesse: producer, scale, tabelle, ricette,
 W e workload non sono toccati da telemetria e buffering.
@@ -213,8 +214,8 @@ di transcript/MAC usa una tabella di righe iniziali di riferimento da
 getter di produzione. Il D15 non cached supera ancora 60 s locali ed è
 conservato come obbligo prestazionale, senza credito di completamento.
 128 scansioni W sono ora la schedule selezionata CUDA, ancora analitica
-per il workload pinned; A conserva 512 ricostruzioni. Tensor Core, A→PCS
-e accelerazione delle aperture restano aperti. Nessun credito
+per il workload pinned; A conserva 512 ricostruzioni. Confronto GPU Tensor Core, sampler
+e accelerazione delle aperture restano aperti; A→PCS è integrata sotto. Nessun credito
 CUDA/H100 o nuova autorizzazione hardware. La somma signed <2^87 e
 la sua riduzione sono identità controllate localmente, senza lemma Lean
 di raffinamento dell'implementazione o dello scheduling CUDA.
@@ -246,13 +247,37 @@ range, accumuli di byte biased su quattro coset e tutte le 128 colonne,
 pad/FFT finiti e foglie/Merkle con le primitive W. L'istogramma byte è
 fuso nella prima ricostruzione. Parità ridotta di tutti i campi/digest su
 tre geometrie e 28 rifiuti terminali; il passaggio producer→sink non
-scarica righe originali. **Non è ancora selezionato nel Tree/runner A**:
-512 ricostruzioni e PCS A CPU rimangono lo stato di produzione. Il conto
+scarica righe originali. Quel record precede il collegamento al Tree/runner A, ora integrato nel
+passo successivo; le 512 ricostruzioni rimangono invariate. Il conto
 candidato è 5.578.870.016 B con upper device replay e host nominati,
 prima degli altri owner host; restano 326.710.016 B nel payload imposto,
 senza ammissione del picco completo. La VM non compila o esegue CUDA.
 Lo stato fisso della transazione A aumenta di 88 B l'owner host comune;
 la nuova stima W è 4.611.875.360 B, senza modificare i record precedenti.
+Il [passo Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) seleziona il commitment residente anche
+nel runner CUDA, con istogramma fuso e getter originali per le aperture.
+Il [record pulito](../../benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json) conserva 18 test Rust/12 Python, 69 artefatti
+e cinque esiti negativi preliminari. Root, aperture, pad, istogramma e
+lavoro sono esatti; la prova composta W/A confronta transcript/RNG/MAC
+con una tabella iniziale del riferimento da 16 MiB solo nella fixture.
+Il getter effettivo è verificato separatamente; D15 A senza cache supera
+60 s come W, quindi resta obbligo aperto. RSS massimo test/descendenti
+250.183.680 B; Cargo pulito riusa il binario della build preliminare.
+Il batch strided dei sali migliora di 1,445× sullo stesso binario ARM;
+il percorso sequenziale già bufferizzato conserva il sampler ordinario
+perché il batch vi peggiora. Un fence duplicato per pubblicazione è
+eliminato preservando free-failure terminali. La candidata W Tensor Core
+limb16 ha parità host indipendente e shared da 8.448 B, ma non è selezionata
+o collegata all'owner per il confronto GPU. Non concede credito H100.
+
+L'audit [quantifica i residui](../c7.1-history/crypto-a-tree-2026-10-08.md#costi-residui-dal-codice): sali W
+prescan/replay almeno 274.877.906.944 B XOF e 137.438.953.472 B H2D; A
+la metà per risposta. La closure lineare enumera ancora D·2^D valori
+(584.115.552.256 per A); aperture/S1, GKR effettivo e QK/PV richiedono
+accelerazione separata. GPU XOF, scan lineare, confronto Tensor Core,
+conto simultaneo completo e valutazioni fusioni/Graphs/TMA rimangono
+lavoro del goal locale. Nessuna nuova campagna è autorizzata.
+
 I fallimenti delle geometrie escluse restano validi per le loro premesse;
 riaprirle richiede risolvere e verificare la causa dell'esclusione.
 La [decisione dell'8 ottobre](../c7.1-history/operating-rules-2026-10-08.md)

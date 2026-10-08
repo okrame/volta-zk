@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::range::windowed::native::tests::c71_b12_native_source_pending_coverage_owner_and_failure ... C71_PCS_SOURCE_REJECTIONS {"cases":28,"terminal":true,"gpu_execution":false,"credit":false}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 525 filtered out; finished in 5.05s
+

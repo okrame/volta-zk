@@ -688,12 +688,27 @@ shape, owner, codec o CUDA arrestano l'owner comune. A rimane riapribile
 nei prefissi accettati; la promozione non ne vieta il replay storico.
 L'istogramma privato è fuso nel primo replay, senza nuovi MAC o scansioni.
 Parità su tre geometrie e 28 rifiuti con driver simulato non sono una prova
-dei CAS o del scheduling CUDA, né una PCS A integrata o un nuovo lemma
-Lean. Rimangono tutte le premesse di determinismo/immutabilità, B12 e
+dei CAS o del scheduling CUDA o un nuovo lemma Lean; quel record
+precede l'integrazione Tree descritta sotto. Rimangono tutte le premesse di determinismo/immutabilità, B12 e
 Seed6 già dichiarate; PCG AES, correlazioni monouso e NoPeek sono invariati.
 Il [record pulito A](../../benchmarks/results/c71-crypto-a-source-local-2026-10-08-98ac67808e29.json)
 conserva codec/campi/digest, errori terminali e regressioni W, senza credito
 di composizione del Tree A o di esecuzione CUDA.
+
+Il [passo Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) importa root/cache con lo stesso sampler,
+cut, pad e ordine originale. La partizione è garantita dallo scanner
+fidato con copertura delle righe; il C ABI non attesta autonomamente
+l'unicità. Errori o scan incompleta precedono finish e sono terminali.
+Il producer continua a ricevere solo buffer e layout, senza monete PCS.
+Il [record locale](../../benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json) confronta prove composte W/A, transcript,
+RNG e MAC originali con cache di righe solo nella fixture; aperture del
+getter effettivo sono verificate separatamente. Il timeout uncached A
+non concede credito di completamento. Salts4 conserva l'esatto sampler
+con rejection/cap; il fence eliminato segue un fence già valido e non
+allenta free-failure. La candidata limb16 non cambia protocollo o
+producer ed è non selezionata; parità signed i128 finita non prova CUDA.
+Premesse B12/Seed6/raffinamento, NoPeek, PCG AES reale e correlazioni
+monouso rimangono tutte in vigore. Nessun lemma congelato cambia.
 
 Il contatore comprende entrambi i ruoli e le capacità mantenute, compreso
 old+new durante realloc. Il rifiuto di allocazione o una free/fence CUDA

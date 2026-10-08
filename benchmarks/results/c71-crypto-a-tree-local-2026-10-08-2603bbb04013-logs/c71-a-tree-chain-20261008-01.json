@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_native_source_composed_full_chain_original_mac_and_transcript",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 124,
+  "wall_s": 60.00435046013445,
+  "max_rss_bytes": 217583616,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 59.808606,
+  "system_s": 0.182749,
+  "log": "/tmp/c71-a-tree-chain-20261008-01.log"
+}

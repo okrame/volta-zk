@@ -1,0 +1,15 @@
+
+running 1 test
+test c71_matrix::range::windowed::native::tests::c71_b12_native_source_pending_coverage_owner_and_failure ... 
+thread 'c71_matrix::range::windowed::native::tests::c71_b12_native_source_pending_coverage_owner_and_failure' (5) panicked at volta-pcs/src/c71_matrix/range/windowed/native.rs:1725:13:
+fault 23 published a source
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    c71_matrix::range::windowed::native::tests::c71_b12_native_source_pending_coverage_owner_and_failure
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 525 filtered out; finished in 4.84s
+

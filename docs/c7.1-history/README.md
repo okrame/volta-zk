@@ -65,3 +65,5 @@ Benchmark, fonti in `sota` e milestone formali non sono modificati.
 | `docs/prototype-status-history-2026-09-07.md` | [prototype-status-history-2026-09-07.md](prototype-status-history-2026-09-07.md) | copia esatta | `5dc3bfcf06edc66250741737fb9ac4d2a1b5b650cc607d2dce1ed21968343bb8` | `2ae1a8f375e7ec899690acba12b99f71f902cdf543764509240f9601e1b0b7ca` |
 | `docs/prototype-status-history-2026-09-10.md` | [prototype-status-history-2026-09-10.md](prototype-status-history-2026-09-10.md) | copia esatta | `ee535a27757b8796357c54258438e4186eaf1f9c1248d4fa80f22e7b58e3cf03` | `9be6d2c23b0f51a09c5aaa8155de1cb1a7f102d6c8ad64190c32e35500bfb496` |
 | `docs/prototype-status.md` | [prototype-status.md](prototype-status.md) | solo navigazione aggiornata | `fb54cd257daf9560ea67db9bfdf5b05385f42c33cb2a281acf3c9be380bffc40` | `6001d43dac0c70c583f541d315dfdf74b76088cb270a3421bf648891faf90555` |
+
+- [Tree PCS A, sali strided e candidata limb16](crypto-a-tree-2026-10-08.md).

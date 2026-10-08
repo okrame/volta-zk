@@ -27,6 +27,14 @@ ha telemetria/XOF integrati e parità ridotte positive. Il prossimo lavoro
 locale è W residente e la candidata a blocchi, poi A→PCS; il goal è ancora
 attivo e non autorizza riattivazione, nuovi pod o una campagna.
 
+Il [passo hash W](../c7.1-history/crypto-w-hash-2026-10-08.md) prepara
+foglie incrementali e Merkle GPU nello stesso owner, con sali a finestre.
+Prima di selezionarlo nel runner occorrono accumuli/FFT e Tree W
+integrati e parità locale. Il frontier strided è verificato come
+componente condiviso, senza esecuzione CUDA. Nella campagna autorizzata compilare anche
+`cuda/c71_pcs_hash.cu`; librerie antecedenti prive dei simboli PCS sono
+rifiutate. La parità host non è esecuzione CUDA o misura H100.
+
 Percorso principale: preparazione locale → autorizzazione della nuova
 campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle
 fasi ottimizzate → esperimento O=0/150/300 → conservazione e arresto.

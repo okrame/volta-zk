@@ -729,6 +729,23 @@ restano 1.024/512 scan; nessuna allocazione D34/D35 è stata eseguita.
 
 ### Runner CUDA sperimentale e conto simultaneo
 
+L'[estensione PCS dell'owner](../c7.1-history/crypto-w-hash-2026-10-08.md)
+mantiene ABI 4 e richiede i simboli `c71_pcs_*` aggiornati: assenza di un
+simbolo è terminale. I kind base, hash pending e digest sono distinti.
+Il ring da otto colonne conserva quattro valori pendenti; le chiamate
+hash seguono start, colonne 4,12,..116 e bande di sali contigue. Solo
+dopo l'ultima banda e il controllo del flag è ammessa la lettura di
+digest, fino a 64 MiB; nessun valore base/CV lascia l'owner attraverso
+questa API. Il nodo salato C7.1 usa due compressioni BLAKE3, la foglia
+128 colonne ne usa 18. Il launcher non crea un allocatore o uno stream.
+Questa preparazione non sostituisce ancora il commitment CPU del runner.
+La riduzione per gruppi usa stride delle righe per unire coset fratelli;
+un frontier pending accetta solo gruppi consecutivi e non è leggibile.
+Con 4.096 coset raggruppati per 32, il frontier è 2^20×7×32 =
+234.881.024 B. Il ring viene rilasciato prima degli output Merkle,
+che hanno capacità separate. Il conto della schedule CPU corrente resta
+distinto e non si somma a questo candidato.
+
 La CLI seleziona soltanto `reference-cpu` oppure `experiment-cuda`; la
 seconda aggiunge `LIBRARY DEVICE` agli stessi cinque argomenti di input.
 Richiede `c71-seed6-reference`, PCG reale AES e libreria ABI 4 con tutti i

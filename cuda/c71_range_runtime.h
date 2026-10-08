@@ -6,10 +6,12 @@
 #include "c71_dense_i16.cuh"
 #include "c71_byte_gather.cuh"
 #include "c71_nonlinear.cuh"
+#include "c71_pcs_hash.cuh"
 
 struct C71RangeContext;
 using C71RangeAccount = int (*)(int64_t);
-enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64, C71_BYTE_PENDING, C71_HISTOGRAM_PENDING };
+enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64, C71_BYTE_PENDING, C71_HISTOGRAM_PENDING,
+    C71_PCS_BASE, C71_PCS_HASH_PENDING, C71_PCS_DIGEST, C71_PCS_FRONTIER_PENDING };
 struct C71RangeStats {
     // ABI 4: actual live device reservations (released after fence), aligned
     // capacities and logical payload. create() sets a budget, not a slab.
@@ -86,4 +88,20 @@ int c71_dense_argmax(C71RangeContext*,uint64_t input,uint64_t first,uint32_t row
 int c71_byte_begin(C71RangeContext*,uint64_t output);
 int c71_byte_scatter(C71RangeContext*,uint64_t input,const c71_byte::Tile*,uint64_t output);
 int c71_byte_seal(C71RangeContext*,uint64_t output);
+// Mandatory ABI-4 PCS extension. Canonical base words, digest bytes and
+// incomplete chaining states are separate kinds; range cannot read them.
+// Only salts/pads or reduced fixtures use upload; W/A producers stay resident.
+int c71_pcs_words_upload(C71RangeContext*,uint64_t output,uint64_t first,const uint64_t*,uint64_t count);
+// Eight column-major slots: pending four in slots 4..7, new four in 0..3.
+// Start/finish use slots 0..3. Exactly 15 ordered steps, columns 4,12,..116.
+int c71_pcs_leaf_start(C71RangeContext*,uint64_t ring,uint64_t states);
+int c71_pcs_leaf_step(C71RangeContext*,uint64_t ring,uint64_t states,uint32_t first_column);
+// Finish contiguous salt bands; publish only after all rows and sticky flag
+// are complete. A small upload window avoids a second 1-GiB salt array.
+int c71_pcs_leaf_finish(C71RangeContext*,uint64_t ring,uint64_t salts,uint64_t states,uint64_t first_row,uint64_t rows);
+int c71_pcs_nodes(C71RangeContext*,uint64_t input,uint64_t output,uint64_t rows);
+int c71_pcs_frontier_begin(C71RangeContext*,uint64_t frontier,uint64_t rows,uint32_t groups);
+int c71_pcs_merge_group(C71RangeContext*,uint64_t frontier,uint64_t roots,uint32_t group);
+// Bounded digest publication only; no base values or intermediate CV spill.
+int c71_pcs_read_digests(C71RangeContext*,uint64_t input,uint64_t first,uint64_t count,void* output);
 }

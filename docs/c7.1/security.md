@@ -629,6 +629,17 @@ aperte di composizione e raffinamento rimangono quelle dichiarate sopra.
 
 ### Riduzione dei temporanei e confine del claim
 
+La [foglia incrementale W](../c7.1-history/crypto-w-hash-2026-10-08.md)
+conserva il dominio B12, i byte little-endian di 128 valori e quattro
+sali, counter/flag dei chunk e root BLAKE3. Il CV incompleto non è un
+digest pubblicabile: ordine e copertura dei blocchi/bande e flag del
+device precedono la pubblicazione. Nessun cambiamento a NoPeek, MAC,
+PCG AES o correlazioni; i producer non ricevono nuove monete. La parità
+del codice host condiviso non dimostra il raffinamento CUDA. La fixture
+strided ricompone il frontier con lo stesso seek dei sali e confronta
+root dei sottoalberi e root naturale; accumuli/FFT e import nel Tree
+canonico richiedono ancora integrazione e parità.
+
 Il budget congiunto e i rilasci non cambiano enunciato o distribuzione
 crittografica: il gruppo valuta gli stessi coset nei punti originali, i
 pad mantengono gli indici originali e Merkle usa lo stesso stream di sali.

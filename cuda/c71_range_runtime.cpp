@@ -21,6 +21,9 @@ cudaError_t c71_dense_i16_launch(cudaStream_t,const int16_t*,uint64_t,const int1
 cudaError_t c71_dense_rne_launch(cudaStream_t,const int64_t*,int16_t*,uint64_t,int32_t,uint32_t*);
 cudaError_t c71_dense_pointwise_launch(cudaStream_t,const int16_t*,const int16_t*,int64_t*,uint64_t,c71_dense::Pointwise,uint32_t*);
 cudaError_t c71_byte_scatter_launch(cudaStream_t,const void*,unsigned,uint64_t,uint8_t*,uint64_t,uint32_t*,c71_byte::Tile);
+cudaError_t c71_pcs_hash_launch(cudaStream_t,unsigned,const uint64_t*,const uint64_t*,c71_pcs::Hash32*,uint64_t,uint64_t,uint64_t,unsigned,uint32_t*);
+cudaError_t c71_pcs_nodes_launch(cudaStream_t,const c71_pcs::Hash32*,c71_pcs::Hash32*,uint64_t,uint64_t);
+cudaError_t c71_pcs_merge_launch(cudaStream_t,c71_pcs::Hash32*,c71_pcs::Hash32*,uint64_t,unsigned,unsigned);
 cudaError_t c71_lookup_launch(cudaStream_t,const int16_t*,const int16_t*,int16_t*,int64_t*,uint64_t,uint32_t*);
 cudaError_t c71_histogram_seal_launch(cudaStream_t,int64_t*,uint32_t*);
 cudaError_t c71_rope_launch(cudaStream_t,const int16_t*,const int32_t*,int64_t*,c71_nonlinear::Rope,uint32_t*);
@@ -52,9 +55,10 @@ struct C71RangeContext {
     const char* error="";
 };
 namespace {
-constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8};
+constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
-                          uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535};
+                          uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535,
+                          uint64_t{1}<<28,uint64_t{1}<<25,uint64_t{1}<<25,uint64_t{1}<<25};
 std::atomic<uint64_t> next_handle{1};
 bool canonical(Fp3 a) { return a.c0<P && a.c1<P && a.c2<P; }
 bool power2(uint64_t n) { return n && !(n&(n-1)); }
@@ -158,7 +162,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
 }
 extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     if(!ready(c)) return -1;
-    if(!out || kind>C71_HISTOGRAM_PENDING || !count || count>caps[kind]) return fail(c,"range allocation shape");
+    if(!out || kind>C71_PCS_FRONTIER_PENDING || !count || count>caps[kind]) return fail(c,"range allocation shape");
     const uint64_t capacity=(count*sizes[kind]+255)&~uint64_t{255};
     Buffer* slot=nullptr;
     for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
@@ -652,4 +656,90 @@ extern "C" int c71_byte_seal(C71RangeContext* c,uint64_t out) {
     if(!b || b->kind!=C71_BYTE_PENDING || !b->flag) return fail(c,"byte seal requires pending window");
     if(dense_complete(c,b->flag,b)) return -1;
     b->flag=0; b->kind=C71_U8; return 0;
+}
+
+extern "C" int c71_pcs_words_upload(C71RangeContext* c,uint64_t out,uint64_t first,const uint64_t* words,uint64_t count) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out);
+    if(!b || b->kind!=C71_PCS_BASE || !words || !count || count>(uint64_t{1}<<25) ||
+       first>b->count || count>b->count-first || (b->initialized!=b->count && first!=b->initialized))
+        return fail(c,"PCS upload shape or coverage");
+    for(uint64_t i=0;i<count;++i) if(words[i]>=P) return fail(c,"PCS noncanonical base word");
+    if(checked(c,cudaMemcpyAsync(ptr<uint64_t>(c,b)+first,words,count*8,cudaMemcpyHostToDevice,c->stream))) return -1;
+    c->stats.h2d_bytes+=count*8;
+    if(fence(c)) return -1;
+    if(b->initialized!=b->count) b->initialized+=count;
+    return 0;
+}
+extern "C" int c71_pcs_leaf_start(C71RangeContext* c,uint64_t ring,uint64_t states) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,ring); auto* b=buffer(c,states);
+    if(!full(a,C71_PCS_BASE) || !b || b->kind!=C71_PCS_HASH_PENDING || b->initialized || b->flag ||
+       a->count!=8*b->count) return fail(c,"PCS leaf start shape or state");
+    if(dense_flag(c,&b->flag)) return -1;
+    if(launched(c,c71_pcs_hash_launch(c->stream,0,ptr<uint64_t>(c,a),nullptr,
+        ptr<c71_pcs::Hash32>(c,b),b->count,0,b->count,0,ptr<uint32_t>(c,buffer(c,b->flag))))) return -1;
+    b->initialized=b->count; b->visits=4; return 0;
+}
+extern "C" int c71_pcs_leaf_step(C71RangeContext* c,uint64_t ring,uint64_t states,uint32_t first) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,ring); auto* b=buffer(c,states);
+    if(!full(a,C71_PCS_BASE) || !full(b,C71_PCS_HASH_PENDING) || !b->flag ||
+       a->count!=8*b->count || first!=b->visits || first>116)
+        return fail(c,"PCS leaf step shape or order");
+    if(launched(c,c71_pcs_hash_launch(c->stream,1,ptr<uint64_t>(c,a),nullptr,
+        ptr<c71_pcs::Hash32>(c,b),b->count,0,b->count,first,ptr<uint32_t>(c,buffer(c,b->flag))))) return -1;
+    b->visits+=8; return 0;
+}
+extern "C" int c71_pcs_leaf_finish(C71RangeContext* c,uint64_t ring,uint64_t salts,uint64_t states,uint64_t first,uint64_t count) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,ring); auto* s=buffer(c,salts); auto* b=buffer(c,states);
+    if(!full(a,C71_PCS_BASE) || !full(s,C71_PCS_BASE) || !full(b,C71_PCS_HASH_PENDING) || !b->flag ||
+       a->count!=8*b->count || !count || first>b->count || count>b->count-first ||
+       s->count!=4*count || b->visits!=124+first)
+        return fail(c,"PCS leaf finish shape or incomplete state");
+    if(launched(c,c71_pcs_hash_launch(c->stream,2,ptr<uint64_t>(c,a),ptr<uint64_t>(c,s),
+        ptr<c71_pcs::Hash32>(c,b),b->count,first,count,124,ptr<uint32_t>(c,buffer(c,b->flag))))) return -1;
+    b->visits+=count;
+    if(first+count!=b->count) return 0;
+    if(dense_complete(c,b->flag,b)) return -1;
+    b->flag=0; b->kind=C71_PCS_DIGEST; return 0;
+}
+extern "C" int c71_pcs_nodes(C71RangeContext* c,uint64_t in,uint64_t out,uint64_t rows) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,in); auto* b=buffer(c,out);
+    if(!full(a,C71_PCS_DIGEST) || !b || b->kind!=C71_PCS_DIGEST || b->initialized ||
+       !rows || b->count%rows || a->count!=2*b->count) return fail(c,"PCS Merkle shape or digest type");
+    if(launched(c,c71_pcs_nodes_launch(c->stream,ptr<c71_pcs::Hash32>(c,a),ptr<c71_pcs::Hash32>(c,b),b->count,rows))) return -1;
+    b->initialized=b->count; return 0;
+}
+extern "C" int c71_pcs_read_digests(C71RangeContext* c,uint64_t in,uint64_t first,uint64_t count,void* out) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,in);
+    if(!full(a,C71_PCS_DIGEST) || !out || !count || count>(uint64_t{1}<<21) ||
+       first>a->count || count>a->count-first) return fail(c,"PCS digest publication shape or state");
+    if(checked(c,cudaMemcpyAsync(out,ptr<c71_pcs::Hash32>(c,a)+first,count*32,cudaMemcpyDeviceToHost,c->stream))) return -1;
+    c->stats.d2h_bytes+=count*32;
+    return fence(c);
+}
+extern "C" int c71_pcs_frontier_begin(C71RangeContext* c,uint64_t out,uint64_t rows,uint32_t groups) {
+    if(!ready(c)) return -1;
+    auto* b=buffer(c,out);
+    if(!b || b->kind!=C71_PCS_FRONTIER_PENDING || b->initialized || !power2(rows) ||
+       !power2(groups) || groups<2 || groups>4096) return fail(c,"PCS frontier geometry or state");
+    unsigned levels=0; while((1u<<levels)<groups) ++levels;
+    if(rows>(uint64_t{1}<<25)/levels || b->count!=rows*levels) return fail(c,"PCS frontier capacity");
+    // initialized stores row geometry, not full validity: this kind has no
+    // reader. visits packs immutable levels and the next consecutive group.
+    b->initialized=rows; b->visits=uint64_t(levels)<<32; return 0;
+}
+extern "C" int c71_pcs_merge_group(C71RangeContext* c,uint64_t in,uint64_t roots,uint32_t group) {
+    if(!ready(c)) return -1;
+    auto* a=buffer(c,in); auto* b=buffer(c,roots);
+    if(!a || a->kind!=C71_PCS_FRONTIER_PENDING || !a->initialized || !full(b,C71_PCS_DIGEST) ||
+       b->count!=a->initialized || group!=uint32_t(a->visits) || group>=(1u<<(a->visits>>32)))
+        return fail(c,"PCS frontier group order, shape or type");
+    if(launched(c,c71_pcs_merge_launch(c->stream,ptr<c71_pcs::Hash32>(c,a),ptr<c71_pcs::Hash32>(c,b),
+        b->count,group,unsigned(a->visits>>32)))) return -1;
+    ++a->visits; return 0;
 }

@@ -118,7 +118,8 @@ senza eseguirli; altrimenti la build CUDA si svolge sul pod autorizzato:
 
 ```bash
 nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC \
-  cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_range_runtime.cpp \
+  cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_pcs_hash.cu \
+  cuda/c71_range_runtime.cpp \
   -o /tmp/libc71_device_runner.so
 nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
   cuda/c71_nonlinear_parity.cu cuda/c71_dense_i16.cu -o /tmp/c71_device_parity
@@ -128,6 +129,15 @@ I controlli Python pertinenti sono `tests/test_c71_docs.py`,
 `tests/test_c71_dense_i16.py` e `tests/test_c71_range_native.py`, con i
 limiti sopra. La parità hardware e il tempo completo sono controlli del
 primo esperimento H100 autorizzato, non condizioni locali impossibili.
+Le selezioni Rust `c71_b12_native_incremental_hash_exact_roots_and_salt_bands`
+e `c71_b12_native_incremental_hash_coset_frontier_and_natural_root`, più
+`c71_b12_native_incremental_hash_rejections_and_fail_closed`, compilano
+un driver simulato e confrontano le funzioni hash condivise con B12
+Rust: 128 colonne, bordi, sali a bande, tutti i livelli Merkle, ordine
+naturale/strided, frontier di gruppi e rifiuti
+di tipo/ordine/copertura/owner/budget/launch/fence/aritmetica. Restano
+`gpu_execution:false`; il [conto del nuovo scratch](../c7.1-history/crypto-w-hash-2026-10-08.md)
+non è un picco completo W o una misura H100.
 La policy della cache Cargo è descritta nella sezione
 [provenienza](#risultati-e-conservazione).
 Eseguire separatamente ogni riga della tabella con il comando pytest

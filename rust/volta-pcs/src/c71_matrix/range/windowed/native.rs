@@ -318,6 +318,14 @@ api! {
     byte_begin: unsafe extern "C" fn(Raw,u64)->i32 => "c71_byte_begin",
     byte_scatter: unsafe extern "C" fn(Raw,u64,*const ByteTile,u64)->i32 => "c71_byte_scatter",
     byte_seal: unsafe extern "C" fn(Raw,u64)->i32 => "c71_byte_seal",
+    pcs_upload: unsafe extern "C" fn(Raw,u64,u64,*const u64,u64)->i32 => "c71_pcs_words_upload",
+    pcs_start: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_pcs_leaf_start",
+    pcs_step: unsafe extern "C" fn(Raw,u64,u64,u32)->i32 => "c71_pcs_leaf_step",
+    pcs_finish: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u64)->i32 => "c71_pcs_leaf_finish",
+    pcs_nodes: unsafe extern "C" fn(Raw,u64,u64,u64)->i32 => "c71_pcs_nodes",
+    pcs_frontier: unsafe extern "C" fn(Raw,u64,u64,u32)->i32 => "c71_pcs_frontier_begin",
+    pcs_merge: unsafe extern "C" fn(Raw,u64,u64,u32)->i32 => "c71_pcs_merge_group",
+    pcs_read: unsafe extern "C" fn(Raw,u64,u64,u64,*mut c_void)->i32 => "c71_pcs_read_digests",
 }
 pub(in crate::c71_matrix) struct Runtime {
     api: Api,
@@ -472,6 +480,97 @@ impl Runtime {
         };
         self.check(status)?;
         Ok(Buffer { id, kind: 1, count, owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn pcs_words(&mut self, count: usize) -> Result<Buffer, String> {
+        let id = self.alloc(9, count)?;
+        Ok(Buffer { id, kind: 9, count, owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn pcs_upload(
+        &mut self, output: &Buffer, first: usize, values: &[u64],
+    ) -> Result<(), String> {
+        self.require_buffer(output)?;
+        let status = unsafe { (self.api.pcs_upload)(self.raw, output.id, first as u64, values.as_ptr(), values.len() as u64) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn pcs_hash_start(&mut self, ring: &Buffer) -> Result<Buffer, String> {
+        self.require_buffer(ring)?;
+        if ring.kind != 9 || ring.count % 8 != 0 {
+            return self.abort("native PCS ring shape differs");
+        }
+        let count = ring.count / 8;
+        let id = self.alloc(10, count)?;
+        let status = unsafe { (self.api.pcs_start)(self.raw, ring.id, id) };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 10, count, owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn pcs_hash_step(
+        &mut self, ring: &Buffer, states: &Buffer, first_column: usize,
+    ) -> Result<(), String> {
+        self.require_buffer(ring)?;
+        self.require_buffer(states)?;
+        let Ok(first) = u32::try_from(first_column) else {
+            return self.abort("native PCS column overflow");
+        };
+        let status = unsafe { (self.api.pcs_step)(self.raw, ring.id, states.id, first) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn pcs_hash_finish(
+        &mut self, ring: &Buffer, salts: &Buffer, states: &mut Buffer, first_row: usize,
+    ) -> Result<(), String> {
+        self.require_buffer(ring)?;
+        self.require_buffer(salts)?;
+        self.require_buffer(states)?;
+        if salts.kind != 9 || salts.count % 4 != 0 {
+            return self.abort("native PCS salt band differs");
+        }
+        let count = salts.count / 4;
+        let status = unsafe { (self.api.pcs_finish)(self.raw, ring.id, salts.id, states.id, first_row as u64, count as u64) };
+        self.check(status)?;
+        if first_row + count == states.count { states.kind = 11; }
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn pcs_nodes(&mut self, input: &Buffer) -> Result<Buffer, String> {
+        self.pcs_nodes_strided(input, 1)
+    }
+    pub(in crate::c71_matrix) fn pcs_nodes_strided(&mut self, input: &Buffer, rows: usize) -> Result<Buffer, String> {
+        self.require_buffer(input)?;
+        if input.kind != 11 || input.count < 2 || input.count % 2 != 0 {
+            return self.abort("native PCS Merkle input differs");
+        }
+        let count = input.count / 2;
+        let id = self.alloc(11, count)?;
+        let status = unsafe { (self.api.pcs_nodes)(self.raw, input.id, id, rows as u64) };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 11, count, owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn pcs_frontier(&mut self, rows: usize, groups: usize) -> Result<Buffer, String> {
+        if !rows.is_power_of_two() || rows > 1 << 25 || !groups.is_power_of_two() || !(2..=4096).contains(&groups) {
+            return self.abort("native PCS frontier geometry differs");
+        }
+        let count = rows * groups.ilog2() as usize;
+        let id = self.alloc(12, count)?;
+        let status = unsafe { (self.api.pcs_frontier)(self.raw, id, rows as u64, groups as u32) };
+        self.check(status)?;
+        Ok(Buffer { id, kind: 12, count, owner: self.owner.clone() })
+    }
+    pub(in crate::c71_matrix) fn pcs_merge_group(&mut self, frontier: &Buffer, roots: &Buffer, group: usize) -> Result<(), String> {
+        self.require_buffer(frontier)?;
+        self.require_buffer(roots)?;
+        let Ok(group) = u32::try_from(group) else { return self.abort("native PCS group overflow"); };
+        let status = unsafe { (self.api.pcs_merge)(self.raw, frontier.id, roots.id, group) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn pcs_digests(
+        &mut self, input: &Buffer, first: usize, count: usize,
+    ) -> Result<Vec<[u8; 32]>, String> {
+        self.require_buffer(input)?;
+        if input.kind != 11 || count == 0 || count > 1 << 21 || first > input.count || count > input.count - first {
+            return self.abort("native PCS digest read differs");
+        }
+        let mut output = vec![[0; 32]; count];
+        let status = unsafe { (self.api.pcs_read)(self.raw, input.id, first as u64, count as u64, output.as_mut_ptr().cast()) };
+        self.check(status)?;
+        Ok(output)
     }
     pub(in crate::c71_matrix) fn upload_signed(
         &mut self,
@@ -1403,6 +1502,130 @@ impl<'a, T: Word> Evaluator<'a, T> {
 pub(in crate::c71_matrix) mod tests {
     use super::*;
     #[test]
+    fn c71_b12_native_incremental_hash_rejections_and_fail_closed() {
+        let f = fixture(512);
+        let injection = Injection::new(&f.config);
+        for fault in 0..27 {
+            let mut runtime = Runtime::new(&f.config).unwrap();
+            let ring = runtime.pcs_words(16).unwrap();
+            runtime.pcs_upload(&ring, 0, &[0; 16]).unwrap();
+            let mut state = runtime.pcs_hash_start(&ring).unwrap();
+            let salts = runtime.pcs_words(4).unwrap();
+            runtime.pcs_upload(&salts, 0, &[0; 4]).unwrap();
+            if (8..=9).contains(&fault) || (13..=14).contains(&fault) || fault >= 19 {
+                for first in (4..=116).step_by(8) {
+                    runtime.pcs_hash_step(&ring, &state, first).unwrap();
+                }
+            }
+            if fault >= 19 {
+                runtime.pcs_hash_finish(&ring, &salts, &mut state, 0).unwrap();
+                runtime.pcs_hash_finish(&ring, &salts, &mut state, 1).unwrap();
+            }
+            let failed = match fault {
+                0 => runtime.pcs_hash_step(&ring, &state, 12).is_err(),
+                1 => runtime.pcs_hash_finish(&ring, &salts, &mut state, 0).is_err(),
+                2 => {
+                    let status = unsafe { (runtime.api.pcs_start)(runtime.raw, ring.id, state.id) };
+                    runtime.check(status).is_err()
+                }
+                3 => {
+                    let mut out = [0u8; 32];
+                    let status = unsafe { (runtime.api.pcs_read)(runtime.raw, state.id, 0, 1, out.as_mut_ptr().cast()) };
+                    runtime.check(status).is_err()
+                }
+                4 => {
+                    let signed = runtime.upload_signed(&[1; 16]).unwrap();
+                    let status = unsafe { (runtime.api.pcs_step)(runtime.raw, signed.id, state.id, 4) };
+                    runtime.check(status).is_err()
+                }
+                5 => runtime.pcs_upload(&ring, 0, &[u64::MAX]).is_err(),
+                6 => {
+                    let incomplete = runtime.pcs_words(8).unwrap();
+                    runtime.pcs_upload(&incomplete, 1, &[0]).is_err()
+                }
+                7 => {
+                    let out = runtime.alloc(11, 1).unwrap();
+                    let status = unsafe { (runtime.api.pcs_nodes)(runtime.raw, state.id, out, 1) };
+                    runtime.check(status).is_err()
+                }
+                8 => runtime.pcs_hash_finish(&ring, &salts, &mut state, 1).is_err(),
+                9 => {
+                    runtime.pcs_hash_finish(&ring, &salts, &mut state, 0).unwrap();
+                    // Partially finalized bands still cannot be published.
+                    let mut out = [0u8; 32];
+                    let status = unsafe { (runtime.api.pcs_read)(runtime.raw, state.id, 0, 1, out.as_mut_ptr().cast()) };
+                    runtime.check(status).is_err()
+                }
+                10 => runtime.pcs_hash_step(&ring, &state, usize::MAX).is_err(),
+                11 => { injection.set(2); runtime.pcs_upload(&ring, 0, &[0]).is_err() },
+                12 => { injection.set(1); runtime.pcs_hash_step(&ring, &state, 4).is_err() },
+                13 => {
+                    injection.set(9);
+                    runtime.pcs_hash_finish(&ring, &salts, &mut state, 0).unwrap();
+                    runtime.pcs_hash_finish(&ring, &salts, &mut state, 1).is_err()
+                }
+                14 => {
+                    runtime.pcs_hash_finish(&ring, &salts, &mut state, 0).unwrap();
+                    runtime.pcs_hash_finish(&ring, &salts, &mut state, 1).unwrap();
+                    injection.set(7); runtime.pcs_digests(&state, 0, 1).is_err()
+                }
+                15 => {
+                    let mut other = Runtime::new(&f.config).unwrap();
+                    let foreign = other.pcs_words(16).unwrap();
+                    runtime.pcs_hash_step(&foreign, &state, 4).is_err()
+                }
+                16 => runtime.pcs_words(1 << 28).is_err(),
+                17 => runtime.pcs_words((1 << 28) + 1).is_err(),
+                18 => {
+                    let mut out = [0u8; 1];
+                    let status = unsafe { (runtime.api.original_read)(runtime.raw, ring.id, 0, 0, 1, out.as_mut_ptr().cast()) };
+                    runtime.check(status).is_err()
+                }
+                19 => runtime.pcs_frontier(3, 2).is_err(),
+                20 => {
+                    let frontier = runtime.pcs_frontier(2, 2).unwrap();
+                    runtime.pcs_merge_group(&frontier, &state, 1).is_err()
+                }
+                21 => {
+                    let frontier = runtime.pcs_frontier(2, 2).unwrap();
+                    runtime.pcs_merge_group(&frontier, &state, 0).unwrap();
+                    runtime.pcs_merge_group(&frontier, &state, 0).is_err()
+                }
+                22 => {
+                    let frontier = runtime.pcs_frontier(2, 2).unwrap();
+                    runtime.pcs_merge_group(&frontier, &state, 0).unwrap();
+                    runtime.pcs_merge_group(&frontier, &state, 1).unwrap();
+                    runtime.pcs_merge_group(&frontier, &state, 2).is_err()
+                }
+                23 => {
+                    let frontier = runtime.pcs_frontier(2, 2).unwrap();
+                    let mut out = [0u8; 32];
+                    let status = unsafe { (runtime.api.pcs_read)(runtime.raw, frontier.id, 0, 1, out.as_mut_ptr().cast()) };
+                    runtime.check(status).is_err()
+                }
+                24 => runtime.pcs_nodes_strided(&state, 0).is_err(),
+                25 => {
+                    let mut other = Runtime::new(&f.config).unwrap();
+                    let foreign = other.pcs_frontier(2, 2).unwrap();
+                    runtime.pcs_merge_group(&foreign, &state, 0).is_err()
+                }
+                26 => {
+                    let frontier = runtime.pcs_frontier(2, 2).unwrap();
+                    injection.set(1); runtime.pcs_merge_group(&frontier, &state, 0).is_err()
+                }
+                _ => unreachable!(),
+            };
+            assert!(failed, "fault {fault}");
+            assert_eq!(runtime.stats().unwrap().stopped, 1, "fault {fault}");
+            assert!(runtime.pcs_hash_step(&ring, &state, 4).is_err());
+            injection.set(0);
+            let stats = runtime.close().unwrap();
+            assert_eq!(stats.live_capacity_bytes, 0);
+            assert_eq!(stats.cleanup_failed, 0);
+        }
+        println!("C71_INCREMENTAL_HASH_REJECTIONS {{\"cases\":27,\"gpu_execution\":false,\"credit\":false}}");
+    }
+    #[test]
     fn c71_b12_windowed_native_abi4_rejects_legacy_stats() {
         use std::io::Write;
         use std::process::{Command, Stdio};
@@ -1763,6 +1986,8 @@ pub(in crate::c71_matrix) mod tests {
                 "-Wall",
                 "-Wextra",
                 "-Werror",
+                "-fsanitize=undefined",
+                "-fno-sanitize-recover=all",
                 "-shared",
                 "-fPIC",
                 "-DC71_RANGE_FFI_TEST",

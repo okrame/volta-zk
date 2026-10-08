@@ -181,6 +181,18 @@ scansioni W/A e parametri crittografici rimangono quelli correnti in questa
 modifica. Γ mantiene le identità ammesse: producer, scale, tabelle, ricette,
 W e workload non sono toccati da telemetria e buffering.
 
+Il [passo W hash](../c7.1-history/crypto-w-hash-2026-10-08.md) aggiunge
+compressione BLAKE3 condivisa e operazioni GPU di foglia incrementale e
+Merkle nello stesso owner. CV da 32 B/foglia, mezzo blocco pendente nel
+ring, sali a finestre e pubblicazione dopo controllo terminale. Il
+runner non seleziona ancora questi kernel per il commitment: mancano
+accumuli/FFT W e collegamento al Tree canonico. Il merge strided a gruppi
+ricompone l'ordine naturale con un frontier di sette livelli per 128
+gruppi di 32 coset, da verificare anche con gli accumuli residenti. La
+schedule A rimane separata; nessuna ricostruzione aggiuntiva è introdotta.
+Il subtotal 2 GiB valori + 1 GiB CV non comprende FFT, potenze, sali,
+frontier/cache, owner residente, host e riserva fisica.
+
 Le geometrie fisiche attuali (quattro coset, 1.024 scansioni W e 512 A)
 sono scelte implementative modificabili. Alternative richiedono
 equivalenza verificata, ordine di sali/pad/root e MAC originali preservato,

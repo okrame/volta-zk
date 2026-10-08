@@ -53,6 +53,35 @@ static int launch(cudaStream_t s,std::function<void()> operation) {
     ++launches; if(fail_launch) return 1;
     s->pending.push_back(std::move(operation)); return 0;
 }
+extern "C" int c71_pcs_hash_launch(cudaStream_t stream,unsigned operation,const uint64_t* ring,
+    const uint64_t* salts,c71_pcs::Hash32* states,uint64_t rows,uint64_t first,uint64_t count,
+    unsigned column,uint32_t* failed) {
+    return launch(stream,[=] {
+        for(uint64_t local=0;local<count;++local) {
+            const uint64_t row=first+local;
+            for(unsigned j=0;j<(operation==1?8u:4u);++j) if(ring[j*rows+row]>=P) *failed=1;
+            if(operation==0) states[row]=c71_pcs::leaf_start(ring,rows,row);
+            else if(operation==1) states[row]=c71_pcs::leaf_step(states[row],ring+4*rows,ring,rows,row,column);
+            else {
+                for(unsigned j=0;j<4;++j) if(salts[j*count+local]>=P) *failed=1;
+                states[row]=c71_pcs::leaf_finish(states[row],ring,salts,rows,row,count,local);
+            }
+        }
+        if(fail_dense) *failed=1;
+    });
+}
+extern "C" int c71_pcs_nodes_launch(cudaStream_t stream,const c71_pcs::Hash32* input,
+    c71_pcs::Hash32* output,uint64_t count,uint64_t rows) {
+    return launch(stream,[=] { for(uint64_t i=0;i<count;++i) {
+        const uint64_t left=2*(i/rows)*rows+i%rows;
+        output[i]=c71_pcs::node(input[left],input[left+rows]);
+    } });
+}
+extern "C" int c71_pcs_merge_launch(cudaStream_t stream,c71_pcs::Hash32* frontier,
+    c71_pcs::Hash32* roots,uint64_t rows,unsigned group,unsigned levels) {
+    return launch(stream,[=] { for(uint64_t row=0;row<rows;++row)
+        c71_pcs::merge_group(frontier,roots,rows,row,group,levels); });
+}
 // Host arithmetic for cross-language protocol parity. This executes neither
 // CUDA kernels nor their thread scheduling; it is never a production fallback.
 static Pair fraction(const void* input,unsigned kind,size_t first,size_t n,Fp3 alpha) {
@@ -330,6 +359,7 @@ extern "C" void c71_range_test_failure(unsigned kind) {
     fail_launch=kind==1; fail_fence=kind==2; fail_free=kind==3; corrupt=kind==4;
     copy_fail_after=kind==5?0:kind==6?1:-1;
     download_fail_after=kind==7?0:kind==8?1:-1;
+    fail_dense=kind==9;
 }
 #else
 

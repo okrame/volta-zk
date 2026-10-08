@@ -2116,4 +2116,177 @@ mod tests {
         let values = (0..1024).map(|i| limbs(&source(i))[0]).collect();
         compare_source(10, source, values, None, None);
     }
+
+    fn native_hash_fixture(
+        runtime: &mut crate::c71_matrix::range::windowed::native::Runtime,
+        source: &[u64], salts: &[[Goldilocks; 4]], rows: usize,
+    ) -> crate::c71_matrix::range::windowed::native::Buffer {
+    let ring = runtime.pcs_words(8 * rows).unwrap();
+    let mut cells = source[..8 * rows].to_vec();
+    runtime.pcs_upload(&ring, 0, &cells).unwrap();
+    let mut states = runtime.pcs_hash_start(&ring).unwrap();
+    for first in (4..=116).step_by(8) {
+        // The previous trailing four columns stay resident in slots
+        // 4..7. Overwrite consumed slots with the next four columns.
+        cells[..4 * rows].copy_from_slice(&source[(first + 4) * rows..(first + 8) * rows]);
+        runtime.pcs_upload(&ring, 0, &cells[..4 * rows]).unwrap();
+        runtime.pcs_hash_step(&ring, &states, first).unwrap();
+        if first < 116 {
+            cells[4 * rows..].copy_from_slice(&source[(first + 8) * rows..(first + 12) * rows]);
+            runtime.pcs_upload(&ring, 4 * rows, &cells[4 * rows..]).unwrap();
+        }
+    }
+    cells[..4 * rows].copy_from_slice(&source[124 * rows..128 * rows]);
+    runtime.pcs_upload(&ring, 0, &cells[..4 * rows]).unwrap();
+    // Salts remain exactly the original sampler stream, including
+    // seek/replay. The device consumes bounded bands in leaf order.
+    let band = 64.min(rows);
+    let salt_buffer = runtime.pcs_words(4 * band).unwrap();
+    for first in (0..rows).step_by(band) {
+        let words: Vec<_> = (0..4).flat_map(|col| {
+            let salts = &salts;
+            (first..first + band).map(move |row| salts[row][col].as_canonical_u64())
+        }).collect();
+        runtime.pcs_upload(&salt_buffer, 0, &words).unwrap();
+        runtime.pcs_hash_finish(&ring, &salt_buffer, &mut states, first).unwrap();
+    }
+    runtime.release_buffer(salt_buffer).unwrap();
+    runtime.release_buffer(ring).unwrap();
+        states
+    }
+
+    #[test]
+    fn c71_b12_native_incremental_hash_exact_roots_and_salt_bands() {
+        use crate::c71_matrix::range::windowed::native::{Runtime, tests::fixture};
+        use super::super::streaming::{digest, hash_rows_in_place, node_hash};
+        let mut fixture = fixture(512);
+        fixture.config.arena_bytes = 2 << 20;
+        let no_exempt_weights = Arc::new(Vec::<i16>::new());
+        let _budget = crate::c71_matrix::census::Budget::new(&no_exempt_weights).unwrap();
+        for rows in [1, 2, 8, 256, 4096] {
+            let mut rng = PrivateRng::from_seed([91; 32]);
+            let mut source = vec![0; rows * 128];
+            for (i, x) in source.iter_mut().enumerate() {
+                let random: Goldilocks = rng.random();
+                *x = match i % 7 {
+                    0 => 0, 1 => Goldilocks::ORDER_U64 - 1, 2 => 1,
+                    3 => 1 << 63, 4 => (1 << 32) - 1, _ => random.as_canonical_u64(),
+                };
+            }
+            let mut salt_rng = PrivateRng::from_seed([73; 32]);
+            let salts: Vec<[Goldilocks; 4]> = (0..rows)
+                .map(|_| std::array::from_fn(|_| salt_rng.random())).collect();
+            let rust_start = std::time::Instant::now();
+            let mut expected = source.clone();
+            let work = hash_rows_in_place(&mut expected, rows, 128, |row| salts[row]).unwrap();
+            let rust_seconds = rust_start.elapsed().as_secs_f64();
+            let mut expected: Vec<_> = (0..rows).map(|row| digest(&expected, rows, row)).collect();
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let native_start = std::time::Instant::now();
+            let mut states = native_hash_fixture(&mut runtime, &source, &salts, rows);
+            let band = 64.min(rows);
+            assert_eq!(runtime.pcs_digests(&states, 0, rows).unwrap(), expected);
+            while expected.len() > 1 {
+                expected = expected.chunks_exact(2).map(|pair| node_hash(pair[0], pair[1])).collect();
+                let next = runtime.pcs_nodes(&states).unwrap();
+                runtime.release_buffer(states).unwrap();
+                states = next;
+                assert_eq!(runtime.pcs_digests(&states, 0, expected.len()).unwrap(), expected);
+            }
+            let native_seconds = native_start.elapsed().as_secs_f64();
+            let stats = runtime.stats().unwrap();
+            assert_eq!(work.blake3_compressions, 18 * rows);
+            assert_eq!(stats.d2h_bytes, 4 + 32 * (2 * rows - 1) as u64);
+            runtime.release_buffer(states).unwrap();
+            let final_stats = runtime.close().unwrap();
+            assert_eq!(final_stats.live_capacity_bytes, 0);
+            println!("C71_INCREMENTAL_HASH {}", json!({"rows": rows, "columns": 128,
+                "compact_state_bytes_each": 32, "ring_bytes": 64 * rows,
+                "salt_band_bytes": 32 * band, "leaf_compressions": work.blake3_compressions,
+                "node_compressions": 2 * (rows - 1), "rust_leaf_seconds": rust_seconds,
+                "native_host_hash_and_merkle_seconds": native_seconds,
+                "native_stats": stats, "root": expected[0], "gpu_execution": false, "credit": false}));
+            println!("C71_INCREMENTAL_HASH_BUDGET {}", crate::c71_matrix::census::simultaneous());
+        }
+    }
+    #[test]
+    fn c71_b12_native_incremental_hash_coset_frontier_and_natural_root() {
+        use crate::c71_matrix::range::windowed::native::{Runtime, tests::fixture};
+        use super::super::streaming::{digest, hash_rows_in_place, node_hash, prepare_offsets};
+        let fixture = fixture(512);
+        let no_exempt_weights = Arc::new(Vec::<i16>::new());
+        let _budget = crate::c71_matrix::census::Budget::new(&no_exempt_weights).unwrap();
+        for (rows, width, groups) in [(2, 2, 2), (4, 8, 4), (8, 32, 8)] {
+            let cosets = width * groups;
+            let height = rows * cosets;
+            let source: Vec<_> = (0..128 * height).map(|i| match i % 7 {
+                0 => Goldilocks::ORDER_U64 - 1, 1 => 0, _ => (i * 7919 + i / height) as u64,
+            }).collect();
+            let mut rng = PrivateRng::from_seed([37; 32]);
+            let salts: Vec<[Goldilocks; 4]> = (0..height)
+                .map(|_| std::array::from_fn(|_| rng.random())).collect();
+            let mut expected = source.clone();
+            hash_rows_in_place(&mut expected, height, 128, |leaf| salts[leaf]).unwrap();
+            let leaves: Vec<_> = (0..height).map(|leaf| digest(&expected, height, leaf)).collect();
+            let mut cut: Vec<_> = leaves.chunks_exact(cosets).map(|chunk| {
+                let mut nodes = chunk.to_vec();
+                while nodes.len() > 1 {
+                    nodes = nodes.chunks_exact(2).map(|p| node_hash(p[0], p[1])).collect();
+                }
+                nodes[0]
+            }).collect();
+            let mut prescan = PrivateRng::from_seed([37; 32]);
+            let mut cursors = vec![0; rows];
+            prepare_offsets(&mut prescan, cosets, &mut cursors, |_, _| {}).unwrap();
+            let mut runtime = Runtime::new(&fixture.config).unwrap();
+            let frontier = runtime.pcs_frontier(rows, groups).unwrap();
+            let mut final_roots = None;
+            for group in 0..groups {
+                let mut group_values = Vec::with_capacity(128 * rows * width);
+                for column in 0..128 {
+                    for coset in group * width..(group + 1) * width {
+                        for row in 0..rows { group_values.push(source[column * height + row * cosets + coset]); }
+                    }
+                }
+                let mut group_salts = Vec::with_capacity(rows * width);
+                let mut group_leaves = Vec::with_capacity(rows * width);
+                for coset in group * width..(group + 1) * width {
+                    for row in 0..rows {
+                        let mut replay = prescan.snapshot_at(cursors[row]).unwrap();
+                        let sampled: [Goldilocks; 4] = std::array::from_fn(|_| replay.random());
+                        cursors[row] = replay.position();
+                        assert_eq!(sampled, salts[row * cosets + coset]);
+                        group_salts.push(sampled);
+                        group_leaves.push(leaves[row * cosets + coset]);
+                    }
+                }
+                let mut roots = native_hash_fixture(&mut runtime, &group_values, &group_salts, rows * width);
+                assert_eq!(runtime.pcs_digests(&roots, 0, rows * width).unwrap(), group_leaves);
+                for _ in 0..width.ilog2() {
+                    let next = runtime.pcs_nodes_strided(&roots, rows).unwrap();
+                    runtime.release_buffer(roots).unwrap(); roots = next;
+                }
+                runtime.pcs_merge_group(&frontier, &roots, group).unwrap();
+                if group + 1 == groups { final_roots = Some(roots); }
+                else { runtime.release_buffer(roots).unwrap(); }
+            }
+            let mut roots = final_roots.unwrap();
+            assert_eq!(runtime.pcs_digests(&roots, 0, rows).unwrap(), cut);
+            assert_eq!(cursors[rows - 1], prescan.position());
+            runtime.release_buffer(frontier).unwrap();
+            while cut.len() > 1 {
+                cut = cut.chunks_exact(2).map(|p| node_hash(p[0], p[1])).collect();
+                let next = runtime.pcs_nodes(&roots).unwrap();
+                runtime.release_buffer(roots).unwrap(); roots = next;
+            }
+            assert_eq!(runtime.pcs_digests(&roots, 0, 1).unwrap()[0], cut[0]);
+            let stats = runtime.stats().unwrap();
+            runtime.release_buffer(roots).unwrap();
+            assert_eq!(runtime.close().unwrap().live_capacity_bytes, 0);
+            println!("C71_INCREMENTAL_COSET_HASH {}", json!({"rows": rows, "cosets_per_group": width,
+                "groups": groups, "leaves": height, "frontier_bytes": rows * groups.ilog2() as usize * 32,
+                "native_stats": stats, "root": cut[0], "gpu_execution": false, "credit": false}));
+            println!("C71_INCREMENTAL_COSET_HASH_BUDGET {}", crate::c71_matrix::census::simultaneous());
+        }
+    }
 }

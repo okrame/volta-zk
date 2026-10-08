@@ -379,7 +379,12 @@ int dense_complete(C71RangeContext* c,uint64_t flag,Buffer* output) {
     c->stats.d2h_bytes+=4;
     if(fence(c)) return -1;
     if(failed) return fail(c,"dense device arithmetic rejection");
-    if(c71_range_release(c,flag)) return -1;
+    // This stream has already completed every use of its internal flag. No
+    // operation is queued before the free; the public release remains fenced.
+    auto* completed_flag=buffer(c,flag);
+    if(checked(c,cudaFree(completed_flag->allocation))) { completed_flag->release_failed=true; return -1; }
+    if(c->account) c->account(-int64_t(completed_flag->capacity));
+    *completed_flag={}; ++c->stats.releases; recount(c);
     output->initialized=output->count; return 0;
 }
 }

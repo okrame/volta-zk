@@ -778,6 +778,63 @@ static void joint_budget_checks() {
     close(c);
     assert(joint_live==0);
 }
+static void dense_completion_fence_checks() {
+    // The deferred driver executes the original data and flag writes only at
+    // the completion fence. A successful completion frees the flag once;
+    // failed fence/flag/free leaves the output unpublished and its debt live.
+    joint_limit=uint64_t{1}<<20;
+    for(unsigned fault=0;fault<4;++fault) {
+        assert(!joint_live);
+        C71RangeContext* c=nullptr;
+        assert(!c71_range_create(0,262144,256,joint_account,&c));
+        const auto x=dense_input(c), raw=alloc(c,C71_I64,8);
+        const auto before=stats(c);
+        const auto free_before=frees;
+        fail_fence=fault==1; corrupt=fault==2; fail_free=fault==3;
+        const int status=c71_dense_pointwise(c,x,0,0,0,{2,0,0},raw);
+        fail_fence=false; corrupt=false; fail_free=false;
+        const auto after=stats(c);
+        assert(after.fences==before.fences+1 && after.d2h_bytes==before.d2h_bytes+4);
+        assert(after.allocations==before.allocations+1);
+        if(!fault) {
+            assert(!status && !after.stopped);
+            assert(after.releases==before.releases+1 && frees==free_before+1);
+            assert(after.arena_bytes==before.arena_bytes && joint_live==after.host_owner_bytes+after.arena_bytes);
+            int64_t actual[8]{};
+            const int64_t expected[]={2,4,6,8,-2,-4,-6,-8};
+            assert(!c71_original_read(c,raw,C71_I64,0,8,actual));
+            assert(std::memcmp(actual,expected,sizeof(expected))==0);
+            const auto release_before=stats(c);
+            assert(!c71_range_release(c,raw));
+            assert(stats(c).fences==release_before.fences+1);
+            close(c);
+            assert(!joint_live);
+        } else {
+            assert(status && after.stopped && after.releases==before.releases);
+            assert(after.arena_bytes==before.arena_bytes+256);
+            assert(joint_live==after.host_owner_bytes+after.arena_bytes);
+            assert(frees==free_before+(fault==3));
+            int64_t untouched=1234;
+            assert(c71_original_read(c,raw,C71_I64,0,1,&untouched) && untouched==1234);
+            assert(c71_dense_pointwise(c,x,0,0,0,{2,0,0},raw));
+            assert(c71_range_release(c,raw));
+            const auto stopped=stats(c);
+            assert(stopped.launches==after.launches && stopped.allocations==after.allocations);
+            assert(stopped.fences==after.fences && frees==free_before+(fault==3));
+            C71RangeStats final{};
+            const auto closed=c71_range_close(c,&final);
+            // A failed free is never retried, even though this fake driver
+            // physically freed the pointer before reporting its failure.
+            assert(frees==free_before+3);
+            if(fault==3) {
+                assert(closed && final.cleanup_failed && final.arena_bytes==256 && joint_live==256);
+                joint_live=0; // Isolated test receipt retains the failed debt above.
+            } else {
+                assert(!closed && !final.cleanup_failed && !final.arena_bytes && !joint_live);
+            }
+        }
+    }
+}
 int main() {
     // Original P3 66e2906 Goldilocks generator, including canonical 2^32.
     uint64_t two_adic_root=0x185629dcda58878cULL;
@@ -878,6 +935,7 @@ int main() {
     assert(c71_range_close(c,&final) && final.cleanup_failed && final.arena_bytes==256);
     fail_free=false;
     joint_budget_checks();
+    dense_completion_fence_checks();
     dense_checks();
     embedding_checks();
     pointwise_checks();

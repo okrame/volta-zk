@@ -61,6 +61,9 @@ pub(super) fn config(h: usize) -> Result<ZkWhirConfig<E, Goldilocks, Fs>, String
 /// fixed model intentionally repeats its coins, within the root's slots.
 pub(super) struct PrivateRng {
     reader: blake3::OutputReader,
+    // Original private input, retained for exact device XOF reconstruction.
+    // It is never exposed to the numeric producer or serialized in telemetry.
+    seed: [u8; 32],
     remaining: u64,
     // Only sequential samplers buffer. Strided leaf replay uses the same XOF
     // at its logical cursor without allocating/refilling 4 KiB for 32 bytes.
@@ -74,7 +77,7 @@ impl SeedableRng for PrivateRng {
         let mut hash = blake3::Hasher::new();
         hash.update(b"volta-zk/c71/b12/private-coins/v1\0");
         hash.update(&seed);
-        Self { reader: hash.finalize_xof(), remaining: 1 << 40,
+        Self { reader: hash.finalize_xof(), seed, remaining: 1 << 40,
             buffer: Some(Box::new([0; 4096])), cursor: 4096 }
     }
 }
@@ -95,7 +98,7 @@ impl PrivateRng {
         if offset >= 1 << 40 { return Err("private coin offset exhausted".into()); }
         let mut reader = self.reader.clone();
         reader.set_position(offset); // reader.position() can be ahead of the logical cursor
-        Ok(Self { reader, remaining: (1 << 40) - offset, buffer: None, cursor: 4096 })
+        Ok(Self { reader, seed: self.seed, remaining: (1 << 40) - offset, buffer: None, cursor: 4096 })
     }
 
     /// The same four StandardUniform Goldilocks samples, in candidate order.
@@ -492,6 +495,97 @@ mod tests {
                 assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| replay.next_u32())).is_err());
             }
         }
+    }
+
+    #[test]
+    fn c71_b12_private_coins_device_xof_exact_live_seed_seek_salts_and_offsets() {
+        use rand_010::{Rng, RngExt};
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let directory = std::env::temp_dir().join(format!("c71-salts-{}-{}",
+            std::process::id(), rand::random::<u64>()));
+        std::fs::create_dir(&directory).unwrap();
+        let binary = directory.join("salts-host");
+        let build = Command::new("g++").args(["-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+            "-fsanitize=undefined", "-fno-sanitize-recover=all", "-I"])
+            .arg(root.join("cuda")).arg(root.join("tests/c71_pcs_salts_host.cpp"))
+            .arg("-o").arg(&binary).output().unwrap();
+        assert!(build.status.success(), "{}", String::from_utf8_lossy(&build.stderr));
+        let seeds = [[0; 32], [19; 32], std::array::from_fn(|i| i as u8), [0xa5; 32]];
+        let offsets = [0, 1, 7, 8, 31, 32, 63, 64, 4095, 4096,
+            (1u64 << 32) - 64, (1u64 << 38) - 64, 1u64 << 38, (1u64 << 40) - 128];
+        let mut input = Vec::new();
+        input.extend_from_slice(&((seeds.len() * offsets.len()) as u32).to_le_bytes());
+        for seed in seeds {
+            let mut hash = blake3::Hasher::new();
+            hash.update(b"volta-zk/c71/b12/private-coins/v1\0"); hash.update(&seed);
+            for offset in offsets {
+                let mut reference = hash.finalize_xof(); reference.set_position(offset);
+                let mut bytes = [0; 128]; reference.fill(&mut bytes);
+                input.extend_from_slice(&seed); input.extend_from_slice(&offset.to_le_bytes());
+                input.extend_from_slice(&128u32.to_le_bytes()); input.extend_from_slice(&bytes);
+            }
+        }
+        let stream_count = 11u32;
+        input.extend_from_slice(&stream_count.to_le_bytes());
+        let mut append_stream = |rng: &mut PrivateRng, rows: u32, cosets: u32, cut: u32| {
+            let origin = rng.position();
+            input.extend_from_slice(&rng.seed); input.extend_from_slice(&origin.to_le_bytes());
+            for x in [rows, cosets, cut] { input.extend_from_slice(&x.to_le_bytes()); }
+            let mut positions = vec![origin];
+            for _ in 0..u64::from(rows) * u64::from(cosets) {
+                for _ in 0..4 {
+                    let salt: Goldilocks = rng.random();
+                    input.extend_from_slice(&salt.as_canonical_u64().to_le_bytes());
+                }
+                positions.push(rng.position());
+            }
+            for position in positions { input.extend_from_slice(&position.to_le_bytes()); }
+        };
+        for (i, origin) in [0, 1, 7, 32, 63, 64, 4095, (1u64 << 40) - 2048].into_iter().enumerate() {
+            let mut rng = PrivateRng::replay_at([23 + i as u8; 32], origin).unwrap();
+            let (rows, cosets, cut) = if i == 6 { (4096, 16, 4096) }
+                else if i == 0 { (1, 4, 1) } else { (4, 16, 4) };
+            append_stream(&mut rng, rows, cosets, cut);
+        }
+        // The canonical initial Tree clones MMCS before consuming salts.
+        // Retain that exact live seed/cursor, including the sequential refill
+        // that has moved the physical OutputReader beyond the logical cursor.
+        let original_seed = [71; 32];
+        let original = ObservedMmcs::new(Fs::new(b"device salts live MMCS parity", 0), original_seed);
+        let extension = original.clone();
+        original.inner.with_private_rng(|rng| {
+            assert_eq!(rng.seed, original_seed); assert_eq!(rng.position(), 32);
+            assert!(rng.reader.position() > rng.position());
+            append_stream(rng, 8, 16, 16);
+            append_stream(rng, 8, 16, 16); // consecutive commitment continuation
+        });
+        let mut expected_seed = [0; 32];
+        PrivateRng::from_seed(original_seed).fill_bytes(&mut expected_seed);
+        extension.inner.with_private_rng(|rng| {
+            assert_eq!(rng.seed, expected_seed); assert_eq!(rng.position(), 0);
+            append_stream(rng, 8, 16, 16);
+        });
+        let input_digest = blake3::hash(&input);
+        let mut child = Command::new(&binary).stdin(Stdio::piped()).stdout(Stdio::piped())
+            .stderr(Stdio::piped()).spawn().unwrap();
+        child.stdin.take().unwrap().write_all(&input).unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        let text = String::from_utf8(output.stdout).unwrap();
+        let report: serde_json::Value = serde_json::from_str(text.trim().strip_prefix("C71_PCS_SALTS_HOST ").unwrap()).unwrap();
+        assert_eq!(report["vector_cases"], 56); assert_eq!(report["stream_cases"], stream_count);
+        assert_eq!(report["byte_checks"], 56 * 128);
+        assert_eq!(report["max_shape_scratch_bytes"], 10_520_320u64);
+        assert_eq!(report["gpu_execution"], false); assert_eq!(report["credit"], false);
+        println!("{}", text.trim());
+        println!("C71_PCS_SALTS_REFERENCE {}", serde_json::json!({
+            "stdin_bytes": input.len(), "stdin_blake3": input_digest.to_hex().to_string(),
+            "rng_state_bytes": std::mem::size_of::<PrivateRng>(),
+            "reference": "pinned Rust blake3 OutputReader and Goldilocks StandardUniform",
+            "live_mmcs_cases": 3, "cuda_compilation": false, "gpu_execution": false, "credit": false}));
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

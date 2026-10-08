@@ -166,8 +166,9 @@ fn prove_dense_with_coins(
     Ok((MatrixProof { rounds, terminal: terminal_wire, pcs, close_tag }, fs.digest()))
 }
 
+#[cfg(test)]
 fn folded_source(
-    model: &b12::replay::ReplayModel,
+    value: &mut dyn FnMut(usize) -> Fp3,
     prefix_point: &[Fp3],
     suffix: usize,
     remaining: usize,
@@ -177,14 +178,135 @@ fn folded_source(
             weight
                 * if prefix >> (prefix_point.len() - 1 - bit) & 1 == 1 { r } else { Fp3::ONE - r }
         });
-        sum + weight * model.value((prefix << remaining) | suffix)
+        sum + weight * value((prefix << remaining) | suffix)
     })
 }
 
+#[cfg(test)]
 fn public_value(forms: &[Vec<Cube>], coefficients: &[Fp3], point: &[Fp3]) -> Fp3 {
     forms.iter().zip(coefficients).fold(Fp3::ZERO, |sum, (form, &coefficient)| {
         sum + coefficient * form.iter().fold(Fp3::ZERO, |value, cube| value + cube.at(point))
     })
+}
+
+// Bounded EQ tables cover at most eight prefix bits apiece. Arbitrary source
+// order and challenges 0/1 require neither division nor a folded-source table.
+struct PrefixWeights(Vec<(usize, Vec<Fp3>)>);
+impl PrefixWeights {
+    fn new(point: &[Fp3]) -> Self {
+        Self(point.chunks(8).enumerate().map(|(i, chunk)| {
+            (point.len() - 8 * i - chunk.len(), eq(chunk))
+        }).collect())
+    }
+    fn at(&self, index: usize) -> Fp3 {
+        self.0.iter().fold(Fp3::ONE, |value, (shift, table)| {
+            value * table[(index >> shift) & (table.len() - 1)]
+        })
+    }
+}
+
+struct ResidualCube<'a> {
+    interval: usize,
+    point: &'a [Fp3],
+    lower: Fp3,
+    upper: Fp3,
+}
+
+// Dyadic residuals are indexed by their suffix width and aligned interval.
+// Only cubes containing the suffix have their Boolean EQ evaluated.
+struct PublicRound<'a>(Vec<(usize, Vec<ResidualCube<'a>>)>);
+impl<'a> PublicRound<'a> {
+    fn new(bits: usize, forms: &'a [Vec<Cube>], coefficients: &[Fp3], prefix: &[Fp3]) -> Self {
+        let remaining = bits - prefix.len();
+        let half = 1usize << (remaining - 1);
+        let mut intervals: Vec<Vec<ResidualCube<'a>>> =
+            (0..remaining).map(|_| Vec::new()).collect();
+        for (form, &coefficient) in forms.iter().zip(coefficients) {
+            for cube in form {
+                let fixed = bits - cube.point.len();
+                let mut gamma = coefficient * cube.coefficient;
+                for (i, &r) in prefix.iter().take(fixed).enumerate() {
+                    gamma = gamma * if (cube.offset >> (bits - 1 - i)) & 1 == 1 { r } else { Fp3::ONE - r };
+                }
+                for (&r, &q) in prefix.iter().skip(fixed).zip(&cube.point) {
+                    gamma = gamma * ((Fp3::ONE - r) * (Fp3::ONE - q) + r * q);
+                }
+                if gamma == Fp3::ZERO { continue; }
+                let (point, lower, upper, offset) = if prefix.len() >= fixed {
+                    let next = prefix.len() - fixed;
+                    let q = cube.point[next];
+                    (&cube.point[next + 1..], gamma * (Fp3::ONE - q), gamma * q, 0)
+                } else if cube.offset & half == 0 {
+                    (&cube.point[..], gamma, Fp3::ZERO, cube.offset & (half - 1))
+                } else {
+                    (&cube.point[..], Fp3::ZERO, gamma, cube.offset & (half - 1))
+                };
+                intervals[point.len()].push(ResidualCube {
+                    interval: offset >> point.len(), point, lower, upper,
+                });
+            }
+        }
+        for cubes in &mut intervals { cubes.sort_unstable_by_key(|cube| cube.interval); }
+        Self(intervals.into_iter().enumerate().filter(|(_, cubes)| !cubes.is_empty()).collect())
+    }
+    fn at(&self, suffix: usize) -> (Fp3, Fp3) {
+        let mut values = (Fp3::ZERO, Fp3::ZERO);
+        for (bits, intervals) in &self.0 {
+            let interval = suffix >> bits;
+            let first = intervals.partition_point(|cube| cube.interval < interval);
+            for cube in intervals[first..].iter().take_while(|cube| cube.interval == interval) {
+                let weight = cube.point.iter().enumerate().fold(Fp3::ONE, |weight, (i, &r)| {
+                    weight * if (suffix >> (bits - 1 - i)) & 1 == 1 { r } else { Fp3::ONE - r }
+                });
+                values.0 += cube.lower * weight;
+                values.1 += cube.upper * weight;
+            }
+        }
+        values
+    }
+}
+
+fn source_coefficients(
+    bits: usize, live: usize, prefix: &[Fp3], forms: &[Vec<Cube>], coefficients: &[Fp3],
+    scan: impl FnOnce(&mut dyn FnMut(usize, Fp3) -> Result<(), String>) -> Result<(), String>,
+) -> Result<([Fp3; 3], Option<(Fp3, Fp3, Fp3, Fp3)>), String> {
+    let remaining = bits - prefix.len();
+    let half = 1usize << (remaining - 1);
+    let weights = PrefixWeights::new(prefix);
+    let public = PublicRound::new(bits, forms, coefficients, prefix);
+    let mut last_prefix = (usize::MAX, Fp3::ZERO);
+    let mut last_suffix = (usize::MAX, (Fp3::ZERO, Fp3::ZERO));
+    let mut result = [Fp3::ZERO; 3];
+    let mut endpoints = (Fp3::ZERO, Fp3::ZERO);
+    let mut count = 0;
+    scan(&mut |index, original| {
+        if index >= live || count >= live { return Err("linear original scan index or count differs".into()); }
+        count += 1;
+        let high = index >> remaining;
+        if high != last_prefix.0 { last_prefix = (high, weights.at(high)); }
+        let value = original * last_prefix.1;
+        if value == Fp3::ZERO { return Ok(()); }
+        let suffix = index & (half - 1);
+        if suffix != last_suffix.0 { last_suffix = (suffix, public.at(suffix)); }
+        let (lower, upper) = last_suffix.1;
+        if index & half == 0 {
+            result[0] += value * lower;
+            result[1] += value * (upper - lower - lower);
+            result[2] += value * (lower - upper);
+            if half == 1 { endpoints.0 += value; }
+        } else {
+            result[1] += value * lower;
+            result[2] += value * (upper - lower);
+            if half == 1 { endpoints.1 += value; }
+        }
+        Ok(())
+    })?;
+    if count != live { return Err("linear original scan incomplete".into()); }
+    let terminal = if half == 1 {
+        let (lower, upper) = public.at(0);
+        Some((endpoints.0, endpoints.1, lower, upper))
+    } else { None };
+    Ok((result, terminal))
 }
 
 fn prove_product_sourcewise(
@@ -194,40 +316,33 @@ fn prove_product_sourcewise(
     mut target: Auth,
     fs: &mut Fs,
     correlations: &mut impl ExactSizeIterator<Item = Auth>,
-) -> (Vec<[Fp3; 4]>, Vec<Fp3>, Auth, Fp3, Fp3) {
-    let bits = model.domain().config().unwrap().num_variables;
+) -> Result<(Vec<[Fp3; 4]>, Vec<Fp3>, Auth, Fp3, Fp3), String> {
+    let bits = model.domain().config()?.num_variables;
+    let mut phase = crate::c71_matrix::progress::Span::start("linear_original_scan",
+        serde_json::json!({"domain_log2": bits, "live": model.live_len(), "rounds": bits,
+            "public_cubes": forms.iter().map(Vec::len).sum::<usize>(), "prefix_eq_max_bits": 8}))?;
     let mut point = Vec::with_capacity(bits);
     let mut rounds = Vec::with_capacity(bits);
     let mut endpoints = None;
     for round in 0..bits {
         fs.set_phase(1 + round as u16);
-        let remaining = bits - round;
-        let half = 1usize << (remaining - 1);
-        let mut coefficients_round = [Fp3::ZERO; 3];
-        for suffix in 0..half {
-            let a = folded_source(model, &point, suffix, remaining);
-            let upper = folded_source(model, &point, suffix + half, remaining);
-            let mut boolean = point.clone();
-            boolean.push(Fp3::ZERO);
-            boolean.extend((0..remaining - 1).map(|bit| {
-                if suffix >> (remaining - 2 - bit) & 1 == 1 {
-                    Fp3::ONE
-                } else {
-                    Fp3::ZERO
-                }
-            }));
-            let b = public_value(forms, coefficients, &boolean);
-            boolean[round] = Fp3::ONE;
-            let b_upper = public_value(forms, coefficients, &boolean);
-            let da = upper - a;
-            let db = b_upper - b;
-            coefficients_round[0] += a * b;
-            coefficients_round[1] += da * b + a * db;
-            coefficients_round[2] += da * db;
-            if half == 1 {
-                endpoints = Some((a, upper, b, b_upper));
-            }
-        }
+        let mut visited = 0usize;
+        let (coefficients_round, terminal) = source_coefficients(
+            bits, model.live_len(), &point, forms, coefficients, |emit| {
+                model.scan_original(&mut |index, value| {
+                    emit(index, value)?;
+                    visited += 1;
+                    if visited & ((1 << 20) - 1) == 0 {
+                        phase.checkpoint(|| serde_json::json!({"completed_scans": round,
+                            "total_scans": bits, "active_scan_visits": visited,
+                            "source_visits": round * model.live_len() + visited,
+                            "public_tail_reads": 0}))?;
+                    }
+                    Ok(())
+                })
+            },
+        )?;
+        if terminal.is_some() { endpoints = terminal; }
         let mut authenticated = [Auth::ZERO; 3];
         let mut wire = [Fp3::ZERO; 4];
         for i in 0..3 {
@@ -243,15 +358,20 @@ fn prove_product_sourcewise(
         target = authenticated[0].add(authenticated[1].scale(r)).add(authenticated[2].scale(r * r));
         point.push(r);
         rounds.push(wire);
+        phase.checkpoint(|| serde_json::json!({"completed_scans": round + 1,
+            "total_scans": bits, "source_visits": (round + 1) * model.live_len(),
+            "public_tail_reads": 0}))?;
     }
     let (a, upper, b, b_upper) = endpoints.expect("nonempty flat source");
     let r = *point.last().unwrap();
-    (rounds, point, target, a + r * (upper - a), b + r * (b_upper - b))
+    phase.finish(serde_json::json!({"completed_scans": bits,
+        "source_visits": bits * model.live_len(), "public_tail_reads": 0}))?;
+    Ok((rounds, point, target, a + r * (upper - a), b + r * (b_upper - b)))
 }
 
 /// Sourcewise counterpart of `prove`: it retains neither the original A
-/// polynomial nor the dense public EQ form. The immutable getter is replayed
-/// in original MSB order for each product-sumcheck round, then handed to the
+/// polynomial nor the dense public EQ form. The immutable originals are scanned
+/// once per product-sumcheck round in any order, then handed to the
 /// sourcewise WHIR backend for the same terminal point.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::c71_matrix) fn prove_sourcewise(
@@ -287,7 +407,7 @@ fn prove_sourcewise_with_coins(
     let target =
         targets.iter().zip(&coefficients).fold(Auth::ZERO, |s, (&x, &c)| s.add(x.scale(c)));
     let (rounds, point, target, value, public_endpoint) =
-        prove_product_sourcewise(model, forms, &coefficients, target, fs, &mut reserved);
+        prove_product_sourcewise(model, forms, &coefficients, target, fs, &mut reserved)?;
     fs.set_phase(0x100);
     let (correction, terminal) = c7_fp3_transfer_prover(reserved.next().unwrap(), value);
     let terminal_wire = [correction.value(), target.m - public_endpoint * terminal.m];
@@ -349,6 +469,287 @@ pub(super) fn verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn mixed_forms(bits: usize) -> Vec<Vec<Cube>> {
+        let extension = |i| Fp3::new(Fp::new(i), Fp::ONE, Fp::ONE);
+        let small = Cube {
+            offset: 16, point: vec![Fp3::ZERO, Fp3::ONE, extension(3)], coefficient: signed(3),
+        };
+        vec![
+            vec![
+                Cube {
+                    offset: 0, point: (0..bits).map(|i| extension(i as u64 + 2)).collect(),
+                    coefficient: signed(-7),
+                },
+                small.clone(), small,
+                Cube { offset: 17, point: vec![], coefficient: signed(11) },
+            ],
+            vec![
+                Cube { offset: 0, point: vec![extension(5); 5], coefficient: signed(5) },
+                Cube {
+                    offset: (1 << bits) - 16,
+                    point: vec![Fp3::ONE, Fp3::ZERO, extension(7), signed(-3)],
+                    coefficient: signed(-11),
+                },
+            ],
+            vec![],
+            vec![Cube { offset: 0, point: vec![extension(9); bits], coefficient: Fp3::ZERO }],
+        ]
+    }
+
+    fn dense_public(bits: usize, forms: &[Vec<Cube>], coefficients: &[Fp3]) -> Vec<Fp3> {
+        let mut result = vec![Fp3::ZERO; 1 << bits];
+        for (form, &coefficient) in forms.iter().zip(coefficients) {
+            for cube in form {
+                for (i, weight) in eq(&cube.point).into_iter().enumerate() {
+                    result[cube.offset + i] += coefficient * cube.coefficient * weight;
+                }
+            }
+        }
+        result
+    }
+
+    fn dense_coefficients(a: &[Fp3], b: &[Fp3]) -> [Fp3; 3] {
+        let half = a.len() / 2;
+        let mut result = [Fp3::ZERO; 3];
+        for i in 0..half {
+            let da = a[i + half] - a[i];
+            let db = b[i + half] - b[i];
+            result[0] += a[i] * b[i];
+            result[1] += da * b[i] + a[i] * db;
+            result[2] += da * db;
+        }
+        result
+    }
+
+    // Independent pre-optimization oracle: enumerate every prefix for each
+    // pair, including the public zero tail, and evaluate every public cube.
+    fn ordinary_coefficients(
+        bits: usize, prefix: &[Fp3], forms: &[Vec<Cube>], coefficients: &[Fp3],
+        value: &mut dyn FnMut(usize) -> Fp3,
+    ) -> [Fp3; 3] {
+        let remaining = bits - prefix.len();
+        let half = 1usize << (remaining - 1);
+        let mut result = [Fp3::ZERO; 3];
+        for suffix in 0..half {
+            let a = folded_source(value, prefix, suffix, remaining);
+            let upper = folded_source(value, prefix, suffix + half, remaining);
+            let mut lower_point = Vec::with_capacity(bits);
+            lower_point.extend_from_slice(prefix);
+            lower_point.push(Fp3::ZERO);
+            lower_point.extend((0..remaining - 1).map(|i| {
+                if suffix >> (remaining - 2 - i) & 1 == 1 { Fp3::ONE } else { Fp3::ZERO }
+            }));
+            let mut upper_point = lower_point.clone();
+            upper_point[prefix.len()] = Fp3::ONE;
+            let b = public_value(forms, coefficients, &lower_point);
+            let b_upper = public_value(forms, coefficients, &upper_point);
+            let da = upper - a;
+            let db = b_upper - b;
+            result[0] += a * b;
+            result[1] += da * b + a * db;
+            result[2] += da * db;
+        }
+        result
+    }
+
+    fn round_heap_capacity(bits: usize, prefix: &[Fp3], forms: &[Vec<Cube>], coefficients: &[Fp3])
+        -> (usize, usize, usize)
+    {
+        use std::mem::size_of;
+        let weights = PrefixWeights::new(prefix);
+        let public = PublicRound::new(bits, forms, coefficients, prefix);
+        let prefix_cells = weights.0.iter().map(|(_, table)| table.capacity()).sum::<usize>();
+        let prefix_bytes = weights.0.capacity() * size_of::<(usize, Vec<Fp3>)>()
+            + prefix_cells * size_of::<Fp3>();
+        let public_bytes = public.0.capacity() * size_of::<(usize, Vec<ResidualCube<'_>>)>()
+            + public.0.iter().map(|(_, cubes)| cubes.capacity() * size_of::<ResidualCube<'_>>())
+                .sum::<usize>();
+        // Allow replacement allocations to overlap their old vectors, and
+        // the old width headers to overlap the collected nonempty headers.
+        // Sorting itself allocates no heap scratch; allocator metadata and
+        // process RSS remain separate from these capacity bounds.
+        let build_headers = (bits - prefix.len()) * size_of::<Vec<ResidualCube<'_>>>();
+        (2 * (prefix_bytes + public_bytes) + build_headers, prefix_cells, public_bytes)
+    }
+
+    #[test]
+    fn c71_b12_sourcewise_linear_scan_coefficients_and_component_benchmark() {
+        use std::mem::size_of;
+        use std::time::Instant;
+        let extension = Fp3::new(Fp::new(7), Fp::ONE, Fp::new(3));
+        let challenges = [Fp3::ZERO, Fp3::ONE, extension, signed(-3)];
+        for bits in [10, 12] {
+            let forms = mixed_forms(bits);
+            let coefficients = [Fp3::ONE, extension, signed(5), Fp3::ZERO];
+            let form_bytes = forms.capacity() * size_of::<Vec<Cube>>()
+                + forms.iter().map(|form| form.capacity() * size_of::<Cube>()
+                    + form.iter().map(|cube| cube.point.capacity() * size_of::<Fp3>())
+                        .sum::<usize>()).sum::<usize>();
+            let size = 1 << bits;
+            for live in [size, size / 3, 0] {
+                let originals: Vec<_> = (0..size).map(|i| {
+                    if i < live { signed(((i * 29 + i * i * 3) % 251) as i64 - 125) }
+                    else { Fp3::ZERO }
+                }).collect();
+                let mut dense_a = originals.clone();
+                let mut dense_b = dense_public(bits, &forms, &coefficients);
+                let mut prefix = Vec::with_capacity(bits);
+                let mut old_reads = 0;
+                let mut visits = 0;
+                let mut old_ns = 0;
+                let mut scan_ns = 0;
+                let mut heap_peak = 0;
+                let mut prefix_cells_peak = 0;
+                let mut public_bytes_peak = 0;
+                for round in 0..bits {
+                    let expected = dense_coefficients(&dense_a, &dense_b);
+                    let old_start = Instant::now();
+                    let old = ordinary_coefficients(bits, &prefix, &forms, &coefficients,
+                        &mut |index| { old_reads += 1; originals[index] });
+                    old_ns += old_start.elapsed().as_nanos();
+                    let scan_start = Instant::now();
+                    let (actual, endpoints) = source_coefficients(
+                        bits, live, &prefix, &forms, &coefficients, |emit| {
+                            for position in 0..live {
+                                let index = if round % 2 == 0 { live - 1 - position }
+                                    else { (position + live / 3) % live };
+                                visits += 1;
+                                emit(index, originals[index])?;
+                            }
+                            Ok(())
+                        },
+                    ).unwrap();
+                    scan_ns += scan_start.elapsed().as_nanos();
+                    assert_eq!(old, expected, "old oracle D{bits} live{live} round{round}");
+                    assert_eq!(actual, expected, "scan D{bits} live{live} round{round}");
+                    let half = dense_a.len() / 2;
+                    assert_eq!(endpoints, (half == 1).then(|| {
+                        (dense_a[0], dense_a[1], dense_b[0], dense_b[1])
+                    }));
+                    let public = PublicRound::new(bits, &forms, &coefficients, &prefix);
+                    for suffix in [0, half / 2, half - 1] {
+                        assert_eq!(public.at(suffix), (dense_b[suffix], dense_b[suffix + half]));
+                    }
+                    let (heap, cells, public_bytes) = round_heap_capacity(bits, &prefix,
+                        &forms, &coefficients);
+                    heap_peak = heap_peak.max(heap);
+                    prefix_cells_peak = prefix_cells_peak.max(cells);
+                    public_bytes_peak = public_bytes_peak.max(public_bytes);
+                    let r = challenges[round % challenges.len()];
+                    fold(&mut dense_a, r);
+                    fold(&mut dense_b, r);
+                    prefix.push(r);
+                }
+                assert_eq!(old_reads, bits * size);
+                assert_eq!(visits, bits * live);
+                assert!(prefix_cells_peak <= bits.div_ceil(8) * 256);
+                println!("C71_LINEAR_SCAN {}", serde_json::json!({
+                    "domain_log2":bits,"live":live,"rounds":bits,"ordinary_ns":old_ns as u64,
+                    "scan_ns":scan_ns as u64,"ordinary_original_reads":old_reads,
+                    "scan_original_visits":visits,"scans":bits,"public_tail_reads":0,
+                    "prefix_eq_capacity_peak_cells":prefix_cells_peak,
+                    "owned_heap_capacity_peak_bound_bytes":heap_peak,
+                    "public_residual_capacity_peak_bytes":public_bytes_peak,
+                    "borrowed_form_capacity_bytes":form_bytes,
+                    "ordinary_round_point_capacity_bytes":2 * bits * size_of::<Fp3>(),
+                    "harness_domain_arrays_peak_bound_bytes":5 * size * size_of::<Fp3>(),
+                    "device_bytes":0,"transfer_bytes":0,"correlations":0,"credit":false,
+                    "scope":"CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle"
+                }));
+            }
+        }
+    }
+
+    #[test]
+    fn c71_b12_sourcewise_linear_scan_rejects_incomplete_extra_and_producer_errors() {
+        for fault in 0..4 {
+            let result = source_coefficients(10, 4, &[], &[], &[], |emit| {
+                for index in 0..if fault == 0 { 3 } else { 4 } {
+                    emit(if fault == 1 { 4 } else { index }, signed(index as i64))?;
+                    if fault == 2 { return Err("linear producer failed after one cell".into()); }
+                }
+                if fault == 3 { emit(0, Fp3::ZERO)?; }
+                Ok(())
+            });
+            let error = result.unwrap_err();
+            if fault == 0 { assert_eq!(error, "linear original scan incomplete"); }
+            if fault == 2 { assert_eq!(error, "linear producer failed after one cell"); }
+        }
+    }
+
+    #[test]
+    fn c71_b12_sourcewise_linear_scanned_wire_fs_mac_and_failed_round_consumption() {
+        use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+        let bits = 12;
+        let live = 93;
+        let values: Arc<Vec<u8>> = Arc::new((0..live).map(|i| (i * 17 % 251) as u8).collect());
+        let mode = Arc::new(AtomicUsize::new(0));
+        let scans = Arc::new(AtomicUsize::new(0));
+        let scan: b12::replay::BaseScan = {
+            let values = values.clone(); let mode = mode.clone(); let scans = scans.clone();
+            Arc::new(move |emit| {
+                let call = scans.fetch_add(1, Ordering::Relaxed);
+                let fault = mode.load(Ordering::Relaxed);
+                for index in (0..live).rev() {
+                    if fault == 1 && index == 0 { continue; }
+                    emit(if fault == 2 && index == 0 { live } else { index },
+                        Goldilocks::from_u8(values[index]))?;
+                    if fault == 3 || fault == 5 && call == 2 {
+                        return Err("linear producer failed after one cell".into());
+                    }
+                }
+                if fault == 4 { emit(0, Goldilocks::ZERO)?; }
+                Ok(())
+            })
+        };
+        let window: b12::replay::ByteWindow = {
+            let values = values.clone();
+            Arc::new(move |first, bytes| {
+                bytes.copy_from_slice(&values[first..first + bytes.len()]); Ok(())
+            })
+        };
+        let model = b12::replay::ReplayModel::new_scanned(Domain::Flat(bits), [43; 32], [47; 32],
+            Arc::new(|_| panic!("linear scan called scalar getter")), scan, window, live).unwrap();
+        let forms = mixed_forms(bits);
+        let coefficients = [Fp3::ONE, signed(13), signed(17), Fp3::ZERO];
+        let a: Vec<_> = (0..1 << bits).map(|i| {
+            if i < live { signed(i64::from(values[i])) } else { Fp3::ZERO }
+        }).collect();
+        let b = dense_public(bits, &forms, &coefficients);
+        let target = Auth::new(a.iter().zip(&b).fold(Fp3::ZERO, |s, (&a, &b)| s + a * b),
+            signed(19));
+        let correlations: Vec<_> = (0..3 * bits + 2)
+            .map(|i| Auth::new(signed(i as i64 + 23), signed(i as i64 + 29))).collect();
+        let mut dense_rows = correlations.clone().into_iter();
+        let mut scan_rows = correlations.clone().into_iter();
+        let mut dense_fs = Fs::new(b"linear original scanner parity", bits);
+        let mut scan_fs = Fs::new(b"linear original scanner parity", bits);
+        scans.store(0, Ordering::Relaxed);
+        let dense = prove_product(a, b, target, &mut dense_fs, &mut dense_rows);
+        let scanned = prove_product_sourcewise(&model, &forms, &coefficients, target,
+            &mut scan_fs, &mut scan_rows).unwrap();
+        assert_eq!(dense.0, scanned.0); assert_eq!(dense.1, scanned.1);
+        assert_eq!((dense.2.x, dense.2.m), (scanned.2.x, scanned.2.m));
+        assert_eq!((dense.3, dense.4), (scanned.3, scanned.4));
+        assert_eq!(dense_fs.digest(), scan_fs.digest());
+        assert_eq!(dense_rows.len(), 2); assert_eq!(scan_rows.len(), 2);
+        assert_eq!(scans.load(Ordering::Relaxed), bits);
+        for fault in 1..=5 {
+            mode.store(fault, Ordering::Relaxed); scans.store(0, Ordering::Relaxed);
+            let mut rows = correlations.clone().into_iter();
+            let mut fs = Fs::new(b"linear failed scan", bits);
+            let initial_digest = fs.digest();
+            let result = prove_product_sourcewise(&model, &forms, &coefficients, target,
+                &mut fs, &mut rows);
+            assert!(result.is_err(), "fault {fault}");
+            let successful_rounds = if fault == 5 { 2 } else { 0 };
+            assert_eq!(rows.len(), correlations.len() - 3 * successful_rounds);
+            assert_eq!(fs.requests(), successful_rounds);
+            if successful_rounds == 0 { assert_eq!(fs.digest(), initial_digest); }
+        }
+        println!("C71_LINEAR_SCANNED {{\"domain_log2\":{bits},\"live\":{live},\"scans\":{bits},\"round_correlations\":{},\"reserved_terminal_correlations\":2,\"failed_scans\":5,\"credit\":false}}", 3 * bits);
+    }
 
     #[test]
     fn c71_b12_sourcewise_linear_matches_dense_wire_fs_point_and_original_mac() {
@@ -451,7 +852,7 @@ mod tests {
             target,
             &mut source_fs,
             &mut source_rows,
-        );
+        ).unwrap();
         assert_eq!(dense.0, source.0);
         assert_eq!(dense.1, source.1);
         assert_eq!((dense.2.x, dense.2.m), (source.2.x, source.2.m));

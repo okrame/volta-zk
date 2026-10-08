@@ -977,6 +977,7 @@ pub(in crate::c71_matrix) struct ReplayModel {
     domain: Domain,
     root: C61Commitment,
     source: Getter,
+    live: usize,
     scan: Option<(BaseScan, usize)>,
     tree: Arc<Tree>,
     pads: Arc<[Goldilocks]>,
@@ -1135,6 +1136,7 @@ impl ReplayModel {
             domain,
             root,
             source,
+            live,
             scan: scan.map(|scan| (scan, live)),
             tree: oracle.tree,
             pads,
@@ -1210,6 +1212,41 @@ impl ReplayModel {
 
     pub(in crate::c71_matrix) fn value(&self, index: usize) -> Fp3 {
         from_p3((self.source)(index))
+    }
+
+    pub(in crate::c71_matrix) fn live_len(&self) -> usize {
+        self.live
+    }
+
+    /// Read each original live cell once. The canonical scanner owns its
+    /// partition/row-coverage checks; this boundary checks range and count.
+    /// Numeric producers receive only the sink, never the proof's challenges.
+    pub(in crate::c71_matrix) fn scan_original(
+        &self,
+        emit: &mut dyn FnMut(usize, Fp3) -> Result<(), String>,
+    ) -> Result<(), String> {
+        if let Some((scan, live)) = &self.scan {
+            if *live != self.live {
+                return Err("C71 original scan live prefix differs".into());
+            }
+            let mut count = 0usize;
+            scan(&mut |index, value| {
+                if index >= self.live || count >= self.live {
+                    return Err("C71 original scan index or count exceeds live prefix".into());
+                }
+                emit(index, from_p3(E::from(value)))?;
+                count += 1;
+                Ok(())
+            })?;
+            if count != self.live {
+                return Err("C71 original scan incomplete".into());
+            }
+        } else {
+            for index in 0..self.live {
+                emit(index, self.value(index))?;
+            }
+        }
+        Ok(())
     }
 
     fn initial_handle(&self) -> ZkWhirReplayHandle {
@@ -1690,6 +1727,70 @@ fn compare_source_with_resident(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_b12_original_scan_live_prefix_order_and_errors() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        for live in [0, 93, 1024] {
+            let reads = Arc::new(AtomicUsize::new(0));
+            let source: Getter = {
+                let reads = reads.clone();
+                Arc::new(move |index| {
+                    assert!(index < live, "public zero tail read the original getter");
+                    reads.fetch_add(1, Ordering::Relaxed);
+                    to_p3(signed((index as i64 * 17) % 251 - 125))
+                })
+            };
+            let model = ReplayModel::new(Domain::Flat(10), [19; 32], [23; 32], source, live).unwrap();
+            reads.store(0, Ordering::Relaxed);
+            let mut count = 0;
+            model.scan_original(&mut |index, value| {
+                assert_eq!(index, count);
+                assert_eq!(value, signed((index as i64 * 17) % 251 - 125));
+                count += 1;
+                Ok(())
+            }).unwrap();
+            assert_eq!(model.live_len(), live);
+            assert_eq!(count, live); assert_eq!(reads.load(Ordering::Relaxed), live);
+        }
+        let live = 93;
+        let mode = Arc::new(AtomicUsize::new(0));
+        let scan: BaseScan = {
+            let mode = mode.clone();
+            Arc::new(move |emit| {
+                let fault = mode.load(Ordering::Relaxed);
+                for index in (0..live).rev() {
+                    if fault == 1 && index == 0 { continue; }
+                    emit(if fault == 2 && index == 0 { live } else { index },
+                        Goldilocks::from_u8((index * 17 % 251) as u8))?;
+                    if fault == 3 { return Err("original producer failed after one cell".into()); }
+                }
+                if fault == 4 { emit(0, Goldilocks::ZERO)?; }
+                Ok(())
+            })
+        };
+        let model = ReplayModel::new_scanned(Domain::Flat(10), [29; 32], [31; 32],
+            Arc::new(|_| panic!("original scanner used scalar getter")), scan,
+            Arc::new(|first, bytes| {
+                for (i, byte) in bytes.iter_mut().enumerate() { *byte = ((first + i) * 17 % 251) as u8; }
+                Ok(())
+            }), live).unwrap();
+        let mut count = 0;
+        model.scan_original(&mut |index, value| {
+            assert_eq!(index, live - 1 - count);
+            assert_eq!(value, signed((index * 17 % 251) as i64));
+            count += 1;
+            Ok(())
+        }).unwrap();
+        assert_eq!(count, live);
+        for fault in 1..=4 {
+            mode.store(fault, Ordering::Relaxed);
+            assert!(model.scan_original(&mut |_, _| Ok(())).is_err(), "fault {fault}");
+        }
+        mode.store(0, Ordering::Relaxed);
+        assert_eq!(model.scan_original(&mut |_, _| Err("consumer rejected".into())).unwrap_err(), "consumer rejected");
+        println!("C71_ORIGINAL_SCAN {{\"getter_cases\":3,\"scanner_cases\":1,\"errors\":5,\"public_tail_reads\":0,\"credit\":false}}");
+    }
 
     #[test]
     fn c71_b12_durable_telemetry_exact_commitment_and_openings() {

@@ -24,7 +24,29 @@ __device__ void tile(const int16_t* a,const int16_t* b,int64_t* output,uint32_t*
         }
         return;
     }
-    const unsigned bound=PV ? padded(tile_live(s,row0)) : padded(s.lanes);
+    if(!PV && col0+8>live(s,row0)) {
+        // A diagonal N8 border may contain keys future for an earlier M16
+        // row. Read only that output's own causal prefix; do not read future
+        // K and discard its product later. At most three border warps/M16.
+        bool invalid=false;
+#pragma unroll
+        for(unsigned r=0;r<4;++r) {
+            const unsigned row=row0+out_row(lane,r),col=col0+out_col(lane,r);
+            if(!output_live(s,false,row,col)) continue;
+            int64_t raw=0;
+            if(col<live(s,row)) for(unsigned k=0;k<s.lanes;++k) {
+                const int16_t x=load(a,qk_a_index(s,row,k),invalid);
+                const int16_t y=load(b,qk_b_index(s,row,col,k),invalid);
+                raw+=int64_t(x)*y;
+            }
+            output[output_index(s,false,head,row,col)]=raw;
+        }
+        if(__any_sync(0xffffffffu,invalid) && lane==0) atomicOr(failed,1u);
+        return;
+    }
+    // PV shares only a complete K32 prefix causal for every live M16 row.
+    // Each output adds its own <=46 remaining terms after the exact MMA dot.
+    const unsigned bound=PV ? pv_common(s,row0) : padded(s.lanes);
     int32_t hh[4]{},hl[4]{},lh[4]{},ll[4]{},sx[2]{},sw=0;
     bool invalid=false;
     for(unsigned first=0;first<bound;first+=32) {
@@ -51,7 +73,6 @@ __device__ void tile(const int16_t* a,const int16_t* b,int64_t* output,uint32_t*
         }
         mma(hh,ah,bh); mma(hl,ah,bl); mma(lh,al,bh); mma(ll,al,bl);
     }
-    if(__any_sync(0xffffffffu,invalid) && lane==0) atomicOr(failed,1u);
 #pragma unroll
     for(unsigned shift=1;shift<=2;shift*=2) {
         sx[0]+=__shfl_xor_sync(0xffffffffu,sx[0],shift);
@@ -62,10 +83,17 @@ __device__ void tile(const int16_t* a,const int16_t* b,int64_t* output,uint32_t*
     for(unsigned r=0;r<4;++r) {
         const unsigned row=row0+out_row(lane,r),col=col0+out_col(lane,r);
         const int32_t sum_b=__shfl_sync(0xffffffffu,sw,4*out_col(lane,r));
-        const int64_t raw=compose(hh[r],hl[r],lh[r],ll[r],sx[r/2],sum_b,bound);
-        if(output_live(s,PV,row,col))
+        int64_t raw=compose(hh[r],hl[r],lh[r],ll[r],sx[r/2],sum_b,bound);
+        if(output_live(s,PV,row,col)) {
+            if(PV) for(unsigned k=bound;k<live(s,row);++k) {
+                const int16_t x=load(a,pv_a_index(s,row,k),invalid,true);
+                const int16_t y=load(b,pv_b_index(s,head,row,col,k),invalid);
+                raw+=int64_t(x)*y;
+            }
             output[output_index(s,PV,head,row,col)]=output_value(s,PV,row,col,raw);
+        }
     }
+    if(__any_sync(0xffffffffu,invalid) && lane==0) atomicOr(failed,1u);
 }
 __global__ void qk(const int16_t* query,const int16_t* keys,int64_t* output,
     c71_nonlinear::Attention s,uint32_t* failed) {

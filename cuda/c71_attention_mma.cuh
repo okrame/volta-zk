@@ -22,18 +22,21 @@ C71_ATTN_HD inline unsigned tile_live(Shape s,unsigned row0) {
 }
 C71_ATTN_HD inline unsigned group(Shape s,unsigned head) { return head/(32/s.groups); }
 C71_ATTN_HD inline unsigned padded(unsigned k) { return (k+31)&~31u; }
+C71_ATTN_HD inline unsigned pv_common(Shape s,unsigned row0) { return live(s,row0)&~31u; }
 C71_ATTN_HD inline uint64_t qk_a_index(Shape s,unsigned row,unsigned k) {
     return row<s.rows && k<s.lanes ? (uint64_t(row)*32+s.head)*s.lanes+k : PAD;
 }
 C71_ATTN_HD inline uint64_t qk_b_index(Shape s,unsigned row0,unsigned key,unsigned k) {
-    return key<tile_live(s,row0) && k<s.lanes
+    // Shared MMA operands must be causal even for the first row of M16.
+    // Scalar border callers pass their own row instead.
+    return key<live(s,row0) && k<s.lanes
         ? (uint64_t(key)*s.groups+group(s,s.head))*s.lanes+k : PAD;
 }
 C71_ATTN_HD inline uint64_t pv_a_index(Shape s,unsigned row,unsigned key) {
     return row<s.rows && key<live(s,row) ? uint64_t(row)*(s.old+150)+key : PAD;
 }
 C71_ATTN_HD inline uint64_t pv_b_index(Shape s,unsigned head,unsigned row0,unsigned lane,unsigned key) {
-    return lane<s.lanes && key<tile_live(s,row0)
+    return lane<s.lanes && key<live(s,row0)
         ? (uint64_t(key)*s.groups+group(s,head))*s.lanes+lane : PAD;
 }
 C71_ATTN_HD inline int16_t load(const int16_t* input,uint64_t index,bool& failed,bool pi=false) {

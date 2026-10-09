@@ -32,13 +32,37 @@ static int byte_at(uint32_t x,unsigned b) {
     const unsigned v=(x>>(8*b))&255; return v<128 ? int(v) : int(v)-256;
 }
 static uint64_t max_accumulator=0;
+static uint64_t mma_kv_checks=0,scalar_kv_checks=0,pi_checks=0;
+static uint64_t qk_mma_tiles=0,pv_mma_tiles=0,qk_scalar_dots=0,pv_scalar_products=0;
+static unsigned max_pv_tail=0,max_qk_border=0,max_pv_scalar_per_lane=0;
+static int16_t causal_kv(Guard& b,uint64_t index,bool& failed,Attention s,
+    unsigned prefix,bool mma_path) {
+    if(index!=PAD) {
+        // Independent read admission, even when every future KV cell is
+        // already initialized with a valid value. The global seen union
+        // cannot detect a future read legal for another query in this tile.
+        assert(index/(uint64_t(s.groups)*s.lanes)<prefix);
+        if(mma_path) ++mma_kv_checks; else ++scalar_kv_checks;
+    }
+    return b.get(index,failed);
+}
+static int16_t causal_pi(Guard& a,uint64_t index,bool& failed,Attention s,unsigned row) {
+    if(index!=PAD) {
+        assert(row<s.rows && index/(s.old+150)==row);
+        assert(index%(s.old+150)<s.old+s.first+row+1); ++pi_checks;
+    }
+    return a.get(index,failed,true);
+}
 
 static bool model(Attention s,bool is_pv,unsigned head,Guard& a,Guard& b,
     std::vector<int64_t>& output,std::vector<uint8_t>& visits) {
     bool failed=false;
     s.head=head;
     const unsigned columns=is_pv ? s.lanes : s.old+150;
-    for(unsigned row0=0;row0<s.rows;row0+=16) for(unsigned col0=0;col0<columns;col0+=8) {
+    for(unsigned row0=0;row0<s.rows;row0+=16) {
+      const uint64_t before_border=qk_scalar_dots;
+      const uint64_t before_tail=pv_scalar_products;
+      for(unsigned col0=0;col0<columns;col0+=8) {
         if(!is_pv && col0>=tile_live(s,row0)) {
             for(unsigned row=row0;row<std::min(row0+16,s.rows);++row)
                 for(unsigned col=col0;col<std::min(col0+8,columns);++col) {
@@ -47,7 +71,27 @@ static bool model(Attention s,bool is_pv,unsigned head,Guard& a,Guard& b,
                 }
             continue;
         }
-        const unsigned bound=is_pv ? padded(tile_live(s,row0)) : padded(s.lanes);
+        if(!is_pv && col0+8>s.old+s.first+row0+1) {
+            for(unsigned lane=0;lane<32;++lane) for(unsigned r=0;r<4;++r) {
+                const unsigned row=row0+out_row(lane,r),col=col0+out_col(lane,r);
+                if(!output_live(s,false,row,col)) continue;
+                int64_t raw=0;
+                if(col<s.old+s.first+row+1) {
+                    ++qk_scalar_dots;
+                    for(unsigned k=0;k<s.lanes;++k) {
+                        const int16_t x=a.get(qk_a_index(s,row,k),failed);
+                        const int16_t y=causal_kv(b,qk_b_index(s,row,col,k),failed,s,
+                            s.old+s.first+row+1,false);
+                        raw+=int64_t(x)*y;
+                    }
+                }
+                const auto index=output_index(s,false,head,row,col);
+                assert(++visits[index]==1); output[index]=raw;
+            }
+            continue;
+        }
+        const unsigned bound=is_pv ? pv_common(s,row0) : padded(s.lanes);
+        if(is_pv) pv_mma_tiles+=bound!=0; else ++qk_mma_tiles;
         int32_t accum[32][4][4]{},sx[32][2]{},sw[32]{};
         for(unsigned first=0;first<bound;first+=32) {
             int ah[16][32]{},al[16][32]{},bh[8][32]{},bl[8][32]{};
@@ -58,7 +102,7 @@ static bool model(Attention s,bool is_pv,unsigned head,Guard& a,Guard& b,
                     for(unsigned byte=0;byte<4;++byte) {
                         const unsigned row=row0+a_row(lane,r),k=first+a_k(lane,r,byte);
                         const auto index=is_pv ? pv_a_index(s,row,k) : qk_a_index(s,row,k);
-                        const int16_t x=a.get(index,failed,is_pv);
+                        const int16_t x=is_pv ? causal_pi(a,index,failed,s,row) : a.get(index,failed);
                         sx[lane][r%2]+=x; pack(x,byte,hi,lo);
                     }
                     for(unsigned byte=0;byte<4;++byte) {
@@ -71,7 +115,7 @@ static bool model(Attention s,bool is_pv,unsigned head,Guard& a,Guard& b,
                     for(unsigned byte=0;byte<4;++byte) {
                         const unsigned col=col0+w_row(lane),k=first+w_k(lane,r,byte);
                         const auto index=is_pv ? pv_b_index(s,head,row0,col,k) : qk_b_index(s,row0,col,k);
-                        const int16_t x=b.get(index,failed);
+                        const int16_t x=causal_kv(b,index,failed,s,s.old+s.first+row0+1,true);
                         sw[lane]+=x; pack(x,byte,hi,lo);
                     }
                     for(unsigned byte=0;byte<4;++byte) {
@@ -108,13 +152,29 @@ static bool model(Attention s,bool is_pv,unsigned head,Guard& a,Guard& b,
             const unsigned row=row0+out_row(lane,r),col=col0+out_col(lane,r);
             assert(++coverage[out_row(lane,r)][out_col(lane,r)]==1);
             const auto* d=accum[lane][r];
-            const int64_t raw=compose(d[0],d[1],d[2],d[3],sx[lane][r/2],sw[4*out_col(lane,r)],bound);
+            int64_t raw=compose(d[0],d[1],d[2],d[3],sx[lane][r/2],sw[4*out_col(lane,r)],bound);
             if(output_live(s,is_pv,row,col)) {
+                if(is_pv) {
+                    const unsigned tail=s.old+s.first+row+1-bound;
+                    assert(tail<=46); max_pv_tail=std::max(max_pv_tail,tail);
+                    for(unsigned k=bound;k<s.old+s.first+row+1;++k) {
+                        const int16_t x=causal_pi(a,pv_a_index(s,row,k),failed,s,row);
+                        const int16_t y=causal_kv(b,pv_b_index(s,head,row,col,k),failed,s,
+                            s.old+s.first+row+1,false);
+                        raw+=int64_t(x)*y; ++pv_scalar_products;
+                    }
+                }
                 const auto index=output_index(s,is_pv,head,row,col);
                 assert(++visits[index]==1);
                 output[index]=output_value(s,is_pv,row,col,raw);
             }
         }
+      }
+      const uint64_t border=qk_scalar_dots-before_border,tail=pv_scalar_products-before_tail;
+      assert(border<=232 && tail<=616*uint64_t(s.lanes));
+      max_qk_border=std::max(max_qk_border,unsigned(border));
+      assert(tail%s.lanes==0);
+      max_pv_scalar_per_lane=std::max(max_pv_scalar_per_lane,unsigned(tail/s.lanes));
     }
     return failed;
 }
@@ -155,7 +215,8 @@ static void fixture(Attention s,bool all_heads,unsigned id) {
     assert(c71_nonlinear::valid(s));
     const unsigned columns=s.old+150,prefix=s.old+s.first+s.rows;
     Guard query(uint64_t(s.rows)*32*s.lanes,uint64_t(s.rows)*32*s.lanes);
-    Guard kv(450*uint64_t(s.groups)*s.lanes,uint64_t(prefix)*s.groups*s.lanes);
+    const uint64_t kv_capacity=450*uint64_t(s.groups)*s.lanes,causal_words=uint64_t(prefix)*s.groups*s.lanes;
+    Guard kv(kv_capacity,kv_capacity); // Future cells valid and fully initialized.
     for(size_t i=0;i<query.words.size();++i) query.words[i]=value(i+17);
     for(size_t i=0;i<kv.initialized;++i) kv.words[i]=value(i+31);
     const std::vector<unsigned> qheads=all_heads ? [] { std::vector<unsigned> h; for(unsigned i=0;i<32;++i) h.push_back(i); return h; }()
@@ -184,7 +245,7 @@ static void fixture(Attention s,bool all_heads,unsigned id) {
     for(unsigned head=0;head<32;++head) {
         pis.emplace_back(uint64_t(s.rows)*columns,uint64_t(s.rows)*columns);
         constexpr int16_t probabilities[]={0,1,127,128,255,256,16383,16384};
-        for(unsigned row=0;row<s.rows;++row) for(unsigned key=0;key<s.old+s.first+row+1;++key)
+        for(unsigned row=0;row<s.rows;++row) for(unsigned key=0;key<columns;++key)
             pis.back().words[uint64_t(row)*columns+key]=probabilities[(head+row+3*key)%8];
     }
     std::vector<unsigned> pheads;
@@ -208,8 +269,8 @@ static void fixture(Attention s,bool all_heads,unsigned id) {
             assert(bool(pis[head].seen[uint64_t(row)*columns+key])==(selected && key<s.old+s.first+row+1));
     }
     // All GQA groups are exercised, and no unread capacity cell is visited.
-    assert(std::all_of(kv.seen.begin(),kv.seen.begin()+kv.initialized,[](uint8_t v) { return v==1; }));
-    assert(std::all_of(kv.seen.begin()+kv.initialized,kv.seen.end(),[](uint8_t v) { return v==0; }));
+    assert(std::all_of(kv.seen.begin(),kv.seen.begin()+causal_words,[](uint8_t v) { return v==1; }));
+    assert(std::all_of(kv.seen.begin()+causal_words,kv.seen.end(),[](uint8_t v) { return v==0; }));
     size_t bytes=query.bytes()+kv.bytes()+want.capacity()*8+got.capacity()*8+visits.capacity();
     for(const auto& pi:pis) bytes+=pi.bytes();
     bytes+=pis.capacity()*sizeof(Guard)+pheads.capacity()*sizeof(unsigned)+qheads.capacity()*sizeof(unsigned);
@@ -218,24 +279,29 @@ static void fixture(Attention s,bool all_heads,unsigned id) {
         id,s.rows,s.old,s.first,s.groups,s.lanes,pheads.size(),static_cast<unsigned long long>(products),naive,fragment);
 }
 static unsigned rejections() {
-    Attention s{1,0,31,0,1,1};
-    Guard query(32,32),kv(450,1),pi(150,150);
-    std::fill(query.words.begin(),query.words.end(),1); kv.words[0]=2; pi.words[0]=3;
     unsigned cases=0;
-    for(unsigned which=0;which<6;++which) {
-        const int16_t oldq=query.words[31],oldv=kv.words[0],oldp=pi.words[0];
-        if(which==0) query.words[31]=INT16_MIN;
-        if(which==1 || which==5) kv.words[0]=INT16_MIN;
-        if(which==2) pi.words[0]=-1;
-        if(which==3) pi.words[0]=16385;
-        if(which==4) pi.words[0]=32767;
-        const bool is_pv=which>=2;
-        std::vector<int64_t> want(is_pv ? 32 : 150,INT64_MIN),got(want.size(),INT64_MIN);
-        std::vector<uint8_t> visits(want.size());
-        auto& a=is_pv ? pi : query;
-        assert(reference(s,is_pv,31,a,kv,want));
-        assert(model(s,is_pv,31,a,kv,got,visits)); assert(want==got); ++cases;
-        query.words[31]=oldq; kv.words[0]=oldv; pi.words[0]=oldp;
+    // Pure scalar, common-prefix MMA with ragged lanes, and mixed MMA/tail.
+    for(Attention s:{Attention{1,0,31,0,1,1},Attention{1,31,31,0,1,33},Attention{1,32,31,0,1,33}}) {
+        assert(c71_nonlinear::valid(s));
+        Guard query(32*s.lanes,32*s.lanes),kv(450*s.lanes,450*s.lanes),pi(150,150);
+        std::fill(query.words.begin(),query.words.end(),1);
+        std::fill(kv.words.begin(),kv.words.end(),2); std::fill(pi.words.begin(),pi.words.end(),3);
+        const unsigned key=s.first==32?32:0,query_at=31*s.lanes+s.lanes-1,value_at=key*s.lanes;
+        for(unsigned which=0;which<6;++which) {
+            const int16_t oldq=query.words[query_at],oldv=kv.words[value_at],oldp=pi.words[key];
+            if(which==0) query.words[query_at]=INT16_MIN;
+            if(which==1 || which==5) kv.words[value_at]=INT16_MIN;
+            if(which==2) pi.words[key]=-1;
+            if(which==3) pi.words[key]=16385;
+            if(which==4) pi.words[key]=32767;
+            const bool is_pv=which>=2;
+            std::vector<int64_t> want(is_pv ? 32*s.lanes : 150,INT64_MIN),got(want.size(),INT64_MIN);
+            std::vector<uint8_t> visits(want.size());
+            auto& a=is_pv ? pi : query;
+            assert(reference(s,is_pv,31,a,kv,want));
+            assert(model(s,is_pv,31,a,kv,got,visits)); assert(want==got); ++cases;
+            query.words[query_at]=oldq; kv.words[value_at]=oldv; pi.words[key]=oldp;
+        }
     }
     bool failed=false;
     assert(load(nullptr,PAD,failed)==0 && !failed);
@@ -246,9 +312,15 @@ int main() {
     fixture({15,135,0,0,16,256},false,1);
     fixture({16,134,0,150,8,512},false,2);
     fixture({17,133,0,300,4,512},false,3);
+    fixture({16,30,0,0,1,33},false,4); // Attains border232 and tail46/616.
     const unsigned negative=rejections();
     for(int shift:{1,15,30}) for(int q:{-3,-2,-1,0,1,2,3})
         for(int delta:{-1,0,1}) check_rne(int64_t(q)*(int64_t{1}<<shift)+(int64_t{1}<<(shift-1))+delta,shift);
-    std::printf("C71_ATTENTION_MMA_HOST {\"qk_head_cases\":%u,\"pv_head_cases\":%u,\"rejections\":%u,\"max_keys\":450,\"max_lanes\":512,\"canary_reads\":0,\"output_coverage_exact\":true,\"host_named_capacity_bytes\":%zu,\"mma_named_register_integer_bytes_per_thread\":124,\"mma_shared_bytes\":0,\"new_global_staging_bytes\":0,\"max_observed_int8_accumulator\":%llu,\"gpu_execution\":false,\"credit\":false}\n",
+    std::printf("C71_ATTENTION_MMA_HOST {\"qk_head_cases\":%u,\"pv_head_cases\":%u,\"rejections\":%u,\"max_keys\":450,\"max_lanes\":512,\"canary_reads\":0,\"future_kv_fully_initialized_fixtures\":5,\"future_pi_fully_initialized_fixtures\":5,\"per_row_causal_read_guards\":true,\"output_coverage_exact\":true,\"host_named_capacity_bytes\":%zu,\"mma_named_register_integer_bytes_per_thread\":124,\"scalar_raw_integer_bytes_per_thread\":8,\"mma_shared_bytes\":0,\"new_global_staging_bytes\":0,\"max_observed_int8_accumulator\":%llu,",
         qk_cases,pv_cases,negative,peak_payload,static_cast<unsigned long long>(max_accumulator));
+    std::printf("\"mma_kv_read_checks\":%llu,\"scalar_kv_read_checks\":%llu,\"pi_read_checks\":%llu,\"qk_mma_tiles\":%llu,\"pv_mma_tiles\":%llu,\"qk_scalar_dots\":%llu,\"pv_scalar_products\":%llu,\"max_observed_qk_border\":%u,\"max_observed_pv_tail\":%u,\"max_observed_pv_scalar_per_lane\":%u,\"qk_scalar_dots_per_m16_bound\":232,\"pv_tail_per_output_bound\":46,\"pv_scalar_products_per_m16_per_lane_bound\":616,\"gpu_execution\":false,\"credit\":false}\n",
+        static_cast<unsigned long long>(mma_kv_checks),static_cast<unsigned long long>(scalar_kv_checks),
+        static_cast<unsigned long long>(pi_checks),static_cast<unsigned long long>(qk_mma_tiles),
+        static_cast<unsigned long long>(pv_mma_tiles),static_cast<unsigned long long>(qk_scalar_dots),
+        static_cast<unsigned long long>(pv_scalar_products),max_qk_border,max_pv_tail,max_pv_scalar_per_lane);
 }

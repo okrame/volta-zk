@@ -707,6 +707,13 @@ Non ne segue un lemma Lean di raffinamento, parità CUDA o completamento
 del profilo canonico. Extension/S1 resta CPU; l'helper PCS preparatorio
 non scarica le premesse delle viste residenti o del loro lifetime.
 
+La [correzione dei lifetime e il Merkle extension preparatorio](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
+non cambiano FS, MAC, correlazioni o byte del protocollo. Batch/prove owned
+sono rilasciati dopo l'ultimo consumo; il timeout composto non dà parità.
+Le foglie extension conservano base PCS, limb/byte order, sali e blocco
+finale BLAKE3. La candidata paired pubblica R nodi soltanto dopo tutte
+le 2R foglie; il suo consumer S1 e le query residenti restano da integrare.
+
 S1 si ridimensiona soltanto dopo consumo/rilascio del predecessore e
 registrazione del successore; nessun oracolo ancora apribile è modificato.
 La closure lineare scansiona originali una volta per round, con EQ/sfide

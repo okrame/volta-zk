@@ -224,7 +224,12 @@ sono ignored dopo timeout a 60 s: non lanciarli con `--ignored` o limite
 esteso, non contare skip come pass. Anche
 `c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs` supera
 60 s sul binario O0 dell'ultimo checkpoint: il nome positivo non cambia
-l'esito conservato. Profilo e accelerazione restano lavoro aperto.
+l'esito conservato. Anche
+`c71_b12_native_composed_three_attempts_close_one_fs_and_promote_same_w_kv`
+ha raggiunto 60 s dopo la correzione dei lifetime: il
+[record distinto](../../benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1.json)
+conserva build/check dei claim e timeout, senza nuova parità composta.
+Profilo e accelerazione restano lavoro aperto.
 
 I controlli Python pertinenti si eseguono separatamente con gli stessi
 limiti: `tests/test_c71_dense_i16.py`, `tests/test_c71_range_native.py`,
@@ -259,7 +264,13 @@ verifica cinque filtri, da eseguire uno per invocazione:
 
 `tests/test_c71_linear_native.py` verifica 167 casi contro l'oracolo
 denso e bench host D15/D17; `tests/test_c71_pcs_residual.py` controlla
-solo l'helper PCS distinto, non owner/caller S1. Non aggregare i cinque filtri query
+solo l'helper PCS distinto, non owner/caller S1.
+`tests/test_c71_pcs_short_hash.py` confronta foglie da 12 limb, nodi
+paired e sali con BLAKE3 pinned; il
+[record](../../benchmarks/results/c71-crypto-short-merkle-local-2026-10-09-d16870d8ff1b.json)
+include le regressioni Rust dello stream e dell'owner sali. È una
+primitiva preparatoria, senza integrazione S1 o CUDA.
+Non aggregare i cinque filtri query
 in una sola invocazione: ciascuno compila una fixture dinamica.
 La futura parità sm_90, il tempo completo e il picco fisico si verificano
 sulla H100 autorizzata. Non ridurre limiti query o aumentare implicitamente

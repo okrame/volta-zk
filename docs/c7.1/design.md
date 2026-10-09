@@ -88,7 +88,7 @@ non attribuiscono prestazioni o picco fisico H100.
 | Closure lineare | Owner e caller nativi integrati con parità ridotta: una scan originale per round, D·live visite, cinque elementi MAC e flag restituiti; mapping W riusato, nessun getter A sostitutivo |
 | Accumulo W Tensor Core | Candidata limb16 esatta e confronto esplicito sul medesimo owner; ordinario rimane predefinito |
 | QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
-| Resto della prova | Extension PCS/S1, query W, contrazioni, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal dichiarati CPU; helper S1 preparatorio |
+| Resto della prova | Extension PCS/S1, query W, contrazioni, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal dichiarati CPU; helper S1 e hash extension paired preparatori |
 
 [canonical_device.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs)
 possiede la sessione numerica: stessa Arc W del commitment, un solo
@@ -138,8 +138,14 @@ con parità ridotte contro Horner, coefficienti ed intero wire. I prossimi passi
 e poi aperture/GKR/range e sincronizzazioni secondo il
 profilo. S1 conserva 35 passaggi non-query fino alla retention: evitare
 una seconda matrice device da 1 GiB o una doppia retention da 3,22 GB.
-L'helper S1 è un componente controllato separatamente, senza credito di
-integrazione PCS. Valutare TMA, fusioni e CUDA Graphs
+Il prossimo checkpoint locale chiude insieme owner/caller S1 e query
+extension, con una catena WHIR ridotta esatta e conto simultaneo;
+gli helper preparati separatamente non chiudono questo criterio.
+L'helper S1 e l'hash extension paired sono componenti controllati
+separatamente, senza credito di integrazione PCS. La
+[revisione dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
+rilascia batch/prove dopo le rispettive chiusure; il test composto a tre
+risposte rimane incompleto al limite locale. Valutare TMA, fusioni e CUDA Graphs
 su costi misurati. Il confronto W ordinario/Tensor e la selezione QK/PV
 richiedono compilazione, parità e misura GPU nella futura campagna.
 
@@ -189,6 +195,7 @@ locali sono `credit:false`, senza compilazione o esecuzione CUDA.
 | [FFT naturale owner](../c7.1-history/crypto-transform-2026-10-09.md) | Diretta/inversa esatte, geometria dispari e guard; primitiva integrata, query caller ancora CPU al source validato |
 | [Query iniziali A residenti](../c7.1-history/crypto-query-2026-10-09.md) | Horner, richieste identiche e catena D10 uncached con wire/FS/RNG/MAC originali; extension/S1 e caller lineare ancora CPU |
 | [Closure lineare owner/caller](../c7.1-history/crypto-linear-2026-10-09.md) | Codec e coefficienti/endpoints originali, consumo monouso, full wire D10; S1 aritmetico distinto, nessuna parità CUDA |
+| [Lifetime PCS e hash extension paired](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md) | Rilascio batch/prove, BLAKE3 pinned e regressione sali; hash S1 non selezionato, timeout composto conservato |
 | [Regole operative](../c7.1-history/operating-rules-2026-10-08.md), [temporanei](../c7.1-history/temporary-memory-2026-10-04.md) | Ragioni delle decisioni; autorizzazioni correnti definite nel [runbook](runpod-tests.md#autorizzazione-e-limiti) |
 
 ## Contratto delle risorse

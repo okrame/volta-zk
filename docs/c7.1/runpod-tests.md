@@ -23,7 +23,10 @@ iniziali W/A con sali residenti e
 [closure lineare residente](../c7.1-history/crypto-linear-2026-10-09.md).
 Fattori pubblici, extension PCS/S1, query W,
 GKR non-range/MAC, Seed6 AES e verifica restano CPU al checkpoint validato.
-L'helper S1 resta preparazione distinta da integrare e verificare.
+Gli helper S1 e Merkle extension paired restano preparazione distinta
+da integrare e verificare; la
+[revisione locale dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
+conserva anche il timeout della prova composta.
 Accumulo W ordinario e QK/PV scalari rimangono default; le candidate Tensor/MMA
 sono confronti espliciti. Parità host e driver simulato non attribuiscono
 compilazione sm_90, parità CUDA, prestazioni o picco fisico H100.
@@ -257,6 +260,11 @@ senza lock esterno, ritiro prima della pubblicazione e assenza di
 consumo correlazioni sui round falliti. Il checkpoint locale non
 compila CUDA; ripetere i cinque filtri nativi pertinenti sulla libreria
 reale. S1 richiede parità e conto propri; non ereditarli da query/linear.
+Per l'hash extension ripetere foglie/nodi/root contro BLAKE3 pinned,
+copertura logica 2R con output R e bande senza attraversamento di lane.
+Contare i batch W soltanto fino alla chiusura W; capacità di proof/codec,
+wire e realloc restano esplicite. Un cap sulla lunghezza del certificato
+non prova una capacità Vec né il completamento entro il budget.
 
 Il [diagnostico W](../../cuda/c71_pcs_weight_compare.cpp) si compila e
 linka contro la libreria CUDA reale, rifiutando il driver di test.

@@ -956,6 +956,15 @@ CPU. La parità A completa e quella CUDA non sono implicite in tale catena.
 `c71_pcs_residual.cuh/.cu` prepara separatamente aritmetica
 PCS v³=v+1, singleton/OOD, SoA e coset/fold senza selezione o consumo da
 parte dell'owner; non implica retention S1 GPU o cambi di lifetime.
+L'[helper Merkle extension](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
+codifica 12 limb base: dominio 32 B, valori 96 B, sali 32 B. Tre
+compressioni BLAKE3 per foglia conservano l'ultimo blocco da 32 B.
+La candidata paired conserva R digest: la prima lane scrive foglie,
+la seconda il loro nodo in-place, con avanzamento logico 2R e bande
+che non attraversano una lane. A R=2^23 l'output è 268.435.456 B,
+256 MiB in meno del 2R separato; ring/frontier/sampler e gli altri
+owner restano da sommare. Helper sali R23 limitato alla geometria S1;
+il consumer S1 e le sue query non sono selezionati al checkpoint corrente.
 
 La [candidata Tensor W](../../cuda/c71_pcs_weight_tensor.cu) usa quattro
 limb16 biased, dot INT8 pack/compose esatto e correzione 32768·sum_W:
@@ -1007,7 +1016,15 @@ e conteggi originali. La copertura completa precede il seal di ogni finestra.
 
 Il [ledger eseguibile](../../scripts/c71_temporary_ledger.py) riconcilia
 le emissioni delle geometrie di produzione con i picchi effettivi dei test
-ridotti. I subtotal nominati servono a controllare le dimensioni; non sono
+ridotti del riferimento CPU; non descrive automaticamente le nuove
+allocazioni native query/linear/S1. Il
+[record dei lifetime](../../benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1.json)
+lega il rilascio di batch W e prova W prima delle chiusure A, e di batch/prova
+A dopo la chiusura corrente: ordine FS/wire/MAC invariato. Il cap codec dei
+claim W di 470.351.872 B è un upper analitico, non una capacità misurata.
+La vecchia voce certificate=128 MiB non è un bound provato: il cap wire
+limita la lunghezza, mentre capacità e realloc vecchio+nuovo richiedono
+conto proprio. I subtotal nominati servono a controllare le dimensioni; non sono
 picchi canonici misurati né una prova di completamento. L'autorità sul
 massimo delle allocazioni è [census.rs](../../rust/volta-pcs/src/c71_matrix/census.rs),
 con callback dall'owner CUDA: copre anche costi non nominati nella tabella.

@@ -1,0 +1,269 @@
+{
+  "schema": "c71-crypto-preparation-local-v1",
+  "date": "2026-10-09",
+  "recorded_at_utc": "2026-10-09T07:17:52.546190+00:00",
+  "status": "PASS_LOCAL_PER_ROW_CAUSAL_ATTENTION_FRAGMENT_MODEL",
+  "credit": false,
+  "source_git_sha": "29a257b4476b6350310ace9fa1e8585201e19ecc",
+  "git_dirty": false,
+  "source_fix_commit": "010b6b9",
+  "baseline": "9033c64",
+  "prior_stage": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2.json",
+  "closes_finding": "attention_review.future_per_row_KV_read",
+  "goal_complete": false,
+  "goal_status": "active",
+  "check": {
+    "command": [
+      "/home/okrame/projects/volta-zk/.venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "-s",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_c71_attention_mma.py"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk",
+    "exit_code": 0,
+    "wall_s": 4.151278085075319,
+    "max_rss_bytes": 132485120,
+    "as_limit_mib": 2048,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 4.041081,
+    "system_s": 0.07954,
+    "log": "benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b-logs/c71-attention-causal-clean-20261009-01.log",
+    "source_git_sha": "29a257b4476b6350310ace9fa1e8585201e19ecc",
+    "git_dirty": false,
+    "record_run": true
+  },
+  "metrics": [
+    {
+      "id": 0,
+      "op": "qk",
+      "rows": 1,
+      "old": 0,
+      "first": 0,
+      "groups": 8,
+      "lanes": 512,
+      "heads": 32,
+      "signed_products": 16384,
+      "naive_i128_seconds": 0.000111582,
+      "fragment_model_seconds": 0.00022304
+    },
+    {
+      "id": 0,
+      "op": "pv",
+      "rows": 1,
+      "old": 0,
+      "first": 0,
+      "groups": 8,
+      "lanes": 512,
+      "heads": 32,
+      "signed_products": 16384,
+      "naive_i128_seconds": 0.000146876,
+      "fragment_model_seconds": 0.00375417
+    },
+    {
+      "id": 1,
+      "op": "qk",
+      "rows": 15,
+      "old": 0,
+      "first": 135,
+      "groups": 16,
+      "lanes": 256,
+      "heads": 3,
+      "signed_products": 1647360,
+      "naive_i128_seconds": 0.010204512,
+      "fragment_model_seconds": 0.037789128
+    },
+    {
+      "id": 1,
+      "op": "pv",
+      "rows": 15,
+      "old": 0,
+      "first": 135,
+      "groups": 16,
+      "lanes": 256,
+      "heads": 16,
+      "signed_products": 8785920,
+      "naive_i128_seconds": 0.057725319,
+      "fragment_model_seconds": 0.200703529
+    },
+    {
+      "id": 2,
+      "op": "qk",
+      "rows": 16,
+      "old": 150,
+      "first": 134,
+      "groups": 8,
+      "lanes": 512,
+      "heads": 3,
+      "signed_products": 7188480,
+      "naive_i128_seconds": 0.044626387,
+      "fragment_model_seconds": 0.159386854
+    },
+    {
+      "id": 2,
+      "op": "pv",
+      "rows": 16,
+      "old": 150,
+      "first": 134,
+      "groups": 8,
+      "lanes": 512,
+      "heads": 8,
+      "signed_products": 19169280,
+      "naive_i128_seconds": 0.124438396,
+      "fragment_model_seconds": 0.406743769
+    },
+    {
+      "id": 3,
+      "op": "qk",
+      "rows": 17,
+      "old": 300,
+      "first": 133,
+      "groups": 4,
+      "lanes": 512,
+      "heads": 3,
+      "signed_products": 11541504,
+      "naive_i128_seconds": 0.071370167,
+      "fragment_model_seconds": 0.474098848
+    },
+    {
+      "id": 3,
+      "op": "pv",
+      "rows": 17,
+      "old": 300,
+      "first": 133,
+      "groups": 4,
+      "lanes": 512,
+      "heads": 4,
+      "signed_products": 15388672,
+      "naive_i128_seconds": 0.09768078,
+      "fragment_model_seconds": 0.629326654
+    },
+    {
+      "id": 4,
+      "op": "qk",
+      "rows": 16,
+      "old": 0,
+      "first": 30,
+      "groups": 1,
+      "lanes": 33,
+      "heads": 3,
+      "signed_products": 60984,
+      "naive_i128_seconds": 0.000388,
+      "fragment_model_seconds": 0.001919835
+    },
+    {
+      "id": 4,
+      "op": "pv",
+      "rows": 16,
+      "old": 0,
+      "first": 30,
+      "groups": 1,
+      "lanes": 33,
+      "heads": 1,
+      "signed_products": 20328,
+      "naive_i128_seconds": 0.000126792,
+      "fragment_model_seconds": 0.000291125
+    }
+  ],
+  "report": {
+    "qk_head_cases": 44,
+    "pv_head_cases": 61,
+    "rejections": 18,
+    "max_keys": 450,
+    "max_lanes": 512,
+    "canary_reads": 0,
+    "future_kv_fully_initialized_fixtures": 5,
+    "future_pi_fully_initialized_fixtures": 5,
+    "per_row_causal_read_guards": true,
+    "output_coverage_exact": true,
+    "host_named_capacity_bytes": 11235372,
+    "mma_named_register_integer_bytes_per_thread": 124,
+    "scalar_raw_integer_bytes_per_thread": 8,
+    "mma_shared_bytes": 0,
+    "new_global_staging_bytes": 0,
+    "max_observed_int8_accumulator": 5772347,
+    "mma_kv_read_checks": 5243592,
+    "scalar_kv_read_checks": 4853996,
+    "pi_read_checks": 9090288,
+    "qk_mma_tiles": 511,
+    "pv_mma_tiles": 1576,
+    "qk_scalar_dots": 2109,
+    "pv_scalar_products": 4190192,
+    "max_observed_qk_border": 232,
+    "max_observed_pv_tail": 46,
+    "max_observed_pv_scalar_per_lane": 616,
+    "qk_scalar_dots_per_m16_bound": 232,
+    "pv_tail_per_output_bound": 46,
+    "pv_scalar_products_per_m16_per_lane_bound": 616,
+    "gpu_execution": false,
+    "credit": false
+  },
+  "provenance": {
+    "platform": "Linux-6.12.94+deb13-arm64-aarch64-with-glibc2.41",
+    "compiler": "g++ O2 Werror UBSan",
+    "cuda_compilation": false,
+    "gpu_execution": false,
+    "inputs_sha256": {
+      "cuda/c71_attention_mma.cu": "65f7bc1c45c316a29e3821394c427e82bb1542a6f9763aff185f5cd1612f17c1",
+      "cuda/c71_attention_mma.cuh": "5c26a3c4c456dafe0c0b62032e6a4fed4299f44af1571338f938d6721c6e50d9",
+      "tests/c71_attention_mma_host.cpp": "eb8774b24d0f993af7d17902fbe548b8753f951a80938645a3a70b592f758b4d",
+      "tests/test_c71_attention_mma.py": "fd9000361e823b0b38bc9ee756e0e9b0eab81aac08fe2288adc874fb461da6ab"
+    }
+  },
+  "resources": {
+    "named_host_capacity_bytes": 11235372,
+    "new_global_staging_bytes": 0,
+    "mma_shared_bytes": 0,
+    "named_MMA_integer_arrays_bytes_per_thread": 124,
+    "named_scalar_raw_bytes_per_thread": 8,
+    "PiPointers_bytes": 256,
+    "actual_NVCC_registers_spills_occupancy_measured": false
+  },
+  "selection": {
+    "default_scalar_launchers_unchanged": true,
+    "MMA_candidate_selected": false,
+    "H100_campaign_authorized": false
+  },
+  "causal_contract": {
+    "future_already_initialized_fixtures": 5,
+    "mma_reads_within_common_prefix": true,
+    "scalar_reads_within_output_row_prefix": true,
+    "canary_reads": 0,
+    "qk_border_dot_bound_per_M16": 232,
+    "pv_tail_bound_per_output": 46,
+    "pv_tail_products_bound_per_M16_per_lane": 616,
+    "marker_rejections": 18
+  },
+  "limitations": [
+    "Host model exercises fragment/shuffle and explicit read guards, not the CUDA kernel scheduler.",
+    "One paired host coefficient-model sample per geometry; no speedup claimed for GPU or whole path.",
+    "QK/PV remain unselected pending owner integration, sm90 compilation, real parity, resource and timing checks.",
+    "No hardware use, changes to FS/MAC/PCG, or increase of A reconstructions."
+  ],
+  "artifacts": [
+    {
+      "path": "benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b-logs/c71-attention-causal-clean-20261009-01.json",
+      "bytes": 481,
+      "sha256": "969365416cf7a2fdc471723e88af824d113d13daf11e102e15d3b57637b032c1"
+    },
+    {
+      "path": "benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b-logs/c71-attention-causal-clean-20261009-01.log",
+      "bytes": 2936,
+      "sha256": "0f0e924b1073e3582b57897b1bcc7062d4af5d482f2f90cb1f29880e3a4394f8"
+    },
+    {
+      "path": "benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b-logs/c71-attention-causal-pre01-20261009.json",
+      "bytes": 448,
+      "sha256": "4c5e5259c74edcda5638670801b9654a66448927d0c7d87e13908acb79ca3f95"
+    },
+    {
+      "path": "benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b-logs/c71-attention-causal-pre01-20261009.log",
+      "bytes": 2936,
+      "sha256": "59264ad9ab7bd0ddb3c7090d8b4fd7e421113f82026c8b411b4a1181f2898c71"
+    }
+  ]
+}

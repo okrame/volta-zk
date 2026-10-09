@@ -710,6 +710,27 @@ producer ed è non selezionata; parità signed i128 finita non prova CUDA.
 Premesse B12/Seed6/raffinamento, NoPeek, PCG AES reale e correlazioni
 monouso rimangono tutte in vigore. Nessun lemma congelato cambia.
 
+Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
+confronta closure lineare, stream XOF e confronto Tensor sull'owner.
+La scan originale numerica riceve solo il sink; EQ/sfide restano nel
+consumer. Le tre correlazioni di ciascun round si consumano solo dopo
+scansione riuscita; la riserva/burn della sessione resta3D+2 e monouso.
+Range/count non sostituiscono l'unicità dello scanner fidato. Forme,
+wire, endpoint originali, MAC e transcript sono confrontati esattamente.
+Il seed aggiunto al sampler rimane nello stato privato, senza serializzazione
+o telemetria. Il futuro prescan GPU deve partire dal cursore logico corrente
+e avanzarlo una sola volta, preservando clone MMCS, rejection e cap.
+I test dei helper non dimostrano scheduling GPU o raffinamento generale.
+La base PCS v³=v+1 non può essere sostituita dalla base MAC u³=2.
+
+Il modello QK/PV precedente leggeva KV fino al massimo causale del tile,
+pur annullando gli output futuri. È inadatto al vincolo per-riga del §6;
+il default scalare non era stato cambiato. La correzione usa solo il
+prefisso comune MMA e un bordo scalare per output. Il [record distinto](../../benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b.json)
+verifica letture con guard per-riga anche su future già inizializzate,
+con 18 rifiuti marker. Il record precedente resta immutabile; parità
+numerica da sola non scarica causalità. Le candidate restano non selezionate.
+
 Il contatore comprende entrambi i ruoli e le capacità mantenute, compreso
 old+new durante realloc. Il rifiuto di allocazione o una free/fence CUDA
 fallita è terminale; non produce promozione, spill o fallback. Soltanto W

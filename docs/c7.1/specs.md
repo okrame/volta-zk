@@ -707,7 +707,8 @@ l'assenza di una fine non è un successo.
 Si registrano fasi dei due ruoli, traffico applicativo cumulativo, owner
 comune, sali, scansioni/accumuli, FFT, hash foglie, merge, resti e aperture.
 Progressi al più ogni secondo, controllati ogni 65.536 visite/righe o per
-colonna/coset. Wall annidati, picchi e contatori cumulativi non si sommano.
+colonna/coset; la closure lineare controlla ogni 2^20 visite e a fine round.
+Wall annidati, picchi e contatori cumulativi non si sommano.
 I butterfly FFT sono un censimento analitico, non istruzioni misurate.
 RSS/HWM sono del processo; HBM/bus/picco fisico richiedono monitor esterno.
 Nessun seed, pad, sale, W/A/KV o motivo privato nei record; pubblicare solo
@@ -845,9 +846,49 @@ senza modificare la release pubblica o le free-failure terminali.
 La [candidata Tensor Core](../../cuda/c71_pcs_weight_tensor.cu) separata
 usa quattro limb16 biased, dot INT8 pack/compose esatto e correzione
 32768·sum_W; somma signed <2^87 e 8.448 B shared, nessun nuovo buffer
-globale. Il test host emula fragment/shuffle e confronta signed i128/%p;
-non compila CUDA o verifica le guardie kernel. Mancano hook dell'owner
-per il confronto, registri/spill e prestazioni H100.
+globale. Il test host emula fragment/shuffle e confronta signed i128/%p.
+`c71_pcs_weight_tensor` usa le stesse ammissioni, W sigillato, FFT e flag
+dell'accumulo ordinario sullo stesso owner. `c71_pcs_compare_words` confronta
+tutte le word canoniche di due buffer completi distinti, senza download
+dei campi: solo 4 B di flag. Entrambi i simboli ABI4 sono obbligatori;
+assenza o errore è terminale. La selezione canonica resta ordinaria.
+Il diagnostico ridotto Q256/R64 è pronto e compilato come translation
+unit host, non linkato/eseguito. Mancano compilazione CUDA, registri/spill
+e prestazioni H100; W sintetica da 4 MiB non misura throughput canonico.
+
+Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
+seleziona una scan originale per round della closure lineare. EQ del
+prefisso è divisa in chunk ≤8 bit (≤256 celle ciascuno); i Cube residuali
+sono ordinati per ampiezza/intervallo e prendono in prestito i punti.
+Nessuna divisione, bitmap o array D34/D35: sfide 0/1, sovrapposizioni e
+ordine arbitrario dello scanner mantengono coefficienti ed endpoint.
+Copertura unica resta precondizione dello scanner concreto; il confine
+controlla live/range/conteggio ed errori prima delle tre correlazioni.
+Wire/FS/MAC e riserva 3D+2 sono invariati. Capacità, realloc e forme
+pubbliche sono nel budget; i 13.656 B della fixture D12 sono un conto del
+componente, non della prova. Visite D·live, senza leggere il tail zero.
+
+La componente [sali GPU](../../cuda/c71_pcs_salts.cu) usa il dominio
+originale di 34 B incluso NUL e seed32, descriptor66 B, XOF a 16 word LE,
+rejection Goldilocks e cap2^40. Prefix/mask bounded fino2^24 candidati
+conserva il cursore subito dopo il quarto accettato, anche oltre2^32.
+Scratch massimo allineato10.520.320 B; prescan con starts/offsets richiede
+27.297.536 B W o23.103.232 B A. Si deve ritirare prima dei valori/ring.
+Lo stream corrente dopo clone MMCS, seek non allineati, replay e cap sono
+confrontati con il sampler Rust pinned; la gerarchia CUDA non è eseguita.
+Owner/Tree usano ancora il sampler host. Il seed resta privato dentro
+`PrivateRng`, senza export pubblico/Debug/Serialize; stato176 B (+32),
+`ReplayModel::live` +8 B e API Rust +16 B passano dal contatore comune.
+Gli envelope nominati precedenti non sono ricontati come picchi completi.
+
+Le candidate [QK/PV MMA](../../cuda/c71_attention_mma.cu) mantengono
+i16/PiQ14 originali e raw i64 esatti. QK usa N8 completamente nel prefisso
+comune del tile M16, poi dot scalari causali sul bordo; PV usa K32 comune
+e tail per output ≤46. Bound perM16: ≤232 dot QK scalari e ≤616 prodotti
+PV per lane, verificati su fixture che li raggiunge. Futuri già inizializzati
+non vengono letti; zero/staging/shared aggiuntivi, array interi nominali
+124 B/thread più raw8 B (registri/spill NVCC ancora ignoti). Le candidate
+rimangono non selezionate; header/fragment host non prova kernel CUDA.
 
 Il payload congiunto ridotto massimo è 4.965.787 B; nessun rifiuto nelle
 parità. Cargo pulito riusa il binario identico della build preliminare

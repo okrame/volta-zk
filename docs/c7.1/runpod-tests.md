@@ -81,13 +81,29 @@ Il [Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) è selezionato nel runn
 composta W/A con cache iniziale solo nella fixture, getter effettivi
 verificati separatamente e timeout uncached A conservato. Sali strided
 batched e un fence duplicato sono ottimizzati con parità locale. La
-candidata limb16 è separata, emulata contro i128, non selezionata: il
-confronto GPU richiede il futuro hook dell'owner e la compilazione sm_90.
-Mancano GPU XOF, query/S1/closure lineari, profilo GKR/range/QK/PV e
-conto simultaneo completo. Il goal resta attivo: non riattivare pod
+candidata limb16 è emulata contro i128 e ora collegata al confronto
+sullo stesso owner, senza selezione nel runner. La futura libreria deve
+includere anche `cuda/c71_pcs_weight_tensor.cu`: i due nuovi simboli ABI4
+sono obbligatori. Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
+ha closure lineare a una scan per round, componente GPU XOF esatta e
+candidata QK/PV corretta per causalità per-riga, tutte verificate in host.
+Restano integrazione owner/Tree GPU XOF, query/S1/closure GPU, profilo
+GKR/range e selezione QK/PV secondo misura, conto simultaneo completo.
+Il goal resta attivo: non riattivare pod
 o hardware. Γ resta riutilizzabile dopo i controlli normali di identità;
 la campagna futura misurerà separatamente installazione, setup,
 inferenza, prova e verifica, dopo nuova autorizzazione di hardware/durata.
+
+Il [diagnostico W](../../cuda/c71_pcs_weight_compare.cpp) è pronto per
+la futura campagna: compilare e linkare contro la libreria CUDA reale,
+confrontare tutte le word canoniche postFFT e tutti i digest con oracle
+indipendente, una warmup e tre rep in ordine alternato per gruppo.
+La W sintetica da4MiB, R64/Q256, è un componente che entra in L2 e ha pochi
+CTA: i suoi tempi non sostituiscono il benchmark W pinned. Il diagnostico
+rifiuta il driver test. Non lanciarlo prima della nuova autorizzazione.
+Le candidate sali e attention richiedono anche compilazione sm_90 e
+controlli reali di seek/cap, basi, pad, root e letture causali prima
+della selezione; il default ordinario/scalare rimane il confronto.
 
 Percorso principale: preparazione locale → autorizzazione della nuova
 campagna → verifica dell'ambiente e riuso di Γ → parità e misure delle

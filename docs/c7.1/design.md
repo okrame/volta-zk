@@ -267,16 +267,35 @@ Il batch strided dei sali migliora di 1,445× sullo stesso binario ARM;
 il percorso sequenziale già bufferizzato conserva il sampler ordinario
 perché il batch vi peggiora. Un fence duplicato per pubblicazione è
 eliminato preservando free-failure terminali. La candidata W Tensor Core
-limb16 ha parità host indipendente e shared da 8.448 B, ma non è selezionata
-o collegata all'owner per il confronto GPU. Non concede credito H100.
+limb16 ha parità host indipendente e shared da 8.448 B. Ora dispone del
+confronto sul medesimo owner; l'accumulo ordinario resta predefinito.
 
 L'audit [quantifica i residui](../c7.1-history/crypto-a-tree-2026-10-08.md#costi-residui-dal-codice): sali W
 prescan/replay almeno 274.877.906.944 B XOF e 137.438.953.472 B H2D; A
-la metà per risposta. La closure lineare enumera ancora D·2^D valori
-(584.115.552.256 per A); aperture/S1, GKR effettivo e QK/PV richiedono
-accelerazione separata. GPU XOF, scan lineare, confronto Tensor Core,
-conto simultaneo completo e valutazioni fusioni/Graphs/TMA rimangono
-lavoro del goal locale. Nessuna nuova campagna è autorizzata.
+la metà per risposta. La nuova closure lineare esegue una scan originale
+per round, D·live visite, con EQ di prefisso bounded e indice pubblico
+dei Cube; evita getter del suffisso zero e tabelle del dominio completo.
+Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
+ha parità esatta di coefficienti, wire, transcript e MAC, errori prima
+delle correlazioni del round e telemetria di avanzamento. Tre misure D12
+locale danno 7,75× sul componente CPU; non è un tempo della prova o H100.
+Il sampler GPU bounded è preparato e confrontato con stream pinned,
+seek/cap/cursori, ma deve ancora essere collegato a owner e Tree.
+La candidata QK/PV usa MMA sul prefisso causale comune e un bordo scalare:
+nessuna lettura futura per la singola riga, anche se già inizializzata.
+Parità host e guard di lettura sono verificati; resta non selezionata.
+Il finding precedente e la correzione sono conservati in record distinti.
+
+A residente copre il commitment iniziale. Le query iniziali usano già
+finestre originali bounded ma resti CPU; S1 mantiene 35 passaggi non-query
+fino alla retention e scarica righe numeriche. La prossima integrazione
+deve conservare batch, richieste e 512 ricostruzioni iniziali, senza una
+seconda matrice device da 1 GiB o doppia retention S1 da 3,22 GB.
+PCS usa la base cubica v³=v+1, distinta dalla base MAC u³=2.
+Query/S1, closure GPU, GKR/range, selezione QK/PV, conto simultaneo completo
+e valutazioni fusioni/Graphs/TMA rimangono lavoro del goal locale.
+Compilazione sm_90, parità e tempi hardware appartengono alla futura
+campagna. Nessuna nuova campagna è autorizzata.
 
 I fallimenti delle geometrie escluse restano validi per le loro premesse;
 riaprirle richiede risolvere e verificare la causa dell'esclusione.

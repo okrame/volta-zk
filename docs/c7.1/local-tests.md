@@ -119,7 +119,7 @@ senza eseguirli; altrimenti la build CUDA si svolge sul pod autorizzato:
 ```bash
 nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC \
   cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_pcs_hash.cu \
-  cuda/c71_pcs_weight.cu cuda/c71_pcs_source.cu \
+  cuda/c71_pcs_weight.cu cuda/c71_pcs_weight_tensor.cu cuda/c71_pcs_source.cu \
   cuda/c71_range_runtime.cpp \
   -o /tmp/libc71_device_runner.so
 nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
@@ -226,6 +226,45 @@ Il [record pulito Tree A](../../benchmarks/results/c71-crypto-a-tree-local-2026-
 massimo test/compilatori discendenti 250.183.680 B; build completa
 preliminare 57,02 s/2.474.213.376 B separata. Cargo pulito è un riuso
 identico con digest, non una nuova compilazione completa.
+
+Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
+aggiunge controlli da eseguire separatamente con gli stessi limiti:
+
+```text
+c71_b12_sourcewise_linear
+c71_b12_original_scan_live_prefix_order_and_errors
+c71_b12_private_coins_
+c71_b12_native_weight_tensor
+c71_b12_native_pcs_compare_words
+```
+
+Sono coefficienti/endpoint/FS/MAC e errori prima delle correlazioni,
+56 vettori XOF e11 stream pinned, Tensor ordinario/postFFT/hash sullo
+stesso owner, simboli obbligatori e errori terminali. Non eseguono CUDA.
+`tests/test_c71_attention_mma.py` confronta fragment/shuffle/raw i128/RNE,
+future KV/Pi già inizializzate e guard per ogni lettura;18 rifiuti,
+bound232/46/616 raggiunti. La candidata resta non selezionata.
+Il [record componenti](../../benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2.json)
+conserva24 test Rust distinti (27 invocazioni),13 Python,68 artefatti,
+build fallita e finding causale della prima candidata. Il [record causale](../../benchmarks/results/c71-attention-causal-local-2026-10-09-29a257b4476b.json)
+chiude il finding sul nuovo source, senza riscrivere il precedente.
+RSS massimo componenti258.056.192 B; build preliminare56,91s/
+2.492.010.496 B distinta dal riuso Cargo pulito. Tutti i test sono seriali,
+60s/AS2GiB. Tre rep D12 riportano7,75× sul componente CPU rootO0,
+ordine old-then-scan; non è una misura H100 o della prova completa.
+
+Il diagnostico [confronto W](../../cuda/c71_pcs_weight_compare.cpp) compila
+con g++ `-c` senza toolkit, ma non è linkato/eseguito localmente. Quando
+il toolkit è disponibile compilare soltanto le candidate aggiuntive:
+
+```bash
+nvcc -std=c++17 -O2 -arch=sm_90 -c cuda/c71_pcs_salts.cu -o /tmp/c71_pcs_salts.o
+nvcc -std=c++17 -O2 -arch=sm_90 -c cuda/c71_attention_mma.cu -o /tmp/c71_attention_mma.o
+```
+
+L'assenza del toolkit locale lascia la compilazione al pod autorizzato,
+senza richiedere hardware ora. Non ridurre i limiti delle query o aumentare
+ricostruzioni A per far passare una fixture o il conto memoria.
 
 Il [record pulito del componente](../../benchmarks/results/c71-crypto-w-scan-fft-local-2026-10-08-e66e0fbd45db.json)
 ha sette selezioni Rust e venti controlli Python positivi, tra cui

@@ -19,6 +19,7 @@ valgono soltanto per il checkpoint che descrivono.
 
 ## Campagne recenti e decisioni operative
 
+- [Componenti del 9 ottobre](crypto-components-2026-10-09.md): scan lineare, XOF pinned, confronto Tensor e correzione causale QK/PV, senza campagna.
 - [Consumer PCS A residente dell'8 ottobre](crypto-a-source-2026-10-08.md): codec, quattro coset, FFT/hash, risorse e limiti del componente locale.
 - [Evidenze del consumer A](crypto-a-source-evidence-2026-10-08.md): record pulito e regressioni dell'owner/Tree W, senza integrazione A o campagna.
 - [Decisioni dell'8 ottobre 2026](operating-rules-2026-10-08.md): nuova autorità operativa, ritenzione e geometrie ottimizzabili.

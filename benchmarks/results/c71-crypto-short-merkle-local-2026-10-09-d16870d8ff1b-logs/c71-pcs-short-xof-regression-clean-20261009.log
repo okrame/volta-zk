@@ -1,0 +1,8 @@
+
+running 1 test
+test c71_matrix::b12::tests::c71_b12_private_coins_device_xof_exact_live_seed_seek_salts_and_offsets ... C71_PCS_SALTS_HOST {"vector_cases":56,"byte_checks":7168,"stream_cases":11,"forced_mask_checks":32768,"leaves":66308,"chunk_calls":541,"physical_blocks":66734,"fixture_scratch_bytes":1280,"max_shape_scratch_bytes":10520320,"host_prescan_seconds":0.098182933,"host_replay_seconds":0.146372275,"s1_metadata_checks":17,"gpu_execution":false,"credit":false}
+C71_PCS_SALTS_REFERENCE {"credit":false,"cuda_compilation":false,"gpu_execution":false,"live_mmcs_cases":3,"reference":"pinned Rust blake3 OutputReader and Goldilocks StandardUniform","rng_state_bytes":176,"stdin_blake3":"74580b1dc7829ebd1b2dba166eb9218551b771d98b5fff3124253e0f24112cdc","stdin_bytes":2662620}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 553 filtered out; finished in 1.32s
+

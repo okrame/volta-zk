@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-s",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_pcs_short_hash.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 2.6772208558395505,
+  "max_rss_bytes": 163516416,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 2.375012,
+  "system_s": 0.296143,
+  "log": "/tmp/c71-pcs-short-clean-20261009.log"
+}

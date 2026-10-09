@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-s",
+    "-p",
+    "no:cacheprovider",
+    "/tmp/c71-pcs-short-shadow-pre02-20261009/tests/test_c71_pcs_short_hash.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 2.612964378669858,
+  "max_rss_bytes": 170745856,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 2.334532,
+  "system_s": 0.226122,
+  "log": "/tmp/c71-pcs-short-helper-pre03-20261009.log"
+}

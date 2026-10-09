@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_private_coins_device_xof_exact_live_seed_seek_salts_and_offsets",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 1.3279180680401623,
+  "max_rss_bytes": 108765184,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 1.306464,
+  "system_s": 0.023585,
+  "log": "/tmp/c71-pcs-short-xof-regression-clean-20261009.log"
+}

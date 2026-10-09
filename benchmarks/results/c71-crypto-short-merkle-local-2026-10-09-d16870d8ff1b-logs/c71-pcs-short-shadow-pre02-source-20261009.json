@@ -1,0 +1,17 @@
+{
+  "candidate": "/tmp/c71-pcs-short-20261009",
+  "shadow": "/tmp/c71-pcs-short-shadow-pre02-20261009",
+  "inputs_sha256": {
+    "cuda/c71_pcs_salts.cu": "e3c6dde1f5b1ee3be135a3e00b17c568965fc8e2190e17d30b2df3615e9e741f",
+    "cuda/c71_pcs_salts.cuh": "8edb6905c9a57ba8f7691a4ca1210cbabc65ea4815459038c0c66b2bbdaf0e89",
+    "cuda/c71_pcs_hash.cu": "094428f2df0eef6a8dc37725dc3fe5d0c9f846afa1afe82c11ca60f2f4dc0723",
+    "cuda/c71_pcs_hash.cuh": "600b57b924595a4c13eff7b8c31cdc784c10e7f0e780526966b808e8f07a51f2",
+    "tests/test_c71_pcs_short_hash.py": "3c7e52dc12d2fb1ff24078f892e46974372328e8dfdc3dc466e87ff74aa58d9d",
+    "tests/c71_pcs_short_hash_host.cpp": "6330c382850aa33adb54077f681426d086cf45d377cc326c841559c3629db421",
+    "tests/c71_pcs_salts_host.cpp": "8ae01ff68c7394d11fc7fef745c0c19c4072a5c4d98918ebf51fd1af3bc35b29"
+  },
+  "production_tree_modified": false,
+  "cuda_compilation": false,
+  "gpu_execution": false,
+  "credit": false
+}

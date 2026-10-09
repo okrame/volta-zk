@@ -1507,6 +1507,13 @@ sensi; almeno tutti i byte ricevuti dal verificatore entrano nei tetti.
 Un riferimento ritrasmesso si paga di nuovo. Il limite di 40 MB non cresce
 col turno e non si ammortizza il setup su risposte future.
 
+La [composizione H100](../c7.1-history/h100-monitor-stack-2026-10-09.md)
+unisce il prefisso misurato del primo trial (86.332.473 B nei due sensi,
+request inclusa) al corpo minimo analitico O=0 e a 753 B di framing/completion:
+134.174.406 B, già oltre 130 MB. Il solo verso al verificatore dà
+126.639.876 B e non dimostra quel superamento. Non sono byte di un
+certificato ottenuto; la relazione numerica e i cap parser restano invariati.
+
 | Voce del piano | Quantità e interpretazione |
 |---|---|
 | KV originale i16 | 901.120 B/token; 405.504.000 B per 450 token, coda pendente inclusa |

@@ -51,3 +51,13 @@ trasferita. Il prefill è ritirato; la ricevuta del checkout anonimo HTTPS
 `cdd57af` verifica entrambe le revisioni di build e sette file pubblicati.
 I successivi aggiornamenti dei sorgenti usano esclusivamente Git HTTPS.
 Deadline e guard della campagna rimangono invariati.
+
+La [composizione del traffico](../../benchmarks/results/c71-h100-communication-composition-2026-10-09-a885e07a0ada.json)
+somma gli 86.332.473 B realmente scambiati prima del certificato nel primo
+trial, il limite inferiore analitico del corpo O=0 (47.841.180 B) e 753 B
+di framing/completion mancanti. Il risultato è **134.174.406 B** nei due
+sensi, già superiore al target iniziale di 130 MB. Include la distribuzione
+pubblica come richiesto dalle specifiche; il solo verso al verificatore
+ha limite inferiore 126.639.876 B e non basta a stabilire quel superamento.
+I corpi delle continuazioni superano già 40 MB. È un risultato composto
+misurato/analitico, non un certificato completo ottenuto né un nuovo cap.

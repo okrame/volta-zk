@@ -292,6 +292,10 @@ locali sono `credit:false`, senza compilazione o esecuzione CUDA.
 | W packed | 61.394.690.560 byte |
 
 Il codec B12 corrente supera analiticamente 40 MB nelle continuazioni.
+La [composizione H100](../c7.1-history/h100-monitor-stack-2026-10-09.md)
+del prefisso realmente scambiato e del corpo minimo analitico porta il
+primo turno ad almeno 134.174.406 B nei due sensi, distribuzione pubblica
+inclusa: supera 130 MB. Non è una dimensione di certificato misurato.
 Il ripiego analitico autorizzato è 47,84 / 54,87 / 61,80 MB per
 O=0/150/300: sono i limiti inferiori del corpo in
 [specs](specs.md#ordine-e-formato-del-certificato), non dimensioni misurate,

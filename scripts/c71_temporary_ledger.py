@@ -617,7 +617,26 @@ def complete_prepared_phases(phases, directory, common, persistent, replay, init
                 + cap['public_gamma_encoding_heap_bytes']
                 + cap['fixed_descriptor_heap_upper_bytes']
                 + max(p['persistent_descriptor_heap_upper_bytes'] for p in producers)
-                + cap['pcs_metadata']['total_metadata_heap_upper_bytes'])
+                + cap['pcs_metadata']['total_metadata_heap_upper_bytes']
+                # Metadata-only admission leaves RequiredGeometry=None.
+                # Six pinned production caches own keys24B and widths8B;
+                # their inline Option is already in the measured profiles.
+                + 6*(2*159*24 + 2*129*8))
+    # One selected RMS depth, original circuits retained, no N*W table.
+    # AND+XOR totals come from the immutable admitted public ledger
+    # ledger-20261007T150200Z, recipe d96b9350...1014. Layered Copies
+    # are aliases; each original non-Copy gate is born only once.
+    replay_programs, binary_gates, max_width = 159, 6519376, 4096
+    raw_node_bound, ports, buckets = 174482, 98, 262144
+    replay_plans = (24*(2*binary_gates+4*replay_programs)
+                    + 8*replay_programs*(2*max_width+4) + 72*replay_programs)
+    replay_builder = (3*(33*buckets+32) + 4*24*(2*raw_node_bound+4)
+                      + 9*(ports+raw_node_bound) + 8*(4*max_width+4))
+    replay_scratch = 2*8*(replay_programs+(2*ports+4)+(ports+raw_node_bound)
+                          +(2*max_width+4)+max_width)
+    replay_fixed = 768+1032+1536+312+32  # frames/widths/ordinals/Option+cells
+    packed_replay_upper = replay_plans+replay_builder+replay_scratch+replay_fixed
+    rms_work_records_moving = (4096+2048)*176  # 2871 cell rounds; Vec old/new
     producer = max(p['producer_descriptor_heap_upper_bytes'] for p in producers)
     # Session::census has one lock-protected dedup set, even outside a replay.
     unique = max((3*p['kv_source_count']+1
@@ -764,7 +783,8 @@ def complete_prepared_phases(phases, directory, common, persistent, replay, init
     extra('public_profile_RMS_validation_compile', dict(setup,
           class6_RMS_prior_program_inner_capacity_upper=457616928,
           class6_RMS_Builder_and_prune_capacity_upper=266001396,
-          class6_RMS_prepare_map_keys_profiles_outer_capacity_upper=208400),
+          class6_RMS_prepare_map_keys_profiles_outer_capacity_upper=208400,
+          class6_RMS_compact_geometry_keys_and_widths_build_upper=140608+2064),
           'One selected public compiler at a time; pw<=32,width<=128 bounds174482 raw gates. Source-derived HashMap/BTreeSet and moving layer growth are charged; no Compact checkpoint.')
     extra('real_AES_seed6_setup', dict(setup,
           both_role_main_and_inverse_setup_vec_payload_upper=152*(17553+2025)+624,
@@ -800,9 +820,10 @@ def complete_prepared_phases(phases, directory, common, persistent, replay, init
               class6_RMS_program_outer_capacity_upper=35616,
               class6_RMS_retained_profile_indices_capacity_upper=6736,
               class6_RMS_edge_capacity_moving_upper=3*24121920,
-              class6_RMS_boolean_replay_capacity=52432,
+              class6_RMS_packed_replay_plans_builder_scratch_fixed_upper=packed_replay_upper,
+              class6_RMS_prover_work_records_moving_upper=rms_work_records_moving,
               class6_RMS_coefficient_and_weight_payload_upper=(7*16384+2*421)*24+421),
-              'Pinned99-layer159-program RMS; old/new edge Vec growth included. Compiler scratch retires before this Compact checkpoint lifetime.')
+              'Pinned99-layer159-program RMS; packed plans retain one depth only and retire before index edges/byte LUT. Plans, builder/scratch moving and fixed stacks conservatively overlap here; original Circuit and edge growth are separately charged. Single-program statistic/pattern consumers keep their previous replay schedule.')
         extra(f'proof_A{caches}_EXP30_checkpoint', dict(base,
               class8_pending_original_current_role_upper=pending,
               class6_EXP30_checkpoint_upper=1 << 30),

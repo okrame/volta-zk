@@ -1,0 +1,26 @@
+{
+  "command": [
+    "g++",
+    "-std=c++17",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-I",
+    "cuda",
+    "-c",
+    "cuda/c71_pcs_weight_compare.cpp",
+    "-o",
+    "/tmp/c71-pcs-weight-compare-pre01.o"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 1.7090693418867886,
+  "max_rss_bytes": 113614848,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 1.504086,
+  "system_s": 0.186558,
+  "log": "/tmp/c71-w-compare-build-pre01.log"
+}

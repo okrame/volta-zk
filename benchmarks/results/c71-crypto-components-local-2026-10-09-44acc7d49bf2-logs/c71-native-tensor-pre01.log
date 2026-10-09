@@ -1,0 +1,12 @@
+
+running 3 tests
+test c71_matrix::range::windowed::native::tests::c71_b12_native_weight_tensor_owner_fft_hash_parity ... C71_PCS_TENSOR_OWNER {"all_fft_values_equal":true,"all_leaf_node_digests_equal":true,"columns":128,"coset_rows":4,"cosets":32,"credit":false,"fixture_post_fft_observer_bytes":131072,"gpu_execution":false,"host_owner_bytes":37152,"message_rows":4,"native_capacity_peak_bytes":32256,"ordinary_host_s":0.005311719,"original_w_bytes":768,"pad_rows":11,"tensor_core_execution":false,"tensor_host_s":0.005438762}
+C71_PCS_TENSOR_OWNER {"all_fft_values_equal":true,"all_leaf_node_digests_equal":true,"columns":128,"coset_rows":16,"cosets":32,"credit":false,"fixture_post_fft_observer_bytes":524288,"gpu_execution":false,"host_owner_bytes":37152,"message_rows":64,"native_capacity_peak_bytes":97280,"ordinary_host_s":0.020734836,"original_w_bytes":12288,"pad_rows":17,"tensor_core_execution":false,"tensor_host_s":0.024118386}
+C71_PCS_TENSOR_OWNER {"all_fft_values_equal":true,"all_leaf_node_digests_equal":true,"columns":128,"coset_rows":4,"cosets":32,"credit":false,"fixture_post_fft_observer_bytes":131072,"gpu_execution":false,"host_owner_bytes":37152,"message_rows":1024,"native_capacity_peak_bytes":1756672,"ordinary_host_s":0.062790052,"original_w_bytes":196608,"pad_rows":1536,"tensor_core_execution":false,"tensor_host_s":0.105030019}
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_weight_tensor_owner_rejections_and_fail_closed ... C71_PCS_TENSOR_OWNER_REJECTIONS {"cases":12,"gpu_execution":false,"tensor_core_execution":false,"credit":false}
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_weight_tensor_symbol_is_mandatory ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 533 filtered out; finished in 15.56s
+

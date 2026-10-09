@@ -1,0 +1,8 @@
+
+running 2 tests
+test c71_matrix::range::windowed::native::tests::c71_b12_native_pcs_compare_words_exact_and_terminal ... C71_PCS_COMPARE_WORDS {"positive":1,"terminal_rejections":10,"field_downloads":0,"gpu_execution":false,"credit":false}
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_pcs_compare_words_symbol_is_mandatory ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 534 filtered out; finished in 10.33s
+

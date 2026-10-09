@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::b12::replay::tests::c71_b12_original_scan_live_prefix_order_and_errors ... C71_ORIGINAL_SCAN {"getter_cases":3,"scanner_cases":1,"errors":5,"public_tail_reads":0,"credit":false}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 535 filtered out; finished in 0.62s
+

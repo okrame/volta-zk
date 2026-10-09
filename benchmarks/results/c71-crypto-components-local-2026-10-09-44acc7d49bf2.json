@@ -1,0 +1,2095 @@
+{
+  "schema": "c71-crypto-preparation-local-v1",
+  "date": "2026-10-09",
+  "recorded_at_utc": "2026-10-09T07:16:00.248564+00:00",
+  "status": "PASS_LOCAL_LINEAR_SCAN_XOF_PARITY_AND_TENSOR_OWNER; ATTENTION_CAUSAL_REVIEW_REQUIRED",
+  "credit": false,
+  "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+  "git_dirty": false,
+  "baseline": "9033c64",
+  "canonical_diagnostic": "benchmarks/results/c71-cuda-experiment-2026-10-07-868a3e8.json",
+  "prior_stage": "benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json",
+  "goal_status": "active",
+  "goal_complete": false,
+  "readiness": {
+    "linear_original_scan_selected": true,
+    "Tensor_Core_comparison_hook_integrated": true,
+    "Tensor_Core_default_selected": false,
+    "GPU_XOF_component_implemented": true,
+    "GPU_XOF_owner_and_Tree_integrated": false,
+    "resident_A_initial_Tree_selected": true,
+    "resident_A_query_and_S1_integrated": false,
+    "QK_PV_MMA_selected": false,
+    "attention_causal_contract_verified_at_this_sha": false,
+    "H100_campaign_authorized": false
+  },
+  "provenance": {
+    "platform": "Linux-6.12.94+deb13-arm64-aarch64-with-glibc2.41",
+    "machine": "aarch64",
+    "gpu_execution": false,
+    "cuda_compilation": false,
+    "code_commits": [
+      "e7ac3f8",
+      "6b5438c",
+      "4f53fe6",
+      "44acc7d"
+    ],
+    "inputs_sha256": {
+      "cuda/c71_attention_mma.cu": "b13d325fd682afe45d1df5ca65ab26a221fbc0d9ed72e33127a0798bdbc4b571",
+      "cuda/c71_attention_mma.cuh": "a5059e21d1d956cf797a7104aa19562e0de9bc9d32446a828bcb0e5d2009b104",
+      "cuda/c71_pcs_salts.cu": "f21f37d800f9a7e7fa1af41c2fa6db9dd80460ae2c06c64c3a828b3991b4de5e",
+      "cuda/c71_pcs_salts.cuh": "0ac8d02fb004cd0c5266b29357d9347245d1169bad5d4eac9ad95e0874c6ca03",
+      "cuda/c71_pcs_weight.cu": "56a15f80349502295884b696a469317cb2c10484fbdd2b56a9dd430eaf8ab51e",
+      "cuda/c71_pcs_weight_compare.cpp": "a42a7709e5bbb692d1ca02ddd279c214bb664c749d1edf6252c2e5a18159bf5d",
+      "cuda/c71_pcs_weight_tensor.cu": "43248a19ddd253e8f08a5f304199c57d0c1a9327cb52c52ad85d8a356a98a2f2",
+      "cuda/c71_range_runtime.cpp": "d16b2afc2a7e84b21c47e1aa41e29858d1f34a4d5230e4a389c69ffa60c5b6f1",
+      "cuda/c71_range_runtime.h": "1a2a5b825bb07d9faf067c87219e0a0d5b9ab29c083dfbdf56b95b6199c636fc",
+      "rust/volta-pcs/src/c71_matrix/b12.rs": "09a82e3076ce13806d87d3ce9b4b27f7346c6cafc44656140c6d63e0752b82a1",
+      "rust/volta-pcs/src/c71_matrix/b12/replay.rs": "c087056062a0d115e5a614bad0f280fb7020ca3cbe75a57892961b805460b204",
+      "rust/volta-pcs/src/c71_matrix/linear.rs": "3393bf0807571fac782407676a60bbf62e79331252b8a906cf52f76a8d6d857c",
+      "rust/volta-pcs/src/c71_matrix/range/windowed/native.rs": "6e753f5357f87844d3362df536ace4d3cc8799cc2c14ad48ea950cb3911a8679",
+      "tests/c71_attention_mma_host.cpp": "eeba61238b14740e8c4ab23aa101256a85ca32a56f94626132699343a4056c68",
+      "tests/c71_pcs_salts_host.cpp": "109e1b5f7b9b7e250ecf156ed82cc92c31270f72cf6180fa450d14b1415d1243",
+      "tests/c71_range_runtime_host.cpp": "9a73c29c55722144398f361b35b5739cd81cec9735115a0f8aa86071b9f1d19c",
+      "tests/test_c71_attention_mma.py": "f8be657405718e8a734416630fbd099ffccfb6f403ddf2434bdebe4137842674"
+    },
+    "gamma_identities_unchanged": true,
+    "native_fixture": "deferred fake driver, C++ owner g++ O2 UBSan; Rust root O0/dependencies O2",
+    "clean_suite": "each invocation asserted clean tree before and after at source SHA; source hash taken from Git, not later working tree",
+    "warm_cargo": "clean Cargo reused the identical binary from preliminary build pre03; not a new full compilation"
+  },
+  "binary": {
+    "path": "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "bytes": 89862968,
+    "sha256": "ccdb21f671ce66fa05ca4aac28929f31e8b36f01d1535d3af5e43df57f49c633"
+  },
+  "checks": [
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_composed_full_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 29.48515250440687,
+      "max_rss_bytes": 229113856,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 29.353145,
+      "system_s": 0.12759299999999998,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-a_chain-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_canonical_device_original_scan_coverage_rejects_duplicate_and_omitted_rows",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 2.985202395822853,
+      "max_rss_bytes": 229101568,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 2.95293,
+      "system_s": 0.031125,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-a_coverage-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_source_tree",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 16.07211414910853,
+      "max_rss_bytes": 229158912,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 16.003598,
+      "system_s": 0.06526799999999999,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-a_tree-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 2,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_attention_mma.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 2.4529493716545403,
+      "max_rss_bytes": 126418944,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 2.409302,
+      "system_s": 0.039756,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-attention-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "python"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 0,
+      "wall_s": 0.1361172590404749,
+      "max_rss_bytes": 52928512,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.053161,
+      "system_s": 0.08282099999999999,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-build-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 0,
+      "kind": "build"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_docs.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.6084856428205967,
+      "max_rss_bytes": 58195968,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.558588,
+      "system_s": 0.050567,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-docs-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 9,
+      "kind": "python"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_sourcewise_linear",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 21.643482656683773,
+      "max_rss_bytes": 77135872,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 21.558749,
+      "system_s": 0.07997699999999999,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 4,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_sourcewise_linear_scan_coefficients_and_component_benchmark",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.4767780127003789,
+      "max_rss_bytes": 17195008,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.47639699999999996,
+      "system_s": 0.0,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear_bench_1-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_sourcewise_linear_scan_coefficients_and_component_benchmark",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.4765313039533794,
+      "max_rss_bytes": 17195008,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.476275,
+      "system_s": 0.0,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear_bench_2-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_sourcewise_linear_scan_coefficients_and_component_benchmark",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.4762972202152014,
+      "max_rss_bytes": 17195008,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.471948,
+      "system_s": 0.003993,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear_bench_3-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_original_scan_live_prefix_order_and_errors",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.3541714367456734,
+      "max_rss_bytes": 18886656,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.353882,
+      "system_s": 0.0,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-original_scan-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_range_native.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 3.8380231270566583,
+      "max_rss_bytes": 258056192,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 3.74646,
+      "system_s": 0.072797,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-owner-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 2,
+      "kind": "python"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_private_coins_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 1.1418688441626728,
+      "max_rss_bytes": 108699648,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 1.111994,
+      "system_s": 0.031585999999999996,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-salts-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 7,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-s",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_pcs_tensor.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 1.193638350814581,
+      "max_rss_bytes": 123367424,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 1.141499,
+      "system_s": 0.031318,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-tensor_host-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "python"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_tensor",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 9.072870614007115,
+      "max_rss_bytes": 229343232,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 8.903336,
+      "system_s": 0.16239099999999998,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-tensor_owner-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 3,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_composed_full_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 30.39228432206437,
+      "max_rss_bytes": 229122048,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 30.253122,
+      "system_s": 0.133385,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-w_chain-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 1,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "g++",
+        "-std=c++17",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "cuda",
+        "-c",
+        "cuda/c71_pcs_weight_compare.cpp",
+        "-o",
+        "/tmp/c71-weight-compare-clean-20261008-01.o"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.4456203090958297,
+      "max_rss_bytes": 113590272,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.421517,
+      "system_s": 0.023885999999999998,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-w_diagnostic_compile-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 0,
+      "kind": "build"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_tree",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 16.156873214058578,
+      "max_rss_bytes": 229175296,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 16.087981,
+      "system_s": 0.065265,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-w_tree-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 2,
+      "kind": "rust"
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_pcs_compare_words",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 5.931755559984595,
+      "max_rss_bytes": 229183488,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 5.854246,
+      "system_s": 0.075639,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-word_compare-20261008-01.log",
+      "source_git_sha": "44acc7d49bf2b917bc8b9806e805a8774f255d70",
+      "git_dirty": false,
+      "record_run": true,
+      "passed": 2,
+      "kind": "rust"
+    }
+  ],
+  "unique_rust_tests": 24,
+  "rust_test_invocations_passed": 27,
+  "python_tests_passed": 13,
+  "max_test_descendant_rss_bytes": 258056192,
+  "preliminary_full_build": {
+    "command": [
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "-j",
+      "1",
+      "-p",
+      "volta-pcs",
+      "--features",
+      "c71-seed6-reference",
+      "--lib",
+      "--no-run",
+      "--config",
+      "profile.dev.package.volta-pcs.opt-level=0"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk/rust",
+    "exit_code": 0,
+    "wall_s": 56.91435502888635,
+    "max_rss_bytes": 2492010496,
+    "as_limit_mib": null,
+    "deadline_s": 60,
+    "workers": 1,
+    "user_s": 50.330222,
+    "system_s": 6.468263,
+    "log": "/tmp/c71-xof-linear-build-pre03.log"
+  },
+  "metrics": {
+    "C71_NATIVE_A_TREE_LOCAL": [
+      {
+        "cache": {
+          "domain_log2": 15,
+          "initial_coset_bytes": 262144,
+          "initial_merkle_scratch_bytes": 291584,
+          "initial_native_peak_capacity_bytes": 1879808,
+          "query_subtree_bytes_each": 24544,
+          "retained_merkle_digest_bytes": 4064,
+          "retained_pcs_pad_bytes": 1572864,
+          "retained_range_histogram_capacity_bytes": 0,
+          "retained_rng_bytes": 176,
+          "retained_s1_policy": false,
+          "retained_salt_offset_bytes": 512,
+          "scope": "Merkle/pad payloads, not total host capacity; initial scratch includes coset and is no longer live; native high-water includes all buffers on the common owner, separately from this Merkle payload; S1 is retained only within active sequential PCS chain, not by this snapshot; other FFT/cache/query/sourcewise temporaries excluded"
+        },
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 3244270,
+          "native_reservation_bytes": 52512,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 273266252,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 3296483,
+          "temporary_payload_peak_bytes": 4830796
+        },
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 15,
+        "durable_records": 6,
+        "fixture_original_upload_before_commit": true,
+        "gpu_execution": false,
+        "initial_cpu_scans": 0,
+        "initial_scalar_getter_calls": 0,
+        "native": {
+          "allocations": 590,
+          "arena_bytes": 15360,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 6628,
+          "fences": 663,
+          "h2d_bytes": 2101248,
+          "host_owner_bytes": 37152,
+          "launches": 1480,
+          "live_capacity_bytes": 15360,
+          "logical_bytes": 15360,
+          "peak_capacity_bytes": 1879808,
+          "peak_reserved_bytes": 1880832,
+          "releases": 588,
+          "stopped": 0,
+          "weights_bytes": 1024,
+          "weights_loaded_bytes": 1024,
+          "weights_sealed": 1,
+          "zeroed_bytes": 16779780
+        },
+        "native_commitment_census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 1024,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 1619790,
+          "native_reservation_bytes": 52512,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 273263630,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 1672003,
+          "temporary_payload_peak_bytes": 4828174
+        },
+        "native_commitment_host_s": 0.512422598,
+        "native_geometry": [
+          16384,
+          256,
+          64,
+          256
+        ],
+        "reconstructions": 64,
+        "reference_commitment_o0_s": 3.638975859,
+        "reference_geometry": [
+          16384,
+          256,
+          64,
+          256
+        ],
+        "source_visits": 786432
+      }
+    ],
+    "C71_NATIVE_A_TREE_REJECTIONS": [
+      {
+        "cases": 8,
+        "scalar_fallback_calls": 0,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_ATTENTION_MMA_CASE": [
+      {
+        "id": 0,
+        "op": "qk",
+        "rows": 1,
+        "old": 0,
+        "first": 0,
+        "groups": 8,
+        "lanes": 512,
+        "heads": 32,
+        "signed_products": 16384,
+        "naive_i128_seconds": 7.5582e-05,
+        "fragment_model_seconds": 0.025534814
+      },
+      {
+        "id": 0,
+        "op": "pv",
+        "rows": 1,
+        "old": 0,
+        "first": 0,
+        "groups": 8,
+        "lanes": 512,
+        "heads": 32,
+        "signed_products": 16384,
+        "naive_i128_seconds": 8.8167e-05,
+        "fragment_model_seconds": 0.103752103
+      },
+      {
+        "id": 1,
+        "op": "qk",
+        "rows": 15,
+        "old": 0,
+        "first": 135,
+        "groups": 16,
+        "lanes": 256,
+        "heads": 3,
+        "signed_products": 1647360,
+        "naive_i128_seconds": 0.005936681,
+        "fragment_model_seconds": 0.023547061
+      },
+      {
+        "id": 1,
+        "op": "pv",
+        "rows": 15,
+        "old": 0,
+        "first": 135,
+        "groups": 16,
+        "lanes": 256,
+        "heads": 16,
+        "signed_products": 8785920,
+        "naive_i128_seconds": 0.032512211,
+        "fragment_model_seconds": 0.132168422
+      },
+      {
+        "id": 2,
+        "op": "qk",
+        "rows": 16,
+        "old": 150,
+        "first": 134,
+        "groups": 8,
+        "lanes": 512,
+        "heads": 3,
+        "signed_products": 7188480,
+        "naive_i128_seconds": 0.025874274,
+        "fragment_model_seconds": 0.095150453
+      },
+      {
+        "id": 2,
+        "op": "pv",
+        "rows": 16,
+        "old": 150,
+        "first": 134,
+        "groups": 8,
+        "lanes": 512,
+        "heads": 8,
+        "signed_products": 19169280,
+        "naive_i128_seconds": 0.069737888,
+        "fragment_model_seconds": 0.264637346
+      },
+      {
+        "id": 3,
+        "op": "qk",
+        "rows": 17,
+        "old": 300,
+        "first": 133,
+        "groups": 4,
+        "lanes": 512,
+        "heads": 3,
+        "signed_products": 11541504,
+        "naive_i128_seconds": 0.041204815,
+        "fragment_model_seconds": 0.279239716
+      },
+      {
+        "id": 3,
+        "op": "pv",
+        "rows": 17,
+        "old": 300,
+        "first": 133,
+        "groups": 4,
+        "lanes": 512,
+        "heads": 4,
+        "signed_products": 15388672,
+        "naive_i128_seconds": 0.0554546,
+        "fragment_model_seconds": 0.391686172
+      }
+    ],
+    "C71_ATTENTION_MMA_HOST": [
+      {
+        "qk_head_cases": 41,
+        "pv_head_cases": 60,
+        "rejections": 6,
+        "max_keys": 450,
+        "max_lanes": 512,
+        "canary_reads": 0,
+        "output_coverage_exact": true,
+        "host_named_capacity_bytes": 11235372,
+        "mma_named_register_integer_bytes_per_thread": 124,
+        "mma_shared_bytes": 0,
+        "new_global_staging_bytes": 0,
+        "max_observed_int8_accumulator": 8388608,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_LINEAR_SCAN": [
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 1024,
+        "ordinary_ns": 25314231,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 3480092,
+        "scan_original_visits": 10240,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 341,
+        "ordinary_ns": 24929355,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 1547712,
+        "scan_original_visits": 3410,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 0,
+        "ordinary_ns": 24894022,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 188166,
+        "scan_original_visits": 0,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 4096,
+        "ordinary_ns": 117704297,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 15286374,
+        "scan_original_visits": 49152,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 1365,
+        "ordinary_ns": 117622423,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 6220015,
+        "scan_original_visits": 16380,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 0,
+        "ordinary_ns": 117917466,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 331586,
+        "scan_original_visits": 0,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 1024,
+        "ordinary_ns": 25121939,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 3529510,
+        "scan_original_visits": 10240,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 341,
+        "ordinary_ns": 25164610,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 1578547,
+        "scan_original_visits": 3410,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 0,
+        "ordinary_ns": 24865232,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 198751,
+        "scan_original_visits": 0,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 4096,
+        "ordinary_ns": 118044678,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 15099454,
+        "scan_original_visits": 49152,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 1365,
+        "ordinary_ns": 117758678,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 6151391,
+        "scan_original_visits": 16380,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 0,
+        "ordinary_ns": 118206553,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 328250,
+        "scan_original_visits": 0,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 1024,
+        "ordinary_ns": 25217022,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 3563010,
+        "scan_original_visits": 10240,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 341,
+        "ordinary_ns": 25194983,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 1539294,
+        "scan_original_visits": 3410,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 0,
+        "ordinary_ns": 25254065,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 201543,
+        "scan_original_visits": 0,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 4096,
+        "ordinary_ns": 117627639,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 15270579,
+        "scan_original_visits": 49152,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 1365,
+        "ordinary_ns": 117573800,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 6248436,
+        "scan_original_visits": 16380,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 0,
+        "ordinary_ns": 117799511,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 322709,
+        "scan_original_visits": 0,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 1024,
+        "ordinary_ns": 25470606,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 3492593,
+        "scan_original_visits": 10240,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 341,
+        "ordinary_ns": 25166567,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 1677797,
+        "scan_original_visits": 3410,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1328,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 10,
+        "harness_domain_arrays_peak_bound_bytes": 122880,
+        "live": 0,
+        "ordinary_ns": 25038106,
+        "ordinary_original_reads": 10240,
+        "ordinary_round_point_capacity_bytes": 480,
+        "owned_heap_capacity_peak_bound_bytes": 13368,
+        "prefix_eq_capacity_peak_cells": 258,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 10,
+        "scan_ns": 188584,
+        "scan_original_visits": 0,
+        "scans": 10,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 4096,
+        "ordinary_ns": 117741760,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 15205330,
+        "scan_original_visits": 49152,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 1365,
+        "ordinary_ns": 117652720,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 6192394,
+        "scan_original_visits": 16380,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      },
+      {
+        "borrowed_form_capacity_bytes": 1424,
+        "correlations": 0,
+        "credit": false,
+        "device_bytes": 0,
+        "domain_log2": 12,
+        "harness_domain_arrays_peak_bound_bytes": 491520,
+        "live": 0,
+        "ordinary_ns": 117427174,
+        "ordinary_original_reads": 49152,
+        "ordinary_round_point_capacity_bytes": 576,
+        "owned_heap_capacity_peak_bound_bytes": 13656,
+        "prefix_eq_capacity_peak_cells": 264,
+        "public_residual_capacity_peak_bytes": 1696,
+        "public_tail_reads": 0,
+        "rounds": 12,
+        "scan_ns": 309124,
+        "scan_original_visits": 0,
+        "scans": 12,
+        "scope": "CPU coefficient component, old then scan per round; heap capacities and borrowed forms, not allocator metadata/process RSS or model/PCS/replay workspace; full-domain arrays belong only to the independent test oracle",
+        "transfer_bytes": 0
+      }
+    ],
+    "C71_LINEAR_SCANNED": [
+      {
+        "domain_log2": 12,
+        "live": 93,
+        "scans": 12,
+        "round_correlations": 36,
+        "reserved_terminal_correlations": 2,
+        "failed_scans": 5,
+        "credit": false
+      }
+    ],
+    "C71_ORIGINAL_SCAN": [
+      {
+        "getter_cases": 3,
+        "scanner_cases": 1,
+        "errors": 5,
+        "public_tail_reads": 0,
+        "credit": false
+      }
+    ],
+    "C71_XOF_COMPONENT": [
+      {
+        "buffer_bytes": 4096,
+        "buffered_seconds": 0.009108481,
+        "credit": false,
+        "samples_per_mode": 262144,
+        "scope": "local sequential Goldilocks sampler; not H100 or whole PCS",
+        "speedup": 2.2737337872253343,
+        "unbuffered_seconds": 0.020710261
+      }
+    ],
+    "C71_PCS_SALTS_HOST": [
+      {
+        "vector_cases": 56,
+        "byte_checks": 7168,
+        "stream_cases": 11,
+        "forced_mask_checks": 32768,
+        "leaves": 66308,
+        "chunk_calls": 541,
+        "physical_blocks": 66734,
+        "fixture_scratch_bytes": 1280,
+        "max_shape_scratch_bytes": 10520320,
+        "host_prescan_seconds": 0.056778725,
+        "host_replay_seconds": 0.08331004,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_PCS_SALTS_REFERENCE": [
+      {
+        "credit": false,
+        "cuda_compilation": false,
+        "gpu_execution": false,
+        "live_mmcs_cases": 3,
+        "reference": "pinned Rust blake3 OutputReader and Goldilocks StandardUniform",
+        "rng_state_bytes": 176,
+        "stdin_blake3": "74580b1dc7829ebd1b2dba166eb9218551b771d98b5fff3124253e0f24112cdc",
+        "stdin_bytes": 2662620
+      }
+    ],
+    "C71_XOF_SALTS4_COMPONENT": [
+      {
+        "accepted_salts_per_mode": 262144,
+        "credit": false,
+        "gpu_execution": false,
+        "leaf_pairs_checked": 65536,
+        "parity_candidate_bytes": 2097152,
+        "repetitions": 3,
+        "same_binary": true,
+        "schedules": [
+          {
+            "ordinary_seconds": [
+              0.010945778,
+              0.010893903,
+              0.010959736
+            ],
+            "salts4_seconds": [
+              0.012919533,
+              0.012763116,
+              0.01279799
+            ],
+            "strided": false
+          },
+          {
+            "ordinary_seconds": [
+              0.026197941,
+              0.026322525,
+              0.026395233
+            ],
+            "salts4_seconds": [
+              0.017203127,
+              0.01727496,
+              0.017268127
+            ],
+            "strided": true
+          }
+        ],
+        "scope": "local sequential and strided sampler; not H100 or whole PCS",
+        "stack_batch_bytes": 32,
+        "strided_cosets": 4096,
+        "strided_rows": 2048
+      }
+    ],
+    "C71_PCS_TENSOR_HOST": [
+      {
+        "digit_values": 65536,
+        "digit_checks": 262144,
+        "canonical_edges": 11,
+        "dot_cases": 28,
+        "dot_outputs": 14336,
+        "max_k": 256,
+        "pcs_cases": 8,
+        "source_scans": 8,
+        "w_loads": 5808,
+        "pcs_outputs": 720896,
+        "mma": 3968,
+        "high_loads": 74496,
+        "prefix_checks": 42467328,
+        "shared_bytes": 8448,
+        "rejections": 5,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_PCS_TENSOR_OWNER": [
+      {
+        "all_fft_values_equal": true,
+        "all_leaf_node_digests_equal": true,
+        "columns": 128,
+        "coset_rows": 4,
+        "cosets": 32,
+        "credit": false,
+        "fixture_post_fft_observer_bytes": 131072,
+        "gpu_execution": false,
+        "host_owner_bytes": 37152,
+        "message_rows": 4,
+        "native_capacity_peak_bytes": 32256,
+        "ordinary_host_s": 0.003055799,
+        "original_w_bytes": 768,
+        "pad_rows": 11,
+        "tensor_core_execution": false,
+        "tensor_host_s": 0.003164383
+      },
+      {
+        "all_fft_values_equal": true,
+        "all_leaf_node_digests_equal": true,
+        "columns": 128,
+        "coset_rows": 16,
+        "cosets": 32,
+        "credit": false,
+        "fixture_post_fft_observer_bytes": 524288,
+        "gpu_execution": false,
+        "host_owner_bytes": 37152,
+        "message_rows": 64,
+        "native_capacity_peak_bytes": 97280,
+        "ordinary_host_s": 0.011940905,
+        "original_w_bytes": 12288,
+        "pad_rows": 17,
+        "tensor_core_execution": false,
+        "tensor_host_s": 0.01409991
+      },
+      {
+        "all_fft_values_equal": true,
+        "all_leaf_node_digests_equal": true,
+        "columns": 128,
+        "coset_rows": 4,
+        "cosets": 32,
+        "credit": false,
+        "fixture_post_fft_observer_bytes": 131072,
+        "gpu_execution": false,
+        "host_owner_bytes": 37152,
+        "message_rows": 1024,
+        "native_capacity_peak_bytes": 1756672,
+        "ordinary_host_s": 0.036161217,
+        "original_w_bytes": 196608,
+        "pad_rows": 1536,
+        "tensor_core_execution": false,
+        "tensor_host_s": 0.061150738
+      }
+    ],
+    "C71_PCS_TENSOR_OWNER_REJECTIONS": [
+      {
+        "cases": 12,
+        "gpu_execution": false,
+        "tensor_core_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_NATIVE_W_TREE_LOCAL": [
+      {
+        "cache": {
+          "domain_log2": 15,
+          "initial_coset_bytes": 524288,
+          "initial_merkle_scratch_bytes": 1059072,
+          "initial_native_peak_capacity_bytes": 2699776,
+          "query_subtree_bytes_each": 24544,
+          "retained_merkle_digest_bytes": 4064,
+          "retained_pcs_pad_bytes": 1572864,
+          "retained_range_histogram_capacity_bytes": 0,
+          "retained_rng_bytes": 176,
+          "retained_s1_policy": false,
+          "retained_salt_offset_bytes": 512,
+          "scope": "Merkle/pad payloads, not total host capacity; initial scratch includes coset and is no longer live; native high-water includes all buffers on the common owner, separately from this Merkle payload; S1 is retained only within active sequential PCS chain, not by this snapshot; other FFT/cache/query/sourcewise temporaries excluded"
+        },
+        "census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 49152,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 3274313,
+          "native_reservation_bytes": 37152,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 273233714,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 3263038,
+          "temporary_payload_peak_bytes": 4798258
+        },
+        "credit": false,
+        "different_compiler_optimization_no_speedup_claim": true,
+        "domain_log2": 15,
+        "durable_records": 6,
+        "gpu_execution": false,
+        "native": {
+          "allocations": 97,
+          "arena_bytes": 0,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 4328,
+          "fences": 109,
+          "h2d_bytes": 2146384,
+          "host_owner_bytes": 37152,
+          "launches": 441,
+          "live_capacity_bytes": 0,
+          "logical_bytes": 0,
+          "peak_capacity_bytes": 2699776,
+          "peak_reserved_bytes": 2748928,
+          "releases": 97,
+          "stopped": 0,
+          "weights_bytes": 49152,
+          "weights_loaded_bytes": 49152,
+          "weights_sealed": 1,
+          "zeroed_bytes": 1048840
+        },
+        "native_commitment_census": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 49152,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 1651274,
+          "native_reservation_bytes": 37152,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 273233402,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 1639999,
+          "temporary_payload_peak_bytes": 4797946
+        },
+        "native_commitment_host_s": 0.424130908,
+        "native_geometry": [
+          16384,
+          64,
+          256,
+          256
+        ],
+        "reference_commitment_o0_s": 3.859734365,
+        "reference_geometry": [
+          16384,
+          256,
+          64,
+          256
+        ],
+        "source_visits": 49152
+      }
+    ],
+    "C71_NATIVE_W_TREE_REJECTIONS": [
+      {
+        "cases": 8,
+        "scalar_fallback_calls": 0,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ],
+    "C71_PCS_COMPARE_WORDS": [
+      {
+        "positive": 1,
+        "terminal_rejections": 10,
+        "field_downloads": 0,
+        "gpu_execution": false,
+        "credit": false
+      }
+    ]
+  },
+  "durable_traces": [
+    {
+      "source_log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-a_chain-20261008-01.log",
+      "artifact": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-native-a-chain-212-6700985585968096084.jsonl",
+      "records": 294,
+      "joint_payload_peak_bytes": 101150291,
+      "denied_allocations": 0
+    },
+    {
+      "source_log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-w_chain-20261008-01.log",
+      "artifact": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-native-w-chain-166-12015276451695279486.jsonl",
+      "records": 295,
+      "joint_payload_peak_bytes": 101064476,
+      "denied_allocations": 0
+    }
+  ],
+  "failure_records": [
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 101,
+      "wall_s": 12.726489290129393,
+      "max_rss_bytes": 1529372672,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 11.811678,
+      "system_s": 0.9038879999999999,
+      "log": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-xof-linear-build-pre01.log",
+      "git_dirty": true,
+      "record_run": false
+    }
+  ],
+  "preliminary_shell_error": {
+    "exit_code": 127,
+    "event": "python executable missing; no child check started; corrected to python3",
+    "provenance": "observed tool result, no raw log existed; helper requires exclusive creation",
+    "record_run": false
+  },
+  "linear_benchmark": {
+    "replicas": 3,
+    "D12_full_component_ratios": [
+      7.817811028133865,
+      7.7028931908868685,
+      7.7434531180842505
+    ],
+    "mean_ratio": 7.754719112368328,
+    "order": "old then scanner per round, unchanged root O0 binary",
+    "scope": "CPU coefficient component; no H100, full proof or full-domain speedup credit",
+    "original_visits_bound": "D*live",
+    "old_getter_visits_bound": "D*2^D",
+    "prefix_eq_peak_cells_bound": "ceil(D/8)*256",
+    "residual_size_bytes": 72,
+    "new_device_bytes": 0,
+    "new_transfer_bytes": 0,
+    "full_canonical_joint_memory_admitted": false
+  },
+  "GPU_salts_component": {
+    "domain_bytes_with_NUL": 34,
+    "seed_bytes": 32,
+    "descriptor_input_bytes": 66,
+    "CAP_bytes": 1099511627776,
+    "max_candidate_capacity": 16777216,
+    "scratch_capacity_bytes": 10520320,
+    "W_prescan_total_capacity_bytes": 27297536,
+    "A_prescan_total_capacity_bytes": 23103232,
+    "scope": "host shared helpers vs independent pinned Rust streams; CUDA hierarchy and owner not executed"
+  },
+  "ABI_resources": {
+    "owner_context_bytes": 37152,
+    "stats_bytes": 152,
+    "added_Rust_Api_bytes": 16,
+    "PrivateRng_state_bytes": 176,
+    "PrivateRng_previous_state_bytes": 144,
+    "added_ReplayModel_live_bytes": 8,
+    "runtime_metadata_and_all_Rust_capacities_charged": true
+  },
+  "attention_review": {
+    "unselected": true,
+    "numeric_fragment_parity_passed": true,
+    "finding": "tile-max KV loads may read future keys/values relative to an earlier row, even if output is zero",
+    "contract_sources": [
+      "docs/c7.1/security.md:582",
+      "docs/c7.1/specs.md:1001"
+    ],
+    "resolution_required": "MMA only common causal prefix; per-output scalar diagonal/tail; future initialized canaries per row",
+    "default_scalar_launchers_changed": false
+  },
+  "W_diagnostic": {
+    "host_translation_unit_compiled": true,
+    "linked": false,
+    "executed": false,
+    "groups": [
+      0,
+      4064
+    ],
+    "warmups_per_group": 1,
+    "alternating_replicas_per_group": 3,
+    "message_rows": 16384,
+    "coset_rows": 64,
+    "Q": 256,
+    "synthetic_W_bytes": 4194304,
+    "canonical_throughput_representative": false,
+    "temporary_budget_bytes": 16777216,
+    "physical_reserve_bytes": 268435456
+  },
+  "limitations": [
+    "No CUDA compilation, kernel scheduling, Tensor Core execution or H100 measurements.",
+    "All tests serial, one worker, 60 seconds and AS 2 GiB; compiler RSS separate.",
+    "Tensor owner fake geometries are math fixtures, not canonical PCS hiding-rate instances.",
+    "XOF helper parity does not exercise CUDA mask/prefix/scatter scheduling.",
+    "QK/PV numeric equality at this source is insufficient for causal read contract; candidate unselected.",
+    "Complete resource accounting and query/S1/linear GPU/GKR/range integration remain goal work.",
+    "Composed W/A tests use 16 MiB reference row cache only in fixture; uncached D15 obligation remains open.",
+    "No changes to numerical workload/recipes/quantization, \u0393 identities, NoPeek, AES PCG or one-time correlations."
+  ],
+  "artifacts": [
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-attention-mma-pre01.json",
+      "bytes": 447,
+      "sha256": "57b5112371c49e77aa9ab6a827ccaad34319cd6d7bd14aad16002ff050eb110f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-attention-mma-pre01.log",
+      "bytes": 2003,
+      "sha256": "e5dfb98eb34c1cef885dd556e5cc593602ebfffedbd04ab306eef512e542c1ba"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-a_chain-20261008-01.json",
+      "bytes": 532,
+      "sha256": "6ace44e66e5b6ec34d9e1b0a2863501fa02e87bab90c68f981b9e7988a1ef7b5"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-a_chain-20261008-01.log",
+      "bytes": 2461,
+      "sha256": "98a74c433b8ab76ebfc95dcf11e3252c487a953e23c50093342176d100df9d2d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-a_coverage-20261008-01.json",
+      "bytes": 531,
+      "sha256": "e5df99254ee083d0173e50ad6950076e57dd6dd0e928afeaa94f779d48490202"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-a_coverage-20261008-01.log",
+      "bytes": 268,
+      "sha256": "5cb213e4bd71cdf5e9fd58be4a1a5a25b1553c571a30effedcb52d44093c3576"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-a_tree-20261008-01.json",
+      "bytes": 488,
+      "sha256": "4caf3667a0549a2be4a3d694ebb229a9157dfd80651ae55b72437238b1e62baf"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-a_tree-20261008-01.log",
+      "bytes": 3040,
+      "sha256": "ea632b794994ac2107442787b418ef0a72a19502a9ba76b8ffd5e87ef437dbc6"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-attention-20261008-01.json",
+      "bytes": 487,
+      "sha256": "557faea419d0fd8e0a4bf07701fdd920dbd37c37b9db1f9122e7262ccb9b0569"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-attention-20261008-01.log",
+      "bytes": 2003,
+      "sha256": "180ea04e0cbb22196ac01df5042c8de212d2dee5907801b71d4eefc615960c50"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-build-20261008-01.json",
+      "bytes": 569,
+      "sha256": "90d751db96832fa366242f2ecdba01222783d0a670320f000bc62d75c15fadf6"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-build-20261008-01.log",
+      "bytes": 14063,
+      "sha256": "967def811a4f117ab8596bd60de53acec766bcfe6b40d0441d71a546a2fe0c2c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-docs-20261008-01.json",
+      "bytes": 472,
+      "sha256": "04332d3cf41684576fd0777a1fcfb253bcef408478ff566ee8cefa545ee3e69a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-docs-20261008-01.log",
+      "bytes": 28,
+      "sha256": "13255d11c9f63f1e820f0bde703782c388e76149f84f15b388bc4b6e83389db2"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear-20261008-01.json",
+      "bytes": 487,
+      "sha256": "af64ed264eedbacb88cbf8663a530c1e28767d457e4adc0346389f970c76884a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear-20261008-01.log",
+      "bytes": 5126,
+      "sha256": "a46fb8b70bc682d9197bc6967d692fd1126ff8a95ccbb38d88a82540a099be63"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear_bench_1-20261008-01.json",
+      "bytes": 531,
+      "sha256": "83dacbdb3868a6e94f9938e177cae7358319d17ee28746d611d38da497f29462"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear_bench_1-20261008-01.log",
+      "bytes": 4635,
+      "sha256": "34af53caeaf599e57323cf238da67b012f7b6cf5c40da20b427cd2b6486b6a4c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear_bench_2-20261008-01.json",
+      "bytes": 520,
+      "sha256": "60f20fbf854d620e21db66facc6eff4ee68a5ae34e15163a095a21091a77b30b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear_bench_2-20261008-01.log",
+      "bytes": 4635,
+      "sha256": "268c9c7af6439e6f3e8f84c997dc8d60fd55500baaeda36916151ad8004a5f8e"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear_bench_3-20261008-01.json",
+      "bytes": 525,
+      "sha256": "99e0529ffe5f6ea7ec09b78c66752134c2ac4d2172fb0a386598f49ebedb97d8"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-linear_bench_3-20261008-01.log",
+      "bytes": 4635,
+      "sha256": "c32c98f172842d2342d1b4633726d4bdc4c466a34841b99b3bfd68173da4b4e7"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-original_scan-20261008-01.json",
+      "bytes": 502,
+      "sha256": "dac4c4c0cd82758ebaebb97255b217a4c586b7e92ebaa9f102f3666a77483a62"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-original_scan-20261008-01.log",
+      "bytes": 312,
+      "sha256": "de264fee51c42ed005a148d563a32b4c98bdccc3787de327263516bc1748e02a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-owner-20261008-01.json",
+      "bytes": 481,
+      "sha256": "5444b723917443606458e8853ec8c73e632c4ed5776c0b9518b64b96484c98cd"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-owner-20261008-01.log",
+      "bytes": 21,
+      "sha256": "c16a981e0d6a18c11636ce5b96511718102d2579b5aebe5af49c4cf3576cb598"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-salts-20261008-01.json",
+      "bytes": 484,
+      "sha256": "7b89c2688250a94bf812481a7ff93badbf34b1e3f5fa417135ef9a8acad7fe97"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-salts-20261008-01.log",
+      "bytes": 16189,
+      "sha256": "ecbd2189f0ba477c9edecf31d7a515444d811ec7f3720813141076bb3a323ae4"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-tensor_host-20261008-01.json",
+      "bytes": 485,
+      "sha256": "5ecd31ace0eb414cdf47903947fc2cc3ab09956f8a09e1449fd1a16b84c88a9d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-tensor_host-20261008-01.log",
+      "bytes": 347,
+      "sha256": "6f28991a6e88cfa0b80051f129d88bed784fbdcc0afd1dc4536aee1363bba3c5"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-tensor_owner-20261008-01.json",
+      "bytes": 495,
+      "sha256": "0e6999d5b70eb916485245e9377ab147845920d6522394308f3a1f3452423d83"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-tensor_owner-20261008-01.log",
+      "bytes": 1791,
+      "sha256": "62e03778a25ef18d830361fb759f5f3b20e159f2987ecf616c89dd8b42cea852"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-w_chain-20261008-01.json",
+      "bytes": 521,
+      "sha256": "3a725c2d2b6cd100b51623936d5ea6472b0aed0669aed4c0c9ccc804ecf11dcb"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-w_chain-20261008-01.log",
+      "bytes": 2463,
+      "sha256": "89fdd22272614b3a6d66bcb65c99789288e3b180c0d75c9f86c6b8f790f2e6a2"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-w_diagnostic_compile-20261008-01.json",
+      "bytes": 553,
+      "sha256": "ddf84e0849a9d4a8b12aa91b59b0536b23d7fa4f4f649cfe0004308443e67d9b"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-w_diagnostic_compile-20261008-01.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-w_tree-20261008-01.json",
+      "bytes": 478,
+      "sha256": "cb1fdede5bab123f41e438e7fc4f030bb75b292cffe0f2859ac380662ec9a4d9"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-w_tree-20261008-01.log",
+      "bytes": 2898,
+      "sha256": "bec169b70b90eedc5f3e23fe7130f716265f80f76fc6d57ef6da7ea0530a8e2c"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-word_compare-20261008-01.json",
+      "bytes": 488,
+      "sha256": "74273e5de21903e2801b8f5ff25dfa46d839b782c3d739c00d3506e767ceda69"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-components-clean-word_compare-20261008-01.log",
+      "bytes": 451,
+      "sha256": "f29c3951bb1cb2858712007fed7416ac518f8079357f1c0bfc091b09aaa1003f"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-crypto-components-clean-suite-20261008-01.py",
+      "bytes": 2675,
+      "sha256": "1657ab400902d494f76252075b23f6a062f0640efaea5e6fc50ab339b326e23a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-linear-parity-pre01.json",
+      "bytes": 440,
+      "sha256": "b55c908ec1f4690ca467637db83bd004b79afe92f84188e60a7bf1f885239f28"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-linear-parity-pre01.log",
+      "bytes": 5127,
+      "sha256": "72781097600f77fcd05c98fa48e5bf22df2fd1523fc2fe1bcc7f99d884b4cf60"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-local-check-20261008.py",
+      "bytes": 1448,
+      "sha256": "ab78b46d0e49e9a15b170ad0adac2346905d548a12111dd6060628988a4b0bc1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-native-a-chain-212-6700985585968096084.jsonl",
+      "bytes": 258237,
+      "sha256": "20a5eb0a4f3a94110e403bb1c09be655f3f464899e8736f260ae81ab767599d1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-native-compare-pre01.json",
+      "bytes": 449,
+      "sha256": "4e3585193a03f8fbadad5cbc226ecdcb6ba1876545c889bc23f82b12a03be672"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-native-compare-pre01.log",
+      "bytes": 452,
+      "sha256": "c76558adcb19a577a8079e2f2b7ff7e5e4efe75ba5723cf937709714fa26faa7"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-native-tensor-pre01.json",
+      "bytes": 433,
+      "sha256": "0f6b3eb577b1af05b4ce3fd2e75e10065c4d6d8fe042eed59fce8714ea35d44d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-native-tensor-pre01.log",
+      "bytes": 1793,
+      "sha256": "940f338604270be0e7cf2ec38b14ed86f9e123229fb0bb7bb854f012ac329d12"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-native-w-chain-166-12015276451695279486.jsonl",
+      "bytes": 259550,
+      "sha256": "5a10718b740ab2285dc0cf9f9e821849b3947a344f4a626c7ee610a43f90ac19"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-original-scan-pre01.json",
+      "bytes": 464,
+      "sha256": "042b958e70a96d3367cd43ac6846ea3ea408d8daac449281dd047dfab4eedd95"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-original-scan-pre01.log",
+      "bytes": 312,
+      "sha256": "bd7b36126d374b9c5a614b519c0e3e101ef1d19a25a6c67db18c887773154ef1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-salts-cpp-build-pre01.json",
+      "bytes": 553,
+      "sha256": "80caadf744d207482fb7dca285dfc03a4359734a80ddc94e1de22a41aa123f99"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-salts-cpp-build-pre01.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-salts-forced-pre01.json",
+      "bytes": 423,
+      "sha256": "2affe6cbd21d9f18f8660ef2a0a51620b6e02fba37995c3d4decffb6df56da08"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-salts-forced-pre01.log",
+      "bytes": 312,
+      "sha256": "10e2390b79ab1eec3630e882ac4971da8b97d0980988d097efc16c63586e8e09"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-tensor-owner-pre01.json",
+      "bytes": 468,
+      "sha256": "87bfe8d24fd50d6c5ecfbd92ea592c296d187964e5fb60a792b39678d1dbca9e"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-tensor-owner-pre01.log",
+      "bytes": 349,
+      "sha256": "9d0d2474b6e7f6adb3bfd5203caf3c91d5d31c7114a644338a869b4eab82962a"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-w-compare-build-pre01.json",
+      "bytes": 505,
+      "sha256": "b868d3016b8dab75af2b1578031e0f4032eac820ba00d4ba2d8a9c524184ea88"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-w-compare-build-pre01.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-xof-linear-build-pre01.json",
+      "bytes": 561,
+      "sha256": "92b5c33e86c3be285c1d07f03506ab79dfbd54843ab0a9af37436616240dd2c1"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-xof-linear-build-pre01.log",
+      "bytes": 8279,
+      "sha256": "3b5fcb3660cd43b73ff8506fc6e582d3cf8f71b36b8cb36ee12166f1c75501bc"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-xof-linear-build-pre02.json",
+      "bytes": 549,
+      "sha256": "af0ee81a2ae1b925444390a9b15b3ccbc475a55c267e76684e2a08c9179ad1ca"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-xof-linear-build-pre02.log",
+      "bytes": 14142,
+      "sha256": "6ea6491fcd89b91afb3b5d264c741aeb56383389f8223f41955bdf95c98f35ea"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-xof-linear-build-pre03.json",
+      "bytes": 548,
+      "sha256": "fd30ab8a2115478c8f0a00b49fecc6f766e0ff35b91895518b07a9891189788d"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-xof-linear-build-pre03.log",
+      "bytes": 14142,
+      "sha256": "092a29d33290302d45a2e975896c535e0155f88b24c30c8d1f54c64b5a442039"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-xof-parity-pre01.json",
+      "bytes": 472,
+      "sha256": "6a8d3d204931d8ed1ce24b5f19ccbcd6ced837d076a6508c570e4d5a042f1086"
+    },
+    {
+      "path": "benchmarks/results/c71-crypto-components-local-2026-10-09-44acc7d49bf2-logs/c71-xof-parity-pre01.log",
+      "bytes": 863,
+      "sha256": "effb2bbe9fabfdc521bb7777ddfb4dcde09a572ea58d46ea5f594fd8044f4909"
+    }
+  ]
+}

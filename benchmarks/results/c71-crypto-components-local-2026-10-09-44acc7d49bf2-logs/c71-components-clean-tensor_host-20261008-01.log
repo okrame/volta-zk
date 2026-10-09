@@ -1,0 +1,3 @@
+C71_PCS_TENSOR_HOST {"digit_values":65536,"digit_checks":262144,"canonical_edges":11,"dot_cases":28,"dot_outputs":14336,"max_k":256,"pcs_cases":8,"source_scans":8,"w_loads":5808,"pcs_outputs":720896,"mma":3968,"high_loads":74496,"prefix_checks":42467328,"shared_bytes":8448,"rejections":5,"gpu_execution":false,"credit":false}
+.
+1 passed in 1.11s

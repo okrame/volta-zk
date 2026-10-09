@@ -1,0 +1,28 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--no-run",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 0.1361172590404749,
+  "max_rss_bytes": 52928512,
+  "as_limit_mib": null,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.053161,
+  "system_s": 0.08282099999999999,
+  "log": "/tmp/c71-components-clean-build-20261008-01.log"
+}

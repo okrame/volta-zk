@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_native_pcs_compare_words",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 10.336012629792094,
+  "max_rss_bytes": 229306368,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 10.138343,
+  "system_s": 0.18839599999999998,
+  "log": "/tmp/c71-native-compare-pre01.log"
+}

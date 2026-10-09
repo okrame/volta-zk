@@ -1,0 +1,17 @@
+{
+  "command": [
+    "python3",
+    "-c",
+    "import subprocess; subprocess.run([\"/tmp/c71-salts-host-pre01\"], input=bytes(8), check=True)"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.035173624753952026,
+  "max_rss_bytes": 10817536,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.029768,
+  "system_s": 0.005162,
+  "log": "/tmp/c71-salts-forced-pre01.log"
+}

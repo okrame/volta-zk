@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-s",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_attention_mma.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 2.4529493716545403,
+  "max_rss_bytes": 126418944,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 2.409302,
+  "system_s": 0.039756,
+  "log": "/tmp/c71-components-clean-attention-20261008-01.log"
+}

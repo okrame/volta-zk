@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-s",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_pcs_tensor.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 1.193638350814581,
+  "max_rss_bytes": 123367424,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 1.141499,
+  "system_s": 0.031318,
+  "log": "/tmp/c71-components-clean-tensor_host-20261008-01.log"
+}

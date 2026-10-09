@@ -1,0 +1,23 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-s",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_range_native.py",
+    "tests/test_c71_pcs_tensor.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 8.56583583028987,
+  "max_rss_bytes": 255852544,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 8.231331,
+  "system_s": 0.25673,
+  "log": "/tmp/c71-tensor-owner-pre01.log"
+}

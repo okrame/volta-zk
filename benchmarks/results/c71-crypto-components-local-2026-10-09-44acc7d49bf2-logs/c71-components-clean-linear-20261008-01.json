@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_sourcewise_linear",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 21.643482656683773,
+  "max_rss_bytes": 77135872,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 21.558749,
+  "system_s": 0.07997699999999999,
+  "log": "/tmp/c71-components-clean-linear-20261008-01.log"
+}

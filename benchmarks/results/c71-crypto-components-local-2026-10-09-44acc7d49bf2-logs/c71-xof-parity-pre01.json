@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_private_coins_device_xof_exact_live_seed_seek_salts_and_offsets",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 1.3394904658198357,
+  "max_rss_bytes": 108769280,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 1.285745,
+  "system_s": 0.055826,
+  "log": "/tmp/c71-xof-parity-pre01.log"
+}

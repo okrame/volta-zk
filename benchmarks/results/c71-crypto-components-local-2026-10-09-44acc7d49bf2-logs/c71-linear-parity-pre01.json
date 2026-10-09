@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_sourcewise_linear",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 44.249031889252365,
+  "max_rss_bytes": 77131776,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 44.114491,
+  "system_s": 0.12153699999999999,
+  "log": "/tmp/c71-linear-parity-pre01.log"
+}

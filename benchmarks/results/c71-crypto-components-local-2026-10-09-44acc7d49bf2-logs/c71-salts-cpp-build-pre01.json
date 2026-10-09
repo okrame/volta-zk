@@ -1,0 +1,27 @@
+{
+  "command": [
+    "g++",
+    "-std=c++17",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-fsanitize=undefined",
+    "-fno-sanitize-recover=all",
+    "-I",
+    "cuda",
+    "tests/c71_pcs_salts_host.cpp",
+    "-o",
+    "/tmp/c71-salts-host-pre01"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 1.0596058326773345,
+  "max_rss_bytes": 108769280,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.9631909999999999,
+  "system_s": 0.092703,
+  "log": "/tmp/c71-salts-cpp-build-pre01.log"
+}

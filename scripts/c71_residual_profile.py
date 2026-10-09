@@ -40,6 +40,17 @@ FILES = {
         'wait_and_decode_response', 'verify_journal_and_completion'],
     PCS+'gemma/native/canonical_state.rs': ['preparation_including_inference',
         'commitment_a', 'proof_body', 'exchange_and_completion'],
+    PCS+'gemma/native/canonical_prove.rs': ['rms.prove_rms(s, &self.recipes.rms, &read, fs, rows)'],
+    PCS+'gemma/rms/caller.rs': ['gkr::prove(&gs, |i| frames.frame(i).unwrap(), fs, &mut rows)',
+        'CompactFrames::build', 'report["rms_parameters"]'],
+    PCS+'rms/gkr.rs': ['prove_impl(s, &get_frame, fs, correlations, true, None)',
+        'prove_sourcewise(s, get_frame, fs, correlations)', 'byte_function::prove_sourcewise(',
+        'source_cell_round::<true>', 'if !present[program_index]'],
+    PCS+'byte_function.rs': ['prove_sourcewise_impl(s, original, get_byte, fs, correlations, false, &[], 0)',
+        'range::prove_tree_sourcewise_custom('],
+    'cuda/c71_range_runtime.cpp': ['if(fence(c)) return -1;',
+        'if(c71_range_release(c,x) || (y && c71_range_release(c,y))) return -1;',
+        'return c71_range_release(c,id);', 'c->stats.h2d_bytes+=bytes;'],
 }
 
 def source(path):
@@ -62,12 +73,31 @@ def remainder_launches(degree, count):
 def public_query_arrays(q):
     assert q>0 and q&(q-1)==0
     degrees=[1<<i for i in range(q.bit_length())]
+    # Each Newton doubling performs two products, each product three DFTs.
+    # Product lengths are3t-1: size2 for t1, otherwise4t. Tree merges
+    # multiply degree-d factors at transform size4d. Count calls/cells,
+    # not butterflies, instructions or CPU-time from a different binary.
+    newton_products=newton_cells=0
+    for degree in degrees:
+        for j in range(1,degree.bit_length()):
+            size=2 if j==1 else 1<<(j+1)
+            newton_products+=2*(q//degree)
+            newton_cells+=6*size*(q//degree)
+    tree_cells=sum(3*4*d*(q//(2*d)) for d in degrees[:-1])
     return {'spectra_bytes': 2*len(degrees)*align(16*q),
         'twiddle_bytes': 2*sum(align(16*d) for d in degrees),
         'spectrum_DFT_calls': 2*sum(q//d for d in degrees),
         'spectrum_DFT_cells': 4*q*len(degrees),
         'product_tree_merges': q-1,
-        'excluded': 'Newton inverse_series FFT/product work, CPU cache/staging, packets, private pad/flag'}
+        'Newton_polynomial_products':newton_products,
+        'Newton_DFT_calls':3*newton_products,'Newton_DFT_cells':newton_cells,
+        'product_tree_DFT_calls':3*(q-1),'product_tree_DFT_cells':tree_cells,
+        'total_public_factor_DFT_calls':2*sum(q//d for d in degrees)+3*newton_products+3*(q-1),
+        'total_public_factor_DFT_cells':4*q*len(degrees)+newton_cells+tree_cells,
+        'spectrum_upload_fences':2*len(degrees),
+        'public_arrays_release_fences':4*len(degrees),
+        'twiddle_generation_GPU_launches':2*len(degrees),
+        'excluded': 'DFT internal butterflies/cache, points/shift exponentiation, CPU staging/copies/allocator, packets/private pad/flag'}
 
 def opening_batches(unique_subtrees, cut=4096, cap=1<<20):
     assert 1<=unique_subtrees<=512 and cut<=cap and cap%cut==0
@@ -115,11 +145,28 @@ def range_census(bits,cut,lengths,window,bytes_per_word):
     assert len(lengths)==cut
     passes=1+sum(1+length for length in lengths)
     rounds=bits*(bits-1)//2
+    retained=bits-cut
+    h_rounds=sum(range(cut))
+    # Child coefficients use two scratch buffers iff remainingbits>=10;
+    # download fences once, then generic release fences each buffer again.
+    second_scratch=sum(max(0,min(layer,retained)-9) for layer in range(bits))
+    coefficient_fences=2*rounds+second_scratch
+    gram_release_fences=sum(range(cut))+sum(lengths)
+    source_release_fences=passes*(1<<bits)//window if bytes_per_word==1 else passes
+    upload_fences=0 if bytes_per_word==1 else passes*(1<<bits)//window
     return {'virtual_full_source_passes':passes,'virtual_window_requests':passes*(1<<bits)//window,
         'logical_requested_bytes':passes*(1<<bits)*bytes_per_word,
         'coefficient_rounds':rounds,'coefficient_D2H_bytes':96*rounds,
         'coefficient_dependency_fences':rounds,'terminal_D2H_bytes':96*bits,
-        'root_D2H_bytes':48,'excluded': 'flags/release fences, canopy/Gram/child kernels and HBM; partial A replay costs'}
+        'root_D2H_bytes':48,'H_coefficient_rounds':h_rounds,
+        'coefficient_scratch_release_fences':rounds+second_scratch,
+        'coefficient_API_total_fences':coefficient_fences,
+        'root_and_terminal_download_fences':bits+1,
+        'canopy_and_retained_children_release_fences':bits+1,
+        'Gram_bucket_fold_and_final_release_fences':gram_release_fences,
+        'source_window_release_fences':source_release_fences,'W_signed_upload_fences':upload_fences,
+        'known_consumer_success_path_fences':coefficient_fences+2*(bits+1)+gram_release_fences+source_release_fences+upload_fences,
+        'excluded': 'resident A producer/byte-seal flags/fences, numeric staging, allocation/close, kernel HBM and partial A replay costs'}
 
 def real_seed6(n):
     rows=n+6; h=(rows-1).bit_length(); outputs=3*384*rows
@@ -141,6 +188,61 @@ def self_check():
     assert initial_query(30697345280,35,1<<20)['main_root_blocks']==29390
     assert [initial_query(a,34,1<<20)['main_root_blocks'] for a in
         [13154672538,14334320538,15513968538]]==[12644,13777,14911]
+    assert public_query_arrays(1)['total_public_factor_DFT_calls']==2
+    assert public_query_arrays(2)['total_public_factor_DFT_calls']==15
+    assert public_query_arrays(1<<20)['total_public_factor_DFT_calls']==19922807
+    assert public_query_arrays(1<<20)['total_public_factor_DFT_cells']==679477284
+    assert range_census(34,10,[0,1,1,1,1,1,2,2,3,3],1<<30,1)['known_consumer_success_path_fences']==1923
+    assert range_census(35,11,[0,1,1,1,1,1,2,2,2,3,3],1<<27,2)['known_consumer_success_path_fences']==9057
+
+def admitted_rms_work():
+    ledger_path='artifact/c7.1-pod/ledger-20261007T150200Z/ledger-attention.json'
+    admission_path='artifact/c7.1-pod/gamma-admission-20261007T155133Z/admission.json'
+    recipes_path='artifact/c7.1-pod/ledger-20261007T150200Z/recipes-attention.json'
+    raw=(ROOT/ledger_path).read_bytes(); ledger=json.loads(raw)
+    admission_raw=(ROOT/admission_path).read_bytes(); admission=json.loads(admission_raw)
+    recipes_raw=(ROOT/recipes_path).read_bytes(); recipes=json.loads(recipes_raw)
+    evidence={entry['path']:entry['sha256'] for entry in admission['evidence']}
+    assert admission['gamma_admitted'] is True
+    assert hashlib.sha256(raw).hexdigest()==evidence[ledger_path]
+    assert ledger['candidate_sha256']==evidence['artifact/c7.1-pod/pilot-complete-20261007T133500Z/pilot-fp64-full/candidate.json']
+    assert ledger['recipe_digest']==recipes['recipe_digest']
+    rows=[]
+    for context in ledger['contexts']:
+        rms=context['rms']; cell=context['rms_source_prover']['cell_phase']; support=context['rms_structural_support']
+        assert rms['rms_parameters']==recipes['rms']
+        assert bytes(rms['profile_digest']).hex()==ledger['recipe_digest']
+        bits=rms['padded_cells'].bit_length()-1
+        assert cell['cell_first_logical_frame_callbacks']==rms['live_cells']*bits*rms['depth']
+        pairs=sum(profile['supported_pairs'] for r in support['rounds'] for profile in r['profiles'])
+        ops=support['supported_gate_iterations_all_rounds']; program_pairs=pairs*rms['depth']
+        core={'Fp3_mul':7*(ops['and']+ops['xor'])+2*ops['copy']+6*program_pairs,
+            'Fp3_add':4*ops['and']+9*ops['xor']+2*ops['copy']+6*program_pairs,
+            'Fp3_sub':2*ops['and']+4*ops['xor']+ops['copy']+program_pairs,'Fp3_neg':ops['xor']}
+        assert core==support['factored_arithmetic_after_structural_support_pruning']
+        assert sum(layer['scalar_boolean_replay_gate_evaluations'] for layer in rms['layers'])==cell['cell_first_scalar_boolean_replay_gates']
+        rows.append({'old_tokens':context['old_tokens'],'programs':rms['programs'],
+            'depth':rms['depth'],'live_cells':rms['live_cells'],'padded_cells':rms['padded_cells'],
+            'cell_sumcheck_rounds':bits*rms['depth'],'cell_phase':cell,
+            'gate_iterations_after_public_support_pruning':ops,'coefficient_core_Fp3':core,
+            'byte_endpoint_children_source_work':context['rms_source_prover']['byte_endpoint']['counted_work'],
+            'compact_frames_named_payload_and_metadata_bytes':rms['compact_original_PYS_candidate']['payload_and_metadata_bytes'],
+            'missing':context['rms_source_prover']['missing']})
+    assert [row['old_tokens'] for row in rows]==[0,150,300]
+    return {'status':'quantified partial source work on admitted Gamma; no instruction/time lower bound',
+        'Gamma_admission_verified_by_ledger_digest':True,'ledger':ledger_path,
+        'ledger_sha256':hashlib.sha256(raw).hexdigest(),'admission':admission_path,
+        'admission_sha256':hashlib.sha256(admission_raw).hexdigest(),'recipes':recipes_path,
+        'recipes_sha256':hashlib.sha256(recipes_raw).hexdigest(),'recipe_digest':ledger['recipe_digest'],
+        'historical_ledger_flags_preserved':{'calibrated':ledger['calibrated'],'complete_work':ledger['complete_work'],
+            'complete_physical_peak':ledger['complete_physical_peak'],'credit':ledger['credit']},
+        'selected_route':'canonical_prove -> caller.prove_rms -> gkr.prove -> prove_sourcewise -> prove_impl(true,None); no patterns; canonical byte endpoint sourcewise',
+        'frame_callback_scope':'CompactFrames cache reads/replay; not additional complete A reconstructions',
+        'contexts':rows,'excluded_other_nonrange_families':['RMS statistic/P0','RNE/tableRNE','gate/Rope/QK/PV claims',
+            'EXP30 maximum/lookup/ratio pattern branch','GELU/softcap lookup','index/terminal/MAC/FS/codec/verifier'],
+        'target_status':'structural dominant CPU work remains open; H100 profiling alone does not close or accelerate this route',
+        'minimum_native_candidate':'reuse common owner, MAC-u3=2 arithmetic/reduction and bounded CompactFrames chunks; add RMS Boolean replay+four-coefficient consumer and byte-LUT consumer, preserving index/MAC/FS order and joint cap. No existing drop-in kernel; no candidate selected or performance inferred',
+        'new_campaign_requirement':'time and count selected RMS cell/byte consumers separately with current Gamma, exact coefficient/wire/MAC parity, both-role CPU profiles and complete scratch/caches; remaining named families need their own counters before complete work/time claim'}
 
 def existing_records():
     names=['c71-cuda-experiment-2026-10-07-868a3e8.json',
@@ -187,6 +289,7 @@ def report():
         'W_installation':{'equivalent_live_scans':128,'logical_live_i16_bytes':61394690560,
             'logical_read_bytes':128*61394690560,'minimum_XOF_prescan_and_replay_bytes':1<<38},
         'responses':responses,
+        'nonrange_GKR_admitted_RMS':admitted_rms_work(),
         'opening':{'protocol_queries':512,'distinct_leaves':True,'unique_subtrees':'U = len(set(index//4096))',
             'batch_formula':'at most256 subtrees/batch; q_eff=nextpow2(4096*subtrees_in_this_batch)',
             'maximum_512_subtree_batches':opening_batches(512),

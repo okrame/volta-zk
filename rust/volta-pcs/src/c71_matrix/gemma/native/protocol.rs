@@ -70,7 +70,11 @@ impl Writer {
         Self { bytes: header.to_vec(), count: 0, limit: wire::MAX_BYTES }
     }
     pub(super) fn canonical(header: &[u8]) -> Self {
-        Self { bytes: header.to_vec(), count: 0, limit: wire::CANONICAL_MAX_BYTES }
+        // A fixed public capacity avoids retained growth slack and moving
+        // reallocations while the original claims and PCS masks are live.
+        let mut bytes = Vec::with_capacity(wire::CANONICAL_MAX_BYTES);
+        bytes.extend_from_slice(header);
+        Self { bytes, count: 0, limit: wire::CANONICAL_MAX_BYTES }
     }
     pub(super) fn raw(&mut self, kind: u16, body: &[u8], fs: &mut Fs) -> Result<(), String> {
         if kind != self.count || self.bytes.len() + body.len() + 6 + END.len() + 10 > self.limit {
@@ -98,6 +102,38 @@ impl Writer {
         fs.record(0x7fff, &end);
         self.bytes.extend(end);
         (self.bytes, *fs.digest().as_bytes())
+    }
+}
+
+#[cfg(test)]
+mod writer_capacity_tests {
+    use super::*;
+
+    #[test]
+    fn c71_canonical_writer_fixed_capacity_preserves_wire_and_transcript() {
+        let header = b"fixed canonical capacity fixture";
+        let mut canonical = Writer::canonical(header);
+        let mut reference = Writer::new(header);
+        let mut native_fs = Fs::new(b"canonical Writer capacity parity", 0);
+        let mut reference_fs = Fs::new(b"canonical Writer capacity parity", 0);
+        assert_eq!(canonical.bytes.capacity(), wire::CANONICAL_MAX_BYTES);
+        for kind in 0..128u16 {
+            let body = vec![kind as u8; 317];
+            canonical.raw(kind, &body, &mut native_fs).unwrap();
+            reference.raw(kind, &body, &mut reference_fs).unwrap();
+            assert_eq!(canonical.bytes.capacity(), wire::CANONICAL_MAX_BYTES);
+        }
+        let (actual, actual_digest) = canonical.finish(&mut native_fs);
+        let (expected, expected_digest) = reference.finish(&mut reference_fs);
+        assert_eq!(actual, expected);
+        assert_eq!(actual_digest, expected_digest);
+        assert_eq!(native_fs.requests(), reference_fs.requests());
+        assert_eq!(actual.capacity(), wire::CANONICAL_MAX_BYTES);
+        println!("C71_CANONICAL_WRITER_CAPACITY {}", serde_json::json!({
+            "frames":128, "capacity_bytes":actual.capacity(), "wire_bytes":actual.len(),
+            "moving_reallocations_after_canonical_begin":0,
+            "wire_and_transcript_exact":true, "credit":false, "gpu_execution":false
+        }));
     }
 }
 pub(super) struct Reader<'a> {

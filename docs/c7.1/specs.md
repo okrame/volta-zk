@@ -776,11 +776,11 @@ payload osservato è 9.361.975 B, con zero rifiuti nelle parità; il solo
 scratch hash nativo massimo è 395.520 B, owner host 37.064 B separato.
 Gli output delle fixture non sono misure di un commitment W completo.
 
-Il conto W corretto comprende due flag simultanei: 3.736.793.344 B
-device per ring/CV/potenze/twiddle/pad/frontier/sali/tile/flag. Il subtotal
-precedente era inferiore di 256 B e resta immutabile. I payload host
-nominati sono ora 89.292.320 B; con l'upper device replay di 785.789.696 B
-si ottiene un envelope conservativo di 4.611.875.360 B, prima degli altri
+Il conto W aggiornato comprende due flag simultanei e current/metadata
+privati: 3.745.182.208 B device per ring/CV/potenze/twiddle/pad/frontier/
+sali/tile/flag. I subtotali precedenti restano nei record immutabili.
+I payload host nominati sono ora 87.195.304 B; con l'upper device replay
+di 785.789.696 B si ottiene un envelope conservativo di 4.618.167.208 B, prima degli altri
 owner host censiti dal budget. Non è un picco fisico né un'ammissione
 del percorso completo. `initial_native_peak_capacity_bytes` riporta il
 massimo storico dell'owner comune, non si somma al suo ledger cumulativo.
@@ -816,10 +816,11 @@ conteggio; l'owner Rust delle tessere garantisce unicità e coordinate.
 La geometria A conserva quattro coset e R=2^20: 512 ricostruzioni sul
 pinned. Valori 4.294.967.296 B, frontier 301.989.888 B, twiddle 8.388.608 B,
 pad 1.572.864 B e banda sali 2.097.152 B rimangono comuni alle fasi.
-Potenze/conteggi/flag portano l'accumulo a 4.642.576.672 B; dopo il loro
-rilascio, digest e flag portano l'hash a 4.743.233.792 B. Con upper replay
-device 785.789.696 B e host nominati 49.846.528 B, l'envelope conservativo
-è 5.578.870.016 B, prima degli altri owner host. Non sommare fasi o picchi
+Current/metadata sali aggiungono 8.388.864 B. Potenze/conteggi/flag portano
+l'accumulo a 4.650.965.536 B; dopo il loro rilascio, digest e flag portano
+l'hash a 4.751.622.656 B. Con upper replay device 785.789.696 B e host
+nominati 47.749.512 B, l'envelope conservativo è 5.585.161.864 B, prima
+degli altri owner host. La banda host sali è eliminata. Non sommare fasi o picchi
 storici; il budget addebita tutte le capacità effettive. Il componente è ora collegato al Tree/runner A CUDA; il riferimento CPU
 mantiene il consumer precedente.
 I tempi della fixture Rust O0/C++ O2 non sono un confronto di speedup.
@@ -869,17 +870,33 @@ pubbliche sono nel budget; i 13.656 B della fixture D12 sono un conto del
 componente, non della prova. Visite D·live, senza leggere il tail zero.
 
 La componente [sali GPU](../../cuda/c71_pcs_salts.cu) usa il dominio
-originale di 34 B incluso NUL e seed32, descriptor66 B, XOF a 16 word LE,
+originale di 34 B incluso NUL e seed32, input66 B/descriptor112 B, XOF a 16 word LE,
 rejection Goldilocks e cap2^40. Prefix/mask bounded fino2^24 candidati
 conserva il cursore subito dopo il quarto accettato, anche oltre2^32.
-Scratch massimo allineato10.520.320 B; prescan con starts/offsets richiede
-27.297.536 B W o23.103.232 B A. Si deve ritirare prima dei valori/ring.
+L'owner compatta descriptor/progress/flag/counter in 168 B, allineati256 B.
+Scratch prescan massimo allineato10.519.552 B; con starts/offsets/metadata
+richiede27.297.024 B W o23.102.720 B A. Scratch e offsets device sono
+ritirati dopo il fence valido, prima di ring/valori; current e metadata
+restano per replay e sono conteggiati nelle fasi hash.
 Lo stream corrente dopo clone MMCS, seek non allineati, replay e cap sono
 confrontati con il sampler Rust pinned; la gerarchia CUDA non è eseguita.
-Owner/Tree usano ancora il sampler host. Il seed resta privato dentro
-`PrivateRng`, senza export pubblico/Debug/Serialize; stato176 B (+32),
-`ReplayModel::live` +8 B e API Rust +16 B passano dal contatore comune.
-Gli envelope nominati precedenti non sono ricontati come picchi completi.
+Il [passo owner/Tree](../c7.1-history/crypto-salts-owner-2026-10-09.md)
+aggiunge sei simboli ABI4 obbligatori. `PrivateSalts` è una capability
+opaca, non clonabile e legata all'owner; kind17 non ammette allocazione,
+lettura/upload o rilascio pubblico. Il seed passa solo al consumer PCS,
+mai al producer numerico o alla telemetria. `with_private_rng` parte dal
+cursore logico corrente e `advance_to` scarta il prefetch senza cambiare
+stream/cap, avanzando una sola volta dopo prescan riuscito. Replay e hash
+condividono il flag sticky; una verifica/fence per gruppo, nessun upload
+sali o fence per banda. Current finale e bytes consumati devono coincidere
+col prescan; letture digest restano negate fino al completamento e al
+ritiro privato. Owner host37.288 B (+136), API Rust+48 B, Stats152 B.
+Il [record pulito](../../benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2.json)
+confronta tutti i digest/indici, root/aperture/pad/istogramma e prove W/A
+composte; 31 rifiuti owner, sei simboli mancanti e otto rifiuti per Tree.
+Il driver prescan è un oracolo sequenziale; non verifica la gerarchia CUDA.
+Il test CPU completo lookup/GKR/WHIR supera60s e resta un esito negativo.
+Gli envelope nominati non sono picchi completi o un'ammissione canonica.
 
 Le candidate [QK/PV MMA](../../cuda/c71_attention_mma.cu) mantengono
 i16/PiQ14 originali e raw i64 esatti. QK usa N8 completamente nel prefisso
@@ -913,7 +930,7 @@ e conteggi originali. La copertura completa precede il seal di ogni finestra.
 | Stato device persistente | KV450 405.504.000 B + checkpoint 98.380.800 B + 121 istogrammi allineati 63.438.848 B + tabelle allineate 23.954.176 B = 591.277.824 B |
 | Replay device | Upper derivato da porte, batch e ultimi consumer: 785.789.696 B **incluso** lo stato persistente, copie KV e istogrammi duplicati; niente somma di massimi separati |
 | PCS iniziale CPU/A | Quattro coset 2^20×128×8 = 4.294.967.296 B insieme, inclusi quelli in attesa; frontier W riferimento/A 402.653.184 / 369.098.752 B, cursori sali 8.388.608 B; FFT, radici, pad, potenze e stato device restano conteggiati |
-| PCS iniziale W CUDA | Ring otto colonne/32 coset 2.147.483.648 B, CV 1.073.741.824 B e frontier 234.881.024 B; subtotal device completo del componente 3.736.793.344 B, senza sommare la schedule CPU alternativa |
+| PCS iniziale W CUDA | Ring otto colonne/32 coset 2.147.483.648 B, CV 1.073.741.824 B e frontier 234.881.024 B; subtotal device del componente 3.745.182.208 B con sampler privato, senza sommare la schedule CPU alternativa |
 | PCS S1/S2 | S1: due coset 2^23×12×8; S2: due coset 2^21×12×8 con S1 da 3.221.225.472 B vivo. Dopo il rilascio del predecessore si applica il fold e `shrink_to_fit`; anche l'eventuale sovrapposizione vecchio+nuovo del realloc è addebitata |
 | Aperture PCS | Matrice contigua; fattori 32×q×(log2(q)+1) B, q≤2^20; due livelli di resti, FFT, staging e un solo sottoalbero rigenerato; nessun Vec per riga/fattore trattenuto |
 | Range/staging | Range A ≤1 GiB device nel runner; query A ≤256 MiB host più ≤256 MiB device; W staging signed ≤256 MiB; padding pubblico signed host ≤55.574.528 B; ogni copia vive nel medesimo conto |

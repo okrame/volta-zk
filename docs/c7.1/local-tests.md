@@ -120,6 +120,7 @@ senza eseguirli; altrimenti la build CUDA si svolge sul pod autorizzato:
 nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC \
   cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_pcs_hash.cu \
   cuda/c71_pcs_weight.cu cuda/c71_pcs_weight_tensor.cu cuda/c71_pcs_source.cu \
+  cuda/c71_pcs_salts.cu \
   cuda/c71_range_runtime.cpp \
   -o /tmp/libc71_device_runner.so
 nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
@@ -212,6 +213,32 @@ c71_b12_private_coins_
 ```
 
 Il primo filtro confronta root/aperture/istogramma/lavoro e otto arresti.
+Il [sampler nell'owner/Tree](../c7.1-history/crypto-salts-owner-2026-10-09.md)
+ha un [record pulito](../../benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2.json)
+con 21 Rust/11 Python positivi, 73 artefatti e un timeout CPU distinto.
+Eseguire separatamente i quattro filtri seguenti: il filtro complessivo
+compila sette fixture e si avvicina al limite locale60s.
+
+```text
+c71_b12_native_private_salts_owner_exact_stream_hash_and_work
+c71_b12_native_private_salts_owner_metadata_alias_and_stale_capability
+c71_b12_native_private_salts_owner_rejections_and_fail_closed
+c71_b12_native_private_salts_owner_symbols_are_mandatory
+```
+
+Verificano stream/offset/cap/tutti i digest, 31 rifiuti e sei simboli
+obbligatori. La fixture da131.072 foglie attraversa due bande con un solo
+fence hash, zero upload sali; i campi sintetici sono caricati solo nel test.
+Ripetere i Tree W/A, le prove composte e `geometry_and_resource_envelope`.
+Gli originali numerici non sono scaricati dal commitment iniziale; indici
+e contatori privati D2H sono conteggiati. Il driver prescan sequenziale
+non esegue prefix/scatter CUDA; toolkit assente in VM. Massimo RSS locale
+test/descendenti265.048.064 B; build55,42s/2.483.286.016 B separata.
+Il controllo aggiuntivo
+`c71_b12_native_streaming_lookup_gkr_whir_positive_original_macs` supera
+60s sullo stesso binario O0; conservarne timeout/prefisso e non estendere
+il limite o contarlo come pass. W/A composti passano entro il limite;
+non sono una misura della prova canonica completa.
 Il confronto composto usa 16 MiB di righe iniziali del riferimento solo
 nella fixture, come W. `c71_b12_native_source_uncached_full_chain_performance_obligation`
 è ignored dopo timeout a 60 s; non eseguire con `--ignored` o limite

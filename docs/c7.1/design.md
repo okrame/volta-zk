@@ -214,8 +214,9 @@ di transcript/MAC usa una tabella di righe iniziali di riferimento da
 getter di produzione. Il D15 non cached supera ancora 60 s locali ed è
 conservato come obbligo prestazionale, senza credito di completamento.
 128 scansioni W sono ora la schedule selezionata CUDA, ancora analitica
-per il workload pinned; A conserva 512 ricostruzioni. Confronto GPU Tensor Core, sampler
-e accelerazione delle aperture restano aperti; A→PCS è integrata sotto. Nessun credito
+per il workload pinned; A conserva 512 ricostruzioni. Confronto GPU Tensor Core
+e accelerazione delle aperture restano aperti; sampler e A→PCS iniziale
+sono integrati sotto. Nessun credito
 CUDA/H100 o nuova autorizzazione hardware. La somma signed <2^87 e
 la sua riduzione sono identità controllate localmente, senza lemma Lean
 di raffinamento dell'implementazione o dello scheduling CUDA.
@@ -249,11 +250,12 @@ fuso nella prima ricostruzione. Parità ridotta di tutti i campi/digest su
 tre geometrie e 28 rifiuti terminali; il passaggio producer→sink non
 scarica righe originali. Quel record precede il collegamento al Tree/runner A, ora integrato nel
 passo successivo; le 512 ricostruzioni rimangono invariate. Il conto
-candidato è 5.578.870.016 B con upper device replay e host nominati,
-prima degli altri owner host; restano 326.710.016 B nel payload imposto,
+candidato aggiornato con sampler residente è 5.585.161.864 B con upper
+device replay e host nominati, prima degli altri owner host; restano
+320.418.168 B nel payload imposto,
 senza ammissione del picco completo. La VM non compila o esegue CUDA.
-Lo stato fisso della transazione A aumenta di 88 B l'owner host comune;
-la nuova stima W è 4.611.875.360 B, senza modificare i record precedenti.
+Le transazioni A e sali portano l'owner host comune a 37.288 B;
+la stima W aggiornata è 4.618.167.208 B. I record precedenti restano immutati.
 Il [passo Tree A](../c7.1-history/crypto-a-tree-2026-10-08.md) seleziona il commitment residente anche
 nel runner CUDA, con istogramma fuso e getter originali per le aperture.
 Il [record pulito](../../benchmarks/results/c71-crypto-a-tree-local-2026-10-08-2603bbb04013.json) conserva 18 test Rust/12 Python, 69 artefatti
@@ -270,17 +272,27 @@ eliminato preservando free-failure terminali. La candidata W Tensor Core
 limb16 ha parità host indipendente e shared da 8.448 B. Ora dispone del
 confronto sul medesimo owner; l'accumulo ordinario resta predefinito.
 
-L'audit [quantifica i residui](../c7.1-history/crypto-a-tree-2026-10-08.md#costi-residui-dal-codice): sali W
-prescan/replay almeno 274.877.906.944 B XOF e 137.438.953.472 B H2D; A
-la metà per risposta. La nuova closure lineare esegue una scan originale
+L'audit [quantifica il costo dei sali](../c7.1-history/crypto-a-tree-2026-10-08.md#costi-residui-dal-codice): W
+prescan/replay almeno 274.877.906.944 B XOF, A la metà per risposta.
+Il [passo owner/Tree](../c7.1-history/crypto-salts-owner-2026-10-09.md)
+porta questo lavoro sullo stream comune, con 168 B di metadata H2D per
+commitment; elimina gli upload di sali da 128/64 GiB previsti dalla
+schedule host. Questo è un conto analitico, non un tempo H100.
+La nuova closure lineare esegue una scan originale
 per round, D·live visite, con EQ di prefisso bounded e indice pubblico
 dei Cube; evita getter del suffisso zero e tabelle del dominio completo.
 Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
 ha parità esatta di coefficienti, wire, transcript e MAC, errori prima
 delle correlazioni del round e telemetria di avanzamento. Tre misure D12
 locale danno 7,75× sul componente CPU; non è un tempo della prova o H100.
-Il sampler GPU bounded è preparato e confrontato con stream pinned,
-seek/cap/cursori, ma deve ancora essere collegato a owner e Tree.
+Il sampler bounded è collegato all'owner e al Tree W/A. Prescan dal
+cursore logico corrente, avanzamento host una sola volta e replay sul
+flag hash originale mantengono stream/seek/cap; nessuna banda sali host.
+Il [record pulito](../../benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2.json)
+ha 21 test Rust e 11 Python positivi, 73 artefatti e un ulteriore timeout
+CPU lookup/GKR/WHIR a 60 s, conservato senza estensione del limite.
+Parità root/aperture/pad/istogramma e prove composte W/A con transcript
+e MAC originali sono verificate. La gerarchia prescan CUDA non è eseguita.
 La candidata QK/PV usa MMA sul prefisso causale comune e un bordo scalare:
 nessuna lettura futura per la singola riga, anche se già inizializzata.
 Parità host e guard di lettura sono verificati; resta non selezionata.

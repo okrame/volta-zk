@@ -718,8 +718,16 @@ scansione riuscita; la riserva/burn della sessione resta3D+2 e monouso.
 Range/count non sostituiscono l'unicità dello scanner fidato. Forme,
 wire, endpoint originali, MAC e transcript sono confrontati esattamente.
 Il seed aggiunto al sampler rimane nello stato privato, senza serializzazione
-o telemetria. Il futuro prescan GPU deve partire dal cursore logico corrente
-e avanzarlo una sola volta, preservando clone MMCS, rejection e cap.
+o telemetria. Il [passo owner/Tree](../c7.1-history/crypto-salts-owner-2026-10-09.md)
+collega il prescan dal cursore logico corrente e avanza il sampler host
+una sola volta, preservando clone MMCS, rejection e cap. Il token privato
+non è clonabile o leggibile tramite API generiche; il producer numerico
+riceve solo buffer/layout originali e sink. Replay/hash condividono il
+flag sticky e pubblicano dopo controllo di consumo e cursori. Salts/pad/
+root/aperture/wire/transcript/MAC sono confrontati nel
+[record pulito](../../benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2.json),
+con 31 rifiuti owner e 16 Tree, senza cambiare PCG AES o correlazioni.
+Il timeout60s del test CPU lookup/GKR/WHIR è conservato e non è un pass.
 I test dei helper non dimostrano scheduling GPU o raffinamento generale.
 La base PCS v³=v+1 non può essere sostituita dalla base MAC u³=2.
 

@@ -13,7 +13,8 @@ La [diagnostica della prova](../../benchmarks/results/c71-cuda-experiment-2026-1
 è **INCOMPLETA**, exit 124 dopo 2.461,09 s nel commitment W, prima delle
 risposte. Nessun certificato canonico o tempo completo della prova è acquisito.
 Il runner `experiment-cuda` è misto: inferenza/replay/range e commitment
-iniziali W/A GPU; sali/PCS successive/GKR non-range/Seed6/verifica CPU. Le [risorse misurate e le priorità](design.md#risultati-attuali-e-prossime-ottimizzazioni)
+iniziali W/A e relativo sampler GPU; PCS successive/GKR non-range/Seed6/
+verifica CPU. Le [risorse misurate e le priorità](design.md#risultati-attuali-e-prossime-ottimizzazioni)
 sono riassunte nel design. La campagna precedente è chiusa e il pod è spento.
 
 Il goal locale dell'8 ottobre prepara l'intero percorso crittografico e
@@ -68,7 +69,8 @@ e 28 arresti sono verificati con driver host; il passo successivo lo
 seleziona nel Tree/runner A senza modificare le 512 ricostruzioni.
 La nuova build completa deve includere anche `cuda/c71_pcs_source.cu`:
 assenza dei cinque nuovi simboli è terminale, anche per un owner W.
-L'owner host cresce di 88 B; lo screen candidato A lascia 326.710.016 B
+Le transazioni A/sali portano l'owner host a37.288 B; lo screen A
+aggiornato lascia320.418.168 B
 per gli altri owner host, prima della verifica del budget simultaneo
 integrato e del picco fisico. Nessun credito H100 o autorizzazione di
 hardware/durata segue da questi controlli.
@@ -87,7 +89,14 @@ includere anche `cuda/c71_pcs_weight_tensor.cu`: i due nuovi simboli ABI4
 sono obbligatori. Il [checkpoint del 9 ottobre](../c7.1-history/crypto-components-2026-10-09.md)
 ha closure lineare a una scan per round, componente GPU XOF esatta e
 candidata QK/PV corretta per causalità per-riga, tutte verificate in host.
-Restano integrazione owner/Tree GPU XOF, query/S1/closure GPU, profilo
+Il [passo owner/Tree XOF](../c7.1-history/crypto-salts-owner-2026-10-09.md)
+è integrato con parità stream/root/aperture/transcript/MAC; il
+[record pulito](../../benchmarks/results/c71-crypto-salts-owner-local-2026-10-09-f85f6a77dbb2.json)
+conserva21 Rust/11 Python positivi e un timeout60s CPU lookup/GKR/WHIR.
+La libreria completa deve includere `cuda/c71_pcs_salts.cu`: tutti i sei
+nuovi simboli sono obbligatori. Nella campagna autorizzata verificare
+anche prefix/scatter e replay CUDA reali, seek/rejection/cap e flag/fence.
+Restano query/S1/closure GPU, profilo
 GKR/range e selezione QK/PV secondo misura, conto simultaneo completo.
 Il goal resta attivo: non riattivare pod
 o hardware. Γ resta riutilizzabile dopo i controlli normali di identità;

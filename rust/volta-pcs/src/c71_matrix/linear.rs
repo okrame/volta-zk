@@ -35,6 +35,28 @@ impl Cube {
     }
 }
 
+const LINEAR_RECORD_DOMAIN: &[u8] = b"C71-linear-B12-v1;MSB-first;original-target-MACs;one-PCS";
+
+// Checked public serialization length, independent of target values/keys.
+// Domain/gamma/attempt use their actual encoded length; each cube writes
+// offset8 + arity4 + coefficient24 + 24*point, plus a4 header per form.
+pub(super) fn linear_record_length(
+    profile_len: usize, attempt_len: usize, forms: &[Vec<Cube>],
+) -> Result<usize, String> {
+    let add = |a: usize, b: usize| a.checked_add(b).ok_or_else(|| "linear record length overflow".to_string());
+    let mut size = add(LINEAR_RECORD_DOMAIN.len(), profile_len)?;
+    size = add(size, attempt_len)?;
+    size = add(size, 8 + 32 + 32 + 4)?;
+    for form in forms {
+        size = add(size, 4)?;
+        for cube in form {
+            let point = cube.point.len().checked_mul(24).ok_or("linear record point length overflow")?;
+            size = add(size, add(36, point)?)?;
+        }
+    }
+    Ok(size)
+}
+
 /// Bind the public forms after the caller's target-correction messages and
 /// before lambda. No value/tag/key is serialized here, and no new MAC for
 /// the aggregate is requested. One root, one batch, one PCS chain.
@@ -60,25 +82,33 @@ fn bind(
     {
         return Err("B12 linear batch shape, layout or attempt mismatch".into());
     }
-    let mut bytes = b"C71-linear-B12-v1;MSB-first;original-target-MACs;one-PCS".to_vec();
-    bytes.extend(gamma(&config));
+    for cube in forms.iter().flatten() {
+        if cube.point.len() > bits {
+            return Err("B12 linear cube arity exceeds root domain".into());
+        }
+        let size = 1usize << cube.point.len();
+        if cube.offset % size != 0
+            || cube.offset.checked_add(size).is_none_or(|end| end > 1usize << bits)
+        {
+            return Err("B12 linear cube is unaligned or outside root domain".into());
+        }
+    }
+    let profile = gamma(&config);
+    let context = attempt.encode();
+    let length = linear_record_length(profile.len(), context.len(), forms)?;
+    // One exact allocation; no record-buffer growth alongside retained forms.
+    // The original ordered bytes and FS request are unchanged.
+    let mut bytes = Vec::with_capacity(length);
+    bytes.extend_from_slice(LINEAR_RECORD_DOMAIN);
+    bytes.extend(profile);
     bytes.extend(domain.identity().to_le_bytes());
     bytes.extend(root.roots()[0]);
-    bytes.extend(attempt.encode());
+    bytes.extend(context);
     bytes.extend(layout);
     bytes.extend((forms.len() as u32).to_le_bytes());
     for form in forms {
         bytes.extend((form.len() as u32).to_le_bytes());
         for cube in form {
-            if cube.point.len() > bits {
-                return Err("B12 linear cube arity exceeds root domain".into());
-            }
-            let size = 1usize << cube.point.len();
-            if cube.offset % size != 0
-                || cube.offset.checked_add(size).is_none_or(|end| end > 1usize << bits)
-            {
-                return Err("B12 linear cube is unaligned or outside root domain".into());
-            }
             bytes.extend((cube.offset as u64).to_le_bytes());
             bytes.extend((cube.point.len() as u32).to_le_bytes());
             bytes.extend(cube.coefficient.to_bytes());
@@ -87,6 +117,8 @@ fn bind(
             }
         }
     }
+    debug_assert_eq!(bytes.len(), length);
+    debug_assert_eq!(bytes.capacity(), length);
     fs.set_phase(0x300);
     fs.record(0x30, &bytes);
     let lambda = fs.fp3();
@@ -1593,5 +1625,44 @@ mod tests {
             std::fs::remove_file(path).unwrap();
         }
         std::fs::remove_dir(directory).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod record_capacity_tests {
+    use super::*;
+
+    #[test]
+    fn c71_b12_linear_exact_record_capacity_preserves_bytes_and_transcript() {
+        for bits in [10usize,34,35] {
+            let domain=Domain::Flat(bits);let config=domain.config().unwrap();
+            let root=C61Commitment::new(vec![[19;32]]);
+            let attempt=AttemptContext {session:[1;32],capacity:[2;32],slot:0,predecessor:[0;32],nonce:[3;32]};
+            let forms:Vec<Vec<Cube>>=(0..13).map(|j| vec![Cube {offset:0,point:vec![signed(2+j);j as usize%bits],coefficient:signed(j+7)}]).collect();
+            let mut reference=b"C71-linear-B12-v1;MSB-first;original-target-MACs;one-PCS".to_vec();
+            reference.extend(gamma(&config));reference.extend(domain.identity().to_le_bytes());
+            reference.extend(root.roots()[0]);reference.extend(attempt.encode());reference.extend([5;32]);
+            reference.extend((forms.len() as u32).to_le_bytes());
+            for form in &forms {
+                reference.extend((form.len() as u32).to_le_bytes());
+                for cube in form {
+                    reference.extend((cube.offset as u64).to_le_bytes());reference.extend((cube.point.len() as u32).to_le_bytes());
+                    reference.extend(cube.coefficient.to_bytes());for value in &cube.point {reference.extend(value.to_bytes());}
+                }
+            }
+            assert_eq!(linear_record_length(gamma(&config).len(),attempt.encode().len(),&forms).unwrap(),reference.len());
+            let mut exact=Fs::new(b"exact linear record capacity",100000);
+            let mut old=Fs::new(b"exact linear record capacity",100000);
+            let (_,coefficients)=bind(domain,&root,attempt,[5;32],&forms,forms.len(),&mut exact).unwrap();
+            old.set_phase(0x300);old.record(0x30,&reference);let lambda=old.fp3();
+            let mut power=Fp3::ONE;
+            let expected:Vec<_>=(0..forms.len()).map(|_| {let value=power;power*=lambda;value}).collect();
+            assert_eq!(coefficients,expected);assert_eq!(exact.digest(),old.digest());assert_eq!(exact.requests(),old.requests());
+            let malformed = vec![vec![Cube { offset: 0, point: vec![Fp3::ONE; bits + 1], coefficient: Fp3::ONE }]];
+            let before = (exact.digest(), exact.requests());
+            assert!(bind(domain, &root, attempt, [5; 32], &malformed, 1, &mut exact).is_err());
+            assert_eq!((exact.digest(), exact.requests()), before);
+            assert!(linear_record_length(usize::MAX, 130, &forms).is_err());
+        }
     }
 }

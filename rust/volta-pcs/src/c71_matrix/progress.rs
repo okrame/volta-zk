@@ -1,7 +1,7 @@
 //! Private, durable laboratory telemetry. Never part of FS, wire or resume state.
 use serde_json::{json, Value};
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -53,6 +53,20 @@ pub(super) fn check() -> Result<(), String> {
     }
 }
 
+pub(super) const PROCESS_STATUS_MAX_BYTES: usize = 64 << 10;
+
+// Diagnostics have a finite Rust allocation bound as well as bounded JSON.
+// An unavailable or oversized status remains an unavailable RSS sample.
+pub(super) fn host_process_memory() -> Option<Vec<String>> {
+    let mut status = String::new();
+    File::open("/proc/self/status").ok()?
+        .take((PROCESS_STATUS_MAX_BYTES + 1) as u64)
+        .read_to_string(&mut status).ok()?;
+    if status.len() > PROCESS_STATUS_MAX_BYTES { return None; }
+    Some(status.lines().filter(|line| line.starts_with("VmRSS:") || line.starts_with("VmHWM:"))
+        .map(str::to_owned).collect())
+}
+
 pub(super) fn emit(event: Value) -> Result<(), String> {
     if !ACTIVE.load(Ordering::Relaxed) {
         return Ok(());
@@ -68,9 +82,7 @@ pub(super) fn emit(event: Value) -> Result<(), String> {
         "sequence": log.sequence, "elapsed_ns": log.started.elapsed().as_nanos() as u64,
         "thread": format!("{:?}", std::thread::current().id()), "event": event,
         "joint_allocations": super::census::simultaneous(),
-        "host_process": std::fs::read_to_string("/proc/self/status").ok().map(|status|
-            status.lines().filter(|line| line.starts_with("VmRSS:") || line.starts_with("VmHWM:"))
-                .map(str::to_owned).collect::<Vec<_>>())});
+        "host_process": host_process_memory()});
     let result = (|| -> Result<(), String> {
         serde_json::to_writer(&mut log.file, &record).map_err(|e| e.to_string())?;
         log.file.write_all(b"\n").and_then(|_| log.file.sync_all()).map_err(|e| e.to_string())

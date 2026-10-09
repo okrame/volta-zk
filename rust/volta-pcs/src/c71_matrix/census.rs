@@ -136,6 +136,24 @@ pub(in crate::c71_matrix) fn simultaneous() -> Value {
         "physical_runtime_allowance_verified": false})
 }
 
+// No JSON allocation while a public-only capacity fixture takes a delta.
+#[cfg(test)]
+pub(in crate::c71_matrix) fn host_layout_bytes() -> u64 {
+    LIVE.load(Relaxed)
+}
+
+#[cfg(test)]
+pub(in crate::c71_matrix) fn reset_host_layout_peak() -> u64 {
+    let live = LIVE.load(Relaxed);
+    PEAK.store(live, Relaxed);
+    live
+}
+
+#[cfg(test)]
+pub(in crate::c71_matrix) fn host_layout_peak_bytes() -> u64 {
+    PEAK.load(Relaxed)
+}
+
 fn allocated(size: usize) {
     ALLOCATED.fetch_add(size as u64, Relaxed);
     PEAK.fetch_max(LIVE.fetch_add(size as u64, Relaxed) + size as u64, Relaxed);

@@ -170,6 +170,54 @@ struct QueryLevel {
     modulus: Vec<Goldilocks>,
     factor_len: usize,
 }
+
+#[cfg(test)]
+pub(in crate::c71_matrix) fn public_metadata_descriptor_upper(weight_tile_capacity: usize) -> serde_json::Value {
+    use std::mem::{MaybeUninit,size_of};
+    use std::sync::atomic::AtomicU64;
+    fn arc<T>() -> usize {
+        let start=crate::c71_matrix::census::host_layout_bytes();
+        let value=Arc::new(MaybeUninit::<T>::uninit());
+        let bytes=(crate::c71_matrix::census::host_layout_bytes()-start) as usize;
+        drop(value);assert_eq!(crate::c71_matrix::census::host_layout_bytes(),start);bytes
+    }
+    let layouts=super::sourcewise::public_metadata_layouts();
+    // Finite descriptor pool: 4 installed originals + 13 main/source codes
+    // (11 rounds, base source, fresh main) + 23 carried + 23 fresh mask codes.
+    // mask_groups = 1+2*11. Predecessor payloads retire sequentially; this
+    // deliberately overcounts descriptors, not 63 concurrent roots/caches.
+    let models=4usize;
+    let codes=4+13+23+23;
+    let code_arc=arc::<Code>();let tree_arc=arc::<Tree>();
+    let original=models*size_of::<ReplayModel>();
+    let holders=models*(layouts[0]+layouts[1]+2*size_of::<Arc<AtomicU64>>());
+    let prefix=2*35*size_of::<E>();
+    // Each code/getter/lease uses at most six bounded prefixes and four
+    // closures. Capture payloads fit NativeView+prefix descriptor or Arc<Code>.
+    let captures=codes*(4*(16+layouts[2]+size_of::<Vec<E>>()+size_of::<usize>())
+        +6*prefix+layouts[3]+64*size_of::<Vec<[u8;32]>>());
+    // Only initial W has copied NativeWeights.tiles: stored model, initial
+    // code, Backend, original State holder and one in-construction clone.
+    let mappings=5*weight_tile_capacity*size_of::<device::WeightTile>();
+    let query=32*(4*size_of::<device::Buffer>()+size_of::<usize>())
+        +32*size_of::<QueryLevel>()+32*size_of::<Vec<u64>>();
+    let start=crate::c71_matrix::census::host_layout_bytes();
+    let configs=[Domain::Flat(35).config().unwrap(),Domain::Flat(34).config().unwrap(),
+        Domain::Flat(34).config().unwrap(),Domain::Flat(34).config().unwrap()];
+    let config_heap=(crate::c71_matrix::census::host_layout_bytes()-start) as usize;
+    drop(configs);assert_eq!(crate::c71_matrix::census::host_layout_bytes(),start);
+    let total=original+holders+codes*(code_arc+tree_arc)+captures+mappings+query+config_heap;
+    serde_json::json!({"model_count_upper":models,"code_tree_count_upper":codes,
+        "code_tree_pool_components":[4,13,23,23],"concurrent_numeric_payload_claim":false,
+        "code_arc_bytes":code_arc,"tree_arc_bytes":tree_arc,"native_holder_arc_bytes":layouts[0..2],
+        "original_descriptor_bytes_upper":original,"holder_descriptor_bytes_upper":holders,
+        "capture_prefix_top_level_descriptor_bytes_upper":captures,
+        "weight_tile_capacity":weight_tile_capacity,"weight_mapping_copy_count_upper":5,
+        "weight_mapping_heap_upper_bytes":mappings,"query_level_descriptor_heap_upper_bytes":query,
+        "public_config_heap_bytes":config_heap,"total_metadata_heap_upper_bytes":total,
+        "optional_rng_buffer_heap_upper_bytes":codes*4096,
+        "scope":"typed descriptors/captures only; numeric/Merkle/pads/Query factor payloads and XOF buffers are accounted separately; proof-local pieces absent during initial A commitment"})
+}
 impl QueryLevel {
     fn len(&self) -> usize {
         self.inverse.len() / self.factor_len

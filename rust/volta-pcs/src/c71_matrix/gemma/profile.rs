@@ -31,6 +31,20 @@ pub(in crate::c71_matrix) struct Recipes {
 }
 
 impl Recipes {
+    fn validate_rms(programs: BTreeSet<(usize, [i32; 3], bool)>) -> Result<(), String> {
+        for (d, [ex, ew, ey], weighted) in programs {
+            let p = crate::c71_matrix::rms::compile(d, ex, ew, ey, weighted)?;
+            if p.levels.len() > 128
+                || p.ports > 98
+                || p.levels.iter().any(|l| l.len() > 16384)
+                || p.levels.iter().map(Vec::len).sum::<usize>() > 2_000_000
+            {
+                return Err("Gemma RMS profile exceeds the composed public envelope".into());
+            }
+        }
+        Ok(())
+    }
+
     /// Complete canonical row reservation, before any live FS or witness IO.
     /// Every operator's actual verifier/prover still must run before acceptance.
     pub fn required(
@@ -208,6 +222,27 @@ impl Recipes {
         weights: &[i32],
         exponents: &BTreeMap<usize, i32>,
     ) -> Result<Self, String> {
+        #[cfg(test)]
+        { Self::compile_inner(plan, s, o, sm, weights, exponents, false) }
+        #[cfg(not(test))]
+        { Self::compile_inner(plan, s, o, sm, weights, exponents) }
+    }
+
+    // Admission already validates these temporary RMS circuits. This fixture
+    // shares every retained constructor and cannot be selected in production.
+    #[cfg(test)]
+    pub(super) fn compile_capacity_only(
+        plan: &Plan, s: &residual::Sources, o: &output::Output, sm: &softmax::Softmax,
+        weights: &[i32], exponents: &BTreeMap<usize, i32>,
+    ) -> Result<Self, String> {
+        Self::compile_inner(plan, s, o, sm, weights, exponents, true)
+    }
+
+    fn compile_inner(
+        plan: &Plan, s: &residual::Sources, o: &output::Output, sm: &softmax::Softmax,
+        weights: &[i32], exponents: &BTreeMap<usize, i32>,
+        #[cfg(test)] capacity_only: bool,
+    ) -> Result<Self, String> {
         let a = &s.attention;
         let rope = &a.rope;
         let gu = &rope.gate_up;
@@ -296,16 +331,10 @@ impl Recipes {
             parameters.push(p);
             programs.insert((n.columns, p, n.cohort.is_some()));
         }
-        for (d, [ex, ew, ey], weighted) in programs {
-            let p = crate::c71_matrix::rms::compile(d, ex, ew, ey, weighted)?;
-            if p.levels.len() > 128
-                || p.ports > 98
-                || p.levels.iter().any(|l| l.len() > 16384)
-                || p.levels.iter().map(Vec::len).sum::<usize>() > 2_000_000
-            {
-                return Err("Gemma RMS profile exceeds the composed public envelope".into());
-            }
-        }
+        #[cfg(test)]
+        if !capacity_only { Self::validate_rms(programs)?; }
+        #[cfg(not(test))]
+        Self::validate_rms(programs)?;
         let mut gelu = Vec::new();
         let mut gate_up = Vec::new();
         for (v, p) in g.gelu.iter().zip(&gu.products) {

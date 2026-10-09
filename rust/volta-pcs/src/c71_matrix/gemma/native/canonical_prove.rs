@@ -75,11 +75,13 @@ impl Canonical {
             ba.add(f, Auth::new(bias, Fp3::ZERO));
         }
         wire.raw(0, &[], fs)?;
-        let (proof, p0) = self.plan.prove_p0(s, compact, fs, rows)?;
+        let (proof, mut p0) = self.plan.prove_p0(s, compact, fs, rows)?;
         wire.put(1, &proof, fs)?;
         drop(proof);
-        bw.forms = p0.weight_forms.clone();
-        bw.targets = p0.weights.clone();
+        // Cuts/inputs remain pending for their existing consumers. Move the
+        // W claims in original order instead of cloning their point payloads
+        // across the RMS frame; Batch::add retires construction slack.
+        bw.take(&mut p0.weight_forms, &mut p0.weights)?;
         let (f, bias) = b.forms(&self.plan, &p0)?;
         ba.extend(
             f,

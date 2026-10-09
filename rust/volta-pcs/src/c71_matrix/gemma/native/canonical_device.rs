@@ -2,6 +2,10 @@ use super::*;
 use kernel::range::windowed::native::{Config, Stats};
 use std::sync::{Mutex, MutexGuard};
 
+#[cfg(test)]
+#[path = "canonical_capacity.rs"]
+mod capacity_tests;
+
 pub(in crate::c71_matrix) struct Session {
     runtime: Arc<Mutex<Runtime>>,
     state: Mutex<State>,

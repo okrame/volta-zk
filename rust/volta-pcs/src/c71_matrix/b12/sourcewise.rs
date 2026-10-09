@@ -366,6 +366,20 @@ pub(super) struct Lease {
     stage: Arc<Retained>,
     prefix: Vec<E>,
 }
+
+#[cfg(test)]
+pub(super) fn public_metadata_layouts() -> [usize; 4] {
+    use std::mem::{MaybeUninit, size_of};
+    fn arc<T>() -> usize {
+        let start = crate::c71_matrix::census::host_layout_bytes();
+        let value = Arc::new(MaybeUninit::<T>::uninit());
+        let bytes = (crate::c71_matrix::census::host_layout_bytes()-start) as usize;
+        drop(value);
+        assert_eq!(crate::c71_matrix::census::host_layout_bytes(),start);
+        bytes
+    }
+    [arc::<NativeOriginalStage>(),arc::<Retained>(),size_of::<NativeView>(),size_of::<Lease>()]
+}
 impl Lease {
     pub(super) fn release(self) -> Result<(), String> {
         let mut data = self.stage.data.write().map_err(|_| "retained lock poisoned")?;

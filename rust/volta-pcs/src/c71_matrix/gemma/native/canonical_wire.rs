@@ -1,6 +1,30 @@
 //! Synthetic encodings and complete framing. No witness or valid proof.
 use super::*;
 use kernel::wire::Wire;
+use kernel::wire::HeapCapacity;
+
+#[derive(Default)]
+struct FrameCapacity {
+    largest_body: usize,
+    largest_heap_upper: usize,
+    largest_decoder_peak_upper: usize,
+    largest_proof_and_moving_body_upper: usize,
+}
+impl FrameCapacity {
+    fn include(&mut self, heap: HeapCapacity, body: usize) {
+        assert!(heap.retained <= heap.shape_upper);
+        // Enclosing bound for these honest fixed schemas, including Option
+        // inline objects and salt matrix Vec descriptors; not a Wire API bound.
+        assert!(heap.shape_upper <= 16 * body.max(1));
+        self.largest_body = self.largest_body.max(body);
+        self.largest_heap_upper = self.largest_heap_upper.max(heap.shape_upper);
+        self.largest_decoder_peak_upper = self.largest_decoder_peak_upper.max(heap.decoder_peak_upper());
+        // Vec<u8> append growth can retain <=2L and move old< L +new<=2L.
+        // The proof stays live while Writer::put/codec constructs this body.
+        self.largest_proof_and_moving_body_upper = self.largest_proof_and_moving_body_upper
+            .max(heap.shape_upper + 3 * body.max(8));
+    }
+}
 
 fn fields(n: usize) -> Vec<u8> {
     vec![0; 24 * n]
@@ -45,7 +69,7 @@ fn rne_record(c: usize, shift: i32) -> Vec<u8> {
     ]
     .concat()
 }
-fn checked<T: Wire>(bytes: Vec<u8>, frames: &mut Vec<Vec<u8>>) -> usize {
+fn checked<T: Wire>(bytes: Vec<u8>, frames: &mut Vec<Vec<u8>>, capacities: &mut FrameCapacity) -> usize {
     let mut input = bytes.as_slice();
     let proof = T::read(&mut input).unwrap();
     assert!(input.is_empty(), "{} has trailing bytes", std::any::type_name::<T>());
@@ -53,6 +77,7 @@ fn checked<T: Wire>(bytes: Vec<u8>, frames: &mut Vec<Vec<u8>>) -> usize {
     proof.write(&mut output);
     assert_eq!(output, bytes);
     let n = bytes.len();
+    capacities.include(proof.heap_capacity(), n);
     frames.push(bytes);
     n
 }
@@ -77,9 +102,10 @@ fn c71_b12_native_canonical_wire_body_geometry() {
         // Includes the outer headers for PCS frames, but no PCS payload/header.
         let mut body = 6 * (135 + slot) + 26;
         let mut frames = vec![Vec::new()];
+        let mut capacities = FrameCapacity::default();
         macro_rules! record {
             ($ty:ty, $bytes:expr, $expected:expr) => {{
-                let n = checked::<$ty>($bytes, &mut frames);
+                let n = checked::<$ty>($bytes, &mut frames, &mut capacities);
                 assert_eq!(n, $expected, "{} slot={slot}", stringify!($ty));
                 body += n;
             }};
@@ -121,10 +147,12 @@ fn c71_b12_native_canonical_wire_body_geometry() {
         let first = checked::<Vec<kernel::rne::Proof>>(
             vector(original.iter().map(encode_rne)),
             &mut frames,
+            &mut capacities,
         );
         let second = checked::<bytes::quantize::Proof>(
             [vector((0..482).map(|_| fields(1))), vector(table.iter().map(encode_rne))].concat(),
             &mut frames,
+            &mut capacities,
         );
         assert_eq!(first + second, p.rne_wire_bytes().unwrap().2 + 11_580);
         body += first + second;
@@ -149,6 +177,7 @@ fn c71_b12_native_canonical_wire_body_geometry() {
                 ]
                 .concat(),
                 &mut frames,
+                &mut capacities,
             );
             pv += checked::<kernel::attention::PvProof>(
                 [
@@ -160,6 +189,7 @@ fn c71_b12_native_canonical_wire_body_geometry() {
                 ]
                 .concat(),
                 &mut frames,
+                &mut capacities,
             );
         }
         assert_eq!((qk, pv), if slot == 0 { (217_400, 192_400) } else { (224_840, 205_600) });
@@ -199,9 +229,20 @@ fn c71_b12_native_canonical_wire_body_geometry() {
             body - selected_rne + lower_rne + 24 * 892 * 77,
             [37_329_009, 37_443_943, 37_443_973][slot]
         );
-        frames.push(codec::tests::maximal_linear_fixture(35));
-        for _ in 0..=slot {
-            frames.push(codec::tests::maximal_linear_fixture(34));
+        let mut pcs_capacity = Vec::new();
+        for h in std::iter::once(35).chain((0..=slot).map(|_| 34)) {
+            let bytes = codec::tests::maximal_linear_fixture(h);
+            let proof = codec::decode_linear(Domain::Flat(h), &bytes).unwrap();
+            let heap = codec::tests::matrix_heap_capacity(&proof);
+            capacities.include(heap.total, bytes.len());
+            pcs_capacity.push(serde_json::json!({"dimension":h,
+                "body_bytes":bytes.len(),"decoded_heap_capacity_bytes":heap.total.retained,
+                "honest_typed_heap_upper_bytes":heap.total.shape_upper,
+                "decoder_moving_peak_upper_bytes":heap.total.decoder_peak_upper(),
+                "opening_heap_upper_class3":heap.openings.shape_upper,
+                "blinded_reveal_heap_upper_class11":heap.blinded_reveals.shape_upper,
+                "other_heap_upper_class5":heap.other.shape_upper}));
+            frames.push(bytes);
         }
         assert_eq!(frames.len(), 135 + slot);
         // Header-sized fixture, not the registry's actual acceptance context.
@@ -214,6 +255,28 @@ fn c71_b12_native_canonical_wire_body_geometry() {
         let (mut certificate, digest) = writer.finish(&mut fs);
         assert_eq!(certificate.len(), body + header.len() + 13_941_532 + (slot + 1) * 13_776_828);
         assert_eq!(certificate.len(), [64_638_068, 78_530_550, 92_308_128][slot]);
+        // Exponents change the <=77 RNE terminal fields, not the remaining
+        // schema. Add their entire universal budget rather than crediting
+        // this zero-exponent fixture's selected smaller terminal vectors.
+        let rne_terminal_heap = 892 * kernel::wire::vector_shape_upper::<kernel::Fp3>(77);
+        let rne_terminal_wire = 892 * 77 * 24;
+        let decoder_upper = capacities.largest_decoder_peak_upper + rne_terminal_heap;
+        let proof_and_body_upper = capacities.largest_proof_and_moving_body_upper
+            + rne_terminal_heap + 3 * rne_terminal_wire;
+        println!("C71_CANONICAL_WIRE_HEAP {}",serde_json::json!({"slot":slot,
+            "W_targets":775,"A_targets":4446,"rne_records":892,"pcs_batches":12,
+            "p0_proof_inline_bytes":std::mem::size_of::<kernel::p0::Proof>(),
+            "p0_optional_proof_inline_bytes":std::mem::size_of::<Option<kernel::p0::Proof>>(),
+            "p0_cohort_inline_bytes":std::mem::size_of::<(kernel::Fp3,Option<kernel::p0::Proof>)>(),
+            "max_selected_frame_bytes":capacities.largest_body,
+            "max_typed_heap_upper_bytes":capacities.largest_heap_upper + rne_terminal_heap,
+            "max_decoder_heap_moving_upper_bytes":decoder_upper,
+            "max_proof_and_body_encode_moving_upper_bytes":proof_and_body_upper,
+            "writer_capacity_bytes":kernel::wire::CANONICAL_MAX_BYTES,
+            "P_encode_wire_class_upper_bytes":kernel::wire::CANONICAL_MAX_BYTES + proof_and_body_upper,
+            "P_certificate_and_V_receive_and_decoder_class_upper_bytes":
+                2 * kernel::wire::CANONICAL_MAX_BYTES + decoder_upper,
+            "pcs":pcs_capacity,"credit":false,"scope":"typed honest pinned schema; no numeric witness, GPU, canonical allocator peak or joint admission; opening and blinded reveal payloads partitioned to avoid cross-class duplication"}));
         assert!(certificate.len() < kernel::wire::CANONICAL_MAX_BYTES);
         assert!(super::super::protocol::Reader::new(&certificate, &header).is_err());
         assert_eq!(read_transport(&certificate, &header, frames.len()).unwrap(), digest);

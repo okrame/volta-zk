@@ -95,11 +95,10 @@ impl Canonical {
         Reader::record(fs, frame);
 
         let (proof, frame) = reader.get(1)?;
-        let p0 = self.plan.verify_p0(s, &proof, delta, fs, rows)?;
+        let mut p0 = self.plan.verify_p0(s, &proof, delta, fs, rows)?;
         Reader::record(fs, frame);
         drop(proof);
-        bw.forms = p0.weight_forms.clone();
-        bw.targets = p0.weights.clone();
+        bw.take(&mut p0.weight_forms, &mut p0.weights)?;
         let (f, bias) = b.forms(&self.plan, &p0)?;
         ba.extend(
             f,

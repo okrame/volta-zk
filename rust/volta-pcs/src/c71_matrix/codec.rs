@@ -429,6 +429,68 @@ fn decode_body(
 #[cfg(all(test, feature = "c71-b12-pcs"))]
 pub(super) mod tests {
     use super::*;
+    use crate::c71_matrix::wire::{vector_heap, HeapCapacity};
+
+    pub(in crate::c71_matrix) struct MatrixHeapCapacity {
+        pub total: HeapCapacity,
+        pub openings: HeapCapacity,
+        pub blinded_reveals: HeapCapacity,
+        pub other: HeapCapacity,
+    }
+
+    fn scalars<T>(values: &Vec<T>) -> HeapCapacity {
+        vector_heap(values, |_| HeapCapacity::default())
+    }
+
+    fn commitment_heap(root: &C61Commitment) -> HeapCapacity {
+        assert_eq!(root.num_roots(), 1);
+        // C61Reader::commitment uses vec![digest]; canonical native/MMCS
+        // commitments and their clones likewise construct a single-root Vec.
+        // MerkleCap's capacity is private, so this exact32-byte term relies on
+        // those constructors, not merely on num_roots() for arbitrary caps.
+        HeapCapacity { retained: 32, shape_upper: 32, largest_vector_upper: 32,
+            array_decode_temporary_upper: 0 }
+    }
+
+    fn opening_heap<T>(opening: &SharedProofOpening<T, MatrixMultiProof>) -> HeapCapacity {
+        vector_heap(&opening.rows, scalars)
+            .add(vector_heap(&opening.proof.0, |matrices| vector_heap(matrices, scalars)))
+            .add(scalars(&opening.proof.1.sibling_hashes))
+    }
+
+    fn query_heap(opening: &QueryOpenings<Goldilocks, E, MatrixMultiProof>) -> HeapCapacity {
+        match opening { QueryOpenings::Base(o) => opening_heap(o),
+            QueryOpenings::Extension(o) => opening_heap(o) }
+    }
+
+    pub(in crate::c71_matrix) fn matrix_heap_capacity(matrix: &MatrixProof) -> MatrixHeapCapacity {
+        let pcs = &matrix.pcs;
+        let base = &pcs.base_case;
+        let mut other = scalars(&matrix.rounds)
+            .add(vector_heap(&pcs.sumchecks, |batch| {
+                vector_heap(&batch.round_coefficients, scalars).add(scalars(&batch.pow_witnesses))
+            }))
+            .add(vector_heap(&pcs.sumcheck_mask_commitments, commitment_heap))
+            .add(vector_heap(&pcs.rounds, |round| {
+                commitment_heap(&round.commitment).add(commitment_heap(&round.mask_commitment))
+                    .add(scalars(&round.ood_answers))
+            }))
+            .add(commitment_heap(&base.fresh_main_commitment))
+            .add(vector_heap(&base.fresh_mask_commitments, commitment_heap));
+        let blinded_reveals = scalars(&base.blinded_message).add(scalars(&base.blinded_randomness))
+            .add(vector_heap(&base.blinded_masks, |mask| scalars(&mask.message).add(scalars(&mask.randomness))));
+        // Count pair inline descriptors once; their nested rows/salts/paths
+        // belong to openings. No MatrixProof opening is another input copy.
+        other = other.add(vector_heap(&base.mask_openings, |_| HeapCapacity::default()));
+        let mut openings = pcs.rounds.iter().fold(HeapCapacity::default(),
+            |heap, round| heap.add(query_heap(&round.openings)))
+            .add(query_heap(&base.source_openings)).add(opening_heap(&base.fresh_main_openings));
+        for pair in &base.mask_openings {
+            openings = openings.add(opening_heap(&pair.carried)).add(opening_heap(&pair.fresh));
+        }
+        MatrixHeapCapacity { total: other.add(openings).add(blinded_reveals), openings,
+            blinded_reveals, other }
+    }
 
     // Codec fixtures only: zero fields/roots are not cryptographic proofs.
     pub(super) fn set_frontiers(

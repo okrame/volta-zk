@@ -71,13 +71,34 @@ impl Canonical {
         weights: &[i32],
         exponents: &BTreeMap<usize, i32>,
     ) -> Result<Self, String> {
+        #[cfg(test)]
+        { Self::compile_inner(slot, weights, exponents, false) }
+        #[cfg(not(test))]
+        { Self::compile_inner(slot, weights, exponents) }
+    }
+
+    #[cfg(test)]
+    fn compile_capacity_only(slot: usize, weights: &[i32], exponents: &BTreeMap<usize, i32>) -> Result<Self, String> {
+        Self::compile_inner(slot, weights, exponents, true)
+    }
+
+    fn compile_inner(
+        slot: usize, weights: &[i32], exponents: &BTreeMap<usize, i32>,
+        #[cfg(test)] capacity_only: bool,
+    ) -> Result<Self, String> {
         if slot >= 3 {
             return Err("canonical fixed run has only three slots".into());
         }
         let plan = super::super::compile()?;
         let (sources, output, softmax) = plan.softmax_sources_at(150 * slot)?;
-        let recipes =
-            profile::Recipes::compile(&plan, &sources, &output, &softmax, weights, exponents)?;
+        #[cfg(not(test))]
+        let recipes = profile::Recipes::compile(&plan, &sources, &output, &softmax, weights, exponents)?;
+        #[cfg(test)]
+        let recipes = if capacity_only {
+            profile::Recipes::compile_capacity_only(&plan, &sources, &output, &softmax, weights, exponents)?
+        } else {
+            profile::Recipes::compile(&plan, &sources, &output, &softmax, weights, exponents)?
+        };
         let mut p = Self { plan, sources, output, softmax, recipes, steps: Vec::new() };
         let rms = &p.sources.attention.rope.gate_up.gelu.rms;
         let r = &p.recipes;
@@ -592,3 +613,7 @@ mod tests {
         assert!(Canonical::compile(3, &[0; 772], &exponents).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "canonical_forms_capacity.rs"]
+mod forms_capacity_tests;

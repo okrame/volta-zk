@@ -312,6 +312,18 @@ pub(super) fn profiles(path: &Path) -> Result<Vec<Canonical>, String> {
 }
 
 pub(super) fn profiles_from_bytes(body: &[u8]) -> Result<Vec<Canonical>, String> {
+    #[cfg(test)]
+    { profiles_inner(body, false) }
+    #[cfg(not(test))]
+    { profiles_inner(body) }
+}
+
+#[cfg(test)]
+pub(super) fn profiles_capacity_only(body: &[u8]) -> Result<Vec<Canonical>, String> {
+    profiles_inner(body, true)
+}
+
+fn profiles_inner(body: &[u8], #[cfg(test)] capacity_only: bool) -> Result<Vec<Canonical>, String> {
     if body.len() > 1_048_576 {
         return Err("calibration candidate exceeds 1 MiB".into());
     }
@@ -331,9 +343,13 @@ pub(super) fn profiles_from_bytes(body: &[u8]) -> Result<Vec<Canonical>, String>
                 .ok_or("calibration W exponent missing".to_string())
         })
         .collect::<Result<Vec<_>, _>>()?;
-    (0..3)
-        .map(|slot| Canonical::compile(slot, &weights, &candidate.activation_exponents_by_source))
-        .collect()
+    (0..3).map(|slot| {
+        #[cfg(test)]
+        if capacity_only {
+            return Canonical::compile_capacity_only(slot, &weights, &candidate.activation_exponents_by_source);
+        }
+        Canonical::compile(slot, &weights, &candidate.activation_exponents_by_source)
+    }).collect()
 }
 
 pub(super) struct Tables {

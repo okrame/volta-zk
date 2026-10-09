@@ -202,12 +202,7 @@ impl Measurements {
 }
 
 fn memory() -> Option<Vec<String>> {
-    std::fs::read_to_string("/proc/self/status").ok().map(|s| {
-        s.lines()
-            .filter(|l| l.starts_with("VmHWM:") || l.starts_with("VmRSS:"))
-            .map(str::to_owned)
-            .collect()
-    })
+    crate::c71_matrix::progress::host_process_memory()
 }
 
 pub(super) struct Phase<'a> {
@@ -246,6 +241,67 @@ impl Drop for Phase<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_canonical_public_metadata_telemetry_bounded_schema() {
+        use std::mem::{size_of, MaybeUninit};
+        use crate::c71_matrix::census::host_layout_bytes;
+        let start = host_layout_bytes();
+        let mut map = std::collections::BTreeMap::<String, MaybeUninit<serde_json::Value>>::new();
+        // Empty keys have the same typed node layout and no String allocation.
+        // Unique lengths distinguish them; subtract their exact payload.
+        for i in 0..11 { map.insert("x".repeat(i), MaybeUninit::uninit()); }
+        let leaf = host_layout_bytes()-start-(0..11).sum::<u64>();
+        map.insert("x".repeat(11), MaybeUninit::uninit());
+        let node = (host_layout_bytes()-start-(0..12).sum::<u64>()-leaf) as usize;
+        assert!(node > leaf as usize);
+        drop(map);
+        assert_eq!(host_layout_bytes(),start);
+        let stats = serde_json::to_value(super::super::kernel::range::windowed::native::Stats::default()).unwrap();
+        let joint = crate::c71_matrix::census::simultaneous();
+        assert_eq!(stats.as_object().unwrap().len(),19);
+        assert_eq!(joint.as_object().unwrap().len(),13);
+        let native = include_str!("canonical_device.rs");
+        let body = native.split("\"sample_available\": true").nth(1).unwrap().split("})").next().unwrap();
+        let pieces: Vec<_> = body.split('"').collect();
+        assert_eq!(1+pieces.iter().enumerate().filter(|(i,_)|i%2==1)
+            .filter(|(i,_)|pieces[i+1].trim_start().starts_with(':')).count(),12);
+        // Every diagnostic String is a fixed literal <=512 bytes, or a Linux
+        // u64 RSS/HWM line <=33 bytes. Paths are outside these JSON snapshots.
+        assert!(native.lines().find(|l|l.contains("named payloads are subsets")).unwrap().len()<512);
+        let record = |members:usize, objects:usize, slots:usize, strings:usize| {
+            let depth = members.ilog2() as usize+2;
+            (members+objects*(1+depth))*node + members*64 + strings*512
+                + 2*slots*size_of::<serde_json::Value>()
+        };
+        // sample=3 root+13 joint+12 native+19 Stats fields; two memory strings.
+        let sample = record(47,4,2,4);
+        let phase = record(9+2*47,9,4,10);
+        // Max resource: weight/current/two prior model census objects <=17
+        // fields each; phase/slot/time/values/sample and three values keys.
+        let resource = record(5+3+4*17+47,10,4,10);
+        let progress = record(160,20,16,24);
+        let stored = 44*phase+6*resource+64*size_of::<serde_json::Value>()
+            +8*size_of::<serde_json::Value>()+8*size_of::<(&str,Option<usize>,Traffic)>();
+        // 14 fixed phases plus 10 per response; seven live nesting scopes;
+        // three public-distribution/setup/install and three response channels.
+        let process_read = 3 * (crate::c71_matrix::progress::PROCESS_STATUS_MAX_BYTES + 1);
+        // P/V diagnostics can overlap. A progress read runs on its emitting
+        // role's thread, not a third diagnostic worker.
+        let crypto = stored+7*sample+3*progress+12*(16+size_of::<AtomicU64>())+size_of::<Measurements>()+2*process_read;
+        let report = 4*stored+3*progress+6*sample+2*process_read;
+        println!("C71_PUBLIC_METADATA_TELEMETRY {}",serde_json::json!({
+            "schema":"volta-c71-public-metadata-telemetry-v1","credit":false,"admission":false,
+            "phase_count_upper":44,"resource_count_upper":6,"channel_count_upper":6,
+            "active_phase_count_upper":7,"json_node_upper_bytes":node,
+            "sample_heap_upper_bytes":sample,"phase_record_heap_upper_bytes":phase,
+            "resource_record_heap_upper_bytes":resource,"progress_heap_upper_bytes":progress,
+            "crypto_live_metadata_heap_upper_bytes":crypto,
+            "diagnostic_status_read_moving_upper_bytes_per_role":process_read,
+            "after_cleanup_report_metadata_heap_upper_bytes":report,
+            "source":"canonical_runner/canonical_state call sites; current sample/Stats/Session JSON schema",
+            "scope":"allocator payload upper; report clones occur after native cleanup; durable progress does not retain records"}));
+    }
 
     #[test]
     fn c71_canonical_metrics_nested_failure_and_partial_io() {

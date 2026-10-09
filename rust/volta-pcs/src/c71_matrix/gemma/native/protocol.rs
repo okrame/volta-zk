@@ -40,6 +40,21 @@ impl<T: Copy> Batch<T> {
         self.forms.push(form);
         self.targets.push(target);
     }
+    /// Move the caller's ordered original claims after validating both lists.
+    /// Pending P0 cuts/inputs remain owned by the caller for original RNE.
+    pub(super) fn take(
+        &mut self,
+        forms: &mut Vec<Vec<Cube>>,
+        targets: &mut Vec<T>,
+    ) -> Result<(), String> {
+        if forms.len() != targets.len() {
+            return Err("original endpoint cardinality differs".into());
+        }
+        for (form, target) in std::mem::take(forms).into_iter().zip(std::mem::take(targets)) {
+            self.add(form, target);
+        }
+        Ok(())
+    }
     pub(super) fn extend(
         &mut self,
         forms: Vec<Vec<Cube>>,
@@ -1588,4 +1603,64 @@ fn c71_original_claim_batch_releases_construction_capacity() {
             "construction_capacity_released":true, "credit":false
         })
     );
+}
+
+#[cfg(test)]
+mod batch_transfer_tests {
+    use super::*;
+
+    fn forms() -> Vec<Vec<Cube>> {
+        (0..11).map(|i| {
+            let mut point = Vec::with_capacity(71);
+            point.extend((0..i % 7).map(|j| signed((2 + i + j) as i64)));
+            let mut form = Vec::with_capacity(9);
+            form.push(Cube { offset: 0, point, coefficient: signed((i + 9) as i64) });
+            form
+        }).collect()
+    }
+
+    fn ordered_bytes(forms: &[Vec<Cube>], targets: &[Vec<u8>]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for (form, target) in forms.iter().zip(targets) {
+            bytes.extend((form.len() as u64).to_le_bytes());
+            for cube in form {
+                bytes.extend((cube.offset as u64).to_le_bytes());
+                bytes.extend((cube.point.len() as u64).to_le_bytes());
+                bytes.extend(cube.coefficient.to_bytes());
+                for p in &cube.point { bytes.extend(p.to_bytes()); }
+            }
+            bytes.extend((target.len() as u64).to_le_bytes());
+            bytes.extend(target);
+        }
+        bytes
+    }
+
+    #[test]
+    fn c71_canonical_original_batch_take_preserves_order_mac_and_rejects_mismatch() {
+        let mut original_forms = forms();
+        let mut auth = (0..11).map(|i| Auth::new(signed(i + 7), signed(i + 19))).collect::<Vec<_>>();
+        let auth_bytes = |a: &Auth| a.x.to_bytes().into_iter().chain(a.m.to_bytes()).collect::<Vec<_>>();
+        let expected = ordered_bytes(&original_forms, &auth.iter().map(auth_bytes).collect::<Vec<_>>());
+        let mut prover = Batch::new();
+        prover.take(&mut original_forms, &mut auth).unwrap();
+        assert!(original_forms.is_empty() && auth.is_empty());
+        assert_eq!(ordered_bytes(&prover.forms, &prover.targets.iter().map(auth_bytes).collect::<Vec<_>>()), expected);
+        for f in &prover.forms {
+            assert_eq!(f.capacity(), f.len());
+            for c in f { assert_eq!(c.point.capacity(), c.point.len()); }
+        }
+        let mut original_forms = forms();
+        let mut keys = (0..11).map(|i| Key::new(signed(i + 23))).collect::<Vec<_>>();
+        let key_bytes = |k: &Key| k.k.to_bytes().to_vec();
+        let expected = ordered_bytes(&original_forms, &keys.iter().map(key_bytes).collect::<Vec<_>>());
+        let mut verifier = Batch::new();
+        verifier.take(&mut original_forms, &mut keys).unwrap();
+        assert_eq!(ordered_bytes(&verifier.forms, &verifier.targets.iter().map(key_bytes).collect::<Vec<_>>()), expected);
+        let mut invalid_forms = forms();
+        let mut invalid_targets = vec![Key::new(Fp3::ZERO); 10];
+        let before = ordered_bytes(&invalid_forms, &invalid_targets.iter().map(key_bytes).collect::<Vec<_>>());
+        assert!(verifier.take(&mut invalid_forms, &mut invalid_targets).is_err());
+        assert_eq!((invalid_forms.len(), invalid_targets.len(), verifier.forms.len()), (11, 10, 11));
+        assert_eq!(ordered_bytes(&invalid_forms, &invalid_targets.iter().map(key_bytes).collect::<Vec<_>>()), before);
+    }
 }

@@ -1268,6 +1268,7 @@ mod tests {
             }
             let mut live = BTreeMap::<(usize, usize), usize>::new();
             let mut peak = 0;
+            let mut peak_site = serde_json::Value::Null;
             // Upper envelope for ANY pruned replay: all producer outputs and
             // all duplicate replay histograms are charged, including frozen
             // outputs before release. Uses the production batches/ports/codec.
@@ -1299,7 +1300,13 @@ mod tests {
                         .collect();
                     let transient = live.values().sum::<usize>()
                         + outputs.iter().map(|(_, n)| n).sum::<usize>();
-                    peak = peak.max(transient);
+                    if transient > peak {
+                        peak = transient;
+                        peak_site = serde_json::json!({"step":step,"first_row":first,"rows":count,
+                            "retained_bytes":live.values().sum::<usize>(),"outputs":outputs,
+                            "output_matrix":matches!(producer,Producer::Matrix(raw) if *raw==plan.output.raw),
+                            "output_rne":matches!(producer,Producer::Rne(pair) if pair.raw==plan.output.raw)});
+                    }
                     for (source, size) in outputs {
                         if !frozen.contains(&source)
                             && last.get(&source).is_some_and(|&end| end > step)
@@ -1343,6 +1350,8 @@ mod tests {
                     "checkpoint_capacity_bytes":cut_bytes, "histogram_capacity_bytes":histogram_bytes,
                     "table_capacity_bytes":tables, "persistent_device_bytes":persistent,
                     "replay_upper_bytes_including_persistent":upper,
+                    "replay_transient_peak_bytes":peak,"replay_transient_peak_site":peak_site,
+                    "public_padding_device_upper_bytes":padding,
                     "duplicate_histograms_included":true, "geometry_only":true,
                     "gpu_execution":false, "credit":false,
                     "host_allocations_at_geometry": kernel::census::simultaneous()

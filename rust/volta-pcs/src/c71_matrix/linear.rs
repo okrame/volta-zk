@@ -57,24 +57,13 @@ pub(super) fn linear_record_length(
     Ok(size)
 }
 
-/// Bind the public forms after the caller's target-correction messages and
-/// before lambda. No value/tag/key is serialized here, and no new MAC for
-/// the aggregate is requested. One root, one batch, one PCS chain.
-fn bind(
-    domain: impl Into<Domain>,
-    root: &C61Commitment,
-    attempt: AttemptContext,
-    layout: [u8; 32],
-    forms: &[Vec<Cube>],
-    count: usize,
-    fs: &mut Fs,
-) -> Result<(ZkWhirConfig<E, Goldilocks, Fs>, Vec<Fp3>), String> {
-    let domain = domain.into();
-    let config = domain.config()?;
-    let bits = config.num_variables;
-    if root.num_roots() != 1
-        || !attempt.valid()
-        || layout == [0; 32]
+/// Read-only shape validation. Canonical callers check both accumulated
+/// batches before W and historical A closures; bind repeats the same checks.
+/// No message, challenge, value or MAC is consumed or altered here.
+pub(super) fn validate_forms(
+    bits: usize, forms: &[Vec<Cube>], count: usize,
+) -> Result<(), String> {
+    if bits >= usize::BITS as usize
         || forms.is_empty()
         || forms.len() > MAX_TARGETS
         || count != forms.len()
@@ -93,6 +82,37 @@ fn bind(
             return Err("B12 linear cube is unaligned or outside root domain".into());
         }
     }
+    Ok(())
+}
+
+/// Drop public construction slack without changing the ordered form.
+pub(super) fn compact_form(form: &mut Vec<Cube>) {
+    for cube in &mut *form { cube.point.shrink_to_fit(); }
+    form.shrink_to_fit();
+}
+
+/// Bind the public forms after the caller's target-correction messages and
+/// before lambda. No value/tag/key is serialized here, and no new MAC for
+/// the aggregate is requested. One root, one batch, one PCS chain.
+fn bind(
+    domain: impl Into<Domain>,
+    root: &C61Commitment,
+    attempt: AttemptContext,
+    layout: [u8; 32],
+    forms: &[Vec<Cube>],
+    count: usize,
+    fs: &mut Fs,
+) -> Result<(ZkWhirConfig<E, Goldilocks, Fs>, Vec<Fp3>), String> {
+    let domain = domain.into();
+    let config = domain.config()?;
+    let bits = config.num_variables;
+    if root.num_roots() != 1
+        || !attempt.valid()
+        || layout == [0; 32]
+    {
+        return Err("B12 linear batch shape, layout or attempt mismatch".into());
+    }
+    validate_forms(bits, forms, count)?;
     let profile = gamma(&config);
     let context = attempt.encode();
     let length = linear_record_length(profile.len(), context.len(), forms)?;
@@ -1136,7 +1156,12 @@ mod tests {
     }
     fn linear_full_wire_parity(native: bool) {
         use std::sync::Arc;
-        let native_fixture=native.then(||device::tests::fixture(512));
+        let native_fixture=native.then(|| {
+            let mut fixture=device::tests::fixture(512);
+            // The selected resident query also retains public factor spectra.
+            fixture.config.arena_bytes=2<<20;
+            fixture
+        });
         let bits = 10;
         let weights: Vec<_> =
             (0..1usize << bits).map(|i| ((i * 29 + i * i * 3) % 251) as i16 - 125).collect();
@@ -1653,6 +1678,9 @@ mod record_capacity_tests {
             assert_eq!(linear_record_length(gamma(&config).len(),attempt.encode().len(),&forms).unwrap(),reference.len());
             let mut exact=Fs::new(b"exact linear record capacity",100000);
             let mut old=Fs::new(b"exact linear record capacity",100000);
+            let untouched = (exact.digest(), exact.requests());
+            validate_forms(bits, &forms, forms.len()).unwrap();
+            assert_eq!((exact.digest(), exact.requests()), untouched);
             let (_,coefficients)=bind(domain,&root,attempt,[5;32],&forms,forms.len(),&mut exact).unwrap();
             old.set_phase(0x300);old.record(0x30,&reference);let lambda=old.fp3();
             let mut power=Fp3::ONE;
@@ -1664,5 +1692,72 @@ mod record_capacity_tests {
             assert_eq!((exact.digest(), exact.requests()), before);
             assert!(linear_record_length(usize::MAX, 130, &forms).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod early_validation_tests {
+    use super::*;
+
+    fn record(forms: &[Vec<Cube>]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for form in forms {
+            bytes.extend((form.len() as u32).to_le_bytes());
+            for c in form {
+                bytes.extend((c.offset as u64).to_le_bytes());
+                bytes.extend((c.point.len() as u32).to_le_bytes());
+                bytes.extend(c.coefficient.to_bytes());
+                for x in &c.point { bytes.extend(x.to_bytes()); }
+            }
+        }
+        bytes
+    }
+
+    #[test]
+    fn c71_b12_linear_preflight_caps_and_compaction_preserve_originals() {
+        let mut point = Vec::with_capacity(71);
+        point.extend([signed(2), signed(3)]);
+        let mut form = Vec::with_capacity(17);
+        form.push(Cube { offset: 4, point, coefficient: signed(-9) });
+        form.push(Cube { offset: 15, point: Vec::new(), coefficient: Fp3::ZERO });
+        let mut forms = vec![form, Vec::new()];
+        let ordered = record(&forms);
+        let targets = [Auth::new(signed(19), signed(23)), Auth::ZERO];
+        let keys = [Key::new(signed(29)), Key::ZERO];
+        let mut fs = Fs::new(b"read-only original batch preflight", 100);
+        let before = (fs.digest(), fs.requests());
+        for bits in [10usize, 34, 35] {
+            validate_forms(bits, &forms, targets.len()).unwrap();
+            validate_forms(bits, &forms, keys.len()).unwrap();
+            assert_eq!(record(&forms), ordered);
+            assert_eq!((fs.digest(), fs.requests()), before);
+            for f in &mut forms { compact_form(f); }
+            assert_eq!(record(&forms), ordered);
+            for f in &forms {
+                assert_eq!(f.capacity(), f.len());
+                for c in f { assert_eq!(c.point.capacity(), c.point.len()); }
+            }
+            // Read-only validation and compaction leave target values/tags/keys.
+            assert_eq!((targets[0].x, targets[0].m, keys[0].k), (signed(19), signed(23), signed(29)));
+            for (offset, arity) in [(1, 2), (1usize << bits, 0), (usize::MAX, 0), (0, bits + 1)] {
+                let invalid = vec![vec![Cube { offset, point: vec![Fp3::ONE; arity], coefficient: Fp3::ZERO }]];
+                assert!(validate_forms(bits, &invalid, 1).is_err());
+                assert!(bind(Domain::Flat(bits), &C61Commitment::new(vec![[1;32]]),
+                    AttemptContext { session:[1;32], capacity:[2;32], slot:0,
+                        predecessor:[0;32], nonce:[3;32] }, [4;32], &invalid, 1, &mut fs).is_err());
+                assert_eq!((fs.digest(), fs.requests()), before);
+            }
+        }
+        assert!(validate_forms(35, &forms, 1).is_err());
+        assert!(validate_forms(35, &[], 0).is_err());
+        assert!(validate_forms(usize::BITS as usize, &forms, 2).is_err());
+        assert!(validate_forms(35, &vec![Vec::new(); MAX_TARGETS + 1], MAX_TARGETS + 1).is_err());
+        // ~28 MiB typed metadata, no D34/D35 value array or private source.
+        let mut cubes = vec![Cube { offset:0, point:Vec::new(), coefficient:Fp3::ZERO }; MAX_CUBES + 1];
+        assert!(validate_forms(34, std::slice::from_ref(&cubes), 1).is_err());
+        cubes.truncate(MAX_CUBES);
+        validate_forms(34, std::slice::from_ref(&cubes), 1).unwrap();
+        validate_forms(35, std::slice::from_ref(&cubes), 1).unwrap();
+        assert_eq!((fs.digest(), fs.requests()), before);
     }
 }

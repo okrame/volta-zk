@@ -515,12 +515,16 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
                 predecessor_three_planes=24*(1 << 27), successor_three_planes=24*(1 << 25), fold_flag=256),
                 'Old and new generations remain charged through successful out-of-place fold/fence, then predecessor retires. '
                 'CPU shrink also has a possible old+new overlap; powers for the preceding two folds already retired.')
+    complete_capacity = (complete_prepared_phases(phases, directory, common, persistent,
+                         replay, initial, extensions, stages, owner) if proposed_s1 else None)
     return {'backend': 's1-prepared' if proposed_s1 else 'native-2026-10-09',
             'credit': False, 'gpu_execution': False, 'canonical_execution': False,
             'enforced_joint_allocation_limit_bytes': payload,
             'runtime_allocator_stack_driver_allowance_bytes': allowance, 'margin_bytes': margin,
             'allowance_physically_verified': False, 'complete_joint_phase_peak': False,
-            'named_phase_crosschecks': phases, 'additional_capacity_classes_requiring_complete_census': additional,
+            'named_phase_crosschecks': phases,
+            'additional_capacity_classes_requiring_complete_census': (
+                complete_capacity['unclosed_capacity_premises'] if complete_capacity is not None else additional),
             'empty_fixed_allowance_for_other_payload': False,
             'component_record_sources': {'query': str(query_record), 'linear': str(linear_record),
                 'query_source_sha': qdoc['source_git_sha'], 'linear_source_sha': ldoc['source_git_sha'],
@@ -541,6 +545,7 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
                 'PCS_E_bounded_final_Rust_output': 24 * 128,
             } if proposed_s1 else {},
             'unquantified_additional_classes_are_zero': False,
+            'complete_capacity_integration': complete_capacity,
             'query_E_device_payload_named_q2p20_excluding_metadata_and_flag': 864028160 if proposed_s1 else None,
             'query_E_host_publication_q2p20': 144 * (1 << 20) if proposed_s1 else None,
             'joint_admitted': False,
@@ -549,6 +554,359 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
             'scope': 'named live allocation upper bounds only; every additional capacity/reallocation is globally charged. '
                      'Immutable packed W alone excluded. No full-fit/physical/H100 claim.'}
 
+
+def prepared_capacity_markers(directory):
+    capacity = records(directory, 'C71_PUBLIC_METADATA_CAPACITY')
+    telemetry = records(directory, 'C71_PUBLIC_METADATA_TELEMETRY')
+    forms = records(directory, 'C71_CLASS8_FORMS')
+    wire = records(directory, 'C71_CANONICAL_WIRE_HEAP')
+    if len(capacity) != 1 or len(telemetry) != 1:
+        raise ValueError('one final typed CAPACITY and TELEMETRY marker required')
+    if {r['slot'] for r in forms} != {0, 1, 2} or {r['slot'] for r in wire} != {0, 1, 2}:
+        raise ValueError('typed forms and honest wire markers required for all three slots')
+    capacity, telemetry = capacity[0], telemetry[0]
+    if capacity['profile_count'] != 6 or capacity['private_inputs'] or capacity['gpu_execution']:
+        raise ValueError('incompatible public metadata census')
+    if capacity['pcs_metadata']['code_tree_count_upper'] != 63:
+        raise ValueError('fresh/carried/main/global descriptor pool must include 63 codes')
+    if (telemetry['phase_count_upper'], telemetry['resource_count_upper'],
+            telemetry['channel_count_upper'], telemetry['active_phase_count_upper']) != (44, 6, 6, 7):
+        raise ValueError('canonical telemetry lifecycle changed')
+    if any(r['W_targets'] != 775 or r['A_targets'] != 4446 for r in forms):
+        raise ValueError('pinned claim schema changed')
+    if any(not r.get('current_batch_preflight_cap_through_W_and_history')
+           or not r.get('old_KV_compacted') or r.get('P_V_batch_overlap') is not False for r in forms):
+        raise ValueError('complete selected claim lifetime markers required')
+    if any(r['rne_records'] != 892 or r['pcs_batches'] != 12 for r in wire):
+        raise ValueError('pinned wire schema changed')
+    return capacity, telemetry, {r['slot']: r for r in forms}, {r['slot']: r for r in wire}
+
+
+def source_opening_upper(dimension, count):
+    logs = ([32, 30, 28, 26, 24, 22, 20, 18, 16, 14, 13, 13, 13]
+            if dimension == 35 else [31, 29, 27, 25, 23, 21, 19, 17, 15, 13, 13, 13, 13])
+    if not 0 <= count <= 13:
+        raise ValueError('source opening prefix changed')
+    return sum((1228800 if i == 0 else 278528) + 32768*(h-9)
+               for i, h in enumerate(logs[:count]))
+
+
+def current_opening_parts(height, base_columns, batch_rows, binding=False):
+    # q512, cut<=4096, one current subtree; map nodes are typed metadata.
+    h, q = height.bit_length()-1, 512
+    siblings = q * max(0, h-9)
+    if binding:
+        body = 12+q*(52+8*base_columns)+32*siblings
+        return {'class3_current_observe_binding_moving_bytes': 3*body}
+    return {'class3_current_batch_indices_retained_upper': 16*batch_rows,
+            'class3_current_path_triple_vec_payload_upper': 294912,
+            'class3_current_needed_queries_frontiers_and_sampled_indices_upper': 80*q,
+            'class3_current_single_matrix_row_wrapper_upper': 122880,
+            'class3_current_one_regenerated_subtree_upper': 393568}
+
+
+def complete_prepared_phases(phases, directory, common, persistent, replay, initial,
+                             extensions, stages, owner):
+    """Typed payload integration. Honest-fit and physical credit remain separate."""
+    import re
+    cap, tele, forms, wire = prepared_capacity_markers(directory)
+    producers = cap['producer_metadata']
+    metadata = (cap['six_profile_actual_heap_bytes']
+                + cap['table_metadata_actual_shape_bytes']
+                + cap['borrowed_table_view_heap_upper_bytes']
+                + cap['public_gamma_encoding_heap_bytes']
+                + cap['fixed_descriptor_heap_upper_bytes']
+                + max(p['persistent_descriptor_heap_upper_bytes'] for p in producers)
+                + cap['pcs_metadata']['total_metadata_heap_upper_bytes'])
+    producer = max(p['producer_descriptor_heap_upper_bytes'] for p in producers)
+    # Session::census has one lock-protected dedup set, even outside a replay.
+    unique = max((3*p['kv_source_count']+1
+                  +(3*p['kv_source_count']).bit_length()+1)*p['node_upper_bytes']['set']
+                 for p in producers)
+    pcg_idle = 383400
+    pcg_expand = 2775464  # includes idle; old correlation batch retires first
+    carried = 108231968
+    pcs_wire = {d: next(p for p in wire[0]['pcs'] if p['dimension'] == d) for d in (34, 35)}
+    assert source_opening_upper(35, 13)+22003712 == 31555584
+    assert source_opening_upper(34, 13)+22003712 == 31227904
+    for d in (34, 35):
+        if pcs_wire[d]['opening_heap_upper_class3'] != source_opening_upper(d, 13)+22003712:
+            raise ValueError('typed 59-opening capacity differs from configured prefix model')
+    def claim_parts(slot, w_live, a_bound=False, verifier=False):
+        f = forms[slot]
+        # Before the common preflight, constructor counts stay unclamped.
+        w = f['W_cube_upper']
+        a = min(f['A_constructor_cube_upper'], f['MAX_CUBES']) if a_bound else f['A_constructor_cube_upper']
+        P_A = a*(56+34*24)+(2*4446+4)*(24+48)
+        V_A = a*(56+34*24)+(2*4446+4)*(24+24)
+        P_W = w*(56+35*24)+(2*775+4)*(24+48)
+        V_W = w*(56+35*24)+(2*775+4)*(24+24)
+        if not a_bound:
+            assert P_A+P_W == f['retained_P_payload_upper']
+            assert V_A+V_W == f['retained_V_payload_upper']
+        # canonical_state returns from prove_body before sending the whole
+        # Response. V builds its batches only after that receive; P has dropped
+        # bw/ba. Their claim allocations are alternatives, never concurrent.
+        return {'class8_retained_current_role_original_claims':
+                    (V_A+(V_W if w_live else 0)) if verifier else (P_A+(P_W if w_live else 0)),
+                'class8_historical_KV_current_role_upper': f['old_KV_compacted_payload_upper']}
+    def refresh(row):
+        total = sum(row['parts'].values())
+        row.update(named_allocation_subtotal_bytes=total,
+                   remaining_shared_payload_capacity_bytes=5905580032-total,
+                   named_subtotal_exceeds_payload=total > 5905580032,
+                   is_complete_phase_peak=False,
+                   counter_is_fit_evidence=False)
+    for row in phases:
+        name, parts = row['phase'], row['parts']
+        slot_match = re.search(r'_A([123])(?:_|$)', name)
+        slot = int(slot_match.group(1))-1 if slot_match else 0
+        dmatch = re.search(r'_D(34|35)(?:_|$)', name)
+        dimension = int(dmatch.group(1)) if dmatch else (34 if name.startswith('native_initial_A') and name.endswith('_query_evaluate') else None)
+        proof = 'canonical_Writer_fixed_capacity' in parts
+        scan = ('_scan' in name or '_accumulate' in name or '_late_retention' in name
+                or name.startswith('native_initial_A') and name.endswith('_query_evaluate')
+                or dimension == 34 and '_S1_FFT' in name)
+        opening = 'query' in name or name.endswith('_open') or 'factor_construction' in name
+        parts.pop('original_W_tile_descriptors_host_upper', None)  # included PCS five-copy mapping
+        parts['class1_9_typed_persistent_metadata'] = metadata
+        parts['class9_session_census_KV_dedup_set_upper'] = unique
+        parts['class9_crypto_telemetry_capacity_upper'] = tele['crypto_live_metadata_heap_upper_bytes']
+        parts['class4_idle_real_AES_PCG_payload'] = pcg_idle
+        parts['class4_both_role_retained_setup_Audit_Vec_capacity'] = 1792
+        if scan:
+            parts['class1_9_typed_producer_transient_metadata'] = producer
+        if proof:
+            parts.pop('original_claim_batch_codec_upper', None)
+            parts.update(claim_parts(slot, dimension == 35 or 'native_linear_W_' in name,
+                                     a_bound=True))
+            parts['class4_current_real_AES_PCG_expansion_including_idle'] = pcg_expand
+            parts.pop('class4_idle_real_AES_PCG_payload', None)
+            if not name.startswith('native_linear_'):
+                parts['class4_carried_original_mask_cache_payload_upper'] = carried
+            parts['class4_optional_XOF_buffers_upper'] = cap['pcs_metadata']['optional_rng_buffer_heap_upper_bytes']
+        else:
+            # Proof-local mask/code descriptors are safely overcounted in the
+            # persistent metadata, but their numeric payload is absent.
+            parts['class4_original_tree_optional_XOF_buffers_upper'] = 4*4096
+        if dimension is not None:
+            pcs = pcs_wire[dimension]
+            parts['class5_MatrixProof_other_heap_upper'] = pcs['other_heap_upper_class5']
+            smatch = re.search(r'_S(\d+)_', name)
+            stage = int(smatch.group(1)) if smatch else (1 if name.startswith('native_initial_A') else 12)
+            before, after = max(0, stage-1), min(stage, 12)
+            parts['class3_retained_source_opening_prefix_upper'] = source_opening_upper(
+                dimension, after if opening or name.endswith(('_promotion', '_late_retention')) else before)
+            if opening:
+                parts['class1_9_pruned_path_BTree_nodes_upper'] = cap['pruned_path_btree_node_heap_upper_bytes']
+                if stage == 1:
+                    previous = initial[1 << (dimension-3)]
+                elif stage <= 11:
+                    prev_stage = next(s for s in stages if s['dimension'] == dimension and s['round'] == stage-2)
+                    previous = extensions[prev_stage['height']]
+                else:
+                    last = max((s for s in stages if s['dimension'] == dimension), key=lambda s:s['round'])
+                    previous = extensions[last['height']]
+                batch = previous['query_batch_rows']
+                parts.update(current_opening_parts(previous['height'], previous['columns'], batch))
+            if stage == 12:
+                parts['class11_blinded_reveal_heap_upper'] = pcs['blinded_reveal_heap_upper_class11']
+                parts['class11_fresh_mask_cache_payload_upper'] = carried
+                parts['class11_fresh_main_codeword_salt_merkle_payload_upper'] = (
+                    8192*4*24+8192*4*8+(2*8192-1)*32)
+            if 'factor_construction' in name:
+                batch = previous['query_batch_rows']
+                for key in ('public_points', 'current_polynomial_level_upper',
+                            'current_inverse_modulus_spectra', 'one_upload_conversion'):
+                    parts.pop(key, None)
+                parts['class2_CPU_query_construction_payload_upper'] = 160*batch
+        refresh(row)
+
+    def extra(name, parts, lifetime):
+        row = {'phase': name, 'parts': parts, 'lifetime': lifetime,
+               'analytic_scope': 'honest pinned allocator payload model; physical allowance unverified'}
+        refresh(row)
+        phases.append(row)
+    # Initial original query factors have the same CPU construction lifetime
+    # as E queries; retained publication buffers are not live in that scope.
+    for row in list(phases):
+        name = row['phase']
+        if not (name.endswith('_initial_W_resident_query_publication')
+                or name.startswith('native_initial_A') and name.endswith('_query_evaluate')):
+            continue
+        parts = {key:value for key,value in row['parts'].items()
+                 if key not in ('returned_matrix_host','returned_column_host','gather_flag')
+                 and (not key.startswith('query_device_') or 'factor' in key or 'twiddle' in key)}
+        parts['class2_CPU_query_construction_payload_upper'] = 160*(1 << 20)
+        extra(name+'_public_factor_construction',parts,
+              'CPU inverse/product/DFT scope precedes private publication; current Tree batch indices stay alive.')
+    def proof_base(caches, slot, w_live=True, a_bound=False):
+        base = common(caches, proof=True, w_closure=w_live)
+        base.pop('original_claim_batch_codec_upper', None)
+        base.pop('original_W_tile_descriptors_host_upper', None)
+        base.update(claim_parts(slot, w_live, a_bound))
+        base.update(class1_9_typed_persistent_metadata=metadata,
+                    class9_session_census_KV_dedup_set_upper=unique,
+                    class9_crypto_telemetry_capacity_upper=tele['crypto_live_metadata_heap_upper_bytes'],
+                    class4_current_real_AES_PCG_expansion_including_idle=pcg_expand,
+                    class4_both_role_retained_setup_Audit_Vec_capacity=1792)
+        return base
+    # This preceding lifetime has no installed numerical state/root caches.
+    setup = {'class1_9_public_profiles_tables_fixed_metadata': metadata,
+             'two_public_table_host_payloads': 2*24414870,
+             'class9_crypto_telemetry_capacity_upper': tele['crypto_live_metadata_heap_upper_bytes'],
+             'class4_both_role_retained_setup_Audit_Vec_capacity':1792,
+             'class4_current_common_and_full_context_Vec_capacity_upper':12*240}
+    extra('public_profile_construction', dict(setup,
+          public_profile_build_moving_delta=max(0, cap['profile_build_metadata_only_heap_peak_bytes']
+                                                -cap['six_profile_actual_heap_bytes'])),
+          'Two role-local three-profile constructions precede installation; requested-layout build peak is measured metadata-only.')
+    extra('public_profile_RMS_validation_compile', dict(setup,
+          class6_RMS_prior_program_inner_capacity_upper=457616928,
+          class6_RMS_Builder_and_prune_capacity_upper=266001396,
+          class6_RMS_prepare_map_keys_profiles_outer_capacity_upper=208400),
+          'One selected public compiler at a time; pw<=32,width<=128 bounds174482 raw gates. Source-derived HashMap/BTreeSet and moving layer growth are charged; no Compact checkpoint.')
+    extra('real_AES_seed6_setup', dict(setup,
+          both_role_main_and_inverse_setup_vec_payload_upper=152*(17553+2025)+624,
+          MR19_both_role384_native_point_scalar_and_wire_capacity_upper=511872,
+          AES_COPE_both_role_correction_rows=6144,
+          guard_cGGM_equality_and_promoted_seed_capacity_upper=1745956),
+          'Both role main setup output may coexist with inverse setup. Pinned p521 native Point216B/Scalar72B and amortized growth are charged; B675,H19 guard paths use stacks, not a full tree.')
+    for slot in range(3):
+        caches = slot+1
+        f = forms[slot]
+        base = proof_base(caches, slot)
+        pending = f['pending_original_payload_upper']
+        extra(f'proof_A{caches}_form_constructor', dict(base,
+              class8_pending_original_current_role_upper=pending,
+              class8_constructor_moving_payload_upper=f['constructor_payload_upper']),
+              'Before Batch shrink/bind; constructor result and scalar temporary may coexist. No private S1 planes.')
+        extra(f'proof_A{caches}_component_frame_encode_after_work_retirement', dict(base,
+              class5_one_component_proof_and_moving_encoded_body_upper=
+                  wire[slot]['max_proof_and_body_encode_moving_upper_bytes']),
+              'The per-frame marker bounds every honest component. RMS/Lookup/EXP private checkpoints retire before the returned proof body is encoded; no MatrixProof is added again.')
+        # The compact checkpoint and RMS public programs belong to this phase,
+        # never to the later lookup/range/PCS phases.
+        extra(f'proof_A{caches}_RMS_public_program_build', dict(base,
+              class8_pending_original_current_role_upper=pending,
+              class6_RMS_final_program_inner_capacity_enclosing_prior_programs=457616928,
+              class6_RMS_Builder_and_prune_capacity_upper=266001396,
+              class6_RMS_prepare_map_keys_profiles_outer_capacity_upper=208400),
+              'Before compact checkpoint construction. Existing final capacities conservatively include the current program; explicit compiler scratch bounds its preceding lifetime.')
+        extra(f'proof_A{caches}_RMS_GKR_steady', dict(base,
+              class8_pending_original_current_role_upper=pending,
+              class6_RMS_compact_checkpoint_payload_and_descriptors=2023511878,
+              class6_RMS_public_program_inner_capacity=457616928,
+              class6_RMS_program_outer_capacity_upper=35616,
+              class6_RMS_retained_profile_indices_capacity_upper=6736,
+              class6_RMS_edge_capacity_moving_upper=3*24121920,
+              class6_RMS_boolean_replay_capacity=52432,
+              class6_RMS_coefficient_and_weight_payload_upper=(7*16384+2*421)*24+421),
+              'Pinned99-layer159-program RMS; old/new edge Vec growth included. Compiler scratch retires before this Compact checkpoint lifetime.')
+        extra(f'proof_A{caches}_EXP30_checkpoint', dict(base,
+              class8_pending_original_current_role_upper=pending,
+              class6_EXP30_checkpoint_upper=1 << 30),
+              'EXP checkpoint retires before the Lookup tree. Source-derived1GiB upper includes the maximum checkpoint.')
+        extra(f'proof_A{caches}_softmax_lookup', dict(base,
+              class8_pending_original_current_role_upper=pending,
+              class6_softmax_wide_cache_upper=6*221184000,
+              class6_softmax_histogram_upper=4*3932100,
+              class6_softmax_CUT4_tree_upper=(2*((1 << 28)//16)-1)*48,
+              class6_lookup_outer_level_descriptors=25*24),
+              'Worst O300 source-derived lookup shape bounds each slot; no RMS or EXP checkpoint remains.')
+        extra(f'proof_A{caches}_range_A_deep_retention', dict(base,
+              device_persistent_or_single_replay_envelope=replay,
+              public_padding_host_upper=106*262144*2,
+              class1_9_typed_producer_transient_metadata=producer,
+              class8_pending_original_current_role_upper=pending,
+              class6_range_A_deep_children=96*(1 << 24),
+              class6_range_A_original_byte_window=1 << 30),
+              'One range source window and retained children; no prior RMS/Lookup buffers or S1 planes.')
+        for dimension in (35, 34):
+            db = proof_base(caches, slot, dimension == 35, True)
+            record = f['W_bind_record_payload_upper' if dimension == 35 else 'A_bind_record_payload_upper']
+            bind_extra = f['W_bind_extra_payload_upper' if dimension == 35 else 'A_bind_extra_payload_upper']
+            extra(f'proof_A{caches}_D{dimension}_linear_bind', dict(db,
+                  class8_bind_record_exact_capacity_upper=record,
+                  class8_bind_profile_attempt_and_coefficients_upper=bind_extra),
+                  'Exact-reserved record follows aggregate validation and retires before LINEAR packet construction.')
+            for s in (s for s in stages if s['dimension'] == dimension):
+                remaining = dimension-7-2*s['round']
+                state = dict(db, class4_carried_original_mask_cache_payload_upper=carried,
+                             class3_retained_source_opening_prefix_upper=source_opening_upper(dimension,s['round']),
+                             class5_MatrixProof_other_heap_upper=pcs_wire[dimension]['other_heap_upper_class5'],
+                             class7_power_terms_amplitudes_EQ_denominator_descriptor_upper=
+                                 6095592+393216+393216+786432+49152+80+256*24,
+                             retained_three_planes=s['retained_capacity_at_commit_bytes'],
+                             extension_current_root_offset_cache=extensions[s['height']]['retained_root_and_salt_offset_bytes'],
+                             extension_current_private_host_pads=4*512*24,
+                             class7_native_shape_EQ_packet_device_upper=residual_packet(35 if dimension == 35 else 2)['device'],
+                             class7_native_result_and_sticky_flag=aligned(48)+aligned(4))
+                extra(f'proof_A{caches}_D{dimension}_S{s["round"]+1}_PowerBlocks_setup', dict(state,
+                      class7_CPU_inverse_multiply_DFT_setup_upper=192*(1 << 21)),
+                      'Cache rebuilt after take; setup precedes native consumer upload. No simultaneous steady band.')
+                extra(f'proof_A{caches}_D{dimension}_S{s["round"]+1}_contraction_steady', dict(state,
+                      class7_CPU_cached_inverse_DFT_host_covectors_and_GPU_band_upper=248*(1 << 21)),
+                      '248B includes all host outputs/marshalling and paired device public vectors for B2^21; no A reconstruction.')
+            pcs = pcs_wire[dimension]
+            final = dict(db, class3_complete59_opening_heap_upper=pcs['opening_heap_upper_class3'],
+                         class5_MatrixProof_other_heap_upper=pcs['other_heap_upper_class5'],
+                         class11_blinded_reveal_heap_upper=pcs['blinded_reveal_heap_upper_class11'],
+                         class4_original_and_fresh_mask_caches_upper=2*carried,
+                         class11_fresh_main_codeword_salt_merkle_payload_upper=
+                             8192*4*24+8192*4*8+(2*8192-1)*32,
+                         class10_bounded_temporary_planes_and_two_result_vectors_flag=3072+6144+256,
+                         class10_final_source_polynomials_upper=4*64*24)
+            extra(f'proof_A{caches}_D{dimension}_basecase_open_and_reveal', final,
+                  'Fresh+carried masks and reveals first coexist here, after all high S1 stages; final read is bounded128E.')
+            enc = proof_base(caches, slot, dimension == 35, True)
+            enc['class5_one_frame_proof_and_moving_encoded_body_upper'] = wire[slot]['max_proof_and_body_encode_moving_upper_bytes']
+            extra(f'proof_A{caches}_D{dimension}_frame_encode_after_native_retirement', enc,
+                  'The whole typed proof+body marker replaces Classes3/5/11. close_native retires private query/planes first.')
+        recv = proof_base(caches, slot, False)
+        recv.pop('canonical_Writer_fixed_capacity', None)
+        recv.update(claim_parts(slot, True, verifier=True))
+        recv['class5_P_certificate_V_receive_and_one_decoder_moving_peak_upper'] = (
+            wire[slot]['P_certificate_and_V_receive_and_decoder_class_upper_bytes'])
+        recv['class8_pending_original_current_role_upper'] = pending
+        recv['class8_constructor_moving_payload_upper'] = f['constructor_payload_upper']
+        extra(f'proof_A{caches}_receive_and_decode_one_frame', recv,
+              'P proof/private work and P claims retired before send; certificates on both roles, one V decoder and V claim constructors are charged. Reader borrows one frame.')
+        extra(f'proof_A{caches}_verify_RMS_public_program_build', dict(recv,
+              class6_RMS_prior_program_inner_capacity_upper=457616928,
+              class6_RMS_Builder_and_prune_capacity_upper=266001396,
+              class6_RMS_prepare_map_keys_profiles_outer_capacity_upper=208400),
+              'The verifier compiler coexists with certificates and V claims, after all P claim/private work has retired.')
+        extra(f'proof_A{caches}_verify_RMS_public_programs', dict(recv,
+              class6_RMS_public_program_inner_capacity=457616928,
+              class6_RMS_program_outer_capacity_upper=35616,
+              class6_RMS_retained_profile_indices_capacity_upper=6736,
+              class6_RMS_edge_capacity_moving_upper=3*24121920,
+              class6_RMS_coefficient_and_weight_payload_upper=(7*16384+2*421)*24+421),
+              'Verification follows whole-certificate receive; no private Compact checkpoints or GPU PCS planes. Compiler scratch uses the separate public-build bound above.')
+        extra(f'proof_A{caches}_opening_binding_after_query_retirement', dict(base,
+              class3_complete59_opening_upper=max(pcs_wire[d]['opening_heap_upper_class3'] for d in (34,35)),
+              **current_opening_parts(1 << 32,128,1024,binding=True)),
+              'Conservative final retained opening heap plus worst binding byte buffer; no current row batch/private query.')
+    report = dict(common(3, proof=False, numeric=False),
+                  class1_9_typed_persistent_metadata=metadata,
+                  class9_after_cleanup_report_metadata_upper=tele['after_cleanup_report_metadata_heap_upper_bytes'],
+                  class4_idle_real_AES_PCG_payload=pcg_idle)
+    report.pop('original_W_tile_descriptors_host_upper',None)
+    extra('after_crypto_cleanup_report', report,
+          'Alternative report clones after native cleanup. Crypto metadata and query/planes are not summed again.')
+    return {'markers': {'capacity':cap,'telemetry':tele,'forms':list(forms.values()),'wire':list(wire.values())},
+            'typed_persistent_metadata_heap_upper_bytes':metadata,
+            'typed_producer_transient_heap_upper_bytes':producer,
+            'session_census_dedup_set_heap_upper_bytes':unique,
+            'all_eleven_classes_have_explicit_parts':True,
+            'complete_joint_phase_peak':False,
+            'joint_admitted':False,
+            'unclosed_capacity_premises':[
+                {'class':1,'phase':'all','source':'C71_PUBLIC_METADATA_CAPACITY',
+                 'missing':'run-manifest argv/path capacity<=4096 premise must be bound to final run; marker is conditional on this public shape'},
+            ],
+            'counter_is_fit_evidence':False,'physical_allowance_verified':False}
 
 def ledger(directory, backend='legacy', query_record=None, linear_record=None, lifetime_record=None):
     if backend == 'legacy':

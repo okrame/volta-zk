@@ -249,6 +249,11 @@ impl Canonical {
         {
             return Err("canonical original endpoint closure census differs".into());
         }
+        // Both batches are complete and immutable from here. Enforce the
+        // existing bind caps before W/history while current A remains live.
+        // This read-only check neither records a frame nor consumes a row.
+        linear::validate_forms(35, &bw.forms, bw.targets.len())?;
+        linear::validate_forms(34, &ba.forms, ba.targets.len())?;
         let (body, frame) = reader.raw(133)?;
         let proof = codec::decode_linear(Domain::Flat(35), body).map_err(|e| e.to_string())?;
         linear::verify(

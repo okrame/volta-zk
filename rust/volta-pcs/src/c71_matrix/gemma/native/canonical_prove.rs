@@ -254,6 +254,11 @@ impl Canonical {
         if bw.targets.len() != 775 || ba.targets.len() != 4446 || openings.len() != previous.len() {
             return Err("canonical original endpoint closure census differs".into());
         }
+        // Both batches are complete and immutable from here. Enforce the
+        // existing bind caps before W/history while current A remains live.
+        // This read-only check neither records a frame nor consumes a row.
+        linear::validate_forms(35, &bw.forms, bw.targets.len())?;
+        linear::validate_forms(34, &ba.forms, ba.targets.len())?;
         let (proof, _) =
             weights.close(s.attempt, self.plan.layout_digest, &bw.forms, &bw.targets, fs, rows)?;
         wire.raw(

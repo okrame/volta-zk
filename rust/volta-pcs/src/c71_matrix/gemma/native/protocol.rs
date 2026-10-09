@@ -33,10 +33,7 @@ impl<T: Copy> Batch<T> {
     pub(super) fn add(&mut self, mut form: Vec<Cube>, target: T) {
         // Claims survive GKR through PCS. Release construction slack now,
         // including every point, without changing the ordered original form.
-        for cube in &mut form {
-            cube.point.shrink_to_fit();
-        }
-        form.shrink_to_fit();
+        kernel::linear::compact_form(&mut form);
         self.forms.push(form);
         self.targets.push(target);
     }

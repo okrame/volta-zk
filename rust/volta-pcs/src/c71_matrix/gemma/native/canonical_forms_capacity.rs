@@ -207,9 +207,10 @@ fn c71_canonical_forms_constructor_capacity_public_upper_bounds() {
         let retained = |c, d, t, target| {
             c * (cube + d * fp3) + (2 * t + 4) * (size_of::<Vec<Cube>>() + target)
         };
-        // Old accepted A openings bypass Batch::add and keep their construction
-        // capacities until each separate old-root PCS closes. They overlap W
-        // and current A claims, including W bind; old+new roots are not ranges.
+        // Complete KV forms are compacted by the shared Statement::forms
+        // before retention, including old accepted roots outside Batch::add.
+        // They overlap W/current A until each historical root PCS closes.
+        // Constructor old+new allocations remain charged separately above.
         let mut old_cubes = 0;
         for previous in 0..slot {
             let prior = Canonical::compile(previous, &[0; 772], &exponents).unwrap();
@@ -220,7 +221,7 @@ fn c71_canonical_forms_constructor_capacity_public_upper_bounds() {
                 }
             }
         }
-        let old_openings = (2 * old_cubes + 4) * cube + old_cubes * 68 * fp3
+        let old_openings = old_cubes * (cube + 34 * fp3)
             + (2 * slot + 4) * (size_of::<Vec<Cube>>() + size_of::<Auth>());
         let kv_current = records.iter().find(|r| r.name == "KV_current").unwrap().cubes;
         constructor_max = constructor_max.max(construction(kv_current + old_cubes, 1, 34, slot + 1));
@@ -229,6 +230,14 @@ fn c71_canonical_forms_constructor_capacity_public_upper_bounds() {
             + retained(kept_a, 34, targets, size_of::<Auth>());
         let retained_v = retained(kept_w, 35, 775, size_of::<Key>())
             + retained(kept_a, 34, targets, size_of::<Key>());
+        // New shared read-only preflight runs after every range claim and
+        // before W/history. Above remains the UNCLAMPED constructor bound.
+        let validated_w = kept_w.min(linear::MAX_CUBES);
+        let validated_a = kept_a.min(linear::MAX_CUBES);
+        let validated_w_p = retained(validated_w, 35, 775, size_of::<Auth>());
+        let validated_w_v = retained(validated_w, 35, 775, size_of::<Key>());
+        let validated_a_p = retained(validated_a, 34, targets, size_of::<Auth>());
+        let validated_a_v = retained(validated_a, 34, targets, size_of::<Key>());
         let attempt = AttemptContext { session: [1; 32], capacity: [2; 32], slot: slot as u8,
             predecessor: [0; 32], nonce: [3; 32] };
         let record = |d, c, t| {
@@ -255,7 +264,7 @@ fn c71_canonical_forms_constructor_capacity_public_upper_bounds() {
         // returned lambda coefficients may be allocated before that Vec drops.
         let w_bind_extra = 2 * gamma(&Domain::Flat(35).config().unwrap()).len() + 130 + (2 * 775 + 4) * fp3;
         let a_bind_extra = 2 * gamma(&Domain::Flat(34).config().unwrap()).len() + 130 + (2 * targets + 4) * fp3;
-        println!("C71_CLASS8_FORMS {{\"slot\":{slot},\"W_targets\":775,\"A_targets\":{targets},\"W_cube_upper\":{w_cubes},\"A_constructor_cube_upper\":{a_upper},\"MAX_CUBES\":{},\"retained_P_payload_upper\":{retained_p},\"retained_V_payload_upper\":{retained_v},\"constructor_payload_upper\":{constructor_max},\"W_bind_record_payload_upper\":{w_record},\"A_bind_record_payload_upper\":{a_record},\"pending_original_payload_upper\":{pending_upper},\"old_KV_unshrunk_payload_upper\":{old_openings},\"W_bind_extra_payload_upper\":{w_bind_extra},\"A_bind_extra_payload_upper\":{a_bind_extra},\"P_constructor_phase_payload_upper\":{},\"P_W_bind_phase_payload_upper\":{},\"V_W_bind_phase_payload_upper\":{},\"P_A_bind_phase_payload_upper\":{},\"V_A_bind_phase_payload_upper\":{},\"credit\":false,\"physical_complete\":false,\"private_W_A_read\":false}}", linear::MAX_CUBES,
-            retained_p + old_openings + pending_upper + constructor_max, retained_p + old_openings + w_record + w_bind_extra, retained_v + old_openings + w_record + w_bind_extra, retained(kept_a.min(linear::MAX_CUBES), 34, targets, size_of::<Auth>()) + a_record + a_bind_extra, retained(kept_a.min(linear::MAX_CUBES), 34, targets, size_of::<Key>()) + a_record + a_bind_extra);
+        println!("C71_CLASS8_FORMS {{\"slot\":{slot},\"W_targets\":775,\"A_targets\":{targets},\"W_cube_upper\":{w_cubes},\"A_constructor_cube_upper\":{a_upper},\"MAX_CUBES\":{},\"retained_P_payload_upper\":{retained_p},\"retained_V_payload_upper\":{retained_v},\"constructor_payload_upper\":{constructor_max},\"W_bind_record_payload_upper\":{w_record},\"A_bind_record_payload_upper\":{a_record},\"pending_original_payload_upper\":{pending_upper},\"old_KV_compacted_payload_upper\":{old_openings},\"old_KV_compacted\":true,\"current_batch_preflight_cap_through_W_and_history\":true,\"preconstructor_bounds_unclamped\":true,\"validated_retained_W_P_payload_upper\":{validated_w_p},\"validated_retained_W_V_payload_upper\":{validated_w_v},\"validated_retained_A_P_payload_upper\":{validated_a_p},\"validated_retained_A_V_payload_upper\":{validated_a_v},\"P_V_batch_overlap\":false,\"W_bind_extra_payload_upper\":{w_bind_extra},\"A_bind_extra_payload_upper\":{a_bind_extra},\"P_constructor_phase_payload_upper\":{},\"P_W_bind_phase_payload_upper\":{},\"V_W_bind_phase_payload_upper\":{},\"P_A_bind_phase_payload_upper\":{},\"V_A_bind_phase_payload_upper\":{},\"credit\":false,\"physical_complete\":false,\"private_W_A_read\":false}}", linear::MAX_CUBES,
+            retained_p + old_openings + pending_upper + constructor_max, validated_w_p + validated_a_p + old_openings + w_record + w_bind_extra, validated_w_v + validated_a_v + old_openings + w_record + w_bind_extra, validated_a_p + a_record + a_bind_extra, validated_a_v + a_record + a_bind_extra);
     }
 }

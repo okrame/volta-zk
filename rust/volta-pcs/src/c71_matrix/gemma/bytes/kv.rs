@@ -212,6 +212,9 @@ impl Statement<'_> {
             if form.len() > crate::c71_matrix::linear::MAX_CUBES {
                 return Err("KV source form exceeds cube cap".into());
             }
+            // These complete forms may remain live through W and several
+            // historical root closures, outside Batch::add.
+            crate::c71_matrix::linear::compact_form(&mut form);
             result.push((form, bias));
             offset += s.tokens;
         }

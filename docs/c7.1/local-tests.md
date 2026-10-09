@@ -3,6 +3,12 @@
 [Design](design.md) · [Specifiche](specs.md) · [Sicurezza](security.md) ·
 [Test su RunPod](runpod-tests.md) · [Evidenze storiche](../c7.1-history/evidence.md)
 
+La [campagna H100](../c7.1-history/h100-components-2026-10-09.md) ha richiesto
+due correzioni di compilazione CUDA e una correzione della race `/proc`
+nel monitor: sette test FFT e 29 test del monitor passano localmente.
+I 15 test sulla libreria reale sono risultati RunPod, separati da questi
+controlli locali e senza credito di prova canonica completa.
+
 ## Limiti e ambiente
 
 I controlli locali usano input piccoli, un solo processo di test per volta,

@@ -5,21 +5,21 @@
 
 ## Stato e sequenza operativa
 
-Γ è ammesso sul workload pinned; la diagnostica canonica precedente è
-incompleta nel commitment W, prima delle risposte. La campagna è chiusa,
-il pod spento. Lo [stato del percorso](design.md#stato-di-implementazione-e-lavoro-necessario)
-e l'[indice delle evidenze](design.md#evidenze-e-decisioni) distinguono
-ammissione Γ, failure canonico e nuovi controlli locali.
+Γ è ammesso e riusato dopo verifica degli input, dell'ammissione e dei tre
+piani pubblici. La **campagna H100 del 9 ottobre è in corso**, autorizzata
+sul pod `z6wx2kkn69eoc0` per massimo otto ore dall'avvio provider, con Git
+HTTPS sul branch dedicato. La deadline conservativa è **10 ottobre
+03:08:42 UTC** (05:08:42 Italia), fine calcolo 02:38:42 UTC e guard provider
+indipendente a 03:03:42 UTC. La conferma finale dello spegnimento resta
+obbligatoria. Nessun altro hardware o tempo è autorizzato.
 
-Il goal prepara in locale l'intero percorso crittografico per H100 80 GB.
-Parità e conto del checkpoint locale sono nel
-[record](../../benchmarks/results/c71-crypto-rms-local-2026-10-09-abd2de09efb4.json).
-La revisione successiva ha aggiunto test hardware espliciti, timeout
-diagnostico e monitor nella [procedura operativa](#preparazione-operativa-della-campagna);
-**nessuna nuova campagna è autorizzata**.
-Hardware e durata richiedono una nuova decisione.
-La preparazione locale non autorizza riattivazione, nuovi pod o benchmark
-hardware. Γ si riusa dopo verifica di identità ed impatto compatibili.
+Il [checkpoint componenti](../c7.1-history/h100-components-2026-10-09.md)
+registra compilazione sm_90, 15 test CUDA reali passati, benchmark W/FFT/RMS,
+correzioni operative e fallimenti conservati. W Tensor è selezionato dopo
+parità e rapporto 5,663× su W sintetica da 256 MiB; ricompilazione e nuova
+parità precedono il trial. Installazione W e O=0/150/300 restano da misurare.
+La precedente campagna chiusa conserva il proprio fallimento nel commitment
+W; il suo pod spento e le sue autorizzazioni non descrivono questa campagna.
 
 Il runner `experiment-cuda` è misto: inferenza/replay/range A e commitment
 iniziali W/A con sali residenti e
@@ -46,14 +46,15 @@ un'allocazione gratuita. Ricontare nuove modifiche prima del trial;
 misurare allowance, residenza fisica e margine congiunto sulla H100.
 La parità lineare ridotta passa; il test completo KV e la catena AES
 composta conservano timeout locali. Questi non sono risultati hardware.
-Accumulo W ordinario e QK/PV scalari rimangono default; le candidate Tensor/MMA
-sono confronti espliciti. Parità host e driver simulato non attribuiscono
-compilazione sm_90, parità CUDA, prestazioni o picco fisico H100.
+Accumulo W Tensor è ora selezionato; QK/PV resta scalare. Il confronto
+misurato W non attribuisce prestazioni della prova completa. I piccoli
+diagnostici osservano circa 550 MB GPU: l'allowance runtime 256 MiB rimane
+non dimostrata, e il monitor canonico conserva il tetto fisico originale.
 
 Percorso principale: verificare codice/procedure locali → autorizzare
 hardware e durata → verificare ambiente e riusare Γ → parità CUDA e
 misure rappresentative con conto simultaneo → esperimento O=0/150/300 →
-conservare esiti e arrestare il pod. La campagna misurerà separatamente
+conservare esiti e arrestare il pod. La campagna misura separatamente
 installazione W, setup di sessione, inferenza, prova e verifica. La
 [calibrazione](#campagna-di-calibrazione) è un ramo condizionale, richiesto
 quando l'ammissione pertinente è invalidata; la prova completa richiede

@@ -11,6 +11,10 @@ efficiente Seed6 conserva la relazione di inferenza, ma richiede il
 trasferimento di sicurezza descritto nell'ultima sezione. La correttezza
 di test finiti e la corrispondenza generale del programma al protocollo
 sono risultati distinti.
+La [campagna H100](../c7.1-history/h100-components-2026-10-09.md) verifica
+parità finita della libreria CUDA e seleziona l'accumulo W limb16 esatto;
+non chiude il raffinamento CUDA né la composizione Seed6. Mantiene NoPeek,
+MAC originali, AES reale e correlazioni monouso, inclusi i nuovi trial.
 
 Il teorema richiede almeno 78 bit per ciascun vantaggio completo.
 Si lavora nel modello dell'oracolo casuale classico, con lavoro e memoria

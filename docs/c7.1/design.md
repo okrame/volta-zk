@@ -73,9 +73,11 @@ non trasferisce automaticamente i bound B12 al programma completo.
 
 Il runner esplicito `experiment-cuda` collega i 13 producer, inferenza
 causale, replay A, PCS/range/GKR, verifica e promozione per O=0/150/300.
-È un percorso misto GPU/CPU. La tabella descrive l'integrazione corrente;
-parità ridotta e integrazione software non attribuiscono compilazione,
-prestazioni o picco fisico H100. Gli ingressi di test e il lancio
+È un percorso misto GPU/CPU. La tabella descrive l'integrazione corrente.
+La [campagna H100 del 9 ottobre](../c7.1-history/h100-components-2026-10-09.md)
+ha compilato sm_90 e passato i 15 test CUDA reali. I benchmark sono
+componenti ridotti; risposta canonica e picco fisico completo restano da
+misurare. Gli ingressi di test e il lancio
 sorvegliato sono nel
 [runbook](runpod-tests.md#preparazione-operativa-della-campagna).
 
@@ -91,7 +93,7 @@ sorvegliato sono nel
 | Closure lineare | Owner e caller nativi integrati con parità ridotta: una scan originale per round, D·live visite, cinque elementi MAC e flag restituiti; mapping W riusato, nessun getter A sostitutivo |
 | PCS S1 e successori | Route canonica collegata a `model.native_original`: singleton, coset/FFT/hash/sali, OOD, retention A dopo apertura del predecessore, fold e contrazioni sul common owner; W continua a leggere il packed originale |
 | Query extension A/W | Tre componenti PCS caricate nello stesso passaggio e resti residenti in tutti gli stadi; A legge le plane trattenute, senza ricostruzioni originali aggiunte; sole valutazioni finali D2H |
-| Accumulo W Tensor Core | Candidata limb16 esatta e confronto esplicito sul medesimo owner; ordinario rimane predefinito |
+| Accumulo W Tensor Core | Limb16 esatto selezionato dopo parità CUDA: 5,663× sul componente W da 256 MiB; stesso owner e capacità globali, tempo canonico ancora da misurare |
 | QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
 | RMS misto | Replay Booleano CPU a 64 lane con DAG per depth; primo round esatto e cache compatta delle geometrie pubbliche. Selezione solo senza pattern prefix e con più programmi; coefficienti Fp3 ed endpoint restano CPU |
 | Resto della prova | Fattori pubblici, rigenerazione Merkle delle aperture, GKR/MAC, Seed6 reale AES, codec, verifica e journal CPU; tempi completi da misurare |
@@ -191,8 +193,10 @@ scale nonzero verificano il replay, senza attribuire tempi al Γ ammesso
 o alla H100. La catena AES composta e
 un test KV completo rimangono incompleti a 60 s locali; non ereditano
 crediti dai componenti positivi. Valutare TMA, fusioni e CUDA Graphs
-su costi misurati. Il confronto W ordinario/Tensor e la selezione QK/PV
-richiedono compilazione, parità e misura GPU nella futura campagna.
+su costi misurati. Il confronto W ordinario/Tensor sulla H100 giustifica
+la selezione Tensor
+nel Tree; il [record componenti](../../benchmarks/results/c71-h100-components-2026-10-09-d00d46308029.json)
+conserva i campioni esatti e i loro limiti. QK/PV rimane scalare.
 
 Le geometrie fisiche W CUDA 32 coset/otto colonne, CPU W quattro coset
 ed A quattro coset sono modificabili con equivalenza esatta e nuovo
@@ -218,8 +222,11 @@ fisica o composizione Seed6. Il replay assume determinismo dei kernel
 corretti su W/tabelle sigillati, token fissati e prefissi KV originali;
 controlla token rigenerati e copertura, senza un digest privato di tutta
 A confrontato a ogni replay. PCS usa v³=v+1, MAC u³=2; gli endpoint
-rimangono VOLE-autenticati sugli originali. Test finiti, driver simulato
-e compilazione sm_90 non scaricano queste premesse.
+rimangono VOLE-autenticati sugli originali. Test finiti, anche sulla H100
+reale, e compilazione sm_90 non scaricano
+queste premesse. La selezione W limb16 assume inoltre la corrispondenza
+esatta delle istruzioni MMA/shuffle e della ricomposizione intera verificata
+su fixture; nessun lemma Lean la raffina.
 
 ### Evidenze e decisioni
 

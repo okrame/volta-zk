@@ -1077,7 +1077,7 @@ e cinque fault di avanzamento preservano le tre correlazioni per round;
 la catena D10 signed W verifica full wire/FS/punto/MAC originale con PCS
 CPU. La parità A completa e quella CUDA non sono implicite in tale catena.
 
-La [candidata Tensor W](../../cuda/c71_pcs_weight_tensor.cu) usa quattro
+La [route Tensor W](../../cuda/c71_pcs_weight_tensor.cu) usa quattro
 limb16 biased, dot INT8 pack/compose esatto e correzione 32768·sum_W:
 somma signed <2^87, shared 8.448 B, nessun nuovo buffer globale.
 Il digit aritmetico −32768 è legale nella decomposizione, mentre il
@@ -1085,9 +1085,11 @@ marcatore negli originali W resta vietato. `c71_pcs_weight_tensor` riusa
 ammissioni, W sigillato, FFT e flag dell'ordinario. Il confronto
 `c71_pcs_compare_words` verifica tutte le word canoniche di due buffer
 base completi distinti, senza download campi, solo 4 B di flag. Entrambi
-sono obbligatori ABI4; la selezione canonica resta ordinaria.
-Il diagnostico Q256/R64 con W sintetica da 4 MiB è compilato solo come unità
-host, non linkato/eseguito: non misura throughput pinned.
+sono obbligatori ABI4. La selezione canonica usa Tensor dopo il
+[confronto H100](../c7.1-history/h100-components-2026-10-09.md): Q256/R64
+con W sintetica da 4 MiB e Q256/R4096 da 256 MiB passano contro
+l'oracolo CPU, con rapporti circa 2,31× e 5,663×. Nessun nuovo buffer
+globale; questi tempi non misurano il throughput pinned completo.
 
 Le [candidate QK/PV MMA](../../cuda/c71_attention_mma.cu) mantengono
 originali i16/PiQ14, raw i64 e RNE. QK usa N8 interamente nel prefisso

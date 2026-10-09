@@ -715,6 +715,14 @@ Le foglie extension conservano base PCS, limb/byte order, sali e blocco
 finale BLAKE3. L'helper paired era preparatorio a quella sorgente storica;
 pubblica R nodi soltanto dopo tutte le 2R foglie.
 
+Le [query iniziali W](../c7.1-history/crypto-local-convergence-2026-10-09.md)
+leggono lo stesso packed sigillato con controllo del prefisso vivo prima
+dell'indirizzo; pad, ordine/duplicati ed endpoint restano originali.
+Il nuovo simbolo è obbligatorio e gli errori sono terminali. Retirement
+prima dell'hash A e capacità fissa Writer conservano byte, sali, root,
+FS e MAC. I sottoconti RMS legati al Γ ammesso non sono una prova di
+prestazioni o di fattibilità congiunta; le assunzioni formali restano aperte.
+
 **S1 e Query E.** Il
 [checkpoint residente](../c7.1-history/crypto-residual-query-2026-10-09.md)
 collega il consumer PCS allo stesso `native_original` del modello.

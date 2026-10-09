@@ -23,8 +23,11 @@ iniziali W/A con sali residenti e
 [closure lineare residente](../c7.1-history/crypto-linear-2026-10-09.md).
 Il [checkpoint S1 e Query E](../c7.1-history/crypto-residual-query-2026-10-09.md)
 collega anche coset/hash/sali extension, OOD, retention/fold A,
-contrazioni e query extension A/W al common owner. Query iniziali W,
-fattori pubblici, GKR non-range/MAC, Seed6 AES e verifica restano CPU.
+contrazioni e query extension A/W al common owner. Le
+[query iniziali W](../c7.1-history/crypto-local-convergence-2026-10-09.md)
+sono ora residenti; fattori pubblici, Merkle delle aperture, GKR non-range/MAC,
+Seed6 AES e verifica restano CPU. RMS sul Γ ammesso è un collo strutturale
+quantificato, senza consumer accelerato selezionato.
 Il conto per fasi è nominato, `joint_admitted:false`; la
 [revisione locale dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
 conserva anche il timeout della prova composta.
@@ -247,7 +250,7 @@ mancanti sono terminali, senza fallback. Verificare CUDA reali di
 prescan prefix/scatter, replay sali, seek/rejection/cap, cursor finali,
 flag/fence, basi, pad e root. Verificare anche FFT naturali pari/dispari,
 inverse e segmenti batch; le fixture host non eseguono quei kernel.
-Per le query iniziali A confrontare tutte le valutazioni con Horner e
+Per le query iniziali W/A confrontare tutte le valutazioni con Horner e
 gli stessi intervalli del reader, inclusi live parziale/zero, pad,
 duplicati ed ordine invertito. Richiedere zero D2H dei byte originali e
 riuso dello stesso owner; ripetere la catena uncached con wire/FS/RNG e
@@ -255,6 +258,13 @@ MAC originali. Contare fattori/staging CPU, matrice finale, righe/sali/path
 già aperti e gli altri owner secondo [specs](specs.md#aperture-e-fft-naturale).
 Verificare il ritiro dello scratch query prima della rigenerazione del
 batch corrente e retention S1 solo dopo apertura del predecessore.
+Per W verificare il nuovo simbolo, packed sigillato, mapping/live prima
+dell'indirizzo e zero upload degli originali. Usare le vere query Merkle:
+512 foglie espandono sottoalberi da 4096 righe, fino a due batch q_eff=2^20.
+Misurare separatamente fattori CPU, remainder/FFT dispari, packing D2D,
+matrice finale e hash della rigenerazione. Per RMS registrare replay Booleano,
+coefficienti ed endpoint byte del caller selezionato sul Γ corrente;
+un profilo CUDA della PCS da solo non misura il servizio CPU GKR.
 Per la closure lineare confrontare coefficienti/endpoints e intero wire
 dei MAC originali, contando 124 B e due fence del consumer per round
 separatamente dai producer. Verificare mapping W unico, scanner A
@@ -295,8 +305,8 @@ secondo misure rappresentative, senza inferire speedup dal driver host.
 Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi
 `c71_matrix` e `c71_calibration` non lo sostituiscono. L'esperimento usa
 la pipeline mista dichiarata, con commitment iniziali W/A, query iniziali
-A e PCS residuale/query extension residenti; le query iniziali W ed i
-fattori pubblici restano CPU.
+W/A e PCS residuale/query extension residenti; fattori pubblici e Merkle
+delle aperture restano CPU.
 Usare le
 [build mirate](local-tests.md#compilazione-mirata) e la
 [build della libreria CUDA](local-tests.md#collegamento-del-runner-cuda).
@@ -321,8 +331,8 @@ invariati NoPeek, MAC originali, margine arena 256 MiB, margine globale
 Gli esperimenti GPU confrontano prima gli operatori con il diagnostico
 di parità sopra e il range con il riferimento host/nativo. Accumuli,
 FFT e hash salato dei commitment iniziali, lettore e resti delle query
-iniziali A, S1 e query extension sono residenti; fattori pubblici e query
-iniziali W restano CPU nel checkpoint validato. Poi si
+iniziali W/A, S1 e query extension sono residenti; fattori pubblici e
+rigenerazione Merkle restano CPU nel checkpoint validato. Poi si
 misurano le fasi rappresentative con i
 loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
 il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,

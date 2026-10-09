@@ -85,12 +85,13 @@ non attribuiscono prestazioni o picco fisico H100.
 | Sali iniziali W/A | Prescan e replay selezionati sullo stream comune, cursore logico e cap originali; niente bande host/upload sali |
 | FFT naturale diretta/inversa | Integrata nell'owner, usata dalle query iniziali A e dagli stadi extension PCS |
 | Query iniziali A | Reader residente e resti collegati al Tree/runner, con sole valutazioni finali D2H; costruzione dei fattori pubblici CPU, richieste e ricostruzioni originali |
+| Query iniziali W | Selezionate nel commitment nativo: packed sigillato e resti sul common owner, senza upload delle finestre W; Horner e catena WHIR D10 esatti |
 | Closure lineare | Owner e caller nativi integrati con parità ridotta: una scan originale per round, D·live visite, cinque elementi MAC e flag restituiti; mapping W riusato, nessun getter A sostitutivo |
 | PCS S1 e successori | Route canonica collegata a `model.native_original`: singleton, coset/FFT/hash/sali, OOD, retention A dopo apertura del predecessore, fold e contrazioni sul common owner; W continua a leggere il packed originale |
 | Query extension A/W | Tre componenti PCS caricate nello stesso passaggio e resti residenti in tutti gli stadi; A legge le plane trattenute, senza ricostruzioni originali aggiunte; sole valutazioni finali D2H |
 | Accumulo W Tensor Core | Candidata limb16 esatta e confronto esplicito sul medesimo owner; ordinario rimane predefinito |
 | QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
-| Resto della prova | Query iniziali W, costruzione dei fattori pubblici, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal dichiarati CPU |
+| Resto della prova | Fattori pubblici, rigenerazione Merkle delle aperture, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal CPU; RMS canonico ancora privo di consumer accelerato |
 
 [canonical_device.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs)
 possiede la sessione numerica: stessa Arc W del commitment, un solo
@@ -101,9 +102,9 @@ preparatore non ricevono transcript, monete PCS o correlazioni; le viste
 storiche mantengono il prefisso causale. Errori, panic, CUDA assente e
 cleanup falliti sono terminali, senza retry o fallback.
 
-I consumer CPU usano staging privato bounded. Range A, query iniziali A e query extension sono residenti;
+I consumer CPU usano staging privato bounded. Range A, query iniziali W/A e query extension sono residenti;
 il gather range W usa ancora upload signed per finestre fino a 256 MiB.
-Le query iniziali W restano CPU. Il
+Il
 [conto tecnico](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
 distingue capacità, trasferimenti e stati simultanei: tetto payload
 5.905.580.032 B, più riserva fisica esplicita di 256 MiB, totale
@@ -123,7 +124,10 @@ riguarda operatori sintetici e MAC originali, non il percorso ottimizzato.
 Γ è **ammesso** per modello, byte W, workload, semantica, scale, tabelle
 e ricette pinned. Si riusa dopo verifica di identità e impatto delle
 modifiche; si ripete la calibrazione solo quando l'ammissione pertinente
-è invalidata. La diagnostica canonica rimane **incompleta**: timeout nel
+è invalidata. È l'unico Γ ammesso finora, non un optimum prestazionale
+dimostrato. Cambiare scale può semplificare i circuiti ma cambia la
+relazione numerica; la ricerca di un altro Γ è distinta dal goal corrente.
+La diagnostica canonica rimane **incompleta**: timeout nel
 commitment W CPU dopo circa 41 minuti, prima delle risposte. La schedule
 misurata tentava 1.024 scansioni W, circa 62,87 TB logici, oltre a sali,
 FFT e Merkle. La CLI ricostruisce il commitment a ogni avvio e non
@@ -140,12 +144,20 @@ collega owner e caller fino alle query extension di tutti gli stadi.
 Le catene WHIR D10 A/W conservano wire, FS/RNG e MAC originali;
 getter e finestre host private sono vietati nelle route residenti.
 La schedule S1 non-query è preservata e il commitment iniziale A resta
-a 512 ricostruzioni. I prossimi passi sono le query iniziali W,
-il profilo delle fasi residue e il ledger completo per backend e lifetime;
-poi aperture/GKR/range e sincronizzazioni secondo l'impatto misurato.
-Il conto nominato non è un'ammissione congiunta e non include ancora
-tutte le classi di capacità: A3 hash lascia soltanto 60.043.180 B prima
-di quelle aggiuntive, quindi il conto simultaneo è una priorità aperta. La
+a 512 ricostruzioni. Il [checkpoint W e profilo residuo](../c7.1-history/crypto-local-convergence-2026-10-09.md)
+aggiunge query iniziali W, retirement numerico prima dell'hash A e Writer
+canonico di capacità fissa. Il profilo sul Γ ammesso quantifica anche il
+grande replay Booleano/GKR RMS CPU: preparare soltanto la PCS non chiude il
+target della risposta. Fattori, FFT dispari, range e producer restano costi
+separati; almeno 581 scan complete dell'A corrente precedono le richieste
+parziali e gli altri consumer.
+
+Il [conto per lifetime](../../benchmarks/results/c71-crypto-resource-inventory-local-2026-10-09-b19822b8a3fb.json)
+resta senza ammissione congiunta. Il massimo nominato è A3 accumulo,
+5.744.879.732 B, prima delle capacità aggiuntive. Sette classi hanno formule
+dei payload principali; restano metadati tipati, wire/decoder, forme prima
+dello shrink e wrapper/telemetria. Sono i prossimi controlli locali concreti,
+insieme alla scelta di una valutazione RMS meno costosa sugli stessi circuiti. La
 [revisione dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
 rilascia batch/prove dopo le rispettive chiusure; il test composto a tre
 risposte rimane incompleto al limite locale. Valutare TMA, fusioni e CUDA Graphs
@@ -200,6 +212,7 @@ locali sono `credit:false`, senza compilazione o esecuzione CUDA.
 | [Closure lineare owner/caller](../c7.1-history/crypto-linear-2026-10-09.md) | Codec e coefficienti/endpoints originali, consumo monouso, full wire D10; S1 aritmetico distinto, nessuna parità CUDA |
 | [Lifetime PCS e hash extension paired](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md) | Rilascio batch/prove, BLAKE3 pinned e regressione sali; hash S1 non selezionato, timeout composto conservato |
 | [S1 e query extension sul common owner](../c7.1-history/crypto-residual-query-2026-10-09.md) | Route canonica, parità WHIR D10 A/W e guard privati; query iniziali W ancora CPU, conto nominato non ammesso, nessuna compilazione/esecuzione CUDA |
+| [Query W, profilo del caller e audit di convergenza](../c7.1-history/crypto-local-convergence-2026-10-09.md) | 14 filtri Rust e tre test Python passano; RMS sul Γ ammesso quantificato parzialmente, timeout della catena AES conservato, quattro classi di capacità aperte |
 | [Regole operative](../c7.1-history/operating-rules-2026-10-08.md), [temporanei](../c7.1-history/temporary-memory-2026-10-04.md) | Ragioni delle decisioni; autorizzazioni correnti definite nel [runbook](runpod-tests.md#autorizzazione-e-limiti) |
 
 ## Contratto delle risorse

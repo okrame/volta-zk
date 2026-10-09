@@ -144,7 +144,7 @@ nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
 ```
 
 Il loader richiede tutti i simboli ABI4 correnti, comprese operazioni
-sali, confronto Tensor, FFT naturale, quattro operazioni query iniziali,
+sali, confronto Tensor, FFT naturale, cinque operazioni query iniziali,
 quattro lineari e 19 nuove operazioni S1/contrazioni/Query E/hash paired.
 Una libreria incompleta fallisce
 prima dell'uso. Le FFT naturali sono definite nell'unità weight esistente.
@@ -199,6 +199,18 @@ transcript e MAC originali, secondo l'ambito indicato.
 | `c71_b12_native_query_rejections_and_fail_closed` | Owner/tipo/span/alias e guard query |
 | `c71_b12_native_query_private_phase_read_and_mandatory_symbols` | Letture private vietate e quattro simboli query obbligatori |
 | `c71_b12_native_query_composed_uncached_chain_original_mac_and_transcript` | Catena D10 uncached, query iniziali native e commitment iniziale CPU; wire/FS/RNG, MAC originali e due verificatori |
+| `c71_b12_native_weight_query_horner_signed_pads_duplicates_and_accounting` | 18 casi W originali sigillati, pad e ragged, ordine/duplicati, Horner, trasferimenti e retirement |
+| `c71_b12_native_weight_query_symbol_is_mandatory` | Nuovo simbolo W assente: errore terminale |
+| `c71_canonical_writer_fixed_capacity_preserves_wire_and_transcript` | Capacità canonica 96 MiB senza realloc, wire/FS esatti |
+
+Il [checkpoint W/profilo](../c7.1-history/crypto-local-convergence-2026-10-09.md)
+conserva anche la catena completa Seed6 AES fermata al limite locale
+60 s sul binario O0, dopo l'eccezione per la sola socketpair Unix.
+È un esito negativo; non ripeterla con limiti estesi. I precedenti positivi
+restano validi nel proprio ambito, senza trasferire tempi a questo binario.
+Il census di sorgente `python3 scripts/c71_residual_profile.py` usa solo
+Git e ricevute pubbliche Γ; non esegue W, CUDA o provider. Mantiene le cinque
+latenze canoniche mancanti e distingue sottoconti dai benchmark ridotti.
 
 Per i sali eseguire separatamente i quattro filtri seguenti: il filtro
 aggregato compila più fixture e si avvicina al limite 60 s.

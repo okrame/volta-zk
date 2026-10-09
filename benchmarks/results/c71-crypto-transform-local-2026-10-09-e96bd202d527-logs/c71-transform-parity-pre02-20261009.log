@@ -1,0 +1,16 @@
+
+running 3 tests
+test c71_matrix::range::windowed::native::tests::c71_b12_native_transform_natural_forward_inverse_and_work ... C71_NATIVE_TRANSFORM_BENCH {"batch":32767,"credit":false,"forward_owner_host_s":0.018818654,"gpu_execution":false,"inverse_owner_host_s":0.170706019,"launches_per_transform":7,"log_length":3}
+C71_NATIVE_TRANSFORM_BENCH {"batch":32768,"credit":false,"forward_owner_host_s":0.019588532,"gpu_execution":false,"inverse_owner_host_s":0.171447021,"launches_per_transform":13,"log_length":3}
+C71_NATIVE_TRANSFORM_BENCH {"batch":65530,"credit":false,"forward_owner_host_s":0.046703134,"gpu_execution":false,"inverse_owner_host_s":0.342430333,"launches_per_transform":13,"log_length":3}
+C71_NATIVE_TRANSFORM_BENCH {"batch":65536,"credit":false,"forward_owner_host_s":0.036821222,"gpu_execution":false,"inverse_owner_host_s":0.342135831,"launches_per_transform":19,"log_length":3}
+C71_NATIVE_TRANSFORM_BENCH {"batch":3,"credit":false,"forward_owner_host_s":0.040607528,"gpu_execution":false,"inverse_owner_host_s":0.140398154,"launches_per_transform":5,"log_length":16}
+C71_NATIVE_TRANSFORM_BENCH {"batch":3,"credit":false,"forward_owner_host_s":0.089056753,"gpu_execution":false,"inverse_owner_host_s":0.290072135,"launches_per_transform":7,"log_length":17}
+C71_NATIVE_TRANSFORM {"capacity_peak_bytes":8389120,"cases":36,"census":{"denied_allocations":0,"enforced":true,"excluded_packed_w_capacity_bytes":0,"host_large_allocation_release":"glibc fixed mmap threshold 128 KiB, max 2 arenas","host_layout_bytes":2119490,"native_reservation_bytes":0,"operational_margin_required_bytes":268435456,"payload_limit_bytes":5905580032,"peak_plus_runtime_allowance_bytes":292611550,"physical_runtime_allowance_verified":false,"runtime_allowance_bytes":268435456,"temporary_live_bytes":2120215,"temporary_payload_peak_bytes":24176094},"credit":false,"gpu_execution":false,"host_owner_bytes":37288,"log_lengths":[1,17],"natural_forward_and_inverse":true}
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_transform_rejections_and_fail_closed ... C71_NATIVE_TRANSFORM_FAILURE {"terminal_rejections":18,"gpu_execution":false,"credit":false}
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_transform_symbols_are_mandatory ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 541 filtered out; finished in 33.17s
+

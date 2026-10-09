@@ -1,0 +1,22 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_fft_microbench.py",
+    "tests/test_c71_range_native.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 11.823575259186327,
+  "max_rss_bytes": 272658432,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 11.425974,
+  "system_s": 0.31630199999999997,
+  "log": "/tmp/c71-transform-cpp-pre01-20261009.log"
+}

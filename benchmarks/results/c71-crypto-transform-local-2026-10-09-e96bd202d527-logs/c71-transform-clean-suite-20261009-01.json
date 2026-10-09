@@ -1,0 +1,133 @@
+{
+  "source_git_sha": "e96bd202d5279c8013c659649d2e703f99f7bd60",
+  "binary_sha256": "2cd654b2ba53a7f754a8a907303053bed5b2cba67daa57fc8d57e6ef75cd3410",
+  "checks": [
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-j",
+        "1",
+        "-p",
+        "volta-pcs",
+        "--features",
+        "c71-seed6-reference",
+        "--lib",
+        "--no-run",
+        "--config",
+        "profile.dev.package.volta-pcs.opt-level=0"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk/rust",
+      "exit_code": 0,
+      "wall_s": 0.17928550206124783,
+      "max_rss_bytes": 52871168,
+      "as_limit_mib": null,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.080607,
+      "system_s": 0.098498,
+      "log": "/tmp/c71-transform-clean-build-20261009-01.log",
+      "name": "build",
+      "source_git_sha": "e96bd202d5279c8013c659649d2e703f99f7bd60",
+      "git_dirty": false,
+      "record_run": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_transform_",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 31.768023821059614,
+      "max_rss_bytes": 246542336,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 31.407168,
+      "system_s": 0.35215399999999997,
+      "log": "/tmp/c71-transform-clean-parity-20261009-01.log",
+      "name": "parity",
+      "source_git_sha": "e96bd202d5279c8013c659649d2e703f99f7bd60",
+      "git_dirty": false,
+      "record_run": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+        "c71_b12_native_weight_tree",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 29.495113926008344,
+      "max_rss_bytes": 246562816,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 29.338177,
+      "system_s": 0.14743599999999998,
+      "log": "/tmp/c71-transform-clean-w-tree-20261009-01.log",
+      "name": "w-tree",
+      "source_git_sha": "e96bd202d5279c8013c659649d2e703f99f7bd60",
+      "git_dirty": false,
+      "record_run": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_fft_microbench.py",
+        "tests/test_c71_range_native.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 11.685329671017826,
+      "max_rss_bytes": 273833984,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 11.392644,
+      "system_s": 0.201009,
+      "log": "/tmp/c71-transform-clean-cpp-20261009-01.log",
+      "name": "cpp",
+      "source_git_sha": "e96bd202d5279c8013c659649d2e703f99f7bd60",
+      "git_dirty": false,
+      "record_run": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_c71_docs.py"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 1.0026952880434692,
+      "max_rss_bytes": 58368000,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.9060549999999999,
+      "system_s": 0.097451,
+      "log": "/tmp/c71-transform-clean-docs-20261009-01.log",
+      "name": "docs",
+      "source_git_sha": "e96bd202d5279c8013c659649d2e703f99f7bd60",
+      "git_dirty": false,
+      "record_run": true
+    }
+  ]
+}

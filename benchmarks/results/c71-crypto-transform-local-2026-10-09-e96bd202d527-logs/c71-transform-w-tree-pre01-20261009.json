@@ -1,0 +1,18 @@
+{
+  "command": [
+    "rust/target/debug/deps/volta_pcs-4cb98f0e88b6e8d1",
+    "c71_b12_native_weight_tree",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 29.595651350915432,
+  "max_rss_bytes": 244768768,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 29.419885999999998,
+  "system_s": 0.16813499999999998,
+  "log": "/tmp/c71-transform-w-tree-pre01-20261009.log"
+}

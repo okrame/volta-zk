@@ -1,0 +1,10 @@
+
+running 3 tests
+test c71_matrix::range::windowed::native::tests::c71_b12_native_transform_natural_forward_inverse_and_work ... C71_NATIVE_TRANSFORM {"capacity_peak_bytes":81920,"cases":30,"credit":false,"gpu_execution":false,"host_owner_bytes":37288,"log_lengths":[1,10],"natural_forward_and_inverse":true}
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_transform_rejections_and_fail_closed ... C71_NATIVE_TRANSFORM_FAILURE {"terminal_rejections":18,"gpu_execution":false,"credit":false}
+ok
+test c71_matrix::range::windowed::native::tests::c71_b12_native_transform_symbols_are_mandatory ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 541 filtered out; finished in 29.67s
+

@@ -171,6 +171,12 @@ passano 15/15 e inferenza esatta a 84,382 s: massimo temporaneo campionato
 1.216.531.968 B, −50.434.048 B rispetto alla stessa build con code di default.
 Sono selezionate per `canonical-05`, da W alle 23:13:42 UTC con AES/journal
 freschi; il picco canonico rimane da verificare.
+Il [checkpoint W successivo](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
+misura PCS 190,200 s e installazione 207,973 s (PCS −53,060% rispetto
+al trial precedente). Il caricamento sale a 322,159 s: W pronto a
+571,376 s, contro 552,786 s. Setup in corso, nessun certificato acquisito.
+Il profilo pubblico del replay attribuisce il transiente da 131.072.000 B
+al RNE finale; è un'indicazione analitica, senza nuova schedule selezionata.
 Γ, causalità, replay e garanzie restano invariati. O=0/150/300 non sono verificati.
 Il precedente timeout CPU dopo
 circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,

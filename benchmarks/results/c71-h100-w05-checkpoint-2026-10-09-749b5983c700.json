@@ -1,0 +1,227 @@
+{
+  "artifacts": [
+    {
+      "bytes": 797,
+      "path": "benchmarks/results/c71-h100-w05-checkpoint-2026-10-09-749b5983c700/canonical-05-completed-W-receipt.json",
+      "sha256": "b9169d9b89969d6725b2ac2258c048f31daec194597b9135d314e2cefa50e201"
+    },
+    {
+      "bytes": 10218,
+      "path": "benchmarks/results/c71-h100-w05-checkpoint-2026-10-09-749b5983c700/canonical-05-completed-W.json",
+      "sha256": "e87d46e85b5a87ac824ee57208950acd97c6c626267bc7f3ec9c7b8dd8451b5a"
+    },
+    {
+      "bytes": 370694,
+      "path": "benchmarks/results/c71-h100-w05-checkpoint-2026-10-09-749b5983c700/canonical-05-completed-W.memory.csv",
+      "sha256": "8ad81d6dfe28e2dbaa45bff549a4334f6d49b3b2c8ff58f440bfd129826015f1"
+    },
+    {
+      "bytes": 79416,
+      "path": "benchmarks/results/c71-h100-w05-checkpoint-2026-10-09-749b5983c700/canonical-05-completed-W.observations.jsonl",
+      "sha256": "1aa3450c183ef713d65982ecc27063fe873e34b85911bebb507c6d30a54bb7ac"
+    },
+    {
+      "bytes": 2211,
+      "path": "benchmarks/results/c71-h100-w05-checkpoint-2026-10-09-749b5983c700/https-publication-checkpoint-3aa61ba.json",
+      "sha256": "5c52905ef3b896fd51eabf183936e43f598a88389dc168001f9108603c4f5843"
+    }
+  ],
+  "baseline": {
+    "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5.json",
+    "sha256": "9e0ab538d69de389e85fe457251aa6cb691c6ccdb290c69307d3e66f47d830dc"
+  },
+  "canonical_certificates_verified": 0,
+  "canonical_run_complete": false,
+  "comparison": {
+    "after_global_start_to_W_installed_seconds": 571.376371091,
+    "after_install_seconds": 207.973205553,
+    "after_pcs_seconds": 190.199733628,
+    "after_sampled_W_install_peak_bytes": 4301200896,
+    "before_global_start_to_W_installed_seconds": 552.786220502,
+    "before_install_seconds": 441.657392425,
+    "before_pcs_seconds": 405.194766209,
+    "before_sampled_W_install_peak_bytes": 4353027584,
+    "observed_pcs_ratio": 2.1303645303809713,
+    "observed_pcs_reduction_fraction": 0.5305967660749726,
+    "scope": "Single complete W phases, same W/geometry/CUDA source but fresh salts. THP and queue configuration differ; no isolated causal attribution. Higher initial loading cost offsets most early PCS gain. No accepted certificate or complete physical peak."
+  },
+  "completed_pcs": [
+    {
+      "complete": true,
+      "geometry": {
+        "candidate_capacity": 16777216,
+        "cosets": 4096,
+        "cut": 4096,
+        "rows": 1048576,
+        "samples": 17179869184
+      },
+      "kind": "end",
+      "phase": "pcs_salts_prescan_gpu",
+      "wall_ns": 151339085,
+      "work": {
+        "chunks": 1025,
+        "completed_samples": 17179869184,
+        "computed_xof_blocks": 2147484673,
+        "logical_candidate_bytes": 137438953496,
+        "native": {
+          "allocations": 5,
+          "arena_bytes": 10486016,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 16822316,
+          "fences": 1256,
+          "h2d_bytes": 61394690728,
+          "host_owner_bytes": 42088,
+          "launches": 4100,
+          "live_capacity_bytes": 10486016,
+          "logical_bytes": 10485928,
+          "peak_capacity_bytes": 27297024,
+          "peak_reserved_bytes": 61421987584,
+          "releases": 2,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 0
+        },
+        "native_d2h_bytes": 16822316,
+        "native_fences": 1027,
+        "native_h2d_bytes": 168,
+        "native_launches": 4100
+      }
+    },
+    {
+      "complete": true,
+      "geometry": {
+        "columns": 128,
+        "columns_in_ring": 8,
+        "columns_per_fft": 4,
+        "cosets": 4096,
+        "cosets_per_scan": 32,
+        "groups": 128,
+        "height": 4294967296,
+        "rows": 1048576
+      },
+      "kind": "end",
+      "phase": "pcs_w_resident",
+      "wall_ns": 190043045199,
+      "work": {
+        "analytic_fft_butterflies": 5497558138880,
+        "completed_groups": 128,
+        "equivalent_source_scans": 128,
+        "fft_base_cells": 549755813888,
+        "leaf_hashes": 4294967296,
+        "logical_source_bytes": 7858520391680,
+        "native": {
+          "allocations": 5405,
+          "arena_bytes": 0,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 92337676,
+          "fences": 6680,
+          "h2d_bytes": 61396389832,
+          "host_owner_bytes": 42088,
+          "launches": 162713,
+          "live_capacity_bytes": 0,
+          "logical_bytes": 0,
+          "peak_capacity_bytes": 3745182208,
+          "peak_reserved_bytes": 65139872768,
+          "releases": 5405,
+          "stopped": 0,
+          "weights_bytes": 61394690560,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 274877923840
+        },
+        "native_d2h_bytes": 75515360,
+        "native_fences": 5424,
+        "native_h2d_bytes": 1699104,
+        "native_launches": 158613,
+        "node_hashes": 4294967295,
+        "ordinary_signed_products": 125736326266880,
+        "pad_field_products": 805306368,
+        "source_visits": 3929260195840
+      }
+    },
+    {
+      "complete": true,
+      "geometry": {
+        "base_columns": 128,
+        "coset_rows": 1048576,
+        "cosets": 4096,
+        "cut": 4096,
+        "height": 4294967296,
+        "native_kind": "weights"
+      },
+      "kind": "end",
+      "phase": "pcs_commitment",
+      "wall_ns": 190199733628,
+      "work": {
+        "completed_cosets": 4096,
+        "coset_cells": 549755813888,
+        "leaf_hashes": 4294967296,
+        "native_owner_capacity_high_water_bytes": 3745182208,
+        "node_hashes": 4294967295,
+        "retained_digest_bytes": 67108832,
+        "retained_salt_offset_bytes": 8388608,
+        "salt_candidate_bytes": 274877906992
+      }
+    }
+  ],
+  "credit": false,
+  "date": "2026-10-09",
+  "git_dirty": false,
+  "git_sha": "749b5983c700fd501846cc8e7ad6bb0ab2040309",
+  "launch": {
+    "argv": [
+      "/workspace/c71-h100-20261009/binaries/c71_canonical_reference-920e684",
+      "experiment-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/canonical-05/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_stack256.so",
+      "0"
+    ],
+    "argv_encoded_bytes": 423,
+    "argv_path_capacity_bound_bytes": 4096,
+    "binary_sha256": "e3e2e1fb481b838449875d970c7e9e508a6e433d499754e92faf33a4f63dc5b8",
+    "binary_source_git_sha": "920e684d1789741dcc86d536e962b8dae8e25af9",
+    "correlations": "fresh one-time real AES; no reuse",
+    "diagnostic_timeout_seconds": 7200,
+    "environment": {
+      "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+      "CUDA_DEVICE_MAX_COPY_CONNECTIONS": "1",
+      "CUDA_SCALE_LAUNCH_QUEUES": null
+    },
+    "gamma_reused": true,
+    "git_dirty": false,
+    "initial_accepted_kv": "empty",
+    "library_sha256": "88f3138effc9af42068e77aa3b4bf2c5d0d6c7b634c9608900da50aa94a6b0c2",
+    "library_source_git_sha": "a32a6c3286b556b43f8ede0b1a2ae39b5d7ebb2d",
+    "monitor_label": "canonical",
+    "new_journals": true,
+    "packed_page_advice": true,
+    "prepared_epoch": 1791587622.024302,
+    "response_target_seconds": 65,
+    "rust_sources_identical": true,
+    "source_git_sha": "749b5983c700fd501846cc8e7ad6bb0ab2040309",
+    "validation": "inference-04 THP exact150 tokens; inference-05 THP plus queue1 exact150 tokens and measured memory reduction; queue1-validation all15realCUDA; Rust source identical920e684; monitor2ff8106 with terminal sample preserved"
+  },
+  "phase_complete": true,
+  "phase_seconds": {
+    "installation_w": 207.973205553,
+    "load_packed_w": 322.159021471,
+    "native_global_residency": 25.440671346,
+    "pcs_w": 190.199733628
+  },
+  "private_bundle": {
+    "bytes": 466257,
+    "files": 7,
+    "manifest_sha256": "c71bb6eade89342db7daefd559a2ae402ed36bcf2c68e2c25ec3fa5de6b5cbfa",
+    "path": "artifact/c7.1-pod/h100-final-W05-checkpoint-20261009T232500Z"
+  },
+  "run": "canonical-05",
+  "schema": "volta-c71-h100-completed-W-phase-v1"
+}

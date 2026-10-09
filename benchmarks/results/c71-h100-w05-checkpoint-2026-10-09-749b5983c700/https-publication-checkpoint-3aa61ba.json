@@ -1,0 +1,65 @@
+{
+  "epoch": 1791587863.9174778,
+  "transport": "anonymous Git HTTPS",
+  "git_sha": "3aa61baf8db5caa7c56726910f2a3f16d65e474f",
+  "git_dirty": false,
+  "active_run_source": "749b5983c700fd501846cc8e7ad6bb0ab2040309",
+  "active_run_source_in_published_history": true,
+  "files": [
+    {
+      "path": "docs/c7.1/design.md",
+      "bytes": 25973,
+      "sha256": "5daca5c222703918974dbc5889cf42fea10186cc6dff4518b1fd20535223593c"
+    },
+    {
+      "path": "docs/c7.1/local-tests.md",
+      "bytes": 53776,
+      "sha256": "eab50a464552b58bb948fdcbbe2a7060bc07fa010a08d40cdefdae63b1f5ec95"
+    },
+    {
+      "path": "docs/c7.1/runpod-tests.md",
+      "bytes": 52607,
+      "sha256": "dd04ba8c16f8e6397e527c38f739c840c6fb1230cf42ddb670474fd4a7269325"
+    },
+    {
+      "path": "docs/c7.1/security.md",
+      "bytes": 54810,
+      "sha256": "53baefe98a15c11f3f788c73cb0a3a66ce0d8dd570277334dcfe1289c35ddedf"
+    },
+    {
+      "path": "docs/c7.1/specs.md",
+      "bytes": 104678,
+      "sha256": "8a545b65a2099c2b8d6f90707c9eab583ec27bdb65e65a1d0430473da75d5724"
+    },
+    {
+      "path": "scripts/c71_campaign_measure.py",
+      "bytes": 24104,
+      "sha256": "685763a8889b4c7294890197ab30b38f9f5e47b80414166e678a59eefa4e2d4f"
+    },
+    {
+      "path": "cuda/c71_range_runtime.cpp",
+      "bytes": 142631,
+      "sha256": "2277435aa94aca06eab232a3a5f1131e66ca09b1d987d3e98d30e7d3d4a9affb"
+    },
+    {
+      "path": "rust/volta-pcs/src/c71_matrix/gemma/native/canonical_runner.rs",
+      "bytes": 38006,
+      "sha256": "6f04962aae9de624483a211151a7736da7375d2bd5063eb334ce95781b1c277f"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-canonical-04-2026-10-09-a32a6c3286b5.json",
+      "bytes": 10212,
+      "sha256": "9e0ab538d69de389e85fe457251aa6cb691c6ccdb290c69307d3e66f47d830dc"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-thp-validation-2026-10-09-920e684d1789.json",
+      "bytes": 32587,
+      "sha256": "a2a87e1e515225465f101b960812adb78e2f3be4d2ac9ab7e34de723443dcc09"
+    },
+    {
+      "path": "benchmarks/results/c71-h100-queue1-2026-10-09-749b5983c700.json",
+      "bytes": 9017,
+      "sha256": "33a0b6f9b3761f909e9f2d63a32934cfa208ef019485329dad6a8edebdbc3b75"
+    }
+  ]
+}

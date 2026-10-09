@@ -1,0 +1,84 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=64",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 55.74275083420798,
+  "max_rss_bytes": 2552373248,
+  "sampled_aggregate_live_rss_peak_bytes": 2593206272,
+  "sampled_processes": {
+    "6": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.0008231261745095253,
+      "last_seen_s": 55.74259650008753
+    },
+    "7": {
+      "name": "cargo",
+      "max_rss_bytes": 53153792,
+      "cpu_ticks": 16,
+      "first_seen_s": 0.10252856835722923,
+      "last_seen_s": 55.641469853930175
+    },
+    "22": {
+      "name": "rustc",
+      "max_rss_bytes": 2538606592,
+      "cpu_ticks": 5452,
+      "first_seen_s": 0.3049758682027459,
+      "last_seen_s": 55.540293500293046
+    },
+    "92": {
+      "name": "cc",
+      "max_rss_bytes": 2113536,
+      "cpu_ticks": 0,
+      "first_seen_s": 54.72724982909858,
+      "last_seen_s": 55.5403340421617
+    },
+    "93": {
+      "name": "collect2",
+      "max_rss_bytes": 1568768,
+      "cpu_ticks": 0,
+      "first_seen_s": 54.72732324618846,
+      "last_seen_s": 55.54037233395502
+    },
+    "94": {
+      "name": "rust-lld",
+      "max_rss_bytes": 581722112,
+      "cpu_ticks": 83,
+      "first_seen_s": 54.727426788304,
+      "last_seen_s": 55.540411251131445
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 120,
+  "workers": 1,
+  "as_limit_mib": null,
+  "sampled_aggregate_rss_stop_bytes": 3221225472,
+  "memory_stop": false,
+  "user_s": 49.625143,
+  "system_s": 6.1172,
+  "log": "/tmp/c71-replay-profile-local-20261009/build.log"
+}

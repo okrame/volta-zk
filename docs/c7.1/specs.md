@@ -1286,6 +1286,12 @@ Le [code compute/copy a una connessione](../c7.1-history/h100-queue1-2026-10-09.
 passano 15/15 reali e inferenza esatta a 84,382 s, con massimo temporaneo
 campionato 1.216.531.968 B (−50.434.048 B). Sono selezionate per il nuovo
 trial; risparmio e picco canonici restano da dimostrare.
+Il [checkpoint W del nuovo trial](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
+misura PCS 190,200 s e massimo temporaneo della fase campionato a
+4.301.200.896 B; l'allowance dell'intera risposta resta aperta.
+La geometria pubblica attribuisce 131.072.000 B transienti al RNE finale,
+prima degli istogrammi duplicati. L'upper replay 785.789.696 B è invariato;
+questa attribuzione non è una misura fisica o una nuova schedule.
 `produce_native` collega tutti i 13 tipi di producer, riusando i dispatcher
 di base e nonlineare e le route Norm/QK/softmax/PV. Verifica arità, presenza
 esatta di coda/istogramma e assenza di token estranei all'embedding;

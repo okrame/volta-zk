@@ -1,0 +1,295 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2144,
+      "path": "benchmarks/results/c71-replay-geometry-profile-local-2026-10-09-788463bd9d58/build.json",
+      "sha256": "645709482716b0e1b6c6c12520fc8fdbc8693ac8b339dd648a0419e435727d07"
+    },
+    {
+      "bytes": 14061,
+      "path": "benchmarks/results/c71-replay-geometry-profile-local-2026-10-09-788463bd9d58/build.log",
+      "sha256": "543dd4e8d0ed821d042dc4510924c8d68608030519e690f75a1cb170913c56b7"
+    },
+    {
+      "bytes": 603,
+      "path": "benchmarks/results/c71-replay-geometry-profile-local-2026-10-09-788463bd9d58/geometry-clean.json",
+      "sha256": "81cd7a406521b3bf3d06c587327bb3cec28c5db0870bc6cebbbc6c2cd5fe887c"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-replay-geometry-profile-local-2026-10-09-788463bd9d58/geometry-clean.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 3677,
+      "path": "benchmarks/results/c71-replay-geometry-profile-local-2026-10-09-788463bd9d58/geometry-clean.stdout",
+      "sha256": "16cb72e2cdf0fbfffa8725d31e9d9a121feb481a2335b4be51041a9d0527fd24"
+    },
+    {
+      "bytes": 558,
+      "path": "benchmarks/results/c71-replay-geometry-profile-local-2026-10-09-788463bd9d58/geometry.json",
+      "sha256": "30a5f46e3c6fb23ef8281afdcddce07b77e0516cf533f38b0c96dc71bf5f75c7"
+    },
+    {
+      "bytes": 0,
+      "path": "benchmarks/results/c71-replay-geometry-profile-local-2026-10-09-788463bd9d58/geometry.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 3677,
+      "path": "benchmarks/results/c71-replay-geometry-profile-local-2026-10-09-788463bd9d58/geometry.stdout",
+      "sha256": "bba4564eb627ef46d81168f8ff224cb36daadb830478824a126cd513db7ebb0b"
+    }
+  ],
+  "build": {
+    "as_limit_mib": null,
+    "clock_ticks_per_s": 100,
+    "command": [
+      "cargo",
+      "rustc",
+      "--offline",
+      "--locked",
+      "-j",
+      "1",
+      "-p",
+      "volta-pcs",
+      "--features",
+      "c71-seed6-reference",
+      "--lib",
+      "--profile",
+      "test",
+      "--config",
+      "profile.dev.package.volta-pcs.opt-level=0",
+      "--config",
+      "profile.dev.package.volta-pcs.codegen-units=64",
+      "--",
+      "-Clink-arg=-fuse-ld=lld",
+      "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+      "-Clink-arg=-Wl,--threads=1"
+    ],
+    "cwd": "/home/okrame/projects/volta-zk/rust",
+    "deadline_s": 120,
+    "exit_code": 0,
+    "log": "/tmp/c71-replay-profile-local-20261009/build.log",
+    "max_rss_bytes": 2552373248,
+    "memory_stop": false,
+    "sample_interval_s": 0.1,
+    "sampled_aggregate_live_rss_peak_bytes": 2593206272,
+    "sampled_aggregate_rss_stop_bytes": 3221225472,
+    "sampled_processes": {
+      "22": {
+        "cpu_ticks": 5452,
+        "first_seen_s": 0.3049758682027459,
+        "last_seen_s": 55.540293500293046,
+        "max_rss_bytes": 2538606592,
+        "name": "rustc"
+      },
+      "6": {
+        "cpu_ticks": 0,
+        "first_seen_s": 0.0008231261745095253,
+        "last_seen_s": 55.74259650008753,
+        "max_rss_bytes": 1576960,
+        "name": "timeout"
+      },
+      "7": {
+        "cpu_ticks": 16,
+        "first_seen_s": 0.10252856835722923,
+        "last_seen_s": 55.641469853930175,
+        "max_rss_bytes": 53153792,
+        "name": "cargo"
+      },
+      "92": {
+        "cpu_ticks": 0,
+        "first_seen_s": 54.72724982909858,
+        "last_seen_s": 55.5403340421617,
+        "max_rss_bytes": 2113536,
+        "name": "cc"
+      },
+      "93": {
+        "cpu_ticks": 0,
+        "first_seen_s": 54.72732324618846,
+        "last_seen_s": 55.54037233395502,
+        "max_rss_bytes": 1568768,
+        "name": "collect2"
+      },
+      "94": {
+        "cpu_ticks": 83,
+        "first_seen_s": 54.727426788304,
+        "last_seen_s": 55.540411251131445,
+        "max_rss_bytes": 581722112,
+        "name": "rust-lld"
+      }
+    },
+    "system_s": 6.1172,
+    "user_s": 49.625143,
+    "wall_s": 55.74275083420798,
+    "workers": 1
+  },
+  "conclusion": "Final output RNE step2325 is the131072000B transient envelope:104857600B retained raw plus26214400B signed output, before63438848B duplicate histograms. Public padding upper159232/318208/477184B is small. This is a profile lead, not proof of which allocation caused canonical04 physical stop. Microbatching alone retains all raw/output rows unless lifetime changes; no such runtime change selected.",
+  "credit": false,
+  "date": "2026-10-09",
+  "geometry": [
+    {
+      "checkpoint_capacity_bytes": 98380800,
+      "credit": false,
+      "duplicate_histograms_included": true,
+      "geometry_only": true,
+      "gpu_execution": false,
+      "histogram_capacity_bytes": 63438848,
+      "host_allocations_at_geometry": {
+        "denied_allocations": 0,
+        "enforced": false,
+        "excluded_packed_w_capacity_bytes": 0,
+        "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+        "host_layout_bytes": 8288230,
+        "native_reservation_bytes": 0,
+        "operational_margin_required_bytes": 268435456,
+        "payload_limit_bytes": 5905580032,
+        "peak_plus_runtime_allowance_bytes": 268435456,
+        "physical_runtime_allowance_verified": false,
+        "runtime_allowance_bytes": 268435456,
+        "temporary_live_bytes": 8288955,
+        "temporary_payload_peak_bytes": 0
+      },
+      "kv_capacity_bytes": 405504000,
+      "old_tokens": 0,
+      "persistent_device_bytes": 591277824,
+      "public_padding_device_upper_bytes": 159232,
+      "replay_transient_peak_bytes": 131072000,
+      "replay_transient_peak_site": {
+        "first_row": 0,
+        "output_matrix": false,
+        "output_rne": true,
+        "outputs": [
+          [
+            3167,
+            26214400
+          ]
+        ],
+        "retained_bytes": 104857600,
+        "rows": 50,
+        "step": 2325
+      },
+      "replay_upper_bytes_including_persistent": 785789696,
+      "slot": 0,
+      "table_capacity_bytes": 23954176
+    },
+    {
+      "checkpoint_capacity_bytes": 98380800,
+      "credit": false,
+      "duplicate_histograms_included": true,
+      "geometry_only": true,
+      "gpu_execution": false,
+      "histogram_capacity_bytes": 63438848,
+      "host_allocations_at_geometry": {
+        "denied_allocations": 0,
+        "enforced": false,
+        "excluded_packed_w_capacity_bytes": 0,
+        "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+        "host_layout_bytes": 8288230,
+        "native_reservation_bytes": 0,
+        "operational_margin_required_bytes": 268435456,
+        "payload_limit_bytes": 5905580032,
+        "peak_plus_runtime_allowance_bytes": 268435456,
+        "physical_runtime_allowance_verified": false,
+        "runtime_allowance_bytes": 268435456,
+        "temporary_live_bytes": 8288955,
+        "temporary_payload_peak_bytes": 0
+      },
+      "kv_capacity_bytes": 405504000,
+      "old_tokens": 150,
+      "persistent_device_bytes": 591277824,
+      "public_padding_device_upper_bytes": 318208,
+      "replay_transient_peak_bytes": 131072000,
+      "replay_transient_peak_site": {
+        "first_row": 0,
+        "output_matrix": false,
+        "output_rne": true,
+        "outputs": [
+          [
+            3167,
+            26214400
+          ]
+        ],
+        "retained_bytes": 104857600,
+        "rows": 50,
+        "step": 2325
+      },
+      "replay_upper_bytes_including_persistent": 785789696,
+      "slot": 1,
+      "table_capacity_bytes": 23954176
+    },
+    {
+      "checkpoint_capacity_bytes": 98380800,
+      "credit": false,
+      "duplicate_histograms_included": true,
+      "geometry_only": true,
+      "gpu_execution": false,
+      "histogram_capacity_bytes": 63438848,
+      "host_allocations_at_geometry": {
+        "denied_allocations": 0,
+        "enforced": false,
+        "excluded_packed_w_capacity_bytes": 0,
+        "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+        "host_layout_bytes": 8288230,
+        "native_reservation_bytes": 0,
+        "operational_margin_required_bytes": 268435456,
+        "payload_limit_bytes": 5905580032,
+        "peak_plus_runtime_allowance_bytes": 268435456,
+        "physical_runtime_allowance_verified": false,
+        "runtime_allowance_bytes": 268435456,
+        "temporary_live_bytes": 8288955,
+        "temporary_payload_peak_bytes": 0
+      },
+      "kv_capacity_bytes": 405504000,
+      "old_tokens": 300,
+      "persistent_device_bytes": 591277824,
+      "public_padding_device_upper_bytes": 477184,
+      "replay_transient_peak_bytes": 131072000,
+      "replay_transient_peak_site": {
+        "first_row": 0,
+        "output_matrix": false,
+        "output_rne": true,
+        "outputs": [
+          [
+            3167,
+            26214400
+          ]
+        ],
+        "retained_bytes": 104857600,
+        "rows": 50,
+        "step": 2325
+      },
+      "replay_upper_bytes_including_persistent": 785789696,
+      "slot": 2,
+      "table_capacity_bytes": 23954176
+    }
+  ],
+  "geometry_only": true,
+  "git_dirty": false,
+  "git_sha": "788463bd9d585f96e97e865c528378a58a1462d1",
+  "gpu_execution": false,
+  "run_of_record": false,
+  "schema": "volta-c71-replay-public-geometry-profile-v1",
+  "scope": "Public geometry only; no canonical buffers, weights, PCG, or measured CUDA allocation. Test-only attribution leaves production code and prior envelopes unchanged. Build occurred before commit on identical source bytes; clean repeat follows commit.",
+  "test": {
+    "as_limit_bytes": 2147483648,
+    "binary_sha256": "1cb26aef7ceba07535742453e3f585c967d5a0f361c72047c4575cf8f89bc772",
+    "build_source_identical_to_commit": true,
+    "command": [
+      "timeout",
+      "-k",
+      "5s",
+      "60s",
+      "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+      "c71_canonical_device_allocation_geometry_without_canonical_buffers",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "deadline_seconds": 60,
+    "exit_code": 0,
+    "git_dirty": false,
+    "source_git_sha": "788463bd9d585f96e97e865c528378a58a1462d1",
+    "wall_seconds": 6.610486892051995
+  }
+}

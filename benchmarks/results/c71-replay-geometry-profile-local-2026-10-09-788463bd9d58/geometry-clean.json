@@ -1,0 +1,20 @@
+{
+  "command": [
+    "timeout",
+    "-k",
+    "5s",
+    "60s",
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-b3228fb890c6a4d7",
+    "c71_canonical_device_allocation_geometry_without_canonical_buffers",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 6.610486892051995,
+  "as_limit_bytes": 2147483648,
+  "deadline_seconds": 60,
+  "binary_sha256": "1cb26aef7ceba07535742453e3f585c967d5a0f361c72047c4575cf8f89bc772",
+  "source_git_sha": "788463bd9d585f96e97e865c528378a58a1462d1",
+  "git_dirty": false,
+  "build_source_identical_to_commit": true
+}

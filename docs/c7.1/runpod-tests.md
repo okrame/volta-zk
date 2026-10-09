@@ -71,6 +71,11 @@ campionato 1.216.531.968 B, riduzione misurata 50.434.048 B.
 `canonical-05` è in corso dalle 23:13:42 UTC su checkout `749b598`,
 binario `920e684`, libreria `a32a6c3`: nuovo W/setup AES/journal, stesso Γ,
 cap e timeout 7.200 s. Il picco canonico completo rimane da dimostrare.
+Il [checkpoint W concluso](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
+riporta PCS 190,200 s, installazione 207,973 s e massimo campionato
+4.301.200.896 B. Caricamento 322,159 s; W pronto a 571,376 s dall'avvio.
+Il setup è in corso. La diagnostica locale del massimo replay non cambia
+il binario del trial né autorizza credito al picco completo.
 Deadline e guard della campagna restano invariati.
 
 La precedente campagna chiusa conserva il proprio fallimento nel commitment

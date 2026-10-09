@@ -1,0 +1,23 @@
+{
+  "epoch": 1791588303.6314812,
+  "start_unix": 1791587622.0638947,
+  "end_unix": 1791588193.440266,
+  "raw_prefix_scope": "Only completed W and preceding phases, copied before canonical setup completes; run remains active.",
+  "files": [
+    {
+      "path": "checkpoints/canonical-05-completed-W.json",
+      "bytes": 10218,
+      "sha256": "e87d46e85b5a87ac824ee57208950acd97c6c626267bc7f3ec9c7b8dd8451b5a"
+    },
+    {
+      "path": "checkpoints/canonical-05-completed-W.memory.csv",
+      "bytes": 370694,
+      "sha256": "8ad81d6dfe28e2dbaa45bff549a4334f6d49b3b2c8ff58f440bfd129826015f1"
+    },
+    {
+      "path": "checkpoints/canonical-05-completed-W.observations.jsonl",
+      "bytes": 79416,
+      "sha256": "1aa3450c183ef713d65982ecc27063fe873e34b85911bebb507c6d30a54bb7ac"
+    }
+  ]
+}

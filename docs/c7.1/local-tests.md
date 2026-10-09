@@ -46,6 +46,11 @@ rispettivi ambienti. Sono test provider, non controlli locali.
 Il [diagnostico successivo](../c7.1-history/h100-queue1-2026-10-09.md)
 confronta esattamente 150 token, digest W, contatori e cleanup con la
 baseline THP; la misura fisica resta distinta dalla verifica canonica.
+Il [profilo pubblico `788463b`](../c7.1-history/h100-w05-checkpoint-2026-10-09.md)
+aggiunge step e capacità al test di geometria. Build 55,743 s, picco
+aggregato campionato 2.593.206.272 B; test e ripetizione pulita passano,
+quest'ultima in 6,610 s / AS 2 GiB. Nessun buffer canonico o hardware GPU.
+Produzione e upper replay restano invariati.
 
 ## Limiti e ambiente
 

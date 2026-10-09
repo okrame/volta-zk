@@ -127,19 +127,19 @@ pub fn cggm_h(
     position: u64,
     node: Fp3,
 ) -> Result<(Fp3, Work), Error> {
-    let mut input = Vec::with_capacity(H_TAG.len() + 32 + 8 + 4 + 8 + 24);
-    input.extend_from_slice(H_TAG);
-    input.extend_from_slice(&nonce);
-    input.extend_from_slice(&block.to_le_bytes());
-    input.extend_from_slice(&level.to_le_bytes());
-    input.extend_from_slice(&position.to_le_bytes());
-    input.extend_from_slice(&node.to_bytes());
-    let mut reader = shake(&input);
+    // Preserve the exact frame without allocating once per tree node.
+    let mut hash = Shake256::default();
+    hash.update(H_TAG);
+    hash.update(&nonce);
+    hash.update(&block.to_le_bytes());
+    hash.update(&level.to_le_bytes());
+    hash.update(&position.to_le_bytes());
+    hash.update(&node.to_bytes());
+    let mut reader = hash.finalize_xof();
     let mut work = Work {
         shake_calls: 1,
-        absorbed_bytes: input.len() as u64,
+        absorbed_bytes: (H_TAG.len() + 32 + 8 + 4 + 8 + 24) as u64,
         shake_object_bytes_peak: size_of::<Shake256>().max(size_of_val(&reader)),
-        codec_heap_capacity_bytes_peak: input.capacity(),
         ..Default::default()
     };
     // Python fixes a separate 64-byte candidate slot for every limb.
@@ -529,6 +529,67 @@ mod tests {
             assert_eq!(work.absorbed_bytes, 98);
             assert_eq!(work.squeezed_bytes, 192);
             assert_eq!(work.fp_candidates, 3);
+            assert_eq!(work.codec_heap_capacity_bytes_peak, 0);
+        }
+    }
+
+    // Previous contiguous codec, retained only as an independent test oracle.
+    fn cggm_h_contiguous(nonce: [u8; 32], block: u64, level: u32, position: u64, node: Fp3)
+        -> Result<(Fp3, Work), Error>
+    {
+        let mut input = Vec::with_capacity(H_TAG.len() + 32 + 8 + 4 + 8 + 24);
+        for part in [H_TAG, &nonce, &block.to_le_bytes(), &level.to_le_bytes(),
+                     &position.to_le_bytes(), &node.to_bytes()] {
+            input.extend_from_slice(part);
+        }
+        let mut reader = shake(&input);
+        let mut work = Work { shake_calls: 1, absorbed_bytes: input.len() as u64,
+            squeezed_bytes: 192, codec_heap_capacity_bytes_peak: input.capacity(),
+            shake_object_bytes_peak: size_of::<Shake256>().max(size_of_val(&reader)),
+            ..Default::default() };
+        let mut tape = [0; 192];
+        reader.read(&mut tape);
+        let limbs = sample_h_limbs(&tape, &mut work)?;
+        Ok((Fp3::new(limbs[0], limbs[1], limbs[2]), work))
+    }
+
+    #[test]
+    fn cggm_h_streamed_codec_preserves_full_frame_and_work() {
+        for i in 0..257u64 {
+            let nonce = [i as u8; 32];
+            let node = Fp3::new(Fp::new(i), Fp::new(P - 1 - i), Fp::new(i * 65537));
+            let args = (u64::MAX - i, u32::MAX - i as u32, i.rotate_left(37));
+            let (expected, mut work) = cggm_h_contiguous(nonce, args.0, args.1, args.2, node).unwrap();
+            assert_eq!(work.codec_heap_capacity_bytes_peak, 98);
+            work.codec_heap_capacity_bytes_peak = 0;
+            assert_eq!(cggm_h(nonce, args.0, args.1, args.2, node).unwrap(), (expected, work));
+        }
+    }
+
+    #[test]
+    #[ignore = "explicit CPU component benchmark on authorized hardware"]
+    fn cggm_h_streamed_codec_benchmark() {
+        use std::{hint::black_box, time::Instant};
+        let calls = 20_000;
+        let run = |streamed| {
+            let started = Instant::now();
+            let mut sum = Fp3::ZERO;
+            for i in 0..calls {
+                let hash = if streamed { cggm_h } else { cggm_h_contiguous };
+                sum += black_box(hash(black_box([13; 32]), 674, 19, black_box(i), f(i + 17)).unwrap().0);
+            }
+            (started.elapsed().as_nanos(), black_box(sum))
+        };
+        assert_eq!(run(false).1, run(true).1);
+        for replica in 0..5 {
+            let first = run(replica % 2 != 0);
+            let second = run(replica % 2 == 0);
+            assert_eq!(first.1, second.1);
+            let (contiguous, streamed) = if replica % 2 == 0 { (first.0, second.0) } else { (second.0, first.0) };
+            println!("C71_CGGM_CODEC {}", serde_json::json!({"calls":calls,"replica":replica,
+                "contiguous_ns":contiguous,"streamed_ns":streamed,"same_outputs":true,
+                "input_codec_heap_bytes_before":98,"input_codec_heap_bytes_after":0,
+                "canonical_setup":false,"credit":false}));
         }
     }
 

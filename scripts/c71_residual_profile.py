@@ -195,7 +195,7 @@ def report():
                 {'initial':(1<<20)*18+256*4095*2,'extension':(1<<20)*3+256*4095*2},
             'caution':'q512 direct evaluation is not sufficient: Merkle regeneration requires all4096 rows/subtree; costs below are per batch and no claimU512 is measured'},
         'initial_W_query_per_q2p20_batch':dict(initial_query(30697345280,35,q),
-            execution=('resident original W with shared GPU remainder route' if 'self.native_query=Some(NativeQuery::Weights(native.clone()))' in texts[PCS+'b12/replay.rs'] else 'CPU source; GPU remainder counts conditional'))),
+            execution=('resident original W with shared GPU remainder route' if 'self.native_query=Some(NativeQuery::Weights(native.clone()))' in texts[PCS+'b12/replay.rs'] else 'CPU source; GPU remainder counts conditional')),
         'S1_query_per_q2p20_batch':{'W':extension_query(28,q),'A':extension_query(27,q)},
         'range':{'W':range_census(35,11,window_lengths(wt,'W_WINDOWS'),1<<27,2),
             'A':range_census(34,10,window_lengths(wt,'WINDOWS'),1<<30,1)},

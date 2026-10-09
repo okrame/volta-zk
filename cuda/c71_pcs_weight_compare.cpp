@@ -20,10 +20,15 @@ using U128=unsigned __int128;
 using I128=__int128;
 using Clock=std::chrono::steady_clock;
 constexpr uint64_t prime=0xffffffff00000001ULL;
-constexpr uint64_t rows=64,q_count=256,message_rows=rows*q_count,group_rows=32*rows;
+#ifdef C71_PCS_COMPARE_LARGE
+constexpr unsigned log_rows=12;
+#else
+constexpr unsigned log_rows=6;
+#endif
+constexpr uint64_t rows=uint64_t{1}<<log_rows,q_count=256,message_rows=rows*q_count,group_rows=32*rows;
 constexpr unsigned columns=128,pad_rows=1536,cosets=4096,replicas=3;
-constexpr uint64_t temporary_limit=16ULL<<20,physical_reserve=256ULL<<20;
-static_assert(prime==P && columns*message_rows*sizeof(int16_t)==(4ULL<<20));
+constexpr uint64_t temporary_limit=(log_rows==6?16ULL:512ULL)<<20,physical_reserve=256ULL<<20;
+static_assert(prime==P && columns*message_rows*sizeof(int16_t)==(uint64_t{1}<<(log_rows+16)));
 C71RangeContext* owner=nullptr;
 uint64_t native_charge=0,host_charge=0,joint_peak=0;
 
@@ -138,7 +143,7 @@ struct Diagnostic {
         pads_handle=allocate(C71_PCS_BASE,pads.size()); salts_handle=allocate(C71_PCS_BASE,salts.size());
         check(c71_pcs_words_upload(owner,pads_handle,0,pads.data(),pads.size()),"pads_upload");
         check(c71_pcs_words_upload(owner,salts_handle,0,salts.data(),salts.size()),"salts_upload");
-        twiddles=allocate(C71_PCS_POWERS,rows); check(c71_pcs_twiddles(owner,twiddles,6),"twiddles");
+        twiddles=allocate(C71_PCS_POWERS,rows); check(c71_pcs_twiddles(owner,twiddles,log_rows),"twiddles");
         for(auto& ring:rings) { ring=allocate(C71_PCS_BASE,8*group_rows); check(c71_pcs_ring_zero(owner,ring),"ring_zero"); }
     }
     void reference_group(unsigned first_coset) {
@@ -146,7 +151,7 @@ struct Diagnostic {
         require(power(omega,rows*cosets)==1 && power(omega,rows*cosets/2)!=1 &&
             power(root,rows)==1 && power(root,rows/2)!=1,"independent root order differs");
         for(unsigned lane=0;lane<32;++lane) {
-            std::array<uint64_t,q_count+pad_rows/rows> high{};
+            std::array<uint64_t,q_count+(pad_rows+rows-1)/rows> high{};
             std::array<uint64_t,rows> low{};
             const uint64_t l=power(omega,first_coset+lane),h=power(l,rows);
             high[0]=low[0]=1;
@@ -319,16 +324,18 @@ int main() {
         require(close_status==0,"CUDA owner close failed");
         require(final.arena_bytes==0 && final.weights_bytes==0 && final.cleanup_failed==0 && native_charge==0,"cleanup incomplete");
         rusage usage{}; require(getrusage(RUSAGE_SELF,&usage)==0,"getrusage failed");
-        std::printf("C71_PCS_WEIGHT_COMPARE_RESOURCES {\"rows\":64,\"q\":256,\"pad_rows\":1536,\"columns\":128,"
+        std::printf("C71_PCS_WEIGHT_COMPARE_RESOURCES {\"rows\":%llu,\"q\":256,\"pad_rows\":1536,\"columns\":128,"
             "\"cosets\":4096,\"groups\":2,\"replicas_per_group\":3,\"setup_install_s\":%.9f,"
-            "\"immutable_host_w_excluded_bytes\":%llu,\"immutable_device_w_excluded_bytes\":4194304,"
+            "\"immutable_host_w_excluded_bytes\":%llu,\"immutable_device_w_excluded_bytes\":%llu,"
             "\"host_vector_capacity_bytes\":%llu,\"host_object_bytes\":%zu,\"native_host_owner_bytes\":%llu,"
             "\"native_device_capacity_peak_bytes\":%llu,\"joint_named_capacity_peak_bytes\":%llu,"
             "\"runtime_allocator_stack_shared_reserve_bytes\":268435456,\"joint_temporary_with_reserve_bytes\":%llu,"
             "\"all_named_with_w_and_reserve_bytes\":%llu,"
             "\"rss_max_bytes\":%llu,\"tensor_cta_shared_bytes\":8448,\"fft_transpose_cta_shared_bytes\":16896,"
             "\"field_download_bytes\":0,\"physical_gpu_peak_measured\":false,\"canonical_workload\":false,\"credit\":false,\"install_delta\":",
-            install_s,static_cast<unsigned long long>(d.weights.capacity()*sizeof(int16_t)),
+            static_cast<unsigned long long>(rows),install_s,
+            static_cast<unsigned long long>(d.weights.capacity()*sizeof(int16_t)),
+            static_cast<unsigned long long>(peak.weights_bytes),
             static_cast<unsigned long long>(d.host_vectors()),sizeof(d),static_cast<unsigned long long>(peak.host_owner_bytes),
             static_cast<unsigned long long>(peak.peak_capacity_bytes),static_cast<unsigned long long>(joint_peak),
             static_cast<unsigned long long>(joint_peak+physical_reserve),

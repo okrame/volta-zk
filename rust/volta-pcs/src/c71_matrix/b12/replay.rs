@@ -26,6 +26,7 @@ use crate::c71_matrix::range::windowed::native as device;
 
 /// The installation's same sealed W/owner and trusted original public layout.
 /// This carries no challenge, correlation or numerical-producer interface.
+#[derive(Clone)]
 pub(in crate::c71_matrix) struct NativeWeights {
     pub runtime: Arc<Mutex<device::Runtime>>,
     pub weights: Arc<Vec<i16>>,
@@ -46,7 +47,8 @@ pub(in crate::c71_matrix) struct NativeSource {
         device::PcsSourceTile) -> Result<(), String>) -> Result<(), String> + Send + Sync>,
 }
 
-enum NativeInitial {
+#[derive(Clone)]
+pub(in crate::c71_matrix) enum NativeOriginal {
     Weights(NativeWeights),
     Source(NativeSource),
 }
@@ -1168,7 +1170,7 @@ pub(in crate::c71_matrix) struct ReplayModel {
     source: Getter,
     live: usize,
     scan: Option<(BaseScan, usize)>,
-    native_original: Option<NativeSource>,
+    native_original: Option<NativeOriginal>,
     tree: Arc<Tree>,
     pads: Arc<[Goldilocks]>,
     retain_first: bool,
@@ -1224,7 +1226,7 @@ impl ReplayModel {
     ) -> Result<Self, String> {
         let owner = native.runtime.clone();
         let result = Self::new_source(domain, seed, salt_seed, source, None, live,
-            Some(NativeInitial::Weights(native)));
+            Some(NativeOriginal::Weights(native)));
         if let Err(error) = &result {
             if let Ok(mut runtime) = owner.lock() { let _ = runtime.abort::<()>(error); }
         }
@@ -1237,7 +1239,7 @@ impl ReplayModel {
     ) -> Result<Self, String> {
         let owner = native.runtime.clone();
         let result = Self::new_source(domain, seed, salt_seed, source, Some((scan, window)), live,
-            Some(NativeInitial::Source(native)));
+            Some(NativeOriginal::Source(native)));
         if let Err(error) = &result {
             if let Ok(mut runtime) = owner.lock() { let _ = runtime.abort::<()>(error); }
         }
@@ -1251,7 +1253,7 @@ impl ReplayModel {
         source: Getter,
         readers: Option<(BaseScan, ByteWindow)>,
         live: usize,
-        native: Option<NativeInitial>,
+        native: Option<NativeOriginal>,
     ) -> Result<Self, String> {
         let config = domain.config()?;
         let len = 1usize << config.num_variables;
@@ -1313,12 +1315,10 @@ impl ReplayModel {
             height,
             pads: Pads::Base(pads.clone()),
         };
-        let native_original=match &native {
-            Some(NativeInitial::Source(source))=>Some(source.clone()), _=>None,
-        };
+        let native_original=native.clone();
         let (root, handle) = match native {
-            Some(NativeInitial::Weights(native)) => code.commit_native_weights(&mmcs.inner, native)?,
-            Some(NativeInitial::Source(native)) => {
+            Some(NativeOriginal::Weights(native)) => code.commit_native_weights(&mmcs.inner, native)?,
+            Some(NativeOriginal::Source(native)) => {
                 let (root, handle, h) = code.commit_native_source(&mmcs.inner, native)?;
                 *byte_histogram.lock().map_err(|_| "range histogram cache poisoned")? = Some(h);
                 (root, handle)
@@ -1412,8 +1412,15 @@ impl ReplayModel {
     pub(in crate::c71_matrix) fn live_len(&self) -> usize {
         self.live
     }
-    pub(in crate::c71_matrix) fn native_original(&self) -> Option<&NativeSource> {
+    pub(in crate::c71_matrix) fn native_original(&self) -> Option<&NativeOriginal> {
         self.native_original.as_ref()
+    }
+    #[cfg(test)]
+    pub(in crate::c71_matrix) fn fixture_native_original(mut self, native: NativeOriginal) -> Self {
+        // Attach only the linear consumer after a CPU initial commitment.
+        // This seam does not replace or cache any PCS opening evaluator.
+        self.native_original=Some(native);
+        self
     }
 
     /// Read each original live cell once. The canonical scanner owns its
@@ -1731,19 +1738,19 @@ fn compare_source_with_native(
     readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeWeights>, fixture_initial_rows: bool,
 ) {
     compare_source_with_resident(dimension, source, values, original, readers,
-        native.map(NativeInitial::Weights), fixture_initial_rows);
+        native.map(NativeOriginal::Weights), fixture_initial_rows);
 }
 #[cfg(test)]
 fn compare_source_with_resident(
     dimension: usize, source: Getter, values: Vec<Goldilocks>, original: Option<&Model>,
-    readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeInitial>, fixture_initial_rows: bool,
+    readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeOriginal>, fixture_initial_rows: bool,
 ) {
     compare_source_with_query(dimension,source,values,original,readers,native,fixture_initial_rows,None)
 }
 #[cfg(test)]
 fn compare_source_with_query(
     dimension: usize, source: Getter, values: Vec<Goldilocks>, original: Option<&Model>,
-    readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeInitial>, fixture_initial_rows: bool,
+    readers: Option<(BaseScan, ByteWindow)>, native: Option<NativeOriginal>, fixture_initial_rows: bool,
     native_query: Option<NativeQuery>,
 ) {
     use rand_010::RngExt;
@@ -1805,7 +1812,7 @@ fn compare_source_with_query(
     let mut replay_fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
     replay_fs.set_phase(0x200);
     let live = native.as_ref().map_or(1 << dimension, |native| match native {
-        NativeInitial::Weights(w) => w.weights.len(), NativeInitial::Source(a) => a.live,
+        NativeOriginal::Weights(w) => w.weights.len(), NativeOriginal::Source(a) => a.live,
     });
     let mut model = ReplayModel::new_source(
         Domain::Flat(dimension),
@@ -3378,7 +3385,7 @@ mod tests {
         eprintln!("C71_NATIVE_A_CHAIN_PROGRESS {}", path.display());
         let values = (0..1 << 15).map(|i| base_coefficient((f.get)(i))).collect();
         compare_source_with_resident(15, f.get, values, None, Some((f.scan, f.window)),
-            Some(NativeInitial::Source(f.native)), fixture_initial_rows);
+            Some(NativeOriginal::Source(f.native)), fixture_initial_rows);
         assert_eq!(f.reconstructions.load(std::sync::atomic::Ordering::Relaxed), 64);
         let stats = owner.lock().unwrap().close().unwrap();
         assert_eq!(stats.arena_bytes, 0);

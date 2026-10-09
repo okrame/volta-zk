@@ -11,13 +11,14 @@
 #include "c71_pcs_source.cuh"
 #include "c71_pcs_salts.cuh"
 #include "c71_pcs_query.cuh"
+#include "c71_linear_native.cuh"
 
 struct C71RangeContext;
 using C71RangeAccount = int (*)(int64_t);
 enum C71RangeKind : uint32_t { C71_U8, C71_I16, C71_PAIR, C71_CHILDREN, C71_GRAM, C71_CUBIC, C71_I64, C71_BYTE_PENDING, C71_HISTOGRAM_PENDING,
     C71_PCS_BASE, C71_PCS_HASH_PENDING, C71_PCS_DIGEST, C71_PCS_FRONTIER_PENDING,
     C71_PCS_WEIGHT_TILES, C71_PCS_POWERS, C71_PCS_SOURCE_PENDING, C71_PCS_BYTE_COUNTS_PENDING,
-    C71_PCS_PRIVATE };
+    C71_PCS_PRIVATE, C71_LINEAR_PRIVATE };
 struct C71RangeStats {
     // ABI 4: actual live device reservations (released after fence), aligned
     // capacities and logical payload. create() sets a budget, not a slab.
@@ -160,4 +161,11 @@ int c71_pcs_leaf_finish_private(C71RangeContext*,uint64_t session,uint64_t ring,
 int c71_pcs_full_leaves_private(C71RangeContext*,uint64_t session,uint64_t first_values,uint64_t second_values,
     uint64_t states,uint32_t group,uint64_t first,uint64_t count,uint64_t* completed_bytes);
 int c71_pcs_salts_complete(C71RangeContext*,uint64_t session,uint64_t* current,uint64_t rows,uint64_t* consumed);
+// Consumer-only round capability. Original numerical producers receive only
+// borrowed originals/layout, never the packet, points or this token.
+int c71_linear_begin(C71RangeContext*,c71_linear::Shape,const c71_linear::Chunk*,const Fp3* tables,
+    uint32_t table_count,const c71_linear::Group*,const c71_linear::Interval*,const Fp3* points,uint64_t* token);
+int c71_linear_source_tile(C71RangeContext*,uint64_t token,uint64_t input,c71_pcs::SourceTile);
+int c71_linear_weights(C71RangeContext*,uint64_t token,uint64_t sealed_tiles);
+int c71_linear_finish(C71RangeContext*,uint64_t token,Fp3* output_five);
 }

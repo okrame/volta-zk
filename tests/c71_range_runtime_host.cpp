@@ -16,6 +16,7 @@ static bool fail_launch=false, fail_fence=false, fail_free=false, corrupt=false;
 static bool fail_dense=false;
 static int copy_fail_after=-1;
 static int download_fail_after=-1;
+static int upload_fail_after=-1;
 static size_t fake_free=80000000000ULL;
 static unsigned allocations=0, frees=0, launches=0;
 static std::vector<uint8_t> expected_bytes;
@@ -39,6 +40,10 @@ cudaError_t cudaFree(void* p) {
     ++frees; delete[] static_cast<unsigned char*>(p); return fail_free?1:0;
 }
 cudaError_t cudaMemcpyAsync(void* d,const void* s,size_t n,cudaMemcpyKind kind,cudaStream_t stream) {
+    if(kind==cudaMemcpyHostToDevice) {
+        if(upload_fail_after==0) return 1;
+        if(upload_fail_after>0) --upload_fail_after;
+    }
     if(kind==cudaMemcpyDeviceToHost) {
         if(download_fail_after==0) return 1;
         if(download_fail_after>0) --download_fail_after;
@@ -59,6 +64,39 @@ const char* cudaGetErrorString(cudaError_t) { return "injected CUDA failure"; }
 static int launch(cudaStream_t s,std::function<void()> operation) {
     ++launches; if(fail_launch) return 1;
     s->pending.push_back(std::move(operation)); return 0;
+}
+extern "C" int c71_linear_weights_launch(cudaStream_t stream,const int16_t* input,
+    const c71_pcs::WeightTile* tiles,uint64_t tile_count,uint64_t first,uint64_t count,
+    c71_linear::Shape shape,const c71_linear::Chunk* chunks,const Fp3* tables,
+    const c71_linear::Group* groups,const c71_linear::Interval* intervals,const Fp3* points,
+    c71_linear::Result* output,uint32_t* flag) {
+    return launch(stream,[=] {
+        for(uint64_t i=0;i<count;++i) {
+            const auto original=input[c71_pcs::packed_address(tiles,tile_count,first+i,shape.live)];
+            if(original==INT16_MIN) { *flag=1; continue; }
+            const uint64_t scalar=original<0 ? P-uint64_t(-int32_t(original)) : uint64_t(original);
+            *output=c71_linear::sum(*output,c71_linear::contribution(first+i,scalar,shape,chunks,tables,groups,intervals,points));
+        }
+        if(fail_dense) *flag=1;
+    });
+}
+extern "C" int c71_linear_source_launch(cudaStream_t stream,const void* input,unsigned kind,c71_pcs::SourceTile tile,
+    c71_linear::Shape shape,const c71_linear::Chunk* chunks,const Fp3* tables,
+    const c71_linear::Group* groups,const c71_linear::Interval* intervals,const Fp3* points,
+    c71_linear::Result* output,uint32_t* flag) {
+    return launch(stream,[=] {
+        for(uint64_t i=0;i<tile.rows*tile.columns;++i) {
+            const auto address=tile.input_first+(i/tile.columns)*tile.input_stride+i%tile.columns;
+            const int64_t original=kind==C71_I16 ? static_cast<const int16_t*>(input)[address] : static_cast<const int64_t*>(input)[address];
+            for(unsigned lane=0;lane<tile.width;++lane) {
+                uint8_t byte=0;
+                if(!c71_byte::encode(original,tile.signed_width,tile.byte_first+lane,byte)) { *flag=1; continue; }
+                *output=c71_linear::sum(*output,c71_linear::contribution(tile.original_first+i*tile.width+lane,
+                    byte,shape,chunks,tables,groups,intervals,points));
+            }
+        }
+        if(fail_dense) *flag=1;
+    });
 }
 // Sequential oracle for deferred owner/lifetime tests. It does not emulate
 // the CUDA hierarchy; that scheduling still requires real kernel execution.
@@ -664,6 +702,7 @@ extern "C" void c71_range_test_failure(unsigned kind) {
     fail_launch=kind==1; fail_fence=kind==2; fail_free=kind==3; corrupt=kind==4;
     copy_fail_after=kind==5?0:kind==6?1:-1;
     download_fail_after=kind==7?0:kind==8?1:-1;
+    upload_fail_after=kind==10?0:kind==11?1:-1;
     fail_dense=kind==9;
 }
 #else

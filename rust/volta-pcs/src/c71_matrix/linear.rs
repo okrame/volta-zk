@@ -3,6 +3,8 @@
 //! The Gemma compiler, i16 range proof and full-size prover remain separate.
 
 use super::*;
+use super::b12::replay::NativeOriginal;
+use super::range::windowed::native as device;
 
 pub(super) const MAX_CUBES: usize = 524288;
 pub(super) const MAX_TARGETS: usize = 8192;
@@ -203,6 +205,10 @@ impl PrefixWeights {
             value * table[(index >> shift) & (table.len() - 1)]
         })
     }
+    fn capacity_bytes(&self) -> usize {
+        std::mem::size_of::<Self>() + self.0.capacity() * std::mem::size_of::<(usize,Vec<Fp3>)>()
+            + self.0.iter().map(|(_,table)|table.capacity()*std::mem::size_of::<Fp3>()).sum::<usize>()
+    }
 }
 
 struct ResidualCube<'a> {
@@ -264,6 +270,129 @@ impl<'a> PublicRound<'a> {
         }
         values
     }
+    fn capacity_bytes(&self) -> usize {
+        std::mem::size_of::<Self>() + self.0.capacity()*std::mem::size_of::<(usize,Vec<ResidualCube<'_>>)>()
+            + self.0.iter().map(|(_,cubes)|cubes.capacity()*std::mem::size_of::<ResidualCube<'_>>()).sum::<usize>()
+    }
+}
+
+fn native_owner(original: &NativeOriginal) -> &std::sync::Arc<std::sync::Mutex<device::Runtime>> {
+    match original { NativeOriginal::Source(source)=>&source.runtime,NativeOriginal::Weights(weights)=>&weights.runtime }
+}
+
+fn native_packet(bits: usize, live: usize, prefix: &[Fp3], forms: &[Vec<Cube>], coefficients: &[Fp3])
+    -> Result<(device::LinearPacket,Option<(Fp3,Fp3)>,usize),String>
+{
+    if !(1..=35).contains(&bits) || prefix.len()>=bits || live>1usize<<bits ||
+        forms.len()!=coefficients.len() || forms.iter().map(Vec::len).sum::<usize>()>MAX_CUBES {
+        return Err("native linear public packet geometry differs".into());
+    }
+    for cube in forms.iter().flatten() {
+        if cube.point.len()>bits || cube.offset%(1usize<<cube.point.len())!=0 ||
+            cube.offset.checked_add(1usize<<cube.point.len()).is_none_or(|end|end>1usize<<bits) {
+            return Err("native linear public cube outside domain".into());
+        }
+    }
+    let remaining=bits-prefix.len();
+    let weights=PrefixWeights::new(prefix);
+    let public=PublicRound::new(bits,forms,coefficients,prefix);
+    let terminal=(remaining==1).then(||public.at(0));
+    let interval_count=public.0.iter().map(|(_,cubes)|cubes.len()).sum::<usize>();
+    let point_count=public.0.iter().flat_map(|(_,cubes)|cubes).map(|cube|cube.point.len()).sum::<usize>();
+    if point_count>1<<25 { return Err("native linear residual points exceed packet cap".into()); }
+    let mut packet=device::LinearPacket {
+        shape:device::LinearShape { live:live as u64,dimension:bits as u32,remaining:remaining as u32,
+            chunks:weights.0.len() as u32,groups:public.0.len() as u32,
+            intervals:interval_count as u32,points:point_count as u32 },
+        chunks:Vec::with_capacity(weights.0.len()),
+        tables:Vec::with_capacity(weights.0.iter().map(|(_,table)|table.len()).sum()),
+        groups:Vec::with_capacity(public.0.len()),intervals:Vec::with_capacity(interval_count),
+        points:Vec::with_capacity(point_count),
+    };
+    for (shift,table) in &weights.0 {
+        packet.chunks.push(device::LinearChunk { shift:*shift as u32,bits:table.len().ilog2(),
+            first:packet.tables.len() as u32,reserved:0 });
+        packet.tables.extend(table.iter().copied().map(device::Field::from));
+    }
+    for (bits,cubes) in &public.0 {
+        packet.groups.push(device::LinearGroup { bits:*bits as u32,first:packet.intervals.len() as u32,
+            count:cubes.len() as u32,reserved:0 });
+        for cube in cubes {
+            packet.intervals.push(device::LinearInterval { index:cube.interval as u64,
+                first:packet.points.len() as u32,bits:cube.point.len() as u32,
+                lower:cube.lower.into(),upper:cube.upper.into() });
+            // One canonical staging vector; no Vec<Fp3> copy of the borrowed points.
+            packet.points.extend(cube.point.iter().copied().map(device::Field::from));
+        }
+    }
+    let host_peak=packet.host_capacity_bytes()+2*(weights.capacity_bytes()+public.capacity_bytes())
+        + remaining*std::mem::size_of::<Vec<ResidualCube<'_>>>();
+    Ok((packet,terminal,host_peak))
+}
+
+struct NativeLinearWork {
+    before: device::Stats,
+    after: device::Stats,
+    packet_host_capacity_bytes: usize,
+    packet_host_peak_bound_bytes: usize,
+    result_d2h_bytes: u64,
+}
+
+fn source_coefficients_native(
+    bits: usize, live: usize, prefix: &[Fp3], forms: &[Vec<Cube>], coefficients: &[Fp3],
+    original: &NativeOriginal, sealed_tiles: Option<&device::Buffer>,
+    mut submitted: impl FnMut(usize) -> Result<(),String>,
+) -> Result<([Fp3;3],Option<(Fp3,Fp3,Fp3,Fp3)>,NativeLinearWork),String> {
+    let owner=native_owner(original);
+    let result=(|| {
+        let (packet,public_terminal,host_peak)=native_packet(bits,live,prefix,forms,coefficients)?;
+        let packet_bytes=packet.host_capacity_bytes();
+        let mut runtime=owner.lock().map_err(|_|"native linear owner poisoned")?;
+        let before=runtime.stats()?;
+        match original {
+            NativeOriginal::Source(source) if source.live!=live=>return runtime.abort("native linear A live prefix differs"),
+            NativeOriginal::Weights(weights)=>runtime.require_weights(&weights.weights,weights.layout)?,
+            _=>(),
+        }
+        // A public empty prefix has no original cells or device work. The
+        // pinned W/A workload is nonempty; no scalar getter is a fallback.
+        if live==0 {
+            let terminal=public_terminal.map(|(lower,upper)|(Fp3::ZERO,Fp3::ZERO,lower,upper));
+            return Ok(([Fp3::ZERO;3],terminal,NativeLinearWork {before,after:before,
+                packet_host_capacity_bytes:packet_bytes,packet_host_peak_bound_bytes:host_peak,result_d2h_bytes:0}));
+        }
+        let token=runtime.linear_begin(&packet)?;
+        drop(packet); // all canonical packet uploads are fenced by begin
+        drop(runtime);
+        let mut visited=0usize;
+        match original {
+            NativeOriginal::Source(source)=>(source.scan)(&mut |runtime,input,tile| {
+                runtime.linear_source_tile(&token,input,tile)?;
+                let count=(tile.rows as usize).checked_mul(tile.columns as usize)
+                    .and_then(|n|n.checked_mul(tile.width as usize)).ok_or("native linear tile visits overflow")?;
+                visited=visited.checked_add(count).ok_or("native linear visits overflow")?;
+                if visited>live { return runtime.abort("native linear original tile excess coverage"); }
+                submitted(visited)
+            })?,
+            NativeOriginal::Weights(weights)=>{
+                let mut runtime=weights.runtime.lock().map_err(|_|"native linear W owner poisoned")?;
+                runtime.require_weights(&weights.weights,weights.layout)?;
+                runtime.linear_weights(&token,sealed_tiles.ok_or("native linear W mapping missing")?)?;
+                visited=live; submitted(visited)?;
+            }
+        }
+        let mut runtime=owner.lock().map_err(|_|"native linear owner poisoned")?;
+        if visited!=live { return runtime.abort("native linear original scan incomplete"); }
+        let values=runtime.linear_finish(token)?;
+        let after=runtime.stats()?;
+        let terminal=public_terminal.map(|(lower,upper)|(values[3],values[4],lower,upper));
+        Ok(([values[0],values[1],values[2]],terminal,NativeLinearWork {before,after,
+            packet_host_capacity_bytes:packet_bytes,packet_host_peak_bound_bytes:host_peak,result_d2h_bytes:124}))
+    })();
+    if let Err(error)=&result {
+        if let Ok(mut runtime)=owner.lock() { let _=runtime.abort::<()>(error.clone()); }
+    }
+    result
 }
 
 fn source_coefficients(
@@ -320,28 +449,58 @@ fn prove_product_sourcewise(
     let bits = model.domain().config()?.num_variables;
     let mut phase = crate::c71_matrix::progress::Span::start("linear_original_scan",
         serde_json::json!({"domain_log2": bits, "live": model.live_len(), "rounds": bits,
-            "public_cubes": forms.iter().map(Vec::len).sum::<usize>(), "prefix_eq_max_bits": 8}))?;
+            "public_cubes": forms.iter().map(Vec::len).sum::<usize>(), "prefix_eq_max_bits": 8,
+            "native":model.native_original().is_some()}))?;
+    let native=model.native_original();
+    let native_before=native.map(|original|native_owner(original).lock()
+        .map_err(|_|"native linear owner poisoned")?.stats()).transpose()?;
+    let sealed_tiles=match native {
+        Some(NativeOriginal::Weights(weights))=>Some(weights.runtime.lock()
+            .map_err(|_|"native linear W owner poisoned")?
+            .pcs_weight_tiles(&weights.weights,weights.layout,&weights.tiles)?),
+        _=>None,
+    };
+    let mut packet_capacity_peak=0usize;
+    let mut packet_host_bound_peak=0usize;
     let mut point = Vec::with_capacity(bits);
     let mut rounds = Vec::with_capacity(bits);
     let mut endpoints = None;
     for round in 0..bits {
         fs.set_phase(1 + round as u16);
-        let mut visited = 0usize;
-        let (coefficients_round, terminal) = source_coefficients(
-            bits, model.live_len(), &point, forms, coefficients, |emit| {
-                model.scan_original(&mut |index, value| {
-                    emit(index, value)?;
-                    visited += 1;
-                    if visited & ((1 << 20) - 1) == 0 {
-                        phase.checkpoint(|| serde_json::json!({"completed_scans": round,
-                            "total_scans": bits, "active_scan_visits": visited,
-                            "source_visits": round * model.live_len() + visited,
-                            "public_tail_reads": 0}))?;
+        let mut native_round=None;
+        let (coefficients_round, terminal)=if let Some(original)=native {
+            let (values,terminal,work)=source_coefficients_native(bits,model.live_len(),&point,
+                forms,coefficients,original,sealed_tiles.as_ref(),|visited| {
+                    phase.checkpoint(||serde_json::json!({"completed_scans":round,"total_scans":bits,
+                        "submitted_source_visits":visited,"completed_source_visits":round*model.live_len(),
+                        "public_tail_reads":0,"native":true}))
+                })?;
+            packet_capacity_peak=packet_capacity_peak.max(work.packet_host_capacity_bytes);
+            packet_host_bound_peak=packet_host_bound_peak.max(work.packet_host_peak_bound_bytes);
+            native_round=Some(serde_json::json!({
+                "h2d_bytes":work.after.h2d_bytes-work.before.h2d_bytes,
+                "d2h_bytes":work.after.d2h_bytes-work.before.d2h_bytes,
+                "linear_result_d2h_bytes":work.result_d2h_bytes,
+                "d2d_bytes":work.after.d2d_bytes-work.before.d2d_bytes,
+                "launches":work.after.launches-work.before.launches,"fences":work.after.fences-work.before.fences,
+                "arena_before_bytes":work.before.arena_bytes,"arena_after_bytes":work.after.arena_bytes,
+                "packet_host_capacity_bytes":work.packet_host_capacity_bytes,
+                "packet_host_peak_bound_bytes":work.packet_host_peak_bound_bytes,"owner":work.after}));
+            (values,terminal)
+        } else {
+            let mut visited=0usize;
+            source_coefficients(bits,model.live_len(),&point,forms,coefficients,|emit| {
+                model.scan_original(&mut |index,value| {
+                    emit(index,value)?; visited+=1;
+                    if visited & ((1<<20)-1)==0 {
+                        phase.checkpoint(||serde_json::json!({"completed_scans":round,"total_scans":bits,
+                            "active_scan_visits":visited,"source_visits":round*model.live_len()+visited,
+                            "public_tail_reads":0}))?;
                     }
                     Ok(())
                 })
-            },
-        )?;
+            })?
+        };
         if terminal.is_some() { endpoints = terminal; }
         let mut authenticated = [Auth::ZERO; 3];
         let mut wire = [Fp3::ZERO; 4];
@@ -360,12 +519,25 @@ fn prove_product_sourcewise(
         rounds.push(wire);
         phase.checkpoint(|| serde_json::json!({"completed_scans": round + 1,
             "total_scans": bits, "source_visits": (round + 1) * model.live_len(),
-            "public_tail_reads": 0}))?;
+            "public_tail_reads": 0,"native_round":native_round}))?;
     }
+    if let Some(tiles)=sealed_tiles {
+        native_owner(native.unwrap()).lock().map_err(|_|"native linear W owner poisoned")?.release_buffer(tiles)?;
+    }
+    let native_total=if let (Some(original),Some(before))=(native,native_before) {
+        let after=native_owner(original).lock().map_err(|_|"native linear owner poisoned")?.stats()?;
+        Some(serde_json::json!({"h2d_bytes":after.h2d_bytes-before.h2d_bytes,
+            "d2h_bytes":after.d2h_bytes-before.d2h_bytes,"d2d_bytes":after.d2d_bytes-before.d2d_bytes,
+            "launches":after.launches-before.launches,"fences":after.fences-before.fences,
+            "arena_before_bytes":before.arena_bytes,"arena_after_bytes":after.arena_bytes,"owner":after,
+            "scope":"complete common owner delta including producer and W mapping setup/release; owner peak is cumulative"}))
+    } else {None};
     let (a, upper, b, b_upper) = endpoints.expect("nonempty flat source");
     let r = *point.last().unwrap();
     phase.finish(serde_json::json!({"completed_scans": bits,
-        "source_visits": bits * model.live_len(), "public_tail_reads": 0}))?;
+        "source_visits": bits * model.live_len(), "public_tail_reads": 0,
+        "packet_host_capacity_peak_bytes":packet_capacity_peak,
+        "packet_host_peak_bound_bytes":packet_host_bound_peak,"native_total":native_total}))?;
     Ok((rounds, point, target, a + r * (upper - a), b + r * (b_upper - b)))
 }
 
@@ -469,6 +641,177 @@ pub(super) fn verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc,Mutex,atomic::{AtomicUsize,Ordering}};
+
+    fn native_source_codec_fixture(config: &device::Config)
+        -> (NativeOriginal,Vec<Fp3>,Arc<AtomicUsize>,Arc<AtomicUsize>)
+    {
+        // INT16_MIN is an admitted argmax slack, never a signed upload or
+        // pointwise operand. Produce it through the original resident route.
+        let words:Vec<i16>=(0..32).map(|i|[-32768,-32767,-1,0,1,32766,2,-2][i%8]).collect();
+        let raw_words:Vec<i16>=(0..32).map(|i|[-32767,-32767,-1,0,1,32767,2,-2][i%8]).collect();
+        let mut bytes=Vec::new();
+        for &word in &words { bytes.extend_from_slice(&(i64::from(word)+(1i64<<15)).to_le_bytes()[..2]); }
+        for (first,width) in [(0,4),(4,2)] {
+            for &word in &raw_words {
+                let encoded=(i64::from(word)*(1i64<<30)+(1i64<<47)).to_le_bytes();
+                bytes.extend_from_slice(&encoded[first..first+width]);
+            }
+        }
+        let values=bytes.iter().map(|&x|signed(i64::from(x))).collect();
+        let live=bytes.len();
+        let mut runtime=device::Runtime::new(config).unwrap();
+        let logits:Vec<i16>=words.iter().map(|&word|(-1-i32::from(word)) as i16).collect();
+        let logits=runtime.upload_signed(&logits).unwrap();
+        let (input,tokens)=runtime.argmax(&logits,0,1,words.len()).unwrap();
+        assert_eq!(tokens,vec![0]);
+        let input=Arc::new(input);
+        let raw_input=runtime.upload_signed(&raw_words).unwrap();
+        let raw=Arc::new(runtime.pointwise([Some((&raw_input,0)),None],raw_words.len(),
+            device::Pointwise { a:1<<30,b:0,multiply:0 }).unwrap());
+        let owner=Arc::new(Mutex::new(runtime));
+        let runtime=owner.clone();
+        let scans=Arc::new(AtomicUsize::new(0)); let count=scans.clone();
+        let mode=Arc::new(AtomicUsize::new(0)); let failure=mode.clone();
+        let source=b12::replay::NativeSource {runtime,live,
+            window:Arc::new(|_,_,_|panic!("linear consumer requested a byte window")),
+            scan:Arc::new(move |emit| {
+                let call=count.fetch_add(1,Ordering::Relaxed);
+                let mode=failure.load(Ordering::Relaxed);
+                let mut runtime=owner.lock().map_err(|_|"linear fixture owner poisoned")?;
+                let mut tile_index=0;
+                for (input,first,width,byte_first,signed_width) in [
+                    (&raw,64,4,0,6),(&raw,192,2,4,6),(&input,0,2,0,2),
+                ] {
+                    for row in [2,0] {
+                        let tile=device::PcsSourceTile {input_first:row*8,input_stride:8,rows:2,columns:8,
+                            original_first:first+row*8*width,byte_first,width:width as u32,signed_width};
+                        if mode==1 && tile_index==5 {continue;}
+                        let tile=if mode==2 {device::PcsSourceTile {original_first:live as u64,..tile}} else {tile};
+                        emit(&mut runtime,input,tile)?;
+                        if mode==3 || mode==6 && call==2 {return Err("linear native producer failed after one tile".into());}
+                        if mode==4 {emit(&mut runtime,input,tile)?;}
+                        tile_index+=1;
+                    }
+                }
+                Ok(())
+            })};
+        (NativeOriginal::Source(source),values,scans,mode)
+    }
+
+    fn native_weight_codec_fixture(config: &device::Config) -> (NativeOriginal,Vec<Fp3>) {
+        let weights=Arc::new((0..256).map(|i|[0,1,-1,32767,-32767,2,-2][i%7]).collect::<Vec<i16>>());
+        let values=(0..256).map(|index| {
+            let address=if index<128 {index/2*4+index%2}
+                else {let local=index-128;local/2*4+2+local%2};
+            signed(i64::from(weights[address]))
+        }).collect();
+        let mut runtime=device::Runtime::new(config).unwrap();
+        runtime.install_weights(weights.clone(),[17;32]).unwrap();
+        (NativeOriginal::Weights(b12::replay::NativeWeights {
+            runtime:Arc::new(Mutex::new(runtime)),weights,layout:[17;32],tiles:vec![
+                device::WeightTile {first:0,count:128,packed_first:0,packed_stride:4,columns:2},
+                device::WeightTile {first:128,count:128,packed_first:2,packed_stride:4,columns:2},
+            ]}),values)
+    }
+
+    #[test]
+    fn c71_b12_native_linear_original_codecs_exact_coefficients_endpoints_and_work() {
+        let fixture=device::tests::fixture(512);
+        let (source,bytes,scans,_)=native_source_codec_fixture(&fixture.config);
+        let (weights,signed_values)=native_weight_codec_fixture(&fixture.config);
+        let extension=Fp3::new(Fp::new(7),Fp::new(11),Fp::new(13));
+        let mut cases=0;
+        for (original,values) in [(source,bytes),(weights,signed_values)] {
+            let owner=native_owner(&original);
+            let sealed=match &original {
+                NativeOriginal::Weights(weights)=>Some(owner.lock().unwrap()
+                    .pcs_weight_tiles(&weights.weights,weights.layout,&weights.tiles).unwrap()),_=>None,
+            };
+            for bits in [10,12] {
+                let mut forms=mixed_forms(bits); let duplicate=forms[0][1].clone(); forms[0].push(duplicate);
+                let coefficients=[Fp3::ONE,extension,signed(5),Fp3::ZERO];
+                let prefixes=[vec![],vec![Fp3::ZERO],vec![Fp3::ONE,extension],
+                    (0..bits-1).map(|i|[Fp3::ZERO,Fp3::ONE,extension,signed(-3)][i%4]).collect()];
+                for prefix in prefixes {
+                    let expected=ordinary_coefficients(bits,&prefix,&forms,&coefficients,
+                        &mut |i|values.get(i).copied().unwrap_or(Fp3::ZERO));
+                    let cpu=source_coefficients(bits,values.len(),&prefix,&forms,&coefficients,|emit| {
+                        for i in (0..values.len()).rev() {emit(i,values[i])?;} Ok(())
+                    }).unwrap();
+                    let mut submitted=0;
+                    let started=std::time::Instant::now();
+                    let (actual,terminal,work)=source_coefficients_native(bits,values.len(),&prefix,&forms,
+                        &coefficients,&original,sealed.as_ref(),|count| {submitted=count;Ok(())}).unwrap();
+                    let seconds=started.elapsed().as_secs_f64();
+                    assert_eq!(actual,expected); assert_eq!(actual,cpu.0); assert_eq!(terminal,cpu.1);
+                    assert_eq!(submitted,values.len());
+                    assert_eq!(work.after.arena_bytes,work.before.arena_bytes);
+                    assert_eq!(work.after.d2h_bytes-work.before.d2h_bytes,124);
+                    assert_eq!(work.after.fences-work.before.fences,2);
+                    assert_eq!(work.after.launches-work.before.launches,
+                        if matches!(&original,NativeOriginal::Source(_)) {6} else {1});
+                    println!("C71_NATIVE_LINEAR_COMPONENT {}",serde_json::json!({"domain_log2":bits,
+                        "live":values.len(),"prefix_bits":prefix.len(),"owner_host_s":seconds,
+                        "packet_host_capacity_bytes":work.packet_host_capacity_bytes,
+                        "packet_host_peak_bound_bytes":work.packet_host_peak_bound_bytes,
+                        "h2d_bytes":work.after.h2d_bytes-work.before.h2d_bytes,"d2h_bytes":124,
+                        "gpu_execution":false,"credit":false}));
+                    cases+=1;
+                }
+            }
+            if let Some(sealed)=sealed {owner.lock().unwrap().release_buffer(sealed).unwrap();}
+        }
+        assert_eq!(scans.load(Ordering::Relaxed),8);
+        // An empty original has only the prescribed public zero tail. No
+        // resident scan, scalar getter or byte window may be requested.
+        let (mut empty,_,empty_scans,_)=native_source_codec_fixture(&fixture.config);
+        let NativeOriginal::Source(empty_source)=&mut empty else {unreachable!()};
+        empty_source.live=0;
+        empty_source.scan=Arc::new(|_|panic!("public zero tail requested original scan"));
+        let bits=10; let forms=mixed_forms(bits);
+        let coefficients=[Fp3::ONE,extension,signed(5),Fp3::ZERO];
+        let prefix:Vec<_>=(0..bits-1).map(|i|[Fp3::ZERO,Fp3::ONE,extension][i%3]).collect();
+        let cpu=source_coefficients(bits,0,&prefix,&forms,&coefficients,|_|Ok(())).unwrap();
+        let (actual,terminal,work)=source_coefficients_native(bits,0,&prefix,&forms,&coefficients,
+            &empty,None,|_|panic!("public zero tail submitted original work")).unwrap();
+        assert_eq!((actual,terminal),cpu); assert_eq!(actual,[Fp3::ZERO;3]);
+        assert_eq!(work.before.d2h_bytes,work.after.d2h_bytes);
+        assert_eq!(work.before.launches,work.after.launches);
+        assert_eq!(work.result_d2h_bytes,0); assert_eq!(empty_scans.load(Ordering::Relaxed),0);
+        println!("C71_NATIVE_LINEAR_PARITY {}",serde_json::json!({"cases":cases,
+            "MAC_basis_u3_2":true,"i16_u16_slack_raw_i48_split":true,"ragged_sealed_W":true,
+            "prefix_zero_one_extension":true,"overlapping_duplicate_cubes":true,
+            "public_tail_reads":0,"public_zero_tail_case":true,"GPU_execution":false,"credit":false}));
+    }
+
+    #[test]
+    fn c71_b12_native_linear_producer_errors_burn_only_completed_rounds() {
+        let fixture=device::tests::fixture(512);
+        let bits=10;
+        for fault in [1,2,3,4,6] {
+            let (native,values,scans,mode)=native_source_codec_fixture(&fixture.config);
+            let live=values.len(); let bytes=Arc::new(values.iter().map(|x|x.c0.value() as u8).collect::<Vec<_>>());
+            let scan_bytes=bytes.clone(); let window_bytes=bytes.clone();
+            let model=b12::replay::ReplayModel::new_scanned(Domain::Flat(bits),[43;32],[47;32],
+                Arc::new(|_|panic!("native linear used scalar original getter")),
+                Arc::new(move |emit| {for (i,&byte) in scan_bytes.iter().enumerate() {emit(i,Goldilocks::from_u8(byte))?;} Ok(())}),
+                Arc::new(move |first,out| {out.copy_from_slice(&window_bytes[first..first+out.len()]);Ok(())}),live)
+                .unwrap().fixture_native_original(native.clone());
+            mode.store(fault,Ordering::Relaxed); scans.store(0,Ordering::Relaxed);
+            let forms=mixed_forms(bits); let coefficients=[Fp3::ONE,signed(13),signed(17),Fp3::ZERO];
+            let initial:Vec<_>=(0..3*bits+2).map(|i|Auth::new(signed(i as i64+23),signed(i as i64+29))).collect();
+            let mut rows=initial.clone().into_iter(); let mut fs=Fs::new(b"native linear failed round",bits);
+            let digest=fs.digest();
+            let result=prove_product_sourcewise(&model,&forms,&coefficients,Auth::ZERO,&mut fs,&mut rows);
+            assert!(result.is_err(),"producer fault {fault}");
+            let completed=if fault==6 {2} else {0};
+            assert_eq!(rows.len(),initial.len()-3*completed); assert_eq!(fs.requests(),completed);
+            if completed==0 {assert_eq!(fs.digest(),digest);}
+            assert_eq!(native_owner(&native).lock().unwrap().stats().unwrap().stopped,1);
+        }
+        println!("C71_NATIVE_LINEAR_FAILED_ROUNDS {{\"producer_failures\":5,\"fallback_getter_calls\":0,\"credit\":false}}");
+    }
 
     fn mixed_forms(bits: usize) -> Vec<Vec<Cube>> {
         let extension = |i| Fp3::new(Fp::new(i), Fp::ONE, Fp::ONE);
@@ -753,18 +1096,26 @@ mod tests {
 
     #[test]
     fn c71_b12_sourcewise_linear_matches_dense_wire_fs_point_and_original_mac() {
+        linear_full_wire_parity(false);
+    }
+    #[test]
+    fn c71_b12_native_linear_full_wire_fs_point_and_original_mac() {
+        linear_full_wire_parity(true);
+    }
+    fn linear_full_wire_parity(native: bool) {
         use std::sync::Arc;
-
+        let native_fixture=native.then(||device::tests::fixture(512));
         let bits = 10;
         let weights: Vec<_> =
             (0..1usize << bits).map(|i| ((i * 29 + i * i * 3) % 251) as i16 - 125).collect();
+        let native_weights=native.then(||Arc::new(weights.clone()));
         let model = Model::new_in(Domain::Flat(bits), weights).unwrap();
         let values: Vec<_> = model.polynomial().as_slice().iter().map(|&x| E::from(x)).collect();
         let source = {
             let values = Arc::new(values);
             Arc::new(move |i| values[i])
         };
-        let replay = b12::replay::ReplayModel::new_checked(
+        let mut replay = b12::replay::ReplayModel::new_checked(
             model.domain,
             model.root.clone(),
             model.seed,
@@ -772,6 +1123,14 @@ mod tests {
             source,
         )
         .unwrap();
+        if let (Some(fixture),Some(weights))=(&native_fixture,native_weights) {
+            let mut runtime=device::Runtime::new(&fixture.config).unwrap();
+            runtime.install_weights(weights.clone(),[17;32]).unwrap();
+            replay=replay.fixture_native_original(NativeOriginal::Weights(b12::replay::NativeWeights {
+                runtime:Arc::new(std::sync::Mutex::new(runtime)),weights,layout:[17;32],
+                tiles:vec![device::WeightTile { first:0,count:1<<bits,packed_first:0,packed_stride:1,columns:1 }],
+            }));
+        }
         let forms = vec![
             vec![
                 Cube { offset: 0, point: vec![signed(2), signed(3)], coefficient: signed(5) },

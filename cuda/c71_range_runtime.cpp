@@ -40,6 +40,12 @@ cudaError_t c71_pcs_query_remainder_launch(cudaStream_t,const uint64_t*,const ui
 cudaError_t c71_pcs_query_shift_launch(cudaStream_t,const uint64_t*,const uint64_t*,const uint64_t*,const uint64_t*,
     uint64_t*,uint64_t*,uint64_t*,uint64_t*,uint64_t,unsigned*,uint64_t*);
 cudaError_t c71_pcs_query_add_launch(cudaStream_t,uint64_t*,const uint64_t*,uint64_t);
+cudaError_t c71_linear_weights_launch(cudaStream_t,const int16_t*,const c71_pcs::WeightTile*,uint64_t,uint64_t,uint64_t,
+    c71_linear::Shape,const c71_linear::Chunk*,const Fp3*,const c71_linear::Group*,const c71_linear::Interval*,
+    const Fp3*,c71_linear::Result*,uint32_t*);
+cudaError_t c71_linear_source_launch(cudaStream_t,const void*,unsigned,c71_pcs::SourceTile,c71_linear::Shape,
+    const c71_linear::Chunk*,const Fp3*,const c71_linear::Group*,const c71_linear::Interval*,
+    const Fp3*,c71_linear::Result*,uint32_t*);
 cudaError_t c71_pcs_source_powers_launch(cudaStream_t,uint64_t*,uint64_t*,c71_pcs::SourceShape);
 cudaError_t c71_pcs_source_tile_launch(cudaStream_t,const void*,unsigned,c71_pcs::SourceTile,const uint64_t*,
     uint64_t*,uint64_t*,uint64_t*,c71_pcs::SourceShape,uint32_t*);
@@ -71,6 +77,12 @@ struct Buffer {
     uint64_t visits=0;
     bool release_failed=false;
 };
+struct LinearTransaction {
+    c71_linear::Shape shape{};
+    uint64_t meta=0,output=0,flag=0,offsets[6]{},visited=0;
+    uint32_t phase=0,mode=0;
+};
+static_assert(sizeof(LinearTransaction)==120);
 struct C71RangeContext {
     C71RangeAccount account=nullptr;
     int device=0;
@@ -94,13 +106,14 @@ struct C71RangeContext {
         uint32_t group_cosets=0,group=0,phase=0;
         uint64_t first=0;
     } salts;
+    LinearTransaction linear{};
 };
 namespace {
-constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8,1};
+constexpr uint64_t sizes[]={1,2,48,96,24,96,8,1,8,8,32,32,32,40,8,8,8,1,1};
 constexpr uint64_t caps[]={uint64_t{1}<<31,uint64_t{1}<<27,uint64_t{1}<<24,
                           uint64_t{1}<<24,256*32*32,65536,uint64_t(c71_dense::max_m)*c71_dense::max_n,uint64_t{1}<<31,65535,
                           uint64_t{1}<<28,uint64_t{1}<<25,uint64_t{1}<<25,uint64_t{1}<<25,65536,uint64_t{1}<<25,
-                          uint64_t{1}<<28,256,uint64_t{1}<<28};
+                          uint64_t{1}<<28,256,uint64_t{1}<<28,uint64_t{1}<<30};
 std::atomic<uint64_t> next_handle{1};
 bool canonical(Fp3 a) { return a.c0<P && a.c1<P && a.c2<P; }
 bool power2(uint64_t n) { return n && !(n&(n-1)); }
@@ -205,7 +218,7 @@ extern "C" int c71_range_close(C71RangeContext* c,C71RangeStats* out) {
 namespace {
 int allocate(C71RangeContext* c,uint32_t kind,uint64_t count,uint64_t* out) {
     if(!ready(c)) return -1;
-    if(!out || kind>C71_PCS_PRIVATE || !count || count>caps[kind]) return fail(c,"range allocation shape");
+    if(!out || kind>C71_LINEAR_PRIVATE || !count || count>caps[kind]) return fail(c,"range allocation shape");
     const uint64_t capacity=(count*sizes[kind]+255)&~uint64_t{255};
     Buffer* slot=nullptr;
     for(auto& b:c->buffers) if(!b.id) { slot=&b; break; }
@@ -231,7 +244,7 @@ extern "C" int c71_range_alloc(C71RangeContext* c,uint32_t kind,uint64_t count,u
 extern "C" int c71_range_release(C71RangeContext* c,uint64_t id) {
     if(!ready(c)) return -1;
     auto* b=buffer(c,id); if(!b) return -1;
-    if(b->kind==C71_PCS_PRIVATE) return fail(c,"private release requires PCS capability");
+    if(b->kind>=C71_PCS_PRIVATE) return fail(c,"private release requires consumer capability");
     if(b->flag && c71_range_release(c,b->flag)) return -1;
     // Actual release, not a logical Vec-style truncation or a retained pool.
     // Fence even on the deferred test driver; a failure keeps capacity charged.
@@ -1025,7 +1038,7 @@ extern "C" int c71_pcs_source_begin(C71RangeContext* c,uint64_t first,uint64_t s
     auto* l=buffer(c,low); auto* h=buffer(c,high);
     auto* counts=histogram?buffer(c,histogram):nullptr;
     const uint64_t binding=(uint64_t(s.cosets)<<32)|s.first_coset;
-    if(!c71_pcs::valid(s) || c->source.values[0] || !a || !b || a==b || a->flag || b->flag ||
+    if(!c71_pcs::valid(s) || c->source.values[0] || c->linear.phase || !a || !b || a==b || a->flag || b->flag ||
        a->kind!=C71_PCS_SOURCE_PENDING || b->kind!=C71_PCS_SOURCE_PENDING || a->initialized || b->initialized ||
        a->count!=256*s.rows || b->count!=a->count || l==h || !full(l,C71_PCS_POWERS) || !full(h,C71_PCS_POWERS) ||
        l->count!=4*s.rows || h->count!=4*c71_pcs::high_rows(s) || l->visits!=binding || h->visits!=binding ||
@@ -1175,7 +1188,7 @@ extern "C" int c71_pcs_salts_begin(C71RangeContext* c,const uint8_t seed[32],c71
     uint32_t group_cosets,uint32_t capacity,uint64_t* session) {
     if(!ready(c)) return -1;
     if(session) *session=0;
-    if(!session || !seed || c->salts.phase || !c71_salts::valid(g) || g.cut<g.cosets ||
+    if(!session || !seed || c->salts.phase || c->linear.phase || !c71_salts::valid(g) || g.cut<g.cosets ||
        (group_cosets!=4 && group_cosets!=32) || group_cosets>g.cosets || !c71_salts::valid_capacity(capacity))
         return fail(c,"private PCS seed or geometry");
     auto& s=c->salts;
@@ -1296,4 +1309,129 @@ extern "C" int c71_pcs_salts_complete(C71RangeContext* c,uint64_t session,uint64
         return fail(c,"private PCS replay row cursor differs");
     if(retire_private(c,c->salts.band) || retire_private(c,c->salts.current) || retire_private(c,c->salts.meta)) return -1;
     *consumed=c->salts.completed_bytes; c->salts={}; return 0;
+}
+
+namespace {
+bool linear_session(C71RangeContext* c,uint64_t token) {
+    if(!token || c->linear.phase!=1 || token!=c->linear.meta) {
+        fail(c,"linear round capability or phase differs"); return false;
+    }
+    auto* meta=buffer(c,token);
+    if(!full(meta,C71_LINEAR_PRIVATE)) { fail(c,"linear private packet retired or unpublished"); return false; }
+    return true;
+}
+template<class T> const T* linear_span(C71RangeContext* c,unsigned index) {
+    auto* meta=ptr<uint8_t>(c,buffer(c,c->linear.meta));
+    return reinterpret_cast<const T*>(meta+c->linear.offsets[index]);
+}
+int retire_linear(C71RangeContext* c,uint64_t& id) {
+    auto* b=buffer(c,id);
+    if(!b || b->kind!=C71_LINEAR_PRIVATE) return fail(c,"linear private retirement type");
+    if(checked(c,cudaFree(b->allocation))) { b->release_failed=true; return -1; }
+    if(c->account) c->account(-int64_t(b->capacity));
+    *b={}; id=0; ++c->stats.releases; recount(c); return 0;
+}
+}
+extern "C" int c71_linear_begin(C71RangeContext* c,c71_linear::Shape shape,const c71_linear::Chunk* chunks,
+    const Fp3* tables,uint32_t table_count,const c71_linear::Group* groups,
+    const c71_linear::Interval* intervals,const Fp3* points,uint64_t* token) {
+    if(!ready(c)) return -1;
+    uintptr_t token_end=0;
+    if(!token || reinterpret_cast<uintptr_t>(token)%alignof(uint64_t) || !c71_dense::span(token,8,token_end) ||
+       !c71_linear::valid(shape) || table_count>1280 || c->linear.phase || c->salts.phase || c->source.values[0])
+        return fail(c,"linear begin shape, output or active consumer");
+    const void* arrays[]={&shape,chunks,tables,groups,intervals,points};
+    const uint64_t lengths[]={sizeof(shape),uint64_t(shape.chunks)*sizeof(*chunks),uint64_t(table_count)*sizeof(*tables),
+        uint64_t(shape.groups)*sizeof(*groups),uint64_t(shape.intervals)*sizeof(*intervals),uint64_t(shape.points)*sizeof(*points)};
+    const unsigned alignments[]={alignof(c71_linear::Shape),alignof(c71_linear::Chunk),alignof(Fp3),
+        alignof(c71_linear::Group),alignof(c71_linear::Interval),alignof(Fp3)};
+    uint64_t offsets[6]{},bytes=0;
+    for(unsigned i=0;i<6;++i) {
+        uintptr_t end=0;
+        if(lengths[i] && (reinterpret_cast<uintptr_t>(arrays[i])%alignments[i] ||
+            !c71_dense::span(arrays[i],lengths[i],end) || c71_dense::overlaps(token,token_end,arrays[i],end)))
+            return fail(c,"linear packet host span, alignment or token alias");
+        offsets[i]=bytes; bytes+=aligned(lengths[i]);
+    }
+    if(bytes>caps[C71_LINEAR_PRIVATE] || !c71_linear::valid_packet(shape,chunks,tables,table_count,groups,intervals,points))
+        return fail(c,"linear packet noncanonical or incomplete");
+    *token=0;
+    auto& s=c->linear; s.shape=shape; s.phase=1;
+    std::memcpy(s.offsets,offsets,sizeof(offsets));
+    if(allocate(c,C71_LINEAR_PRIVATE,bytes,&s.meta) || allocate(c,C71_LINEAR_PRIVATE,sizeof(c71_linear::Result),&s.output) ||
+       allocate(c,C71_LINEAR_PRIVATE,4,&s.flag)) return -1;
+    auto* meta=ptr<uint8_t>(c,buffer(c,s.meta));
+    bool submitted_error=false;
+    for(unsigned i=0;i<6;++i) if(lengths[i]) {
+        if(checked(c,cudaMemcpyAsync(meta+offsets[i],arrays[i],lengths[i],cudaMemcpyHostToDevice,c->stream))) {
+            submitted_error=true; break;
+        }
+        c->stats.h2d_bytes+=lengths[i];
+    }
+    if(!submitted_error) {
+        if(checked(c,cudaMemsetAsync(ptr<void>(c,buffer(c,s.output)),0,sizeof(c71_linear::Result),c->stream))) submitted_error=true;
+        else c->stats.zeroed_bytes+=sizeof(c71_linear::Result);
+    }
+    if(!submitted_error) {
+        if(checked(c,cudaMemsetAsync(ptr<void>(c,buffer(c,s.flag)),0,4,c->stream))) submitted_error=true;
+        else c->stats.zeroed_bytes+=4;
+    }
+    // Drain any accepted copy even on a later submit error, while the host
+    // packet and local Shape are still alive. One publication fence.
+    const int synced=fence(c);
+    if(submitted_error || synced) return -1;
+    for(auto id:{s.meta,s.output,s.flag}) { auto* b=buffer(c,id); b->initialized=b->count; }
+    *token=s.meta; return 0;
+}
+extern "C" int c71_linear_source_tile(C71RangeContext* c,uint64_t token,uint64_t input,c71_pcs::SourceTile tile) {
+    if(!ready(c)) return -1;
+    if(!linear_session(c,token)) return -1;
+    auto& s=c->linear; auto* original=buffer(c,input);
+    if(s.mode==2 || !original || (original->kind!=C71_I16 && original->kind!=C71_I64) ||
+       original->initialized!=original->count || !c71_pcs::valid(tile,original->kind,original->count,s.shape.live))
+        return fail(c,"linear original tile type, coverage or mode");
+    const uint64_t visited=tile.rows*tile.columns*tile.width;
+    if(visited>s.shape.live-s.visited) return fail(c,"linear original tile excess coverage");
+    if(launched(c,c71_linear_source_launch(c->stream,ptr<void>(c,original),original->kind,tile,s.shape,
+        linear_span<c71_linear::Chunk>(c,1),linear_span<Fp3>(c,2),linear_span<c71_linear::Group>(c,3),
+        linear_span<c71_linear::Interval>(c,4),linear_span<Fp3>(c,5),
+        ptr<c71_linear::Result>(c,buffer(c,s.output)),ptr<uint32_t>(c,buffer(c,s.flag))))) return -1;
+    // The canonical adapter, not this count, owns unique source-row coverage.
+    s.visited+=visited; s.mode=1; return 0;
+}
+extern "C" int c71_linear_weights(C71RangeContext* c,uint64_t token,uint64_t sealed_tiles) {
+    if(!ready(c)) return -1;
+    if(!linear_session(c,token)) return -1;
+    auto& s=c->linear; auto* tiles=buffer(c,sealed_tiles);
+    if(s.mode || s.visited || !c->stats.weights_sealed || !full(tiles,C71_PCS_WEIGHT_TILES) ||
+       tiles->visits!=s.shape.live || s.shape.live!=c->stats.weights_bytes/2)
+        return fail(c,"linear sealed W mapping, live prefix or duplicate scan");
+    if(launched(c,c71_linear_weights_launch(c->stream,c->weights,ptr<c71_pcs::WeightTile>(c,tiles),tiles->count,0,s.shape.live,
+        s.shape,linear_span<c71_linear::Chunk>(c,1),linear_span<Fp3>(c,2),linear_span<c71_linear::Group>(c,3),
+        linear_span<c71_linear::Interval>(c,4),linear_span<Fp3>(c,5),
+        ptr<c71_linear::Result>(c,buffer(c,s.output)),ptr<uint32_t>(c,buffer(c,s.flag))))) return -1;
+    s.visited=s.shape.live; s.mode=2; return 0;
+}
+extern "C" int c71_linear_finish(C71RangeContext* c,uint64_t token,Fp3* output) {
+    if(!ready(c)) return -1;
+    uintptr_t end=0;
+    if(!linear_session(c,token) || !output || reinterpret_cast<uintptr_t>(output)%alignof(Fp3) ||
+       !c71_dense::span(output,sizeof(c71_linear::Result),end) || !c->linear.mode || c->linear.visited!=c->linear.shape.live)
+        return fail(c,"linear finish output or original scan incomplete");
+    c71_linear::Result staged{}; uint32_t flag=0;
+    auto& s=c->linear;
+    bool submitted_error=false;
+    if(checked(c,cudaMemcpyAsync(&staged,ptr<void>(c,buffer(c,s.output)),sizeof(staged),cudaMemcpyDeviceToHost,c->stream)))
+        submitted_error=true;
+    else c->stats.d2h_bytes+=sizeof(staged);
+    if(!submitted_error) {
+        if(checked(c,cudaMemcpyAsync(&flag,ptr<void>(c,buffer(c,s.flag)),4,cudaMemcpyDeviceToHost,c->stream))) submitted_error=true;
+        else c->stats.d2h_bytes+=4;
+    }
+    const int synced=fence(c); // staging lives through deferred-driver errors
+    if(submitted_error || synced) return -1;
+    if(flag) return fail(c,"linear original arithmetic failed");
+    for(auto value:staged.values) if(!canonical(value)) return fail(c,"linear noncanonical result");
+    if(retire_linear(c,s.flag) || retire_linear(c,s.output) || retire_linear(c,s.meta)) return -1;
+    std::memcpy(output,staged.values,sizeof(staged)); s={}; return 0;
 }

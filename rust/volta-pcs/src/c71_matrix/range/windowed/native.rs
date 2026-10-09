@@ -83,7 +83,7 @@ pub(in crate::c71_matrix) struct Stats {
 // Fp3 itself has Rust layout. Marshal canonical limbs, never transmute it.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
-struct Field {
+pub(in crate::c71_matrix) struct Field {
     limbs: [u64; 3],
 }
 impl From<Fp3> for Field {
@@ -99,6 +99,64 @@ impl Field {
         Ok(Fp3::new(Fp::new(self.limbs[0]), Fp::new(self.limbs[1]), Fp::new(self.limbs[2])))
     }
 }
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(in crate::c71_matrix) struct LinearShape {
+    pub live: u64,
+    pub dimension: u32,
+    pub remaining: u32,
+    pub chunks: u32,
+    pub groups: u32,
+    pub intervals: u32,
+    pub points: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(in crate::c71_matrix) struct LinearChunk {
+    pub shift: u32,
+    pub bits: u32,
+    pub first: u32,
+    pub reserved: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(in crate::c71_matrix) struct LinearGroup {
+    pub bits: u32,
+    pub first: u32,
+    pub count: u32,
+    pub reserved: u32,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub(in crate::c71_matrix) struct LinearInterval {
+    pub index: u64,
+    pub first: u32,
+    pub bits: u32,
+    pub lower: Field,
+    pub upper: Field,
+}
+/// The sole canonical upload copy of the borrowed public residual points.
+/// begin fences its copies before this packet may be dropped.
+pub(in crate::c71_matrix) struct LinearPacket {
+    pub shape: LinearShape,
+    pub chunks: Vec<LinearChunk>,
+    pub tables: Vec<Field>,
+    pub groups: Vec<LinearGroup>,
+    pub intervals: Vec<LinearInterval>,
+    pub points: Vec<Field>,
+}
+impl LinearPacket {
+    pub(in crate::c71_matrix) fn host_capacity_bytes(&self) -> usize {
+        size_of::<Self>() + self.chunks.capacity() * size_of::<LinearChunk>()
+            + self.tables.capacity() * size_of::<Field>()
+            + self.groups.capacity() * size_of::<LinearGroup>()
+            + self.intervals.capacity() * size_of::<LinearInterval>()
+            + self.points.capacity() * size_of::<Field>()
+    }
+}
+const _: () = assert!(size_of::<Field>() == 24 && size_of::<LinearShape>() == 32
+    && size_of::<LinearChunk>() == 16 && size_of::<LinearGroup>() == 16
+    && size_of::<LinearInterval>() == 64 && size_of::<[Field; 5]>() == 120);
 #[repr(C)]
 struct Group {
     alpha: Field,
@@ -308,6 +366,8 @@ struct SaltProgress {
 const _: () = assert!(size_of::<SaltGeometry>() == 24 && size_of::<SaltProgress>() == 40);
 /// Proof-consumer capability, never a numeric source Buffer or public coin.
 pub(in crate::c71_matrix) struct PrivateSalts { id: u64, owner: Arc<()> }
+/// One proof consumer; its capability never reaches a numerical producer.
+pub(in crate::c71_matrix) struct LinearToken { id: u64, owner: Arc<()> }
 /// Opaque, non-cloneable resident allocation. Release through its runtime;
 /// dropping this descriptor alone does not release device capacity.
 pub(in crate::c71_matrix) struct Buffer {
@@ -407,6 +467,11 @@ api! {
     private_finish: unsafe extern "C" fn(Raw,u64,u64,u64,u32,u64,u64,*mut u64)->i32 => "c71_pcs_leaf_finish_private",
     private_full: unsafe extern "C" fn(Raw,u64,u64,u64,u64,u32,u64,u64,*mut u64)->i32 => "c71_pcs_full_leaves_private",
     salts_complete: unsafe extern "C" fn(Raw,u64,*mut u64,u64,*mut u64)->i32 => "c71_pcs_salts_complete",
+    linear_begin: unsafe extern "C" fn(Raw,LinearShape,*const LinearChunk,*const Field,u32,
+        *const LinearGroup,*const LinearInterval,*const Field,*mut u64)->i32 => "c71_linear_begin",
+    linear_source: unsafe extern "C" fn(Raw,u64,u64,PcsSourceTile)->i32 => "c71_linear_source_tile",
+    linear_weights: unsafe extern "C" fn(Raw,u64,u64)->i32 => "c71_linear_weights",
+    linear_finish: unsafe extern "C" fn(Raw,u64,*mut Field)->i32 => "c71_linear_finish",
 }
 pub(in crate::c71_matrix) struct Runtime {
     api: Api,
@@ -420,6 +485,51 @@ pub(in crate::c71_matrix) struct Runtime {
 unsafe impl Send for Runtime {}
 
 impl Runtime {
+    pub(in crate::c71_matrix) fn linear_begin(&mut self, packet: &LinearPacket) -> Result<LinearToken, String> {
+        self.ready()?;
+        let s=packet.shape;
+        if s.chunks as usize != packet.chunks.len() || s.groups as usize != packet.groups.len()
+            || s.intervals as usize != packet.intervals.len() || s.points as usize != packet.points.len()
+            || packet.tables.len()>1280 {
+            return self.abort("native linear packet lengths differ");
+        }
+        let mut id=0;
+        let status=unsafe { (self.api.linear_begin)(self.raw,s,packet.chunks.as_ptr(),packet.tables.as_ptr(),
+            packet.tables.len() as u32,packet.groups.as_ptr(),packet.intervals.as_ptr(),packet.points.as_ptr(),&mut id) };
+        self.check(status)?;
+        if id==0 { return self.abort("native linear returned null capability"); }
+        Ok(LinearToken { id,owner:self.owner.clone() })
+    }
+    fn require_linear(&mut self, token: &LinearToken) -> Result<(),String> {
+        self.ready()?;
+        if token.id==0 || !Arc::ptr_eq(&self.owner,&token.owner) {
+            return self.abort("native linear capability belongs to another owner");
+        }
+        Ok(())
+    }
+    pub(in crate::c71_matrix) fn linear_source_tile(&mut self, token: &LinearToken,
+        input: &Buffer, tile: PcsSourceTile) -> Result<(),String> {
+        self.require_linear(token)?; self.require_buffer(input)?;
+        let status=unsafe { (self.api.linear_source)(self.raw,token.id,input.id,tile) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn linear_weights(&mut self, token: &LinearToken,
+        sealed_tiles: &Buffer) -> Result<(),String> {
+        self.require_linear(token)?; self.require_buffer(sealed_tiles)?;
+        let status=unsafe { (self.api.linear_weights)(self.raw,token.id,sealed_tiles.id) };
+        self.check(status)
+    }
+    pub(in crate::c71_matrix) fn linear_finish(&mut self, token: LinearToken) -> Result<[Fp3;5],String> {
+        self.require_linear(&token)?;
+        let mut fields=[Field::default();5];
+        let status=unsafe { (self.api.linear_finish)(self.raw,token.id,fields.as_mut_ptr()) };
+        self.check(status)?;
+        let mut values=[Fp3::ZERO;5];
+        for (value,field) in values.iter_mut().zip(fields) {
+            *value=match field.decode() { Ok(value)=>value,Err(error)=>return self.abort(error) };
+        }
+        Ok(values)
+    }
     pub(in crate::c71_matrix) fn pcs_salts_prepare(&mut self, seed: &[u8; 32], geometry: SaltGeometry,
         group: u32, starts: &mut [u64], offsets: &mut [u64]) -> Result<(u64, PrivateSalts), String> {
         let result: Result<(u64, PrivateSalts), String> = (|| {
@@ -1812,6 +1922,104 @@ impl<'a, T: Word> Evaluator<'a, T> {
 #[cfg(test)]
 pub(in crate::c71_matrix) mod tests {
     use super::*;
+    fn linear_fixture_packet() -> LinearPacket {
+        LinearPacket {shape:LinearShape {live:8,dimension:3,remaining:3,chunks:0,groups:1,intervals:1,points:2},
+            chunks:vec![],tables:vec![],groups:vec![LinearGroup {bits:2,first:0,count:1,reserved:0}],
+            intervals:vec![LinearInterval {index:0,first:0,bits:2,
+                lower:Fp3::ONE.into(),upper:Fp3::new(Fp::new(2),Fp::new(3),Fp::new(5)).into()}],
+            points:vec![Fp3::ZERO.into(),Fp3::new(Fp::new(7),Fp::new(11),Fp::new(13)).into()]}
+    }
+    #[test]
+    fn c71_b12_native_linear_owner_token_coverage_and_fail_closed() {
+        let fixture=fixture(512); let injection=Injection::new(&fixture.config);
+        for fault in 0..30 {
+            let mut runtime=Runtime::new(&fixture.config).unwrap();
+            let weights=Arc::new(vec![1i16;8]); runtime.install_weights(weights.clone(),[17;32]).unwrap();
+            let sealed=runtime.pcs_weight_tiles(&weights,[17;32],&[WeightTile {
+                first:0,count:8,packed_first:0,packed_stride:1,columns:1}]).unwrap();
+            let input=runtime.upload_signed(&[-32767,0,1,32767]).unwrap();
+            let tile=PcsSourceTile {input_first:0,input_stride:2,rows:2,columns:2,
+                original_first:0,byte_first:0,width:2,signed_width:2};
+            let mut packet=linear_fixture_packet();
+            let result:Result<(),String>=if fault<=5 || fault==27 {
+                match fault {
+                    0=>packet.shape.points+=1,
+                    1=>packet.points[0].limbs[0]=volta_field::P,
+                    3=>injection.set(2),4=>injection.set(10),5=>injection.set(11),
+                    27=>packet.shape.remaining=2,
+                    _=>(),
+                }
+                if fault==2 {runtime.allocate_buffer(18,1).map(|_|())}
+                else {runtime.linear_begin(&packet).map(|_|())}
+            } else {
+                let token=runtime.linear_begin(&packet).unwrap();
+                match fault {
+                    6=>runtime.linear_begin(&packet).map(|_|()),
+                    7=>runtime.linear_source_tile(&LinearToken {id:0,owner:runtime.owner.clone()},&input,tile),
+                    8=>{
+                        let other=Runtime::new(&fixture.config).unwrap();
+                        runtime.linear_source_tile(&LinearToken {id:token.id,owner:other.owner.clone()},&input,tile)
+                    },
+                    9=>{
+                        let mut other=Runtime::new(&fixture.config).unwrap();
+                        let foreign=other.upload_signed(&[1;4]).unwrap();
+                        runtime.linear_source_tile(&token,&foreign,tile)
+                    },
+                    10=>{let pending=runtime.allocate_buffer(1,4).unwrap();runtime.linear_source_tile(&token,&pending,tile)},
+                    11=>{let bytes=runtime.upload_table(&[1;4]).unwrap();runtime.linear_source_tile(&token,&bytes,tile)},
+                    12=>{
+                        runtime.linear_source_tile(&token,&input,PcsSourceTile {rows:1,..tile}).unwrap();
+                        runtime.linear_finish(token).map(|_|())
+                    },
+                    13=>{
+                        runtime.linear_source_tile(&token,&input,tile).unwrap();
+                        runtime.linear_source_tile(&token,&input,tile)
+                    },
+                    14=>runtime.linear_source_tile(&token,&input,PcsSourceTile {original_first:8,..tile}),
+                    15=>{let wrong=runtime.pcs_words(8).unwrap();runtime.linear_weights(&token,&wrong)},
+                    16=>{runtime.linear_weights(&token,&sealed).unwrap();runtime.linear_weights(&token,&sealed)},
+                    17=>{runtime.linear_source_tile(&token,&input,tile).unwrap();runtime.linear_weights(&token,&sealed)},
+                    18=>{injection.set(1);runtime.linear_source_tile(&token,&input,tile)},
+                    19..=24=>{
+                        if fault==19 {injection.set(9);}
+                        runtime.linear_source_tile(&token,&input,tile).unwrap();
+                        if fault!=19 {injection.set(match fault {20=>7,21=>8,22=>3,23=>4,24=>2,_=>unreachable!()});}
+                        runtime.linear_finish(token).map(|_|())
+                    },
+                    25=>{
+                        let stale=LinearToken {id:token.id,owner:token.owner.clone()};
+                        runtime.linear_source_tile(&token,&input,tile).unwrap();runtime.linear_finish(token).unwrap();
+                        runtime.linear_finish(stale).map(|_|())
+                    },
+                    26=>runtime.require_weights(&Arc::new(vec![1i16;8]),[17;32]),
+                    28=>{
+                        let private=Buffer {id:token.id,kind:18,count:1,owner:runtime.owner.clone()};
+                        let before=runtime.stats().unwrap().d2h_bytes;
+                        let result=runtime.download_bytes(&private,0,&mut [0;8]);
+                        assert_eq!(runtime.stats().unwrap().d2h_bytes,before); result
+                    },
+                    29=>{
+                        let private=Buffer {id:token.id,kind:18,count:1,owner:runtime.owner.clone()};
+                        runtime.release_buffer(private)
+                    },
+                    _=>unreachable!(),
+                }
+            };
+            injection.set(0);
+            assert!(result.is_err(),"linear owner fault {fault}");
+            assert_eq!(runtime.stats().unwrap().stopped,1);assert!(runtime.pcs_words(1).is_err());
+            let closed=runtime.close();
+            if fault==22 {assert!(closed.is_err());} else {closed.unwrap();}
+        }
+        println!("C71_NATIVE_LINEAR_OWNER_FAILURE {{\"terminal_rejections\":30,\"gpu_execution\":false,\"credit\":false}}");
+    }
+    #[test]
+    fn c71_b12_native_linear_symbols_are_required() {
+        for symbol in ["c71_linear_begin","c71_linear_source_tile","c71_linear_weights","c71_linear_finish"] {
+            let fixture=fixture_library(512,Some(symbol));
+            assert!(Runtime::new(&fixture.config).is_err(),"missing linear symbol {symbol}");
+        }
+    }
     #[test]
     fn c71_b12_native_transform_natural_forward_inverse_and_work() {
         use p3_dft::{Radix2DFTSmallBatch,TwoAdicSubgroupDft};

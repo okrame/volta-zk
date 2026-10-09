@@ -83,12 +83,14 @@ non attribuiscono prestazioni o picco fisico H100.
 | Commitment iniziale W | Integrato nel Tree/runner: accumuli esatti, FFT, foglie incrementali e Merkle sul common owner; 32 coset/otto colonne, 128 scansioni analitiche sul pinned |
 | Commitment iniziale A | Producer residenti collegati alla PCS, quattro coset/tutte le 128 colonne, istogramma fuso nel primo replay; 512 ricostruzioni conservate, nessun download per riga nel commitment |
 | Sali iniziali W/A | Prescan e replay selezionati sullo stream comune, cursore logico e cap originali; niente bande host/upload sali |
-| FFT naturale diretta/inversa | Primitiva integrata nell'owner con parità indipendente, usata dalle query iniziali A; extension e S1 restano CPU |
+| FFT naturale diretta/inversa | Integrata nell'owner, usata dalle query iniziali A e dagli stadi extension PCS |
 | Query iniziali A | Reader residente e resti collegati al Tree/runner, con sole valutazioni finali D2H; costruzione dei fattori pubblici CPU, richieste e ricostruzioni originali |
 | Closure lineare | Owner e caller nativi integrati con parità ridotta: una scan originale per round, D·live visite, cinque elementi MAC e flag restituiti; mapping W riusato, nessun getter A sostitutivo |
+| PCS S1 e successori | Route canonica collegata a `model.native_original`: singleton, coset/FFT/hash/sali, OOD, retention A dopo apertura del predecessore, fold e contrazioni sul common owner; W continua a leggere il packed originale |
+| Query extension A/W | Tre componenti PCS caricate nello stesso passaggio e resti residenti in tutti gli stadi; A legge le plane trattenute, senza ricostruzioni originali aggiunte; sole valutazioni finali D2H |
 | Accumulo W Tensor Core | Candidata limb16 esatta e confronto esplicito sul medesimo owner; ordinario rimane predefinito |
 | QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
-| Resto della prova | Extension PCS/S1, query W, contrazioni, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal dichiarati CPU; helper S1 e hash extension paired preparatori |
+| Resto della prova | Query iniziali W, costruzione dei fattori pubblici, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal dichiarati CPU |
 
 [canonical_device.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs)
 possiede la sessione numerica: stessa Arc W del commitment, un solo
@@ -99,9 +101,9 @@ preparatore non ricevono transcript, monete PCS o correlazioni; le viste
 storiche mantengono il prefisso causale. Errori, panic, CUDA assente e
 cleanup falliti sono terminali, senza retry o fallback.
 
-I consumer CPU usano staging privato bounded. Range e query iniziali A sono residenti;
+I consumer CPU usano staging privato bounded. Range A, query iniziali A e query extension sono residenti;
 il gather range W usa ancora upload signed per finestre fino a 256 MiB.
-La PCS completa non è ancora residente. Il
+Le query iniziali W restano CPU. Il
 [conto tecnico](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
 distingue capacità, trasferimenti e stati simultanei: tetto payload
 5.905.580.032 B, più riserva fisica esplicita di 256 MiB, totale
@@ -133,16 +135,17 @@ rappresentativi, conto completo e procedure sono pronti, prima della
 campagna hardware. Il goal è ancora attivo; nuova H100 e durata
 richiedono nuova autorizzazione.
 
-Le query iniziali A e la closure lineare sono collegate all'owner comune,
-con parità ridotte contro Horner, coefficienti ed intero wire. I prossimi passi sono S1
-e poi aperture/GKR/range e sincronizzazioni secondo il
-profilo. S1 conserva 35 passaggi non-query fino alla retention: evitare
-una seconda matrice device da 1 GiB o una doppia retention da 3,22 GB.
-Il prossimo checkpoint locale chiude insieme owner/caller S1 e query
-extension, con una catena WHIR ridotta esatta e conto simultaneo;
-gli helper preparati separatamente non chiudono questo criterio.
-L'helper S1 e l'hash extension paired sono componenti controllati
-separatamente, senza credito di integrazione PCS. La
+Il [checkpoint S1 e Query E](../c7.1-history/crypto-residual-query-2026-10-09.md)
+collega owner e caller fino alle query extension di tutti gli stadi.
+Le catene WHIR D10 A/W conservano wire, FS/RNG e MAC originali;
+getter e finestre host private sono vietati nelle route residenti.
+La schedule S1 non-query è preservata e il commitment iniziale A resta
+a 512 ricostruzioni. I prossimi passi sono le query iniziali W,
+il profilo delle fasi residue e il ledger completo per backend e lifetime;
+poi aperture/GKR/range e sincronizzazioni secondo l'impatto misurato.
+Il conto nominato non è un'ammissione congiunta e non include ancora
+tutte le classi di capacità: A3 hash lascia soltanto 60.043.180 B prima
+di quelle aggiuntive, quindi il conto simultaneo è una priorità aperta. La
 [revisione dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
 rilascia batch/prove dopo le rispettive chiusure; il test composto a tre
 risposte rimane incompleto al limite locale. Valutare TMA, fusioni e CUDA Graphs
@@ -196,6 +199,7 @@ locali sono `credit:false`, senza compilazione o esecuzione CUDA.
 | [Query iniziali A residenti](../c7.1-history/crypto-query-2026-10-09.md) | Horner, richieste identiche e catena D10 uncached con wire/FS/RNG/MAC originali; extension/S1 e caller lineare ancora CPU |
 | [Closure lineare owner/caller](../c7.1-history/crypto-linear-2026-10-09.md) | Codec e coefficienti/endpoints originali, consumo monouso, full wire D10; S1 aritmetico distinto, nessuna parità CUDA |
 | [Lifetime PCS e hash extension paired](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md) | Rilascio batch/prove, BLAKE3 pinned e regressione sali; hash S1 non selezionato, timeout composto conservato |
+| [S1 e query extension sul common owner](../c7.1-history/crypto-residual-query-2026-10-09.md) | Route canonica, parità WHIR D10 A/W e guard privati; query iniziali W ancora CPU, conto nominato non ammesso, nessuna compilazione/esecuzione CUDA |
 | [Regole operative](../c7.1-history/operating-rules-2026-10-08.md), [temporanei](../c7.1-history/temporary-memory-2026-10-04.md) | Ragioni delle decisioni; autorizzazioni correnti definite nel [runbook](runpod-tests.md#autorizzazione-e-limiti) |
 
 ## Contratto delle risorse

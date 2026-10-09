@@ -136,6 +136,7 @@ nvcc -std=c++17 -O2 -arch=sm_90 --shared --cudart static -Xcompiler=-fPIC \
   cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_pcs_hash.cu \
   cuda/c71_pcs_weight.cu cuda/c71_pcs_weight_tensor.cu cuda/c71_pcs_source.cu \
   cuda/c71_pcs_salts.cu cuda/c71_pcs_query.cu cuda/c71_linear_native.cu \
+  cuda/c71_pcs_residual.cu cuda/c71_pcs_residual_query.cu \
   cuda/c71_range_runtime.cpp \
   -o /tmp/libc71_device_runner.so
 nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
@@ -143,14 +144,15 @@ nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
 ```
 
 Il loader richiede tutti i simboli ABI4 correnti, comprese operazioni
-sali, confronto Tensor, FFT naturale, quattro operazioni query e quattro
-lineari. Una libreria incompleta fallisce
+sali, confronto Tensor, FFT naturale, quattro operazioni query iniziali,
+quattro lineari e 19 nuove operazioni S1/contrazioni/Query E/hash paired.
+Una libreria incompleta fallisce
 prima dell'uso. Le FFT naturali sono definite nell'unità weight esistente.
 L'unità lineare risolve i launcher dell'owner/caller ora verificato dal
 [checkpoint lineare](../c7.1-history/crypto-linear-2026-10-09.md), distinto
-dal precedente query. `c71_pcs_residual.cu` è un helper S1 preparatorio, senza
-consumer owner: non è necessario alla linkline corrente e non dà credito
-alla PCS extension. Conservare RSS/deadline della build separati e
+dal precedente query. Le due unità residuali risolvono i launcher del
+consumer S1 e Query E ora collegato; entrambe sono necessarie alla
+linkline corrente. Conservare RSS/deadline della build separati e
 nessun rapporto di speedup tra Rust O0 e C++ O2.
 
 #### PCS iniziale, query e candidati
@@ -263,13 +265,43 @@ verifica cinque filtri, da eseguire uno per invocazione:
 | `c71_b12_native_linear_full_wire_fs_point_and_original_mac` | Prova D10 signed W esatta contro denso, PCS CPU, wire/FS/punto/MAC |
 
 `tests/test_c71_linear_native.py` verifica 167 casi contro l'oracolo
-denso e bench host D15/D17; `tests/test_c71_pcs_residual.py` controlla
-solo l'helper PCS distinto, non owner/caller S1.
+denso e bench host D15/D17. I controlli S1 e Query E sono nel
+[checkpoint integrato](../c7.1-history/crypto-residual-query-2026-10-09.md):
+
+| Filtro | Significato |
+|---|---|
+| `c71_b12_native_residual_pcs_basis_is_distinct_and_canonical` | Base PCS distinta dai MAC e marshalling canonico |
+| `c71_b12_native_residual_owner_coverage_private_tokens_and_faults` | Phase, owner, capacità, token, span/flag e terminalità |
+| `c71_b12_native_residual_state_exact_coefficients_late_retention_and_views` | Singleton/OOD/contrazioni, retention tardiva, fold e viste storiche |
+| `c71_b12_native_residual_paired_tree_root_salts_and_cpu_geometry` | Foglie da 12 limb, paired root, cursori e geometria CPU equivalente |
+| `c71_b12_native_residual_query_horner_pads_duplicates_and_virtual_prefixes` | Query E contro Horner, cap piccoli, pad, ordine/duplicati, prefissi virtuali 0..2 e nessuna ricostruzione A |
+| `c71_b12_native_residual_query_owner_final_values_and_faults` | Lineage root/child, triple finali, fasi private e failure terminali |
+| `c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac` | Catena WHIR D10 A, query iniziali residenti, S1/query extension e wire/FS/RNG/MAC originali |
+| `c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac` | Catena WHIR D10 W, iniziale CPU invariato, S1/query extension e wire/FS/RNG/MAC originali |
+
+I 19 simboli nuovi si verificano con **un filtro per invocazione**, al
+massimo quattro librerie mancanti in ciascun filtro:
+
+```text
+c71_b12_native_residual_symbols_1
+c71_b12_native_residual_symbols_2
+c71_b12_native_residual_symbols_3
+c71_b12_native_residual_symbols_4
+c71_b12_native_residual_query_symbols_1
+c71_b12_native_residual_query_symbols_2
+```
+
+Non usare il prefisso residual complessivo: comprende catene e compilazioni
+dinamiche separate. Applicare sempre AS 2 GiB/60 s ed un solo processo.
+`tests/test_c71_pcs_residual.py` verifica matematica PCS e bench host;
+`tests/test_c71_pcs_residual_query.py` verifica il loader a tre limb con
+oracolo indipendente ed emulazione CTA, senza compilare/eseguire CUDA.
 `tests/test_c71_pcs_short_hash.py` confronta foglie da 12 limb, nodi
 paired e sali con BLAKE3 pinned; il
 [record](../../benchmarks/results/c71-crypto-short-merkle-local-2026-10-09-d16870d8ff1b.json)
-include le regressioni Rust dello stream e dell'owner sali. È una
-primitiva preparatoria, senza integrazione S1 o CUDA.
+include le regressioni Rust dello stream e dell'owner sali, come componente
+precedente. `tests/test_c71_range_native.py` verifica il common owner,
+driver differito e lineage. Eseguire ciascun file Python separatamente.
 Non aggregare i cinque filtri query
 in una sola invocazione: ciascuno compila una fixture dinamica.
 La futura parità sm_90, il tempo completo e il picco fisico si verificano

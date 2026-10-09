@@ -704,15 +704,48 @@ symbol, copy/fence/free non consumano le tre correlazioni di un round
 incompleto e fermano l'owner, senza getter fallback. La prova D10 signed
 W conserva full wire/FS/punto/MAC; i codec A sono verificati separatamente.
 Non ne segue un lemma Lean di raffinamento, parità CUDA o completamento
-del profilo canonico. Extension/S1 resta CPU; l'helper PCS preparatorio
-non scarica le premesse delle viste residenti o del loro lifetime.
+del profilo canonico. Extension/S1 restava CPU a quel checkpoint;
+le premesse delle viste residenti e del loro lifetime restano esplicite
+anche nella successiva integrazione.
 
 La [correzione dei lifetime e il Merkle extension preparatorio](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
 non cambiano FS, MAC, correlazioni o byte del protocollo. Batch/prove owned
 sono rilasciati dopo l'ultimo consumo; il timeout composto non dà parità.
 Le foglie extension conservano base PCS, limb/byte order, sali e blocco
-finale BLAKE3. La candidata paired pubblica R nodi soltanto dopo tutte
-le 2R foglie; il suo consumer S1 e le query residenti restano da integrare.
+finale BLAKE3. L'helper paired era preparatorio a quella sorgente storica;
+pubblica R nodi soltanto dopo tutte le 2R foglie.
+
+**S1 e Query E.** Il
+[checkpoint residente](../c7.1-history/crypto-residual-query-2026-10-09.md)
+collega il consumer PCS allo stesso `native_original` del modello.
+La base PCS v³=v+1 usa marshalling tipizzato distinto da MAC u³=2;
+ogni lettura originale o retained produce tutte le tre componenti nel
+medesimo passaggio. EQ, pad e sfide restano nel consumer: il producer
+riceve soltanto il sink ed indici pubblici, senza nuove informazioni
+PCS o correlazioni. Il C ABI conserva span/count; unicità originale A
+è responsabilità del `NativeSource` Rust fidato, tramite copertura esatta
+per riga e partizione dyadic dei byte. Non dedurre unicità dal solo count
+di una chiamata C autonoma. La verifica del piano pinned e la rimozione
+del controllo C ridondante sono documentate nel checkpoint storico.
+Il contratto originario dello scanner non è indebolito.
+
+Plane e ring privati sono sigillati soltanto dopo flag/fence validi;
+generazione e ordinalità c0/c1/c2 impediscono sostituzioni o scambi di
+limb. La retention A segue l'apertura e il rilascio dell'oracolo iniziale;
+promozione e fold non modificano un predecessore ancora apribile. W
+continua a leggere gli originali packed. Query E mantiene capability,
+ordine discendente, limb, grado ed ultimo handle della lineage; vieta
+letture e mutazioni generiche durante la transazione. Solo valutazioni
+finali canoniche sono pubblicate dopo il ritiro dei temporanei, poi
+autenticate dal Tree e chiuse sui MAC originali. Non è introdotto un
+nuovo endpoint autenticato o una scansione originale A per limb.
+
+Le catene WHIR ridotte A/W conservano full wire, FS/RNG e MAC originali
+ideali fissati; in produzione restano PCG reale AES e correlazioni
+monouso originali. Queste parità non dimostrano il profilo canonico,
+la correttezza CUDA o i target. Raffinamento dei kernel, determinismo
+del replay, composizione Seed6 e sufficienza della riserva fisica restano
+le assunzioni dichiarate nei §§1–6 e nel design.
 
 S1 si ridimensiona soltanto dopo consumo/rilascio del predecessore e
 registrazione del successore; nessun oracolo ancora apribile è modificato.

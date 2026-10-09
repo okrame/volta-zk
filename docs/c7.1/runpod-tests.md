@@ -21,10 +21,11 @@ Il runner `experiment-cuda` è misto: inferenza/replay/range A e commitment
 iniziali W/A con sali residenti e
 [query iniziali A native](../c7.1-history/crypto-query-2026-10-09.md) e
 [closure lineare residente](../c7.1-history/crypto-linear-2026-10-09.md).
-Fattori pubblici, extension PCS/S1, query W,
-GKR non-range/MAC, Seed6 AES e verifica restano CPU al checkpoint validato.
-Gli helper S1 e Merkle extension paired restano preparazione distinta
-da integrare e verificare; la
+Il [checkpoint S1 e Query E](../c7.1-history/crypto-residual-query-2026-10-09.md)
+collega anche coset/hash/sali extension, OOD, retention/fold A,
+contrazioni e query extension A/W al common owner. Query iniziali W,
+fattori pubblici, GKR non-range/MAC, Seed6 AES e verifica restano CPU.
+Il conto per fasi è nominato, `joint_admitted:false`; la
 [revisione locale dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
 conserva anche il timeout della prova composta.
 Accumulo W ordinario e QK/PV scalari rimangono default; le candidate Tensor/MMA
@@ -240,7 +241,8 @@ un eventuale `.env` deve essere regolare, posseduto dall'utente e `0600`.
 
 La futura libreria completa segue la
 [build locale](local-tests.md#collegamento-del-runner-cuda), includendo
-hash, weight, Tensor, source, sali/query PCS e unità lineare oltre all'owner. Simboli ABI4
+hash, weight, Tensor, source, sali/query PCS, unità lineare e le due
+unità residuali oltre all'owner. Simboli ABI4
 mancanti sono terminali, senza fallback. Verificare CUDA reali di
 prescan prefix/scatter, replay sali, seek/rejection/cap, cursor finali,
 flag/fence, basi, pad e root. Verificare anche FFT naturali pari/dispari,
@@ -259,7 +261,15 @@ separatamente dai producer. Verificare mapping W unico, scanner A
 senza lock esterno, ritiro prima della pubblicazione e assenza di
 consumo correlazioni sui round falliti. Il checkpoint locale non
 compila CUDA; ripetere i cinque filtri nativi pertinenti sulla libreria
-reale. S1 richiede parità e conto propri; non ereditarli da query/linear.
+reale. Per S1 ripetere singleton/OOD, codec, contrazioni e fold contro
+l'oracolo PCS indipendente; verificare retention dopo apertura del
+predecessore e old+new fino al retirement, senza duplicato host S1.
+Per Query E ripetere Horner in tutti gli stadi, prefissi virtuali 0..2,
+ordinalità/generazione delle plane, lineage, pad e getter privati vietati.
+Misurare launch/lavoro del loader W parallelo, zero D2H degli originali,
+nessuna ricostruzione A aggiuntiva e publication/staging simultanei.
+Il ledger completo deve includere le classi ancora non quantificate
+nelle [specifiche](specs.md#pcs-residuale-e-query-extension-residenti).
 Per l'hash extension ripetere foglie/nodi/root contro BLAKE3 pinned,
 copertura logica 2R con output R e bande senza attraversamento di lane.
 Contare i batch W soltanto fino alla chiusura W; capacità di proof/codec,
@@ -284,8 +294,9 @@ secondo misure rappresentative, senza inferire speedup dal driver host.
 
 Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi
 `c71_matrix` e `c71_calibration` non lo sostituiscono. L'esperimento usa
-la pipeline mista dichiarata, con commitment/query A iniziali residenti
-e PCS extension/query W ancora CPU; il sampler iniziale è residente.
+la pipeline mista dichiarata, con commitment iniziali W/A, query iniziali
+A e PCS residuale/query extension residenti; le query iniziali W ed i
+fattori pubblici restano CPU.
 Usare le
 [build mirate](local-tests.md#compilazione-mirata) e la
 [build della libreria CUDA](local-tests.md#collegamento-del-runner-cuda).
@@ -310,8 +321,8 @@ invariati NoPeek, MAC originali, margine arena 256 MiB, margine globale
 Gli esperimenti GPU confrontano prima gli operatori con il diagnostico
 di parità sopra e il range con il riferimento host/nativo. Accumuli,
 FFT e hash salato dei commitment iniziali, lettore e resti delle query
-iniziali A sono residenti; fattori pubblici, extension PCS/S1 e query W
-restano CPU nel checkpoint validato. Poi si
+iniziali A, S1 e query extension sono residenti; fattori pubblici e query
+iniziali W restano CPU nel checkpoint validato. Poi si
 misurano le fasi rappresentative con i
 loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
 il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,

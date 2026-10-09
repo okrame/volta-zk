@@ -178,7 +178,7 @@ def extension_query_parts(q, prefix_bits):
     }
 
 
-def native_residual_phases(dimension, stages, extensions, initial, common, add, caches):
+def native_residual_phases(dimension, stages, extensions, initial, common, add, caches, initial_query, replay):
     previous = initial[1 << (dimension - 3)]
     previous_remaining = None
     for stage in sorted((s for s in stages if s['dimension'] == dimension), key=lambda s: s['round']):
@@ -223,8 +223,13 @@ def native_residual_phases(dimension, stages, extensions, initial, common, add, 
         shared = {'E_frontier_group2': frontier, 'E_salt_current_device': aligned(8 * rows),
                   'E_salt_current_host': current_host, 'E_salt_meta': salt_meta,
                   'E_original_to_C_pad_marshalling_host_upper': 2 * 4 * 512 * 24}
+        # Host upload padding exists only in the original A producer scan.
+        # source_finish/hash and retained-plane stages do not retain this vector.
+        scan_padding = ({'public_padding_host_upper': 106 * 262144 * 2,
+                         'device_persistent_or_single_replay_envelope': replay}
+                        if dimension == 34 and round_no == 0 else {})
         high_rows = (message_rows + 512 + rows - 1) // rows
-        add(name + '_FFT', dict(base, **shared, E_ring24R=aligned(192 * rows),
+        add(name + '_FFT', dict(base, **shared, **scan_padding, E_ring24R=aligned(192 * rows),
             E_low_powers=aligned(16 * rows), E_high_powers=aligned(16 * high_rows),
             E_transpose_scratch=aligned(8 * rows), E_forward_twiddles=aligned(8 * rows),
             E_EQ_shape_chunks_tables_pads=packet['device'], E_sticky_flag=aligned(4),
@@ -240,10 +245,17 @@ def native_residual_phases(dimension, stages, extensions, initial, common, add, 
             'Upper of final reductions after ring/salt retirement; top cache is already conservatively charged.')
         if previous['columns'] == 128:
             if dimension == 35:
-                add(name + '_initial_W_CPU_query_gap', dict(base,
-                    query_matrix=previous['query_matrix_capacity_bytes'], query_factors=previous['query_factor_capacity_bytes'],
-                    query_transients_and_twiddles_upper=32 * previous['query_batch_rows'] * 8),
-                    'Original W query stays CPU. This is an explicit unaccelerated path, with no new W retention.')
+                device = {f'query_device_{key}': value
+                          for key, value in initial_query['canonical_query_device_breakdown'].items()
+                          if key != 'original_byte_window'}
+                # base already includes the 126464-byte sealed mapping. This
+                # route has 857338880 B device payload including that mapping;
+                # sealed W needs no original-byte producer/window/gather flag.
+                add(name + '_initial_W_resident_query_publication', dict(base, **device,
+                    returned_matrix_host=initial_query['returned_matrix_host_bytes'],
+                    returned_column_host=initial_query['returned_column_staging_host_bytes']),
+                    'Selected NativeQuery::Weights reads the sealed original mapping. No byte producer/window '
+                    'or W retention. Public factor construction and opened paths remain separate capacity classes.')
         else:
             q = previous['query_batch_rows']
             query_prefix = dimension - previous_remaining if dimension == 35 else 2
@@ -262,6 +274,7 @@ def native_residual_phases(dimension, stages, extensions, initial, common, add, 
             if round_no == 0:
                 retain_packet = residual_packet(7)
                 add(name + '_late_retention', dict(common(caches, proof=True),
+                    device_persistent_or_single_replay_envelope=replay,
                     current_extension_cache=cache, current_extension_host_pads=4 * 512 * 24,
                     retained_three_planes=3 * aligned(8 * (1 << 27)),
                     retention_EQ_packet=retain_packet['device'], retention_EQ_host_upper=retain_packet['host_upper'], retention_flag=aligned(4)),
@@ -373,6 +386,9 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
         'sourcewise last bounded <=128E read: consumed temporary three-plane buffer, EQ packet, flag, Rust result and CPU fresh base-case polynomials',
         'fresh base-case main/mask caches and their private randomness, adjacent to final selected extension query',
     ]
+    # Seven additional classes have finite main-payload/lifetime formulas in
+    # the independent closeout; four still need typed capacity closure. This
+    # screen does not turn that partial inventory into joint memory admission.
     phases = []
 
     def add(name, parts, lifetime):
@@ -388,12 +404,14 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
                   'two_public_table_host_payloads': 2*23_954_072,
                   'native_common_owner_host': owner}
         if numeric:
-            result['device_persistent_or_single_replay_envelope'] = replay
+            # Complete producer scans retire their temporary rows. Proof
+            # phases charge replay explicitly only while reconstructing A.
+            result['device_persistent_or_single_replay_envelope'] = persistent if proposed_s1 and proof else replay
         if proposed_s1:
             result['original_W_tile_descriptors_host_upper'] = 2 * 3156 * 40
-            result['public_padding_host_upper'] = 106 * 262144 * 2
             result['full_calibration_table_serialization_difference_upper'] = 2 * (24_414_870 - 23_954_072)
         if proof:
+            result['canonical_Writer_fixed_capacity'] = 96 << 20
             # Clean3128038 predates explicit bw/W proof drops. The separate
             # optional retirement receipt binds this fact; LINEAR immutable.
             result['original_claim_batch_codec_upper'] = claim[34]+(
@@ -409,6 +427,7 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
         parts = a['common_device_parts']
         named = sum(parts.values())
         add(f'native_initial_A{caches}_accumulate', dict(base, **{f'A_{key}': value for key, value in parts.items()},
+            public_padding_host_upper=106 * 262144 * 2 if proposed_s1 else 0,
             A_accumulation_additional=a['device_accumulation_phase_bytes']-named),
             'W plus A1..current cache/pads; one replay envelope including persistent; no original proof batches yet.')
         hash_base = dict(base, device_persistent_or_single_replay_envelope=persistent)
@@ -419,6 +438,8 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
             'low/high powers retire before full hash output. Only numeric persistent state remains. '
             'Values retire before first node output; host/profile/PCG capacities remain separate additional classes.')
         add(f'native_initial_A{caches}_query_evaluate', dict(common(caches, proof=True),
+            device_persistent_or_single_replay_envelope=replay,
+            public_padding_host_upper=106 * 262144 * 2 if proposed_s1 else 0,
             **{f'query_device_{key}': value for key, value in q['canonical_query_device_breakdown'].items()},
             gather_flag=q['additional_original_gather_flag_aligned_bytes'],
             returned_matrix_host=q['returned_matrix_host_bytes'],
@@ -440,6 +461,8 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
             linear_host_packet_payload=host_packet, linear_device_packet_output_flag=device_packet),
             'Public marshalling temporaries returned/dropped; canonical host packet stays alive until begin fence.')
         add(f'native_linear_A{caches}_scan', dict(common(caches, proof=True),
+            device_persistent_or_single_replay_envelope=replay,
+            public_padding_host_upper=106 * 262144 * 2 if proposed_s1 else 0,
             linear_device_packet_output_flag=device_packet),
             'Host packet retired before A producer scan; exactly one original scan per each of34 rounds. '
             'W35 uses the same phase geometry plus its once-per-proof sealed mapping.')
@@ -455,7 +478,7 @@ def ledger_native(directory, query_record, linear_record, proposed_s1=False, lif
             'Host packet retired before exactly35 W scans; both original batches remain live through closeW.')
         for dimension in (35, 34):
             if proposed_s1:
-                native_residual_phases(dimension, stages, extensions, initial, common, add, caches)
+                native_residual_phases(dimension, stages, extensions, initial, common, add, caches, q, replay)
                 continue
             previous = initial[1 << (dimension-3)]
             for stage in sorted((s for s in stages if s['dimension'] == dimension), key=lambda s: s['round']):

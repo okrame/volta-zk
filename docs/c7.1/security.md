@@ -56,6 +56,14 @@ Il [nuovo W completo e il profilo locale](../c7.1-history/h100-w05-checkpoint-20
 non concedono accettazione o credito formale. Il profilo modifica soltanto
 output diagnostici del test pubblico, senza leggere witness o monete.
 
+La candidata cGGM con coda XOF differita conserva il frame, gli offset
+0/64/128 dei tre slot e gli otto tentativi per slot. Dopo un candidato
+accettato del terzo slot, i byte rimanenti non hanno consumatori: ogni H
+usa un nuovo reader. I test confrontano il campionatore completo e tutti
+i numeri di scarti fino a esaurimento. Nessuna correlazione è riusata;
+i bound logici di 192 byte per H rimangono conservativi. Questo argomento
+locale non chiude il raffinamento generale Seed6 o la sua composizione.
+
 Il teorema richiede almeno 78 bit per ciascun vantaggio completo.
 Si lavora nel modello dell'oracolo casuale classico, con lavoro e memoria
 dell'avversario `T_A=M_A=2^80`, inclusi ambiente, preprocessing e advice,

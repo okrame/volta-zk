@@ -183,6 +183,14 @@ circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,
 non lo stato del commitment H100 corrente. La CLI ricostruisce W a ogni
 avvio e non riprende installazioni o sessioni interrotte.
 
+La candidata cGGM legge 136 byte SHAKE e materializza gli ultimi 56 solo
+se il primo candidato del terzo slot è scartato. Frame e tre slot da
+64 byte restano identici; cambiano soltanto byte effettivamente estratti
+e relativo contatore. Golden, parità col campionatore completo, rifiuti
+fino a esaurimento e setup/journal ridotti passano localmente. Non è
+usata da `canonical-05`; prestazioni H100 e setup completo sono da misurare.
+Il raffinamento generale Seed6/CUDA resta aperto come in [security](security.md).
+
 Il goal corrente esegue la campagna H100 autorizzata, entro otto ore
 provider e con guard indipendente, secondo il [runbook](runpod-tests.md).
 La baseline `c7e05cf` include le correzioni operative `24b54d4`.

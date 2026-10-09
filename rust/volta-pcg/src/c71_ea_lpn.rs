@@ -142,13 +142,21 @@ pub fn cggm_h(
         shake_object_bytes_peak: size_of::<Shake256>().max(size_of_val(&reader)),
         ..Default::default()
     };
-    // Python fixes a separate 64-byte candidate slot for every limb.
-    // Do not start the next limb immediately after an accepted candidate.
-    let mut tape = [0u8; 3 * MAX_TRIALS * 8];
-    reader.read(&mut tape);
-    work.squeezed_bytes = tape.len() as u64;
-    let limbs = sample_h_limbs(&tape, &mut work)?;
+    let limbs = sample_cggm_reader(&mut reader, &mut work)?;
     Ok((Fp3::new(limbs[0], limbs[1], limbs[2]), work))
+}
+
+fn sample_cggm_reader(reader: &mut impl XofReader, work: &mut Work) -> Result<[Fp; 3], Error> {
+    // Keep the three fixed 64-byte slots. The first third-limb candidate
+    // ends at byte 136; its unused tail need not be squeezed on success.
+    let mut tape = [0u8; 3 * MAX_TRIALS * 8];
+    reader.read(&mut tape[..136]);
+    work.squeezed_bytes += 136;
+    if u64::from_le_bytes(tape[128..136].try_into().unwrap()) >= P {
+        reader.read(&mut tape[136..]);
+        work.squeezed_bytes += 56;
+    }
+    sample_h_limbs(&tape, work)
 }
 
 pub(crate) fn sample_h_limbs(tape: &[u8; 192], work: &mut Work) -> Result<[Fp; 3], Error> {
@@ -527,7 +535,7 @@ mod tests {
             assert_eq!([got.c0.value(), got.c1.value(), got.c2.value()], expected);
             assert_eq!(work.shake_calls, 1);
             assert_eq!(work.absorbed_bytes, 98);
-            assert_eq!(work.squeezed_bytes, 192);
+            assert_eq!(work.squeezed_bytes, 136);
             assert_eq!(work.fp_candidates, 3);
             assert_eq!(work.codec_heap_capacity_bytes_peak, 0);
         }
@@ -554,7 +562,7 @@ mod tests {
     }
 
     #[test]
-    fn cggm_h_streamed_codec_preserves_full_frame_and_work() {
+    fn cggm_h_streamed_codec_preserves_full_frame_and_sampling() {
         for i in 0..257u64 {
             let nonce = [i as u8; 32];
             let node = Fp3::new(Fp::new(i), Fp::new(P - 1 - i), Fp::new(i * 65537));
@@ -562,7 +570,38 @@ mod tests {
             let (expected, mut work) = cggm_h_contiguous(nonce, args.0, args.1, args.2, node).unwrap();
             assert_eq!(work.codec_heap_capacity_bytes_peak, 98);
             work.codec_heap_capacity_bytes_peak = 0;
-            assert_eq!(cggm_h(nonce, args.0, args.1, args.2, node).unwrap(), (expected, work));
+            let (actual, measured) = cggm_h(nonce, args.0, args.1, args.2, node).unwrap();
+            assert!([136, 192].contains(&measured.squeezed_bytes));
+            work.squeezed_bytes = measured.squeezed_bytes;
+            assert_eq!((actual, measured), (expected, work));
+        }
+    }
+
+    #[test]
+    fn cggm_h_lazy_tail_preserves_rejection_slots_and_exhaustion() {
+        struct Tape { bytes: [u8; 192], next: usize }
+        impl XofReader for Tape {
+            fn read(&mut self, out: &mut [u8]) {
+                out.copy_from_slice(&self.bytes[self.next..self.next + out.len()]);
+                self.next += out.len();
+            }
+        }
+        for rejected_limb in 0..3 {
+            for rejections in 0..=8 {
+                let mut bytes = [0u8; 192];
+                for (i, word) in bytes.chunks_exact_mut(8).enumerate() {
+                    word.copy_from_slice(&(i as u64 + 17).to_le_bytes());
+                }
+                bytes[64 * rejected_limb..64 * rejected_limb + 8 * rejections].fill(255);
+                let mut expected_work = Work::default();
+                let expected = sample_h_limbs(&bytes, &mut expected_work);
+                let mut reader = Tape { bytes, next: 0 };
+                let mut actual_work = Work::default();
+                assert_eq!(sample_cggm_reader(&mut reader, &mut actual_work), expected);
+                assert_eq!(actual_work.fp_candidates, expected_work.fp_candidates);
+                assert_eq!(reader.next, if rejected_limb == 2 && rejections > 0 { 192 } else { 136 });
+                assert_eq!(actual_work.squeezed_bytes, reader.next as u64);
+            }
         }
     }
 
@@ -589,6 +628,8 @@ mod tests {
             println!("C71_CGGM_CODEC {}", serde_json::json!({"calls":calls,"replica":replica,
                 "contiguous_ns":contiguous,"streamed_ns":streamed,"same_outputs":true,
                 "input_codec_heap_bytes_before":98,"input_codec_heap_bytes_after":0,
+                "candidate_slot_bytes":192,"after_squeezed_bytes_typical":136,
+                "comparison_scope":"previous contiguous full tape versus streamed lazy tail",
                 "canonical_setup":false,"credit":false}));
         }
     }

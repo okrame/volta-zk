@@ -8,6 +8,41 @@ component_wire!(Proof { statistics, products, joint });
 use crate::c71_matrix::gemma::caller::P0Statement;
 use crate::c71_matrix::rms::{self as kernel, gkr, statistic};
 use crate::c71_matrix::*;
+use std::collections::BTreeSet;
+
+type RequiredKey = (usize, [i32; 3], bool);
+
+/// Public compiler geometry only. No Circuit, assignments, roots, witness,
+/// transcript state or correlations are retained in this cache.
+pub(in crate::c71_matrix) struct RequiredGeometry {
+    keys: Vec<RequiredKey>,
+    widths: Vec<usize>,
+}
+
+impl RequiredGeometry {
+    pub(in crate::c71_matrix) fn compile(keys: BTreeSet<RequiredKey>) -> Result<Self, String> {
+        if keys.is_empty() || keys.len() > 421 {
+            return Err("B12 RMS public program count differs".into());
+        }
+        let mut widths = Vec::new();
+        for &(d, [ex, ew, ey], weighted) in &keys {
+            let p = kernel::compile(d, ex, ew, ey, weighted)?;
+            if p.levels.len() > 128
+                || p.ports > 98
+                || p.levels.iter().any(|l| l.len() > 16384)
+                || p.levels.iter().map(Vec::len).sum::<usize>() > 2_000_000
+            {
+                return Err("Gemma RMS profile exceeds the composed public envelope".into());
+            }
+            let local = gkr::public_widths(std::slice::from_ref(&p))?;
+            widths.resize(widths.len().max(local.len()), 1);
+            for (width, other) in widths.iter_mut().zip(local) {
+                *width = (*width).max(other);
+            }
+        }
+        Ok(Self { keys: keys.into_iter().collect(), widths })
+    }
+}
 
 pub(in crate::c71_matrix) struct Proof {
     statistics: Vec<statistic::Proof>,
@@ -191,22 +226,7 @@ impl Sources {
         s: &P0Statement<'_>,
         parameters: &[[i32; 3]],
     ) -> Result<(Vec<kernel::Circuit>, Vec<usize>, usize), String> {
-        if self.cells == 0
-            || self.cells > 1 << 29
-            || self.norms.is_empty()
-            || self.norms.len() > 421
-            || parameters.len() != self.norms.len()
-            || s.auxiliary_layout.layout.layout_digest != self.bytes.scalar.layout.layout_digest
-            || s.auxiliary_layout.weight_layout != self.bytes.scalar.weight_layout
-            || s.weights.num_roots() != 1
-            || s.auxiliary.num_roots() != 1
-            || s.quantization == [0; 32]
-            || s.weight_gamma.is_empty()
-            || s.auxiliary_gamma.is_empty()
-            || !s.attempt.valid()
-        {
-            return Err("RMS dispatcher fixed context or D29 cell envelope differs".into());
-        }
+        self.validate_prepare_context(s, parameters)?;
         let mut indices = BTreeMap::new();
         let mut keys = Vec::new();
         let mut profile = Vec::new();
@@ -228,6 +248,30 @@ impl Sources {
             count += self.statistic_statement(s, n).required()?;
         }
         Ok((programs, profile, count))
+    }
+
+    fn validate_prepare_context(
+        &self,
+        s: &P0Statement<'_>,
+        parameters: &[[i32; 3]],
+    ) -> Result<(), String> {
+        if self.cells == 0
+            || self.cells > 1 << 29
+            || self.norms.is_empty()
+            || self.norms.len() > 421
+            || parameters.len() != self.norms.len()
+            || s.auxiliary_layout.layout.layout_digest != self.bytes.scalar.layout.layout_digest
+            || s.auxiliary_layout.weight_layout != self.bytes.scalar.weight_layout
+            || s.weights.num_roots() != 1
+            || s.auxiliary.num_roots() != 1
+            || s.quantization == [0; 32]
+            || s.weight_gamma.is_empty()
+            || s.auxiliary_gamma.is_empty()
+            || !s.attempt.valid()
+        {
+            return Err("RMS dispatcher fixed context or D29 cell envelope differs".into());
+        }
+        Ok(())
     }
 
     /// Public metadata only. Counts the current source-level algorithm before
@@ -315,6 +359,25 @@ impl Sources {
         parameters: &[[i32; 3]],
     ) -> Result<usize, String> {
         self.prepare(s, parameters).map(|(_, _, count)| count)
+    }
+
+    pub(in crate::c71_matrix) fn rms_required_with_geometry(
+        &self,
+        s: &P0Statement<'_>,
+        parameters: &[[i32; 3]],
+        geometry: &RequiredGeometry,
+    ) -> Result<usize, String> {
+        self.validate_prepare_context(s, parameters)?;
+        let keys: BTreeSet<_> = self.norms.iter().zip(parameters)
+            .map(|(n, &p)| (n.columns, p, n.cohort.is_some())).collect();
+        if !keys.iter().eq(geometry.keys.iter()) {
+            return Err("RMS cached public recipe differs".into());
+        }
+        let mut count = gkr::required_from_widths(&geometry.widths, bits(self.cells))? + 1;
+        for n in 0..self.norms.len() {
+            count += self.statistic_statement(s, n).required()?;
+        }
+        Ok(count)
     }
 
     fn bind(&self, s: &P0Statement<'_>, parameters: &[[i32; 3]], fs: &mut Fs) {
@@ -546,6 +609,126 @@ impl Sources {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn c71_b12_rms_cached_public_geometry_exact_mixed_recipes_and_contexts() {
+        let plan = super::super::tests::toy_plan(3, 2);
+        let mut sources = plan.rms_sources().unwrap();
+        let parameters: Vec<_> = sources.norms.iter().enumerate().map(|(i, n)| {
+            if n.cohort.is_none() { [1, 0, -1] }
+            else if i % 2 == 0 { [1, -2, 0] }
+            else { [0, 1, -1] }
+        }).collect();
+        let geometry = RequiredGeometry::compile(sources.norms.iter().zip(&parameters)
+            .map(|(n, &p)| (n.columns, p, n.cohort.is_some())).collect()).unwrap();
+        let weight = C61Commitment::new(vec![[1; 32]]);
+        let auxiliary = C61Commitment::new(vec![[2; 32]]);
+        let bad_roots = C61Commitment::new(vec![[1; 32], [3; 32]]);
+        let gamma = gamma(&matrix_config(32).unwrap());
+        let profile = sources.bytes.profile(&gamma);
+        let context = P0Statement {
+            weights: &weight, auxiliary: &auxiliary,
+            weight_gamma: &gamma, auxiliary_gamma: &profile,
+            auxiliary_layout: &sources.bytes.scalar, quantization: [63; 32],
+            tokens: &[0, 1, 2],
+            attempt: AttemptContext {
+                session: [1; 32], capacity: [2; 32], slot: 0,
+                predecessor: [0; 32], nonce: [3; 32],
+            },
+        };
+        // Oracle: the original full-circuit prepare, with first occurrence
+        // order. Geometry compilation visits sorted unique keys instead.
+        let (programs, assigned, expected) = sources.prepare(&context, &parameters).unwrap();
+        let mut first_keys = Vec::new();
+        let mut first_assigned = Vec::new();
+        for (n, &p) in sources.norms.iter().zip(&parameters) {
+            let key = (n.columns, p, n.cohort.is_some());
+            let index = match first_keys.iter().position(|&k| k == key) {
+                Some(index) => index,
+                None => { first_keys.push(key); first_keys.len() - 1 },
+            };
+            first_assigned.push(index);
+        }
+        assert_eq!(assigned, first_assigned);
+        assert_eq!(programs.len(), first_keys.len());
+        assert_eq!(geometry.widths, gkr::public_widths(&programs).unwrap());
+        assert!(geometry.keys.len() <= 421 && geometry.widths.len() <= 129);
+        for _ in 0..4 {
+            assert_eq!(sources.rms_required_with_geometry(&context, &parameters, &geometry).unwrap(), expected);
+        }
+        assert_eq!(sources.rms_required(&context, &parameters).unwrap(), expected);
+        drop(programs);
+
+        let ordinary_start = std::time::Instant::now();
+        for _ in 0..2 { assert_eq!(sources.rms_required(&context, &parameters).unwrap(), expected); }
+        let ordinary_ns = ordinary_start.elapsed().as_nanos();
+        let cached_start = std::time::Instant::now();
+        for _ in 0..64 {
+            assert_eq!(sources.rms_required_with_geometry(&context, &parameters, &geometry).unwrap(), expected);
+        }
+        let cached_ns = cached_start.elapsed().as_nanos();
+        eprintln!("C71_RMS_COMPACT_GEOMETRY {}", serde_json::json!({
+            "scope":"reduced public mixed nonzero recipes; no GPU or canonical timing credit",
+            "distinct_programs":geometry.keys.len(),"height":geometry.widths.len()-1,
+            "required_fp3":expected,"ordinary_calls":2,"ordinary_ns":ordinary_ns,
+            "cached_calls":64,"cached_ns":cached_ns,
+            "cache_heap_capacity_bytes":geometry.keys.capacity()*core::mem::size_of::<RequiredKey>()
+                +geometry.widths.capacity()*core::mem::size_of::<usize>(),
+            "retained_circuit_bytes":0,"exact_original_count":true,
+        }));
+
+        {
+        let reject = |s: &P0Statement<'_>, p: &[[i32; 3]]| {
+            assert!(sources.rms_required_with_geometry(s, p, &geometry).is_err());
+        };
+        reject(&context, &parameters[..parameters.len() - 1]);
+        let mut changed = parameters.clone();
+        changed[0][2] += 1;
+        reject(&context, &changed);
+        reject(&P0Statement { weights: &bad_roots, ..context }, &parameters);
+        reject(&P0Statement { auxiliary: &bad_roots, ..context }, &parameters);
+        reject(&P0Statement { weight_gamma: &[], ..context }, &parameters);
+        reject(&P0Statement { auxiliary_gamma: &[], ..context }, &parameters);
+        reject(&P0Statement { quantization: [0; 32], ..context }, &parameters);
+        reject(&P0Statement {
+            attempt: AttemptContext { nonce: [0; 32], ..context.attempt }, ..context
+        }, &parameters);
+        let other_plan = super::super::tests::toy_plan(2, 1);
+        let other_sources = other_plan.rms_sources().unwrap();
+        reject(&P0Statement { auxiliary_layout: &other_sources.bytes.scalar, ..context }, &parameters);
+        }
+
+        // Count depends on the actual current cell/statistic dimensions;
+        // neither dimensions nor a full reservation are silently cached.
+        let cells = sources.cells;
+        sources.cells = 0;
+        assert!(sources.rms_required_with_geometry(&context, &parameters, &geometry).is_err());
+        sources.cells = (1usize << 29) + 1;
+        assert!(sources.rms_required_with_geometry(&context, &parameters, &geometry).is_err());
+        sources.cells = cells;
+        sources.cells = cells.next_power_of_two()*2;
+        assert_eq!(sources.rms_required_with_geometry(&context, &parameters, &geometry).unwrap(),
+            sources.rms_required(&context, &parameters).unwrap());
+        sources.cells = cells;
+        let columns = sources.norms[0].columns;
+        sources.norms[0].columns += 1;
+        assert!(sources.rms_required_with_geometry(&context, &parameters, &geometry).is_err());
+        sources.norms[0].columns = columns;
+        let rows = sources.norms[0].rows;
+        sources.norms[0].rows = 0;
+        assert!(sources.rms_required_with_geometry(&context, &parameters, &geometry).is_err());
+        sources.norms[0].rows = rows;
+
+        assert!(RequiredGeometry::compile(BTreeSet::new()).is_err());
+        assert!(RequiredGeometry::compile((1..=422).map(|d| (d, [0; 3], true)).collect()).is_err());
+
+        assert!(gkr::required_from_widths(&geometry.widths, 30).is_err());
+        assert!(gkr::required_from_widths(&[], bits(cells)).is_err());
+        assert!(gkr::required_from_widths(&[128, 3, 1], bits(cells)).is_err());
+        assert!(gkr::required_from_widths(&[128, 2], bits(cells)).is_err());
+        assert!(gkr::required_from_widths(&[256, 1], bits(cells)).is_err());
+        assert!(gkr::required_from_widths(&[128, 1 << 15, 1], bits(cells)).is_err());
+    }
     use crate::c71_matrix::gemma::caller::{Compact, PendingP0};
     use rand_010::{RngExt, SeedableRng};
 

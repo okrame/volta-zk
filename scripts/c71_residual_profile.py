@@ -196,6 +196,9 @@ def self_check():
     assert range_census(35,11,[0,1,1,1,1,1,2,2,2,3,3],1<<27,2)['known_consumer_success_path_fences']==9057
 
 def admitted_rms_work():
+    selected_gkr = source(PCS+'rms/gkr.rs')
+    boolean_first_round = 'boolean_first_round_gate_products_saved' in selected_gkr
+    packed_replay = 'patterns::PackedReplay::new' in selected_gkr
     ledger_path='artifact/c7.1-pod/ledger-20261007T150200Z/ledger-attention.json'
     admission_path='artifact/c7.1-pod/gamma-admission-20261007T155133Z/admission.json'
     recipes_path='artifact/c7.1-pod/ledger-20261007T150200Z/recipes-attention.json'
@@ -220,11 +223,26 @@ def admitted_rms_work():
             'Fp3_add':4*ops['and']+9*ops['xor']+2*ops['copy']+6*program_pairs,
             'Fp3_sub':2*ops['and']+4*ops['xor']+ops['copy']+program_pairs,'Fp3_neg':ops['xor']}
         assert core==support['factored_arithmetic_after_structural_support_pruning']
+        first = {op:sum(p['gate_iterations_across_layers'][op]
+                        for p in support['rounds'][0]['profiles'])
+                 for op in ('and','xor','copy')}
+        saved = 7*(first['and']+first['xor'])+2*first['copy'] if boolean_first_round else 0
+        selected_core = dict(core)
+        if boolean_first_round:
+            selected_core['Fp3_mul'] -= saved
+            selected_core['Fp3_add'] += 5*first['and']+2*first['copy']
+            selected_core['Fp3_sub'] += first['and']-first['xor']
+            selected_core['Fp3_neg'] -= first['xor']
+        assert all(v >= 0 for v in selected_core.values())
         assert sum(layer['scalar_boolean_replay_gate_evaluations'] for layer in rms['layers'])==cell['cell_first_scalar_boolean_replay_gates']
         rows.append({'old_tokens':context['old_tokens'],'programs':rms['programs'],
             'depth':rms['depth'],'live_cells':rms['live_cells'],'padded_cells':rms['padded_cells'],
             'cell_sumcheck_rounds':bits*rms['depth'],'cell_phase':cell,
             'gate_iterations_after_public_support_pruning':ops,'coefficient_core_Fp3':core,
+            'coefficient_core_Fp3_scope':'immutable historical baseline; selected route is separate',
+            'selected_coefficient_core_Fp3':selected_core,
+            'selected_boolean_first_round_products_saved':saved,
+            'selected_boolean_first_round_scope':'exact source-operation count on public structural support; no timing or instruction credit',
             'byte_endpoint_children_source_work':context['rms_source_prover']['byte_endpoint']['counted_work'],
             'compact_frames_named_payload_and_metadata_bytes':rms['compact_original_PYS_candidate']['payload_and_metadata_bytes'],
             'missing':context['rms_source_prover']['missing']})
@@ -236,7 +254,10 @@ def admitted_rms_work():
         'recipes_sha256':hashlib.sha256(recipes_raw).hexdigest(),'recipe_digest':ledger['recipe_digest'],
         'historical_ledger_flags_preserved':{'calibrated':ledger['calibrated'],'complete_work':ledger['complete_work'],
             'complete_physical_peak':ledger['complete_physical_peak'],'credit':ledger['credit']},
-        'selected_route':'canonical_prove -> caller.prove_rms -> gkr.prove -> prove_sourcewise -> prove_impl(true,None); no patterns; canonical byte endpoint sourcewise',
+        'selected_route':'canonical_prove -> caller.prove_rms -> gkr.prove -> prove_sourcewise -> prove_impl(true,None); no pattern histogram; canonical byte endpoint sourcewise',
+        'selected_boolean_first_round_masks':boolean_first_round,
+        'selected_packed_replay':packed_replay,
+        'packed_replay_scope':'64 original cells per packet, one disjoint live mask per present program; mixed packets may have no 64x sharing. Historical scalar gate counts are not selected packed counts',
         'frame_callback_scope':'CompactFrames cache reads/replay; not additional complete A reconstructions',
         'contexts':rows,'excluded_other_nonrange_families':['RMS statistic/P0','RNE/tableRNE','gate/Rope/QK/PV claims',
             'EXP30 maximum/lookup/ratio pattern branch','GELU/softcap lookup','index/terminal/MAC/FS/codec/verifier'],

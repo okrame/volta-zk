@@ -19,6 +19,7 @@ pub(in crate::c71_matrix) struct Recipes {
     pub digest: [u8; 32],
     pub matrix: Vec<Pair>,
     pub rms: Vec<[i32; 3]>,
+    rms_geometry: Option<rms::caller::RequiredGeometry>,
     pub gelu: Vec<[i32; 2]>,
     pub gate_up: Vec<Pair>,
     pub rope: Vec<Pair>,
@@ -31,18 +32,10 @@ pub(in crate::c71_matrix) struct Recipes {
 }
 
 impl Recipes {
-    fn validate_rms(programs: BTreeSet<(usize, [i32; 3], bool)>) -> Result<(), String> {
-        for (d, [ex, ew, ey], weighted) in programs {
-            let p = crate::c71_matrix::rms::compile(d, ex, ew, ey, weighted)?;
-            if p.levels.len() > 128
-                || p.ports > 98
-                || p.levels.iter().any(|l| l.len() > 16384)
-                || p.levels.iter().map(Vec::len).sum::<usize>() > 2_000_000
-            {
-                return Err("Gemma RMS profile exceeds the composed public envelope".into());
-            }
-        }
-        Ok(())
+    fn validate_rms(
+        programs: BTreeSet<(usize, [i32; 3], bool)>,
+    ) -> Result<rms::caller::RequiredGeometry, String> {
+        rms::caller::RequiredGeometry::compile(programs)
     }
 
     /// Complete canonical row reservation, before any live FS or witness IO.
@@ -90,7 +83,16 @@ impl Recipes {
         if originals != 410 {
             return Err("complete Gemma original-RNE partition differs".into());
         }
-        count += plan.p0_required() + rms.rms_required(context, &self.rms)?;
+        let rms_count = match &self.rms_geometry {
+            Some(geometry) => rms.rms_required_with_geometry(context, &self.rms, geometry)?,
+            // The metadata-only capacity fixture skips compiler admission.
+            // It keeps the original public preflight as its explicit oracle.
+            #[cfg(test)]
+            None => rms.rms_required(context, &self.rms)?,
+            #[cfg(not(test))]
+            None => return Err("canonical RMS public geometry unavailable".into()),
+        };
+        count += plan.p0_required() + rms_count;
         count += s.attention.rope.gate_up.gelu.lookup_required(context, tables.gelu)?;
         count += s.attention.rope.gate_up.required(context)?;
         count += s.attention.rope.required(context, tables.rope)?;
@@ -332,9 +334,9 @@ impl Recipes {
             programs.insert((n.columns, p, n.cohort.is_some()));
         }
         #[cfg(test)]
-        if !capacity_only { Self::validate_rms(programs)?; }
+        let rms_geometry = if capacity_only { None } else { Some(Self::validate_rms(programs)?) };
         #[cfg(not(test))]
-        Self::validate_rms(programs)?;
+        let rms_geometry = Some(Self::validate_rms(programs)?);
         let mut gelu = Vec::new();
         let mut gate_up = Vec::new();
         for (v, p) in g.gelu.iter().zip(&gu.products) {
@@ -404,6 +406,7 @@ impl Recipes {
             digest: *h.finalize().as_bytes(),
             matrix,
             rms: parameters,
+            rms_geometry,
             gelu,
             gate_up,
             rope: rotations,

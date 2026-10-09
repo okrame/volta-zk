@@ -170,6 +170,29 @@ fn correlation_count(widths: &[usize], c: usize) -> usize {
         + byte_function::required(c + 4)
 }
 
+/// Geometry of compiler-owned public circuits, without assignments or coins.
+/// Callers may retain these small widths after dropping the circuits.
+pub(in super::super) fn public_widths(programs: &[Circuit]) -> Result<Vec<usize>, String> {
+    widths(programs)
+}
+
+pub(in super::super) fn required_from_widths(
+    widths: &[usize],
+    cell_bits: usize,
+) -> Result<usize, String> {
+    if cell_bits > 29 {
+        return Err("B12 RMS cell domain exceeds D29".into());
+    }
+    if !(2..=129).contains(&widths.len())
+        || widths[0] > 128
+        || widths.last() != Some(&1)
+        || widths.iter().any(|&w| !w.is_power_of_two() || w > 1 << 14)
+    {
+        return Err("B12 RMS cached public geometry differs".into());
+    }
+    Ok(correlation_count(widths, cell_bits))
+}
+
 /// Public preflight: no cell assignments, witness, FS or correlation rows.
 pub(in super::super) fn required(programs: &[Circuit], cell_bits: usize) -> Result<usize, String> {
     if cell_bits > 29 {
@@ -571,6 +594,9 @@ pub(in super::super) fn work_census(
         "selector_specialization_saved_Fp3_mul_add_each":
             (programs.len() as u64*n-live)*c*depth as u64,
         "compiler_constant_folding_credit":false,
+        "replay_census_scope":"literal scalar baseline, not selected packed DAG operations or capacities",
+        "selected_packed_replay":true,
+        "selected_first_cell_round_Boolean_gate_scales":true,
         "explicit_Boolean_fold_masks_implemented":true,
         "replay_scratch_reused_and_released_before_byte_LUT":true,
         "canonical_calibrated_profile":false, "complete_work":false,
@@ -603,6 +629,8 @@ pub(in super::super) struct SourceCellWork {
     pub coefficient_additions: u64,
     pub coefficient_subtractions: u64,
     pub coefficient_negations: u64,
+    pub boolean_first_round_gate_products_saved: u64,
+    pub boolean_first_round_small_integer_scales: u64,
     pub owned_heap_peak_bytes: usize,
 }
 
@@ -694,6 +722,7 @@ const SOURCE_CAPACITY_EXCLUDED_OWNERS: [&str; 7] = [
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize)]
 pub(in super::super) struct SourceProverWork {
     pattern_prefix: patterns::Work,
+    packed_replay: patterns::PackedReplayWork,
     pub cell_rounds: Vec<SourceCellWork>,
     pub boolean_replay_calls: u64,
     pub boolean_and_gates: u64,
@@ -727,6 +756,14 @@ fn prefix_weight(prefix: usize, challenges: &[Fp3], work: &mut SourceCellWork) -
         work.fold_weight_multiplications += 1;
     }
     weight
+}
+
+// At the first cell fold the unfurled wires are Boolean. Their quadratic
+// gate coefficients lie in [-2,2]; masks and additions replace Fp3 products.
+fn scale_boolean_gate_coefficient(weight: Fp3, coefficient: i8) -> Fp3 {
+    debug_assert!((-2..=2).contains(&coefficient));
+    (weight.mul_bool(coefficient > 0) + weight.mul_bool(coefficient > 1))
+        - (weight.mul_bool(coefficient < 0) + weight.mul_bool(coefficient < -1))
 }
 
 /// Bounded equivalent of `cell_coefficients` for one cell-domain round.
@@ -861,6 +898,37 @@ fn source_cell_round<const BOOLEAN_ROWS: bool>(
             let mut u = [Fp3::ZERO; 3];
             for (gate, &gate_weight) in program_gates.iter().zip(weights) {
                 work.gate_cell_iterations += 1;
+                if BOOLEAN_ROWS && challenges.is_empty() {
+                    let bit = |value: Fp3| {
+                        debug_assert!(value == Fp3::ZERO || value == Fp3::ONE);
+                        (value.c0.value() == 1) as i8
+                    };
+                    let (x, hx) = (bit(lo[gate.x]), bit(hi[gate.x]));
+                    let dx = hx - x;
+                    if gate.op == Op::Copy {
+                        u[0] += gate_weight.mul_bool(x != 0);
+                        u[1] += scale_boolean_gate_coefficient(gate_weight, dx);
+                        work.coefficient_additions += 4;
+                        work.coefficient_subtractions += 1;
+                        work.boolean_first_round_small_integer_scales += 1;
+                        work.boolean_first_round_gate_products_saved += 2;
+                    } else {
+                        let (y, hy) = (bit(lo[gate.y]), bit(hi[gate.y]));
+                        let dy = hy - y;
+                        let mut f = [x*y, x*dy+dx*y, dx*dy];
+                        if gate.op == Op::Xor {
+                            f = [x+y-2*f[0], dx+dy-2*f[1], -2*f[2]];
+                        }
+                        for j in 0..3 {
+                            u[j] += scale_boolean_gate_coefficient(gate_weight, f[j]);
+                        }
+                        work.coefficient_additions += 9;
+                        work.coefficient_subtractions += 3;
+                        work.boolean_first_round_small_integer_scales += 3;
+                        work.boolean_first_round_gate_products_saved += 7;
+                    }
+                    continue;
+                }
                 let x = lo[gate.x];
                 let dx = hi[gate.x] - x;
                 if gate.op == Op::Copy {
@@ -1101,7 +1169,6 @@ fn prove_impl(
     let replay_heap = Cell::new(0usize);
     let replay_input_heap = Cell::new(0usize);
     let round_auth_heap = Cell::new(0usize);
-    let replay_scratch = RefCell::new(ReplayLayerScratch::default());
     let selector_zero_bits: u64 = s
         .assignments
         .iter()
@@ -1116,6 +1183,9 @@ fn prove_impl(
     for depth in (1..widths.len()).rev() {
         let width = widths[depth - 1];
         let (previous, selectors, following, mut rounds) = if sourcewise {
+            let replay = RefCell::new(patterns::PackedReplay::new_validated(s.programs, depth - 1, width)?);
+            let replay_prefix = Cell::new(0usize);
+            let replay_group = Cell::new(None);
             let selector_point = point.clone();
             let mut pattern = if let Some(tile_bits) = pattern_prefix {
                 patterns::build(
@@ -1134,30 +1204,38 @@ fn prove_impl(
             let mut following = Vec::new();
             let mut rounds = Vec::new();
             let row = |cell: usize, out: &mut [Fp3]| -> Result<(), String> {
-                let p = s.assignments.get(cell).ok_or("dummy RMS cell replayed")?;
-                let program = &s.programs[p];
-                let frame = read_frame(cell);
-                let mut scratch = replay_scratch.borrow_mut();
-                {
-                    let inputs = scratch.inputs(program.ports);
-                    inputs[1] = 1;
-                    for bit in 0..program.ports - 2 {
-                        inputs[2 + bit] = u64::from((frame[bit / 8] >> (bit % 8)) & 1);
+                if s.assignments.get(cell).is_none() {
+                    return Err("dummy RMS cell replayed".into());
+                }
+                let n = s.assignments.len();
+                let leaves = 1usize << replay_prefix.get();
+                let active = n / leaves;
+                let half = active / 2;
+                // Follow the coefficient builder's original public traversal:
+                // (cell pair, side, prefix). Contiguous source indices would
+                // lose packing in late rounds with a strided prefix.
+                let ordinal = if n == 1 { 0 } else {
+                    let index = cell % active;
+                    ((index % half) * 2 + index / half) * leaves + cell / active
+                };
+                let group = ordinal / 64;
+                let mut packed = replay.borrow_mut();
+                if replay_group.get() != Some(group) {
+                    let begin = 64 * group;
+                    let count = 64.min(n - begin);
+                    let mut cells = [(0usize, None); 64];
+                    for (lane, entry) in cells[..count].iter_mut().enumerate() {
+                        let position = begin + lane;
+                        let source = if n == 1 { 0 } else {
+                            let pair_side = position / leaves;
+                            pair_side / 2 + (pair_side % 2) * half + (position % leaves) * active
+                        };
+                        *entry = (source, s.assignments.get(source));
                     }
+                    packed.load(&cells[..count], &read_frame)?;
+                    replay_group.set(Some(group));
                 }
-                let selected = (depth - 1).min(program.levels.len());
-                let replay = program.replay_layer_reuse(&mut scratch, 1, selected)?;
-                replay_calls.set(replay_calls.get() + 1);
-                replay_and.set(replay_and.get() + replay.and_gates);
-                replay_xor.set(replay_xor.get() + replay.xor_gates);
-                replay_copy.set(replay_copy.get() + replay.copy_gates);
-                replay_heap.set(replay_heap.get().max(replay.peak_two_vector_capacity_bytes));
-                replay_input_heap.set(replay_input_heap.get().max(scratch.input_capacity_bytes()));
-                out.fill(Fp3::ZERO);
-                for (value, bit) in out.iter_mut().zip(scratch.selected().iter().copied()) {
-                    *value = signed(bit as i64);
-                }
-                Ok(())
+                packed.row(ordinal % 64, out)
             };
             let selector = |cell: usize| {
                 Ok(s.assignments.get(cell).map(|p| (p, equality_at(&selector_point, cell))))
@@ -1188,6 +1266,8 @@ fn prove_impl(
                     }
                     continue;
                 }
+                replay_prefix.set(prefix.len());
+                replay_group.set(None); // prefix changes the public traversal
                 let mut work = SourceCellWork::default();
                 let result = source_cell_round::<true>(
                     s.programs,
@@ -1224,6 +1304,14 @@ fn prove_impl(
                 following.push(r);
                 rounds.push(wire);
             }
+            let packed = replay.borrow().work();
+            replay_calls.set(replay_calls.get() + packed.program_replays);
+            replay_and.set(replay_and.get() + packed.dag_word_and);
+            replay_xor.set(replay_xor.get() + packed.dag_word_xor);
+            replay_heap.set(replay_heap.get().max(
+                packed.plan_build_capacity_upper_bytes.max(
+                    packed.plan_capacity_bytes + packed.scratch_moving_capacity_upper_bytes)));
+            source_work.packed_replay.accumulate(packed);
             cell_protocol_capacity_peak_bytes = cell_protocol_capacity_peak_bytes.max(
                 (point.capacity()
                     + weights.capacity()
@@ -1331,7 +1419,8 @@ fn prove_impl(
         triples.push(original);
         layers.push(Layer { rounds, terminal });
     }
-    drop(replay_scratch); // Last Boolean consumer precedes the byte LUT allocation.
+    // Each packed replay plan/scratch dropped at the end of its cell phase,
+    // before index edges and before the disjoint byte LUT allocation.
     let gkr_layers_capacity_bytes = layers_heap_capacity_bytes(&layers, layers.capacity());
     let gkr_triples_capacity_bytes = triples.capacity() * core::mem::size_of::<[Auth; 3]>();
     let products = range::prove_products(&triples, rows.next().unwrap(), fs);
@@ -1649,6 +1738,58 @@ pub(in super::super) fn verify(
 mod tests {
     use super::*;
     use rand_010::RngExt;
+
+    #[test]
+    fn c71_b12_boolean_first_cell_round_exact_all_gate_patterns() {
+        let weight = Fp3::new(Fp::new(17), Fp::new(23), Fp::new(31));
+        for coefficient in -2i8..=2 {
+            assert_eq!(scale_boolean_gate_coefficient(weight, coefficient),
+                weight * signed(coefficient as i64));
+        }
+        let programs = [Circuit {
+            ports: 4,
+            product_bits: 16,
+            levels: vec![vec![
+                Gate { op: Op::Copy, x: 0, y: 0 },
+                Gate { op: Op::And, x: 0, y: 1 },
+                Gate { op: Op::Xor, x: 0, y: 1 },
+            ]],
+            valid: 0,
+            coefficients: [0; 3],
+            arithmetic_bits: 1,
+            raw_gates: 3,
+        }];
+        let weights = [weight, weight + signed(7), weight - signed(11)];
+        let selector_weights = [
+            Fp3::new(Fp::new(37), Fp::new(41), Fp::new(43)),
+            Fp3::new(Fp::new(47), Fp::new(53), Fp::new(59)),
+        ];
+        for pattern in 0..16 {
+            let row = |cell: usize, out: &mut [Fp3]| {
+                out.fill(Fp3::ZERO);
+                out[0] = signed(((pattern >> (2 * cell)) & 1) as i64);
+                out[1] = signed(((pattern >> (2 * cell + 1)) & 1) as i64);
+                Ok(())
+            };
+            for missing in [None, Some(0), Some(1)] {
+                let selector = |cell| Ok(if missing == Some(cell) { None }
+                    else { Some((0, selector_weights[cell])) });
+                let mut ordinary = SourceCellWork::default();
+                let expected = source_cell_coefficients::<false>(
+                    &programs, 1, 4, 2, &[], &row, &selector, &weights, &mut ordinary,
+                ).unwrap();
+                let mut boolean = SourceCellWork::default();
+                let actual = source_cell_coefficients::<true>(
+                    &programs, 1, 4, 2, &[], &row, &selector, &weights, &mut boolean,
+                ).unwrap();
+                assert_eq!(actual, expected, "pattern={pattern}, missing={missing:?}");
+                assert_eq!(boolean.coefficient_multiplications, 6);
+                assert_eq!(ordinary.coefficient_multiplications, 22);
+                assert_eq!(boolean.boolean_first_round_gate_products_saved, 16);
+                assert_eq!(boolean.owned_heap_peak_bytes, ordinary.owned_heap_peak_bytes);
+            }
+        }
+    }
 
     #[test]
     fn sourcewise_cell_coefficients_match_dense_folds_without_cell_wire_matrix() {
@@ -2254,14 +2395,19 @@ mod tests {
                 );
                 assert_eq!(
                     census["cell_first_scalar_boolean_replay_gates"].as_u64().unwrap(),
-                    source_work.boolean_and_gates
-                        + source_work.boolean_xor_gates
-                        + source_work.boolean_copy_gates
+                    source_work.packed_replay.original_scalar_gate_equivalent
                 );
             }
+            assert_eq!(source_work.packed_replay.original_frames,
+                source_work.cell_rounds.iter().map(|work| work.row_source_callbacks).sum::<u64>()
+                + if c == 0 { assigned.iter().sum::<u64>() * (widths.len()-1) as u64 } else { 0 });
+            assert!(source_work.packed_replay.dag_word_operations
+                <= source_work.packed_replay.original_scalar_gate_equivalent);
             assert!(source_work.cell_rounds.iter().all(|work| work.owned_heap_peak_bytes
                 <= (3 * (1 << 14) + 2 * programs.len()) * 24 + programs.len()));
-            assert!(source_work.boolean_replay_heap_peak_bytes <= 2 * (1 << 14) * 8);
+            // These reduced fixtures retain a single depth of packed DAGs,
+            // rather than the former two literal layer vectors.
+            assert!(source_work.boolean_replay_heap_peak_bytes <= 1 << 27);
             let capacity = &source_work.capacity;
             assert_eq!(capacity.row_capacity_bytes, 0);
             assert_eq!(census["row_logical_heap_bytes"], 0);

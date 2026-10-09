@@ -1265,7 +1265,12 @@ il binding da solo non è un preparatore completo. Il runner
 `canonical_device` lo collega a scanner/replay GPU, senza fallback.
 `NonlinearTables` valida e carica tabelle i16, 60 EXP30 i32 e due finestre RoPE alle
 posizioni assolute del contesto: 23.954.072 B logici, 23.954.176 B allineati
-nella stessa arena. Il packing host temporaneo è ancora addebitabile,
+nella stessa arena. Le tabelle i16 possono contenere marker MIN in voci
+non selezionate: la selezione del marker ferma il producer, come sul
+riferimento CPU. Il precedente rifiuto dell’intera tabella impediva
+l’uso di quattro GELU del Γ ammesso; la correzione non cambia i byte
+pubblici, gli output ammessi o i controlli nel kernel.
+Il packing host temporaneo è ancora addebitabile,
 oltre alle tabelle pubbliche originali; non è spill privato. Layout,
 ricette, posizione e sorgente/righe dell'input sono controllati a ogni
 operazione. Ogni istogramma usa 524.280 B logici / 524.288 B riservati e

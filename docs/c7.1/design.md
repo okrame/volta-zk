@@ -93,7 +93,7 @@ sorvegliato sono nel
 | Closure lineare | Owner e caller nativi integrati con parità ridotta: una scan originale per round, D·live visite, cinque elementi MAC e flag restituiti; mapping W riusato, nessun getter A sostitutivo |
 | PCS S1 e successori | Route canonica collegata a `model.native_original`: singleton, coset/FFT/hash/sali, OOD, retention A dopo apertura del predecessore, fold e contrazioni sul common owner; W continua a leggere il packed originale |
 | Query extension A/W | Tre componenti PCS caricate nello stesso passaggio e resti residenti in tutti gli stadi; A legge le plane trattenute, senza ricostruzioni originali aggiunte; sole valutazioni finali D2H |
-| Accumulo W Tensor Core | Limb16 esatto selezionato dopo parità CUDA: 5,663× sul componente W da 256 MiB; stesso owner e capacità globali, tempo canonico ancora da misurare |
+| Accumulo W Tensor Core | Limb16 esatto selezionato dopo parità CUDA: 5,663× sul componente W da 256 MiB; stesso owner e capacità globali; PCS W completa in 360,301 s |
 | QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
 | RMS misto | Replay Booleano CPU a 64 lane con DAG per depth; primo round esatto e cache compatta delle geometrie pubbliche. Selezione solo senza pattern prefix e con più programmi; coefficienti Fp3 ed endpoint restano CPU |
 | Resto della prova | Fattori pubblici, rigenerazione Merkle delle aperture, GKR/MAC, Seed6 reale AES, codec, verifica e journal CPU; tempi completi da misurare |
@@ -135,8 +135,12 @@ dimostrato. Cambiare scale può semplificare i circuiti ma cambia la
 relazione numerica; la ricerca di un altro Γ è distinta dal goal corrente.
 La [campagna H100 corrente](../c7.1-history/h100-w-setup-2026-10-09.md)
 ha completato PCS W in 360,301 s e l'installazione W in 404,340 s,
-con 128 scansioni/7,859 TB logici. Il setup Seed6/AES è in corso;
-O=0/150/300 non sono ancora verificati. Il precedente timeout CPU dopo
+con 128 scansioni/7,859 TB logici. Il setup Seed6/AES termina in
+2.018,838 s; il [primo trial](../c7.1-history/h100-canonical-01-2026-10-09.md)
+fallisce durante la preparazione O=0, senza violazioni dei limiti. Il loader
+CUDA rifiutava marker di overflow in voci pubbliche non selezionate.
+La correzione e il diagnostico separato di inferenza sono in validazione;
+O=0/150/300 non sono verificati. Il precedente timeout CPU dopo
 circa 41 minuti rimane il fallimento di quella schedule da 1.024 scansioni,
 non lo stato del commitment H100 corrente. La CLI ricostruisce W a ogni
 avvio e non riprende installazioni o sessioni interrotte.
@@ -201,7 +205,7 @@ nel Tree; il [record componenti](../../benchmarks/results/c71-h100-components-20
 conserva i campioni esatti e i loro limiti. QK/PV rimane scalare. Il codec cGGM ora
 assorbe direttamente lo stesso frame SHAKE, eliminando il buffer heap
 per nodo; [parità e benchmark](../c7.1-history/h100-w-setup-2026-10-09.md)
-non dimostrano un guadagno temporale. Il trial canonico corrente usa ancora
+non dimostrano un guadagno temporale. Il primo trial canonico usa
 il codec precedente; non attribuire alla modifica i suoi tempi.
 
 Le geometrie fisiche W CUDA 32 coset/otto colonne, CPU W quattro coset

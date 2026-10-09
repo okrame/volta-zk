@@ -172,12 +172,13 @@ impl NonlinearTables {
                 return runtime.abort("resident lookup table type differs");
             };
             if values.len() != 65535
-                || values.contains(&i16::MIN)
                 || table.lower != -32767
                 || table.profile as usize != if index == 60 { 0 } else { index }
             {
                 return runtime.abort("resident lookup table shape or range differs");
             }
+            // Certified tables may contain overflow markers at unused inputs.
+            // The lookup kernel rejects a selected marker, as the CPU producer does.
             if index == 60 {
                 softcap = packed.len();
             } else {
@@ -1635,7 +1636,8 @@ mod tests {
         let mut fixture = fixture(512);
         fixture.config.arena_bytes = 64 << 20;
         let injection = Injection::new(&fixture.config);
-        let values: Vec<i16> = (-32767..=32767).map(|value| (value / 2) as i16).collect();
+        let mut values: Vec<i16> = (-32767..=32767).map(|value| (value / 2) as i16).collect();
+        values[0] = i16::MIN; // An unused overflow entry must not reject installation.
         let exponential_values: Vec<i32> =
             (0..65535).map(|entry| (1 << 30) / (entry + 1)).collect();
         let exp30: Vec<_> = (0..60)

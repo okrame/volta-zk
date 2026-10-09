@@ -19,10 +19,21 @@ correzioni operative e fallimenti conservati. W Tensor è selezionato dopo
 parità e rapporto 5,663× su W sintetica da 256 MiB. Ricompilazione e seconda
 parità 15/15 passano. Il [trial canonico](../c7.1-history/h100-w-setup-2026-10-09.md)
 su `26c4c89` completa PCS W in 360,301 s e installazione in 404,340 s,
-con massimo temporaneo campionato 4.559.179.264 B; setup reale in corso,
-O=0/150/300 ancora non verificati. Timeout diagnostico 7.200 s, target 65 s.
+con massimo temporaneo campionato 4.559.179.264 B. Il
+[primo trial terminale](../c7.1-history/h100-canonical-01-2026-10-09.md)
+completa setup in 2.018,838 s, poi fallisce nella preparazione O=0:
+nessuna prova, timeout o violazione di risorse. O=150/300 non iniziati.
+Timeout diagnostico 7.200 s, target 65 s.
 Il successivo codec cGGM `efebea6` è validato separatamente e non è il
-binario del trial corrente.
+binario del primo trial.
+La correzione del loader conserva i marker pubblici non selezionati e
+lascia terminale la loro selezione. Prima di un nuovo setup usare il
+diagnostico `inference-cuda` con gli stessi argomenti di `experiment-cuda`,
+output nuovo e monitor canonico: esegue solo O=0 con lo stesso owner,
+limiti e preparatore, senza commitment, PCG, prova, accettazione o promozione KV.
+È una misura di componente. Il successivo trial canonico richiede journal
+e correlazioni nuovi e parte nuovamente da W.
+
 La precedente campagna chiusa conserva il proprio fallimento nel commitment
 W; il suo pod spento e le sue autorizzazioni non descrivono questa campagna.
 

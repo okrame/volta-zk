@@ -19,6 +19,11 @@ Il [commitment W H100 completo](../c7.1-history/h100-w-setup-2026-10-09.md)
 e la parità del codec SHAKE cGGM sono evidenze di implementazione distinte
 dall'accettazione del run e dal trasferimento dei bound a Seed6; quest'ultimo
 rimane aperto. L'assorbimento incrementale conserva il frame byte per byte.
+Il [primo trial](../c7.1-history/h100-canonical-01-2026-10-09.md) completa
+il setup ma fallisce prima della prova O=0. Consentire marker pubblici
+non selezionati ripristina la semantica del lookup; selezionare MIN resta
+un errore terminale. Il diagnostico `inference-cuda` non promuove KV,
+non usa correlazioni e non produce accettazione o credito di protocollo.
 
 Il teorema richiede almeno 78 bit per ciascun vantaggio completo.
 Si lavora nel modello dell'oracolo casuale classico, con lavoro e memoria

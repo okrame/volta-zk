@@ -1,0 +1,2066 @@
+{
+  "bytes_from_verifier": 7534457,
+  "bytes_to_verifier": 78798016,
+  "channels": [
+    {
+      "bytes_from_verifier": 0,
+      "bytes_to_verifier": 24490555,
+      "phase": "public_distribution",
+      "slot": null
+    },
+    {
+      "bytes_from_verifier": 7534041,
+      "bytes_to_verifier": 54307325,
+      "phase": "seed6_setup",
+      "slot": null
+    },
+    {
+      "bytes_from_verifier": 0,
+      "bytes_to_verifier": 136,
+      "phase": "installation",
+      "slot": null
+    },
+    {
+      "bytes_from_verifier": 416,
+      "bytes_to_verifier": 0,
+      "phase": "response",
+      "slot": 0
+    }
+  ],
+  "complete_physical_peak": false,
+  "gpu_backend_selected": true,
+  "joint_allocations": {
+    "denied_allocations": 0,
+    "enforced": true,
+    "excluded_packed_w_capacity_bytes": 61394690560,
+    "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+    "host_layout_bytes": 61444567229,
+    "native_reservation_bytes": 0,
+    "operational_margin_required_bytes": 268435456,
+    "payload_limit_bytes": 5905580032,
+    "peak_plus_runtime_allowance_bytes": 4130550448,
+    "physical_runtime_allowance_verified": false,
+    "runtime_allowance_bytes": 268435456,
+    "temporary_live_bytes": 49877394,
+    "temporary_payload_peak_bytes": 3862114992
+  },
+  "memory_scope": "joint host allocator/native reservation counter covers both roles and realloc overlap; W packed alone is exempt; RSS/HWM and native phase samples remain diagnostics; physical runtime allowance requires external process/device measurement",
+  "phases": [
+    {
+      "complete": false,
+      "end_ns": 2557439014030,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60176532 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61443997896,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 49308061,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "reason": "native owner closed or stats unavailable",
+          "sample_available": false
+        }
+      },
+      "phase": "command_total",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 908871,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t    3048 kB",
+          "VmRSS:\t    3048 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": false,
+          "excluded_packed_w_capacity_bytes": 0,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 1844,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268435456,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 2569,
+          "temporary_payload_peak_bytes": 0
+        },
+        "native": null
+      },
+      "wall_ns": 2557438105159
+    },
+    {
+      "complete": true,
+      "end_ns": 96040137489,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60072708 kB",
+          "VmRSS:\t60072708 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61492795322,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 366561608,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 98105487,
+          "temporary_payload_peak_bytes": 98126152
+        },
+        "native": null
+      },
+      "phase": "global_initialization",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 2209471,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t    4304 kB",
+          "VmRSS:\t    4304 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": false,
+          "excluded_packed_w_capacity_bytes": 0,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 17069,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268435456,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 17794,
+          "temporary_payload_peak_bytes": 0
+        },
+        "native": null
+      },
+      "wall_ns": 96037928018
+    },
+    {
+      "complete": true,
+      "end_ns": 7499902805,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t   81732 kB",
+          "VmRSS:\t   81732 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": false,
+          "excluded_packed_w_capacity_bytes": 0,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 82720534,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268435456,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 82721259,
+          "temporary_payload_peak_bytes": 0
+        },
+        "native": null
+      },
+      "phase": "read_and_compile_public",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 2879989,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t    4316 kB",
+          "VmRSS:\t    4316 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": false,
+          "excluded_packed_w_capacity_bytes": 0,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 20195,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268435456,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 20920,
+          "temporary_payload_peak_bytes": 0
+        },
+        "native": null
+      },
+      "wall_ns": 7497022816
+    },
+    {
+      "complete": true,
+      "end_ns": 7518720518,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t  103272 kB",
+          "VmRSS:\t   81860 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": false,
+          "excluded_packed_w_capacity_bytes": 0,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 73532913,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268435456,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 73533638,
+          "temporary_payload_peak_bytes": 0
+        },
+        "native": null
+      },
+      "phase": "public_distribution",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 7501644644,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t   81732 kB",
+          "VmRSS:\t   81732 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": false,
+          "excluded_packed_w_capacity_bytes": 0,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 82720662,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268435456,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 82721387,
+          "temporary_payload_peak_bytes": 0
+        },
+        "native": null
+      },
+      "wall_ns": 17075874
+    },
+    {
+      "complete": true,
+      "end_ns": 14987835082,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t  130844 kB",
+          "VmRSS:\t  108516 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": false,
+          "excluded_packed_w_capacity_bytes": 0,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 98061677,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268435456,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 98062402,
+          "temporary_payload_peak_bytes": 0
+        },
+        "native": null
+      },
+      "phase": "compile_received_public",
+      "role": "verifier",
+      "slot": null,
+      "start_ns": 7519992934,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t  103272 kB",
+          "VmRSS:\t   81860 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": false,
+          "excluded_packed_w_capacity_bytes": 0,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 73532913,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268435456,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 73533638,
+          "temporary_payload_peak_bytes": 0
+        },
+        "native": null
+      },
+      "wall_ns": 7467842148
+    },
+    {
+      "complete": true,
+      "end_ns": 96038975757,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60072708 kB",
+          "VmRSS:\t60072708 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61492791462,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 366538681,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 98101627,
+          "temporary_payload_peak_bytes": 98103225
+        },
+        "native": null
+      },
+      "phase": "load_packed_w",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 15897545430,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t  130844 kB",
+          "VmRSS:\t  116952 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": false,
+          "excluded_packed_w_capacity_bytes": 0,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 98093825,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268435456,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 98094550,
+          "temporary_payload_peak_bytes": 0
+        },
+        "native": null
+      },
+      "wall_ns": 80141430327
+    },
+    {
+      "complete": true,
+      "end_ns": 121313267109,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60170816 kB",
+          "VmRSS:\t60170816 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61492803967,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 366593274,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 98156220,
+          "temporary_payload_peak_bytes": 98157818
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 0,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 0,
+            "fences": 229,
+            "h2d_bytes": 61394690560,
+            "host_owner_bytes": 42088,
+            "launches": 0,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 0,
+            "peak_reserved_bytes": 61394690560,
+            "releases": 0,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 0
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "native_global_residency",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 96041546028,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60072708 kB",
+          "VmRSS:\t60072708 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61492795509,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 366565494,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 98105674,
+          "temporary_payload_peak_bytes": 98130038
+        },
+        "native": null
+      },
+      "wall_ns": 25271721081
+    },
+    {
+      "complete": true,
+      "end_ns": 525655561610,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60249164 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61570677777,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176030030,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "installation_w_commitment",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 121315429876,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60170920 kB",
+          "VmRSS:\t60170920 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61492809297,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 366632211,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 98161550,
+          "temporary_payload_peak_bytes": 98196755
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 0,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 0,
+            "fences": 229,
+            "h2d_bytes": 61394690560,
+            "host_owner_bytes": 42088,
+            "launches": 0,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 0,
+            "peak_reserved_bytes": 61394690560,
+            "releases": 0,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 0
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 404340131734
+    },
+    {
+      "complete": true,
+      "end_ns": 525671147278,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60249228 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61570706098,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176058351,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "installation_distribution_and_journals",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 525670507941,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60249164 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61570688403,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176040656,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 639337
+    },
+    {
+      "complete": false,
+      "end_ns": 2556940068715,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60176468 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61468449655,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 73801908,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 1,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "session_and_responses",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 525673163496,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60249228 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61570706098,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176058351,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 2031266905219
+    },
+    {
+      "complete": true,
+      "end_ns": 2544512049343,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60250076 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571132585,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176484885,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "seed6_setup",
+      "role": "verifier",
+      "slot": null,
+      "start_ns": 525674126977,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60249228 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61570716010,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176068263,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 2018837922366
+    },
+    {
+      "complete": true,
+      "end_ns": 2544512364820,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60250076 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571156451,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176510098,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "seed6_setup",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 526026823430,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60249240 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61570724924,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176077177,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 2018485541390
+    },
+    {
+      "complete": true,
+      "end_ns": 2544517834330,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60250076 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571188642,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176540895,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "registry_initialization",
+      "role": "verifier",
+      "slot": null,
+      "start_ns": 2544517829008,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60250076 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571189165,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176541418,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 5322
+    },
+    {
+      "complete": true,
+      "end_ns": 2556006753386,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252552 kB",
+          "VmRSS:\t60252552 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571189090,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176541343,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "registry_initialization",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 2544518873117,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60250076 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571171001,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176523254,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 11487880269
+    },
+    {
+      "complete": false,
+      "end_ns": 2556928962923,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60176468 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61493046213,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 98398466,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 1,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "request_to_completion",
+      "role": "verifier",
+      "slot": 0,
+      "start_ns": 2544520842392,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60250136 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571320353,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176869470,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 12408120531
+    },
+    {
+      "complete": false,
+      "end_ns": 2556927014946,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60176468 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61493037026,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 98389279,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 1,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "wait_and_decode_response",
+      "role": "verifier",
+      "slot": 0,
+      "start_ns": 2544521833417,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60250144 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571328809,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176877926,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 12405181529
+    },
+    {
+      "complete": true,
+      "end_ns": 2556009457075,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252552 kB",
+          "VmRSS:\t60252552 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571206725,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176558978,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "request_receive",
+      "role": "prover",
+      "slot": 0,
+      "start_ns": 2556009324450,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60252552 kB",
+          "VmRSS:\t60252552 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571189090,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176541343,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 132625
+    },
+    {
+      "complete": false,
+      "end_ns": 2556918318038,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60252232 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61570891382,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176243635,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 1,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "response_total",
+      "role": "prover",
+      "slot": 0,
+      "start_ns": 2556011477022,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60252552 kB",
+          "VmRSS:\t60252552 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571206725,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176558978,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 906841016
+    },
+    {
+      "complete": false,
+      "end_ns": 2556916197376,
+      "end_resources": {
+        "host_process": [
+          "VmHWM:\t60252552 kB",
+          "VmRSS:\t60252552 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571233244,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176585497,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 1,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "phase": "preparation_including_inference",
+      "role": "prover",
+      "slot": 0,
+      "start_ns": 2556012340583,
+      "start_resources": {
+        "host_process": [
+          "VmHWM:\t60252552 kB",
+          "VmRSS:\t60252552 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61571215549,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 176567802,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 0,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "wall_ns": 903856793
+    }
+  ],
+  "process_memory": [
+    "VmHWM:\t60252536 kB",
+    "VmRSS:\t60176532 kB"
+  ],
+  "resource_samples": [
+    {
+      "elapsed_ns": 14986811984,
+      "phase": "public_table_owners",
+      "simultaneous": {
+        "host_process": [
+          "VmHWM:\t  130844 kB",
+          "VmRSS:\t  108516 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": false,
+          "excluded_packed_w_capacity_bytes": 0,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 98055240,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 268435456,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 98055965,
+          "temporary_payload_peak_bytes": 0
+        },
+        "native": null
+      },
+      "slot": null,
+      "values": {
+        "prover_capacity_bytes": 24439558,
+        "verifier_capacity_bytes": 24439558
+      }
+    },
+    {
+      "elapsed_ns": 2556942162027,
+      "phase": "before_native_cleanup",
+      "simultaneous": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60176468 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61443977574,
+          "native_reservation_bytes": 42088,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 49329827,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "generation_slot": null,
+          "gpu_checkpoint_payload_bytes": 0,
+          "gpu_histogram_payload_bytes": 0,
+          "gpu_kv_capacity_payload_bytes": 0,
+          "gpu_public_table_payload_bytes": 0,
+          "host_public_tables_capacity_bytes": 24439558,
+          "host_w_capacity_bytes": 61394690560,
+          "native_cumulative": {
+            "allocations": 5405,
+            "arena_bytes": 0,
+            "cleanup_failed": 0,
+            "d2d_bytes": 0,
+            "d2h_bytes": 92337632,
+            "fences": 6679,
+            "h2d_bytes": 61396389832,
+            "host_owner_bytes": 42088,
+            "launches": 162709,
+            "live_capacity_bytes": 0,
+            "logical_bytes": 0,
+            "peak_capacity_bytes": 3745182208,
+            "peak_reserved_bytes": 65139872768,
+            "releases": 5405,
+            "stopped": 1,
+            "weights_bytes": 61394690560,
+            "weights_loaded_bytes": 61394690560,
+            "weights_sealed": 1,
+            "zeroed_bytes": 274877923840
+          },
+          "prepared_snapshots": 0,
+          "promoted_snapshots": 0,
+          "sample_available": true,
+          "scope": "named payloads are subsets of arena, not additions; W is outside arena; cumulative traffic and peaks must not be summed across samples; host metadata, protocol scratch and CUDA context require process/device observations"
+        }
+      },
+      "slot": null,
+      "values": null
+    },
+    {
+      "elapsed_ns": 2557437952740,
+      "phase": "native_cleanup",
+      "simultaneous": {
+        "host_process": [
+          "VmHWM:\t60252536 kB",
+          "VmRSS:\t60176532 kB"
+        ],
+        "joint_allocations": {
+          "denied_allocations": 0,
+          "enforced": true,
+          "excluded_packed_w_capacity_bytes": 61394690560,
+          "host_large_allocation_release": "glibc fixed mmap threshold 128 KiB, max 2 arenas",
+          "host_layout_bytes": 61443993103,
+          "native_reservation_bytes": 0,
+          "operational_margin_required_bytes": 268435456,
+          "payload_limit_bytes": 5905580032,
+          "peak_plus_runtime_allowance_bytes": 4130550448,
+          "physical_runtime_allowance_verified": false,
+          "runtime_allowance_bytes": 268435456,
+          "temporary_live_bytes": 49303268,
+          "temporary_payload_peak_bytes": 3862114992
+        },
+        "native": {
+          "reason": "native owner closed or stats unavailable",
+          "sample_available": false
+        }
+      },
+      "slot": null,
+      "values": {
+        "final_stats": {
+          "allocations": 5405,
+          "arena_bytes": 0,
+          "cleanup_failed": 0,
+          "d2d_bytes": 0,
+          "d2h_bytes": 92337632,
+          "fences": 6680,
+          "h2d_bytes": 61396389832,
+          "host_owner_bytes": 42088,
+          "launches": 162709,
+          "live_capacity_bytes": 0,
+          "logical_bytes": 0,
+          "peak_capacity_bytes": 3745182208,
+          "peak_reserved_bytes": 65139872768,
+          "releases": 5405,
+          "stopped": 1,
+          "weights_bytes": 0,
+          "weights_loaded_bytes": 61394690560,
+          "weights_sealed": 1,
+          "zeroed_bytes": 274877923840
+        },
+        "success": true
+      }
+    }
+  ],
+  "response_charges": [
+    {
+      "includes_initial_distribution_installation_and_setup": true,
+      "observed_bytes_both_directions": 86332473,
+      "observed_bytes_from_verifier": 7534457,
+      "observed_bytes_to_verifier": 78798016,
+      "response_channel_registered": true,
+      "slot": 0
+    },
+    {
+      "includes_initial_distribution_installation_and_setup": false,
+      "observed_bytes_both_directions": 0,
+      "observed_bytes_from_verifier": 0,
+      "observed_bytes_to_verifier": 0,
+      "response_channel_registered": false,
+      "slot": 1
+    },
+    {
+      "includes_initial_distribution_installation_and_setup": false,
+      "observed_bytes_both_directions": 0,
+      "observed_bytes_from_verifier": 0,
+      "observed_bytes_to_verifier": 0,
+      "response_channel_registered": false,
+      "slot": 2
+    }
+  ],
+  "timing_scope": "nested wall intervals; roles overlap, do not sum",
+  "total_wall_ns": 2557440783640,
+  "traffic_scope": "actual application bytes at verifier boundary, including public distribution; excludes OS framing and executable provisioning"
+}

@@ -1,0 +1,377 @@
+{
+  "artifacts": [
+    {
+      "bytes": 432447,
+      "path": "benchmarks/results/c71-h100-canonical-01-2026-10-09-26c4c89288df/canonical.memory.csv",
+      "sha256": "ae1a85d264bcbabcf5d312ca6053bfb4d5cb78f3119d7898cbbe20590d52fcdf"
+    },
+    {
+      "bytes": 1769,
+      "path": "benchmarks/results/c71-h100-canonical-01-2026-10-09-26c4c89288df/canonical.summary.json",
+      "sha256": "c316c077beeb6d1b9cb03bbd7a5fc5bc7342e530849281643df642fd8a4fdd28"
+    },
+    {
+      "bytes": 1252,
+      "path": "benchmarks/results/c71-h100-canonical-01-2026-10-09-26c4c89288df/canonical.time.txt",
+      "sha256": "4d8ebfa3782ccd469fd8d541dd5f0a05f473fbcce9de77d82d8aff36f3841ec0"
+    },
+    {
+      "bytes": 16479,
+      "path": "benchmarks/results/c71-h100-canonical-01-2026-10-09-26c4c89288df/cpu-gpu-observations.jsonl",
+      "sha256": "01934f908adc625ea4f5c9876569ca932003f687d9134a4f569986a4d57aef45"
+    },
+    {
+      "bytes": 80037,
+      "path": "benchmarks/results/c71-h100-canonical-01-2026-10-09-26c4c89288df/metrics.json",
+      "sha256": "f17c20f1f3936281532e50dfdc8ab203d056360d795cafade701aaa0aaf0ae96"
+    }
+  ],
+  "canonical_certificates_verified": 0,
+  "complete": false,
+  "date": "2026-10-09",
+  "diagnostic_timeout_seconds": 7200,
+  "fresh_correlations": true,
+  "git_dirty": false,
+  "git_sha": "26c4c89288df95123d601e7b2dc63239ba031a04",
+  "journals": [
+    {
+      "bytes": 161,
+      "records": [
+        {
+          "count": 70778880,
+          "digest_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": 5,
+          "setup": 1,
+          "start": 0
+        }
+      ],
+      "role": "prover",
+      "sha256": "59466ad2d24395ccd2428e50757ccae04135ea0e101774f8e418cb0df24485a2"
+    },
+    {
+      "bytes": 161,
+      "records": [
+        {
+          "count": 70778880,
+          "digest_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+          "kind": 5,
+          "setup": 1,
+          "start": 0
+        }
+      ],
+      "role": "verifier",
+      "sha256": "59466ad2d24395ccd2428e50757ccae04135ea0e101774f8e418cb0df24485a2"
+    }
+  ],
+  "launch": {
+    "argv": [
+      "/workspace/volta-zk/rust/target/debug/examples/c71_canonical_reference",
+      "experiment-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/canonical-01/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_tensor.so",
+      "0"
+    ],
+    "argv_encoded_bytes": 422,
+    "argv_path_capacity_bound_bytes": 4096,
+    "binary_sha256": "671a85d162147b7f48e5fff72a16e8abd8e94676106b6daabf87292da603714a",
+    "correlations": "fresh one-time real AES; no reuse",
+    "diagnostic_timeout_seconds": 7200,
+    "gamma_reused": true,
+    "git_dirty": false,
+    "initial_accepted_kv": "empty",
+    "library_sha256": "c0b0ef7aeb93cfd245bb472c1f4e17721a564ff6af6a43a8a9d9d97a882a567c",
+    "new_journals": true,
+    "prepared_epoch": 1791575397.5856802,
+    "response_target_seconds": 65,
+    "source_git_sha": "26c4c89288df95123d601e7b2dc63239ba031a04"
+  },
+  "monitor": {
+    "authorized_end_epoch": 1791601722.0,
+    "close_reserve_seconds": 1800,
+    "command": [
+      "bash",
+      "-c",
+      "ulimit -S -v unlimited; exec \"$@\"",
+      "c71-canonical",
+      "/workspace/volta-zk/rust/target/debug/examples/c71_canonical_reference",
+      "experiment-cuda",
+      "/workspace/c71-h100-20261009/gamma-inputs/candidate.json",
+      "/workspace/c71-h100-20261009/gamma-inputs/tables.bin",
+      "/workspace/c71-h100-20261009/weights/gemma-4-31b-5bbc2fb1c1b2c611d06e3d9f23c170ba21659d89.packed.i16",
+      "/workspace/c71-h100-20261009/canonical-01/journals",
+      "2147483648",
+      "/workspace/c71-h100-20261009/libc71_device_runner_tensor.so",
+      "0"
+    ],
+    "compute_end_epoch": 1791599922.0,
+    "exit_code": 1,
+    "gpu_uuid": "GPU-9f6b4728-e7d8-ff40-d9f1-e1cec5dd2b3a",
+    "incomplete_samples": 19,
+    "label": "canonical",
+    "mode": "canonical",
+    "observed_payload_peak_bytes": 3862114992,
+    "payload_limit_bytes": 5905580032,
+    "physical_complete_peak": false,
+    "physical_temporary_limit_bytes": 6174015488,
+    "resource_failure": null,
+    "sampled_host_rss_peak_bytes": 61724332032,
+    "sampled_stable_temporary_peak_bytes": 4559179264,
+    "sampled_whole_gpu_peak_bytes": 65694334976,
+    "samples": 3179,
+    "sampling_limit": "Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption is a smaps residency lower bound; device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.",
+    "sampling_target_seconds": 0.2,
+    "stable_samples": 3160,
+    "start_unix_seconds": 1791575397.6244802,
+    "wall_seconds": 2560.6898299138993
+  },
+  "native_cleanup": null,
+  "phase_intervals": [
+    {
+      "complete": false,
+      "end_ns": 2557439014030,
+      "phase": "command_total",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 908871,
+      "wall_ns": 2557438105159
+    },
+    {
+      "complete": true,
+      "end_ns": 96040137489,
+      "phase": "global_initialization",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 2209471,
+      "wall_ns": 96037928018
+    },
+    {
+      "complete": true,
+      "end_ns": 7499902805,
+      "phase": "read_and_compile_public",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 2879989,
+      "wall_ns": 7497022816
+    },
+    {
+      "complete": true,
+      "end_ns": 7518720518,
+      "phase": "public_distribution",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 7501644644,
+      "wall_ns": 17075874
+    },
+    {
+      "complete": true,
+      "end_ns": 14987835082,
+      "phase": "compile_received_public",
+      "role": "verifier",
+      "slot": null,
+      "start_ns": 7519992934,
+      "wall_ns": 7467842148
+    },
+    {
+      "complete": true,
+      "end_ns": 96038975757,
+      "phase": "load_packed_w",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 15897545430,
+      "wall_ns": 80141430327
+    },
+    {
+      "complete": true,
+      "end_ns": 121313267109,
+      "phase": "native_global_residency",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 96041546028,
+      "wall_ns": 25271721081
+    },
+    {
+      "complete": true,
+      "end_ns": 525655561610,
+      "phase": "installation_w_commitment",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 121315429876,
+      "wall_ns": 404340131734
+    },
+    {
+      "complete": true,
+      "end_ns": 525671147278,
+      "phase": "installation_distribution_and_journals",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 525670507941,
+      "wall_ns": 639337
+    },
+    {
+      "complete": false,
+      "end_ns": 2556940068715,
+      "phase": "session_and_responses",
+      "role": "coordinator",
+      "slot": null,
+      "start_ns": 525673163496,
+      "wall_ns": 2031266905219
+    },
+    {
+      "complete": true,
+      "end_ns": 2544512049343,
+      "phase": "seed6_setup",
+      "role": "verifier",
+      "slot": null,
+      "start_ns": 525674126977,
+      "wall_ns": 2018837922366
+    },
+    {
+      "complete": true,
+      "end_ns": 2544512364820,
+      "phase": "seed6_setup",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 526026823430,
+      "wall_ns": 2018485541390
+    },
+    {
+      "complete": true,
+      "end_ns": 2544517834330,
+      "phase": "registry_initialization",
+      "role": "verifier",
+      "slot": null,
+      "start_ns": 2544517829008,
+      "wall_ns": 5322
+    },
+    {
+      "complete": true,
+      "end_ns": 2556006753386,
+      "phase": "registry_initialization",
+      "role": "prover",
+      "slot": null,
+      "start_ns": 2544518873117,
+      "wall_ns": 11487880269
+    },
+    {
+      "complete": false,
+      "end_ns": 2556928962923,
+      "phase": "request_to_completion",
+      "role": "verifier",
+      "slot": 0,
+      "start_ns": 2544520842392,
+      "wall_ns": 12408120531
+    },
+    {
+      "complete": false,
+      "end_ns": 2556927014946,
+      "phase": "wait_and_decode_response",
+      "role": "verifier",
+      "slot": 0,
+      "start_ns": 2544521833417,
+      "wall_ns": 12405181529
+    },
+    {
+      "complete": true,
+      "end_ns": 2556009457075,
+      "phase": "request_receive",
+      "role": "prover",
+      "slot": 0,
+      "start_ns": 2556009324450,
+      "wall_ns": 132625
+    },
+    {
+      "complete": false,
+      "end_ns": 2556918318038,
+      "phase": "response_total",
+      "role": "prover",
+      "slot": 0,
+      "start_ns": 2556011477022,
+      "wall_ns": 906841016
+    },
+    {
+      "complete": false,
+      "end_ns": 2556916197376,
+      "phase": "preparation_including_inference",
+      "role": "prover",
+      "slot": 0,
+      "start_ns": 2556012340583,
+      "wall_ns": 903856793
+    }
+  ],
+  "phase_scope": "Nested and overlapping intervals must not be summed; incomplete preparation is not an inference timing.",
+  "phase_seconds": {
+    "W_installation": 404.340131734,
+    "inference": null,
+    "proof": null,
+    "session_setup_prover": 2018.48554139,
+    "session_setup_verifier": 2018.837922366,
+    "verification": null
+  },
+  "private_bundle": {
+    "bytes": 1824240,
+    "files": 23,
+    "manifest_sha256": "18eb0891f7ed29d9fc87490637415af12b4b5bd964f8b3527b7defc76c2e341b",
+    "path": "artifact/c7.1-pod/h100-final-canonical01-20261009T203400Z"
+  },
+  "response_contexts": [
+    {
+      "old_tokens": 0,
+      "status": "failed_during_preparation"
+    },
+    {
+      "old_tokens": 150,
+      "status": "not_started_predecessor_unaccepted"
+    },
+    {
+      "old_tokens": 300,
+      "status": "not_started_predecessor_unaccepted"
+    }
+  ],
+  "response_target_seconds": 65,
+  "run": "canonical-01",
+  "schema": "volta-c71-h100-canonical-terminal-v1",
+  "session_resumable": false,
+  "setup_capacity_burned": true,
+  "source_diagnosis": {
+    "fix": "Permit unselected public table markers; selected marker remains a terminal lookup failure. Preserve both role errors. Hardware validation of this correction follows in new records.",
+    "gelu_tables_with_overflow_markers": [
+      {
+        "first_marker_input": 16384,
+        "marker_entries": 16384,
+        "table": 6
+      },
+      {
+        "first_marker_input": 16384,
+        "marker_entries": 16384,
+        "table": 18
+      },
+      {
+        "first_marker_input": 8192,
+        "marker_entries": 24576,
+        "table": 35
+      },
+      {
+        "first_marker_input": 16384,
+        "marker_entries": 16384,
+        "table": 39
+      }
+    ],
+    "kind": "code_and_public_input_predicate_reproduction",
+    "loader_rejects_any_i16_min": true,
+    "table_sha256": "052de68a51b02da1b442ed31ce49031630976747cf6605c191672c1e8417d31d",
+    "upstream_prover_error_not_preserved": true
+  },
+  "terminal": {
+    "exit_code": 1,
+    "failed_phase": "preparation_including_inference",
+    "failed_slot": 0,
+    "reported_error": "failed to fill whole buffer",
+    "resource_failure": null,
+    "timeout": false,
+    "wall_seconds": 2560.6898299138993
+  }
+}

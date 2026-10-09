@@ -86,6 +86,10 @@ int main() {
     input[13]=INT16_MIN; upload(source,input); reset();
     check(c71_lookup_launch(stream,source,lookup_table,output,histogram,input.size(),failed)); require(flag()!=0);
     input[13]=-32754; table[13]=INT16_MIN; upload(source,input); upload(lookup_table,table); reset();
+    check(cudaMemsetAsync(histogram,0,65535*8,stream));
+    check(c71_lookup_launch(stream,source,lookup_table,output,histogram,1,failed)); require(flag()==0);
+    require(read(output,1,stream)[0]==table[0]); // unused overflow marker remains legal
+    reset();
     check(c71_lookup_launch(stream,source,lookup_table,output,histogram,input.size(),failed)); require(flag()!=0);
     check(cudaMemsetAsync(histogram,255,65535*8,stream)); reset();
     check(c71_histogram_seal_launch(stream,histogram,failed)); require(flag()!=0);

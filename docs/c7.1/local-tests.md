@@ -12,6 +12,11 @@ Il [codec cGGM](../c7.1-history/h100-w-setup-2026-10-09.md) ha inoltre test
 ridotti di frame/golden/coin/albero e setup/lifetime, eseguiti sul pod CPU
 con 64 GiB AS e 60 s per filtro. Non sono esecuzioni locali né una prova
 canonica completa; il benchmark non dimostra un guadagno temporale.
+La successiva correzione dei marker GELU estende il test
+`c71_canonical_resident_nonlinear_original_routes` con una voce MIN
+non selezionata e aggiunge `c71_canonical_runner_preserves_both_role_failures`.
+La parità CUDA nonlineare copre sia marker non usato sia marker selezionato;
+questi nuovi controlli sono in attesa di esecuzione sulla build corretta.
 
 ## Limiti e ambiente
 

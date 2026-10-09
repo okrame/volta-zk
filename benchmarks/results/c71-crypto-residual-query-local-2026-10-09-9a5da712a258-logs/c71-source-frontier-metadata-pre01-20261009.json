@@ -1,0 +1,18 @@
+{
+  "command": [
+    "python3",
+    "/tmp/c71-source-frontier-metadata-20261009/check_frontier.py",
+    "--root",
+    "/home/okrame/projects/volta-zk"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 1,
+  "wall_s": 6.373379909899086,
+  "max_rss_bytes": 62398464,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 6.33185,
+  "system_s": 0.03599,
+  "log": "/tmp/c71-source-frontier-metadata-pre01-20261009.log"
+}

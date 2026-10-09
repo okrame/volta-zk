@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-s",
+    "-p",
+    "no:cacheprovider",
+    "/tmp/c71-residual-owner-shadow-20261009/tests/test_c71_pcs_residual.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 4.148541904054582,
+  "max_rss_bytes": 195682304,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 3.932641,
+  "system_s": 0.173231,
+  "log": "/tmp/c71-residual-math-pre02-20261009.log"
+}

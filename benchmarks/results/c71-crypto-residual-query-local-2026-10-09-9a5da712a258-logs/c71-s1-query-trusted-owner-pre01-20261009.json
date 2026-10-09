@@ -1,0 +1,24 @@
+{
+  "command": [
+    ".venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-s",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_c71_range_native.py",
+    "tests/test_c71_pcs_residual.py",
+    "tests/test_c71_pcs_residual_query.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 19.301662116777152,
+  "max_rss_bytes": 340361216,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 18.958668,
+  "system_s": 0.24462599999999998,
+  "log": "/tmp/c71-s1-query-trusted-owner-pre01-20261009.log"
+}

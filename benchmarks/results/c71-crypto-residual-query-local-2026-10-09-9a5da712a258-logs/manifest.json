@@ -1,0 +1,106 @@
+{
+  "credit": false,
+  "status": "source freeze, no executions by this agent",
+  "patch": "/tmp/c71-query-e-rust-20261009/s1-query-e-rust.patch",
+  "patch_sha256": "97eb1692565a353cb7492a38e3cb7e33a1dbc70ce5bb538054d85428da61b08f",
+  "files": [
+    {
+      "path": "rust/volta-pcs/src/c71_matrix/b12/sourcewise.rs",
+      "base_sha256": "99d06dbc3a0025ae4d586187477c6110b65aaae49f494ccc9283346087987ab4",
+      "work_sha256": "faf754a156a0598078b7de5e1075c45f10e90f670e6ccee1e4d4e3ecbb7c9534"
+    },
+    {
+      "path": "rust/volta-pcs/src/c71_matrix/b12/replay.rs",
+      "base_sha256": "dba4672dbadd6e55f5f7d32a3c8eac83280bb5f1b5dc35845b8dab3aa853db6a",
+      "work_sha256": "328455936127f815b0b208211ff7c35435b675fbd4dc3f90f01baebecaf69f69"
+    },
+    {
+      "path": "rust/volta-pcs/src/c71_matrix/b12/replay_tree.rs",
+      "base_sha256": "de10817158ab534d41c4b9ec6113b74afc888575a1228e466f3ea56805e532d0",
+      "work_sha256": "8b036b35eb1c6050102348ca12d4214a256474e754f5281af2f67e290bcf6a32"
+    },
+    {
+      "path": "rust/volta-pcs/src/c71_matrix/range/windowed/native.rs",
+      "base_sha256": "822fa4dcd35df189cd7eee985b86ca37fbb2991428418d3b8538541c40ca754e",
+      "work_sha256": "8604ea3ca9cc87ddef1363b926f885e7cbd6ce20da04dc7c469cf1cdda20d7c7"
+    }
+  ],
+  "serial_filters": [
+    "c71_b12_native_residual_pcs_basis_is_distinct_and_canonical",
+    "c71_b12_native_residual_symbols_1",
+    "c71_b12_native_residual_symbols_2",
+    "c71_b12_native_residual_symbols_3",
+    "c71_b12_native_residual_symbols_4",
+    "c71_b12_native_residual_query_symbols_1",
+    "c71_b12_native_residual_query_symbols_2",
+    "c71_b12_native_residual_owner_coverage_private_tokens_and_faults",
+    "c71_b12_native_residual_query_owner_final_values_and_faults",
+    "c71_b12_native_residual_state_exact_coefficients_late_retention_and_views",
+    "c71_b12_native_residual_paired_tree_root_salts_and_cpu_geometry",
+    "c71_b12_native_residual_query_horner_pads_duplicates_and_virtual_prefixes",
+    "c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac",
+    "c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac",
+    "c71_b12_native_query_composed_uncached_chain_original_mac_and_transcript"
+  ],
+  "symbol_filter_sizes": [
+    4,
+    4,
+    4,
+    2,
+    3,
+    2
+  ],
+  "selection": {
+    "same_helper_production_fixture": "ReplayModel::make_sourcewise_backend(base,extension,first)",
+    "exact_native_selection": "native_residual: self.native_original.clone()",
+    "A_existing_retention": "canonical_state.rs retains new_native_source with retain_first_fold; fixture follows same policy",
+    "default_gate": "candidate only in /tmp; root applies after C gate and validates before production credit"
+  },
+  "work": {
+    "A_canonical_original_nonquery_passes": 35,
+    "A_formula": "singleton 1 + S1 paired coset groups 32 + OOD 1 + late retention 1",
+    "W_S1_coset_groups": 64,
+    "E_query_three_limbs_one_loader_pass": true,
+    "no_extra_A_original_replay_in_query": true,
+    "exact_query_D2H_per_call": "4 columns * (24*query_rows + 4 flag bytes)",
+    "contractions": "one equivalent original W read per round; retained A planes after late retention; public bands <= 2^21 E"
+  },
+  "resource_named_bounds": {
+    "A_S1_retained_planes_bytes": 3221225472,
+    "A_two_fold_old_plus_new_bytes": 4026531840,
+    "query_max_q": 1048576,
+    "query_device_named_at_q2p20_bytes": 864028160,
+    "query_device_additional": "Metadata and sticky flag additional: factors 2*(logq+1)*align256(16q); twiddles 2*sum(d=1,2,...q)align256(16d); low align256(24q), 4*align256(8q) remainders, 2*align256(16q) work/scratch; retained original/mapping/owner/cache/claims counted separately. Earlier830472192 estimate undercounted twiddles and is corrected; code unchanged.",
+    "query_host_final_publication_at_q2p20_bytes": 150994944,
+    "query_host_final_publication_parts": "96*rows final matrix + 24*rows Rust column + 24*rows C staging (C staging charged owner/global); public factor construction transient separate",
+    "S1_W_R23_max_of_ring_frontier_roots_or_ring_frontier_coset_aux_named_bytes": 3489660928,
+    "S1_commit_named_subtotal_excludes": "EQ packet, pads, flags, salt-private auxiliaries, top cache, source/FFT callback and other live owners",
+    "owner_capacity_measure": "historical common-owner capacity maximum, not phase peak or joint physical peak",
+    "joint_admission": "C owner checks every simultaneous arena/global allocation; root must complete full canonical joint ledger before admission"
+  },
+  "fixture_coverage": {
+    "full_WHir": [
+      "A original nonzero biased bytes, resident initial A queries, native S1/contract/extension query",
+      "W nonzero signed/interleaved/ragged live prefix, native S1/contract/extension query; unchanged CPU initial W commit/query"
+    ],
+    "full_parity": [
+      "serialized proof",
+      "canonical MatrixProof codec",
+      "FS digest",
+      "private RNG position",
+      "target/base case",
+      "original MAC close tag",
+      "verifier acceptance and rejection of changed original endpoint MAC"
+    ],
+    "Horner": "independent direct polynomial evaluation: caps1/2/4/8, empty, ordered/duplicate queries, all3 extension limbs, pad19>cap, challenges0/1/fullE, A virtualprefix0/1/2 and W original virtualprefix",
+    "terminal_negatives": "S1 27, Query E 27 incl canonical decode injection12, private token read without D2H, owner/shape/order/lineage/flag/transfer/free/fence failures"
+  },
+  "gaps": [
+    "no compilation/test/benchmark/nvcc/H100 execution by this agent; root serial validation pending",
+    "initial W query remains CPU explicitly excluded from this checkpoint",
+    "public product factors/PowerBlocks remain CPU bounded; no private original getter fallback",
+    "memory figures named analytic subtotals, not complete H100 physical peak; root joint ledger pending",
+    "mandatory ABI symbols now includes five Query E APIs; old native library fails closed",
+    "complete WHIR fixture uses ideal original endpoint MAC as existing reduced fixture; real AES PCG production unchanged, no PCG speed or formal credit"
+  ]
+}

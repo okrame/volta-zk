@@ -1,0 +1,184 @@
+./tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp: In function ‘residual_oracle::E residual_oracle::power(E, uint64_t)’:
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:120:71: error: call of overloaded ‘mul(residual_oracle::E&, residual_oracle::E&)’ is ambiguous
+  120 | E power(E a,uint64_t n) { E value{1,0,0}; while(n) { if(n&1) value=mul(value,a); a=mul(a,a); n>>=1; } return value; }
+      |                                                                    ~~~^~~~~~~~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:113:3: note: candidate: ‘residual_oracle::E residual_oracle::mul(E, E)’
+  113 | E mul(E a,E b) {
+      |   ^~~
+In file included from /tmp/c71-residual-owner-shadow-20261009/cuda/c71_range_runtime.h:15,
+                 from /tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:2:
+/tmp/c71-residual-owner-shadow-20261009/cuda/c71_pcs_residual.cuh:55:26: note: candidate: ‘c71_pcs_residual::E c71_pcs_residual::mul(E, E)’
+   55 | C71_RESIDUAL_HD inline E mul(E a,E b) {
+      |                          ^~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:120:87: error: call of overloaded ‘mul(residual_oracle::E&, residual_oracle::E&)’ is ambiguous
+  120 | E power(E a,uint64_t n) { E value{1,0,0}; while(n) { if(n&1) value=mul(value,a); a=mul(a,a); n>>=1; } return value; }
+      |                                                                                    ~~~^~~~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:113:3: note: candidate: ‘residual_oracle::E residual_oracle::mul(E, E)’
+  113 | E mul(E a,E b) {
+      |   ^~~
+/tmp/c71-residual-owner-shadow-20261009/cuda/c71_pcs_residual.cuh:55:26: note: candidate: ‘c71_pcs_residual::E c71_pcs_residual::mul(E, E)’
+   55 | C71_RESIDUAL_HD inline E mul(E a,E b) {
+      |                          ^~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp: In function ‘residual_oracle::E residual_oracle::fold(E, E, E)’:
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:121:45: error: call of overloaded ‘sub(residual_oracle::E&, residual_oracle::E&)’ is ambiguous
+  121 | E fold(E a,E b,E r) { return add(a,mul(r,sub(b,a))); }
+      |                                          ~~~^~~~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:112:3: note: candidate: ‘residual_oracle::E residual_oracle::sub(E, E)’
+  112 | E sub(E a,E b) { return {sub(a.c0,b.c0),sub(a.c1,b.c1),sub(a.c2,b.c2)}; }
+      |   ^~~
+/tmp/c71-residual-owner-shadow-20261009/cuda/c71_pcs_residual.cuh:47:26: note: candidate: ‘c71_pcs_residual::E c71_pcs_residual::sub(E, E)’
+   47 | C71_RESIDUAL_HD inline E sub(E a,E b) {
+      |                          ^~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp: In function ‘residual_oracle::E residual_oracle::lookup(uint64_t, const c71_pcs_residual::Chunk*, unsigned int, const E*)’:
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:124:70: error: call of overloaded ‘mul(residual_oracle::E&, const residual_oracle::E&)’ is ambiguous
+  124 |     for(unsigned i=0;i<count;++i) { const auto c=chunks[i]; value=mul(value,tables[c.first+((index>>c.shift)&((uint64_t{1}<<c.bits)-1))]); }
+      |                                                                   ~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:113:3: note: candidate: ‘residual_oracle::E residual_oracle::mul(E, E)’
+  113 | E mul(E a,E b) {
+      |   ^~~
+/tmp/c71-residual-owner-shadow-20261009/cuda/c71_pcs_residual.cuh:55:26: note: candidate: ‘c71_pcs_residual::E c71_pcs_residual::mul(E, E)’
+   55 | C71_RESIDUAL_HD inline E mul(E a,E b) {
+      |                          ^~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp: In function ‘void residual_oracle::contribution(uint64_t, E, c71_pcs_residual::Shape, const c71_pcs_residual::Chunk*, const E*, c71_pcs_residual::Phase, c71_pcs_residual::Output, c71_pcs_residual::CosetShape, const uint64_t*, c71_pcs_residual::PowerShape, const E*, const E*, uint32_t*)’:
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:134:32: error: call of overloaded ‘lookup(uint64_t, const c71_pcs_residual::Chunk*&, uint32_t&, const residual_oracle::E*&)’ is ambiguous
+  134 |     const auto value=mul(lookup(phase==pcs::Phase::singleton?folded:index>>shape.remaining,chunks,shape.equality.chunks,tables),original);
+      |                          ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:122:3: note: candidate: ‘residual_oracle::E residual_oracle::lookup(uint64_t, const c71_pcs_residual::Chunk*, unsigned int, const E*)’
+  122 | E lookup(uint64_t index,const c71_pcs_residual::Chunk* chunks,unsigned count,const E* tables) {
+      |   ^~~~~~
+/tmp/c71-residual-owner-shadow-20261009/cuda/c71_pcs_residual.cuh:89:26: note: candidate: ‘c71_pcs_residual::E c71_pcs_residual::lookup(uint64_t, const Chunk*, unsigned int, const E*)’
+   89 | C71_RESIDUAL_HD inline E lookup(uint64_t index,const Chunk* chunks,unsigned count,const E* tables) {
+      |                          ^~~~~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:143:58: error: call of overloaded ‘mul(const residual_oracle::E&, const residual_oracle::E&)’ is ambiguous
+  143 |         *output.reduced=add(*output.reduced,mul(value,mul(lo,hi)));
+      |                                                       ~~~^~~~~~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:113:3: note: candidate: ‘residual_oracle::E residual_oracle::mul(E, E)’
+  113 | E mul(E a,E b) {
+      |   ^~~
+/tmp/c71-residual-owner-shadow-20261009/cuda/c71_pcs_residual.cuh:55:26: note: candidate: ‘c71_pcs_residual::E c71_pcs_residual::mul(E, E)’
+   55 | C71_RESIDUAL_HD inline E mul(E a,E b) {
+      |                          ^~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp: In function ‘void contract_fake_value(uint64_t, residual_oracle::E, c71_pcs_residual::Shape, const c71_pcs_residual::Chunk*, const c71_pcs_residual::E*, unsigned int, uint64_t, const c71_pcs_residual::E*, const c71_pcs_residual::E*, c71_pcs_residual::E*, uint32_t*)’:
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:277:41: error: call of overloaded ‘lookup(uint64_t, const c71_pcs_residual::Chunk*&, uint32_t&, const c71_pcs_residual::E*&)’ is ambiguous
+  277 |     const auto value=mul(original,lookup(index>>shape.remaining,chunks,shape.equality.chunks,tables));
+      |                                   ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:122:3: note: candidate: ‘residual_oracle::E residual_oracle::lookup(uint64_t, const c71_pcs_residual::Chunk*, unsigned int, const E*)’
+  122 | E lookup(uint64_t index,const c71_pcs_residual::Chunk* chunks,unsigned count,const E* tables) {
+      |   ^~~~~~
+/tmp/c71-residual-owner-shadow-20261009/cuda/c71_pcs_residual.cuh:89:26: note: candidate: ‘c71_pcs_residual::E c71_pcs_residual::lookup(uint64_t, const Chunk*, unsigned int, const E*)’
+   89 | C71_RESIDUAL_HD inline E lookup(uint64_t index,const Chunk* chunks,unsigned count,const E* tables) {
+      |                          ^~~~~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:281:62: error: call of overloaded ‘sub(const c71_pcs_residual::E&, const c71_pcs_residual::E&)’ is ambiguous
+  281 |     else if(index&size) output[1]=add(output[1],mul(value,sub(right[local],left[local])));
+      |                                                           ~~~^~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:112:3: note: candidate: ‘residual_oracle::E residual_oracle::sub(E, E)’
+  112 | E sub(E a,E b) { return {sub(a.c0,b.c0),sub(a.c1,b.c1),sub(a.c2,b.c2)}; }
+      |   ^~~
+/tmp/c71-residual-owner-shadow-20261009/cuda/c71_pcs_residual.cuh:47:26: note: candidate: ‘c71_pcs_residual::E c71_pcs_residual::sub(E, E)’
+   47 | C71_RESIDUAL_HD inline E sub(E a,E b) {
+      |                          ^~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:282:98: error: call of overloaded ‘sub(const c71_pcs_residual::E&, const c71_pcs_residual::E&)’ is ambiguous
+  282 |     else { output[0]=add(output[0],mul(value,left[local])); output[1]=sub(output[1],mul(value,sub(right[local],left[local]))); }
+      |                                                                                               ~~~^~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp:112:3: note: candidate: ‘residual_oracle::E residual_oracle::sub(E, E)’
+  112 | E sub(E a,E b) { return {sub(a.c0,b.c0),sub(a.c1,b.c1),sub(a.c2,b.c2)}; }
+      |   ^~~
+/tmp/c71-residual-owner-shadow-20261009/cuda/c71_pcs_residual.cuh:47:26: note: candidate: ‘c71_pcs_residual::E c71_pcs_residual::sub(E, E)’
+   47 | C71_RESIDUAL_HD inline E sub(E a,E b) {
+      |                          ^~~
+F
+=================================== FAILURES ===================================
+______________ test_native_range_owner_with_deferred_fake_driver _______________
+
+tmp_path = PosixPath('/tmp/pytest-of-okrame/pytest-551/test_native_range_owner_with_d0')
+
+    def test_native_range_owner_with_deferred_fake_driver(tmp_path):
+        binary = tmp_path / "native-range-owner"
+>       subprocess.run(
+            ["g++", "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+             "-fsanitize=undefined", "-fno-sanitize-recover=all",
+             "-I", str(ROOT / "tests/cuda_stub"), "-I", str(ROOT / "cuda"),
+             str(ROOT / "cuda/c71_range_runtime.cpp"), str(ROOT / "tests/c71_range_runtime_host.cpp"),
+             "-o", str(binary)], check=True, timeout=30,
+        )
+
+/tmp/c71-residual-owner-shadow-20261009/tests/test_c71_range_native.py:24: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = False, timeout = 30, check = True
+popenargs = (['g++', '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror', ...],)
+kwargs = {}
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout (seconds) is given and the process takes too long,
+         a TimeoutExpired exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['g++', '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror', '-fsanitize=undefined', '-fno-sanitize-recover=all', '-I', '/tmp/c71-residual-owner-shadow-20261009/tests/cuda_stub', '-I', '/tmp/c71-residual-owner-shadow-20261009/cuda', '/tmp/c71-residual-owner-shadow-20261009/cuda/c71_range_runtime.cpp', '/tmp/c71-residual-owner-shadow-20261009/tests/c71_range_runtime_host.cpp', '-o', '/tmp/pytest-of-okrame/pytest-551/test_native_range_owner_with_d0/native-range-owner']' returned non-zero exit status 1.
+
+/usr/lib/python3.13/subprocess.py:577: CalledProcessError
+=========================== short test summary info ============================
+FAILED ../../../../tmp/c71-residual-owner-shadow-20261009/tests/test_c71_range_native.py::test_native_range_owner_with_deferred_fake_driver
+1 failed, 1 passed in 5.33s

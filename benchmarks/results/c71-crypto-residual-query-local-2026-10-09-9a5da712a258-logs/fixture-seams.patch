@@ -1,0 +1,59 @@
+--- a/rust/volta-pcs/src/c71_matrix/b12/replay.rs
++++ b/rust/volta-pcs/src/c71_matrix/b12/replay.rs
+@@ -2012,7 +2012,8 @@
+     census::mark("sourcewise_initial_commit").unwrap();
+     let mut replay_fs = Fs::new(b"sourcewise C71 observed refinement", request_limit(&config));
+     replay_fs.set_phase(0x200);
+-    let residual_owner=native_residual.as_ref().map(|native|match native {
++    let residual_original=native_residual.as_ref().or(native.as_ref());
++    let residual_owner=residual_original.map(|native|match native {
+         NativeOriginal::Source(source)=>source.runtime.clone(),NativeOriginal::Weights(weights)=>weights.runtime.clone()});
+     let live = native.as_ref().or(native_residual.as_ref()).map_or(1 << dimension, |native| match native {
+         NativeOriginal::Weights(w) => w.weights.len(), NativeOriginal::Source(a) => a.live,
+@@ -2021,7 +2022,7 @@
+     let source:Getter={let original=source;let calls=private_getter_calls.clone();Arc::new(move |i| {
+         calls.fetch_add(1,std::sync::atomic::Ordering::Relaxed);original(i)
+     })};
+-    let residual_source=matches!(&native_residual,Some(NativeOriginal::Source(_)));
++    let residual_source=matches!(residual_original,Some(NativeOriginal::Source(_)));
+     let mut model = ReplayModel::new_source(
+         Domain::Flat(dimension),
+         root_seed,
+@@ -2050,8 +2051,7 @@
+         }));
+         eprintln!("C71_NATIVE_W_CHAIN_FIXTURE initial_reference_rows_bytes={payload} production_cache=false");
+     }
+-    if original.is_some() || model.scan.is_some() || matches!(&native_residual,Some(NativeOriginal::Source(_))) ||
+-        matches!(&model.native_original,Some(NativeOriginal::Source(_))) {
++    if original.is_some() || model.scan.is_some() || residual_source {
+         model = model.retain_first_fold();
+     }
+     if let Some(native)=native_residual {model=model.fixture_native_original(native);}
+@@ -3599,7 +3599,26 @@
+         let values = (0..1 << 15).map(|i| base_coefficient((f.get)(i))).collect();
+         compare_source_with_resident(15, f.get, values, None, Some((f.scan, f.window)),
+             Some(NativeOriginal::Source(f.native)), fixture_initial_rows);
+-        assert_eq!(f.reconstructions.load(std::sync::atomic::Ordering::Relaxed), 64);
++        let configuration = config(15).unwrap();
++        let first = configuration.round_folding_factor(0);
++        let stage0_height = configuration.inv_rate(0)
++            * (1usize << (15 - first - configuration.round_folding_factor(1)));
++        let rows = replay_tree::native_extension_geometry(stage0_height).unwrap().0;
++        let expected_initial = 64u64;
++        let expected_residual = 3 + (stage0_height / (2 * rows)) as u64;
++        let events: Vec<serde_json::Value> = std::fs::read_to_string(&path).unwrap().lines()
++            .map(|line| serde_json::from_str(line).unwrap()).collect();
++        let initial = events.iter().find(|event| event["event"]["phase"] == "pcs_a_resident"
++            && event["event"]["complete"] == true).unwrap();
++        assert_eq!(initial["event"]["work"]["source_reconstructions"], expected_initial);
++        let reconstructions = f.reconstructions.load(std::sync::atomic::Ordering::Relaxed);
++        assert_eq!(reconstructions, expected_initial + expected_residual,
++            "initial commitment + singleton + S1 groups + OOD + late retention only");
++        println!("C71_NATIVE_A_CHAIN_WORK {}", json!({"domain_log2": 15,
++            "initial_reconstructions": expected_initial, "expected_residual_reconstructions": expected_residual,
++            "total_reconstructions": reconstructions, "first_fold": first,
++            "stage0_height": stage0_height, "native_extension_rows": rows,
++            "fixture_initial_rows": fixture_initial_rows, "gpu_execution": false, "credit": false}));
+         let stats = owner.lock().unwrap().close().unwrap();
+         assert_eq!(stats.arena_bytes, 0);
+         assert_eq!(stats.stopped, 0);

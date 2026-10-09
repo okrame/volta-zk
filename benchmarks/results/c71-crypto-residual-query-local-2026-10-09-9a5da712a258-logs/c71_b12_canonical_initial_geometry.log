@@ -1,0 +1,8 @@
+
+running 1 test
+test c71_matrix::b12::replay_tree::tests::c71_b12_canonical_initial_geometry_selects_512_a_scans_without_allocation ... C71_PCS_ALLOCATION_GEOMETRY {"columns":128,"coset_rows":1048576,"credit":false,"fft_column_and_twiddle_upper_bytes":25165824,"frontier_capacity_bytes":369098752,"geometry_only":true,"group":4,"height":2147483648,"pending_and_current_coset_capacity_bytes":4294967296,"query_batch_rows":1048576,"query_factor_capacity_bytes":704643072,"query_matrix_capacity_bytes":1073741824,"retained_root_and_salt_offset_bytes":37748704,"salt_cursors_capacity_bytes":8388608,"source_scans":512}
+C71_PCS_ALLOCATION_GEOMETRY {"columns":128,"coset_rows":1048576,"credit":false,"fft_column_and_twiddle_upper_bytes":25165824,"frontier_capacity_bytes":402653184,"geometry_only":true,"group":4,"height":4294967296,"pending_and_current_coset_capacity_bytes":4294967296,"query_batch_rows":1048576,"query_factor_capacity_bytes":704643072,"query_matrix_capacity_bytes":1073741824,"retained_root_and_salt_offset_bytes":75497440,"salt_cursors_capacity_bytes":8388608,"source_scans":1024}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 497 filtered out; finished in 0.00s
+

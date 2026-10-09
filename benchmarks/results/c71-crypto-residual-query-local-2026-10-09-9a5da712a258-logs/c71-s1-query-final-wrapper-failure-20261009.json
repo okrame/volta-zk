@@ -1,0 +1,9 @@
+{
+  "exit_code": 1,
+  "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+  "git_dirty": false,
+  "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+  "reason": "Reuse assertion compared absolute and relative binary paths; W check passed and was retained, A was not repeated. No product failure.",
+  "original_wrapper": "/tmp/c71-s1-query-final-suite-20261009.py",
+  "corrected_wrapper": "/tmp/c71-s1-query-final-suite-02-20261009.py"
+}

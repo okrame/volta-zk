@@ -1,0 +1,621 @@
+diff --git a/docs/c7.1/design.md b/docs/c7.1/design.md
+--- a/docs/c7.1/design.md
++++ b/docs/c7.1/design.md
+@@ -83,12 +83,14 @@
+ | Commitment iniziale W | Integrato nel Tree/runner: accumuli esatti, FFT, foglie incrementali e Merkle sul common owner; 32 coset/otto colonne, 128 scansioni analitiche sul pinned |
+ | Commitment iniziale A | Producer residenti collegati alla PCS, quattro coset/tutte le 128 colonne, istogramma fuso nel primo replay; 512 ricostruzioni conservate, nessun download per riga nel commitment |
+ | Sali iniziali W/A | Prescan e replay selezionati sullo stream comune, cursore logico e cap originali; niente bande host/upload sali |
+-| FFT naturale diretta/inversa | Primitiva integrata nell'owner con parità indipendente, usata dalle query iniziali A; extension e S1 restano CPU |
++| FFT naturale diretta/inversa | Integrata nell'owner, usata dalle query iniziali A e dagli stadi extension PCS |
+ | Query iniziali A | Reader residente e resti collegati al Tree/runner, con sole valutazioni finali D2H; costruzione dei fattori pubblici CPU, richieste e ricostruzioni originali |
+ | Closure lineare | Owner e caller nativi integrati con parità ridotta: una scan originale per round, D·live visite, cinque elementi MAC e flag restituiti; mapping W riusato, nessun getter A sostitutivo |
++| PCS S1 e successori | Route canonica collegata a `model.native_original`: singleton, coset/FFT/hash/sali, OOD, retention A dopo apertura del predecessore, fold e contrazioni sul common owner; W continua a leggere il packed originale |
++| Query extension A/W | Tre componenti PCS caricate nello stesso passaggio e resti residenti in tutti gli stadi; A legge le plane trattenute, senza ricostruzioni originali aggiunte; sole valutazioni finali D2H |
+ | Accumulo W Tensor Core | Candidata limb16 esatta e confronto esplicito sul medesimo owner; ordinario rimane predefinito |
+ | QK/PV | Default scalare esatto; candidata MMA con prefisso causale comune e bordo scalare non selezionata |
+-| Resto della prova | Extension PCS/S1, query W, contrazioni, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal dichiarati CPU; helper S1 e hash extension paired preparatori |
++| Resto della prova | Query iniziali W, costruzione dei fattori pubblici, GKR non-range/MAC, Seed6 reale AES, codec, verifica e journal dichiarati CPU |
+ 
+ [canonical_device.rs](../../rust/volta-pcs/src/c71_matrix/gemma/native/canonical_device.rs)
+ possiede la sessione numerica: stessa Arc W del commitment, un solo
+@@ -99,9 +101,9 @@
+ storiche mantengono il prefisso causale. Errori, panic, CUDA assente e
+ cleanup falliti sono terminali, senza retry o fallback.
+ 
+-I consumer CPU usano staging privato bounded. Range e query iniziali A sono residenti;
++I consumer CPU usano staging privato bounded. Range A, query iniziali A e query extension sono residenti;
+ il gather range W usa ancora upload signed per finestre fino a 256 MiB.
+-La PCS completa non è ancora residente. Il
++Le query iniziali W restano CPU. Il
+ [conto tecnico](specs.md#runner-cuda-sperimentale-e-conto-simultaneo)
+ distingue capacità, trasferimenti e stati simultanei: tetto payload
+ 5.905.580.032 B, più riserva fisica esplicita di 256 MiB, totale
+@@ -133,16 +135,16 @@
+ campagna hardware. Il goal è ancora attivo; nuova H100 e durata
+ richiedono nuova autorizzazione.
+ 
+-Le query iniziali A e la closure lineare sono collegate all'owner comune,
+-con parità ridotte contro Horner, coefficienti ed intero wire. I prossimi passi sono S1
+-e poi aperture/GKR/range e sincronizzazioni secondo il
+-profilo. S1 conserva 35 passaggi non-query fino alla retention: evitare
+-una seconda matrice device da 1 GiB o una doppia retention da 3,22 GB.
+-Il prossimo checkpoint locale chiude insieme owner/caller S1 e query
+-extension, con una catena WHIR ridotta esatta e conto simultaneo;
+-gli helper preparati separatamente non chiudono questo criterio.
+-L'helper S1 e l'hash extension paired sono componenti controllati
+-separatamente, senza credito di integrazione PCS. La
++Il [checkpoint S1 e Query E](../c7.1-history/crypto-residual-query-2026-10-09.md)
++collega owner e caller fino alle query extension di tutti gli stadi.
++Le catene WHIR D10 A/W conservano wire, FS/RNG e MAC originali;
++getter e finestre host private sono vietati nelle route residenti.
++La schedule S1 non-query è preservata e il commitment iniziale A resta
++a 512 ricostruzioni. I prossimi passi sono le query iniziali W,
++il profilo delle fasi residue e il ledger completo per backend e lifetime;
++poi aperture/GKR/range e sincronizzazioni secondo l'impatto misurato.
++Il conto nominato non è un'ammissione congiunta e non include ancora
++tutte le classi di capacità. La
+ [revisione dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
+ rilascia batch/prove dopo le rispettive chiusure; il test composto a tre
+ risposte rimane incompleto al limite locale. Valutare TMA, fusioni e CUDA Graphs
+@@ -196,6 +198,7 @@
+ | [Query iniziali A residenti](../c7.1-history/crypto-query-2026-10-09.md) | Horner, richieste identiche e catena D10 uncached con wire/FS/RNG/MAC originali; extension/S1 e caller lineare ancora CPU |
+ | [Closure lineare owner/caller](../c7.1-history/crypto-linear-2026-10-09.md) | Codec e coefficienti/endpoints originali, consumo monouso, full wire D10; S1 aritmetico distinto, nessuna parità CUDA |
+ | [Lifetime PCS e hash extension paired](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md) | Rilascio batch/prove, BLAKE3 pinned e regressione sali; hash S1 non selezionato, timeout composto conservato |
++| [S1 e query extension sul common owner](../c7.1-history/crypto-residual-query-2026-10-09.md) | Route canonica, parità WHIR D10 A/W e guard privati; query iniziali W ancora CPU, conto nominato non ammesso, nessuna compilazione/esecuzione CUDA |
+ | [Regole operative](../c7.1-history/operating-rules-2026-10-08.md), [temporanei](../c7.1-history/temporary-memory-2026-10-04.md) | Ragioni delle decisioni; autorizzazioni correnti definite nel [runbook](runpod-tests.md#autorizzazione-e-limiti) |
+ 
+ ## Contratto delle risorse
+diff --git a/docs/c7.1/local-tests.md b/docs/c7.1/local-tests.md
+--- a/docs/c7.1/local-tests.md
++++ b/docs/c7.1/local-tests.md
+@@ -136,6 +136,7 @@
+   cuda/c71_dense_i16.cu cuda/c71_range_native.cu cuda/c71_pcs_hash.cu \
+   cuda/c71_pcs_weight.cu cuda/c71_pcs_weight_tensor.cu cuda/c71_pcs_source.cu \
+   cuda/c71_pcs_salts.cu cuda/c71_pcs_query.cu cuda/c71_linear_native.cu \
++  cuda/c71_pcs_residual.cu cuda/c71_pcs_residual_query.cu \
+   cuda/c71_range_runtime.cpp \
+   -o /tmp/libc71_device_runner.so
+ nvcc -std=c++17 -O2 -arch=sm_90 --cudart static \
+@@ -143,14 +144,15 @@
+ ```
+ 
+ Il loader richiede tutti i simboli ABI4 correnti, comprese operazioni
+-sali, confronto Tensor, FFT naturale, quattro operazioni query e quattro
+-lineari. Una libreria incompleta fallisce
++sali, confronto Tensor, FFT naturale, quattro operazioni query iniziali,
++quattro lineari e 19 nuove operazioni S1/contrazioni/Query E/hash paired.
++Una libreria incompleta fallisce
+ prima dell'uso. Le FFT naturali sono definite nell'unità weight esistente.
+ L'unità lineare risolve i launcher dell'owner/caller ora verificato dal
+ [checkpoint lineare](../c7.1-history/crypto-linear-2026-10-09.md), distinto
+-dal precedente query. `c71_pcs_residual.cu` è un helper S1 preparatorio, senza
+-consumer owner: non è necessario alla linkline corrente e non dà credito
+-alla PCS extension. Conservare RSS/deadline della build separati e
++dal precedente query. Le due unità residuali risolvono i launcher del
++consumer S1 e Query E ora collegato; entrambe sono necessarie alla
++linkline corrente. Conservare RSS/deadline della build separati e
+ nessun rapporto di speedup tra Rust O0 e C++ O2.
+ 
+ #### PCS iniziale, query e candidati
+@@ -263,13 +265,43 @@
+ | `c71_b12_native_linear_full_wire_fs_point_and_original_mac` | Prova D10 signed W esatta contro denso, PCS CPU, wire/FS/punto/MAC |
+ 
+ `tests/test_c71_linear_native.py` verifica 167 casi contro l'oracolo
+-denso e bench host D15/D17; `tests/test_c71_pcs_residual.py` controlla
+-solo l'helper PCS distinto, non owner/caller S1.
++denso e bench host D15/D17. I controlli S1 e Query E sono nel
++[checkpoint integrato](../c7.1-history/crypto-residual-query-2026-10-09.md):
++
++| Filtro | Significato |
++|---|---|
++| `c71_b12_native_residual_pcs_basis_is_distinct_and_canonical` | Base PCS distinta dai MAC e marshalling canonico |
++| `c71_b12_native_residual_owner_coverage_private_tokens_and_faults` | Phase, owner, capacità, token, span/flag e terminalità |
++| `c71_b12_native_residual_state_exact_coefficients_late_retention_and_views` | Singleton/OOD/contrazioni, retention tardiva, fold e viste storiche |
++| `c71_b12_native_residual_paired_tree_root_salts_and_cpu_geometry` | Foglie da 12 limb, paired root, cursori e geometria CPU equivalente |
++| `c71_b12_native_residual_query_horner_pads_duplicates_and_virtual_prefixes` | Query E contro Horner, cap piccoli, pad, ordine/duplicati, prefissi virtuali 0..2 e nessuna ricostruzione A |
++| `c71_b12_native_residual_query_owner_final_values_and_faults` | Lineage root/child, triple finali, fasi private e failure terminali |
++| `c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac` | Catena WHIR D10 A, query iniziali residenti, S1/query extension e wire/FS/RNG/MAC originali |
++| `c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac` | Catena WHIR D10 W, iniziale CPU invariato, S1/query extension e wire/FS/RNG/MAC originali |
++
++I 19 simboli nuovi si verificano con **un filtro per invocazione**, al
++massimo quattro librerie mancanti in ciascun filtro:
++
++```text
++c71_b12_native_residual_symbols_1
++c71_b12_native_residual_symbols_2
++c71_b12_native_residual_symbols_3
++c71_b12_native_residual_symbols_4
++c71_b12_native_residual_query_symbols_1
++c71_b12_native_residual_query_symbols_2
++```
++
++Non usare il prefisso residual complessivo: comprende catene e compilazioni
++dinamiche separate. Applicare sempre AS 2 GiB/60 s ed un solo processo.
++`tests/test_c71_pcs_residual.py` verifica matematica PCS e bench host;
++`tests/test_c71_pcs_residual_query.py` verifica il loader a tre limb con
++oracolo indipendente ed emulazione CTA, senza compilare/eseguire CUDA.
+ `tests/test_c71_pcs_short_hash.py` confronta foglie da 12 limb, nodi
+ paired e sali con BLAKE3 pinned; il
+ [record](../../benchmarks/results/c71-crypto-short-merkle-local-2026-10-09-d16870d8ff1b.json)
+-include le regressioni Rust dello stream e dell'owner sali. È una
+-primitiva preparatoria, senza integrazione S1 o CUDA.
++include le regressioni Rust dello stream e dell'owner sali, come componente
++precedente. `tests/test_c71_range_native.py` verifica il common owner,
++driver differito e lineage. Eseguire ciascun file Python separatamente.
+ Non aggregare i cinque filtri query
+ in una sola invocazione: ciascuno compila una fixture dinamica.
+ La futura parità sm_90, il tempo completo e il picco fisico si verificano
+diff --git a/docs/c7.1/runpod-tests.md b/docs/c7.1/runpod-tests.md
+--- a/docs/c7.1/runpod-tests.md
++++ b/docs/c7.1/runpod-tests.md
+@@ -21,10 +21,11 @@
+ iniziali W/A con sali residenti e
+ [query iniziali A native](../c7.1-history/crypto-query-2026-10-09.md) e
+ [closure lineare residente](../c7.1-history/crypto-linear-2026-10-09.md).
+-Fattori pubblici, extension PCS/S1, query W,
+-GKR non-range/MAC, Seed6 AES e verifica restano CPU al checkpoint validato.
+-Gli helper S1 e Merkle extension paired restano preparazione distinta
+-da integrare e verificare; la
++Il [checkpoint S1 e Query E](../c7.1-history/crypto-residual-query-2026-10-09.md)
++collega anche coset/hash/sali extension, OOD, retention/fold A,
++contrazioni e query extension A/W al common owner. Query iniziali W,
++fattori pubblici, GKR non-range/MAC, Seed6 AES e verifica restano CPU.
++Il conto per fasi è nominato, `joint_admitted:false`; la
+ [revisione locale dei lifetime](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
+ conserva anche il timeout della prova composta.
+ Accumulo W ordinario e QK/PV scalari rimangono default; le candidate Tensor/MMA
+@@ -240,7 +241,8 @@
+ 
+ La futura libreria completa segue la
+ [build locale](local-tests.md#collegamento-del-runner-cuda), includendo
+-hash, weight, Tensor, source, sali/query PCS e unità lineare oltre all'owner. Simboli ABI4
++hash, weight, Tensor, source, sali/query PCS, unità lineare e le due
++unità residuali oltre all'owner. Simboli ABI4
+ mancanti sono terminali, senza fallback. Verificare CUDA reali di
+ prescan prefix/scatter, replay sali, seek/rejection/cap, cursor finali,
+ flag/fence, basi, pad e root. Verificare anche FFT naturali pari/dispari,
+@@ -259,7 +261,15 @@
+ senza lock esterno, ritiro prima della pubblicazione e assenza di
+ consumo correlazioni sui round falliti. Il checkpoint locale non
+ compila CUDA; ripetere i cinque filtri nativi pertinenti sulla libreria
+-reale. S1 richiede parità e conto propri; non ereditarli da query/linear.
++reale. Per S1 ripetere singleton/OOD, codec, contrazioni e fold contro
++l'oracolo PCS indipendente; verificare retention dopo apertura del
++predecessore e old+new fino al retirement, senza duplicato host S1.
++Per Query E ripetere Horner in tutti gli stadi, prefissi virtuali 0..2,
++ordinalità/generazione delle plane, lineage, pad e getter privati vietati.
++Misurare launch/lavoro del loader W parallelo, zero D2H degli originali,
++nessuna ricostruzione A aggiuntiva e publication/staging simultanei.
++Il ledger completo deve includere le classi ancora non quantificate
++nelle [specifiche](specs.md#pcs-residuale-e-query-extension-residenti).
+ Per l'hash extension ripetere foglie/nodi/root contro BLAKE3 pinned,
+ copertura logica 2R con output R e bande senza attraversamento di lane.
+ Contare i batch W soltanto fino alla chiusura W; capacità di proof/codec,
+@@ -284,8 +294,9 @@
+ 
+ Il comando è ora `c71_canonical_reference experiment-cuda`. Gli esempi
+ `c71_matrix` e `c71_calibration` non lo sostituiscono. L'esperimento usa
+-la pipeline mista dichiarata, con commitment/query A iniziali residenti
+-e PCS extension/query W ancora CPU; il sampler iniziale è residente.
++la pipeline mista dichiarata, con commitment iniziali W/A, query iniziali
++A e PCS residuale/query extension residenti; le query iniziali W ed i
++fattori pubblici restano CPU.
+ Usare le
+ [build mirate](local-tests.md#compilazione-mirata) e la
+ [build della libreria CUDA](local-tests.md#collegamento-del-runner-cuda).
+@@ -310,8 +321,8 @@
+ Gli esperimenti GPU confrontano prima gli operatori con il diagnostico
+ di parità sopra e il range con il riferimento host/nativo. Accumuli,
+ FFT e hash salato dei commitment iniziali, lettore e resti delle query
+-iniziali A sono residenti; fattori pubblici, extension PCS/S1 e query W
+-restano CPU nel checkpoint validato. Poi si
++iniziali A, S1 e query extension sono residenti; fattori pubblici e query
++iniziali W restano CPU nel checkpoint validato. Poi si
+ misurano le fasi rappresentative con i
+ loro stati simultaneamente vivi. Un kernel veloce da solo non dimostra
+ il tempo completo. CUDA richiesto ma non disponibile deve produrre errore,
+diff --git a/docs/c7.1/security.md b/docs/c7.1/security.md
+--- a/docs/c7.1/security.md
++++ b/docs/c7.1/security.md
+@@ -704,15 +704,49 @@
+ incompleto e fermano l'owner, senza getter fallback. La prova D10 signed
+ W conserva full wire/FS/punto/MAC; i codec A sono verificati separatamente.
+ Non ne segue un lemma Lean di raffinamento, parità CUDA o completamento
+-del profilo canonico. Extension/S1 resta CPU; l'helper PCS preparatorio
+-non scarica le premesse delle viste residenti o del loro lifetime.
++del profilo canonico. Extension/S1 restava CPU a quel checkpoint;
++le premesse delle viste residenti e del loro lifetime restano esplicite
++anche nella successiva integrazione.
+ 
+ La [correzione dei lifetime e il Merkle extension preparatorio](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
+ non cambiano FS, MAC, correlazioni o byte del protocollo. Batch/prove owned
+ sono rilasciati dopo l'ultimo consumo; il timeout composto non dà parità.
+ Le foglie extension conservano base PCS, limb/byte order, sali e blocco
+-finale BLAKE3. La candidata paired pubblica R nodi soltanto dopo tutte
+-le 2R foglie; il suo consumer S1 e le query residenti restano da integrare.
++finale BLAKE3. L'helper paired era preparatorio a quella sorgente storica;
++pubblica R nodi soltanto dopo tutte le 2R foglie.
++
++**S1 e Query E.** Il
++[checkpoint residente](../c7.1-history/crypto-residual-query-2026-10-09.md)
++collega il consumer PCS allo stesso `native_original` del modello.
++La base PCS v³=v+1 usa marshalling tipizzato distinto da MAC u³=2;
++ogni lettura originale o retained produce tutte le tre componenti nel
++medesimo passaggio. EQ, pad e sfide restano nel consumer: il producer
++riceve soltanto il sink ed indici pubblici, senza nuove informazioni
++PCS o correlazioni. Il C ABI conserva span/count; unicità originale A
++è responsabilità del `NativeSource` Rust fidato, tramite copertura esatta
++per riga e partizione dyadic dei byte. Non dedurre unicità dal solo count
++di una chiamata C autonoma. Il nuovo controllo ridondante con 4.096
++intervalli è stato rimosso perché incompatibile col piano pinned;
++il controllo dei metadati e la ragione sono nella storia.
++Il contratto originario dello scanner non è indebolito.
++
++Plane e ring privati sono sigillati soltanto dopo flag/fence validi;
++generazione e ordinalità c0/c1/c2 impediscono sostituzioni o scambi di
++limb. La retention A segue l'apertura e il rilascio dell'oracolo iniziale;
++promozione e fold non modificano un predecessore ancora apribile. W
++continua a leggere gli originali packed. Query E mantiene capability,
++ordine discendente, limb, grado ed ultimo handle della lineage; vieta
++letture e mutazioni generiche durante la transazione. Solo valutazioni
++finali canoniche sono pubblicate dopo il ritiro dei temporanei, poi
++autenticate dal Tree e chiuse sui MAC originali. Non è introdotto un
++nuovo endpoint autenticato o una scansione originale A per limb.
++
++Le catene WHIR ridotte A/W conservano full wire, FS/RNG e MAC originali
++ideali fissati; in produzione restano PCG reale AES e correlazioni
++monouso originali. Queste parità non dimostrano il profilo canonico,
++la correttezza CUDA o i target. Raffinamento dei kernel, determinismo
++del replay, composizione Seed6 e sufficienza della riserva fisica restano
++le assunzioni dichiarate nei §§1–6 e nel design.
+ 
+ S1 si ridimensiona soltanto dopo consumo/rilascio del predecessore e
+ registrazione del successore; nessun oracolo ancora apribile è modificato.
+diff --git a/docs/c7.1/specs.md b/docs/c7.1/specs.md
+--- a/docs/c7.1/specs.md
++++ b/docs/c7.1/specs.md
+@@ -419,8 +419,9 @@
+ albero dei fattori e matrice restituita sono buffer contigui. Ogni livello
+ usa due spettri piatti; i resti discendono in due buffer contigui. La
+ rigenerazione conserva un solo sottoalbero e copia soltanto i path richiesti.
+-Fattori pubblici, query W/extension e rigenerazione Merkle restano CPU;
+-le query iniziali A collegano lettore e resti residenti descritti sotto.
++Fattori pubblici e query iniziali W restano CPU; query iniziali A,
++query extension A/W e rigenerazione Merkle extension usano l'owner comune
++descritto sotto.
+ Tutti sono conteggiati nel budget comune. Il cap delle
+ query iniziali dimezzato può raddoppiare i batch: nessun credito di lavoro
+ gratis. I punti dei claim GKR/PCS e i loro vettori rilasciano la capacità
+@@ -500,11 +501,12 @@
+ payload dei due twiddle; non è un picco fisico, non include tutto il
+ workspace temporaneo né allocator/runtime. Il
+ [checkpoint degli stadi](../c7.1-history/canonical-pcs-stages.md)
+-documenta geometrie e lifecycle. Le shape canoniche non sono eseguite;
+-nel runner misto queste fasi PCS restano CPU, con replay CUDA e conto
+-simultaneo esplicito nella sezione dedicata.
+-Per A ordinata S1 rimane allocato; il predecessore viene interrogato e
+-rilasciato prima di modificare lo stato successivo. W non seleziona S1.
++documenta geometrie e lifecycle del riferimento. Il
++[checkpoint residente](../c7.1-history/crypto-residual-query-2026-10-09.md)
++collega queste fasi al runner misto, con parità ridotta; le shape canoniche
++non sono eseguite. Per A, S1 rimane allocato sul device: il predecessore
++viene interrogato e rilasciato prima della promozione dello stato successivo.
++W non seleziona una retention completa.
+ 
+ [c71_fft_microbench.cu](../../cuda/c71_fft_microbench.cu) contiene FFT
+ diretta/inversa, normalizzazione 1/N, geometrie pari/dispari e riferimento
+@@ -877,8 +879,9 @@
+ sono esclusi fattori, finestra originale, low/high, pad, output host,
+ Tree/replay e altri owner. Non è l'ammissione della query completa.
+ PCS v³=v+1 e MAC u³=2 rimangono distinti; la trasformazione base non
+-reinterpreta le componenti d'estensione. Extension, S1 e query W restano
+-CPU nel checkpoint validato; le ricostruzioni non aumentano.
++reinterpreta le componenti d'estensione. Il caller extension usa tre
++componenti base separate; le query iniziali W restano CPU e le
++ricostruzioni originali A non aumentano.
+ 
+ Il reader `NativeQuery` collega le finestre originali al medesimo owner
+ numerico. Resti high-to-low, shift dei pad e discesa dell'albero usano
+@@ -911,9 +914,88 @@
+ 
+ La parità contro Horner verifica richieste di finestre identiche al
+ riferimento; il commitment iniziale A conserva 512 ricostruzioni.
+-La catena D10 uncached verifica wire, FS/RNG, MAC originali e due
+-verificatori, con commitment iniziale CPU ed extension ancora CPU.
++La catena D10 uncached del checkpoint query iniziale verifica wire,
++FS/RNG, MAC originali e due verificatori, con commitment iniziale ed
++extension CPU a quella sorgente storica.
+ Tempi Rust O0/C++ O2 non consentono rapporti di speedup o stime H100.
++
++#### PCS residuale e query extension residenti
++
++`ReplayModel::make_sourcewise_backend` collega `native_residual` a
++`model.native_original` nella produzione e nelle fixture della catena.
++`c71_pcs_residual.cu` esegue singleton, contributi originali/residenti,
++coset, OOD, retention e fold nella base PCS v³=v+1; `c71_pcs_residual_query.cu`
++carica i blocchi delle query extension. Sono obbligatori 19 nuovi simboli
++ABI4: nove residuali, quattro di contrazione, cinque Query E ed uno
++hash paired privato (+152 B nella API Rust). La loro assenza è terminale.
++Owner, stream ed allocatore sono quelli numerici originali.
++
++Shape/Chunk/E sono 32/16/24 B. Il packet EQ usa chunk di al più otto bit,
++cinque descrittori e 1.280 celle; conserva ordine MSB, punti zero/uno ed
++il supporto completo dopo ogni fold. La sorgente A usa il codec biased
++originale, compreso lo split i48; W usa signed Goldilocks e lo stesso
++mapping packed sigillato. Ogni scan produce insieme le tre componenti:
++nessun download per riga o replay originale separato per limb.
++La riduzione singleton ammette il primo fold canonico da uno a sette bit
++in 128 bucket; le geometrie Flat maggiori non hanno fallback nativo.
++OOD mantiene i pad dopo la lunghezza completa, con lookup di potenze
++pubbliche spezzato. Contrazioni bounded riusano EQ e covettori originali,
++restituendo soltanto gli scalari E finali.
++
++Il ring extension contiene quattro colonne E, tre limb per colonna e
++due coset: `((colE*3+limb)*2+lane)*R+row`, cioè 24R word. L'owner applica
++pad e 24 FFT seriali, controlla flag/fence e ritira lo scratch prima del
++seal. Le foglie mantengono dominio 32 B, valori 96 B e sali 32 B: tre
++compressioni BLAKE3, con l'ultimo blocco da 32 B. La prima lane scrive R
++foglie; la seconda calcola i nodi fratelli in-place, in ordine originale.
++Bande senza attraversamento di lane e progresso logico 2R precedono il
++seal dei R nodi. A R=2^23 l'output hash richiede 268.435.456 B, 256 MiB
++in meno rispetto a 2R digest separati. Frontier, cursori, ring e sampler
++rimangono simultanei nelle rispettive fasi. Sali group2/R23 conservano
++dominio, stream, seek, rejection e cap 2^40; i guard iniziali group4/32
++e le geometrie escluse rimangono invariati.
++
++A crea tre plane SoA soltanto dopo apertura e rilascio dell'oracolo
++iniziale. Il successore può essere committato mentre il predecessore è
++apribile; la promozione richiede poi il rilascio di quest'ultimo. I fold
++virtuali di zero, uno o due bit leggono le stesse plane immutabili.
++Tipo privato, generazione e posizione di ciascun limb sono sigillati:
++scambiare c1/c2 o usare una generazione diversa è terminale. W non crea
++una retention completa. I limiti di memoria contano anche old+new durante
++la promozione; nessuna copia host di S1 è autorizzata come spill.
++
++Query E usa colonne di n=2^(remaining−2), capacità power-of-two q≤2^20,
++pad originali e blocchi discendenti. Un caricamento produce `low[limb*q+i]`
++per tutti i tre limb; i resti base esistenti sono riusati con token,
++limb e grado sigillati. A legge le plane trattenute con prefisso virtuale
++≤2 e non richiama il producer originale. W parallelizza 32 coefficienti
++su blocchi di 256 prefissi, con otto worker per coefficiente, riduzioni
++modulari esatte e CAS Goldilocks; indice/live precedono ogni lettura W.
++Shared è 12.288 B/CTA, grid≤8.192 con stride, task≤2^25; nessun nuovo
++buffer globale oltre a low3. Il loader tenta un launch per init/pad e
++un secondo soltanto quando ci sono contributi W. Letture, upload,
++rilascio generico e mutazioni del remainder sono vietati durante la query.
++Finish legge tre colonne e un flag, controlla canonicità e ritira il
++packet/low/flag prima della pubblicazione. Solo la matrice finale passa
++al Tree, che mantiene autenticazione Merkle e endpoint MAC originali.
++
++Per q=2^20, il subtotal device Query E è 864.028.160 B: fattori
++704.643.072, twiddle allineati 67.110.400, low3 25.165.824, quattro resti
++33.554.432 e work/scratch 33.554.432 B; packet EQ/pad e flag si aggiungono.
++Host contemporaneo di pubblicazione: matrice 96q, colonna Rust 24q e
++staging C++ 24q, in totale 144q (150.994.944 B al cap). Fattori pubblici
++in costruzione, cache DFT, righe/sali/path dei batch precedenti ed altri
++owner sono ulteriori. Query scratch si ritira prima della rigenerazione
++del batch corrente. A S1 usa 3.221.225.472 B di plane; la promozione a
++due fold può far coesistere 4.026.531.840 B old+new. Il layout host atteso
++del nuovo owner è 42.088 B; dimensione e capacità definitive sono nel
++[record del checkpoint](C71_RESIDUAL_RECORD), senza credito di picco fisico.
++
++Le parità ridotte, i benchmark host, il confronto WHIR A/W ed i failure
++sono raccolti nella [storia](../c7.1-history/crypto-residual-query-2026-10-09.md).
++Il commitment iniziale A conserva 512 ricostruzioni; scansioni S1,
++contrazioni e query hanno contatori distinti. Nessun tempo host o subtotal
++qui dimostra il completamento D34/D35, il target 65 s o la parità CUDA.
+ 
+ #### Closure e candidate aritmetiche
+ 
+@@ -945,26 +1027,13 @@
+ conta capacità/realloc e ogni prenotazione. Telemetria riporta capacità
+ host effettiva e bound temporaneo per round, delta completo del common
+ owner compresi producer/mapping, senza sommare picchi cumulativi.
+-Owner host corrente 37.408 B, Stats 152 B, API Rust +32 B; kernel 256
++Owner host al checkpoint lineare 37.408 B, Stats 152 B, API Rust +32 B; kernel 256
+ thread, grid ≤8192 e shared 30.720 B. Registri/spill/scheduling e conto
+ fisico restano da misurare. Nessuna ammissione congiunta segue da questi
+ subtotal. I 16 casi codec/endpoints, 30 rifiuti, quattro simboli mancanti
+ e cinque fault di avanzamento preservano le tre correlazioni per round;
+ la catena D10 signed W verifica full wire/FS/punto/MAC originale con PCS
+ CPU. La parità A completa e quella CUDA non sono implicite in tale catena.
+-
+-`c71_pcs_residual.cuh/.cu` prepara separatamente aritmetica
+-PCS v³=v+1, singleton/OOD, SoA e coset/fold senza selezione o consumo da
+-parte dell'owner; non implica retention S1 GPU o cambi di lifetime.
+-L'[helper Merkle extension](../c7.1-history/crypto-retirement-short-merkle-2026-10-09.md)
+-codifica 12 limb base: dominio 32 B, valori 96 B, sali 32 B. Tre
+-compressioni BLAKE3 per foglia conservano l'ultimo blocco da 32 B.
+-La candidata paired conserva R digest: la prima lane scrive foglie,
+-la seconda il loro nodo in-place, con avanzamento logico 2R e bande
+-che non attraversano una lane. A R=2^23 l'output è 268.435.456 B,
+-256 MiB in meno del 2R separato; ring/frontier/sampler e gli altri
+-owner restano da sommare. Helper sali R23 limitato alla geometria S1;
+-il consumer S1 e le sue query non sono selezionati al checkpoint corrente.
+ 
+ La [candidata Tensor W](../../cuda/c71_pcs_weight_tensor.cu) usa quattro
+ limb16 biased, dot INT8 pack/compose esatto e correzione 32768·sum_W:
+@@ -1008,16 +1077,27 @@
+ | Replay device | Upper derivato da porte, batch e ultimi consumer: 785.789.696 B **incluso** lo stato persistente, copie KV e istogrammi duplicati; niente somma di massimi separati |
+ | PCS iniziale CPU/A | Quattro coset 2^20×128×8 = 4.294.967.296 B insieme, inclusi quelli in attesa; frontier W riferimento/A 402.653.184 / 369.098.752 B, cursori sali 8.388.608 B; FFT, radici, pad, potenze e stato device restano conteggiati |
+ | PCS iniziale W CUDA | Ring otto colonne/32 coset 2.147.483.648 B, CV 1.073.741.824 B e frontier 234.881.024 B; subtotal device del componente 3.745.182.208 B con sampler privato, senza sommare la schedule CPU alternativa |
+-| PCS S1/S2 | S1: due coset 2^23×12×8; S2: due coset 2^21×12×8 con S1 da 3.221.225.472 B vivo. Dopo il rilascio del predecessore si applica il fold e `shrink_to_fit`; anche l'eventuale sovrapposizione vecchio+nuovo del realloc è addebitata |
+-| Aperture PCS | Matrice contigua; query iniziali A native con subtotal e lifetime sopra, fattori pubblici CPU; W/extension CPU. q≤2^20, resti/FFT/staging e un solo sottoalbero rigenerato; righe/sali/path precedentemente aperti restano conteggiati |
++| PCS S1/S2 | Ring nativo S1: due coset 2^23×12×8; S2: due coset 2^21×12×8 con plane S1 A da 3.221.225.472 B vive. Promozione soltanto dopo rilascio del predecessore; old+new delle plane conta fino al retirement |
++| Aperture PCS | Matrice contigua; query iniziali A ed extension A/W native con subtotal e lifetime sopra, fattori pubblici CPU; query iniziali W CPU. q≤2^20, resti/FFT/staging e un solo sottoalbero rigenerato; righe/sali/path precedentemente aperti restano conteggiati |
+ | Closure lineare | Packet/output/flag nativi e staging host sopra; forme pubbliche e producer rimangono nel conto. Una scan originale per round, mapping W una volta; nessuna retention implicita |
+ | Range/staging | Range A ≤1 GiB device; finestra originale query A ≤256 MiB device, senza copia byte host nel caller nativo (≤256 MiB host nel riferimento CPU); W staging signed ≤256 MiB, padding pubblico signed host ≤55.574.528 B; ogni copia rimane nel conto |
+ | GKR, Seed6 e altro host | Compact RMS, EXP30/lookup, contrazioni, MAC originali, Seed6 reale dei due ruoli, tabelle/profili, certificati/codec e metadati passano dallo stesso allocatore; nessuno slot figurativo li rende gratuiti |
+ 
+-Il [ledger eseguibile](../../scripts/c71_temporary_ledger.py) riconcilia
+-le emissioni delle geometrie di produzione con i picchi effettivi dei test
+-ridotti del riferimento CPU; non descrive automaticamente le nuove
+-allocazioni native query/linear/S1. Il
++Il conto per fasi distingue backend legacy e percorso nativo, con lifetime
++di query, S1 e cache iniziali A1..A3; il
++[record del checkpoint](C71_RESIDUAL_RECORD) lega il backend `s1-prepared`
++alle shape correnti di tutti gli stadi extension nativi. È uno screen
++nominato con `joint_admitted:false`, non un
++conto completo. Le classi ancora da quantificare sono chiuse ed esplicite:
++layout/Arc/metadati e tabelle pubbliche, costruzione/conversioni/cache DFT
++dei fattori query, batch già aperti, PCG/VOLE/journal di entrambi i ruoli,
++prove/codec/framing e realloc, GKR/range/numerica fuori dall'envelope,
++EQ/PowerBlocks e bande di contrazione host, forme/endpoint/marshalling,
++metadata/flag/workspace degli altri consumer, temporanei finali bounded
++e nuove cache/pad del base case. Non sostituirle con uno
++slot fisso o un residuo gratuito. Il
++[ledger eseguibile](../../scripts/c71_temporary_ledger.py) conserva il
++percorso legacy e la sua provenienza; i vecchi record non cambiano. Il
+ [record dei lifetime](../../benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1.json)
+ lega il rilascio di batch W e prova W prima delle chiusure A, e di batch/prova
+ A dopo la chiusura corrente: ordine FS/wire/MAC invariato. Il cap codec dei
+@@ -1045,10 +1125,9 @@
+ Questi byte non passano al verificatore. Il range A resta residente;
+ La finestra range A del runner scende da 2 GiB a 1 GiB: cambia il numero
+ di finestre, non gli originali né la geometria del range.
+-I commitment iniziali W/A, le query iniziali A e gli accumuli lineari sui
+-valori originali sono residenti. PCS
+-extension FFT/Merkle e relativi sali, query W/extension, contrazioni,
+-GKR non-range, MAC, PCG, codec e verifica
++I commitment iniziali W/A, le query iniziali A, gli accumuli lineari,
++PCS extension FFT/Merkle/sali, contrazioni e query extension sono residenti.
++Query iniziali W, fattori pubblici, GKR non-range, MAC, PCG, codec e verifica
+ restano CPU dichiarati, non fallback impliciti. La rigenerazione di una
+ generazione storica rilascia quella precedente e riusa KV450 originale;
+ una copia D2D della sola slice corrente serve quando un consumer ordinario
+diff --git a/docs/c7.1-history/crypto-residual-query-2026-10-09.md b/docs/c7.1-history/crypto-residual-query-2026-10-09.md
+new file mode 100644
+--- /dev/null
++++ b/docs/c7.1-history/crypto-residual-query-2026-10-09.md
+@@ -0,0 +1,131 @@
++# PCS residuale e Query E sul common owner — 9 ottobre 2026
++
++Baseline del goal `9033c64`; sorgente finale
++`9a5da712a2583be520fe342dfaa278c9651d60fc`.
++Il [record combinato](C71_RESIDUAL_RECORD)
++lega la sorgente pulita finale, comandi, binario, manifest e verifiche del
++checkpoint unico S1 + Query E. Le fasi preparatorie restano nei record
++[lineare](../../benchmarks/results/c71-crypto-linear-local-2026-10-09-31280382f681.json),
++[retirement](../../benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1.json)
++e [hash extension](../../benchmarks/results/c71-crypto-short-merkle-local-2026-10-09-d16870d8ff1b.json),
++senza modificare il loro stato storico. `credit:false`, nessuna
++compilazione/esecuzione CUDA, ammissione fisica o misura H100. Il goal è
++attivo; hardware e durata di una nuova campagna non sono autorizzati.
++
++## Integrazione e parità
++
++`ReplayModel::make_sourcewise_backend` seleziona nella produzione lo
++stesso `model.native_original` già usato da commitment e closure lineare.
++Il percorso ora comprende singleton, S1 e successori, coset/FFT/hash/sali,
++OOD, retention A tardiva, fold, contrazioni e query extension in tutti
++gli stadi. W continua a leggere il packed sigillato, senza retention
++completa. Le query iniziali W rimangono CPU; commitment iniziali W/A,
++query iniziali A e closure mantengono i checkpoint precedenti.
++
++La verifica locale su `20235da87d851ce856388cd7070c7792cd40089c`
++ha completato 15 filtri Rust, compresa la catena WHIR D10 A/W con
++2.285.464/2.284.920 B di full wire. FS/RNG, punti ed endpoint dei MAC
++originali ideali fissati coincidono col riferimento; due verificatori
++controllano la stessa prova. Le fixture installano getter e finestre
++host che fanno panic nei percorsi privati residenti. A usa query iniziali
++residenti ed un commitment iniziale CPU di riferimento; W conserva il
++commitment e le query iniziali CPU della fixture. Queste scelte della
++fixture non attribuiscono credito ad un commitment canonico GPU completo.
++Il record combinato distingue quei controlli dalle regressioni finali
++dopo la rimozione del guard di frontiera descritto sotto.
++
++PCS usa v³=v+1, con marshalling tipizzato distinto da MAC u³=2.
++Le parità confrontano codec A i16/raw i48, signed W packed, sfide zero/uno
++ed extension, pad, tutti i limb, due coset, root e cursori originali.
++Le query Horner comprendono ordine/duplicati, pad 19, cap 1/2/4/8 e
++prefissi virtuali A 0..2; nessuna query extension richiama il producer
++originale A. Il commitment iniziale canonico A resta a 512 ricostruzioni;
++le fixture contano separatamente commitment, singleton, gruppi S1, OOD
++e retention, senza confonderli con le query.
++
++I quattro file Python owner/residual/loader/hash sono controlli host,
++con algebra indipendente e driver differito. Il loader parallelo W ha
++190 casi e 3.024 controlli Horner; l'emulazione CTA conta 191.772 letture
++originali, identiche all'oracolo, 8.373 task e 26.934 aggiornamenti di
++campo. Il precheck seriale è durato 2,5604 s con RSS 163.201.024 B sotto
++AS 2 GiB/60 s. Non è un benchmark CUDA. I log preliminari, compresi errori
++di include e warning Werror della fixture poi corretti, rimangono nel
++record con provenienza distinta dall'esecuzione pulita.
++
++## Guard, causalità del consumer e risorse
++
++I 19 nuovi simboli ABI4 comprendono nove operazioni residuali, quattro
++contrazioni, cinque Query E ed hash paired privato. I filtri dei simboli
++sono separati in gruppi di al più quattro librerie mancanti. Capability
++e handle sono owner-bound; seal/fold/reader verificano generazione e
++posizione c0/c1/c2. La review ha corretto lo scambio c1/c2 prima della
++selezione. Query E vincola token, colonna, ordine discendente, grado,
++limb e ultimo remainder; le mutazioni FFT generiche durante la query
++sono rifiutate. Finish mantiene lo staging fino al fence, valida flag
++e canonicità e ritira packet/low/flag prima della pubblicazione. Errori
++di producer, symbol, budget, copie, launch/fence/free fermano l'owner,
++senza getter o reader sostitutivi.
++
++Un controllo aggiunto alla review provava a mantenere al più 4.096
++intervalli byte disgiunti nel C ABI. Il piano pubblico pinned richiede
++già almeno 15.360 componenti per i raw_score; l'emulazione dei soli
++metadati O=0/150/300 ha misurato un massimo di **52.883**. Quel guard
++incompatibile è stato rimosso prima del checkpoint finale, insieme ai
++negativi specifici che non appartenevano al contratto originario.
++Restano il conteggio/span C e l'unicità del `NativeSource` Rust fidato:
++`record_scan_rows`/`complete_scan_rows` rifiutano righe duplicate o
++omesse, e la partizione dyadic di `Bytes` mappa esattamente i byte.
++La parità di emissioni reversed/ragged è conservata. Non è introdotto
++un nuovo assunto di unicità ricavato dal solo conteggio C; la frontiera
++ridondante da 65.544 B non rimane nel layout owner finale.
++
++Il loader W precedente assegnava un coefficiente ad un thread e iterava
++serialmente tutti i prefissi: nel piccolo S8 pinned, solo 64 coefficienti
++per colonna potevano richiedere 119.911.505 letture ciascuno. La correzione
++nel medesimo checkpoint usa 32 coefficienti × 256 prefissi × 8 worker,
++riduzione modulare esatta e CAS Goldilocks, con guard index/live prima
++della lettura. Shared 12.288 B, grid≤8.192 e task≤2^25; nessun nuovo buffer
++globale oltre a low3, nessuna retention W o scansione A aggiuntiva.
++Il conteggio distingue un launch init/pad ed il secondo soltanto quando
++ci sono contributi W. La parità host non misura la contesa CAS o la H100.
++
++I conti tecnici e i lifetime sono centralizzati nelle
++[specifiche](../c7.1/specs.md#pcs-residuale-e-query-extension-residenti).
++Il subtotal Query E al cap è 864.028.160 B device più packet/flag;
++la pubblicazione host richiede contemporaneamente 144q B, non soltanto
++la colonna Rust. A S1 conserva 3.221.225.472 B, con 4.026.531.840 B old+new
++durante la promozione a due fold. Query scratch termina prima della
++rigenerazione del batch corrente; i batch già aperti restano vivi.
++Retention A segue il rilascio dell'oracolo iniziale. Batch/prova W
++terminano dopo la chiusura W secondo il receipt di retirement, mentre
++cache A1..A3, wire e realloc mantengono i rispettivi lifetime.
++
++Il ledger per backend/fase seleziona esplicitamente il percorso
++`s1-prepared` per tutti gli stadi extension nativi, ma resta
++`joint_admitted:false`: le classi aggiuntive elencate
++nelle specifiche non hanno ancora tutte un upper congiunto. Nessuno
++slot fisso sostituisce numerica/GKR, fattori CPU, PCG/VOLE, proof/codec,
++righe/path già aperti o capacità trattenute. Il limite payload
++5.905.580.032 B e la riserva fisica 256 MiB restano invariati. Il nuovo
++layout owner è atteso a 42.088 B, Stats 152 B e API +152 B; il record conserva
++le dimensioni definitive verificate, senza derivarne un picco canonico.
++
++## Limiti del risultato
++
++La build mirata ed i test seriali mantengono un job, crate Rust O0,
++dipendenze O2, LLD della toolchain ad un thread, overflow checks e limiti
++AS 2 GiB/60 s dei test. Comandi, RSS/wall, eventuali timeout ed errori finali
++sono nel record combinato; il costo della build è separato dal riuso.
++La compilazione preliminare pre03 è terminata per timeout a60,05s;
++la singola ripresa pre04 ha completato la build in56,19s. Entrambe
++restano evidenze distinte; le regressioni definitive hanno i propri log.
++Nessuna precedente failure è convertita in successo o sovrascritta.
++
++Restano query iniziali W, profilo delle fasi residue e conto completo
++di capacità/lifetime. Compilazione e parità CUDA, consumo fisico,
++contesa/sincronizzazioni e tempi separati installazione/setup/inferenza/
++prova/verifica richiedono la futura campagna autorizzata. La catena D10
++non è un certificato D34/D35 o una misura dei target 65 s/40 MB; i limiti
++formali e le assunzioni residue rimangono nel
++[design corrente](../c7.1/design.md#risultati-attuali-e-prossime-ottimizzazioni)
++e nella [sicurezza](../c7.1/security.md).

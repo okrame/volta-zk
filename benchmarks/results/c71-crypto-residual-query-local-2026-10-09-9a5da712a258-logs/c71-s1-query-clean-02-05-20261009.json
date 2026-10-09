@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_residual_symbols_2",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 37.74782752431929,
+  "max_rss_bytes": 326230016,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 37.44838,
+  "system_s": 0.28913099999999997,
+  "log": "/tmp/c71-s1-query-clean-02-05-20261009.log"
+}

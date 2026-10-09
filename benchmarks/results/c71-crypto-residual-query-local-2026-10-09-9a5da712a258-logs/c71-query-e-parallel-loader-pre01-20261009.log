@@ -1,0 +1,3 @@
+C71_PCS_RESIDUAL_QUERY_HOST {"cases":190,"coefficient_outputs":41620,"pad_outputs":395640,"zero_outputs":28320,"horner_checks":3024,"rejections":33,"logical_passes":189,"expected_W_original_reads":191772,"expected_A_retained_E_reads":35424,"expected_A_retained_word_reads":106272,"named_fixture_heap_upper_bytes":668816,"emulated_W_reads":191772,"emulated_CTA_tasks":8373,"emulated_EQ_cache_entries":105834,"emulated_field_updates":26934,"max_low_payload_bytes":25165824,"W_shared_bytes":12288,"resident_shared_bytes":0,"host_component_s":0.262216522,"PCS_basis_v3_v1":true,"gpu_execution":false,"integrated":false,"credit":false}
+.
+1 passed in 2.40s

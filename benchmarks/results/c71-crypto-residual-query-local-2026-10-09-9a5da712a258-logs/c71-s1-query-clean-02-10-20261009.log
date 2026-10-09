@@ -1,0 +1,7 @@
+
+running 1 test
+test c71_matrix::range::windowed::native::tests::c71_b12_native_residual_owner_coverage_private_tokens_and_faults ... C71_NATIVE_RESIDUAL_OWNER_FAILURE {"terminal_rejections":27,"gpu_execution":false,"credit":false}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 567 filtered out; finished in 9.55s
+

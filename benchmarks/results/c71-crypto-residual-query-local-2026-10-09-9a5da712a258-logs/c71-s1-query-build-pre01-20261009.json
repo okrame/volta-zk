@@ -1,0 +1,82 @@
+{
+  "command": [
+    "cargo",
+    "rustc",
+    "--offline",
+    "--locked",
+    "-j",
+    "1",
+    "-p",
+    "volta-pcs",
+    "--features",
+    "c71-seed6-reference",
+    "--lib",
+    "--profile",
+    "test",
+    "--config",
+    "profile.dev.package.volta-pcs.opt-level=0",
+    "--config",
+    "profile.dev.package.volta-pcs.codegen-units=256",
+    "--",
+    "-Clink-arg=-fuse-ld=lld",
+    "-Clink-arg=-B/home/okrame/.rustup/toolchains/stable-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld",
+    "-Clink-arg=-Wl,--threads=1"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk/rust",
+  "exit_code": 0,
+  "wall_s": 58.219545025378466,
+  "max_rss_bytes": 2464444416,
+  "sampled_aggregate_live_rss_peak_bytes": 2519048192,
+  "sampled_processes": {
+    "5": {
+      "name": "timeout",
+      "max_rss_bytes": 1576960,
+      "cpu_ticks": 0,
+      "first_seen_s": 0.00123996427282691,
+      "last_seen_s": 58.21920685702935
+    },
+    "6": {
+      "name": "cargo",
+      "max_rss_bytes": 53026816,
+      "cpu_ticks": 13,
+      "first_seen_s": 0.10237302631139755,
+      "last_seen_s": 58.11785288527608
+    },
+    "21": {
+      "name": "rustc",
+      "max_rss_bytes": 2464444416,
+      "cpu_ticks": 5698,
+      "first_seen_s": 0.20356254605576396,
+      "last_seen_s": 58.11792109441012
+    },
+    "283": {
+      "name": "cc",
+      "max_rss_bytes": 2248704,
+      "cpu_ticks": 1,
+      "first_seen_s": 57.09990785596892,
+      "last_seen_s": 58.015569534152746
+    },
+    "284": {
+      "name": "collect2",
+      "max_rss_bytes": 1507328,
+      "cpu_ticks": 0,
+      "first_seen_s": 57.1000071070157,
+      "last_seen_s": 58.01561011839658
+    },
+    "285": {
+      "name": "rust-lld",
+      "max_rss_bytes": 586821632,
+      "cpu_ticks": 91,
+      "first_seen_s": 57.10017214901745,
+      "last_seen_s": 58.01565191010013
+    }
+  },
+  "sample_interval_s": 0.1,
+  "clock_ticks_per_s": 100,
+  "deadline_s": 60,
+  "workers": 1,
+  "as_limit_mib": null,
+  "user_s": 51.02776,
+  "system_s": 7.238519,
+  "log": "/tmp/c71-s1-query-build-pre01-20261009.log"
+}

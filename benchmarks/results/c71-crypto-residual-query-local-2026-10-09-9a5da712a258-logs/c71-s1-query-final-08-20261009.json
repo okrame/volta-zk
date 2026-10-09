@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_source_geometry_and_resource_envelope",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.003704145085066557,
+  "max_rss_bytes": 10649600,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.0033369999999999997,
+  "system_s": 0.0,
+  "log": "/tmp/c71-s1-query-final-08-20261009.log"
+}

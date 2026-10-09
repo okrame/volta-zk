@@ -1,0 +1,407 @@
+{
+  "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+  "git_dirty": false,
+  "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+  "manifest_path": "/tmp/c71-query-e-rust-20261009/manifest.json",
+  "manifest_sha256": "ba53ad7fde7ce55e5479a37f32f6386ba50447531067df9c717912e5a01a6392",
+  "checks": [
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 51.833768042735755,
+      "max_rss_bytes": 325767168,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 51.599638,
+      "system_s": 0.217938,
+      "log": "/tmp/c71-s1-query-final-01-20261009.log",
+      "reused": true,
+      "reused_raw_log": "/tmp/c71-s1-query-final-01-20261009.log",
+      "reused_raw_report": "/tmp/c71-s1-query-final-01-20261009.json",
+      "reused_parent_clean_before_after_attestation": true,
+      "reused_root_source_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "reused_binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "case": 1,
+      "name": "c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac",
+      "label": "full WHIR W",
+      "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "git_dirty": false,
+      "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "passed": 1,
+      "before": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "after": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "source_and_binary_unchanged": true
+    },
+    {
+      "command": [
+        "rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 53.88488924596459,
+      "max_rss_bytes": 325861376,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 53.593454,
+      "system_s": 0.274292,
+      "log": "/tmp/c71-s1-query-final-02-20261009.log",
+      "reused": true,
+      "reused_raw_log": "/tmp/c71-s1-query-final-first-a-20261009.log",
+      "reused_raw_report": "/tmp/c71-s1-query-final-first-a-20261009.json",
+      "reused_parent_clean_before_after_attestation": true,
+      "reused_root_source_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "reused_binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "case": 2,
+      "name": "c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac",
+      "label": "full WHIR A",
+      "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "git_dirty": false,
+      "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "passed": 1,
+      "before": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "after": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "source_and_binary_unchanged": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_source_composed_full_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 53.181227792054415,
+      "max_rss_bytes": 325783552,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 52.88059,
+      "system_s": 0.287528,
+      "log": "/tmp/c71-s1-query-final-03-20261009.log",
+      "case": 3,
+      "name": "c71_b12_native_source_composed_full_chain_original_mac_and_transcript",
+      "label": "D15 A composed, initial rows fixture",
+      "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "git_dirty": false,
+      "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "passed": 1,
+      "before": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "after": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "source_and_binary_unchanged": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_weight_composed_full_chain_original_mac_and_transcript",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 53.20041869208217,
+      "max_rss_bytes": 325791744,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 52.961981,
+      "system_s": 0.22663599999999998,
+      "log": "/tmp/c71-s1-query-final-04-20261009.log",
+      "case": 4,
+      "name": "c71_b12_native_weight_composed_full_chain_original_mac_and_transcript",
+      "label": "D15 W composed, initial rows fixture",
+      "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "git_dirty": false,
+      "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "passed": 1,
+      "before": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "after": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "source_and_binary_unchanged": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_canonical_device_original_scan_coverage_rejects_duplicate_and_omitted_rows",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 9.59990618005395,
+      "max_rss_bytes": 325988352,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 9.506177,
+      "system_s": 0.089705,
+      "log": "/tmp/c71-s1-query-final-05-20261009.log",
+      "case": 5,
+      "name": "c71_canonical_device_original_scan_coverage_rejects_duplicate_and_omitted_rows",
+      "label": "canonical source-row coverage",
+      "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "git_dirty": false,
+      "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "passed": 1,
+      "before": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "after": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "source_and_binary_unchanged": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_pcs_resident_source_tiles_original_biased_bytes",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.0036668539978563786,
+      "max_rss_bytes": 14630912,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.003345,
+      "system_s": 0.0,
+      "log": "/tmp/c71-s1-query-final-06-20261009.log",
+      "case": 6,
+      "name": "c71_b12_pcs_resident_source_tiles_original_biased_bytes",
+      "label": "original biased byte packing",
+      "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "git_dirty": false,
+      "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "passed": 1,
+      "before": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "after": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "source_and_binary_unchanged": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_weight_geometry_and_resource_envelope",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.00338689424097538,
+      "max_rss_bytes": 10194944,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.003097,
+      "system_s": 0.0,
+      "log": "/tmp/c71-s1-query-final-07-20261009.log",
+      "case": 7,
+      "name": "c71_b12_native_weight_geometry_and_resource_envelope",
+      "label": "native initial W geometry envelope",
+      "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "git_dirty": false,
+      "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "passed": 1,
+      "before": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "after": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "source_and_binary_unchanged": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_source_geometry_and_resource_envelope",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.003704145085066557,
+      "max_rss_bytes": 10649600,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.0033369999999999997,
+      "system_s": 0.0,
+      "log": "/tmp/c71-s1-query-final-08-20261009.log",
+      "case": 8,
+      "name": "c71_b12_native_source_geometry_and_resource_envelope",
+      "label": "native initial A geometry envelope",
+      "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "git_dirty": false,
+      "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "passed": 1,
+      "before": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "after": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "source_and_binary_unchanged": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_canonical_extension_geometry_tracks_every_native_stage_without_allocation",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 0.003739978652447462,
+      "max_rss_bytes": 13602816,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 0.0011049999999999999,
+      "system_s": 0.00227,
+      "log": "/tmp/c71-s1-query-final-09-20261009.log",
+      "case": 9,
+      "name": "c71_b12_canonical_extension_geometry_tracks_every_native_stage_without_allocation",
+      "label": "all extension stages, reference geometry metadata",
+      "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "git_dirty": false,
+      "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "passed": 1,
+      "before": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "after": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "source_and_binary_unchanged": true
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_canonical_device_allocation_geometry_without_canonical_buffers",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 6.422589673195034,
+      "max_rss_bytes": 63954944,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 6.397244,
+      "system_s": 0.023985,
+      "log": "/tmp/c71-s1-query-final-10-20261009.log",
+      "case": 10,
+      "name": "c71_canonical_device_allocation_geometry_without_canonical_buffers",
+      "label": "canonical producer allocation geometry",
+      "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+      "git_dirty": false,
+      "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d",
+      "passed": 1,
+      "before": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "after": {
+        "source_git_sha": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+        "git_status": "",
+        "binary_sha256": "102914a10c3db065abed941a82c12a4584b45d7c375e05770ab6f6eb75fab19d"
+      },
+      "source_and_binary_unchanged": true
+    }
+  ],
+  "complete": true,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "skipped_case11": {
+    "name": "c71_original_claim_batch_releases_construction_capacity",
+    "reason": "reuse existing clean 96b69de claim capacity marker; no new test",
+    "record": "/home/okrame/projects/volta-zk/benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1.json",
+    "record_sha256": "eacc714846d896638e2d2e9ec0eca78deaa80b436e87d764fc11688c66cb74a8",
+    "log": "/home/okrame/projects/volta-zk/benchmarks/results/c71-crypto-retirement-local-2026-10-09-96b69ded52c1-logs/c71-closure-retire-clean-claim-20261009.log",
+    "log_sha256": "d2b16638dedb02425a1ae4f7966c0a676a20d78c93e87431f04576822a0d353c"
+  },
+  "reused_cpp_check": {
+    "log": "/tmp/c71-s1-query-final-c-20261009.log",
+    "report": "/tmp/c71-s1-query-final-c-20261009.json",
+    "parent_reported_pass": true
+  },
+  "preserved_build_attempt_reports": [
+    "/tmp/c71-s1-query-build-pre03-20261009.json",
+    "/tmp/c71-s1-query-build-pre04-20261009.json"
+  ],
+  "build_note": "pre03 deadline exit124 at60.050837864s, aggregate RSS2498871296B; same-source one retry pre04 PASS56.185896800s, aggregate RSS2504699904B; limits unchanged",
+  "ledger_log_directory": "/tmp/c71-s1-query-final-ledger-logs-20261009",
+  "ledger_final_links_published": true,
+  "credit": false,
+  "gpu_execution": false
+}

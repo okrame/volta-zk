@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_source_composed_full_chain_original_mac_and_transcript",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 53.181227792054415,
+  "max_rss_bytes": 325783552,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 52.88059,
+  "system_s": 0.287528,
+  "log": "/tmp/c71-s1-query-final-03-20261009.log"
+}

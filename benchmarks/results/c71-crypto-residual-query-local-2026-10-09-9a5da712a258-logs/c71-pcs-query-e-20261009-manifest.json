@@ -1,0 +1,41 @@
+{
+  "scope": "Frozen pure Query E loader for the single pending S1+Query checkpoint",
+  "executed_checks_by_this_agent": [],
+  "gpu_execution": false,
+  "integrated": false,
+  "joint_admitted": false,
+  "files_sha256": {
+    "cuda/c71_pcs_residual_query.cuh": "1be546af0d659a537108b672166888cd85a8830c02890bd10b1f835e6f1832d6",
+    "cuda/c71_pcs_residual_query.cu": "40a22463ae742ba13cb7ebb45409ecec728e53c8682e4daf682cf06502aeb7f1",
+    "tests/c71_pcs_residual_query_host.cpp": "8dc2cc1459ca54f6a3fd68482c7ddc25f2c825985283875410d027bd2009ddfd",
+    "tests/test_c71_pcs_residual_query.py": "10570554999f722fd5cf72424eb4437cc9a87f8f63d9e871dce82f27e65e2be2"
+  },
+  "review": {
+    "shape_bound": "dimension<=35, remaining in 2..29, capacity power-of-two<=2^20, four E columns, message n=2^(remaining-2)",
+    "tasks_formula": "ceil(min(capacity,n-first)/32) * ceil(prefixes/256); prefixes=floor((live-(column*n+first)-1)/2^remaining)+1 when first coefficient is live; zero tasks for pad/zero/public-suffix-only block",
+    "tasks_upper": 33554432,
+    "tasks_upper_reason": "remaining 2 gives n=1 and prefixes<=2^33, hence 2^25 tasks; remaining>=7 gives at most 2^20 tasks until the capacity cap further reduces them",
+    "grid_blocks_upper": 8192,
+    "task_indexing": "uint64 task/grid-stride; each CTA handles 32 coefficients x 256 prefixes, each of 8 workers per coefficient handles 32 prefixes; all threads reach all three barriers uniformly",
+    "index_upper": "Original index prefix*2^remaining+column*n+first+coefficient <=2^35-1; the index<live guard precedes packed_address and every W read",
+    "ordinary_scan_work": "Across four columns/all normal blocks, every live W coefficient is visited once and yields all three components; prefix parallelization does not add a W scan or an A reconstruction",
+    "per_task_bounds": "8192 signed W reads, 256 checked EQ cache entries, 96 nonzero field-add requests at most; CAS retry count is not bounded here",
+    "shared_bytes_per_cta": 12288,
+    "new_global_buffer_bytes": 0,
+    "low_bytes_upper": 25165824,
+    "launch_accounting": "Weights: attempted1 for init, plus1 iff tasks>0; failures retain actual attempts. Resident path unchanged at one launch",
+    "pinned_last_extension": {
+      "W_dimension": 35,
+      "remaining": 8,
+      "message_per_column": 64,
+      "original_live_coefficients": 30697345280,
+      "live_prefixes_per_coefficient": 119911505,
+      "prefix_tiles_per_column": 468405,
+      "tasks_per_column": 936810,
+      "field_add_requests_upper_four_columns": 359735040,
+      "note": "Earlier scalar layout had only 64 useful W threads per column, each looping through 119911505 reads. This is analytic work/capacity, not a CUDA benchmark or hardware speedup"
+    },
+    "parity_fixture": "Independent unsigned128 Goldilocks convolution with v^3=v+1, dense MSB folds, new lane/worker/CTA/grid-stride emulation, 190 cases/189 complete logical passes/3024 Horner checks; prefix tile crossings, ragged mapping, signed marker, zero EQ, canonicality, pads and public suffix",
+    "remaining": "Root serial validation, combined owner/Rust guards and exact full chain, complete joint lifetime census; no compilation or H100 claims from this preparation"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "baseline": "20235da87d851ce856388cd7070c7792cd40089c",
+  "source_checkpoint": "9a5da712a2583be520fe342dfaa278c9651d60fc",
+  "scope": "five active documents and one new dated history; tmp only; no tests/build/live edits",
+  "record_placeholder": "C71_RESIDUAL_RECORD",
+  "patch_sha256": "baadd98ff30355a14173299c0832f4acfc96833edec1bc38711066a27868a64a",
+  "files": [
+    {
+      "path": "docs/c7.1/design.md",
+      "sha256": "01eae216d2f6b11303dae4ff38fb1eb90d8f198424cdbc34e8fe9e70e89edf81",
+      "bytes": 18073
+    },
+    {
+      "path": "docs/c7.1/local-tests.md",
+      "sha256": "24419becbdd7f6890c69f97dde1c7efbe5094930e36148693327205472da06c4",
+      "bytes": 43840
+    },
+    {
+      "path": "docs/c7.1/runpod-tests.md",
+      "sha256": "4471b160382bcba1af45a527bf925279c91cf7d8d5c6cc4e5b30e1d3f29cb92d",
+      "bytes": 41870
+    },
+    {
+      "path": "docs/c7.1/security.md",
+      "sha256": "79bd336276cd6ce7c9fd745deeecf9c76d4646a0edcfe52aac92bd9b2f6ab48e",
+      "bytes": 49596
+    },
+    {
+      "path": "docs/c7.1/specs.md",
+      "sha256": "937eb169c284a428f6bcd6fe9ad584308083a9348fe3bed5af4a2b56383b6e36",
+      "bytes": 95322
+    },
+    {
+      "path": "docs/c7.1-history/crypto-residual-query-2026-10-09.md",
+      "sha256": "38505d6a6aec48a84b62a6a92cbbbe1860b77022991b583d05167453a5953f6f",
+      "bytes": 7917
+    }
+  ]
+}

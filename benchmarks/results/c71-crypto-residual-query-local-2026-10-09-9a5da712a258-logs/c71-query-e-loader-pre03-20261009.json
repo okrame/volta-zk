@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-s",
+    "-p",
+    "no:cacheprovider",
+    "/tmp/c71-query-e-loader-shadow-pre03-20261009/tests/test_c71_pcs_residual_query.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 2.1493479660712183,
+  "max_rss_bytes": 154779648,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 2.068922,
+  "system_s": 0.073395,
+  "log": "/tmp/c71-query-e-loader-pre03-20261009.log"
+}

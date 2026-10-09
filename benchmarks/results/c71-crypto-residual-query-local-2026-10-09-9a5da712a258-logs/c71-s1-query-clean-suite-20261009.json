@@ -1,0 +1,53 @@
+{
+  "source_git_sha": "03015da1b568970208503f088ed2ceb8c15cc9cf",
+  "git_dirty": false,
+  "binary_sha256": "c81bade76ed09eb0476fc7d66ece3fff3e9fbf691ebd46b31d57991aa53a9c36",
+  "checks": [
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 0,
+      "wall_s": 51.290477759670466,
+      "max_rss_bytes": 326332416,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 50.868683,
+      "system_s": 0.40194599999999997,
+      "log": "/tmp/c71-s1-query-clean-01-20261009.log",
+      "name": "c71_b12_native_residual_query_full_whir_a_wire_fs_rng_and_original_mac",
+      "source_git_sha": "03015da1b568970208503f088ed2ceb8c15cc9cf",
+      "git_dirty": false,
+      "binary_sha256": "c81bade76ed09eb0476fc7d66ece3fff3e9fbf691ebd46b31d57991aa53a9c36",
+      "passed": 1
+    },
+    {
+      "command": [
+        "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+        "c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "/home/okrame/projects/volta-zk",
+      "exit_code": 101,
+      "wall_s": 18.844120662193745,
+      "max_rss_bytes": 326381568,
+      "as_limit_mib": 2048,
+      "deadline_s": 60,
+      "workers": 1,
+      "user_s": 18.692691,
+      "system_s": 0.145871,
+      "log": "/tmp/c71-s1-query-clean-02-20261009.log",
+      "name": "c71_b12_native_residual_query_full_whir_w_wire_fs_rng_and_original_mac",
+      "source_git_sha": "03015da1b568970208503f088ed2ceb8c15cc9cf",
+      "git_dirty": false,
+      "binary_sha256": "c81bade76ed09eb0476fc7d66ece3fff3e9fbf691ebd46b31d57991aa53a9c36",
+      "passed": 0
+    }
+  ]
+}

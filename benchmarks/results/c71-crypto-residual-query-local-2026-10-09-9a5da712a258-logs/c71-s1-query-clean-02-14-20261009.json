@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_residual_query_horner_pads_duplicates_and_virtual_prefixes",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 9.554415032733232,
+  "max_rss_bytes": 326144000,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 9.439119,
+  "system_s": 0.110621,
+  "log": "/tmp/c71-s1-query-clean-02-14-20261009.log"
+}

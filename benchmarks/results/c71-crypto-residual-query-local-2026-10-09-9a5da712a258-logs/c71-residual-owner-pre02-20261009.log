@@ -1,0 +1,9 @@
+.C71_PCS_RESIDUAL_OWNER_COMPONENT {"singleton":1,"original_retention":1,"ood_original":1,"ood_resident":3,"paired_folds":2,"bounded_consuming_reads":3,"gpu_execution":false,"credit":false}
+C71_PCS_RESIDUAL_CONTRACT_OWNER {"cases":8,"W_bands_one_scan":true,"resident_virtual_bits":2,"consumer_d2h_bytes":52,"public_tail_reads":0,"gpu_execution":false,"credit":false}
+C71_PCS_RESIDUAL_OWNER_FAILURE {"terminal_rejections":45,"private_read_d2h_bytes":0,"publication_after_free":true,"gpu_execution":false,"credit":false}
+C71_PCS_RESIDUAL_CONTRACT_FAILURE {"terminal_rejections":19,"gpu_execution":false,"credit":false}
+C71_PCS_SHORT_OWNER {"two_coset_groups":16,"private_salts":1024,"ring_words_checked":3072,"odd_fft_log_rows":3,"input_d2h_bytes":0,"gpu_execution":false,"credit":false}
+C71_PCS_SHORT_OWNER_FAILURE {"terminal_rejections":13,"old_groups_large_rows_rejected":2,"gpu_execution":false,"credit":false}
+C71_RANGE_OWNER_HOST {"rejections":13,"dense_rejections":23,"byte_rejections":19,"pointwise_rejections":14,"embedding_rejections":17,"dense_batches":2,"dense_row_views":1,"max_arena_bytes":262144,"gpu_execution":false,"credit":false}
+.
+2 passed in 11.79s

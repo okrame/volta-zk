@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/home/okrame/projects/volta-zk/rust/target/debug/deps/volta_pcs-efe6791186972026",
+    "c71_b12_native_residual_query_owner_final_values_and_faults",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 9.528157132212073,
+  "max_rss_bytes": 326180864,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 9.46173,
+  "system_s": 0.06367199999999999,
+  "log": "/tmp/c71-s1-query-clean-02-11-20261009.log"
+}

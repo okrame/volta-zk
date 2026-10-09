@@ -1,0 +1,16 @@
+{
+  "command": [
+    "python3",
+    "/tmp/c71-s1-query-ledger-legacy-check-20261009.py"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.11223323410376906,
+  "max_rss_bytes": 13549568,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.079563,
+  "system_s": 0.031518,
+  "log": "/tmp/c71-s1-query-ledger-legacy-pre01-20261009.log"
+}

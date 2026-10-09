@@ -1,0 +1,22 @@
+{
+  "cuda/c71_pcs_residual_query.cu": {
+    "source": "/tmp/c71-pcs-query-e-20261009/cuda/c71_pcs_residual_query.cu",
+    "sha256": "40a22463ae742ba13cb7ebb45409ecec728e53c8682e4daf682cf06502aeb7f1"
+  },
+  "cuda/c71_pcs_residual_query.cuh": {
+    "source": "/tmp/c71-pcs-query-e-20261009/cuda/c71_pcs_residual_query.cuh",
+    "sha256": "1be546af0d659a537108b672166888cd85a8830c02890bd10b1f835e6f1832d6"
+  },
+  "tests/test_c71_pcs_residual_query.py": {
+    "source": "/tmp/c71-pcs-query-e-20261009/tests/test_c71_pcs_residual_query.py",
+    "sha256": "10570554999f722fd5cf72424eb4437cc9a87f8f63d9e871dce82f27e65e2be2"
+  },
+  "tests/c71_pcs_residual_query_host.cpp": {
+    "source": "/tmp/c71-pcs-query-e-20261009/tests/c71_pcs_residual_query_host.cpp",
+    "sha256": "8dc2cc1459ca54f6a3fd68482c7ddc25f2c825985283875410d027bd2009ddfd"
+  },
+  "cuda/c71_pcs_residual.cuh": {
+    "source": "/tmp/c71-residual-owner-20261009/work/cuda/c71_pcs_residual.cuh",
+    "sha256": "34d8dade2444a3fb4d3bd81e33bd2e7efc7d0d48318c5557e40d04233e7b89fc"
+  }
+}

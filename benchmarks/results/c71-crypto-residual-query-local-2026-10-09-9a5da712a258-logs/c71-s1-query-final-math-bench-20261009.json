@@ -1,0 +1,15 @@
+{
+  "command": [
+    "/tmp/pytest-of-okrame/pytest-561/test_pcs_sourcewise_residual_o0/pcs-residual-host"
+  ],
+  "cwd": "/home/okrame/projects/volta-zk",
+  "exit_code": 0,
+  "wall_s": 0.9256534059531987,
+  "max_rss_bytes": 8945664,
+  "as_limit_mib": 2048,
+  "deadline_s": 60,
+  "workers": 1,
+  "user_s": 0.921194,
+  "system_s": 0.003999,
+  "log": "/tmp/c71-s1-query-final-math-bench-20261009.log"
+}

@@ -1,0 +1,10 @@
+{
+  "cuda/c71_pcs_residual_query.cuh": "9279d83d0dd3ef3e590048c4d65a9be928ed7d82806a0e3f78b4df9225bf8dd7",
+  "cuda/c71_pcs_residual_query.cu": "71c8bcc5950266866a72a40a229abded95f0600120f8bc6c0f19b162f6415cf0",
+  "cuda/c71_range_runtime.cpp": "39f4c8bd15a0b4c9df9e9286a252d05bc0610d8dee6f08afea7e4a2dd3689e31",
+  "cuda/c71_pcs_residual.cu": "1009b7ac8c7a7e5453fb87ddcafdcb5ecd20aa2b8a3b2488f9f795c44990b793",
+  "cuda/c71_pcs_residual.cuh": "34d8dade2444a3fb4d3bd81e33bd2e7efc7d0d48318c5557e40d04233e7b89fc",
+  "cuda/c71_range_runtime.h": "d3d60741a336b759609be2b453483429d37912ae29543fe2b4b2c3f30a20652a",
+  "tests/c71_pcs_residual_query_host.cpp": "61ce298cf684a90226e72fe2a18f9eaee50b3f0d8f93dc460acc6281d2a2215a",
+  "tests/test_c71_pcs_residual_query.py": "eb0cdb963127f12e81a23bdb1ffc05fe6f9209b516a66549b55ad9923aa325af"
+}

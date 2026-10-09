@@ -1,0 +1,18 @@
+{
+  "candidate": "/tmp/c71-residual-owner-20261009/work",
+  "shadow": "/tmp/c71-residual-owner-shadow-20261009",
+  "inputs_sha256": {
+    "cuda/c71_pcs_residual.cu": "1009b7ac8c7a7e5453fb87ddcafdcb5ecd20aa2b8a3b2488f9f795c44990b793",
+    "cuda/c71_pcs_residual.cuh": "34d8dade2444a3fb4d3bd81e33bd2e7efc7d0d48318c5557e40d04233e7b89fc",
+    "cuda/c71_range_runtime.h": "5ea9aee7d8eaea14e5cd5d8ffabb4d122f5dca60ffcfd811d94b87ddedd697e8",
+    "cuda/c71_range_runtime.cpp": "39f4c8bd15a0b4c9df9e9286a252d05bc0610d8dee6f08afea7e4a2dd3689e31",
+    "tests/test_c71_range_native.py": "8a297394846b740901af869767e9768f71519c36ef42b84261554656b60fc261",
+    "tests/test_c71_pcs_residual.py": "d5239c670f053416e594f1eef1804aab8c18257bb4774ebda72010d52c3bef72",
+    "tests/c71_pcs_residual_host.cpp": "6e28c9863696f4d6a1abedda21f96d80f761dcc90329c07a7387b4a711eb34c0",
+    "tests/c71_range_runtime_host.cpp": "27270ce31f450298aa8be68c2d09890e8ffca210ddb718b88ade275d7d07c6c4"
+  },
+  "production_tree_modified": false,
+  "cuda_compilation": false,
+  "gpu_execution": false,
+  "credit": false
+}

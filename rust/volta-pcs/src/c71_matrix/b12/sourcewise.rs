@@ -1467,9 +1467,20 @@ pub(super) mod tests {
             let mut values:Vec<_>=words.iter().step_by(2).chain(words.iter().skip(1).step_by(2))
                 .map(|&x|if x>=0 {Goldilocks::from_u64(x as u64)}else{-Goldilocks::from_u64((-i64::from(x)) as u64)}).collect();
             values.resize(1<<dimension,Goldilocks::ZERO);
+            // The ABI requires dyadic tiles even when the live prefix is ragged.
+            let mut tiles=Vec::new();let mut first=0;
+            for (parity,count) in [(0,even),(1,odd)] {
+                let mut offset=0;
+                while offset<count {
+                    let size=1usize<<(count-offset).ilog2();
+                    tiles.push(device::WeightTile {first:first as u64,count:size as u64,
+                        packed_first:(parity+2*offset) as u64,packed_stride:2,columns:1});
+                    first+=size;offset+=size;
+                }
+            }
+            assert_eq!(first,live);
             let original=NativeOriginal::Weights(super::super::replay::NativeWeights {runtime:owner.clone(),weights:words,layout:[47;32],
-                tiles:vec![device::WeightTile {first:0,count:even as u64,packed_first:0,packed_stride:2,columns:1},
-                    device::WeightTile {first:even as u64,count:odd as u64,packed_first:1,packed_stride:2,columns:1}]});
+                tiles});
             (original,values,scans,owner)
         }
     }

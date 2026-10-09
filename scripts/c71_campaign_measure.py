@@ -22,6 +22,7 @@ GPU_MARGIN = 1 << 30
 DISK_MARGIN = 20_000_000_000
 SAMPLE_SECONDS = 0.2
 MAX_RECORD_BYTES = 1 << 20
+MAX_SMAPS_FAILURES = 64
 CGROUP = Path('/sys/fs/cgroup')
 TIME_BINARY = '/usr/bin/time'
 
@@ -83,6 +84,10 @@ def start_ticks(pid):
     return int(Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[19])
 
 
+class SmapsCoverageError(ValueError):
+    pass
+
+
 def host_w_residency(smaps, address, size, page_size):
     """Return a lower bound on resident W, plus complete smaps RSS.
 
@@ -92,6 +97,7 @@ def host_w_residency(smaps, address, size, page_size):
     first = ((address + page_size - 1) // page_size) * page_size
     last = ((address + size) // page_size) * page_size
     exempt = total_rss = covered = 0
+    next_page = first
     current = None
     for line in smaps.splitlines():
         match = re.match(r'^([0-9a-f]+)-([0-9a-f]+) ', line)
@@ -108,12 +114,16 @@ def host_w_residency(smaps, address, size, page_size):
             if not 0 <= rss <= end - begin:
                 raise ValueError('inconsistent smaps mapping RSS')
             interior = max(0, min(end, last) - max(begin, first))
+            if interior:
+                if max(begin, first) != next_page:
+                    raise SmapsCoverageError('noncontiguous resident W coverage in smaps')
+                next_page = min(end, last)
             exempt += max(0, rss - (end - begin - interior))
             covered += interior
             total_rss += rss
             current = None
     if covered != max(0, last - first) or total_rss <= 0:
-        raise ValueError('resident W range missing from smaps')
+        raise SmapsCoverageError('resident W range missing from smaps')
     return exempt, total_rss
 
 
@@ -137,6 +147,7 @@ class Progress:
         self.enforced = False
         self.complete = False
         self.live_spaces = set()
+        self.smaps_read_failures = 0
 
     def transition(self):
         return any(row['state'] in ('allocating', 'retiring') for row in self.states.values())
@@ -231,11 +242,26 @@ class Progress:
             raise ValueError('resident W owner is not the monitored process session')
         host = device = 0
         if self.states.get('host', {}).get('state') == 'live':
-            with Path(f'/proc/{pid}/smaps').open() as handle:
-                smaps = handle.read(MAX_RECORD_BYTES + 1)
-            if len(smaps) > MAX_RECORD_BYTES:
-                raise ValueError('oversized smaps sample')
-            host, rss = host_w_residency(smaps, self.states['host']['address'], W_BYTES, os.sysconf('SC_PAGE_SIZE'))
+            # /proc may span VMA changes. Never exempt bytes from a partial walk.
+            for attempt in range(3):
+                with Path(f'/proc/{pid}/smaps').open() as handle:
+                    smaps = handle.read(MAX_RECORD_BYTES + 1)
+                if len(smaps) > MAX_RECORD_BYTES:
+                    raise ValueError('oversized smaps sample')
+                try:
+                    host, rss = host_w_residency(smaps, self.states['host']['address'], W_BYTES, os.sysconf('SC_PAGE_SIZE'))
+                    break
+                except SmapsCoverageError:
+                    self.smaps_read_failures += 1
+                    failed = self.path.with_name(self.path.name + f'.smaps-failed-{self.smaps_read_failures:04d}.txt')
+                    with new_file(failed) as sink:
+                        sink.write(smaps)
+                        sink.flush()
+                        os.fsync(sink.fileno())
+                    if attempt == 2 or self.smaps_read_failures >= MAX_SMAPS_FAILURES:
+                        raise
+            if start_ticks(pid) != ticks:
+                raise ValueError('resident W owner changed during smaps read')
             parent, previous_rss, swap = rows[pid]
             rows[pid] = (parent, max(previous_rss, rss), swap)
         if self.states.get('device', {}).get('state') == 'live':
@@ -323,7 +349,7 @@ def run(args):
                          'host_tree_swap_bytes', 'whole_gpu_used_bytes', 'whole_gpu_free_bytes',
                          'resident_host_W_lower_bound_bytes', 'resident_device_W_bytes',
                          'sampled_temporary_bytes', 'W_transition_incomplete',
-                         'cgroup_memory_current_bytes', 'disk_available_bytes'])
+                         'cgroup_memory_current_bytes', 'disk_available_bytes', 'smaps_read_failures'])
         environment = dict(os.environ, C71_DIAGNOSTIC_TIMEOUT_SECONDS=str(args.seconds))
         if progress:
             environment['C71_CANONICAL_MONITOR'] = '1'
@@ -348,6 +374,7 @@ def run(args):
                 if progress:
                     progress.read()
                 generation = progress.generation if progress else 0
+                smaps_before = progress.smaps_read_failures if progress else 0
                 transitioning = progress.transition() if progress else False
                 rows = host_tree(os.getpid(), process.pid)
                 host_w = device_w = 0
@@ -382,15 +409,19 @@ def run(args):
                 disk_state = os.statvfs(args.root)
                 disk = disk_state.f_bavail * disk_state.f_frsize
                 temporary = None if transitioning or args.mode == 'calibration' else rss + used - host_w - device_w
+                smaps_failures = progress.smaps_read_failures - smaps_before if progress else 0
                 writer.writerow([time.time(), time.monotonic() - before, rss, swap, used, free,
-                                 host_w, device_w, temporary, int(transitioning), cgroup, disk])
+                                 host_w, device_w, temporary, int(transitioning), cgroup, disk, smaps_failures])
                 files['memory.csv'].flush()
                 if any(after > before for after, before in zip(cgroup_oom_events(), oom_before)):
                     raise RuntimeError('resource stop: cgroup OOM event')
                 check_resources(args.mode, rss, swap, used, total, free, disk, host_w, device_w, transitioning)
                 samples += 1
-                incomplete += int(transitioning)
-                joint_peak = max(joint_peak, temporary or 0)
+                incomplete += int(transitioning or smaps_failures > 0)
+                # A recovered read still enforces the physical cap above, but
+                # its longer interval is excluded from stable-peak credit.
+                if not transitioning and not smaps_failures:
+                    joint_peak = max(joint_peak, temporary or 0)
                 host_peak, gpu_peak = max(host_peak, rss), max(gpu_peak, used)
                 if min(stop_at - time.monotonic(), end - time.time()) <= 0:
                     raise TimeoutError('phase or authorized compute deadline reached')
@@ -424,6 +455,7 @@ def run(args):
             'start_unix_seconds': start, 'wall_seconds': time.monotonic() - started,
             'samples': samples, 'incomplete_samples': incomplete,
             'stable_samples': samples - incomplete,
+            'smaps_read_failures': progress.smaps_read_failures if progress else 0,
             'sampling_target_seconds': SAMPLE_SECONDS,
             'sampled_stable_temporary_peak_bytes': joint_peak,
             'sampled_host_rss_peak_bytes': host_peak, 'sampled_whole_gpu_peak_bytes': gpu_peak,
@@ -431,7 +463,7 @@ def run(args):
             'payload_limit_bytes': PAYLOAD_LIMIT if progress else None,
             'physical_temporary_limit_bytes': PHYSICAL_LIMIT if progress else None,
             'physical_complete_peak': False, 'resource_failure': failure,
-            'sampling_limit': 'Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption is a smaps residency lower bound; device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.',
+            'sampling_limit': 'Conservative sampled account, includes monitor RSS and whole GPU. Host W exemption requires contiguous complete smaps coverage; at most two retries per read and 64 failed walks per run, with failed snapshots preserved. Recovered reads enforce the physical cap but receive no stable-peak credit. Device W requires owner lifecycle. Shared host pages may be double counted. Allocation/retirement transitions have no joint-memory credit; phase/campaign deadlines and global GPU/free/swap/disk limits apply. Transient peaks and runtime allowance sufficiency remain unproven.',
         }
         for name, value in [('exit', str(code)), ('end', str(time.time())), ('summary.json', json.dumps(summary, indent=2, sort_keys=True))]:
             files[name].write(value + '\n')

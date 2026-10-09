@@ -1,5 +1,6 @@
 """Campaign-controller fixtures only: no GPU, model, provider, or hardware credit."""
 import argparse
+import io
 import json
 import os
 from pathlib import Path
@@ -66,10 +67,54 @@ def test_smaps_exempts_only_guaranteed_resident_whole_W_pages():
     assert monitor.host_w_residency(smaps, 0x1101, 0x3200, 4096) == (4096, 16384)
     # Partial mapping residency must never grant the nominal W size.
     assert monitor.host_w_residency(smaps.replace('12 kB', '4 kB'), 0x1101, 0x3200, 4096) == (0, 8192)
-    with pytest.raises(ValueError, match='missing'):
+    with pytest.raises(ValueError, match='missing|noncontiguous'):
         monitor.host_w_residency(smaps, 0x4000, 0x6000, 4096)
     with pytest.raises(ValueError, match='inconsistent'):
         monitor.host_w_residency(smaps.replace('12 kB', '20 kB'), 0x1101, 0x3200, 4096)
+
+
+def test_smaps_overlap_cannot_compensate_for_missing_W_pages():
+    smaps = '1000-2000 rw-p 0 0:0 0\nRss: 4 kB\n' * 2
+    with pytest.raises(monitor.SmapsCoverageError, match='noncontiguous'):
+        monitor.host_w_residency(smaps, 0x1000, 8192, 4096)
+
+
+@pytest.mark.parametrize('failures', [1, 2, 3])
+def test_smaps_retries_preserve_failures_and_require_complete_coverage(tmp_path, monkeypatch, failures):
+    monkeypatch.setattr(monitor, 'W_BYTES', 8192)
+    progress = monitor.Progress(tmp_path / 'progress.jsonl')
+    progress.consume(record(0, resident('host', 'live', address=0x1000)))
+    missing = '9000-a000 rw-p 0 0:0 0\nRss: 4 kB\n'
+    complete = '1000-3000 rw-p 0 0:0 0\nRss: 8 kB\n'
+    snapshots = iter([missing] * failures + [complete])
+    original_open = Path.open
+    def read(path, *args, **kwargs):
+        return io.StringIO(next(snapshots)) if path.name == 'smaps' else original_open(path, *args, **kwargs)
+    monkeypatch.setattr(Path, 'open', read)
+    rows = {os.getpid(): (os.getppid(), 12288, 0)}
+    if failures < 3:
+        assert progress.exemptions(rows, os.getsid(0)) == (8192, 0)
+    else:
+        with pytest.raises(monitor.SmapsCoverageError, match='missing'):
+            progress.exemptions(rows, os.getsid(0))
+    assert progress.smaps_read_failures == failures
+    saved = sorted(tmp_path.glob('*.smaps-failed-*.txt'))
+    assert len(saved) == failures
+    assert all(p.read_text() == missing and p.stat().st_mode & 0o777 == 0o600 for p in saved)
+
+
+def test_smaps_retry_retention_bound_is_terminal(tmp_path, monkeypatch):
+    monkeypatch.setattr(monitor, 'W_BYTES', 8192)
+    progress = monitor.Progress(tmp_path / 'progress.jsonl')
+    progress.consume(record(0, resident('host', 'live', address=0x1000)))
+    progress.smaps_read_failures = monitor.MAX_SMAPS_FAILURES - 1
+    original_open = Path.open
+    monkeypatch.setattr(Path, 'open', lambda path, *a, **kw:
+        io.StringIO('9000-a000 rw-p 0 0:0 0\nRss: 4 kB\n') if path.name == 'smaps'
+        else original_open(path, *a, **kw))
+    with pytest.raises(monitor.SmapsCoverageError):
+        progress.exemptions({os.getpid(): (os.getppid(), 12288, 0)}, os.getsid(0))
+    assert progress.smaps_read_failures == monitor.MAX_SMAPS_FAILURES
 
 
 def test_canonical_memory_couples_host_device_and_monitor_allowance():
@@ -244,6 +289,21 @@ def test_failed_GPU_sample_stops_command_and_cannot_be_success(campaign):
     report = json.loads((campaign.root / 'logs/fixture.summary.json').read_text())
     assert report['samples'] == 0
     assert 'CalledProcessError' in report['resource_failure']
+
+
+def test_recovered_smaps_read_does_not_skip_physical_cap(campaign, monkeypatch):
+    campaign.mode = 'canonical'
+    campaign.progress = campaign.root / 'canonical.progress.jsonl'
+    def recovered(progress, _rows, _session):
+        progress.smaps_read_failures += 1
+        return 0, 0
+    monkeypatch.setattr(monitor.Progress, 'exemptions', recovered)
+    monkeypatch.setattr(monitor, 'host_tree', lambda *_:
+                        {os.getpid(): (0, monitor.PHYSICAL_LIMIT, 0)})
+    assert monitor.run(campaign) != 0
+    report = json.loads((campaign.root / 'logs/fixture.summary.json').read_text())
+    assert 'simultaneous' in report['resource_failure']
+    assert report['smaps_read_failures'] == 1
 
 
 def test_missing_cgroup_metrics_fail_before_launch(campaign, monkeypatch):
